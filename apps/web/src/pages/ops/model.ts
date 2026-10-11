@@ -616,6 +616,8 @@ export function healthReason(c: OpsHealthCheck): UiKey | null {
     "scheduler.fresh": "ops.health.scheduler.fresh",
     "scheduler.stale": "ops.health.scheduler.stale",
     "scheduler.never": "ops.health.scheduler.never",
+    "scheduler.failing": "ops.health.scheduler.failing",
+    "scheduler.noSuccess": "ops.health.scheduler.noSuccess",
     "scheduler.disabled": "ops.health.scheduler.disabled",
     "encryption.set": "ops.health.encryption.set",
     "encryption.missing": "ops.health.encryption.missing",

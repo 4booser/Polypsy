@@ -40,7 +40,7 @@ import {
 } from "../lib/opsBuffer";
 import { attempt, collectDb, dbSummary, liveProbe, type Probe } from "../lib/opsDb";
 import { readErrorHistory, readErrorHours, readLogHistory, readLogVolume } from "../lib/opsHistory";
-import { intervalOf, jobsSnapshot, lastStartOf } from "../lib/opsJobs";
+import { intervalOf, jobsSnapshot, lastOkOf, lastStartOf } from "../lib/opsJobs";
 import { ERROR_RETENTION_DAYS, LOG_RETENTION_DAYS, storeState } from "../lib/opsStore";
 import { checkRls } from "../lib/rlsGuard";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
@@ -128,7 +128,12 @@ export interface HealthInput {
   rls: { bypasses: boolean } | null;
   pendingMigrations: number | null;
   knownMigrations: number;
-  scheduler: { enabled: boolean; lastTickAt: number | null; intervalMs: number | null };
+  /**
+   * lastOkAt — конец последнего УСПЕШНОГО прохода, как у правила «планировщик
+   * молчит» (lib/opsAlerts.ts, #160); без него счёт идёт от запуска процесса
+   * (startedAt). lastFailed — последний проход кончился ошибкой.
+   */
+  scheduler: { enabled: boolean; lastOkAt: number | null; lastFailed: boolean; startedAt: number; intervalMs: number | null };
   encryptionKey: boolean;
   sentryDsn: boolean;
   metricsToken: boolean;
@@ -171,15 +176,34 @@ export function buildHealth(h: HealthInput): OpsHealthCheck[] {
         : { key: "migrations", status: "ok", reason: "current", value: h.knownMigrations },
   );
 
+  /*
+   * Свежесть — от конца последнего УСПЕШНОГО прохода, а не от начала
+   * последнего: начало ставится до выполнения, и планировщик, падающий на
+   * каждом проходе, выглядел здесь тикающим — «гаразд», пока правило
+   * оповещения уже слало «збій» (#160, #203). Успеха в этом процессе не было —
+   * счёт от запуска, как у правила: шесть часов одних падений после
+   * перезапуска — тоже сбой, а не вечное «ещё не запускался».
+   */
   const s = h.scheduler;
   if (!s.enabled) {
     checks.push({ key: "scheduler", status: "warn", reason: "disabled" });
-  } else if (s.lastTickAt === null) {
-    checks.push({ key: "scheduler", status: "warn", reason: "never" });
   } else {
-    const minutes = Math.floor((h.now - s.lastTickAt) / 60_000);
-    const stale = s.intervalMs !== null && h.now - s.lastTickAt > 2 * s.intervalMs;
-    checks.push({ key: "scheduler", status: stale ? "fail" : "ok", reason: stale ? "stale" : "fresh", value: minutes });
+    const from = s.lastOkAt ?? s.startedAt;
+    const minutes = Math.floor((h.now - from) / 60_000);
+    const stale = s.intervalMs !== null && h.now - from > 2 * s.intervalMs;
+    if (stale) {
+      checks.push({ key: "scheduler", status: "fail", reason: s.lastOkAt === null ? "noSuccess" : "stale", value: minutes });
+    } else if (s.lastOkAt === null) {
+      checks.push(
+        s.lastFailed
+          ? { key: "scheduler", status: "warn", reason: "noSuccess", value: minutes }
+          : { key: "scheduler", status: "warn", reason: "never" },
+      );
+    } else if (s.lastFailed) {
+      checks.push({ key: "scheduler", status: "warn", reason: "failing", value: minutes });
+    } else {
+      checks.push({ key: "scheduler", status: "ok", reason: "fresh", value: minutes });
+    }
   }
 
   checks.push(
@@ -279,7 +303,13 @@ opsRoutes.get("/overview", async (c) => {
       rls: rls.ok ? { bypasses: rls.value.bypasses } : null,
       pendingMigrations: database.pendingMigrations,
       knownMigrations: database.knownMigrations,
-      scheduler: { enabled: env.schedulerEnabled, lastTickAt: lastTick, intervalMs: intervalOf("schedules") },
+      scheduler: {
+        enabled: env.schedulerEnabled,
+        lastOkAt: lastOkOf("schedules"),
+        lastFailed: jobsSnapshot(now).find((j) => j.name === "schedules")?.lastResult === "error",
+        startedAt: Date.parse(startedAt),
+        intervalMs: intervalOf("schedules"),
+      },
       /* про ключи — только «задан ли»: значение дальше этой строки не уходит */
       encryptionKey: Boolean(env.encryptionKeys.trim()),
       sentryDsn: isSet("SENTRY_DSN"),
