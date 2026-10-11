@@ -19,6 +19,16 @@ function xml(items: [string, number][]): string {
 const server = Bun.serve({
   port,
   async fetch(req) {
+    /*
+     * И заглушка Telegram для scripts/ops-alert.sh (TELEGRAM_API): принятое
+     * сообщение — строкой в вывод, по ней сценарий проверяет, что ушло.
+     */
+    const bot = /^\/bot([^/]+)\/sendMessage$/.exec(new URL(req.url).pathname);
+    if (bot && req.method === "POST") {
+      const form = new URLSearchParams(await req.text());
+      console.log(`telegram bot=${bot[1]} chat=${form.get("chat_id")} text=${JSON.stringify(form.get("text"))}`);
+      return Response.json({ ok: true });
+    }
     if (!req.headers.get("authorization")?.startsWith("AWS4-HMAC-SHA256")) {
       return new Response("no signature", { status: 403 });
     }

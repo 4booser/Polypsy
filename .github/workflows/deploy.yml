@@ -211,7 +211,7 @@ jobs:
           # туда не доехали бы никогда. До снимка — по той же причине, что и
           # состав: снимок должен сниматься исправленным скриптом.
           ssh -i ~/.ssh/id_ed25519 "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" "rm -rf /tmp/quizzy-scripts.new && mkdir -p /tmp/quizzy-scripts.new"
-          scp -i ~/.ssh/id_ed25519 scripts/backup.sh scripts/restore.sh scripts/verify-backup.sh scripts/upgrade-instances.sh scripts/offsite.sh scripts/transcriber-cpus.sh \
+          scp -i ~/.ssh/id_ed25519 scripts/backup.sh scripts/restore.sh scripts/verify-backup.sh scripts/upgrade-instances.sh scripts/offsite.sh scripts/transcriber-cpus.sh scripts/ops-alert.sh \
             "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/tmp/quizzy-scripts.new/"
           ssh -i ~/.ssh/id_ed25519 "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
             "TARGET='${{ secrets.VPS_PATH }}' bash -s" <<'REMOTE'
@@ -304,6 +304,11 @@ jobs:
       # weekly и monthly не трогаются. Скрипт — тот, что шаг выше только что
       # положил на сервер; </dev/null — скрипт выкатки пришёл через stdin, и
       # compose exec внутри снимка не должен до него дотянуться.
+      #
+      # Отказ ВНЕШНЕЙ копии выкатку не останавливает (#159): местный снимок
+      # снят и прочитан обратно, а недоступное чужое хранилище — не повод
+      # вставать выкатке и откату. backup.sh пишет отказ в вывод этого шага и
+      # шлёт оповещение в канал техпанели (scripts/ops-alert.sh).
       - name: Снимок базы
         run: |
           ssh -i ~/.ssh/id_ed25519 "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
