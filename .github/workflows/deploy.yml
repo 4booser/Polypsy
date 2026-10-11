@@ -25,13 +25,39 @@ env:
   REGISTRY: ghcr.io
 
 jobs:
+  # Что выкатываем — один коммит на весь прогон (#161).
+  #
+  # Ref (тег при пуше, введённое значение при ручном запуске и откате из
+  # техпанели) превращается в SHA один раз, здесь, и дальше проверки и
+  # сборка берут именно его. Прежде проверки звались без ref и выгружали
+  # ref самого прогона — при ручном запуске это main, — а сборка брала
+  # введённый тег: на сервер уезжал не тот код, что прошёл тесты, а откат на
+  # исправный тег вставал, пока main красный. И тег, переставленный между
+  # проверкой и сборкой, не подменит собранное: обе стороны — один SHA.
+  target:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      sha: ${{ steps.sha.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.ref || github.ref }}
+      - id: sha
+        name: Коммит выкатки
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
   # Тесты идут перед сборкой намеренно: собранный, но не проверенный образ
   # в реестре — это приглашение выкатить его руками «по-быстрому».
   check:
+    needs: target
     uses: ./.github/workflows/ci.yml
+    with:
+      ref: ${{ needs.target.outputs.sha }}
 
   build:
-    needs: check
+    needs: [target, check]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -43,7 +69,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.inputs.ref || github.ref }}
+          ref: ${{ needs.target.outputs.sha }}
 
       # Версия — то, что выкатываем, а не то, откуда запущено.
       #
@@ -56,7 +82,8 @@ jobs:
       #
       # Коммит — из того, что реально выгружено (git rev-parse), а не
       # github.sha: при ручном запуске github.sha — вершина main, а собирается
-      # введённый тег.
+      # введённый тег. И он обязан совпасть с тем, что прошёл тесты (задача
+      # target): иначе сборка останавливается.
       #
       # Введённое значение приходит через env, а не подстановкой в текст
       # сценария: подстановка ${{ }} вставила бы его в bash как есть.
@@ -64,10 +91,16 @@ jobs:
         name: Версия и адрес образов
         env:
           INPUT_REF: ${{ github.event.inputs.ref }}
+          CHECKED_SHA: ${{ needs.target.outputs.sha }}
         run: |
           ref="${INPUT_REF:-$GITHUB_REF_NAME}"
+          sha="$(git rev-parse HEAD)"
+          if [ -z "$CHECKED_SHA" ] || [ "$sha" != "$CHECKED_SHA" ]; then
+            echo "собирается $sha, а тесты прошёл ${CHECKED_SHA:-неизвестный коммит} — сборка остановлена" >&2
+            exit 1
+          fi
           echo "version=${ref#refs/tags/}" >> "$GITHUB_OUTPUT"
-          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
           # имя владельца и репозитория приводится к строчным: реестр не
           # принимает заглавные, а «4booser/Quizzy» их содержит — сборка
           # падала на самом последнем шаге, уже после всех проверок
@@ -116,6 +149,9 @@ jobs:
       # чтобы сервер вошёл в реестр токеном этого прогона
       packages: read
     steps:
+      # Состав и скрипты копий берутся из ref самого прогона, а не из
+      # выкатываемого тега: при откате из техпанели это main — логика
+      # выкатки свежая, код старый (lib/releases.ts, dispatchDeploy).
       - uses: actions/checkout@v4
 
       - name: Ключ доступа к серверу

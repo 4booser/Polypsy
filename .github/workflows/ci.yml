@@ -6,6 +6,16 @@ on:
   # чтобы выкатка могла позвать те же проверки, а не свою копию:
   # две копии однажды разойдутся, и разойдётся именно та, что перед боем
   workflow_call:
+    inputs:
+      # Что проверять — коммит, который выкатка соберёт (#161). Без него
+      # вызванный процесс выгружал ref вызвавшего: при ручной выкатке и
+      # откате из техпанели это main, а собирался введённый тег — тесты
+      # шли не на том коде, что уезжал на сервер, а откат на исправный тег
+      # вставал, пока main красный. Пусто (пуш, PR) — как раньше.
+      ref:
+        type: string
+        required: false
+        default: ""
 
 jobs:
   test:
@@ -32,6 +42,7 @@ jobs:
       # На обрезанной истории эта проверка отказывает, а не пропускается.
       - uses: actions/checkout@v4
         with:
+          ref: ${{ inputs.ref }}
           fetch-depth: 0
       - uses: oven-sh/setup-bun@v2
         with:
@@ -105,6 +116,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
@@ -131,6 +144,8 @@ jobs:
     needs: test
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
       # Состав разбирается здесь, а не впервые на сервере: повтор ключа в
       # environment (так встала выкатка v1.11.1) compose отвергает целиком,
       # и узнавать об этом на шаге «docker compose up» — поздно. Секреты —
