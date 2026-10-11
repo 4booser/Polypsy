@@ -94,7 +94,9 @@ async function submitOneRow(surveyId: string) {
   });
   people.push(p.id);
   const shown = (await appApi<Loaded>(`/api/surveys/${surveyId}`, p.token)).body;
-  const q = shown.questions[0]!;
+  // вариант по весу выбирает сотрудник: пациенту ключ методики не отдаётся (#141)
+  const keyed = (await appApi<Loaded>(`/api/surveys/${surveyId}`, adminA.token)).body;
+  const q = keyed.questions[0]!;
   const row = q.options.find((o) => o.kind === "row")!;
   const three = q.options.find((o) => o.kind === "option" && o.score === 3)!;
   const res = await appApi(`/api/surveys/${surveyId}/responses`, p.token, {

@@ -84,7 +84,9 @@ async function submitAsClient(choices: ("yes" | "no")[]) {
   const p = await makeUser("user", `chain-${crypto.randomUUID().slice(0, 8)}@test.dev`, { sex: "female", birthDate: "1994-04-04" });
   people.push(p.id);
   const shown = (await appApi<SurveyFull>(`/api/surveys/${surveyId}`, p.token)).body;
-  const all: Answer[] = shown.questions.map((q, i) => ({
+  // вариант по коду ключа выбирает сотрудник: пациенту ключ не отдаётся (#141); видимость — по копии пациента
+  const keyed = (await appApi<SurveyFull>(`/api/surveys/${surveyId}`, adminA.token)).body;
+  const all: Answer[] = keyed.questions.map((q, i) => ({
     questionId: q.id,
     optionIds: [q.options.find((o) => o.keyCode === choices[i])!.id],
   }));
