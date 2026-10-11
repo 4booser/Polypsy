@@ -175,7 +175,7 @@ jobs:
           # туда не доехали бы никогда. До снимка — по той же причине, что и
           # состав: снимок должен сниматься исправленным скриптом.
           ssh -i ~/.ssh/id_ed25519 "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" "rm -rf /tmp/quizzy-scripts.new && mkdir -p /tmp/quizzy-scripts.new"
-          scp -i ~/.ssh/id_ed25519 scripts/backup.sh scripts/restore.sh scripts/verify-backup.sh scripts/upgrade-instances.sh scripts/offsite.sh \
+          scp -i ~/.ssh/id_ed25519 scripts/backup.sh scripts/restore.sh scripts/verify-backup.sh scripts/upgrade-instances.sh scripts/offsite.sh scripts/transcriber-cpus.sh \
             "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/tmp/quizzy-scripts.new/"
           ssh -i ~/.ssh/id_ed25519 "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
             "TARGET='${{ secrets.VPS_PATH }}' bash -s" <<'REMOTE'
@@ -365,6 +365,11 @@ jobs:
             sh -c 'd=/data/recordings
               if [ "$(stat -c %U:%G:%a "$d")" = bun:bun:700 ]; then echo "том записей: владелец bun"; exit 0; fi
               chown bun:bun "$d" && chmod 700 "$d" && echo "том записей: владелец исправлен на bun"' </dev/null
+
+          # Предел ядер расшифровщика — не больше ядер сервера (#158): больше
+          # Docker не принимает, и `up -d` ниже встал бы посреди выкатки, уже
+          # с новой версией в .env.docker. Скрипт привёз шаг «Состав на сервер».
+          bash scripts/transcriber-cpus.sh .env.docker
 
           # версия и адрес образов живут в .env.docker, а не в переменных
           # оболочки: перезапуск сервера не должен откатывать выкатку.
