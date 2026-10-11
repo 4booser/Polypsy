@@ -89,6 +89,14 @@ export const PUSH: Record<string, PushEntry> = {
   "push.ops.what.p95": { uk: "p95 відповіді {value} мс за {window} хв (поріг {threshold} мс)", ru: "p95 ответа {value} мс за {window} мин (порог {threshold} мс)", en: "response p95 {value} ms over {window} min (threshold {threshold} ms)" },
   "push.ops.what.diskFree": { uk: "вільно {value} % диска записів (поріг {threshold} %)", ru: "свободно {value} % диска записей (порог {threshold} %)", en: "{value}% free on the recordings disk (threshold {threshold}%)" },
   "push.ops.what.auditChain": { uk: "перевірка ланцюжка журналу не пройшла", ru: "проверка цепочки журнала не прошла", en: "audit log chain check failed" },
+
+  /* ── w22:ops ── */
+  /* правило «цепочка журнала»: последняя сверка старше двух суток — оповещение, а не молчаливое «недоступно» (#203, lib/opsAlerts.ts) */
+  "push.ops.what.auditChainStale": {
+    uk: "перевірка ланцюжка журналу не виконувалася {value} год (планова — щодоби)",
+    ru: "проверка цепочки журнала не выполнялась {value} ч (плановая — раз в сутки)",
+    en: "the audit log chain check has not run for {value} h (scheduled daily)",
+  },
 };
 
 export type PushKey = keyof typeof PUSH;

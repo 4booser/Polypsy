@@ -289,31 +289,48 @@ describe("правило: сработало, затихло, повторило
     }
   });
 
-  test("сверка цепочки старше двух суток — «недоступно», а не «гаразд»; провал — «збій» при любой давности (#160)", async () => {
+  test("сверка цепочки старше двух суток — «збій» с текстом о давней сверке; свежая — «відновлено»; провал — «збій» при любой давности (#160, #203)", async () => {
+    /*
+     * Волна 21 (#160) сделала давнюю сверку «недоступно» вместо «гаразд», но
+     * в Telegram и на почту она не уходила: вставшая плановая сверка видна
+     * была только тому, кто откроет техпанель. Теперь это «збій» того же
+     * правила — с текстом «не виконувалася N год», а не «не пройшла»:
+     * журнал не порван, его просто давно никто не проверял.
+     */
     const now = Date.UTC(2026, 9, 11, 12, 0);
     const rule = { key: "auditChain", threshold: null, windowMin: null };
     const ago = (ms: number) => new Date(now - ms).toISOString();
     expect(observe(rule, inputs({ now, auditChain: { ok: true, checkedAt: ago(23 * 3_600_000) } }))).toEqual({ firing: false, value: 1 });
     expect(observe(rule, inputs({ now, auditChain: { ok: true, checkedAt: ago(AUDIT_CHAIN_STALE_MS) } }))).toEqual({ firing: false, value: 1 });
-    // десятидневной давности — прежде «гаразд»
-    expect(observe(rule, inputs({ now, auditChain: { ok: true, checkedAt: ago(10 * 86_400_000) } }))).toEqual({
-      firing: null,
-      value: null,
-      unavailable: "chainStale",
+    // десятидневной давности — прежде «гаразд», в волне 21 — «недоступно»; значение — часы без сверки
+    expect(observe(rule, inputs({ now, auditChain: { ok: true, checkedAt: ago(10 * 86_400_000) } }))).toEqual({ firing: true, value: 240 });
+    expect(observe(rule, inputs({ now, auditChain: { ok: true, checkedAt: ago(AUDIT_CHAIN_STALE_MS + 60_000) } }))).toEqual({
+      firing: true,
+      value: 48,
     });
-    expect(observe(rule, inputs({ now, auditChain: { ok: true, checkedAt: ago(AUDIT_CHAIN_STALE_MS + 60_000) } })).unavailable).toBe("chainStale");
     // порванный журнал давностью не «выцветает»
     expect(observe(rule, inputs({ now, auditChain: { ok: false, checkedAt: ago(10 * 86_400_000) } }))).toEqual({ firing: true, value: 0 });
+    // время сверки не прочесть — давность не измерить: «недоступно», а не «збій» и не «гаразд»
+    expect(observe(rule, inputs({ now, auditChain: { ok: true, checkedAt: "вчора" } }))).toMatchObject({ firing: null, unavailable: "chainStale" });
 
-    // проход целиком: правило в базе и на экране — «недоступно» с причиной
+    // проход целиком: правило в базе и на экране — «збій», в Telegram — что сверка давно не шла
     setAuditChainSource(async () => ({ ok: true, checkedAt: ago(10 * 86_400_000) }));
     const { auditChain: _drop, ...rest } = signals();
     await runAlertChecks({ now, signals: rest });
     const [row] = await db.select().from(opsAlertRules).where(eq(opsAlertRules.key, "auditChain"));
-    expect(row).toMatchObject({ lastState: "unavailable", lastReason: "chainStale" });
+    expect(row).toMatchObject({ lastState: "firing", lastReason: null, lastValue: 240 });
     const view = await api<OpsAlerts>("/api/ops/alerts", root.token);
-    expect(view.body.rules.find((r) => r.key === "auditChain")).toMatchObject({ state: "unavailable", unavailable: "chainStale" });
-    expect(sent.filter((m) => m.body.text.includes("ланцюжка"))).toHaveLength(0);
+    expect(view.body.rules.find((r) => r.key === "auditChain")).toMatchObject({ state: "firing", unavailable: null });
+    const chain = () => sent.filter((m) => m.body.text.includes("ланцюжка")).map((m) => m.body.text);
+    expect(chain()).toHaveLength(1);
+    expect(chain()[0]).toContain("Збій: перевірка ланцюжка журналу не виконувалася 240 год");
+    expect(chain()[0]).not.toContain("не пройшла");
+
+    // плановая сверка снова прошла — «відновлено», и о том же, а не «перевірка не пройшла»
+    setAuditChainSource(async () => ({ ok: true, checkedAt: ago(-30_000) }));
+    await runAlertChecks({ now: now + 60_000, signals: rest });
+    expect(chain()).toHaveLength(2);
+    expect(chain()[1]).toContain("Відновлено: перевірка ланцюжка журналу не виконувалася 240 год");
   });
 
   test("решение по инциденту: одно оповещение, тишина до повтора, «відновлено»", () => {

@@ -174,10 +174,15 @@ export function toggleChannel(list: readonly OpsAlertChannel[], ch: OpsAlertChan
 
 /** Значение правила в его единице: «7,2 %», «2 400 мс», «135 хв» */
 export function fmtRuleValue(key: OpsAlertRuleKey, v: number | null, loc: string): string {
-  /* у проверки журнала числа нет — есть «прошла / не прошла», и это говорит состояние правила */
-  if (v === null || key === "auditChain") return "—";
-  const unit = RULE_UNIT[key];
+  if (v === null) return "—";
   const f = (n: number, style: Intl.NumberFormatOptions) => new Intl.NumberFormat(loc, style).format(n);
+  /*
+   * У проверки журнала «прошла / не прошла» (1 / 0) говорит состояние
+   * правила, а не число. Больше единицы — часы без сверки (давняя сверка,
+   * #203): их и видно, иначе «збій» давней сверки не отличить от разрыва.
+   */
+  if (key === "auditChain") return v > 1 ? f(v, { style: "unit", unit: "hour", unitDisplay: "short", maximumFractionDigits: 0 }) : "—";
+  const unit = RULE_UNIT[key];
   if (unit === "pct") return f(v / 100, { style: "percent", maximumFractionDigits: 1 });
   if (unit === "ms") return f(v, { style: "unit", unit: "millisecond", unitDisplay: "short", maximumFractionDigits: 0 });
   if (unit === "min") return f(v, { style: "unit", unit: "minute", unitDisplay: "short", maximumFractionDigits: 0 });
