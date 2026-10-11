@@ -183,10 +183,16 @@ async function runSchedule(
   const freshIds = new Set(fresh);
   const missed = overdue.filter((a) => freshIds.has(a.userId));
 
-  const done = await db.transaction(async (tx) => {
+  /*
+   * Сколько пропусков закрыто — то, что вернул closeMissed, а не число
+   * прочитанных выше (#204). Прочитанное — до замка набора: назначение,
+   * которое пациент успел завершить между чтением и записью, закрытие не
+   * трогает (#151), а отметка прогона и журнал считали его пропущенным.
+   */
+  const closed = await db.transaction(async (tx) => {
     // набор под замком: архивированный за время проверок — не выдаётся (lib/batteries.ts)
-    if (!(await lockBatteryForAssign(tx, schedule.batteryId))) return false;
-    await closeMissed(
+    if (!(await lockBatteryForAssign(tx, schedule.batteryId))) return null;
+    const missedClosed = await closeMissed(
       tx,
       missed.map((a) => a.id),
       noteCode("note.missed.schedule", { title: schedule.title }),
@@ -232,14 +238,14 @@ async function runSchedule(
       // назначение поверх более долгого доступа его не укорачивает — см. grantAccess
       { term: "extend" },
     );
-    return true;
+    return missedClosed;
   });
-  if (!done) return { assigned: 0, skipped: 0, missed: 0, note: noteCode("note.run.archived") };
+  if (closed === null) return { assigned: 0, skipped: 0, missed: 0, note: noteCode("note.run.archived") };
 
   return {
     assigned: fresh.length,
     skipped: targets.length - fresh.length,
-    missed: missed.length,
+    missed: closed,
     notify: { userIds: fresh, dueAt },
   };
 }
