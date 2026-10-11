@@ -176,6 +176,25 @@ export async function forgetDevice(token: string): Promise<void> {
  * Возвращает `false`, если сообщение уже уходило: вызывающий код может не
  * проверять это сам — идемпотентность живёт здесь, а не рассыпана по местам
  * отправки.
+ *
+ * Своими транзакциями и в три шага, независимо от транзакции вызывающего
+ * (#192): заявка — короткой системной транзакцией, которая фиксируется до
+ * сети; отправка — вне всякой транзакции этой функции; исходы и решение по
+ * билетам — снова своими транзакциями. Прежде заявка вставлялась в
+ * транзакции вызывающего (каждый рассыльщик оборачивал отправку в
+ * systemContext, запрос — в свою), исходы писались отдельной, и та
+ * незафиксированной заявки не видела: внешний ключ push_outcomes падал,
+ * ошибка глоталась, и исходов не было почти ни у одного пуша — квитанциям не
+ * с чем было сверяться, отказ «лимит частоты» не возвращал заявку на повтор,
+ * мёртвые токены не забывались. И сеть держала открытой транзакцию
+ * вызывающего на всё время ответа Expo.
+ *
+ * Заявка, зафиксированная до сети, переживает откат вызывающего — и так
+ * правильно: уведомление ушло с сервера, и повтор того же события был бы
+ * дублем. Вызывающему оборачивать отправку в транзакцию не нужно (и не
+ * стоит: она простаивала бы открытой на время сети). Держать в своей
+ * транзакции строку человека (FOR UPDATE) или заявку того же события при
+ * вызове нельзя: заявка идёт другим соединением и ждала бы её вечно.
  */
 export async function pushToUser(
   userId: string,
@@ -187,50 +206,10 @@ export async function pushToUser(
    */
   fallbackLang: Lang = "uk",
 ): Promise<boolean> {
-  /*
-   * Устройства проверяются ДО заявки на отправку.
-   *
-   * Раньше заявка вставлялась первой, и человек без зарегистрированного
-   * устройства получал строку с признаком «успешно». Зарегистрировал
-   * телефон через десять минут — напоминание за сутки ему уже не придёт
-   * никогда: ключ (человек, событие) занят доставкой, которой не было.
-   */
-  const devices = await db.select().from(pushTokens).where(eq(pushTokens.userId, userId));
-  if (!devices.length) return false;
-
-  /*
-   * Заявка: новая строка — или своя же, возвращённая квитанцией на повтор.
-   *
-   * Квитанция Expo приходит через четверть часа после отправки и может
-   * сказать «не передано, лимит частоты» (checkPushReceipts). Такая заявка
-   * остаётся на месте — с ok = false и сроком retry_after, — и взять её
-   * снова можно только когда срок вышел. Так повтор идёт с задержкой, а не
-   * каждую минуту, и той же строкой: исходы по устройствам (push_outcomes)
-   * продолжают указывать на неё, и счётчик попыток растёт.
-   */
-  const [claimed] = await db
-    .insert(pushDeliveries)
-    .values({
-      id: crypto.randomUUID(),
-      userId,
-      eventKey: message.eventKey,
-      kind: message.kind,
-    })
-    .onConflictDoUpdate({
-      target: [pushDeliveries.userId, pushDeliveries.eventKey],
-      set: {
-        sentAt: sql`now()`,
-        ok: true,
-        error: null,
-        retryAfter: null,
-        attempts: sql`${pushDeliveries.attempts} + 1`,
-      },
-      setWhere: sql`${pushDeliveries.retryAfter} is not null and ${pushDeliveries.retryAfter} <= now()`,
-    })
-    .returning({ id: pushDeliveries.id, attempts: pushDeliveries.attempts });
-
-  // уже отправляли (или срок повтора ещё не вышел) — второй раз не тревожим
-  if (!claimed) return false;
+  const claim = await systemContext(baseDb, () => claimDelivery(userId, message));
+  // устройств нет, уже отправляли или срок повтора ещё не вышел — второй раз не тревожим
+  if (!claim) return false;
+  const { devices, claimed } = claim;
 
   let tickets: PushTicket[] | void;
   try {
@@ -275,7 +254,7 @@ export async function pushToUser(
      * Отказ остаётся в журнале приложения; в таблице доставок ему делать
      * нечего — она отвечает на вопрос «отправляли ли», а не «пытались ли».
      */
-    await db.delete(pushDeliveries).where(eq(pushDeliveries.id, claimed.id));
+    await systemContext(baseDb, () => db.delete(pushDeliveries).where(eq(pushDeliveries.id, claimed.id)));
     log.warn("push.failed", { userId, kind: message.kind, error: String(error) });
     return false;
   }
@@ -306,16 +285,68 @@ export async function pushToUser(
   const verdict = ticketVerdict(tickets, devices.length);
   if (verdict.accepted) return true;
   if (verdict.permanent) {
-    await db
-      .update(pushDeliveries)
-      .set({ ok: false, error: verdict.code })
-      .where(eq(pushDeliveries.id, claimed.id));
+    await systemContext(baseDb, () =>
+      db.update(pushDeliveries).set({ ok: false, error: verdict.code }).where(eq(pushDeliveries.id, claimed.id)),
+    );
     log.warn("push.rejected", { userId, kind: message.kind, error: verdict.code });
     return false;
   }
-  await db.delete(pushDeliveries).where(eq(pushDeliveries.id, claimed.id));
+  await systemContext(baseDb, () => db.delete(pushDeliveries).where(eq(pushDeliveries.id, claimed.id)));
   log.warn("push.rejected_retry", { userId, kind: message.kind, error: verdict.code });
   return false;
+}
+
+/**
+ * Устройства человека и заявка на отправку — в транзакции, которую
+ * pushToUser фиксирует до сети. null — слать некуда или незачем.
+ */
+async function claimDelivery(
+  userId: string,
+  message: PushMessage,
+): Promise<{ devices: (typeof pushTokens.$inferSelect)[]; claimed: { id: string; attempts: number } } | null> {
+  /*
+   * Устройства проверяются ДО заявки на отправку.
+   *
+   * Раньше заявка вставлялась первой, и человек без зарегистрированного
+   * устройства получал строку с признаком «успешно». Зарегистрировал
+   * телефон через десять минут — напоминание за сутки ему уже не придёт
+   * никогда: ключ (человек, событие) занят доставкой, которой не было.
+   */
+  const devices = await db.select().from(pushTokens).where(eq(pushTokens.userId, userId));
+  if (!devices.length) return null;
+
+  /*
+   * Заявка: новая строка — или своя же, возвращённая квитанцией на повтор.
+   *
+   * Квитанция Expo приходит через четверть часа после отправки и может
+   * сказать «не передано, лимит частоты» (checkPushReceipts). Такая заявка
+   * остаётся на месте — с ok = false и сроком retry_after, — и взять её
+   * снова можно только когда срок вышел. Так повтор идёт с задержкой, а не
+   * каждую минуту, и той же строкой: исходы по устройствам (push_outcomes)
+   * продолжают указывать на неё, и счётчик попыток растёт.
+   */
+  const [claimed] = await db
+    .insert(pushDeliveries)
+    .values({
+      id: crypto.randomUUID(),
+      userId,
+      eventKey: message.eventKey,
+      kind: message.kind,
+    })
+    .onConflictDoUpdate({
+      target: [pushDeliveries.userId, pushDeliveries.eventKey],
+      set: {
+        sentAt: sql`now()`,
+        ok: true,
+        error: null,
+        retryAfter: null,
+        attempts: sql`${pushDeliveries.attempts} + 1`,
+      },
+      setWhere: sql`${pushDeliveries.retryAfter} is not null and ${pushDeliveries.retryAfter} <= now()`,
+    })
+    .returning({ id: pushDeliveries.id, attempts: pushDeliveries.attempts });
+
+  return claimed ? { devices, claimed } : null;
 }
 
 /** Отказы Expo, которые повтор того же сообщения не исправит */
@@ -389,11 +420,14 @@ function failureCode(error: unknown): string {
  * Записать исход по каждому устройству.
  *
  * Своей транзакцией (systemContext), а не текущей. Причин две. Отправка
- * бывает изнутри запроса — рассылка идёт в транзакции сотрудника, — и
- * отказ записи исхода там откатил бы саму рассылку: PostgreSQL обрывает всю
- * транзакцию на первой ошибке, как её ни лови. И по смыслу: уведомление уже
- * ушло с сервера, и если запрос потом откатится, факт отправки от этого не
- * исчезнет. Сбой записи исхода глотается — учёт не должен мешать доставке.
+ * бывает изнутри запроса или задачи, и отказ записи исхода там откатил бы
+ * их целиком: PostgreSQL обрывает всю транзакцию на первой ошибке, как её
+ * ни лови. И по смыслу: уведомление уже ушло с сервера, и если запрос потом
+ * откатится, факт отправки от этого не исчезнет. Заявка, на которую
+ * ссылается исход, к этому моменту уже зафиксирована (pushToUser,
+ * claimDelivery) — до #192 она лежала в незафиксированной транзакции
+ * вызывающего, и внешний ключ отвергал каждый исход. Сбой записи исхода
+ * глотается — учёт не должен мешать доставке.
  */
 async function recordOutcomes(
   devices: { token: string; platform: string }[],
