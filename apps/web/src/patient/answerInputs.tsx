@@ -167,6 +167,131 @@ export function RankingInput({ question, answer, onChange, partLang }: InputProp
 }
 
 /**
+ * Сколько делений шкалы ещё рисуется кнопками. Шкала 0–10 — одиннадцать
+ * кнопок, 0–20 — двадцать одна: два-три ряда под палец. Аналоговая шкала
+ * 0–100 кнопками — уже стена из сотни мишеней; ей — числовое поле.
+ */
+export const SCALE_BUTTONS_MAX = 21;
+
+/**
+ * Деления шкалы и ползунка: от minValue до maxValue с шагом step, по тем же
+ * умолчаниям, что у мобилки (QuestionInput, case "scale": 0, 10, 1). Счёт —
+ * от начала, а не прибавлением шага: 0.1 + 0.1 + 0.1 в плавающей точке не
+ * доходит до 0.3 ровно, и последнее деление терялось бы. Деления сверх
+ * SCALE_BUTTONS_MAX не считаются: их всё равно не нарисовать кнопками.
+ */
+export function scalePoints(question: Pick<Question, "minValue" | "maxValue" | "step">): number[] {
+  const min = question.minValue ?? 0;
+  const max = question.maxValue ?? 10;
+  const step = question.step && question.step > 0 ? question.step : 1;
+  const points: number[] = [];
+  for (let i = 0; min + i * step <= max + 1e-9 && points.length <= SCALE_BUTTONS_MAX; i++) {
+    points.push(Math.round((min + i * step) * 100) / 100);
+  }
+  return points;
+}
+
+/** Подпись конца шкалы: «0 — Дуже погано». Число рядом со словом: ряд делений на телефоне переносится, и слово под краем уже не стоит у своей кнопки */
+export function scaleEndLabel(value: number, label: string | null): string | null {
+  return label?.trim() ? `${value} — ${label.trim()}` : null;
+}
+
+/**
+ * Шкала и ползунок (#170).
+ *
+ * Было голое числовое поле: ни диапазона, ни подписей концов. У шкалы сна
+ * с обратным ключом 0–10 «Дуже погано…Відмінно» человек не знал, где
+ * «хорошо», — и ответ в обратную сторону инвертировал балл. Мобилка
+ * показывала и деления, и подписи; теперь и кабинет: деления — кнопками
+ * (как варианты ответа), подписи концов — под ними, с числом. Шкала, у
+ * которой делений больше, чем помещается кнопками, — полем с границами и
+ * видимым «від 0 до 100».
+ */
+export function ScaleInput({
+  question,
+  answer,
+  onChange,
+  partLang,
+  labelledBy,
+  describedBy,
+}: InputProps & { labelledBy: string; describedBy?: string }) {
+  const { ut } = useLang();
+  const hintId = useId();
+  const min = question.minValue ?? 0;
+  const max = question.maxValue ?? 10;
+  const points = scalePoints(question);
+  const low = scaleEndLabel(min, question.minLabel);
+  const high = scaleEndLabel(max, question.maxLabel);
+  const ends =
+    low || high ? (
+      <div className="flex justify-between gap-3 text-small text-muted">
+        <span lang={partLang}>{low}</span>
+        <span lang={partLang} className="text-right">
+          {high}
+        </span>
+      </div>
+    ) : null;
+
+  if (points.length > SCALE_BUTTONS_MAX) {
+    return (
+      <div className="flex flex-col gap-2">
+        <Input
+          type="number"
+          inputMode="decimal"
+          min={min}
+          max={max}
+          step={question.step ?? undefined}
+          aria-labelledby={labelledBy}
+          aria-describedby={[hintId, describedBy].filter(Boolean).join(" ")}
+          className="h-12"
+          value={answer?.number ?? ""}
+          onChange={(e) => onChange({ number: e.target.value === "" ? undefined : Number(e.target.value) })}
+        />
+        <p id={hintId} className="m-0 text-small text-muted">
+          {ut("qi.rangeHint").replace("{min}", String(min)).replace("{max}", String(max))}
+        </p>
+        {ends}
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div role="group" aria-labelledby={labelledBy} aria-describedby={describedBy} className="grid grid-cols-[repeat(auto-fit,minmax(44px,1fr))] gap-2">
+        {points.map((point) => {
+          const picked = answer?.number === point;
+          /* диктору — слово конца вместе с числом, а голое «7» — «7 з 10», как в мобилке */
+          const label =
+            (point === min ? low : null) ??
+            (point === max ? high : null) ??
+            ut("qi.pointOf").replace("{n}", String(point)).replace("{max}", String(max));
+          return (
+            <button
+              key={point}
+              type="button"
+              aria-pressed={picked}
+              aria-label={label}
+              onClick={() => onChange({ number: point })}
+              className={cx(
+                "grid min-h-[48px] place-items-center rounded-[10px] border font-mono text-body tabular-nums",
+                "transition-colors duration-[var(--dur-fast)]",
+                "outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]",
+                picked
+                  ? "border-primary bg-primary font-semibold text-primary-text"
+                  : "border-hairline bg-surface-2 hover:border-border-strong",
+              )}
+            >
+              {point}
+            </button>
+          );
+        })}
+      </div>
+      {ends}
+    </div>
+  );
+}
+
+/**
  * Дата — полем даты браузера: значение у него всегда ГГГГ-ММ-ДД, ровно то,
  * что мобилка просит набрать руками, а сервер разбирает (validateAnswerShape).
  * Имя поля — сам вопрос, как у числа и текста в Runner.

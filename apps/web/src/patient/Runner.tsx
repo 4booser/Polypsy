@@ -1,6 +1,6 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode, type RefObject } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { contentLangNotice, isAnswered, isQuestionVisible, isTransientStatus, type SurveyFull } from "@quizzy/shared";
+import { contentLangNotice, isAnswered, isQuestionVisible, isTransientStatus, type Survey, type SurveyFull } from "@quizzy/shared";
 import { api, ApiError } from "../api";
 import { useAuth } from "../auth";
 import { MaintenanceBanner } from "../service/MaintenanceBanner";
@@ -12,7 +12,7 @@ import { useResource } from "../useResource";
 import { IconCheck, IconClose } from "./icons";
 import { cx } from "../ui/cx";
 import { offlineSafetyPlan, outbox } from "./outbox";
-import { DateInput, MatrixInput, RankingInput, type RunnerAnswer } from "./answerInputs";
+import { DateInput, MatrixInput, RankingInput, ScaleInput, type RunnerAnswer } from "./answerInputs";
 
 /**
  * Прохождение методики на телефоне: один пункт на экран.
@@ -40,7 +40,9 @@ export default function Runner() {
   const res = useResource(() => api.survey(id!), [id], { enabled: !!id });
   const [answers, setAnswers] = useState<Map<string, Answer>>(new Map());
   const [step, setStep] = useState(0);
-  const [startedAt] = useState(() => new Date().toISOString());
+  /* инструкция прочитана и нажато «Почати» — до этого на экране она, а не первый пункт (#170) */
+  const [started, setStarted] = useState(false);
+  const [startedAt, setStartedAt] = useState(() => new Date().toISOString());
   const [enteredAt, setEnteredAt] = useState(() => Date.now());
   const [times] = useState<Map<string, number>>(new Map());
   /* queued — ответы легли ждать на устройстве (идут работы или нет сети), а не на сервер */
@@ -66,7 +68,7 @@ export default function Runner() {
   const loaded = res.data !== null;
   useEffect(() => {
     headingRef.current?.focus();
-  }, [step, loaded]);
+  }, [step, loaded, started]);
 
   /* id заголовка: им называются поля ввода, у которых своей подписи нет */
   const titleId = useId();
@@ -156,6 +158,31 @@ export default function Runner() {
         }
 
         if (!current) return <p className="p-4 text-muted">{ut("pw.empty")}</p>;
+
+        if (!started && hasIntro(survey)) {
+          return (
+            <RunnerIntro
+              survey={survey}
+              count={visible.filter((q) => q.type !== "info").length}
+              partLang={partLang}
+              foreign={foreign}
+              headingRef={headingRef}
+              onLeave={() => navigate("/me/tests")}
+              onStart={() => {
+                /* время ответа и длительность — с первого пункта, а не с чтения инструкции (как в мобилке) */
+                setStartedAt(new Date().toISOString());
+                setEnteredAt(Date.now());
+                setStarted(true);
+              }}
+              banner={
+                <>
+                  <MaintenanceBanner place="patient" />
+                  <ConnectionLine place="patient" />
+                </>
+              }
+            />
+          );
+        }
 
         const a = answers.get(current.id);
         const choices = current.options.filter((o) => o.kind === "option");
@@ -283,7 +310,7 @@ export default function Runner() {
               <p lang={partLang} className="mb-2 text-caption text-muted">
                 {survey.title}
               </p>
-              {foreign && step === 0 ? (
+              {foreign && step === 0 && !hasIntro(survey) ? (
                 <p className="mb-3 text-caption text-muted">{ut(`contentLang.${foreign}`)}</p>
               ) : null}
               {/*
@@ -360,7 +387,16 @@ export default function Runner() {
                       </button>
                     );
                   })
-                ) : ["scale", "slider", "number"].includes(current.type) ? (
+                ) : current.type === "scale" || current.type === "slider" ? (
+                  <ScaleInput
+                    question={current}
+                    answer={a}
+                    onChange={set}
+                    partLang={partLang}
+                    labelledBy={titleId}
+                    describedBy={current.help ? helpId : undefined}
+                  />
+                ) : current.type === "number" ? (
                   /*
                     Имя поля — сам вопрос, через aria-labelledby.
 
@@ -395,7 +431,7 @@ export default function Runner() {
             </div>
 
             <div className="sticky bottom-0 flex items-stretch gap-2.5 bg-bg pb-[max(env(safe-area-inset-bottom),8px)] pt-4">
-              {step > 0 ? (
+              {canGoBack(survey, step) ? (
                 <Button
                   variant="quiet"
                   className="min-h-[48px] px-5"
@@ -435,5 +471,95 @@ export default function Runner() {
       }}
       </Screen>
     </TouchArea>
+  );
+}
+
+/**
+ * Есть ли у методики инструкция, которую надо показать до первого пункта.
+ *
+ * Рамка ответа живёт в инструкции, а не в пунктах: «за останні 2 тижні» у
+ * PHQ-9 написано только там. Кабинет начинал сразу с первого пункта, и
+ * человек отвечал про всю жизнь, а не про две недели (#170).
+ */
+export function hasIntro(survey: Pick<Survey, "instructions">): boolean {
+  return !!survey.instructions?.trim();
+}
+
+/**
+ * Можно ли вернуться к прошлому пункту. Методика, запрещающая возврат
+ * (allowBack: false), — так задумано её автором: ответ «по первому
+ * впечатлению», пересмотр которого меняет то, что меряется. Кабинет кнопку
+ * «Назад» рисовал всегда; мобилка — только когда можно (#170).
+ */
+export function canGoBack(survey: Pick<Survey, "allowBack">, step: number): boolean {
+  return survey.allowBack !== false && step > 0;
+}
+
+/**
+ * Экран инструкции — до первого пункта, как в мобилке (app/survey/[id].tsx,
+ * step -1): название, инструкция, сколько пунктов, «Почати». Выход — тот же
+ * крестик, что над пунктами. Фокус — на заголовок, как и при смене пункта.
+ */
+export function RunnerIntro({
+  survey,
+  count,
+  partLang,
+  foreign,
+  headingRef,
+  onStart,
+  onLeave,
+  banner,
+}: {
+  survey: Pick<Survey, "title" | "instructions">;
+  count: number;
+  partLang?: string;
+  foreign?: ReturnType<typeof contentLangNotice>;
+  headingRef?: RefObject<HTMLHeadingElement | null>;
+  onStart: () => void;
+  onLeave: () => void;
+  banner?: ReactNode;
+}) {
+  const { ut } = useLang();
+  return (
+    <div className="mx-auto flex min-h-[100dvh] max-w-md flex-col p-4">
+      <div className="-mx-4 -mt-4 mb-4 empty:hidden">{banner}</div>
+      <div className="mb-5 flex items-center">
+        <button
+          type="button"
+          aria-label={ut("pw.leave")}
+          onClick={onLeave}
+          className="grid shrink-0 place-items-center rounded-md text-muted outline-none hover:text-text focus-visible:ring-2 focus-visible:ring-[var(--focus)] [&>svg]:size-[18px]"
+        >
+          <IconClose />
+        </button>
+      </div>
+
+      <div className="flex-1">
+        <h1
+          ref={headingRef}
+          tabIndex={-1}
+          lang={partLang}
+          className="mb-3 text-balance rounded-sm font-display text-[21px] font-medium leading-[1.3] tracking-tight outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]"
+        >
+          {survey.title}
+        </h1>
+        {foreign ? <p className="mb-3 text-caption text-muted">{ut(`contentLang.${foreign}`)}</p> : null}
+        <p
+          lang={partLang}
+          className="mb-4 whitespace-pre-wrap rounded-[10px] border border-hairline bg-surface-2 p-4 text-body text-text"
+        >
+          {survey.instructions}
+        </p>
+        <p className="m-0 text-small text-muted">
+          {ut("ms.questions")}: <span className="font-mono tabular-nums">{count}</span>
+        </p>
+      </div>
+
+      <div className="sticky bottom-0 flex bg-bg pb-[max(env(safe-area-inset-bottom),8px)] pt-4">
+        <Button variant="primary" className="min-h-[48px] flex-1" onClick={onStart}>
+          {ut("ms.start")}
+        </Button>
+      </div>
+    </div>
   );
 }
