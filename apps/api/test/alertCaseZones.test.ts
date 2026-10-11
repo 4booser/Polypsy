@@ -421,11 +421,13 @@ describe("гонки открытия и дополнения случая", () 
 
     const loaded = await api(`/api/surveys/${sid}`, p.token);
     const q = loaded.body.questions[0] as { id: string; options: { id: string }[] };
+    // одна попытка — одно время начала, как у клиента: автосохранение пишет только в черновик своей попытки (#147)
+    const startedAt = new Date(Date.now() - 60_000).toISOString();
     const save = (option: number) =>
       api(`/api/surveys/${sid}/draft`, p.token, {
         method: "PUT",
         body: JSON.stringify({
-          startedAt: new Date(Date.now() - 60_000).toISOString(),
+          startedAt,
           durationMs: 30_000,
           answers: [{ questionId: q.id, optionIds: [q.options[option]!.id], durationMs: 1000, changeCount: 0, visitCount: 1 }],
         }),

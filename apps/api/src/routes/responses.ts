@@ -674,10 +674,10 @@ responseRoutes.post("/surveys/:id/responses", async (c) => {
 });
 
 /**
- * Какой из незавершённых черновиков — «тот самый», одинаково для чтения и записи.
+ * Какой из черновиков одной попытки — «тот самый», одинаково для чтения и записи.
  *
- * Черновик на пару (методика, человек) один по замыслу, но два первых
- * автосохранения разом заводят две строки. Без порядка чтение и запись
+ * Черновик на попытку один по замыслу, но два первых автосохранения разом
+ * (до замка пары, волна 21) заводили две строки. Без порядка чтение и запись
  * брали бы любую — и продолжение открывало бы не ту копию, которую пишет
  * автосохранение.
  */
@@ -750,21 +750,71 @@ responseRoutes.put("/surveys/:id/draft", async (c) => {
   if (submitted) conflict("err.attemptAlreadySubmitted");
 
   /*
-   * Черновик — под замком строки до конца запроса: решение «можно ли
-   * сменить ему версию» ниже и запись — одним куском (волна 15, общая
+   * Черновики пары — под замком строк до конца запроса: решение «можно ли
+   * сменить версию» ниже и запись — одним куском (волна 15, общая
    * причина 2). Второе автосохранение того же человека ждёт коммита
    * первого и решает уже по записанной версии, а не по прочитанной до неё.
    */
-  const [existing] = await db
-    .select({ id: responses.id, versionId: responses.versionId })
+  const pairDrafts = await db
+    .select({
+      id: responses.id,
+      versionId: responses.versionId,
+      own: sql<boolean>`${responses.startedAt} = ${input.startedAt}::timestamptz`,
+    })
     .from(responses)
     .where(and(eq(responses.surveyId, surveyId), eq(responses.userId, user.id), eq(responses.status, "in_progress")))
     .orderBy(...DRAFT_ORDER)
-    .limit(1)
     .for("update");
+
+  /*
+   * Пишем только в черновик СВОЕЙ попытки — тот же startedAt (#147, находка
+   * #197). Сдача забирает только его; а черновик пары, взятый «любой»,
+   * оказывался призраком (уже сданная попытка) или черновиком брошенной
+   * прошлой попытки с её тревогой — новая попытка писала туда ответы и
+   * тревоги под чужим началом, её сдача такой черновик не забирала, и он
+   * висел с ранними тревогами навсегда.
+   *
+   * Черновики других попыток. С тревогой — не трогаем: это настоящие
+   * сигналы своей попытки, они в очереди дежурного, их разбирают, а не
+   * стирают. Без тревоги — брошенная попытка: она убирается, как прежде её
+   * перезаписывало это же автосохранение, и как убирает черновик сдача. По
+   * тому же правилу смены версии, что ниже: черновик другой версии с
+   * ответами убирается только явной заменой (replacesVersionId) — экран
+   * «почато в іншій версії» начинает заново новой попыткой.
+   *
+   * Уникального индекса на пару у responses нет — у пары может быть
+   * несколько черновиков разных попыток, и это так задумано.
+   */
+  const existing = pairDrafts.find((d) => d.own);
+  const others = pairDrafts.filter((d) => !d.own);
+  // тревоги закрыты пациенту политикой строк — «есть ли», и только, читается системной ролью
+  const signalled = others.length
+    ? new Set(
+        (
+          await asSystem(() =>
+            db
+              .selectDistinct({ responseId: riskAlerts.responseId })
+              .from(riskAlerts)
+              .where(inArray(riskAlerts.responseId, others.map((d) => d.id))),
+          )
+        ).map((r) => r.responseId),
+      )
+    : new Set<string>();
+  const abandoned = others.filter((d) => !signalled.has(d.id));
 
   const now = new Date().toISOString();
   const validIds = new Set(survey.questions.map((q) => q.id));
+
+  for (const draft of abandoned) {
+    if (draft.versionId === survey.versionId) continue;
+    const held = await db.select({ questionId: answers.questionId }).from(answers).where(eq(answers.responseId, draft.id));
+    const lost = held.filter((a) => !validIds.has(a.questionId)).length;
+    const replaces = input.replacesVersionId != null && input.replacesVersionId === draft.versionId;
+    if (lost > 0 && !replaces) {
+      log.info("draft.version_change_refused", { surveyId, from: draft.versionId, to: survey.versionId, lost });
+      conflict("err.draftOtherVersion");
+    }
+  }
 
   if (existing && existing.versionId !== survey.versionId) {
     /*
@@ -795,6 +845,9 @@ responseRoutes.put("/surveys/:id/draft", async (c) => {
   let written = 0;
 
   await db.transaction(async (tx) => {
+    if (abandoned.length) {
+      await tx.delete(responses).where(inArray(responses.id, abandoned.map((d) => d.id)));
+    }
     if (existing) {
       /*
        * Версия черновика следует за клиентом, если до сюда дошло: та же
@@ -958,14 +1011,31 @@ responseRoutes.put("/surveys/:id/draft", async (c) => {
   return c.json({ id: responseId, lastSavedAt: now, answers: written });
 });
 
-/** Незавершённое прохождение, чтобы продолжить с того же места */
+/**
+ * Незавершённое прохождение, чтобы продолжить с того же места.
+ *
+ * Черновик последней попытки (позднее начало), а не последний сохранённый:
+ * у пары бывают черновики разных попыток (см. PUT /draft). Призрак —
+ * черновик попытки, которая уже сдана (#197), — не предлагается вовсе:
+ * продолжить его нельзя, автосохранение такой попытки отвечает 409.
+ */
 responseRoutes.get("/surveys/:id/draft", async (c) => {
   const user = c.get("user");
   const [draft] = await db
     .select()
     .from(responses)
-    .where(and(eq(responses.surveyId, c.req.param("id")), eq(responses.userId, user.id), eq(responses.status, "in_progress")))
-    .orderBy(...DRAFT_ORDER)
+    .where(
+      and(
+        eq(responses.surveyId, c.req.param("id")),
+        eq(responses.userId, user.id),
+        eq(responses.status, "in_progress"),
+        sql`not exists (
+          select 1 from responses r
+           where r.survey_id = ${responses.surveyId} and r.user_id = ${responses.userId}
+             and r.status <> 'in_progress' and r.started_at = ${responses.startedAt})`,
+      ),
+    )
+    .orderBy(desc(responses.startedAt), ...DRAFT_ORDER)
     .limit(1);
   if (!draft) return c.json(null);
 
