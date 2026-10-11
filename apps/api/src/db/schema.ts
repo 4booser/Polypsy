@@ -1425,8 +1425,12 @@ export const alertCases = pgTable(
     acknowledgedBy: text("acknowledged_by").references(() => users.id, { onDelete: "set null" }),
     acknowledgedAt: timestampCol("acknowledged_at"),
     note: text("note"),
-    /** Клинический исход разбора — сырьё для калибровки порогов */
-    outcome: text("outcome", { enum: ["confirmed", "not_confirmed", "needs_followup"] }),
+    /**
+     * Клинический исход разбора — сырьё для калибровки порогов. duplicate —
+     * не клиническое решение: случай закрыт чисткой призраков (#197), его
+     * сигналы — дубли сигналов сданной попытки; из калибровки исключается.
+     */
+    outcome: text("outcome", { enum: ["confirmed", "not_confirmed", "needs_followup", "duplicate"] }),
     /**
      * Случай собран автоматически при переходе со старой модели: исходы по
      * отдельным пунктам могли расходиться, и это надо честно пометить, а не

@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, inArray, isNull } from "drizzle-orm";
 import { adminA, appApi, createSurveySchema, createVersion, db, eq, groupA, makeUser, sql, surveys, type Person } from "./fixtures";
 import { asAppRole } from "./appRole";
-import { alertCases, answers, auditLog, responses, riskAlerts } from "../src/db/schema";
+import { alertCases, alertNotifications, answers, auditLog, responses, riskAlerts } from "../src/db/schema";
 import { ghostDrafts } from "../src/lib/ghostDrafts";
 
 /**
@@ -21,7 +21,8 @@ import { ghostDrafts } from "../src/lib/ghostDrafts";
  */
 
 const tag = () => crypto.randomUUID().slice(0, 8);
-const STARTED = new Date(Date.now() - 10 * 60_000).toISOString();
+// попытка начата за пару минут до сдачи: призрак приходит следом за сдачей, в окне GHOST_WINDOW
+const STARTED = new Date(Date.now() - 2 * 60_000).toISOString();
 const people: string[] = [];
 
 type Loaded = { versionId: string; questions: { id: string; options: { id: string }[] }[] };
@@ -101,7 +102,7 @@ async function submittedAttempt(): Promise<Attempt> {
  */
 async function ghostOf(
   a: Attempt,
-  o: { caseId: string | null; option?: 1 | 2; severity?: "moderate" | "severe" },
+  o: { caseId: string | null; option?: 1 | 2; severity?: "moderate" | "severe"; at?: string },
 ): Promise<{ id: string; alertId: string }> {
   const id = crypto.randomUUID();
   const [submitted] = await db.select().from(responses).where(eq(responses.id, a.submittedId));
@@ -112,7 +113,7 @@ async function ghostOf(
     versionId: submitted!.versionId,
     status: "in_progress",
     startedAt: STARTED,
-    lastSavedAt: new Date().toISOString(),
+    lastSavedAt: o.at ?? new Date().toISOString(),
     durationMs: 61_000,
   });
   const sent = await db.select().from(answers).where(eq(answers.responseId, a.submittedId));
@@ -137,9 +138,14 @@ async function ghostOf(
     caseId: o.caseId,
     label: a.signal.label,
     severity: o.severity ?? "severe",
-    at: new Date().toISOString(),
+    at: o.at ?? new Date().toISOString(),
   });
   return { id, alertId };
+}
+
+/** Отметка «дежурному об этой тревоге уже писали» — как её ставит рассыльщик */
+async function notified(alertId: string, kind: "initial" | "escalation" = "initial") {
+  await db.insert(alertNotifications).values({ id: crypto.randomUUID(), alertId, kind, recipients: "oncall@clinic.test", channel: "email" });
 }
 
 async function journalOf(alertIds: string[]) {
@@ -157,6 +163,9 @@ let diverged: Attempt;
 let ghost: { id: string; alertId: string };
 let ghostNewCase: { id: string; alertId: string };
 let ghostDiverged: { id: string; alertId: string };
+let late: Attempt;
+let ghostLate: { id: string; alertId: string };
+let lateCaseId: string;
 let newCaseId: string;
 let before: (typeof riskAlerts.$inferSelect)[];
 
@@ -180,6 +189,26 @@ beforeAll(async () => {
   diverged = await submittedAttempt();
   ghostDiverged = await ghostOf(diverged, { caseId: diverged.signal.caseId, option: 1, severity: "moderate" });
 
+  /*
+   * Через дни после сдачи (ревью волны 22): до этой волны в черновик пары
+   * писала следующая попытка — тот же ответ, своя настоящая тревога в новом
+   * случае. Ответы совпадают со сданными, но это не призрак той сдачи.
+   */
+  late = await submittedAttempt();
+  await db
+    .update(responses)
+    .set({ submittedAt: new Date(Date.now() - 4 * 86_400_000).toISOString() })
+    .where(eq(responses.id, late.submittedId));
+  lateCaseId = crypto.randomUUID();
+  await db.insert(alertCases).values({ id: lateCaseId, userId: late.person.id, surveyId: late.surveyId, severity: "severe" });
+  ghostLate = await ghostOf(late, { caseId: lateCaseId });
+  await notified(ghostLate.alertId);
+
+  // дежурному писали: о тревоге призрака в новом случае — перенос на сигнал сдачи; о призраке в том же случае — у сигнала уже есть такая
+  await notified(ghostNewCase.alertId);
+  await notified(ghost.alertId);
+  await notified(same.signal.id);
+
   before = await db
     .select()
     .from(riskAlerts)
@@ -188,9 +217,10 @@ beforeAll(async () => {
 
 afterAll(async () => {
   // своё — в конечном состоянии: контрольный призрак убран, случаи разобраны (открытый случай — строка очереди)
-  if (ghostDiverged) {
-    await db.delete(riskAlerts).where(eq(riskAlerts.id, ghostDiverged.alertId));
-    await db.delete(responses).where(eq(responses.id, ghostDiverged.id));
+  for (const g of [ghostDiverged, ghostLate]) {
+    if (!g) continue;
+    await db.delete(riskAlerts).where(eq(riskAlerts.id, g.alertId));
+    await db.delete(responses).where(eq(responses.id, g.id));
   }
   if (people.length) {
     const at = new Date().toISOString();
@@ -223,9 +253,10 @@ describe("черновики-призраки (#197)", () => {
     expect(g?.alerts.map((a) => [a.id, a.pair?.id])).toEqual([[ghost.alertId, same.signal.id]]);
     expect(mine.get(ghostNewCase.id)?.verdict).toBe("duplicate");
     expect(mine.get(ghostDiverged.id)).toMatchObject({ verdict: "review", reason: "answers" });
+    expect(mine.get(ghostLate.id)).toMatchObject({ verdict: "review", reason: "late" });
 
     expect(report.removed).toBe(0);
-    expect(await ghostsLeft()).toEqual([ghost.id, ghostNewCase.id, ghostDiverged.id].sort());
+    expect(await ghostsLeft()).toEqual([ghost.id, ghostNewCase.id, ghostDiverged.id, ghostLate.id].sort());
     const alerts = await db
       .select({ id: riskAlerts.id })
       .from(riskAlerts)
@@ -240,8 +271,8 @@ describe("черновики-призраки (#197)", () => {
     const report = await run(true);
     expect(report.removed).toBeGreaterThanOrEqual(2);
 
-    // призраков-дублей нет; расходящийся — на месте, вместе с тревогой
-    expect(await ghostsLeft()).toEqual([ghostDiverged.id]);
+    // призраков-дублей нет; расходящийся и поздний — на месте, вместе с тревогами
+    expect(await ghostsLeft()).toEqual([ghostDiverged.id, ghostLate.id].sort());
     const left = await db
       .select({ id: riskAlerts.id })
       .from(riskAlerts)
@@ -269,8 +300,10 @@ describe("черновики-призраки (#197)", () => {
     });
     expect(of(ghostNewCase.alertId)).toMatchObject({
       resourceId: newCaseId,
-      details: { outcome: "duplicate", duplicateOf: reviewed.signal.id, caseClosed: true },
+      details: { outcome: "duplicate", duplicateOf: reviewed.signal.id, caseClosed: true, notificationsMoved: ["initial"] },
     });
+    // у сигнала сдачи «initial» уже был — отметка призрака перенесена быть не может и записана в журнал
+    expect(of(ghost.alertId).details).toMatchObject({ notificationsMoved: [], notificationsDropped: [{ kind: "initial", channel: "email" }] });
     const removed = await db
       .select({ resourceId: auditLog.resourceId })
       .from(auditLog)
@@ -285,9 +318,26 @@ describe("черновики-призраки (#197)", () => {
     expect(history.status).toBe(200);
     expect(history.body.items.find((i) => i.action === "alert.duplicate_closed")?.details.alertId).toBe(ghost.alertId);
 
-    // случай, открытый под призрак, без сигналов из очереди ушёл; разобранный случай сдачи — как был
+    // отметка «дежурному писали» не пропала: она теперь у сигнала сданного прохождения
+    const movedNote = await db.select().from(alertNotifications).where(eq(alertNotifications.alertId, reviewed.signal.id));
+    expect(movedNote.map((n) => n.kind)).toEqual(["initial"]);
+
+    // случай, открытый под призрак, без сигналов из очереди ушёл — с исходом и от системы; разобранный случай сдачи — как был
     const [emptied] = await db.select().from(alertCases).where(eq(alertCases.id, newCaseId));
     expect(emptied!.acknowledgedAt).not.toBeNull();
+    expect(emptied!.outcome).toBe("duplicate");
+    expect(emptied!.acknowledgedBy).toBeNull();
+    const acknowledged = await db
+      .select()
+      .from(auditLog)
+      .where(and(eq(auditLog.action, "alert.acknowledge"), eq(auditLog.resourceId, newCaseId)));
+    expect(acknowledged.map((a) => [a.actorId, (a.details as { outcome: string }).outcome])).toEqual([[null, "duplicate"]]);
+
+    // поздний «призрак» не тронут: тревога, её отметка и открытый случай на месте
+    expect((await db.select().from(riskAlerts).where(eq(riskAlerts.id, ghostLate.alertId))).length).toBe(1);
+    expect((await db.select().from(alertNotifications).where(eq(alertNotifications.alertId, ghostLate.alertId))).length).toBe(1);
+    const [lateCase] = await db.select().from(alertCases).where(eq(alertCases.id, lateCaseId));
+    expect(lateCase!.acknowledgedAt).toBeNull();
     const [kept] = await db.select().from(alertCases).where(eq(alertCases.id, reviewed.signal.caseId!));
     expect(kept!.outcome).toBe("not_confirmed");
 
@@ -310,7 +360,7 @@ describe("черновики-призраки (#197)", () => {
     expect(report.removed).toBe(0);
     expect(report.closedAlerts).toBe(0);
     expect(report.ghosts.map((g) => g.verdict)).not.toContain("duplicate");
-    expect(await ghostsLeft()).toEqual([ghostDiverged.id]);
+    expect(await ghostsLeft()).toEqual([ghostDiverged.id, ghostLate.id].sort());
     expect((await journalOf([ghost.alertId, ghostNewCase.alertId])).length).toBe(2);
   }, 60_000);
 });
