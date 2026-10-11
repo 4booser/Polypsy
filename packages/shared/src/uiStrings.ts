@@ -7787,6 +7787,15 @@ export const UI = {
     en: "The conversation has already been transcribed and is in the record — it’s too late to withdraw consent for this recording",
   },
 
+  /* ── w21:console ── */
+  /* кабинет: вопрос перед «Скасувати» и предупреждение о поздней отмене (#178, patient/Home.tsx) */
+  "pt.cancelSure": { uk: "Скасувати прийом?", ru: "Отменить приём?", en: "Cancel the appointment?" },
+  "pt.cancelLate": {
+    uk: "До прийому менше доби — скасування буде пізнім, і фахівець це побачить",
+    ru: "До приёма меньше суток — отмена будет поздней, и специалист это увидит",
+    en: "The appointment is less than 24 hours away — this is a late cancellation, and the specialist will see it",
+  },
+
 } as const satisfies Record<string, UiEntry>;
 
 export type UiKey = keyof typeof UI;
