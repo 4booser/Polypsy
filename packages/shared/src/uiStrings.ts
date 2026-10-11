@@ -7787,6 +7787,15 @@ export const UI = {
     en: "The conversation has already been transcribed and is in the record — it’s too late to withdraw consent for this recording",
   },
 
+  /* ── w21:cabinet ── */
+  /* прохождение в кабинете: сервер не принял ответы без согласия с действующей редакцией — они ждут на экране (#171, patient/Runner.tsx) */
+  "pw.consentHeld": {
+    uk: "Відповіді приймаються лише після згоди з чинною редакцією тексту. Ваші відповіді збережено на цьому екрані — вони підуть одразу, щойно ви її приймете.",
+    ru: "Ответы принимаются только после согласия с действующей редакцией текста. Ваши ответы сохранены на этом экране — они уйдут сразу, как только вы её примете.",
+    en: "Answers are accepted only after you agree to the current version of the consent text. Your answers are kept on this screen and will be sent as soon as you accept it.",
+  },
+  "pw.backToAnswers": { uk: "Повернутися до відповідей", ru: "Вернуться к ответам", en: "Back to my answers" },
+
 } as const satisfies Record<string, UiEntry>;
 
 export type UiKey = keyof typeof UI;
