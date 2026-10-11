@@ -1,7 +1,8 @@
 import { useCallback, useEffect } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import type { OpsSession, OpsSessionPage } from "@quizzy/shared";
+import type { OpsSession, OpsSessionPage, Role } from "@quizzy/shared";
 import { api } from "../../api";
+import { useAuth } from "../../auth";
 import { dateTime } from "../../format";
 import { useLang } from "../../lang";
 import { useAction } from "../../ui";
@@ -14,6 +15,7 @@ import { Cell, ColumnHead, ListPlace, SearchField, metaClass, nameClass, rowClas
 import { ROLE_KEY, personHref } from "./model";
 import { SessionsOverview } from "./people2/charts";
 import { readSessionsFilters, sessionsEmptyKey, sessionsQuery } from "./sessionsModel";
+import { accountOutOfReach } from "./usersModel";
 
 /*
  * Техпанель → «Сесії»: кто сейчас держит вход в систему.
@@ -37,6 +39,7 @@ const GRID =
 
 export default function OpsSessions() {
   const { ut } = useLang();
+  const { user } = useAuth();
   const { run, busy } = useAction();
   const [params, setParams] = useSearchParams();
   /*
@@ -112,6 +115,7 @@ export default function OpsSessions() {
         <SessionsList
           res={res}
           empty={ut(sessionsEmptyKey({ q: settledQ, userId }))}
+          me={user}
           busy={busy}
           onEnd={(s) =>
             void run(async () => {
@@ -134,11 +138,19 @@ export default function OpsSessions() {
 export function SessionsList({
   res,
   empty,
+  me,
   busy,
   onEnd,
 }: {
   res: Pick<Resource<OpsSessionPage>, "data" | "error" | "reload">;
   empty: string;
+  /**
+   * Кто смотрит. Сессии учётки на его ступени или выше — без «Завершити»
+   * (#175): сервер ответил бы err.accountAtOrAboveYours и записал отказ в
+   * журнал. Правило то же, что у меню строки «Користувачів»
+   * (accountOutOfReach); своя сессия завершается — это выход.
+   */
+  me: { id: string; role: Role; ladderRank?: number | null } | null | undefined;
   /** Идёт завершение: кнопки «Завершити» погашены у всех строк — вторая сессия не уйдёт, пока не кончилась первая */
   busy: boolean;
   onEnd: (s: OpsSession) => void;
@@ -173,14 +185,16 @@ export function SessionsList({
                 <Cell label={ut("ops.sessions.lastUsed")}>{dateTime(s.lastUsedAt)}</Cell>
                 <Cell label={ut("ops.sessions.expires")}>{dateTime(s.expiresAt)}</Cell>
                 <div className="flex justify-end max-[900px]:justify-start">
-                  <Button
-                    variant="ghost"
-                    disabled={busy}
-                    aria-label={`${ut("ops.sessions.end")}: ${s.fullName || s.email}`}
-                    onClick={() => onEnd(s)}
-                  >
-                    {ut("ops.sessions.end")}
-                  </Button>
+                  {accountOutOfReach(me, { id: s.userId, role: s.role, ladderRank: s.ladderRank }) ? null : (
+                    <Button
+                      variant="ghost"
+                      disabled={busy}
+                      aria-label={`${ut("ops.sessions.end")}: ${s.fullName || s.email}`}
+                      onClick={() => onEnd(s)}
+                    >
+                      {ut("ops.sessions.end")}
+                    </Button>
+                  )}
                 </div>
               </li>
             ))}

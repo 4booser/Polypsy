@@ -1,6 +1,6 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { and, eq, inArray } from "drizzle-orm";
-import type { Permission } from "@quizzy/shared";
+import { type OpsSession, type Permission, accountRefusal, accountStanding } from "@quizzy/shared";
 import { db } from "../src/db";
 import { auditLog, departments, permissionExceptions, refreshTokens, roles, staffRoles, users } from "../src/db/schema";
 import { issuePair } from "../src/lib/refresh";
@@ -140,6 +140,37 @@ describe("обрыв сессий", () => {
     expect(res.status).toBe(403);
     const [still] = await db.select().from(refreshTokens).where(eq(refreshTokens.familyId, family!.familyId));
     expect(still!.revokedAt).toBeNull();
+  });
+});
+
+describe("ступень владельца в списке сессий (#175)", () => {
+  /*
+   * Вкладка «Сесії» предлагала «Завершити» у каждой строки: у сессии не было
+   * ступени владельца, и экрану нечем было применить правило меню
+   * «Користувачів». Здесь — что ступень приходит и что правило экрана по ней
+   * совпадает с ответом сервера на «Завершити»: где экран кнопку прячет,
+   * сервер отказывает, где показывает — завершает.
+   */
+  test("ступень приходит, и правило экрана по ней совпадает с отказом сервера", async () => {
+    const [h, chief, spec] = [await head(), await person("chief"), await person("specialist")];
+    const me = await api("/api/auth/me", h.token);
+    const mine = { id: h.id, role: "admin" as const, standing: accountStanding("admin", me.body.ladderRank) };
+
+    for (const [who, rank, allowed] of [
+      [chief, 3, false],
+      [spec, 1, true],
+    ] as const) {
+      await issuePair({ id: who.id, role: "admin" });
+      const list = await api(`/api/ops/sessions?user=${who.id}`, h.token);
+      expect(list.status).toBe(200);
+      const row = list.body.items[0] as OpsSession;
+      expect(row.ladderRank).toBe(rank);
+
+      const screenOffers = accountRefusal(mine, { id: row.userId, role: row.role, standing: accountStanding(row.role, row.ladderRank) }) === null;
+      expect(screenOffers).toBe(allowed);
+      const res = await api(`/api/ops/sessions/${row.id}/revoke`, h.token, post());
+      expect(res.status).toBe(allowed ? 200 : 403);
+    }
   });
 });
 

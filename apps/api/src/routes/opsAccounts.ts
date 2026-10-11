@@ -451,7 +451,7 @@ opsSessionRoutes.get("/", async (c) => {
   /* живой токен в семье один по построению ротации; гонка могла бы дать два — берётся свежий */
   const seen = new Set<string>();
   const words = q.split(/\s+/).filter(Boolean);
-  const sessions: OpsSession[] = [];
+  const sessions: Omit<OpsSession, "ladderRank">[] = [];
   for (const r of rows) {
     if (seen.has(r.familyId)) continue;
     seen.add(r.familyId);
@@ -470,7 +470,28 @@ opsSessionRoutes.get("/", async (c) => {
     });
   }
 
-  const items = sessions.slice((page - 1) * per, page * per);
+  /*
+   * Ступень лестницы владельца — чтобы экран не предлагал «Завершити» там,
+   * где сервер ответит err.accountAtOrAboveYours (#175): так же, как меню
+   * строки «Користувачів» (accountOutOfReach). Считается для страницы, тем
+   * же способом, что ladderRank строки реестра выше.
+   */
+  const slice = sessions.slice((page - 1) * per, page * per);
+  const staffIds = [...new Set(slice.filter((s) => s.role === "admin").map((s) => s.userId))];
+  const rankRows = staffIds.length
+    ? await db
+        .select({ userId: staffRoles.userId, code: roles.code })
+        .from(staffRoles)
+        .innerJoin(roles, eq(roles.id, staffRoles.roleId))
+        .where(inArray(staffRoles.userId, staffIds))
+    : [];
+  const items: OpsSession[] = slice.map((s) => ({
+    ...s,
+    ladderRank:
+      s.role === "superadmin"
+        ? SUPERADMIN_RANK
+        : rankRows.filter((r) => r.userId === s.userId).reduce((top, r) => Math.max(top, roleRank(r.code)), 0),
+  }));
   await audit(c, {
     action: "session.list",
     subjectUserId: userId ?? null,
