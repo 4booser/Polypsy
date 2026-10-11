@@ -82,10 +82,18 @@ type Draft = {
 
 const TEXT = `ВІДПОВІДЬ-${tag()}`;
 
+/*
+ * Одна попытка — одно время начала, как у клиента: продолжение черновика
+ * шлёт его startedAt (мобилка, экран прохождения). Запрет смены версии
+ * стоит на СВОЁМ черновике попытки; черновик другой попытки автосохранение
+ * не перезаписывает (#147, ревью волны 22).
+ */
+const ATTEMPT_STARTED = new Date(Date.now() - 60_000).toISOString();
+
 function putDraft(surveyId: string, token: string, body: Record<string, unknown>) {
   return api(`/api/surveys/${surveyId}/draft`, token, {
     method: "PUT",
-    body: JSON.stringify({ startedAt: new Date(Date.now() - 60_000).toISOString(), durationMs: 7000, events: [], ...body }),
+    body: JSON.stringify({ startedAt: ATTEMPT_STARTED, durationMs: 7000, events: [], ...body }),
   });
 }
 
@@ -278,7 +286,7 @@ describe("черновик: смена версии и запись — одни
       .select({ id: responses.id })
       .from(responses)
       .where(and(eq(responses.surveyId, surveyId), eq(responses.userId, person.id), eq(responses.status, "in_progress")));
-    const common = { startedAt: new Date(Date.now() - 60_000).toISOString(), durationMs: 9000, events: [] };
+    const common = { startedAt: ATTEMPT_STARTED, durationMs: 9000, events: [] };
     const restart = () =>
       appApi(`/api/surveys/${surveyId}/draft`, person.token, {
         method: "PUT",

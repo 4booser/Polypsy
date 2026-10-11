@@ -777,10 +777,15 @@ responseRoutes.put("/surveys/:id/draft", async (c) => {
    * Черновики других попыток. С тревогой — не трогаем: это настоящие
    * сигналы своей попытки, они в очереди дежурного, их разбирают, а не
    * стирают. Без тревоги — брошенная попытка: она убирается, как прежде её
-   * перезаписывало это же автосохранение, и как убирает черновик сдача. По
-   * тому же правилу смены версии, что ниже: черновик другой версии с
-   * ответами убирается только явной заменой (replacesVersionId) — экран
-   * «почато в іншій версії» начинает заново новой попыткой.
+   * перезаписывало это же автосохранение, и как убирает черновик сдача.
+   *
+   * Запрет смены версии (ниже) — только для СВОЕГО черновика: там ответы
+   * перезаписываются, и пункты другой версии стёрлись бы молча. Черновик
+   * другой попытки не перезаписывается, а убирается целиком, и требовать
+   * для него явной замены нельзя (ревью волны 22): клиенту узнать его
+   * версию неоткуда — призрака GET /draft не показывает, — и новая попытка
+   * после переиздания методики получала бы 409 на каждом автосохранении:
+   * черновика на сервере нет, ранней тревоги нет.
    *
    * Уникального индекса на пару у responses нет — у пары может быть
    * несколько черновиков разных попыток, и это так задумано.
@@ -804,17 +809,6 @@ responseRoutes.put("/surveys/:id/draft", async (c) => {
 
   const now = new Date().toISOString();
   const validIds = new Set(survey.questions.map((q) => q.id));
-
-  for (const draft of abandoned) {
-    if (draft.versionId === survey.versionId) continue;
-    const held = await db.select({ questionId: answers.questionId }).from(answers).where(eq(answers.responseId, draft.id));
-    const lost = held.filter((a) => !validIds.has(a.questionId)).length;
-    const replaces = input.replacesVersionId != null && input.replacesVersionId === draft.versionId;
-    if (lost > 0 && !replaces) {
-      log.info("draft.version_change_refused", { surveyId, from: draft.versionId, to: survey.versionId, lost });
-      conflict("err.draftOtherVersion");
-    }
-  }
 
   if (existing && existing.versionId !== survey.versionId) {
     /*
