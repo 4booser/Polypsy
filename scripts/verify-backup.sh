@@ -196,7 +196,7 @@ for spec in users:created_at surveys:created_at responses:created_at; do
     say_fail "таблицу $table не прочитать в рабочей базе"
     continue
   fi
-  # сортировка одна на все стороны — побайтовая: comm требует её, а порядок
+  # сортировка одна на все три списка — побайтовая: comm требует её, а порядок
   # базы зависит от её правил сравнения
   LC_ALL=C sort -o "$copy_ids" "$copy_ids"
   LC_ALL=C sort -o "$live_ids" "$live_ids"
