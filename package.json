@@ -28,5 +28,8 @@
     "@biomejs/biome": "^2.5.10",
     "@playwright/test": "^1.62.1",
     "typescript": "^5.7.3"
+  },
+  "patchedDependencies": {
+    "postgres@3.4.9": "patches/postgres@3.4.9.patch"
   }
 }
