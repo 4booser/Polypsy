@@ -68,10 +68,11 @@ export function OutboxStrip({
                 </p>
                 {item.rejectedReason ? <p className="m-0 mt-0.5 text-muted">{item.rejectedReason}</p> : null}
                 <div className="mt-2 flex flex-wrap gap-2">
-                  <Button variant="quiet" disabled={busy} onClick={() => onRetry(item.id)}>
+                  {/* повтор — главное решение, отказ — тише: стирает ответы безвозвратно */}
+                  <Button variant="ghost" disabled={busy} onClick={() => onRetry(item.id)}>
                     {ut("mq.retry")}
                   </Button>
-                  <Button variant="ghost" disabled={busy} onClick={() => onDiscard(item.id)}>
+                  <Button variant="quiet" disabled={busy} onClick={() => onDiscard(item.id)}>
                     {ut("pt.outboxDiscard")}
                   </Button>
                 </div>
