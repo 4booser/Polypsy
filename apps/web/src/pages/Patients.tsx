@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
+import { pointShare, pointValueText, pointValueTop } from "@quizzy/shared";
 import type { Incomparable, PatientGroupWithCounts, Respondent, UiKey } from "@quizzy/shared";
 import { api, openInTab } from "../api";
 import { Chart, LineChart } from "../charts";
@@ -578,16 +579,21 @@ export function PatientDynamics() {
 
           {sv.scales.length >= 3 ? (
             <Chart title={ut("pt.profileBySubscales")} hint={ut("pt.lastVsFirst")}>
+              {/*
+                Доля — сырой балл после поправок против максимума шкалы
+                (pointShare): rawScore точки — T-балл или стен, и делить его
+                на максимум сырого балла значило мерить в двух единицах (#199).
+              */}
               <Radar
                 axes={sv.scales.map((sc) => {
                   const p = sc.points.at(-1);
-                  return { label: sc.title, value: p && p.maxScore > 0 ? p.rawScore / p.maxScore : 0 };
+                  return { label: sc.title, value: p ? pointShare(p) : 0 };
                 })}
                 compare={
                   sv.scales.some((sc) => sc.points.length > 1)
                     ? sv.scales.map((sc) => {
                         const p = sc.points[0];
-                        return { label: sc.title, value: p && p.maxScore > 0 ? p.rawScore / p.maxScore : 0 };
+                        return { label: sc.title, value: p ? pointShare(p) : 0 };
                       })
                     : undefined
                 }
@@ -637,8 +643,12 @@ export function PatientDynamics() {
                      * низу поля: на демонстрационной базе данные занимали
                      * пятую часть высоты, и динамика любой шкалы у любого
                      * человека выглядела одинаково — плоской чертой внизу.
+                     *
+                     * Верх — в единицах значений на графике: у стенов 10, у
+                     * T-балла его нет. Максимум сырого балла рядом со стенами
+                     * подписывал «полная шкала 0–57» (#199).
                      */
-                    fullRange={last?.maxScore}
+                    fullRange={last ? pointValueTop(last) : null}
                     series={[{
                       label: sc.title,
                       points: sc.points.map((p) => ({
@@ -658,7 +668,7 @@ export function PatientDynamics() {
                   {last ? (
                     <table style={{ marginTop: 10 }}>
                       <tbody>
-                        <tr><td>{ut("pt.lastMeasure")}</td><td className="num">{last.rawScore} {ut("an.of")} {last.maxScore}</td></tr>
+                        <tr><td>{ut("pt.lastMeasure")}</td><td className="num">{pointValueText(last, { of: ut("an.of"), norm: normLabels(ut) })}</td></tr>
                         {last.severity ? <tr><td>{ut("pt.interpretation")}</td><td className="num"><SeverityTag severity={last.severity} label={last.bandLabel ?? undefined} /></td></tr> : null}
                         {sc.reliableChange ? (
                           <tr>
@@ -718,6 +728,11 @@ function equatedValue(
   const rule = rules?.find((r) => r.fromVersion === point.versionNo);
   if (!rule) return point.rawScore;
   return Math.round((rule.slope * point.rawScore + rule.intercept) * 100) / 100;
+}
+
+/** Подписи единиц значения для «Останній замір»: «T-бал 70», «стен 7» (#199) */
+function normLabels(ut: (k: UiKey) => string) {
+  return { raw: ut("norm.raw"), ratio: ut("norm.ratio"), tscore: ut("norm.tscore"), sten: ut("norm.sten") };
 }
 
 function rciHint(
