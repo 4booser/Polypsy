@@ -127,8 +127,24 @@ const schema = z.object({
    * Учреждение на экземпляр одно (см. план, волна 8), поэтому пояс здесь
    * один. У отделения свой пояс есть в departments.timezone — он для
    * расписания приёма, где важен именно приёмный день конкретного кабинета.
+   *
+   * Пусто — Киев; незнакомый пояс — отказ запуска, а не ошибка в каждой
+   * сводке: с тех пор как compose передаёт переменную (#158), опечатка в
+   * .env.docker доезжает до процесса.
    */
-  INSTITUTION_TZ: z.string().default("Europe/Kyiv"),
+  INSTITUTION_TZ: z
+    .string()
+    .optional()
+    .transform((value, ctx) => {
+      const tz = (value ?? "").trim() || "Europe/Kyiv";
+      try {
+        new Intl.DateTimeFormat("en", { timeZone: tz });
+        return tz;
+      } catch {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: `незнакомый часовой пояс «${value}», например Europe/Kyiv` });
+        return z.NEVER;
+      }
+    }),
   /** SMTP для уведомлений: smtp://user:pass@host:587; пусто — только журнал */
   SMTP_URL: z.string().default(""),
   MAIL_FROM: z.string().default("Quizzy <noreply@localhost>"),

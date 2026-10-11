@@ -82,6 +82,7 @@ base_url="${DATABASE_URL%/*}"
 admin_url="$base_url/postgres"
 
 chain_err="$(mktemp)"   # поток ошибок пересчёта журнала, см. пункт 3
+ids_dir="$(mktemp -d)"  # списки идентификаторов для сверки строк, см. пункт 1
 
 # WITH (FORCE): проверка цепочки ниже подключается к одноразовой базе из
 # контейнера приложения, и соединение, не закрытое вовремя (прерванный
@@ -90,6 +91,7 @@ chain_err="$(mktemp)"   # поток ошибок пересчёта журна�
 cleanup() {
   $PG_EXEC psql "$admin_url" -q -c "DROP DATABASE IF EXISTS \"$check_db\" WITH (FORCE)" >/dev/null 2>&1 || true
   rm -f "$chain_err"
+  rm -rf "$ids_dir"
 }
 trap cleanup EXIT
 
@@ -122,23 +124,51 @@ say_fail() { echo "ПРОВАЛ: $1"; fail=1; }
 #    создания, для журнала — по номеру записи, и там же сверяется хэш этой
 #    записи: совпавший хэш доказывает, что копия — начало того же журнала, а
 #    не другой журнал той же длины.
+#
+#    И сверяются не числа строк, а сами строки — по идентификаторам (#162):
+#    каждая строка рабочей базы, созданная до края копии, обязана быть в
+#    копии. Обратного не требуется: после снимка строки законно удаляются —
+#    удаление учётной записи, demo-purge, черновик, удалённый при сдаче.
+#    Равенство чисел объявляло такую копию непригодной («восстановлено 120,
+#    в рабочей на момент снимка 119»), а ложная тревога учит тревоги не
+#    читать. Строка, которой нет в копии, по-прежнему провал — с примером
+#    идентификатора, чтобы было с чего начать разбор.
+#
+#    Журнал так сверять не нужно: он только дописывается (триггер
+#    неизменяемости), и равенство чисел до записи копии там честно. Прочие
+#    штатные удаления — ротация копий, ретенция answer_events, срок
+#    ops-журналов техпанели — касаются таблиц, которых эта сверка не трогает.
 for spec in users:created_at surveys:created_at responses:started_at; do
   table="${spec%%:*}"; col="${spec#*:}"
-  n="$($PG_EXEC psql "$restored_url" -tAc "select count(*) from $table" 2>/dev/null || echo "нет")"
-  if [ "$n" = "нет" ]; then
+  copy_ids="$ids_dir/$table.copy"
+  live_ids="$ids_dir/$table.live"
+  if ! $PG_EXEC psql "$restored_url" -tAc "select id from $table" > "$copy_ids" 2>/dev/null; then
     say_fail "таблицы $table нет в восстановленной базе"
     continue
   fi
   edge="$($PG_EXEC psql "$restored_url" -tAc "select coalesce(max($col)::text, '') from $table" 2>/dev/null || echo "")"
   if [ -z "$edge" ]; then
-    src="$($PG_EXEC psql "$DATABASE_URL" -tAc "select count(*) from $table where $col is null" 2>/dev/null || echo "нет")"
+    before="$col is null"
   else
-    src="$($PG_EXEC psql "$DATABASE_URL" -tAc "select count(*) from $table where $col <= '$edge'::timestamptz" 2>/dev/null || echo "нет")"
+    before="$col <= '$edge'::timestamptz"
   fi
-  if [ "$n" != "$src" ]; then
-    say_fail "в $table восстановлено $n строк, в рабочей базе на момент снимка $src"
+  if ! $PG_EXEC psql "$DATABASE_URL" -tAc "select id from $table where $before" > "$live_ids" 2>/dev/null; then
+    say_fail "таблицу $table не прочитать в рабочей базе"
+    continue
+  fi
+  # сортировка одна на обе стороны — побайтовая: comm требует её, а порядок
+  # базы зависит от её правил сравнения
+  LC_ALL=C sort -o "$copy_ids" "$copy_ids"
+  LC_ALL=C sort -o "$live_ids" "$live_ids"
+  n="$(grep -c . "$copy_ids" || true)"
+  src="$(grep -c . "$live_ids" || true)"
+  # sed, а не head: head выходит раньше конца, comm получает SIGPIPE, и под
+  # pipefail это падение скрипта
+  lost="$(LC_ALL=C comm -23 "$live_ids" "$copy_ids" | grep -c . || true)"
+  if [ "$lost" != "0" ]; then
+    say_fail "в $table копии нет $lost из $src строк, созданных в рабочей базе до края копии (например, id $(LC_ALL=C comm -23 "$live_ids" "$copy_ids" | sed -n 1p))"
   else
-    echo "  $table: $n строк (совпадает с рабочей на момент снимка)"
+    echo "  $table: $n строк в копии; все $src строк рабочей базы до края копии на месте, удалено после снимка $((n - src))"
   fi
 done
 
@@ -147,7 +177,9 @@ if [ "$n" = "нет" ]; then
   say_fail "таблицы audit_log нет в восстановленной базе"
 else
   last="$($PG_EXEC psql "$restored_url" -tAc "select coalesce(max(seq), 0) from audit_log" 2>/dev/null || echo 0)"
-  src="$($PG_EXEC psql "$DATABASE_URL" -tAc "select count(*) from audit_log where seq <= $last" 2>/dev/null || echo "нет")"
+  # строки до цепочки (seq пуст) считаются с обеих сторон: в копии их
+  # считает count(*) выше
+  src="$($PG_EXEC psql "$DATABASE_URL" -tAc "select count(*) from audit_log where seq is null or seq <= $last" 2>/dev/null || echo "нет")"
   h_copy="$($PG_EXEC psql "$restored_url" -tAc "select entry_hash from audit_log where seq = $last" 2>/dev/null || echo "")"
   h_live="$($PG_EXEC psql "$DATABASE_URL" -tAc "select entry_hash from audit_log where seq = $last" 2>/dev/null || echo "")"
   if [ "$n" != "$src" ]; then

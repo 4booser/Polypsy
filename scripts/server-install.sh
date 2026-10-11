@@ -118,11 +118,24 @@ ENV
   umask 022
   echo "  ✓ $BACKUP_ENV с новой парольной фразой"
 fi
+# Отказ службы копий или проверки — оповещение в канал техпанели (#159):
+# OnFailure= запускает quizzy-alert@<служба>, а тот — scripts/ops-alert.sh
+# (через приложение, иначе прямо в Telegram). Прежде упавшая ночная копия
+# не говорила никому.
+cat > /etc/systemd/system/quizzy-alert@.service <<UNIT
+[Unit]
+Description=Quizzy: оповещение об отказе %i
+[Service]
+Type=oneshot
+WorkingDirectory=$TARGET
+ExecStart=$TARGET/scripts/ops-alert.sh --unit %i
+UNIT
 # compose exec — чтобы pg_dump и pg_restore были той же версии, что сервер
 cat > /etc/systemd/system/quizzy-backup.service <<UNIT
 [Unit]
 Description=Quizzy: снимок базы
 After=docker.service
+OnFailure=quizzy-alert@%n.service
 [Service]
 Type=oneshot
 WorkingDirectory=$TARGET
@@ -143,6 +156,7 @@ cat > /etc/systemd/system/quizzy-verify.service <<UNIT
 [Unit]
 Description=Quizzy: проверка восстановимости копии
 After=docker.service
+OnFailure=quizzy-alert@%n.service
 [Service]
 Type=oneshot
 WorkingDirectory=$TARGET

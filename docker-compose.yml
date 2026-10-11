@@ -121,8 +121,26 @@ services:
       OPS_ALERT_EMAIL: ${OPS_ALERT_EMAIL:-}
       INSTITUTION_NAME: ${INSTITUTION_NAME:-}
       INSTITUTION_UNIT: ${INSTITUTION_UNIT:-}
+      # Пояс учреждения: по нему считаются сутки в сводках и печати. Пусто
+      # передавать нельзя — пустая строка не умолчание, а неверный пояс.
+      INSTITUTION_TZ: ${INSTITUTION_TZ:-Europe/Kyiv}
+      # Журнал, сбор ошибок и метрики (#158). Прежде этих строк не было, и
+      # то же самое в .env.docker не значило ничего: уровень журнала всегда
+      # info, сбор ошибок и /metrics выключены при внешне верной настройке.
+      # Каждая переменная, которую читает сервер, объявлена здесь — это
+      # сверяет test/composeEnv.test.ts.
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      METRICS_TOKEN: ${METRICS_TOKEN:-}
       PORT: "3001"
       RECORDINGS_DIR: /data/recordings
+      # Расшифровывает transcriber, но api по этим путям говорит экрану
+      # приёма, настроено ли распознавание: без них консоль писала «своє
+      # розпізнавання не налаштовано» у каждой записи — при работающем
+      # расшифровщике. Сам api распознавание не запускает.
+      WHISPER_BIN: /usr/local/bin/whisper-cli
+      WHISPER_MODEL: /models/ggml-${WHISPER_MODEL_NAME:-small}.bin
+      FFMPEG_BIN: /usr/local/bin/ffmpeg
       # Регистрация пациента без приглашения. Пусто — закрыта (в production
       # это умолчание, env.ts); открыть — 1. Прежде переменной здесь не было,
       # и OPEN_REGISTRATION=0 из .env.docker до контейнера не доезжал:
@@ -226,6 +244,8 @@ services:
       FFMPEG_BIN: /usr/local/bin/ffmpeg
       # планировщик живёт в api: два тика на одну базу выдали бы задания дважды
       SCHEDULER_ENABLED: "0"
+      INSTITUTION_TZ: ${INSTITUTION_TZ:-Europe/Kyiv}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
     volumes:
       - recordings:/data/recordings
       - models:/models
@@ -237,6 +257,9 @@ services:
     # трёхчасовой приём (WAV 16 кГц моно — около 350 МБ).
     tmpfs:
       - /tmp:size=1g,mode=1777
+    # Больше ядер, чем у хоста, Docker не даёт вовсе — контейнер не
+    # создаётся, и встаёт весь `up`. Установщик и выкатка приводят
+    # TRANSCRIBER_CPUS к числу ядер (scripts/transcriber-cpus.sh, #158).
     deploy:
       resources:
         limits:

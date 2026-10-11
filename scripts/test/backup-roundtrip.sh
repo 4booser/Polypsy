@@ -423,6 +423,60 @@ else
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
+section "штатные удаления после снимка — не порча копии (#162)"
+# Рабочая база живёт дальше снимка: учётные записи удаляют, demo-purge
+# чистит вымышленных, черновик при сдаче удаляется. Проверка сверяла число
+# строк до края копии и объявляла исправную копию непригодной. Здесь: второй
+# пользователь (край копии — он, а не удаляемый) и запись журнала до цепочки
+# (seq пуст — так лежат строки, написанные до её внедрения), снимок, затем
+# удаление первого пользователя в рабочей базе — проверка обязана пройти.
+# Контроль: копия, из которой этот пользователь пропал, при нетронутой
+# рабочей базе — провал с названием таблицы.
+psql "$SRC_URL" -Xq -v ON_ERROR_STOP=1 -c "
+  insert into users (id, email, password_hash, first_name, last_name)
+    values ('bk-user2-$$', 'bk2-$$@example.invalid', 'x', 'Тест', 'Другий');
+  insert into audit_log (id, action, resource_type) values ('bk-legacy-$$', 'survey.create', 'backup-test');" \
+  > "$work/del-seed.log" 2>&1 || bad "не удалось дописать исходную базу" "$work/del-seed.log"
+if DATABASE_URL="$SRC_URL" BACKUP_DIR="$work/del" BACKUP_PASSPHRASE="$pass" ./scripts/backup.sh > "$work/del-backup.log" 2>&1; then
+  ok "снимок для сценария удалений снят"
+else
+  bad "снимок для сценария удалений не снят" "$work/del-backup.log"
+fi
+del_copy="$(find "$work/del" -type f -name 'quizzy_*.dump.zst.gpg' 2>/dev/null | sed -n 1p)"
+
+newdb lossy
+LOSSY_URL="$PG_URL/${prefix}lossy"
+if [ -n "$del_copy" ] && DATABASE_URL="$LOSSY_URL" BACKUP_PASSPHRASE="$pass" ./scripts/restore.sh "$del_copy" > "$work/lossy-restore.log" 2>&1 \
+   && psql "$LOSSY_URL" -Xq -v ON_ERROR_STOP=1 -c "delete from users where id = 'bk-user-$$'" > "$work/lossy-del.log" 2>&1 \
+   && DATABASE_URL="$LOSSY_URL" BACKUP_DIR="$work/lossy" BACKUP_PASSPHRASE="$pass" ./scripts/backup.sh > "$work/lossy-backup.log" 2>&1; then
+  if APP_EXEC="" DATABASE_URL="$SRC_URL" BACKUP_DIR="$work/lossy" BACKUP_PASSPHRASE="$pass" \
+       ./scripts/verify-backup.sh > "$work/lossy-verify.log" 2>&1; then
+    bad "контроль: копия без строки, которая есть в рабочей базе, принята" "$work/lossy-verify.log"
+  elif grep -q 'в users копии нет 1 из 2' "$work/lossy-verify.log" && grep -q "bk-user-$$" "$work/lossy-verify.log"; then
+    ok "контроль: копия, из которой пропала строка, — провал, названы таблица и строка"
+  else
+    bad "контроль: провал не на сверке строк users" "$work/lossy-verify.log"
+  fi
+else
+  bad "контроль: не удалось приготовить копию без строки" "$work/lossy-backup.log"
+fi
+
+psql "$SRC_URL" -Xq -v ON_ERROR_STOP=1 -c "delete from users where id = 'bk-user-$$'" > "$work/del-live.log" 2>&1 \
+  || bad "удаление в рабочей базе не прошло" "$work/del-live.log"
+if APP_EXEC="" DATABASE_URL="$SRC_URL" BACKUP_DIR="$work/del" BACKUP_PASSPHRASE="$pass" \
+     ./scripts/verify-backup.sh > "$work/del-verify.log" 2>&1; then
+  ok "после удаления строки в рабочей базе исправная копия пригодна"
+else
+  bad "verify-backup.sh забраковал исправную копию после штатного удаления" "$work/del-verify.log"
+fi
+if grep -q 'users: 2 строк в копии; все 1 строк .* удалено после снимка 1' "$work/del-verify.log"; then
+  ok "вывод называет удалённое после снимка: $(grep -o 'удалено после снимка [0-9]*' "$work/del-verify.log" | sed -n 1p)"
+else
+  bad "в выводе нет сверки users с удалённой строкой" "$work/del-verify.log"
+fi
+no_leak "$work/del-verify.log" "verify-backup.sh (удаления)"
+
+# ─────────────────────────────────────────────────────────────────────────────
 section "временные файлы"
 if [ -z "$(ls -A "$work/tmp")" ]; then ok "во временном каталоге скриптов пусто"; else bad "во временном каталоге остались файлы: $(ls -A "$work/tmp" | head -3 | tr '\n' ' ')"; fi
 

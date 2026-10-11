@@ -112,6 +112,8 @@ describe("сповіщення: правка правила", () => {
     expect(states.map((s) => STATE_TONE[s])).toEqual(["ok", "fail", "quiet", "quiet", "quiet"]);
     expect(EVENT_TONE.resolved).toBe("ok");
     expect(unavailableKey("noSource")).toBe("o2b.unavail.noSource");
+    // давняя сверка цепочки (#160) — своё пояснение, а не пустое место
+    expect(unavailableKey("chainStale")).toBe("o2b.unavail.chainStale");
     // незнакомый код (сервер новее консоли) — без пояснения, а не чужое пояснение
     expect(unavailableKey("fromTheFuture")).toBeNull();
   });
