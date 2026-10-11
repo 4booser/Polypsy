@@ -123,6 +123,16 @@ episodeRoutes.post("/", requirePermission("episodes.manage"), async (c) => {
   const me = c.get("user");
   await assertPatientAccess(me, input.patientId);
 
+  /*
+   * Проверка «уже открыто» и вставка — под замком человека (#153).
+   *
+   * Прежде два одновременных открытия оба читали «открытых нет», первое
+   * вставляло, второе натыкалось на уникальный индекс (episodes_one_open_idx)
+   * и отдавало 500. Замок консультативный, по человеку, до конца транзакции
+   * запроса: второе открытие ждёт, пока первое зафиксируется, видит его
+   * обращение и получает тот же 400, что и последовательный повтор.
+   */
+  await db.execute(sql`select pg_advisory_xact_lock(hashtext(${`episode:${input.patientId}`}))`);
   const [open] = await db
     .select()
     .from(episodes)
@@ -180,7 +190,17 @@ episodeRoutes.post("/", requirePermission("episodes.manage"), async (c) => {
  */
 episodeRoutes.post("/:id/close", requirePermission("episodes.manage"), async (c) => {
   const user = c.get("user");
-  const row = await db.query.episodes.findFirst({ where: eq(episodes.id, c.req.param("id")) });
+  /*
+   * Строка обращения — под замком до конца транзакции запроса (#153).
+   *
+   * Прежде «ещё открыто» проверялось чтением, а запись шла по одному id: два
+   * одновременных закрытия (`worse` со словами и `improved` без) оба
+   * получали 200, в строке оставался исход второго, в журнале — две строки
+   * о закрытии. Теперь второе ждёт первое, читает уже закрытую строку и
+   * получает тот же отказ, что и последовательный повтор; исход первого
+   * остаётся, строка журнала одна.
+   */
+  const [row] = await db.select().from(episodes).where(eq(episodes.id, c.req.param("id"))).for("update");
   if (!row) notFound("err.episodeNotFound");
   await assertPatientAccess(user, row.patientId);
   if (row.closedAt) badRequest("err.episodeClosed");
@@ -237,7 +257,7 @@ episodeRoutes.post("/:id/close", requirePermission("episodes.manage"), async (c)
       outcomeKind: input.outcomeKind,
       outcomeEnc: input.outcome ? encryptField(input.outcome) : null,
     })
-    .where(eq(episodes.id, row.id));
+    .where(and(eq(episodes.id, row.id), isNull(episodes.closedAt)));
 
   await audit(c, {
     action: "episode.close",

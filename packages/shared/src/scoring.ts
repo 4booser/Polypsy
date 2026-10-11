@@ -1,5 +1,5 @@
 import type { CodedText, ServerTextKey, TextParams } from "./serverStrings";
-import { t, type Answer, type ProfileResult, type Question, type Scale, type ScaleItem, type ScoreResult, type Sex, type SurveyFull } from "./types";
+import { t, type Answer, type LogicRule, type ProfileResult, type Question, type Scale, type ScaleItem, type ScoreResult, type Sex, type SurveyFull } from "./types";
 
 /** Диапазон баллов, который вопрос может дать субшкале */
 export function questionScoreRange(question: Question): { min: number; max: number } {
@@ -83,8 +83,38 @@ export function answerScore(question: Question, answer: Answer | undefined): num
   const raw = rawAnswerScore(question, answer);
   if (raw === null) return null;
   if (!question.reverseScored) return raw;
+  if (question.type === "matrix") {
+    /*
+     * Матрица обращается построчно — каждая отвеченная строка внутри
+     * диапазона своей строки (#136).
+     *
+     * Прежде обращение шло от диапазона всей матрицы (min·строк + max·строк
+     * − сумма отвеченных), и у частично заполненной матрицы пропущенные
+     * строки считались худшим ответом: три строки, варианты 0–3, одна строка
+     * с ответом 3 (обращённый — 0) давали 6 — тяжёлую полосу и тревогу по
+     * баллу, которого человек не набирал. Теперь k отвеченных строк дают
+     * вклад в [min·k; max·k].
+     */
+    const scores = question.options.filter((o) => o.kind === "option").map((o) => o.score);
+    if (!scores.length) return raw;
+    const picked = Object.keys(answer?.matrix ?? {}).length;
+    return (Math.min(...scores) + Math.max(...scores)) * picked - raw;
+  }
   const { min, max } = questionScoreRange(question);
   return min + max - raw;
+}
+
+/**
+ * Сколько единиц ответа даёт пункт для доли отвеченных: у матрицы — строки
+ * (#136), у остальных — сам пункт. Частично заполненная матрица прежде
+ * считалась отвеченной целиком, и правило минимальной доли её не видело.
+ */
+function answerUnits(question: Question, answer: Answer | undefined): { asked: number; answered: number } {
+  if (question.type !== "matrix") return { asked: 1, answered: answer && !answer.skipped ? 1 : 0 };
+  const rows = question.options.filter((o) => o.kind === "row").length;
+  if (!rows) return { asked: 1, answered: answer && !answer.skipped ? 1 : 0 };
+  const filled = answer && !answer.skipped ? Object.keys(answer.matrix ?? {}).length : 0;
+  return { asked: rows, answered: Math.min(rows, filled) };
 }
 
 /**
@@ -119,21 +149,56 @@ export function itemContribution(
   return score === null ? null : score * item.weight;
 }
 
-/** Максимально возможный балл субшкалы — нужен для процента и нормирования */
-export function scaleMaxScore(scale: Scale, questions: Question[]): number {
-  const byId = new Map(questions.map((q) => [q.id, q]));
-  const contributions = scale.items
-    .map((item) => {
-      const q = byId.get(item.questionId);
-      return q ? itemMaxContribution(q, item) : 0;
-    });
-  if (!contributions.length) return 0;
+/** Наименьший вклад пункта в шкалу — нужен только для поправки с отрицательным коэффициентом */
+function itemMinContribution(question: Question, item: ScaleItem): number {
+  if (item.matchKey !== null) return Math.min(0, item.weight);
+  const range = questionScoreRange(question);
+  return Math.min(range.min * item.weight, range.max * item.weight);
+}
 
-  if (scale.aggregation === "average") {
-    return contributions.reduce((a, b) => a + b, 0) / contributions.length;
+/** Размах сырого балла шкалы — по её пунктам, без поправок */
+function rawScaleRange(scale: Scale, questions: Question[]): { min: number; max: number } {
+  const byId = new Map(questions.map((q) => [q.id, q]));
+  const maxes: number[] = [];
+  const mins: number[] = [];
+  for (const item of scale.items) {
+    const q = byId.get(item.questionId);
+    maxes.push(q ? itemMaxContribution(q, item) : 0);
+    mins.push(q ? itemMinContribution(q, item) : 0);
   }
-  if (scale.aggregation === "count") return contributions.length;
-  return contributions.reduce((a, b) => a + b, 0);
+  if (!maxes.length) return { min: 0, max: 0 };
+  const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
+  if (scale.aggregation === "average") return { min: sum(mins) / mins.length, max: sum(maxes) / maxes.length };
+  if (scale.aggregation === "count") return { min: 0, max: maxes.length };
+  return { min: sum(mins), max: sum(maxes) };
+}
+
+/**
+ * Максимально возможный балл субшкалы — нужен для процента и нормирования.
+ *
+ * Максимум — того балла, от которого считается процент, то есть балла
+ * ПОСЛЕ поправок (#133). Прежде он шёл только по пунктам ключа, а процент —
+ * от балла с поправками: у ЛАП МЛО своих пунктов нет (она вся из поправок
+ * ПР + КП + МН), и лист печатал «0 з 0 · 0 %» у любого человека; у шкал
+ * Мини-мульта с K-поправкой процент уходил за сто — Pt 168,8 %, Se 170 %.
+ * Поправка берёт СЫРОЙ балл источника (computeProfile, шаг 2), поэтому и
+ * к максимуму прибавляется наибольшее, что источник может дать по своим
+ * пунктам, с коэффициентом: положительный — от его максимума,
+ * отрицательный — от минимума.
+ *
+ * `scales` — все шкалы методики; без них (шкала сама по себе) поправки
+ * не учитываются. Все, кто сверяется с записанным максимумом (выборки
+ * перцентиля, кривые норм), обязаны звать с шкалами — как движок.
+ */
+export function scaleMaxScore(scale: Scale, questions: Question[], scales: readonly Scale[] = []): number {
+  let max = rawScaleRange(scale, questions).max;
+  for (const correction of scale.corrections) {
+    const source = scales.find((s) => s.code === correction.sourceScaleCode);
+    if (!source) continue;
+    const range = rawScaleRange(source, questions);
+    max += Math.max(range.max * correction.coefficient, range.min * correction.coefficient);
+  }
+  return max;
 }
 
 /** Сколько знаков после запятой у границы полосы, как её записали в пособии */
@@ -308,22 +373,29 @@ export function computeProfile(
   for (const scale of survey.scales) {
     const values: number[] = [];
     let asked = 0;
+    let answered = 0;
     for (const item of scale.items) {
       const question = questionById.get(item.questionId);
       if (!question || question.type === "info") continue;
       // скрытый условием пункт не задавали: ни в сумму, ни в знаменатель доли
       if (!isQuestionVisible(question, survey.questions, byQuestion)) continue;
-      asked++;
-      const contribution = itemContribution(question, item, byQuestion.get(item.questionId));
-      if (contribution !== null) values.push(contribution);
+      const answer = byQuestion.get(item.questionId);
+      // строки матрицы — отдельные единицы доли: частичная матрица не «отвечена целиком» (#136)
+      const units = answerUnits(question, answer);
+      asked += units.asked;
+      const contribution = itemContribution(question, item, answer);
+      if (contribution !== null) {
+        values.push(contribution);
+        answered += units.answered;
+      }
     }
 
     const minShare = scale.minAnsweredShare ?? DEFAULT_MIN_ANSWERED_SHARE;
-    if (asked > 0 && values.length / asked < minShare - 1e-9) {
+    if (asked > 0 && answered / asked < minShare - 1e-9) {
       uncomputable.add(scale.code);
       warn("score.tooFewAnswers", {
         scale: t(scale.title),
-        answered: values.length,
+        answered,
         asked,
         min: Math.round(minShare * 100),
       });
@@ -376,7 +448,7 @@ export function computeProfile(
   const scores: ScoreResult[] = survey.scales.filter((scale) => !uncomputable.has(scale.code)).map((scale) => {
     const rawScore = raw.get(scale.code) ?? 0;
     const correctedScore = corrected.get(scale.code) ?? 0;
-    const maxScore = Math.round(scaleMaxScore(scale, survey.questions) * 100) / 100;
+    const maxScore = Math.round(scaleMaxScore(scale, survey.questions, survey.scales) * 100) / 100;
 
     /*
      * 3. Нормирование — и отметка о том, удалось ли оно.
@@ -540,19 +612,65 @@ export function isAnswered(question: Question, answer: Answer | undefined): bool
   }
 }
 
-/** Проходит ли вопрос по условной логике при текущих ответах */
+/**
+ * Проходит ли вопрос по условной логике при текущих ответах.
+ *
+ * Видимость транзитивна (#135): ответ источника, который сам скрыт своим
+ * условием, не считается — источник для правила не отвечен. Прежде правило
+ * смотрело на ответ источника как есть: Q2 показан при «да» в Q1, Q3 (тяжёлый
+ * пункт) — при ответе на Q2; человек ответил всё и сменил Q1 на «ні». Экран
+ * держал Q3 по старому ответу Q2, оставшемуся в памяти формы, а сервер,
+ * получив тело без скрытого Q2, считал Q3 скрытым и молча отбрасывал его
+ * вместе с тревогой. Теперь Q3 скрыт и на экране, и в подсчёте.
+ *
+ * Отсюда и согласие клиента с сервером: видимость зависит только от ответов
+ * на видимые пункты, поэтому тело из одних видимых ответов (так шлют все
+ * клиенты) сервер читает с той же видимостью — ни один показанный пункт не
+ * отбрасывается. Одна функция для экрана, проверки обязательности,
+ * countedAnswers и computeProfile.
+ *
+ * Условия ссылаются только назад (createSurveySchema, err.v.logicForward), и
+ * цепочки конечны; на случай старых данных с кругом пункт на круге считается
+ * показанным — как читалось до транзитивности.
+ */
 export function isQuestionVisible(question: Question, questions: Question[], answers: Map<string, Answer>): boolean {
   // без условий — виден; `?.` — для методик, собранных в памяти без поля logic (эталоны, предпросмотр)
   if (!question.logic?.length) return true;
   const byId = new Map(questions.map((q) => [q.id, q]));
+  const memo = new Map<string, boolean>();
+  const onPath = new Set<string>();
 
-  // все правила должны выполняться: show — включает, hide — исключает
-  return question.logic.every((rule) => {
-    const source = byId.get(rule.sourceQuestionId);
-    const answer = answers.get(rule.sourceQuestionId);
-    const matched = source ? evaluateRule(source, answer, rule.operator, rule.value) : false;
-    return rule.action === "show" ? matched : !matched;
-  });
+  const visible = (q: Question): boolean => {
+    if (!q.logic?.length) return true;
+    const known = memo.get(q.id);
+    if (known !== undefined) return known;
+    onPath.add(q.id);
+    // все правила должны выполняться: show — включает, hide — исключает
+    const result = q.logic.every((rule) => {
+      const source = byId.get(rule.sourceQuestionId);
+      const shown = !!source && (onPath.has(source.id) || visible(source));
+      return logicRuleHolds(rule, source, shown ? answers.get(rule.sourceQuestionId) : undefined);
+    });
+    onPath.delete(q.id);
+    memo.set(q.id, result);
+    return result;
+  };
+  return visible(question);
+}
+
+/**
+ * Одно правило показа при данном ответе на источник — без видимости самого
+ * источника: show — выполнено при совпадении, hide — при несовпадении.
+ * Кирпич isQuestionVisible; отдельно нужен тем, кто подбирает ответы под
+ * правило (примеры листов сверки, apps/api/src/instrumentSheets).
+ */
+export function logicRuleHolds(
+  rule: Pick<LogicRule, "operator" | "value" | "action">,
+  source: Question | undefined,
+  answer: Answer | undefined,
+): boolean {
+  const matched = source ? evaluateRule(source, answer, rule.operator, rule.value) : false;
+  return rule.action === "show" ? matched : !matched;
 }
 
 function evaluateRule(

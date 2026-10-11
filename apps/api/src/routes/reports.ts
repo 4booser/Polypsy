@@ -261,14 +261,24 @@ async function responseReport(
     durationMs: response.durationMs,
     scores: scoreRows.map((s) => {
       const scale = scaleById.get(s.scaleId);
+      /*
+       * «Бал з максимуму» — балл ПОСЛЕ поправок (#133): от него считаются
+       * процент и максимум (scoring.ts, scaleMaxScore), и с ним же
+       * сравнивается выборка перцентиля (lib/referenceSample.ts). Сырой балл
+       * без поправок у ЛАП МЛО — всегда 0: лист печатал «0 з 0 · 0 %» и
+       * 50-й перцентиль у любого человека. У строк до волны 18 балла после
+       * поправок нет (миграция 0118) — там он равен сырому, кроме шкал с
+       * поправками, которые дописала миграция 0126.
+       */
+      const score = s.correctedScore ?? s.rawScore;
       return {
         title: scale?.title ?? "—",
-        rawScore: s.rawScore,
+        score,
         maxScore: s.maxScore,
         percent: s.percent,
         band: s.bandLabel,
         severity: s.severity,
-        percentile: referencePercentile(s.rawScore, sample.get(s.scaleId) ?? []),
+        percentile: referencePercentile(score, sample.get(s.scaleId) ?? []),
       };
     }),
     answers: survey.questions
@@ -490,7 +500,8 @@ interface ReportData {
   durationMs: number;
   scores: {
     title: string;
-    rawScore: number;
+    /** Балл после поправок — тот, от которого процент */
+    score: number;
     maxScore: number;
     percent: number;
     band: string | null;
@@ -527,8 +538,8 @@ function renderReport(lang: Lang, d: ReportData): string {
       (s) => `
       <tr>
         <td>${esc(s.title)}</td>
-        <td class="num">${esc(say("print.scoreOf", { raw: s.rawScore, max: s.maxScore }))}</td>
-        <td class="num">${s.percent}%</td>
+        <td class="num">${s.maxScore > 0 ? esc(say("print.scoreOf", { raw: s.score, max: s.maxScore })) : "—"}</td>
+        <td class="num">${s.maxScore > 0 ? `${s.percent}%` : "—"}</td>
         <td>${
           s.band
             ? `<span class="dot" style="background:${severityColor(s.severity)}"></span>${esc(s.band)}`

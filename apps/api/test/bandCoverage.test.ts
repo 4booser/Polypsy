@@ -153,21 +153,25 @@ interface Gap {
   value: number;
 }
 
+/** Достижимые баллы после поправок — надмножество: каждая комбинация сырых баллов источников */
+function correctedValues(survey: SurveyFull, scale: Scale, raw: Map<string, number[]>): Set<number> {
+  let corrected = new Set(raw.get(scale.code)!);
+  for (const correction of scale.corrections) {
+    const source = raw.get(correction.sourceScaleCode) ?? [0];
+    const next = new Set<number>();
+    for (const c of corrected) for (const s of source) next.add(round(c + s * correction.coefficient, 3));
+    corrected = next;
+  }
+  return corrected;
+}
+
 function gapsOf(survey: SurveyFull): Gap[] {
   const raw = new Map(survey.scales.map((s) => [s.code, rawValues(survey, s)]));
   const gaps: Gap[] = [];
 
   for (const scale of survey.scales) {
     if (!scale.bands.length) continue;
-
-    // поправки — надмножество: каждая комбинация сырых баллов источников
-    let corrected = new Set(raw.get(scale.code)!);
-    for (const correction of scale.corrections) {
-      const source = raw.get(correction.sourceScaleCode) ?? [0];
-      const next = new Set<number>();
-      for (const c of corrected) for (const s of source) next.add(round(c + s * correction.coefficient, 3));
-      corrected = next;
-    }
+    const corrected = correctedValues(survey, scale, raw);
 
     const check = (stratum: string, value: number) => {
       if (!bandFor(scale.bands, value)) gaps.push({ scale: scale.code, stratum, value });
@@ -176,7 +180,8 @@ function gapsOf(survey: SurveyFull): Gap[] {
     for (const c of corrected) {
       if (scale.normalization === "raw") check("—", c);
       else if (scale.normalization === "ratio") {
-        const maxScore = Math.round(scaleMaxScore(scale, survey.questions) * 100) / 100;
+        // тот же максимум, что у движка: балла после поправок (#133)
+        const maxScore = Math.round(scaleMaxScore(scale, survey.questions, survey.scales) * 100) / 100;
         const denominator = scale.ratioDenominator ?? maxScore;
         if (denominator > 0) check("—", round(c / denominator, 3));
       } else if (scale.normalization === "tscore") {
@@ -211,6 +216,37 @@ describe("полосы покрывают все достижимые значе
       const gaps = gapsOf(survey);
       const shown = gaps.slice(0, 12).map((g) => `${g.scale} [${g.stratum}] = ${g.value}`);
       expect(shown, `${key}: значения без полосы (${gaps.length})`).toEqual([]);
+    });
+  }
+});
+
+/*
+ * Процент от максимума — в [0; 100] при любых ответах (#133).
+ *
+ * Процент считается от балла после поправок, а максимум прежде — только по
+ * пунктам ключа: ЛАП МЛО (вся из поправок) печатала «0 з 0 · 0 %», шкалы
+ * Мини-мульта с K-поправкой уходили за сто (Pt 168,8 %, Se 170 %). Здесь —
+ * каждое достижимое значение после поправок против максимума, который пишет
+ * движок; надмножество достижимого, то есть проверка строже нужной.
+ */
+describe("процент от максимума — в пределах [0; 100] при любых ответах", () => {
+  for (const [key] of INSTRUMENTS) {
+    test(key, () => {
+      const survey = installed.get(key)!;
+      const raw = new Map(survey.scales.map((s) => [s.code, rawValues(survey, s)]));
+      const out: string[] = [];
+      for (const scale of survey.scales) {
+        const max = Math.round(scaleMaxScore(scale, survey.questions, survey.scales) * 100) / 100;
+        if (max <= 0) {
+          out.push(`${scale.code}: максимум ${max}`);
+          continue;
+        }
+        for (const c of correctedValues(survey, scale, raw)) {
+          const percent = Math.round((c / max) * 1000) / 10;
+          if (percent < 0 || percent > 100) out.push(`${scale.code}: ${c} из ${max} = ${percent} %`);
+        }
+      }
+      expect(out.slice(0, 12), `${key}: процент вне [0; 100] или максимум не определён`).toEqual([]);
     });
   }
 });

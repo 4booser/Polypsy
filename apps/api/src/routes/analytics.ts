@@ -976,7 +976,8 @@ analyticsRoutes.get("/surveys/:id", async (c) => {
    */
   const floorCeilingOf = (rows: typeof scoreRows) => {
     if (!rows.length) return null;
-    const raw = rows.map((r) => r.rawScore);
+    // балл после поправок: maxScore записан для него (#133); у строк до 0118 — сырой
+    const raw = rows.map((r) => r.correctedScore ?? r.rawScore);
     if (raw.some((v) => v < 0)) return null;
     const maxPossible = rows[0]!.maxScore;
     return floorCeiling(raw, 0, maxPossible);

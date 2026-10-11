@@ -27,6 +27,7 @@ import {
   users,
 } from "../db/schema";
 import { attachToCase } from "../lib/alertCases";
+import { publish } from "../lib/events";
 import { badRequest, conflict, forbidden, langOf, notFound, parseBody, parseQuery } from "../lib/http";
 import { getSurvey, getSurveyForResponse, respondentView } from "../lib/surveys";
 import { hitBand, ladderOf, storedScoreResult, storedScoreResults } from "../lib/storedScores";
@@ -870,6 +871,22 @@ responseRoutes.put("/surveys/:id/draft", async (c) => {
       const caseId = await attachToCase(tx as never, {
         userId: user.id,
         surveyId,
+        severity: risk.severity,
+        at: now,
+      });
+      /*
+       * Ранняя тревога — в поток событий, как у сдачи (#134; lib/submission.ts).
+       * Экран тревог и очередь дежурного обновляются по событию, и тревога
+       * автосохранения без него была не видна до чужого события или ручного
+       * обновления. Только новый факт — впервые отмеченный пункт или
+       * повышение до тяжёлого: повтор того же ответа сюда не доходит
+       * (continue выше), и поток им не засоряется. В той же транзакции:
+       * pg_notify уходит только при коммите.
+       */
+      await publish(tx as never, {
+        kind: "alert.created",
+        surveyIds: [surveyId],
+        userId: user.id,
         severity: risk.severity,
         at: now,
       });
