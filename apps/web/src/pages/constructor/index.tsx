@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { CONTENT_LANGS, contentLangFor, makeUiT, type ContentLang, type Issue } from "@quizzy/shared";
 import { api } from "../../api";
+import { useAuth } from "../../auth";
 import { useResource } from "../../useResource";
 import { AssignGroup } from "./AssignGroup";
 import { Settings } from "./Basics";
@@ -12,6 +13,7 @@ import {
   EMPTY,
   createTarget,
   defaultAnswers,
+  draftKey,
   normalizeDraft,
   oneAtATime,
   switchMode,
@@ -87,17 +89,16 @@ import { MenuButton, menuItemClass } from "../../ui/menu";
  * всю колонку 1200. Остальное — работа волны карточки методики.
  */
 
-/**
- * Черновик живёт в localStorage: правка методики на 200 пунктов не должна
- * умирать от F5 или упавшей вкладки. Ключ включает id — черновики разных
- * методик не затирают друг друга.
- */
-const draftKey = (id: string | undefined) => `quizzy.constructor.${id ?? "new"}`;
-
 export default function Constructor() {
   const { ut, lang } = useLang();
   const toast = useToast();
   const { id } = useParams<{ id: string }>();
+  /* автосохранение — своё у каждой учётки: чужой черновик здесь не восстанавливается (#176, model.ts) */
+  const { user } = useAuth();
+  const autosaveKey = draftKey(user?.id, id);
+  const forgetAutosave = () => {
+    if (autosaveKey) localStorage.removeItem(autosaveKey);
+  };
   const location = useLocation();
   const navigate = useNavigate();
   const [draft, setDraftRaw] = useState<Draft>(EMPTY);
@@ -218,7 +219,7 @@ export default function Constructor() {
 
   useEffect(() => {
     // сначала автосейв: несохранённая работа важнее серверной версии
-    const saved = localStorage.getItem(draftKey(id));
+    const saved = autosaveKey ? localStorage.getItem(autosaveKey) : null;
     if (saved) {
       try {
         const kept = normalizeDraft({ ...EMPTY, ...(JSON.parse(saved) as Draft) });
@@ -232,7 +233,7 @@ export default function Constructor() {
         setAsk(null);
         return;
       } catch {
-        localStorage.removeItem(draftKey(id));
+        forgetAutosave();
       }
     }
 
@@ -244,16 +245,16 @@ export default function Constructor() {
     // номер просьбы растёт и здесь: вернулись к той же методике — спрашиваем заново, а не берём минутный кэш
     askServer();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]);
+  }, [id, autosaveKey]);
 
   // автосейв с дебаунсом: каждое нажатие клавиши не должно дёргать диск
   useEffect(() => {
-    if (!dirty) return;
+    if (!dirty || !autosaveKey) return;
     const timer = setTimeout(() => {
-      localStorage.setItem(draftKey(id), JSON.stringify(draft));
+      localStorage.setItem(autosaveKey, JSON.stringify(draft));
     }, 800);
     return () => clearTimeout(timer);
-  }, [draft, dirty, id]);
+  }, [draft, dirty, autosaveKey]);
 
   // несохранённые правки: предупредить при закрытии вкладки
   useEffect(() => {
@@ -355,7 +356,7 @@ export default function Constructor() {
          * saveThenPublish). Отказ публикации — всплывающим сообщением: оно
          * переживает переход, а строка ошибки этого экрана — нет.
          */
-        localStorage.removeItem(draftKey(id));
+        forgetAutosave();
         setDirty(false);
         if (outcome.publishError) toast(`${ut("uit.co.savedNotPublished")}: ${outcome.publishError}`, "err");
         navigate(`/surveys/${outcome.id}`);
@@ -372,7 +373,7 @@ export default function Constructor() {
    */
   function reloadFromServer() {
     if (!id) return;
-    localStorage.removeItem(draftKey(id));
+    forgetAutosave();
     setRestored(false);
     setDirty(false);
     setConflict(null);
@@ -623,7 +624,7 @@ export default function Constructor() {
             variant="quiet"
             size="sm"
             onClick={() => {
-              localStorage.removeItem(draftKey(id));
+              forgetAutosave();
               setRestored(false);
               setDirty(false);
               undoStack.current = [];
