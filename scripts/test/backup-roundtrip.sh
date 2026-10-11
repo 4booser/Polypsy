@@ -121,8 +121,11 @@ section "исходная база: схема приложения, польз�
 newdb src
 DATABASE_URL="$SRC_URL" bun apps/api/src/migrate.ts > "$work/migrate.log" 2>&1 \
   || { cat "$work/migrate.log"; exit 1; }
-psql "$SRC_URL" -Xqc "insert into users (id, email, password_hash, first_name, last_name)
-  values ('bk-user-$$', 'bk-$$@example.invalid', 'x', 'Тест', '$marker')"
+# created_at — двое суток назад: строка, которая заведомо была в базе до
+# любого снимка ниже, и проверка восстановимости обязана её требовать (свежие
+# строки у края снимка она не требует, см. verify-backup.sh, пункт 1).
+psql "$SRC_URL" -Xqc "insert into users (id, email, password_hash, first_name, last_name, created_at)
+  values ('bk-user-$$', 'bk-$$@example.invalid', 'x', 'Тест', '$marker', now() - interval '2 days')"
 # Журнал пишется функцией приложения, а не вставкой: хэши обязаны быть теми,
 # что посчитало бы приложение, иначе проверка сверяет самодельное с
 # самодельным.
@@ -427,14 +430,14 @@ section "штатные удаления после снимка — не пор
 # Рабочая база живёт дальше снимка: учётные записи удаляют, demo-purge
 # чистит вымышленных, черновик при сдаче удаляется. Проверка сверяла число
 # строк до края копии и объявляла исправную копию непригодной. Здесь: второй
-# пользователь (край копии — он, а не удаляемый) и запись журнала до цепочки
-# (seq пуст — так лежат строки, написанные до её внедрения), снимок, затем
-# удаление первого пользователя в рабочей базе — проверка обязана пройти.
-# Контроль: копия, из которой этот пользователь пропал, при нетронутой
-# рабочей базе — провал с названием таблицы.
+# давний пользователь и запись журнала до цепочки (seq пуст — так лежат
+# строки, написанные до её внедрения), снимок, затем удаление первого
+# пользователя в рабочей базе — проверка обязана пройти. Контроль: копия, из
+# которой этот пользователь пропал, при нетронутой рабочей базе — провал с
+# названием таблицы.
 psql "$SRC_URL" -Xq -v ON_ERROR_STOP=1 -c "
-  insert into users (id, email, password_hash, first_name, last_name)
-    values ('bk-user2-$$', 'bk2-$$@example.invalid', 'x', 'Тест', 'Другий');
+  insert into users (id, email, password_hash, first_name, last_name, created_at)
+    values ('bk-user2-$$', 'bk2-$$@example.invalid', 'x', 'Тест', 'Другий', now() - interval '2 days');
   insert into audit_log (id, action, resource_type) values ('bk-legacy-$$', 'survey.create', 'backup-test');" \
   > "$work/del-seed.log" 2>&1 || bad "не удалось дописать исходную базу" "$work/del-seed.log"
 if DATABASE_URL="$SRC_URL" BACKUP_DIR="$work/del" BACKUP_PASSPHRASE="$pass" ./scripts/backup.sh > "$work/del-backup.log" 2>&1; then
@@ -475,6 +478,79 @@ else
   bad "в выводе нет сверки users с удалённой строкой" "$work/del-verify.log"
 fi
 no_leak "$work/del-verify.log" "verify-backup.sh (удаления)"
+
+# ─────────────────────────────────────────────────────────────────────────────
+section "прохождение задним числом после снимка — не потеря; пустая таблица в копии — провал (#203)"
+# demo-fill и офлайн-очередь пишут прохождения с прошлым started_at: строка,
+# вставленная ПОСЛЕ снимка, датирована раньше него. Проверка брала край копии
+# по started_at, требовала такую строку в копии и браковала исправную копию.
+# И наоборот: у копии с пустой таблицей края нет вовсе, требовать было
+# нечего — пустая таблица проходила. Здесь: давняя методика и два давних
+# прохождения (created_at — дни назад), снимок, затем прохождение задним
+# числом в рабочей базе — проверка обязана пройти. Контроли из того же
+# снимка: копия, из которой пропало одно давнее прохождение, и копия с
+# пустой таблицей прохождений — провал, с id строки и с названием таблицы.
+psql "$SRC_URL" -Xq -v ON_ERROR_STOP=1 -c "
+  insert into surveys (id, title, created_by, created_at)
+    values ('bk-survey-$$', '{\"uk\": \"Тест\"}', 'bk-user2-$$', now() - interval '3 days');
+  insert into responses (id, survey_id, started_at, created_at) values
+    ('bk-resp1-$$', 'bk-survey-$$', now() - interval '3 days', now() - interval '3 days'),
+    ('bk-resp2-$$', 'bk-survey-$$', now() - interval '2 days', now() - interval '2 days');" \
+  > "$work/late-seed.log" 2>&1 || bad "не удалось дописать исходную базу" "$work/late-seed.log"
+if DATABASE_URL="$SRC_URL" BACKUP_DIR="$work/late" BACKUP_PASSPHRASE="$pass" ./scripts/backup.sh > "$work/late-backup.log" 2>&1; then
+  ok "снимок с давними прохождениями снят"
+else
+  bad "снимок с давними прохождениями не снят" "$work/late-backup.log"
+fi
+late_copy="$(find "$work/late" -type f -name 'quizzy_*.dump.zst.gpg' 2>/dev/null | sed -n 1p)"
+
+# Копия, испорченная нарочно: снимок разворачивается в одноразовую базу,
+# правится и снимается заново в свой каталог.
+spoil() { # имя копия sql
+  newdb "$1"
+  DATABASE_URL="$PG_URL/$prefix$1" BACKUP_PASSPHRASE="$pass" ./scripts/restore.sh "$2" > "$work/$1-restore.log" 2>&1 \
+    && psql "$PG_URL/$prefix$1" -Xq -v ON_ERROR_STOP=1 -c "$3" > "$work/$1-sql.log" 2>&1 \
+    && DATABASE_URL="$PG_URL/$prefix$1" BACKUP_DIR="$work/$1" BACKUP_PASSPHRASE="$pass" ./scripts/backup.sh > "$work/$1-backup.log" 2>&1
+}
+spoiled=0
+[ -n "$late_copy" ] && spoil rlost "$late_copy" "delete from responses where id = 'bk-resp1-$$'" && spoiled=$((spoiled + 1))
+[ -n "$late_copy" ] && spoil rempty "$late_copy" "delete from responses" && spoiled=$((spoiled + 1))
+if [ "$spoiled" = "2" ]; then ok "контрольные копии приготовлены: без одного прохождения и с пустой таблицей"; else bad "контрольные копии не приготовлены" "$work/rempty-backup.log"; fi
+
+# после всех снимков: сдано сейчас, датировано четырьмя днями раньше
+psql "$SRC_URL" -Xq -v ON_ERROR_STOP=1 -c "
+  insert into responses (id, survey_id, status, started_at, submitted_at)
+    values ('bk-resp-late-$$', 'bk-survey-$$', 'completed', now() - interval '4 days', now() - interval '4 days' + interval '9 minutes')" \
+  > "$work/late-insert.log" 2>&1 || bad "не удалось вставить прохождение задним числом" "$work/late-insert.log"
+
+if APP_EXEC="" DATABASE_URL="$SRC_URL" BACKUP_DIR="$work/late" BACKUP_PASSPHRASE="$pass" \
+     ./scripts/verify-backup.sh > "$work/late-verify.log" 2>&1; then
+  ok "прохождение, вставленное после снимка задним числом, — не потеря: копия пригодна"
+else
+  bad "verify-backup.sh забраковал исправную копию из-за прохождения задним числом" "$work/late-verify.log"
+fi
+if grep -q 'responses: 2 строк в копии; все 2 строк' "$work/late-verify.log"; then
+  ok "вывод: оба давних прохождения на месте"
+else
+  bad "в выводе нет сверки responses с двумя давними прохождениями" "$work/late-verify.log"
+fi
+if APP_EXEC="" DATABASE_URL="$SRC_URL" BACKUP_DIR="$work/rlost" BACKUP_PASSPHRASE="$pass" \
+     ./scripts/verify-backup.sh > "$work/rlost-verify.log" 2>&1; then
+  bad "контроль: копия без давнего прохождения принята" "$work/rlost-verify.log"
+elif grep -q 'в responses копии нет 1 из 2' "$work/rlost-verify.log" && grep -q "bk-resp1-$$" "$work/rlost-verify.log"; then
+  ok "контроль: копия, из которой пропало давнее прохождение, — провал, названы таблица и строка"
+else
+  bad "контроль: провал не на сверке строк responses" "$work/rlost-verify.log"
+fi
+if APP_EXEC="" DATABASE_URL="$SRC_URL" BACKUP_DIR="$work/rempty" BACKUP_PASSPHRASE="$pass" \
+     ./scripts/verify-backup.sh > "$work/rempty-verify.log" 2>&1; then
+  bad "копия с пустой таблицей прохождений принята" "$work/rempty-verify.log"
+elif grep -q 'таблица responses в копии пуста' "$work/rempty-verify.log"; then
+  ok "копия с пустой таблицей прохождений — провал с названием таблицы"
+else
+  bad "копия с пустой таблицей: провал, но не о пустой таблице" "$work/rempty-verify.log"
+fi
+no_leak "$work/rempty-verify.log" "verify-backup.sh (пустая таблица)"
 
 # ─────────────────────────────────────────────────────────────────────────────
 section "временные файлы"
