@@ -37,6 +37,7 @@ async function until(check: () => boolean) {
 }
 
 let departmentId: string;
+const savedGoogle = { id: env.googleClientId, secret: env.googleClientSecret, redirect: env.googleRedirectUri };
 beforeAll(async () => {
   env.googleClientId = "test-client";
   env.googleClientSecret = "test-secret";
@@ -64,7 +65,14 @@ beforeAll(async () => {
   departmentId = crypto.randomUUID();
   await db.insert(departments).values({ id: departmentId, title: { uk: "rv21", ru: "rv21" }, timezone: "Europe/Kyiv" });
 });
-afterAll(() => { globalThis.fetch = originalFetch; hold = null; });
+afterAll(() => {
+  globalThis.fetch = originalFetch;
+  hold = null;
+  // настройки Google — назад: «вход через Google выключен, пока не настроен» проверяют соседи
+  env.googleClientId = savedGoogle.id;
+  env.googleClientSecret = savedGoogle.secret;
+  env.googleRedirectUri = savedGoogle.redirect;
+});
 
 let n = 0;
 async function slotFor(specialistId: string) {
