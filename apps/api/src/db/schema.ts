@@ -1794,7 +1794,12 @@ export const refreshTokens = pgTable(
   (t) => ({
     hashIdx: uniqueIndex("refresh_tokens_hash_idx").on(t.tokenHash),
     userIdx: index("refresh_tokens_user_idx").on(t.userId),
-    familyIdx: index("refresh_tokens_family_idx").on(t.familyId),
+    /* семья со временем выдачи: отзыв семьи и начало сессии — min(created_at) одной строкой (0130) */
+    familyIdx: index("refresh_tokens_family_created_idx").on(t.familyId, t.createdAt),
+    /* живые-по-отметкам токены — под liveTokenCondition (lib/accounts.ts, 0130) */
+    liveIdx: index("refresh_tokens_live_idx")
+      .on(t.expiresAt)
+      .where(sql`revoked_at is null and rotated_at is null`),
   }),
 );
 
