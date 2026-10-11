@@ -7795,6 +7795,19 @@ export const UI = {
     en: "Answers are accepted only after you agree to the current version of the consent text. Your answers are kept on this screen and will be sent as soon as you accept it.",
   },
   "pw.backToAnswers": { uk: "Повернутися до відповідей", ru: "Вернуться к ответам", en: "Back to my answers" },
+  /* кабинет: отвергнутая сдача очереди — повторить или отказаться (#172, patient/OutboxStrip.tsx) */
+  "pt.outboxRejectedHint": {
+    uk: "Ці відповіді самі не підуть: спробуйте ще раз або відмовтеся від них.",
+    ru: "Эти ответы сами не уйдут: попробуйте ещё раз или откажитесь от них.",
+    en: "These answers won’t be sent on their own: try again or discard them.",
+  },
+  "pt.outboxItem": { uk: "Відповіді на методику", ru: "Ответы на методику", en: "Answers to an instrument" },
+  "pt.outboxDiscard": { uk: "Відмовитися", ru: "Отказаться", en: "Discard" },
+  "pt.outboxDiscardConfirm": {
+    uk: "Відмовитися від цих відповідей? Їх буде видалено з цього пристрою, і фахівець їх не побачить.",
+    ru: "Отказаться от этих ответов? Они будут удалены с этого устройства, и специалист их не увидит.",
+    en: "Discard these answers? They will be deleted from this device and your specialist won’t see them.",
+  },
 
 } as const satisfies Record<string, UiEntry>;
 

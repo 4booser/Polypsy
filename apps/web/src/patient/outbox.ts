@@ -17,8 +17,18 @@ import { ownerOfToken, tokenStore } from "../api";
  * - порядок сдачи сохраняется, отправка — по одной;
  * - временный отказ (нет сети, 502/503/504 — isTransientStatus)
  *   останавливает проход, следующая попытка начнёт с того же места;
- * - отказ по существу (4xx, 500) помечает запись и не блокирует остальных:
- *   битую сдачу нельзя ни потерять молча, ни повторять вечно;
+ * - 401 — тоже не отказ по существу (#172): сессии нет или токен уже чужой.
+ *   Запись не помечается и ждёт, когда владелец войдёт снова, — прежде она
+ *   становилась отвергнутой навсегда, и после входа её не было чем отправить;
+ * - сбой сервера (500 и прочие 5xx) — не приговор (#172): разовый 500 при
+ *   досылке делал запись отвергнутой навсегда, хотя следующий проход её бы
+ *   принял. Теперь попытка считается, проход останавливается, как при
+ *   временном отказе, и запись уйдёт следующим проходом. Отвергнутой она
+ *   становится, только если сервер падает на ней SERVER_FAILURES_MAX раз:
+ *   битая сдача не должна ни держать очередь, ни крутиться вечно;
+ * - отказ по существу (прочие 4xx) помечает запись и не блокирует остальных:
+ *   битую сдачу нельзя ни потерять молча, ни повторять вечно. Решение по
+ *   ней — человека: повторить или отказаться (кабинет, OutboxStrip);
  * - у каждой сдачи clientRequestId с ПЕРВОЙ попытки, и сервер узнаёт
  *   дубль, если первая попытка всё же успела записаться (504 от прокси
  *   приходит и тогда, когда приложение своё сделало).
@@ -50,6 +60,8 @@ export interface OutboxItem {
    */
   ownerId?: string;
   surveyId: string;
+  /** Название методики — чтобы в кабинете было видно, чья сдача ждёт решения (у ранних записей нет) */
+  title?: string;
   payload: Record<string, unknown> & { clientRequestId: string };
   queuedAt: string;
   attempts: number;
@@ -66,6 +78,9 @@ export interface FlushResult {
 }
 
 const keyOf = (userId: string) => `quizzy.outbox.${userId}`;
+
+/** Сколько раз сервер может упасть на одной сдаче, прежде чем она станет отвергнутой (#172) */
+export const SERVER_FAILURES_MAX = 5;
 
 /**
  * `tokenOwner` — владелец токена, который уйдёт в ближайшем запросе. Сверка
@@ -92,13 +107,14 @@ export function createOutbox(storage: OutboxStorage, tokenOwner: () => string | 
 
   return {
     /** Положить сдачу ждать. Бросает, если хранилище недоступно: тогда ответы остаются на экране */
-    enqueue(userId: string, surveyId: string, payload: Record<string, unknown>): OutboxItem {
+    enqueue(userId: string, surveyId: string, payload: Record<string, unknown>, title?: string): OutboxItem {
       const clientRequestId =
         typeof payload.clientRequestId === "string" ? payload.clientRequestId : crypto.randomUUID();
       const item: OutboxItem = {
         id: crypto.randomUUID(),
         ownerId: userId,
         surveyId,
+        ...(title ? { title } : {}),
         payload: { ...payload, clientRequestId },
         queuedAt: new Date().toISOString(),
         attempts: 0,
@@ -136,18 +152,22 @@ export function createOutbox(storage: OutboxStorage, tokenOwner: () => string | 
           } catch (error) {
             const status = (error as { status?: number }).status ?? 0;
             if (isTransientStatus(status)) break;
+            // сессии нет или она чужая — запись цела и ждёт входа владельца, как при чужом токене выше
+            if (status === 401) break;
+            const attempts = item.attempts + 1;
+            const serverFailure = status >= 500 && attempts < SERVER_FAILURES_MAX;
             write(
               userId,
               read(userId).map((i) =>
-                i.id === item.id
-                  ? {
-                      ...i,
-                      attempts: i.attempts + 1,
-                      rejectedReason: error instanceof Error ? error.message : String(status),
-                    }
-                  : i,
+                i.id !== item.id
+                  ? i
+                  : serverFailure
+                    ? { ...i, attempts }
+                    : { ...i, attempts, rejectedReason: error instanceof Error ? error.message : String(status) },
               ),
             );
+            // сбой сервера останавливает проход, как временный отказ: следующий начнёт с этой же записи
+            if (serverFailure) break;
           }
         }
       } finally {
@@ -166,6 +186,14 @@ export function createOutbox(storage: OutboxStorage, tokenOwner: () => string | 
           return rest;
         }),
       );
+    },
+
+    /**
+     * Отказаться от сдачи — тоже решение человека (#172): ответы стираются с
+     * устройства и не уйдут никуда. Кабинет спрашивает подтверждение до вызова.
+     */
+    discard(userId: string, id: string): void {
+      write(userId, read(userId).filter((i) => i.id !== id));
     },
   };
 }

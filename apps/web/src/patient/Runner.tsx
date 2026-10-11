@@ -175,7 +175,8 @@ export default function Runner() {
           );
         }
 
-        const io = cabinetIo(user ? (surveyId, body) => outbox.enqueue(user.id, surveyId, body) : null);
+        /* в очередь — с названием: отвергнутую сдачу человек узнаёт в кабинете по методике (OutboxStrip, #172) */
+        const io = cabinetIo(user ? (surveyId, body) => outbox.enqueue(user.id, surveyId, body, survey.title) : null);
 
         /* исход сдачи → экран; ложь — «надіслано» не показывать */
         const settle = (outcome: SendOutcome, body: SubmitBody): boolean => {

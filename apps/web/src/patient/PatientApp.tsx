@@ -7,10 +7,11 @@ import { useLang } from "../lang";
 import { MaintenanceBanner } from "../service/MaintenanceBanner";
 import { ConnectionLine } from "../ui/ConnectionLine";
 import { cx } from "../ui/cx";
-import { Button, TouchArea } from "../ui/primitives";
+import { TouchArea } from "../ui/primitives";
 import { IconCalendar, IconHome, IconPerson, IconTest } from "./icons";
 import { outbox, type OutboxItem } from "./outbox";
 import { ConsentGate } from "./ConsentGate";
+import { OutboxStrip } from "./OutboxStrip";
 
 /**
  * Кабинет пациента.
@@ -93,29 +94,17 @@ function PatientShell() {
       </header>
       <MaintenanceBanner place="patient" />
       <ConnectionLine place="patient" />
-      {pending.waiting || pending.rejected ? (
-        /*
-          Отложенные сдачи видны, пока не ушли: человек, закрывший методику во
-          время работ, должен знать, что ответы не пропали, а ждут.
-        */
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-hairline px-4 py-2 text-small">
-          {pending.waiting ? (
-            <span className="text-text">
-              {ut("pt.outboxWaiting")}: <span className="font-mono tabular-nums">{pending.waiting}</span>
-            </span>
-          ) : null}
-          {pending.rejected ? (
-            <span className="text-danger">
-              {ut("pt.outboxRejected")}: <span className="font-mono tabular-nums">{pending.rejected}</span>
-            </span>
-          ) : null}
-          {pending.waiting ? (
-            <Button variant="quiet" className="ml-auto" disabled={pending.busy} onClick={pending.flush}>
-              {ut("pt.outboxSend")}
-            </Button>
-          ) : null}
-        </div>
-      ) : null}
+      <OutboxStrip
+        waiting={pending.waiting}
+        rejected={pending.rejected}
+        busy={pending.busy}
+        onSend={pending.flush}
+        onRetry={pending.retry}
+        onDiscard={(id) => {
+          // ответы стираются с устройства безвозвратно — только с явного «да»
+          if (window.confirm(ut("pt.outboxDiscardConfirm"))) pending.discard(id);
+        }}
+      />
 
       {/* pb под высоту полосы вкладок: иначе последняя кнопка экрана под ней */}
       <main className="flex-1 pb-20">
@@ -157,6 +146,7 @@ function PatientShell() {
 /**
  * Досылка отложенных сдач (patient/outbox.ts): при входе в кабинет, при
  * возвращении сети и раз в минуту, пока кабинет открыт, — и по кнопке.
+ * Отвергнутые — по решению человека: повторить или отказаться (OutboxStrip).
  *
  * Раз в минуту, а не по Retry-After: работы заканчивают и раньше
  * объявленного, а минута ожидания после конца работ никого не задевает.
@@ -164,13 +154,15 @@ function PatientShell() {
  * clientRequestId: сервер отбросит дубль, если первая попытка всё же дошла.
  */
 function useOutbox(userId: string | null) {
-  const [counts, setCounts] = useState({ waiting: 0, rejected: 0 });
+  const [counts, setCounts] = useState<{ waiting: number; rejected: OutboxItem[] }>({ waiting: 0, rejected: [] });
   const [busy, setBusy] = useState(false);
+
+  const recount = useCallback(() => {
+    if (userId) setCounts({ waiting: outbox.waiting(userId).length, rejected: outbox.rejected(userId) });
+  }, [userId]);
 
   const flush = useCallback(() => {
     if (!userId) return;
-    const recount = () =>
-      setCounts({ waiting: outbox.waiting(userId).length, rejected: outbox.rejected(userId).length });
     recount();
     if (!outbox.waiting(userId).length) return;
     setBusy(true);
@@ -180,7 +172,26 @@ function useOutbox(userId: string | null) {
         recount();
         setBusy(false);
       });
-  }, [userId]);
+  }, [userId, recount]);
+
+  /* отвергнутую — обратно в очередь и сразу в проход; не примет и теперь — снова строкой с причиной (#172) */
+  const retry = useCallback(
+    (id: string) => {
+      if (!userId) return;
+      outbox.retry(userId, id);
+      flush();
+    },
+    [userId, flush],
+  );
+
+  const discard = useCallback(
+    (id: string) => {
+      if (!userId) return;
+      outbox.discard(userId, id);
+      recount();
+    },
+    [userId, recount],
+  );
 
   useEffect(() => {
     flush();
@@ -203,5 +214,5 @@ function useOutbox(userId: string | null) {
     };
   }, [flush]);
 
-  return { ...counts, busy, flush };
+  return { ...counts, busy, flush, retry, discard };
 }
