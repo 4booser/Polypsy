@@ -55,32 +55,42 @@ function upperBound(to: string): SQL {
  * документ, который врёт о том, что в нём.
  *
  * Кто и над кем — идентификатором или куском почты: разбирающий помнит
- * почту, а не uuid. «Над кем» по почте ищется через учётки (у записи журнала
- * почты субъекта нет — только его идентификатор), и найденных берётся не
- * больше пятидесяти: «a» в поле субъекта не должно превращаться в условие на
- * весь реестр.
+ * почту, а не uuid. Кусок почты ищется в учётках, а журнал отбирается по
+ * их идентификаторам — и для «над кем» (почты субъекта в записи журнала
+ * нет), и для «кто» (#202). «Кто» прежде искался подстрокой по actor_email
+ * самого журнала: ILIKE '%…%' индексом не берётся (под политикой строк — и
+ * триграммным, см. AUDIT_TEXT_DAYS ниже), и каждая страница перебирала
+ * журнал целиком дважды, со счётом. По идентификатору — индекс автора и
+ * весь журнал, без окна. Почта без идентификатора в журнал не пишется
+ * (вход с незнакомым адресом — без автора), так что строк автор не теряет;
+ * сменившего почту находит нынешний адрес — со строками, записанными при
+ * прежнем.
+ *
+ * Найденных учёток берётся не больше пятидесяти: «a» в поле не должно
+ * превращаться в условие на весь реестр.
  */
+const ACCOUNTS_PER_TEXT = 50;
+
+/** Учётки по куску почты — условием на столбец журнала; никого не нашли — пустой отбор, а не «фильтр не применён» */
+async function byAccounts(column: typeof auditLog.actorId | typeof auditLog.subjectUserId, text: string): Promise<SQL> {
+  if (UUID.test(text)) return eq(column, text);
+  const found = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(ilike(users.email, likeText(text)))
+    .orderBy(users.email)
+    .limit(ACCOUNTS_PER_TEXT);
+  return found.length ? inArray(column, found.map((f) => f.id)) : sql`false`;
+}
+
 async function filtersOf(query: AuditQuery): Promise<SQL[]> {
   const { action, actorId, subjectUserId, actor, subject, resourceType, outcome, q, from, to } = query;
   const filters: SQL[] = [];
   if (action) filters.push(eq(auditLog.action, action));
   if (actorId) filters.push(eq(auditLog.actorId, actorId));
   if (subjectUserId) filters.push(eq(auditLog.subjectUserId, subjectUserId));
-  if (actor) {
-    filters.push(UUID.test(actor) ? eq(auditLog.actorId, actor) : ilike(auditLog.actorEmail, likeText(actor)));
-  }
-  if (subject) {
-    if (UUID.test(subject)) filters.push(eq(auditLog.subjectUserId, subject));
-    else {
-      const found = await db
-        .select({ id: users.id })
-        .from(users)
-        .where(ilike(users.email, likeText(subject)))
-        .limit(50);
-      /* никого не нашли — пустой отбор, а не «фильтр не применён» */
-      filters.push(found.length ? inArray(auditLog.subjectUserId, found.map((f) => f.id)) : sql`false`);
-    }
-  }
+  if (actor) filters.push(await byAccounts(auditLog.actorId, actor));
+  if (subject) filters.push(await byAccounts(auditLog.subjectUserId, subject));
   if (resourceType) filters.push(eq(auditLog.resourceType, resourceType));
   if (outcome) filters.push(eq(auditLog.outcome, outcome));
   if (q) {
