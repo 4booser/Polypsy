@@ -1,11 +1,11 @@
 import { Hono } from "hono";
-import { and, asc, desc, eq, isNotNull, isNull, ne } from "drizzle-orm";
+import { and, asc, desc, eq, isNotNull, isNull, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 import { serverText } from "@quizzy/shared";
 import { db } from "../db";
 import { asSystem } from "../db/context";
 import { devices, users } from "../db/schema";
-import { audit } from "../lib/audit";
+import { AUDIT_CHAIN_LOCK, audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
 import { langOf, notFound, parseBody } from "../lib/http";
 import { forgetInstallation } from "../lib/push";
@@ -186,6 +186,13 @@ deviceRoutes.post("/wiped", async (c) => {
   );
 
   const pushTokens = await forgetInstallation(input.deviceId);
+  /*
+   * Замок цепочки журнала — до строки users, которую берёт гашение семьи
+   * (lockOwner в lib/refresh.ts). Вход того же человека берёт их в том же
+   * порядке: журнал, потом users (touchLastSeen). Иначе одновременные вход
+   * и подтверждение стирания давали взаимоблокировку (ревью PR #198).
+   */
+  if (input.refreshToken) await db.execute(sql`select pg_advisory_xact_lock(${AUDIT_CHAIN_LOCK})`);
   // только своя семья: чужой refresh в теле ничего не гасит (revokeByToken, onlyFor)
   const sessionRevoked = input.refreshToken ? await revokeByToken(input.refreshToken, user.id) : false;
 
