@@ -4438,7 +4438,8 @@ export interface AlertCasePage extends Page<AlertCase> {
   facets?: AlertCaseFacets;
 }
 
-export type AlertOutcome = "confirmed" | "not_confirmed" | "needs_followup";
+/** duplicate ставит не человек, а чистка черновиков-призраков (#197): случай закрыт как дубль сданной попытки */
+export type AlertOutcome = "confirmed" | "not_confirmed" | "needs_followup" | "duplicate";
 
 /**
  * Страница списка: курсор вместо номера — список меняется прямо во время разбора.

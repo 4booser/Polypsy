@@ -26,10 +26,28 @@ const minutesAgo = (m: number) => new Date(Date.now() - m * 60_000).toISOString(
 type Loaded = { versionId: string; questions: { id: string; options: { id: string }[] }[] };
 type Draft = { id: string; startedAt: string } | null;
 
-/** Один пункт: «Ні» — без тревоги, «Часто» — тяжёлая */
+/** Один пункт: «Ні» — без тревоги, «Часто» — тяжёлая; у каждой версии свои id пунктов */
+function content() {
+  const label = (uk: string) => ({ uk, ru: uk });
+  return createSurveySchema.parse({
+    title: label("Спроба"),
+    administration: "self",
+    questions: [
+      {
+        type: "single",
+        title: label("Чи бувають думки про небажання жити?"),
+        required: true,
+        options: [
+          { text: label("Ні") },
+          { text: label("Часто"), riskFlag: true, riskLabel: label("Часто"), riskSeverity: "severe" },
+        ],
+      },
+    ],
+  });
+}
+
 async function setup(): Promise<{ surveyId: string; person: Person; shown: Loaded }> {
   const surveyId = crypto.randomUUID();
-  const label = (uk: string) => ({ uk, ru: uk });
   await db.insert(surveys).values({
     id: surveyId,
     groupId: groupA,
@@ -41,26 +59,7 @@ async function setup(): Promise<{ surveyId: string; person: Person; shown: Loade
     allowRetake: true,
     createdBy: adminA.id,
   } as never);
-  await createVersion(
-    surveyId,
-    createSurveySchema.parse({
-      title: label("Спроба"),
-      administration: "self",
-      questions: [
-        {
-          type: "single",
-          title: label("Чи бувають думки про небажання жити?"),
-          required: true,
-          options: [
-            { text: label("Ні") },
-            { text: label("Часто"), riskFlag: true, riskLabel: label("Часто"), riskSeverity: "severe" },
-          ],
-        },
-      ],
-    }),
-    adminA.id,
-    "v1",
-  );
+  await createVersion(surveyId, content(), adminA.id, "v1");
   const person = await makeUser("user", `attempt-${tag()}@test.dev`, { sex: "male", birthDate: "1989-02-02" });
   people.push(person.id);
   const shown = (await appApi<Loaded>(`/api/surveys/${surveyId}`, person.token)).body;
@@ -103,8 +102,20 @@ async function draftsOf(s: Awaited<ReturnType<typeof setup>>) {
     .where(and(eq(responses.surveyId, s.surveyId), eq(responses.userId, s.person.id), eq(responses.status, "in_progress")));
 }
 
+/** Методику переиздали: новая версия со своими пунктами — клиент открывает её */
+async function reissue(s: Awaited<ReturnType<typeof setup>>) {
+  const before = s.shown.versionId;
+  await createVersion(s.surveyId, content(), adminA.id, "v2");
+  s.shown = (await appApi<Loaded>(`/api/surveys/${s.surveyId}`, s.person.token)).body;
+  expect(s.shown.versionId).not.toBe(before);
+}
+
 /** Состояние «до #147»: черновик уже сданной попытки с тревогой — как его писало прежнее автосохранение */
-async function ghostOf(s: Awaited<ReturnType<typeof setup>>, startedAt: string): Promise<{ id: string; alertId: string }> {
+async function ghostOf(
+  s: Awaited<ReturnType<typeof setup>>,
+  startedAt: string,
+  o: { alert: boolean; option?: 0 | 1 } = { alert: true },
+): Promise<{ id: string; alertId: string }> {
   const id = crypto.randomUUID();
   const q = s.shown.questions[0]!;
   await db.insert(responses).values({
@@ -117,8 +128,9 @@ async function ghostOf(s: Awaited<ReturnType<typeof setup>>, startedAt: string):
     lastSavedAt: new Date().toISOString(),
     durationMs: 61_000,
   });
-  await db.insert(answers).values({ id: crypto.randomUUID(), responseId: id, questionId: q.id, optionIds: [q.options[1]!.id] });
+  await db.insert(answers).values({ id: crypto.randomUUID(), responseId: id, questionId: q.id, optionIds: [q.options[o.option ?? 1]!.id] });
   const alertId = crypto.randomUUID();
+  if (!o.alert) return { id, alertId };
   await db.insert(riskAlerts).values({
     id: alertId,
     responseId: id,
@@ -201,6 +213,37 @@ describe("автосохранение — в черновик своей поп
     // сдача новой попытки забирает его — черновиков у пары не остаётся
     await submit(s, s2, 0);
     expect(await draftsOf(s)).toEqual([]);
+  }, 30_000);
+
+  test("после переиздания методики новая попытка поверх призрака прежней версии без тревоги — пишет, ранняя тревога есть", async () => {
+    /*
+     * Ревью волны 22: призрака GET /draft не показывает, и клиенту не
+     * узнать его версию для replacesVersionId. Запрет смены версии стоял и
+     * на чужом черновике — новая попытка получала 409 на каждом
+     * автосохранении, без черновика и без ранней тревоги.
+     */
+    const s = await setup();
+    const s1 = minutesAgo(60);
+    await submit(s, s1, 0);
+    const ghost = await ghostOf(s, s1, { alert: false, option: 0 });
+    await reissue(s);
+    expect(await getDraft(s)).toBeNull();
+
+    const s2 = minutesAgo(1);
+    const own = await saveDraft(s, s2, 1);
+    expect((await db.select().from(riskAlerts).where(eq(riskAlerts.responseId, own))).length, "ранней тревоги нет").toBe(1);
+    expect((await draftsOf(s)).map((d) => d.id)).toEqual([own]);
+    expect((await db.select().from(responses).where(eq(responses.id, ghost.id))).length).toBe(0);
+  }, 30_000);
+
+  test("брошенный черновик прежней версии с ответами — новая попытка убирает его без явной замены", async () => {
+    const s = await setup();
+    const abandoned = await saveDraft(s, minutesAgo(60), 0);
+    await reissue(s);
+    const own = await saveDraft(s, minutesAgo(1), 1);
+    expect(own).not.toBe(abandoned);
+    expect((await draftsOf(s)).map((d) => d.id)).toEqual([own]);
+    expect((await db.select().from(riskAlerts).where(eq(riskAlerts.responseId, own))).length).toBe(1);
   }, 30_000);
 
   test("GET /draft не предлагает продолжить призрака", async () => {

@@ -7862,6 +7862,8 @@ export const UI = {
     ru: "Удалён черновик уже сданной попытки",
     en: "Draft of an already submitted attempt removed",
   },
+  /* консоль: исход случая, закрытого чисткой призраков, — не решение дежурного (#197) */
+  "cases.duplicate": { uk: "Дубль зданої спроби", ru: "Дубль сданной попытки", en: "Duplicate of a submitted attempt" },
 
 } as const satisfies Record<string, UiEntry>;
 

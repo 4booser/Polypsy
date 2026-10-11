@@ -23,24 +23,33 @@
  *     отбрасывает);
  *   — у каждой тревоги призрака есть тревога сданного прохождения на том же
  *     пункте и не легче её.
+ *   — черновик сохранён и его тревоги подняты в коротком окне после сдачи
+ *     (GHOST_WINDOW): призрак — это последняя правка, дошедшая следом за
+ *     сдачей, а не запись через дни. До этой волны PUT /draft писал в любой
+ *     черновик пары, и следующая попытка возвратной методики могла писать в
+ *     призрак с теми же ответами — её тревога настоящая, а не дубль.
  * Только тогда призрак — копия сданной попытки, и его тревоги — дубли. Иначе
- * (ответы разошлись — в призрак писала уже другая попытка; тревога без пары
- * или тяжелее сданной) — «на разбор»: команда его не трогает и показывает,
- * а решает человек.
+ * (запись позже окна; ответы разошлись; тревога без пары или тяжелее
+ * сданной) — «на разбор»: команда его не трогает и показывает, а решает
+ * человек.
  *
  * Что делает прогон с --apply с дублем, по призраку и одной транзакцией:
  *   — каждая тревога призрака закрывается как дубль сданной попытки: строка
  *     журнала alert.duplicate_closed в случае тревоги (её видно в разборе
  *     случая — /api/alert-cases/:id/history — и в журнале техпанели) с
  *     исходом duplicate, ссылкой на сигнал сданного прохождения и всем, что
- *     было в строке тревоги; направления, выписанные по ней, переходят на
- *     этот сигнал; сама строка удаляется. Перенести её на сданное
+ *     было в строке тревоги; направления и отметки об отправленных
+ *     уведомлениях переходят на этот сигнал (как в adoptDraftAlerts; вид
+ *     уведомления, который у сигнала уже есть, — в подробности строки
+ *     журнала); сама строка удаляется. Перенести её на сданное
  *     прохождение нельзя: пункт там уже занят своим сигналом (один сигнал на
  *     пункт прохождения — уникальный индекс), а два сигнала одного ответа
  *     — ровно то, чего индекс не допускает;
- *   — случай призрака, оставшийся без сигналов и открытый, закрывается:
- *     иначе в очереди дежурного висел бы случай без единого сигнала.
- *     Разобранный случай не трогается — решение специалиста остаётся;
+ *   — случай призрака, оставшийся без сигналов и открытый, закрывается с
+ *     исходом duplicate — системным действием (автор пуст, строка журнала
+ *     alert.acknowledge от системы, как у auditSystem): иначе в очереди
+ *     дежурного висел бы случай без единого сигнала. Разобранный случай не
+ *     трогается — решение специалиста остаётся;
  *   — черновик удаляется (строкой журнала response.ghost_removed), его
  *     направления переходят на сданное прохождение — как при сдаче.
  * Сданное прохождение и его тревоги не меняются.
@@ -54,7 +63,7 @@ import { and, eq, inArray, isNull, notExists, sql } from "drizzle-orm";
 import { baseDb, db } from "../db";
 import { systemContext } from "../db/context";
 import { inIds } from "../db/ids";
-import { alertCases, answers, referrals, responses, riskAlerts, surveys } from "../db/schema";
+import { alertCases, alertNotifications, answers, referrals, responses, riskAlerts, surveys } from "../db/schema";
 import { lockAttempts } from "../routes/responses";
 import { auditSystem } from "./audit";
 import { caseZoneSql } from "./alertCases";
@@ -65,6 +74,8 @@ export interface GhostAlert {
   id: string;
   questionId: string | null;
   severity: "moderate" | "severe";
+  /** Когда поднята */
+  at: string;
   caseId: string | null;
   acknowledged: boolean;
   /** Сигнал сданного прохождения на том же пункте, если есть */
@@ -82,8 +93,8 @@ export interface Ghost {
   submittedAt: string | null;
   /** duplicate — копия сданной попытки; review — решает человек */
   verdict: "duplicate" | "review";
-  /** Почему на разбор: ответы разошлись, тревога без пары, тревога тяжелее сданной */
-  reason: "answers" | "unpaired" | "stronger" | null;
+  /** Почему на разбор: запись позже окна после сдачи, ответы разошлись, тревога без пары, тревога тяжелее сданной */
+  reason: "late" | "answers" | "unpaired" | "stronger" | null;
   alerts: GhostAlert[];
 }
 
@@ -94,6 +105,27 @@ export interface GhostReport {
   closedAlerts: number;
   closedCases: number;
 }
+
+/**
+ * Окно после сдачи, в котором приходит призрак: [−1 мин; +10 мин] от
+ * submittedAt.
+ *
+ * Призрак — последняя правка дорожки черновика (мобилка, offline/draftLane),
+ * которая была в пути или стояла следом в момент сдачи: на дорожке в пути
+ * одно сохранение, следующее уходит сразу за ним, а на сервере оно ждёт
+ * замка пары (lockAttempts) не дольше транзакции сдачи — предел оператора
+ * минута (REQUEST_STATEMENT_TIMEOUT_MS). То есть секунды, в худшем случае
+ * около минуты. Десять минут — запас на порядок. Запись следующей попытки
+ * приходит со следующим сеансом — через часы и дни.
+ *
+ * Минута до — сбитые часы устройства: submittedAt — это startedAt +
+ * durationMs с телефона, и completionTime принимает его с тем же запасом.
+ * Он же делает окно строгим в другую сторону: попытка, сданная из
+ * офлайн-очереди или продолженная после перерыва, датирована моментом
+ * окончания на устройстве, и её призрак окажется «на разбор» — это ошибка
+ * в безопасную сторону: решает человек.
+ */
+export const GHOST_WINDOW = { beforeMs: 60_000, afterMs: 10 * 60_000 };
 
 type Row = Record<string, unknown>;
 const iso = (v: unknown): string | null => (v == null ? null : new Date(v as string).toISOString());
@@ -159,18 +191,25 @@ async function inspect(pairs: Row[]): Promise<Ghost[]> {
           id: a.id,
           questionId: a.questionId,
           severity: a.severity,
+          at: iso(a.at)!,
           caseId: a.caseId,
           acknowledged: a.acknowledgedAt !== null,
           pair: pair ? { id: pair.id, severity: pair.severity, caseId: pair.caseId } : null,
         };
       });
-    const reason: Ghost["reason"] = !answersMatch
-      ? "answers"
-      : alerts.some((a) => !a.pair)
+    const sent = p.submitted_at == null ? null : Date.parse(String(iso(p.submitted_at)));
+    const inWindow = (t: string | null) =>
+      sent !== null && t !== null && Date.parse(t) >= sent - GHOST_WINDOW.beforeMs && Date.parse(t) <= sent + GHOST_WINDOW.afterMs;
+    const late = !inWindow(iso(p.last_saved_at)) || alerts.some((a) => !inWindow(a.at));
+    const reason: Ghost["reason"] = late
+      ? "late"
+      : !answersMatch
+        ? "answers"
+        : alerts.some((a) => !a.pair)
         ? "unpaired"
-        : alerts.some((a) => rank(a.pair!.severity) < rank(a.severity))
-          ? "stronger"
-          : null;
+          : alerts.some((a) => rank(a.pair!.severity) < rank(a.severity))
+            ? "stronger"
+            : null;
     return {
       id: ghostId,
       submittedId,
@@ -198,6 +237,22 @@ async function closeDuplicate(ghost: Ghost): Promise<{ alerts: number; cases: nu
   for (const alert of ghost.alerts) {
     const row = byId.get(alert.id)!;
     await db.update(referrals).set({ alertId: alert.pair!.id }).where(eq(referrals.alertId, alert.id));
+    /*
+     * Отметки об отправленных уведомлениях — на сигнал сданного прохождения,
+     * как в adoptDraftAlerts: дежурному об этом ответе уже писали, и
+     * рассыльщик не должен писать о нём снова. Вид, который у сигнала уже
+     * есть (один на вид — уникальный индекс), перенести некуда: он уходит с
+     * тревогой каскадом, а что было — остаётся в строке журнала ниже.
+     */
+    const moved = await db.execute(sql`
+      update ${alertNotifications} set alert_id = ${alert.pair!.id}
+       where alert_id = ${alert.id}
+         and kind not in (select kind from ${alertNotifications} where alert_id = ${alert.pair!.id})
+      returning kind`);
+    const dropped = await db
+      .select({ kind: alertNotifications.kind, sentAt: alertNotifications.sentAt, channel: alertNotifications.channel })
+      .from(alertNotifications)
+      .where(eq(alertNotifications.alertId, alert.id));
     await db.delete(riskAlerts).where(eq(riskAlerts.id, alert.id));
     /*
      * Случай, оставшийся без сигналов, — из очереди: открытым он висел бы у
@@ -210,9 +265,10 @@ async function closeDuplicate(ghost: Ghost): Promise<{ alerts: number; cases: nu
         select pg_advisory_xact_lock(hashtextextended('alert_case|' || c.user_id || '|' || ${caseZoneSql(surveys.groupId, surveys.createdBy)}, 0))
           from ${alertCases} c join ${surveys} on ${surveys.id} = c.survey_id
          where c.id = ${row.caseId}`);
+      // автор пуст — системное действие, как у auditSystem; исход — дубль, а не клиническое решение
       const closed = await db
         .update(alertCases)
-        .set({ acknowledgedAt: at })
+        .set({ acknowledgedAt: at, acknowledgedBy: null, outcome: "duplicate" })
         .where(
           and(
             eq(alertCases.id, row.caseId),
@@ -222,6 +278,16 @@ async function closeDuplicate(ghost: Ghost): Promise<{ alerts: number; cases: nu
         )
         .returning({ id: alertCases.id });
       caseClosed = closed.length > 0;
+      if (caseClosed) {
+        // разбор случая — той же строкой журнала, что у дежурного (alertCases.ts, PATCH), только от системы
+        await auditSystem({
+          action: "alert.acknowledge",
+          resourceType: "alert_case",
+          resourceId: row.caseId,
+          subjectUserId: ghost.userId,
+          details: { outcome: "duplicate", note: null, by: "ghost-drafts", duplicateOf: alert.pair!.id },
+        });
+      }
     }
     /*
      * Строка журнала — в случае тревоги: там её ищут, разбирая случай. Всё,
@@ -248,6 +314,8 @@ async function closeDuplicate(ghost: Ghost): Promise<{ alerts: number; cases: nu
         acknowledgedBy: row.acknowledgedBy,
         previousOutcome: row.outcome,
         caseClosed,
+        notificationsMoved: (moved as unknown as { kind: string }[]).map((n) => n.kind),
+        notificationsDropped: dropped,
       },
     });
     if (caseClosed) cases += 1;
