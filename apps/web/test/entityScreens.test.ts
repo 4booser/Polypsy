@@ -79,6 +79,14 @@ describe("остатки #177: заключение, протокол, груп�
     expect(source("pages/Conclusion.tsx")).toContain('useEffect(() => setTitle(""), [responseId]);');
   });
 
+  test("заключение: отказ 409 прежнего прохождения к новому не переходит", () => {
+    const editor = source("components/ConclusionEditor.tsx");
+    const reset = editor.indexOf("useEffect(() => setStale(null), [responseId]);");
+    expect(reset, "строка «заключение переписали» живёт через смену прохождения").toBeGreaterThan(-1);
+    // хук — до раннего возврата «загрузка»: иначе порядок хуков зависел бы от данных
+    expect(reset).toBeLessThan(editor.indexOf("if (!state) {"));
+  });
+
   test("положительный контроль: форма повідомлення по-прежнему пересоздаётся по адресу", () => {
     expect(source("pages/messages/MailingEditor.tsx")).toContain('<MailingEditor key={id ?? "new"} id={id ?? null} />');
   });
