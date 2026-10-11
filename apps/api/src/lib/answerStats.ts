@@ -162,7 +162,17 @@ export async function scoresOfSlice(
   ids: readonly string[],
   scaleIds: readonly string[],
 ): Promise<
-  { responseId: string; scaleId: string; rawScore: number; value: number; normalized: boolean; maxScore: number; bandLabel: string | null }[]
+  {
+    responseId: string;
+    scaleId: string;
+    rawScore: number;
+    /** балл после поправок (#133): maxScore записан для него; у строк до 0118 — null */
+    correctedScore: number | null;
+    value: number;
+    normalized: boolean;
+    maxScore: number;
+    bandLabel: string | null;
+  }[]
 > {
   if (!ids.length || !scaleIds.length) return [];
   const source =
@@ -178,14 +188,15 @@ export async function scoresOfSlice(
           ) rs`;
   const [row] = (await db.execute(sql`
     select json_agg(json_build_array(rs.response_id, rs.scale_id, rs.raw_score, rs.value, rs.normalized,
-                                     rs.max_score, rs.band_label))::text as rows
+                                     rs.max_score, rs.band_label, rs.corrected_score))::text as rows
       from ${source}
   `)) as unknown as { rows: string | null }[];
-  return (parsed<[string, string, number, number, boolean, number, string | null][]>(row?.rows) ?? []).map(
-    ([responseId, scaleId, rawScore, value, normalized, maxScore, bandLabel]) => ({
+  return (parsed<[string, string, number, number, boolean, number, string | null, number | null][]>(row?.rows) ?? []).map(
+    ([responseId, scaleId, rawScore, value, normalized, maxScore, bandLabel, correctedScore]) => ({
       responseId,
       scaleId,
       rawScore,
+      correctedScore,
       value,
       normalized,
       maxScore,

@@ -266,18 +266,16 @@ async function notifyAssigned(scheduleId: string, userIds: string[], dueAt: stri
   const date = dayOf(dueAt)!;
   for (const userId of userIds) {
     try {
-      await systemContext(baseDb, () =>
-        pushToUser(
-          userId,
-          {
-            eventKey: `schedule:${scheduleId}:${dueAt}`,
-            kind: "assignment",
-            title: (lang) => renderPush("push.assignmentTitle", lang),
-            body: (lang) => renderPush("push.assignmentBody", lang, { date }),
-            path: "/(app)/surveys",
-          },
-          langs.get(userId) ?? "uk",
-        ),
+      await pushToUser(
+        userId,
+        {
+          eventKey: `schedule:${scheduleId}:${dueAt}`,
+          kind: "assignment",
+          title: (lang) => renderPush("push.assignmentTitle", lang),
+          body: (lang) => renderPush("push.assignmentBody", lang, { date }),
+          path: "/(app)/surveys",
+        },
+        langs.get(userId) ?? "uk",
       );
     } catch (error) {
       log.warn("schedule.push_failed", { scheduleId, error: String(error) });

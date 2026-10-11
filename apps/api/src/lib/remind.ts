@@ -207,18 +207,16 @@ export async function remindAppointments(
 
     // какое напоминание и под каким ключом — посчитано в запросе, тем же выражением, что отсеивает ушедшие
     if (r.due === "hour") {
-      const sent = await systemContext(baseDb, () =>
-        pushToUser(
-          r.a.patientId,
-          {
-            eventKey: r.eventKey,
-            kind: "appointment",
-            title: (lang) => renderPush("push.appointmentSoonTitle", lang),
-            body: (lang) => renderPush("push.appointmentSoonBody", lang, { time: time(lang), room: room(lang) }),
-            path: "/appointments",
-          },
-          fallback,
-        ),
+      const sent = await pushToUser(
+        r.a.patientId,
+        {
+          eventKey: r.eventKey,
+          kind: "appointment",
+          title: (lang) => renderPush("push.appointmentSoonTitle", lang),
+          body: (lang) => renderPush("push.appointmentSoonBody", lang, { time: time(lang), room: room(lang) }),
+          path: "/appointments",
+        },
+        fallback,
       );
       if (sent) hour += 1;
       continue;
@@ -229,19 +227,17 @@ export async function remindAppointments(
      * иначе он получил бы оба сразу — «завтра приём» и «приём через час» — и
      * первое было бы просто неправдой.
      */
-    const sent = await systemContext(baseDb, () =>
-      pushToUser(
-        r.a.patientId,
-        {
-          eventKey: r.eventKey,
-          kind: "appointment",
-          title: (lang) => renderPush("push.appointmentDayTitle", lang),
-          body: (lang) =>
-            renderPush("push.appointmentDayBody", lang, { date: date(lang), time: time(lang), room: room(lang) }),
-          path: "/appointments",
-        },
-        fallback,
-      ),
+    const sent = await pushToUser(
+      r.a.patientId,
+      {
+        eventKey: r.eventKey,
+        kind: "appointment",
+        title: (lang) => renderPush("push.appointmentDayTitle", lang),
+        body: (lang) =>
+          renderPush("push.appointmentDayBody", lang, { date: date(lang), time: time(lang), room: room(lang) }),
+        path: "/appointments",
+      },
+      fallback,
     );
     if (sent) day += 1;
   }

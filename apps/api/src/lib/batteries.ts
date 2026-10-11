@@ -42,22 +42,33 @@ export function isOverdue(assignment: { dueAt: string | null }, now: Date): bool
  *
  * `missed` — готовая пометка-код (noteCode, note.missed.*): у каждого пути
  * своя причина, а фразой её сделает показ, на языке смотрящего.
+ *
+ * Закрывается только всё ещё открытое — условием в самом UPDATE (#151).
+ * Пропуск вызывающие решают по чтению, сделанному до замка набора, и
+ * назначение, которое пациент завершил между чтением и записью, прежде
+ * получало поверх completedAt ещё и cancelledAt с пометкой «пропущено».
+ * Сдача, держащая строку назначения, дожидается здесь своей фиксации, и
+ * PostgreSQL перепроверяет условие по новой версии строки. Возвращает,
+ * сколько закрыто на деле.
  */
 export async function closeMissed(
   tx: Pick<typeof Db, "update">,
   ids: readonly string[],
   missed: string,
   now: Date,
-): Promise<void> {
-  if (!ids.length) return;
-  await tx
+): Promise<number> {
+  if (!ids.length) return 0;
+  const closed = await tx
     .update(batteryAssignments)
     .set({
       cancelledAt: now.toISOString(),
       note: sql`concat_ws(' · ', ${batteryAssignments.note}, ${missed}::text)`,
     })
-    // расписание закрывает пропуски целого подразделения разом: список — одним параметром (#194)
-    .where(inIds(batteryAssignments.id, ids));
+    // расписание закрывает пропуски целого подразделения разом: список — одним параметром (#194);
+    // закрывается только всё ещё открытое — условием в самом UPDATE (#151)
+    .where(and(inIds(batteryAssignments.id, ids), isNull(batteryAssignments.completedAt), isNull(batteryAssignments.cancelledAt)))
+    .returning({ id: batteryAssignments.id });
+  return closed.length;
 }
 
 

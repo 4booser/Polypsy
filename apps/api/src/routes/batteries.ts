@@ -511,8 +511,10 @@ batteryRoutes.post("/:id/assign", requireStaff, requirePermission("assignments.m
   }
 
   const id = crypto.randomUUID();
+  // завершённое между чтением и записью пропуском не закрывается — и в журнал как заменённое не идёт (#151)
+  let replaced = 0;
   await db.transaction(async (tx) => {
-    if (open) await closeMissed(tx, [open.id], noteCode("note.missed.reassigned"), now);
+    if (open) replaced = await closeMissed(tx, [open.id], noteCode("note.missed.reassigned"), now);
     await tx.insert(batteryAssignments).values({
       id,
       batteryId,
@@ -553,7 +555,7 @@ batteryRoutes.post("/:id/assign", requireStaff, requirePermission("assignments.m
     details: {
       surveys: items.length,
       dueAt,
-      ...(open ? { replacedOverdue: open.id } : {}),
+      ...(open && replaced ? { replacedOverdue: open.id } : {}),
       ...(widened ? { widenedOwnScope: true } : {}),
     },
   });

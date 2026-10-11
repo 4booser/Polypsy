@@ -247,10 +247,23 @@ groupRoutes.post("/:id/archive", requirePermission("groups.manage"), async (c) =
  * другую группу (PATCH /api/decisions/rules/:id), а общим его делают только
  * явно. Внешний ключ теперь NO ACTION (миграция 0107): без маршрута тоже не
  * удалить.
+ *
+ * Строка группы захватывается ДО подсчёта (#149). Прежде подсчёт и удаление
+ * шли порознь: перенос методики или набора, не зафиксированный к подсчёту,
+ * подсчёт не видел, а DELETE вставал за его замком внешнего ключа и,
+ * дождавшись фиксации, удалял группу — методика уходила в личные, набор
+ * каскадом. FOR UPDATE ждёт тот же замок, но раньше подсчёта, и подсчёт
+ * (новый снимок READ COMMITTED) видит зафиксированный перенос. В обратном
+ * порядке перенос ждёт захваченную строку и после удаления падает на
+ * внешнем ключе — содержимое остаётся, где было.
  */
 groupRoutes.delete("/:id", requirePermission("groups.manage"), async (c) => {
   const id = c.req.param("id");
-  const group = await db.query.surveyGroups.findFirst({ where: eq(surveyGroups.id, id) });
+  const [group] = await db
+    .select({ id: surveyGroups.id })
+    .from(surveyGroups)
+    .where(eq(surveyGroups.id, id))
+    .for("update");
   if (!group) notFound("err.groupNotFound");
 
   const [counts] = await db
