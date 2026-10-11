@@ -7850,6 +7850,19 @@ export const UI = {
     en: "{n} min since start — not a single successful pass",
   },
 
+  /* ── w22:data ── */
+  /* журнал: чистка черновиков-призраков (#197, apps/api/src/lib/ghostDrafts.ts) */
+  "act.alert_duplicate_closed": {
+    uk: "Тривогу закрито як дубль зданої спроби",
+    ru: "Тревога закрыта как дубль сданной попытки",
+    en: "Alert closed as a duplicate of the submitted attempt",
+  },
+  "act.response_ghost_removed": {
+    uk: "Видалено чернетку вже зданої спроби",
+    ru: "Удалён черновик уже сданной попытки",
+    en: "Draft of an already submitted attempt removed",
+  },
+
 } as const satisfies Record<string, UiEntry>;
 
 export type UiKey = keyof typeof UI;

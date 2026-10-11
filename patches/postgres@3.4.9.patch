@@ -1,0 +1,60 @@
+diff --git a/cf/src/connection.js b/cf/src/connection.js
+index 8e79170aeb13efe8c3c77ccede0cd3a115b5e1b5..30abfdbdbbd4dc23e230f4cffafbc0ed63f013c3 100644
+--- a/cf/src/connection.js
++++ b/cf/src/connection.js
+@@ -178,6 +178,15 @@ function Connection(options, queues = {}, { onopen = noop, onend = noop, onclose
+         && sent.length < max_pipeline
+         && (!q.options.onexecute || q.options.onexecute(connection))
+     } catch (error) {
++      // The message for q could not be built (parameter ceiling, undefined or
++      // unserializable value), so nothing of q went out. If q waits in `sent`
++      // behind a query in flight, reject q itself and drop it from `sent`:
++      // errored() would reject the query in flight instead and leave q waiting
++      // for a reply that never comes, shifting every later reply onto the
++      // previous query (a transaction then hangs on its ROLLBACK forever).
++      if (sent.remove(q))
++        return (queryError(q, error), true)
++
+       sent.length === 0 && write(Sync)
+       errored(error)
+       return true
+diff --git a/cjs/src/connection.js b/cjs/src/connection.js
+index 07f6716702ac888215c86ad6e0071aaf55ae519c..2d80cac7c9d902db0d77142dfd3e6df0471195f3 100644
+--- a/cjs/src/connection.js
++++ b/cjs/src/connection.js
+@@ -176,6 +176,15 @@ function Connection(options, queues = {}, { onopen = noop, onend = noop, onclose
+         && sent.length < max_pipeline
+         && (!q.options.onexecute || q.options.onexecute(connection))
+     } catch (error) {
++      // The message for q could not be built (parameter ceiling, undefined or
++      // unserializable value), so nothing of q went out. If q waits in `sent`
++      // behind a query in flight, reject q itself and drop it from `sent`:
++      // errored() would reject the query in flight instead and leave q waiting
++      // for a reply that never comes, shifting every later reply onto the
++      // previous query (a transaction then hangs on its ROLLBACK forever).
++      if (sent.remove(q))
++        return (queryError(q, error), true)
++
+       sent.length === 0 && write(Sync)
+       errored(error)
+       return true
+diff --git a/src/connection.js b/src/connection.js
+index 1b1cccde43b4570d5d071d6ffaab2669b3c2065a..92a0825c27bf1f100cac4abe690931f30ec72e15 100644
+--- a/src/connection.js
++++ b/src/connection.js
+@@ -176,6 +176,15 @@ function Connection(options, queues = {}, { onopen = noop, onend = noop, onclose
+         && sent.length < max_pipeline
+         && (!q.options.onexecute || q.options.onexecute(connection))
+     } catch (error) {
++      // The message for q could not be built (parameter ceiling, undefined or
++      // unserializable value), so nothing of q went out. If q waits in `sent`
++      // behind a query in flight, reject q itself and drop it from `sent`:
++      // errored() would reject the query in flight instead and leave q waiting
++      // for a reply that never comes, shifting every later reply onto the
++      // previous query (a transaction then hangs on its ROLLBACK forever).
++      if (sent.remove(q))
++        return (queryError(q, error), true)
++
+       sent.length === 0 && write(Sync)
+       errored(error)
+       return true

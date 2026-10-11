@@ -315,6 +315,13 @@ export type AuditAction =
   /* уведомление о тревоге не дошло ни одним каналом / брошено после трёх писем без подтверждения (lib/notify.ts) */
   | "alert.undelivered"
   | "alert.notify_abandoned"
+  /*
+   * Чистка черновиков-призраков (#197, lib/ghostDrafts.ts): тревога
+   * призрака закрыта как дубль сигнала сданной попытки — строкой в её
+   * случае, с исходом и всем, что было в строке; сам призрак удалён
+   */
+  | "alert.duplicate_closed"
+  | "response.ghost_removed"
   | "conclusion.save"
   | "conclusion.sign"
   | "consent.accept"

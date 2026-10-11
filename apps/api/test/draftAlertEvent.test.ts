@@ -92,12 +92,14 @@ async function draftOf() {
   const person = await makeUser("user", `draft-event-${tag()}@test.dev`, { sex: "female", birthDate: "1992-02-02" });
   people.push(person.id);
   const shown = (await appApi<Loaded>(`/api/surveys/${surveyId}`, person.token)).body;
+  // одна попытка — одно время начала, как у клиента: автосохранение пишет только в черновик своей попытки (#147)
+  const startedAt = new Date(Date.now() - 60_000).toISOString();
   const save = async (option: 0 | 1 | 2) => {
     const q = shown.questions[0]!;
     const res = await appApi(`/api/surveys/${surveyId}/draft`, person.token, {
       method: "PUT",
       body: JSON.stringify({
-        startedAt: new Date(Date.now() - 60_000).toISOString(),
+        startedAt,
         durationMs: 20_000,
         versionId: shown.versionId,
         answers: [{ questionId: q.id, optionIds: [q.options[option]!.id], durationMs: 1500, changeCount: 0, visitCount: 1 }],

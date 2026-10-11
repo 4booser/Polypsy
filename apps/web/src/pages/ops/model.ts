@@ -1107,6 +1107,8 @@ export const AUDIT_ACTION_KEY: Readonly<Record<string, UiKey>> = {
   "alert.escalated": "act.alert_escalated",
   "alert.undelivered": "act.alert_undelivered",
   "alert.notify_abandoned": "act.alert_notify_abandoned",
+  "alert.duplicate_closed": "act.alert_duplicate_closed",
+  "response.ghost_removed": "act.response_ghost_removed",
   "worklist.read": "act.worklist_read",
   /* заключения, аналитика, статистика */
   "conclusion.save": "act.conclusion_save",

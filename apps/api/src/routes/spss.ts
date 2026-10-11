@@ -681,7 +681,13 @@ async function loadRows(surveyId: string): Promise<ExportRows> {
     })
     .from(responses)
     .leftJoin(users, eq(users.id, responses.userId))
-    .where(and(eq(responses.surveyId, surveyId), eq(responses.status, "completed")));
+    .where(and(eq(responses.surveyId, surveyId), eq(responses.status, "completed")))
+    /*
+     * Порядок — по сдаче, при равенстве по id, как у длинной выгрузки. Без
+     * него строки шли в порядке плана запроса, и две выгрузки одной методики
+     * подряд могли разойтись порядком строк, а с ним и хэшем датасета (#195).
+     */
+    .orderBy(asc(responses.submittedAt), asc(responses.id));
 
   /*
    * Словари всех версий методики сразу: позиция пункта, порядковый номер
