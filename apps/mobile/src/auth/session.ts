@@ -66,6 +66,12 @@ export async function queueRevocation(store: RevokeStore, refreshToken: string):
   await store.set(list.slice(-REVOKE_CAP));
 }
 
+/** Снять токен из списка: его семью погасили другим путём (подтверждение стирания, #128) */
+export async function dropRevocation(store: RevokeStore, refreshToken: string): Promise<void> {
+  const list = await store.get();
+  if (list.includes(refreshToken)) await store.set(list.filter((t) => t !== refreshToken));
+}
+
 export async function flushRevocations(
   store: RevokeStore,
   revoke: (refreshToken: string) => Promise<void>,

@@ -22,9 +22,10 @@ import type {
   SurveyAnalytics,
 } from "@quizzy/shared";
 import { db } from "../db";
+import { asSystem } from "../db/context";
 import { inIds } from "../db/ids";
 import { env } from "../env";
-import { answerEvents, answers, responseScores, responses, surveyGroups, surveyVersions, surveys, users } from "../db/schema";
+import { answers, responses, surveyGroups, surveyVersions, surveys, users } from "../db/schema";
 import { csvCell } from "../lib/csv";
 import { langOf, notFound, parseQuery } from "../lib/http";
 import { audit } from "../lib/audit";
@@ -41,17 +42,19 @@ import { currentWeek, localToMoment, localWeek, patientRespondent, periodFrom, p
 import { decryptField } from "../lib/crypto";
 import {
   average,
-  distribution,
   durationBins,
   median,
+  medianSorted,
   percent,
   quantile,
+  quantileSorted,
   round,
   stdev,
-  timelineByDay,
-  weeklyMeans,
+  timelineOfDays,
+  weeklyMeansOfDays,
 } from "../lib/stats";
-import { TOO_FAST_MS, floorCeiling, qualityOf, reliabilityOf, scaleShape } from "../lib/psychometrics";
+import { TOO_FAST_MS, floorCeiling, qualityFlagged, qualityFlags, reliabilityOf, scaleShape } from "../lib/psychometrics";
+import { answerStats, answersOf, scoresOfSlice } from "../lib/answerStats";
 import { getSurvey } from "../lib/surveys";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
@@ -67,6 +70,26 @@ analyticsRoutes.use("*", requireAuth, requireStaff, requirePermission("analytics
 /** Сводка по всем методикам */
 /** Черновик считается живым полчаса с последнего сохранения */
 const LIVE_DRAFT_MS = 30 * 60_000;
+
+/**
+ * Сколько последних прохождений среза идёт в альфу, ω и показатели пунктов
+ * (#187) — как ALPHA_SAMPLE у RCI (lib/changeBasis.ts), но больше: здесь по
+ * выборке ещё и решают, годен ли пункт. Стандартная ошибка альфы на двух
+ * тысячах прохождений ≈ 0,01, корреляции пункта с суммой — ≈ 0,02: этого
+ * хватает с запасом, чтобы различить 0,2 и 0,35 (lib/psychometrics.ts).
+ */
+const ALPHA_SAMPLE = 2000;
+
+/**
+ * Из скольких последних прохождений среза читается лента событий ответов
+ * (#187): время до первого выбора и доля передумавших — средние по ней.
+ * Лента — самая тяжёлая таблица учреждения, и читать её целиком ради двух
+ * средних значило бы секунды на запрос, растущие с каждым прохождением; на
+ * двух тысячах прохождений (десятки тысяч ответов) ошибка среднего времени —
+ * миллисекунды, доли — десятые доли процента. Пока прохождений меньше,
+ * ответ тот же, что прежде (lib/answerStats.ts).
+ */
+const EVENT_SAMPLE = 2000;
 
 /**
  * Сводка по всем доступным методикам.
@@ -637,61 +660,129 @@ analyticsRoutes.get("/surveys/:id", async (c) => {
   // квартал» и «до/после ротации» — разные вопросы.
   // Считаем только по прохождениям выбранной версии: смешивать ответы разных
   // редакций методики нельзя — вопросы у них разные
-  const responseRows = await db
-    .select()
-    .from(responses)
-    .where(
-      and(
-        eq(responses.surveyId, surveyId),
-        chosen ? eq(responses.versionId, chosen.id) : undefined,
-        /*
-         * Границы — сутки учреждения (lib/population.ts), а не пояса
-         * сессии базы: на сервере она в UTC, и «з 1 вересня» начиналось в
-         * три ночи по Киеву. Верхняя граница включительно: пользователь
-         * выбирает день, а не момент.
-         */
-        from ? sql`${responses.submittedAt} >= ${periodFrom(from)}` : undefined,
-        to ? sql`${responses.submittedAt} < ${periodTo(to)}` : undefined,
-        /*
-         * Сотрудник, заполнивший методику на себя, — не респондент: его
-         * пробный бланк садился в распределения пунктов и шкал наравне с
-         * обследованиями. Заполненное ЗА пациента записано на пациента и
-         * остаётся (lib/population.ts).
-         */
-        patientRespondent("responses"),
-        ...whose,
-      ),
-    );
-  const responseIds = responseRows.map((r) => r.id);
-
+  const slice = and(
+    eq(responses.surveyId, surveyId),
+    chosen ? eq(responses.versionId, chosen.id) : undefined,
+    /*
+     * Границы — сутки учреждения (lib/population.ts), а не пояса
+     * сессии базы: на сервере она в UTC, и «з 1 вересня» начиналось в
+     * три ночи по Киеву. Верхняя граница включительно: пользователь
+     * выбирает день, а не момент.
+     */
+    from ? sql`${responses.submittedAt} >= ${periodFrom(from)}` : undefined,
+    to ? sql`${responses.submittedAt} < ${periodTo(to)}` : undefined,
+    /*
+     * Сотрудник, заполнивший методику на себя, — не респондент: его
+     * пробный бланк садился в распределения пунктов и шкал наравне с
+     * обследованиями. Заполненное ЗА пациента записано на пациента и
+     * остаётся (lib/population.ts).
+     */
+    patientRespondent("responses"),
+    ...whose,
+  );
   /*
-   * Список прохождений — одним параметром (db/ids.ts): параметром на id
-   * методика с 65 534 прохождениями и больше упиралась в потолок драйвера, и
-   * аналитика зависала насовсем вместе с соединением пула (#183).
+   * Прохождения среза — только нужные колонки, одной строкой json (#187).
+   *
+   * Прежде select * — все поля прохождения ради шести. И даже узкие, десятки
+   * тысяч строк через драйвер стоят памяти больше, чем сами данные: на 69
+   * тыс. прохождений +50 МБ процесса на разбор строк, а та же выборка одной
+   * строкой json — единицы мегабайт. Порядок — тот же, в котором их отдаёт
+   * обход таблицы, как и прежде. Метка — сразу в ISO, как её отдаёт
+   * timestampCol (db/schema.ts), и день учреждения рядом с ней.
    */
-  const [answerRows, scoreRows, eventRows] = responseIds.length
-    ? await Promise.all([
-        db.select().from(answers).where(inIds(answers.responseId, responseIds)),
-        db.select().from(responseScores).where(inIds(responseScores.responseId, responseIds)),
-        db.select().from(answerEvents).where(inIds(answerEvents.responseId, responseIds)),
-      ])
-    : [[], [], []];
-
-  // время до первого выбора берём из ленты событий: это не то же самое, что
-  // общее время на вопросе — человек мог долго думать, а потом быстро передумать
-  const firstAnswerByKey = new Map<string, number>();
-  const changedKeys = new Set<string>();
-  for (const e of eventRows) {
-    const key = `${e.responseId}:${e.questionId}`;
-    if (e.kind === "set" && !firstAnswerByKey.has(key)) firstAnswerByKey.set(key, e.elapsedMs);
-    if (e.kind === "change") changedKeys.add(key);
-  }
+  const responseRows = (
+    parsedJson<[string, string | null, string, number, boolean, string | null, string | null][]>(
+      (
+        (await db.execute(sql`
+          select json_agg(json_build_array(id, user_id, status, duration_ms, reliable,
+                   to_char(submitted_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+                   to_char(submitted_at at time zone ${env.institutionTz}, 'YYYY-MM-DD')))::text as rows
+            from responses
+           where ${slice}
+        `)) as unknown as { rows: string | null }[]
+      )[0]?.rows,
+    ) ?? []
+  ).map(([id, userId, status, durationMs, reliable, submittedAt, day]) => ({
+    id,
+    userId,
+    status,
+    durationMs,
+    reliable,
+    submittedAt,
+    /* день сдачи в поясе учреждения — тот же, что dayOf (lib/day.ts), но посчитан базой */
+    day,
+  }));
+  const responseIds = responseRows.map((r) => r.id);
 
   const completed = responseRows.filter((r) => r.status === "completed");
   const abandoned = responseRows.filter((r) => r.status === "abandoned");
   const durations = completed.map((r) => r.durationMs).filter((d) => d > 0);
   /* недостоверные протоколы — см. ниже у шкал и у пунктов */
   const unreliable = new Set(completed.filter((r) => !r.reliable).map((r) => r.id));
+
+  /*
+   * Ответы, баллы и лента событий — системной ролью, по прохождениям,
+   * отобранным выше под политиками смотрящего (#187).
+   *
+   * Строка ответа, балла или события видна тому, кому видно её
+   * прохождение, — список уже отобран, и системная роль не открывает ничего
+   * сверх него. А политика на каждой из сотен тысяч дочерних строк стоила
+   * врачу втрое дольше суперадмина. Как читаются строки среза — см.
+   * lib/answerStats.ts (answersOfSlice).
+   */
+  const scoreRows = await asSystem(() =>
+    scoresOfSlice(
+      responseIds,
+      survey.scales.map((sc) => sc.id),
+    ),
+  );
+
+  /*
+   * Person-fit (7.1): берём самую длинную ключевую шкалу — на ней трудность
+   * пунктов оценивается устойчивее всего. Порядок «от лёгкого к трудному» —
+   * по доле срабатывания в этой же выборке: собственная трудность честнее
+   * любой внешней таблицы.
+   */
+  const fitScale = [...survey.scales]
+    .filter((sc) => sc.kind === "clinical" && sc.items.filter((i) => i.matchKey !== null).length >= 4)
+    .sort((a, b) => b.items.length - a.items.length)[0];
+  const keyItems = fitScale ? fitScale.items.filter((i) => i.matchKey !== null) : null;
+
+  /*
+   * Альфа и показатели пунктов — по выборке: последние ALPHA_SAMPLE
+   * прохождений среза (#187). Прежде — по всем: матрица «прохождение ×
+   * пункт» на каждую шкалу и её копия на каждый пункт («альфа без пункта»)
+   * на десятках тысяч прохождений. Пока прохождений меньше, выборка — все,
+   * как и прежде.
+   */
+  const latest = responseRows
+    .map((r) => ({ id: r.id, at: r.submittedAt ?? "" }))
+    // строки времени ISO сравниваются как строки; без localeCompare — он в десятки раз медленнее
+    .sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0))
+    .map((r) => r.id);
+  const alphaSample = latest.slice(0, ALPHA_SAMPLE);
+
+  // порог берём из настроек методики: у матричной и у «да/нет» он разный
+  const tooFastMs = survey.tooFastMs ?? TOO_FAST_MS;
+
+  /*
+   * Ответы и лента событий — счётом в базе (lib/answerStats.ts). Время до
+   * первого выбора и «передумывал ли» — из ленты: это не то же самое, что
+   * общее время на вопросе и счётчик смен — человек мог долго думать, а
+   * потом быстро передумать. Ответы целиком — только выборки альфы и
+   * матрицы одного человека (её прохождений немного).
+   */
+  const { stats, sample, person } = await asSystem(async () => ({
+    stats: await answerStats({
+      questions: survey.questions,
+      responses: responseRows,
+      eventSample: latest.slice(0, EVENT_SAMPLE),
+      tooFastMs,
+      fitItems: keyItems,
+    }),
+    sample: await answersOf(alphaSample),
+    person: query.userId ? await answersOf(completed.map((r) => r.id), true) : null,
+  }));
 
   /*
    * Статистика пунктов — без недостоверных протоколов.
@@ -705,86 +796,50 @@ analyticsRoutes.get("/surveys/:id", async (c) => {
    * Воронка обрывов (dropOff) считается по всем: сданный недостоверный
    * бланк прошёл методику до конца, и из воронки он выпадать не должен.
    */
-  const answersByQuestion = new Map<string, typeof answerRows>();
-  const shownAll = new Map<string, number>();
-  for (const a of answerRows) {
-    shownAll.set(a.questionId, (shownAll.get(a.questionId) ?? 0) + 1);
-    if (unreliable.has(a.responseId)) continue;
-    const list = answersByQuestion.get(a.questionId) ?? [];
-    list.push(a);
-    answersByQuestion.set(a.questionId, list);
-  }
-
   const questionStats: QuestionAnalytics[] = survey.questions
     .filter((q) => q.type !== "info")
     .map((question) => {
-      const given = answersByQuestion.get(question.id) ?? [];
-      const real = given.filter((a) => !a.skipped);
-      const times = real.map((a) => a.durationMs).filter((d) => d > 0);
+      const s = stats.questions.get(question.id);
+      const given = s?.given ?? 0;
+      const real = s?.real ?? 0;
+      const times = s?.times ?? [];
       /*
        * Время до первого выбора есть только там, где сохранилась лента
        * событий. Её чистит срок хранения телеметрии (answer_events), и после
        * чистки здесь стоял ноль — «отвечали мгновенно» вместо «неизвестно».
        * Невычислимое — null (docs/ARCHITECTURE.md).
        */
-      const firsts = real
-        .map((a) => firstAnswerByKey.get(`${a.responseId}:${a.questionId}`))
-        .filter((v): v is number => v !== undefined);
+      const firstN = s?.firstN ?? 0;
 
       const base: QuestionAnalytics = {
         questionId: question.id,
         title: question.title,
         type: question.type,
         position: question.position,
-        shown: given.length,
-        answered: real.length,
-        skipped: given.length - real.length,
-        skipRate: percent(given.length - real.length, given.length),
+        shown: given,
+        answered: real,
+        skipped: given - real,
+        skipRate: percent(given - real, given),
+        // время приходит отсортированным (lib/answerStats.ts): квантили — без копий массива
         avgDurationMs: Math.round(average(times)),
-        medianDurationMs: Math.round(median(times)),
-        minDurationMs: times.length ? Math.min(...times) : 0,
-        maxDurationMs: times.length ? Math.max(...times) : 0,
-        p25DurationMs: Math.round(quantile(times, 0.25)),
-        p75DurationMs: Math.round(quantile(times, 0.75)),
-        avgChangeCount: round(average(real.map((a) => a.changeCount)), 2),
-        avgTimeToFirstAnswerMs: firsts.length ? Math.round(average(firsts)) : null,
-        changedShare: percent(
-          real.filter((a) => changedKeys.has(`${a.responseId}:${a.questionId}`) || a.changeCount > 0)
-            .length,
-          real.length,
-        ),
-        tooFastShare: percent(
-          times.filter((t) => t < (survey.tooFastMs ?? TOO_FAST_MS)).length,
-          times.length,
-        ),
+        medianDurationMs: Math.round(medianSorted(times)),
+        minDurationMs: times[0] ?? 0,
+        maxDurationMs: times.at(-1) ?? 0,
+        p25DurationMs: Math.round(quantileSorted(times, 0.25)),
+        p75DurationMs: Math.round(quantileSorted(times, 0.75)),
+        avgChangeCount: round(real ? (s?.changeSum ?? 0) / real : 0, 2),
+        // время до первого выбора и доля передумавших — по ленте событий выборки (EVENT_SAMPLE)
+        avgTimeToFirstAnswerMs: firstN ? Math.round((s?.firstSum ?? 0) / firstN) : null,
+        changedShare: percent(s?.changedReal ?? 0, s?.sampleReal ?? 0),
+        tooFastShare: percent(countBelow(times, tooFastMs), times.length),
       };
 
       const choiceTypes = ["single", "multiple", "yesno", "matrix", "ranking"];
       if (choiceTypes.includes(question.type)) {
-        const counts = new Map<string, number>();
+        const counts = s?.counts ?? new Map<string, number>();
         // сумма позиций варианта по всем ответам — из неё считаем средний ранг
-        const rankSums = new Map<string, number>();
-        let totalPicks = 0;
-
-        for (const a of real) {
-          if (question.type === "matrix") {
-            for (const id of Object.values(a.matrix ?? {})) {
-              counts.set(id, (counts.get(id) ?? 0) + 1);
-              totalPicks++;
-            }
-          } else if (question.type === "ranking") {
-            (a.ranking ?? []).forEach((id, index) => {
-              counts.set(id, (counts.get(id) ?? 0) + 1);
-              rankSums.set(id, (rankSums.get(id) ?? 0) + index + 1);
-              totalPicks++;
-            });
-          } else {
-            for (const id of a.optionIds ?? []) {
-              counts.set(id, (counts.get(id) ?? 0) + 1);
-              totalPicks++;
-            }
-          }
-        }
+        const rankSums = s?.rankSums ?? new Map<string, number>();
+        const totalPicks = s?.totalPicks ?? 0;
 
         base.options = question.options
           .filter((o) => o.kind === "option")
@@ -796,7 +851,7 @@ analyticsRoutes.get("/surveys/:id", async (c) => {
               count,
               // у матрицы каждый респондент заполняет все строки, поэтому база —
               // общее число ячеек, иначе доли суммарно превышают 100%
-              percent: question.type === "matrix" ? percent(count, totalPicks) : percent(count, real.length),
+              percent: question.type === "matrix" ? percent(count, totalPicks) : percent(count, real),
               score: Number.isFinite(o.score) ? o.score : null,
               ...(question.type === "ranking" && count > 0
                 ? { avgRank: round((rankSums.get(o.id) ?? 0) / count, 2) }
@@ -812,28 +867,26 @@ analyticsRoutes.get("/surveys/:id", async (c) => {
       }
 
       if (["scale", "slider", "number"].includes(question.type)) {
-        const values = real.map((a) => a.number).filter((v): v is number => v !== null);
+        const numbers = s?.numbers ?? [];
         base.numeric = {
-          average: round(average(values)),
-          median: round(median(values)),
-          min: values.length ? Math.min(...values) : 0,
-          max: values.length ? Math.max(...values) : 0,
-          distribution: distribution(values),
+          average: round(weightedMean(numbers)),
+          median: round(weightedMedian(numbers)),
+          min: numbers[0]?.value ?? 0,
+          max: numbers.at(-1)?.value ?? 0,
+          distribution: numbers.map((n) => ({ value: n.value, count: n.count })),
         };
       }
 
       if (["text", "longtext"].includes(question.type)) {
-        /* тот же случай, что в formatAnswer: текст хранится шифрованным */
-        base.texts = real
-          .map((a) => (a.text ? decryptField(a.text) : null))
-          .filter((t): t is string => !!t);
+        base.texts = s?.texts ?? [];
       }
 
       return base;
     });
 
   /*
-   * На каком пункте прохождение ОБРЫВАЕТСЯ — последний отвеченный пункт.
+   * На каком пункте прохождение ОБРЫВАЕТСЯ — последний отвеченный пункт
+   * незавершённого прохождения (lib/answerScan.ts).
    *
    * Это не то же, что «сколько человек досюда дошло»: воронка reached/lost
    * падает и когда пункт пропустили по логике показа, и когда его просто
@@ -843,33 +896,13 @@ analyticsRoutes.get("/surveys/:id", async (c) => {
    *
    * Порядок — по позиции вопроса в методике, а не по времени ответа: человек
    * может вернуться назад и поправить ответ, и «последний по времени» показал
-   * бы пункт, к которому он вернулся, а не тот, на котором ушёл.
+   * бы пункт, к которому он вернулся, а не тот, на котором ушёл. Только
+   * незавершённые: у сданного прохождения «последний отвеченный» — почти
+   * всегда последний пункт методики.
    */
-  const positionOf = new Map(survey.questions.map((q) => [q.id, q.position]));
-  /*
-   * Только незавершённые: у сданного прохождения «последний отвеченный» —
-   * почти всегда последний пункт методики, и без этого фильтра последний
-   * пункт выходил бы главным местом обрыва ровно на число сдавших.
-   */
-  const unfinished = new Set(responseRows.filter((r) => r.status !== "completed").map((r) => r.id));
-  const lastOfResponse = new Map<string, { questionId: string; position: number }>();
-  for (const a of answerRows) {
-    if (a.skipped || !unfinished.has(a.responseId)) continue;
-    const position = positionOf.get(a.questionId);
-    if (position === undefined) continue;
-    const seen = lastOfResponse.get(a.responseId);
-    if (!seen || position > seen.position) {
-      lastOfResponse.set(a.responseId, { questionId: a.questionId, position });
-    }
-  }
-  const lastAnsweredCount = new Map<string, number>();
-  for (const { questionId } of lastOfResponse.values()) {
-    lastAnsweredCount.set(questionId, (lastAnsweredCount.get(questionId) ?? 0) + 1);
-  }
-
   let previousReached = responseRows.length;
   const dropOff = questionStats.map((q) => {
-    const reached = shownAll.get(q.questionId) ?? 0;
+    const reached = stats.questions.get(q.questionId)?.shownAll ?? 0;
     const lost = Math.max(0, previousReached - reached);
     previousReached = reached;
     /*
@@ -878,7 +911,7 @@ analyticsRoutes.get("/surveys/:id", async (c) => {
      * это сведение о конкретном человеке, а не о методике, и в отделении из
      * шести обследуемых его узнают.
      */
-    const ended = cell(lastAnsweredCount.get(q.questionId) ?? 0, responseRows.length);
+    const ended = cell(stats.lastAnsweredCount.get(q.questionId) ?? 0, responseRows.length);
     return {
       questionId: q.questionId,
       title: q.title,
@@ -899,18 +932,13 @@ analyticsRoutes.get("/surveys/:id", async (c) => {
   }
 
   /*
-   * Балл каждого пункта по каждому прохождению — основа психометрики.
+   * Балл каждого пункта по каждому прохождению выборки — основа психометрики.
    *
    * Считаем вклад заново по ключу шкалы, а не берём answers.score: у методик
    * с ключом вклад определяется совпадением ответа с ожидаемым «Да»/«Нет»,
    * а не баллом варианта, и один пункт может входить в разные шкалы по-разному.
    */
-  const answersByResponseId = new Map<string, Map<string, (typeof answerRows)[number]>>();
-  for (const a of answerRows) {
-    const map = answersByResponseId.get(a.responseId) ?? new Map();
-    map.set(a.questionId, a);
-    answersByResponseId.set(a.responseId, map);
-  }
+  const answersByResponseId = sample.byResponse;
 
   const questionById = new Map(survey.questions.map((q) => [q.id, q]));
   const contributionsFor = (scale: (typeof survey.scales)[number], skip: ReadonlySet<string>) => {
@@ -948,7 +976,8 @@ analyticsRoutes.get("/surveys/:id", async (c) => {
    */
   const floorCeilingOf = (rows: typeof scoreRows) => {
     if (!rows.length) return null;
-    const raw = rows.map((r) => r.rawScore);
+    // балл после поправок: maxScore записан для него (#133); у строк до 0118 — сырой
+    const raw = rows.map((r) => r.correctedScore ?? r.rawScore);
     if (raw.some((v) => v < 0)) return null;
     const maxPossible = rows[0]!.maxScore;
     return floorCeiling(raw, 0, maxPossible);
@@ -970,8 +999,8 @@ analyticsRoutes.get("/surveys/:id", async (c) => {
     return { ...err, basis: { sd: round(sd), alpha, sampleN: values.length } };
   };
 
-  /* момент сдачи — для недель общего состояния; у балла своей даты нет */
-  const submittedAtOf = new Map(responseRows.map((r) => [r.id, r.submittedAt]));
+  /* день сдачи — для недель общего состояния; у балла своей даты нет */
+  const dayOfResponse = new Map(responseRows.map((r) => [r.id, r.day]));
   const timelines: SurveyAnalytics["scaleTimeline"] = [];
 
   /*
@@ -1019,8 +1048,8 @@ analyticsRoutes.get("/surveys/:id", async (c) => {
 
     timelines.push({
       scaleId: scale.id,
-      weeks: weeklyMeans(
-        kept.map((s) => ({ at: submittedAtOf.get(s.responseId) ?? null, value: s.value })),
+      weeks: weeklyMeansOfDays(
+        kept.map((s) => ({ day: dayOfResponse.get(s.responseId) ?? null, value: s.value })),
         SMALL_CELL_FLOOR,
       ),
     });
@@ -1053,85 +1082,59 @@ analyticsRoutes.get("/surveys/:id", async (c) => {
   });
 
   /*
-   * Person-fit (7.1): берём самую длинную ключевую шкалу — на ней трудность
-   * пунктов оценивается устойчивее всего. Порядок «от лёгкого к трудному» —
-   * по доле срабатывания в этой же выборке: собственная трудность честнее
-   * любой внешней таблицы.
+   * Person-fit по ключевой шкале (fitScale выше): трудность пункта — доля
+   * срабатывания по всем прохождениям, где отвечены все ключевые пункты;
+   * порядок «от лёгкого к трудному» — по ней же (lib/answerScan.ts).
    */
-  const fitScale = [...survey.scales]
-    .filter((sc) => sc.kind === "clinical" && sc.items.filter((i) => i.matchKey !== null).length >= 4)
-    .sort((a, b) => b.items.length - a.items.length)[0];
-
   const personFitByResponse = new Map<string, number | null>();
-  if (fitScale) {
-    const keyItems = fitScale.items.filter((i) => i.matchKey !== null);
-    const hitsByResponse = new Map<string, Map<string, 0 | 1>>();
-    for (const [responseId, byQuestion] of answersByResponseId) {
-      const row = new Map<string, 0 | 1>();
-      for (const item of keyItems) {
-        const question = questionById.get(item.questionId);
-        const stored = byQuestion.get(item.questionId);
-        if (!question || !stored) continue;
-        const v = itemContribution(question, item, {
-          questionId: item.questionId,
-          optionIds: stored.optionIds ?? undefined,
-          matrix: stored.matrix ?? undefined,
-          skipped: stored.skipped,
-        });
-        if (v !== null) row.set(item.questionId, v > 0 ? 1 : 0);
-      }
-      if (row.size === keyItems.length) hitsByResponse.set(responseId, row);
-    }
-
-    const difficulty = new Map<string, number>();
-    for (const item of keyItems) {
-      let hits = 0;
-      let total = 0;
-      for (const row of hitsByResponse.values()) {
-        const v = row.get(item.questionId);
-        if (v === undefined) continue;
-        total += 1;
-        hits += v;
-      }
-      // доля срабатывания: чем меньше, тем пункт «труднее»
-      difficulty.set(item.questionId, total ? hits / total : 0);
-    }
-    const orderedEasyFirst = [...difficulty.entries()]
-      .sort((a, b) => b[1] - a[1])
-      .map(([qid]) => qid);
-
-    for (const [responseId, row] of hitsByResponse) {
-      const vector = orderedEasyFirst.map((qid) => row.get(qid)!) as (0 | 1)[];
-      personFitByResponse.set(responseId, guttmanErrorsNormed(vector));
+  if (keyItems) {
+    const { hits, rows } = stats.fitDifficulty;
+    // доля срабатывания: чем меньше, тем пункт «труднее»; ничья — в порядке шкалы
+    const easyFirst = keyItems
+      .map((_, index) => ({ index, difficulty: rows ? hits[index]! / rows : 0 }))
+      .sort((a, b) => b.difficulty - a.difficulty)
+      .map((x) => x.index);
+    for (const [responseId, row] of stats.fitHits) {
+      personFitByResponse.set(responseId, guttmanErrorsNormed(easyFirst.map((i) => row[i]! as 0 | 1)));
     }
   }
   const personFitOf = (responseId: string) => personFitByResponse.get(responseId) ?? null;
 
-  const answersByResponse = new Map<string, typeof answerRows>();
-  for (const a of answerRows) {
-    const list = answersByResponse.get(a.responseId) ?? [];
-    list.push(a);
-    answersByResponse.set(a.responseId, list);
-  }
+  /* признаки посчитаны базой по ответам прохождения (lib/answerStats.ts), person-fit — выше */
+  // флаги — только у тех, у кого есть причина: объект на каждое из десятков тысяч прохождений незачем
+  const flagged = completed.filter((r) => qualityFlagged(stats.markers.get(r.id) ?? NO_MARKERS, personFitOf(r.id)));
 
+  /*
+   * Имена — только тех, кто попал в флаги качества, и под политиками
+   * смотрящего (#187): больше их нигде нет, а расшифровка ФИО всех
+   * респондентов методики — тысячи расшифровок на запрос.
+   */
   const respondentNames = new Map<string, string>();
-  const respondentIds = [...new Set(completed.map((r) => r.userId).filter((id): id is string => !!id))];
+  const respondentIds = [...new Set(flagged.map((r) => r.userId).filter((id): id is string => !!id))];
   if (respondentIds.length) {
-    const rows = await db.select().from(users).where(inArray(users.id, respondentIds));
+    // одним параметром (#194): флагов бывают тысячи
+    const rows = await db
+      .select({
+        id: users.id,
+        firstName: users.firstName,
+        lastName: users.lastName,
+        middleName: users.middleName,
+        anonymous: users.anonymous,
+        pseudonym: users.pseudonym,
+      })
+      .from(users)
+      .where(inIds(users.id, respondentIds));
     for (const u of rows) respondentNames.set(u.id, fullNameOf(u));
   }
 
-  // порог берём из настроек методики: у матричной и у «да/нет» он разный
-  const tooFastMs = survey.tooFastMs ?? TOO_FAST_MS;
-  const quality = completed
+  const quality = flagged
     .map((r) =>
-      qualityOf(
+      qualityFlags(
         r.id,
         r.userId ? (respondentNames.get(r.userId) ?? null) : null,
         r.submittedAt,
         r.durationMs,
-        answersByResponse.get(r.id) ?? [],
-        survey.questions,
+        stats.markers.get(r.id) ?? NO_MARKERS,
         tooFastMs,
         personFitOf(r.id),
         readerLang,
@@ -1144,7 +1147,7 @@ analyticsRoutes.get("/surveys/:id", async (c) => {
    * Матрица «пункт × прохождение» — только для одного человека: по отделению
    * она была бы поимённой выгрузкой ответов всех, а не аналитикой.
    */
-  const answerMatrix = query.userId ? matrixOf(survey, completed, answersByResponseId, changedKeys) : null;
+  const answerMatrix = person ? matrixOf(survey, completed, person.byResponse, person.changed) : null;
 
   const result: SurveyAnalytics = {
     surveyId,
@@ -1162,7 +1165,7 @@ analyticsRoutes.get("/surveys/:id", async (c) => {
     dropOff,
     questions: questionStats,
     scales: scaleStats,
-    timeline: timelineByDay(completed.map((r) => r.submittedAt)),
+    timeline: timelineOfDays(completed.map((r) => r.day)),
     quality,
     tooFastThresholdMs: tooFastMs,
     respondentCount: new Set(completed.map((r) => r.userId).filter(Boolean)).size,
@@ -1189,6 +1192,48 @@ analyticsRoutes.get("/surveys/:id", async (c) => {
   });
   return c.json(result);
 });
+
+/** Строка json из базы (json_agg(...)::text) — разобранной; null — пусто */
+function parsedJson<T>(text: string | null | undefined): T | null {
+  return text ? (JSON.parse(text) as T) : null;
+}
+
+/** Признаки прохождения без единого ответа */
+const NO_MARKERS = { tooFastShare: 0, longestStraightLine: 0, tooShort: false };
+
+/** Сколько значений отсортированного по возрастанию массива меньше порога */
+function countBelow(sorted: readonly number[], limit: number): number {
+  let n = 0;
+  while (n < sorted.length && sorted[n]! < limit) n++;
+  return n;
+}
+
+/** Среднее по распределению «значение — сколько раз» — то же, что average по самим значениям */
+function weightedMean(values: readonly { value: number; count: number }[]): number {
+  let n = 0;
+  let sum = 0;
+  for (const v of values) {
+    n += v.count;
+    sum += v.value * v.count;
+  }
+  return n ? sum / n : 0;
+}
+
+/** Медиана по распределению, отсортированному по значению, — то же, что median из lib/stats.ts */
+function weightedMedian(values: readonly { value: number; count: number }[]): number {
+  const n = values.reduce((sum, v) => sum + v.count, 0);
+  if (!n) return 0;
+  const at = (index: number) => {
+    let seen = 0;
+    for (const v of values) {
+      seen += v.count;
+      if (index < seen) return v.value;
+    }
+    return values.at(-1)!.value;
+  };
+  const mid = Math.floor(n / 2);
+  return n % 2 === 0 ? (at(mid - 1) + at(mid)) / 2 : at(mid);
+}
 
 /** Сколько последних прохождений человека стоит в матрице ответов */
 const MATRIX_COLUMNS = 6;

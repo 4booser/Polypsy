@@ -30,16 +30,35 @@ export interface RlsIdentity {
   role: "superadmin" | "admin" | "user" | "system";
 }
 
+/**
+ * Сколько может идти один оператор в транзакции запроса (#186).
+ *
+ * Только у транзакции запроса — SET LOCAL, а не настройкой роли или базы:
+ * фоновые задачи (планировщик, рассыльщик, сверка журнала, проверки
+ * «Якості даних») идут systemContext своими транзакциями и законно бывают
+ * дольше; общий короткий предел ронял бы их. Минута — с запасом против
+ * самого тяжёлого чтения на целевом объёме и вдвое меньше простоя
+ * соединения (serve.ts): брошенный оператор не переживает ответ, которого
+ * никто уже не ждёт. Обрыв клиента отменяет запрос раньше — см.
+ * cancelOnAbort.ts; предел — страховка там, где обрыва не видно.
+ */
+export const REQUEST_STATEMENT_TIMEOUT_MS = 60_000;
+
 /** Выполнить fn в транзакции с установленным контекстом */
 export async function withDbContext<T>(
   base: typeof DbType,
   identity: RlsIdentity,
   fn: () => Promise<T>,
+  settings: { statementTimeoutMs?: number } = {},
 ): Promise<T> {
   return base.transaction(async (tx) => {
     await tx.execute(
-      sql`select set_config('app.user_id', ${identity.userId ?? ""}, true),
-                 set_config('app.role', ${identity.role}, true)`,
+      settings.statementTimeoutMs
+        ? sql`select set_config('app.user_id', ${identity.userId ?? ""}, true),
+                     set_config('app.role', ${identity.role}, true),
+                     set_config('statement_timeout', ${String(settings.statementTimeoutMs)}, true)`
+        : sql`select set_config('app.user_id', ${identity.userId ?? ""}, true),
+                     set_config('app.role', ${identity.role}, true)`,
     );
     return dbContext.run(tx as Tx, fn);
   });
@@ -176,18 +195,80 @@ interface RequestScope {
    * нельзя по определению. always — писать и при откате (отказ, сбой).
    */
   deferred: { write: () => Promise<unknown>; always: boolean }[];
+  /** Клиент ушёл — см. RequestAbort */
+  abort: RequestAbort;
+}
+
+/**
+ * Обрыв клиента посреди запроса (#186).
+ *
+ * Bun обрывает соединение по простою (serve.ts) и сообщает об уходе клиента
+ * сигналом запроса, но обработчик об этом не знает и работает дальше —
+ * держа транзакцию и соединение пула, пока не кончит. Человек жмёт «ещё
+ * раз» — второе соединение; десять таких — пул пуст. Поэтому обрыв
+ * отменяет запросы к базе, которые идут (отмена протоколом Postgres, мимо
+ * пула), а новые не отправляются вовсе: обработчик получает ошибку на
+ * ближайшем обращении, транзакция откатывается, соединение возвращается.
+ * Сама отмена — db/cancelOnAbort.ts, на шве drizzle.
+ */
+export interface RequestAbort {
+  aborted: boolean;
+  /** Запросы, отправленные и ещё не ответившие, — их и отменяет обрыв */
+  inflight: Set<CancellableQuery>;
+}
+
+/** Запрос postgres.js, который можно отменить (см. cancelOnAbort.ts) */
+export interface CancellableQuery {
+  canceller?: ((query: CancellableQuery) => unknown) | null;
 }
 
 const requestScope = new AsyncLocalStorage<RequestScope>();
+
+/** Обрыв текущего запроса; вне транзакции запроса — null */
+export function currentRequestAbort(): RequestAbort | null {
+  return requestScope.getStore()?.abort ?? null;
+}
+
+/**
+ * Выполнить fn вне запроса: без его транзакции и без отмены по его обрыву.
+ * Для прохода, запущенного из запроса фоном (ручной запуск задачи
+ * техпанели): ушедший клиент не должен останавливать задачу, которую он
+ * успел запустить, а транзакция запроса закроется вместе с ответом.
+ */
+export function outsideRequest<T>(fn: () => T): T {
+  return requestScope.exit(() => dbContext.exit(fn));
+}
 
 export async function withRequestContext(
   base: typeof DbType,
   identity: RlsIdentity,
   run: () => Promise<void>,
   failed: () => boolean,
-  options: { readOnly?: boolean } = {},
+  options: { readOnly?: boolean; signal?: AbortSignal } = {},
 ): Promise<void> {
-  const scope: RequestScope = { tx: null, survivors: [], readOnly: options.readOnly ?? false, deferred: [] };
+  const scope: RequestScope = {
+    tx: null,
+    survivors: [],
+    readOnly: options.readOnly ?? false,
+    deferred: [],
+    abort: { aborted: options.signal?.aborted ?? false, inflight: new Set() },
+  };
+  const onAbort = () => abortRequest(scope.abort);
+  options.signal?.addEventListener("abort", onAbort, { once: true });
+  try {
+    await runRequest(base, identity, scope, run, failed);
+  } finally {
+    options.signal?.removeEventListener("abort", onAbort);
+  }
+}
+
+async function runRequest(
+  base: typeof DbType,
+  identity: RlsIdentity,
+  scope: RequestScope,
+  run: () => Promise<void>,
+  failed: () => boolean,
+): Promise<void> {
   let rolledBack = false;
   let foreign: unknown = null;
   try {
@@ -207,7 +288,7 @@ export async function withRequestContext(
         if (scope.readOnly) await scope.tx!.execute(sql`set transaction read only`);
         await run();
         if (failed()) throw new RequestFailed();
-      }),
+      }, { statementTimeoutMs: REQUEST_STATEMENT_TIMEOUT_MS }),
     );
   } catch (err) {
     /*
@@ -225,6 +306,32 @@ export async function withRequestContext(
     scope.deferred.filter((d) => d.always || !rolledBack).map((d) => d.write),
   );
   if (foreign) throw foreign;
+}
+
+/**
+ * Клиент ушёл: отменить идущие запросы и не пускать новые.
+ *
+ * Отмена — протоколом Postgres (CancelRequest по номеру процесса и ключу
+ * соединения), отдельным коротким подключением, а не запросом через пул:
+ * пул в этот момент может быть занят ровно такими брошенными запросами.
+ * Обещание отмены postgres.js отдаёт в никуда (Query.cancel), и его отказ —
+ * база недоступна — стал бы необработанным; поэтому функция отмены зовётся
+ * здесь напрямую, с перехватом. Запрос, ещё не ушедший в соединение,
+ * postgres.js отменяет сам, без сервера.
+ */
+export function abortRequest(abort: RequestAbort): void {
+  if (abort.aborted) return;
+  abort.aborted = true;
+  for (const query of abort.inflight) cancelQuery(query);
+}
+
+export function cancelQuery(query: CancellableQuery): void {
+  const canceller = query.canceller;
+  if (!canceller) return;
+  query.canceller = null;
+  Promise.resolve()
+    .then(() => canceller(query))
+    .catch(() => {});
 }
 
 /**

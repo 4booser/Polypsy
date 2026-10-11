@@ -89,9 +89,11 @@ async function draftWithReferral() {
   const answers = [
     { questionId: shown.questions[0]!.id, optionIds: [shown.questions[0]!.options[0]!.id], durationMs: 1000, changeCount: 0, visitCount: 1 },
   ];
+  // одна попытка — одно время начала у черновика и у сдачи, как у клиента (#147)
+  const startedAt = new Date(Date.now() - 60_000).toISOString();
   const draft = await appApi(`/api/surveys/${surveyId}/draft`, person.token, {
     method: "PUT",
-    body: JSON.stringify({ startedAt: new Date(Date.now() - 60_000).toISOString(), durationMs: 20_000, versionId: shown.versionId, answers }),
+    body: JSON.stringify({ startedAt, durationMs: 20_000, versionId: shown.versionId, answers }),
   });
   expect(draft.status, JSON.stringify(draft.body)).toBe(200);
   const referralId = crypto.randomUUID();
@@ -112,7 +114,7 @@ async function draftWithReferral() {
       appApi(`/api/surveys/${surveyId}/responses`, person.token, {
         method: "POST",
         body: JSON.stringify({
-          startedAt: new Date(Date.now() - 60_000).toISOString(),
+          startedAt,
           durationMs: 60_000,
           events: [],
           versionId: shown.versionId,

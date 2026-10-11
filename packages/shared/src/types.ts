@@ -390,6 +390,23 @@ export interface User {
  */
 export const PASSWORD_CHANGE_CODE = "password_change_required";
 
+/**
+ * Отказы, после которых черновик попытки больше не нужен: невозвратная
+ * методика уже сдана (err.alreadyTaken) или сдана сама эта попытка — тот же
+ * startedAt (err.attemptAlreadySubmitted, PUT /surveys/:id/draft).
+ *
+ * Отказы сервер отдаёт текстом, а не кодами (errorStrings.ts), — эти два
+ * едут ещё и ключом в поле `code` (app.ts, onError): по ним мобилка стирает
+ * свой черновик, а не досылает его при каждом прогоне очереди. Решать по
+ * тексту нельзя — он на языке человека, — а соседний 409 того же маршрута
+ * (err.draftOtherVersion) черновик стирать не велит.
+ */
+export const ATTEMPT_CLOSED_CODES: readonly string[] = ["err.alreadyTaken", "err.attemptAlreadySubmitted"];
+
+export function isAttemptClosedCode(code: unknown): boolean {
+  return typeof code === "string" && ATTEMPT_CLOSED_CODES.includes(code);
+}
+
 /** Кто смотрит «от имени» — см. User.impersonation */
 export interface ImpersonationInfo {
   sessionId: string;
@@ -531,6 +548,11 @@ export interface OpsSession {
   /** Последнее обновление токена — выдача текущего */
   lastUsedAt: string;
   expiresAt: string;
+  /**
+   * Ступень лестницы владельца (как у OpsUserRow): экран не предлагает
+   * «Завершити» учётке на ступени смотрящего и выше — сервер ответил бы 403
+   */
+  ladderRank: number;
 }
 
 export interface OpsSessionPage {
@@ -1708,6 +1730,23 @@ export interface SurveyFull extends Survey {
    * выбирался вовсе.
    */
   contentLang?: Lang;
+  /**
+   * Ключ методики не отдан: так методику видит обследуемый (#141).
+   *
+   * Сервер срезает с выдачи пациенту веса вариантов (score), коды ключа
+   * (keyCode), критические варианты и пороги (risk*), обратный ключ, шкалы
+   * со шкалой лжи, полосами и порогами достоверности — у вариантов и
+   * пунктов эти поля ОТСУТСТВУЮТ, а scales пуст. Остаётся то, чем
+   * методику проходят: тексты, типы, варианты, подписи краёв шкалы,
+   * условия показа — и вес варианта с обратным ключом у пунктов, на
+   * которых стоит числовое условие показа (gt/gte/lt/lte): без них
+   * isQuestionVisible на устройстве разошёлся бы с сервером.
+   *
+   * Офлайн риск по такой копии не решить: она не знает, какие ответы
+   * критические. Клиенты тогда показывают план безопасности из
+   * предосторожности (web patient/outbox.ts, mobile api/client.ts).
+   */
+  keyWithheld?: boolean;
 }
 
 /**
@@ -2067,7 +2106,10 @@ export interface ResponseDetailAnswer {
   options: {
     id: string;
     text: string;
-    /** Выбор этого варианта поднимает тревогу немедленно */
+    /**
+     * Выбор этого варианта поднимает тревогу немедленно. Только персоналу:
+     * обследуемому ключ не отдаётся (#141), у него этих двух полей нет.
+     */
     riskFlag: boolean;
     riskSeverity: RiskSeverity | null;
     /**
@@ -2082,6 +2124,7 @@ export interface ResponseDetailAnswer {
   date: string | null;
   matrix: Record<string, string> | null;
   ranking: string[] | null;
+  /** Балл за ответ — вес выбранного варианта; обследуемому null (#141) */
   score: number | null;
   durationMs: number;
   changeCount: number;
@@ -3852,7 +3895,14 @@ export interface AuditEntry {
 
 export interface AuditPage {
   entries: AuditEntry[];
-  total: number;
+  /** Всего по отбору — только на первой странице (без курсора и смещения); на следующих поля нет */
+  total?: number;
+  /**
+   * Дни, за которые искался свободный текст (`q`), — только когда он задан.
+   * Текст ищется не дальше 31 дня: период отбора, если он короче, иначе
+   * последние 31 день периода (без периода — до сегодня).
+   */
+  searchPeriod?: { from: string; to: string };
   /** Сколько записей пропущено — для постраничной выдачи */
   offset: number;
   limit: number;

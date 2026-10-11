@@ -1,7 +1,9 @@
-import { and, eq, inArray, isNotNull, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import type { SurveyFull } from "@quizzy/shared";
 import { db } from "../db";
 import { asSystem } from "../db/context";
+import { inIds } from "../db/ids";
+import { inIndexOrder } from "../db/latest";
 import { responseScores, responses, scales } from "../db/schema";
 import { rawSignature, valueSignature } from "./comparable";
 import { percentileOf } from "./norms";
@@ -119,7 +121,7 @@ export function referencePercentile(value: number, sample: readonly number[]): n
   return percentileOf(value, [...sample]);
 }
 
-/** Что сравнивается: сырой балл (печатный лист) или приведённое значение — T, стен, доля (динамика) */
+/** Что сравнивается: балл до нормировки, после поправок (печатный лист) или приведённое значение — T, стен, доля (динамика) */
 export type Measure = "raw" | "value";
 
 /** Точка, для которой нужна выборка: версия, шкала, размах сырого балла и единицы */
@@ -162,9 +164,25 @@ export async function referenceSamples(
   measure: Measure,
   targets: readonly SampleTarget[],
 ): Promise<(target: SampleTarget) => number[]> {
-  const pick = await referenceObservationSets(surveyId, measure, targets);
+  const pick = await referenceObservationSets(surveyId, measure, targets, () => true, REFERENCE_LATEST);
   return (target) => pick(target).map((o) => o.value);
 }
+
+/**
+ * Из скольких последних прохождений методики набирается выборка перцентиля
+ * (#188).
+ *
+ * Прежде — из всех: перцентиль одной точки в динамике и на листе читал
+ * баллы всех прохождений методики учреждения, и время росло с каждым чужим
+ * прохождением. Пять тысяч прохождений — это люди, обследованные этой
+ * методикой в последнее время (по последнему такому прохождению на
+ * человека, как и прежде), а перцентиль и отвечает «где он среди тех, кого
+ * здесь обследуют»; ошибка перцентиля на таком числе людей — доли пункта.
+ * Пока прохождений меньше, выборка та же, что прежде. Возрастные кривые
+ * норм (routes/norms.ts) зовут referenceObservationSets без предела: им
+ * нужны все наблюдения.
+ */
+export const REFERENCE_LATEST = 5000;
 
 /**
  * То же, что referenceSamples, но наблюдениями, а не числами: возрастным
@@ -181,9 +199,40 @@ export async function referenceObservationSets(
   measure: Measure,
   targets: readonly SampleTarget[],
   keep: (o: Observation) => boolean = () => true,
+  /** Только последние столько прохождений методики (REFERENCE_LATEST); не задано — все */
+  latest?: number,
 ): Promise<(target: SampleTarget) => Observation[]> {
   const codes = [...new Set(targets.map((t) => t.code))];
   if (!codes.length) return () => [];
+
+  /*
+   * Последние прохождения — отдельным запросом и путём по индексу
+   * (survey_id, submitted_at), а не перебором всех (db/latest.ts); условия
+   * отбора — те же, что у самой выборки ниже.
+   */
+  const recent = latest
+    ? (
+        await asSystem(() =>
+          inIndexOrder(() =>
+            db
+              .select({ id: responses.id })
+              .from(responses)
+              .where(
+                and(
+                  eq(responses.surveyId, surveyId),
+                  eq(responses.status, "completed"),
+                  eq(responses.reliable, true),
+                  isNotNull(responses.userId),
+                  patientRespondent("responses"),
+                ),
+              )
+              .orderBy(desc(responses.submittedAt))
+              .limit(latest),
+          ),
+        )
+      ).map((r) => r.id)
+    : null;
+  if (recent && !recent.length) return () => [];
 
   const rows = await asSystem(() =>
     db
@@ -193,7 +242,17 @@ export async function referenceObservationSets(
         versionId: responses.versionId,
         reliable: responses.reliable,
         submittedAt: responses.submittedAt,
-        value: measure === "raw" ? responseScores.rawScore : responseScores.value,
+        /*
+         * «Сырой» у листа — балл до нормировки, но ПОСЛЕ поправок (#133): лист
+         * печатает его «з максимуму», и максимум записан тоже после поправок.
+         * Сырой балл без поправок у ЛАП МЛО — всегда 0, и выборка из одних
+         * нулей давала 50-й перцентиль любому человеку. У строк до волны 18
+         * балла после поправок нет (0118) — там он и есть сырой.
+         */
+        value:
+          measure === "raw"
+            ? sql<number>`coalesce(${responseScores.correctedScore}, ${responseScores.rawScore})`
+            : responseScores.value,
         maxScore: responseScores.maxScore,
         unit: measure === "raw" ? sql<string>`'raw'` : responseScores.normalization,
         code: scales.code,
@@ -204,6 +263,7 @@ export async function referenceObservationSets(
       .where(
         and(
           eq(responses.surveyId, surveyId),
+          recent ? inIds(responses.id, recent) : undefined,
           eq(responses.status, "completed"),
           /* то же, что отсечёт политика, — отсекается и здесь: меньше строк тащить */
           eq(responses.reliable, true),

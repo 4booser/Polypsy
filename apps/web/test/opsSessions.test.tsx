@@ -132,7 +132,7 @@ function res<T>(over: Partial<Resource<T>> = {}): Resource<T> {
   };
 }
 
-const session = (n: number): OpsSession => ({
+const session = (n: number, over: Partial<OpsSession> = {}): OpsSession => ({
   id: `fam-${n}`,
   userId: `u-${n}`,
   fullName: `Коваль ${n}`,
@@ -141,11 +141,16 @@ const session = (n: number): OpsSession => ({
   startedAt: "2026-09-27T08:00:00.000Z",
   lastUsedAt: "2026-09-27T09:00:00.000Z",
   expiresAt: "2026-10-27T09:00:00.000Z",
+  ladderRank: 1,
+  ...over,
 });
 const pageOf = (items: OpsSession[]): OpsSessionPage => ({ items, total: items.length, page: 1, per: 10 });
 
+type Viewer = Parameters<typeof SessionsList>[0]["me"];
+const SUPER: Viewer = { id: "root", role: "superadmin", ladderRank: 4 };
 const EMPTY = "Сесій за цим відбором немає — перевірка";
-const list = (r: Resource<OpsSessionPage>, busy = false) => draw(<SessionsList res={r} empty={EMPTY} busy={busy} onEnd={() => {}} />);
+const list = (r: Resource<OpsSessionPage>, busy = false, me: Viewer = SUPER) =>
+  draw(<SessionsList res={r} empty={EMPTY} me={me} busy={busy} onEnd={() => {}} />);
 
 /** Кнопки «Завершити»: погашена ли каждая — по атрибуту, а не по классам (в них есть утилиты `disabled:`) */
 const endButtons = (html: string) =>
@@ -192,6 +197,47 @@ describe("«Сесії»: что стоит на месте списка", () =>
     const rows = res({ data: pageOf([session(1), session(2)]), updatedAt: 1 });
     expect(endButtons(list(rows))).toEqual([false, false]);
     expect(endButtons(list(rows, true))).toEqual([true, true]);
+  });
+});
+
+describe("«Сесії»: «Завершити» — только там, где сервер позволит (#175)", () => {
+  /*
+   * Пункт «Сесії людини» у недосягаемой учётки в меню «Користувачів»
+   * оставлен (03178c3) — а вкладка предлагала «Завершити» у каждой строки:
+   * заведующий нажимал на сессии главного врача, получал 403 и запись
+   * отказа в журнал. Правило — то же, что у меню строки (accountOutOfReach).
+   */
+  const HEAD: Viewer = { id: "u-head", role: "admin", ladderRank: 2 };
+  const rows = res({
+    updatedAt: 1,
+    data: pageOf([
+      session(1, { role: "admin", ladderRank: 3 }), // главный врач — выше
+      session(2, { role: "admin", ladderRank: 2 }), // другой заведующий — вровень
+      session(3, { role: "superadmin", ladderRank: 4 }),
+      session(4, { role: "admin", ladderRank: 1 }), // специалист — ниже
+      session(5, { role: "user", ladderRank: 0 }), // пациент
+      session(6, { userId: "u-head", role: "admin", ladderRank: 2 }), // своя — это выход
+    ]),
+  });
+  const offered = (html: string) => [...html.matchAll(/aria-label="[^"]*: (Коваль \d+)"/g)].map((m) => m[1]);
+
+  test("заведующему — без кнопки у главного врача, равного и суперадмина", () => {
+    expect(offered(list(rows, false, HEAD))).toEqual(["Коваль 4", "Коваль 5", "Коваль 6"]);
+  });
+
+  test("положительный контроль: суперадмину — у всех строк", () => {
+    expect(offered(list(rows, false, SUPER))).toEqual(["Коваль 1", "Коваль 2", "Коваль 3", "Коваль 4", "Коваль 5", "Коваль 6"]);
+  });
+
+  test("строка без кнопки остаётся строкой: имя и почта на месте", () => {
+    const html = list(rows, false, HEAD);
+    expect(html).toContain("koval1@clinic.ua");
+    expect(html).toContain("koval3@clinic.ua");
+  });
+
+  test("вкладка передаёт списку того, кто смотрит", () => {
+    const src = readFileSync(resolve(import.meta.dir, "../src/pages/ops/Sessions.tsx"), "utf8");
+    expect(src).toContain("me={user}");
   });
 });
 

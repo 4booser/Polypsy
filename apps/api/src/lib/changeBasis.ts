@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import {
   MIN_RCI_SAMPLE,
   comparability,
@@ -11,6 +11,9 @@ import {
   type ScaleDynamics,
 } from "@quizzy/shared";
 import { db } from "../db";
+import { asSystem } from "../db/context";
+import { inIds } from "../db/ids";
+import { inIndexOrder } from "../db/latest";
 import { answers, responseScores, responses, scales } from "../db/schema";
 import { log } from "./log";
 import { reliabilityOf } from "./psychometrics";
@@ -49,32 +52,82 @@ export const basisOf = (versionId: string | null, score: { normalized: boolean; 
 const sampleKey = (surveyId: string, code: string, basis: string) => `${surveyId}:${code}:${basis}`;
 
 /**
- * Нормативная выборка методик: все нормированные баллы, разложенные по
- * методике, коду шкалы и основе. Ненормированные не идут никуда: сырой
- * балл среди T-баллов — сравнение в двух единицах (см. comparableScores).
+ * Сколько последних прохождений версии идёт в нормативную выборку (SD для
+ * RCI и моменты для приведения версий, #188).
+ *
+ * Прежде выборкой были ВСЕ нормированные баллы всех методик зоны
+ * сотрудника: ради динамики одного человека читалось 309 тыс. строк, и
+ * число росло с каждым прохождением учреждения (40 с у врача на синтетике).
+ * Две тысячи — с запасом для SD: её относительная ошибка ≈ 1/√(2n) — 1,6 %,
+ * на RCI и SEM это сотые доли; порог MIN_RCI_SAMPLE (30) остаётся порогом.
+ * Пока прохождений версии меньше, выборка та же, что прежде, — все.
  */
-export async function normativeSamples(surveyIds: string[]): Promise<Map<string, number[]>> {
+export const NORM_SAMPLE = 2000;
+
+/** Последние `limit` завершённых прохождений версии методики — путём по индексу (db/latest.ts) */
+async function latestCompleted(surveyId: string, versionId: string | null, limit: number): Promise<string[]> {
+  const rows = await inIndexOrder(() =>
+    db
+      .select({ id: responses.id })
+      .from(responses)
+      .where(
+        and(
+          eq(responses.surveyId, surveyId),
+          versionId ? eq(responses.versionId, versionId) : isNull(responses.versionId),
+          eq(responses.status, "completed"),
+        ),
+      )
+      // ровно колонки индекса (survey_id, submitted_at): иначе путь по индексу не поможет
+      .orderBy(desc(responses.submittedAt))
+      .limit(limit),
+  );
+  return rows.map((r) => r.id);
+}
+
+/**
+ * Нормативная выборка версий, которые видел человек: нормированные баллы
+ * последних NORM_SAMPLE прохождений каждой версии, разложенные по методике,
+ * коду шкалы и основе. Ненормированные не идут никуда: сырой балл среди
+ * T-баллов — сравнение в двух единицах (см. comparableScores).
+ *
+ * Только версии из ряда человека: changeOverSeries берёт выборки основ его
+ * точек и ничьих больше, — прежде читались все методики зоны сотрудника,
+ * включая те, которых человек не проходил.
+ *
+ * Системной ролью, как выборка перцентиля (lib/referenceSample.ts): это
+ * число об учреждении — SD шкалы, — и наружу из неё не уходит ничего, кроме
+ * него. Под ролью сотрудника строки те же (методика в его зоне — значит, и
+ * все её прохождения), а политика на каждой строке баллов стоила секунды.
+ */
+export async function normativeSamples(
+  pairs: readonly { surveyId: string; versionId: string | null }[],
+): Promise<Map<string, number[]>> {
   const samples = new Map<string, number[]>();
-  if (!surveyIds.length) return samples;
-  const rows = await db
-    .select({
-      value: responseScores.value,
-      normalized: responseScores.normalized,
-      normalization: responseScores.normalization,
-      surveyId: responses.surveyId,
-      versionId: responses.versionId,
-      code: scales.code,
-    })
-    .from(responseScores)
-    .innerJoin(responses, eq(responses.id, responseScores.responseId))
-    .innerJoin(scales, eq(scales.id, responseScores.scaleId))
-    .where(and(inArray(responses.surveyId, surveyIds), eq(responses.status, "completed")));
-  for (const row of rows) {
-    if (!row.normalized) continue;
-    const key = sampleKey(row.surveyId, row.code, basisOf(row.versionId, row));
-    const list = samples.get(key) ?? [];
-    list.push(row.value);
-    samples.set(key, list);
+  const seen = new Set<string>();
+  for (const { surveyId, versionId } of pairs) {
+    const pairKey = `${surveyId}:${versionId ?? "-"}`;
+    if (seen.has(pairKey)) continue;
+    seen.add(pairKey);
+    const rows = await asSystem(async () => {
+      const ids = await latestCompleted(surveyId, versionId, NORM_SAMPLE);
+      if (!ids.length) return [];
+      return db
+        .select({
+          value: responseScores.value,
+          normalized: responseScores.normalized,
+          normalization: responseScores.normalization,
+          code: scales.code,
+        })
+        .from(responseScores)
+        .innerJoin(scales, eq(scales.id, responseScores.scaleId))
+        .where(and(inIds(responseScores.responseId, ids), eq(responseScores.normalized, true)));
+    });
+    for (const row of rows) {
+      const key = sampleKey(surveyId, row.code, basisOf(versionId, row));
+      const list = samples.get(key) ?? [];
+      list.push(row.value);
+      samples.set(key, list);
+    }
   }
   return samples;
 }
@@ -103,19 +156,20 @@ export async function alphasOf(pairs: { surveyId: string; versionId: string }[])
     try {
       const survey = await getSurvey(surveyId, versionId, "ru");
       if (!survey) continue;
-      const sample = await db
-        .select({ id: responses.id })
-        .from(responses)
-        .where(
-          and(eq(responses.surveyId, surveyId), eq(responses.versionId, versionId), eq(responses.status, "completed")),
-        )
-        .orderBy(desc(responses.submittedAt), desc(responses.id))
-        .limit(ALPHA_SAMPLE);
-      if (sample.length < ALPHA_MIN) continue;
-      const answerRows = await db
-        .select()
-        .from(answers)
-        .where(inArray(answers.responseId, sample.map((r) => r.id)));
+      /*
+       * Последние прохождения — путём по индексу (db/latest.ts): под
+       * политиками врача планировщик брал все прохождения методики и
+       * сортировал, секунда на версию и рост с каждым чужим прохождением.
+       * Системной ролью, как и нормативная выборка выше: альфа — число об
+       * учреждении, а политика на каждой строке ответов стоила врачу
+       * четверть секунды на версию.
+       */
+      const answerRows = await asSystem(async () => {
+        const sample = await latestCompleted(surveyId, versionId, ALPHA_SAMPLE);
+        if (sample.length < ALPHA_MIN) return null;
+        return db.select().from(answers).where(inArray(answers.responseId, sample));
+      });
+      if (!answerRows) continue;
       const byResponse = new Map<string, Map<string, (typeof answerRows)[number]>>();
       for (const a of answerRows) {
         const m = byResponse.get(a.responseId) ?? new Map();

@@ -570,7 +570,8 @@ async function deliverAlert(
    * тоже: t() по тому же языку. Письмо выше остаётся русским — у почтового
    * адреса языка нет, и выбирать его не по чему.
    *
-   * Каждому — своей короткой транзакцией, как в напоминаниях (remind.ts):
+   * Каждому — отдельно, как в напоминаниях (remind.ts); короткие
+   * транзакции заявки и исходов pushToUser берёт сам, сеть идёт вне них:
    * повтор pushToUser отсекает сам по push_deliveries, а сбой пуша одному
    * дежурному не должен уносить ни письмо, ни пуш остальным.
    */
@@ -578,15 +579,13 @@ async function deliverAlert(
   if (pushTo.length) {
     for (const userId of pushTo) {
       try {
-        await systemContext(baseDb, () =>
-          pushToUser(userId, {
-            eventKey: `alert:${alert.id}`,
-            kind: "alert",
-            title: (lang) => renderPush("push.alertTitle", lang),
-            body: (lang) => renderPush("push.alertBody", lang, { title: t(survey.title as never, lang) }),
-            path: "/analytics/alerts",
-          }),
-        );
+        await pushToUser(userId, {
+          eventKey: `alert:${alert.id}`,
+          kind: "alert",
+          title: (lang) => renderPush("push.alertTitle", lang),
+          body: (lang) => renderPush("push.alertBody", lang, { title: t(survey.title as never, lang) }),
+          path: "/analytics/alerts",
+        });
       } catch (failure) {
         log.warn("alert.push_failed", { alertId: alert.id, error: String(failure) });
       }

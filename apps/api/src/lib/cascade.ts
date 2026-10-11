@@ -78,6 +78,18 @@ export async function runCascades(
         .orderBy(scaleBands.scaleId, scaleBands.position)
     ).filter((band) => scaleOfBand.get(band.id) === band.scaleId);
 
+    /*
+     * Повторы всех полос сдачи — одним протоколом (#132).
+     *
+     * Прежде каждая полоса ставила свои окна, а постановка окон заменяет все
+     * неоткрытые окна пары «методика + человек»: полоса шкалы A («через 7»)
+     * и полоса шкалы B («через 30») одной сдачи стирали окна друг друга, и
+     * выживали окна той, чей id шкалы случайно шёл последним, — срочное
+     * «через 7» могло пропасть, а в ответе стояло 2 при одном окне в базе.
+     * Теперь сроки всех попавших полос складываются в одно множество, и окна
+     * ставятся один раз — по объединению, независимо от порядка шкал.
+     */
+    const followUpDays = new Set<number>();
     for (const band of hit) {
       const batteryId = band.cascadeBatteryId;
       if (batteryId) {
@@ -85,12 +97,13 @@ export async function runCascades(
           assignCascade(batteryId, userId, surveyId, band.cascadeDueDays, outcome),
         );
       }
-      const spec = band.followUpDays?.trim();
-      if (spec) {
-        outcome.scheduledFollowUps += (await cascadeStep("followup", surveyId, () =>
-          scheduleFollowUps(surveyId, userId, spec),
-        )) ?? 0;
-      }
+      for (const d of parseFollowUpDays(band.followUpDays)) followUpDays.add(d);
+    }
+    if (followUpDays.size) {
+      const days = [...followUpDays].sort((a, b) => a - b);
+      outcome.scheduledFollowUps = (await cascadeStep("followup", surveyId, () =>
+        scheduleFollowUps(surveyId, userId, days),
+      )) ?? 0;
     }
   } catch (error) {
     if (isRetryableDbError(error)) throw error;
@@ -179,10 +192,12 @@ async function assignCascade(
   // срок — конец дня по поясу учреждения, а не минута сдачи скрининга (lib/day.ts, endOfDay)
   const dueAt = dueDays ? endOfDayAfter(now, dueDays) : null;
 
+  // сколько пропусков закрыто на деле: завершённое между чтением и записью не закрывается (#151)
+  let closedMissed = 0;
   const issued = await db.transaction(async (tx) => {
     // набор под замком: архивированный или удалённый за время проверок — не выдаётся (lib/batteries.ts)
     if (!(await lockBatteryForAssign(tx, batteryId))) return false;
-    await closeMissed(tx, missed, noteCode("note.missed.cascade"), now);
+    closedMissed = await closeMissed(tx, missed, noteCode("note.missed.cascade"), now);
     const assignmentId = crypto.randomUUID();
     await tx.insert(batteryAssignments).values({
       id: assignmentId,
@@ -219,10 +234,19 @@ async function assignCascade(
     resourceType: "battery",
     resourceId: batteryId,
     subjectUserId: userId,
-    details: { fromSurveyId, sourceTitle: source?.title ?? null, dueDays, ...(missed.length ? { missed: missed.length } : {}) },
+    details: { fromSurveyId, sourceTitle: source?.title ?? null, dueDays, ...(closedMissed ? { missed: closedMissed } : {}) },
   });
   // в итог — только после строки журнала: не легла она — шаг откатан, и назначения нет
   outcome.assignedBatteries.push(battery.title);
+}
+
+/** Сроки повторов полосы «7, 30» — дни; негодные и пустые отбрасываются */
+function parseFollowUpDays(spec: string | null): number[] {
+  if (!spec?.trim()) return [];
+  return spec
+    .split(",")
+    .map((x) => Number(x.trim()))
+    .filter((d) => Number.isFinite(d) && d > 0 && d <= 365);
 }
 
 /**
@@ -242,14 +266,8 @@ async function assignCascade(
 async function scheduleFollowUps(
   surveyId: string,
   userId: string,
-  spec: string,
+  days: number[],
 ): Promise<number> {
-  const days = spec
-    .split(",")
-    .map((x) => Number(x.trim()))
-    .filter((d) => Number.isFinite(d) && d > 0 && d <= 365);
-  if (!days.length) return 0;
-
   const planned = await planFollowUps(surveyId, userId, days);
 
   await auditSystem({

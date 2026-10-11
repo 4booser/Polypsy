@@ -1,8 +1,9 @@
 import type { Context } from "hono";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import type { ErrorKey, ErrorParams, Permission, User } from "@quizzy/shared";
 import { db } from "../db";
-import { users, type UserRow } from "../db/schema";
+import { asSystem } from "../db/context";
+import { groupAdmins, permissionExceptions, staffRoles, users, type UserRow } from "../db/schema";
 import type { AppEnv } from "../middleware/auth";
 import { otherActiveSuperadmins } from "./accounts";
 import { accountRefusal, classGrantRefusal, standingFromRank, type AccountClass } from "./accountRule";
@@ -166,7 +167,11 @@ export async function changeAccountClass(
     self: "err.cannotChangeOwnRole",
     action: "user.role_change",
   });
-  /* должность, оставшаяся у цели, вернётся вместе с классом — она и считается */
+  /*
+   * Должность, оставшаяся у цели, вернётся вместе с классом — она и
+   * считается. С #142 понижение до пациента должности снимает
+   * (stripStaffGrants); остаться она может у разжалованных раньше.
+   */
   const grant = classGrantRefusal(
     { role: actor.role, standing: await standingOf(actor) },
     next,
@@ -191,6 +196,7 @@ export async function changeAccountClass(
   const [row] = await db.update(users).set({ role: next }).where(eq(users.id, target.id)).returning();
   // сотрудник получает встроенную роль сразу — как при заведении (routes/users.ts)
   if (next === "admin") await ensureBuiltinRole(target.id);
+  const stripped = next === "user" ? await stripStaffGrants(target.id) : null;
   await revokeAllFor(target.id);
 
   await audit(c, {
@@ -198,9 +204,36 @@ export async function changeAccountClass(
     resourceType: "user",
     resourceId: target.id,
     subjectUserId: target.id,
-    details: { newRole: next, previousRole: target.role, changedBy: actor.email, via },
+    details: { newRole: next, previousRole: target.role, changedBy: actor.email, via, ...(stripped ?? {}) },
   });
   return { before: target.role, row: row! };
+}
+
+/**
+ * Снять с разжалованного до пациента всё, что делало его сотрудником (#142).
+ *
+ * Роли доступа, действующие личные исключения и администрирование групп.
+ * permissionsOf и так не даёт пациенту прав — это второй замок: строки,
+ * оставшиеся в таблицах прав, ожили бы при повторном повышении (выдачи
+ * ops.*, чужая должность) и путали бы экран прав. Исключения гасятся
+ * отметкой revoked_at, а не удалением: кто и почему их выдавал, остаётся
+ * видно. Под системной ролью внутри транзакции запроса (asSystem):
+ * group_admins пишет только суперадмин, а разжаловать специалиста вправе
+ * и заведующий.
+ */
+async function stripStaffGrants(
+  userId: string,
+): Promise<{ rolesRemoved: number; exceptionsRevoked: number; groupsLeft: number }> {
+  return asSystem(async () => {
+    const roles = await db.delete(staffRoles).where(eq(staffRoles.userId, userId)).returning({ id: staffRoles.roleId });
+    const exceptions = await db
+      .update(permissionExceptions)
+      .set({ revokedAt: new Date().toISOString() })
+      .where(and(eq(permissionExceptions.userId, userId), isNull(permissionExceptions.revokedAt)))
+      .returning({ id: permissionExceptions.id });
+    const groups = await db.delete(groupAdmins).where(eq(groupAdmins.userId, userId)).returning({ id: groupAdmins.groupId });
+    return { rolesRemoved: roles.length, exceptionsRevoked: exceptions.length, groupsLeft: groups.length };
+  });
 }
 
 /**

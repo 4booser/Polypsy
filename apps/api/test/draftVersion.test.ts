@@ -241,11 +241,16 @@ afterAll(async () => {
   await holder.end();
 });
 
+/**
+ * Сколько автосохранений стоят в очереди — за строкой черновика или (с волны
+ * 21) за замком пары «методика + человек», который берётся до неё
+ * (routes/responses.ts, lockAttempts): первое ждёт строку, второе — замок.
+ */
 async function waitingOnDrafts(): Promise<number> {
   const [row] = await db.execute<{ n: number }>(sql`
     select count(*)::int as n from pg_stat_activity
     where datname = current_database() and wait_event_type = 'Lock' and pid <> pg_backend_pid()
-      and query ilike ${'%"responses"%'}
+      and (query ilike ${'%"responses"%'} or query ilike ${"%pg_advisory_xact_lock%"})
   `);
   return Number(row?.n ?? 0);
 }

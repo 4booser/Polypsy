@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { databaseUrlProblem } from "./lib/dbUrl";
 
 /**
  * Конфигурация процесса.
@@ -33,9 +34,19 @@ const toggle = (fallback: boolean) =>
 
 const schema = z.object({
   PORT: z.coerce.number().int().min(1).max(65535).default(3001),
-  DATABASE_URL: isProduction
+  /*
+   * Адрес проверяется здесь, раньше драйвера (#163): postgres.js на
+   * неразборчивом адресе бросает «Invalid URL» с адресом целиком — и с
+   * паролем — в поле input, и он уходит в журнал контейнера. Отказ отсюда
+   * называет причину и показывает адрес только с замазанным паролем.
+   */
+  DATABASE_URL: (isProduction
     ? z.string().min(1, "DATABASE_URL обязателен в production")
-    : z.string().default("postgres://postgres@localhost:5432/quizzy"),
+    : z.string().default("postgres://postgres@localhost:5432/quizzy")
+  ).superRefine((url, ctx) => {
+    const problem = databaseUrlProblem(url);
+    if (problem) ctx.addIssue({ code: z.ZodIssueCode.custom, message: problem });
+  }),
   JWT_SECRET: isProduction
     ? z.string().min(32, "JWT_SECRET в production — минимум 32 символа")
     : z.string().default("dev-secret-change-me"),
@@ -116,8 +127,24 @@ const schema = z.object({
    * Учреждение на экземпляр одно (см. план, волна 8), поэтому пояс здесь
    * один. У отделения свой пояс есть в departments.timezone — он для
    * расписания приёма, где важен именно приёмный день конкретного кабинета.
+   *
+   * Пусто — Киев; незнакомый пояс — отказ запуска, а не ошибка в каждой
+   * сводке: с тех пор как compose передаёт переменную (#158), опечатка в
+   * .env.docker доезжает до процесса.
    */
-  INSTITUTION_TZ: z.string().default("Europe/Kyiv"),
+  INSTITUTION_TZ: z
+    .string()
+    .optional()
+    .transform((value, ctx) => {
+      const tz = (value ?? "").trim() || "Europe/Kyiv";
+      try {
+        new Intl.DateTimeFormat("en", { timeZone: tz });
+        return tz;
+      } catch {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: `незнакомый часовой пояс «${value}», например Europe/Kyiv` });
+        return z.NEVER;
+      }
+    }),
   /** SMTP для уведомлений: smtp://user:pass@host:587; пусто — только журнал */
   SMTP_URL: z.string().default(""),
   MAIL_FROM: z.string().default("Quizzy <noreply@localhost>"),

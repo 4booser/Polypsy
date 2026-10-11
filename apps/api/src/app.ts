@@ -11,7 +11,7 @@ import { secureHeaders } from "hono/secure-headers";
 import { bodyLimit } from "hono/body-limit";
 import { compress } from "hono/compress";
 import { HTTPException } from "hono/http-exception";
-import { renderError, type ErrorParams } from "@quizzy/shared";
+import { isAttemptClosedCode, renderError, type ErrorParams } from "@quizzy/shared";
 import { langOf } from "./lib/http";
 import { checkRls } from "./lib/rlsGuard";
 import { env } from "./env";
@@ -354,8 +354,15 @@ app.onError((err, c) => {
      */
     const info = err.cause as { key?: string; params?: ErrorParams } | undefined;
     const text = info?.key ? renderError(info.key, langOf(c), info.params) : err.message;
+    /*
+     * Ключ наружу — только у отказов, по которым клиент решает сам
+     * (ATTEMPT_CLOSED_CODES): мобилка стирает черновик сданной попытки, а не
+     * досылает его вечно. Остальные отказы показываются текстом, и решать
+     * по ним клиенту нечего.
+     */
+    const code = isAttemptClosedCode(info?.key) ? info!.key : undefined;
     // ожидаемые отказы — не ошибки сервера, стек тут не нужен
-    return c.json({ error: text, requestId: id }, err.status);
+    return c.json({ error: text, ...(code ? { code } : {}), requestId: id }, err.status);
   }
   /*
    * Жертва взаимоблокировки или сбоя сериализации — 503 «повторите», а не
@@ -375,6 +382,17 @@ app.onError((err, c) => {
     });
     c.header("Retry-After", "1");
     return c.json({ error: renderError("err.retryRequest", langOf(c)), requestId: id }, 503);
+  }
+  /*
+   * Клиент ушёл, и запросы к базе отменены по его уходу (#186,
+   * db/cancelOnAbort.ts). Это не дефект и не группа ошибок техпанели —
+   * закрытая вкладка или обрыв по простою; ответ никто не прочтёт.
+   * Транзакция запроса откатывается (статус от 400). Отмена по пределу
+   * оператора — тот же код 57014, но клиент тогда ещё ждёт, и это ошибка.
+   */
+  if (c.req.raw.signal?.aborted && (err as { code?: string }).code === "57014") {
+    log.info("request.client_gone", { path: c.req.path, method: c.req.method });
+    return c.body(null, 499 as never);
   }
   /*
    * Номер запроса возвращается пользователю вместе с отказом: по нему

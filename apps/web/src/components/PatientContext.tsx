@@ -40,7 +40,8 @@ export interface ContextPerson {
 
 export function PatientContext({ person }: { person: ContextPerson }) {
   const { ut } = useLang();
-  const { data, error } = useResource(() => api.dynamics(person.userId), [person.userId]);
+  /* keep: false — баллы прежнего человека не встают под имя следующего (#177) */
+  const { data, error } = useResource(() => api.dynamics(person.userId), [person.userId], { keep: false });
 
   return (
     <div className="flex flex-col gap-5">

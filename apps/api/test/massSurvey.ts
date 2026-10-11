@@ -79,7 +79,14 @@ export async function massSurvey(tag: string, items: number, adminId: string): P
  * пункт и балл шкалы. Люди — `people` человек по кругу, с полом и
  * датой рождения (зашифрованной, как в бою), заводятся при первом вызове.
  */
-export async function massResponses(s: MassSurvey, from: number, count: number, people: number): Promise<void> {
+export async function massResponses(
+  s: MassSurvey,
+  from: number,
+  count: number,
+  people: number,
+  /** Нижняя граница времени на пункте: 500 мс — каждый четвёртый ответ «слишком быстрый» (TOO_FAST_MS) */
+  answerMs = 500,
+): Promise<void> {
   const { tag } = s;
   const [{ n } = { n: 0 }] = (await db.execute(
     sql`select count(*)::int as n from users where id like ${`${tag}-u%`}`,
@@ -112,7 +119,7 @@ export async function massResponses(s: MassSurvey, from: number, count: number, 
     insert into answers (id, response_id, question_id, option_ids, score, duration_ms, change_count)
     select ${tag} || '-r' || g || '-a' || q.i, ${tag} || '-r' || g, q.x ->> 'id',
            jsonb_build_array(q.x -> 'options' ->> ((g + q.i) % 4)::int), ((g + q.i) % 4),
-           500 + ((g * 7 + q.i * 13) % 4000), (g + q.i) % 3
+           ${answerMs}::int + ((g * 7 + q.i * 13) % 4000), (g + q.i) % 3
     from generate_series(${from}::int, ${from + count - 1}::int) g,
          jsonb_array_elements(${JSON.stringify(s.items)}::jsonb) with ordinality as q(x, i)`);
   await db.execute(sql`

@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import type { Answer, SurveyFull } from "@quizzy/shared";
 import { isAnswered, isQuestionVisible } from "@quizzy/shared";
-import { api, type Patient } from "../api";
+import { api } from "../api";
 import { administerPayload, blankVersion, loadAdminister } from "./administerModel";
 import { useResource } from "../useResource";
 import { SeverityTag } from "../charts/advanced";
@@ -11,6 +11,7 @@ import { IconCaution } from "../ui/glyphs";
 import { Page, Panel, Stack } from "../ui/layout";
 import { Button } from "../ui/primitives";
 import { FastEntry } from "../components/FastEntry";
+import { PatientPicker } from "../components/PatientPicker";
 import { useLang } from "../lang";
 
 /**
@@ -36,7 +37,6 @@ export default function Administer() {
 
   const res = useResource(() => loadAdminister(id!, version), [id, version], { enabled: !!id });
   const survey: SurveyFull | null = res.data?.survey ?? null;
-  const patients: Patient[] = res.data?.patients ?? [];
 
   // ошибка ниже — про сдачу, а не про загрузку: у них разные состояния
   if (!survey) return <Loading error={res.error} onRetry={res.reload} busy={res.loading} />;
@@ -117,15 +117,15 @@ export default function Administer() {
     >
       <Stack>
         <Panel>
-          <div className="field max-w-[460px] mb-0">
-            <label>{ut("adn.whoIsTested")}</label>
-            <select value={subject} onChange={(e) => setSubject(e.target.value)}>
-              <option value="">{ut("adn.pickPatient")}</option>
-              {patients.map((p) => (
-                <option key={p.id} value={p.id}>{p.fullName} · {p.email}</option>
-              ))}
-            </select>
-          </div>
+          <p className="m-0 mb-2 text-small" aria-hidden="true">{ut("adn.whoIsTested")}</p>
+          {/* поиск на сервере: первая сотня без поиска прятала остальных (#174) */}
+          <PatientPicker
+            value={subject}
+            onChange={setSubject}
+            label={ut("adn.whoIsTested")}
+            emptyLabel={ut("adn.pickPatient")}
+            className="max-w-[460px]"
+          />
           {survey.instructions ? <p className="mt-3 text-caption text-muted">{survey.instructions}</p> : null}
           {/*
             Быстрый ввод — не альтернативный экран, а переключатель здесь же.

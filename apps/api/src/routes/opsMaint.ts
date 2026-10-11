@@ -17,7 +17,7 @@ import { badRequest, parseBody, parseQuery } from "../lib/http";
 import { dispatchDeploy, knownRepo, listReleases } from "../lib/releases";
 import { announce, composeStatus, currentAnnouncement, publicStatus, toAnnouncement } from "../lib/serviceStatus";
 import { env } from "../env";
-import { requireAuth, requirePermission, type AppEnv } from "../middleware/auth";
+import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
 /*
  * Техпанель, эксплуатация (волна 10, участок maint): режим обслуживания и
@@ -74,7 +74,13 @@ export const opsMaintRoutes = new Hono<AppEnv>();
 const authOnce = createMiddleware<AppEnv>(async (c, next) =>
   c.get("user") ? next() : requireAuth(c, next),
 );
-opsMaintRoutes.use("*", authOnce);
+/*
+ * requireStaff — как у остальной техпанели (#142). Общий заслон /api/ops
+ * (routes/ops.ts) сюда не доходит: этот набор смонтирован раньше и отвечает
+ * сам. Одних прав ops.* мало: класс учётки проверяется отдельно от права,
+ * и пациент с оставшимися от службы выдачами не должен видеть даже вход.
+ */
+opsMaintRoutes.use("*", authOnce, requireStaff);
 
 /* ── режим обслуживания и объявления ── */
 

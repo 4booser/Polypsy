@@ -2,6 +2,7 @@ import { and, eq, inArray, isNull, sql, type SQL } from "drizzle-orm";
 import { serverText, t, type BatteryProgressState, type Lang } from "@quizzy/shared";
 import type { db as Db } from "../db";
 import { db } from "../db";
+import { inIds } from "../db/ids";
 import { batteries, batteryAssignmentItems, batteryAssignments, responses, surveyAccess, surveys } from "../db/schema";
 import { badRequest } from "./http";
 import { log } from "./log";
@@ -41,21 +42,33 @@ export function isOverdue(assignment: { dueAt: string | null }, now: Date): bool
  *
  * `missed` — готовая пометка-код (noteCode, note.missed.*): у каждого пути
  * своя причина, а фразой её сделает показ, на языке смотрящего.
+ *
+ * Закрывается только всё ещё открытое — условием в самом UPDATE (#151).
+ * Пропуск вызывающие решают по чтению, сделанному до замка набора, и
+ * назначение, которое пациент завершил между чтением и записью, прежде
+ * получало поверх completedAt ещё и cancelledAt с пометкой «пропущено».
+ * Сдача, держащая строку назначения, дожидается здесь своей фиксации, и
+ * PostgreSQL перепроверяет условие по новой версии строки. Возвращает,
+ * сколько закрыто на деле.
  */
 export async function closeMissed(
   tx: Pick<typeof Db, "update">,
   ids: readonly string[],
   missed: string,
   now: Date,
-): Promise<void> {
-  if (!ids.length) return;
-  await tx
+): Promise<number> {
+  if (!ids.length) return 0;
+  const closed = await tx
     .update(batteryAssignments)
     .set({
       cancelledAt: now.toISOString(),
       note: sql`concat_ws(' · ', ${batteryAssignments.note}, ${missed}::text)`,
     })
-    .where(inArray(batteryAssignments.id, [...ids]));
+    // расписание закрывает пропуски целого подразделения разом: список — одним параметром (#194);
+    // закрывается только всё ещё открытое — условием в самом UPDATE (#151)
+    .where(and(inIds(batteryAssignments.id, ids), isNull(batteryAssignments.completedAt), isNull(batteryAssignments.cancelledAt)))
+    .returning({ id: batteryAssignments.id });
+  return closed.length;
 }
 
 
@@ -230,10 +243,29 @@ export async function snapshotAssignment(
   assignmentId: string,
   steps: readonly IssuedStep[],
 ): Promise<void> {
-  if (!steps.length) return;
-  await tx.insert(batteryAssignmentItems).values(
+  await snapshotAssignments(tx, [assignmentId], steps);
+}
+
+/** Строк состава в одной вставке: четыре параметра на строку, далеко от потолка протокола */
+const SNAPSHOT_BATCH = 1000;
+
+/**
+ * Состав многих назначений одного набора — порциями (#194). Расписание
+ * выдаёт подразделению тысячи назначений разом: вставка на каждое — тысячи
+ * обращений к базе внутри одной транзакции, одна на всех — за потолком
+ * параметров протокола.
+ */
+export async function snapshotAssignments(
+  tx: Pick<typeof Db, "insert">,
+  assignmentIds: readonly string[],
+  steps: readonly IssuedStep[],
+): Promise<void> {
+  const rows = assignmentIds.flatMap((assignmentId) =>
     steps.map((s) => ({ assignmentId, surveyId: s.surveyId, position: s.position, required: s.required })),
   );
+  for (let i = 0; i < rows.length; i += SNAPSHOT_BATCH) {
+    await tx.insert(batteryAssignmentItems).values(rows.slice(i, i + SNAPSHOT_BATCH));
+  }
 }
 
 /** Условие «методика — шаг этого назначения» для выборок по battery_assignments */

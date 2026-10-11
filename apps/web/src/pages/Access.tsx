@@ -4,7 +4,8 @@ import { api } from "../api";
 import { dateTime, day} from "../format";
 import { Screen } from "../ui";
 import { Page, Panel, Stack } from "../ui/layout";
-import { Button, Field, Input, Select } from "../ui/primitives";
+import { Button, Field, Input } from "../ui/primitives";
+import { PatientPicker } from "../components/PatientPicker";
 import { useLang } from "../lang";
 import { useResource } from "../useResource";
 
@@ -20,12 +21,9 @@ export default function Access() {
 
   const res = useResource(
     async () => {
-      const [survey, grants, patients] = await Promise.all([
-        api.survey(id!),
-        api.grants(id!),
-        api.patients().then((p) => p.items),
-      ]);
-      return { survey, grants, patients };
+      // пациенты — не здесь: выбор ищет их на сервере сам (components/PatientPicker.tsx, #174)
+      const [survey, grants] = await Promise.all([api.survey(id!), api.grants(id!)]);
+      return { survey, grants };
     },
     [id],
     { enabled: !!id },
@@ -51,8 +49,8 @@ export default function Access() {
 
   return (
     <Screen res={res}>
-      {({ survey, grants, patients }) => {
-        const free = patients.filter((p) => !grants.some((g) => g.userId === p.id));
+      {({ survey, grants }) => {
+        const granted = new Set(grants.map((g) => g.userId));
         return (
           <Page
             title={ut("acc.title")}
@@ -70,14 +68,14 @@ export default function Access() {
 
               <Panel title={ut("acc.grantTo")} hint={ut("acc.grantHint")}>
                 <div className="flex flex-wrap items-end gap-3">
-                  <Field label={ut("acc.patient")} className="min-w-[240px] flex-[2]">
-                    <Select value={selected} onChange={(e) => setSelected(e.target.value)}>
-                      <option value="">{ut("sel.pick")}</option>
-                      {free.map((p) => (
-                        <option key={p.id} value={p.id}>{p.fullName} · {p.email}</option>
-                      ))}
-                    </Select>
-                  </Field>
+                  <PatientPicker
+                    value={selected}
+                    onChange={setSelected}
+                    exclude={granted}
+                    label={ut("acc.patient")}
+                    emptyLabel={ut("sel.pick")}
+                    className="min-w-[240px] flex-[2]"
+                  />
                   <Field label={ut("acc.comment")} className="min-w-[200px] flex-[2]">
                     <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder={ut("acc.commentExample")} />
                   </Field>

@@ -3,6 +3,7 @@ import * as Notifications from "expo-notifications";
 import * as Device from "expo-device";
 import Constants from "expo-constants";
 import { api } from "./api/client";
+import { onWiped } from "./offline/wipe";
 
 /**
  * Пуш-уведомления.
@@ -16,6 +17,15 @@ import { api } from "./api/client";
  */
 
 let registered = false;
+
+/*
+ * Стирание устройства отвязало уведомления на сервере (#128) — регистрация
+ * считается заново: иначе следующий вход в том же процессе push не
+ * регистрировал, и вошедший уведомлений не получал.
+ */
+onWiped(() => {
+  registered = false;
+});
 
 export async function ensurePushRegistered(): Promise<boolean> {
   if (registered) return true;

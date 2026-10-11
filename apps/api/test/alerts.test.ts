@@ -157,8 +157,9 @@ describe("рассыльщик тревог", () => {
 describe("safety-план", () => {
   test("возвращается сдавшему при сработавшей тревоге и не возвращается специалисту", async () => {
     // surveyInA — СР-45 с safety-планом в описании инструмента; критические
-    // пункты — «да» на вопросы о попытках. Отвечаем «да» на всё: тревога будет
-    const surveyRes = await api(`/api/surveys/${surveyInA}`, patient.token);
+    // пункты — «да» на вопросы о попытках. Отвечаем «да» на всё: тревога будет.
+    // Коды «да» — из методики глазами сотрудника: пациенту ключ не отдаётся (#141)
+    const surveyRes = await api(`/api/surveys/${surveyInA}`, adminA.token);
     const yesAnswers = surveyRes.body.questions
       .filter((q: { type: string; options: unknown[] }) => q.type !== "info")
       .map(

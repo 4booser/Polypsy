@@ -104,7 +104,12 @@ export default function PatientCard() {
   const id = userId!;
   const { ut } = useLang();
   const { run, busy } = useAction();
-  const res = useResource(() => api.patientCard(id), [id]);
+  /*
+   * keep: false — карточка одного человека (#177). Прежний ответ, стоящий
+   * под адресом нового, считался готовой карточкой: имя, тесты и группы A
+   * под адресом B, и «+ тест» с «Підписатись» уходили на A.
+   */
+  const res = useResource(() => api.patientCard(id), [id], { keep: false });
   const [assigning, setAssigning] = useState(false);
 
   if (res.error) return <Loading error={res.error} onRetry={res.reload} />;

@@ -3,8 +3,8 @@ import {
   bandFor,
   countedAnswers,
   evaluateSubmission,
-  isQuestionVisible,
   itemContribution,
+  logicRuleHolds,
   type Answer,
   type Option,
   type Question,
@@ -169,11 +169,20 @@ function baselinePicks(survey: SurveyFull): Map<string, string> {
 
 /* ─────────────────────────── условия показа ─────────────────────────── */
 
-/** Проходит ли одно правило показа при таком ответе на источник */
+/**
+ * Проходит ли одно правило показа при таком ответе на источник.
+ *
+ * Само правило, без видимости источника: видимость транзитивна (#135), и
+ * через isQuestionVisible правило с источником, чьё собственное условие в
+ * этом наборе не выполнено, не проходило бы никогда. Открыть источник —
+ * забота enable (она идёт по цепочке), а здесь вопрос один: какой ответ на
+ * источник удовлетворяет правилу.
+ */
 function ruleHolds(survey: SurveyFull, q: Question, ruleIndex: number, picks: Map<string, string>): boolean {
-  const answers = new Map<string, Answer>();
-  for (const [qid, oid] of picks) answers.set(qid, { questionId: qid, optionIds: [oid] });
-  return isQuestionVisible({ ...q, logic: [q.logic[ruleIndex]!] }, survey.questions, answers);
+  const rule = q.logic[ruleIndex]!;
+  const source = survey.questions.find((x) => x.id === rule.sourceQuestionId);
+  const oid = picks.get(rule.sourceQuestionId);
+  return logicRuleHolds(rule, source, oid ? { questionId: rule.sourceQuestionId, optionIds: [oid] } : undefined);
 }
 
 /**

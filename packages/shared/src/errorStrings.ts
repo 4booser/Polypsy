@@ -1691,6 +1691,14 @@ export const ERRORS = {
     ru: "Запрос совпал с другим одновременным запросом и не выполнился. Ничего не сохранено — повторите, пожалуйста",
     en: "The request collided with another simultaneous request and did not go through. Nothing was saved — please try again",
   },
+
+  /* ── w21:submit ── */
+  /* автосохранение попытки, которая уже сдана (#147, routes/responses.ts, PUT /surveys/:id/draft) */
+  "err.attemptAlreadySubmitted": {
+    uk: "Це проходження вже здано, тож чернетку не збережено. Щоб пройти методику ще раз, почніть нове проходження",
+    ru: "Это прохождение уже сдано, поэтому черновик не сохранён. Чтобы пройти методику ещё раз, начните новое прохождение",
+    en: "This attempt has already been submitted, so the draft wasn’t saved. To take the assessment again, start a new attempt",
+  },
 } as const satisfies Record<string, ErrorEntry>;
 
 export type ErrorKey = keyof typeof ERRORS;

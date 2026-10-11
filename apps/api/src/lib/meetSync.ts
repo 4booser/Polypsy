@@ -48,6 +48,44 @@ const retryDelay = (attempts: number) => RETRY_MS[Math.min(attempts, RETRY_MS.le
 const BATCH = 50;
 
 /**
+ * Приём со слотом — под замком строки приёма до конца транзакции (#152).
+ *
+ * Прежде сведение читало приём без замка, ходило в Google и записывало итог
+ * по id. Два фоновых прохода над приёмом, ждущим пересоздания встречи,
+ * создавали два события — приём ссылался на одно, второе оставалось сиротой
+ * в календаре врача; проход, наложившийся на перенос, записывал итог,
+ * посчитанный по прежнему состоянию, поверх события, только что созданного
+ * запросом. Теперь сведение держит строку от чтения до итога, и второй
+ * сводящий одновременно с первым не работает.
+ *
+ * Запрос (dueBy не задан) строку уже держит — её только что изменил
+ * moveAppointment, — замок тут лишь подтверждается. Фоновый проход
+ * (dueBy задан) занятую строку пропускает (SKIP LOCKED): её сводит тот, кто
+ * держит, — запрос или соседний проход. Условие «всё ещё ждёт к сроку»
+ * PostgreSQL проверяет по последней версии строки: проход, прочитавший
+ * очередь до чужой фиксации, сведённый приём не трогает.
+ */
+async function claim(appointmentId: string, dueBy: Date | null) {
+  const query = db
+    .select({ row: appointments, slot: slots })
+    .from(appointments)
+    .innerJoin(slots, eq(slots.id, appointments.slotId))
+    .where(
+      dueBy
+        ? and(
+            eq(appointments.id, appointmentId),
+            isNotNull(appointments.meetingSyncAt),
+            lte(appointments.meetingSyncAt, dueBy.toISOString()),
+          )
+        : eq(appointments.id, appointmentId),
+    );
+  const [found] = dueBy
+    ? await query.for("update", { of: appointments, skipLocked: true })
+    : await query.for("update", { of: appointments });
+  return found;
+}
+
+/**
  * Свести событие одного приёма с его текущим состоянием.
  *
  * Системной ролью: отменяет приём и пациент, а чужие строки календаря и
@@ -56,100 +94,104 @@ const BATCH = 50;
  */
 export async function syncMeeting(appointmentId: string): Promise<MeetSyncOutcome> {
   return asSystem(async () => {
-    const [found] = await db
-      .select({ row: appointments, slot: slots })
-      .from(appointments)
-      .innerJoin(slots, eq(slots.id, appointments.slotId))
-      .where(eq(appointments.id, appointmentId));
+    const found = await claim(appointmentId, null);
     if (!found) return "nothing";
-    const { row, slot } = found;
+    return reconcile(found);
+  });
+}
 
-    const settle = async (set: Partial<typeof appointments.$inferInsert>) => {
-      await db
-        .update(appointments)
-        .set({ ...set, meetingSyncAt: null, meetingSyncAttempts: 0 })
-        .where(eq(appointments.id, row.id));
-    };
-    const postpone = async () => {
-      await db
-        .update(appointments)
-        .set({
-          meetingSyncAt: new Date(Date.now() + retryDelay(row.meetingSyncAttempts)).toISOString(),
-          meetingSyncAttempts: row.meetingSyncAttempts + 1,
-        })
-        .where(eq(appointments.id, row.id));
-      return "failed" as const;
-    };
+/** Свести приём, строка которого уже под замком (claim) */
+async function reconcile(found: {
+  row: typeof appointments.$inferSelect;
+  slot: typeof slots.$inferSelect;
+}): Promise<MeetSyncOutcome> {
+  const { row, slot } = found;
 
-    /** Новое событие у текущего специалиста — вторая половина пересоздания */
-    const recreate = async (): Promise<MeetSyncOutcome> => {
-      const created = await createMeetLink({
-        specialistId: row.specialistId,
-        startsAt: slot.startsAt,
-        endsAt: slot.endsAt,
-        title: serverText("meet.eventTitle", STAFF_OUTBOUND_LANG),
-      });
-      if (created.outcome === "failed") return postpone();
-      if (created.url) {
-        await settle({ meetingUrl: created.url, meetingEventId: created.eventId, meetingOrganizerId: row.specialistId });
-        return "recreated";
-      }
-      // у специалиста календаря нет: ссылки нет, он впишет свою
-      await settle({});
-      return "unlinked";
-    };
-
-    if (!row.meetingEventId || !row.meetingOrganizerId) {
-      /*
-       * События нет. Это либо ссылка, вписанная руками (или её не было
-       * вовсе) — сводить нечего, — либо пересоздание, прерванное сбоем
-       * после удаления прежнего события: приём дистанционный, ссылки нет,
-       * сведение запрошено. Тогда доделывается вторая половина — создание.
-       */
-      if (row.status !== "cancelled" && row.mode === "remote" && !row.meetingUrl && row.meetingSyncAt) {
-        return recreate();
-      }
-      await settle({});
-      return "nothing";
-    }
-
-    /* отмена: событие убирается из календаря организатора */
-    if (row.status === "cancelled") {
-      const outcome = await deleteMeetEvent(row.meetingOrganizerId, row.meetingEventId);
-      if (outcome === "failed") return postpone();
-      await settle({ meetingEventId: null, meetingOrganizerId: null, meetingUrl: null });
-      return "deleted";
-    }
-
-    /* тот же организатор: событие переезжает на время слота */
-    if (row.meetingOrganizerId === row.specialistId) {
-      const outcome = await moveMeetEvent(row.meetingOrganizerId, row.meetingEventId, slot.startsAt, slot.endsAt);
-      if (outcome === "failed") return postpone();
-      if (outcome === "done") {
-        await settle({});
-        return "moved";
-      }
-      /*
-       * Событие исчезло из календаря или трогать его некому (разрешение
-       * снято): ссылка ведёт в никуда — лучше пусто, чем закрытая дверь.
-       */
-      await settle({ meetingEventId: null, meetingOrganizerId: null, meetingUrl: null });
-      return "unlinked";
-    }
-
-    /*
-     * Другой специалист. Сначала убирается прежнее событие — и это
-     * фиксируется в строке до создания нового: повтор после сбоя на создании
-     * не удалит и не создаст второй раз.
-     */
-    const removed = await deleteMeetEvent(row.meetingOrganizerId, row.meetingEventId);
-    if (removed === "failed") return postpone();
+  const settle = async (set: Partial<typeof appointments.$inferInsert>) => {
     await db
       .update(appointments)
-      .set({ meetingEventId: null, meetingOrganizerId: null, meetingUrl: null })
+      .set({ ...set, meetingSyncAt: null, meetingSyncAttempts: 0 })
       .where(eq(appointments.id, row.id));
-    return recreate();
-  });
+  };
+  const postpone = async () => {
+    await db
+      .update(appointments)
+      .set({
+        meetingSyncAt: new Date(Date.now() + retryDelay(row.meetingSyncAttempts)).toISOString(),
+        meetingSyncAttempts: row.meetingSyncAttempts + 1,
+      })
+      .where(eq(appointments.id, row.id));
+    return "failed" as const;
+  };
+
+  /** Новое событие у текущего специалиста — вторая половина пересоздания */
+  const recreate = async (): Promise<MeetSyncOutcome> => {
+    const created = await createMeetLink({
+      specialistId: row.specialistId,
+      startsAt: slot.startsAt,
+      endsAt: slot.endsAt,
+      title: serverText("meet.eventTitle", STAFF_OUTBOUND_LANG),
+    });
+    if (created.outcome === "failed") return postpone();
+    if (created.url) {
+      await settle({ meetingUrl: created.url, meetingEventId: created.eventId, meetingOrganizerId: row.specialistId });
+      return "recreated";
+    }
+    // у специалиста календаря нет: ссылки нет, он впишет свою
+    await settle({});
+    return "unlinked";
+  };
+
+  if (!row.meetingEventId || !row.meetingOrganizerId) {
+    /*
+     * События нет. Это либо ссылка, вписанная руками (или её не было
+     * вовсе) — сводить нечего, — либо пересоздание, прерванное сбоем
+     * после удаления прежнего события: приём дистанционный, ссылки нет,
+     * сведение запрошено. Тогда доделывается вторая половина — создание.
+     */
+    if (row.status !== "cancelled" && row.mode === "remote" && !row.meetingUrl && row.meetingSyncAt) {
+      return recreate();
+    }
+    await settle({});
+    return "nothing";
+  }
+
+  /* отмена: событие убирается из календаря организатора */
+  if (row.status === "cancelled") {
+    const outcome = await deleteMeetEvent(row.meetingOrganizerId, row.meetingEventId);
+    if (outcome === "failed") return postpone();
+    await settle({ meetingEventId: null, meetingOrganizerId: null, meetingUrl: null });
+    return "deleted";
+  }
+
+  /* тот же организатор: событие переезжает на время слота */
+  if (row.meetingOrganizerId === row.specialistId) {
+    const outcome = await moveMeetEvent(row.meetingOrganizerId, row.meetingEventId, slot.startsAt, slot.endsAt);
+    if (outcome === "failed") return postpone();
+    if (outcome === "done") {
+      await settle({});
+      return "moved";
+    }
+    /*
+     * Событие исчезло из календаря или трогать его некому (разрешение
+     * снято): ссылка ведёт в никуда — лучше пусто, чем закрытая дверь.
+     */
+    await settle({ meetingEventId: null, meetingOrganizerId: null, meetingUrl: null });
+    return "unlinked";
+  }
+
+  /*
+   * Другой специалист. Сначала убирается прежнее событие — и это
+   * фиксируется в строке до создания нового: повтор после сбоя на создании
+   * не удалит и не создаст второй раз.
+   */
+  const removed = await deleteMeetEvent(row.meetingOrganizerId, row.meetingEventId);
+  if (removed === "failed") return postpone();
+  await db
+    .update(appointments)
+    .set({ meetingEventId: null, meetingOrganizerId: null, meetingUrl: null })
+    .where(eq(appointments.id, row.id));
+  return recreate();
 }
 
 /**
@@ -182,8 +224,12 @@ export async function syncDueMeetings(now = new Date()): Promise<{ attempted: nu
   let settled = 0;
   for (const { id } of due) {
     try {
-      const outcome = await systemContext(baseDb, () => syncMeeting(id));
-      if (outcome !== "failed") settled++;
+      const outcome = await systemContext(baseDb, async () => {
+        // занятую строку сводит тот, кто её держит; сведённую за время прохода — уже некому (см. claim)
+        const found = await claim(id, now);
+        return found ? reconcile(found) : null;
+      });
+      if (outcome && outcome !== "failed") settled++;
     } catch (error) {
       log.warn("meet.sync_failed", { appointmentId: id, error: String(error) });
     }

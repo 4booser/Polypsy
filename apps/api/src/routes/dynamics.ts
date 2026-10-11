@@ -278,8 +278,14 @@ dynamicsRoutes.get("/respondents/:userId", async (c) => {
    * версий друг к другу.
    *
    * Перцентиль точки из неё больше не считается — у него своя выборка ниже.
+   *
+   * Только версии, которые видел человек, и последние прохождения каждой
+   * (#188): прежде читались нормированные баллы всех методик зоны
+   * сотрудника — 309 тыс. строк ради одного человека, 40 с у врача.
    */
-  const sampleByKey = await normativeSamples(surveyIds);
+  const sampleByKey = await normativeSamples(
+    responseRows.map((r) => ({ surveyId: r.surveyId, versionId: r.versionId ?? null })),
+  );
 
   const scoresByResponse = new Map<string, typeof scoreRows>();
   for (const s of scoreRows) {

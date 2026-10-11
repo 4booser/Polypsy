@@ -31,3 +31,22 @@ export function assignCandidates<P extends { id: string; fullName: string; email
     .filter((p) => `${p.fullName} ${p.email}`.toLowerCase().includes(q))
     .slice(0, limit);
 }
+
+/**
+ * Предложения из найденного сервером и признак «показаны не все» (#174).
+ *
+ * Список пациентов сервер отдаёт поиском с потолком в сто человек; прежде
+ * экран брал первую сотню без поиска и искал в ней сам — сто первого найти
+ * было нельзя, а «никого не найдено» выглядело как «его нет в зоне». Теперь
+ * набранное уходит серверу, а здесь отсеиваются занятые и считается,
+ * обрезано ли что-то: сервером (truncated) или строкой предложений (limit).
+ */
+export function assignChoices<P extends { id: string; fullName: string; email: string }>(
+  found: { items: readonly P[]; truncated: boolean },
+  rows: Parameters<typeof busyAssignees>[0],
+  query: string,
+  limit = 8,
+): { list: P[]; cut: boolean } {
+  const all = assignCandidates(found.items, rows, query, found.items.length);
+  return { list: all.slice(0, limit), cut: found.truncated || all.length > limit };
+}

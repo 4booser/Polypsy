@@ -18,13 +18,15 @@ pushRoutes.use("*", requireAuth);
 const registerSchema = z.object({
   token: z.string().min(10).max(300),
   platform: z.enum(["ios", "android", "web"]),
+  /** Установка (тот же идентификатор, что в отметке устройства): по ней стирание отвязывает уведомления (#128) */
+  deviceId: z.string().min(8).max(64).optional(),
 });
 
 pushRoutes.post("/register", async (c) => {
   const user = c.get("user");
   const input = await parseBody(c.req.raw, registerSchema);
   // язык приложения приходит тем же заголовком, что у любого запроса
-  await registerDevice(user.id, input.token, input.platform, langOf(c));
+  await registerDevice(user.id, input.token, input.platform, langOf(c), input.deviceId);
   return c.json({ ok: true });
 });
 

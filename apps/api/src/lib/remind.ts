@@ -2,6 +2,7 @@ import { and, desc, eq, gt, inArray, lte, sql } from "drizzle-orm";
 import { LOCALE_OF, renderPush, type Lang } from "@quizzy/shared";
 import { baseDb, db } from "../db";
 import { systemContext } from "../db/context";
+import { inIds } from "../db/ids";
 import { appointments, departments, responses, slots, specialistProfiles } from "../db/schema";
 import { log } from "./log";
 import { pushToUser } from "./push";
@@ -52,7 +53,8 @@ export async function langsOfPatients(userIds: string[]): Promise<Map<string, La
   const rows = await db
     .selectDistinctOn([responses.userId], { userId: responses.userId, lang: responses.lang })
     .from(responses)
-    .where(and(inArray(responses.userId, userIds), sql`${responses.lang} is not null`))
+    // люди прогона расписания — тысячи: одним параметром (#194)
+    .where(and(inIds(responses.userId, userIds), sql`${responses.lang} is not null`))
     .orderBy(responses.userId, desc(responses.submittedAt));
   for (const r of rows) if (r.userId && r.lang) out.set(r.userId, r.lang as Lang);
   return out;
@@ -205,18 +207,16 @@ export async function remindAppointments(
 
     // какое напоминание и под каким ключом — посчитано в запросе, тем же выражением, что отсеивает ушедшие
     if (r.due === "hour") {
-      const sent = await systemContext(baseDb, () =>
-        pushToUser(
-          r.a.patientId,
-          {
-            eventKey: r.eventKey,
-            kind: "appointment",
-            title: (lang) => renderPush("push.appointmentSoonTitle", lang),
-            body: (lang) => renderPush("push.appointmentSoonBody", lang, { time: time(lang), room: room(lang) }),
-            path: "/appointments",
-          },
-          fallback,
-        ),
+      const sent = await pushToUser(
+        r.a.patientId,
+        {
+          eventKey: r.eventKey,
+          kind: "appointment",
+          title: (lang) => renderPush("push.appointmentSoonTitle", lang),
+          body: (lang) => renderPush("push.appointmentSoonBody", lang, { time: time(lang), room: room(lang) }),
+          path: "/appointments",
+        },
+        fallback,
       );
       if (sent) hour += 1;
       continue;
@@ -227,19 +227,17 @@ export async function remindAppointments(
      * иначе он получил бы оба сразу — «завтра приём» и «приём через час» — и
      * первое было бы просто неправдой.
      */
-    const sent = await systemContext(baseDb, () =>
-      pushToUser(
-        r.a.patientId,
-        {
-          eventKey: r.eventKey,
-          kind: "appointment",
-          title: (lang) => renderPush("push.appointmentDayTitle", lang),
-          body: (lang) =>
-            renderPush("push.appointmentDayBody", lang, { date: date(lang), time: time(lang), room: room(lang) }),
-          path: "/appointments",
-        },
-        fallback,
-      ),
+    const sent = await pushToUser(
+      r.a.patientId,
+      {
+        eventKey: r.eventKey,
+        kind: "appointment",
+        title: (lang) => renderPush("push.appointmentDayTitle", lang),
+        body: (lang) =>
+          renderPush("push.appointmentDayBody", lang, { date: date(lang), time: time(lang), room: room(lang) }),
+        path: "/appointments",
+      },
+      fallback,
     );
     if (sent) day += 1;
   }

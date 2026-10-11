@@ -90,6 +90,7 @@ export function unavailableKey(code: string | null): UiKey | null {
     diskUnknown: "o2b.unavail.diskUnknown",
     noSource: "o2b.unavail.noSource",
     neverChecked: "o2b.unavail.neverChecked",
+    chainStale: "o2b.unavail.chainStale",
     noThreshold: "o2b.unavail.noThreshold",
   };
   return code ? (table[code] ?? null) : null;

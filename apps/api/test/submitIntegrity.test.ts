@@ -837,8 +837,10 @@ describe("тревоги черновика при сдаче", () => {
     const surveyId = await makeRiskySurvey();
     const person = await makeUser("user", `draft-alert-${tag()}@test.dev`, { sex: "male", birthDate: "1990-01-01" });
     const v1 = (await api<Loaded>(`/api/surveys/${surveyId}`, person.token)).body;
+    // одна попытка — одно время начала у черновика и у сдачи, как у клиента (#147)
+    const startedAt = new Date(Date.now() - 60_000).toISOString();
 
-    const saved = await saveDraft(surveyId, person.token, { versionId: v1.versionId, answers: yesAnswers(v1).slice(0, 1) });
+    const saved = await saveDraft(surveyId, person.token, { startedAt, versionId: v1.versionId, answers: yesAnswers(v1).slice(0, 1) });
     expect(saved.status).toBe(200);
     const [early] = await db.select().from(riskAlerts).where(eq(riskAlerts.responseId, saved.body.id));
     expect(early, "автосохранение не подняло тревогу").toBeTruthy();
@@ -855,7 +857,7 @@ describe("тревоги черновика при сдаче", () => {
       createdBy: adminA.id,
     } as never);
 
-    const res = await submit(surveyId, person.token, { versionId: v1.versionId, answers: yesAnswers(v1) });
+    const res = await submit(surveyId, person.token, { startedAt, versionId: v1.versionId, answers: yesAnswers(v1) });
     expect(res.status, JSON.stringify(res.body)).toBe(201);
 
     const [kept] = await db.select().from(riskAlerts).where(eq(riskAlerts.id, early!.id));

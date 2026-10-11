@@ -1,4 +1,4 @@
-import { afterAll, afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterAll, afterEach, beforeEach, describe, expect, setSystemTime, test } from "bun:test";
 import { and, eq, inArray } from "drizzle-orm";
 import {
   VITAL_BOUNDS,
@@ -27,8 +27,10 @@ import {
 } from "../src/db/schema";
 import { setTransportForTests } from "../src/lib/notify";
 import {
+  AUDIT_CHAIN_STALE_MS,
   alertShape,
   decide,
+  gatherSignals,
   observe,
   resetAlertPrune,
   runAlertChecks,
@@ -39,7 +41,7 @@ import {
 } from "../src/lib/opsAlerts";
 import { cleanClientError, ratingsOf, resetClientLimits, WindowLimiter } from "../src/lib/opsClient";
 import { dayOf } from "../src/lib/day";
-import { jobsSnapshot, registerRunnable } from "../src/lib/opsJobs";
+import { jobsSnapshot, lastOkOf, lastStartOf, registerRunnable, resetJobs, trackJob } from "../src/lib/opsJobs";
 import { cleanFailure } from "../src/lib/opsRecordings";
 import { resetClientErrorsReadCoalescing } from "../src/routes/opsSignals";
 import { adminA, api, app, db, makeUser, patient, root } from "./fixtures";
@@ -94,7 +96,7 @@ const busy = (over: Partial<OpsWindowStats>): OpsWindowStats => ({ ...calm, requ
 function signals(over: Partial<SignalInputs> = {}): Partial<SignalInputs> {
   return {
     stats: () => busy({}),
-    scheduler: { enabled: false, lastTickAt: null, startedAt: 0 },
+    scheduler: { enabled: false, lastOkAt: null, startedAt: 0 },
     disk: { totalBytes: 100, freeBytes: 50, freePct: 50 },
     auditChain: undefined,
     ...over,
@@ -167,7 +169,7 @@ describe("кто видит и кто меняет", () => {
     const writes: [string, string, unknown][] = [
       ["PUT", "/api/ops/alerts/rules/errors5xx", { threshold: 7 }],
       ["POST", "/api/ops/alerts/test", { channel: "telegram" }],
-      ["POST", "/api/ops/jobs/analytics.cache/run", {}],
+      ["POST", "/api/ops/jobs/data.quality/run", {}],
       ["POST", `/api/ops/recordings/${crypto.randomUUID()}/retry`, {}],
     ];
     for (const [method, path, body] of writes) {
@@ -239,7 +241,7 @@ describe("правило: сработало, затихло, повторило
     expect(
       observe(
         { key: "schedulerSilent", threshold: 130, windowMin: null },
-        inputs({ now, scheduler: { enabled: true, lastTickAt: now - 200 * 60_000, startedAt: 0 } }),
+        inputs({ now, scheduler: { enabled: true, lastOkAt: now - 200 * 60_000, startedAt: 0 } }),
       ),
     ).toEqual({ firing: true, value: 200 });
     // источник проверки журнала не подключён (участок sec) — правило честно недоступно
@@ -248,6 +250,70 @@ describe("правило: сработало, затихло, повторило
       unavailable: "noSource",
     });
     expect(observe({ key: "auditChain", threshold: null, windowMin: null }, inputs({ auditChain: { ok: false, checkedAt: "x" } })).firing).toBe(true);
+  });
+
+  test("планировщик падает на каждом проходе — «молчит» считается от последнего успешного (#160)", async () => {
+    /*
+     * Прежде мерилось от НАЧАЛА последнего прохода: оно ставится до
+     * выполнения, и шесть часовых проходов подряд с ошибкой выглядели
+     * тикающим планировщиком — firing: false.
+     */
+    const t0 = Date.UTC(2026, 9, 11, 6, 0);
+    try {
+      setSystemTime(new Date(t0));
+      await trackJob("schedules", async () => 0);
+      for (let h = 1; h <= 6; h++) {
+        setSystemTime(new Date(t0 + h * 3_600_000));
+        await expect(
+          trackJob("schedules", async () => {
+            throw new Error("scheduler pass failed");
+          }),
+        ).rejects.toThrow();
+      }
+      const now = t0 + 6 * 3_600_000 + 60_000;
+      // проходы шли — начало последнего свежее, а успеха не было шесть часов
+      expect(lastStartOf("schedules")).toBe(t0 + 6 * 3_600_000);
+      expect(lastOkOf("schedules")).toBe(t0);
+      const gathered = await gatherSignals(now, { stats: () => busy({}), disk: null, auditChain: undefined });
+      expect(gathered.scheduler.lastOkAt).toBe(t0);
+      const rule = { key: "schedulerSilent", threshold: 130, windowMin: null };
+      expect(observe(rule, { ...gathered, scheduler: { ...gathered.scheduler, enabled: true } })).toEqual({ firing: true, value: 361 });
+      // контроль: успешный проход закрывает «молчание»
+      await trackJob("schedules", async () => 0);
+      const after = await gatherSignals(now + 60_000, { stats: () => busy({}), disk: null, auditChain: undefined });
+      expect(observe(rule, { ...after, scheduler: { ...after.scheduler, enabled: true } })).toEqual({ firing: false, value: 2 });
+    } finally {
+      setSystemTime();
+      // реестр общий на процесс: «schedules» с шестью сбоями другим тестам ни к чему
+      resetJobs();
+    }
+  });
+
+  test("сверка цепочки старше двух суток — «недоступно», а не «гаразд»; провал — «збій» при любой давности (#160)", async () => {
+    const now = Date.UTC(2026, 9, 11, 12, 0);
+    const rule = { key: "auditChain", threshold: null, windowMin: null };
+    const ago = (ms: number) => new Date(now - ms).toISOString();
+    expect(observe(rule, inputs({ now, auditChain: { ok: true, checkedAt: ago(23 * 3_600_000) } }))).toEqual({ firing: false, value: 1 });
+    expect(observe(rule, inputs({ now, auditChain: { ok: true, checkedAt: ago(AUDIT_CHAIN_STALE_MS) } }))).toEqual({ firing: false, value: 1 });
+    // десятидневной давности — прежде «гаразд»
+    expect(observe(rule, inputs({ now, auditChain: { ok: true, checkedAt: ago(10 * 86_400_000) } }))).toEqual({
+      firing: null,
+      value: null,
+      unavailable: "chainStale",
+    });
+    expect(observe(rule, inputs({ now, auditChain: { ok: true, checkedAt: ago(AUDIT_CHAIN_STALE_MS + 60_000) } })).unavailable).toBe("chainStale");
+    // порванный журнал давностью не «выцветает»
+    expect(observe(rule, inputs({ now, auditChain: { ok: false, checkedAt: ago(10 * 86_400_000) } }))).toEqual({ firing: true, value: 0 });
+
+    // проход целиком: правило в базе и на экране — «недоступно» с причиной
+    setAuditChainSource(async () => ({ ok: true, checkedAt: ago(10 * 86_400_000) }));
+    const { auditChain: _drop, ...rest } = signals();
+    await runAlertChecks({ now, signals: rest });
+    const [row] = await db.select().from(opsAlertRules).where(eq(opsAlertRules.key, "auditChain"));
+    expect(row).toMatchObject({ lastState: "unavailable", lastReason: "chainStale" });
+    const view = await api<OpsAlerts>("/api/ops/alerts", root.token);
+    expect(view.body.rules.find((r) => r.key === "auditChain")).toMatchObject({ state: "unavailable", unavailable: "chainStale" });
+    expect(sent.filter((m) => m.body.text.includes("ланцюжка"))).toHaveLength(0);
   });
 
   test("решение по инциденту: одно оповещение, тишина до повтора, «відновлено»", () => {
@@ -738,17 +804,21 @@ describe("ручной запуск фоновой задачи", () => {
     expect((await api("/api/ops/jobs/schedules/run", root.token, { method: "POST", body: "{}" })).status).toBe(404);
   });
 
-  test("безопасные задачи видны в реестре до первого прохода; сброс кэша аналитики проходит", async () => {
+  test("безопасные задачи видны в реестре до первого прохода; перепроверка «Якості даних» проходит", async () => {
     const jobs = await api<OpsJobs>("/api/ops/jobs", root.token);
     const manual = jobs.body.items.filter((j) => j.manual).map((j) => j.name);
-    expect(manual).toEqual(expect.arrayContaining(["analytics.cache", "search.reindex", "catalog.install", "retention", "ops.alerts"]));
+    expect(manual).toEqual(expect.arrayContaining(["data.quality", "search.reindex", "catalog.install", "retention", "ops.alerts"]));
     expect(manual).not.toContain("schedules");
+    // «пересчёт аналитики» сбрасывал кэш, которым никто не пользовался, — его больше нет (#187)
+    expect(manual).not.toContain("analytics.cache");
 
-    const run = await api("/api/ops/jobs/analytics.cache/run", root.token, { method: "POST", body: "{}" });
+    const run = await api("/api/ops/jobs/data.quality/run", root.token, { method: "POST", body: "{}" });
     expect(run.status).toBe(202);
-    await Bun.sleep(10);
-    expect(jobsSnapshot().find((j) => j.name === "analytics.cache")).toMatchObject({ lastResult: "ok", lastByHand: true });
-  });
+    for (let i = 0; i < 300 && jobsSnapshot().find((j) => j.name === "data.quality")?.lastResult === "running"; i++) {
+      await Bun.sleep(50);
+    }
+    expect(jobsSnapshot().find((j) => j.name === "data.quality")).toMatchObject({ lastResult: "ok", lastByHand: true });
+  }, 30_000);
 
   test("проверка оповещений руками — проход под замком, без запроса в чужой контекст", async () => {
     const run = await api("/api/ops/jobs/ops.alerts/run", root.token, { method: "POST", body: "{}" });

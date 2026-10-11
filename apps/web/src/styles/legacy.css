@@ -937,6 +937,15 @@ kbd, .kbd {
     color: #000;
   }
   @page { margin: 16mm 14mm 18mm; }
+
+  /*
+   * Печать одного блока (src/print.ts, #180): всё, что не содержит блок и не
+   * лежит в нём, — вон. Предки блока остаются (иначе пропал бы и он), их
+   * прочие дети — нет.
+   */
+  body[data-printing-scope] *:not([data-print-scope], [data-print-scope] *, :has([data-print-scope])) {
+    display: none !important;
+  }
 }
 
 /* высококонтрастный режим Windows: границы обязаны остаться видимыми */

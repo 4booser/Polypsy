@@ -1,0 +1,4307 @@
+{
+ "g1": {
+  "surveyId": "#1",
+  "title": "Обсяг <прогон>-g1",
+  "versionId": "#2",
+  "versionNumber": 1,
+  "versions": [
+   {
+    "id": "#2",
+    "version": 1,
+    "note": "v1",
+    "responseCount": 2804
+   }
+  ],
+  "inProgressNow": [],
+  "started": 3000,
+  "completed": 2804,
+  "abandoned": 93,
+  "completionRate": 93.5,
+  "avgDurationMs": 78364,
+  "medianDurationMs": 78389,
+  "dropOff": [
+   {
+    "questionId": "#3",
+    "title": "Пункт 1",
+    "position": 0,
+    "reached": 3000,
+    "lost": 0,
+    "endedHere": 104,
+    "endedHerePercent": 3,
+    "avgDurationMs": 3897
+   },
+   {
+    "questionId": "#4",
+    "title": "Пункт 2",
+    "position": 1,
+    "reached": 2902,
+    "lost": 98,
+    "endedHere": 92,
+    "endedHerePercent": 3,
+    "avgDurationMs": 3898
+   },
+   {
+    "questionId": "#5",
+    "title": "Пункт 3",
+    "position": 2,
+    "reached": 2804,
+    "lost": 98,
+    "endedHere": 0,
+    "endedHerePercent": 0,
+    "avgDurationMs": 3898
+   }
+  ],
+  "questions": [
+   {
+    "questionId": "#3",
+    "title": "Пункт 1",
+    "type": "single",
+    "position": 0,
+    "shown": 2943,
+    "answered": 2943,
+    "skipped": 0,
+    "skipRate": 0,
+    "avgDurationMs": 3897,
+    "medianDurationMs": 3869,
+    "minDurationMs": 553,
+    "maxDurationMs": 5998,
+    "p25DurationMs": 2851,
+    "p75DurationMs": 4926,
+    "avgChangeCount": 1,
+    "avgTimeToFirstAnswerMs": 1531,
+    "changedShare": 75.1,
+    "tooFastShare": 0.5,
+    "options": [
+     {
+      "optionId": "#6",
+      "text": "0",
+      "count": 721,
+      "percent": 24.5,
+      "score": 0
+     },
+     {
+      "optionId": "#7",
+      "text": "1",
+      "count": 750,
+      "percent": 25.5,
+      "score": 1
+     },
+     {
+      "optionId": "#8",
+      "text": "2",
+      "count": 722,
+      "percent": 24.5,
+      "score": 2
+     },
+     {
+      "optionId": "#9",
+      "text": "3",
+      "count": 750,
+      "percent": 25.5,
+      "score": 3
+     }
+    ]
+   },
+   {
+    "questionId": "#4",
+    "title": "Пункт 2",
+    "type": "single",
+    "position": 1,
+    "shown": 2845,
+    "answered": 2677,
+    "skipped": 168,
+    "skipRate": 5.9,
+    "avgDurationMs": 3898,
+    "medianDurationMs": 3868,
+    "minDurationMs": 566,
+    "maxDurationMs": 5997,
+    "p25DurationMs": 2850,
+    "p75DurationMs": 4921,
+    "avgChangeCount": 1,
+    "avgTimeToFirstAnswerMs": 1530,
+    "changedShare": 74.6,
+    "tooFastShare": 0.4,
+    "options": [
+     {
+      "optionId": "#10",
+      "text": "0",
+      "count": 631,
+      "percent": 23.6,
+      "score": 0
+     },
+     {
+      "optionId": "#11",
+      "text": "1",
+      "count": 706,
+      "percent": 26.4,
+      "score": 1
+     },
+     {
+      "optionId": "#12",
+      "text": "2",
+      "count": 634,
+      "percent": 23.7,
+      "score": 2
+     },
+     {
+      "optionId": "#13",
+      "text": "3",
+      "count": 706,
+      "percent": 26.4,
+      "score": 3
+     }
+    ]
+   },
+   {
+    "questionId": "#5",
+    "title": "Пункт 3",
+    "type": "single",
+    "position": 2,
+    "shown": 2747,
+    "answered": 2747,
+    "skipped": 0,
+    "skipRate": 0,
+    "avgDurationMs": 3898,
+    "medianDurationMs": 3867,
+    "minDurationMs": 579,
+    "maxDurationMs": 5998,
+    "p25DurationMs": 2854,
+    "p75DurationMs": 4924,
+    "avgChangeCount": 1,
+    "avgTimeToFirstAnswerMs": 1531,
+    "changedShare": 75.2,
+    "tooFastShare": 0.5,
+    "options": [
+     {
+      "optionId": "#14",
+      "text": "0",
+      "count": 785,
+      "percent": 28.6,
+      "score": 0
+     },
+     {
+      "optionId": "#15",
+      "text": "1",
+      "count": 561,
+      "percent": 20.4,
+      "score": 1
+     },
+     {
+      "optionId": "#16",
+      "text": "2",
+      "count": 841,
+      "percent": 30.6,
+      "score": 2
+     },
+     {
+      "optionId": "#17",
+      "text": "3",
+      "count": 560,
+      "percent": 20.4,
+      "score": 3
+     }
+    ]
+   }
+  ],
+  "scales": [
+   {
+    "scaleId": "#18",
+    "code": "S",
+    "title": "Сума",
+    "kind": "clinical",
+    "average": 4.6,
+    "median": 5,
+    "min": 0,
+    "max": 9,
+    "p25": 2,
+    "p75": 7,
+    "maxPossible": 30,
+    "bands": [],
+    "reliability": null,
+    "shape": {
+     "n": 2747,
+     "mean": 4.6,
+     "median": 5,
+     "sd": 2.83,
+     "skewness": -0.017,
+     "kurtosis": -1.207,
+     "percentiles": {
+      "p5": 0,
+      "p10": 1,
+      "p25": 2,
+      "p50": 5,
+      "p75": 7,
+      "p90": 9,
+      "p95": 9
+     }
+    },
+    "floorCeiling": {
+     "n": 2747,
+     "floorPercent": 8.2,
+     "ceilingPercent": 0,
+     "floorProblem": false,
+     "ceilingProblem": false
+    },
+    "measurement": null
+   }
+  ],
+  "timeline": [
+   {
+    "date": "2025-01-01",
+    "count": 176
+   },
+   {
+    "date": "2025-01-02",
+    "count": 193
+   },
+   {
+    "date": "2025-01-03",
+    "count": 191
+   },
+   {
+    "date": "2025-01-04",
+    "count": 193
+   },
+   {
+    "date": "2025-01-05",
+    "count": 193
+   },
+   {
+    "date": "2025-01-06",
+    "count": 191
+   },
+   {
+    "date": "2025-01-07",
+    "count": 192
+   },
+   {
+    "date": "2025-01-08",
+    "count": 192
+   },
+   {
+    "date": "2025-01-09",
+    "count": 193
+   },
+   {
+    "date": "2025-01-10",
+    "count": 192
+   },
+   {
+    "date": "2025-01-11",
+    "count": 192
+   },
+   {
+    "date": "2025-01-12",
+    "count": 192
+   },
+   {
+    "date": "2025-01-13",
+    "count": 192
+   },
+   {
+    "date": "2025-01-14",
+    "count": 193
+   },
+   {
+    "date": "2025-01-15",
+    "count": 129
+   }
+  ],
+  "quality": [
+   {
+    "responseId": "#19",
+    "respondent": "Посів Обсяг",
+    "submittedAt": "2025-01-01T04:41:30.000Z",
+    "durationMs": 61480,
+    "tooFastShare": 100,
+    "longestStraightLine": 0,
+    "personFit": null,
+    "flagged": true,
+    "reasons": [
+     "100% відповідей швидше за 1500 мс"
+    ]
+   },
+   {
+    "responseId": "#20",
+    "respondent": "Посів Обсяг",
+    "submittedAt": "2025-01-01T09:21:30.000Z",
+    "durationMs": 62960,
+    "tooFastShare": 100,
+    "longestStraightLine": 0,
+    "personFit": null,
+    "flagged": true,
+    "reasons": [
+     "100% відповідей швидше за 1500 мс"
+    ]
+   },
+   {
+    "responseId": "#21",
+    "respondent": "Посів Обсяг",
+    "submittedAt": "2025-01-01T14:01:30.000Z",
+    "durationMs": 64440,
+    "tooFastShare": 100,
+    "longestStraightLine": 0,
+    "personFit": null,
+    "flagged": true,
+    "reasons": [
+     "100% відповідей швидше за 1500 мс"
+    ]
+   },
+   {
+    "responseId": "#22",
+    "respondent": "Посів Обсяг",
+    "submittedAt": "2025-01-03T22:01:30.000Z",
+    "durationMs": 82200,
+    "tooFastShare": 100,
+    "longestStraightLine": 0,
+    "personFit": null,
+    "flagged": true,
+    "reasons": [
+     "100% відповідей швидше за 1500 мс"
+    ]
+   },
+   {
+    "responseId": "#23",
+    "respondent": "Посів Обсяг",
+    "submittedAt": "2025-01-04T02:41:30.000Z",
+    "durationMs": 83680,
+    "tooFastShare": 100,
+    "longestStraightLine": 0,
+    "personFit": null,
+    "flagged": true,
+    "reasons": [
+     "100% відповідей швидше за 1500 мс"
+    ]
+   },
+   {
+    "responseId": "#24",
+    "respondent": "Посів Обсяг",
+    "submittedAt": "2025-01-04T07:21:30.000Z",
+    "durationMs": 85160,
+    "tooFastShare": 100,
+    "longestStraightLine": 0,
+    "personFit": null,
+    "flagged": true,
+    "reasons": [
+     "100% відповідей швидше за 1500 мс"
+    ]
+   },
+   {
+    "responseId": "#25",
+    "respondent": "Посів Обсяг",
+    "submittedAt": "2025-01-06T20:01:30.000Z",
+    "durationMs": 67511,
+    "tooFastShare": 100,
+    "longestStraightLine": 0,
+    "personFit": null,
+    "flagged": true,
+    "reasons": [
+     "100% відповідей швидше за 1500 мс"
+    ]
+   },
+   {
+    "responseId": "#26",
+    "respondent": "Посів Обсяг",
+    "submittedAt": "2025-01-07T05:21:30.000Z",
+    "durationMs": 70471,
+    "tooFastShare": 100,
+    "longestStraightLine": 0,
+    "personFit": null,
+    "flagged": true,
+    "reasons": [
+     "100% відповідей швидше за 1500 мс"
+    ]
+   },
+   {
+    "responseId": "#27",
+    "respondent": "Посів Обсяг",
+    "submittedAt": "2025-01-09T08:41:30.000Z",
+    "durationMs": 86751,
+    "tooFastShare": 100,
+    "longestStraightLine": 0,
+    "personFit": null,
+    "flagged": true,
+    "reasons": [
+     "100% відповідей швидше за 1500 мс"
+    ]
+   },
+   {
+    "responseId": "#28",
+    "respondent": "Посів Обсяг",
+    "submittedAt": "2025-01-09T13:21:30.000Z",
+    "durationMs": 88231,
+    "tooFastShare": 100,
+    "longestStraightLine": 0,
+    "personFit": null,
+    "flagged": true,
+    "reasons": [
+     "100% відповідей швидше за 1500 мс"
+    ]
+   },
+   {
+    "responseId": "#29",
+    "respondent": "Посів Обсяг",
+    "submittedAt": "2025-01-09T18:01:30.000Z",
+    "durationMs": 89711,
+    "tooFastShare": 100,
+    "longestStraightLine": 0,
+    "personFit": null,
+    "flagged": true,
+    "reasons": [
+     "100% відповідей швидше за 1500 мс"
+    ]
+   },
+   {
+    "responseId": "#30",
+    "respondent": "Посів Обсяг",
+    "submittedAt": "2025-01-09T22:41:30.000Z",
+    "durationMs": 91191,
+    "tooFastShare": 100,
+    "longestStraightLine": 0,
+    "personFit": null,
+    "flagged": true,
+    "reasons": [
+     "100% відповідей швидше за 1500 мс"
+    ]
+   },
+   {
+    "responseId": "#31",
+    "respondent": "Посів Обсяг",
+    "submittedAt": "2025-01-12T11:21:30.000Z",
+    "durationMs": 73542,
+    "tooFastShare": 100,
+    "longestStraightLine": 0,
+    "personFit": null,
+    "flagged": true,
+    "reasons": [
+     "100% відповідей швидше за 1500 мс"
+    ]
+   },
+   {
+    "responseId": "#32",
+    "respondent": "Посів Обсяг",
+    "submittedAt": "2025-01-12T16:01:30.000Z",
+    "durationMs": 75022,
+    "tooFastShare": 100,
+    "longestStraightLine": 0,
+    "personFit": null,
+    "flagged": true,
+    "reasons": [
+     "100% відповідей швидше за 1500 мс"
+    ]
+   },
+   {
+    "responseId": "#33",
+    "respondent": "Посів Обсяг",
+    "submittedAt": "2025-01-15T00:01:30.000Z",
+    "durationMs": 92782,
+    "tooFastShare": 100,
+    "longestStraightLine": 0,
+    "personFit": null,
+    "flagged": true,
+    "reasons": [
+     "100% відповідей швидше за 1500 мс"
+    ]
+   },
+   {
+    "responseId": "#34",
+    "respondent": "Посів Обсяг",
+    "submittedAt": "2025-01-15T04:41:30.000Z",
+    "durationMs": 94262,
+    "tooFastShare": 100,
+    "longestStraightLine": 0,
+    "personFit": null,
+    "flagged": true,
+    "reasons": [
+     "100% відповідей швидше за 1500 мс"
+    ]
+   },
+   {
+    "responseId": "#35",
+    "respondent": "Посів Обсяг",
+    "submittedAt": "2025-01-15T09:21:30.000Z",
+    "durationMs": 95742,
+    "tooFastShare": 100,
+    "longestStraightLine": 0,
+    "personFit": null,
+    "flagged": true,
+    "reasons": [
+     "100% відповідей швидше за 1500 мс"
+    ]
+   }
+  ],
+  "tooFastThresholdMs": 1500,
+  "respondentCount": 300,
+  "unreliableCount": 57,
+  "scaleTimeline": [
+   {
+    "scaleId": "#18",
+    "weeks": [
+     {
+      "week": "2024-12-30",
+      "n": 926,
+      "mean": 4.59
+     },
+     {
+      "week": "2025-01-06",
+      "n": 1317,
+      "mean": 4.59
+     },
+     {
+      "week": "2025-01-13",
+      "n": 504,
+      "mean": 4.63
+     }
+    ]
+   }
+  ],
+  "durationBins": [
+   {
+    "fromMs": 0,
+    "toMs": 10000,
+    "count": 0
+   },
+   {
+    "fromMs": 10000,
+    "toMs": 20000,
+    "count": 0
+   },
+   {
+    "fromMs": 20000,
+    "toMs": 30000,
+    "count": 0
+   },
+   {
+    "fromMs": 30000,
+    "toMs": 40000,
+    "count": 0
+   },
+   {
+    "fromMs": 40000,
+    "toMs": 50000,
+    "count": 0
+   },
+   {
+    "fromMs": 50000,
+    "toMs": 60000,
+    "count": 0
+   },
+   {
+    "fromMs": 60000,
+    "toMs": 70000,
+    "count": 769
+   },
+   {
+    "fromMs": 70000,
+    "toMs": 80000,
+    "count": 756
+   },
+   {
+    "fromMs": 80000,
+    "toMs": 90000,
+    "count": 758
+   },
+   {
+    "fromMs": 90000,
+    "toMs": 100000,
+    "count": 521
+   }
+  ],
+  "answerMatrix": null
+ },
+ "g1Sampled": [
+  {
+   "reliability": {
+    "alpha": 0.65,
+    "itemCount": 3,
+    "items": [
+     {
+      "questionId": "#1",
+      "title": "Пункт 1",
+      "itemTotalCorrelation": 0.735,
+      "alphaIfDeleted": 0.133,
+      "variance": 1.249,
+      "endorsement": 75.6,
+      "discriminating": true
+     },
+     {
+      "questionId": "#2",
+      "title": "Пункт 2",
+      "itemTotalCorrelation": 0.735,
+      "alphaIfDeleted": 0.133,
+      "variance": 1.249,
+      "endorsement": 75.6,
+      "discriminating": true
+     },
+     {
+      "questionId": "#3",
+      "title": "Пункт 3",
+      "itemTotalCorrelation": 0.071,
+      "alphaIfDeleted": 1,
+      "variance": 1.224,
+      "endorsement": 71.5,
+      "discriminating": false
+     }
+    ],
+    "sampleN": 2585,
+    "omega": 0.824,
+    "weakItems": 1
+   },
+   "measurement": {
+    "sem": 1.67,
+    "sdiff": 2.37,
+    "mdc95": 4.64,
+    "basis": {
+     "sd": 2.83,
+     "alpha": 0.65,
+     "sampleN": 2747
+    }
+   }
+  }
+ ],
+ "g2": {
+  "surveyId": "#1",
+  "title": "СР-45. Схильність до суїцидальних реакцій",
+  "versionId": "#2",
+  "versionNumber": 1,
+  "versions": [
+   {
+    "id": "#2",
+    "version": 1,
+    "note": "v1",
+    "responseCount": 300
+   }
+  ],
+  "inProgressNow": [],
+  "started": 300,
+  "completed": 300,
+  "abandoned": 0,
+  "completionRate": 100,
+  "avgDurationMs": 192800,
+  "medianDurationMs": 200000,
+  "dropOff": [
+   {
+    "questionId": "#3",
+    "title": "Чи може життя втратити цінність для людини в певній ситуації?",
+    "position": 0,
+    "reached": 300,
+    "lost": 0,
+    "endedHere": 0,
+    "endedHerePercent": 0,
+    "avgDurationMs": 2417
+   },
+   {
+    "questionId": "#4",
+    "title": "Життя іноді гірше за смерть.",
+    "position": 1,
+    "reached": 300,
+    "lost": 0,
+    "endedHere": 0,
+    "endedHerePercent": 0,
+    "avgDurationMs": 2425
+   },
+   {
+    "questionId": "#5",
+    "title": "У минулому в мене була спроба піти з життя.",
+    "position": 2,
+    "reached": 300,
+    "lost": 0,
+    "endedHere": 0,
+    "endedHerePercent": 0,
+    "avgDurationMs": 2443
+   },
+   {
+    "questionId": "#6",
+    "title": "Мене багато хто любить, розуміє і цінує.",
+    "position": 3,
+    "reached": 300,
+    "lost": 0,
+    "endedHere": 0,
+    "endedHerePercent": 0,
+    "avgDurationMs": 2451
+   },
+   {
+    "questionId": "#7",
+    "title": "Можна виправдати безнадійно хворих, які обрали добровільну смерть.",
+    "position": 4,
+    "reached": 300,
+    "lost": 0,
+    "endedHere": 0,
+    "endedHerePercent": 0,
+    "avgDurationMs": 2459
+   },
+   {
+    "questionId": "#8",
+    "title": "Я не думаю, що сам можу опинитися в безнадійному становищі.",
+    "position": 5,
+    "reached": 300,
+    "lost": 0,
+    "endedHere": 0,
+    "endedHerePercent": 0,
+    "avgDurationMs": 2468
+   },
+   {
+    "questionId": "#9",
+    "title": "Сенс життя не завжди буває ясний, його можна втратити.",
+    "position": 6,
+    "reached": 300,
+    "lost": 0,
+    "endedHere": 0,
+    "endedHerePercent": 0,
+    "avgDurationMs": 2486
+   },
+   {
+    "questionId": "#10",
+    "title": "Якщо Вас зрадять близькі, чи зможете Ви жити далі?",
+    "position": 7,
+    "reached": 300,
+    "lost": 0,
+    "endedHere": 0,
+    "endedHerePercent": 0,
+    "avgDurationMs": 2494
+   },
+   {
+    "questionId": "#11",
+    "title": "Я іноді думаю про свою добровільну смерть.",
+    "position": 8,
+    "reached": 300,
+    "lost": 0,
+    "endedHere": 0,
+    "endedHerePercent": 0,
+    "avgDurationMs": 2502
+   },
+   {
+    "questionId": "#12",
+    "title": "У будь-якій ситуації я боротимуся за своє життя.",
+    "position": 9,
+    "reached": 300,
+    "lost": 0,
+    "endedHere": 0,
+    "endedHerePercent": 0,
+    "avgDurationMs": 2521
+   },
+   {
+    "questionId": "#13",
+    "title": "Завжди і всюди намагаюся бути абсолютно чесним.",
+    "position": 10,
+    "reached": 300,
+    "lost": 0,
+    "endedHere": 0,
+    "endedHerePercent": 0,
+    "avgDurationMs": 2539
+   },
+   {
+    "questionId": "#14",
+    "title": "У мене, в принципі, немає недоліків.",
+    "position": 11,
+    "reached": 300,
+    "lost": 0,
+    "endedHere": 0,
+    "endedHerePercent": 0,
+    "avgDurationMs": 2547
+   },
+   {
+    "questionId": "#15",
+    "title": "Можливо, далі я жити не зможу.",
+    "position": 12,
+    "reached": 300,
+    "lost": 0,
+    "endedHere": 0,
+    "endedHerePercent": 0,
+    "avgDurationMs": 2556
+   },
+   {
+    "questionId": "#16",
+    "title": "Дивно, що дехто в безвихідному становищі не хоче покінчити з собою.",
+    "position": 13,
+    "reached": 300,
+    "lost": 0,
+    "endedHere": 0,
+    "endedHerePercent": 0,
+    "avgDurationMs": 2574
+   },
+   {
+    "questionId": "#17",
+    "title": "Відчуття приреченості призводить до добровільного відходу з життя.",
+    "position": 14,
+    "reached": 300,
+    "lost": 0,
+    "endedHere": 0,
+    "endedHerePercent": 0,
+    "avgDurationMs": 2582
+   },
+   {
+    "questionId": "#18",
+    "title": "Якщо буде потрібно, свій відхід із життя можна виправдати.",
+    "position": 15,
+    "reached": 300,
+    "lost": 0,
+    "endedHere": 0,
+    "endedHerePercent": 0,
+    "avgDurationMs": 2590
+   },
+   {
+    "questionId": "#19",
+    "title": "Мені не подобається гратися зі смертю на самоті.",
+    "position": 16,
+    "reached": 300,
+    "lost": 0,
+    "endedHere": 0,
+    "endedHerePercent": 0,
+    "avgDurationMs": 2609
+   },
+   {
+    "questionId": "#20",
+    "title": "Часто саме перше враження про людину є визначальним.",
+    "position": 17,
+    "reached": 300,
+    "lost": 0,
+    "endedHere": 0,
+    "endedHerePercent": 0,
+    "avgDurationMs": 2617
+   },
+   {
+    "questionId": "#21",
+    "title": "Я пробував різні способи відходу з життя.",
+    "position": 18,
+    "reached": 300,
+    "lost": 0,
+    "endedHere": 0,
+    "endedHerePercent": 0,
+    "avgDurationMs": 2625
+   },
+   {
+    "questionId": "#22",
+    "title": "У критичний момент я завжди можу впоратися із собою.",
+    "position": 19,
+    "reached": 300,
+    "lost": 0,
+    "endedHere": 0,
+    "endedHerePercent": 0,
+    "avgDurationMs": 2644
+   },
+   {
+    "questionId": "#23",
+    "title": "У школі я завжди вирізнявся лише гарною поведінкою.",
+    "position": 20,
+    "reached": 300,
+    "lost": 0,
+    "endedHere": 0,
+    "endedHerePercent": 0,
+    "avgDurationMs": 2652
+   },
+   {
+    "questionId": "#24",
+    "title": "Можу обманювати оточення, щоб погіршити своє становище.",
+    "position": 21,
+    "reached": 300,
+    "lost": 0,
+    "endedHere": 0,
+    "endedHerePercent": 0,
+    "avgDurationMs": 2660
+   },
+   {
+    "questionId": "#25",
+    "title": "Навколо мене досить багато нечесних людей.",
+    "position": 22,
+    "reached": 300,
+    "lost": 0,
+    "endedHere": 0,
+    "endedHerePercent": 0,
+    "avgDurationMs": 2668
+   },
+   {
+    "questionId": "#26",
+    "title": "Одного разу я обирав кілька способів покінчити з собою.",
+    "position": 23,
+    "reached": 300,
+    "lost": 0,
+    "endedHere": 0,
+    "endedHerePercent": 0,
+    "avgDurationMs": 2697
+   },
+   {
+    "questionId": "#27",
+    "title": "Досить часто мене намагаються обманути.",
+    "position": 24,
+    "reached": 300,
+    "lost": 0,
+    "endedHere": 0,
+    "endedHerePercent": 0,
+    "avgDurationMs": 2705
+   },
+   {
+    "questionId": "#28",
+    "title": "Я б не хотів миттєвої смерті після тяжких переживань.",
+    "position": 25,
+    "reached": 300,
+    "lost": 0,
+    "endedHere": 0,
+    "endedHerePercent": 0,
+    "avgDurationMs": 2713
+   },
+   {
+    "questionId": "#29",
+    "title": "Я жив би далі, якби сталася світова ядерна війна.",
+    "position": 26,
+    "reached": 300,
+    "lost": 0,
+    "endedHere": 0,
+    "endedHerePercent": 0,
+    "avgDurationMs": 2732
+   },
+   {
+    "questionId": "#30",
+    "title": "Людина вільна чинити зі своїм життям так, як їй хочеться.",
+    "position": 27,
+    "reached": 300,
+    "lost": 0,
+    "endedHere": 0,
+    "endedHerePercent": 0,
+    "avgDurationMs": 2740
+   },
+   {
+    "questionId": "#31",
+    "title": "Хто не вміє показати себе перед керівництвом, той багато втрачає.",
+    "position": 28,
+    "reached": 300,
+    "lost": 0,
+    "endedHere": 0,
+    "endedHerePercent": 0,
+    "avgDurationMs": 2748
+   },
+   {
+    "questionId": "#32",
+    "title": "Ніколи нікому не писав передсмертної записки.",
+    "position": 29,
+    "reached": 300,
+    "lost": 0,
+    "endedHere": 0,
+    "endedHerePercent": 0,
+    "avgDurationMs": 2756
+   },
+   {
+    "questionId": "#33",
+    "title": "Одного разу намагався покінчити з собою.",
+    "position": 30,
+    "reached": 300,
+    "lost": 0,
+    "endedHere": 0,
+    "endedHerePercent": 0,
+    "avgDurationMs": 2774
+   },
+   {
+    "questionId": "#34",
+    "title": "Ніколи не буває безвихідних ситуацій.",
+    "position": 31,
+    "reached": 300,
+    "lost": 0,
+    "endedHere": 0,
+    "endedHerePercent": 0,
+    "avgDurationMs": 2783
+   },
+   {
+    "questionId": "#35",
+    "title": "Пробував покінчити з собою так, щоб не відчувати болю.",
+    "position": 32,
+    "reached": 300,
+    "lost": 0,
+    "endedHere": 0,
+    "endedHerePercent": 0,
+    "avgDurationMs": 2780
+   },
+   {
+    "questionId": "#36",
+    "title": "Треба вміти приховувати свої думки від інших.",
+    "position": 33,
+    "reached": 300,
+    "lost": 0,
+    "endedHere": 0,
+    "endedHerePercent": 0,
+    "avgDurationMs": 2778
+   },
+   {
+    "questionId": "#37",
+    "title": "Душа людини відчуває полегшення, якщо сама залишає цей світ.",
+    "position": 34,
+    "reached": 300,
+    "lost": 0,
+    "endedHere": 0,
+    "endedHerePercent": 0,
+    "avgDurationMs": 2765
+   },
+   {
+    "questionId": "#38",
+    "title": "Можу виправдати будь-який свій вчинок.",
+    "position": 35,
+    "reached": 300,
+    "lost": 0,
+    "endedHere": 0,
+    "endedHerePercent": 0,
+    "avgDurationMs": 2763
+   },
+   {
+    "questionId": "#39",
+    "title": "Якщо мені починають заважати, я все одно робитиму задумане.",
+    "position": 36,
+    "reached": 300,
+    "lost": 0,
+    "endedHere": 0,
+    "endedHerePercent": 0,
+    "avgDurationMs": 2760
+   },
+   {
+    "questionId": "#40",
+    "title": "Щоб перестати мучитися від невиліковної хвороби, людина може піти з життя.",
+    "position": 37,
+    "reached": 300,
+    "lost": 0,
+    "endedHere": 0,
+    "endedHerePercent": 0,
+    "avgDurationMs": 2758
+   },
+   {
+    "questionId": "#41",
+    "title": "Буває, сумніваюся в психічному здоров’ї деяких знайомих.",
+    "position": 38,
+    "reached": 300,
+    "lost": 0,
+    "endedHere": 0,
+    "endedHerePercent": 0,
+    "avgDurationMs": 2756
+   },
+   {
+    "questionId": "#42",
+    "title": "Одного разу наважувався покінчити з собою.",
+    "position": 39,
+    "reached": 300,
+    "lost": 0,
+    "endedHere": 0,
+    "endedHerePercent": 0,
+    "avgDurationMs": 2743
+   },
+   {
+    "questionId": "#43",
+    "title": "Мене турбує відсутність відчуття щастя.",
+    "position": 40,
+    "reached": 300,
+    "lost": 0,
+    "endedHere": 0,
+    "endedHerePercent": 0,
+    "avgDurationMs": 2740
+   },
+   {
+    "questionId": "#44",
+    "title": "Я ніколи не порушую закон навіть у дрібницях.",
+    "position": 41,
+    "reached": 300,
+    "lost": 0,
+    "endedHere": 0,
+    "endedHerePercent": 0,
+    "avgDurationMs": 2728
+   },
+   {
+    "questionId": "#45",
+    "title": "Іноді мені хочеться заснути і не прокинутися.",
+    "position": 42,
+    "reached": 300,
+    "lost": 0,
+    "endedHere": 0,
+    "endedHerePercent": 0,
+    "avgDurationMs": 2725
+   },
+   {
+    "questionId": "#46",
+    "title": "Одного разу мені було соромно через бажання піти з життя.",
+    "position": 43,
+    "reached": 300,
+    "lost": 0,
+    "endedHere": 0,
+    "endedHerePercent": 0,
+    "avgDurationMs": 2723
+   },
+   {
+    "questionId": "#47",
+    "title": "Навіть у найтяжчій ситуації я боротимуся за своє життя.",
+    "position": 44,
+    "reached": 300,
+    "lost": 0,
+    "endedHere": 0,
+    "endedHerePercent": 0,
+    "avgDurationMs": 2710
+   }
+  ],
+  "questions": [
+   {
+    "questionId": "#3",
+    "title": "Чи може життя втратити цінність для людини в певній ситуації?",
+    "type": "yesno",
+    "position": 0,
+    "shown": 287,
+    "answered": 287,
+    "skipped": 0,
+    "skipRate": 0,
+    "avgDurationMs": 2417,
+    "medianDurationMs": 2365,
+    "minDurationMs": 360,
+    "maxDurationMs": 4192,
+    "p25DurationMs": 1741,
+    "p75DurationMs": 3049,
+    "avgChangeCount": 1,
+    "avgTimeToFirstAnswerMs": null,
+    "changedShare": 66.6,
+    "tooFastShare": 15.7,
+    "options": [
+     {
+      "optionId": "#48",
+      "text": "Так",
+      "count": 250,
+      "percent": 87.1,
+      "score": 0
+     },
+     {
+      "optionId": "#49",
+      "text": "Ні",
+      "count": 37,
+      "percent": 12.9,
+      "score": 0
+     }
+    ]
+   },
+   {
+    "questionId": "#4",
+    "title": "Життя іноді гірше за смерть.",
+    "type": "yesno",
+    "position": 1,
+    "shown": 287,
+    "answered": 287,
+    "skipped": 0,
+    "skipRate": 0,
+    "avgDurationMs": 2425,
+    "medianDurationMs": 2378,
+    "minDurationMs": 389,
+    "maxDurationMs": 4187,
+    "p25DurationMs": 1761,
+    "p75DurationMs": 3053,
+    "avgChangeCount": 1,
+    "avgTimeToFirstAnswerMs": null,
+    "changedShare": 66.9,
+    "tooFastShare": 15,
+    "options": [
+     {
+      "optionId": "#50",
+      "text": "Так",
+      "count": 250,
+      "percent": 87.1,
+      "score": 0
+     },
+     {
+      "optionId": "#51",
+      "text": "Ні",
+      "count": 37,
+      "percent": 12.9,
+      "score": 0
+     }
+    ]
+   },
+   {
+    "questionId": "#5",
+    "title": "У минулому в мене була спроба піти з життя.",
+    "type": "yesno",
+    "position": 2,
+    "shown": 287,
+    "answered": 287,
+    "skipped": 0,
+    "skipRate": 0,
+    "avgDurationMs": 2443,
+    "medianDurationMs": 2406,
+    "minDurationMs": 418,
+    "maxDurationMs": 4199,
+    "p25DurationMs": 1777,
+    "p75DurationMs": 3073,
+    "avgChangeCount": 1,
+    "avgTimeToFirstAnswerMs": null,
+    "changedShare": 66.6,
+    "tooFastShare": 14.3,
+    "options": [
+     {
+      "optionId": "#52",
+      "text": "Так",
+      "count": 250,
+      "percent": 87.1,
+      "score": 0
+     },
+     {
+      "optionId": "#53",
+      "text": "Ні",
+      "count": 37,
+      "percent": 12.9,
+      "score": 0
+     }
+    ]
+   },
+   {
+    "questionId": "#6",
+    "title": "Мене багато хто любить, розуміє і цінує.",
+    "type": "yesno",
+    "position": 3,
+    "shown": 287,
+    "answered": 287,
+    "skipped": 0,
+    "skipRate": 0,
+    "avgDurationMs": 2451,
+    "medianDurationMs": 2409,
+    "minDurationMs": 447,
+    "maxDurationMs": 4177,
+    "p25DurationMs": 1785,
+    "p75DurationMs": 3085,
+    "avgChangeCount": 1,
+    "avgTimeToFirstAnswerMs": null,
+    "changedShare": 66.6,
+    "tooFastShare": 13.6,
+    "options": [
+     {
+      "optionId": "#54",
+      "text": "Так",
+      "count": 250,
+      "percent": 87.1,
+      "score": 0
+     },
+     {
+      "optionId": "#55",
+      "text": "Ні",
+      "count": 37,
+      "percent": 12.9,
+      "score": 0
+     }
+    ]
+   },
+   {
+    "questionId": "#7",
+    "title": "Можна виправдати безнадійно хворих, які обрали добровільну смерть.",
+    "type": "yesno",
+    "position": 4,
+    "shown": 287,
+    "answered": 287,
+    "skipped": 0,
+    "skipRate": 0,
+    "avgDurationMs": 2459,
+    "medianDurationMs": 2421,
+    "minDurationMs": 323,
+    "maxDurationMs": 4189,
+    "p25DurationMs": 1797,
+    "p75DurationMs": 3097,
+    "avgChangeCount": 1,
+    "avgTimeToFirstAnswerMs": null,
+    "changedShare": 66.9,
+    "tooFastShare": 13.2,
+    "options": [
+     {
+      "optionId": "#56",
+      "text": "Так",
+      "count": 250,
+      "percent": 87.1,
+      "score": 0
+     },
+     {
+      "optionId": "#57",
+      "text": "Ні",
+      "count": 37,
+      "percent": 12.9,
+      "score": 0
+     }
+    ]
+   },
+   {
+    "questionId": "#8",
+    "title": "Я не думаю, що сам можу опинитися в безнадійному становищі.",
+    "type": "yesno",
+    "position": 5,
+    "shown": 287,
+    "answered": 287,
+    "skipped": 0,
+    "skipRate": 0,
+    "avgDurationMs": 2468,
+    "medianDurationMs": 2434,
+    "minDurationMs": 352,
+    "maxDurationMs": 4184,
+    "p25DurationMs": 1817,
+    "p75DurationMs": 3109,
+    "avgChangeCount": 1,
+    "avgTimeToFirstAnswerMs": null,
+    "changedShare": 66.6,
+    "tooFastShare": 12.5,
+    "options": [
+     {
+      "optionId": "#58",
+      "text": "Так",
+      "count": 222,
+      "percent": 77.4,
+      "score": 0
+     },
+     {
+      "optionId": "#59",
+      "text": "Ні",
+      "count": 65,
+      "percent": 22.6,
+      "score": 0
+     }
+    ]
+   },
+   {
+    "questionId": "#9",
+    "title": "Сенс життя не завжди буває ясний, його можна втратити.",
+    "type": "yesno",
+    "position": 6,
+    "shown": 287,
+    "answered": 287,
+    "skipped": 0,
+    "skipRate": 0,
+    "avgDurationMs": 2486,
+    "medianDurationMs": 2462,
+    "minDurationMs": 381,
+    "maxDurationMs": 4196,
+    "p25DurationMs": 1834,
+    "p75DurationMs": 3130,
+    "avgChangeCount": 1,
+    "avgTimeToFirstAnswerMs": null,
+    "changedShare": 66.6,
+    "tooFastShare": 12.2,
+    "options": [
+     {
+      "optionId": "#60",
+      "text": "Так",
+      "count": 222,
+      "percent": 77.4,
+      "score": 0
+     },
+     {
+      "optionId": "#61",
+      "text": "Ні",
+      "count": 65,
+      "percent": 22.6,
+      "score": 0
+     }
+    ]
+   },
+   {
+    "questionId": "#10",
+    "title": "Якщо Вас зрадять близькі, чи зможете Ви жити далі?",
+    "type": "yesno",
+    "position": 7,
+    "shown": 287,
+    "answered": 287,
+    "skipped": 0,
+    "skipRate": 0,
+    "avgDurationMs": 2494,
+    "medianDurationMs": 2466,
+    "minDurationMs": 410,
+    "maxDurationMs": 4191,
+    "p25DurationMs": 1841,
+    "p75DurationMs": 3133,
+    "avgChangeCount": 1,
+    "avgTimeToFirstAnswerMs": null,
+    "changedShare": 66.9,
+    "tooFastShare": 11.8,
+    "options": [
+     {
+      "optionId": "#62",
+      "text": "Так",
+      "count": 222,
+      "percent": 77.4,
+      "score": 0
+     },
+     {
+      "optionId": "#63",
+      "text": "Ні",
+      "count": 65,
+      "percent": 22.6,
+      "score": 0
+     }
+    ]
+   },
+   {
+    "questionId": "#11",
+    "title": "Я іноді думаю про свою добровільну смерть.",
+    "type": "yesno",
+    "position": 8,
+    "shown": 287,
+    "answered": 287,
+    "skipped": 0,
+    "skipRate": 0,
+    "avgDurationMs": 2502,
+    "medianDurationMs": 2478,
+    "minDurationMs": 439,
+    "maxDurationMs": 4152,
+    "p25DurationMs": 1853,
+    "p75DurationMs": 3145,
+    "avgChangeCount": 1,
+    "avgTimeToFirstAnswerMs": null,
+    "changedShare": 66.6,
+    "tooFastShare": 10.8,
+    "options": [
+     {
+      "optionId": "#64",
+      "text": "Так",
+      "count": 222,
+      "percent": 77.4,
+      "score": 0
+     },
+     {
+      "optionId": "#65",
+      "text": "Ні",
+      "count": 65,
+      "percent": 22.6,
+      "score": 0
+     }
+    ]
+   },
+   {
+    "questionId": "#12",
+    "title": "У будь-якій ситуації я боротимуся за своє життя.",
+    "type": "yesno",
+    "position": 9,
+    "shown": 287,
+    "answered": 287,
+    "skipped": 0,
+    "skipRate": 0,
+    "avgDurationMs": 2521,
+    "medianDurationMs": 2498,
+    "minDurationMs": 315,
+    "maxDurationMs": 4181,
+    "p25DurationMs": 1874,
+    "p75DurationMs": 3166,
+    "avgChangeCount": 1,
+    "avgTimeToFirstAnswerMs": null,
+    "changedShare": 66.6,
+    "tooFastShare": 10.5,
+    "options": [
+     {
+      "optionId": "#66",
+      "text": "Так",
+      "count": 194,
+      "percent": 67.6,
+      "score": 0
+     },
+     {
+      "optionId": "#67",
+      "text": "Ні",
+      "count": 93,
+      "percent": 32.4,
+      "score": 0
+     }
+    ]
+   },
+   {
+    "questionId": "#13",
+    "title": "Завжди і всюди намагаюся бути абсолютно чесним.",
+    "type": "yesno",
+    "position": 10,
+    "shown": 287,
+    "answered": 287,
+    "skipped": 0,
+    "skipRate": 0,
+    "avgDurationMs": 2539,
+    "medianDurationMs": 2519,
+    "minDurationMs": 344,
+    "maxDurationMs": 4193,
+    "p25DurationMs": 1894,
+    "p75DurationMs": 3191,
+    "avgChangeCount": 1,
+    "avgTimeToFirstAnswerMs": null,
+    "changedShare": 66.9,
+    "tooFastShare": 9.4,
+    "options": [
+     {
+      "optionId": "#68",
+      "text": "Так",
+      "count": 194,
+      "percent": 67.6,
+      "score": 0
+     },
+     {
+      "optionId": "#69",
+      "text": "Ні",
+      "count": 93,
+      "percent": 32.4,
+      "score": 0
+     }
+    ]
+   },
+   {
+    "questionId": "#14",
+    "title": "У мене, в принципі, немає недоліків.",
+    "type": "yesno",
+    "position": 11,
+    "shown": 287,
+    "answered": 287,
+    "skipped": 0,
+    "skipRate": 0,
+    "avgDurationMs": 2547,
+    "medianDurationMs": 2531,
+    "minDurationMs": 373,
+    "maxDurationMs": 4188,
+    "p25DurationMs": 1903,
+    "p75DurationMs": 3190,
+    "avgChangeCount": 1,
+    "avgTimeToFirstAnswerMs": null,
+    "changedShare": 66.6,
+    "tooFastShare": 9.4,
+    "options": [
+     {
+      "optionId": "#70",
+      "text": "Так",
+      "count": 194,
+      "percent": 67.6,
+      "score": 0
+     },
+     {
+      "optionId": "#71",
+      "text": "Ні",
+      "count": 93,
+      "percent": 32.4,
+      "score": 0
+     }
+    ]
+   },
+   {
+    "questionId": "#15",
+    "title": "Можливо, далі я жити не зможу.",
+    "type": "yesno",
+    "position": 12,
+    "shown": 287,
+    "answered": 287,
+    "skipped": 0,
+    "skipRate": 0,
+    "avgDurationMs": 2556,
+    "medianDurationMs": 2544,
+    "minDurationMs": 402,
+    "maxDurationMs": 4183,
+    "p25DurationMs": 1914,
+    "p75DurationMs": 3202,
+    "avgChangeCount": 1,
+    "avgTimeToFirstAnswerMs": null,
+    "changedShare": 66.6,
+    "tooFastShare": 9.4,
+    "options": [
+     {
+      "optionId": "#72",
+      "text": "Так",
+      "count": 194,
+      "percent": 67.6,
+      "score": 0
+     },
+     {
+      "optionId": "#73",
+      "text": "Ні",
+      "count": 93,
+      "percent": 32.4,
+      "score": 0
+     }
+    ]
+   },
+   {
+    "questionId": "#16",
+    "title": "Дивно, що дехто в безвихідному становищі не хоче покінчити з собою.",
+    "type": "yesno",
+    "position": 13,
+    "shown": 287,
+    "answered": 287,
+    "skipped": 0,
+    "skipRate": 0,
+    "avgDurationMs": 2574,
+    "medianDurationMs": 2572,
+    "minDurationMs": 431,
+    "maxDurationMs": 4195,
+    "p25DurationMs": 1930,
+    "p75DurationMs": 3222,
+    "avgChangeCount": 1,
+    "avgTimeToFirstAnswerMs": null,
+    "changedShare": 66.9,
+    "tooFastShare": 8.7,
+    "options": [
+     {
+      "optionId": "#74",
+      "text": "Так",
+      "count": 194,
+      "percent": 67.6,
+      "score": 0
+     },
+     {
+      "optionId": "#75",
+      "text": "Ні",
+      "count": 93,
+      "percent": 32.4,
+      "score": 0
+     }
+    ]
+   },
+   {
+    "questionId": "#17",
+    "title": "Відчуття приреченості призводить до добровільного відходу з життя.",
+    "type": "yesno",
+    "position": 14,
+    "shown": 287,
+    "answered": 287,
+    "skipped": 0,
+    "skipRate": 0,
+    "avgDurationMs": 2582,
+    "medianDurationMs": 2575,
+    "minDurationMs": 307,
+    "maxDurationMs": 4190,
+    "p25DurationMs": 1942,
+    "p75DurationMs": 3234,
+    "avgChangeCount": 1,
+    "avgTimeToFirstAnswerMs": null,
+    "changedShare": 66.6,
+    "tooFastShare": 9.4,
+    "options": [
+     {
+      "optionId": "#76",
+      "text": "Так",
+      "count": 166,
+      "percent": 57.8,
+      "score": 0
+     },
+     {
+      "optionId": "#77",
+      "text": "Ні",
+      "count": 121,
+      "percent": 42.2,
+      "score": 0
+     }
+    ]
+   },
+   {
+    "questionId": "#18",
+    "title": "Якщо буде потрібно, свій відхід із життя можна виправдати.",
+    "type": "yesno",
+    "position": 15,
+    "shown": 287,
+    "answered": 287,
+    "skipped": 0,
+    "skipRate": 0,
+    "avgDurationMs": 2590,
+    "medianDurationMs": 2587,
+    "minDurationMs": 336,
+    "maxDurationMs": 4185,
+    "p25DurationMs": 1959,
+    "p75DurationMs": 3246,
+    "avgChangeCount": 1,
+    "avgTimeToFirstAnswerMs": null,
+    "changedShare": 66.6,
+    "tooFastShare": 9.1,
+    "options": [
+     {
+      "optionId": "#78",
+      "text": "Так",
+      "count": 166,
+      "percent": 57.8,
+      "score": 0
+     },
+     {
+      "optionId": "#79",
+      "text": "Ні",
+      "count": 121,
+      "percent": 42.2,
+      "score": 0
+     }
+    ]
+   },
+   {
+    "questionId": "#19",
+    "title": "Мені не подобається гратися зі смертю на самоті.",
+    "type": "yesno",
+    "position": 16,
+    "shown": 287,
+    "answered": 287,
+    "skipped": 0,
+    "skipRate": 0,
+    "avgDurationMs": 2609,
+    "medianDurationMs": 2608,
+    "minDurationMs": 365,
+    "maxDurationMs": 4197,
+    "p25DurationMs": 1983,
+    "p75DurationMs": 3267,
+    "avgChangeCount": 1,
+    "avgTimeToFirstAnswerMs": null,
+    "changedShare": 66.9,
+    "tooFastShare": 8.7,
+    "options": [
+     {
+      "optionId": "#80",
+      "text": "Так",
+      "count": 166,
+      "percent": 57.8,
+      "score": 0
+     },
+     {
+      "optionId": "#81",
+      "text": "Ні",
+      "count": 121,
+      "percent": 42.2,
+      "score": 0
+     }
+    ]
+   },
+   {
+    "questionId": "#20",
+    "title": "Часто саме перше враження про людину є визначальним.",
+    "type": "yesno",
+    "position": 17,
+    "shown": 287,
+    "answered": 287,
+    "skipped": 0,
+    "skipRate": 0,
+    "avgDurationMs": 2617,
+    "medianDurationMs": 2628,
+    "minDurationMs": 394,
+    "maxDurationMs": 4192,
+    "p25DurationMs": 1987,
+    "p75DurationMs": 3270,
+    "avgChangeCount": 1,
+    "avgTimeToFirstAnswerMs": null,
+    "changedShare": 66.6,
+    "tooFastShare": 9.1,
+    "options": [
+     {
+      "optionId": "#82",
+      "text": "Так",
+      "count": 166,
+      "percent": 57.8,
+      "score": 0
+     },
+     {
+      "optionId": "#83",
+      "text": "Ні",
+      "count": 121,
+      "percent": 42.2,
+      "score": 0
+     }
+    ]
+   },
+   {
+    "questionId": "#21",
+    "title": "Я пробував різні способи відходу з життя.",
+    "type": "yesno",
+    "position": 18,
+    "shown": 287,
+    "answered": 287,
+    "skipped": 0,
+    "skipRate": 0,
+    "avgDurationMs": 2625,
+    "medianDurationMs": 2623,
+    "minDurationMs": 423,
+    "maxDurationMs": 4187,
+    "p25DurationMs": 1999,
+    "p75DurationMs": 3274,
+    "avgChangeCount": 1,
+    "avgTimeToFirstAnswerMs": null,
+    "changedShare": 66.6,
+    "tooFastShare": 9.1,
+    "options": [
+     {
+      "optionId": "#84",
+      "text": "Так",
+      "count": 138,
+      "percent": 48.1,
+      "score": 0
+     },
+     {
+      "optionId": "#85",
+      "text": "Ні",
+      "count": 149,
+      "percent": 51.9,
+      "score": 0
+     }
+    ]
+   },
+   {
+    "questionId": "#22",
+    "title": "У критичний момент я завжди можу впоратися із собою.",
+    "type": "yesno",
+    "position": 19,
+    "shown": 287,
+    "answered": 287,
+    "skipped": 0,
+    "skipRate": 0,
+    "avgDurationMs": 2644,
+    "medianDurationMs": 2644,
+    "minDurationMs": 452,
+    "maxDurationMs": 4182,
+    "p25DurationMs": 2019,
+    "p75DurationMs": 3299,
+    "avgChangeCount": 1,
+    "avgTimeToFirstAnswerMs": null,
+    "changedShare": 66.9,
+    "tooFastShare": 8.7,
+    "options": [
+     {
+      "optionId": "#86",
+      "text": "Так",
+      "count": 138,
+      "percent": 48.1,
+      "score": 0
+     },
+     {
+      "optionId": "#87",
+      "text": "Ні",
+      "count": 149,
+      "percent": 51.9,
+      "score": 0
+     }
+    ]
+   },
+   {
+    "questionId": "#23",
+    "title": "У школі я завжди вирізнявся лише гарною поведінкою.",
+    "type": "yesno",
+    "position": 20,
+    "shown": 287,
+    "answered": 287,
+    "skipped": 0,
+    "skipRate": 0,
+    "avgDurationMs": 2652,
+    "medianDurationMs": 2656,
+    "minDurationMs": 328,
+    "maxDurationMs": 4194,
+    "p25DurationMs": 2031,
+    "p75DurationMs": 3311,
+    "avgChangeCount": 1,
+    "avgTimeToFirstAnswerMs": null,
+    "changedShare": 66.6,
+    "tooFastShare": 9.1,
+    "options": [
+     {
+      "optionId": "#88",
+      "text": "Так",
+      "count": 138,
+      "percent": 48.1,
+      "score": 0
+     },
+     {
+      "optionId": "#89",
+      "text": "Ні",
+      "count": 149,
+      "percent": 51.9,
+      "score": 0
+     }
+    ]
+   },
+   {
+    "questionId": "#24",
+    "title": "Можу обманювати оточення, щоб погіршити своє становище.",
+    "type": "yesno",
+    "position": 21,
+    "shown": 287,
+    "answered": 287,
+    "skipped": 0,
+    "skipRate": 0,
+    "avgDurationMs": 2660,
+    "medianDurationMs": 2668,
+    "minDurationMs": 357,
+    "maxDurationMs": 4189,
+    "p25DurationMs": 2044,
+    "p75DurationMs": 3318,
+    "avgChangeCount": 1,
+    "avgTimeToFirstAnswerMs": null,
+    "changedShare": 66.6,
+    "tooFastShare": 9.1,
+    "options": [
+     {
+      "optionId": "#90",
+      "text": "Так",
+      "count": 138,
+      "percent": 48.1,
+      "score": 0
+     },
+     {
+      "optionId": "#91",
+      "text": "Ні",
+      "count": 149,
+      "percent": 51.9,
+      "score": 0
+     }
+    ]
+   },
+   {
+    "questionId": "#25",
+    "title": "Навколо мене досить багато нечесних людей.",
+    "type": "yesno",
+    "position": 22,
+    "shown": 287,
+    "answered": 287,
+    "skipped": 0,
+    "skipRate": 0,
+    "avgDurationMs": 2668,
+    "medianDurationMs": 2681,
+    "minDurationMs": 386,
+    "maxDurationMs": 4167,
+    "p25DurationMs": 2064,
+    "p75DurationMs": 3330,
+    "avgChangeCount": 1,
+    "avgTimeToFirstAnswerMs": null,
+    "changedShare": 66.9,
+    "tooFastShare": 9.1,
+    "options": [
+     {
+      "optionId": "#92",
+      "text": "Так",
+      "count": 138,
+      "percent": 48.1,
+      "score": 0
+     },
+     {
+      "optionId": "#93",
+      "text": "Ні",
+      "count": 149,
+      "percent": 51.9,
+      "score": 0
+     }
+    ]
+   },
+   {
+    "questionId": "#26",
+    "title": "Одного разу я обирав кілька способів покінчити з собою.",
+    "type": "yesno",
+    "position": 23,
+    "shown": 287,
+    "answered": 287,
+    "skipped": 0,
+    "skipRate": 0,
+    "avgDurationMs": 2697,
+    "medianDurationMs": 2710,
+    "minDurationMs": 415,
+    "maxDurationMs": 4196,
+    "p25DurationMs": 2093,
+    "p75DurationMs": 3359,
+    "avgChangeCount": 1,
+    "avgTimeToFirstAnswerMs": null,
+    "changedShare": 66.6,
+    "tooFastShare": 8.4,
+    "options": [
+     {
+      "optionId": "#94",
+      "text": "Так",
+      "count": 110,
+      "percent": 38.3,
+      "score": 0
+     },
+     {
+      "optionId": "#95",
+      "text": "Ні",
+      "count": 177,
+      "percent": 61.7,
+      "score": 0
+     }
+    ]
+   },
+   {
+    "questionId": "#27",
+    "title": "Досить часто мене намагаються обманути.",
+    "type": "yesno",
+    "position": 24,
+    "shown": 287,
+    "answered": 287,
+    "skipped": 0,
+    "skipRate": 0,
+    "avgDurationMs": 2705,
+    "medianDurationMs": 2729,
+    "minDurationMs": 444,
+    "maxDurationMs": 4174,
+    "p25DurationMs": 2096,
+    "p75DurationMs": 3371,
+    "avgChangeCount": 1,
+    "avgTimeToFirstAnswerMs": null,
+    "changedShare": 66.6,
+    "tooFastShare": 8.7,
+    "options": [
+     {
+      "optionId": "#96",
+      "text": "Так",
+      "count": 110,
+      "percent": 38.3,
+      "score": 0
+     },
+     {
+      "optionId": "#97",
+      "text": "Ні",
+      "count": 177,
+      "percent": 61.7,
+      "score": 0
+     }
+    ]
+   },
+   {
+    "questionId": "#28",
+    "title": "Я б не хотів миттєвої смерті після тяжких переживань.",
+    "type": "yesno",
+    "position": 25,
+    "shown": 287,
+    "answered": 287,
+    "skipped": 0,
+    "skipRate": 0,
+    "avgDurationMs": 2713,
+    "medianDurationMs": 2733,
+    "minDurationMs": 320,
+    "maxDurationMs": 4186,
+    "p25DurationMs": 2108,
+    "p75DurationMs": 3392,
+    "avgChangeCount": 1,
+    "avgTimeToFirstAnswerMs": null,
+    "changedShare": 66.9,
+    "tooFastShare": 9.1,
+    "options": [
+     {
+      "optionId": "#98",
+      "text": "Так",
+      "count": 110,
+      "percent": 38.3,
+      "score": 0
+     },
+     {
+      "optionId": "#99",
+      "text": "Ні",
+      "count": 177,
+      "percent": 61.7,
+      "score": 0
+     }
+    ]
+   },
+   {
+    "questionId": "#29",
+    "title": "Я жив би далі, якби сталася світова ядерна війна.",
+    "type": "yesno",
+    "position": 26,
+    "shown": 287,
+    "answered": 287,
+    "skipped": 0,
+    "skipRate": 0,
+    "avgDurationMs": 2732,
+    "medianDurationMs": 2753,
+    "minDurationMs": 349,
+    "maxDurationMs": 4198,
+    "p25DurationMs": 2129,
+    "p75DurationMs": 3412,
+    "avgChangeCount": 1,
+    "avgTimeToFirstAnswerMs": null,
+    "changedShare": 66.6,
+    "tooFastShare": 8.4,
+    "options": [
+     {
+      "optionId": "#100",
+      "text": "Так",
+      "count": 110,
+      "percent": 38.3,
+      "score": 0
+     },
+     {
+      "optionId": "#101",
+      "text": "Ні",
+      "count": 177,
+      "percent": 61.7,
+      "score": 0
+     }
+    ]
+   },
+   {
+    "questionId": "#30",
+    "title": "Людина вільна чинити зі своїм життям так, як їй хочеться.",
+    "type": "yesno",
+    "position": 27,
+    "shown": 287,
+    "answered": 287,
+    "skipped": 0,
+    "skipRate": 0,
+    "avgDurationMs": 2740,
+    "medianDurationMs": 2766,
+    "minDurationMs": 378,
+    "maxDurationMs": 4193,
+    "p25DurationMs": 2149,
+    "p75DurationMs": 3420,
+    "avgChangeCount": 1,
+    "avgTimeToFirstAnswerMs": null,
+    "changedShare": 66.6,
+    "tooFastShare": 8.7,
+    "options": [
+     {
+      "optionId": "#102",
+      "text": "Так",
+      "count": 83,
+      "percent": 28.9,
+      "score": 0
+     },
+     {
+      "optionId": "#103",
+      "text": "Ні",
+      "count": 204,
+      "percent": 71.1,
+      "score": 0
+     }
+    ]
+   },
+   {
+    "questionId": "#31",
+    "title": "Хто не вміє показати себе перед керівництвом, той багато втрачає.",
+    "type": "yesno",
+    "position": 28,
+    "shown": 287,
+    "answered": 287,
+    "skipped": 0,
+    "skipRate": 0,
+    "avgDurationMs": 2748,
+    "medianDurationMs": 2769,
+    "minDurationMs": 407,
+    "maxDurationMs": 4188,
+    "p25DurationMs": 2153,
+    "p75DurationMs": 3428,
+    "avgChangeCount": 1,
+    "avgTimeToFirstAnswerMs": null,
+    "changedShare": 66.9,
+    "tooFastShare": 8.7,
+    "options": [
+     {
+      "optionId": "#104",
+      "text": "Так",
+      "count": 91,
+      "percent": 31.7,
+      "score": 0
+     },
+     {
+      "optionId": "#105",
+      "text": "Ні",
+      "count": 196,
+      "percent": 68.3,
+      "score": 0
+     }
+    ]
+   },
+   {
+    "questionId": "#32",
+    "title": "Ніколи нікому не писав передсмертної записки.",
+    "type": "yesno",
+    "position": 29,
+    "shown": 287,
+    "answered": 287,
+    "skipped": 0,
+    "skipRate": 0,
+    "avgDurationMs": 2756,
+    "medianDurationMs": 2781,
+    "minDurationMs": 436,
+    "maxDurationMs": 4166,
+    "p25DurationMs": 2156,
+    "p75DurationMs": 3440,
+    "avgChangeCount": 1,
+    "avgTimeToFirstAnswerMs": null,
+    "changedShare": 66.6,
+    "tooFastShare": 8.4,
+    "options": [
+     {
+      "optionId": "#106",
+      "text": "Так",
+      "count": 91,
+      "percent": 31.7,
+      "score": 0
+     },
+     {
+      "optionId": "#107",
+      "text": "Ні",
+      "count": 196,
+      "percent": 68.3,
+      "score": 0
+     }
+    ]
+   },
+   {
+    "questionId": "#33",
+    "title": "Одного разу намагався покінчити з собою.",
+    "type": "yesno",
+    "position": 30,
+    "shown": 287,
+    "answered": 287,
+    "skipped": 0,
+    "skipRate": 0,
+    "avgDurationMs": 2774,
+    "medianDurationMs": 2801,
+    "minDurationMs": 312,
+    "maxDurationMs": 4195,
+    "p25DurationMs": 2177,
+    "p75DurationMs": 3469,
+    "avgChangeCount": 1,
+    "avgTimeToFirstAnswerMs": null,
+    "changedShare": 66.6,
+    "tooFastShare": 8.4,
+    "options": [
+     {
+      "optionId": "#108",
+      "text": "Так",
+      "count": 91,
+      "percent": 31.7,
+      "score": 0
+     },
+     {
+      "optionId": "#109",
+      "text": "Ні",
+      "count": 196,
+      "percent": 68.3,
+      "score": 0
+     }
+    ]
+   },
+   {
+    "questionId": "#34",
+    "title": "Ніколи не буває безвихідних ситуацій.",
+    "type": "yesno",
+    "position": 31,
+    "shown": 287,
+    "answered": 287,
+    "skipped": 0,
+    "skipRate": 0,
+    "avgDurationMs": 2783,
+    "medianDurationMs": 2813,
+    "minDurationMs": 341,
+    "maxDurationMs": 4199,
+    "p25DurationMs": 2189,
+    "p75DurationMs": 3477,
+    "avgChangeCount": 1,
+    "avgTimeToFirstAnswerMs": null,
+    "changedShare": 66.9,
+    "tooFastShare": 8.4,
+    "options": [
+     {
+      "optionId": "#110",
+      "text": "Так",
+      "count": 91,
+      "percent": 31.7,
+      "score": 0
+     },
+     {
+      "optionId": "#111",
+      "text": "Ні",
+      "count": 196,
+      "percent": 68.3,
+      "score": 0
+     }
+    ]
+   },
+   {
+    "questionId": "#35",
+    "title": "Пробував покінчити з собою так, щоб не відчувати болю.",
+    "type": "yesno",
+    "position": 32,
+    "shown": 287,
+    "answered": 287,
+    "skipped": 0,
+    "skipRate": 0,
+    "avgDurationMs": 2780,
+    "medianDurationMs": 2818,
+    "minDurationMs": 370,
+    "maxDurationMs": 4194,
+    "p25DurationMs": 2201,
+    "p75DurationMs": 3476,
+    "avgChangeCount": 1,
+    "avgTimeToFirstAnswerMs": null,
+    "changedShare": 66.6,
+    "tooFastShare": 8.7,
+    "options": [
+     {
+      "optionId": "#112",
+      "text": "Так",
+      "count": 63,
+      "percent": 22,
+      "score": 0
+     },
+     {
+      "optionId": "#113",
+      "text": "Ні",
+      "count": 224,
+      "percent": 78,
+      "score": 0
+     }
+    ]
+   },
+   {
+    "questionId": "#36",
+    "title": "Треба вміти приховувати свої думки від інших.",
+    "type": "yesno",
+    "position": 33,
+    "shown": 287,
+    "answered": 287,
+    "skipped": 0,
+    "skipRate": 0,
+    "avgDurationMs": 2778,
+    "medianDurationMs": 2820,
+    "minDurationMs": 306,
+    "maxDurationMs": 4197,
+    "p25DurationMs": 2196,
+    "p75DurationMs": 3488,
+    "avgChangeCount": 1,
+    "avgTimeToFirstAnswerMs": null,
+    "changedShare": 66.6,
+    "tooFastShare": 9.4,
+    "options": [
+     {
+      "optionId": "#114",
+      "text": "Так",
+      "count": 63,
+      "percent": 22,
+      "score": 0
+     },
+     {
+      "optionId": "#115",
+      "text": "Ні",
+      "count": 224,
+      "percent": 78,
+      "score": 0
+     }
+    ]
+   },
+   {
+    "questionId": "#37",
+    "title": "Душа людини відчуває полегшення, якщо сама залишає цей світ.",
+    "type": "yesno",
+    "position": 34,
+    "shown": 287,
+    "answered": 287,
+    "skipped": 0,
+    "skipRate": 0,
+    "avgDurationMs": 2765,
+    "medianDurationMs": 2816,
+    "minDurationMs": 335,
+    "maxDurationMs": 4192,
+    "p25DurationMs": 2199,
+    "p75DurationMs": 3470,
+    "avgChangeCount": 1,
+    "avgTimeToFirstAnswerMs": null,
+    "changedShare": 66.9,
+    "tooFastShare": 10.5,
+    "options": [
+     {
+      "optionId": "#116",
+      "text": "Так",
+      "count": 63,
+      "percent": 22,
+      "score": 0
+     },
+     {
+      "optionId": "#117",
+      "text": "Ні",
+      "count": 224,
+      "percent": 78,
+      "score": 0
+     }
+    ]
+   },
+   {
+    "questionId": "#38",
+    "title": "Можу виправдати будь-який свій вчинок.",
+    "type": "yesno",
+    "position": 35,
+    "shown": 287,
+    "answered": 287,
+    "skipped": 0,
+    "skipRate": 0,
+    "avgDurationMs": 2763,
+    "medianDurationMs": 2819,
+    "minDurationMs": 304,
+    "maxDurationMs": 4196,
+    "p25DurationMs": 2182,
+    "p75DurationMs": 3478,
+    "avgChangeCount": 1,
+    "avgTimeToFirstAnswerMs": null,
+    "changedShare": 66.6,
+    "tooFastShare": 10.8,
+    "options": [
+     {
+      "optionId": "#118",
+      "text": "Так",
+      "count": 63,
+      "percent": 22,
+      "score": 0
+     },
+     {
+      "optionId": "#119",
+      "text": "Ні",
+      "count": 224,
+      "percent": 78,
+      "score": 0
+     }
+    ]
+   },
+   {
+    "questionId": "#39",
+    "title": "Якщо мені починають заважати, я все одно робитиму задумане.",
+    "type": "yesno",
+    "position": 36,
+    "shown": 287,
+    "answered": 287,
+    "skipped": 0,
+    "skipRate": 0,
+    "avgDurationMs": 2760,
+    "medianDurationMs": 2822,
+    "minDurationMs": 333,
+    "maxDurationMs": 4191,
+    "p25DurationMs": 2169,
+    "p75DurationMs": 3481,
+    "avgChangeCount": 1,
+    "avgTimeToFirstAnswerMs": null,
+    "changedShare": 66.6,
+    "tooFastShare": 11.1,
+    "options": [
+     {
+      "optionId": "#120",
+      "text": "Так",
+      "count": 35,
+      "percent": 12.2,
+      "score": 0
+     },
+     {
+      "optionId": "#121",
+      "text": "Ні",
+      "count": 252,
+      "percent": 87.8,
+      "score": 0
+     }
+    ]
+   },
+   {
+    "questionId": "#40",
+    "title": "Щоб перестати мучитися від невиліковної хвороби, людина може піти з життя.",
+    "type": "yesno",
+    "position": 37,
+    "shown": 287,
+    "answered": 287,
+    "skipped": 0,
+    "skipRate": 0,
+    "avgDurationMs": 2758,
+    "medianDurationMs": 2826,
+    "minDurationMs": 362,
+    "maxDurationMs": 4194,
+    "p25DurationMs": 2142,
+    "p75DurationMs": 3476,
+    "avgChangeCount": 1,
+    "avgTimeToFirstAnswerMs": null,
+    "changedShare": 66.9,
+    "tooFastShare": 11.1,
+    "options": [
+     {
+      "optionId": "#122",
+      "text": "Так",
+      "count": 35,
+      "percent": 12.2,
+      "score": 0
+     },
+     {
+      "optionId": "#123",
+      "text": "Ні",
+      "count": 252,
+      "percent": 87.8,
+      "score": 0
+     }
+    ]
+   },
+   {
+    "questionId": "#41",
+    "title": "Буває, сумніваюся в психічному здоров’ї деяких знайомих.",
+    "type": "yesno",
+    "position": 38,
+    "shown": 287,
+    "answered": 287,
+    "skipped": 0,
+    "skipRate": 0,
+    "avgDurationMs": 2756,
+    "medianDurationMs": 2838,
+    "minDurationMs": 391,
+    "maxDurationMs": 4189,
+    "p25DurationMs": 2133,
+    "p75DurationMs": 3476,
+    "avgChangeCount": 1,
+    "avgTimeToFirstAnswerMs": null,
+    "changedShare": 66.6,
+    "tooFastShare": 11.8,
+    "options": [
+     {
+      "optionId": "#124",
+      "text": "Так",
+      "count": 35,
+      "percent": 12.2,
+      "score": 0
+     },
+     {
+      "optionId": "#125",
+      "text": "Ні",
+      "count": 252,
+      "percent": 87.8,
+      "score": 0
+     }
+    ]
+   },
+   {
+    "questionId": "#42",
+    "title": "Одного разу наважувався покінчити з собою.",
+    "type": "yesno",
+    "position": 39,
+    "shown": 287,
+    "answered": 287,
+    "skipped": 0,
+    "skipRate": 0,
+    "avgDurationMs": 2743,
+    "medianDurationMs": 2824,
+    "minDurationMs": 327,
+    "maxDurationMs": 4193,
+    "p25DurationMs": 2103,
+    "p75DurationMs": 3475,
+    "avgChangeCount": 1,
+    "avgTimeToFirstAnswerMs": null,
+    "changedShare": 66.6,
+    "tooFastShare": 12.5,
+    "options": [
+     {
+      "optionId": "#126",
+      "text": "Так",
+      "count": 35,
+      "percent": 12.2,
+      "score": 0
+     },
+     {
+      "optionId": "#127",
+      "text": "Ні",
+      "count": 252,
+      "percent": 87.8,
+      "score": 0
+     }
+    ]
+   },
+   {
+    "questionId": "#43",
+    "title": "Мене турбує відсутність відчуття щастя.",
+    "type": "yesno",
+    "position": 40,
+    "shown": 287,
+    "answered": 287,
+    "skipped": 0,
+    "skipRate": 0,
+    "avgDurationMs": 2740,
+    "medianDurationMs": 2836,
+    "minDurationMs": 356,
+    "maxDurationMs": 4188,
+    "p25DurationMs": 2068,
+    "p75DurationMs": 3470,
+    "avgChangeCount": 1,
+    "avgTimeToFirstAnswerMs": null,
+    "changedShare": 66.9,
+    "tooFastShare": 12.9,
+    "options": [
+     {
+      "optionId": "#128",
+      "text": "Так",
+      "count": 35,
+      "percent": 12.2,
+      "score": 0
+     },
+     {
+      "optionId": "#129",
+      "text": "Ні",
+      "count": 252,
+      "percent": 87.8,
+      "score": 0
+     }
+    ]
+   },
+   {
+    "questionId": "#44",
+    "title": "Я ніколи не порушую закон навіть у дрібницях.",
+    "type": "yesno",
+    "position": 41,
+    "shown": 287,
+    "answered": 287,
+    "skipped": 0,
+    "skipRate": 0,
+    "avgDurationMs": 2728,
+    "medianDurationMs": 2823,
+    "minDurationMs": 325,
+    "maxDurationMs": 4191,
+    "p25DurationMs": 2033,
+    "p75DurationMs": 3473,
+    "avgChangeCount": 1,
+    "avgTimeToFirstAnswerMs": null,
+    "changedShare": 66.6,
+    "tooFastShare": 13.9,
+    "options": [
+     {
+      "optionId": "#130",
+      "text": "Так",
+      "count": 8,
+      "percent": 2.8,
+      "score": 0
+     },
+     {
+      "optionId": "#131",
+      "text": "Ні",
+      "count": 279,
+      "percent": 97.2,
+      "score": 0
+     }
+    ]
+   },
+   {
+    "questionId": "#45",
+    "title": "Іноді мені хочеться заснути і не прокинутися.",
+    "type": "yesno",
+    "position": 42,
+    "shown": 287,
+    "answered": 287,
+    "skipped": 0,
+    "skipRate": 0,
+    "avgDurationMs": 2725,
+    "medianDurationMs": 2826,
+    "minDurationMs": 354,
+    "maxDurationMs": 4195,
+    "p25DurationMs": 1994,
+    "p75DurationMs": 3468,
+    "avgChangeCount": 1,
+    "avgTimeToFirstAnswerMs": null,
+    "changedShare": 66.6,
+    "tooFastShare": 13.9,
+    "options": [
+     {
+      "optionId": "#132",
+      "text": "Так",
+      "count": 8,
+      "percent": 2.8,
+      "score": 0
+     },
+     {
+      "optionId": "#133",
+      "text": "Ні",
+      "count": 279,
+      "percent": 97.2,
+      "score": 0
+     }
+    ]
+   },
+   {
+    "questionId": "#46",
+    "title": "Одного разу мені було соромно через бажання піти з життя.",
+    "type": "yesno",
+    "position": 43,
+    "shown": 287,
+    "answered": 287,
+    "skipped": 0,
+    "skipRate": 0,
+    "avgDurationMs": 2723,
+    "medianDurationMs": 2830,
+    "minDurationMs": 383,
+    "maxDurationMs": 4198,
+    "p25DurationMs": 1989,
+    "p75DurationMs": 3472,
+    "avgChangeCount": 1,
+    "avgTimeToFirstAnswerMs": null,
+    "changedShare": 66.9,
+    "tooFastShare": 13.9,
+    "options": [
+     {
+      "optionId": "#134",
+      "text": "Так",
+      "count": 8,
+      "percent": 2.8,
+      "score": 0
+     },
+     {
+      "optionId": "#135",
+      "text": "Ні",
+      "count": 279,
+      "percent": 97.2,
+      "score": 0
+     }
+    ]
+   },
+   {
+    "questionId": "#47",
+    "title": "Навіть у найтяжчій ситуації я боротимуся за своє життя.",
+    "type": "yesno",
+    "position": 44,
+    "shown": 287,
+    "answered": 287,
+    "skipped": 0,
+    "skipRate": 0,
+    "avgDurationMs": 2710,
+    "medianDurationMs": 2816,
+    "minDurationMs": 319,
+    "maxDurationMs": 4193,
+    "p25DurationMs": 1950,
+    "p75DurationMs": 3475,
+    "avgChangeCount": 1,
+    "avgTimeToFirstAnswerMs": null,
+    "changedShare": 66.6,
+    "tooFastShare": 14.6,
+    "options": [
+     {
+      "optionId": "#136",
+      "text": "Так",
+      "count": 8,
+      "percent": 2.8,
+      "score": 0
+     },
+     {
+      "optionId": "#137",
+      "text": "Ні",
+      "count": 279,
+      "percent": 97.2,
+      "score": 0
+     }
+    ]
+   }
+  ],
+  "scales": [
+   {
+    "scaleId": "#138",
+    "code": "L",
+    "title": "Шкала брехні",
+    "kind": "validity",
+    "average": 9.5,
+    "median": 9.5,
+    "min": 0,
+    "max": 19,
+    "p25": 4.75,
+    "p75": 14.25,
+    "maxPossible": 45,
+    "bands": [],
+    "reliability": {
+     "alpha": 0.908,
+     "itemCount": 10,
+     "items": [
+      {
+       "questionId": "#13",
+       "title": "Завжди і всюди намагаюся бути абсолютно чесним.",
+       "itemTotalCorrelation": 0.728,
+       "alphaIfDeleted": 0.895,
+       "variance": 0.218,
+       "endorsement": 68,
+       "discriminating": true
+      },
+      {
+       "questionId": "#14",
+       "title": "У мене, в принципі, немає недоліків.",
+       "itemTotalCorrelation": 0.728,
+       "alphaIfDeleted": 0.895,
+       "variance": 0.218,
+       "endorsement": 68,
+       "discriminating": true
+      },
+      {
+       "questionId": "#20",
+       "title": "Часто саме перше враження про людину є визначальним.",
+       "itemTotalCorrelation": 0.822,
+       "alphaIfDeleted": 0.889,
+       "variance": 0.244,
+       "endorsement": 58,
+       "discriminating": true
+      },
+      {
+       "questionId": "#23",
+       "title": "У школі я завжди вирізнявся лише гарною поведінкою.",
+       "itemTotalCorrelation": 0.881,
+       "alphaIfDeleted": 0.884,
+       "variance": 0.251,
+       "endorsement": 48.3,
+       "discriminating": true
+      },
+      {
+       "questionId": "#25",
+       "title": "Навколо мене досить багато нечесних людей.",
+       "itemTotalCorrelation": 0.881,
+       "alphaIfDeleted": 0.884,
+       "variance": 0.251,
+       "endorsement": 48.3,
+       "discriminating": true
+      },
+      {
+       "questionId": "#27",
+       "title": "Досить часто мене намагаються обманути.",
+       "itemTotalCorrelation": 0.827,
+       "alphaIfDeleted": 0.888,
+       "variance": 0.238,
+       "endorsement": 38.7,
+       "discriminating": true
+      },
+      {
+       "questionId": "#31",
+       "title": "Хто не вміє показати себе перед керівництвом, той багато втрачає.",
+       "itemTotalCorrelation": 0.671,
+       "alphaIfDeleted": 0.899,
+       "variance": 0.217,
+       "endorsement": 31.7,
+       "discriminating": true
+      },
+      {
+       "questionId": "#36",
+       "title": "Треба вміти приховувати свої думки від інших.",
+       "itemTotalCorrelation": 0.529,
+       "alphaIfDeleted": 0.907,
+       "variance": 0.172,
+       "endorsement": 22,
+       "discriminating": true
+      },
+      {
+       "questionId": "#41",
+       "title": "Буває, сумніваюся в психічному здоров’ї деяких знайомих.",
+       "itemTotalCorrelation": 0.321,
+       "alphaIfDeleted": 0.916,
+       "variance": 0.108,
+       "endorsement": 12.3,
+       "discriminating": true
+      },
+      {
+       "questionId": "#44",
+       "title": "Я ніколи не порушую закон навіть у дрібницях.",
+       "itemTotalCorrelation": 0.049,
+       "alphaIfDeleted": 0.921,
+       "variance": 0.026,
+       "endorsement": 97.3,
+       "discriminating": false
+      }
+     ],
+     "sampleN": 300,
+     "omega": 0.94,
+     "weakItems": 1
+    },
+    "shape": {
+     "n": 300,
+     "mean": 9.5,
+     "median": 9.5,
+     "sd": 5.78,
+     "skewness": 0,
+     "kurtosis": -1.206,
+     "percentiles": {
+      "p5": 0.95,
+      "p10": 1.9,
+      "p25": 4.75,
+      "p50": 9.5,
+      "p75": 14.25,
+      "p90": 17.1,
+      "p95": 18.05
+     }
+    },
+    "floorCeiling": {
+     "n": 300,
+     "floorPercent": 5,
+     "ceilingPercent": 0,
+     "floorProblem": false,
+     "ceilingProblem": false
+    },
+    "measurement": {
+     "sem": 1.75,
+     "sdiff": 2.48,
+     "mdc95": 4.86,
+     "basis": {
+      "sd": 5.78,
+      "alpha": 0.908,
+      "sampleN": 300
+     }
+    }
+   },
+   {
+    "scaleId": "#139",
+    "code": "Sr",
+    "title": "Схильність до суїцидальних реакцій",
+    "kind": "clinical",
+    "average": 9.52,
+    "median": 10,
+    "min": 0,
+    "max": 19,
+    "p25": 4,
+    "p75": 15,
+    "maxPossible": 45,
+    "bands": [
+     {
+      "label": "Низький",
+      "severity": "none",
+      "count": 0,
+      "percent": 0,
+      "min": 0,
+      "max": 0.23
+     },
+     {
+      "label": "Нижче середнього",
+      "severity": "mild",
+      "count": 0,
+      "percent": 0,
+      "min": 0.24,
+      "max": 0.38
+     },
+     {
+      "label": "Середній",
+      "severity": "moderate",
+      "count": 0,
+      "percent": 0,
+      "min": 0.39,
+      "max": 0.59
+     },
+     {
+      "label": "Вище середнього",
+      "severity": "severe",
+      "count": 0,
+      "percent": 0,
+      "min": 0.6,
+      "max": 0.74
+     },
+     {
+      "label": "Високий",
+      "severity": "severe",
+      "count": 0,
+      "percent": 0,
+      "min": 0.75,
+      "max": 1
+     }
+    ],
+    "reliability": {
+     "alpha": 0.351,
+     "itemCount": 35,
+     "items": [
+      {
+       "questionId": "#3",
+       "title": "Чи може життя втратити цінність для людини в певній ситуації?",
+       "itemTotalCorrelation": 0.365,
+       "alphaIfDeleted": 0.299,
+       "variance": 0.113,
+       "endorsement": 87.1,
+       "discriminating": true
+      },
+      {
+       "questionId": "#4",
+       "title": "Життя іноді гірше за смерть.",
+       "itemTotalCorrelation": 0.365,
+       "alphaIfDeleted": 0.299,
+       "variance": 0.113,
+       "endorsement": 87.1,
+       "discriminating": true
+      },
+      {
+       "questionId": "#5",
+       "title": "У минулому в мене була спроба піти з життя.",
+       "itemTotalCorrelation": 0.365,
+       "alphaIfDeleted": 0.299,
+       "variance": 0.113,
+       "endorsement": 87.1,
+       "discriminating": true
+      },
+      {
+       "questionId": "#6",
+       "title": "Мене багато хто любить, розуміє і цінує.",
+       "itemTotalCorrelation": -0.54,
+       "alphaIfDeleted": 0.433,
+       "variance": 0.113,
+       "endorsement": 12.9,
+       "discriminating": false
+      },
+      {
+       "questionId": "#7",
+       "title": "Можна виправдати безнадійно хворих, які обрали добровільну смерть.",
+       "itemTotalCorrelation": 0.365,
+       "alphaIfDeleted": 0.299,
+       "variance": 0.113,
+       "endorsement": 87.1,
+       "discriminating": true
+      },
+      {
+       "questionId": "#8",
+       "title": "Я не думаю, що сам можу опинитися в безнадійному становищі.",
+       "itemTotalCorrelation": -0.62,
+       "alphaIfDeleted": 0.466,
+       "variance": 0.176,
+       "endorsement": 22.6,
+       "discriminating": false
+      },
+      {
+       "questionId": "#9",
+       "title": "Сенс життя не завжди буває ясний, його можна втратити.",
+       "itemTotalCorrelation": 0.42,
+       "alphaIfDeleted": 0.275,
+       "variance": 0.176,
+       "endorsement": 77.4,
+       "discriminating": true
+      },
+      {
+       "questionId": "#10",
+       "title": "Якщо Вас зрадять близькі, чи зможете Ви жити далі?",
+       "itemTotalCorrelation": -0.62,
+       "alphaIfDeleted": 0.466,
+       "variance": 0.176,
+       "endorsement": 22.6,
+       "discriminating": false
+      },
+      {
+       "questionId": "#11",
+       "title": "Я іноді думаю про свою добровільну смерть.",
+       "itemTotalCorrelation": 0.42,
+       "alphaIfDeleted": 0.275,
+       "variance": 0.176,
+       "endorsement": 77.4,
+       "discriminating": true
+      },
+      {
+       "questionId": "#12",
+       "title": "У будь-якій ситуації я боротимуся за своє життя.",
+       "itemTotalCorrelation": -0.703,
+       "alphaIfDeleted": 0.493,
+       "variance": 0.22,
+       "endorsement": 32.4,
+       "discriminating": false
+      },
+      {
+       "questionId": "#15",
+       "title": "Можливо, далі я жити не зможу.",
+       "itemTotalCorrelation": 0.511,
+       "alphaIfDeleted": 0.244,
+       "variance": 0.22,
+       "endorsement": 67.6,
+       "discriminating": true
+      },
+      {
+       "questionId": "#16",
+       "title": "Дивно, що дехто в безвихідному становищі не хоче покінчити з собою.",
+       "itemTotalCorrelation": 0.511,
+       "alphaIfDeleted": 0.244,
+       "variance": 0.22,
+       "endorsement": 67.6,
+       "discriminating": true
+      },
+      {
+       "questionId": "#17",
+       "title": "Відчуття приреченості призводить до добровільного відходу з життя.",
+       "itemTotalCorrelation": 0.553,
+       "alphaIfDeleted": 0.227,
+       "variance": 0.245,
+       "endorsement": 57.8,
+       "discriminating": true
+      },
+      {
+       "questionId": "#18",
+       "title": "Якщо буде потрібно, свій відхід із життя можна виправдати.",
+       "itemTotalCorrelation": 0.553,
+       "alphaIfDeleted": 0.227,
+       "variance": 0.245,
+       "endorsement": 57.8,
+       "discriminating": true
+      },
+      {
+       "questionId": "#19",
+       "title": "Мені не подобається гратися зі смертю на самоті.",
+       "itemTotalCorrelation": -0.74,
+       "alphaIfDeleted": 0.507,
+       "variance": 0.245,
+       "endorsement": 42.2,
+       "discriminating": false
+      },
+      {
+       "questionId": "#21",
+       "title": "Я пробував різні способи відходу з життя.",
+       "itemTotalCorrelation": 0.55,
+       "alphaIfDeleted": 0.226,
+       "variance": 0.251,
+       "endorsement": 48.1,
+       "discriminating": true
+      },
+      {
+       "questionId": "#22",
+       "title": "У критичний момент я завжди можу впоратися із собою.",
+       "itemTotalCorrelation": -0.74,
+       "alphaIfDeleted": 0.508,
+       "variance": 0.251,
+       "endorsement": 51.9,
+       "discriminating": false
+      },
+      {
+       "questionId": "#24",
+       "title": "Можу обманювати оточення, щоб погіршити своє становище.",
+       "itemTotalCorrelation": 0.55,
+       "alphaIfDeleted": 0.226,
+       "variance": 0.251,
+       "endorsement": 48.1,
+       "discriminating": true
+      },
+      {
+       "questionId": "#26",
+       "title": "Одного разу я обирав кілька способів покінчити з собою.",
+       "itemTotalCorrelation": 0.505,
+       "alphaIfDeleted": 0.241,
+       "variance": 0.237,
+       "endorsement": 38.3,
+       "discriminating": true
+      },
+      {
+       "questionId": "#28",
+       "title": "Я б не хотів миттєвої смерті після тяжких переживань.",
+       "itemTotalCorrelation": -0.705,
+       "alphaIfDeleted": 0.498,
+       "variance": 0.237,
+       "endorsement": 61.7,
+       "discriminating": false
+      },
+      {
+       "questionId": "#29",
+       "title": "Я жив би далі, якби сталася світова ядерна війна.",
+       "itemTotalCorrelation": -0.705,
+       "alphaIfDeleted": 0.498,
+       "variance": 0.237,
+       "endorsement": 61.7,
+       "discriminating": false
+      },
+      {
+       "questionId": "#30",
+       "title": "Людина вільна чинити зі своїм життям так, як їй хочеться.",
+       "itemTotalCorrelation": 0.576,
+       "alphaIfDeleted": 0.231,
+       "variance": 0.206,
+       "endorsement": 28.9,
+       "discriminating": true
+      },
+      {
+       "questionId": "#32",
+       "title": "Ніколи нікому не писав передсмертної записки.",
+       "itemTotalCorrelation": -0.761,
+       "alphaIfDeleted": 0.502,
+       "variance": 0.217,
+       "endorsement": 68.3,
+       "discriminating": false
+      },
+      {
+       "questionId": "#33",
+       "title": "Одного разу намагався покінчити з собою.",
+       "itemTotalCorrelation": 0.598,
+       "alphaIfDeleted": 0.223,
+       "variance": 0.217,
+       "endorsement": 31.7,
+       "discriminating": true
+      },
+      {
+       "questionId": "#34",
+       "title": "Ніколи не буває безвихідних ситуацій.",
+       "itemTotalCorrelation": -0.761,
+       "alphaIfDeleted": 0.502,
+       "variance": 0.217,
+       "endorsement": 68.3,
+       "discriminating": false
+      },
+      {
+       "questionId": "#35",
+       "title": "Пробував покінчити з собою так, щоб не відчувати болю.",
+       "itemTotalCorrelation": 0.726,
+       "alphaIfDeleted": 0.209,
+       "variance": 0.172,
+       "endorsement": 22,
+       "discriminating": true
+      },
+      {
+       "questionId": "#37",
+       "title": "Душа людини відчуває полегшення, якщо сама залишає цей світ.",
+       "itemTotalCorrelation": 0.726,
+       "alphaIfDeleted": 0.209,
+       "variance": 0.172,
+       "endorsement": 22,
+       "discriminating": true
+      },
+      {
+       "questionId": "#38",
+       "title": "Можу виправдати будь-який свій вчинок.",
+       "itemTotalCorrelation": 0.726,
+       "alphaIfDeleted": 0.209,
+       "variance": 0.172,
+       "endorsement": 22,
+       "discriminating": true
+      },
+      {
+       "questionId": "#39",
+       "title": "Якщо мені починають заважати, я все одно робитиму задумане.",
+       "itemTotalCorrelation": 0.65,
+       "alphaIfDeleted": 0.253,
+       "variance": 0.107,
+       "endorsement": 12.2,
+       "discriminating": true
+      },
+      {
+       "questionId": "#40",
+       "title": "Щоб перестати мучитися від невиліковної хвороби, людина може піти з життя.",
+       "itemTotalCorrelation": 0.65,
+       "alphaIfDeleted": 0.253,
+       "variance": 0.107,
+       "endorsement": 12.2,
+       "discriminating": true
+      },
+      {
+       "questionId": "#42",
+       "title": "Одного разу наважувався покінчити з собою.",
+       "itemTotalCorrelation": 0.65,
+       "alphaIfDeleted": 0.253,
+       "variance": 0.107,
+       "endorsement": 12.2,
+       "discriminating": true
+      },
+      {
+       "questionId": "#43",
+       "title": "Мене турбує відсутність відчуття щастя.",
+       "itemTotalCorrelation": 0.65,
+       "alphaIfDeleted": 0.253,
+       "variance": 0.107,
+       "endorsement": 12.2,
+       "discriminating": true
+      },
+      {
+       "questionId": "#45",
+       "title": "Іноді мені хочеться заснути і не прокинутися.",
+       "itemTotalCorrelation": 0.052,
+       "alphaIfDeleted": 0.349,
+       "variance": 0.027,
+       "endorsement": 2.8,
+       "discriminating": false
+      },
+      {
+       "questionId": "#46",
+       "title": "Одного разу мені було соромно через бажання піти з життя.",
+       "itemTotalCorrelation": 0.052,
+       "alphaIfDeleted": 0.349,
+       "variance": 0.027,
+       "endorsement": 2.8,
+       "discriminating": false
+      },
+      {
+       "questionId": "#47",
+       "title": "Навіть у найтяжчій ситуації я боротимуся за своє життя.",
+       "itemTotalCorrelation": -0.16,
+       "alphaIfDeleted": 0.364,
+       "variance": 0.027,
+       "endorsement": 97.2,
+       "discriminating": false
+      }
+     ],
+     "sampleN": 287,
+     "omega": 0.699,
+     "weakItems": 13
+    },
+    "shape": {
+     "n": 287,
+     "mean": 9.52,
+     "median": 10,
+     "sd": 5.85,
+     "skewness": -0.007,
+     "kurtosis": -1.233,
+     "percentiles": {
+      "p5": 0.3,
+      "p10": 1,
+      "p25": 4,
+      "p50": 10,
+      "p75": 15,
+      "p90": 18,
+      "p95": 18.7
+     }
+    },
+    "floorCeiling": {
+     "n": 287,
+     "floorPercent": 5.2,
+     "ceilingPercent": 0,
+     "floorProblem": false,
+     "ceilingProblem": false
+    },
+    "measurement": {
+     "sem": 4.71,
+     "sdiff": 6.67,
+     "mdc95": 13.06,
+     "basis": {
+      "sd": 5.85,
+      "alpha": 0.351,
+      "sampleN": 287
+     }
+    }
+   }
+  ],
+  "timeline": [
+   {
+    "date": "2025-02-01",
+    "count": 7
+   },
+   {
+    "date": "2025-02-02",
+    "count": 8
+   },
+   {
+    "date": "2025-02-03",
+    "count": 8
+   },
+   {
+    "date": "2025-02-04",
+    "count": 8
+   },
+   {
+    "date": "2025-02-05",
+    "count": 8
+   },
+   {
+    "date": "2025-02-06",
+    "count": 8
+   },
+   {
+    "date": "2025-02-07",
+    "count": 8
+   },
+   {
+    "date": "2025-02-08",
+    "count": 8
+   },
+   {
+    "date": "2025-02-09",
+    "count": 8
+   },
+   {
+    "date": "2025-02-10",
+    "count": 8
+   },
+   {
+    "date": "2025-02-11",
+    "count": 8
+   },
+   {
+    "date": "2025-02-12",
+    "count": 8
+   },
+   {
+    "date": "2025-02-13",
+    "count": 8
+   },
+   {
+    "date": "2025-02-14",
+    "count": 8
+   },
+   {
+    "date": "2025-02-15",
+    "count": 8
+   },
+   {
+    "date": "2025-02-16",
+    "count": 8
+   },
+   {
+    "date": "2025-02-17",
+    "count": 8
+   },
+   {
+    "date": "2025-02-18",
+    "count": 8
+   },
+   {
+    "date": "2025-02-19",
+    "count": 8
+   },
+   {
+    "date": "2025-02-20",
+    "count": 8
+   },
+   {
+    "date": "2025-02-21",
+    "count": 8
+   },
+   {
+    "date": "2025-02-22",
+    "count": 8
+   },
+   {
+    "date": "2025-02-23",
+    "count": 8
+   },
+   {
+    "date": "2025-02-24",
+    "count": 8
+   },
+   {
+    "date": "2025-02-25",
+    "count": 8
+   },
+   {
+    "date": "2025-02-26",
+    "count": 8
+   },
+   {
+    "date": "2025-02-27",
+    "count": 8
+   },
+   {
+    "date": "2025-02-28",
+    "count": 8
+   },
+   {
+    "date": "2025-03-01",
+    "count": 8
+   },
+   {
+    "date": "2025-03-02",
+    "count": 8
+   },
+   {
+    "date": "2025-03-03",
+    "count": 8
+   },
+   {
+    "date": "2025-03-04",
+    "count": 8
+   },
+   {
+    "date": "2025-03-05",
+    "count": 8
+   },
+   {
+    "date": "2025-03-06",
+    "count": 8
+   },
+   {
+    "date": "2025-03-07",
+    "count": 8
+   },
+   {
+    "date": "2025-03-08",
+    "count": 8
+   },
+   {
+    "date": "2025-03-09",
+    "count": 8
+   },
+   {
+    "date": "2025-03-10",
+    "count": 5
+   }
+  ],
+  "quality": [
+   {
+    "responseId": "#140",
+    "respondent": "Особа11 Еталон",
+    "submittedAt": "2025-02-07T06:05:00.000Z",
+    "durationMs": 20000,
+    "tooFastShare": 0,
+    "longestStraightLine": 0,
+    "personFit": 0.42,
+    "flagged": true,
+    "reasons": [
+     "загальний час менший за мінімально правдоподібний",
+     "нетиповий патерн відповідей (0.42)"
+    ]
+   },
+   {
+    "responseId": "#141",
+    "respondent": "Особа21 Еталон",
+    "submittedAt": "2025-02-13T12:05:00.000Z",
+    "durationMs": 20000,
+    "tooFastShare": 0,
+    "longestStraightLine": 0,
+    "personFit": 0.42,
+    "flagged": true,
+    "reasons": [
+     "загальний час менший за мінімально правдоподібний",
+     "нетиповий патерн відповідей (0.42)"
+    ]
+   },
+   {
+    "responseId": "#142",
+    "respondent": "Особа31 Еталон",
+    "submittedAt": "2025-02-19T18:05:00.000Z",
+    "durationMs": 20000,
+    "tooFastShare": 22.2,
+    "longestStraightLine": 0,
+    "personFit": 0.42,
+    "flagged": true,
+    "reasons": [
+     "загальний час менший за мінімально правдоподібний",
+     "нетиповий патерн відповідей (0.42)"
+    ]
+   },
+   {
+    "responseId": "#143",
+    "respondent": "Особа21 Еталон",
+    "submittedAt": "2025-02-23T12:05:00.000Z",
+    "durationMs": 200000,
+    "tooFastShare": 88.9,
+    "longestStraightLine": 0,
+    "personFit": 0.42,
+    "flagged": true,
+    "reasons": [
+     "88.9% відповідей швидше за 1500 мс",
+     "нетиповий патерн відповідей (0.42)"
+    ]
+   },
+   {
+    "responseId": "#144",
+    "respondent": "Особа1 Еталон",
+    "submittedAt": "2025-02-26T00:05:00.000Z",
+    "durationMs": 20000,
+    "tooFastShare": 0,
+    "longestStraightLine": 0,
+    "personFit": 0.42,
+    "flagged": true,
+    "reasons": [
+     "загальний час менший за мінімально правдоподібний",
+     "нетиповий патерн відповідей (0.42)"
+    ]
+   },
+   {
+    "responseId": "#145",
+    "respondent": "Особа11 Еталон",
+    "submittedAt": "2025-03-04T06:05:00.000Z",
+    "durationMs": 20000,
+    "tooFastShare": 0,
+    "longestStraightLine": 0,
+    "personFit": 0.42,
+    "flagged": true,
+    "reasons": [
+     "загальний час менший за мінімально правдоподібний",
+     "нетиповий патерн відповідей (0.42)"
+    ]
+   },
+   {
+    "responseId": "#146",
+    "respondent": "Особа21 Еталон",
+    "submittedAt": "2025-03-10T12:05:00.000Z",
+    "durationMs": 20000,
+    "tooFastShare": 22.2,
+    "longestStraightLine": 0,
+    "personFit": 0.42,
+    "flagged": true,
+    "reasons": [
+     "загальний час менший за мінімально правдоподібний",
+     "нетиповий патерн відповідей (0.42)"
+    ]
+   },
+   {
+    "responseId": "#147",
+    "respondent": "Особа10 Еталон",
+    "submittedAt": "2025-02-02T03:05:00.000Z",
+    "durationMs": 200000,
+    "tooFastShare": 82.2,
+    "longestStraightLine": 0,
+    "personFit": 0.395,
+    "flagged": true,
+    "reasons": [
+     "82.2% відповідей швидше за 1500 мс"
+    ]
+   },
+   {
+    "responseId": "#148",
+    "respondent": "Особа11 Еталон",
+    "submittedAt": "2025-02-02T06:05:00.000Z",
+    "durationMs": 200000,
+    "tooFastShare": 11.1,
+    "longestStraightLine": 0,
+    "personFit": 0.42,
+    "flagged": true,
+    "reasons": [
+     "нетиповий патерн відповідей (0.42)"
+    ]
+   },
+   {
+    "responseId": "#149",
+    "respondent": "Особа19 Еталон",
+    "submittedAt": "2025-02-03T06:05:00.000Z",
+    "durationMs": 200000,
+    "tooFastShare": 68.9,
+    "longestStraightLine": 0,
+    "personFit": 0.227,
+    "flagged": true,
+    "reasons": [
+     "68.9% відповідей швидше за 1500 мс"
+    ]
+   },
+   {
+    "responseId": "#150",
+    "respondent": "Особа21 Еталон",
+    "submittedAt": "2025-02-03T12:05:00.000Z",
+    "durationMs": 200000,
+    "tooFastShare": 0,
+    "longestStraightLine": 0,
+    "personFit": 0.42,
+    "flagged": true,
+    "reasons": [
+     "нетиповий патерн відповідей (0.42)"
+    ]
+   },
+   {
+    "responseId": "#151",
+    "respondent": "Особа26 Еталон",
+    "submittedAt": "2025-02-04T03:05:00.000Z",
+    "durationMs": 20000,
+    "tooFastShare": 0,
+    "longestStraightLine": 0,
+    "personFit": 0.007,
+    "flagged": true,
+    "reasons": [
+     "загальний час менший за мінімально правдоподібний"
+    ]
+   },
+   {
+    "responseId": "#152",
+    "respondent": "Особа28 Еталон",
+    "submittedAt": "2025-02-04T09:05:00.000Z",
+    "durationMs": 200000,
+    "tooFastShare": 57.8,
+    "longestStraightLine": 0,
+    "personFit": 0.138,
+    "flagged": true,
+    "reasons": [
+     "57.8% відповідей швидше за 1500 мс"
+    ]
+   },
+   {
+    "responseId": "#153",
+    "respondent": "Особа31 Еталон",
+    "submittedAt": "2025-02-04T18:05:00.000Z",
+    "durationMs": 200000,
+    "tooFastShare": 0,
+    "longestStraightLine": 0,
+    "personFit": 0.42,
+    "flagged": true,
+    "reasons": [
+     "нетиповий патерн відповідей (0.42)"
+    ]
+   },
+   {
+    "responseId": "#154",
+    "respondent": "Особа38 Еталон",
+    "submittedAt": "2025-02-05T15:05:00.000Z",
+    "durationMs": 200000,
+    "tooFastShare": 0,
+    "longestStraightLine": 0,
+    "personFit": 0.935,
+    "flagged": true,
+    "reasons": [
+     "нетиповий патерн відповідей (0.935)"
+    ]
+   },
+   {
+    "responseId": "#155",
+    "respondent": "Особа1 Еталон",
+    "submittedAt": "2025-02-06T00:05:00.000Z",
+    "durationMs": 200000,
+    "tooFastShare": 0,
+    "longestStraightLine": 0,
+    "personFit": 0.42,
+    "flagged": true,
+    "reasons": [
+     "нетиповий патерн відповідей (0.42)"
+    ]
+   },
+   {
+    "responseId": "#156",
+    "respondent": "Особа21 Еталон",
+    "submittedAt": "2025-02-08T12:05:00.000Z",
+    "durationMs": 200000,
+    "tooFastShare": 0,
+    "longestStraightLine": 0,
+    "personFit": 0.42,
+    "flagged": true,
+    "reasons": [
+     "нетиповий патерн відповідей (0.42)"
+    ]
+   },
+   {
+    "responseId": "#157",
+    "respondent": "Особа31 Еталон",
+    "submittedAt": "2025-02-09T18:05:00.000Z",
+    "durationMs": 200000,
+    "tooFastShare": 0,
+    "longestStraightLine": 0,
+    "personFit": 0.42,
+    "flagged": true,
+    "reasons": [
+     "нетиповий патерн відповідей (0.42)"
+    ]
+   },
+   {
+    "responseId": "#158",
+    "respondent": "Особа35 Еталон",
+    "submittedAt": "2025-02-10T06:05:00.000Z",
+    "durationMs": 200000,
+    "tooFastShare": 0,
+    "longestStraightLine": 0,
+    "personFit": 0.935,
+    "flagged": true,
+    "reasons": [
+     "нетиповий патерн відповідей (0.935)"
+    ]
+   },
+   {
+    "responseId": "#159",
+    "respondent": "Особа36 Еталон",
+    "submittedAt": "2025-02-10T09:05:00.000Z",
+    "durationMs": 20000,
+    "tooFastShare": 0,
+    "longestStraightLine": 0,
+    "personFit": 0.007,
+    "flagged": true,
+    "reasons": [
+     "загальний час менший за мінімально правдоподібний"
+    ]
+   },
+   {
+    "responseId": "#160",
+    "respondent": "Особа1 Еталон",
+    "submittedAt": "2025-02-11T00:05:00.000Z",
+    "durationMs": 200000,
+    "tooFastShare": 0,
+    "longestStraightLine": 0,
+    "personFit": 0.42,
+    "flagged": true,
+    "reasons": [
+     "нетиповий патерн відповідей (0.42)"
+    ]
+   },
+   {
+    "responseId": "#161",
+    "respondent": "Особа11 Еталон",
+    "submittedAt": "2025-02-12T06:05:00.000Z",
+    "durationMs": 200000,
+    "tooFastShare": 0,
+    "longestStraightLine": 0,
+    "personFit": 0.42,
+    "flagged": true,
+    "reasons": [
+     "нетиповий патерн відповідей (0.42)"
+    ]
+   },
+   {
+    "responseId": "#162",
+    "respondent": "Особа31 Еталон",
+    "submittedAt": "2025-02-14T18:05:00.000Z",
+    "durationMs": 200000,
+    "tooFastShare": 13.3,
+    "longestStraightLine": 0,
+    "personFit": 0.42,
+    "flagged": true,
+    "reasons": [
+     "нетиповий патерн відповідей (0.42)"
+    ]
+   },
+   {
+    "responseId": "#163",
+    "respondent": "Особа32 Еталон",
+    "submittedAt": "2025-02-14T21:05:00.000Z",
+    "durationMs": 200000,
+    "tooFastShare": 13.3,
+    "longestStraightLine": 0,
+    "personFit": 0.935,
+    "flagged": true,
+    "reasons": [
+     "нетиповий патерн відповідей (0.935)"
+    ]
+   },
+   {
+    "responseId": "#164",
+    "respondent": "Особа1 Еталон",
+    "submittedAt": "2025-02-16T00:05:00.000Z",
+    "durationMs": 200000,
+    "tooFastShare": 22.2,
+    "longestStraightLine": 0,
+    "personFit": 0.42,
+    "flagged": true,
+    "reasons": [
+     "нетиповий патерн відповідей (0.42)"
+    ]
+   },
+   {
+    "responseId": "#165",
+    "respondent": "Особа6 Еталон",
+    "submittedAt": "2025-02-16T15:05:00.000Z",
+    "durationMs": 20000,
+    "tooFastShare": 22.2,
+    "longestStraightLine": 0,
+    "personFit": 0.007,
+    "flagged": true,
+    "reasons": [
+     "загальний час менший за мінімально правдоподібний"
+    ]
+   },
+   {
+    "responseId": "#166",
+    "respondent": "Особа11 Еталон",
+    "submittedAt": "2025-02-17T06:05:00.000Z",
+    "durationMs": 200000,
+    "tooFastShare": 22.2,
+    "longestStraightLine": 0,
+    "personFit": 0.42,
+    "flagged": true,
+    "reasons": [
+     "нетиповий патерн відповідей (0.42)"
+    ]
+   },
+   {
+    "responseId": "#167",
+    "respondent": "Особа21 Еталон",
+    "submittedAt": "2025-02-18T12:05:00.000Z",
+    "durationMs": 200000,
+    "tooFastShare": 22.2,
+    "longestStraightLine": 0,
+    "personFit": 0.42,
+    "flagged": true,
+    "reasons": [
+     "нетиповий патерн відповідей (0.42)"
+    ]
+   },
+   {
+    "responseId": "#168",
+    "respondent": "Особа25 Еталон",
+    "submittedAt": "2025-02-19T00:05:00.000Z",
+    "durationMs": 200000,
+    "tooFastShare": 55.6,
+    "longestStraightLine": 0,
+    "personFit": 0,
+    "flagged": true,
+    "reasons": [
+     "55.6% відповідей швидше за 1500 мс"
+    ]
+   },
+   {
+    "responseId": "#169",
+    "respondent": "Особа29 Еталон",
+    "submittedAt": "2025-02-19T12:05:00.000Z",
+    "durationMs": 200000,
+    "tooFastShare": 24.4,
+    "longestStraightLine": 0,
+    "personFit": 0.935,
+    "flagged": true,
+    "reasons": [
+     "нетиповий патерн відповідей (0.935)"
+    ]
+   },
+   {
+    "responseId": "#170",
+    "respondent": "Особа34 Еталон",
+    "submittedAt": "2025-02-20T03:05:00.000Z",
+    "durationMs": 200000,
+    "tooFastShare": 68.9,
+    "longestStraightLine": 0,
+    "personFit": 0.02,
+    "flagged": true,
+    "reasons": [
+     "68.9% відповідей швидше за 1500 мс"
+    ]
+   },
+   {
+    "responseId": "#171",
+    "respondent": "Особа1 Еталон",
+    "submittedAt": "2025-02-21T00:05:00.000Z",
+    "durationMs": 200000,
+    "tooFastShare": 22.2,
+    "longestStraightLine": 0,
+    "personFit": 0.42,
+    "flagged": true,
+    "reasons": [
+     "нетиповий патерн відповідей (0.42)"
+    ]
+   },
+   {
+    "responseId": "#172",
+    "respondent": "Особа3 Еталон",
+    "submittedAt": "2025-02-21T06:05:00.000Z",
+    "durationMs": 200000,
+    "tooFastShare": 80,
+    "longestStraightLine": 0,
+    "personFit": 0.071,
+    "flagged": true,
+    "reasons": [
+     "80% відповідей швидше за 1500 мс"
+    ]
+   },
+   {
+    "responseId": "#173",
+    "respondent": "Особа11 Еталон",
+    "submittedAt": "2025-02-22T06:05:00.000Z",
+    "durationMs": 200000,
+    "tooFastShare": 24.4,
+    "longestStraightLine": 0,
+    "personFit": 0.42,
+    "flagged": true,
+    "reasons": [
+     "нетиповий патерн відповідей (0.42)"
+    ]
+   },
+   {
+    "responseId": "#174",
+    "respondent": "Особа12 Еталон",
+    "submittedAt": "2025-02-22T09:05:00.000Z",
+    "durationMs": 200000,
+    "tooFastShare": 91.1,
+    "longestStraightLine": 0,
+    "personFit": 0.194,
+    "flagged": true,
+    "reasons": [
+     "91.1% відповідей швидше за 1500 мс"
+    ]
+   },
+   {
+    "responseId": "#175",
+    "respondent": "Особа16 Еталон",
+    "submittedAt": "2025-02-22T21:05:00.000Z",
+    "durationMs": 20000,
+    "tooFastShare": 24.4,
+    "longestStraightLine": 0,
+    "personFit": 0.007,
+    "flagged": true,
+    "reasons": [
+     "загальний час менший за мінімально правдоподібний"
+    ]
+   },
+   {
+    "responseId": "#176",
+    "respondent": "Особа26 Еталон",
+    "submittedAt": "2025-02-24T03:05:00.000Z",
+    "durationMs": 200000,
+    "tooFastShare": 13.3,
+    "longestStraightLine": 0,
+    "personFit": 0.935,
+    "flagged": true,
+    "reasons": [
+     "нетиповий патерн відповідей (0.935)"
+    ]
+   },
+   {
+    "responseId": "#177",
+    "respondent": "Особа30 Еталон",
+    "submittedAt": "2025-02-24T15:05:00.000Z",
+    "durationMs": 200000,
+    "tooFastShare": 77.8,
+    "longestStraightLine": 0,
+    "personFit": 0.395,
+    "flagged": true,
+    "reasons": [
+     "77.8% відповідей швидше за 1500 мс"
+    ]
+   },
+   {
+    "responseId": "#178",
+    "respondent": "Особа31 Еталон",
+    "submittedAt": "2025-02-24T18:05:00.000Z",
+    "durationMs": 200000,
+    "tooFastShare": 6.7,
+    "longestStraightLine": 0,
+    "personFit": 0.42,
+    "flagged": true,
+    "reasons": [
+     "нетиповий патерн відповідей (0.42)"
+    ]
+   },
+   {
+    "responseId": "#179",
+    "respondent": "Особа39 Еталон",
+    "submittedAt": "2025-02-25T18:05:00.000Z",
+    "durationMs": 200000,
+    "tooFastShare": 64.4,
+    "longestStraightLine": 0,
+    "personFit": 0.227,
+    "flagged": true,
+    "reasons": [
+     "64.4% відповідей швидше за 1500 мс"
+    ]
+   },
+   {
+    "responseId": "#180",
+    "respondent": "Особа8 Еталон",
+    "submittedAt": "2025-02-26T21:05:00.000Z",
+    "durationMs": 200000,
+    "tooFastShare": 53.3,
+    "longestStraightLine": 0,
+    "personFit": 0.138,
+    "flagged": true,
+    "reasons": [
+     "53.3% відповідей швидше за 1500 мс"
+    ]
+   },
+   {
+    "responseId": "#181",
+    "respondent": "Особа11 Еталон",
+    "submittedAt": "2025-02-27T06:05:00.000Z",
+    "durationMs": 200000,
+    "tooFastShare": 0,
+    "longestStraightLine": 0,
+    "personFit": 0.42,
+    "flagged": true,
+    "reasons": [
+     "нетиповий патерн відповідей (0.42)"
+    ]
+   },
+   {
+    "responseId": "#182",
+    "respondent": "Особа21 Еталон",
+    "submittedAt": "2025-02-28T12:05:00.000Z",
+    "durationMs": 200000,
+    "tooFastShare": 0,
+    "longestStraightLine": 0,
+    "personFit": 0.42,
+    "flagged": true,
+    "reasons": [
+     "нетиповий патерн відповідей (0.42)"
+    ]
+   },
+   {
+    "responseId": "#183",
+    "respondent": "Особа23 Еталон",
+    "submittedAt": "2025-02-28T18:05:00.000Z",
+    "durationMs": 200000,
+    "tooFastShare": 0,
+    "longestStraightLine": 0,
+    "personFit": 0.935,
+    "flagged": true,
+    "reasons": [
+     "нетиповий патерн відповідей (0.935)"
+    ]
+   },
+   {
+    "responseId": "#184",
+    "respondent": "Особа26 Еталон",
+    "submittedAt": "2025-03-01T03:05:00.000Z",
+    "durationMs": 20000,
+    "tooFastShare": 28.9,
+    "longestStraightLine": 0,
+    "personFit": 0.007,
+    "flagged": true,
+    "reasons": [
+     "загальний час менший за мінімально правдоподібний"
+    ]
+   },
+   {
+    "responseId": "#185",
+    "respondent": "Особа31 Еталон",
+    "submittedAt": "2025-03-01T18:05:00.000Z",
+    "durationMs": 200000,
+    "tooFastShare": 0,
+    "longestStraightLine": 0,
+    "personFit": 0.42,
+    "flagged": true,
+    "reasons": [
+     "нетиповий патерн відповідей (0.42)"
+    ]
+   },
+   {
+    "responseId": "#186",
+    "respondent": "Особа1 Еталон",
+    "submittedAt": "2025-03-03T00:05:00.000Z",
+    "durationMs": 200000,
+    "tooFastShare": 0,
+    "longestStraightLine": 0,
+    "personFit": 0.42,
+    "flagged": true,
+    "reasons": [
+     "нетиповий патерн відповідей (0.42)"
+    ]
+   },
+   {
+    "responseId": "#187",
+    "respondent": "Особа20 Еталон",
+    "submittedAt": "2025-03-05T09:05:00.000Z",
+    "durationMs": 200000,
+    "tooFastShare": 0,
+    "longestStraightLine": 0,
+    "personFit": 0.935,
+    "flagged": true,
+    "reasons": [
+     "нетиповий патерн відповідей (0.935)"
+    ]
+   },
+   {
+    "responseId": "#188",
+    "respondent": "Особа21 Еталон",
+    "submittedAt": "2025-03-05T12:05:00.000Z",
+    "durationMs": 200000,
+    "tooFastShare": 0,
+    "longestStraightLine": 0,
+    "personFit": 0.42,
+    "flagged": true,
+    "reasons": [
+     "нетиповий патерн відповідей (0.42)"
+    ]
+   },
+   {
+    "responseId": "#189",
+    "respondent": "Особа31 Еталон",
+    "submittedAt": "2025-03-06T18:05:00.000Z",
+    "durationMs": 200000,
+    "tooFastShare": 0,
+    "longestStraightLine": 0,
+    "personFit": 0.42,
+    "flagged": true,
+    "reasons": [
+     "нетиповий патерн відповідей (0.42)"
+    ]
+   },
+   {
+    "responseId": "#190",
+    "respondent": "Особа36 Еталон",
+    "submittedAt": "2025-03-07T09:05:00.000Z",
+    "durationMs": 20000,
+    "tooFastShare": 0,
+    "longestStraightLine": 0,
+    "personFit": 0.007,
+    "flagged": true,
+    "reasons": [
+     "загальний час менший за мінімально правдоподібний"
+    ]
+   },
+   {
+    "responseId": "#191",
+    "respondent": "Особа1 Еталон",
+    "submittedAt": "2025-03-08T00:05:00.000Z",
+    "durationMs": 200000,
+    "tooFastShare": 4.4,
+    "longestStraightLine": 0,
+    "personFit": 0.42,
+    "flagged": true,
+    "reasons": [
+     "нетиповий патерн відповідей (0.42)"
+    ]
+   },
+   {
+    "responseId": "#192",
+    "respondent": "Особа11 Еталон",
+    "submittedAt": "2025-03-09T06:05:00.000Z",
+    "durationMs": 200000,
+    "tooFastShare": 17.8,
+    "longestStraightLine": 0,
+    "personFit": 0.42,
+    "flagged": true,
+    "reasons": [
+     "нетиповий патерн відповідей (0.42)"
+    ]
+   },
+   {
+    "responseId": "#193",
+    "respondent": "Особа17 Еталон",
+    "submittedAt": "2025-03-10T00:05:00.000Z",
+    "durationMs": 200000,
+    "tooFastShare": 22.2,
+    "longestStraightLine": 0,
+    "personFit": 0.935,
+    "flagged": true,
+    "reasons": [
+     "нетиповий патерн відповідей (0.935)"
+    ]
+   }
+  ],
+  "tooFastThresholdMs": 1500,
+  "respondentCount": 40,
+  "unreliableCount": 13,
+  "scaleTimeline": [
+   {
+    "scaleId": "#138",
+    "weeks": [
+     {
+      "week": "2025-01-27",
+      "n": 15,
+      "mean": 10.33
+     },
+     {
+      "week": "2025-02-03",
+      "n": 56,
+      "mean": 9.43
+     },
+     {
+      "week": "2025-02-10",
+      "n": 56,
+      "mean": 9.29
+     },
+     {
+      "week": "2025-02-17",
+      "n": 56,
+      "mean": 9.5
+     },
+     {
+      "week": "2025-02-24",
+      "n": 56,
+      "mean": 9.71
+     },
+     {
+      "week": "2025-03-03",
+      "n": 56,
+      "mean": 9.57
+     },
+     {
+      "week": "2025-03-10",
+      "n": 5,
+      "mean": 7
+     }
+    ]
+   },
+   {
+    "scaleId": "#139",
+    "weeks": [
+     {
+      "week": "2025-01-27",
+      "n": 15,
+      "mean": 10
+     },
+     {
+      "week": "2025-02-03",
+      "n": 53,
+      "mean": 10.04
+     },
+     {
+      "week": "2025-02-10",
+      "n": 54,
+      "mean": 9.31
+     },
+     {
+      "week": "2025-02-17",
+      "n": 54,
+      "mean": 9.46
+     },
+     {
+      "week": "2025-02-24",
+      "n": 53,
+      "mean": 9.57
+     },
+     {
+      "week": "2025-03-03",
+      "n": 54,
+      "mean": 9.35
+     },
+     {
+      "week": "2025-03-10",
+      "n": 4,
+      "mean": null
+     }
+    ]
+   }
+  ],
+  "durationBins": [
+   {
+    "fromMs": 0,
+    "toMs": 30000,
+    "count": 12
+   },
+   {
+    "fromMs": 30000,
+    "toMs": 60000,
+    "count": 0
+   },
+   {
+    "fromMs": 60000,
+    "toMs": 90000,
+    "count": 0
+   },
+   {
+    "fromMs": 90000,
+    "toMs": 120000,
+    "count": 0
+   },
+   {
+    "fromMs": 120000,
+    "toMs": 150000,
+    "count": 0
+   },
+   {
+    "fromMs": 150000,
+    "toMs": 180000,
+    "count": 0
+   },
+   {
+    "fromMs": 180000,
+    "toMs": 210000,
+    "count": 288
+   }
+  ],
+  "answerMatrix": null
+ }
+}

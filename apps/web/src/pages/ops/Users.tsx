@@ -286,7 +286,7 @@ export default function OpsUsers() {
         <ResetDialog row={dialog.row} onClose={close} onReset={(password) => setDialog({ kind: "password", row: dialog.row, password })} />
       ) : null}
       {dialog?.kind === "password" ? (
-        <Modal title={ut("ops.users.tempPassword")} onClose={done}>
+        <Modal title={ut("ops.users.tempPassword")} onClose={done} secret>
           <p className="m-0 mb-[12px] text-[15px] leading-[21px] text-text-2 [overflow-wrap:anywhere]">
             {dialog.row.email}: {ut("ops.users.resetDone")}
           </p>
@@ -540,7 +540,7 @@ function CreateDialog({ isSuper, onClose, onDone }: { isSuper: boolean; onClose:
 
   if (state.created) {
     return (
-      <Modal title={ut("adm.newUser")} onClose={onDone}>
+      <Modal title={ut("adm.newUser")} onClose={onDone} secret>
         <p className="m-0 mb-[12px] text-[15px] leading-[21px] text-text-2 [overflow-wrap:anywhere]">
           {state.created}: {ut("ops.users.createdDone")}
         </p>

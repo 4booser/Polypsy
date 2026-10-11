@@ -148,3 +148,22 @@ export function assignBody(d: AssignDraft): { surveyId: string; expiresAt: strin
 export function assignable(surveys: readonly SurveyListItem[]): SurveyListItem[] {
   return surveys.filter((s) => s.status === "published" && !s.archivedAt);
 }
+
+/**
+ * Переход приёма — с перечитыванием экрана и на отказе (#178).
+ *
+ * «Сьогодні» и экран приёма перечитывались только на успехе. Отказ
+ * перехода — почти всегда знак того, что строка на экране устарела:
+ * приём уже перевёл коллега или пациент (409 err.appointmentChanged), его
+ * закрыли или отменили (400 err.appointmentClosed). Экран оставался со
+ * старыми кнопками, и следующее нажатие упиралось в тот же отказ. Теперь
+ * экран перечитывается в любом случае, а отказ по-прежнему доходит до
+ * useAction — тостом со словами сервера.
+ */
+export async function moveAndReload<T>(move: () => Promise<T>, reload: () => void): Promise<T> {
+  try {
+    return await move();
+  } finally {
+    reload();
+  }
+}

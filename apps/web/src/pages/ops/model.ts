@@ -571,10 +571,11 @@ export const JOB_KEY: Record<string, UiKey> = {
   "clinic.meet_sync": "ops.job.meetSync",
   retention: "ops.job.retention",
   /* участок obs2b: задачи, которые запускают и руками (apps/api/src/lib/opsManual.ts) */
-  "analytics.cache": "o2b.job.analyticsCache",
   "search.reindex": "o2b.job.searchReindex",
   "catalog.install": "o2b.job.catalogInstall",
   "ops.alerts": "o2b.job.alerts",
+  /* волна 21: «Якість даних» — фоновой задачей, «Запустити зараз» — перепроверить (apps/api/src/lib/dataChecks.ts) */
+  "data.quality": "ops.job.dataQuality",
   /* история техпанели (участок obs2a): запись пачками и ротация по сроку */
   "ops.flush": "ops.job.flush",
   "ops.rotate": "ops.job.rotate",

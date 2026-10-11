@@ -432,6 +432,50 @@ export function useFocusTrap<T extends HTMLElement>(active = true): React.RefObj
   return ref;
 }
 
+/** Где событие нажатия: на самой подложке или внутри окна */
+interface PressEvent {
+  target: unknown;
+  currentTarget: unknown;
+}
+
+/**
+ * Нажатие на подложке окна (#179) — закрывает, только если и началось, и
+ * кончилось на ней.
+ *
+ * Подложка закрывала окно по click, не глядя, где началось нажатие. А click
+ * приходит общему предку нажатия и отпускания: выделил протяжкой текст в
+ * «Причина вимкнення» или «Опис групи», отпустил мышь за краем окна — click
+ * на подложке, окно закрыто, набранное потеряно. Обратное тоже: нажал на
+ * подложке, отпустил в окне — click опять достаётся подложке.
+ *
+ * Состояние — на одно окно (Modal держит свой экземпляр), без React:
+ * проверяется вызовами (test/modalBackdrop.test.ts).
+ */
+export function backdropPress(): {
+  down: (e: PressEvent) => void;
+  up: (e: PressEvent) => void;
+  /** Закрывать ли окно этим click */
+  click: (e: PressEvent) => boolean;
+} {
+  let downOnBackdrop = false;
+  let upOnBackdrop = false;
+  return {
+    down: (e) => {
+      downOnBackdrop = e.target === e.currentTarget;
+      upOnBackdrop = false;
+    },
+    up: (e) => {
+      upOnBackdrop = e.target === e.currentTarget;
+    },
+    click: (e) => {
+      const closes = downOnBackdrop && upOnBackdrop && e.target === e.currentTarget;
+      downOnBackdrop = false;
+      upOnBackdrop = false;
+      return closes;
+    },
+  };
+}
+
 /**
  * Модальное окно.
  *
@@ -439,21 +483,31 @@ export function useFocusTrap<T extends HTMLElement>(active = true): React.RefObj
  * которая открыла, фон не прокручивается. Без этого диалог остаётся ловушкой
  * для клавиатуры: два Tab — и человек уже нажимает разделы рельсы под окном,
  * считая, что нажимает кнопки диалога.
+ *
+ * Подложка закрывает окно только нажатием, начатым и законченным на ней
+ * (backdropPress). Окно одноразового секрета (`secret`: временный пароль,
+ * пароли импорта) подложкой не закрывается вовсе: второй раз его не
+ * показать, а промах мимо окна стоил бы повторного сброса — и нового обрыва
+ * сессий человека. Такое окно закрывают кнопкой, крестиком или Esc.
  */
 export function Modal({
   title,
   onClose,
   children,
   wide,
+  secret,
 }: {
   title: string;
   onClose: () => void;
   children: ReactNode;
   wide?: boolean;
+  /** Показывает то, что второй раз не показать: подложка его не закрывает */
+  secret?: boolean;
 }) {
   const { ut } = useLang();
   // фокус внутрь, круг по Tab и возврат при закрытии — общий для всех слоёв
   const ref = useFocusTrap<HTMLDivElement>();
+  const [press] = useState(backdropPress);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -470,7 +524,14 @@ export function Modal({
   }, [onClose]);
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <div
+      className="modal-backdrop"
+      onPointerDown={press.down}
+      onPointerUp={press.up}
+      onClick={(e) => {
+        if (press.click(e) && !secret) onClose();
+      }}
+    >
       <div
         className={`modal ${wide ? "wide" : ""}`}
         role="dialog"

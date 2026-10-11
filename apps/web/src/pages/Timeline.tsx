@@ -50,7 +50,8 @@ export function groupByDay<T extends { at: string }>(items: readonly T[], timeZo
 export default function Timeline() {
   const { userId } = useParams<{ userId: string }>();
   const { ut } = useLang();
-  const res = useResource(() => api.timeline(userId!), [userId], { enabled: !!userId });
+  /* keep: false — хронология прежнего пациента не стоит под адресом следующего (#177) */
+  const res = useResource(() => api.timeline(userId!), [userId], { enabled: !!userId, keep: false });
   const items = res.data;
 
   if (!items) return <Loading rows={6} error={res.error} onRetry={res.reload} busy={res.loading} />;

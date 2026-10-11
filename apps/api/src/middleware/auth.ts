@@ -218,6 +218,15 @@ function inRequestTransaction(
 ): Promise<void> {
   return withRequestContext(baseDb, identity, () => next(), () => c.error !== undefined || c.res.status >= 400, {
     readOnly,
+    /*
+     * Клиент ушёл (закрыл вкладку, обрыв по простою) — запросы к базе
+     * отменяются (#186). Только у чтения: изменяющий запрос мог уже сделать
+     * необратимое снаружи — событие в Google Calendar, запуск отката в
+     * GitHub, файл записи на диске, — и отказ базы после этого откатил бы
+     * только свою половину (ревью PR #198). Изменяющие запросы доходят до
+     * конца; от зависания их бережёт statement_timeout транзакции запроса.
+     */
+    signal: c.req.method === "GET" || c.req.method === "HEAD" ? c.req.raw.signal : undefined,
   });
 }
 

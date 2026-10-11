@@ -1,6 +1,6 @@
 import { renderCoded, t } from "@quizzy/shared";
 import { Hono, type Context } from "hono";
-import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import {
   submitResponseSchema,
   type Answer,
@@ -27,8 +27,9 @@ import {
   users,
 } from "../db/schema";
 import { attachToCase } from "../lib/alertCases";
+import { publish } from "../lib/events";
 import { badRequest, conflict, forbidden, langOf, notFound, parseBody, parseQuery } from "../lib/http";
-import { getSurvey, getSurveyForResponse } from "../lib/surveys";
+import { getSurvey, getSurveyForResponse, respondentView } from "../lib/surveys";
 import { hitBand, ladderOf, storedScoreResult, storedScoreResults } from "../lib/storedScores";
 import { detectRisks } from "../lib/risk";
 import { assertAnswersInVersion, persistSubmission } from "../lib/submission";
@@ -318,6 +319,39 @@ async function adoptDraftAlerts(draftIds: string[], finalId: string): Promise<vo
   }
 }
 
+/**
+ * Пара «методика + человек» — под замком до конца транзакции запроса.
+ *
+ * Берут его сдача и автосохранение черновика, обе — до того, как читать
+ * черновик и прохождения пары.
+ *
+ * Сдача. Проверка «уже проходил» и запись прохождения идут в одной
+ * транзакции (см. db/context), но на READ COMMITTED этого мало: две
+ * отправки, ушедшие одновременно — двойное нажатие, повтор из офлайн-очереди
+ * без clientRequestId, — обе не видят чужую незакоммиченную строку и обе
+ * записываются. В карте оказываются два «единственных» прохождения методики,
+ * которую проходят один раз, с разными баллами и разными тревогами; какое из
+ * них считать результатом, не решит никто.
+ *
+ * Сдача и автосохранение (#146). Сдача читала черновик и его тревоги без
+ * замка, переносила тревоги на итоговое прохождение и удаляла черновик в
+ * конце. Автосохранение, пришедшее между этими шагами, дописывало в черновик
+ * тревогу, которую сдача уже не видела, а внешний ключ risk_alerts →
+ * responses не каскадный (0106): удаление черновика падало, сдача отвечала
+ * 500 и не сохранялась вовсе. Строки черновика для очереди мало — первого
+ * автосохранения, которое черновик только заводит, она не остановит.
+ *
+ * Замок по хэшу пары, а не на всю таблицу: одновременные запросы разных
+ * людей или разных методик друг друга не касаются. Снимается коммитом
+ * вместе с транзакцией запроса, так что второй читает уже закоммиченное:
+ * сдача — тревоги автосохранения, автосохранение — сданное прохождение.
+ * Берётся раньше замков случая и журнала (lib/alertCases.ts, lib/audit.ts)
+ * у обоих маршрутов — порядок один, цикла нет.
+ */
+async function lockAttempts(surveyId: string, personId: string): Promise<void> {
+  await db.execute(sql`select pg_advisory_xact_lock(hashtext(${`response:${surveyId}:${personId}`}))`);
+}
+
 /** Отправка прохождения вместе с телеметрией по каждому вопросу */
 responseRoutes.post("/surveys/:id/responses", async (c) => {
   const user = c.get("user");
@@ -335,6 +369,23 @@ responseRoutes.post("/surveys/:id/responses", async (c) => {
      * дошла бы до вставки и упала на уникальном индексе пятисоткой.
      */
     const requestId = input.clientRequestId;
+    /*
+     * Повтор, пришедший, пока первая попытка ещё пишется (#148), ждёт её
+     * коммита — и находит её ниже, как повтор после коммита.
+     *
+     * Без замка он искал до коммита первой, не находил и сдавал сам: у
+     * возвратной методики упирался в уникальный индекс clientRequestId
+     * (500), у невозвратной дожидался замка пары и получал «уже проходили»
+     * (409). Очереди повторяют с тем же id (мобилка — после 502/504, веб —
+     * из каждой вкладки) и оба ответа считают отказом по существу: сдача,
+     * ответы которой приняты, висела «отклонённой». Откатилась первая —
+     * второй не находит ничего и сдаёт сам.
+     *
+     * Замок по идентификатору попытки и самый первый в запросе: разные
+     * попытки друг друга не ждут, а порядок с замками пары, случая и журнала
+     * один у всех.
+     */
+    await db.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`submit:${requestId}`}, 0))`);
     const existing = await asSystem(() =>
       db.query.responses.findFirst({ where: eq(responses.clientRequestId, requestId) }),
     );
@@ -485,32 +536,19 @@ responseRoutes.post("/surveys/:id/responses", async (c) => {
     log.warn("response.version_unpinned", { surveyId, versionId: survey.versionId });
   }
 
-  if (!survey.allowRetake && !survey.anonymous) {
-    /*
-     * Пара «методика + человек» запирается на время транзакции.
-     *
-     * Проверка «уже проходил» и запись прохождения идут в одной транзакции
-     * (см. db/context), но на READ COMMITTED этого мало: две отправки,
-     * ушедшие одновременно — двойное нажатие, повтор из офлайн-очереди без
-     * clientRequestId, — обе не видят чужую незакоммиченную строку и обе
-     * записываются. В карте оказываются два «единственных» прохождения
-     * методики, которую проходят один раз, с разными баллами и разными
-     * тревогами; какое из них считать результатом, не решит никто.
-     *
-     * Замок по хэшу пары, а не на всю таблицу: одновременные отправки
-     * разных людей друг друга не касаются. Снимается коммитом вместе с
-     * транзакцией запроса, так что проигравший читает уже закоммиченную
-     * строку и получает обычный отказ «уже проходили».
-     */
-    await db.execute(sql`select pg_advisory_xact_lock(hashtext(${`response:${surveyId}:${subjectId}`}))`);
-    const existing = await db.query.responses.findFirst({
-      where: and(
-        eq(responses.surveyId, surveyId),
-        eq(responses.userId, subjectId),
-        eq(responses.status, "completed"),
-      ),
-    });
-    if (existing) conflict("err.alreadyTaken");
+  if (!survey.anonymous) {
+    // сдачи и автосохранения этой пары — по очереди (lockAttempts); анонимной черновика и «уже проходил» нет
+    await lockAttempts(surveyId, subjectId);
+    if (!survey.allowRetake) {
+      const existing = await db.query.responses.findFirst({
+        where: and(
+          eq(responses.surveyId, surveyId),
+          eq(responses.userId, subjectId),
+          eq(responses.status, "completed"),
+        ),
+      });
+      if (existing) conflict("err.alreadyTaken");
+    }
   }
 
   /*
@@ -520,6 +558,9 @@ responseRoutes.post("/surveys/:id/responses", async (c) => {
    * adoptDraftAlerts): раньше черновик удалялся первым, и каскад уносил
    * тревоги, поднятые автосохранением, — случай оставался без сигналов, а
    * направление, выписанное по такой тревоге, теряло ссылку на неё.
+   *
+   * Читается под замком пары (выше): автосохранение, начатое раньше, уже
+   * закоммичено и его тревоги видны, а начатое позже ждёт конца сдачи.
    */
   const drafts = survey.anonymous
     ? []
@@ -531,6 +572,15 @@ responseRoutes.post("/surveys/:id/responses", async (c) => {
             eq(responses.surveyId, surveyId),
             eq(responses.userId, subjectId),
             eq(responses.status, "in_progress"),
+            /*
+             * Только черновик ЭТОЙ попытки — тот же startedAt, что у сдачи
+             * (#147, ревью PR #198). Возвратная методика: сдача прошлой
+             * попытки, пришедшая из очереди позже, забирала черновик
+             * следующей вместе с её тревогой — сигнал ложился на ответы, где
+             * риска нет, а следующее автосохранение заводило черновик и
+             * тревогу заново. Черновики других попыток — их собственные.
+             */
+            eq(responses.startedAt, input.startedAt),
           ),
         );
 
@@ -657,6 +707,46 @@ responseRoutes.put("/surveys/:id/draft", async (c) => {
   if (pin.source === "invalid") badRequest("err.surveyVersionInvalid");
   // ответы — только на пункты той версии, в которую пишем, иначе 409 (lib/submission.ts)
   assertAnswersInVersion(survey, input.answers);
+
+  // замок пары, тот же, что у сдачи (lockAttempts): тревога отсюда не появляется в черновике посреди сдачи
+  await lockAttempts(surveyId, user.id);
+
+  /*
+   * Сданная попытка черновика больше не заводит (#147).
+   *
+   * Мобильная дорожка черновика досылает последнюю правку и после сдачи — а
+   * то и посреди неё, тогда правка ждёт замка выше. Сдача черновик уже
+   * удалила, и автосохранение заводило новый: с тревогой и, если случай
+   * успели разобрать, с новым случаем. У невозвратной методики такой
+   * черновик не сдать никогда (409 «уже проходили»), у возвратной его
+   * тревогу присваивала следующая сдача — без единого рискового ответа.
+   *
+   * Невозвратная сдана — черновик ей не нужен, отказ тот же, что у сдачи.
+   * Попытку возвратной узнаём по началу: startedAt клиент держит один на
+   * попытку и шлёт одинаковым в черновик и в сдачу (мобилка, экран
+   * прохождения), а новая попытка начинается со своим. Отказ — до записи:
+   * ни черновика, ни тревоги, ни случая.
+   */
+  if (!survey.allowRetake) {
+    const taken = await db.query.responses.findFirst({
+      where: and(eq(responses.surveyId, surveyId), eq(responses.userId, user.id), eq(responses.status, "completed")),
+      columns: { id: true },
+    });
+    if (taken) conflict("err.alreadyTaken");
+  }
+  const [submitted] = await db
+    .select({ id: responses.id })
+    .from(responses)
+    .where(
+      and(
+        eq(responses.surveyId, surveyId),
+        eq(responses.userId, user.id),
+        ne(responses.status, "in_progress"),
+        sql`${responses.startedAt} = ${input.startedAt}::timestamptz`,
+      ),
+    )
+    .limit(1);
+  if (submitted) conflict("err.attemptAlreadySubmitted");
 
   /*
    * Черновик — под замком строки до конца запроса: решение «можно ли
@@ -790,6 +880,22 @@ responseRoutes.put("/surveys/:id/draft", async (c) => {
       const caseId = await attachToCase(tx as never, {
         userId: user.id,
         surveyId,
+        severity: risk.severity,
+        at: now,
+      });
+      /*
+       * Ранняя тревога — в поток событий, как у сдачи (#134; lib/submission.ts).
+       * Экран тревог и очередь дежурного обновляются по событию, и тревога
+       * автосохранения без него была не видна до чужого события или ручного
+       * обновления. Только новый факт — впервые отмеченный пункт или
+       * повышение до тяжёлого: повтор того же ответа сюда не доходит
+       * (continue выше), и поток им не засоряется. В той же транзакции:
+       * pg_notify уходит только при коммите.
+       */
+      await publish(tx as never, {
+        kind: "alert.created",
+        surveyIds: [surveyId],
+        userId: user.id,
         severity: risk.severity,
         at: now,
       });
@@ -1150,6 +1256,13 @@ responseRoutes.get("/responses/:id", async (c) => {
    * запрашивает.
    */
   const staffView = isStaff(user);
+  /*
+   * И весь ключ — тоже (#141): обследуемому пункты и варианты той же копией
+   * без ключа, что отдаёт GET /api/surveys/:id (respondentView), — без
+   * критических вариантов (riskFlag, riskSeverity) и порогов. Балл за
+   * ответ — тот же вес выбранного варианта, ему тоже null.
+   */
+  const shownQuestions = staffView ? survey.questions : respondentView(survey).questions;
 
   await audit(c, {
     action: "response.read",
@@ -1210,7 +1323,7 @@ responseRoutes.get("/responses/:id", async (c) => {
         ),
       };
     }),
-    answers: survey.questions
+    answers: shownQuestions
       .filter((q) => q.type !== "info")
       .map((q) => {
         const a = answersByQuestion.get(q.id);
@@ -1248,7 +1361,7 @@ responseRoutes.get("/responses/:id", async (c) => {
           date: a?.date ?? null,
           matrix: a?.matrix ?? null,
           ranking: a?.ranking ?? null,
-          score: a?.score ?? null,
+          score: staffView ? (a?.score ?? null) : null,
           durationMs: a?.durationMs ?? 0,
           changeCount: a?.changeCount ?? 0,
           visitCount: a?.visitCount ?? 0,

@@ -39,6 +39,13 @@ interface AuthState {
 
 const AuthContext = createContext<AuthState | null>(null);
 
+/*
+ * Вошёл — его сдачи и черновики, оставшиеся с прошлого выхода (#130,
+ * offline/logout.ts), уходят сразу: тик очереди смотрит только на сдачи, и
+ * неотправленный черновик ждал бы перезапуска.
+ */
+const sendLeftovers = () => void api.flushQueue().catch(() => {});
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -86,6 +93,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await tokenStorage.set(payload.token);
     await tokenStorage.setRefresh(payload.refreshToken);
     setUser(payload.user);
+    sendLeftovers();
     return null;
   }, []);
 
@@ -94,6 +102,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await tokenStorage.set(payload.token);
     await tokenStorage.setRefresh(payload.refreshToken);
     setUser(payload.user);
+    sendLeftovers();
   }, []);
 
   const register = useCallback<AuthState["register"]>(async (input) => {
@@ -120,15 +129,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
      * registerDevice), и до того её напоминания могут прийти сюда.
      */
     await Promise.race([forgetPush().catch(() => {}), new Promise((done) => setTimeout(done, 3_000))]);
-    const refresh = await tokenStorage.getRefresh().catch(() => null);
     /*
      * Сначала — выход на устройстве, потом отзыв на сервере, и выход его не
      * ждёт: без сети отзыв уйдёт при первой связи (auth/session.ts). Раньше
      * серверную сессию не отзывал никто, и refresh жил до конца срока.
+     * Офлайн-копии вышедшего уходят тут же (#130, api.signOut).
      */
-    await tokenStorage.clear();
-    setUser(null);
-    if (refresh) void api.revokeSession(refresh).catch(() => {});
+    try {
+      await api.signOut();
+    } finally {
+      setUser(null);
+    }
   }, []);
 
   const value = useMemo<AuthState>(

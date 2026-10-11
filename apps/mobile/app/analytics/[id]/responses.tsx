@@ -65,8 +65,9 @@ export default function ResponsesScreen() {
             {r.scores.map((s) => (
               <Row key={s.scaleId}>
                 <Text style={{ color: c.text, fontSize: 13, flex: 1 }}>{s.scaleTitle}</Text>
+                {/* балл после поправок — максимум записан для него (#133): у ЛАП МЛО сырой всегда 0 */}
                 <Text style={{ color: c.muted, fontSize: 13, fontVariant: ["tabular-nums"] }}>
-                  {s.rawScore}/{s.maxScore}
+                  {s.correctedScore}/{s.maxScore}
                 </Text>
                 {s.band ? (
                   <View style={{ marginLeft: spacing.sm }}>

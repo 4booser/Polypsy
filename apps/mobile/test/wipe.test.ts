@@ -49,6 +49,9 @@ function fake(token: string | null): Fake {
     confirmFails: null,
     clearFails: null,
     token: async () => box.current,
+    refresh: async () => null,
+    revokeLater: async () => {},
+    revoked: async () => {},
     clearTokens: async () => {
       box.clears += 1;
       if (box.clearFails?.(box.clears)) throw new Error("simulated secure store failure");
@@ -255,7 +258,7 @@ describe("отметка устройства в клиенте", () => {
 
   function loadCheckin(env: {
     request: (path: string, init?: RequestInit) => Promise<unknown>;
-    tokenStorage: { get(): Promise<string | null>; clear(): Promise<void> };
+    tokenStorage: { get(): Promise<string | null>; clear(): Promise<void>; getRefresh?(): Promise<string | null> };
   }): (label: string | null) => Promise<boolean> {
     const text = readFileSync(CLIENT, "utf8");
     const source = ts.createSourceFile("client.ts", text, ts.ScriptTarget.Latest, true);
@@ -275,6 +278,10 @@ describe("отметка устройства в клиенте", () => {
       "tokenStorage",
       "resumeWipe",
       "carryOutWipe",
+      "queueRevocation",
+      "dropRevocation",
+      "revokeStorage",
+      "api",
     ];
     const values = [
       deviceId,
@@ -286,6 +293,10 @@ describe("отметка устройства в клиенте", () => {
       env.tokenStorage,
       resumeWipe,
       carryOutWipe,
+      async () => {},
+      async () => {},
+      { get: async () => [], set: async () => {} },
+      { flushRevocations: async () => 0 },
     ];
     return new Function(...names, js)(...values) as (label: string | null) => Promise<boolean>;
   }

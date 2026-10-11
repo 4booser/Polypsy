@@ -93,10 +93,15 @@ cp .env.docker.example .env.docker   # и заполнить
 Заполнить `.env.docker`. Три значения обязаны быть случайными и разными:
 
 ```sh
-head -c 24 /dev/urandom | base64   # POSTGRES_PASSWORD
-head -c 24 /dev/urandom | base64   # APP_DB_PASSWORD
+head -c 24 /dev/urandom | base64 | tr '+/' '-_' | tr -d '\n='   # POSTGRES_PASSWORD
+head -c 24 /dev/urandom | base64 | tr '+/' '-_' | tr -d '\n='   # APP_DB_PASSWORD
 head -c 32 /dev/urandom | base64   # JWT_SECRET
 ```
+
+Пароли базы — алфавитом base64url (`tr '+/' '-_'`), как у `vps-setup.sh`:
+они подставляются в адрес подключения как есть. С «/» из обычного base64
+приложение не стартует; provision отказывает такому `APP_DB_PASSWORD`
+заранее, а сервер — неразборчивому `DATABASE_URL`, не печатая пароля.
 
 И отдельно — ключ шифрования полей. Без него сервер в production **не
 стартует**: установка без ключа пишет ФИО, даты рождения, телефоны,
@@ -177,8 +182,8 @@ docker compose --env-file .env.docker exec api \
    `PHONE_INDEX_SECRET`, `EXPORT_SECRET`, `SEARCH_INDEX_SECRET`, `GOOGLE_*`, `SMTP_*`,
    `TELEGRAM_*`, `OPS_ALERT_EMAIL`, `GITHUB_DISPATCH_TOKEN`. Пароль Postgres
    оставить новый. Перенести `/root/quizzy-backup.env` (там `BACKUP_PASSPHRASE`
-   и настройки внешней копии) и юниты `quizzy-backup.*`, `quizzy-verify.*`
-   из `/etc/systemd/system` (`systemctl daemon-reload && systemctl enable
+   и настройки внешней копии) и юниты `quizzy-backup.*`, `quizzy-verify.*`,
+   `quizzy-alert@.service` из `/etc/systemd/system` (`systemctl daemon-reload && systemctl enable
    --now quizzy-backup.timer quizzy-verify.timer`).
 3. **Записи приёмов.** Том `recordings` копируется файлами:
    `docker run --rm -v quizzy_recordings:/r -v /tmp:/out alpine tar czf
@@ -323,6 +328,12 @@ S3-совместимом хранилище **другого** поставщи
 R2). Уходит уже зашифрованный файл, хранилище видит только шифротекст.
 Делает это `scripts/offsite.sh`, его зовёт `backup.sh` после каждого
 снимка; без настройки он молча пропускается.
+
+Отказ внешней копии не отменяет местную, ротацию и выкатку: `backup.sh`
+пишет в журнал «внешняя копия не легла» и шлёт оповещение в канал техпанели
+(`scripts/ops-alert.sh`: через приложение, иначе прямо в Telegram из
+`.env.docker`). Отказ самих служб `quizzy-backup` и `quizzy-verify` — тоже
+оповещение: `OnFailure=quizzy-alert@%n.service` (заводит `server-install.sh`).
 
 1. Заведите корзину и ключ доступа **только к ней**, с правами на чтение и
    запись, без удаления. Включите в корзине правило хранения (lifecycle):

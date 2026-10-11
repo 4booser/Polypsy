@@ -35,7 +35,7 @@ import type {
 } from "@quizzy/shared";
 import { API_URL } from "../config";
 import { revokeStorage, tokenStorage } from "../storage";
-import { flushRevocations, queueRevocation, refreshOnUnauthorized } from "../auth/session";
+import { dropRevocation, flushRevocations, queueRevocation, refreshOnUnauthorized } from "../auth/session";
 import { createRefresher, failureStatusAfterRefresh } from "../auth/refresh";
 import { isPasswordChangeRequired, isPasswordGate } from "../auth/passwordGate";
 import { uiText } from "@quizzy/shared";
@@ -53,7 +53,7 @@ function netText(key: "net.offline" | "net.failed"): string {
   // через uiText, а не UI[key][lang]: у записи без английского поля en нет, и прямое чтение отдало бы undefined
   return uiText(key, currentLang);
 }
-import { cache, draftRequestBody, drafts } from "../offline/cache";
+import { cache, draftRequestBody, drafts, type LocalDraft } from "../offline/cache";
 import { respondentFor } from "../offline/respondent";
 import { appBuildInfo, deviceId, platformName } from "../offline/device";
 import { carryOutWipe, onWiped, resumeWipe, type WipeDeps } from "../offline/wipe";
@@ -71,7 +71,8 @@ import {
 } from "../offline/queue";
 import { activeOwner, isOwnerChanged, OwnerChanged, ownerOfToken } from "../offline/owner";
 import { draftLaneKey, draftLanes } from "../offline/draftLane";
-import { evaluateSubmission, isTransientStatus } from "@quizzy/shared";
+import { leaveDevice } from "../offline/logout";
+import { evaluateSubmission, isAttemptClosedCode, isTransientStatus } from "@quizzy/shared";
 import { reportLinkPath, reportLinkUrl } from "../report/model";
 import { isAccessDenied } from "./access";
 
@@ -101,11 +102,12 @@ const passwordGateListeners = new Set<() => void>();
  */
 const tryRefresh = createRefresher({
   getRefresh: () => tokenStorage.getRefresh(),
-  exchange: (refreshToken) =>
+  // ключ попытки: повтор обмена, чей ответ потерялся, сервер узнаёт и отдаёт ту же пару (#144)
+  exchange: (refreshToken, requestId) =>
     fetch(`${API_URL}/api/auth/refresh`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ refreshToken }),
+      body: JSON.stringify({ refreshToken, requestId }),
     }),
   save: async (pair) => {
     await tokenStorage.set(pair.token);
@@ -240,11 +242,42 @@ function offlineFallback<T>(error: unknown, cached: T | null, forget?: () => voi
   throw error;
 }
 
+/** Сервер сказал, что попытка закрыта: сдана она сама или невозвратная методика (ATTEMPT_CLOSED_CODES) */
+function isAttemptClosed(error: unknown): boolean {
+  const e = error as { status?: number; code?: string } | null;
+  return e?.status === 409 && isAttemptClosedCode(e.code);
+}
+
+/**
+ * Стереть черновик закрытой попытки — только её.
+ *
+ * Пока шёл запрос, человек мог начать на экране новую попытку той же
+ * методики: её черновик лежит под тем же ключом, но со своим началом
+ * (startedAt), и его отказ прошлой попытке не касается. Дорожка черновика
+ * сбрасывается — следующая попытка считает правки заново (#129).
+ */
+function dropClosedAttempt(owner: string, sent: LocalDraft): void {
+  try {
+    if (drafts.get(owner, sent.surveyId)?.startedAt !== sent.startedAt) return;
+    draftLanes.reset(draftLaneKey(owner, sent.surveyId));
+    drafts.drop(owner, sent.surveyId);
+  } catch {
+    /* не стёрся — следующий прогон получит тот же отказ и попробует снова */
+  }
+}
+
 /** Фоновая догрузка контента методик в кэш владельца; ошибки не мешают основному пути */
 async function prefetchSurveys(owner: string | null, ids: string[]): Promise<void> {
   if (!owner) return;
+  /*
+   * Копия пациента, легшая до #141, держит ключ методики (веса, критические
+   * варианты, шкалы): она перекачивается, а не пропускается, — сервер отдаёт
+   * пациенту копию уже без ключа (keyWithheld), и на диске ключ не остаётся.
+   */
+  const patient = cache.me(owner)?.role === "user";
   for (const id of ids) {
-    if (cache.survey(owner, id)) continue;
+    const cached = cache.survey(owner, id);
+    if (cached && (cached.keyWithheld || !patient)) continue;
     try {
       cache.saveSurvey(owner, await request<SurveyFull>(`/api/surveys/${id}`, {}, { owner }));
     } catch {
@@ -272,15 +305,25 @@ const unwrap = <T>(p: Promise<Items<T>>): Promise<T[]> => p.then((r) => r.items)
  * поставит. Refresh тоже снят — 401 здесь окончателен, и след ждёт входа того
  * же человека.
  */
+/*
+ * Стирание устройства уносит все черновики, а с ними и попытки: счёт правок
+ * следующего прохождения — заново, как после сдачи (offline/draftLane.ts, #129).
+ */
+onWiped(() => draftLanes.resetAll());
+
 const wipeDeps: WipeDeps = {
   token: () => tokenStorage.get(),
+  refresh: () => tokenStorage.getRefresh(),
+  revokeLater: (refreshToken) => queueRevocation(revokeStorage, refreshToken),
+  revoked: (refreshToken) => dropRevocation(revokeStorage, refreshToken),
   clearTokens: () => tokenStorage.clear(),
-  confirm: (deviceId, token) =>
-    request<{ ok: true }>("/api/devices/wiped", {
+  // refresh снятой сессии — сервер гасит её семью и отвязывает push установки (#128)
+  confirm: (deviceId, token, refreshToken) =>
+    request<{ ok: true; sessionRevoked?: boolean }>("/api/devices/wiped", {
       method: "POST",
-      body: JSON.stringify({ deviceId }),
+      body: JSON.stringify(refreshToken ? { deviceId, refreshToken } : { deviceId }),
       headers: { Authorization: `Bearer ${token}` },
-    }).then(() => undefined),
+    }).then((res) => res?.sessionRevoked === true),
 };
 
 export const api = {
@@ -312,6 +355,21 @@ export const api = {
   revokeSession: async (refreshToken: string) => {
     await queueRevocation(revokeStorage, refreshToken).catch(() => {});
     await api.flushRevocations();
+  },
+  /**
+   * Выход на устройстве (AuthContext, logout).
+   *
+   * Офлайн-копии вышедшего уходят, запись за него закрыта (#130,
+   * offline/logout.ts), — до снятия токенов: снятие может и не удаться, а
+   * данные к этому моменту уже не на планшете. Потом сессия снимается, и
+   * refresh уходит в отзыв — выход его не ждёт (auth/session.ts).
+   */
+  signOut: async () => {
+    const token = await tokenStorage.get().catch(() => null);
+    const refresh = await tokenStorage.getRefresh().catch(() => null);
+    leaveDevice(ownerOfToken(token));
+    await tokenStorage.clear();
+    if (refresh) void api.revokeSession(refresh).catch(() => {});
   },
   /** Дослать отзывы, не дошедшие при выходе; зовётся при старте и возвращении приложения */
   flushRevocations: () =>
@@ -480,10 +538,11 @@ export const api = {
       method: "POST",
       body: JSON.stringify({}),
     }),
+  /* с установкой: по ней подтверждение стирания отвязывает уведомления (#128) */
   registerPush: (token: string, platform: "ios" | "android") =>
     request<{ ok: true }>("/api/push/register", {
       method: "POST",
-      body: JSON.stringify({ token, platform }),
+      body: JSON.stringify({ token, platform, deviceId: deviceId() }),
     }),
   forgetPush: (token: string) =>
     request<{ ok: true }>("/api/push/forget", { method: "POST", body: JSON.stringify({ token }) }),
@@ -665,11 +724,17 @@ export const api = {
       const evaluation = survey
         ? evaluateSubmission(survey, payload.answers, { sex: respondent.sex, age: respondent.age })
         : null;
+      /*
+       * Копия без ключа (keyWithheld — так методику с #141 получает пациент)
+       * не знает, какие ответы критические, и баллов по ней нет: карточка
+       * безопасности — из предосторожности, сервер решит по ключу при синке.
+       */
+      const precaution = survey?.keyWithheld === true;
       // офлайн каскады не выполняются: назначения делает сервер при синке
       const offline: SubmitResult = {
         id: item.id,
         scores: evaluation?.profile.scores ?? [],
-        safetyPlan: evaluation?.risk.severity ? (survey?.safetyPlan ?? null) : null,
+        safetyPlan: evaluation?.risk.severity || precaution ? (survey?.safetyPlan ?? null) : null,
         queued: true,
       };
       return offline;
@@ -723,7 +788,18 @@ export const api = {
           break;
         }
         /*
-         * Отказ по существу черновик не роняет: он всё равно лежит на
+         * Попытка уже сдана — здесь же или на другом устройстве: 409 с кодом
+         * err.alreadyTaken или err.attemptAlreadySubmitted. Сервер такой
+         * черновик не примет никогда, и досылать его при каждом прогоне —
+         * стучаться в тот же отказ вечно, а продолжать — значит сдавать
+         * сданное. Черновик этой попытки стирается.
+         */
+        if (isAttemptClosed(error)) {
+          dropClosedAttempt(owner!, draft);
+          continue;
+        }
+        /*
+         * Прочий отказ по существу черновик не роняет: он всё равно лежит на
          * устройстве, а прохождение можно продолжить и сдать целиком.
          */
         continue;
@@ -911,7 +987,10 @@ export const api = {
      * ситуация, ради которой команду и отдавали: нашедший планшет открывает
      * приложение и снова видит отделение, просто без кэша.
      */
-    return (await carryOutWipe(id, wipeDeps)).erased;
+    const outcome = await carryOutWipe(id, wipeDeps);
+    // семью не погасило подтверждение (не дошло, сервер старше) — отзыв уходит своим путём, как после выхода
+    void api.flushRevocations();
+    return outcome.erased;
   },
 
   rounds: async (): Promise<{ list: Worklist; cachedAt: string | null }> => {

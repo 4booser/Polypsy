@@ -26,6 +26,12 @@ interface JobState {
   skipped: number;
   running: boolean;
   lastStartAt: number | null;
+  /**
+   * Когда проход последний раз кончился успехом. Отдельно от lastStartAt:
+   * та ставится ДО выполнения, и задача, падающая на каждом проходе,
+   * выглядела по ней тикающей — «планировщик молчит» не срабатывал (#160).
+   */
+  lastOkAt: number | null;
   lastEndAt: number | null;
   lastDurationMs: number | null;
   lastResult: OpsJobResult | null;
@@ -57,6 +63,7 @@ export function registerJob(name: string, intervalMs: number, now = Date.now()):
     skipped: 0,
     running: false,
     lastStartAt: null,
+    lastOkAt: null,
     lastEndAt: null,
     lastDurationMs: null,
     lastResult: null,
@@ -92,6 +99,7 @@ export async function trackJob<T>(name: string, fn: () => Promise<T>): Promise<T
   try {
     const out = await fn();
     s.lastResult = "ok";
+    s.lastOkAt = Date.now();
     return out;
   } catch (error) {
     s.failures++;
@@ -117,6 +125,11 @@ export function skipJob(name: string): void {
 /** Когда задача последний раз начинала проход; null — ни разу в этом процессе */
 export function lastStartOf(name: string): number | null {
   return jobs.get(name)?.lastStartAt ?? null;
+}
+
+/** Когда проход задачи последний раз кончился успехом; null — ни разу в этом процессе */
+export function lastOkOf(name: string): number | null {
+  return jobs.get(name)?.lastOkAt ?? null;
 }
 
 export function intervalOf(name: string): number | null {

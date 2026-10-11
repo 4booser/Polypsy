@@ -63,7 +63,8 @@ export default function CaseCard() {
   const { ut } = useLang();
   const [showForm, setShowForm] = useState(false);
 
-  const res = useResource(() => api.caseSummary(userId!), [userId], { enabled: !!userId });
+  /* keep: false — карта прежнего пациента не стоит под адресом следующего (#177) */
+  const res = useResource(() => api.caseSummary(userId!), [userId], { enabled: !!userId, keep: false });
   const reload = res.reload;
 
   return (

@@ -1,8 +1,8 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import postgres from "postgres";
 import { checkRls, rlsRefusal } from "../src/lib/rlsGuard";
-import { consentTexts, consents } from "../src/db/schema";
-import { adminA, adminB, and, api, app, batteries, batteryAssignments, batteryItems, db, eq, groupA, groupAdmins, makeUser, patient, root, surveyGroups, submitSurvey, surveyInA, surveys, users, type Person } from "./fixtures";
+import { consentTexts, consents, surveyAccess } from "../src/db/schema";
+import { adminA, adminB, and, api, app, batteries, batteryAssignments, batteryItems, createSurveySchema, createVersion, db, encryptPersonFields, eq, groupA, groupAdmins, hashPassword, makeUser, patient, root, sr45, surveyGroups, submitSurvey, surveyInA, surveys, users, type Person } from "./fixtures";
 
 /* Права доступа: кто что видит и чего не может */
 
@@ -51,6 +51,89 @@ describe("скоупинг групп", () => {
 
     const s = await api(`/api/surveys/${surveyInA}`, root.token);
     expect(s.status).toBe(200);
+  });
+});
+
+/* ── сто первый пациент (#174) ── */
+
+describe("пациент за пределами первой сотни", () => {
+  /*
+   * Список пациентов зоны отдаётся поиском с потолком в сто человек. Экраны
+   * консоли («Доступ до методики», «Набори», «Провести методику») брали
+   * сотню без поиска — и сто пятого нельзя было ни найти, ни назначить.
+   * Консоль теперь ищет на сервере; здесь — что сервер, под ролью
+   * приложения, этого человека по поиску находит и назначить даёт.
+   *
+   * Своя группа, свой админ и своя методика: сто пять человек в зоне
+   * общего adminA поменяли бы чужим тестам первую сотню и счётчики.
+   */
+  const tag = `far${crypto.randomUUID().slice(0, 8)}`;
+  const ids: string[] = [];
+  const group = crypto.randomUUID();
+  /** Через неё люди в зоне админа */
+  const zoneSurvey = crypto.randomUUID();
+  /** Её назначают сто пятому */
+  const survey = crypto.randomUUID();
+  let admin: Person;
+
+  beforeAll(async () => {
+    admin = await makeUser("admin", `${tag}-admin@test`);
+    await db.insert(surveyGroups).values({ id: group, title: `Група ${tag}`, createdBy: root.id });
+    await db.insert(groupAdmins).values({ groupId: group, userId: admin.id, addedBy: root.id });
+    for (const id of [zoneSurvey, survey]) {
+      await db.insert(surveys).values({
+        id,
+        groupId: group,
+        title: { uk: `Методика ${tag}`, ru: `Методика ${tag}` },
+        administration: "self",
+        status: "published",
+        publishedAt: new Date().toISOString(),
+        visibility: "restricted",
+        scoringEnabled: true,
+        allowRetake: true,
+        createdBy: admin.id,
+      } as never);
+      await createVersion(id, createSurveySchema.parse(sr45), admin.id, "Тестовая версия");
+    }
+
+    const passwordHash = await hashPassword("secret12345");
+    for (let i = 1; i <= 105; i++) {
+      const id = crypto.randomUUID();
+      const n = String(i).padStart(3, "0");
+      ids.push(id);
+      await db.insert(users).values({
+        id,
+        email: `${tag}-${n}@test`,
+        ...encryptPersonFields({ firstName: "Тест", lastName: `${tag}-${n}`, birthDate: null }),
+        passwordHash,
+        role: "user",
+      } as never);
+    }
+    // в зоне админа — через назначенную методику его группы
+    await db.insert(surveyAccess).values(ids.map((userId) => ({ surveyId: zoneSurvey, userId, grantedBy: admin.id })));
+  }, 30_000);
+
+  test("без уточнения — сотня и признак усечения; сто пятого в ней нет", async () => {
+    const res = await api(`/api/access/patients?search=${tag}`, admin.token);
+    expect(res.status).toBe(200);
+    expect(res.body.total).toBe(105);
+    expect(res.body.items).toHaveLength(100);
+    expect(res.body.truncated).toBe(true);
+    expect(res.body.items.some((p: { id: string }) => p.id === ids[104])).toBe(false);
+  });
+
+  test("поиск находит сто пятого, и методика ему назначается", async () => {
+    const found = await api(`/api/access/patients?search=${tag}-105`, admin.token);
+    expect(found.body.items.map((p: { id: string }) => p.id)).toEqual([ids[104]]);
+    expect(found.body.truncated).toBe(false);
+
+    const granted = await api(`/api/access/surveys/${survey}/grants`, admin.token, {
+      method: "POST",
+      body: JSON.stringify({ userId: ids[104], note: "#174" }),
+    });
+    expect(granted.status).toBe(201);
+    const list = await api(`/api/access/surveys/${survey}/grants`, admin.token);
+    expect(list.body.items.some((g: { userId: string; note: string | null }) => g.userId === ids[104] && g.note === "#174")).toBe(true);
   });
 });
 

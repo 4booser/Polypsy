@@ -4388,7 +4388,6 @@ export const UI = {
     ru: "Часть задач можно запустить вручную — это делает тот, у кого есть право управлять работой системы.",
     en: "Some jobs can be run by hand — by someone with the right to manage the system.",
   },
-  "o2b.job.analyticsCache": { uk: "Перерахунок аналітики", ru: "Пересчёт аналитики", en: "Analytics recalculation" },
   "o2b.job.searchReindex": { uk: "Переіндексація пошуку", ru: "Переиндексация поиска", en: "Search reindex" },
   "o2b.job.catalogInstall": { uk: "Встановлення каталогу методик", ru: "Установка каталога методик", en: "Assessment catalogue install" },
   "o2b.job.alerts": { uk: "Перевірка правил сповіщень", ru: "Проверка правил оповещений", en: "Alert rule check" },
@@ -7786,6 +7785,57 @@ export const UI = {
     ru: "Разговор уже расшифрован, текст в карте — отозвать согласие на эту запись поздно",
     en: "The conversation has already been transcribed and is in the record — it’s too late to withdraw consent for this recording",
   },
+
+  /* ── w21:perfdb ── */
+  /* журнал техпанели: свободный текст ищется не дальше 31 дня, и экран говорит, за какие дни (#190, pages/ops/AuditLog.tsx) */
+  "ops.audit.searchPeriod": {
+    uk: "Текст шукається не далі 31 дня:",
+    ru: "Текст ищется не дальше 31 дня:",
+    en: "Text is searched within 31 days:",
+  },
+
+  /* ── w21:cabinet ── */
+  /* прохождение в кабинете: сервер не принял ответы без согласия с действующей редакцией — они ждут на экране (#171, patient/Runner.tsx) */
+  "pw.consentHeld": {
+    uk: "Відповіді приймаються лише після згоди з чинною редакцією тексту. Ваші відповіді збережено на цьому екрані — вони підуть одразу, щойно ви її приймете.",
+    ru: "Ответы принимаются только после согласия с действующей редакцией текста. Ваши ответы сохранены на этом экране — они уйдут сразу, как только вы её примете.",
+    en: "Answers are accepted only after you agree to the current version of the consent text. Your answers are kept on this screen and will be sent as soon as you accept it.",
+  },
+  "pw.backToAnswers": { uk: "Повернутися до відповідей", ru: "Вернуться к ответам", en: "Back to my answers" },
+  /* кабинет: отвергнутая сдача очереди — повторить или отказаться (#172, patient/OutboxStrip.tsx) */
+  "pt.outboxRejectedHint": {
+    uk: "Ці відповіді самі не підуть: спробуйте ще раз або відмовтеся від них.",
+    ru: "Эти ответы сами не уйдут: попробуйте ещё раз или откажитесь от них.",
+    en: "These answers won’t be sent on their own: try again or discard them.",
+  },
+  "pt.outboxItem": { uk: "Відповіді на методику", ru: "Ответы на методику", en: "Answers to an instrument" },
+  "pt.outboxDiscard": { uk: "Відмовитися", ru: "Отказаться", en: "Discard" },
+  "pt.outboxDiscardConfirm": {
+    uk: "Відмовитися від цих відповідей? Їх буде видалено з цього пристрою, і фахівець їх не побачить.",
+    ru: "Отказаться от этих ответов? Они будут удалены с этого устройства, и специалист их не увидит.",
+    en: "Discard these answers? They will be deleted from this device and your specialist won’t see them.",
+  },
+
+  /* ── w21:ops ── */
+  /* правило «цепочка журнала»: последняя исправная сверка старше двух суток (#160, lib/opsAlerts.ts) */
+  "o2b.unavail.chainStale": {
+    uk: "остання вдала перевірка ланцюжка — понад дві доби тому: планова перевірка не проходить",
+    ru: "последняя удачная проверка цепочки — больше двух суток назад: плановая проверка не проходит",
+    en: "the last successful chain check was over two days ago: the scheduled check isn’t running",
+  },
+
+  /* ── w21:console ── */
+  /* кабинет: вопрос перед «Скасувати» и предупреждение о поздней отмене (#178, patient/Home.tsx) */
+  "pt.cancelSure": { uk: "Скасувати прийом?", ru: "Отменить приём?", en: "Cancel the appointment?" },
+  "pt.cancelLate": {
+    uk: "До прийому менше доби — скасування буде пізнім, і фахівець це побачить",
+    ru: "До приёма меньше суток — отмена будет поздней, и специалист это увидит",
+    en: "The appointment is less than 24 hours away — this is a late cancellation, and the specialist will see it",
+  },
+
+  /* ── w21:perfroutes ── */
+  /* техпанель: проверки «Якості даних» — фоновой задачей с сохранённым итогом (#189, apps/api/src/lib/dataChecks.ts) */
+  "ops.job.dataQuality": { uk: "Перевірки якості даних", ru: "Проверки качества данных", en: "Data quality checks" },
 
 } as const satisfies Record<string, UiEntry>;
 
