@@ -56,31 +56,54 @@ function upperBound(to: string): SQL {
  *
  * Кто и над кем — идентификатором или куском почты: разбирающий помнит
  * почту, а не uuid. Кусок почты ищется в учётках, а журнал отбирается по
- * их идентификаторам — и для «над кем» (почты субъекта в записи журнала
- * нет), и для «кто» (#202). «Кто» прежде искался подстрокой по actor_email
- * самого журнала: ILIKE '%…%' индексом не берётся (под политикой строк — и
- * триграммным, см. AUDIT_TEXT_DAYS ниже), и каждая страница перебирала
- * журнал целиком дважды, со счётом. По идентификатору — индекс автора и
- * весь журнал, без окна. Почта без идентификатора в журнал не пишется
- * (вход с незнакомым адресом — без автора), так что строк автор не теряет;
- * сменившего почту находит нынешний адрес — со строками, записанными при
- * прежнем.
+ * их идентификаторам.
  *
- * Найденных учёток берётся не больше пятидесяти: «a» в поле не должно
- * превращаться в условие на весь реестр.
+ * «Кто» (#202) — все учётки, чья почта содержит кусок, без предела, и
+ * журнал по их идентификаторам: actor_id = any($1::text[]). Прежде «кто»
+ * искался подстрокой по actor_email самого журнала: ILIKE '%…%' индексом
+ * не берётся (под политикой строк — и триграммным, см. AUDIT_TEXT_DAYS
+ * ниже), и каждая страница перебирала журнал целиком дважды, со счётом.
+ * По идентификаторам — индекс автора и весь журнал, без окна.
+ *
+ * Без предела намеренно (ревью волны 22): первые пятьдесят учёток по
+ * алфавиту молча урезали отбор по домену клиники, и настоящий автор мог не
+ * попасть ни в таблицу, ни в счёт, ни в выгрузку. Список — одним
+ * параметром-массивом, а не подзапросом: с подзапросом (actor_id in (select
+ * … from users …)) планировщик не знает, сколько строк журнала за ним, и
+ * для страницы выбирает обход журнала по времени — редкий или ненайденный
+ * автор шёл полсекунды на миллионе строк. Значения массива планировщик
+ * видит (запрос без подготовки, план — под эти значения) и берёт индекс
+ * автора, где авторов мало, и индекс времени, где их много.
+ *
+ * Почта без идентификатора в журнал не пишется (вход с незнакомым адресом —
+ * без автора), так что строк автор не теряет; сменившего почту находит
+ * нынешний адрес — со строками, записанными при прежнем.
+ *
+ * «Над кем» (почты субъекта в записи журнала нет) — как и прежде, не больше
+ * пятидесяти найденных учёток: «a» в поле субъекта не должно превращаться
+ * в условие на весь реестр.
  */
-const ACCOUNTS_PER_TEXT = 50;
+const SUBJECTS_PER_TEXT = 50;
 
-/** Учётки по куску почты — условием на столбец журнала; никого не нашли — пустой отбор, а не «фильтр не применён» */
-async function byAccounts(column: typeof auditLog.actorId | typeof auditLog.subjectUserId, text: string): Promise<SQL> {
-  if (UUID.test(text)) return eq(column, text);
+/** Массив PostgreSQL одной строкой: элементы в кавычках, кавычка и обратная черта — с экраном */
+const textArray = (items: readonly string[]) => `{${items.map((s) => `"${s.replace(/["\\]/g, (m) => `\\${m}`)}"`).join(",")}}`;
+
+/** Авторы по куску почты — все до одного; никого не нашли — пустой отбор, а не «фильтр не применён» */
+async function byActors(text: string): Promise<SQL> {
+  if (UUID.test(text)) return eq(auditLog.actorId, text);
+  const found = await db.select({ id: users.id }).from(users).where(ilike(users.email, likeText(text)));
+  return found.length ? sql`${auditLog.actorId} = any(${textArray(found.map((f) => f.id))}::text[])` : sql`false`;
+}
+
+/** Субъекты по куску почты; никого не нашли — пустой отбор, а не «фильтр не применён» */
+async function bySubjects(text: string): Promise<SQL> {
+  if (UUID.test(text)) return eq(auditLog.subjectUserId, text);
   const found = await db
     .select({ id: users.id })
     .from(users)
     .where(ilike(users.email, likeText(text)))
-    .orderBy(users.email)
-    .limit(ACCOUNTS_PER_TEXT);
-  return found.length ? inArray(column, found.map((f) => f.id)) : sql`false`;
+    .limit(SUBJECTS_PER_TEXT);
+  return found.length ? inArray(auditLog.subjectUserId, found.map((f) => f.id)) : sql`false`;
 }
 
 async function filtersOf(query: AuditQuery): Promise<SQL[]> {
@@ -89,8 +112,8 @@ async function filtersOf(query: AuditQuery): Promise<SQL[]> {
   if (action) filters.push(eq(auditLog.action, action));
   if (actorId) filters.push(eq(auditLog.actorId, actorId));
   if (subjectUserId) filters.push(eq(auditLog.subjectUserId, subjectUserId));
-  if (actor) filters.push(await byAccounts(auditLog.actorId, actor));
-  if (subject) filters.push(await byAccounts(auditLog.subjectUserId, subject));
+  if (actor) filters.push(await byActors(actor));
+  if (subject) filters.push(await bySubjects(subject));
   if (resourceType) filters.push(eq(auditLog.resourceType, resourceType));
   if (outcome) filters.push(eq(auditLog.outcome, outcome));
   if (q) {

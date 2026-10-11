@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { AUDIT_OFFSET_MAX } from "@quizzy/shared";
-import { appApi, db, root, sql } from "./fixtures";
+import { app, appApi, db, root, sql } from "./fixtures";
+import { asAppRole } from "./appRole";
 
 /**
  * Отбор журнала по автору на миллионе строк (#202).
@@ -124,6 +125,38 @@ describe("журнал: отбор по автору на миллионе ст�
     expect(second.body.entries).toHaveLength(50);
     expect(second.body.entries.every((e) => e.actorId === bulkId(7))).toBe(true);
     expect(second.body.entries[0]!.id).not.toBe(first.body.entries[0]!.id);
+  }, 30_000);
+
+  /*
+   * Ревью волны 22: учётки по куску почты брались первыми пятьюдесятью по
+   * алфавиту, и домен клиники, общий для сотни сотрудников, молча урезал
+   * отбор — настоящий автор мог не попасть ни в таблицу, ни в счёт, ни в
+   * выгрузку. На main (ILIKE по журналу) предела не было.
+   */
+  test("кусок почты, общий для шестидесяти учёток (домен клиники), — в отборе, счёте и выгрузке все шестьдесят", async () => {
+    const domain = `@clinic-${TAG}.test`;
+    await db.execute(sql`
+      insert into users (id, email, password_hash, first_name, last_name, role)
+      select ${TAG} || '-dom-' || lpad(g::text, 2, '0'), ${TAG} || '-dom-' || lpad(g::text, 2, '0') || ${domain}, 'x', 'Т', 'Т', 'admin'
+      from generate_series(1, 60) g`);
+    await db.execute(sql`
+      insert into audit_log (id, at, actor_id, actor_email, actor_role, action, outcome)
+      select ${TAG} || '-dom-row-' || g, now() - g * interval '1 minute', ${TAG} || '-dom-' || lpad(g::text, 2, '0'),
+             ${TAG} || '-dom-' || lpad(g::text, 2, '0') || ${domain}, 'admin', 'patient.card_read', 'success'
+      from generate_series(1, 60) g`);
+
+    const res = await timed(`/api/audit?actor=${encodeURIComponent(domain)}&limit=500`);
+    expect(res.status).toBe(200);
+    expect(res.ms).toBeLessThan(FAST_MS);
+    expect(new Set(res.body.entries.map((e) => e.actorId)).size).toBe(60);
+    expect(res.body.total).toBe(60);
+
+    const csv = await asAppRole(async () =>
+      app.request(`/api/audit/export.csv?actor=${encodeURIComponent(domain)}`, { headers: { Authorization: `Bearer ${root.token}` } }),
+    );
+    expect(csv.status).toBe(200);
+    expect(csv.headers.get("X-Truncated")).toBeNull();
+    expect((await csv.text()).split("\n").filter((l) => l.includes(domain))).toHaveLength(60);
   }, 30_000);
 
   test("кусок почты, который не нашёл ни одной учётки, — пустой отбор, а не «фильтр не применён»", async () => {

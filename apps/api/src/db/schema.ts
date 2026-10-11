@@ -1809,7 +1809,7 @@ export const refreshTokens = pgTable(
     familyIdx: index("refresh_tokens_family_created_idx").on(t.familyId, t.createdAt),
     /* живые-по-отметкам токены — под liveTokenCondition (lib/accounts.ts, 0130) */
     liveIdx: index("refresh_tokens_live_idx")
-      .on(t.expiresAt)
+      .on(t.userId, t.expiresAt)
       .where(sql`revoked_at is null and rotated_at is null`),
   }),
 );
