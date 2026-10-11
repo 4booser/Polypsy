@@ -54,7 +54,7 @@ import {
   weeklyMeansOfDays,
 } from "../lib/stats";
 import { TOO_FAST_MS, floorCeiling, qualityFlagged, qualityFlags, reliabilityOf, scaleShape } from "../lib/psychometrics";
-import { answerStats, answersOf } from "../lib/answerStats";
+import { answerStats, answersOf, scoresOfSlice } from "../lib/answerStats";
 import { getSurvey } from "../lib/surveys";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
@@ -727,33 +727,15 @@ analyticsRoutes.get("/surveys/:id", async (c) => {
    * Строка ответа, балла или события видна тому, кому видно её
    * прохождение, — список уже отобран, и системная роль не открывает ничего
    * сверх него. А политика на каждой из сотен тысяч дочерних строк стоила
-   * врачу втрое дольше суперадмина. Список прохождений — одним параметром
-   * (db/ids.ts, #183).
+   * врачу втрое дольше суперадмина. Как читаются строки среза — см.
+   * lib/answerStats.ts (answersOfSlice).
    */
-  const scoreRows = (
-    responseIds.length
-      ? (parsedJson<[string, string, number, number, boolean, number, string | null][]>(
-          (
-            (await asSystem(() =>
-              db.execute(sql`
-                select json_agg(json_build_array(rs.response_id, rs.scale_id, rs.raw_score, rs.value, rs.normalized,
-                                                 rs.max_score, rs.band_label))::text as rows
-                  from response_scores rs
-                 where ${inIds(sql`rs.response_id`, responseIds)}
-              `),
-            )) as unknown as { rows: string | null }[]
-          )[0]?.rows,
-        ) ?? [])
-      : []
-  ).map(([responseId, scaleId, rawScore, value, normalized, maxScore, bandLabel]) => ({
-    responseId,
-    scaleId,
-    rawScore,
-    value,
-    normalized,
-    maxScore,
-    bandLabel,
-  }));
+  const scoreRows = await asSystem(() =>
+    scoresOfSlice(
+      responseIds,
+      survey.scales.map((sc) => sc.id),
+    ),
+  );
 
   /*
    * Person-fit (7.1): берём самую длинную ключевую шкалу — на ней трудность

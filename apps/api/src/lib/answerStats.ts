@@ -120,9 +120,78 @@ function idArray(ids: readonly string[]): SQL {
   return sql`string_to_array(${ids.join("\u001f")}::text, chr(31))`;
 }
 
-/** Целые числа — так же, постоянным массивом int[] из одного параметра */
-function intArray(values: readonly number[]): SQL {
-  return sql`string_to_array(${values.map((v) => Math.trunc(v)).join(",")}::text, ',')::int[]`;
+/**
+ * С какого размера среза строки читаются по пунктам, а не по прохождениям.
+ *
+ * По прохождению — короткое чтение по индексу на каждое: на десятках тысяч
+ * это десятки тысяч чтений вразброс (2 с на 50 тыс.). По пункту — одно
+ * чтение на пункт версии по индексу пункта, страницы подряд, и отсев среза
+ * по хэшу списка (0,3 с), но читаются ответы всей версии, а не только среза:
+ * неделе из года это лишние 50 раз. Поэтому малый срез — по прохождениям,
+ * большой — по пунктам.
+ */
+const SLICE_BY_RESPONSE = 2000;
+
+/**
+ * Откуда брать ответы среза (FROM): строки a (answers) и q (тип и место
+ * пункта версии). Ответ на пункт чужой версии в счёт не идёт — как и в
+ * разборе по пунктам прежде; такая несостыковка — проверка «Якості даних».
+ *
+ * У большого среза условие на прохождение записано выражением
+ * (response_id || ''), а не колонкой — намеренно: по колонке планировщик
+ * склеивал индекс пункта с индексом прохождения (BitmapAnd по пятидесяти
+ * тысячам ключей на каждый пункт — секунды), а выражение он может только
+ * проверить по уже прочитанной строке, по хэшу постоянного списка.
+ */
+function answersOfSlice(ids: readonly string[], shape: string): SQL {
+  if (ids.length <= SLICE_BY_RESPONSE) {
+    return sql`unnest(${idArray(ids)}) s(id)
+      cross join lateral (select a.* from answers a where a.response_id = s.id offset 0) a
+      join jsonb_to_recordset(${shape}::jsonb) as q(id text, type text, position int) on q.id = a.question_id`;
+  }
+  return sql`jsonb_to_recordset(${shape}::jsonb) as q(id text, type text, position int)
+      cross join lateral (
+        select a.* from answers a
+         where a.question_id = q.id and (a.response_id || '') = any(${idArray(ids)})
+        offset 0
+      ) a`;
+}
+
+/** Баллы среза по шкалам версии — тем же путём, что ответы (answersOfSlice), одной строкой json */
+export async function scoresOfSlice(
+  ids: readonly string[],
+  scaleIds: readonly string[],
+): Promise<
+  { responseId: string; scaleId: string; rawScore: number; value: number; normalized: boolean; maxScore: number; bandLabel: string | null }[]
+> {
+  if (!ids.length || !scaleIds.length) return [];
+  const source =
+    ids.length <= SLICE_BY_RESPONSE
+      ? sql`unnest(${idArray(ids)}) s(id)
+          cross join lateral (select * from response_scores rs where rs.response_id = s.id offset 0) rs
+          where rs.scale_id = any(${idArray(scaleIds)})`
+      : sql`unnest(${idArray(scaleIds)}) sc(id)
+          cross join lateral (
+            select * from response_scores rs
+             where rs.scale_id = sc.id and (rs.response_id || '') = any(${idArray(ids)})
+            offset 0
+          ) rs`;
+  const [row] = (await db.execute(sql`
+    select json_agg(json_build_array(rs.response_id, rs.scale_id, rs.raw_score, rs.value, rs.normalized,
+                                     rs.max_score, rs.band_label))::text as rows
+      from ${source}
+  `)) as unknown as { rows: string | null }[];
+  return (parsed<[string, string, number, number, boolean, number, string | null][]>(row?.rows) ?? []).map(
+    ([responseId, scaleId, rawScore, value, normalized, maxScore, bandLabel]) => ({
+      responseId,
+      scaleId,
+      rawScore,
+      value,
+      normalized,
+      maxScore,
+      bandLabel,
+    }),
+  );
 }
 
 interface QuestionRow {
@@ -152,34 +221,44 @@ export async function answerStats(input: StatsInput): Promise<StatsResult> {
   const unreliable = input.responses.filter((r) => r.status === "completed" && !r.reliable).map((r) => r.id);
   const unfinished = input.responses.filter((r) => r.status !== "completed").map((r) => r.id);
 
+  /*
+   * Короткие ответы — кандидаты на флаг «прохождение короче своих ответов»:
+   * отвечено не больше, чем пунктов в версии, так что длиннее
+   * «пунктов × порог» прохождение коротким не бывает.
+   */
+  const short = input.responses
+    .filter((r) => r.status === "completed" && r.durationMs > 0 && r.durationMs < input.questions.length * input.tooFastMs)
+    .map((r) => r.id);
+  const durationOf = new Map(input.responses.map((r) => [r.id, r.durationMs]));
+
+  /*
+   * Выборы вариантов (picks): у одиночного выбора — сам вариант (->> 0), без
+   * разворота массива на каждом из сотен тысяч ответов; множественный,
+   * матрица и ранжирование — разворотом, только у своих ответов.
+   *
+   * Признаки качества (marks) нужны только тем, у кого может быть флаг:
+   * быстрых ответов около половины (с запасом на округление — точная
+   * проверка в markersFrom) или прохождение короче, чем его ответы
+   * быстрыми (short выше). Прямая линия и person-fit считаются по ответам —
+   * тогда признаки нужны всем (everyone).
+   */
   const [row] = (await db.execute(sql`
-    with slice as materialized (
-      select s.id, s.duration_ms, (u.id is not null) as unreliable, (f.id is not null) as unfinished,
-             (v.id is not null) as sampled
-        from unnest(${idArray(ids)}, ${intArray(input.responses.map((r) => r.durationMs))}) s(id, duration_ms)
-        left join unnest(${idArray(unreliable)}) u(id) on u.id = s.id
-        left join unnest(${idArray(unfinished)}) f(id) on f.id = s.id
-        left join unnest(${idArray(input.eventSample)}) v(id) on v.id = s.id
+    with ans as materialized (
+      select a.response_id,
+             a.response_id = any(${idArray(unreliable)}) as unreliable,
+             a.response_id = any(${idArray(unfinished)}) as unfinished,
+             q.id as question_id, q.type, q.position, a.skipped, a.duration_ms, a.change_count,
+             case when q.type in ('single', 'multiple', 'yesno') then a.option_ids end as option_ids,
+             case when q.type = 'matrix' then a.matrix end as matrix,
+             case when q.type = 'ranking' then a.ranking end as ranking,
+             case when q.type in ('scale', 'slider', 'number') then a.number end as number,
+             case when q.type in ('text', 'longtext') then a.text end as text
+        from ${answersOfSlice(ids, shape)}
     ),
-    ans as materialized (
-      select s.id as response_id, s.duration_ms as total_ms, s.unreliable, s.unfinished, x.question_id, q.type, q.position, x.skipped,
-             x.duration_ms, x.change_count,
-             case when q.type in ('single', 'multiple', 'yesno') then x.option_ids end as option_ids,
-             case when q.type = 'matrix' then x.matrix end as matrix,
-             case when q.type = 'ranking' then x.ranking end as ranking,
-             case when q.type in ('scale', 'slider', 'number') then x.number end as number,
-             case when q.type in ('text', 'longtext') then x.text end as text,
-             (not s.unreliable and not x.skipped) as real,
-             (not s.unreliable and not x.skipped and x.duration_ms > 0) as timed
-        from slice s
-        cross join lateral (
-          select a.question_id, a.skipped, a.duration_ms, a.change_count, a.option_ids, a.matrix, a.ranking,
-                 a.number, a.text
-            from answers a
-           where a.response_id = s.id
-          offset 0
-        ) x
-        left join jsonb_to_recordset(${shape}::jsonb) as q(id text, type text, position int) on q.id = x.question_id
+    marked as not materialized (
+      select a.*, (not a.unreliable and not a.skipped) as real,
+             (not a.unreliable and not a.skipped and a.duration_ms > 0) as timed
+        from ans a
     ),
     per_question as (
       select question_id,
@@ -188,7 +267,7 @@ export async function answerStats(input: StatsInput): Promise<StatsResult> {
              count(*) filter (where real)::int as real,
              array_agg(duration_ms) filter (where timed) as times,
              coalesce(sum(change_count) filter (where real), 0)::float8 as change_sum
-        from ans
+        from marked
        group by question_id
     ),
     per_question_events as (
@@ -197,11 +276,12 @@ export async function answerStats(input: StatsInput): Promise<StatsResult> {
              coalesce(sum(x.first_ms) filter (where x.real), 0)::float8 as first_sum,
              count(x.first_ms) filter (where x.real)::int as first_n,
              count(*) filter (where x.real and (x.changed or x.change_count > 0))::int as changed_real
-        from slice s
+        from unnest(${idArray(input.eventSample)}) s(id)
         cross join lateral (
-          select a.question_id, (not s.unreliable and not a.skipped) as real, a.change_count,
+          select a.question_id, (not a.skipped and not (s.id = any(${idArray(unreliable)}))) as real, a.change_count,
                  ev.first_ms, coalesce(ev.changed, false) as changed
             from answers a
+            join jsonb_to_recordset(${shape}::jsonb) as q(id text) on q.id = a.question_id
             left join (
               select e.question_id,
                      (min(array[e.sequence, e.elapsed_ms]) filter (where e.kind = 'set'))[2] as first_ms,
@@ -213,38 +293,32 @@ export async function answerStats(input: StatsInput): Promise<StatsResult> {
            where a.response_id = s.id
           offset 0
         ) x
-       where s.sampled
        group by x.question_id
     ),
     picks as (
-      /*
-       * Выборы вариантов: у одиночного выбора — сам вариант (->> 0), без
-       * разворота массива на каждом из сотен тысяч ответов; множественный,
-       * матрица и ранжирование — разворотом, только у своих ответов.
-       */
       select question_id, id, count(*)::int as n, coalesce(sum(rank), 0)::float8 as rank_sum
         from (
           select question_id, option_ids ->> 0 as id, null::int as rank
-            from ans
+            from marked
            where real and jsonb_typeof(option_ids) = 'array' and jsonb_array_length(option_ids) = 1
           union all
           select x.question_id, v, null
-            from ans x, jsonb_array_elements_text(x.option_ids) v
+            from marked x, jsonb_array_elements_text(x.option_ids) v
            where x.real and jsonb_typeof(x.option_ids) = 'array' and jsonb_array_length(x.option_ids) > 1
           union all
           select x.question_id, v, null
-            from ans x, jsonb_each_text(x.matrix) m(k, v)
+            from marked x, jsonb_each_text(x.matrix) m(k, v)
            where x.real and jsonb_typeof(x.matrix) = 'object'
           union all
           select x.question_id, v, ord::int
-            from ans x, jsonb_array_elements_text(x.ranking) with ordinality r(v, ord)
+            from marked x, jsonb_array_elements_text(x.ranking) with ordinality r(v, ord)
            where x.real and jsonb_typeof(x.ranking) = 'array'
         ) p
        group by question_id, id
     ),
     numbers as (
       select question_id, number as value, count(*)::int as n
-        from ans
+        from marked
        where real and number is not null
        group by question_id, number
     ),
@@ -252,39 +326,30 @@ export async function answerStats(input: StatsInput): Promise<StatsResult> {
       select question_id, count(*)::int as n
         from (select distinct on (response_id) response_id, question_id
                 from ans
-               where unfinished and not skipped and position is not null
+               where unfinished and not skipped
                order by response_id, position desc) z
        group by question_id
     ),
     marks as (
-      select response_id, total_ms,
+      select response_id,
              count(*) filter (where not skipped)::int as answered,
              count(*) filter (where not skipped and duration_ms > 0)::int as timed,
              count(*) filter (where not skipped and duration_ms > 0 and duration_ms < ${input.tooFastMs})::int as fast
         from ans
        where not unfinished
-       group by response_id, total_ms
-    ),
-    /*
-     * Признаки качества нужны только тем, у кого может быть флаг: быстрых
-     * ответов около половины (с запасом на округление — точная проверка в
-     * markersFrom) или прохождение короче, чем его ответы быстрыми (та же
-     * целочисленная проверка, что в markersFrom). Прямая линия и person-fit
-     * считаются по ответам — тогда признаки нужны всем.
-     */
-    candidates as (
-      select * from marks
-       where ${everyone}
-          or (timed > 0 and fast * 2000 >= timed * 998)
-          or (answered >= 5 and total_ms > 0 and total_ms < answered * ${input.tooFastMs})
+       group by response_id
     )
     select (select json_agg(per_question) from per_question) as questions,
            (select json_agg(per_question_events) from per_question_events) as events,
            (select json_agg(json_build_array(question_id, id, n, rank_sum)) from picks) as picks,
            (select json_agg(json_build_array(question_id, value, n) order by question_id, value) from numbers) as numbers,
-           (select json_agg(json_build_array(question_id, text)) from ans where real and text is not null) as texts,
+           (select json_agg(json_build_array(question_id, text)) from marked where real and text is not null) as texts,
            (select json_agg(json_build_array(question_id, n)) from ended) as ended,
-           (select json_agg(json_build_array(response_id, answered, timed, fast, total_ms)) from candidates) as marks
+           (select json_agg(json_build_array(response_id, answered, timed, fast))
+              from marks
+             where ${everyone}
+                or (timed > 0 and fast * 2000 >= timed * 998)
+                or response_id = any(${idArray(short)})) as marks
   `)) as unknown as Record<string, unknown>[];
 
   const result: StatsResult = {
@@ -351,12 +416,14 @@ export async function answerStats(input: StatsInput): Promise<StatsResult> {
       lines.set(responseId, straightLine(list.filter((a) => !a.skipped), byId));
     }
   }
-  for (const [responseId, answered, timed, fast, totalMs] of parsed<[string, number, number, number, number][]>(
-    row?.marks,
-  ) ?? []) {
+  for (const [responseId, answered, timed, fast] of parsed<[string, number, number, number][]>(row?.marks) ?? []) {
     result.markers.set(
       responseId,
-      markersFrom({ answered, timed, fast, longestStraightLine: lines.get(responseId) ?? 0 }, totalMs, input.tooFastMs),
+      markersFrom(
+        { answered, timed, fast, longestStraightLine: lines.get(responseId) ?? 0 },
+        durationOf.get(responseId) ?? 0,
+        input.tooFastMs,
+      ),
     );
   }
   /*
