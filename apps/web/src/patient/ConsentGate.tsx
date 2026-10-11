@@ -165,15 +165,26 @@ export function ConsentScreen({
   busy,
   error,
   onAction,
+  note,
+  after,
 }: {
   view: Exclude<ConsentView, { kind: "pass" }>;
   busy: boolean;
   error: string | null;
   onAction: (action: ConsentAction) => void;
+  /** Строка над экраном — зачем он встал (прохождение, #171: ответы держатся и уйдут после согласия) */
+  note?: string;
+  /** Выход сверх модели — у прохождения «повернутися до відповідей» */
+  after?: ReactNode;
 }) {
   const { ut } = useLang();
   return (
     <TouchArea className="mx-auto flex min-h-[100dvh] max-w-md flex-col justify-center gap-4 p-4">
+      {note ? (
+        <p role="status" className="rounded-[10px] border border-hairline bg-surface-2 p-3.5 text-small text-text">
+          {note}
+        </p>
+      ) : null}
       {view.kind === "declined" ? (
         <>
           <h1 className="font-display text-section font-medium tracking-tight">{ut("consent.declinedTitle")}</h1>
@@ -204,6 +215,7 @@ export function ConsentScreen({
           {ut(BUTTON[action].key)}
         </Button>
       ))}
+      {after}
     </TouchArea>
   );
 }

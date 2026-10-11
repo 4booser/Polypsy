@@ -7795,6 +7795,28 @@ export const UI = {
     en: "Text is searched within 31 days:",
   },
 
+  /* ── w21:cabinet ── */
+  /* прохождение в кабинете: сервер не принял ответы без согласия с действующей редакцией — они ждут на экране (#171, patient/Runner.tsx) */
+  "pw.consentHeld": {
+    uk: "Відповіді приймаються лише після згоди з чинною редакцією тексту. Ваші відповіді збережено на цьому екрані — вони підуть одразу, щойно ви її приймете.",
+    ru: "Ответы принимаются только после согласия с действующей редакцией текста. Ваши ответы сохранены на этом экране — они уйдут сразу, как только вы её примете.",
+    en: "Answers are accepted only after you agree to the current version of the consent text. Your answers are kept on this screen and will be sent as soon as you accept it.",
+  },
+  "pw.backToAnswers": { uk: "Повернутися до відповідей", ru: "Вернуться к ответам", en: "Back to my answers" },
+  /* кабинет: отвергнутая сдача очереди — повторить или отказаться (#172, patient/OutboxStrip.tsx) */
+  "pt.outboxRejectedHint": {
+    uk: "Ці відповіді самі не підуть: спробуйте ще раз або відмовтеся від них.",
+    ru: "Эти ответы сами не уйдут: попробуйте ещё раз или откажитесь от них.",
+    en: "These answers won’t be sent on their own: try again or discard them.",
+  },
+  "pt.outboxItem": { uk: "Відповіді на методику", ru: "Ответы на методику", en: "Answers to an instrument" },
+  "pt.outboxDiscard": { uk: "Відмовитися", ru: "Отказаться", en: "Discard" },
+  "pt.outboxDiscardConfirm": {
+    uk: "Відмовитися від цих відповідей? Їх буде видалено з цього пристрою, і фахівець їх не побачить.",
+    ru: "Отказаться от этих ответов? Они будут удалены с этого устройства, и специалист их не увидит.",
+    en: "Discard these answers? They will be deleted from this device and your specialist won’t see them.",
+  },
+
 } as const satisfies Record<string, UiEntry>;
 
 export type UiKey = keyof typeof UI;
