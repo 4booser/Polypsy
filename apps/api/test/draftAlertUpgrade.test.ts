@@ -70,7 +70,13 @@ function answer(survey: Loaded, option: 1 | 2) {
   return [{ questionId: q.id, optionIds: [q.options[option]!.id], durationMs: 1500, changeCount: 0, visitCount: 1 }];
 }
 
-const startedAt = () => new Date(Date.now() - 60_000).toISOString();
+/*
+ * Одно время начала на попытку — как у клиента: мобилка шлёт тот же
+ * startedAt в черновик и в сдачу, и по нему сдача узнаёт черновик своей
+ * попытки (#147). Свежее время на каждый вызов делало черновик чужой попыткой.
+ */
+const ATTEMPT_STARTED = new Date(Date.now() - 60_000).toISOString();
+const startedAt = () => ATTEMPT_STARTED;
 
 async function signalOf(responseId: string) {
   const rows = await db.select().from(riskAlerts).where(eq(riskAlerts.responseId, responseId));

@@ -572,6 +572,15 @@ responseRoutes.post("/surveys/:id/responses", async (c) => {
             eq(responses.surveyId, surveyId),
             eq(responses.userId, subjectId),
             eq(responses.status, "in_progress"),
+            /*
+             * Только черновик ЭТОЙ попытки — тот же startedAt, что у сдачи
+             * (#147, ревью PR #198). Возвратная методика: сдача прошлой
+             * попытки, пришедшая из очереди позже, забирала черновик
+             * следующей вместе с её тревогой — сигнал ложился на ответы, где
+             * риска нет, а следующее автосохранение заводило черновик и
+             * тревогу заново. Черновики других попыток — их собственные.
+             */
+            eq(responses.startedAt, input.startedAt),
           ),
         );
 
