@@ -137,6 +137,12 @@ export async function registerDevice(
   platform: "ios" | "android" | "web",
   /** Язык приложения на устройстве — из заголовка регистрации */
   lang: Lang | null = null,
+  /**
+   * Установка, с которой регистрируются (#128): по ней подтверждение
+   * стирания отвязывает уведомления. Не прислала (старая сборка) — прежняя
+   * отметка не затирается.
+   */
+  deviceId?: string,
 ): Promise<void> {
   /*
    * Системной ролью, и это не послабление. Токен переезжает к тому, кто
@@ -153,7 +159,7 @@ export async function registerDevice(
   await asSystem(() =>
     db
       .insert(pushTokens)
-      .values({ id: crypto.randomUUID(), userId, token, platform, lang })
+      .values({ id: crypto.randomUUID(), userId, token, platform, lang, deviceId: deviceId ?? null })
       .onConflictDoUpdate({
         target: pushTokens.token,
         /*
@@ -161,13 +167,34 @@ export async function registerDevice(
          * в приложении — приложение перерегистрирует устройство, и следующее
          * уведомление придёт уже на новом.
          */
-        set: { userId, platform, lang, lastSeenAt: new Date().toISOString() },
+        set: {
+          userId,
+          platform,
+          lang,
+          lastSeenAt: new Date().toISOString(),
+          ...(deviceId ? { deviceId } : {}),
+        },
       }),
   );
 }
 
 export async function forgetDevice(token: string): Promise<void> {
   await db.delete(pushTokens).where(eq(pushTokens.token, token));
+}
+
+/**
+ * Отвязать уведомления стёртой установки (#128) — чьи бы они ни были.
+ *
+ * Системной ролью: стирание уносит с установки всё, вместе с данными других
+ * людей, входивших на этот планшет (routes/devices.ts, /wiped), и их
+ * уведомлениям туда приходить тоже незачем. Зовётся только после того, как
+ * найдена и закрыта команда стирания этой установки.
+ */
+export async function forgetInstallation(deviceId: string): Promise<number> {
+  const rows = await asSystem(() =>
+    db.delete(pushTokens).where(eq(pushTokens.deviceId, deviceId)).returning({ id: pushTokens.id }),
+  );
+  return rows.length;
 }
 
 /**

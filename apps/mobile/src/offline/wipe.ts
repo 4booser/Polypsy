@@ -30,6 +30,13 @@ import { store } from "./store";
  * выдаст команду снова при следующей отметке. Серверу не сообщается ничего,
  * чего не случилось.
  *
+ * Сессия, которую стирание снимает, гаснет и на сервере (#128): её refresh
+ * до снятия встаёт в список «отозвать» (как при выходе, auth/session.ts) и
+ * едет с подтверждением — сервер гасит её семью и отвязывает push
+ * установки. Раньше снимались только токены на устройстве: refresh,
+ * скопированный с планшета, продлевал сессию ещё месяц, а уведомления о
+ * тревогах шли на «стёртое» устройство.
+ *
  * Без react-native и без клиента запросов — порядок проверяется тестом
  * (test/wipe.test.ts), а зависимости передаёт клиент (api/client.ts).
  */
@@ -51,9 +58,21 @@ export interface WipeState {
 export interface WipeDeps {
   /** Токен, с которым сейчас ушёл бы запрос */
   token(): Promise<string | null>;
+  /** Refresh той же сессии — его стирание отзывает (#128) */
+  refresh(): Promise<string | null>;
+  /** Поставить refresh в список «отозвать»: уйдёт при первой связи, даже если подтверждение не дойдёт */
+  revokeLater(refreshToken: string): Promise<void>;
+  /** Сервер погасил семью сам, с подтверждением, — из списка «отозвать» её можно снять */
+  revoked(refreshToken: string): Promise<void>;
   clearTokens(): Promise<void>;
-  /** POST /api/devices/wiped явно переданным токеном: хранилище к этому моменту уже пусто */
-  confirm(deviceId: string, token: string): Promise<void>;
+  /**
+   * POST /api/devices/wiped явно переданным токеном: хранилище к этому
+   * моменту уже пусто. `refreshToken` — снятой стиранием сессии: сервер
+   * гасит её семью; null — гасить нечего (сессию сняли раньше). true —
+   * сервер сказал, что семью погасил (sessionRevoked); сервер старше этого
+   * не скажет, и отзыв тогда уйдёт своим путём.
+   */
+  confirm(deviceId: string, token: string, refreshToken: string | null): Promise<boolean | void>;
 }
 
 export interface WipeOutcome {
@@ -102,7 +121,16 @@ async function advance(state: WipeState, confirmWith: string | null, deps: WipeD
     state.erased = erase();
     save(state);
   }
+  /* refresh снимаемой сессии — тот, что отзывается: свежий вход после стирания здесь не трогается */
+  let leaving: string | null = null;
   if (!state.signedOut) {
+    try {
+      leaving = await deps.refresh();
+      // до снятия токенов: после него refresh взять уже неоткуда, а подтверждение может и не дойти
+      if (leaving) await deps.revokeLater(leaving);
+    } catch {
+      /* не прочитался или не лёг в список — сессию всё равно снимаем; семью погасит подтверждение, если дойдёт */
+    }
     try {
       await deps.clearTokens();
       state.signedOut = true;
@@ -114,14 +142,17 @@ async function advance(state: WipeState, confirmWith: string | null, deps: WipeD
 
   let confirmed = false;
   let settled = false;
+  let sessionRevoked = false;
   if (state.erased && confirmWith) {
     try {
-      await deps.confirm(state.deviceId, confirmWith);
+      sessionRevoked = (await deps.confirm(state.deviceId, confirmWith, leaving)) === true;
       confirmed = true;
       settled = true;
     } catch (error) {
       settled = notExpected(error);
     }
+    // семью погасил сервер — второй отзыв лишь сдвинул бы границу access-токенов на других устройствах
+    if (sessionRevoked && leaving) await deps.revoked(leaving).catch(() => {});
   }
   if (state.erased && state.signedOut && settled) {
     try {

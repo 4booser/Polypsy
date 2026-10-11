@@ -21,6 +21,16 @@
  * обмен); продлить не удалось по временной причине (сети нет, сервер лежит,
  * хранилище не прочиталось) — и статус, по которому очередь решает, ждать
  * ли (isTransientStatus).
+ *
+ * Третий дефект (#144): обрыв ПОСЛЕ того, как сервер обмен зафиксировал
+ * (502/504 прокси, сеть пропала на ответе). У приложения остался прежний
+ * refresh, сервер его уже повернул, и повтор читался как кража: семья гасла,
+ * человека выкидывало на вход, сдачи из очереди уходили в отклонённые.
+ * Теперь у обмена есть ключ попытки (requestId): он живёт в памяти, пока
+ * обмен этого refresh не кончился ответом сервера, и повтор идёт с ним же —
+ * сервер узнаёт свой потерянный ответ и отдаёт ту же пару (lib/refresh.ts,
+ * RETRY_WINDOW_MS). Ключ не хранится: вор, скопировавший refresh, его не
+ * знает, и его предъявление по-прежнему гасит семью.
  */
 
 export type RefreshOutcome =
@@ -36,13 +46,25 @@ export interface RefreshPair {
 export interface RefreshDeps {
   /** Текущий refresh из защищённого хранилища; null — не вошли или вышли */
   getRefresh(): Promise<string | null>;
-  /** Сам обмен; бросает при обрыве сети */
-  exchange(refreshToken: string): Promise<{ ok: boolean; status: number; json(): Promise<unknown> }>;
+  /** Сам обмен; бросает при обрыве сети. requestId — ключ попытки: повтор того же обмена несёт тот же */
+  exchange(
+    refreshToken: string,
+    requestId: string,
+  ): Promise<{ ok: boolean; status: number; json(): Promise<unknown> }>;
   /** Записать новую пару */
   save(pair: RefreshPair): Promise<void>;
 }
 
-async function once(deps: RefreshDeps): Promise<RefreshOutcome> {
+/**
+ * Ключ попытки обмена для этого refresh: тот же, пока обмен его не кончился
+ * ответом сервера (#144). Новый refresh — новый ключ.
+ */
+interface Attempt {
+  raw: string;
+  requestId: string;
+}
+
+async function once(deps: RefreshDeps, attempt: { current: Attempt | null }): Promise<RefreshOutcome> {
   let raw: string | null;
   try {
     raw = await deps.getRefresh();
@@ -52,9 +74,22 @@ async function once(deps: RefreshDeps): Promise<RefreshOutcome> {
   }
   if (!raw) return { kind: "invalid" };
 
+  if (attempt.current?.raw !== raw) attempt.current = { raw, requestId: newRequestId() };
+  const outcome = await exchangeOnce(deps, raw, attempt.current.requestId);
+  // сервер ответил по существу — попытка кончилась; временный сбой — повтор пойдёт с тем же ключом
+  if (outcome.kind !== "unavailable") attempt.current = null;
+  return outcome;
+}
+
+/** Ключ попытки: 32 шестнадцатеричных знака случайного UUID — сервер ждёт [A-Za-z0-9_-]{16,128} */
+function newRequestId(): string {
+  return crypto.randomUUID().replaceAll("-", "");
+}
+
+async function exchangeOnce(deps: RefreshDeps, raw: string, requestId: string): Promise<RefreshOutcome> {
   let res: { ok: boolean; status: number; json(): Promise<unknown> };
   try {
-    res = await deps.exchange(raw);
+    res = await deps.exchange(raw, requestId);
   } catch {
     return { kind: "unavailable", status: 0 };
   }
@@ -93,8 +128,9 @@ async function once(deps: RefreshDeps): Promise<RefreshOutcome> {
  */
 export function createRefresher(deps: RefreshDeps): () => Promise<RefreshOutcome> {
   let shared: Promise<RefreshOutcome> | null = null;
+  const attempt: { current: Attempt | null } = { current: null };
   return () => {
-    shared ??= once(deps).finally(() => {
+    shared ??= once(deps, attempt).finally(() => {
       shared = null;
     });
     return shared;

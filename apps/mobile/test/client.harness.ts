@@ -14,6 +14,9 @@ import { ownerOfToken, setActiveOwner, signedIn } from "../src/offline/owner";
  */
 export const session: { token: string | null; refresh: string | null } = { token: null, refresh: null };
 
+/** Список «отозвать» (src/storage.ts, revokeStorage): refresh-токены, чей отзыв ещё не дошёл до сервера */
+export const revocations: string[] = [];
+
 mock.module("../src/storage", () => ({
   tokenStorage: {
     get: async () => {
@@ -34,7 +37,12 @@ mock.module("../src/storage", () => ({
       session.refresh = null;
     },
   },
-  revokeStorage: { get: async () => [], set: async () => {} },
+  revokeStorage: {
+    get: async () => [...revocations],
+    set: async (tokens: string[]) => {
+      revocations.splice(0, revocations.length, ...tokens);
+    },
+  },
   prefStorage: { get: async () => null, set: async () => {} },
 }));
 mock.module("../src/config", () => ({ API_URL: "http://api.test" }));
@@ -79,6 +87,7 @@ export function useFakeServer(): void {
   beforeEach(() => {
     session.token = null;
     session.refresh = null;
+    revocations.length = 0;
     setActiveOwner(null);
     server = noNetwork;
     globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) =>

@@ -207,6 +207,9 @@ describe("профиль, начатый до стирания", () => {
     const d = {
       current: tokenOf(STAFF) as string | null,
       token: async () => d.current,
+      refresh: async () => null,
+      revokeLater: async () => {},
+      revoked: async () => {},
       clearTokens: async () => {
         d.current = null;
       },
@@ -256,6 +259,9 @@ describe("довод стирания при следующем запуске",
       current: token,
       clearFails,
       token: async () => box.current,
+      refresh: async () => null,
+      revokeLater: async () => {},
+      revoked: async () => {},
       clearTokens: async () => {
         if (box.clearFails) throw new Error("simulated secure store failure");
         box.current = null;

@@ -11,7 +11,7 @@ import { secureHeaders } from "hono/secure-headers";
 import { bodyLimit } from "hono/body-limit";
 import { compress } from "hono/compress";
 import { HTTPException } from "hono/http-exception";
-import { renderError, type ErrorParams } from "@quizzy/shared";
+import { isAttemptClosedCode, renderError, type ErrorParams } from "@quizzy/shared";
 import { langOf } from "./lib/http";
 import { checkRls } from "./lib/rlsGuard";
 import { env } from "./env";
@@ -354,8 +354,15 @@ app.onError((err, c) => {
      */
     const info = err.cause as { key?: string; params?: ErrorParams } | undefined;
     const text = info?.key ? renderError(info.key, langOf(c), info.params) : err.message;
+    /*
+     * Ключ наружу — только у отказов, по которым клиент решает сам
+     * (ATTEMPT_CLOSED_CODES): мобилка стирает черновик сданной попытки, а не
+     * досылает его вечно. Остальные отказы показываются текстом, и решать
+     * по ним клиенту нечего.
+     */
+    const code = isAttemptClosedCode(info?.key) ? info!.key : undefined;
     // ожидаемые отказы — не ошибки сервера, стек тут не нужен
-    return c.json({ error: text, requestId: id }, err.status);
+    return c.json({ error: text, ...(code ? { code } : {}), requestId: id }, err.status);
   }
   /*
    * Жертва взаимоблокировки или сбоя сериализации — 503 «повторите», а не

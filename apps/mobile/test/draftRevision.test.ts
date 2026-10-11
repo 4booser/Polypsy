@@ -101,7 +101,7 @@ describe("на сервер — по одному и по порядку пра�
       received.push(2);
       return "t2";
     });
-    lanes.cancelPending("k");
+    lanes.reset("k");
     expect(await r2).toEqual({ status: "superseded" });
     inFlight.resolve("t1");
     await r1;
