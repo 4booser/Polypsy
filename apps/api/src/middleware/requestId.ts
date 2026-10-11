@@ -32,6 +32,14 @@ export const requestId = createMiddleware(async (c, next) => {
   /* хранилище запроса — своё, чтобы после next() прочесть счёт SQL (lib/opsSql.ts) */
   const scope: RequestScope = { requestId: id };
   await withRequestId(id, () => next(), scope);
+  /*
+   * Ещё раз — на ответ, который уходит. Заголовок выше ложится в заготовку
+   * контекста, а маршрут, вернувший готовый Response (CSV-выгрузки, сценарий
+   * SPSS), заменяет ответ целиком, и заготовка теряется: выгрузку было не
+   * связать с журналом запроса (#195). Здесь — одно место на все такие
+   * маршруты, нынешние и будущие.
+   */
+  c.res.headers.set("x-request-id", id);
 
   const ms = Date.now() - started;
   const status = c.res.status;
