@@ -241,7 +241,7 @@ export function ImportDialog({ onClose, onDone }: { onClose: () => void; onDone:
 
   if (created) {
     return (
-      <Modal title={ut("ops.import.createdTitle")} onClose={onDone} wide>
+      <Modal title={ut("ops.import.createdTitle")} onClose={onDone} wide secret>
         <p className="m-0 mb-[12px] text-[15px] leading-[21px] text-text-2">{ut("ops.import.createdHint")}</p>
         <ul className="m-0 mb-[12px] max-h-[50vh] list-none overflow-y-auto p-0">
           {created.map((p) => (
