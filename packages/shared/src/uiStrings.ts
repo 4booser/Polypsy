@@ -4290,11 +4290,11 @@ export const UI = {
     ru: "Свободное место на томе записей приёмов, в процентах.",
     en: "Free space on the recordings volume, as a percentage.",
   },
-  "o2b.rule.auditChain": { uk: "Ланцюжок журналу порушено", ru: "Цепочка журнала нарушена", en: "Audit chain broken" },
+  "o2b.rule.auditChain": { uk: "Перевірка ланцюжка журналу", ru: "Проверка цепочки журнала", en: "Audit chain check" },
   "o2b.rule.auditChain.hint": {
-    uk: "Остання перевірка ланцюжка хешів журналу доступу не пройшла.",
-    ru: "Последняя проверка цепочки хэшей журнала доступа не прошла.",
-    en: "The latest hash-chain check of the access log failed.",
+    uk: "Остання перевірка ланцюжка хешів журналу доступу не пройшла або не виконувалася понад дві доби (планова — щодоби).",
+    ru: "Последняя проверка цепочки хэшей журнала доступа не прошла или не выполнялась больше двух суток (плановая — раз в сутки).",
+    en: "The latest hash-chain check of the access log failed or has not run for over two days (it is scheduled daily).",
   },
   "o2b.rule.backup": { uk: "Бекап не пройшов", ru: "Бэкап не прошёл", en: "Backup failed" },
   "o2b.rule.backup.hint": {
@@ -7817,11 +7817,11 @@ export const UI = {
   },
 
   /* ── w21:ops ── */
-  /* правило «цепочка журнала»: последняя исправная сверка старше двух суток (#160, lib/opsAlerts.ts) */
+  /* правило «цепочка журнала»: давность сверки не измерить — её время не прочесть (#160; давняя сверка с #203 — «збій», lib/opsAlerts.ts) */
   "o2b.unavail.chainStale": {
-    uk: "остання вдала перевірка ланцюжка — понад дві доби тому: планова перевірка не проходить",
-    ru: "последняя удачная проверка цепочки — больше двух суток назад: плановая проверка не проходит",
-    en: "the last successful chain check was over two days ago: the scheduled check isn’t running",
+    uk: "час останньої перевірки ланцюжка не прочитати — давність не виміряти",
+    ru: "время последней проверки цепочки не прочесть — давность не измерить",
+    en: "the time of the last chain check can’t be read, so its age is unknown",
   },
 
   /* ── w21:console ── */
