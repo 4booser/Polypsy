@@ -150,6 +150,8 @@ describe("проверки здоровья", () => {
       ["scheduler", "fresh"],
       ["scheduler", "stale"],
       ["scheduler", "never"],
+      ["scheduler", "failing"],
+      ["scheduler", "noSuccess"],
       ["scheduler", "disabled"],
       ["encryption", "set"],
       ["encryption", "missing"],

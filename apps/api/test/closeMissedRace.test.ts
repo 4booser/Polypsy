@@ -22,7 +22,7 @@ import {
   surveys,
   type Person,
 } from "./fixtures";
-import { batteryAssignmentItems, scaleBands, scales, surveyVersions } from "../src/db/schema";
+import { auditLog, batteryAssignmentItems, scaleBands, scales, scheduleRuns, surveyVersions } from "../src/db/schema";
 import { AUDIT_CHAIN_LOCK } from "../src/lib/audit";
 import { asAppRole } from "./appRole";
 import { untilWaiting } from "./lockQueue";
@@ -186,7 +186,7 @@ describe("расписание: пропуск, завершённый межд�
       createdBy: adminA.id,
     });
     madeSchedules.push(scheduleId);
-    return { batteryId, stepId, p, missedId };
+    return { batteryId, stepId, p, missedId, scheduleId };
   }
 
   const run = () => asAppRole(() => runDueSchedules(new Date()));
@@ -231,6 +231,55 @@ describe("расписание: пропуск, завершённый межд�
     await ran;
 
     await expectCompletedOnly(w.missedId);
+  }, 60_000);
+
+  /*
+   * Отметка прогона и журнал (#204): число пропусков бралось из чтения до
+   * замка набора, а не из того, что закрытие сделало на деле, — пропуск,
+   * завершённый в гонке, попадал в «Пропущено и закрыто: 1» и в details
+   * строки schedule.run.
+   */
+  async function runRecord(scheduleId: string) {
+    const [run] = await db.select().from(scheduleRuns).where(eq(scheduleRuns.scheduleId, scheduleId));
+    const [entry] = await db
+      .select()
+      .from(auditLog)
+      .where(and(eq(auditLog.action, "schedule.run"), eq(auditLog.resourceId, scheduleId)));
+    return { run: run!, details: (entry?.details ?? {}) as { missed?: number; assigned?: number } };
+  }
+
+  test("пропуск, завершённый в гонке, не считается ни в отметке прогона, ни в журнале", async () => {
+    const w = await world("отметка");
+
+    let ran!: Promise<number>;
+    await holder.begin(async (tx) => {
+      await tx`select id from batteries where id = ${w.batteryId} for update`;
+      ran = run();
+      ran.catch(() => {});
+      await untilWaiting(1, ["for share"]);
+      const done = await submit(w.stepId, w.p.token);
+      expect(done.status, JSON.stringify(done.body)).toBe(201);
+    });
+    await ran;
+
+    await expectCompletedOnly(w.missedId);
+    const { run: record, details } = await runRecord(w.scheduleId);
+    expect(record.assigned).toBe(1);
+    expect(record.note, "отметка прогона насчитала пропуск, которого не было").toBeNull();
+    expect(details.assigned).toBe(1);
+    expect(details.missed, "журнал насчитал пропуск, которого не было").toBeUndefined();
+  }, 60_000);
+
+  test("положительный контроль: пропуск без гонки — в отметке прогона и в журнале", async () => {
+    const w = await world("отметка-контроль");
+    await run();
+
+    const closed = await assignment(w.missedId);
+    expect(closed.cancelledAt).not.toBeNull();
+    const { run: record, details } = await runRecord(w.scheduleId);
+    expect(record.assigned).toBe(1);
+    expect(record.note).toBe(noteCode("note.run.missedClosed", { n: 1 }));
+    expect(details.missed).toBe(1);
   }, 60_000);
 });
 

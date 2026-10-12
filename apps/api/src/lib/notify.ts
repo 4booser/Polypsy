@@ -17,7 +17,7 @@ import { env } from "../env";
 import { auditSystem } from "./audit";
 import { parseTs } from "./time";
 import { log } from "./log";
-import { registerJob, skipJob, trackJob } from "./opsJobs";
+import { registerJob, skipJob, tickOnce, trackJob } from "./opsJobs";
 import { pushToUser } from "./push";
 import { syncDueMeetings } from "./meetSync";
 import { remindAppointments } from "./remind";
@@ -678,8 +678,13 @@ export function startNotifier(intervalMs = 60_000): () => void {
     /*
      * События календаря, которые не удалось свести из запроса (Google не
      * ответил на переносе или отмене), — тем же тактом (lib/meetSync.ts, #37).
+     *
+     * Не накладываясь (ревью волны 22): проход идёт в Google по 8 с на вызов
+     * и до пятидесяти приёмов, и при медленном Google минутный такт множил
+     * бы одновременные проходы над одной очередью. Пока идёт прошлый —
+     * пропуск, как у рассыльщика выше.
      */
-    void trackJob("clinic.meet_sync", () => syncDueMeetings()).catch((error) =>
+    void tickOnce("clinic.meet_sync", () => syncDueMeetings()).catch((error) =>
       log.warn("clinic.meet_sync_failed", { error: String(error) }),
     );
   };

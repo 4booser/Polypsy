@@ -103,6 +103,9 @@ describe("обслуживание: вход проверяется до ssh", (
     );
     // keys при другом действии не передаётся дальше вовсе
     expect((await runCheck({ ACTION: "rls-check", COUNT: "120", KEYS: "who5" })).outputs.keys).toBe("");
+    // чистка призраков (#197): оба шага — в перечне
+    expect((await runCheck({ ACTION: "ghost-drafts", COUNT: "" })).outputs.action).toBe("ghost-drafts");
+    expect((await runCheck({ ACTION: "ghost-drafts-apply", COUNT: "" })).outputs.action).toBe("ghost-drafts-apply");
   }, 30_000);
 
   test("команду собирает шаг, читающий выходы проверки, а не поля формы", () => {

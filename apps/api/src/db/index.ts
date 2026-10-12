@@ -10,7 +10,7 @@ import { installCancelOnAbort } from "./cancelOnAbort";
 
 // ошибки базы — ошибками драйвера, а не обёрткой drizzle с параметрами в тексте (см. ./errors)
 installDbErrorUnwrap();
-// запрос сверх потолка параметров не доходит до соединения: иначе драйвер теряет счёт ответам (см. ./sendGuard)
+// запрос сверх потолка параметров не доходит до соединения (см. ./sendGuard; сам драйвер правлен — patches/)
 installSendGuard();
 // клиент ушёл — запросы его транзакции отменяются, новые не отправляются (см. ./cancelOnAbort)
 installCancelOnAbort();

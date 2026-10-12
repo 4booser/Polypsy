@@ -4,6 +4,8 @@ WORKDIR /app
 
 # слои зависимостей кэшируются отдельно от кода
 COPY package.json bun.lock bunfig.toml tsconfig.base.json ./
+# правки зависимостей (bun patch): без них bun install --frozen-lockfile отказывает
+COPY patches patches
 COPY apps/api/package.json apps/api/
 COPY packages/shared/package.json packages/shared/
 RUN bun install --frozen-lockfile --production

@@ -2,6 +2,8 @@
 FROM oven/bun:1.4 AS build
 WORKDIR /app
 COPY package.json bun.lock bunfig.toml tsconfig.base.json ./
+# правки зависимостей (bun patch): без них bun install --frozen-lockfile отказывает
+COPY patches patches
 COPY apps/web/package.json apps/web/
 COPY packages/shared/package.json packages/shared/
 RUN bun install --frozen-lockfile

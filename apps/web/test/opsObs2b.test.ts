@@ -104,6 +104,9 @@ describe("сповіщення: правка правила", () => {
     expect(fmtRuleValue("p95", 2400, "en")).toBe("2,400 ms");
     expect(fmtRuleValue("schedulerSilent", 135, "en")).toBe("135 min");
     expect(fmtRuleValue("auditChain", 0, "uk")).toBe("—");
+    expect(fmtRuleValue("auditChain", 1, "uk")).toBe("—");
+    // давняя сверка цепочки (#203) — часы без сверки, чтобы «збій» не путался с разрывом
+    expect(fmtRuleValue("auditChain", 240, "uk")).toBe("240 год");
     expect(fmtRuleValue("diskFree", null, "uk")).toBe("—");
   });
 
@@ -112,7 +115,7 @@ describe("сповіщення: правка правила", () => {
     expect(states.map((s) => STATE_TONE[s])).toEqual(["ok", "fail", "quiet", "quiet", "quiet"]);
     expect(EVENT_TONE.resolved).toBe("ok");
     expect(unavailableKey("noSource")).toBe("o2b.unavail.noSource");
-    // давняя сверка цепочки (#160) — своё пояснение, а не пустое место
+    // время сверки цепочки не прочесть (#160) — своё пояснение, а не пустое место
     expect(unavailableKey("chainStale")).toBe("o2b.unavail.chainStale");
     // незнакомый код (сервер новее консоли) — без пояснения, а не чужое пояснение
     expect(unavailableKey("fromTheFuture")).toBeNull();

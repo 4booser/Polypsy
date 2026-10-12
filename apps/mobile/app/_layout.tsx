@@ -128,6 +128,32 @@ function usePasswordGate(): void {
 }
 
 /**
+ * Очередь встала на новой редакции согласия — на экран согласия (#201).
+ *
+ * Сдача из очереди получила 403 «нужно согласие»: опубликовали новую
+ * редакцию, пока ответы ждали сети. Запись цела (offline/queue.ts), и
+ * уйдёт она после принятия — экран согласия сам досылает очередь. Уже на
+ * согласии или на смене пароля — не уводим; посреди прохождения — тоже:
+ * ответы человека на экране важнее, а прогон по таймеру повторит отказ, как
+ * только он оттуда уйдёт.
+ */
+function useConsentGate(): void {
+  const router = useRouter();
+  const segments = useSegments();
+  const current = useRef<readonly string[]>(segments);
+  current.current = segments;
+  useEffect(
+    () =>
+      api.onConsentRequired(() => {
+        const here = current.current[0];
+        if (here === "consent" || here === "password" || here === "survey") return;
+        router.replace("/consent");
+      }),
+    [router],
+  );
+}
+
+/**
  * Устройство стёрто по команде — на вход (#125).
  *
  * Пользователя снимает AuthContext, но прохождение и карта обхода лежат вне
@@ -147,6 +173,7 @@ function RootStack() {
   // кнопка «назад» на Android там, где стеку возвращаться некуда (src/nav/exits.ts)
   useHardwareBackFallback();
   usePasswordGate();
+  useConsentGate();
   useWipeSignOut();
   /*
    * Экран, открытый первым (по ссылке, после замены), остаётся без

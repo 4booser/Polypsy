@@ -102,13 +102,21 @@ let auditChainSource: (() => Promise<AuditChainStatus | null>) | null = null;
  * Сколько последняя исправная сверка цепочки считается свежей.
  *
  * Плановая сверка — раз в сутки (lib/integrity.ts); двое суток — один
- * пропущенный проход с запасом. Старше — правило «недоступно: сверка
- * давно не проходила», а не «гаразд»: сверка десятидневной давности ничего
- * не говорит о журнале сейчас, а вставшая плановая сверка иначе так и
- * числилась бы зелёной (#160). Провал сверки остаётся «збій» при любой
- * давности: журнал был порван, и более поздняя сверка этого не опровергла.
+ * пропущенный проход с запасом. Старше — «збій» того же правила, а не
+ * «гаразд»: сверка десятидневной давности ничего не говорит о журнале
+ * сейчас, а вставшая плановая сверка иначе так и числилась бы зелёной
+ * (#160). Сперва это было «недоступно» — честно на экране, но в Telegram и
+ * на почту не уходило, и вставшую сверку видел только тот, кто откроет
+ * техпанель (#203). Значение сигнала тогда — часы без сверки (не меньше 48),
+ * и текст оповещения говорит «не виконувалася N год», а не «не пройшла»:
+ * журнал не порван, его давно не проверяли. Провал сверки — «збій» со
+ * значением 0 при любой давности: журнал был порван, и более поздняя
+ * сверка этого не опровергла.
  */
 export const AUDIT_CHAIN_STALE_MS = 48 * 3_600_000;
+
+/** Значение правила «цепочка журнала» означает давнюю сверку, а не провал (0) и не «гаразд» (1) */
+const chainStaleValue = (value: number | null) => value !== null && value > 1;
 
 export function setAuditChainSource(fn: (() => Promise<AuditChainStatus | null>) | null): void {
   auditChainSource = fn;
@@ -228,9 +236,9 @@ export function observe(rule: RuleShape, s: SignalInputs): Observation {
       if (s.auditChain === null) return { firing: null, value: null, unavailable: "neverChecked" };
       if (!s.auditChain.ok) return { firing: true, value: 0 };
       const checkedAt = Date.parse(s.auditChain.checkedAt);
-      if (!Number.isFinite(checkedAt) || s.now - checkedAt > AUDIT_CHAIN_STALE_MS) {
-        return { firing: null, value: null, unavailable: "chainStale" };
-      }
+      /* время сверки не прочесть — давность не измерить */
+      if (!Number.isFinite(checkedAt)) return { firing: null, value: null, unavailable: "chainStale" };
+      if (s.now - checkedAt > AUDIT_CHAIN_STALE_MS) return { firing: true, value: Math.floor((s.now - checkedAt) / 3_600_000) };
       return { firing: false, value: 1 };
     }
     default:
@@ -420,7 +428,8 @@ export function alertText(
   since: string | null,
   now: number,
 ): { subject: string; text: string } {
-  const what = u(WHAT[rule.key], { value: num(value), threshold: num(rule.threshold), window: rule.windowMin ?? "—" });
+  const whatKey = rule.key === "auditChain" && chainStaleValue(value) ? "push.ops.what.auditChainStale" : WHAT[rule.key];
+  const what = u(whatKey, { value: num(value), threshold: num(rule.threshold), window: rule.windowMin ?? "—" });
   const head = kind === "fired" ? "push.ops.fired" : kind === "repeat" ? "push.ops.repeat" : "push.ops.resolved";
   const time = since
     ? new Date(since).toLocaleTimeString("uk-UA", { timeZone: env.institutionTz, hour: "2-digit", minute: "2-digit" })
@@ -589,7 +598,14 @@ export async function runAlertChecks(opts: { now?: number; signals?: Partial<Sig
 
   const pending = await systemContext(baseDb, async () => {
     const rows = await db.select().from(opsAlertRules);
-    const out: { rule: RuleRow; kind: Exclude<OpsAlertEventKind, "test">; value: number | null; since: string | null }[] = [];
+    const out: {
+      rule: RuleRow;
+      kind: Exclude<OpsAlertEventKind, "test">;
+      value: number | null;
+      /** Значение для текста: у «відновлено» цепочки журнала — прежнее, чтобы сказать, что именно прошло */
+      textValue: number | null;
+      since: string | null;
+    }[] = [];
     for (const r of rows) {
       if (!ALERT_RULE_KEYS.includes(r.key as OpsAlertRuleKey)) continue;
       if (!r.enabled) {
@@ -609,8 +625,21 @@ export async function runAlertChecks(opts: { now?: number; signals?: Partial<Sig
           lastSentAt: d.next.lastSentAt,
         })
         .where(eq(opsAlertRules.key, r.key));
-      /* «начало» для «відновлено» — прежнее, для «збій» — новое */
-      if (d.kind) out.push({ rule: r, kind: d.kind, value: obs.value, since: d.kind === "resolved" ? r.firingSince : d.next.firingSince });
+      /*
+       * «начало» для «відновлено» — прежнее, для «збій» — новое. Текст
+       * «відновлено» у цепочки журнала — по прежнему значению: «гаразд» (1)
+       * не говорит, был это разрыв или давняя сверка (#203).
+       */
+      if (d.kind) {
+        const resolved = d.kind === "resolved";
+        out.push({
+          rule: r,
+          kind: d.kind,
+          value: obs.value,
+          textValue: resolved && r.key === "auditChain" ? r.lastValue : obs.value,
+          since: resolved ? r.firingSince : d.next.firingSince,
+        });
+      }
     }
     if (now - lastPruneAt >= PRUNE_EVERY_MS) {
       lastPruneAt = now;
@@ -622,7 +651,7 @@ export async function runAlertChecks(opts: { now?: number; signals?: Partial<Sig
   const report: CheckReport = { checked: pending.checked, fired: 0, repeated: 0, resolved: 0 };
   for (const p of pending.out) {
     const rule = { key: p.rule.key as OpsAlertRuleKey, threshold: p.rule.threshold, windowMin: p.rule.windowMin };
-    const { subject, text } = alertText(p.kind, rule, p.value, p.since, now);
+    const { subject, text } = alertText(p.kind, rule, p.textValue, p.since, now);
     const deliveries = await deliver(p.rule.channels ?? [], subject, text);
     await systemContext(baseDb, () =>
       recordEvent({ at, rule: rule.key, kind: p.kind, value: p.value, threshold: p.rule.threshold, deliveries }),

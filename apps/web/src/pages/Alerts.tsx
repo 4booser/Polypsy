@@ -41,6 +41,9 @@ const OUTCOME = [
   { value: "not_confirmed", key: "cases.notConfirmed" },
 ] as const;
 
+/** Исход, который ставит система, а не дежурный: только показывается, кнопки у него нет (#197) */
+const SHOWN_OUTCOME = [...OUTCOME, { value: "duplicate", key: "cases.duplicate" }] as const;
+
 /** Строк на страницу очереди: экран высотой в два-три десятка строк и ещё одна «впрок» */
 const PAGE = 30;
 
@@ -663,7 +666,7 @@ export function QueueRow({
   const { ut } = useLang();
   const done = !!c.acknowledgedAt;
   const severity: RiskSeverity = c.severity === "severe" ? "severe" : "moderate";
-  const outcome = OUTCOME.find((o) => o.value === c.outcome);
+  const outcome = SHOWN_OUTCOME.find((o) => o.value === c.outcome);
   return (
     <button
       type="button"
@@ -806,7 +809,7 @@ function CaseCard({
   const [expanded, setExpanded] = useState(false);
   const done = !!c.acknowledgedAt;
   const takenByOther = !!c.assignedTo && c.assignedTo !== me;
-  const outcome = OUTCOME.find((o) => o.value === c.outcome);
+  const outcome = SHOWN_OUTCOME.find((o) => o.value === c.outcome);
   const many = (row.group?.cases ?? 1) > 1;
 
   return (

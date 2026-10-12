@@ -4,7 +4,7 @@ import { Command } from "cmdk";
 import { api } from "../api";
 import { useDebounced, useResource } from "../useResource";
 import { useLang } from "../lang";
-import { IconSearchGlass, useFocusTrap } from "../ui";
+import { IconSearchGlass, backdropPress, useFocusTrap } from "../ui";
 import { IconEnter } from "../ui/glyphs";
 import type { UiKey } from "@quizzy/shared";
 
@@ -112,6 +112,12 @@ export function CommandPalette({
    * хуков не может зависеть от того, открыта палитра или нет.
    */
   const ref = useFocusTrap<HTMLDivElement>(open);
+  /*
+   * Подложка закрывает палитру тем же правилом, что Modal (#200, #179):
+   * нажатие начато и закончено на ней. Протяжка выделения из поля поиска,
+   * отпущенная за краем палитры, её больше не гасит.
+   */
+  const [press] = useState(backdropPress);
 
   if (!open) return null;
 
@@ -121,7 +127,15 @@ export function CommandPalette({
   };
 
   return (
-    <div className="palette-backdrop" onClick={onClose} role="presentation">
+    <div
+      className="palette-backdrop"
+      onPointerDown={press.down}
+      onPointerUp={press.up}
+      onClick={(e) => {
+        if (press.click(e)) onClose();
+      }}
+      role="presentation"
+    >
       {/*
         Палитра объявляет себя диалогом.
         Роли и aria-modal здесь не было вовсе: для диктора палитра оставалась

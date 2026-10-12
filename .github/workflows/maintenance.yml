@@ -39,6 +39,8 @@ on:
           - slots-resync
           - catalog-status
           - catalog-force
+          - ghost-drafts
+          - ghost-drafts-apply
       count:
         description: "Сколько вымышленных людей завести (только для demo-fill), от 1 до 500"
         required: false
@@ -72,7 +74,7 @@ jobs:
           KEYS: ${{ inputs.keys }}
         run: |
           case "$ACTION" in
-            catalog-install|demo-fill|demo-purge|rls-check|audit-verify|leftovers|logs-web|logs-api|backup-verify|backup-status|offsite-status|slots-resync|catalog-status|catalog-force) ;;
+            catalog-install|demo-fill|demo-purge|rls-check|audit-verify|leftovers|logs-web|logs-api|backup-verify|backup-status|offsite-status|slots-resync|catalog-status|catalog-force|ghost-drafts|ghost-drafts-apply) ;;
             *) echo "неизвестное действие: $ACTION" >&2; exit 1 ;;
           esac
           # count — только цифры, от 1 до 500 (предел demoFill.ts); пусто — 120.
@@ -161,6 +163,12 @@ jobs:
             slots-resync)    CMD="bun apps/api/src/slotsResync.ts" ;;
             # обзор каталога перед решением: что стоит и чьи последние версии
             catalog-status)  CMD="bun apps/api/src/installCatalog.ts --status" ;;
+            # черновики уже сданных попыток (#197): сухой прогон показывает
+            # призраков и их тревоги, ничего не меняя; ghost-drafts-apply закрывает
+            # тревоги-дубли строкой журнала и удаляет призраков. Расходящихся
+            # со сданной попыткой не трогает ни тот, ни другой — см. ghostDrafts.ts
+            ghost-drafts)       CMD="bun apps/api/src/ghostDrafts.ts" ;;
+            ghost-drafts-apply) CMD="bun apps/api/src/ghostDrafts.ts --apply" ;;
             # редакция каталога поверх правки учреждения — только названные
             # ключи, и только буквы, цифры, запятые: строка снаружи не должна
             # стать куском команды

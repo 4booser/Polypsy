@@ -2680,9 +2680,9 @@ export const UI = {
   "ops.health.migrations.pending": { uk: "не застосовано {n} — код новіший за схему", ru: "не применено {n} — код новее схемы", en: "{n} not applied — the code is newer than the schema" },
   "ops.health.migrations.unknown": { uk: "немає доступу до журналу міграцій", ru: "нет доступа к журналу миграций", en: "no access to the migration log" },
   "ops.health.scheduler": { uk: "Планувальник", ru: "Планировщик", en: "Scheduler" },
-  "ops.health.scheduler.fresh": { uk: "останній такт {n} хв тому", ru: "последний такт {n} мин назад", en: "last tick {n} min ago" },
-  "ops.health.scheduler.stale": { uk: "останній такт {n} хв тому — довше за два такти", ru: "последний такт {n} мин назад — дольше двух тактов", en: "last tick {n} min ago — longer than two intervals" },
-  "ops.health.scheduler.never": { uk: "у цьому процесі ще не запускався", ru: "в этом процессе ещё не запускался", en: "has not run in this process yet" },
+  "ops.health.scheduler.fresh": { uk: "останній вдалий прохід {n} хв тому", ru: "последний удачный проход {n} мин назад", en: "last successful pass {n} min ago" },
+  "ops.health.scheduler.stale": { uk: "останній вдалий прохід {n} хв тому — довше за два такти", ru: "последний удачный проход {n} мин назад — дольше двух тактов", en: "last successful pass {n} min ago — longer than two intervals" },
+  "ops.health.scheduler.never": { uk: "у цьому процесі ще не завершив жодного проходу", ru: "в этом процессе ещё не завершил ни одного прохода", en: "has not completed a pass in this process yet" },
   "ops.health.scheduler.disabled": { uk: "вимкнено на цьому екземплярі (SCHEDULER_ENABLED=0)", ru: "выключен на этом экземпляре (SCHEDULER_ENABLED=0)", en: "disabled on this instance (SCHEDULER_ENABLED=0)" },
   "ops.health.encryption": { uk: "Ключ шифрування", ru: "Ключ шифрования", en: "Encryption key" },
   "ops.health.encryption.set": { uk: "задано", ru: "задан", en: "set" },
@@ -4290,11 +4290,11 @@ export const UI = {
     ru: "Свободное место на томе записей приёмов, в процентах.",
     en: "Free space on the recordings volume, as a percentage.",
   },
-  "o2b.rule.auditChain": { uk: "Ланцюжок журналу порушено", ru: "Цепочка журнала нарушена", en: "Audit chain broken" },
+  "o2b.rule.auditChain": { uk: "Перевірка ланцюжка журналу", ru: "Проверка цепочки журнала", en: "Audit chain check" },
   "o2b.rule.auditChain.hint": {
-    uk: "Остання перевірка ланцюжка хешів журналу доступу не пройшла.",
-    ru: "Последняя проверка цепочки хэшей журнала доступа не прошла.",
-    en: "The latest hash-chain check of the access log failed.",
+    uk: "Остання перевірка ланцюжка хешів журналу доступу не пройшла або не виконувалася понад дві доби (планова — щодоби).",
+    ru: "Последняя проверка цепочки хэшей журнала доступа не прошла или не выполнялась больше двух суток (плановая — раз в сутки).",
+    en: "The latest hash-chain check of the access log failed or has not run for over two days (it is scheduled daily).",
   },
   "o2b.rule.backup": { uk: "Бекап не пройшов", ru: "Бэкап не прошёл", en: "Backup failed" },
   "o2b.rule.backup.hint": {
@@ -7817,11 +7817,11 @@ export const UI = {
   },
 
   /* ── w21:ops ── */
-  /* правило «цепочка журнала»: последняя исправная сверка старше двух суток (#160, lib/opsAlerts.ts) */
+  /* правило «цепочка журнала»: давность сверки не измерить — её время не прочесть (#160; давняя сверка с #203 — «збій», lib/opsAlerts.ts) */
   "o2b.unavail.chainStale": {
-    uk: "остання вдала перевірка ланцюжка — понад дві доби тому: планова перевірка не проходить",
-    ru: "последняя удачная проверка цепочки — больше двух суток назад: плановая проверка не проходит",
-    en: "the last successful chain check was over two days ago: the scheduled check isn’t running",
+    uk: "час останньої перевірки ланцюжка не прочитати — давність не виміряти",
+    ru: "время последней проверки цепочки не прочесть — давность не измерить",
+    en: "the time of the last chain check can’t be read, so its age is unknown",
   },
 
   /* ── w21:console ── */
@@ -7836,6 +7836,34 @@ export const UI = {
   /* ── w21:perfroutes ── */
   /* техпанель: проверки «Якості даних» — фоновой задачей с сохранённым итогом (#189, apps/api/src/lib/dataChecks.ts) */
   "ops.job.dataQuality": { uk: "Перевірки якості даних", ru: "Проверки качества данных", en: "Data quality checks" },
+
+  /* ── w22:ops ── */
+  /* «Здоров'я» обзора: свежесть планировщика — от последнего удачного прохода, как у правила оповещения (#203, routes/ops.ts) */
+  "ops.health.scheduler.failing": {
+    uk: "останній прохід завершився помилкою; вдалий — {n} хв тому",
+    ru: "последний проход завершился ошибкой; удачный — {n} мин назад",
+    en: "the last pass failed; the last successful one was {n} min ago",
+  },
+  "ops.health.scheduler.noSuccess": {
+    uk: "{n} хв від запуску — жодного вдалого проходу",
+    ru: "{n} мин с запуска — ни одного удачного прохода",
+    en: "{n} min since start — not a single successful pass",
+  },
+
+  /* ── w22:data ── */
+  /* журнал: чистка черновиков-призраков (#197, apps/api/src/lib/ghostDrafts.ts) */
+  "act.alert_duplicate_closed": {
+    uk: "Тривогу закрито як дубль зданої спроби",
+    ru: "Тревога закрыта как дубль сданной попытки",
+    en: "Alert closed as a duplicate of the submitted attempt",
+  },
+  "act.response_ghost_removed": {
+    uk: "Видалено чернетку вже зданої спроби",
+    ru: "Удалён черновик уже сданной попытки",
+    en: "Draft of an already submitted attempt removed",
+  },
+  /* консоль: исход случая, закрытого чисткой призраков, — не решение дежурного (#197) */
+  "cases.duplicate": { uk: "Дубль зданої спроби", ru: "Дубль сданной попытки", en: "Duplicate of a submitted attempt" },
 
 } as const satisfies Record<string, UiEntry>;
 

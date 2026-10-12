@@ -191,7 +191,8 @@ Deploys go through GitHub Actions. A pushed `v*` tag starts `.github/workflows/d
 - leftovers;
 - API and web logs;
 - backup status and a restore drill (also runs monthly);
-- slot resync.
+- slot resync;
+- drafts of already submitted attempts (#197): a dry run that lists them, and an apply step that closes their duplicate alerts with a journal row and removes them.
 
 Backups:
 - A nightly `pg_dump`, encrypted with gpg and verified by reading it back.

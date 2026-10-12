@@ -616,6 +616,8 @@ export function healthReason(c: OpsHealthCheck): UiKey | null {
     "scheduler.fresh": "ops.health.scheduler.fresh",
     "scheduler.stale": "ops.health.scheduler.stale",
     "scheduler.never": "ops.health.scheduler.never",
+    "scheduler.failing": "ops.health.scheduler.failing",
+    "scheduler.noSuccess": "ops.health.scheduler.noSuccess",
     "scheduler.disabled": "ops.health.scheduler.disabled",
     "encryption.set": "ops.health.encryption.set",
     "encryption.missing": "ops.health.encryption.missing",
@@ -1105,6 +1107,8 @@ export const AUDIT_ACTION_KEY: Readonly<Record<string, UiKey>> = {
   "alert.escalated": "act.alert_escalated",
   "alert.undelivered": "act.alert_undelivered",
   "alert.notify_abandoned": "act.alert_notify_abandoned",
+  "alert.duplicate_closed": "act.alert_duplicate_closed",
+  "response.ghost_removed": "act.response_ghost_removed",
   "worklist.read": "act.worklist_read",
   /* заключения, аналитика, статистика */
   "conclusion.save": "act.conclusion_save",

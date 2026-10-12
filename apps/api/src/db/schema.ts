@@ -1128,6 +1128,13 @@ export const responses = pgTable(
     /** Момент последнего автосохранения черновика */
     lastSavedAt: timestampCol("last_saved_at"),
     /**
+     * Когда строка появилась в базе — временем базы, приложение его не
+     * задаёт. Не путать со startedAt: тот — время человека и бывает задним
+     * числом (офлайн-очередь, demo-fill). По этому полю проверка
+     * восстановимости решает, была ли строка в базе на момент снимка (#203).
+     */
+    createdAt: timestampCol("created_at").notNull().default(sql`now()`),
+    /**
      * Идемпотентность офлайн-очереди: клиент генерирует id попытки, и повторная
      * отправка той же попытки (сеть оборвалась после коммита, клиент ретраит)
      * не создаёт второе прохождение — сервер возвращает существующее.
@@ -1425,8 +1432,12 @@ export const alertCases = pgTable(
     acknowledgedBy: text("acknowledged_by").references(() => users.id, { onDelete: "set null" }),
     acknowledgedAt: timestampCol("acknowledged_at"),
     note: text("note"),
-    /** Клинический исход разбора — сырьё для калибровки порогов */
-    outcome: text("outcome", { enum: ["confirmed", "not_confirmed", "needs_followup"] }),
+    /**
+     * Клинический исход разбора — сырьё для калибровки порогов. duplicate —
+     * не клиническое решение: случай закрыт чисткой призраков (#197), его
+     * сигналы — дубли сигналов сданной попытки; из калибровки исключается.
+     */
+    outcome: text("outcome", { enum: ["confirmed", "not_confirmed", "needs_followup", "duplicate"] }),
     /**
      * Случай собран автоматически при переходе со старой модели: исходы по
      * отдельным пунктам могли расходиться, и это надо честно пометить, а не
@@ -1794,7 +1805,12 @@ export const refreshTokens = pgTable(
   (t) => ({
     hashIdx: uniqueIndex("refresh_tokens_hash_idx").on(t.tokenHash),
     userIdx: index("refresh_tokens_user_idx").on(t.userId),
-    familyIdx: index("refresh_tokens_family_idx").on(t.familyId),
+    /* семья со временем выдачи: отзыв семьи и начало сессии — min(created_at) одной строкой (0130) */
+    familyIdx: index("refresh_tokens_family_created_idx").on(t.familyId, t.createdAt),
+    /* живые-по-отметкам токены — под liveTokenCondition (lib/accounts.ts, 0130) */
+    liveIdx: index("refresh_tokens_live_idx")
+      .on(t.userId, t.expiresAt)
+      .where(sql`revoked_at is null and rotated_at is null`),
   }),
 );
 

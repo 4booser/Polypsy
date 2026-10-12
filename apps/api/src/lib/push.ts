@@ -548,35 +548,47 @@ const OUTCOME_KEEP_MS = 183 * 86_400_000;
  * Квитанции Expo хранит сутки и отдаёт не раньше, чем через несколько минут
  * после отправки: окно выборки — от 15 минут до суток. Тысяча за раз —
  * потолок одного запроса getReceipts. Заодно — срок хранения исходов.
+ *
+ * Своими транзакциями и в три шага, как отправка (pushToUser, #192): что
+ * спросить — короткой системной транзакцией; Expo — вне всякой транзакции;
+ * итоги, забытые токены, возврат заявок и срок хранения — снова одной
+ * короткой (#204). Прежде планировщик оборачивал проход в systemContext, и
+ * транзакция с соединением пула стояли открытыми, пока Expo отвечал (до
+ * 15 с на запрос). Оборачивать не нужно: вне контекста проход открывает
+ * свои транзакции сам.
  */
 export async function checkPushReceipts(
   now = new Date(),
 ): Promise<{ checked: number; errors: number; purged: number; requeued: number }> {
-  const rows = await db
-    .select({
-      id: pushOutcomes.id,
-      ticketId: pushOutcomes.ticketId,
-      tokenHash: pushOutcomes.tokenHash,
-      deliveryId: pushOutcomes.deliveryId,
-    })
-    .from(pushOutcomes)
-    .where(
-      and(
-        isNotNull(pushOutcomes.ticketId),
-        isNull(pushOutcomes.receiptStatus),
-        gte(pushOutcomes.at, new Date(now.getTime() - RECEIPT_KEEP_MS).toISOString()),
-        lte(pushOutcomes.at, new Date(now.getTime() - RECEIPT_AFTER_MS).toISOString()),
-      ),
-    )
-    .limit(1000);
+  const rows = await systemContext(baseDb, () =>
+    db
+      .select({
+        id: pushOutcomes.id,
+        ticketId: pushOutcomes.ticketId,
+        tokenHash: pushOutcomes.tokenHash,
+        deliveryId: pushOutcomes.deliveryId,
+      })
+      .from(pushOutcomes)
+      .where(
+        and(
+          isNotNull(pushOutcomes.ticketId),
+          isNull(pushOutcomes.receiptStatus),
+          gte(pushOutcomes.at, new Date(now.getTime() - RECEIPT_KEEP_MS).toISOString()),
+          lte(pushOutcomes.at, new Date(now.getTime() - RECEIPT_AFTER_MS).toISOString()),
+        ),
+      )
+      .limit(1000),
+  );
 
-  let checked = 0;
-  let errors = 0;
-  const dead = new Set<string>();
-  /** Заявки, по которым квитанция сказала «не передано»: код отказа по заявке */
-  const refused = new Map<string, string>();
-  if (rows.length) {
-    const receipts = await receiptFetcher(rows.map((r) => r.ticketId!));
+  // сеть — без транзакции и без соединения пула
+  const receipts = rows.length ? await receiptFetcher(rows.map((r) => r.ticketId!)) : {};
+
+  return systemContext(baseDb, async () => {
+    let checked = 0;
+    let errors = 0;
+    const dead = new Set<string>();
+    /** Заявки, по которым квитанция сказала «не передано»: код отказа по заявке */
+    const refused = new Map<string, string>();
     const at = now.toISOString();
     for (const row of rows) {
       const receipt = receipts[row.ticketId!];
@@ -591,16 +603,16 @@ export async function checkPushReceipts(
         .set({ receiptStatus: receipt.status === "ok" ? "ok" : "error", receiptError: code, receiptAt: at })
         .where(eq(pushOutcomes.id, row.id));
     }
-  }
-  if (dead.size) await db.delete(pushTokens).where(inArray(TOKEN_FINGERPRINT, [...dead]));
-  const requeued = refused.size ? await requeueRefused(refused, now) : 0;
+    if (dead.size) await db.delete(pushTokens).where(inArray(TOKEN_FINGERPRINT, [...dead]));
+    const requeued = refused.size ? await requeueRefused(refused, now) : 0;
 
-  const purged = await db
-    .delete(pushOutcomes)
-    .where(lt(pushOutcomes.at, new Date(now.getTime() - OUTCOME_KEEP_MS).toISOString()))
-    .returning({ id: pushOutcomes.id });
+    const purged = await db
+      .delete(pushOutcomes)
+      .where(lt(pushOutcomes.at, new Date(now.getTime() - OUTCOME_KEEP_MS).toISOString()))
+      .returning({ id: pushOutcomes.id });
 
-  return { checked, errors, purged: purged.length, requeued };
+    return { checked, errors, purged: purged.length, requeued };
+  });
 }
 
 /** Первая задержка повтора по квитанции; дальше — удвоение, до потолка */
@@ -647,14 +659,17 @@ async function requeueRefused(refused: Map<string, string>, now: Date): Promise<
     const code = refused.get(row.id) ?? "unknown";
     const permanent = PERMANENT_TICKET_ERRORS.has(code);
     const delay = Math.min(RECEIPT_RETRY_BASE_MS * 2 ** Math.max(row.attempts - 1, 0), RECEIPT_RETRY_MAX_MS);
-    await db
+    const changed = await db
       .update(pushDeliveries)
       .set({
         ok: false,
         error: code,
         retryAfter: permanent ? null : new Date(now.getTime() + delay).toISOString(),
       })
-      .where(and(eq(pushDeliveries.id, row.id), eq(pushDeliveries.ok, true)));
+      .where(and(eq(pushDeliveries.id, row.id), eq(pushDeliveries.ok, true)))
+      .returning({ id: pushDeliveries.id });
+    // соседний проход (вторая реплика) успел первым — заявка уже возвращена им, и считать её второй раз нечего
+    if (!changed.length) continue;
     if (!permanent) requeued++;
     log.warn(permanent ? "push.receipt_rejected" : "push.receipt_retry", {
       deliveryId: row.id,

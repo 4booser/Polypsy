@@ -10,7 +10,7 @@ import { cx } from "../ui/cx";
 import { TouchArea } from "../ui/primitives";
 import { IconCalendar, IconHome, IconPerson, IconTest } from "./icons";
 import { outbox, type OutboxItem } from "./outbox";
-import { ConsentGate } from "./ConsentGate";
+import { ConsentGate, useRecheckConsent } from "./ConsentGate";
 import { OutboxStrip } from "./OutboxStrip";
 
 /**
@@ -152,10 +152,16 @@ function PatientShell() {
  * объявленного, а минута ожидания после конца работ никого не задевает.
  * Прохождение отложенной сдачи через тот же маршрут сдачи, с тем же
  * clientRequestId: сервер отбросит дубль, если первая попытка всё же дошла.
+ *
+ * Проход встал на 403 «нужно согласие» (#201) — ворота кабинета
+ * перепроверяют согласие и встают его экраном. Запись цела; после принятия
+ * кабинет монтируется снова, и первый же проход отправляет её — те же
+ * ответы, тот же clientRequestId.
  */
 function useOutbox(userId: string | null) {
   const [counts, setCounts] = useState<{ waiting: number; rejected: OutboxItem[] }>({ waiting: 0, rejected: [] });
   const [busy, setBusy] = useState(false);
+  const recheckConsent = useRecheckConsent();
 
   const recount = useCallback(() => {
     if (userId) setCounts({ waiting: outbox.waiting(userId).length, rejected: outbox.rejected(userId) });
@@ -168,11 +174,14 @@ function useOutbox(userId: string | null) {
     setBusy(true);
     void outbox
       .flush(userId, (item: OutboxItem) => api.submitResponse(item.surveyId, item.payload as never))
+      .then((result) => {
+        if (result.consent) recheckConsent();
+      })
       .finally(() => {
         recount();
         setBusy(false);
       });
-  }, [userId, recount]);
+  }, [userId, recount, recheckConsent]);
 
   /* отвергнутую — обратно в очередь и сразу в проход; не примет и теперь — снова строкой с причиной (#172) */
   const retry = useCallback(

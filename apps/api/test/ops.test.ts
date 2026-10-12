@@ -1,8 +1,9 @@
-import { beforeEach, describe, expect, test } from "bun:test";
+import { beforeEach, describe, expect, setSystemTime, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
 import type { OpsDb, OpsErrors, OpsLogs, OpsOverview, OpsRoutes } from "@quizzy/shared";
 import { auditLog, permissionExceptions, staffRoles } from "../src/db/schema";
+import { env } from "../src/env";
 import { FORBIDDEN } from "../src/lib/errorReport";
 import { log, withRequestId } from "../src/lib/log";
 import {
@@ -418,7 +419,7 @@ describe("проверки здоровья", () => {
     rls: { bypasses: false },
     pendingMigrations: 0,
     knownMigrations: 88,
-    scheduler: { enabled: true, lastTickAt: 1_000_000, intervalMs: 3_600_000 },
+    scheduler: { enabled: true, lastOkAt: 1_000_000, lastFailed: false, startedAt: 0, intervalMs: 3_600_000 },
     encryptionKey: true,
     sentryDsn: true,
     metricsToken: true,
@@ -435,7 +436,7 @@ describe("проверки здоровья", () => {
       ...calm,
       rls: { bypasses: true },
       pendingMigrations: 2,
-      scheduler: { ...calm.scheduler, lastTickAt: calm.now - 3 * 3_600_000 },
+      scheduler: { ...calm.scheduler, lastOkAt: calm.now - 3 * 3_600_000 },
       encryptionKey: false,
       sentryDsn: false,
       lastHour: { ...calm.lastHour, requests: 100, errors5xx: 3, share5xx: 0.03 },
@@ -454,6 +455,71 @@ describe("проверки здоровья", () => {
     const by = Object.fromEntries(dev.map((c) => [c.key, c]));
     expect(by.rls!.status).toBe("warn");
     expect(by.scheduler).toMatchObject({ status: "warn", reason: "disabled" });
+  });
+
+  test("планировщик: упавший проход — предупреждение; ни одного успеха дольше двух тактов от запуска — сбой (#203)", () => {
+    const sched = (over: Partial<HealthInput["scheduler"]>) =>
+      buildHealth({ ...calm, scheduler: { ...calm.scheduler, ...over } }).find((c) => c.key === "scheduler");
+    // последний проход упал, успешный — 10 минут назад: ещё не сбой, но и не «гаразд»
+    expect(sched({ lastFailed: true })).toMatchObject({ status: "warn", reason: "failing", value: 10 });
+    // после перезапуска успеха не было: первые такты — ожидание (или предупреждение, если проход упал), три часа — сбой
+    expect(sched({ lastOkAt: null, startedAt: calm.now - 5 * 60_000 })).toMatchObject({ status: "warn", reason: "never" });
+    expect(sched({ lastOkAt: null, lastFailed: true, startedAt: calm.now - 5 * 60_000 })).toMatchObject({
+      status: "warn",
+      reason: "noSuccess",
+      value: 5,
+    });
+    expect(sched({ lastOkAt: null, lastFailed: true, startedAt: calm.now - 3 * 3_600_000 })).toMatchObject({
+      status: "fail",
+      reason: "noSuccess",
+      value: 180,
+    });
+  });
+});
+
+describe("«Здоров'я» обзора и планировщик, падающий на каждом проходе (#203)", () => {
+  test("шесть упавших проходов подряд — сбой «планувальник», а не свежий такт; успешный проход его снимает", async () => {
+    /*
+     * Обзор мерил свежесть от НАЧАЛА последнего прохода: оно ставится до
+     * выполнения, и шесть часовых проходов подряд с ошибкой выглядели
+     * «останній такт 60 хв тому» — гаразд. Правило оповещения считает от
+     * последнего УСПЕШНОГО (#160); обзор берёт то же (lastOkAt реестра).
+     */
+    const t0 = Date.now() - 7 * 3_600_000;
+    const was = env.schedulerEnabled;
+    try {
+      resetJobs();
+      env.schedulerEnabled = true;
+      setSystemTime(new Date(t0));
+      registerJob("schedules", 3_600_000, t0);
+      await trackJob("schedules", async () => 0);
+      for (let h = 1; h <= 6; h++) {
+        setSystemTime(new Date(t0 + h * 3_600_000));
+        await expect(
+          trackJob("schedules", async () => {
+            throw new Error("scheduler pass failed");
+          }),
+        ).rejects.toThrow();
+      }
+      setSystemTime();
+      const res = await api<OpsOverview>("/api/ops/overview", root.token);
+      expect(res.status).toBe(200);
+      // такты шли: последний начался час назад — по нему всё выглядело живым
+      expect(Date.parse(res.body.scheduler.lastTickAt!)).toBe(t0 + 6 * 3_600_000);
+      const check = res.body.health.find((c) => c.key === "scheduler");
+      expect(check).toMatchObject({ status: "fail", reason: "stale" });
+      expect(check!.value).toBeGreaterThanOrEqual(7 * 60);
+
+      // контроль: успешный проход — снова «гаразд», и счёт — от него
+      await trackJob("schedules", async () => 0);
+      const after = await api<OpsOverview>("/api/ops/overview", root.token);
+      expect(after.body.health.find((c) => c.key === "scheduler")).toMatchObject({ status: "ok", reason: "fresh", value: 0 });
+    } finally {
+      setSystemTime();
+      env.schedulerEnabled = was;
+      // реестр общий на процесс: «schedules» со сбоями другим тестам ни к чему
+      resetJobs();
+    }
   });
 });
 
