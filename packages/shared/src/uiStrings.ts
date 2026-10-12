@@ -7872,6 +7872,12 @@ export const UI = {
     ru: "Очистка завершённых сессий",
     en: "Ended session cleanup",
   },
+  /* журнал: исход встречи Google, созданной после записи на приём (#205, apps/api/src/routes/clinic.ts) */
+  "act.clinic_book_meet": {
+    uk: "Зустріч Google для запису на прийом",
+    ru: "Встреча Google для записи на приём",
+    en: "Google Meet for a booked appointment",
+  },
 
 } as const satisfies Record<string, UiEntry>;
 

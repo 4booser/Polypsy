@@ -34,6 +34,7 @@ export type AuditAction =
   | "clinic.schedule_exception"
   | "clinic.schedule_exception_delete"
   | "clinic.book"
+  | "clinic.book_meet"
   | "clinic.today"
   | "clinic.confirm"
   | "clinic.reschedule"

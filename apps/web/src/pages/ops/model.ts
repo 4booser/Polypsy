@@ -1014,6 +1014,7 @@ export const AUDIT_ACTION_KEY: Readonly<Record<string, UiKey>> = {
   "clinic.schedule_exception": "act.clinic_schedule_exception",
   "clinic.schedule_exception_delete": "act.clinic_schedule_exception_delete",
   "clinic.book": "act.clinic_book",
+  "clinic.book_meet": "act.clinic_book_meet",
   "clinic.today": "act.clinic_today",
   "clinic.confirm": "act.clinic_confirm",
   "clinic.reschedule": "act.clinic_reschedule",
