@@ -1134,6 +1134,7 @@ export const AUDIT_ACTION_KEY: Readonly<Record<string, UiKey>> = {
   "stat_model.delete": "act.stat_model_delete",
   "stat_model.run": "act.stat_model_run",
   "retention.answer_events": "act.retention_answer_events",
+  "retention.refresh_tokens": "act.retention_refresh_tokens",
   /* техпанель и безопасность */
   "console.run": "act.console_run",
   "ops.maintenance_on": "act.ops_maintenance_on",

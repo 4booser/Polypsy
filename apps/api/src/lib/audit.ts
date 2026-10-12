@@ -329,6 +329,7 @@ export type AuditAction =
   | "consent.decline"
   | "consent.text_update"
   | "retention.answer_events"
+  | "retention.refresh_tokens"
   /* техпанель: чтение логов и групп ошибок процесса — склеено по пять минут (routes/ops.ts) */
   | "ops.logs.read"
   | "ops.errors.read"

@@ -17,7 +17,8 @@
  *     та же функция, что у команды reindex.ts);
  *   catalog.install — установка общего каталога методик (lib/catalogInstall,
  *     та же, что у installCatalog.ts): идемпотентна по построению;
- *   retention — чистка потока событий по сроку (retention.ts);
+ *   retention — чистка потока событий и мёртвых семей refresh-токенов по
+ *     сроку (retention.ts);
  *   ops.alerts — проверка правил оповещений (opsAlerts.ts);
  *   data.quality — «перепроверить» «Якість даних»: проверки целостности
  *     записей и новый сохранённый итог (dataChecks.ts, #189). Только чтение

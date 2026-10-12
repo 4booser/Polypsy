@@ -7865,6 +7865,14 @@ export const UI = {
   /* консоль: исход случая, закрытого чисткой призраков, — не решение дежурного (#197) */
   "cases.duplicate": { uk: "Дубль зданої спроби", ru: "Дубль сданной попытки", en: "Duplicate of a submitted attempt" },
 
+  /* ── w23:perf ── */
+  /* журнал: чистка мёртвых семей refresh-токенов (#205, apps/api/src/lib/retention.ts) */
+  "act.retention_refresh_tokens": {
+    uk: "Очищення завершених сесій",
+    ru: "Очистка завершённых сессий",
+    en: "Ended session cleanup",
+  },
+
 } as const satisfies Record<string, UiEntry>;
 
 export type UiKey = keyof typeof UI;
