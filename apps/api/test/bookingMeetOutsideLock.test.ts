@@ -92,10 +92,10 @@ async function google(call: Call): Promise<Response> {
   return Response.json({ id });
 }
 
-async function until(check: () => boolean, what: string, timeoutMs = 20_000) {
+async function until(check: () => boolean | Promise<boolean>, what: string, timeoutMs = 20_000) {
   const end = Date.now() + timeoutMs;
   while (Date.now() < end) {
-    if (check()) return;
+    if (await check()) return;
     await Bun.sleep(10);
   }
   throw new Error(`не дождались: ${what}`);
@@ -111,6 +111,14 @@ async function openTransactions(applicationName: string): Promise<number> {
   const [row] = await db.execute<{ n: number }>(sql`
     select count(*)::int as n from pg_stat_activity
      where datname = current_database() and application_name = ${applicationName} and xact_start is not null`);
+  return Number(row?.n ?? 0);
+}
+
+/** Сколько UPDATE приёмов стоят за чужим замком строки */
+async function waitingUpdates(): Promise<number> {
+  const [row] = await db.execute<{ n: number }>(sql`
+    select count(*)::int as n from pg_stat_activity
+     where datname = current_database() and wait_event_type = 'Lock' and query ilike 'update "appointments"%'`);
   return Number(row?.n ?? 0);
 }
 
@@ -342,5 +350,92 @@ describe("встреча при записи на приём — после фи
     expect(live, "в календаре сирота или ни одного события").toEqual([after.meetingEventId!]);
     expect(after.meetingUrl).toBe(`https://meet.google.com/${after.meetingEventId}`);
     expect(createdFor(slot.startsAt)).toBe(2);
+  }, 60_000);
+});
+
+/**
+ * Запись итога шага фиксируется между чтением приёма маршрутом и его UPDATE.
+ *
+ * Порядок навязан замком строки из теста: шаг, получивший событие, встаёт
+ * за замком первым, маршрут — вторым, затем замок снимается.
+ */
+async function racedWithStep(slotId: string, patient: Person, action: (id: string) => Promise<{ status: number }>) {
+  const g = holdGoogle((c) => c.method === "POST");
+  const pending = appApi<{ id: string }>("/api/clinic/appointments", patient.token, {
+    method: "POST",
+    body: JSON.stringify({ slotId, mode: "remote" }),
+  });
+  pending.catch(() => {});
+  await until(g.reached, "шаг дошёл до Google");
+  const [row] = await ofSlot(slotId);
+  mine.push(row!.id);
+
+  let unlock!: () => void;
+  const unlocked = new Promise<void>((resolve) => {
+    unlock = resolve;
+  });
+  let locked!: () => void;
+  const isLocked = new Promise<void>((resolve) => {
+    locked = resolve;
+  });
+  const holder = db.transaction(async (tx) => {
+    await tx.execute(sql`select id from appointments where id = ${row!.id} for update`);
+    locked();
+    await unlocked;
+  });
+  try {
+    await isLocked;
+    g.release();
+    await until(async () => (await waitingUpdates()) >= 1, "итог шага ждёт строку");
+    const routed = action(row!.id);
+    await until(async () => (await waitingUpdates()) >= 2, "UPDATE маршрута ждёт строку");
+    unlock();
+    await holder;
+    const [booked, done] = await Promise.all([pending, routed]);
+    return { id: row!.id, booked, done };
+  } finally {
+    unlock();
+    g.release();
+  }
+}
+
+describe("отмена и перенос сразу за записью встречи шагом (#205, ревью)", () => {
+  test("отмена: событие, вписанное шагом после нашего чтения, удаляется из календаря", async () => {
+    const doctor = await specialist("race-cancel");
+    const slot = await slotFor(doctor.id);
+    const patient = await makeUser("user", `${TAG}-p-rc-${crypto.randomUUID()}@test`);
+    const r = await racedWithStep(slot.id, patient, (id) =>
+      appApi(`/api/clinic/appointments/${id}/cancel`, patient.token, { method: "POST", body: JSON.stringify({}) }),
+    );
+    expect(r.booked.status).toBe(201);
+    expect(r.done.status).toBe(200);
+    const after = await appointment(r.id);
+    expect(after.status).toBe("cancelled");
+    // прежде: отменённый приём со ссылкой и живым событием, без метки — фоновый проход его не брал
+    expect([...calendar.values()].filter((e) => e.start === slot.startsAt)).toEqual([]);
+    expect(after.meetingSyncAt).toBeNull();
+    expect((await auditOf("clinic.cancel", r.id))?.meet).toBeDefined();
+  }, 60_000);
+
+  test("перенос: событие, вписанное шагом после нашего чтения, переезжает на новое время", async () => {
+    const doctor = await specialist("race-move");
+    const from = await slotFor(doctor.id);
+    const to = await slotFor(doctor.id);
+    const patient = await makeUser("user", `${TAG}-p-rm-${crypto.randomUUID()}@test`);
+    const r = await racedWithStep(from.id, patient, (id) =>
+      appApi(`/api/clinic/appointments/${id}/reschedule`, patient.token, {
+        method: "POST",
+        body: JSON.stringify({ slotId: to.id }),
+      }),
+    );
+    expect(r.booked.status).toBe(201);
+    expect(r.done.status).toBe(200);
+    const after = await appointment(r.id);
+    expect(after.slotId).toBe(to.id);
+    // прежде: приём на новом времени, событие — на старом, и никто его не сводил
+    expect(after.meetingEventId).not.toBeNull();
+    expect(calendar.get(after.meetingEventId!)?.start).toBe(to.startsAt);
+    expect(after.meetingSyncAt).toBeNull();
+    expect(createdFor(from.startsAt)).toBe(1);
   }, 60_000);
 });

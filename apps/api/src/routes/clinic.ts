@@ -1,7 +1,7 @@
 import { Hono, type Context } from "hono";
 import { and, asc, desc, eq, gt, gte, inArray, isNull, lt, lte, ne, sql } from "drizzle-orm";
 import { z } from "zod";
-import { moveAppointment, type AppointmentStatus } from "../lib/appointmentMove";
+import { meetingSyncIfEvent, moveAppointment, type AppointmentStatus } from "../lib/appointmentMove";
 import {
   bookAppointmentSchema,
   cancelAppointmentSchema,
@@ -1221,20 +1221,22 @@ clinicRoutes.post("/appointments/:id/reschedule", async (c) => {
       status: "booked",
       confirmedAt: null,
       // событие календаря ждёт сведения — той же записью, что двигает приём (#37)
-      ...(row.meetingEventId ? { meetingSyncAt: new Date().toISOString() } : {}),
+      meetingSyncAt: meetingSyncIfEvent(new Date().toISOString()),
     },
     { slotId: row.slotId },
   );
-  if (!moved) await refuseChanged(row.id);
+  if (!moved) return refuseChanged(row.id);
 
   /*
    * Событие Google Calendar едет вслед за приёмом: на новое время у того же
    * специалиста, к новому специалисту — пересозданием. Прежде ссылка и
    * событие оставались прежними, и у врача в календаре стояла встреча на
    * снятое время (внешний разбор, #37). Сбой Google перенос не срывает:
-   * метка сведения уже записана, фоновый проход повторит.
+   * метка сведения уже записана, фоновый проход повторит. Есть ли событие —
+   * по записанной строке: его мог вписать шаг после записи приёма уже после
+   * нашего чтения (meetingSyncIfEvent).
    */
-  const meet = row.meetingEventId ? await syncMeeting(row.id) : null;
+  const meet = moved.meetingEventId ? await syncMeeting(row.id) : null;
 
   await audit(c, {
     action: "clinic.reschedule",
@@ -1297,14 +1299,14 @@ clinicRoutes.post("/appointments/:id/cancel", async (c) => {
       cancelledAt: new Date().toISOString(),
       cancelledBy: me.id,
       cancelledLate: late,
-      ...(row.meetingEventId ? { meetingSyncAt: new Date().toISOString() } : {}),
+      meetingSyncAt: meetingSyncIfEvent(new Date().toISOString()),
     },
     { slotId: row.slotId },
   );
-  if (!cancelled) await refuseChanged(row.id);
+  if (!cancelled) return refuseChanged(row.id);
 
   // отменённый приём не должен висеть в календаре живой встречей (#37); сбой — повторит фоновый проход
-  const meet = row.meetingEventId ? await syncMeeting(row.id) : null;
+  const meet = cancelled.meetingEventId ? await syncMeeting(row.id) : null;
 
   await audit(c, {
     action: "clinic.cancel",
