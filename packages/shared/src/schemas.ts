@@ -1383,6 +1383,21 @@ export const respondentDynamicsQuery = z.object({
 });
 
 /**
+ * Предел смещения у списков со страницами по смещению (#205): пациенты,
+ * рассылки и входящие рассылки, каталог методик, статистические модели.
+ *
+ * Прежде принималось до миллиона, как когда-то у журнала (AUDIT_OFFSET_MAX,
+ * #202): смещение в базе — перебор и сортировка всех строк до нужной, а в
+ * приложении (пациенты, рассылки) — расшифровка всего отбора ради хвоста.
+ * Эти списки — сотни строк, не сотни тысяч: 5 000 — это 500 страниц по 10
+ * и 50 по 100, с запасом против любого из них. Глубже — поиск; курсора у
+ * них нет, и заводить его ради страниц, до которых никто не листает, не
+ * стоит. Экран консоли смещение за предел не просит (ui/paging.ts,
+ * pageOffset): страница из закладки за пределом возвращается на последнюю.
+ */
+export const LIST_OFFSET_MAX = 5_000;
+
+/**
  * Список пациентов зоны видимости: поиск, вкладка группы, страница.
  *
  * Постраничность offset-ная, как у каталога методик: макет требует
@@ -1393,7 +1408,7 @@ export const patientListQuery = z.object({
   q: z.string().max(120).optional().transform((v) => (v ?? "").trim().toLowerCase()),
   patientGroup: z.string().max(64).optional().transform((v) => v || undefined),
   limit: queryInt(1, 200, 50),
-  offset: queryInt(0, 1_000_000, 0),
+  offset: queryInt(0, LIST_OFFSET_MAX, 0),
 });
 
 export const mailingListQuery = z.object({
@@ -1405,12 +1420,12 @@ export const mailingListQuery = z.object({
     .optional()
     .transform((v) => v === "1"),
   limit: queryInt(1, 200, 10),
-  offset: queryInt(0, 1_000_000, 0),
+  offset: queryInt(0, LIST_OFFSET_MAX, 0),
 });
 
 export const mailingInboxQuery = z.object({
   limit: queryInt(1, 200, 50),
-  offset: queryInt(0, 1_000_000, 0),
+  offset: queryInt(0, LIST_OFFSET_MAX, 0),
 });
 
 export const responseListQuery = z.object({
@@ -1465,7 +1480,7 @@ export const surveyListQuery = z.object({
     .optional()
     .transform((v) => (v === undefined || v === "" ? undefined : Number(v)))
     .pipe(z.number().int().min(1).max(500).optional()),
-  offset: queryInt(0, 1_000_000, 0),
+  offset: queryInt(0, LIST_OFFSET_MAX, 0),
   /** Идентификатор папки или `root` — корень (методики вне папок); без него — все */
   folder: z.string().max(64).optional().transform((v) => v || undefined),
   /**
@@ -1501,7 +1516,7 @@ export const statModelListQuery = z.object({
     .optional()
     .transform((v) => (v === undefined || v === "" ? undefined : Number(v)))
     .pipe(z.number().int().min(1).max(500).optional()),
-  offset: queryInt(0, 1_000_000, 0),
+  offset: queryInt(0, LIST_OFFSET_MAX, 0),
 });
 
 /** Пресеты фильтров: только поиск, страниц нет — их у одного человека десятки, не тысячи */

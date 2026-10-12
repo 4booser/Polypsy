@@ -1,6 +1,6 @@
 import type { SurveyFolder, SurveyListItem } from "@quizzy/shared";
 import type { SurveyPageQuery } from "../../api";
-import { DEFAULT_PER } from "../../ui/paging";
+import { DEFAULT_PER, pageOffset } from "../../ui/paging";
 
 /**
  * Чистая часть каталога тестов: адрес ↔ состояние, запрос к серверу, дерево
@@ -45,7 +45,7 @@ export function tabFromPath(pathname: string): CatalogueTab {
  * Имена отдаются отсюда по-прежнему — проверки каталога и его экран зовут
  * их как звали, а второго места, где живёт «10 — значение с макета», нет.
  */
-export { DEFAULT_PER, PER_PAGE, pageCount, pageFrom, perFrom } from "../../ui/paging";
+export { DEFAULT_PER, PER_PAGE, offsetPageCount, pageCount, pageFrom, perFrom } from "../../ui/paging";
 
 /* ─────────── запрос ─────────── */
 
@@ -78,6 +78,10 @@ export interface CatalogueView {
  *    добавляет их к остальным. Поэтому вкладка «Зняті» просит весь список без
  *    страниц, а отбор и страницы делает сама (см. retiredPage): снятых —
  *    единицы, и второй механизм страниц на сервере ради них не стоит.
+ *
+ * Смещение — не дальше предела сервера (pageOffset, #205): страница из
+ * закладки за пределом приходит пустой с общим числом, и экран возвращает
+ * на последнюю, а не показывает отказ на весь каталог.
  */
 export function listQuery(view: CatalogueView): SurveyPageQuery {
   const q = view.q.trim();
@@ -88,7 +92,7 @@ export function listQuery(view: CatalogueView): SurveyPageQuery {
     q,
     status: view.tab === "drafts" ? "draft" : "published",
     limit: view.per,
-    offset: (view.page - 1) * view.per,
+    offset: pageOffset(view.page, view.per),
   };
 }
 

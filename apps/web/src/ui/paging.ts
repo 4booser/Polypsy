@@ -8,6 +8,7 @@
  * по-прежнему отдаёт эти имена наружу (re-export), поэтому его проверки и
  * импорты не тронуты.
  */
+import { LIST_OFFSET_MAX } from "@quizzy/shared";
 
 /** Ступени селекта «елементів на сторінці»; 10 — значение с макета */
 export const PER_PAGE = [10, 20, 50, 100] as const;
@@ -34,6 +35,25 @@ export function pageFrom(raw: string | null): number {
 /** «сторінка 1 з N»: пустой список — это одна пустая страница, а не ноль страниц */
 export function pageCount(total: number, per: number): number {
   return Math.max(1, Math.ceil(total / per));
+}
+
+/*
+ * Списки со страницами по смещению (каталог, рассылки, модели): сервер не
+ * принимает смещение дальше LIST_OFFSET_MAX (#205). «?page=99999» из руки
+ * или закладки не должен становиться отказом на весь список: смещение
+ * упирается в предел, приходит пустая страница с общим числом, и экран
+ * возвращает на последнюю (page > pages). Страниц — не больше, чем
+ * достижимо смещением: за пределом сервер отказал бы.
+ */
+
+/** Смещение страницы — не дальше предела сервера */
+export function pageOffset(page: number, per: number): number {
+  return Math.min((page - 1) * per, LIST_OFFSET_MAX);
+}
+
+/** Сколько страниц у списка со смещением: по числу строк, но не дальше предела */
+export function offsetPageCount(total: number, per: number): number {
+  return Math.min(pageCount(total, per), Math.floor(LIST_OFFSET_MAX / per) + 1);
 }
 
 /** Строки страницы из списка, который приехал целиком */

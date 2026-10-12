@@ -19,6 +19,7 @@ import {
   folderPath,
   listQuery,
   numericDate,
+  offsetPageCount,
   pageCount,
   pageFrom,
   perFrom,
@@ -536,7 +537,8 @@ export function SurveyList() {
     () => (list.data ? (tab === "retired" ? retiredPage(list.data.items, page, per) : list.data) : null),
     [list.data, tab, page, per],
   );
-  const pages = pageCount(shown?.total ?? 0, per);
+  // снятые приходят целиком и листаются здесь, остальное — смещением сервера, не дальше его предела
+  const pages = (tab === "retired" ? pageCount : offsetPageCount)(shown?.total ?? 0, per);
 
   /* последняя страница может исчезнуть после снятия или переноса — возвращаемся на ближайшую */
   useEffect(() => {
