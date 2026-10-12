@@ -111,12 +111,21 @@ async function appointment(id: string) {
   return row!;
 }
 
+/**
+ * Исход встречи в журнале. С #205 встреча создаётся после фиксации записи,
+ * и исход пишется своей строкой clinic.book_meet; в clinic.book — «pending».
+ */
 async function bookingAudit(id: string) {
-  const [row] = await db
+  const [book] = await db
     .select()
     .from(auditLog)
     .where(and(eq(auditLog.action, "clinic.book"), eq(auditLog.resourceId, id)));
-  return row?.details as Record<string, unknown> | undefined;
+  const [meet] = await db
+    .select()
+    .from(auditLog)
+    .where(and(eq(auditLog.action, "clinic.book_meet"), eq(auditLog.resourceId, id)));
+  if (meet) expect((book?.details as Record<string, unknown> | undefined)?.meet).toBe("pending");
+  return meet?.details as Record<string, unknown> | undefined;
 }
 
 describe("пациент записывается сам", () => {

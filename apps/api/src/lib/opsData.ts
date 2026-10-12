@@ -142,6 +142,10 @@ export async function usageReport(days: number, scope: { inviterId?: string } = 
    * прохождение (responses: пациент, сдавший тест с телефона без нового
    * входа, тоже был активен). Человек в день считается один раз, сколько бы
    * следов он ни оставил.
+   *
+   * Токены за окно — индексом refresh_tokens_created_idx (0131, #205).
+   * Окно не шире 90 дней, и ретенция токенов (lib/retention.ts) с этим
+   * считается: удаляет только семьи, умершие раньше начала такого окна.
    */
   const span = Math.max(days, 30);
   const marked = sql`

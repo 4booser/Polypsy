@@ -1811,6 +1811,8 @@ export const refreshTokens = pgTable(
     liveIdx: index("refresh_tokens_live_idx")
       .on(t.userId, t.expiresAt)
       .where(sql`revoked_at is null and rotated_at is null`),
+    /* токены за период — «активні люди» отчёта «Використання» (lib/opsData.ts, 0131) */
+    createdIdx: index("refresh_tokens_created_idx").on(t.createdAt),
   }),
 );
 

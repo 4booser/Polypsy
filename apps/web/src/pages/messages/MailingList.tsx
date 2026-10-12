@@ -9,7 +9,7 @@ import { cx } from "../../ui/cx";
 import { IconPlusThick } from "../../ui/glyphs";
 import { Page } from "../../ui/layout";
 import { Pager } from "../../ui/pager";
-import { DEFAULT_PER, pageCount, pageFrom, perFrom } from "../../ui/paging";
+import { DEFAULT_PER, offsetPageCount, pageFrom, pageOffset, perFrom } from "../../ui/paging";
 import { GlyphLink, Input } from "../../ui/primitives";
 import { useResource } from "../../useResource";
 import { mailingHref } from "./model";
@@ -75,10 +75,11 @@ export default function MailingList() {
   }, [q]);
 
   const list = useResource(
-    () => api.mailings({ q: dq, hidden, limit: per, offset: (page - 1) * per }),
+    // смещение — не дальше предела сервера (ui/paging.ts, #205): страница из закладки за ним — на последнюю
+    () => api.mailings({ q: dq, hidden, limit: per, offset: pageOffset(page, per) }),
     [dq, hidden, page, per],
   );
-  const pages = pageCount(list.data?.total ?? 0, per);
+  const pages = offsetPageCount(list.data?.total ?? 0, per);
 
   /* последняя страница может опустеть после удаления или поиска — возвращаемся на ближайшую */
   useEffect(() => {

@@ -195,6 +195,8 @@ interface RequestScope {
    * нельзя по определению. always — писать и при откате (отказ, сбой).
    */
   deferred: { write: () => Promise<unknown>; always: boolean }[];
+  /** Шаги после фиксации — см. afterCommit */
+  afterCommit: (() => Promise<unknown>)[];
   /** Клиент ушёл — см. RequestAbort */
   abort: RequestAbort;
 }
@@ -239,6 +241,33 @@ export function outsideRequest<T>(fn: () => T): T {
   return requestScope.exit(() => dbContext.exit(fn));
 }
 
+/**
+ * Шаг, который идёт после фиксации транзакции запроса, — до ответа, но уже
+ * без транзакции, её замков и соединения (#205).
+ *
+ * Для внешнего вызова, которому не место под замком: встреча Google при
+ * записи на приём ждала сеть, держа строку слота, транзакцию и соединение
+ * пула (routes/clinic.ts). Запрос фиксирует своё с меткой «ждёт» в самой
+ * строке, шаг доделывает внешнюю половину своими короткими транзакциями, а
+ * ответ уходит после шага — человек получает уже сделанное. Откат запроса
+ * шаги отменяет: делать вслед за несостоявшимся нечего.
+ *
+ * Шаг идёт вне запроса (outsideRequest): без его транзакции и без отмены по
+ * обрыву клиента. Сбой шага в ответ не попадает — зафиксированное
+ * зафиксировано; доделать брошенное — дело того, кто читает метку в строке
+ * (для встречи — фоновое сведение, lib/meetSync.ts).
+ *
+ * Ложь — шаг не принят: вызов не из транзакции запроса (вложенная
+ * systemContext, точка сохранения, работа вне запроса). Вызывающий
+ * полагается тогда на метку в строке.
+ */
+export function afterCommit(step: () => Promise<unknown>): boolean {
+  const scope = requestScope.getStore();
+  if (!scope?.tx || scope.tx !== dbContext.getStore()) return false;
+  scope.afterCommit.push(step);
+  return true;
+}
+
 export async function withRequestContext(
   base: typeof DbType,
   identity: RlsIdentity,
@@ -251,6 +280,7 @@ export async function withRequestContext(
     survivors: [],
     readOnly: options.readOnly ?? false,
     deferred: [],
+    afterCommit: [],
     abort: { aborted: options.signal?.aborted ?? false, inflight: new Set() },
   };
   const onAbort = () => abortRequest(scope.abort);
@@ -306,6 +336,18 @@ async function runRequest(
     scope.deferred.filter((d) => d.always || !rolledBack).map((d) => d.write),
   );
   if (foreign) throw foreign;
+  if (!rolledBack) await runAfterCommit(scope.afterCommit);
+}
+
+/** Шаги после фиксации — по очереди, вне запроса; сбой шага — в лог (см. afterCommit) */
+async function runAfterCommit(steps: (() => Promise<unknown>)[]): Promise<void> {
+  for (const step of steps) {
+    try {
+      await outsideRequest(step);
+    } catch (error) {
+      log.error("request.after_commit_failed", { error: String(error) });
+    }
+  }
 }
 
 /**

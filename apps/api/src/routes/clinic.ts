@@ -11,15 +11,14 @@ import {
   scheduleTemplateSchema,
   specialistProfileSchema,
   queryDate,
-  serverText,
   t,
   type AppointmentView,
   type FreeSlot,
   type ScheduleExceptionView,
   type ScheduleTemplateView,
 } from "@quizzy/shared";
-import { db } from "../db";
-import { asSystem } from "../db/context";
+import { baseDb, db } from "../db";
+import { afterCommit, asSystem, systemContext } from "../db/context";
 import {
   appointments,
   departmentPatients,
@@ -40,10 +39,9 @@ import { fullNameOf } from "../lib/auth";
 import { decryptField, encryptField } from "../lib/crypto";
 import { badRequest, conflict, forbidden, langOf, notFound, parseBody, parseQuery } from "../lib/http";
 import { requireDateParam } from "../lib/dates";
-import type { MeetOutcome } from "../lib/meet";
-import { syncMeeting } from "../lib/meetSync";
+import { meetConfigured } from "../lib/meet";
+import { bookingLease, createBookedMeeting, syncMeeting } from "../lib/meetSync";
 import { transferRecording } from "../lib/recordingTransfer";
-import { STAFF_OUTBOUND_LANG } from "../lib/notify";
 import { pendingWorkByUser } from "../lib/pendingWork";
 import { HORIZON_WEEKS, lockSchedule, syncSlots } from "../lib/schedule";
 import { assertPatientAccess, isStaff, patientsInScope } from "../lib/scope";
@@ -725,33 +723,32 @@ clinicRoutes.post("/appointments", async (c) => {
    * Отказ Google запись не срывает: приём назначается, ссылка добавляется
    * потом. Отказ — любой, включая обрыв связи на обмене токена: он выходил
    * из записи пятисоткой (внешний разбор, волна 15, п. 11). Чем кончилась
-   * попытка, пишется в журнал записи (meet) — по нему видно, почему у
+   * попытка, пишется в журнал (clinic.book_meet) — по нему видно, почему у
    * дистанционного приёма нет ссылки, а человек получает обычный ответ
    * «записан».
    *
-   * Здесь, после takeSlot: право записи на этот слот уже проверено, и
-   * специалист взят из слота, а не из запроса. Только поэтому разрешение
-   * специалиста на календарь можно прочитать системной ролью — пациенту,
-   * записывающемуся сам, оно под своей ролью не видно (п. 10).
+   * Google зовётся после фиксации записи, а не под замком слота (#205).
+   * Прежде встреча создавалась здесь, в транзакции записи: до 8 с на вызов,
+   * два вызова, — и всё это время строка слота была под замком takeSlot, а
+   * запрос держал соединение пула; запись в тот же слот и его правка стояли
+   * за Google. Теперь приём записывается с меткой «ждёт встречи»
+   * (bookingLease), встречу создаёт шаг после фиксации (afterCommit →
+   * createBookedMeeting) своими короткими транзакциями, и ответ уходит после
+   * него — со ссылкой в приёме, как прежде. Перенос или отмена, пришедшие,
+   * пока шаг ждёт Google, не ждут его и не оставляют сироты в календаре;
+   * умерший между фиксацией и Google процесс приём не теряет — встречу
+   * доделывает фоновое сведение (lib/meetSync.ts). Строка clinic.book
+   * пишется с записью, как прежде, — атомарно с ней; исход Google — своей
+   * строкой, когда он есть.
+   *
+   * Создаётся встреча после takeSlot: право записи на этот слот уже
+   * проверено, и специалист взят из слота, а не из запроса. Только поэтому
+   * разрешение специалиста на календарь можно прочитать системной ролью —
+   * пациенту, записывающемуся сам, оно под своей ролью не видно (п. 10).
    */
-  let meetingUrl = input.meetingUrl ?? null;
-  let meetingEventId: string | null = null;
-  let meet: MeetOutcome | null = null;
-  if (input.mode === "remote" && !meetingUrl) {
-    const { createMeetLink } = await import("../lib/meet");
-    const created = await createMeetLink({
-      specialistId: slot.specialistId,
-      startsAt: slot.startsAt,
-      endsAt: slot.endsAt,
-      // без имени пациента: событие попадает в личный календарь и видно на
-      // экране блокировки телефона, в том числе посторонним. Язык — отделения:
-      // событие читает специалист, а записывать мог и сам пациент (lib/notify.ts)
-      title: serverText("meet.eventTitle", STAFF_OUTBOUND_LANG),
-    });
-    meetingUrl = created.url;
-    meetingEventId = created.eventId;
-    meet = created.outcome;
-  }
+  const meetingUrl = input.meetingUrl ?? null;
+  const wantsMeet = input.mode === "remote" && !meetingUrl;
+  const meetLease = wantsMeet && meetConfigured() ? bookingLease() : null;
 
   const id = crypto.randomUUID();
   await write(() =>
@@ -763,13 +760,27 @@ clinicRoutes.post("/appointments", async (c) => {
       kind,
       mode: input.mode,
       meetingUrl,
-      // событие и его организатор — чтобы перенос и отмена нашли, что сводить (lib/meetSync.ts)
-      meetingEventId,
-      meetingOrganizerId: meetingEventId ? slot.specialistId : null,
+      // встреча ещё не создана: приём держится за шагом после фиксации, по сроку — за фоновым сведением
+      meetingSyncAt: meetLease,
       reasonEnc: input.reason ? encryptField(input.reason) : null,
       bookedBy: me.id,
     }),
   );
+  if (meetLease) {
+    afterCommit(async () => {
+      const outcome = await createBookedMeeting(id, meetLease);
+      if (!outcome) return;
+      await systemContext(baseDb, () =>
+        audit(c, {
+          action: "clinic.book_meet",
+          resourceType: "appointment",
+          resourceId: id,
+          subjectUserId: patientId,
+          details: { meet: outcome },
+        }),
+      );
+    });
+  }
 
   /*
    * Прикрепление создаётся первой же записью, какой бы она ни была.
@@ -807,8 +818,13 @@ clinicRoutes.post("/appointments", async (c) => {
        * событие обязано быть отличимым от рядовой записи.
        */
       ...(outsideScope ? { widenedOwnScope: true } : {}),
-      // дистанционный приём без ссылки — почему: не подключено, отозвано, Google не ответил
-      ...(meet ? { meet } : {}),
+      /*
+       * Дистанционный приём без ссылки — почему. Google на сервере не
+       * настроен — известно сразу; иначе встреча создаётся после фиксации
+       * («pending»), и её исход — строкой clinic.book_meet: создана, не
+       * подключено, отозвано, Google не ответил.
+       */
+      ...(wantsMeet ? { meet: meetLease ? "pending" : "not_configured" } : {}),
     },
   });
 

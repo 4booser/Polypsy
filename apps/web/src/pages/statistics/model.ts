@@ -7,6 +7,7 @@ import type {
   StatRunColumn,
   UiKey,
 } from "@quizzy/shared";
+import { pageOffset } from "../../ui/paging";
 
 /**
  * Чистая часть раздела «Статистика»: адреса, строки-критерии выборки,
@@ -76,20 +77,19 @@ export function presetHref(id: string): string {
 
 /*
  * Пределы перечня моделей у сервера (statModelListQuery): поиск ≤ 200,
- * смещение ≤ 1 000 000. «?page=999999» из руки или закладки давал смещение
- * за пределом, и перечень открывался отказом «Невірний запит» — вместо того
- * чтобы вернуть человека на последнюю страницу (это экран делает сам, как
- * только узнает число моделей).
+ * смещение ≤ LIST_OFFSET_MAX (5 000 с #205). «?page=999999» из руки или
+ * закладки давал смещение за пределом, и перечень открывался отказом
+ * «Невірний запит» — вместо того чтобы вернуть человека на последнюю
+ * страницу (это экран делает сам, как только узнает число моделей).
  */
 const LIST_SEARCH_MAX = 200;
-const LIST_OFFSET_MAX = 1_000_000;
 
 /** Параметры GET /api/stat-models для перечня f08 */
 export function statListQuery(q: string, page: number, per: number): { q: string; limit: number; offset: number } {
   return {
     q: q.trim().slice(0, LIST_SEARCH_MAX),
     limit: per,
-    offset: Math.min((page - 1) * per, LIST_OFFSET_MAX),
+    offset: pageOffset(page, per),
   };
 }
 
