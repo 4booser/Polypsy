@@ -2864,7 +2864,7 @@ export const UI = {
   "ops.job.notifier": { uk: "Розсилка тривог", ru: "Рассылка тревог", en: "Alert notifications" },
   "ops.job.remind": { uk: "Нагадування про прийом", ru: "Напоминания о приёме", en: "Appointment reminders" },
   "ops.job.mailings": { uk: "Пуші розсилок", ru: "Пуши рассылок", en: "Mailing push notifications" },
-  "ops.job.retention": { uk: "Очищення потоку подій", ru: "Очистка потока событий", en: "Answer event retention" },
+  "ops.job.retention": { uk: "Очищення потоку подій і застарілих сесій", ru: "Очистка потока событий и устаревших сессий", en: "Answer event and stale session retention" },
   "ops.result.ok": { uk: "успішно", ru: "успешно", en: "ok" },
   "ops.result.error": { uk: "збій", ru: "сбой", en: "failed" },
   "ops.result.skipped": { uk: "пропущено — попередній ще йде", ru: "пропущено — предыдущий ещё идёт", en: "skipped — previous still running" },
