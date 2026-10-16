@@ -1,4 +1,4 @@
-# Polypsy (Quizzy)
+# Polypsy 
 
 Psychodiagnostics platform for a clinical institution. Specialists assign validated
 questionnaires, patients complete them on a phone or in a browser, and the system
