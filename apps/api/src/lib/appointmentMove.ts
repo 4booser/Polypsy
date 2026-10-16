@@ -1,4 +1,5 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql, type SQL } from "drizzle-orm";
+import type { PgUpdateSetSource } from "drizzle-orm/pg-core";
 import { db } from "../db";
 import { appointments } from "../db/schema";
 
@@ -36,7 +37,7 @@ export type AppointmentStatus = NonNullable<typeof appointments.$inferSelect["st
 export async function moveAppointment(
   id: string,
   from: readonly AppointmentStatus[],
-  set: Partial<typeof appointments.$inferInsert>,
+  set: PgUpdateSetSource<typeof appointments>,
   expected: { slotId?: string } = {},
 ): Promise<typeof appointments.$inferSelect | null> {
   const [row] = await db
@@ -51,4 +52,20 @@ export async function moveAppointment(
     )
     .returning();
   return row ?? null;
+}
+
+/**
+ * Метка «событие календаря ждёт сведения» — если событие у приёма есть по
+ * самой строке, которую меняет запись, а не по прочитанной маршрутом.
+ *
+ * Событие в приём пишет и шаг после фиксации записи (createBookedMeeting).
+ * Отмена или перенос, прочитавшие приём за миг до записи шага, видели
+ * meeting_event_id = null, проходили условный UPDATE — статус и слот те
+ * же — и календарь не сводили: событие оставалось на прежнем времени или у
+ * отменённого приёма, а фоновый проход без метки его не брал. Выражение
+ * считается по той версии строки, которую UPDATE действительно меняет;
+ * решение «сводить ли» маршрут принимает по строке, которую тот вернул.
+ */
+export function meetingSyncIfEvent(at: string): SQL {
+  return sql`case when ${appointments.meetingEventId} is not null then ${at}::timestamptz else ${appointments.meetingSyncAt} end`;
 }

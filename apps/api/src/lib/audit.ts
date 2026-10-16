@@ -34,6 +34,7 @@ export type AuditAction =
   | "clinic.schedule_exception"
   | "clinic.schedule_exception_delete"
   | "clinic.book"
+  | "clinic.book_meet"
   | "clinic.today"
   | "clinic.confirm"
   | "clinic.reschedule"
@@ -329,6 +330,7 @@ export type AuditAction =
   | "consent.decline"
   | "consent.text_update"
   | "retention.answer_events"
+  | "retention.refresh_tokens"
   /* техпанель: чтение логов и групп ошибок процесса — склеено по пять минут (routes/ops.ts) */
   | "ops.logs.read"
   | "ops.errors.read"

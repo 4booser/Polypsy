@@ -6,7 +6,7 @@ import { IconSearchGlass, Loading } from "../../ui";
 import { IconPlusThick } from "../../ui/glyphs";
 import { Page } from "../../ui/layout";
 import { Pager } from "../../ui/pager";
-import { DEFAULT_PER, pageCount, pageFrom, perFrom } from "../../ui/paging";
+import { DEFAULT_PER, offsetPageCount, pageFrom, perFrom } from "../../ui/paging";
 import { GlyphLink, Input } from "../../ui/primitives";
 import { useResource } from "../../useResource";
 import { STATS_CHART, STATS_LIST, STATS_NEW, statHref, statListQuery } from "./model";
@@ -79,7 +79,7 @@ export default function StatList() {
 
   /* пределы сервера — в запросе, а не отказом на весь перечень (model.ts, statListQuery) */
   const list = useResource(() => api.statModels(statListQuery(dq, page, per)), [dq, page, per]);
-  const pages = pageCount(list.data?.total ?? 0, per);
+  const pages = offsetPageCount(list.data?.total ?? 0, per);
 
   /* страница за концом списка (сузили поиск) — возвращаемся на ближайшую */
   useEffect(() => {

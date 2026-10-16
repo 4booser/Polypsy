@@ -4,7 +4,7 @@ import { baseDb, db } from "../db";
 import { asSystem, systemContext } from "../db/context";
 import { appointments, slots } from "../db/schema";
 import { log } from "./log";
-import { createMeetLink, deleteMeetEvent, moveMeetEvent } from "./meet";
+import { createMeetLink, deleteMeetEvent, type MeetOutcome, moveMeetEvent } from "./meet";
 import { STAFF_OUTBOUND_LANG } from "./notify";
 
 /**
@@ -417,4 +417,81 @@ export async function syncDueMeetings(now = new Date()): Promise<{ attempted: nu
     }
   }
   return { attempted: due.length, settled };
+}
+
+/* ─────────── встреча при записи на приём: после фиксации записи (#205) ─────────── */
+
+/**
+ * Метка «ждёт встречи» для только что записанного дистанционного приёма —
+ * она же срок захвата (LEASE_MS).
+ *
+ * Прежде запись звала Google внутри своей транзакции, держа замок слота
+ * (routes/clinic.ts, takeSlot): до 8 с на вызов, два вызова, — и все, кто в
+ * эту минуту записывался в тот же слот или правил его, стояли за ней, а
+ * запрос держал соединение пула. Теперь запись фиксируется с этой меткой,
+ * встречу создаёт шаг после фиксации (createBookedMeeting), а приём
+ * держится за ним захватом, как у фонового сведения: до срока фоновый
+ * проход приём не берёт. Процесс, умерший между фиксацией и Google, приём
+ * не теряет: по истечении срока метка «ждёт сведения» в прошлом, и фоновый
+ * проход доделывает создание (reconcile: событие не создано, приём
+ * дистанционный, ссылки нет).
+ */
+export function bookingLease(now = Date.now()): string {
+  return new Date(now + LEASE_MS).toISOString();
+}
+
+/**
+ * Создать встречу для записанного приёма — вне транзакции записи, без её
+ * замков; итог — короткой транзакцией и только пока приём всё ещё наш
+ * (leased).
+ *
+ * «Наш» — метка равна сроку, с которым приём записан, а слот, специалист и
+ * отмена те же. Перенос или отмена, пришедшие, пока шаг ждёт Google, его
+ * не ждут — они сводят календарь сами, а созданное шагом событие лишним не
+ * остаётся: приём без события берёт его и просит сведения, отменённый —
+ * удаляет (leased → lost).
+ *
+ * Отказ Google — как прежде при записи: приём остаётся без ссылки, метка
+ * снимается, специалист вписывает свою; повторов нет. Наружу — исход для
+ * журнала (MeetOutcome) или null, если приём уже не наш и встречу не
+ * создавали.
+ */
+export async function createBookedMeeting(appointmentId: string, lease: string): Promise<MeetOutcome | null> {
+  const [found] = await systemContext(baseDb, () =>
+    db
+      .select({ row: appointments, slot: slots })
+      .from(appointments)
+      .innerJoin(slots, eq(slots.id, appointments.slotId))
+      .where(and(eq(appointments.id, appointmentId), eq(appointments.meetingSyncAt, lease))),
+  );
+  if (!found) return null;
+  const { row, slot } = found;
+  const sink = leased(found, lease);
+  /*
+   * Отменён (или ссылку вписали руками) раньше, чем шаг дошёл до Google:
+   * встреча не нужна — снять метку и не звать Google вовсе.
+   */
+  if (row.status === "cancelled" || row.mode !== "remote" || row.meetingUrl) {
+    await sink.write({ meetingSyncAt: null, meetingSyncAttempts: 0 });
+    return null;
+  }
+
+  const created = await createMeetLink({
+    specialistId: row.specialistId,
+    startsAt: slot.startsAt,
+    endsAt: slot.endsAt,
+    // без имени пациента: событие видно на экране блокировки телефона специалиста (lib/meet.ts)
+    title: serverText("meet.eventTitle", STAFF_OUTBOUND_LANG),
+  });
+  const link = created.url
+    ? { meetingUrl: created.url, meetingEventId: created.eventId, meetingOrganizerId: created.eventId ? row.specialistId : null }
+    : {};
+  if (!(await sink.write({ ...link, meetingSyncAt: null, meetingSyncAttempts: 0 }))) {
+    await sink.lost(
+      created.url && created.eventId
+        ? { created: { eventId: created.eventId, url: created.url, organizerId: row.specialistId } }
+        : {},
+    );
+  }
+  return created.outcome;
 }

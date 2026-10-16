@@ -2864,7 +2864,7 @@ export const UI = {
   "ops.job.notifier": { uk: "Розсилка тривог", ru: "Рассылка тревог", en: "Alert notifications" },
   "ops.job.remind": { uk: "Нагадування про прийом", ru: "Напоминания о приёме", en: "Appointment reminders" },
   "ops.job.mailings": { uk: "Пуші розсилок", ru: "Пуши рассылок", en: "Mailing push notifications" },
-  "ops.job.retention": { uk: "Очищення потоку подій", ru: "Очистка потока событий", en: "Answer event retention" },
+  "ops.job.retention": { uk: "Очищення потоку подій і застарілих сесій", ru: "Очистка потока событий и устаревших сессий", en: "Answer event and stale session retention" },
   "ops.result.ok": { uk: "успішно", ru: "успешно", en: "ok" },
   "ops.result.error": { uk: "збій", ru: "сбой", en: "failed" },
   "ops.result.skipped": { uk: "пропущено — попередній ще йде", ru: "пропущено — предыдущий ещё идёт", en: "skipped — previous still running" },
@@ -7864,6 +7864,20 @@ export const UI = {
   },
   /* консоль: исход случая, закрытого чисткой призраков, — не решение дежурного (#197) */
   "cases.duplicate": { uk: "Дубль зданої спроби", ru: "Дубль сданной попытки", en: "Duplicate of a submitted attempt" },
+
+  /* ── w23:perf ── */
+  /* журнал: чистка мёртвых семей refresh-токенов (#205, apps/api/src/lib/retention.ts) */
+  "act.retention_refresh_tokens": {
+    uk: "Очищення завершених сесій",
+    ru: "Очистка завершённых сессий",
+    en: "Ended session cleanup",
+  },
+  /* журнал: исход встречи Google, созданной после записи на приём (#205, apps/api/src/routes/clinic.ts) */
+  "act.clinic_book_meet": {
+    uk: "Зустріч Google для запису на прийом",
+    ru: "Встреча Google для записи на приём",
+    en: "Google Meet for a booked appointment",
+  },
 
 } as const satisfies Record<string, UiEntry>;
 
