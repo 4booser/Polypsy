@@ -976,8 +976,40 @@ function adminColumns(
   ];
 }
 
-/** Отметка в матрице: даёт роль, у суперадмина — всё, не может */
-function Mark({ kind, label }: { kind: "role" | "super" | "no"; label: string }) {
+/**
+ * Клетка «Що може кожен»: у суперадмина — всё; карточка прав не прочитана
+ * (человек на ступени не ниже смотрящего — сервер её не отдаёт — или запрос
+ * не удался) — «не известно», а не «не може»: прежде пустой ответ рисовался
+ * минусом, и главный лікар выглядел в матрице человеком без прав.
+ */
+export function adminMark(
+  admin: { role: string },
+  effective: readonly string[] | null | undefined,
+  code: string,
+): "super" | "role" | "no" | "unknown" {
+  if (admin.role === "superadmin") return "super";
+  if (!effective) return "unknown";
+  return effective.includes(code) ? "role" : "no";
+}
+
+/**
+ * Читается ли карточка прав этого человека — то же правило, что у сервера
+ * (GET /api/permissions/users/:id): свою, суперадмину — любую, иначе — того,
+ * кто ступенью ниже. Заведомый отказ не запрашивается.
+ */
+export function permissionCardReadable(
+  viewer: { id: string; role: string; ladderRank: number },
+  row: { id: string; role: string; ladderRank: number },
+): boolean {
+  if (viewer.role === "superadmin" || viewer.id === row.id) return true;
+  return row.role !== "superadmin" && row.ladderRank < viewer.ladderRank;
+}
+
+/** Отметка в матрице: даёт роль, у суперадмина — всё, не может; «не известно» — пустая, с подписью */
+function Mark({ kind, label }: { kind: "role" | "super" | "no" | "unknown"; label: string }) {
+  if (kind === "unknown") {
+    return <span role="img" aria-label={label} title={label} className="inline-grid size-[22px] place-items-center" />;
+  }
   if (kind === "no") {
     return (
       <span role="img" aria-label={label} className="inline-grid size-[22px] place-items-center text-muted">
@@ -1012,14 +1044,18 @@ function AdminMatrix({
   titles: { groups: { permissions: { code: string; title: LocalizedText }[] }[] };
 }) {
   const { ut, lang } = useLang();
+  const { user } = useAuth();
+  const viewer = { id: user?.id ?? "", role: user?.role ?? "", ladderRank: user?.ladderRank ?? 0 };
   const cards = useResource(
     () =>
       Promise.all(
         admins.map((a) =>
-          a.role === "superadmin" ? Promise.resolve(null) : api.userPermissions(a.id).then((c) => c.effective).catch(() => null),
+          a.role === "superadmin" || !permissionCardReadable(viewer, { id: a.id, role: a.role, ladderRank: a.account?.ladderRank ?? 0 })
+            ? Promise.resolve(null)
+            : api.userPermissions(a.id).then((c) => c.effective).catch(() => null),
         ),
       ),
-    [admins.map((a) => a.id).join()],
+    [admins.map((a) => a.id).join(), viewer.id, viewer.ladderRank],
   );
   const titleOf = (code: string) => {
     for (const g of titles.groups) for (const p of g.permissions) if (p.code === code) return t(p.title, lang);
@@ -1050,9 +1086,15 @@ function AdminMatrix({
                 <code className="font-mono text-[11.5px] text-muted">{code}</code>
               </td>
               {admins.map((a, i) => {
-                const effective = cards.data?.[i];
-                const kind = a.role === "superadmin" ? "super" : effective?.includes(code) ? "role" : "no";
-                const label = kind === "super" ? ut("adm2.markSuper") : kind === "role" ? ut("adm2.markRole") : ut("adm2.markNo");
+                const kind = adminMark(a, cards.data?.[i], code);
+                const label =
+                  kind === "super"
+                    ? ut("adm2.markSuper")
+                    : kind === "role"
+                      ? ut("adm2.markRole")
+                      : kind === "unknown"
+                        ? ut("adm2.accessClosed")
+                        : ut("adm2.markNo");
                 return (
                   <td key={a.id} className="border-b border-divider px-2 text-center">
                     <Mark kind={kind} label={label} />

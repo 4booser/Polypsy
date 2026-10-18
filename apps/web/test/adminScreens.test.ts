@@ -19,6 +19,7 @@ import {
   viewCounts,
 } from "../src/pages/people/model";
 import { plural, shortName, whenShort } from "../src/pages/people/parts";
+import { adminMark, permissionCardReadable } from "../src/pages/people/StaffList";
 
 /**
  * Раздел «Адміністрування» 2.0 (участок v2-admin): чистая логика экранов —
@@ -267,6 +268,25 @@ describe("права", () => {
     );
     await expect(run).rejects.toThrow("403");
     expect(saved).toEqual(["r1"]);
+  });
+});
+
+describe("«Що може кожен»", () => {
+  test("непрочитанная карточка — «не известно», а не «не може»", () => {
+    expect(adminMark({ role: "admin" }, null, "users.manage")).toBe("unknown");
+    expect(adminMark({ role: "admin" }, ["users.manage"], "users.manage")).toBe("role");
+    expect(adminMark({ role: "admin" }, ["audit.read"], "users.manage")).toBe("no");
+    expect(adminMark({ role: "superadmin" }, null, "users.manage")).toBe("super");
+  });
+
+  test("карточку старшего и равного не запрашивают — сервер её не отдаёт", () => {
+    const head = { id: "h", role: "admin", ladderRank: 2 };
+    expect(permissionCardReadable(head, { id: "s", role: "admin", ladderRank: 1 })).toBe(true);
+    expect(permissionCardReadable(head, { id: "h2", role: "admin", ladderRank: 2 })).toBe(false);
+    expect(permissionCardReadable(head, { id: "c", role: "admin", ladderRank: 3 })).toBe(false);
+    expect(permissionCardReadable(head, { id: "root", role: "superadmin", ladderRank: 0 })).toBe(false);
+    expect(permissionCardReadable(head, { id: "h", role: "admin", ladderRank: 2 })).toBe(true);
+    expect(permissionCardReadable({ id: "root", role: "superadmin", ladderRank: 0 }, { id: "c", role: "admin", ladderRank: 3 })).toBe(true);
   });
 });
 
