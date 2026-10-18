@@ -1,559 +1,633 @@
-import { useState } from "react";
-import type { GroupAdmin, GroupAnalytics, Severity, SurveyGroupWithCounts, User } from "@quizzy/shared";
+import { useMemo, useState } from "react";
+import { GROUP_COLORS, type GroupAdmin, type GroupAnalytics, type SurveyGroupWithCounts, type User } from "@quizzy/shared";
 import { api } from "../api";
-import { useResource } from "../useResource";
-import { duration, dateTime, severityColor, severityKey } from "../format";
-import { BarList } from "../charts";
-import { Empty, Loading, useAction, useUrlState } from "../ui";
-import { Page, Panel, Stack } from "../ui/layout";
-import { Button, Field, Input, Num, SectionLabel, Select, Stat, Tag } from "../ui/primitives";
-import { cx } from "../ui/cx";
+import { HBars, ShareBar, TimeColumns } from "../charts/clinical";
+import { duration, severityKey } from "../format";
 import { useLang } from "../lang";
+import { ShellIcon } from "../shell/icons";
+import { Avatar, Modal, Screen, useAction } from "../ui";
+import { cx } from "../ui/cx";
+import { Drawer, DrawerSection } from "../ui/Drawer";
+import { Ic } from "../ui/icons";
+import { useHotkeys } from "../ui/keys";
+import { Count, Page, Panel } from "../ui/layout";
+import { ActionMenu, type MenuEntry } from "../ui/menu";
+import { Tooltip } from "../ui/Popover";
+import { ListGroup, ListTile, TextAction } from "../ui/records";
+import { Button, ButtonLink, Field, Input, Select, Tag } from "../ui/primitives";
+import { Callout, Empty, Loading } from "../ui/states";
+import { useUrlState } from "../ui/urlState";
+import { useResource } from "../useResource";
+import { Mi } from "./methods/icons";
+import { ListAndRecord, ListColumn, ListEmpty } from "./methods/ListColumn";
+import { Fact } from "./methods/MethodPage";
+import { dayDiff, shortDate } from "./methods/model";
+import { num, useCount } from "./methods/useCount";
 
-/**
- * Группы методик: все, что есть, вместе с администрированием и аналитикой.
+/*
+ * Групи методик — UI 3, «Виразна» (methods-groups), список і запис.
  *
- * Экран собирает три вещи, которые раньше жили порознь или не жили вовсе.
+ * Группа методик — единица разграничения доступа: администратор видит
+ * только методики своих групп. Слева — все группы, и снятые тоже:
+ * расформированное отделение никуда не делось, у него остались люди,
+ * прохождения и открытые случаи. Справа — выбранная группа: аналитика
+ * (считает сервер одним ответом — человек, прошедший три методики группы,
+ * один, а не три), администраторы и риск.
  *
- * 1. Список всех групп, включая снятые с использования. Снятые показываются
- *    здесь намеренно: расформированное отделение никуда не делось, у него
- *    остались люди, прохождения и открытые случаи, и убирать его из виду
- *    значит терять к ним дорогу. Отсеиваются они там, где список работает
- *    выбором, — в конструкторе методики и в сборке батареи.
+ * Кнопки правки — по ответу сервера (`manageable`), а не по роли: право
+ * `groups.manage` выдаётся, и заведующий отделением получает его без роли
+ * суперадмина. Завести и переименовать — в ящике, удалить — окном.
  *
- * 2. Администрирование: завести, переименовать, набрать администраторов,
- *    снять с использования. Кнопки показываются по ответу сервера
- *    (`manageable`), а не по роли: право `groups.manage` стало выдаваемым, и
- *    заведующий отделением, ради которого его заводили, при проверке роли
- *    кнопок не видел вовсе, хотя сервер его пропускал.
- *
- * 3. Аналитика по группе — по запросу, не сразу. Считает её сервер одним
- *    ответом: сложить «сколько людей» из аналитики каждой методики нельзя,
- *    человек, прошедший три методики группы, — один человек, а не три.
+ * Чего нет из макета: переключателя «30 днів / 90 днів / Рік» — аналитика
+ * группы у сервера за весь час, без периода; график по дням показывает
+ * последние 30 днів из неё.
  */
 
-const PRESET_COLORS = ["#3b5bfd", "#1baf7a", "#eb6834", "#4a3aa7", "#e87ba4"];
+type View = "all" | "active" | "retired";
 
 export default function Groups() {
-  const { ut } = useLang();
-  const [scope, setScope] = useUrlState("scope");
-  const [creating, setCreating] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
   /*
    * Сотрудники грузятся вместе с группами и только если есть кого назначать:
-   * список учётных записей закрыт правом, и его отказ не должен прятать сам
+   * список учётных записей закрыт правом, и его отказ не должен прятать
    * экран групп — он про другое.
    */
   const res = useResource(async () => {
     const groups = await api.groups();
     const staff = groups.some((g) => g.manageable)
-      ? /* сотрудники отбираются на сервере: реестр теперь страничный, и отбор по первой странице всех учёток потерял бы людей */
+      ? /* сотрудники отбираются на сервере: реестр страничный, отбор по первой странице потерял бы людей */
         await api.users({ staff: true, limit: 500 }).then((p) => p.items).catch(() => [] as User[])
       : [];
     return { groups, staff };
   }, []);
+  return <Screen res={res}>{({ groups, staff }) => <GroupsScreen groups={groups} staff={staff} reload={res.reload} />}</Screen>;
+}
 
-  const groups = res.data?.groups ?? null;
-  const staff = res.data?.staff ?? [];
-  const reload = res.reload;
-
-  if (!groups) return <Loading error={res.error} onRetry={res.reload} busy={res.loading} />;
-
+function GroupsScreen({ groups, staff, reload }: { groups: SurveyGroupWithCounts[]; staff: User[]; reload: () => void }) {
+  const { ut } = useLang();
+  const count = useCount();
+  const [selected, setSelected] = useUrlState("id");
+  const [q, setQ] = useState("");
+  const [view, setView] = useState<View>("all");
+  const [collapsed, setCollapsed] = useState(false);
+  const [editing, setEditing] = useState<SurveyGroupWithCounts | "new" | null>(null);
   const canManage = groups.some((g) => g.manageable);
-  const showAll = scope === "all";
-  const shown = showAll ? groups : groups.filter((g) => !g.archivedAt);
-  const archivedCount = groups.filter((g) => g.archivedAt).length;
 
-  return (
-    <Page
+  const needle = q.trim().toLowerCase();
+  const matches = (g: SurveyGroupWithCounts) => !needle || g.title.toLowerCase().includes(needle);
+  const byUse = (a: SurveyGroupWithCounts, b: SurveyGroupWithCounts) => b.responseCount - a.responseCount;
+  const active = groups.filter((g) => !g.archivedAt).filter(matches).sort(byUse);
+  const retired = groups.filter((g) => !!g.archivedAt).filter(matches).sort(byUse);
+  const showActive = view !== "retired";
+  const showRetired = view !== "active";
+  const order = [...(showActive ? active : []), ...(showRetired ? retired : [])];
+  const current = groups.find((g) => g.id === selected) ?? order[0] ?? null;
+
+  const step = (dir: 1 | -1) => {
+    if (!order.length) return;
+    const at = current ? order.findIndex((g) => g.id === current.id) : -1;
+    const next = order[Math.min(order.length - 1, Math.max(0, at + dir))];
+    if (next) setSelected(next.id);
+  };
+
+  const tile = (g: SurveyGroupWithCounts) => (
+    <ListTile
+      key={g.id}
+      to={`/groups?id=${g.id}`}
+      selected={current?.id === g.id}
+      title={g.title}
+      meta={count(g.surveyCount, "methods")}
+      reason={
+        <span className="flex min-w-0 items-center gap-1.5">
+          {g.admins.length ? (
+            <span className="flex -space-x-1">
+              {g.admins.slice(0, 3).map((a) => (
+                <Avatar key={a.userId} name={a.fullName} size={24} tone={current?.id === g.id ? "violet" : "soft"} className="ring-2 ring-panel" />
+              ))}
+            </span>
+          ) : null}
+          <span className="truncate text-caption text-muted">{count(g.admins.length, "admins")}</span>
+        </span>
+      }
+      aside={
+        g.openCaseCount ? (
+          <Tag tone="danger" icon={<Ic.alert />}>
+            {ut("mc.grOpenCases").replace("{n}", String(g.openCaseCount))}
+          </Tag>
+        ) : g.archivedAt ? (
+          <Tag tone="done">{ut("grp.surveyRetired")}</Tag>
+        ) : undefined
+      }
+      next={ut("mc.grResponses").replace("{n}", num(g.responseCount))}
+      nextIcon={<ShellIcon name="activity" size={13} />}
+      when={count(g.patientCount, "people")}
+    />
+  );
+
+  const list = (
+    <ListColumn
       title={ut("adm.groupsTitle")}
-      sub={ut("adm.groupsSub")}
-      count={shown.length}
+      count={groups.filter((g) => !g.archivedAt).length}
+      collapsed={collapsed}
+      onCollapse={setCollapsed}
+      onStep={step}
+      search={{ value: q, onChange: setQ, placeholder: ut("mc.grSearch") }}
+      views={{
+        value: view,
+        onChange: (k) => setView(k as View),
+        items: [
+          { key: "all", label: ut("grp.filterAll"), count: groups.length },
+          { key: "active", label: ut("grp.filterActive"), count: groups.filter((g) => !g.archivedAt).length },
+          { key: "retired", label: ut("mc.grRetiredView"), count: groups.filter((g) => !!g.archivedAt).length },
+        ],
+      }}
+      sortNote={ut("mc.grSortNote")}
+      footCount={count(groups.length, "groups")}
       actions={
         canManage ? (
-          <Button variant="primary" onClick={() => setCreating((v) => !v)}>
-            {ut("adm.newGroup")}
-          </Button>
-        ) : null
-      }
-      toolbar={
-        /*
-         * Переключатель показывается, только когда есть что показывать:
-         * «Действующие / Все» при нуле снятых групп — кнопка, которая ничего
-         * не меняет, и человек нажимает её, чтобы это выяснить.
-         */
-        archivedCount ? (
-          <div className="segmented" role="group">
-            <button
-              className={showAll ? "" : "active"}
-              aria-pressed={!showAll}
-              onClick={() => setScope("")}
-            >
-              {ut("grp.filterActive")}
-            </button>
-            <button
-              className={showAll ? "active" : ""}
-              aria-pressed={showAll}
-              onClick={() => setScope("all")}
-            >
-              {ut("grp.filterAll")}
-            </button>
-          </div>
+          <Tooltip label={ut("adm.newGroup")} side="bottom">
+            <Button size="icon-sm" variant="quiet" aria-label={ut("adm.newGroup")} onClick={() => setEditing("new")}>
+              <Mi.folderPlus />
+            </Button>
+          </Tooltip>
         ) : null
       }
     >
-      <Stack>
-        {creating && canManage ? (
-          <NewGroup
-            onDone={async () => {
-              setCreating(false);
-              reload();
-            }}
-            onError={setError}
-          />
-        ) : null}
+      {showActive && active.length ? (
+        <>
+          <ListGroup label={ut("grp.filterActive")} count={active.length} mark="violet" />
+          {active.map(tile)}
+        </>
+      ) : null}
+      {showRetired && retired.length ? (
+        <>
+          <ListGroup label={ut("mc.grRetiredGroup")} count={retired.length} mark="ok" />
+          {retired.map(tile)}
+        </>
+      ) : null}
+      {!order.length ? <ListEmpty>{groups.length ? ut("cat.emptySearch") : ut("grp.emptyHint")}</ListEmpty> : null}
+    </ListColumn>
+  );
 
-        {!canManage ? (
+  return (
+    <ListAndRecord list={list}>
+      {current ? (
+        <GroupRecord
+          key={current.id}
+          group={current}
+          staff={staff}
+          onEdit={() => setEditing(current)}
+          onChanged={reload}
+          onDeleted={() => {
+            setSelected("");
+            reload();
+          }}
+        />
+      ) : (
+        <Page
+          title={ut("adm.groupsTitle")}
+          actions={
+            canManage ? (
+              <Button variant="primary" icon={<Mi.folderPlus />} onClick={() => setEditing("new")}>
+                {ut("adm.newGroup")}
+              </Button>
+            ) : null
+          }
+        >
           <Panel>
-            <p className="m-0 text-caption text-muted">{ut("grp.noPermissionHint")}</p>
+            <Empty title={ut("grp.emptyAll")} hint={canManage ? ut("grp.emptyHint") : ut("grp.noPermissionHint")} />
           </Panel>
-        ) : null}
+        </Page>
+      )}
+      <GroupEditor
+        key={editing === "new" ? "new" : (editing?.id ?? "closed")}
+        group={editing}
+        onClose={() => setEditing(null)}
+        onSaved={() => {
+          setEditing(null);
+          reload();
+        }}
+      />
+    </ListAndRecord>
+  );
+}
 
-        {error ? <p className="text-caption text-danger">{error}</p> : null}
+/* ─────────── запись ─────────── */
 
-        {shown.length === 0 ? (
-          <Empty
-            title={showAll ? ut("grp.emptyAll") : ut("grp.emptyActive")}
-            hint={ut("grp.emptyHint")}
-          />
+function GroupRecord({
+  group: g,
+  staff,
+  onEdit,
+  onChanged,
+  onDeleted,
+}: {
+  group: SurveyGroupWithCounts;
+  staff: User[];
+  onEdit: () => void;
+  onChanged: () => void;
+  onDeleted: () => void;
+}) {
+  const { ut } = useLang();
+  const count = useCount();
+  const { run, busy } = useAction();
+  const [deleting, setDeleting] = useState(false);
+  const [removing, setRemoving] = useState<GroupAdmin | null>(null);
+  const [adding, setAdding] = useState("");
+  const archived = !!g.archivedAt;
+  const analytics = useResource(() => api.groupAnalytics(g.id), [g.id]);
+
+  useHotkeys({
+    e: () => {
+      if (g.manageable) onEdit();
+    },
+  });
+
+  const menu: MenuEntry[] = g.manageable
+    ? [
+        {
+          label: archived ? ut("grp.restore") : ut("grp.archive"),
+          icon: archived ? <Mi.archiveRestore size={16} /> : <Ic.archive size={16} />,
+          onSelect: () =>
+            void run(
+              async () => {
+                await api.archiveGroup(g.id, !archived);
+                onChanged();
+              },
+              archived ? ut("grp.restoredToast") : ut("grp.archivedToast"),
+            ),
+        },
+        { label: ut("mc.grDelete"), icon: <Mi.trash size={16} />, ruled: true, onSelect: () => setDeleting(true) },
+      ]
+    : [];
+
+  const candidates = staff.filter((u) => !g.admins.some((a) => a.userId === u.id));
+
+  return (
+    <Page
+      title={
+        <span className="inline-flex items-center gap-2.5">
+          {g.color ? <span aria-hidden className="size-3 shrink-0 rounded-full" style={{ background: g.color }} /> : null}
+          {g.title}
+        </span>
+      }
+      actions={
+        <>
+          <ButtonLink to={`/surveys?group=${g.id}`} variant="secondary">
+            <ShellIcon name="library" size={15} />
+            {ut("mc.grMethods")}
+            <Count n={g.surveyCount} tone="tint" />
+          </ButtonLink>
+          {g.manageable ? (
+            <Button variant="secondary" icon={<ShellIcon name="pencil" size={15} />} onClick={onEdit}>
+              {ut("grp.rename")}
+            </Button>
+          ) : null}
+          {menu.length ? (
+            <ActionMenu label={ut("mc.grMenu")} entries={menu} triggerSize="icon" triggerClassName="bg-violet-tint hover:bg-violet-tint-2" />
+          ) : null}
+        </>
+      }
+      below={
+        <>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-small text-text-2">
+            {archived ? (
+              <Tag tone="done" icon={<Ic.archive />}>
+                {ut("grp.archived")}
+              </Tag>
+            ) : null}
+            <Fact icon={<Mi.calendar size={15} />}>{ut("mc.grCreated").replace("{date}", shortDate(g.createdAt))}</Fact>
+            <Fact icon={<ShellIcon name="library" size={15} />}>
+              {ut("mc.grSurveys").replace("{all}", count(g.surveyCount, "methods")).replace("{pub}", num(g.publishedCount))}
+            </Fact>
+            <Fact icon={<Ic.users size={15} />}>{count(g.patientCount, "people")}</Fact>
+            <Fact icon={<ShellIcon name="user-cog" size={15} />}>{count(g.admins.length, "admins")}</Fact>
+          </div>
+          {g.description ? <p className="m-0 mt-3 max-w-[72ch] text-body text-text-2">{g.description}</p> : null}
+          {archived ? <p className="m-0 mt-2 max-w-[72ch] text-small text-muted">{ut("grp.archiveHint")}</p> : null}
+        </>
+      }
+    >
+      <div className="flex flex-col gap-4">
+        {analytics.data ? (
+          <GroupInsight data={analytics.data} />
         ) : (
-          shown.map((g) => (
-            <GroupCard key={g.id} group={g} staff={staff} onChanged={reload} onError={setError} />
-          ))
+          <Panel title={ut("grp.showAnalytics")} icon={<Ic.chart />}>
+            <Loading rows={3} error={analytics.error} onRetry={analytics.reload} bare />
+          </Panel>
         )}
-      </Stack>
+        <div className="grid grid-cols-2 items-stretch gap-4 max-[1180px]:grid-cols-1">
+          <Panel title={ut("adm.admins")} icon={<ShellIcon name="user-cog" />} count={g.admins.length}>
+            <p className="m-0 mb-2 text-small text-muted">{ut("mc.grAdminsHint")}</p>
+            {g.admins.length ? (
+              <ul className="m-0 list-none p-0">
+                {g.admins.map((a) => (
+                  <li key={a.userId} className="grid grid-cols-[28px_minmax(0,1fr)_auto] items-center gap-2.5 border-t border-divider py-2 first:border-t-0">
+                    <Avatar name={a.fullName} size={28} tone="neutral" />
+                    <span className="flex min-w-0 flex-col">
+                      <span className="truncate text-body font-semibold text-text">{a.fullName}</span>
+                      <small className="truncate text-caption text-muted">{`${a.email}, ${ut("mc.grSince").replace("{date}", shortDate(a.addedAt))}`}</small>
+                    </span>
+                    {g.manageable ? (
+                      <Button size="xs" variant="ghost" disabled={busy} onClick={() => setRemoving(a)}>
+                        {ut("acc.revoke")}
+                      </Button>
+                    ) : (
+                      <span />
+                    )}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="m-0 text-small text-muted">{ut("adm.noAdmins")}</p>
+            )}
+            {g.manageable ? (
+              <div className="mt-3 flex items-end gap-2">
+                <Field label={ut("adm.addAdmin")} className="mb-0 min-w-0 flex-1">
+                  <Select value={adding} onChange={(e) => setAdding(e.target.value)}>
+                    <option value="">{ut("sel.pickStaff")}</option>
+                    {candidates.map((u) => (
+                      <option key={u.id} value={u.id}>
+                        {`${u.fullName}, ${u.email}`}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+                <Button
+                  variant="secondary"
+                  icon={<ShellIcon name="user-plus" size={15} />}
+                  disabled={!adding || busy}
+                  onClick={() =>
+                    void run(async () => {
+                      await api.assignGroupAdmin(g.id, adding);
+                      setAdding("");
+                      onChanged();
+                    }, ut("mc.grAdminAdded"))
+                  }
+                >
+                  {ut("mc.grAdd")}
+                </Button>
+              </div>
+            ) : null}
+          </Panel>
+          <Panel
+            title={ut("mc.grRisk")}
+            icon={<Mi.siren />}
+            tone={g.openCaseCount ? "risk" : "neutral"}
+            actions={<TextAction to="/alerts">{ut("mc.grAllCases")}</TextAction>}
+          >
+            {g.openCaseCount ? (
+              <Callout
+                kind="risk"
+                icon={<Ic.alert />}
+                title={ut("mc.grOpenCases").replace("{n}", String(g.openCaseCount))}
+                actions={
+                  <ButtonLink to="/alerts" variant="risk" size="xs">
+                    {ut("mc.grReview")}
+                  </ButtonLink>
+                }
+              >
+                {ut("mc.grOpenCasesText")}
+              </Callout>
+            ) : (
+              <Callout kind="good" icon={<Ic.circleCheck />}>
+                {ut("mc.grNoCases")}
+              </Callout>
+            )}
+            <p className="m-0 mt-3 flex items-start gap-2 text-small text-muted">
+              <Ic.info size={14} className="mt-0.5" />
+              <span>{ut("mc.grArchiveNote")}</span>
+            </p>
+          </Panel>
+        </div>
+      </div>
+
+      {removing ? (
+        <Modal
+          title={ut("mc.grRemoveTitle").replace("{name}", removing.fullName)}
+          icon={<Mi.userX />}
+          tone="warn"
+          onClose={() => setRemoving(null)}
+          footer={
+            <>
+              <Button
+                variant="secondary"
+                disabled={busy}
+                onClick={() =>
+                  void run(async () => {
+                    await api.revokeGroupAdmin(g.id, removing.userId);
+                    setRemoving(null);
+                    onChanged();
+                  }, ut("mc.grAdminRemoved"))
+                }
+              >
+                {ut("acc.revoke")}
+              </Button>
+              <Button variant="quiet" onClick={() => setRemoving(null)}>
+                {ut("ui.cancel")}
+              </Button>
+            </>
+          }
+        >
+          <p className="m-0 text-body text-text-2">{ut("mc.grRemoveText").replace("{group}", g.title)}</p>
+        </Modal>
+      ) : null}
+      {deleting ? (
+        <Modal
+          title={ut("mc.grDeleteTitle").replace("{title}", g.title)}
+          icon={<Mi.trash />}
+          tone="warn"
+          onClose={() => setDeleting(false)}
+          footer={
+            <>
+              <Button
+                variant="secondary"
+                icon={<Mi.trash />}
+                disabled={busy}
+                onClick={() =>
+                  void run(async () => {
+                    await api.deleteGroup(g.id);
+                    setDeleting(false);
+                    onDeleted();
+                  }, ut("adm.groupDeleted"))
+                }
+              >
+                {ut("mc.grDelete")}
+              </Button>
+              <Button variant="quiet" onClick={() => setDeleting(false)}>
+                {ut("ui.cancel")}
+              </Button>
+            </>
+          }
+        >
+          <p className="m-0 text-body text-text-2">{ut("mc.grDeleteText")}</p>
+        </Modal>
+      ) : null}
     </Page>
   );
 }
 
-/** Заведение группы: цвет выбирается из готовых, а не пипеткой — их читают в списках */
-function NewGroup({ onDone, onError }: { onDone: () => void; onError: (e: string) => void }) {
+/**
+ * Аналитика группы (за весь час): проходження, люди, доходимість, время;
+ * распределение по тяжести (содержательные шкалы, достоверные протоколы);
+ * по методикам; по дням — последние 30.
+ */
+function GroupInsight({ data }: { data: GroupAnalytics }) {
   const { ut } = useLang();
-  const { run, busy } = useAction();
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [color, setColor] = useState(PRESET_COLORS[0]!);
+  if (!data.responseCount) {
+    return (
+      <Panel title={ut("grp.showAnalytics")} icon={<Ic.chart />}>
+        <Empty compact title={ut("grp.noResponses")} />
+      </Panel>
+    );
+  }
+  const lost = Math.max(0, data.startedCount - data.responseCount);
+  const sorted = [...data.surveys].sort((a, b) => b.responseCount - a.responseCount);
+  const top = sorted.slice(0, 6);
+  const rest = sorted.slice(6);
+  const now = new Date();
+  const days: { key: string; label: string; value: number; tip: string }[] = [];
+  const byDate = new Map(data.timeline.map((p) => [p.date, p.count] as const));
+  for (let i = 29; i >= 0; i -= 1) {
+    const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    days.push({ key, label: shortDate(key), value: byDate.get(key) ?? 0, tip: shortDate(key) });
+  }
+  const last30 = days.reduce((s, d) => s + d.value, 0);
+  const lastActive = data.timeline.at(-1)?.date ?? null;
 
   return (
-    <Panel title={ut("adm.newGroup")}>
-      <div className="flex flex-wrap items-end gap-3">
-        <Field label={ut("f.name")} className="min-w-[200px] flex-1">
-          <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder={ut("adm.groupExample")} />
-        </Field>
-        <Field label={ut("f.description")} className="min-w-[240px] flex-[2]">
-          <Input value={description} onChange={(e) => setDescription(e.target.value)} />
-        </Field>
-        <ColorPicker value={color} onChange={setColor} />
-        <Button
-          variant="primary"
-          disabled={busy || !title.trim()}
-          onClick={() =>
-            run(async () => {
-              await api
-                .createGroup({ title: title.trim(), description: description.trim() || null, color })
-                .catch((e: Error) => {
-                  onError(e.message);
-                  throw e;
-                });
-              onDone();
-            })
-          }
-        >
-          {ut("adm.create")}
-        </Button>
+    <Panel title={ut("grp.showAnalytics")} icon={<Ic.chart />} sub={ut("mc.grAllTime")}>
+      <p className="m-0 text-body text-text-2">
+        {ut("mc.grSummary")
+          .replace("{responses}", num(data.responseCount))
+          .replace("{people}", num(data.patientCount))
+          .replace("{rate}", String(data.completionRate))
+          .replace("{lost}", num(lost))
+          .replace("{avg}", data.avgDurationMs ? duration(data.avgDurationMs) : "—")}
+      </p>
+      <div className="mt-4">
+        <div className="mb-1 flex items-baseline justify-between gap-2">
+          <b className="text-small font-extrabold text-text">{ut("grp.severityTitle")}</b>
+          {data.unreliableCount ? (
+            <span className="text-caption text-muted">{`${ut("stats.unreliableLeftOut")} ${num(data.unreliableCount)}`}</span>
+          ) : null}
+        </div>
+        <ShareBar
+          label={ut("grp.severityTitle")}
+          parts={data.severityBreakdown.map((s) => ({ key: s.severity, label: ut(severityKey[s.severity]), value: s.count, severity: s.severity }))}
+        />
+        <p className="m-0 mt-2 text-small text-muted">{ut("grp.severityHint")}</p>
+      </div>
+      <div className="mt-4 grid grid-cols-2 gap-6 border-t border-divider pt-4 max-[1180px]:grid-cols-1">
+        <div className="min-w-0">
+          <div className="mb-2 flex items-baseline justify-between gap-2">
+            <b className="text-small font-extrabold text-text">{ut("grp.bySurvey")}</b>
+            <span className="text-caption text-muted">{ut("mc.grResponsesCol")}</span>
+          </div>
+          <HBars
+            items={[
+              ...top.map((s, i) => ({
+                key: s.surveyId,
+                label: s.archived ? `${s.title} (${ut("grp.surveyRetired")})` : s.title,
+                value: s.responseCount,
+                strong: i === 0,
+              })),
+              ...(rest.length
+                ? [
+                    {
+                      key: "rest",
+                      label: ut("mc.grMoreMethods").replace("{n}", String(rest.length)),
+                      value: rest.reduce((sum, s) => sum + s.responseCount, 0),
+                    },
+                  ]
+                : []),
+            ]}
+          />
+        </div>
+        <div className="min-w-0">
+          <div className="mb-2 flex items-baseline justify-between gap-2">
+            <b className="text-small font-extrabold text-text">{ut("grp.byDay")}</b>
+            <span className="text-caption text-muted">
+              {ut("mc.grLast30").replace("{n}", num(last30))}
+              {lastActive && dayDiff(new Date(`${lastActive}T00:00:00`), now) > 30 ? `, ${ut("mc.grLastActive").replace("{date}", shortDate(lastActive))}` : ""}
+            </span>
+          </div>
+          <TimeColumns columns={days} label={ut("grp.byDay")} height={180} />
+        </div>
       </div>
     </Panel>
   );
 }
 
-function ColorPicker({ value, onChange }: { value: string; onChange: (c: string) => void }) {
-  return (
-    <div className="flex items-center gap-1.5">
-      {PRESET_COLORS.map((p) => (
-        <button
-          key={p}
-          type="button"
-          onClick={() => onChange(p)}
-          title={p}
-          className={cx(
-            "size-[26px] rounded-sm border-2 p-0",
-            value === p ? "border-[var(--text)]" : "border-transparent",
-          )}
-          style={{ background: p }}
-        />
-      ))}
-    </div>
-  );
-}
+/* ─────────── группа: завести или переименовать ─────────── */
 
-/**
- * Одна группа: счётчики, администраторы и — по требованию — аналитика.
- *
- * Аналитика не грузится вместе со списком. На двадцати группах это двадцать
- * тяжёлых запросов ради панели, которую откроют у одной, и экран открывался
- * бы секундами.
- */
-function GroupCard({
-  group: g,
-  staff,
-  onChanged,
-  onError,
-}: {
-  group: SurveyGroupWithCounts;
-  staff: User[];
-  onChanged: () => void;
-  onError: (e: string) => void;
-}) {
+/** Название, пояснение и цвет; цвет — из готовых (они хранятся хексом и читаются телефоном) */
+function GroupEditor({ group, onClose, onSaved }: { group: SurveyGroupWithCounts | "new" | null; onClose: () => void; onSaved: () => void }) {
   const { ut } = useLang();
   const { run, busy } = useAction();
-  const [editing, setEditing] = useState(false);
-  const [assigning, setAssigning] = useState(false);
-  const [openAnalytics, setOpenAnalytics] = useState(false);
-  const archived = !!g.archivedAt;
+  const g = group === "new" ? null : group;
+  const [title, setTitle] = useState(g?.title ?? "");
+  const [description, setDescription] = useState(g?.description ?? "");
+  const [color, setColor] = useState<string>(g?.color ?? GROUP_COLORS[0]);
+  const dirty = title !== (g?.title ?? "") || description !== (g?.description ?? "");
+  const colors = useMemo(() => (g?.color && !(GROUP_COLORS as readonly string[]).includes(g.color) ? [g.color, ...GROUP_COLORS] : [...GROUP_COLORS]), [g]);
+
+  const save = () =>
+    void run(async () => {
+      const input = { title: title.trim(), description: description.trim() || null, color };
+      if (g) await api.updateGroup(g.id, input);
+      else await api.createGroup(input);
+      onSaved();
+    }, g ? ut("grp.renamed") : ut("mc.grCreatedToast"));
 
   return (
-    <Panel
-      title={
-        <span className="flex flex-wrap items-center gap-2">
-          {g.color ? (
-            <span aria-hidden className="size-2.5 shrink-0 rounded-full" style={{ background: g.color }} />
-          ) : null}
-          {g.title}
-          {archived ? <Tag>{ut("grp.archived")}</Tag> : null}
-          {g.openCaseCount ? <Tag tone="danger">{ut("grp.openCases")}: {g.openCaseCount}</Tag> : null}
-        </span>
-      }
-      hint={g.description || undefined}
-      actions={
+    <Drawer
+      open={group !== null}
+      onClose={onClose}
+      title={g ? ut("grp.rename") : ut("adm.newGroup")}
+      sub={g?.title}
+      icon={<Mi.folderPlus />}
+      dirty={dirty}
+      draftName={ut("mc.grDraft")}
+      footer={
         <>
-          <Button size="sm" variant="ghost" onClick={() => setOpenAnalytics((v) => !v)}>
-            {openAnalytics ? ut("grp.hideAnalytics") : ut("grp.showAnalytics")}
+          <Button variant="primary" icon={<Ic.check />} disabled={busy || !title.trim()} onClick={save}>
+            {g ? ut("ui.save") : ut("adm.create")}
           </Button>
-          <Button size="sm" variant="ghost" onClick={() => setEditing((v) => !v)}>
-            {ut("grp.rename")}
+          <Button variant="secondary" onClick={onClose}>
+            {ut("ui.cancel")}
           </Button>
-          {g.manageable ? (
-            <>
-              <Button
-                disabled={busy}
-                size="sm"
-                variant="ghost"
-                onClick={() =>
-                  run(
-                    async () => {
-                      await api.archiveGroup(g.id, !archived);
-                      onChanged();
-                    },
-                    archived ? ut("grp.restoredToast") : ut("grp.archivedToast"),
-                  )
-                }
-              >
-                {archived ? ut("grp.restore") : ut("grp.archive")}
-              </Button>
-              {/*
-                Удаление стоит последним и остаётся только для пустой группы —
-                отказ сервера показывается тостом. Для непустой правильное
-                действие рядом: снять с использования.
-              */}
-              <Button
-                disabled={busy}
-                size="sm"
-                variant="danger"
-                onClick={() =>
-                  run(async () => {
-                    /* отказ — не успех: см. useAction */
-                    if (!confirm(`${ut("adm.confirmDeleteGroup")} «${g.title}»?`)) return false;
-                    await api.deleteGroup(g.id);
-                    onChanged();
-                  }, ut("adm.groupDeleted"))
-                }
-              >
-                {ut("adm.delete")}
-              </Button>
-            </>
-          ) : null}
         </>
       }
     >
-      <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 text-caption text-muted">
-        <span>
-          <Num>{g.surveyCount}</Num> {ut("adm.methodsCount")}
-        </span>
-        <span>
-          <Num>{g.publishedCount}</Num> {ut("dash.published")}
-        </span>
-        <span>
-          <Num>{g.responseCount}</Num> {ut("adm.responsesCount")}
-        </span>
-        <span>
-          <Num>{g.patientCount}</Num> {ut("grp.people").toLowerCase()}
-        </span>
-      </div>
-
-      {archived ? <p className="mt-2 max-w-[68ch] text-caption text-muted">{ut("grp.archiveHint")}</p> : null}
-
-      {editing ? (
-        <EditGroup
-          group={g}
-          onDone={() => {
-            setEditing(false);
-            onChanged();
-          }}
-          onError={onError}
-        />
-      ) : null}
-
-      <SectionLabel className="mb-2 mt-4">{ut("adm.admins")}</SectionLabel>
-      {g.admins.length === 0 ? (
-        <p className="m-0 text-caption text-muted">{ut("adm.noAdmins")}</p>
-      ) : (
-        <div className="overflow-x-auto">
-          <table>
-            <thead>
-              <tr>
-                <th>{ut("adm.fullName")}</th>
-                <th>{ut("person.email")}</th>
-                <th>{ut("adm.assignedAt")}</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {g.admins.map((a: GroupAdmin) => (
-                <tr key={a.userId}>
-                  <td>{a.fullName}</td>
-                  <td className="text-muted">{a.email}</td>
-                  <td className="text-muted">{dateTime(a.addedAt)}</td>
-                  <td>
-                    {g.manageable ? (
-                      <Button
-                        disabled={busy}
-                        variant="danger"
-                        size="sm"
-                        onClick={() =>
-                          run(async () => {
-                            await api.revokeGroupAdmin(g.id, a.userId);
-                            onChanged();
-                          })
-                        }
-                      >
-                        {ut("acc.revoke")}
-                      </Button>
-                    ) : null}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {g.manageable ? (
-        assigning ? (
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <Select
-              defaultValue=""
-              className="max-w-[420px]"
-              onChange={(e) => {
-                if (!e.target.value) return;
-                void run(async () => {
-                  await api.assignGroupAdmin(g.id, e.target.value).catch((err: Error) => {
-                    onError(err.message);
-                    throw err;
-                  });
-                  setAssigning(false);
-                  onChanged();
-                });
-              }}
-            >
-              <option value="">{ut("sel.pickStaff")}</option>
-              {staff
-                .filter((u) => !g.admins.some((a) => a.userId === u.id))
-                .map((u) => (
-                  <option key={u.id} value={u.id}>
-                    {u.fullName} · {u.email}
-                  </option>
-                ))}
-            </Select>
-            <Button variant="quiet" onClick={() => setAssigning(false)}>
-              {ut("ui.cancel")}
-            </Button>
+      <DrawerSection>
+        <Field label={ut("f.name")}>
+          <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder={ut("adm.groupExample")} data-autofocus maxLength={200} />
+        </Field>
+        <Field label={ut("f.description")} optional>
+          <Input value={description} onChange={(e) => setDescription(e.target.value)} maxLength={1000} />
+        </Field>
+        <div role="radiogroup" aria-label={ut("mc.grColor")}>
+          <span className="mb-1.5 block text-caption font-bold text-muted">{ut("mc.grColor")}</span>
+          <div className="flex items-center gap-2">
+            {colors.map((c, i) => (
+              <button
+                key={c}
+                type="button"
+                role="radio"
+                aria-checked={color === c}
+                aria-label={ut("mc.grColorN").replace("{n}", String(i + 1))}
+                onClick={() => setColor(c)}
+                className={cx(
+                  "size-8 min-h-0 cursor-pointer rounded-full border-0 p-0",
+                  color === c ? "shadow-[0_0_0_2px_var(--panel),0_0_0_4px_var(--vring)]" : "hover:shadow-[0_0_0_2px_var(--panel),0_0_0_4px_var(--ctl)]",
+                )}
+                style={{ background: c }}
+              />
+            ))}
           </div>
-        ) : (
-          <Button variant="ghost" className="mt-3" onClick={() => setAssigning(true)}>
-            {ut("adm.addAdmin")}
-          </Button>
-        )
-      ) : null}
-
-      {openAnalytics ? <GroupInsight groupId={g.id} /> : null}
-    </Panel>
-  );
-}
-
-/** Правка названия, пояснения и цвета — тем же маршрутом, что и переименование */
-function EditGroup({
-  group: g,
-  onDone,
-  onError,
-}: {
-  group: SurveyGroupWithCounts;
-  onDone: () => void;
-  onError: (e: string) => void;
-}) {
-  const { ut } = useLang();
-  const { run, busy } = useAction();
-  const [title, setTitle] = useState(g.title);
-  const [description, setDescription] = useState(g.description ?? "");
-  const [color, setColor] = useState(g.color ?? PRESET_COLORS[0]!);
-
-  return (
-    <div className="mt-3 flex flex-wrap items-end gap-3">
-      <Field label={ut("f.name")} className="min-w-[200px] flex-1">
-        <Input value={title} onChange={(e) => setTitle(e.target.value)} />
-      </Field>
-      <Field label={ut("f.description")} className="min-w-[240px] flex-[2]">
-        <Input value={description} onChange={(e) => setDescription(e.target.value)} />
-      </Field>
-      <ColorPicker value={color} onChange={setColor} />
-      <Button
-        variant="primary"
-        disabled={busy || !title.trim()}
-        onClick={() =>
-          run(async () => {
-            await api
-              .updateGroup(g.id, {
-                title: title.trim(),
-                description: description.trim() || null,
-                color,
-              })
-              .catch((e: Error) => {
-                onError(e.message);
-                throw e;
-              });
-            onDone();
-          }, ut("grp.renamed"))
-        }
-      >
-        {ut("ui.save")}
-      </Button>
-    </div>
-  );
-}
-
-const SEVERITIES: Severity[] = ["none", "mild", "moderate", "severe"];
-
-/**
- * Аналитика группы.
- *
- * Три вопроса, ради которых её открывают: сколько людей прошло, сколько
- * получилось прохождений и как они распределились по степеням выраженности.
- * Людей и прохождения разведены намеренно — двадцать замеров одного человека
- * читаются как двадцать обследованных ровно до тех пор, пока стоит одно
- * число.
- */
-function GroupInsight({ groupId }: { groupId: string }) {
-  const { ut } = useLang();
-  const res = useResource(() => api.groupAnalytics(groupId), [groupId]);
-  const data: GroupAnalytics | null = res.data;
-
-  if (!data) return <Loading rows={3} error={res.error} onRetry={res.reload} busy={res.loading} />;
-  if (!data.responseCount) {
-    return <p className="mt-4 text-caption text-muted">{ut("grp.noResponses")}</p>;
-  }
-
-  const severityItems = data.severityBreakdown.map((s) => ({
-    label: ut(severityKey[s.severity]),
-    value: s.count,
-    color: severityColor[s.severity],
-  }));
-
-  return (
-    <div className="mt-4 flex flex-col gap-4 border-t border-hairline pt-4">
-      <div className="flex flex-wrap gap-8">
-        <Stat value={data.patientCount} label={ut("grp.people")} />
-        <Stat value={data.responseCount} label={ut("adm.responsesCount")} />
-        <Stat value={data.completionRate} unit="%" label={ut("grp.completion")} />
-        <Stat
-          value={data.avgDurationMs ? duration(data.avgDurationMs) : null}
-          label={ut("grp.avgDuration")}
-        />
-        <Stat
-          value={data.openCaseCount}
-          label={ut("grp.openCases")}
-          tone={data.openCaseCount ? "danger" : "plain"}
-        />
-      </div>
-
-      <div>
-        <SectionLabel className="mb-2">{ut("grp.severityTitle")}</SectionLabel>
-        <BarList items={severityItems} />
-        <p className="mt-2 max-w-[68ch] text-caption text-muted">{ut("grp.severityHint")}</p>
-        {data.unreliableCount ? (
-          <p className="mt-1 max-w-[68ch] text-caption text-muted">
-            {ut("stats.unreliableLeftOut")} <Num>{data.unreliableCount}</Num>
-          </p>
-        ) : null}
-      </div>
-
-      <div>
-        <SectionLabel className="mb-2">{ut("grp.bySurvey")}</SectionLabel>
-        <div className="overflow-x-auto">
-          <table>
-            <thead>
-              <tr>
-                <th>{ut("f.name")}</th>
-                <th>{ut("adm.responsesCount")}</th>
-                <th>{ut("grp.people")}</th>
-                {SEVERITIES.map((s) => (
-                  <th key={s}>{ut(severityKey[s])}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {data.surveys.map((s) => (
-                <tr key={s.surveyId}>
-                  <td>
-                    {s.title}
-                    {s.archived ? <span className="text-muted"> · {ut("grp.surveyRetired")}</span> : null}
-                  </td>
-                  <td>
-                    <Num>{s.responseCount}</Num>
-                  </td>
-                  <td>
-                    <Num>{s.patientCount}</Num>
-                  </td>
-                  {SEVERITIES.map((sev) => {
-                    const n = s.severityBreakdown.find((b) => b.severity === sev)?.count ?? 0;
-                    return (
-                      <td key={sev} style={{ color: n ? severityColor[sev] : undefined }}>
-                        <Num>{n || "—"}</Num>
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <p className="m-0 mt-1.5 text-small text-muted">{ut("mc.grColorHint")}</p>
         </div>
-      </div>
-
-      {data.timeline.length > 1 ? (
-        <div>
-          <SectionLabel className="mb-2">{ut("grp.byDay")}</SectionLabel>
-          <BarList items={data.timeline.slice(-14).map((p) => ({ label: p.date, value: p.count }))} />
-        </div>
-      ) : null}
-    </div>
+      </DrawerSection>
+    </Drawer>
   );
 }
