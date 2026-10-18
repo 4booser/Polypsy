@@ -157,7 +157,7 @@ export function Preview({
       >
         <p className="m-0 text-small text-text-2">{ut("ce.keyHint")}</p>
         {asked.length ? (
-          <div className="mt-3 flex flex-wrap gap-1" role="list" aria-label={ut("ce.keyCells")}>
+          <ul className="m-0 mt-3 flex list-none flex-wrap gap-1 p-0" aria-label={ut("ce.keyCells")}>
             {shown.map((q, i) => {
               if (q.type === "info") return null;
               const ids = picked.get(qid(i)) ?? [];
@@ -177,28 +177,29 @@ export function Preview({
                         ? "bg-answer-2 text-answer-2-ink"
                         : "bg-answer-3 text-answer-3-ink";
               return (
-                <button
-                  key={q.uid}
-                  type="button"
-                  role="listitem"
-                  aria-label={`${ut("ce.questionN")} ${i + 1}${options.length ? `: ${score}` : ""}`}
-                  title={`${ut("ce.questionN")} ${i + 1}`}
-                  onClick={() => {
-                    setAt(i);
-                    onPick?.(i);
-                  }}
-                  className={cx(
-                    "inline-grid h-7 min-h-0 w-7 cursor-pointer place-items-center rounded-[8px] border-0 p-0 text-small font-extrabold tabular-nums",
-                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-ring",
-                    i === index && "outline outline-2 outline-offset-1 outline-violet-ring",
-                    tone,
-                  )}
-                >
-                  {options.length ? score : ""}
-                </button>
+                <li key={q.uid} className="flex">
+                  <button
+                    type="button"
+                    aria-current={i === index ? "true" : undefined}
+                    aria-label={`${ut("ce.questionN")} ${i + 1}${options.length ? `: ${score}` : ""}`}
+                    title={`${ut("ce.questionN")} ${i + 1}`}
+                    onClick={() => {
+                      setAt(i);
+                      onPick?.(i);
+                    }}
+                    className={cx(
+                      "inline-grid h-7 min-h-0 w-7 cursor-pointer place-items-center rounded-[8px] border-0 p-0 text-small font-extrabold tabular-nums",
+                      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-ring",
+                      i === index && "outline outline-2 outline-offset-1 outline-violet-ring",
+                      tone,
+                    )}
+                  >
+                    {options.length ? score : ""}
+                  </button>
+                </li>
               );
             })}
-          </div>
+          </ul>
         ) : null}
 
         {picked.size ? (

@@ -99,7 +99,7 @@ export function Structure({
             <button
               key={it.key}
               type="button"
-              aria-current={on ? "page" : undefined}
+              aria-current={on ? "true" : undefined}
               onClick={() => onSection(it.key)}
               className={cx(
                 "flex h-9 min-h-0 w-full cursor-pointer items-center gap-2.5 rounded-control border-0 px-2.5 text-left text-body",
@@ -123,8 +123,10 @@ export function Structure({
 
       {draft.questions.length ? (
         <>
-          <div className="shrink-0 px-2.5 pb-1.5 pt-3 text-caption font-bold text-muted">{ut("ce.dragHint")}</div>
-          <ol className="kit-scroll m-0 min-h-0 flex-1 list-none overflow-y-auto p-0" aria-label={ut("co.questions")}>
+          <div id="cn-items-h" className="shrink-0 px-2.5 pb-1.5 pt-3 text-caption font-bold text-muted">
+            {ut("ce.dragHint")}
+          </div>
+          <ol className="kit-scroll m-0 min-h-0 flex-1 list-none overflow-y-auto p-0" aria-labelledby="cn-items-h">
             {draft.questions.map((q, i) => {
               const on = open === q.uid && section === "questions";
               const label = q.help?.[lang] || q.title[lang] || q.title.uk || q.title.ru || ut("co.previewNoText");
