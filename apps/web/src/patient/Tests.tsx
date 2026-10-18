@@ -14,6 +14,7 @@ import { Glyph } from "./icons";
 import { drafts, type RunnerDraft } from "./outbox";
 import { OutboxPanel } from "./OutboxStrip";
 import type { PatientOutlet } from "./PatientApp";
+import { Count } from "../ui/layout";
 import { BandCard, Body, CodeTile, FactList, Hero, HelpLink, MetaLine, Pending, PtPanel, SideGrid, instrumentCode, instrumentName } from "./parts";
 import { ResultCell, mainScore } from "./results";
 import { dayOffset, dm, hm, localDayKey, whenSaid } from "./when";
@@ -62,6 +63,8 @@ export function TestsBody({
   const { ut } = useLang();
   /* доступное всем — длинный каталог; сначала несколько, остальное по нажатию */
   const [allAnytime, setAllAnytime] = useState(false);
+  /* «пройти ще раз»: null — по умолчанию (открыто, когда нового нет) */
+  const [againOpen, setAgainOpen] = useState<boolean | null>(null);
   const view = loadView(surveys);
   const list = (surveys.data ?? []).filter((s) => s.status === "published");
   const draftOf = new Map(local.map((d) => [d.surveyId, d]));
@@ -74,6 +77,20 @@ export function TestsBody({
   );
   const fromSpecialist = todo.filter((s) => rank(s) < 2);
   const anytime = todo.filter((s) => rank(s) === 2);
+  /*
+   * Пройденное не зовётся как новое, но и не прячется: где методика
+   * разрешает повтор (allowRetake), её можно пройти ещё раз — последней
+   * группой, с датой прошлого раза. Когда нового нет, группа открыта; когда
+   * есть — свёрнута, чтобы назначенное не терялось в каталоге.
+   */
+  const again = list.filter((s) => s.completedByMe && s.allowRetake && !draftOf.has(s.id) && !queued.has(s.id));
+  const lastTaken = new Map<string, string>();
+  for (const r of responses.data?.items ?? []) {
+    if (r.status !== "completed" || !r.submittedAt) continue;
+    const seen = lastTaken.get(r.surveyId);
+    if (!seen || seen < r.submittedAt) lastTaken.set(r.surveyId, r.submittedAt);
+  }
+  const showAgain = againOpen ?? todo.length === 0;
   const pending = outbox ? outbox.waiting.length + outbox.rejected.length : 0;
 
   const assigned = list.filter((s) => s.assigned);
@@ -178,7 +195,8 @@ export function TestsBody({
             >
               {todo.length === 0 ? (
                 <p className="m-0 px-[18px] pb-[18px] text-[16px] text-muted">{ut("pt.noTests")}</p>
-              ) : (
+              ) : null}
+              {todo.length === 0 ? null : (
                 <>
                   {fromSpecialist.map((s, i) => (
                     <TodoRow key={s.id} survey={s} draft={draftOf.get(s.id) ?? null} primary={i === 0} />
@@ -213,6 +231,25 @@ export function TestsBody({
                   ) : null}
                 </>
               )}
+              {again.length ? (
+                <>
+                  <button
+                    type="button"
+                    aria-expanded={showAgain}
+                    onClick={() => setAgainOpen(!showAgain)}
+                    className="flex w-full items-center gap-2 border-0 border-t border-solid border-divider bg-panel-2 px-[18px] py-2.5 text-left text-[14px] font-extrabold text-text transition-colors hover:bg-sunk focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-focus"
+                  >
+                    <Glyph name="rotate-ccw" size={16} className="shrink-0 text-muted" />
+                    {ut("ptw.againGroup")}
+                    <Count n={again.length} />
+                    <span className="min-w-0 font-semibold text-muted max-[600px]:hidden">{ut("ptw.againGroupSub")}</span>
+                    <Ic.chevronDown size={16} className={cx("ml-auto shrink-0 text-muted transition-transform", showAgain && "rotate-180")} />
+                  </button>
+                  {showAgain
+                    ? again.map((s) => <TodoRow key={s.id} survey={s} draft={null} primary={false} again={lastTaken.get(s.id) ?? ""} />)
+                    : null}
+                </>
+              ) : null}
             </PtPanel>
           )}
         </SideGrid>
@@ -226,11 +263,27 @@ export function TestsBody({
 const ANYTIME_SHOWN = 4;
 
 /** Строка «пройти»: плитка с кодом, название и почему здесь, действие справа */
-function TodoRow({ survey: s, draft, primary }: { survey: SurveyListItem; draft: RunnerDraft | null; primary: boolean }) {
+function TodoRow({
+  survey: s,
+  draft,
+  primary,
+  again,
+}: {
+  survey: SurveyListItem;
+  draft: RunnerDraft | null;
+  primary: boolean;
+  /** Пройдено раньше, повтор разрешён: когда проходили в последний раз («» — неизвестно) */
+  again?: string;
+}) {
   const { ut } = useLang();
+  const action = again !== undefined ? ut("ptw.again") : draft ? ut("ptw.continue") : ut("pt.start");
   const meta = [
     { key: "n", icon: <ShellIcon name="list-checks" size={15} />, text: `${ut("ms.questions")}: ${s.questionCount}` },
-    ...(draft
+    ...(again !== undefined
+      ? again
+        ? [{ key: "done", icon: <Ic.circleCheck size={15} />, text: `${ut("ptw.takenLast")} ${whenSaid(again, ut)}` }]
+        : []
+      : draft
       ? [
           { key: "start", icon: <Glyph name="clock" size={15} />, text: `${ut("ptw.startedWhen")} ${whenSaid(draft.startedAt, ut)}` },
           { key: "dev", icon: <Glyph name="hard-drive" size={15} />, text: ut("ptw.savedHere") },
@@ -287,10 +340,10 @@ function TodoRow({ survey: s, draft, primary }: { survey: SurveyListItem; draft:
           variant={primary ? "primary" : "secondary"}
           size="md"
           className="max-[600px]:w-full"
-          aria-label={`${draft ? ut("ptw.continue") : ut("pt.start")}: ${s.title}`}
+          aria-label={`${action}: ${s.title}`}
         >
           {draft ? <Glyph name="play" size={16} /> : null}
-          {draft ? ut("ptw.continue") : ut("pt.start")}
+          {action}
           {primary && !draft ? <Ic.arrowRight size={17} /> : null}
         </ButtonLink>
       </div>
@@ -329,14 +382,6 @@ function DonePanel({
     const day = days.find((d) => d.key === key);
     if (day) day.rows.push(r);
     else days.push({ key, rows: [r] });
-  }
-  /* последнее прохождение каждой методики — у него «Пройти ще раз» */
-  const latest = new Set<string>();
-  const seen = new Set<string>();
-  for (const r of items) {
-    if (seen.has(r.surveyId)) continue;
-    seen.add(r.surveyId);
-    latest.add(r.id);
   }
   const before = (r: SurveyResponse) => {
     const prev = items.find((x) => x.surveyId === r.surveyId && x.submittedAt! < r.submittedAt! && mainScore(x.scores));
@@ -383,11 +428,6 @@ function DonePanel({
                       <Ic.circleCheck size={15} className="text-good" />
                       {`${ut("ptw.sentAtLower")} ${i === 0 && dayOffset(r.submittedAt!) === 0 ? hm(r.submittedAt!) : whenSaid(r.submittedAt!, ut)}`}
                     </span>
-                    {s && latest.has(r.id) && s.allowRetake ? (
-                      <ButtonLink to={`/me/tests/${s.id}`} variant="ghost" size="xs" className="-my-1">
-                        {ut("ptw.again")}
-                      </ButtonLink>
-                    ) : null}
                   </div>
                 </div>
                 <div className="max-[760px]:col-span-2 max-[760px]:pl-[54px]">

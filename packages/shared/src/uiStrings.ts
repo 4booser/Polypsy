@@ -8251,6 +8251,13 @@ export const UI = {
   "ptw.anytimeSub": { uk: "доступні всім, без строку", ru: "доступны всем, без срока", en: "open to everyone, no deadline" },
   "ptw.showAll": { uk: "Показати ще {n}", ru: "Показать ещё {n}", en: "Show {n} more" },
   "ptw.showFewer": { uk: "Згорнути", ru: "Свернуть", en: "Show fewer" },
+  "ptw.againGroup": { uk: "Можна пройти ще раз", ru: "Можно пройти ещё раз", en: "You can take again" },
+  "ptw.againGroupSub": {
+    uk: "ви вже проходили — повтор дозволяє методика",
+    ru: "вы уже проходили — повтор разрешает методика",
+    en: "you have taken these — the instrument allows a repeat",
+  },
+  "ptw.takenLast": { uk: "проходили", ru: "проходили", en: "last taken" },
   "ptw.done": { uk: "Пройдені", ru: "Пройденные", en: "Completed" },
   "ptw.doneSub": {
     uk: "результат — там, де відділення дозволяє його показувати",

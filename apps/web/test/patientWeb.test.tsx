@@ -302,6 +302,22 @@ describe("«Мої тести»: что пройти и в каком поряд
     expect(has(html, "pt.outboxSend")).toBe(true);
   });
 
+  test("пройденное, где повтор разрешён, — «Можна пройти ще раз»: открыто, когда нового нет, и свёрнуто, когда есть", () => {
+    const repeatable = s({ id: "rep", title: "Повтор (EEE)", completedByMe: true, allowRetake: true });
+    const once = s({ id: "once", completedByMe: true, allowRetake: false });
+    const alone = body([repeatable, once]);
+    expect(has(alone, "pt.noTests")).toBe(true);
+    expect(has(alone, "ptw.againGroup")).toBe(true);
+    expect(alone).toContain('href="/me/tests/rep"');
+    expect(has(alone, "ptw.again")).toBe(true);
+    // повтор не разрешён — не предлагается вовсе
+    expect(alone).not.toContain('href="/me/tests/once"');
+    const withNew = body([repeatable, s({ id: "new" })]);
+    expect(withNew).toContain('href="/me/tests/new"');
+    expect(withNew).not.toContain('href="/me/tests/rep"');
+    expect(withNew).toMatch(/aria-expanded="false"/);
+  });
+
   test("доступное всем — первые несколько, остальное по нажатию", () => {
     const many = Array.from({ length: 9 }, (_, i) => s({ id: `c${i}`, title: `Каталог ${i}` }));
     const html = body(many);

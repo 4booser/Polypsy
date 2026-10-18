@@ -66,7 +66,8 @@ for (const [name, path] of SCREENS) {
     await page.goto(path);
     /* ждём не заголовок, а нижние вкладки: иначе проверка про заголовок
        вырождается в таймаут ожидания, который ничего не объясняет */
-    await page.getByRole("link", { name: "Тесты" }).waitFor();
+    /* вкладка — в навигации кабинета: на главной есть и «Все тесты» в панели «Что пройти» */
+    await page.getByRole("navigation", { name: /^(Кабінет|Кабинет|Portal)$/ }).getByRole("link", { name: "Тесты" }).waitFor();
     await page.waitForLoadState("networkidle");
 
     /*

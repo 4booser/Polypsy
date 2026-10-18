@@ -14,7 +14,8 @@ test("пациент входит в свой кабинет, а не в кон�
   // оболочка специалиста не должна появиться ни на мгновение: её признак —
   // колокольчик полосы приложения, он есть у сотрудника на любой ширине экрана
   await expect(eventsBell(page)).toHaveCount(0);
-  await expect(page.getByRole("link", { name: "Тесты" })).toBeVisible();
+  /* вкладка — в навигации кабинета: на главной есть и «Все тесты» в панели «Что пройти» */
+  await expect(page.getByRole("navigation", { name: /^(Кабінет|Кабинет|Portal)$/ }).getByRole("link", { name: "Тесты" })).toBeVisible();
 });
 
 test("человек заводит учётную запись и проходит методику", async ({ page }) => {
@@ -67,7 +68,7 @@ test("человек заводит учётную запись и проход�
   await page.getByRole("button", { name: /^(Погоджуюся|Соглашаюсь|I agree)$/ }).click();
   await expect(eventsBell(page)).toHaveCount(0);
 
-  await page.getByRole("link", { name: "Тесты" }).click();
+  await page.getByRole("navigation", { name: /^(Кабінет|Кабинет|Portal)$/ }).getByRole("link", { name: "Тесты" }).click();
   // короткая методика: МЛО на двести пунктов уронило бы проверку по сроку
   const link = page
     .locator('a[href^="/me/tests/"]')
