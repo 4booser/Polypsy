@@ -179,6 +179,7 @@ const PATHS = {
   ),
   "arrow-up-right": <path d="M7 7h10v10M7 17 17 7" />,
   "arrow-right": <path d="M5 12h14M12 5l7 7-7 7" />,
+  "arrow-down": <path d="M12 5v14M19 12l-7 7-7-7" />,
   "arrow-up-down": <path d="m21 16-4 4-4-4M17 20V4M3 8l4-4 4 4M7 4v16" />,
   "corner-down-right": <path d="M15 10l5 5-5 5M4 4v7a4 4 0 0 0 4 4h12" />,
   "chevron-right": <path d="m9 18 6-6-6-6" />,

@@ -358,10 +358,10 @@ export function fillNode(template: string, vars: Record<string, ReactNode>): Rea
  * фильтром ленты: номер из экрана ошибки у человека — это вопрос «что
  * случилось с этим обращением», и ответ на него — трасса целиком.
  */
-export function TraceBox({ wide, className }: { wide?: boolean; className?: string }) {
+export function TraceBox({ wide, initial = "", className }: { wide?: boolean; initial?: string; className?: string }) {
   const { ut } = useLang();
   const navigate = useNavigate();
-  const [value, setValue] = useState("");
+  const [value, setValue] = useState(initial);
   const [bad, setBad] = useState(false);
   return (
     <form
