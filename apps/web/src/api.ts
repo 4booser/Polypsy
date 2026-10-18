@@ -30,6 +30,7 @@ import type {
   OpsSessionPage,
   OpsSessionsSummary,
   OpsUserPage,
+  OpsUserRow,
   OpsUsersSummary,
   OpsUsersAttention,
   OpsAuditChainReport,
@@ -1754,6 +1755,8 @@ export const api = {
   },
   /** Сводка реестра для графиков над списком: только числа, пациенты — через порог (волна 11) */
   opsUsersSummary: () => request<OpsUsersSummary>("/api/ops/users/summary"),
+  /** Одна запись реестра — для панели справа */
+  opsUser: (id: string) => request<OpsUserRow>(`/api/ops/users/${encodeURIComponent(id)}`),
   /** «Потребує уваги» реестра: заперті, без обов’язкового другого фактора, давній тимчасовий пароль, персонал без входу */
   opsUsersAttention: () => request<OpsUsersAttention>("/api/ops/users/attention"),
   disableUser: (id: string, reason: string) =>

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { OpsUserPage, OpsUsersAttention } from "@quizzy/shared";
+import type { OpsUserPage, OpsUserRow, OpsUsersAttention } from "@quizzy/shared";
 import { auditLog, loginAttempts, permissionExceptions, userSecondFactor } from "../src/db/schema";
 import { classifyAttention, IDLE_STAFF_DAYS, TEMP_PASSWORD_HOURS, type AttentionAccount } from "../src/lib/usersAttention";
 import { writePolicy } from "../src/lib/secondFactor";
@@ -168,6 +168,28 @@ describe("строка реестра: второй фактор и запира
     /* в окне шесть неудач при пороге пять: откроется, когда выйдет вторая */
     expect(new Date(row.lock!.until).getTime()).toBe(first + 1000 + 15 * 60_000);
 
+  });
+});
+
+describe("одна запись реестра", () => {
+  test("та же строка, что в списке; чужому праву — отказ; нет такой — 404; чтение — в журнал", async () => {
+    const t = tag();
+    const person = await makeUser("admin", `w25-one-${t}@test.dev`);
+    const list = await api<OpsUserPage>(`/api/ops/users?q=${t}`, root.token);
+    const one = await api<OpsUserRow>(`/api/ops/users/${person.id}`, root.token);
+    expect(one.status).toBe(200);
+    expect(one.body).toEqual(list.body.items[0]!);
+
+    const plain = await makeUser("admin", `w25-one-plain-${t}@test.dev`);
+    expect((await api(`/api/ops/users/${person.id}`, plain.token)).status).toBe(403);
+    expect((await api(`/api/ops/users/${crypto.randomUUID()}`, root.token)).status).toBe(404);
+
+    const [row] = await db
+      .select()
+      .from(auditLog)
+      .where(and(eq(auditLog.action, "user.list"), eq(auditLog.subjectUserId, person.id)))
+      .limit(1);
+    expect((row!.details as { view?: string }).view).toBe("account");
   });
 });
 

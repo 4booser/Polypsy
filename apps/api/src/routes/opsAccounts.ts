@@ -8,6 +8,7 @@ import {
   SUPERADMIN_RANK,
   roleRank,
   t,
+  type Lang,
   type OpsSession,
   type OpsSessionPage,
   type OpsUserPage,
@@ -95,38 +96,15 @@ function refusal(c: Context<AppEnv>, body: Record<string, unknown>) {
 
 /* ─────────── реестр ─────────── */
 
+/** Строка реестра из учётки отбора (matchRegistry) */
+type RegistryAccount = Awaited<ReturnType<typeof matchRegistry>>["matched"][number];
+
 /**
- * Весь реестр: персонал и пациенты, с состоянием каждой учётки.
- *
- * Поиск и порядок — в приложении после расшифровки, как у списка пациентов:
- * ФИО шифровано, и искать его в SQL нечем. Реестр учреждения — тысячи
- * строк, не миллионы; расшифровать их дешевле, чем хранить имя открыто.
- *
- * Телефон — слепым индексом и только целым номером: «0501112233» находит
- * человека, «111-22» — нет. Частичный номер пришлось бы искать по
- * расшифрованным телефонам всего реестра, а наружу телефон здесь не отдаётся
- * вовсе — экрану учёток он не нужен, и расшифровывать восемь тысяч номеров
- * ради поиска по куску значило бы раскрывать их без нужды.
- *
- * Тяжёлое — след, сессии, роли — считается только для строк страницы.
- * След и число записей журнала читаются системной ролью: заведующему с
- * users.manage политики строк показали бы только прохождения его групп, и
- * «следа нет» означало бы «следа в моей зоне нет» — а удаление уносит
- * каскадом всё. Наружу уходят числа, не содержимое.
+ * Строки реестра для учёток страницы: тяжёлое — след, сессии, роли — только
+ * для них. Одним кодом для списка и для одной записи (панель справа): иначе
+ * запись в панели и та же запись в списке разошлись бы в мелочах.
  */
-opsUserRoutes.get("/", async (c) => {
-  const lang = langOf(c);
-  const { q, role, status, sort, page, per } = parseQuery(c, opsUserListQuery);
-
-  /*
-   * Отбор и порядок — одной функцией (matchRegistry) с «вибрати всіх у
-   * відборі» массовых действий (routes/opsPeople.ts): выбор «всех в отборе»
-   * обязан совпадать с тем, что человек видит в списке, строка в строку.
-   */
-  const { all, matched } = await matchRegistry({ q, role, status, sort }, lang);
-  const emailOf = new Map(all.map((u) => [u.id, u.email]));
-
-  const slice = matched.slice((page - 1) * per, page * per);
+async function registryRows(slice: RegistryAccount[], emailOf: ReadonlyMap<string, string>, lang: Lang): Promise<OpsUserRow[]> {
   const ids = slice.map((u) => u.id);
 
   /*
@@ -162,7 +140,7 @@ opsUserRoutes.get("/", async (c) => {
       : Promise.resolve([]),
   ]);
 
-  const items: OpsUserRow[] = slice.map((u) => {
+  return slice.map((u): OpsUserRow => {
     const mine = roleRows.filter((r) => r.userId === u.id);
     return {
       id: u.id,
@@ -186,6 +164,42 @@ opsUserRoutes.get("/", async (c) => {
       lock: security.get(u.id)?.lock ?? null,
     };
   });
+}
+
+
+/**
+ * Весь реестр: персонал и пациенты, с состоянием каждой учётки.
+ *
+ * Поиск и порядок — в приложении после расшифровки, как у списка пациентов:
+ * ФИО шифровано, и искать его в SQL нечем. Реестр учреждения — тысячи
+ * строк, не миллионы; расшифровать их дешевле, чем хранить имя открыто.
+ *
+ * Телефон — слепым индексом и только целым номером: «0501112233» находит
+ * человека, «111-22» — нет. Частичный номер пришлось бы искать по
+ * расшифрованным телефонам всего реестра, а наружу телефон здесь не отдаётся
+ * вовсе — экрану учёток он не нужен, и расшифровывать восемь тысяч номеров
+ * ради поиска по куску значило бы раскрывать их без нужды.
+ *
+ * Тяжёлое — след, сессии, роли — считается только для строк страницы.
+ * След и число записей журнала читаются системной ролью: заведующему с
+ * users.manage политики строк показали бы только прохождения его групп, и
+ * «следа нет» означало бы «следа в моей зоне нет» — а удаление уносит
+ * каскадом всё. Наружу уходят числа, не содержимое.
+ */
+opsUserRoutes.get("/", async (c) => {
+  const lang = langOf(c);
+  const { q, role, status, sort, page, per } = parseQuery(c, opsUserListQuery);
+
+  /*
+   * Отбор и порядок — одной функцией (matchRegistry) с «вибрати всіх у
+   * відборі» массовых действий (routes/opsPeople.ts): выбор «всех в отборе»
+   * обязан совпадать с тем, что человек видит в списке, строка в строку.
+   */
+  const { all, matched } = await matchRegistry({ q, role, status, sort }, lang);
+  const emailOf = new Map(all.map((u) => [u.id, u.email]));
+
+  const slice = matched.slice((page - 1) * per, page * per);
+  const items = await registryRows(slice, emailOf, lang);
 
   /*
    * Имя действия то же, что у прежнего списка учёток: «кто листал реестр»
@@ -238,6 +252,28 @@ opsUserRoutes.get("/attention", async (c) => {
     },
   });
   return c.json(body);
+});
+
+/**
+ * Одна запись реестра — для панели справа (Polypsy 2.0, `?user=:id`): та же
+ * строка, что в списке, по ссылке, которую пересылают. Чтение — в журнал тем
+ * же user.list, с тем, о ком оно.
+ */
+opsUserRoutes.get("/:id", async (c) => {
+  const id = c.req.param("id");
+  const { all } = await matchRegistry({ q: "" }, langOf(c));
+  const account = all.find((u) => u.id === id);
+  if (!account) notFound("err.userNotFound");
+  const emailOf = new Map(all.map((u) => [u.id, u.email]));
+  const [row] = await registryRows([{ ...account, fullName: fullNameOf(account) }], emailOf, langOf(c));
+  await audit(c, {
+    action: "user.list",
+    resourceType: "user",
+    resourceId: id,
+    subjectUserId: id,
+    details: { ops: true, view: "account" },
+  });
+  return c.json(row);
 });
 
 /* ─────────── выключение ─────────── */
