@@ -52,6 +52,7 @@ export function AssignDrawer({
   note,
   draftName,
   existing,
+  exclusive,
   assignOne,
   assignGroup,
   onAssigned,
@@ -67,6 +68,12 @@ export function AssignDrawer({
   draftName: string;
   /** userId → прежнее назначение (если есть) */
   existing?: ReadonlyMap<string, ExistingAssignment>;
+  /**
+   * Прежнее назначение не заменяется, а запрещает новое (набор: одно
+   * открытое на человека, routes/batteries.ts): такого человека не
+   * предлагать, а сказать, почему.
+   */
+  exclusive?: boolean;
   /** Назначить одному человеку; срок — «ГГГГ-ММ-ДД» или null */
   assignOne: (userId: string, due: string | null, note: string | null) => Promise<unknown>;
   /** Назначить группе пациентов; без него — только поимённо */
@@ -91,7 +98,8 @@ export function AssignDrawer({
     () => (found.data?.items ?? []).filter((p) => !picked.some((x) => x.id === p.id)).slice(0, 8),
     [found.data, picked],
   );
-  const conflicts = picked.filter((p) => existing?.get(p.id) && !existing.get(p.id)!.done);
+  const conflicts = exclusive ? [] : picked.filter((p) => existing?.get(p.id) && !existing.get(p.id)!.done);
+  const busyOne = (id: string) => !!exclusive && !!existing?.get(id) && !existing.get(id)!.done;
   const dueInPast = pastDeadline(due, today());
   const dirty = picked.length > 0 || comment.trim() !== "" || groupId !== "";
   const ready = !dueInPast && (mode === "people" ? picked.length > 0 : groupId !== "");
@@ -255,12 +263,13 @@ export function AssignDrawer({
                       <li key={p.id}>
                         <button
                           type="button"
+                          disabled={busyOne(p.id)}
                           onClick={() => {
                             setPicked((prev) => [...prev, p]);
                             setQuery("");
                             searchRef.current?.focus();
                           }}
-                          className="flex w-full min-h-0 cursor-pointer items-center gap-2.5 rounded-[8px] border-0 bg-transparent px-2.5 py-1.5 text-left hover:bg-sunk"
+                          className="flex w-full min-h-0 cursor-pointer items-center gap-2.5 rounded-[8px] border-0 bg-transparent px-2.5 py-1.5 text-left hover:bg-sunk disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent"
                         >
                           <Avatar name={p.fullName} size={28} />
                           <span className="flex min-w-0 flex-col">
@@ -275,7 +284,7 @@ export function AssignDrawer({
                                 : (p.unit ?? p.email)}
                             </small>
                           </span>
-                          <Ic.plus size={15} className="ml-auto text-violet-ink" />
+                          {busyOne(p.id) ? null : <Ic.plus size={15} className="ml-auto text-violet-ink" />}
                         </button>
                       </li>
                     );

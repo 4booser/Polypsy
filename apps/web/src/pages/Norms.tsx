@@ -488,7 +488,7 @@ function AgeChart({
       <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} role="img" aria-label={ut("mc.nmCurvesAria")} className="block">
         {axis.ticks.map((t) => (
           <g key={t}>
-            <line x1={P.left} x2={P.left + pw} y1={yAt(t)} y2={yAt(t)} stroke="var(--plot-grid, var(--divider))" />
+            <line x1={P.left} x2={P.left + pw} y1={yAt(t)} y2={yAt(t)} stroke="var(--divider)" />
             <text x={P.left - 8} y={yAt(t) + 4} textAnchor="end" className="fill-muted text-[11px] tabular-nums">
               {t}
             </text>
