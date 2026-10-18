@@ -91,6 +91,8 @@ export function RecordBanner({
   if (card?.unit) facts.push([<Ic.users key="i" size={15} />, <span key="t">{card.unit}</span>]);
   if (card?.phone) facts.push([<Mi.smartphone key="i" size={15} />, <b key="t">{card.phone}</b>]);
   const first = risks[0];
+  /* таймер — по самому давнему открытому сигналу: столько человек уже ждёт разбора */
+  const oldest = risks.reduce<RiskAlert | null>((a, b) => (!a || b.minutesOpen > a.minutesOpen ? b : a), null);
   const next = row.next ?? null;
 
   return (
@@ -154,15 +156,14 @@ export function RecordBanner({
                 timer={
                   <span className="inline-flex items-center gap-[5px] text-caption font-semibold text-text-2">
                     <Ic.timer size={14} className="text-risk-ink" />
-                    <b className="text-body font-extrabold leading-none text-risk-ink">{openFor(first.minutesOpen, ut("msx.days"))}</b>
-                    {first.overdue ? ut("msx.overdue") : null}
+                    <b className="text-body font-extrabold leading-none text-risk-ink">
+                      {openFor(oldest?.minutesOpen ?? first.minutesOpen, ut("msx.days"))}
+                    </b>
+                    {risks.some((r) => r.overdue) ? ut("msx.overdue") : null}
                   </span>
                 }
-                pop={
-                  <p className="m-0 text-small text-text-2">
-                    {first.surveyTitle}: {first.label}
-                  </p>
-                }
+                pop={<p className="m-0 text-small text-text-2">{first.label}</p>}
+                popTitle={first.surveyTitle}
                 popNote={`${day(first.at)}, ${timeOfDay(first.at)}`}
                 action={
                   <ButtonLink to={`/alerts?patient=${row.patientId ?? ""}`} variant="risk" size="xs">

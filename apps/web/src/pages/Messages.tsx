@@ -283,7 +283,8 @@ export default function MessagesPage() {
       k: () => go(-1),
       "[": () => setListHidden((v) => !v),
       c: () => setDrawer("compose"),
-      m: () => replyRef.current?.focus(),
+      /* M — как в ящике набора: перенос с ответом, а без приёма — к полю ответа */
+      m: () => (canMove ? setDrawer("move") : replyRef.current?.focus()),
     },
     drawer === null,
   );
@@ -471,6 +472,14 @@ export default function MessagesPage() {
       </aside>
 
       <div className={cx("kit-scroll min-h-0 min-w-0 flex-1 overflow-y-auto bg-ground", !id && "max-[1023px]:hidden")}>
+        {/*
+          Заголовок экрана живёт в колонке. Когда колонка спрятана («[» или
+          узкий экран с открытым разговором), имя экрана остаётся диктору
+          здесь; при видимой колонке этот заголовок не рисуется вовсе.
+        */}
+        {listHidden || id ? (
+          <h1 className={cx("sr-only", !listHidden && "min-[1024px]:hidden")}>{title}</h1>
+        ) : null}
         {!id ? (
           /*
             «Оберіть листування», а не «Листування немає»: переписки есть,
@@ -566,7 +575,7 @@ export default function MessagesPage() {
                       </span>
                       <span className="ml-auto flex flex-wrap gap-2">
                         {canMove ? (
-                          <Tooltip label={ut("msx.moveTip")}>
+                          <Tooltip label={ut("msx.moveTip")} kbd="M">
                             <Button icon={<Mi.calendarSync />} onClick={() => setDrawer("move")}>
                               {ut("msx.move")}
                             </Button>
