@@ -161,6 +161,8 @@ import type {
   OpsRecordings,
   OpsVitals,
 } from "@quizzy/shared";
+/* раздел «Адміністрування» 2.0 (участок v2-admin) */
+import type { ConsentVersions, TransferPatientsInput } from "@quizzy/shared";
 import { currentLang } from "./lang";
 import { noteNetworkFailure } from "./telemetry/bus";
 import { connection, serverAnswered } from "./connection";
@@ -807,6 +809,11 @@ export interface OpenApiOperation {
   requestBody?: {
     content: { "application/json": { schema: Record<string, unknown> } };
   };
+  /** Кому маршрут открыт: public | user | staff | superadmin (null — не описан) */
+  "x-access"?: "public" | "user" | "staff" | "superadmin" | null;
+  /** Право, которым маршрут закрыт */
+  "x-permission"?: string | null;
+  parameters?: { name: string; in: string }[];
 }
 export type OpenApiSpec = {
   info: { title: string; version: string };
@@ -1453,6 +1460,8 @@ export const api = {
         reason: string;
         grantedAt: string;
         expiresAt: string | null;
+        /** Кто выдал — именем (2.0); null — учётки уже нет */
+        grantedByName?: string | null;
       }>>("/api/permissions/exceptions"),
     ),
 
@@ -1633,6 +1642,8 @@ export const api = {
     request<{ ok: true; withdrawn: boolean }>("/api/consents/me/decline", { method: "POST", body: "{}" }),
   saveConsentText: (body: Record<string, string>) =>
     request<{ version: number }>("/api/consents/text", { method: "PUT", body: JSON.stringify({ body }) }),
+  /* версии согласия и счёт принявших — только числа (2.0) */
+  consentVersions: () => request<ConsentVersions>("/api/consents/versions"),
 
   conclusion: (responseId: string) =>
     request<ConclusionState>(`/api/conclusions/responses/${responseId}/conclusion`),
@@ -1816,6 +1827,12 @@ export const api = {
   staffDirectory: () => unwrap(request<Items<StaffDirectoryUser>>("/api/users?directory=1")),
   createUser: (input: CreateUserInput) =>
     request<User>("/api/users", { method: "POST", body: JSON.stringify(input) }),
+  /* пациенты, которых ведёт сотрудник (карточка фахівця, 2.0): в пределах своей зоны; чтение в журнале */
+  patientsLedBy: (specialistId: string) =>
+    request<PatientListPage>(`/api/patients?${new URLSearchParams({ lead: specialistId, limit: "200" })}`),
+  /* передать их другому лікарю: закрепление и переписка переходят, причина — в журнал */
+  transferPatients: (fromId: string, input: TransferPatientsInput) =>
+    request<{ moved: number }>(`/api/users/${fromId}/patients/transfer`, { method: "POST", body: JSON.stringify(input) }),
   /* ── техпанель: учётные записи и сессии (волна 10) ── */
   setUserRole: (id: string, role: User["role"]) =>
     request<User>(`/api/users/${id}/role`, { method: "PATCH", body: JSON.stringify({ role }) }),
@@ -2356,6 +2373,11 @@ export const api = {
   meetDisconnect: () => request<{ connected: false }>("/api/meet/disconnect", { method: "POST" }),
   departments: () =>
     request<{ items: { id: string; title: string; timezone: string }[] }>("/api/clinic/departments"),
+  /* відділення, посада й кабінет сотрудника (departments.manage): форма «Додати лікаря», 2.0 */
+  saveSpecialistProfile: (
+    userId: string,
+    input: { departmentId: string; position?: string | null; room?: string | null; defaultSlotMinutes?: number; acceptsBookings?: boolean },
+  ) => request<{ ok: true }>(`/api/clinic/specialists/${userId}`, { method: "PUT", body: JSON.stringify(input) }),
   specialists: (departmentId?: string) => {
     const q = departmentId ? `?departmentId=${encodeURIComponent(departmentId)}` : "";
     return request<{

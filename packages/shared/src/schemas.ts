@@ -169,6 +169,13 @@ export const createUserSchema = z.object({
   email: z.string().email(),
   password: z.string().min(8).max(128),
   ...personNameSchema,
+  /*
+   * Анкета — сразу при заведении (форма «Додати лікаря», 2.0): пол, дата
+   * рождения, подразделение, должность, специализация, населённый пункт. Те
+   * же поля и те же границы, что у правки своей анкеты; без них сотрудник
+   * дописывал бы их сам после первого входа.
+   */
+  ...profileFields,
   role: roleSchema,
   /**
    * Пароль временный: при первом входе консоль требует сменить его.
@@ -270,6 +277,20 @@ export const staffDirectoryQuery = z.object({
     .optional()
     .transform((v) => v === "1"),
 });
+
+/**
+ * Передача пациентов другому лікарю (карточка фахівця, 2.0).
+ *
+ * Переходит закрепление ведущим — а с ним переписка и место в очереди нового
+ * лікаря. История, заключения и подписи остаются за авторами: их никто не
+ * переписывает. Причина обязательна — она идёт в журнал с каждым человеком.
+ */
+export const transferPatientsSchema = z.object({
+  patientIds: z.array(z.string().min(1).max(64)).min(1).max(200),
+  to: z.string().min(1).max(64),
+  reason: z.string().trim().min(10).max(500),
+});
+export type TransferPatientsInput = z.infer<typeof transferPatientsSchema>;
 
 /* ─────────────── техпанель: люди и безопасность (участок people2) ─────────────── */
 
@@ -1416,6 +1437,8 @@ export const patientListQuery = z.object({
   /** Поиск идёт по расшифрованным ФИО и почте уже в приложении — здесь только длина */
   q: z.string().max(120).optional().transform((v) => (v ?? "").trim().toLowerCase()),
   patientGroup: z.string().max(64).optional().transform((v) => v || undefined),
+  /** Только те, кого ведёт этот сотрудник (карточка фахівця, вкладка «Пацієнти»); зона не расширяется */
+  lead: z.string().max(64).optional().transform((v) => v || undefined),
   limit: queryInt(1, 200, 50),
   offset: queryInt(0, LIST_OFFSET_MAX, 0),
   /**

@@ -79,11 +79,11 @@ describe("разделы карточки под правом patients.read", ()
   });
 
   test("список пациентов монтируется только с правом", () => {
-    expect(card).toMatch(/if \(can\("patients\.read"\)\) return <OwnPatientsList/);
-    // запрос живёт только в OwnPatientsList: вызова вне него нет
-    const calls = [...card.matchAll(/api\.respondents\(/g)].length;
-    const list = card.slice(card.indexOf("function OwnPatientsList"));
+    expect(card).toMatch(/if \(can\("patients\.read"\)\) return <LedPatients/);
+    // запрос живёт только в LedPatients: вызова вне него нет
+    const calls = [...card.matchAll(/api\.patientsLedBy\(/g)].length;
+    const list = card.slice(card.indexOf("function LedPatients"));
     expect(calls).toBe(1);
-    expect(list).toContain("api.respondents(");
+    expect(list).toContain("api.patientsLedBy(");
   });
 });

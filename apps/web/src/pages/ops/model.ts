@@ -1024,6 +1024,7 @@ export const AUDIT_ACTION_KEY: Readonly<Record<string, UiKey>> = {
   "clinic.phone_view": "act.clinic_phone_view",
   "clinic.lead_take": "act.clinic_lead_take",
   "clinic.lead_release": "act.clinic_lead_release",
+  "clinic.lead_transfer": "act.clinic_lead_transfer",
   "meet.connect_start": "act.meet_connect_start",
   "meet.connected": "act.meet_connected",
   "meet.disconnected": "act.meet_disconnected",

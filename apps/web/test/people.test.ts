@@ -645,10 +645,19 @@ describe("разметка раздела по кадрам", () => {
     expect(src("pages/people/StaffCard.tsx")).toContain("`/staff/${row.id}/patients`");
   });
 
-  test("линии списка на f50 — внутренней тенью: рамка сбивала шаг строк 58 на 60", () => {
+  /*
+   * 2.0: разделы карточки — вкладками под полосой фахівця (макет
+   * admin-staff-card), адресами /staff/:id/*. Вкладка, ведущая не на свой
+   * раздел, увела бы на сводку молча — общий перехват маршрутов не падает.
+   */
+  test("вкладки карточки ведут в её разделы: профиль, пациенты, группы", () => {
     const card = src("pages/people/StaffCard.tsx");
-    expect(card).toContain("shadow-[inset_0_-2px_0_var(--hairline)]");
-    expect(card).not.toContain("border-b-2");
+    expect(card).toContain("<CardTab to={base} end");
+    expect(card).toContain("<CardTab to={`${base}/patients`}");
+    expect(card).toContain("<CardTab to={`${base}/groups`}");
+    const app = src("App.tsx");
+    expect(app).toMatch(/<Route path="patients" element=\{<StaffPatients \/>\} \/>/);
+    expect(app).toMatch(/<Route path="groups" element=\{<StaffGroups \/>\} \/>/);
   });
 
   /*

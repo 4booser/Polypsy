@@ -73,6 +73,14 @@ async function fetchDirectory(viewer: Viewer, src: DirectorySource): Promise<Dir
  */
 let cached: { viewerId: string; dir: Directory } | null = null;
 
+/**
+ * Забыть кеш: после действия, которое меняет числа справочника (передача
+ * пациентов), карточка обязана перечитать его, а не показать прежнюю нагрузку.
+ */
+export function forgetDirectory(): void {
+  cached = null;
+}
+
 /** Список: всегда свежий ответ, он же становится кешем для карточек */
 export async function loadDirectory(viewer: Viewer, src: DirectorySource = api): Promise<Directory> {
   const dir = await fetchDirectory(viewer, src);
@@ -96,7 +104,8 @@ export async function withLadder(
   viewer: LadderViewer,
   card: (id: string) => Promise<{ roles: { code: string }[] }> = api.userPermissions,
 ): Promise<StaffRow[]> {
-  const asked = rows.filter((r) => ladderReadable(viewer, r));
+  /* строки справочника 2.0 приходят со ступенями (model.ts, withAccount) — о них не спрашиваем */
+  const asked = rows.filter((r) => !r.ladder && ladderReadable(viewer, r));
   const cards = await Promise.allSettled(asked.map((r) => card(r.id)));
   const ladders = new Map(asked.map((r, i) => [r.id, cards[i]]));
   return rows.map((r) => {

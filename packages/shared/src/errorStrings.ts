@@ -1699,6 +1699,19 @@ export const ERRORS = {
     ru: "Это прохождение уже сдано, поэтому черновик не сохранён. Чтобы пройти методику ещё раз, начните новое прохождение",
     en: "This attempt has already been submitted, so the draft wasn’t saved. To take the assessment again, start a new attempt",
   },
+
+  /* ── v2-admin ── */
+  /* передача пациентов другому лікарю (routes/users.ts, POST /:id/patients/transfer) */
+  "err.transferTarget": {
+    uk: "Передати можна лише іншому лікарю з діючим обліковим записом",
+    ru: "Передать можно только другому врачу с действующей учётной записью",
+    en: "Patients can only be handed over to another clinician with an active account",
+  },
+  "err.transferLeadChanged": {
+    uk: "Когось із цих пацієнтів вже веде інший фахівець. Оновіть список і спробуйте ще раз",
+    ru: "Кого-то из этих пациентов уже ведёт другой специалист. Обновите список и попробуйте ещё раз",
+    en: "Some of these patients already have another lead clinician. Refresh the list and try again",
+  },
 } as const satisfies Record<string, ErrorEntry>;
 
 export type ErrorKey = keyof typeof ERRORS;
