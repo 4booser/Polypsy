@@ -360,6 +360,7 @@ b,strong{font-weight:800}
 .ps-sec>h3 .r .ic{color:var(--good)}
 .ps-sec p,.ps-text{font-size:13px;line-height:20px}
 .ps-text{white-space:pre-wrap;overflow-wrap:anywhere}
+.ps-tbl .ps-text{font-size:inherit;line-height:inherit}
 .ps-tbl{width:100%;border-collapse:collapse;font-size:11.5px;line-height:15px}
 .ps-tbl th{padding:0 6px 5px;text-align:left;font:700 11px/14px var(--ff);color:var(--text2);border-bottom:1px solid var(--text);vertical-align:bottom}
 .ps-tbl td{padding:4px 6px;border-bottom:1px solid var(--border);vertical-align:top;overflow-wrap:anywhere}
