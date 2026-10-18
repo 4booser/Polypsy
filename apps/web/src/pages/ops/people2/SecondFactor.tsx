@@ -15,7 +15,6 @@ import { AccessIcon } from "../../public/accessIcons";
 import { OtpInput, fill, rich } from "../../public/authParts";
 import { PublicFrame } from "../../public/PublicFrame";
 import { saveText } from "./parts";
-import { Sx } from "./securityParts";
 
 /*
  * Второй фактор на стороне человека (участок people2): настройка в
