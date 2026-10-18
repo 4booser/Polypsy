@@ -1,4 +1,4 @@
-import { Redirect, Tabs, useSegments } from "expo-router";
+import { Redirect, Tabs } from "expo-router";
 import { useAuth } from "@/auth/AuthContext";
 import { Loader } from "@/components/ui";
 import { useColors } from "@/theme";
@@ -21,7 +21,6 @@ export default function AppLayout() {
   const { ut } = useLang();
   const { user, loading, isAdmin } = useAuth();
   const c = useColors();
-  const segments = useSegments();
   // счётчики вкладок сотрудника: люди на разбор сигнала и непрочитанные письма (staff/badges.ts)
   const badges = useStaffBadges(isAdmin);
 
@@ -29,8 +28,12 @@ export default function AppLayout() {
   if (!user) return <Redirect href="/login" />;
   // с временным паролем сервер вкладкам ничего не отдаст — сначала смена (auth/passwordGate.ts)
   if (user.mustChangePassword) return <Redirect href="/password" />;
-  // вход ведёт на «Головну» пациента; у сотрудника своя первая вкладка — обход
-  if (isAdmin && (segments as string[])[1] === "home") return <Redirect href="/(app)/rounds" />;
+  /*
+   * У сотрудника первая вкладка — обход. Вход ведёт его туда сразу
+   * (consent.tsx, homeOf); открытый напрямую /home уводит сам экран
+   * «Головної» ((app)/home.tsx) — отсюда переадресация снимала навигатор
+   * вкладок и шла по кругу.
+   */
 
   /*
    * Вкладки сотрудника — пять из набора: Обхід, Сигнали, Пацієнти,
