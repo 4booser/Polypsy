@@ -12,6 +12,7 @@ import { T } from "@/ui/Text";
 import { useNow, useSurveyIndex } from "@/staff/data";
 import { dm, hm, roundsCounts, roundsMatch, roundsWards, WORK_KINDS, type RoundsFilter, type RoundsPerson } from "@/staff/model";
 import { ReviewSheet } from "@/staff/ReviewSheet";
+import { StaffOnly } from "@/staff/StaffOnly";
 import { Avatar, BandIcon, Card, Chip, Line, Loading, PillRow, RiskNow, SearchField, Section, StaffTop, StateBlock } from "@/staff/ui";
 import { visitedToday } from "@/staff/visited";
 
@@ -31,7 +32,16 @@ import { visitedToday } from "@/staff/visited";
  * Сверху — самый срочный сигнал ризику с часами до нормы: его разбирают
  * здесь же, в листе снизу, не уходя с обхода.
  */
-export default function RoundsScreen() {
+export default function RoundsTab() {
+  // пациенту по ссылке — его «Головна», а не обход с запросами сотрудника (staff/StaffOnly.tsx)
+  return (
+    <StaffOnly>
+      <RoundsScreen />
+    </StaffOnly>
+  );
+}
+
+function RoundsScreen() {
   const { ut } = useLang();
   const c = useColors();
   const router = useRouter();

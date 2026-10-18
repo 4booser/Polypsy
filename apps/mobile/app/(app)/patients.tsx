@@ -12,6 +12,7 @@ import { Icon } from "@/ui/Icon";
 import { T } from "@/ui/Text";
 import { useNow, useSurveyIndex } from "@/staff/data";
 import { caseClock, clock, dm } from "@/staff/model";
+import { StaffOnly } from "@/staff/StaffOnly";
 import { Avatar, Card, Chip, Loading, PillRow, SearchField, Section, StaffTop, StateBlock, useClockText } from "@/staff/ui";
 
 type View_ = "all" | "risk" | "watch";
@@ -37,6 +38,15 @@ interface PersonRow {
  * с сигналом не пропадает оттого, что его замер был давно.
  */
 export default function PatientsTab() {
+  // пациенту по ссылке — его «Головна», а не список чужих людей (staff/StaffOnly.tsx)
+  return (
+    <StaffOnly>
+      <Patients />
+    </StaffOnly>
+  );
+}
+
+function Patients() {
   const { ut } = useLang();
   const c = useColors();
   const router = useRouter();

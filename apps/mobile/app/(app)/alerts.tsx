@@ -14,6 +14,7 @@ import { refreshStaffBadges } from "@/staff/badges";
 import { useNow, useSurveyIndex } from "@/staff/data";
 import { caseClock, clock, dm, hm, hours } from "@/staff/model";
 import { ReviewSheet } from "@/staff/ReviewSheet";
+import { StaffOnly } from "@/staff/StaffOnly";
 import { Avatar, Card, Chip, Line, Loading, Section, StaffTop, StateBlock, useClockText } from "@/staff/ui";
 
 type Mode = "open" | "done";
@@ -30,6 +31,15 @@ type Mode = "open" | "done";
  * каким исходом.
  */
 export default function AlertsTab() {
+  // пациенту по ссылке — его «Головна», а не очередь случаев (staff/StaffOnly.tsx)
+  return (
+    <StaffOnly>
+      <Alerts />
+    </StaffOnly>
+  );
+}
+
+function Alerts() {
   const { ut } = useLang();
   const c = useColors();
   const router = useRouter();

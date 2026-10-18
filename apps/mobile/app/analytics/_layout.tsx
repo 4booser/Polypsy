@@ -1,6 +1,7 @@
 import { Stack } from "expo-router";
 import { useColors } from "@/theme";
 import { useLang } from "@/lang";
+import { StaffOnly } from "@/staff/StaffOnly";
 
 /**
  * Раздел /analytics — вложенные экраны сотрудника поверх вкладок:
@@ -15,18 +16,23 @@ import { useLang } from "@/lang";
  *
  * Шапку экраны рисуют сами: под строкой навигации у них на полосе версия и
  * вкладки методики, поиск прохождений, человек с его возрастом.
+ *
+ * Раздел целиком — сотруднику: пациенту по ссылке — его «Головна», а не
+ * карта чужого человека с запросами сотрудника (staff/StaffOnly.tsx).
  */
 export default function AnalyticsLayout() {
   const { ut } = useLang();
   const c = useColors();
   return (
-    <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: c.ground } }}>
-      <Stack.Screen name="index" options={{ title: ut("mnav.analytics") }} />
-      <Stack.Screen name="[id]/index" options={{ title: ut("mnav.survey") }} />
-      <Stack.Screen name="[id]/responses" options={{ title: ut("mnav.responses") }} />
-      <Stack.Screen name="alerts" options={{ title: ut("mst.tabAlerts") }} />
-      <Stack.Screen name="patients/index" options={{ title: ut("mnav.patients") }} />
-      <Stack.Screen name="patients/[userId]" options={{ title: ut("msv.dynamics") }} />
-    </Stack>
+    <StaffOnly>
+      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: c.ground } }}>
+        <Stack.Screen name="index" options={{ title: ut("mnav.analytics") }} />
+        <Stack.Screen name="[id]/index" options={{ title: ut("mnav.survey") }} />
+        <Stack.Screen name="[id]/responses" options={{ title: ut("mnav.responses") }} />
+        <Stack.Screen name="alerts" options={{ title: ut("mst.tabAlerts") }} />
+        <Stack.Screen name="patients/index" options={{ title: ut("mnav.patients") }} />
+        <Stack.Screen name="patients/[userId]" options={{ title: ut("msv.dynamics") }} />
+      </Stack>
+    </StaffOnly>
   );
 }
