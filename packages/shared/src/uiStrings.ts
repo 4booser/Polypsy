@@ -9294,10 +9294,11 @@ export const UI = {
     ru: "Попадёт в журнал доступа и в манифест",
     en: "Goes into the access log and the manifest",
   },
+  /* что увозят файлы — вся методика: выгрузка среза экрана не принимает (analytics/tests/model.ts, exportCount) */
   "ant.exportScope": {
-    uk: "{title}, версія {v}, проходжень: {n}",
-    ru: "{title}, версия {v}, прохождений: {n}",
-    en: "{title}, version {v}, completions: {n}",
+    uk: "{title}: усі пацієнти й версії, проходжень: {n}",
+    ru: "{title}: все пациенты и версии, прохождений: {n}",
+    en: "{title}: all patients and versions, completions: {n}",
   },
   "ant.profFullSub": {
     uk: "Без знеособлення — лише всередині клініки",

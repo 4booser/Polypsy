@@ -12,7 +12,8 @@ import { ActionMenu, type MenuEntry } from "../../../ui/menu";
 import { Button, ChoiceCard, Field, Input, Select, Tag } from "../../../ui/primitives";
 import { useResource } from "../../../useResource";
 import { AIc } from "../icons";
-import { dayText, fill, kyivDay } from "./model";
+import { dayText, exportCount, fill, kyivDay } from "./model";
+import { nf } from "./views";
 
 /*
  * Действия с методикой у заголовка «Аналітики тестів».
@@ -200,8 +201,9 @@ function Exports({ data, onClose }: { data: SurveyAnalytics; onClose: () => void
           <Input value={purpose} onChange={(e) => setPurpose(e.target.value)} placeholder={ut("rep.purposePlaceholder")} maxLength={200} />
         </Field>
         <span className="pt-[26px]">
+          {/* что увозят файлы — вся методика, а не срез экрана: выгрузка срез не принимает (exportCount) */}
           <Tag tone="primary" icon={<Ic.clipboard />}>
-            {fill(ut("ant.exportScope"), { title: data.title, v: data.versionNumber, n: data.completed })}
+            {fill(ut("ant.exportScope"), { title: data.title, n: nf(exportCount(data.versions)) })}
           </Tag>
         </span>
       </div>

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 import {
   RESET_PATCH,
   alphaLevel,
@@ -6,6 +7,7 @@ import {
   chartsHref,
   dayText,
   defaultSurvey,
+  exportCount,
   fill,
   findSurveys,
   isFiltered,
@@ -45,6 +47,32 @@ import {
  * людей», выстроенное по величине вместо порядка пунктов; скрытая неделя,
  * нарисованная нулём.
  */
+
+/**
+ * Окно «Вивантаження»: плашка рядом с целью говорит, что увозят файлы.
+ *
+ * Выгрузка срез экрана не принимает — в файлах вся методика, все версии и
+ * все люди. Плашка печатала версию и число завершённых по срезу (в «Один
+ * пацієнт» — по одному человеку), и выгрузку всех можно было принять за
+ * выгрузку одного.
+ *
+ * Мутация: вернуть в плашку data.completed — падает проверка исходника.
+ */
+describe("окно выгрузок", () => {
+  test("число в плашке — завершённые всех версий, а не среза экрана", () => {
+    expect(exportCount([{ responseCount: 940 }, { responseCount: 311 }, { responseCount: 0 }])).toBe(1251);
+    expect(exportCount([])).toBe(0);
+  });
+
+  test("плашка считает по версиям методики, а не по срезу", () => {
+    const src = readFileSync(new URL("../src/pages/analytics/tests/actions.tsx", import.meta.url), "utf8");
+    const tag = /fill\(ut\("ant\.exportScope"\), \{([^}]*)\}\)/.exec(src)?.[1] ?? "";
+    expect(tag, "плашка выгрузок не найдена").not.toBe("");
+    expect(tag).toContain("exportCount(data.versions)");
+    expect(tag).not.toContain("completed");
+    expect(tag).not.toContain("versionNumber");
+  });
+});
 
 describe("состояние в адресе", () => {
   test("мусор в адресе читается как «не задано», а не роняет экран", () => {
