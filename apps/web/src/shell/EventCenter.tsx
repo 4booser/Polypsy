@@ -12,8 +12,7 @@ import { cx } from "../ui/cx";
 import { occurrenceKeys } from "../ui/rowKeys";
 import { SeverityTag } from "../ui/primitives";
 import { ShellIcon, type IconName } from "./icons";
-import { DrawerHead, ShellDrawer } from "./overlays";
-import { Tip } from "./Tip";
+import { Drawer, Tooltip } from "../ui";
 
 /**
  * Центр событий — колокольчик на полосе приложения и ящик справа.
@@ -117,8 +116,7 @@ export function EventCenter() {
 
   return (
     <>
-      <Tip text={ut("ev.title")} side="bottom">
-        {(tip) => (
+      <Tooltip label={ut("ev.title")} side="bottom">
           <button
             ref={bell}
             type="button"
@@ -129,7 +127,6 @@ export function EventCenter() {
               setOpen((v) => !v);
               setUnread(0);
             }}
-            {...tip}
             className={cx(
               "relative grid size-10 min-h-0 shrink-0 place-items-center rounded-[12px] border-0 bg-transparent p-0",
               "text-appbar-muted transition-colors duration-[var(--dur-fast)] hover:bg-appbar-hover hover:text-appbar-ink",
@@ -157,21 +154,25 @@ export function EventCenter() {
               </span>
             ) : null}
           </button>
-        )}
-      </Tip>
+      </Tooltip>
 
-      {open ? (
-        <ShellDrawer side="right" label={ut("ev.title")} onClose={close}>
-          <DrawerHead
-            icon="bell"
-            title={ut("ev.title")}
-            sub={total > 0 ? ut("ec.newCount").replace("{n}", String(total)) : ut("ec.allCaught")}
-            onClose={close}
-          />
-          <div className="shrink-0 px-[18px] pb-[4px] pt-[14px]">
+      {/*
+        Ящик набора (ui/Drawer): справа под полосой приложения, Esc и
+        подложка закрывают, фокус заперт и возвращается колокольчику. Не
+        размонтируется при закрытии — выбранный отбор живёт до следующего
+        открытия.
+      */}
+      <Drawer
+        open={open}
+        onClose={close}
+        title={ut("ev.title")}
+        sub={total > 0 ? ut("ec.newCount").replace("{n}", String(total)) : ut("ec.allCaught")}
+        icon={<ShellIcon name="bell" size={18} />}
+      >
+          <div className="pb-[4px] pt-[14px]">
             <FilterBar value={filter} onChange={setFilter} />
           </div>
-          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-[18px] pb-[18px] [scrollbar-width:thin]">
+          <div className="pb-[8px]">
             <div className="flex items-center gap-[10px] pb-[6px] pt-[14px]">
               <h3 className="m-0 text-[15px] font-extrabold leading-5 tracking-[-0.01em] text-text">{ut("ec.missed")}</h3>
               <span className="min-w-0 flex-1 truncate text-[12.5px] text-muted">
@@ -210,8 +211,7 @@ export function EventCenter() {
             </div>
             <LiveFeed events={events} filter={filter} onGo={close} />
           </div>
-        </ShellDrawer>
-      ) : null}
+      </Drawer>
     </>
   );
 }

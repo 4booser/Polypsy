@@ -7,6 +7,8 @@ import { railKeyOf, sectionOf, subNavFor, type NavAccess, type NavCounts, type R
 import { ShellDrawer } from "./overlays";
 import { RailBadge } from "./Rail";
 import { SubNavGroups, subNavRow } from "./SubNav";
+import type { ThemeChoice } from "./theme";
+import { ThemeToggle } from "./ThemeToggle";
 
 /**
  * «Ще розділи» — все разделы консоли на узком окне.
@@ -27,12 +29,14 @@ export function MoreMenu({
   access,
   counts,
   onClose,
+  onTheme,
 }: {
   id: string;
   entries: RailEntry[];
   access: NavAccess;
   counts: NavCounts;
   onClose: () => void;
+  onTheme: (c: ThemeChoice) => void;
 }) {
   const { ut } = useLang();
   const { pathname } = useLocation();
@@ -55,7 +59,7 @@ export function MoreMenu({
   }, [pathname, onClose]);
 
   return (
-    <ShellDrawer side="left" label={ut("top.more")} onClose={onClose} scrim>
+    <ShellDrawer label={ut("top.more")} onClose={onClose}>
       <div id={id} className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain px-2 pb-4 pt-2 [scrollbar-width:thin]">
         {here ? (
           <section aria-label={ut(here.title)} className="border-b border-divider pb-3">
@@ -85,6 +89,15 @@ export function MoreMenu({
             />
           ))}
         </nav>
+      </div>
+      {/*
+        Тема — здесь, внизу меню: на узком окне переключателю нет места на
+        полосе приложения (ниже 900 он с неё уходит), а меню и есть место,
+        куда складывается всё, что не поместилось.
+      */}
+      <div className="flex shrink-0 items-center justify-between gap-3 border-t border-divider px-4 py-3">
+        <span className="text-[12.5px] font-semibold text-text-2">{ut("pt.theme")}</span>
+        <ThemeToggle tone="band" onChoose={onTheme} />
       </div>
     </ShellDrawer>
   );

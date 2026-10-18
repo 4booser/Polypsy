@@ -1,4 +1,4 @@
-import { useSyncExternalStore, type ReactNode } from "react";
+import { useSyncExternalStore, type ReactElement, type ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { ALWAYS_VISIBLE_RAIL, type UiKey } from "@quizzy/shared";
 import { useLang } from "../lang";
@@ -20,7 +20,7 @@ import {
 } from "../ui";
 import { ShellIcon } from "./icons";
 import { railKeyOf, type RailEntry } from "./nav";
-import { Tip } from "./Tip";
+import { Tooltip } from "../ui/Popover";
 
 /*
  * Разделы консоли: полный список (railGroups) и рельса значков (Rail).
@@ -303,6 +303,20 @@ export function RailBadge({ n, tone, inline }: NonNullable<RailEntry["badge"]> &
   );
 }
 
+/**
+ * Подсказка набора справа от значка — только когда слова под значками ушли
+ * (окно уже 1280): со словом рядом она повторяла бы видимое.
+ */
+function IconsOnlyTip({ on, label, children }: { on: boolean; label: string; children: ReactElement }) {
+  return on ? (
+    <Tooltip label={label} side="right">
+      {children}
+    </Tooltip>
+  ) : (
+    children
+  );
+}
+
 /** Пункт рельсы: значок в пилюле и слово под ним; текущий — пилюля фиолетовым */
 function railItem(current: boolean): string {
   return cx(
@@ -333,25 +347,22 @@ function RailLink({ entry, current, iconsOnly }: { entry: RailEntry; current: bo
   /* число входит в имя: «Випадки ризику, 2» — диктор слышит то же, что видит глаз */
   const name = entry.badge ? `${full}, ${entry.badge.n}` : full;
   return (
-    <Tip text={name} disabled={!iconsOnly}>
-      {(tip) => (
-        <Link
-          to={entry.to}
-          aria-label={name}
-          aria-current={current ? "page" : undefined}
-          data-rail={entry.key}
-          className={railItem(current)}
-          {...tip}
-        >
-          <RailPill current={current}>
-            <ShellIcon name={entry.icon} size={20} />
-          </RailPill>
-          {/* без многоточия: «Листування» — самое длинное слово рельсы, и оно умещается в 70 впритык */}
-          <span className="whitespace-nowrap max-[1279px]:sr-only">{ut(entry.label)}</span>
-          {entry.badge ? <RailBadge {...entry.badge} /> : null}
-        </Link>
-      )}
-    </Tip>
+    <IconsOnlyTip on={iconsOnly} label={name}>
+      <Link
+        to={entry.to}
+        aria-label={name}
+        aria-current={current ? "page" : undefined}
+        data-rail={entry.key}
+        className={railItem(current)}
+      >
+        <RailPill current={current}>
+          <ShellIcon name={entry.icon} size={20} />
+        </RailPill>
+        {/* без многоточия: «Листування» — самое длинное слово рельсы, и оно умещается в 70 впритык */}
+        <span className="whitespace-nowrap max-[1279px]:sr-only">{ut(entry.label)}</span>
+        {entry.badge ? <RailBadge {...entry.badge} /> : null}
+      </Link>
+    </IconsOnlyTip>
   );
 }
 
@@ -393,24 +404,21 @@ export function Rail({
         <RailLink key={e.key} entry={e} current={e.key === active} iconsOnly={iconsOnly} />
       ))}
       <span aria-hidden className="min-h-[12px] flex-1" />
-      <Tip text={help} disabled={!iconsOnly}>
-        {(tip) => (
-          <button
-            type="button"
-            onClick={onHelp}
-            aria-label={help}
-            aria-haspopup="dialog"
-            aria-expanded={helpOpen}
-            className={railItem(helpOpen)}
-            {...tip}
-          >
-            <RailPill current={helpOpen}>
-              <ShellIcon name="circle-help" size={20} />
-            </RailPill>
-            <span className="max-[1279px]:sr-only">{ut("rail.help")}</span>
-          </button>
-        )}
-      </Tip>
+      <IconsOnlyTip on={iconsOnly} label={help}>
+        <button
+          type="button"
+          onClick={onHelp}
+          aria-label={help}
+          aria-haspopup="dialog"
+          aria-expanded={helpOpen}
+          className={railItem(helpOpen)}
+        >
+          <RailPill current={helpOpen}>
+            <ShellIcon name="circle-help" size={20} />
+          </RailPill>
+          <span className="max-[1279px]:sr-only">{ut("rail.help")}</span>
+        </button>
+      </IconsOnlyTip>
     </nav>
   );
 }

@@ -5,7 +5,7 @@ import { useLang } from "../lang";
 import { cx } from "../ui/cx";
 import { IconCommand } from "../ui/glyphs";
 import { ShellIcon } from "./icons";
-import { DrawerHead, Kbd, ShellDrawer } from "./overlays";
+import { Drawer, Kbd } from "../ui";
 
 /** Мак или нет: на маке палитру открывают Command+K, у остальных — Ctrl K */
 export function isMac(): boolean {
@@ -29,12 +29,11 @@ export function ModKey() {
  * вместе с ним: обещанная «везде» и не сработавшая клавиша учит не верить
  * подсказкам вообще.
  */
-export function HelpDrawer({ onClose }: { onClose: () => void }) {
+export function HelpDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { ut } = useLang();
   return (
-    <ShellDrawer side="right" label={ut("rail.helpFull")} onClose={onClose}>
-      <DrawerHead icon="keyboard" title={ut("rail.helpFull")} onClose={onClose} />
-      <div className="min-h-0 flex-1 overflow-y-auto px-[18px] pb-[18px] [scrollbar-width:thin]">
+    <Drawer open={open} onClose={onClose} title={ut("rail.helpFull")} icon={<ShellIcon name="keyboard" size={18} />}>
+      <div className="pb-[10px]">
         <Section title={ut("help.keys")}>
           <KeyRow keys={["mod", "K"]} label="help.palette" />
           <KeyRow keys={["Esc"]} label="help.escape" />
@@ -50,7 +49,7 @@ export function HelpDrawer({ onClose }: { onClose: () => void }) {
           <DoorRow to="/account" icon="circle-user-round" label="acct.title" onGo={onClose} />
         </Section>
       </div>
-    </ShellDrawer>
+    </Drawer>
   );
 }
 

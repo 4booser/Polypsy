@@ -7998,7 +7998,6 @@ export const UI = {
     ru: "Поиск пациента, методики или действия",
     en: "Find a patient, instrument or action",
   },
-  "shell.close": { uk: "Закрити", ru: "Закрыть", en: "Close" },
   "nav.themeSystem": { uk: "Як у системі", ru: "Как в системе", en: "Match system" },
   /* рельса: короткие слова под значками и полные имена (shell/nav.ts) */
   "rail.worklist": { uk: "Черга", ru: "Очередь", en: "Queue" },

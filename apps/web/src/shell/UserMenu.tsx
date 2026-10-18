@@ -1,11 +1,9 @@
-import { Fragment, useCallback, useRef, useState } from "react";
+import { Fragment } from "react";
 import { Link } from "react-router-dom";
 import { useLang } from "../lang";
 import { cx } from "../ui/cx";
+import { MenuButton, MenuSeparator, menuItemClass } from "../ui/menu";
 import { ShellIcon, type IconName } from "./icons";
-import { ShellPopover } from "./overlays";
-import { ThemeToggle } from "./ThemeToggle";
-import type { ThemeChoice } from "./theme";
 
 /**
  * Кто вошёл и что он может сделать со своей записью.
@@ -69,55 +67,45 @@ function Avatar({ name }: { name: string }) {
 }
 
 /**
- * Строка карточки: значок и слово, 36 высотой. Одна на ссылки и кнопки:
- * «Обліковий запис», «Прив’язати Google» и «Вийти» — один список.
- */
-export function accountRow(): string {
-  return cx(
-    "flex h-9 min-h-0 w-full items-center justify-start gap-[10px] rounded-[9px] border-0 bg-transparent px-[10px]",
-    "text-left text-[13px] font-semibold leading-none text-text no-underline hover:bg-sunk hover:no-underline",
-    "transition-colors duration-[var(--dur-fast)] ease-[var(--ease)]",
-  );
-}
-
-/**
- * Имя справа на полосе и карточка по нажатию.
+ * Имя справа на полосе и меню учётной записи по нажатию (MenuButton набора:
+ * лист 14, пункты 36, стрелки, Home/End, Esc, возврат фокуса имени).
  *
  * Полоса всегда в одну строку: длинное имя или должность обрезаются
- * многоточием (не шире 170), а целиком — в карточке, вместе с отделением и
- * почтой. Ниже 900 px имени на полосе нет вовсе — остаётся кружок; там же в
- * карточку переезжает переключатель темы, которому на полосе нет места.
+ * многоточием (не шире 170), а целиком — в шапке меню, вместе с отделением и
+ * почтой. Ниже 900 px имени на полосе нет вовсе — остаётся кружок.
  */
-export function UserMenu({ account, onTheme }: { account: AccountCard; onTheme: (c: ThemeChoice) => void }) {
+export function UserMenu({ account }: { account: AccountCard }) {
   const { ut } = useLang();
-  const [open, setOpen] = useState(false);
-  const button = useRef<HTMLButtonElement>(null);
-  const close = useCallback(() => setOpen(false), []);
   const sub = [account.roleLabel, account.unit].filter(Boolean).join(", ");
   return (
-    <div data-user-menu="" className="relative flex min-w-0 items-center self-stretch">
-      <button
-        ref={button}
-        type="button"
-        aria-haspopup="dialog"
-        aria-expanded={open}
-        onClick={() => setOpen((v) => !v)}
-        className={cx(
-          "flex h-11 min-h-0 min-w-0 items-center gap-[10px] rounded-[12px] border-0 bg-transparent pl-[5px] pr-[10px]",
-          "text-left text-appbar-ink transition-colors duration-[var(--dur-fast)] hover:bg-appbar-hover",
-          "aria-expanded:bg-appbar-hover max-[899px]:pr-[5px]",
-        )}
-      >
-        <Avatar name={account.name} />
-        <span className="flex min-w-0 max-w-[170px] flex-col max-[899px]:sr-only">
-          <b className="truncate text-[13px] font-bold leading-4">{account.name}</b>
-          <small className="truncate text-[12px] font-medium leading-[15px] text-appbar-muted">{account.roleLabel}</small>
-        </span>
-      </button>
-      {open ? (
-        <ShellPopover label={ut("acct.title")} onClose={close} trigger={button} className="w-[300px] max-w-[calc(100vw-24px)]">
-          <div className="px-4 pb-3 pt-[14px]">
-            <h2 className="m-0 text-[13.5px] font-extrabold leading-[18px] text-text [overflow-wrap:anywhere]">{account.name}</h2>
+    <MenuButton
+      label={ut("acct.title")}
+      className="min-w-0 items-center self-stretch"
+      plateClassName="w-[300px] max-w-[calc(100vw-24px)]"
+      trigger={(p) => (
+        <button
+          type="button"
+          {...p}
+          data-user-menu=""
+          className={cx(
+            "flex h-11 min-h-0 min-w-0 items-center gap-[10px] rounded-[12px] border-0 bg-transparent pl-[5px] pr-[10px]",
+            "text-left text-appbar-ink transition-colors duration-[var(--dur-fast)] hover:bg-appbar-hover",
+            "aria-expanded:bg-appbar-hover max-[899px]:pr-[5px]",
+          )}
+        >
+          <Avatar name={account.name} />
+          <span className="flex min-w-0 max-w-[170px] flex-col max-[899px]:sr-only">
+            <b className="truncate text-[13px] font-bold leading-4">{account.name}</b>
+            <small className="truncate text-[12px] font-medium leading-[15px] text-appbar-muted">{account.roleLabel}</small>
+          </span>
+        </button>
+      )}
+    >
+      {(close) => (
+        <>
+          {/* шапка меню — кто вошёл целиком; не пункт меню, стрелки её проходят мимо */}
+          <div role="none" className="px-2.5 pb-2.5 pt-1.5">
+            <p className="m-0 text-[13.5px] font-extrabold leading-[18px] text-text [overflow-wrap:anywhere]">{account.name}</p>
             {sub ? <p className="m-0 mt-[5px] text-[12.5px] leading-[18px] text-text-2">{sub}</p> : null}
             {account.email ? (
               <p className="m-0 text-[12.5px] leading-[18px] text-muted [overflow-wrap:anywhere]">{account.email}</p>
@@ -130,43 +118,39 @@ export function UserMenu({ account, onTheme }: { account: AccountCard; onTheme: 
               </p>
             ) : null}
           </div>
-          {/* тема — здесь только на узком окне: на широком она стоит на самой полосе */}
-          <div className="flex items-center justify-between gap-3 border-t border-divider px-4 py-[10px] min-[900px]:hidden">
-            <span className="text-[12.5px] font-semibold text-text-2">{ut("pt.theme")}</span>
-            <ThemeToggle tone="band" onChoose={onTheme} />
-          </div>
-          <div className="flex flex-col gap-[2px] border-t border-divider p-[6px]">
-            {account.actions.map((a) => (
-              <Fragment key={a.id}>
-                {a.ruled ? <hr className="mx-[10px] my-[4px] border-0 border-t border-divider" /> : null}
-                {a.to ? (
-                  <Link to={a.to} onClick={close} className={accountRow()}>
-                    <ShellIcon name={a.icon} size={16} className="text-muted" />
-                    {a.label}
-                  </Link>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      close();
-                      a.onSelect?.();
-                    }}
-                    className={accountRow()}
-                  >
-                    <ShellIcon name={a.icon} size={16} className="text-muted" />
-                    {a.label}
-                  </button>
-                )}
-              </Fragment>
-            ))}
-          </div>
-          <div className="border-t border-divider px-4 py-[8px] text-[11px] leading-4 text-muted">
+          <MenuSeparator />
+          {account.actions.map((a) => (
+            <Fragment key={a.id}>
+              {a.ruled ? <MenuSeparator /> : null}
+              {a.to ? (
+                <Link to={a.to} role="menuitem" onClick={close} className={menuItemClass("left")}>
+                  <ShellIcon name={a.icon} size={16} />
+                  {a.label}
+                </Link>
+              ) : (
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    close();
+                    a.onSelect?.();
+                  }}
+                  /* у <button> правило наследия ставит подпись по центру — пункт меню у левого края */
+                  className={cx(menuItemClass("left"), "justify-start")}
+                >
+                  <ShellIcon name={a.icon} size={16} />
+                  {a.label}
+                </button>
+              )}
+            </Fragment>
+          ))}
+          <div role="none" className="px-2.5 pb-1 pt-2 text-[11px] leading-4 text-muted">
             <span title={`${ut("ui.buildFrom")} ${account.build.date}`} className="font-mono">
               {account.build.sha}
             </span>
           </div>
-        </ShellPopover>
-      ) : null}
-    </div>
+        </>
+      )}
+    </MenuButton>
   );
 }

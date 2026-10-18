@@ -41,15 +41,15 @@ test("переключение языка меняет оболочку и за�
   await expect(toggle).toBeFocused();
 
   /*
-   * Карточка учётной записи переведена тем же нажатием: она рисуется другим
+   * Меню учётной записи переведено тем же нажатием: оно рисуется другим
    * кодом, чем рельса, и забытый ut() там рельса бы не выдала. Закрывается
    * по Esc, чтобы дальше не читать оболочку сквозь неё.
    */
   await expect(nav.getByRole("link", { name: /^Випадки ризику/ })).toBeVisible();
-  const card = await openUserMenu(page);
-  await expect(card.getByRole("link", { name: "Обліковий запис" })).toBeVisible();
+  const menu = await openUserMenu(page);
+  await expect(menu.getByRole("menuitem", { name: "Обліковий запис" })).toBeVisible();
   await page.keyboard.press("Escape");
-  await expect(card).toBeHidden();
+  await expect(menu).toBeHidden();
 
   // язык страницы меняется тоже: от него зависят диктор и переносы слов
   await expect(page.locator("html")).toHaveAttribute("lang", "uk");

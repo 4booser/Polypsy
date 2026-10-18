@@ -3,7 +3,7 @@ import { useLang } from "../lang";
 import { cx } from "../ui/cx";
 import { ShellIcon, type IconName } from "./icons";
 import { THEME_CHOICES, useThemeChoice, type ThemeChoice } from "./theme";
-import { Tip } from "./Tip";
+import { Tooltip } from "../ui/Popover";
 
 const LOOK: Record<ThemeChoice, { icon: IconName; label: UiKey }> = {
   light: { icon: "sun", label: "nav.themeLight" },
@@ -52,14 +52,12 @@ export function ThemeToggle({
         const on = c === choice;
         const label = ut(LOOK[c].label);
         return (
-          <Tip key={c} text={label} side="bottom">
-            {(tip) => (
+          <Tooltip key={c} label={label} side="bottom">
               <button
                 type="button"
                 aria-pressed={on}
                 aria-label={label}
                 onClick={() => onChoose(c)}
-                {...tip}
                 className={cx(
                   "grid min-h-0 place-items-center rounded-[9px] border-0 p-0",
                   "transition-colors duration-[var(--dur-fast)] ease-[var(--ease)]",
@@ -75,8 +73,7 @@ export function ThemeToggle({
               >
                 <ShellIcon name={LOOK[c].icon} size={14} />
               </button>
-            )}
-          </Tip>
+          </Tooltip>
         );
       })}
     </div>

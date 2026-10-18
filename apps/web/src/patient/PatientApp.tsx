@@ -8,8 +8,8 @@ import { useLang } from "../lang";
 import { MaintenanceBanner } from "../service/MaintenanceBanner";
 import { ShellIcon, type IconName } from "../shell/icons";
 import { LogoTile } from "../shell/Logo";
-import { DrawerHead, ShellDrawer } from "../shell/overlays";
 import { initials } from "../shell/UserMenu";
+import { Drawer } from "../ui";
 import { ConnectionLine } from "../ui/ConnectionLine";
 import { cx } from "../ui/cx";
 import { TouchArea } from "../ui/primitives";
@@ -236,7 +236,7 @@ function PatientShell() {
         ))}
       </nav>
 
-      {help ? <HelpDrawer onClose={closeHelp} /> : null}
+      <HelpDrawer open={help} onClose={closeHelp} />
     </TouchArea>
   );
 }
@@ -250,16 +250,21 @@ function PatientShell() {
  * Строк, которых у кабинета нет (семья, дежурный отделения), здесь нет:
  * номера им выдумывать нельзя.
  */
-function HelpDrawer({ onClose }: { onClose: () => void }) {
+function HelpDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { ut } = useLang();
   const rows = [
     { key: "hotline", name: ut("home.hotline"), sub: ut("pt.helpHotlineSub"), num: ut("home.hotlineNumber"), risk: false },
     { key: "emergency", name: ut("pt.emergency"), sub: ut("pt.emergencySub"), num: ut("pt.emergencyNumber"), risk: true },
   ];
   return (
-    <ShellDrawer side="right" label={ut("pt.helpTitle")} onClose={onClose} under={0}>
-      <DrawerHead icon="life-buoy" title={ut("pt.helpTitle")} sub={ut("pt.helpSub")} onClose={onClose} />
-      <div className="min-h-0 flex-1 overflow-y-auto px-[18px] pb-[18px] pt-[14px]">
+    <Drawer
+      open={open}
+      onClose={onClose}
+      title={ut("pt.helpTitle")}
+      sub={ut("pt.helpSub")}
+      icon={<ShellIcon name="life-buoy" size={18} />}
+    >
+      <div className="pb-[18px] pt-[14px]">
         <div className="overflow-hidden rounded-[16px] border border-border">
           {rows.map((r) => (
             <a
@@ -289,7 +294,7 @@ function HelpDrawer({ onClose }: { onClose: () => void }) {
         </div>
         <p className="m-0 mt-3 text-[14px] leading-5 text-muted">{ut("pt.helpNote")}</p>
       </div>
-    </ShellDrawer>
+    </Drawer>
   );
 }
 

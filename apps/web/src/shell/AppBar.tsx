@@ -10,7 +10,7 @@ import { LangMenu } from "./LangMenu";
 import { LogoTile } from "./Logo";
 import { ThemeToggle } from "./ThemeToggle";
 import type { ThemeChoice } from "./theme";
-import { Kbd, Tip } from "./Tip";
+import { Tooltip } from "../ui/Popover";
 import { UserMenu, type AccountCard } from "./UserMenu";
 
 /**
@@ -84,10 +84,8 @@ export function AppBar({
       </Link>
 
       {account.unit ? (
-        <Tip text={account.unit} side="bottom">
-          {(tip) => (
+        <Tooltip label={account.unit} side="bottom">
             <span
-              {...tip}
               className={cx(
                 "min-w-0 max-w-[240px] shrink truncate whitespace-nowrap border-l border-appbar-line pl-[14px]",
                 "text-[13px] font-semibold leading-5 text-appbar-muted max-[899px]:hidden",
@@ -95,8 +93,7 @@ export function AppBar({
             >
               {account.unit}
             </span>
-          )}
-        </Tip>
+        </Tooltip>
       ) : null}
 
       {/*
@@ -120,11 +117,12 @@ export function AppBar({
         <ShellIcon name="search" size={15} />
         <span className="min-w-0 flex-1 truncate max-[899px]:hidden">{hint}</span>
         <span className="max-[899px]:hidden">
-          <Kbd tone="appbar">
+          <kbd className="inline-grid h-5 min-w-5 place-items-center rounded-[6px] border border-b-2 border-appbar-line bg-transparent px-[5px] font-sans text-[10.5px] font-bold not-italic leading-none text-appbar-muted">
+            {/* клавиша на тёмной полосе: у Kbd набора нет тона полосы приложения — рамка и подпись её цветами */}
             <span className="inline-flex items-center gap-[3px]">
               <ModKey />K
             </span>
-          </Kbd>
+          </kbd>
         </span>
       </button>
 
@@ -135,7 +133,7 @@ export function AppBar({
         <ThemeToggle onChoose={onTheme} className="max-[899px]:hidden" />
         <LangMenu tone="appbar" />
         <span aria-hidden className="mx-1 h-6 w-px bg-appbar-line max-[600px]:hidden" />
-        <UserMenu account={account} onTheme={onTheme} />
+        <UserMenu account={account} />
       </div>
     </header>
   );

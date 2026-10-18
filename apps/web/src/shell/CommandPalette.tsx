@@ -9,7 +9,7 @@ import type { UiKey } from "@quizzy/shared";
 import { ModKey } from "./HelpDrawer";
 import { ShellIcon, type IconName } from "./icons";
 import { initials } from "./UserMenu";
-import { Kbd } from "./Tip";
+import { Kbd } from "../ui/kbd";
 
 /**
  * Палитра команд — ⌘K / Ctrl K с любого экрана или поле поиска на полосе.

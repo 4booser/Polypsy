@@ -23,6 +23,7 @@ import { MaintenanceBanner } from "./service/MaintenanceBanner";
 import { ConnectionLine } from "./ui/ConnectionLine";
 import { useTelemetryRoute } from "./telemetry/client";
 import { ErrorBoundary } from "./telemetry/ErrorBoundary";
+import "./shell/shell.css";
 import { ImpersonationBanner } from "./pages/ops/people2/ImpersonationBanner";
 
 /*
@@ -350,6 +351,16 @@ export default function App() {
   useEffect(() => {
     document.documentElement.dataset.theme = resolvedTheme;
   }, [resolvedTheme]);
+
+  /*
+   * Какая рамка на экране — для крючков набора (shell/shell.css): высота
+   * полосы над ящиком и левый край всплывающих сообщений у консоли, кабинета
+   * и гостевых страниц разные.
+   */
+  const shellKind = !user ? "public" : user.role === "user" ? "patient" : "console";
+  useEffect(() => {
+    document.documentElement.dataset.shell = shellKind;
+  }, [shellKind]);
 
   const chooseTheme = (next: ThemeChoice) => {
     setThemeChoice(next);
@@ -1011,8 +1022,8 @@ export default function App() {
       </main>
       </div>
 
-      {menuOpen ? <MoreMenu id="shell-more" entries={entries} access={access} counts={counts} onClose={closeMenu} /> : null}
-      {helpOpen ? <HelpDrawer onClose={closeHelp} /> : null}
+      {menuOpen ? <MoreMenu id="shell-more" entries={entries} access={access} counts={counts} onClose={closeMenu} onTheme={chooseTheme} /> : null}
+      <HelpDrawer open={helpOpen} onClose={closeHelp} />
       {/* закрытая палитра не монтируется вовсе: её кусок (cmdk) приезжает по первому ⌘K */}
       {paletteOpen ? (
         <Suspense fallback={null}>

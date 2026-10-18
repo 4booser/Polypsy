@@ -135,15 +135,15 @@ export async function goMenu(page: Page, link: RegExp | string): Promise<void> {
 }
 
 /**
- * Карточка учётной записи за именем справа на полосе приложения: имя,
- * должность, почта, «Обліковий запис», «Вийти».
+ * Меню учётной записи за именем справа на полосе приложения (MenuButton
+ * набора): имя, должность, почта, затем пункты «Обліковий запис» и «Вийти».
  */
 export async function openUserMenu(page: Page): Promise<Locator> {
-  const button = page.getByRole("banner").locator("[data-user-menu] > button");
+  const button = page.getByRole("banner").locator("button[data-user-menu]");
   if ((await button.getAttribute("aria-expanded")) !== "true") await button.click();
-  const card = page.getByRole("dialog", { name: /^(Учётная запись|Обліковий запис)$/ });
-  await card.waitFor();
-  return card;
+  const menu = page.getByRole("menu", { name: /^(Учётная запись|Обліковий запис)$/ });
+  await menu.waitFor();
+  return menu;
 }
 
 /** Колокольчик центра событий на полосе приложения: стоит всегда, на любой ширине */
@@ -276,13 +276,13 @@ export async function goCaseCard(page: Page, entry: RegExp | string = /^(Обз�
 /**
  * Выйти из консоли.
  *
- * Кнопка выхода живёт в карточке учётной записи за именем на полосе
- * приложения, и кроме как через неё до неё не добраться: она не
- * отрисована, пока карточка закрыта.
+ * Выход — пункт меню учётной записи за именем на полосе приложения, и
+ * кроме как через это меню до него не добраться: он не отрисован, пока
+ * меню закрыто.
  */
 export async function logout(page: Page) {
-  const card = await openUserMenu(page);
-  await card.getByRole("button", { name: /^(Выйти|Вийти)$/ }).click();
+  const menu = await openUserMenu(page);
+  await menu.getByRole("menuitem", { name: /^(Выйти|Вийти)$/ }).click();
 }
 
 /**
