@@ -8,10 +8,12 @@ import {
   SUPERADMIN_RANK,
   roleRank,
   t,
+  type Lang,
   type OpsSession,
   type OpsSessionPage,
   type OpsUserPage,
   type OpsUserRow,
+  type OpsUsersAttention,
 } from "@quizzy/shared";
 import { db } from "../db";
 import { asSystem } from "../db/context";
@@ -32,9 +34,10 @@ import {
 import { conflict, forbidden, langOf, notFound, parseBody, parseQuery } from "../lib/http";
 import { clearFailures } from "../lib/loginGuard";
 import { currentRequestId } from "../lib/log";
-import { sessionsSummary, usersSummary } from "../lib/peopleStats";
+import { ageBucket, sessionsSummary, usersSummary } from "../lib/peopleStats";
 import { revokeAllFor, revokeFamily } from "../lib/refresh";
 import { guardAccountAction } from "../lib/accountClass";
+import { rowSecurityOf, usersAttention } from "../lib/usersAttention";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
 /**
@@ -93,6 +96,77 @@ function refusal(c: Context<AppEnv>, body: Record<string, unknown>) {
 
 /* ─────────── реестр ─────────── */
 
+/** Строка реестра из учётки отбора (matchRegistry) */
+type RegistryAccount = Awaited<ReturnType<typeof matchRegistry>>["matched"][number];
+
+/**
+ * Строки реестра для учёток страницы: тяжёлое — след, сессии, роли — только
+ * для них. Одним кодом для списка и для одной записи (панель справа): иначе
+ * запись в панели и та же запись в списке разошлись бы в мелочах.
+ */
+async function registryRows(slice: RegistryAccount[], emailOf: ReadonlyMap<string, string>, lang: Lang): Promise<OpsUserRow[]> {
+  const ids = slice.map((u) => u.id);
+
+  /*
+   * Системная роль — одним окном и ДО остальных запросов, не вперемешку с
+   * ними: asSystem переключает роль всей транзакции запроса и возвращает её
+   * в finally, и два окна, открытые параллельно, закрывали бы друг друга —
+   * часть счёта ушла бы под ролью сотрудника и тихо недосчитала бы след.
+   */
+  const [traces, journal] = await asSystem(() => Promise.all([clinicalTraceOf(ids), journalEntriesOf(ids)]));
+  /* второй фактор и запирание — тоже системой, но своим окном внутри (lib/usersAttention.ts) */
+  const security = await rowSecurityOf(slice);
+  const [sessions, roleRows, exceptionRows] = await Promise.all([
+    sessionCountsOf(ids),
+    ids.length
+      ? db
+          .select({ userId: staffRoles.userId, code: roles.code, title: roles.title })
+          .from(staffRoles)
+          .innerJoin(roles, eq(roles.id, staffRoles.roleId))
+          .where(inArray(staffRoles.userId, ids))
+      : Promise.resolve([]),
+    ids.length
+      ? db
+          .select({ userId: permissionExceptions.userId, n: sql<number>`count(*)::int` })
+          .from(permissionExceptions)
+          .where(
+            and(
+              inArray(permissionExceptions.userId, ids),
+              isNull(permissionExceptions.revokedAt),
+              or(isNull(permissionExceptions.expiresAt), gt(permissionExceptions.expiresAt, new Date().toISOString())),
+            ),
+          )
+          .groupBy(permissionExceptions.userId)
+      : Promise.resolve([]),
+  ]);
+
+  return slice.map((u): OpsUserRow => {
+    const mine = roleRows.filter((r) => r.userId === u.id);
+    return {
+      id: u.id,
+      email: u.email,
+      fullName: u.fullName,
+      role: u.role,
+      anonymous: u.anonymous,
+      roleTitles: mine.map((r) => t(r.title, lang)),
+      ladderRank: u.role === "superadmin" ? SUPERADMIN_RANK : mine.reduce((top, r) => Math.max(top, roleRank(r.code)), 0),
+      exceptions: Number(exceptionRows.find((e) => e.userId === u.id)?.n ?? 0),
+      createdAt: u.createdAt,
+      lastSeenAt: u.lastSeenAt,
+      disabledAt: u.disabledAt,
+      disabledReason: u.disabledReason,
+      disabledByEmail: u.disabledBy ? (emailOf.get(u.disabledBy) ?? null) : null,
+      mustChangePassword: u.mustChangePassword,
+      sessions: sessions.get(u.id) ?? 0,
+      trace: traces.get(u.id) ?? emptyTrace(),
+      journalEntries: journal.get(u.id) ?? 0,
+      secondFactor: security.get(u.id)?.secondFactor ?? null,
+      lock: security.get(u.id)?.lock ?? null,
+    };
+  });
+}
+
+
 /**
  * Весь реестр: персонал и пациенты, с состоянием каждой учётки.
  *
@@ -125,61 +199,7 @@ opsUserRoutes.get("/", async (c) => {
   const emailOf = new Map(all.map((u) => [u.id, u.email]));
 
   const slice = matched.slice((page - 1) * per, page * per);
-  const ids = slice.map((u) => u.id);
-
-  /*
-   * Системная роль — одним окном и ДО остальных запросов, не вперемешку с
-   * ними: asSystem переключает роль всей транзакции запроса и возвращает её
-   * в finally, и два окна, открытые параллельно, закрывали бы друг друга —
-   * часть счёта ушла бы под ролью сотрудника и тихо недосчитала бы след.
-   */
-  const [traces, journal] = await asSystem(() => Promise.all([clinicalTraceOf(ids), journalEntriesOf(ids)]));
-  const [sessions, roleRows, exceptionRows] = await Promise.all([
-    sessionCountsOf(ids),
-    ids.length
-      ? db
-          .select({ userId: staffRoles.userId, code: roles.code, title: roles.title })
-          .from(staffRoles)
-          .innerJoin(roles, eq(roles.id, staffRoles.roleId))
-          .where(inArray(staffRoles.userId, ids))
-      : Promise.resolve([]),
-    ids.length
-      ? db
-          .select({ userId: permissionExceptions.userId, n: sql<number>`count(*)::int` })
-          .from(permissionExceptions)
-          .where(
-            and(
-              inArray(permissionExceptions.userId, ids),
-              isNull(permissionExceptions.revokedAt),
-              or(isNull(permissionExceptions.expiresAt), gt(permissionExceptions.expiresAt, new Date().toISOString())),
-            ),
-          )
-          .groupBy(permissionExceptions.userId)
-      : Promise.resolve([]),
-  ]);
-
-  const items: OpsUserRow[] = slice.map((u) => {
-    const mine = roleRows.filter((r) => r.userId === u.id);
-    return {
-      id: u.id,
-      email: u.email,
-      fullName: u.fullName,
-      role: u.role,
-      anonymous: u.anonymous,
-      roleTitles: mine.map((r) => t(r.title, lang)),
-      ladderRank: u.role === "superadmin" ? SUPERADMIN_RANK : mine.reduce((top, r) => Math.max(top, roleRank(r.code)), 0),
-      exceptions: Number(exceptionRows.find((e) => e.userId === u.id)?.n ?? 0),
-      createdAt: u.createdAt,
-      lastSeenAt: u.lastSeenAt,
-      disabledAt: u.disabledAt,
-      disabledReason: u.disabledReason,
-      disabledByEmail: u.disabledBy ? (emailOf.get(u.disabledBy) ?? null) : null,
-      mustChangePassword: u.mustChangePassword,
-      sessions: sessions.get(u.id) ?? 0,
-      trace: traces.get(u.id) ?? emptyTrace(),
-      journalEntries: journal.get(u.id) ?? 0,
-    };
-  });
+  const items = await registryRows(slice, emailOf, lang);
 
   /*
    * Имя действия то же, что у прежнего списка учёток: «кто листал реестр»
@@ -212,6 +232,48 @@ opsUserRoutes.get("/summary", async (c) => {
   const summary = await asSystem(() => usersSummary());
   await audit(c, { action: "user.list", details: { ops: true, view: "summary" } });
   return c.json(summary);
+});
+
+/**
+ * «Потребує уваги» (Polypsy 2.0): заперты перебором, без обязательного
+ * второго фактора, временный пароль дольше двух суток, персонал без входа
+ * дольше месяца. В отличие от сводки — с людьми (имя и почта): это рабочий
+ * список того, кто ведёт учётки, а не статистика. Под системной ролью по
+ * той же причине, что сводка; чтение — в журнал тем же user.list.
+ */
+opsUserRoutes.get("/attention", async (c) => {
+  const body: OpsUsersAttention = await usersAttention();
+  await audit(c, {
+    action: "user.list",
+    details: {
+      ops: true,
+      view: "attention",
+      returned: body.locked.people.length + body.mfaMissing.people.length + body.tempPassword.people.length + body.idleStaff.people.length,
+    },
+  });
+  return c.json(body);
+});
+
+/**
+ * Одна запись реестра — для панели справа (Polypsy 2.0, `?user=:id`): та же
+ * строка, что в списке, по ссылке, которую пересылают. Чтение — в журнал тем
+ * же user.list, с тем, о ком оно.
+ */
+opsUserRoutes.get("/:id", async (c) => {
+  const id = c.req.param("id");
+  const { all } = await matchRegistry({ q: "" }, langOf(c));
+  const account = all.find((u) => u.id === id);
+  if (!account) notFound("err.userNotFound");
+  const emailOf = new Map(all.map((u) => [u.id, u.email]));
+  const [row] = await registryRows([{ ...account, fullName: fullNameOf(account) }], emailOf, langOf(c));
+  await audit(c, {
+    action: "user.list",
+    resourceType: "user",
+    resourceId: id,
+    subjectUserId: id,
+    details: { ops: true, view: "account" },
+  });
+  return c.json(row);
 });
 
 /* ─────────── выключение ─────────── */
@@ -426,7 +488,8 @@ opsUserRoutes.delete("/:id", async (c) => {
  * бы показывать догадку как факт.
  */
 opsSessionRoutes.get("/", async (c) => {
-  const { userId, q, page, per } = parseQuery(c, opsSessionQuery);
+  const { userId, q, role, age, page, per } = parseQuery(c, opsSessionQuery);
+  const now = Date.now();
 
   const rows = await db
     .select({
@@ -458,13 +521,17 @@ opsSessionRoutes.get("/", async (c) => {
     const fullName = fullNameOf(r);
     const hay = `${fullName} ${r.email}`.toLowerCase();
     if (words.length && !words.every((w) => hay.includes(w))) continue;
+    if (role && (role === "staff" ? r.role === "user" : r.role !== role)) continue;
+    const startedAt = new Date(r.startedAt ?? r.lastUsedAt).toISOString();
+    /* возраст — от входа, теми же корзинами, что у сводки (ageBucket) */
+    if (age && ageBucket(startedAt, now) !== age) continue;
     sessions.push({
       id: r.familyId,
       userId: r.userId,
       fullName,
       email: r.email,
       role: r.role,
-      startedAt: new Date(r.startedAt ?? r.lastUsedAt).toISOString(),
+      startedAt,
       lastUsedAt: r.lastUsedAt,
       expiresAt: r.expiresAt,
     });
@@ -495,7 +562,7 @@ opsSessionRoutes.get("/", async (c) => {
   await audit(c, {
     action: "session.list",
     subjectUserId: userId ?? null,
-    details: { matched: sessions.length, returned: items.length, searched: Boolean(q) },
+    details: { matched: sessions.length, returned: items.length, searched: Boolean(q), role, age },
   });
 
   const body: OpsSessionPage = { items, total: sessions.length, page, per };

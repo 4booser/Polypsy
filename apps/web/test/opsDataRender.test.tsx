@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
-import type { DataCheck, MobileReport, PushReport, UsageReport } from "@quizzy/shared";
+import { UI, type DataCheck, type MobileReport, type PushReport, type UsageReport } from "@quizzy/shared";
 import { LangProvider } from "../src/lang";
 import { MobileBody } from "../src/pages/ops/data/Mobile";
 import { PushBody } from "../src/pages/ops/data/Push";
@@ -22,6 +22,11 @@ const draw = (node: ReactNode) =>
     </MemoryRouter>,
   );
 
+/** Строка словаря до первой подстановки — на любом из трёх языков */
+const head = (key: keyof typeof UI) => [UI[key].uk, UI[key].ru, UI[key].en].map((s) => s.split("{")[0]!.trim());
+const has = (html: string, key: keyof typeof UI) => expect(head(key).some((h) => html.includes(h)), key).toBe(true);
+const hasNot = (html: string, key: keyof typeof UI) => expect(head(key).some((h) => html.includes(h)), key).toBe(false);
+
 const days = (values: number[]) =>
   values.map((v, i) => ({ date: `2026-09-${String(20 + i).padStart(2, "0")}`, v }));
 
@@ -36,13 +41,45 @@ describe("якість даних", () => {
   };
   const clean: DataCheck = { key: "scoring.noBands", level: "warning", count: 0, examples: [], bySurvey: [], extra: {} };
 
-  test("пример — ссылкой на протокол, чистая проверка — одной строкой", () => {
-    const html = draw(<QualityBody checkedAt="2026-09-26T10:00:00.000Z" checks={[fired, clean]} />);
+  test("находка — строкой таблицы с уровнем словом, пример — ссылкой на протокол, чистая — в своей панели", () => {
+    const html = draw(<QualityBody checks={[fired, clean]} />);
+    // первая находка раскрыта: пример виден коротко, полностью — в подсказке
     expect(html).toContain('href="/surveys/s-1/responses/aaaaaaaa-1111-4000-8000-000000000001"');
+    expect(html).toContain(">aaaaaaaa<");
     expect(html).toContain('href="/analytics/tests?view=quality"');
     expect(html).toContain("PHQ-9");
-    // пример показан коротко, полностью — в подсказке
-    expect(html).toContain(">aaaaaaaa<");
+    // разбивка по методикам ведёт туда, где несостыковку чинят
+    expect(html).toContain('href="/surveys/s-1"');
+    // уровень — словом, не только цветом
+    has(html, "opsd.level.warning");
+    // чистая — строкой в панели «Чисто», а не пустым разделом
+    has(html, "opsd.chk.noBands");
+    expect(html).toContain('aria-expanded="true"');
+  });
+
+  test("вкладка «Чисто» не показывает находок, вкладка уровня — только свой уровень", () => {
+    const onlyClean = draw(<QualityBody checks={[fired, clean]} view="clean" />);
+    hasNot(onlyClean, "opsd.chk.duplicates");
+    has(onlyClean, "opsd.chk.noBands");
+
+    const errors = draw(<QualityBody checks={[fired, clean]} view="error" />);
+    hasNot(errors, "opsd.chk.duplicates");
+    has(errors, "oppd.q.noFindings");
+  });
+
+  test("единица при числе — по правилу числа: одна методика, а не «1 методик»", () => {
+    const one: DataCheck = {
+      key: "orphans.keyAcrossVersions",
+      level: "error",
+      count: 1,
+      examples: [{ id: "s-9", kind: "survey", surveyId: "s-9" }],
+      bySurvey: [],
+      extra: {},
+    };
+    const html = draw(<QualityBody checks={[one]} />);
+    has(html, "oppd.unit.survey.one");
+    // пример методики ведёт в конструктор
+    expect(html).toContain('href="/constructor/s-9"');
   });
 });
 
@@ -54,6 +91,8 @@ describe("використання", () => {
       total: 12,
       top: [{ app: "console", route: "/patients/:userId", views: 12, days: 3 }],
       byDay: days([0, 4, 8]).map((d) => ({ date: d.date, views: d.v })),
+      byApp: [{ app: "console", views: 12 }],
+      routes: 1,
     },
     active: {
       byDay: [
@@ -68,22 +107,23 @@ describe("використання", () => {
     funnel: { days: 90, invites: 10, registered: null, firstResponse: null, repeatResponse: null, selfRegistered: 0 },
   };
 
-  test("шаблон маршрута печатается как есть, скрытые — прочерком", () => {
-    const html = draw(<UsageBody data={report} days={7} onDays={() => {}} />);
+  test("шаблон маршрута печатается как есть, скрытое порогом — «n < 5», а не ноль", () => {
+    const html = draw(<UsageBody data={report} />);
     expect(html).toContain("/patients/:userId");
     expect(html).toContain('role="img"');
-    // скрытое порогом — прочерк у плитки, черта у оси в графике, а не ноль
-    expect(html).toContain(">—<");
-    expect(html).toContain('stroke="var(--axis)"');
+    // скрытое порогом — ячейка «n < 5» с объяснением, а не ноль и не пустота
+    expect(html).toContain("n &lt; 5");
+    // день, где пациентов меньше порога, — разрыв линии: следующий день стоит одиночной меткой
+    expect(html).toContain("data-single");
   });
 
   test("пустое окно не роняет экран", () => {
     const empty: UsageReport = {
       ...report,
-      screens: { total: 0, top: [], byDay: [] },
+      screens: { total: 0, top: [], byDay: [], byApp: [], routes: 0 },
       active: { byDay: [], staff7: 0, staff30: 0, patients7: 0, patients30: 0 },
     };
-    expect(() => draw(<UsageBody data={empty} days={30} onDays={() => {}} />)).not.toThrow();
+    expect(() => draw(<UsageBody data={empty} />)).not.toThrow();
   });
 });
 
@@ -114,10 +154,16 @@ describe("мобільний застосунок і пуші", () => {
     },
   };
 
-  test("версии, очередь и пустая выборка опозданий", () => {
-    const html = draw(<MobileBody data={mobile} days={90} onDays={() => {}} />);
+  test("версии, старые сборки заметкой, очередь и пустая выборка опозданий", () => {
+    const html = draw(<MobileBody data={mobile} />);
     expect(html).toContain("1.1.0");
     expect(html).toContain("1.2.0");
+    // одно устройство на старой сборке — формой «один», а не «1 пристроїв»
+    has(html, "oppd.m.oldTitle.one");
+    // отклонённые ждут человека — об этом сказано словами
+    has(html, "oppd.m.rejectedNote");
+    // падения — у раздела ошибок клиента, сюда ведёт ссылка
+    expect(html).toContain('href="/ops/client-errors"');
   });
 
   const push: PushReport = {
@@ -127,30 +173,45 @@ describe("мобільний застосунок і пуші", () => {
     byDay: [],
     byKind: [],
     errors: [],
-    tokens: { registered: 0, stale: 0, byPlatform: [] },
+    tokens: { registered: 0, stale: 0, byPlatform: [], oldest: [] },
     events: [],
   };
 
   test("пуши до первой отправки — пояснение, а не пустые нули", () => {
-    const html = draw(<PushBody data={push} days={30} onDays={() => {}} />);
+    const html = draw(<PushBody data={push} />);
     expect(html).toContain("0091");
   });
 
-  test("коды ошибок печатаются, токенов нет", () => {
+  test("путь — таблицей этапов с долей от предыдущего; коды ошибок печатаются, токенов нет — только отпечатки", () => {
     const html = draw(
       <PushBody
+        now={Date.parse("2026-10-08T12:00:00Z")}
         data={{
           ...push,
           since: "2026-09-01T00:00:00Z",
-          totals: { ...push.totals, sent: 4, accepted: 3, failed: 1 },
+          totals: { ...push.totals, sent: 4, accepted: 3, failed: 1, delivered: 3 },
           errors: [{ code: "DeviceNotRegistered", count: 1, tokens: 1 }],
           byKind: [{ kind: "appointment", sent: 4, errors: 1, delivered: 2 }],
+          events: [{ kind: "appointment", count: 2 }],
+          tokens: {
+            registered: 2,
+            stale: 1,
+            byPlatform: [{ platform: "ios", count: 2 }],
+            oldest: [{ platform: "ios", fingerprint: "a91f00112233402c", lastSeenAt: "2026-06-02T10:00:00Z" }],
+          },
         }}
-        days={30}
-        onDays={() => {}}
       />,
     );
     expect(html).toContain("DeviceNotRegistered");
     expect(html).not.toContain("ExponentPushToken");
+    // этапы пути — строками таблицы, а не плитками
+    expect(html).toContain("<table");
+    has(html, "oppd.p.path");
+    has(html, "opsd.p.accepted");
+    // 3 из 4 принято — доля от предыдущего этапа
+    expect(html).toMatch(/75 %/);
+    // отпечаток — коротко, начало и конец; сам токен на его месте закрыт замком
+    expect(html).toContain("a91f…402c");
+    has(html, "oppd.masked");
   });
 });

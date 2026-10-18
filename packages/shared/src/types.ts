@@ -431,6 +431,12 @@ export function isClientDecisionCode(code: unknown): code is string {
   return typeof code === "string" && CLIENT_DECISION_CODES.includes(code);
 }
 
+/**
+ * Сколько длится просмотр «от имени»: сервер выдаёт токен на этот срок, окно
+ * входа называет его словами — одно число на обоих.
+ */
+export const IMPERSONATION_MINUTES = 30;
+
 /** Кто смотрит «от имени» — см. User.impersonation */
 export interface ImpersonationInfo {
   sessionId: string;
@@ -537,6 +543,57 @@ export interface OpsUserRow {
    * держит учётку так же, как клинический след.
    */
   journalEntries: number;
+  /**
+   * Второй фактор: настроен ли и обязателен ли по политике (по какой
+   * причине — суперадмин или права ops.*; null — не обязателен). У
+   * пациентов null: политика второго фактора — про персонал.
+   */
+  secondFactor: { enabled: boolean; required: MfaCoverageRow["because"] | null } | null;
+  /** Заперт перебором пароля: неудач в окне и когда вход откроется сам; null — не заперт */
+  lock: { failures: number; until: string } | null;
+}
+
+/** Человек в группе «Потребує уваги» реестра: кто и чем */
+export interface OpsAttentionPerson {
+  id: string;
+  fullName: string;
+  email: string;
+  role: Role;
+  /**
+   * Срок, к которому относится группа: до какого времени заперт, с какого
+   * времени временный пароль, когда был последний вход (или заведён, если
+   * не входил ни разу)
+   */
+  at: string | null;
+  /** Заперт: неудач в окне; второй фактор: по какой причине обязателен */
+  failures?: number;
+  because?: MfaCoverageRow["because"];
+  /** Ни разу не входил: `at` — время заведения */
+  never?: boolean;
+}
+
+export interface OpsAttentionGroup {
+  count: number;
+  /** Первые из группы — для поповера; весь список открывает отбор реестра */
+  people: OpsAttentionPerson[];
+}
+
+/**
+ * «Потребує уваги» в «Користувачах» (GET /api/ops/users/attention): четыре
+ * группы записей, о которых стоит знать администратору прямо сейчас.
+ * В отличие от сводки (только числа) — с людьми: это рабочий список.
+ */
+export interface OpsUsersAttention {
+  /** Заперты перебором пароля прямо сейчас */
+  locked: OpsAttentionGroup;
+  /** Второй фактор обязателен по политике, а не настроен (действующие учётки) */
+  mfaMissing: OpsAttentionGroup;
+  /** Временный пароль выдан дольше tempHours назад и всё ещё не сменён */
+  tempPassword: OpsAttentionGroup;
+  /** Персонал без входа дольше idleDays (или заведён так давно и ни разу не входил) */
+  idleStaff: OpsAttentionGroup;
+  tempHours: number;
+  idleDays: number;
 }
 
 export interface OpsUserPage {
@@ -682,11 +739,15 @@ export interface MfaCoverageRow {
   enabled: boolean;
   confirmedAt: string | null;
   disabled: boolean;
+  /** Последний вход или обмен refresh; null — ещё не входил */
+  lastSeenAt?: string | null;
 }
 
 export interface MfaPolicyView {
   policy: MfaPolicy;
   coverage: MfaCoverageRow[];
+  /** Весь действующий персонал и сколько из него с фактором — для справки рядом с покрытием */
+  staff: { total: number; enabled: number };
 }
 
 /** Выдача токена «от имени» (POST /api/ops/people/impersonate/:id) */
@@ -2536,6 +2597,10 @@ export interface UsageReport {
     total: number;
     top: ScreenUsageRow[];
     byDay: { date: string; views: number }[];
+    /** Открытия по приложениям — по всем шаблонам окна, а не по верхушке top */
+    byApp: { app: ScreenUsageRow["app"]; views: number }[];
+    /** Сколько разных шаблонов открывали за окно (top — только первые из них) */
+    routes: number;
   };
   /**
    * Уникальные люди по дням. Специалисты — числом всегда, пациенты — через
@@ -2612,7 +2677,13 @@ export interface PushReport {
   byDay: { date: string; sent: number; errors: number }[];
   byKind: { kind: string; sent: number; errors: number; delivered: number }[];
   errors: { code: string; count: number; tokens: number }[];
-  tokens: { registered: number; stale: number; byPlatform: { platform: string; count: number }[] };
+  tokens: {
+    registered: number;
+    stale: number;
+    byPlatform: { platform: string; count: number }[];
+    /** Три самых давних — отпечатком (16 знаков sha256), сам токен наружу не выходит */
+    oldest: { platform: string; fingerprint: string; lastSeenAt: string }[];
+  };
   /** События из push_deliveries за окно — «кому решили отправить», по типам */
   events: { kind: string; count: number }[];
 }
@@ -4055,6 +4126,13 @@ export interface AuditEntry {
   ip: string | null;
   userAgent: string | null;
   details: Record<string, unknown> | null;
+  /**
+   * Место в хэш-цепочке (GET /api/audit отдаёт строку журнала целиком):
+   * номер, хэш записи и хэш предыдущей. У записей до цепочки — null.
+   */
+  seq?: number | null;
+  entryHash?: string | null;
+  prevHash?: string | null;
 }
 
 export interface AuditPage {

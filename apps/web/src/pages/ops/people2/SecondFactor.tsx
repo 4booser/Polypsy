@@ -15,6 +15,7 @@ import { AccessIcon } from "../../public/accessIcons";
 import { OtpInput, fill, rich } from "../../public/authParts";
 import { PublicFrame } from "../../public/PublicFrame";
 import { saveText } from "./parts";
+import { Sx } from "./securityParts";
 
 /*
  * Второй фактор на стороне человека (участок people2): настройка в
@@ -37,7 +38,7 @@ function Qr({ url, label }: { url: string; label: string }) {
     <div
       role="img"
       aria-label={label}
-      className="size-[176px] shrink-0 rounded-[5px] bg-[var(--bg)] p-[4px] shadow-[0_0_0_1px_var(--hairline)] [&>svg]:size-full"
+      className="size-[176px] shrink-0 rounded-control bg-panel p-1 shadow-[0_0_0_1px_var(--border)] [&>svg]:size-full"
       /*
         biome-ignore lint/security/noDangerouslySetInnerHtml: SVG собирается здесь же
         из otpauth-адреса, выданного сервером; чужой разметки в нём нет
@@ -75,18 +76,18 @@ export function SecondFactorSettings({ onEnabled }: { onEnabled?: () => void }) 
   /* коды восстановления — единственный показ; окно не закрывается само */
   if (codes) {
     return (
-      <div className="flex flex-col gap-[12px]">
-        <h3 className="m-0 text-[17px] font-bold leading-[22px] text-primary">{ut("acct.mfa.codesTitle")}</h3>
-        <p className="m-0 max-w-[68ch] text-[13px] leading-[18px] text-muted">{ut("acct.mfa.codesHint")}</p>
-        <ul className="m-0 grid max-w-[360px] list-none grid-cols-2 gap-[6px] p-0">
+      <div className="flex flex-col gap-3">
+        <h3 className="m-0 text-h3 font-extrabold text-text">{ut("acct.mfa.codesTitle")}</h3>
+        <p className="m-0 max-w-[68ch] text-small text-text-2">{ut("acct.mfa.codesHint")}</p>
+        <ul className="m-0 grid max-w-[360px] list-none grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-1.5 p-0">
           {codes.map((c) => (
-            <li key={c} className="rounded-[5px] bg-primary-soft px-[10px] py-[6px] font-mono text-[17px] tabular-nums text-primary select-all">
+            <li key={c} className="rounded-control bg-sunk px-2.5 py-1.5 font-mono text-[15px] font-semibold text-text select-all">
               {c}
             </li>
           ))}
         </ul>
-        <div className="flex flex-wrap gap-[12px]">
-          <Button variant="ghost" onClick={() => saveText(`${codes.join("\r\n")}\r\n`, `polypsy-recovery-${user?.email ?? "codes"}.txt`, "text/plain;charset=utf-8")}>
+        <div className="flex flex-wrap gap-2">
+          <Button icon={<Ic.download />} onClick={() => saveText(`${codes.join("\r\n")}\r\n`, `polypsy-recovery-${user?.email ?? "codes"}.txt`, "text/plain;charset=utf-8")}>
             {ut("acct.mfa.download")}
           </Button>
           <Button
@@ -114,14 +115,14 @@ export function SecondFactorSettings({ onEnabled }: { onEnabled?: () => void }) 
       }, ut("acct.mfa.enabledDone"));
     };
     return (
-      <form className="flex flex-col gap-[12px]" onSubmit={submit}>
-        <p className="m-0 max-w-[68ch] text-[15px] leading-[21px] text-text-2">{ut("acct.mfa.scan")}</p>
-        <div className="flex flex-wrap items-start gap-[20px]">
+      <form className="flex flex-col gap-3" onSubmit={submit}>
+        <p className="m-0 max-w-[68ch] text-body text-text-2">{ut("acct.mfa.scan")}</p>
+        <div className="flex flex-wrap items-start gap-5">
           <Qr url={setup.otpauthUrl} label={ut("acct.mfa.qr")} />
-          <div className="flex min-w-[240px] flex-1 flex-col gap-[10px]">
+          <div className="flex min-w-[240px] flex-1 flex-col gap-2.5">
             <div>
-              <span className="mb-[6px] block text-[13px] font-bold text-muted">{ut("acct.mfa.key")}</span>
-              <output className="block rounded-[5px] bg-primary-soft px-[10px] py-[6px] font-mono text-[15px] tabular-nums text-primary select-all [overflow-wrap:anywhere]">
+              <span className="mb-1.5 block text-caption font-bold text-muted">{ut("acct.mfa.key")}</span>
+              <output className="block rounded-control bg-sunk px-2.5 py-1.5 font-mono text-[15px] font-semibold text-text select-all [overflow-wrap:anywhere]">
                 {grouped(setup.secret)}
               </output>
             </div>
@@ -133,11 +134,11 @@ export function SecondFactorSettings({ onEnabled }: { onEnabled?: () => void }) 
                 autoComplete="one-time-code"
                 maxLength={9}
                 autoFocus
-                className="font-mono tabular-nums"
+                className="tabular-nums"
               />
             </Field>
-            <div className="flex gap-[12px]">
-              <Button type="submit" disabled={busy || code.replace(/\D/g, "").length !== 6}>
+            <div className="flex gap-2">
+              <Button type="submit" variant="primary" disabled={busy || code.replace(/\D/g, "").length !== 6}>
                 {ut("acct.mfa.confirm")}
               </Button>
               <Button variant="ghost" onClick={() => setSetup(null)}>
@@ -151,17 +152,17 @@ export function SecondFactorSettings({ onEnabled }: { onEnabled?: () => void }) 
   }
 
   return (
-    <div className="flex flex-col gap-[12px]">
-      {s.required ? <p className="m-0 text-[13px] leading-[18px] text-accent">{ut("acct.mfa.required")}</p> : null}
+    <div className="flex flex-col gap-3">
+      {s.required ? <p className="m-0 text-small font-semibold text-warn">{ut("acct.mfa.required")}</p> : null}
       {s.enabled ? (
         <>
-          <p className="m-0 text-[15px] leading-[21px] text-text-2">
-            {ut("acct.mfa.on")} {dateTime(s.confirmedAt)} · {ut("acct.mfa.left")}:{" "}
-            <span className="font-mono tabular-nums">{s.recoveryLeft}</span>
+          <p className="m-0 text-body text-text-2">
+            {ut("acct.mfa.on")} {dateTime(s.confirmedAt)}. {ut("acct.mfa.left")}:{" "}
+            <b className="font-extrabold tabular-nums text-text">{s.recoveryLeft}</b>
           </p>
           {s.required ? null : (
             <form
-              className="flex max-w-[420px] flex-col gap-[4px]"
+              className="flex max-w-[420px] flex-col gap-1"
               onSubmit={(e) => {
                 e.preventDefault();
                 void run(async () => {
@@ -171,12 +172,12 @@ export function SecondFactorSettings({ onEnabled }: { onEnabled?: () => void }) 
                 }, ut("acct.mfa.disabledDone"));
               }}
             >
-              <p className="m-0 mb-[6px] text-[13px] leading-[18px] text-muted">{ut("acct.mfa.disableHint")}</p>
+              <p className="m-0 mb-1.5 text-small text-muted">{ut("acct.mfa.disableHint")}</p>
               <Field label={ut("acct.currentPassword")}>
                 <Input type="password" value={off.password} onChange={(e) => setOff({ ...off, password: e.target.value })} autoComplete="current-password" />
               </Field>
               <Field label={ut("acct.mfa.code")}>
-                <Input value={off.code} onChange={(e) => setOff({ ...off, code: e.target.value })} autoComplete="one-time-code" className="font-mono tabular-nums" />
+                <Input value={off.code} onChange={(e) => setOff({ ...off, code: e.target.value })} autoComplete="one-time-code" className="tabular-nums" />
               </Field>
               <div>
                 <Button type="submit" variant="danger" disabled={busy || !off.password || off.code.trim().length < 6}>
@@ -188,9 +189,9 @@ export function SecondFactorSettings({ onEnabled }: { onEnabled?: () => void }) 
         </>
       ) : (
         <>
-          <p className="m-0 text-[15px] leading-[21px] text-text-2">{ut("acct.mfa.off")}</p>
+          <p className="m-0 text-body text-text-2">{ut("acct.mfa.off")}</p>
           <div>
-            <Button disabled={busy} onClick={() => void run(async () => setSetup(await api.mfaSetup()))}>
+            <Button variant="primary" disabled={busy} onClick={() => void run(async () => setSetup(await api.mfaSetup()))}>
               {ut("acct.mfa.enable")}
             </Button>
           </div>

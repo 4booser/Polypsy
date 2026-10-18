@@ -194,7 +194,7 @@ describe("цілісність: полоса сверок", () => {
 });
 
 describe("дані й продукт: добавленные графики", () => {
-  test("використання: экраны полосами и «інші» до итога окна", () => {
+  test("використання: экраны таблицей с долей и «інші» до итога окна", () => {
     const report: UsageReport = {
       days: 7,
       smallCellFloor: 5,
@@ -202,15 +202,24 @@ describe("дані й продукт: добавленные графики", ()
         total: 50,
         top: [{ app: "console", route: "/patients/:userId", views: 12, days: 3 }],
         byDay: [{ date: "2026-09-26", views: 50 }],
+        byApp: [
+          { app: "console", views: 30 },
+          { app: "patient", views: 20 },
+        ],
+        routes: 5,
       },
       active: { byDay: [], staff7: 1, staff30: 1, patients7: null, patients30: null },
       funnel: { days: 90, invites: 0, registered: null, firstResponse: null, repeatResponse: null, selfRegistered: null },
     };
-    const html = draw(<UsageBody data={report} days={7} onDays={() => {}} />);
+    const html = draw(<UsageBody data={report} />);
     clean(html);
-    has(html, "sig.u.topScreens");
-    has(html, "sig.u.otherScreens");
+    has(html, "opsd.u.screens");
+    // остаток до итога окна — строкой «інші», с числом шаблонов за верхушкой
+    has(html, "oppd.u.rest");
+    has(html, "oppd.u.restRoutes.few");
     expect(html).toContain(">38<");
+    // доля приложений — полосой по всем шаблонам окна
+    has(html, "oppd.u.byApp");
   });
 
   test("пуши: доля ошибок по дням — только при отправках", () => {
@@ -224,14 +233,14 @@ describe("дані й продукт: добавленные графики", ()
       ],
       byKind: [],
       errors: [{ code: "DeviceNotRegistered", count: 1, tokens: 1 }],
-      tokens: { registered: 0, stale: 0, byPlatform: [] },
+      tokens: { registered: 0, stale: 0, byPlatform: [], oldest: [] },
       events: [],
     };
-    const html = draw(<PushBody data={push} days={30} onDays={() => {}} />);
+    const html = draw(<PushBody data={push} />);
     clean(html);
     has(html, "sig.p.share");
-    has(html, "sig.p.codes");
-    const none = draw(<PushBody data={{ ...push, byDay: push.byDay.map((d) => ({ ...d, sent: 0, errors: 0 })) }} days={30} onDays={() => {}} />);
+    has(html, "opsd.p.errorCodes");
+    const none = draw(<PushBody data={{ ...push, byDay: push.byDay.map((d) => ({ ...d, sent: 0, errors: 0 })) }} />);
     expect(head("sig.p.share").some((h) => none.includes(h))).toBe(false);
   });
 
@@ -249,7 +258,7 @@ describe("дані й продукт: добавленные графики", ()
       queue: { devicesReporting: 0, pending: 0, rejected: 0, devicesWithPending: 0, devicesWithRejected: 0 },
       late: { total: 0, submitted: 0, buckets: [], medianLagMs: null, p90LagMs: null, byDay: [] },
     };
-    const html = draw(<MobileBody data={mobile} days={90} onDays={() => {}} />);
+    const html = draw(<MobileBody data={mobile} />);
     clean(html);
     has(html, "sig.m.versions");
     has(html, "sig.m.unknownVersion");

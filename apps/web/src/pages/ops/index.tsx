@@ -3,6 +3,7 @@ import { useAuth } from "../../auth";
 import { useLang } from "../../lang";
 import { Page } from "../../ui/layout";
 import { groupOf, opsGroups } from "./model";
+import { ownFrame } from "./people2/frame";
 
 /*
  * Техпанель — экран для разработчиков и того, кто держит сервер.
@@ -36,6 +37,8 @@ export default function OpsPanel() {
   const group = groupOf(pathname, tabs);
   /* имя открытого раздела — заголовком экрана; трасса запроса и прочие страницы без пункта — «Техпанель» */
   const here = tabs.filter((t) => t.group === group).find((t) => (t.end ? pathname === t.to : pathname.startsWith(t.to)));
+  /* «Люди й безпека» и «Дані й продукт» ставят свою рамку: шапка с мета-строкой, правом и действиями */
+  if (ownFrame(pathname)) return <Outlet />;
   return (
     <Page title={here ? ut(here.key) : ut("ops.title")}>
       <Outlet />

@@ -19,7 +19,8 @@ import { normalizePhone, phoneFingerprint } from "./phone";
 
 export interface RegistryQuery {
   q: string;
-  role?: Role;
+  /** «staff» — весь персонал: суперадмины и администраторы групп */
+  role?: Role | "staff";
   status?: "active" | "disabled";
   sort?: "name" | "created" | "lastSeen" | "role";
 }
@@ -61,7 +62,7 @@ export async function matchRegistry(query: RegistryQuery, lang: Lang) {
   const phoneKey = phone ? phoneFingerprint(phone) : null;
 
   const matched = all
-    .filter((u) => !role || u.role === role)
+    .filter((u) => !role || (role === "staff" ? u.role !== "user" : u.role === role))
     .filter((u) => !status || (status === "disabled" ? u.disabledAt !== null : u.disabledAt === null))
     .map((u) => ({ ...u, fullName: fullNameOf(u) }))
     .filter((u) => {

@@ -1,4 +1,4 @@
-import { type UiKey, opsSessionQuery } from "@quizzy/shared";
+import { type SessionAgeBucket, type UiKey, opsSessionQuery } from "@quizzy/shared";
 import { pageFrom, perFrom } from "../../ui/paging";
 
 /**
@@ -33,18 +33,31 @@ export interface SessionsFilters {
   q: string;
   /** Человек из адреса (меню строки «Користувачів»); незнакомое — пусто */
   userId: string;
+  /** Роль владельца: роль учётки или «staff» — весь персонал; незнакомое — пусто */
+  role: "" | "superadmin" | "admin" | "user" | "staff";
+  /** Возраст сессии от входа — корзины сводки; незнакомое — пусто */
+  age: "" | SessionAgeBucket;
   page: number;
   per: number;
 }
 
 /** Идентификатор человека — тем же правилом, что у сервера */
 const userIdRule = opsSessionQuery.shape.userId;
+const roleRule = opsSessionQuery.shape.role;
+const ageRule = opsSessionQuery.shape.age;
+
+/** Значение из закрытого списка схемы сервера или «условия нет» */
+function closed<T extends string>(rule: { safeParse: (v: unknown) => { success: boolean } }, raw: string | null): T | "" {
+  return raw && rule.safeParse(raw).success ? (raw as T) : "";
+}
 
 export function readSessionsFilters(params: URLSearchParams): SessionsFilters {
   const userId = params.get("user") ?? "";
   return {
     q: params.get("q") ?? "",
     userId: userId && userIdRule.safeParse(userId).success ? userId : "",
+    role: closed<SessionsFilters["role"] & string>(roleRule, params.get("role")),
+    age: closed<SessionAgeBucket>(ageRule, params.get("age")),
     page: Math.min(pageFrom(params.get("page")), SESSIONS_PAGE_MAX),
     per: perFrom(params.get("per")),
   };
@@ -58,6 +71,8 @@ export function sessionsQuery(f: SessionsFilters, q: string = f.q): Record<strin
   return {
     q: q.trim().slice(0, SESSIONS_SEARCH_MAX).trim() || undefined,
     userId: f.userId || undefined,
+    role: f.role || undefined,
+    age: f.age || undefined,
     page: String(f.page),
     per: String(f.per),
   };
@@ -71,8 +86,9 @@ export function sessionsQuery(f: SessionsFilters, q: string = f.q): Record<strin
  * администратор, проверявший «не вошёл ли кто под этой почтой», читал
  * «сессий нет вообще». По одному человеку — про него: у него сессий нет.
  */
-export function sessionsEmptyKey(f: Pick<SessionsFilters, "q" | "userId">): UiKey {
+export function sessionsEmptyKey(f: Pick<SessionsFilters, "q" | "userId"> & Partial<Pick<SessionsFilters, "role" | "age">>): UiKey {
   if (f.q.trim()) return "wt.sess.noneFound";
+  if (f.role || f.age) return "oppa.noneFiltered";
   if (f.userId) return "wt.sess.noneOfUser";
   return "ops.sessions.none";
 }

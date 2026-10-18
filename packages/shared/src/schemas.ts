@@ -190,15 +190,18 @@ export const createUserSchema = z.object({
  * списка пациентов: ФИО шифровано, упорядочить и найти его в SQL нечем.
  * Поиск — по ФИО, почте и телефону (телефон — слепым индексом, см. маршрут).
  * Роль и состояние — закрытыми списками: опечатка в `?status=disabld`
- * должна давать отказ, а не молча весь реестр.
+ * должна давать отказ, а не молча весь реестр. Роль «staff» — весь персонал
+ * (суперадмины и администраторы групп): вкладка «Персонал» реестра.
  */
+export const registryRole = z.enum(["superadmin", "admin", "user", "staff"]);
+
 export const opsUserListQuery = z.object({
   q: z
     .string()
     .max(120)
     .optional()
     .transform((v) => (v ?? "").trim().toLowerCase()),
-  role: z.enum(["superadmin", "admin", "user"]).optional(),
+  role: registryRole.optional(),
   status: z.enum(["active", "disabled"]).optional(),
   sort: z.enum(["name", "created", "lastSeen", "role"]).optional().default("name"),
   page: z
@@ -224,9 +227,15 @@ export const disableUserSchema = z.object({
   reason: z.string().trim().min(3).max(500),
 });
 
-/** Активные сессии (GET /api/ops/sessions): по человеку или поиском, страницами */
+/**
+ * Активные сессии (GET /api/ops/sessions): по человеку или поиском, страницами.
+ * Роль (как у реестра, «staff» — весь персонал) и возраст сессии от входа —
+ * закрытыми списками: отбор «сесії пацієнтів старші за 30 днів» из сводки.
+ */
 export const opsSessionQuery = z.object({
   userId: z.string().uuid().optional(),
+  role: registryRole.optional(),
+  age: z.enum(["day", "week", "month", "older"]).optional(),
   q: z
     .string()
     .max(120)
@@ -343,7 +352,7 @@ export const opsUserIdsQuery = z.object({
     .max(120)
     .optional()
     .transform((v) => (v ?? "").trim().toLowerCase()),
-  role: z.enum(["superadmin", "admin", "user"]).optional(),
+  role: registryRole.optional(),
   status: z.enum(["active", "disabled"]).optional(),
 });
 
