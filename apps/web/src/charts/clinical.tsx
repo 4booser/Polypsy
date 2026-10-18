@@ -1,77 +1,84 @@
-import { useRef, useState, type ReactNode } from "react";
+import { useId, useRef, useState, type ReactNode } from "react";
 import type { Severity } from "@quizzy/shared";
 import { useLang } from "../lang";
 import { cx } from "../ui/cx";
 import { NoData } from "../ui/primitives";
+import { bandSpans, placeLabels } from "./courseModel";
 import { useChartWidth } from "./index";
+import {
+  ATTENTION_COLOR,
+  ChartLegend,
+  ChartTip,
+  DataTable,
+  FOCUSABLE,
+  Marker,
+  OTHER_COLOR,
+  RowTip,
+  SINGLE_COLOR,
+  SevChip,
+  SmallCell,
+  TipHead,
+  TipRow,
+  ViewSwitch,
+  fillIn,
+  sevBg,
+  useDecimal,
+  sevColor,
+  shapeOf,
+  useIndexHover,
+  type LegendItem,
+  type TableView,
+} from "./kit";
 import { boundaries, ladderDomain, num, profileRuns, rungOf, segments, share, sortRungs, type Rung } from "./ladder";
 import { axisFor } from "./scale";
 
 /**
- * Клинические графики консоли в языке макета Polypsy.
+ * Клинические и служебные графики консоли в языке «Виразної».
  *
- * Прежние диаграммы (charts/index.tsx, advanced.tsx) писались для «Пульта»:
- * категориальная палитра, кольца, карточки. Макет говорит иначе — «графики:
- * тонкие линии primary, сетка line, подписи muted, цифры mono», тяжесть —
- * «текст и тонкие метки, без заливок». Этот файл — набор форм, собранных по
- * этой фразе, общий для прохождения, аналитики методики, сводки и
- * статистики. Одна форма на один вопрос, и один и тот же вопрос на разных
- * экранах выглядит одинаково:
+ * Одна форма на один вопрос, и один и тот же вопрос на разных экранах
+ * выглядит одинаково:
  *
- *   SeverityRuler — где этот балл на лестнице полос;
+ *   SeverityMeter (SeverityRuler) — где этот балл на лестнице полос;
  *   ScaleProfile  — то же по всем шкалам методики сразу;
  *   BandTrend     — как балл двигался по лестнице во времени;
  *   ShareBar      — из чего состоит целое (полосы, варианты ответа);
  *   HBars         — сравнение величин по строкам;
- *   PairBars      — то же «было / стало» парой полос;
+ *   GroupedHBars  — то же для нескольких рядов, у каждого свой цвет;
+ *   PairBars      — «було / стало» парой полос;
+ *   HeatTable     — ответы по пунктам во времени, критический — красным;
  *   TimeColumns   — сколько за день/неделю;
- *   StackColumns  — то же с разбивкой столбца на части (классы ответа, уровни);
- *   TimeLines     — несколько величин по одним корзинам времени, с разрывами;
- *   Kpi, Sparkline — одно число, которое читают первым.
+ *   StackColumns  — то же с разбивкой столбца на части;
+ *   TimeLines     — несколько величин по одним корзинам времени, с разрывами
+ *                   и отметками (выкатки);
+ *   Kpi, Sparkline — крупное число со сравнением и ходом рядом с ним.
  *
- * Цвет. Одиночный ряд — фиолетовый действия (--primary): в макете нет
- * другого цвета для данных, и синий ряд «Пульта» (--s1) на белом листе
- * макета выглядел чужим. Тяжесть — только ступенями --sev-*, и никогда
- * цветом в одиночку: рядом подпись, у точки — форма (круг, квадрат, ромб),
- * как у SeverityTag. Клинические графики янтаря не используют вовсе — он
- * значит «требует внимания», а балл шкалы ничего не требует.
+ * Цвет (charts/README.md): одиночный ряд — --series; несколько — c1…c4 в
+ * постоянном порядке, c5 — прочее и «було»; упорядоченные категории —
+ * лестница h1…h5; тяжесть — ступени --sev-* только в клинических полосах и
+ * никогда без слова; янтарь (--warn) — только «требует внимания»; красный —
+ * только риск для человека (критический ответ).
  *
- * Волна 11 (графики техпанели) добавила формы, где янтарь по делу: пятисотки,
- * упавшие проходы задач, строки уровня «помилка», «гірше» после выкатки —
- * это и есть «требует внимания». Поэтому у HBars, TimeColumns и PairBars
- * появился тон attention, а у рядов StackColumns/TimeLines цвет задаёт
- * вызывающий: несколько рядов — токены --cat-* в постоянном порядке и
- * легенда, янтарь — только ряду, который требует внимания. Слово рядом
- * обязательно и здесь: заголовок фигуры, легенда или подпись строки.
- *
- * Раскладка — HTML там, где форма прямоугольная (линейка, доли, полосы):
- * текст подписей в HTML переносится и обрезается браузером, а в SVG его
- * пришлось бы мерить наугад. SVG — там, где нужны оси (динамика, столбцы),
- * и рисуется в пикселях контейнера (useChartWidth), не растягиваясь.
+ * Раскладка — HTML там, где форма прямоугольная (линейка, доли, полосы,
+ * тепловая таблица): текст подписей в HTML переносится и обрезается
+ * браузером. SVG — там, где нужны оси, и рисуется в пикселях контейнера
+ * (useChartWidth), не растягиваясь.
  */
 
 /* ─────────── метка тяжести: цвет + форма ─────────── */
 
-const SEV_BG: Record<Severity, string> = {
-  none: "bg-[var(--sev-none)] rounded-full",
-  mild: "bg-[var(--sev-mild)] rounded-full",
-  moderate: "bg-[var(--sev-moderate)]",
-  severe: "bg-[var(--sev-severe)] rotate-45",
+const SEV_SHAPE: Record<Severity, string> = {
+  none: "rounded-full",
+  mild: "rounded-full",
+  moderate: "",
+  severe: "rotate-45",
 };
 
 /** Текст подписи ступени: тот же тон, что у отрезка, в текстовой силе */
 export const SEV_TEXT: Record<Severity, string> = {
-  none: "text-[var(--sev-none-text)]",
-  mild: "text-[var(--sev-mild-text)]",
-  moderate: "text-[var(--sev-moderate-text)]",
-  severe: "text-[var(--sev-severe-text)]",
-};
-
-const SEV_FILL: Record<Severity, string> = {
-  none: "bg-[var(--sev-none)]",
-  mild: "bg-[var(--sev-mild)]",
-  moderate: "bg-[var(--sev-moderate)]",
-  severe: "bg-[var(--sev-severe)]",
+  none: "text-sev-0",
+  mild: "text-sev-1",
+  moderate: "text-sev-2",
+  severe: "text-sev-4",
 };
 
 /**
@@ -80,7 +87,7 @@ const SEV_FILL: Record<Severity, string> = {
  * любом виде дальтонизма.
  */
 export function SevDot({ severity, className }: { severity: Severity; className?: string }) {
-  return <span aria-hidden className={cx("inline-block size-[8px] shrink-0", SEV_BG[severity], className)} />;
+  return <span aria-hidden className={cx("inline-block size-[8px] shrink-0", SEV_SHAPE[severity], className)} style={{ background: sevColor(severity) }} />;
 }
 
 /* ─────────── линейка тяжести ─────────── */
@@ -90,122 +97,109 @@ export interface RulerProps {
   value: number | null;
   /** Максимум шкалы — только для шкалы без лестницы: тогда рисуется метр 0…max */
   max?: number | null;
-  /** lg — одна шкала крупно, с подписями ступеней; sm — строка профиля */
+  /** lg — одна шкала крупно, с границами и словом ступени; sm — строка профиля */
   size?: "lg" | "sm";
-  /** Подпись над маркером; по умолчанию — само значение */
+  /** Подпись значения рядом со словом ступени; по умолчанию — само значение */
   valueLabel?: string;
   /** Подпись для диктора: «Депресія: 12 — помірна» */
   label: string;
 }
 
 /**
- * Линейка: вся лестница полос шкалы и маркер там, куда лёг балл.
+ * Шкала тяжести (meter набора): вся лестница полос, булавка там, куда лёг
+ * балл, границы числами и слово ступени под ней.
  *
- * Отвечает на вопрос, который залитая ступень лестницы «від — до» (кадр f34)
- * оставляет без ответа: насколько близко к соседней ступени. «Помірна» у
- * балла 10 и у балла 14 — разные разговоры, и маркер у самого края полосы
- * видно с одного взгляда, а в строке «від 10 до 14» — нет.
- *
- * Отрезки ступеней — тонкие (8px), с просветом 2px, без обводки: это
- * ступени одной шкалы, а не разные ряды. Маркер — фиолетовая точка с
- * белым кольцом поверх отрезка: кольцо отделяет его от ступени того же тона.
+ * Отвечает на вопрос, которого не видно в строке «від — до»: насколько
+ * близко к соседней ступени. «Помірна» у балла 10 и у балла 14 — разные
+ * разговоры. Попавшая ступень — в полную силу, остальные — подложкой той же
+ * ступени: шкала читается целиком, а ответ находится раньше подписей.
  */
-export function SeverityRuler({ rungs, value, max, size = "lg", valueLabel, label }: RulerProps) {
+export function SeverityMeter({ rungs, value, max, size = "lg", valueLabel, label }: RulerProps) {
   const sorted = sortRungs(rungs);
   const d = ladderDomain(sorted, [value], max);
   const segs = segments(sorted, d);
   const at = value === null ? null : share(value, d);
   const hit = value === null ? null : rungOf(sorted, value);
   const lg = size === "lg";
-
-  /* подпись над маркером у края не должна вылезать за колонку */
-  const anchor = at === null ? "center" : at < 0.08 ? "start" : at > 0.92 ? "end" : "center";
+  const pct = (v: number) => `${(v * 100).toFixed(2)}%`;
+  /* слово ступени — под серединой попавшего отрезка, но не у самого края шкалы */
+  const hitSeg = segs.find((s) => s.rung === hit);
+  const wordAt = Math.min(0.88, Math.max(0.12, hitSeg ? hitSeg.start + hitSeg.width / 2 : (at ?? 0)));
 
   return (
-    <div role="img" aria-label={label} className={cx("relative w-full", lg ? "pt-[24px]" : "py-[6px]")}>
-      {lg && at !== null ? (
-        <span
-          aria-hidden
-          className={cx(
-            "absolute top-0 whitespace-nowrap font-mono text-[15px] font-bold leading-[18px] text-primary tabular-nums",
-            anchor === "center" && "-translate-x-1/2",
-            anchor === "end" && "-translate-x-full",
-          )}
-          style={{ left: `${(at * 100).toFixed(2)}%` }}
-        >
-          {valueLabel ?? num(value!)}
-        </span>
-      ) : null}
-
-      <div className="relative h-[8px]">
+    <div role="img" aria-label={label} className={cx("relative w-full", lg ? "pt-[6px]" : "py-[6px]")}>
+      <div className={cx("relative", lg ? "h-[10px]" : "h-[8px]")}>
         {segs.length ? (
           <div className="flex h-full gap-[2px]">
-            {segs.map((s) => (
-              <span
-                key={`${s.rung.min}-${s.rung.max}`}
-                className={cx(
-                  "h-full first:rounded-l-[4px] last:rounded-r-[4px]",
-                  SEV_FILL[s.rung.severity],
-                  /* попавшая ступень — в полную силу, остальные приглушены: глаз
-                     находит ответ раньше, чем читает подписи */
-                  hit && s.rung !== hit && "opacity-35",
-                )}
-                style={{ width: `${(s.width * 100).toFixed(3)}%` }}
-              />
-            ))}
+            {segs.map((s) => {
+              const on = s.rung === hit;
+              return (
+                <span
+                  key={`${s.rung.min}-${s.rung.max}`}
+                  data-rung={on ? "on" : "off"}
+                  className="group/row relative h-full first:rounded-l-[4px] last:rounded-r-[4px]"
+                  style={{ width: pct(s.width), background: on ? sevColor(s.rung.severity) : sevBg(s.rung.severity) }}
+                >
+                  {lg ? (
+                    <RowTip>
+                      <TipHead>{s.rung.label}</TipHead>
+                      <TipRow value={`${num(s.rung.min)}–${num(s.rung.max)}`} />
+                    </RowTip>
+                  ) : null}
+                </span>
+              );
+            })}
           </div>
         ) : (
-          /* шкала без полос — метр: дорожка сетки и заливка фиолетовым до балла */
-          <div className="h-full overflow-hidden rounded-[4px] bg-[var(--grid)]">
-            {at !== null ? (
-              <div className="h-full rounded-[4px] bg-primary" style={{ width: `${(at * 100).toFixed(2)}%` }} />
-            ) : null}
+          /* шкала без полос — метр: дорожка и заливка фиолетовым до балла */
+          <div className="h-full overflow-hidden rounded-[4px] bg-track">
+            {at !== null ? <div data-fill className="h-full rounded-r-[4px]" style={{ width: pct(at), background: SINGLE_COLOR }} /> : null}
           </div>
         )}
         {at !== null ? (
           <span
             aria-hidden
-            className="absolute top-1/2 size-[14px] -translate-x-1/2 -translate-y-1/2 rounded-full border-[3px] border-[var(--card)] bg-primary"
-            style={{ left: `${(at * 100).toFixed(2)}%` }}
+            data-pin
+            className={cx(
+              "absolute rounded-[2px] bg-text shadow-[0_0_0_2px_var(--panel)]",
+              lg ? "-top-[6px] h-[22px] w-[4px] -ml-[2px]" : "-top-[4px] h-[16px] w-[3px] -ml-[1.5px]",
+            )}
+            style={{ left: pct(at) }}
           />
         ) : null}
       </div>
 
       {lg ? (
-        segs.length ? (
-          <ol className="m-0 mt-[8px] flex list-none gap-[2px] p-0">
-            {segs.map((s) => (
-              <li
-                key={`${s.rung.min}-${s.rung.max}`}
-                className="min-w-0"
-                style={{ width: `${(s.width * 100).toFixed(3)}%` }}
-                title={`${s.rung.label} · ${num(s.rung.min)}–${num(s.rung.max)}`}
-              >
+        <>
+          <div aria-hidden className="relative mt-[6px] h-[16px] text-[11px] font-semibold text-muted">
+            {(segs.length ? [...segs.map((s) => ({ at: s.start, v: s.start === 0 ? d.lo : s.rung.min })), { at: 1, v: d.hi }] : [{ at: 0, v: d.lo }, { at: 1, v: d.hi }]).map(
+              (t, i, all) => (
                 <span
-                  className={cx(
-                    "block truncate text-[12px] leading-[15px]",
-                    SEV_TEXT[s.rung.severity],
-                    s.rung === hit ? "font-bold" : "font-normal",
-                  )}
+                  key={`${t.at}-${t.v}`}
+                  className={cx("absolute whitespace-nowrap", i === 0 ? "" : i === all.length - 1 ? "-translate-x-full" : "-translate-x-1/2")}
+                  style={{ left: pct(t.at) }}
                 >
-                  {s.rung.label}
+                  {num(t.v)}
                 </span>
-                <span className="block truncate font-mono text-[11px] leading-[14px] text-muted tabular-nums">
-                  {num(s.rung.min)}–{num(s.rung.max)}
-                </span>
-              </li>
-            ))}
-          </ol>
-        ) : (
-          <div className="mt-[6px] flex justify-between font-mono text-[11px] text-muted tabular-nums">
-            <span>{num(d.lo)}</span>
-            <span>{num(d.hi)}</span>
+              ),
+            )}
           </div>
-        )
+          {value !== null ? (
+            <div className="relative h-[18px] text-caption">
+              <span className="absolute -translate-x-1/2 font-extrabold whitespace-nowrap text-text" style={{ left: pct(wordAt) }}>
+                {hit ? `${hit.label}, ` : ""}
+                {valueLabel ?? num(value)}
+              </span>
+            </div>
+          ) : null}
+        </>
       ) : null}
     </div>
   );
 }
+
+/** Прежнее имя шкалы тяжести — вызовы экранов остаются как были */
+export const SeverityRuler = SeverityMeter;
 
 /* ─────────── профиль по шкалам ─────────── */
 
@@ -225,18 +219,13 @@ export interface ProfileRow {
 const ROW_H = 52;
 
 /**
- * Профиль: по строке на шкалу — название, линейка, значение и ступень.
+ * Профиль: по строке на шкалу — название, шкала тяжести, значение и
+ * ступень словом.
  *
- * Строки, а не радар. Радар прежней динамики (charts/advanced.tsx) рисовал
- * шкалы в долях от максимума по кругу, и форма многоугольника зависела от
- * ПОРЯДКА шкал — переставь две, и «профиль» стал другим. У строк порядок
- * тоже есть, но он ничего не рисует: каждая линейка читается сама по себе.
- *
- * Подряд идущие шкалы с одной и той же лестницей (Т-баллы Міні-мульта,
- * стени МЛО) соединяются тонкой линией — это классический профиль,
- * повёрнутый на бок. На шкале с другой лестницей линия рвётся: соединять
- * несоизмеримое нельзя, а терять из-за одной шкалы весь профиль незачем
- * (profileRuns).
+ * Строки, а не радар: у радара форма многоугольника зависит от порядка шкал.
+ * Подряд идущие шкалы с одной и той же лестницей (Т-баллы Міні-мульта)
+ * соединяются тонкой линией — классический профиль, повёрнутый на бок; на
+ * шкале с другой лестницей линия рвётся (profileRuns).
  */
 export function ScaleProfile({ rows }: { rows: readonly ProfileRow[] }) {
   if (!rows.length) return <NoData />;
@@ -245,19 +234,19 @@ export function ScaleProfile({ rows }: { rows: readonly ProfileRow[] }) {
   const H = rows.length * ROW_H;
 
   return (
-    <div className="grid grid-cols-[minmax(96px,220px)_minmax(0,1fr)_minmax(96px,220px)] gap-x-[24px] max-[600px]:gap-x-[12px]">
+    <div className="grid grid-cols-[minmax(96px,220px)_minmax(0,1fr)_minmax(96px,200px)] gap-x-[24px] max-[600px]:gap-x-[12px]">
       <ul className="m-0 list-none p-0">
         {rows.map((r) => (
-          <li key={r.key} className="flex items-center border-b border-hairline" style={{ height: ROW_H }}>
-            <span className="line-clamp-2 text-[15px] font-bold leading-[18px] text-primary">{r.action ?? r.title}</span>
+          <li key={r.key} className="flex items-center border-b border-divider" style={{ height: ROW_H }}>
+            <span className="line-clamp-2 text-body leading-[18px] font-bold text-text">{r.action ?? r.title}</span>
           </li>
         ))}
       </ul>
 
       <div className="relative">
         {rows.map((r) => (
-          <div key={r.key} className="flex items-center border-b border-hairline" style={{ height: ROW_H }}>
-            <SeverityRuler
+          <div key={r.key} className="flex items-center border-b border-divider" style={{ height: ROW_H }}>
+            <SeverityMeter
               size="sm"
               rungs={r.rungs}
               value={r.value}
@@ -267,22 +256,15 @@ export function ScaleProfile({ rows }: { rows: readonly ProfileRow[] }) {
           </div>
         ))}
         {runs.length ? (
-          <svg
-            aria-hidden
-            className="pointer-events-none absolute inset-0 h-full w-full"
-            viewBox={`0 0 100 ${H}`}
-            preserveAspectRatio="none"
-          >
+          <svg aria-hidden className="pointer-events-none absolute inset-0 h-full w-full" viewBox={`0 0 100 ${H}`} preserveAspectRatio="none">
             {runs.map((run) => (
               <polyline
                 key={run[0]}
-                points={run
-                  .map((i) => `${(share(rows[i]!.value!, domains[i]!) * 100).toFixed(3)},${i * ROW_H + ROW_H / 2}`)
-                  .join(" ")}
+                points={run.map((i) => `${(share(rows[i]!.value!, domains[i]!) * 100).toFixed(3)},${i * ROW_H + ROW_H / 2}`).join(" ")}
                 fill="none"
-                stroke="var(--primary)"
+                stroke={SINGLE_COLOR}
                 strokeWidth={1.5}
-                strokeOpacity={0.55}
+                strokeOpacity={0.6}
                 vectorEffect="non-scaling-stroke"
               />
             ))}
@@ -292,18 +274,9 @@ export function ScaleProfile({ rows }: { rows: readonly ProfileRow[] }) {
 
       <ul className="m-0 list-none p-0">
         {rows.map((r) => (
-          <li
-            key={r.key}
-            className="flex flex-col justify-center border-b border-hairline"
-            style={{ height: ROW_H }}
-          >
-            <span className="font-mono text-[14px] font-bold leading-[17px] text-text tabular-nums">{r.valueText}</span>
-            {r.band ? (
-              <span className={cx("flex min-w-0 items-center gap-[6px] text-[12px] leading-[15px]", SEV_TEXT[r.band.severity])}>
-                <SevDot severity={r.band.severity} />
-                <span className="truncate">{r.band.label}</span>
-              </span>
-            ) : null}
+          <li key={r.key} className="flex flex-wrap items-center gap-x-[8px] gap-y-[2px] border-b border-divider" style={{ height: ROW_H }}>
+            <span className="text-[15px] leading-[18px] font-extrabold text-text">{r.valueText}</span>
+            {r.band ? <SevChip severity={r.band.severity} label={r.band.label} small /> : null}
           </li>
         ))}
       </ul>
@@ -325,25 +298,17 @@ export interface TrendPoint {
   focus?: boolean;
 }
 
-const TP = { top: 12, right: 16, bottom: 28, left: 52 };
+const TP = { top: 14, right: 8, bottom: 26, left: 34 };
 
 /**
- * Динамика шкалы на фоне лестницы полос.
+ * Динамика шкалы на фоне лестницы полос — тем же полем, что у графика курса:
+ * подписанные полосы тяжести с границами, текущая — темнее.
  *
- * Ось Y здесь — ВСЯ лестница, и это отступление от правила charts/scale.ts
- * («ось по данным, а не по теории») сделано сознательно. То правило
- * написано против пустого поля над прижатой к низу линией, когда на оси
- * ничего, кроме линии, нет. Здесь на оси есть содержание — ступени, и
- * вопрос графика не «насколько изменилось», а «в какую ступень пришло»:
- * срезать низ значило бы убрать с глаз ту ступень, куда человек, возможно,
- * вернулся. Без лестницы ось подгоняется обычным axisFor.
+ * Ось Y здесь — ВСЯ лестница: вопрос графика не «насколько изменилось», а
+ * «в какую ступень пришло», и срезать низ значило бы убрать с глаз ступень,
+ * куда человек, возможно, вернулся. Без лестницы ось подгоняется axisFor.
  *
- * Слева по оси — полоса ступеней теми же тонами, что у линейки; границы —
- * пунктир (это пороги, и пунктир здесь по делу), подписаны началом верхней
- * ступени — «5», «10», а не 4,5: так они напечатаны в методике.
- *
- * Полоса вокруг линии — ошибка измерения (SEM), только когда она известна:
- * придуманный интервал выглядит как знание.
+ * Полоса вокруг линии — ошибка измерения (SEM), только когда она известна.
  */
 export function BandTrend({
   points,
@@ -361,9 +326,11 @@ export function BandTrend({
   label: string;
 }) {
   const { ut } = useLang();
+  const dec = useDecimal();
   const [W, boxRef] = useChartWidth();
   const svgRef = useRef<SVGSVGElement>(null);
-  const [hover, setHover] = useState<number | null>(null);
+  const hover = useIndexHover(points.length);
+  const clip = useId().replace(/:/g, "");
 
   if (!points.length) return <NoData />;
 
@@ -379,7 +346,7 @@ export function BandTrend({
     const d = ladderDomain(sorted, withErr, max);
     lo = d.lo;
     hi = d.hi;
-    ticks = [];
+    ticks = [lo, ...boundaries(sorted).map((_, i) => sorted[i + 1]!.min), hi].filter((v, i, a) => a.indexOf(v) === i && v >= lo && v <= hi);
   } else {
     const axis = axisFor({ lo: Math.min(...withErr), hi: Math.max(...withErr), atom: err });
     lo = axis.min;
@@ -387,43 +354,52 @@ export function BandTrend({
     ticks = axis.ticks;
   }
   const span = Math.max(hi - lo, Number.EPSILON);
+  const spans = bandSpans(sorted, lo, hi);
+  /* полоса подписей не шире трети графика: длинное название полосы сокращается многоточием */
+  const labelW = sorted.length ? Math.min(Math.round(W * 0.3), 176, Math.max(48, ...sorted.map((r) => r.label.length * 6.2 + 14))) : 0;
+  const showBandLabels = sorted.length > 0 && W - labelW > 300;
+  const fitLabel = (s: string) => {
+    const room = Math.floor((labelW - 14) / 6.2);
+    return s.length <= room ? s : `${s.slice(0, Math.max(1, room - 1)).trimEnd()}…`;
+  };
 
-  const pw = Math.max(40, W - TP.left - TP.right);
+  const right = TP.right + (showBandLabels ? labelW : 0);
+  const pw = Math.max(40, W - TP.left - right - 10);
   const ph = height - TP.top - TP.bottom;
   const t0 = Math.min(...points.map((p) => p.t));
   const t1 = Math.max(...points.map((p) => p.t));
-  const xAt = (t: number) => TP.left + (t1 > t0 ? ((t - t0) / (t1 - t0)) * pw : pw / 2);
+  const xAt = (t: number) => TP.left + 10 + (t1 > t0 ? ((t - t0) / (t1 - t0)) * pw : pw / 2);
   const yAt = (v: number) => TP.top + ph - ((v - lo) / span) * ph;
+  const f1 = (v: number) => v.toFixed(1);
 
-  const cuts = boundaries(sorted);
-  const line = points.map((p, i) => `${i ? "L" : "M"}${xAt(p.t).toFixed(1)},${yAt(p.value).toFixed(1)}`).join(" ");
+  const last = points.at(-1)!;
+  const current = sorted.length ? (spans.find((s) => last.value >= s.from && last.value <= s.to)?.rung ?? null) : null;
+  const line = points.map((p, i) => `${i ? "L" : "M"}${f1(xAt(p.t))},${f1(yAt(p.value))}`).join(" ");
   const band =
     err > 0 && points.length > 1
       ? [
-          ...points.map((p, i) => `${i ? "L" : "M"}${xAt(p.t).toFixed(1)},${yAt(p.value + err).toFixed(1)}`),
-          ...[...points].reverse().map((p) => `L${xAt(p.t).toFixed(1)},${yAt(p.value - err).toFixed(1)}`),
+          ...points.map((p, i) => `${i ? "L" : "M"}${f1(xAt(p.t))},${f1(yAt(p.value + err))}`),
+          ...[...points].reverse().map((p) => `L${f1(xAt(p.t))},${f1(yAt(p.value - err))}`),
           "Z",
         ].join(" ")
       : null;
 
-  /* подписи дат: все, если помещаются, иначе края — две даты не налезут никогда */
-  const roomy = points.length <= 8 && pw / points.length > 72;
-  const xLabels = roomy ? points : [points[0]!, points.at(-1)!].filter((p, i, a) => a.indexOf(p) === i);
+  const xs = points.map((p) => xAt(p.t));
+  const shownX = placeLabels(xs, points.map((p) => p.label.length * 6.2 + 4), 12);
 
   const onMove = (e: React.MouseEvent<SVGSVGElement>) => {
     const box = svgRef.current?.getBoundingClientRect();
     if (!box) return;
     const x = ((e.clientX - box.left) / box.width) * W;
     let best = 0;
-    for (let i = 1; i < points.length; i++) {
-      if (Math.abs(xAt(points[i]!.t) - x) < Math.abs(xAt(points[best]!.t) - x)) best = i;
-    }
-    setHover(best);
+    for (let i = 1; i < points.length; i++) if (Math.abs(xs[i]! - x) < Math.abs(xs[best]! - x)) best = i;
+    hover.setAt(best);
   };
-  const at = hover === null ? null : points[hover]!;
+  const at = hover.at === null ? null : points[hover.at]!;
+  const fieldW = W - TP.left - TP.right;
 
   return (
-    <div className="chart-wrap" ref={boxRef}>
+    <div className="relative min-w-0" ref={boxRef}>
       <svg
         ref={svgRef}
         viewBox={`0 0 ${W} ${height}`}
@@ -431,123 +407,121 @@ export function BandTrend({
         height={height}
         role="img"
         aria-label={`${label}: ${points[0]!.label} — ${points.at(-1)!.label}, ${points.length}`}
+        className={cx("block overflow-visible", FOCUSABLE)}
         onMouseMove={onMove}
-        onMouseLeave={() => setHover(null)}
+        {...hover.focusProps}
       >
-        {/* полоса ступеней вдоль оси и зоны под полем — очень тихо */}
-        {sorted.map((r, i) => {
-          const from = i === 0 ? lo : cuts[i - 1]!;
-          const to = i === sorted.length - 1 ? hi : cuts[i]!;
-          const y0 = yAt(to);
-          const y1 = yAt(from);
-          return (
-            <g key={`${r.min}-${r.max}`}>
-              <rect
-                x={TP.left - 8}
-                y={y0 + 1}
-                width={4}
-                height={Math.max(1, y1 - y0 - 2)}
-                rx={2}
-                fill={`var(--sev-${r.severity})`}
-              />
-              {y1 - y0 >= 18 && pw > 280 ? (
-                <text x={TP.left + 6} y={y0 + 13} fontSize="10" fill={`var(--sev-${r.severity}-text)`}>
-                  {r.label}
-                </text>
-              ) : null}
-            </g>
-          );
-        })}
-
-        {/* сетка без лестницы — сплошной волосяной линией, как везде */}
-        {ticks.map((t) => (
-          <g key={t}>
-            <line x1={TP.left} x2={W - TP.right} y1={yAt(t)} y2={yAt(t)} stroke="var(--grid)" />
-            <text x={TP.left - 8} y={yAt(t) + 4} fontSize="11" fill="var(--axis)" textAnchor="end" fontFamily="var(--font-mono)">
-              {num(t)}
-            </text>
-          </g>
-        ))}
-
-        {/* пороги ступеней: пунктир, подпись — начало верхней ступени */}
-        {cuts.map((c, i) => (
-          <g key={c}>
-            <line
-              x1={TP.left}
-              x2={W - TP.right}
-              y1={yAt(c)}
-              y2={yAt(c)}
-              stroke="var(--axis)"
-              strokeOpacity={0.5}
-              strokeDasharray="3 4"
-            />
-            <text x={TP.left - 14} y={yAt(c) + 4} fontSize="11" fill="var(--axis)" textAnchor="end" fontFamily="var(--font-mono)">
-              {num(sorted[i + 1]!.min)}
-            </text>
-          </g>
-        ))}
+        <defs>
+          <clipPath id={`bt-${clip}`}>
+            <rect x={TP.left} y={TP.top} width={fieldW} height={ph} rx={12} />
+          </clipPath>
+        </defs>
         {sorted.length ? (
-          <>
-            <text x={TP.left - 14} y={yAt(lo) + 4} fontSize="11" fill="var(--axis)" textAnchor="end" fontFamily="var(--font-mono)">
-              {num(lo)}
-            </text>
-            <text x={TP.left - 14} y={yAt(hi) + 8} fontSize="11" fill="var(--axis)" textAnchor="end" fontFamily="var(--font-mono)">
-              {num(hi)}
-            </text>
-          </>
-        ) : null}
+          <g clipPath={`url(#bt-${clip})`}>
+            {spans.map((s, i) => (
+              <rect
+                key={`${s.rung.min}-${s.rung.max}`}
+                x={TP.left}
+                y={f1(yAt(s.to))}
+                width={fieldW}
+                height={f1(yAt(s.from) - yAt(s.to))}
+                fill={s.rung === current ? "var(--plotc)" : i % 2 ? "var(--plot2)" : "var(--plot)"}
+              />
+            ))}
+            {boundaries(sorted).map((c) => (
+              <line key={c} x1={TP.left} x2={TP.left + fieldW} y1={f1(yAt(c))} y2={f1(yAt(c))} stroke="var(--plotline)" strokeWidth={2} />
+            ))}
+          </g>
+        ) : (
+          ticks.map((t) => <line key={t} x1={TP.left} x2={W - TP.right} y1={yAt(t)} y2={yAt(t)} stroke="var(--grid)" />)
+        )}
 
-        <line x1={TP.left} x2={W - TP.right} y1={yAt(lo)} y2={yAt(lo)} stroke="var(--grid)" />
+        {/* подписи полос у правого края — в своей полосе, данные туда не заходят */}
+        {showBandLabels
+          ? spans.map((s, i) => {
+              const top = yAt(s.to);
+              const h = yAt(s.from) - top;
+              if (h < 13) return null;
+              const two = h >= 28;
+              const yc = top + h / 2;
+              return (
+                <g key={`l-${s.rung.min}`}>
+                  <text
+                    x={W - TP.right - 8}
+                    y={f1(two ? yc - 1 : yc + 4)}
+                    textAnchor="end"
+                    fontSize={11}
+                    fontWeight={s.rung === current ? 800 : 700}
+                    fill={s.rung === current ? "var(--vink)" : "var(--muted)"}
+                    stroke={s.rung === current ? "var(--plotc)" : i % 2 ? "var(--plot2)" : "var(--plot)"}
+                    strokeWidth={4}
+                    strokeLinejoin="round"
+                    style={{ paintOrder: "stroke" }}
+                  >
+                    {fitLabel(s.rung.label)}
+                  </text>
+                  {two ? (
+                    <text x={W - TP.right - 8} y={f1(yc + 12)} textAnchor="end" fontSize={10.5} fontWeight={500} fill="var(--muted)">
+                      {dec(s.rung.min)}–{dec(s.rung.max)}
+                    </text>
+                  ) : null}
+                </g>
+              );
+            })
+          : null}
 
-        {at ? (
-          <line x1={xAt(at.t)} x2={xAt(at.t)} y1={TP.top} y2={TP.top + ph} stroke="var(--primary)" strokeOpacity={0.4} />
-        ) : null}
-
-        {band ? <path d={band} fill="var(--primary)" fillOpacity={0.12} /> : null}
-        {points.length > 1 ? <path d={line} fill="none" stroke="var(--primary)" strokeWidth={2} /> : null}
-
-        {points.map((p) => (
-          <circle
-            key={p.key}
-            cx={xAt(p.t)}
-            cy={yAt(p.value)}
-            r={p.focus ? 6 : 4}
-            fill={p.focus ? "var(--card)" : "var(--primary)"}
-            stroke={p.focus ? "var(--primary)" : "var(--card)"}
-            strokeWidth={p.focus ? 3 : 2}
-          />
-        ))}
-
-        {xLabels.map((p, i) => (
-          <text
-            key={p.key}
-            x={xAt(p.t)}
-            y={height - 8}
-            fontSize="11"
-            fill="var(--axis)"
-            textAnchor={
-              xLabels.length === 1 ? "middle" : !roomy && i === 0 ? "start" : !roomy ? "end" : "middle"
-            }
-          >
-            {p.label}
+        {ticks.map((t) => (
+          <text key={`t-${t}`} x={TP.left - 7} y={yAt(t) + 4} fontSize={11} fontWeight={600} fill="var(--axis)" textAnchor="end">
+            {dec(t)}
           </text>
         ))}
+
+        {at ? <line x1={xAt(at.t)} x2={xAt(at.t)} y1={TP.top} y2={TP.top + ph} stroke="var(--vink)" strokeDasharray="2 2" /> : null}
+
+        {band ? <path d={band} fill={SINGLE_COLOR} fillOpacity={0.12} /> : null}
+        {points.length > 1 ? <path d={line} fill="none" stroke={SINGLE_COLOR} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" /> : null}
+
+        {points.map((p) =>
+          p.focus ? (
+            <circle key={p.key} cx={f1(xAt(p.t))} cy={f1(yAt(p.value))} r={6} fill="var(--panel)" stroke={SINGLE_COLOR} strokeWidth={3} />
+          ) : (
+            <Marker key={p.key} x={xAt(p.t)} y={yAt(p.value)} r={at === p ? 5.5 : 4} color={SINGLE_COLOR} />
+          ),
+        )}
+
+        {/* число — у последнего замера: остальные в подсказке */}
+        <text
+          x={f1(xAt(last.t))}
+          y={f1(yAt(last.value) - 10)}
+          textAnchor="middle"
+          fontSize={12}
+          fontWeight={800}
+          fill="var(--text)"
+          stroke="var(--plot)"
+          strokeWidth={4}
+          strokeLinejoin="round"
+          style={{ paintOrder: "stroke" }}
+        >
+          {dec(last.value)}
+        </text>
+
+        {points.map((p, i) =>
+          shownX.has(i) ? (
+            <text key={`x-${p.key}`} x={f1(xs[i]!)} y={height - 8} fontSize={11} fontWeight={600} fill="var(--axis)" textAnchor="middle">
+              {p.label}
+            </text>
+          ) : null,
+        )}
       </svg>
 
       {at ? (
-        <div className="chart-tip" style={{ left: `${((xAt(at.t) / W) * 100).toFixed(2)}%` }} role="status">
-          <span className="chart-tip-x">{at.label}</span>
-          <span className="chart-tip-row">
-            <b>{num(at.value)}</b>
-            {at.band ? (
-              <span className={cx("flex items-center gap-[5px]", SEV_TEXT[at.band.severity])}>
-                <SevDot severity={at.band.severity} />
-                {at.band.label}
-              </span>
-            ) : null}
-          </span>
-          {at.focus ? <span className="text-[11px] text-muted">{ut("kit.thisOne")}</span> : null}
-        </div>
+        <ChartTip x={xAt(at.t)} y={yAt(at.value)} width={W}>
+          <TipHead note={at.focus ? ut("kit.thisOne") : undefined}>{at.label}</TipHead>
+          <p className="m-0 mt-[6px] flex items-center gap-[8px]">
+            <b className="text-[15px] font-extrabold text-text">{dec(at.value)}</b>
+            {at.band ? <SevChip severity={at.band.severity} label={at.band.label} small /> : null}
+          </p>
+        </ChartTip>
       ) : null}
     </div>
   );
@@ -563,37 +537,30 @@ export interface SharePart {
   severity?: Severity | null;
   /**
    * Место в упорядоченном ряду (0…1) для вариантов без тяжести: «ніколи» →
-   * «майже щодня». Цвет — фиолетовый от светлого к тёмному: одна величина,
+   * «майже щодня». Цвет — лестница h2…h5 одного фиолетового: одна величина,
    * один тон, порядок читается светлотой.
    */
   step?: number;
   /**
    * Свой цвет части — токеном. Для частей другой природы, чем остальные:
-   * «вільно» рядом с занятыми подключениями — дорожка сетки, а не ещё одна
-   * ступень фиолетового (иначе свободное читалось бы как ещё одно состояние).
+   * «вільно» рядом с занятыми подключениями — дорожка, а не ещё одна ступень.
    */
   color?: string;
 }
 
 function partColor(p: SharePart): string {
   if (p.color) return p.color;
-  if (p.severity) return `var(--sev-${p.severity})`;
-  const k = Math.round(28 + (p.step ?? 1) * 72);
-  return `color-mix(in srgb, var(--primary) ${k}%, var(--card))`;
+  if (p.severity) return sevColor(p.severity);
+  return `var(--h${2 + Math.round(Math.min(1, Math.max(0, p.step ?? 1)) * 3)})`;
 }
 
 /**
- * Полоса долей: одно целое, разрезанное на части, с легендой под ним.
+ * Полоса долей (stacked набора): одно целое, разрезанное на части с
+ * просветом 2 px, и легенда с числами под ним.
  *
- * Вместо кольца. Кольцо прежней аналитики (Donut) занимало четверть экрана
- * ради пяти чисел и хуже всего читало ровно то, ради чего его смотрят, —
- * сравнение соседних долей. Полоса в строку читается слева направо в том
- * порядке, в каком идут ступени, и таких полос можно поставить десять одну
- * под другой — у колец это уже мозаика.
- *
- * Скрытая ячейка в полосу не входит вовсе: ширина отрезка — тоже число, и
- * нарисовать её значило бы напечатать скрытое. В легенде она стоит
- * прочерком с подписью для диктора.
+ * Вместо кольца: полоса читается слева направо в порядке ступеней, и таких
+ * полос можно поставить десять одну под другой. Скрытая ячейка в полосу не
+ * входит вовсе — ширина отрезка тоже число; в легенде у неё «n < 5».
  */
 export function ShareBar({
   parts,
@@ -612,7 +579,6 @@ export function ShareBar({
   /** Дописывать ли долю от целого; у частей, которые сами доли, она повторила бы число */
   percent?: boolean;
 }) {
-  const { ut } = useLang();
   const shown = parts.filter((p) => p.value !== null && p.value > 0);
   const total = shown.reduce((s, p) => s + (p.value ?? 0), 0);
   const pct = (v: number) => (total > 0 ? Math.round((v / total) * 100) : 0);
@@ -622,40 +588,45 @@ export function ShareBar({
       <div
         role="img"
         aria-label={`${label}: ${parts.map((p) => `${p.label} ${p.value === null ? "—" : format(p.value)}`).join(", ")}`}
-        className="flex h-[10px] gap-[2px]"
+        className="flex h-[16px] gap-[2px]"
       >
         {total > 0 ? (
           shown.map((p) => (
-            <span
-              key={p.key}
-              title={`${p.label}: ${format(p.value!)}${percent ? ` (${pct(p.value!)}%)` : ""}`}
-              className="h-full min-w-[2px] first:rounded-l-[4px] last:rounded-r-[4px]"
-              style={{ width: `${((p.value! / total) * 100).toFixed(3)}%`, background: partColor(p) }}
-            />
-          ))
+              <span
+                key={p.key}
+                data-part={p.key}
+                className="group/row relative h-full min-w-[2px] first:rounded-l-[4px] last:rounded-r-[4px] hover:opacity-85"
+                style={{ flexGrow: p.value!, flexBasis: 0, background: partColor(p) }}
+              >
+                <RowTip at={0}>
+                  <TipHead>{p.label}</TipHead>
+                  <TipRow kind="box" color={partColor(p)} value={format(p.value!)} extra={percent ? `${pct(p.value!)} %` : undefined} />
+                </RowTip>
+              </span>
+            ))
         ) : (
-          <span className="h-full w-full rounded-[4px] bg-[var(--grid)]" />
+          <span className="h-full w-full rounded-[4px] bg-track" />
         )}
       </div>
       {legend ? (
-        <ul className="m-0 mt-[8px] flex list-none flex-wrap gap-x-[18px] gap-y-[4px] p-0 text-[13px] leading-[18px]">
+        <ul className="m-0 mt-[10px] flex list-none flex-wrap gap-x-[18px] gap-y-[6px] p-0 text-[13px] leading-[18px]">
           {parts.map((p) => (
             <li key={p.key} className="flex min-w-0 items-center gap-[6px]">
               {p.severity ? (
                 <SevDot severity={p.severity} />
               ) : (
-                <span aria-hidden className="inline-block size-[8px] shrink-0 rounded-[2px]" style={{ background: partColor(p) }} />
+                <span aria-hidden className="inline-block h-[10px] w-[14px] shrink-0 rounded-[3px]" style={{ background: partColor(p) }} />
               )}
-              <span className={cx("truncate", p.severity ? SEV_TEXT[p.severity] : "text-text-2")}>{p.label}</span>
+              <span data-legend-label className="truncate font-semibold text-text-2">
+                {p.label}
+              </span>
               {p.value === null ? (
-                <span className="font-mono text-muted">
-                  —<span className="sr-only"> {ut("kit.hidden")}</span>
-                </span>
+                <SmallCell />
               ) : (
-                <span className="font-mono text-muted tabular-nums">
-                  {format(p.value)}
-                  {percent && total > 0 && p.value > 0 ? ` · ${pct(p.value)}%` : ""}
-                </span>
+                <>
+                  <span className="font-extrabold text-text">{format(p.value)}</span>
+                  {percent && total > 0 && p.value > 0 ? <span className="text-caption text-muted">{pct(p.value)} %</span> : null}
+                </>
               )}
             </li>
           ))}
@@ -674,59 +645,165 @@ export interface HBar {
   /** Подпись справа вместо самого числа: «12 з 27», «48 с» */
   text?: string;
   severity?: Severity | null;
-  /** Строка, на которую стоит обратить взгляд (выше порога, выше медианы) */
+  /** Строка, на которую стоит обратить взгляд: она — фиолетовым, остальные — «прочим» */
   strong?: boolean;
   /**
    * Величина, которая требует внимания (пятисотки, сбои задач): полоса
-   * янтарём в полную силу. Что именно считается, говорит заголовок фигуры.
+   * янтарём. Что именно считается, говорит заголовок фигуры.
    */
   attention?: boolean;
 }
 
+/** Решётка строки-полосы: подпись, полоса, число */
+const HBAR_ROW =
+  "group/row relative grid min-h-[28px] grid-cols-[minmax(0,2fr)_minmax(0,3fr)_minmax(48px,auto)] items-center gap-[12px] rounded-[8px] outline-none hover:bg-panel-2 focus-visible:outline-2 focus-visible:outline-[var(--focus)]";
+
 /**
- * Сравнение величин строками: подпись, число справа, тонкая полоса под ними.
+ * Сравнение величин строками (hbars набора): подпись, полоса 14 px со
+ * скруглённым концом, число справа.
  *
  * Полоса от нуля и до общего максимума строк (или заданного `max`): у
- * длины полосы нет другого нуля, и срезанная полоса врала бы о пропорциях.
- * Скрытое значение — прочерк без полосы, по тому же правилу, что в ShareBar.
+ * длины полосы нет другого нуля. Скрытое значение — пустая обведённая
+ * дорожка и «n < 5» с объяснением по наведению.
  */
-export function HBars({ items, max, unit = "" }: { items: readonly HBar[]; max?: number; unit?: string }) {
-  const { ut } = useLang();
+export function HBars({
+  items,
+  max,
+  unit = "",
+  floor = 5,
+  reference,
+}: {
+  items: readonly HBar[];
+  max?: number;
+  unit?: string;
+  /** Порог малых чисел — подпись скрытой строки «n < 5» */
+  floor?: number;
+  /** Отметка сравнения поперёк полос: среднее отделения, порог */
+  reference?: { value: number; label: string };
+}) {
   if (!items.length) return <NoData />;
-  const top = max ?? Math.max(...items.map((i) => i.value ?? 0), 0);
+  const top = max ?? Math.max(...items.map((i) => i.value ?? 0), reference?.value ?? 0, 0);
+  const anyStrong = items.some((i) => i.strong);
+  const colorOf = (i: HBar) =>
+    i.severity ? sevColor(i.severity) : i.attention ? ATTENTION_COLOR : !anyStrong || i.strong ? SINGLE_COLOR : OTHER_COLOR;
+  const ref =
+    reference && top > 0 ? (
+      <span
+        aria-hidden
+        className="absolute -top-[4px] h-[22px] w-[2px] -ml-[1px] rounded-[1px] bg-text"
+        style={{ left: `${Math.min(100, (reference.value / top) * 100).toFixed(2)}%` }}
+      />
+    ) : null;
   return (
-    <ul className="m-0 grid list-none gap-[10px] p-0">
-      {items.map((i) => (
-        <li key={i.key} className="min-w-0">
-          <div className="mb-[4px] flex items-baseline justify-between gap-[12px]">
-            <span className={cx("min-w-0 truncate text-[13px] leading-[17px]", i.strong ? "font-bold text-text" : "text-text-2")}>
-              {i.label}
+    <div>
+      <ul className="m-0 grid list-none gap-[6px] p-0">
+        {items.map((i) => {
+          const w = i.value !== null && top > 0 ? Math.max(0.015, Math.min(1, i.value / top)) : 0;
+          return (
+            <li key={i.key} tabIndex={0} className={HBAR_ROW}>
+              <span className={cx("min-w-0 truncate text-[13px] leading-[17px]", i.strong ? "font-extrabold text-text" : "font-semibold text-text-2")}>
+                {i.label}
+              </span>
+              <span className="relative h-[14px]">
+                {i.value === null ? (
+                  <span className="block h-full w-full rounded-r-[4px] shadow-[inset_0_0_0_1px_var(--ctl)]" />
+                ) : top > 0 && i.value > 0 ? (
+                  <span data-bar className="block h-full rounded-r-[4px]" style={{ width: `${(w * 100).toFixed(2)}%`, background: colorOf(i) }} />
+                ) : null}
+                {ref}
+              </span>
+              <span className="text-right text-[13px] font-extrabold whitespace-nowrap text-text">
+                {i.value === null ? <SmallCell floor={floor} /> : (i.text ?? `${num(i.value)}${unit}`)}
+              </span>
+              {i.value !== null ? (
+                <RowTip at={0.4 + w * 0.6 * 0.6}>
+                  <TipHead>{i.label}</TipHead>
+                  <TipRow kind="box" color={colorOf(i)} value={i.text ?? `${num(i.value)}${unit}`} />
+                  {reference ? <TipRow label={reference.label} value={`${num(reference.value)}${unit}`} /> : null}
+                </RowTip>
+              ) : null}
+            </li>
+          );
+        })}
+      </ul>
+      {reference ? (
+        <p className="m-0 mt-[8px] flex items-center gap-[6px] text-caption text-muted">
+          <span aria-hidden className="inline-block h-[12px] w-[2px] rounded-[1px] bg-text" />
+          {reference.label}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+/* ─────────── сгруппированные полосы ─────────── */
+
+export interface GroupedRow {
+  key: string;
+  label: ReactNode;
+  /** По значению на ряд, в порядке рядов; null — скрыто порогом малых чисел */
+  values: readonly (number | null)[];
+}
+
+/**
+ * Несколько рядов на строку: у каждого ряда свой цвет (c1…c4) и легенда.
+ * Отвечает на «как группы отличаются по одной величине» — по строке на
+ * величину, по полосе на группу.
+ */
+export function GroupedHBars({
+  rows,
+  series,
+  max,
+  format = num,
+  floor = 5,
+}: {
+  rows: readonly GroupedRow[];
+  series: readonly SeriesKey[];
+  max?: number;
+  format?: (v: number) => string;
+  floor?: number;
+}) {
+  if (!rows.length || !series.length) return <NoData />;
+  const top = max ?? Math.max(0, ...rows.flatMap((r) => r.values.map((v) => v ?? 0)));
+  return (
+    <div>
+      <ul className="m-0 grid list-none gap-[12px] p-0">
+        {rows.map((r) => (
+          <li key={r.key} tabIndex={0} className="group/row relative grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)] items-center gap-[12px] rounded-[8px] outline-none hover:bg-panel-2 focus-visible:outline-2 focus-visible:outline-[var(--focus)]">
+            <span className="min-w-0 truncate text-[13px] font-semibold text-text-2">{r.label}</span>
+            <span className="grid gap-[2px]">
+              {series.map((s, k) => {
+                const v = r.values[k] ?? null;
+                return (
+                  <span key={s.key} className="grid grid-cols-[minmax(0,1fr)_minmax(44px,auto)] items-center gap-[10px]">
+                    <span className="relative h-[8px]">
+                      {v === null ? (
+                        <span className="block h-full w-full rounded-r-[3px] shadow-[inset_0_0_0_1px_var(--ctl)]" />
+                      ) : top > 0 && v > 0 ? (
+                        <span
+                          data-bar={s.key}
+                          className="block h-full rounded-r-[3px]"
+                          style={{ width: `${Math.max(1.5, Math.min(100, (v / top) * 100)).toFixed(2)}%`, background: s.color }}
+                        />
+                      ) : null}
+                    </span>
+                    <span className="text-right text-caption font-bold whitespace-nowrap text-text">{v === null ? <SmallCell floor={floor} /> : format(v)}</span>
+                  </span>
+                );
+              })}
             </span>
-            <span className="shrink-0 font-mono text-[12px] text-muted tabular-nums">
-              {i.value === null ? (
-                <>
-                  —<span className="sr-only"> {ut("kit.hidden")}</span>
-                </>
-              ) : (
-                (i.text ?? `${num(i.value)}${unit}`)
-              )}
-            </span>
-          </div>
-          <div className="h-[6px] rounded-[3px] bg-[var(--grid-fine)]">
-            {i.value !== null && top > 0 ? (
-              <div
-                className={cx(
-                  "h-full rounded-[3px]",
-                  i.severity ? SEV_FILL[i.severity] : i.attention ? "bg-accent" : "bg-primary",
-                  !i.strong && !i.severity && !i.attention && "opacity-70",
-                )}
-                style={{ width: `${Math.max(1.5, Math.min(100, (i.value / top) * 100)).toFixed(2)}%` }}
-              />
-            ) : null}
-          </div>
-        </li>
-      ))}
-    </ul>
+            <RowTip at={0.4}>
+              <TipHead>{r.label}</TipHead>
+              {series.map((s, k) => {
+                const v = r.values[k] ?? null;
+                return <TipRow key={s.key} kind="box" color={s.color} label={s.label} value={v === null ? "—" : format(v)} />;
+              })}
+            </RowTip>
+          </li>
+        ))}
+      </ul>
+      <SeriesLegend items={series} />
+    </div>
   );
 }
 
@@ -746,15 +823,10 @@ export interface PairRow {
   note?: ReactNode;
 }
 
-const BEFORE_COLOR = "color-mix(in srgb, var(--primary) 35%, var(--card))";
-
 /**
- * Пара полос на строку: «було» светлой, «стало» полной — от общего нуля.
- *
- * Вместо знаковых столбиков изменения (advanced.tsx, DivergingBar): «+200 мс»
- * у маршрута с p95 в 40 мс и у маршрута с p95 в 3 секунды — разные истории,
- * а полоса разницы рисует их одинаково. Пара показывает обе величины, и
- * разница читается длиной, не теряя масштаба.
+ * Пара полос на строку: «було» — серым «прочего», «стало» — фиолетовым (или
+ * янтарём, если требует внимания), от общего нуля. Показывает обе величины,
+ * и разница читается длиной, не теряя масштаба.
  */
 export function PairBars({
   rows,
@@ -772,34 +844,165 @@ export function PairBars({
   const top = max ?? Math.max(0, ...rows.flatMap((r) => [r.before ?? 0, r.after ?? 0]));
   const width = (v: number) => `${Math.max(1.5, Math.min(100, (v / top) * 100)).toFixed(2)}%`;
   const bar = (v: number | null, color: string) =>
-    v !== null && v > 0 && top > 0 ? <div className="h-full rounded-[2px]" style={{ width: width(v), background: color }} /> : null;
+    v !== null && v > 0 && top > 0 ? <div className="h-full rounded-r-[3px]" style={{ width: width(v), background: color }} /> : null;
   return (
     <div>
       <ul className="m-0 grid list-none gap-[12px] p-0">
         {rows.map((r) => (
-          <li key={r.key} className="min-w-0">
-            <div className="mb-[4px] flex items-baseline justify-between gap-[12px]">
-              <span className="min-w-0 truncate text-[13px] leading-[17px] text-text-2">{r.label}</span>
+          <li key={r.key} tabIndex={0} className="group/row relative min-w-0 rounded-[8px] outline-none focus-visible:outline-2 focus-visible:outline-[var(--focus)]">
+            <div className="mb-[5px] flex items-baseline justify-between gap-[12px]">
+              <span className="min-w-0 truncate text-[13px] leading-[17px] font-semibold text-text-2">{r.label}</span>
               <span className="flex shrink-0 items-baseline gap-[10px]">
                 {r.note}
-                <span className="font-mono text-[12px] text-muted tabular-nums">{r.text}</span>
+                <span className="text-caption font-bold text-text">{r.text}</span>
               </span>
             </div>
             <div className="grid gap-[2px]">
-              <div className="h-[4px] rounded-[2px] bg-[var(--grid-fine)]">{bar(r.before, BEFORE_COLOR)}</div>
-              <div className="h-[4px] rounded-[2px] bg-[var(--grid-fine)]">
-                {bar(r.after, r.attention ? "var(--accent)" : "var(--primary)")}
-              </div>
+              <div className="h-[6px]">{bar(r.before, OTHER_COLOR)}</div>
+              <div className="h-[6px]">{bar(r.after, r.attention ? ATTENTION_COLOR : SINGLE_COLOR)}</div>
             </div>
+            <RowTip at={0.3}>
+              <TipHead>{r.label}</TipHead>
+              <TipRow kind="box" color={OTHER_COLOR} label={before} value={r.before === null ? "—" : num(r.before)} />
+              <TipRow kind="box" color={r.attention ? ATTENTION_COLOR : SINGLE_COLOR} label={after} value={r.after === null ? "—" : num(r.after)} />
+            </RowTip>
           </li>
         ))}
       </ul>
       <SeriesLegend
         items={[
-          { key: "before", label: before, color: BEFORE_COLOR },
-          { key: "after", label: after, color: "var(--primary)" },
+          { key: "before", label: before, color: OTHER_COLOR },
+          { key: "after", label: after, color: SINGLE_COLOR },
         ]}
       />
+    </div>
+  );
+}
+
+/* ─────────── тепловая таблица ─────────── */
+
+export interface HeatRow {
+  key: string;
+  label: ReactNode;
+  /** По значению на колонку; null — ответа нет */
+  cells: readonly (number | null)[];
+  /** Критический пункт: ненулевой ответ в нём — красным, это риск для человека */
+  critical?: boolean;
+}
+
+/**
+ * Тепловая таблица ответов по пунктам (heat набора): строка — пункт,
+ * колонка — замер, в каждой клетке напечатано её значение. Лестница h1…h5
+ * одного фиолетового по доле от максимума, ноль — тихой подложкой, ответа
+ * нет — прочерком в рамке. Ненулевой ответ критического пункта (пункт 9
+ * PHQ-9) — красным: единственный красный в таблице — риск для человека.
+ */
+export function HeatTable({
+  rows,
+  columns,
+  max,
+  legend,
+  format = num,
+  caption,
+}: {
+  rows: readonly HeatRow[];
+  /** Подписи колонок: даты замеров */
+  columns: readonly string[];
+  /** Верх лестницы: максимальный балл пункта (3 у PHQ-9) */
+  max: number;
+  /** Подписи значений под таблицей: 0 «зовсім ні» … 3 «майже щодня» */
+  legend?: readonly { value: number; label: string }[];
+  format?: (v: number) => string;
+  /** Подпись таблицы для диктора */
+  caption?: string;
+}) {
+  if (!rows.length || !columns.length) return <NoData />;
+  const level = (v: number) => (v <= 0 ? 0 : Math.min(5, Math.max(1, Math.round((v / Math.max(max, 1)) * 5 + 0.49))));
+  const cellCls = (v: number | null, crit: boolean) =>
+    v === null
+      ? "bg-transparent text-muted shadow-[inset_0_0_0_1px_var(--border)]"
+      : crit && v > 0
+        ? "bg-risk text-onfill"
+        : level(v) === 0
+          ? "bg-sunk text-muted"
+          : "";
+  const cellStyle = (v: number | null, crit: boolean) => {
+    if (v === null || (crit && v > 0) || level(v) === 0) return undefined;
+    const k = level(v);
+    return { background: `var(--h${k})`, color: `var(--h${k}i)` };
+  };
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-auto border-separate border-spacing-[3px] text-small">
+        {caption ? <caption className="sr-only">{caption}</caption> : null}
+        <thead>
+          <tr>
+            <th scope="col" className="static h-auto border-0 bg-transparent p-0" />
+            {columns.map((c, j) => (
+              <th key={`${j}-${c}`} scope="col" className="static h-auto border-0 bg-transparent px-[4px] pt-0 pb-[4px] text-center text-[11.5px] leading-none font-bold tracking-normal whitespace-nowrap normal-case text-muted">
+                {c}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.key} className="hover:bg-transparent">
+              <th
+                scope="row"
+                className={cx("h-auto border-0 py-0 pr-[12px] pl-0 text-left text-[13px] font-semibold whitespace-nowrap", r.critical ? "text-risk-ink" : "text-text-2")}
+              >
+                {r.label}
+              </th>
+              {columns.map((c, j) => {
+                const v = r.cells[j] ?? null;
+                const crit = !!r.critical && v !== null && v > 0;
+                return (
+                  <td key={`${j}-${c}`} className="h-auto border-0 p-0">
+                    <span
+                      tabIndex={0}
+                      data-cell={crit ? "critical" : v === null ? "empty" : `h${level(v)}`}
+                      className={cx(
+                        "group/row relative grid h-[28px] min-w-[40px] cursor-default place-items-center rounded-[7px] px-[6px] text-caption font-bold outline-none hover:shadow-[0_0_0_2px_var(--panel),0_0_0_3.5px_var(--vring)] focus-visible:shadow-[0_0_0_2px_var(--panel),0_0_0_3.5px_var(--vring)]",
+                        cellCls(v, !!r.critical),
+                      )}
+                      style={cellStyle(v, !!r.critical)}
+                    >
+                      {v === null ? "—" : format(v)}
+                      <RowTip>
+                        <TipHead note={c}>{r.label}</TipHead>
+                        <TipRow
+                          value={v === null ? "—" : format(v)}
+                          label={legend?.find((l) => l.value === v)?.label}
+                        />
+                      </RowTip>
+                    </span>
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {legend?.length ? (
+        <ul className="m-0 mt-[10px] flex list-none flex-wrap gap-x-[14px] gap-y-[6px] p-0 text-caption font-semibold text-text-2">
+          {legend.map((l) => {
+            const k = level(l.value);
+            return (
+              <li key={l.value} className="flex items-center gap-[6px]">
+                <span
+                  aria-hidden
+                  className={cx("grid h-[18px] min-w-[22px] place-items-center rounded-[5px] px-[4px] text-[11px] font-bold", k === 0 && "bg-sunk text-muted")}
+                  style={k ? { background: `var(--h${k})`, color: `var(--h${k}i)` } : undefined}
+                >
+                  {format(l.value)}
+                </span>
+                {l.label}
+              </li>
+            );
+          })}
+        </ul>
+      ) : null}
     </div>
   );
 }
@@ -809,33 +1012,30 @@ export function PairBars({
 export interface SeriesKey {
   key: string;
   label: string;
-  /** Цвет токеном: var(--primary), var(--series-quiet), var(--accent) */
+  /** Цвет токеном: var(--series), var(--c2), var(--warn) */
   color: string;
   /** Линия пунктиром (TimeLines) — и в легенде образец пунктиром */
   dashed?: boolean;
 }
 
 /**
- * Легенда нескольких рядов — HTML-строкой под графиком, как у ShareBar.
- * Прежняя Legend (charts/index.tsx) держится на классах наследия (.legend,
- * .dot); эта — на утилитах. Один ряд не подписывается: его подпись —
- * заголовок фигуры.
+ * Легенда нескольких рядов — строкой под графиком (.lgd набора). Один ряд
+ * не подписывается: его подпись — заголовок фигуры.
  */
-export function SeriesLegend({ items, className }: { items: readonly SeriesKey[]; className?: string }) {
-  if (items.length < 2) return null;
+export function SeriesLegend({ items, className, lines }: { items: readonly SeriesKey[]; className?: string; lines?: boolean }) {
   return (
-    <ul className={cx("m-0 mt-[10px] flex list-none flex-wrap gap-x-[18px] gap-y-[4px] p-0 text-[13px] leading-[18px]", className)}>
-      {items.map((i) => (
-        <li key={i.key} className="flex min-w-0 items-center gap-[6px]">
-          {i.dashed ? (
-            <span aria-hidden className="inline-block h-0 w-[14px] shrink-0 border-t-2 border-dashed" style={{ borderColor: i.color }} />
-          ) : (
-            <span aria-hidden className="inline-block size-[8px] shrink-0 rounded-[2px]" style={{ background: i.color }} />
-          )}
-          <span className="truncate text-text-2">{i.label}</span>
-        </li>
-      ))}
-    </ul>
+    <ChartLegend
+      className={className}
+      items={items.map(
+        (i, k): LegendItem => ({
+          key: i.key,
+          label: i.label,
+          color: i.color,
+          kind: i.dashed ? "dash" : lines ? "line" : "band",
+          shape: shapeOf(i.color, k),
+        }),
+      )}
+    />
   );
 }
 
@@ -848,34 +1048,45 @@ export interface Column {
   value: number;
   /** Подпись в подсказке, когда она длиннее подписи под столбцом: «25 вер., 14:00–15:00» */
   tip?: string;
+  /** Корзина ещё идёт (неделя не кончилась): столбец светлее, чтобы его не читали как спад */
+  partial?: boolean;
 }
 
 /**
  * Столбец, у которого замера может не быть: null — процесс ещё не работал,
- * история не писалась. Столбца тогда нет вовсе, а не нулевой: ноль — это
- * «ничего не было», и он честный, а «не знаем» нулём не рисуется. Отдельным
- * типом, а не `value: number | null` у Column: у рядов по дням из базы
- * пропусков не бывает, и их потребителям незачем проверять null.
+ * история не писалась. Столбца тогда нет вовсе, а не нулевой. `hidden` —
+ * число есть, но скрыто порогом малых чисел: на его месте — пустой контур.
  */
 export interface GapColumn extends Omit<Column, "value"> {
   value: number | null;
+  hidden?: boolean;
 }
 
-const CP = { top: 12, right: 8, bottom: 26, left: 40 };
+const CP = { top: 16, right: 8, bottom: 26, left: 40 };
 
 /** Подписи под столбцами — не чаще, чем раз в 64 пикселя: иначе даты налезут друг на друга */
 const tickEvery = (slot: number) => Math.max(1, Math.ceil(64 / slot));
 
+/** Столбец со скруглением 4 px у конца данных и прямым углом у основания */
+function colPath(x: number, w: number, y: number, base: number): string {
+  const h = Math.max(0, base - y);
+  const r = Math.min(4, h, w / 2);
+  const f = (v: number) => v.toFixed(1);
+  return `M${f(x)} ${f(base)}V${f(y + r)}Q${f(x)} ${f(y)} ${f(x + r)} ${f(y)}H${f(x + w - r)}Q${f(x + w)} ${f(y)} ${f(x + w)} ${f(y + r)}V${f(base)}Z`;
+}
+
+/** Подсветка под курсором: остальные столбцы отступают */
+const fade = (hover: number | null, i: number) => (hover === null || hover === i ? 1 : 0.5);
+
 /**
  * Столбцы по дням или неделям: «сколько прошли».
  *
- * Счёт — столбцами, а не линией с заливкой: число прохождений за день — это
- * отдельные корзины, и линия между ними рисовала бы промежуточные значения,
- * которых не было. Ось всегда от нуля — у столбца другой высоты нет.
+ * Счёт — столбцами, а не линией: число за день — отдельные корзины. Ось
+ * всегда от нуля. Столбец не шире 24 px — остаток слота остаётся воздухом.
+ * Числа на столбцах печатаются, пока их немного (`values`), остальное — в
+ * подсказке.
  *
- * `tone="attention"` — столбцы янтарём: счёт того, что требует внимания
- * (случаи ошибок, упавшие проходы). Тон задаёт смысл всей фигуры, а не
- * отдельного столбца: «вот этот день плохой» говорит высота, а не цвет.
+ * `tone="attention"` — столбцы янтарём: счёт того, что требует внимания.
  */
 export function TimeColumns({
   columns,
@@ -883,6 +1094,8 @@ export function TimeColumns({
   label,
   tone = "plain",
   emptyTip,
+  values = "auto",
+  floor = 5,
 }: {
   columns: readonly GapColumn[];
   height?: number;
@@ -890,33 +1103,38 @@ export function TimeColumns({
   tone?: "plain" | "attention";
   /** Что сказать в подсказке у корзины без замера; без неё — прочерк */
   emptyTip?: string;
+  /** Числа на столбцах: auto — пока столбцов не больше 16 и им хватает места */
+  values?: "auto" | "all" | "none";
+  floor?: number;
 }) {
+  const { ut } = useLang();
   const [W, boxRef] = useChartWidth();
   const svgRef = useRef<SVGSVGElement>(null);
-  const [hover, setHover] = useState<number | null>(null);
+  const hover = useIndexHover(columns.length);
   if (!columns.some((c) => c.value !== null)) return <NoData />;
 
   const axis = axisFor({ lo: 0, hi: Math.max(...columns.map((c) => c.value ?? 0), 0) });
   const pw = Math.max(40, W - CP.left - CP.right);
   const ph = height - CP.top - CP.bottom;
   const slot = pw / columns.length;
-  const bw = Math.max(2, Math.min(28, slot * 0.62));
+  const bw = Math.max(2, Math.min(24, slot * 0.56));
   const yAt = (v: number) => CP.top + ph - (v / Math.max(axis.max, 1)) * ph;
   const xAt = (i: number) => CP.left + slot * i + slot / 2;
   const every = tickEvery(slot);
-  const fill = tone === "attention" ? "var(--accent)" : "var(--primary)";
+  const fill = tone === "attention" ? ATTENTION_COLOR : SINGLE_COLOR;
+  const printValues = values === "all" || (values === "auto" && columns.length <= 16 && slot >= 26);
 
   const onMove = (e: React.MouseEvent<SVGSVGElement>) => {
     const box = svgRef.current?.getBoundingClientRect();
     if (!box) return;
     const x = ((e.clientX - box.left) / box.width) * W - CP.left;
     const i = Math.floor(x / slot);
-    setHover(i >= 0 && i < columns.length ? i : null);
+    hover.setAt(i >= 0 && i < columns.length ? i : null);
   };
-  const at = hover === null ? null : columns[hover]!;
+  const at = hover.at === null ? null : columns[hover.at]!;
 
   return (
-    <div className="chart-wrap" ref={boxRef}>
+    <div className="relative min-w-0" ref={boxRef}>
       <svg
         ref={svgRef}
         viewBox={`0 0 ${W} ${height}`}
@@ -924,47 +1142,72 @@ export function TimeColumns({
         height={height}
         role="img"
         aria-label={`${label}: ${columns[0]!.label} — ${columns.at(-1)!.label}`}
+        className={cx("block overflow-visible", FOCUSABLE)}
         onMouseMove={onMove}
-        onMouseLeave={() => setHover(null)}
+        {...hover.focusProps}
       >
         {axis.ticks.map((t) => (
           <g key={t}>
-            <line x1={CP.left} x2={W - CP.right} y1={yAt(t)} y2={yAt(t)} stroke="var(--grid)" />
-            <text x={CP.left - 8} y={yAt(t) + 4} fontSize="11" fill="var(--axis)" textAnchor="end" fontFamily="var(--font-mono)">
+            <line x1={CP.left} x2={W - CP.right} y1={yAt(t)} y2={yAt(t)} stroke={t === 0 ? "var(--ctl)" : "var(--grid)"} />
+            <text x={CP.left - 8} y={yAt(t) + 4} fontSize={11} fontWeight={600} fill="var(--axis)" textAnchor="end">
               {num(t)}
             </text>
           </g>
         ))}
         {columns.map((c, i) =>
-          c.value === null ? null : (
-            <rect
+          c.value === null ? (
+            c.hidden ? (
+              <rect
+                key={c.key}
+                data-col="hidden"
+                x={(xAt(i) - bw / 2).toFixed(1)}
+                y={(yAt(0) - 10).toFixed(1)}
+                width={bw.toFixed(1)}
+                height={10}
+                rx={2}
+                fill="none"
+                stroke="var(--ctl)"
+                strokeDasharray="2 2"
+              />
+            ) : null
+          ) : (
+            <path
               key={c.key}
-              x={xAt(i) - bw / 2}
-              y={yAt(c.value)}
-              width={bw}
-              height={Math.max(0, yAt(0) - yAt(c.value))}
-              rx={2}
+              data-col={i}
+              d={colPath(xAt(i) - bw / 2, bw, yAt(c.value), yAt(0))}
               fill={fill}
-              fillOpacity={hover === null || hover === i ? 0.85 : 0.4}
+              fillOpacity={c.partial ? 0.45 : 1}
+              opacity={fade(hover.at, i)}
             />
           ),
         )}
+        {printValues
+          ? columns.map((c, i) =>
+              c.value === null ? null : (
+                <text key={`v-${c.key}`} x={xAt(i)} y={yAt(c.value) - 6} fontSize={12} fontWeight={800} fill="var(--text)" textAnchor="middle">
+                  {num(c.value)}
+                </text>
+              ),
+            )
+          : null}
         {/* шаг считается от конца: последний столбец — «сейчас», его подпись нужнее первой */}
         {columns.map((c, i) =>
           (columns.length - 1 - i) % every === 0 ? (
-            <text key={c.key} x={xAt(i)} y={height - 8} fontSize="11" fill="var(--axis)" textAnchor="middle">
+            <text key={c.key} x={xAt(i)} y={height - 8} fontSize={11} fontWeight={600} fill="var(--axis)" textAnchor="middle">
               {c.label}
             </text>
           ) : null,
         )}
       </svg>
       {at ? (
-        <div className="chart-tip" style={{ left: `${((xAt(hover!) / W) * 100).toFixed(2)}%` }} role="status">
-          <span className="chart-tip-x">{at.tip ?? at.label}</span>
-          <span className="chart-tip-row">
-            {at.value === null ? <span className="text-muted">{emptyTip ?? "—"}</span> : <b>{num(at.value)}</b>}
-          </span>
-        </div>
+        <ChartTip x={xAt(hover.at!)} y={at.value === null ? yAt(0) - 20 : yAt(at.value)} width={W}>
+          <TipHead>{at.tip ?? at.label}</TipHead>
+          {at.value === null ? (
+            <p className="m-0 mt-[5px] text-muted">{at.hidden ? `${ut("kit.hidden")}, ${fillIn(ut("chart.smallCell"), { n: floor })}` : (emptyTip ?? "—")}</p>
+          ) : (
+            <TipRow kind="box" color={fill} value={num(at.value)} />
+          )}
+        </ChartTip>
       ) : null}
     </div>
   );
@@ -988,11 +1231,8 @@ export interface StackColumn {
  * по уровням.
  *
  * Части лежат в постоянном порядке снизу вверх — порядок рядов, а не
- * величин: переставь их по размеру, и одна и та же часть оказывалась бы то
- * внизу, то посередине, и «стало ли 5xx больше» пришлось бы искать глазами.
- * Ненулевая часть не тоньше пикселя: одна пятисотка среди трёх тысяч
- * запросов иначе не видна вовсе, а ради неё график и смотрят. Сдвиг вершины
- * на пиксель — цена, которую подсказка возвращает числом.
+ * величин. Между частями — просвет поверхности 2 px. Ненулевая часть не
+ * тоньше пикселя: одна пятисотка среди трёх тысяч запросов иначе не видна.
  */
 export function StackColumns({
   series,
@@ -1014,7 +1254,7 @@ export function StackColumns({
 }) {
   const [W, boxRef] = useChartWidth();
   const svgRef = useRef<SVGSVGElement>(null);
-  const [hover, setHover] = useState<number | null>(null);
+  const hover = useIndexHover(columns.length);
   if (!series.length || !columns.some((c) => c.values !== null)) return <NoData />;
 
   const sums = columns.map((c) => (c.values ? c.values.reduce((s, v) => s + Math.max(0, v), 0) : null));
@@ -1022,7 +1262,7 @@ export function StackColumns({
   const pw = Math.max(40, W - CP.left - CP.right);
   const ph = height - CP.top - CP.bottom;
   const slot = pw / columns.length;
-  const bw = Math.max(2, Math.min(28, slot * 0.62));
+  const bw = Math.max(2, Math.min(24, slot * 0.56));
   const hOf = (v: number) => (v > 0 ? Math.max(1, (v / axis.max) * ph) : 0);
   const yAt = (v: number) => CP.top + ph - (v / axis.max) * ph;
   const xAt = (i: number) => CP.left + slot * i + slot / 2;
@@ -1033,13 +1273,13 @@ export function StackColumns({
     if (!box) return;
     const x = ((e.clientX - box.left) / box.width) * W - CP.left;
     const i = Math.floor(x / slot);
-    setHover(i >= 0 && i < columns.length ? i : null);
+    hover.setAt(i >= 0 && i < columns.length ? i : null);
   };
-  const at = hover === null ? null : columns[hover]!;
-  const atSum = hover === null ? null : sums[hover]!;
+  const at = hover.at === null ? null : columns[hover.at]!;
+  const atSum = hover.at === null ? null : sums[hover.at]!;
 
   return (
-    <div className="chart-wrap" ref={boxRef}>
+    <div className="relative min-w-0" ref={boxRef}>
       <svg
         ref={svgRef}
         viewBox={`0 0 ${W} ${height}`}
@@ -1047,13 +1287,14 @@ export function StackColumns({
         height={height}
         role="img"
         aria-label={`${label} (${series.map((s) => s.label).join(", ")}): ${columns[0]!.label} — ${columns.at(-1)!.label}`}
+        className={cx("block overflow-visible", FOCUSABLE)}
         onMouseMove={onMove}
-        onMouseLeave={() => setHover(null)}
+        {...hover.focusProps}
       >
         {axis.ticks.map((t) => (
           <g key={t}>
-            <line x1={CP.left} x2={W - CP.right} y1={yAt(t)} y2={yAt(t)} stroke="var(--grid)" />
-            <text x={CP.left - 8} y={yAt(t) + 4} fontSize="11" fill="var(--axis)" textAnchor="end" fontFamily="var(--font-mono)">
+            <line x1={CP.left} x2={W - CP.right} y1={yAt(t)} y2={yAt(t)} stroke={t === 0 ? "var(--ctl)" : "var(--grid)"} />
+            <text x={CP.left - 8} y={yAt(t) + 4} fontSize={11} fontWeight={600} fill="var(--axis)" textAnchor="end">
               {num(t)}
             </text>
           </g>
@@ -1062,28 +1303,35 @@ export function StackColumns({
           if (!c.values) return null;
           /* вершина части считается в пикселях: минимум в пиксель у каждой ненулевой */
           let top = yAt(0);
+          const cuts: number[] = [];
+          const parts = series.map((s, k) => {
+            const h = hOf(c.values![k] ?? 0);
+            if (!h) return null;
+            top -= h;
+            cuts.push(top);
+            return <rect key={s.key} x={(xAt(i) - bw / 2).toFixed(1)} y={top.toFixed(1)} width={bw.toFixed(1)} height={h.toFixed(1)} fill={s.color} />;
+          });
           return (
-            <g key={c.key} opacity={hover === null || hover === i ? 0.9 : 0.45}>
-              {series.map((s, k) => {
-                const h = hOf(c.values![k] ?? 0);
-                if (!h) return null;
-                top -= h;
-                return <rect key={s.key} x={xAt(i) - bw / 2} y={top} width={bw} height={h} fill={s.color} />;
-              })}
+            <g key={c.key} opacity={fade(hover.at, i)}>
+              {parts}
+              {/* просвет поверхности между частями, а не обводка */}
+              {cuts.slice(0, -1).map((y) => (
+                <line key={y} x1={xAt(i) - bw / 2} x2={xAt(i) + bw / 2} y1={y} y2={y} stroke="var(--panel)" strokeWidth={2} />
+              ))}
             </g>
           );
         })}
         {columns.map((c, i) =>
           (columns.length - 1 - i) % every === 0 ? (
-            <text key={c.key} x={xAt(i)} y={height - 8} fontSize="11" fill="var(--axis)" textAnchor="middle">
+            <text key={c.key} x={xAt(i)} y={height - 8} fontSize={11} fontWeight={600} fill="var(--axis)" textAnchor="middle">
               {c.label}
             </text>
           ) : null,
         )}
       </svg>
       {at ? (
-        <div className="chart-tip" style={{ left: `${((xAt(hover!) / W) * 100).toFixed(2)}%` }} role="status">
-          <span className="chart-tip-x">{at.tip ?? at.label}</span>
+        <ChartTip x={xAt(hover.at!)} y={atSum === null ? yAt(0) - 20 : yAt(atSum)} width={W}>
+          <TipHead>{at.tip ?? at.label}</TipHead>
           {at.values ? (
             <>
               {/* сверху вниз, как на картинке: нижний ряд в подсказке последний */}
@@ -1091,23 +1339,14 @@ export function StackColumns({
                 .map((s, k) => ({ s, v: at.values![k] ?? 0 }))
                 .reverse()
                 .map(({ s, v }) => (
-                  <span key={s.key} className="chart-tip-row">
-                    <i style={{ background: s.color }} />
-                    <span className="grow">{s.label}</span>
-                    <b>{format(v)}</b>
-                  </span>
+                  <TipRow key={s.key} kind="box" color={s.color} label={s.label} value={format(v)} />
                 ))}
-              {total && atSum !== null ? (
-                <span className="chart-tip-row">
-                  <span className="grow">{total}</span>
-                  <b>{format(atSum)}</b>
-                </span>
-              ) : null}
+              {total && atSum !== null ? <TipRow label={total} value={format(atSum)} /> : null}
             </>
           ) : (
-            <span className="text-muted">{emptyTip ?? "—"}</span>
+            <p className="m-0 mt-[5px] text-muted">{emptyTip ?? "—"}</p>
           )}
-        </div>
+        </ChartTip>
       ) : null}
       <SeriesLegend items={series} />
     </div>
@@ -1127,29 +1366,27 @@ export interface LineSeries extends SeriesKey {
   values: readonly (number | null)[];
 }
 
-const LP = { top: 12, right: 12, bottom: 26, left: 48 };
+/** Отметка на оси времени: выкатка, перезапуск — пунктир с подписью у верхнего края */
+export interface TimeLineMark {
+  /** Ключ корзины, к которой привязана отметка */
+  at: string;
+  label: string;
+}
+
+const LP = { top: 16, right: 12, bottom: 26, left: 48 };
 
 /**
  * Одна или несколько величин по одним корзинам времени: p50/p95/p99, доля
  * пятисоток.
  *
- * Отдельно от LineChart (charts/index.tsx), потому что там ось X — номер
- * точки, а пропусков нет: пустую минуту приходилось выбрасывать, и тихий
- * час сжимался до одной точки рядом с нагруженным. Здесь корзина стоит на
- * своём месте, а её отсутствие — разрыв линии: «ноль миллисекунд» нарисовал
- * бы скорость, которой не было. Одиночная корзина между пустыми — точкой,
- * иначе её не видно вовсе.
+ * Корзина стоит на своём месте, а её отсутствие — разрыв линии: «ноль
+ * миллисекунд» нарисовал бы скорость, которой не было. Одиночная корзина
+ * между пустыми — меткой, иначе её не видно. Ось от нуля.
  *
- * Корзины — те же слоты, что у TimeColumns: линия рядом со столбцами той же
- * нагрузки стоит точно над своими столбцами.
- *
- * Ось от нуля: время ответа и доля — величины, у которых ноль осмысленен,
- * и полоса «от 180 до 210 мс» на срезанной оси выглядела бы обвалом.
- *
- * `threshold` — порог пунктиром (это порог, и пунктир здесь по делу, как у
- * ступеней BandTrend) с подписью; значения выше порога отмечены янтарной
- * точкой — ровно те корзины, которые требуют внимания. Ось всегда включает
- * порог: «насколько далеко до него» — половина ответа.
+ * `threshold` — порог пунктиром с подписью; корзины выше порога отмечены
+ * янтарным ромбом — ровно те, что требуют внимания. `marks` — отметки
+ * событий (выкатки). У двух–четырёх рядов значения подписаны у концов линий,
+ * легенда есть всегда.
  */
 export function TimeLines({
   x,
@@ -1159,6 +1396,7 @@ export function TimeLines({
   format = num,
   tick,
   threshold,
+  marks,
 }: {
   x: readonly TimeTick[];
   series: readonly LineSeries[];
@@ -1169,15 +1407,19 @@ export function TimeLines({
   /** Число у оси; по умолчанию — как в подсказке */
   tick?: (v: number) => string;
   threshold?: { value: number; label: string };
+  marks?: readonly TimeLineMark[];
 }) {
   const [W, boxRef] = useChartWidth();
   const svgRef = useRef<SVGSVGElement>(null);
-  const [hover, setHover] = useState<number | null>(null);
+  const hover = useIndexHover(x.length);
   const known = series.flatMap((s) => s.values.filter((v): v is number => v !== null));
   if (!x.length || !known.length) return <NoData />;
 
+  const single = series.length === 1;
+  const ends = series.length <= 4;
+  const right = ends ? 84 : LP.right;
   const axis = axisFor({ lo: 0, hi: Math.max(0, ...known, threshold?.value ?? 0) });
-  const pw = Math.max(40, W - LP.left - LP.right);
+  const pw = Math.max(40, W - LP.left - right);
   const ph = height - LP.top - LP.bottom;
   const slot = pw / x.length;
   const xAt = (i: number) => LP.left + slot * i + slot / 2;
@@ -1185,7 +1427,7 @@ export function TimeLines({
   const yAt = (v: number) => LP.top + ph - ((v - axis.min) / span) * ph;
   const every = tickEvery(slot);
   const tickFmt = tick ?? format;
-  const single = series.length === 1;
+  const f1 = (v: number) => v.toFixed(1);
 
   /* отрезки подряд идущих известных корзин: линия идёт только внутри отрезка */
   const runsOf = (values: readonly (number | null)[]): number[][] => {
@@ -1206,12 +1448,30 @@ export function TimeLines({
     if (!box) return;
     const px = ((e.clientX - box.left) / box.width) * W - LP.left;
     const i = Math.floor(px / slot);
-    setHover(i >= 0 && i < x.length ? i : null);
+    hover.setAt(i >= 0 && i < x.length ? i : null);
   };
-  const at = hover === null ? null : x[hover]!;
+  const at = hover.at === null ? null : x[hover.at]!;
+
+  /*
+   * Подписи у концов: значение и имя ряда у последней известной корзины,
+   * раздвинутые на строку. Подпись порога стоит в том же столбце справа —
+   * внутри поля её перечёркивали бы сами ряды.
+   */
+  const endRows: { key: string; y: number; x: number; v: number | null; label: string }[] = ends
+    ? [
+        ...series
+          .map((s) => {
+            const i = s.values.reduce<number>((m, v, k) => (v === null ? m : k), -1);
+            return i < 0 ? null : { key: s.key, y: yAt(s.values[i]!), x: xAt(i), v: s.values[i]!, label: s.label };
+          })
+          .filter((r): r is NonNullable<typeof r> => r !== null),
+        ...(threshold ? [{ key: "__threshold", y: yAt(threshold.value), x: W - right, v: null, label: threshold.label }] : []),
+      ].sort((a, b) => a.y - b.y)
+    : [];
+  for (let k = 1; k < endRows.length; k++) if (endRows[k]!.y - endRows[k - 1]!.y < 13) endRows[k]!.y = endRows[k - 1]!.y + 13;
 
   return (
-    <div className="chart-wrap" ref={boxRef}>
+    <div className="relative min-w-0" ref={boxRef}>
       <svg
         ref={svgRef}
         viewBox={`0 0 ${W} ${height}`}
@@ -1219,13 +1479,14 @@ export function TimeLines({
         height={height}
         role="img"
         aria-label={`${label}${single ? "" : ` (${series.map((s) => s.label).join(", ")})`}: ${x[0]!.label} — ${x.at(-1)!.label}`}
+        className={cx("block overflow-visible", FOCUSABLE)}
         onMouseMove={onMove}
-        onMouseLeave={() => setHover(null)}
+        {...hover.focusProps}
       >
         {axis.ticks.map((t) => (
           <g key={t}>
-            <line x1={LP.left} x2={W - LP.right} y1={yAt(t)} y2={yAt(t)} stroke="var(--grid)" />
-            <text x={LP.left - 8} y={yAt(t) + 4} fontSize="11" fill="var(--axis)" textAnchor="end" fontFamily="var(--font-mono)">
+            <line x1={LP.left} x2={W - right} y1={yAt(t)} y2={yAt(t)} stroke={t === 0 ? "var(--ctl)" : "var(--grid)"} />
+            <text x={LP.left - 8} y={yAt(t) + 4} fontSize={11} fontWeight={600} fill="var(--axis)" textAnchor="end">
               {tickFmt(t)}
             </text>
           </g>
@@ -1235,91 +1496,158 @@ export function TimeLines({
           <g>
             <line
               x1={LP.left}
-              x2={W - LP.right}
+              x2={W - right}
               y1={yAt(threshold.value)}
               y2={yAt(threshold.value)}
-              stroke="var(--axis)"
-              strokeOpacity={0.6}
-              strokeDasharray="3 4"
+              stroke="var(--warn)"
+              strokeOpacity={0.8}
+              strokeDasharray="4 3"
             />
-            <text x={W - LP.right} y={yAt(threshold.value) - 4} fontSize="10" fill="var(--axis)" textAnchor="end">
-              {threshold.label}
-            </text>
-          </g>
-        ) : null}
-
-        {hover !== null ? (
-          <line x1={xAt(hover)} x2={xAt(hover)} y1={LP.top} y2={LP.top + ph} stroke="var(--primary)" strokeOpacity={0.4} />
-        ) : null}
-
-        {series.map((s) => (
-          <g key={s.key}>
-            {runsOf(s.values).map((run) =>
-              run.length === 1 ? (
-                <circle key={run[0]} cx={xAt(run[0]!)} cy={yAt(s.values[run[0]!]!)} r={2.5} fill={s.color} />
-              ) : (
-                <path
-                  key={run[0]}
-                  d={run.map((i, k) => `${k ? "L" : "M"}${xAt(i).toFixed(1)},${yAt(s.values[i]!).toFixed(1)}`).join(" ")}
-                  fill="none"
-                  stroke={s.color}
-                  strokeWidth={2}
-                  strokeDasharray={s.dashed ? "5 4" : undefined}
-                  strokeLinejoin="round"
-                />
-              ),
+            {ends ? null : (
+              <text
+                x={W - right}
+                y={yAt(threshold.value) - 5}
+                fontSize={11}
+                fontWeight={700}
+                fill="var(--warn)"
+                textAnchor="end"
+                stroke="var(--panel)"
+                strokeWidth={4}
+                strokeLinejoin="round"
+                style={{ paintOrder: "stroke" }}
+              >
+                {threshold.label}
+              </text>
             )}
-            {threshold
-              ? s.values.map((v, i) =>
-                  v !== null && v > threshold.value ? (
-                    <circle key={i} cx={xAt(i)} cy={yAt(v)} r={3.5} fill="var(--accent)" stroke="var(--card)" strokeWidth={1.5} />
-                  ) : null,
-                )
-              : null}
-            {hover !== null && s.values[hover] != null ? (
-              <circle cx={xAt(hover)} cy={yAt(s.values[hover]!)} r={4} fill={s.color} stroke="var(--card)" strokeWidth={2} />
-            ) : null}
           </g>
-        ))}
+        ) : null}
+
+        {marks?.map((m) => {
+          const i = x.findIndex((t) => t.key === m.at);
+          if (i < 0) return null;
+          return (
+            <g key={`${m.at}-${m.label}`} data-mark={m.label}>
+              <line x1={xAt(i)} x2={xAt(i)} y1={LP.top - 6} y2={LP.top + ph} stroke="var(--muted)" strokeDasharray="3 3" />
+              <text
+                x={xAt(i) + 4}
+                y={LP.top + 6}
+                fontSize={11}
+                fontWeight={700}
+                fill="var(--text-2)"
+                stroke="var(--panel)"
+                strokeWidth={4}
+                strokeLinejoin="round"
+                style={{ paintOrder: "stroke" }}
+              >
+                {m.label}
+              </text>
+            </g>
+          );
+        })}
+
+        {hover.at !== null ? (
+          <line x1={xAt(hover.at)} x2={xAt(hover.at)} y1={LP.top} y2={LP.top + ph} stroke="var(--vink)" strokeDasharray="2 2" />
+        ) : null}
+
+        {series.map((s, si) => {
+          const shape = shapeOf(s.color, si);
+          return (
+            <g key={s.key} data-series={s.key}>
+              {runsOf(s.values).map((run) =>
+                run.length === 1 ? (
+                  <g key={run[0]} data-single>
+                    <Marker shape={shape} x={xAt(run[0]!)} y={yAt(s.values[run[0]!]!)} r={3.5} color={s.color} />
+                  </g>
+                ) : (
+                  <path
+                    key={run[0]}
+                    data-run={run.length}
+                    d={run.map((i, k) => `${k ? "L" : "M"}${f1(xAt(i))},${f1(yAt(s.values[i]!))}`).join(" ")}
+                    fill="none"
+                    stroke={s.color}
+                    strokeWidth={2}
+                    strokeDasharray={s.dashed ? "5 4" : undefined}
+                    strokeLinejoin="round"
+                    strokeLinecap="round"
+                  />
+                ),
+              )}
+              {threshold
+                ? s.values.map((v, i) =>
+                    v !== null && v > threshold.value ? (
+                      <g key={i} data-over="threshold">
+                        <Marker shape="diamond" x={xAt(i)} y={yAt(v)} r={3.6} color={ATTENTION_COLOR} ringWidth={1.5} />
+                      </g>
+                    ) : null,
+                  )
+                : null}
+              {hover.at !== null && s.values[hover.at] != null ? (
+                <Marker shape={shape} x={xAt(hover.at)} y={yAt(s.values[hover.at]!)} r={4.5} color={s.color} />
+              ) : null}
+            </g>
+          );
+        })}
+
+        {endRows.map((r) =>
+          r.v === null ? (
+            <text key={`e-${r.key}`} x={r.x + 9} y={r.y + 4} fontSize={11} fontWeight={700} fill="var(--warn)">
+              {r.label}
+            </text>
+          ) : (
+            <text key={`e-${r.key}`} x={r.x + 9} y={r.y + 4} fontSize={11} fontWeight={600} fill="var(--text-2)">
+              <tspan fontWeight={800} fill="var(--text)">
+                {format(r.v)}
+              </tspan>
+              {single ? "" : ` ${r.label}`}
+            </text>
+          ),
+        )}
 
         {x.map((c, i) =>
           (x.length - 1 - i) % every === 0 ? (
-            <text key={c.key} x={xAt(i)} y={height - 8} fontSize="11" fill="var(--axis)" textAnchor="middle">
+            <text key={c.key} x={xAt(i)} y={height - 8} fontSize={11} fontWeight={600} fill="var(--axis)" textAnchor="middle">
               {c.label}
             </text>
           ) : null,
         )}
       </svg>
       {at ? (
-        <div className="chart-tip" style={{ left: `${((xAt(hover!) / W) * 100).toFixed(2)}%` }} role="status">
-          <span className="chart-tip-x">{at.tip ?? at.label}</span>
+        <ChartTip
+          x={xAt(hover.at!)}
+          y={Math.min(LP.top + ph, ...series.map((s) => (s.values[hover.at!] == null ? LP.top + ph : yAt(s.values[hover.at!]!))))}
+          width={W}
+        >
+          <TipHead>{at.tip ?? at.label}</TipHead>
           {series.map((s) => {
-            const v = s.values[hover!] ?? null;
-            return (
-              <span key={s.key} className="chart-tip-row">
-                <i style={{ background: s.color }} />
-                {single ? null : <span className="grow">{s.label}</span>}
-                {v === null ? <span className="text-muted">—</span> : <b>{format(v)}</b>}
-              </span>
-            );
+            const v = s.values[hover.at!] ?? null;
+            return <TipRow key={s.key} color={s.color} label={single ? undefined : s.label} value={v === null ? "—" : format(v)} />;
           })}
-        </div>
+          {marks
+            ?.filter((m) => m.at === at.key)
+            .map((m) => (
+              <p key={m.label} className="m-0 mt-[6px] font-bold text-text-2">
+                {m.label}
+              </p>
+            ))}
+        </ChartTip>
       ) : null}
-      <SeriesLegend items={series} />
+      <SeriesLegend items={series} lines />
     </div>
   );
 }
 
-/* ─────────── плитка числа ─────────── */
+/* ─────────── крупное число ─────────── */
 
 /**
- * Плитка: подпись, число, пояснение и — если есть — маленький ход во
- * времени. Заливка — сиреневая плашка макета (как поля-readout), без рамки и
- * тени: плитка показывает состояние, а не приглашает нажать.
+ * Крупное число набора (big value): подпись, число 32/800 со своей
+ * единицей, ход рядом с числом, которое он объясняет, и пояснение-сравнение
+ * под ним. Без плитки: ни заливки, ни рамки, ни тени — набор запрещает ряды
+ * плиток «число + подпись + дельта». Разделить стоящие в ряд числа
+ * линией, как столбцы «Методик» в карточке пациента, — дело экрана: только
+ * он знает, где кончается строка сетки.
  *
  * `tone="attention"` красит число янтарём — и только когда число само по
- * себе требует действия (просроченное, необработанные случаи). Прирост
- * прохождений вниманием не является, сколько бы он ни был велик.
+ * себе требует действия (просроченное, необработанные случаи).
  */
 export function Kpi({
   label,
@@ -1339,48 +1667,56 @@ export function Kpi({
   className?: string;
 }) {
   return (
-    <div className={cx("flex min-w-0 flex-col gap-[6px] rounded-[5px] bg-primary-soft px-[16px] py-[14px]", className)}>
-      <span className="text-[13px] font-bold leading-[16px] text-muted">{label}</span>
-      <span
-        className={cx(
-          "font-mono text-[30px] leading-[34px]",
-          tone === "attention" ? "text-accent" : "text-primary",
-        )}
-      >
-        {value === null ? "—" : value}
-        {unit && value !== null ? <span className="ml-[6px] text-[15px] text-muted">{unit}</span> : null}
+    <div
+      data-kpi
+      className={cx("flex min-w-0 flex-col gap-[6px]", className)}
+    >
+      <span className="text-[13px] leading-[16px] font-bold text-text-2">{label}</span>
+      <span className="flex min-w-0 flex-wrap items-baseline gap-x-[8px] gap-y-[4px]">
+        <span className={cx("text-stat leading-none font-extrabold", tone === "attention" ? "text-warn" : "text-text")}>
+          {value === null ? "—" : value}
+        </span>
+        {unit && value !== null ? <span className="text-[14px] font-bold text-muted">{unit}</span> : null}
+        {spark && spark.length > 1 ? <Sparkline values={spark} color={tone === "attention" ? ATTENTION_COLOR : undefined} /> : null}
       </span>
-      {spark && spark.length > 1 ? <Sparkline values={spark} /> : null}
-      {hint ? <span className="text-[13px] leading-[17px] text-muted">{hint}</span> : null}
+      {hint ? <span className="text-small leading-[17px] text-muted">{hint}</span> : null}
     </div>
   );
 }
 
 /**
- * Ход величины одной линией, без осей и подписей — дополнение к числу, а не
- * самостоятельный график. Точка на последнем значении — то, что стоит в
- * плитке числом.
+ * Ход величины одной линией — только рядом с числом, которое он объясняет,
+ * и никогда как украшение. Фиксированного размера (84 × 24 по умолчанию),
+ * без растяжения: точка на последнем значении — то, что стоит числом.
  */
-export function Sparkline({ values, height = 28 }: { values: readonly number[]; height?: number }) {
-  const W = 100;
+export function Sparkline({
+  values,
+  height = 24,
+  width = 84,
+  color = SINGLE_COLOR,
+}: {
+  values: readonly number[];
+  height?: number;
+  width?: number;
+  color?: string;
+}) {
   const lo = Math.min(...values);
   const hi = Math.max(...values);
   const span = hi - lo || 1;
-  const pts = values.map((v, i) => [
-    (i / Math.max(1, values.length - 1)) * W,
-    height - 3 - ((v - lo) / span) * (height - 6),
-  ]);
-  const last = pts.at(-1)!;
+  const X = (i: number) => 4 + ((width - 8) * i) / Math.max(1, values.length - 1);
+  const Y = (v: number) => 4 + (height - 8) * (1 - (v - lo) / span);
+  const last = values.length - 1;
   return (
-    <svg aria-hidden viewBox={`0 0 ${W} ${height}`} preserveAspectRatio="none" className="block h-[28px] w-full">
+    <svg aria-hidden width={width} height={height} viewBox={`0 0 ${width} ${height}`} className="inline-block shrink-0 overflow-visible align-middle">
       <polyline
-        points={pts.map(([x, y]) => `${x!.toFixed(2)},${y!.toFixed(2)}`).join(" ")}
+        points={values.map((v, i) => `${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join(" ")}
         fill="none"
-        stroke="var(--primary)"
-        strokeWidth={1.5}
-        vectorEffect="non-scaling-stroke"
+        stroke={color}
+        strokeWidth={2}
+        strokeLinejoin="round"
+        strokeLinecap="round"
       />
-      <circle cx={last[0]} cy={last[1]} r={2.5} fill="var(--primary)" vectorEffect="non-scaling-stroke" />
+      <Marker x={X(last)} y={Y(values[last]!)} r={3.2} color={color} />
     </svg>
   );
 }
@@ -1388,10 +1724,10 @@ export function Sparkline({ values, height = 28 }: { values: readonly number[]; 
 /* ─────────── рамка фигуры ─────────── */
 
 /**
- * Подпись над графиком внутри раздела: заголовок 15/700 и пояснение 13
- * серым. Раздел (RuleSection) держит линию и заголовок 20/700; фигура внутри
- * него — на ступень тише, иначе на экране из шести графиков было бы шесть
- * заголовков раздела.
+ * Подпись над графиком внутри раздела: заголовок 13,5/800 и пояснение 12
+ * приглушённым, справа — легенда или действие (как «Запити» на «Огляді»
+ * техпанели). `table` добавляет переключатель «Діаграма / Таблиця»: то же
+ * самое числами — для того, кто сверяет, и для диктора.
  */
 export function Figure({
   title,
@@ -1399,23 +1735,31 @@ export function Figure({
   aside,
   children,
   className,
+  table,
 }: {
   title: ReactNode;
   caption?: ReactNode;
   aside?: ReactNode;
   children: ReactNode;
   className?: string;
+  table?: TableView;
 }) {
+  const [asTable, setAsTable] = useState(false);
   return (
     <figure className={cx("m-0 min-w-0", className)}>
-      <figcaption className="mb-[12px] flex flex-wrap items-baseline justify-between gap-x-[16px] gap-y-[4px]">
+      <figcaption className="mb-[12px] flex flex-wrap items-start justify-between gap-x-[16px] gap-y-[6px]">
         <span className="min-w-0">
-          <span className="block text-[15px] font-bold leading-[19px] text-primary">{title}</span>
-          {caption ? <span className="block text-[13px] leading-[17px] text-muted">{caption}</span> : null}
+          <span className="block text-body leading-[18px] font-extrabold text-text">{title}</span>
+          {caption ? <span className="mt-[2px] block text-caption leading-[16px] text-muted">{caption}</span> : null}
         </span>
-        {aside}
+        {aside || table ? (
+          <span className="flex items-center gap-[12px]">
+            {aside}
+            {table ? <ViewSwitch table={asTable} onTable={setAsTable} /> : null}
+          </span>
+        ) : null}
       </figcaption>
-      {children}
+      {table && asTable ? <DataTable table={table} caption={typeof title === "string" ? title : undefined} /> : children}
     </figure>
   );
 }

@@ -324,7 +324,8 @@ describe("очередь и внимание: рисование", () => {
     const alerts: Page<AlertCase> = { items: [], nextCursor: null, total: 3 };
     const html = draw(<Attention alerts={alerts} work={work} />);
     expect(either(html, "dash.casesOpen")).toBe(true);
-    const amber = html.split("text-accent").length - 1;
+    // янтарь — прежний --accent экрана и --warn крупного числа (Kpi, «Виразна»): один и тот же цвет
+    const amber = html.split("text-accent").length - 1 + html.split("text-warn").length - 1;
     // число случаев + три просроченных вида (облік, повтори, призначення); «Направлення» — без янтаря
     expect(amber).toBe(1 + 3);
     for (const re of LEGACY) expect(html).not.toMatch(re);

@@ -1,11 +1,36 @@
-import { SERIES, severityColor, severityKey } from "../format";
+import { useRef, useState } from "react";
+import { severityKey } from "../format";
 import type { Severity } from "@quizzy/shared";
 import { NoData } from "../ui/primitives";
+import { cx } from "../ui/cx";
+import { HeatTable } from "./clinical";
 import { AxisBreak, AxisNote, useChartWidth } from "./index";
+import {
+  ATTENTION_COLOR,
+  ChartLegend,
+  ChartTip,
+  FOCUSABLE,
+  Marker,
+  OTHER_COLOR,
+  RowTip,
+  SERIES_COLORS,
+  SINGLE_COLOR,
+  SevChip,
+  TipHead,
+  TipRow,
+  seriesColor,
+  useIndexHover,
+} from "./kit";
 import { axisFor } from "./scale";
 import { useLang } from "../lang";
 
-/** Продвинутые формы: профиль, разброс, рассеяние, тепловая карта, воронка, знаковые столбики */
+/**
+ * Продвинутые формы: профиль-радар, разброс, рассеяние, тепловая карта,
+ * воронка, знаковые полосы — в языке «Виразної»: ряды c1…c4 и c5 для
+ * сравнения, метки с кольцом поверхности, подсказка у каждой формы. Янтарь —
+ * то, что требует внимания (помеченные протоколы, обратная связь пункта);
+ * красного здесь нет — риска для человека эти формы не показывают.
+ */
 
 /* ─────────── радар: профиль по субшкалам ─────────── */
 
@@ -21,38 +46,38 @@ export function Radar({
   size?: number;
 }) {
   const { ut } = useLang();
-  /* значение по умолчанию берётся здесь, а не в сигнатуре: словарь читается
-     хуком, а хук в значении параметра вызвать нельзя */
+  const [hover, setHover] = useState<number | null>(null);
+  /* значение по умолчанию берётся здесь, а не в сигнатуре: словарь читается хуком */
   const names = labels ?? [ut("chart.current"), ut("chart.first")];
-  if (axes.length < 3) return <p className="muted">{ut("chart.radarHint")}</p>;
+  if (axes.length < 3) return <p className="m-0 text-small text-muted">{ut("chart.radarHint")}</p>;
   const c = size / 2;
   const r = c - 62;
   const step = (Math.PI * 2) / axes.length;
   const pt = (i: number, v: number) => {
     const a = -Math.PI / 2 + i * step;
-    return [c + Math.cos(a) * r * Math.max(0, Math.min(1, v)), c + Math.sin(a) * r * Math.max(0, Math.min(1, v))];
+    const k = Math.max(0, Math.min(1, v));
+    return [c + Math.cos(a) * r * k, c + Math.sin(a) * r * k] as const;
   };
   const poly = (d: { value: number }[]) => d.map((x, i) => pt(i, x.value).join(",")).join(" ");
+  const pctOf = (v: number) => `${Math.round(Math.max(0, Math.min(1, v)) * 100)} %`;
+  const now = SERIES_COLORS[0];
 
   return (
-    <div>
-      <svg width={size} height={size}>
+    <div className="relative">
+      <svg width={size} height={size} role="img" aria-label={axes.map((a) => `${a.label} ${pctOf(a.value)}`).join(", ")} onMouseLeave={() => setHover(null)}>
         {[0.25, 0.5, 0.75, 1].map((ring) => (
-          <polygon
-            key={ring}
-            points={axes.map((_, i) => pt(i, ring).join(",")).join(" ")}
-            fill="none"
-            stroke="var(--grid)"
-          />
+          <polygon key={ring} points={axes.map((_, i) => pt(i, ring).join(",")).join(" ")} fill="none" stroke="var(--grid)" />
         ))}
         {axes.map((_, i) => {
           const [x, y] = pt(i, 1);
-          return <line key={i} x1={c} y1={c} x2={x} y2={y} stroke="var(--grid)" />;
+          return <line key={i} x1={c} y1={c} x2={x} y2={y} stroke={hover === i ? "var(--vink)" : "var(--grid)"} strokeDasharray={hover === i ? "2 2" : undefined} />;
         })}
-        {compare ? (
-          <polygon points={poly(compare)} fill={SERIES[1]} fillOpacity={0.12} stroke={SERIES[1]} strokeWidth={2} strokeDasharray="4 3" />
-        ) : null}
-        <polygon points={poly(axes)} fill={SERIES[0]} fillOpacity={0.2} stroke={SERIES[0]} strokeWidth={2} />
+        {compare ? <polygon points={poly(compare)} fill="none" stroke={OTHER_COLOR} strokeWidth={2} strokeDasharray="5 3" strokeLinejoin="round" /> : null}
+        <polygon points={poly(axes)} fill={now} fillOpacity={0.12} stroke={now} strokeWidth={2} strokeLinejoin="round" />
+        {axes.map((a, i) => {
+          const [x, y] = pt(i, a.value);
+          return <Marker key={i} x={x} y={y} r={hover === i ? 5 : 3.6} color={now} />;
+        })}
         {axes.map((a, i) => {
           const [x, y] = pt(i, 1.2);
           return (
@@ -60,24 +85,37 @@ export function Radar({
               key={i}
               x={x}
               y={y + 4}
-              fontSize="11"
-              fill="var(--muted)"
+              fontSize={11}
+              fontWeight={hover === i ? 800 : 600}
+              fill={hover === i ? "var(--text)" : "var(--muted)"}
               textAnchor={Math.abs(x - c) < 14 ? "middle" : x > c ? "start" : "end"}
             >
               {a.label.length > 16 ? `${a.label.slice(0, 15)}…` : a.label}
             </text>
           );
         })}
+        {/* зона наведения — сектор у каждой оси, а не точка в пять пикселей */}
+        {axes.map((_, i) => {
+          const [x, y] = pt(i, 1.05);
+          return <circle key={`h-${i}`} cx={x} cy={y} r={22} fill="transparent" onMouseEnter={() => setHover(i)} />;
+        })}
       </svg>
-      {compare ? (
-        <div className="legend">
-          <span><i className="dot" style={{ background: SERIES[0] }} /> {names[0]}</span>
-          <span><i className="dot" style={{ background: SERIES[1] }} /> {names[1]}</span>
-        </div>
+      {hover !== null ? (
+        <ChartTip x={pt(hover, axes[hover]!.value)[0]} y={pt(hover, axes[hover]!.value)[1]} width={size}>
+          <TipHead>{axes[hover]!.label}</TipHead>
+          <TipRow color={now} label={names[0]} value={pctOf(axes[hover]!.value)} />
+          {compare?.[hover] ? <TipRow color={OTHER_COLOR} label={names[1]} value={pctOf(compare[hover]!.value)} /> : null}
+        </ChartTip>
       ) : null}
-      <p className="hint" style={{ marginTop: 8 }}>
-        {ut("chart.radarNormNote")}
-      </p>
+      {compare ? (
+        <ChartLegend
+          items={[
+            { key: "now", label: names[0], color: now, kind: "line" },
+            { key: "first", label: names[1], color: OTHER_COLOR, kind: "dash" },
+          ]}
+        />
+      ) : null}
+      <p className="m-0 mt-[8px] text-caption leading-[16px] text-muted">{ut("chart.radarNormNote")}</p>
     </div>
   );
 }
@@ -96,16 +134,13 @@ export interface Box {
 export function BoxPlot({ boxes, categorical = false, height = 240 }: { boxes: Box[]; categorical?: boolean; height?: number }) {
   const { ut } = useLang();
   const [W, box] = useChartWidth();
+  const [hover, setHover] = useState<number | null>(null);
   if (!boxes.length) return <NoData />;
 
   /*
-   * Ось — по нарисованному, а не по теоретическому максимуму шкалы. Ящики
-   * субшкал раньше жались к низу поля, потому что верх держал максимум
-   * опросника, до которого никто не доходит.
-   *
-   * `atom` — типичная высота коробки: сдвиг медианы меньше межквартильного
-   * размаха не тянет на разницу между шкалами, и разворачивать поле под него
-   * не за чем.
+   * Ось — по нарисованному, а не по теоретическому максимуму шкалы; `atom` —
+   * типичная высота коробки: сдвиг медианы меньше размаха не тянет на
+   * разницу между шкалами.
    */
   const widths = boxes.map((b) => b.q3 - b.q1).sort((a, b) => a - b);
   const axis = axisFor({
@@ -114,44 +149,47 @@ export function BoxPlot({ boxes, categorical = false, height = 240 }: { boxes: B
     atom: widths[Math.floor(widths.length / 2)] ?? 0,
   });
   const ph = height - 46;
-  /* делитель — настоящий размах оси: единица снизу сжимала узкие ящики (2,1…2,3) к низу поля, под верхнее деление */
   const yAt = (v: number) => 14 + ph - ((v - axis.min) / Math.max(axis.max - axis.min, Number.EPSILON)) * ph;
   const slot = (W - 60) / boxes.length;
+  const cxOf = (i: number) => 50 + slot * i + slot / 2;
+  const fmt = (v: number) => String(Math.round(v * 10) / 10);
+  const at = hover === null ? null : boxes[hover]!;
 
   return (
-    <div className="scroll-x" ref={box}>
-      <svg viewBox={`0 0 ${W} ${height}`} width="100%" height={height}>
+    <div className="relative min-w-0 overflow-x-auto" ref={box}>
+      <svg viewBox={`0 0 ${W} ${height}`} width="100%" height={height} role="img" aria-label={boxes.map((b) => `${b.label} ${fmt(b.median)}`).join(", ")} onMouseLeave={() => setHover(null)}>
         {axis.ticks.map((t) => (
           <g key={t}>
             <line x1={50} x2={W - 10} y1={yAt(t)} y2={yAt(t)} stroke="var(--grid)" />
-            <text x={44} y={yAt(t) + 4} fontSize="11" fill="var(--axis)" textAnchor="end">
-              {Math.round(t * 10) / 10}
+            <text x={44} y={yAt(t) + 4} fontSize={11} fontWeight={600} fill="var(--axis)" textAnchor="end">
+              {fmt(t)}
             </text>
           </g>
         ))}
         {boxes.map((b, i) => {
-          const cx = 50 + slot * i + slot / 2;
-          const color = categorical ? SERIES[i % SERIES.length]! : "var(--primary)";
-          const bw = Math.min(46, slot * 0.5);
+          const cx = cxOf(i);
+          const color = categorical ? seriesColor(i, boxes.length) : SINGLE_COLOR;
+          const bw = Math.min(40, slot * 0.5);
           return (
-            <g key={b.label}>
-              <line x1={cx} x2={cx} y1={yAt(b.max)} y2={yAt(b.q3)} stroke="var(--axis)" />
-              <line x1={cx} x2={cx} y1={yAt(b.q1)} y2={yAt(b.min)} stroke="var(--axis)" />
-              <line x1={cx - 10} x2={cx + 10} y1={yAt(b.max)} y2={yAt(b.max)} stroke="var(--axis)" />
-              <line x1={cx - 10} x2={cx + 10} y1={yAt(b.min)} y2={yAt(b.min)} stroke="var(--axis)" />
+            <g key={b.label} opacity={hover === null || hover === i ? 1 : 0.5} onMouseEnter={() => setHover(i)}>
+              <rect x={cx - slot / 2} y={14} width={slot} height={ph} fill="transparent" />
+              <line x1={cx} x2={cx} y1={yAt(b.max)} y2={yAt(b.q3)} stroke="var(--muted)" />
+              <line x1={cx} x2={cx} y1={yAt(b.q1)} y2={yAt(b.min)} stroke="var(--muted)" />
+              <line x1={cx - 8} x2={cx + 8} y1={yAt(b.max)} y2={yAt(b.max)} stroke="var(--muted)" />
+              <line x1={cx - 8} x2={cx + 8} y1={yAt(b.min)} y2={yAt(b.min)} stroke="var(--muted)" />
               <rect
                 x={cx - bw / 2}
                 y={yAt(b.q3)}
                 width={bw}
                 height={Math.max(2, yAt(b.q1) - yAt(b.q3))}
                 fill={color}
-                fillOpacity={0.25}
+                fillOpacity={0.14}
                 stroke={color}
                 strokeWidth={2}
-                rx={3}
+                rx={4}
               />
-              <line x1={cx - bw / 2} x2={cx + bw / 2} y1={yAt(b.median)} y2={yAt(b.median)} stroke={color} strokeWidth={3} />
-              <text x={cx} y={height - 8} fontSize="11" fill="var(--axis)" textAnchor="middle">
+              <line x1={cx - bw / 2} x2={cx + bw / 2} y1={yAt(b.median)} y2={yAt(b.median)} stroke={color} strokeWidth={3} strokeLinecap="round" />
+              <text x={cx} y={height - 8} fontSize={11} fontWeight={600} fill="var(--axis)" textAnchor="middle">
                 {b.label.length > 12 ? `${b.label.slice(0, 11)}…` : b.label}
               </text>
             </g>
@@ -159,12 +197,16 @@ export function BoxPlot({ boxes, categorical = false, height = 240 }: { boxes: B
         })}
         {axis.zoomed ? <AxisBreak x={50} y={14 + ph} /> : null}
       </svg>
-      <p className="hint">{ut("chart.boxHint")}</p>
-      <AxisNote
-        axis={axis}
-        lo={Math.min(...boxes.map((b) => b.min))}
-        hi={Math.max(...boxes.map((b) => b.max))}
-      />
+      {at ? (
+        <ChartTip x={cxOf(hover!)} y={yAt(at.q3)} width={W}>
+          <TipHead>{at.label}</TipHead>
+          <TipRow label={ut("chart.median")} value={fmt(at.median)} />
+          <TipRow label={ut("chart.iqr")} value={`${fmt(at.q1)}–${fmt(at.q3)}`} />
+          <TipRow label={ut("chart.range")} value={`${fmt(at.min)}–${fmt(at.max)}`} />
+        </ChartTip>
+      ) : null}
+      <p className="m-0 mt-[6px] text-caption leading-[16px] text-muted">{ut("chart.boxHint")}</p>
+      <AxisNote axis={axis} lo={Math.min(...boxes.map((b) => b.min))} hi={Math.max(...boxes.map((b) => b.max))} />
     </div>
   );
 }
@@ -186,14 +228,12 @@ export function Scatter({
 }) {
   const { ut } = useLang();
   /*
-   * Крючки — до любого раннего выхода.
-   *
-   * Здесь стоял `if (!points.length) return` перед вызовом крючка: при
-   * пустых данных React видел на один крючок меньше, чем в прошлый раз, и
-   * это ломается не сразу, а когда график впервые окажется пустым — то есть
-   * у первого же пользователя без данных.
+   * Крючки — до любого раннего выхода: при пустых данных React иначе увидел
+   * бы на крючок меньше, чем в прошлый раз.
    */
   const [W, box] = useChartWidth();
+  const svgRef = useRef<SVGSVGElement>(null);
+  const hover = useIndexHover(points.length);
   const xMax = Math.max(...points.map((p) => p.x), xThreshold ?? 0, 1);
   const yMax = Math.max(...points.map((p) => p.y), 1);
   if (!points.length) return <NoData />;
@@ -202,43 +242,82 @@ export function Scatter({
   const yAt = (v: number) => 14 + ph - (v / yMax) * ph;
   const flagged = points.filter((p) => p.flagged).length;
 
+  /* ближайшая точка под курсором: метка в 8 px — не цель для указателя */
+  const onMove = (e: React.MouseEvent<SVGSVGElement>) => {
+    const b = svgRef.current?.getBoundingClientRect();
+    if (!b) return;
+    const px = ((e.clientX - b.left) / b.width) * W;
+    const py = ((e.clientY - b.top) / b.height) * height;
+    let best = -1;
+    let dist = 24 * 24;
+    points.forEach((p, i) => {
+      const d = (xAt(p.x) - px) ** 2 + (yAt(p.y) - py) ** 2;
+      if (d < dist) {
+        dist = d;
+        best = i;
+      }
+    });
+    hover.setAt(best < 0 ? null : best);
+  };
+  const at = hover.at === null ? null : points[hover.at]!;
+
   return (
-    <div className="scroll-x" ref={box}>
-      <svg viewBox={`0 0 ${W} ${height}`} width="100%" height={height}>
+    <div className="relative min-w-0 overflow-x-auto" ref={box}>
+      <svg
+        ref={svgRef}
+        viewBox={`0 0 ${W} ${height}`}
+        width="100%"
+        height={height}
+        role="img"
+        aria-label={`${xLabel} / ${yLabel}: ${points.length}`}
+        className={cx("block", FOCUSABLE)}
+        onMouseMove={onMove}
+        {...hover.focusProps}
+      >
         {[0, yMax / 2, yMax].map((t) => (
           <g key={t}>
             <line x1={50} x2={W - 12} y1={yAt(t)} y2={yAt(t)} stroke="var(--grid)" />
-            <text x={44} y={yAt(t) + 4} fontSize="11" fill="var(--axis)" textAnchor="end">
+            <text x={44} y={yAt(t) + 4} fontSize={11} fontWeight={600} fill="var(--axis)" textAnchor="end">
               {Math.round(t)}
             </text>
           </g>
         ))}
         {xThreshold !== undefined ? (
           <>
-            <line x1={xAt(xThreshold)} x2={xAt(xThreshold)} y1={14} y2={14 + ph} stroke="var(--sev-severe)" strokeDasharray="4 3" />
-            <text x={xAt(xThreshold) + 5} y={26} fontSize="10" fill="var(--sev-severe)">{ut("chart.threshold")}</text>
+            <line x1={xAt(xThreshold)} x2={xAt(xThreshold)} y1={14} y2={14 + ph} stroke={ATTENTION_COLOR} strokeDasharray="4 3" />
+            <text x={xAt(xThreshold) + 5} y={26} fontSize={11} fontWeight={700} fill="var(--warn)">
+              {ut("chart.threshold")}
+            </text>
           </>
         ) : null}
-        {points.map((p, i) => (
-          <circle
-            key={i}
-            cx={xAt(p.x)}
-            cy={yAt(p.y)}
-            r={p.flagged ? 6 : 4}
-            fill={p.flagged ? "var(--sev-severe)" : SERIES[0]}
-            fillOpacity={p.flagged ? 0.9 : 0.5}
-            stroke={p.flagged ? "var(--card)" : "none"}
-            strokeWidth={p.flagged ? 2 : 0}
-          />
-        ))}
-        <text x={50} y={height - 6} fontSize="11" fill="var(--axis)">{xLabel}</text>
-        <text x={44} y={12} fontSize="11" fill="var(--axis)" textAnchor="end">{yLabel}</text>
+        {points.map((p, i) =>
+          p.flagged ? (
+            <Marker key={i} shape="diamond" x={xAt(p.x)} y={yAt(p.y)} r={4.5} color={ATTENTION_COLOR} />
+          ) : (
+            <Marker key={i} x={xAt(p.x)} y={yAt(p.y)} r={hover.at === i ? 5.5 : 4} color={SINGLE_COLOR} ringWidth={1.5} />
+          ),
+        )}
+        <text x={50} y={height - 6} fontSize={11} fontWeight={600} fill="var(--axis)">
+          {xLabel}
+        </text>
+        <text x={44} y={12} fontSize={11} fontWeight={600} fill="var(--axis)" textAnchor="end">
+          {yLabel}
+        </text>
       </svg>
+      {at ? (
+        <ChartTip x={xAt(at.x)} y={yAt(at.y)} width={W}>
+          {at.flagged ? <TipHead>{ut("chart.flaggedCareless")}</TipHead> : null}
+          <TipRow label={xLabel} value={Math.round(at.x * 10) / 10} />
+          <TipRow label={yLabel} value={Math.round(at.y * 10) / 10} />
+        </ChartTip>
+      ) : null}
       {flagged ? (
-        <div className="legend">
-          <span><i className="dot" style={{ background: SERIES[0] }} /> {ut("chart.ordinary")}</span>
-          <span><i className="dot" style={{ background: "var(--sev-severe)" }} /> {ut("chart.flaggedCareless")} ({flagged})</span>
-        </div>
+        <ChartLegend
+          items={[
+            { key: "ok", label: ut("chart.ordinary"), color: SINGLE_COLOR, kind: "mark" },
+            { key: "flag", label: `${ut("chart.flaggedCareless")} (${flagged})`, color: ATTENTION_COLOR, kind: "mark", shape: "diamond" },
+          ]}
+        />
       ) : null}
     </div>
   );
@@ -246,127 +325,106 @@ export function Scatter({
 
 /* ─────────── тепловая карта ─────────── */
 
+/** Доли по строкам и колонкам — тепловой таблицей набора: значение в каждой клетке */
 export function Heatmap({ rows, columns, unit = "%" }: { rows: { label: string; cells: number[] }[]; columns: string[]; unit?: string }) {
   const { ut } = useLang();
   if (!rows.length) return <NoData />;
   const max = Math.max(...rows.flatMap((r) => r.cells), 1);
   return (
-    <div className="scroll-x">
-      <table>
-        <thead>
-          <tr>
-            <th />
-            {columns.map((c) => (
-              <th key={c} className="num">{c}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r) => (
-            <tr key={r.label}>
-              <td style={{ maxWidth: 320 }}>{r.label}</td>
-              {r.cells.map((v, i) => {
-                const k = v / max;
-                return (
-                  <td
-                    key={i}
-                    className="num"
-                    style={{
-                      background: `color-mix(in srgb, var(--s1) ${Math.round(10 + k * 75)}%, transparent)`,
-                      fontWeight: k > 0.6 ? 700 : 400,
-                    }}
-                  >
-                    {Math.round(v)}{unit}
-                  </td>
-                );
-              })}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      <p className="hint">{ut("chart.heatHint")}</p>
+    <div>
+      <HeatTable
+        rows={rows.map((r, i) => ({ key: `${i}-${r.label}`, label: <span className="block max-w-[320px] truncate">{r.label}</span>, cells: r.cells }))}
+        columns={columns}
+        max={max}
+        format={(v) => `${Math.round(v)}${unit}`}
+      />
+      <p className="m-0 mt-[8px] text-caption leading-[16px] text-muted">{ut("chart.heatHint")}</p>
     </div>
   );
 }
 
 /* ─────────── воронка ─────────── */
 
+/**
+ * Воронка — полосами строк от общего нуля: сколько дошло до каждого шага и
+ * сколько потеряно на переходе. Трапеции прежней воронки рисовали ширину
+ * дважды (сверху и снизу), и глаз сравнивал площади вместо длин.
+ */
 export function Funnel({ stages }: { stages: { label: string; value: number; lost: number }[] }) {
   const { ut } = useLang();
-  const [W, box] = useChartWidth();
   if (!stages.length) return <NoData />;
-  const rowH = 38;
-  const H = stages.length * rowH + 10;
   const max = Math.max(...stages.map((s) => s.value), 1);
-  const labelW = 300;
-  const half = (v: number) => (v / max) * ((W - labelW - 60) / 2);
-  const cx = labelW + (W - labelW - 60) / 2;
-
   return (
-    <div className="scroll-x" ref={box}>
-      <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H}>
-        {stages.map((s, i) => {
-          const next = stages[i + 1] ?? s;
-          const y0 = i * rowH + 4;
-          const y1 = y0 + rowH - 6;
-          return (
-            <g key={i}>
-              <text x={0} y={y0 + 20} fontSize="12" fill="var(--text)">
-                {s.label.length > 42 ? `${s.label.slice(0, 41)}…` : s.label}
-              </text>
-              <path
-                d={`M${cx - half(s.value)},${y0} L${cx + half(s.value)},${y0} L${cx + half(next.value)},${y1} L${cx - half(next.value)},${y1} Z`}
-                fill={SERIES[0]}
-                fillOpacity={0.75}
-              />
-              <text x={W - 4} y={y0 + 20} fontSize="12" fill="var(--muted)" textAnchor="end">{s.value}</text>
-              {s.lost > 0 ? (
-                <text x={cx} y={y1 + 2} fontSize="10" fill="var(--sev-severe)" textAnchor="middle">−{s.lost}</text>
-              ) : null}
-            </g>
-          );
-        })}
-      </svg>
-      <p className="hint">{ut("chart.funnelHint")}</p>
+    <div>
+      <ul className="m-0 grid list-none gap-[6px] p-0">
+        {stages.map((s, i) => (
+          <li
+            key={i}
+            tabIndex={0}
+            className="group/row relative grid min-h-[28px] grid-cols-[minmax(0,2fr)_minmax(0,3fr)_minmax(64px,auto)] items-center gap-[12px] rounded-[8px] outline-none hover:bg-panel-2 focus-visible:outline-2 focus-visible:outline-[var(--focus)]"
+          >
+            <span className="truncate text-[13px] font-semibold text-text-2">{s.label}</span>
+            <span className="relative h-[14px]">
+              <span className="block h-full rounded-r-[4px]" style={{ width: `${Math.max(1.5, (s.value / max) * 100).toFixed(2)}%`, background: SINGLE_COLOR }} />
+            </span>
+            <span className="text-right text-[13px] font-extrabold whitespace-nowrap text-text">
+              {s.value}
+              {s.lost > 0 ? <small className="ml-[8px] text-[11.5px] font-bold text-warn">−{s.lost}</small> : null}
+            </span>
+            <RowTip at={0.4}>
+              <TipHead>{s.label}</TipHead>
+              <TipRow value={s.value} extra={s.lost > 0 ? `−${s.lost}` : undefined} />
+            </RowTip>
+          </li>
+        ))}
+      </ul>
+      <p className="m-0 mt-[8px] text-caption leading-[16px] text-muted">{ut("chart.funnelHint")}</p>
     </div>
   );
 }
 
-/* ─────────── знаковые столбики ─────────── */
+/* ─────────── знаковые полосы ─────────── */
 
+/**
+ * Связь со знаком: полоса от середины влево или вправо. Положительная и
+ * достаточная — фиолетовым, слабая — серым «прочего», отрицательная — янтарём:
+ * обратная связь пункта со шкалой требует внимания составителя методики.
+ */
 export function DivergingBar({ items, domain = 1, goodThreshold }: { items: { label: string; value: number }[]; domain?: number; goodThreshold?: number }) {
   const { ut } = useLang();
   if (!items.length) return <NoData />;
   return (
-    <div style={{ display: "grid", gap: 8 }}>
-      {items.map((it) => {
-        const weak = goodThreshold !== undefined && it.value < goodThreshold;
-        const color = it.value < 0 ? "var(--sev-severe)" : weak ? "var(--sev-mild)" : "var(--primary)";
-        const pct = (Math.max(-domain, Math.min(domain, it.value)) / domain) * 50;
-        return (
-          <div key={it.label}>
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 3 }}>
-              <span>{it.label}</span>
-              <span className="muted" style={{ fontVariantNumeric: "tabular-nums" }}>{it.value.toFixed(2)}</span>
-            </div>
-            <div style={{ position: "relative", height: 12, background: "var(--grid)", borderRadius: 4 }}>
-              <div style={{ position: "absolute", left: "50%", top: 0, bottom: 0, width: 1, background: "var(--axis)" }} />
-              <div
-                style={{
-                  position: "absolute",
-                  left: pct >= 0 ? "50%" : `${50 + pct}%`,
-                  width: `${Math.abs(pct)}%`,
-                  height: 12,
-                  background: color,
-                  borderRadius: 4,
-                }}
-              />
-            </div>
-          </div>
-        );
-      })}
+    <div>
+      <ul className="m-0 grid list-none gap-[6px] p-0">
+        {items.map((it) => {
+          const weak = goodThreshold !== undefined && it.value < goodThreshold;
+          const color = it.value < 0 ? ATTENTION_COLOR : weak ? OTHER_COLOR : SINGLE_COLOR;
+          const pct = (Math.max(-domain, Math.min(domain, it.value)) / domain) * 50;
+          return (
+            <li
+              key={it.label}
+              tabIndex={0}
+              className="group/row relative grid min-h-[28px] grid-cols-[minmax(0,2fr)_minmax(0,3fr)_minmax(48px,auto)] items-center gap-[12px] rounded-[8px] outline-none hover:bg-panel-2 focus-visible:outline-2 focus-visible:outline-[var(--focus)]"
+            >
+              <span className="truncate text-[13px] font-semibold text-text-2">{it.label}</span>
+              <span className="relative h-[14px]">
+                <span aria-hidden className="absolute top-[-3px] bottom-[-3px] left-1/2 w-px bg-ctl" />
+                <span
+                  className={cx("absolute top-0 h-full", pct >= 0 ? "rounded-r-[4px]" : "rounded-l-[4px]")}
+                  style={{ left: pct >= 0 ? "50%" : `${50 + pct}%`, width: `${Math.abs(pct)}%`, background: color }}
+                />
+              </span>
+              <span className="text-right text-[13px] font-extrabold text-text">{it.value.toFixed(2)}</span>
+              <RowTip at={0.4}>
+                <TipHead>{it.label}</TipHead>
+                <TipRow kind="box" color={color} value={it.value.toFixed(2)} />
+              </RowTip>
+            </li>
+          );
+        })}
+      </ul>
       {goodThreshold !== undefined ? (
-        <p className="hint">
+        <p className="m-0 mt-[8px] text-caption leading-[16px] text-muted">
           {ut("chart.lowCorrPrefix")} {goodThreshold} {ut("chart.lowCorrSuffix")}
         </p>
       ) : null}
@@ -374,21 +432,15 @@ export function DivergingBar({ items, domain = 1, goodThreshold }: { items: { la
   );
 }
 
-/** Метка выраженности: цвет + подпись, никогда не цвет в одиночку */
+/**
+ * Метка выраженности — плашка набора (.sev): ступень всегда со своим
+ * словом, никогда цветом в одиночку.
+ */
 export function SeverityTag({ severity, label }: { severity: Severity; label?: string }) {
   const { ut } = useLang();
-  return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600 }}>
-      <i className="dot" style={{ background: severityColor[severity] }} />
-      {/*
-        Метка без подписи показывала код ступени — «moderate» рядом с баллом
-        в таблице прохождений. Свой близнец в мобилке (src/components/charts)
-        разбирал этот же запасной вариант через словарь с самого начала: два
-        одинаковых компонента разошлись молча, потому что расхождение видно
-        только на методиках без подписей полос, а в демонстрационных данных
-        подписи заполнены все.
-      */}
-      {label ?? ut(severityKey[severity], severity)}
-    </span>
-  );
+  /*
+   * Метка без подписи показывала код ступени — «moderate» рядом с баллом.
+   * Запасная подпись — из словаря, как у мобильного близнеца.
+   */
+  return <SevChip severity={severity} label={label ?? ut(severityKey[severity], severity)} small />;
 }

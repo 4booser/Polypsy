@@ -219,7 +219,7 @@ describe("вкладка «Тести»: все пациенты", () => {
     clean(html);
     expect(html).toContain("Іваненко");
     // четыре дня (1…4 сентября), а не два: пустые достроены нулями
-    expect(html.match(/<rect /g)?.length).toBe(4);
+    expect(html.match(/data-col=/g)?.length).toBe(4);
     expect(html).toContain("2. Другий");
   });
 

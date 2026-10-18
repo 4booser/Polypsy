@@ -29,6 +29,8 @@ const draw = (node: ReactNode) =>
 
 const uk = (key: keyof typeof UI) => UI[key].uk;
 /* разметка экранирует кавычки и апострофы — сравниваем с экранированным */
+/** Число части и её доля в легенде полосы долей: «4» и «21 %» рядом, без « · » */
+const shareOf = (n: string, pct: string) => new RegExp(`>${n}</span><span[^>]*>${pct} %<`);
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/'/g, "&#x27;").replace(/</g, "&lt;");
 
 const days = (n: number, v: (i: number) => { success: number; failed: number }) =>
@@ -77,8 +79,8 @@ describe("зведення реєстру", () => {
     expect(html).toContain(uk("kit.hidden"));
     expect(html).not.toContain(`${esc(uk("adm.rolePatient"))}: ${esc(uk("opsp.state.active"))}`);
     // второй фактор — только у персонала: две полосы, у каждой своя легенда с долей
-    expect(html.split(`>${uk("opsp.mfa.on")}<`).length - 1).toBe(2);
-    expect(html).toContain("4 · 21%");
+    expect(html.match(new RegExp(`data-legend-label="true"[^>]*>${uk("opsp.mfa.on")}<`, "g"))?.length).toBe(2);
+    expect(html).toMatch(shareOf("4", "21"));
   });
 
   test("столбцы с подписью для диктора; неделя со скрытыми пациентами названа в ней", () => {
@@ -130,7 +132,7 @@ describe("зведення сесій", () => {
     expect(html).toContain(uk("opsp.sess.byRole"));
     expect(html).toContain(uk("opsp.age.day"));
     expect(html).toContain(uk("kit.hidden"));
-    expect(html).toContain("6 · 55%");
+    expect(html).toMatch(shareOf("6", "55"));
   });
 });
 
@@ -182,7 +184,7 @@ describe("підозріла активність і доступи", () => {
       <GrantsOverviewBody stats={{ active: 2, permanent: 6, expired: 1, revoked: 1, byWeek: [{ week: "2026-09-21", count: 0 }] }} />,
     );
     expect(html).toContain(uk("opsp.grant.permanent"));
-    expect(html).toContain("6 · 60%");
+    expect(html).toMatch(shareOf("6", "60"));
     expect(html).toContain(uk("chart.noData"));
   });
 });
