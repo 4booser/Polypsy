@@ -8,7 +8,7 @@ import { useLiveReload } from "../../events";
 import { useResource } from "../../useResource";
 import { cx } from "../../ui/cx";
 import { Ic } from "../../ui/icons";
-import { Loading } from "../../ui";
+import { Loading, Skeleton } from "../../ui";
 import { Panel } from "../../ui/layout";
 import { Segmented } from "../../ui/primitives";
 import { Di } from "../today/icons";
@@ -303,9 +303,9 @@ export function ConditionsWidget() {
           <Loading bare error={res.error} onRetry={res.reload} />
         </div>
       ) : (
-        <p className="m-0 px-4 pb-4 text-small text-muted" role="status" aria-busy="true">
-          {ut("common.loading")}
-        </p>
+        <div className="px-4 pb-4" role="status" aria-busy="true" aria-label={ut("common.loading")}>
+          <Skeleton lines={4} />
+        </div>
       )}
     </Panel>
   );

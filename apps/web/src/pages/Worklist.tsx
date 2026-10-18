@@ -181,7 +181,11 @@ export default function WorklistPage() {
           ) : null}
         </div>
       </aside>
-      <main className="min-w-0 flex-1 overflow-y-auto bg-ground pb-6 max-[900px]:hidden" tabIndex={-1}>
+      <section
+        aria-label={current ? current.userName : ut("work.title")}
+        className="min-w-0 flex-1 overflow-y-auto bg-ground pb-6 max-[900px]:hidden"
+        tabIndex={-1}
+      >
         {current ? (
           <WorkRecord
             key={workKey(current)}
@@ -195,7 +199,7 @@ export default function WorklistPage() {
             <Empty title={ut("work.done")} hint={ut("work.doneHint")} />
           </div>
         ) : null}
-      </main>
+      </section>
       {drawer}
     </div>
   );

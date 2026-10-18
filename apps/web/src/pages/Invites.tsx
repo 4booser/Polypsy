@@ -195,7 +195,7 @@ export default function Invites() {
       sort: (r) => r.createdByName,
       render: (r) => (
         <Tooltip label={fill(ut("invA.createdBy"), { name: r.createdByName, d: day(r.createdAt) })}>
-          <span tabIndex={0} aria-label={r.createdByName} className="inline-flex rounded-full">
+          <span tabIndex={0} role="img" aria-label={r.createdByName} className="inline-flex rounded-full">
             <Avatar name={r.createdByName} size={28} tone={user && r.createdByName === user.fullName ? "violet" : "neutral"} />
           </span>
         </Tooltip>

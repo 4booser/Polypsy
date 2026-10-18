@@ -99,7 +99,7 @@ export function Agenda({
             ))}
             {at === items.length ? <NowRow now={now!} note={nowNote} first={false} /> : null}
             {last ? (
-              <div className="relative mx-2 grid grid-cols-[52px_24px_minmax(0,1fr)] gap-x-2.5 gap-y-0 py-3 pl-2 pr-3">
+              <div role="listitem" className="relative mx-2 grid grid-cols-[52px_24px_minmax(0,1fr)] gap-x-2.5 gap-y-0 py-3 pl-2 pr-3">
                 <span className="text-[15px] font-extrabold leading-5 text-muted tabular-nums">{hhmm(last.endsAt)}</span>
                 <Node kind="end" last />
                 <span className="text-small font-semibold text-muted">
@@ -160,7 +160,7 @@ function Node({
 
 function NowRow({ now, note, first }: { now: number; note: ReactNode; first: boolean }) {
   return (
-    <div className="relative mx-2 grid grid-cols-[52px_24px_minmax(0,1fr)] items-center gap-x-2.5 gap-y-0 py-1.5 pl-2 pr-3">
+    <div role="listitem" className="relative mx-2 grid grid-cols-[52px_24px_minmax(0,1fr)] items-center gap-x-2.5 gap-y-0 py-1.5 pl-2 pr-3">
       <span className="inline-grid h-6 w-[50px] place-items-center rounded-[12px] bg-text text-caption font-extrabold leading-none text-panel tabular-nums">
         {hhmm(now)}
       </span>

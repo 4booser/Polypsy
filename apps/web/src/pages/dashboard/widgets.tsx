@@ -4,7 +4,7 @@ import type { AlertCase, AlertCasePage, AppointmentView, OverviewAnalytics, Page
 import { api } from "../../api";
 import { useAuth } from "../../auth";
 import { day, duration, locale } from "../../format";
-import { Avatar, Loading, Tooltip, useAction } from "../../ui";
+import { Avatar, Loading, SkeletonRows, Tooltip, useAction } from "../../ui";
 import { cx } from "../../ui/cx";
 import { Ic } from "../../ui/icons";
 import { IconTile, Panel, type PanelTone } from "../../ui/layout";
@@ -342,9 +342,9 @@ export function MissedWidget() {
           <Loading bare error={res.error} onRetry={res.reload} />
         </div>
       ) : !res.data ? (
-        <p className="m-0 px-4 pb-4 text-small text-muted" role="status">
-          {ut("common.loading")}
-        </p>
+        <div className="pb-2" role="status" aria-label={ut("common.loading")}>
+          <SkeletonRows rows={3} />
+        </div>
       ) : groups.length === 0 ? (
         <p className="m-0 px-4 pb-4 text-small text-muted">{ut("ec.nothing")}</p>
       ) : (
@@ -465,7 +465,7 @@ export function CollectWidget({ overview, cur, delta }: { overview: OverviewAnal
               {ut("dash.inProgress")}
               {live.length ? (
                 <Tooltip label={ut("dashA.liveTip")}>
-                  <span tabIndex={0} aria-label={ut("dashA.liveTip")} className="inline-block size-2 rounded-full bg-good" />
+                  <span tabIndex={0} role="img" aria-label={ut("dashA.liveTip")} className="inline-block size-2 rounded-full bg-good" />
                 </Tooltip>
               ) : null}
             </span>

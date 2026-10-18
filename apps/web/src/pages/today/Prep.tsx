@@ -3,7 +3,7 @@ import type { AppointmentView, RespondentDynamics, ScaleDynamics, Severity } fro
 import { api, type NoteState } from "../../api";
 import { day, locale, severityKey } from "../../format";
 import { changeVerdict, reliableThreshold } from "../../charts/courseModel";
-import { Avatar, Callout, Loading, Tooltip } from "../../ui";
+import { Avatar, Callout, Loading, Skeleton, Tooltip } from "../../ui";
 import { cx } from "../../ui/cx";
 import { Ic } from "../../ui/icons";
 import { Panel } from "../../ui/layout";
@@ -232,9 +232,9 @@ export function Prep({
           <Loading bare error={res.error} onRetry={res.reload} />
         </div>
       ) : !res.data ? (
-        <p className="m-0 border-t border-divider px-4 py-3.5 text-small text-muted" role="status">
-          {ut("common.loading")}
-        </p>
+        <div className="border-t border-divider px-4 py-3.5" role="status" aria-label={ut("common.loading")}>
+          <Skeleton lines={5} />
+        </div>
       ) : (
         <>
           <Section

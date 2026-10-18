@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import type { RespondentDynamics, SafetyPlan, UiKey, WorkItem } from "@quizzy/shared";
 import { api, type TimelineItem } from "../../api";
 import { day, severityKey } from "../../format";
-import { ActivityList, AlertChip, AlertStrip, Avatar, BigValue, BigValues, KbdHints, Loading, Tooltip, type ActivityEvent } from "../../ui";
+import { ActivityList, AlertChip, AlertStrip, Avatar, BigValue, BigValues, KbdHints, Loading, Skeleton, Tooltip, type ActivityEvent } from "../../ui";
 import { cx } from "../../ui/cx";
 import { Ic } from "../../ui/icons";
 import { Panel } from "../../ui/layout";
@@ -287,9 +287,9 @@ export function WorkRecord({
                 <Loading bare error={res.error} onRetry={res.reload} />
               </div>
             ) : !res.data ? (
-              <p className="m-0 px-4 pb-4 text-small text-muted" role="status">
-                {ut("common.loading")}
-              </p>
+              <div className="px-4 pb-4" role="status" aria-label={ut("common.loading")}>
+                <Skeleton lines={4} />
+              </div>
             ) : (res.data.timeline ?? []).length === 0 ? (
               <p className="m-0 px-4 pb-4 text-small text-muted">{ut("wlA.noHistory")}</p>
             ) : (
@@ -389,9 +389,9 @@ function Measures({ dyn, loading }: { dyn: RespondentDynamics | null; loading: b
       flush
     >
       {loading ? (
-        <p className="m-0 px-4 pb-4 text-small text-muted" role="status">
-          {ut("common.loading")}
-        </p>
+        <div className="px-4 pb-4" role="status" aria-label={ut("common.loading")}>
+          <Skeleton lines={3} />
+        </div>
       ) : surveys.length === 0 ? (
         <p className="m-0 px-4 pb-4 text-small text-muted">{ut("wlA.noMeasures")}</p>
       ) : (

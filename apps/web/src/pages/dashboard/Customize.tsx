@@ -195,7 +195,7 @@ export function CustomizeDrawer({
                 </span>
                 {locked ? (
                   <Tooltip label={ut("dashA.locked")}>
-                    <span tabIndex={0} aria-label={ut("dashA.locked")} className="inline-grid size-8 place-items-center text-muted">
+                    <span tabIndex={0} role="img" aria-label={ut("dashA.locked")} className="inline-grid size-8 place-items-center text-muted">
                       <Ic.lock size={15} />
                     </span>
                   </Tooltip>

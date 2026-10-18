@@ -159,10 +159,21 @@ export default function TodayPage() {
   }, [isOpen, selected, navigate]);
 
   return (
-    <Screen res={res} rows={5}>
+    <>
+      {/* шапка — до ответа: дата и листание дней не ждут загрузки списка */}
+      <DayHead
+        date={data?.date ?? (dateParam || localDate(new Date(wall)))}
+        items={items}
+        loading={!data}
+        isToday={data ? isToday : !dateParam}
+        onDate={(d) => {
+          setPicked(null);
+          setDate(d);
+        }}
+      />
+      <Screen res={res} rows={5}>
       {(day) => (
         <>
-          <DayHead date={day.date} items={items} isToday={isToday} onDate={(d) => { setPicked(null); setDate(d); }} />
           <div className="flex flex-col gap-4">
             <ActNow
               cases={cases}
@@ -170,6 +181,7 @@ export default function TodayPage() {
               appointments={isToday ? items : []}
               meId={user?.id ?? null}
               onReply={openReply}
+              loading={!side.data && !side.error}
             />
             <SideLayout
               side={
@@ -204,7 +216,8 @@ export default function TodayPage() {
           {drawer}
         </>
       )}
-    </Screen>
+      </Screen>
+    </>
   );
 }
 
@@ -237,11 +250,13 @@ function NowNote({ items, now, hero }: { items: AppointmentView[]; now: number |
 function DayHead({
   date,
   items,
+  loading,
   isToday,
   onDate,
 }: {
   date: string;
   items: AppointmentView[];
+  loading: boolean;
   isToday: boolean;
   onDate: (d: string) => void;
 }) {
@@ -250,9 +265,11 @@ function DayHead({
   const done = alive.filter((a) => a.status === "done").length;
   const ahead = alive.filter((a) => a.status === "booked" || a.status === "confirmed" || a.status === "arrived" || a.status === "in_progress").length;
   const end = alive.length ? hhmm([...alive.map((a) => a.endsAt)].sort().pop()!) : null;
-  const sum = alive.length
-    ? fill(ut("dayA.daySum"), { n: alive.length, done, ahead, end: end ?? "" })
-    : ut("day.nobody");
+  const sum = loading
+    ? ut("common.loading")
+    : alive.length
+      ? fill(ut("dayA.daySum"), { n: alive.length, done, ahead, end: end ?? "" })
+      : ut("day.nobody");
   const prev = shiftDate(date, -1);
   const next = shiftDate(date, 1);
   return (

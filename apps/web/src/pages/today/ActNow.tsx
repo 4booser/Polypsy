@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import type { AlertCase, AppointmentView, WorkItem } from "@quizzy/shared";
 import { api } from "../../api";
 import { day } from "../../format";
-import { AlertChip, AlertStrip, Avatar, Kbd } from "../../ui";
+import { AlertChip, AlertStrip, Avatar, Kbd, Skeleton } from "../../ui";
 import { cx } from "../../ui/cx";
 import { Ic, type IconProps } from "../../ui/icons";
 import { Panel } from "../../ui/layout";
@@ -93,9 +93,12 @@ export function ActNow({
   appointments,
   meId,
   onReply,
+  loading = false,
 }: {
   /** Открытые случаи в порядке срочности (urgentCases); null — разбор не положен */
   cases: AlertCase[] | null;
+  /** Случаи и очередь ещё в пути: «нічого термінового» до ответа было бы неправдой */
+  loading?: boolean;
   work: WorkItem[];
   appointments: readonly AppointmentView[];
   meId: string | null;
@@ -126,7 +129,11 @@ export function ActNow({
       actions={cases ? <TextAction to="/alerts">{fill(ut("dayA.casesN"), { n: total })}</TextAction> : null}
       flush
     >
-      {!hero && !sideWork.length ? (
+      {loading ? (
+        <div className="px-4 pb-4" role="status" aria-label={ut("common.loading")}>
+          <Skeleton lines={3} />
+        </div>
+      ) : !hero && !sideWork.length ? (
         <p className="m-0 mx-2.5 mb-2.5 flex items-center gap-2.5 rounded-[12px] bg-good-tint px-3.5 py-3 text-small font-semibold text-good">
           <Ic.circleCheck size={17} />
           {ut("dayA.nothingUrgent")}
@@ -245,7 +252,15 @@ function HeroTile({
             <b className="block text-[14px] font-extrabold leading-5 text-text">
               {fill(ut("dayA.noAnswerSince"), { at: stamp(msg.since) === hhmm(msg.since) ? hhmm(msg.since) : `${day(msg.since)}, ${hhmm(msg.since)}` })}
             </b>
-            {quote.data ? <q className="line-clamp-2 font-semibold text-text">{quote.data}</q> : <span>{workWhy(msg, ut)}</span>}
+            {quote.data ? (
+              <q className="line-clamp-2 font-semibold text-text">{quote.data}</q>
+            ) : quote.loading ? (
+              <span className="mt-1 block w-3/4">
+                <Skeleton lines={1} />
+              </span>
+            ) : (
+              <span>{workWhy(msg, ut)}</span>
+            )}
           </div>
           <div className="flex items-center gap-2.5 max-[900px]:col-start-2 max-[900px]:mt-2">
             <Button variant="primary" size="md" icon={<Ic.reply />} onClick={reply} aria-keyshortcuts="M">

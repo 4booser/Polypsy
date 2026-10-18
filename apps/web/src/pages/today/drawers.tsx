@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, type NoteState } from "../../api";
-import { Drawer, DrawerPane, DrawerSection, Loading, useAction, useToast } from "../../ui";
+import { Drawer, DrawerPane, DrawerSection, Loading, Skeleton, useAction, useToast } from "../../ui";
 import { Button, Field, Textarea } from "../../ui/primitives";
 import { cx } from "../../ui/cx";
 import { Ic } from "../../ui/icons";
@@ -171,9 +171,9 @@ function ReplyBody({
         sub={threadId ? fill(ut("dayA.threadCount"), { n: items.length }) : ut("dayA.threadNew")}
       >
         {state.items === null && !state.error ? (
-          <p className="m-0 text-small text-muted" role="status">
-            {ut("common.loading")}
-          </p>
+          <div role="status" aria-label={ut("common.loading")}>
+            <Skeleton lines={3} />
+          </div>
         ) : state.error ? (
           <Loading bare error={state.error} onRetry={load} />
         ) : last.length === 0 ? (
@@ -302,9 +302,9 @@ function NoteBody({
         {state.error ? (
           <Loading bare error={state.error} onRetry={load} />
         ) : text === null ? (
-          <p className="m-0 text-small text-muted" role="status">
-            {ut("common.loading")}
-          </p>
+          <div role="status" aria-label={ut("common.loading")}>
+            <Skeleton lines={4} />
+          </div>
         ) : (
           <Field label={ut("dayA.noteText")} inline>
             <Textarea data-autofocus rows={9} value={text} onChange={(e) => setText(e.target.value)} placeholder={ut("dayA.notePh")} />
