@@ -1656,7 +1656,7 @@ export const UI = {
   "visit.actions": { uk: "Дії", ru: "Действия", en: "Actions" },
   "visit.wasWith": { uk: "Був у", ru: "Был у", en: "Previously seen by" },
   "visit.firstVisit": { uk: "Перший прийом тут", ru: "Первый приём здесь", en: "First appointment here" },
-  "visit.followedSince": { uk: "Спостерігається з", ru: "Наблюдается с", en: "Under care since" },
+  "visit.followedSince": { uk: "Спостерігається", ru: "Наблюдается", en: "Under care" },
   "visit.lead": { uk: "Веде", ru: "Ведёт", en: "Lead clinician:" },
   "visit.noLead": { uk: "Ведучого немає", ru: "Ведущего нет", en: "No lead clinician" },
   "visit.changes": { uk: "Що змінилося", ru: "Что изменилось", en: "What has changed" },

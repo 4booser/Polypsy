@@ -606,7 +606,7 @@ function History({ data, busy, onTakeLead }: { data: Ctx; busy: boolean; onTakeL
    * задавать вопросы, которые человеку уже задавали дважды.
    */
   if (data.previous) rows.push([ut("visit.wasWith"), `${data.previous.specialistName}, ${day(data.previous.at)}`]);
-  if (data.followedSince) rows.push([ut("visit.followedSince"), day(data.followedSince)]);
+  if (data.followedSince) rows.push([ut("visit.followedSince"), ut("v2v.since").replace("{date}", day(data.followedSince))]);
   rows.push([
     ut("visit.lead"),
     data.patient.leadName ?? <span className="font-semibold text-warn">{ut("visit.noLead")}</span>,
@@ -621,7 +621,7 @@ function History({ data, busy, onTakeLead }: { data: Ctx; busy: boolean; onTakeL
   return (
     <Panel title={ut("visit.history")} icon={<Ic.history />}>
       {data.previous ? null : <p className="m-0 mb-2.5 text-small font-semibold text-text-2">{ut("visit.firstVisit")}</p>}
-      <KV rows={rows} w={132} />
+      <KV rows={rows} w={112} />
       {data.patient.leadSpecialistId === null ? (
         /*
           Закрепление — явное действие, а не следствие приёма: иначе один
