@@ -5,6 +5,10 @@ import { useColors } from "@/theme";
 import { useLang } from "@/lang";
 import { TabBar } from "@/ui/TabBar";
 import { TabHeader } from "@/ui/headers";
+import { PatientHeader } from "@/components/patient/PatientHeader";
+
+/** Экраны с заголовком в прокрутке: вкладки и экраны пациента */
+const PATIENT_SCREENS = new Set(["home", "booking", "surveys", "health", "profile", "messages", "safety", "queue"]);
 
 /**
  * Вкладки: прохождение, обход и аналитика (для сотрудников), план безопасности
@@ -34,7 +38,17 @@ export default function AppLayout() {
        */
       tabBar={(props) => <TabBar {...props} />}
       screenOptions={{
-        header: (props) => <TabHeader {...props} help={!isAdmin} />,
+        /*
+         * Экраны пациента рисуют крупный заголовок сами, внутри прокрутки
+         * (components/patient/Hero), — шапка у них только строка навигации.
+         * Вкладки сотрудника (обход) — прежней шапкой с заголовком.
+         */
+        header: (props) =>
+          PATIENT_SCREENS.has(props.route.name) ? (
+            <PatientHeader {...props} help={!isAdmin} />
+          ) : (
+            <TabHeader {...props} help={!isAdmin} />
+          ),
         sceneStyle: { backgroundColor: c.ground },
       }}
     >
