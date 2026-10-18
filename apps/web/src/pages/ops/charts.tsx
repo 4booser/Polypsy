@@ -227,6 +227,10 @@ export interface RankBar {
   text: string;
   /** Требует внимания: полоса янтарём (пятисотки, p95 над порогом) */
   attention?: boolean;
+  /** Не требует ничего и не в счёт пути: полоса серым (удалённые записи) */
+  muted?: boolean;
+  /** Приписка после числа приглушённым: объём «38,0 ГБ», «файл стерто» */
+  extra?: string;
   /** Пояснение в подсказке: «4 з 21» */
   note?: string;
 }
@@ -273,7 +277,7 @@ export function RankBars({
                 {i.value > 0 ? (
                   <span
                     data-bar
-                    className={cx("block h-full rounded-r-[4px]", i.attention ? "bg-warn" : "bg-[var(--series)]")}
+                    className={cx("block h-full rounded-r-[4px]", i.attention ? "bg-warn" : i.muted ? "bg-[var(--c5)]" : "bg-[var(--series)]")}
                     style={{ width: `${(w * 100).toFixed(2)}%` }}
                   />
                 ) : null}
@@ -285,10 +289,17 @@ export function RankBars({
                   />
                 ) : null}
               </span>
-              <span className="whitespace-nowrap text-right text-[13px] font-extrabold tabular-nums text-text">{i.text}</span>
+              <span className="whitespace-nowrap text-right text-[13px] font-extrabold tabular-nums text-text">
+                {i.text}
+                {i.extra ? <span className="ml-1.5 text-caption font-semibold text-muted">{i.extra}</span> : null}
+              </span>
               <RowTip at={0.3 + w * 0.4}>
                 <TipHead>{i.title}</TipHead>
-                <TipRow kind="box" color={i.attention ? "var(--warn)" : "var(--series)"} value={i.text} />
+                <TipRow
+                  kind="box"
+                  color={i.attention ? "var(--warn)" : i.muted ? "var(--c5)" : "var(--series)"}
+                  value={i.extra ? `${i.text} · ${i.extra}` : i.text}
+                />
                 {i.note ? <TipText muted>{i.note}</TipText> : null}
               </RowTip>
             </li>

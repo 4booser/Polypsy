@@ -1,290 +1,522 @@
-import { useMemo } from "react";
-import type { OpsClientErrorGroup } from "@quizzy/shared";
+import { useMemo, useState } from "react";
+import type { ClientErrorKind, ClientPlatform, OpsClientErrorGroup } from "@quizzy/shared";
 import { api } from "../../../api";
-import { Figure, HBars, ShareBar, TimeColumns } from "../../../charts/clinical";
-import { dateTime, day, locale } from "../../../format";
+import { Figure, ShareBar, type SharePart } from "../../../charts/clinical";
+import { locale } from "../../../format";
 import { useLang } from "../../../lang";
-import { Loading, useUrlState } from "../../../ui";
+import { Callout, Loading, SearchField, ViewPills, useToast, useUrlState } from "../../../ui";
 import { cx } from "../../../ui/cx";
-import { IconDisclosure } from "../../../ui/glyphs";
-import { Button, Input, Num } from "../../../ui/primitives";
-import { RuleSection } from "../../../ui/section";
+import { Panel } from "../../../ui/layout";
+import { Button, Segmented, Tag, type TagTone } from "../../../ui/primitives";
+import { useResource } from "../../../useResource";
 import { fill } from "../../dashboard/model";
-import { PeriodSwitch } from "../../dashboard/parts";
-import { fmtInt } from "../model";
-import { Quiet, Stamp, useOpsResource } from "../parts";
+import { MarkedColumns, RankBars } from "../charts";
+import { OpsIcon, type OpsIconName } from "../icons";
+import { PERIOD_KEY, fmtInt } from "../model";
+import { CopyLinkButton, Facts, Mono, OpsHead, OpsToolbar, Quiet, sinceText, useCount, useOpsResource } from "../parts";
 import {
+  CE_WINDOWS,
   KIND_KEY,
   PLATFORM_KEY,
+  REST_KEY,
   browserFamily,
+  dayLabel,
   filterClientErrors,
   lastDays,
   newGroupsByDay,
+  parseCeWindow,
   parseKind,
   parsePlatform,
   rankBy,
-  REST_KEY,
-  topGroups,
+  releaseDayMarks,
+  seenWithin,
   type KindFilter,
   type PlatformFilter,
 } from "./model";
-import { FIG_GRID } from "./charts";
-import { Meta } from "./parts";
+import { ExpandButton } from "./parts";
 
 /*
- * Помилки клієнта: что падает у людей в браузере и в телефоне.
+ * Помилки клієнта в «Виразній»: что падает у людей в браузере и в телефоне.
  *
  * Решение заказчика 2026-09-26: падения React (граница ошибок консоли и
  * кабинета), window.onerror и необработанные отказы промисов, сетевые сбои
  * консоли (сеть, 5xx — не 4xx бизнес-логики) и глобальный обработчик ошибок
- * мобилки. Отдельным разделом, а не вкладкой «Помилок»: те — память
- * процесса сервера, эти — база, и смешать их в одном списке значило бы
- * сравнивать «с момента запуска» с «за девяносто дней».
+ * мобилки. Отдельным разделом, а не вкладкой «Помилок»: те — процесс
+ * сервера, эти — база, и смешать их в одном списке значило бы сравнивать
+ * несравнимое.
  *
  * Группа — отпечаток (платформа, вид, имя, сообщение без данных, верхний
  * кадр, маршрут шаблоном): двести одинаковых падений у двухсот человек —
- * одна строка «200 разів». Ни адреса с идентификатором, ни текста полей:
- * всё вычищено на клиенте и ещё раз на сервере. Чтение — в журнал.
+ * одна строка. Ни адреса с идентификатором, ни текста полей: всё вычищено
+ * на клиенте и ещё раз на сервере. Чтение — в журнал.
+ *
+ * Период — по последнему случаю группы: «что падало за 30 днів». Счётчик
+ * группы — за всю её жизнь (до срока хранения): случаев по дням сервер не
+ * хранит, и делить счётчик по дням значило бы выдумать.
  *
  * Фильтры и раскрытая группа — в адресе: ссылку «вот эта ошибка»
  * пересылают коллеге.
  */
 
 const POLL_MS = 60_000;
+const PAGE = 20;
+const DAY_MS = 86_400_000;
 
 export default function OpsClientErrors() {
   const { ut } = useLang();
   const loc = locale();
+  const count = useCount();
   const [q, setQ] = useUrlState("q", "");
+  const [rawDays, setDays] = useUrlState("days", "30");
   const [rawPlatform, setPlatform] = useUrlState("platform", "all");
   const [rawKind, setKind] = useUrlState("kind", "all");
+  const [order, setOrder] = useUrlState("order", "last");
   const [open, setOpen] = useUrlState("open", "");
+  const [limit, setLimit] = useState(PAGE);
+  const days = parseCeWindow(rawDays);
   const platform = parsePlatform(rawPlatform);
   const kind = parseKind(rawKind);
 
   const res = useOpsResource(() => api.opsClientErrors(), [], POLL_MS);
-  const shown = useMemo(() => (res.data ? filterClientErrors(res.data.items, { q, platform, kind }) : null), [res.data, q, platform, kind]);
+  const releases = useResource(() => api.opsReleaseVersions(), []);
+  const now = res.updatedAt ?? Date.now();
+  const data = res.data;
 
-  if (res.error && !res.data) return <Loading error={res.error} onRetry={res.reload} />;
-  if (!res.data || !shown) return <Loading rows={5} />;
-  const d = res.data;
-  const total = d.items.reduce((s, g) => s + g.count, 0);
+  /* окно и платформа — для всего экрана; вид — только для списка, у его пилюль свои счётчики */
+  const scoped = useMemo(
+    () => (data ? filterClientErrors(seenWithin(data.items, days, now), { q, platform, kind: "all" }) : null),
+    [data, days, now, q, platform],
+  );
+  const shown = useMemo(() => {
+    if (!scoped) return null;
+    const list = kind === "all" ? scoped.slice() : scoped.filter((g) => g.kind === kind);
+    return order === "count"
+      ? list.sort((a, b) => b.count - a.count || b.lastAt.localeCompare(a.lastAt))
+      : list.sort((a, b) => b.lastAt.localeCompare(a.lastAt));
+  }, [scoped, kind, order]);
 
-  return (
-    <div>
-      <Stamp updatedAt={res.updatedAt} note={fill(ut("o2b.ce.stamp"), { days: d.retentionDays })} />
-
-      <RuleSection
-        className="mt-[16px]"
-        title={ut("o2b.tab.clientErrors")}
-        hint={ut("o2b.ce.hint")}
-        actions={
-          <>
-            <Num className="text-[13px] text-muted">
-              {fill(ut("ops.errors.summary"), { groups: fmtInt(d.items.length, loc), n: fmtInt(total, loc) })}
-            </Num>
-            <Input
-              look="fill"
-              ph="plain"
-              aria-label={ut("o2b.ce.search")}
-              placeholder={ut("o2b.ce.search")}
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              className="w-[260px] px-[10px] max-[600px]:w-full"
-              autoComplete="off"
-              maxLength={120}
-            />
-          </>
-        }
-      >
-        <div className="mb-[12px] flex flex-wrap items-center gap-x-[24px] gap-y-[8px]">
-          <PeriodSwitch<PlatformFilter>
+  const cases = (list: readonly OpsClientErrorGroup[]) => list.reduce((s, g) => s + g.count, 0);
+  const inWindow = data ? seenWithin(data.items, days, now) : [];
+  const head = (
+    <OpsHead
+      meta={
+        data
+          ? [
+              fill(ut("opx.er.metaBold"), {
+                groups: count(["opx.er.groups.one", "opx.er.groups.few", "opx.er.groups.many"], inWindow.length),
+                cases: count(["opx.er.cases.one", "opx.er.cases.few", "opx.er.cases.many"], cases(inWindow)),
+              }),
+              fill(ut("opx.ce.metaSub"), {
+                web: fmtInt(cases(inWindow.filter((g) => g.platform === "web")), loc),
+                mobile: fmtInt(cases(inWindow.filter((g) => g.platform === "mobile")), loc),
+                days,
+              }),
+            ]
+          : null
+      }
+      actions={<CopyLinkButton />}
+      toolbar={
+        <OpsToolbar>
+          <SearchField value={q} onChange={setQ} placeholder={ut("o2b.ce.search")} slash width={260} />
+          <Segmented
+            label={ut("ops.history.periodLabel")}
+            value={String(days)}
+            onChange={(v) => setDays(v)}
+            items={CE_WINDOWS.map((w) => ({ key: String(w), label: ut(PERIOD_KEY[`${w}d` as "7d" | "30d" | "90d"]) }))}
+          />
+          <span className="ml-2 text-small font-semibold text-muted">{ut("o2b.ce.platform")}</span>
+          <Segmented<PlatformFilter>
             label={ut("o2b.ce.platform")}
             value={platform}
             onChange={setPlatform}
-            options={[
-              ["all", ut("o2b.ce.all")],
-              ["web", ut(PLATFORM_KEY.web)],
-              ["mobile", ut(PLATFORM_KEY.mobile)],
+            items={[
+              { key: "all", label: ut("o2b.ce.all") },
+              { key: "web", label: ut(PLATFORM_KEY.web) },
+              { key: "mobile", label: ut(PLATFORM_KEY.mobile) },
             ]}
           />
-          <PeriodSwitch<KindFilter>
+        </OpsToolbar>
+      }
+    />
+  );
+
+  if (res.error && !data) {
+    return (
+      <>
+        {head}
+        <Loading error={res.error} onRetry={res.reload} />
+      </>
+    );
+  }
+  if (!data || !scoped || !shown) {
+    return (
+      <>
+        {head}
+        <Loading rows={5} />
+      </>
+    );
+  }
+
+  const kinds: ClientErrorKind[] = ["react", "error", "rejection", "network"];
+  const visible = shown.slice(0, limit);
+  const range = `${dayLabel(lastDays(now, days)[0]!, loc)}–${dayLabel(lastDays(now, 1)[0]!, loc)}`;
+
+  return (
+    <div className="flex flex-col gap-4">
+      {head}
+      {scoped.length ? (
+        <Panel title={fill(ut("opx.ce.overview"), { days })} icon={<OpsIcon name="chart-column" />} sub={range}>
+          <ErrorShape items={scoped} retentionDays={data.retentionDays} now={now} days={days} releases={releases.data?.items ?? []} />
+        </Panel>
+      ) : null}
+
+      <Panel
+        title={ut("opx.ce.groups")}
+        icon={<OpsIcon name="layers" />}
+        sub={ut("opx.ce.groupsSub")}
+        actions={
+          <Segmented
+            label={ut("opx.er.order")}
+            value={order === "count" ? "count" : "last"}
+            onChange={(o) => setOrder(o)}
+            items={[
+              { key: "last", label: ut("opx.er.byLast") },
+              { key: "count", label: ut("opx.er.byCount") },
+            ]}
+          />
+        }
+        flush
+        footer={
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+            {shown.length > visible.length ? (
+              <>
+                <span className="text-small text-text-2">{fill(ut("opx.ce.shownOf"), { shown: visible.length, total: shown.length })}</span>
+                <Button variant="ghost" size="sm" icon={<OpsIcon name="chevron-down" />} onClick={() => setLimit(limit + PAGE)}>
+                  {ut("opx.ce.showMore")}
+                </Button>
+              </>
+            ) : null}
+            <span className="ml-auto text-small text-muted">{ut("opx.ce.readLogged")}</span>
+          </div>
+        }
+      >
+        <div className="px-4 pb-3">
+          <ViewPills
             label={ut("o2b.ce.kind")}
             value={kind}
-            onChange={setKind}
-            options={[
-              ["all", ut("o2b.ce.all")],
-              ["react", ut(KIND_KEY.react)],
-              ["error", ut(KIND_KEY.error)],
-              ["rejection", ut(KIND_KEY.rejection)],
-              ["network", ut(KIND_KEY.network)],
+            onChange={(k) => setKind(k as KindFilter)}
+            items={[
+              { key: "all", label: ut("opx.ce.allKinds"), count: cases(scoped) },
+              ...kinds.map((k) => ({ key: k, label: ut(KIND_KEY[k]), count: cases(scoped.filter((g) => g.kind === k)) })),
             ]}
           />
         </div>
-        {d.total > d.items.length ? (
-          <Quiet>{fill(ut("o2b.ce.more"), { shown: fmtInt(d.items.length, loc), total: fmtInt(d.total, loc) })}</Quiet>
+        {data.total > data.items.length ? (
+          <div className="px-4 pb-2">
+            <Quiet>{fill(ut("o2b.ce.more"), { shown: fmtInt(data.items.length, loc), total: fmtInt(data.total, loc) })}</Quiet>
+          </div>
         ) : null}
-        {d.total >= d.capacity ? <Quiet>{fill(ut("o2b.ce.full"), { cap: fmtInt(d.capacity, loc) })}</Quiet> : null}
-        {d.items.length === 0 ? (
-          <Quiet>{ut("o2b.ce.empty")}</Quiet>
+        {data.total >= data.capacity ? (
+          <div className="px-4 pb-3">
+            <Callout kind="warn">{fill(ut("o2b.ce.full"), { cap: fmtInt(data.capacity, loc) })}</Callout>
+          </div>
+        ) : null}
+        {data.items.length === 0 ? (
+          <div className="px-4 pb-3">
+            <Quiet>{ut("o2b.ce.empty")}</Quiet>
+          </div>
         ) : shown.length === 0 ? (
-          <Quiet>{ut("ops.errors.noMatch")}</Quiet>
+          <div className="px-4 pb-3">
+            <Quiet>{ut("ops.errors.noMatch")}</Quiet>
+          </div>
         ) : (
-          <>
-            <ErrorShape items={shown} retentionDays={d.retentionDays} now={res.updatedAt ?? Date.now()} />
-            <ul className="m-0 list-none p-0">
-              {shown.map((g) => (
-                <GroupRow
-                  key={g.fingerprint}
-                  g={g}
-                  open={open === g.fingerprint}
-                  onToggle={() => setOpen(open === g.fingerprint ? "" : g.fingerprint)}
-                />
-              ))}
-            </ul>
-          </>
+          <div role="table" aria-label={ut("opx.ce.groups")} className="overflow-x-auto">
+            <div className="min-w-[980px]">
+              <div role="row" className={cx(ROW, "h-[38px] border-y border-divider bg-panel-2 text-caption font-bold leading-none text-muted")}>
+                <span role="columnheader" />
+                <span role="columnheader">{ut("o2b.ce.kind")}</span>
+                <span role="columnheader">{ut("o2b.ce.platform")}</span>
+                <span role="columnheader">{ut("opx.ce.colWhat")}</span>
+                <span role="columnheader">{ut("opx.ce.colBuild")}</span>
+                <span role="columnheader" className="text-right">
+                  {ut("opx.ce.colCases")}
+                </span>
+                <span role="columnheader">{ut("opx.er.colWhen")}</span>
+              </div>
+              <ul className="m-0 list-none p-0">
+                {visible.map((g) => (
+                  <GroupRow
+                    key={g.fingerprint}
+                    g={g}
+                    fresh={Date.parse(g.firstAt) >= now - DAY_MS}
+                    open={open === g.fingerprint}
+                    onToggle={() => setOpen(open === g.fingerprint ? "" : g.fingerprint)}
+                  />
+                ))}
+              </ul>
+            </div>
+          </div>
         )}
-      </RuleSection>
+      </Panel>
+
+      <Callout kind="line" icon={<OpsIcon name="shield-check" />}>
+        {fill(ut("o2b.ce.stamp"), { days: data.retentionDays })}
+      </Callout>
     </div>
   );
 }
 
-const SHAPE_DAYS = 30;
-const TOP = 8;
+/* ─────────── форма списка ─────────── */
+
+/** Цвета долей по порядку: фиолетовый, янтарь, бирюза, синий; остаток и «не відомо» — серым */
+const SHARE_COLORS = ["var(--c1)", "var(--c2)", "var(--c3)", "var(--c4)"];
 
 /**
- * Форма списка над ним (волна 11) — по тем же группам, что показаны ниже,
- * с учётом поиска и фильтров: график — вид этого списка, а не отдельный
- * отчёт, и фильтр «мобілка» должен менять оба.
+ * Форма списка над ним — по тем же группам, что показаны ниже (окно,
+ * платформа, поиск): график — вид этого списка, а не отдельный отчёт.
  *
  * Случаев по дням здесь нет, и это не упущение: группа хранит общий
- * счётчик и два момента — первый и последний раз, — а не счёт по дням, и
- * разложить его по дням значило бы выдумать. По дням рисуется то, что
- * известно точно: в какой день появилась новая группа. Столбец после
- * выкатки — первое, что ищут на этом экране.
+ * счётчик и два момента — первый и последний раз, — а не счёт по дням. По
+ * дням рисуется то, что известно точно: в какой день появилась новая
+ * группа, с отметками выкаток — столбец после выкатки ищут первым.
  */
-export function ErrorShape({ items, retentionDays, now }: { items: readonly OpsClientErrorGroup[]; retentionDays: number; now: number }) {
+export function ErrorShape({
+  items,
+  retentionDays,
+  now,
+  days = 30,
+  releases = [],
+}: {
+  items: readonly OpsClientErrorGroup[];
+  retentionDays: number;
+  now: number;
+  days?: number;
+  releases?: readonly { version: string; firstAt: string }[];
+}) {
   const { ut } = useLang();
-  const days = lastDays(now, SHAPE_DAYS);
-  const fresh = newGroupsByDay(items, days);
-  const routes = rankBy(items, (g) => g.route, TOP);
-  const groups = topGroups(items, TOP);
+  const loc = locale();
+  const dayKeys = lastDays(now, days);
+  const fresh = newGroupsByDay(items, dayKeys);
+  const freshTotal = fresh.reduce((s, n) => s + n, 0);
+  const marks = releaseDayMarks(dayKeys, releases);
+  const lastMark = marks.at(-1) ?? null;
+  const lastRelease = lastMark ? releases.find((r) => r.version === lastMark.label) : undefined;
+  const after = lastRelease ? items.filter((g) => g.firstAt >= lastRelease.firstAt).length : 0;
+  const routes = rankBy(items, (g) => g.route, 5);
   const other = (n: number) => fill(ut("sig.other"), { n });
 
-  /* доли — по случаям; светлее — реже; «не відомо» (мобілка без браузера) — отдельной частью, а не пропуском */
-  const share = (keyOf: (g: OpsClientErrorGroup) => string | null) => {
+  /* доли — по случаям; мобилка без браузера — «застосунок», а не пропуск; остаток — серым */
+  const share = (keyOf: (g: OpsClientErrorGroup) => string | null, label: (key: string) => string): SharePart[] => {
     const r = rankBy(items, keyOf, 4);
-    const parts = [...r.top, ...(r.rest ? [r.rest] : [])];
-    return parts.map((p, i) => ({
-      key: p.key,
-      label: r.rest && p.key === REST_KEY ? other(r.rest.keys) : p.key || ut("sig.ce.unknown"),
-      value: p.value,
-      step: parts.length > 1 ? 1 - i / (parts.length - 1) : 1,
-    }));
+    return [
+      ...r.top.map((p, i) => ({ key: p.key || "\u0000none", label: label(p.key), value: p.value, color: p.key ? SHARE_COLORS[i] : "var(--c5)" })),
+      ...(r.rest ? [{ key: REST_KEY, label: other(r.rest.keys), value: r.rest.value, color: "var(--c5)" }] : []),
+    ];
   };
+  const browserOf = (g: OpsClientErrorGroup) => browserFamily(g.browser) ?? (g.platform === "mobile" ? "\u0000app" : null);
+  const browserLabel = (key: string) => (key === "\u0000app" ? ut("opx.ce.app") : key || ut("sig.ce.unknown"));
 
   return (
-    <div className={cx(FIG_GRID, "mb-[24px] mt-[8px]")}>
-      <Figure title={ut("sig.ce.newByDay")} caption={fill(ut("sig.ce.newByDayCaption"), { days: SHAPE_DAYS })}>
-        {fresh.some((n) => n > 0) ? (
-          <TimeColumns columns={days.map((d, i) => ({ key: d, label: day(d), value: fresh[i]! }))} label={ut("sig.ce.newByDay")} />
+    <div className="grid grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)_minmax(0,0.95fr)] gap-6 max-[1200px]:grid-cols-[repeat(2,minmax(0,1fr))] max-[760px]:grid-cols-1">
+      <Figure
+        title={ut("sig.ce.newByDay")}
+        caption={
+          lastRelease && freshTotal
+            ? fill(ut("opx.ce.newAfter"), { n: freshTotal, k: after, v: lastRelease.version })
+            : fill(ut("opx.ce.newN"), { n: freshTotal })
+        }
+      >
+        {freshTotal ? (
+          <MarkedColumns
+            columns={dayKeys.map((k, i) => ({ key: k, label: dayLabel(k, loc), value: fresh[i]! }))}
+            marks={marks}
+            label={ut("sig.ce.newByDay")}
+            height={180}
+          />
         ) : (
-          <Quiet>{fill(ut("sig.ce.noNew"), { days: SHAPE_DAYS })}</Quiet>
+          <Quiet>{fill(ut("sig.ce.noNew"), { days })}</Quiet>
         )}
       </Figure>
       <Figure title={ut("sig.ce.byScreen")} caption={fill(ut("sig.ce.countsCaption"), { days: retentionDays })}>
-        <HBars
+        <RankBars
+          labelW={150}
           items={[
             ...routes.top.map((r) => ({
               key: r.key,
-              label: <span className="font-mono text-[12px]">{r.key}</span>,
+              title: r.key,
+              label: <Mono className="text-[11.5px] text-text">{r.key}</Mono>,
               value: r.value,
-              text: fill(ut("sig.ce.inGroups"), { n: r.value, g: r.groups }),
+              text: fmtInt(r.value, loc),
+              note: fill(ut("sig.ce.inGroups"), { n: fmtInt(r.value, loc), g: r.groups }),
             })),
-            ...(routes.rest ? [{ key: routes.rest.key, label: other(routes.rest.keys), value: routes.rest.value }] : []),
+            ...(routes.rest
+              ? [
+                  {
+                    key: routes.rest.key,
+                    title: other(routes.rest.keys),
+                    label: <span className="text-small text-text-2">{other(routes.rest.keys)}</span>,
+                    value: routes.rest.value,
+                    text: fmtInt(routes.rest.value, loc),
+                    muted: true,
+                  },
+                ]
+              : []),
           ]}
         />
       </Figure>
-      <Figure title={ut("sig.ce.topGroups")} caption={fill(ut("sig.ce.countsCaption"), { days: retentionDays })}>
-        <HBars
-          items={groups.map((g) => ({
-            key: g.fingerprint,
-            label: (
-              <>
-                <span className="font-mono text-[12px] font-bold text-primary">{g.name}</span>{" "}
-                <span className="font-mono text-[12px]">{g.message || g.route}</span>
-              </>
-            ),
-            value: g.count,
-          }))}
-        />
-      </Figure>
-      <Figure title={ut("sig.ce.where")} caption={ut("sig.ce.whereCaption")}>
-        <span className="mb-[6px] block text-[13px] font-bold leading-[16px] text-muted">{ut("sig.ce.browser")}</span>
-        <ShareBar parts={share((g) => browserFamily(g.browser))} label={ut("sig.ce.browser")} />
-        <span className="mb-[6px] mt-[16px] block text-[13px] font-bold leading-[16px] text-muted">{ut("sig.ce.os")}</span>
-        <ShareBar parts={share((g) => g.os)} label={ut("sig.ce.os")} />
+      <Figure title={ut("sig.ce.where")} caption={ut("opx.ce.whereSub")}>
+        <span className="mb-1.5 block text-caption font-bold text-muted">{ut("sig.ce.browser")}</span>
+        <ShareBar parts={share(browserOf, browserLabel)} label={ut("sig.ce.browser")} percent={false} />
+        <span className="mb-1.5 mt-4 block text-caption font-bold text-muted">{ut("sig.ce.os")}</span>
+        <ShareBar parts={share((g) => g.os, (k) => k || ut("sig.ce.unknown"))} label={ut("sig.ce.os")} percent={false} />
       </Figure>
     </div>
   );
 }
 
-function GroupRow({ g, open, onToggle }: { g: OpsClientErrorGroup; open: boolean; onToggle: () => void }) {
+/* ─────────── строка группы ─────────── */
+
+const ROW = "grid grid-cols-[44px_150px_112px_minmax(0,1fr)_120px_76px_170px] items-center gap-3 px-4";
+
+const KIND_TAG: Record<ClientErrorKind, { tone: TagTone; icon: OpsIconName }> = {
+  react: { tone: "attention", icon: "monitor-x" },
+  error: { tone: "plain", icon: "circle-alert" },
+  rejection: { tone: "plain", icon: "circle-dashed" },
+  network: { tone: "info", icon: "wifi-off" },
+};
+
+const PLATFORM_ICON: Record<ClientPlatform, OpsIconName> = { web: "monitor", mobile: "smartphone" };
+
+function GroupRow({ g, fresh, open, onToggle }: { g: OpsClientErrorGroup; fresh: boolean; open: boolean; onToggle: () => void }) {
   const { ut } = useLang();
   const loc = locale();
-  const stackId = `o2b-stack-${g.fingerprint}`;
+  const id = `o2b-group-${g.fingerprint}`;
+  const k = KIND_TAG[g.kind];
   return (
-    <li className="border-b border-hairline py-[12px]">
-      <div className="flex flex-wrap items-baseline gap-x-[14px] gap-y-[4px]">
-        {/* число повторов — первым: по нему решают, с какой группы начинать */}
-        <Num className="w-[56px] shrink-0 text-right text-[17px] font-bold leading-[20px] text-accent">{fmtInt(g.count, loc)}</Num>
-        <span className="min-w-0 break-all font-mono text-[15px] font-bold leading-[20px] text-primary">{g.name}</span>
-        <span className="min-w-0 flex-1 basis-[280px] break-words font-mono text-[13px] leading-[18px] text-text-2">{g.message || "—"}</span>
-      </div>
-      <div className="mt-[6px] flex flex-wrap items-center gap-x-[16px] gap-y-[6px] pl-[70px] max-[600px]:pl-0">
-        <Meta className="text-text">
-          {ut(PLATFORM_KEY[g.platform])} · {ut(KIND_KEY[g.kind])}
-        </Meta>
-        <span className="font-mono text-[12px] text-text" title={ut("o2b.ce.screen")}>
-          {g.route}
+    <li className={cx("border-b border-divider last:border-b-0", open && "bg-panel-2")}>
+      <div role="row" className={cx(ROW, "py-2.5")}>
+        <span role="cell">
+          <ExpandButton open={open} controls={id} onToggle={onToggle} labels={{ open: ut("opx.er.expand"), close: ut("opx.er.collapse") }} />
         </span>
-        {g.kind === "network" ? (
-          <span className="font-mono text-[12px] text-text-2">
-            {g.apiMethod ?? ""} {g.apiRoute ?? ""} {g.status === 0 ? `· ${ut("o2b.ce.noResponse")}` : g.status ? `· ${g.status}` : ""}
+        <span role="cell">
+          <Tag tone={k.tone} icon={<OpsIcon name={k.icon} />}>
+            {ut(KIND_KEY[g.kind])}
+          </Tag>
+        </span>
+        <span role="cell" className="inline-flex items-center gap-1.5 text-small text-text-2">
+          <OpsIcon name={PLATFORM_ICON[g.platform]} size={15} className="text-muted" />
+          {ut(PLATFORM_KEY[g.platform])}
+        </span>
+        <span role="cell" className="flex min-w-0 flex-col gap-1">
+          <span className="flex min-w-0 items-center gap-2">
+            <Mono className="shrink-0 font-bold text-text">{g.name}</Mono>
+            {fresh ? (
+              <Tag tone="attention" icon={<OpsIcon name="sparkles" />}>
+                {ut("ops.history.new")}
+              </Tag>
+            ) : null}
+            <Mono className="min-w-0 truncate text-text-2" title={g.message}>
+              {g.message || "—"}
+            </Mono>
           </span>
-        ) : null}
-        {g.release ? <Meta>{fill(ut("o2b.ce.release"), { v: g.release })}</Meta> : null}
-        {g.browser || g.os ? <Meta>{[g.browser, g.os].filter(Boolean).join(" · ")}</Meta> : null}
-        <Meta>
-          <span title={dateTime(g.firstAt)}>{fill(ut("ops.errors.first"), { time: dateTime(g.firstAt) })}</span>
-        </Meta>
-        <Meta>
-          <span title={dateTime(g.lastAt)}>{fill(ut("o2b.ce.last"), { time: dateTime(g.lastAt) })}</span>
-        </Meta>
-        {g.frames.length ? (
-          <Button
-            variant="ghost"
-            aria-expanded={open}
-            aria-controls={stackId}
-            onClick={onToggle}
-            className="h-[28px] px-[8px] text-[13px]"
-            icon={
-              <span aria-hidden className={open ? "inline-block rotate-90" : "inline-block"}>
-                <IconDisclosure />
-              </span>
-            }
-          >
-            {open ? ut("ops.errors.hideStack") : ut("ops.errors.showStack")}
-          </Button>
-        ) : null}
+          <span className="flex min-w-0 flex-wrap items-center gap-x-2 text-small text-muted">
+            {ut("opx.ce.screen")}
+            <Mono className="text-text-2">{g.route}</Mono>
+            {g.kind === "network" && (g.apiRoute || g.status !== null) ? (
+              <>
+                {ut("opx.ce.request")}
+                <Mono className="min-w-0 truncate text-text-2">
+                  {[g.apiMethod, g.apiRoute].filter(Boolean).join(" ")}
+                  {g.status === 0 ? ` · ${ut("o2b.ce.noResponse")}` : g.status ? ` · ${g.status}` : ""}
+                </Mono>
+              </>
+            ) : null}
+          </span>
+        </span>
+        <span role="cell">
+          {g.release ? (
+            <Tag tone={fresh ? "attention" : "plain"} className="font-mono">
+              {g.release}
+            </Tag>
+          ) : (
+            <span className="text-muted">—</span>
+          )}
+        </span>
+        <b role="cell" className="text-right text-[17px] font-extrabold tabular-nums text-text">
+          {fmtInt(g.count, loc)}
+        </b>
+        <span role="cell" className="flex min-w-0 flex-col text-small leading-[18px]">
+          <span className="tabular-nums text-text">{sinceText(g.lastAt, loc)}</span>
+          {g.browser || g.os ? <span className="truncate text-muted">{[g.browser, g.os].filter(Boolean).join(", ")}</span> : null}
+        </span>
       </div>
-      {open && g.frames.length ? (
-        <div id={stackId} className="mt-[8px] pl-[70px] max-[600px]:pl-0">
-          <pre className="m-0 overflow-x-auto rounded-[5px] bg-primary-soft p-[12px] font-mono text-[12px] leading-[18px] text-text-2">
-            {g.frames.join("\n")}
-          </pre>
-        </div>
-      ) : null}
+      {open ? <GroupDetails id={id} g={g} /> : null}
     </li>
+  );
+}
+
+function GroupDetails({ id, g }: { id: string; g: OpsClientErrorGroup }) {
+  const { ut } = useLang();
+  const loc = locale();
+  const toast = useToast();
+  const copy = (text: string, done: string) =>
+    void navigator.clipboard?.writeText(text).then(
+      () => toast(done, "ok"),
+      () => toast(ut("ops.copyFailed"), "err"),
+    );
+  const link = () => {
+    const url = new URL(window.location.href);
+    url.searchParams.set("open", g.fingerprint);
+    copy(url.toString(), ut("opx.linkCopied"));
+  };
+  return (
+    <div id={id} className="grid grid-cols-[minmax(0,1fr)_300px] gap-6 px-4 pb-4 pl-[60px] max-[1000px]:grid-cols-1">
+      <div className="min-w-0">
+        <div className="mb-1.5 flex items-center gap-2">
+          <span className="text-caption font-bold text-muted">{g.release ? fill(ut("opx.ce.stackOf"), { v: g.release }) : ut("opx.er.stack")}</span>
+          {g.frames.length ? (
+            <Button variant="ghost" size="xs" icon={<OpsIcon name="copy" />} className="ml-auto" onClick={() => copy([`${g.name}: ${g.message}`, ...g.frames].join("\n"), ut("opx.er.stackCopied"))}>
+              {ut("opx.er.copy")}
+            </Button>
+          ) : null}
+        </div>
+        {g.frames.length ? (
+          <pre className="m-0 max-h-[260px] overflow-auto rounded-control bg-sunk px-3 py-2.5 font-mono text-[12px] leading-[18px] text-text shadow-[inset_0_0_0_1px_var(--divider)]">
+            <span className="font-bold text-warn">
+              {g.name}: {g.message}
+            </span>
+            {g.frames.map((f, i) => (
+              <span key={`${i}-${f}`} className="block">
+                <span className="mr-2 inline-block w-4 text-right text-muted">{i + 1}</span>
+                {f}
+              </span>
+            ))}
+          </pre>
+        ) : (
+          <Quiet>{ut("opx.ce.noStack")}</Quiet>
+        )}
+        <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 text-small text-muted">
+          <span>
+            {ut("opx.ce.first")} <b className="font-extrabold tabular-nums text-text">{sinceText(g.firstAt, loc)}</b>
+          </span>
+          <span>
+            {ut("opx.ce.fingerprint")} <Mono className="font-semibold text-text">{g.fingerprint.slice(0, 8)}</Mono>
+          </span>
+          <Button variant="ghost" size="sm" icon={<OpsIcon name="link" />} onClick={link}>
+            {ut("opx.ce.groupLink")}
+          </Button>
+        </div>
+      </div>
+      <Facts
+        w={130}
+        items={[
+          [ut("o2b.ce.platform"), ut(PLATFORM_KEY[g.platform])],
+          [ut("sig.ce.browser"), g.browser ?? (g.platform === "mobile" ? ut("opx.ce.app") : ut("sig.ce.unknown"))],
+          [ut("sig.ce.os"), g.os ?? ut("sig.ce.unknown")],
+          [ut("opx.ce.colBuild"), g.release ? <Mono key="r">{g.release}</Mono> : "—"],
+          [ut("opx.ce.colCases"), <b key="n" className="font-extrabold tabular-nums">{fmtInt(g.count, loc)}</b>],
+        ]}
+      />
+    </div>
   );
 }

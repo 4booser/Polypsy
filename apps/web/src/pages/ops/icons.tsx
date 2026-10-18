@@ -317,6 +317,15 @@ const PATHS = {
       <path d="m4.9 4.9 14.2 14.2" />
     </>
   ),
+  activity: <path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2" />,
+  repeat: <path d="m17 2 4 4-4 4M3 11v-1a4 4 0 0 1 4-4h14M7 22l-4-4 4-4M21 13v1a4 4 0 0 1-4 4H3" />,
+  "radio-tower": (
+    <>
+      <path d="M4.9 16.1C1 12.2 1 5.8 4.9 1.9M7.8 4.7a6.14 6.14 0 0 0-.8 7.5M16.2 4.8c2 2 2.26 5.11.8 7.47M19.1 1.9a9.96 9.96 0 0 1 0 14.1M9.5 18h5M8 22l4-11 4 11" />
+      <circle cx="12" cy="9" r="2" />
+    </>
+  ),
+  gauge: <path d="m12 14 4-4M3.34 19a10 10 0 1 1 17.32 0" />,
 } satisfies Record<string, ReactNode>;
 
 export type OpsIconName = keyof typeof PATHS | ShellName;

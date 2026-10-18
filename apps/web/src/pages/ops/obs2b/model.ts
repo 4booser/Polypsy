@@ -106,6 +106,14 @@ export const EVENT_KEY: Record<OpsAlertEventKind, UiKey> = {
 /* янтарь — у «збій» и «досі триває»: они требуют внимания; «відновлено» и тестовое — нет */
 export const EVENT_TONE: Record<OpsAlertEventKind, Tone> = { fired: "fail", repeat: "warn", resolved: "ok", test: "quiet" };
 
+/** Событие пилюлей в списке истории — строчными, как слово состояния: «збій», «досі триває» */
+export const EVENT_TAG_KEY: Record<OpsAlertEventKind, UiKey> = {
+  fired: "opx.al.ev.fired",
+  repeat: "opx.al.ev.repeat",
+  resolved: "opx.al.ev.resolved",
+  test: "opx.al.ev.test",
+};
+
 export const CHANNEL_KEY: Record<OpsAlertChannel, UiKey> = { telegram: "o2b.channel.telegram", email: "o2b.channel.email" };
 
 export const DELIVERY_KEY: Record<OpsAlertDelivery["outcome"], UiKey> = {
@@ -528,3 +536,105 @@ export function diskParts(r: OpsRecordings): { records: number; other: number; f
   const used = Math.max(0, d.totalBytes - d.freeBytes);
   return { records: Math.min(d.bytes, used), other: Math.max(0, used - d.bytes), free: d.freeBytes };
 }
+
+/* ═══════════ «Виразна» (w25): подписи и выборки экранов obs2b ═══════════ */
+
+/** Подпись дня «YYYY-MM-DD» короткой датой «09.10» — полдень, чтобы пояс не сдвинул день */
+export function dayLabel(key: string, loc: string): string {
+  return new Date(`${key}T12:00:00`).toLocaleDateString(loc, { day: "2-digit", month: "2-digit" });
+}
+
+/* ─────────── сповіщення ─────────── */
+
+type AlertEvent = OpsAlertHistory["items"][number];
+
+/**
+ * Последняя доставка канала и последний отказ — для строки «Востаннє» у
+ * карточки канала. Из ста последних событий истории, новые первыми: другого
+ * следа доставки у сервера нет. Отказ — только если это не та же доставка.
+ */
+export function channelTrail(
+  items: readonly AlertEvent[],
+  channel: OpsAlertChannel,
+): { last: { at: string; outcome: OpsAlertDelivery["outcome"] } | null; failedAt: string | null } {
+  let last: { at: string; outcome: OpsAlertDelivery["outcome"] } | null = null;
+  let failedAt: string | null = null;
+  for (const e of items) {
+    const d = e.deliveries.find((x) => x.channel === channel);
+    if (!d) continue;
+    if (!last) {
+      last = { at: e.at, outcome: d.outcome };
+      if (d.outcome === "failed") break;
+    } else if (d.outcome === "failed") {
+      failedAt = e.at;
+      break;
+    }
+  }
+  return { last, failedAt };
+}
+
+/** События одного правила за последние `days` дней — для «Як спрацьовувало» в ящике правки */
+export function ruleEvents(items: readonly AlertEvent[], rule: OpsAlertRuleKey, days: number, now: number): AlertEvent[] {
+  const from = now - days * 86_400_000;
+  return items.filter((e) => e.rule === rule && Date.parse(e.at) >= from);
+}
+
+/** Сбои по всем правилам, а не только по сработавшим: «0» у тихого правила — тоже ответ */
+export function firedByRule(h: OpsAlertHistory): { rule: OpsAlertRuleKey; fired: number; repeat: number }[] {
+  const seen = new Map(h.byRule.map((r) => [r.rule, r]));
+  return (Object.keys(RULE_NAME) as OpsAlertRuleKey[])
+    .map((rule) => ({ rule, fired: seen.get(rule)?.fired ?? 0, repeat: seen.get(rule)?.repeat ?? 0 }))
+    .sort((a, b) => b.fired - a.fired || b.repeat - a.repeat);
+}
+
+/* ─────────── помилки клієнта ─────────── */
+
+/** Окно экрана: группы, которые случались за последние `days` дней (по последнему случаю) */
+export function seenWithin<T extends { lastAt: string }>(items: readonly T[], days: number, now: number): T[] {
+  const from = now - days * 86_400_000;
+  return items.filter((g) => Date.parse(g.lastAt) >= from);
+}
+
+export const CE_WINDOWS = [7, 30, 90] as const;
+export type CeWindow = (typeof CE_WINDOWS)[number];
+export const parseCeWindow = (v: string | null): CeWindow => (v === "7" ? 7 : v === "90" ? 90 : 30);
+
+/**
+ * Отметки выкаток на столбцах по дням: в день — одна, самой поздней версии
+ * (две подписи над одним столбцом не читаются). Индекс — номер дня в окне.
+ */
+export function releaseDayMarks(
+  days: readonly string[],
+  releases: readonly { version: string; firstAt: string }[],
+): { index: number; label: string }[] {
+  const at = new Map(days.map((d, i) => [d, i]));
+  const byDay = new Map<number, { t: number; label: string }>();
+  for (const r of releases) {
+    const i = at.get(localDay(r.firstAt));
+    if (i === undefined) continue;
+    const t = Date.parse(r.firstAt);
+    const cur = byDay.get(i);
+    if (!cur || t > cur.t) byDay.set(i, { t, label: r.version });
+  }
+  return [...byDay].map(([index, m]) => ({ index, label: m.label })).sort((a, b) => a.index - b.index);
+}
+
+/* ─────────── швидкість екранів ─────────── */
+
+/**
+ * Оценка меры по всем экранам — из долей замеров, а не из выдуманного
+ * «общего p75»: p75 укладывается в «добре», когда в «добре» не меньше трёх
+ * четвертей замеров, и уходит в «погано», когда «погано» больше четверти.
+ * Пороги оценки стоят среди границ корзин (VITAL_BOUNDS), поэтому это та же
+ * оценка, что дал бы p75 по всем замерам разом. Замеров нет — null.
+ */
+export function ratingOfTotals(t: Record<VitalRating, number>): VitalRating | null {
+  const total = t.good + t.needs + t.poor;
+  if (!total) return null;
+  if (t.good / total >= 0.75) return "good";
+  if ((t.good + t.needs) / total >= 0.75) return "needs";
+  return "poor";
+}
+
+export const VITAL_WINDOWS = [7, 30] as const;
+export const parseVitalWindow = (v: string | null): 7 | 30 => (v === "7" ? 7 : 30);
