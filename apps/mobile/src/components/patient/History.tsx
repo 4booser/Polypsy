@@ -4,11 +4,13 @@ import { useLang } from "../../lang";
 import { useColors } from "../../theme";
 import { Icon } from "../../ui/Icon";
 import { T } from "../../ui/Text";
+import { localDecimal } from "../viz/math";
 
 /** Сколько последних замеров стоит плитками: больше трёх на 390 не читается */
-export const HISTORY_TILES = 3;
+const HISTORY_TILES = 3;
 
-export const formatScore = (v: number) => (Number.isInteger(v) ? String(v) : String(Math.round(v * 10) / 10));
+/** Балл для человека: целое как есть, дробное — с одним знаком и запятой по-украински и по-русски */
+export const formatScore = (v: number) => (Number.isInteger(v) ? String(v) : localDecimal(String(Math.round(v * 10) / 10)));
 
 /**
  * Последние замеры плитками «дата — значение» через шеврон; последний —

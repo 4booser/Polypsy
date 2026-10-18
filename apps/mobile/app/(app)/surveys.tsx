@@ -8,6 +8,7 @@ import { codeOf, loadSurveysTab, patientTabs, type DoneItem } from "@/catalog/su
 import { useAuth } from "@/auth/AuthContext";
 import { Loader } from "@/components/ui";
 import { CodeTile } from "@/components/patient/CodeTile";
+import { formatScore } from "@/components/patient/History";
 import { Hero } from "@/components/patient/Hero";
 import { useColors, useIsDark, useShadows } from "@/theme";
 import { useLang } from "@/lang";
@@ -297,7 +298,8 @@ function DoneRow({ item, first, onOpen }: { item: DoneItem; first: boolean; onOp
   );
 }
 
-const fmt = (v: number) => (Number.isInteger(v) ? String(v) : String(Math.round(v * 10) / 10));
+// балл — тем же форматом, что на «Здоров’ї» и в итоге методики: дробь с запятой по-украински
+const fmt = formatScore;
 
 /**
  * Набор от специалиста: срок, полоса сделанного и шаги по порядку.

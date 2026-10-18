@@ -2,9 +2,20 @@
  * Числовая часть графиков — отдельно от компонентов.
  *
  * Лежала в `.tsx` рядом с разметкой и потому не тестировалась: импорт файла
- * тянет react-native, которого в тестовом окружении нет. Здесь нет ни одного
- * импорта — эти функции проверяются как обычная арифметика.
+ * тянет react-native, которого в тестовом окружении нет. Здесь из импортов
+ * только текущий язык (модуль без react-native) — эти функции проверяются
+ * как обычная арифметика.
  */
+import { currentLang } from "../../currentLang";
+
+/**
+ * Дробная часть — запятой по-украински и по-русски, точкой по-английски:
+ * тот же выбор, что у длительности в общем пакете и у num() экранов
+ * сотрудника. «11.3%» на украинском экране читается как чужой формат.
+ */
+export function localDecimal(text: string, lang: string = currentLang): string {
+  return lang === "en" ? text : text.replace(".", ",");
+}
 
 /** Красивые деления оси: 0, 5, 10 вместо 0, 3.7, 7.4 */
 export function niceTicks(max: number, count = 4): number[] {
@@ -22,11 +33,11 @@ export function niceTicks(max: number, count = 4): number[] {
   return Array.from({ length: last + 1 }, (_, i) => Math.round(i * step * 100) / 100);
 }
 
-/** Компактное число для подписи: 1240 → «1,2k» */
-export function formatShort(v: number): string {
+/** Компактное число для подписи: 1240 → «1,2k», 7,25 — с запятой там, где так пишут */
+export function formatShort(v: number, lang: string = currentLang): string {
   if (!Number.isFinite(v)) return "—";
-  if (Math.abs(v) >= 1000) return `${Math.round(v / 100) / 10}k`;
-  return String(Math.round(v * 100) / 100);
+  if (Math.abs(v) >= 1000) return localDecimal(`${Math.round(v / 100) / 10}k`, lang);
+  return localDecimal(String(Math.round(v * 100) / 100), lang);
 }
 
 export interface BoxStat {
