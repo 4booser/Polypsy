@@ -1,67 +1,119 @@
-import { Outlet } from "react-router-dom";
-import { dayFull } from "../format";
+import { createContext, lazy, Suspense, useContext, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
+import { Outlet, useLocation, useSearchParams } from "react-router-dom";
+import { Loading } from "../ui";
 import { Page } from "../ui/layout";
 import { Tabs } from "../ui/primitives";
 import { useAuth } from "../auth";
 import { useLang } from "../lang";
+import { useShellNav } from "../shell/useShellNav";
 
 /**
- * Начало смены: сводка и приём одного дня на одном экране.
+ * «Зведення» — рамка начала смены: огляд, приём дня и приглашения вкладками
+ * одного экрана (решение заказчика 2026-09-26, кадры day-start, day-today,
+ * day-invites Polypsy 2.0).
  *
- * Были два пункта рельсы подряд — «Сводка» и «Сегодня», — и оба отвечали на
- * один вопрос: с чего начать. Выбирать между двумя ответами на один вопрос
- * человеку незачем, а разница между ними не та, ради которой заводят
- * отдельный экран: сводка говорит, как идут дела вообще, приём — кто придёт
- * сегодня.
+ * Заголовок называет экран и стоит один на три вкладки, вкладки — строкой
+ * под ним. Мета-строка и действия справа у каждой вкладки свои: у огляду —
+ * дата и «Налаштувати зведення», у дня — дата, сколько сессий и листание
+ * дней, у приглашений — сколько их действует и «Створити запрошення». Их
+ * рисует сама вкладка через `StartHead`: данные для этих строк есть только у
+ * неё, а прокидывать их наверх значило бы грузить их дважды.
  *
- * Третьей вкладкой встали приглашения: ссылку выписывают в том же движении,
- * что смотрят завтрашний приём, и связывают её сразу с методикой и врачом.
- * Раньше это был пункт рельсы, видимый одному суперадмину, — то есть
- * недоступный как раз тому, кто приглашает.
- *
- * Заголовок и вкладки — решение заказчика 2026-09-26.
- *
- * Было: заголовок повторял активную вкладку («Зведення») и стоял с вкладками
- * в одной строке — «Зведення   Зведення · Сьогодні · Запрошення». Одно слово
- * дважды через пробел читалось как сбой, а на узком окне вкладки наезжали
- * на заголовок.
- *
- * Стало — по правилу консоли (f05 «Пацієнти»): заголовок называет экран и
- * стоит в своей строке, вкладки — отдельной строкой под ним (Page даёт им
- * 39 от строки заголовка, как на кадре). Заголовок — «Зведення», как пункт
- * рельсы и подпись знака в верхней полосе, которые ведут сюда же; а чтобы
- * он не повторял вкладку, первая вкладка названа «Огляд». Отвергнуто:
- * спрятать заголовок, как у каталога тестов (f07), — там имя раздела уже
- * напечатано в верхней полосе, а у этого экрана пункта в полосе нет, и без
- * заголовка он остался бы безымянным.
- *
- * Дата стоит подзаголовком: она отвечает на свой вопрос («какой сегодня
- * день») и ничего не заслоняет.
+ * Стартовым экраном может быть и не огляд (настройка рабочего места:
+ * черга, випадки ризику, пацієнти). Тогда на «/» стоит тот экран со своей
+ * шапкой, и рамка отступает: два заголовка друг над другом читались бы как
+ * сбой, а у списка-и-записи своя раскладка во всю высоту.
  */
+
+interface Slots {
+  meta: HTMLElement | null;
+  actions: HTMLElement | null;
+}
+
+const SlotsCtx = createContext<Slots | null>(null);
+
+/**
+ * Мета-строка и действия вкладки — в шапку рамки. Вне рамки (вкладка стоит
+ * стартовым экраном сама по себе) ничего не рисует.
+ */
+export function StartHead({ meta, actions }: { meta?: ReactNode; actions?: ReactNode }) {
+  const slots = useContext(SlotsCtx);
+  if (!slots) return null;
+  return (
+    <>
+      {slots.meta && meta ? createPortal(meta, slots.meta) : null}
+      {slots.actions && actions ? createPortal(actions, slots.actions) : null}
+    </>
+  );
+}
+
+/** Стоит ли на этом адресе рамка: на «/» — только когда стартовый экран — огляд */
+export function framed(pathname: string, startScreen: string | undefined, view?: string | null): boolean {
+  if (pathname !== "/" || view === "overview") return true;
+  return !startScreen || startScreen === "dashboard";
+}
+
+/**
+ * Куда ведёт вкладка «Огляд».
+ *
+ * Если стартовый экран — не огляд, на «/» стоит выбранный экран (черга,
+ * випадки, пацієнти), и огляд со своим «Налаштувати зведення» был бы
+ * недостижим вовсе: вкладка вела бы на тот же «/». Поэтому тогда огляд
+ * открывается с `?view=overview` — тем же экраном, не трогая маршруты.
+ */
+export function overviewHref(startScreen: string | undefined): string {
+  return !startScreen || startScreen === "dashboard" ? "/" : "/?view=overview";
+}
+
+const Overview = lazy(() => import("./Dashboard"));
+
 export default function Start() {
   const { ut } = useLang();
   const { user } = useAuth();
+  const { pathname } = useLocation();
+  const [params] = useSearchParams();
+  const nav = useShellNav();
+  const [meta, setMeta] = useState<HTMLElement | null>(null);
+  const [actions, setActions] = useState<HTMLElement | null>(null);
+  const start = user?.workspace?.startScreen;
+  /* огляд по ссылке вкладки, когда на «/» стоит другой стартовый экран */
+  const overview = pathname === "/" && params.get("view") === "overview" && !!start && start !== "dashboard";
+
+  if (!framed(pathname, start, params.get("view"))) return <Outlet />;
 
   /*
    * Вкладка приглашений стоит не у всех: её показывает право с сервера.
    * Спрятать её от того, кому сервер откажет, честнее, чем дать нажать и
-   * показать отказ, — а сам отказ никуда не девается и проверяется на
-   * маршруте, а не здесь.
+   * показать отказ, — а сам отказ проверяется на маршруте, а не здесь.
+   *
+   * Число у «Сьогодні» — сколько людей ещё ждут (тот же счётчик, что у
+   * оболочки): число записанных к обеду не меняется и перестаёт что-то
+   * сообщать.
    */
+  const waiting = nav?.counts.today;
   const items = [
-    { to: "/", label: ut("dash.tabOverview"), end: true },
-    { to: "/today", label: ut("day.title") },
+    { to: overviewHref(start), label: ut("dash.tabOverview"), end: true },
+    { to: "/today", label: ut("day.title"), count: waiting ? waiting : null },
     ...(user?.canInvite ? [{ to: "/invites", label: ut("inv.title") }] : []),
   ];
 
   return (
-    <Page title={ut("dash.title")} sub={dayFull(new Date().toISOString().slice(0, 10))}>
-      {/* первый ребёнок — <nav>: Page даёт ему 39px от строки заголовка, как на кадре f05 */}
-      <Tabs label={ut("dash.title")} items={items} />
-      {/* вкладки → содержимое 24, замер макета */}
-      <div className="mt-[24px]">
-        <Outlet />
-      </div>
-    </Page>
+    <SlotsCtx.Provider value={{ meta, actions }}>
+      <Page
+        title={ut("dash.title")}
+        meta={<span ref={setMeta} className="contents" />}
+        actions={<span ref={setActions} className="contents" />}
+        toolbar={<Tabs label={ut("dash.title")} items={items} />}
+      >
+        {overview ? (
+          <Suspense fallback={<Loading rows={5} />}>
+            <Overview />
+          </Suspense>
+        ) : (
+          <Outlet />
+        )}
+      </Page>
+    </SlotsCtx.Provider>
   );
 }

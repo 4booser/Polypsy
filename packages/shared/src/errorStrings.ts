@@ -1452,6 +1452,11 @@ export const ERRORS = {
     ru: "{field}: этот раздел нельзя убрать: рядом с ним стоит число неразобранного",
     en: "{field}: this section can’t be hidden: it carries the count of unreviewed items",
   },
+  "err.v.widgetAlwaysVisible": {
+    uk: "{field}: віджет випадків ризику не вимикається, поки є відкриті",
+    ru: "{field}: виджет случаев риска не выключается, пока есть открытые",
+    en: "{field}: the risk cases widget can’t be turned off while cases are open",
+  },
   "err.v.timeOfDay": { uk: "{field}: час у вигляді ГГ:ХХ", ru: "{field}: время в виде ЧЧ:ММ", en: "{field}: time as HH:MM" },
   "err.v.appointmentEndsBeforeStart": {
     uk: "{field}: прийом не може закінчуватися раніше, ніж почався",
