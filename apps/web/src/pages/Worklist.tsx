@@ -103,10 +103,10 @@ export default function WorklistPage() {
     : [];
 
   return (
-    <div className="flex min-h-0 flex-1">
+    <div className="flex min-h-0 flex-1 max-[900px]:flex-col max-[900px]:overflow-y-auto">
       <aside
         aria-label={ut("work.title")}
-        className="flex w-[380px] shrink-0 flex-col border-r border-border bg-panel max-[1180px]:w-[340px] max-[900px]:w-full max-[900px]:border-r-0"
+        className="flex w-[380px] shrink-0 flex-col border-r border-border bg-panel max-[1180px]:w-[340px] max-[900px]:max-h-[60vh] max-[900px]:w-full max-[900px]:border-b max-[900px]:border-r-0"
       >
         <div className="shrink-0 px-4 pb-2 pt-4">
           <div className="flex items-baseline gap-2">
@@ -183,7 +183,7 @@ export default function WorklistPage() {
       </aside>
       <section
         aria-label={current ? current.userName : ut("work.title")}
-        className="min-w-0 flex-1 overflow-y-auto bg-ground pb-6 max-[900px]:hidden"
+        className="min-w-0 flex-1 overflow-y-auto bg-ground pb-6 max-[900px]:flex-none max-[900px]:overflow-visible"
         tabIndex={-1}
       >
         {current ? (
