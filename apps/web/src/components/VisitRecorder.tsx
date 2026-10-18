@@ -197,7 +197,7 @@ export function VisitRecorder({ rec }: { rec: VisitRecording }) {
           ? ut("rec.transcribing")
           : state.status === "done"
             ? ut("v2v.recTranscribed")
-            : ut("rec.failed");
+            : /* «не вдалося» с причиной — строкой ниже, дважды не повторяем */ null;
   } else {
     title = ut("v2v.recIdle");
     sub = ut("v2v.recIdleSub");
