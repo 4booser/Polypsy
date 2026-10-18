@@ -238,15 +238,24 @@ export function IconTile({
   size?: 28 | 32 | 36 | 40 | 48;
   className?: string;
 }) {
+  /* где браузер умеет «сквиркл» (corner-shape), углы — сквирклом и радиусом крупнее, как в наборе */
   const box = {
-    28: "size-7 rounded-[9px] [&>svg]:size-[15px]",
-    32: "size-8 rounded-control [&>svg]:size-4",
-    36: "size-9 rounded-[11px] [&>svg]:size-4",
-    40: "size-10 rounded-[12px] [&>svg]:size-[17px]",
-    48: "size-12 rounded-[15px] [&>svg]:size-[22px]",
+    28: "size-7 rounded-[9px] supports-[corner-shape:squircle]:rounded-[12px] [&>svg]:size-[15px]",
+    32: "size-8 rounded-control supports-[corner-shape:squircle]:rounded-[14px] [&>svg]:size-4",
+    36: "size-9 rounded-[11px] supports-[corner-shape:squircle]:rounded-[14px] [&>svg]:size-4",
+    40: "size-10 rounded-[12px] supports-[corner-shape:squircle]:rounded-[18px] [&>svg]:size-[17px]",
+    48: "size-12 rounded-[15px] supports-[corner-shape:squircle]:rounded-[20px] [&>svg]:size-[22px]",
   }[size];
   return (
-    <span aria-hidden className={cx("grid shrink-0 place-items-center", box, phiTone[tone], className)}>
+    <span
+      aria-hidden
+      className={cx(
+        "grid shrink-0 place-items-center supports-[corner-shape:squircle]:[corner-shape:squircle]",
+        box,
+        phiTone[tone],
+        className,
+      )}
+    >
       {icon}
     </span>
   );
