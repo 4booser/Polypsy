@@ -12,6 +12,7 @@ import {
   type OpsSessionPage,
   type OpsUserPage,
   type OpsUserRow,
+  type OpsUsersAttention,
 } from "@quizzy/shared";
 import { db } from "../db";
 import { asSystem } from "../db/context";
@@ -35,6 +36,7 @@ import { currentRequestId } from "../lib/log";
 import { sessionsSummary, usersSummary } from "../lib/peopleStats";
 import { revokeAllFor, revokeFamily } from "../lib/refresh";
 import { guardAccountAction } from "../lib/accountClass";
+import { rowSecurityOf, usersAttention } from "../lib/usersAttention";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
 /**
@@ -134,6 +136,8 @@ opsUserRoutes.get("/", async (c) => {
    * часть счёта ушла бы под ролью сотрудника и тихо недосчитала бы след.
    */
   const [traces, journal] = await asSystem(() => Promise.all([clinicalTraceOf(ids), journalEntriesOf(ids)]));
+  /* второй фактор и запирание — тоже системой, но своим окном внутри (lib/usersAttention.ts) */
+  const security = await rowSecurityOf(slice);
   const [sessions, roleRows, exceptionRows] = await Promise.all([
     sessionCountsOf(ids),
     ids.length
@@ -178,6 +182,8 @@ opsUserRoutes.get("/", async (c) => {
       sessions: sessions.get(u.id) ?? 0,
       trace: traces.get(u.id) ?? emptyTrace(),
       journalEntries: journal.get(u.id) ?? 0,
+      secondFactor: security.get(u.id)?.secondFactor ?? null,
+      lock: security.get(u.id)?.lock ?? null,
     };
   });
 
@@ -212,6 +218,26 @@ opsUserRoutes.get("/summary", async (c) => {
   const summary = await asSystem(() => usersSummary());
   await audit(c, { action: "user.list", details: { ops: true, view: "summary" } });
   return c.json(summary);
+});
+
+/**
+ * «Потребує уваги» (Polypsy 2.0): заперты перебором, без обязательного
+ * второго фактора, временный пароль дольше двух суток, персонал без входа
+ * дольше месяца. В отличие от сводки — с людьми (имя и почта): это рабочий
+ * список того, кто ведёт учётки, а не статистика. Под системной ролью по
+ * той же причине, что сводка; чтение — в журнал тем же user.list.
+ */
+opsUserRoutes.get("/attention", async (c) => {
+  const body: OpsUsersAttention = await usersAttention();
+  await audit(c, {
+    action: "user.list",
+    details: {
+      ops: true,
+      view: "attention",
+      returned: body.locked.people.length + body.mfaMissing.people.length + body.tempPassword.people.length + body.idleStaff.people.length,
+    },
+  });
+  return c.json(body);
 });
 
 /* ─────────── выключение ─────────── */

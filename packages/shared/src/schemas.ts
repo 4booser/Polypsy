@@ -190,15 +190,18 @@ export const createUserSchema = z.object({
  * списка пациентов: ФИО шифровано, упорядочить и найти его в SQL нечем.
  * Поиск — по ФИО, почте и телефону (телефон — слепым индексом, см. маршрут).
  * Роль и состояние — закрытыми списками: опечатка в `?status=disabld`
- * должна давать отказ, а не молча весь реестр.
+ * должна давать отказ, а не молча весь реестр. Роль «staff» — весь персонал
+ * (суперадмины и администраторы групп): вкладка «Персонал» реестра.
  */
+export const registryRole = z.enum(["superadmin", "admin", "user", "staff"]);
+
 export const opsUserListQuery = z.object({
   q: z
     .string()
     .max(120)
     .optional()
     .transform((v) => (v ?? "").trim().toLowerCase()),
-  role: z.enum(["superadmin", "admin", "user"]).optional(),
+  role: registryRole.optional(),
   status: z.enum(["active", "disabled"]).optional(),
   sort: z.enum(["name", "created", "lastSeen", "role"]).optional().default("name"),
   page: z
@@ -343,7 +346,7 @@ export const opsUserIdsQuery = z.object({
     .max(120)
     .optional()
     .transform((v) => (v ?? "").trim().toLowerCase()),
-  role: z.enum(["superadmin", "admin", "user"]).optional(),
+  role: registryRole.optional(),
   status: z.enum(["active", "disabled"]).optional(),
 });
 
