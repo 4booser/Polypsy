@@ -337,6 +337,35 @@ describe("второй фактор", () => {
       .where(and(eq(auditLog.action, "mfa.reset"), eq(auditLog.subjectUserId, person.id)));
     expect(entry?.actorId).toBe(root.id);
   });
+
+  test("покрытие: последний вход строкой, весь действующий персонал — для справки, выключенные не в счёт", async () => {
+    const withFactor = await staffWith("mfa-cover-on", "ops.read");
+    await enableFactor(withFactor);
+    const without = await staffWith("mfa-cover-off", "ops.read");
+    // вход паролем ставит «последний вход»: политика выключена, второго шага нет
+    expect((await login(without.email)).body.token).toBeTruthy();
+    const gone = await staffWith("mfa-cover-gone");
+    await db.update(usersTable).set({ disabledAt: new Date().toISOString() }).where(eq(usersTable.id, gone.id));
+
+    const view = await api("/api/ops/people/mfa", root.token);
+    expect(view.status).toBe(200);
+    type Row = { id: string; enabled: boolean; lastSeenAt: string | null };
+    const rows = view.body.coverage as Row[];
+    expect(rows.find((r) => r.id === withFactor.id)?.enabled).toBe(true);
+    const seen = rows.find((r) => r.id === without.id);
+    expect(seen?.enabled).toBe(false);
+    expect(typeof seen?.lastSeenAt).toBe("string");
+
+    // персонал целиком — те же строки users, что видит маршрут: без пациентов и без выключенных
+    const [live] = await db
+      .select({ n: sql<number>`count(*)::int` })
+      .from(usersTable)
+      .where(sql`${usersTable.role} <> 'user' and ${usersTable.disabledAt} is null`);
+    const staff = view.body.staff as { total: number; enabled: number };
+    expect(staff.total).toBe(Number(live!.n));
+    expect(staff.enabled).toBeGreaterThanOrEqual(1);
+    expect(staff.enabled).toBeLessThanOrEqual(staff.total);
+  });
 });
 
 /* ═══════════ вход «от имени» ═══════════ */
