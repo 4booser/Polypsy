@@ -231,7 +231,13 @@ export function MethodPage({
               {ut("acc.grant")}
             </Button>
           ) : null}
-          <ActionMenu label={ut("mc.menuLabel")} entries={menu} triggerSize="icon" plateClassName="min-w-[260px]" />
+          <ActionMenu
+            label={ut("mc.menuLabel")}
+            entries={menu}
+            triggerSize="icon"
+            triggerClassName="bg-violet-tint hover:bg-violet-tint-2"
+            plateClassName="min-w-[260px]"
+          />
         </>
       }
       below={
