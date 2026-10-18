@@ -147,3 +147,41 @@ describe("на настоящих данных стало лучше", () => {
     }
   });
 });
+
+describe("целая величина — целые деления", () => {
+  /*
+   * Счёт людей, прохождений, событий за день. У «0 или 1» ось шла через 0,2 —
+   * подписи «0,2 · 0,4 · 0,6» говорили о долях прохождения, которых не
+   * бывает (TimeColumns: прохождения за день, неявки за неделю).
+   */
+  test("небольшой счёт — шагом в единицу", () => {
+    expect(axisFor({ lo: 0, hi: 1, integer: true }).ticks).toEqual([0, 1]);
+    expect(axisFor({ lo: 0, hi: 3, integer: true }).ticks).toEqual([0, 1, 2, 3]);
+    expect(axisFor({ lo: 0, hi: 4, integer: true }).ticks).toEqual([0, 1, 2, 3, 4]);
+  });
+
+  test("крупнее — 2, 5, 10, но не 2,5", () => {
+    expect(axisFor({ lo: 0, hi: 7, integer: true }).ticks).toEqual([0, 2, 4, 6, 8]);
+    const a = axisFor({ lo: 0, hi: 12, integer: true });
+    expect(a.ticks.every(Number.isInteger)).toBe(true);
+    expect(a.max).toBeGreaterThanOrEqual(12);
+  });
+
+  test("любой счёт от 1 до 200 — только целые деления, и верх не ниже данных", () => {
+    for (let hi = 1; hi <= 200; hi++) {
+      const a = axisFor({ lo: 0, hi, integer: true });
+      expect(a.ticks.every(Number.isInteger)).toBe(true);
+      expect(a.max).toBeGreaterThanOrEqual(hi);
+      expect(a.ticks.length).toBeLessThanOrEqual(6);
+    }
+  });
+
+  test("срезанная ось целой величины — тоже целыми", () => {
+    const a = axisFor({ lo: 61, hi: 65, integer: true });
+    expect(a.ticks.every(Number.isInteger)).toBe(true);
+  });
+
+  test("дробная величина — как прежде: доли так и делятся", () => {
+    expect(axisFor({ lo: 0, hi: 1 }).ticks).toEqual([0, 0.2, 0.4, 0.6, 0.8, 1]);
+  });
+});

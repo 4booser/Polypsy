@@ -29,7 +29,7 @@ import {
   type LegendItem,
   type TableView,
 } from "./kit";
-import { boundaries, ladderDomain, num, profileRuns, rungOf, segments, share, sortRungs, type Rung } from "./ladder";
+import { boundaries, ladderDomain, profileRuns, rungOf, segments, share, sortRungs, type Rung } from "./ladder";
 import { axisFor } from "./scale";
 
 /**
@@ -115,6 +115,7 @@ export interface RulerProps {
  * ступени: шкала читается целиком, а ответ находится раньше подписей.
  */
 export function SeverityMeter({ rungs, value, max, size = "lg", valueLabel, label }: RulerProps) {
+  const dec = useDecimal();
   const sorted = sortRungs(rungs);
   const d = ladderDomain(sorted, [value], max);
   const segs = segments(sorted, d);
@@ -143,7 +144,7 @@ export function SeverityMeter({ rungs, value, max, size = "lg", valueLabel, labe
                   {lg ? (
                     <RowTip>
                       <TipHead>{s.rung.label}</TipHead>
-                      <TipRow value={`${num(s.rung.min)}–${num(s.rung.max)}`} />
+                      <TipRow value={`${dec(s.rung.min)}–${dec(s.rung.max)}`} />
                     </RowTip>
                   ) : null}
                 </span>
@@ -179,7 +180,7 @@ export function SeverityMeter({ rungs, value, max, size = "lg", valueLabel, labe
                   className={cx("absolute whitespace-nowrap", i === 0 ? "" : i === all.length - 1 ? "-translate-x-full" : "-translate-x-1/2")}
                   style={{ left: pct(t.at) }}
                 >
-                  {num(t.v)}
+                  {dec(t.v)}
                 </span>
               ),
             )}
@@ -199,7 +200,7 @@ export function SeverityMeter({ rungs, value, max, size = "lg", valueLabel, labe
                 style={{ left: wordAt < 0.3 ? 0 : wordAt > 0.7 ? "100%" : pct(wordAt) }}
               >
                 {hit ? `${hit.label}, ` : ""}
-                {valueLabel ?? num(value)}
+                {valueLabel ?? dec(value)}
               </span>
             </div>
           ) : null}
@@ -692,6 +693,7 @@ export function HBars({
   /** Отметка сравнения поперёк полос: среднее отделения, порог */
   reference?: { value: number; label: string };
 }) {
+  const dec = useDecimal();
   if (!items.length) return <NoData />;
   const top = max ?? Math.max(...items.map((i) => i.value ?? 0), reference?.value ?? 0, 0);
   const anyStrong = items.some((i) => i.strong);
@@ -724,13 +726,13 @@ export function HBars({
                 {ref}
               </span>
               <span className="text-right text-[13px] font-extrabold whitespace-nowrap text-text">
-                {i.value === null ? <SmallCell floor={floor} /> : (i.text ?? `${num(i.value)}${unit}`)}
+                {i.value === null ? <SmallCell floor={floor} /> : (i.text ?? `${dec(i.value)}${unit}`)}
               </span>
               {i.value !== null ? (
                 <RowTip at={0.4 + w * 0.6 * 0.6}>
                   <TipHead>{i.label}</TipHead>
-                  <TipRow kind="box" color={colorOf(i)} value={i.text ?? `${num(i.value)}${unit}`} />
-                  {reference ? <TipRow label={reference.label} value={`${num(reference.value)}${unit}`} /> : null}
+                  <TipRow kind="box" color={colorOf(i)} value={i.text ?? `${dec(i.value)}${unit}`} />
+                  {reference ? <TipRow label={reference.label} value={`${dec(reference.value)}${unit}`} /> : null}
                 </RowTip>
               ) : null}
             </li>
@@ -765,7 +767,7 @@ export function GroupedHBars({
   rows,
   series,
   max,
-  format = num,
+  format: formatProp,
   floor = 5,
   hiddenWhy,
   legend = true,
@@ -773,6 +775,7 @@ export function GroupedHBars({
   rows: readonly GroupedRow[];
   series: readonly SeriesKey[];
   max?: number;
+  /** Как печатать величину; по умолчанию — числом с дробью языка */
   format?: (v: number) => string;
   floor?: number;
   /** Своё объяснение скрытой ячейки (SmallCell, `why`) */
@@ -780,6 +783,8 @@ export function GroupedHBars({
   /** false — легенду рисует экран, одну на несколько групп полос */
   legend?: boolean;
 }) {
+  const dec = useDecimal();
+  const format = formatProp ?? ((v: number) => dec(v));
   if (!rows.length || !series.length) return <NoData />;
   const top = max ?? Math.max(0, ...rows.flatMap((r) => r.values.map((v) => v ?? 0)));
   return (
@@ -857,6 +862,7 @@ export function PairBars({
   after: string;
   max?: number;
 }) {
+  const dec = useDecimal();
   if (!rows.length) return <NoData />;
   const top = max ?? Math.max(0, ...rows.flatMap((r) => [r.before ?? 0, r.after ?? 0]));
   const width = (v: number) => `${Math.max(1.5, Math.min(100, (v / top) * 100)).toFixed(2)}%`;
@@ -880,8 +886,8 @@ export function PairBars({
             </div>
             <RowTip at={0.3}>
               <TipHead>{r.label}</TipHead>
-              <TipRow kind="box" color={OTHER_COLOR} label={before} value={r.before === null ? "—" : num(r.before)} />
-              <TipRow kind="box" color={r.attention ? ATTENTION_COLOR : SINGLE_COLOR} label={after} value={r.after === null ? "—" : num(r.after)} />
+              <TipRow kind="box" color={OTHER_COLOR} label={before} value={r.before === null ? "—" : dec(r.before)} />
+              <TipRow kind="box" color={r.attention ? ATTENTION_COLOR : SINGLE_COLOR} label={after} value={r.after === null ? "—" : dec(r.after)} />
             </RowTip>
           </li>
         ))}
@@ -919,7 +925,7 @@ export function HeatTable({
   columns,
   max,
   legend,
-  format = num,
+  format: formatProp,
   caption,
 }: {
   rows: readonly HeatRow[];
@@ -929,10 +935,13 @@ export function HeatTable({
   max: number;
   /** Подписи значений под таблицей: 0 «зовсім ні» … 3 «майже щодня» */
   legend?: readonly { value: number; label: string }[];
+  /** Как печатать значение клетки; по умолчанию — числом с дробью языка */
   format?: (v: number) => string;
   /** Подпись таблицы для диктора */
   caption?: string;
 }) {
+  const dec = useDecimal();
+  const format = formatProp ?? ((v: number) => dec(v));
   if (!rows.length || !columns.length) return <NoData />;
   const level = (v: number) => (v <= 0 ? 0 : Math.min(5, Math.max(1, Math.round((v / Math.max(max, 1)) * 5 + 0.49))));
   const cellCls = (v: number | null, crit: boolean) =>
@@ -1125,12 +1134,18 @@ export function TimeColumns({
   floor?: number;
 }) {
   const { ut } = useLang();
+  const dec = useDecimal();
   const [W, boxRef] = useChartWidth();
   const svgRef = useRef<SVGSVGElement>(null);
   const hover = useIndexHover(columns.length);
   if (!columns.some((c) => c.value !== null)) return <NoData />;
 
-  const axis = axisFor({ lo: 0, hi: Math.max(...columns.map((c) => c.value ?? 0), 0) });
+  /* счёт — целыми делениями: у «0 или 1 за день» ось не идёт через 0,2 */
+  const axis = axisFor({
+    lo: 0,
+    hi: Math.max(...columns.map((c) => c.value ?? 0), 0),
+    integer: columns.every((c) => c.value === null || Number.isInteger(c.value)),
+  });
   const pw = Math.max(40, W - CP.left - CP.right);
   const ph = height - CP.top - CP.bottom;
   const slot = pw / columns.length;
@@ -1167,7 +1182,7 @@ export function TimeColumns({
           <g key={t}>
             <line x1={CP.left} x2={W - CP.right} y1={yAt(t)} y2={yAt(t)} stroke={t === 0 ? "var(--ctl)" : "var(--grid)"} />
             <text x={CP.left - 8} y={yAt(t) + 4} fontSize={11} fontWeight={600} fill="var(--axis)" textAnchor="end">
-              {num(t)}
+              {dec(t)}
             </text>
           </g>
         ))}
@@ -1202,7 +1217,7 @@ export function TimeColumns({
           ? columns.map((c, i) =>
               c.value === null ? null : (
                 <text key={`v-${c.key}`} x={xAt(i)} y={yAt(c.value) - 6} fontSize={12} fontWeight={800} fill="var(--text)" textAnchor="middle">
-                  {num(c.value)}
+                  {dec(c.value)}
                 </text>
               ),
             )
@@ -1222,7 +1237,7 @@ export function TimeColumns({
           {at.value === null ? (
             <p className="m-0 mt-[5px] text-muted">{at.hidden ? `${ut("kit.hidden")}, ${fillIn(ut("chart.smallCell"), { n: floor })}` : (emptyTip ?? "—")}</p>
           ) : (
-            <TipRow kind="box" color={fill} value={num(at.value)} />
+            <TipRow kind="box" color={fill} value={dec(at.value)} />
           )}
         </ChartTip>
       ) : null}
@@ -1258,7 +1273,7 @@ export function StackColumns({
   label,
   total,
   emptyTip,
-  format = num,
+  format: formatProp,
 }: {
   series: readonly StackSeries[];
   columns: readonly StackColumn[];
@@ -1267,15 +1282,22 @@ export function StackColumns({
   /** Подпись итога в подсказке: «усього» */
   total?: string;
   emptyTip?: string;
+  /** Как печатать часть и итог; по умолчанию — числом с дробью языка */
   format?: (v: number) => string;
 }) {
+  const dec = useDecimal();
+  const format = formatProp ?? ((v: number) => dec(v));
   const [W, boxRef] = useChartWidth();
   const svgRef = useRef<SVGSVGElement>(null);
   const hover = useIndexHover(columns.length);
   if (!series.length || !columns.some((c) => c.values !== null)) return <NoData />;
 
   const sums = columns.map((c) => (c.values ? c.values.reduce((s, v) => s + Math.max(0, v), 0) : null));
-  const axis = axisFor({ lo: 0, hi: Math.max(0, ...sums.map((s) => s ?? 0)) });
+  const axis = axisFor({
+    lo: 0,
+    hi: Math.max(0, ...sums.map((s) => s ?? 0)),
+    integer: columns.every((c) => !c.values || c.values.every((v) => Number.isInteger(v))),
+  });
   const pw = Math.max(40, W - CP.left - CP.right);
   const ph = height - CP.top - CP.bottom;
   const slot = pw / columns.length;
@@ -1312,7 +1334,7 @@ export function StackColumns({
           <g key={t}>
             <line x1={CP.left} x2={W - CP.right} y1={yAt(t)} y2={yAt(t)} stroke={t === 0 ? "var(--ctl)" : "var(--grid)"} />
             <text x={CP.left - 8} y={yAt(t) + 4} fontSize={11} fontWeight={600} fill="var(--axis)" textAnchor="end">
-              {num(t)}
+              {dec(t)}
             </text>
           </g>
         ))}
@@ -1410,7 +1432,7 @@ export function TimeLines({
   series,
   height = 200,
   label,
-  format = num,
+  format: formatProp,
   tick,
   threshold,
   marks,
@@ -1419,13 +1441,15 @@ export function TimeLines({
   series: readonly LineSeries[];
   height?: number;
   label: string;
-  /** Число в подсказке: «240 мс», «1,2 %» */
+  /** Число в подсказке: «240 мс», «1,2 %»; по умолчанию — числом с дробью языка */
   format?: (v: number) => string;
   /** Число у оси; по умолчанию — как в подсказке */
   tick?: (v: number) => string;
   threshold?: { value: number; label: string };
   marks?: readonly TimeLineMark[];
 }) {
+  const dec = useDecimal();
+  const format = formatProp ?? ((v: number) => dec(v));
   const [W, boxRef] = useChartWidth();
   const svgRef = useRef<SVGSVGElement>(null);
   const hover = useIndexHover(x.length);
@@ -1435,7 +1459,7 @@ export function TimeLines({
   const single = series.length === 1;
   const ends = series.length <= 4;
   const right = ends ? 84 : LP.right;
-  const axis = axisFor({ lo: 0, hi: Math.max(0, ...known, threshold?.value ?? 0) });
+  const axis = axisFor({ lo: 0, hi: Math.max(0, ...known, threshold?.value ?? 0), integer: known.every((v) => Number.isInteger(v)) });
   const pw = Math.max(40, W - LP.left - right);
   const ph = height - LP.top - LP.bottom;
   const slot = pw / x.length;

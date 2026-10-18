@@ -262,7 +262,8 @@ export function courseLayout(points: readonly CoursePoint[], rungs: readonly Run
     ticks = [lo, ...sorted.slice(1).map((r) => r.min), hi].filter((v, i, a) => v >= lo && v <= hi && a.indexOf(v) === i);
   } else {
     const top = Math.max(max ?? 0, ...values);
-    const axis = axisFor({ lo: 0, hi: top });
+    /* баллы без лестницы — чаще целые: деления тогда тоже целые */
+    const axis = axisFor({ lo: 0, hi: top, integer: values.every((v) => Number.isInteger(v)) && (max == null || Number.isInteger(max)) });
     lo = axis.min;
     hi = Math.max(axis.max, top);
     ticks = axis.ticks;

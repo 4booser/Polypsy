@@ -16,6 +16,7 @@ import {
   TipRow,
   seriesColor,
   shapeOf,
+  useDecimal,
   useIndexHover,
   type LegendKind,
 } from "./kit";
@@ -34,7 +35,11 @@ import { axisFor, type Axis } from "./scale";
 
 const PAD = { top: 18, right: 16, bottom: 26, left: 40 };
 
-const fmt = (v: number) => (Math.abs(v) >= 1000 ? `${Math.round(v / 100) / 10}k` : String(Math.round(v * 100) / 100));
+/** Число подписи: тысячи — «1,2k», остальное — до двух знаков; дробь — языка экрана */
+function useFmt(): (v: number) => string {
+  const dec = useDecimal();
+  return (v) => (Math.abs(v) >= 1000 ? `${dec(v / 1000, 1)}k` : dec(v));
+}
 
 /** Ширина подписи 11 px — оценка для раскладки подписей оси без наложения */
 const textW = (s: string) => s.length * 6.2 + 4;
@@ -62,6 +67,7 @@ export function AxisNote({
   unit?: string;
 }) {
   const { ut } = useLang();
+  const fmt = useFmt();
   const hidesFull = fullRange != null && fullRange > axis.max;
   if (!axis.zoomed && !hidesFull) return null;
 
@@ -159,6 +165,7 @@ function xLabels(xs: readonly number[], labels: readonly string[]): Set<number> 
 
 /** Сетка и подписи оси Y — общие у линии и сложенной области */
 function YGrid({ ticks, y, left, right }: { ticks: readonly number[]; y: (v: number) => number; left: number; right: number }) {
+  const fmt = useFmt();
   return (
     <>
       {ticks.map((t) => (
@@ -241,6 +248,7 @@ export function LineChart({
   marks?: TimeMark[];
 }) {
   const { ut } = useLang();
+  const fmt = useFmt();
   const svgRef = useRef<SVGSVGElement>(null);
 
   /*
