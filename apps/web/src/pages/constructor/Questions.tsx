@@ -1,289 +1,520 @@
-import { useState, type ReactNode } from "react";
-import { BulkPaste } from "./BulkPaste";
-import { Loc, Toggle, useEditLang } from "./fields";
+import { useState, type KeyboardEvent, type ReactElement } from "react";
+import type { Issue } from "@quizzy/shared";
+import { EditLangSwitch, Loc, useEditLang } from "./fields";
+import { CnIc } from "./icons";
 import {
   TYPES,
   duplicateQuestion,
+  missingLang,
   moveQuestion,
   newUid,
   optionKey,
-  removeQuestion,
+  questionsWithOwnAnswers,
+  sharedOptions,
   type Draft,
   type DraftOption,
   type DraftQuestion,
 } from "./model";
 import { useLang } from "../../lang";
+import { Callout, Ic, Tooltip } from "../../ui";
 import { cx } from "../../ui/cx";
-import { IconCopy, IconDisclosure } from "../../ui/glyphs";
-import { Button, Field, Input, Select } from "../../ui/primitives";
+import { Panel } from "../../ui/layout";
+import { Button, ErrorText, Field, Input, Select, Switch, Tag } from "../../ui/primitives";
+
+/** Разделы конструктора — колонка «Структура» слева (макет methods-constructor) */
+export type Section = "main" | "settings" | "questions" | "answers" | "scales" | "bands" | "json";
+
+type SetDraft = (f: (d: Draft) => Draft) => void;
+
+/** Вопрос несёт критический вариант: ответ им поднимет сигнал риска */
+export const isCritical = (q: DraftQuestion) => q.options.some((o) => o.riskFlag);
 
 /**
- * Список вопросов — аккордеон по кадру f12.
+ * Пункты методики — свёрнутые строки и один раскрытый редактор (макет
+ * methods-constructor).
  *
- * Строка: номер в рамке, «Питання» полужирным фиолетовым, под ним «короткий
- * опис питання», справа «+». Открыт один вопрос за раз, его строка серая, а
- * глиф — «−»; редактор раскрывается под строкой. Прежде каждый пункт был
- * раскрытой карточкой целиком, и на двухстах пунктах МЛО экран не листался,
- * а прокручивался минутами.
+ * Открыт один пункт за раз: на двухстах пунктах МЛО раскрытые карточки не
+ * листались, а прокручивались минутами. Строка свёрнутого пункта — одна
+ * кнопка с именем «N текст … Розгорнути питання»: два элемента с одним
+ * действием диктор прочёл бы дважды.
  *
- * Чего аккордеон стоит и как это оплачено:
- *  — ключ и баллы двух соседних пунктов рядом не сравнить; в конкретном тесте
- *    их и нет в вопросе — они в таблице баллов шкалы, где видны все разом;
- *  — предпросмотр идёт за фокусом, а свёрнутый пункт фокус не принимает —
- *    поэтому раскрытие само сообщает номер (onFocusQuestion), и предпросмотр
- *    не отстаёт.
+ * Предпросмотр справа идёт за раскрытым пунктом: раскрытие само сообщает
+ * номер (onFocusQuestion), свёрнутый пункт фокус не принимает.
  */
 export function Questions({
   draft,
   setDraft,
+  open,
+  setOpen,
   onFocusQuestion,
+  itemIssues,
+  goto,
+  onRemove,
+  onAdd,
+  onPaste,
 }: {
   draft: Draft;
-  setDraft: (f: (d: Draft) => Draft) => void;
-  /** Какой пункт сейчас правят: за ним идёт предпросмотр справа */
-  onFocusQuestion?: (index: number) => void;
+  setDraft: SetDraft;
+  open: string | null;
+  setOpen: (uid: string | null) => void;
+  onFocusQuestion: (index: number) => void;
+  /** Замечания проверки структуры по номеру пункта */
+  itemIssues: Map<number, Issue[]>;
+  goto: (s: Section) => void;
+  /** Удалить пункт — экран удаляет и даёт «Скасувати» сообщением */
+  onRemove: (index: number) => void;
+  onAdd: () => void;
+  onPaste: () => void;
+}) {
+  const { ut } = useLang();
+
+  if (draft.questions.length === 0) {
+    return (
+      <Panel>
+        <div className="flex flex-col items-center px-4 pb-4 pt-4 text-center">
+          <span className="inline-grid size-12 place-items-center rounded-[14px] bg-violet-tint text-violet-ink">
+            <CnIc.listOrdered size={22} />
+          </span>
+          <p className="m-0 mt-3 text-[16px] font-extrabold text-text">{ut("ce.noItems")}</p>
+          <p className="m-0 mt-1 max-w-[440px] text-body text-text-2">{ut("ce.noItemsHint")}</p>
+          <div className="mt-4 w-full max-w-[520px] text-left">
+            <FirstQuestion
+              onSeed={(title) =>
+                setDraft((d) => ({
+                  ...d,
+                  questions: [
+                    {
+                      uid: newUid(),
+                      type: (d.mode ?? "specific") === "specific" ? "yesno" : "single",
+                      title,
+                      required: true,
+                      options: (d.mode ?? "specific") === "specific" ? sharedOptions(d.answers) : [],
+                    },
+                  ],
+                }))
+              }
+            />
+          </div>
+          <div className="mt-1 flex flex-wrap justify-center gap-2">
+            <Button icon={<Ic.plus />} onClick={onAdd}>
+              {ut("cq.addQuestion")}
+            </Button>
+            <Button variant="ghost" icon={<CnIc.paste />} onClick={onPaste}>
+              {ut("co.bulkPaste")}
+            </Button>
+          </div>
+        </div>
+      </Panel>
+    );
+  }
+
+  return (
+    <ol className="m-0 flex list-none flex-col gap-2.5 p-0" aria-label={ut("co.questions")}>
+      {draft.questions.map((q, i) =>
+        open === q.uid ? (
+          <li key={q.uid}>
+            <QuestionEditor
+              draft={draft}
+              q={q}
+              i={i}
+              setDraft={setDraft}
+              issues={itemIssues.get(i + 1) ?? []}
+              onCollapse={() => setOpen(null)}
+              onFocus={() => onFocusQuestion(i)}
+              goto={goto}
+              onRemove={() => onRemove(i)}
+            />
+          </li>
+        ) : (
+          <li key={q.uid}>
+            <QuestionRow
+              q={q}
+              i={i}
+              warn={(itemIssues.get(i + 1) ?? []).length > 0}
+              onOpen={() => {
+                setOpen(q.uid);
+                onFocusQuestion(i);
+              }}
+            />
+          </li>
+        ),
+      )}
+    </ol>
+  );
+}
+
+/** Свёрнутый пункт: номер, текст, пометки, вид — и шеврон (.qcol макета) */
+function QuestionRow({ q, i, warn, onOpen }: { q: DraftQuestion; i: number; warn: boolean; onOpen: () => void }) {
+  const { ut } = useLang();
+  const lang = useEditLang();
+  const title = q.title[lang] || "";
+  const type = TYPES.find(([v]) => v === q.type);
+  return (
+    <button
+      type="button"
+      aria-expanded={false}
+      onClick={onOpen}
+      className={cx(
+        "flex h-[52px] w-full cursor-pointer items-center gap-2.5 rounded-panel border border-border bg-panel pl-3 pr-2.5 text-left shadow-panel",
+        "transition-colors duration-[var(--dur-fast)] ease-[var(--ease)] hover:bg-panel-2",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-ring",
+      )}
+    >
+      <span className="w-6 shrink-0 text-body font-extrabold tabular-nums text-muted">{i + 1}</span>
+      <span className={cx("min-w-0 flex-1 truncate text-body", title ? "text-text" : "italic text-muted")}>
+        {title || ut("co.previewNoText")}
+      </span>
+      {isCritical(q) ? (
+        <Tag tone="danger" icon={<CnIc.siren />}>
+          {ut("ce.critical")}
+        </Tag>
+      ) : null}
+      {warn ? <Tag tone="attention">{ut("ce.hasIssues")}</Tag> : null}
+      {q.required ? null : <Tag>{ut("ce.optional")}</Tag>}
+      <span className="shrink-0 whitespace-nowrap text-caption text-muted max-[1100px]:hidden">{type ? ut(type[1]) : q.type}</span>
+      <span className="sr-only">{ut("cn.expand")}</span>
+      <span aria-hidden className="inline-grid size-8 shrink-0 place-items-center rounded-[9px] text-muted">
+        <Ic.chevronDown size={16} />
+      </span>
+    </button>
+  );
+}
+
+/** Раскрытый пункт (.qed макета): шапка с действиями, текст, вид, ответы, сигнал риска */
+function QuestionEditor({
+  draft,
+  q,
+  i,
+  setDraft,
+  issues,
+  onCollapse,
+  onFocus,
+  goto,
+  onRemove,
+}: {
+  draft: Draft;
+  q: DraftQuestion;
+  i: number;
+  setDraft: SetDraft;
+  issues: Issue[];
+  onCollapse: () => void;
+  onFocus: () => void;
+  goto: (s: Section) => void;
+  onRemove: () => void;
 }) {
   const { ut } = useLang();
   const lang = useEditLang();
   const mode = draft.mode ?? "specific";
-  const [open, setOpen] = useState<string | null>(null);
-  const [bulk, setBulk] = useState(false);
-
-  const text = (v: Record<string, string> | null | undefined) => v?.[lang] ?? "";
-
-  const upd = (i: number, q: Partial<DraftQuestion>) =>
-    setDraft((d) => ({ ...d, questions: d.questions.map((x, k) => (k === i ? { ...x, ...q } : x)) }));
-
+  const n = draft.questions.length;
+  const headId = `cn-q-${q.uid}`;
+  const upd = (patch: Partial<DraftQuestion>) =>
+    setDraft((d) => ({ ...d, questions: d.questions.map((x) => (x.uid === q.uid ? { ...x, ...patch } : x)) }));
   /*
-   * Перестановка, копия и удаление — через модель: ключ шкалы ссылается на
-   * пункт номером, и номера в нём переписываются вместе со списком
-   * (model.ts, removeQuestion и соседи). Раньше список правился здесь сам по
-   * себе, и ключ «Так → 3, 5, 7» после удаления третьего пункта молча
-   * считал бывшие четвёртый, шестой и восьмой.
+   * Перестановка и копия — через модель: ключ шкалы ссылается на пункт
+   * номером, и номера в нём переписываются вместе со списком (model.ts).
    */
-  const move = (i: number, delta: number) => setDraft((d) => moveQuestion(d, i, delta));
+  const move = (delta: number) => setDraft((d) => moveQuestion(d, i, delta));
+  const other = lang === "uk" ? "ru" : "uk";
+  const missing = missingLang(draft, other);
 
-  const duplicate = (i: number) => setDraft((d) => duplicateQuestion(d, i));
-
-  /*
-   * Новый вопрос в конкретном тесте получает общий набор ответов, в
-   * комплексном — пустой список: там ответы свои у каждого вопроса (f23).
-   */
-  const add = () => {
-    const uid = newUid();
-    setDraft((d) => ({
-      ...d,
-      questions: [
-        ...d.questions,
-        {
-          uid,
-          type: (d.mode ?? "specific") === "specific" ? "yesno" : "single",
-          title: { uk: "", ru: "" },
-          required: true,
-          options: (d.mode ?? "specific") === "specific" ? structuredClone(d.answers ?? []) : [],
-        },
-      ],
-    }));
-    setOpen(uid);
-    onFocusQuestion?.(draft.questions.length);
+  /* Alt+↑/↓ — пункт выше или ниже, не уходя из поля */
+  const onKeyDown = (e: KeyboardEvent) => {
+    if (!e.altKey || (e.key !== "ArrowUp" && e.key !== "ArrowDown")) return;
+    e.preventDefault();
+    move(e.key === "ArrowUp" ? -1 : 1);
   };
 
-  const toggle = (q: DraftQuestion, i: number) => {
-    const next = open === q.uid ? null : q.uid;
-    setOpen(next);
-    if (next) onFocusQuestion?.(i);
-  };
+  const iconBtn = (label: string, icon: ReactElement, onClick: () => void, disabled = false, kbd?: string) => (
+    <Tooltip label={label} kbd={kbd}>
+      <Button variant="quiet" size="icon-sm" aria-label={label} onClick={onClick} disabled={disabled}>
+        {icon}
+      </Button>
+    </Tooltip>
+  );
 
   return (
-    <section aria-labelledby="cn-questions">
-      {/* в строке заголовка — один «+», как на кадре f24_1 */}
-      <SectionHead id="cn-questions" title={ut("co.questions")}>
-        <Button size="glyph" variant="ghost" onClick={add} aria-label={ut("cq.addQuestion")} title={ut("cq.addQuestion")}>
-          +
-        </Button>
-      </SectionHead>
+    <section
+      aria-labelledby={headId}
+      onFocusCapture={onFocus}
+      onKeyDown={onKeyDown}
+      className="rounded-panel bg-panel shadow-[0_0_0_1.5px_var(--vring),var(--shadow-panel)]"
+    >
+      <div className="flex min-h-14 flex-wrap items-center gap-2 border-b border-divider py-2 pl-3 pr-2.5">
+        <span className="w-6 shrink-0 text-body font-extrabold tabular-nums text-violet-ink">{i + 1}</span>
+        <h2 id={headId} className="m-0 whitespace-nowrap text-section font-extrabold tracking-[-0.015em] text-text">
+          {ut("ce.questionN")} {i + 1}
+        </h2>
+        {isCritical(q) ? (
+          <Tag tone="danger" icon={<CnIc.siren />}>
+            {ut("ce.criticalItem")}
+          </Tag>
+        ) : null}
+        <span className="ml-auto flex items-center gap-0.5">
+          <Switch checked={q.required} onChange={(v) => upd({ required: v })} label={ut("cq.required")} className="mr-1.5" />
+          <span aria-hidden className="mx-1.5 h-[22px] w-px bg-divider" />
+          {iconBtn(ut("cq.moveUp"), <Ic.arrowUp size={15} />, () => move(-1), i === 0, "Alt ↑")}
+          {iconBtn(ut("cq.moveDown"), <Ic.arrowDown size={15} />, () => move(1), i === n - 1, "Alt ↓")}
+          {iconBtn(ut("cq.duplicate"), <CnIc.copy size={15} />, () => setDraft((d) => duplicateQuestion(d, i)))}
+          {iconBtn(ut("ce.removeItem"), <CnIc.trash size={15} />, onRemove)}
+          <Tooltip label={ut("cn.collapse")}>
+            <Button variant="quiet" size="icon-sm" aria-label={ut("cn.collapse")} aria-expanded onClick={onCollapse}>
+              <Ic.chevronDown size={16} className="rotate-180" />
+            </Button>
+          </Tooltip>
+        </span>
+      </div>
 
-      {bulk ? (
-        <div className="mb-[15px]">
-          <BulkPaste
-            onClose={() => setBulk(false)}
-            onAppend={(questions) => setDraft((d) => ({ ...d, questions: [...d.questions, ...questions] }))}
-          />
+      <div className="px-4 pb-4 pt-3.5">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <EditLangSwitch />
+          <span className="text-small text-muted">
+            {missing.length
+              ? `${ut("ce.bothLangs")}; ${ut(other === "ru" ? "ce.missingRu" : "ce.missingUk")}: ${listNumbers(missing, ut("cst.andMore"))}`
+              : ut("ce.bothLangsDone")}
+          </span>
         </div>
-      ) : null}
+        <Loc label={ut("cn.questionText")} value={q.title} onChange={(v) => upd({ title: v })} multiline rows={2} />
+        <div className="grid grid-cols-[minmax(0,1fr)_190px] gap-x-3.5 max-[1100px]:grid-cols-1">
+          <Loc label={ut("ce.help")} hint={ut("ce.helpHint")} value={q.help} onChange={(v) => upd({ help: v })} />
+          <Field label={ut("cn.questionType")}>
+            <Select value={q.type} onChange={(e) => upd({ type: e.target.value })}>
+              {TYPES.map(([v, l]) => (
+                <option key={v} value={v}>
+                  {ut(l)}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        </div>
 
-      {/*
-        Пустой список на кадре f24_1 — это НЕ строка «питань поки немає»,
-        а одно пустое поле 36px во всю ширину колонки: первый пункт начинают
-        набирать прямо в нём. Пункт заводится по выходу из поля (blur/Enter),
-        а не на каждую букву: иначе первая же буква пересобрала бы список и
-        отобрала фокус у того, кто печатает.
-      */}
-      {draft.questions.length === 0 && !bulk ? (
-        <FirstQuestion
-          onSeed={(title) =>
-            setDraft((d) => ({
-              ...d,
-              questions: [
-                {
-                  uid: newUid(),
-                  type: (d.mode ?? "specific") === "specific" ? "yesno" : "single",
-                  title,
-                  required: true,
-                  options: (d.mode ?? "specific") === "specific" ? structuredClone(d.answers ?? []) : [],
-                },
-              ],
-            }))
-          }
-        />
-      ) : null}
+        {q.type === "info" ? null : mode === "complex" ? (
+          <OwnAnswers options={q.options} onChange={(options) => upd({ options })} />
+        ) : (
+          <SharedAnswers draft={draft} q={q} onChange={(options) => upd({ options })} goto={goto} />
+        )}
 
-      {draft.questions.length ? (
-        /* карточка кадра: белая плоскость, линия #cccccc, радиус 5, строки через волосяную линию */
-        <ol className="m-0 list-none rounded-[5px] border border-hairline bg-[var(--bg)] p-0">
-          {draft.questions.map((q, i) => {
-            const isOpen = open === q.uid;
-            const bodyId = `cn-q-${q.uid}`;
-            return (
-              <li key={q.uid} className="border-b border-hairline last:border-b-0">
-                {/*
-                  Одна кнопка на всю строку, а не заголовок плюс глиф: два
-                  элемента с одним действием читались бы диктору дважды, а
-                  строка целиком — мишень заведомо шире 44px. «+»/«−» внутри —
-                  рисунок, состояние несёт aria-expanded.
-                */}
-                <button
-                  type="button"
-                  aria-expanded={isOpen}
-                  aria-controls={bodyId}
-                  onClick={() => toggle(q, i)}
-                  className={cx(
-                    /*
-                      Кадр f12: бейдж 36, зазор 15, шаг строки 73 (волосяные
-                      линии на 92, 165, 238, 312, 385, 459 — по 73). Поля по
-                      вертикали 15/14, а не 17/17: описание набрано тем же
-                      кеглем, что и заголовок (см. ниже), обе строки идут
-                      межстрочником 22, и 15 + 22 + 22 + 14 как раз дают 73.
-                    */
-                    "flex w-full items-center gap-[15px] border-0 bg-transparent px-[15px] pb-[14px] pt-[15px] text-left",
-                    "outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]",
-                  )}
-                >
-                  <span
-                    aria-hidden
-                    className="flex size-9 shrink-0 items-center justify-center rounded-[5px] border border-border text-[17px] font-bold text-text"
-                  >
-                    {i + 1}
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    {/* шаг строки кадра f12 — 73: 15 сверху + 22 + 22 текста + 14 снизу */}
-                    <span className={cx("block truncate text-[17px] font-bold leading-[22px]", isOpen ? "text-muted" : "text-primary")}>
-                      <span className="sr-only">{i + 1}. </span>
-                      {text(q.title) || ut("co.questions")}
-                    </span>
-                    {/*
-                      Описание набрано 17, а не 13. На кадре f12 рост строчных
-                      у «короткий опис питання» — 9 px (строки 64–72 вырезки),
-                      ровно как у имени теста 17/700 в каталоге; заголовок
-                      «Питання» даёт cap 12 — тот же кегль 17. Отличаются они
-                      начертанием и цветом, а не размером. Базовые линии двух
-                      строк стоят на 48 и 72 — межстрочник 22 у обеих.
-                    */}
-                    <span className={cx("block truncate text-[17px] leading-[22px]", isOpen ? "text-faint" : "text-muted")}>
-                      {text(q.help) || ut("cn.shortDescription")}
-                    </span>
-                  </span>
-                  <span aria-hidden className="w-[27px] shrink-0 text-center text-[27px] font-bold leading-none text-primary">
-                    {isOpen ? "−" : "+"}
-                  </span>
-                  <span className="sr-only">{isOpen ? ut("cn.collapse") : ut("cn.expand")}</span>
-                </button>
-
-                {isOpen ? (
-                  /*
-                   * Фокус ловится на всплытии, а не на каждом поле: полей в
-                   * пункте десяток, и вешать обработчик на каждое — способ
-                   * забыть один.
-                   */
-                  <div id={bodyId} className="px-[20px] pb-[20px]" onFocusCapture={() => onFocusQuestion?.(i)}>
-                    <Loc label={ut("cn.questionText")} value={q.title} onChange={(v) => upd(i, { title: v })} multiline rows={2} />
-                    <Loc label={ut("cn.shortDescription")} value={q.help} onChange={(v) => upd(i, { help: v })} />
-
-                    {mode === "complex" ? (
-                      <OwnAnswers
-                        options={q.options}
-                        onChange={(options) => upd(i, { options })}
-                      />
-                    ) : null}
-
-                    <div className="mt-[15px] flex flex-wrap items-center gap-x-[14px] gap-y-[6px]">
-                      <Field label={ut("cn.questionType")} inline className="w-[190px]">
-                        <Select value={q.type} onChange={(e) => upd(i, { type: e.target.value })}>
-                          {TYPES.map(([v, l]) => (
-                            <option key={v} value={v}>{ut(l)}</option>
-                          ))}
-                        </Select>
-                      </Field>
-                      <Toggle label={ut("cq.required")} value={q.required} onChange={(v) => upd(i, { required: v })} />
-                      <span className="flex-1" />
-                      <Button variant="quiet" size="sm" onClick={() => move(i, -1)} disabled={i === 0} aria-label={ut("cq.moveUp")} title={ut("cq.moveUp")}>↑</Button>
-                      <Button variant="quiet" size="sm" onClick={() => move(i, 1)} disabled={i === draft.questions.length - 1} aria-label={ut("cq.moveDown")} title={ut("cq.moveDown")}>↓</Button>
-                      <Button variant="quiet" size="sm" onClick={() => duplicate(i)} aria-label={ut("cq.duplicate")} title={ut("cq.duplicate")}><IconCopy /></Button>
-                      <Button
-                        variant="danger"
-                        size="sm"
-                        onClick={() => {
-                          setOpen(null);
-                          setDraft((d) => removeQuestion(d, i));
-                        }}
-                      >
-                        {ut("ui.delete")}
-                      </Button>
-                    </div>
-                  </div>
-                ) : null}
-              </li>
-            );
-          })}
-        </ol>
-      ) : null}
-      {/*
-        «Вставити пункти з тексту» — не в строке заголовка, где на кадре один
-        «+», а строкой под списком, 13-м кеглем подсказок. Убрать совсем
-        нельзя: перенос из пособия — главный путь заведения методики на
-        двести пунктов, по одному их не набирает никто. Пока окно вставки
-        открыто, строка не нужна. Мишень нажатия дорисована накладкой до 44,
-        как у глифов: строка от этого не растёт.
-      */}
-      {!bulk ? (
-        <p className="m-0 mt-[8px] text-[13px] text-muted">
-          <button
-            type="button"
-            onClick={() => setBulk(true)}
-            className="relative border-0 bg-transparent p-0 text-[13px] text-primary underline-offset-2 after:absolute after:inset-x-0 after:-inset-y-[12px] after:content-[''] hover:underline focus-visible:ring-2 focus-visible:ring-[var(--focus)]"
+        {isCritical(q) ? (
+          <Callout
+            kind="risk"
+            icon={<CnIc.shieldAlert />}
+            className="mt-3"
+            actions={
+              <Button variant="ghost" size="xs" onClick={() => goto("settings")}>
+                {ut("ce.setupSafety")}
+              </Button>
+            }
           >
-            {ut("co.bulkPaste")}
-          </button>
-        </p>
-      ) : null}
-      {/*
-        Ключ шкал ссылается на номера, а не на вопросы: ↑/↓ после того, как
-        таблица баллов заполнена, молча сдвигают ключ. Подсказка стоит только
-        когда ключ уже есть — до того сдвигать нечего.
-      */}
-      {draft.scales.some((s) => s.key.length) ? (
-        <p className="m-0 mt-[8px] text-[13px] text-muted">{ut("cn.reorderHint")}</p>
-      ) : null}
+            {ut("ce.criticalOpens")}
+            {draft.alertEscalateMinutes
+              ? `; ${ut("ce.criticalEscalates")} ${draft.alertEscalateMinutes} ${ut("ce.minutesShort")}`
+              : `; ${ut("ce.criticalNoEscalation")}`}
+            {(draft.safetyPlan?.[lang] || draft.safetyPlan?.uk || draft.safetyPlan?.ru || "").trim()
+              ? `; ${ut("ce.criticalPlan")}.`
+              : `; ${ut("ce.criticalNoPlan")}.`}
+          </Callout>
+        ) : null}
+
+        {issues.length ? (
+          <div className="mt-3 flex flex-col gap-1">
+            {issues.map((it, k) => (
+              <ErrorText key={k} tone="warn">
+                {it.message}
+              </ErrorText>
+            ))}
+          </div>
+        ) : null}
+      </div>
     </section>
   );
 }
 
+/** «7, 12, 30 і ще 4» — номера пунктов, первые пять */
+function listNumbers(ns: number[], more: string): string {
+  const head = ns.slice(0, 5).join(", ");
+  return ns.length > 5 ? `${head} ${more} ${ns.length - 5}` : head;
+}
+
+/** Переключатель «критичний»: красный по праву — ответ поднимает сигнал риска для человека */
+function CriticalSwitch({ option, onChange }: { option: DraftOption; onChange: (v: boolean) => void }) {
+  const { ut } = useLang();
+  return (
+    <Switch
+      checked={!!option.riskFlag}
+      onChange={onChange}
+      label={
+        <span className={option.riskFlag ? "font-extrabold text-risk-ink" : "text-muted"}>
+          {option.riskFlag ? ut("ce.critical") : ut("ce.ordinary")}
+        </span>
+      }
+      className="text-small [&_button[aria-checked=true]]:bg-risk"
+    />
+  );
+}
+
 /**
- * Первый пункт пустого теста — одно поле 36px во всю колонку (кадр f24_1).
- *
- * Текст держится здесь, а не в черновике: пункт заводится один раз, по выходу
- * из поля. Пустое поле пункта не заводит — иначе случайное нажатие мимо
- * оставляло бы в тесте безымянный пункт.
+ * Подпись и уровень сигнала у критического ответа: без подписи проверка
+ * структуры предупреждает (val.riskWithoutLabel), а специалист видит в
+ * сигнале безымянный ответ. Уровень не задан — «високий»: так его читает и
+ * сервер.
+ */
+function RiskRow({ option, onChange }: { option: DraftOption; onChange: (patch: Partial<DraftOption>) => void }) {
+  const { ut } = useLang();
+  const lang = useEditLang();
+  return (
+    <div className="ml-[30px] mt-1.5 grid grid-cols-[minmax(0,1fr)_170px] gap-2.5 pb-1 max-[1100px]:grid-cols-1">
+      <Field label={ut("ce.riskLabel")} inline>
+        <Input
+          className="h-[34px]"
+          value={option.riskLabel?.[lang] ?? ""}
+          onChange={(e) => onChange({ riskLabel: { ...(option.riskLabel ?? {}), [lang]: e.target.value } })}
+        />
+      </Field>
+      <Field label={ut("ce.riskSeverity")} inline>
+        <Select
+          className="h-[34px]"
+          value={option.riskSeverity ?? "severe"}
+          onChange={(e) => onChange({ riskSeverity: e.target.value as "moderate" | "severe" })}
+        >
+          <option value="severe">{ut("ce.riskSevere")}</option>
+          <option value="moderate">{ut("ce.riskModerate")}</option>
+        </Select>
+      </Field>
+    </div>
+  );
+}
+
+/**
+ * Конкретный тест: варианты пункта — общий набор теста («Відповіді»). Текст
+ * и порядок правятся в своём разделе: правка в пункте разошлась бы с набором,
+ * а ключ шкал ссылается на коды набора. Здесь — то, что у пункта своё:
+ * позначка «критичний» (как у пункта 9 PHQ-9 или 3 СР-45). Правка набора её
+ * не стирает (model.ts, applyAnswers).
+ */
+function SharedAnswers({
+  draft,
+  q,
+  onChange,
+  goto,
+}: {
+  draft: Draft;
+  q: DraftQuestion;
+  onChange: (o: DraftOption[]) => void;
+  goto: (s: Section) => void;
+}) {
+  const { ut } = useLang();
+  const lang = useEditLang();
+  const own = questionsWithOwnAnswers({ ...draft, questions: [q] }) > 0 && q.options.length > 0;
+  const set = (k: number, patch: Partial<DraftOption>) => onChange(q.options.map((o, i) => (i === k ? { ...o, ...patch } : o)));
+  const grid = "grid grid-cols-[20px_minmax(0,1fr)_150px] items-center gap-2.5 max-[1100px]:grid-cols-[20px_minmax(0,1fr)_118px]";
+  return (
+    <div className="mt-1.5">
+      <div className="mb-1.5 flex items-baseline justify-between gap-2">
+        <span className="text-caption font-bold text-muted">{ut("cn.answers")}</span>
+        <span className="text-micro text-muted">{ut("ce.criticalHere")}</span>
+      </div>
+      <div className="overflow-hidden rounded-[12px] border border-border">
+        <div className={cx(grid, "bg-panel-2 px-2.5 py-2 text-[11.5px] font-bold leading-[14px] text-muted")}>
+          <span>№</span>
+          <span>{ut("cn.answerText")}</span>
+          <span>{ut("ce.criticalCol")}</span>
+        </div>
+        {q.options.map((o, k) => (
+          <div key={optionKey(o, k)} className="border-t border-divider px-2.5 py-1.5">
+            <div className={grid}>
+              <span className="text-caption font-extrabold tabular-nums text-muted">{k + 1}</span>
+              <span className="flex h-[34px] min-w-0 items-center truncate rounded-control bg-sunk px-3 text-body text-text">
+                {o.text[lang] || o.text.uk || o.text.ru || "—"}
+              </span>
+              <CriticalSwitch option={o} onChange={(v) => set(k, { riskFlag: v })} />
+            </div>
+            {o.riskFlag ? <RiskRow option={o} onChange={(patch) => set(k, patch)} /> : null}
+          </div>
+        ))}
+        <div className="flex flex-wrap items-center gap-2.5 border-t border-divider px-2.5 py-1.5 text-caption text-muted">
+          <Button variant="ghost" size="xs" icon={<CnIc.pencilLine />} onClick={() => goto("answers")}>
+            {ut("ce.editSet")}
+          </Button>
+          <span className="ml-auto">{own ? ut("ce.ownSet") : ut("ce.sharedSetHint")}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Ответы пункта с баллом — комплексный тест: таблица «№ · текст · бал ·
+ * критичний · прибрати» (макет methods-constructor).
+ */
+function OwnAnswers({ options, onChange }: { options: DraftOption[]; onChange: (o: DraftOption[]) => void }) {
+  const { ut } = useLang();
+  const lang = useEditLang();
+  const set = (k: number, patch: Partial<DraftOption>) => onChange(options.map((o, i) => (i === k ? { ...o, ...patch } : o)));
+  const add = () => onChange([...options, { uid: newUid(), text: { uk: "", ru: "" }, score: options.length }]);
+  const grid = "grid grid-cols-[20px_minmax(0,1fr)_64px_150px_32px] items-center gap-2.5 max-[1100px]:grid-cols-[20px_minmax(0,1fr)_64px_118px_32px]";
+  return (
+    <div className="mt-1.5">
+      <div className="mb-1.5 flex items-baseline justify-between gap-2">
+        <span className="text-caption font-bold text-muted">{ut("cn.answers")}</span>
+        <span className="text-micro text-muted">{ut("ce.answersHint")}</span>
+      </div>
+      <div className="overflow-hidden rounded-[12px] border border-border">
+        <div className={cx(grid, "bg-panel-2 px-2.5 py-2 text-[11.5px] font-bold leading-[14px] text-muted")}>
+          <span>№</span>
+          <span>{ut("cn.answerText")}</span>
+          <span className="text-center">{ut("cq.score")}</span>
+          <span>{ut("ce.criticalCol")}</span>
+          <span />
+        </div>
+        {options.map((o, k) => (
+          <div key={optionKey(o, k)} className="border-t border-divider px-2.5 py-1.5">
+            <div className={grid}>
+              <span className="text-caption font-extrabold tabular-nums text-muted">{k + 1}</span>
+              <Field label={`${ut("cn.answerText")} ${k + 1}`} inline>
+                <Input
+                  className="h-[34px]"
+                  value={o.text[lang] ?? ""}
+                  onChange={(e) => set(k, { text: { ...o.text, [lang]: e.target.value } })}
+                />
+              </Field>
+              <Field label={`${ut("cq.score")} ${k + 1}`} inline>
+                <Input
+                  type="number"
+                  step="any"
+                  className="h-[34px] px-1 text-center font-extrabold tabular-nums"
+                  value={o.score ?? 0}
+                  onChange={(e) => set(k, { score: Number(e.target.value) })}
+                />
+              </Field>
+              <CriticalSwitch option={o} onChange={(v) => set(k, { riskFlag: v })} />
+              <Tooltip label={ut("cn.removeOption")}>
+                <Button
+                  variant="quiet"
+                  size="icon-sm"
+                  aria-label={`${ut("cn.removeOption")}: ${o.text[lang] || k + 1}`}
+                  onClick={() => onChange(options.filter((_, i) => i !== k))}
+                >
+                  <Ic.x size={15} />
+                </Button>
+              </Tooltip>
+            </div>
+            {o.riskFlag ? <RiskRow option={o} onChange={(patch) => set(k, patch)} /> : null}
+          </div>
+        ))}
+        <div className="flex items-center gap-2.5 border-t border-divider px-2.5 py-1.5 text-caption text-muted">
+          <Button variant="ghost" size="xs" icon={<Ic.plus />} onClick={add}>
+            {ut("ce.answer")}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Первый пункт пустого теста — поле, в котором его сразу и набирают. Пункт
+ * заводится по выходу из поля или Enter, а не на каждую букву: иначе первая
+ * же буква пересобрала бы список и отобрала фокус у того, кто печатает.
+ * Пустое поле пункта не заводит.
  */
 function FirstQuestion({ onSeed }: { onSeed: (title: Record<string, string>) => void }) {
   const { ut } = useLang();
@@ -293,7 +524,7 @@ function FirstQuestion({ onSeed }: { onSeed: (title: Record<string, string>) => 
     if (text.trim()) onSeed({ uk: "", ru: "", [lang]: text });
   };
   return (
-    <Field label={ut("cn.questionText")}>
+    <Field label={ut("cn.questionText")} hint={ut("ce.firstItemHint")}>
       <Input
         value={text}
         onChange={(e) => setText(e.target.value)}
@@ -306,93 +537,5 @@ function FirstQuestion({ onSeed }: { onSeed: (title: Record<string, string>) => 
         }}
       />
     </Field>
-  );
-}
-
-/**
- * Ответы одного вопроса с баллом — комплексный тест (кадр f23_2): широкое поле
- * текста, узкое поле балла, «+» справа от ПОСЛЕДНЕЙ строки. Больше в строке
- * на кадре нет ничего.
- *
- * Что убрано с глаз и куда. «Критичний» (options.risk_flag — вариант,
- * поднимающий тревогу немедленно) и удаление варианта на кадре не нарисованы,
- * но это не украшения: без первого заводятся тесты, где такой ответ проходит
- * молча, без второго не убрать лишний вариант. Оба ушли в свёрнутый блок
- * «Налаштування варіантів» под списком — на том же экране, одним нажатием.
- */
-function OwnAnswers({ options, onChange }: { options: DraftOption[]; onChange: (o: DraftOption[]) => void }) {
-  const { ut } = useLang();
-  const lang = useEditLang();
-  const set = (k: number, patch: Partial<DraftOption>) => onChange(options.map((o, i) => (i === k ? { ...o, ...patch } : o)));
-  const add = () => onChange([...options, { uid: newUid(), text: { uk: "", ru: "" }, score: 0 }]);
-  const addButton = (
-    <Button size="glyph" variant="ghost" aria-label={ut("cn.addAnswer")} title={ut("cn.addAnswer")} onClick={add}>
-      +
-    </Button>
-  );
-  return (
-    <div className="mt-[15px]">
-      {/* h3 под h2 раздела «Питання»: уровень не пропускается, как и в карточке шкалы */}
-      <h3 className="m-0 mb-[8px] text-[17px] font-bold text-primary">{ut("cn.answers")}</h3>
-      <div className="flex flex-col gap-[8px]">
-        {/* ключ — uid варианта, а не номер: удаление среднего ответа не отдаёт его поле соседу (DraftOption.uid) */}
-        {options.map((o, k) => (
-          <div key={optionKey(o, k)} className="flex items-center gap-[10px]">
-            <Field label={ut("cn.answerText")} inline className="min-w-0 flex-1">
-              <Input value={o.text[lang] ?? ""} onChange={(e) => set(k, { text: { ...o.text, [lang]: e.target.value } })} />
-            </Field>
-            <Field label={ut("cq.score")} inline className="w-[84px] shrink-0">
-              <Input type="number" className="text-center" value={o.score ?? 0} onChange={(e) => set(k, { score: Number(e.target.value) })} />
-            </Field>
-            {/* место под «+» держится и у непоследних строк: иначе поле балла последней строки было бы у́же соседних */}
-            {k === options.length - 1 ? addButton : <span aria-hidden className="size-[27px] shrink-0" />}
-          </div>
-        ))}
-        {options.length === 0 ? <div>{addButton}</div> : null}
-      </div>
-      {options.length ? (
-        <details className="group mt-[8px]">
-          <summary className="cursor-pointer list-none text-[13px] font-bold text-primary [&::-webkit-details-marker]:hidden">
-            <span aria-hidden className="mr-1 inline-flex transition-transform group-open:rotate-90">
-              <IconDisclosure />
-            </span>
-            {ut("cn.optionSettings")}
-          </summary>
-          <div className="flex flex-col gap-[8px] pt-[12px]">
-            {options.map((o, k) => (
-              <div key={optionKey(o, k)} className="flex items-center gap-[10px]">
-                <span className="min-w-0 flex-1 truncate text-[13px] text-muted">{o.text[lang] || `${ut("cn.answerText")} ${k + 1}`}</span>
-                <label className="flex shrink-0 cursor-pointer items-center gap-1.5 text-[13px] text-muted">
-                  <input type="checkbox" className="size-4" checked={!!o.riskFlag} onChange={(e) => set(k, { riskFlag: e.target.checked })} />
-                  {ut("mark.critical")}
-                </label>
-                <Button
-                  size="glyph"
-                  variant="ghost"
-                  aria-label={`${ut("cn.removeOption")}: ${o.text[lang] ?? k + 1}`}
-                  onClick={() => onChange(options.filter((_, i) => i !== k))}
-                >
-                  −
-                </Button>
-              </div>
-            ))}
-          </div>
-        </details>
-      ) : null}
-    </div>
-  );
-}
-
-/**
- * Заголовок раздела формы: 18/700 фиолетовым слева, глифы действий справа —
- * строка «Питання  +» и «Шкала 1  +» макета. Один компонент на все разделы,
- * чтобы отступ 28px над ним не расходился по экрану.
- */
-export function SectionHead({ id, title, children }: { id: string; title: string; children?: ReactNode }) {
-  return (
-    <div className="mb-[12px] mt-[28px] flex items-center justify-between gap-[14px] first:mt-0">
-      <h2 id={id} className="m-0 text-[18px] font-bold leading-tight text-primary">{title}</h2>
-      {children ? <div className="flex items-center gap-[14px]">{children}</div> : null}
-    </div>
   );
 }

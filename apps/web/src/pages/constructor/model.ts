@@ -438,10 +438,24 @@ export function deriveMode(scales: DraftScale[]): Mode {
   return "complex";
 }
 
-/** Общий набор ответов из уже заведённых вопросов: первый вопрос с вариантами */
+/**
+ * Вариант общего набора без того, что принадлежит пункту: позначка
+ * «критичний» с подписью и уровнем — своя у каждого пункта (у PHQ-9 — только
+ * у девятого), и набор, разнесённый по всем пунктам, нёс бы её во все.
+ */
+function plainAnswer({ riskFlag: _f, riskLabel: _l, riskSeverity: _s, ...rest }: DraftOption): DraftOption {
+  return rest;
+}
+
+/** Общий набор ответов из уже заведённых вопросов: первый вопрос с вариантами, без позначок пункта */
 export function deriveAnswers(questions: DraftQuestion[]): DraftOption[] {
   const first = questions.find((q) => q.options.length > 0);
-  return first ? structuredClone(first.options) : defaultAnswers();
+  return first ? structuredClone(first.options).map(plainAnswer) : defaultAnswers();
+}
+
+/** Варианты нового пункта конкретного теста — копия общего набора со своими uid */
+export function sharedOptions(answers: DraftOption[] | undefined): DraftOption[] {
+  return structuredClone(answers ?? []).map((a) => ({ ...plainAnswer(a), uid: newUid() }));
 }
 
 /**
@@ -461,12 +475,33 @@ export function nextKeyCode(existing: (string | null | undefined)[]): string {
   }
 }
 
-/** Общий набор ответов — во все вопросы разом (см. Draft.answers) */
+/**
+ * Общий набор ответов — во все вопросы разом (см. Draft.answers).
+ *
+ * Своё у пункта при этом остаётся: позначка «критичний» (с подписью и
+ * уровнем) и uid варианта. Набор раньше копировался в пункты целиком, и
+ * переименование «Так» снимало критические позначки со всех пунктов СР-45
+ * разом — молча, а сигнал риска по ним больше не поднимался. Вариант пункта
+ * узнаётся по коду ответа (yes/no/k3), без кода — по месту.
+ */
 export function applyAnswers(draft: Draft, answers: DraftOption[]): Draft {
   return {
     ...draft,
     answers,
-    questions: draft.questions.map((q) => (q.type === "info" ? q : { ...q, options: structuredClone(answers) })),
+    questions: draft.questions.map((q) => {
+      if (q.type === "info") return q;
+      const own = new Map(q.options.map((o, i) => [o.keyCode ?? `@${i}`, o]));
+      return {
+        ...q,
+        options: answers.map((a, i) => {
+          const was = own.get(a.keyCode ?? `@${i}`);
+          const base = { ...plainAnswer(structuredClone(a)), uid: was?.uid ?? newUid() };
+          return was?.riskFlag
+            ? { ...base, riskFlag: true, riskLabel: was.riskLabel ?? null, riskSeverity: was.riskSeverity ?? null }
+            : base;
+        }),
+      };
+    }),
   };
 }
 
@@ -682,6 +717,43 @@ export function moveQuestion(draft: Draft, i: number, delta: number): Draft {
   const a = i + 1;
   const b = j + 1;
   return { ...draft, questions: next, scales: renumberKeys(draft.scales, (n) => (n === a ? b : n === b ? a : n)) };
+}
+
+/**
+ * Перетащить вопрос с места `from` на место `to` (оба с нуля): остальные
+ * сдвигаются, а не меняются с ним местами, как при ↑/↓. Ключ идёт за
+ * каждым сдвинутым пунктом — та же переписка номеров, что у перестановки.
+ */
+export function reorderQuestion(draft: Draft, from: number, to: number): Draft {
+  const n = draft.questions.length;
+  if (from < 0 || from >= n || to < 0 || to >= n || from === to) return draft;
+  const next = [...draft.questions];
+  const [moved] = next.splice(from, 1);
+  next.splice(to, 0, moved!);
+  const a = from + 1;
+  const b = to + 1;
+  return {
+    ...draft,
+    questions: next,
+    scales: renumberKeys(draft.scales, (k) => {
+      if (k === a) return b;
+      if (a < b && k > a && k <= b) return k - 1;
+      if (a > b && k >= b && k < a) return k + 1;
+      return k;
+    }),
+  };
+}
+
+/**
+ * Пункты, у которых текст есть на одном языке и нет на другом, — номерами.
+ * Методика хранится на двух языках содержимого, и пропуск обнаруживался на
+ * консоли пациента другого языка; здесь он виден, пока правят.
+ */
+export function missingLang(draft: Draft, lang: "uk" | "ru"): number[] {
+  return draft.questions.flatMap((q, i) => {
+    const other = lang === "uk" ? "ru" : "uk";
+    return q.type !== "info" && (q.title[other] ?? "").trim() && !(q.title[lang] ?? "").trim() ? [i + 1] : [];
+  });
 }
 
 /**

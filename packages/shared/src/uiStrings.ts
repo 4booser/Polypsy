@@ -678,25 +678,16 @@ export const UI = {
   "cn.specific": { uk: "Конкретний тест", ru: "Конкретный тест", en: "Single test" },
   "cn.complex": { uk: "Комплексний тест", ru: "Комплексный тест", en: "Composite test" },
   "cn.testKind": { uk: "Вид тесту", ru: "Вид теста", en: "Test type" },
-  "cn.newTest": { uk: "Новий тест", ru: "Новый тест", en: "New test" },
   "cn.testTitle": { uk: "Назва тесту", ru: "Название теста", en: "Test name" },
   "cn.testDescription": { uk: "Опис тесту", ru: "Описание теста", en: "Test description" },
   "cn.editLang": { uk: "Мова тексту тесту", ru: "Язык текста теста", en: "Test text language" },
-  "cn.editLangHint": {
-    uk: "Текст зберігається обома мовами: перемкніть мову, щоб заповнити другу",
-    ru: "Текст хранится на обоих языках: переключите язык, чтобы заполнить второй",
-    en: "The text is stored in both languages: switch the language to fill in the other one",
-  },
-  "cn.shortDescription": { uk: "короткий опис питання", ru: "краткое описание вопроса", en: "short question description" },
   "cn.questionText": { uk: "Текст питання", ru: "Текст вопроса", en: "Question text" },
   "cn.questionType": { uk: "Тип питання", ru: "Тип вопроса", en: "Question type" },
   "cn.expand": { uk: "Розгорнути питання", ru: "Развернуть вопрос", en: "Expand question" },
   "cn.collapse": { uk: "Згорнути питання", ru: "Свернуть вопрос", en: "Collapse question" },
   "cn.answers": { uk: "Відповіді", ru: "Ответы", en: "Answers" },
   "cn.answerText": { uk: "Текст відповіді", ru: "Текст ответа", en: "Answer text" },
-  "cn.addAnswer": { uk: "Додати відповідь", ru: "Добавить ответ", en: "Add answer" },
   "cn.removeOption": { uk: "Прибрати відповідь", ru: "Убрать ответ", en: "Remove answer" },
-  "cn.removeLastAnswer": { uk: "Прибрати останню відповідь", ru: "Убрать последний ответ", en: "Remove last answer" },
   "cn.answersHint": {
     uk: "Один набір відповідей на всі питання тесту; зміна поширюється на кожне",
     ru: "Один набор ответов на все вопросы теста; изменение распространяется на каждый",
@@ -749,13 +740,7 @@ export const UI = {
   "cn.publish": { uk: "Опублікувати", ru: "Опубликовать", en: "Publish" },
   "cn.create": { uk: "Створити", ru: "Создать", en: "Create" },
   "cn.assignPatient": { uk: "Призначити пацієнту", ru: "Назначить пациенту", en: "Assign to patient" },
-  "cn.settings": { uk: "Налаштування проходження", ru: "Настройки прохождения", en: "Completion settings" },
   "cn.jsonSection": { uk: "Тест як JSON", ru: "Тест как JSON", en: "Test as JSON" },
-  "cn.reorderHint": {
-    uk: "Таблиця балів посилається на номери питань: перестановка питань зсуває ключ",
-    ru: "Таблица баллов ссылается на номера вопросов: перестановка вопросов сдвигает ключ",
-    en: "The score table refers to question numbers: reordering questions shifts the scoring key",
-  },
   /*
    * Второй значок кадра f17 — «призначити групі». Групповое назначение на
    * сервере есть (POST /api/patient-groups/:id/surveys), окно — прямо в
@@ -871,48 +856,11 @@ export const UI = {
    * Сверка раздела «Тести» с кадрами f11/f12/f17/f18/f23/f24/f29/f30/f31/
    * f34/f37/f38/f39. Здесь только то, чего на кадре словарь ещё не знал, и
    * подписи мест, куда ушло убранное с глаз.
-   *
-   * Украинские подписи набраны дословно с кадра, включая слитное «№Питання»
-   * (f37_1) и «Розрахунок балу» с большой буквы в шапке таблицы (f37_2):
-   * та же строчная форма у cn.formula — это подпись НАД полем формулы внутри
-   * шкалы, а не колонка таблицы, и кадры их пишут по-разному.
    */
-  "cn.scoreTable": { uk: "Таблиця балів", ru: "Таблица баллов", en: "Score table" },
-  "cn.resultTable": { uk: "Таблиця результатів", ru: "Таблица результатов", en: "Result table" },
-  "cn.resultName": { uk: "Назва результату", ru: "Название результата", en: "Result name" },
-  "cn.scoreFormula": { uk: "Розрахунок балу", ru: "Расчёт балла", en: "Score calculation" },
-  "cn.score": { uk: "Бал", ru: "Балл", en: "Score" },
-  "cn.result": { uk: "Результат", ru: "Результат", en: "Result" },
-  "cn.resultTableEmpty": {
-    uk: "Рядок результату складається з поправок інших шкал: сервер ще не зберігає посилання на рядок чужої шкали",
-    ru: "Строка результата складывается из поправок других шкал: сервер ещё не хранит ссылку на ряд чужой шкалы",
-    en: "The result row is made up of adjustments from other scales: the server does not yet store a reference to another scale's row",
-  },
-  /*
-   * Меню инструментов конструктора: на кадрах его нет, но и того, что в нём
-   * лежит (проверка структуры, отмена, предпросмотр, настройки прохождения,
-   * JSON), на кадрах нет тоже. Убранное с глаз собрано в одно место, а не
-   * разбросано по экрану.
-   */
+  /* меню «⋯» конструктора: копия, JSON, история, назначение */
   "cn.tools": { uk: "Інструменти конструктора", ru: "Инструменты конструктора", en: "Builder tools" },
-  "cn.optionSettings": { uk: "Налаштування варіантів", ru: "Настройки вариантов", en: "Option settings" },
   "cn.backToCatalogue": { uk: "До тестів", ru: "К тестам", en: "Back to tests" },
   "cat.marks": { uk: "Позначки тесту", ru: "Пометки теста", en: "Test marks" },
-  /*
-   * Полные названия языков для раскрытого списка переключателя (кадры
-   * f23_1/f24_1): на самой кнопке стоит короткое «Укр», а в списке кадр
-   * печатает языки их собственными именами. Поэтому обе формы одинаковы
-   * в uk и ru — «Українська» не переводится в «Украинский»: перевод назвал
-   * бы язык словом того языка, из которого человек уходит.
-   */
-  "lang.uk": { uk: "Українська", ru: "Українська", en: "Українська" },
-  "lang.ru": { uk: "Русский", ru: "Русский", en: "Русский" },
-  /*
-   * Полная форма английского — для списка языков интерфейса. В списке языка
-   * ТЕКСТА теста её не будет: английского текста у методик нет (CONTENT_LANGS
-   * в types.ts), и пункт, выбор которого ничего не меняет, был бы обманом.
-   */
-  "lang.en": { uk: "English", ru: "English", en: "English" },
   /*
    * Одна строка над методикой, когда интерфейс английский, а пункты — нет.
    *
@@ -1230,7 +1178,6 @@ export const UI = {
   "co.previewNoOptions": { uk: "варіантів немає", ru: "вариантов нет", en: "no options" },
   "co.previewHint": { uk: "Так пункт побачить людина. Ключі та бали не показані — їх вона не бачить", ru: "Так пункт увидит человек. Ключи и баллы не показаны — их он не видит", en: "This is how the person will see the item. Scoring keys and scores are not shown — the person does not see them" },
   "co.keyCheck": { uk: "Перевірка ключа", ru: "Проверка ключа", en: "Scoring key check" },
-  "co.keyHint": { uk: "оберіть відповіді — бали рахує той самий рушій, що й сервер", ru: "выберите ответы — баллы считает тот же движок, что и сервер", en: "choose answers — scores are calculated by the same engine as on the server" },
   "co.keyReset": { uk: "Скинути", ru: "Сбросить", en: "Reset" },
   "co.keyNoScales": { uk: "Шкал поки немає — нема чого рахувати", ru: "Шкал пока нет — считать нечего", en: "No scales yet — nothing to calculate" },
   "co.preview": { uk: "Перегляд", ru: "Предпросмотр", en: "Preview" },
@@ -5407,7 +5354,6 @@ export const UI = {
   "bp.lang": { uk: "Мова тексту, що вставляється", ru: "Язык вставляемого текста", en: "Language of the pasted text" },
   "bp.type": { uk: "Тип питань", ru: "Тип вопросов", en: "Question type" },
   "bp.yesNo": { uk: "Так / Ні", ru: "Да / Нет", en: "Yes / No" },
-  "bp.single": { uk: "Одна відповідь (варіанти додасте потім)", ru: "Один ответ (варианты добавите после)", en: "Single answer (add options later)" },
   "pt.nobodyFound": { uk: "Нікого не знайдено", ru: "Никого не найдено", en: "No one found" },
   "pt.noCompleted": { uk: "Завершених проходжень немає", ru: "Завершённых прохождений нет", en: "No finished completions" },
   "pt.profileBySubscales": { uk: "Профіль за субшкалами", ru: "Профиль по субшкалам", en: "Subscale profile" },
@@ -5483,7 +5429,6 @@ export const UI = {
 
   /* возвраты и хлебные крошки */
   "back.toSurvey": { uk: "← До методики", ru: "← К методике", en: "← Back to instrument" },
-  "back.toAnalytics": { uk: "← До аналітики", ru: "← К аналитике", en: "← Back to analytics" },
   "back.toSurveyAnalytics": { uk: "← Аналітика методики", ru: "← Аналитика методики", en: "← Instrument analytics" },
 
   /* пустые выборы */
@@ -6396,7 +6341,6 @@ export const UI = {
     ru: "Варианты одинаковы у всех пунктов, поэтому бланк выведен таблицей.",
     en: "Answer options are the same for all items, so the answer sheet is shown as a table.",
   },
-  "bp.addPrefix": { uk: "Додати", ru: "Добавить", en: "Add" },
   "bp.duplicateSuffix": { uk: "зустрічається двічі", ru: "встречается дважды", en: "appears twice" },
   "bp.firstItem": { uk: "перший", ru: "первый", en: "first" },
   "bp.hint": {
@@ -6502,7 +6446,6 @@ export const UI = {
   },
   "co.errorsCount": { uk: "помилок", ru: "ошибок", en: "errors" },
   "co.issuesSummary": { uk: "Зауважень", ru: "Замечаний", en: "Issues" },
-  "co.itemsGenitive": { uk: "пунктів", ru: "пунктов", en: "items" },
   "co.jsonHint": {
     uk: "Для методик на сотні пунктів заповнювати форму немає сенсу. Вставте сюди опис у тому самому вигляді, який приймає API — з ключами шкал, нормами й таблицями стенів.",
     ru: "Для методик на сотни пунктов заполнять форму бессмысленно. Вставьте сюда описание в том же виде, какой принимает API — с ключами шкал, нормами и таблицами стенов.",
@@ -7853,6 +7796,400 @@ export const UI = {
     uk: "Повідомлення фахівцю — не екстрений зв’язок: відповідь приходить у робочий час.",
     ru: "Сообщение специалисту — не экстренная связь: ответ приходит в рабочее время.",
     en: "A message to your specialist is not an emergency line: replies come during working hours.",
+  },
+
+  // ── v2-constructor ──
+  /* конструктор методики: правка (pages/constructor) */
+  "ce.main": { uk: "Основне", ru: "Основное", en: "Basics" },
+  "ce.settings": { uk: "Налаштування", ru: "Настройки", en: "Settings" },
+  "ce.scales": { uk: "Шкали", ru: "Шкалы", en: "Scales" },
+  "ce.bands": { uk: "Смуги результату", ru: "Полосы результата", en: "Result bands" },
+  "ce.noGroup": { uk: "без групи", ru: "без группы", en: "no group" },
+  "ce.structure": { uk: "Структура методики", ru: "Структура методики", en: "Method structure" },
+  "ce.sections": { uk: "Розділи методики", ru: "Разделы методики", en: "Method sections" },
+  "ce.dragHint": {
+    uk: "Пункти, перетягніть для порядку",
+    ru: "Пункты, перетащите для порядка",
+    en: "Items, drag to reorder",
+  },
+  "ce.dragKeys": {
+    uk: "Alt+↑ або Alt+↓ — зсунути пункт",
+    ru: "Alt+↑ или Alt+↓ — сдвинуть пункт",
+    en: "Alt+↑ or Alt+↓ moves the item",
+  },
+  "ce.hasIssues": { uk: "є зауваження", ru: "есть замечания", en: "has issues" },
+  "ce.draft": { uk: "Чернетка", ru: "Черновик", en: "Draft" },
+  "ce.published": { uk: "Опублікована", ru: "Опубликована", en: "Published" },
+  "ce.version": { uk: "Версія", ru: "Версия", en: "Version" },
+  "ce.versionLower": { uk: "версія", ru: "версия", en: "version" },
+  "ce.current": { uk: "діюча", ru: "действующая", en: "current" },
+  "ce.changed": { uk: "змінено", ru: "изменена", en: "changed" },
+  "ce.saveMakes": { uk: "збереження створить версію", ru: "сохранение создаст версию", en: "saving creates version" },
+  "ce.saveGoesLive": {
+    uk: "збереження одразу опублікує версію",
+    ru: "сохранение сразу опубликует версию",
+    en: "saving publishes version",
+  },
+  "ce.newMeta": {
+    uk: "ще не збережена; «Створити» збереже її чернеткою",
+    ru: "ещё не сохранена; «Создать» сохранит её черновиком",
+    en: "not saved yet; “Create” saves it as a draft",
+  },
+  "ce.modeSpecific": {
+    uk: "конкретний тест: спільний набір відповідей і шкали",
+    ru: "конкретный тест: общий набор ответов и шкалы",
+    en: "specific test: a shared answer set and scales",
+  },
+  "ce.modeComplex": {
+    uk: "комплексний тест: у кожного пункту свої відповіді з балом",
+    ru: "комплексный тест: у каждого пункта свои ответы с баллом",
+    en: "complex test: each item has its own scored answers",
+  },
+  "ce.noChanges": { uk: "незбережених змін немає", ru: "несохранённых изменений нет", en: "no unsaved changes" },
+  "ce.rename": { uk: "Перейменувати", ru: "Переименовать", en: "Rename" },
+  "ce.copyMethod": { uk: "Копія методики", ru: "Копия методики", en: "Copy the method" },
+  "ce.history": { uk: "Історія змін", ru: "История изменений", en: "Change history" },
+  "ce.toMethod": { uk: "Аналітика методики", ru: "Аналитика методики", en: "Method analytics" },
+  "ce.responses": { uk: "проходжень", ru: "прохождений", en: "responses" },
+  "ce.publishVersion": { uk: "Опублікувати версію", ru: "Опубликовать версию", en: "Publish version" },
+  "ce.publishNote": {
+    uk: "Публікація створить версію",
+    ru: "Публикация создаст версию",
+    en: "Publishing creates version",
+  },
+  "ce.publishNoteNew": {
+    uk: "Після публікації методику зможуть призначати пацієнтам",
+    ru: "После публикации методику смогут назначать пациентам",
+    en: "Once published, the method can be assigned to patients",
+  },
+  "ce.allIssues": { uk: "Усі зауваження", ru: "Все замечания", en: "All issues" },
+  "ce.checking": { uk: "Перевіряємо…", ru: "Проверяем…", en: "Checking…" },
+  "ce.errors": { uk: "Помилки", ru: "Ошибки", en: "Errors" },
+  "ce.errorsSub": {
+    uk: "з ними методику не опублікувати",
+    ru: "с ними методику не опубликовать",
+    en: "the method can't be published with these",
+  },
+  "ce.warnings": { uk: "Попередження", ru: "Предупреждения", en: "Warnings" },
+  "ce.warningsSub": {
+    uk: "скоріше за все помилка перенесення, але бувають винятки",
+    ru: "скорее всего ошибка переноса, но бывают исключения",
+    en: "most likely a transfer mistake, but there are exceptions",
+  },
+  "ce.noErrors": {
+    uk: "Помилок немає — методику можна публікувати",
+    ru: "Ошибок нет — методику можно публиковать",
+    en: "No errors — the method can be published",
+  },
+  "ce.goTo": { uk: "Перейти", ru: "Перейти", en: "Go to" },
+  "ce.jsonApplied": {
+    uk: "JSON застосовано до чернетки",
+    ru: "JSON применён к черновику",
+    en: "JSON applied to the draft",
+  },
+  "ce.questionN": { uk: "Питання", ru: "Вопрос", en: "Question" },
+  "ce.removeItem": { uk: "Видалити пункт", ru: "Удалить пункт", en: "Delete the item" },
+  "ce.removed": { uk: "Видалено пункт", ru: "Удалён пункт", en: "Deleted item" },
+  "ce.undoAction": { uk: "Скасувати", ru: "Отменить", en: "Undo" },
+  "ce.optional": { uk: "необов’язковий", ru: "необязательный", en: "optional" },
+  "ce.critical": { uk: "критичний", ru: "критический", en: "critical" },
+  "ce.criticalCol": { uk: "Критичний", ru: "Критический", en: "Critical" },
+  "ce.criticalItem": { uk: "критичний пункт", ru: "критический пункт", en: "critical item" },
+  "ce.ordinary": { uk: "звичайний", ru: "обычный", en: "ordinary" },
+  "ce.answer": { uk: "Відповідь", ru: "Ответ", en: "Answer" },
+  "ce.answersHint": {
+    uk: "бал і позначка «критичний» — на кожну відповідь",
+    ru: "балл и пометка «критический» — у каждого ответа",
+    en: "a score and a “critical” mark for each answer",
+  },
+  "ce.sharedSetHint": {
+    uk: "Набір спільний для всіх пунктів; текст правиться в розділі «Відповіді»",
+    ru: "Набор общий для всех пунктов; текст правится в разделе «Ответы»",
+    en: "The set is shared by all items; edit its text under “Answers”",
+  },
+  "ce.criticalHere": {
+    uk: "позначка «критичний» — лише в цьому пункті",
+    ru: "пометка «критический» — только в этом пункте",
+    en: "the “critical” mark applies to this item only",
+  },
+  "ce.ownSet": { uk: "у цього пункту свій набір", ru: "у этого пункта свой набор", en: "this item has its own set" },
+  "ce.editSet": { uk: "Правити набір", ru: "Править набор", en: "Edit the set" },
+  "ce.riskLabel": { uk: "Підпис сигналу ризику", ru: "Подпись сигнала риска", en: "Risk signal label" },
+  "ce.riskSeverity": { uk: "Рівень ризику", ru: "Уровень риска", en: "Risk level" },
+  "ce.riskSevere": { uk: "високий ризик", ru: "высокий риск", en: "high risk" },
+  "ce.riskModerate": { uk: "помірний ризик", ru: "умеренный риск", en: "moderate risk" },
+  "ce.criticalOpens": {
+    uk: "Відповідь із позначкою «критичний» відкриває сигнал ризику",
+    ru: "Ответ с пометкой «критический» открывает сигнал риска",
+    en: "An answer marked “critical” opens a risk signal",
+  },
+  "ce.criticalEscalates": {
+    uk: "нерозібраний сигнал ескалюється через",
+    ru: "неразобранный сигнал эскалируется через",
+    en: "an unreviewed signal escalates after",
+  },
+  "ce.minutesShort": { uk: "хв", ru: "мин", en: "min" },
+  "ce.criticalNoEscalation": {
+    uk: "ескалацію не налаштовано",
+    ru: "эскалация не настроена",
+    en: "no escalation is set",
+  },
+  "ce.criticalPlan": {
+    uk: "після здачі людина бачить план безпеки",
+    ru: "после сдачи человек видит план безопасности",
+    en: "after submitting, the person sees the safety plan",
+  },
+  "ce.criticalNoPlan": {
+    uk: "плану безпеки ще немає",
+    ru: "плана безопасности пока нет",
+    en: "there is no safety plan yet",
+  },
+  "ce.setupSafety": { uk: "Налаштувати план безпеки", ru: "Настроить план безопасности", en: "Set up the safety plan" },
+  "ce.criticalFires": {
+    uk: "Спрацює критичний пункт",
+    ru: "Сработает критический пункт",
+    en: "Critical answer in item",
+  },
+  "ce.help": { uk: "Пояснення під питанням", ru: "Пояснение под вопросом", en: "Help under the question" },
+  "ce.helpHint": {
+    uk: "Людина бачить його під текстом питання",
+    ru: "Человек видит его под текстом вопроса",
+    en: "The person sees it under the question text",
+  },
+  "ce.bothLangs": {
+    uk: "Текст зберігається обома мовами",
+    ru: "Текст хранится на обоих языках",
+    en: "Text is kept in both languages",
+  },
+  "ce.bothLangsDone": {
+    uk: "Текст зберігається обома мовами; пропусків немає",
+    ru: "Текст хранится на обоих языках; пропусков нет",
+    en: "Text is kept in both languages; nothing is missing",
+  },
+  "ce.missingRu": {
+    uk: "російською бракує пунктів",
+    ru: "на русском не хватает пунктов",
+    en: "items missing in Russian",
+  },
+  "ce.missingUk": {
+    uk: "українською бракує пунктів",
+    ru: "на украинском не хватает пунктов",
+    en: "items missing in Ukrainian",
+  },
+  "ce.langUk": { uk: "Українська", ru: "Украинский", en: "Ukrainian" },
+  "ce.langRu": { uk: "Російська", ru: "Русский", en: "Russian" },
+  "ce.instructionsHint": {
+    uk: "Показується перед першим пунктом",
+    ru: "Показывается перед первым пунктом",
+    en: "Shown before the first item",
+  },
+  "ce.noItems": { uk: "Пунктів поки немає", ru: "Пунктов пока нет", en: "No items yet" },
+  "ce.noItemsHint": {
+    uk: "Наберіть перший пункт тут, додайте порожній або вставте всі пункти з посібника одним текстом.",
+    ru: "Наберите первый пункт здесь, добавьте пустой или вставьте все пункты из пособия одним текстом.",
+    en: "Type the first item here, add an empty one, or paste all the items from the manual as one text.",
+  },
+  "ce.firstItemHint": {
+    uk: "Наберіть перший пункт і натисніть Enter",
+    ru: "Наберите первый пункт и нажмите Enter",
+    en: "Type the first item and press Enter",
+  },
+  "ce.pasteAppends": {
+    uk: "Пункти стануть у кінець списку",
+    ru: "Пункты встанут в конец списка",
+    en: "The items go to the end of the list",
+  },
+  "ce.pasteApply": { uk: "Додати до методики", ru: "Добавить в методику", en: "Add to the method" },
+  "ce.keyFollows": {
+    uk: "ключ іде за пунктами: перестановка переписує номери в таблиці балів",
+    ru: "ключ идёт за пунктами: перестановка переписывает номера в таблице баллов",
+    en: "the key follows the items: reordering rewrites the numbers in the score table",
+  },
+  "ce.itemsWord": { uk: "пункти", ru: "пункты", en: "items" },
+  "ce.noKeyYet": { uk: "ключа ще немає", ru: "ключа ещё нет", en: "no key yet" },
+  "ce.bandsShort": { uk: "смуги", ru: "полосы", en: "bands" },
+  "ce.edit": { uk: "Правити", ru: "Править", en: "Edit" },
+  "ce.noBands": {
+    uk: "Результатів поки немає — додайте діапазони балу",
+    ru: "Результатов пока нет — добавьте диапазоны балла",
+    en: "No results yet — add score ranges",
+  },
+  "ce.bandsNeedScale": {
+    uk: "Смуги належать шкалі — спершу додайте шкалу в розділі «Шкали»",
+    ru: "Полосы принадлежат шкале — сначала добавьте шкалу в разделе «Шкалы»",
+    en: "Bands belong to a scale — add a scale under “Scales” first",
+  },
+  "ce.resultsHint": {
+    uk: "Діапазони суми балів: від, до і що це означає",
+    ru: "Диапазоны суммы баллов: от, до и что это значит",
+    en: "Ranges of the total score: from, to and what it means",
+  },
+  "ce.matchingHint": {
+    uk: "відповідь → номери питань → бал",
+    ru: "ответ → номера вопросов → балл",
+    en: "answer → item numbers → score",
+  },
+  "ce.formulaHint": {
+    uk: "бал шкали плюс коефіцієнт × бал іншої шкали",
+    ru: "балл шкалы плюс коэффициент × балл другой шкалы",
+    en: "the scale score plus a coefficient × another scale's score",
+  },
+  "ce.correctionFrom": { uk: "Поправка від шкали", ru: "Поправка от шкалы", en: "Correction from scale" },
+  "ce.passing": { uk: "Проходження", ru: "Прохождение", en: "Taking the test" },
+  "ce.showDynamicsSub": {
+    uk: "графік власних замірів у кабінеті",
+    ru: "график собственных замеров в кабинете",
+    en: "a chart of their own measurements in their space",
+  },
+  "ce.safety": { uk: "Ризик і безпека", ru: "Риск и безопасность", en: "Risk and safety" },
+  "ce.safetyHint": {
+    uk: "Що стається, коли людина обирає критичну відповідь",
+    ru: "Что происходит, когда человек выбирает критический ответ",
+    en: "What happens when a person picks a critical answer",
+  },
+  "ce.of": { uk: "з", ru: "из", en: "of" },
+  "ce.back": { uk: "Назад", ru: "Назад", en: "Back" },
+  "ce.next": { uk: "Далі", ru: "Далее", en: "Next" },
+  "ce.previewAnswer": { uk: "Відповідь у перегляді", ru: "Ответ в предпросмотре", en: "Answer in the preview" },
+  "ce.previewFree": { uk: "Вільна відповідь", ru: "Свободный ответ", en: "Free answer" },
+  "ce.keyHint": {
+    uk: "Оберіть відповіді в перегляді — бали рахує той самий рушій, що й сервер.",
+    ru: "Выберите ответы в предпросмотре — баллы считает тот же движок, что и сервер.",
+    en: "Pick answers in the preview — the scores come from the same engine the server uses.",
+  },
+  "ce.keyNotYet": { uk: "Бал ще не рахується — відповідей замало", ru: "Балл ещё не считается — ответов мало", en: "No score yet — too few answers" },
+  "ce.keyCells": { uk: "Бали за пунктами", ru: "Баллы по пунктам", en: "Scores by item" },
+  /* старт новой методики (pages/constructor/Start.tsx) */
+  "cst.title": { uk: "Нова методика", ru: "Новая методика", en: "New method" },
+  "cst.createdAsDraft": { uk: "Створиться чернеткою", ru: "Создастся черновиком", en: "Created as a draft" },
+  "cst.noPatientSees": {
+    uk: "її не побачить жоден пацієнт, доки ви не опублікуєте",
+    ru: "её не увидит ни один пациент, пока вы не опубликуете",
+    en: "no patient sees it until you publish",
+  },
+  "cst.howToStart": { uk: "З чого почати", ru: "С чего начать", en: "How to start" },
+  "cst.start.specific": { uk: "Конкретний тест", ru: "Конкретный тест", en: "Specific test" },
+  "cst.startSub.specific": {
+    uk: "Спільний набір відповідей на всі питання і шкали з таблицею балів — як СР-45 чи МЛО.",
+    ru: "Общий набор ответов на все вопросы и шкалы с таблицей баллов — как СР-45 или МЛО.",
+    en: "One answer set for all the questions and scales with a score table — like SR-45 or MLO.",
+  },
+  "cst.start.complex": { uk: "Комплексний тест", ru: "Комплексный тест", en: "Complex test" },
+  "cst.startSub.complex": {
+    uk: "У кожного питання свої відповіді з балом, результат — сума за таблицею результатів, як у PHQ-9.",
+    ru: "У каждого вопроса свои ответы с баллом, результат — сумма по таблице результатов, как у PHQ-9.",
+    en: "Each question has its own scored answers; the result is the sum read against result bands, as in PHQ-9.",
+  },
+  "cst.start.copy": {
+    uk: "Копія наявної методики",
+    ru: "Копия существующей методики",
+    en: "Copy of an existing method",
+  },
+  "cst.startSub.copy": {
+    uk: "Почати з копії з вашого каталогу: зміните текст, шкали й ключі лишаться.",
+    ru: "Начать с копии из вашего каталога: поменяете текст, шкалы и ключи останутся.",
+    en: "Start from a copy from your catalogue: change the text, the scales and keys stay.",
+  },
+  "cst.start.import": { uk: "Імпорт з файлу", ru: "Импорт из файла", en: "Import from a file" },
+  "cst.startSub.import": {
+    uk: "JSON у форматі API: з ключами шкал, нормами й таблицями стенів. Для методик на сотні пунктів.",
+    ru: "JSON в формате API: с ключами шкал, нормами и таблицами стенов. Для методик на сотни пунктов.",
+    en: "JSON in the API format, with scale keys, norms and sten tables. For methods with hundreds of items.",
+  },
+  "cst.start.paste": { uk: "Вставити пункти з тексту", ru: "Вставить пункты из текста", en: "Paste items from text" },
+  "cst.startSub.paste": {
+    uk: "Скопіюйте пункти з посібника — по одному на рядок, номери зріжуться самі.",
+    ru: "Скопируйте пункты из пособия — по одному на строку, номера срежутся сами.",
+    en: "Copy the items from the manual, one per line; the numbers are stripped automatically.",
+  },
+  "cst.where": { uk: "Куди створити", ru: "Куда создать", en: "Where to create" },
+  "cst.group": { uk: "Група методик", ru: "Группа методик", en: "Method group" },
+  "cst.folder": { uk: "Папка", ru: "Папка", en: "Folder" },
+  "cst.whereHint": {
+    uk: "Інша група — інший каталог: методика заведеться в корені вибраної групи. Видимість і підрахунок балів зміните в конструкторі.",
+    ru: "Другая группа — другой каталог: методика заведётся в корне выбранной группы. Видимость и подсчёт баллов поменяете в конструкторе.",
+    en: "Another group means another catalogue: the method lands in the root of the chosen group. Visibility and scoring are set in the constructor.",
+  },
+  "cst.copyWhereHint": {
+    uk: "Копія ляже поруч з оригіналом, якщо не вибрати інше місце.",
+    ru: "Копия ляжет рядом с оригиналом, если не выбрать другое место.",
+    en: "The copy lands next to the original unless you pick another place.",
+  },
+  "cst.fromFile": { uk: "з файлу", ru: "из файла", en: "from the file" },
+  "cst.asOriginal": { uk: "як в оригіналі", ru: "как в оригинале", en: "as in the original" },
+  "cst.createDraft": { uk: "Створити чернетку", ru: "Создать черновик", en: "Create a draft" },
+  "cst.pickFile": { uk: "Вибрати файл JSON", ru: "Выбрать файл JSON", en: "Choose a JSON file" },
+  "cst.makeCopy": { uk: "Створити копію", ru: "Создать копию", en: "Make a copy of" },
+  "cst.pickSource": {
+    uk: "Виберіть методику для копії",
+    ru: "Выберите методику для копии",
+    en: "Pick a method to copy",
+  },
+  "cst.pickSourceHint": {
+    uk: "Виберіть методику ліворуч — тут з’являться її обсяг, шкали й перші пункти.",
+    ru: "Выберите методику слева — здесь появятся её объём, шкалы и первые пункты.",
+    en: "Pick a method on the left to see its size, scales and first items here.",
+  },
+  "cst.draftInGroup": { uk: "Чернетка в групі", ru: "Черновик в группе", en: "Draft in group" },
+  "cst.draftNoGroup": { uk: "Чернетка без групи", ru: "Черновик без группы", en: "Draft without a group" },
+  "cst.unsaved": {
+    uk: "Є незбережена нова методика",
+    ru: "Есть несохранённая новая методика",
+    en: "There is an unsaved new method",
+  },
+  "cst.unsavedHint": {
+    uk: "Її правки збереглися в цьому браузері. Продовжте її або відкиньте, щоб почати нову.",
+    ru: "Её правки сохранились в этом браузере. Продолжите её или отбросьте, чтобы начать новую.",
+    en: "Its edits are kept in this browser. Continue it, or discard it to start a new one.",
+  },
+  "cst.continue": { uk: "Продовжити", ru: "Продолжить", en: "Continue" },
+  "cst.copied": { uk: "Копію створено чернеткою", ru: "Копия создана черновиком", en: "Copy created as a draft" },
+  "cst.copyFailed": { uk: "Копію не створено", ru: "Копия не создана", en: "The copy was not created" },
+  "cst.copyTitle": { uk: "Ваш каталог", ru: "Ваш каталог", en: "Your catalogue" },
+  "cst.inCatalogue": { uk: "у каталозі", ru: "в каталоге", en: "in the catalogue" },
+  "cst.searchCatalogue": { uk: "Назва методики", ru: "Название методики", en: "Method name" },
+  "cst.itemsShort": { uk: "пунктів", ru: "пунктов", en: "items" },
+  "cst.nothingFound": {
+    uk: "Нічого не знайдено. Спробуйте іншу назву.",
+    ru: "Ничего не найдено. Попробуйте другое название.",
+    en: "Nothing found. Try another name.",
+  },
+  "cst.volume": { uk: "Обсяг", ru: "Объём", en: "Size" },
+  "cst.scoring": { uk: "Підрахунок", ru: "Подсчёт", en: "Scoring" },
+  "cst.scalesShort": { uk: "шкал", ru: "шкал", en: "scales" },
+  "cst.noScoring": { uk: "без шкал", ru: "без шкал", en: "no scales" },
+  "cst.rights": { uk: "Права на текст", ru: "Права на текст", en: "Text rights" },
+  "cst.rights.own": { uk: "власний текст", ru: "собственный текст", en: "own text" },
+  "cst.rights.licensed": { uk: "потрібна ліцензія", ru: "нужна лицензия", en: "licence required" },
+  "cst.rights.public_domain": { uk: "відкрите використання", ru: "открытое использование", en: "public domain" },
+  "cst.rights.unclear": { uk: "права не з’ясовано", ru: "права не выяснены", en: "rights unclear" },
+  "cst.bands": { uk: "Смуги інтерпретації", ru: "Полосы интерпретации", en: "Interpretation bands" },
+  "cst.firstItems": { uk: "Перші пункти", ru: "Первые пункты", en: "First items" },
+  "cst.andMore": { uk: "і ще", ru: "и ещё", en: "plus" },
+  "cst.importIssues": {
+    uk: "Файл не імпортовано: виправте ці помилки",
+    ru: "Файл не импортирован: исправьте эти ошибки",
+    en: "The file was not imported: fix these errors",
+  },
+  "cst.pasteDraftName": { uk: "вставки пунктів", ru: "вставки пунктов", en: "the item paste" },
+  "cst.pasteSub": {
+    uk: "Нова методика з тексту посібника",
+    ru: "Новая методика из текста пособия",
+    en: "A new method from the manual's text",
+  },
+  "cst.pasteText": { uk: "Текст пунктів", ru: "Текст пунктов", en: "Item text" },
+  "cst.howToRead": { uk: "Як розпізнати", ru: "Как распознать", en: "How to read it" },
+  "cst.optionsLater": {
+    uk: "Варіанти відповідей додасте потім",
+    ru: "Варианты ответов добавите потом",
+    en: "You'll add the answer options later",
+  },
+  "cst.single": { uk: "Одна відповідь", ru: "Один ответ", en: "Single choice" },
+  "cst.result": { uk: "Результат", ru: "Результат", en: "Result" },
+  "cst.nothingYet": {
+    uk: "Вставте текст — тут з’явиться, скільки пунктів розпізнано.",
+    ru: "Вставьте текст — здесь появится, сколько пунктов распознано.",
+    en: "Paste the text to see how many items were recognised.",
   },
 
   // ── v2-patients-b ──

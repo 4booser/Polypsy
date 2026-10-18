@@ -1,5 +1,6 @@
 import { ApiError } from "../../api";
 import { useLang } from "../../lang";
+import { Callout } from "../../ui";
 import { Button } from "../../ui/primitives";
 
 /*
@@ -76,23 +77,24 @@ export function VersionConflict({
   const { ut } = useLang();
   return (
     /* янтарь — «требует внимания»: сохранение не прошло, и решать человеку */
-    <div
+    <Callout
+      kind="warn"
       role="alert"
-      className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-[5px] border border-[color-mix(in_srgb,var(--accent)_45%,transparent)] bg-accent-soft px-4 py-3"
+      className="mb-4"
+      title={ut("co.conflictTitle")}
+      actions={
+        <>
+          <Button variant="primary" size="xs" onClick={onReload}>
+            {ut("co.conflictReload")}
+          </Button>
+          <Button variant="quiet" size="xs" onClick={onShowMine}>
+            {ut("co.conflictShowMine")}
+          </Button>
+        </>
+      }
     >
-      <div className="min-w-0 flex-1">
-        <p className="m-0 text-small font-bold text-text">{ut("co.conflictTitle")}</p>
-        <p className="m-0 mt-[4px] text-small text-text">{message}</p>
-        <p className="m-0 mt-[4px] text-[13px] text-muted">{ut("co.conflictHint")}</p>
-      </div>
-      <div className="flex flex-wrap gap-2">
-        <Button variant="quiet" size="sm" onClick={onShowMine}>
-          {ut("co.conflictShowMine")}
-        </Button>
-        <Button size="sm" onClick={onReload}>
-          {ut("co.conflictReload")}
-        </Button>
-      </div>
-    </div>
+      <p className="m-0 mt-1 text-text">{message}</p>
+      <p className="m-0 mt-1">{ut("co.conflictHint")}</p>
+    </Callout>
   );
 }

@@ -128,7 +128,7 @@ export function railKeyOf(path: string): RailKey | null {
  */
 export function sectionOf(path: string): SectionKey | null {
   if (under(path, "/ops")) return "ops";
-  if (under(path, "/constructor")) return null;
+  if (path.startsWith("/constructor/")) return null;
   switch (railKeyOf(path)) {
     case "patients":
       return "patients";

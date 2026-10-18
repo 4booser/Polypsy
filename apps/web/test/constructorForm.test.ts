@@ -11,10 +11,12 @@ import {
   EMPTY,
   duplicateQuestion,
   keyRows,
+  missingLang,
   moveQuestion,
   newScale,
   oneAtATime,
   removeQuestion,
+  reorderQuestion,
   toPayload,
   type Draft,
   type DraftQuestion,
@@ -118,6 +120,45 @@ describe("перестановка и копия", () => {
     expect(after.questions[3]!.uid).not.toBe(after.questions[2]!.uid);
     expect(after.scales[0]!.key.filter((k) => k.matchKey === "yes").map((k) => k.item).sort()).toEqual([1, 3, 6]);
     expect(keyed(after, 1, null)).toEqual(["D", "E"]);
+  });
+});
+
+describe("перетаскивание пункта", () => {
+  /*
+   * Колонка «Структура» конструктора двигает пункт с места на место, а не
+   * меняет его с соседом: остальные сдвигаются. Ключ обязан пойти за каждым
+   * сдвинутым пунктом — иначе «Так → 1, 3, 5» начнёт считать чужие ответы.
+   */
+  test("вниз через несколько: пункты между сдвигаются вверх, ключ за ними", () => {
+    const after = reorderQuestion(draft(), 0, 3); // A → на место D
+    expect(after.questions.map((x) => x.title.uk)).toEqual(["B", "C", "D", "A", "E"]);
+    expect(keyed(after, 0, "yes")).toEqual(["C", "A", "E"]);
+    expect(keyed(after, 0, "no")).toEqual(["B"]);
+    expect(keyed(after, 1, null)).toEqual(["D", "E"]);
+  });
+
+  test("вверх через несколько: пункты между сдвигаются вниз, ключ за ними", () => {
+    const after = reorderQuestion(draft(), 4, 1); // E → на место B
+    expect(after.questions.map((x) => x.title.uk)).toEqual(["A", "E", "B", "C", "D"]);
+    expect(keyed(after, 0, "yes")).toEqual(["A", "E", "C"]);
+    expect(keyed(after, 1, null)).toEqual(["E", "D"]);
+  });
+
+  test("на то же место или за край — черновик тот же", () => {
+    const d = draft();
+    expect(reorderQuestion(d, 2, 2)).toBe(d);
+    expect(reorderQuestion(d, 0, 9)).toBe(d);
+    expect(reorderQuestion(d, -1, 0)).toBe(d);
+  });
+
+  test("пункты без текста на втором языке — номерами", () => {
+    const d = draft();
+    const one: Draft = {
+      ...d,
+      questions: d.questions.map((x, i) => (i === 1 ? { ...x, title: { uk: "Б", ru: "" } } : x)),
+    };
+    expect(missingLang(one, "ru")).toEqual([2]);
+    expect(missingLang(one, "uk")).toEqual([]);
   });
 });
 
