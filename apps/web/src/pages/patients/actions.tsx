@@ -258,6 +258,23 @@ export function useGroupPane(people: Who[], groups: PatientGroupWithCounts[], on
 
 /* ─────────── «Написати» ─────────── */
 
+/** Черновик письма и отказ его отправки — при адресате */
+export interface MessageDraft {
+  to: string | null;
+  text: string;
+  error: string | null;
+}
+
+export const EMPTY_MESSAGE: MessageDraft = { to: null, text: "", error: null };
+
+/**
+ * Черновик для этого адресата. Набранное другому — не его: письмо,
+ * написанное одному пациенту, не подставляется в «Написати» другому.
+ */
+export function messageDraft(box: MessageDraft, to: string | null): MessageDraft {
+  return to !== null && box.to === to ? box : { to, text: "", error: null };
+}
+
 /**
  * Письмо одному человеку — в его разговор (тот же маршрут, что экран
  * «Листування»). Отправленное открывается из сообщения: перейти к
@@ -267,23 +284,35 @@ export function useMessagePane(person: Who | null, onDone: () => void): PanePart
   const { ut } = useLang();
   const toast = useToast();
   const navigate = useNavigate();
-  const [text, setText] = useState("");
+  /*
+   * Черновик — того, кому его писали. Ящик хранит набранное и после Esc,
+   * и прежде «Написати» у другого человека открывалось с чужим письмом в
+   * поле: одно нажатие «Надіслати» — и слова, написанные одному пациенту,
+   * уходили другому. Теперь текст и отказ живут при адресате (messageDraft).
+   */
+  const to = person?.id ?? null;
+  const [box, setBox] = useState<MessageDraft>(EMPTY_MESSAGE);
+  const { text, error } = messageDraft(box, to);
+  const edit = (patch: Partial<Pick<MessageDraft, "text" | "error">>) => setBox((b) => ({ ...messageDraft(b, to), ...patch }));
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const draft = useMemo(() => text.trim(), [text]);
   const send = async () => {
     if (!person || !draft) return;
+    const id = person.id;
+    /* исход отправки — тому же адресату: ящик тем временем мог открыться для другого */
+    const forId = (patch: Partial<Pick<MessageDraft, "text" | "error">>) =>
+      setBox((b) => (b.to === id ? { ...b, ...patch } : b));
     setBusy(true);
-    setError(null);
+    forId({ error: null });
     try {
-      const res = await api.sendMessage({ patientId: person.id, text: draft });
-      setText("");
+      const res = await api.sendMessage({ patientId: id, text: draft });
+      forId({ text: "" });
       onDone();
       toast(ut("msg.sentTo").replace("{name}", person.name), "ok", {
         action: { label: ut("msg.openThread"), onClick: () => navigate(`/messages/${res.threadId}`) },
       });
     } catch (e) {
-      setError(e instanceof Error ? e.message : ut("ui.actionFailed"));
+      forId({ error: e instanceof Error ? e.message : ut("ui.actionFailed") });
     } finally {
       setBusy(false);
     }
@@ -313,7 +342,7 @@ export function useMessagePane(person: Who | null, onDone: () => void): PanePart
           value={text}
           rows={7}
           maxLength={4000}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => edit({ text: e.target.value })}
           placeholder={ut("msg.placeholder")}
           aria-label={ut("msg.text")}
         />
