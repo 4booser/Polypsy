@@ -118,6 +118,7 @@ import type {
   MailingInput,
   MailingUpdateInput,
   FilterPreset,
+  FilterPresetDetail,
   FilterPresetInput,
   FilterPresetListItem,
   FilterPresetUpdateInput,
@@ -2047,7 +2048,7 @@ export const api = {
     }),
   filterPresets: (q?: string) =>
     unwrap(request<Items<FilterPresetListItem>>(`/api/filter-presets${q ? `?q=${encodeURIComponent(q)}` : ""}`)),
-  filterPreset: (id: string) => request<FilterPresetListItem>(`/api/filter-presets/${id}`),
+  filterPreset: (id: string) => request<FilterPresetDetail>(`/api/filter-presets/${id}`),
   createFilterPreset: (input: FilterPresetInput) =>
     request<FilterPreset>("/api/filter-presets", { method: "POST", body: JSON.stringify(input) }),
   updateFilterPreset: (id: string, patch: FilterPresetUpdateInput) =>

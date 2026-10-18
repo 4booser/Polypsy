@@ -357,10 +357,10 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   /* ── статистика: пресеты фильтров и модели ── */
   "GET /api/filter-presets": { summary: "Свои пресеты фильтров выборки; ?q= — поиск по названию", access: "staff", permission: "statistics.read" },
   "POST /api/filter-presets": { summary: "«Зберегти» фильтр как пресет", access: "staff", permission: "statistics.read", body: filterPresetInputSchema },
-  "GET /api/filter-presets/:id": { summary: "Пресет с числом моделей, которые на него ссылаются", access: "staff", permission: "statistics.read" },
+  "GET /api/filter-presets/:id": { summary: "Пресет с числом моделей, которые на него ссылаются, и видными спрашивающему моделями с номерами выборок", access: "staff", permission: "statistics.read" },
   "PATCH /api/filter-presets/:id": { summary: "Правка названия и критериев пресета", access: "staff", permission: "statistics.read", body: filterPresetUpdateSchema },
   "DELETE /api/filter-presets/:id": { summary: "Удалить пресет; занятый моделями — отказ с их числом", access: "staff", permission: "statistics.read" },
-  "GET /api/stat-models": { summary: "Перечень статистических моделей: ?q=, ?limit=, ?offset= → {items, total}", access: "staff", permission: "statistics.read" },
+  "GET /api/stat-models": { summary: "Перечень статистических моделей: ?q=, ?limit=, ?offset= → {items, total}; в строке — методика с версией, число полос, вопросов, пометок «ВШР» и выборок по пресету", access: "staff", permission: "statistics.read" },
   "POST /api/stat-models": { summary: "«Створити» модель: колонки-выборки с показателями", access: "staff", permission: "statistics.read", body: statModelInputSchema },
   "POST /api/stat-models/run": { summary: "«Порівняти» без сохранения; скрыто всё, что вместе с остальным ответом называет людей; фильтры — в журнал", access: "staff", permission: "statistics.read", body: statModelRunSchema },
   "GET /api/stat-models/:id": { summary: "Модель с колонками", access: "staff", permission: "statistics.read" },

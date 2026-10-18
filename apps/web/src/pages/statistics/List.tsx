@@ -1,52 +1,59 @@
 import { useCallback, useEffect, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import type { StatModelListItem } from "@quizzy/shared";
 import { api } from "../../api";
 import { useLang } from "../../lang";
-import { IconSearchGlass, Loading } from "../../ui";
-import { IconPlusThick } from "../../ui/glyphs";
-import { Page } from "../../ui/layout";
+import {
+  DataTable,
+  Empty,
+  FilterBar,
+  Ic,
+  KbdHints,
+  KV,
+  Loading,
+  Modal,
+  Tooltip,
+  useAction,
+  useHotkeys,
+  useToast,
+  type Column,
+} from "../../ui";
+import { Page, Panel } from "../../ui/layout";
+import { ActionMenu } from "../../ui/menu";
 import { Pager } from "../../ui/pager";
 import { DEFAULT_PER, offsetPageCount, pageFrom, perFrom } from "../../ui/paging";
-import { GlyphLink, Input } from "../../ui/primitives";
+import { Button, ButtonLink } from "../../ui/primitives";
 import { useResource } from "../../useResource";
-import { STATS_CHART, STATS_LIST, STATS_NEW, statHref, statListQuery } from "./model";
-import { IconViewChart, IconViewList } from "./parts";
+import {
+  MAX_SAMPLES,
+  STATS_FILTERS,
+  STATS_NEW,
+  chartHref,
+  statEditHref,
+  statHref,
+  statListQuery,
+} from "./model";
+import { SampleBadge, St } from "./parts";
 
 /*
- * «Статистика — перелік статистики», кадр f08.
+ * «Статистичні моделі» — перечень (дизайн statistics-models).
  *
- * Строка списка и сетка в две колонки — те же, что у перечня аналитики f10
- * (pages/analytics/List.tsx): опись кадров прямо называет их двойниками, и
- * замеры сходятся до пикселя — колонка 600, шаг колонок 630, строка 82,5,
- * подложка наведения #f7f5fa. Все числа сетки взяты оттуда с их доводами.
+ * Таблица: модель с описанием, тест с версией, показатели и «ВШР», выборки
+ * номерами, чем выборки отобраны — всё из сводки строки сервера (GET
+ * /api/stat-models). Действия строки — «Порівняти», правка показателей и
+ * меню: график, удаление с подтверждением. Нажатие на строку открывает
+ * модель.
  *
- * Чем f08 отличается от f10 — и как это легло на код (замеры f08, начало
- * колонки содержимого на 200 кадра 1600, низ полосы шапки = 100):
- *
- *   «Статистика» 24/700 + две иконки справа     → первая строка шапки: 30 от
- *   (капитель 137, иконки 139…165, 27×27,           полосы до строки 36, иконки
- *   зазор 14)                                        прижаты к её низу
- *   «Перелік статистики» + поиск + «+» + страницы → вторая строка, 29 ниже
- *   (поле 195…230, ширина 651)                       первой; всё остальное — как
- *                                                    у f10
- *   блок страниц отодвинут от «+» на 64, а не 78   → 51 справа от «+» (+13 зазора)
- *   первая строка списка на 16 ниже поля, а не 6   → 10 под второй строкой
- *
- * Две строки шапки не укладываются в рамку Page с одной строкой, поэтому
- * заголовок рамке отдан скрытым (`titleHidden`), а обе строки печатаются в
- * полосе инструментов. Первая поднята на 10 (`-mt-[10px]`): рамка даёт 40
- * (`snug`), кадр — 30, а заводить в общей рамке третье число ради одного
- * экрана значило бы править модуль, который правят параллельно.
- *
- * Иконки вида: «діаграма» ведёт на экран f24 (диаграмма по выбранной
- * модели), «перелік» — сюда же и помечена aria-current. Цвет у обеих
- * одинаковый, как на кадре: текущий вид называется диктору, а не цветом.
- *
- * Данные — GET /api/stat-models: поиск и страницы на сервере (?q, ?limit,
- * ?offset → {items, total}), состояние экрана — в адресе, как у каталога.
+ * Поиск и страницы — на сервере (?q, ?limit, ?offset → {items, total}),
+ * состояние — в адресе, как у каталога методик. Пилюль вида «З ВШР» и
+ * чипов «Тест»/«Пресет» из дизайна здесь нет: сервер их не фильтрует, а
+ * фильтр по одной странице врал бы о числах.
  */
 export default function StatList() {
   const { ut } = useLang();
+  const navigate = useNavigate();
+  const toast = useToast();
+  const { run, busy } = useAction();
   const [params, setParams] = useSearchParams();
   const q = params.get("q") ?? "";
   const page = pageFrom(params.get("page"));
@@ -86,99 +93,258 @@ export default function StatList() {
     if (list.data && page > pages) update({ page: pages > 1 ? String(pages) : null });
   }, [list.data, page, pages, update]);
 
+  useHotkeys({ n: () => navigate(STATS_NEW) });
+
+  const [doomed, setDoomed] = useState<StatModelListItem | null>(null);
+  const remove = (m: StatModelListItem) =>
+    void run(async () => {
+      await api.deleteStatModel(m.id);
+      setDoomed(null);
+      toast(ut("st.deleted"), "ok");
+      list.reload();
+    });
+
+  const columns: Column<StatModelListItem>[] = [
+    {
+      key: "model",
+      header: ut("st.colModel"),
+      required: true,
+      render: (m) => (
+        <div className="min-w-0 py-1">
+          <Link
+            to={statHref(m.id)}
+            className="text-body font-extrabold text-text no-underline hover:text-violet-ink hover:underline"
+          >
+            {m.title}
+          </Link>
+          {m.description ? (
+            <p className="m-0 mt-0.5 line-clamp-2 max-w-[56ch] text-small text-text-2">{m.description}</p>
+          ) : null}
+        </div>
+      ),
+    },
+    {
+      key: "test",
+      header: ut("st.colTest"),
+      required: true,
+      width: 190,
+      render: (m) => (
+        <div className="min-w-0 max-w-[190px]" title={m.surveyTitle ?? undefined}>
+          <span className="block truncate font-bold text-text">{m.surveyTitle ?? ut("st.testHidden")}</span>
+          {m.versionNumber ? (
+            <small className="block text-caption text-muted">{ut("st.versionN").replace("{n}", String(m.versionNumber))}</small>
+          ) : null}
+        </div>
+      ),
+    },
+    {
+      key: "indicators",
+      header: ut("st.colIndicators"),
+      required: true,
+      width: 170,
+      render: (m) => (
+        <div>
+          <span className="block text-text">
+            {[
+              m.bandCount ? ut("st.bandsN").replace("{n}", String(m.bandCount)) : null,
+              m.questionCount ? ut("st.questionsN").replace("{n}", String(m.questionCount)) : null,
+            ]
+              .filter(Boolean)
+              .join(", ")}
+          </span>
+          <small className="block text-caption text-muted">
+            {m.highRiskCount ? ut("st.vshrN").replace("{n}", String(m.highRiskCount)) : ut("st.noVshr")}
+          </small>
+        </div>
+      ),
+    },
+    {
+      key: "samples",
+      header: ut("st.colSamples"),
+      required: true,
+      width: 170,
+      render: (m) => (
+        <div className="flex items-center gap-1">
+          {Array.from({ length: Math.min(m.columnCount, 4) }, (_, i) => (
+            <SampleBadge key={i} n={i + 1} of={m.columnCount} small />
+          ))}
+          <span className="ml-1 whitespace-nowrap text-caption text-muted">
+            {ut("kit.ofTotal").replace("{n}", String(m.columnCount)).replace("{total}", String(MAX_SAMPLES))}
+          </span>
+        </div>
+      ),
+    },
+    {
+      key: "filters",
+      header: ut("st.colFilters"),
+      required: true,
+      width: 150,
+      render: (m) => {
+        const own = m.columnCount - m.presetColumns;
+        return (
+          <span className="block text-text-2">
+            {own ? <span className="block">{ut("st.ownN").replace("{n}", String(own))}</span> : null}
+            {m.presetColumns ? (
+              <span className="block">{ut("st.presetN").replace("{n}", String(m.presetColumns))}</span>
+            ) : null}
+          </span>
+        );
+      },
+    },
+  ];
+
+  const total = list.data?.total ?? 0;
+
   return (
     <Page
-      title={ut("top.statistics")}
-      titleHidden
-      snug
-      toolbar={
-        <div className="-mt-[10px] mb-[10px] flex w-full min-w-0 flex-col">
-          <div className="flex h-9 items-center justify-between">
-            {/*
-              Видимое имя раздела — не второй <h1>: он уже объявлен рамке
-              скрытым ровно этими словами, и диктор прочитал бы его дважды.
-            */}
-            <p aria-hidden className="m-0 text-[24px] font-bold leading-tight text-primary">
-              {ut("top.statistics")}
-            </p>
-            <nav aria-label={ut("st.views")} className="flex items-center gap-[14px] self-end">
-              <GlyphLink to={STATS_CHART} aria-label={ut("st.viewChart")}>
-                <IconViewChart />
-              </GlyphLink>
-              <GlyphLink to={STATS_LIST} aria-label={ut("st.viewList")} aria-current="page">
-                <IconViewList />
-              </GlyphLink>
-            </nav>
-          </div>
-          <div className="mt-[29px] flex min-w-0 items-center gap-[13px] max-[900px]:flex-wrap">
-            <h2 className="m-0 shrink-0 text-[24px] font-bold leading-tight text-primary">{ut("st.listTitle")}</h2>
-            <div className="relative min-w-0 flex-1">
-              {/* имя полю — aria-label: на кадре поле поиска пустое, без подписи внутри */}
-              <Input
-                look="outline"
-                aria-label={ut("st.search")}
-                value={q}
-                onChange={(e) => update({ q: e.target.value, page: null })}
-                className="pr-[44px]"
-                autoComplete="off"
-                maxLength={200}
-              />
-              <span
-                aria-hidden
-                className="pointer-events-none absolute right-[12px] top-1/2 -translate-y-1/2 text-text-2 [&>svg]:size-[22px]"
-              >
-                <IconSearchGlass />
-              </span>
-            </div>
-            <GlyphLink to={STATS_NEW} aria-label={ut("st.add")}>
-              <IconPlusThick />
-            </GlyphLink>
-            {/* 51 + 13 зазора = 64 от «+» до блока страниц — замер f08 (1121 → 1185) */}
-            <div className="ml-[51px] shrink-0 max-[900px]:ml-0">
-              <Pager
-                page={page}
-                pages={pages}
-                per={per}
-                onPer={(n) => update({ per: n === DEFAULT_PER ? null : String(n), page: null })}
-                onPage={(n) => update({ page: n > 1 ? String(n) : null })}
-              />
-            </div>
-          </div>
-        </div>
+      title={ut("sn.statModels")}
+      meta={list.data ? [ut("st.modelsCount").replace("{n}", String(total)), ut("st.listLead")] : undefined}
+      actions={
+        <>
+          <ButtonLink to={STATS_FILTERS}>
+            <St.sliders />
+            {ut("st.presets")}
+          </ButtonLink>
+          <Tooltip label={ut("st.newModel")} kbd="N">
+            <span className="inline-flex">
+              <ButtonLink to={STATS_NEW} variant="primary">
+                <Ic.plus />
+                {ut("st.newModel")}
+              </ButtonLink>
+            </span>
+          </Tooltip>
+        </>
       }
     >
-      {list.error ? (
-        <Loading error={list.error} onRetry={list.reload} />
-      ) : !list.data ? (
-        <Loading rows={5} />
-      ) : list.data.items.length === 0 ? (
-        <p className="m-0 py-[24px] text-[13px] text-muted">{dq.trim() ? ut("am.emptySearch") : ut("st.empty")}</p>
-      ) : (
-        /*
-          Сетка — копия перечня аналитики f10 вместе с её доводами (600 +
-          30, строка 82,5, одна колонка ниже 1260): кадры f08 и f10 — один
-          макет с разными подписями.
-        */
-        <ul className="m-0 w-[1230px] list-none columns-2 gap-x-[30px] p-0 max-[1259px]:w-full max-[1259px]:columns-1">
-          {list.data.items.map((m) => (
-            <li
-              key={m.id}
-              className="flex break-inside-avoid gap-0 pb-[10px] pt-[13px] mb-[3.5px] hover:bg-primary-tint"
-            >
-              <div className="w-[172px] shrink-0 pr-[24px]">
-                <Link
-                  to={statHref(m.id)}
-                  className="text-[17px] font-bold leading-[20px] text-primary no-underline hover:underline"
+      <Panel flush>
+        <div className="px-4 pb-3 pt-3.5">
+          <FilterBar
+            search={{ value: q, onChange: (v) => update({ q: v, page: null }), placeholder: ut("st.search"), width: 320 }}
+            count={list.data ? { shown: list.data.items.length, total } : undefined}
+          />
+        </div>
+        {list.error ? (
+          <div className="px-4 pb-4">
+            <Loading bare error={list.error} onRetry={list.reload} />
+          </div>
+        ) : !list.data ? (
+          <div className="px-4 pb-4">
+            <Loading bare rows={5} />
+          </div>
+        ) : (
+          <DataTable
+            rows={list.data.items}
+            columns={columns}
+            rowKey={(m) => m.id}
+            label={ut("sn.statModels")}
+            onRowClick={(m) => navigate(statHref(m.id))}
+            hotkeys
+            sticky={false}
+            empty={
+              dq.trim() ? (
+                <Empty compact title={ut("am.emptySearch")} hint={ut("st.searchHint")} />
+              ) : (
+                <Empty
+                  title={ut("st.empty")}
+                  hint={ut("st.emptyHint")}
+                  icon={<St.sigma />}
+                  action={
+                    <ButtonLink to={STATS_NEW} variant="primary">
+                      <Ic.plus />
+                      {ut("st.newModel")}
+                    </ButtonLink>
+                  }
+                />
+              )
+            }
+            rowActions={(m) => (
+              <>
+                <ButtonLink to={statHref(m.id)} size="xs">
+                  <St.play />
+                  {ut("st.compare")}
+                </ButtonLink>
+                <ButtonLink
+                  to={statEditHref(m.id)}
+                  size="icon-sm"
+                  variant="quiet"
+                  aria-label={ut("st.editIndicators")}
+                  title={ut("st.editIndicators")}
                 >
-                  {m.title}
-                </Link>
-              </div>
-              {/* пустое описание — пустая ячейка: заглушки на кадре нет */}
-              <p className="m-0 min-w-0 flex-1 text-[13px] leading-[14px] text-muted">{m.description}</p>
-            </li>
-          ))}
-        </ul>
-      )}
+                  <St.pencil />
+                </ButtonLink>
+                <ActionMenu
+                  triggerSize="icon-sm"
+                  entries={[
+                    { label: ut("st.openChart"), to: chartHref(m.id), icon: <St.chartColumn size={15} /> },
+                    {
+                      label: ut("st.deleteModel"),
+                      onSelect: () => setDoomed(m),
+                      danger: true,
+                      ruled: true,
+                      icon: <St.trash size={15} />,
+                    },
+                  ]}
+                />
+              </>
+            )}
+          />
+        )}
+        {list.data && total > 0 ? (
+          <div className="border-t border-divider px-4 py-3">
+            <Pager
+              page={page}
+              pages={pages}
+              per={per}
+              total={total}
+              onPer={(n) => update({ per: n === DEFAULT_PER ? null : String(n), page: null })}
+              onPage={(n) => update({ page: n > 1 ? String(n) : null })}
+            />
+          </div>
+        ) : null}
+        <KbdHints
+          bar
+          keys={[
+            ["J K", ut("st.kRows")],
+            ["/", ut("hotkey.search")],
+            ["Enter", ut("st.kCompare")],
+            ["N", ut("st.newModel")],
+          ]}
+        />
+      </Panel>
+
+      <Panel title={ut("st.howTitle")} icon={<St.book />} sub={ut("st.howSub")} className="mt-4">
+        <KV
+          w={170}
+          rows={[
+            [ut("st.howWhat"), ut("st.howWhatText")],
+            [ut("st.howWho"), ut("st.howWhoText")],
+            [ut("st.howHidden"), ut("st.howHiddenText")],
+            [ut("st.howSees"), ut("st.howSeesText")],
+          ]}
+        />
+      </Panel>
+
+      {doomed ? (
+        <Modal
+          title={ut("st.deleteConfirm")}
+          sub={ut("st.cannotUndo")}
+          icon={<St.trash />}
+          tone="warn"
+          onClose={() => setDoomed(null)}
+          footer={
+            <>
+              <Button variant="primary" icon={<St.trash />} disabled={busy} onClick={() => remove(doomed)}>
+                {ut("st.deleteModel")}
+              </Button>
+              <Button onClick={() => setDoomed(null)}>{ut("common.cancel")}</Button>
+            </>
+          }
+        >
+          <p className="m-0 pt-3.5 text-body text-text-2">
+            {ut("st.deleteText").replace("{title}", doomed.title)}
+          </p>
+        </Modal>
+      ) : null}
     </Page>
   );
 }

@@ -1,81 +1,79 @@
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import type { FilterPresetListItem, SampleFilters, StatModelColumn, StatRunResult } from "@quizzy/shared";
+import type {
+  FilterPresetListItem,
+  SampleFilters,
+  StatCell,
+  StatModelColumn,
+  StatRunColumn,
+  StatRunResult,
+} from "@quizzy/shared";
 import { api } from "../../api";
+import { GroupedHBars, type SeriesKey, SeriesLegend } from "../../charts/clinical";
 import { useLang } from "../../lang";
-import { IconSearchGlass, Loading, isTopLayer, useAction, useFocusTrap } from "../../ui";
+import { Callout, Empty, Ic, Loading, Modal, SearchField, Tooltip, useAction } from "../../ui";
 import { cx } from "../../ui/cx";
-import { IconGear } from "../../ui/glyphs";
-import { Page } from "../../ui/layout";
-import { ActionMenu, type MenuEntry } from "../../ui/menu";
-import { Button } from "../../ui/primitives";
+import { Page, Panel } from "../../ui/layout";
+import { ActionMenu } from "../../ui/menu";
+import { Button, ButtonLink, Checkbox, ErrorText, Segmented, SeverityTag, Tag } from "../../ui/primitives";
 import { useResource } from "../../useResource";
 import {
   CRITERION_LABEL,
   type Criterion,
+  HIDDEN_MARK,
+  MAX_SAMPLES,
+  type ReportRow,
   STATS_FILTERS,
   STATS_LIST,
   STATS_NEW,
-  cellText,
+  applyPreset,
+  addSample,
+  cellAt,
+  cellShare,
   columnInput,
   columnsChanged,
   criteriaOf,
   criterionValue,
-  describeSample,
-  indicatorsOf,
+  isFigureRow,
   pickedModel,
+  reportRows,
   withoutCriteria,
 } from "./model";
-import { CellText } from "./parts";
+import {
+  CRITERION_ICON,
+  CellText,
+  CriteriaChips,
+  HiddenWhy,
+  SampleBadge,
+  St,
+  VshrMark,
+  sampleColor,
+  useSampleName,
+} from "./parts";
 
 /*
- * «Статистика» — кадр f24: пресеты по выборкам, «Оновити», перечень
- * моделей, диаграмма с легендой и «Керування фільтрами». Дверь сюда —
- * иконка «діаграма» строки заголовка f08; обратно — пункт «Керувати стат.
- * моделями» шестерёнки.
+ * Графік — дизайн statistics-chart и окно statistics-apply-preset-dialog.
  *
- * Как прочитан кадр (у него нет подписей к действиям, и это решение, а не
- * буква):
+ * Сверху — выбор модели (нажатие выбирает и сразу считает) и пресеты
+ * фильтров (нажатие открывает окно: к каким выборкам применить). Ниже —
+ * выборки модели строками с чипами критериев: нажатый чип участвует в
+ * расчёте, отпущенный снят на этот запуск. «Оновити» считает то, что на
+ * экране: нетронутую модель — POST /:id/run, с правками — превью без
+ * сохранения; «Зберегти» кладёт правки в модель.
  *
- *   строки «Пресет №124 [чипы]»   → выборки выбранной модели, по строке на
- *                                   колонку: имя пресета (или подпись колонки)
- *                                   и чипы её критериев. Чип — кнопка: нажатый
- *                                   (залитый) критерий участвует в расчёте,
- *                                   отпущенный (контур, как «Стать» у №124)
- *                                   на этот расчёт снят;
- *   «Оновити»                     → расчёт выбранной модели с тем, что сейчас
- *                                   на экране: нетронутая — POST /:id/run,
- *                                   с правками — превью без сохранения;
- *   пять строк моделей            → выбор модели (подсвечена выбранная);
- *                                   нажатие выбирает и сразу считает;
- *   столбики парами светлый/тёмный → доля по каждому показателю, светлый —
- *                                   первая выборка, тёмный — вторая;
- *   легенда                       → тест, модель, по каждой группе — выборка
- *                                   словами и доли по порядку столбиков;
- *   «Керування фільтрами»         → пресеты с поиском; нажатие открывает окно
- *                                   с флажками выборок — к каким применить
- *                                   пресет, «Застосувати / Скасувати»;
- *   шестерёнка                    → «Керувати фільтрами» (форма f23),
- *                                   «Керувати стат. моделями» (перечень f08),
- *                                   «Зберегти» (применённые пресеты и снятые
- *                                   чипы — в модель).
- *
- * Английские строки легенды («Example test», «Group 1: Males…») — наполнение
- * макета, а не текст интерфейса: здесь на их месте данные расчёта и слова
- * словаря. Чип «Населенный пункт» кадра набран с русской «ы» — опечатка
- * макета; чип подписан словом строки фильтра «Населений пункт».
- *
- * Скрытое сервером не рисуется столбиком вовсе: на его месте прочерк у
- * основания, в легенде — прочерк. Высота столбика — это число, и столбик
- * «примерно такой высоты» выдавал бы то, что сервер спрятал.
+ * Доли — сгруппированными полосами (GroupedHBars набора): строка —
+ * показатель, полоса — выборка цветом её ряда. Скрытое сервером — «n < 5»
+ * с объяснением приватности; число скрытой ячейки на экран не доезжает
+ * (cellShare). Переключатель «Діаграма / Таблиця» — те же числа таблицей.
  */
 
-/** Сколько моделей в перечне экрана — пять, как на кадре; остальные — в перечне f08 */
+/** Сколько моделей в выборе — пять; остальные — в перечне */
 const SHOWN_MODELS = 5;
 
 export default function StatChart() {
   const { ut } = useLang();
   const { run, busy } = useAction();
+  const sampleName = useSampleName();
   const [params, setParams] = useSearchParams();
 
   const models = useResource(() => api.statModels(), []);
@@ -88,12 +86,14 @@ export default function StatChart() {
   const [work, setWork] = useState<StatModelColumn[] | null>(null);
   const [off, setOff] = useState<Criterion[][]>([]);
   const [result, setResult] = useState<StatRunResult | null>(null);
+  /* с какими колонками посчитан результат: после правки экран говорит, что числа старые */
+  const [ranWith, setRanWith] = useState<string | null>(null);
+  const [view, setView] = useState<"chart" | "table">("chart");
+  const [applying, setApplying] = useState<FilterPresetListItem | null>(null);
   /*
-   * Номер расчёта. Расчёт — действие человека («порахувати», выбор модели в
-   * перечне), а не загрузка экрана, и остаётся действием (занятость кнопки,
-   * отказ всплывашкой). Но ответ его применяется только последний (волна 13):
-   * выбрал модель А, не дождался, выбрал Б — расчёт по А, пришедший позже,
-   * вставал на экран под названием Б.
+   * Номер расчёта. Расчёт — действие человека, а не загрузка экрана, но ответ
+   * его применяется только последний: выбрал модель А, не дождался, выбрал Б —
+   * расчёт по А, пришедший позже, вставал на экран под названием Б.
    */
   const runNo = useRef(0);
   useEffect(() => {
@@ -102,6 +102,7 @@ export default function StatChart() {
     setWork(model.data.columns);
     setOff(model.data.columns.map(() => []));
     setResult(null);
+    setRanWith(null);
   }, [model.data]);
 
   const presetOf = (c: StatModelColumn) => (c.presetId ? presets.data?.find((p) => p.id === c.presetId) : undefined);
@@ -121,6 +122,7 @@ export default function StatChart() {
     [work, off, presets.data],
   );
   const changed = !!(model.data && payload && columnsChanged(model.data.columns, payload));
+  const stale = !!(result && payload && ranWith !== JSON.stringify(payload.map(columnInput)));
 
   const refresh = (cols = payload, id = picked, title = model.data?.title) =>
     void run(async () => {
@@ -130,6 +132,7 @@ export default function StatChart() {
       const next = same ? await api.runStatModel(id) : await api.previewStatModel(cols.map(columnInput), title);
       if (ticket !== runNo.current) return false;
       setResult(next);
+      setRanWith(JSON.stringify(cols.map(columnInput)));
     });
 
   const save = () =>
@@ -160,38 +163,45 @@ export default function StatChart() {
     /* срабатывает на приезд выбранной модели, а не на каждую перерисовку refresh */
   }, [autoRun, model.data, work]);
 
-  const entries: MenuEntry[] = [
-    { label: ut("st.manageFilters"), to: STATS_FILTERS },
-    { label: ut("st.manageModels"), to: STATS_LIST },
-    { label: ut("common.save"), onSelect: save, disabled: busy || !changed, hint: ut("st.nothingToSave") },
-  ];
-
   const list = models.data?.items ?? [];
   const shown = list.slice(0, SHOWN_MODELS);
   /* выбранная модель за пятой строкой всё равно видна: иначе подсветка терялась бы */
   const selected = list.find((m) => m.id === picked);
   if (selected && !shown.includes(selected)) shown.push(selected);
 
+  const nameOf = (c: StatModelColumn, i: number) => sampleName(c.title, presetOf(c)?.title, i);
+
   return (
     <Page
-      title={ut("top.statistics")}
-      snug
-      tight
+      title={ut("sn.chart")}
+      meta={[ut("st.chartMeta"), ut("st.chartLead")]}
       actions={
-        /*
-          Шестерня f24: чернила 1365…1389 при правом крае колонки 1400 — 11
-          от края; плашка 209 шириной, пункты 15/400 серым с шагом 30 (рамка
-          #999999 1189…1397 × 151…245). Наезд плашки на глиф кадра не
-          повторяется — по той же причине, что у формы рассылки (MailingEditor):
-          это небрежность рисунка, а зазор каркаса не прячет знак меню.
-        */
-        <ActionMenu
-          label={ut("st.menu")}
-          glyph={<IconGear />}
-          entries={entries}
-          className="mr-[11px]"
-          plateClassName="min-w-[209px]"
-        />
+        <>
+          <Tooltip label={changed ? ut("st.saveChart") : ut("st.nothingToSave")}>
+            <span className="inline-flex">
+              <Button icon={<St.save />} disabled={busy || !changed} onClick={save}>
+                {ut("common.save")}
+              </Button>
+            </span>
+          </Tooltip>
+          <ActionMenu
+            label={ut("st.menu")}
+            glyph={<St.settings size={18} />}
+            triggerSize="icon"
+            entries={[
+              { label: ut("st.manageFilters"), to: STATS_FILTERS, icon: <St.sliders size={15} /> },
+              { label: ut("st.manageModels"), to: STATS_LIST, icon: <St.sigma size={15} /> },
+              {
+                label: ut("common.save"),
+                onSelect: save,
+                disabled: busy || !changed,
+                hint: ut("st.nothingToSave"),
+                ruled: true,
+                icon: <St.save size={15} />,
+              },
+            ]}
+          />
+        </>
       }
     >
       {models.error ? (
@@ -199,462 +209,753 @@ export default function StatChart() {
       ) : !models.data ? (
         <Loading rows={6} />
       ) : list.length === 0 ? (
-        <p className="m-0 mt-[34px] text-[15px] text-muted">
-          {ut("st.empty")}.{" "}
-          <Link to={STATS_NEW} className="font-bold text-primary">
-            {ut("st.add")}
-          </Link>
-        </p>
+        <Panel>
+          <Empty
+            title={ut("st.empty")}
+            hint={ut("st.emptyHint")}
+            icon={<St.sigma />}
+            action={
+              <ButtonLink to={STATS_NEW} variant="primary">
+                <Ic.plus />
+                {ut("st.newModel")}
+              </ButtonLink>
+            }
+          />
+        </Panel>
       ) : (
-        <>
-          {/* строки выборок: чипы 30 высотой с шагом 40, первая строка 34 ниже заголовка (170 → 204) */}
-          <div className="mt-[34px] flex flex-col gap-[10px]">
+        <div className="flex flex-col gap-4">
+          <div className="grid items-stretch gap-4 grid-cols-[minmax(0,1fr)_380px] max-[1180px]:grid-cols-1">
+            <Panel title={ut("st.modelPanel")} icon={<St.sigma />} sub={ut("st.modelPanelSub")} flush>
+              <ul className="m-0 grid list-none grid-cols-2 gap-1 px-1.5 pb-2 max-[760px]:grid-cols-1">
+                {shown.map((m) => {
+                  const on = m.id === picked;
+                  return (
+                    <li key={m.id}>
+                      <button
+                        type="button"
+                        aria-current={on ? "true" : undefined}
+                        onClick={() => {
+                          pick(m.id);
+                          setAutoRun(m.id);
+                        }}
+                        className={cx(
+                          "flex w-full min-h-0 cursor-pointer items-center gap-2 rounded-control border-0 px-2.5 py-2 text-left",
+                          "outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]",
+                          on
+                            ? "bg-violet-tint shadow-[inset_0_0_0_1px_var(--vline)]"
+                            : "bg-transparent hover:bg-sunk",
+                        )}
+                      >
+                        <span className="min-w-0 flex-1">
+                          <span className={cx("block truncate font-bold", on ? "text-violet-ink" : "text-text")}>
+                            {m.title}
+                          </span>
+                          <small className="block truncate text-caption text-muted">
+                            {m.surveyTitle ? `${m.surveyTitle}, ` : ""}
+                            {ut("st.samplesN").replace("{n}", String(m.columnCount))}
+                          </small>
+                        </span>
+                        {on ? <Ic.check size={15} className="text-violet-ink" /> : null}
+                      </button>
+                    </li>
+                  );
+                })}
+                <li>
+                  <Link
+                    to={STATS_LIST}
+                    className="flex items-center gap-2 rounded-control px-2.5 py-2 no-underline hover:bg-sunk"
+                  >
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate font-bold text-text">
+                        {ut("st.allModels").replace("{n}", String(list.length))}
+                      </span>
+                      <small className="block text-caption text-muted">{ut("st.allModelsSub")}</small>
+                    </span>
+                    <St.arrowUpRight size={15} className="text-muted" />
+                  </Link>
+                </li>
+              </ul>
+            </Panel>
+            <PresetPanel
+              presets={presets.data}
+              error={presets.error}
+              onRetry={presets.reload}
+              disabled={!work?.length}
+              onPick={setApplying}
+            />
+          </div>
+
+          <Panel
+            title={ut("st.samplesPanel")}
+            icon={<St.usersRound />}
+            sub={ut("st.samplesPanelSub")}
+            actions={
+              <>
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  icon={<Ic.plus />}
+                  disabled={!work || work.length >= MAX_SAMPLES}
+                  onClick={() => {
+                    if (!work) return;
+                    setWork(addSample(work));
+                    setOff((o) => [...o, []]);
+                  }}
+                >
+                  {ut("st.sample")}
+                </Button>
+                <Button
+                  variant="primary"
+                  size="xs"
+                  icon={<Ic.refresh />}
+                  disabled={busy || !payload || !!model.error}
+                  onClick={() => refresh()}
+                >
+                  {ut("st.refresh")}
+                </Button>
+              </>
+            }
+          >
             {/*
               Модель есть в перечне, а сама не загрузилась (удалили между
               двумя запросами, отозвали доступ) — отказ словами и
               «повторити», а не пустое место и не строки прежней модели под
               подсвеченной новой.
             */}
-            {model.error ? <Loading error={model.error} onRetry={model.reload} /> : null}
-            {(model.error ? [] : (work ?? [])).map((c, i) => (
-              <SampleLine
-                key={i}
-                label={presetOf(c)?.title ?? c.title ?? `${ut("st.sample")} ${i + 1}`}
-                criteria={criteriaOf(baseOf(c))}
-                filters={baseOf(c)}
-                off={off[i] ?? []}
-                onToggle={(k) =>
-                  setOff((o) =>
-                    o.map((list, j) => (j !== i ? list : list.includes(k) ? list.filter((x) => x !== k) : [...list, k])),
-                  )
-                }
-              />
-            ))}
-          </div>
-          {/* «Оновити» 215×45 правым краем по колонке — вплотную под строками (273 → 274) */}
-          <div className="mt-[1px] flex justify-end">
-            <Button size="md" className="w-[215px]" disabled={busy || !payload || !!model.error} onClick={() => refresh()}>
-              {ut("st.refresh")}
-            </Button>
-          </div>
+            {model.error ? (
+              <Loading bare error={model.error} onRetry={model.reload} />
+            ) : !work ? (
+              <Loading bare rows={2} />
+            ) : (
+              <div className="flex flex-col">
+                {work.map((c, i) => (
+                  <SampleLine
+                    key={i}
+                    index={i}
+                    of={work.length}
+                    name={nameOf(c, i)}
+                    filters={baseOf(c)}
+                    preset={!!c.presetId}
+                    off={off[i] ?? []}
+                    res={stale ? undefined : result?.columns[i]}
+                    onToggle={(k) =>
+                      setOff((o) =>
+                        o.map((one, j) => (j !== i ? one : one.includes(k) ? one.filter((x) => x !== k) : [...one, k])),
+                      )
+                    }
+                  />
+                ))}
+              </div>
+            )}
+          </Panel>
 
-          <hr className="m-0 mt-[17px] h-[2px] border-0 bg-hairline" />
+          <Shares
+            result={result}
+            stale={stale}
+            title={model.data?.title ?? ""}
+            columns={work ?? []}
+            names={(work ?? []).map((c, i) => nameOf(c, i))}
+            filtersOf={(i) => (payload?.[i] ? baseOfPayload(payload[i]!, presetOf) : {})}
+            view={view}
+            onView={setView}
+          />
+        </div>
+      )}
 
-          {/* перечень моделей: строки 56, выбранная подсвечена #f7f5fa, как строка под курсором на кадре */}
-          <ul aria-label={ut("st.listTitle")} className="m-0 mt-[3px] list-none p-0">
-            {shown.map((m) => (
-              <li key={m.id}>
+      {applying && work ? (
+        <ApplyPreset
+          preset={applying}
+          modelTitle={model.data?.title ?? ""}
+          columns={work}
+          names={work.map((c, i) => nameOf(c, i))}
+          presetTitleOf={(c) => presetOf(c)?.title ?? null}
+          filtersOf={baseOf}
+          result={stale ? null : result}
+          onApply={(targets, extra) => {
+            setWork(applyPreset(work, applying.id, targets, extra));
+            setOff((o) => [...o.map((one, i) => (targets.includes(i) ? [] : one)), ...(extra ? [[]] : [])]);
+            setApplying(null);
+          }}
+          onClose={() => setApplying(null)}
+        />
+      ) : null}
+    </Page>
+  );
+}
+
+/** Фильтры, с которыми колонка уйдёт в расчёт: пресет целиком или свои */
+function baseOfPayload(c: StatModelColumn, presetOf: (c: StatModelColumn) => FilterPresetListItem | undefined): SampleFilters {
+  return c.presetId ? (presetOf(c)?.criteria ?? {}) : (c.filters ?? {});
+}
+
+/* ─────────── пресеты ─────────── */
+
+function PresetPanel({
+  presets,
+  error,
+  onRetry,
+  disabled,
+  onPick,
+}: {
+  presets: FilterPresetListItem[] | null;
+  error: string | null;
+  onRetry: () => void;
+  disabled: boolean;
+  onPick: (p: FilterPresetListItem) => void;
+}) {
+  const { ut } = useLang();
+  const [q, setQ] = useState("");
+  const found = (presets ?? []).filter((p) => p.title.toLowerCase().includes(q.trim().toLowerCase()));
+  return (
+    <Panel
+      title={ut("st.presets")}
+      icon={<St.sliders />}
+      flush
+      actions={
+        <ButtonLink
+          to={STATS_FILTERS}
+          size="icon-sm"
+          variant="quiet"
+          aria-label={ut("st.newPreset")}
+          title={ut("st.newPreset")}
+        >
+          <Ic.plus />
+        </ButtonLink>
+      }
+    >
+      <p className="m-0 px-4 pb-2 text-small text-muted">{ut("st.presetsHint")}</p>
+      {(presets?.length ?? 0) > 6 ? (
+        <div className="px-4 pb-2">
+          <SearchField value={q} onChange={setQ} placeholder={ut("st.presetSearch")} width={0} />
+        </div>
+      ) : null}
+      <div className="px-1.5 pb-2">
+        {error ? (
+          <div className="px-2.5">
+            <Loading bare error={error} onRetry={onRetry} />
+          </div>
+        ) : !presets ? (
+          <Loading bare rows={3} />
+        ) : !found.length ? (
+          <p className="m-0 px-2.5 py-2 text-small text-muted">{q ? ut("am.emptySearch") : ut("st.noPresets")}</p>
+        ) : (
+          <ul className="m-0 list-none p-0">
+            {found.map((p) => (
+              <li key={p.id}>
                 <button
                   type="button"
-                  aria-current={m.id === picked ? "true" : undefined}
-                  onClick={() => {
-                    pick(m.id);
-                    setAutoRun(m.id);
-                  }}
+                  aria-haspopup="dialog"
+                  disabled={disabled}
+                  onClick={() => onPick(p)}
                   className={cx(
-                    "flex h-[56px] w-full items-center border-0 p-0 text-left hover:bg-primary-tint",
+                    "flex w-full min-h-0 cursor-pointer items-center gap-2.5 rounded-control border-0 bg-transparent px-2.5 py-2 text-left",
+                    "hover:bg-sunk disabled:cursor-not-allowed disabled:opacity-48",
                     "outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]",
-                    m.id === picked ? "bg-primary-tint" : "bg-transparent",
                   )}
                 >
-                  {/* имя 20/700 в колонке 272 (204…476), описание 15/400 в две строки по 18 */}
-                  <span
-                    className={cx(
-                      "w-[272px] shrink-0 truncate pl-[4px] pr-[24px]",
-                      "text-[20px] font-bold leading-[24px] text-primary",
-                    )}
-                  >
-                    {m.title}
-                  </span>
-                  <span className="line-clamp-2 min-w-0 flex-1 pr-[38px] text-[15px] leading-[18px] text-muted">
-                    {m.description}
+                  <St.sliders size={15} className="text-muted" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-bold text-text">{p.title}</span>
+                    <PresetLine filters={p.criteria} />
                   </span>
                 </button>
               </li>
             ))}
           </ul>
-
-          <hr className="m-0 mt-[61px] h-[2px] border-0 bg-hairline" />
-
-          <Bars result={result} />
-          <Legend result={result} />
-
-          <FilterManagement
-            presets={presets.data}
-            columns={work ?? []}
-            labelOf={(c, i) => presetOf(c)?.title ?? c.title ?? `${ut("st.sample")} ${i + 1}`}
-            onApply={(presetId, targets) => {
-              setWork((w) => w?.map((c, i) => (targets.includes(i) ? { ...c, presetId, filters: null } : c)) ?? w);
-              setOff((o) => o.map((list, i) => (targets.includes(i) ? [] : list)));
-            }}
-          />
-        </>
-      )}
-    </Page>
+        )}
+      </div>
+    </Panel>
   );
 }
 
+/** Критерии одной строкой — под именем пресета и у выборки в окне применения */
+function PresetLine({ filters }: { filters: SampleFilters }) {
+  const { ut } = useLang();
+  return <small className="block truncate text-caption text-muted">{criteriaWords(filters, ut)}</small>;
+}
+
+function criteriaWords(filters: SampleFilters, ut: ReturnType<typeof useLang>["ut"]): string {
+  const list = criteriaOf(filters);
+  if (!list.length) return ut("st.everyone");
+  return list
+    .map((k) => {
+      const v = criterionValue(k, filters, ut);
+      return v ? `${ut(CRITERION_LABEL[k])}: ${v}` : ut(CRITERION_LABEL[k]);
+    })
+    .join("; ");
+}
+
+/* ─────────── выборки ─────────── */
+
 /**
- * Строка выборки: имя 20/700 в колонке 148 (204…352) и чипы критериев.
- *
- * Чип — 30 высотой, 15/700, поля 8, радиус 5 (замер f24: «Віковий діапазон»
- * 361…515 × 222…251, текст с 369). Нажатый — заливка #f0ecff и фиолетовый,
- * отпущенный — контур #666666 и серый («Стать» у №124: рамка 701…759).
- * Область нажатия дотянута до 44 по высоте псевдоэлементом: строки стоят с
- * шагом 40, и соседние области перекрываются на 4 — лучше, чем промах мимо.
- *
- * Решение заказчика 2026-09-26: адекватные фильтры. Чип несёт и значение —
- * «Стать Чоловіки», «Віковий діапазон 25–45»: по одному имени критерия
- * нельзя было понять, кого именно отбирает выборка, не открывая пресет.
- * Значение набрано обычным начертанием после полужирного имени — имя
- * остаётся тем, что нажимают, значение — тем, что читают.
+ * Строка выборки: номер, имя, чипы критериев и основание. Чип — кнопка:
+ * нажатый участвует в расчёте, отпущенный зачёркнут и снят на этот запуск
+ * (признак — и цвет, и черта, и aria-pressed). Значение в чипе — словами
+ * (criterionValue); группа и человек — только именем критерия.
  */
 function SampleLine({
-  label,
-  criteria,
+  index,
+  of,
+  name,
   filters,
+  preset,
   off,
+  res,
   onToggle,
 }: {
-  label: string;
-  criteria: Criterion[];
+  index: number;
+  of: number;
+  name: string;
   filters: SampleFilters;
+  preset: boolean;
   off: Criterion[];
+  res: StatRunColumn | undefined;
   onToggle: (c: Criterion) => void;
 }) {
   const { ut } = useLang();
+  const crit = criteriaOf(filters);
   return (
-    <div className="flex min-h-[30px] items-center">
-      <span className="w-[148px] shrink-0 truncate text-[20px] font-bold leading-[24px] text-primary">{label}</span>
-      <div role="group" aria-label={label} className="flex flex-wrap items-center gap-[10px]">
-        {criteria.map((k) => {
-          const on = !off.includes(k);
-          const value = criterionValue(k, filters, ut);
-          return (
-            <button
-              key={k}
-              type="button"
-              aria-pressed={on}
-              title={value ? `${ut(CRITERION_LABEL[k])}: ${value}` : undefined}
-              onClick={() => onToggle(k)}
-              className={cx(
-                "relative flex h-[30px] items-center whitespace-nowrap rounded-[5px] px-[8px] text-[15px] font-bold",
-                "after:absolute after:inset-x-0 after:top-1/2 after:h-[44px] after:-translate-y-1/2 after:content-['']",
-                "outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]",
-                on ? "border-0 bg-primary-soft text-primary" : "border border-field-border bg-[var(--bg)] text-muted",
-              )}
-            >
-              {ut(CRITERION_LABEL[k])}
-              {value ? <span className="ml-[6px] max-w-[220px] truncate font-normal">{value}</span> : null}
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-/** Внутренняя высота поля диаграммы: рамка 704…1069, 364 между рамками */
-const PLOT = 364;
-/** Линии сетки: шесть, через 52 от основания (замер: 770, 823, 876, 929, 982, 1035 на кадре) */
-const GRID = [1, 2, 3, 4, 5, 6].map((k) => k * 52);
-
-/**
- * Поле диаграммы — рамка #666666 во всю колонку (200…1399), поля по 140 от
- * рамки до крайних столбиков, столбики по 178 (замер f24: 349…526, 603…779,
- * 857…1034, 1091…1268). При большем числе столбиков они сужаются, а поля
- * остаются.
- *
- * Высота столбика — доля от 0 до 100% по всей высоте поля. Цвета — первая
- * выборка #f0ecff (--primary-soft), вторая #b299cc (--primary-rule, цвет
- * замера, а не текстовая ступень); третья и дальше чередуются.
- */
-function Bars({ result }: { result: StatRunResult | null }) {
-  const { ut } = useLang();
-  const cols = result?.columns ?? [];
-  const keys = cols[0] ? indicatorsOf(cols[0]) : [];
-  const bars = keys.flatMap((ind) =>
-    cols.map((col, i) => ({
-      key: `${ind.key}:${i}`,
-      label: ind.label,
-      group: i,
-      cell: indicatorsOf(col).find((x) => x.key === ind.key)?.cell ?? null,
-    })),
-  );
-  const width = bars.length ? Math.min(178, Math.floor((920 - (bars.length - 1) * 12) / bars.length)) : 178;
-  return (
-    <div
-      role="img"
-      aria-label={ut("st.chartLabel")}
-      className="relative mt-[22px] h-[366px] rounded-[5px] border border-field-border"
-    >
-      {GRID.map((y) => (
-        <div
-          key={y}
-          aria-hidden
-          className="absolute inset-x-0 h-[2px] bg-[color-mix(in_srgb,var(--hairline)_50%,transparent)]"
-          style={{ bottom: y }}
-        />
-      ))}
-      <div className="absolute inset-y-0 left-[139px] right-[139px] flex items-end justify-between">
-        {bars.map((b) => (
-          <div key={b.key} className="relative flex h-full flex-col justify-end" style={{ width }}>
-            {b.cell && !b.cell.suppressed ? (
-              <div
-                title={`${ut("st.group")} ${b.group + 1} · ${b.label}: ${cellText(b.cell)}`}
-                className={cx("rounded-t-[3px]", b.group % 2 === 0 ? "bg-primary-soft" : "bg-primary-rule")}
-                style={{ height: Math.round((b.cell.percent / 100) * PLOT) }}
-              />
-            ) : b.cell ? (
-              <span aria-hidden title={ut("st.hidden")} className="pb-[4px] text-center text-[15px] font-bold text-muted">
-                {cellText(b.cell)}
-              </span>
-            ) : null}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-/**
- * Легенда — рамка #666666 208 высотой (1095…1302), текст 15/20 фиолетовым с
- * 40 от рамки: тест и модель полужирным, затем по группе в колонку 235 —
- * «Група N:» полужирным, выборка словами с основанием, доли по порядку
- * столбиков через запятую (замер f24: строки 1124, 1144, 1172, 1192, 1213).
- */
-function Legend({ result }: { result: StatRunResult | null }) {
-  const { ut } = useLang();
-  const cols = result?.columns ?? [];
-  return (
-    <div
-      className={cx(
-        "mt-[25px] min-h-[208px] rounded-[5px] border border-field-border px-[39px] pb-[20px] pt-[7px]",
-        "text-[15px] leading-[20px] text-primary",
-      )}
-    >
-      {result ? (
-        <>
-          <p className="m-0 font-bold">{cols[0]?.surveyTitle}</p>
-          <p className="m-0 font-bold">{result.title}</p>
-          <div className="mt-[8px] flex flex-wrap gap-x-[40px] gap-y-[12px]">
-            {cols.map((c, i) => (
-              <div key={i} className="w-[195px]">
-                <p className="m-0 font-bold">
-                  {ut("st.group")} {i + 1}:
-                </p>
-                <p className="m-0">
-                  {describeSample(c.filters, ut)}, n&nbsp;=&nbsp;
-                  <CellText cell={c.respondents} />
-                </p>
-                <p className="m-0">
-                  {indicatorsOf(c).map((ind, k) => (
-                    <span key={ind.key}>
-                      {k ? ", " : ""}
-                      <span className="sr-only">{ind.label}: </span>
-                      <CellText cell={ind.cell} />
-                    </span>
-                  ))}
-                </p>
-                {c.note ? <p className="m-0 text-[13px] leading-[18px] text-muted">{c.note}</p> : null}
-              </div>
-            ))}
-          </div>
-        </>
-      ) : (
-        <p className="m-0 text-muted">{ut("st.chartEmpty")}</p>
-      )}
-    </div>
-  );
-}
-
-/**
- * «Керування фільтрами» — пресеты с поиском и окно применения.
- *
- * Замер f24: заголовок 24/700; рамка #666666 во всю колонку, поиск 28
- * высотой в 7 от рамки с лупой слева; пресеты 15/400 серым с шагом 30.
- * Окно — 585 шириной, в 604 от левой рамки и 43 от верхней (под поиском),
- * рамка #999999 с тенью: флажки 16 с шагом 30, «Застосувати» — плашка
- * #f0ecff 135×25 слева, «Скасувати» — текстом справа.
- *
- * Флажки окна — выборки модели: к каким из них применить нажатый пресет.
- * Отвергнуто: флажки критериев пресета («Вибір 1…5» кадра — пять, как
- * пять строк фильтра) — снять критерий на этот расчёт уже умеет чип
- * строки выборки, и два места для одного действия разошлись бы.
- */
-function FilterManagement({
-  presets,
-  columns,
-  labelOf,
-  onApply,
-}: {
-  presets: FilterPresetListItem[] | null;
-  columns: StatModelColumn[];
-  labelOf: (c: StatModelColumn, i: number) => string;
-  onApply: (presetId: string, targets: number[]) => void;
-}) {
-  const { ut } = useLang();
-  const [q, setQ] = useState("");
-  const [openFor, setOpenFor] = useState<FilterPresetListItem | null>(null);
-  const found = (presets ?? []).filter((p) => p.title.toLowerCase().includes(q.trim().toLowerCase()));
-  return (
-    <section aria-labelledby="st-manage">
-      <h2 id="st-manage" className="m-0 mt-[41px] text-[24px] font-bold leading-tight text-primary">
-        {ut("st.filterManagement")}
-      </h2>
-      <div className="relative mt-[31px] min-h-[228px] rounded-[5px] border border-field-border px-[7px] pb-[6px] pt-[7px]">
-        <div className="relative">
-          <span
-            aria-hidden
-            className="pointer-events-none absolute left-[1px] top-1/2 -translate-y-1/2 text-text [&>svg]:size-[24px]"
-          >
-            <IconSearchGlass />
-          </span>
-          <input
-            aria-label={ut("st.presetSearch")}
-            value={q}
-            maxLength={200}
-            onChange={(e) => setQ(e.target.value)}
-            className={cx(
-              "h-[28px] w-full rounded-[5px] border border-field-border bg-[var(--bg)] pl-[30px] pr-[8px] text-[15px] text-text",
-              "outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]",
-            )}
-            autoComplete="off"
-          />
-        </div>
-        <ul className="m-0 mt-[5px] list-none p-0">
-          {found.length === 0 ? (
-            <li className="flex h-[30px] items-center px-[1px] text-[15px] text-muted">{ut("st.noPresets")}</li>
-          ) : (
-            found.map((p) => (
-              <li key={p.id}>
-                <button
-                  type="button"
-                  aria-haspopup="dialog"
-                  aria-expanded={openFor?.id === p.id}
-                  onClick={() => setOpenFor(p)}
-                  disabled={!columns.length}
-                  className={cx(
-                    "flex h-[30px] w-full items-center border-0 bg-transparent px-[1px] text-left text-[15px] font-normal text-muted",
-                    "hover:bg-primary-tint hover:text-primary disabled:opacity-45",
-                    "outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]",
-                  )}
-                >
-                  <span className="truncate">{p.title}</span>
-                </button>
-              </li>
-            ))
-          )}
-        </ul>
-        {openFor ? (
-          <ApplyWindow
-            preset={openFor}
-            options={columns.map((c, i) => labelOf(c, i))}
-            onApply={(targets) => {
-              onApply(openFor.id, targets);
-              setOpenFor(null);
-            }}
-            onClose={() => setOpenFor(null)}
-          />
+    <div className="grid grid-cols-[22px_200px_minmax(0,1fr)_auto] items-center gap-3 border-t border-divider py-2.5 first:border-t-0 first:pt-0.5 max-[1100px]:grid-cols-[22px_minmax(0,1fr)_auto]">
+      <SampleBadge n={index + 1} of={of} />
+      <b className="truncate font-extrabold text-text">{name}</b>
+      <div role="group" aria-label={name} className="flex flex-wrap items-center gap-1.5 max-[1100px]:col-span-3 max-[1100px]:row-start-2">
+        {crit.length ? (
+          crit.map((k) => {
+            const on = !off.includes(k);
+            const value = criterionValue(k, filters, ut);
+            return (
+              <button
+                key={k}
+                type="button"
+                aria-pressed={on}
+                title={on ? ut("st.chipOff") : ut("st.chipOn")}
+                onClick={() => onToggle(k)}
+                className={cx(
+                  "inline-flex h-[30px] min-h-0 max-w-full cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-[15px] border-0 px-[11px]",
+                  "text-caption font-semibold leading-none",
+                  "outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]",
+                  on
+                    ? "bg-violet-tint text-violet-ink hover:bg-violet-tint-2"
+                    : "bg-transparent text-muted line-through shadow-[inset_0_0_0_1.5px_var(--ctl)]",
+                )}
+              >
+                {CRITERION_ICON[k]}
+                <span className="truncate">
+                  {ut(CRITERION_LABEL[k])}
+                  {value ? (
+                    <>
+                      : <b className="font-extrabold">{value}</b>
+                    </>
+                  ) : null}
+                </span>
+              </button>
+            );
+          })
+        ) : (
+          <Tag icon={<St.usersRound />}>{ut("st.everyone")}</Tag>
+        )}
+        {preset ? (
+          <Tag tone="primary" icon={<St.sliders />}>
+            {ut("st.presetWord")}
+          </Tag>
         ) : null}
       </div>
-    </section>
+      <span className="whitespace-nowrap text-right text-small tabular-nums text-muted">
+        {res ? (
+          <>
+            {ut("st.nEq")} <CountText cell={res.respondents} />
+          </>
+        ) : null}
+      </span>
+    </div>
   );
 }
 
-/** Окно применения пресета: флажки выборок, «Застосувати» / «Скасувати» */
-function ApplyWindow({
+/** Число людей ячейки — основание и «ВШР»: число или прочерк с подписью скрытого */
+function CountText({ cell }: { cell: StatCell }) {
+  const { ut } = useLang();
+  if (!cell.suppressed) return <>{cell.count}</>;
+  return (
+    <span title={ut("st.hidden")}>
+      <span aria-hidden>{HIDDEN_MARK}</span>
+      <span className="sr-only">{ut("st.hidden")}</span>
+    </span>
+  );
+}
+
+/* ─────────── доли ─────────── */
+
+function Shares({
+  result,
+  stale,
+  title,
+  columns,
+  names,
+  filtersOf,
+  view,
+  onView,
+}: {
+  result: StatRunResult | null;
+  stale: boolean;
+  title: string;
+  columns: StatModelColumn[];
+  names: string[];
+  filtersOf: (i: number) => SampleFilters;
+  view: "chart" | "table";
+  onView: (v: "chart" | "table") => void;
+}) {
+  const { ut } = useLang();
+  const cols = result?.columns ?? [];
+  const head = cols[0];
+  /* подписи — из расчёта: график рисуется только по нему, а он несёт их сам на языке запроса */
+  const rows = result ? reportRows(columns.slice(0, cols.length), () => undefined, cols) : [];
+  const floor = result?.smallCellFloor ?? 5;
+  const series: SeriesKey[] = cols.map((c, i) => ({
+    key: String(i),
+    label: `${ut("st.sample")} ${i + 1}, ${ut("st.nEq")} ${c.respondents.suppressed ? HIDDEN_MARK : c.respondents.count}`,
+    color: sampleColor(i, cols.length),
+  }));
+
+  return (
+    <Panel
+      title={ut("st.sharesTitle")}
+      icon={<St.chartBar />}
+      sub={
+        head
+          ? `${result?.title || title}, ${head.surveyTitle}, ${ut("st.versionN").replace("{n}", String(head.versionNumber))}`
+          : undefined
+      }
+      actions={
+        result ? (
+          <Segmented
+            label={ut("st.sharesTitle")}
+            value={view}
+            onChange={onView}
+            items={[
+              { key: "chart", label: ut("chart.viewChart") },
+              { key: "table", label: ut("chart.viewTable") },
+            ]}
+          />
+        ) : null
+      }
+    >
+      {!result ? (
+        <Empty compact title={ut("st.chartEmpty")} />
+      ) : (
+        <>
+          {stale ? (
+            <Callout kind="warn" className="mb-3" role="status">
+              {ut("st.staleNote")}
+            </Callout>
+          ) : null}
+          {view === "table" ? (
+            <ShareTable rows={rows} cols={cols} />
+          ) : (
+            <>
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+                <SeriesLegend items={series} className="mt-0" />
+                <span className="text-caption text-muted">{ut("st.scaleNote")}</span>
+              </div>
+              <div className="grid gap-x-6 gap-y-5" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(380px, 1fr))" }}>
+                {groupsOf(rows).map((g) => (
+                  <section key={g.head?.key ?? g.rows[0]?.key} aria-label={groupTitle(g.head, ut)}>
+                    <h3 className="m-0 mb-2 flex items-center gap-2 border-b border-divider pb-2 text-[13.5px] font-extrabold leading-[18px] text-text">
+                      {g.head ? <GroupHead row={g.head} /> : (
+                        <>
+                          <St.shieldAlert size={15} className="text-risk-ink" />
+                          {ut("st.vshrLong")}
+                        </>
+                      )}
+                    </h3>
+                    <GroupedHBars
+                      rows={g.rows.map((r) => ({
+                        key: r.key,
+                        label: <BarLabel row={r} />,
+                        values: cols.map((c) => cellShare(cellAt(r, c))),
+                      }))}
+                      series={series}
+                      max={100}
+                      format={(v) => `${v} %`}
+                      floor={floor}
+                      hiddenWhy={<HiddenWhy floor={floor} />}
+                      legend={false}
+                    />
+                  </section>
+                ))}
+                <section aria-label={ut("st.samplesPanel")}>
+                  <h3 className="m-0 mb-2 flex items-center gap-2 border-b border-divider pb-2 text-[13.5px] font-extrabold leading-[18px] text-text">
+                    <St.usersRound size={15} className="text-muted" />
+                    {ut("st.samplesPanel")}
+                  </h3>
+                  <div className="flex flex-col">
+                    {cols.map((c, i) => (
+                      <div key={i} className="grid grid-cols-[22px_minmax(0,1fr)] gap-3 border-t border-divider py-2.5 text-small text-text-2 first:border-t-0 first:pt-0">
+                        <SampleBadge n={i + 1} of={cols.length} />
+                        <div className="min-w-0">
+                          <b className="block font-extrabold text-text">{names[i]}</b>
+                          <span className="block">
+                            {ut("st.nEq")} <CountText cell={c.respondents} />
+                            {c.highRisk ? (
+                              <>
+                                {", "}
+                                {ut("st.withVshrLower")} <CountText cell={c.highRisk} />
+                              </>
+                            ) : null}
+                          </span>
+                          <span className="block">{criteriaWords(filtersOf(i), ut)}</span>
+                          {c.note ? (
+                            <span className="mt-1 flex items-start gap-1.5 text-muted">
+                              <St.eyeOff size={13} className="mt-0.5 shrink-0" />
+                              {c.note}
+                            </span>
+                          ) : null}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              </div>
+            </>
+          )}
+        </>
+      )}
+    </Panel>
+  );
+}
+
+/** Строки отчёта группами: заголовок шкалы или вопроса и его строки; «ВШР» — своя группа без заголовка */
+function groupsOf(rows: ReportRow[]): { head: ReportRow | null; rows: ReportRow[] }[] {
+  const out: { head: ReportRow | null; rows: ReportRow[] }[] = [];
+  for (const r of rows) {
+    if (!isFigureRow(r)) out.push({ head: r, rows: [] });
+    else if (r.kind === "risk") out.push({ head: null, rows: [r] });
+    else out[out.length - 1]?.rows.push(r);
+  }
+  return out.filter((g) => g.rows.length);
+}
+
+function groupTitle(head: ReportRow | null, ut: ReturnType<typeof useLang>["ut"]): string {
+  if (!head) return ut("st.vshrLong");
+  if (head.kind === "scale") return [head.code, head.title].filter(Boolean).join(" ");
+  if (head.kind === "question") return head.title;
+  return "";
+}
+
+function GroupHead({ row }: { row: ReportRow }) {
+  const { ut } = useLang();
+  if (row.kind === "scale") {
+    return (
+      <>
+        {row.code ? <span>{row.code}</span> : null}
+        <span className="truncate font-bold">{row.title}</span>
+      </>
+    );
+  }
+  if (row.kind === "question") {
+    return (
+      <>
+        {row.number ? <span>{ut("st.itemNo").replace("{n}", String(row.number))}</span> : null}
+        <span className="truncate font-bold">{row.title}</span>
+      </>
+    );
+  }
+  return null;
+}
+
+/** Подпись строки полос: смуга словом тяжести, вариант с «ВШР», «Решта» */
+function BarLabel({ row }: { row: ReportRow }): ReactNode {
+  const { ut } = useLang();
+  switch (row.kind) {
+    case "band":
+      return row.severity ? (
+        <span className="inline-flex max-w-full items-center gap-1.5">
+          <SeverityTag level={row.severity} small>
+            {row.label}
+          </SeverityTag>
+        </span>
+      ) : (
+        row.label
+      );
+    case "option":
+      return (
+        <span className="inline-flex max-w-full items-center gap-1.5">
+          <span className="truncate">{row.text}</span>
+          {row.highRisk ? <VshrMark /> : null}
+        </span>
+      );
+    case "rest":
+      return ut("st.rest");
+    case "risk":
+      return ut("st.vshrRow");
+    default:
+      return null;
+  }
+}
+
+/** Те же доли таблицей: сверять числа, печатать на монохромном принтере */
+function ShareTable({ rows, cols }: { rows: ReportRow[]; cols: StatRunColumn[] }) {
+  const { ut } = useLang();
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full border-separate border-spacing-0 text-[13px]">
+        <thead>
+          <tr>
+            <th scope="col" className="border-b border-divider bg-panel-2 px-3 py-2 text-left text-caption font-bold text-muted">
+              {ut("st.indicator")}
+            </th>
+            {cols.map((_, i) => (
+              <th key={i} scope="col" className="border-b border-divider bg-panel-2 px-3 py-2 text-right text-caption font-bold text-muted">
+                {ut("st.sample")} {i + 1}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) =>
+            isFigureRow(r) ? (
+              <tr key={r.key}>
+                <th scope="row" className="border-b border-divider px-3 py-2 text-left font-normal text-text">
+                  {r.kind === "band" ? r.label : r.kind === "option" ? r.text : r.kind === "rest" ? ut("st.rest") : ut("st.vshrRow")}
+                </th>
+                {cols.map((c, i) => (
+                  <td key={i} className="border-b border-divider px-3 py-2 text-right font-bold tabular-nums text-text">
+                    <CellText cell={cellAt(r, c)} />
+                  </td>
+                ))}
+              </tr>
+            ) : (
+              <tr key={r.key}>
+                <td colSpan={cols.length + 1} className="border-b border-divider bg-panel px-3 pb-1.5 pt-3 font-extrabold text-text">
+                  {groupTitle(r, ut)}
+                </td>
+              </tr>
+            ),
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/* ─────────── окно «До яких вибірок застосувати пресет» ─────────── */
+
+function ApplyPreset({
   preset,
-  options,
+  modelTitle,
+  columns,
+  names,
+  presetTitleOf,
+  filtersOf,
+  result,
   onApply,
   onClose,
 }: {
   preset: FilterPresetListItem;
-  options: string[];
-  onApply: (targets: number[]) => void;
+  modelTitle: string;
+  columns: StatModelColumn[];
+  names: string[];
+  presetTitleOf: (c: StatModelColumn) => string | null;
+  filtersOf: (c: StatModelColumn) => SampleFilters;
+  result: StatRunResult | null;
+  onApply: (targets: number[], extra: boolean) => void;
   onClose: () => void;
 }) {
   const { ut } = useLang();
-  const id = useId();
-  const [checked, setChecked] = useState<number[]>(options.map((_, i) => i));
-  const ref = useFocusTrap<HTMLDivElement>(true);
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && isTopLayer(ref)) onClose();
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [onClose, ref]);
-  /* область нажатия кнопок окна — 44 по высоте псевдоэлементом: плашка на кадре 25 */
-  const reach =
-    "relative after:absolute after:inset-x-0 after:top-1/2 after:h-[44px] after:-translate-y-1/2 after:content-['']";
+  const [checked, setChecked] = useState<number[]>([]);
+  const [extra, setExtra] = useState(false);
+  const room = columns.length < MAX_SAMPLES;
+  const count = checked.length + (extra ? 1 : 0);
+  const toggle = (i: number) => setChecked((c) => (c.includes(i) ? c.filter((x) => x !== i) : [...c, i].sort()));
+  const card = (on: boolean) =>
+    cx(
+      "m-0 flex cursor-pointer items-start gap-3 rounded-[12px] px-3.5 py-3",
+      on ? "bg-violet-tint shadow-[inset_0_0_0_1.5px_var(--violet)]" : "bg-sunk hover:bg-sunk-2",
+    );
   return (
-    <>
-      <div aria-hidden onClick={onClose} className="fixed inset-0 z-40" />
-      <div
-        ref={ref}
-        role="dialog"
-        aria-labelledby={id}
-        tabIndex={-1}
-        className={cx(
-          "absolute left-[603px] top-[42px] z-50 w-[585px] max-w-[calc(100%-16px)] max-[1260px]:left-[8px]",
-          "rounded-[5px] border border-border-strong bg-[var(--bg)] px-[16px] py-[12px] shadow-pop",
-        )}
-      >
-        <p id={id} className="sr-only">
-          {ut("st.applyTo")}: {preset.title}
-        </p>
-        <ul className="m-0 list-none p-0">
-          {options.map((label, i) => (
-            <li key={i}>
-              <label className="flex h-[30px] cursor-pointer items-center gap-[6px] text-[15px] text-muted">
-                <input
-                  type="checkbox"
-                  className="peer sr-only"
-                  checked={checked.includes(i)}
-                  onChange={(e) => setChecked((c) => (e.target.checked ? [...c, i] : c.filter((x) => x !== i)))}
-                />
-                {/* флажок кадра: рамка #cccccc 16, внутри квадрат 8 фиолетовым */}
-                <span
-                  aria-hidden
-                  className={cx(
-                    "relative flex size-[16px] shrink-0 items-center justify-center rounded-[2px] border border-hairline",
-                    "peer-focus-visible:ring-2 peer-focus-visible:ring-[var(--focus)]",
-                  )}
-                >
-                  {checked.includes(i) ? <span className="size-[8px] rounded-[1px] bg-primary" /> : null}
-                </span>
-                <span className="truncate">{label}</span>
-              </label>
-            </li>
-          ))}
-        </ul>
-        <div className="mt-[4px] flex items-center justify-between">
-          <button
-            type="button"
-            disabled={!checked.length}
-            onClick={() => onApply(checked)}
-            className={cx(
-              reach,
-              "flex h-[25px] w-[135px] items-center justify-center rounded-[5px] border-0 bg-primary-soft text-[15px] font-bold text-primary",
-              "outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)] disabled:opacity-45",
-            )}
-          >
-            {ut("st.apply")}
-          </button>
-          <button
-            type="button"
-            onClick={onClose}
-            className={cx(
-              reach,
-              "h-[25px] border-0 bg-transparent px-[4px] text-[15px] font-bold text-primary",
-              "outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]",
-            )}
-          >
-            {ut("common.cancel")}
-          </button>
+    <Modal
+      title={ut("st.applyTo")}
+      sub={ut("st.applySub")}
+      icon={<St.sliders />}
+      width={640}
+      onClose={onClose}
+      footer={
+        <>
+          <Button variant="primary" icon={<Ic.check />} disabled={!count} onClick={() => onApply(checked, extra)}>
+            {ut("st.applyN").replace("{n}", String(count))}
+          </Button>
+          <Button onClick={onClose}>{ut("common.cancel")}</Button>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-1.5 pt-4">
+        <Callout kind="violet" icon={<St.sliders />} title={preset.title}>
+          <CriteriaChips filters={preset.criteria} className="mt-1.5" />
+        </Callout>
+        <div className="mb-1 mt-3 flex items-center justify-between gap-3">
+          <b className="text-h3 font-extrabold text-text">{ut("st.modelSamples").replace("{title}", modelTitle)}</b>
+          <Button variant="ghost" size="xs" onClick={() => setChecked(columns.map((_, i) => i))}>
+            {ut("st.selectAll")}
+          </Button>
         </div>
+        {columns.map((c, i) => {
+          const on = checked.includes(i);
+          const current = presetTitleOf(c);
+          const res = result?.columns[i];
+          return (
+            <label key={i} className={card(on)}>
+              <Checkbox checked={on} onChange={() => toggle(i)} className="mt-0.5" />
+              <SampleBadge n={i + 1} of={columns.length} />
+              <span className="min-w-0 flex-1 text-small text-text-2">
+                <span className="flex items-baseline gap-3">
+                  <b className="min-w-0 flex-1 text-body font-extrabold text-text">
+                    {ut("st.sample")} {i + 1}: {names[i]}
+                  </b>
+                  {res ? (
+                    <span className="text-caption tabular-nums text-muted">
+                      {ut("st.nEq")} <CountText cell={res.respondents} />
+                    </span>
+                  ) : null}
+                </span>
+                <span className="block">
+                  {current
+                    ? ut("st.presetQuoted").replace("{title}", current)
+                    : `${ut("st.ownFilters")}: ${criteriaWords(filtersOf(c), ut)}`}
+                </span>
+                {on ? (
+                  <ErrorText tone="warn" className="mt-1.5">
+                    {current
+                      ? ut("st.replacePreset").replace("{title}", current)
+                      : ut("st.replaceOwn")}
+                  </ErrorText>
+                ) : null}
+              </span>
+            </label>
+          );
+        })}
+        {room ? (
+          <label
+            className={cx(
+              "m-0 mt-1 flex cursor-pointer items-start gap-3 rounded-[12px] px-3.5 py-3",
+              extra ? "bg-violet-tint shadow-[inset_0_0_0_1.5px_var(--violet)]" : "shadow-[inset_0_0_0_1.5px_var(--ctl)] hover:bg-sunk",
+            )}
+          >
+            <Checkbox checked={extra} onChange={() => setExtra((v) => !v)} className="mt-0.5" />
+            <SampleBadge n={columns.length + 1} of={columns.length + 1} fresh />
+            <span className="min-w-0 flex-1 text-small text-text-2">
+              <b className="block text-body font-extrabold text-text">
+                {ut("st.newSampleWith").replace("{n}", String(columns.length + 1))}
+              </b>
+              {ut("st.newSampleNote")
+                .replace("{n}", String(columns.length + 1))
+                .replace("{max}", String(MAX_SAMPLES))}
+            </span>
+          </label>
+        ) : null}
+        <p className="m-0 mt-2 flex items-start gap-1.5 text-small text-muted">
+          <Ic.info size={14} className="mt-0.5 shrink-0" />
+          <span>{ut("st.applyHint")}</span>
+        </p>
       </div>
-    </>
+    </Modal>
   );
 }

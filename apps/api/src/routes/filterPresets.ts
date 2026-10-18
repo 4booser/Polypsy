@@ -5,11 +5,13 @@ import {
   filterPresetListQuery,
   filterPresetUpdateSchema,
   type FilterPreset,
+  type FilterPresetDetail,
   type FilterPresetListItem,
+  type FilterPresetUse,
 } from "@quizzy/shared";
 import { db } from "../db";
 import { asSystem } from "../db/context";
-import { filterPresets } from "../db/schema";
+import { filterPresets, statModels } from "../db/schema";
 import { audit } from "../lib/audit";
 import { badRequest, parseBody, parseQuery } from "../lib/http";
 import { assertFilterPresetAccess, isSuperadmin } from "../lib/scope";
@@ -113,11 +115,35 @@ filterPresetRoutes.post("/", async (c) => {
   return c.json(toPreset(row!), 201);
 });
 
+/**
+ * Карточка пресета — и где он стоит: модели и номера их выборок
+ * («Де використовується» на экране пресета). Человек правит пресет, и до
+ * «Зберегти» должен видеть, какие сравнения поменяются.
+ *
+ * Модели — только видные спрашивающему, тем же условием по владельцу, что
+ * у перечня моделей: имя чужой модели — тоже чужое. Число же (modelCount)
+ * считает все: из-под чужой модели пресет тоже не удалить.
+ */
 filterPresetRoutes.get("/:id", async (c) => {
   const user = c.get("user");
   const row = await assertFilterPresetAccess(user, c.req.param("id"));
   const [count] = await db.select({ modelCount }).from(filterPresets).where(eq(filterPresets.id, row.id));
-  return c.json(toItem(row, count?.modelCount ?? 0));
+  const models = await db
+    .select({ id: statModels.id, title: statModels.title, columns: statModels.columns })
+    .from(statModels)
+    .where(
+      and(
+        isSuperadmin(user) ? undefined : eq(statModels.ownerId, user.id),
+        sql`exists (select 1 from jsonb_array_elements(${statModels.columns}) c where c->>'presetId' = ${row.id})`,
+      ),
+    )
+    .orderBy(asc(statModels.createdAt), asc(statModels.id));
+  const usedBy: FilterPresetUse[] = models.map((m) => ({
+    id: m.id,
+    title: m.title,
+    samples: m.columns.flatMap((col, i) => (col.presetId === row.id ? [i + 1] : [])),
+  }));
+  return c.json({ ...toItem(row, count?.modelCount ?? 0), usedBy } satisfies FilterPresetDetail);
 });
 
 /**
