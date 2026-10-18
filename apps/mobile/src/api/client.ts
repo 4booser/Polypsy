@@ -73,6 +73,7 @@ import {
 import { activeOwner, isOwnerChanged, OwnerChanged, ownerOfToken } from "../offline/owner";
 import { draftLaneKey, draftLanes } from "../offline/draftLane";
 import { leaveDevice } from "../offline/logout";
+import { reviewDrafts } from "../staff/reviewDrafts";
 import { evaluateSubmission, isAttemptClosedCode, isTransientStatus } from "@quizzy/shared";
 import { reportLinkPath, reportLinkUrl } from "../report/model";
 import { isAccessDenied } from "./access";
@@ -316,8 +317,12 @@ const unwrap = <T>(p: Promise<Items<T>>): Promise<T[]> => p.then((r) => r.items)
 /*
  * Стирание устройства уносит все черновики, а с ними и попытки: счёт правок
  * следующего прохождения — заново, как после сдачи (offline/draftLane.ts, #129).
+ * И черновики разбора сигналов из памяти — как при выходе (staff/reviewDrafts.ts).
  */
-onWiped(() => draftLanes.resetAll());
+onWiped(() => {
+  draftLanes.resetAll();
+  reviewDrafts.forgetAll();
+});
 
 const wipeDeps: WipeDeps = {
   token: () => tokenStorage.get(),

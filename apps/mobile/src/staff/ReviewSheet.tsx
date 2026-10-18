@@ -14,6 +14,7 @@ import { T } from "../ui/Text";
 import { useToast } from "../ui/Toast";
 import { refreshStaffBadges } from "./badges";
 import { caseClock, clock, dm, hm, num, shortName } from "./model";
+import { reviewDrafts, type ReviewOutcome } from "./reviewDrafts";
 import { Chip, History, TimerBar, useClockText } from "./ui";
 
 /*
@@ -31,18 +32,12 @@ import { Chip, History, TimerBar, useClockText } from "./ui";
  * двое не разбирают одного человека дважды.
  */
 
-type Outcome = "confirmed" | "needs_followup" | "not_confirmed";
+type Outcome = ReviewOutcome;
 const OUTCOMES: { value: Outcome; key: "mal.confirmed" | "mal.needsFollowup" | "mal.notConfirmed"; sub: "mst.outConfirmed" | "mst.outFollowup" | "mst.outNot" }[] = [
   { value: "confirmed", key: "mal.confirmed", sub: "mst.outConfirmed" },
   { value: "needs_followup", key: "mal.needsFollowup", sub: "mst.outFollowup" },
   { value: "not_confirmed", key: "mal.notConfirmed", sub: "mst.outNot" },
 ];
-
-/*
- * Черновик разбора живёт, пока живёт приложение: закрыли лист — решение и
- * заметка остаются, открыли снова — на месте. Как ящик консоли по Esc.
- */
-const drafts = new Map<string, { outcome: Outcome | null; note: string }>();
 
 export function ReviewSheet({
   item,
@@ -80,9 +75,15 @@ export function ReviewSheet({
     if (item) setShown(item);
   }, [item]);
 
+  /*
+   * Черновик разбора — того, кто его набирал (staff/reviewDrafts.ts): на
+   * общем планшете следующий специалист чужого решения и заметки не видит.
+   */
+  const owner = user?.id ?? null;
+
   useEffect(() => {
     if (!item) return;
-    const d = drafts.get(item.id);
+    const d = reviewDrafts.get(owner, item.id);
     setOutcome(d?.outcome ?? null);
     setNote(d?.note ?? "");
     touched.current = false;
@@ -111,13 +112,13 @@ export function ReviewSheet({
       live = false;
       clearInterval(timer);
     };
-  }, [item]);
+  }, [item, owner]);
 
   const remember = (next: { outcome?: Outcome | null; note?: string }) => {
     if (!item) return;
     touched.current = true;
     const d = { outcome: next.outcome !== undefined ? next.outcome : outcome, note: next.note !== undefined ? next.note : note };
-    drafts.set(item.id, d);
+    reviewDrafts.set(owner, item.id, d);
   };
 
   const close = () => {
@@ -137,7 +138,7 @@ export function ReviewSheet({
     setError(null);
     try {
       await api.resolveCase(item.id, outcome, note.trim() || undefined, item.lastAlertAt);
-      drafts.delete(item.id);
+      reviewDrafts.drop(owner, item.id);
       touched.current = false;
       toast.show(ut("mst.reviewSaved").replace("{t}", hm(new Date())), { icon: "check-check" });
       refreshStaffBadges();

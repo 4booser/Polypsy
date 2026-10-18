@@ -1,3 +1,4 @@
+import { reviewDrafts } from "../staff/reviewDrafts";
 import { forgetOwnerCache } from "./cache";
 import { draftLanes, ownerLanePrefix } from "./draftLane";
 import { signedOut } from "./owner";
@@ -38,8 +39,13 @@ export function logoutNotice(unsent: { submissions: number; drafts: number }): L
  * черновики. Дорожки его черновиков сбрасываются: дошедший черновик стёрт
  * с устройства, и при следующем входе экран продолжит его с сервера,
  * считая правки заново (offline/draftLane.ts, #129).
+ *
+ * Черновики разбора сигналов (решение и заметка о пациенте) живут в памяти
+ * и уходят все: следующий на этом планшете не должен найти их в листе
+ * разбора того же случая (staff/reviewDrafts.ts).
  */
 export function leaveDevice(owner: string | null): void {
+  reviewDrafts.forgetAll();
   if (!owner) return;
   signedOut(owner);
   try {
