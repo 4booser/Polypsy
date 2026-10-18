@@ -70,6 +70,9 @@ interface CardCtx {
   reload: () => void;
   /** Группы этого человека, если смотрящему открыты пациенты (patients.read); null — ещё едут или закрыты */
   groups: PatientGroupWithCounts[] | null;
+  /** Отказ загрузки групп — с «Повторити», а не вечный скелет */
+  groupsError: string | null;
+  reloadGroups: () => void;
   canPatients: boolean;
   /** Открыть правку своей анкеты (ящик); у чужой карточки — null */
   edit: (() => void) | null;
@@ -123,7 +126,17 @@ export default function StaffCard() {
   }
 
   const groups = groupsRes.data ? ownGroups(groupsRes.data, row.id, "") : canPatients ? null : [];
-  const ctx: CardCtx = { row, me, isSuper, reload, groups, canPatients, edit: me ? () => setEditing(true) : null };
+  const ctx: CardCtx = {
+    row,
+    me,
+    isSuper,
+    reload,
+    groups,
+    groupsError: groupsRes.error,
+    reloadGroups: groupsRes.reload,
+    canPatients,
+    edit: me ? () => setEditing(true) : null,
+  };
   const name = row.fullName || row.email;
   const base = `/staff/${row.id}`;
   /* под суперадмином нет лестницы: роль ему не меняют, и отключить его может только другой суперадмин (сервер решит) */
@@ -1503,7 +1516,7 @@ function TransferModal({
  * группы становится тот, кто её заводит, и завести её другому нельзя.
  */
 export function StaffGroups() {
-  const { me, isSuper, groups, canPatients } = useOutletContext<CardCtx>();
+  const { me, isSuper, groups, groupsError, reloadGroups, canPatients } = useOutletContext<CardCtx>();
   const { ut, lang } = useLang();
   const navigate = useNavigate();
   const [q, setQ] = useState("");
@@ -1611,7 +1624,7 @@ export function StaffGroups() {
         </div>
       ) : !shown ? (
         <div className="px-4 pb-4">
-          <Loading rows={4} bare />
+          <Loading rows={4} bare error={groupsError} onRetry={reloadGroups} />
         </div>
       ) : (
         <DataTable
