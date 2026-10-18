@@ -11,6 +11,7 @@ import { BetterTag, ChangeCell, Empty, Ic, Loading, TextAction, useAction } from
 import { Panel, SideLayout } from "../ui/layout";
 import { Button, SeverityTag, Tag } from "../ui/primitives";
 import { ShellIcon } from "../shell/icons";
+import { useMedia } from "../shell/Rail";
 import { useCaseCard } from "./CaseCard";
 import { changeOf, instrumentsOf, measureDates, shownDelta, shownThreshold, valueOn, type Instrument } from "./patients/instruments";
 import { ddmm, fmtNum, kitSeverity, shownValue } from "./patients/model";
@@ -40,7 +41,13 @@ export default function CaseSummaryTab() {
   const { ut } = useLang();
   const { data, dynamics, openReferral } = useCaseCard();
   const instruments = useMemo(() => instrumentsOf(dynamics.data), [dynamics.data]);
-  const dates = measureDates(instruments).slice(-3);
+  /*
+   * На 1280 колонка справа (план безпеки, записи прийому) оставляет таблице
+   * около 780 px: две даты вместо трёх, индекс RCI — только во вкладке
+   * «Динаміка», где у него своя панель.
+   */
+  const narrow = useMedia("(max-width: 1380px)");
+  const dates = measureDates(instruments).slice(narrow ? -2 : -3);
 
   return (
     <SideLayout
@@ -69,18 +76,18 @@ export default function CaseSummaryTab() {
       >
         {dynamics.error && !dynamics.data ? (
           <div className="px-4 pb-4">
-            <Loading error={dynamics.error} onRetry={dynamics.reload} />
+            <Loading bare error={dynamics.error} onRetry={dynamics.reload} />
           </div>
         ) : !dynamics.data ? (
           <div className="px-4 pb-4">
-            <Loading rows={4} />
+            <Loading rows={4} bare />
           </div>
         ) : !instruments.length ? (
           <div className="px-4">
             <Empty compact title={ut("pt.noCompleted")} hint={ut("dyn.emptyHint")} />
           </div>
         ) : (
-          <ResultsTable instruments={instruments} dates={dates} />
+          <ResultsTable instruments={instruments} dates={dates} index={!narrow} />
         )}
         <div className="px-4 pb-1">
           {/* подсказка стоит рядом с числом, а не в справке: вопрос возникает здесь */}
@@ -111,7 +118,7 @@ export default function CaseSummaryTab() {
 }
 
 /** Таблица «Результати за методиками»: строка — методика, раскрытие — её шкалы */
-function ResultsTable({ instruments, dates }: { instruments: Instrument[]; dates: string[] }) {
+function ResultsTable({ instruments, dates, index }: { instruments: Instrument[]; dates: string[]; index: boolean }) {
   const { ut } = useLang();
   const [open, setOpen] = useState<string | null>(null);
   const th = "h-9 border-b border-divider bg-panel-2 px-2.5 text-caption font-bold text-muted whitespace-nowrap";
@@ -130,7 +137,7 @@ function ResultsTable({ instruments, dates }: { instruments: Instrument[]; dates
             <th className={`${th} text-right text-text`}>{dates.length ? ddmm(`${dates.at(-1)}T12:00:00`, locale()) : ""}</th>
             <th className={`${th} text-left`}>{ut("sum.interpretation")}</th>
             <th className={`${th} text-left`}>{ut("case.changeFromStart")}</th>
-            <th className={`${th} pr-4 text-right`}>{ut("case.index")}</th>
+            {index ? <th className={`${th} pr-4 text-right`}>{ut("case.index")}</th> : null}
           </tr>
         </thead>
         <tbody>
@@ -202,13 +209,15 @@ function ResultsTable({ instruments, dates }: { instruments: Instrument[]; dates
                       <span className="text-caption text-text-2">{reasonOf(i, ut)}</span>
                     )}
                   </td>
-                  <td className={`${td} whitespace-nowrap pr-4 text-right tabular-nums text-text-2`}>
-                    {rc ? `RCI ${fmtNum(rc.rci, locale())}` : "—"}
-                  </td>
+                  {index ? (
+                    <td className={`${td} whitespace-nowrap pr-4 text-right tabular-nums text-text-2`}>
+                      {rc ? `RCI ${fmtNum(rc.rci, locale())}` : "—"}
+                    </td>
+                  ) : null}
                 </tr>
                 {expanded ? (
                   <tr>
-                    <td colSpan={dates.length + 4} className="border-b border-divider bg-panel-2 px-4 pb-3 pt-1">
+                    <td colSpan={dates.length + (index ? 4 : 3)} className="border-b border-divider bg-panel-2 px-4 pb-3 pt-1">
                       <dl className="m-0 grid grid-cols-[minmax(0,220px)_minmax(0,1fr)] gap-x-4 gap-y-1.5 pl-10 text-small">
                         {i.scales.map((sc) => {
                           const raw = changeOf(sc);

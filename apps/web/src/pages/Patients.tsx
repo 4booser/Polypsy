@@ -925,7 +925,7 @@ export function PatientDynamics() {
         actions={<TextAction to={`/patients/${userId}`}>{ut("dyn.allMeasures")}</TextAction>}
         flush
       >
-        <BigValues className="border-t border-divider [grid-template-columns:repeat(auto-fill,minmax(250px,1fr))] [&>*]:border-b [&>*]:border-divider">
+        <BigValues className="border-t border-divider [grid-template-columns:repeat(auto-fill,minmax(290px,1fr))]! [&>*]:border-b [&>*]:border-divider">
           {instruments.map((i) => (
             <InstrumentValue key={i.surveyId} i={i} />
           ))}

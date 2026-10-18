@@ -79,11 +79,13 @@ test("от тревоги до закрытого направления", async
   await expect(row).toContainText("завершено");
   await expect(row.getByRole("button")).toHaveCount(0);
 
-  // завершённого нет в реестре открытых, но оно находится с фильтром
-  // направления — подраздел пациентов: раздел рельсы, затем пункт колонки
+  /*
+   * Завершённое находится в реестре направлений видом «Завершённые» (2.0:
+   * пилюли видов вместо переключателя «показать закрытые»). Направления —
+   * подраздел пациентов: раздел рельсы, затем пункт колонки.
+   */
   await goSection(page, "Пациенты", "Направления");
-  await expect(page.getByText(reason)).toHaveCount(0);
-  await page.getByRole("button", { name: "Показать завершённые" }).click();
+  await page.getByRole("button", { name: /^Завершённые/ }).click();
   await expect(page.getByText(reason)).toBeVisible();
 });
 

@@ -205,8 +205,8 @@ export function useQuickViewPane({
             <table className="w-full table-fixed border-separate border-spacing-0 text-small">
               <colgroup>
                 <col />
-                <col className="w-[132px]" />
-                <col className="w-[118px]" />
+                <col className="w-[140px]" />
+                <col className="w-[112px]" />
               </colgroup>
               <thead>
                 <tr>
@@ -251,8 +251,10 @@ export function useQuickViewPane({
                         </b>
                         {s.last.severity || s.last.bandLabel ? (
                           <span className="mt-1 flex justify-end">
-                            <SeverityTag level={kitSeverity(s.last.severity)} small className="max-w-full overflow-hidden text-ellipsis">
-                              {s.last.bandLabel ?? ut(severityKey[s.last.severity ?? "none"])}
+                            <SeverityTag level={kitSeverity(s.last.severity)} small className="max-w-full">
+                              <span className="min-w-0 truncate" title={s.last.bandLabel ?? undefined}>
+                                {s.last.bandLabel ?? ut(severityKey[s.last.severity ?? "none"])}
+                              </span>
                             </SeverityTag>
                           </span>
                         ) : null}
