@@ -11457,9 +11457,9 @@ export const UI = {
   "rp.ans.lgChanged": { uk: "відповідь змінювали", ru: "ответ меняли", en: "answer changed" },
   "rp.ans.lgOther": { uk: "інші пункти", ru: "остальные пункты", en: "other items" },
   "rp.ans.changedFrom": {
-    uk: "«{from}» на «{to}» через {s} с",
-    ru: "«{from}» на «{to}» через {s} с",
-    en: "“{from}” to “{to}” after {s} s",
+    uk: "з «{from}» на «{to}» через {s} с",
+    ru: "с «{from}» на «{to}» через {s} с",
+    en: "from “{from}” to “{to}” after {s} s",
   },
   "rp.attempt": { uk: "Проходження", ru: "Прохождение", en: "Attempt" },
   "rp.submitted": { uk: "Здано", ru: "Сдано", en: "Submitted" },
