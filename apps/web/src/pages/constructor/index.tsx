@@ -40,6 +40,7 @@ import { Preview } from "./Preview";
 import { Questions, type Section } from "./Questions";
 import { Answers, BandsSection, Scales, ScalesSummary } from "./Scales";
 import { NewMethod, type ConstructorSeed } from "./Start";
+import { editorShortcut } from "./shortcuts";
 import { Structure } from "./Structure";
 
 /*
@@ -380,25 +381,22 @@ function Editor({ id }: { id?: string }) {
     });
   }
 
-  // Ctrl+S — черновик, Ctrl+Z/Ctrl+Shift+Z — отмена/возврат
+  // Ctrl+S — черновик, Ctrl+Z/Ctrl+Shift+Z — отмена/возврат; по клавише, а не по знаку раскладки (shortcuts.ts)
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      const mod = e.metaKey || e.ctrlKey;
-      if (!mod) return;
+      const shortcut = editorShortcut(e);
+      if (!shortcut) return;
       const tag = (e.target as HTMLElement | null)?.tagName;
-      if (e.key === "s") {
+      if (shortcut === "save") {
         e.preventDefault();
         void save(false);
-      } else if (e.key === "z" && !e.shiftKey) {
-        // в полях ввода браузерная отмена полезнее нашей
-        if (tag === "INPUT" || tag === "TEXTAREA") return;
-        e.preventDefault();
-        undo();
-      } else if ((e.key === "z" && e.shiftKey) || e.key === "y") {
-        if (tag === "INPUT" || tag === "TEXTAREA") return;
-        e.preventDefault();
-        redo();
+        return;
       }
+      // в полях ввода браузерная отмена полезнее нашей
+      if (tag === "INPUT" || tag === "TEXTAREA") return;
+      e.preventDefault();
+      if (shortcut === "undo") undo();
+      else redo();
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);

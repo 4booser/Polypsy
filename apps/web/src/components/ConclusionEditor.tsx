@@ -7,6 +7,7 @@ import { IconTile } from "../ui/layout";
 import { ActionMenu } from "../ui/menu";
 import { useLang } from "../lang";
 import { Button, Field, Input, Tag, Textarea } from "../ui/primitives";
+import { editorShortcut } from "../pages/constructor/shortcuts";
 import { Rx } from "../pages/response/icons";
 import { TemplateMenus } from "./TemplatePicker";
 import { draftOf, draftSavable, saveThenSign, signPlan, staleMessage } from "./versioned";
@@ -105,10 +106,10 @@ export function ConclusionEditor({
       onState(await api.saveConclusion(responseId, text, state.current, title));
     }, ut("cn.draftSaved"));
 
-  /* ⌘S / Ctrl+S — сохранить черновик, не уходя с поля */
+  /* ⌘S / Ctrl+S — сохранить черновик, не уходя с поля; по клавише, а не по знаку раскладки */
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "s") return;
+      if (editorShortcut(e) !== "save") return;
       e.preventDefault();
       if (!busy) void saveDraft();
     };
