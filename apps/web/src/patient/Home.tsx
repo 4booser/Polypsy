@@ -401,9 +401,10 @@ export function HomeBody({
                       variant={i === 0 ? "primary" : "secondary"}
                       size="md"
                       className="max-[600px]:col-span-2 max-[600px]:w-full"
-                      aria-label={`${d ? ut("ptw.continue") : ut("pt.start")}: ${s.title}`}
                     >
                       {d ? ut("ptw.continue") : ut("pt.start")}
+                      {/* чью методику — диктору и поиску по ссылке: кнопок «Пройти» в списке несколько */}
+                      <span className="sr-only">{`: ${s.title}`}</span>
                       {i === 0 ? <Ic.arrowRight size={17} /> : null}
                     </ButtonLink>
                   </div>

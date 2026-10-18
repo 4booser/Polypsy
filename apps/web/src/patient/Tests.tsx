@@ -340,10 +340,11 @@ function TodoRow({
           variant={primary ? "primary" : "secondary"}
           size="md"
           className="max-[600px]:w-full"
-          aria-label={`${action}: ${s.title}`}
         >
           {draft ? <Glyph name="play" size={16} /> : null}
           {action}
+          {/* чью методику — диктору и поиску по ссылке: кнопок «Пройти» в списке много */}
+          <span className="sr-only">{`: ${s.title}`}</span>
           {primary && !draft ? <Ic.arrowRight size={17} /> : null}
         </ButtonLink>
       </div>
