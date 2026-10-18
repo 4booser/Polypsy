@@ -18,8 +18,22 @@ import { acceptConsentIfAsked, apiToken, createVisiblePatient, eventsBell, goMen
  */
 const rows = (page: import("@playwright/test").Page) => page.locator("[data-queue-row]");
 const detail = (page: import("@playwright/test").Page) => page.locator("[data-triage-case] [data-case-card]");
-/* выраженность — залитый выбор со счётчиками, а не ряд кнопок; имя ему даёт подпись для диктора */
+/* выраженность — выбор со счётчиками, а не ряд кнопок; имя ему даёт подпись для диктора */
 const severity = (page: import("@playwright/test").Page) => page.getByLabel("Срочность", { exact: true });
+
+/*
+ * Фильтры очереди (Polypsy 2.0) — за кнопкой «Фильтры» в шапке колонки:
+ * колонка списка узкая, и семь полей отбора съели бы её целиком. Кнопка
+ * раскрывает их на месте; при заданном отборе они раскрыты сразу.
+ */
+async function openFilters(page: import("@playwright/test").Page) {
+  const toggle = page.getByRole("button", { name: /^(Фильтры|Фільтри)/ });
+  if ((await toggle.getAttribute("aria-expanded")) !== "true") await toggle.click();
+  await severity(page).waitFor();
+}
+
+/* ящик разбора — общий с карточкой пациента (components/RiskReview) */
+const drawer = (page: import("@playwright/test").Page) => page.locator("[data-drawer][data-open=\"true\"]");
 
 test.beforeEach(async ({ page }) => {
   await login(page, "psy");
@@ -44,6 +58,7 @@ test("выбор строки меняет случай, не уводя со с
 test("фильтр по выраженности сужает выборку и держится в адресе", async ({ page }) => {
   const before = await rows(page).count();
 
+  await openFilters(page);
   await severity(page).selectOption("severe");
   await expect.poll(async () => rows(page).count()).toBeLessThanOrEqual(before);
   expect(page.url()).toContain("severity=severe");
@@ -108,8 +123,14 @@ test("разобранный случай уходит из очереди и н
 
   await mine.click();
   await expect(detail(page)).toContainText(patient.lastName);
-  await detail(page).getByPlaceholder("Что предпринято").fill("Смоук разбора");
-  await detail(page).getByRole("button", { name: "Риск подтверждён", exact: true }).click();
+  /*
+   * Решение принимается в ящике разбора («Продолжить разбор» или R): исход
+   * обязателен, нотатка — по желанию; сохранение закрывает ящик.
+   */
+  await detail(page).getByRole("button", { name: "Продолжить разбор" }).click();
+  await drawer(page).getByPlaceholder("Что предпринято").fill("Смоук разбора");
+  await drawer(page).getByRole("radio", { name: /^Риск подтверждён/ }).check();
+  await drawer(page).getByRole("button", { name: "Сохранить разбор" }).click();
 
   await expect.poll(async () => mine.count()).toBe(0);
 
@@ -204,10 +225,12 @@ test("срез экрана сохраняется под именем и вос
    * Хранится строка запроса, поэтому проверка идёт по адресу — вид обязан
    * вернуть ровно тот фильтр, при котором его сохранили.
    */
+  await openFilters(page);
   await severity(page).selectOption("severe");
   await expect.poll(() => page.url()).toContain("severity=severe");
 
   const name = `Тяжёлые ${Date.now()}`;
+
   await page.getByRole("button", { name: /Сохранить вид/ }).click();
   await page.getByPlaceholder("Например: мои просроченные").fill(name);
   await page.getByRole("button", { name: "Сохранить", exact: true }).click();

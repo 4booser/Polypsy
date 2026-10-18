@@ -6,9 +6,9 @@ import { dateTime } from "../format";
 import { useLang } from "../lang";
 import type { UiKey } from "@quizzy/shared";
 import { useResource, type Resource } from "../useResource";
-import { NotLoaded, useAction } from "../ui";
+import { Ic, NotLoaded, useAction } from "../ui";
 import { Panel } from "../ui/layout";
-import { Button, Input } from "../ui/primitives";
+import { Button, Input, Tag } from "../ui/primitives";
 
 /**
  * Предложения правил.
@@ -114,44 +114,53 @@ export function SuggestionsBody({
   if (!suggestionsShown(items.length, meanwhile)) return null;
 
   return (
-    <Panel title={ut("ds.title")} actions={<span className="text-caption text-muted">{ut("ds.sub")}</span>}>
-      <div className="suggestions">
+    <Panel title={ut("ds.title")} icon={<Ic.sparkle />} sub={ut("ds.sub")} flush>
+      <div className="flex flex-col border-t border-divider">
         {/*
-          Не цвет внимания: предложение — не тревога (см. .suggestion), и
-          сообщение о нём тоже. role="status" — диктор прочтёт, почему
-          строка, на которую нажимали, пропала.
+          Не цвет внимания: предложение — не тревога, и сообщение о нём тоже.
+          role="status" — диктор прочтёт, почему строка, на которую нажимали,
+          пропала.
         */}
         {meanwhile ? (
-          <p role="status" className="m-0 text-caption">
+          <p role="status" className="m-0 border-b border-divider px-4 py-2.5 text-small text-text-2">
             {meanwhile}
           </p>
         ) : null}
         {items.map((hit: RuleHit) => (
-          <article key={hit.id} className="suggestion">
-            <div className="row tight">
-              <strong>{hit.ruleTitle}</strong>
-              <span className="text-muted">
-                {ut("ds.version")} {hit.ruleVersion} · {dateTime(hit.createdAt)}
+          <article key={hit.id} data-suggestion="" className="flex flex-col gap-2 border-b border-divider px-4 py-3 last:border-b-0">
+            <div className="flex flex-wrap items-baseline gap-x-2">
+              <b className="font-extrabold text-text">{hit.ruleTitle}</b>
+              <span className="text-small text-muted">
+                {ut("ds.version")} {hit.ruleVersion}, {dateTime(hit.createdAt)}
               </span>
             </div>
 
-            <Link to={`/patients/${hit.userId}`}>{hit.userName}</Link>
+            <Link to={`/patients/${hit.userId}`} className="self-start font-bold text-violet-ink">
+              {hit.userName}
+            </Link>
 
             {/* объяснение — то, на основании чего человек примет решение */}
-            <ul className="because">
+            <ul data-because="" className="m-0 flex list-disc flex-col gap-0.5 pl-5 text-body text-text-2">
               {hit.explanation.because.map((b, i) => (
                 <li key={i}>{b.text}</li>
               ))}
             </ul>
 
-            <p className="text-caption text-muted">
-              {hit.explanation.actions.map((a) => actionText(a, ut)).join(" · ")}
-            </p>
+            {hit.explanation.actions.length ? (
+              <div className="flex flex-wrap gap-1.5">
+                {hit.explanation.actions.map((a, i) => (
+                  <Tag key={i} tone="primary">
+                    {actionText(a, ut)}
+                  </Tag>
+                ))}
+              </div>
+            ) : null}
 
             {declining === hit.id ? (
-              <div className="row tight">
+              <div className="flex flex-wrap items-center gap-2">
                 <Input
                   autoFocus
+                  className="min-w-[220px] flex-1"
                   value={note}
                   onChange={(e) => setNote(e.target.value)}
                   placeholder={ut("ds.whyDecline")}
@@ -167,7 +176,7 @@ export function SuggestionsBody({
                 </Button>
               </div>
             ) : (
-              <div className="row tight">
+              <div className="flex flex-wrap gap-2">
                 <Button variant="primary" disabled={busy} onClick={() => decide(hit, "accepted", ut("ds.accepted"))}>
                   {ut("ds.accept")}
                 </Button>

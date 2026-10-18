@@ -76,10 +76,11 @@ test("правило предлагает, человек решает", async (
   });
 
   await page.goto("/");
-  const card = page.locator(".suggestion").first();
+  // строка предложения — по признаку data-, а не по классу оформления (UI 3)
+  const card = page.locator("[data-suggestion]").first();
   await expect(card).toBeVisible();
   // объяснение с числами, а не слово «сработало»
-  await expect(card.locator(".because li").first()).toContainText(scale);
+  await expect(card.locator("[data-because] li").first()).toContainText(scale);
 
   // отклонение без возражения невозможно
   await card.getByRole("button", { name: "Отклонить" }).click();

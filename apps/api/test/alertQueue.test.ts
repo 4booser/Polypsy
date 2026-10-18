@@ -276,6 +276,13 @@ describe("очередь на сотнях случаев", () => {
     assertOrdered(flat.items);
   }, 60_000);
 
+  test("норма разбора методики приходит вместе со случаем — по ней консоль рисует таймер", async () => {
+    const res = await page("limit=5");
+    expect(res.status).toBe(200);
+    expect(res.body.items.length).toBeGreaterThan(0);
+    for (const c of res.body.items) expect(c.escalateMinutes).toBe(60);
+  });
+
   test("несколько случаев одного человека — одна строка с числом случаев и сигналов", async () => {
     const p0 = spec[0]!;
     const res = await page(`patient=${p0.userId}`);

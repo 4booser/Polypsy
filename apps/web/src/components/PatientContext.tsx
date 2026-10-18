@@ -1,14 +1,13 @@
-import { Link } from "react-router-dom";
 import type { Severity } from "@quizzy/shared";
 import { api } from "../api";
 import { useLang } from "../lang";
 import { useResource } from "../useResource";
 import { Avatar, Loading } from "../ui";
-import { Num, SectionLabel, Tag } from "../ui/primitives";
-import { day, severityColor, severityKey } from "../format";
+import { ButtonLink, Num, SeverityTag } from "../ui/primitives";
+import { day, severityKey } from "../format";
 
 /**
- * Кто этот человек — не уходя со списка.
+ * Кто этот человек — не уходя со списка («хто це» набора).
  *
  * Раньше ответ на вопрос «а это кто?» стоил перехода в карту и возврата
  * назад: терялось место в списке из восьми тысяч строк и набранные фильтры.
@@ -45,87 +44,82 @@ export function PatientContext({ person }: { person: ContextPerson }) {
 
   return (
     <div className="flex flex-col gap-5">
-      <div className="flex items-start gap-3">
-        <Avatar name={person.fullName} size={38} />
+      <div className="flex items-center gap-3">
+        <Avatar name={person.fullName} size={44} />
         <div className="min-w-0">
-          <div className="truncate text-body font-medium">{person.fullName}</div>
-          <div className="truncate text-caption text-muted">{person.unit ?? "—"}</div>
+          <div className="truncate text-h3 font-extrabold text-text">{person.fullName}</div>
+          <div className="truncate text-small text-muted">{person.unit ?? "—"}</div>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      <dl className="m-0 grid grid-cols-2 gap-3">
         <div>
-          <SectionLabel>{ut("patients.measurements")}</SectionLabel>
-          <Num className="text-section">{person.count ?? "—"}</Num>
+          <dt className="text-caption font-bold text-muted">{ut("patients.measurements")}</dt>
+          <dd className="m-0 text-big font-extrabold text-text">
+            <Num>{person.count ?? "—"}</Num>
+          </dd>
         </div>
         <div>
-          <SectionLabel>{ut("patients.last")}</SectionLabel>
-          <span className="text-section">{person.last ? day(person.last) : "—"}</span>
+          <dt className="text-caption font-bold text-muted">{ut("patients.last")}</dt>
+          <dd className="m-0 text-section font-extrabold text-text">{person.last ? day(person.last) : "—"}</dd>
         </div>
-      </div>
+      </dl>
 
       <div className="flex flex-col gap-2">
-        <SectionLabel>{ut("pt.byMethod")}</SectionLabel>
+        <h3 className="m-0 text-caption font-bold text-muted">{ut("pt.byMethod")}</h3>
         {error ? (
-          <p className="m-0 text-caption text-danger">{error}</p>
+          <Loading rows={1} error={error} bare />
         ) : !data ? (
-          <Loading rows={3} />
+          <Loading rows={3} bare />
         ) : data.surveys.length === 0 ? (
-          <p className="m-0 text-caption text-muted">{ut("pt.noCompleted")}</p>
+          <p className="m-0 text-small text-muted">{ut("pt.noCompleted")}</p>
         ) : (
-          data.surveys.map((sv) => {
-            /*
-             * По методике показывается худшая степень среди её шкал на
-             * последнем замере, а не первая попавшаяся: панель отвечает на
-             * вопрос «стоит ли открывать карту», и ответ на него даёт худшее,
-             * а не среднее.
-             */
-            const worst = sv.scales.reduce<{ severity: Severity | null; label: string | null }>(
-              (acc, scale) => {
-                const last = scale.points[scale.points.length - 1];
-                if (!last?.severity) return acc;
-                return RANK[last.severity] > RANK[acc.severity ?? "none"]
-                  ? { severity: last.severity, label: last.bandLabel }
-                  : acc;
-              },
-              { severity: null, label: null },
-            );
-            return (
-              <div
-                key={sv.surveyId}
-                className="flex items-center justify-between gap-2 border-b border-hairline pb-2 last:border-0 last:pb-0"
-              >
-                <span className="min-w-0 truncate text-small">{sv.title}</span>
-                {worst.severity ? (
-                  <Tag className="shrink-0" tone="plain">
-                    <span
-                      aria-hidden
-                      className="size-2 shrink-0 rounded-full"
-                      style={{ background: severityColor[worst.severity] }}
-                    />
-                    {/*
-                      Подпись полосы задаёт методика, и у большинства она есть
-                      («Помірна тривожність»). Когда автор её не заполнил, в
-                      метке оставался код ступени — moderate, severe. Запасной
-                      вариант должен быть не менее читаемым, чем основной:
-                      ступень выраженности названа в словаре теми же словами,
-                      что на сводке и в карте, и человек читает одно и то же
-                      понятие одинаково, где бы оно ни встретилось.
-                    */}
-                    {worst.label ?? ut(severityKey[worst.severity], worst.severity)}
-                  </Tag>
-                ) : (
-                  <Num className="shrink-0 text-caption text-muted">{sv.responseCount}</Num>
-                )}
-              </div>
-            );
-          })
+          <ul className="m-0 list-none p-0">
+            {data.surveys.map((sv) => {
+              /*
+               * По методике показывается худшая степень среди её шкал на
+               * последнем замере, а не первая попавшаяся: панель отвечает на
+               * вопрос «стоит ли открывать карту», и ответ на него даёт
+               * худшее, а не среднее.
+               */
+              const worst = sv.scales.reduce<{ severity: Severity | null; label: string | null }>(
+                (acc, scale) => {
+                  const last = scale.points[scale.points.length - 1];
+                  if (!last?.severity) return acc;
+                  return RANK[last.severity] > RANK[acc.severity ?? "none"]
+                    ? { severity: last.severity, label: last.bandLabel }
+                    : acc;
+                },
+                { severity: null, label: null },
+              );
+              return (
+                <li
+                  key={sv.surveyId}
+                  className="flex items-center justify-between gap-2 border-t border-divider py-2 first:border-t-0 first:pt-0"
+                >
+                  <span className="min-w-0 truncate text-body text-text">{sv.title}</span>
+                  {worst.severity ? (
+                    /*
+                     * Подпись полосы задаёт методика; когда автор её не
+                     * заполнил — ступень словарём, теми же словами, что на
+                     * сводке и в карте. Тяжесть — всегда со словом.
+                     */
+                    <SeverityTag level={worst.severity} small>
+                      {worst.label ?? ut(severityKey[worst.severity], worst.severity)}
+                    </SeverityTag>
+                  ) : (
+                    <Num className="shrink-0 text-small text-muted">{sv.responseCount}</Num>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
         )}
       </div>
 
-      <Link className="btn primary justify-center" to={`/patients/${person.userId}`}>
+      <ButtonLink variant="primary" className="w-full" to={`/patients/${person.userId}`}>
         {ut("pt.openCard")}
-      </Link>
+      </ButtonLink>
     </div>
   );
 }

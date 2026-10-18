@@ -130,6 +130,7 @@ export function sectionOf(path: string): SectionKey | null {
   if (under(path, "/ops")) return "ops";
   if (path.startsWith("/constructor/")) return null;
   if (/^\/patients\/[^/]+\/case(\/|$)/.test(path)) return null; // справа: шапка пациента во всю ширину (кадр patients-case)
+  if (/^\/patients\/[^/]+\/?$/.test(path)) return null; // карточка пациента: своя колонка «Мої пацієнти» (макет patient-card)
   switch (railKeyOf(path)) {
     case "patients":
       return "patients";

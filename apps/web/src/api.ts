@@ -851,6 +851,8 @@ export interface TimelineItem {
   detail?: string | null;
   severity?: "none" | "mild" | "moderate" | "severe" | null;
   href?: string | null;
+  /** Срок назначения — только у назначений */
+  dueAt?: string | null;
 }
 
 /**
@@ -1300,6 +1302,17 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify({ outcome, note, seenLastAlertAt }),
     }),
+  /*
+   * Хронология случая: кто брал, кто отпускал, кто разобрал — выборка журнала
+   * по этому случаю (GET /api/alert-cases/:id/history). Экран случая ставит её
+   * рядом с разбором: заступивший видит, почему случай ещё открыт.
+   */
+  alertCaseHistory: (id: string) =>
+    request<{ items: { action: string; at: string; actorName: string; details: Record<string, unknown> | null }[] }>(
+      `/api/alert-cases/${id}/history`,
+    ).then((r) => r.items),
+  /** Записать человека на приём в свободный слот: за другого — только с appointments.manage (то же, что book с patientId) */
+  bookFor: (patientId: string, slotId: string, mode: "onsite" | "remote" = "onsite") => api.book({ slotId, patientId, mode }),
 
   openapi: () => request<OpenApiSpec>("/api/openapi.json"),
   downloadOpenapi: () => download("/api/openapi.json", "openapi.json"),
@@ -1731,6 +1744,18 @@ export const api = {
   } = {}) => {
     const qs = new URLSearchParams();
     for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== "" && v !== null) qs.set(k, String(v));
+    return request<PatientListPage>(`/api/patients?${qs}`);
+  },
+  /**
+   * Пациенты зоны страницей — с ведущим и последней сдачей (GET /api/patients).
+   * Колонка «Мої пацієнти» карточки берёт отсюда «мой» (ведущий — я) и
+   * «нові результати»; чтение списка журналируется сервером.
+   */
+  patientsPage: (params: { q?: string; limit?: number; offset?: number } = {}) => {
+    const qs = new URLSearchParams();
+    if (params.q) qs.set("q", params.q);
+    if (params.limit) qs.set("limit", String(params.limit));
+    if (params.offset) qs.set("offset", String(params.offset));
     return request<PatientListPage>(`/api/patients?${qs}`);
   },
   assignSurveyToPatientGroup: (groupId: string, body: AssignSurveyToPatientGroupInput) =>

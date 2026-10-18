@@ -63,6 +63,8 @@ export interface TimelineItem {
   severity?: Severity | null;
   /** Куда вести по нажатию — уже готовый путь консоли */
   href?: string | null;
+  /** Срок назначения — у строк назначений; у прочих поля нет */
+  dueAt?: string | null;
 }
 
 timelineRoutes.get("/:userId", async (c) => {
@@ -221,9 +223,10 @@ timelineRoutes.get("/:userId", async (c) => {
   }
 
   /*
-   * Название набора — в строку, а не идентификатор: лента печатала
-   * «b1c2…» там, где специалист ищет «Первинна оцінка ветерана». Набор
-   * удалён — остаётся идентификатор, а не пустая строка.
+   * Назначение — с названием набора и сроком: идентификатор набора в строке
+   * хронологии ничего не говорит, а «до 15.10» карточка пациента ставит в
+   * строку открытого. Набор — левым соединением: недоступный по зоне набор
+   * не выбрасывает строку назначения, она остаётся с идентификатором.
    */
   const assigned = await db
     .select({ a: batteryAssignments, title: batteries.title })
@@ -241,6 +244,7 @@ timelineRoutes.get("/:userId", async (c) => {
       title: title ?? a.batteryId,
       detail: a.completedAt ? "completed" : a.cancelledAt ? "cancelled" : "open",
       href: "/batteries",
+      dueAt: a.dueAt ?? null,
     });
   }
 
