@@ -1,14 +1,22 @@
 import { describe, expect, test } from "bun:test";
 import {
   FAVORITES_KEY,
+  favouritesToMove,
+  fill,
   grantEach,
+  groupsSummary,
+  inGroupView,
   keepPresent,
   matchesQuery,
   newProgress,
   parseFavorites,
   partialFailure,
   personMeta,
+  pluralOf,
   serializeFavorites,
+  shortDate,
+  sortGroups,
+  surveyCode,
   toggleIn,
 } from "../src/pages/patientGroups/model";
 import { pagesOf, slicePage } from "../src/ui/paging";
@@ -216,5 +224,81 @@ describe("«Призначити тест» выборке: отказ посе�
     const s = server(new Set());
     const outcome = await grantEach(newProgress(), "survey-a|", people, s.grant);
     expect(outcome).toEqual({ done: 8, total: 8, error: null });
+  });
+});
+
+describe("таблица групп", () => {
+  test("код методики берётся из названия, а без кода — название целиком", () => {
+    expect(surveyCode("Депресія (PHQ-9)")).toBe("PHQ-9");
+    expect(surveyCode("Поширені психічні розлади (SRQ-20, ВООЗ)")).toBe("SRQ-20");
+    expect(surveyCode("СР-45. Схильність до суїцидальних реакцій")).toBe("СР-45");
+    // «(демо)» — не код: строчная кириллица
+    expect(surveyCode("Якість сну (демо)")).toBe("Якість сну (демо)");
+  });
+
+  test("день строки: «08.10», чужой год — с годом", () => {
+    const now = new Date(2026, 9, 18);
+    expect(shortDate(new Date(2026, 9, 8, 12).toISOString(), now)).toBe("08.10");
+    expect(shortDate(new Date(2025, 2, 12, 12).toISOString(), now)).toBe("12.03.2025");
+    expect(shortDate("не дата", now)).toBe("—");
+  });
+
+  const g = (over: Partial<Parameters<typeof sortGroups>[0][number] & { ownerId: string; surveyCount: number; doneCount: number }>) => ({
+    favourite: false,
+    changedAt: "2026-10-01T00:00:00.000Z",
+    title: "Б",
+    memberCount: 5,
+    riskCount: 0,
+    ownerId: "me",
+    surveyCount: 1,
+    doneCount: 0,
+    ...over,
+  });
+
+  test("по умолчанию — обрані первыми, затем свежая зміна; равные — по названию", () => {
+    const rows = [
+      g({ title: "Стара", changedAt: "2026-09-01T00:00:00.000Z" }),
+      g({ title: "Обрана стара", favourite: true, changedAt: "2026-08-01T00:00:00.000Z" }),
+      g({ title: "Свіжа", changedAt: "2026-10-10T00:00:00.000Z" }),
+      g({ title: "Альфа", changedAt: "2026-10-10T00:00:00.000Z" }),
+    ];
+    expect(sortGroups(rows, "fav").map((r) => r.title)).toEqual(["Обрана стара", "Альфа", "Свіжа", "Стара"]);
+    expect(sortGroups(rows, "title").map((r) => r.title)[0]).toBe("Альфа");
+    // исходный массив не трогается: это состояние экрана
+    expect(rows[0]!.title).toBe("Стара");
+  });
+
+  test("ризик спершу — по числу людей с ризиком", () => {
+    const rows = [g({ title: "А", riskCount: 0 }), g({ title: "Б", riskCount: 3 }), g({ title: "В", riskCount: 1 })];
+    expect(sortGroups(rows, "risk").map((r) => r.title)).toEqual(["Б", "В", "А"]);
+  });
+
+  test("виды: обрані, веду я, без тестів", () => {
+    expect(inGroupView(g({ favourite: true }), "fav", "me")).toBe(true);
+    expect(inGroupView(g({}), "fav", "me")).toBe(false);
+    expect(inGroupView(g({ ownerId: "other" }), "mine", "me")).toBe(false);
+    expect(inGroupView(g({ surveyCount: 0 }), "notests", "me")).toBe(true);
+    expect(inGroupView(g({ surveyCount: 2 }), "all", null)).toBe(true);
+  });
+
+  test("сводка: ризик по группам, «не пройшли» — только в группах с методиками", () => {
+    const s = groupsSummary([
+      g({ memberCount: 8, riskCount: 2, surveyCount: 2, doneCount: 5 }),
+      g({ memberCount: 4, riskCount: 0, surveyCount: 0, doneCount: 0 }),
+      g({ memberCount: 6, riskCount: 1, surveyCount: 1, doneCount: 6 }),
+    ]);
+    expect(s).toEqual({ groups: 3, members: 18, risk: 3, riskGroups: 2, assigned: 14, waiting: 3 });
+  });
+
+  test("прежние отметки браузера переезжают только туда, где их ещё нет", () => {
+    const local = new Set(["a", "b", "gone"]);
+    expect(favouritesToMove(local, [{ id: "a", favourite: true }, { id: "b", favourite: false }, { id: "c", favourite: false }])).toEqual(["b"]);
+  });
+
+  test("подстановка и формы слова", () => {
+    expect(fill("{n} з {total}", { n: 3, total: 8 })).toBe("3 з 8");
+    expect(fill("{n} і {missing}", { n: 1 })).toBe("1 і {missing}");
+    expect([1, 3, 5, 21, 22, 25].map((n) => pluralOf(n, "uk"))).toEqual(["one", "few", "many", "one", "few", "many"]);
+    expect(pluralOf(2, "en")).toBe("many");
   });
 });
