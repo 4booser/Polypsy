@@ -253,7 +253,7 @@ export function ConditionsBody({ data }: { data: ConditionsResult }) {
         {(["none", "mild", "moderate", "severe"] as const).map((s) => (
           <span key={s} className="inline-flex items-center gap-1.5 font-semibold">
             <SevDot severity={s} />
-            {labels.severity[s]}
+            {ut(severityKey[s])}
           </span>
         ))}
         <span className="ml-auto inline-flex items-center gap-1.5 text-muted">
