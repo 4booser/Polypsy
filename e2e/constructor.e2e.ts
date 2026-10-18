@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { fieldByLabel, goTop, login, setEditLang } from "./helpers";
+import { fieldByLabel, goRail, login, setEditLang } from "./helpers";
 
 /**
  * Раскрыть меню шестерёнки конструктора.
@@ -21,12 +21,10 @@ const ITEMS = [
 test("методика создаётся из вставленного текста и публикуется", async ({ page }) => {
   await login(page, "psy");
   /*
-   * В полосе методики подписаны «Тесты» (ключ top.tests): так их называет
-   * заказчик на макете, и так их ищет человек. Пункт «Методики» в бургере
-   * ведёт туда же, но сценарий идёт полосой — той дверью, которой ходят
-   * каждый день, — и заодно проверяет, что подпись на месте.
+   * Каталог — раздел «Методики» рельсы: сценарий идёт той дверью, которой
+   * ходят каждый день, — и заодно проверяет, что она на месте.
    */
-  await goTop(page, "Тесты");
+  await goRail(page, "Методики");
 
   /*
    * Ссылки «Создать методику» в каталоге больше нет. По кадру f11 над списком
@@ -126,7 +124,7 @@ test("методика создаётся из вставленного текс
   await expect(page.getByText(`${title} · версия 1`)).toBeVisible();
 
   // каталог открывается на опубликованных, свежая методика — первой строкой
-  await goTop(page, "Тесты");
+  await goRail(page, "Методики");
   await expect(page.getByRole("link", { name: title })).toBeVisible();
 });
 

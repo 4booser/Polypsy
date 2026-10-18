@@ -4614,7 +4614,8 @@ export interface WorkspacePrefs {
    * системной настройке нельзя — см. схему в schemas.ts.
    */
   motion?: "system" | "reduced";
-  theme?: "dark" | "light";
+  /** «system» — тема следует настройке системы */
+  theme?: "dark" | "light" | "system";
   /*
    * Язык в профиле. Схема его принимает давно, но ни консоль, ни мобилка
    * его пока не пишут и не читают: язык живёт на устройстве (localStorage,

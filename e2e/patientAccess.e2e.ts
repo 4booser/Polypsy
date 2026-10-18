@@ -1,6 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
-import { goMenu, login, menuButton, moreMenu, openMenu, topNav } from "./helpers";
+import { goMenu, login, menuButton, moreMenu, openMenu, railNav } from "./helpers";
 
 /**
  * Кабинет пациента с телефона: мишени, заголовки, подписи, фокус.
@@ -99,6 +99,16 @@ test("прохождение методики: фокус едет за вопр
     .first()
     .click();
   await page.getByRole("heading", { level: 1 }).waitFor();
+  /*
+   * У методики с инструкцией перед первым пунктом — её экран и «Почати»
+   * (#170), как и в a11y.e2e.ts. Без этого шага проверка зеленела, только
+   * если инструкцию этой методики уже открывал другой сценарий раньше.
+   */
+  const start = page.getByRole("button", { name: /^(Почати|Начать|Start)$/ });
+  const firstOption = page.locator("button[aria-pressed]").first();
+  await Promise.race([start.waitFor(), firstOption.waitFor()]);
+  if (await start.isVisible()) await start.click();
+  await firstOption.waitFor();
 
   /* мишени прохождения меряются там же, где и всё остальное */
   expect(await tooSmall(page), "мишень меньше пальца в прохождении").toEqual([]);
@@ -154,9 +164,9 @@ test("прохождение методики: фокус едет за вопр
 
 test.describe("меню консоли на телефоне", () => {
   /*
-   * Ниже 1100 px шесть пунктов полосы спрятаны, а список бургера, пока он
-   * закрыт, не отрисован вовсе. Проверка всё равно нажимает Tab, а не
-   * смотрит на класс: рельса, которую полоса сменила, была задвинута
+   * Ниже 1100 px рельса и колонка подразделов спрятаны, а меню «Ще
+   * розділи», пока оно закрыто, не отрисовано вовсе. Проверка всё равно
+   * нажимает Tab, а не смотрит на класс: прежняя рельса была задвинута
    * трансформацией — выглядела скрытой и при этом принимала фокус из-за
    * края, — и спрятать пункты так же снова можно одной строкой стилей.
    * Автопроверка доступности об этом молчит по построению.
@@ -164,10 +174,10 @@ test.describe("меню консоли на телефоне", () => {
   test("спрятанные пункты меню не забирают первые нажатия Tab", async ({ page }) => {
     await login(page, "psy");
     await page.goto("/today");
-    await page.getByRole("link", { name: "Сегодня" }).waitFor();
+    await page.getByRole("main").getByRole("link", { name: "Сегодня" }).waitFor();
 
     // предпосылка: на этой ширине пункты действительно спрятаны — иначе проверять нечего
-    await expect(topNav(page), "на телефоне полоса разделов должна быть спрятана").toBeHidden();
+    await expect(railNav(page), "на телефоне рельса разделов должна быть спрятана").toBeHidden();
 
     const visited: string[] = [];
     for (let i = 0; i < 12; i += 1) {
@@ -177,12 +187,14 @@ test.describe("меню консоли на телефоне", () => {
           const el = document.activeElement as HTMLElement | null;
           if (!el) return "нет";
           /*
-           * Спрятанное — это пункты полосы и список бургера (диалог, которого
-           * при закрытом меню быть не должно). Сама шапка — знак, язык, кнопка
-           * бургера — видна и в порядке табуляции стоит по праву.
+           * Спрятанное — это рельса, колонка подразделов и меню «Ще розділи»
+           * (диалог, которого при закрытом меню быть не должно). Сама полоса
+           * приложения — знак, поиск, язык, кнопка меню — видна и в порядке
+           * табуляции стоит по праву.
            */
           const hidden =
-            !!document.querySelector("header nav")?.contains(el) || !!el.closest('[role="dialog"]');
+            [...document.querySelectorAll("nav")].some((n) => n.contains(el) && !n.closest("main")) ||
+            !!el.closest('[role="dialog"]');
           return `${hidden ? "СПРЯТАНО" : "экран"}:${(el.textContent ?? el.getAttribute("aria-label") ?? "").trim().slice(0, 20)}`;
         }),
       );
@@ -196,7 +208,7 @@ test.describe("меню консоли на телефоне", () => {
   test("открытый бургер держит фокус, закрывается Esc и возвращает фокус кнопке", async ({ page }) => {
     await login(page, "psy");
     await page.goto("/today");
-    await page.getByRole("link", { name: "Сегодня" }).waitFor();
+    await page.getByRole("main").getByRole("link", { name: "Сегодня" }).waitFor();
 
     const menu = await openMenu(page);
     /* фокус переехал внутрь: иначе Tab продолжает под слоем, где ничего не видно */
@@ -229,7 +241,7 @@ test.describe("меню консоли на телефоне", () => {
   test("переход по разделу закрывает бургер, а не оставляет его поверх", async ({ page }) => {
     await login(page, "psy");
     await page.goto("/today");
-    await page.getByRole("link", { name: "Сегодня" }).waitFor();
+    await page.getByRole("main").getByRole("link", { name: "Сегодня" }).waitFor();
 
     await goMenu(page, "Пациенты");
 

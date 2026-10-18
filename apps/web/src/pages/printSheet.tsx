@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { useAuth } from "../auth";
 import { useLang } from "../lang";
 import { locale } from "../format";
-import { Logo } from "../shell/Topbar";
+import { Logo } from "../shell/Logo";
 import { PRINT_SHEET } from "../print";
 import { cx } from "../ui/cx";
 

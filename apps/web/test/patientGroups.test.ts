@@ -13,7 +13,7 @@ import {
 } from "../src/pages/patientGroups/model";
 import { pagesOf, slicePage } from "../src/ui/paging";
 import { railGroups } from "../src/shell/Rail";
-import { TOP } from "../src/shell/Topbar";
+import { navAccess, subNavFor } from "../src/shell/nav";
 
 /**
  * Группы пациентов: чистая часть экранов и навигация раздела.
@@ -122,13 +122,18 @@ describe("страницы", () => {
 });
 
 describe("навигация раздела «Групи»", () => {
-  test("«Групи» в верхней полосе ведут на группы пациентов, не методик", () => {
+  test("«Групи пацієнтів» в подразделах пациентов ведут на группы пациентов, не методик", () => {
     /*
      * Тихая ошибка: оба адреса называются «Групи», оба открываются, и
-     * глазами их не отличить — только по содержимому экрана.
+     * глазами их не отличить — только по содержимому экрана. Polypsy 2.0
+     * разводит и слова: «Групи пацієнтів» у пациентов, «Групи методик» у
+     * методик.
      */
-    const groups = TOP.find((it) => it.key === "top.groups");
-    expect(groups?.to).toBe("/patient-groups");
+    const all = navAccess({ role: "superadmin" }, () => true);
+    const patients = subNavFor("patients", "/patients", all)!.groups.flatMap((g) => g.items);
+    expect(patients.find((it) => it.label === "sn.patientGroups")?.to).toBe("/patient-groups");
+    const methods = subNavFor("methods", "/surveys", all)!.groups.flatMap((g) => g.items);
+    expect(methods.find((it) => it.label === "adm.groupsTitle")?.to).toBe("/groups");
   });
 
   test("группы методик остались в бургере под своим именем", () => {
@@ -136,7 +141,7 @@ describe("навигация раздела «Групи»", () => {
     const surveyGroups = items.find((i) => i.to === "/groups");
     expect(surveyGroups, "у групп методик не осталось двери").toBeDefined();
     expect(surveyGroups!.key).toBe("adm.groupsTitle");
-    /* и группы пациентов в бургере — под тем же словом, что в полосе */
+    /* и группы пациентов в общем списке разделов (настройка «убрать с глаз») — под своим ключом */
     expect(items.find((i) => i.to === "/patient-groups")?.key).toBe("nav.groups");
   });
 });

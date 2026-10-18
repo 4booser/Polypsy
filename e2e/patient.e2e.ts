@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { login, menuButton } from "./helpers";
+import { eventsBell, login } from "./helpers";
 
 /**
  * Кабинет пациента: вход, прохождение и запись.
@@ -12,8 +12,8 @@ test("пациент входит в свой кабинет, а не в кон�
   await login(page, "patient");
   await page.waitForURL(/\/me/);
   // оболочка специалиста не должна появиться ни на мгновение: её признак —
-  // бургер, он есть у сотрудника на любой ширине экрана
-  await expect(menuButton(page)).toHaveCount(0);
+  // колокольчик полосы приложения, он есть у сотрудника на любой ширине экрана
+  await expect(eventsBell(page)).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Тесты" })).toBeVisible();
 });
 
@@ -65,7 +65,7 @@ test("человек заводит учётную запись и проход�
    * так, как пройдёт человек.
    */
   await page.getByRole("button", { name: /^(Погоджуюся|Соглашаюсь|I agree)$/ }).click();
-  await expect(menuButton(page)).toHaveCount(0);
+  await expect(eventsBell(page)).toHaveCount(0);
 
   await page.getByRole("link", { name: "Тесты" }).click();
   // короткая методика: МЛО на двести пунктов уронило бы проверку по сроку
@@ -75,6 +75,11 @@ test("человек заводит учётную запись и проход�
     .filter({ hasNotText: "Мини-мульт" })
     .first()
     .click();
+  /* у методики с инструкцией перед первым пунктом — её экран и «Почати» (#170), как в a11y.e2e.ts */
+  const start = page.getByRole("button", { name: /^(Почати|Начать|Start)$/ });
+  const firstOption = page.locator("button[aria-pressed]").first();
+  await Promise.race([start.waitFor(), firstOption.waitFor()]);
+  if (await start.isVisible()) await start.click();
 
   for (let i = 0; i < 60; i++) {
     const option = page.locator("button[aria-pressed]").first();

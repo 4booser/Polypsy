@@ -152,13 +152,14 @@ describe("карточка пациента: адреса", () => {
     expect(card).toContain("`/responses/${c.responseId}/conclusion`");
     expect(app).toContain('path="/responses/:id/conclusion"');
     /*
-     * Дверь к клинической карте — в бургере верхней полосы, а не в строке
-     * заголовка карточки: на кадре f13 в ней одна кнопка «Відписатись».
-     * Проверяется то же самое, что и раньше, — что дверь ведёт на новый
-     * адрес и что она вообще есть, — но по её нынешнему месту.
+     * Дверь к клинической карте — в колонке подразделов пациентов (Polypsy
+     * 2.0, shell/nav.ts → clinicalLinks), а не в строке заголовка карточки:
+     * на кадре f13 в ней одна кнопка «Відписатись». Проверяется то же самое,
+     * что и раньше, — что дверь ведёт на новый адрес и что она вообще есть, —
+     * но по её нынешнему месту.
      */
-    const topbar = readFileSync(join(SRC, "shell/Topbar.tsx"), "utf8");
-    expect(topbar).toContain("`/patients/${id}/case`");
+    const nav = readFileSync(join(SRC, "shell/nav.ts"), "utf8");
+    expect(nav).toContain("`/patients/${id}/case`");
     /* в самой карточке ссылки на /case больше нет — только упоминание в докблоке */
     expect(card).not.toContain('to={`${base}/case');
   });

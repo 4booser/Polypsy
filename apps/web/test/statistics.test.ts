@@ -22,7 +22,7 @@ import {
   withSpare,
   withoutCriteria,
 } from "../src/pages/statistics/model";
-import { TOP } from "../src/shell/Topbar";
+import { navAccess, railEntries, subNavFor } from "../src/shell/nav";
 
 /**
  * Раздел «Статистика»: что экран печатает и куда ведёт.
@@ -73,8 +73,13 @@ describe("печать ячеек отчёта", () => {
 
 describe("навигация раздела", () => {
   /* Мутация: вернуть пункту «/cohorts» — падает с именем пункта */
-  test("пункт «Статистика» верхней полосы ведёт в раздел, а не на подбор людей", () => {
-    expect(TOP.find((it) => it.key === "top.statistics")?.to).toBe("/statistics");
+  test("«Статистичні моделі» в подразделах аналитики ведут в раздел, а не на подбор людей", () => {
+    const all = navAccess({ role: "superadmin" }, () => true);
+    const items = subNavFor("analytics", "/statistics", all)!.groups.flatMap((g) => g.items);
+    expect(items.find((it) => it.label === "sn.statModels")?.to).toBe("/statistics");
+    /* у того, кому открыта только статистика, «Аналітика» на рельсе ведёт прямо в неё */
+    const statsOnly = navAccess({ role: "admin", ladderRank: 3 }, (p) => p === "statistics.read");
+    expect(railEntries(statsOnly).find((e) => e.key === "analytics")?.to).toBe("/statistics");
   });
 
   test("все экраны раздела объявлены маршрутами", () => {

@@ -5,6 +5,7 @@ import { Button, Field, Input } from "../ui/primitives";
 import { LangSwitch } from "../lang";
 import { useLang } from "../lang";
 import { useState } from "react";
+import { setThemeChoice, useThemeChoice, type ThemeChoice } from "../shell/theme";
 
 /**
  * «Я»: свои данные, вход через Google, вид приложения.
@@ -22,16 +23,14 @@ export default function PatientProfile() {
   const [firstName, setFirstName] = useState(user?.firstName ?? "");
   const [lastName, setLastName] = useState(user?.lastName ?? "");
   /*
-   * Умолчание — светлая: макет заказчика нарисован на белом листе, и консоль
-   * обязана открываться так, как нарисована. Тёмная остаётся выбором человека,
-   * а не первым впечатлением.
+   * Выбор темы — общий для вкладки (shell/theme.ts): тот же, что у
+   * переключателя в шапке кабинета. Умолчание — светлая. Выбор уходит и в
+   * профиль на сервере: пациент тоже открывает кабинет с разных устройств.
    */
-  const [theme, setTheme] = useState(() => localStorage.getItem("quizzy.theme.v2") ?? "light");
-
-  const applyTheme = (next: string) => {
-    setTheme(next);
-    localStorage.setItem("quizzy.theme.v2", next);
-    document.documentElement.setAttribute("data-theme", next);
+  const theme = useThemeChoice();
+  const applyTheme = (next: ThemeChoice) => {
+    setThemeChoice(next);
+    void api.saveWorkspace({ theme: next }).catch(() => {});
   };
 
   return (
@@ -114,12 +113,23 @@ export default function PatientProfile() {
         <div className="flex items-center justify-between">
           <span className="text-small text-muted">{ut("pt.theme")}</span>
           <div className="flex gap-1">
-            <Button size="sm" variant={theme === "dark" ? "primary" : "quiet"} onClick={() => applyTheme("dark")}>
-              {ut("nav.themeDark")}
-            </Button>
-            <Button size="sm" variant={theme === "light" ? "primary" : "quiet"} onClick={() => applyTheme("light")}>
-              {ut("nav.themeLight")}
-            </Button>
+            {(
+              [
+                ["light", "nav.themeLight"],
+                ["dark", "nav.themeDark"],
+                ["system", "nav.themeSystem"],
+              ] as const
+            ).map(([value, label]) => (
+              <Button
+                key={value}
+                size="sm"
+                variant={theme === value ? "primary" : "quiet"}
+                aria-pressed={theme === value}
+                onClick={() => applyTheme(value)}
+              >
+                {ut(label)}
+              </Button>
+            ))}
           </div>
         </div>
       </section>

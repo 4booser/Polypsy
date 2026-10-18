@@ -24,7 +24,7 @@ test("день виден целиком и явка отмечается одн
   await page.goto("/today");
 
   // «Сегодня» — вкладка экрана начала смены; заголовком стоит дата
-  await expect(page.getByRole("link", { name: "Сегодня" })).toBeVisible();
+  await expect(page.getByRole("main").getByRole("link", { name: "Сегодня" })).toBeVisible();
 
   /*
    * В посеве четыре приёма в разных состояниях — именно поэтому экран и
@@ -129,7 +129,8 @@ test("экран приёма собирается одним запросом �
   // все три панели на месте сразу, а не по очереди
   await expect(page.getByText("Что было")).toBeVisible();
   await expect(page.getByText("Протокол приёма")).toBeVisible();
-  await expect(page.getByText("Действия")).toBeVisible();
+  /* целым словом: в поле поиска на полосе приложения есть «…или действия» */
+  await expect(page.getByText("Действия", { exact: true })).toBeVisible();
 
   // шаблон подставляется по нажатию, а не сам
   const area = page.locator("textarea").first();

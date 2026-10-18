@@ -82,7 +82,7 @@ describe("общее окно и окна одноразового секрет�
   });
 });
 
-describe("палитра команд и затемнение бургер-меню — то же правило (#200)", () => {
+describe("палитра команд и затемнение ящиков оболочки — то же правило (#200)", () => {
   const src = (f: string) => readFileSync(resolve(import.meta.dir, "../src", f), "utf8");
   const handlers = [
     "useState(backdropPress)",
@@ -99,13 +99,11 @@ describe("палитра команд и затемнение бургер-ме�
     for (const line of handlers) expect(palette.includes(line), line).toBe(true);
   });
 
-  test("бургер: затемнение закрывает по нажатию целиком, а не по любому click", () => {
-    const topbar = src("shell/Topbar.tsx");
-    expect(
-      topbar.includes('<div aria-hidden onClick={onClose} className="fixed inset-0 z-40" />'),
-      "затемнение закрывает по любому click",
-    ).toBe(false);
-    for (const line of handlers) expect(topbar.includes(line), line).toBe(true);
+  test("ящики оболочки: затемнение закрывает по нажатию целиком, а не по любому click", () => {
+    /* «Ще розділи», центр событий, справка и «Допомога» кабинета — один ящик (shell/overlays.tsx) */
+    const drawer = src("shell/overlays.tsx");
+    expect(/aria-hidden\s+onClick=\{onClose\}/.test(drawer), "затемнение закрывает по любому click").toBe(false);
+    for (const line of handlers) expect(drawer.includes(line), line).toBe(true);
   });
 
   test("положительный контроль: click по самой палитре до подложки не доходит", () => {

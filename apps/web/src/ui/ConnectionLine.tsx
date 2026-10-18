@@ -2,7 +2,7 @@ import { useEffect, useState, useSyncExternalStore } from "react";
 import { connection, type ConnectionState } from "../connection";
 import { timeOfDay } from "../format";
 import { useLang } from "../lang";
-import { cx } from "./cx";
+import { Strip, stripAction } from "../shell/Strip";
 
 /** Сколько держится строка «зв’язок відновлено» */
 export const RESTORED_MS = 4_000;
@@ -51,26 +51,15 @@ export function ConnectionLine({ place }: { place: "console" | "patient" }) {
     return () => clearTimeout(timer);
   }, [state.restoredAt]);
 
-  const column = place === "console" ? "mx-auto w-full max-w-[1248px] px-6 max-[900px]:px-4" : "px-4";
-
   if (!state.online) {
     return (
-      <div role="status" data-connection="lost" className="shrink-0 border-b border-accent bg-accent-soft text-accent">
-        <div
-          className={cx(
-            "flex flex-wrap items-baseline gap-x-[12px] gap-y-[2px] py-[8px] text-[14px] leading-[20px]",
-            column,
-          )}
-        >
-          <span className="font-bold">{ut("conn.lost")}</span>
-          {state.lostAt ? (
-            <span>
-              {ut("conn.since")}{" "}
-              <span className="font-mono tabular-nums">{timeOfDay(new Date(state.lostAt).toISOString())}</span>
-            </span>
-          ) : null}
-          {/* что с данными — тёмным: это объяснение, а не сигнал */}
-          <span className="min-w-0 text-text">{ut("conn.keep")}</span>
+      <Strip
+        tone="warn"
+        icon="wifi-off"
+        place={place}
+        data-connection="lost"
+        title={ut("conn.lost")}
+        action={
           <button
             type="button"
             disabled={checking}
@@ -78,24 +67,24 @@ export function ConnectionLine({ place }: { place: "console" | "patient" }) {
               setChecking(true);
               void connection.check().finally(() => setChecking(false));
             }}
-            className={cx(
-              "ml-auto cursor-pointer rounded-sm border-0 bg-transparent p-0 font-bold text-accent underline underline-offset-2",
-              "outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)] disabled:cursor-default disabled:no-underline",
-            )}
+            className={stripAction}
           >
             {checking ? ut("conn.checking") : ut("conn.checkNow")}
           </button>
-        </div>
-      </div>
+        }
+      >
+        {state.lostAt ? (
+          <span>
+            {ut("conn.since")}{" "}
+            <span className="font-bold text-text tabular-nums">{timeOfDay(new Date(state.lostAt).toISOString())}</span>
+          </span>
+        ) : null}
+        {/* что с данными — основным цветом: это объяснение, а не сигнал */}
+        <span className="min-w-0 text-text">{ut("conn.keep")}</span>
+      </Strip>
     );
   }
 
   if (!restoredShown) return null;
-  return (
-    <div role="status" data-connection="restored" className="shrink-0 border-b border-hairline bg-primary-soft text-primary">
-      <div className={cx("py-[8px] text-[14px] leading-[20px]", column)}>
-        <span className="font-bold">{ut("conn.restored")}</span>
-      </div>
-    </div>
-  );
+  return <Strip tone="violet" icon="circle-check" place={place} data-connection="restored" title={ut("conn.restored")} />;
 }

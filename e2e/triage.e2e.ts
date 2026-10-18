@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { acceptConsentIfAsked, apiToken, createVisiblePatient, goMenu, login, openMenu } from "./helpers";
+import { acceptConsentIfAsked, apiToken, createVisiblePatient, eventsBell, goMenu, login } from "./helpers";
 
 /**
  * Разбор случаев — экран, ради которого система и существует.
@@ -141,15 +141,13 @@ test("новая тревога догоняет открытый экран б�
   });
   await page.reload();
   /*
-   * Центр событий живёт в бургере, и пока меню закрыто, его нет в разметке —
-   * ни кнопки, ни отметки. Поэтому меню открывается ДО сдачи и остаётся
-   * открытым: «ни одного действия в браузере» ниже относится к самой
-   * тревоге — отметка обязана появиться сама, без обновления страницы и
-   * нажатий, — а не к тому, куда смотреть. Проверка «отметки нет» при
-   * закрытом меню была бы пустой: её там нет и быть не может.
+   * Колокольчик центра событий стоит на полосе приложения всегда (Polypsy
+   * 2.0) — открывать ничего не нужно: «ни одного действия в браузере» ниже
+   * относится к самой тревоге — отметка обязана появиться сама, без
+   * обновления страницы и нажатий.
    */
-  const menu = await openMenu(page);
-  await expect(menu.locator("[data-events-dot]")).toHaveCount(0);
+  const bell = eventsBell(page);
+  await expect(bell.locator("[data-events-dot]")).toHaveCount(0);
 
   /*
    * Запросы идут через page.request и относительные адреса: у стенда свой
@@ -197,7 +195,7 @@ test("новая тревога догоняет открытый экран б�
   });
 
   // ни одного действия в браузере — отметка появляется сама
-  await expect(menu.locator("[data-events-dot]")).toBeVisible({ timeout: 15_000 });
+  await expect(bell.locator("[data-events-dot]")).toBeVisible({ timeout: 15_000 });
 });
 
 test("срез экрана сохраняется под именем и восстанавливается", async ({ page }) => {
