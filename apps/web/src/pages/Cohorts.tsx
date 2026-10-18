@@ -26,6 +26,7 @@ import {
   barRows,
   breakdownCells,
   breakdownCsv,
+  breakdownFileName,
   breakdownLabel,
   describeSpec,
   paramsFromSpec,
@@ -226,7 +227,7 @@ export default function Cohorts() {
     const url = URL.createObjectURL(new Blob([text], { type: "text/csv;charset=utf-8" }));
     const a = document.createElement("a");
     a.href = url;
-    a.download = `cohort-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = breakdownFileName();
     document.body.appendChild(a);
     a.click();
     a.remove();
