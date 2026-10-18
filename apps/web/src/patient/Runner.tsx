@@ -17,7 +17,7 @@ import { useAuth } from "../auth";
 import { duration } from "../format";
 import { useLang } from "../lang";
 import { ShellIcon } from "../shell/icons";
-import { Ic, Kbd, KbdHints, Screen, useAction } from "../ui";
+import { Ic, KbdHints, Screen, useAction } from "../ui";
 import { cx } from "../ui/cx";
 import { Button, ButtonLink, SeverityTag, Tag } from "../ui/primitives";
 import { useResource } from "../useResource";
@@ -570,7 +570,7 @@ function RunnerFlow({ survey }: { survey: SurveyFull }) {
                 <>
                   {last ? <Glyph name="send" size={18} /> : <Ic.chevronRight size={20} />}
                   <span aria-hidden className="ml-1.5 max-[760px]:hidden">
-                    <Kbd onTip>Enter</Kbd>
+                    <kbd className={buttonKey}>Enter</kbd>
                   </span>
                 </>
               }
@@ -601,6 +601,14 @@ function RunnerFlow({ survey }: { survey: SurveyFull }) {
     </>
   );
 }
+
+/**
+ * Клавиша на фиолетовой кнопке («Далі Enter»): чернилами заливки в обеих
+ * темах. Клавиша подсказки (Kbd onTip) рассчитана на тёмную плашку и в тёмной
+ * теме на фиолетовом читалась бы на 2:1.
+ */
+const buttonKey =
+  "inline-grid h-5 min-w-5 place-items-center rounded-[6px] border border-b-2 border-onfill-muted bg-transparent px-[5px] font-sans text-[10.5px] font-bold not-italic leading-none text-onfill";
 
 /** Заголовок раздела над пунктом — рамка ответа для нескольких пунктов подряд */
 function sectionTitle(survey: SurveyFull, q: Question): string | null {
@@ -967,7 +975,7 @@ export function RunnerIntro({
                 <>
                   <Ic.arrowRight size={19} />
                   <span aria-hidden className="ml-1.5 max-[760px]:hidden">
-                    <Kbd onTip>Enter</Kbd>
+                    <kbd className={buttonKey}>Enter</kbd>
                   </span>
                 </>
               }
