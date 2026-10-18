@@ -1,8 +1,9 @@
-import { describe, expect, test } from "bun:test";
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { afterAll, describe, expect, test } from "bun:test";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { adminA, api, db, makeUser, root } from "./fixtures";
-import { auditLog, messages, threads, users } from "../src/db/schema";
+import { appointments, auditLog, departments, messages, slots, specialistProfiles, threads, users } from "../src/db/schema";
 import { encryptField } from "../src/lib/crypto";
+import { underAppRole } from "./appRole";
 
 /**
  * Переписка с границами.
@@ -333,5 +334,156 @@ describe("чтение без записи: «от имени» и «тольк�
     expect(mark.status).toBe(403);
     const unread = await db.select().from(messages).where(and(eq(messages.threadId, threadId), isNull(messages.readAt)));
     expect(unread.length).toBe(1);
+  });
+});
+
+/*
+ * Строка списка в консоли 2.0 (v2-comms): кому я должен ответить и когда
+ * следующая встреча. Приёмы, заведённые здесь, к концу файла отменяются:
+ * живой приём в общей очереди мешал бы файлам, которые идут следом.
+ */
+const liveVisits: string[] = [];
+afterAll(async () => {
+  if (liveVisits.length) {
+    await db
+      .update(appointments)
+      .set({ status: "cancelled", cancelledAt: new Date().toISOString() })
+      .where(inArray(appointments.id, liveVisits));
+  }
+});
+
+async function visit(specialistId: string, patientId: string, departmentId: string, hoursAhead: number, status = "booked") {
+  const startsAt = new Date(Date.now() + hoursAhead * 3600_000).toISOString();
+  const slotId = crypto.randomUUID();
+  await db.insert(slots).values({
+    id: slotId,
+    specialistId,
+    departmentId,
+    startsAt,
+    endsAt: new Date(Date.parse(startsAt) + 50 * 60_000).toISOString(),
+  });
+  const id = crypto.randomUUID();
+  await db
+    .insert(appointments)
+    .values({ id, slotId, patientId, specialistId, status: status as "booked" | "cancelled" });
+  liveVisits.push(id);
+  return id;
+}
+
+async function department(tag: string) {
+  const id = crypto.randomUUID();
+  await db.insert(departments).values({ id, title: { uk: `Відділення ${tag}`, ru: `Отделение ${tag}` }, timezone: "Europe/Kyiv" });
+  return id;
+}
+
+type ListItem = {
+  id: string;
+  preview: string | null;
+  lastMine: boolean | null;
+  lastReadAt: string | null;
+  next: { id: string; startsAt: string; room: string | null; status: string } | null;
+};
+
+describe("строка списка: последнее письмо и ближайший приём", () => {
+  test("начало последнего письма, чьё оно и прочитано ли моё", async () => {
+    const { specialist, patient } = await pair("row");
+    const asked = await api("/api/messages", patient.token, {
+      method: "POST",
+      body: JSON.stringify({ text: "Можна перенести суботу\nна вечір?   Маю зміну." }),
+    });
+    const own = (await api("/api/messages", specialist.token)).body.items.find((t: ListItem) => t.id === asked.body.threadId) as ListItem;
+    expect(own.preview, "переводы строк и пробелы схлопнуты").toBe("Можна перенести суботу на вечір? Маю зміну.");
+    expect(own.lastMine, "последнее письмо — пациента: ждёт ответа").toBe(false);
+
+    // ответ специалиста — строкой в базе: право писать и зона проверяются в других тестах, здесь — список
+    await db.insert(messages).values({
+      id: crypto.randomUUID(),
+      threadId: asked.body.threadId,
+      authorId: specialist.id,
+      textEnc: encryptField("Так, переношу.")!,
+      sentAt: new Date(Date.now() + 1000).toISOString(),
+    });
+    const replied = (await api("/api/messages", specialist.token)).body.items.find((t: ListItem) => t.id === asked.body.threadId) as ListItem;
+    expect(replied.preview).toBe("Так, переношу.");
+    expect(replied.lastMine).toBe(true);
+    expect(replied.lastReadAt, "пациент ещё не открыл").toBeNull();
+
+    await openThread(asked.body.threadId, patient.token);
+    const read = (await api("/api/messages", specialist.token)).body.items.find((t: ListItem) => t.id === asked.body.threadId) as ListItem;
+    expect(read.lastReadAt, "пациент открыл — «прочитав»").toBeTruthy();
+  });
+
+  test("длинное письмо режется по слову, а не посреди", async () => {
+    const { specialist, patient } = await pair("long");
+    const long = `${"слово ".repeat(60)}хвіст`;
+    const sent = await api("/api/messages", patient.token, { method: "POST", body: JSON.stringify({ text: long }) });
+    const row = (await api("/api/messages", specialist.token)).body.items.find((t: ListItem) => t.id === sent.body.threadId) as ListItem;
+    expect(row.preview!.length).toBeLessThanOrEqual(161);
+    expect(row.preview!.endsWith("слово…"), row.preview!).toBe(true);
+  });
+
+  test("ближайший живой приём у этого специалиста, с кабинетом; чужие и отменённые — мимо", async () => {
+    const { specialist, patient } = await pair("next");
+    const colleague = await makeUser("admin", `ms-col-${crypto.randomUUID()}@test`);
+    const dep = await department("next");
+    await db.insert(specialistProfiles).values({ userId: specialist.id, departmentId: dep, room: "214" });
+    await db.insert(specialistProfiles).values({ userId: colleague.id, departmentId: dep, room: "101" });
+
+    await visit(colleague.id, patient.id, dep, 2);
+    await visit(specialist.id, patient.id, dep, 3, "cancelled");
+    const later = await visit(specialist.id, patient.id, dep, 48);
+    const sooner = await visit(specialist.id, patient.id, dep, 26);
+    await visit(specialist.id, patient.id, dep, -5);
+    void later;
+
+    const sent = await api("/api/messages", patient.token, { method: "POST", body: JSON.stringify({ text: "Добрий день" }) });
+    const row = (await api("/api/messages", specialist.token)).body.items.find((t: ListItem) => t.id === sent.body.threadId) as ListItem;
+    expect(row.next?.id, "не ближайший свой живой приём").toBe(sooner);
+    expect(row.next?.room).toBe("214");
+    expect(row.next?.status).toBe("booked");
+  });
+
+  test("без будущего приёма — next пуст, а не прошлый приём", async () => {
+    const { specialist, patient } = await pair("none");
+    const sent = await api("/api/messages", patient.token, { method: "POST", body: JSON.stringify({ text: "Дякую" }) });
+    const row = (await api("/api/messages", specialist.token)).body.items.find((t: ListItem) => t.id === sent.body.threadId) as ListItem;
+    expect(row.next).toBeNull();
+  });
+
+  /**
+   * Под боевой ролью: письма, приёмы, слоты и профиль специалиста читаются
+   * политиками строк, а не владельцем базы. Владелец обходит их, и проверки
+   * выше прошли бы, даже если в бою список приходил бы с пустыми полями.
+   */
+  test("под боевой ролью поля строки на месте", async () => {
+    const email = `ms-rls-s-${crypto.randomUUID()}@test.dev`;
+    const specialist = await makeUser("admin", email);
+    const patient = await makeUser("user", `ms-rls-p-${crypto.randomUUID()}@test.dev`);
+    await db.update(users).set({ leadSpecialistId: specialist.id }).where(eq(users.id, patient.id));
+    const dep = await department("rls");
+    await db.insert(specialistProfiles).values({ userId: specialist.id, departmentId: dep, room: "7" });
+    const soon = await visit(specialist.id, patient.id, dep, 30);
+    const sent = await api("/api/messages", patient.token, { method: "POST", body: JSON.stringify({ text: "Під роллю" }) });
+
+    const out = await underAppRole<{ login: number; list: number; row: ListItem | undefined }>(`
+      const login = await app.request("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: ${JSON.stringify(email)}, password: "secret12345" }),
+      });
+      out.login = login.status;
+      const auth = { Authorization: "Bearer " + (await login.json()).token };
+      const list = await app.request("/api/messages", { headers: auth });
+      out.list = list.status;
+      out.row = ((await list.json()).items ?? []).find((t) => t.id === ${JSON.stringify(sent.body.threadId)});
+    `);
+    expect(out.error, out.error).toBeUndefined();
+    expect(out.rlsActive, "роль обходит политики — проверка ничего не доказывает").toBe(true);
+    expect(out.login).toBe(200);
+    expect(out.list).toBe(200);
+    expect(out.row?.preview).toBe("Під роллю");
+    expect(out.row?.lastMine).toBe(false);
+    expect(out.row?.next?.id, "приём не дочитался под ролью").toBe(soon);
+    expect(out.row?.next?.room).toBe("7");
   });
 });
