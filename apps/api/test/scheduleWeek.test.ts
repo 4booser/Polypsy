@@ -223,6 +223,13 @@ describe("неделя календарём", () => {
     expect((own.body.appointments as { id: string }[]).map((a) => a.id)).toEqual(expect.arrayContaining([outside, inside]));
   });
 
+  test("описание API называет оба права, которыми закрыта неделя", async () => {
+    const root = await makeUser("superadmin", `sweek-r-${crypto.randomUUID()}@test`);
+    const doc = await api("/api/openapi.json", root.token);
+    expect(doc.status).toBe(200);
+    expect(doc.body.paths["/api/clinic/schedule/week"].get["x-permission"]).toBe("schedule.own + patients.read");
+  });
+
   test("годы до сотого и край календаря: та же неделя, а не тысяча девятьсот лет и не пятисотка", async () => {
     // Date.UTC читает годы 0–99 как 1900–1999: «до» уезжало на девятнадцать веков вперёд мимо предела в 63 дня
     const early = await api(`/api/clinic/schedule/week?from=0050-01-04&days=7`, specialist.token);
