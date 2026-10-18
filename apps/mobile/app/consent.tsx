@@ -250,7 +250,10 @@ export default function ConsentScreen() {
           ) : null}
           {/* главное действие — справа, под большим пальцем */}
           <View style={{ flexDirection: "row", gap: 10 }}>
-            {[...actions].sort((a, b) => Number(BUTTON[a].kind === "primary") - Number(BUTTON[b].kind === "primary")).map((a) => button(a, 1))}
+            {[...actions]
+              .sort((a, b) => Number(BUTTON[a].kind === "primary") - Number(BUTTON[b].kind === "primary"))
+              // главная чуть шире: «Погоджуюся» со значком не обрезается многоточием
+              .map((a) => button(a, BUTTON[a].kind === "primary" ? 1.25 : 1))}
           </View>
         </View>
       </ActionBar>

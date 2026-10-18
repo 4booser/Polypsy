@@ -8511,6 +8511,7 @@ export const UI = {
     ru: "и войдите снова с паролем.",
     en: "and sign in again with your password.",
   },
+  "mpt.lg.title": { uk: "Вхід", ru: "Вход", en: "Sign in" },
 
 } as const satisfies Record<string, UiEntry>;
 

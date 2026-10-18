@@ -152,12 +152,10 @@ export default function PasswordScreen() {
               autoComplete="new-password"
               error={form.mismatch ? ut("ops.force.mismatch") : null}
               status={
+                // совпадение — зелёной галочкой у поля: подпись рядом с «показать» не помещается на 390
                 repeat.length > 0 && !form.mismatch ? (
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-                    <Icon name="check" size={16} color={c.good} />
-                    <T v="sub" weight={700} color={c.good} scale={false}>
-                      {ut("mpt.pw.match")}
-                    </T>
+                  <View accessible accessibilityLabel={ut("mpt.pw.match")}>
+                    <Icon name="circle-check" size={20} color={c.good} />
                   </View>
                 ) : undefined
               }

@@ -115,7 +115,7 @@ export default function RegisterScreen() {
             first={anonymous}
             label={ut("reg.sex")}
             control={
-              <View style={{ flex: 1, alignItems: "flex-end" }}>
+              <View style={{ flex: 1 }}>
                 <Segmented
                   value={sex ?? "none"}
                   onChange={(v) => setSex(v === "none" ? null : v)}

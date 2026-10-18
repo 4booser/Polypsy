@@ -79,7 +79,7 @@ export default function LoginScreen() {
         flush
         left={
           mfa ? (
-            <BackButton label={ut("auth.login")} onPress={back} />
+            <BackButton label={ut("mpt.lg.title")} onPress={back} />
           ) : (
             <View accessible accessibilityRole="header" accessibilityLabel={ut("shell.brand")} style={{ flexDirection: "row", alignItems: "center", gap: 10, minHeight: 44, paddingLeft: 8 }}>
               <LogoTile />
@@ -156,7 +156,7 @@ export default function LoginScreen() {
           </>
         ) : (
           <>
-            <Hero title={ut("auth.login")} lead={ut("mpt.lg.lead")} />
+            <Hero title={ut("mpt.lg.title")} lead={ut("mpt.lg.lead")} />
             <Panel style={{ marginTop: 16, marginHorizontal: 16 }}>
               <View style={{ gap: 16 }}>
                 <Field
