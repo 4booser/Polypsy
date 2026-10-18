@@ -131,7 +131,11 @@ export function Page({
         <header className={cx("shrink-0 px-5", bleed ? "pb-3 pt-4" : tight || snug ? "pt-4" : "pb-1 pt-4")}>
           {crumbs ? <div className="mb-1 flex items-center gap-1.5 text-small text-muted">{crumbs}</div> : null}
           {titleHidden ? (
-            <h1 className="sr-only">{title}</h1>
+            <>
+              <h1 className="sr-only">{title}</h1>
+              {/* заголовок спрятан, а действия — нет: конструктор держит здесь выбор языка текста */}
+              {actions ? <div className="flex flex-wrap items-center justify-end gap-2">{actions}</div> : null}
+            </>
           ) : (
             <div className="flex min-h-[52px] flex-wrap items-center gap-x-4 gap-y-2">
               {back ? (
