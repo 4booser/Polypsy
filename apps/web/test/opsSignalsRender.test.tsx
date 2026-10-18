@@ -168,7 +168,7 @@ describe("цілісність: полоса сверок", () => {
     auditHistory: history,
   });
 
-  test("разрыв — ромбом и словами, с датой", () => {
+  test("разрыв — разорванным звеном и словами, с датой", () => {
     const brokenAt = new Date(NOW - 2 * 86_400_000).toISOString();
     const html = draw(
       <ChainHistory
@@ -183,7 +183,9 @@ describe("цілісність: полоса сверок", () => {
     expect(html).toContain('role="img"');
     has(html, "sig.int.brokenDays");
     has(html, "sig.int.notChecked");
-    expect(html).toContain("rotate-45 bg-danger");
+    // клетка разрыва — янтарём со значком разорванного звена, а не только цветом
+    expect(html).toMatch(/bg-warn-tint-2 text-warn"><svg[^>]*><path d="M9 17H7A5 5 0 0 1 7 7/);
+    has(html, "ops.sec.int.broken");
     // день разрыва — в полосе по часам экрана
     expect(days30).toContain(localDay(brokenAt));
   });

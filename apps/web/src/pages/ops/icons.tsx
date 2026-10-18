@@ -311,6 +311,12 @@ const PATHS = {
     </>
   ),
   ellipsis: <path d="M12 12h.01M19 12h.01M5 12h.01" />,
+  ban: (
+    <>
+      <circle cx="12" cy="12" r="10" />
+      <path d="m4.9 4.9 14.2 14.2" />
+    </>
+  ),
 } satisfies Record<string, ReactNode>;
 
 export type OpsIconName = keyof typeof PATHS | ShellName;
