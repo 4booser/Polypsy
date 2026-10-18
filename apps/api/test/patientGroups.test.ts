@@ -12,7 +12,7 @@ import {
   surveyInB,
   type Person,
 } from "./fixtures";
-import { alertCases, patientGroupMembers, patientGroups, surveyAccess } from "../src/db/schema";
+import { alertCases, patientGroupMembers, patientGroups, patientGroupSurveys, surveyAccess } from "../src/db/schema";
 
 /**
  * Группы ПАЦИЕНТОВ.
@@ -549,6 +549,45 @@ describe("строка списка групп и состав карточки"
     await db.insert(alertCases).values({ id: own, userId: person.id, surveyId: surveyInA, severity: "severe" });
     cases.push(own);
     expect((await rowOf()).riskCount).toBe(1);
+  });
+
+  /*
+   * «Пройшли» и отметки тестов — тоже по методикам зоны читателя, как
+   * «остання здача» в реестре пациентов (ownSurvey в routes/patients.ts).
+   * Методика группы, оказавшаяся в чужой зоне (переехала в другое отделение
+   * после назначения), под ролью приложения из «Тестів групи» уходит совсем;
+   * владельцем базы она остаётся строкой — но кто её прошёл, читателю не
+   * сообщается ни там, ни там: это сведение о прохождении чужой методики.
+   *
+   * Мутация: снять условие по зоне методик в completedPairs — под владельцем
+   * падают «пройшли» и отметка.
+   */
+  test("прохождение методики чужой зоны — не отметка и не «пройшли»", async () => {
+    const id = await makeGroup(adminA, `Чужа методика ${crypto.randomUUID().slice(0, 8)}`);
+    const person = await patientInZoneOfA("foreign-done");
+    await api(`/api/patient-groups/${id}/members`, adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ userIds: [person.id] }),
+    });
+    // методика зоны Б среди «Тестів групи» — как после переезда в другое отделение
+    await db.insert(patientGroupSurveys).values({ groupId: id, surveyId: surveyInB, assignedBy: adminA.id });
+    expect((await submitSurvey(surveyInB, person.token)).status, "прохождение методики зоны Б").toBe(201);
+
+    type Card = { members: { completedSurveyIds: string[] }[]; surveys: { surveyId: string; completedCount: number }[] };
+    const rowOf = async () =>
+      ((await api("/api/patient-groups", adminA.token)).body.items as Record<string, unknown>[]).find((g) => g.id === id)!;
+    const cardOf = async () => (await api(`/api/patient-groups/${id}`, adminA.token)).body as Card;
+    expect((await rowOf()).doneCount, "«пройшли» посчитало прохождение методики чужой зоны").toBe(0);
+    let card = await cardOf();
+    expect(card.members[0]?.completedSurveyIds, "отметка за методику чужой зоны").toEqual([]);
+    expect(card.surveys.find((s) => s.surveyId === surveyInB)?.completedCount ?? 0, "прошедшие методику чужой зоны").toBe(0);
+
+    // положительный контроль: методика своей зоны отмечается
+    await db.insert(patientGroupSurveys).values({ groupId: id, surveyId: surveyInA, assignedBy: adminA.id });
+    expect((await submitSurvey(surveyInA, person.token)).status).toBe(201);
+    card = await cardOf();
+    expect(card.members[0]?.completedSurveyIds).toEqual([surveyInA]);
+    expect(card.surveys.find((s) => s.surveyId === surveyInA)?.completedCount).toBe(1);
   });
 
   /*
