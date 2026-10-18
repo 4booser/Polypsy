@@ -243,7 +243,11 @@ export default function Timeline() {
           <ol ref={listRef} className="m-0 list-none p-0">
             {[...byDay.entries()].map(([day, rows]) => (
               <li key={day}>
-                <h3 className="m-0 flex h-9 items-center gap-2 border-t border-divider bg-panel-2 px-4 text-small font-extrabold text-text">
+                {/* data-day — день ключом «YYYY-MM-DD»: опора смоука на порядок дней (screens.e2e.ts) */}
+                <h3
+                  data-day={day}
+                  className="m-0 flex h-9 items-center gap-2 border-t border-divider bg-panel-2 px-4 text-small font-extrabold text-text"
+                >
                   {dayTitle(day, now, locale, ut)}
                   <span className="inline-grid h-5 min-w-5 place-items-center rounded-[10px] bg-sunk px-1.5 text-[11.5px] font-bold text-text-2">
                     {rows.reduce((n, r) => n + r.items.length, 0)}
