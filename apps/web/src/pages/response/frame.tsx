@@ -4,6 +4,7 @@ import type { ResponseDetail } from "@quizzy/shared";
 import { api, openInTab, type ConclusionState } from "../../api";
 import { useAuth } from "../../auth";
 import { dateTime, timeOfDay } from "../../format";
+import { useDecimal } from "../../charts/kit";
 import { useLang } from "../../lang";
 import { AlertChip, AlertStrip, Avatar, Ic, RiskChip, RiskTimer, useAction, useHotkeys } from "../../ui";
 import { cx } from "../../ui/cx";
@@ -56,6 +57,7 @@ export function ResponseBanner({
   const { can } = useAuth();
   const { run, busy } = useAction();
   const navigate = useNavigate();
+  const dec = useDecimal();
   const patient = ctx?.patient ?? null;
   const strip = signalStrip(ctx?.signals ?? null);
   const locked = signLockedBySignal(ctx?.signals ?? null);
@@ -106,7 +108,7 @@ export function ResponseBanner({
     );
   }
 
-  const timer = strip.oldest ? signalTimer(strip.oldest, ut("rp.hours")) : null;
+  const timer = strip.oldest ? signalTimer(strip.oldest, ut("rp.hours"), dec) : null;
   const draft = conclusion?.current?.status === "draft" ? conclusion.current : null;
   const signed = conclusion?.versions.find((v) => v.status === "signed") ?? null;
 
@@ -294,6 +296,6 @@ function SignalList({ signals }: { signals: ResponseContext["signals"] }) {
 
 /** Ссылка на соседнюю попытку той же вкладки: протокол ведёт к протоколу, графики — к графикам */
 export function attemptHref(surveyId: string, id: string, charts: boolean): string {
-  return `/surveys/${surveyId}/responses/${id}${charts ? "/charts" : ""}`;
+  return charts ? `/surveys/${surveyId}/responses/${id}/charts` : `/surveys/${surveyId}/responses/${id}`;
 }
 

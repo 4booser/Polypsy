@@ -93,7 +93,7 @@ type AnswersMode = "grid" | "list";
  * залит, прежний ответ кольцом — или списком, как бланк. Сетка — только
  * когда у пунктов общий набор вариантов (answerGrid); иначе список.
  */
-function AnswersPanel({
+export function AnswersPanel({
   detail,
   survey,
   ctx,

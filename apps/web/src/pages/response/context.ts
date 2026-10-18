@@ -144,14 +144,19 @@ export interface SignalTimer {
 }
 
 /** «2:48 з 4 год»: сколько висит неразобранным против нормы разбора методики */
-export function signalTimer(s: Pick<ResponseContextSignal, "minutesOpen" | "escalateMinutes">, hoursWord: string): SignalTimer | null {
+export function signalTimer(
+  s: Pick<ResponseContextSignal, "minutesOpen" | "escalateMinutes">,
+  hoursWord: string,
+  /** Дробные часы нормы — запятой там, где её пишет язык (useDecimal) */
+  fmt: (v: number) => string = String,
+): SignalTimer | null {
   if (s.escalateMinutes === null || s.escalateMinutes <= 0) return null;
   const h = Math.floor(s.minutesOpen / 60);
   const m = s.minutesOpen % 60;
-  const limitH = s.escalateMinutes / 60;
+  const limitH = Math.round((s.escalateMinutes / 60) * 10) / 10;
   return {
     elapsed: `${h}:${String(m).padStart(2, "0")}`,
-    of: `${Number.isInteger(limitH) ? limitH : limitH.toFixed(1)} ${hoursWord}`,
+    of: `${fmt(limitH)} ${hoursWord}`,
     pct: Math.min(100, Math.round((s.minutesOpen / s.escalateMinutes) * 100)),
   };
 }

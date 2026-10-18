@@ -86,7 +86,18 @@ export function answerList(detail: ResponseDetail): QuestionView[] {
           ? []
           : a.options
               .filter((o) => !rowIds.has(o.id))
-              .map((o) => ({ id: o.id, text: o.text, chosen: picked.has(o.id), score: o.score, riskFlag: o.riskFlag }));
+              .map((o) => ({
+                id: o.id,
+                text: o.text,
+                chosen: picked.has(o.id),
+                /*
+                 * Вес варианта — из прохождения. Нет веса у выбранного, а выбран
+                 * он один — балл пункта и есть его вес; при нескольких выбранных
+                 * балл пункта не приписывается каждому.
+                 */
+                score: o.score ?? (picked.has(o.id) && picked.size === 1 ? a.score : null),
+                riskFlag: o.riskFlag,
+              }));
       const free = options.length
         ? null
         : matrix

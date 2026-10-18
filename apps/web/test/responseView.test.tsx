@@ -1,21 +1,25 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
-import type { ResponseDetail, SurveyFull } from "@quizzy/shared";
-import { buildResponseView } from "../src/pages/response/model";
+import { renderToStaticMarkup } from "react-dom/server";
+import { MemoryRouter } from "react-router-dom";
+import { UI, type ResponseDetail, type SurveyFull } from "@quizzy/shared";
+import { LangProvider } from "../src/lang";
+import { AnswersPanel } from "../src/pages/response/index";
+import { answerGrid, answerList } from "../src/pages/response/model";
 
 /**
  * Экран «пройденный тест»: два места, где ошибка тихая.
  *
- * Первое — веса вариантов и лестница диапазонов берутся из действующей
- * версии методики, а человек мог проходить прежнюю. Числа при этом
- * выглядят настоящими: «10» и «15» у вариантов, «від 11 до 20» залито.
- * Ничего не падает, и никто не сообщит, что баллы — от другой редакции
- * ключа. Проверяется, что при разошедшихся идентификаторах экран не
- * подставляет ничего.
+ * Первое — протокол. Сетка и список рисуют выбранный вариант заливкой, а
+ * диктору нужен признак словом; балл пункта легко приписать каждому из
+ * нескольких выбранных вариантов; порядок — цепочка, а не варианты с
+ * весами. Ничего не падает, глазом поломка не видна. Веса и лестница
+ * полос берутся из самого прохождения той версии, которую проходили
+ * (сервер отдаёт их персоналу), — подставлять чужую версию больше неоткуда.
  *
- * Второе — адрес. Ссылки на прохождение собирают три экрана вручную, а
- * маршрут объявлен в четвёртом; разъехаться им нечем помешать, кроме этой
+ * Второе — адрес. Ссылки на прохождение собирают несколько экранов вручную,
+ * а маршрут объявлен в одном; разъехаться им нечем помешать, кроме этой
  * проверки: ссылка на несуществующий адрес не ошибка сборки, а тихий уход
  * на «/» через запасной маршрут.
  */
@@ -54,8 +58,8 @@ const detail: ResponseDetail = {
       answered: true,
       optionIds: ["o2b"],
       options: [
-        { id: "o2a", text: "Омтріамбакам", riskFlag: false, riskSeverity: null, score: null },
-        { id: "o2b", text: "Яджамахе", riskFlag: false, riskSeverity: null, score: null },
+        { id: "o2a", text: "Омтріамбакам", riskFlag: false, riskSeverity: null, score: 10 },
+        { id: "o2b", text: "Яджамахе", riskFlag: false, riskSeverity: null, score: 15 },
       ],
       text: null,
       number: null,
@@ -76,8 +80,8 @@ const detail: ResponseDetail = {
       answered: false,
       optionIds: null,
       options: [
-        { id: "o1a", text: "Омтріамбакам", riskFlag: false, riskSeverity: null, score: null },
-        { id: "o1b", text: "Яджамахе", riskFlag: false, riskSeverity: null, score: null },
+        { id: "o1a", text: "Омтріамбакам", riskFlag: false, riskSeverity: null, score: 10 },
+        { id: "o1b", text: "Яджамахе", riskFlag: false, riskSeverity: null, score: 15 },
       ],
       text: null,
       number: null,
@@ -131,6 +135,7 @@ function survey(ids: { o1a: string; o1b: string; o2a: string; o2b: string; sc1: 
     id: "s1",
     title: "Тест",
     description: "Опис",
+    versionNumber: 1,
     questions: [
       { id: "q1", position: 1, options: [option(ids.o1a, "q1", "Омтріамбакам", 10), option(ids.o1b, "q1", "Яджамахе", 15)] },
       { id: "q2", position: 2, options: [option(ids.o2a, "q2", "Омтріамбакам", 10), option(ids.o2b, "q2", "Яджамахе", 15)] },
@@ -138,47 +143,49 @@ function survey(ids: { o1a: string; o1b: string; o2a: string; o2b: string; sc1: 
     scales: [
       {
         id: ids.sc1,
+        items: [{ questionId: "q1" }, { questionId: "q2" }],
         bands: [band("b3", 21, 30, "Високий"), band("b1", 1, 10, "Низький"), band("b2", 11, 20, "Середній")],
       },
     ],
   } as unknown as SurveyFull;
 }
 
-describe("пройденный тест: модель экрана", () => {
-  test("одна версия: веса у вариантов, выбранный отмечен, ступень с баллом залита", () => {
-    const view = buildResponseView(detail, survey({ o1a: "o1a", o1b: "o1b", o2a: "o2a", o2b: "o2b", sc1: "sc1" }));
-
-    expect(view.stale).toBe(false);
+describe("пройденный тест: протокол списком", () => {
+  test("пункты по позиции, вес варианта из прохождения, выбранный отмечен", () => {
+    const list = answerList(detail);
     // пункты идут по позиции, а не в порядке ответа сервера
-    expect(view.questions.map((q) => q.number)).toEqual([1, 2]);
-    expect(view.questions[0]!.title).toBe("Перше");
-
-    const second = view.questions[1]!;
+    expect(list.map((q) => q.number)).toEqual([1, 2]);
+    expect(list[0]!.title).toBe("Перше");
+    expect(list[0]!.answered).toBe(false);
+    const second = list[1]!;
     expect(second.options.map((o) => o.score)).toEqual([10, 15]);
     expect(second.options.map((o) => o.chosen)).toEqual([false, true]);
-    expect(view.questions[0]!.answered).toBe(false);
-
-    const ladder = view.ladders[0]!;
-    expect(ladder.rows.map((r) => r.min)).toEqual([1, 11, 21]);
-    expect(ladder.rows.map((r) => r.hit)).toEqual([false, true, false]);
   });
 
-  test("методика изменена после прохождения: ни весов, ни лестницы — но подпись полосы остаётся", () => {
-    const view = buildResponseView(detail, survey({ o1a: "n1a", o1b: "n1b", o2a: "n2a", o2b: "n2b", sc1: "nsc" }));
-
-    expect(view.stale).toBe(true);
-    for (const q of view.questions) {
-      expect(q.options.map((o) => o.score)).toEqual([null, null]);
-    }
-    // выбор известен из самого прохождения и версии не боится
-    expect(view.questions[1]!.options.map((o) => o.chosen)).toEqual([false, true]);
-    expect(view.ladders[0]!.rows).toEqual([]);
-    expect(view.ladders[0]!.bandLabel).toBe("Середній");
+  test("у выбранного без веса — балл пункта; у нескольких выбранных балл не делится на каждого", () => {
+    const one = answerList({
+      ...detail,
+      answers: [{ ...detail.answers[0]!, options: detail.answers[0]!.options.map((o) => ({ ...o, score: null })) }],
+    })[0]!;
+    expect(one.options.map((o) => o.score)).toEqual([null, 15]);
+    const many = answerList({
+      ...detail,
+      answers: [
+        {
+          ...detail.answers[0]!,
+          type: "multiple",
+          optionIds: ["o2a", "o2b"],
+          score: 25,
+          options: detail.answers[0]!.options.map((o) => ({ ...o, score: null })),
+        },
+      ],
+    })[0]!;
+    expect(many.options.map((o) => o.score), "балл пункта приписан каждому выбранному").toEqual([null, null]);
   });
 
   /**
    * Мутация: рисовать список вариантов у всякого пункта, где они есть, — у
-   * порядка выходит список с нулями вместо цепочки, проверка называет пункт.
+   * порядка выходит список с весами вместо цепочки, проверка называет пункт.
    */
   test("пункт «порядок» — цепочка, а не список вариантов с весами", () => {
     const order: (typeof detail.answers)[number] = {
@@ -190,25 +197,75 @@ describe("пройденный тест: модель экрана", () => {
       optionIds: null,
       ranking: ["o2b", "o2a"],
     };
-    const ids = { o1a: "o1a", o1b: "o1b", o2a: "o2a", o2b: "o2b", sc1: "sc1" };
-    const view = buildResponseView({ ...detail, answers: [order] }, survey(ids));
-    const q = view.questions[0]!;
+    const q = answerList({ ...detail, answers: [order] })[0]!;
     expect(q.options, "у пункта «порядок» нарисован список вариантов").toEqual([]);
     expect(q.free).toBe("Яджамахе → Омтріамбакам");
-    // чужая версия по-прежнему ловится по вариантам порядка, хотя их не показывают
-    expect(buildResponseView({ ...detail, answers: [order] }, survey({ ...ids, o2a: "n2a", o2b: "n2b" })).stale).toBe(true);
+  });
+});
+
+describe("пройденный тест: сетка ответов", () => {
+  const ids = { o1a: "o1a", o1b: "o1b", o2a: "o2a", o2b: "o2b", sc1: "sc1" };
+
+  test("общий набор вариантов — столбцы; вес столбца, выбранный и прежний ответ", () => {
+    const prev = new Map([["q2", { optionIds: ["o2a"], score: 10, answered: true }]]);
+    const grid = answerGrid(detail, survey(ids), prev)!;
+    expect(grid.columns.map((c) => [c.text, c.score])).toEqual([
+      ["Омтріамбакам", 10],
+      ["Яджамахе", 15],
+    ]);
+    expect(grid.rows.map((r) => r.number)).toEqual([1, 2]);
+    expect(grid.rows.map((r) => r.chosen)).toEqual([null, 1]);
+    expect(grid.rows[1]!.prev).toBe(0);
+    expect(grid.rows[1]!.prevScore).toBe(10);
+    expect(grid.rows[0]!.prev, "у пропущенного раньше пункта кольца нет").toBeNull();
+    expect(grid.extra).toEqual([]);
   });
 
-  test("половина совпавших идентификаторов — тоже чужая версия", () => {
-    /*
-     * Так в базе не бывает: версия меняет идентификаторы целиком. Но модель
-     * не должна опираться на это свойство базы: совпавшая шкала при
-     * несовпавших вариантах означает, что сопоставление идёт не с той
-     * версией, и подставлять лестницу по ней нельзя.
-     */
-    const view = buildResponseView(detail, survey({ o1a: "n1a", o1b: "n1b", o2a: "n2a", o2b: "n2b", sc1: "sc1" }));
-    expect(view.stale).toBe(true);
-    expect(view.ladders[0]!.rows).toEqual([]);
+  test("пункт вне ключа шкал — «не входить у суму»; другой набор вариантов — строкой под сеткой", () => {
+    const other: (typeof detail.answers)[number] = {
+      ...detail.answers[0]!,
+      questionId: "q9",
+      title: "Наскільки складно",
+      position: 9,
+      optionIds: ["x2"],
+      options: [
+        { id: "x1", text: "Легко", riskFlag: false, riskSeverity: null, score: 0 },
+        { id: "x2", text: "Дещо складно", riskFlag: false, riskSeverity: null, score: 1 },
+      ],
+    };
+    const sv = survey(ids);
+    (sv.scales[0] as unknown as { items: { questionId: string }[] }).items = [{ questionId: "q1" }, { questionId: "q2" }];
+    const grid = answerGrid({ ...detail, answers: [...detail.answers, other] }, sv, new Map())!;
+    expect(grid.rows.map((r) => r.inScale)).toEqual([true, true]);
+    expect(grid.extra.map((e) => [e.number, e.answer, e.inScale])).toEqual([[3, "Дещо складно", false]]);
+  });
+
+  test("общего набора нет — сетки нет, экран показывает список", () => {
+    const mixed = {
+      ...detail,
+      answers: detail.answers.map((a, i) => ({
+        ...a,
+        options: a.options.map((o) => ({ ...o, text: `${o.text} ${i}` })),
+      })),
+    };
+    expect(answerGrid(mixed, null, new Map())).toBeNull();
+  });
+});
+
+describe("пройденный тест: разметка сетки", () => {
+  test("выбранный назван словом, а не одной заливкой; пропуск — словом", () => {
+    const html = renderToStaticMarkup(
+      <MemoryRouter>
+        <LangProvider>
+          <AnswersPanel detail={detail} survey={survey({ o1a: "o1a", o1b: "o1b", o2a: "o2a", o2b: "o2b", sc1: "sc1" })} ctx={null} prev={null} />
+        </LangProvider>
+      </MemoryRouter>,
+    );
+    const chosen = [UI["rsp.chosen"].uk, UI["rsp.chosen"].ru, UI["rsp.chosen"].en];
+    expect(chosen.some((w) => html.includes(`${w}: Яджамахе`)), "выбранный вариант не назван для диктора").toBe(true);
+    const skipped = [UI["cases.skipped"].uk, UI["cases.skipped"].ru, UI["cases.skipped"].en];
+    expect(skipped.some((w) => html.includes(w)), "пропущенный пункт не назван словом").toBe(true);
+    expect(html).not.toContain("NaN");
   });
 });
 

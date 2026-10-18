@@ -437,7 +437,7 @@ export function AnsweringPanel({
         {sentence}
         <div className="mt-3">{chart}</div>
         {legend}
-        <p className="m-0 mt-2 text-caption text-muted">{ut("rch.timeCaption").replace("{t}", secs(a.thresholdMs))}</p>
+        {a.timed ? <p className="m-0 mt-2 text-caption text-muted">{ut("rch.timeCaption").replace("{t}", secs(a.thresholdMs))}</p> : null}
       </Panel>
     );
   }
@@ -447,7 +447,7 @@ export function AnsweringPanel({
       <h3 className="m-0 mt-3 text-small font-extrabold text-text">{ut("rch.timeChart")}</h3>
       <div className="mt-2">{chart}</div>
       {legend}
-      <p className="m-0 mt-2 text-caption text-muted">{ut("rch.timeCaption").replace("{t}", secs(a.thresholdMs))}</p>
+      {a.timed ? <p className="m-0 mt-2 text-caption text-muted">{ut("rch.timeCaption").replace("{t}", secs(a.thresholdMs))}</p> : null}
       <KV
         className="mt-4"
         w={150}

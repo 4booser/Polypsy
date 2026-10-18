@@ -37,6 +37,7 @@ import { RulesPanel } from "./response/panels";
 export default function ConclusionPage() {
   const { ut } = useLang();
   const { can } = useAuth();
+  const dec = useDecimal();
   const { id } = useParams<{ id: string }>();
   const responseId = id!;
   /*
@@ -91,7 +92,7 @@ export default function ConclusionPage() {
 
   if (!detail) return <Loading rows={8} error={res.error} onRetry={res.reload} />;
   const ctx = x.ctx.data;
-  const lock = signLock(ctx, detail, ut);
+  const lock = signLock(ctx, detail, ut, dec);
   const main = mainScore(detail.scores);
 
   return (
@@ -141,11 +142,16 @@ export default function ConclusionPage() {
 
 /* ─────────── подпись после разбора сигнала ─────────── */
 
-function signLock(ctx: ResponseContext | null, detail: ResponseDetail, ut: ReturnType<typeof useLang>["ut"]): SignLock | null {
+function signLock(
+  ctx: ResponseContext | null,
+  detail: ResponseDetail,
+  ut: ReturnType<typeof useLang>["ut"],
+  dec: (v: number) => string,
+): SignLock | null {
   const open = signalStrip(ctx?.signals ?? null).openHere;
   if (!open.length) return null;
   const oldest = [...open].sort((a, b) => b.minutesOpen - a.minutesOpen)[0]!;
-  const timer = signalTimer(oldest, ut("rp.hours"));
+  const timer = signalTimer(oldest, ut("rp.hours"), dec);
   return {
     title: ut("cnx.lockTitle"),
     body: (
