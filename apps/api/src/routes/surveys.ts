@@ -219,8 +219,38 @@ surveyRoutes.get("/", async (c) => {
   }
   const where = filters.length ? and(...filters) : undefined;
 
+  /*
+   * Паспорт строки каталога (UI 3, «Каталог методик»): номер действующей
+   * версии, шкалы и смуги, проходження за 30 днів и критический пункт.
+   *
+   * Только сотруднику. Критический пункт — часть ключа методики, а ключ
+   * обследуемому не отдаётся (#141); остальное обследуемому ни к чему, а
+   * «проходження за 30 днів» по всему учреждению — сведение о других людях
+   * (см. responseCount ниже). Обследуемому — null, и поля в ответ не идут.
+   */
+  const staffView = isStaff(user);
+  const passport = staffView
+    ? {
+        versionNumber: sql<number | null>`(select v.version from survey_versions v where v.id = "surveys"."current_version_id")`,
+        scaleCount: sql<number>`(select count(*) from scales sc where sc.version_id = "surveys"."current_version_id")`,
+        bandCount: sql<number>`(select count(*) from scale_bands b join scales sc on sc.id = b.scale_id
+          where sc.version_id = "surveys"."current_version_id")`,
+        recentResponseCount: sql<number>`(select count(*) from responses r where r.survey_id = "surveys"."id"
+          and r.status = 'completed' and r.submitted_at > now() - interval '30 days')`,
+        hasCriticalItem: sql<boolean>`exists (select 1 from options o join questions q on q.id = o.question_id
+          where q.version_id = "surveys"."current_version_id" and o.risk_flag)`,
+      }
+    : {
+        versionNumber: sql<null>`null`,
+        scaleCount: sql<null>`null`,
+        bandCount: sql<null>`null`,
+        recentResponseCount: sql<null>`null`,
+        hasCriticalItem: sql<null>`null`,
+      };
+
   const listing = db
     .select({
+      ...passport,
       survey: surveys,
       // подзапросы пишем с алиасами и полной квалификацией внешней колонки:
       // drizzle рендерит surveys.id как "id", а внутри подзапроса это имя перехватила бы
@@ -305,6 +335,15 @@ surveyRoutes.get("/", async (c) => {
     completedByMe: Number(r.completedByMe ?? 0) > 0,
     assigned: r.assignedAt !== null,
     dueAt: r.dueAt,
+    ...(staffView
+      ? {
+          versionNumber: r.versionNumber === null ? null : Number(r.versionNumber),
+          scaleCount: Number(r.scaleCount ?? 0),
+          bandCount: Number(r.bandCount ?? 0),
+          recentResponseCount: Number(r.recentResponseCount ?? 0),
+          hasCriticalItem: r.hasCriticalItem === true,
+        }
+      : {}),
   }));
   return c.json({ items: list, total } satisfies SurveyListPage);
 });

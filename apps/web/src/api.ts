@@ -881,6 +881,8 @@ export interface SurveyPageQuery {
   q?: string;
   /** Показать и снятые с использования (сервер добавляет их к остальным) */
   archived?: boolean;
+  /** Только методики одной группы — «Методики групи» с экрана групп методик */
+  groupId?: string;
 }
 
 /**
@@ -976,6 +978,7 @@ export const api = {
     if (query.status) qs.set("status", query.status);
     if (query.q) qs.set("q", query.q);
     if (query.archived) qs.set("archived", "1");
+    if (query.groupId) qs.set("groupId", query.groupId);
     const tail = qs.toString();
     return request<SurveyListPage>(`/api/surveys${tail ? `?${tail}` : ""}`);
   },
