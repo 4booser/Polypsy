@@ -9058,7 +9058,7 @@ export const UI = {
   "am.copyCounts": { uk: "умов: {c}, дій: {a}", ru: "условий: {c}, действий: {a}", en: "conditions: {c}, actions: {a}" },
   "am.copyBtn": { uk: "Копія", ru: "Копия", en: "Copy" },
   "am.copyOf": { uk: "{title} — копія", ru: "{title} — копия", en: "{title} — copy" },
-  "ant.metaAll": { uk: "Завершено: {n}, людей: {p}", ru: "Завершено: {n}, людей: {p}", en: "Completed: {n}, people: {p}" },
+  "ant.metaAll": { uk: "Завершено: {n}, осіб: {p}", ru: "Завершено: {n}, людей: {p}", en: "Completed: {n}, people: {p}" },
   "ant.metaAll2": {
     uk: "почато {s}, доходимість {r}, медіана часу {t}",
     ru: "начато {s}, доходимость {r}, медиана времени {t}",
