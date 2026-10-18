@@ -27,6 +27,7 @@ import {
   closedWithin,
   isOpen,
   matchesReferral,
+  openMissing,
   sortReferrals,
   spanText,
   viewCount,
@@ -84,6 +85,16 @@ export default function ReferralsPage() {
   const page = usePagedResource<Referral, ReferralPage>((cursor) => api.referrals(true, cursor), []);
   const rows = page.items;
   const counts = page.head?.counts;
+  /*
+   * Открытые — все, а не те, что попали в первую сотню: пока их загружено
+   * меньше, чем насчитал сервер, страницы добираются сами (referrals/model.ts,
+   * openMissing). Отказ подгрузки останавливает добор — дальше кнопкой.
+   */
+  const missingOpen = openMissing(rows, counts);
+  const { hasMore, loadingMore, error: pageError, loadMore } = page;
+  useEffect(() => {
+    if (missingOpen && hasMore && !loadingMore && !pageError) loadMore();
+  }, [missingOpen, hasMore, loadingMore, pageError, loadMore]);
   /* «сейчас» — один на отрисовку: ожидание в строках и «за 30 днів» не расходятся */
   const now = Date.now();
 

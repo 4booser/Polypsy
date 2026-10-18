@@ -9,6 +9,7 @@ import {
   closedWithin,
   inView,
   matchesReferral,
+  openMissing,
   sortReferrals,
   spanText,
   viewCount,
@@ -206,6 +207,24 @@ describe("реестр направлений «Виразної»", () => {
     expect(viewCount(counts, "all")).toBe(17);
     expect(viewCount(counts, "completed")).toBe(12);
     expect(viewCount(undefined, "open")).toBeNull();
+  });
+
+  /*
+   * Давнее непринятое направление — за первой сотней реестра (он идёт по дате
+   * выписки вперемешку с закрытыми): экран добирает страницы, пока открытых
+   * загружено меньше, чем насчитал сервер. Мутация: считать по всем строкам,
+   * а не по открытым, — падает первая проверка; не добирать — падает последняя.
+   */
+  test("открытые — все: пока их загружено меньше, чем насчитал сервер, страницы добираются", () => {
+    const counts = { created: 2, accepted: 1, completed: 140, declined: 9 };
+    const loaded = [ref({ status: "created" }), ref({ status: "accepted" }), ...Array.from({ length: 98 }, () => ref({ status: "completed" }))];
+    expect(openMissing(loaded, counts), "третье открытое за первой сотней не добирается").toBe(true);
+    expect(openMissing([...loaded, ref({ status: "created" })], counts)).toBe(false);
+    expect(openMissing(null, counts)).toBe(false);
+    expect(openMissing(loaded, undefined), "без чисел сервера добирать не по чему").toBe(false);
+    const src = readFileSync(resolve(import.meta.dir, "../src/pages/Referrals.tsx"), "utf8");
+    expect(src).toContain("const missingOpen = openMissing(rows, counts);");
+    expect(src).toContain("if (missingOpen && hasMore && !loadingMore && !pageError) loadMore();");
   });
 
   test("ожидание: больше суток без ответа — «late», принятое — за сколько приняли", () => {
