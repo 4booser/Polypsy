@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import { UI, type UiKey } from "@quizzy/shared";
 import { LangProvider } from "../src/lang";
-import { WeekEdit, nextHours } from "../src/pages/Schedule";
+import { WeekEdit, nextHours } from "../src/pages/schedule/WeekEdit";
 import { EMPTY_EXCEPTION, afterAdd, exceptionProblem, hoursProblem, weekProblems } from "../src/pages/schedule/model";
 
 /**

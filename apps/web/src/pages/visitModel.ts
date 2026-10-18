@@ -1,6 +1,62 @@
-import type { SurveyListItem, UiKey } from "@quizzy/shared";
+import type { AppointmentView, SurveyListItem, UiKey } from "@quizzy/shared";
 import type { NoteState, NoteVersion } from "../api";
 import { pastDeadline } from "../components/deadline";
+
+/* ─────────── состояние приёма словами ─────────── */
+
+export type VisitStatus = AppointmentView["status"];
+
+/** Состояние приёма одним словом — на экране приёма и в календаре недели */
+export const STATUS_KEY: Record<VisitStatus, UiKey> = {
+  booked: "day.statusBooked",
+  confirmed: "day.statusConfirmed",
+  arrived: "day.statusArrived",
+  in_progress: "day.statusInProgress",
+  done: "day.statusDone",
+  no_show: "day.statusNoShow",
+  cancelled: "day.statusCancelled",
+};
+
+/** Куда экран приёма двигает приём — переходы сервера (NEXT в routes/clinic.ts) */
+export type VisitMove = "booked" | "arrived" | "in_progress" | "done" | "no_show";
+
+/**
+ * «Почати прийом» — какими шагами.
+ *
+ * Сервер ведёт приём по графу «записан → пришёл → начали → закончили», и
+ * перепрыгнуть «пришёл» нельзя. На экране приёма специалист нажимает
+ * «Почати», когда человек уже сидит перед ним, — то есть пришёл: это два
+ * шага сервера одним нажатием, по очереди и каждый со своей проверкой.
+ * Пустой список — начинать нечего (идёт, закончен, отменён или неявка:
+ * неявку сперва исправляют «Прийшов»).
+ */
+export function startPath(status: string): VisitMove[] {
+  if (status === "booked" || status === "confirmed") return ["arrived", "in_progress"];
+  if (status === "arrived") return ["in_progress"];
+  return [];
+}
+
+/** «Не прийшов» — пока приём не начат; неявку снимает «Прийшов» */
+export function canMarkNoShow(status: string): boolean {
+  return status === "booked" || status === "confirmed" || status === "arrived";
+}
+
+/** Шаг назад — снять ошибочно нажатое «прийшов» или «почали» (#38): куда и с каким вопросом */
+export function undoStep(status: string): { to: VisitMove; confirm: UiKey } | null {
+  if (status === "arrived") return { to: "booked", confirm: "day.undoArrived" };
+  if (status === "in_progress") return { to: "arrived", confirm: "day.undoStarted" };
+  return null;
+}
+
+/** Справка выдаётся о состоявшемся приёме: человек пришёл */
+export function certificateAvailable(status: string): boolean {
+  return status === "arrived" || status === "in_progress" || status === "done";
+}
+
+/** Отменить можно всё, что не закрыто (сервер: done и cancelled — нельзя) */
+export function cancellable(status: string): boolean {
+  return status !== "done" && status !== "cancelled";
+}
 
 /**
  * Протокол экрана приёма без React: что стоит в поле и поверх какой версии
