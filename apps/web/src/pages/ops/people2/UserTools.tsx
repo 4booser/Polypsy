@@ -542,7 +542,7 @@ export function ImpersonateDialog({ row, onClose }: { row: OpsUserRow; onClose: 
                 {ut("ops.imp.banner")} <b className="font-extrabold">{name}</b>
               </span>
               <Tag tone="attention">{ut("ops.imp.readOnly")}</Tag>
-              <span className="text-caption text-muted">{`${ut("ops.imp.until")} ${until}`}</span>
+              <span className="whitespace-nowrap text-caption text-muted">{`${ut("ops.imp.until")} ${until}`}</span>
               <span className="ml-auto inline-flex h-8 items-center rounded-[9px] bg-panel px-3 text-small font-bold text-text-2">
                 {ut("ops.imp.exit")}
               </span>

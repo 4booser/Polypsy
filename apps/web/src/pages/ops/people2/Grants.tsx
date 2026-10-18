@@ -732,7 +732,7 @@ function GrantPane({ enabled, isSuper, onDone, onCancel }: { enabled: boolean; i
               hint={endsAt ? fill(ut("opps.grants.endsAt"), { at: stamp(endsAt, lang), max: GRANT_MAX_DAYS }) : undefined}
               error={days ? null : fill(ut("opps.grants.badDate"), { max: GRANT_MAX_DAYS })}
             >
-              <Input type="date" value={until} min={isoDay(min)} max={isoDay(max)} onChange={(e) => setUntil(e.target.value)} className="w-[180px]" />
+              <Input type="date" value={until} min={isoDay(min)} max={isoDay(max)} onChange={(e) => setUntil(e.target.value)} style={{ width: 180 }} />
             </Field>
             <Field label={ut("opps.grants.reason")} hint={ut("perm.reasonHint")}>
               <Textarea rows={3} maxLength={1000} value={reason} placeholder={ut("opps.grants.reasonPh")} onChange={(e) => setReason(e.target.value)} />

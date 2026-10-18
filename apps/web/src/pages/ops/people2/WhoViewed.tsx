@@ -86,7 +86,7 @@ export default function OpsWhoViewed() {
     >
       <div className="flex min-w-0 flex-col gap-4">
         <Panel className="print:hidden">
-          <div className="grid items-end gap-4 grid-cols-[minmax(260px,1fr)_auto_auto] max-[1240px]:grid-cols-[minmax(0,1fr)_auto] max-[860px]:grid-cols-1">
+          <div className="grid items-end gap-4 grid-cols-[minmax(260px,1fr)_auto_auto] max-[1440px]:grid-cols-[minmax(0,1fr)_auto] max-[860px]:grid-cols-1">
             <div className="min-w-0 max-[1240px]:col-span-2 max-[860px]:col-span-1">
               <span id="wv-patient" className="mb-1.5 block text-caption font-bold text-muted">
                 {ut("ops.who.patient")}
@@ -168,7 +168,8 @@ export default function OpsWhoViewed() {
               )}
             </div>
 
-            <div role="group" aria-labelledby="wv-period" className="min-w-0">
+            {/* на 1280 период — своей строкой под человеком: пресеты и две даты в одну строку не помещаются рядом с ним */}
+            <div role="group" aria-labelledby="wv-period" className="min-w-0 max-[1440px]:col-span-2 max-[1440px]:row-start-2 max-[860px]:col-span-1 max-[860px]:row-auto">
               <span id="wv-period" className="mb-1.5 block text-caption font-bold text-muted">
                 {ut("ops.who.period")}
               </span>
@@ -187,7 +188,7 @@ export default function OpsWhoViewed() {
                   value={period.from}
                   max={period.to}
                   onChange={(e) => setPeriod({ ...period, from: e.target.value })}
-                  className="w-[150px]"
+                  style={{ width: 160 }}
                 />
                 <span aria-hidden className="text-muted">
                   —
@@ -198,12 +199,18 @@ export default function OpsWhoViewed() {
                   value={period.to}
                   min={period.from}
                   onChange={(e) => setPeriod({ ...period, to: e.target.value })}
-                  className="w-[150px]"
+                  style={{ width: 160 }}
                 />
               </div>
             </div>
 
-            <Button variant="primary" icon={<Sx.fileSearch2 />} disabled={busy || !picked || !valid} onClick={build}>
+            <Button
+              variant="primary"
+              icon={<Sx.fileSearch2 />}
+              disabled={busy || !picked || !valid}
+              onClick={build}
+              className="max-[1440px]:col-start-2 max-[1440px]:row-start-1 max-[860px]:col-start-auto max-[860px]:row-auto"
+            >
               {ut("ops.who.build")}
             </Button>
           </div>

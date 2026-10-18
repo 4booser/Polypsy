@@ -6,7 +6,7 @@ import { useAuth } from "../../auth";
 import { HBars, TimeColumns } from "../../charts/clinical";
 import { day, locale } from "../../format";
 import { useLang } from "../../lang";
-import { Avatar, Callout, KbdHints, Loading, useAction } from "../../ui";
+import { Avatar, Callout, KbdHints, Loading, SearchField, useAction } from "../../ui";
 import { cx } from "../../ui/cx";
 import { Ic } from "../../ui/icons";
 import { useHotkeys } from "../../ui/keys";
@@ -189,16 +189,13 @@ export default function OpsAuditLog() {
         <Panel flush>
           <div className="flex flex-col gap-2.5 px-4 pb-3 pt-3.5">
             <div className="flex flex-wrap items-center gap-2">
-              <Input
-                look="fill"
-                type="search"
-                className="w-[260px] max-w-full shrink-0 rounded-[12px]"
-                icon={<Ic.search />}
+              <SearchField
+                slash
+                width={280}
                 placeholder={ut("ops.audit.text")}
-                aria-label={ut("ops.audit.text")}
+                label={ut("ops.audit.text")}
                 value={filters.q ?? ""}
-                onChange={(e) => set("q", e.target.value)}
-                autoComplete="off"
+                onChange={(v) => set("q", v)}
               />
               <ChoiceChip label={ut("aud.action")} choices={actionChoices} value={query.action ?? ""} onChange={(v) => set("action", v)} />
               <ChoiceChip label={ut("ops.audit.resource")} choices={typeChoices} value={query.resourceType ?? ""} onChange={(v) => set("resourceType", v)} />
@@ -508,6 +505,7 @@ function JournalTable({
             ["J K", ut("oppa.kEntry")],
             ["Enter", ut("aud.details").toLowerCase()],
             ["A", ut("oppa.kActor")],
+            ["/", ut("hotkey.search")],
           ]}
         />
       </div>
