@@ -11,7 +11,7 @@ import type {
   OpsTrafficBucket,
   UiKey,
 } from "@quizzy/shared";
-import { Figure, HBars, ShareBar, StackColumns, TimeColumns, TimeLines, type GapColumn, type HBar, type TimeLineMark } from "../../charts/clinical";
+import { Figure, ShareBar, StackColumns, TimeColumns, TimeLines, type GapColumn, type TimeLineMark } from "../../charts/clinical";
 import { RowTip, TipHead, TipRow, TipText } from "../../charts/kit";
 import { locale } from "../../format";
 import { useLang } from "../../lang";
@@ -24,9 +24,7 @@ import {
   CONN_KEY,
   ERROR_STEP,
   JOB_KEY,
-  LEVEL_COLOR,
   LOG_STEP,
-  QUIET_COLOR,
   ROLE_KEY,
   ROUTE_P95_MIN,
   SHARE_5XX_LIMIT,
@@ -45,7 +43,6 @@ import {
   fmtUptime,
   hhmm,
   jobsByDuration,
-  jobsByFailures,
   jobsByRuns,
   latencyLines,
   routes5xx,
@@ -57,7 +54,7 @@ import {
   trafficStack,
   trafficTip,
   trafficTotals,
-  type TopRest,
+
 } from "./model";
 import { Facts, Mono, Quiet } from "./parts";
 
@@ -86,6 +83,8 @@ export const CHART_GRID = "grid grid-cols-1 gap-x-6 gap-y-7 min-[900px]:grid-col
  */
 export const CLASS_TONE = { ok: "var(--c1)", c4: "var(--c3)", c5: "var(--c2)" } as const;
 export const PCT_TONE = { p50: "var(--c3)", p95: "var(--c1)", p99: "var(--c2)" } as const;
+/* строки лога: предупреждение — «прочее» (c5), его много и оно само действия не требует; ошибка — c2, как 5xx */
+export const LEVEL_TONE = { warn: "var(--c5)", error: "var(--c2)" } as const;
 
 /** Маршрут в подписи полосы — моноширинно, метод приглушён: так он напечатан в таблице ниже */
 function RouteLabel({ r }: { r: Pick<OpsRouteStat, "method" | "route"> }) {
@@ -94,11 +93,6 @@ function RouteLabel({ r }: { r: Pick<OpsRouteStat, "method" | "route"> }) {
       <span className="text-muted">{r.method}</span> {r.route}
     </span>
   );
-}
-
-/** Строка «інші (N)» для величин, которые складываются; пусто — строки нет */
-function restBar(rest: TopRest<unknown>, label: string, text: string): HBar[] {
-  return rest.rest > 0 ? [{ key: "__rest", label, value: rest.restSum, text }] : [];
 }
 
 /** Остаток для величин, которые не складываются (p95, длительность), — словами под полосами */
@@ -637,22 +631,23 @@ export function LogVolumeCharts({ volume, now }: { volume: OpsLogVolume; now: nu
   const bins = binSeries(volume.buckets, ["debug", "info", "warn", "error"], Date.parse(volume.from), now, step);
   const all = bins.map((b) => ({ ...b, values: { ...b.values, all: b.values.debug + b.values.info + b.values.warn + b.values.error } }));
   const loud = bins.some((b) => b.values.warn + b.values.error > 0);
-  const caption = fill(ut("ops.ch.logHint"), { step: ut(STEP_KEY[step]) });
+  const sum = (k: "debug" | "info" | "warn" | "error") => bins.reduce((s, b) => s + b.values[k], 0);
+  const total = sum("debug") + sum("info") + sum("warn") + sum("error");
 
   return (
     <>
       {volume.historyUnavailable ? <Quiet>{ut("ops.ch.logUnavailable")}</Quiet> : null}
       <div className={CHART_GRID}>
-        <Figure title={ut("ops.ch.logAll")} caption={caption}>
+        <Figure title={ut("ops.ch.logAll")} caption={fill(ut("opx.lg.totalLines"), { n: fmtInt(total, loc) })}>
           <TimeColumns columns={binColumns(all, "all", step, loc)} label={ut("ops.ch.logAll")} />
         </Figure>
-        <Figure title={ut("ops.ch.logLoud")} caption={caption}>
+        <Figure title={ut("ops.ch.logLoud")} caption={fill(ut("opx.lg.loudLines"), { w: fmtInt(sum("warn"), loc), e: fmtInt(sum("error"), loc) })}>
           {loud ? (
             <StackColumns
               label={ut("ops.ch.logLoud")}
               series={[
-                { key: "warn", label: ut("ops.level.warn"), color: LEVEL_COLOR.warn },
-                { key: "error", label: ut("ops.level.error"), color: LEVEL_COLOR.error },
+                { key: "warn", label: ut("ops.level.warn"), color: LEVEL_TONE.warn },
+                { key: "error", label: ut("ops.level.error"), color: LEVEL_TONE.error },
               ]}
               columns={binStack(bins, ["warn", "error"], step, loc)}
               total={ut("ops.ch.total")}
@@ -676,43 +671,58 @@ const jobName = (j: OpsJob, ut: (k: UiKey) => string): ReactNode => {
 };
 
 /**
- * Проходы задач с момента запуска, сбои (только у тех, у кого они были) и
- * длительность последнего прохода. Сбои — янтарём: упавший проход и есть
- * «требует внимания».
+ * Проходы задач с момента запуска (янтарём — у кого были сбои, их число
+ * рядом) и длительность последнего прохода (янтарём — если он кончился
+ * сбоем). Длительности не складываются, поэтому остаток — словами.
  */
 export function JobCharts({ items }: { items: readonly OpsJob[] }) {
   const { ut } = useLang();
   const loc = locale();
-  const runs = jobsByRuns(items);
-  const fails = jobsByFailures(items);
-  const took = jobsByDuration(items);
+  const runs = jobsByRuns(items, 7);
+  const took = jobsByDuration(items, 7);
+  const label = (j: OpsJob) => <span className="text-small font-semibold text-text-2">{jobName(j, ut)}</span>;
+  const title = (j: OpsJob) => (JOB_KEY[j.name] ? ut(JOB_KEY[j.name]!) : j.name);
 
   return (
     <div className={CHART_GRID}>
-      <Figure title={ut("ops.ch.jobRuns")} caption={ut("ops.ch.sinceStart")}>
-        <HBars
+      <Figure title={ut("ops.ch.jobRuns")} caption={ut("opx.jb.runsHint")}>
+        <RankBars
           items={[
             ...runs.top.map((j) => ({
               key: j.name,
-              label: jobName(j, ut),
+              title: title(j),
+              label: label(j),
               value: j.runs,
-              text: j.failures ? fill(ut("ops.ch.jobRunsText"), { runs: fmtInt(j.runs, loc), n: fmtInt(j.failures, loc) }) : fmtInt(j.runs, loc),
+              text: j.failures ? fill(ut("opx.jb.runsFails"), { runs: fmtInt(j.runs, loc), n: fmtInt(j.failures, loc) }) : fmtInt(j.runs, loc),
+              attention: j.failures > 0,
             })),
-            ...restBar(runs, fill(ut("ops.ch.others"), { n: runs.rest }), fmtInt(runs.restSum, loc)),
+            ...(runs.rest > 0
+              ? [
+                  {
+                    key: "__rest",
+                    title: fill(ut("ops.ch.others"), { n: runs.rest }),
+                    label: <span className="text-small text-text-2">{fill(ut("ops.ch.others"), { n: runs.rest })}</span>,
+                    value: runs.restSum,
+                    text: fmtInt(runs.restSum, loc),
+                  },
+                ]
+              : []),
           ]}
         />
       </Figure>
-      <Figure title={ut("ops.ch.jobFails")} caption={ut("ops.ch.sinceStart")}>
-        {fails.length ? (
-          <HBars items={fails.map((j) => ({ key: j.name, label: jobName(j, ut), value: j.failures, text: fmtInt(j.failures, loc), attention: true }))} />
-        ) : (
-          <Quiet>{ut("ops.ch.jobNoFails")}</Quiet>
-        )}
-      </Figure>
-      <Figure title={ut("ops.ch.jobTook")}>
+      <Figure title={ut("ops.ch.jobTook")} caption={ut("opx.jb.tookHint")}>
         {took.top.length ? (
           <>
-            <HBars items={took.top.map((j) => ({ key: j.name, label: jobName(j, ut), value: j.lastDurationMs, text: fmtMs(j.lastDurationMs, loc) }))} />
+            <RankBars
+              items={took.top.map((j) => ({
+                key: j.name,
+                title: title(j),
+                label: label(j),
+                value: j.lastDurationMs ?? 0,
+                text: fmtMs(j.lastDurationMs, loc),
+                attention: j.lastResult === "error",
+              }))}
+            />
             <MoreNote n={took.rest} />
           </>
         ) : (
@@ -724,10 +734,10 @@ export function JobCharts({ items }: { items: readonly OpsJob[] }) {
 }
 
 /**
- * Срабатывания расписаний по местным суткам за месяц: сколько раз и сколько
- * назначено и пропущено. Из базы — переживает перезапуск, в отличие от
+ * Срабатывания расписаний по местным суткам за месяц: сколько назначено и
+ * сколько пропущено. Из базы — переживает перезапуск, в отличие от
  * проходов выше. Пропущенное — не сбой (у человека уже висит незакрытое
- * назначение), поэтому не янтарём.
+ * назначение): второй ряд набора, а не янтарь внимания.
  */
 export function ScheduleCharts({
   activity,
@@ -742,24 +752,19 @@ export function ScheduleCharts({
   const loc = locale();
   const bins = binSeries(activity.hours, ["runs", "assigned", "skipped"], Date.parse(activity.from), now, "day");
   if (!bins.some((b) => b.values.runs > 0)) return <Quiet>{fill(ut("ops.ch.schedEmpty"), { n: days })}</Quiet>;
-  const caption = fill(ut("ops.ch.schedHint"), { n: days });
   return (
-    <div className={CHART_GRID}>
-      <Figure title={ut("ops.ch.schedDays")} caption={caption}>
-        <TimeColumns columns={binColumns(bins, "runs", "day", loc)} label={ut("ops.ch.schedDays")} />
-      </Figure>
-      <Figure title={ut("ops.ch.schedAssigned")} caption={caption}>
-        <StackColumns
-          label={ut("ops.ch.schedAssigned")}
-          series={[
-            { key: "assigned", label: ut("ops.col.assigned"), color: "var(--primary)" },
-            { key: "skipped", label: ut("ops.col.skipped"), color: QUIET_COLOR },
-          ]}
-          columns={binStack(bins, ["assigned", "skipped"], "day", loc)}
-          format={(v) => fmtInt(v, loc)}
-        />
-      </Figure>
-    </div>
+    <Figure title={fill(ut("opx.jb.schedTitle"), { n: days })} caption={ut("opx.jb.schedHint")}>
+      <StackColumns
+        label={ut("ops.ch.schedAssigned")}
+        series={[
+          { key: "assigned", label: ut("ops.col.assigned"), color: "var(--c1)" },
+          { key: "skipped", label: ut("ops.col.skipped"), color: "var(--c2)" },
+        ]}
+        columns={binStack(bins, ["assigned", "skipped"], "day", loc)}
+        total={ut("ops.ch.total")}
+        format={(v) => fmtInt(v, loc)}
+      />
+    </Figure>
   );
 }
 
@@ -769,37 +774,53 @@ export function ScheduleCharts({
  * Десять самых больших таблиц и «інші» — остаток из тех, что прислал сервер
  * (он отдаёт самые большие, не все); и мёртвые строки, где они есть, —
  * янтарём там, где автоочистка не успевает (то же правило, что у колонки
- * таблицы ниже, deadRowsAlarm).
+ * таблицы ниже, deadRowsAlarm). Две фигуры без своей сетки: «База»
+ * ставит их в один ряд с подключениями.
  */
 export function TableCharts({ tables }: { tables: readonly OpsTableStat[] }) {
   const { ut } = useLang();
   const loc = locale();
-  const size = tablesBySize(tables);
-  const dead = tablesByDead(tables);
-  const name = (t: OpsTableStat) => <span className="font-mono text-[12px]">{t.table}</span>;
+  const size = tablesBySize(tables, 8);
+  const dead = tablesByDead(tables, 8);
+  const name = (t: OpsTableStat, strong?: boolean) => (
+    <span className={cx("font-mono text-[11.5px] text-text", strong ? "font-bold" : "font-medium")}>{t.table}</span>
+  );
 
   return (
-    <div className={CHART_GRID}>
+    <>
       <Figure title={ut("ops.ch.tableSize")} caption={fill(ut("ops.ch.tableSizeHint"), { n: tables.length })}>
-        <HBars
+        <RankBars
+          labelW={150}
           items={[
-            ...size.top.map((t) => ({ key: t.table, label: name(t), value: t.totalBytes, text: fmtBytes(t.totalBytes, loc) })),
-            ...restBar(size, fill(ut("ops.ch.others"), { n: size.rest }), fmtBytes(size.restSum, loc)),
+            ...size.top.map((t) => ({ key: t.table, title: t.table, label: name(t), value: t.totalBytes, text: fmtBytes(t.totalBytes, loc) })),
+            ...(size.rest > 0
+              ? [
+                  {
+                    key: "__rest",
+                    title: fill(ut("ops.ch.others"), { n: size.rest }),
+                    label: <span className="text-small text-text-2">{fill(ut("ops.ch.others"), { n: size.rest })}</span>,
+                    value: size.restSum,
+                    text: fmtBytes(size.restSum, loc),
+                  },
+                ]
+              : []),
           ]}
         />
       </Figure>
       <Figure title={ut("ops.ch.deadRows")} caption={ut("ops.ch.deadRowsHint")}>
         {dead.top.length ? (
           <>
-            <HBars
+            <RankBars
+              labelW={150}
               /* внимание — янтарём и жирной подписью: цвет в одиночку «выделено» не несёт */
               items={dead.top.map((t) => ({
                 key: t.table,
-                label: name(t),
-                value: t.deadRows,
+                title: t.table,
+                label: name(t, deadRowsAlarm(t)),
+                value: t.deadRows ?? 0,
                 text: fmtInt(t.deadRows, loc),
+                note: t.liveRows ? fill(ut("opx.db.deadShare"), { v: fmtShare((t.deadRows ?? 0) / t.liveRows, loc) }) : undefined,
                 attention: deadRowsAlarm(t),
-                strong: deadRowsAlarm(t),
               }))}
             />
             <MoreNote n={dead.rest} />
@@ -808,9 +829,17 @@ export function TableCharts({ tables }: { tables: readonly OpsTableStat[] }) {
           <Quiet>{ut("ops.ch.deadNone")}</Quiet>
         )}
       </Figure>
-    </div>
+    </>
   );
 }
+
+/* состояния подключения — категории: у каждого свой ряд набора, свободное — дорожкой */
+const CONN_TONE: Partial<Record<OpsConnections["byState"][number]["state"], string>> = {
+  active: "var(--c1)",
+  idle: "var(--c2)",
+  idle_in_transaction: "var(--c3)",
+  idle_in_transaction_aborted: "var(--c4)",
+};
 
 /**
  * Подключения по состояниям и свободные до max_connections — одной
@@ -820,20 +849,13 @@ export function TableCharts({ tables }: { tables: readonly OpsTableStat[] }) {
 export function ConnectionsShare({ c }: { c: OpsConnections }) {
   const { ut } = useLang();
   const parts = connectionShares(c);
-  const busy = parts.filter((p) => p.state !== "free").length;
   return (
     <ShareBar
       label={ut("ops.db.connections")}
-      parts={parts.map((p, i) =>
+      parts={parts.map((p) =>
         p.state === "free"
-          ? { key: "free", label: ut("ops.ch.free"), value: p.count, color: "var(--grid)" }
-          : {
-              key: p.state,
-              label: ut(CONN_KEY[p.state]),
-              value: p.count,
-              /* одна величина — один тон, порядок читается светлотой: самое частое темнее */
-              step: busy > 1 ? 1 - i / (busy - 1) : 1,
-            },
+          ? { key: "free", label: ut("ops.ch.free"), value: p.count, color: "var(--track)" }
+          : { key: p.state, label: ut(CONN_KEY[p.state]), value: p.count, color: CONN_TONE[p.state] ?? "var(--c5)" },
       )}
     />
   );
