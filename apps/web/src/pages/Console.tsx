@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, ApiError } from "../api";
+import { useAuth } from "../auth";
 import { useLang } from "../lang";
 import { useResource } from "../useResource";
 import { Ic, KbdHints, Loading, useToast } from "../ui";
@@ -37,24 +38,50 @@ interface Block {
   lines: string[];
 }
 
-/** Недавние команды — удобство этого браузера, не данные: при недоступном хранилище просто пусто */
-const RECENT_KEY = "quizzy.console.recent";
+/*
+ * Недавние команды — удобство вкладки, не данные: в хранилище вкладки
+ * (sessionStorage), а не браузера, и под ключом учётной записи.
+ *
+ * Строка команды несёт аргументы, а среди них бывает почта пациента:
+ * `user find` ищет по всем учётным записям. В localStorage она пережила бы
+ * выход и досталась бы следующему за общим ноутбуком отделения — так же
+ * решён список запросов поиска по записям (search/model.ts). Ключ с id: вышел
+ * один, вошёл другой в той же вкладке — чужих команд он не видит. Хранилище
+ * закрыто (приватное окно) — недавние живут до перезагрузки.
+ */
+const RECENT_PREFIX = "quizzy.console.recent:";
+const RECENT_MAX = 8;
 
-function readRecent(): string[] {
+type RecentStore = Pick<Storage, "getItem" | "setItem">;
+
+export const recentKey = (userId: string) => `${RECENT_PREFIX}${userId}`;
+
+/** Хранилище вкладки, если браузер его даёт */
+function tabStore(): RecentStore | null {
   try {
-    const raw = localStorage.getItem(RECENT_KEY);
+    return sessionStorage;
+  } catch {
+    return null;
+  }
+}
+
+export function readRecent(store: RecentStore | null, userId: string): string[] {
+  if (!store || !userId) return [];
+  try {
+    const raw = store.getItem(recentKey(userId));
     const list = raw ? (JSON.parse(raw) as unknown) : [];
-    return Array.isArray(list) ? list.filter((x): x is string => typeof x === "string").slice(0, 8) : [];
+    return Array.isArray(list) ? list.filter((x): x is string => typeof x === "string").slice(0, RECENT_MAX) : [];
   } catch {
     return [];
   }
 }
 
-function saveRecent(list: string[]): void {
+export function saveRecent(store: RecentStore | null, userId: string, list: string[]): void {
+  if (!store || !userId) return;
   try {
-    localStorage.setItem(RECENT_KEY, JSON.stringify(list.slice(0, 8)));
+    store.setItem(recentKey(userId), JSON.stringify(list.slice(0, RECENT_MAX)));
   } catch {
-    /* хранилище закрыто (приватное окно) — недавние живут до перезагрузки */
+    /* хранилище закрыто или полно — недавние живут до перезагрузки */
   }
 }
 
@@ -67,13 +94,15 @@ export function completions<T extends { name: string; usage: string }>(commands:
 
 export default function Console() {
   const { ut } = useLang();
+  const { user } = useAuth();
+  const userId = user?.id ?? "";
   const toast = useToast();
   const [started] = useState(() => new Date().toISOString());
   const [blocks, setBlocks] = useState<Block[]>([]);
   const [intro, setIntro] = useState(true);
   const [value, setValue] = useState("");
   const [busy, setBusy] = useState(false);
-  const [recent, setRecent] = useState<string[]>(readRecent);
+  const [recent, setRecent] = useState<string[]>(() => readRecent(tabStore(), userId));
   /* список команд — удобство: без него работает всё, кроме дополнения по Tab */
   const commandsRes = useResource(() => api.consoleCommands().then((r) => r.items), []);
   const commands = commandsRes.data ?? [];
@@ -104,9 +133,9 @@ export default function Console() {
     }
     history.current = [trimmed, ...history.current.filter((h) => h !== trimmed)].slice(0, 100);
     cursor.current = -1;
-    const nextRecent = [trimmed, ...recent.filter((r) => r !== trimmed)].slice(0, 8);
+    const nextRecent = [trimmed, ...recent.filter((r) => r !== trimmed)].slice(0, RECENT_MAX);
     setRecent(nextRecent);
-    saveRecent(nextRecent);
+    saveRecent(tabStore(), userId, nextRecent);
     const id = ++seq.current;
     const at = new Date().toISOString();
     const t0 = performance.now();

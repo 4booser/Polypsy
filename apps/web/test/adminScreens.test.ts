@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import type { StaffAccount } from "@quizzy/shared";
 import { paragraphChanges, wordDiff } from "../src/pages/Admin";
 import { byTag, routeMatches } from "../src/pages/ApiDocs";
 import { strengthOf } from "../src/pages/Account";
-import { completions } from "../src/pages/Console";
+import { completions, readRecent, recentKey, saveRecent } from "../src/pages/Console";
 import { draftDiff, roleOrder } from "../src/pages/Permissions";
 import {
   type StaffRow,
@@ -184,6 +186,30 @@ describe("консоль", () => {
     expect(completions(commands, "cat").map((c) => c.name)).toEqual(["catalog"]);
     expect(completions(commands, "catalog in").map((c) => c.name)).toEqual(["catalog"]);
     expect(completions(commands, "")).toEqual([]);
+  });
+
+  /*
+   * Строка команды несёт аргументы — `user find ivan@…` ищет и пациентов.
+   * Недавние живут во вкладке и под ключом учётной записи: следующий за общим
+   * ноутбуком их не получает ни после выхода, ни после закрытия вкладки.
+   */
+  test("недавние — под ключом учётной записи: другой человек в той же вкладке их не видит", () => {
+    const box = new Map<string, string>();
+    const store = { getItem: (k: string) => box.get(k) ?? null, setItem: (k: string, v: string) => void box.set(k, v) };
+    saveRecent(store, "u1", ["user find ivan.petrenko@mail.test", "help"]);
+    expect(readRecent(store, "u1")).toEqual(["user find ivan.petrenko@mail.test", "help"]);
+    expect(readRecent(store, "u2")).toEqual([]);
+    expect([...box.keys()]).toEqual([recentKey("u1")]);
+    /* без учётной записи и без хранилища — ни записи, ни чтения */
+    saveRecent(store, "", ["stats"]);
+    expect(box.size).toBe(1);
+    expect(readRecent(null, "u1")).toEqual([]);
+  });
+
+  test("недавние команды — в хранилище вкладки, не в localStorage", () => {
+    const src = readFileSync(resolve(import.meta.dir, "../src/pages/Console.tsx"), "utf8");
+    expect(src).toContain("sessionStorage");
+    expect(src).not.toMatch(/localStorage\.(getItem|setItem)/);
   });
 });
 
