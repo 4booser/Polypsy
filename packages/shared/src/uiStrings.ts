@@ -8134,6 +8134,22 @@ export const UI = {
     en: "A message to your specialist is not an emergency line: replies come during working hours.",
   },
 
+  // ── v2-ops-people ──
+  /* рамка разделов «Люди й безпека» и «Дані й продукт» (pages/ops/people2/frame.tsx) */
+  "opp.access": { uk: "Хто бачить розділ", ru: "Кто видит раздел", en: "Who can open this section" },
+
+  /* v2-ops-people: користувачі, панель облікового запису, імпорт, перегляд від імені */
+  /* — конец участка «користувачі» — */
+
+  /* v2-ops-people: сесії й аудит */
+  /* — конец участка «сесії й аудит» — */
+
+  /* v2-ops-people: підозріла активність, тимчасові доступи, хто переглядав, другий фактор */
+  /* — конец участка «безпека» — */
+
+  /* v2-ops-people: дані й продукт */
+  /* — конец участка «дані й продукт» — */
+
 } as const satisfies Record<string, UiEntry>;
 
 export type UiKey = keyof typeof UI;
