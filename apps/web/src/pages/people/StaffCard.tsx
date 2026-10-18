@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react
 import { Link, NavLink, Outlet, useNavigate, useOutletContext, useParams } from "react-router-dom";
 import type { AuditEntry, PatientGroupWithCounts, PatientListItem, Sex, UiKey } from "@quizzy/shared";
 import { ROLE_LADDER, t } from "@quizzy/shared";
-import { api } from "../../api";
+import { ApiError, api } from "../../api";
 import { useAuth } from "../../auth";
 import { locale, severityKey } from "../../format";
 import { useLang } from "../../lang";
@@ -1032,6 +1032,19 @@ function LedPatients() {
     return [...list].sort((a, b) => STATE_RANK[stateOf(a)] - STATE_RANK[stateOf(b)] || at(a) - at(b) || a.name.localeCompare(b.name, "uk"));
   }, [items, q, view, sort, now]);
   useHotkeys({ t: () => picked.size && setTransfer(true) }, canTransfer && !transfer);
+  /*
+   * Отметка — только у тех, кто в списке есть: после перечитывания (передача,
+   * 409 «уже ведёт другой») ушедший к другому лікарю из неё выпадает, и
+   * полоса отметки не считает людей, которых на экране нет.
+   */
+  useEffect(() => {
+    if (!page.data) return;
+    const present = new Set(page.data.items.map((p) => p.id));
+    setPicked((prev) => {
+      const next = new Set([...prev].filter((id) => present.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [page.data]);
 
   const columns: Column<PatientListItem>[] = [
     {
@@ -1244,6 +1257,12 @@ function LedPatients() {
             forgetDirectory();
             reload();
           }}
+          onStale={() => {
+            /* окно остаётся: в нём — те из отмеченных, кого этот лікар ещё ведёт */
+            page.reload();
+            forgetDirectory();
+            reload();
+          }}
         />
       ) : null}
     </div>
@@ -1316,12 +1335,15 @@ function TransferModal({
   total,
   onClose,
   onDone,
+  onStale,
 }: {
   from: StaffRow;
   patients: PatientListItem[];
   total: number;
   onClose: () => void;
   onDone: () => void;
+  /** 409: кого-то из отмеченных уже ведёт другой — список перечитывается */
+  onStale: () => void;
 }) {
   const { ut, lang } = useLang();
   const { user, can } = useAuth();
@@ -1362,9 +1384,15 @@ function TransferModal({
             disabled={busy || !target || reason.trim().length < 10 || !n}
             onClick={() =>
               void run(async () => {
-                const r = await api.transferPatients(from.id, { patientIds: patients.map((p) => p.id), to: target!.id, reason: reason.trim() });
-                toast(fill(ut("adm2.transferred"), { n: plural(ut("adm2.nPatients"), r.moved, lang), to: shortName(target!.fullName) }), "ok");
-                onDone();
+                try {
+                  const r = await api.transferPatients(from.id, { patientIds: patients.map((p) => p.id), to: target!.id, reason: reason.trim() });
+                  toast(fill(ut("adm2.transferred"), { n: plural(ut("adm2.nPatients"), r.moved, lang), to: shortName(target!.fullName) }), "ok");
+                  onDone();
+                } catch (e) {
+                  /* «оновіть список» — экран перечитывает его сам; отказ словами сервера показывает run */
+                  if (e instanceof ApiError && e.status === 409) onStale();
+                  throw e;
+                }
               })
             }
           >

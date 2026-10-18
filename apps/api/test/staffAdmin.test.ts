@@ -4,13 +4,15 @@ import { db } from "../src/db";
 import {
   auditLog,
   consents,
+  groupAdmins,
   permissionExceptions,
   roles,
   staffRoles,
+  surveyAccess,
   userSecondFactor,
   users,
 } from "../src/db/schema";
-import { api, makeUser, root, type Person } from "./fixtures";
+import { api, groupB, makeUser, root, surveyInB, type Person } from "./fixtures";
 
 /**
  * Раздел «Адміністрування» Polypsy 2.0 (участок v2-admin): что сервер
@@ -23,7 +25,7 @@ import { api, makeUser, root, type Person } from "./fixtures";
  *     не выходя из зоны смотрящего;
  *   — передача пациентов другому лікарю: переходит закрепление, причина —
  *     в журнал по каждому, чужое закрепление не перетирается, передать можно
- *     только действующему лікарю;
+ *     только действующему лікарю и только пациентов своей зоны;
  *   — версии согласия — только числа, только суперадмину;
  *   — описание API говорит машинно, кому маршрут открыт.
  *
@@ -188,6 +190,94 @@ describe("передача пациентов другому лікарю", () =
       (dir.body.items as { id: string; account?: { patients: number } }[]).find((u) => u.id === id)?.account?.patients;
     expect(count(from.id)).toBe(1);
     expect(count(to.id)).toBe(2);
+  });
+
+  /*
+   * users.manage выдаётся и заведующему, а его зона — не всё учреждение.
+   * Свои лікарі — отдельные от тех, что выше: числа реестра в тесте выше
+   * считаются по ним.
+   */
+  describe("заведующий с правом на реестр", () => {
+    let mgr: Person;
+    let leadZ: Person;
+    let nextZ: Person;
+    const leadOf = async (id: string) =>
+      (await db.select({ lead: users.leadSpecialistId }).from(users).where(eq(users.id, id)))[0]?.lead;
+    const move = (who: Person, patientIds: string[]) =>
+      api(`/api/users/${leadZ.id}/patients/transfer`, who.token, {
+        method: "POST",
+        body: JSON.stringify({ patientIds, to: nextZ.id, reason }),
+      });
+
+    beforeAll(async () => {
+      mgr = await staffOn("head", "mgr");
+      leadZ = await staffOn("specialist", "leadz");
+      nextZ = await staffOn("specialist", "nextz");
+      await db.insert(permissionExceptions).values({
+        id: crypto.randomUUID(),
+        userId: mgr.id,
+        permission: "users.manage",
+        mode: "grant",
+        reason: "веде облікові записи відділення",
+        grantedBy: root.id,
+      });
+      /* зона заведующего — методики группы Б: его пациент — тот, кому методика выдана */
+      await db.insert(groupAdmins).values({ groupId: groupB, userId: mgr.id, addedBy: root.id });
+    });
+
+    test("пациент вне зоны — «не найдено», и не переходит никто из списка", async () => {
+      const inside = await makeUser("user", `adm-in-${tag}@test`, { leadSpecialistId: leadZ.id });
+      const outside = await makeUser("user", `adm-out-${tag}@test`, { leadSpecialistId: leadZ.id });
+      await db.insert(surveyAccess).values({ surveyId: surveyInB, userId: inside.id, grantedBy: root.id });
+
+      const res = await move(mgr, [inside.id, outside.id]);
+      expect(res.status).toBe(404);
+      expect(await leadOf(inside.id)).toBe(leadZ.id);
+      expect(await leadOf(outside.id)).toBe(leadZ.id);
+      const logged = await db
+        .select({ id: auditLog.id })
+        .from(auditLog)
+        .where(and(eq(auditLog.action, "clinic.lead_transfer"), sql`${auditLog.subjectUserId} in ${[inside.id, outside.id]}`));
+      expect(logged).toHaveLength(0);
+    });
+
+    test("кто ведёт человека вне зоны, ответ не выдаёт: тот же отказ, что у несуществующего", async () => {
+      /* ведёт не leadZ — без проверки зоны ответ был бы 409 «ведущий сменился» */
+      const foreign = await makeUser("user", `adm-out2-${tag}@test`, { leadSpecialistId: other.id });
+      const res = await move(mgr, [foreign.id]);
+      expect(res.status).toBe(404);
+      const nobody = await move(mgr, [crypto.randomUUID()]);
+      expect(nobody.status).toBe(404);
+      expect(nobody.body.error).toBe(res.body.error);
+      expect(await leadOf(foreign.id)).toBe(other.id);
+    });
+
+    test("пациент своей зоны переходит, причина — в журнал", async () => {
+      const mine = await makeUser("user", `adm-mine-${tag}@test`, { leadSpecialistId: leadZ.id });
+      await db.insert(surveyAccess).values({ surveyId: surveyInB, userId: mine.id, grantedBy: root.id });
+      const res = await move(mgr, [mine.id]);
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      expect(res.body.moved).toBe(1);
+      expect(await leadOf(mine.id)).toBe(nextZ.id);
+      const [entry] = await db
+        .select()
+        .from(auditLog)
+        .where(and(eq(auditLog.action, "clinic.lead_transfer"), eq(auditLog.subjectUserId, mine.id)));
+      expect(entry?.actorId).toBe(mgr.id);
+      expect(entry?.details).toMatchObject({ from: leadZ.id, to: nextZ.id, reason });
+    });
+
+    test("без права видеть пациентов — отказ по праву, как у вкладки «Пацієнти»", async () => {
+      const blind = await staffOn("head", "blind");
+      await db.insert(permissionExceptions).values([
+        { id: crypto.randomUUID(), userId: blind.id, permission: "users.manage", mode: "grant", reason: "веде облікові записи відділення", grantedBy: root.id },
+        { id: crypto.randomUUID(), userId: blind.id, permission: "patients.read", mode: "revoke", reason: "лише облікові записи, без пацієнтів", grantedBy: root.id },
+      ]);
+      const victim = await makeUser("user", `adm-pt-blind-${tag}@test`, { leadSpecialistId: leadZ.id });
+      const res = await move(blind, [victim.id]);
+      expect(res.status).toBe(403);
+      expect(await leadOf(victim.id)).toBe(leadZ.id);
+    });
   });
 });
 
