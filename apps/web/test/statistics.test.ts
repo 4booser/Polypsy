@@ -5,6 +5,7 @@ import type { StatCell, StatModel, StatModelColumn, StatRunColumn, SurveyFull } 
 import {
   HIDDEN_MARK,
   MAX_SAMPLES,
+  addKeyed,
   addSample,
   applyPreset,
   cellAt,
@@ -16,13 +17,17 @@ import {
   criteriaOf,
   criterionValue,
   diffText,
+  duplicateKeyed,
   duplicateSample,
   editSampleDraft,
   emptyStructure,
   figureCount,
   filterErrors,
+  keepDrafts,
+  keyedSamples,
   newBandRow,
   newQuestionBlock,
+  removeKeyed,
   removeSample,
   reportRows,
   sameFilters,
@@ -285,6 +290,61 @@ describe("выборки рядом (экран модели и график)", 
     expect(twice[1]!.filters).toEqual(cols[0]!.filters);
     expect(removeSample(cols, 0).map((c) => c.title)).toEqual(["Львів"]);
     expect(removeSample([cols[0]!], 0), "модель осталась без выборки").toHaveLength(1);
+  });
+
+  /*
+   * Черновик ящика держится за выборку, а не за её номер.
+   *
+   * Прежде черновики лежали по номеру, и любая перестановка сбрасывала их
+   * все: Esc сохранял набранное у выборки 1, «Додати вибірку» стирал его
+   * молча, а «Повернутися» после «Прибрати вибірку» открывал ящик выборки,
+   * вставшей на прежний номер. Мутация: ключи по номеру (keys = индексы) —
+   * после «Прибрати» черновик «Львова» достаётся «Харкову».
+   */
+  test("ключи выборок переживают добавление, дубль и удаление; черновик уходит только с выборкой", () => {
+    const start = keyedSamples([column({ title: "Київ" }), column({ title: "Львів" }), column({ title: "Харків" })]);
+    const [kyiv, lviv, kharkiv] = start.keys as [string, string, string];
+    expect(new Set(start.keys).size, "ключи выборок совпали").toBe(3);
+    const drafts = { [kyiv]: "чернетка Києва", [lviv]: "чернетка Львова" };
+
+    const added = addKeyed(start, "fresh");
+    expect(added.keys).toEqual([kyiv, lviv, kharkiv, "fresh"]);
+    expect(keepDrafts(drafts, added.keys), "«Додати вибірку» стёр сохранённый черновик").toEqual(drafts);
+
+    const twice = duplicateKeyed(start, 0, "copy");
+    expect(twice.columns.map((c) => c.title)).toEqual(["Київ", null, "Львів", "Харків"]);
+    expect(twice.keys).toEqual([kyiv, "copy", lviv, kharkiv]);
+    expect(keepDrafts(drafts, twice.keys)).toEqual(drafts);
+
+    const fewer = removeKeyed(start, 0);
+    expect(fewer.columns.map((c) => c.title)).toEqual(["Львів", "Харків"]);
+    expect(fewer.keys).toEqual([lviv, kharkiv]);
+    // черновик убранной выборки уходит с ней, «Львова» — остаётся у Львова
+    expect(keepDrafts(drafts, fewer.keys)).toEqual({ [lviv]: "чернетка Львова" });
+    expect(fewer.keys.includes(kyiv), "«Повернутися» к убранной выборке открыло бы чужой ящик").toBe(false);
+  });
+
+  /*
+   * Экран модели пользуется ключами, а не номерами: черновик, «Застосувати»
+   * и «Повернутися» — по ключу выборки, а «Повернутися» к убранной выборке
+   * ничего не открывает. Мутация: вернуть черновики по номеру (`[i]: next`)
+   * или открыть ящик без проверки текущих ключей — падает своя строка.
+   */
+  test("экран модели держит черновики, «Застосувати» и «Повернутися» за ключом выборки", () => {
+    const view = readFileSync(resolve(import.meta.dir, "../src/pages/statistics/ModelView.tsx"), "utf8");
+    expect(view).toContain("setDrafts((all) => ({ ...all, [key]: next }))");
+    expect(view).not.toContain("[i]: next");
+    expect(view).toContain("onClick={() => applyDraft(key)}");
+    expect(view).toContain("if (key && keysNow.current.includes(key)) setDrawer({ open: true, key });");
+    expect(view).toContain("setDrafts((d) => keepDrafts(d, next.keys));");
+  });
+
+  test("нет места или последняя выборка — те же выборки тем же объектом, без лишнего ключа", () => {
+    const full = keyedSamples(Array.from({ length: MAX_SAMPLES }, () => column()));
+    expect(addKeyed(full, "x")).toBe(full);
+    expect(duplicateKeyed(full, 0, "x")).toBe(full);
+    const one = keyedSamples([column()]);
+    expect(removeKeyed(one, 0)).toBe(one);
   });
 
   test("пресет к выбранным выборкам заменяет их фильтры; новая выборка — с тем же пресетом", () => {
