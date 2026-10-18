@@ -389,7 +389,7 @@ for (const theme of ["dark", "light"] as const) {
     await login(page, "psy");
     await page.goto("/today");
     await dayRow(page, own.id).locator('a[href^="/visit/"]').click();
-    await page.getByRole("heading", { name: "Приём", exact: true }).waitFor();
+    await page.getByRole("heading", { name: "Протокол приёма" }).waitFor();
     await page.waitForTimeout(600);
     expect(await violationsOf(page, "/visit/:id")).toEqual([]);
   });

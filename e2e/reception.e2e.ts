@@ -124,7 +124,7 @@ test("экран приёма собирается одним запросом �
 
   // с «Сегодня» — прямо на приём
   await dayRow(page, own.id).locator('a[href^="/visit/"]').click();
-  await expect(page.getByRole("heading", { name: "Приём", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Протокол приёма" })).toBeVisible();
 
   // все три панели на месте сразу, а не по очереди
   await expect(page.getByText("Что было")).toBeVisible();
@@ -141,7 +141,7 @@ test("экран приёма собирается одним запросом �
   // и сохраняется, не уводя с экрана
   await area.fill("Состояние ровное, договорились о повторе через неделю.");
   await page.getByRole("button", { name: "Сохранить" }).click();
-  await expect(page.getByRole("heading", { name: "Приём", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Протокол приёма" })).toBeVisible();
   await expect(area).toHaveValue(/договорились/);
 });
 
@@ -172,7 +172,7 @@ test("методика назначается прямо с приёма, не �
   await login(page, "psy");
   await page.goto("/today");
   await dayRow(page, own.id).locator('a[href^="/visit/"]').click();
-  await page.getByRole("heading", { name: "Приём", exact: true }).waitFor();
+  await page.getByRole("heading", { name: "Протокол приёма" }).waitFor();
 
   /*
    * Поле выбирается по подсказке, а не как «первое textarea на странице».
@@ -196,7 +196,7 @@ test("методика назначается прямо с приёма, не �
   await page.getByRole("button", { name: "Назначить методику" }).click();
 
   // остались на том же экране, и текст на месте
-  await expect(page.getByRole("heading", { name: "Приём", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Протокол приёма" })).toBeVisible();
   await expect(area).toHaveValue(/не должен пропасть/);
 });
 

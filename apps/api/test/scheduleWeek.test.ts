@@ -155,6 +155,28 @@ describe("неделя календарём", () => {
     expect(tooLong.status).toBe(400);
   });
 
+  test("экран приёма: кабинет, подтверждение, пояс отделения и сколько приёмов уже было", async () => {
+    await db.update(specialistProfiles).set({ room: "214" }).where(inArray(specialistProfiles.userId, [specialist.id]));
+    const done = await visitAt(kyiv("2026-09-01T10:00:00", "+03:00"));
+    const missed = await visitAt(kyiv("2026-09-08T10:00:00", "+03:00"));
+    await db.update(appointments).set({ status: "done" }).where(inArray(appointments.id, [done]));
+    await db.update(appointments).set({ status: "no_show" }).where(inArray(appointments.id, [missed]));
+    const today = await visitAt(kyiv("2026-12-01T10:00:00", "+02:00"));
+    const confirmedAt = new Date().toISOString();
+    await db.update(appointments).set({ status: "confirmed", confirmedAt }).where(inArray(appointments.id, [today]));
+
+    const res = await api(`/api/clinic/appointments/${today}/context`, specialist.token);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(res.body.appointment.specialistId).toBe(specialist.id);
+    expect(res.body.appointment.room).toBe("214");
+    expect(res.body.appointment.tz).toBe("Europe/Kyiv");
+    expect(Date.parse(res.body.appointment.confirmedAt)).toBe(Date.parse(confirmedAt));
+    expect(res.body.appointment.meetingUrl).toBeNull();
+    // сам открытый приём в счёт не идёт; прошлые — по состоянию
+    expect(res.body.visits.done).toBeGreaterThanOrEqual(1);
+    expect(res.body.visits.noShow).toBeGreaterThanOrEqual(1);
+  });
+
   test("пациенту неделя специалиста закрыта", async () => {
     const res = await api(`/api/clinic/schedule/week?from=2026-10-19&specialistId=${specialist.id}`, patient.token);
     expect(res.status).toBe(403);

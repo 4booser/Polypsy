@@ -1690,6 +1690,24 @@ clinicRoutes.get(
       .orderBy(desc(patientNotes.version))
       .limit(1);
 
+    /*
+     * Строка шапки приёма: кабинет, подтверждение, ссылка встречи, пояс
+     * отделения (по нему экран показывает часы и предлагает окна следующей
+     * сессии) и сколько приёмов у человека уже было — «прийомів 3, неявок
+     * немає» читается до первого вопроса.
+     */
+    const profile = await db.query.specialistProfiles.findFirst({
+      where: eq(specialistProfiles.userId, row.specialistId),
+    });
+    const department = await db.query.departments.findFirst({ where: eq(departments.id, slot!.departmentId) });
+    const [counts] = await db
+      .select({
+        done: sql<number>`count(*) filter (where ${appointments.status} = 'done')`,
+        noShow: sql<number>`count(*) filter (where ${appointments.status} = 'no_show')`,
+      })
+      .from(appointments)
+      .where(and(eq(appointments.patientId, row.patientId), ne(appointments.id, row.id)));
+
     await audit(c, {
       action: "clinic.visit_open",
       resourceType: "appointment",
@@ -1706,7 +1724,13 @@ clinicRoutes.get(
         mode: row.mode,
         status: row.status,
         reason: decryptField(row.reasonEnc),
+        specialistId: row.specialistId,
+        confirmedAt: row.confirmedAt ?? null,
+        meetingUrl: row.meetingUrl ?? null,
+        room: profile?.room ?? null,
+        tz: department?.timezone ?? "Europe/Kyiv",
       },
+      visits: { done: Number(counts?.done ?? 0), noShow: Number(counts?.noShow ?? 0) },
       patient: {
         id: patient.id,
         fullName: fullNameOf(patient),
