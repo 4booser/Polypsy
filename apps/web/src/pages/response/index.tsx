@@ -1,337 +1,592 @@
+import { useState, type ReactNode } from "react";
 import { Link, Navigate, useParams } from "react-router-dom";
-import { api } from "../../api";
-import { dateTime } from "../../format";
-import { makeUiT } from "@quizzy/shared";
+import type { ResponseContext, ResponseDetail, SurveyFull } from "@quizzy/shared";
+import { api, type ConclusionState } from "../../api";
+import { useAuth } from "../../auth";
+import { betterOf } from "../../charts/courseModel";
+import { useDecimal } from "../../charts/kit";
+import { dateTime, day, duration } from "../../format";
 import { useLang } from "../../lang";
-import { Loading } from "../../ui";
-import { Page } from "../../ui/layout";
-import { Readout } from "../../ui/primitives";
+import { Panel } from "../../ui/layout";
+import { Ic, KV, Loading, Tooltip } from "../../ui";
 import { cx } from "../../ui/cx";
+import { Button, ButtonLink, Segmented, Tag } from "../../ui/primitives";
 import { useResource } from "../../useResource";
-import { buildResponseView, type QuestionView, type ScaleLadder } from "./model";
+import {
+  attemptNav,
+  firstChange,
+  mainScore,
+  prevAnswers,
+  reviewHref,
+  signLockedBySignal,
+} from "./context";
+import { useResponseExtras } from "./data";
+import { ResponseBanner, ResponseFrame } from "./frame";
+import { Rx } from "./icons";
+import { answerGrid, answerList, scaleChange, type AnswerGrid, type QuestionView, type ShiftLine } from "./model";
+import { AnsweringPanel, ResultPanel, RulesPanel } from "./panels";
 import { ResponseTabs } from "./tabs";
 
 /*
- * Пройденный тест — кадры f31 и f34 макета, один экран.
+ * Пройденный тест — протокол (Polypsy 2.0, кадр methods-response).
  *
- * Два кадра — один экран в двух редакциях. f31 — ранняя: варианты стоят в
- * строку чипами с номером («1 Так · 2 Ні · 3 Нінаю»), веса не показаны,
- * блок «Результати» и кнопка заключения ещё не нарисованы, а один пункт
- * подсвечен как текущий. f34 — поздняя и полная: варианты столбиком, у
- * каждого справа вес в баллах, ниже лестница «від — до — текст» с
- * подсвеченной ступенью и кнопка «Створити заключення». Взята f34: она
- * содержит всё, что есть на f31, кроме номеров вариантов и подсветки
- * текущего пункта, — а и то и другое относится к прохождению, не к
- * просмотру. Номер варианта здесь ничего не сообщает (ключ ссылается на код
- * варианта, а не на его порядок), «текущего» пункта у сданного протокола нет.
+ * Над протоколом — шапка пациента со строкой открытого и переключатель
+ * попыток той же методики. Слева — ответы (сеткой, как бланк, или списком) и
+ * результат на шкале тяжести с лестницей полос; справа — сведения о
+ * прохождении, как отвечал, заключение и что предложили правила.
  *
- * До этого экрана у прохождения не было адреса: его показывало модальное
- * окно в разборе случаев (Alerts.tsx, ResponseModal) и строка таблицы на
- * карточке методики. Переслать коллеге ссылку на конкретный протокол было
- * нельзя. Теперь адрес есть, и он лежит под методикой —
- * /surveys/:id/responses/:rid — там же, где ключ, бланк и доступ: раздел
- * «Тести» в верхней полосе остаётся подсвеченным, как на кадре, а адрес
- * читается как «методика → прохождение». Данные при этом грузятся по
- * идентификатору прохождения: оно само знает свою методику, и если в адресе
- * стоит чужая, экран уходит на правильный адрес, а не показывает описание
- * одной методики над ответами другой.
+ * Адрес лежит под методикой — /surveys/:id/responses/:rid, — а данные
+ * грузятся по идентификатору прохождения: оно само знает свою методику, и
+ * если в адресе чужая, экран уходит на правильный адрес, а не показывает
+ * одну методику над ответами другой.
  *
  * Экран персонала. Пациент к нему не попадает по построению — маршрут лежит
  * в ветке консоли, у кабинета своя оболочка, — и потому веса вариантов здесь
- * показывать можно. Сам GET /api/responses/:id их не отдаёт как раз из-за
- * пациента; откуда они берутся и что бывает при смене версии методики,
- * рассказано в ./model.ts.
+ * показывать можно.
  */
-
-/*
- * Замеры кадра f34 (кадр 1600 px, колонка 1200), сняты по пикселям:
- *
- *   заголовок «Опис тесту»      18/700 фиолетовым, текст 16/20 серым
- *   колонка пунктов              700 px по центру (x 451–1150)
- *   пункт                        заголовок 18/22 фиолетовым, до строк 20 px
- *   строка варианта              текст 1fr · вес 80 px · зазор 15 · высота 36 · шаг 51
- *   между пунктами               50 px, столько же до «Результати»
- *   ступень лестницы             «від» · поле 87 · «до» · поле 87 · текст 1fr, шаг 51
- *   кнопка                       45 px, 22/700, правый край — край колонки
- *
- * Шаг 51 — это 36 высоты Readout плюс 15 зазора: ритм строк здесь тот же,
- * что у формы (Field), и кадр с ним совпадает ровно, без округлений.
- * Единственное, что нарисовано на кадре и не набрано, — ширина «від»/«до»:
- * она задана словом, а не числом (22 px под «від»), чтобы русское «от»/«до»
- * не ломало сетку.
- */
-
 export default function ResponseView() {
-  const { ut, lang } = useLang();
   const { id: surveyId, rid } = useParams<{ id: string; rid: string }>();
 
   /*
-   * Две загрузки одной парой: прохождение и действующая методика. Методика
-   * берётся по идентификатору из адреса, а не из ответа о прохождении —
-   * иначе запросы шли бы один за другим и экран ждал бы вдвое дольше. Цена
-   * — один лишний запрос, когда адрес собран с чужой методикой; см. Navigate.
-   *
    * keep: false (#200): протокол прежнего прохождения под адресом нового —
    * чужие ответы, а не устаревающие; пока едет новый — загрузка.
    */
-  const res = useResource(
-    async () => {
-      const [detail, survey] = await Promise.all([api.responseDetail(rid!), api.survey(surveyId!)]);
-      return { detail, survey };
-    },
-    [rid, surveyId],
-    { enabled: !!rid && !!surveyId, keep: false },
-  );
+  const res = useResource(() => api.responseDetail(rid!), [rid], { enabled: !!rid, keep: false });
+  const detail = res.data && res.data.id === rid ? res.data : null;
+  const x = useResponseExtras(detail, { prev: true, dynamics: true });
 
-  if (!res.data) return <Loading rows={8} error={res.error} onRetry={res.reload} />;
-  const { detail, survey } = res.data;
-
-  if (detail.survey.id !== survey.id) {
+  if (!detail) return <Loading rows={8} error={res.error} onRetry={res.reload} />;
+  if (surveyId && detail.survey.id !== surveyId) {
     return <Navigate to={`/surveys/${detail.survey.id}/responses/${detail.id}`} replace />;
   }
 
-  const view = buildResponseView(detail, survey);
-  /* состояние и дата — не строкой под заголовком (её на кадре нет), а подписью наведения */
-  const meta = `${ut(`rstatus.${detail.status}`, detail.status)} · ${dateTime(detail.submittedAt ?? detail.startedAt)}`;
+  const ctx = x.ctx.data;
+  const main = mainScore(detail.scores);
+  const nav = ctx && detail.userId ? attemptNav(ctx.attempts, detail.id, main?.scaleCode ?? null) : null;
+  const chartsHref = `/surveys/${detail.survey.id}/responses/${detail.id}/charts`;
 
   return (
-    <Page
-      title={detail.survey.title}
-      /*
-        Справа от заголовка — короткая подпись языка текста теста «Укр»: так
-        на кадрах f31_1 и f37_1 (f34 по этой строке обрезан, и противоречия
-        нет). Переключать здесь нечего — протокол показывает то, что человек
-        видел, — поэтому это подпись, а не выпадающий список.
-
-        Состояние и дата прохождения строкой под заголовком НЕ печатаются: на
-        кадре f34 под «Назва тесту» сразу идёт «Опис тесту». Они ушли с глаз
-        скрытой строкой сразу под заголовком — диктор читает их первыми, как
-        и раньше, а на экране их нет, как и на кадре.
-      */
-      actions={<span className="text-[17px] font-bold text-primary">{makeUiT(lang)("top.lang")}</span>}
-    >
-      <p className="sr-only">{meta}</p>
-      {/*
-        Вкладки «Відповіді · Графіки» — единственное, что добавлено к кадру
-        f34: сам протокол ниже не тронут. На кадре вкладок нет, потому что
-        графиков прохождения на кадрах нет вовсе; они появились по просьбе
-        заказчика (2026-09-26) отдельной вкладкой, чтобы протокол остался
-        таким, каким нарисован.
-      */}
-      <ResponseTabs surveyId={detail.survey.id} responseId={detail.id} />
-      {survey.description ? (
-        <section className="mb-[40px]">
-          <h2 className="m-0 mb-[12px] text-[18px] font-bold leading-tight text-primary">
-            {ut("rsp.description")}
-          </h2>
-          <p className="m-0 whitespace-pre-wrap text-[16px] leading-[20px] text-muted">{survey.description}</p>
-        </section>
-      ) : null}
-
-      <div className="mx-auto w-full max-w-[700px]">
-        {view.stale ? (
-          <p className="m-0 mb-[28px] text-[13px] leading-[19px] text-muted">{ut("rsp.staleVersion")}</p>
-        ) : null}
-
-        {/*
-          Между пунктами на кадре 41–51 от низа последнего варианта до верха
-          следующего «Питання №N» (f34: 562 → 603, то есть 41; f31_2: шаг
-          пунктов 172 при подложке 166, то есть 51–52). В коде выходило 70:
-          зазор 50 плюс по 10 отступа сверху и снизу у самого пункта. Отступы
-          пункта теперь макетные (20 сверху, 25 снизу — см. QuestionBlock), и
-          собственного зазора у списка не остаётся вовсе: 20 + 25 = 45 и есть
-          то расстояние, которое кадры показывают.
-        */}
-        <ol className="m-0 flex list-none flex-col gap-0 p-0">
-          {view.questions.map((q) => (
-            <QuestionBlock key={q.questionId} q={q} />
-          ))}
-        </ol>
-
-        <section className="mt-[50px]">
-          <h2 className="m-0 mb-[20px] text-[18px] font-bold leading-[22px] text-primary">{ut("rsp.results")}</h2>
-          {view.ladders.length ? (
-            <div className="flex flex-col gap-[28px]">
-              {view.ladders.map((l) => (
-                <Ladder key={l.scaleId} l={l} titled={view.ladders.length > 1} />
-              ))}
-            </div>
-          ) : (
-            /*
-              Пустой список баллов — не всегда «подсчёт выключен». Сервер
-              заполняет response_scores только при сдаче, поэтому у незавершённого
-              или брошенного прохождения при включённом подсчёте баллов тоже
-              нет — но причина другая, и строка должна называть её, а не
-              обещать, что баллов не будет. Сначала проверяется подсчёт, а не
-              состояние: у методики без подсчёта и сданное прохождение пусто.
-            */
-            <p className="m-0 text-[13px] leading-[19px] text-muted">
-              {!detail.survey.scoringEnabled || detail.status === "completed"
-                ? ut("rsp.scoresOff")
-                : ut("rsp.notSubmitted")}
-            </p>
-          )}
-        </section>
-
-        {/*
-          Кнопка стоит под результатами, как на кадре, и ведёт на страницу
-          заключения. Первая редакция раскрывала редактор здесь же — «чтобы
-          ответы оставались перед глазами». Соседняя ветка сделала заключение
-          самостоятельной страницей с протоколом ответов и лестницей
-          результатов (кадры f38/f39): ответы там видны так же, а у заключения
-          появился адрес — его можно переслать, положить в закладку, открыть
-          из карты. Две редакции одного редактора с разными договорами —
-          дороже одной ссылки.
-        */}
-        <div className="mt-[45px] flex justify-end">
-          {/*
-            Силуэт кнопки формы с кадра f34: 45 высотой, 22/700 фиолетовым по
-            мягкой заливке, правый край — край колонки. Прежде здесь стоял
-            класс .btn из styles/legacy.css: своя высота, свой кегль, своя
-            заливка — ничего из этого с макетом не совпадало.
-          */}
-          {/*
-            Только по завершённому: заключение по черновику сервер отклоняет
-            (409, routes/conclusions.ts) — кнопка, ведущая к отказу, хуже её
-            отсутствия (клиническое ревью, волна 12).
-          */}
-          {detail.status === "completed" ? (
-            <Link
-              to={`/responses/${detail.id}/conclusion`}
-              className="inline-flex h-[45px] items-center rounded-[5px] bg-primary-soft px-[22px] text-[22px] font-bold text-primary no-underline"
-            >
-              {ut("rsp.createConclusion")}
-            </Link>
-          ) : null}
+    <ResponseFrame banner={<ResponseBanner detail={detail} ctx={ctx} conclusion={x.conclusion.data} place="protocol" />}>
+      <ResponseTabs surveyId={detail.survey.id} responseId={detail.id} nav={nav} charts={false} />
+      <div className="grid items-start gap-4 grid-cols-[minmax(0,1fr)_360px] max-[1360px]:grid-cols-[minmax(0,1fr)_320px] max-[1100px]:grid-cols-1">
+        <div className="flex min-w-0 flex-col gap-4">
+          <AnswersPanel detail={detail} survey={x.survey} ctx={ctx} prev={x.prev} />
+          <ResultPanel detail={detail} dynamics={x.dynamics} ctx={ctx} variant="protocol" chartsHref={chartsHref} />
+        </div>
+        <div className="flex min-w-0 flex-col gap-4">
+          <AttemptPanel detail={detail} ctx={ctx} dynamics={x.dynamics} />
+          <AnsweringPanel detail={detail} survey={x.survey} surveyLoading={x.surveyLoading} variant="protocol" chartsHref={chartsHref} />
+          <ConclusionSide detail={detail} state={x.conclusion.data} error={x.conclusion.error} ctx={ctx} />
+          {ctx?.hits ? <RulesPanel hits={ctx.hits} reload={x.ctx.reload} /> : null}
         </div>
       </div>
-    </Page>
+    </ResponseFrame>
   );
 }
 
-/** Пункт: заголовок с номером и столбик вариантов, выбранный — залит */
-function QuestionBlock({ q }: { q: QuestionView }) {
-  const { ut } = useLang();
-  return (
-    /*
-      Наведение подкладывает под пункт целиком светлую плашку — кадр f31_2
-      (#f7f5fa на заголовок и ряд вариантов разом).
+/* ─────────── ответы ─────────── */
 
-      Плашка на кадре шириной РОВНО в колонку 700 (столбцы 83–782 вырезки при
-      колонке, начинающейся с 83) и влево не выносится. Прежние `-mx-[12px]
-      px-[12px]` растягивали её до 724 и на 12 вылезали за колонку слева и
-      справа — на кадре такого выноса нет. Отступы по вертикали замерены там
-      же: 20 сверху (первая строка заголовка на 476+22) и 25 снизу (низ ряда
-      вариантов 617, низ плашки 641). Без горизонтальных отступов плашка
-      кончается ровно по букве — на кадре так и нарисовано.
-    */
-    <li className="rounded-[5px] pb-[25px] pt-[20px] hover:bg-[color-mix(in_srgb,var(--primary)_5%,transparent)]">
-      {/*
-        h2, а не h3: «Опис тесту», каждый пункт и «Результати» — соседи одного
-        уровня под заголовком экрана, и на кадре набраны одним кеглем. Номер
-        входит в заголовок («Питання №1 …»), как напечатано, — диктор так и
-        читает «питання номер один», и это лучше, чем номер отдельным узлом.
-      */}
-      <h2 className="m-0 mb-[20px] text-[18px] font-bold leading-[22px] text-primary">
-        {ut("rsp.questionN").replace("{n}", String(q.number))}
-        {q.title ? ` ${q.title}` : ""}
-      </h2>
-      {q.options.length ? (
-        <ul className="m-0 flex list-none flex-col gap-[15px] p-0">
-          {q.options.map((o) => (
-            <li key={o.id} className="grid grid-cols-[1fr_80px] items-stretch gap-[15px]">
-              {/*
-                Заливка — единственный признак выбора на кадре, и глазу его
-                хватает: залитая строка среди контурных читается однозначно и
-                переживает чёрно-белую печать. Диктору признак дан словом
-                (sr-only «обрано»), полужирное начертание — тоже с кадра.
-              */}
-              <Readout look={o.chosen ? "fill" : "outline"} className={cx(o.chosen && "font-bold")}>
-                <span className="text-primary">{o.text}</span>
-                {o.chosen ? <span className="sr-only"> — {ut("rsp.chosen")}</span> : null}
-                {/*
-                  Критический вариант помечен словом, а не цветом: цвет один
-                  не работает, и на протоколе с тревогой это не то место, где
-                  можно положиться на оттенок.
-                */}
-                {o.riskFlag && o.chosen ? (
-                  <span className="ml-2 text-[13px] font-normal text-danger">{ut("cases.criticalOption")}</span>
-                ) : null}
-              </Readout>
-              <Readout look={o.chosen ? "fill" : "outline"} className={cx("justify-center", o.chosen && "font-bold")}>
-                <span className="sr-only">{ut("cq.score")}: </span>
-                <span className="text-primary tabular-nums">{o.score === null ? "—" : o.score}</span>
-              </Readout>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        /*
-          Пункт без вариантов (текст, число, дата, порядок) — одна залитая
-          строка: на кадре таких пунктов нет, и залитое «поле с данными» —
-          ближайшее из того, что на нём нарисовано.
-        */
-        <Readout look="fill">
-          <span className="text-primary">{q.answered && q.free !== null ? q.free : ut("cases.skipped")}</span>
-        </Readout>
-      )}
-      {q.options.length > 0 && !q.answered ? (
-        <p className="m-0 mt-[8px] text-[13px] leading-[19px] text-muted">{ut("cases.skipped")}</p>
-      ) : null}
-    </li>
-  );
-}
+type AnswersMode = "grid" | "list";
 
 /**
- * Лестница диапазонов одной шкалы: «від N до M — текст», попавшая ступень залита.
- *
- * Кадр рисует одну лестницу без подписи над ней: у методики макета одна
- * сумма, и залитая ступень — весь результат. Строка «шкала · значение ·
- * единицы» печатается только там, где без неё нельзя: у методик с
- * несколькими шкалами (titled) — иначе три одинаковых «від 1 до 10» не
- * отличить друг от друга; и у разошедшейся версии, где лестницы нет и
- * подпись полосы от сервера — единственное, что известно о результате.
- * Печатать её всегда было бы проще, но на единственной лестнице она
- * дублирует залитую ступень и уводит от кадра.
+ * «Відповіді»: сеткой — пункты строками, варианты столбцами, выбранный
+ * залит, прежний ответ кольцом — или списком, как бланк. Сетка — только
+ * когда у пунктов общий набор вариантов (answerGrid); иначе список.
  */
-function Ladder({ l, titled }: { l: ScaleLadder; titled: boolean }) {
+function AnswersPanel({
+  detail,
+  survey,
+  ctx,
+  prev,
+}: {
+  detail: ResponseDetail;
+  survey: SurveyFull | null;
+  ctx: ResponseContext | null;
+  prev: ResponseDetail | null;
+}) {
   const { ut } = useLang();
-  const orphanBand = !l.rows.length && l.bandLabel;
+  const grid = answerGrid(detail, survey, prevAnswers(prev));
+  const [mode, setMode] = useState<AnswersMode>("grid");
+  const shown: AnswersMode = grid ? mode : "list";
   return (
-    <div>
-      {titled || orphanBand ? (
-        <p className="m-0 mb-[10px] text-[13px] leading-[19px] text-muted">
-          {l.title} · <span className="tabular-nums">{l.value}</span> {ut(`norm.${l.normalization}`)}
-          {/* при живой лестнице полоса и так залита — подпись только вместо лестницы */}
-          {orphanBand ? ` — ${l.bandLabel}` : ""}
-        </p>
-      ) : null}
-      {l.rows.length ? (
-        <ol className="m-0 flex list-none flex-col gap-[15px] p-0">
-          {l.rows.map((r) => (
-            <li key={r.id} className="flex items-stretch gap-[10px]">
-              {/* «від» и «до» на кадре строчные; словарь держит их прописными для конструктора */}
-              <span className="flex w-[22px] shrink-0 items-center text-[16px] lowercase text-muted">
-                {ut("cn.from")}
-              </span>
-              <Readout look={r.hit ? "fill" : "outline"} className={cx("w-[87px] shrink-0 justify-center", r.hit && "font-bold")}>
-                <span className="text-primary tabular-nums">{r.min}</span>
-              </Readout>
-              <span className="flex w-[22px] shrink-0 items-center text-[16px] lowercase text-muted">{ut("cn.to")}</span>
-              <Readout look={r.hit ? "fill" : "outline"} className={cx("w-[87px] shrink-0 justify-center", r.hit && "font-bold")}>
-                <span className="text-primary tabular-nums">{r.max}</span>
-              </Readout>
-              <Readout look={r.hit ? "fill" : "outline"} className={cx("ml-[10px] min-w-0 flex-1", r.hit && "font-bold")}>
-                <span className="text-primary">
-                  {r.label}
-                  {r.description ? <span className="font-normal"> — {r.description}</span> : null}
+    <Panel
+      title={ut("rch.tabAnswers")}
+      icon={<Rx.listOrdered />}
+      flush
+      actions={
+        grid ? (
+          <Segmented<AnswersMode>
+            label={ut("rp.answersView")}
+            value={shown}
+            onChange={setMode}
+            items={[
+              { key: "grid", label: ut("rp.viewGrid") },
+              { key: "list", label: ut("rp.viewList") },
+            ]}
+          />
+        ) : null
+      }
+    >
+      {shown === "grid" && grid ? (
+        <Grid detail={detail} grid={grid} survey={survey} ctx={ctx} prev={prev} />
+      ) : (
+        <List items={answerList(detail)} />
+      )}
+    </Panel>
+  );
+}
+
+const COLS = (n: number, withPrev: boolean) =>
+  `22px minmax(0,1fr) repeat(${n}, var(--oc)) 32px${withPrev ? " 44px" : ""}`;
+
+function Grid({
+  detail,
+  grid,
+  survey,
+  ctx,
+  prev,
+}: {
+  detail: ResponseDetail;
+  grid: AnswerGrid;
+  survey: SurveyFull | null;
+  ctx: ResponseContext | null;
+  prev: ResponseDetail | null;
+}) {
+  const { ut } = useLang();
+  const dec = useDecimal();
+  const withPrev = !!prev && grid.rows.some((r) => r.prev !== null);
+  const cols = COLS(grid.columns.length, withPrev);
+  const main = mainScore(detail.scores);
+  const better = main ? betterOf(main.bands.map((b) => ({ min: b.minScore, max: b.maxScore, label: b.label, severity: b.severity }))) : null;
+  const prevDay = prev?.submittedAt ? day(prev.submittedAt) : null;
+  const stem = survey?.instructions?.trim() && survey.instructions.trim().length <= 90 ? survey.instructions.trim() : null;
+  const openHere = new Map(
+    (ctx?.signals ?? []).filter((s) => s.here && s.reviewedAt === null && s.questionId).map((s) => [s.questionId!, s] as const),
+  );
+  const review = reviewHref(ctx?.patient?.id ?? detail.userId);
+  const ordered = [...detail.answers].sort((a, b) => a.position - b.position);
+  const answerOf = new Map(ordered.map((a) => [a.questionId, a] as const));
+  const prevMain = prev && main ? prev.scores.find((s) => s.scaleCode === main.scaleCode) : null;
+  const clinical = detail.scores.filter((s) => s.kind === "clinical");
+  const inScale = grid.rows.filter((r) => r.inScale).length;
+
+  const deltaCell = (delta: number | null, critical: boolean) => {
+    if (delta === null) return <span className="text-right text-small font-bold text-muted">—</span>;
+    const improved = better === null || delta === 0 ? null : better === "down" ? delta < 0 : delta > 0;
+    const sign = delta > 0 ? "+" : delta < 0 ? "−" : "";
+    return (
+      <span
+        className={cx(
+          "text-right text-small font-bold tabular-nums",
+          improved === true ? "text-good" : improved === false && critical ? "text-risk-ink" : "text-muted",
+        )}
+      >
+        {sign}
+        {dec(Math.abs(delta))}
+      </span>
+    );
+  };
+
+  return (
+    <div className="[--oc:58px] max-[1360px]:[--oc:48px]" role="table" aria-label={ut("rch.tabAnswers")}>
+      <div
+        role="row"
+        className="grid items-end gap-x-2 border-t border-divider bg-panel-2 px-4 py-2.5 text-[11.5px] font-bold leading-[14px] text-muted"
+        style={{ gridTemplateColumns: cols }}
+      >
+        <span role="columnheader">№</span>
+        <span role="columnheader" className="min-w-0">
+          {stem ?? ut("rp.item")}
+        </span>
+        {grid.columns.map((c, k) => (
+          <span role="columnheader" key={k} className="hyphens-auto text-center text-[11px] leading-[13px] [overflow-wrap:anywhere]">
+            {c.score !== null ? <b className="block font-extrabold text-text-2">{dec(c.score)}</b> : null}
+            {c.text}
+          </span>
+        ))}
+        <span role="columnheader" className="text-right">
+          {ut("rp.score")}
+        </span>
+        {withPrev ? (
+          <span role="columnheader" className="text-right">
+            {ut("rp.fromDate").replace("{d}", prevDay ?? "")}
+          </span>
+        ) : null}
+      </div>
+      {grid.rows.map((r) => {
+        const a = answerOf.get(r.questionId)!;
+        const fc = r.critical ? firstChange(a) : null;
+        const signal = openHere.get(r.questionId);
+        const textOf = (id: string) => a.options.find((o) => o.id === id)?.text ?? "—";
+        const delta = withPrev && r.score !== null && r.prevScore !== null ? r.score - r.prevScore : null;
+        return (
+          <div
+            role="row"
+            key={r.questionId}
+            className={cx(
+              "grid items-center gap-x-2 border-t border-divider px-4 py-2 text-[13px] leading-[18px]",
+              r.critical && "bg-risk-tint",
+            )}
+            style={{ gridTemplateColumns: cols }}
+          >
+            <span role="cell" className={cx("font-extrabold", r.critical ? "text-risk-ink" : "text-muted")}>
+              {r.number}
+            </span>
+            <div role="cell" className="min-w-0">
+              <span className={cx(r.critical ? "font-extrabold text-risk-ink" : "text-text")}>{r.title}</span>
+              {!r.inScale ? <span className="ml-1.5 text-caption text-muted">{ut("rp.notInSum")}</span> : null}
+              {r.chosen !== null ? (
+                <span className="sr-only">
+                  {" "}
+                  — {ut("rsp.chosen")}: {grid.columns[r.chosen]!.text}
+                  {r.prev !== null ? `; ${ut("rp.before").replace("{d}", prevDay ?? "")}: ${grid.columns[r.prev]!.text}` : ""}
                 </span>
-                {r.hit ? <span className="sr-only"> — {ut("rsp.hitBand")}</span> : null}
-              </Readout>
-            </li>
-          ))}
-        </ol>
+              ) : (
+                <span className="sr-only"> — {ut("cases.skipped")}</span>
+              )}
+              {r.critical ? (
+                <span className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-caption text-text-2">
+                  <span className="inline-flex items-center gap-1 font-bold text-risk-ink">
+                    <Rx.siren size={12} />
+                    {ut("cases.criticalOption")}
+                  </span>
+                  {fc ? (
+                    <span>
+                      {ut("rp.firstThen")
+                        .replace("{from}", textOf(fc.firstOptionId))
+                        .replace("{s}", dec(fc.afterMs / 1000, 0))}
+                    </span>
+                  ) : null}
+                  {signal ? (
+                    <Tooltip label={ut("rp.reviewHint")} kbd="R">
+                      <Link
+                        to={review}
+                        className="rounded-[6px] px-1.5 py-0.5 font-extrabold text-risk-ink no-underline hover:bg-risk-tint-2 hover:no-underline"
+                      >
+                        {ut("rp.signal")}
+                      </Link>
+                    </Tooltip>
+                  ) : null}
+                </span>
+              ) : null}
+            </div>
+            {grid.columns.map((_, k) => (
+              <span role="cell" key={k} className="grid place-items-center" aria-hidden>
+                {r.chosen === k ? (
+                  <span
+                    className={cx(
+                      "grid size-[26px] place-items-center rounded-full text-[12px] font-extrabold text-onfill",
+                      r.critical ? "bg-risk" : "bg-violet",
+                    )}
+                  >
+                    {r.score !== null ? dec(r.score) : <Ic.check size={13} />}
+                  </span>
+                ) : r.prev === k ? (
+                  <span className="size-[22px] rounded-full shadow-[inset_0_0_0_1.5px_var(--muted)]" />
+                ) : (
+                  <span className="size-2 rounded-full bg-track" />
+                )}
+              </span>
+            ))}
+            <span role="cell" className={cx("text-right font-extrabold tabular-nums", r.critical && "text-risk-ink")}>
+              {r.score !== null ? dec(r.score) : "—"}
+            </span>
+            {withPrev ? <span role="cell">{deltaCell(delta, r.critical)}</span> : null}
+          </div>
+        );
+      })}
+      {clinical.length === 1 && main ? (
+        <div
+          role="row"
+          className="grid items-center gap-x-2 border-t border-control px-4 py-2.5 text-[13px] font-extrabold"
+          style={{ gridTemplateColumns: cols }}
+        >
+          <span role="cell" />
+          <span role="cell">{ut("rp.sumOf").replace("{n}", String(inScale))}</span>
+          <span
+            role="cell"
+            className="flex items-center justify-center gap-1.5 text-caption font-semibold text-muted"
+            style={{ gridColumn: `3 / span ${grid.columns.length}` }}
+          >
+            {withPrev ? (
+              <>
+                <span aria-hidden className="size-4 rounded-full shadow-[inset_0_0_0_1.5px_var(--muted)]" />
+                {ut("rp.answerOn").replace("{d}", prevDay ?? "")}
+              </>
+            ) : null}
+          </span>
+          <span role="cell" className="text-right tabular-nums">
+            {dec(main.rawScore)}
+          </span>
+          {withPrev ? (
+            <span role="cell">{deltaCell(prevMain ? main.rawScore - prevMain.rawScore : null, false)}</span>
+          ) : null}
+        </div>
       ) : null}
+      {grid.extra.map((e) => (
+        <div
+          role="row"
+          key={e.questionId}
+          className={cx(
+            "grid grid-cols-[22px_minmax(0,1fr)_auto] items-start gap-x-2 border-t border-divider px-4 py-2.5 text-[13px] leading-[18px]",
+            e.critical && "bg-risk-tint",
+          )}
+        >
+          <span role="cell" className={cx("font-extrabold", e.critical ? "text-risk-ink" : "text-muted")}>
+            {e.number}
+          </span>
+          <span role="cell" className="min-w-0 text-text-2">
+            {e.title}
+            {!e.inScale ? <span className="ml-1.5 text-caption text-muted">{ut("rp.notInSum")}</span> : null}
+          </span>
+          <span role="cell" className="max-w-[240px] text-right font-extrabold text-text">
+            {e.answered ? (e.answer ?? "—") : <span className="font-semibold text-muted">{ut("cases.skipped")}</span>}
+            {e.score !== null && e.inScale ? <span className="ml-1.5 font-semibold text-muted tabular-nums">{dec(e.score)}</span> : null}
+          </span>
+        </div>
+      ))}
     </div>
+  );
+}
+
+/** Протокол списком: пункт и варианты столбиком, выбранный залит и назван словом */
+function List({ items }: { items: QuestionView[] }) {
+  const { ut } = useLang();
+  const dec = useDecimal();
+  return (
+    <ol className="m-0 list-none p-0">
+      {items.map((q) => (
+        <li key={q.questionId} className="border-t border-divider px-4 py-3">
+          <h3 className="m-0 flex gap-2 text-body font-bold text-text">
+            <span className="w-[22px] shrink-0 font-extrabold text-muted">{q.number}</span>
+            <span className="min-w-0">{q.title}</span>
+          </h3>
+          {q.options.length ? (
+            <ul className="m-0 mt-2 flex list-none flex-col gap-1 p-0 pl-[30px]">
+              {q.options.map((o) => (
+                <li
+                  key={o.id}
+                  className={cx(
+                    "flex min-h-8 items-center gap-3 rounded-[9px] px-2.5 py-1 text-small",
+                    o.chosen
+                      ? o.riskFlag
+                        ? "bg-risk-tint font-extrabold text-risk-ink"
+                        : "bg-violet-tint font-extrabold text-violet-ink"
+                      : "text-text-2",
+                  )}
+                >
+                  {o.chosen ? <Ic.check size={14} /> : <span aria-hidden className="size-3.5 shrink-0" />}
+                  <span className="min-w-0 flex-1">
+                    {o.text}
+                    {o.chosen ? <span className="sr-only"> — {ut("rsp.chosen")}</span> : null}
+                    {o.riskFlag && o.chosen ? <span className="ml-2 font-bold">{ut("cases.criticalOption")}</span> : null}
+                  </span>
+                  <span className="shrink-0 tabular-nums">
+                    <span className="sr-only">{ut("cq.score")}: </span>
+                    {o.score === null ? "—" : dec(o.score)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="m-0 mt-1.5 pl-[30px] text-small font-bold text-text">
+              {q.answered && q.free !== null ? q.free : <span className="font-semibold text-muted">{ut("cases.skipped")}</span>}
+            </p>
+          )}
+          {q.options.length > 0 && !q.answered ? (
+            <p className="m-0 mt-1.5 pl-[30px] text-caption text-muted">{ut("cases.skipped")}</p>
+          ) : null}
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+/* ─────────── сведения о прохождении ─────────── */
+
+const SOURCE_KEY = {
+  assigned: "rp.src.assigned",
+  self: "rp.src.self",
+  kiosk: "rp.src.kiosk",
+  clinician: "rp.src.clinician",
+  informant: "rp.src.informant",
+  intake: "rp.src.intake",
+} as const;
+
+const VERDICT_KEY = {
+  better: "kit.reliablyBetter",
+  worse: "kit.reliablyWorse",
+  within: "kit.withinError",
+  changed: "course.v.changed",
+  unknown: "course.v.unknown",
+  version: "rp.cmp.version",
+  units: "rp.cmp.units",
+  unreliable: "rp.cmp.unreliable",
+} as const;
+
+function AttemptPanel({
+  detail,
+  ctx,
+  dynamics,
+}: {
+  detail: ResponseDetail;
+  ctx: ResponseContext | null;
+  dynamics: Parameters<typeof scaleChange>[1];
+}) {
+  const { ut } = useLang();
+  const dec = useDecimal();
+  const main = mainScore(detail.scores);
+  const change = main
+    ? scaleChange(
+        detail,
+        dynamics,
+        main.scaleCode,
+        main.bands.map((b) => ({ min: b.minScore, max: b.maxScore, label: b.label, severity: b.severity })),
+      )
+    : null;
+  const shift = (l: ShiftLine) => (
+    <>
+      <b className="font-extrabold">
+        {l.delta > 0 ? "+" : l.delta < 0 ? "−" : "±"}
+        {dec(Math.abs(l.delta))}
+      </b>
+      , {ut(VERDICT_KEY[l.verdict])}
+    </>
+  );
+  const ordered = [...detail.answers].sort((a, b) => a.position - b.position);
+  const critical = ordered
+    .map((a, i) => ({ n: i + 1, hit: a.options.some((o) => o.riskFlag && (a.optionIds ?? []).includes(o.id)) }))
+    .filter((c) => c.hit)
+    .map((c) => ut("rch.itemN").replace("{n}", String(c.n)));
+  const rows: [ReactNode, ReactNode][] = [
+    [ut("rp.kv.method"), `${detail.survey.title}, ${ut("rp.versionN").replace("{n}", String(detail.survey.versionNumber))}`],
+    detail.submittedAt
+      ? [ut("rp.kv.submitted"), <b className="font-extrabold">{dateTime(detail.submittedAt)}</b>]
+      : [ut("rp.kv.started"), dateTime(detail.startedAt)],
+  ];
+  if (ctx?.source) rows.push([ut("rp.kv.source"), ut(SOURCE_KEY[ctx.source])]);
+  if (detail.durationMs > 0) rows.push([ut("rp.kv.duration"), duration(detail.durationMs)]);
+  if (change?.fromPrev) rows.push([ut("rp.fromDate").replace("{d}", day(change.fromPrev.at)), shift(change.fromPrev)]);
+  if (change?.fromStart) rows.push([ut("rp.fromStart").replace("{d}", day(change.fromStart.at)), shift(change.fromStart)]);
+  if (critical.length) rows.push([ut("rp.kv.critical"), <b className="font-extrabold text-risk-ink">{critical.join(", ")}</b>]);
+  if (ctx && !ctx.reliable) rows.push([ut("rp.kv.reliability"), <span className="font-bold text-warn">{ut("rp.unreliable")}</span>]);
+  if (ctx?.patient?.lead) rows.push([ut("rp.kv.lead"), ctx.patient.lead.name]);
+  const status =
+    detail.status === "completed" ? (
+      <Tag tone="good" icon={<Ic.check />}>
+        {ut("rp.submitted")}
+      </Tag>
+    ) : (
+      <Tag tone={detail.status === "in_progress" ? "attention" : "plain"}>{ut(`rstatus.${detail.status}`, detail.status)}</Tag>
+    );
+  return (
+    <Panel title={ut("rp.attempt")} icon={<Ic.clipboard />} actions={status}>
+      <KV w={104} rows={rows} />
+    </Panel>
+  );
+}
+
+/* ─────────── заключение ─────────── */
+
+function excerpt(text: string, n = 140): string {
+  const flat = text.replace(/\s+/g, " ").trim();
+  return flat.length > n ? `${flat.slice(0, n - 1).trimEnd()}…` : flat;
+}
+
+function ConclusionSide({
+  detail,
+  state,
+  error,
+  ctx,
+}: {
+  detail: ResponseDetail;
+  state: ConclusionState | null;
+  error: string | null;
+  ctx: ResponseContext | null;
+}) {
+  const { ut } = useLang();
+  const { can } = useAuth();
+  const href = `/responses/${detail.id}/conclusion`;
+  const locked = signLockedBySignal(ctx?.signals ?? null);
+  const head = (
+    <span className="flex flex-wrap items-center gap-2">
+      <b className="text-body font-extrabold text-text">
+        {detail.survey.title}
+        {detail.submittedAt ? `, ${day(detail.submittedAt)}` : ""}
+      </b>
+    </span>
+  );
+  let body: ReactNode;
+  if (detail.status !== "completed") {
+    body = <p className="m-0 text-small text-muted">{ut("rp.concl.afterSubmit")}</p>;
+  } else if (!state) {
+    body = error ? <p className="m-0 text-small text-muted">{ut("cn.loadFailed")}</p> : <Loading rows={2} bare />;
+  } else if (!state.current) {
+    body = (
+      <>
+        <p className="m-0 text-small text-text-2">{ut("rp.concl.none")}</p>
+        {can("conclusions.write") ? (
+          <div className="mt-3">
+            <ButtonLink to={href} size="xs">
+              <Rx.filePen />
+              {ut("rsp.createConclusion")}
+            </ButtonLink>
+          </div>
+        ) : null}
+      </>
+    );
+  } else {
+    const cur = state.current;
+    const signed = cur.status === "signed";
+    body = (
+      <>
+        <div className="flex flex-wrap items-center gap-2">
+          {head}
+          {signed ? (
+            <Tag tone="good" icon={<Ic.check />}>
+              {ut("rp.concl.signed")}
+            </Tag>
+          ) : (
+            <Tag icon={<Rx.filePen />}>{ut("rp.concl.draft")}</Tag>
+          )}
+          <span className="ml-auto text-caption text-muted">{ut("rp.versionN").replace("{n}", String(cur.version))}</span>
+        </div>
+        <p className="m-0 mt-2 text-small text-text-2">
+          {signed
+            ? ut("rp.concl.signedBy").replace("{name}", cur.authorName).replace("{at}", cur.signedAt ? dateTime(cur.signedAt) : "—")
+            : ut("rp.concl.editedBy").replace("{name}", cur.authorName).replace("{at}", dateTime(cur.createdAt))}
+          {cur.text.trim() ? <span className="text-text">: «{excerpt(cur.text)}»</span> : null}
+        </p>
+        {!signed && locked ? (
+          <p className="m-0 mt-2 flex items-center gap-1.5 text-small text-text-2">
+            <Ic.lock size={13} className="text-risk-ink" />
+            {ut("rp.signLocked")}
+          </p>
+        ) : null}
+        <div className="mt-3 flex flex-wrap gap-2">
+          <ButtonLink to={href} size="xs">
+            {signed ? ut("rp.concl.open") : ut("rp.concl.continue")}
+          </ButtonLink>
+          {!signed && can("conclusions.sign") ? (
+            locked ? (
+              <Button size="xs" variant="ghost" disabled title={ut("rp.signLocked")}>
+                <Rx.signature />
+                {ut("rp.concl.sign")}
+              </Button>
+            ) : (
+              <ButtonLink to={href} size="xs" variant="ghost">
+                <Rx.signature />
+                {ut("rp.concl.sign")}
+              </ButtonLink>
+            )
+          ) : null}
+        </div>
+      </>
+    );
+  }
+  return (
+    <Panel title={ut("rp.conclusion")} icon={<Ic.file />}>
+      {body}
+    </Panel>
   );
 }

@@ -1,4 +1,11 @@
-import { isQuestionVisible, type Answer, type SurveyFull } from "@quizzy/shared";
+import {
+  isQuestionVisible,
+  itemContribution,
+  questionScoreRange,
+  scaleMaxScore,
+  type Answer,
+  type SurveyFull,
+} from "@quizzy/shared";
 import { api } from "../api";
 
 /**
@@ -54,5 +61,73 @@ export function administerPayload(
      * вернётся с прежним ответом, если специалист передумает обратно.
      */
     answers: [...input.answers.values()].filter((a) => visible.some((q) => q.id === a.questionId)),
+  };
+}
+
+/** Предварительный подсчёт единственной содержательной шкалы — пока бланк не сдан */
+export interface Preliminary {
+  code: string;
+  title: string;
+  /** Сумма по уже отвеченным пунктам шкалы */
+  sum: number;
+  /** Какой может стать сумма, когда ответят оставшиеся пункты */
+  min: number;
+  max: number;
+  /** Максимум шкалы */
+  top: number;
+  answered: number;
+  items: number;
+}
+
+/**
+ * «6 /27 поки що; за пунктами, що лишились, сума буде від 6 до 18».
+ *
+ * Только для простой суммы: одна содержательная шкала, агрегат «сумма», без
+ * поправок от других шкал. Средние, счёт, поправки, нормирование и полосы
+ * считает сервер при сохранении — их предварительный пересчёт здесь был бы
+ * вторым движком, который однажды разойдётся с первым. Вклад пункта —
+ * функцией движка (itemContribution) с ключом и весом; пункт, скрытый
+ * условием, не задают — ни в сумму, ни в диапазон.
+ */
+export function preliminary(survey: SurveyFull, answers: Map<string, Answer>): Preliminary | null {
+  const content = survey.scales.filter((s) => s.kind !== "validity");
+  if (content.length !== 1) return null;
+  const scale = content[0]!;
+  if ((scale.aggregation ?? "sum") !== "sum" || scale.corrections.length) return null;
+  const byId = new Map(survey.questions.map((q) => [q.id, q] as const));
+  let sum = 0;
+  let min = 0;
+  let max = 0;
+  let answered = 0;
+  let items = 0;
+  for (const item of scale.items) {
+    const q = byId.get(item.questionId);
+    if (!q || q.type === "info" || !isQuestionVisible(q, survey.questions, answers)) continue;
+    items++;
+    const got = itemContribution(q, item, answers.get(q.id));
+    if (got !== null && Number.isFinite(got)) {
+      answered++;
+      sum += got;
+      continue;
+    }
+    if (item.matchKey !== null) {
+      min += Math.min(0, item.weight);
+      max += Math.max(0, item.weight);
+    } else {
+      const r = questionScoreRange(q);
+      min += Math.min(r.min * item.weight, r.max * item.weight);
+      max += Math.max(r.min * item.weight, r.max * item.weight);
+    }
+  }
+  const round = (v: number) => Math.round(v * 100) / 100;
+  return {
+    code: scale.code,
+    title: scale.title,
+    sum: round(sum),
+    min: round(sum + min),
+    max: round(sum + max),
+    top: round(scaleMaxScore(scale, survey.questions, survey.scales)),
+    answered,
+    items,
   };
 }
