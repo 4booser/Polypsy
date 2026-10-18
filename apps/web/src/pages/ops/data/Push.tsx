@@ -1,24 +1,52 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import type { PushReport } from "@quizzy/shared";
 import { api } from "../../../api";
-import { Figure, HBars, Kpi, TimeColumns } from "../../../charts/clinical";
-import { dateTime, day, locale } from "../../../format";
+import { TimeColumns, TimeLines } from "../../../charts/clinical";
+import { ATTENTION_COLOR } from "../../../charts/kit";
+import { dateTime, dayFull } from "../../../format";
 import { useLang } from "../../../lang";
-import { Screen } from "../../../ui";
+import { DataTable, Empty, Screen, type Column } from "../../../ui";
 import { cx } from "../../../ui/cx";
-import { Num } from "../../../ui/primitives";
-import { RuleSection } from "../../../ui/section";
+import { Ic } from "../../../ui/icons";
+import { Panel } from "../../../ui/layout";
+import { Tag } from "../../../ui/primitives";
 import { useResource } from "../../../useResource";
 import { fill } from "../../dashboard/model";
-import { GapLine } from "../obs2b/charts";
-import { PLATFORM_LABEL, PUSH_KIND_LABEL, dayColumns, errorShare, pushCodeHint, pushErrors, type Window } from "./model";
-import { KPI_GRID, NUM, Note, PAIR_GRID, TD, TH, WindowSwitch } from "./parts";
+import { SectionPage } from "../people2/frame";
+import { Ix } from "../people2/icons";
+import { Id } from "./icons";
+import {
+  PLATFORM_LABEL,
+  PUSH_KIND_LABEL,
+  dayColumns,
+  daysSince,
+  errorShare,
+  kindRows,
+  pushCodeHint,
+  pushErrors,
+  pushPath,
+  shareOf,
+  shortPrint,
+  type PathStep,
+  type Window,
+} from "./model";
+import { Code, Facts, FootNote, Label, Masked, WindowSwitch, dayTick, dayWithYear, int, pct } from "./parts";
 
-/** Кодов в полосах: остальные — в таблице ниже */
-const TOP_CODES = 8;
+/**
+ * Доля этапа пути — пилюлей: зелёной с галочкой, когда дошло почти всё
+ * (от 99 %), янтарной, когда потеряна заметная часть (меньше 95 %): это
+ * ровно «требует внимания». Между ними — нейтральной: число есть, тревоги нет.
+ */
+const SHARE_GOOD = 99;
+const SHARE_WARN = 95;
 
-/** Доля в процентах: «4,2 %» — по языку экрана */
-const pct = (v: number) => `${new Intl.NumberFormat(locale(), { maximumFractionDigits: 1 }).format(v)} %`;
+/** Значок типа уведомления — тот же смысл, что у события в консоли */
+const KIND_ICON: Record<string, ReactNode> = {
+  alert: <Ic.alert size={15} />,
+  mailing: <Id.megaphone size={15} />,
+  appointment: <Id.calendarClock size={15} />,
+  assignment: <Id.clipboardPlus size={15} />,
+};
 
 /**
  * «Пуш-сповіщення» — что ушло, что принял Expo, что он передал Apple и
@@ -30,164 +58,294 @@ const pct = (v: number) => `${new Intl.NumberFormat(locale(), { maximumFractionD
  * Apple, ни Google. Цифра «доставлено» здесь была бы выдуманной, а цифры в
  * консоли — только настоящие.
  *
+ * Путь — таблицей этапов, а не плитками: этап, сколько, доля от
+ * предыдущего и что значит этап словами; плитки рядом читались бы как
+ * четыре независимых числа, а это одна цепочка.
+ *
  * Токенов на экране нет и быть не должно: токен — адрес устройства
  * человека, с ним уведомление уходит в обход системы. Сервер хранит и
- * отдаёт только отпечатки, и ошибки считаются «на скольких устройствах» по
- * ним (lib/push.ts, tokenFingerprint).
+ * отдаёт только отпечатки (lib/push.ts, tokenFingerprint), а панель
+ * показывает на месте токена замок с точками.
  */
 export default function OpsPush() {
+  const { ut } = useLang();
   const [days, setDays] = useState<Window>(30);
   const res = useResource(() => api.opsPush(days), [days]);
-  return <Screen res={res}>{(data) => <PushBody data={data} days={days} onDays={setDays} />}</Screen>;
-}
-
-export function PushBody({ data, days, onDays }: { data: PushReport; days: Window; onDays: (w: Window) => void }) {
-  const { ut } = useLang();
-  const t = data.totals;
-  const errors = pushErrors(t);
-  const kindName = (kind: string) => (PUSH_KIND_LABEL[kind] ? ut(PUSH_KIND_LABEL[kind]!) : kind);
+  const data = res.data;
+  const handed = data ? shareOf(data.totals.delivered, data.totals.sent) : null;
 
   return (
-    <>
-      <RuleSection title={ut("opsd.p.totals")} hint={ut("opsd.p.totalsHint")} actions={<WindowSwitch value={days} onChange={onDays} />}>
-        {/*
-          Журнал исходов появился с миграцией 0091: до неё сбой отправки
-          снимал заявку и не оставлял следа (push_deliveries отвечает «решили
-          ли отправить», а не «что вышло»). Пустые нули без этой строки
-          читались бы как «сбоев не было никогда».
-        */}
-        <p className="m-0 mb-[16px] text-[13px] leading-[18px] text-muted">
-          {data.since === null ? ut("opsd.p.noneYet") : fill(ut("opsd.p.since"), { at: dateTime(data.since) })}
-        </p>
-        <div className={KPI_GRID}>
-          <Kpi label={ut("opsd.p.sent")} value={t.sent} />
-          <Kpi label={ut("opsd.p.accepted")} value={t.accepted} />
-          <Kpi label={ut("opsd.p.delivered")} value={t.delivered} />
-          <Kpi label={ut("opsd.q.errors")} value={errors} tone={errors > 0 ? "attention" : "plain"} />
-          <Kpi label={ut("opsd.p.awaiting")} value={t.awaitingReceipt} hint={ut("opsd.p.awaitingHint")} />
+    <SectionPage
+      title={ut("opsd.tab.push")}
+      perm="ops.read"
+      meta={
+        data
+          ? [
+              fill(ut("oppd.p.metaSent"), { n: int(data.totals.sent) }),
+              handed === null ? "" : fill(ut("oppd.p.metaHanded"), { p: pct(handed) }),
+            ]
+          : undefined
+      }
+      actions={<WindowSwitch value={days} onChange={setDays} />}
+      lead={ut("oppd.p.lead")}
+    >
+      <Screen res={res}>{(d) => <PushBody data={d} />}</Screen>
+    </SectionPage>
+  );
+}
+
+export function PushBody({ data, now = Date.now() }: { data: PushReport; now?: number }) {
+  const { ut } = useLang();
+  const first = data.byDay[0]?.date;
+  const last = data.byDay.at(-1)?.date;
+  const anySent = data.byDay.some((d) => d.sent > 0);
+
+  return (
+    <div className="flex flex-col gap-4">
+      <Panel
+        title={ut("oppd.p.path")}
+        icon={<Ix.send />}
+        sub={first && last ? fill(ut("oppd.inWindow"), { from: dayTick(first), to: dayTick(last) }) : undefined}
+        flush
+        footer={
+          <FootNote>
+            {ut("oppd.p.pathNote")}{" "}
+            {/*
+              Журнал исходов появился с миграцией 0091: до неё сбой отправки
+              снимал заявку и не оставлял следа. Пустые нули без этой строки
+              читались бы как «сбоев не было никогда».
+            */}
+            {data.since === null ? ut("opsd.p.noneYet") : fill(ut("opsd.p.since"), { at: dateTime(data.since) })}
+          </FootNote>
+        }
+      >
+        <PathTable totals={data.totals} />
+      </Panel>
+
+      <div className="@container">
+        <div className={cx("grid items-stretch gap-4", anySent && "@min-[860px]:grid-cols-2")}>
+          <Panel title={ut("opsd.p.byDay")} icon={<Ix.chartColumn />} sub={ut("oppd.p.allKinds")}>
+            <TimeColumns
+              columns={dayColumns(data.byDay, (d) => d.sent, dayTick).map((c) => ({ ...c, tip: dayFull(c.key) }))}
+              label={ut("opsd.p.byDay")}
+            />
+          </Panel>
+          {/* доля ошибок — только когда было что отправлять: «0 % ошибок» в пустой день звучит как «всё дошло» */}
+          {anySent ? (
+            <Panel title={ut("sig.p.share")} icon={<Ic.chart />}>
+              <TimeLines
+                x={data.byDay.map((d) => ({ key: d.date, label: dayTick(d.date), tip: dayFull(d.date) }))}
+                series={[
+                  {
+                    key: "share",
+                    label: ut("sig.p.share"),
+                    color: ATTENTION_COLOR,
+                    values: errorShare(data.byDay, dayTick).map((p) => p.value),
+                  },
+                ]}
+                label={ut("sig.p.share")}
+                format={pct}
+              />
+              <p className="m-0 mt-2 text-caption text-muted">{ut("sig.p.shareCaption")}</p>
+            </Panel>
+          ) : null}
         </div>
-        <div className={cx(PAIR_GRID, "mt-[28px]")}>
-          <Figure title={ut("opsd.p.byDay")}>
-            <TimeColumns columns={dayColumns(data.byDay, (d) => d.sent, day)} label={ut("opsd.p.byDay")} />
-          </Figure>
-          <Figure title={ut("opsd.p.errorsByDay")}>
-            <TimeColumns columns={dayColumns(data.byDay, (d) => d.errors, day)} label={ut("opsd.p.errorsByDay")} />
-          </Figure>
+      </div>
+
+      <div className="@container">
+        <div className="grid items-start gap-4 @min-[860px]:grid-cols-2">
+          <Kinds byKind={data.byKind} events={data.events} />
+          <Codes errors={data.errors} total={pushErrors(data.totals)} />
         </div>
-      </RuleSection>
+      </div>
 
-      <RuleSection title={ut("opsd.p.byKind")}>
-        {data.byKind.length ? (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[480px] border-collapse">
-              <thead>
-                <tr>
-                  <th scope="col" className={TH}>{ut("opsd.p.kind")}</th>
-                  <th scope="col" className={cx(TH, "text-right")}>{ut("opsd.p.sent")}</th>
-                  <th scope="col" className={cx(TH, "text-right")}>{ut("opsd.p.errorsCol")}</th>
-                  <th scope="col" className={cx(TH, "text-right")}>{ut("opsd.p.deliveredCol")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.byKind.map((k) => {
-                  const name = kindName(k.kind);
-                  return (
-                    <tr key={k.kind}>
-                      <td className={TD}>{name}</td>
-                      <td className={cx(TD, NUM)}>{k.sent}</td>
-                      <td className={cx(TD, NUM, k.errors > 0 ? "text-accent" : "text-muted")}>{k.errors}</td>
-                      <td className={cx(TD, NUM, "text-muted")}>{k.delivered}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+      <Tokens tokens={data.tokens} now={now} />
+    </div>
+  );
+}
+
+/* ─────────── путь уведомления ─────────── */
+
+function PathTable({ totals }: { totals: PushReport["totals"] }) {
+  const { ut } = useLang();
+  const columns: Column<PathStep>[] = [
+    { key: "stage", header: ut("oppd.p.stage"), required: true, width: 240, render: (s) => <b className="font-extrabold text-text">{ut(s.label)}</b> },
+    {
+      key: "value",
+      header: ut("oppd.q.count"),
+      num: true,
+      required: true,
+      width: 110,
+      render: (s) => <b className="text-[15px] font-extrabold text-text">{int(s.value)}</b>,
+    },
+    {
+      key: "share",
+      header: ut("oppd.p.fromPrev"),
+      required: true,
+      width: 180,
+      render: (s) =>
+        s.share !== null ? (
+          <Tag
+            tone={s.share >= SHARE_GOOD ? "good" : s.share < SHARE_WARN ? "attention" : "plain"}
+            icon={s.share >= SHARE_GOOD ? <Ic.check /> : s.share < SHARE_WARN ? <Ic.alert /> : undefined}
+            className="tabular-nums"
+          >
+            {pct(s.share)}
+          </Tag>
         ) : (
-          <p className="m-0 text-[13px] text-muted">{ut("opsd.p.nothing")}</p>
-        )}
-      </RuleSection>
+          <span className="text-muted">
+            {s.key === "sent" ? ut("oppd.p.start") : s.key === "awaiting" ? ut("oppd.p.inTransit") : "—"}
+          </span>
+        ),
+    },
+    { key: "means", header: ut("opsd.p.meaning"), required: true, render: (s) => <span className="text-text-2">{ut(s.means)}</span> },
+  ];
+  return <DataTable rows={pushPath(totals)} columns={columns} rowKey={(s) => s.key} label={ut("oppd.p.path")} dense sticky={false} />;
+}
 
-      <RuleSection title={ut("opsd.p.errorCodes")} hint={ut("opsd.p.errorCodesHint")}>
-        {/*
-          Волна 11: над таблицей кодов — доля ошибок по дням (столбцы выше
-          говорят «сколько», эта линия — «насколько плохо») и коды полосами,
-          форма таблицы ниже. День без отправок — разрыв линии, а не ноль.
-        */}
-        {data.byDay.some((d) => d.sent > 0) ? (
-          <div className={cx(PAIR_GRID, "mb-[28px]")}>
-            <Figure title={ut("sig.p.share")} caption={ut("sig.p.shareCaption")}>
-              <GapLine points={errorShare(data.byDay, day)} label={ut("sig.p.share")} format={pct} tick={pct} />
-            </Figure>
-            {/* кодов нет — «помилок немає» скажет место таблицы ниже, второй раз не повторяем */}
-            {data.errors.length ? (
-              <Figure title={ut("sig.p.codes")} caption={ut("sig.p.codesCaption")}>
-                <HBars
-                  items={data.errors.slice(0, TOP_CODES).map((e) => ({
-                    key: e.code,
-                    label: <span className="font-mono text-[12px]">{e.code}</span>,
-                    value: e.count,
-                  }))}
-                />
-              </Figure>
-            ) : null}
-          </div>
-        ) : null}
-        {data.errors.length ? (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[560px] border-collapse">
-              <thead>
-                <tr>
-                  <th scope="col" className={TH}>{ut("opsd.p.code")}</th>
-                  <th scope="col" className={cx(TH, "text-right")}>{ut("opsd.p.count")}</th>
-                  <th scope="col" className={cx(TH, "text-right")}>{ut("opsd.m.devicesCol")}</th>
-                  <th scope="col" className={TH}>{ut("opsd.p.meaning")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.errors.map((e) => {
-                  const hint = pushCodeHint(e.code);
-                  return (
-                    <tr key={e.code}>
-                      <td className={cx(TD, "font-mono text-[12px] text-text")}>{e.code}</td>
-                      <td className={cx(TD, NUM)}>{e.count}</td>
-                      <td className={cx(TD, NUM, "text-muted")}>{e.tokens}</td>
-                      <td className={cx(TD, "text-muted")}>{hint ? ut(hint) : "—"}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <p className="m-0 text-[13px] text-muted">{ut("opsd.p.noErrors")}</p>
-        )}
-      </RuleSection>
+/* ─────────── по типам ─────────── */
 
-      <RuleSection title={ut("opsd.p.tokens")}>
-        <div className={PAIR_GRID}>
+function Kinds({ byKind, events }: { byKind: PushReport["byKind"]; events: PushReport["events"] }) {
+  const { ut } = useLang();
+  const rows = kindRows(byKind, events);
+  const name = (kind: string) => (PUSH_KIND_LABEL[kind] ? ut(PUSH_KIND_LABEL[kind]!) : kind);
+  const columns: Column<(typeof rows)[number]>[] = [
+    {
+      key: "kind",
+      header: ut("opsd.p.kind"),
+      required: true,
+      render: (k) => {
+        /* тип — словом из словаря; незнакомый сервер присылает кодом, и он печатается как есть */
+        const title = name(k.kind);
+        return (
+          <span className="flex items-center gap-2">
+            <span aria-hidden className="inline-flex shrink-0 text-muted">
+              {KIND_ICON[k.kind] ?? <Ic.bell size={15} />}
+            </span>
+            <b className="font-bold text-text">{title}</b>
+          </span>
+        );
+      },
+    },
+    { key: "events", header: ut("oppd.p.events"), num: true, required: true, width: 76, render: (k) => int(k.events) },
+    { key: "sent", header: ut("opsd.p.sent"), num: true, required: true, width: 104, render: (k) => int(k.sent) },
+    {
+      key: "errors",
+      header: ut("opsd.p.errorsCol"),
+      num: true,
+      required: true,
+      width: 88,
+      render: (k) => <span className={cx(k.errors > 0 ? "font-extrabold text-warn" : "text-muted")}>{int(k.errors)}</span>,
+    },
+    { key: "delivered", header: ut("opsd.p.deliveredCol"), num: true, required: true, width: 92, render: (k) => int(k.delivered) },
+  ];
+  return (
+    <Panel title={ut("opsd.p.byKind")} icon={<Ic.bell />} flush footer={<FootNote>{ut("opsd.p.eventsHint")}</FootNote>}>
+      {rows.length ? (
+        <DataTable rows={rows} columns={columns} rowKey={(k) => k.kind} label={ut("opsd.p.byKind")} dense sticky={false} />
+      ) : (
+        <div className="px-4">
+          <Empty compact title={ut("opsd.p.nothing")} />
+        </div>
+      )}
+    </Panel>
+  );
+}
+
+/* ─────────── коды ошибок ─────────── */
+
+function Codes({ errors, total }: { errors: PushReport["errors"]; total: number }) {
+  const { ut } = useLang();
+  const columns: Column<PushReport["errors"][number]>[] = [
+    { key: "code", header: ut("opsd.p.code"), required: true, width: 190, render: (e) => <span className="break-all font-mono text-[12px] text-text">{e.code}</span> },
+    { key: "count", header: ut("opsd.p.count"), num: true, required: true, width: 64, render: (e) => <b className="font-extrabold">{int(e.count)}</b> },
+    { key: "tokens", header: ut("opsd.m.devicesCol"), num: true, required: true, width: 84, render: (e) => <span className="text-muted">{int(e.tokens)}</span> },
+    {
+      key: "meaning",
+      header: ut("opsd.p.meaning"),
+      required: true,
+      render: (e) => {
+        const hint = pushCodeHint(e.code);
+        return <span className="text-text-2">{hint ? ut(hint) : "—"}</span>;
+      },
+    },
+  ];
+  return (
+    <Panel
+      title={ut("opsd.p.errorCodes")}
+      icon={<Ix.octagonAlert />}
+      sub={fill(ut("oppd.inWindowN"), { n: int(total) })}
+      flush
+      footer={<FootNote>{ut("opsd.p.errorCodesHint")}</FootNote>}
+    >
+      {errors.length ? (
+        <DataTable rows={errors} columns={columns} rowKey={(e) => e.code} label={ut("opsd.p.errorCodes")} dense sticky={false} />
+      ) : (
+        <div className="px-4">
+          <Empty compact title={ut("opsd.p.noErrors")} />
+        </div>
+      )}
+    </Panel>
+  );
+}
+
+/* ─────────── токены ─────────── */
+
+function Tokens({ tokens, now }: { tokens: PushReport["tokens"]; now: number }) {
+  const { ut } = useLang();
+  const platform = (p: string) => (PLATFORM_LABEL[p] ? ut(PLATFORM_LABEL[p]!) : p);
+  return (
+    <Panel title={ut("opsd.p.tokens")} icon={<Ix.keyRound />}>
+      <div className="@container">
+        <div className="grid gap-x-8 gap-y-5 @min-[760px]:grid-cols-[300px_minmax(0,1fr)]">
           <div className="min-w-0">
-            <div className={KPI_GRID}>
-              <Kpi label={ut("opsd.p.registered")} value={data.tokens.registered} />
-              <Kpi label={ut("opsd.p.stale")} value={data.tokens.stale} hint={ut("opsd.p.staleHint")} />
-            </div>
-            {data.tokens.byPlatform.length ? (
-              <ul className="m-0 mt-[16px] list-none p-0">
-                {data.tokens.byPlatform.map((p) => (
-                  <li key={p.platform} className="flex items-baseline justify-between gap-[12px] border-b border-hairline py-[6px] text-[13px]">
-                    <span className="text-text-2">{PLATFORM_LABEL[p.platform] ? ut(PLATFORM_LABEL[p.platform]!) : p.platform}</span>
-                    <Num className="text-muted">{p.count}</Num>
+            <p className="m-0 mb-2 text-caption text-muted">{ut("opsd.p.fingerprints")}</p>
+            <Facts
+              rows={[
+                {
+                  key: "registered",
+                  label: ut("opsd.p.registered"),
+                  value: int(tokens.registered),
+                  note: tokens.byPlatform.map((p) => `${platform(p.platform)} ${int(p.count)}`).join(", ") || undefined,
+                },
+                {
+                  key: "stale",
+                  label: ut("opsd.p.stale"),
+                  value: int(tokens.stale),
+                  warn: tokens.stale > 0,
+                  note: ut("opsd.p.staleHint"),
+                },
+              ]}
+            />
+          </div>
+          {tokens.oldest.length ? (
+            <div className="min-w-0">
+              <Label className="mb-1">{ut("oppd.p.oldest")}</Label>
+              <ul className="m-0 list-none p-0">
+                {tokens.oldest.map((t) => (
+                  <li
+                    key={t.fingerprint}
+                    className="flex min-h-[44px] flex-wrap items-center gap-x-3 gap-y-1 border-t border-divider py-2 first:border-t-0"
+                  >
+                    <span aria-hidden className="grid size-7 shrink-0 place-items-center rounded-[9px] bg-sunk text-muted">
+                      <Ix.smartphone size={14} />
+                    </span>
+                    <span className="w-[72px] shrink-0 text-small font-semibold text-text-2">{platform(t.platform)}</span>
+                    <Masked />
+                    <span className="flex items-center gap-1.5 text-caption text-muted">
+                      {ut("oppd.p.print")}
+                      <Code>{shortPrint(t.fingerprint)}</Code>
+                    </span>
+                    <span className="ml-auto text-caption text-muted">
+                      {fill(ut("oppd.p.lastSeen"), { at: dayWithYear(t.lastSeenAt), n: daysSince(t.lastSeenAt, now) })}
+                    </span>
                   </li>
                 ))}
               </ul>
-            ) : null}
-          </div>
-          <Figure title={ut("opsd.p.events")} caption={ut("opsd.p.eventsHint")}>
-            <HBars items={data.events.map((e) => ({ key: e.kind, label: kindName(e.kind), value: e.count }))} />
-          </Figure>
+            </div>
+          ) : null}
         </div>
-        <Note>{ut("opsd.p.fingerprints")}</Note>
-      </RuleSection>
-    </>
+      </div>
+    </Panel>
   );
 }
