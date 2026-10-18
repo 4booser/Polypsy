@@ -37,6 +37,9 @@ export function fallbackOf(segments: readonly string[]): string | null {
       return "/(app)/surveys";
     case "rounds":
       return "/(app)/rounds";
+    // разговор с пациентом — к скриньке сотрудника
+    case "inbox":
+      return "/(app)/inbox";
     case "register":
       return "/login";
     default:

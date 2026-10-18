@@ -1,31 +1,39 @@
 import { useCallback, useState } from "react";
-import { ScrollView, Text, View } from "react-native";
-import { useFocusEffect, useLocalSearchParams, useNavigation, useRouter } from "expo-router";
-import type { QuestionAnalytics, SurveyAnalytics } from "@quizzy/shared";
+import { Pressable, ScrollView, View } from "react-native";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import type { QuestionAnalytics, SurveyAnalytics, UiKey } from "@quizzy/shared";
 import { api } from "@/api/client";
-import { BarList, ChartCard, Histogram, SeverityBar, StatTile } from "@/components/charts";
-import {
-  BoxPlot,
-  DivergingBar,
-  Donut,
-  Funnel,
-  Heatmap,
-  LineChart,
-  Scatter,
-  boxStatsOf,
-} from "@/components/viz";
-import { Body, Button, Card, Chip, Divider, ErrorText, Loader, Row, Segmented } from "@/components/ui";
-import { formatDuration, severityColor, spacing, useColors } from "@/theme";
+import { Histogram } from "@/components/charts";
+import { BoxPlot, Heatmap, Scatter, boxStatsOf } from "@/components/viz";
 import { useLang } from "@/lang";
-import { dailyBuckets } from "@/components/viz/math";
+import { formatDuration, useColors } from "@/theme";
+import { ActionBar, Btn } from "@/ui/Button";
+import { Icon } from "@/ui/Icon";
+import { Callout, Panel } from "@/ui/Panel";
+import { Segmented } from "@/ui/Segmented";
+import { T } from "@/ui/Text";
+import { lastDays, num } from "@/staff/model";
+import { Card, Chip, DayBars, HBars, Line, Loading, PillRow, Section, SplitBar, StaffNav, StateBlock, SumRows } from "@/staff/ui";
 
 type Tab = "overview" | "questions" | "scales" | "quality";
 
+/** Порог связи пункта со шкалой: ниже — пункт слабо меряет то же, что остальные */
+const WEAK_R = 0.3;
+
+/**
+ * Аналитика одной методики — по версии: проходження разных версий не
+ * смешиваются, питання в них разные.
+ *
+ * «Загальне»: числа сводки списком с их смыслом, сдачи по дням,
+ * доходимість и где покидают. «Питання»: распределение выборов, время
+ * ответа и сомнения, разбор каждого питання. «Шкали»: распределение по
+ * полосам, альфа Кронбаха и связь каждого пункта со шкалой — с подсказкой
+ * пересмотреть слабый. «Якість»: позначенные проходження и почему.
+ */
 export default function SurveyAnalyticsScreen() {
   const { ut } = useLang();
   const c = useColors();
   const router = useRouter();
-  const navigation = useNavigation();
   const { id } = useLocalSearchParams<{ id: string }>();
 
   const [data, setData] = useState<SurveyAnalytics | null>(null);
@@ -36,472 +44,453 @@ export default function SurveyAnalyticsScreen() {
   const load = useCallback(async () => {
     if (!id) return;
     try {
-      const a = await api.surveyAnalytics(id, versionId);
-      setData(a);
-      navigation.setOptions({ title: a.title });
+      setData(await api.surveyAnalytics(id, versionId));
+      setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : ut("ma.loadFailed"));
     }
-  }, [id, navigation, versionId]);
+  }, [id, versionId, ut]);
 
   useFocusEffect(
     useCallback(() => {
-      load();
+      void load();
     }, [load]),
   );
 
-  if (error) return <ErrorText>{error}</ErrorText>;
-  if (!data) return <Loader />;
+  const back = ut("tab.analytics");
+  if (!data) {
+    return (
+      <View style={{ flex: 1, backgroundColor: c.ground }}>
+        <StaffNav back={back} title={ut("mnav.survey")} />
+        {error ? <StateBlock icon="circle-alert" title={error} action={{ label: ut("common.retry"), onPress: () => void load() }} /> : <Loading />}
+      </View>
+    );
+  }
 
-  // тепловая карта строится только по вопросам с одинаковым набором вариантов:
-  // иначе столбцы означали бы разное в разных строках
-  const withOptions = data.questions.filter((q) => (q.options?.length ?? 0) > 0);
-  const columnKey = (q: (typeof withOptions)[number]) =>
-    (q.options ?? []).map((o) => o.text).join("|");
-  const dominant = withOptions.reduce<Record<string, number>>((acc, q) => {
-    acc[columnKey(q)] = (acc[columnKey(q)] ?? 0) + 1;
-    return acc;
-  }, {});
-  const bestKey = Object.entries(dominant).sort((a, b) => b[1] - a[1])[0]?.[0];
-  const heatQuestions = withOptions.filter((q) => columnKey(q) === bestKey && (dominant[bestKey] ?? 0) > 1);
-  const heatColumns = heatQuestions[0]?.options?.map((o) => o.text) ?? [];
-  const heatRows = heatQuestions.map((q) => ({
-    label: `${q.position + 1}. ${q.title}`,
-    cells: (q.options ?? []).map((o) => ({ label: o.text, value: o.percent })),
-  }));
-
+  const flagged = data.quality.filter((q) => q.flagged).length;
   return (
-    <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.lg }}>
-      {/* переключатель версий: после правки методики данные остаются на прежней,
-          и надо явно показывать, какую редакцию мы сейчас смотрим */}
-      {data.versions.length > 1 ? (
-        <Card>
-          <Body muted>{ut("msv.version")}</Body>
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.xs }}>
-            {data.versions.map((v) => (
-              <Chip
-                key={v.id}
-                label={`v${v.version} · ${v.responseCount}`}
-                selected={v.id === data.versionId}
-                onPress={() => setVersionId(v.id)}
-              />
-            ))}
-          </View>
-          <Body muted>
-            {ut("msa.versionNote").replace("{v}", String(data.versionNumber))}
-          </Body>
-        </Card>
-      ) : null}
-
-      <Segmented
-        value={tab}
-        onChange={setTab}
-        options={[
-          { value: "overview", label: ut("msv.general") },
-          { value: "questions", label: ut("msv.questions") },
-          { value: "scales", label: ut("msv.scales") },
-          { value: "quality", label: `${ut("msa.quality")}${data.quality.length ? " " + data.quality.length : ""}` },
-        ]}
-      />
-
-      {tab === "overview" ? (
-        <>
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.md }}>
-            <StatTile
-              label={ut("msv.completed")}
-              value={String(data.completed)}
-              hint={ut("msa.started").replace("{n}", String(data.started))}
-            />
-            <StatTile label={ut("msv.completion")} value={`${data.completionRate}%`} hint={ut("msa.abandoned").replace("{n}", String(data.abandoned))} />
-            <StatTile label={ut("ma.avgTime")} value={formatDuration(data.avgDurationMs)} />
-            <StatTile label={ut("msv.median")} value={formatDuration(data.medianDurationMs)} />
-          </View>
-
-          <ChartCard title={ut("msv.dynamics")} subtitle={ut("ma.trendHint")}>
-            <LineChart
-              showArea
-              height={170}
-              series={[
-                {
-                  label: ut("ma.responses"),
-                  // по дню на корзину: дни без сдач — разрыв, а не соседние точки (viz/math.ts)
-                  points: dailyBuckets(data.timeline),
-                },
-              ]}
-            />
-          </ChartCard>
-
-          <ChartCard title={ut("msv.completion")} subtitle={ut("msv.completedVsAbandoned")}>
-            <Donut
-              centerValue={`${data.completionRate}%`}
-              centerLabel={ut("msa.reachedEnd")}
-              slices={[
-                { label: ut("msv.completed"), value: data.completed, color: severityColor.none },
-                { label: ut("msv.abandoned"), value: data.abandoned, color: severityColor.severe },
-              ]}
-            />
-          </ChartCard>
-
-          {data.dropOff.some((d) => d.lost > 0) ? (
-            <ChartCard
-              title={ut("msv.dropoff")}
-              subtitle={ut("msv.dropoffHint")}
-            >
-              <Funnel
-                stages={data.dropOff.map((d) => ({
-                  label: `${d.position + 1}. ${d.title}`,
-                  value: d.reached,
-                  lost: d.lost,
-                }))}
-              />
-            </ChartCard>
+    <View style={{ flex: 1, backgroundColor: c.ground }}>
+      <StaffNav back={back} title={data.title}>
+        <View style={{ gap: 12 }}>
+          {/* после правки методики данные остаются на прежней версии — видно, какую смотрим */}
+          {data.versions.length > 1 ? (
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+              <T v="sub" weight={700} tone="text2">
+                {ut("mst.version")}
+              </T>
+              <View style={{ flex: 1 }}>
+                <PillRow
+                  onBand
+                  inline
+                  value={data.versionId ?? ""}
+                  onChange={(v) => setVersionId(v)}
+                  items={data.versions.map((v) => ({ key: v.id, label: `v${v.version}`, count: v.responseCount }))}
+                />
+              </View>
+            </View>
           ) : null}
-
-          <Button
-            title={ut("msv.responseList")}
-            variant="secondary"
-            onPress={() => router.push(`/analytics/${id}/responses`)}
+          <Segmented
+            onBand
+            value={tab}
+            onChange={setTab}
+            accessibilityLabel={data.title}
+            options={[
+              { value: "overview", label: ut("msv.general") },
+              { value: "questions", label: ut("msv.questions") },
+              { value: "scales", label: ut("msv.scales") },
+              { value: "quality", label: ut("msa.quality"), count: flagged || undefined },
+            ]}
           />
-        </>
-      ) : null}
-
-      {tab === "questions" ? (
-        <View style={{ gap: spacing.lg }}>
-          {/* сводные срезы по всем вопросам сразу — прежде чем идти в детали */}
-          <ChartCard
-            title={ut("msv.timePerQuestion")}
-            subtitle={ut("msv.timeHint")}
-          >
-            <BoxPlot
-              boxes={data.questions
-                .filter((q) => q.answered > 0)
-                .map((q) =>
-                  boxStatsOf(ut("msa.itemShort").replace("{n}", String(q.position + 1)), [
-                    q.minDurationMs / 1000,
-                    q.medianDurationMs / 1000,
-                    q.avgDurationMs / 1000,
-                    q.maxDurationMs / 1000,
-                  ]),
-                )
-                .filter((b): b is NonNullable<typeof b> => b !== null)}
-            />
-          </ChartCard>
-
-          {heatRows.length > 0 ? (
-            <ChartCard
-              title={ut("msv.optionSpread")}
-              subtitle={ut("msv.optionSpreadHint")}
-            >
-              <Heatmap rows={heatRows} columns={heatColumns} />
-            </ChartCard>
-          ) : null}
-
-          <ChartCard
-            title={ut("msv.doubts")}
-            subtitle={ut("msv.doubtsHint")}
-          >
-            <BarList
-              unit="%"
-              items={data.questions.map((q) => ({
-                label: `${q.position + 1}. ${q.title}`,
-                value: q.changedShare,
-              }))}
-            />
-          </ChartCard>
-
-          {data.questions.map((q) => (
-            <QuestionBlock key={q.questionId} q={q} />
-          ))}
         </View>
-      ) : null}
+      </StaffNav>
 
-      {tab === "scales" ? (
-        <View style={{ gap: spacing.lg }}>
-          {data.scales.length > 1 ? (
-            <ChartCard
-              title={ut("msv.subscales")}
-              subtitle={ut("msv.subscalesHint")}
-            >
-              <BoxPlot
-                categorical
-                boxes={data.scales
-                  .map((s) => boxStatsOf(s.code, [s.min, s.average, s.median, s.max]))
-                  .filter((b): b is NonNullable<typeof b> => b !== null)}
-              />
-            </ChartCard>
-          ) : null}
-          {data.scales.length === 0 ? (
-            <Card>
-              <Body muted>{ut("msa.noSubscales")}</Body>
-            </Card>
-          ) : (
-            data.scales.map((s) => (
-              <ChartCard
-                key={s.scaleId}
-                title={s.title}
-                subtitle={ut("msa.spread")
-                  .replace("{avg}", String(s.average))
-                  .replace("{med}", String(s.median))
-                  .replace("{min}", String(s.min))
-                  .replace("{max}", String(s.max))
-                  .replace("{of}", String(s.maxPossible))}
-              >
-                <SeverityBar bands={s.bands} />
-                {s.reliability ? (
-                  <View style={{ marginTop: spacing.lg }}>
-                    <Body muted>{ut("msv.itemTotal")}</Body>
-                    <DivergingBar
-                      goodThreshold={0.3}
-                      items={s.reliability.items.map((it) => ({
-                        label: it.title,
-                        value: it.itemTotalCorrelation,
-                      }))}
-                    />
-                  </View>
-                ) : null}
-                {s.reliability ? <Reliability r={s.reliability} /> : null}
-              </ChartCard>
-            ))
-          )}
+      <ScrollView contentContainerStyle={{ paddingBottom: 24 }}>
+        {error ? <StateBlock icon="circle-alert" title={error} action={{ label: ut("common.retry"), onPress: () => void load() }} /> : null}
+        {data.versions.length > 1 ? <Line>{ut("msa.versionNote").replace("{v}", String(data.versionNumber))}</Line> : null}
+        <View style={{ marginHorizontal: 16, marginTop: 16, gap: 16 }}>
+          {tab === "overview" ? <Overview data={data} /> : null}
+          {tab === "questions" ? <Questions data={data} /> : null}
+          {tab === "scales" ? <Scales data={data} /> : null}
+          {tab === "quality" ? <Quality data={data} /> : null}
         </View>
-      ) : null}
-      {tab === "quality" ? (
-        <View style={{ gap: spacing.lg }}>
-          <Card>
-            <Body>{ut("msv.careless")}</Body>
-            <Body muted>
-              {ut("msa.flaggedNote")
-                .replace("{n}", String(data.quality.length))
-                .replace("{total}", String(data.completed))
-                .replace("{sec}", String(Math.round(data.tooFastThresholdMs / 1000)))}
-            </Body>
-          </Card>
+      </ScrollView>
 
-          {data.quality.length > 0 ? (
-            <ChartCard
-              title={ut("msv.timeVsFast")}
-              subtitle={ut("msv.fastHint")}
-            >
-              <Scatter
-                xLabel={ut("msa.durationAxis")}
-                yLabel={ut("msa.fastAxis")}
-                xThreshold={(data.questions.length * data.tooFastThresholdMs) / 1000}
-                points={data.quality.map((q) => ({
-                  x: Math.round(q.durationMs / 1000),
-                  y: q.tooFastShare,
-                  flagged: q.flagged,
-                }))}
-              />
-            </ChartCard>
-          ) : (
-            <Card>
-              <Body muted>{ut("msv.noSuspicious")}</Body>
-            </Card>
-          )}
-
-          {data.quality.map((q) => (
-            <Card key={q.responseId}>
-              <Row>
-                <Body>{q.respondent ?? ut("mrs.anon")}</Body>
-                <View style={{ flex: 1 }} />
-                <Text style={{ color: c.muted, fontSize: 12 }}>{formatDuration(q.durationMs)}</Text>
-              </Row>
-              {q.reasons.map((r, i) => (
-                <Row key={i}>
-                  <View
-                    style={{
-                      width: 10,
-                      height: 10,
-                      borderRadius: 3,
-                      backgroundColor: severityColor.severe,
-                    }}
-                  />
-                  <Text style={{ color: c.text, fontSize: 13, flex: 1 }}>{r}</Text>
-                </Row>
-              ))}
-              <Row gap={spacing.md}>
-                <Text style={{ color: c.muted, fontSize: 12 }}>
-                  {ut("msa.fastAnswers").replace("{n}", String(q.tooFastShare))}
-                </Text>
-                {q.longestStraightLine > 1 ? (
-                  <Text style={{ color: c.muted, fontSize: 12 }}>
-                    {ut("msa.straightLine").replace("{n}", String(q.longestStraightLine))}
-                  </Text>
-                ) : null}
-              </Row>
-            </Card>
-          ))}
-        </View>
-      ) : null}
-    </ScrollView>
-  );
-}
-
-/** Надёжность субшкалы: альфа и вклад каждого пункта */
-function Reliability({ r }: { r: NonNullable<SurveyAnalytics["scales"][number]["reliability"]> }) {
-  const { ut } = useLang();
-  const c = useColors();
-  const verdict =
-    r.alpha >= 0.9
-      ? ut("msv.alphaVeryHigh")
-      : r.alpha >= 0.8
-        ? ut("msv.alphaGood")
-        : r.alpha >= 0.7
-          ? ut("msv.alphaOk")
-          : ut("msv.alphaLow");
-
-  return (
-    <View style={{ gap: spacing.sm, marginTop: spacing.lg }}>
-      <Divider />
-      <Row>
-        <Body muted>{ut("msv.alpha")}</Body>
-        <View style={{ flex: 1 }} />
-        <Text style={{ color: c.text, fontWeight: "700", fontVariant: ["tabular-nums"] }}>
-          {r.alpha}
-        </Text>
-        <Text style={{ color: c.muted, fontSize: 12 }}>{verdict}</Text>
-      </Row>
-      <Body muted>
-        {ut("msa.consistencyNote").replace("{n}", String(r.itemCount))}
-      </Body>
-      {r.items.map((it) => {
-        const weak = it.itemTotalCorrelation < 0.3;
-        const harmful = it.alphaIfDeleted !== null && it.alphaIfDeleted > r.alpha;
-        return (
-          <View key={it.questionId} style={{ gap: 2, marginTop: spacing.sm }}>
-            <Text style={{ color: c.text, fontSize: 13 }} numberOfLines={2}>
-              {it.title}
-            </Text>
-            <Row gap={spacing.md}>
-              <Text
-                style={{
-                  color: weak ? c.danger : c.muted,
-                  fontSize: 12,
-                  fontVariant: ["tabular-nums"],
-                }}
-              >
-                {ut("msa.itemTotal").replace("{n}", String(it.itemTotalCorrelation))}
-              </Text>
-              <Text style={{ color: c.muted, fontSize: 12, fontVariant: ["tabular-nums"] }}>
-                {ut("msa.alphaIfDeleted").replace("{n}", String(it.alphaIfDeleted ?? "—"))}
-              </Text>
-            </Row>
-            {harmful ? (
-              <Text style={{ color: c.danger, fontSize: 12 }}>
-                {ut("msa.reviseItem")}
-              </Text>
-            ) : null}
-          </View>
-        );
-      })}
+      <ActionBar>
+        <Btn
+          title={ut("mst.completionsBtn").replace("{n}", String(data.started))}
+          kind="primary"
+          size="l"
+          icon="clipboard-list"
+          flex={1}
+          onPress={() => router.push({ pathname: "/analytics/[id]/responses", params: { id: id!, title: data.title } })}
+        />
+      </ActionBar>
     </View>
   );
 }
 
-function QuestionBlock({ q }: { q: QuestionAnalytics }) {
-  const { ut } = useLang();
-  const c = useColors();
+function Overview({ data }: { data: SurveyAnalytics }) {
+  const { ut, locale } = useLang();
+  const days = lastDays(data.timeline, 10, new Date());
+  const today = days.at(-1)?.value ?? 0;
+  const avg = Math.round(days.reduce((s, d) => s + d.value, 0) / Math.max(1, days.length));
+  const lost = data.dropOff.filter((d) => d.lost > 0);
+  const worst = [...data.dropOff].sort((a, b) => b.lost - a.lost)[0];
+  const lostTotal = data.dropOff.reduce((s, d) => s + d.lost, 0);
   return (
-    <Card>
-      <Text style={{ color: c.text, fontSize: 15, fontWeight: "600" }}>
-        {q.position + 1}. {q.title}
-      </Text>
-      <Row gap={spacing.md}>
-        {/* тот же разбор, что в вебе: single/longtext — код протокола, а не подпись */}
-        <Text style={{ color: c.muted, fontSize: 12 }}>{ut(`qt.${q.type}`, q.type)}</Text>
-        <Text style={{ color: c.muted, fontSize: 12 }}>{ut("msa.answersCount").replace("{n}", String(q.answered))}</Text>
-        {q.skipped > 0 ? (
-          <Text style={{ color: c.muted, fontSize: 12 }}>{ut("msa.skipsCount").replace("{n}", String(q.skipRate))}</Text>
-        ) : null}
-      </Row>
+    <>
+      <Panel title={ut("ma.overview")} icon="clipboard-check" sub={`v${data.versionNumber}`}>
+        <SumRows
+          rows={[
+            { label: ut("msv.completed"), value: String(data.completed), sub: ut("msa.started").replace("{n}", String(data.started)) },
+            { label: ut("msv.completion"), value: String(data.completionRate), unit: "%", sub: ut("mst.abandonedOf").replace("{n}", String(data.abandoned)).replace("{of}", String(data.started)) },
+            { label: ut("ma.avgTime"), value: formatDuration(data.avgDurationMs), sub: ut("mst.perCompletion") },
+            { label: ut("msv.median"), value: formatDuration(data.medianDurationMs), sub: ut("mst.halfFaster") },
+          ]}
+        />
+      </Panel>
 
-      <Divider />
+      <Panel title={ut("msv.dynamics")} icon="chart-line" sub={ut("mst.lastNDays").replace("{n}", String(days.length))}>
+        <DayBars days={days.map((d) => ({ key: d.key, label: d.date.toLocaleDateString(locale, { weekday: "short" }), value: d.value }))} />
+        <T v="sub">{ut("mst.todayAvg").replace("{t}", String(today)).replace("{a}", String(avg))}</T>
+      </Panel>
 
-      {/* время на вопрос — то, ради чего эта таблица и нужна */}
-      <View style={{ gap: spacing.xs, marginVertical: spacing.sm }}>
-        <Row>
-          <Body muted>{ut("ma.avgTime")}</Body>
-          <View style={{ flex: 1 }} />
-          <Text style={{ color: c.text, fontVariant: ["tabular-nums"] }}>
-            {formatDuration(q.avgDurationMs)}
-          </Text>
-        </Row>
-        <Row>
-          <Body muted>{ut("msv.median")}</Body>
-          <View style={{ flex: 1 }} />
-          <Text style={{ color: c.text, fontVariant: ["tabular-nums"] }}>
-            {formatDuration(q.medianDurationMs)}
-          </Text>
-        </Row>
-        <Row>
-          <Body muted>{ut("msv.spread")}</Body>
-          <View style={{ flex: 1 }} />
-          <Text style={{ color: c.text, fontVariant: ["tabular-nums"] }}>
-            {formatDuration(q.minDurationMs)} — {formatDuration(q.maxDurationMs)}
-          </Text>
-        </Row>
-        <Row>
-          <Body muted>{ut("msv.thoughtBefore")}</Body>
-          <View style={{ flex: 1 }} />
-          <Text style={{ color: c.text, fontVariant: ["tabular-nums"] }}>
-            {/* ленту событий чистит срок хранения телеметрии: тогда время неизвестно, а не ноль */}
-            {q.avgTimeToFirstAnswerMs === null ? "—" : formatDuration(q.avgTimeToFirstAnswerMs)}
-          </Text>
-        </Row>
-        <Row>
-          <Body muted>{ut("msv.changesAvg")}</Body>
-          <View style={{ flex: 1 }} />
-          <Text style={{ color: c.text, fontVariant: ["tabular-nums"] }}>{q.avgChangeCount}</Text>
-        </Row>
-        <Row>
-          <Body muted>{ut("msv.changedAnswer")}</Body>
-          <View style={{ flex: 1 }} />
-          <Text style={{ color: c.text, fontVariant: ["tabular-nums"] }}>{q.changedShare}%</Text>
-        </Row>
-        {q.tooFastShare > 0 ? (
-          <Row>
-            <Body muted>{ut("msv.tooFast")}</Body>
-            <View style={{ flex: 1 }} />
-            <Text style={{ color: c.danger, fontVariant: ["tabular-nums"] }}>{q.tooFastShare}%</Text>
-          </Row>
-        ) : null}
-      </View>
+      <Panel title={ut("msv.completion")} icon="circle-check" sub={ut("msv.completedVsAbandoned")}>
+        <SplitBar
+          parts={[
+            { key: "done", label: ut("mst.completedN").replace("{n}", String(data.completed)), value: data.completed, strong: true },
+            { key: "left", label: ut("mst.abandonedN").replace("{n}", String(data.abandoned)), value: data.abandoned },
+          ]}
+        />
+      </Panel>
 
-      {q.options?.length ? (
-        <View style={{ marginTop: spacing.sm }}>
-          <BarList
-            items={q.options.map((o) => ({
-              label: o.text,
-              value: o.count,
-              caption: o.avgRank !== undefined ? ut("msa.rank").replace("{n}", String(o.avgRank)) : `${o.percent}%`,
-            }))}
+      {lost.length && worst ? (
+        <Panel title={ut("msv.dropoff")} icon="log-out" sub={ut("mst.peopleN").replace("{n}", String(lostTotal))}>
+          <HBars
+            labelWidth={150}
+            rows={data.dropOff.map((d) => ({ key: d.questionId, label: `${d.position + 1}. ${d.title}`, value: d.lost, hl: d.questionId === worst.questionId }))}
           />
-        </View>
+          <Callout kind="v" icon="lightbulb" text={ut("mst.dropWorst").replace("{n}", String(worst.position + 1)).replace("{k}", String(worst.lost))} />
+        </Panel>
       ) : null}
-
-      {q.numeric ? (
-        <View style={{ marginTop: spacing.sm, gap: spacing.sm }}>
-          <Body muted>
-            {ut("msa.spreadNoMax")
-              .replace("{avg}", String(q.numeric.average))
-              .replace("{med}", String(q.numeric.median))
-              .replace("{min}", String(q.numeric.min))
-              .replace("{max}", String(q.numeric.max))}
-          </Body>
-          <Histogram data={q.numeric.distribution} />
-        </View>
-      ) : null}
-
-      {q.texts?.length ? (
-        <View style={{ marginTop: spacing.sm, gap: spacing.xs }}>
-          <Body muted>{ut("msa.freeText").replace("{n}", String(q.texts.length))}</Body>
-          {q.texts.slice(0, 8).map((t, i) => (
-            <Text key={i} style={{ color: c.text, fontSize: 14 }}>
-              — {t}
-            </Text>
-          ))}
-        </View>
-      ) : null}
-    </Card>
+    </>
   );
 }
+
+function Questions({ data }: { data: SurveyAnalytics }) {
+  const { ut } = useLang();
+  const [open, setOpen] = useState<string | null>(null);
+  // тепловая карта — только по пунктам с одинаковым набором вариантов: иначе столбцы значили бы разное
+  const withOptions = data.questions.filter((q) => (q.options?.length ?? 0) > 0);
+  const keyOf = (q: QuestionAnalytics) => (q.options ?? []).map((o) => o.text).join("|");
+  const dominant = withOptions.reduce<Record<string, number>>((acc, q) => {
+    acc[keyOf(q)] = (acc[keyOf(q)] ?? 0) + 1;
+    return acc;
+  }, {});
+  const best = Object.entries(dominant).sort((a, b) => b[1] - a[1])[0]?.[0];
+  const heatQ = withOptions.filter((q) => keyOf(q) === best && (dominant[best ?? ""] ?? 0) > 1);
+  const answered = data.questions.filter((q) => q.answered > 0);
+  const medians = answered.map((q) => q.medianDurationMs / 1000).sort((a, b) => a - b);
+  const mid = medians.length ? medians[Math.floor(medians.length / 2)]! : 0;
+  return (
+    <>
+      {heatQ.length ? (
+        <Panel title={ut("msv.optionSpread")} icon="clipboard-list" sub={ut("mst.ofAnswered")}>
+          <Heatmap
+            rows={heatQ.map((q) => ({ label: `${q.position + 1}. ${q.title}`, cells: (q.options ?? []).map((o) => ({ label: o.text, value: o.percent })) }))}
+            columns={heatQ[0]?.options?.map((o) => o.text) ?? []}
+          />
+        </Panel>
+      ) : null}
+
+      {answered.length ? (
+        <Panel title={ut("msv.timePerQuestion")} icon="timer" sub={ut("mst.medianSec")}>
+          <HBars
+            labelWidth={140}
+            mark={mid}
+            rows={answered.map((q) => ({ key: q.questionId, label: `${q.position + 1}. ${q.title}`, value: q.medianDurationMs / 1000, text: formatDuration(q.medianDurationMs) }))}
+          />
+          <T v="sub">{ut("mst.medianMark").replace("{t}", formatDuration(mid * 1000))}</T>
+        </Panel>
+      ) : null}
+
+      {answered.length ? (
+        <Panel title={ut("msv.doubts")} icon="pencil-line" sub={ut("msv.changedAnswer")}>
+          <HBars
+            labelWidth={140}
+            max={100}
+            rows={answered.map((q) => ({ key: q.questionId, label: `${q.position + 1}. ${q.title}`, value: q.changedShare, text: `${num(q.changedShare)}%` }))}
+          />
+          <T v="sub">{ut("msv.doubtsHint")}</T>
+        </Panel>
+      ) : null}
+
+      <View style={{ marginHorizontal: -16 }}>
+        <Section title={ut("msv.questions")} count={data.questions.length} sub={ut("mst.questionTap")} />
+        <Card>
+          {data.questions.map((q, i) => (
+            <QuestionRow key={q.questionId} q={q} first={i === 0} open={open === q.questionId} onToggle={() => setOpen(open === q.questionId ? null : q.questionId)} />
+          ))}
+        </Card>
+      </View>
+    </>
+  );
+}
+
+/** Питання: строка с ответами и пропусками; раскрытое — время, сомнения, варианты */
+function QuestionRow({ q, first, open, onToggle }: { q: QuestionAnalytics; first: boolean; open: boolean; onToggle: () => void }) {
+  const { ut } = useLang();
+  const c = useColors();
+  const kv: [string, string, boolean?][] = [
+    [ut("ma.avgTime"), formatDuration(q.avgDurationMs)],
+    [ut("msv.median"), formatDuration(q.medianDurationMs)],
+    [ut("msv.spread"), `${formatDuration(q.minDurationMs)} — ${formatDuration(q.maxDurationMs)}`],
+    // ленту событий чистит срок хранения телеметрии: тогда время неизвестно, а не ноль
+    [ut("msv.thoughtBefore"), q.avgTimeToFirstAnswerMs === null ? "—" : formatDuration(q.avgTimeToFirstAnswerMs)],
+    [ut("msv.changesAvg"), num(q.avgChangeCount)],
+    [ut("msv.changedAnswer"), `${num(q.changedShare)}%`],
+  ];
+  if (q.tooFastShare > 0) kv.push([ut("msv.tooFast"), `${num(q.tooFastShare)}%`, true]);
+  return (
+    <View style={{ borderTopWidth: first ? 0 : 1, borderTopColor: c.divider, backgroundColor: open ? c.panel2 : "transparent" }}>
+      <Pressable onPress={onToggle} accessibilityRole="button" accessibilityState={{ expanded: open }} accessibilityLabel={`${q.position + 1}. ${q.title}`}>
+        {({ pressed }) => (
+          <View style={{ flexDirection: "row", gap: 10, paddingVertical: 12, paddingLeft: 16, paddingRight: 14, opacity: pressed ? 0.7 : 1 }}>
+            <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+              <T v="body" size={15} weight={700}>{`${q.position + 1}. ${q.title}`}</T>
+              <T v="sub" num>
+                {[ut(`qt.${q.type}` as UiKey, q.type), ut("msa.answersCount").replace("{n}", String(q.answered)), q.skipped > 0 ? ut("msa.skipsCount").replace("{n}", String(q.skipRate)) : null]
+                  .filter(Boolean)
+                  .join(", ")}
+              </T>
+            </View>
+            <Icon name={open ? "chevron-up" : "chevron-down"} size={20} color={c.muted} />
+          </View>
+        )}
+      </Pressable>
+      {open ? (
+        <View style={{ paddingHorizontal: 16, paddingBottom: 14, gap: 12 }}>
+          <View style={{ gap: 6 }}>
+            {kv.map(([k, v, warn]) => (
+              <View key={k} style={{ flexDirection: "row", gap: 12 }}>
+                <T v="sub" size={14} style={{ flex: 1 }}>
+                  {k}
+                </T>
+                <T v="sub" size={14} weight={800} color={warn ? c.warn : c.text} num>
+                  {v}
+                </T>
+              </View>
+            ))}
+          </View>
+          {q.options?.length ? (
+            <HBars
+              labelWidth={130}
+              rows={q.options.map((o) => ({
+                key: o.optionId,
+                label: o.text,
+                value: o.count,
+                text: o.avgRank !== undefined ? ut("msa.rank").replace("{n}", String(o.avgRank)) : `${num(o.percent)}%`,
+              }))}
+            />
+          ) : null}
+          {q.numeric ? (
+            <View style={{ gap: 8 }}>
+              <T v="sub">
+                {ut("mst.numSpread")
+                  .replace("{avg}", num(q.numeric.average))
+                  .replace("{med}", num(q.numeric.median))
+                  .replace("{min}", num(q.numeric.min))
+                  .replace("{max}", num(q.numeric.max))}
+              </T>
+              <Histogram data={q.numeric.distribution} />
+            </View>
+          ) : null}
+          {q.texts?.length ? (
+            <View style={{ gap: 6 }}>
+              <T v="sub" weight={700}>
+                {ut("msa.freeText").replace("{n}", String(q.texts.length))}
+              </T>
+              {q.texts.slice(0, 8).map((t, i) => (
+                <View key={i} style={{ padding: 10, borderRadius: 10, backgroundColor: c.sunk }}>
+                  <T v="note" tone="text">
+                    {t}
+                  </T>
+                </View>
+              ))}
+            </View>
+          ) : null}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+function Scales({ data }: { data: SurveyAnalytics }) {
+  const { ut } = useLang();
+  const c = useColors();
+  if (data.scales.length === 0) return <Callout text={ut("msa.noSubscales")} />;
+  // слабый пункт — первым делом: «пересмотреть формулировку» и есть то, ради чего сюда приходят
+  const weak = data.scales
+    .flatMap((s) => (s.reliability?.items ?? []).map((it) => ({ s, it, alpha: s.reliability!.alpha })))
+    .filter(({ it, alpha }) => it.itemTotalCorrelation < WEAK_R || (it.alphaIfDeleted !== null && it.alphaIfDeleted > alpha))
+    .sort((a, b) => a.it.itemTotalCorrelation - b.it.itemTotalCorrelation)[0];
+  return (
+    <>
+      {weak ? (
+        <Callout
+          kind="warn"
+          icon="triangle-alert"
+          title={ut("mst.weakItem").replace("{t}", weak.it.title)}
+          text={`${ut("mst.weakR").replace("{r}", num(weak.it.itemTotalCorrelation))}${weak.it.alphaIfDeleted !== null ? ` ${ut("mst.alphaWithout").replace("{a}", num(weak.it.alphaIfDeleted))}` : ""} ${ut("msa.reviseItem")}.`}
+        />
+      ) : null}
+      {data.scales.length > 1 ? (
+        <Panel title={ut("msv.subscales")} icon="chart-line" sub={ut("msv.subscalesHint")}>
+          <BoxPlot categorical boxes={data.scales.map((s) => boxStatsOf(s.code, [s.min, s.p25, s.median, s.p75, s.max])).filter((b): b is NonNullable<typeof b> => b !== null)} />
+        </Panel>
+      ) : null}
+      {data.scales.map((s) => {
+        const total = s.bands.reduce((sum, b) => sum + b.count, 0);
+        const r = s.reliability;
+        const verdict = r ? (r.alpha >= 0.9 ? "msv.alphaVeryHigh" : r.alpha >= 0.8 ? "msv.alphaGood" : r.alpha >= 0.7 ? "msv.alphaOk" : "msv.alphaLow") : null;
+        return (
+          <Panel key={s.scaleId} title={s.title} icon="gauge" sub={s.code ? `${s.code}, n = ${total}` : `n = ${total}`}>
+            <T v="note">
+              {ut("mst.scaleSum")
+                .replace("{avg}", num(s.average))
+                .replace("{med}", num(s.median))
+                .replace("{min}", num(s.min))
+                .replace("{max}", num(s.max))
+                .replace("{of}", num(s.maxPossible))}
+            </T>
+            {s.bands.length ? (
+              <HBars
+                labelWidth={150}
+                rows={s.bands.map((b) => ({ key: `${b.label}${b.min}`, label: `${b.label}, ${num(b.min)}–${num(b.max)}`, value: b.count, text: `${b.count}` }))}
+              />
+            ) : null}
+            {r && verdict ? (
+              <View style={{ marginTop: 8, paddingTop: 12, borderTopWidth: 1, borderTopColor: c.divider, gap: 8 }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                  <T v="sub" weight={700} tone="text2" style={{ flex: 1 }}>
+                    {ut("msv.alpha")}
+                  </T>
+                  <T v="number" size={28} num scale={false}>
+                    {num(r.alpha)}
+                  </T>
+                  <Chip kind={r.alpha >= 0.8 ? "good" : r.alpha >= 0.7 ? "n" : "warn"} label={ut(verdict)} />
+                </View>
+                <T v="sub">{ut("msa.consistencyNote").replace("{n}", String(r.itemCount))}</T>
+                <View style={{ flexDirection: "row", gap: 8, paddingBottom: 4, borderBottomWidth: 1, borderBottomColor: c.divider }}>
+                  <T v="caption" style={{ flex: 1 }}>
+                    {ut("mst.itemCol")}
+                  </T>
+                  <T v="caption" style={{ width: 40, textAlign: "right" }}>
+                    {ut("mst.rCol")}
+                  </T>
+                  <T v="caption" style={{ width: 64, textAlign: "right" }}>
+                    {ut("mst.withoutCol")}
+                  </T>
+                </View>
+                {r.items.map((it) => {
+                  const bad = it.itemTotalCorrelation < WEAK_R || (it.alphaIfDeleted !== null && it.alphaIfDeleted > r.alpha);
+                  return (
+                    <View key={it.questionId} style={{ gap: 4 }} accessible accessibilityLabel={`${it.title}: ${ut("msa.itemTotal").replace("{n}", num(it.itemTotalCorrelation))}, ${ut("msa.alphaIfDeleted").replace("{n}", it.alphaIfDeleted === null ? "—" : num(it.alphaIfDeleted))}`}>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                        <T v="sub" size={14} weight={bad ? 800 : 600} color={bad ? c.warn : c.text2} numberOfLines={1} style={{ flex: 1 }}>
+                          {it.title}
+                        </T>
+                        <T v="sub" size={14} weight={800} color={bad ? c.warn : c.text} num style={{ width: 40, textAlign: "right" }}>
+                          {num(it.itemTotalCorrelation)}
+                        </T>
+                        <T v="sub" size={14} num style={{ width: 64, textAlign: "right" }}>
+                          {it.alphaIfDeleted === null ? "—" : num(it.alphaIfDeleted)}
+                        </T>
+                      </View>
+                      <CorrTrack r={it.itemTotalCorrelation} weak={bad} />
+                    </View>
+                  );
+                })}
+                <T v="sub">{ut("mst.corrHint").replace("{r}", num(WEAK_R))}</T>
+              </View>
+            ) : null}
+          </Panel>
+        );
+      })}
+    </>
+  );
+}
+
+/** Связь пункта со шкалой полоской: риска — порог 0,3 */
+function CorrTrack({ r, weak }: { r: number; weak: boolean }) {
+  const c = useColors();
+  const top = 0.8;
+  return (
+    <View style={{ height: 8, borderRadius: 4, backgroundColor: c.sunk2 }}>
+      <View style={{ width: `${Math.max(2, Math.min(100, (Math.max(0, r) / top) * 100))}%`, height: 8, borderRadius: 4, backgroundColor: weak ? c.warn : c.vink }} />
+      <View style={{ position: "absolute", left: `${(WEAK_R / top) * 100}%`, top: -4, width: 2, height: 16, marginLeft: -1, borderRadius: 1, backgroundColor: c.text }} />
+    </View>
+  );
+}
+
+function Quality({ data }: { data: SurveyAnalytics }) {
+  const { ut } = useLang();
+  const c = useColors();
+  const flagged = data.quality.filter((q) => q.flagged);
+  return (
+    <>
+      <Callout
+        kind={flagged.length ? "warn" : "good"}
+        icon={flagged.length ? "eye" : "circle-check"}
+        title={ut("msv.careless")}
+        text={ut("msa.flaggedNote")
+          .replace("{n}", String(flagged.length))
+          .replace("{total}", String(data.completed))
+          .replace("{sec}", num(Math.round(data.tooFastThresholdMs / 100) / 10))}
+      />
+      {data.quality.length ? (
+        <Panel title={ut("msv.timeVsFast")} icon="chart-line" sub={String(data.quality.length)}>
+          <Scatter
+            xLabel={ut("msa.durationAxis")}
+            yLabel={ut("msa.fastAxis")}
+            xThreshold={(data.questions.length * data.tooFastThresholdMs) / 1000}
+            points={data.quality.map((q) => ({ x: Math.round(q.durationMs / 1000), y: q.tooFastShare, flagged: q.flagged }))}
+          />
+          <T v="sub">{ut("msv.fastHint")}</T>
+        </Panel>
+      ) : null}
+      <View style={{ marginHorizontal: -16 }}>
+        <Section title={ut("mst.flaggedTitle")} count={flagged.length} />
+        {flagged.length ? (
+          <Card>
+            {flagged.map((q, i) => (
+              <View key={q.responseId} style={{ flexDirection: "row", gap: 12, paddingTop: 12, paddingBottom: 13, paddingLeft: 16, paddingRight: 14, borderTopWidth: i ? 1 : 0, borderTopColor: c.divider }}>
+                <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: c.sunk2, alignItems: "center", justifyContent: "center" }}>
+                  <Icon name="user-round" size={17} color={c.text2} />
+                </View>
+                <View style={{ flex: 1, minWidth: 0, gap: 6 }}>
+                  <T v="headline">{q.respondent ?? ut("mrs.anon")}</T>
+                  {q.reasons.map((r, k) => (
+                    <View key={k} style={{ flexDirection: "row", gap: 8 }}>
+                      <View style={{ width: 8, height: 8, marginTop: 6, backgroundColor: c.warn, transform: [{ rotate: "45deg" }] }} />
+                      <T v="note" tone="text" style={{ flex: 1 }}>
+                        {r}
+                      </T>
+                    </View>
+                  ))}
+                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+                    <Chip kind="warn" icon="timer" label={formatDuration(q.durationMs)} detail={ut("msa.fastAnswers").replace("{n}", String(q.tooFastShare))} />
+                    {q.longestStraightLine > 1 ? <Chip label={ut("msa.straightLine").replace("{n}", String(q.longestStraightLine))} /> : null}
+                  </View>
+                </View>
+              </View>
+            ))}
+          </Card>
+        ) : (
+          <StateBlock icon="circle-check" title={ut("msv.noSuspicious")} />
+        )}
+      </View>
+    </>
+  );
+}
+
