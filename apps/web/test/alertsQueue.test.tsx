@@ -2,11 +2,11 @@ import { describe, expect, test } from "bun:test";
 import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
-import type { AlertCase, AlertCaseFacets, AlertCasePage, Worklist } from "@quizzy/shared";
+import type { AlertCase, AlertCaseFacets, AlertCasePage } from "@quizzy/shared";
 import { UI } from "@quizzy/shared";
 import { LangProvider } from "../src/lang";
 import { PersonCases, QueueRow } from "../src/pages/Alerts";
-import { Attention } from "../src/pages/Dashboard";
+import { CasesWidget } from "../src/pages/dashboard/widgets";
 import {
   hasNarrowing,
   isDay,
@@ -246,14 +246,7 @@ describe("случаи человека в панели разбора", () => {
 });
 
 describe("сводка: случаи на разбор", () => {
-  const work: Worklist = {
-    items: [],
-    total: 0,
-    truncated: false,
-    byKind: { noshow: 0, message: 0, dispensary: 0, followup: 0, referral: 0, assignment: 0 },
-    mine: 0,
-  };
-
+  /* віджет «Випадки ризику» зведення (Polypsy 2.0) — тот же закон: числа подвала из счётчиков */
   test("«термінових» и «найдовший чекає» — из счётчиков, а не из шести строк", () => {
     // шесть строк на странице, все тяжёлые и свежие; по всей очереди — 140 тяжёлых, самый давний — неделю
     const alerts: AlertCasePage = {
@@ -263,7 +256,7 @@ describe("сводка: случаи на разбор", () => {
       grouping: "person",
       facets: { ...facets, oldestOpenedAt: new Date(Date.now() - 7 * 86_400_000 - 60_000).toISOString() },
     };
-    const html = draw(<Attention alerts={alerts} work={work} />);
+    const html = draw(<CasesWidget alerts={alerts} meId={null} />);
     expect(html).toContain("420");
     expect(html).toMatch(/: 140/);
     expect(html).not.toMatch(/: 6\b/);

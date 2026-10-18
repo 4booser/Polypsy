@@ -1,3 +1,4 @@
+import { ALWAYS_VISIBLE_WIDGETS, DASH_WIDGETS, type DashWidget } from "@quizzy/shared";
 import type { BandSpread, ConditionDomain, ConditionSummary, Severity, UiKey, WorkKind } from "@quizzy/shared";
 import type { Column, SharePart } from "../../charts/clinical";
 
@@ -252,4 +253,163 @@ export function sparkValues(weeks: ConditionSummary["weeks"]): number[] {
 /** «{n}» → число: подстановка в строку словаря */
 export function fill(template: string, values: Record<string, string | number>): string {
   return template.replace(/\{(\w+)\}/g, (m, k: string) => (k in values ? String(values[k]) : m));
+}
+
+/* ─────────── віджети: порядок и выключенные ─────────── */
+
+/*
+ * Колонка віджета на экране — по его природе, а не по порядку: широкие
+ * (графики, шкала дня) — в главной колонке, списки — в боковой, таблица
+ * направлений — во всю ширину. Порядок из настройки действует внутри колонки.
+ */
+export const WIDGET_COLUMN: Record<DashWidget, "main" | "side" | "full"> = {
+  cases: "main",
+  day: "main",
+  passes: "main",
+  missed: "side",
+  work: "side",
+  collect: "side",
+  conditions: "full",
+};
+
+export interface WidgetLayout {
+  order: DashWidget[];
+  hidden: Set<DashWidget>;
+}
+
+const isWidget = (k: string): k is DashWidget => (DASH_WIDGETS as readonly string[]).includes(k);
+
+/**
+ * Порядок и выключенные из профиля. Незнакомые ключи (профиль новее консоли)
+ * молча пропускаются, новые віджети встают в конец своим порядком по
+ * умолчанию, а случаи риска не выключаются, что бы ни пришло.
+ */
+export function widgetLayout(prefs: { order?: string[]; hidden?: string[] } | null | undefined): WidgetLayout {
+  const seen = new Set<DashWidget>();
+  const order: DashWidget[] = [];
+  for (const k of [...(prefs?.order ?? []), ...DASH_WIDGETS]) {
+    if (isWidget(k) && !seen.has(k)) {
+      seen.add(k);
+      order.push(k);
+    }
+  }
+  const hidden = new Set<DashWidget>(
+    (prefs?.hidden ?? []).filter(isWidget).filter((k) => !(ALWAYS_VISIBLE_WIDGETS as readonly string[]).includes(k)),
+  );
+  return { order, hidden };
+}
+
+/** Сдвиг віджета на одно место (Alt ↑ / Alt ↓) */
+export function moveWidget(order: readonly DashWidget[], key: DashWidget, dir: -1 | 1): DashWidget[] {
+  const at = order.indexOf(key);
+  const to = at + dir;
+  if (at === -1 || to < 0 || to >= order.length) return [...order];
+  const next = [...order];
+  [next[at], next[to]] = [next[to]!, next[at]!];
+  return next;
+}
+
+/** Віджет на место другого (перетаскивание): остальные сдвигаются */
+export function dropWidget(order: readonly DashWidget[], key: DashWidget, onto: DashWidget): DashWidget[] {
+  if (key === onto) return [...order];
+  const from = order.indexOf(key);
+  const to = order.indexOf(onto);
+  if (from === -1 || to === -1) return [...order];
+  const rest = order.filter((k) => k !== key);
+  const at = rest.indexOf(onto);
+  rest.splice(from < to ? at + 1 : at, 0, key);
+  return rest;
+}
+
+/* ─────────── проходження: столбцы и сводка ─────────── */
+
+export type PassRange = "30d" | "90d" | "12w";
+
+export interface PassColumn {
+  key: string;
+  /** Подпись под столбцом и в подсказке */
+  label: string;
+  value: number;
+  /** Суббота или воскресенье: другой ритм, другой тон */
+  weekend?: boolean;
+  /** Сегодняшний день или текущая неделя */
+  current?: boolean;
+  /** Неделя ещё идёт */
+  partial?: boolean;
+}
+
+/** День недели календарного дня: пн = 0 … нд = 6 */
+export function weekdayOf(iso: string): number {
+  return (new Date(toUtc(iso)).getUTCDay() + 6) % 7;
+}
+
+/**
+ * Столбцы окна и средняя линия: по дням — средний день предыдущего такого же
+ * окна, по неделям — средняя неделя предыдущих двенадцати. Сравнение с
+ * окном той же длины, а не с «прошлым месяцем»: у месяцев разное число
+ * выходных.
+ */
+export function passColumns(
+  timeline: readonly DayCount[],
+  range: PassRange,
+  today: string,
+  label: (iso: string) => string,
+): { columns: PassColumn[]; mean: number | null } {
+  if (range === "12w") {
+    const weeks = weeklyColumns(timeline, 24, today, label);
+    const cur = weeks.slice(12);
+    const prevSum = weeks.slice(0, 12).reduce((n, c) => n + c.value, 0);
+    return {
+      columns: cur.map((c, i) => ({ ...c, current: i === cur.length - 1, partial: i === cur.length - 1 })),
+      mean: prevSum > 0 ? prevSum / 12 : null,
+    };
+  }
+  const days = range === "30d" ? 30 : 90;
+  const cols = dailyColumns(timeline, days * 2, today, label);
+  const cur = cols.slice(days);
+  const prevSum = cols.slice(0, days).reduce((n, c) => n + c.value, 0);
+  return {
+    columns: cur.map((c, i) => ({ ...c, weekend: weekdayOf(c.key) >= 5, current: i === cur.length - 1 })),
+    mean: prevSum > 0 ? prevSum / days : null,
+  };
+}
+
+export interface PassSummary {
+  current: number;
+  previous: number;
+  /** Изменение к предыдущему окну, проценты; null — сравнивать не с чем */
+  changePct: number | null;
+  /** Средний будний день окна; null — будних дней нет */
+  weekdayMean: number | null;
+  today: number;
+  /** Тот же день недели неделей раньше */
+  weekAgo: number;
+}
+
+export function passSummary(timeline: readonly DayCount[], days: number, today: string): PassSummary {
+  const { current, previous } = periodTotals(timeline, days, today);
+  const byDay = tally(timeline);
+  let weekdays = 0;
+  let weekdaySum = 0;
+  for (let i = days - 1; i >= 0; i--) {
+    const d = addDays(today, -i);
+    if (weekdayOf(d) < 5) {
+      weekdays++;
+      weekdaySum += byDay.get(d) ?? 0;
+    }
+  }
+  return {
+    current,
+    previous,
+    changePct: previous > 0 ? Math.round(((current - previous) / previous) * 100) : null,
+    weekdayMean: weekdays ? Math.round((weekdaySum / weekdays) * 10) / 10 : null,
+    today: byDay.get(today) ?? 0,
+    weekAgo: byDay.get(addDays(today, -7)) ?? 0,
+  };
+}
+
+/** Сдвиг среднего за окно в процентных пунктах: последняя посчитанная неделя минус первая */
+export function meanShift(weeks: ConditionSummary["weeks"]): number | null {
+  const v = sparkValues(weeks);
+  return v.length > 1 ? Math.round(v[v.length - 1]! - v[0]!) : null;
 }
