@@ -622,19 +622,6 @@ input[type="checkbox"], input[type="radio"] { width: auto; accent-color: var(--p
 .badge.bad { background: color-mix(in srgb, var(--sev-severe) 18%, transparent); color: var(--sev-severe-text); }
 .badge.accent { background: var(--accent-soft); color: var(--accent); }
 
-.avatar {
-  display: inline-grid;
-  place-items: center;
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  font-size: var(--fs-micro);
-  font-weight: 600;
-  color: #fff;
-  flex: none;
-  letter-spacing: 0.02em;
-}
-
 .good { color: var(--sev-none-text); }
 .bad { color: var(--sev-severe-text); }
 .muted { color: var(--muted); }
@@ -718,7 +705,6 @@ kbd, .kbd {
 .battery-steps.editable li { cursor: grab; }
 .step-track { display: flex; gap: 4px; }
 .opt { display: flex; align-items: center; gap: 9px; }
-.hotkeys { display: flex; gap: 12px; flex-wrap: wrap; font-size: var(--fs-caption); color: var(--muted); }
 .legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: var(--fs-caption); color: var(--muted); }
 .tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--hairline); margin-bottom: 16px; }
 .tabs button {
@@ -1026,13 +1012,6 @@ kbd, .kbd {
 .events-row:hover { background: var(--surface-2); color: var(--text); text-decoration: none; }
 .events-mark { width: 6px; height: 6px; border-radius: 50%; flex: none; }
 .events-empty { padding: 22px 13px; text-align: center; color: var(--muted); font-size: var(--fs-small); margin: 0; }
-
-/* ═══ сохранённые виды ═══ */
-.views { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.views .chip { display: inline-flex; align-items: center; gap: 5px; }
-.views-add { border-style: dashed; color: var(--muted); }
-.views-form { display: flex; align-items: center; gap: 6px; }
-.views-form input { width: 190px; }
 
 /* ═══ план безопасности ═══ */
 .sp-view, .sp-edit { display: grid; gap: 14px; margin-top: 8px; }

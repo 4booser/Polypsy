@@ -926,7 +926,7 @@ export function Segmented<K extends string>({
     <span
       role="group"
       aria-label={label}
-      className={cx("inline-flex gap-0.5 rounded-[12px] bg-sunk p-[3px]", wide && "flex w-full", className)}
+      className={cx("gap-0.5 rounded-[12px] bg-sunk p-[3px]", wide ? "flex w-full" : "inline-flex self-start", className)}
     >
       {items.map((it) => {
         const on = it.key === value;
