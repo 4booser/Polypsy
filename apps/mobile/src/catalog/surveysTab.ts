@@ -121,3 +121,49 @@ export function codeOf(title: string): { name: string; code: string | null } {
     .find((part) => /^[A-Z][A-Za-z0-9.\-]{1,11}$/.test(part));
   return code ? { name: m[1]!, code } : { name: whole, code: null };
 }
+
+/** Шаг набора, который человек проходит сам: не за специалиста и не снятый с использования */
+function ownStep(step: BatteryAssignment["steps"][number]): boolean {
+  return step.administration !== "clinician" && step.state !== "retired";
+}
+
+/**
+ * Место методики в незакрытом наборе — перед началом: «Крок 1 з 4 у наборі
+ * „Перед сесією 6“», и что дальше. Методика не в наборе — null: тогда и
+ * строки нет, а не «крок 1 з 1».
+ */
+export function placeInSet(
+  sets: BatteryAssignment[],
+  surveyId: string,
+): { title: string; index: number; total: number; next: string[] } | null {
+  for (const set of sets) {
+    if (set.completedAt || set.cancelledAt) continue;
+    const steps = set.steps.filter(ownStep);
+    const index = steps.findIndex((s) => s.surveyId === surveyId);
+    if (index < 0) continue;
+    const next = steps
+      .slice(index + 1)
+      .filter((s) => s.state !== "done")
+      .map((s) => codeOf(s.title).code ?? s.title);
+    return { title: set.batteryTitle, index, total: steps.length, next };
+  }
+  return null;
+}
+
+/**
+ * Что пройти следующим после сдачи — «Далі: GAD-7». Следующий по порядку
+ * несданный свой шаг того же набора; за ним — несданный раньше (пропущенный
+ * необязательный). Ничего не осталось — null, и кнопка ведёт к списку.
+ */
+export function nextInSet(sets: BatteryAssignment[], surveyId: string): { surveyId: string; title: string } | null {
+  for (const set of sets) {
+    if (set.cancelledAt) continue;
+    const steps = set.steps.filter(ownStep);
+    const index = steps.findIndex((s) => s.surveyId === surveyId);
+    if (index < 0) continue;
+    const pending = (s: (typeof steps)[number]) => s.state !== "done" && s.surveyId !== surveyId;
+    const next = steps.slice(index + 1).find(pending) ?? steps.slice(0, index).find(pending);
+    return next ? { surveyId: next.surveyId, title: next.title } : null;
+  }
+  return null;
+}

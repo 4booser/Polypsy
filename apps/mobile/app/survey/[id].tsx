@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, View } from "react-native";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, View } from "react-native";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import {
   contentLangNotice,
@@ -7,6 +7,7 @@ import {
   isQuestionVisible,
   type Answer,
   type AnswerEvent,
+  type BatteryAssignment,
   type Question,
   type ScoreResult,
   type SurveyFull,
@@ -14,6 +15,7 @@ import {
 import * as Haptics from "expo-haptics";
 import { api } from "@/api/client";
 import { useAuth } from "@/auth/AuthContext";
+import { codeOf, nextInSet, placeInSet } from "@/catalog/surveysTab";
 import { draftRequestBody, drafts, pickDraft, type LocalDraft } from "@/offline/cache";
 import { draftLaneKey, draftLanes } from "@/offline/draftLane";
 import { mayStore } from "@/offline/owner";
@@ -25,9 +27,22 @@ import { missedBefore } from "@/runner/progress";
 import { restoreDraft } from "@/runner/resume";
 import { draftsToResume, dropOwnDraft } from "@/runner/ownDraft";
 import { QuestionInput } from "@/components/QuestionInput";
-import { SeverityTag } from "@/components/charts";
-import { Body, Button, Card, ErrorText, Loader, Row, Title } from "@/components/ui";
-import { formatDuration, severityColor, spacing, useColors } from "@/theme";
+import { ErrorText, Loader } from "@/components/ui";
+import { Avatar } from "@/components/patient/Avatar";
+import { CrisisStrip } from "@/components/patient/Crisis";
+import { FactList, type Fact } from "@/components/patient/Facts";
+import { BandCard, Hero, HeroMeta } from "@/components/patient/Hero";
+import { ActionBar, Btn } from "@/ui/Button";
+import { BigValue } from "@/ui/BigValue";
+import { Icon } from "@/ui/Icon";
+import { BackButton, HelpPill, NavBar, NavTextButton } from "@/ui/NavBar";
+import { Callout, Panel, Squircle } from "@/ui/Panel";
+import { Pill } from "@/ui/Pill";
+import { ProgressSegments } from "@/ui/Progress";
+import { CallRow } from "@/ui/Rows";
+import { T } from "@/ui/Text";
+import { useToast } from "@/ui/Toast";
+import { formatDuration, useColors } from "@/theme";
 import { useLang } from "@/lang";
 import { useTextScale } from "@/textScale";
 
@@ -40,8 +55,9 @@ interface Telemetry {
 
 export default function TakeSurveyScreen() {
   const c = useColors();
-  const { scale, cycle, fs } = useTextScale();
-  const { ut, lang } = useLang();
+  const { scale, cycle } = useTextScale();
+  const { ut, lang, locale } = useLang();
+  const toast = useToast();
   const router = useRouter();
   const exit = useExit();
   // «Відкрити висновок» после сдачи — одноразовой ссылкой в браузере (src/report)
@@ -80,6 +96,13 @@ export default function TakeSurveyScreen() {
    * с ответами другой версии не перезаписывает (и правильно).
    */
   const replacesVersion = useRef<string | null>(null);
+  /** Батареи человека: место методики в наборе перед началом и «Далі: …» после сдачи */
+  const [sets, setSets] = useState<BatteryAssignment[]>([]);
+  /** Люди и службы из плана безопасности — в карточку «Якщо стане важко» после сдачи */
+  const [contacts, setContacts] = useState<{ name: string; contact: string }[]>([]);
+  /** «Пізніше» сохранило черновик — уход без вопроса «перервати?» */
+  const leaving = useRef(false);
+  const body = useRef<ScrollView>(null);
 
   const startedAt = useRef(new Date().toISOString());
   const sessionStart = useRef(Date.now());
@@ -106,6 +129,36 @@ export default function TakeSurveyScreen() {
       value,
     });
   }, []);
+
+  /*
+   * Шапку экран рисует сам: на каждом шаге своя — «‹ Назад» перед началом,
+   * «Пізніше» и код методики на вопросе, одна «Допомога» после сдачи (как в
+   * утверждённом экране). Шапка стека из корневой раскладки здесь не нужна.
+   */
+  useLayoutEffect(() => {
+    navigation.setOptions({ headerShown: false });
+  }, [navigation]);
+
+  // место в наборе — только у своего прохождения: за пациента батареи специалиста не при чём
+  useEffect(() => {
+    if (onBehalfOf) return;
+    void api
+      .myBatteries()
+      .then(setSets)
+      .catch(() => {});
+  }, [onBehalfOf, result]);
+
+  // план безопасности при риске: люди и службы из своего плана, с кэша устройства без сети
+  useEffect(() => {
+    if (!safetyPlan || onBehalfOf) return;
+    void api
+      .mySafetyPlan()
+      .then((res) => {
+        const p = res.plan?.content;
+        setContacts([...(p?.people ?? []), ...(p?.professionals ?? [])].filter((x) => /\d/.test(x.contact)));
+      })
+      .catch(() => {});
+  }, [safetyPlan, onBehalfOf]);
 
   /*
    * Выход из незавершённого теста — потеря сессии измерения (тайминги
@@ -142,6 +195,7 @@ export default function TakeSurveyScreen() {
   useEffect(() => {
     const sub = navigation.addListener("beforeRemove", (e) => {
       if (result || answers.size === 0) return; // завершено или не начато
+      if (leaving.current) return; // «Пізніше»: черновик сохранён, уход не теряет ответов
       // устройство стирают по команде (#125) — уход на вход не переспрашивается: беречь ответы негде
       if (!mayStore(owner)) return;
       e.preventDefault();
@@ -448,16 +502,47 @@ export default function TakeSurveyScreen() {
     }
   }
 
+  /** Черновик сохраняется — те же условия, что в autosave: своё прохождение, не анонимная методика */
+  const savesDraft = !!survey && !survey.anonymous && !onBehalfOf && !!owner;
+  const askedNumber = visible.filter((q) => q.type !== "info").findIndex((q) => q.id === current?.id) + 1;
+  /*
+   * «Допомога» — на каждом шаге прохождения: методика может спросить о том,
+   * после чего помощь нужна сразу, и искать её на другой вкладке некогда.
+   */
+  const patientHelp = <HelpPill />;
+
+  /*
+   * «Пізніше» на вопросе: черновик уже на устройстве (и, если есть сеть,
+   * на сервере) — уходим без вопроса «перервати?», ответы не пропадут.
+   * За пациента и у анонимной методики черновика нет: там уход по-прежнему
+   * переспрашивает (beforeRemove выше), потому что ответы правда потеряются.
+   */
+  async function later() {
+    if (savesDraft) {
+      commitTiming();
+      await autosave();
+      leaving.current = true;
+      toast.show(ut("mpt.rn.savedLater").replace("{n}", String(Math.max(1, askedNumber))), { icon: "cloud-check" });
+    }
+    exit();
+  }
+
   if (error && !survey) {
     return (
-      <View style={{ flex: 1, backgroundColor: c.bg, padding: spacing.lg, gap: spacing.md }}>
-        <ErrorText>{error}</ErrorText>
-        {/* назад, если есть куда; открыт первым (по ссылке) — к методикам, а не в пустоту */}
-        <Button title={ut("common.back")} variant="secondary" onPress={exit} />
+      <View style={{ flex: 1, backgroundColor: c.ground }}>
+        <NavBar flush left={<BackButton label={ut("common.back")} onPress={exit} />} right={patientHelp} />
+        <View style={{ padding: 16, gap: 12 }}>
+          <ErrorText>{error}</ErrorText>
+          {/* назад, если есть куда; открыт первым (по ссылке) — к методикам, а не в пустоту */}
+          <Btn title={ut("common.back")} onPress={exit} />
+        </View>
       </View>
     );
   }
   if (!survey) return <Loader />;
+
+  const code = codeOf(survey.title).code;
+  const asked = visible.filter((q) => q.type !== "info");
 
   /* ─── экран результата ─── */
   if (result) {
@@ -475,65 +560,120 @@ export default function TakeSurveyScreen() {
       responseId,
       safetyPlan,
     });
+    const answeredTotal = asked.filter((q) => isAnswered(q, answers.get(q.id))).length;
+    const doneAt = new Date().toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" });
+    const nextStep = onBehalfOf ? null : nextInSet(sets, survey.id);
+    const toList = () => router.replace("/(app)/surveys");
     return (
-      <ScrollView
-        style={{ backgroundColor: c.bg }}
-        contentContainerStyle={{ padding: spacing.lg, gap: spacing.lg }}
-      >
-        <Title>{ut("ms.done")}</Title>
-        <Body muted>
-          {ut(view.tookKey).replace(
-            "{d}",
-            formatDuration(Date.now() - sessionStart.current),
-          )}
-        </Body>
-        {assigned.length ? (
-          <Card>
-            <Body>
-              {ut("msv.alsoAssigned").replace("{list}", assigned.join(", "))}
-            </Body>
-          </Card>
-        ) : null}
-        {view.safetyPlan ? (
-          <Card style={{ borderColor: severityColor.severe, borderWidth: 2 }}>
-            <Text style={{ color: c.text, fontSize: 16, fontWeight: "700", marginBottom: 6 }}>
-              {ut("msv.importantNow")}
-            </Text>
-            <Text style={{ color: c.text, fontSize: 15, lineHeight: 22 }}>{view.safetyPlan}</Text>
-          </Card>
-        ) : null}
-        {view.hiddenNote ? <Body muted>{ut("msv.scoresForSpecialist")}</Body> : null}
-        {view.scores ? (
-          <Card>
-            <Body>{ut("ms.subscaleResults")}</Body>
-            {result.map((s) => (
-              <View key={s.scaleId} style={{ gap: spacing.xs, marginTop: spacing.md }}>
-                <Row>
-                  <Body>{s.scaleTitle}</Body>
-                  <View style={{ flex: 1 }} />
-                  <Text style={{ color: c.muted, fontVariant: ["tabular-nums"] }}>
-                    {ut("qi.pointOf").replace("{n}", String(s.rawScore)).replace("{max}", String(s.maxScore))}
-                  </Text>
-                </Row>
-                {s.band ? <SeverityTag severity={s.band.severity} label={s.band.label} /> : null}
-                {s.band?.description ? <Body muted>{s.band.description}</Body> : null}
+      <View style={{ flex: 1, backgroundColor: c.ground }}>
+        <NavBar flush right={patientHelp} />
+        <ScrollView contentContainerStyle={{ paddingBottom: 20 }}>
+          <Hero
+            title={queued ? ut("mpt.rn.queuedTitle") : ut("mpt.rn.sentTitle")}
+            mark={<OkMark queued={queued} />}
+            lead={ut(view.tookKey).replace("{d}", formatDuration(Date.now() - sessionStart.current))}
+          >
+            <HeroMeta>
+              <Pill
+                kind={queued ? "n" : "good"}
+                icon={queued ? "cloud-off" : "cloud-check"}
+                label={queued ? ut("mpt.rn.waitsNet") : ut("mpt.rn.sentAt").replace("{t}", doneAt)}
+              />
+              <T v="sub" tone="text2">
+                {[code, `${answeredTotal} ${ut("common.of")} ${asked.length} ${ut("surveys.questions")}`].filter(Boolean).join(", ")}
+              </T>
+            </HeroMeta>
+          </Hero>
+
+          {view.safetyPlan ? (
+            /*
+             * План безопасности при риске — первым и без условий: это не
+             * результат, а помощь. Номера звонят сразу; 103 — красным.
+             */
+            <Panel title={ut("mpt.rn.ifHard")} icon="heart-handshake" pad={false} style={{ marginTop: 16, marginHorizontal: 16 }}>
+              <T v="body" style={{ paddingHorizontal: 16, paddingTop: 2, paddingBottom: 12 }}>
+                {view.safetyPlan}
+              </T>
+              <View style={{ borderTopWidth: 1, borderTopColor: c.divider }}>
+                <CallRow first name={ut("home.hotline")} sub={ut("mui.hotlineSub")} number={ut("home.hotlineNumber")} />
+                {contacts.map((x, i) => (
+                  <CallRow key={`${x.name}-${i}`} name={x.name} number={x.contact} />
+                ))}
+                <CallRow name={ut("mui.emergency")} sub={ut("mui.emergencySub")} number={ut("mui.emergencyNumber")} tone="risk" />
               </View>
-            ))}
-            <Body muted>
-              {ut("msv.notDiagnosis")}
-            </Body>
-          </Card>
-        ) : null}
-        {view.conclusion && responseId ? (
-          <Button
-            title={ut("ms.openConclusion")}
-            variant="secondary"
-            loading={report.opening}
-            onPress={() => report.open(responseId)}
-          />
-        ) : null}
-        <Button title={ut("msv.toSurveys")} onPress={() => router.replace("/(app)/surveys")} />
-      </ScrollView>
+              {onBehalfOf ? null : (
+                <View style={{ flexDirection: "row", gap: 8, padding: 14, borderTopWidth: 1, borderTopColor: c.divider }}>
+                  <Btn title={ut("mpt.rn.myPlan")} icon="shield-check" size="m" flex={1} onPress={() => router.push("/safety")} />
+                  <Btn title={ut("ms.write")} icon="message-square-text" size="m" flex={1} onPress={() => router.push("/messages")} />
+                </View>
+              )}
+            </Panel>
+          ) : null}
+
+          {assigned.length ? (
+            <View style={{ marginTop: 16, marginHorizontal: 16 }}>
+              <Callout kind="v" icon="layers" text={ut("msv.alsoAssigned").replace("{list}", assigned.join(", "))} />
+            </View>
+          ) : null}
+
+          {view.hiddenNote ? (
+            <View style={{ marginTop: 16, marginHorizontal: 16 }}>
+              <Callout kind="n" icon="info" text={ut("msv.scoresForSpecialist")} />
+            </View>
+          ) : null}
+
+          {view.scores ? (
+            <Panel title={ut("mpt.rn.result")} icon="activity" sub={code ?? undefined} style={{ marginTop: 16, marginHorizontal: 16 }}>
+              {result.map((s, i) => (
+                <View key={s.scaleId} style={{ gap: 6, paddingTop: i ? 14 : 0, marginTop: i ? 6 : 0, borderTopWidth: i ? 1 : 0, borderTopColor: c.divider }}>
+                  {result.length > 1 ? <T v="headline">{s.scaleTitle}</T> : null}
+                  <BigValue
+                    value={formatScore(s.rawScore)}
+                    of={s.maxScore}
+                    severity={s.band?.severity ?? undefined}
+                    severityLabel={s.band?.label ?? undefined}
+                  />
+                  {s.band?.description ? <T v="note">{s.band.description}</T> : null}
+                </View>
+              ))}
+              <T v="note" style={{ marginTop: 8 }}>
+                {ut("msv.notDiagnosis")}
+              </T>
+            </Panel>
+          ) : null}
+
+          {view.conclusion && responseId ? (
+            <View style={{ marginTop: 16, marginHorizontal: 16 }}>
+              <Btn
+                title={ut("ms.openConclusion")}
+                icon="file-text"
+                size="m"
+                full
+                loading={report.opening}
+                onPress={() => report.open(responseId)}
+              />
+            </View>
+          ) : null}
+        </ScrollView>
+        <ActionBar>
+          {nextStep ? (
+            <>
+              <Btn title={ut("mpt.later")} size="l" flex={1} onPress={toList} />
+              <Btn
+                title={ut("mpt.rn.nextStep").replace("{title}", codeOf(nextStep.title).code ?? nextStep.title)}
+                kind="primary"
+                size="l"
+                flex={2}
+                icon="arrow-right"
+                iconEnd
+                onPress={() => router.replace(`/survey/${nextStep.surveyId}`)}
+              />
+            </>
+          ) : (
+            <Btn title={ut("msv.toSurveys")} kind="primary" size="l" flex={1} onPress={toList} />
+          )}
+        </ActionBar>
+      </View>
     );
   }
 
@@ -546,90 +686,138 @@ export default function TakeSurveyScreen() {
      * знает.
      */
     const foreign = contentLangNotice(lang, survey.contentLang);
+    const minutes = survey.timeLimitSec ? Math.round(survey.timeLimitSec / 60) : null;
+    const inSet = onBehalfOf ? null : placeInSet(sets, survey.id);
+    const factRows: (Fact | null)[] = [
+      {
+        icon: "list-checks",
+        title: [
+          `${asked.length} ${ut("surveys.questions")}`,
+          minutes ? ut("mpt.rn.limit").replace("{n}", String(minutes)) : null,
+        ]
+          .filter(Boolean)
+          .join(", "),
+        text: survey.instructions,
+      },
+      onBehalfOf
+        ? { icon: "user-round", title: ut("rounds.fillingFor").replace(/:\s*$/, ""), text: ut("rounds.noDraft") }
+        : savesDraft
+          ? { icon: "save", title: ut("mpt.rn.pause"), text: ut("mpt.rn.pauseText") }
+          : null,
+      survey.anonymous
+        ? { icon: "eye-off", title: ut("mpt.rn.anon"), text: ut("mpt.rn.anonText") }
+        : onBehalfOf
+          ? null
+          : { icon: "eye", title: ut("mpt.rn.whoSees"), text: ut("mpt.rn.whoSeesText") },
+      inSet
+        ? {
+            icon: "layers",
+            title: ut("mpt.rn.inSet")
+              .replace("{i}", String(inSet.index + 1))
+              .replace("{n}", String(inSet.total))
+              .replace("{title}", inSet.title),
+            text: inSet.next.length ? ut("mpt.rn.inSetNext").replace("{list}", inSet.next.join(", ")) : ut("mpt.rn.inSetLast"),
+          }
+        : null,
+      /*
+       * Описание методики пишет отделение для коллег — нормы, источник,
+       * оговорки. Оно не прячется, но идёт последним: человеку перед
+       * началом важнее, сколько это займёт и кто увидит ответы.
+       */
+      survey.description ? { icon: "info", tone: "n", title: ut("mpt.rn.about"), text: survey.description } : null,
+    ];
+    const facts = factRows.filter((f): f is Fact => f !== null);
+
     return (
-      <ScrollView
-        style={{ backgroundColor: c.bg }}
-        contentContainerStyle={{ padding: spacing.lg, gap: spacing.lg }}
-      >
-        <Title>{survey.title}</Title>
-        {foreign ? <Body muted>{ut(`contentLang.${foreign}`)}</Body> : null}
-        {onBehalfOf ? (
-          /*
-           * За кого заполняем — самой заметной строкой на экране. У койки
-           * заполняют подряд нескольких, и ошибиться человеком легче, чем
-           * кажется; заметить такую ошибку потом будет негде.
-           */
-          <Card>
-            <Body>{ut("rounds.fillingFor")}</Body>
-            <Title>{patient?.fullName ?? "…"}</Title>
-            <Body muted>{ut("rounds.noDraft")}</Body>
-          </Card>
-        ) : null}
-        {survey.description ? <Body muted>{survey.description}</Body> : null}
-        {resumed ? (
-          <Card>
-            <Body>{ut("ms.unfinishedFound")}</Body>
-            <Body muted>
-              {ut("msv.resumeAt").replace(
-                "{at}",
-                savedAt ? ` ${savedAt.slice(0, 16).replace("T", " ")}` : "",
-              )}
-            </Body>
-            {keptVersion ? <Body muted>{ut("ms.draftKeptVersion")}</Body> : null}
-          </Card>
-        ) : null}
-        {otherVersion ? (
-          /*
-           * Ответов на экране нет не потому, что они пропали: они в другой
-           * версии, и перенести их нечем. Уйти назад — черновик остаётся и
-           * откроется, когда будет связь; «Почати заново» — явная замена.
-           */
-          <Card>
-            <Body>{ut("ms.draftOtherVersion")}</Body>
-            <Body muted>{ut("ms.draftOtherVersionHint")}</Body>
-          </Card>
-        ) : null}
-        {survey.instructions ? (
-          <Card>
-            <Body>{survey.instructions}</Body>
-          </Card>
-        ) : null}
-        <Card>
-          <Row>
-            <Body muted>{ut("ms.questions")}</Body>
-            <View style={{ flex: 1 }} />
-            <Body>{visible.filter((q) => q.type !== "info").length}</Body>
-          </Row>
-          {survey.timeLimitSec ? (
-            <Row>
-              <Body muted>{ut("ms.timeLimit")}</Body>
-              <View style={{ flex: 1 }} />
-              <Body>{ut("common.minutes").replace("{n}", String(Math.round(survey.timeLimitSec / 60)))}</Body>
-            </Row>
-          ) : null}
-        </Card>
-        <Button
-          title={resumed ? ut("ms.continue") : otherVersion ? ut("ms.startOver") : ut("ms.start")}
-          onPress={() => {
-            if (!resumed) {
-              sessionStart.current = Date.now();
-              startedAt.current = new Date().toISOString();
-              events.current = [];
-              sequence.current = 0;
-            }
-            questionEnteredAt.current = Date.now();
-            goTo(0);
-          }}
-        />
-      </ScrollView>
+      <View style={{ flex: 1, backgroundColor: c.ground }}>
+        <NavBar flush left={<BackButton label={ut("common.back")} onPress={exit} />} right={patientHelp} />
+        <ScrollView contentContainerStyle={{ paddingBottom: 20 }}>
+          <Hero title={codeOf(survey.title).name} lead={code ?? undefined}>
+            {onBehalfOf ? (
+              /*
+               * За кого заполняем — самой заметной строкой на экране. У койки
+               * заполняют подряд нескольких, и ошибиться человеком легче, чем
+               * кажется; заметить такую ошибку потом будет негде.
+               */
+              <BandCard>
+                <Avatar name={patient?.fullName ?? ""} size={44} />
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <T v="sub" tone="text2">
+                    {ut("rounds.fillingFor")}
+                  </T>
+                  <T v="headline" size={18}>
+                    {patient?.fullName ?? "…"}
+                  </T>
+                </View>
+              </BandCard>
+            ) : resumed ? (
+              <BandCard>
+                <Squircle icon="history" />
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <T v="headline">{ut("ms.unfinishedFound")}</T>
+                  <T v="note" tone="text2" style={{ marginTop: 2 }}>
+                    {ut("msv.resumeAt").replace("{at}", savedAt ? ` ${formatWhen(savedAt, locale)}` : "")}
+                  </T>
+                  {keptVersion ? (
+                    <T v="note" tone="text2" style={{ marginTop: 6 }}>
+                      {ut("ms.draftKeptVersion")}
+                    </T>
+                  ) : null}
+                </View>
+              </BandCard>
+            ) : otherVersion ? (
+              /*
+               * Ответов на экране нет не потому, что они пропали: они в другой
+               * версии, и перенести их нечем. Уйти назад — черновик остаётся и
+               * откроется, когда будет связь; «Почати заново» — явная замена.
+               */
+              <BandCard>
+                <Squircle icon="circle-alert" tone="warn" />
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <T v="headline">{ut("ms.draftOtherVersion")}</T>
+                  <T v="note" tone="text2" style={{ marginTop: 2 }}>
+                    {ut("ms.draftOtherVersionHint")}
+                  </T>
+                </View>
+              </BandCard>
+            ) : null}
+            {foreign ? (
+              <T v="sub" tone="text2" style={{ marginTop: 12 }}>
+                {ut(`contentLang.${foreign}`)}
+              </T>
+            ) : null}
+          </Hero>
+          <FactList facts={facts} />
+          {onBehalfOf ? null : <CrisisStrip />}
+        </ScrollView>
+        <ActionBar>
+          <Btn title={ut("mpt.later")} size="l" flex={1} onPress={exit} />
+          <Btn
+            title={resumed ? ut("ms.continue") : otherVersion ? ut("ms.startOver") : ut("ms.start")}
+            kind="primary"
+            size="l"
+            flex={2}
+            icon="arrow-right"
+            iconEnd
+            onPress={() => {
+              if (!resumed) {
+                sessionStart.current = Date.now();
+                startedAt.current = new Date().toISOString();
+                events.current = [];
+                sequence.current = 0;
+              }
+              questionEnteredAt.current = Date.now();
+              goTo(0);
+            }}
+          />
+        </ActionBar>
+      </View>
     );
   }
 
   if (!current) return <Loader />;
 
-  const asked = visible.filter((q) => q.type !== "info");
   const askedIndex = asked.findIndex((q) => q.id === current.id);
-  const progress = asked.length ? (askedIndex + 1) / asked.length : 1;
   /*
    * Сколько осталось: по собственному темпу, а не по медиане других. Пока
    * пройдено меньше трёх пунктов, темпа ещё нет и оценка была бы выдумкой —
@@ -653,179 +841,256 @@ export default function TakeSurveyScreen() {
   const isLast = step === visible.length - 1;
   const section = sectionOf(current);
   const overtime = survey.timeLimitSec ? elapsed > survey.timeLimitSec * 1000 : false;
+  const savedTime = savedAt ? new Date(savedAt).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" }) : null;
+  const backAllowed = survey.allowBack && step > 0;
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-      style={{ flex: 1, backgroundColor: c.bg }}
-      keyboardVerticalOffset={90}
-    >
-      {survey.showProgress ? (
-        <View style={{ paddingHorizontal: spacing.lg, paddingTop: spacing.md, gap: spacing.xs }}>
-          <Row>
-            <Text style={{ color: c.muted, fontSize: 12 }}>
-              {current.type === "info" ? ut("runner.info") : `${ut("runner.question")} ${askedIndex + 1} ${ut("common.of")} ${asked.length}`}
-            </Text>
-            {/*
-              Оценка оставшегося времени важнее прошедшего: человек с
-              двухсотпунктовым опросником решает, успеет ли он сейчас, а не
-              интересуется, сколько уже потратил. Считается по своему же
-              темпу, а не по чужой медиане — так честнее.
-             */}
+    <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1, backgroundColor: c.ground }}>
+      <NavBar
+        flush
+        title={code ?? survey.title}
+        left={<NavTextButton label={ut("mpt.later")} onPress={() => void later()} />}
+        right={patientHelp}
+      />
+      {/* номер пункта, сохранение и сегменты — на полосе шапки, под строкой навигации */}
+      <View style={{ backgroundColor: c.band, paddingTop: 2, paddingHorizontal: 20, paddingBottom: 14, borderBottomWidth: 1, borderBottomColor: c.bcardline }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+          <View style={{ flex: 1, flexDirection: "row", alignItems: "baseline", gap: 6 }}>
+            {current.type === "info" ? (
+              <T v="body" weight={700} tone="text2">
+                {ut("runner.info")}
+              </T>
+            ) : (
+              <>
+                <T v="body" weight={700} tone="text2" scale={false}>
+                  {ut("runner.question")}
+                </T>
+                <T v="largeTitle" size={30} num>
+                  {askedIndex + 1}
+                </T>
+                <T v="body" weight={700} tone="text2" scale={false} num>
+                  {`${ut("common.of")} ${asked.length}`}
+                </T>
+              </>
+            )}
+          </View>
+          {savedTime ? (
+            /*
+             * Разница между «сохранено на телефоне» и «сохранено на сервере»
+             * человеку важна: во втором случае прохождение переживёт потерю
+             * телефона, в первом — только его собственную память.
+             */
+            <View
+              accessible
+              accessibilityLabel={draftSynced ? ut("ms.answersSaved") : ut("ms.savedHereOnly")}
+              style={{ flexDirection: "row", alignItems: "center", gap: 6 }}
+            >
+              <Icon name={draftSynced ? "cloud-check" : "cloud-off"} size={17} color={draftSynced ? c.good : c.muted} />
+              <T v="sub" weight={700} tone="text2" scale={false} numberOfLines={1}>
+                {(draftSynced ? ut("mpt.rn.savedAt") : ut("mpt.rn.savedPhone")).replace("{t}", savedTime)}
+              </T>
+            </View>
+          ) : null}
+          {/*
+            Укрупнение текста прямо на экране прохождения: лезть в
+            настройки телефона посреди обследования никто не будет.
+
+            «A» на кнопке — знак, а не слово: так кнопку размера шрифта
+            рисуют во всех редакторах, на любом языке. Буква латинская:
+            кириллическая «А» на английском экране была бы единственным
+            символом украинского алфавита (test/noRawStrings.test.ts). Имя
+            кнопки для диктора — msv.textSize, из словаря; знак он не читает.
+          */}
+          <Pressable
+            onPress={cycle}
+            accessibilityRole="button"
+            accessibilityLabel={ut("msv.textSize").replace("{n}", String(Math.round(scale * 100)))}
+            hitSlop={6}
+            style={({ pressed }) => ({
+              width: 38,
+              height: 38,
+              borderRadius: 12,
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: scale > 1 ? c.vtint : pressed ? c.vtint2 : c.bcard,
+              borderWidth: 1,
+              borderColor: scale > 1 ? c.vline : c.bcardline,
+            })}
+          >
+            <T v="body" size={scale > 1 ? 19 : 16} weight={800} color={c.vink} scale={false}>
+              A
+            </T>
+          </Pressable>
+        </View>
+        {survey.showProgress && asked.length ? (
+          <ProgressSegments
+            total={asked.length}
+            current={current.type === "info" ? -1 : askedIndex}
+            done={Math.max(0, askedIndex)}
+            accessibilityLabel={`${ut("runner.question")} ${askedIndex + 1} ${ut("common.of")} ${asked.length}`}
+          />
+        ) : null}
+        {missedBehind.length || remainingMinutes !== null || survey.timeLimitSec ? (
+          <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", columnGap: 14, rowGap: 4, marginTop: 10 }}>
             {/*
               Пропущенные показываются только когда они позади: пункты
               впереди ещё не пропущены, и считать их пропусками значит пугать
               человека собственным будущим.
-             */}
+            */}
             {missedBehind.length ? (
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={`${ut("runner.missedGoTo")}: ${missedBehind.length}`}
                 onPress={() => goTo(missedBehind[0]!)}
-                hitSlop={8}
+                hitSlop={10}
+                style={{ flexDirection: "row", alignItems: "center", gap: 5 }}
               >
-                <Text style={{ color: c.accent, fontSize: 12 }}>
-                  {ut("runner.missed")} {missedBehind.length} →
-                </Text>
+                <Icon name="circle-alert" size={16} color={c.warn} />
+                <T v="sub" weight={700} color={c.warn} scale={false}>
+                  {`${ut("runner.missed")} ${missedBehind.length}`}
+                </T>
+                <Icon name="arrow-right" size={15} color={c.warn} />
               </Pressable>
             ) : null}
-            {remainingMinutes !== null ? (
-              <Text style={{ color: c.muted, fontSize: 12 }}>
-                {ut("msv.minutesLeft").replace("{n}", String(remainingMinutes))}
-              </Text>
-            ) : null}
-            <View style={{ flex: 1 }} />
-            {savedAt ? (
-              /*
-               * Разница между «сохранено на телефоне» и «сохранено на сервере»
-               * человеку важна: во втором случае прохождение переживёт потерю
-               * телефона, в первом — только его собственную память.
-               */
-              <Text
-                style={{ color: c.muted, fontSize: 12 }}
-                accessibilityLabel={draftSynced ? ut("ms.answersSaved") : ut("ms.savedHereOnly")}
-              >
-                {draftSynced ? `✓ ${ut("ms.saved")}` : `⌁ ${ut("ms.savedHere")}`}
-              </Text>
-            ) : null}
-            <Text style={{ color: overtime ? c.danger : c.muted, fontSize: 12 }}>
-              {formatDuration(elapsed)}
-              {survey.timeLimitSec
-                ? ut("msv.ofMinutes").replace("{n}", String(Math.round(survey.timeLimitSec / 60)))
-                : ""}
-            </Text>
             {/*
-              Укрупнение текста прямо на экране прохождения: лезть в
-              настройки телефона посреди обследования никто не будет.
-
-              «A» на кнопке — знак, а не слово: так кнопку размера шрифта
-              рисуют во всех редакторах, на любом языке. Буква латинская, а
-              стояла кириллическая «А» — на глаз они одинаковы, но на
-              английском экране это был единственный символ украинского
-              алфавита, и сторож сырых строк (test/noRawStrings.test.ts)
-              справедливо видел в нём непереведённый текст. Имя кнопки для
-              диктора — msv.textSize, из словаря; знак он не читает.
-             */}
-            <Pressable
-              onPress={cycle}
-              accessibilityRole="button"
-              accessibilityLabel={ut("msv.textSize").replace("{n}", String(Math.round(scale * 100)))}
-              hitSlop={12}
-              style={{ paddingLeft: spacing.sm }}
-            >
-              <Text style={{ color: scale > 1 ? c.primary : c.muted, fontSize: 14, fontWeight: "700" }}>
-                A{scale > 1 ? "+" : ""}
-              </Text>
-            </Pressable>
-          </Row>
-          {/* полоса без подписи для диктора — просто декорация; озвучиваем сам прогресс */}
-          <View
-            accessibilityRole="progressbar"
-            accessibilityValue={{ min: 0, max: asked.length, now: askedIndex + 1 }}
-            style={{ height: 4, backgroundColor: c.border, borderRadius: 2 }}
-          >
-            <View
-              style={{
-                height: 4,
-                width: `${Math.round(progress * 100)}%`,
-                backgroundColor: c.primary,
-                borderRadius: 2,
-              }}
-            />
+              Оценка оставшегося времени важнее прошедшего: человек с
+              двухсотпунктовым опросником решает, успеет ли он сейчас, а не
+              интересуется, сколько уже потратил.
+            */}
+            {remainingMinutes !== null ? (
+              <T v="sub" tone="text2" scale={false}>
+                {ut("msv.minutesLeft").replace("{n}", String(remainingMinutes))}
+              </T>
+            ) : null}
+            {survey.timeLimitSec ? (
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+                <Icon name="timer" size={15} color={overtime ? c.riskink : c.muted} />
+                <T v="sub" num color={overtime ? c.riskink : c.text2} scale={false}>
+                  {`${formatDuration(elapsed)}${ut("msv.ofMinutes").replace("{n}", String(Math.round(survey.timeLimitSec / 60)))}`}
+                </T>
+              </View>
+            ) : null}
           </View>
-        </View>
-      ) : null}
+        ) : null}
+      </View>
 
-      <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.lg }}>
+      <ScrollView ref={body} contentContainerStyle={{ paddingTop: 24, paddingHorizontal: 20, paddingBottom: 24 }}>
         {section ? (
-          <View style={{ gap: 2 }}>
-            <Text style={{ color: c.primary, fontSize: 12, fontWeight: "700", letterSpacing: 0.4 }}>
-              {section.title.toUpperCase()}
-            </Text>
-            {section.description ? <Body muted>{section.description}</Body> : null}
+          <View style={{ gap: 4, marginBottom: 8 }}>
+            <T v="body" size={16} weight={600} tone="text2">
+              {section.title}
+            </T>
+            {section.description ? <T v="note">{section.description}</T> : null}
           </View>
         ) : null}
 
-        <View style={{ gap: spacing.xs }}>
-          {/* формулировка пункта укрупняется вместе с вариантами: читать
-              приходится и то и другое */}
-          <Text style={{ color: c.text, fontSize: fs(19), fontWeight: "600", lineHeight: fs(26) }}>
-            {current.title}
-          </Text>
-          {current.help ? <Body muted>{current.help}</Body> : null}
-          {current.required && current.type !== "info" ? (
-            <Text style={{ color: c.muted, fontSize: 12 }}>{ut("ms.requiredQuestion")}</Text>
-          ) : null}
+        {/* формулировка пункта укрупняется вместе с вариантами: читать приходится и то и другое */}
+        <T v="question" accessibilityRole="header">
+          {current.title}
+        </T>
+        {current.help ? (
+          <T v="note" style={{ marginTop: 8 }}>
+            {current.help}
+          </T>
+        ) : null}
+        {current.required && current.type !== "info" ? (
+          <T v="sub" style={{ marginTop: 6 }}>
+            {ut("ms.requiredQuestion")}
+          </T>
+        ) : null}
+
+        <View style={{ marginTop: current.type === "info" ? 0 : 22 }}>
+          <QuestionInput question={current} value={answers.get(current.id)} onChange={(patch) => patchAnswer(current, patch)} />
         </View>
 
-        <QuestionInput
-          question={current}
-          value={answers.get(current.id)}
-          onChange={(patch) => patchAnswer(current, patch)}
-        />
+        {current.type !== "info" ? (
+          <View style={{ flexDirection: "row", gap: 8, marginTop: 16 }}>
+            <View style={{ marginTop: 2 }}>
+              <Icon name={savesDraft ? "cloud-check" : "info"} size={16} color={savesDraft ? c.good : c.muted} />
+            </View>
+            <T v="note" weight={600} tone="muted" style={{ flex: 1 }}>
+              {savesDraft ? (survey.allowBack ? ut("mpt.rn.hint") : ut("mpt.rn.hintNoBack")) : onBehalfOf ? ut("rounds.noDraft") : ut("mpt.rn.hintNoDraft")}
+            </T>
+          </View>
+        ) : null}
 
-        <ErrorText>{error}</ErrorText>
+        {error ? (
+          <View style={{ marginTop: 16 }}>
+            <ErrorText>{error}</ErrorText>
+          </View>
+        ) : null}
       </ScrollView>
 
-      <View
-        style={{
-          flexDirection: "row",
-          gap: spacing.md,
-          padding: spacing.lg,
-          borderTopWidth: 1,
-          borderTopColor: c.border,
-          backgroundColor: c.card,
-        }}
-      >
-        {survey.allowBack && step > 0 ? (
-          <View style={{ flex: 1 }}>
-            <Button title={ut("common.back")} variant="secondary" onPress={() => goTo(step - 1)} />
-          </View>
-        ) : null}
-        <View style={{ flex: 2 }}>
-          <Button
-            title={isLast ? ut("common.finish") : ut("common.next")}
-            onPress={() => {
-              if (!isLast) return goTo(step + 1);
-              /*
-               * Перед сдачей возвращаем к первому пропущенному обязательному
-               * пункту. Иначе человек упирается в отказ сервера и ищет
-               * пропуск сам — в опроснике на двести пунктов это тупик.
-               */
-              const missing = visible.findIndex(
-                (q) => q.required && q.type !== "info" && !isAnswered(q, answers.get(q.id)),
-              );
-              if (missing >= 0 && missing !== step) {
-                setError(ut("runner.missingRequired"));
-                return goTo(missing);
-              }
-              return submit();
-            }}
-            disabled={!canAdvance}
-            loading={busy}
+      <ActionBar>
+        {survey.allowBack ? (
+          <Btn
+            title={ut("common.back")}
+            icon="chevron-left"
+            size="l"
+            flex={1}
+            disabled={!backAllowed}
+            onPress={() => goTo(step - 1)}
           />
-        </View>
-      </View>
+        ) : null}
+        <Btn
+          title={isLast ? ut("mpt.rn.send") : ut("common.next")}
+          kind="primary"
+          size="l"
+          flex={2}
+          icon={isLast ? "send" : "chevron-right"}
+          iconEnd
+          disabled={!canAdvance}
+          loading={busy}
+          onPress={() => {
+            if (!isLast) {
+              body.current?.scrollTo({ y: 0, animated: false });
+              return goTo(step + 1);
+            }
+            /*
+             * Перед сдачей возвращаем к первому пропущенному обязательному
+             * пункту. Иначе человек упирается в отказ сервера и ищет
+             * пропуск сам — в опроснике на двести пунктов это тупик.
+             */
+            const missing = visible.findIndex((q) => q.required && q.type !== "info" && !isAnswered(q, answers.get(q.id)));
+            if (missing >= 0 && missing !== step) {
+              setError(ut("runner.missingRequired"));
+              return goTo(missing);
+            }
+            return submit();
+          }}
+        />
+      </ActionBar>
     </KeyboardAvoidingView>
   );
+}
+
+/** Знак у заголовка «Відповіді надіслано»: зелёная галочка; у сохранённого на телефоне — облако */
+function OkMark({ queued }: { queued: boolean }) {
+  const c = useColors();
+  return (
+    <View
+      style={{
+        width: 48,
+        height: 48,
+        borderRadius: 15,
+        alignItems: "center",
+        justifyContent: "center",
+        backgroundColor: queued ? c.sunk : c.goodtint,
+        borderWidth: 1,
+        borderColor: queued ? c.border : c.goodline,
+      }}
+    >
+      <Icon name={queued ? "cloud-off" : "check"} size={26} color={queued ? c.text2 : c.good} />
+    </View>
+  );
+}
+
+/** Балл без хвоста: «14», а у среднего — «2,4» */
+function formatScore(v: number): string {
+  return Number.isInteger(v) ? String(v) : String(Math.round(v * 10) / 10);
+}
+
+function formatWhen(iso: string, locale: string): string {
+  const d = new Date(iso);
+  return `${d.toLocaleDateString(locale, { day: "2-digit", month: "2-digit" })}, ${d.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" })}`;
 }

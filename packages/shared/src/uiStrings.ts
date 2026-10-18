@@ -8134,6 +8134,135 @@ export const UI = {
     en: "A message to your specialist is not an emergency line: replies come during working hours.",
   },
 
+  // ── v2-mobile-patient ──
+  /* мобилка пациента «Виразна»: строка помощи внизу экранов (components/patient/Crisis.tsx) */
+  "mpt.crisisAsk": { uk: "Потрібна допомога зараз?", ru: "Нужна помощь сейчас?", en: "Need help right now?" },
+  "mpt.crisisNoLogin": {
+    uk: "Телефон довіри, цілодобово, без входу",
+    ru: "Телефон доверия, круглосуточно, без входа",
+    en: "Helpline, around the clock, no sign-in needed",
+  },
+  "mpt.crisisNoUnlock": {
+    uk: "Телефон довіри, цілодобово, без розблокування",
+    ru: "Телефон доверия, круглосуточно, без разблокировки",
+    en: "Helpline, around the clock, no unlock needed",
+  },
+  "mpt.crisisNoConsent": {
+    uk: "Телефон довіри, цілодобово, і без згоди",
+    ru: "Телефон доверия, круглосуточно, и без согласия",
+    en: "Helpline, around the clock, even without consent",
+  },
+  "mpt.later": { uk: "Пізніше", ru: "Позже", en: "Later" },
+  /* прохождение методики (app/survey/[id].tsx): перед началом, вопрос, итог */
+  "mpt.rn.limit": { uk: "до {n} хв", ru: "до {n} мин", en: "up to {n} min" },
+  "mpt.rn.pause": {
+    uk: "Можна зупинитися будь-коли",
+    ru: "Можно остановиться в любой момент",
+    en: "You can stop at any time",
+  },
+  "mpt.rn.pauseText": {
+    uk: "Кожна відповідь зберігається одразу, продовжите з того ж питання.",
+    ru: "Каждый ответ сохраняется сразу, продолжите с того же вопроса.",
+    en: "Each answer is saved right away; you will pick up from the same question.",
+  },
+  "mpt.rn.whoSees": {
+    uk: "Відповіді побачить фахівець відділення",
+    ru: "Ответы увидит специалист отделения",
+    en: "A specialist of the department will see your answers",
+  },
+  "mpt.rn.whoSeesText": {
+    uk: "Без мережі вони чекатимуть на телефоні й підуть самі.",
+    ru: "Без сети они подождут на телефоне и уйдут сами.",
+    en: "Without a network they wait on the phone and are sent on their own.",
+  },
+  "mpt.rn.anon": {
+    uk: "Відповіді не пов’язані з вашим іменем",
+    ru: "Ответы не связаны с вашим именем",
+    en: "Your answers are not linked to your name",
+  },
+  "mpt.rn.anonText": {
+    uk: "Методика анонімна: проходження не прив’язується до облікового запису, чернетка не зберігається.",
+    ru: "Методика анонимная: прохождение не привязывается к учётной записи, черновик не сохраняется.",
+    en: "This questionnaire is anonymous: the attempt is not linked to your account and no draft is kept.",
+  },
+  "mpt.rn.inSet": {
+    uk: "Крок {i} з {n}: «{title}»",
+    ru: "Шаг {i} из {n}: «{title}»",
+    en: "Step {i} of {n}: “{title}”",
+  },
+  "mpt.rn.inSetNext": { uk: "Далі {list}.", ru: "Дальше {list}.", en: "Next: {list}." },
+  "mpt.rn.inSetLast": { uk: "Останній крок набору.", ru: "Последний шаг набора.", en: "The last step of the set." },
+  "mpt.rn.savedLater": {
+    uk: "Збережено. Продовжите з питання {n}.",
+    ru: "Сохранено. Продолжите с вопроса {n}.",
+    en: "Saved. You will continue from question {n}.",
+  },
+  "mpt.rn.savedAt": { uk: "Збережено о {t}", ru: "Сохранено в {t}", en: "Saved at {t}" },
+  "mpt.rn.savedPhone": { uk: "На телефоні о {t}", ru: "На телефоне в {t}", en: "On the phone at {t}" },
+  "mpt.rn.hint": {
+    uk: "Відповідь зберігається одразу після вибору. Змінити її можна кнопкою «Назад».",
+    ru: "Ответ сохраняется сразу после выбора. Изменить его можно кнопкой «Назад».",
+    en: "Your answer is saved as soon as you pick it. You can change it with “Back”.",
+  },
+  "mpt.rn.hintNoBack": {
+    uk: "Відповідь зберігається одразу після вибору.",
+    ru: "Ответ сохраняется сразу после выбора.",
+    en: "Your answer is saved as soon as you pick it.",
+  },
+  "mpt.rn.hintNoDraft": {
+    uk: "Чернетка не зберігається — пройдіть до кінця за один раз.",
+    ru: "Черновик не сохраняется — пройдите до конца за один раз.",
+    en: "No draft is kept — finish in one go.",
+  },
+  "mpt.rn.send": { uk: "Надіслати", ru: "Отправить", en: "Send" },
+  "mpt.rn.sentTitle": { uk: "Відповіді надіслано", ru: "Ответы отправлены", en: "Answers sent" },
+  "mpt.rn.queuedTitle": { uk: "Відповіді на телефоні", ru: "Ответы на телефоне", en: "Answers on the phone" },
+  "mpt.rn.sentAt": { uk: "надіслано о {t}", ru: "отправлено в {t}", en: "sent at {t}" },
+  "mpt.rn.waitsNet": { uk: "чекає на мережу", ru: "ждёт сети", en: "waiting for a network" },
+  "mpt.rn.ifHard": { uk: "Якщо стане важко", ru: "Если станет тяжело", en: "If it gets hard" },
+  "mpt.rn.myPlan": { uk: "Мій план безпеки", ru: "Мой план безопасности", en: "My safety plan" },
+  "mpt.rn.result": { uk: "Ваш результат", ru: "Ваш результат", en: "Your result" },
+  "mpt.rn.nextStep": { uk: "Далі: {title}", ru: "Дальше: {title}", en: "Next: {title}" },
+  /* вкладка «Опитування» пациента (app/(app)/surveys.tsx) */
+  "mpt.sv.lead": {
+    uk: "Призначене вашим фахівцем і методики, які можна пройти самостійно.",
+    ru: "Назначенное вашим специалистом и методики, которые можно пройти самостоятельно.",
+    en: "What your specialist assigned and questionnaires you can take on your own.",
+  },
+  "mpt.sv.assigned": { uk: "Призначено", ru: "Назначено", en: "Assigned" },
+  "mpt.sv.done": { uk: "Пройдені", ru: "Пройденные", en: "Done" },
+  "mpt.sv.self": { uk: "Самостійно", ru: "Самостоятельно", en: "On my own" },
+  "mpt.sv.nothingAssigned": {
+    uk: "Зараз нічого не призначено. Коли фахівець призначить методику, вона з’явиться тут зі строком.",
+    ru: "Сейчас ничего не назначено. Когда специалист назначит методику, она появится здесь со сроком.",
+    en: "Nothing is assigned right now. When your specialist assigns a questionnaire, it will appear here with a due date.",
+  },
+  "mpt.sv.doneTitle": { uk: "Ваші проходження", ru: "Ваши прохождения", en: "Your attempts" },
+  "mpt.sv.nothingDone": {
+    uk: "Ви ще нічого не проходили.",
+    ru: "Вы ещё ничего не проходили.",
+    en: "You haven’t taken anything yet.",
+  },
+  "mpt.sv.selfTitle": {
+    uk: "Можна пройти самостійно",
+    ru: "Можно пройти самостоятельно",
+    en: "You can take these on your own",
+  },
+  "mpt.sv.selfSub": {
+    uk: "Результат побачите ви й ваш фахівець, якщо методика його показує.",
+    ru: "Результат увидите вы и ваш специалист, если методика его показывает.",
+    en: "You and your specialist will see the result if the questionnaire shows it.",
+  },
+  "mpt.sv.wasBefore": { uk: "раніше {v}", ru: "раньше {v}", en: "before {v}" },
+  "mpt.sv.retake": { uk: "Пройти ще раз", ru: "Пройти ещё раз", en: "Take it again" },
+  "mpt.sv.assignedOn": { uk: "Призначено {d}", ru: "Назначено {d}", en: "Assigned on {d}" },
+  "mpt.sv.daysLeft": { uk: "лишилось днів: {n}", ru: "осталось дней: {n}", en: "days left: {n}" },
+  "mpt.sv.start": { uk: "Почати {title}", ru: "Начать {title}", en: "Start {title}" },
+  "mpt.sv.stepNext": { uk: "наступна", ru: "следующая", en: "next" },
+  "mpt.sv.statusDraft": { uk: "чернетка", ru: "черновик", en: "draft" },
+  "mpt.sv.statusClosed": { uk: "закрита", ru: "закрыта", en: "closed" },
+  "mpt.rn.about": { uk: "Про методику", ru: "О методике", en: "About this questionnaire" },
+
 } as const satisfies Record<string, UiEntry>;
 
 export type UiKey = keyof typeof UI;

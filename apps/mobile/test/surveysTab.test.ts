@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { BatteryAssignment, SurveyListItem, SurveyResponse } from "@quizzy/shared";
-import { codeOf, loadSurveysTab, patientTabs, type SurveysTabApi } from "../src/catalog/surveysTab";
+import { codeOf, loadSurveysTab, nextInSet, patientTabs, placeInSet, type SurveysTabApi } from "../src/catalog/surveysTab";
 
 /**
  * Вкладка «Опитування» у пациента (прод, волна 25).
@@ -178,6 +178,32 @@ describe("вкладки пациента", () => {
     });
     expect(tabs.done[0]!.last!.submittedAt).toBe("2026-10-08T11:12:00.000Z");
     expect(tabs.done[0]!.before!.submittedAt).toBe("2026-09-11T10:00:00.000Z");
+  });
+});
+
+describe("место в наборе", () => {
+  const set = (): BatteryAssignment => {
+    const b = battery(["Тривога (GAD-7)", "Депресія (PHQ-9)", "interview", "Благополуччя (WHO-5)"]);
+    b.steps = b.steps.map((s) => ({ ...s, title: s.surveyId }));
+    b.steps[2] = { ...b.steps[2]!, administration: "clinician" };
+    return b;
+  };
+
+  test("перед началом: шаг, всего своих шагов и что дальше — кодами", () => {
+    expect(placeInSet([set()], "Депресія (PHQ-9)")).toEqual({
+      title: "Перед сесією",
+      index: 1,
+      total: 3,
+      next: ["WHO-5"],
+    });
+    expect(placeInSet([set()], "pss")).toBeNull();
+  });
+
+  test("после сдачи — следующий свой несданный шаг, часть специалиста пропускается", () => {
+    expect(nextInSet([set()], "Депресія (PHQ-9)")).toEqual({ surveyId: "Благополуччя (WHO-5)", title: "Благополуччя (WHO-5)" });
+    const last = set();
+    last.steps = last.steps.map((s) => ({ ...s, state: s.surveyId === "Благополуччя (WHO-5)" ? "current" : "done" }));
+    expect(nextInSet([last], "Благополуччя (WHO-5)")).toBeNull();
   });
 });
 
