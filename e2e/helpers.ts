@@ -316,21 +316,22 @@ export function fieldByLabel(page: Page, label: string): Locator {
  * украинский текст методики. Хранение осталось двуязычным ({uk, ru}), и
  * переключатель решает лишь, какой из двух ключей показывает каждое поле.
  *
- * С правки по кадрам f23_1/f24_1 это не селект в рамке, а меню: кнопка без
- * рамки с короткой надписью «Укр»/«Рус» (имя для диктора — «Язык текста
- * теста», ключ cn.editLang), а в раскрытом списке языки названы полностью.
- * Поэтому здесь два шага вместо selectOption. Ожидание по надписи кнопки —
- * признак, что выбор дошёл до формы, а не только до пункта меню: следующий
- * fill обязан попасть в поле нового языка.
+ * С макета methods-constructor это сегменты «Украинский | Русский» (группа с
+ * именем «Язык текста теста», ключ cn.editLang). Переключателей на экране
+ * бывает несколько — в «Основном», в раскрытом пункте, у шкал, — и все они
+ * правят одно состояние, поэтому берётся первый. Ожидание aria-pressed —
+ * признак, что выбор дошёл до формы: следующий fill обязан попасть в поле
+ * нового языка.
  */
-const EDIT_LANG_FULL = { uk: "Українська", ru: "Русский" } as const;
-const EDIT_LANG_SHORT = { uk: "Укр", ru: "Рус" } as const;
+const EDIT_LANG_NAME = { uk: "Украинский", ru: "Русский" } as const;
 
 export async function setEditLang(page: Page, lang: "uk" | "ru"): Promise<void> {
-  const trigger = page.getByRole("button", { name: "Язык текста теста" });
-  await trigger.click();
-  await page.getByRole("menuitem", { name: EDIT_LANG_FULL[lang], exact: true }).click();
-  await expect(trigger).toHaveText(EDIT_LANG_SHORT[lang]);
+  const button = page
+    .getByRole("group", { name: "Язык текста теста" })
+    .first()
+    .getByRole("button", { name: EDIT_LANG_NAME[lang], exact: true });
+  await button.click();
+  await expect(button).toHaveAttribute("aria-pressed", "true");
 }
 
 /**

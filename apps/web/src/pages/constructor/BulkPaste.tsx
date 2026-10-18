@@ -1,6 +1,7 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { UI, type ContentLang, type UiKey } from "@quizzy/shared";
 import { newUid, type DraftQuestion } from "./model";
+import { Labeled } from "./fields";
 import { CnIc } from "./icons";
 import { useLang } from "../../lang";
 import { Drawer, DrawerSection } from "../../ui";
@@ -172,7 +173,7 @@ export function BulkPaste({
         </Field>
       </DrawerSection>
       <DrawerSection title={ut("cst.howToRead")}>
-        <Field label={ut("bp.lang")}>
+        <Labeled label={ut("bp.lang")}>
           <Segmented
             wide
             label={ut("bp.lang")}
@@ -183,8 +184,8 @@ export function BulkPaste({
               { key: "ru", label: ut("bp.langRu") },
             ]}
           />
-        </Field>
-        <Field label={ut("bp.type")} hint={ut("cst.optionsLater")}>
+        </Labeled>
+        <Labeled label={ut("bp.type")} hint={ut("cst.optionsLater")}>
           <Segmented
             wide
             label={ut("bp.type")}
@@ -195,7 +196,7 @@ export function BulkPaste({
               { key: "single", label: ut("cst.single") },
             ]}
           />
-        </Field>
+        </Labeled>
       </DrawerSection>
       <DrawerSection title={ut("cst.result")}>
         {items.length ? (

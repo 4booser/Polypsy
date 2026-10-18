@@ -2,7 +2,7 @@ import type { SurveyGroupWithCounts } from "@quizzy/shared";
 import { ShellIcon } from "../../shell/icons";
 import { Panel } from "../../ui/layout";
 import { Field, Input, Segmented, Select } from "../../ui/primitives";
-import { EditLangSwitch, Loc, Toggle } from "./fields";
+import { EditLangSwitch, Labeled, Loc, Toggle } from "./fields";
 import { CnIc } from "./icons";
 import type { Draft, Mode } from "./model";
 import { useLang } from "../../lang";
@@ -38,7 +38,7 @@ export function MainSection({
         rows={3}
       />
       {isNew ? (
-        <Field label={ut("cn.testKind")} hint={ut(mode === "specific" ? "cst.startSub.specific" : "cst.startSub.complex")}>
+        <Labeled label={ut("cn.testKind")} hint={ut(mode === "specific" ? "cst.startSub.specific" : "cst.startSub.complex")}>
           <Segmented
             label={ut("cn.testKind")}
             value={mode}
@@ -48,7 +48,7 @@ export function MainSection({
               { key: "complex", label: ut("cn.complex") },
             ]}
           />
-        </Field>
+        </Labeled>
       ) : null}
     </Panel>
   );

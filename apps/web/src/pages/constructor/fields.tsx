@@ -1,6 +1,7 @@
 import { createContext, useContext, type ReactNode } from "react";
 import type { ContentLang } from "@quizzy/shared";
 import { useLang } from "../../lang";
+import { cx } from "../../ui/cx";
 import { Field, Input, Segmented, Switch, Textarea } from "../../ui/primitives";
 
 /*
@@ -107,6 +108,33 @@ export function Loc({
         <Input id={id} value={current} onChange={(e) => set(e.target.value)} className={inputClassName} />
       )}
     </Field>
+  );
+}
+
+/**
+ * Подпись над сегментами — тем же видом, что у поля (12/700), но не <label>:
+ * подпись-обёртка вокруг группы кнопок отдавала бы нажатие на подпись первой
+ * кнопке. Имя группе даёт её собственный aria-label (Segmented).
+ */
+export function Labeled({
+  label,
+  hint,
+  children,
+  className,
+}: {
+  label: ReactNode;
+  hint?: ReactNode;
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div data-field className={cx("mb-3.5 flex min-w-0 flex-col last:mb-0", className)}>
+      <span aria-hidden className="mb-1.5 block text-caption font-bold text-muted">
+        {label}
+      </span>
+      {children}
+      {hint ? <span className="mt-1.5 block text-small text-muted">{hint}</span> : null}
+    </div>
   );
 }
 

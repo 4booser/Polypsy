@@ -19,6 +19,7 @@ import { Button, ButtonLink, ErrorText, Field, Input, Segmented, Select, Severit
 import { ShellIcon } from "../../shell/icons";
 import { BulkPaste, type PasteKind } from "./BulkPaste";
 import { folderOptions } from "./catalogue";
+import { Labeled } from "./fields";
 import { CnIc } from "./icons";
 import { EMPTY, createTarget, defaultAnswers, draftKey, switchMode, type Draft, type DraftQuestion } from "./model";
 
@@ -104,7 +105,7 @@ export function NewMethod() {
   };
 
   /** Черновик с местом и видом — в конструктор новой методики */
-  const openNew = (mode: "specific" | "complex", questions: DraftQuestion[] = []) => {
+  const openNew = (mode: "specific" | "complex", questions: DraftQuestion[] = [], editLang: ContentLang = textLang) => {
     const base: Draft = {
       ...EMPTY,
       answers: defaultAnswers(),
@@ -114,7 +115,7 @@ export function NewMethod() {
     };
     const shaped = mode === "complex" ? switchMode({ ...base, mode: "specific" }, "complex") : base;
     const seed: Draft = { ...shaped, questions };
-    const state: ConstructorSeed = { seed, editLang: textLang };
+    const state: ConstructorSeed = { seed, editLang };
     navigate("/constructor/new", { state });
   };
 
@@ -316,7 +317,7 @@ export function NewMethod() {
               ))}
             </Select>
           </Field>
-          <Field label={ut("cn.editLang")}>
+          <Labeled label={ut("cn.editLang")}>
             <Segmented
               wide
               label={ut("cn.editLang")}
@@ -327,7 +328,7 @@ export function NewMethod() {
                 { key: "ru", label: ut("ce.langRu") },
               ]}
             />
-          </Field>
+          </Labeled>
           {start === "import" || start === "copy" ? (
             <Field label={ut("cb.whoFills")}>
               <Select value="" disabled onChange={() => {}}>
@@ -368,8 +369,8 @@ export function NewMethod() {
         applyLabel={ut("cst.createDraft")}
         defaultLang={textLang}
         onApply={(questions, kind: PasteKind) => {
-          setTextLang(kind.lang);
-          openNew(kind.type === "yesno" ? "specific" : "complex", questions);
+          /* язык вставленного текста — и язык правки: пункты лягут в него, и показать их надо в нём */
+          openNew(kind.type === "yesno" ? "specific" : "complex", questions, kind.lang);
         }}
       />
     </Page>
