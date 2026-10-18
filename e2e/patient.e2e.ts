@@ -75,6 +75,11 @@ test("человек заводит учётную запись и проход�
     .filter({ hasNotText: "Мини-мульт" })
     .first()
     .click();
+  /* у методики с инструкцией перед первым пунктом — её экран и «Почати» (#170), как в a11y.e2e.ts */
+  const start = page.getByRole("button", { name: /^(Почати|Начать|Start)$/ });
+  const firstOption = page.locator("button[aria-pressed]").first();
+  await Promise.race([start.waitFor(), firstOption.waitFor()]);
+  if (await start.isVisible()) await start.click();
 
   for (let i = 0; i < 60; i++) {
     const option = page.locator("button[aria-pressed]").first();
