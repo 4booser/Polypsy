@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { inArray } from "drizzle-orm";
 import { api, db, makeUser, type Person } from "./fixtures";
-import { appointments, departments, scheduleExceptions, slots, specialistProfiles } from "../src/db/schema";
+import { appointments, departmentPatients, departments, scheduleExceptions, slots, specialistProfiles } from "../src/db/schema";
 
 /**
  * Неделя календарём (GET /api/clinic/schedule/week).
@@ -38,10 +38,10 @@ async function slotAt(startsAt: string, opts: { status?: "open" | "closed"; offS
   return id;
 }
 
-async function visitAt(startsAt: string, status: "booked" | "cancelled" = "booked"): Promise<string> {
+async function visitAt(startsAt: string, status: "booked" | "cancelled" = "booked", who: Person = patient): Promise<string> {
   const slotId = await slotAt(startsAt);
   const id = crypto.randomUUID();
-  await db.insert(appointments).values({ id, slotId, patientId: patient.id, specialistId: specialist.id, status });
+  await db.insert(appointments).values({ id, slotId, patientId: who.id, specialistId: specialist.id, status });
   mine.push(id);
   return id;
 }
@@ -183,5 +183,53 @@ describe("неделя календарём", () => {
   test("пациенту неделя специалиста закрыта", async () => {
     const res = await api(`/api/clinic/schedule/week?from=2026-10-19&specialistId=${specialist.id}`, patient.token);
     expect(res.status).toBe(403);
+  });
+
+  test("чужая неделя и чужой день — только люди из зоны спрашивающего, а не все с именами и поводом", async () => {
+    /*
+     * Право вести чужие приёмы (appointments.manage) есть у каждого
+     * специалиста по умолчанию, и оно отвечает «чьё расписание», а не «о ком».
+     * Коллега из соседнего отделения видит в чужой неделе своих людей, но не
+     * имена и поводы обращения тех, кто в его зону не входит, — и без RLS,
+     * когда сервер ходит в базу владельцем.
+     */
+    const otherDept = crypto.randomUUID();
+    await db.insert(departments).values({
+      id: otherDept,
+      title: { uk: "Сусіднє відділення", ru: "Соседнее отделение" },
+      timezone: "Europe/Kyiv",
+    });
+    const colleague = await makeUser("admin", `sweek-c-${crypto.randomUUID()}@test`);
+    await db.insert(specialistProfiles).values({ userId: colleague.id, departmentId: otherDept });
+    // прикреплён к отделению коллеги — в его зоне
+    const neighbour = await makeUser("user", `sweek-n-${crypto.randomUUID()}@test`);
+    await db.insert(departmentPatients).values({ departmentId: otherDept, patientId: neighbour.id, attachedVia: "staff" });
+
+    const outside = await visitAt(kyiv("2027-01-12T10:00:00", "+02:00"));
+    const inside = await visitAt(kyiv("2027-01-13T10:00:00", "+02:00"), "booked", neighbour);
+
+    const week = await api(`/api/clinic/schedule/week?from=2027-01-11&specialistId=${specialist.id}`, colleague.token);
+    expect(week.status, JSON.stringify(week.body)).toBe(200);
+    const ids = (week.body.appointments as { id: string }[]).map((a) => a.id);
+    expect(ids).toContain(inside);
+    expect(ids).not.toContain(outside);
+
+    const day = await api(`/api/clinic/today?date=2027-01-12&specialistId=${specialist.id}`, colleague.token);
+    expect(day.status, JSON.stringify(day.body)).toBe(200);
+    expect((day.body.items as { id: string }[]).map((a) => a.id)).not.toContain(outside);
+
+    // своя неделя — целиком: зона сужает чужое расписание, а не своё
+    const own = await api(`/api/clinic/schedule/week?from=2027-01-11`, specialist.token);
+    expect((own.body.appointments as { id: string }[]).map((a) => a.id)).toEqual(expect.arrayContaining([outside, inside]));
+  });
+
+  test("годы до сотого и край календаря: та же неделя, а не тысяча девятьсот лет и не пятисотка", async () => {
+    // Date.UTC читает годы 0–99 как 1900–1999: «до» уезжало на девятнадцать веков вперёд мимо предела в 63 дня
+    const early = await api(`/api/clinic/schedule/week?from=0050-01-04&days=7`, specialist.token);
+    expect(early.status, JSON.stringify(early.body)).toBe(200);
+    expect(early.body.to).toBe("0050-01-11");
+    // за 9999-12-31 база дат не читает: отказ словами, а не пятисотка
+    const edge = await api(`/api/clinic/schedule/week?from=9999-12-30&days=7`, specialist.token);
+    expect(edge.status, JSON.stringify(edge.body)).toBe(400);
   });
 });
