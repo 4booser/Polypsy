@@ -16,7 +16,8 @@ import { afterCursor, decodeExactCursor, encodeCursor, exactAt } from "../lib/cu
 import { decryptField, encryptPersonFields } from "../lib/crypto";
 import { hashPassword, toPublicUser } from "../lib/auth";
 import { badRequest, conflict, langOf, notFound, parseBody, parseQuery } from "../lib/http";
-import { assertMayCreateClass, changeAccountClass } from "../lib/accountClass";
+import { assertMayCreateClass, changeAccountClass, guardAccountAction } from "../lib/accountClass";
+import { asSystem } from "../db/context";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 import { ensureBuiltinRole } from "../lib/permissions";
 import { patientsInScope } from "../lib/scope";
@@ -167,13 +168,27 @@ userRoutes.post("/", async (c) => {
  * переписка пациента и его место в очереди нового лікаря. Заключения,
  * записи приёмов и подписи остаются за авторами: передача их не трогает.
  *
- * Право — то же, что у вкладки, откуда передают: users.manage (общее у
- * маршрутов реестра) и patients.read. Зона — смотрящего: передать можно
- * только тех, кого он видит в списке (GET /api/patients?lead= режет по той
- * же зоне). users.manage выдаётся и заведующему, а его зона — не всё
- * учреждение; без проверки он переписывал бы ведущего у людей, которых ему
- * не показывают нигде, а ответ «409 / 200» говорил бы, кто кого ведёт за
- * пределами зоны. Вне зоны — «не найдено», как у assertPatientAccess.
+ * Право — users.manage (общее у маршрутов реестра), а над людьми — три
+ * границы, в этом порядке, и ни одну не держат политики строк (users_update
+ * пускает любого сотрудника):
+ *
+ *  - зона смотрящего: передать можно только тех, кого он видит в списке
+ *    (GET /api/patients?lead= режет по той же зоне). users.manage выдаётся
+ *    и заведующему, а его зона — не всё учреждение: без проверки он забирал
+ *    себе человека, чью карточку ему не открывают, и читал его переписку, а
+ *    ответ «409 / 200» говорил бы, кто кого ведёт за пределами зоны. Вне зоны
+ *    — «не найдено», как у assertPatientAccess и /clinic/.../lead, и раньше
+ *    всего остального: об этих людях смотрящему не отвечают ничем;
+ *  - лестница — та же, что у прочих действий над чужой учёткой
+ *    (guardAccountAction): забрать пациентов у старшего или равного и отдать
+ *    им нельзя. Свои пациенты и пациенты себе — можно: это не действие над
+ *    чужой учёткой, а над людьми, которых держат зоны;
+ *  - зона нового лікаря: переписка пациента уходит ведущему, и ведущий, не
+ *    видящий человека, не может ни ответить (отказ «не найдено»), ни открыть
+ *    карточку — человеку не ответил бы никто. Это касается и суперадмина.
+ *    Зона чужая, поэтому считается системной ролью: политики строк
+ *    смотрящего про неё ничего не знают. После лестницы: чью зону нельзя
+ *    трогать, о той и не спрашивают.
  *
  * Строки пациентов — под замок до проверки «ведёт именно он»: коллега,
  * закрепивший человека за собой между открытием списка и нажатием, иначе
@@ -186,7 +201,7 @@ userRoutes.post("/", async (c) => {
  * Новый лікар — действующая учётка класса admin, не тот же человек.
  * Суперадмин пациентов не ведёт (isDoctor в разделе «Лікарі»).
  */
-userRoutes.post("/:id/patients/transfer", requirePermission("patients.read"), async (c) => {
+userRoutes.post("/:id/patients/transfer", async (c) => {
   const me = c.get("user");
   const fromId = c.req.param("id");
   const input = await parseBody(c.req.raw, transferPatientsSchema);
@@ -198,6 +213,14 @@ userRoutes.post("/:id/patients/transfer", requirePermission("patients.read"), as
   const ids = [...new Set(input.patientIds)];
   const inZone = await patientsInScope(me, ids);
   if (inZone !== null && ids.some((id) => !inZone.has(id))) notFound("err.userNotFound");
+
+  /* без замка: строки сотрудников не меняются, а два встречных замка на них взаимоблокировали бы встречные передачи */
+  const ladder = { permission: "users.manage", self: "allow", action: "clinic.lead_transfer", lock: false } as const;
+  await guardAccountAction(c, from.id, ladder);
+  await guardAccountAction(c, to.id, ladder);
+
+  const theirs = await asSystem(() => patientsInScope(toPublicUser(to), ids));
+  if (theirs !== null && ids.some((id) => !theirs.has(id))) badRequest("err.transferTargetZone");
 
   await db.execute(sql`select id from users where id in ${ids} order by id for update`);
   const rows = await db
