@@ -15,6 +15,7 @@ import { Glyph } from "./icons";
 import { drafts, type RunnerDraft } from "./drafts";
 import type { PatientOutlet } from "./PatientApp";
 import { BandCard, Body, CallRows, CodeTile, Hero, MetaLine, Pending, PtPanel, SideGrid, instrumentCode, instrumentName } from "./parts";
+import { scoreNumber } from "./results";
 import { SafetyPlanDrawer } from "./SafetyPlan";
 import { dm, greetingKey, hm, shortDay, visitWhen, whenSaid } from "./when";
 
@@ -583,7 +584,7 @@ function WellbeingBlock({ title, scale }: { title: string; scale: DynScale }) {
   const points = scale.points.slice(-3);
   const last = points.at(-1)!;
   const first = scale.points[0]!;
-  const delta = Math.round((last.value - first.value) * 10) / 10;
+  const delta = last.value - first.value;
   return (
     <div className="min-w-0">
       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
@@ -603,7 +604,7 @@ function WellbeingBlock({ title, scale }: { title: string; scale: DynScale }) {
             >
               <span className={now ? undefined : "text-muted"}>{dm(p.submittedAt)}</span>
               <b className={cx("text-[26px] font-extrabold leading-[30px] tabular-nums", now ? "text-violet-ink" : "text-text")}>
-                {Math.round(p.value * 10) / 10}
+                {scoreNumber(p.value)}
               </b>
             </li>
           );
@@ -613,7 +614,7 @@ function WellbeingBlock({ title, scale }: { title: string; scale: DynScale }) {
         {last.bandLabel ? <SeverityTag level={SEVERITY[last.severity ?? ""] ?? "none"}>{last.bandLabel}</SeverityTag> : null}
         {scale.points.length > 1 ? (
           <span>
-            <b className="font-extrabold text-text tabular-nums">{delta > 0 ? `+${delta}` : String(delta)}</b>{" "}
+            <b className="font-extrabold text-text tabular-nums">{scoreNumber(delta, true)}</b>{" "}
             {ut("ptw.fromFirst")}
           </span>
         ) : null}

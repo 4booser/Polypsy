@@ -11,7 +11,7 @@ import { freeCancelUntil } from "../src/patient/Home";
 import { DRAFT_TTL_MS, createDrafts, forgetDrafts, type DeviceStorage, type RunnerDraft } from "../src/patient/drafts";
 import type { OutboxItem, OutboxStorage } from "../src/patient/outbox";
 import { instrumentCode, instrumentName } from "../src/patient/parts";
-import { mainScore, scoreValue } from "../src/patient/results";
+import { mainScore, scoreNumber, scoreValue } from "../src/patient/results";
 import { TestsBody } from "../src/patient/Tests";
 import { dayOffset, dayPart, greetingKey, localDayKey, whenSaid } from "../src/patient/when";
 import type { Resource } from "../src/useResource";
@@ -303,6 +303,14 @@ describe("результат глазами человека", () => {
   test("сырой балл — «14 з 27», доля — процентом", () => {
     expect(scoreValue(score({}), ut)).toEqual({ big: "14", of: "з 27" });
     expect(scoreValue(score({ normalization: "ratio", percent: 40 }), ut)).toEqual({ big: "40 %", of: null });
+  });
+
+  test("дробный результат — с десятичной запятой языка страницы, а не точкой", () => {
+    // вне браузера язык страницы — русский (format.ts, pageLang): запятая, как и на украинском
+    expect(scoreValue(score({ normalization: "tscore", value: 52.34 }), ut)).toEqual({ big: "52,3", of: null });
+    expect(scoreValue(score({ rawScore: 7.5, maxScore: 12 }), ut)).toEqual({ big: "7,5", of: "з 12" });
+    expect(scoreNumber(2.5, true)).toBe("+2,5");
+    expect(scoreNumber(0, true), "ноль — без знака").toBe("0");
   });
 
   test("первой показывается содержательная шкала, а не шкала лжи", () => {
