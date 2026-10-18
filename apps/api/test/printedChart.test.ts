@@ -17,7 +17,7 @@ import { appointments, departments, episodes, patientNotes, responses, slots } f
 import { encryptField } from "../src/lib/crypto";
 import { chartHistory } from "../src/lib/chartHistory";
 import { ageAt } from "@quizzy/shared";
-import { printCalendarDay, printDay, printStamp } from "../src/lib/printDates";
+import { printCalendarDay, printDay, printMoment, printTime } from "../src/lib/printDates";
 import { env } from "../src/env";
 
 /**
@@ -228,15 +228,18 @@ async function sheet(path: string, token = specialist.token) {
   return { status: res.status, text: await res.text() };
 }
 
-/** Раздел карты от своего заголовка до следующего */
+/** Раздел листа от своего заголовка до следующего (или до подписей в конце листа) */
 function section(html: string, title: string): string {
-  const from = html.indexOf(`<h2>${title}</h2>`);
+  const from = html.indexOf(`<h3>${title}`);
   if (from < 0) return "";
-  const next = html.indexOf("<h2>", from + 4);
-  return html.slice(from, next < 0 ? undefined : next);
+  const ends = [html.indexOf("<h3>", from + 4), html.indexOf('class="ps-end"', from)].filter((i) => i > 0);
+  return html.slice(from, ends.length ? Math.min(...ends) : undefined);
 }
 
-const rowsIn = (part: string) => (part.match(/<tr><td>/g) ?? []).length;
+/** Строки раздела: приёмы — строками в две колонки, остальное — строками таблицы */
+const rowsIn = (part: string) => (part.match(/<div class="ps-row">|<tr><td class="nw">/g) ?? []).length;
+/** Строка приёма с датой */
+const visitRow = (date: string) => `<div class="ps-row"><span><b>${date}</b>`;
 
 describe("карта полная (п. 20)", () => {
   test("ни приёмы, ни записи, ни обследования не обрезаны", async () => {
@@ -251,7 +254,7 @@ describe("карта полная (п. 20)", () => {
     expect(rowsIn(section(chart.text, "Прийоми"))).toBe(VISITS + 2);
     expect(rowsIn(section(chart.text, "Обстеження"))).toBe(RESPONSES);
     /* самый старый приём и самое старое обследование — на месте */
-    expect(section(chart.text, "Прийоми")).toContain(dayIn("2020-01-01T08:00:00.000Z", "Europe/Kyiv"));
+    expect(section(chart.text, "Прийоми")).toContain(visitRow(dayIn("2020-01-01T08:00:00.000Z", "Europe/Kyiv")));
     expect(section(chart.text, "Обстеження")).toContain(dayIn("2022-01-01T09:00:00.000Z", env.institutionTz));
   });
 
@@ -284,20 +287,21 @@ describe("даты карты — в поясе учреждения, а не п
     const kyivDay = dayIn(LATE_EVENING_UTC, env.institutionTz);
 
     const episodesPart = section(chart.text, "Звернення");
-    expect(episodesPart).toContain(`<tr><td>${kyivDay} — триває</td><td>${REASON}</td>`);
+    expect(episodesPart).toContain(`<tr><td class="nw">${kyivDay} — триває</td><td>${REASON}</td>`);
 
     expect(chart.text).toContain("01.05.1990 р. н.");
 
     /* приём — днём своего отделения: киевский — 28.09, токийский — тоже 28.09, хотя в Киеве ещё 27.09 */
     const visitsPart = section(chart.text, "Прийоми");
-    expect(visitsPart).toContain(`<tr><td>${dayIn(LATE_EVENING_UTC, "Europe/Kyiv")}</td>`);
-    expect(visitsPart).toContain(`<tr><td>${dayIn(TOKYO_MORNING_UTC, "Asia/Tokyo")}</td>`);
+    expect(visitsPart).toContain(visitRow(dayIn(LATE_EVENING_UTC, "Europe/Kyiv")));
+    expect(visitsPart).toContain(visitRow(dayIn(TOKYO_MORNING_UTC, "Asia/Tokyo")));
 
+    /* запись — строкой: её день в первой клетке, текст во второй */
     expect(chart.text).toMatch(
-      new RegExp(`${NOTE(LATE_NOTE)}<div class="meta">[^<]*, ${kyivDay.replaceAll(".", "\\.")}</div>`),
+      new RegExp(`<tr><td class="nw"><b>${kyivDay.replaceAll(".", "\\.")}</b>(?:(?!</tr>)[\\s\\S])*${NOTE(LATE_NOTE)}`),
     );
 
-    expect(section(chart.text, "Обстеження")).toContain(`<tr><td>${kyivDay}</td>`);
+    expect(section(chart.text, "Обстеження")).toContain(`<tr><td class="nw"><b>${kyivDay}</b></td>`);
   });
 
   test("выписка по обращению — тоже днём учреждения", async () => {
@@ -305,15 +309,15 @@ describe("даты карты — в поясе учреждения, а не п
     expect(extract.status, extract.text.slice(0, 300)).toBe(200);
     const kyivDay = dayIn(LATE_EVENING_UTC, env.institutionTz);
     expect(extract.text).toContain(`${kyivDay} — триває`);
-    expect(section(extract.text, "Прийоми")).toContain(`<tr><td>${kyivDay}</td>`);
+    expect(section(extract.text, "Прийоми")).toContain(visitRow(kyivDay));
   });
 
   test("лист прохождения — время сдачи по часам учреждения, а не по Гринвичу", async () => {
     /* лист печатает сам обследуемый (методика показывает ему результаты) */
     const report = await sheet(`/api/reports/responses/${lateResponseId}`, patient.token);
     expect(report.status, report.text.slice(0, 300)).toBe(200);
-    expect(report.text).toContain(printStamp(LATE_EVENING_UTC, env.institutionTz));
-    expect(report.text).not.toContain("2024-09-27 21:30");
+    expect(report.text).toContain(printMoment(LATE_EVENING_UTC, "uk", env.institutionTz));
+    expect(report.text).not.toContain("27.09.2024, 21:30");
   });
 
   test("лист прохождения — возраст по календарю, а не по часам процесса", async () => {
@@ -338,8 +342,9 @@ describe("даты листа — функциями", () => {
   test("момент — днём и временем заданного пояса", () => {
     expect(printDay(LATE_EVENING_UTC, "uk", "Europe/Kyiv")).toBe("28.09.2024");
     expect(printDay(LATE_EVENING_UTC, "uk", "UTC")).toBe("27.09.2024");
-    expect(printStamp(LATE_EVENING_UTC, "Europe/Kyiv")).toBe("2024-09-28 00:30");
-    expect(printStamp("2026-01-15T22:30:00.000Z", "Europe/Kyiv")).toBe("2026-01-16 00:30");
+    expect(printMoment(LATE_EVENING_UTC, "uk", "Europe/Kyiv")).toBe("28.09.2024, 00:30");
+    expect(printMoment("2026-01-15T22:30:00.000Z", "uk", "Europe/Kyiv")).toBe("16.01.2026, 00:30");
+    expect(printTime(LATE_EVENING_UTC, "UTC")).toBe("21:30");
   });
 
   test("возраст — по календарю дня учреждения", () => {
