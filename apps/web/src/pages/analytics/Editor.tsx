@@ -569,19 +569,25 @@ export function paramPick(p: DraftParam): ParamPick {
  * бессмысленно: методика при переходе на «будь-який тест» и обратно (это
  * разные вопросы — «какой тест» и «любой»), а вместе с ней код шкалы,
  * потому что коды у методик свои.
+ *
+ * Решает записанная методика, а не вид, с которого меняют: флаг риска и
+ * история хранят её нетронутой, и обход через них обязан вести туда же,
+ * куда и прямой переход. Иначе «Будь-який тест» → «Прапор ризику» →
+ * «Результат тесту» возвращал «Будь-який тест», а «Результат тесту» → «Прапор
+ * ризику» → «Будь-який тест» уносил код шкалы прежней методики.
  */
 export function paramKindOver(p: DraftParam, next: ParamPick): Partial<DraftParam> {
-  const now = paramPick(p);
-  if (now === next) return {};
+  if (paramPick(p) === next) return {};
+  const named = p.surveyId !== "" && p.surveyId !== ANY_TEST;
   switch (next) {
     case "risk":
       return { kind: "risk" };
     case "history":
       return { kind: "history" };
     case "any":
-      return { kind: "scale", surveyId: ANY_TEST, scaleCode: now === "scale" ? "" : p.scaleCode };
+      return { kind: "scale", surveyId: ANY_TEST, scaleCode: named ? "" : p.scaleCode };
     case "scale":
-      return now === "any" ? { kind: "scale", surveyId: "", scaleCode: "" } : { kind: "scale" };
+      return p.surveyId === ANY_TEST ? { kind: "scale", surveyId: "", scaleCode: "" } : { kind: "scale" };
   }
 }
 

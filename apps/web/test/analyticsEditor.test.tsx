@@ -138,6 +138,37 @@ describe("смена вида параметра", () => {
     expect(back).toEqual(base);
   });
 
+  /**
+   * Обход через флаг риска или историю не меняет итога: «Будь-який тест» →
+   * «Прапор ризику» → «Результат тесту» — это «Результат тесту» без теста, а
+   * не снова «Будь-який тест»; «Результат тесту» → «Прапор ризику» →
+   * «Будь-який тест» — без кода шкалы прежней методики, как и напрямую.
+   *
+   * Мутация: решать по виду, с которого меняют, а не по записанной
+   * методике, — первая проверка получает «any».
+   */
+  test("обход через другой вид ведёт туда же, куда и напрямую", () => {
+    const any = { ...base, ...paramKindOver(base, "any"), scaleCode: "SUI" };
+    for (const via of ["risk", "history"] as const) {
+      const away = { ...any, ...paramKindOver(any, via) };
+      const back = { ...away, ...paramKindOver(away, "scale") };
+      expect(paramPick(back), `any → ${via} → scale`).toBe("scale");
+      expect(back.surveyId).toBe("");
+      expect(back.scaleCode).toBe("");
+      // а «будь-який» обратно — со своим кодом: код писали для него
+      const anyAgain = { ...away, ...paramKindOver(away, "any") };
+      expect(anyAgain.scaleCode, `any → ${via} → any`).toBe("SUI");
+
+      const fromTest = { ...base, ...paramKindOver(base, via) };
+      const toAny = { ...fromTest, ...paramKindOver(fromTest, "any") };
+      const direct = { ...base, ...paramKindOver(base, "any") };
+      expect(toAny.scaleCode, `scale → ${via} → any`).toBe(direct.scaleCode);
+      expect(toAny.surveyId).toBe(ANY_TEST);
+      // порог, условие и метрика переживают любой обход
+      expect([toAny.op, toAny.value, toAny.metric]).toEqual([base.op, base.value, base.metric]);
+    }
+  });
+
   test("свой же вид ничего не трогает", () => {
     for (const k of PARAM_PICKS) {
       const p = { ...base, ...paramKindOver(base, k) };
