@@ -61,6 +61,8 @@ export type AuditAction =
   | "report.patient_chart"
   | "clinic.lead_take"
   | "clinic.lead_release"
+  /* передача пациентов другому лікарю из карточки фахівця (2.0, POST /api/users/:id/patients/transfer) */
+  | "clinic.lead_transfer"
   /* права: кто кому что выдал — разбирается по журналу, а не по памяти */
   | "role.create"
   | "role.update"

@@ -8134,6 +8134,13 @@ export const UI = {
     en: "A message to your specialist is not an emergency line: replies come during working hours.",
   },
 
+  // ── v2-admin ──
+  "act.clinic_lead_transfer": {
+    uk: "Передача пацієнта іншому лікарю",
+    ru: "Передача пациента другому врачу",
+    en: "Patient handed over to another clinician",
+  },
+
 } as const satisfies Record<string, UiEntry>;
 
 export type UiKey = keyof typeof UI;

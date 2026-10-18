@@ -1,8 +1,9 @@
 import { Hono, type Context } from "hono";
-import { and, desc, eq, ne } from "drizzle-orm";
+import { and, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import {
   createUserSchema,
   staffDirectoryQuery,
+  transferPatientsSchema,
   userListQuery,
   type Page,
   type StaffDirectoryUser,
@@ -14,11 +15,11 @@ import { audit } from "../lib/audit";
 import { afterCursor, decodeExactCursor, encodeCursor, exactAt } from "../lib/cursor";
 import { decryptField, encryptPersonFields } from "../lib/crypto";
 import { hashPassword, toPublicUser } from "../lib/auth";
-import { conflict, langOf, parseBody, parseQuery } from "../lib/http";
+import { badRequest, conflict, langOf, notFound, parseBody, parseQuery } from "../lib/http";
 import { assertMayCreateClass, changeAccountClass } from "../lib/accountClass";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 import { ensureBuiltinRole } from "../lib/permissions";
-import { placementsOf } from "../lib/staffDirectory";
+import { accountsOf, placementsOf } from "../lib/staffDirectory";
 
 export const userRoutes = new Hono<AppEnv>();
 
@@ -89,11 +90,14 @@ async function staffDirectory(c: Context<AppEnv>): Promise<StaffDirectoryUser[]>
     rows.map((r) => r.id),
     langOf(c),
   );
+  /* вход, второй фактор, роли и нагрузка — реестру 2.0 (lib/staffDirectory.ts, accountsOf) */
+  const accounts = await accountsOf(rows, langOf(c));
   await audit(c, { action: "user.list", details: { count: rows.length, directory: true, phones: true } });
   return rows.map((r) => ({
     ...toPublicUser(r),
     phone: decryptField(r.phoneEnc),
     placement: placed.get(r.id) ?? null,
+    account: accounts.get(r.id),
   }));
 }
 
@@ -154,6 +158,54 @@ userRoutes.post("/", async (c) => {
  * консоли `user role`. Прежде оно было записано здесь, и консоль его не
  * знала (внешний разбор 2026-09-27, п. 1): маршрут только разбирает ввод.
  */
+/**
+ * Передать пациентов, которых ведёт сотрудник, другому лікарю (карточка
+ * фахівця, вкладка «Пацієнти», 2.0).
+ *
+ * Переходит одно — закрепление ведущим (users.lead_specialist_id), а с ним
+ * переписка пациента и его место в очереди нового лікаря. Заключения,
+ * записи приёмов и подписи остаются за авторами: передача их не трогает.
+ *
+ * Строки пациентов — под замок до проверки «ведёт именно он»: коллега,
+ * закрепивший человека за собой между открытием списка и нажатием, иначе
+ * молча терял бы закрепление (то же правило, что у clinic.ts, /lead). Не
+ * совпал хоть один — отказ целиком, без частичной передачи: администратор
+ * должен увидеть свежий список, а не гадать, кто перешёл, а кто нет.
+ *
+ * Новый лікар — действующая учётка класса admin, не тот же человек.
+ * Суперадмин пациентов не ведёт (isDoctor в разделе «Лікарі»).
+ */
+userRoutes.post("/:id/patients/transfer", async (c) => {
+  const fromId = c.req.param("id");
+  const input = await parseBody(c.req.raw, transferPatientsSchema);
+  const from = await db.query.users.findFirst({ where: eq(users.id, fromId) });
+  if (!from || from.role === "user") notFound("err.userNotFound");
+  const to = await db.query.users.findFirst({ where: eq(users.id, input.to) });
+  if (!to || to.role !== "admin" || to.disabledAt || to.id === fromId) badRequest("err.transferTarget");
+
+  const ids = [...new Set(input.patientIds)];
+  await db.execute(sql`select id from users where id in ${ids} for update`);
+  const rows = await db
+    .select({ id: users.id, role: users.role, lead: users.leadSpecialistId })
+    .from(users)
+    .where(inArray(users.id, ids));
+  if (rows.length !== ids.length || rows.some((r) => r.role !== "user" || r.lead !== fromId)) {
+    conflict("err.transferLeadChanged");
+  }
+
+  await db.update(users).set({ leadSpecialistId: to.id }).where(inArray(users.id, ids));
+  for (const id of ids) {
+    await audit(c, {
+      action: "clinic.lead_transfer",
+      resourceType: "user",
+      resourceId: id,
+      subjectUserId: id,
+      details: { from: fromId, to: to.id, reason: input.reason, batch: ids.length },
+    });
+  }
+  return c.json({ moved: ids.length });
+});
+
 userRoutes.patch("/:id/role", async (c) => {
   const body = await c.req.json().catch(() => ({}));
   const { row } = await changeAccountClass(c, c.req.param("id"), body?.role, "http");

@@ -464,6 +464,49 @@ export interface StaffPlacement {
 export interface StaffDirectoryUser extends User {
   phone: string | null;
   placement: StaffPlacement | null;
+  /** Состояние учётной записи и нагрузка — для реестра «Лікарі» / «Адміністратори» (2.0) */
+  account?: StaffAccount;
+}
+
+/** Версии текста согласия и счёт принявших (GET /api/consents/versions, 2.0) — только числа */
+export interface ConsentVersions {
+  /** Действующих учётных записей пациентов */
+  patients: number;
+  /** Отказались от действующей версии и так её и не приняли */
+  declined: number;
+  /** Свежие сверху; первая — действующая */
+  versions: {
+    id: string;
+    version: number;
+    createdAt: string;
+    author: string | null;
+    accepted: number;
+    /** На каких языках текст задан */
+    languages: ("uk" | "ru" | "en")[];
+  }[];
+}
+
+/**
+ * Учётная запись сотрудника глазами реестра (Polypsy 2.0, раздел «Лікарі»):
+ * вход, второй фактор, состояние, роли-шаблоны, исключения и сколько
+ * пациентов человек ведёт. Только числа и отметки — ничего о самих пациентах.
+ */
+export interface StaffAccount {
+  /** Последний вход или обновление сессии; null — ни разу */
+  lastSeenAt: string | null;
+  /** Второй фактор подтверждён */
+  mfa: boolean;
+  disabledAt: string | null;
+  /** Пароль временный: человек ещё не сменил выданный при заведении */
+  mustChangePassword: boolean;
+  /** Ступень лестницы: 0 — вне лестницы; суперадмин — SUPERADMIN_RANK */
+  ladderRank: number;
+  /** Роли-шаблоны на языке запроса */
+  roles: { code: string; title: string }[];
+  /** Действующие личные исключения прав */
+  exceptions: number;
+  /** Пациентов, за которыми человек закреплён ведущим */
+  patients: number;
 }
 
 /* ─────────── техпанель: учётные записи и сессии (волна 10) ─────────── */
@@ -933,6 +976,8 @@ export interface AssignableStaff {
   position?: string | null;
   placement?: StaffPlacement | null;
   phone?: string | null;
+  /** Только в режиме справочника (`?directory=1`) */
+  account?: StaffAccount;
 }
 
 export type Sex = "male" | "female";

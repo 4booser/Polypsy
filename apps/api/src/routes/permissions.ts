@@ -22,7 +22,7 @@ import { decryptField } from "../lib/crypto";
 import { badRequest, forbidden, langOf, notFound, parseBody, parseQuery } from "../lib/http";
 import { ladderRankOf, permissionsOf } from "../lib/permissions";
 import { guardAccountAction } from "../lib/accountClass";
-import { placementsOf } from "../lib/staffDirectory";
+import { accountsOf, placementsOf } from "../lib/staffDirectory";
 import { requireAuth, requireStaff, requireSuperadmin, type AppEnv } from "../middleware/auth";
 
 /**
@@ -253,10 +253,16 @@ permissionRoutes.get("/staff", requireStaff, async (c) => {
     visible.map((r) => r.id),
     langOf(c),
   );
+  const accounts = await accountsOf(visible, langOf(c));
   await audit(c, { action: "user.list", details: { count: visible.length, directory: true, assignable: true, phones: true } });
   return c.json({
     items: visible.map(
-      (row): AssignableStaff => ({ ...base(row), placement: placed.get(row.id) ?? null, phone: decryptField(row.phoneEnc) }),
+      (row): AssignableStaff => ({
+        ...base(row),
+        placement: placed.get(row.id) ?? null,
+        phone: decryptField(row.phoneEnc),
+        account: accounts.get(row.id),
+      }),
     ),
   });
 });

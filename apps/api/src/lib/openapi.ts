@@ -47,6 +47,7 @@ import {
   statModelRunSchema,
   statModelUpdateSchema,
   submitResponseSchema,
+  transferPatientsSchema,
   surveyFolderInputSchema,
   surveyFolderUpdateSchema,
   updateProfileSchema,
@@ -450,6 +451,7 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   /* ── администрирование ── */
   "GET /api/users": { summary: "Учётные записи, свежие сверху — страница `{items, nextCursor}`: `?limit=` (100, не больше 500), `?cursor=`, `?staff=1` — без пациентов; `?directory=1` — только сотрудники целиком, с профилем приёма и телефоном, чтение в журнал (user.list, phones)", access: "superadmin", permission: "users.manage" },
   "POST /api/users": { summary: "Создание учётной записи; класс — только ниже своего положения, суперадмина заводит только суперадмин (lib/accountClass.ts)", access: "superadmin", permission: "users.manage", body: createUserSchema },
+  "POST /api/users/:id/patients/transfer": { summary: "Передать пациентов, которых ведёт сотрудник, другому лікарю: закрепление ведущим и переписка переходят, история и подписи остаются за авторами; причина — в журнал по каждому (clinic.lead_transfer)", access: "superadmin", permission: "users.manage", body: transferPatientsSchema },
   "PATCH /api/users/:id/role": { summary: "Смена класса учётной записи: не себе, суперадмина — только суперадмин, учётку на своей ступени и выше — нет, класс — только ниже своего положения; обрывает сессии человека. Правило — lib/accountClass.ts, то же у команды консоли user role", access: "superadmin", permission: "users.manage" },
   "GET /api/audit": { summary: "Журнал доступа: отбор по тому, кто, над кем, действию, типу ресурса, исходу, периоду и тексту; страницы курсором или смещением", access: "superadmin", permission: "audit.read" },
   "GET /api/audit/export.csv": { summary: "Выгрузка текущего отбора журнала в CSV, до 10 000 строк; сама выгрузка — строка журнала (audit.export)", access: "superadmin", permission: "audit.read" },
@@ -613,6 +615,7 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   /* ── согласие ── */
   "GET /api/consents/text": { summary: "Действующий текст согласия", access: "public", whyNoPermission: "действующий текст согласия читают до входа в систему" },
   "PUT /api/consents/text": { summary: "Новая версия текста согласия", access: "superadmin", whyNoPermission: "текст согласия — заявление учреждения, а не действие специалиста" },
+  "GET /api/consents/versions": { summary: "Версии текста согласия: кто и когда выпустил, на каких языках, сколько пациентов приняли; по действующей — сколько отказались. Только числа", access: "superadmin", whyNoPermission: "текст согласия — заявление учреждения, а не действие специалиста" },
   "GET /api/consents/me": { summary: "Своё согласие", access: "user" },
   "POST /api/consents/me/accept": { summary: "Принятие согласия", access: "user" },
   "POST /api/consents/me/decline": { summary: "Отказ от согласия или отзыв принятого", access: "user" },
@@ -666,6 +669,14 @@ export function buildOpenApi(routes: RuntimeRoute[], version: string) {
       tags: [path.split("/")[2] ?? "root"],
       parameters: paramsOf(path),
       security: !doc || doc.access === "public" ? [] : [{ bearerAuth: [] }],
+      /*
+       * Кому маршрут открыт — машинно, рядом с текстом description: экран
+       * «Опис API» (2.0) показывает доступ и право отдельной колонкой и
+       * фильтрует по ним, а разбирать для этого русскую фразу — значит
+       * зависеть от её формулировки. Расширения x-* стандарт допускает.
+       */
+      "x-access": doc?.access ?? null,
+      "x-permission": doc?.permission ?? null,
       responses: {
         "200": { description: "Успех" },
         "400": { description: "Некорректный запрос" },

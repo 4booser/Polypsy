@@ -1,9 +1,11 @@
 import { Hono } from "hono";
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
-import { t, } from "@quizzy/shared";
+import { t, type ConsentVersions } from "@quizzy/shared";
 import { db } from "../db";
-import { consentTexts, consents } from "../db/schema";
+import { asSystem } from "../db/context";
+import { consentTexts, consents, users } from "../db/schema";
+import { namesOf } from "../lib/names";
 import { currentConsentText } from "../lib/consent";
 import { audit } from "../lib/audit";
 import { badRequest, conflict, langOf, parseBody } from "../lib/http";
@@ -164,6 +166,63 @@ const textSchema = z.object({
 consentRoutes.get("/text", requireSuperadmin, async (c) => {
   const current = await latestText();
   return c.json(current ? { version: current.version, body: current.body, createdAt: current.createdAt } : null);
+});
+
+/**
+ * Версии текста согласия и сколько людей приняли каждую (экран «Інформована
+ * згода», 2.0).
+ *
+ * Только числа: кто именно принял, здесь не отдаётся — имён пациентов экрану
+ * версий не нужно, а список людей с их решениями был бы ещё одним путём к
+ * персональным данным. Считается системной ролью: под ролью суперадмина
+ * политики строк и так открыты, но число не должно зависеть от того, кто
+ * спрашивает.
+ *
+ * Отказы — по действующей версии: принятие снимается отказом, а след
+ * отказа живёт в журнале (consent.decline), поэтому «відмовилися» —
+ * это пациенты с отказом по действующей версии, которые её так и не приняли.
+ */
+consentRoutes.get("/versions", requireSuperadmin, async (c) => {
+  const texts = await db.select().from(consentTexts).orderBy(desc(consentTexts.version));
+  const current = texts[0] ?? null;
+  const { accepted, patients, declined } = await asSystem(async () => {
+    const acceptedRows = await db
+      .select({ id: consents.consentTextId, n: sql<number>`count(*)::int` })
+      .from(consents)
+      .innerJoin(users, eq(users.id, consents.userId))
+      .where(eq(users.role, "user"))
+      .groupBy(consents.consentTextId);
+    const [{ n: patientCount } = { n: 0 }] = await db
+      .select({ n: sql<number>`count(*)::int` })
+      .from(users)
+      .where(and(eq(users.role, "user"), isNull(users.disabledAt)));
+    const declinedRows = current
+      ? await db.execute<{ n: number }>(sql`
+          select count(distinct a.subject_user_id)::int as n
+          from audit_log a
+          where a.action = 'consent.decline' and a.resource_id = ${current.id}
+            and not exists (select 1 from consents k where k.user_id = a.subject_user_id and k.consent_text_id = ${current.id})`)
+      : [];
+    return {
+      accepted: new Map(acceptedRows.map((r) => [r.id, Number(r.n)])),
+      patients: Number(patientCount),
+      declined: Number((declinedRows as { n: number }[])[0]?.n ?? 0),
+    };
+  });
+  const authors = await namesOf(texts.map((t) => t.createdBy));
+  const body: ConsentVersions = {
+    patients,
+    declined,
+    versions: texts.map((t) => ({
+      id: t.id,
+      version: t.version,
+      createdAt: t.createdAt,
+      author: authors.get(t.createdBy) ?? null,
+      accepted: accepted.get(t.id) ?? 0,
+      languages: (["uk", "ru", "en"] as const).filter((l) => !!(t.body as Record<string, string | undefined>)[l]?.trim()),
+    })),
+  };
+  return c.json(body);
 });
 
 consentRoutes.put("/text", requireSuperadmin, async (c) => {

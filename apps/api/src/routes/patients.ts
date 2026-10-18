@@ -82,7 +82,7 @@ patientRoutes.use("*", requireAuth, requireStaff, requirePermission("patients.re
  */
 patientRoutes.get("/", async (c) => {
   const user = c.get("user");
-  const { q, patientGroup, limit, offset } = parseQuery(c, patientListQuery);
+  const { q, patientGroup, lead, limit, offset } = parseQuery(c, patientListQuery);
   const visible = await accessiblePatientIds(user);
 
   let ids: string[] | null = visible === null ? null : [...visible];
@@ -142,7 +142,14 @@ patientRoutes.get("/", async (c) => {
             lastResponseAt: lastResponse,
           })
           .from(users)
-          .where(and(eq(users.role, "user"), ids ? inArray(users.id, ids) : undefined));
+          .where(
+            and(
+              eq(users.role, "user"),
+              ids ? inArray(users.id, ids) : undefined,
+              /* «пацієнти цього фахівця» сужают зону, а не расширяют её: пересечение остаётся */
+              lead ? eq(users.leadSpecialistId, lead) : undefined,
+            ),
+          );
 
   const named = rows.map(
     (r): PatientListItem => ({
@@ -173,6 +180,7 @@ patientRoutes.get("/", async (c) => {
       scoped: visible !== null,
       phones: true,
       ...(patientGroup ? { patientGroupId: patientGroup } : {}),
+      ...(lead ? { leadSpecialistId: lead } : {}),
     },
   });
 
