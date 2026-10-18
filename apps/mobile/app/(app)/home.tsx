@@ -454,20 +454,22 @@ function RecordingRow({ appointmentId }: { appointmentId: string }) {
    * пока стенограммы нет: готовую сервер отзывом не трогает (#103), и
    * кнопка, которая всегда кончается отказом, человеку не нужна.
    */
-  const sub = live
-    ? ut("rec.patientNote")
-    : state.consentAt
-      ? recordingRevocable(state)
-        ? ut("mpt.hm.recAgreed")
-        : ut("rec.revokeTooLate")
-      : ut("mpt.hm.recOnly");
-  const action = live
-    ? { title: ut("rec.stop"), onPress: run(() => api.recordingStopByPatient(appointmentId)) }
-    : state.consentAt
-      ? recordingRevocable(state)
-        ? { title: ut("rec.consentRevoke"), onPress: run(() => api.recordingRevoke(appointmentId)) }
-        : null
-      : { title: ut("mpt.hm.recAgree"), onPress: run(() => api.recordingConsent(appointmentId)) };
+  type Action = { title: string; onPress: () => Promise<void> };
+  let sub: string;
+  let action: Action | null;
+  if (live) {
+    sub = ut("rec.patientNote");
+    action = { title: ut("rec.stop"), onPress: run(() => api.recordingStopByPatient(appointmentId)) };
+  } else if (!state.consentAt) {
+    sub = ut("mpt.hm.recOnly");
+    action = { title: ut("mpt.hm.recAgree"), onPress: run(() => api.recordingConsent(appointmentId)) };
+  } else if (recordingRevocable(state)) {
+    sub = ut("mpt.hm.recAgreed");
+    action = { title: ut("rec.consentRevoke"), onPress: run(() => api.recordingRevoke(appointmentId)) };
+  } else {
+    sub = ut("rec.revokeTooLate");
+    action = null;
+  }
 
   return (
     <View
