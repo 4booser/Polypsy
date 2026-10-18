@@ -50,6 +50,7 @@ export default function Administer() {
    */
   const [mode, setMode] = useState<Mode>("fast");
   const [at, setAt] = useState(0);
+  const [focusTick, setFocusTick] = useState(0);
   const [started, setStarted] = useState(() => new Date().toISOString());
 
   const res = useResource(() => loadAdminister(id!, version), [id, version], { enabled: !!id });
@@ -165,7 +166,10 @@ export default function Administer() {
               <Segmented<Mode>
                 label={ut("adx.mode")}
                 value={mode}
-                onChange={setMode}
+                onChange={(m) => {
+                  setMode(m);
+                  if (m === "fast") setFocusTick((t) => t + 1);
+                }}
                 items={[
                   { key: "fast", label: ut("fast.mode") },
                   { key: "mouse", label: ut("fast.byMouse") },
@@ -174,7 +178,7 @@ export default function Administer() {
             }
           >
             {mode === "fast" ? (
-              <FastEntry survey={survey} answers={answers} onSet={set} at={at} setAt={setAt} />
+              <FastEntry survey={survey} answers={answers} onSet={set} at={at} setAt={setAt} focusTick={focusTick} />
             ) : (
               <MouseEntry survey={survey} visible={visible} answers={answers} onSet={set} />
             )}
@@ -274,7 +278,7 @@ function MouseEntry({
                         type="button"
                         aria-pressed={on}
                         className={cx(
-                          "inline-flex min-h-8 cursor-pointer items-center gap-1.5 rounded-[9px] border-0 px-3 py-1 text-small font-bold",
+                          "inline-flex min-h-8 cursor-pointer items-center gap-1.5 whitespace-normal rounded-[9px] border-0 px-3 py-1 text-left text-small font-bold",
                           on ? "bg-violet text-onfill" : "bg-sunk text-text-2 hover:bg-sunk-2 hover:text-text",
                         )}
                         onClick={() =>

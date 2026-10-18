@@ -62,8 +62,25 @@ function ChangeLines({ change }: { change: ScaleChange | null }) {
   );
 }
 
-function rulerLabel(r: ResultRow): string {
-  return `${r.title}: ${r.valueText}${r.band ? ` — ${r.band.label}` : ""}`;
+/**
+ * Значение шкалы словами экрана: «14 з 27», «частка 0,2», «T 64» — с
+ * запятой там, где её пишет язык (ResultRow.valueText — с точкой, для
+ * проверок и печати).
+ */
+function useValueText(): (r: ResultRow) => string {
+  const { ut } = useLang();
+  const dec = useDecimal();
+  return (r) => {
+    if (!r.normalized || r.normalization === "raw") {
+      const top = r.meterMax ?? (r.rungs.length ? Math.max(...r.rungs.map((g) => g.max)) : null);
+      return top !== null && top > 0 ? `${dec(r.value)} ${ut("common.of")} ${dec(top)}` : dec(r.value);
+    }
+    return `${ut(`norm.${r.normalization}`)} ${dec(r.value)}`;
+  };
+}
+
+function rulerLabel(r: ResultRow, text: string): string {
+  return `${r.title}: ${text}${r.band ? ` — ${r.band.label}` : ""}`;
 }
 
 function drawable(r: ResultRow): boolean {
@@ -75,6 +92,7 @@ function BigNumber({ r }: { r: ResultRow }) {
   const { ut } = useLang();
   const dec = useDecimal();
   const raw = !r.normalized || r.normalization === "raw";
+  const valueText = useValueText();
   return (
     <div className="flex flex-wrap items-baseline gap-2">
       {raw ? (
@@ -87,7 +105,7 @@ function BigNumber({ r }: { r: ResultRow }) {
           ) : null}
         </>
       ) : (
-        <span className="text-stat font-extrabold leading-none tracking-[-0.03em] text-text tabular-nums">{r.valueText}</span>
+        <span className="text-stat font-extrabold leading-none tracking-[-0.03em] text-text tabular-nums">{valueText(r)}</span>
       )}
       {r.band ? <SeverityTag level={r.band.severity}>{r.band.label}</SeverityTag> : null}
     </div>
@@ -124,6 +142,7 @@ export function ResultPanel({
 }) {
   const { ut } = useLang();
   const dec = useDecimal();
+  const valueText = useValueText();
   const rows = resultRows(detail, {
     of: ut("common.of"),
     norm: { raw: ut("norm.raw"), ratio: ut("norm.ratio"), tscore: ut("norm.tscore"), sten: ut("norm.sten") },
@@ -167,7 +186,7 @@ export function ResultPanel({
       </div>
       {drawable(r) ? (
         <div className="mt-4">
-          <SeverityMeter rungs={r.rungs} value={r.value} max={r.meterMax} valueLabel={r.valueText} label={rulerLabel(r)} />
+          <SeverityMeter rungs={r.rungs} value={r.value} max={r.meterMax} valueLabel={valueText(r)} label={rulerLabel(r, valueText(r))} />
         </div>
       ) : null}
       <ScaleNote r={r} />
@@ -176,7 +195,7 @@ export function ResultPanel({
           {validity.map((v, i) => (
             <span key={v.scaleId}>
               {i ? "; " : ""}
-              <b className="font-bold text-text">{v.title}</b> {v.valueText}
+              <b className="font-bold text-text">{v.title}</b> {valueText(v)}
               {v.band ? ` — ${v.band.label}` : ""}
             </span>
           ))}
@@ -287,6 +306,7 @@ export function ResultPanel({
 
 function ProfilePanel({ rows, action }: { rows: ResultRow[]; action: ReactNode }) {
   const { ut } = useLang();
+  const valueText = useValueText();
   const notes = rows.filter((r) => !r.normalized || r.noBands || r.outside || !!r.band?.description || !!r.band?.recommendation);
   return (
     <Panel title={ut("rch.result")} icon={<Ic.gauge />} actions={action}>
@@ -297,7 +317,7 @@ function ProfilePanel({ rows, action }: { rows: ResultRow[]; action: ReactNode }
           rungs: r.rungs,
           value: drawable(r) ? r.value : null,
           max: r.meterMax,
-          valueText: r.valueText,
+          valueText: valueText(r),
           band: r.band ? { label: r.band.label, severity: r.band.severity } : null,
         }))}
       />

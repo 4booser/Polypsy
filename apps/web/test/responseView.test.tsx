@@ -219,6 +219,17 @@ describe("пройденный тест: сетка ответов", () => {
     expect(grid.rows[1]!.prevScore).toBe(10);
     expect(grid.rows[0]!.prev, "у пропущенного раньше пункта кольца нет").toBeNull();
     expect(grid.extra).toEqual([]);
+    expect(grid.scored).toBe(true);
+  });
+
+  test("ключ «так / ні»: веса вариантов нулевые — столбца «Бал» нет, а не столбец нулей", () => {
+    const keyed = {
+      ...detail,
+      answers: detail.answers.map((a) => ({ ...a, score: 0, options: a.options.map((o) => ({ ...o, score: 0 })) })),
+    };
+    const grid = answerGrid(keyed, null, new Map())!;
+    expect(grid.columns.map((c) => c.score)).toEqual([0, 0]);
+    expect(grid.scored).toBe(false);
   });
 
   test("пункт вне ключа шкал — «не входить у суму»; другой набор вариантов — строкой под сеткой", () => {

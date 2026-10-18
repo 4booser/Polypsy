@@ -36,6 +36,7 @@ export function FastEntry({
   onSet,
   at,
   setAt,
+  focusTick = 0,
 }: {
   survey: SurveyFull;
   answers: Map<string, Answer>;
@@ -43,6 +44,8 @@ export function FastEntry({
   /** Текущий пункт — у экрана: таблица «Усі пункти» тоже переводит к пункту */
   at: number;
   setAt: (next: number | ((prev: number) => number)) => void;
+  /** Растёт, когда человек снова выбрал быстрый ввод: фокус возвращается в поле, а не остаётся на кнопке */
+  focusTick?: number;
 }) {
   const { ut } = useLang();
   const asked = askedOf(survey);
@@ -60,6 +63,9 @@ export function FastEntry({
     fieldRef.current?.focus();
     setTyped("");
   }, [at]);
+  useEffect(() => {
+    if (focusTick) fieldRef.current?.focus();
+  }, [focusTick]);
 
   const advance = useCallback(() => {
     setAt((i) => Math.min(asked.length - 1, i + 1));
@@ -171,19 +177,21 @@ export function FastEntry({
   if (!q) return null;
 
   const from = asked.length <= CELLS ? 0 : Math.max(0, Math.min(at - Math.floor(CELLS / 3), asked.length - CELLS));
-  const window = asked.slice(from, from + CELLS);
+  const shown = asked.slice(from, from + CELLS);
   const picked = answers.get(q.id)?.optionIds ?? [];
 
   return (
     <div className="flex flex-col">
       <ol className="m-0 flex list-none gap-1.5 p-0" aria-label={ut("adx.items")}>
-        {window.map((item, k) => {
+        {shown.map((item, k) => {
           const i = from + k;
           const a = answers.get(item.id);
           const done = isAnswered(item, a);
           const opts = choicesOf(item);
           const key = done && a?.optionIds?.length === 1 ? opts.findIndex((o) => o.id === a.optionIds![0]) + 1 : null;
           const critical = opts.some((o) => o.riskFlag);
+          /* критический вариант выбран — ячейка красным: это риск для человека, а не оформление */
+          const risky = done && opts.some((o) => o.riskFlag && (a?.optionIds ?? []).includes(o.id));
           const current = i === at;
           const body = (
             <button
@@ -195,11 +203,13 @@ export function FastEntry({
                 "grid h-[34px] w-full min-w-[30px] cursor-pointer place-items-center rounded-[9px] border-0 text-[13px] font-extrabold leading-none tabular-nums",
                 current
                   ? "bg-panel text-violet-ink shadow-[inset_0_0_0_2px_var(--v)]"
-                  : done
-                    ? "bg-violet-tint text-violet-ink"
-                    : critical
-                      ? "bg-sunk text-risk-ink shadow-[inset_0_0_0_1px_var(--riskline)]"
-                      : "bg-sunk text-muted hover:bg-sunk-2",
+                  : risky
+                    ? "bg-risk-tint text-risk-ink shadow-[inset_0_0_0_1px_var(--riskline)]"
+                    : done
+                      ? "bg-violet-tint text-violet-ink"
+                      : critical
+                        ? "bg-sunk text-risk-ink shadow-[inset_0_0_0_1px_var(--riskline)]"
+                        : "bg-sunk text-muted hover:bg-sunk-2",
               )}
             >
               {done && !current ? (key && key > 0 ? key : <Rx.listChecks size={13} />) : critical && !current ? <Rx.siren size={14} /> : i + 1}
@@ -231,7 +241,7 @@ export function FastEntry({
                 aria-pressed={on}
                 onClick={() => pick(q, o.id)}
                 className={cx(
-                  "flex min-h-[52px] cursor-pointer items-center gap-3 rounded-[12px] border-0 py-2 pl-3 pr-3.5 text-left text-[14px] font-bold leading-[18px] transition-colors duration-[var(--dur-fast)]",
+                  "flex min-h-[52px] cursor-pointer items-center gap-3 whitespace-normal rounded-[12px] border-0 py-2 pl-3 pr-3.5 text-left text-[14px] font-bold leading-[18px] transition-colors duration-[var(--dur-fast)]",
                   on ? "bg-violet-tint text-violet-ink shadow-[inset_0_0_0_1.5px_var(--v)]" : "bg-sunk text-text hover:bg-sunk-2",
                   o.riskFlag && !on && "text-text",
                 )}

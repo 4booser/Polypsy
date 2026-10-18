@@ -325,16 +325,24 @@ export function ShapePanel({
   const same = at < 0 ? [] : attempts.slice(0, at).filter((a) => a.versionNumber === attempts[at]!.versionNumber);
   const earlier = same.slice(-(SHAPE_ATTEMPTS - 1));
   const ids = earlier.map((a) => a.id);
+  const grid = answerGrid(detail, survey, prevAnswers(null));
+  /*
+   * Форма симптомов читается только на порядковой шкале: у столбцов свой,
+   * разный вес («0 зовсім ні» … «3 майже щодня»). У методик с ключом «так /
+   * ні» (СР-45, Міні-мульт) вес вариантов нулевой — балл даёт совпадение с
+   * ключом, — и таблица из одних нулей ничего бы не сказала. Тогда и прежние
+   * попытки не запрашиваются.
+   */
+  const ordinal = !!grid && grid.rows.length > 0 && grid.scored;
   const others = useResource(
     () =>
       Promise.all(ids.map((id) => api.responseDetail(id).then((d): ResponseDetail | null => d, () => null))).then((list) => ({
         list: list.filter((d): d is ResponseDetail => d !== null),
       })),
     [ids.join(",")],
-    { enabled: ids.length > 0, keep: false },
+    { enabled: ids.length > 0 && ordinal, keep: false },
   );
-  const grid = answerGrid(detail, survey, prevAnswers(null));
-  if (!grid || !grid.rows.length) return null;
+  if (!grid || !ordinal) return null;
   if (ids.length && !others.data) {
     return (
       <Panel title={ut("rp.shape")} icon={<Rx.grid />}>
@@ -346,9 +354,7 @@ export function ShapePanel({
   const byAttempt = series.map((d) => new Map(d.answers.map((a) => [a.questionId, a] as const)));
   const critical = new Set(detail.answers.filter((a) => a.options.some((o) => o.riskFlag)).map((a) => a.questionId));
   const max = Math.max(1, ...grid.columns.map((c) => c.score ?? 0), ...grid.rows.map((r) => r.score ?? 0));
-  const legend = grid.columns.every((c) => c.score !== null)
-    ? grid.columns.map((c) => ({ value: c.score!, label: c.text.toLowerCase() }))
-    : undefined;
+  const legend = grid.columns.map((c) => ({ value: c.score!, label: c.text.toLowerCase() }));
   return (
     <Panel
       title={ut("rp.shape")}
@@ -363,7 +369,7 @@ export function ShapePanel({
         rows={grid.rows.map((r) => ({
           key: r.questionId,
           label: (
-            <span className="block max-w-[260px] truncate max-[700px]:max-w-[150px]">
+            <span className="block max-w-[260px] truncate max-[1400px]:max-w-[170px] max-[700px]:max-w-[130px]">
               {r.number}. {r.title}
             </span>
           ),

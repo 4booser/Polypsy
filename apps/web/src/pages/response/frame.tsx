@@ -122,7 +122,7 @@ export function ResponseBanner({
           timer ? (
             <RiskTimer elapsed={timer.elapsed} of={timer.of} pct={timer.pct} />
           ) : (
-            <span className="text-caption font-semibold text-text-2">{timeOfDay(strip.oldest!.at)}</span>
+            <span className="text-caption font-semibold text-text-2">{ut("rp.atTime").replace("{t}", timeOfDay(strip.oldest!.at))}</span>
           )
         }
         popTitle={open.length === 1 ? ut("rp.signal") : ut("rp.signals").replace("{n}", String(open.length))}

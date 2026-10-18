@@ -116,7 +116,9 @@ export default function ConclusionPage() {
             text={text}
             setText={setText}
             areaRef={areaRef}
-            heading={ut("cnx.heading").replace("{survey}", detail.survey.title).replace("{at}", detail.submittedAt ? dateTime(detail.submittedAt) : "—")}
+            heading={ut("cnx.heading")
+              .replace("{survey}", detail.survey.title)
+              .replace("{at}", detail.submittedAt ? `${day(detail.submittedAt)}, ${timeOfDay(detail.submittedAt)}` : "—")}
             summary={main ? <Summary detail={detail} dynamics={x.dynamics} /> : null}
             signals={<SignalsSection ctx={ctx} detail={detail} />}
             lock={lock}
@@ -352,31 +354,31 @@ function ResultsSide({
       ) : lines.length ? (
         <ul className="m-0 list-none p-0">
           {lines.map((l) => (
-            <li key={l.key} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2.5 border-t border-divider py-2.5 first:border-t-0 first:pt-0.5">
-              <span className="min-w-0 text-small">
+            <li key={l.key} className="border-t border-divider py-2.5 first:border-t-0 first:pt-0.5">
+              <div className="flex min-w-0 items-baseline justify-between gap-2.5">
                 {l.here ? (
-                  <b className="block truncate font-bold text-text">{l.survey}</b>
+                  <b className="min-w-0 truncate text-small font-bold text-text">{l.survey}</b>
                 ) : (
                   <Link
                     to={`/surveys/${l.surveyId}/responses/${l.responseId}`}
-                    className="block truncate font-bold text-text no-underline hover:underline hover:decoration-violet-line"
+                    className="min-w-0 truncate text-small font-bold text-text no-underline hover:underline hover:decoration-violet-line"
                   >
                     {l.survey}
                   </Link>
                 )}
-                <span className="block text-caption text-muted">
+                <b className="shrink-0 text-h3 font-extrabold tabular-nums text-text">{dec(l.value)}</b>
+              </div>
+              <div className="mt-1 flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
+                <span className="text-caption text-muted">
                   {l.here ? ut("cnx.thisAttempt").replace("{d}", day(l.at)) : day(l.at)}
                   {l.delta !== null ? `, ${ut("cnx.fromStartDelta").replace("{v}", `${l.delta > 0 ? "+" : l.delta < 0 ? "−" : "±"}${dec(Math.abs(l.delta))}`)}` : ""}
                 </span>
-              </span>
-              <span className="flex items-center gap-2">
-                <b className="text-h3 font-extrabold tabular-nums text-text">{dec(l.value)}</b>
                 {l.band ? (
                   <SeverityTag level={l.band.severity} small>
                     {l.band.label}
                   </SeverityTag>
                 ) : null}
-              </span>
+              </div>
             </li>
           ))}
         </ul>
@@ -451,7 +453,7 @@ function ModelsPanel({
     <Panel
       title={ut("cnx.models")}
       icon={<Ic.chart />}
-      sub={models ? ut("cnx.modelsCount").replace("{n}", String(models.length)) : undefined}
+      sub={models?.length ? ut("cnx.modelsCount").replace("{n}", String(models.length)) : undefined}
       actions={
         /* завести модель — экран аналитики (/analytics/new) */
         <ButtonLink to="/analytics/new" variant="ghost" size="icon-sm" aria-label={ut("cnx.newModel")} title={ut("cnx.newModel")}>

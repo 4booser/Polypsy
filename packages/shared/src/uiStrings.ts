@@ -8360,6 +8360,7 @@ export const UI = {
   "adx.openProtocol": { uk: "Відкрити протокол", ru: "Открыть протокол", en: "Open the record" },
   "adx.again": { uk: "Заповнити ще раз", ru: "Заполнить ещё раз", en: "Enter another" },
   "cnx.newModel": { uk: "Нова аналітична модель", ru: "Новая аналитическая модель", en: "New analytic model" },
+  "rp.atTime": { uk: "о {t}", ru: "в {t}", en: "at {t}" },
 } as const satisfies Record<string, UiEntry>;
 
 export type UiKey = keyof typeof UI;

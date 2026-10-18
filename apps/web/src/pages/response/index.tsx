@@ -136,8 +136,8 @@ export function AnswersPanel({
   );
 }
 
-const COLS = (n: number, withPrev: boolean) =>
-  `22px minmax(0,1fr) repeat(${n}, var(--oc)) 32px${withPrev ? " 44px" : ""}`;
+const COLS = (n: number, scored: boolean, withDelta: boolean) =>
+  `22px minmax(0,1fr) repeat(${n}, var(--oc))${scored ? " 32px" : ""}${withDelta ? " 44px" : ""}`;
 
 function Grid({
   detail,
@@ -155,7 +155,10 @@ function Grid({
   const { ut } = useLang();
   const dec = useDecimal();
   const withPrev = !!prev && grid.rows.some((r) => r.prev !== null);
-  const cols = COLS(grid.columns.length, withPrev);
+  /* балл и сдвиг по пункту — только на порядковой шкале; у ключа «так / ні» вес вариантов нулевой */
+  const scored = grid.scored;
+  const withDelta = withPrev && scored;
+  const cols = COLS(grid.columns.length, scored, withDelta);
   const main = mainScore(detail.scores);
   const better = main ? betterOf(main.bands.map((b) => ({ min: b.minScore, max: b.maxScore, label: b.label, severity: b.severity }))) : null;
   const prevDay = prev?.submittedAt ? day(prev.submittedAt) : null;
@@ -169,6 +172,12 @@ function Grid({
   const prevMain = prev && main ? prev.scores.find((s) => s.scaleCode === main.scaleCode) : null;
   const clinical = detail.scores.filter((s) => s.kind === "clinical");
   const inScale = grid.rows.filter((r) => r.inScale).length;
+  const ring = (
+    <>
+      <span aria-hidden className="size-4 rounded-full shadow-[inset_0_0_0_1.5px_var(--muted)]" />
+      {ut("rp.answerOn").replace("{d}", prevDay ?? "")}
+    </>
+  );
 
   const deltaCell = (delta: number | null, critical: boolean) => {
     if (delta === null) return <span className="text-right text-small font-bold text-muted">—</span>;
@@ -200,14 +209,16 @@ function Grid({
         </span>
         {grid.columns.map((c, k) => (
           <span role="columnheader" key={k} className="hyphens-auto text-center text-[11px] leading-[13px] [overflow-wrap:anywhere]">
-            {c.score !== null ? <b className="block font-extrabold text-text-2">{dec(c.score)}</b> : null}
+            {scored && c.score !== null ? <b className="block font-extrabold text-text-2">{dec(c.score)}</b> : null}
             {c.text}
           </span>
         ))}
-        <span role="columnheader" className="text-right">
-          {ut("rp.score")}
-        </span>
-        {withPrev ? (
+        {scored ? (
+          <span role="columnheader" className="text-right">
+            {ut("rp.score")}
+          </span>
+        ) : null}
+        {withDelta ? (
           <span role="columnheader" className="text-right">
             {ut("rp.fromDate").replace("{d}", prevDay ?? "")}
           </span>
@@ -218,7 +229,7 @@ function Grid({
         const fc = r.critical ? firstChange(a) : null;
         const signal = openHere.get(r.questionId);
         const textOf = (id: string) => a.options.find((o) => o.id === id)?.text ?? "—";
-        const delta = withPrev && r.score !== null && r.prevScore !== null ? r.score - r.prevScore : null;
+        const delta = withDelta && r.score !== null && r.prevScore !== null ? r.score - r.prevScore : null;
         return (
           <div
             role="row"
@@ -279,7 +290,7 @@ function Grid({
                       r.critical ? "bg-risk" : "bg-violet",
                     )}
                   >
-                    {r.score !== null ? dec(r.score) : <Ic.check size={13} />}
+                    {scored && r.score !== null ? dec(r.score) : <Ic.check size={13} />}
                   </span>
                 ) : r.prev === k ? (
                   <span className="size-[22px] rounded-full shadow-[inset_0_0_0_1.5px_var(--muted)]" />
@@ -288,14 +299,16 @@ function Grid({
                 )}
               </span>
             ))}
-            <span role="cell" className={cx("text-right font-extrabold tabular-nums", r.critical && "text-risk-ink")}>
-              {r.score !== null ? dec(r.score) : "—"}
-            </span>
-            {withPrev ? <span role="cell">{deltaCell(delta, r.critical)}</span> : null}
+            {scored ? (
+              <span role="cell" className={cx("text-right font-extrabold tabular-nums", r.critical && "text-risk-ink")}>
+                {r.score !== null ? dec(r.score) : "—"}
+              </span>
+            ) : null}
+            {withDelta ? <span role="cell">{deltaCell(delta, r.critical)}</span> : null}
           </div>
         );
       })}
-      {clinical.length === 1 && main ? (
+      {scored && clinical.length === 1 && main ? (
         <div
           role="row"
           className="grid items-center gap-x-2 border-t border-control px-4 py-2.5 text-[13px] font-extrabold"
@@ -308,20 +321,17 @@ function Grid({
             className="flex items-center justify-center gap-1.5 text-caption font-semibold text-muted"
             style={{ gridColumn: `3 / span ${grid.columns.length}` }}
           >
-            {withPrev ? (
-              <>
-                <span aria-hidden className="size-4 rounded-full shadow-[inset_0_0_0_1.5px_var(--muted)]" />
-                {ut("rp.answerOn").replace("{d}", prevDay ?? "")}
-              </>
-            ) : null}
+            {withPrev ? ring : null}
           </span>
           <span role="cell" className="text-right tabular-nums">
             {dec(main.rawScore)}
           </span>
-          {withPrev ? (
+          {withDelta ? (
             <span role="cell">{deltaCell(prevMain ? main.rawScore - prevMain.rawScore : null, false)}</span>
           ) : null}
         </div>
+      ) : withPrev ? (
+        <div className="flex items-center gap-1.5 border-t border-divider px-4 py-2.5 text-caption font-semibold text-muted">{ring}</div>
       ) : null}
       {grid.extra.map((e) => (
         <div
@@ -341,7 +351,9 @@ function Grid({
           </span>
           <span role="cell" className="max-w-[240px] text-right font-extrabold text-text">
             {e.answered ? (e.answer ?? "—") : <span className="font-semibold text-muted">{ut("cases.skipped")}</span>}
-            {e.score !== null && e.inScale ? <span className="ml-1.5 font-semibold text-muted tabular-nums">{dec(e.score)}</span> : null}
+            {scored && e.score !== null && e.inScale ? (
+              <span className="ml-1.5 font-semibold text-muted tabular-nums">{dec(e.score)}</span>
+            ) : null}
           </span>
         </div>
       ))}
@@ -569,7 +581,7 @@ function ConclusionSide({
           </ButtonLink>
           {!signed && can("conclusions.sign") ? (
             locked ? (
-              <Button size="xs" variant="ghost" disabled title={ut("rp.signLocked")}>
+              <Button size="xs" variant="ghost" disabled>
                 <Rx.signature />
                 {ut("rp.concl.sign")}
               </Button>

@@ -657,6 +657,13 @@ export interface AnswerGrid {
   columns: GridColumn[];
   rows: GridRow[];
   extra: ExtraRow[];
+  /**
+   * Порядковая шкала: у каждого столбца свой вес («0 зовсім ні» … «3 майже
+   * щодня»). Ложь у методик с ключом «так / ні» (СР-45, Міні-мульт): вес
+   * вариантов там нулевой, балл даёт совпадение с ключом, и столбец «Бал»
+   * из одних нулей был бы неправдой — экран его не рисует.
+   */
+  scored: boolean;
 }
 
 /** Наибольшее число вариантов, при котором сетка ещё читается на 1280 */
@@ -754,7 +761,9 @@ export function answerGrid(
       inScale: inScale(a.questionId),
     });
   });
-  return { columns, rows, extra };
+  const weights = columns.map((c) => c.score);
+  const scored = weights.every((w) => w !== null) && new Set(weights).size === weights.length;
+  return { columns, rows, extra, scored };
 }
 
 /* ─────────── сдвиг этого замера ─────────── */
