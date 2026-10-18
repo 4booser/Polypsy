@@ -125,7 +125,8 @@ export default function SchedulePage() {
   const showOff = () =>
     run(async () => {
       const today = week.data?.today ?? dayKey(new Date().toISOString());
-      const ahead = await api.scheduleWeek(today, 42);
+      /* весь горизонт записи: дальше него приёмов нет, ближе — может не найтись */
+      const ahead = await api.scheduleWeek(today, (res.data?.horizonWeeks ?? 8) * 7);
       const first = ahead.appointments.find(
         (a) => a.offSchedule && ["booked", "confirmed", "arrived", "in_progress"].includes(a.status),
       );
@@ -207,7 +208,8 @@ export default function SchedulePage() {
                 {week.data && week.data.from === from ? (
                   <WeekBody
                     week={week.data}
-                    templates={rows ?? []}
+                    /* календарь — по сохранённой неделе: несохранённая правка в панели его не двигает */
+                    templates={server ?? []}
                     now={now}
                     focusId={focusId}
                     canMove={canMove}

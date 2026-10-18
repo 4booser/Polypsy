@@ -18,7 +18,7 @@ import {
   useAction,
 } from "../ui";
 import { cx } from "../ui/cx";
-import { ActionMenu } from "../ui/menu";
+import { ActionMenu, type MenuEntry } from "../ui/menu";
 import { Ic } from "../ui/icons";
 import { IconTile, Page, Panel } from "../ui/layout";
 import { Button, ButtonLink, Field, Input, Segmented, Select, Textarea } from "../ui/primitives";
@@ -177,6 +177,16 @@ function VisitScreen({ id }: { id: string }) {
         const when = `${s.date === wallOf(new Date(now).toISOString(), a.tz).date ? ut("v2v.today") : `${ut(SHORT_KEY[weekdayOf(s.date)]!)} ${dayMonth(s.date)}`}, ${clock(s.minutes)}–${clock(e.minutes)}`;
         const place = a.mode === "remote" ? ut("day.remote") : a.room ? `${ut("day.room")} ${a.room}` : ut("v2v.onsite");
         const details = [ut(a.kind === "primary" ? "day.primary" : "day.repeat"), place, ut(STATUS_KEY[a.status])].join(", ");
+        /* меню: справка (если человек пришёл), снятие ошибочной отметки, отмена приёма */
+        const menu: MenuEntry[] = [
+          ...(certificateAvailable(a.status)
+            ? [{ label: ut("visit.certificate"), icon: <V.fileBadge />, onSelect: () => openInTab(`/api/reports/visits/${a.id}`) }]
+            : []),
+          ...(undo ? [{ label: ut(undo.confirm), icon: <Ic.undo />, onSelect: () => setAsking("undo") }] : []),
+          ...(cancellable(a.status)
+            ? [{ label: ut("v2v.cancelVisit"), icon: <V.calendarX />, danger: true, ruled: true, onSelect: () => setAsking("cancel") }]
+            : []),
+        ];
 
         return (
           <Page
@@ -204,17 +214,7 @@ function VisitScreen({ id }: { id: string }) {
                 >
                   <Ic.external />
                 </ButtonLink>
-                <ActionMenu
-                  entries={[
-                    ...(certificateAvailable(a.status)
-                      ? [{ label: ut("visit.certificate"), icon: <V.fileBadge />, onSelect: () => openInTab(`/api/reports/visits/${a.id}`) }]
-                      : []),
-                    ...(undo ? [{ label: ut(undo.confirm), icon: <Ic.undo />, onSelect: () => setAsking("undo") }] : []),
-                    ...(cancellable(a.status)
-                      ? [{ label: ut("v2v.cancelVisit"), icon: <V.calendarX />, danger: true, ruled: true, onSelect: () => setAsking("cancel") }]
-                      : []),
-                  ]}
-                />
+                {menu.length ? <ActionMenu entries={menu} /> : null}
                 {steps.length ? (
                   <Button
                     variant="primary"
@@ -370,7 +370,7 @@ function VisitScreen({ id }: { id: string }) {
                     >
                       {DESTINATIONS.map((d) => (
                         <option key={d} value={d}>
-                          {ut(DEST_KEY[d])}
+                          {capital(ut(DEST_KEY[d]))}
                         </option>
                       ))}
                     </Select>
@@ -930,7 +930,7 @@ export function AssignForm({
           </Field>
         </div>
       </div>
-      <div className="mt-1 flex flex-wrap gap-2">
+      <div className="mt-1 flex flex-wrap gap-1.5">
         <Button size="xs" disabled={busy || !assignReady(draft, todayKey)} onClick={onSubmit}>
           {ut("visit.assign")}
         </Button>

@@ -153,6 +153,9 @@ describe("неделя календарём", () => {
     }
     const tooLong = await api(`/api/clinic/schedule/week?from=2026-10-19&days=90`, specialist.token);
     expect(tooLong.status).toBe(400);
+    // весь горизонт записи (8 недель) — можно: по нему экран ищет приёмы поза розкладом
+    const horizon = await api(`/api/clinic/schedule/week?from=2026-10-19&days=56`, specialist.token);
+    expect(horizon.status).toBe(200);
   });
 
   test("экран приёма: кабинет, подтверждение, пояс отделения и сколько приёмов уже было", async () => {

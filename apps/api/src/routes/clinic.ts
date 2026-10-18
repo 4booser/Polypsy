@@ -452,7 +452,8 @@ clinicRoutes.delete(
  */
 const weekQuery = z.object({
   from: z.string(),
-  days: z.coerce.number().int().min(1).max(42).optional(),
+  /* до девяти недель: «Показати поза розкладом» ищет по всему горизонту записи (8 недель) */
+  days: z.coerce.number().int().min(1).max(63).optional(),
   specialistId: z.string().optional(),
 });
 
