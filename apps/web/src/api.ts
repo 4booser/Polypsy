@@ -1426,6 +1426,8 @@ export const api = {
         reason: string;
         grantedAt: string;
         expiresAt: string | null;
+        /** Кто выдал — именем (2.0); null — учётки уже нет */
+        grantedByName?: string | null;
       }>>("/api/permissions/exceptions"),
     ),
 

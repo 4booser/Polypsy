@@ -23,6 +23,7 @@ import { badRequest, forbidden, langOf, notFound, parseBody, parseQuery } from "
 import { ladderRankOf, permissionsOf } from "../lib/permissions";
 import { guardAccountAction } from "../lib/accountClass";
 import { accountsOf, placementsOf } from "../lib/staffDirectory";
+import { namesOf } from "../lib/names";
 import { requireAuth, requireStaff, requireSuperadmin, type AppEnv } from "../middleware/auth";
 
 /**
@@ -537,5 +538,7 @@ permissionRoutes.get("/exceptions", requireStaff, async (c) => {
     visible.push({ ...r.exception, userName: fullNameOf(r as never) });
   }
 
-  return c.json({ items: visible });
+  /* кто выдал — именем: экран прав (2.0) печатает «видав(ла) Ткач В., 05.10» под причиной */
+  const granters = await namesOf(visible.map((e) => e.grantedBy));
+  return c.json({ items: visible.map((e) => ({ ...e, grantedByName: e.grantedBy ? (granters.get(e.grantedBy) ?? null) : null })) });
 });

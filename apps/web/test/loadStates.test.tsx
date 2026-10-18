@@ -266,7 +266,7 @@ describe("текст согласия", () => {
       const html = screen(r);
       expect(has(html, "adm.consentUnset"), name).toBe(false);
       expect(html.includes("<textarea"), name).toBe(false);
-      expect(has(html, "adm.consentSave"), name).toBe(false);
+      expect(has(html, "adm2.publish"), name).toBe(false);
     }
     expect(refusal(screen(failed<ConsentText>()))).toBe(true);
   });

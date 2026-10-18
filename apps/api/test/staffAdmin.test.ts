@@ -94,6 +94,16 @@ describe("справочник сотрудников: учётная запис
   });
 });
 
+describe("действующие исключения", () => {
+  test("кто выдал — именем, рядом с причиной", async () => {
+    const res = await api("/api/permissions/exceptions", root.token);
+    expect(res.status).toBe(200);
+    const mine = (res.body.items as { userId: string; grantedByName: string | null; reason: string }[]).find((e) => e.userId === from.id);
+    expect(mine?.reason).toBe("чергування на вихідних");
+    expect(mine?.grantedByName).toBeTruthy();
+  });
+});
+
 describe("пациенты сотрудника", () => {
   test("?lead= — только те, кого он ведёт", async () => {
     const res = await api(`/api/patients?lead=${from.id}&limit=200`, root.token);
