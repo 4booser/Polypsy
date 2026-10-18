@@ -49,7 +49,8 @@ export function Segmented<V extends string>({
               alignItems: "center",
               justifyContent: "center",
               gap: 5,
-              paddingHorizontal: 8,
+              // 6, как у широкого переключателя набора (.seg-w): три подписи со счётчиком влезают в 390 без многоточия
+              paddingHorizontal: 6,
               borderRadius: 9,
               backgroundColor: on ? c.panel : pressed ? c.sunk2 : "transparent",
               boxShadow: on ? sh.tile : undefined,
