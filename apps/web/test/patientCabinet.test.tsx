@@ -114,7 +114,7 @@ describe("территория пальца объявлена, а не прос
     expect(shell.includes("<TouchArea"), "без TouchArea высота мишеней снова станет делом памяти").toBe(true);
   });
 
-  test("экран кабинета вне оболочки объявляет зону сам", () => {
+  test("экран кабинета вне оболочки объявляет зону сам или встаёт в рамку кабинета", () => {
     const files = lazyFiles();
     const outside = screensOutsideShell();
     // прохождение методики — как раз такой экран: свой маршрут, без вкладок
@@ -122,8 +122,10 @@ describe("территория пальца объявлена, а не прос
     for (const name of outside) {
       const file = files.get(name);
       if (!file) continue;
+      /* рамка кабинета (PatientFrame) сама объявляет зону — экран в ней наследует её */
+      const src = code(readFileSync(file, "utf8"));
       expect(
-        code(readFileSync(file, "utf8")).includes("<TouchArea"),
+        src.includes("<TouchArea") || src.includes("<PatientFrame"),
         `${name}: экран /me вне оболочки без зоны пальца`,
       ).toBe(true);
     }

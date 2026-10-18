@@ -74,6 +74,7 @@ import type {
   SurveyListItem,
   SurveyListPage,
   SurveyResponse,
+  ScoreResult,
   SurveyStatus,
   SurveyVersion,
   User,
@@ -2331,10 +2332,31 @@ export const api = {
       versionId?: string | null;
     },
   ) =>
-    request<{ id: string; safetyPlan: string | null }>(`/api/surveys/${surveyId}/responses`, {
-      method: "POST",
-      body: JSON.stringify(body),
-    }),
+    /* баллы приходят только там, где методика их показывает (showResultsToPatient, resultsShownTo на сервере) */
+    request<{ id: string; safetyPlan: string | null; scores?: ScoreResult[]; submittedAt?: string | null }>(
+      `/api/surveys/${surveyId}/responses`,
+      {
+        method: "POST",
+        body: JSON.stringify(body),
+      },
+    ),
+  /** Свои прохождения; баллы — только у методик, которые их показывают (resultsShownTo) */
+  myResponses: () => request<{ items: SurveyResponse[] }>("/api/me/responses"),
+  /** Своя динамика — только по методикам, где показ результатов включён (showResultsToPatient) */
+  myDynamics: () =>
+    request<{
+      surveys: {
+        surveyId: string;
+        title: string;
+        scales: {
+          code: string;
+          title: string;
+          points: { submittedAt: string; value: number; bandLabel: string | null; severity: string | null }[];
+        }[];
+      }[];
+    }>("/api/me/dynamics"),
+  /** Свой план безопасности — читает сам человек, в том числе с телефона */
+  mySafetyPlan: () => request<{ plan: SafetyPlan | null }>("/api/safety/me"),
   freeSlots: (params: { specialistId?: string; departmentId?: string } = {}) => {
     const q = new URLSearchParams();
     for (const [k, v] of Object.entries(params)) if (v) q.set(k, v);
@@ -2349,7 +2371,8 @@ export const api = {
       }[];
     }>(`/api/clinic/slots?${q}`);
   },
-  myAppointments: () =>
+  /** past — и прошедшие с отменёнными: «Мої прийоми» на экране записи */
+  myAppointments: (past = false) =>
     request<{
       items: {
         id: string;
@@ -2360,8 +2383,11 @@ export const api = {
         status: string;
         mode: string;
         meetingUrl: string | null;
+        kind?: string;
+        reason?: string | null;
+        specialistId?: string;
       }[];
-    }>("/api/clinic/appointments/mine"),
+    }>(`/api/clinic/appointments/mine${past ? "?past=1" : ""}`),
   /** Записать: себя (пациент) или человека по patientId (сотрудник с правом вести приёмы) */
   book: (body: { slotId: string; reason?: string | null; mode?: "onsite" | "remote"; patientId?: string }) =>
     request<{ id: string; screeningSurveyId: string | null }>("/api/clinic/appointments", {

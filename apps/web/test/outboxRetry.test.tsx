@@ -6,7 +6,8 @@ import { UI } from "@quizzy/shared";
 import { LangProvider } from "../src/lang";
 import { TouchArea } from "../src/ui/primitives";
 import { createOutbox, SERVER_FAILURES_MAX, type OutboxItem, type OutboxStorage } from "../src/patient/outbox";
-import { OutboxStrip } from "../src/patient/OutboxStrip";
+import { MemoryRouter } from "react-router-dom";
+import { OutboxPanel, OutboxStrip, type OutboxView } from "../src/patient/OutboxStrip";
 
 /**
  * Отвергнутая сдача очереди кабинета — не тупик (#172).
@@ -158,7 +159,7 @@ describe("решение по отвергнутой — из кабинета",
   });
 });
 
-describe("полоса очереди в кабинете", () => {
+describe("очередь в кабинете: панель на «Моїх тестах» и строка на остальных экранах", () => {
   const has = (html: string, key: keyof typeof UI) => {
     const e = UI[key] as { uk: string; ru: string; en?: string };
     return [e.uk, e.ru, e.en].some((t) => !!t && html.includes(t));
@@ -174,48 +175,76 @@ describe("полоса очереди в кабинете", () => {
     rejectedReason: "Методику знято з використання",
     ...over,
   });
-  const strip = (props: Partial<Parameters<typeof OutboxStrip>[0]>) =>
+  const waiting = (id: string): OutboxItem => ({ ...rejected({ id, title: "GAD-7" }), rejectedReason: undefined });
+  const box = (over: Partial<OutboxView>): OutboxView => ({
+    waiting: [],
+    rejected: [],
+    busy: false,
+    flush: () => {},
+    retry: () => {},
+    discard: () => {},
+    ...over,
+  });
+  const draw = (node: React.ReactNode) =>
     renderToStaticMarkup(
-      <LangProvider>
-        <TouchArea>
-          <OutboxStrip waiting={0} rejected={[]} busy={false} onSend={() => {}} onRetry={() => {}} onDiscard={() => {}} {...props} />
-        </TouchArea>
-      </LangProvider>,
+      <MemoryRouter>
+        <LangProvider>
+          <TouchArea>{node}</TouchArea>
+        </LangProvider>
+      </MemoryRouter>,
     );
+  const panel = (over: Partial<OutboxView>) => draw(<OutboxPanel outbox={box(over)} />);
+  const strip = (over: Partial<OutboxView>) => draw(<OutboxStrip outbox={box(over)} />);
 
   test("отвергнутая — строкой: методика, причина, «повторить» и «отказаться»", () => {
-    const html = strip({ rejected: [rejected()] });
+    const html = panel({ rejected: [rejected()] });
     expect(html).toContain("PHQ-9");
     expect(html).toContain("Методику знято з використання");
     expect(has(html, "pt.outboxRejected")).toBe(true);
     expect(has(html, "pt.outboxRejectedHint")).toBe(true);
     expect(has(html, "mq.retry")).toBe(true);
     expect(has(html, "pt.outboxDiscard")).toBe(true);
+    // ждущих нет — «Відправити зараз» нечего; у отвергнутой ровно два решения
+    expect(has(html, "pt.outboxSend")).toBe(false);
     expect(html.match(/<button/g)?.length).toBe(2);
   });
 
   test("запись без названия (легла до #172) — общей подписью, а не пустотой", () => {
-    const html = strip({ rejected: [rejected({ title: undefined })] });
+    const html = panel({ rejected: [rejected({ title: undefined })] });
     expect(has(html, "pt.outboxItem")).toBe(true);
   });
 
-  test("только ждущие — число и «Відправити зараз», без решений", () => {
-    const html = strip({ waiting: 2 });
+  test("только ждущие — каждая строкой, «Відправити зараз», без решений", () => {
+    const html = panel({ waiting: [waiting("w1"), waiting("w2")] });
     expect(has(html, "pt.outboxWaiting")).toBe(true);
     expect(has(html, "pt.outboxSend")).toBe(true);
+    expect(has(html, "ptw.outboxAuto")).toBe(true);
     expect(html.match(/<button/g)?.length).toBe(1);
+    expect(has(html, "pt.outboxDiscard")).toBe(false);
   });
 
-  test("пусто — полосы нет", () => {
-    expect(strip({})).not.toContain("border-b");
+  test("пусто — ни панели, ни строки", () => {
+    expect(panel({})).not.toContain("<section");
+    expect(strip({})).not.toContain("role=\"status\"");
   });
 
-  test("оболочка кабинета рисует полосу и стирает только после подтверждения", () => {
-    const shell = readFileSync(resolve(import.meta.dir, "../src/patient/PatientApp.tsx"), "utf8")
+  test("строка на полосе: сколько ждёт и сколько не принято, «Відправити зараз» и переход к решениям", () => {
+    const html = strip({ waiting: [waiting("w1")], rejected: [rejected()] });
+    expect(has(html, "pt.outboxWaiting")).toBe(true);
+    expect(has(html, "pt.outboxRejected")).toBe(true);
+    expect(has(html, "pt.outboxSend")).toBe(true);
+    expect(html).toContain('href="/me/tests"');
+  });
+
+  test("отказ стирает ответы только после подтверждения в окне", () => {
+    const src = readFileSync(resolve(import.meta.dir, "../src/patient/OutboxStrip.tsx"), "utf8")
       .replace(/\/\*[\s\S]*?\*\//g, "")
       .replace(/^\s*\/\/.*$/gm, "");
-    expect(shell).toContain("<OutboxStrip");
-    expect(shell).toContain("onRetry={pending.retry}");
-    expect(shell).toContain('if (window.confirm(ut("pt.outboxDiscardConfirm"))) pending.discard(id);');
+    // кнопка «Відмовитися» только открывает окно; стирает — кнопка окна
+    expect(src).toContain("onClick={() => setAsking(item)}");
+    expect(src).toContain("outbox.discard(asking.id);");
+    expect(src).toContain("<Modal");
+    const shell = readFileSync(resolve(import.meta.dir, "../src/patient/PatientApp.tsx"), "utf8");
+    expect(shell).toContain("<OutboxStrip outbox={pending} />");
   });
 });

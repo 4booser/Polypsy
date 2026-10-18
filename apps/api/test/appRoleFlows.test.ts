@@ -323,6 +323,51 @@ describe("пациент под ролью приложения", () => {
     expect((left.body.items as { id: string }[]).map((a) => a.id)).not.toContain(booked.body.id);
   });
 
+  /*
+   * Кабинет 2.0 (patient/Home, patient/Booking): приём подтверждают и
+   * переносят из кабинета самим пациентом, а «Мої прийоми» читают и
+   * прошедшие с отменёнными (?past=1). Всё — под ролью приложения: список
+   * записи у пациента уже однажды был пустым только под ней.
+   */
+  test("кабинет: подтверждение и перенос своего приёма, прошедшие и отменённые в «моїх прийомах»", async () => {
+    const first = await futureSlot(w);
+    const second = await futureSlot(w);
+    const booked = await appApi("/api/clinic/appointments", patientToken, post({ slotId: first }));
+    expect(booked.status, JSON.stringify(booked.body)).toBe(201);
+    w.cleanup.appointments.push(booked.body.id);
+
+    const confirmed = await appApi(`/api/clinic/appointments/${booked.body.id}/confirm`, patientToken, post());
+    expect(confirmed.status, JSON.stringify(confirmed.body)).toBe(200);
+
+    /* перенос — одним действием; подтверждение относилось к прежнему времени и на новое не переносится */
+    const moved = await appApi(`/api/clinic/appointments/${booked.body.id}/reschedule`, patientToken, post({ slotId: second }));
+    expect(moved.status, JSON.stringify(moved.body)).toBe(200);
+    const mine = await appApi("/api/clinic/appointments/mine", patientToken);
+    expect(mine.status).toBe(200);
+    const row = (mine.body.items as { id: string; slotId: string; status: string; specialistName: string }[]).find(
+      (a) => a.id === booked.body.id,
+    );
+    expect(row?.slotId).toBe(second);
+    expect(row?.status).toBe("booked");
+    expect(row?.specialistName, "имя специалиста под ролью приложения пустое").toBeTruthy();
+
+    /* прежний час снова свободен — его видит и пациент */
+    const free = await appApi(`/api/clinic/slots?specialistId=${w.specialist.id}`, patientToken);
+    expect((free.body.items as { id: string }[]).map((s) => s.id)).toContain(first);
+
+    /* чужой приём не переносится */
+    const foreign = await appApi(`/api/clinic/appointments/${booked.body.id}/reschedule`, w.stranger.token, post({ slotId: first }));
+    expect([403, 404]).toContain(foreign.status);
+
+    /* отменённый остаётся в «моїх прийомах» с прошедшими — со своим состоянием */
+    const cancelled = await appApi(`/api/clinic/appointments/${booked.body.id}/cancel`, patientToken, post({ reason: "Зміна на роботі" }));
+    expect(cancelled.status, JSON.stringify(cancelled.body)).toBe(200);
+    const history = await appApi("/api/clinic/appointments/mine?past=1", patientToken);
+    expect(history.status).toBe(200);
+    const gone = (history.body.items as { id: string; status: string }[]).find((a) => a.id === booked.body.id);
+    expect(gone?.status).toBe("cancelled");
+  }, 20_000);
+
   test("рассылка: входящие, прочтение, ответ", async () => {
     const created = await appApi("/api/mailings", w.admin.token, post({
       title: `Опитування ${w.tag}`,

@@ -1,77 +1,230 @@
+import type { ReactNode } from "react";
+
 /**
  * Значки кабинета пациента.
  *
- * Крупнее консольных: нижняя полоса вкладок читается пальцем и мельком, а
- * не наведением мыши. Обводка та же, что в консоли, — приложение одно, и
- * разный штрих выдавал бы, что экраны собирали разные люди.
+ * Обводка та же, что у набора (lucide: сетка 24, линия 2, скруглённые
+ * концы), — приложение одно, и разный штрих выдавал бы, что экраны собирали
+ * разные люди. Здесь — только то, чего нет в наборе (ui/icons.tsx) и в
+ * оболочке (shell/icons.tsx): сохранение на устройстве, очередь отправки,
+ * время суток в записи, тема в профиле.
+ *
+ * Размер ставит тот, кто вставляет (`size`), иначе 16: svg без размеров в
+ * потоке разворачивается до ширины колонки.
  */
-const s = {
-  viewBox: "0 0 24 24",
-  fill: "none",
-  stroke: "currentColor",
-  strokeWidth: 1.7,
-  strokeLinecap: "round" as const,
-  strokeLinejoin: "round" as const,
-};
+const PATHS = {
+  play: <polygon points="6 3 20 12 6 21 6 3" />,
+  "rotate-ccw": (
+    <>
+      <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+      <path d="M3 3v5h5" />
+    </>
+  ),
+  "hard-drive": (
+    <>
+      <path d="M22 12H2" />
+      <path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
+      <path d="M6 16h.01M10 16h.01" />
+    </>
+  ),
+  clock: (
+    <>
+      <circle cx="12" cy="12" r="10" />
+      <path d="M12 6v6h4.5" />
+    </>
+  ),
+  send: (
+    <>
+      <path d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z" />
+      <path d="m21.854 2.147-10.94 10.939" />
+    </>
+  ),
+  trash: (
+    <>
+      <path d="M3 6h18" />
+      <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+      <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+      <path d="M10 11v6M14 11v6" />
+    </>
+  ),
+  "heart-handshake": (
+    <>
+      <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z" />
+      <path d="M12 5 9.04 7.96a2.17 2.17 0 0 0 0 3.08c.82.82 2.13.85 3 .07l2.07-1.9a2.82 2.82 0 0 1 3.79 0l2.96 2.66" />
+      <path d="m18 15-2-2M15 18l-2-2" />
+    </>
+  ),
+  wrench: (
+    <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
+  ),
+  sunrise: (
+    <>
+      <path d="M12 2v8M4.93 10.93l1.41 1.41M2 18h2M20 18h2M19.07 10.93l-1.41 1.41M22 22H2" />
+      <path d="m8 6 4-4 4 4" />
+      <path d="M16 18a4 4 0 0 0-8 0" />
+    </>
+  ),
+  sun: (
+    <>
+      <circle cx="12" cy="12" r="4" />
+      <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" />
+    </>
+  ),
+  sunset: (
+    <>
+      <path d="M12 10V2M4.93 10.93l1.41 1.41M2 18h2M20 18h2M19.07 10.93l-1.41 1.41M22 22H2" />
+      <path d="m16 6-4 4-4-4" />
+      <path d="M16 18a4 4 0 0 0-8 0" />
+    </>
+  ),
+  moon: <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />,
+  languages: (
+    <>
+      <path d="m5 8 6 6M4 14l6-6 2-3M2 5h12M7 2h1" />
+      <path d="m22 22-5-10-5 10M14 18h6" />
+    </>
+  ),
+  activity: (
+    <path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2" />
+  ),
+  book: (
+    <>
+      <path d="M12 7v14M16 12h2M16 8h2M6 12h2M6 8h2" />
+      <path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z" />
+    </>
+  ),
+  save: (
+    <>
+      <path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" />
+      <path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7M7 3v4a1 1 0 0 0 1 1h7" />
+    </>
+  ),
+  hourglass: (
+    <>
+      <path d="M5 22h14M5 2h14" />
+      <path d="M17 22v-4.172a2 2 0 0 0-.586-1.414L12 12l-4.414 4.414A2 2 0 0 0 7 17.828V22" />
+      <path d="M7 2v4.172a2 2 0 0 0 .586 1.414L12 12l4.414-4.414A2 2 0 0 0 17 6.172V2" />
+    </>
+  ),
+  "calendar-clock": (
+    <>
+      <path d="M21 7.5V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h3.5M16 2v4M8 2v4M3 10h5" />
+      <path d="M17.5 17.5 16 16.3V14" />
+      <circle cx="16" cy="16" r="6" />
+    </>
+  ),
+  "calendar-sync": (
+    <>
+      <path d="M11 10v4h4" />
+      <path d="m11 14 1.535-1.605a5 5 0 0 1 8 1.5" />
+      <path d="m21 18-1.535 1.605a5 5 0 0 1-8-1.5" />
+      <path d="M21 22v-4h-4M16 2v4M8 2v4M3 10h4" />
+      <path d="M21 8.5V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h4.3" />
+    </>
+  ),
+  "calendar-x": (
+    <>
+      <path d="M8 2v4M16 2v4M3 10h18" />
+      <path d="M21 13V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h8" />
+      <path d="m17 22 5-5M17 17l5 5" />
+    </>
+  ),
+  "calendar-check": (
+    <>
+      <path d="M8 2v4M16 2v4M3 10h18" />
+      <path d="M21 14V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h8" />
+      <path d="m16 20 2 2 4-4" />
+    </>
+  ),
+  "user-round": (
+    <>
+      <circle cx="12" cy="8" r="5" />
+      <path d="M20 21a8 8 0 0 0-16 0" />
+    </>
+  ),
+  "users-round": (
+    <>
+      <path d="M18 21a8 8 0 0 0-16 0" />
+      <circle cx="10" cy="8" r="5" />
+      <path d="M22 20c0-3.37-2-6.5-4-8a5 5 0 0 0-.45-8.3" />
+    </>
+  ),
+  infinity: (
+    <path d="M12 12c-2-2.67-4-4-6-4a4 4 0 1 0 0 8c2 0 4-1.33 6-4Zm0 0c2 2.67 4 4 6 4a4 4 0 0 0 0-8c-2 0-4 1.33-6 4Z" />
+  ),
+  "arrow-down-dot": (
+    <>
+      <path d="M12 2v14" />
+      <path d="m19 9-7 7-7-7" />
+      <circle cx="12" cy="21" r="1" />
+    </>
+  ),
+  "file-x": (
+    <>
+      <path d="M4 22h14a2 2 0 0 0 2-2V7l-5-5H6a2 2 0 0 0-2 2v4" />
+      <path d="M14 2v4a2 2 0 0 0 2 2h4" />
+      <path d="m8 12.5-5 5M3 12.5l5 5" />
+    </>
+  ),
+  star: (
+    <path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z" />
+  ),
+  "lock-keyhole": (
+    <>
+      <circle cx="12" cy="16" r="1" />
+      <rect x="3" y="10" width="18" height="12" rx="2" />
+      <path d="M7 10V7a5 5 0 0 1 10 0v3" />
+    </>
+  ),
+  "message-more": (
+    <>
+      <path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z" />
+      <path d="M8 12h.01M12 12h.01M16 12h.01" />
+    </>
+  ),
+  "list-ordered": (
+    <>
+      <path d="M10 12h11M10 18h11M10 6h11" />
+      <path d="M4 10h2M4 6h1v4M6 18H4c0-1 2-2 2-3s-1-1.5-2-1" />
+    </>
+  ),
+  video: (
+    <>
+      <path d="m16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.87a.5.5 0 0 0-.752-.432L16 10.5" />
+      <rect x="2" y="6" width="14" height="12" rx="2" />
+    </>
+  ),
+  "map-pin": (
+    <>
+      <path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0" />
+      <circle cx="12" cy="10" r="3" />
+    </>
+  ),
+  "a-large-small": (
+    <>
+      <path d="M21 14h-5M16 16v-3.5a2.5 2.5 0 0 1 5 0V16" />
+      <path d="M4.5 13h6M3 16l4.5-9 4.5 9" />
+    </>
+  ),
+} satisfies Record<string, ReactNode>;
 
-export const IconHome = () => (
-  <svg {...s}>
-    <path d="M3 11 12 3l9 8" />
-    <path d="M5 10v10h14V10" />
-  </svg>
-);
+export type GlyphName = keyof typeof PATHS;
 
-export const IconTest = () => (
-  <svg {...s}>
-    <rect x="5" y="3" width="14" height="18" rx="2" />
-    <path d="M9 8h6M9 12h6M9 16h3" />
-  </svg>
-);
-
-export const IconCalendar = () => (
-  <svg {...s}>
-    <rect x="3" y="5" width="18" height="16" rx="2" />
-    <path d="M3 10h18M8 3v4M16 3v4" />
-  </svg>
-);
-
-export const IconPerson = () => (
-  <svg {...s}>
-    <circle cx="12" cy="8" r="4" />
-    <path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1" />
-  </svg>
-);
-
-export const IconClock = () => (
-  <svg {...s}>
-    <circle cx="12" cy="12" r="9" />
-    <path d="M12 7v5l3 2" />
-  </svg>
-);
-
-export const IconPin = () => (
-  <svg {...s}>
-    <path d="M12 21s7-6.2 7-11a7 7 0 1 0-14 0c0 4.8 7 11 7 11Z" />
-    <circle cx="12" cy="10" r="2.5" />
-  </svg>
-);
-
-export const IconVideo = () => (
-  <svg {...s}>
-    <rect x="3" y="6" width="12" height="12" rx="2" />
-    <path d="m15 10 6-3v10l-6-3" />
-  </svg>
-);
-
-export const IconCheck = () => (
-  <svg {...s}>
-    <path d="m4 12 5 5L20 6" />
-  </svg>
-);
-
-/* Крестик выхода из методики — единственный способ уйти, не дойдя до конца */
-export const IconClose = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
-    <path d="M6 6l12 12M18 6L6 18" />
-  </svg>
-);
+export function Glyph({ name, size = 16, className }: { name: GlyphName; size?: number; className?: string }) {
+  return (
+    <svg
+      aria-hidden
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+    >
+      {PATHS[name]}
+    </svg>
+  );
+}
