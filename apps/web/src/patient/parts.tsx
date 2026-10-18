@@ -108,9 +108,9 @@ export function SideGrid({ children, side, className }: { children: ReactNode; s
 }
 
 /** Карточка на полосе (bcard): белый лист с тенью полосы — ближайший приём, перенос */
-export function BandCard({ children, className }: { children: ReactNode; className?: string }) {
+export function BandCard({ children, className, id }: { children: ReactNode; className?: string; id?: string }) {
   return (
-    <div className={cx("rounded-drawer border border-band-card-line bg-band-card px-[18px] py-4 shadow-banner", className)}>
+    <div id={id} className={cx("rounded-drawer border border-band-card-line bg-band-card px-[18px] py-4 shadow-banner", className)}>
       {children}
     </div>
   );

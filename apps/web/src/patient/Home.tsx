@@ -244,7 +244,8 @@ export function HomeBody({
     chips.push(
       <StripChip
         key="visit"
-        to={`/me/booking?move=${next.id}`}
+        /* к карточке приёма на этой же странице: подтверждают там, а на телефоне она ниже пилюль */
+        href="#visit"
         tone={next.status === "booked" ? "warn" : "plain"}
         icon={<Glyph name="calendar-clock" size={16} />}
         label={`${ut("ptw.visitChip")} ${shortDay(next.startsAt)}`}
@@ -444,31 +445,42 @@ function HeadTile({ icon }: { icon: ReactNode }) {
 /** Пилюля строки открытого на полосе (pt-strip): переход к своему делу */
 function StripChip({
   to,
+  href,
   icon,
   label,
   detail,
   tone = "plain",
 }: {
-  to: string;
+  /** Переход на экран кабинета */
+  to?: string;
+  /** Место на этой странице («#visit») */
+  href?: string;
   icon: ReactNode;
   label: string;
   detail?: string;
   tone?: "plain" | "warn";
 }) {
-  return (
-    <Link
-      to={to}
-      className={cx(
+  const className = cx(
         "inline-flex h-[38px] items-center gap-1.5 rounded-[19px] pl-[11px] pr-[13px] text-[13.5px] font-semibold text-text-2 no-underline transition-colors hover:no-underline",
         "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
         tone === "warn"
           ? "bg-warn-tint text-warn hover:bg-warn-tint-2"
           : "bg-band-card shadow-[inset_0_0_0_1px_var(--bcardline)] hover:bg-violet-tint-2",
-      )}
-    >
+  );
+  const inner = (
+    <>
       <span className={cx("inline-flex", tone === "warn" ? "text-warn" : "text-violet-ink")}>{icon}</span>
       <b className={cx("font-extrabold", tone === "warn" ? "text-warn" : "text-text")}>{label}</b>
       {detail ? <span>{detail}</span> : null}
+    </>
+  );
+  return href ? (
+    <a href={href} className={className}>
+      {inner}
+    </a>
+  ) : (
+    <Link to={to ?? "/me"} className={className}>
+      {inner}
     </Link>
   );
 }
@@ -489,7 +501,7 @@ function VisitCard({
   const late = lateCancel(visit.startsAt);
   const place = visit.mode === "remote" ? ut("pt.remote") : visit.room ? `${ut("pt.room")} ${visit.room}` : null;
   return (
-    <BandCard>
+    <BandCard id="visit" className="scroll-mt-4">
       <div className="flex flex-wrap items-center gap-2.5">
         <HeadTile icon={<Glyph name="calendar-clock" size={17} />} />
         <b className="text-[16px] font-extrabold">{ut("pt.nextVisit")}</b>

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   consentViewOf,
@@ -886,8 +886,9 @@ export function RunnerIntro({
   onLeave: () => void;
 }) {
   const { ut } = useLang();
-  const start = useCallback(() => onStart(), [onStart]);
-  /* Enter — «Почати» (или «Продовжити»), как подписано на кнопке */
+  /* Enter — «Почати» (или «Продовжити»), как подписано на кнопке; последняя onStart — через ссылку */
+  const start = useRef(onStart);
+  start.current = onStart;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Enter" || e.defaultPrevented) return;
@@ -895,11 +896,11 @@ export function RunnerIntro({
       if (target?.closest("input, textarea, select, button, a")) return;
       if (document.querySelector("[aria-modal='true']")) return;
       e.preventDefault();
-      start();
+      start.current();
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [start]);
+  }, []);
 
   const facts = [
     { key: "count", icon: <ShellIcon name="list-checks" size={16} />, title: `${ut("ms.questions")}: ${count}`, text: ut("ptw.factOneScreen") },
@@ -961,7 +962,7 @@ export function RunnerIntro({
               variant="primary"
               size="lg"
               className="flex-[2]"
-              onClick={start}
+              onClick={onStart}
               iconEnd={
                 <>
                   <Ic.arrowRight size={19} />

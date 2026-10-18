@@ -15,7 +15,7 @@ import { cx } from "../ui/cx";
 import { TouchArea } from "../ui/primitives";
 import { outbox, type OutboxItem } from "./outbox";
 import { ConsentGate, useRecheckConsent } from "./ConsentGate";
-import { OutboxStrip } from "./OutboxStrip";
+import { OutboxStrip, type OutboxView } from "./OutboxStrip";
 import { CallRows, HelpProvider } from "./parts";
 
 /**
@@ -297,14 +297,8 @@ function HelpDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
  * кабинет монтируется снова, и первый же проход отправляет её — те же
  * ответы, тот же clientRequestId.
  */
-export interface OutboxState {
-  waiting: OutboxItem[];
-  rejected: OutboxItem[];
-  busy: boolean;
-  flush: () => void;
-  retry: (id: string) => void;
-  discard: (id: string) => void;
-}
+/** Очередь кабинета для экранов — то, что рисуют OutboxPanel и OutboxStrip */
+export type OutboxState = OutboxView;
 
 function useOutbox(userId: string | null): OutboxState {
   const [counts, setCounts] = useState<{ waiting: OutboxItem[]; rejected: OutboxItem[] }>({ waiting: [], rejected: [] });
