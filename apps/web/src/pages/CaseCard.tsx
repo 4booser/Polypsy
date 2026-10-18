@@ -2,8 +2,6 @@ import { useState } from "react";
 import { Link, Outlet, useOutletContext, useParams } from "react-router-dom";
 import type { CaseSummary } from "@quizzy/shared";
 import { api } from "../api";
-import { dateTime } from "../format";
-import { useAuth } from "../auth";
 import { Screen } from "../ui";
 import { Page } from "../ui/layout";
 import { Tabs } from "../ui/primitives";
@@ -11,6 +9,7 @@ import { useLang } from "../lang";
 import { Here } from "../components/Here";
 import { ReferralForm } from "./CaseSummary";
 import { useResource } from "../useResource";
+import { fill, PageRules, SheetFoot, SheetHead, sheetDate, sheetTime, usePrintedBy } from "./printSheet";
 
 /**
  * Клиническая карта пациента: сводка, динамика, хронология.
@@ -59,8 +58,8 @@ export function useCaseCard(): CardContext {
 
 export default function CaseCard() {
   const { userId } = useParams<{ userId: string }>();
-  const { user } = useAuth();
   const { ut } = useLang();
+  const printedBy = usePrintedBy();
   const [showForm, setShowForm] = useState(false);
 
   /* keep: false — карта прежнего пациента не стоит под адресом следующего (#177) */
@@ -71,11 +70,15 @@ export default function CaseCard() {
     <Screen res={res}>
       {(data) => (
         <>
-          {/* штамп для подшивки: без «кто и когда распечатал» лист в деле безымянный */}
-          <p className="print-only hint">
-            {ut("sum.formedAt")} {dateTime(new Date().toISOString())}
-            {user ? ` · ${user.lastName ?? ""} ${user.firstName ?? ""}`.trimEnd() : ""}
-          </p>
+          {/*
+            Шапка листа на бумаге (UI 3, print-dynamics): знак, дата и «станом
+            на» — как у листов сервера; на экране её нет. Поля страницы —
+            «Сторінка N з M» и имя человека внизу каждого листа.
+          */}
+          <div className="print-only case-print">
+            <PageRules running={`${ut("sum.print")} · ${data.fullName}`} />
+            <SheetHead primary={sheetDate()} secondary={fill(ut("ps.asOf"), { time: sheetTime() })} />
+          </div>
           <Page
             title={data.fullName}
             crumbs={<Link to="/patients">{ut("patients.all")}</Link>}
@@ -119,6 +122,10 @@ export default function CaseCard() {
             ) : null}
 
             <Outlet context={{ data, reload } satisfies CardContext} />
+            {/* штамп для подшивки: без «кто и когда распечатал» лист в деле безымянный */}
+            <div className="print-only case-print">
+              <SheetFoot lines={[printedBy, ut("ps.secrecy")]} right={data.fullName} />
+            </div>
           </Page>
         </>
       )}
