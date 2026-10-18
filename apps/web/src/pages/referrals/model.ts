@@ -1,12 +1,12 @@
 import type { Referral, UiKey } from "@quizzy/shared";
 
 /**
- * Реестр направлений (Referrals.tsx): отбор из адреса и порядок колонок.
- * Проверяется без браузера (apps/web/test/referralsInvites.test.ts).
+ * Реестр направлений (Referrals.tsx): вид из адреса, группы «чекають дії» /
+ * «закриті за 30 днів», порядок, ожидание и отбор. Проверяется без браузера
+ * (apps/web/test/referralsInvites.test.ts).
  *
- * Подписи значений живут здесь, а не в экране: по ним сортируются колонки,
- * и порядок проверяется тестом. Экран (и карта случая, CaseSummary.tsx)
- * берёт их отсюда через Referrals.tsx, как брал и раньше.
+ * Подписи значений живут здесь, а не в экране: экран (и карта случая,
+ * CaseSummary.tsx) берёт их отсюда через Referrals.tsx, как брал и раньше.
  */
 
 export const DESTINATION_KEY = {
@@ -28,53 +28,108 @@ export const STATUS_KEY = {
   declined: "st.declined",
 } as const satisfies Record<Referral["status"], UiKey>;
 
-/**
- * «Показати закриті» — `?all=1`, и только так.
- *
- * Любое другое значение (`all=yes`, `all=true`, пустое) — открытые: реестр
- * открывается на незакрытых, и «незакрытое видно и через месяц» — смысл
- * экрана. Расширять выборку по опечатке в адресе нельзя: закрытые
- * направления заслонили бы открытые.
- */
-export function showClosed(raw: string): boolean {
-  return raw === "1";
-}
-
-/** Значение параметра от переключателя: открытые — умолчание, в адресе их нет */
-export function closedParam(on: boolean): string {
-  return on ? "1" : "";
-}
-
 /** Срочность ступенью: сортировка по возрастанию — от планового к немедленному */
 export const URGENCY_RANK: Record<Referral["urgency"], number> = { routine: 0, urgent: 1, immediate: 2 };
 
-/**
- * Статус по ходу направления: выписано → принято → завершено, отклонённые —
- * в конце. По возрастанию сперва идут незакрытые — ради них реестр и открывают.
- */
-export const STATUS_RANK: Record<Referral["status"], number> = { created: 0, accepted: 1, completed: 2, declined: 3 };
+/* ─────────── реестр «Виразної»: виды, группы, порядок, ожидание ─────────── */
+
+/** Вид реестра — пилюли над таблицей. «Відкриті» — виписані и прийняті: то, что ждёт действия */
+export type ReferralView = "open" | Referral["status"] | "all";
+export const REFERRAL_VIEWS: readonly ReferralView[] = ["open", "created", "accepted", "completed", "declined", "all"];
+
+export function viewFrom(raw: string): ReferralView {
+  return (REFERRAL_VIEWS as readonly string[]).includes(raw) ? (raw as ReferralView) : "open";
+}
+
+export function isOpen(r: Pick<Referral, "status">): boolean {
+  return r.status === "created" || r.status === "accepted";
+}
+
+export function inView(r: Pick<Referral, "status">, view: ReferralView): boolean {
+  if (view === "all") return true;
+  if (view === "open") return isOpen(r);
+  return r.status === view;
+}
+
+/** Число в пилюле вида — по числам сервера (ReferralPage.counts), а не по загруженным строкам */
+export function viewCount(counts: Record<Referral["status"], number> | undefined, view: ReferralView): number | null {
+  if (!counts) return null;
+  if (view === "all") return counts.created + counts.accepted + counts.completed + counts.declined;
+  if (view === "open") return counts.created + counts.accepted;
+  return counts[view];
+}
+
+const DAY = 86_400_000;
+
+/** Закрыто (завершено или отклонено) за последние `days` дней — по времени последнего перехода */
+export function closedWithin(r: Pick<Referral, "status" | "createdAt" | "updatedAt">, now: number, days = 30): boolean {
+  if (isOpen(r)) return false;
+  return new Date(r.updatedAt ?? r.createdAt).getTime() >= now - days * DAY;
+}
 
 /**
- * Значения сортировки колонок реестра — то, что получает DataTable (Column.sort).
+ * Сколько направление ждёт — строка под статусом.
  *
- * Колонки «Куди», «Терміновість», «Статус» показывают перевод, а
- * сортировались по коду значения. У срочности алфавит кодов давал
- * immediate → routine → urgent: «негайно, планово, терміново» — ни по
- * срочности, ни по алфавиту; у «Куди» порядок кодов расходился с порядком
- * подписей. Человек, нажавший заголовок, видел несортированный столбец.
- *
- * Теперь: у срочности и статуса — свой порядок по смыслу (ступень), а
- * «Куди» — по алфавиту того, что написано в колонке, на языке экрана.
- * Ступень — число, поэтому выгрузке CSV у этих колонок нужна своя подпись
- * (Column.csv в Referrals.tsx): иначе в файл ушёл бы номер ступени.
+ *  - выписано и не принято: сколько прошло; больше суток — «без відповіді»
+ *    (янтарь: просрочено, не риск);
+ *  - принято: за сколько приняли (от выписки до перехода);
+ *  - закрыто: ничего — день закрытия стоит в «Виписано».
  */
-export function referralSorts(ut: (key: UiKey) => string) {
-  return {
-    userName: (r: Referral) => r.userName,
-    destination: (r: Referral) => ut(DESTINATION_KEY[r.destination]),
-    urgency: (r: Referral) => URGENCY_RANK[r.urgency],
-    status: (r: Referral) => STATUS_RANK[r.status],
-    reason: (r: Referral) => r.reason ?? "",
-    createdAt: (r: Referral) => r.createdAt,
+export type Wait =
+  | { kind: "issued"; minutes: number }
+  | { kind: "late"; minutes: number }
+  | { kind: "accepted"; minutes: number }
+  | { kind: "none" };
+
+export function waitOf(r: Pick<Referral, "status" | "createdAt" | "updatedAt">, now: number): Wait {
+  const issued = new Date(r.createdAt).getTime();
+  if (r.status === "created") {
+    const minutes = Math.max(0, Math.round((now - issued) / 60_000));
+    return minutes >= 24 * 60 ? { kind: "late", minutes } : { kind: "issued", minutes };
+  }
+  if (r.status === "accepted" && r.updatedAt) {
+    return { kind: "accepted", minutes: Math.max(0, Math.round((new Date(r.updatedAt).getTime() - issued) / 60_000)) };
+  }
+  return { kind: "none" };
+}
+
+/** Длительность словами-числами: «40 хв», «3 год», «2 дн.» — единицы приходят из словаря */
+export function spanText(minutes: number, unit: { min: string; hour: string; day: string }): string {
+  if (minutes < 60) return `${minutes} ${unit.min}`;
+  if (minutes < 24 * 60) return `${Math.round(minutes / 60)} ${unit.hour}`;
+  return `${Math.round(minutes / (24 * 60))} ${unit.day}`;
+}
+
+export type ReferralSort = "urgent" | "newest" | "oldest";
+
+/**
+ * Порядок реестра. «Спершу термінові»: открытые выше закрытых, внутри —
+ * негайно → терміново → планово, затем свежие сверху. Закрытые идут по дню
+ * закрытия: «закриті за 30 днів» читают от последнего.
+ */
+export function sortReferrals<T extends Pick<Referral, "status" | "urgency" | "createdAt" | "updatedAt" | "id">>(rows: readonly T[], by: ReferralSort): T[] {
+  const at = (r: T) => r.createdAt;
+  const cmp: Record<ReferralSort, (a: T, b: T) => number> = {
+    urgent: (a, b) =>
+      Number(isOpen(b)) - Number(isOpen(a)) ||
+      (isOpen(a) ? URGENCY_RANK[b.urgency] - URGENCY_RANK[a.urgency] : 0) ||
+      (isOpen(a) ? at(b).localeCompare(at(a)) : (b.updatedAt ?? b.createdAt).localeCompare(a.updatedAt ?? a.createdAt)) ||
+      a.id.localeCompare(b.id),
+    newest: (a, b) => at(b).localeCompare(at(a)) || a.id.localeCompare(b.id),
+    oldest: (a, b) => at(a).localeCompare(at(b)) || a.id.localeCompare(b.id),
   };
+  return [...rows].sort(cmp[by]);
+}
+
+/** Отбор строки реестра: поиск по пациенту и подставе, «куди», терміновість, кто выписал */
+export function matchesReferral(
+  r: Pick<Referral, "userName" | "reason" | "destination" | "urgency" | "createdByName">,
+  f: { q: string; dest: string; urg: string; by: string },
+): boolean {
+  const needle = f.q.trim().toLowerCase();
+  if (needle && !`${r.userName} ${r.reason ?? ""}`.toLowerCase().includes(needle)) return false;
+  if (f.dest && r.destination !== f.dest) return false;
+  if (f.urg && r.urgency !== f.urg) return false;
+  if (f.by && r.createdByName !== f.by) return false;
+  return true;
 }
