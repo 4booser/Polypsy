@@ -203,6 +203,25 @@ describe("поле с отказом", () => {
   });
 });
 
+describe("поле со значком или хвостом", () => {
+  /*
+   * Коробка (span) несёт кегль, а <input> внутри — нет. Наследие ставит
+   * всякому полю 12,5 (legacy.css, :where(input)), и поле поиска со
+   * значком печатало мельче своей подсказки. Кегль поля — от коробки.
+   */
+  test("поле внутри коробки берёт кегль коробки, а не наследия", () => {
+    for (const node of [<Input key="i" icon={<span />} defaultValue="Мельник" />, <Input key="s" suffix="хв" defaultValue="50" />]) {
+      const html = draw(node);
+      expect(html).toMatch(/<span[^>]*class="[^"]*text-body[^"]*"/);
+      expect(html.match(/<input[^>]*class="([^"]*)"/)?.[1]).toContain("[font-size:inherit]");
+    }
+  });
+
+  test("поле без коробки — свой кегль набора", () => {
+    expect(draw(<Input defaultValue="x" />).match(/<input[^>]*class="([^"]*)"/)?.[1]).toContain("text-body");
+  });
+});
+
 /* ─────────── таблица ─────────── */
 
 describe("таблица: отметка строк", () => {

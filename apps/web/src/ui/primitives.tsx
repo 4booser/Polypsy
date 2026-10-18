@@ -541,10 +541,15 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
       style={style}
     >
       {icon ? <span className="inline-flex text-muted [&>svg]:size-[15px]">{icon}</span> : null}
+      {/*
+        Кегль — от коробки (13,5 набора или тот, что ей дал экран), а не от
+        наследия: «Пульт» ставит всякому полю 12,5 (legacy.css), и без явного
+        inherit поле поиска печатало мельче своей подсказки рядом.
+      */}
       <input
         ref={ref}
         className={cx(
-          "h-full min-h-0 w-full min-w-0 flex-1 border-0 bg-transparent p-0 font-medium text-text outline-none",
+          "h-full min-h-0 w-full min-w-0 flex-1 border-0 bg-transparent p-0 font-medium text-text outline-none [font-size:inherit]",
           "placeholder:text-muted placeholder:opacity-100 focus-visible:outline-none disabled:cursor-not-allowed",
         )}
         {...attrs}
