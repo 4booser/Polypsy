@@ -948,23 +948,42 @@ function AssignedPanel({ v }: { v: CardView }) {
       ) : (
         <p className="m-0 text-small text-muted">{ut("card.nothingAssigned")}</p>
       )}
-      <div className="mt-2 flex items-center gap-2.5 rounded-[12px] bg-sunk py-3 pl-3.5 pr-3">
-        <span className="min-w-0 flex-1 text-small text-text-2">
-          <b className="block text-body font-extrabold text-text">
-            {v.plan ? ut("card.planChip").replace("{v}", String(v.plan.version)) : ut("rr.noPlan")}
-          </b>
-          {v.plan ? ut("rr.planUpdated").replace("{d}", day(v.plan.reviewedAt ?? v.plan.createdAt)) : ut("card.planWhere")}
-        </span>
-        {v.plan && v.cases?.length && v.can("alerts.review") ? (
-          <Button variant="paper" size="xs" onClick={() => v.open("signal")}>
-            {ut("card.open")}
-          </Button>
+      {/* «плану немає» — только по ответу сервера: отказ говорит об отказе, а не об отсутствии плана */}
+      {!v.planKnown ? (
+        v.planError ? (
+          <div role="alert" className="mt-2 flex items-center gap-2.5 rounded-[12px] bg-sunk py-3 pl-3.5 pr-3 text-small text-text-2">
+            <span className="min-w-0 flex-1">
+              <b className="block text-body font-extrabold text-text">{ut("rr.safetyPlan")}</b>
+              {v.planError}
+            </span>
+            <Button variant="paper" size="xs" onClick={v.reloadPlan}>
+              {ut("common.retry")}
+            </Button>
+          </div>
         ) : (
-          <Link to={`/patients/${v.id}/case`} className="text-small font-bold text-violet-ink">
-            {v.plan ? ut("card.open") : ut("rr.makePlan")}
-          </Link>
-        )}
-      </div>
+          <div className="mt-2 rounded-[12px] bg-sunk px-3.5 py-3">
+            <Loading rows={1} bare />
+          </div>
+        )
+      ) : (
+        <div className="mt-2 flex items-center gap-2.5 rounded-[12px] bg-sunk py-3 pl-3.5 pr-3">
+          <span className="min-w-0 flex-1 text-small text-text-2">
+            <b className="block text-body font-extrabold text-text">
+              {v.plan ? ut("card.planChip").replace("{v}", String(v.plan.version)) : ut("rr.noPlan")}
+            </b>
+            {v.plan ? ut("rr.planUpdated").replace("{d}", day(v.plan.reviewedAt ?? v.plan.createdAt)) : ut("card.planWhere")}
+          </span>
+          {v.plan && v.cases?.length && v.can("alerts.review") ? (
+            <Button variant="paper" size="xs" onClick={() => v.open("signal")}>
+              {ut("card.open")}
+            </Button>
+          ) : (
+            <Link to={`/patients/${v.id}/case`} className="text-small font-bold text-violet-ink">
+              {v.plan ? ut("card.open") : ut("rr.makePlan")}
+            </Link>
+          )}
+        </div>
+      )}
     </Panel>
   );
 }

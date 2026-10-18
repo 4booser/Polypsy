@@ -75,6 +75,60 @@ export const OUTCOME_KEY: Record<AlertOutcome, "cases.confirmed" | "cases.needsF
 /** Готовые фразы «що вжито» — дописываются в нотатку, а не заменяют её */
 const DONE_PHRASES = ["rr.didCall", "rr.didPlan", "rr.didBook"] as const;
 
+/**
+ * Предел нотатки разбора — тот же, что у сервера (PATCH /api/alert-cases/:id
+ * режет длиннее молча): поле не даёт набрать больше, чем сохранится.
+ */
+export const NOTE_MAX = 2000;
+
+/** Набранное к одному случаю: исход и нотатка */
+export interface CaseDraft {
+  outcome: string;
+  note: string;
+}
+
+const NO_DRAFT: CaseDraft = { outcome: "", note: "" };
+
+/**
+ * Черновики разбора — по случаю, а не один на ящик.
+ *
+ * Решение принимается о случае. Пока черновик был один, он оставался в
+ * форме, когда случай, о котором писали, уходил из открытых (коллега
+ * разобрал его — 409 «уже разобрано», список перечитан): ящик вставал на
+ * следующий открытый случай того же человека с набранным исходом и
+ * нотаткой, и «Зберегти розбір» ложился решением не на тот случай.
+ */
+export function draftOf(drafts: Readonly<Record<string, CaseDraft>>, caseId: string | null | undefined): CaseDraft {
+  return (caseId && drafts[caseId]) || NO_DRAFT;
+}
+
+export function withDraft(
+  drafts: Readonly<Record<string, CaseDraft>>,
+  caseId: string,
+  patch: (d: CaseDraft) => CaseDraft,
+): Record<string, CaseDraft> {
+  return { ...drafts, [caseId]: patch(draftOf(drafts, caseId)) };
+}
+
+export function withoutDraft(drafts: Readonly<Record<string, CaseDraft>>, caseId: string): Record<string, CaseDraft> {
+  const { [caseId]: _gone, ...rest } = drafts;
+  return rest;
+}
+
+/** Есть ли набранное к случаю, который ещё открыт: закрытие ящика скажет «чернетку збережено» */
+export function draftsDirty(drafts: Readonly<Record<string, CaseDraft>>, openIds: readonly string[]): boolean {
+  return openIds.some((id) => {
+    const d = drafts[id];
+    return !!d && (d.outcome !== "" || d.note.trim() !== "");
+  });
+}
+
+/** «Що вжито» — фразой в конец нотатки, через точку; не длиннее предела сервера */
+export function appendPhrase(note: string, phrase: string): string {
+  const next = note.trim() ? `${note.replace(/\s+$/, "")}${/[.!?]$/.test(note.trim()) ? "" : "."} ${phrase}` : phrase;
+  return next.slice(0, NOTE_MAX);
+}
+
 export interface RiskReviewOptions {
   /** Чей случай; null — ящик пуст */
   userId: string | null;
@@ -82,7 +136,11 @@ export interface RiskReviewOptions {
   caseId?: string | null;
   /** Случай, который экран уже знает (строка очереди): виден сразу, в том числе разобранный */
   known?: AlertCase | null;
-  /** Грузить ли: ящик закрыт и не нужен — запросов нет */
+  /**
+   * Грузить ли: ящик закрыт — запросов нет. Основание, история пункта и
+   * план безпеки читаются (и пишутся в журнал) тогда, когда их показывают,
+   * а не на каждый выбор строки или открытие карточки.
+   */
   enabled?: boolean;
   /** Случай разобран, взят или отпущен — экрану перечитать своё */
   onChanged?: () => void;
@@ -103,21 +161,36 @@ export interface RiskReview {
   pick: (outcome: string) => void;
 }
 
-/** Открытые случаи человека — один запрос на экран; без права разбора — пусто, а не ошибка */
+/**
+ * Открытые случаи человека — один запрос на экран: шапка карточки и ящик
+ * разбора делят его по общему имени. Без права разбора — пусто: сервер всё
+ * равно ответил бы отказом.
+ *
+ * Отказ — ошибкой, а не пустым списком. Прежде любой сбой (обрыв, 500)
+ * превращался в «случаев нет»: карточка писала «Нічого відкритого», ящик —
+ * «Відкритих сигналів немає», и открытый риск пропадал с экрана ровно тогда,
+ * когда сервер не ответил. Ошибка же повторяется сама (слой загрузки), а
+ * экран говорит «не вдалося перевірити» с «Повторити».
+ */
 export function usePersonCases(userId: string | null, enabled = true) {
   const { can } = useAuth();
   const allowed = can("alerts.review");
-  return useResource(
-    () =>
-      allowed && userId
-        ? api
-            .alertCases({ status: "open", group: "case", patient: userId, limit: "20" })
-            .then((p) => p.items)
-            .catch(() => [] as AlertCase[])
-        : Promise.resolve([] as AlertCase[]),
-    [userId, allowed],
-    { enabled: enabled && !!userId, keep: false },
-  );
+  return useResource(() => personCasesLoad(allowed, userId), [userId, allowed], {
+    enabled: enabled && !!userId,
+    keep: false,
+    key: "riskReview:cases",
+  });
+}
+
+/** Загрузка открытых случаев человека — отдельно от хука, ради проверки на подставном запросе (test/riskReview.test.tsx) */
+export function personCasesLoad(
+  allowed: boolean,
+  userId: string | null,
+  list: typeof api.alertCases = api.alertCases,
+): Promise<AlertCase[]> {
+  return allowed && userId
+    ? list({ status: "open", group: "case", patient: userId, limit: "20" }).then((p) => p.items)
+    : Promise.resolve([] as AlertCase[]);
 }
 
 export function useRiskReview({ userId, caseId, known, enabled = true, onChanged, onResolved, after }: RiskReviewOptions): RiskReview {
@@ -127,9 +200,9 @@ export function useRiskReview({ userId, caseId, known, enabled = true, onChanged
   const casesRes = usePersonCases(userId, enabled);
   const open = casesRes.data ?? null;
   const [picked, setPicked] = useState<string | null>(null);
-  const [outcome, setOutcome] = useState("");
-  const [note, setNote] = useState("");
-  const [tried, setTried] = useState(false);
+  const [drafts, setDrafts] = useState<Record<string, CaseDraft>>({});
+  /* случай, у которого нажали «Зберегти» без исхода — подсказка встаёт только у него */
+  const [tried, setTried] = useState<string | null>(null);
   const [done, setDone] = useState<{ outcome: string; at: string; caseId: string } | null>(null);
   const [now, setNow] = useState(() => Date.now());
 
@@ -143,9 +216,8 @@ export function useRiskReview({ userId, caseId, known, enabled = true, onChanged
   /* другой человек — другой разбор: набранное прежнего сюда не переезжает */
   useEffect(() => {
     setPicked(null);
-    setOutcome("");
-    setNote("");
-    setTried(false);
+    setDrafts({});
+    setTried(null);
     setDone(null);
   }, [userId]);
 
@@ -157,15 +229,20 @@ export function useRiskReview({ userId, caseId, known, enabled = true, onChanged
     null;
 
   const cb = useCaseBasis(userId, current, enabled);
-  const plans = useResource(
-    () => (userId ? api.safetyPlans(userId).catch(() => null) : Promise.resolve(null)),
-    [userId],
-    { enabled: enabled && !!userId, key: "riskReview:plans" },
-  );
+  const plans = useSafetyPlans(userId, enabled);
 
+  const { outcome, note } = draftOf(drafts, current?.id);
+  const edit = (patch: (d: CaseDraft) => CaseDraft) => {
+    if (!current) return;
+    const id = current.id;
+    setDrafts((all) => withDraft(all, id, patch));
+  };
   const resolved = !!current?.acknowledgedAt;
   const takenByOther = !!current?.assignedTo && current.assignedTo !== user?.id;
-  const dirty = !resolved && !done && (outcome !== "" || note.trim() !== "");
+  const openIds = [...(open ?? []), ...(current && !resolved ? [current] : [])]
+    .filter((c) => !c.acknowledgedAt)
+    .map((c) => c.id);
+  const dirty = draftsDirty(drafts, openIds);
   const clock = current ? riskClock(current, now) : null;
 
   const changed = () => {
@@ -176,22 +253,26 @@ export function useRiskReview({ userId, caseId, known, enabled = true, onChanged
   const save = () => {
     if (!current) return;
     if (!outcome) {
-      setTried(true);
+      setTried(current.id);
       return;
     }
     const target = current;
+    const sent = { outcome, note: note.trim() };
     void run(async () => {
       try {
-        await api.resolveCase(target.id, outcome, note.trim(), target.lastAlertAt);
+        await api.resolveCase(target.id, sent.outcome, sent.note, target.lastAlertAt);
       } catch (e) {
-        /* 409 — пришёл новый сигнал или случай разобрали: перечитать, набранное оставить */
+        /*
+         * 409 — пришёл новый сигнал или случай уже разобрали: перечитать.
+         * Набранное остаётся при своём случае; ушёл он из открытых — ящик
+         * встанет на другой случай с его собственным (пустым) черновиком.
+         */
         if (e instanceof ApiError && e.status === 409) changed();
         throw e;
       }
-      setDone({ outcome, at: new Date().toISOString(), caseId: target.id });
-      setOutcome("");
-      setNote("");
-      setTried(false);
+      setDone({ outcome: sent.outcome, at: new Date().toISOString(), caseId: target.id });
+      setDrafts((all) => withoutDraft(all, target.id));
+      setTried(null);
       setPicked(null);
       changed();
       onResolved?.(target.id);
@@ -212,7 +293,7 @@ export function useRiskReview({ userId, caseId, known, enabled = true, onChanged
 
   const addPhrase = (key: (typeof DONE_PHRASES)[number]) => {
     const phrase = ut(key);
-    setNote((n) => (n.trim() ? `${n.replace(/\s+$/, "")}${/[.!?]$/.test(n.trim()) ? "" : "."} ${phrase}` : phrase));
+    edit((d) => ({ ...d, note: appendPhrase(d.note, phrase) }));
   };
 
   const name = current?.userName ?? known?.userName ?? "";
@@ -250,8 +331,18 @@ export function useRiskReview({ userId, caseId, known, enabled = true, onChanged
       )
     ) : null;
 
+  /* отказ — «не вдалося перевірити» с повтором, а не «відкритих сигналів немає» */
   const body = !userId ? null : open === null && !known ? (
-    <Loading rows={4} bare />
+    <div className="py-4">
+      <Loading
+        rows={4}
+        bare
+        error={casesRes.error}
+        onRetry={casesRes.reload}
+        busy={casesRes.loading}
+        title={casesRes.error ? ut("rr.casesFailed") : undefined}
+      />
+    </div>
   ) : !current ? (
     done ? (
       <DoneNote done={done} after={after} />
@@ -293,7 +384,13 @@ export function useRiskReview({ userId, caseId, known, enabled = true, onChanged
 
       <Basis caseRow={current} cb={cb} />
 
-      <SafetyPlanSection userId={userId} plans={plans.data?.versions ?? null} loading={plans.loading} />
+      <SafetyPlanSection
+        userId={userId}
+        plans={plans.data?.versions ?? null}
+        loading={plans.loading}
+        error={plans.error}
+        onRetry={plans.reload}
+      />
 
       {resolved ? (
         <DrawerSection title={ut("rr.decision")}>
@@ -314,8 +411,8 @@ export function useRiskReview({ userId, caseId, known, enabled = true, onChanged
                 value={o.value}
                 checked={outcome === o.value}
                 onChange={(v) => {
-                  setOutcome(v);
-                  setTried(false);
+                  edit((d) => ({ ...d, outcome: v }));
+                  setTried(null);
                 }}
                 title={
                   <span className="flex items-center gap-2">
@@ -327,13 +424,17 @@ export function useRiskReview({ userId, caseId, known, enabled = true, onChanged
               />
             ))}
           </div>
-          {tried && !outcome ? <ErrorText className="mt-2">{ut("rr.pickOutcome")}</ErrorText> : null}
+          {tried === current.id && !outcome ? <ErrorText className="mt-2">{ut("rr.pickOutcome")}</ErrorText> : null}
           <Field label={ut("rr.note")} className="mt-3.5">
             <Textarea
               data-review-note=""
               rows={4}
+              maxLength={NOTE_MAX}
               value={note}
-              onChange={(e) => setNote(e.target.value)}
+              onChange={(e) => {
+                const text = e.target.value;
+                edit((d) => ({ ...d, note: text }));
+              }}
               placeholder={ut("cases.whatDone")}
             />
           </Field>
@@ -395,10 +496,26 @@ export function useRiskReview({ userId, caseId, known, enabled = true, onChanged
     current,
     pick: (o) => {
       if (resolved || !current) return;
-      setOutcome(o);
-      setTried(false);
+      edit((d) => ({ ...d, outcome: o }));
+      setTried(null);
     },
   };
+}
+
+/**
+ * Версии личного плана безпеки человека — один запрос на экран: строка
+ * открытого карточки и ящик разбора делят его по общему имени.
+ *
+ * Отказ — ошибкой, а не «плана нет»: прежде сбой показывал янтарное
+ * «Плану безпеки немає» у человека, план которого есть, — ровно в разборе
+ * риска, где по нему звонят.
+ */
+export function useSafetyPlans(userId: string | null, enabled = true) {
+  return useResource(() => (userId ? api.safetyPlans(userId) : Promise.resolve(null)), [userId], {
+    enabled: enabled && !!userId,
+    keep: false,
+    key: "riskReview:plans",
+  });
 }
 
 
@@ -849,14 +966,28 @@ function BandFacts({ s }: { s: AlertSignalBasis }) {
 /** Похоже ли на номер телефона: «+380 67 315 40 22», «7333» */
 const PHONE = /^[+\d][\d\s()-]{2,}$/;
 
-function SafetyPlanSection({ userId, plans, loading }: { userId: string; plans: SafetyPlan[] | null; loading: boolean }) {
+/** Раздел «План безпеки» ящика; экспорт — ради проверки разметки (test/riskReview.test.tsx) */
+export function SafetyPlanSection({
+  userId,
+  plans,
+  loading,
+  error,
+  onRetry,
+}: {
+  userId: string;
+  plans: SafetyPlan[] | null;
+  loading: boolean;
+  error: string | null;
+  onRetry: () => void;
+}) {
   const { ut } = useLang();
   const active = plans?.find((v) => v.active) ?? null;
   const contacts = active ? [...active.content.people, ...active.content.professionals].filter((p) => p.name.trim()) : [];
-  if (loading && !plans) {
+  /* не пришло — не «плану немає»: отказ говорит об отказе, пока грузится — скелет */
+  if (!plans) {
     return (
       <DrawerSection title={ut("rr.safetyPlan")}>
-        <Loading rows={2} bare />
+        <Loading rows={2} bare error={error} onRetry={onRetry} busy={loading} />
       </DrawerSection>
     );
   }
@@ -1056,7 +1187,13 @@ export function RiskReviewDrawer({
   after?: ReactNode;
   modal?: boolean;
 }) {
-  const review = useRiskReview({ userId, caseId, known, enabled: open || !!userId, onChanged, onResolved, after });
+  /*
+   * Грузит ящик, пока он открыт: план безпеки и случаи человека — то, что
+   * показывает только он, и при выборе строки очереди (J/K) их не читали бы
+   * зря и не писали бы в журнал. Основание случая уже читает панель
+   * «Підстава» экрана под тем же именем — ящик берёт его оттуда.
+   */
+  const review = useRiskReview({ userId, caseId, known, enabled: open, onChanged, onResolved, after });
   useHotkeys(
     {
       "1": () => review.pick("confirmed"),

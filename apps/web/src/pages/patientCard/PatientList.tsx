@@ -115,13 +115,15 @@ export function PatientList({
   }, []);
 
   const patients = useResource(() => allPatients(), []);
+  /*
+   * Отказ по случаям — ошибкой, а не пустым списком: иначе сбой сервера
+   * выглядел бы как «Ризик 0» и пустая группа «Дія зараз». Строка над
+   * списком говорит «не вдалося перевірити» и даёт повторить.
+   */
   const cases = useResource(
     () =>
       can("alerts.review")
-        ? api
-            .alertCases({ status: "open", limit: "100" })
-            .then((p) => p.items)
-            .catch(() => [] as AlertCase[])
+        ? api.alertCases({ status: "open", limit: "100" }).then((p) => p.items)
         : Promise.resolve([] as AlertCase[]),
     [],
   );
@@ -251,6 +253,14 @@ export function PatientList({
         </div>
       </div>
       <div ref={scroller} className="kit-scroll min-h-0 w-[340px] flex-1 overflow-y-auto border-t border-divider pb-2.5" data-rows="">
+        {cases.error && !cases.data ? (
+          <div role="alert" className="flex items-center gap-2.5 border-b border-divider px-4 py-2">
+            <p className="m-0 min-w-0 flex-1 text-small font-bold text-risk-ink">{ut("rr.casesFailed")}</p>
+            <Button variant="quiet" size="xs" onClick={cases.reload}>
+              {ut("common.retry")}
+            </Button>
+          </div>
+        ) : null}
         {loading ? (
           <div className="p-4">
             <Loading rows={6} bare />
