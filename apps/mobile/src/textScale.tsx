@@ -14,17 +14,20 @@ import { prefStorage } from "./storage";
  * заводить второй комплект чисел, который разъедется с первым.
  */
 const KEY = "quizzy.textScale";
-const STEPS = [1, 1.15, 1.3] as const;
+export const TEXT_STEPS = [1, 1.15, 1.3] as const;
+const STEPS = TEXT_STEPS;
 
 interface Ctx {
   scale: number;
   /** Следующий шаг по кругу: одна кнопка вместо трёх */
   cycle: () => void;
+  /** Шаг напрямую — в профиле три варианта рядом, а не одна кнопка */
+  set: (step: (typeof TEXT_STEPS)[number]) => void;
   /** Размер с учётом укрупнения */
   fs: (base: number) => number;
 }
 
-const TextScaleCtx = createContext<Ctx>({ scale: 1, cycle: () => {}, fs: (b) => b });
+const TextScaleCtx = createContext<Ctx>({ scale: 1, cycle: () => {}, set: () => {}, fs: (b) => b });
 
 export function TextScaleProvider({ children }: { children: ReactNode }) {
   const [scale, setScale] = useState(1);
@@ -43,6 +46,10 @@ export function TextScaleProvider({ children }: { children: ReactNode }) {
         const next = STEPS[(STEPS.indexOf(scale as never) + 1) % STEPS.length]!;
         setScale(next);
         void prefStorage.set(KEY, String(next));
+      },
+      set: (step) => {
+        setScale(step);
+        void prefStorage.set(KEY, String(step));
       },
       fs: (base: number) => Math.round(base * scale),
     }),
