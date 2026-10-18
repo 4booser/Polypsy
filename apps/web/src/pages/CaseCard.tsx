@@ -76,7 +76,7 @@ export default function CaseCard() {
             «Сторінка N з M» и имя человека внизу каждого листа.
           */}
           <div className="print-only case-print">
-            <PageRules running={`${ut("sum.print")} · ${data.fullName}`} />
+            <PageRules running={data.fullName} />
             <SheetHead primary={sheetDate()} secondary={fill(ut("ps.asOf"), { time: sheetTime() })} />
           </div>
           <Page
