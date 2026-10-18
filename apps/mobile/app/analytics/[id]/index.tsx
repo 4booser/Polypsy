@@ -13,7 +13,7 @@ import { Callout, Panel } from "@/ui/Panel";
 import { Segmented } from "@/ui/Segmented";
 import { T } from "@/ui/Text";
 import { lastDays, num } from "@/staff/model";
-import { Card, Chip, DayBars, HBars, Line, Loading, PillRow, Section, SplitBar, StaffNav, StateBlock, SumRows } from "@/staff/ui";
+import { Card, Chip, DayBars, HBars, Line, Loading, PillRow, Section, SplitBar, StaffNav, StateBlock, SumRows, useDurationValue } from "@/staff/ui";
 
 type Tab = "overview" | "questions" | "scales" | "quality";
 
@@ -70,8 +70,12 @@ export default function SurveyAnalyticsScreen() {
   const flagged = data.quality.filter((q) => q.flagged).length;
   return (
     <View style={{ flex: 1, backgroundColor: c.ground }}>
-      <StaffNav back={back} title={data.title}>
+      {/* название методики бывает длинным («Депресія (PHQ-9)») — оно на полосе целиком, а не обрезанным в строке навигации */}
+      <StaffNav back={back}>
         <View style={{ gap: 12 }}>
+          <T v="sheetTitle" accessibilityRole="header">
+            {data.title}
+          </T>
           {/* после правки методики данные остаются на прежней версии — видно, какую смотрим */}
           {data.versions.length > 1 ? (
             <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
@@ -131,6 +135,7 @@ export default function SurveyAnalyticsScreen() {
 
 function Overview({ data }: { data: SurveyAnalytics }) {
   const { ut, locale } = useLang();
+  const duration = useDurationValue();
   const days = lastDays(data.timeline, 10, new Date());
   const today = days.at(-1)?.value ?? 0;
   const avg = Math.round(days.reduce((s, d) => s + d.value, 0) / Math.max(1, days.length));
@@ -143,9 +148,9 @@ function Overview({ data }: { data: SurveyAnalytics }) {
         <SumRows
           rows={[
             { label: ut("msv.completed"), value: String(data.completed), sub: ut("msa.started").replace("{n}", String(data.started)) },
-            { label: ut("msv.completion"), value: String(data.completionRate), unit: "%", sub: ut("mst.abandonedOf").replace("{n}", String(data.abandoned)).replace("{of}", String(data.started)) },
-            { label: ut("ma.avgTime"), value: formatDuration(data.avgDurationMs), sub: ut("mst.perCompletion") },
-            { label: ut("msv.median"), value: formatDuration(data.medianDurationMs), sub: ut("mst.halfFaster") },
+            { label: ut("msv.completion"), value: num(data.completionRate), unit: "%", sub: ut("mst.abandonedOf").replace("{n}", String(data.abandoned)).replace("{of}", String(data.started)) },
+            { label: ut("ma.avgTime"), ...duration(data.avgDurationMs), sub: ut("mst.perCompletion") },
+            { label: ut("msv.median"), ...duration(data.medianDurationMs), sub: ut("mst.halfFaster") },
           ]}
         />
       </Panel>
@@ -167,7 +172,7 @@ function Overview({ data }: { data: SurveyAnalytics }) {
       {lost.length && worst ? (
         <Panel title={ut("msv.dropoff")} icon="log-out" sub={ut("mst.peopleN").replace("{n}", String(lostTotal))}>
           <HBars
-            labelWidth={150}
+            stacked
             rows={data.dropOff.map((d) => ({ key: d.questionId, label: `${d.position + 1}. ${d.title}`, value: d.lost, hl: d.questionId === worst.questionId }))}
           />
           <Callout kind="v" icon="lightbulb" text={ut("mst.dropWorst").replace("{n}", String(worst.position + 1)).replace("{k}", String(worst.lost))} />
@@ -196,10 +201,19 @@ function Questions({ data }: { data: SurveyAnalytics }) {
     <>
       {heatQ.length ? (
         <Panel title={ut("msv.optionSpread")} icon="clipboard-list" sub={ut("mst.ofAnswered")}>
+          {/* столбцы — номера вариантов: подписи вариантов длинные и в шапку столбца не помещаются; расшифровка — под таблицей */}
           <Heatmap
-            rows={heatQ.map((q) => ({ label: `${q.position + 1}. ${q.title}`, cells: (q.options ?? []).map((o) => ({ label: o.text, value: o.percent })) }))}
-            columns={heatQ[0]?.options?.map((o) => o.text) ?? []}
+            rows={heatQ.map((q) => ({ label: `${q.position + 1}. ${q.title}`, cells: (q.options ?? []).map((o, i) => ({ label: String(i + 1), value: o.percent })) }))}
+            columns={heatQ[0]?.options?.map((_, i) => String(i + 1)) ?? []}
           />
+          <View style={{ flexDirection: "row", flexWrap: "wrap", columnGap: 12, rowGap: 4 }}>
+            {(heatQ[0]?.options ?? []).map((o, i) => (
+              <T key={o.optionId} v="sub" size={13} tone="text2">
+                <T v="sub" size={13} weight={800} tone="text">{`${i + 1} `}</T>
+                {o.text}
+              </T>
+            ))}
+          </View>
         </Panel>
       ) : null}
 
@@ -365,7 +379,7 @@ function Scales({ data }: { data: SurveyAnalytics }) {
             </T>
             {s.bands.length ? (
               <HBars
-                labelWidth={150}
+                stacked
                 rows={s.bands.map((b) => ({ key: `${b.label}${b.min}`, label: `${b.label}, ${num(b.min)}–${num(b.max)}`, value: b.count, text: `${b.count}` }))}
               />
             ) : null}
@@ -381,33 +395,39 @@ function Scales({ data }: { data: SurveyAnalytics }) {
                   <Chip kind={r.alpha >= 0.8 ? "good" : r.alpha >= 0.7 ? "n" : "warn"} label={ut(verdict)} />
                 </View>
                 <T v="sub">{ut("msa.consistencyNote").replace("{n}", String(r.itemCount))}</T>
-                <View style={{ flexDirection: "row", gap: 8, paddingBottom: 4, borderBottomWidth: 1, borderBottomColor: c.divider }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingBottom: 6, borderBottomWidth: 1, borderBottomColor: c.divider }}>
                   <T v="caption" style={{ flex: 1 }}>
                     {ut("mst.itemCol")}
                   </T>
-                  <T v="caption" style={{ width: 40, textAlign: "right" }}>
+                  <View style={{ width: 56 }} />
+                  <T v="caption" style={{ width: 36, textAlign: "right" }}>
                     {ut("mst.rCol")}
                   </T>
-                  <T v="caption" style={{ width: 64, textAlign: "right" }}>
+                  <T v="caption" style={{ width: 62, textAlign: "right" }}>
                     {ut("mst.withoutCol")}
                   </T>
                 </View>
-                {r.items.map((it) => {
+                {r.items.map((it, n) => {
                   const bad = it.itemTotalCorrelation < WEAK_R || (it.alphaIfDeleted !== null && it.alphaIfDeleted > r.alpha);
                   return (
-                    <View key={it.questionId} style={{ gap: 4 }} accessible accessibilityLabel={`${it.title}: ${ut("msa.itemTotal").replace("{n}", num(it.itemTotalCorrelation))}, ${ut("msa.alphaIfDeleted").replace("{n}", it.alphaIfDeleted === null ? "—" : num(it.alphaIfDeleted))}`}>
-                      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                        <T v="sub" size={14} weight={bad ? 800 : 600} color={bad ? c.warn : c.text2} numberOfLines={1} style={{ flex: 1 }}>
-                          {it.title}
-                        </T>
-                        <T v="sub" size={14} weight={800} color={bad ? c.warn : c.text} num style={{ width: 40, textAlign: "right" }}>
-                          {num(it.itemTotalCorrelation)}
-                        </T>
-                        <T v="sub" size={14} num style={{ width: 64, textAlign: "right" }}>
-                          {it.alphaIfDeleted === null ? "—" : num(it.alphaIfDeleted)}
-                        </T>
+                    <View
+                      key={it.questionId}
+                      style={{ flexDirection: "row", alignItems: "center", gap: 8, minHeight: 34, borderBottomWidth: n === r.items.length - 1 ? 0 : 1, borderBottomColor: c.divider }}
+                      accessible
+                      accessibilityLabel={`${it.title}: ${ut("msa.itemTotal").replace("{n}", num(it.itemTotalCorrelation))}, ${ut("msa.alphaIfDeleted").replace("{n}", it.alphaIfDeleted === null ? "—" : num(it.alphaIfDeleted))}`}
+                    >
+                      <T v="sub" size={14} weight={bad ? 800 : 600} color={bad ? c.warn : c.text2} numberOfLines={1} style={{ flex: 1 }}>
+                        {it.title}
+                      </T>
+                      <View style={{ width: 56 }}>
+                        <CorrTrack r={it.itemTotalCorrelation} weak={bad} />
                       </View>
-                      <CorrTrack r={it.itemTotalCorrelation} weak={bad} />
+                      <T v="sub" size={14} weight={800} color={bad ? c.warn : c.text} num style={{ width: 36, textAlign: "right" }}>
+                        {num(it.itemTotalCorrelation)}
+                      </T>
+                      <T v="sub" size={14} num color={bad ? c.warn : c.muted} style={{ width: 62, textAlign: "right" }}>
+                        {it.alphaIfDeleted === null ? "—" : num(it.alphaIfDeleted)}
+                      </T>
                     </View>
                   );
                 })}
@@ -424,7 +444,7 @@ function Scales({ data }: { data: SurveyAnalytics }) {
 /** Связь пункта со шкалой полоской: риска — порог 0,3 */
 function CorrTrack({ r, weak }: { r: number; weak: boolean }) {
   const c = useColors();
-  const top = 0.8;
+  const top = 1;
   return (
     <View style={{ height: 8, borderRadius: 4, backgroundColor: c.sunk2 }}>
       <View style={{ width: `${Math.max(2, Math.min(100, (Math.max(0, r) / top) * 100))}%`, height: 8, borderRadius: 4, backgroundColor: weak ? c.warn : c.vink }} />

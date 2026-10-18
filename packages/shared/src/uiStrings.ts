@@ -8402,6 +8402,8 @@ export const UI = {
   "mst.changesN": { uk: "змін {n}", ru: "смен {n}", en: "{n} changes" },
   "mst.skippedShort": { uk: "пропуск", ru: "пропуск", en: "skipped" },
   "mst.card": { uk: "Картка", ru: "Карта", en: "Card" },
+  "mst.unitSec": { uk: "с", ru: "с", en: "s" },
+  "mst.unitMin": { uk: "хв", ru: "мин", en: "min" },
   /* мобилка сотрудника: листування (app/(app)/inbox.tsx, app/inbox/[patientId].tsx) */
   "mst.inboxLead": { uk: "Пацієнти, яких ви ведете", ru: "Пациенты, которых вы ведёте", en: "Patients in your care" },
   "mst.searchInbox": { uk: "Пошук у листуванні", ru: "Поиск в переписке", en: "Search conversations" },

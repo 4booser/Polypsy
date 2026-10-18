@@ -19,6 +19,7 @@ import {
   type WorkItem,
   type WorkKind,
 } from "@quizzy/shared";
+import { currentLang } from "../currentLang";
 
 const MINUTE = 60_000;
 const DAY = 86_400_000;
@@ -236,10 +237,27 @@ export function bandsOf(survey: Pick<SurveyFull, "scales"> | null | undefined, s
 
 const sorted = (points: readonly DynamicsPoint[]) => [...points].sort((a, b) => Date.parse(a.submittedAt) - Date.parse(b.submittedAt));
 
-/** Число так, как его печатают: целое без дробной части, иначе одна-две цифры после запятой */
-export function num(v: number): string {
+/**
+ * Число так, как его печатают: целое без дробной части, иначе одна-две
+ * цифры после разделителя — запятой по-украински и по-русски, точкой
+ * по-английски (тот же выбор, что у длительности в общем пакете).
+ */
+export function num(v: number, lang: string = currentLang): string {
   const r = Math.round(v * 100) / 100;
-  return String(r).replace(".", ",");
+  return lang === "en" ? String(r) : String(r).replace(".", ",");
+}
+
+/**
+ * Длительность для крупного числа: до минуты — секунды с десятой («43,3»,
+ * единица «с»), дальше — часы-минуты «3:12», единица «хв». Крупное «1 хв 4 с»
+ * читается хуже, чем «1:04 хв», а единицы — подписью рядом, не в числе.
+ */
+export function durationParts(ms: number): { value: string; unit: "sec" | "min" } | null {
+  if (!Number.isFinite(ms) || ms <= 0) return null;
+  const sec = ms / 1000;
+  if (Math.round(sec * 10) < 600) return { value: num(Math.round(sec * 10) / 10), unit: "sec" };
+  const total = Math.round(sec);
+  return { value: `${Math.floor(total / 60)}:${two(total % 60)}`, unit: "min" };
 }
 
 export interface InstrumentRow {

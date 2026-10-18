@@ -10,8 +10,8 @@ import { formatDuration, severityKey, useColors } from "@/theme";
 import { Icon } from "@/ui/Icon";
 import { Panel, Squircle } from "@/ui/Panel";
 import { T } from "@/ui/Text";
-import { lastDays, shortName } from "@/staff/model";
-import { Card, DayBars, HBars, Line, LinkButton, Loading, Section, StaffTop, StateBlock, SumRows } from "@/staff/ui";
+import { lastDays, num, shortName } from "@/staff/model";
+import { Card, DayBars, HBars, Line, LinkButton, Loading, Section, StaffTop, StateBlock, SumRows, useDurationValue } from "@/staff/ui";
 
 const SEVERITY_ORDER: Severity[] = ["none", "mild", "moderate", "severe"];
 
@@ -43,6 +43,7 @@ function Overview() {
   const [showAll, setShowAll] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const duration = useDurationValue();
 
   const load = useCallback(async () => {
     setBusy(true);
@@ -122,10 +123,10 @@ function Overview() {
           <Panel title={ut("mst.summary")} icon="chart-line" sub={ut("mst.allTime")}>
             <SumRows
               rows={[
-                { label: ut("ma.responses"), value: String(data.responseCount), sub: ut("ma.completion").replace("{n}", String(data.completionRate)) },
+                { label: ut("ma.responses"), value: String(data.responseCount), sub: ut("ma.completion").replace("{n}", num(data.completionRate)) },
                 { label: ut("ma.respondents"), value: String(data.respondentCount) },
                 { label: ut("mst.surveysAtWork"), value: String(data.surveyCount), sub: `${ut("ma.published")} ${data.publishedCount}` },
-                { label: ut("ma.avgTime"), value: formatDuration(data.avgDurationMs), sub: ut("mst.perCompletion") },
+                { label: ut("ma.avgTime"), ...duration(data.avgDurationMs), sub: ut("mst.perCompletion") },
               ]}
             />
           </Panel>

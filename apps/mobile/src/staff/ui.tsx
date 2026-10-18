@@ -14,7 +14,7 @@ import { Icon, type IconName } from "../ui/Icon";
 import { NavBar } from "../ui/NavBar";
 import { Count, FilterChip, SevPill } from "../ui/Pill";
 import { T } from "../ui/Text";
-import { caseClock, clock, hm, hours, initials, num, type InstrumentRow } from "./model";
+import { caseClock, clock, durationParts, hm, hours, initials, num, type InstrumentRow } from "./model";
 
 /*
  * Детали экранов сотрудника, общие для нескольких экранов: шапки на полосе,
@@ -443,6 +443,15 @@ export function Chip({ label, detail, icon, kind = "n", onPress }: { label: stri
 
 /* ─────────── числа ─────────── */
 
+/** Длительность крупным числом и единица подписью: «3:12» и «хв», «43,3» и «с» */
+export function useDurationValue() {
+  const { ut } = useLang();
+  return (ms: number): { value: string; unit?: string } => {
+    const p = durationParts(ms);
+    return p ? { value: p.value, unit: ut(p.unit === "sec" ? "mst.unitSec" : "mst.unitMin") } : { value: "—" };
+  };
+}
+
 /** «19 → 16 → 14»: история числами, последнее — жирным */
 export function History({ values, unit }: { values: number[]; unit?: string }) {
   const c = useColors();
@@ -484,27 +493,24 @@ export function InstrumentLine({ row, first, onPress }: { row: InstrumentRow; fi
       : `${row.delta > 0 ? "+" : row.delta < 0 ? "−" : ""}${num(Math.abs(row.delta))}, ${ut(`mst.verdict.${row.verdict}`)}`;
   const good = row.verdict === "better";
   const inner = (pressed: boolean) => (
-    <View style={{ paddingTop: 12, paddingBottom: 13, paddingLeft: 16, paddingRight: 14, borderTopWidth: first ? 0 : 1, borderTopColor: c.divider, backgroundColor: pressed ? c.panel2 : "transparent", gap: 6 }}>
+    <View style={{ paddingTop: 12, paddingBottom: 13, paddingLeft: 16, paddingRight: 14, borderTopWidth: first ? 0 : 1, borderTopColor: c.divider, backgroundColor: pressed ? c.panel2 : "transparent", gap: 4 }}>
+      {/* код и направление слева, крупное значение справа; слово полосы — ниже: у методик оно бывает в полстроки */}
       <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-        <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-            <T v="headline">{row.code || row.title}</T>
-            {row.better ? <BetterPill better={row.better} /> : null}
-          </View>
-          <T v="sub" numberOfLines={2}>
-            {row.code && row.title !== row.code ? row.title : row.surveyTitle}
-          </T>
+        <View style={{ flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 6 }}>
+          <T v="headline">{row.code || row.title}</T>
+          {row.better ? <BetterPill better={row.better} /> : null}
         </View>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-          <T v="number" size={28} num scale={false}>
-            {num(row.last.rawScore)}
-          </T>
-          {row.last.severity || row.last.bandLabel ? (
-            <SevPill small severity={(row.last.severity ?? "none") as Severity} label={row.last.bandLabel ?? undefined} />
-          ) : null}
-        </View>
+        <T v="number" size={28} num scale={false}>
+          {num(row.last.rawScore)}
+        </T>
       </View>
-      <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", columnGap: 8, rowGap: 2 }}>
+      <T v="sub" numberOfLines={2}>
+        {row.code && row.title !== row.code ? row.title : row.surveyTitle}
+      </T>
+      <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", columnGap: 8, rowGap: 4, marginTop: 4 }}>
+        {row.last.severity || row.last.bandLabel ? (
+          <SevPill small severity={(row.last.severity ?? "none") as Severity} label={row.last.bandLabel ?? undefined} />
+        ) : null}
         {row.history.length > 1 ? <History values={row.history} /> : <T v="sub">{ut("mst.oneMeasure")}</T>}
         {verdictText ? (
           <T v="sub" size={14} weight={700} color={good ? c.good : c.text2}>
@@ -578,11 +584,14 @@ export function HBars({
   max,
   mark,
   labelWidth = 140,
+  stacked,
 }: {
   rows: { key: string; label: string; value: number | null; text?: string; hl?: boolean; warn?: boolean }[];
   max?: number;
   mark?: number;
   labelWidth?: number;
+  /** Подпись над полосой целиком — для длинных подписей (полосы методики, пункты) */
+  stacked?: boolean;
 }) {
   const c = useColors();
   const chart = useChart();
@@ -592,10 +601,11 @@ export function HBars({
   return (
     <View style={{ gap: 8 }}>
       {rows.map((r) => (
-        <View key={r.key} style={{ flexDirection: "row", alignItems: "center", gap: 10 }} accessible accessibilityLabel={`${r.label}: ${r.text ?? (r.value ?? "—")}`}>
-          <T v="sub" size={14} weight={r.hl || r.warn ? 800 : 600} color={r.warn ? c.warn : r.hl ? c.text : c.text2} numberOfLines={1} style={{ width: labelWidth }}>
+        <View key={r.key} style={stacked ? { gap: 4 } : { flexDirection: "row", alignItems: "center", gap: 10 }} accessible accessibilityLabel={`${r.label}: ${r.text ?? (r.value ?? "—")}`}>
+          <T v="sub" size={14} weight={r.hl || r.warn ? 800 : 600} color={r.warn ? c.warn : r.hl ? c.text : c.text2} numberOfLines={stacked ? 2 : 1} style={stacked ? undefined : { width: labelWidth }}>
             {r.label}
           </T>
+          <View style={stacked ? { flexDirection: "row", alignItems: "center", gap: 10 } : { flex: 1, flexDirection: "row", alignItems: "center", gap: 10 }}>
           <View style={{ flex: 1, height: 10, borderRadius: 5, backgroundColor: chart.track }}>
             {r.value !== null ? (
               <View style={{ width: `${Math.max(1.5, Math.min(100, (r.value / top) * 100))}%`, height: 10, borderRadius: 5, backgroundColor: r.warn ? c.warn : r.hl || mark === undefined ? fill : chart.series[4] }} />
@@ -607,6 +617,7 @@ export function HBars({
           <T v="sub" size={14} weight={800} num style={{ minWidth: 36, textAlign: "right" }}>
             {r.text ?? (r.value === null ? "—" : num(r.value))}
           </T>
+          </View>
         </View>
       ))}
     </View>

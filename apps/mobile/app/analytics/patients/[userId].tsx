@@ -272,12 +272,15 @@ function findScale(data: RespondentDynamics, rowKey: string) {
 
 /** График курса одной шкалы: полосы методики, межі похибки, сигнал на оси */
 function Course({ data, rowKey, contents, open, now }: { data: RespondentDynamics; rowKey: string; contents: Contents; open: AlertCase | null; now: number }) {
-  const { ut } = useLang();
   const { sv, sc } = findScale(data, rowKey);
   if (!sv || !sc) return null;
   const last = [...sc.points].sort((a, b) => Date.parse(a.submittedAt) - Date.parse(b.submittedAt)).at(-1);
   const input = courseInput(sc, bandsOf(contents.get(sv.surveyId), sc), last ? pointValueTop(last) : null);
-  const signals = open && open.surveyId === sv.surveyId ? [{ t: Date.parse(open.lastAlertAt), label: ut("mui.signal") }] : [];
+  /*
+   * Сигнал — красной меткой на оси, без подписи: подпись у правого края
+   * налезала бы на слово нижней полосы; что это сигнал, говорит легенда.
+   */
+  const signals = open && open.surveyId === sv.surveyId ? [{ t: Date.parse(open.lastAlertAt), label: "" }] : [];
   return (
     <CourseChart
       points={input.points.map((p) => ({ ...p, step: p.severity ? STEP_OF[p.severity as Severity] : undefined }))}
@@ -316,12 +319,26 @@ function LastMeasure({ data, rowKey, contents, opening, onReport }: { data: Resp
   return (
     <Panel title={ut("mdy.last")} icon="gauge" sub={`${sc.code || sc.title}, ${dm(last.submittedAt)}, ${hm(last.submittedAt)}`}>
       <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
-        <T v="number" size={32} num scale={false}>
+        {/* значение в своих единицах (pointValueText): число крупно, «з 27», «стен», «T-бал» — подписью */}
+        <View style={{ flexDirection: "row", alignItems: "baseline", gap: 6 }}>
           {pointValueText(last, {
             of: ut("an.of"),
             norm: { raw: ut("norm.raw"), ratio: ut("norm.ratio"), tscore: ut("norm.tscore"), sten: ut("norm.sten") },
-          })}
-        </T>
+          })
+            .split(" ")
+            .map((part, i, all) =>
+              // крупно — само значение: первое число; «з 27» после него — подписью
+              /^[\d.,−-]+%?$/.test(part) && all.findIndex((x) => /^[\d.,−-]+%?$/.test(x)) === i ? (
+                <T key={i} v="number" size={40} num scale={false}>
+                  {part}
+                </T>
+              ) : (
+                <T key={i} v="body" size={17} weight={700} tone="muted" num scale={false}>
+                  {part}
+                </T>
+              ),
+            )}
+        </View>
         {last.severity || last.bandLabel ? <SevPill severity={(last.severity ?? "none") as Severity} label={last.bandLabel ?? undefined} /> : null}
       </View>
       {delta !== null && verdict ? (

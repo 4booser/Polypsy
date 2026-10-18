@@ -148,11 +148,10 @@ export default function RoundsCardScreen() {
         {/* «Відвідано» — память обходящего на этом устройстве, не запись в карте (staff/visited.ts) */}
         <Btn
           title={ut("mst.visitedBtn")}
-          size="l"
+          size="m"
           icon={visited ? "check-check" : "check"}
           kind={visited ? "outline" : "secondary"}
           accessibilityLabel={ut(visited ? "mst.visitedOn" : "mst.visitedOff")}
-          flex={1}
           accessibilityHint={ut("mst.visitedHint")}
           onPress={() => setVisited(flipVisited(userId!).has(userId!))}
         />
@@ -161,7 +160,7 @@ export default function RoundsCardScreen() {
           лежит рядом, а не сидит с телефоном. Ведёт в обычный список методик,
           где выбор уже привязан к этому пациенту.
         */}
-        <Btn title={ut("rounds.fill")} kind="primary" size="l" flex={2} onPress={() => router.push(`/(app)/surveys?onBehalfOf=${userId}`)} />
+        <Btn title={ut("rounds.fill")} kind="primary" size="m" flex={1} onPress={() => router.push(`/(app)/surveys?onBehalfOf=${userId}`)} />
       </ActionBar>
 
       <ReviewSheet

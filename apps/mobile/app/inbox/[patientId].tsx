@@ -102,7 +102,7 @@ export default function ThreadScreen() {
   return (
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: c.ground }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
       <StaffNav
-        back={ut("ms.title")}
+        back={ut("common.back")}
         title={name ? shortName(name) : ut("mst.newMessage")}
         right={patientId ? <BandIcon icon="user-round" label={ut("mst.openCard")} onPress={() => router.push({ pathname: "/analytics/patients/[userId]", params: { userId: patientId } })} /> : undefined}
       />
