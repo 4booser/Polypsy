@@ -1,8 +1,11 @@
 import { useMemo } from "react";
-import { Pressable, Text, TextInput, View } from "react-native";
+import { Pressable, TextInput, View } from "react-native";
 import type { Answer, Option, Question, UiKey } from "@quizzy/shared";
-import { radius, spacing, useColors } from "../theme";
+import { font } from "../fonts";
+import { radius, spacing, useColors, useIsDark } from "../theme";
 import { useTextScale } from "../textScale";
+import { AnswerTile } from "../ui/AnswerTile";
+import { T } from "../ui/Text";
 import { Body, Row, TOUCH_TARGET } from "./ui";
 import { useLang } from "@/lang";
 
@@ -40,6 +43,10 @@ function useOptions(question: Question, kind: "option" | "row"): Option[] {
 export function QuestionInput({ question, value, onChange }: Props) {
   const { ut } = useLang();
   const c = useColors();
+  const darkTheme = useIsDark();
+  // выбор на тёмной теме — светлая ступень: заливка #7443AD под мелкой цифрой не читается
+  const pick = darkTheme ? c.vink : c.v;
+  const onPick = darkTheme ? c.ground : c.onfill;
   const { fs } = useTextScale();
   const choices = useOptions(question, "option");
   const rows = useOptions(question, "row");
@@ -54,12 +61,15 @@ export function QuestionInput({ question, value, onChange }: Props) {
       const selected = value?.optionIds ?? [];
       const multi = question.type === "multiple";
       return (
-        <View style={{ gap: spacing.sm }}>
+        <View style={{ gap: 10 }}>
           {choices.map((option) => {
             const on = selected.includes(option.id);
             return (
-              <Pressable
+              <AnswerTile
                 key={option.id}
+                label={option.text}
+                selected={on}
+                multi={multi}
                 onPress={() =>
                   onChange({
                     optionIds: multi
@@ -69,38 +79,7 @@ export function QuestionInput({ question, value, onChange }: Props) {
                       : [option.id],
                   })
                 }
-                /*
-                 * Роль и состояние обязательны: без них диктор читает просто
-                 * «Иногда», не сообщая ни что это выбор, ни что он уже сделан.
-                 * Для обследуемого со слабым зрением это разница между
-                 * заполненной методикой и случайным набором ответов.
-                 */
-                accessibilityRole={multi ? "checkbox" : "radio"}
-                accessibilityLabel={option.text}
-                accessibilityState={{ checked: on }}
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: spacing.md,
-                  padding: spacing.lg,
-                  borderRadius: radius.sm,
-                  borderWidth: 1,
-                  borderColor: on ? c.primary : c.border,
-                  backgroundColor: on ? `${c.primary}1a` : c.card,
-                }}
-              >
-                <View
-                  style={{
-                    width: 22,
-                    height: 22,
-                    borderRadius: multi ? 5 : 11,
-                    borderWidth: 2,
-                    borderColor: on ? c.primary : c.border,
-                    backgroundColor: on ? c.primary : "transparent",
-                  }}
-                />
-                <Text style={{ color: c.text, fontSize: fs(16), flex: 1 }}>{option.text}</Text>
-              </Pressable>
+              />
             );
           })}
         </View>
@@ -113,8 +92,8 @@ export function QuestionInput({ question, value, onChange }: Props) {
         <View style={{ gap: spacing.lg }}>
           {rows.map((row) => (
             <View key={row.id} style={{ gap: spacing.sm }}>
-              <Text style={{ color: c.text, fontSize: fs(15), fontWeight: "600" }}>{row.text}</Text>
-              <View style={{ flexDirection: "row", gap: spacing.xs }}>
+              <T v="headline">{row.text}</T>
+              <View style={{ flexDirection: "row", gap: 6 }}>
                 {choices.map((option) => {
                   const on = picked[row.id] === option.id;
                   return (
@@ -126,29 +105,22 @@ export function QuestionInput({ question, value, onChange }: Props) {
                       accessibilityRole="radio"
                       accessibilityLabel={`${row.text}: ${option.text}`}
                       accessibilityState={{ checked: on }}
-                      style={{
+                      style={({ pressed }) => ({
                         flex: 1,
-                        paddingVertical: spacing.md,
+                        minHeight: TOUCH_TARGET,
+                        paddingVertical: spacing.sm,
                         paddingHorizontal: spacing.xs,
                         alignItems: "center",
                         justifyContent: "center",
-                        borderRadius: radius.sm,
+                        borderRadius: radius.control,
                         borderWidth: 1,
-                        borderColor: on ? c.primary : c.border,
-                        backgroundColor: on ? c.primary : c.card,
-                      }}
+                        borderColor: on ? pick : c.border,
+                        backgroundColor: on ? pick : pressed ? c.panel2 : c.panel,
+                      })}
                     >
-                      <Text
-                        style={{
-                          color: on ? c.primaryText : c.muted,
-                          fontSize: 11,
-                          textAlign: "center",
-                          fontWeight: on ? "700" : "400",
-                        }}
-                        numberOfLines={3}
-                      >
+                      <T v="sub" size={13} weight={on ? 800 : 600} color={on ? onPick : c.text2} center numberOfLines={3}>
                         {option.text}
-                      </Text>
+                      </T>
                     </Pressable>
                   );
                 })}
@@ -166,7 +138,7 @@ export function QuestionInput({ question, value, onChange }: Props) {
         <View style={{ gap: spacing.md }}>
           <Body muted>{ut("mqi.rankHint")}</Body>
           {order.length > 0 ? (
-            <View style={{ gap: spacing.sm }}>
+            <View style={{ gap: 10 }}>
               {order.map((id, index) => {
                 const option = choices.find((o) => o.id === id);
                 return (
@@ -178,30 +150,35 @@ export function QuestionInput({ question, value, onChange }: Props) {
                     style={{
                       flexDirection: "row",
                       alignItems: "center",
-                      gap: spacing.md,
-                      padding: spacing.md,
-                      borderRadius: radius.sm,
-                      borderWidth: 1,
-                      borderColor: c.primary,
-                      backgroundColor: `${c.primary}1a`,
+                      gap: 14,
+                      minHeight: 64,
+                      paddingVertical: 11,
+                      paddingLeft: 15,
+                      paddingRight: 17,
+                      borderRadius: radius.tile,
+                      borderWidth: 2,
+                      borderColor: pick,
+                      backgroundColor: c.vtint,
                     }}
                   >
                     <View
                       style={{
-                        width: 24,
-                        height: 24,
-                        borderRadius: 12,
-                        backgroundColor: c.primary,
+                        width: 26,
+                        height: 26,
+                        borderRadius: 13,
+                        backgroundColor: pick,
                         alignItems: "center",
                         justifyContent: "center",
                       }}
                     >
-                      <Text style={{ color: c.primaryText, fontWeight: "700", fontSize: 13 }}>
+                      <T v="sub" size={14} weight={800} color={onPick} num scale={false}>
                         {index + 1}
-                      </Text>
+                      </T>
                     </View>
-                    <Text style={{ color: c.text, fontSize: fs(15), flex: 1 }}>{option?.text}</Text>
-                    <Text style={{ color: c.muted, fontSize: 12 }}>{ut("qi.remove")}</Text>
+                    <T v="headline" size={17} color={c.vink} style={{ flex: 1 }}>
+                      {option?.text}
+                    </T>
+                    <T v="sub">{ut("qi.remove")}</T>
                   </Pressable>
                 );
               })}
@@ -213,15 +190,20 @@ export function QuestionInput({ question, value, onChange }: Props) {
               onPress={() => onChange({ ranking: [...order, option.id] })}
               accessibilityRole="button"
               accessibilityLabel={ut("qi.placeHint").replace("{text}", option.text).replace("{n}", String(order.length + 1))}
-              style={{
-                padding: spacing.lg,
-                borderRadius: radius.sm,
+              style={({ pressed }) => ({
+                justifyContent: "center",
+                minHeight: 64,
+                paddingVertical: 12,
+                paddingHorizontal: 18,
+                borderRadius: radius.tile,
                 borderWidth: 1,
-                borderColor: c.border,
-                backgroundColor: c.card,
-              }}
+                borderColor: pressed ? c.ctl : c.border,
+                backgroundColor: pressed ? c.panel2 : c.panel,
+              })}
             >
-              <Text style={{ color: c.text, fontSize: fs(15) }}>{option.text}</Text>
+              <T v="headline" size={17} weight={700}>
+                {option.text}
+              </T>
             </Pressable>
           ))}
         </View>
@@ -248,34 +230,34 @@ export function QuestionInput({ question, value, onChange }: Props) {
                   accessibilityRole="radio"
                   accessibilityLabel={scalePointLabel(question, point, min, max, ut)}
                   accessibilityState={{ checked: on }}
-                  style={{
+                  style={({ pressed }) => ({
                     minWidth: TOUCH_TARGET,
                     minHeight: TOUCH_TARGET,
                     justifyContent: "center",
                     flexGrow: points.length > 8 ? 1 : 0,
                     paddingVertical: spacing.md,
                     alignItems: "center",
-                    borderRadius: radius.sm,
+                    borderRadius: radius.control,
                     borderWidth: 1,
-                    borderColor: on ? c.primary : c.border,
-                    backgroundColor: on ? c.primary : c.card,
-                  }}
+                    borderColor: on ? pick : c.border,
+                    backgroundColor: on ? pick : pressed ? c.panel2 : c.panel,
+                  })}
                 >
-                  <Text
-                    style={{ color: on ? c.primaryText : c.text, fontWeight: "600", fontSize: 15 }}
-                  >
+                  <T v="headline" size={17} color={on ? onPick : c.text} num>
                     {point}
-                  </Text>
+                  </T>
                 </Pressable>
               );
             })}
           </View>
           {question.minLabel || question.maxLabel ? (
             <Row>
-              <Text style={{ color: c.muted, fontSize: 12, flex: 1 }}>{question.minLabel}</Text>
-              <Text style={{ color: c.muted, fontSize: 12, textAlign: "right", flex: 1 }}>
+              <T v="sub" style={{ flex: 1 }}>
+                {question.minLabel}
+              </T>
+              <T v="sub" style={{ flex: 1, textAlign: "right" }}>
                 {question.maxLabel}
-              </Text>
+              </T>
             </Row>
           ) : null}
         </View>
@@ -294,7 +276,7 @@ export function QuestionInput({ question, value, onChange }: Props) {
           accessibilityLabel={question.title}
           placeholder={ut("qi.rangeHint").replace("{min}", String(question.minValue ?? 0)).replace("{max}", String(question.maxValue ?? 100))}
           placeholderTextColor={c.muted}
-          style={inputStyle(c)}
+          style={[inputStyle(c, fs(16)), { fontVariant: ["tabular-nums"] }]}
         />
       );
 
@@ -306,7 +288,7 @@ export function QuestionInput({ question, value, onChange }: Props) {
           accessibilityLabel={question.title}
           placeholder={ut("qi.datePattern")}
           placeholderTextColor={c.muted}
-          style={inputStyle(c)}
+          style={[inputStyle(c, fs(16)), { fontVariant: ["tabular-nums"] }]}
         />
       );
 
@@ -321,22 +303,25 @@ export function QuestionInput({ question, value, onChange }: Props) {
           placeholderTextColor={c.muted}
           multiline={question.type === "longtext"}
           style={[
-            inputStyle(c),
-            question.type === "longtext" ? { minHeight: 120, textAlignVertical: "top" } : null,
+            inputStyle(c, fs(16)),
+            question.type === "longtext" ? { minHeight: 120, paddingVertical: 14, textAlignVertical: "top" } : null,
           ]}
         />
       );
   }
 }
 
-function inputStyle(c: ReturnType<typeof useColors>) {
+/** Поле ответа — как поле формы набора: 52, рамка 3:1, текст 16 */
+function inputStyle(c: ReturnType<typeof useColors>, size: number) {
   return {
+    minHeight: 52,
     borderWidth: 1,
-    borderColor: c.border,
-    borderRadius: radius.sm,
-    padding: spacing.lg,
+    borderColor: c.field,
+    borderRadius: radius.control,
+    paddingHorizontal: 14,
     color: c.text,
-    fontSize: 16,
-    backgroundColor: c.card,
+    fontSize: size,
+    backgroundColor: c.panel,
+    ...font(500),
   } as const;
 }

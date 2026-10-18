@@ -4,9 +4,11 @@ import {
   CHARTS,
   PALETTES,
   SEVERITIES,
+  SHADOWS,
   type ChartPalette,
   type Palette,
   type SeverityPalette,
+  type Shadows,
 } from "./palettes";
 import { prefStorage } from "./storage";
 import { currentLang } from "./currentLang";
@@ -110,6 +112,11 @@ export function useChart(): ChartColors {
 /** Ступени выраженности текущей темы: цвет с подложкой, четыре степени и пять ступеней */
 export function useSeverity(): SeverityPalette {
   return SEVERITIES[useTheme().resolved];
+}
+
+/** Тени текущей темы */
+export function useShadows(): Shadows {
+  return SHADOWS[useTheme().resolved];
 }
 
 /** Светлая или тёмная — для строки состояния и системных элементов */

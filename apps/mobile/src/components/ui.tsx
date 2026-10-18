@@ -1,15 +1,21 @@
 import type { ReactNode } from "react";
-import {
-  ActivityIndicator,
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-  type TextInputProps,
-  type ViewStyle,
-} from "react-native";
-import { radius, spacing, type, useColors } from "../theme";
+import { ActivityIndicator, View, type TextInputProps, type ViewStyle } from "react-native";
+import { radius, spacing, useColors, useShadows } from "../theme";
+import { Btn } from "../ui/Button";
+import { Field as UiField } from "../ui/Field";
+import { Icon } from "../ui/Icon";
+import { FilterChip } from "../ui/Pill";
+import { Segmented as UiSegmented } from "../ui/Segmented";
+import { T } from "../ui/Text";
+
+/*
+ * Прежние имена компонентов — теперь в «Виразной».
+ *
+ * Экраны собраны из Card, Title, Body, Button и остальных отсюда; новые
+ * компоненты живут в src/ui. Чтобы экраны, ещё не переписанные, уже стояли
+ * в новом оформлении, прежние имена рисуются новыми компонентами, а их
+ * свойства остаются прежними.
+ */
 
 /**
  * Минимальная цель нажатия.
@@ -20,16 +26,19 @@ import { radius, spacing, type, useColors } from "../theme";
  */
 export const TOUCH_TARGET = 48;
 
+/** Лист панели: рамка, скругление 14, отступ 16 */
 export function Card({ children, style }: { children: ReactNode; style?: ViewStyle }) {
   const c = useColors();
+  const sh = useShadows();
   return (
     <View
       style={[
         {
-          backgroundColor: c.card,
+          backgroundColor: c.panel,
           borderColor: c.border,
-          borderWidth: StyleSheet.hairlineWidth,
-          borderRadius: radius.md,
+          borderWidth: 1,
+          borderRadius: radius.panel,
+          boxShadow: sh.panel,
           padding: spacing.lg,
           gap: spacing.sm,
         },
@@ -41,35 +50,42 @@ export function Card({ children, style }: { children: ReactNode; style?: ViewSty
   );
 }
 
+/** Заголовок в теле экрана — 22/28; заголовок самого экрана стоит в шапке */
 export function Title({ children }: { children: ReactNode }) {
-  const c = useColors();
-  return <Text style={[type.display, { color: c.text }]}>{children}</Text>;
+  return (
+    <T v="sheetTitle" accessibilityRole="header">
+      {children}
+    </T>
+  );
 }
 
 /** Крупное число: баллы и счётчики читают с расстояния, а не вчитываются */
 export function Stat({ value, label }: { value: string | number; label?: string }) {
-  const c = useColors();
   return (
     <View style={{ gap: 2 }}>
-      <Text style={[type.display, type.mono, { color: c.text, fontSize: 32, lineHeight: 34 }]}>
+      <T v="number" size={32} num scale={false}>
         {value}
-      </Text>
-      {label ? (
-        <Text style={[type.caption, { color: c.muted, textTransform: "uppercase", letterSpacing: 0.6 }]}>
-          {label}
-        </Text>
-      ) : null}
+      </T>
+      {label ? <T v="sub">{label}</T> : null}
     </View>
   );
 }
 
+/** Текст 16/24; muted — второй текст, он приглушён, но читается в плохом свете */
 export function Body({ children, muted }: { children: ReactNode; muted?: boolean }) {
-  const c = useColors();
   return (
-    <Text style={[type.body, { color: muted ? c.muted : c.text, lineHeight: 23 }]}>{children}</Text>
+    <T v="body" tone={muted ? "text2" : "text"}>
+      {children}
+    </T>
   );
 }
 
+/**
+ * Кнопка. primary — фиолетовая 52, главное действие; secondary — мягкая
+ * заливка 48. danger ведёт туда же, куда secondary: выход и удаление в
+ * наборе — обычные кнопки с подтверждением, красный — только риск для
+ * человека.
+ */
 export function Button({
   title,
   onPress,
@@ -83,83 +99,52 @@ export function Button({
   disabled?: boolean;
   variant?: "primary" | "secondary" | "danger";
 }) {
-  const c = useColors();
-  const isDisabled = disabled || loading;
-  const bg = variant === "primary" ? c.primary : variant === "danger" ? c.danger : "transparent";
-  const fg = variant === "secondary" ? c.text : c.primaryText;
-
   return (
-    <Pressable
+    <Btn
+      title={title}
       onPress={onPress}
-      disabled={isDisabled}
-      accessibilityRole="button"
-      accessibilityLabel={title}
-      // busy отдельно от disabled: голосовой доступ читает «занято», а не
-      // «недоступно» — для человека это разные ситуации
-      accessibilityState={{ disabled: !!isDisabled, busy: !!loading }}
-      style={({ pressed }) => ({
-        backgroundColor: bg,
-        borderColor: variant === "secondary" ? c.border : bg,
-        borderWidth: StyleSheet.hairlineWidth,
-        borderRadius: radius.sm,
-        paddingVertical: spacing.md,
-        paddingHorizontal: spacing.lg,
-        // цель нажатия не меньше 48 pt даже при мелком системном шрифте
-        minHeight: TOUCH_TARGET,
-        justifyContent: "center",
-        alignItems: "center",
-        opacity: isDisabled ? 0.5 : pressed ? 0.8 : 1,
-      })}
-    >
-      {loading ? (
-        <ActivityIndicator color={fg} />
-      ) : (
-        <Text style={{ color: fg, fontWeight: "600", fontSize: 15 }}>{title}</Text>
-      )}
-    </Pressable>
+      loading={loading}
+      disabled={disabled}
+      kind={variant === "primary" ? "primary" : "secondary"}
+      size={variant === "primary" ? "l" : "m"}
+    />
   );
 }
 
 export function Field({ label, ...props }: TextInputProps & { label: string }) {
-  const c = useColors();
-  return (
-    <View style={{ gap: spacing.xs }}>
-      <Text style={[type.caption, { color: c.muted }]}>{label}</Text>
-      <TextInput
-        placeholderTextColor={c.muted}
-        // подпись рядом с полем экранный диктор сам не свяжет
-        accessibilityLabel={label}
-        {...props}
-        style={{
-          backgroundColor: c.card,
-          borderColor: c.border,
-          borderWidth: StyleSheet.hairlineWidth,
-          borderRadius: radius.sm,
-          padding: spacing.md,
-          minHeight: TOUCH_TARGET,
-          color: c.text,
-          fontSize: 15,
-        }}
-      />
-    </View>
-  );
+  return <UiField label={label} {...props} />;
 }
 
+/** Ошибка — красный текст со значком, без красной заливки: это не риск для человека */
 export function ErrorText({ children }: { children: ReactNode }) {
   const c = useColors();
   if (!children) return null;
-  return <Text style={{ color: c.danger, fontSize: 14 }}>{children}</Text>;
+  return (
+    <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 6 }} accessibilityLiveRegion="polite">
+      <View style={{ marginTop: 2 }}>
+        <Icon name="circle-alert" size={17} color={c.riskink} />
+      </View>
+      <T v="note" weight={700} color={c.riskink} style={{ flex: 1 }}>
+        {children}
+      </T>
+    </View>
+  );
 }
 
 export function Loader() {
   const c = useColors();
   return (
-    <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: c.bg }}>
+    <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: c.ground }}>
       <ActivityIndicator size="large" color={c.primary} />
     </View>
   );
 }
 
+/**
+ * Плашка. С onPress — переключаемая пилюля (выбор темы, пол); без —
+ * неподвижная метка. color — цветная метка рядом со словом (выраженность):
+ * цвет никогда не говорит один.
+ */
 export function Chip({
   label,
   color,
@@ -172,97 +157,39 @@ export function Chip({
   selected?: boolean;
 }) {
   const c = useColors();
-  const tint = color ?? c.muted;
-  const body = (
+  if (onPress) return <FilterChip label={label} selected={!!selected} onPress={onPress} />;
+  return (
     <View
       style={{
         flexDirection: "row",
         alignItems: "center",
-        gap: spacing.xs,
         alignSelf: "flex-start",
-        borderColor: selected ? c.primary : c.border,
-        borderWidth: 1,
-        borderRadius: radius.sm,
-        backgroundColor: selected ? c.primary : "transparent",
-        paddingHorizontal: spacing.sm,
-        paddingVertical: 4,
+        gap: 6,
+        height: 28,
+        paddingHorizontal: 11,
+        borderRadius: 14,
+        backgroundColor: c.sunk,
       }}
     >
-      {color ? <View style={{ width: 8, height: 8, borderRadius: 2, backgroundColor: tint }} /> : null}
-      <Text style={{ color: selected ? c.primaryText : c.text, fontSize: 12, fontWeight: "600" }}>
+      {color ? <View style={{ width: 9, height: 9, borderRadius: 2.5, backgroundColor: color }} /> : null}
+      <T v="sub" size={14} weight={700} tone="text2" scale={false} numberOfLines={1}>
         {label}
-      </Text>
+      </T>
     </View>
-  );
-  return onPress ? (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      accessibilityState={{ selected: !!selected }}
-      // сам чип низкий по дизайну — добираем область нажатия отступами
-      hitSlop={{ top: 10, bottom: 10, left: 6, right: 6 }}
-    >
-      {body}
-    </Pressable>
-  ) : (
-    body
   );
 }
 
-export function Segmented<T extends string>({
-  value,
-  options,
-  onChange,
-}: {
-  value: T;
-  options: { value: T; label: string }[];
-  onChange: (value: T) => void;
+export function Segmented<V extends string>(props: {
+  value: V;
+  options: { value: V; label: string }[];
+  onChange: (value: V) => void;
 }) {
-  const c = useColors();
-  return (
-    <View
-      accessibilityRole="radiogroup"
-      style={{
-        flexDirection: "row",
-        backgroundColor: c.cardAlt,
-        borderRadius: radius.sm,
-        padding: 3,
-        gap: 3,
-      }}
-    >
-      {options.map((o) => {
-        const active = o.value === value;
-        return (
-          <Pressable
-            key={o.value}
-            onPress={() => onChange(o.value)}
-            accessibilityRole="radio"
-            accessibilityLabel={o.label}
-            accessibilityState={{ checked: active }}
-            style={{
-              flex: 1,
-              alignItems: "center",
-              justifyContent: "center",
-              minHeight: TOUCH_TARGET,
-              paddingVertical: spacing.sm,
-              borderRadius: radius.sm - 2,
-              backgroundColor: active ? c.card : "transparent",
-            }}
-          >
-            <Text style={{ color: active ? c.text : c.muted, fontSize: 13, fontWeight: "600" }}>
-              {o.label}
-            </Text>
-          </Pressable>
-        );
-      })}
-    </View>
-  );
+  return <UiSegmented {...props} />;
 }
 
 export function Divider() {
   const c = useColors();
-  return <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: c.border }} />;
+  return <View style={{ height: 1, backgroundColor: c.divider }} />;
 }
 
 export function Row({ children, gap = spacing.sm }: { children: ReactNode; gap?: number }) {

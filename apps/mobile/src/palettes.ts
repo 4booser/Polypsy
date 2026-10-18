@@ -415,8 +415,41 @@ export const severityDark: SeverityPalette = {
   stepTints: SEVERITY_STEPS_SCREEN_BG_DARK,
 };
 
+/**
+ * Тени — только у того, что висит или зовёт нажать: основная кнопка, лист
+ * снизу, всплывающее сообщение, карточка на полосе. Панель на тёмной земле
+ * тени не имеет вовсе. Запись — boxShadow (React Native 0.76+ и веб).
+ */
+export interface Shadows {
+  panel: string;
+  banner: string;
+  tile: string;
+  pop: string;
+  sheet: string;
+  primary: string;
+}
+
+const shadowLight: Shadows = {
+  panel: "0px 1px 2px rgba(34, 26, 51, 0.04)",
+  banner: "0px 1px 2px rgba(34, 26, 51, 0.05), 0px 6px 18px -10px rgba(76, 40, 120, 0.22)",
+  tile: "0px 1px 2px rgba(34, 26, 51, 0.1), 0px 0px 0px 1px rgba(102, 51, 153, 0.1)",
+  pop: "0px 18px 40px -12px rgba(34, 26, 51, 0.24), 0px 2px 8px rgba(34, 26, 51, 0.06)",
+  sheet: "0px -2px 8px rgba(34, 26, 51, 0.06), 0px -24px 48px -16px rgba(34, 26, 51, 0.28)",
+  primary: "0px 1px 2px rgba(102, 51, 153, 0.25), 0px 6px 14px -6px rgba(102, 51, 153, 0.55)",
+};
+
+const shadowDark: Shadows = {
+  panel: "0px 0px 0px rgba(0, 0, 0, 0)",
+  banner: "0px 1px 2px rgba(0, 0, 0, 0.3), 0px 8px 20px -12px rgba(0, 0, 0, 0.6)",
+  tile: "0px 1px 2px rgba(0, 0, 0, 0.35), 0px 0px 0px 1px rgba(195, 166, 240, 0.14)",
+  pop: "0px 18px 44px -12px rgba(0, 0, 0, 0.62), 0px 2px 8px rgba(0, 0, 0, 0.32)",
+  sheet: "0px -2px 8px rgba(0, 0, 0, 0.3), 0px -24px 48px -16px rgba(0, 0, 0, 0.7)",
+  primary: "0px 1px 2px rgba(0, 0, 0, 0.4), 0px 6px 14px -6px rgba(116, 67, 173, 0.6)",
+};
+
 /** Все палитры разом — для проверок контраста */
 export const PALETTES = { light, dark, night } as const;
+export const SHADOWS = { light: shadowLight, dark: shadowDark, night: shadowDark } as const;
 export const CHARTS = { light: chartLight, dark: chartDark, night: chartNight } as const;
 /** Ночью ступени — тёмные: риск не приглушается */
 export const SEVERITIES = { light: severityLight, dark: severityDark, night: severityDark } as const;
