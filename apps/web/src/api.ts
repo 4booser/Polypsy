@@ -91,6 +91,7 @@ import type {
   InvitePreview,
   CreateInviteInput,
   Referral,
+  ReferralPage,
   CreateReferralInput,
   CaseSummary,
   VersionDiff,
@@ -1208,6 +1209,8 @@ export const api = {
         version: number;
         status: string;
         createdAt: string;
+        /** Автор записи — для строки уривка и отбора «Автор» */
+        authorName: string;
         excerpt: string;
       }[];
     }>(`/api/search/notes?q=${encodeURIComponent(q)}`),
@@ -1293,7 +1296,7 @@ export const api = {
     if (all) qs.set("all", "1");
     if (cursor) qs.set("cursor", cursor);
     const tail = qs.toString();
-    return request<Page<Referral>>(`/api/referrals${tail ? `?${tail}` : ""}`);
+    return request<ReferralPage>(`/api/referrals${tail ? `?${tail}` : ""}`);
   },
   createReferral: (input: CreateReferralInput) =>
     request<Referral>("/api/referrals", { method: "POST", body: JSON.stringify(input) }),
@@ -1701,6 +1704,9 @@ export const api = {
     }),
   /** Карточка группы: описание, «Пацієнти Групи» и «Тести Групи» одним ответом */
   patientGroup: (id: string) => request<PatientGroupCard>(`/api/patient-groups/${id}`),
+  /** «Обрана» — закладка читателя на группу (PUT ставит, DELETE снимает) */
+  favouritePatientGroup: (id: string, on: boolean) =>
+    request<unknown>(`/api/patient-groups/${id}/favourite`, { method: on ? "PUT" : "DELETE" }),
   createPatientGroup: (input: PatientGroupInput) =>
     request<PatientGroup>("/api/patient-groups", { method: "POST", body: JSON.stringify(input) }),
   updatePatientGroup: (id: string, patch: Partial<PatientGroupInput>) =>
@@ -1714,6 +1720,12 @@ export const api = {
   /** Выданные человеку назначения при этом остаются — см. routes/patientGroups.ts */
   removePatientGroupMember: (groupId: string, userId: string) =>
     request<void>(`/api/patient-groups/${groupId}/members/${userId}`, { method: "DELETE" }),
+  /** Убрать вибраних одним запросом: сервер проверяет список целиком, «троих убрал, на четвёртом отказал» не бывает */
+  removePatientGroupMembers: (groupId: string, userIds: string[]) =>
+    request<{ groupId: string; removed: number }>(`/api/patient-groups/${groupId}/members`, {
+      method: "DELETE",
+      body: JSON.stringify({ userIds }),
+    }),
   /**
    * Пациенты. Отдаётся не всё: список упорядочен по ФИО, а оно зашифровано —
    * упорядочить его в SQL нечем, поэтому сервер ищет и обрезает выдачу.

@@ -85,6 +85,14 @@ searchRoutes.get("/notes", async (c) => {
     .where(inArray(patientNotes.id, ids))
     .orderBy(desc(patientNotes.createdAt));
 
+  /*
+   * Автор записи — для строки уривка и для «Звузити знайдене: Автор».
+   * Сотрудники одним запросом, а не по записи.
+   */
+  const authorIds = [...new Set(rows.map((r) => r.note.createdBy))];
+  const authors = authorIds.length ? await db.select().from(users).where(inArray(users.id, authorIds)) : [];
+  const authorOf = new Map(authors.map((u) => [u.id, fullNameOf(u)]));
+
   await audit(c, {
     action: "search.notes",
     // сам запрос в журнал не пишется: он и есть клинический текст
@@ -103,6 +111,7 @@ searchRoutes.get("/notes", async (c) => {
         version: r.note.version,
         status: r.note.status,
         createdAt: r.note.createdAt,
+        authorName: authorOf.get(r.note.createdBy) ?? "—",
         excerpt: excerpt(text, words),
       };
     }),
