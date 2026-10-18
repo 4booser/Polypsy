@@ -5387,7 +5387,6 @@ export const UI = {
 
   /* возвраты и хлебные крошки */
   "back.toSurvey": { uk: "← До методики", ru: "← К методике", en: "← Back to instrument" },
-  "back.toSurveyAnalytics": { uk: "← Аналітика методики", ru: "← Аналитика методики", en: "← Instrument analytics" },
 
   /* пустые выборы */
   "sel.pickPatient": { uk: "виберіть пацієнта", ru: "выберите пациента", en: "select a patient" },
@@ -5637,7 +5636,6 @@ export const UI = {
   "adm.allAccounts": { uk: "Усі облікові записи", ru: "Все учётные записи", en: "All accounts" },
   "ui.typeToConfirm": { uk: "Для підтвердження надрукуйте", ru: "Для подтверждения напечатайте", en: "To confirm, type" },
   "ui.andMore": { uk: "і ще", ru: "и ещё", en: "and another" },
-  "ui.delete": { uk: "Видалити", ru: "Удалить", en: "Delete" },
   /*
    * Кнопка выгрузки таблицы была подписана одним «CSV · 14».
    *
@@ -6334,9 +6332,7 @@ export const UI = {
   },
   "cl.duplicateAction": { uk: "Копія", ru: "Копия", en: "Copy" },
   "cl.restoreAction": { uk: "Повернути в роботу", ru: "Вернуть в работу", en: "Return to use" },
-  "cl.retiredOn": { uk: "Знято", ru: "Снята", en: "Retired on" },
 
-  "cnc.draftWord": { uk: "чернетка", ru: "черновик", en: "draft" },
   "cnc.editCreatesVersion": {
     uk: "Правка створить нову версію — підписаний текст незмінний.",
     ru: "Правка создаст новую версию — подписанный текст неизменен.",
@@ -12367,6 +12363,8 @@ export const UI = {
   },
 
   // ── v2-catalog ──
+  "ant.group": { uk: "Група пацієнтів", ru: "Группа пациентов", en: "Patient group" },
+  "an.answeredAbbr": { uk: "відп.", ru: "отв.", en: "answered" },
   "mc.catTitle": { uk: "Каталог методик", ru: "Каталог методик", en: "Instrument catalogue" },
   "mc.inGroups": { uk: "у {n} групах", ru: "в {n} группах", en: "in {n} groups" },
   "mc.recentMeta": {
@@ -12839,9 +12837,9 @@ export const UI = {
     en: "Creates version {v} of the instrument. Collected responses keep their earlier norms, and each norm records its origin: «local sample, N = …».",
   },
   "mc.nmPicked": {
-    uk: "{n} шкал ({sexes}): {codes}",
-    ru: "{n} шкал ({sexes}): {codes}",
-    en: "{n} scales ({sexes}): {codes}",
+    uk: "Шкал вибрано: {n} ({sexes}): {codes}",
+    ru: "Шкал выбрано: {n} ({sexes}): {codes}",
+    en: "Scales picked: {n} ({sexes}): {codes}",
   },
   "mc.nmPickHint": {
     uk: "Позначте шкали в таблиці перемикачем «Перевести»",
