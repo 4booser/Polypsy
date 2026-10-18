@@ -208,7 +208,21 @@ describe("блоки вкладок", () => {
     const html = draw(<ErrorCharts data={errors} window="24h" now={Date.parse(since)} />);
     expect(says(html, "ops.ch.errNoHours")).toBe(true);
     expect(html).toContain("TypeError");
-    expect(html).toContain("background:var(--warn)");
+    // полоса группы есть; янтарь — только у новых в периоде, а без истории периода «новых» не бывает
+    expect(countOf(html, "data-bar")).toBe(1);
+    expect(html).not.toContain("bg-warn");
+  });
+
+  test("ошибки: новая в периоде группа — янтарём, выкатка — отметкой над её корзиной", () => {
+    const now = Date.parse(since);
+    const from = new Date(now - 86_400_000).toISOString();
+    const data = { ...errors, from, hours: [{ at: new Date(now - 3_600_000).toISOString(), count: 7 }] };
+    const html = draw(<ErrorCharts data={data} window="24h" now={now} releases={[{ version: "v9.9.9", firstAt: new Date(now - 2 * 3_600_000).toISOString() }]} />);
+    expect(html).toContain("bg-warn");
+    expect(html).toContain("v9.9.9");
+    // выкатка до начала периода — без отметки
+    const old = draw(<ErrorCharts data={data} window="24h" now={now} releases={[{ version: "v0.1.0", firstAt: new Date(now - 9 * 86_400_000).toISOString() }]} />);
+    expect(old).not.toContain("v0.1.0");
   });
 
   test("ошибки с часами истории — янтарные столбцы по часам периода", () => {
@@ -235,8 +249,9 @@ describe("блоки вкладок", () => {
     const loud = draw(
       <LogVolumeCharts volume={{ ...volume, buckets: [{ ...volume.buckets[0]!, warn: 2, error: 1 }] }} now={now} />,
     );
-    expect(loud).toContain('fill="var(--accent)"');
-    expect(loud).toContain('fill="var(--series-quiet)"');
+    // ошибки — c2, как пятисотки; предупреждения — «прочее» c5
+    expect(loud).toContain('fill="var(--c2)"');
+    expect(loud).toContain('fill="var(--c5)"');
   });
 
   test("задачи без сбоев — «збоїв не було», янтаря нет", () => {
@@ -257,8 +272,11 @@ describe("блоки вкладок", () => {
       lastByHand: false,
     };
     const html = draw(<JobCharts items={[job]} />);
-    expect(says(html, "ops.ch.jobNoFails")).toBe(true);
-    expect(html).not.toContain("var(--warn)");
+    // без сбоев янтаря нет ни у проходов, ни у длительности
+    expect(html).not.toContain("bg-warn");
+    expect(countOf(html, "data-bar")).toBe(2);
+    const failed = draw(<JobCharts items={[{ ...job, failures: 2, lastResult: "error" }]} />);
+    expect(countOf(failed, "bg-warn")).toBe(2);
   });
 
   test("мёртвые строки: янтарь только у таблицы, где автоочистка не успевает", () => {
@@ -276,7 +294,7 @@ describe("блоки вкладок", () => {
     });
     const html = draw(<TableCharts tables={[t("hot", 5000, 1000), t("calm", 10, 100_000)]} />);
     // янтарная полоса — у одной строки из всех
-    expect(countOf(html, 'data-bar="true" class="block h-full rounded-r-[4px]" style="width:100.00%;background:var(--warn)"')).toBe(1);
+    expect(countOf(html, 'data-bar="true" class="block h-full rounded-r-[4px] bg-warn"')).toBe(1);
   });
 });
 

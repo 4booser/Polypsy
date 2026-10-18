@@ -1,28 +1,42 @@
+import type { ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
-import type { OpsErrorGroup, OpsTrace } from "@quizzy/shared";
+import type { OpsErrorGroup, OpsLevel, OpsSqlTop, OpsTrace, OpsTraceAudit } from "@quizzy/shared";
 import { api } from "../../../api";
 import { dateTime, locale } from "../../../format";
 import { useLang } from "../../../lang";
-import { Loading } from "../../../ui";
+import { DataTable, Loading, useToast, type Column } from "../../../ui";
 import { cx } from "../../../ui/cx";
-import { Button, Num } from "../../../ui/primitives";
-import { RuleSection } from "../../../ui/section";
+import { IconTile, Panel } from "../../../ui/layout";
+import { Button, ButtonLink, Tag } from "../../../ui/primitives";
 import { useResource } from "../../../useResource";
 import { fill } from "../../dashboard/model";
-import { LEVEL_KEY, ROLE_KEY, clock, fieldsText, fmtInt, fmtMs } from "../model";
-import { Cell, Facts, GridRow, GridTable, NumHead, Quiet, RequestId, StatusMark } from "../parts";
+import { OpsIcon } from "../icons";
+import { LEVEL_KEY, ROLE_KEY, clock, fieldsText, fmtInt, fmtMs, fmtShare, shortId } from "../model";
+import {
+  CopyLinkButton,
+  HttpCode,
+  MethodRoute,
+  Mono,
+  OpsHead,
+  PanelNote,
+  Quiet,
+  RefreshButton,
+  StatusMark,
+  TraceBox,
+  useCount,
+} from "../parts";
 import { TraceTime } from "./charts";
 import { OUTCOME_KEY, offsets } from "./model";
-import { TraceSearch } from "./parts";
 
 /*
  * Траса запиту — всё о одном обращении на одной странице (/ops/trace/:id).
  *
  * Решение заказчика 2026-09-26: человек называет номер с экрана ошибки,
  * разработчик открывает одну страницу — итог (маршрут, код, время, роль,
- * SQL), ошибка, если была, все строки лога по порядку, записи журнала и
- * самые долгие SQL. Собирает сервер (apps/api/src/lib/opsTrace.ts) из
- * истории в базе и памяти процесса; строгое правило — только этот номер.
+ * SQL), куда ушло время, все строки лога по порядку со смещением от
+ * начала, ошибка со стеком, самые долгие SQL и записи журнала. Собирает
+ * сервер (apps/api/src/lib/opsTrace.ts) из истории в базе и памяти
+ * процесса; строгое правило — только этот номер.
  *
  * Трасса не опрашивается: запрос уже кончился, и новых строк у него не
  * будет. «Оновити» — на случай, когда открыли раньше, чем история успела
@@ -31,17 +45,10 @@ import { TraceSearch } from "./parts";
  * Из журнала — действие, исход, вид ресурса и роль, без людей: право
  * ops.read не открывает ни почт, ни адресатов, подробности записи — во
  * вкладке «Аудит» по праву audit.read. Чтение трассы само пишется в журнал.
+ *
+ * Пошагового водопада (сколько шёл каждый SQL от начала запроса) нет:
+ * сервер хранит SQL запроса суммами по тексту, а не отрезками времени.
  */
-
-const LEVEL_TEXT = {
-  error: "text-danger",
-  warn: "text-accent",
-  info: "text-text-2",
-  debug: "text-muted",
-} as const;
-
-const AUDIT_COLS = "grid-cols-[110px_minmax(180px,1fr)_110px_minmax(120px,1fr)_130px]";
-const SQL_COLS = "grid-cols-[72px_88px_88px_minmax(0,1fr)]";
 
 export default function OpsTracePage() {
   const { requestId = "" } = useParams();
@@ -49,15 +56,19 @@ export default function OpsTracePage() {
   const res = useResource(() => api.opsTrace(requestId), [requestId]);
 
   return (
-    <div>
-      <div className="flex flex-wrap items-start justify-between gap-[12px] pt-[20px]">
-        <span className="min-w-0 text-[13px] leading-[18px] text-muted">
-          {ut("ops.trace.lead")}{" "}
-          <span className="break-all font-mono text-[12px] text-text">{requestId}</span>
-        </span>
-        <TraceSearch />
-      </div>
-
+    <div className="flex flex-col gap-4">
+      <OpsHead
+        title={ut("ops.trace.open")}
+        back={{ to: "/ops/requests", label: ut("ops.tab.requests") }}
+        meta={[<Mono key="id">{shortId(requestId)}</Mono>, ut("opx.tr.metaAudit")]}
+        actions={
+          <>
+            <TraceBox key={requestId} initial={requestId} wide />
+            <RefreshButton onRefresh={res.reload} busy={res.loading} />
+            <CopyLinkButton />
+          </>
+        }
+      />
       {res.error && !res.data ? (
         <Loading error={res.error} onRetry={res.reload} />
       ) : !res.data ? (
@@ -71,253 +82,493 @@ export default function OpsTracePage() {
 
 function TraceBody({ t, onReload }: { t: OpsTrace; onReload: () => void }) {
   const { ut } = useLang();
-  const loc = locale();
 
   if (t.candidates.length) {
     return (
-      <RuleSection className="mt-[16px]" title={ut("ops.trace.ambiguous")} hint={ut("ops.trace.ambiguousHint")}>
+      <Panel title={ut("ops.trace.ambiguous")} icon={<OpsIcon name="route" />} hint={ut("ops.trace.ambiguousHint")}>
         <ul className="m-0 list-none p-0">
           {t.candidates.map((id) => (
-            <li key={id} className="border-b border-hairline py-[8px]">
-              <Link to={`/ops/trace/${encodeURIComponent(id)}`} className="break-all font-mono text-[13px] text-primary no-underline hover:underline">
+            <li key={id} className="border-t border-divider py-2 first:border-t-0">
+              <Link to={`/ops/trace/${encodeURIComponent(id)}`} className="break-all font-mono text-[13px] font-semibold text-violet-ink no-underline hover:underline">
                 {id}
               </Link>
             </li>
           ))}
         </ul>
-      </RuleSection>
+      </Panel>
     );
   }
 
   if (!t.lines.length && !t.summary) {
     return (
-      <RuleSection className="mt-[16px]" title={ut("ops.trace.notFound")}>
-        <Quiet>{fill(ut("ops.trace.notFoundHint"), { n: t.retentionDays })}</Quiet>
-        <Button variant="ghost" onClick={onReload}>
-          {ut("ops.trace.reload")}
-        </Button>
-        {t.audit && t.audit.length ? <AuditPart t={t} /> : null}
-      </RuleSection>
+      <>
+        <Panel
+          title={ut("ops.trace.notFound")}
+          icon={<OpsIcon name="scan-search" />}
+          tone="neutral"
+          actions={
+            <Button size="xs" icon={<OpsIcon name="refresh-cw" />} onClick={onReload}>
+              {ut("ops.trace.reload")}
+            </Button>
+          }
+        >
+          <Quiet>{fill(ut("ops.trace.notFoundHint"), { n: t.retentionDays })}</Quiet>
+        </Panel>
+        {t.audit && t.audit.length ? <AuditPanel t={t} /> : null}
+      </>
     );
   }
 
+  return (
+    <>
+      <SummaryPanel t={t} />
+      {/*
+        Две колонки — с 1366: на 1280 строкам лога и тексту SQL нужна вся
+        ширина. В одну колонку сбой запроса (если он есть) встаёт первым —
+        ради него трассу и открывают.
+      */}
+      <div className="grid grid-cols-[minmax(0,1fr)_400px] items-start gap-4 max-[1365px]:grid-cols-1">
+        <div className="flex min-w-0 flex-col gap-4">
+          <LinesPanel t={t} />
+          <SqlPanel t={t} />
+        </div>
+        <div className={cx("flex min-w-0 flex-col gap-4", t.errors.length > 0 && "max-[1365px]:order-first")}>
+          {t.errors.map((g) => (
+            <ErrorPanel key={g.fingerprint} g={g} />
+          ))}
+          <AuditPanel t={t} />
+        </div>
+      </div>
+    </>
+  );
+}
+
+/* ─────────── итог ─────────── */
+
+function SummaryPanel({ t }: { t: OpsTrace }) {
+  const { ut } = useLang();
+  const loc = locale();
+  const toast = useToast();
+  const count = useCount();
   const s = t.summary;
+  const failed = s?.status !== null && s?.status !== undefined && s.status >= 500;
+  const errorsInLog = t.lines.filter((l) => l.level === "error").length;
+  const audit = t.audit ?? [];
+  const auditBad = audit.find((a) => a.outcome !== "success");
+  const at = s?.at ?? t.lines[0]?.at ?? null;
+
+  const cells: { key: string; label: string; value: ReactNode; sub: ReactNode; warn?: boolean }[] = [
+    {
+      key: "ms",
+      label: ut("ops.trace.duration"),
+      value: fmtMs(s?.ms ?? null, loc),
+      sub: s?.sqlMs != null && s.ms ? fill(ut("opx.tr.sqlShare"), { v: fmtShare(s.sqlMs / s.ms, loc) }) : ut("opx.tr.noSql"),
+      warn: failed,
+    },
+    {
+      key: "sql",
+      label: ut("ops.trace.sql"),
+      value: s?.sqlCount != null ? count(["opx.tr.queries.one", "opx.tr.queries.few", "opx.tr.queries.many"], s.sqlCount) : "—",
+      sub: s?.sqlMs != null ? fill(ut("opx.tr.sqlTotal"), { ms: fmtMs(s.sqlMs, loc) }) : "—",
+    },
+    {
+      key: "role",
+      label: ut("adm.role"),
+      value: s?.role ? ut(ROLE_KEY[s.role]) : "—",
+      sub: ut("opx.tr.noPeople"),
+    },
+    {
+      key: "lines",
+      label: ut("ops.trace.lines"),
+      value: fmtInt(t.lines.length, loc),
+      sub: errorsInLog ? fill(ut("opx.tr.linesErrors"), { n: fmtInt(errorsInLog, loc) }) : ut("opx.tr.linesClean"),
+    },
+    {
+      key: "audit",
+      label: ut("ops.trace.audit"),
+      value: t.audit === null ? "—" : count(["opx.tr.records.one", "opx.tr.records.few", "opx.tr.records.many"], audit.length),
+      sub: auditBad
+        ? fill(ut("opx.tr.auditBad"), { outcome: OUTCOME_KEY[auditBad.outcome] ? ut(OUTCOME_KEY[auditBad.outcome]!) : auditBad.outcome })
+        : audit.length
+          ? ut("opx.tr.auditOk")
+          : ut("opx.tr.auditNone"),
+    },
+  ];
+
+  return (
+    <section aria-label={ut("ops.trace.summary")} className="rounded-panel border border-border bg-panel shadow-panel">
+      <div className="flex flex-wrap items-start gap-3 px-4 pb-3.5 pt-4">
+        <IconTile
+          size={40}
+          tone={failed ? "warn" : s ? "good" : "neutral"}
+          icon={<OpsIcon name={failed ? "octagon-x" : s ? "circle-check" : "circle-dashed"} />}
+        />
+        <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+          {s ? (
+          <div className="flex min-w-0 flex-wrap items-center gap-2.5">
+            <MethodRoute
+              method={s?.method ?? null}
+              route={s?.route ?? null}
+              className="[&_span.font-mono]:text-[15px] [&_span.font-mono]:font-bold [&_span.font-mono]:leading-5"
+            />
+            <HttpCode code={s?.status ?? null} />
+          </div>
+          ) : (
+            <b className="text-[15px] font-extrabold text-text">{ut("opx.tr.noSummaryTitle")}</b>
+          )}
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-small text-text-2">
+            {at ? <span className="tabular-nums">{fullStamp(at, loc)}</span> : null}
+            <span aria-hidden className="h-3 w-px bg-border" />
+            <Mono className="break-all text-text-2">{t.requestId}</Mono>
+            <Button
+              variant="quiet"
+              size="icon-sm"
+              aria-label={ut("ops.copyId")}
+              title={ut("ops.copyId")}
+              icon={<OpsIcon name="copy" />}
+              onClick={() =>
+                void navigator.clipboard?.writeText(t.requestId).then(
+                  () => toast(ut("ops.idCopied"), "ok"),
+                  () => toast(ut("ops.copyFailed"), "err"),
+                )
+              }
+            />
+          </div>
+        </div>
+        <div className="flex shrink-0 flex-wrap gap-2">
+          {t.errors[0] ? (
+            <ButtonLink to={`/ops/errors?window=90d&open=${encodeURIComponent(t.errors[0].fingerprint)}`}>
+              <OpsIcon name="bug" size={15} />
+              {ut("opx.tr.toGroup")}
+            </ButtonLink>
+          ) : null}
+          <ButtonLink to={`/ops/logs?window=24h&rid=${encodeURIComponent(t.requestId)}`}>
+            <OpsIcon name="scroll-text" size={15} />
+            {ut("opx.tr.feed")}
+          </ButtonLink>
+        </div>
+      </div>
+      {s ? null : (
+        <div className="px-4 pb-3">
+          <Quiet>{ut("ops.trace.noSummary")}</Quiet>
+        </div>
+      )}
+      <dl className="m-0 grid grid-cols-5 border-t border-divider max-[1000px]:grid-cols-3">
+        {cells.map((c, i) => (
+          <div key={c.key} className={cx("min-w-0 px-4 pb-3.5 pt-3", i > 0 && "border-l border-divider")}>
+            <dt className="text-caption font-bold text-muted">{c.label}</dt>
+            <dd className={cx("m-0 mt-0.5 truncate text-[16px] font-extrabold leading-[22px] tabular-nums", c.warn ? "text-warn" : "text-text")}>
+              {c.value}
+            </dd>
+            <dd className="m-0 truncate text-caption leading-4 text-muted">{c.sub}</dd>
+          </div>
+        ))}
+      </dl>
+      {s && traceMeasured(s) ? (
+        <div className="border-t border-divider px-4 py-3.5">
+          <TraceTime summary={s} />
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+const traceMeasured = (s: NonNullable<OpsTrace["summary"]>) => s.sqlMs !== null && s.ms !== null && s.ms > 0;
+
+/** Момент до миллисекунды с днём недели: «чт, 08.10.2026, 16:42:07.318» */
+function fullStamp(iso: string, loc: string): string {
+  const d = new Date(iso);
+  const date = d.toLocaleDateString(loc, { weekday: "short", day: "2-digit", month: "2-digit", year: "numeric" });
+  return `${date}, ${clock(iso, loc)}.${String(d.getMilliseconds()).padStart(3, "0")}`;
+}
+
+/* ─────────── строки лога ─────────── */
+
+const LINE_COLS = "grid-cols-[76px_96px_150px_minmax(0,1fr)]";
+
+function LevelTag({ level }: { level: OpsLevel }) {
+  const { ut } = useLang();
+  if (level === "error")
+    return (
+      <Tag tone="attention" icon={<OpsIcon name="octagon-x" />}>
+        {ut(LEVEL_KEY.error)}
+      </Tag>
+    );
+  if (level === "warn")
+    return (
+      <Tag tone="attention" icon={<OpsIcon name="triangle-alert" />}>
+        {ut(LEVEL_KEY.warn)}
+      </Tag>
+    );
+  if (level === "info")
+    return (
+      <Tag tone="info" icon={<OpsIcon name="info" />}>
+        {ut(LEVEL_KEY.info)}
+      </Tag>
+    );
+  return <Tag tone="plain">{ut(LEVEL_KEY.debug)}</Tag>;
+}
+
+function LinesPanel({ t }: { t: OpsTrace }) {
+  const { ut } = useLang();
+  const loc = locale();
   const offs = offsets(t.lines);
   return (
-    <div>
-      <RuleSection
-        className="mt-[16px]"
-        title={ut("ops.trace.summary")}
-        actions={
-          <Button variant="ghost" onClick={onReload}>
-            {ut("ops.trace.reload")}
-          </Button>
-        }
-      >
-        {s ? (
-          <>
-            <Facts
-              items={[
-                [
-                  ut("ops.col.route"),
-                  <span key="r" className="break-all font-mono text-[12px]">
-                    {s.method ?? "—"} {s.route ?? "—"}
-                  </span>,
-                ],
-                [
-                  ut("ops.col.code"),
-                  <Num key="c" className={cx(s.status !== null && s.status >= 500 && "font-bold text-accent")}>
-                    {s.status ?? "—"}
-                  </Num>,
-                ],
-                [ut("ops.trace.duration"), <Num key="d">{fmtMs(s.ms, loc)}</Num>],
-                [ut("adm.role"), s.role ? ut(ROLE_KEY[s.role]) : "—"],
-                [
-                  ut("ops.trace.sql"),
-                  s.sqlCount !== null ? (
-                    <Num key="s">{fill(ut("ops.trace.sqlSummary"), { n: fmtInt(s.sqlCount, loc), ms: fmtMs(s.sqlMs, loc) })}</Num>
-                  ) : (
-                    "—"
-                  ),
-                ],
-                [ut("ops.col.time"), dateTime(s.at)],
-                [ut("ops.col.requestId"), <RequestId key="id" id={t.requestId} linked={false} />],
-              ]}
-            />
-            {/* волна 11: время запроса — база и всё остальное одной полосой; без SQL-замера полосы нет */}
-            <TraceTime summary={s} />
-          </>
-        ) : (
-          <Quiet>{ut("ops.trace.noSummary")}</Quiet>
-        )}
-      </RuleSection>
-
-      {t.errors.length ? (
-        <RuleSection title={ut("ops.trace.errors")}>
-          <ul className="m-0 list-none p-0">
-            {t.errors.map((g) => (
-              <TraceError key={g.fingerprint} g={g} />
-            ))}
-          </ul>
-        </RuleSection>
-      ) : null}
-
-      <RuleSection
-        title={ut("ops.trace.lines")}
-        actions={<Num className="text-[13px] text-muted">{fmtInt(t.lines.length, loc)}</Num>}
-      >
-        <ol aria-label={ut("ops.trace.lines")} className="m-0 list-none overflow-x-auto p-0 font-mono text-[12px] leading-[18px]">
-          {t.lines.map((l, i) => (
-            <li
-              key={`${l.instance ?? ""}:${l.seq}`}
-              className="grid grid-cols-[76px_64px_84px_minmax(0,1fr)] gap-x-[12px] border-b border-hairline py-[4px] max-[700px]:grid-cols-[76px_minmax(0,1fr)]"
-            >
-              <span className="text-muted tabular-nums" title={dateTime(l.at)}>
-                {clock(l.at, loc)}
-              </span>
-              {/* смещение от первой строки: «что за чем и через сколько» */}
-              <span className="text-right text-muted tabular-nums max-[700px]:hidden">+{fmtMs(offs[i] ?? 0, loc)}</span>
-              <span className={cx("truncate", LEVEL_TEXT[l.level], l.level === "error" && "font-bold")}>{ut(LEVEL_KEY[l.level])}</span>
-              <span className="min-w-0 break-words max-[700px]:col-span-2">
-                <span className="font-bold text-text">{l.message}</span>
-                {Object.keys(l.fields).length ? <span className="text-muted"> {fieldsText(l.fields)}</span> : null}
-              </span>
-            </li>
-          ))}
-        </ol>
-      </RuleSection>
-
-      <AuditPart t={t} />
-      <SqlPart t={t} />
-    </div>
-  );
-}
-
-function TraceError({ g }: { g: OpsErrorGroup }) {
-  const { ut } = useLang();
-  const loc = locale();
-  return (
-    <li className="border-b border-hairline py-[12px]">
-      <div className="flex flex-wrap items-baseline gap-x-[14px] gap-y-[4px]">
-        <span className="min-w-0 break-all font-mono text-[15px] font-bold leading-[20px] text-primary">{g.name}</span>
-        <span className="min-w-0 flex-1 basis-[280px] break-words font-mono text-[13px] leading-[18px] text-text-2">
-          {g.message || "—"}
-        </span>
-      </div>
-      <div className="mt-[6px] flex flex-wrap items-center gap-x-[16px] gap-y-[6px] text-[13px] leading-[18px] text-muted">
-        {g.route ? (
-          <span className="font-mono text-[12px] text-text">
-            {g.method} {g.route}
-          </span>
-        ) : (
-          <span>{ut("ops.errors.outside")}</span>
-        )}
-        {/* сколько раз эта ошибка была вообще — отвечает на «это разовое или повторяется» */}
-        <Num>{fill(ut("ops.history.total"), { n: fmtInt(g.totalCount ?? g.count, loc) })}</Num>
-        <span>{fill(ut("ops.errors.first"), { time: dateTime(g.firstAt) })}</span>
-        <Link
-          to={`/ops/errors?window=90d&open=${encodeURIComponent(g.fingerprint)}`}
-          className="text-primary no-underline hover:underline"
-        >
-          {ut("ops.trace.toGroup")}
-        </Link>
-      </div>
-      {g.frames.length ? (
-        <pre className="m-0 mt-[8px] overflow-x-auto rounded-[5px] bg-primary-soft p-[12px] font-mono text-[12px] leading-[18px] text-text-2">
-          {g.frames.join("\n")}
-        </pre>
-      ) : null}
-    </li>
-  );
-}
-
-function AuditPart({ t }: { t: OpsTrace }) {
-  const { ut } = useLang();
-  const loc = locale();
-  return (
-    <RuleSection title={ut("ops.trace.audit")} hint={ut("ops.trace.auditHint")}>
-      {t.audit === null ? (
-        <Quiet>{ut("ops.trace.auditFailed")}</Quiet>
-      ) : t.audit.length === 0 ? (
-        <Quiet>{ut("ops.trace.auditEmpty")}</Quiet>
+    <Panel
+      title={ut("ops.trace.lines")}
+      icon={<OpsIcon name="scroll-text" />}
+      sub={fill(ut("opx.tr.linesSub"), { n: fmtInt(t.lines.length, loc) })}
+      actions={
+        <ButtonLink to={`/ops/logs?window=24h&rid=${encodeURIComponent(t.requestId)}`} variant="ghost" size="xs">
+          <OpsIcon name="arrow-up-right" size={14} />
+          {ut("opx.tr.inFeed")}
+        </ButtonLink>
+      }
+      flush
+    >
+      {t.lines.length === 0 ? (
+        <div className="px-4 pb-3">
+          <Quiet>{ut("opx.tr.noLines")}</Quiet>
+        </div>
       ) : (
-        <GridTable
-          label={ut("ops.trace.audit")}
-          cols={AUDIT_COLS}
-          minW="min-w-[640px]"
-          head={[ut("ops.col.time"), ut("ops.trace.action"), ut("ops.trace.outcome"), ut("ops.trace.resource"), ut("adm.role")]}
-        >
-          {t.audit.map((a, i) => (
-            <GridRow key={`${a.at}-${i}`} cols={AUDIT_COLS}>
-              <Cell className="font-mono text-[12px] text-muted tabular-nums">{clock(a.at, loc)}</Cell>
-              <Cell className="break-all font-mono text-[12px] text-text">{a.action}</Cell>
-              <Cell>
-                {/* отказ и сбой — то, ради чего журнал в трассе и смотрят */}
-                <StatusMark tone={a.outcome === "success" ? "quiet" : "warn"}>
-                  {OUTCOME_KEY[a.outcome] ? ut(OUTCOME_KEY[a.outcome]!) : a.outcome}
-                </StatusMark>
-              </Cell>
-              <Cell className="break-all font-mono text-[12px] text-text-2">{a.resourceType ?? "—"}</Cell>
-              <Cell className="text-text-2">
-                {a.actorRole && a.actorRole in ROLE_KEY ? ut(ROLE_KEY[a.actorRole as keyof typeof ROLE_KEY]) : (a.actorRole ?? ut("ops.trace.system"))}
-              </Cell>
-            </GridRow>
-          ))}
-        </GridTable>
+        <div role="table" aria-label={ut("ops.trace.lines")} className="overflow-x-auto">
+          <div className="min-w-[620px]">
+            <div
+              role="row"
+              className={cx("grid h-[38px] items-center gap-3 border-y border-divider bg-panel-2 px-4 text-caption font-bold leading-none text-muted", LINE_COLS)}
+            >
+              <span role="columnheader" className="text-right">
+                {ut("opx.tr.fromStart")}
+              </span>
+              <span role="columnheader">{ut("ops.col.time")}</span>
+              <span role="columnheader">{ut("ops.logs.level")}</span>
+              <span role="columnheader">{ut("opx.lg.colMessage")}</span>
+            </div>
+            {t.lines.map((l, i) => (
+              <div
+                key={`${l.instance ?? ""}:${l.seq}`}
+                role="row"
+                className={cx("grid min-h-11 items-center gap-3 border-b border-divider px-4 py-1.5 last:border-b-0", LINE_COLS, l.level === "error" && "bg-warn-tint")}
+              >
+                {/* смещение от первой строки: «что за чем и через сколько» */}
+                <span role="cell" className="text-right text-small tabular-nums text-text-2">
+                  +{fmtInt(Math.round(offs[i] ?? 0), loc)}
+                </span>
+                <Mono className="tabular-nums text-text" title={dateTime(l.at)}>
+                  {clock(l.at, loc)}
+                </Mono>
+                <span role="cell">
+                  <LevelTag level={l.level} />
+                </span>
+                <span role="cell" className="min-w-0 break-words font-mono text-[12px] leading-[18px]">
+                  <b className="font-bold text-text">{l.message}</b>
+                  {Object.keys(l.fields).length ? <span className="text-text-2"> {fieldsText(l.fields)}</span> : null}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
       )}
-    </RuleSection>
+    </Panel>
   );
 }
 
-function SqlPart({ t }: { t: OpsTrace }) {
+/* ─────────── ошибка ─────────── */
+
+function ErrorPanel({ g }: { g: OpsErrorGroup }) {
+  const { ut } = useLang();
+  const loc = locale();
+  const toast = useToast();
+  const head = `${g.name}: ${g.message}`;
+  const when = (iso: string) => new Date(iso).toLocaleString(loc, { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+  return (
+    <Panel
+      title={ut("ops.trace.errors")}
+      icon={<OpsIcon name="circle-alert" />}
+      tone="warn"
+      sub={ut(g.origin === "request" ? "opx.tr.unhandled" : "opx.er.originLog")}
+      actions={
+        <Button
+          variant="quiet"
+          size="icon-sm"
+          aria-label={ut("opx.er.copy")}
+          icon={<OpsIcon name="copy" />}
+          onClick={() =>
+            void navigator.clipboard?.writeText([head, ...g.frames].join("\n")).then(
+              () => toast(ut("opx.er.stackCopied"), "ok"),
+              () => toast(ut("ops.copyFailed"), "err"),
+            )
+          }
+        />
+      }
+      footer={
+        <ButtonLink to={`/ops/errors?window=90d&open=${encodeURIComponent(g.fingerprint)}`} variant="ghost" size="xs">
+          {ut("opx.tr.openGroup")}
+          <OpsIcon name="arrow-up-right" size={14} />
+        </ButtonLink>
+      }
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        <Mono className="text-[13px] font-bold text-warn">{g.name}</Mono>
+      </div>
+      <p className="m-0 mt-1 font-mono text-[12.5px] leading-[19px] text-text [overflow-wrap:anywhere]">{g.message || "—"}</p>
+      <p className="m-0 mt-1 text-caption text-muted">{ut("opx.tr.scrubbed")}</p>
+      {g.frames.length ? (
+        <pre className="m-0 mt-3 overflow-x-auto whitespace-pre-wrap rounded-control bg-sunk px-3 py-2.5 font-mono text-[12px] font-medium leading-[18px] text-text [overflow-wrap:anywhere]">
+          {g.frames.map((f, i) => (
+            <span key={i} className="block">
+              <span className="mr-2.5 inline-block w-[18px] text-right text-muted">{i + 1}</span>
+              {f}
+            </span>
+          ))}
+        </pre>
+      ) : (
+        <Quiet>{ut("ops.errors.noStack")}</Quiet>
+      )}
+      <dl className="m-0 mt-3 grid grid-cols-3 gap-3">
+        <div>
+          <dt className="text-caption font-bold text-muted">{ut("opx.tr.inGroup")}</dt>
+          <dd className="m-0 font-extrabold tabular-nums">{fmtInt(g.totalCount ?? g.count, loc)}</dd>
+        </div>
+        <div>
+          <dt className="text-caption font-bold text-muted">{ut("opx.tr.first")}</dt>
+          <dd className="m-0 font-extrabold tabular-nums">{when(g.firstAt)}</dd>
+        </div>
+        <div>
+          <dt className="text-caption font-bold text-muted">{ut("opx.tr.last")}</dt>
+          <dd className="m-0 font-extrabold tabular-nums">{when(g.lastAt)}</dd>
+        </div>
+      </dl>
+    </Panel>
+  );
+}
+
+/* ─────────── SQL ─────────── */
+
+function SqlPanel({ t }: { t: OpsTrace }) {
   const { ut } = useLang();
   const loc = locale();
   const sql = t.sql;
+  const columns: Column<OpsSqlTop>[] = [
+    {
+      key: "query",
+      header: ut("ops.col.query"),
+      required: true,
+      sort: (q) => q.query,
+      render: (q) => (
+        <Mono className="block truncate text-text" title={q.query}>
+          {q.query}
+        </Mono>
+      ),
+    },
+    {
+      key: "calls",
+      header: ut("ops.trace.calls"),
+      num: true,
+      width: 96,
+      required: true,
+      sort: (q) => q.calls,
+      /* один текст много раз — признак N+1: янтарём */
+      render: (q) => <span className={q.calls >= 10 ? "font-extrabold text-warn" : undefined}>{fmtInt(q.calls, loc)}</span>,
+    },
+    {
+      key: "total",
+      header: ut("ops.trace.totalMs"),
+      num: true,
+      width: 96,
+      required: true,
+      sort: (q) => q.totalMs,
+      render: (q) => <b className="font-extrabold">{fmtMs(q.totalMs, loc)}</b>,
+    },
+    { key: "max", header: ut("ops.col.max"), num: true, width: 90, required: true, sort: (q) => q.maxMs, render: (q) => fmtMs(q.maxMs, loc) },
+  ];
   return (
-    <RuleSection
+    <Panel
       title={ut("ops.trace.sqlTitle")}
-      hint={sql ? ut(sql.source === "memory" ? "ops.trace.sqlMemory" : "ops.trace.sqlStored") : undefined}
-      actions={
-        sql ? (
-          <Num className="text-[13px] text-muted">
-            {fill(ut("ops.trace.sqlTotals"), {
-              n: fmtInt(sql.count, loc),
-              ms: fmtMs(sql.totalMs, loc),
-              distinct: fmtInt(sql.distinct, loc),
-            })}
-          </Num>
-        ) : null
+      icon={<OpsIcon name="database" />}
+      sub={
+        sql
+          ? fill(ut("ops.trace.sqlTotals"), { n: fmtInt(sql.count, loc), ms: fmtMs(sql.totalMs, loc), distinct: fmtInt(sql.distinct, loc) })
+          : undefined
       }
+      flush
+      footer={sql ? <PanelNote>{ut(sql.source === "memory" ? "ops.trace.sqlMemory" : "ops.trace.sqlStored")}</PanelNote> : undefined}
     >
       {!sql ? (
-        <Quiet>{ut("ops.trace.sqlNone")}</Quiet>
+        <div className="px-4 pb-3">
+          <Quiet>{ut("ops.trace.sqlNone")}</Quiet>
+        </div>
       ) : (
-        <GridTable
-          label={ut("ops.trace.sqlTitle")}
-          cols={SQL_COLS}
-          minW="min-w-[620px]"
-          head={[
-            <NumHead key="c">{ut("ops.trace.calls")}</NumHead>,
-            <NumHead key="t">{ut("ops.trace.totalMs")}</NumHead>,
-            <NumHead key="m">{ut("ops.col.max")}</NumHead>,
-            ut("ops.col.query"),
-          ]}
-        >
-          {sql.top.map((q, i) => (
-            <GridRow key={i} cols={SQL_COLS} className="items-start">
-              {/* один текст много раз — признак N+1: число вызовов первым */}
-              <Cell num className={q.calls >= 10 ? "font-bold text-accent" : undefined}>
-                {fmtInt(q.calls, loc)}
-              </Cell>
-              <Cell num>{fmtMs(q.totalMs, loc)}</Cell>
-              <Cell num className="text-muted">
-                {fmtMs(q.maxMs, loc)}
-              </Cell>
-              <Cell className="break-words font-mono text-[12px] text-text">{q.query}</Cell>
-            </GridRow>
-          ))}
-        </GridTable>
+        <DataTable rows={sql.top} columns={columns} rowKey={(q) => q.query} initialSort={{ key: "total", desc: true }} dense sticky={false} label={ut("ops.trace.sqlTitle")} />
       )}
-    </RuleSection>
+    </Panel>
+  );
+}
+
+/* ─────────── журнал ─────────── */
+
+function AuditPanel({ t }: { t: OpsTrace }) {
+  const { ut } = useLang();
+  const count = useCount();
+  const columns: Column<OpsTraceAudit>[] = [
+    {
+      key: "action",
+      header: ut("opx.tr.actionResource"),
+      required: true,
+      render: (a) => (
+        <span className="flex min-w-0 flex-col">
+          <Mono className="break-all text-text">{a.action}</Mono>
+          {a.resourceType ? <Mono className="break-all text-text-2">{a.resourceType}</Mono> : null}
+        </span>
+      ),
+    },
+    {
+      key: "outcome",
+      header: ut("ops.trace.outcome"),
+      width: 110,
+      required: true,
+      /* отказ и сбой — то, ради чего журнал в трассе и смотрят */
+      render: (a) => (
+        <StatusMark tone={a.outcome === "success" ? "ok" : "fail"}>{OUTCOME_KEY[a.outcome] ? ut(OUTCOME_KEY[a.outcome]!) : a.outcome}</StatusMark>
+      ),
+    },
+    {
+      key: "role",
+      header: ut("adm.role"),
+      width: 110,
+      required: true,
+      render: (a) => (
+        <span className="text-text-2">
+          {a.actorRole && a.actorRole in ROLE_KEY ? ut(ROLE_KEY[a.actorRole as keyof typeof ROLE_KEY]) : (a.actorRole ?? ut("ops.trace.system"))}
+        </span>
+      ),
+    },
+  ];
+  return (
+    <Panel
+      title={ut("ops.trace.audit")}
+      icon={<OpsIcon name="file-search" />}
+      sub={t.audit ? count(["opx.tr.records.one", "opx.tr.records.few", "opx.tr.records.many"], t.audit.length) : undefined}
+      actions={
+        <ButtonLink to="/ops/audit" variant="ghost" size="xs">
+          <OpsIcon name="arrow-up-right" size={14} />
+          {ut("opx.tr.toAudit")}
+        </ButtonLink>
+      }
+      flush
+      footer={<PanelNote>{ut("ops.trace.auditHint")}</PanelNote>}
+    >
+      {t.audit === null ? (
+        <div className="px-4 pb-3">
+          <Quiet>{ut("ops.trace.auditFailed")}</Quiet>
+        </div>
+      ) : t.audit.length === 0 ? (
+        <div className="px-4 pb-3">
+          <Quiet>{ut("ops.trace.auditEmpty")}</Quiet>
+        </div>
+      ) : (
+        <DataTable rows={t.audit} columns={columns} rowKey={(a) => `${a.at}-${a.action}`} dense sticky={false} label={ut("ops.trace.audit")} />
+      )}
+    </Panel>
   );
 }

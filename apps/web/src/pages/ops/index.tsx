@@ -1,8 +1,8 @@
 import { Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../../auth";
 import { useLang } from "../../lang";
-import { Page } from "../../ui/layout";
 import { groupOf, opsGroups } from "./model";
+import { OpsFrame } from "./parts";
 import { ownFrame } from "./people2/frame";
 
 /*
@@ -26,7 +26,9 @@ import { ownFrame } from "./people2/frame";
  *
  * Здесь остаётся рамка экрана: заголовок раздела над его содержимым.
  * Разделы — адресами (/ops, /ops/requests, …): ссылку на «ошибки за
- * последний час» пересылают коллеге.
+ * последний час» пересылают коллеге. Мета-строку, действия и полосу
+ * инструментов раздел ставит в шапку сам — через <OpsHead> (parts.tsx):
+ * рамка даёт им места, а не рисует за раздел.
  */
 export default function OpsPanel() {
   const { ut } = useLang();
@@ -40,8 +42,8 @@ export default function OpsPanel() {
   /* «Люди й безпека» и «Дані й продукт» ставят свою рамку: шапка с мета-строкой, правом и действиями */
   if (ownFrame(pathname)) return <Outlet />;
   return (
-    <Page title={here ? ut(here.key) : ut("ops.title")}>
+    <OpsFrame title={here ? ut(here.key) : ut("ops.title")}>
       <Outlet />
-    </Page>
+    </OpsFrame>
   );
 }

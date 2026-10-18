@@ -1,9 +1,9 @@
 import type { OpsRouteCompare, OpsStatement, OpsStatementSort, OpsTraceSummary } from "@quizzy/shared";
-import { Figure, HBars, PairBars, ShareBar } from "../../../charts/clinical";
+import { Figure, PairBars, ShareBar } from "../../../charts/clinical";
 import { locale } from "../../../format";
 import { useLang } from "../../../lang";
 import { fill } from "../../dashboard/model";
-import { CHART_GRID } from "../charts";
+import { CHART_GRID, RankBars } from "../charts";
 import { fmtInt, fmtMs, fmtShare } from "../model";
 import { Quiet, StatusMark } from "../parts";
 import { SHIFT_KEY, SHIFT_TONE, errorPairs, latencyPairs, statementMetric, statementShares, statementsTop, traceTime } from "./model";
@@ -87,10 +87,10 @@ export function ReleaseCharts({ items }: { items: readonly OpsRouteCompare[] }) 
 }
 
 /**
- * Первые восемь запросов по выбранному порядку и доля каждого в общем
- * времени базы — полосой с «рештою». Номер у полосы — тот же, что у строки
- * списка ниже: текст запроса длинный, и в подписи полосы его видно только
- * началом.
+ * Первые восемь запросов по выбранному порядку и доля каждого из первых
+ * пяти в общем времени базы — полосой с «рештою». Номер у полосы — тот же,
+ * что у строки списка ниже: текст запроса длинный, и в подписи полосы его
+ * видно только началом.
  */
 export function StatementCharts({ items, sort }: { items: readonly OpsStatement[]; sort: OpsStatementSort }) {
   const { ut } = useLang();
@@ -103,53 +103,43 @@ export function StatementCharts({ items, sort }: { items: readonly OpsStatement[
     return sort === "calls" ? fmtInt(v, loc) : fmtMs(v, loc);
   };
   const label = (s: OpsStatement) => (
-    <span className="font-mono text-[12px]" title={s.query}>
-      <span className="text-muted">{rank.get(s.id)}.</span> {s.query}
+    <span className="font-mono text-[11.5px] font-medium text-text">
+      <span className="mr-1.5 text-muted">{rank.get(s.id)}</span>
+      {s.query}
     </span>
   );
+  /* доли — категории (свой запрос — свой цвет), «решта» — дорожкой */
+  const SHARE_TONES = ["var(--c1)", "var(--c2)", "var(--c3)", "var(--c4)", "var(--c5)"];
 
   return (
-    <div className={CHART_GRID}>
-      <Figure title={ut("ops.ch.sqlTop")} caption={fill(ut("ops.ch.sqlTopHint"), { sort: ut(SORT_KEY[sort]) })}>
-        <HBars items={top.map((s) => ({ key: s.id, label: label(s), value: statementMetric(s, sort), text: value(s) }))} />
+    <div className="grid grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)] gap-6 max-[1100px]:grid-cols-1">
+      <Figure title={fill(ut("opx.st.topTitle"), { sort: ut(SORT_KEY[sort]).toLowerCase() })} caption={ut("opx.st.topHint")}>
+        <RankBars
+          labelW={176}
+          items={top.map((s) => ({ key: s.id, title: s.query, label: label(s), value: statementMetric(s, sort), text: value(s) }))}
+        />
       </Figure>
       {shares ? (
         <Figure title={ut("ops.ch.sqlShare")} caption={ut("ops.ch.sqlShareHint")}>
           {/*
-            Легенда — строками ниже, а не подписью в строку: текст запроса
-            длинный, и в перенос по словам он читается хуже, чем столбцом.
             Части — сами доли (в сумме с «рештою» — целое), поэтому процент
-            от целого не дописывается: он повторил бы число.
+            от целого не дописывается: он повторил бы число. Подпись — номер
+            запроса: текст длинный, а номер тот же, что в списке.
           */}
           <ShareBar
             label={ut("ops.ch.sqlShare")}
             format={(v) => fmtShare(v, loc)}
             percent={false}
-            legend={false}
             parts={[
               ...shares.top.map((s, i) => ({
                 key: s.id,
-                label: `${rank.get(s.id)}. ${s.query.slice(0, 40)}${s.query.length > 40 ? "…" : ""}`,
+                label: fill(ut("opx.st.no"), { n: rank.get(s.id) ?? i + 1 }),
                 value: s.share,
-                step: 1 - i / Math.max(1, shares.top.length),
+                color: SHARE_TONES[i] ?? "var(--c5)",
               })),
-              { key: "rest", label: ut("ops.ch.sqlRest"), value: shares.rest, color: "var(--grid)" },
+              { key: "rest", label: ut("ops.ch.sqlRest"), value: shares.rest, color: "var(--track)" },
             ]}
           />
-          <ul className="m-0 mt-[8px] grid list-none gap-[4px] p-0 text-[13px] leading-[18px]">
-            {shares.top.map((s) => (
-              <li key={s.id} className="flex min-w-0 items-baseline justify-between gap-[12px]">
-                <span className="min-w-0 truncate font-mono text-[12px] text-text-2" title={s.query}>
-                  <span className="text-muted">{rank.get(s.id)}.</span> {s.query}
-                </span>
-                <span className="shrink-0 font-mono text-[12px] text-muted tabular-nums">{fmtShare(s.share, loc)}</span>
-              </li>
-            ))}
-            <li className="flex min-w-0 items-baseline justify-between gap-[12px]">
-              <span className="text-text-2">{ut("ops.ch.sqlRest")}</span>
-              <span className="shrink-0 font-mono text-[12px] text-muted tabular-nums">{fmtShare(shares.rest, loc)}</span>
-            </li>
-          </ul>
         </Figure>
       ) : null}
     </div>
@@ -159,7 +149,7 @@ export function StatementCharts({ items, sort }: { items: readonly OpsStatement[
 /**
  * Куда ушло время одного запроса: запросы к базе и всё остальное — одной
  * полосой. Отвечает на первый вопрос разбора «медленно»: ждали базу или
- * считали сами.
+ * считали сами. База — c3 (как SQL в трассе), остальное — c1.
  */
 export function TraceTime({ summary }: { summary: OpsTraceSummary | null }) {
   const { ut } = useLang();
@@ -167,16 +157,16 @@ export function TraceTime({ summary }: { summary: OpsTraceSummary | null }) {
   const t = traceTime(summary);
   if (!t) return null;
   return (
-    <Figure title={ut("ops.ch.traceTime")} caption={fmtMs(summary!.ms, loc)} className="mt-[24px] max-w-[560px]">
+    <div className="grid grid-cols-[136px_minmax(0,1fr)] items-start gap-4 max-[700px]:grid-cols-1">
+      <span className="pt-0.5 text-small font-bold text-text-2">{ut("ops.ch.traceTime")}</span>
       <ShareBar
         label={ut("ops.ch.traceTime")}
         format={(v) => fmtMs(v, loc)}
         parts={[
-          { key: "sql", label: ut("ops.ch.traceSql"), value: t.sql, step: 1 },
-          /* «решта» — дорожкой сетки: это не ещё одна часть той же величины, а всё, что не база */
-          { key: "other", label: ut("ops.ch.traceOther"), value: t.other, color: "var(--grid)" },
+          { key: "sql", label: ut("ops.ch.traceSql"), value: t.sql, color: "var(--c3)" },
+          { key: "other", label: ut("ops.ch.traceOther"), value: t.other, color: "var(--c1)" },
         ]}
       />
-    </Figure>
+    </div>
   );
 }
