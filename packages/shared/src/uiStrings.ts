@@ -8883,6 +8883,7 @@ export const UI = {
     uk: "Сповіщення на телефоні — без назви й тексту: їх не прочитають з екрана блокування.",
     ru: "Уведомление на телефоне — без названия и текста: их не прочитают с экрана блокировки.",
     en: "The phone notification has no title or text, so nobody reads them off the lock screen.",
+  },
 
   // ── v2-analytics ──
   "am.metaCount": { uk: "Моделей: {n}, увімкнено: {on}", ru: "Моделей: {n}, включено: {on}", en: "Models: {n}, enabled: {on}" },

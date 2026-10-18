@@ -2285,12 +2285,6 @@ export const api = {
       exceptions: ScheduleExceptionView[];
     }>(`/api/clinic/schedule/week?${q}`);
   },
-  /** Перенести приём в свободное окно (сервер переносит и событие календаря Google, если оно есть) */
-  rescheduleAppointment: (id: string, slotId: string) =>
-    request<{ ok: true }>(`/api/clinic/appointments/${id}/reschedule`, {
-      method: "POST",
-      body: JSON.stringify({ slotId }),
-    }),
   /** Календарь Google специалиста для ссылок Meet: настроен ли на сервере и подключён ли */
   meetStatus: () =>
     request<{ configured: boolean; connected: boolean; email: string | null }>("/api/meet/status"),
@@ -2372,7 +2366,10 @@ export const api = {
     }),
   confirmAppointment: (id: string) =>
     request<{ ok: true }>(`/api/clinic/appointments/${id}/confirm`, { method: "POST" }),
-  /** Перенос — отмена и запись одним действием на сервере (clinic.ts): слот не успеет уйти между ними */
+  /**
+   * Перенос в свободное окно — отмена и запись одним действием на сервере (clinic.ts): слот не успеет уйти
+   * между ними; событие календаря Google, если оно есть, переносится вместе с приёмом
+   */
   rescheduleAppointment: (id: string, slotId: string) =>
     request<{ ok: true }>(`/api/clinic/appointments/${id}/reschedule`, {
       method: "POST",
