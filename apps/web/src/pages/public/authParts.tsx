@@ -1,5 +1,6 @@
 import {
   forwardRef,
+  useId,
   useRef,
   useState,
   type ClipboardEvent,
@@ -10,7 +11,7 @@ import { useLang } from "../../lang";
 import { ShellIcon } from "../../shell/icons";
 import { Callout } from "../../ui";
 import { cx } from "../../ui/cx";
-import { Input, type InputProps } from "../../ui/primitives";
+import { ErrorText, Input, type InputProps } from "../../ui/primitives";
 import { AccessIcon } from "./accessIcons";
 
 /*
@@ -145,6 +146,50 @@ export const PasswordInput = forwardRef<
       />
     );
 });
+
+/**
+ * Поле пароля с подписью — как Field набора, только подпись стоит рядом с
+ * полем, а не вокруг него.
+ *
+ * Field оборачивает поле в <label>, а у пароля внутри есть своя кнопка
+ * «Показати пароль». Внутри подписи её имя вошло бы в имя поля — диктор читал
+ * бы «Новий пароль Показати пароль». Поэтому здесь <label for>, а пояснение
+ * и отказ связаны с полем через aria-describedby, как у Field.
+ */
+export function PasswordField({
+  label,
+  labelClassName,
+  hint,
+  error,
+  className,
+  ...input
+}: {
+  label: ReactNode;
+  labelClassName?: string;
+  hint?: ReactNode;
+  error?: string | null;
+  className?: string;
+} & Omit<InputProps, "type" | "icon" | "suffix"> & { patient?: boolean }) {
+  const id = useId();
+  const noteId = error || hint ? `${id}-note` : undefined;
+  return (
+    <div data-field className={cx("flex min-w-0 flex-col", className)}>
+      <label htmlFor={id} className={labelClassName ?? "mb-1.5 block text-caption font-bold text-muted"}>
+        {label}
+      </label>
+      <PasswordInput id={id} aria-describedby={noteId} aria-invalid={error ? true : undefined} {...input} />
+      {error ? (
+        <ErrorText id={noteId} className="mt-1.5">
+          {error}
+        </ErrorText>
+      ) : hint ? (
+        <span id={noteId} className="mt-1.5 block text-small text-muted">
+          {hint}
+        </span>
+      ) : null}
+    </div>
+  );
+}
 
 /**
  * Строка «кто входит» (.who-row): кружок или знак, имя, строка под ним и

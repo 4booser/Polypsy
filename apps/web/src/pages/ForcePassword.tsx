@@ -5,9 +5,9 @@ import { useLang } from "../lang";
 import { ShellIcon } from "../shell/icons";
 import { Avatar, Ic } from "../ui";
 import { cx } from "../ui/cx";
-import { Button, ErrorText, Field } from "../ui/primitives";
+import { Button, ErrorText } from "../ui/primitives";
 import { AccessIcon } from "./public/accessIcons";
-import { AuthCard, AuthLead, AuthTitle, BandAside, FactRow, NoteRow, PasswordInput, WhoRow, fill } from "./public/authParts";
+import { AuthCard, AuthLead, AuthTitle, BandAside, FactRow, NoteRow, PasswordField, WhoRow, fill } from "./public/authParts";
 import { PublicFrame } from "./public/PublicFrame";
 import { type PasswordDraft, PASSWORD_MIN, changePassword, passwordProblems, passwordReady } from "./passwordModel";
 
@@ -154,31 +154,31 @@ export function ForcePasswordView({
             onSubmit();
           }}
         >
-          <Field label={ut("ops.force.temp")} hint={ut("ax.fp.tempHint")} className="!mb-0">
-            <PasswordInput
-              value={draft.current}
-              onChange={(e) => onEdit({ current: e.target.value })}
-              autoComplete="current-password"
-              autoFocus
-              disabled={accepted}
-            />
-          </Field>
-          <Field label={ut("acct.newPassword")} error={problems.next ? ut(problems.next) : null} className="!mb-0">
-            <PasswordInput
-              value={draft.next}
-              onChange={(e) => onEdit({ next: e.target.value })}
-              autoComplete="new-password"
-              disabled={accepted}
-            />
-          </Field>
-          <Field label={ut("ops.force.repeat")} error={problems.repeat ? ut(problems.repeat) : null} className="!mb-0">
-            <PasswordInput
-              value={draft.repeat}
-              onChange={(e) => onEdit({ repeat: e.target.value })}
-              autoComplete="new-password"
-              disabled={accepted}
-            />
-          </Field>
+          <PasswordField
+            label={ut("ops.force.temp")}
+            hint={ut("ax.fp.tempHint")}
+            value={draft.current}
+            onChange={(e) => onEdit({ current: e.target.value })}
+            autoComplete="current-password"
+            autoFocus
+            disabled={accepted}
+          />
+          <PasswordField
+            label={ut("acct.newPassword")}
+            error={problems.next ? ut(problems.next) : null}
+            value={draft.next}
+            onChange={(e) => onEdit({ next: e.target.value })}
+            autoComplete="new-password"
+            disabled={accepted}
+          />
+          <PasswordField
+            label={ut("ops.force.repeat")}
+            error={problems.repeat ? ut(problems.repeat) : null}
+            value={draft.repeat}
+            onChange={(e) => onEdit({ repeat: e.target.value })}
+            autoComplete="new-password"
+            disabled={accepted}
+          />
 
           {accepted ? null : (
             <ul aria-label={ut("ax.fp.rules")} className="m-0 flex list-none flex-col gap-2 rounded-[12px] bg-sunk px-3.5 py-3">

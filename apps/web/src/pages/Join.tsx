@@ -21,7 +21,7 @@ import {
 } from "../ui/primitives";
 import { useResource } from "../useResource";
 import { AccessIcon, type AccessIconName } from "./public/accessIcons";
-import { AuthCard, CrisisNote, PasswordInput, fill, patientField, rich } from "./public/authParts";
+import { AuthCard, CrisisNote, PasswordField, fill, patientField, rich } from "./public/authParts";
 import { PublicFrame } from "./public/PublicFrame";
 
 /**
@@ -292,15 +292,16 @@ function Register({
               required
             />
           </Field>
-          <Field label={req(ut("lg.password"))} labelClassName={ptLabel} hint={ut("ax.jn.pwHint")} className="!mb-0">
-            <PasswordInput
-              patient
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoComplete="new-password"
-              required
-            />
-          </Field>
+          <PasswordField
+            patient
+            label={req(ut("lg.password"))}
+            labelClassName={ptLabel}
+            hint={ut("ax.jn.pwHint")}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            autoComplete="new-password"
+            required
+          />
           <div className="h-px bg-divider" />
           <CheckLabel
             className="!text-[15px] !font-semibold !text-text [&_small]:!text-[13.5px] [&_small]:!leading-[19px]"
