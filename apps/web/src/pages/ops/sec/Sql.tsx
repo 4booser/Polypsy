@@ -128,7 +128,7 @@ export default function OpsSecSql() {
           <Panel title={ut("ops.sec.sql.query")} icon={<OpsIcon name="square-terminal" />} sub={ut("opx.sq.readOnly")}>
             <div className="flex flex-col gap-3">
               <Field label={ut("ops.sec.sql.reason")} hint={ut("opx.sq.reasonHint")} error={tried && reasonMissing ? ut("ops.sec.sql.reasonNeeded") : null}>
-                <Input value={reason} maxLength={500} placeholder={ut("ops.sec.sql.reasonHint")} onChange={(e) => setReason(e.target.value)} />
+                <Input value={reason} maxLength={500} placeholder={ut("opx.sq.reasonPh")} onChange={(e) => setReason(e.target.value)} />
               </Field>
               <Field
                 label={ut("opx.sq.text")}
@@ -363,7 +363,16 @@ export function Result({
               {result.rows.map((row, r) => (
                 <tr key={r} className="hover:bg-panel-2">
                   {row.map((v, i) => (
-                    <td key={i} className={cx(TD, "max-w-[420px] whitespace-pre-wrap break-words font-mono text-[12px]", v === null && "text-muted")}>
+                    /* короткое значение (номер, дата, почта) — одной строкой; длинное текстом переносится в пределах колонки */
+                    <td
+                      key={i}
+                      className={cx(
+                        TD,
+                        "max-w-[420px] font-mono text-[12px]",
+                        v !== null && v.length > 64 ? "whitespace-pre-wrap break-words" : "whitespace-nowrap",
+                        v === null && "text-muted",
+                      )}
+                    >
                       {result.columns[i]?.masked ? (
                         <Tag icon={<OpsIcon name="eye-off" />}>{ut("ops.sec.sql.masked")}</Tag>
                       ) : v === null ? (

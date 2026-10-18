@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { OpsKeysReport, OpsPhoneReindexReport, OpsReencryptJob, OpsSecretName, OpsSecretStatus, UiKey } from "@quizzy/shared";
 import { api } from "../../../api";
-import { dateTime, locale } from "../../../format";
+import { locale } from "../../../format";
 import { useLang } from "../../../lang";
 import { Callout, KV, Loading, useAction } from "../../../ui";
 import { cx } from "../../../ui/cx";
@@ -9,7 +9,7 @@ import { Panel } from "../../../ui/layout";
 import { Button, Tag } from "../../../ui/primitives";
 import { useResource } from "../../../useResource";
 import { OpsIcon } from "../icons";
-import { OpsHead, Quiet, RefreshButton } from "../parts";
+import { OpsHead, Quiet, RefreshButton, sinceText, useCount } from "../parts";
 import {
   busyOldKeys,
   envLine,
@@ -23,6 +23,9 @@ import {
   type StepState,
 } from "./model";
 import { Caption, CodeChip, Commands, NUM, Note, SuperOnly, TD, TH, Verdict } from "./parts";
+
+/** Момент коротко, как во всей техпанели: «18.10, 20:44» */
+const stamp = (iso: string) => sinceText(iso, locale());
 
 /*
  * Раздел «Ключі й секрети» техпанели — только суперадмину (сервер отвечает
@@ -76,6 +79,7 @@ const SECRET_STATE: Record<OpsSecretStatus["state"], UiKey> = {
 };
 
 export default function OpsSecKeys() {
+  const count = useCount();
   const { ut } = useLang();
   const res = useResource(() => api.opsSecKeys(), []);
 
@@ -106,7 +110,7 @@ export default function OpsSecKeys() {
         job?.status === "running"
           ? fill(ut("opx.ky.metaProgress"), { pct: Math.round(jobShare(job) * 100) })
           : r.staleTotal > 0
-            ? fill(ut("opx.ky.metaStale"), { n: r.staleTotal.toLocaleString(locale()) })
+            ? count(["opx.ky.staleN.one", "opx.ky.staleN.few", "opx.ky.staleN.many"], r.staleTotal)
             : ut("opx.ky.metaClean"),
       ]
     : null;
@@ -141,7 +145,11 @@ export default function OpsSecKeys() {
 
 /* ─────────── шифрование: итог ─────────── */
 
+/** «34 значення», «120 значень» — форма слова по числу */
+const VALUES = ["opx.ky.valuesN.one", "opx.ky.valuesN.few", "opx.ky.valuesN.many"] as const;
+
 function EncryptionPanel({ report }: { report: OpsKeysReport }) {
+  const count = useCount();
   const { ut } = useLang();
   const mark = report.secrets.find((s) => s.name === "ENCRYPTION_KEY");
   const ok = report.encryption && report.lostTotal === 0 && report.plainTotal === 0;
@@ -169,8 +177,8 @@ function EncryptionPanel({ report }: { report: OpsKeysReport }) {
         ) : (
           <Verdict tone={ok ? "plain" : "attention"} title={ut("opx.ky.onTitle")} icon={ok ? "lock" : "triangle-alert"}>
             {fill(ut("opx.ky.onText"), {
-              plain: report.plainTotal.toLocaleString(locale()),
-              lost: report.lostTotal.toLocaleString(locale()),
+              plain: count(VALUES, report.plainTotal),
+              lost: count(VALUES, report.lostTotal),
             })}
           </Verdict>
         )}
@@ -181,7 +189,7 @@ function EncryptionPanel({ report }: { report: OpsKeysReport }) {
               ut("ops.sec.keys.active"),
               <span key="a" className="flex flex-wrap items-center gap-2">
                 <CodeChip>{report.activeKey ?? "—"}</CodeChip>
-                {mark?.seenSince ? <span className="text-text-2">{fill(ut("ops.sec.keys.activeSince"), { date: dateTime(mark.seenSince) })}</span> : null}
+                {mark?.seenSince ? <span className="text-text-2">{fill(ut("ops.sec.keys.activeSince"), { date: stamp(mark.seenSince) })}</span> : null}
               </span>,
             ],
             [
@@ -191,7 +199,7 @@ function EncryptionPanel({ report }: { report: OpsKeysReport }) {
                 {report.loadedKeys.length > 1 ? <span className="text-text-2">{ut("opx.ky.twoKeys")}</span> : null}
               </span>,
             ],
-            [ut("ops.sec.checkedAt"), dateTime(report.countedAt)],
+            [ut("ops.sec.checkedAt"), stamp(report.countedAt)],
           ]}
         />
       </div>
@@ -209,7 +217,7 @@ export function KeySection({ report }: { report: OpsKeysReport }) {
 
   return (
     <div className="grid grid-cols-[repeat(2,minmax(0,1fr))] items-start gap-4 max-[1100px]:grid-cols-1">
-      <Panel title={ut("ops.sec.keys.title")} icon={<OpsIcon name="key-round" />} sub={fill(ut("opx.ky.counted"), { time: dateTime(report.countedAt) })} flush>
+      <Panel title={ut("ops.sec.keys.title")} icon={<OpsIcon name="key-round" />} sub={fill(ut("opx.ky.counted"), { time: stamp(report.countedAt) })} flush>
         {report.lostTotal > 0 ? (
           <div className="px-4 pb-3">
             <Verdict tone="danger">{fill(ut("ops.sec.keys.lost"), { n: report.lostTotal, keys: lostKeys.join(", ") })}</Verdict>
@@ -494,9 +502,9 @@ function JobLine({ job }: { job: OpsReencryptJob }) {
           {job.status === "running"
             ? ut("ops.sec.rot.running")
             : job.status === "done" && job.finishedAt
-              ? fill(ut("ops.sec.rot.jobDone"), { time: dateTime(job.finishedAt) })
+              ? fill(ut("ops.sec.rot.jobDone"), { time: stamp(job.finishedAt) })
               : ut("opx.ky.lastJob")}
-          {job.startedBy ? <span className="font-medium text-muted">{fill(ut("opx.ky.startedBy"), { who: job.startedBy, time: dateTime(job.startedAt) })}</span> : null}
+          {job.startedBy ? <span className="font-medium text-muted">{fill(ut("opx.ky.startedBy"), { who: job.startedBy, time: stamp(job.startedAt) })}</span> : null}
         </span>
         <b className="text-[22px] font-extrabold leading-none tabular-nums text-text">{`${Math.round(share * 100)} %`}</b>
       </div>
@@ -545,7 +553,7 @@ function AgeText({ status }: { status: OpsSecretStatus }) {
   const age = secretAge(status);
   if (age.kind === "unknown") return <>{ut("ops.sec.secrets.unknown")}</>;
   if (age.kind === "changed") return <>{fill(ut("ops.sec.secrets.changed"), { n: age.days })}</>;
-  return <>{fill(ut("ops.sec.secrets.tracked"), { n: age.days, date: status.trackedSince ? dateTime(status.trackedSince) : "—" })}</>;
+  return <>{fill(ut("ops.sec.secrets.tracked"), { n: age.days, date: status.trackedSince ? stamp(status.trackedSince) : "—" })}</>;
 }
 
 export function SecretsSection({ report }: { report: OpsKeysReport }) {

@@ -175,10 +175,15 @@ function DiskPanel({ d }: { d: OpsRecordings }) {
 function StatusPanel({ d }: { d: OpsRecordings }) {
   const { ut } = useLang();
   const loc = locale();
+  const count = useCount();
   const total = d.byStatus.reduce((s, x) => s + x.count, 0);
   const bytesOf = (s: RecordingStatus) => d.byStatus.find((x) => x.status === s)?.bytes ?? 0;
   return (
-    <Panel title={ut("o2b.rec.byStatus")} icon={<OpsIcon name="layers" />} sub={fill(ut("opx.rc.allTime"), { n: fmtInt(total, loc) })}>
+    <Panel
+      title={ut("o2b.rec.byStatus")}
+      icon={<OpsIcon name="layers" />}
+      sub={count(["opx.rc.allTime.one", "opx.rc.allTime.few", "opx.rc.allTime.many"], total)}
+    >
       {total === 0 ? (
         <Quiet>{ut("o2b.rec.none")}</Quiet>
       ) : (
@@ -230,7 +235,9 @@ function QueuePanel({ d }: { d: OpsRecordings }) {
               {ut("opx.rc.idleText")}
             </Callout>
           )}
-          <p className="m-0 text-small text-muted">{ut(d.transcriberHere ? "o2b.rec.transcriber.here" : "o2b.rec.transcriber.elsewhere")}</p>
+          <p className="m-0 text-small text-muted">
+            {ut("o2b.rec.transcriber")} {ut(d.transcriberHere ? "o2b.rec.transcriber.here" : "o2b.rec.transcriber.elsewhere")}
+          </p>
         </div>
         <Facts
           w={170}

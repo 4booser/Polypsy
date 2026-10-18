@@ -117,7 +117,7 @@ export default function OpsClientErrors() {
       actions={<CopyLinkButton />}
       toolbar={
         <OpsToolbar>
-          <SearchField value={q} onChange={setQ} placeholder={ut("o2b.ce.search")} slash width={260} />
+          <SearchField value={q} onChange={setQ} placeholder={ut("opx.ce.search")} slash width={260} />
           <Segmented
             label={ut("ops.history.periodLabel")}
             value={String(days)}
@@ -376,7 +376,7 @@ export function ErrorShape({
 
 /* ─────────── строка группы ─────────── */
 
-const ROW = "grid grid-cols-[44px_150px_112px_minmax(0,1fr)_120px_76px_170px] items-center gap-3 px-4";
+const ROW = "grid grid-cols-[40px_136px_100px_minmax(0,1fr)_110px_64px_150px] items-center gap-3 px-4";
 
 const KIND_TAG: Record<ClientErrorKind, { tone: TagTone; icon: OpsIconName }> = {
   react: { tone: "attention", icon: "monitor-x" },
@@ -419,12 +419,12 @@ function GroupRow({ g, fresh, open, onToggle }: { g: OpsClientErrorGroup; fresh:
               {g.message || "—"}
             </Mono>
           </span>
-          <span className="flex min-w-0 flex-wrap items-center gap-x-2 text-small text-muted">
+          <span className="flex min-w-0 items-center gap-x-2 whitespace-nowrap text-small text-muted">
             {ut("opx.ce.screen")}
-            <Mono className="text-text-2">{g.route}</Mono>
+            <Mono className="shrink-0 text-text-2">{g.route}</Mono>
             {g.kind === "network" && (g.apiRoute || g.status !== null) ? (
               <>
-                {ut("opx.ce.request")}
+                <span className="shrink-0">{ut("opx.ce.request")}</span>
                 <Mono className="min-w-0 truncate text-text-2">
                   {[g.apiMethod, g.apiRoute].filter(Boolean).join(" ")}
                   {g.status === 0 ? ` · ${ut("o2b.ce.noResponse")}` : g.status ? ` · ${g.status}` : ""}

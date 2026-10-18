@@ -10,7 +10,7 @@ import {
 } from "@quizzy/shared";
 import { api } from "../../../api";
 import { useAuth } from "../../../auth";
-import { Figure, HBars, TimeColumns } from "../../../charts/clinical";
+import { Figure, TimeColumns } from "../../../charts/clinical";
 import { locale, timeOfDay } from "../../../format";
 import { useLang } from "../../../lang";
 import { Callout, DataTable, Drawer, DrawerSection, Loading, Tooltip, useAction, useToast, type Column } from "../../../ui";
@@ -19,6 +19,7 @@ import { Panel } from "../../../ui/layout";
 import { Button, CheckLabel, Checkbox, Field, Input, Switch } from "../../../ui/primitives";
 import type { Resource } from "../../../useResource";
 import { fill } from "../../dashboard/model";
+import { RankBars } from "../charts";
 import { OpsIcon } from "../icons";
 import { fmtUptime } from "../model";
 import { CopyLinkButton, OpsHead, PanelNote, Quiet, StatusMark, sinceText, useCount, useOpsResource } from "../parts";
@@ -29,6 +30,7 @@ import {
   RULE_BELOW,
   RULE_HINT,
   RULE_NAME,
+  RULE_SHORT,
   RULE_UNIT,
   STATE_KEY,
   STATE_TONE,
@@ -200,7 +202,7 @@ function RulesPanel({
     {
       key: "state",
       header: ut("opx.al.colState"),
-      width: 150,
+      width: 132,
       required: true,
       render: ({ rule }) => (rule ? <RuleState rule={rule} /> : <StatusMark tone="unk">{ut("opx.al.outside")}</StatusMark>),
     },
@@ -208,21 +210,21 @@ function RulesPanel({
       key: "now",
       header: ut("opx.al.colNow"),
       num: true,
-      width: 96,
+      width: 84,
       required: true,
       render: ({ rule }) => <b className="font-extrabold tabular-nums text-text">{rule ? nowText(rule, ut, loc) : "—"}</b>,
     },
     {
       key: "signal",
       header: ut("opx.al.colSignal"),
-      width: 150,
+      width: 130,
       required: true,
       render: ({ rule }) => <span className="text-text-2">{rule ? signalText(rule, ut, loc) : "—"}</span>,
     },
     {
       key: "window",
       header: ut("opx.al.colWindow"),
-      width: 124,
+      width: 116,
       required: true,
       render: ({ rule }) => (
         <span className="whitespace-nowrap tabular-nums text-text-2">
@@ -233,7 +235,7 @@ function RulesPanel({
     {
       key: "edit",
       header: "",
-      width: 52,
+      width: 48,
       required: true,
       render: ({ rule }) =>
         manage && rule ? (
@@ -304,7 +306,7 @@ function RuleName({ rule }: { rule: OpsAlertRule }) {
     <span className="flex min-w-0 flex-col gap-0.5">
       <b className="text-[14px] font-extrabold leading-5 text-text">{ut(RULE_NAME[rule.key])}</b>
       <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-small leading-[17px] text-muted">
-        <span className="min-w-0">{ut(RULE_HINT[rule.key])}</span>
+        <span className="min-w-0">{ut(RULE_SHORT[rule.key])}</span>
         <ChannelGlyphs channels={rule.enabled ? rule.channels : []} />
       </span>
     </span>
@@ -348,6 +350,8 @@ function nowText(rule: OpsAlertRule, ut: Ut, loc: string): string {
     if (rule.state === "firing") return ut("opx.al.chainBroken");
     return "—";
   }
+  /* «хвилин від останнього такту» меньше нуля — расхождение часов базы и процесса, а не будущее */
+  if (rule.key === "schedulerSilent" && rule.lastValue !== null) return fmtRuleValue(rule.key, Math.max(0, rule.lastValue), loc);
   return fmtRuleValue(rule.key, rule.lastValue, loc);
 }
 
@@ -569,12 +573,14 @@ export function HistoryShape({ h }: { h: OpsAlertHistory }) {
         )}
       </Figure>
       <Figure title={ut("sig.al.byRule")} caption={fill(ut("sig.al.byRuleCaption"), { days: h.days })}>
-        <HBars
+        <RankBars
           items={firedByRule(h).map((r) => ({
             key: r.rule,
-            label: ut(RULE_NAME[r.rule]),
+            title: ut(RULE_NAME[r.rule]),
+            label: <span className="text-small font-semibold text-text-2">{ut(RULE_NAME[r.rule])}</span>,
             value: r.fired,
-            text: r.repeat ? fill(ut("sig.al.firedRepeat"), { n: r.fired, r: r.repeat }) : String(r.fired),
+            text: String(r.fired),
+            extra: r.repeat ? fill(ut("opx.al.repeats"), { n: r.repeat }) : undefined,
             attention: r.fired > 0,
           }))}
         />
@@ -663,7 +669,7 @@ function RuleDrawer({
       onReturn={onReturn}
       wide
       title={name}
-      sub={fill(ut("opx.al.drawerSub"), { hint: ut(RULE_HINT[rule.key]), now: nowText(rule, ut, loc) })}
+      sub={fill(ut("opx.al.drawerSub"), { hint: ut(RULE_SHORT[rule.key]), now: nowText(rule, ut, loc) })}
       icon={<OpsIcon name="bell-ring" />}
       dirty={dirty}
       draftName={fill(ut("opx.al.draftName"), { name })}
@@ -731,7 +737,8 @@ function RuleDrawer({
             />
           </Field>
         </div>
-        {rule.key === "diskFree" ? <p className="m-0 mt-2 text-small text-muted">{ut("o2b.alerts.diskNote")}</p> : null}
+        <p className="m-0 mt-2 text-small text-muted">{ut(RULE_HINT[rule.key])}</p>
+        {rule.key === "diskFree" ? <p className="m-0 mt-1 text-small text-muted">{ut("o2b.alerts.diskNote")}</p> : null}
       </DrawerSection>
 
       <DrawerSection title={ut("o2b.form.channels")} sub={ut("opx.al.sendToSub")}>

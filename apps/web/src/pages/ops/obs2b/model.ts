@@ -50,6 +50,15 @@ export const RULE_HINT: Record<OpsAlertRuleKey, UiKey> = {
   auditChain: "o2b.rule.auditChain.hint",
 };
 
+/** Что меряет правило — коротко, для строки таблицы; полная фраза — в ящике правки */
+export const RULE_SHORT: Record<OpsAlertRuleKey, UiKey> = {
+  errors5xx: "opx.al.hint.errors5xx",
+  schedulerSilent: "opx.al.hint.schedulerSilent",
+  p95: "opx.al.hint.p95",
+  diskFree: "opx.al.hint.diskFree",
+  auditChain: "opx.al.hint.auditChain",
+};
+
 export type RuleUnit = "pct" | "ms" | "min";
 
 /** Единица порога и значения; у проверки журнала порога нет */

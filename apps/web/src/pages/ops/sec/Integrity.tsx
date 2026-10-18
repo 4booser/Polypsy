@@ -1,6 +1,6 @@
 import type { OpsAuditChainReport, OpsIntegrityCheck, OpsIntegrityState, OpsRlsReport, UiKey } from "@quizzy/shared";
 import { api } from "../../../api";
-import { dateTime, day, locale } from "../../../format";
+import { day, locale } from "../../../format";
 import { useLang } from "../../../lang";
 import { Callout, KV, Loading, useAction } from "../../../ui";
 import { cx } from "../../../ui/cx";
@@ -9,9 +9,12 @@ import { Button, ButtonLink } from "../../../ui/primitives";
 import { useResource } from "../../../useResource";
 import { OpsIcon } from "../icons";
 import { lastDays, localDay } from "../obs2b/model";
-import { CopyLinkButton, OpsHead, Quiet, StatusMark } from "../parts";
+import { CopyLinkButton, OpsHead, Quiet, StatusMark, sinceText } from "../parts";
 import { checkDays, fill } from "./model";
 import { Caption, CheckStrip, CodeChip, Note, Verdict } from "./parts";
+
+/** Момент коротко, как во всей техпанели: «18.10, 20:44» */
+const stamp = (iso: string) => sinceText(iso, locale());
 
 /*
  * Раздел «Цілісність» техпанели — только суперадмину.
@@ -85,7 +88,7 @@ function CheckedBy({ check }: { check: OpsIntegrityCheck<unknown> }) {
   return (
     <span className="text-small text-text-2">
       {fill(ut("ops.sec.int.checkedBy"), {
-        time: dateTime(check.at),
+        time: stamp(check.at),
         who: check.trigger === "schedule" ? ut("ops.sec.int.scheduler") : (check.actorEmail ?? "—"),
       })}
     </span>
@@ -222,31 +225,21 @@ export function AuditResult({ state }: { state: OpsIntegrityState }) {
           <KV
             w={110}
             rows={[
-              [ut("opx.in.auto"), ut("ops.sec.int.schedule")],
+              [ut("opx.in.auto"), ut("opx.in.daily")],
               [
                 ut("opx.in.last"),
                 scheduled ? (
                   <span className="flex flex-wrap items-center gap-1.5">
-                    {dateTime(scheduled.at)}
+                    {stamp(scheduled.at)}
                     <StatusMark tone={scheduled.ok ? "ok" : "fail"}>{scheduled.ok ? ut("ops.sec.int.intact") : ut("ops.sec.int.broken")}</StatusMark>
                   </span>
                 ) : (
                   ut("ops.sec.int.noScheduled")
                 ),
               ],
-              [ut("opx.in.next"), fill(ut("opx.in.notBefore"), { time: dateTime(state.nextScheduledAfter) })],
+              [ut("opx.in.next"), fill(ut("opx.in.notBefore"), { time: stamp(state.nextScheduledAfter) })],
             ]}
           />
-          {scheduled ? (
-            <p className="m-0 mt-2 text-caption text-muted">
-              {fill(ut("ops.sec.int.lastScheduled"), {
-                time: dateTime(scheduled.at),
-                verdict: scheduled.ok ? ut("ops.sec.int.intact") : ut("ops.sec.int.broken"),
-              })}{" "}
-              {fill(ut("ops.sec.int.nextAfter"), { time: dateTime(state.nextScheduledAfter) })}
-            </p>
-          ) : null}
-          <p className="m-0 mt-1 text-caption text-muted">{ut("ops.sec.int.scheduler")}</p>
         </div>
       </div>
       <ChainHistory state={state} />
@@ -330,7 +323,7 @@ function HistoryPanel({ state }: { state: OpsIntegrityState }) {
               className="grid min-h-11 grid-cols-[160px_120px_160px_minmax(0,1fr)] items-center gap-3 border-b border-divider px-4 py-1.5 text-body last:border-b-0"
             >
               <span role="cell" className="tabular-nums text-text">
-                {dateTime(h.at)}
+                {stamp(h.at)}
               </span>
               <b role="cell" className="font-bold">
                 {ut("ops.sec.int.auditTitle")}
