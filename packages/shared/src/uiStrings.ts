@@ -87,7 +87,6 @@ export const UI = {
    */
   "person.email": { uk: "Email", ru: "Email", en: "Email" },
   "person.password": { uk: "Пароль", ru: "Пароль", en: "Password" },
-  "person.password8": { uk: "Пароль (мінімум 8 символів)", ru: "Пароль (минимум 8 символов)", en: "Password (at least 8 characters)" },
   "person.normsHint": {
     uk: "Стать і вік потрібні для розрахунку норм за вашою групою.",
     ru: "Пол и возраст нужны для расчёта норм по вашей группе.",
