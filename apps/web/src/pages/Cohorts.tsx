@@ -846,8 +846,8 @@ export default function Cohorts() {
             groups={groups.data}
             count={selected.size}
             onPick={async (groupId) => {
-              /* по одному запросу на человека; повтор сервер читает как «уже там» */
-              for (const userId of selected) await api.addPatientGroupMember(groupId, userId);
+              /* списком, а не запросом на человека: сервер проверяет пачку целиком; повтор — «уже там» */
+              await api.addPatientGroupMembers(groupId, [...selected]);
               setDialog(null);
               toast(ut("pg.added"), "ok");
             }}
