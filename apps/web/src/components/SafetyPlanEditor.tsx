@@ -2,12 +2,12 @@ import { useEffect, useRef, useState } from "react";
 import type { SafetyPlanContent } from "@quizzy/shared";
 import { api } from "../api";
 import { day } from "../format";
-import { NotLoaded, useAction } from "../ui";
-import { IconClose } from "../ui/glyphs";
+import { Callout, Ic, NotLoaded, useAction } from "../ui";
 import { useLang } from "../lang";
 import { useResource, type Resource } from "../useResource";
 import { Panel } from "../ui/layout";
-import { Button } from "../ui/primitives";
+import { Button, Input, Tag, Textarea } from "../ui/primitives";
+
 import { freshKey, withKeys, withoutKeys, type Keyed } from "../ui/rowKeys";
 import { staleMessage } from "./versioned";
 import { printOnly } from "../print";
@@ -160,193 +160,194 @@ export function SafetyPlanBody({
 
   return (
     /*
-     * Красной рамки у блока больше нет.
-     *
-     * Она стояла всегда — и когда план есть, и когда его нет, — то есть
-     * сообщала не о состоянии дел, а о названии раздела. Красный в этой
-     * системе занят выраженностью состояния человека; рамка вокруг блока
-     * выглядела так, будто сам план безопасности — тревожный факт.
-     *
-     * Внимания требует ровно одно: плана нет у того, кому он нужен. Именно
-     * это и отмечено — янтарной полосой слева и меткой рядом с заголовком.
-     * Когда план есть, блок обычный.
+     * Внимания требует ровно одно: плана нет у того, кому он нужен. Это и
+     * отмечено — янтарной пилюлей «плану немає» рядом с заголовком. Красный
+     * в наборе занят риском для человека, и рамка вокруг блока читалась бы
+     * так, будто сам план — тревожный факт.
      */
     <div ref={planRef}>
-    <Panel
-      className={active ? undefined : "border-l-2 border-l-[var(--accent)]"}
-      title={ut("sp.title")}
-      hint={ut("sp.hint")}
-      actions={
-        <>
-          {active ? (
-            <span className="text-caption text-muted">
-              {ut("sp.version")} {active.version} · {day(active.reviewedAt ?? active.createdAt)}
-            </span>
+      <Panel
+        title={ut("sp.title")}
+        icon={<Ic.shieldCheck />}
+        tone={active ? "good" : "warn"}
+        hint={ut("sp.hint")}
+        sub={
+          active ? (
+            `${ut("sp.version")} ${active.version}, ${day(active.reviewedAt ?? active.createdAt)}`
           ) : (
-            <span className="badge accent">{ut("sp.none")}</span>
-          )}
-          <button onClick={() => setOpen((v) => !v)}>
-            {open ? ut("common.close") : active ? ut("sp.revise") : ut("sp.create")}
-          </button>
-          {active ? <button onClick={() => printOnly(planRef.current)}>{ut("sp.print")}</button> : null}
-        </>
-      }
-    >
-      {!open && active ? <PlanView content={active.content} /> : null}
+            <Tag tone="attention">{ut("sp.none")}</Tag>
+          )
+        }
+        actions={
+          <>
+            <Button size="xs" variant={open ? "quiet" : "secondary"} onClick={() => setOpen((v) => !v)}>
+              {open ? ut("common.close") : active ? ut("sp.revise") : ut("sp.create")}
+            </Button>
+            {active ? (
+              <Button size="xs" variant="ghost" icon={<Ic.download />} onClick={() => printOnly(planRef.current)}>
+                {ut("sp.print")}
+              </Button>
+            ) : null}
+          </>
+        }
+      >
+        {!open && active ? <PlanView content={active.content} /> : null}
 
-      {open ? (
-        <div className="sp-edit">
-          {(
-            [
-              ["warningSigns", "sp.warningSigns"],
-              ["copingStrategies", "sp.coping"],
-              ["distractions", "sp.distractions"],
-              ["reasonsToLive", "sp.reasons"],
-            ] as const
-          ).map(([key, label]) => (
-            <section key={key}>
-              <h3>{ut(label)}</h3>
-              {draft[key].map((row) => (
-                <div className="row tight" key={row.key}>
-                  <input
-                    value={row.value}
-                    onChange={(e) => setList(key, row.key, e.target.value)}
-                    placeholder={ut("sp.ownWords")}
-                  />
-                  <button className="chip-x" onClick={() => dropList(key, row.key)} aria-label={ut("ui.remove")}>
-                    <IconClose />
-                  </button>
-                </div>
-              ))}
-              <button className="ghost" onClick={() => addList(key)}>
-                + {ut("sp.addLine")}
-              </button>
+        {open ? (
+          <div className="flex flex-col gap-4">
+            {(
+              [
+                ["warningSigns", "sp.warningSigns"],
+                ["copingStrategies", "sp.coping"],
+                ["distractions", "sp.distractions"],
+                ["reasonsToLive", "sp.reasons"],
+              ] as const
+            ).map(([key, label]) => (
+              <section key={key} className="flex flex-col gap-2">
+                <h3 className="m-0 text-h3 font-extrabold text-text">{ut(label)}</h3>
+                {draft[key].map((row) => (
+                  <div className="flex items-center gap-2" key={row.key}>
+                    <Input
+                      className="flex-1"
+                      value={row.value}
+                      onChange={(e) => setList(key, row.key, e.target.value)}
+                      placeholder={ut("sp.ownWords")}
+                    />
+                    <Button size="icon" variant="quiet" onClick={() => dropList(key, row.key)} aria-label={ut("ui.remove")}>
+                      <Ic.x />
+                    </Button>
+                  </div>
+                ))}
+                <Button size="xs" variant="ghost" className="self-start" onClick={() => addList(key)}>
+                  + {ut("sp.addLine")}
+                </Button>
+              </section>
+            ))}
+
+            {(
+              [
+                ["people", "sp.people"],
+                ["professionals", "sp.professionals"],
+              ] as const
+            ).map(([key, label]) => (
+              <section key={key} className="flex flex-col gap-2">
+                <h3 className="m-0 text-h3 font-extrabold text-text">{ut(label)}</h3>
+                {draft[key].map(({ key: rowKey, value: p }) => (
+                  <div className="flex items-center gap-2" key={rowKey}>
+                    <Input
+                      className="flex-1"
+                      value={p.name}
+                      onChange={(e) => setPerson(key, rowKey, { name: e.target.value })}
+                      placeholder={ut("sp.who")}
+                    />
+                    <Input
+                      className="flex-1"
+                      value={p.contact}
+                      onChange={(e) => setPerson(key, rowKey, { contact: e.target.value })}
+                      placeholder={ut("sp.contact")}
+                    />
+                    <Button size="icon" variant="quiet" onClick={() => dropPerson(key, rowKey)} aria-label={ut("ui.remove")}>
+                      <Ic.x />
+                    </Button>
+                  </div>
+                ))}
+                <Button size="xs" variant="ghost" className="self-start" onClick={() => addPerson(key)}>
+                  + {ut("sp.addLine")}
+                </Button>
+              </section>
+            ))}
+
+            <section className="flex flex-col gap-2">
+              <h3 className="m-0 text-h3 font-extrabold text-text">{ut("sp.means")}</h3>
+              {/* единственный раздел, который снижает риск, а не помогает его пережить */}
+              <p className="m-0 text-small text-text-2">{ut("sp.meansHint")}</p>
+              <Textarea
+                rows={2}
+                aria-label={ut("sp.means")}
+                value={draft.meansRestriction}
+                onChange={(e) => setDraft((d) => ({ ...d, meansRestriction: e.target.value }))}
+              />
             </section>
-          ))}
 
-          {(
-            [
-              ["people", "sp.people"],
-              ["professionals", "sp.professionals"],
-            ] as const
-          ).map(([key, label]) => (
-            <section key={key}>
-              <h3>{ut(label)}</h3>
-              {draft[key].map(({ key: rowKey, value: p }) => (
-                <div className="row tight" key={rowKey}>
-                  <input
-                    value={p.name}
-                    onChange={(e) => setPerson(key, rowKey, { name: e.target.value })}
-                    placeholder={ut("sp.who")}
-                  />
-                  <input
-                    value={p.contact}
-                    onChange={(e) => setPerson(key, rowKey, { contact: e.target.value })}
-                    placeholder={ut("sp.contact")}
-                  />
-                  <button className="chip-x" onClick={() => dropPerson(key, rowKey)} aria-label={ut("ui.remove")}>
-                    <IconClose />
-                  </button>
-                </div>
-              ))}
-              <button className="ghost" onClick={() => addPerson(key)}>
-                + {ut("sp.addLine")}
-              </button>
-            </section>
-          ))}
-
-          <section>
-            <h3>{ut("sp.means")}</h3>
-            {/* единственный раздел, который снижает риск, а не помогает его пережить */}
-            <p className="hint">{ut("sp.meansHint")}</p>
-            <textarea
-              rows={2}
-              value={draft.meansRestriction}
-              onChange={(e) => setDraft((d) => ({ ...d, meansRestriction: e.target.value }))}
-            />
-          </section>
-
-          {stale ? (
-            <div role="alert" className="rounded-[5px] bg-accent-soft px-[14px] py-[10px]">
-              <p className="m-0 text-[15px] leading-[20px] text-text">{stale}</p>
-              <p className="m-0 mt-[4px] text-[13px] text-muted">{ut("sp.rereadHint")}</p>
-              <Button
-                variant="quiet"
-                className="mt-[8px]"
-                disabled={busy}
-                onClick={() => {
-                  setStale(null);
-                  res.reload();
-                }}
+            {stale ? (
+              <Callout
+                kind="warn"
+                role="alert"
+                title={stale}
+                actions={
+                  <Button
+                    variant="quiet"
+                    size="xs"
+                    disabled={busy}
+                    onClick={() => {
+                      setStale(null);
+                      res.reload();
+                    }}
+                  >
+                    {ut("integrity.reread")}
+                  </Button>
+                }
               >
-                {ut("integrity.reread")}
+                {ut("sp.rereadHint")}
+              </Callout>
+            ) : null}
+
+            <div className="flex flex-wrap gap-2">
+              <Button variant="primary" disabled={busy} onClick={save}>
+                {ut("sp.saveVersion")}
+              </Button>
+              <Button variant="quiet" onClick={() => setOpen(false)}>
+                {ut("common.cancel")}
               </Button>
             </div>
-          ) : null}
-
-          <div className="row">
-            <button className="primary" disabled={busy} onClick={save}>
-              {ut("sp.saveVersion")}
-            </button>
-            <button className="ghost" onClick={() => setOpen(false)}>
-              {ut("common.cancel")}
-            </button>
           </div>
-        </div>
-      ) : null}
-    </Panel>
+        ) : null}
+      </Panel>
     </div>
   );
 }
 
 function PlanView({ content }: { content: SafetyPlanContent }) {
   const { ut } = useLang();
+  const heading = "m-0 mb-1.5 text-caption font-bold text-muted";
+  const list = "m-0 flex list-decimal flex-col gap-1 pl-5 text-body text-text";
   const block = (label: string, items: string[]) =>
     items.length ? (
       <section>
-        <h3>{label}</h3>
-        <ol className="sp-list">
+        <h3 className={heading}>{label}</h3>
+        <ol className={list}>
           {items.map((x, i) => (
             <li key={i}>{x}</li>
           ))}
         </ol>
       </section>
     ) : null;
+  const people = (label: string, items: SafetyPlanContent["people"]) =>
+    items.length ? (
+      <section>
+        <h3 className={heading}>{label}</h3>
+        <ul className="m-0 list-none p-0">
+          {items.map((p, i) => (
+            <li key={i} className="flex items-center gap-3 border-t border-divider py-1.5 text-body first:border-t-0 first:pt-0">
+              <b className="min-w-0 flex-1 font-extrabold text-text">{p.name}</b>
+              <span className="whitespace-nowrap font-bold text-text-2">{p.contact}</span>
+            </li>
+          ))}
+        </ul>
+      </section>
+    ) : null;
 
   return (
-    <div className="sp-view">
+    <div className="flex flex-col gap-4">
       {block(ut("sp.warningSigns"), content.warningSigns)}
       {block(ut("sp.coping"), content.copingStrategies)}
       {block(ut("sp.distractions"), content.distractions)}
-      {content.people.length ? (
-        <section>
-          <h3>{ut("sp.people")}</h3>
-          <ol className="sp-list">
-            {content.people.map((p, i) => (
-              <li key={i}>
-                {p.name} <span className="muted">{p.contact}</span>
-              </li>
-            ))}
-          </ol>
-        </section>
-      ) : null}
-      {content.professionals.length ? (
-        <section>
-          <h3>{ut("sp.professionals")}</h3>
-          <ol className="sp-list">
-            {content.professionals.map((p, i) => (
-              <li key={i}>
-                {p.name} <span className="muted">{p.contact}</span>
-              </li>
-            ))}
-          </ol>
-        </section>
-      ) : null}
+      {people(ut("sp.people"), content.people)}
+      {people(ut("sp.professionals"), content.professionals)}
       {content.meansRestriction ? (
-        <section>
-          <h3>{ut("sp.means")}</h3>
-          <p>{content.meansRestriction}</p>
-        </section>
+        <Callout kind="warn" title={ut("sp.means")}>
+          {content.meansRestriction}
+        </Callout>
       ) : null}
       {block(ut("sp.reasons"), content.reasonsToLive)}
     </div>
