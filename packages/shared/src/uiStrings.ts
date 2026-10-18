@@ -6067,7 +6067,6 @@ export const UI = {
   "bt.archived": { uk: "архів", ru: "архив", en: "archived" },
   "bt.assignments": { uk: "Призначення", ru: "Назначения", en: "Assignments" },
   "bt.strictOrder": { uk: "суворий порядок", ru: "строгий порядок", en: "strict order" },
-  "bt.items": { uk: "пунктів", ru: "пунктов", en: "items" },
   "bt.durationUnknown": { uk: "тривалість невідома", ru: "длительность неизвестна", en: "duration unknown" },
   "bt.optional": { uk: "необов’язкова", ru: "необязательная", en: "optional" },
   "bt.byClinician": { uk: "заповнює фахівець", ru: "заполняет специалист", en: "filled in by the specialist" },
@@ -8732,6 +8731,53 @@ export const UI = {
     en: "{responses} responses in total; {people} people completed at least one instrument. Completion {rate} %, abandoned {lost}. Average time {avg} per instrument.",
   },
   "mc.grSurveys": { uk: "{all}, опубліковано {pub}", ru: "{all}, опубликовано {pub}", en: "{all}, {pub} published" },
+  "mc.backMethod": { uk: "До методики", ru: "К методике", en: "Back to the instrument" },
+  "mc.kpVerify": { uk: "Позначити: ключі звірено", ru: "Отметить: ключи сверены", en: "Mark keys as verified" },
+  "mc.kpVerifyAgain": { uk: "Звірено знову", ru: "Сверено снова", en: "Verified again" },
+  "mc.kpVerifyTitle": {
+    uk: "Ключі версії {v} звірено з посібником?",
+    ru: "Ключи версии {v} сверены с пособием?",
+    en: "Keys of version {v} verified against the manual?",
+  },
+  "mc.kpVerifyText": {
+    uk: "Відмітка з’явиться в каталозі й паспорті методики з сьогоднішньою датою. Ставте її, лише звіривши кожну шкалу з друкованим посібником.",
+    ru: "Отметка появится в каталоге и паспорте методики с сегодняшней датой. Ставьте её, только сверив каждую шкалу с печатным пособием.",
+    en: "The mark appears in the catalogue and the instrument passport with today’s date. Set it only after checking every scale against the printed manual.",
+  },
+  "mc.kpVerifyConfirm": { uk: "Так, звірено", ru: "Да, сверено", en: "Yes, verified" },
+  "mc.kpVerified": {
+    uk: "Відмітку про звірку ключів поставлено",
+    ru: "Отметка о сверке ключей поставлена",
+    en: "Keys marked as verified",
+  },
+  "mc.menuRights": { uk: "Права на текст", ru: "Права на текст", en: "Text rights" },
+  "mc.rightsTitle": { uk: "Права на текст {code}", ru: "Права на текст {code}", en: "Text rights for {code}" },
+  "mc.rightsText": {
+    uk: "Від прав залежить, чи можна застосовувати методику клінічно. «Не з’ясовано» лишає позначку в каталозі.",
+    ru: "От прав зависит, можно ли применять методику клинически. «Не выяснены» оставляет пометку в каталоге.",
+    en: "Rights decide whether the instrument may be used clinically. «Unclear» keeps a mark in the catalogue.",
+  },
+  "mc.rightsOwnSub": {
+    uk: "методика установи, права в неї",
+    ru: "методика учреждения, права у него",
+    en: "the institution’s own instrument, it holds the rights",
+  },
+  "mc.rightsLicensedSub": {
+    uk: "є ліцензія або дозвіл правовласника",
+    ru: "есть лицензия или разрешение правообладателя",
+    en: "a licence or the rights holder’s permission exists",
+  },
+  "mc.rightsPublicSub": {
+    uk: "текст відкритий для клінічного використання",
+    ru: "текст открыт для клинического использования",
+    en: "the text is open for clinical use",
+  },
+  "mc.rightsUnclearSub": {
+    uk: "ще не з’ясовано — у каталозі лишиться позначка",
+    ru: "ещё не выяснено — в каталоге останется пометка",
+    en: "not clarified yet — the catalogue keeps a mark",
+  },
+  "mc.rightsSaved": { uk: "Права на текст збережено", ru: "Права на текст сохранены", en: "Text rights saved" },
 
 } as const satisfies Record<string, UiEntry>;
 

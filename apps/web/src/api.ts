@@ -1027,6 +1027,13 @@ export const api = {
   /** Снимает методику с использования. Данные не удаляются — см. surveyPurge на сервере. */
   archiveSurvey: (id: string) => request<void>(`/api/surveys/${id}`, { method: "DELETE" }),
   restoreSurvey: (id: string) => request<void>(`/api/surveys/${id}/restore`, { method: "POST" }),
+  /**
+   * Права на текст и сверка ключей — только суперадмину (routes/surveys.ts,
+   * PATCH /:id/rights). `keysVerified: true` ставит отметку «ключі звірено»
+   * сегодняшним днём от имени того, кто нажал.
+   */
+  surveyRights: (id: string, body: { rightsStatus?: "own" | "licensed" | "public_domain" | "unclear"; keysVerified?: boolean }) =>
+    request<{ ok: true }>(`/api/surveys/${id}/rights`, { method: "PATCH", body: JSON.stringify(body) }),
   submitFor: (surveyId: string, payload: unknown) =>
     request<{ id: string; scores: unknown[]; reliable: boolean; warnings: string[] }>(
       `/api/surveys/${surveyId}/responses`,

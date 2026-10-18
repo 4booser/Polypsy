@@ -1,13 +1,18 @@
 import { useMemo, useState } from "react";
 import qrcode from "qrcode-generator";
-import { Link, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import type { SurveyFull } from "@quizzy/shared";
 import { api } from "../api";
 import { useResource } from "../useResource";
 import { useLang } from "../lang";
-import { Button } from "../ui/primitives";
-import { Page, Panel, Stack } from "../ui/layout";
+import { ShellIcon } from "../shell/icons";
+import { Button, ButtonLink } from "../ui/primitives";
+import { Page } from "../ui/layout";
+import { Callout } from "../ui/states";
 import { Loading } from "../ui";
+import { Mi } from "./methods/icons";
+import { splitCode } from "./methods/model";
+import { useCount } from "./methods/useCount";
 import { fill, Mark, Sheet, SheetFoot, SheetHead, Signs } from "./printSheet";
 
 /**
@@ -18,11 +23,14 @@ import { fill, Mark, Sheet, SheetFoot, SheetHead, Signs } from "./printSheet";
  * психолог через «Провести», поэтому нумерация бланка обязана совпадать с
  * нумерацией на экране — она берётся из той же версии методики.
  *
- * Экран — панель действий и сам лист (UI 3, print-blank): на печать идёт
- * только лист (styles/legacy.css, `data-print-sheet`), его и видно заранее.
+ * Экран (UI 3, «Виразна»): шапка с методикой, «Ключі», переключатель
+ * «сітка / з текстом пунктів» и «Друк»; под ней — как бланком пользоваться,
+ * и сам лист (print-blank). На печать идёт только лист (styles/legacy.css,
+ * `data-print-sheet`), шапка и заметка — нет.
  */
 export default function BlankForm() {
   const { ut } = useLang();
+  const count = useCount();
   const { id } = useParams<{ id: string }>();
   /* null — по умолчанию: короткая методика — таблицей с текстом пунктов, длинная — сеткой номеров */
   const [compact, setCompact] = useState<boolean | null>(null);
@@ -30,7 +38,7 @@ export default function BlankForm() {
 
   if (error)
     return (
-      <p role="alert" className="text-danger">
+      <p role="alert" className="m-5 text-risk-ink">
         {error}
       </p>
     );
@@ -41,41 +49,45 @@ export default function BlankForm() {
      в заголовок таблицы и бланк сжимается с десяти листов до одного-двух */
   const shared = sharedOptions(asked);
   const grid = compact ?? asked.length > GRID_FROM;
+  const { code, name } = splitCode(survey.title);
 
   return (
     <Page
+      back={{ to: `/surveys/${survey.id}`, label: ut("mc.backMethod") }}
       title={ut("bf.title")}
-      sub={
+      meta={[code ? `${code}, ${name}` : name, `${ut("ant.versionN").replace("{n}", String(survey.versionNumber))}, ${count(asked.length, "items")}`]}
+      actions={
         <>
-          <Link to={`/surveys/${survey.id}`}>{survey.title}</Link> · {asked.length} {ut("bt.items")}
+          {shared ? (
+            <Button variant="secondary" icon={<Mi.rows />} onClick={() => setCompact(!grid)}>
+              {grid ? ut("bf.expand") : ut("bf.collapse")}
+            </Button>
+          ) : null}
+          <ButtonLink to={`/surveys/${survey.id}/key`} variant="secondary">
+            <ShellIcon name="key-round" size={15} />
+            {ut("mc.menuKeys")}
+          </ButtonLink>
+          <Button variant="primary" icon={<Mi.printer />} onClick={() => window.print()}>
+            {ut("kp.print")}
+          </Button>
         </>
       }
       /*
-       * Рамка экрана прокручивает содержимое сама (`overflow-y-auto`) — приём
-       * для ещё не перенесённых соседей, у бумажного бланка внутри неё нет
-       * своей высоты, только длинный список пунктов. При печати это не должно
-       * означать «видна только прокрученная страница»: подстраховываемся явным
-       * `overflow: visible` под печать, не трогая styles/*.css.
+       * Рамка экрана прокручивает содержимое сама (`overflow-y-auto`), а у
+       * бумажного бланка внутри неё нет своей высоты, только длинный список
+       * пунктов. При печати это не должно означать «видна только
+       * прокрученная страница»: подстраховываемся явным `overflow: visible`
+       * под печать, не трогая styles/*.css.
        */
       className="print:overflow-visible"
     >
-      <Stack>
-        <Panel className="no-print">
-          <p className="m-0 text-small text-muted">
-            {ut("blank.paperIntro")}
-            {shared ? ut("blank.sameOptionsNote") : ut("blank.differentOptionsNote")}
-          </p>
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <Button variant="primary" onClick={() => window.print()}>
-              {ut("kp.print")}
-            </Button>
-            {shared ? (
-              <Button onClick={() => setCompact(!grid)}>{grid ? ut("bf.expand") : ut("bf.collapse")}</Button>
-            ) : null}
-          </div>
-        </Panel>
+      <div className="flex flex-col gap-4">
+        <Callout kind="info" icon={<Mi.printer size={16} />}>
+          {ut("blank.paperIntro")}
+          {shared ? ut("blank.sameOptionsNote") : ut("blank.differentOptionsNote")}
+        </Callout>
         <BlankPaper survey={survey} asked={asked} shared={shared} grid={grid} />
-      </Stack>
+      </div>
     </Page>
   );
 }

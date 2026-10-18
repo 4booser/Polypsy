@@ -2,14 +2,15 @@ import { useMemo, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import type { SurveyFolder, SurveyFull, SurveyGrant, SurveyGroupWithCounts } from "@quizzy/shared";
 import { api, download } from "../../api";
+import { useAuth } from "../../auth";
 import { useLang } from "../../lang";
 import { ShellIcon } from "../../shell/icons";
-import { useAction } from "../../ui";
+import { Modal, useAction } from "../../ui";
 import { Ic } from "../../ui/icons";
 import { useHotkeys } from "../../ui/keys";
 import { Page } from "../../ui/layout";
 import { ActionMenu, type MenuEntry } from "../../ui/menu";
-import { Button, ButtonLink, Tabs, Tag } from "../../ui/primitives";
+import { Button, ButtonLink, ChoiceCard, Tabs, Tag } from "../../ui/primitives";
 import { useResource } from "../../useResource";
 import { testsHref } from "../analytics/tests/model";
 import { ArchiveDialog } from "./ArchiveDialog";
@@ -72,6 +73,8 @@ export function MethodPage({
   const { run } = useAction();
   const [drawer, setDrawer] = useState<"assign" | "exports" | null>(null);
   const [archiving, setArchiving] = useState(false);
+  const [rightsOpen, setRightsOpen] = useState(false);
+  const { user } = useAuth();
 
   const id = survey.id;
   const { code, name } = splitCode(survey.title);
@@ -194,6 +197,10 @@ export function MethodPage({
       icon: <Mi.fileJson size={16} />,
       onSelect: () => void run(() => download(api.methodologyUrl(id), "methodology.json")),
     },
+    /* права на текст правит только суперадмин (PATCH /api/surveys/:id/rights) */
+    ...(user?.role === "superadmin"
+      ? [{ label: ut("mc.menuRights"), icon: <Mi.scale size={16} />, onSelect: () => setRightsOpen(true) }]
+      : []),
     retired
       ? {
           label: ut("cl.restoreAction"),
@@ -274,6 +281,18 @@ export function MethodPage({
         sub={ut("mc.exSub").replace("{code}", code ?? name)}
         scope={responseCount !== undefined && responseCount !== null ? `${code ?? name}, ${count(responseCount, "responses")}` : undefined}
       />
+      {rightsOpen ? (
+        <RightsDialog
+          surveyId={id}
+          title={code ?? name}
+          current={survey.rightsStatus ?? "unclear"}
+          onClose={() => setRightsOpen(false)}
+          onSaved={() => {
+            setRightsOpen(false);
+            navigate(0);
+          }}
+        />
+      ) : null}
       {archiving ? (
         <ArchiveDialog
           survey={{ id, title: survey.title, versionNumber: survey.versionNumber, responseCount: responseCount ?? 0 }}
@@ -295,5 +314,77 @@ export function Fact({ icon, children, warn }: { icon: ReactNode; children: Reac
       <span className={warn ? "inline-flex" : "inline-flex text-muted"}>{icon}</span>
       {children}
     </span>
+  );
+}
+
+type Rights = "own" | "licensed" | "public_domain" | "unclear";
+
+/**
+ * Права на текст методики — окно суперадмина. От прав зависит, можно ли
+ * применять методику клинически: «не з’ясовано» оставляет пометку в каталоге
+ * и в строке внимания.
+ */
+function RightsDialog({
+  surveyId,
+  title,
+  current,
+  onClose,
+  onSaved,
+}: {
+  surveyId: string;
+  title: string;
+  current: Rights;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const { ut } = useLang();
+  const { run, busy } = useAction();
+  const [value, setValue] = useState<Rights>(current);
+  const options: [Rights, Parameters<typeof ut>[0], Parameters<typeof ut>[0]][] = [
+    ["own", "mc.rightsOwn", "mc.rightsOwnSub"],
+    ["licensed", "mc.rightsLicensed", "mc.rightsLicensedSub"],
+    ["public_domain", "mc.rightsPublic", "mc.rightsPublicSub"],
+    ["unclear", "cl.rightsUnclear", "mc.rightsUnclearSub"],
+  ];
+  return (
+    <Modal
+      title={ut("mc.rightsTitle").replace("{code}", title)}
+      icon={<Mi.scale />}
+      onClose={onClose}
+      footer={
+        <>
+          <Button
+            variant="primary"
+            disabled={busy || value === current}
+            onClick={() =>
+              void run(async () => {
+                await api.surveyRights(surveyId, { rightsStatus: value });
+                onSaved();
+              }, ut("mc.rightsSaved"))
+            }
+          >
+            {ut("ui.save")}
+          </Button>
+          <Button variant="quiet" onClick={onClose}>
+            {ut("ui.cancel")}
+          </Button>
+        </>
+      }
+    >
+      <p className="m-0 mb-3 text-body text-text-2">{ut("mc.rightsText")}</p>
+      <div role="radiogroup" aria-label={ut("mc.menuRights")} className="flex flex-col gap-1.5">
+        {options.map(([key, label, sub]) => (
+          <ChoiceCard
+            key={key}
+            name="survey-rights"
+            value={key}
+            checked={value === key}
+            onChange={(v) => setValue(v as Rights)}
+            title={ut(label)}
+            sub={ut(sub)}
+          />
+        ))}
+      </div>
+    </Modal>
   );
 }
