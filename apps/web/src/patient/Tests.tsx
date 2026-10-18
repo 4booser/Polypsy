@@ -8,13 +8,13 @@ import { useLang } from "../lang";
 import { ShellIcon } from "../shell/icons";
 import { Callout, Ic, NotLoaded, loadView } from "../ui";
 import { cx } from "../ui/cx";
-import { ButtonLink, Tag } from "../ui/primitives";
+import { Button, ButtonLink, Tag } from "../ui/primitives";
 import { useResource, type Resource } from "../useResource";
 import { Glyph } from "./icons";
 import { drafts, type RunnerDraft } from "./outbox";
 import { OutboxPanel } from "./OutboxStrip";
 import type { PatientOutlet } from "./PatientApp";
-import { BandCard, Body, CodeTile, FactList, Hero, HelpLink, MetaLine, PtPanel, SideGrid, instrumentCode, instrumentName } from "./parts";
+import { BandCard, Body, CodeTile, FactList, Hero, HelpLink, MetaLine, Pending, PtPanel, SideGrid, instrumentCode, instrumentName } from "./parts";
 import { ResultCell, mainScore } from "./results";
 import { dayOffset, dm, hm, localDayKey, whenSaid } from "./when";
 
@@ -60,10 +60,13 @@ export function TestsBody({
   outbox: PatientOutlet["outbox"] | null;
 }) {
   const { ut } = useLang();
+  /* доступное всем — длинный каталог; сначала несколько, остальное по нажатию */
+  const [allAnytime, setAllAnytime] = useState(false);
   const view = loadView(surveys);
   const list = (surveys.data ?? []).filter((s) => s.status === "published");
   const draftOf = new Map(local.map((d) => [d.surveyId, d]));
-  const open = list.filter((s) => !s.completedByMe || draftOf.has(s.id));
+  const queued = new Set((outbox?.waiting ?? []).map((i) => i.surveyId));
+  const open = list.filter((s) => (!s.completedByMe || draftOf.has(s.id)) && !queued.has(s.id));
   /* спершу почате, далі назначенное по сроку, потом доступное — как сказано в подписи панели */
   const rank = (s: SurveyListItem) => (draftOf.has(s.id) ? 0 : s.assigned ? 1 : 2);
   const todo = [...open].sort(
@@ -189,9 +192,23 @@ export function TestsBody({
                           <span className="font-semibold text-muted">{ut("ptw.anytimeSub")}</span>
                         </div>
                       ) : null}
-                      {anytime.map((s, i) => (
+                      {(allAnytime ? anytime : anytime.slice(0, ANYTIME_SHOWN)).map((s, i) => (
                         <TodoRow key={s.id} survey={s} draft={null} primary={!fromSpecialist.length && i === 0} />
                       ))}
+                      {anytime.length > ANYTIME_SHOWN ? (
+                        <div className="border-t border-divider px-[18px] py-3">
+                          <Button
+                            variant="ghost"
+                            aria-expanded={allAnytime}
+                            icon={<Ic.chevronDown size={16} className={cx("transition-transform", allAnytime && "rotate-180")} />}
+                            onClick={() => setAllAnytime(!allAnytime)}
+                          >
+                            {allAnytime
+                              ? ut("ptw.showFewer")
+                              : ut("ptw.showAll").replace("{n}", String(anytime.length - ANYTIME_SHOWN))}
+                          </Button>
+                        </div>
+                      ) : null}
                     </>
                   ) : null}
                 </>
@@ -204,6 +221,9 @@ export function TestsBody({
     </>
   );
 }
+
+/** Сколько методик «коли захочете» видно сразу: каталог длинный, а назначенное не должно в нём теряться */
+const ANYTIME_SHOWN = 4;
 
 /** Строка «пройти»: плитка с кодом, название и почему здесь, действие справа */
 function TodoRow({ survey: s, draft, primary }: { survey: SurveyListItem; draft: RunnerDraft | null; primary: boolean }) {
@@ -340,7 +360,7 @@ function DonePanel({
     >
       {view === "wait" || view === "failed" ? (
         <div className="px-[18px] pb-[18px]">
-          <NotLoaded res={responses} />
+          <Pending res={responses} />
         </div>
       ) : (
         days.map((day, i) => {
@@ -353,7 +373,7 @@ function DonePanel({
             return (
               <div
                 key={r.id}
-                className="grid grid-cols-[40px_minmax(0,1fr)_minmax(0,300px)] items-center gap-x-3.5 border-t border-divider px-[18px] py-[13px] max-[760px]:grid-cols-[40px_minmax(0,1fr)] max-[760px]:gap-y-2"
+                className="grid grid-cols-[40px_minmax(0,1fr)_minmax(0,330px)] items-center gap-x-3.5 border-t border-divider px-[18px] py-[13px] max-[760px]:grid-cols-[40px_minmax(0,1fr)] max-[760px]:gap-y-2"
               >
                 <CodeTile title={name} tone="neutral" small />
                 <div className="min-w-0">
@@ -421,8 +441,11 @@ function DonePanel({
                 </span>
                 <span className="flex flex-wrap justify-end gap-1.5 max-[600px]:hidden">
                   {codes.slice(0, 5).map((t) => (
-                    <span key={t} className="inline-flex h-[26px] items-center rounded-[13px] bg-sunk px-[9px] text-[12.5px] font-bold text-text-2">
-                      {instrumentCode(t) ?? instrumentName(t).slice(0, 14)}
+                    <span
+                      key={t}
+                      className="inline-block h-[26px] max-w-[160px] truncate rounded-[13px] bg-sunk px-[9px] text-[12.5px] font-bold leading-[26px] text-text-2"
+                    >
+                      {instrumentCode(t) ?? instrumentName(t)}
                     </span>
                   ))}
                 </span>

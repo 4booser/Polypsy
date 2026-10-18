@@ -472,12 +472,17 @@ function ConsentSection() {
         {required ? (
           <SettingRow
             icon={<ShellIcon name="file-text" size={19} />}
-            title={ut("consent.title")}
-            sub={
-              status.data?.version
-                ? `${ut("ptw.consentGiven")} ${ut("ptw.consentEdition").replace("{n}", String(status.data.version))}`
-                : ut("ptw.consentGiven")
+            title={
+              <span className="inline-flex flex-wrap items-center gap-2">
+                {ut("consent.title")}
+                {status.data?.version ? (
+                  <Tag tone="good" icon={<Ic.check size={12} />}>
+                    {ut("ptw.consentEdition").replace("{n}", String(status.data.version))}
+                  </Tag>
+                ) : null}
+              </span>
             }
+            sub={ut("ptw.consentGiven")}
           >
             {text ? (
               <Button icon={<ShellIcon name="file-text" size={16} />} aria-haspopup="dialog" aria-expanded={reading} onClick={() => setReading(true)}>

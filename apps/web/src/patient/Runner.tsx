@@ -102,7 +102,13 @@ function RunnerFlow({ survey }: { survey: SurveyFull }) {
   const [answers, setAnswers] = useState<Map<string, Answer>>(
     () => new Map(Object.entries(resume?.answers ?? {}) as [string, Answer][]),
   );
-  const [step, setStep] = useState(() => resume?.step ?? 0);
+  /* место — то же, но не дальше последнего видимого пункта: условия показа зависят от ответов */
+  const [step, setStep] = useState(() => {
+    if (!resume) return 0;
+    const restored = new Map(Object.entries(resume.answers));
+    const shown = survey.questions.filter((q) => isQuestionVisible(q, survey.questions, restored as never)).length;
+    return Math.max(0, Math.min(resume.step, shown - 1));
+  });
   /* инструкция прочитана и нажато «Почати» — до этого на экране она, а не первый пункт (#170) */
   const [started, setStarted] = useState(false);
   const [startedAt, setStartedAt] = useState(() => resume?.startedAt ?? new Date().toISOString());
@@ -448,147 +454,149 @@ function RunnerFlow({ survey }: { survey: SurveyFull }) {
         onPick={set}
         onNext={goNext}
       />
-      <div className={cx(COLUMN, "pb-14 pt-8 max-[600px]:pt-5", current.type === "matrix" ? "max-w-[1032px]" : "max-w-[792px]")}>
-        {foreign && step === 0 && !hasIntro(survey) ? (
-          <p className="m-0 mb-3 text-[14px] text-muted">{ut(`contentLang.${foreign}`)}</p>
-        ) : null}
-        {sectionTitle(survey, current) ? (
-          <p lang={partLang} className="m-0 mb-2.5 text-[17px] font-semibold leading-[25px] text-text-2">
-            {sectionTitle(survey, current)}
-          </p>
-        ) : null}
-        {/*
-          tabIndex={-1} — чтобы сюда можно было увести фокус после смены
-          пункта. Мышью на заголовок не попасть: -1 убирает его из
-          табуляции, оставляя доступным программно.
-        */}
-        <h1
-          ref={headingRef}
-          id={titleId}
-          tabIndex={-1}
-          className="m-0 text-balance rounded-sm text-[32px] font-extrabold leading-10 tracking-[-0.025em] text-text outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)] max-[600px]:text-[25px] max-[600px]:leading-[33px]"
-        >
-          <span className="sr-only">{position}. </span>
-          <span lang={partLang}>{current.title}</span>
-        </h1>
-        {current.help ? (
-          <p id={helpId} lang={partLang} className="m-0 mt-2 text-[17px] font-medium leading-[25px] text-text-2">
-            {current.help}
-          </p>
-        ) : null}
-
-        <div className="mt-[26px]">
-          {/* у матрицы и ранжирования тоже есть варианты — их ветки раньше общей кнопочной */}
-          {current.type === "matrix" ? (
-            <MatrixInput
-              question={current}
-              answer={a}
-              onChange={set}
-              partLang={partLang}
-              flagMissing={flagMissing}
-              onRowFocus={setActiveRow}
-            />
-          ) : current.type === "ranking" ? (
-            <RankingInput question={current} answer={a} onChange={set} partLang={partLang} />
-          ) : current.type === "date" ? (
-            <DateInput answer={a} onChange={set} labelledBy={titleId} describedBy={current.help ? helpId : undefined} />
-          ) : choices.length ? (
-            <ChoiceInput
-              question={current}
-              answer={a}
-              onChange={set}
-              partLang={partLang}
-              labelledBy={titleId}
-              describedBy={current.help ? helpId : undefined}
-            />
-          ) : current.type === "scale" || current.type === "slider" ? (
-            <ScaleInput
-              question={current}
-              answer={a}
-              onChange={set}
-              partLang={partLang}
-              labelledBy={titleId}
-              describedBy={current.help ? helpId : undefined}
-            />
-          ) : current.type === "number" ? (
-            /*
-              Имя поля — сам вопрос, через aria-labelledby: вопрос уже
-              напечатан заголовком во весь экран, и вторая подпись под ним
-              читалась бы как ошибка. Без ссылки диктор произносил «поле
-              ввода» на экране, который весь состоит из одного вопроса.
-            */
-            <NumberInput
-              question={current}
-              answer={a}
-              onChange={set}
-              labelledBy={titleId}
-              describedBy={current.help ? helpId : undefined}
-            />
-          ) : current.type === "info" ? (
-            <InfoNote>{ut("ptw.infoStep")}</InfoNote>
-          ) : (
-            <TextInput answer={a} onChange={set} labelledBy={titleId} describedBy={current.help ? helpId : undefined} />
-          )}
-        </div>
-
-        {flagMissing && current.required ? (
-          <p role="status" className="m-0 mt-3.5 flex items-center gap-2 text-[15px] font-semibold leading-[21px] text-warn">
-            <Glyph name="arrow-down-dot" size={18} className="shrink-0" />
-            {missingRows.length === 1
-              ? ut("ptw.mxOneLeft").replace("{row}", missingRows[0]!.text)
-              : ut("ptw.mxLeft").replace("{n}", String(missingRows.length))}
-          </p>
-        ) : null}
-
-        <div className="mt-7 flex items-stretch gap-2.5">
-          {/* «Назад» — только где автор методики разрешил возврат (allowBack, #170); на первом пункте — выключена */}
-          {survey.allowBack !== false ? (
-            <Button
-              size="lg"
-              icon={<Ic.chevronLeft size={20} />}
-              className="flex-1"
-              disabled={!canGoBack(survey, step)}
-              onClick={goBack}
-            >
-              {ut("common.back")}
-            </Button>
+      <div className={cx(COLUMN, "pb-14 pt-8 max-[600px]:pt-5")}>
+        <div className={cx("mx-auto", current.type === "matrix" ? "max-w-[1000px]" : "max-w-[760px]")}>
+          {foreign && step === 0 && !hasIntro(survey) ? (
+            <p className="m-0 mb-3 text-[14px] text-muted">{ut(`contentLang.${foreign}`)}</p>
           ) : null}
-          <Button
-            variant="primary"
-            size="lg"
-            className="flex-[2]"
-            disabled={busy || !canAdvance}
-            onClick={goNext}
-            iconEnd={
-              <>
-                {last ? <Glyph name="send" size={18} /> : <Ic.chevronRight size={20} />}
-                <span aria-hidden className="ml-1.5 max-[760px]:hidden">
-                  <Kbd onTip>Enter</Kbd>
-                </span>
-              </>
-            }
+          {sectionTitle(survey, current) ? (
+            <p lang={partLang} className="m-0 mb-2.5 text-[17px] font-semibold leading-[25px] text-text-2">
+              {sectionTitle(survey, current)}
+            </p>
+          ) : null}
+          {/*
+            tabIndex={-1} — чтобы сюда можно было увести фокус после смены
+            пункта. Мышью на заголовок не попасть: -1 убирает его из
+            табуляции, оставляя доступным программно.
+          */}
+          <h1
+            ref={headingRef}
+            id={titleId}
+            tabIndex={-1}
+            className="m-0 text-balance rounded-sm text-[32px] font-extrabold leading-10 tracking-[-0.025em] text-text outline-none max-[600px]:text-[25px] max-[600px]:leading-[33px]"
           >
-            {last ? ut("pw.finish") : ut("common.next")}
-          </Button>
-        </div>
-        <KbdHints
-          className="mt-4 justify-center text-[13px]"
-          keys={
-            current.type === "matrix"
-              ? [
-                  ["↑ ↓", ut("ptw.keyRow")],
-                  [matrixCols.slice(0, 9).map((_, i) => i + 1).join(" "), ut("ptw.keyInRow")],
-                  ["Enter", ut("ptw.keyNext")],
-                ]
-              : choices.length && current.type !== "ranking"
+            <span className="sr-only">{position}. </span>
+            <span lang={partLang}>{current.title}</span>
+          </h1>
+          {current.help ? (
+            <p id={helpId} lang={partLang} className="m-0 mt-2 text-[17px] font-medium leading-[25px] text-text-2">
+              {current.help}
+            </p>
+          ) : null}
+
+          <div className="mt-[26px]">
+            {/* у матрицы и ранжирования тоже есть варианты — их ветки раньше общей кнопочной */}
+            {current.type === "matrix" ? (
+              <MatrixInput
+                question={current}
+                answer={a}
+                onChange={set}
+                partLang={partLang}
+                flagMissing={flagMissing}
+                onRowFocus={setActiveRow}
+              />
+            ) : current.type === "ranking" ? (
+              <RankingInput question={current} answer={a} onChange={set} partLang={partLang} />
+            ) : current.type === "date" ? (
+              <DateInput answer={a} onChange={set} labelledBy={titleId} describedBy={current.help ? helpId : undefined} />
+            ) : choices.length ? (
+              <ChoiceInput
+                question={current}
+                answer={a}
+                onChange={set}
+                partLang={partLang}
+                labelledBy={titleId}
+                describedBy={current.help ? helpId : undefined}
+              />
+            ) : current.type === "scale" || current.type === "slider" ? (
+              <ScaleInput
+                question={current}
+                answer={a}
+                onChange={set}
+                partLang={partLang}
+                labelledBy={titleId}
+                describedBy={current.help ? helpId : undefined}
+              />
+            ) : current.type === "number" ? (
+              /*
+                Имя поля — сам вопрос, через aria-labelledby: вопрос уже
+                напечатан заголовком во весь экран, и вторая подпись под ним
+                читалась бы как ошибка. Без ссылки диктор произносил «поле
+                ввода» на экране, который весь состоит из одного вопроса.
+              */
+              <NumberInput
+                question={current}
+                answer={a}
+                onChange={set}
+                labelledBy={titleId}
+                describedBy={current.help ? helpId : undefined}
+              />
+            ) : current.type === "info" ? (
+              <InfoNote>{ut("ptw.infoStep")}</InfoNote>
+            ) : (
+              <TextInput answer={a} onChange={set} labelledBy={titleId} describedBy={current.help ? helpId : undefined} />
+            )}
+          </div>
+
+          {flagMissing && current.required ? (
+            <p role="status" className="m-0 mt-3.5 flex items-center gap-2 text-[15px] font-semibold leading-[21px] text-warn">
+              <Glyph name="arrow-down-dot" size={18} className="shrink-0" />
+              {missingRows.length === 1
+                ? ut("ptw.mxOneLeft").replace("{row}", missingRows[0]!.text)
+                : ut("ptw.mxLeft").replace("{n}", String(missingRows.length))}
+            </p>
+          ) : null}
+
+          <div className="mt-7 flex items-stretch gap-2.5">
+            {/* «Назад» — только где автор методики разрешил возврат (allowBack, #170); на первом пункте — выключена */}
+            {survey.allowBack !== false ? (
+              <Button
+                size="lg"
+                icon={<Ic.chevronLeft size={20} />}
+                className="flex-1"
+                disabled={!canGoBack(survey, step)}
+                onClick={goBack}
+              >
+                {ut("common.back")}
+              </Button>
+            ) : null}
+            <Button
+              variant="primary"
+              size="lg"
+              className="flex-[2]"
+              disabled={busy || !canAdvance}
+              onClick={goNext}
+              iconEnd={
+                <>
+                  {last ? <Glyph name="send" size={18} /> : <Ic.chevronRight size={20} />}
+                  <span aria-hidden className="ml-1.5 max-[760px]:hidden">
+                    <Kbd onTip>Enter</Kbd>
+                  </span>
+                </>
+              }
+            >
+              {last ? ut("pw.finish") : ut("common.next")}
+            </Button>
+          </div>
+          <KbdHints
+            className="mt-4 justify-center text-[13px]"
+            keys={
+              current.type === "matrix"
                 ? [
-                    [choices.slice(0, 9).map((_, i) => i + 1).join(" "), ut("ptw.keyPick")],
-                    ...(current.type === "multiple" ? [] : ([["↑ ↓", ut("ptw.keyBetween")]] as [string, string][])),
+                    ["↑ ↓", ut("ptw.keyRow")],
+                    [matrixCols.slice(0, 9).map((_, i) => i + 1).join(" "), ut("ptw.keyInRow")],
                     ["Enter", ut("ptw.keyNext")],
                   ]
-                : [["Enter", ut("ptw.keyNext")]]
-          }
-        />
+                : choices.length && current.type !== "ranking"
+                  ? [
+                      [choices.slice(0, 9).map((_, i) => i + 1).join(" "), ut("ptw.keyPick")],
+                      ...(current.type === "multiple" ? [] : ([["↑ ↓", ut("ptw.keyBetween")]] as [string, string][])),
+                      ["Enter", ut("ptw.keyNext")],
+                    ]
+                  : [["Enter", ut("ptw.keyNext")]]
+            }
+          />
+        </div>
       </div>
     </>
   );
@@ -912,7 +920,7 @@ export function RunnerIntro({
             ref={headingRef}
             tabIndex={-1}
             lang={partLang}
-            className="m-0 text-balance rounded-sm text-[36px] font-extrabold leading-[42px] tracking-[-0.03em] text-text outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)] max-[600px]:text-[28px] max-[600px]:leading-[34px]"
+            className="m-0 text-balance rounded-sm text-[36px] font-extrabold leading-[42px] tracking-[-0.03em] text-text outline-none max-[600px]:text-[28px] max-[600px]:leading-[34px]"
           >
             {instrumentName(survey.title)}
           </h1>
@@ -1051,7 +1059,7 @@ function DoneView({
               <h1
                 ref={headingRef}
                 tabIndex={-1}
-                className="m-0 rounded-sm text-[36px] font-extrabold leading-[42px] tracking-[-0.03em] text-text outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)] max-[600px]:text-[28px]"
+                className="m-0 rounded-sm text-[36px] font-extrabold leading-[42px] tracking-[-0.03em] text-text outline-none max-[600px]:text-[28px]"
               >
                 {ut("pw.thanks")}
               </h1>

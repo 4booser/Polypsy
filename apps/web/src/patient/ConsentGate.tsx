@@ -273,7 +273,10 @@ export function ConsentScreen({
   const { ut } = useLang();
   const actions = (
     <div data-consent-actions className="mt-6 flex flex-wrap items-center gap-2.5">
-      {consentActionsOf(view).map((action) => (
+      {/* главное решение — первым: в модели порядок смысловой, на экране — по весу кнопки */}
+      {[...consentActionsOf(view)]
+        .sort((a, b) => Number(BUTTON[b].variant === "primary") - Number(BUTTON[a].variant === "primary"))
+        .map((action) => (
         <Button
           key={action}
           size="lg"

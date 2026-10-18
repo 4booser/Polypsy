@@ -69,22 +69,27 @@ test("человек заводит учётную запись и проход�
 
   await page.getByRole("link", { name: "Тесты" }).click();
   // короткая методика: МЛО на двести пунктов уронило бы проверку по сроку
-  await page
+  const link = page
     .locator('a[href^="/me/tests/"]')
     .filter({ hasNotText: "Адаптивность" })
     .filter({ hasNotText: "Мини-мульт" })
-    .first()
-    .click();
+    .first();
+  const surveyId = (await link.getAttribute("href"))!.split("/").pop()!;
+  await link.click();
+  /*
+   * Вариант ответа: один ответ — радио (плитки «Виразної», стрелки и цифры),
+   * несколько ответов и деления шкалы — переключатели с aria-pressed.
+   */
+  const anyOption = () => page.getByRole("radio").or(page.locator("button[aria-pressed]")).first();
   /* у методики с инструкцией перед первым пунктом — её экран и «Почати» (#170), как в a11y.e2e.ts */
   const start = page.getByRole("button", { name: /^(Почати|Начать|Start)$/ });
-  const firstOption = page.locator("button[aria-pressed]").first();
-  await Promise.race([start.waitFor(), firstOption.waitFor()]);
+  await Promise.race([start.waitFor(), anyOption().waitFor()]);
   if (await start.isVisible()) await start.click();
 
   for (let i = 0; i < 60; i++) {
-    const option = page.locator("button[aria-pressed]").first();
+    const option = anyOption();
     await option.click();
-    await expect(option).toHaveAttribute("aria-pressed", "true");
+    await expect(page.locator('[aria-checked="true"], [aria-pressed="true"]').first()).toBeVisible();
 
     const finish = page.getByRole("button", { name: "Завершить" });
     if (await finish.count()) {
@@ -96,11 +101,17 @@ test("человек заводит учётную запись и проход�
 
   await expect(page.getByRole("heading", { name: "Спасибо" })).toBeVisible({ timeout: 15000 });
   /*
-   * Баллов человеку не показываем: истолковать их некому, а тревожный
-   * человек с цифрой и без объяснения — худший исход, чем человек без
-   * цифры. Ищем не слово «балл» (оно есть в самом объяснении, почему их
-   * тут нет), а числовую разметку, которой во всём приложении набраны
-   * результаты.
+   * Баллы — только там, где методика их показывает (showResultsToPatient):
+   * у PHQ-9, PCL-5 и прочих с выключенным показом истолковать цифру некому,
+   * а тревожный человек с цифрой и без объяснения — худший исход, чем
+   * человек без цифры. Панель «Ваш результат» есть ровно тогда, когда флаг
+   * методики разрешает её показать.
    */
-  await expect(page.locator("main .num, main [data-severity]")).toHaveCount(0);
+  const token = await page.evaluate(() => localStorage.getItem("quizzy.web.token"));
+  const listed = (await (await page.request.get("/api/surveys", { headers: { Authorization: `Bearer ${token}` } })).json()) as {
+    items: { id: string; showResultsToPatient: boolean }[];
+  };
+  const shows = listed.items.find((s) => s.id === surveyId)?.showResultsToPatient ?? false;
+  const result = page.getByRole("heading", { level: 2, name: /^(Ваш результат|Your result)$/ });
+  await expect(result).toHaveCount(shows ? 1 : 0);
 });

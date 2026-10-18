@@ -1,7 +1,9 @@
 import { createContext, useContext, useId, type ReactNode, type Ref } from "react";
 import { useLang } from "../lang";
 import { ShellIcon } from "../shell/icons";
+import { Loading } from "../ui";
 import { Count, IconTile, type PanelTone } from "../ui/layout";
+import type { Resource } from "../useResource";
 import { cx } from "../ui/cx";
 
 /**
@@ -75,7 +77,7 @@ export function Hero({
             ) : null}
             {children}
           </div>
-          {aside ? <div className="w-[400px] shrink-0 max-[960px]:w-full">{aside}</div> : null}
+          {aside ? <div className="w-[420px] shrink-0 max-[960px]:w-full">{aside}</div> : null}
         </div>
       </div>
     </section>
@@ -319,7 +321,7 @@ export function HelpLink({ title, sub }: { title?: ReactNode; sub?: ReactNode })
       type="button"
       onClick={openHelp}
       aria-haspopup="dialog"
-      className="flex min-h-16 w-full items-center gap-3 rounded-[14px] border-0 bg-violet-tint px-3.5 py-2.5 text-left text-text transition-colors hover:bg-violet-tint-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--focus)]"
+      className="flex min-h-16 w-full items-center gap-3 whitespace-normal rounded-[14px] border-0 bg-violet-tint px-3.5 py-2.5 text-left text-text transition-colors hover:bg-violet-tint-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--focus)]"
     >
       <span
         aria-hidden
@@ -331,7 +333,12 @@ export function HelpLink({ title, sub }: { title?: ReactNode; sub?: ReactNode })
         <b className="block text-[15.5px] font-extrabold leading-[21px]">{title ?? ut("ptw.helpNow")}</b>
         <small className="block text-[14px] font-semibold leading-[19px] text-text-2">{sub ?? ut("ptw.helpNowSub")}</small>
       </span>
-      <span className="text-[20px] font-extrabold leading-none tabular-nums text-violet-ink">{ut("home.hotlineNumber")}</span>
+      <span className="shrink-0 text-[20px] font-extrabold leading-none tabular-nums text-violet-ink">{ut("home.hotlineNumber")}</span>
     </button>
   );
+}
+
+/** Место данных внутри карточки или панели, пока их нет: скелет или отказ с «Повторити» — без своего листа */
+export function Pending({ res, rows = 2 }: { res: Pick<Resource<unknown>, "error" | "loading" | "reload">; rows?: number }) {
+  return <Loading bare rows={rows} error={res.error} onRetry={res.reload} busy={res.loading} />;
 }

@@ -8249,6 +8249,8 @@ export const UI = {
   },
   "ptw.anytime": { uk: "Коли захочете", ru: "Когда захотите", en: "Whenever you like" },
   "ptw.anytimeSub": { uk: "доступні всім, без строку", ru: "доступны всем, без срока", en: "open to everyone, no deadline" },
+  "ptw.showAll": { uk: "Показати ще {n}", ru: "Показать ещё {n}", en: "Show {n} more" },
+  "ptw.showFewer": { uk: "Згорнути", ru: "Свернуть", en: "Show fewer" },
   "ptw.done": { uk: "Пройдені", ru: "Пройденные", en: "Completed" },
   "ptw.doneSub": {
     uk: "результат — там, де відділення дозволяє його показувати",

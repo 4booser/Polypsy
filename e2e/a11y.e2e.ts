@@ -363,7 +363,8 @@ for (const theme of ["dark", "light"] as const) {
      */
     // язык консоли стенда — любой из трёх: подпись «Почати» / «Начать» / «Start» (ms.start)
     const start = page.getByRole("button", { name: /^(Почати|Начать|Start)$/ });
-    const firstOption = page.locator("button[aria-pressed]").first();
+    /* один ответ — радио (плитки «Виразної»), несколько и шкала — переключатели */
+    const firstOption = page.getByRole("radio").or(page.locator("button[aria-pressed]")).first();
     await Promise.race([start.waitFor(), firstOption.waitFor()]);
     if (await start.isVisible()) {
       expect(await violationsOf(page, "/me/tests/:id — інструкція")).toEqual([]);

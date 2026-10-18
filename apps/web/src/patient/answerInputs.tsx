@@ -271,7 +271,10 @@ export function MatrixInput({
                   <Mark picked={on} />
                   <span
                     lang={partLang}
-                    className={cx("text-[15px] leading-5 min-[760px]:sr-only", on ? "font-extrabold text-violet-ink" : "font-semibold")}
+                    className={cx(
+                      "min-w-0 flex-1 text-left text-[15px] leading-5 min-[760px]:sr-only",
+                      on ? "font-extrabold text-violet-ink" : "font-semibold",
+                    )}
                   >
                     {c.text}
                   </span>

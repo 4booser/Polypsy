@@ -6,7 +6,7 @@ import { useAuth } from "../auth";
 import { useLang } from "../lang";
 import { moveAndReload } from "../pages/visitModel";
 import { ShellIcon } from "../shell/icons";
-import { Callout, Ic, Modal, NotLoaded, loadView, useAction } from "../ui";
+import { Callout, Ic, Modal, loadView, useAction } from "../ui";
 import { cx } from "../ui/cx";
 import { ActionMenu } from "../ui/menu";
 import { Button, ButtonLink, Field, SeverityTag, Tag, Textarea, type Severity } from "../ui/primitives";
@@ -14,7 +14,7 @@ import { useResource, type Resource } from "../useResource";
 import { Glyph } from "./icons";
 import { drafts, type RunnerDraft } from "./outbox";
 import type { PatientOutlet } from "./PatientApp";
-import { BandCard, Body, CallRows, CodeTile, Hero, MetaLine, PtPanel, SideGrid, instrumentCode, instrumentName } from "./parts";
+import { BandCard, Body, CallRows, CodeTile, Hero, MetaLine, Pending, PtPanel, SideGrid, instrumentCode, instrumentName } from "./parts";
 import { SafetyPlanDrawer } from "./SafetyPlan";
 import { dm, greetingKey, hm, shortDay, visitWhen, whenSaid } from "./when";
 
@@ -290,7 +290,7 @@ export function HomeBody({
   const visitCard =
     visitsView === "wait" || visitsView === "failed" ? (
       <BandCard>
-        <NotLoaded res={visits} />
+        <Pending res={visits} />
       </BandCard>
     ) : next ? (
       <VisitCard visit={next} busy={busy} onConfirm={onConfirm} onCancel={onCancel} />
@@ -362,7 +362,7 @@ export function HomeBody({
           >
             {surveysView === "wait" || surveysView === "failed" ? (
               <div className="px-[18px] pb-[18px]">
-                <NotLoaded res={surveys} />
+                <Pending res={surveys} />
               </div>
             ) : todo.length === 0 ? (
               <p className="m-0 px-[18px] pb-[18px] text-[16px] text-muted">{ut("pt.noTests")}</p>
@@ -546,7 +546,7 @@ function VisitCard({
         <ActionMenu
           label={ut("ptw.visitMore")}
           triggerSize="md"
-          triggerClassName="w-12 px-0"
+          triggerClassName="w-11 px-0"
           entries={[{ key: "cancel", label: ut("ptw.cancelVisit"), icon: <Glyph name="calendar-x" size={16} />, danger: true, onSelect: () => onCancel(visit) }]}
         />
       </div>
