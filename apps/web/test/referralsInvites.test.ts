@@ -227,6 +227,24 @@ describe("реестр направлений «Виразної»", () => {
     expect(src).toContain("if (missingOpen && hasMore && !loadingMore && !pageError) loadMore();");
   });
 
+  /*
+   * Ящик после смены статуса начинает с пустой формы. Прежде выбор и
+   * комментарий переживали «Зберегти»: ящик того же направления открывался с
+   * невидимым выбором прежнего перехода и живой кнопкой — сохранение уходило
+   * отказом о недопустимом переходе, а прежний комментарий ушёл бы ответом
+   * следующего шага. Состояние ящика без браузера не нарисовать — проверяется
+   * исходник. Мутация: убрать сброс по статусу или после сохранения — падает своя.
+   */
+  test("ящик: выбор перехода сбрасывается со сменой статуса, форма — после сохранения", () => {
+    const src = readFileSync(resolve(import.meta.dir, "../src/pages/Referrals.tsx"), "utf8");
+    const drawer = src.slice(src.indexOf("function ReferralDrawer("), src.indexOf("const NEXT_HINT"));
+    expect(drawer).toContain("const at = referral?.status ?? null;");
+    expect(drawer, "выбор перехода не сбрасывается со сменой статуса").toMatch(/useEffect\(\(\) => \{\s*setStatus\(""\);\s*\}, \[at\]\);/);
+    expect(drawer, "форма не очищается после сохранения").toMatch(
+      /await api\.updateReferral\(r\.id, status, note\.trim\(\) \|\| undefined\);[^}]*setStatus\(""\);\s*setNote\(""\);\s*\} finally \{/,
+    );
+  });
+
   test("ожидание: больше суток без ответа — «late», принятое — за сколько приняли", () => {
     expect(waitOf(ref({ createdAt: ago(0.5) }), NOW)).toEqual({ kind: "issued", minutes: 30 });
     expect(waitOf(ref({ createdAt: ago(48) }), NOW).kind).toBe("late");

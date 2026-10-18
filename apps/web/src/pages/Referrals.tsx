@@ -593,10 +593,21 @@ function ReferralDrawer({
   const [status, setStatus] = useState("");
   const [note, setNote] = useState("");
   const id = referral?.id ?? null;
+  const at = referral?.status ?? null;
   useEffect(() => {
     setStatus("");
     setNote("");
   }, [id]);
+  /*
+   * Статус сменился — этим ящиком или коллегой (409, реестр перечитан):
+   * выбранный переход к нему уже не относится. Прежде выбор переживал смену:
+   * ящик того же направления открывался с невидимым выбором «Прийнято» и
+   * живой кнопкой, и «Зберегти» уходило отказом о недопустимом переходе.
+   * Набранный комментарий при отказе остаётся — его писали не зря.
+   */
+  useEffect(() => {
+    setStatus("");
+  }, [at]);
 
   if (!referral) {
     return <Drawer open={false} onClose={onClose} title={ut("ref.title")} />;
@@ -609,6 +620,9 @@ function ReferralDrawer({
       if (!status || (declining && !note.trim())) return false;
       try {
         await api.updateReferral(r.id, status, note.trim() || undefined);
+        /* сохранённый комментарий — уже «відповідь» направления: следующий шаг начинается с пустой формы */
+        setStatus("");
+        setNote("");
       } finally {
         onSaved();
       }
