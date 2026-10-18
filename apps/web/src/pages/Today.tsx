@@ -172,50 +172,50 @@ export default function TodayPage() {
         }}
       />
       <Screen res={res} rows={5}>
-      {(day) => (
-        <>
-          <div className="flex flex-col gap-4">
-            <ActNow
-              cases={cases}
-              work={work.items}
-              appointments={isToday ? items : []}
-              meId={user?.id ?? null}
-              onReply={openReply}
-              loading={!side.data && !side.error}
-            />
-            <SideLayout
-              side={
-                <Prep a={selected} state={selected ? states.get(selected.id) : undefined} clash={selected ? clash.get(selected.id) : undefined} now={now} onNote={note} />
-              }
-            >
-              <Agenda
-                date={day.date}
-                items={items}
-                states={states}
-                clash={clash}
-                now={now}
-                selectedId={selected?.id ?? null}
-                onSelect={setPicked}
-                busy={busy}
-                /* перечитывается и на отказе: 409/400 значит, что строка устарела (visitModel.ts, #178) */
-                onStatus={(a, to) => run(() => moveAndReload(() => api.appointmentStatus(a.id, to), reloadDay))}
-                onLead={(a) => run(() => api.takeLead(a.patientId, true).then(reloadDay))}
-                nowNote={<NowNote items={items} now={now} hero={hero} />}
-                hints={[
-                  ["J K", ut("dayA.hintSessions")],
-                  ["N", ut("dayA.hintNote")],
-                  ...(hero ? ([["R", ut("dayA.hintReview")]] as [string, string][]) : []),
-                  ...(heroMsg && hero ? ([["M", fill(ut("dayA.hintReply"), { name: hero.userName.split(" ")[1] ?? hero.userName })]] as [string, string][]) : []),
-                  ["Enter", ut("dayA.hintCard")],
-                  ["Esc", ut("dayA.hintEsc")],
-                ]}
+        {(day) => (
+          <>
+            <div className="flex flex-col gap-4">
+              <ActNow
+                cases={cases}
+                work={work.items}
+                appointments={isToday ? items : []}
+                meId={user?.id ?? null}
+                onReply={openReply}
+                loading={!side.data && !side.error}
               />
-              <Between items={between} total={work.total} onReply={openReply} />
-            </SideLayout>
-          </div>
-          {drawer}
-        </>
-      )}
+              <SideLayout
+                side={
+                  <Prep a={selected} state={selected ? states.get(selected.id) : undefined} clash={selected ? clash.get(selected.id) : undefined} now={now} onNote={note} />
+                }
+              >
+                <Agenda
+                  date={day.date}
+                  items={items}
+                  states={states}
+                  clash={clash}
+                  now={now}
+                  selectedId={selected?.id ?? null}
+                  onSelect={setPicked}
+                  busy={busy}
+                  /* перечитывается и на отказе: 409/400 значит, что строка устарела (visitModel.ts, #178) */
+                  onStatus={(a, to) => run(() => moveAndReload(() => api.appointmentStatus(a.id, to), reloadDay))}
+                  onLead={(a) => run(() => api.takeLead(a.patientId, true).then(reloadDay))}
+                  nowNote={<NowNote items={items} now={now} hero={hero} />}
+                  hints={[
+                    ["J K", ut("dayA.hintSessions")],
+                    ["N", ut("dayA.hintNote")],
+                    ...(hero ? ([["R", ut("dayA.hintReview")]] as [string, string][]) : []),
+                    ...(heroMsg && hero ? ([["M", fill(ut("dayA.hintReply"), { name: hero.userName.split(" ")[1] ?? hero.userName })]] as [string, string][]) : []),
+                    ["Enter", ut("dayA.hintCard")],
+                    ["Esc", ut("dayA.hintEsc")],
+                  ]}
+                />
+                <Between items={between} total={work.total} onReply={openReply} />
+              </SideLayout>
+            </div>
+            {drawer}
+          </>
+        )}
       </Screen>
     </>
   );
