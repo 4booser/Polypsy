@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { instrumentCode } from "@quizzy/shared";
-import { adminA, adminB, api, db, groupA, makeUser, submitSurvey, surveyInA, type Person } from "./fixtures";
+import { adminA, adminB, api, db, groupA, groupB, makeUser, submitSurvey, surveyInA, type Person } from "./fixtures";
 import {
   alertCases,
   appointments,
@@ -170,6 +170,36 @@ describe("GET /api/timeline/:id — назначение набора", () => {
     expect(res.status).toBe(200);
     const row = res.body.items.find((i: { kind: string }) => i.kind === "assignment");
     expect(row.title).toBe("Перед сесією 6");
+  });
+
+  test("набор чужого отделения в хронологии не виден — ни названием, ни строкой; без группы — виден", async () => {
+    /*
+     * У таблицы наборов нет политики строк: левое соединение отдавало
+     * название любого набора, и человек, общий для двух отделений, в
+     * хронологии отделения A показывал «Набір чужого відділення». Назначение
+     * набора чужой группы уходит целиком — как прохождения и тревоги по
+     * чужим методикам; набор без группы виден всем сотрудникам, как в списке
+     * наборов.
+     */
+    const tag = crypto.randomUUID().slice(0, 8);
+    const p = await patientOfA(`${tag}-foreign-battery`);
+    const foreign = crypto.randomUUID();
+    const shared = crypto.randomUUID();
+    await db.insert(batteries).values([
+      { id: foreign, groupId: groupB, title: `Набір чужого відділення ${tag}`, createdBy: adminB.id },
+      { id: shared, groupId: null, title: `Набір без групи ${tag}`, createdBy: adminB.id },
+    ] as never);
+    await db.insert(batteryAssignments).values([
+      { id: crypto.randomUUID(), batteryId: foreign, userId: p.id, assignedBy: adminB.id },
+      { id: crypto.randomUUID(), batteryId: shared, userId: p.id, assignedBy: adminB.id },
+    ] as never);
+
+    const res = await api(`/api/timeline/${p.id}`, adminA.token);
+    expect(res.status).toBe(200);
+    const rows = res.body.items.filter((i: { kind: string }) => i.kind === "assignment") as { title: string }[];
+    expect(rows.map((r) => r.title)).toEqual([`Набір без групи ${tag}`]);
+    expect(JSON.stringify(res.body)).not.toContain(foreign);
+    expect(JSON.stringify(res.body)).not.toContain("чужого відділення");
   });
 });
 
