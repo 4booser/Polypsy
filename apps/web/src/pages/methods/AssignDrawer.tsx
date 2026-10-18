@@ -269,7 +269,7 @@ export function AssignDrawer({
                             setQuery("");
                             searchRef.current?.focus();
                           }}
-                          className="flex w-full min-h-0 cursor-pointer items-center gap-2.5 rounded-[8px] border-0 bg-transparent px-2.5 py-1.5 text-left hover:bg-sunk disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent"
+                          className="flex w-full min-h-0 cursor-pointer items-center justify-start gap-2.5 rounded-[8px] border-0 bg-transparent px-2.5 py-1.5 text-left hover:bg-sunk disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent"
                         >
                           <Avatar name={p.fullName} size={28} />
                           <span className="flex min-w-0 flex-col">
@@ -320,7 +320,7 @@ export function AssignDrawer({
           </div>
         ) : (
           <div className="mt-3">
-            <Field label={ut("mc.assignGroup")}>
+            <Field label={ut("ant.group")}>
               <Select value={groupId} onChange={(e) => setGroupId(e.target.value)} disabled={!groups.data}>
                 <option value="">{groups.data ? ut("sel.pick") : ut("common.loading")}</option>
                 {(groups.data ?? []).map((g) => (

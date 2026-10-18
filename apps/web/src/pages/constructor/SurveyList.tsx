@@ -150,8 +150,17 @@ function Two({ top, sub, warn }: { top: ReactNode; sub?: ReactNode; warn?: boole
 }
 
 /** «ключі звірено 12.09» / «ключі не звірено» / «без підрахунку балів» */
-function KeysLine({ s }: { s: Pick<SurveyListItem, "scoringEnabled" | "keysVerifiedAt"> }) {
+function KeysLine({ s }: { s: Pick<SurveyListItem, "scoringEnabled" | "keysVerifiedAt" | "archivedAt"> }) {
   const { ut } = useLang();
+  /* снятой методике ключи уже не долг — строка говорит, когда её сняли */
+  if (s.archivedAt) {
+    return (
+      <span className="inline-flex items-center gap-[5px] text-muted">
+        <Ic.archive size={13} />
+        {ut("mc.retiredOn").replace("{date}", shortDate(s.archivedAt))}
+      </span>
+    );
+  }
   if (!s.scoringEnabled) return <span className="text-muted">{ut("cat.scoringOff")}</span>;
   if (s.keysVerifiedAt) {
     return (
@@ -794,6 +803,11 @@ export function SurveyList() {
       {items.length > 6 ? <li className="text-caption text-muted">{ut("mc.andMore").replace("{n}", String(items.length - 6))}</li> : null}
     </ul>
   );
+  /* последний черновик коротко: код или начало имени */
+  const shortName = (s: SurveyListItem) => {
+    const { code, name } = splitCode(s.title);
+    return code ?? (name.length > 22 ? `${name.slice(0, 21)}…` : name);
+  };
   /* подробность пилюли — коды первых двух; без кодов — просто сколько (имена целиком в поповере) */
   const firstCodes = (items: SurveyListItem[]) => {
     const codes = items.slice(0, 2).map((s) => splitCode(s.title).code);
@@ -840,7 +854,7 @@ export function SurveyList() {
           <AlertChip
             icon={<ShellIcon name="file-pen-line" />}
             label={`${ut("sn.drafts")} ${attention.drafts.length}`}
-            detail={firstCodes(attention.drafts)}
+            detail={shortName(attention.drafts[0]!)}
             to={hrefOf("drafts", { per })}
             popTitle={ut("sn.drafts")}
             popNote={String(attention.drafts.length)}
@@ -1079,7 +1093,7 @@ export function SurveyList() {
                 ? `${sideNames.name}${sideSurvey.versionNumber ? `, ${ut("ant.versionN").replace("{n}", String(sideSurvey.versionNumber))}` : ""}`
                 : undefined
             }
-            note={ut("mc.assignNote").replace("{items}", count(sideSurvey.questionCount, "items"))}
+            note={count(sideSurvey.questionCount, "items")}
             draftName={ut("mc.assignDraft").replace("{code}", sideNames.code ?? sideNames.name)}
             existing={existing}
             assignOne={(userId, due, note) => api.grant(sideSurvey.id, userId, note ?? undefined, due)}

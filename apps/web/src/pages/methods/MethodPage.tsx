@@ -262,7 +262,7 @@ export function MethodPage({
         onReturn={() => setDrawer("assign")}
         title={ut("mc.assignTitle").replace("{code}", code ?? name)}
         sub={code ? `${name}, ${ut("ant.versionN").replace("{n}", String(survey.versionNumber))}` : ut("ant.versionN").replace("{n}", String(survey.versionNumber))}
-        note={ut("mc.assignNote").replace("{items}", count(asked, "items"))}
+        note={count(asked, "items")}
         draftName={ut("mc.assignDraft").replace("{code}", code ?? name)}
         existing={existing}
         assignOne={(userId, due, note) => api.grant(id, userId, note ?? undefined, due)}

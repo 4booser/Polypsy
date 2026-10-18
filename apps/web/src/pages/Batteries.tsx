@@ -140,6 +140,8 @@ function BatteriesScreen({
     const retiredStep = b.items.find((i) => retiredIds.has(i.surveyId));
     const late = b.overdueAssignments ?? 0;
     const minutes = totalMinutes(b);
+    /* с пилюлей справа места на три кода нет — два и «+N» */
+    const room = retiredStep || late ? 2 : 3;
     return (
       <ListTile
         key={b.id}
@@ -153,7 +155,7 @@ function BatteriesScreen({
         }
         reason={
           <span className="flex min-w-0 items-center gap-[3px] overflow-hidden">
-            {codes.slice(0, 3).map((c, i) => (
+            {codes.slice(0, room).map((c, i) => (
               <span
                 key={`${c}-${i}`}
                 className={cx(
@@ -164,7 +166,7 @@ function BatteriesScreen({
                 {c.length > 10 ? `${c.slice(0, 9)}…` : c}
               </span>
             ))}
-            {codes.length > 3 ? <span className="text-[11.5px] font-bold text-muted">{`+${codes.length - 3}`}</span> : null}
+            {codes.length > room ? <span className="text-[11.5px] font-bold text-muted">{`+${codes.length - room}`}</span> : null}
           </span>
         }
         aside={
@@ -264,7 +266,7 @@ function BatteriesScreen({
         </Page>
       )}
       <BatteryEditor
-        key={editing === "new" ? "new" : (editing?.id ?? "closed")}
+        key={editing === "new" ? "editor-new" : `editor-${editing?.id ?? "closed"}`}
         battery={editing}
         surveys={surveys}
         groups={groups}
@@ -532,7 +534,11 @@ function BatteryRecord({
                   </span>
                   <span className="flex flex-col items-end whitespace-nowrap text-caption text-muted max-[1180px]:hidden">
                     <b className="font-extrabold text-text">{count(i.questionCount, "items")}</b>
-                    {i.medianMinutes !== null ? ut("mc.btMin").replace("{n}", String(Math.round(i.medianMinutes))) : ut("bt.durationUnknown")}
+                    {i.medianMinutes === null
+                      ? ut("bt.durationUnknown")
+                      : i.medianMinutes < 1
+                        ? ut("mc.btLessMin")
+                        : ut("mc.btMin").replace("{n}", String(Math.round(i.medianMinutes)))}
                   </span>
                 </li>
               );

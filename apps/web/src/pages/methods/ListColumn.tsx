@@ -3,7 +3,7 @@ import { useLang } from "../../lang";
 import { cx } from "../../ui/cx";
 import { SearchField, ViewPills, type ViewItem } from "../../ui/filters";
 import { Ic } from "../../ui/icons";
-import { KbdHints } from "../../ui/kbd";
+import { Kbd } from "../../ui/kbd";
 import { useHotkeys } from "../../ui/keys";
 import { Count } from "../../ui/layout";
 import { Tooltip } from "../../ui/Popover";
@@ -121,15 +121,23 @@ export function ListColumn({
       <div ref={box} role="list" className="kit-scroll min-h-0 flex-1 overflow-y-auto border-t border-divider pb-3 pt-1">
         {children}
       </div>
-      <div className="flex shrink-0 items-center gap-3 border-t border-divider px-4 py-2.5">
-        <KbdHints
-          keys={[
-            ["J K", ut("mc.keyRows")],
-            ["/", ut("mc.keySearch")],
-            ["[", ut("mc.keyCollapse")],
-          ]}
-        />
-        {footCount ? <span className="ml-auto whitespace-nowrap text-caption font-bold text-text-2">{footCount}</span> : null}
+      {/* подвал в одну строку и на 300 px: клавиши плотнее, чем полоса KbdHints под таблицей */}
+      <div aria-hidden className="flex shrink-0 items-center gap-2.5 whitespace-nowrap border-t border-divider px-4 py-2.5 text-caption text-muted max-[760px]:hidden">
+        {(
+          [
+            [["J", "K"], ut("mc.keyRows")],
+            [["/"], ut("mc.keySearch")],
+            [["["], ut("mc.keyCollapse")],
+          ] as const
+        ).map(([keys, what]) => (
+          <span key={what} className="inline-flex items-center gap-1">
+            {keys.map((k) => (
+              <Kbd key={k}>{k}</Kbd>
+            ))}
+            {what}
+          </span>
+        ))}
+        {footCount ? <span className="ml-auto font-bold text-text-2">{footCount}</span> : null}
       </div>
     </aside>
   );

@@ -8376,11 +8376,6 @@ export const UI = {
   "mc.n.groups.few": { uk: "групи", ru: "группы", en: "groups" },
   "mc.n.groups.many": { uk: "груп", ru: "групп", en: "groups" },
   "mc.peekVersion": { uk: "Версія", ru: "Версия", en: "Version" },
-  "mc.assignNote": {
-    uk: "{items}; пацієнт побачить методику в застосунку одразу",
-    ru: "{items}; пациент увидит методику в приложении сразу",
-    en: "{items}; the patient sees it in the app right away",
-  },
   "mc.accActive": { uk: "Чинних", ru: "Действующих", en: "Active" },
   "mc.accAdminsOf": {
     uk: "адміністратори групи «{group}»",
@@ -8786,9 +8781,9 @@ export const UI = {
     en: "All completed responses, all time",
   },
   "mc.ovAlpha": {
-    uk: "Альфа {alpha} на {items} і {n}.",
-    ru: "Альфа {alpha} на {items} и {n}.",
-    en: "Alpha {alpha} over {items} and {n}.",
+    uk: "Альфа Кронбаха {alpha}: пунктів у шкалі {items}, проходжень {n}.",
+    ru: "Альфа Кронбаха {alpha}: пунктов в шкале {items}, прохождений {n}.",
+    en: "Cronbach’s alpha {alpha}: {items} items in the scale, {n} responses.",
   },
   "mc.ovBands": { uk: "Смуги інтерпретації", ru: "Полосы интерпретации", en: "Interpretation bands" },
   "mc.ovBandsNote": {
@@ -8881,6 +8876,11 @@ export const UI = {
     en: "{completed} completed, {started} started; {people}.",
   },
   "mc.ovYes": { uk: "так", ru: "да", en: "yes" },
+  "mc.btLessMin": { uk: "<1 хв", ru: "<1 мин", en: "<1 min" },
+  "mc.retiredOn": { uk: "знято {date}", ru: "снята {date}", en: "retired {date}" },
+  "mc.exFull": { uk: "Повний", ru: "Полный", en: "Full" },
+  "mc.exDeid": { uk: "Деідентифікований", ru: "Деидентифицированный", en: "De-identified" },
+  "mc.exAnon": { uk: "Анонімний", ru: "Анонимный", en: "Anonymous" },
 
 } as const satisfies Record<string, UiEntry>;
 

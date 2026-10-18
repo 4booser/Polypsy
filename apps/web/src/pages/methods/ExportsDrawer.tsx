@@ -107,9 +107,9 @@ export function ExportsDrawer({
         <div role="radiogroup" aria-label={ut("an.profile")} className="flex flex-col gap-1.5">
           {(
             [
-              ["full", "an.exportFull", "mc.exFullHint"],
-              ["deidentified", "an.exportDeid", "mc.exDeidHint"],
-              ["anonymous", "an.exportAnon", "mc.exAnonHint"],
+              ["full", "mc.exFull", "mc.exFullHint"],
+              ["deidentified", "mc.exDeid", "mc.exDeidHint"],
+              ["anonymous", "mc.exAnon", "mc.exAnonHint"],
             ] as const
           ).map(([key, title, hint]) => (
             <ChoiceCard
@@ -135,13 +135,13 @@ export function ExportsDrawer({
                 aria-pressed={on}
                 onClick={() => setFile(f.key)}
                 className={cx(
-                  "flex min-h-0 cursor-pointer items-start gap-2.5 rounded-[12px] border-0 px-3 py-2.5 text-left",
+                  "flex min-h-0 cursor-pointer items-start gap-2.5 whitespace-normal rounded-[12px] border-0 px-3 py-2.5 text-left",
                   "transition-[background-color,box-shadow] duration-[var(--dur-fast)] ease-[var(--ease)]",
                   on ? "bg-violet-tint shadow-[inset_0_0_0_1.5px_var(--vring)]" : "bg-sunk hover:bg-sunk-2",
                 )}
               >
                 <span className={cx("mt-px inline-flex", on ? "text-violet-ink" : "text-muted")}>{f.icon}</span>
-                <span className="min-w-0">
+                <span className="min-w-0 flex-1">
                   <b className={cx("block text-[13px] font-extrabold leading-[18px]", on ? "text-violet-ink" : "text-text")}>{ut(f.title)}</b>
                   <small className="block text-caption text-muted">{ut(f.hint)}</small>
                   <code className="mt-1 block whitespace-nowrap font-mono text-[11px] font-bold leading-[14px] text-muted">{f.name}</code>

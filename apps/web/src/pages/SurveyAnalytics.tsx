@@ -115,9 +115,10 @@ function Overview({ survey, data, batteries }: { survey: SurveyFull; data: Surve
 
   const weeks = weeklyCounts(data.timeline, 14);
   const trend = scale ? (data.scaleTimeline.find((t) => t.scaleId === scale.scaleId)?.weeks ?? []) : [];
+  /* средний балл — в том же окне 14 недель, что и столбцы: два графика рядом читаются как одна ось времени */
+  const firstWeek = weeks[0]?.week ?? "";
   const trendPoints = trend
-    .filter((w) => w.mean !== null)
-    .slice(-14)
+    .filter((w) => w.mean !== null && w.week.slice(0, 10) >= firstWeek)
     .map((w) => ({ key: w.week, t: new Date(`${w.week.slice(0, 10)}T00:00:00`).getTime(), label: shortDate(w.week), value: w.mean! }));
   const rungs = scale ? scale.bands.map((b) => ({ min: b.min, max: b.max, label: b.label, severity: b.severity })) : [];
   const losses = topLosses(data.dropOff, 5);
@@ -213,8 +214,8 @@ function Overview({ survey, data, batteries }: { survey: SurveyFull; data: Surve
               >
                 {ut("mc.ovAlpha")
                   .replace("{alpha}", fmt2(scale.reliability.alpha))
-                  .replace("{items}", count(scale.reliability.itemCount, "items"))
-                  .replace("{n}", count(scale.reliability.sampleN, "responses"))}
+                  .replace("{items}", num(scale.reliability.itemCount))
+                  .replace("{n}", num(scale.reliability.sampleN))}
                 {scale.floorCeiling && scale.floorCeiling.floorPercent !== null && scale.floorCeiling.ceilingPercent !== null
                   ? ` ${ut("mc.ovFloorCeiling").replace("{floor}", fmt1(scale.floorCeiling.floorPercent)).replace("{ceiling}", fmt1(scale.floorCeiling.ceilingPercent))}`
                   : ""}

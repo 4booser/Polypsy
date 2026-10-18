@@ -199,7 +199,7 @@ function GroupsScreen({ groups, staff, reload }: { groups: SurveyGroupWithCounts
         </Page>
       )}
       <GroupEditor
-        key={editing === "new" ? "new" : (editing?.id ?? "closed")}
+        key={editing === "new" ? "editor-new" : `editor-${editing?.id ?? "closed"}`}
         group={editing}
         onClose={() => setEditing(null)}
         onSaved={() => {
@@ -500,7 +500,7 @@ function GroupInsight({ data }: { data: GroupAnalytics }) {
         {ut("mc.grSummary")
           .replace("{responses}", num(data.responseCount))
           .replace("{people}", num(data.patientCount))
-          .replace("{rate}", String(data.completionRate))
+          .replace("{rate}", num(data.completionRate))
           .replace("{lost}", num(lost))
           .replace("{avg}", data.avgDurationMs ? duration(data.avgDurationMs) : "—")}
       </p>
