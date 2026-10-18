@@ -1,33 +1,37 @@
-import {
-  Suspense,
-  createContext,
-  lazy,
-  useCallback,
-  useRef,
-  useEffect,
-  useContext,
-  useMemo,
-  useState,
-  type ReactNode,
-} from "react";
-import { useSearchParams } from "react-router-dom";
-import { IconClose } from "./glyphs";
-import { rowKeyOf } from "./rowKeys";
-import type { VirtualRowsProps } from "./virtualRows";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { cx } from "./cx";
+import { isTopLayer, useFocusTrap } from "./focus";
+import { Ic } from "./icons";
+import { KbdHints } from "./kbd";
+import { IconTile, type PanelTone } from "./layout";
+import { Button, ErrorText, Field, Input, Tag, type TagTone } from "./primitives";
+import { Loading } from "./states";
+import { useToast } from "./toast";
 import type { Resource } from "../useResource";
-import {
-  applyFacets,
-  facetOptions,
-  parseFacets,
-  serializeFacets,
-  toggleFacet,
-  visibleFacetOptions,
-  type Facet,
-  type FacetSelection,
-} from "./facets";
 import { useLang } from "../lang";
 
-/** Мелкие переиспользуемые части консоли: иконки, состояния, таблицы, сообщения */
+/*
+ * Набор «Виразна» — точка входа ui/.
+ *
+ * Экраны берут общие части отсюда (`import { … } from "../ui"`): состояния,
+ * окно, сообщения, таблицу, ящик, поповеры, фильтры, числа. Описание каждой
+ * части и когда её брать — в ui/README.md. Примитивы формы и раскладка
+ * живут в ui/primitives и ui/layout и отсюда тоже доступны.
+ */
+
+export * from "./focus";
+export * from "./keys";
+export * from "./urlState";
+export * from "./toast";
+export * from "./states";
+export * from "./kbd";
+export * from "./icons";
+export * from "./DataTable";
+export * from "./Drawer";
+export * from "./Popover";
+export * from "./records";
+export * from "./numbers";
+export * from "./filters";
 
 /* ─────────── иконки ─────────── */
 
@@ -90,53 +94,52 @@ export const IconMessage = icon(<><path d="M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0
 
 export const IconCompare = icon(<><path d="M3 20V10M9 20V4M15 20v-7M21 20V8" /></>);
 
-/* ─────────── состояния ─────────── */
+
+/* ─────────── люди ─────────── */
+
+/** Тон кружка: фиолетовый — пациент, мягкий — второстепенный, нейтральный — сотрудник */
+export type AvatarTone = "violet" | "soft" | "neutral";
+
+/** Инициалы из имени: «Мельник Андрій» → «МА» */
+export function initialsOf(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  return ((parts[0]?.[0] ?? "") + (parts[1]?.[0] ?? "")).toUpperCase() || "—";
+}
 
 /**
- * Инициалы вместо портрета.
+ * Инициалы вместо портрета (.av набора).
  *
  * Фотографий в системе нет и не будет — это лишние персональные данные ради
- * украшения. Инициалы в кружке решают ту же задачу: глаз цепляется за строку
- * в длинном списке однофамильцев. Цвет выводится из имени, поэтому у одного
- * человека он всегда один и тот же и запоминается.
+ * украшения. Пациент — фиолетовый кружок с белыми инициалами, сотрудник —
+ * нейтральный (`tone="neutral"`). Размер — число: 28 в строке таблицы, 34 в
+ * списке, 44 и 56 в карточке (у крупных — кольцо цвета тонировки).
  */
-export function Avatar({ name, size = 22 }: { name: string; size?: number }) {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  const initials = ((parts[0]?.[0] ?? "") + (parts[1]?.[0] ?? "")).toUpperCase() || "—";
-  let hash = 0;
-  for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) | 0;
-  const hue = Math.abs(hash) % 360;
+export function Avatar({
+  name,
+  size = 22,
+  tone = "violet",
+  initials,
+  className,
+}: {
+  name: string;
+  size?: number;
+  tone?: AvatarTone;
+  /** Свои инициалы, если имя пишется не «Фамилия Имя» */
+  initials?: string;
+  className?: string;
+}) {
   return (
     <span
       aria-hidden
-      className="avatar"
-      style={{
-        width: size,
-        height: size,
-        fontSize: size * 0.4,
-        /*
-         * Насыщенность и светлота подобраны перебором всех 360 тонов, а не
-         * на глаз. Прежние 45 %/30 % давали в худшем случае (тон 60,
-         * жёлтый) контраст 5,3:1 — достаточно, но кружки складывались в
-         * радугу: в списке из пятидесяти строк пятьдесят насыщенных пятен
-         * перетягивают внимание с данных, ради которых список и открыли.
-         *
-         * На 32 %/26 % кружок остаётся узнаваемым, но перестаёт спорить с
-         * сигнальными цветами. Худший контраст инициалов — 6,13:1 (тон 60);
-         * прежде здесь стояло 7,4:1 — число верное для прежнего цвета
-         * текста и молча устаревшее вместе с ним.
-         *
-         * Обод в один пиксель добавлен, когда земля стала сине-фиолетовой:
-         * холодные кружки (тон около 240) отличались от панели всего в
-         * 1,18 раза и переставали читаться как кружки — оставались висеть
-         * одни инициалы. Поднять светлоту нельзя, она уводит инициалы ниже
-         * 4,5:1; край решает то же самое, ничего не отнимая.
-         */
-        background: `hsl(${hue} 32% 26%)`,
-        boxShadow: "inset 0 0 0 1px color-mix(in srgb, var(--text) 12%, transparent)",
-      }}
+      className={cx(
+        "inline-grid shrink-0 place-items-center rounded-full font-extrabold leading-none tracking-[0.02em]",
+        tone === "violet" ? "bg-violet text-onfill" : tone === "soft" ? "bg-violet-tint text-violet-ink" : "bg-sunk-2 text-text-2",
+        size >= 44 && "shadow-[0_0_0_3px_var(--vtint)]",
+        className,
+      )}
+      style={{ width: size, height: size, fontSize: Math.max(9, Math.round(size * (size >= 44 ? 0.34 : 0.38))) }}
     >
-      {initials}
+      {initials ?? initialsOf(name)}
     </span>
   );
 }
@@ -144,9 +147,10 @@ export function Avatar({ name, size = 22 }: { name: string; size?: number }) {
 /**
  * Подтверждение необратимого действия перепечатыванием названия.
  *
- * Обычный confirm снимается не глядя — рука жмёт «ОК» раньше, чем глаз читает.
- * Требование напечатать название заставляет посмотреть, что именно удаляется;
- * это единственная защита, которую нельзя пройти на автомате.
+ * Обычный confirm снимается не глядя — рука жмёт «ОК» раньше, чем глаз
+ * читает. Требование напечатать название заставляет посмотреть, что именно
+ * удаляется. Сама кнопка — обычная: красный в наборе отдан риску для
+ * человека, а здесь защищает подтверждение, а не цвет.
  */
 export function ConfirmByName({
   title,
@@ -166,56 +170,32 @@ export function ConfirmByName({
   const { ut } = useLang();
   const [typed, setTyped] = useState("");
   return (
-    <div className="card danger-card">
-      <div className="card-head">
-        <h2>{title}</h2>
-        <button className="ghost" onClick={onCancel}>{ut("ui.cancel")}</button>
+    <section className="rounded-panel border border-border bg-panel p-4 shadow-panel">
+      <div className="mb-2 flex items-center gap-2.5">
+        <IconTile icon={<Ic.alert />} tone="warn" />
+        <h2 className="m-0 min-w-0 flex-1 text-section font-extrabold text-text">{title}</h2>
+        <Button variant="quiet" size="xs" onClick={onCancel}>
+          {ut("ui.cancel")}
+        </Button>
       </div>
-      <div>{warning}</div>
-      <label className="field" style={{ marginTop: 10 }}>
-        <span>
-          {ut("ui.typeToConfirm")} «{name}»
-        </span>
-        <input value={typed} onChange={(e) => setTyped(e.target.value)} autoFocus />
-      </label>
-      <button className="danger" disabled={typed.trim() !== name} onClick={onConfirm}>
+      <div className="text-body text-text-2">{warning}</div>
+      <div className="mt-3">
+        <Field label={`${ut("ui.typeToConfirm")} «${name}»`}>
+          <Input value={typed} onChange={(e) => setTyped(e.target.value)} autoFocus />
+        </Field>
+      </div>
+      <Button variant="danger" className="mt-3" disabled={typed.trim() !== name} onClick={onConfirm}>
         {actionLabel}
-      </button>
-    </div>
+      </Button>
+    </section>
   );
 }
 
 /**
- * Скелет вместо строки «Загрузка…».
- *
- * Строка не говорит, чего ждать, и экран прыгает, когда данные приезжают.
- * Скелет держит место и показывает форму будущего содержимого — переход
- * получается без скачка.
+ * Метка состояния: цвет несёт смысл, но не единственный — рядом всегда
+ * слово. Прежние тоны сведены к пилюлям набора: `bad` — только риск для
+ * человека, `warn` и `accent` — внимание, `good` — сделано.
  */
-export function Skeleton({
-  lines = 3,
-  height = 14,
-  width = "100%",
-}: {
-  lines?: number;
-  height?: number;
-  width?: string;
-}) {
-  return (
-    <div className="skeleton-group" aria-hidden>
-      {Array.from({ length: lines }, (_, i) => (
-        <div
-          key={i}
-          className="skeleton"
-          // последняя строка короче: так блок читается как текст, а не как таблица
-          style={{ height, width: i === lines - 1 ? "62%" : width }}
-        />
-      ))}
-    </div>
-  );
-}
-
-/** Метка состояния: цвет несёт смысл, но не единственный — рядом всегда слово */
 export function Badge({
   tone = "neutral",
   children,
@@ -223,214 +203,17 @@ export function Badge({
   tone?: "neutral" | "good" | "warn" | "bad" | "accent";
   children: ReactNode;
 }) {
-  return <span className={`badge ${tone}`}>{children}</span>;
+  const map: Record<string, TagTone> = {
+    neutral: "plain",
+    good: "good",
+    warn: "attention",
+    bad: "danger",
+    accent: "attention",
+  };
+  return <Tag tone={map[tone]}>{children}</Tag>;
 }
 
-/* ─────────── ловушка фокуса ─────────── */
-
-/*
- * Что считается достижимым с клавиатуры.
- *
- * Список нарочно шире, чем «кнопки и поля»: в диалогах отделения встречаются
- * и ссылки (переход в карту пациента из подтверждения), и строки таблицы с
- * tabindex, и области с contenteditable. Пропустить такой элемент — значит
- * объявить последним не тот, и на нём Tab уйдёт наружу.
- */
-const FOCUSABLE_SELECTOR = [
-  "a[href]",
-  "area[href]",
-  "button",
-  "input",
-  "select",
-  "textarea",
-  "audio[controls]",
-  "video[controls]",
-  "[contenteditable]",
-  "[tabindex]",
-].join(",");
-
-/**
- * Достижимые с клавиатуры элементы внутри узла, в порядке обхода.
- *
- * Считается заново на каждое нажатие Tab, а не один раз при открытии:
- * содержимое диалога живое — в палитре список перестраивается на каждую
- * набранную букву, в окнах кнопки включаются и выключаются. Список,
- * снятый при открытии, назвал бы последним элемент, которого уже нет.
- */
-function focusablesIn(root: HTMLElement): HTMLElement[] {
-  return Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter((el) => {
-    // выключенная кнопка фокус не принимает — на ней Tab бы «провалился» дальше
-    if (el.hasAttribute("disabled")) return false;
-    // tabindex="-1" — «фокусируется программно», но не участвует в обходе
-    const tabindex = el.getAttribute("tabindex");
-    if (tabindex !== null && Number.parseInt(tabindex, 10) < 0) return false;
-    // спрятанное от диктора не должно попадать и в обход клавиатурой
-    if (el.closest("[aria-hidden='true']")) return false;
-    // невидимое (display:none, свёрнутая ветка) прямоугольников не имеет
-    return el.getClientRects().length > 0;
-  });
-}
-
-/**
- * Открытые слои в порядке открытия: фокусом распоряжается последний.
- *
- * Живёт на уровне модуля, а не в состоянии: стопка общая для всей страницы,
- * и каждый слой должен видеть её целиком — в том числе тот, что открылся
- * поверх него из другого места дерева.
- */
-const trapStack: React.RefObject<HTMLElement | null>[] = [];
-
-/**
- * Верхний ли это слой.
- *
- * Стопка уже решает, кто распоряжается Tab; тем же правилом решается и Esc.
- * Иначе одно нажатие гасит всё разом: палитра, открытая поверх диалога,
- * закрывалась вместе с ним — человек терял и то, что открыл только что, и
- * то, из чего он это открыл. Останавливать событие бесполезно: слушатель
- * окна срабатывает после слушателя документа, то есть нижний слой уже его
- * увидел.
- */
-export function isTopLayer(ref: React.RefObject<HTMLElement | null>): boolean {
-  return trapStack.length === 0 || trapStack[trapStack.length - 1] === ref;
-}
-
-/**
- * Ловушка фокуса для модальных слоёв.
- *
- * Одна на все диалоги консоли намеренно. Раньше каждый слой решал задачу
- * сам — и решал наполовину: окно фокусировало свой контейнер и на этом
- * останавливалось, палитра не делала и того. Два нажатия Tab из открытого
- * окна уводили на рельсу за его пределами: человек продолжал «нажимать
- * кнопки диалога», а нажимал разделы под ним, не видя, где находится.
- * Копия этой логики в каждом слое — ровно тот способ, которым расхождение
- * появилось бы снова.
- *
- * Что делает:
- *  1. Уводит фокус внутрь при открытии — но только если внутри его ещё никто
- *     не занял. Слой вправе поставить курсор сам: палитра ставит его в поиск
- *     (autoFocus), потому что после ⌘K фамилию набирают сразу. Перетянуть
- *     фокус на контейнер значит вынуть курсор из поля — и вернётся он туда
- *     в лучшем случае со следующим нажатием, а в поле без такой выручки не
- *     вернётся вовсе.
- *  2. Заворачивает Tab и Shift+Tab по кругу внутри слоя.
- *  3. При закрытии возвращает фокус тому, кто слой открыл. Без возврата
- *     человек после Esc оказывается там, куда его занесло, — обычно в рельсе,
- *     на случайном разделе.
- *
- * Чего НЕ делает: не трогает чтение с экрана. Диктор ходит по странице своим
- * курсором, не двигая фокус DOM, и границу ему объявляет aria-modal, а не
- * этот перехват. И не запирает в пустом слое — см. ниже.
- */
-export function useFocusTrap<T extends HTMLElement>(active = true): React.RefObject<T | null> {
-  const ref = useRef<T>(null);
-  const opener = useRef<HTMLElement | null>(null);
-  const openNow = useRef(false);
-
-  /*
-   * Кого вернуть при закрытии — запоминаем на первом же рендере с открытым
-   * слоем, а не в эффекте.
-   *
-   * Разница не теоретическая, на ней это и сломалось в первый раз. К моменту
-   * эффекта разметка слоя уже в странице, и поле палитры с autoFocus успело
-   * забрать фокус себе — «открывшим» записывалось само это поле. Оно
-   * исчезает вместе со слоем, возвращать фокус становится некому, и человек
-   * после Esc остаётся там, куда его занесло.
-   *
-   * На рендере слоя в странице ещё нет, и фокус заведомо у того, кто его
-   * открыл: кнопка поиска, кнопка в карточке — или экран, с которого нажали
-   * ⌘K. Берём именно document.activeElement, а не «кнопку, по которой
-   * кликнули»: у открытия с клавиатуры клика нет вовсе.
-   */
-  if (active && !openNow.current) opener.current = document.activeElement as HTMLElement | null;
-  openNow.current = active;
-
-  useEffect(() => {
-    if (!active) return;
-    const root = ref.current;
-
-    // фокус внутрь — если внутри его ещё никто не занял (см. пункт 1 выше)
-    if (root && !root.contains(document.activeElement)) root.focus();
-
-    /*
-     * Слои складываются в стопку, и Tab обрабатывает только верхний.
-     *
-     * Случай не выдуманный: ⌘K работает с любого экрана, в том числе поверх
-     * открытого окна, — и тогда ловушек в странице становится две, и обе
-     * видят один и тот же Tab. Куда фокус придёт в итоге, стопка не меняет:
-     * верхний слой подписался последним и всё равно скажет последнее слово.
-     * Она убирает промежуточный шаг — нижний перестаёт хватать фокус к себе
-     * перед тем, как его отнимут. Шаг незаметен глазу, но это настоящие
-     * focus и blur на полях окна под палитрой: поле, которое проверяет себя
-     * при потере фокуса, срабатывало бы от чужого нажатия.
-     *
-     * Порядок в стопке — порядок открытия: эффекты выполняются в нём же.
-     */
-    trapStack.push(ref);
-
-    /*
-     * Перехват на документе и в фазе перехвата, а не на самом слое.
-     *
-     * Если фокус успел оказаться снаружи (слой открыт с клавиатуры, а фокус
-     * остался на прежнем месте), обработчик на слое событий бы не увидел —
-     * и вернуть фокус было бы нечем. Фаза перехвата нужна, чтобы решение
-     * принималось до того, как содержимое слоя обработает Tab по-своему.
-     */
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key !== "Tab" || e.altKey || e.ctrlKey || e.metaKey) return;
-      // не верхний слой — молчим: фокусом распоряжается тот, что лежит выше
-      if (trapStack[trapStack.length - 1] !== ref) return;
-      const box = ref.current;
-      if (!box) return;
-
-      const items = focusablesIn(box);
-      /*
-       * Пустой слой не запирает.
-       *
-       * Диалог без единого достижимого элемента — это поломка, и человек с
-       * клавиатурой не должен платить за неё застреванием: выхода изнутри у
-       * него бы не было вовсе. Пропускаем Tab как обычно — уйти можно,
-       * закрыть по Esc тоже.
-       */
-      if (items.length === 0) return;
-
-      const first = items[0]!;
-      const last = items[items.length - 1]!;
-      const current = document.activeElement as HTMLElement | null;
-
-      if (!current || !box.contains(current)) {
-        // фокус снаружи — затягиваем внутрь с того края, куда шли
-        e.preventDefault();
-        (e.shiftKey ? last : first).focus();
-        return;
-      }
-      if (e.shiftKey ? current === first || current === box : current === last) {
-        e.preventDefault();
-        (e.shiftKey ? last : first).focus();
-      }
-    };
-
-    document.addEventListener("keydown", onKeyDown, true);
-    return () => {
-      document.removeEventListener("keydown", onKeyDown, true);
-      const at = trapStack.lastIndexOf(ref);
-      if (at >= 0) trapStack.splice(at, 1);
-
-      /*
-       * Возвращаем фокус, только если он всё ещё внутри слоя (или уже нигде,
-       * то есть на body после снятия разметки). Если за время жизни слоя
-       * фокус ушёл к чему-то другому осознанно, отнимать его — хуже, чем не
-       * вернуть. И не возвращаем тому, кого на странице больше нет: после
-       * перехода по команде палитры открывшая кнопка может быть уже снята.
-       */
-      const current = document.activeElement as HTMLElement | null;
-      const stillInside = !current || current === document.body || !!root?.contains(current);
-      const back = opener.current;
-      if (stillInside && back?.isConnected) back.focus();
-    };
-  }, [active]);
-
-  return ref;
-}
+/* ─────────── окно ─────────── */
 
 /** Где событие нажатия: на самой подложке или внутри окна */
 interface PressEvent {
@@ -476,38 +259,66 @@ export function backdropPress(): {
   };
 }
 
+
 /**
- * Модальное окно.
+ * Модальное окно (.modal набора) — только когда шаг обязан прервать работу:
+ * подтвердить разрушительное или необратимое, короткая форма, без которой
+ * дальше нельзя. Всё остальное — ящик (Drawer).
  *
- * Esc закрывает, фокус заперт внутри, при закрытии возвращается на кнопку,
- * которая открыла, фон не прокручивается. Без этого диалог остаётся ловушкой
- * для клавиатуры: два Tab — и человек уже нажимает разделы рельсы под окном,
- * считая, что нажимает кнопки диалога.
+ * Esc закрывает, фокус заперт внутри и при закрытии возвращается открывшему,
+ * фон не прокручивается. Подложка закрывает окно только нажатием, начатым и
+ * законченным на ней (backdropPress).
  *
- * Подложка закрывает окно только нажатием, начатым и законченным на ней
- * (backdropPress). Окно одноразового секрета (`secret`: временный пароль,
- * пароли импорта) подложкой не закрывается вовсе: второй раз его не
- * показать, а промах мимо окна стоил бы повторного сброса — и нового обрыва
- * сессий человека. Такое окно закрывают кнопкой, крестиком или Esc.
+ * `secret` — окно показывает то, что второй раз не показать (временный
+ * пароль): подложка его не закрывает, Esc и крестик — да.
+ * `esc={false}` — шаг надо закончить (коды восстановления не подтверждены):
+ * ни Esc, ни подложка не закрывают — окно вздрагивает; закрывают только его
+ * собственные кнопки.
  */
 export function Modal({
   title,
-  onClose,
+  onClose: closeProp,
   children,
   wide,
+  width,
   secret,
+  esc = true,
+  sub,
+  icon,
+  tone = "violet",
+  footer,
 }: {
   title: string;
   onClose: () => void;
   children: ReactNode;
+  /** 940 вместо 560 */
   wide?: boolean;
+  /** Своя ширина в пикселях */
+  width?: number;
   /** Показывает то, что второй раз не показать: подложка его не закрывает */
   secret?: boolean;
+  /** false — ни Esc, ни подложка не закрывают: окно вздрагивает */
+  esc?: boolean;
+  /** Подпись под заголовком: «PSQI, 0 призначень за 30 днів» */
+  sub?: ReactNode;
+  /** Значок в квадрате 40 перед заголовком */
+  icon?: ReactNode;
+  tone?: PanelTone;
+  /** Кнопки внизу через волосяную линию: основная первой */
+  footer?: ReactNode;
 }) {
   const { ut } = useLang();
   // фокус внутрь, круг по Tab и возврат при закрытии — общий для всех слоёв
   const ref = useFocusTrap<HTMLDivElement>();
   const [press] = useState(backdropPress);
+  /* толчок: класс снимается и ставится заново в следующем кадре — анимация перезапускается без пересоздания окна */
+  const [nudging, setNudging] = useState(false);
+  const nudge = useCallback(() => {
+    setNudging(false);
+    requestAnimationFrame(() => setNudging(true));
+  }, []);
+  /* закрытие Esc и подложкой: у окна, которое надо закончить, — толчок вместо закрытия */
+  const onClose = esc ? closeProp : nudge;
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -525,7 +336,7 @@ export function Modal({
 
   return (
     <div
-      className="modal-backdrop"
+      className="modal-backdrop fixed inset-0 z-60 grid place-items-center bg-scrim p-10 animate-[kit-fade_var(--dur)_var(--ease)] max-[640px]:p-4"
       onPointerDown={press.down}
       onPointerUp={press.up}
       onClick={(e) => {
@@ -533,23 +344,81 @@ export function Modal({
       }}
     >
       <div
-        className={`modal ${wide ? "wide" : ""}`}
+        className={cx(
+          "modal flex max-h-[calc(100vh-80px)] max-w-full flex-col overflow-hidden rounded-drawer border border-border bg-panel shadow-pop outline-none",
+          nudging ? "animate-[kit-nudge_0.32s_var(--ease)]" : "animate-[kit-rise_var(--dur-slow)_var(--ease)]",
+        )}
+        onAnimationEnd={() => setNudging(false)}
+        style={{ width: width ?? (wide ? 940 : 560) }}
         role="dialog"
         aria-modal="true"
         aria-label={title}
+        data-esc={esc ? undefined : "block"}
         tabIndex={-1}
         ref={ref}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="card-head">
-          <h2>{title}</h2>
-          <button className="ghost" onClick={onClose} aria-label={ut("bp.close")}><IconClose /></button>
-        </div>
-        {children}
+        <DialogFrame title={title} sub={sub} icon={icon} tone={tone} footer={footer} onClose={closeProp} closeLabel={ut("bp.close")}>
+          {children}
+        </DialogFrame>
       </div>
     </div>
   );
 }
+
+/**
+ * Внутренность окна (.modal набора): шапка с квадратом значка 40, заголовком
+ * 18/800 и крестиком, тело с прокруткой, подвал с кнопками. Modal рисует её
+ * внутри слоя; страница дизайн-системы — открытой на месте (тогда без
+ * role=dialog: настоящий диалог на странице один).
+ */
+export function DialogFrame({
+  title,
+  sub,
+  icon,
+  tone = "violet",
+  footer,
+  onClose,
+  closeLabel,
+  children,
+}: {
+  title: string;
+  sub?: ReactNode;
+  icon?: ReactNode;
+  tone?: PanelTone;
+  footer?: ReactNode;
+  onClose?: () => void;
+  closeLabel?: string;
+  children: ReactNode;
+}) {
+  return (
+    <>
+      <header className="flex shrink-0 items-center gap-3 border-b border-divider py-4 pl-5 pr-3.5">
+        {icon ? <IconTile icon={icon} tone={tone} size={40} /> : null}
+        <div className="min-w-0 flex-1">
+          <h2 className="m-0 text-[18px] font-extrabold leading-6 tracking-[-0.02em] text-text">{title}</h2>
+          {sub ? <span className="block text-small text-muted">{sub}</span> : null}
+        </div>
+        {onClose ? (
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label={closeLabel}
+            className="inline-grid size-9 min-h-0 shrink-0 cursor-pointer place-items-center rounded-control border-0 bg-sunk p-0 text-text-2 hover:bg-sunk-2 hover:text-text"
+          >
+            <Ic.x size={17} />
+          </button>
+        ) : null}
+      </header>
+      <div className="kit-scroll min-h-0 flex-1 overflow-y-auto px-5 pb-4 pt-4 text-body">{children}</div>
+      {footer ? (
+        <footer className="flex shrink-0 flex-wrap items-center gap-2 border-t border-divider px-5 pb-4 pt-3">{footer}</footer>
+      ) : null}
+    </>
+  );
+}
+
+/* ─────────── данные ─────────── */
 
 /** Кнопка «показать ещё» с честным состоянием и концом списка */
 export function LoadMore({
@@ -564,39 +433,20 @@ export function LoadMore({
   emptyText?: string;
 }) {
   const { ut } = useLang();
-  if (!cursor) return <p className="hint end-of-list">{emptyText ?? ut("ui.noMoreRecords")}</p>;
+  if (!cursor) return <p className="m-0 py-3 text-center text-caption text-muted">{emptyText ?? ut("ui.noMoreRecords")}</p>;
   return (
-    <button className="load-more" disabled={busy} onClick={onLoad}>
+    <Button className="mt-2.5 w-full" disabled={busy} onClick={onLoad}>
       {busy ? ut("ui.loadingMore") : ut("ui.loadMore")}
-    </button>
+    </Button>
   );
 }
 
 /**
- * Состояние загрузки экрана: заголовок и карточка-скелет.
- *
- * Раньше на месте экрана стояла строка «Загрузка…»: она не говорит, чего
- * ждать, и содержимое приезжает рывком, сдвигая всё вниз. Скелет держит
- * место и показывает форму будущего экрана.
- *
- * Ошибка передаётся сюда же: «загружается» и «не загрузилось» — соседние
- * состояния одного места, и разводить их по разным веткам значит писать
- * обработку ошибки заново на каждом экране.
- */
-/**
- * Три состояния загрузки в одном месте.
- *
- * Раньше каждый экран писал их сам — и писал по-разному: где-то обрыв связи
- * показывался как ошибка приложения, где-то экран навсегда оставался пустым,
- * где-то при обновлении данные исчезали и появлялись заново. Здесь порядок
- * один: пока данных нет — скелет; если связи нет, но данные уже были —
- * показываем их, потому что устаревшие цифры полезнее пустого экрана, если
- * про их устарелость сказано.
- *
- * Говорит о ней с волны 13 не экран, а оболочка: строка «немає зв’язку» под
- * верхней полосой (ui/ConnectionLine.tsx) — одна на всю консоль, со временем
- * обрыва и обещанием обновить самим. Прежняя полоса с «повторить» стояла у
- * четырёх экранов из сотни, а связь, вернувшись, всё равно никого не будила.
+ * Три состояния загрузки в одном месте: пока данных нет — скелет; отказ без
+ * данных — отказ с «повторить»; данные есть, но обновить не вышло — данные и
+ * строка отказа над ними: устаревшие цифры полезнее пустого экрана, если про
+ * их устарелость сказано. Об обрыве связи говорит оболочка
+ * (ui/ConnectionLine.tsx), а не экран.
  */
 export function Screen<T>({
   res,
@@ -612,7 +462,7 @@ export function Screen<T>({
   }
   return (
     <>
-      {res.error ? <p className="error">{res.error}</p> : null}
+      {res.error ? <ErrorText className="mb-3">{res.error}</ErrorText> : null}
       {children(res.data)}
     </>
   );
@@ -660,139 +510,6 @@ export function NotLoaded({
   return <Loading rows={rows} error={res.error} onRetry={res.reload} busy={res.loading} />;
 }
 
-export function Loading({
-  rows = 4,
-  error,
-  onRetry,
-  busy,
-}: {
-  rows?: number;
-  error?: string | null;
-  /** Повторить запрос; без него экран, который не загрузился, — тупик */
-  onRetry?: () => void;
-  busy?: boolean;
-}) {
-  const { ut } = useLang();
-  if (error) {
-    return (
-      /*
-        Отказ обязан давать выход.
-        Здесь стояла одна строка с текстом ошибки — и всё: экран, не
-        загрузившийся из-за минутного сбоя, оставался мёртвым до тех пор,
-        пока человек не догадается обновить страницу целиком. Полоса
-        «нет связи» кнопку «повторить» имела, а эта ветка — нет, хотя
-        попадают в неё чаще.
-      */
-      <div className="card" role="alert">
-        <p className="error" style={{ margin: 0 }}>{error}</p>
-        {onRetry ? (
-          <button type="button" className="mt-3" disabled={busy} onClick={onRetry}>
-            {ut("common.retry")}
-          </button>
-        ) : null}
-      </div>
-    );
-  }
-  return (
-    /*
-      Скелет объявляет себя занятым: без этого диктор читает пустую
-      страницу и не узнаёт, когда содержимое приехало.
-    */
-    <div className="card" role="status" aria-busy="true">
-      <div className="skeleton" style={{ height: 20, width: "38%", marginBottom: 14 }} />
-      <Skeleton lines={rows} />
-    </div>
-  );
-}
-
-/**
- * Пустое состояние.
- *
- * `compact` — для случая, когда пусто не на экране, а в одной его панели:
- * тогда это подробность, а не ответ на вопрос, с которым пришли.
- */
-export function Empty({
-  title,
-  hint,
-  action,
-  compact,
-}: {
-  title: string;
-  hint?: string;
-  action?: ReactNode;
-  compact?: boolean;
-}) {
-  return (
-    <div className={compact ? "empty is-compact" : "empty"}>
-      <strong>{title}</strong>
-      {hint ? <div style={{ fontSize: 13, marginBottom: action ? 14 : 0 }}>{hint}</div> : null}
-      {action}
-    </div>
-  );
-}
-
-
-/* ─────────── всплывающие сообщения ─────────── */
-
-type Toast = { id: number; text: string; kind: "ok" | "err" | "info" };
-const ToastCtx = createContext<(text: string, kind?: Toast["kind"]) => void>(() => {});
-
-export function ToastProvider({ children }: { children: ReactNode }) {
-  const [items, setItems] = useState<Toast[]>([]);
-
-  const push = useCallback((text: string, kind: Toast["kind"] = "info") => {
-    const id = Date.now() + Math.random();
-    setItems((v) => [...v, { id, text, kind }]);
-    // сообщения исчезают сами: держать их до клика — навязчиво
-    setTimeout(() => setItems((v) => v.filter((t) => t.id !== id)), 4200);
-  }, []);
-
-  return (
-    <ToastCtx.Provider value={push}>
-      {children}
-      {/*
-        Живая область: иначе вся обратная связь приложения нема.
-        Плашки — единственный канал подтверждений и отказов действий во всём
-        приложении, и диктор их не произносил вовсе. Человек нажимал
-        «сохранить», ничего не слышал и не знал, сохранилось ли.
-
-        Отказы объявляются настойчиво (assertive) и ролью alert: их пропускать
-        нельзя. Подтверждения — вежливо (polite), в паузе: «сохранено» не
-        должно перебивать чтение.
-      */}
-      <div className="toasts">
-        {/*
-          Живая область объявлена через aria-live, но БЕЗ role="alert".
-          role="alert" означает «прямо сейчас есть тревога», а контейнер живёт
-          на странице всегда и пуст почти всё время: постоянный пустой alert —
-          это ложное объявление и заодно ловушка для всякого, кто ищет
-          настоящий отказ по этой роли. aria-live даёт то же объявление, не
-          утверждая ничего, пока плашки нет.
-        */}
-        <div aria-live="assertive">
-          {items
-            .filter((t) => t.kind === "err")
-            .map((t) => (
-              <div key={t.id} className="toast err">
-                {t.text}
-              </div>
-            ))}
-        </div>
-        <div aria-live="polite">
-          {items
-            .filter((t) => t.kind !== "err")
-            .map((t) => (
-              <div key={t.id} className={`toast ${t.kind === "ok" ? "ok" : ""}`}>
-                {t.text}
-              </div>
-            ))}
-        </div>
-      </div>
-    </ToastCtx.Provider>
-  );
-}
-
-export const useToast = () => useContext(ToastCtx);
 
 /** Оборачивает действие: показывает результат и не даёт ошибке уйти в пустоту */
 export function useAction() {
@@ -846,699 +563,13 @@ export function useAction() {
   return { run, busy };
 }
 
-/* ─────────── сортируемая таблица ─────────── */
 
 /**
- * Горячие клавиши экрана.
+ * Подсказка по горячим клавишам — полоса KbdHints под списком.
  *
- * Разбор трёхсот случаев мышью — это лишний час работы каждый день.
- * Клавиши не срабатывают, пока курсор в поле ввода: иначе набор комментария
- * «н» превращался бы в «не подтверждён».
- *
- * Сочетания с модификаторами тоже пропускаем: Cmd+K и Ctrl+F принадлежат
- * браузеру, и перехватывать их без крайней нужды — способ разозлить человека.
- */
-export function useHotkeys(map: Record<string, () => void>, enabled = true): void {
-  const ref = useRef(map);
-  ref.current = map;
-
-  useEffect(() => {
-    if (!enabled) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.metaKey || e.ctrlKey || e.altKey) return;
-      const target = e.target as HTMLElement | null;
-      const tag = target?.tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target?.isContentEditable) {
-        // Esc работает и в поле: он про «уйти отсюда», а не про действие
-        if (e.key !== "Escape") return;
-      }
-      const handler = ref.current[e.key] ?? ref.current[e.key.toLowerCase()];
-      if (!handler) return;
-      e.preventDefault();
-      handler();
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [enabled]);
-}
-
-/**
- * Подсказка по горячим клавишам: маленькая полоса внизу экрана.
- *
- * Клавиша, о которой никто не знает, экономит ноль времени. Подсказка
- * скрывается на узких экранах — там клавиатуры обычно нет.
+ * Клавиша, о которой никто не знает, экономит ноль времени. Класс
+ * `hotkeys` — опора для проверок.
  */
 export function HotkeyHint({ keys }: { keys: [string, string][] }) {
-  return (
-    <div className="hotkeys" aria-hidden>
-      {keys.map(([k, what]) => (
-        <span key={k}>
-          <kbd>{k}</kbd> {what}
-        </span>
-      ))}
-    </div>
-  );
-}
-
-/**
- * Значение, живущее в адресной строке.
- *
- * Смысл не в красоте адреса, а в том, что вид экрана можно передать: «открой
- * тревоги за март, отсортированные по дате» становится ссылкой, а не устной
- * инструкцией. Плюс перезагрузка страницы не сбрасывает разбор наполовину.
- *
- * Пишем через replace: каждый щелчок по заголовку столбца не должен добавлять
- * запись в историю браузера — «назад» обязано уводить со страницы, а не
- * отменять сортировку по одному шагу.
- */
-export function useUrlState(
-  name: string,
-  fallback = "",
-): [string, (v: string) => void] {
-  const [params, setParams] = useSearchParams();
-  const value = params.get(name) ?? fallback;
-  const set = useCallback(
-    (next: string) => {
-      setParams(
-        (prev) => {
-          const copy = new URLSearchParams(prev);
-          if (!next || next === fallback) copy.delete(name);
-          else copy.set(name, next);
-          return copy;
-        },
-        { replace: true },
-      );
-    },
-    [name, fallback, setParams],
-  );
-  return [value, set];
-}
-
-export interface Column<T> {
-  key: string;
-  header: string;
-  num?: boolean;
-  /**
-   * Значение для сортировки; если не задано — колонка не сортируется.
-   * null (как и пустая строка, NaN) — «значения нет»: такая строка стоит в
-   * конце при любом направлении (sortRows).
-   */
-  sort?: (row: T) => SortValue;
-  render: (row: T) => ReactNode;
-  /** Текстовое значение для CSV; без него берётся sort, иначе колонка пропускается */
-  csv?: (row: T) => SortValue;
-  width?: number;
-  /**
-   * Колонку нельзя скрыть. Ставится там, где без неё строка перестаёт быть
-   * узнаваемой: имя пациента, название методики. Настройка колонок нужна,
-   * чтобы убрать лишнее, а не чтобы получить таблицу из одних чисел.
-   */
-  required?: boolean;
-  /** Скрыта, пока её не включат: редкие колонки не должны загромождать вид */
-  hiddenByDefault?: boolean;
-}
-
-/**
- * CSV из текущего состояния таблицы (с сортировкой пользователя).
- * Разделитель — точка с запятой: русский Excel по умолчанию понимает её,
- * а запятую внутри чисел «1,5» — нет.
- */
-/** Значение ячейки для сортировки и выгрузки; null — значения нет */
-export type SortValue = string | number | null | undefined;
-
-/** Порядок таблицы: ключ колонки и направление */
-export interface TableSort {
-  key: string;
-  desc?: boolean;
-}
-
-/**
- * «Значения нет»: null, пустая строка, строка из пробелов, нечисло.
- *
- * Нечисло сюда попадает не из данных, а из арифметики колонки: доля при
- * нулевом знаменателе. Сравнение с ним даёт NaN, сортировка читает NaN как
- * «равны» — и строки вокруг такой ячейки переставали упорядочиваться вовсе.
- */
-function isBlank(v: SortValue): boolean {
-  if (v === null || v === undefined) return true;
-  if (typeof v === "number") return Number.isNaN(v);
-  return v.trim() === "";
-}
-
-/**
- * Сравнение двух непустых значений.
- *
- * Число с числом — как числа, текст с текстом — по алфавиту языка, а число
- * с текстом — число впереди. Прежнее «число с числом как числа, остальное
- * как текст» не было порядком: 2 < 10 числами, «10» < «15» и «15» < «2»
- * текстом — круг, и итог зависел от того, в каком порядке строки пришли.
- * Число впереди потому, что в колонке чисел текст — это почти всегда
- * пометка («н/д», «—»), а не значение.
- */
-function compareValues(x: string | number, y: string | number): number {
-  if (typeof x === "number" && typeof y === "number") return x === y ? 0 : x < y ? -1 : 1;
-  if (typeof x === "number") return -1;
-  if (typeof y === "number") return 1;
-  return x.localeCompare(y);
-}
-
-/**
- * Сортировка строк таблицы. Вынесена из компонента, чтобы её можно было
- * проверить без React: это логика, а не разметка, и ошибка в ней тихо
- * переставляет данные местами.
- *
- * Числа сравниваются как числа, остальное — как текст с учётом языка:
- * «Ялинка» и «Яблуко» должны идти в порядке украинского алфавита, а не по
- * кодам символов.
- *
- * Равные остаются в том порядке, в каком пришли, при любом направлении:
- * обратный порядок — это обратное сравнение, а не перевёрнутый список,
- * иначе три человека с одинаковым числом замеров менялись бы местами на
- * каждое нажатие заголовка. Пустые — в конце при любом направлении: «ещё не
- * проходил» — остаток, а не начало списка (так же «без відділення» в
- * справочнике людей и пустой p95 в техпанели).
- */
-export function sortRows<T>(rows: T[], columns: Column<T>[], sort: TableSort | null): T[] {
-  if (!sort) return rows;
-  const col = columns.find((c) => c.key === sort.key);
-  if (!col?.sort) return rows;
-  const get = col.sort;
-  return [...rows].sort((a, b) => {
-    const x = get(a);
-    const y = get(b);
-    const bx = isBlank(x);
-    const by = isBlank(y);
-    if (bx || by) return bx === by ? 0 : bx ? 1 : -1;
-    const cmp = compareValues(x as string | number, y as string | number);
-    return sort.desc ? -cmp : cmp;
-  });
-}
-
-/**
- * Порядок из адреса: «ключ» или «ключ:desc».
- *
- * Ключ, которого среди сортируемых колонок нет (колонку убрали, ссылка
- * старая, руками вписана колонка действий), — не порядок, а умолчание
- * таблицы. Раньше такой ключ принимался как есть: sortRows его не находил
- * и отдавал строки в порядке сервера, и порядок по умолчанию («свіжі
- * згори» у направлений) пропадал без следа — ни стрелки, ни объяснения.
- */
-export function parseTableSort<T>(raw: string, columns: Column<T>[], fallback: TableSort | null): TableSort | null {
-  if (!raw) return fallback;
-  const [key = "", dir] = raw.split(":");
-  if (!columns.some((c) => c.key === key && c.sort)) return fallback;
-  return { key, desc: dir === "desc" };
-}
-
-/** Порядок — в строку адреса; читается глазами и разбирается одним split */
-export function tableSortParam(sort: TableSort | null): string {
-  return sort ? `${sort.key}${sort.desc ? ":desc" : ""}` : "";
-}
-
-/** Нажатие заголовка: та же колонка — обратное направление, другая — по возрастанию */
-export function nextTableSort(current: TableSort | null, key: string): TableSort {
-  return current?.key === key ? { key, desc: !current.desc } : { key, desc: false };
-}
-
-export function tableToCsv<T>(rows: T[], columns: Column<T>[]): string {
-  const cols = columns.filter((c) => c.csv ?? c.sort);
-  const cell = (v: SortValue) => {
-    // пустое — пустая ячейка, а не слово «null» в файле, который унесут в Excel
-    const str = isBlank(v) ? "" : String(v);
-    return /[";\n]/.test(str) ? `"${str.replaceAll('"', '""')}"` : str;
-  };
-  const head = cols.map((c) => cell(c.header)).join(";");
-  const body = rows.map((r) => cols.map((c) => cell((c.csv ?? c.sort)!(r))).join(";"));
-  return "\ufeff" + [head, ...body].join("\r\n");
-}
-
-export function DataTable<T>({
-  rows,
-  columns,
-  empty,
-  initialSort,
-  csvName,
-  stateKey,
-  rowKey,
-  facets,
-  facetNote,
-  onRowClick,
-  isRowActive,
-}: {
-  rows: T[];
-  columns: Column<T>[];
-  empty?: ReactNode;
-  initialSort?: { key: string; desc?: boolean };
-  /** Имя файла включает выгрузку CSV текущего вида таблицы */
-  csvName?: string;
-  /**
-   * Устойчивый ключ строки. По умолчанию берётся поле `id`, а если его нет —
-   * порядковый номер. Номер плох тем, что таблица сортируется: React считает
-   * строку «той же самой» по позиции, и при смене порядка переиспользует её
-   * узлы — вместе с раскрытым содержимым и фокусом внутри ячейки.
-   */
-  rowKey?: (row: T) => string;
-  /**
-   * Префикс параметров адреса. Задан — сортировка переживает перезагрузку и
-   * передаётся ссылкой; не задан — живёт в памяти компонента, как раньше.
-   * Префикс нужен потому, что на странице бывает несколько таблиц.
-   */
-  stateKey?: string;
-  /**
-   * Фасетные фильтры над таблицей. Со счётчиком «сколько будет» до
-   * применения: выбор вслепую заставляет пробовать варианты по одному.
-   */
-  facets?: Facet<T>[];
-  /**
-   * Приписка к фасетам о том, по чему они считают.
-   *
-   * Таблица с подгрузкой держит в памяти только загруженные строки, и счётчик
-   * «Разведрота 13» означает «13 из загруженных», а не «13 в подразделении».
-   * Без этой приписки счётчик врёт — а счётчик, которому нельзя верить, хуже
-   * его отсутствия: по нему принимают решения.
-   */
-  facetNote?: string;
-  /**
-   * Выбор строки. Нажатие по строке показывает её в панели контекста справа,
-   * не уводя с экрана: раньше «посмотреть, кто это» стоило перехода в карту и
-   * возврата назад — с потерей места в списке и набранных фильтров.
-   *
-   * Ссылки внутри ячеек продолжают работать как ссылки: выбор — это не
-   * переход, и подменять им переход нельзя.
-   */
-  onRowClick?: (row: T) => void;
-  /** Какая строка сейчас показана в панели контекста. */
-  isRowActive?: (row: T) => boolean;
-}) {
-  const { ut } = useLang();
-
-  /*
-   * Большинство таблиц показывают сущности с id — берём его, не заставляя
-   * каждый вызов передавать rowKey. Номер строки остаётся только там, где
-   * идентификатора действительно нет (сводные строки, агрегаты). Правило —
-   * в rowKeys.ts: там же числовой id, который раньше молча уводил таблицу
-   * на номер строки.
-   */
-  const keyOf = (row: T, i: number): string => rowKeyOf(row, i, rowKey);
-
-  const [urlSort, setUrlSort] = useUrlState(stateKey ? `${stateKey}.sort` : "");
-  const [localSort, setLocalSort] = useState<TableSort | null>(initialSort ?? null);
-
-  // «ключ» или «ключ:desc» — читаемо в адресной строке; чужой ключ — умолчание (parseTableSort)
-  const sort = stateKey ? parseTableSort(urlSort, columns, initialSort ?? null) : localSort;
-
-  const setSort = (next: TableSort | null) => {
-    if (!stateKey) {
-      setLocalSort(next);
-      return;
-    }
-    setUrlSort(tableSortParam(next));
-  };
-
-  /*
-   * Скрытые колонки живут в адресе рядом с сортировкой: тогда настроенный вид
-   * пересылается ссылкой и попадает в сохранённые виды бесплатно — они уже
-   * умеют сохранять параметры адреса.
-   */
-  const [hiddenRaw, setHiddenRaw] = useUrlState(stateKey ? `${stateKey}.cols` : "");
-  const [localHidden, setLocalHidden] = useState("");
-  const hiddenParam = stateKey ? hiddenRaw : localHidden;
-
-  const hidden = useMemo(() => {
-    if (hiddenParam) return new Set(hiddenParam.split(","));
-    return new Set(columns.filter((c) => c.hiddenByDefault).map((c) => c.key));
-  }, [hiddenParam, columns]);
-
-  const setHidden = (next: Set<string>) => {
-    const raw = [...next].join(",");
-    if (stateKey) setHiddenRaw(raw);
-    else setLocalHidden(raw);
-  };
-
-  const shown = useMemo(
-    () => columns.filter((c) => c.required || !hidden.has(c.key)),
-    [columns, hidden],
-  );
-
-  const [facetRaw, setFacetRaw] = useUrlState(stateKey && facets ? `${stateKey}.f` : "");
-  const [localFacets, setLocalFacets] = useState("");
-  const facetParam = stateKey ? facetRaw : localFacets;
-  const selection = useMemo(() => parseFacets(facetParam), [facetParam]);
-  const setSelection = (next: FacetSelection) => {
-    const raw = serializeFacets(next);
-    if (stateKey) setFacetRaw(raw);
-    else setLocalFacets(raw);
-  };
-
-  const filtered = useMemo(
-    () => (facets?.length ? applyFacets(rows, facets, selection) : rows),
-    [rows, facets, selection],
-  );
-
-  const sorted = useMemo(() => sortRows(filtered, shown, sort), [filtered, sort, shown]);
-
-  if (rows.length === 0 && empty) return <>{empty}</>;
-
-  // выгружается видимый срез: то, что человек настроил, — и есть его ответ
-  const exportCsv = () => {
-    const blob = new Blob([tableToCsv(sorted, shown)], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${csvName}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  const head = (
-    <thead>
-      <tr>
-        {shown.map((c) => (
-          <th
-            key={c.key}
-            className={`${c.num ? "num" : ""} ${c.sort ? "sortable" : ""}`}
-            style={c.width ? { width: c.width } : undefined}
-            onClick={() => c.sort && setSort(nextTableSort(sort, c.key))}
-          >
-            {c.header}
-            {sort?.key === c.key ? <span className="arrow">{sort.desc ? "↓" : "↑"}</span> : null}
-          </th>
-        ))}
-      </tr>
-    </thead>
-  );
-
-  const hideable = columns.filter((c) => !c.required);
-  const tools =
-    (csvName && rows.length) || hideable.length || facets?.length ? (
-      <div className="table-tools">
-        {facets?.length ? (
-          <FacetBar
-            rows={rows}
-            facets={facets}
-            selection={selection}
-            onChange={setSelection}
-            shownCount={sorted.length}
-            totalCount={rows.length}
-            note={facetNote}
-          />
-        ) : null}
-        <div className="row tight">
-          {hideable.length ? (
-            <ColumnPicker
-              columns={hideable}
-              hidden={hidden}
-              onToggle={(key) => {
-                const next = new Set(hidden);
-                if (next.has(key)) next.delete(key);
-                else next.add(key);
-                setHidden(next);
-              }}
-            />
-          ) : null}
-          {csvName && sorted.length ? (
-            <button onClick={exportCsv}>{ut("ui.exportCsv")} · {sorted.length}</button>
-          ) : null}
-        </div>
-      </div>
-    ) : null;
-
-  /*
-   * Короткие таблицы рисуются целиком: виртуализация стоит собственной
-   * сложности (фиксированная высота строки, отдельный контейнер прокрутки) и
-   * на двух десятках строк только мешает.
-   */
-  if (sorted.length <= VIRTUAL_FROM) {
-    return (
-      <div className="scroll-x">
-        {tools}
-        <table>
-          {head}
-          <tbody>
-            {sorted.map((row, i) => (
-              <Row
-                key={keyOf(row, i)}
-                row={row}
-                columns={shown}
-                onRowClick={onRowClick}
-                active={isRowActive?.(row) ?? false}
-              />
-            ))}
-          </tbody>
-        </table>
-      </div>
-    );
-  }
-
-  return (
-    <>
-      {tools}
-      {/* пока кусок виртуализации в пути — скелет, а не пустое место: длинные таблицы открывают на медленной сети */}
-      <Suspense fallback={<Loading rows={8} />}>
-        <VirtualRows
-          sorted={sorted}
-          head={head}
-          renderRow={(row, i, height) => (
-            <Row
-              key={keyOf(row, i)}
-              row={row}
-              columns={shown}
-              height={height}
-              onRowClick={onRowClick}
-              active={isRowActive?.(row) ?? false}
-            />
-          )}
-        />
-      </Suspense>
-    </>
-  );
-}
-
-/**
- * Строка таблицы.
- *
- * Когда выбор включён, строка становится доступной с клавиатуры: работа со
- * списком одинаково часто идёт мышью и стрелками, и «посмотреть, кто это»
- * не должно требовать мыши. Ссылки внутри ячеек остаются ссылками — нажатие
- * по ним не считается выбором, иначе переход в карту заодно менял бы панель
- * справа и человек видел бы, как она мигает на уходе со страницы.
- */
-function Row<T>({
-  row,
-  columns,
-  height,
-  onRowClick,
-  active,
-}: {
-  row: T;
-  columns: Column<T>[];
-  height?: number;
-  onRowClick?: (row: T) => void;
-  active: boolean;
-}) {
-  const clickable = !!onRowClick;
-  return (
-    <tr
-      style={height ? { height } : undefined}
-      className={active ? "row-active" : undefined}
-      aria-selected={clickable ? active : undefined}
-      tabIndex={clickable ? 0 : undefined}
-      onClick={
-        clickable
-          ? (e) => {
-              // нажатие по ссылке — переход, а не выбор
-              if ((e.target as HTMLElement).closest("a, button")) return;
-              onRowClick(row);
-            }
-          : undefined
-      }
-      onKeyDown={
-        clickable
-          ? (e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                onRowClick(row);
-                return;
-              }
-              /*
-               * Стрелки и j/k двигают по списку.
-               *
-               * Разбор очереди — это чтение строк подряд, и тянуться к мыши
-               * на каждую следующую строку значит тратить секунду там, где
-               * их сотни. Буквы продублированы к стрелкам, потому что на
-               * экране разбора случаев j/k уже означают то же самое, и
-               * держать два разных способа для одного действия — лишнее
-               * знание.
-               */
-              const step = e.key === "ArrowDown" || e.key === "j" ? 1 : e.key === "ArrowUp" || e.key === "k" ? -1 : 0;
-              if (!step) return;
-              const rows = Array.from(
-                e.currentTarget.closest("tbody")?.querySelectorAll<HTMLTableRowElement>("tr[tabindex]") ?? [],
-              );
-              const at = rows.indexOf(e.currentTarget);
-              const next = rows[at + step];
-              if (!next) return;
-              e.preventDefault();
-              next.focus();
-              // строка может быть у самого края: доводим её до видимой части
-              next.scrollIntoView({ block: "nearest" });
-            }
-          : undefined
-      }
-    >
-      {columns.map((c) => (
-        <td key={c.key} className={c.num ? "num" : ""}>
-          {c.render(row)}
-        </td>
-      ))}
-    </tr>
-  );
-}
-
-/** С какого числа строк включается виртуализация */
-const VIRTUAL_FROM = 60;
-
-/*
- * Длинная таблица (VirtualRows) — в virtualRows.tsx и по требованию: она
- * одна тянет за собой @tanstack/react-virtual, а в начальный кусок консоли
- * ui/index попадает целиком — ради тостов, загрузки и модальных окон. Волна
- * 12: библиотека виртуализации ехала к каждому, кто открывал вход.
- */
-const VirtualRows = lazy(() => import("./virtualRows")) as <T>(props: VirtualRowsProps<T>) => ReactNode;
-
-/** Поле поиска с иконкой */
-export function Search({
-  value,
-  onChange,
-  placeholder,
-  width = 260,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  placeholder?: string;
-  width?: number;
-}) {
-  const { ut } = useLang();
-  return (
-    <input
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      placeholder={placeholder ?? ut("ui.search")}
-      style={{ maxWidth: width }}
-    />
-  );
-}
-
-/* ─────────── настройка колонок и фасеты ─────────── */
-
-/**
- * Какие колонки показывать.
- *
- * Обязательные не предлагаются к скрытию вовсе, а не показываются серыми:
- * список выбора должен состоять только из того, что действительно можно
- * выбрать. Настройка живёт в адресе, поэтому переживает перезагрузку и
- * передаётся ссылкой вместе с сортировкой.
- */
-function ColumnPicker<T>({
-  columns,
-  hidden,
-  onToggle,
-}: {
-  columns: Column<T>[];
-  hidden: Set<string>;
-  onToggle: (key: string) => void;
-}) {
-  const { ut } = useLang();
-  const [open, setOpen] = useState(false);
-  const count = columns.filter((c) => !hidden.has(c.key)).length;
-
-  return (
-    <div className="col-picker">
-      <button
-        className="ghost"
-        aria-expanded={open}
-        aria-haspopup="true"
-        onClick={() => setOpen((v) => !v)}
-      >
-        {ut("tbl.columns")} · {count}/{columns.length}
-      </button>
-      {open ? (
-        <>
-          {/* клик мимо закрывает: меню без этого остаётся висеть поверх работы */}
-          <div className="col-picker-veil" onClick={() => setOpen(false)} />
-          <div className="col-picker-menu" role="group" aria-label={ut("tbl.columns")}>
-            {columns.map((c) => (
-              <label key={c.key}>
-                <input
-                  type="checkbox"
-                  checked={!hidden.has(c.key)}
-                  onChange={() => onToggle(c.key)}
-                />
-                {c.header}
-              </label>
-            ))}
-          </div>
-        </>
-      ) : null}
-    </div>
-  );
-}
-
-/**
- * Фасеты над таблицей.
- *
- * У каждого варианта — счётчик «сколько строк останется». Он считается по
- * строкам, прошедшим остальные фасеты, но не этот: иначе выбор варианта
- * обнулял бы счётчики его соседей, и человек не увидел бы, что даст
- * переключение.
- */
-function FacetBar<T>({
-  rows,
-  facets,
-  selection,
-  onChange,
-  shownCount,
-  totalCount,
-  note,
-}: {
-  rows: T[];
-  facets: Facet<T>[];
-  selection: FacetSelection;
-  onChange: (next: FacetSelection) => void;
-  shownCount: number;
-  totalCount: number;
-  note?: string;
-}) {
-  const { ut } = useLang();
-  const active = Object.values(selection).some((v) => v.length);
-
-  return (
-    <div className="facets">
-      {facets.map((facet) => {
-        const options = facetOptions(rows, facets, selection, facet.key);
-        if (!options.length) return null;
-        return (
-          <div key={facet.key} className="facet">
-            <span className="facet-label">{facet.label}</span>
-            {visibleFacetOptions(options, 8).map((o) => (
-              <button
-                key={o.value}
-                className={`chip${o.selected ? " active" : ""}`}
-                aria-pressed={o.selected}
-                onClick={() => onChange(toggleFacet(selection, facet.key, o.value))}
-              >
-                {o.value} <span className="facet-count">{o.count}</span>
-              </button>
-            ))}
-          </div>
-        );
-      })}
-      {active ? (
-        <button className="ghost" onClick={() => onChange({})}>
-          {ut("tbl.resetFacets")} · {shownCount}/{totalCount}
-        </button>
-      ) : null}
-      {note ? <span className="facet-note">{note}</span> : null}
-    </div>
-  );
+  return <KbdHints keys={keys} className="hotkeys" />;
 }

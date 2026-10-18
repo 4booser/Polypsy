@@ -663,10 +663,16 @@ describe("разметка раздела по кадрам", () => {
     expect(nav).not.toContain("text-[#ab8fcc]");
   });
 
-  test("верхний просвет: общий 50 (f05/f06), 40 просит раздел людей (f42/f49)", () => {
-    expect(src("ui/layout.tsx")).toContain("topGap = 50");
-    for (const f of ["pages/people/StaffList.tsx", "pages/people/StaffCard.tsx", "pages/people/StaffNew.tsx"]) {
-      expect(src(f), `нет topGap={40} в ${f}`).toContain("topGap={40}");
-    }
+  /*
+   * Прежний макет задавал верхний просвет по экрану (50 у f05/f06, 40 у
+   * раздела людей), и экраны людей просили своё число. В наборе «Виразна»
+   * ритм шапки один на все экраны: свойство принимается для совместимости и
+   * ничего не меняет — проверка держит, что разметка не разошлась снова.
+   */
+  test("верхний просвет один на все экраны: topGap принимается, но шапку не двигает", () => {
+    const layout = src("ui/layout.tsx");
+    expect(layout).toContain("topGap?: 40 | 50");
+    expect(layout).not.toMatch(/topGap\s*===/);
+    expect(layout).not.toMatch(/topGap\s*=\s*\d/);
   });
 });

@@ -16,11 +16,11 @@
 
 import type { SVGProps } from "react";
 
-/** «+» над списком — штрих 5 в квадрате 27, как на макете */
+/** «+» над списком: плюс набора (lucide), чуть плотнее штрихом — стоит один в квадрате 36 */
 export function IconPlusThick() {
   return (
-    <svg viewBox="0 0 27 27" width={27} height={27} aria-hidden focusable="false">
-      <path d="M13.5 2.5v22M2.5 13.5h22" stroke="currentColor" strokeWidth={5} />
+    <svg viewBox="0 0 24 24" width={18} height={18} aria-hidden focusable="false">
+      <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" />
     </svg>
   );
 }

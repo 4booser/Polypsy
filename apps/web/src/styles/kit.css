@@ -1,0 +1,128 @@
+/*
+ * Набор «Виразна»: то немногое, что не пишется утилитами.
+ *
+ * Компоненты набора (src/ui) стилизуются классами Tailwind на токенах.
+ * Сюда вынесено только то, что утилитами не выражается или выражается
+ * строкой, которую нельзя прочесть: ключевые кадры, глифы флажка и
+ * переключателя (псевдоэлементы на самом поле ввода) и тонкая полоса
+ * прокрутки. Только токены, ни одного шестнадцатеричного цвета.
+ *
+ * Слой `kit` лежит между `legacy` и `utilities` (app.css): правила набора
+ * перебивают наследие («Пульт» ставит всякому полю min-height и отступы), а
+ * классы экрана перебивают набор.
+ */
+
+/* ─────────── флажок и радио (input.kit-check / input.kit-radio) ─────────── */
+
+.kit-check,
+.kit-radio {
+  appearance: none;
+  -webkit-appearance: none;
+  display: inline-grid;
+  place-content: center;
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 1.5px solid var(--field-border);
+  background: var(--panel);
+  cursor: pointer;
+  vertical-align: middle;
+  transition:
+    background-color var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease);
+}
+.kit-check {
+  border-radius: 6px;
+}
+.kit-radio {
+  border-radius: 50%;
+}
+.kit-check:hover,
+.kit-radio:hover {
+  border-color: var(--muted);
+}
+.kit-check::before {
+  content: "";
+  width: 10px;
+  height: 10px;
+  background: var(--onfill);
+  transform: scale(0);
+  transition: transform var(--dur-fast) var(--ease);
+  /* галочка: та же ломаная, что в наборе (M4 8.5 6.5 11 12 5.5), контуром */
+  clip-path: polygon(14% 52%, 0 66%, 38% 100%, 100% 22%, 86% 8%, 38% 72%);
+}
+.kit-check:indeterminate::before {
+  clip-path: inset(40% 0 40% 0 round 2px);
+}
+.kit-check:is(:checked, :indeterminate) {
+  background: var(--v);
+  border-color: var(--v);
+}
+.kit-check:is(:checked, :indeterminate)::before {
+  transform: scale(1);
+}
+.kit-radio:checked {
+  border-color: var(--vring);
+  border-width: 5.5px;
+}
+.kit-check:disabled,
+.kit-radio:disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
+}
+.kit-check:focus-visible,
+.kit-radio:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* ─────────── движение ─────────── */
+
+/* скелет: дыхание, а не бегущий блик — блик тянет взгляд с содержимого */
+@keyframes kit-breathe {
+  from {
+    opacity: 0.55;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* окно, которое Esc не закрывает (esc={false}): толчок вместо закрытия */
+@keyframes kit-nudge {
+  0%,
+  100% {
+    transform: none;
+  }
+  30% {
+    transform: scale(1.012);
+  }
+  60% {
+    transform: scale(0.996);
+  }
+}
+
+/* всплывающее сообщение и поповер появляются снизу на несколько пикселей */
+@keyframes kit-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+/* ─────────── тонкая полоса прокрутки (тело ящика, длинные меню) ─────────── */
+
+.kit-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--ctl) transparent;
+}
+
+/* подложка окна проявляется, а не выезжает */
+@keyframes kit-fade {
+  from {
+    opacity: 0;
+  }
+}

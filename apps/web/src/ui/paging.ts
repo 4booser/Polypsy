@@ -10,9 +10,9 @@
  */
 import { LIST_OFFSET_MAX } from "@quizzy/shared";
 
-/** Ступени селекта «елементів на сторінці»; 10 — значение с макета */
-export const PER_PAGE = [10, 20, 50, 100] as const;
-export const DEFAULT_PER = 10;
+import { DEFAULT_PER, PER_PAGE } from "./perPage";
+
+export { DEFAULT_PER, PER_PAGE };
 
 /**
  * Чужое число в адресе — не ошибка, а умолчание.

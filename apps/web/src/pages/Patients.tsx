@@ -15,7 +15,7 @@ import { Page } from "../ui/layout";
 import { ActionMenu } from "../ui/menu";
 import { Pager } from "../ui/pager";
 import { cursorPagePlan, pageCount, pageFrom, perFrom, refilter, slicePage, toPage, toPer } from "../ui/paging";
-import { Input, Tabs } from "../ui/primitives";
+import { ErrorText, Input, Tabs } from "../ui/primitives";
 import { patchParams } from "../ui/viewParams";
 import { PatientContext } from "../components/PatientContext";
 import { useLang } from "../lang";
@@ -559,7 +559,7 @@ export function PatientDynamics() {
   const { run, busy } = useAction();
   const { data, error } = useResource(() => api.dynamics(userId!), [userId], { enabled: !!userId });
 
-  if (error) return <p className="error">{error}</p>;
+  if (error) return <ErrorText>{error}</ErrorText>;
   if (!data) return <Loading rows={5} />;
 
   return (

@@ -6,28 +6,18 @@ import { MemoryRouter } from "react-router-dom";
 import { Tabs } from "../src/ui/primitives";
 
 /**
- * Цвет активной вкладки: полный, а не бледный.
+ * Выбранная вкладка: фиолетовые чернила на плашке, бездеятельная — text-2.
  *
- * Это место уже переворачивали. Довод был круговой: опись кадров вывела
- * «активна» из бледного цвета, а правка вывела цвет из описи, — и полоса
- * вкладок на ШЕСТИ экранах (каталог тестов, конструктор, список пациентов,
- * группы) поехала наоборот, ничего при этом не ломая: ни типов, ни разметки,
- * ни доступности — только картинку. Поймать такое может только проверка,
+ * Это место уже переворачивали: в прежнем макете активную отличал один цвет,
+ * и опись кадров однажды вывела «активна» из бледного цвета, а правка — цвет
+ * из описи. Полоса вкладок на шести экранах поехала наоборот, ничего не
+ * ломая — ни типов, ни разметки. Поймать такое может только проверка,
  * прибитая к самому классу.
  *
- * Числа сняты по СОДЕРЖИМОМУ кадра, а не по цвету:
- *
- *   f22 — под вкладками блок «Шкала 1», то есть открыт «Конкретний тест»;
- *         первая вкладка (x 451…634) полная (102,51,153), вторая бледная;
- *   f21 — тех же шкал нет, зато есть «Питання #1/#2» комплексного;
- *         полная — вторая (x 697…898), первая бледная;
- *   f07 — папки неопубликованных; полная — вторая, «Неопубліковані».
- *
- * Три кадра из трёх: активная = полный #663399, остальные = бледный #b299cc.
- *
- * Проверяется не только имя класса, но и СМЫСЛ имени: что `--primary` на
- * листе действительно темнее `--primary-dim`. Иначе переворот прошёл бы
- * переименованием токена, а не правкой ветки.
+ * В наборе «Виразна» (kit/page.py, .tab / .tab.on) выбранная отличается
+ * тремя признаками сразу: чернилами (--vink), начертанием (800 против 600) и
+ * плашкой листа с тенью плитки. Бездеятельная — text-2 без плашки. Проверка
+ * держит все три: если один пропадёт, «вы здесь» снова повиснет на цвете.
  */
 
 const markup = (path: string) =>
@@ -53,18 +43,23 @@ function classesOf(html: string, label: string): string {
   return cls![1]!;
 }
 
-describe("цвет вкладок", () => {
-  test("активная — полным цветом, неактивная — бледной", () => {
+function expectSelected(on: string, off: string, where: string) {
+  for (const sign of ["text-violet-ink", "font-extrabold", "shadow-tile", "bg-panel"]) {
+    expect(on, `${where}: у выбранной нет ${sign}`).toContain(sign);
+    expect(off, `${where}: у бездеятельной есть ${sign}`).not.toContain(sign);
+  }
+  expect(off, `${where}: бездеятельная — чернилами text-2`).toContain("text-text-2");
+  expect(on, `${where}: выбранная не красится в text-2`).not.toContain("text-text-2");
+}
+
+describe("вид вкладок", () => {
+  test("выбранная — чернилами, начертанием и плашкой; бездеятельная — text-2", () => {
     for (const [path, active, idle] of [
       ["/tabs/one", "Конкретний тест", "Комплексний тест"],
       ["/tabs/two", "Комплексний тест", "Конкретний тест"],
     ] as const) {
       const html = markup(path);
-      const on = classesOf(html, active);
-      const off = classesOf(html, idle);
-      expect(on, `${path}: активная обязана быть полной`).toContain("text-primary");
-      expect(on, `${path}: активная не бледнится`).not.toContain("text-primary-dim");
-      expect(off, `${path}: неактивная обязана быть бледной`).toContain("text-primary-dim");
+      expectSelected(classesOf(html, active), classesOf(html, idle), path);
     }
   });
 
@@ -80,9 +75,8 @@ describe("цвет вкладок", () => {
     );
     const on = html.slice(0, html.indexOf(">Конкретний тест<"));
     const off = html.slice(html.indexOf(">Конкретний тест<"));
-    expect(on).toContain("text-primary");
-    expect(on).not.toContain("text-primary-dim");
-    expect(off).toContain("text-primary-dim");
+    expectSelected(on, off, "состояние");
+    expect(html.match(/aria-selected="true"/g)?.length).toBe(1);
   });
 });
 
@@ -90,9 +84,9 @@ describe("цвет вкладок", () => {
  * Второй слой: имя класса должно ещё и значить то, что обещает.
  *
  * Без него переворот можно было бы повторить, не трогая ветку вовсе —
- * достаточно поменять местами значения двух токенов, и «активная =
- * text-primary» осталась бы зелёной, а экран стал бы бледным. Читается
- * светлая тема: кадры сняты с неё.
+ * достаточно сделать --vink светлее --text-2, и «выбранная = violet-ink»
+ * осталась бы зелёной, а выбранная вкладка читалась бы бледнее соседних.
+ * Читается светлая тема.
  */
 /* пояснения выброшены: в них те же имена токенов, и разбор цеплялся за них */
 const CSS = readFileSync(resolve(import.meta.dir, "../src/styles/tokens.css"), "utf8").replace(
@@ -111,7 +105,6 @@ function hexOf(name: string): string {
     seen.add(token);
     const all = [...CSS.matchAll(new RegExp(`${token}\\s*:\\s*([^;]+);`, "g"))];
     /* последнее объявление до тёмной темы — то есть значение светлой */
-    /* по НАЧАЛУ строки: то же сочетание трижды встречается выше в пояснениях */
     const darkAt = CSS.indexOf('\n:root[data-theme="dark"]');
     const hit = all.filter((m) => m.index! < darkAt).pop();
     if (!hit) throw new Error(`токен ${token} не найден в светлой теме`);
@@ -129,13 +122,15 @@ const lum = (hex: string) => {
 };
 
 describe("токены вкладок", () => {
-  test("на листе --primary темнее --primary-dim", () => {
-    const full = hexOf("var(--primary)");
-    const dim = hexOf("var(--primary-dim)");
-    expect(full, "полный цвет вкладки — кадровый #663399").toBe("#663399");
-    expect(
-      lum(full),
-      `--primary (${full}) обязан быть темнее --primary-dim (${dim})`,
-    ).toBeLessThan(lum(dim));
+  test("на листе фиолетовые чернила выбранной не бледнее text-2 бездеятельной", () => {
+    const ink = hexOf("var(--vink)");
+    const idle = hexOf("var(--text-2)");
+    const panel = hexOf("var(--panel)");
+    const contrast = (a: string, b: string) => {
+      const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p);
+      return (x! + 0.05) / (y! + 0.05);
+    };
+    expect(contrast(ink, panel), `--vink (${ink}) на листе читается хуже 4.5:1`).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(idle, panel), `--text-2 (${idle}) на листе читается хуже 4.5:1`).toBeGreaterThanOrEqual(4.5);
   });
 });

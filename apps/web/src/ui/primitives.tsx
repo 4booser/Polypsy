@@ -8,114 +8,59 @@ import type {
   TextareaHTMLAttributes,
 } from "react";
 import { Link, NavLink, type LinkProps } from "react-router-dom";
-import { createContext, forwardRef, useContext } from "react";
+import { createContext, forwardRef, useContext, useEffect, useId, useImperativeHandle, useRef } from "react";
 import { cx } from "./cx";
+import { Ic } from "./icons";
 import { useLang } from "../lang";
 
 /*
- * Примитивы консоли по макету Polypsy.
+ * Примитивы консоли в наборе «Виразна».
  *
- * Прежняя редакция строилась вокруг правила «янтарным красится только то,
- * что требует внимания»: кнопка обведена, а не залита, акцент редок. Правило
- * было хорошим, но описывало другую систему оформления. Заказчик выбрал
- * прочтение «макет — это вся система» (docs/REWRITE-PLAN.md, раздел 8), и
- * здесь теперь исполняются замеры макета, а не прежние доводы.
+ * Источник вида — .superdesign/ui3/kit (ui.py + page.py) и страница
+ * дизайн-системы (shots/system/design-system-*.png). Классы ниже — те же
+ * числа набора, записанные утилитами Tailwind на токенах styles/tokens.css:
  *
- * Что задаёт макет и откуда взялись числа в классах ниже:
+ *   кнопка 40 (мелкая 32, пациентская 48 и 52), радиус 10, 13.5/700;
+ *   поле 40, рамка --field-border (3:1 к листу), радиус 10, 13.5/500;
+ *   пилюля состояния 24, радиус 12, 11.5/700; тяжесть — 26, всегда со словом;
+ *   вкладка 36, бездеятельная — text-2, выбранная — фиолетовые чернила на
+ *   плашке листа с тенью плитки.
  *
- *   заголовок раздела  24/700 #663399      кнопка          22/700
- *   меню               20/700              плейсхолдер     17/700
- *   вкладки            18/700              имя в списке    13/700
- *   мета-строка        13/400 #666666      микроподписи    10/400 #666666
- *
- *   поле ввода 36px · радиус 5px · шаг строк формы 51px · зазор вкладок 53px
- *
- * Цвета взяты через токены, а не литералами: палитра живёт в styles/tokens.css
- * одним файлом, и «поправить фиолетовый» обязано быть правкой одной строки, а
- * не поиском по сорока экранам. Соответствие такое:
- *
- *   --primary        #663399  меню, заголовки, имена, вкладки, текст кнопок
- *   --primary-soft   #f0ecff  заливка кнопок и полей фильтра
- *   --muted          #666666  второстепенный текст
- *   --border         #666666  рамка контурного поля
- *   --hairline       #cccccc  линии, разделители, рамка селектов
- *   --border-strong  #999999  рамка выпадающих панелей, ползунок прокрутки
- *   --bg             #ffffff  фон
- *
- * Кегли оставлены числами в классах, а не токенами шкалы: шкала (--fs-*)
- * описывает шесть ступеней прежней системы, а макет даёт восемь своих, и
- * подгонять одно под другое пришлось бы округлением. Округлённый замер — это
- * уже не замер.
- *
- * ── Три места, где макет нельзя повторить буквально ──
- *
- * Они названы в самом задании и разобраны по месту, каждое со своим решением:
- *   1. подпись только плейсхолдером  → см. useFieldNameGuard и nameFromPlaceholder;
- *   2. глифы «+» и стрелки без области нажатия → см. размер `glyph` у Button;
- *   3. активная вкладка отличается только цветом → см. Tabs.
- * Общее правило для всех трёх: на экране остаётся ровно то, что нарисовано,
- * а диктору и клавиатуре добавляется то, чего на картинке не видно.
+ * Свойства прежних редакций сохранены все: экраны меняются по своим волнам,
+ * а примитив обязан принять то, что в них уже написано. Значения, которые
+ * описывали замеры прежнего макета (кегли 17/22, вид «полем-заливкой»,
+ * плейсхолдер-подпись), принимаются и сводятся к ближайшему виду набора.
  */
 
-const focus =
-  "outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg)]";
+/** Кольцо фокуса набора: 2 px фиолетовым с отступом 2 (#app :focus-visible) */
+const focus = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus";
 
 /* ─────────── территория пальца ─────────── */
 
 /**
  * Наименьшая мишень для пальца, в пикселях.
  *
- * 44 — не круглое число из чужой методички, а поперечник подушечки
- * указательного пальца взрослого человека на экране телефона. Меньше — и
- * промах перестаёт быть случайностью: нажатие приходится по соседней
- * кнопке либо не регистрируется вовсе.
+ * 44 — поперечник подушечки указательного пальца на экране телефона. Меньше —
+ * и промах перестаёт быть случайностью.
  */
 export const TOUCH_MIN_PX = 44;
 
 /*
- * Пол мишеней объявлен селектором, а не размером каждой кнопки, — и это
- * главное решение здесь.
- *
- * 44 px — свойство МЕСТА, а не элемента. В консоли специалиста плотные
- * таблицы и панели действий: там работают мышью, палец в деле не участвует,
- * и 36 px не только допустимы, а нужны — иначе на экран разбора влезает
- * вдвое меньше строк. В кабинете пациента наоборот: телефон, одна рука,
- * человек в тяжёлом состоянии. Одна и та же кнопка обязана быть разной в
- * двух местах.
- *
- * Пока высоту проставляли руками (`min-h-[44px]` по месту), различие
- * держалось на памяти автора экрана. На Home.tsx и Runner.tsx помнили, на
- * Profile.tsx и Booking.tsx — нет, и разница между экранами кабинета вышла
- * случайной, а не осмысленной. Признака у ошибки не было никакого: ни
- * предупреждения, ни падающей проверки — только рулетка поверх снимка.
- *
- * Зона объявляется один раз на оболочку кабинета и накрывает ВСЁ, что
- * внутри, включая чужие компоненты, до разметки которых отсюда не
- * дотянуться (переключатель языка живёт в lang.tsx и знать о кабинете не
- * обязан). Чтобы получить мишень меньше 44 px, экран теперь нужно вынести
- * из кабинета — то есть забыть нельзя, можно только решить иначе.
- *
- * Правило ставит `min-height`, а не `height`: это пол, а не размер.
- * `min-height` сильнее `height` независимо от специфичности, поэтому h-9
- * внутри зоны становится 44, а 48 остаётся 48. Слой utilities перебивает
- * legacy, где у `:where(button)` стоит min-height 34.
+ * Пол мишеней объявлен селектором на оболочке кабинета пациента, а не
+ * размером каждой кнопки: 44 px — свойство места. В консоли работают мышью и
+ * держат плотность (40 и 32), в кабинете — пальцем, одной рукой.
+ * `min-height` сильнее `height`: h-10 внутри зоны становится 44, 48 остаётся 48.
  */
 const touchFloor = cx(
   "[&_:is(button,a,summary,[role=button])]:min-h-[44px]",
   "[&_:is(button,a,summary,[role=button])]:min-w-[44px]",
-  /* поле ввода растягивать по ширине незачем: оно и так во всю колонку */
   "[&_:is(input,select,textarea)]:min-h-[44px]",
 );
 
 /**
- * Внутри зоны мишени меряются пальцем, а поля обязаны иметь подпись.
- *
- * Второе правило здесь же не случайно: зона отмечает экран, который
- * открывает не сотрудник. Сотрудник, наткнувшись на безымянное поле,
- * спросит коллегу; человек с диктором в кабинете не спросит никого — он
- * услышит «поле ввода» и закроет вкладку. Поэтому в зоне безымянное поле
- * считается поломкой и падает при разработке, а не молча доезжает до
- * человека (см. useFieldNameGuard).
+ * Внутри зоны мишени меряются пальцем, а поля обязаны иметь подпись: экран
+ * открывает не сотрудник, и безымянное поле для него — тупик (см.
+ * useFieldNameGuard).
  */
 const TouchZone = createContext(false);
 
@@ -140,292 +85,149 @@ export function TouchArea({
 
 /* ─────────── кнопка ─────────── */
 
-type Variant = "primary" | "ghost" | "quiet" | "danger" | "paper";
-type Size = "sm" | "md" | "card" | "form" | "glyph" | "glyph-sm";
-
-/*
- * Кнопка в макете одна: заливка #f0ecff, без рамки, текст #663399 полужирным,
- * радиус 5. Рамки нет ни у одной кнопки ни на одном из 54 кадров — это не
- * недосмотр экспорта, а решение, и повторяется оно буквально.
+/**
+ * Вид кнопки.
  *
- * Варианты при этом остались все четыре, и вот почему их не свели к одному.
- * `variant` стоит в разметке сорока экранов; убрать его — значит править эти
- * сорок экранов сегодня, тогда как по плану волн они переписываются каждый в
- * свой срок. Но дело не только в цене правки: `danger` несёт смысл, которого
- * в макете нет по недосмотру, а не по замыслу. «Отозвать доступ» и «Сохранить»
- * не должны выглядеть одинаково — в макете просто нет кадра с опасным
- * действием. Поэтому опасное действие остаётся красным, а форма (заливка,
- * отсутствие рамки, радиус, кегль) у всех вариантов ровно макетная.
+ *  - `primary`   — основная: фиолетовая заливка с тенью. Одна на область.
+ *  - `secondary` — тонированная: фиолетовые чернила на светлой заливке.
+ *                  Умолчание — так выглядит большинство действий набора.
+ *  - `ghost`     — без заливки, фиолетовыми чернилами; заливка на наведении.
+ *  - `quiet`     — без заливки, чернилами text-2: служебное действие.
+ *  - `risk`      — красная заливка. ТОЛЬКО для действия над риском для
+ *                  человека («Розібрати», «Передати черговому»).
+ *  - `danger`    — разрушительное действие (удалить, отозвать, отключить).
+ *                  По правилу набора выглядит обычной кнопкой: красный
+ *                  отдан риску для человека, а разрушительное держится на
+ *                  подтверждении, а не на цвете. Отдельным именем — чтобы
+ *                  такое место было видно в разметке.
+ *  - `paper` / `outline` — лист с тонкой рамкой: кнопка на тонированной
+ *                  поверхности, где нужна граница (чипы ящика, «Відкрити»).
+ *  - `panel`     — лист без рамки на тонированной полосе (массовые действия).
  */
+type Variant = "primary" | "secondary" | "ghost" | "quiet" | "risk" | "danger" | "paper" | "outline" | "panel";
+
+/**
+ * Размер.
+ *
+ *  - `sm` (умолчание) — 40 px, строка консоли и форма;
+ *  - `xs` — 32 px, действие в строке, в поповере, в плотной панели;
+ *  - `md` — 48 px, кабинет пациента и гостевые страницы;
+ *  - `lg` — 52 px, главное действие шага на телефоне;
+ *  - `icon` / `icon-sm` — квадрат 40 / 32 под один значок (подпись — aria-label).
+ *
+ * Прежние имена приняты: `form` = 40, `card` = 32, `glyph` = квадрат 36
+ * (значок в строке над списком), `glyph-sm` = квадрат 32.
+ */
+type Size = "xs" | "sm" | "md" | "lg" | "icon" | "icon-sm" | "card" | "form" | "glyph" | "glyph-sm";
+
 const variants: Record<Variant, string> = {
-  primary: "bg-primary-soft text-primary hover:brightness-95 active:brightness-90",
-  /* тот же силуэт без заливки: для второго действия в паре, где две залитых спорят */
-  ghost: "bg-transparent text-primary hover:bg-primary-soft",
-  quiet: "bg-transparent text-muted hover:bg-primary-soft hover:text-primary",
-  danger: "bg-danger-soft text-danger hover:brightness-95 active:brightness-90",
-  /*
-   * Белая плашка на сиреневой полосе.
-   *
-   * Единственное место, где она нужна, — панель инструментов над текстом
-   * заключения (кадры f36/f37): полоса залита #f0ecff, а кнопки в ней
-   * нарисованы белыми. Залитая кнопка на залитой полосе исчезает, призрачная —
-   * тем более, и подсветка наведения у обеих совпадает с цветом полосы.
-   * Наведение здесь — затемнение, а не заливка: заливка сиреневым слила бы
-   * плашку с полосой ровно в момент, когда на неё смотрят.
-   */
-  paper: "bg-[var(--bg)] text-primary hover:brightness-95 active:brightness-90",
+  primary: "bg-violet text-onfill shadow-primary hover:bg-violet-hover disabled:shadow-none",
+  secondary: "bg-violet-tint text-violet-ink hover:bg-violet-tint-2",
+  ghost: "bg-transparent text-violet-ink hover:bg-violet-tint",
+  quiet: "bg-transparent text-text-2 hover:bg-sunk hover:text-text",
+  risk: "bg-risk text-onfill hover:bg-risk-hover",
+  danger: "bg-violet-tint text-violet-ink hover:bg-violet-tint-2",
+  paper: "bg-panel text-violet-ink shadow-[inset_0_0_0_1px_var(--ctl)] hover:bg-violet-tint",
+  outline: "bg-panel text-violet-ink shadow-[inset_0_0_0_1px_var(--ctl)] hover:bg-violet-tint",
+  panel: "bg-panel text-violet-ink hover:bg-violet-tint-2",
 };
 
-/*
- * Размеры — по месту, а не по кнопке.
- *
- * В макете встречаются 215×45 и 371×36: одна и та же кнопка тянется под своё
- * место. Поэтому ширина здесь не задаётся вовсе — ни фиксированная, ни
- * минимальная. 215 и 371 получаются шириной родителя (`w-full` в колонке
- * формы, растяжка во flex), а не свойством кнопки. Альтернатива — завести
- * `wide`/`narrow` с зашитыми 215 и 371 — выглядела короче ровно до третьего
- * кадра с третьей шириной.
- *
- * Высот три, все с макета: 45 для действия формы (215×45 на кадрах волны 3),
- * 36 для кнопки формы людей (371×36 на f41/f48 — ровно в шаг формы 51, то
- * есть вровень с полями) и 36 для строчной кнопки в строке фильтров. Кегль
- * 22/700 у первых двух — он тоже с макета и не зависит от высоты; у строчной
- * свой, 15/700 (см. ниже).
- */
 const sizes: Record<Size, string> = {
-  /*
-   * Компактная — умолчание, крупная — по явному size="md".
-   *
-   * Первая редакция сделала наоборот: умолчанием стала кнопка формы с макета
-   * (45px, 22/700), и она встала на каждую из 184 кнопок консоли — в том
-   * числе на строчные действия экрана дня («Пришёл», «Закрепить за собой»),
-   * которых в макете нет вовсе. Они раздулись до заголовков и слиплись в
-   * столбце действий. Макет задаёт вид кнопки ФОРМЫ — «Зберегти»,
-   * «Створити», — а строчных кнопок в нём нет, значит и правила для них
-   * нет; разумное умолчание — то, что не спорит с текстом строки (13/400).
-   * 15/700 держит кнопку узнаваемой кнопкой макета (та же заливка, тот же
-   * фиолетовый полужирный) и не ломает ряд.
-   */
-  sm: "h-9 px-[14px] text-[15px] gap-2",
-  md: "h-[45px] px-[22px] text-[22px] gap-2",
-  /*
-   * Кнопка ВНУТРИ карточки — третья высота макета и третий кегль.
-   *
-   * Замер f19, «Додати правило» в карточке структуры: заливка #f0ecff
-   * 960…1108 × 632…667, то есть 149×36; чернила 971…1098 (128 шириной),
-   * капитель «Д» 643…654 — 12 при отношении 0,708, то есть кегль 17. Вторая
-   * такая же кнопка на том же кадре (876…911) даёт те же 149×36. Поля
-   * (149−128)/2 ≈ 10.
-   *
-   * Отдельным размером, а не `className` поверх `sm`: `text-[15px]` и
-   * `text-[17px]` в одной строке классов спорят, и кто победит, решает
-   * порядок в собранном CSS. Отдельным, а не сменой `sm`: `sm` — умолчание
-   * ста двадцати одной кнопки консоли, и 17-й кегль встал бы на строчные
-   * действия чужих экранов, где кадр их не рисует.
-   */
-  card: "h-9 px-[10px] text-[17px] gap-2",
-  /*
-   * Кнопка формы вровень с полями.
-   *
-   * На кадрах заведения (f41 «Створити» 848…1218 и 477…512, f48 то же)
-   * кнопка ровно 36 высотой при шаге формы 51 = поле 36 + зазор 15. Ступень
-   * `md` (45) в этот ритм не встаёт и выбивает кнопку на 9px; ширина, как и
-   * у остальных ступеней, задаётся местом (`w-full` в колонке формы).
-   */
-  form: "h-9 px-[22px] text-[22px] gap-2",
-  /*
-   * Голый глиф: «плюс», стрелки страниц, шестерёнка.
-   *
-   * ОПАСНОЕ МЕСТО № 2 ИЗ ТРЁХ. В макете «+» нарисован штрихом 5px в квадрате
-   * 27×27, а стрелки «<» и «>» — и вовсе глифы примерно 5×7. Как нарисовано,
-   * так и остаётся: `size-[27px]` — это ровно замер. Но 27 (а тем более 7) —
-   * это провал по размеру цели нажатия: WCAG 2.5.5 просит 44, промах по
-   * стрелке страницы означает уход на чужую страницу списка.
-   *
-   * Решение: видимый квадрат остаётся 27, а нажимается 44. Область нажатия
-   * дорисована псевдоэлементом поверх центра кнопки — он прозрачен, ничего не
-   * меняет в картинке и при этом принимает нажатие и палец.
-   *
-   * Почему не `padding` до 44: padding раздвинул бы соседей, и зазоры 8/12/19,
-   * замеренные в макете, разъехались бы — то есть лечение испортило бы ровно
-   * то, ради чего всё делается. Почему не `min-h/min-w` как в зоне пальца: они
-   * тоже меняют место в потоке. Псевдоэлемент — единственный способ, который
-   * не занимает места.
-   *
-   * Цена: накладки соседних кнопок перекрываются, если зазор между ними
-   * меньше 17px (44−27). В строке над списком самый тесный зазор — 11px между
-   * стрелками, и там перекрытие есть: по 3px с каждой стороны от середины
-   * промежутка. Нажатие в этой полосе достаётся ближайшей стрелке — это лучше,
-   * чем промах мимо обеих, но знать об этом надо. Размер берётся из
-   * TOUCH_MIN_PX, продублированного цифрой: класс Tailwind обязан быть
-   * литералом (см. пояснение к touchFloor выше).
-   */
-  glyph:
-    "relative size-[27px] p-0 text-[27px] leading-none " +
-    "after:absolute after:left-1/2 after:top-1/2 after:size-[44px] after:content-[''] " +
-    "after:-translate-x-1/2 after:-translate-y-1/2",
-  /*
-   * Тот же глиф в тесном квадрате 16 — стрелки страниц.
-   *
-   * Замер один и тот же на трёх кадрах со строкой страниц: чернила «‹» и «›»
-   * стоят в 16px центр-к-центру (f07 — 1378…1381 и 1394…1397, f10 — 1380…1383
-   * и 1396…1399, f11 — 1379…1382 и 1395…1398). Квадрат 27 с зазором 8 разносил
-   * их на 35 и делал весь блок страниц на 45px шире кадра.
-   *
-   * Уменьшается ТОЛЬКО видимый квадрат: область нажатия — тот же
-   * псевдоэлемент 44×44, места он не занимает, и обещание WCAG 2.5.5
-   * остаётся. Цена та же, что у `glyph`, и здесь она больше: накладки двух
-   * соседних стрелок перекрываются на 28px, и нажатие в этой полосе достаётся
-   * ближайшей — это по-прежнему лучше, чем промах мимо обеих.
-   */
-  "glyph-sm":
-    "relative size-[16px] p-0 text-[16px] leading-none " +
-    "after:absolute after:left-1/2 after:top-1/2 after:size-[44px] after:content-[''] " +
-    "after:-translate-x-1/2 after:-translate-y-1/2",
+  sm: "h-10 gap-2 rounded-control px-4 text-body",
+  form: "h-10 gap-2 rounded-control px-4 text-body",
+  xs: "h-8 gap-1.5 rounded-[9px] px-3 text-small",
+  card: "h-8 gap-1.5 rounded-[9px] px-3 text-small",
+  md: "h-12 gap-2 rounded-[12px] px-[18px] text-[15px]",
+  lg: "h-[52px] gap-2 rounded-panel px-5 text-[17px]",
+  icon: "size-10 rounded-control p-0",
+  "icon-sm": "size-8 rounded-[9px] p-0",
+  glyph: "size-9 rounded-control p-0",
+  "glyph-sm": "size-8 rounded-[9px] p-0",
 };
+
+/** Размер значка внутри кнопки — по ступени (набор: 14 в мелкой, 15 в обычной, 18 в крупной) */
+const iconSize: Record<Size, string> = {
+  sm: "[&>svg]:size-[15px]",
+  form: "[&>svg]:size-[15px]",
+  xs: "[&>svg]:size-[14px]",
+  card: "[&>svg]:size-[14px]",
+  md: "[&>svg]:size-[18px]",
+  lg: "[&>svg]:size-[18px]",
+  icon: "[&>svg]:size-4",
+  "icon-sm": "[&>svg]:size-[15px]",
+  glyph: "[&>svg]:size-4",
+  "glyph-sm": "[&>svg]:size-[15px]",
+};
+
+/**
+ * Классы кнопки — одна таблица для <button>, ссылки-кнопки и ссылки-значка.
+ * Экспортирована для мест, где кнопкой должен выглядеть чужой элемент
+ * (label загрузки файла, summary).
+ */
+export function buttonClass(variant: Variant = "secondary", size: Size = "sm", className?: string): string {
+  return cx(
+    "relative inline-flex min-h-0 shrink-0 cursor-pointer items-center justify-center whitespace-nowrap border-0 font-bold leading-none no-underline",
+    "transition-[background-color,box-shadow,color] duration-[var(--dur-fast)] ease-[var(--ease)]",
+    "hover:no-underline active:translate-y-px",
+    "disabled:cursor-not-allowed disabled:opacity-48 disabled:active:translate-y-0",
+    "aria-disabled:cursor-not-allowed aria-disabled:opacity-48",
+    /* раскрытое меню или ящик: та же кнопка «нажата» — тонированная с кольцом (набор: [aria-expanded=true]) */
+    variant !== "risk" &&
+      "aria-expanded:bg-violet-tint-2 aria-expanded:text-violet-ink aria-expanded:shadow-[inset_0_0_0_1.5px_var(--vring)]",
+    sizes[size],
+    iconSize[size],
+    variants[variant],
+    focus,
+    className,
+  );
+}
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: Variant;
   size?: Size;
-  /** Ведущая иконка. Текст остаётся обязательным: иконка без подписи угадывается неверно. */
+  /** Значок перед подписью (или единственный — тогда нужен aria-label) */
   icon?: ReactNode;
+  /** Значок после подписи: «Почати →», «Далі →» */
+  iconEnd?: ReactNode;
 }
 
-/*
- * Умолчание — `primary`, то есть залитая кнопка макета.
- *
- * Было `ghost`. Разница считается: из 184 кнопок консоли вариант указан у 63,
- * остальные 121 берут умолчание. Оставь здесь `ghost` — и две трети кнопок
- * продукта выглядели бы не так, как в макете, притом что переписывается всё
- * ради макета. Умолчание обязано быть тем, что нарисовано.
- *
- * Цена: там, где рядом стоят пять кнопок, все пять теперь залиты и главной
- * среди них нет. В макете таких мест нет — там действие в строке одно, а
- * рядом с ним глифы, — но на непереписанных экранах консоли такие ряды есть.
- * Лечится это по месту (`variant="ghost"` второстепенным), а не умолчанием:
- * лечить умолчанием значило бы чинить пять экранов, ломая сто двадцать.
- */
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
-  { variant = "primary", size = "sm", icon, className, children, type = "button", ...rest },
+  { variant = "secondary", size = "sm", icon, iconEnd, className, children, type = "button", ...rest },
   ref,
 ) {
   return (
-    <button
-      ref={ref}
-      type={type}
-      className={cx(
-        /*
-         * `border-0`, а не отсутствие рамки: у `:where(button)` в слое
-         * наследия своя рамка, и «просто не писать border» оставляло бы её на
-         * непереписанных экранах. Радиус 5 — замер макета; ступени --r-sm (4)
-         * не хватило бы ровно на пиксель, и это видно на кнопке 371 шириной.
-         */
-        /*
-         * `leading-none`: при кегле 22 унаследованный интерлиньяж 1.55 даёт
-         * строку 34px, и в кнопке высотой 36 текст упирается в края. Кнопка
-         * однострочная по построению (`whitespace-nowrap`), терять от сжатия
-         * интерлиньяжа тут нечего.
-         */
-        "inline-flex items-center justify-center whitespace-nowrap rounded-[5px] border-0 font-bold leading-none",
-        "transition-[background-color,filter] duration-[var(--dur-fast)] ease-[var(--ease)]",
-        "disabled:pointer-events-none disabled:opacity-45",
-        sizes[size],
-        variants[variant],
-        focus,
-        className,
-      )}
-      {...rest}
-    >
-      {icon ? <span className="[&>svg]:size-5 shrink-0">{icon}</span> : null}
+    <button ref={ref} type={type} className={buttonClass(variant, size, className)} {...rest}>
+      {icon ? <span className={cx("inline-flex", iconSize[size])}>{icon}</span> : null}
       {children}
+      {iconEnd ? <span className={cx("inline-flex", iconSize[size])}>{iconEnd}</span> : null}
     </button>
   );
 });
 
 /**
- * Ссылка в виде голого глифа: «+» над перечнем, ведущий на форму новой записи.
+ * Значок-ссылка: «+» над перечнем, ведущий на форму новой записи.
  *
- * Тот же силуэт, что у Button size="glyph" — 27 видимых, 44 нажимаемых, — но
- * элемент <a>: переход на другой экран — это ссылка, и открыть его средней
- * кнопкой в новой вкладке или увидеть адрес в строке состояния человек должен
- * уметь. Кнопка с navigate() внутри всё это отнимает и диктору представляется
- * «кнопкой», после которой почему-то сменился адрес.
- *
- * Классы берутся из тех же таблиц, что у Button: два силуэта в двух местах
- * разъехались бы на первом же пересчёте области нажатия.
+ * Элемент <a>, а не кнопка с navigate(): переход — это ссылка, её открывают
+ * в новой вкладке и видят адрес. Вид — квадрат 36 без заливки.
  */
 export function GlyphLink({ className, children, ...rest }: LinkProps) {
   return (
-    <Link
-      className={cx(
-        "inline-flex items-center justify-center rounded-[5px] no-underline hover:no-underline",
-        sizes.glyph,
-        variants.ghost,
-        focus,
-        className,
-      )}
-      {...rest}
-    >
+    <Link className={buttonClass("ghost", "glyph", className)} {...rest}>
       {children}
     </Link>
   );
 }
 
-/**
- * Кнопка, которая на самом деле ссылка: «Увійти» на лендинге (кадр f00).
- *
- * Тот же силуэт, что у Button, и ровно из тех же таблиц `sizes`/`variants` —
- * как у GlyphLink выше. До сверки публичных страниц белая плашка 215 × 45 с
- * «Увійти» 22/700 была набрана на лендинге строкой классов вручную, то есть
- * те же четыре числа лежали в двух местах: здесь (sizes.md, variants.paper) и
- * там. Видимого изменения эта правка не даёт вовсе — она страховка от того,
- * что правка примитива однажды разойдётся с копией.
- *
- * Элемент <a>, а не <button> с navigate(): переход на другой экран — это
- * ссылка, её открывают средней кнопкой и видят адрес в строке состояния.
- *
- * Ширина, как и у Button, свойство места: `w-[215px]` приходит className от
- * того, кто кнопку ставит (см. пояснение к `sizes`).
- *
- * Кольцо наводки — общее `focus`, а не своё. На лендинге стояло своё, с
- * подложкой под цвет сиреневого листа; общее кладёт подложку белым, то есть
- * цветом самой плашки, и кольцо обнимает её вплотную. Двух колец в одной
- * строке классов при этом нет — кто из них победит, решал бы порядок правил
- * в собранном CSS, а не разметка.
- *
- * Умолчания — БУКВАЛЬНО те же, что у Button: `variant="primary"`,
- * `size="sm"`. Первая редакция поставила сюда «md»/«paper» — вид того
- * единственного места, ради которого примитив и заводился (кнопка лендинга).
- * Свойства у двух близнецов называются одинаково, а значили бы разное, и
- * следующий `<ButtonLink to="…">` без свойств встал бы рядом с
- * `<Button>` другой высоты, кегля и заливки — разойтись они могли бы
- * только молча. Лендинг обе величины называет явно (Landing.tsx), так что
- * видимого следствия у правки нет.
- *
- * Отвергнуто: оставить умолчания «под лендинг» и полагаться на то, что все
- * помнят про разницу; и обратное — сменить умолчания САМОГО Button под
- * макет, что увело бы сто с лишним кнопок консоли (см. пояснение к `sizes`).
- */
+/** Кнопка, которая на самом деле ссылка. Те же виды и размеры, что у Button. */
 export function ButtonLink({
   size = "sm",
-  variant = "primary",
+  variant = "secondary",
   className,
   children,
   ...rest
 }: LinkProps & { size?: Size; variant?: Variant }) {
   return (
-    <Link
-      className={cx(
-        "inline-flex items-center justify-center whitespace-nowrap rounded-[5px] border-0 font-bold leading-none",
-        "no-underline hover:no-underline",
-        "transition-[background-color,filter] duration-[var(--dur-fast)] ease-[var(--ease)]",
-        sizes[size],
-        variants[variant],
-        focus,
-        className,
-      )}
-      {...rest}
-    >
+    <Link className={buttonClass(variant, size, className)} {...rest}>
       {children}
     </Link>
   );
@@ -434,13 +236,8 @@ export function ButtonLink({
 /* ─────────── поверхность ─────────── */
 
 /**
- * Панель — плоскость, а не карточка.
- *
- * В макете панелей нет вовсе: список лежит прямо на белом. Но экранов, на
- * которых блоки надо чем-то разделить, в системе больше, чем кадров в
- * макете, поэтому панель осталась — в самой тихой форме, какая возможна:
- * белая плоскость, линия #cccccc в один пиксель, радиус 5. Ни тени, ни
- * заливки: и то и другое добавило бы на экран цвет, которого в макете нет.
+ * Лист: белая (в тёмной — фиолетово-графитовая) плоскость, обод в пиксель,
+ * радиус 14. Без заголовка — заголовок у Panel из ui/layout.
  */
 export function Panel({
   children,
@@ -451,44 +248,21 @@ export function Panel({
   className?: string;
   as?: "section" | "div" | "aside" | "article";
 }) {
-  return (
-    <As className={cx("rounded-[5px] border border-hairline bg-[var(--bg)]", className)}>
-      {children}
-    </As>
-  );
+  return <As className={cx("rounded-panel border border-border bg-panel shadow-panel", className)}>{children}</As>;
 }
 
-/**
- * Микроподпись: «елементів на сторінці», «сторінка 1 з 10», подпись над
- * группой чисел. 10px обычным начертанием, серым — ровно замер макета.
- *
- * Прежде это была прописная разреженная надпись 11px. Прописные из макета
- * ушли: там нет ни одной строки капителью, и набирать ими подпись — значит
- * добавлять акцент, которого в оригинале нет.
- *
- * Почему это НЕ «заголовок раздела 24/700», хотя имя компонента похоже.
- * Заголовком раздела в макете набрано одно место на кадре — имя экрана в
- * строке над списком, и его печатает Page (<h1>). А SectionLabel стоит в
- * шестнадцати местах консоли как надпись над мелким блоком — и трижды прямо
- * внутри строки текста («Причина обращения: …»). Набрать их 24-м кеглем —
- * это не исполнить макет, а сломать в нём же заданную иерархию: на экране
- * стало бы по восемь «заголовков раздела». Если заказчик имел в виду
- * обратное, правка — одна строка здесь, и об этом сказано в отчёте.
- */
+/** Подпись над группой или числом: 12/700 приглушённым (.lbl набора) */
 export function SectionLabel({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={cx("text-[10px] font-normal text-muted", className)}>{children}</div>;
+  return <div className={cx("text-caption font-bold text-muted", className)}>{children}</div>;
 }
 
 /* ─────────── число ─────────── */
 
 /**
- * Число, которое читают с расстояния.
+ * Число, которое читают с расстояния: 32/800 Manrope табличными цифрами.
  *
- * Моноширинные цифры не ради вида: в столбце баллов разной ширины глаз
- * теряет разряд, и 128 читается как 12.8. `tabular-nums` держит колонку.
- *
- * `null` печатается прочерком, а не нулём. Ноль — это результат, прочерк —
- * его отсутствие, и путать их в клинических данных нельзя.
+ * `null` печатается прочерком, а не нулём: ноль — результат, прочерк — его
+ * отсутствие, и путать их в клинических данных нельзя.
  */
 export function Stat({
   value,
@@ -503,97 +277,113 @@ export function Stat({
   tone?: "plain" | "attention" | "danger";
   className?: string;
 }) {
-  const toneClass =
-    tone === "attention" ? "text-accent" : tone === "danger" ? "text-danger" : "text-text";
+  const toneClass = tone === "attention" ? "text-warn" : tone === "danger" ? "text-risk-ink" : "text-text";
   return (
-    <div className={cx("flex flex-col gap-0.5", className)}>
-      <span className={cx("font-mono text-stat leading-none tabular-nums", toneClass)}>
+    <div className={cx("flex flex-col gap-1", className)}>
+      <span className={cx("text-stat font-extrabold tabular-nums", toneClass)}>
         {value === null ? "—" : value}
-        {unit && value !== null ? <span className="ml-1 text-small text-muted">{unit}</span> : null}
+        {unit && value !== null ? <span className="ml-1 text-[14px] font-bold tracking-normal text-muted">{unit}</span> : null}
       </span>
       {label ? <span className="text-caption text-muted">{label}</span> : null}
     </div>
   );
 }
 
-/** Число внутри строки текста — та же моноширинность, обычный кегль. */
+/** Число в строке текста: табличные цифры той же гарнитуры, без моноширинного шрифта */
 export function Num({ children, className }: { children: ReactNode; className?: string }) {
-  return <span className={cx("font-mono tabular-nums", className)}>{children}</span>;
+  return <span className={cx("whitespace-nowrap tabular-nums", className)}>{children}</span>;
 }
 
 /* ─────────── метки ─────────── */
 
-export type Severity = "none" | "mild" | "moderate" | "severe";
+/**
+ * Ступень тяжести. Четыре прежних слова плюс `modsevere` (помірно тяжка) —
+ * в наборе ступеней пять (sev-0…4).
+ */
+export type Severity = "none" | "mild" | "moderate" | "modsevere" | "severe";
 
-const severityRing: Record<Severity, string> = {
-  none: "border-[var(--sev-none)] text-[var(--sev-none-text)]",
-  mild: "border-[var(--sev-mild)] text-[var(--sev-mild-text)]",
-  moderate: "border-[var(--sev-moderate)] text-[var(--sev-moderate-text)]",
-  severe: "border-[var(--sev-severe)] text-[var(--sev-severe-text)]",
-};
-
-const severityDot: Record<Severity, string> = {
-  none: "bg-[var(--sev-none)] rounded-full",
-  mild: "bg-[var(--sev-mild)] rounded-full",
-  /* умеренная — квадрат, тяжёлая — ромб: форма несёт ту же разницу, что цвет */
-  moderate: "bg-[var(--sev-moderate)]",
-  severe: "bg-[var(--sev-severe)] rotate-45",
+const severityTone: Record<Severity, string> = {
+  none: "bg-sev-0-bg text-sev-0",
+  mild: "bg-sev-1-bg text-sev-1",
+  moderate: "bg-sev-2-bg text-sev-2",
+  modsevere: "bg-sev-3-bg text-sev-3",
+  severe: "bg-sev-4-bg text-sev-4",
 };
 
 /**
- * Метка выраженности.
+ * Пилюля тяжести — всегда со словом.
  *
- * Цвет никогда не работает один: рядом всегда стоит подпись, а форма точки
- * меняется вместе со ступенью. Тот, кто не различает красный и зелёный,
- * читает ту же информацию по кругу, квадрату и ромбу.
+ * Цвет подсказывает, слово говорит: человек с нарушенным цветовым зрением
+ * читает то же самое по слову. Красный оттенок — только у «тяжкої».
  */
 export function SeverityTag({
   level,
   children,
+  small,
   className,
 }: {
   level: Severity;
   children: ReactNode;
+  /** 22 px в плотной строке и в поповере */
+  small?: boolean;
   className?: string;
 }) {
   return (
     <span
       className={cx(
-        "inline-flex items-center gap-1.5 rounded-sm border px-1.5 py-0.5 text-caption",
-        severityRing[level],
+        "inline-flex shrink-0 items-center whitespace-nowrap rounded-pill font-bold leading-none",
+        small ? "h-[22px] px-[9px] text-[11.5px]" : "h-[26px] px-[11px] text-caption",
+        severityTone[level],
         className,
       )}
     >
-      <span aria-hidden className={cx("size-2 shrink-0", severityDot[level])} />
       {children}
     </span>
   );
 }
 
-/** Нейтральная метка: количество, состояние, признак. Не для выраженности. */
+export type TagTone = "plain" | "attention" | "danger" | "handover" | "primary" | "good" | "info" | "done";
+
+const tagTone: Record<TagTone, string> = {
+  plain: "bg-sunk text-text-2",
+  attention: "bg-warn-tint-2 text-warn",
+  danger: "bg-risk-tint-2 text-risk-ink",
+  handover: "bg-transparent text-risk-ink shadow-[inset_0_0_0_1px_var(--riskline)]",
+  primary: "bg-violet-tint text-violet-ink",
+  good: "bg-good-tint text-good",
+  info: "bg-info-tint text-info",
+  done: "bg-sunk text-muted",
+};
+
+/**
+ * Пилюля состояния (.st набора): причина, состояние, признак. Не для тяжести.
+ *
+ * Тоны: `plain` нейтральная, `attention` янтарь (просрочено, неявка),
+ * `danger` — только риск для человека, `handover` — случай передан
+ * черговому (контур вместо заливки), `primary` — «ваше, сегодня»,
+ * `good` — сделано, `info` — сообщение, `done` — погашено.
+ */
 export function Tag({
   children,
   tone = "plain",
+  icon,
   className,
 }: {
   children: ReactNode;
-  tone?: "plain" | "attention" | "danger" | "primary";
+  tone?: TagTone;
+  icon?: ReactNode;
   className?: string;
 }) {
-  const tones = {
-    plain: "border-border text-muted",
-    attention: "border-[color-mix(in_srgb,var(--accent)_50%,transparent)] bg-accent-soft text-accent",
-    danger: "border-[color-mix(in_srgb,var(--danger)_50%,transparent)] bg-danger-soft text-danger",
-    primary: "border-[color-mix(in_srgb,var(--primary)_50%,transparent)] bg-primary-soft text-primary",
-  } as const;
   return (
     <span
       className={cx(
-        "inline-flex items-center gap-1 rounded-sm border px-1.5 py-0.5 text-caption whitespace-nowrap",
-        tones[tone],
+        "inline-flex h-6 shrink-0 items-center gap-1 whitespace-nowrap rounded-pill text-[11.5px] font-bold leading-none",
+        icon ? "pl-[7px] pr-[9px] [&>svg]:size-3" : "px-[9px]",
+        tagTone[tone],
         className,
       )}
     >
+      {icon}
       {children}
     </span>
   );
@@ -602,143 +392,52 @@ export function Tag({
 /* ─────────── поля ввода ─────────── */
 
 /**
- * Начертание полей: в макете их два, и оба нужны.
- *
- * `outline` — поле формы: белая заливка, рамка #666666 в пиксель, отступ
- * слева 12. `fill` — поле фильтра и поле, показывающее данные: заливка
- * #f0ecff, рамки нет вовсе, отступ слева 10. Разница не декоративная:
- * контурное поле просит ввода, залитое показывает состояние отбора. Свести их
- * к одному — значит потерять это различие на каждом экране списка.
+ * Начертание поля. `outline` — лист с рамкой (форма). `fill` — залитое
+ * (поиск и фильтр над списком). Рамка 3:1 у обоих: при плохом свете поле без
+ * рамки читается пустым местом.
  */
 export type FieldLook = "outline" | "fill";
 
 /**
- * Как набрана подпись внутри поля.
- *
- * `label` — 17/700 фиолетовым: так подпись поля набрана на кадрах форм
- * («Ім\'я», «Прізвище», «Спеціалізація» на f41, «Назва тесту» на f21).
- * `plain` — 17/400 серым: так она набрана в конструкторе аналитической
- * модели (f19: «Назва аналітичної моделі», «Назва тесту», «Результат
- * тесту» — все #666666 обычного начертания).
- *
- * Свойством, а не классом снаружи: `placeholder:font-bold` и
- * `placeholder:font-normal` в одной строке классов спорят, и кто победит,
- * решает порядок в собранном CSS, а не в разметке (см. пояснение к высоте
- * полей ниже). Умолчание — `label`, то есть прежнее поведение всех форм.
+ * Прежняя настройка «подпись внутри поля» (17/700 фиолетовым или 17/400
+ * серым). Подпись в наборе стоит над полем, а подсказка внутри — всегда
+ * приглушённая; значение принимается и больше ничего не меняет.
  */
 export type PlaceholderLook = "label" | "plain";
 
-const placeholders: Record<PlaceholderLook, string> = {
-  label: "placeholder:text-[17px] placeholder:font-bold placeholder:text-primary",
-  /* --muted, а не #666666 кадра: тот же тон ступенью темнее ради порога контраста, см. tokens.css */
-  plain: "placeholder:text-[17px] placeholder:font-normal placeholder:text-muted",
-};
+/** Общая форма полей: рамка 3:1, радиус 10, 13.5/500, фокус — рамка цвета кольца и мягкий ореол */
+const fieldFrame = cx(
+  "w-full min-h-0 min-w-0 border border-field-border font-medium text-text",
+  "placeholder:text-muted placeholder:opacity-100",
+  "transition-[border-color,box-shadow,background-color] duration-[var(--dur-fast)] ease-[var(--ease)]",
+  "hover:border-muted",
+  "focus:border-violet-ring focus:shadow-[0_0_0_3px_var(--vtint)] focus:outline-none",
+  "aria-[invalid=true]:border-risk-ink aria-[invalid=true]:shadow-[0_0_0_3px_var(--risktint)]",
+  "disabled:cursor-not-allowed disabled:border-border disabled:bg-sunk disabled:text-muted",
+);
 
-/*
- * Общее у обоих начертаний: радиус 5 и кегль 17 — замеры макета. Высота 36 —
- * тоже замер, но её ставит каждый вид поля сам, см. пояснение ниже.
- *
- * Кегль 17/700 стоит на плейсхолдере, а не на самом поле: полужирным
- * фиолетовым в макете набрана ПОДПИСЬ поля (она же плейсхолдер), а не то, что
- * человек в него наберёт.
- *
- * Фиолетовый, а не серый, — по кадрам f41/f48: там подпись в контурном поле
- * набрана (102,51,153) полужирным. Вырезанный фрагмент f02 рисует её серым
- * (102,102,102), и это единственный кадр против двух; f02 помечен в
- * index.json как «вирізаний фрагмент верхньої частини», то есть заготовка
- * без шапки и кнопки, а f41/f48 — целые экраны. Взяты они. Набранное — данные, и красить их в цвет подписи
- * значило бы, что заполненное поле неотличимо от пустого. Кегль у введённого
- * текста тот же 17, чтобы строка не прыгала при первом нажатии клавиши.
- */
-const fieldShape = (ph: PlaceholderLook) =>
-  cx(
-    "w-full rounded-[5px] text-[17px] text-text",
-    placeholders[ph],
-    "transition-colors duration-[var(--dur-fast)]",
-    "disabled:opacity-45 disabled:pointer-events-none",
-    focus,
-  );
-
-/*
- * Рамка контурного поля — --field-border (#666666), а не --border (#cccccc).
- *
- * Токен для этого и заведён («поле ввода: белое нутро и рамка темнее линий»,
- * tokens.css), но сам класс его не брал, и поле рисовалось тоном линии.
- * Замеры кадров: верхняя рамка поля поиска на f10 — ровно (102,102,102) по
- * всей длине, левая и нижняя — тоже; поле «Назва аналітичної моделі» на f19 —
- * (102,102,102) по всем сторонам; поле поиска каталога тестов на f07 — 1138
- * пикселей подряд (102,102,102). То есть #666666 — общий тон поля, а не
- * особенность одного экрана, и правка общая.
- *
- * Что она НЕ трогает: рамку селекта (там свой класс `border-hairline`, и
- * кадр даёт ему именно #cccccc — замер того же f10: селект «елементів на
- * сторінці» 1240…1291 × 144…170, рамка (204,204,204)) и линии-разделители.
- */
 const looks: Record<FieldLook, string> = {
-  /*
-   * Рамка контурного поля — #666666 (--field-border), а не #cccccc общей
-   * линии: замер поля ввода и поля поиска на f02, f34, f41, f42, f48, f50
-   * даёт (102,102,102) на всём протяжении рамки. Токен под это заведён
-   * давно (--field-border) и до сих пор не звался ни разу, а `border-border`
-   * рисовал каждое поле раздела вдвое бледнее кадра.
-   *
-   * Отступ 10, а не 12: чернила подписи начинаются в 8-9 от рамки (f41 —
-   * рамка 849, «Роль» с 858; левый столбец — 401 и 409), то есть ровно то
-   * же число, что у залитого вида, и та же вертикаль у обоих начертаний.
-   */
-  outline: "border border-field-border bg-[var(--bg)] px-[10px]",
-  /* `border-0`, а не отсутствие рамки: у `:where(input)` в наследии своя */
-  fill: "border-0 bg-primary-soft px-[10px]",
+  outline: "bg-panel",
+  fill: "bg-sunk focus:bg-panel",
 };
 
-/*
- * Высота в общий кусок НЕ входит, и это не забывчивость.
- *
- * Tailwind не разрешает споры между утилитами: `h-9` и `h-auto` в одной
- * строке классов дают не «побеждает последняя», а «побеждает та, что стоит
- * ниже в собранном файле стилей», — а порядок там свой и по строке классов не
- * читается. Текстовой области высота нужна по содержимому, полю — ровно 36.
- * Поэтому высоту ставит каждый вид поля сам, и спорить не с чем. Та же
- * причина держит цвет рамки селекта не здесь, а в самом Select.
+/**
+ * Что поле получает от Field: подпись (для плейсхолдера строчного поля),
+ * отказ и связку с пояснением. null — поле не внутри Field.
  */
-const fieldClass = (look: FieldLook, ph: PlaceholderLook, extra?: string) =>
-  cx(fieldShape(ph), looks[look], extra);
+interface FieldContext {
+  /** Подставить плейсхолдером, если своего нет; "" — не подставлять */
+  ph: string;
+  invalid: boolean;
+  describedBy?: string;
+}
+const InsideField = createContext<FieldContext | null>(null);
 
 /**
- * Лежит ли поле внутри подписи Field.
- *
- * Нужен не для вида, а для проверки ниже: сам по себе `<input>` не знает,
- * назвал его кто-нибудь или нет, и узнать это в разметке неоткуда.
- */
-/*
- * Значение — не «да/нет», а сама подпись (или null снаружи Field).
- *
- * Макет держит название поля ВНУТРИ него, плейсхолдером. Пока контекст
- * отвечал только «поле названо», каждый экран должен был бы ещё и вписать
- * placeholder руками — и первый же прогон показал форму входа с двумя
- * пустыми прямоугольниками: подпись ушла в sr-only, а плейсхолдера у полей
- * не было. Шестьдесят два поля по экранам — это шестьдесят две возможности
- * забыть. Здесь подпись доезжает до поля сама: Field её знает, полю она
- * нужна — контекст и есть тот провод.
- *
- * Подпись бывает не строкой (ReactNode) — тогда плейсхолдера не будет, и
- * это честнее, чем «[object Object]».
- */
-const InsideField = createContext<string | null>(null);
-
-/**
- * Поле без имени — не придирка, а нарушение WCAG 4.1.2: диктор произносит
- * «поле ввода», и человек не знает, что туда писать.
- *
- * Проверка работает только в зоне пальца (кабинет пациента) и только в
- * разработке. Почему не везде: в консоли шесть десятков полей чужих
- * экранов, и падение на них означало бы, что эту защиту снимут в тот же
- * день. Кабинет — единственное место продукта, куда приходит не сотрудник,
- * и цена безымянного поля здесь другая.
- *
- * Почему исключение, а не предупреждение в консоль: предупреждений в
- * консоли браузера десятки, их не читают. Поломка, которую видно сразу,
- * стоит минуту; молчащее поле стоит человеку визита.
+ * Поле без имени — нарушение WCAG 4.1.2: диктор произносит «поле ввода», и
+ * человек не знает, что туда писать. Проверка — только в кабинете пациента и
+ * только при разработке: туда приходит не сотрудник, и цена безымянного поля
+ * там другая.
  */
 function useFieldNameGuard(
   tag: string,
@@ -758,138 +457,139 @@ function useFieldNameGuard(
 }
 
 /**
- * Имя поля из плейсхолдера — для консоли, где подписи над полем нет нигде.
+ * Имя и состояние поля из окружения.
  *
- * ОПАСНОЕ МЕСТО № 1 ИЗ ТРЁХ. Макет не содержит ни одной подписи над полем:
- * название того, что вводят, напечатано ВНУТРИ поля фиолетовым полужирным.
- * Глазу этого достаточно, диктору — нет: плейсхолдер не является именем
- * элемента, и человек услышит «поле ввода, пусто». Хуже того, плейсхолдер
- * исчезает при наборе — вернувшись к наполовину заполненной форме, человек
- * не узнает, что в третьем поле.
- *
- * Решение: картинка остаётся ровно макетной, а имя элементу даётся
- * программно — тем же текстом, что видно глазу. На экране не меняется ничего,
- * диктор получает имя.
- *
- * Почему не визуально скрытая подпись (`sr-only`) прямо здесь: у Input нет
- * своей обёртки — он один элемент, и добавить рядом с ним <span> означало бы
- * завести обёртку вокруг каждого поля консоли. Там, где обёртка есть, —
- * в Field — используется именно скрытая подпись, и это лучше: она живёт даже
- * когда плейсхолдера нет.
- *
- * Почему не всегда, а только когда имени нет: `aria-label` СИЛЬНЕЕ обёртки
- * <label>. Проставь его безусловно — и поле внутри Field стало бы называться
- * плейсхолдером вместо подписи, а если тексты разные, это ещё и нарушение
- * 2.5.3 (видимое имя должно входить в звучащее). Поэтому: если имя уже есть
- * любым законным способом — не трогаем.
+ * Внутри Field: плейсхолдер из подписи (только у строчного поля, где подпись
+ * скрыта), aria-invalid и aria-describedby к пояснению или отказу. Снаружи —
+ * имя из плейсхолдера, если другого имени нет и нет id (поле с id, скорее
+ * всего, подписано <label for>, и aria-label его бы переименовал).
  */
-function nameFromPlaceholder(
-  inside: string | null,
-  props: { "aria-label"?: string; "aria-labelledby"?: string; title?: string; placeholder?: string; id?: string },
-): { "aria-label"?: string; placeholder?: string } {
-  /*
-   * Внутри Field имя уже есть (скрытая подпись), а вот плейсхолдер — то, что
-   * человек ВИДИТ вместо подписи, — поле само не знает. Берётся из подписи,
-   * если свой не задан. Пустая строка означает «подпись не текст», и тогда
-   * плейсхолдера нет: показывать нечего.
-   */
+function fieldAttrs(
+  inside: FieldContext | null,
+  props: {
+    "aria-label"?: string;
+    "aria-labelledby"?: string;
+    "aria-invalid"?: InputHTMLAttributes<HTMLInputElement>["aria-invalid"];
+    "aria-describedby"?: string;
+    title?: string;
+    placeholder?: string;
+    id?: string;
+  },
+): Record<string, string | boolean | undefined> {
   if (inside !== null) {
-    return props.placeholder || !inside ? {} : { placeholder: inside };
+    return {
+      ...(props.placeholder || !inside.ph ? {} : { placeholder: inside.ph }),
+      ...(inside.invalid && props["aria-invalid"] === undefined ? { "aria-invalid": true } : {}),
+      ...(inside.describedBy && !props["aria-describedby"] ? { "aria-describedby": inside.describedBy } : {}),
+    };
   }
   if (props["aria-label"] || props["aria-labelledby"] || props.title) return {};
-  /*
-   * Поле с id, скорее всего, подписано снаружи через <label for>: это
-   * обычный способ связать подпись с полем, и из свойств поля его не видно.
-   * aria-label сильнее такой связи — проставленный из плейсхолдера, он
-   * ПЕРЕИМЕНОВАЛ бы поле в подсказку: диктор слышал бы «1, 2, 3…» вместо
-   * «Вставить строку ответов». Ровно так упал сценарий ввода бланка. Поле с
-   * id без подписи остаётся безымянным — это хуже, чем с именем, но лучше,
-   * чем с неверным: безымянное поймает сторож кабинета, переименованное — нет.
-   */
   if (props.id) return {};
   return props.placeholder ? { "aria-label": props.placeholder } : {};
 }
 
 export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
-  /** Контурное (форма) или залитое (фильтр, показ данных). См. FieldLook. */
+  /** Лист с рамкой (форма) или залитое (поиск, фильтр). См. FieldLook. */
   look?: FieldLook;
-  /** Как набрана подпись внутри поля. См. PlaceholderLook. */
+  /** Прежняя настройка подписи внутри поля; см. PlaceholderLook */
   ph?: PlaceholderLook;
+  /** Значок слева внутри поля (поиск, дата, человек) */
+  icon?: ReactNode;
+  /** Хвост справа внутри поля: единица («хв»), подсказка клавиши «/» */
+  suffix?: ReactNode;
 }
 
+/**
+ * Поле ввода 40 px.
+ *
+ * Со значком или хвостом поле рисуется коробкой (label), а сам <input> стоит
+ * внутри без рамки; className тогда ложится на коробку — им задают ширину.
+ */
 export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
-  { className, look = "outline", ph = "label", ...rest },
+  { className, style, look = "outline", ph: _ph, icon, suffix, ...rest },
   ref,
 ) {
-  /*
-   * Порядок важен: сторож смотрит на то, что написал автор экрана, и только
-   * потом поле получает имя из плейсхолдера. Наоборот — и сторож кабинета
-   * замолчал бы навсегда: он увидел бы проставленный нами же `aria-label` и
-   * счёл поле названным. В кабинете пациента плейсхолдер именем не считается
-   * намеренно, см. useFieldNameGuard.
-   */
   useFieldNameGuard("input", rest);
-  const named = useContext(InsideField);
+  const inside = useContext(InsideField);
+  const attrs = fieldAttrs(inside, rest);
+  if (!icon && !suffix) {
+    return (
+      <input
+        ref={ref}
+        className={cx(fieldFrame, looks[look], "h-10 rounded-control px-3 text-body", className)}
+        style={style}
+        {...attrs}
+        {...rest}
+      />
+    );
+  }
+  const invalid = rest["aria-invalid"] ?? attrs["aria-invalid"];
   return (
-    <input
-      ref={ref}
-      className={fieldClass(look, ph, cx("h-9", className))}
-      {...nameFromPlaceholder(named, rest)}
-      {...rest}
-    />
+    <span
+      data-invalid={invalid ? "true" : undefined}
+      data-disabled={rest.disabled ? "true" : undefined}
+      className={cx(
+        "flex h-10 w-full min-w-0 cursor-text items-center gap-2 rounded-control border border-field-border px-3 text-body text-muted",
+        "transition-[border-color,box-shadow,background-color] duration-[var(--dur-fast)] ease-[var(--ease)]",
+        "hover:border-muted focus-within:border-violet-ring focus-within:shadow-[0_0_0_3px_var(--vtint)]",
+        "data-[invalid=true]:border-risk-ink data-[invalid=true]:shadow-[0_0_0_3px_var(--risktint)]",
+        "data-[disabled=true]:cursor-not-allowed data-[disabled=true]:border-border data-[disabled=true]:bg-sunk",
+        looks[look],
+        look === "fill" && "focus-within:bg-panel",
+        className,
+      )}
+      style={style}
+    >
+      {icon ? <span className="inline-flex text-muted [&>svg]:size-[15px]">{icon}</span> : null}
+      <input
+        ref={ref}
+        className={cx(
+          "h-full min-h-0 w-full min-w-0 flex-1 border-0 bg-transparent p-0 font-medium text-text outline-none",
+          "placeholder:text-muted placeholder:opacity-100 focus-visible:outline-none disabled:cursor-not-allowed",
+        )}
+        {...attrs}
+        {...rest}
+      />
+      {suffix ? <span className="ml-auto shrink-0 whitespace-nowrap text-small font-semibold text-muted">{suffix}</span> : null}
+    </span>
   );
 });
 
 export interface TextareaProps extends TextareaHTMLAttributes<HTMLTextAreaElement> {
   look?: FieldLook;
-  /** Как набрана подпись внутри поля. См. PlaceholderLook. */
+  /** Прежняя настройка подписи внутри поля; см. PlaceholderLook */
   ph?: PlaceholderLook;
 }
 
+/** Текстовая область: от 80 px, растёт по rows, радиус 12, 13/19 */
 export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(function Textarea(
-  { className, look = "outline", ph = "label", ...rest },
+  { className, look = "outline", ph: _ph, ...rest },
   ref,
 ) {
   useFieldNameGuard("textarea", rest);
-  const named = useContext(InsideField);
+  const inside = useContext(InsideField);
   return (
     <textarea
       ref={ref}
-      /* высота не проставлена: текстовая область растёт по rows, 36px ей ни к чему */
-      className={fieldClass(look, ph, cx("py-2 leading-[var(--lh-normal)]", className))}
-      {...nameFromPlaceholder(named, rest)}
+      className={cx(
+        fieldFrame,
+        looks[look],
+        "block min-h-20 resize-y rounded-[12px] px-3 py-2.5 text-[13px] leading-[19px]",
+        className,
+      )}
+      {...fieldAttrs(inside, rest)}
       {...rest}
     />
   );
 });
 
 /**
- * Показ значения в силуэте поля — без самого поля.
+ * Показ значения в силуэте поля — без самого поля: ответ пациента в
+ * протоколе, вычисленное значение. Не останавливает Tab и не объявляется
+ * «полем ввода»: смотреть здесь, а не править.
  *
- * На кадрах просмотра пройденного теста (f33) вариант ответа и его балл
- * нарисованы полями: выбранный — залитым, остальные — контурными. Это не
- * ввод: человек смотрит, что ответил пациент, и править здесь нечего.
- *
- * Почему не <Input readOnly>. Поле остаётся полем: диктор объявляет «поле
- * ввода, только чтение», Tab останавливается на каждом — на методике в две
- * сотни пунктов с тремя вариантами это шестьсот остановок по дороге к кнопке
- * заключения. Обычный элемент с теми же классами рисуется так же и не
- * притворяется тем, чем не является. Силуэт при этом общий с Input — те же
- * `looks`, тот же радиус и кегль, — чтобы «поле» и «показ в поле» не разошлись
- * на пиксель при следующей правке замеров.
- *
- * Цвет текста не задаётся: показ данных красится тем, что вокруг (на кадре —
- * фиолетовым, как подпись), и утилита цвета здесь только спорила бы с
- * классом снаружи, а спор утилит Tailwind решает не порядком в строке.
- * Высота — минимум 36, а не ровно 36: текст варианта бывает в две строки, и
- * резать его ради замера нельзя.
- *
- * Кегль — свойством, а не классом снаружи, по той же причине, что и цвет: два
- * `text-[…]` в одной строке классов спорят, и кто победит, решает порядок в
- * собранном CSS. Умолчание 17 — прежнее поведение и замер большинства кадров;
- * 20 просит заполненное повідомлення (f26: «Назва повідомлення» 460…655 при
- * кап-высоте 156…169 = 14, то есть 20 при отношении кап/кегль 0,70). Высота
- * 36 держится в обоих случаях: 20 + 2·6 при 17-м и 24 + 2·6 при 20-м.
+ * `fill` — залитая плашка (.fld набора), `outline` — лист с тонкой рамкой.
+ * `size` 20 — крупнее, для заголовочного значения.
  */
 export function Readout({
   look = "outline",
@@ -908,10 +608,9 @@ export function Readout({
   return (
     <As
       className={cx(
-        "flex min-h-9 items-center rounded-[5px] py-[6px]",
-        /* литералами: Tailwind собирает классы, читая исходник */
-        size === 20 ? "text-[20px] leading-[24px]" : "text-[17px] leading-[20px]",
-        looks[look],
+        "flex min-h-10 items-center rounded-control px-3 py-2",
+        size === 20 ? "text-h3 font-bold" : "text-body",
+        look === "fill" ? "bg-sunk text-text" : "bg-panel text-text shadow-[inset_0_0_0_1px_var(--ctl)]",
         className,
       )}
       {...rest}
@@ -922,466 +621,418 @@ export function Readout({
 }
 
 /*
- * Каретка селекта: треугольник 9×5 цветом --field-border, в 10px от правого края.
- *
- * Цвет — серый, а не фиолетовый: на кадрах он нарисован #666666, тем же
- * тоном, что рамка поля. Замерено в двух разделах — f10 («Аналітика»,
- * селект «елементів на сторінці», пиксели 1275…1281 × 157) и f07 («Тести»,
- * тот же селект над каталогом): фиолетовых пикселей в рамке селекта нет ни
- * на одном из них.
- *
- * Нарисован двумя линейными градиентами, а не картинкой в `url(...)`, и это
- * вынужденно: внутрь `url("data:image/svg+xml,…")` переменную CSS подставить
- * нельзя — это отдельный документ, он не видит ни var(--field-border), ни
- * currentColor. Пришлось бы вписать #666666 цифрами прямо сюда — то есть
- * завести второе место, где живёт цвет рамки, и однажды поменять палитру
- * наполовину.
- *
- * Как это работает: каждый градиент заливает свою половину треугольника
- * (4,5×5), а граница заливки — диагональ прямоугольника. Угловые ключевые
- * слова (`to top right`) по спецификации ставят линию градиента так, что
- * перпендикуляр через центр проходит ровно через два соседних угла, — то есть
- * граница ложится точно по диагонали при любых пропорциях.
- *
- * Стилем, а не классом Tailwind: в произвольном значении это была бы строка
- * из полутора сотен знаков с подчёркиваниями вместо пробелов, которую нельзя
- * ни прочитать, ни поправить.
+ * Шеврон селекта — двумя градиентами, а не картинкой: в url(data:…) токен
+ * не подставить, а цвет обязан идти от темы. Каждый градиент заливает
+ * половину галочки «v» шириной 5 и высотой 5.
  */
-const caret = {
+const chevron = {
   backgroundImage:
-    "linear-gradient(to top right, transparent 50%, var(--field-border) 50%)," +
-    "linear-gradient(to top left, transparent 50%, var(--field-border) 50%)",
-  backgroundSize: "4.5px 5px, 4.5px 5px",
-  backgroundPosition: "right 14.5px center, right 10px center",
+    "linear-gradient(45deg, transparent 50%, var(--muted) 50%, var(--muted) calc(50% + 1.5px), transparent calc(50% + 1.5px))," +
+    "linear-gradient(135deg, transparent 50%, var(--muted) 50%, var(--muted) calc(50% + 1.5px), transparent calc(50% + 1.5px))",
+  backgroundSize: "6px 6px, 6px 6px",
+  backgroundPosition: "right 18px center, right 12px center",
   backgroundRepeat: "no-repeat, no-repeat",
 } as const;
 
-/**
- * Вид селекта: «list» — штатный (рамка #cccccc и каретка 9×5), «bare» — тот
- * же выбор в силуэте контурного поля.
- *
- * `bare` нужен там, где кадр рисует выбор обычным полем: «Роль» на форме
- * заведения (f41/f48) и «Стать» при правке карточки (f02). Замер прямо это
- * и говорит: в правой трети поля «Стать» чернил ноль, в поле «Роль» — четыре
- * пикселя правой рамки, то есть ни каретки, ни второго цвета рамки там нет.
- * Выбор при этом остаётся выбором: список раскрывается штатно, и это и есть
- * поведение экрана — спрятана только каретка.
- *
- * Цена названа вслух: без каретки поле выглядит текстовым, и увидеть, что
- * это выбор, можно только нажав. Диктору это не стоит ничего — дерево
- * доступности получает <select> со своим списком, — а глазу стоит одной
- * попытки. Платим её потому, что каретка нарисована в макете у списков и не
- * нарисована здесь: рисовать её вопреки кадру значило бы решать за
- * заказчика. Штатный вид `list` остаётся у всех остальных выборов консоли.
- */
+/** `list` — с шевроном (умолчание), `bare` — без него, в силуэте простого поля */
 export type SelectLook = "list" | "bare";
 
+/** Выбор: силуэт поля 40 px с шевроном справа; список — штатный браузерный */
 export const Select = forwardRef<
   HTMLSelectElement,
   SelectHTMLAttributes<HTMLSelectElement> & { look?: SelectLook; ph?: PlaceholderLook }
->(
-  function Select({ className, children, style, look = "list", ph = "label", ...rest }, ref) {
-    useFieldNameGuard("select", rest);
-    const named = useContext(InsideField);
-    const bare = look === "bare";
-    return (
-      <select
-        ref={ref}
-        /*
-         * Рамка селекта — #cccccc, а не #666666 контурного поля: в макете это
-         * разные элементы и разные линии. Отступы 10 слева и 26 справа:
-         * 10 + 9 (каретка) + ещё 10 до текста.
-         *
-         * Размер 52×27 из строки над списком задаётся по месту через
-         * className — как и ширина кнопки, это свойство места, а не элемента.
-         * Каретка привязана к правому краю и к середине по высоте, поэтому
-         * при высоте 27 остаётся на месте и не требует второго набора чисел.
-         */
-        className={cx(
-          fieldShape(ph),
-          "h-9 appearance-none bg-[var(--bg)]",
-          bare ? "border border-field-border px-[10px]" : "border border-hairline pl-[10px] pr-[26px]",
-          className,
-        )}
-        /* каретка — рисунок штатного вида; у `bare` фон не подставляется вовсе */
-        style={bare ? style : { ...caret, ...style }}
-        {...nameFromPlaceholder(named, rest)}
-        {...rest}
-      >
-        {children}
-      </select>
-    );
-  },
-);
+>(function Select({ className, children, style, look = "list", ph: _ph, ...rest }, ref) {
+  useFieldNameGuard("select", rest);
+  const inside = useContext(InsideField);
+  const bare = look === "bare";
+  return (
+    <select
+      ref={ref}
+      className={cx(
+        fieldFrame,
+        "h-10 cursor-pointer appearance-none rounded-control bg-panel pl-3 text-body",
+        bare ? "pr-3" : "pr-9",
+        className,
+      )}
+      style={bare ? style : { ...chevron, ...style }}
+      {...fieldAttrs(inside, rest)}
+      {...rest}
+    >
+      {children}
+    </select>
+  );
+});
+
+/** Отказ формы (.err набора): текст риска со значком, никогда не красная заливка */
+export function ErrorText({
+  children,
+  id,
+  tone = "risk",
+  className,
+}: {
+  children: ReactNode;
+  id?: string;
+  /** `warn` — предупреждение, которое не мешает сохранить */
+  tone?: "risk" | "warn";
+  className?: string;
+}) {
+  return (
+    <span
+      id={id}
+      className={cx(
+        "flex items-start gap-1.5 text-small font-bold",
+        tone === "warn" ? "text-warn" : "text-risk-ink",
+        className,
+      )}
+    >
+      {tone === "warn" ? <Ic.alert size={14} className="mt-0.5" /> : <Ic.circleAlert size={14} className="mt-0.5" />}
+      <span>{children}</span>
+    </span>
+  );
+}
 
 /**
- * Поле с подписью.
+ * Поле с подписью (.f набора): подпись 12/700 над полем, пояснение под ним,
+ * отказ — текстом со значком.
  *
- * Подписи НАД полем в макете нет нигде — ни на одном из 54 кадров. Название
- * того, что вводят, напечатано внутри поля: фиолетовым полужирным 17-м
- * кеглем, то есть плейсхолдером. Так теперь и здесь: подпись, которую задаёт
- * `label`, с экрана ушла.
+ * Подпись оборачивает поле: связь получается по построению, без id. Отказ и
+ * пояснение связаны с полем через aria-describedby, отказ ставит полю
+ * aria-invalid — красной рамки без слова не бывает.
  *
- * Ушла с экрана, но не из разметки. `label` печатается визуально скрытой
- * надписью внутри <label>, охватывающего поле, и остаётся его именем для
- * диктора — тем самым, которое исчезло бы вместе с плейсхолдером при первом
- * нажатии клавиши. Это и есть ответ на первое из трёх опасных мест макета,
- * и он лучше, чем `aria-label` по плейсхолдеру (см. nameFromPlaceholder):
- * скрытая подпись живёт, даже когда плейсхолдера нет вовсе, и её видит
- * поиск по странице.
- *
- * Чего это стоит: поле в форме теперь названо дважды — скрытой подписью и
- * своим плейсхолдером, если экран его задал. Диктор прочитает подпись (имя
- * элемента), а плейсхолдер — как подсказку; порядок правильный, и дублирование
- * здесь дешевле безымянного поля.
- *
- * Пояснение печатается всегда под полем — и до ошибки тоже. Подсказка,
- * появляющаяся только вместе с ошибкой, приходит слишком поздно.
+ * `inline` — поле в строке («від [0] до [10]»): подпись скрыта (sr-only) и
+ * встаёт плейсхолдером, отступа снизу нет.
  */
 export function Field({
   label,
   labelClassName,
   hint,
   error,
+  optional,
   htmlFor,
   inline,
   children,
   className,
 }: {
   label: ReactNode;
-  /**
-   * Подпись видима и набрана этим набором классов вместо `sr-only`.
-   *
-   * Умолчание — прежнее поведение: подпись скрыта, а глазу её показывает
-   * плейсхолдер поля. Кадры f23_1/f24_1 — единственное исключение: «Назва
-   * тесту» и «Опис тесту» набраны там ВИДИМОЙ подписью 18/700 фиолетовым НАД
-   * пустым полем, и плейсхолдера внутри поля нет.
-   */
+  /** Свой набор классов подписи вместо видимой подписи набора */
   labelClassName?: string;
   hint?: ReactNode;
   error?: string | null;
-  /**
-   * Нужен только когда поле лежит вне подписи. Обычно не нужен: подпись
-   * оборачивает поле, и связь получается сама.
-   */
+  /** «— необов’язково» после подписи */
+  optional?: boolean;
+  /** Только если поле лежит вне подписи */
   htmlFor?: string;
-  /**
-   * Поле в строке, а не в колонке формы: без отступа снизу.
-   *
-   * В конструкторе поля стоят в ряд с глифами — «від [0] до [10] [текст] −».
-   * Шаг строк формы 15px, приложенный к такому полю, сдвигает его вверх
-   * относительно соседей. Погасить его классом `mb-0` снаружи нельзя: спор
-   * `mb-0` и `mb-[15px]` Tailwind решает порядком в собранном файле, а не в
-   * строке классов (см. пояснение к высоте полей выше).
-   */
   inline?: boolean;
   children: ReactNode;
   className?: string;
 }) {
+  const { ut } = useLang();
+  const id = useId();
+  const noteId = error || hint ? `${id}-note` : undefined;
+  const hidden = inline && !labelClassName;
+  const ph = hidden && typeof label === "string" ? label : "";
   return (
     /* data-field — точка опоры для смоук-тестов: класс менять можно, признак нет */
-    /*
-     * Шаг строк формы 51px = поле 36 + зазор 15, и зазор живёт здесь, на самой
-     * строке, а не в отступах родителя.
-     *
-     * Альтернатива — `gap-[15px]` на колонке формы — выглядит чище ровно до
-     * первой формы, где между полями что-то стоит: разделитель, кнопка,
-     * пояснение. Тогда шаг задаётся уже двумя местами, и 51px превращается в
-     * 51 или 66 в зависимости от того, что положили рядом. Отступ на строке
-     * даёт одно число независимо от окружения.
-     *
-     * `last:mb-0` — чтобы форма не оканчивалась пустой полосой перед кнопкой.
-     * Родители, у которых уже задан свой `gap`, сложат его с этими 15 — такие
-     * места переписываются вместе со своим экраном, по волнам плана.
-     */
-    <div data-field className={cx(inline ? "" : "mb-[15px] last:mb-0", className)}>
-      {/*
-        Подпись оборачивает поле, а не ссылается на него через htmlFor.
-
-        Ссылка требовала id на каждом поле и htmlFor на каждой подписи, то
-        есть двух совпадающих строк в разных местах разметки. Из шестидесяти
-        двух полей связь была проставлена у семнадцати: в остальных подпись
-        не нажималась и не читалась диктором, а поле оставалось безымянным.
-        Забыть при этом нечего не давало никаких признаков — ни ошибки, ни
-        предупреждения.
-
-        Обёртка связывает их по построению: id не нужен вовсе, а забыть
-        нельзя. htmlFor остался для редкого случая, когда поле физически
-        лежит вне подписи.
-      */}
-      <label htmlFor={htmlFor} className="block">
-        {/*
-          `sr-only`, а не `hidden` и не нулевой кегль: скрытое через `display:
-          none` или `visibility: hidden` выпадает из дерева доступности вместе
-          с изображением — то есть подпись исчезла бы и для диктора, ради
-          которого она здесь и оставлена. `sr-only` убирает надпись с экрана,
-          сохраняя её в дереве.
-        */}
-        <span className={labelClassName ?? "sr-only"}>{label}</span>
-        {/*
-          Поле внутри подписи — уже названо; проверка имени ниже по дереву
-          молчит. Пустая строка означает «плейсхолдер не подставлять»: у видимой
-          подписи он был бы вторым отпечатком того же слова — на экране под
-          подписью и внутри поля одновременно.
-        */}
-        <InsideField.Provider value={typeof label === "string" && !labelClassName ? label : ""}>
-          {children}
-        </InsideField.Provider>
+    <div data-field className={cx("flex min-w-0 flex-col", inline ? "" : "mb-3.5 last:mb-0", className)}>
+      <label htmlFor={htmlFor} className="m-0 block min-w-0 text-body text-text">
+        <span
+          className={
+            hidden ? "sr-only" : (labelClassName ?? "mb-1.5 block text-caption font-bold text-muted")
+          }
+        >
+          {label}
+          {optional && !hidden ? <span className="font-medium"> — {ut("kit.optional")}</span> : null}
+        </span>
+        <InsideField.Provider value={{ ph, invalid: !!error, describedBy: noteId }}>{children}</InsideField.Provider>
       </label>
-      {/* 13/400 — кегль мета-строки макета: пояснение под полем той же породы */}
       {error ? (
-        <span className="mt-[4px] block text-[13px] text-danger">{error}</span>
+        <ErrorText id={noteId} className="mt-1.5">
+          {error}
+        </ErrorText>
       ) : hint ? (
-        <span className="mt-[4px] block text-[13px] text-muted">{hint}</span>
+        <span id={noteId} className="mt-1.5 block text-small text-muted">
+          {hint}
+        </span>
       ) : null}
     </div>
   );
 }
 
-/* ─────────── разделители и раскладка ─────────── */
+/* ─────────── флажок, радио, переключатель, выбор ─────────── */
+
+/** Флажок набора: 18 px, радиус 6, рамка 3:1, отмеченный — фиолетовая заливка с галочкой */
+export const Checkbox = forwardRef<
+  HTMLInputElement,
+  Omit<InputHTMLAttributes<HTMLInputElement>, "type"> & { indeterminate?: boolean }
+>(function Checkbox({ indeterminate, className, ...rest }, ref) {
+  const own = useRef<HTMLInputElement>(null);
+  useImperativeHandle(ref, () => own.current as HTMLInputElement);
+  useEffect(() => {
+    if (own.current) own.current.indeterminate = !!indeterminate;
+  }, [indeterminate]);
+  return <input ref={own} type="checkbox" className={cx("kit-check", className)} {...rest} />;
+});
+
+/** Подпись с флажком или радио: 13/600 text-2, пояснение 12 приглушённым */
+export function CheckLabel({
+  control,
+  label,
+  sub,
+  className,
+}: {
+  control: ReactNode;
+  label: ReactNode;
+  sub?: ReactNode;
+  className?: string;
+}) {
+  return (
+    <label
+      className={cx(
+        "m-0 flex cursor-pointer gap-[9px] text-[13px] font-semibold text-text-2",
+        sub ? "items-start [&>input]:mt-px" : "items-center",
+        className,
+      )}
+    >
+      {control}
+      <span>
+        {label}
+        {sub ? <small className="block text-caption font-medium text-muted">{sub}</small> : null}
+      </span>
+    </label>
+  );
+}
+
+/** Радио набора: кружок 18 с рамкой 3:1, выбранное — толстая фиолетовая рамка */
+export const Radio = forwardRef<HTMLInputElement, Omit<InputHTMLAttributes<HTMLInputElement>, "type">>(function Radio(
+  { className, ...rest },
+  ref,
+) {
+  return <input ref={ref} type="radio" className={cx("kit-radio", className)} {...rest} />;
+});
+
+/** Переключатель (role=switch): 38×22, включённый — фиолетовый */
+export function Switch({
+  checked,
+  onChange,
+  label,
+  sub,
+  disabled,
+  className,
+}: {
+  checked: boolean;
+  onChange: (next: boolean) => void;
+  label: ReactNode;
+  sub?: ReactNode;
+  disabled?: boolean;
+  className?: string;
+}) {
+  const id = useId();
+  return (
+    <span className={cx("flex items-center gap-2.5 text-[13px] font-semibold text-text-2", className)}>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={checked}
+        aria-labelledby={`${id}-l`}
+        disabled={disabled}
+        onClick={() => onChange(!checked)}
+        className={cx(
+          "relative h-[22px] min-h-0 w-[38px] shrink-0 cursor-pointer rounded-[11px] border-0 p-0",
+          "transition-colors duration-[var(--dur)] ease-[var(--ease)]",
+          checked ? "bg-violet" : "bg-field-border",
+          "disabled:cursor-not-allowed disabled:opacity-48",
+          focus,
+        )}
+      >
+        <i
+          aria-hidden
+          className={cx(
+            "absolute left-[3px] top-[3px] size-4 rounded-full bg-onfill shadow-tile",
+            "transition-transform duration-[var(--dur)] ease-[var(--ease)]",
+            checked && "translate-x-4",
+          )}
+        />
+      </button>
+      <span id={`${id}-l`} className="flex flex-col">
+        {label}
+        {sub ? <small className="text-caption font-medium text-muted">{sub}</small> : null}
+      </span>
+    </span>
+  );
+}
 
 /**
- * «Данных пока нет».
- *
- * Одна строка на восемь диаграмм. Раньше она была написана в каждой из них
- * отдельно — восемь одинаковых литералов, которые при переводе пришлось бы
- * находить по одному, и один из них обязательно бы уцелел.
+ * Карточка выбора (радио-карточка «Рішення»): жирный заголовок и приглушённое
+ * пояснение; выбранная — тонированная с фиолетовым кольцом.
  */
+export function ChoiceCard({
+  name,
+  value,
+  checked,
+  onChange,
+  title,
+  sub,
+}: {
+  name: string;
+  value: string;
+  checked: boolean;
+  onChange: (value: string) => void;
+  title: ReactNode;
+  sub?: ReactNode;
+}) {
+  return (
+    <label
+      className={cx(
+        "m-0 flex cursor-pointer items-start gap-3 rounded-[12px] px-3.5 py-2.5",
+        "transition-[background-color,box-shadow] duration-[var(--dur-fast)] ease-[var(--ease)]",
+        checked ? "bg-violet-tint shadow-[inset_0_0_0_1.5px_var(--vring)]" : "bg-sunk hover:bg-sunk-2",
+      )}
+    >
+      <Radio name={name} value={value} checked={checked} onChange={() => onChange(value)} className="mt-px" />
+      <span className="min-w-0">
+        <b className={cx("block text-[13px] font-extrabold leading-[18px]", checked ? "text-violet-ink" : "text-text")}>
+          {title}
+        </b>
+        {sub ? (
+          <small className={cx("block text-caption", checked ? "text-text-2" : "text-muted")}>{sub}</small>
+        ) : null}
+      </span>
+    </label>
+  );
+}
+
+/**
+ * Сегменты: взаимоисключающий выбор на залитой подложке, выбранный — лист с
+ * тенью плитки (.seg набора). Кнопки с aria-pressed: это выбор вида, а не
+ * навигация по панелям.
+ */
+export function Segmented<K extends string>({
+  items,
+  value,
+  onChange,
+  label,
+  wide,
+  className,
+}: {
+  items: { key: K; label: ReactNode }[];
+  value: K;
+  onChange: (key: K) => void;
+  label: string;
+  /** Во всю ширину, сегменты поровну */
+  wide?: boolean;
+  className?: string;
+}) {
+  return (
+    <span
+      role="group"
+      aria-label={label}
+      className={cx("gap-0.5 rounded-[12px] bg-sunk p-[3px]", wide ? "flex w-full" : "inline-flex self-start", className)}
+    >
+      {items.map((it) => {
+        const on = it.key === value;
+        return (
+          <button
+            key={it.key}
+            type="button"
+            aria-pressed={on}
+            onClick={() => onChange(it.key)}
+            className={cx(
+              "h-8 min-h-0 cursor-pointer rounded-[9px] border-0 px-[11px] text-caption font-bold leading-none",
+              "transition-colors duration-[var(--dur-fast)] ease-[var(--ease)]",
+              wide && "flex-1",
+              on ? "bg-panel text-violet-ink shadow-tile" : "bg-transparent text-text-2 hover:bg-sunk-2 hover:text-text",
+              focus,
+            )}
+          >
+            {it.label}
+          </button>
+        );
+      })}
+    </span>
+  );
+}
+
+/* ─────────── разделители и раскладка ─────────── */
+
+/** «Даних поки немає» — одна строка на все графики и сводки */
 export function NoData({ className }: { className?: string }) {
   const { ut } = useLang();
   return <p className={cx("m-0 text-small text-muted", className)}>{ut("chart.noData")}</p>;
 }
 
 export function Divider({ className }: { className?: string }) {
-  return <hr className={cx("border-0 border-t border-hairline", className)} />;
+  return <hr className={cx("m-0 border-0 border-t border-divider", className)} />;
 }
 
-/**
- * Строка над списком: заголовок, поиск, «плюс», постраничная навигация.
- *
- * Главное здесь — «одна строка». В макете всё в ней стоит на одной оси и
- * никогда не переносится: заголовок слева, поле поиска тянется по остатку,
- * прижатый вправо блок страниц. Прежняя редакция переносила содержимое
- * (`flex-wrap`), и на узком окне строка распадалась на две-три — а вместе с
- * ней уезжал вниз и список.
- *
- * Перенос всё же остаётся, но только ниже 900px. Отказаться от него совсем
- * значило бы, что на ноутбуке 1280 с открытой панелью контекста поле поиска
- * сжимается до неразличимого, а стрелки страниц уходят за край без прокрутки.
- * Это не буквальность макета, а его отсутствие: кадров уже́ 1600 в макете нет.
- *
- * Зазор 14px — средний из замеренных в этой строке (8 · 12 · 14 · 11 · 19).
- * Точные зазоры блока страниц выставляет сам экран: они разные у каждой пары
- * соседей, и одним `gap` их не выразить.
- */
+/** Строка инструментов над списком: поиск, чипы, действия — переносится, если не помещается */
 export function Toolbar({ children, className }: { children: ReactNode; className?: string }) {
-  return (
-    <div
-      className={cx(
-        "flex min-w-0 flex-nowrap items-center gap-[14px] max-[900px]:flex-wrap",
-        className,
-      )}
-    >
-      {children}
-    </div>
-  );
+  return <div className={cx("flex min-w-0 flex-wrap items-center gap-2", className)}>{children}</div>;
 }
 
 export function Spacer() {
   return <span className="flex-1" />;
 }
 
+/* ─────────── вкладки ─────────── */
+
 /**
- * Вкладки внутри экрана.
- *
- * Ссылки, а не переключатель состояния: вкладка попадает в адрес, и её
- * можно переслать коллеге, положить в закладку и вернуться на неё кнопкой
- * «назад». Вкладка на состоянии всё это ломает молча — человек присылает
- * ссылку на карту, а открывается она не на том, что он смотрел.
+ * Вкладки экрана: ссылки (вкладка в адресе) или переключатель состояния
+ * (`onSelect`).
  */
 export interface TabItem {
   to?: string;
   label: string;
   end?: boolean;
-  /**
-   * Вкладка состояния, а не адреса: `onSelect` вместо `to`.
-   *
-   * Нужна ровно одному месту — виду теста в конструкторе («Конкретний /
-   * Комплексний»). Там вкладка — свойство ЧЕРНОВИКА, который сам сохраняется
-   * в localStorage и переживает F5; адрес с `?mode=complex` при восстановленном
-   * «конкретном» черновике врал бы. Вид при этом тот же: те же 18/700, тот же
-   * зазор 53, та же полутоновая неактивная — а «вы здесь» несёт
-   * aria-selected, чтобы оно не держалось на одном цвете.
-   */
+  /** Вкладка состояния вместо адреса: `onSelect` вместо `to` */
   onSelect?: () => void;
   active?: boolean;
-  /**
-   * Для вкладки состояния: свой id и id панели, которой она управляет, —
-   * по aria-controls диктор связывает вкладку с тем, что она показывает.
-   */
+  /** Счётчик в пилюле после подписи */
+  count?: number | null;
+  /** Для вкладки состояния: свой id и id панели, которой она управляет */
   id?: string;
   controls?: string;
 }
 
 /*
- * Высота полосы вкладок — не «на глаз», а из двух замеров сразу.
- *
- * Кадры f05 и f06 дают три числа подряд: чернила вкладок 225…241, полоса
- * прокрутки 255…261, первая строка содержимого с 300. Коробка полосы по
- * рамке начинается на 225 (просвет 50 + строка 36 + pb 28 + mt 11 от низа
- * верхней полосы 100), и этого хватало бы — если бы строка текста была
- * ростом с кегль. Она им не была: `line-height` наследуется от body
- * (--lh-normal, 1,55 — legacy.css), и на 18-м кегле строка выходит 27,9, а
- * с `py-[6px]` вся полоса — 46,9 вместо кадровых 37. Чернила падали на
- * ~240, полоса прокрутки на ~272, и весь экран ниже уезжал на 10-13.
- *
- * Отсюда `leading-none` и `pb-[12px]`: строка ровно 18 (чернила ложатся с
- * 225), снизу 12 — и дорожка прокрутки встаёт на 225+30 = 255, то есть в
- * кадр до пикселя. `leading-none` здесь обязателен явно: унаследованная
- * межстрочная — как раз то, что делает такую ошибку невидимой.
- *
- * Полоса эта общая на шесть экранов, и все шесть поднимаются на те же ~10.
- * Это не побочный ущерб, а та же ошибка в шести местах: на f21/f22 чернила
- * вкладок тоже занимают ровно 18 (y 146…163), то есть строка везде ростом
- * с кегль, а не в полтора.
- *
- * Цена, которую надо знать: коробка вкладки стала 30 вместо 39,9, то есть
- * дальше от 44 пальца. Накладку `after:` в 44, как у кнопок-глифов, сюда
- * положить нельзя: полоса объявлена `overflow-x-scroll`, а при этом
- * `overflow-y` считается `auto`, и накладка, торчащая вверх и вниз, завела
- * бы на полосе вертикальную прокрутку. Кадр задаёт эту высоту прямо, и
- * вкладка — не глиф: она подписана словом и промахнуться по ней труднее.
+ * Вкладка набора (.tab): 36 px, радиус 10, 13.5/600 text-2; выбранная —
+ * фиолетовые чернила 800 на плашке листа с тенью плитки. «Вы здесь» несут
+ * плашка, начертание и aria-current/aria-selected — не один только цвет.
  */
 const tabClass = (isActive: boolean) =>
   cx(
-    "shrink-0 whitespace-nowrap pb-[12px] text-[18px] font-bold leading-none",
-    "transition-colors duration-[var(--dur-fast)] ease-[var(--ease)]",
-    "outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]",
-    /*
-     * Бледный кадра — ровно #b299cc: ТОЧНО половина пути от #663399 к
-     * белому (102→178, 51→153, 153→204 — все три канала дают 0.5), то
-     * есть не отдельный цвет, а тот же фиолетовый вполсилы. Поэтому он
-     * записан токеном, а не числом: поедет вслед за палитрой.
-     */
-    /*
-      АКТИВНАЯ — полный #663399, неактивная — бледная. Числа сняты с
-      трёх кадров, где видно СОДЕРЖИМОЕ, а не только цвет, — иначе
-      довод ходит по кругу: f22 под вкладками рисует блок «Шкала 1»
-      (это «Конкретний тест», первая вкладка, x 451…634) и она полная
-      (102,51,153), вторая бледная (178,153,204); f21 зеркально —
-      открыт «Комплексний», полная вторая (x 697…898); f07 открыты
-      «Неопубліковані» — полная вторая (x 447…666). Вывести же
-      «активность» из бледного цвета по описи нельзя: опись сама
-      списала её с цвета.
-
-      Кадровый бледный (#b299cc) на белом — 2,52:1, ниже нормы вдвое,
-      поэтому у неактивной стоит --primary-dim (6,06:1): та же мысль
-      «вполсилы» читаемой. Различие осталось по светлоте, а не по
-      тону, — переживает дальтонизм и ч/б, — а «вы здесь» несут
-      aria-selected и aria-current, которые от цвета не зависят вовсе.
-
-      Сторож на переворот — apps/web/test/tabColour.test.tsx.
-    */
-    isActive ? "text-primary" : "text-primary-dim",
+    "relative inline-flex h-9 min-h-0 shrink-0 items-center gap-[7px] whitespace-nowrap rounded-control border-0 px-[13px]",
+    "text-body leading-none no-underline hover:no-underline",
+    "transition-[background-color,color] duration-[var(--dur-fast)] ease-[var(--ease)]",
+    focus,
+    isActive
+      ? "bg-panel font-extrabold text-violet-ink shadow-tile"
+      : "bg-transparent font-semibold text-text-2 hover:bg-tab-hover hover:text-text",
   );
+
+function TabCount({ n }: { n?: number | null }) {
+  if (n === undefined || n === null) return null;
+  return (
+    <span className="inline-grid h-5 min-w-5 place-items-center rounded-[10px] bg-tab-count px-1.5 text-[11.5px] font-bold text-text-2">
+      {n}
+    </span>
+  );
+}
 
 export function Tabs({ items, label }: { items: TabItem[]; label?: string }) {
-  const bar = cx(
-    /*
-     * Ни подчёркивания, ни пилюли, ни рамки — чистый текст с зазором 53px.
-     * Подчёркивание активной вкладки было прежним признаком «вы здесь»; в
-     * макете его нет, и оно убрано.
-     */
-    "flex items-center gap-[53px] overflow-x-scroll",
-    /*
-     * Полоса прокрутки под вкладками нарисована в макете и потому видна
-     * всегда: `overflow-x-scroll`, а не `auto`. При `auto` дорожки не было
-     * бы, пока вкладки помещаются, — а в макете она есть и на кадрах, где
-     * вкладок три.
-     *
-     * Замер f05/f06 по столбцам пикселей (полоса y 255…261, всего 7):
-     *
-     *   мимо ползунка (x=400, x=1300): 255-256 #cccccc, 257-259 БЕЛОЕ,
-     *                                  260-261 #cccccc — кромки по ДВА;
-     *   поверх ползунка (x=600):       255 #cccccc, 256-260 #999999,
-     *                                  261 #cccccc — кромка видна и там.
-     *
-     * Отсюда два числа, а не одно: кромка 2px, а ползунок 5px по центру.
-     * Ползунок закрывает ВНУТРЕННИЙ пиксель каждой кромки и не закрывает
-     * внешний; прежняя редакция заливала все семь и гасила кромки на
-     * ползунке вовсе. Даётся это прозрачной рамкой в пиксель сверху и
-     * снизу плюс `background-clip: content-box`: заливка ложится на пять
-     * средних, а сквозь рамку видна тень дорожки.
-     *
-     * Оба набора правил, и это не дублирование: `scrollbar-*` понимает
-     * Firefox, `::-webkit-scrollbar` — Chrome и Safari, и ни один не
-     * понимает оба. У Firefox второе значение `scrollbar-color` — это
-     * ДОРОЖКА, и стоял в нём #cccccc: Firefox заливал серым всю полосу,
-     * прямо против кадра и против правила строкой ниже. Теперь там лист.
-     *
-     * Чего сознательно НЕ сделано. На кадре дорожка идёт не во всю колонку,
-     * а с x≈341 до 1400 (замер обоих кадров: каплевидные концы 341-342 и
-     * 1398-1400, ползунок 500…728). Повторить это можно, только отступив
-     * полосу вкладок на 141 слева, — а чернила первой вкладки на тех же
-     * кадрах стоят на 201-202, то есть по левому краю колонки. Из двух
-     * замеров взят тот, что про содержимое.
-     *
-     * Заодно явный `::-webkit-scrollbar` заставляет macOS показать обычную
-     * полосу вместо всплывающей, которая пропадает через секунду после
-     * прокрутки.
-     */
-    "[scrollbar-width:thin] [scrollbar-color:var(--border-strong)_var(--bg)]",
-    "[&::-webkit-scrollbar]:h-[7px]",
-    "[&::-webkit-scrollbar-track]:bg-[var(--bg)]",
-    /* кромки дорожки — внутренней тенью: у ::-webkit-scrollbar-track рамка съедает высоту полосы */
-    "[&::-webkit-scrollbar-track]:shadow-[inset_0_2px_0_var(--hairline),inset_0_-2px_0_var(--hairline)]",
-    "[&::-webkit-scrollbar-thumb]:bg-[var(--border-strong)]",
-    /*
-     * Рамка и обрезка заливки записаны свойствами целиком, а не утилитами
-     * `border-y-[1px]`: в Tailwind ширина рамки работает, только пока
-     * `border-style: solid` пришёл из preflight, а тот ставит его селектором
-     * `*`, который на ::-webkit-scrollbar-thumb не распространяется. Рамка
-     * вышла бы нулевой, и ползунок снова залил бы все семь пикселей — ошибка
-     * тихая: полоса на вид та же.
-     */
-    "[&::-webkit-scrollbar-thumb]:[border-top:1px_solid_transparent]",
-    "[&::-webkit-scrollbar-thumb]:[border-bottom:1px_solid_transparent]",
-    "[&::-webkit-scrollbar-thumb]:[background-clip:content-box]",
-  );
+  const bar = "flex flex-wrap items-center gap-1";
 
   /*
-   * Два разных элемента под одной картинкой — и это не прихоть.
-   *
-   * Ссылки — <nav>: они меняют адрес, и «навигация» описывает происходящее
-   * верно. Это НЕ role="tablist": вкладка в смысле ARIA — переключатель
-   * панелей внутри одной страницы, от неё диктор ждёт role="tab" у детей
-   * и связанных панелей; tablist со ссылками внутри — нарушение, проверка
-   * доступности ловит его сразу.
-   *
-   * Кнопки — наоборот, ровно этот переключатель: адрес не меняется,
-   * меняется содержимое формы ниже. Ориентир «навигация» с двумя кнопками,
-   * которые никуда не ведут, обещал бы диктору переход, которого нет.
-   * Поэтому здесь role="tablist", у кнопок role="tab" + aria-selected и
-   * aria-controls на панель. Стрелки ← → ходят по вкладкам, выбирает Enter
-   * или пробел (ручная активация): переключение перестраивает черновик,
-   * и делать это одним движением фокуса было бы слишком легко. Tab с
-   * полосы уходит дальше — в списке вкладок фокус принимает только
-   * выбранная (roving tabindex).
+   * Два элемента под одной картинкой. Ссылки — <nav>: они меняют адрес.
+   * Кнопки состояния — role="tablist" с role="tab", aria-selected и
+   * aria-controls; стрелки ходят по вкладкам, выбирает Enter или пробел.
    */
   if (items.some((t) => t.onSelect)) {
-    /*
-     * Когда выбранной вкладки нет вовсе (на списке пациентов это «фильтр
-     * снят»: вкладки «Усі» на кадре нет), остановку табуляции принимает
-     * первая. Без этого roving tabindex ставит −1 всем, и полоса вкладок
-     * выпадает из обхода клавиатурой целиком — мышью работает, клавиатурой
-     * нет, и заметить это можно только Tab-ом.
-     */
+    /* выбранной нет — остановку табуляции принимает первая, иначе полоса выпадает из обхода */
     const none = !items.some((t) => t.active);
     return (
       <div role="tablist" aria-label={label} className={bar} onKeyDown={moveTabFocus}>
         {items.map((t, i) => (
           <button
-            /* по id, когда он есть: подписи вкладок — названия групп, а они повторяются */
             key={t.id ?? t.label}
             type="button"
             role="tab"
@@ -1390,9 +1041,10 @@ export function Tabs({ items, label }: { items: TabItem[]; label?: string }) {
             aria-controls={t.controls}
             tabIndex={t.active || (none && i === 0) ? 0 : -1}
             onClick={t.onSelect}
-            className={cx("border-0 bg-transparent p-0 px-0", tabClass(!!t.active))}
+            className={cx("cursor-pointer", tabClass(!!t.active))}
           >
             {t.label}
+            <TabCount n={t.count} />
           </button>
         ))}
       </div>
@@ -1406,41 +1058,13 @@ export function Tabs({ items, label }: { items: TabItem[]; label?: string }) {
           key={t.to}
           to={t.to ?? "."}
           end={t.end}
-          /*
-           * ОПАСНОЕ МЕСТО № 3 ИЗ ТРЁХ. В макете активную вкладку отличает
-           * только цвет: полный #663399 у активной против бледного #b299cc у
-           * остальных (замер f21/f22/f07 — там видно содержимое), начертание
-           * и кегль у обеих одинаковые (18/700). Цвет как единственный
-           * признак — нарушение WCAG 1.4.1.
-           *
-           * Что сделано. Во-первых, `aria-current="page"`: для диктора «вы
-           * здесь» перестаёт зависеть от цвета вовсе. NavLink проставляет его
-           * сам и по умолчанию, но здесь он написан явно — признак, на котором
-           * держится доступность, не должен быть значением по умолчанию чужой
-           * библиотеки, которое однажды поменяют в обновлении.
-           *
-           * Во-вторых — и это важнее для тех, кто видит экран, — различие в
-           * макете на самом деле не «по цвету», а по светлоте: #663399 и
-           * #b299cc отличаются светлотой вдвое (ровно наполовину к белому, см.
-           * ниже). Такое различие сохраняется и при любом виде дальтонизма, и
-           * в чёрно-белой печати, и при выцветшем экране на солнце — в отличие
-           * от пары «зелёный/красный», ради которой правило 1.4.1 написано.
-           * Поэтому картинка остаётся ровно макетной.
-           *
-           * Чего сознательно НЕ сделано: не добавлено подчёркивание или жирное
-           * начертание активной вкладке. И то и другое читается как «здесь
-           * что-то ещё», а в макете этого нет; при живом aria-current и
-           * различии по светлоте платить за это видом не за что.
-           */
+          /* явный признак, а не умолчание чужой библиотеки */
           aria-current="page"
-          /*
-           * цвета и кегль — в tabClass: у кнопки состояния они те же самые.
-           * Явный `active` сильнее совпадения адреса: вкладка-группа (техпанель)
-           * ведёт на первый раздел группы, а активна на любом из них.
-           */
+          /* явный `active` сильнее совпадения адреса: вкладка-группа активна на любом своём разделе */
           className={({ isActive }) => tabClass(t.active ?? isActive)}
         >
           {t.label}
+          <TabCount n={t.count} />
         </NavLink>
       ))}
     </nav>

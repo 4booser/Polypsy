@@ -220,3 +220,29 @@ describe("контраст токенов", () => {
     });
   }
 });
+
+/*
+ * Рамка поля — 3:1 к тому, на чём поле стоит (WCAG 1.4.11).
+ *
+ * Набор рисует поле тоном --ctl, и на белом это 1,56:1: при плохом свете на
+ * общих ноутбуках поле без различимой рамки читается пустым местом. Рамку
+ * полей, флажков и переключателя набор берёт из --field-border; проверяется
+ * она на всех листах, где стоят формы: панель, panel2 (шапки, подвалы), sunk
+ * (залитые плашки) и земля.
+ */
+describe("рамка поля", () => {
+  for (const [themeName, theme] of [
+    ["светлая", LIGHT],
+    ["тёмная", DARK],
+  ] as const) {
+    test(`${themeName} тема: --field-border — не меньше 3:1 на каждом листе формы`, () => {
+      const bad: string[] = [];
+      for (const groundName of ["--panel", "--panel2", "--sunk", "--ground"]) {
+        const ground = resolve_(groundName, theme, [0, 0, 0]);
+        const ratio = contrast(resolve_("--field-border", theme, ground), ground);
+        if (ratio < 3) bad.push(`--field-border на ${groundName}: ${ratio.toFixed(2)}:1`);
+      }
+      expect(bad).toEqual([]);
+    });
+  }
+});

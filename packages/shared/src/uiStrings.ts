@@ -680,7 +680,6 @@ export const UI = {
   "cat.tabRetired": { uk: "Зняті з використання", ru: "Снятые с использования", en: "Retired" },
   /* подпись набирается в два рядка узкой колонкой, как на макете, — перенос делает ширина, а не ключ */
   "cat.perPage": { uk: "елементів на сторінці", ru: "элементов на странице", en: "items per page" },
-  "cat.page": { uk: "сторінка", ru: "страница", en: "page" },
   "cat.prevPage": { uk: "Попередня сторінка", ru: "Предыдущая страница", en: "Previous page" },
   "cat.nextPage": { uk: "Наступна сторінка", ru: "Следующая страница", en: "Next page" },
   "cat.search": { uk: "Пошук тестів", ru: "Поиск тестов", en: "Search tests" },
@@ -7953,6 +7952,47 @@ export const UI = {
     ru: "Наведите на график или перейдите к нему клавишей Tab: точное значение, дата, тяжесть и изменение от старта и предыдущего замера.",
     en: "Hover over the chart or Tab to it: exact value, date, severity and change since the start and the previous measurement.",
   },
+
+  // ── v2-kit ──
+  /* набор «Виразна» (apps/web/src/ui): поле, ящик, таблица, фильтры, числа */
+  "kit.optional": { uk: "необов’язково", ru: "необязательно", en: "optional" },
+  /* ящик: Esc закрывает и сохраняет черновик; {name} — в родительном падеже («розбору сигналу № 214») */
+  "kit.draftSavedOf": { uk: "Чернетку {name} збережено", ru: "Черновик {name} сохранён", en: "Draft of {name} saved" },
+  "kit.draftSaved": { uk: "Чернетку збережено", ru: "Черновик сохранён", en: "Draft saved" },
+  "kit.draftNote": { uk: "чернетку збережено", ru: "черновик сохранён", en: "draft saved" },
+  "kit.return": { uk: "Повернутися", ru: "Вернуться", en: "Return" },
+  "kit.closeKeep": { uk: "Закрити, чернетка лишиться", ru: "Закрыть, черновик останется", en: "Close, the draft stays" },
+  /* таблица и массовые действия */
+  "kit.selected": { uk: "Вибрано", ru: "Выбрано", en: "Selected" },
+  "kit.selectAll": { uk: "Вибрати всі рядки", ru: "Выбрать все строки", en: "Select all rows" },
+  "kit.selectAllN": { uk: "Вибрати всіх {n}", ru: "Выбрать всех {n}", en: "Select all {n}" },
+  "kit.selectRow": { uk: "Вибрати рядок", ru: "Выбрать строку", en: "Select row" },
+  "kit.clearSelection": { uk: "Зняти вибір", ru: "Снять выбор", en: "Clear selection" },
+  "kit.rowActions": { uk: "Дії з рядком", ru: "Действия со строкой", en: "Row actions" },
+  "kit.moreActions": { uk: "Ще дії", ru: "Ещё действия", en: "More actions" },
+  "kit.shown": { uk: "Показано {range} з {total}", ru: "Показано {range} из {total}", en: "Showing {range} of {total}" },
+  "kit.perPage": { uk: "По {n} на сторінці", ru: "По {n} на странице", en: "{n} per page" },
+  "kit.pageN": { uk: "Сторінка {n}", ru: "Страница {n}", en: "Page {n}" },
+  "kit.pages": { uk: "Сторінки", ru: "Страницы", en: "Pages" },
+  /* фильтры над списком */
+  "kit.ofTotal": { uk: "{n} з {total}", ru: "{n} из {total}", en: "{n} of {total}" },
+  "kit.savedViews": { uk: "Збережені перегляди", ru: "Сохранённые виды", en: "Saved views" },
+  "kit.addFilter": { uk: "Фільтр", ru: "Фильтр", en: "Filter" },
+  "kit.removeFilter": { uk: "Зняти фільтр: {name}", ru: "Снять фильтр: {name}", en: "Remove filter: {name}" },
+  "kit.sort": { uk: "Сортування", ru: "Сортировка", en: "Sort" },
+  /* числа: значение со сравнением и смыслом */
+  "kit.betterDown": { uk: "краще ↓", ru: "лучше ↓", en: "lower is better" },
+  "kit.betterUp": { uk: "краще ↑", ru: "лучше ↑", en: "higher is better" },
+  "kit.was": { uk: "було {v}", ru: "было {v}", en: "was {v}" },
+  "kit.reliablyBetter": { uk: "надійно краще", ru: "надёжно лучше", en: "reliably better" },
+  "kit.reliablyWorse": { uk: "надійно гірше", ru: "надёжно хуже", en: "reliably worse" },
+  "kit.withinError": { uk: "у межах похибки", ru: "в пределах погрешности", en: "within error" },
+  "kit.threshold": { uk: "поріг {n}", ru: "порог {n}", en: "threshold {n}" },
+  "kit.courseStart": { uk: "старт курсу", ru: "старт курса", en: "course start" },
+  /* рядок відкритого: всё открытое о человеке одной строкой пилюль */
+  "kit.openItems": { uk: "Відкрите по пацієнту", ru: "Открытое по пациенту", en: "Open items for the patient" },
+  "kit.timerOf": { uk: "{elapsed} з {of}", ru: "{elapsed} из {of}", en: "{elapsed} of {of}" },
+  "kit.unread": { uk: "непрочитане", ru: "непрочитанное", en: "unread" },
 
 } as const satisfies Record<string, UiEntry>;
 

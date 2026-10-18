@@ -153,7 +153,7 @@ function byButton(button: Locator): () => Promise<Locator> {
 test("диалог держит фокус внутри и возвращает его по Esc", async ({ page }) => {
   await login(page, "psy");
   await page.goto("/ui");
-  await expectTrapped(page, byButton(page.getByRole("button", { name: "Диалог", exact: true })), ".modal", "Диалог");
+  await expectTrapped(page, byButton(page.getByRole("button", { name: "Діалог", exact: true })), ".modal", "Диалог");
 });
 
 test("палитра команд держит фокус внутри и возвращает его по Esc", async ({ page }) => {
@@ -203,7 +203,7 @@ test("палитра открывается с курсором в поиске"
  * страницы, под которым лежит ещё одна, якобы рабочая.
  */
 for (const [name, open] of [
-  ["Диалог", async (page: Page) => page.getByRole("button", { name: "Диалог", exact: true }).click()],
+  ["Диалог", async (page: Page) => page.getByRole("button", { name: "Діалог", exact: true }).click()],
   [
     "Палитра команд",
     async (page: Page) => {
@@ -256,7 +256,7 @@ for (const [name, open] of [
 test("палитра поверх диалога забирает фокус себе, а не делит его с окном", async ({ page }) => {
   await login(page, "psy");
   await page.goto("/ui");
-  await page.getByRole("button", { name: "Диалог", exact: true }).click();
+  await page.getByRole("button", { name: "Діалог", exact: true }).click();
   await page.locator(".modal").waitFor();
 
   await page.keyboard.press("Control+k");
@@ -297,7 +297,7 @@ test("палитра поверх диалога забирает фокус с�
 test("Esc закрывает палитру поверх диалога, а диалог оставляет", async ({ page }) => {
   await login(page, "psy");
   await page.goto("/ui");
-  await page.getByRole("button", { name: "Диалог", exact: true }).click();
+  await page.getByRole("button", { name: "Діалог", exact: true }).click();
   await page.locator(".modal").waitFor();
 
   await page.keyboard.press("Control+k");

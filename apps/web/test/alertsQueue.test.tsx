@@ -186,7 +186,8 @@ describe("строка очереди: рисование", () => {
         onPick={() => {}}
       />,
     );
-    expect(overdue).toContain("text-accent");
+    /* янтарь набора — пилюля «прострочено» (Tag attention: text-warn на warn-tint) */
+    expect(overdue).toContain("text-warn");
     expect(overdue).toContain("data-queue-row");
     expect(either(overdue, "cases.overdue")).toBe(true);
     // число случаев человека — на строке
@@ -198,7 +199,7 @@ describe("строка очереди: рисование", () => {
     const mine = draw(
       <QueueRow c={row({ assignedTo: "me", severity: "moderate" })} active me="me" now={Date.now()} onPick={() => {}} />,
     );
-    expect(mine).not.toContain("text-accent");
+    expect(mine).not.toContain("text-warn");
     expect(mine).toContain('aria-current="true"');
     expect(mine).toContain("bg-primary-soft");
     for (const re of LEGACY) {
@@ -218,24 +219,27 @@ describe("строка очереди: рисование", () => {
       />,
     );
     expect(html).toContain('data-done="true"');
-    expect(html).not.toContain("text-accent");
+    expect(html).not.toContain("text-warn");
     expect(either(html, "cases.confirmed")).toBe(true);
   });
 });
 
 describe("случаи человека в панели разбора", () => {
-  test("перечислены по одному, выбранный отмечен не цветом одним, а aria-pressed; раздел — с линией 2px", () => {
+  test("перечислены по одному, выбранный отмечен не цветом одним, а aria-pressed; раздел — с волосяной линией", () => {
     const a = row({ severity: "severe", surveyTitle: "Скринінг зони А" });
     const b = row({ severity: "moderate", surveyTitle: "Скринінг зони Б", overdue: true });
     const html = draw(
       <PersonCases total={2} cases={[a, b]} pickedId={a.id} onPick={() => {}} onShowPerson={() => {}} />,
     );
-    expect(html).toContain("border-primary-rule");
+    /* раздел свитка набора: линия в пиксель тоном разделителя (ui/section.tsx) */
+    expect(html).toContain("data-rule-section");
+    expect(html).toContain("border-divider");
     expect(html).toContain("Скринінг зони А");
     expect(html).toContain("Скринінг зони Б");
     expect(html.match(/aria-pressed="true"/g)?.length).toBe(1);
-    // выраженность каждого — меткой с формой точки
-    expect(html).toContain("rotate-45");
+    // выраженность каждого — пилюлей со словом: цвет подсказывает, слово говорит
+    expect(html).toContain("bg-sev-4-bg");
+    expect(either(html, "severity.severe")).toBe(true);
     expect(either(html, "cases.showPersonCases")).toBe(true);
     for (const re of LEGACY) expect(html).not.toMatch(re);
   });
