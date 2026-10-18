@@ -129,7 +129,7 @@ export default function StatList() {
       required: true,
       width: 190,
       render: (m) => (
-        <div className="min-w-0">
+        <div className="min-w-0 max-w-[190px]" title={m.surveyTitle ?? undefined}>
           <span className="block truncate font-bold text-text">{m.surveyTitle ?? ut("st.testHidden")}</span>
           {m.versionNumber ? (
             <small className="block text-caption text-muted">{ut("st.versionN").replace("{n}", String(m.versionNumber))}</small>
