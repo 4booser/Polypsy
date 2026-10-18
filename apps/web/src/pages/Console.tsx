@@ -85,6 +85,12 @@ export function saveRecent(store: RecentStore | null, userId: string, list: stri
   }
 }
 
+/**
+ * Ctrl+L — очистить ленту, как в терминале. По клавише, а не по букве: в
+ * украинской и русской раскладке то же нажатие приходит буквой «д».
+ */
+export const isClearKey = (e: Pick<KeyboardEvent, "code" | "ctrlKey">) => e.ctrlKey && e.code === "KeyL";
+
 /** Команды, подходящие к набранному: по имени и по образцу вызова */
 export function completions<T extends { name: string; usage: string }>(commands: T[], typed: string): T[] {
   const v = typed.trimStart();
@@ -170,7 +176,7 @@ export default function Console() {
       void run(value);
       return;
     }
-    if (e.key === "l" && e.ctrlKey) {
+    if (isClearKey(e)) {
       e.preventDefault();
       setBlocks([]);
       setIntro(false);

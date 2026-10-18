@@ -5,7 +5,7 @@ import type { StaffAccount } from "@quizzy/shared";
 import { paragraphChanges, wordDiff } from "../src/pages/Admin";
 import { byTag, routeMatches } from "../src/pages/ApiDocs";
 import { strengthOf } from "../src/pages/Account";
-import { completions, readRecent, recentKey, saveRecent } from "../src/pages/Console";
+import { completions, isClearKey, readRecent, recentKey, saveRecent } from "../src/pages/Console";
 import { draftDiff, roleChanges, roleOrder, saveRoleSets } from "../src/pages/Permissions";
 import {
   type StaffRow,
@@ -204,6 +204,14 @@ describe("консоль", () => {
     saveRecent(store, "", ["stats"]);
     expect(box.size).toBe(1);
     expect(readRecent(null, "u1")).toEqual([]);
+  });
+
+  test("Ctrl+L очищает ленту в любой раскладке: по клавише, а не по букве", () => {
+    expect(isClearKey({ code: "KeyL", ctrlKey: true })).toBe(true);
+    /* украинская раскладка: та же клавиша, буква «д» — e.code тот же */
+    expect(isClearKey({ code: "KeyL", ctrlKey: true, key: "д" } as never)).toBe(true);
+    expect(isClearKey({ code: "KeyL", ctrlKey: false })).toBe(false);
+    expect(isClearKey({ code: "KeyK", ctrlKey: true })).toBe(false);
   });
 
   test("недавние команды — в хранилище вкладки, не в localStorage", () => {
