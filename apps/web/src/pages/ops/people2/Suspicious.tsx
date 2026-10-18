@@ -3,7 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import type { SuspiciousFinding, SuspiciousPage, UiKey } from "@quizzy/shared";
 import { api } from "../../../api";
 import { useAuth } from "../../../auth";
-import { HBars, StackColumns } from "../../../charts/clinical";
+import { StackColumns } from "../../../charts/clinical";
 import { useLang } from "../../../lang";
 import { Callout, Drawer, DrawerSection, Empty, Loading, Modal, useAction, useToast } from "../../../ui";
 import { FilterBar, FilterChip } from "../../../ui/filters";
@@ -515,7 +515,7 @@ function FindingsChart({ data }: { data: SuspiciousPage }) {
         total={ut("opps.susp.total")}
       />
       <p className="m-0 mb-2 mt-4 text-caption font-bold text-muted">{ut("opps.susp.byRuleAll")}</p>
-      {byRule.length ? <HBars items={ruleBars(byRule, ut)} /> : <Empty compact title={ut("opps.susp.noRules")} />}
+      {byRule.length ? <RuleRows bars={ruleBars(byRule, ut)} /> : <Empty compact title={ut("opps.susp.noRules")} />}
     </Panel>
   );
 }
@@ -583,5 +583,32 @@ function EndSessions({ f, onClose, onDone }: { f: SuspiciousFinding; onClose: ()
     >
       <p className="m-0 pt-3.5 text-body text-text-2">{fill(ut("opps.susp.endText"), { name })}</p>
     </Modal>
+  );
+}
+
+/**
+ * Срабатывания по правилам — строками в боковой колонке: имя правила целиком
+ * (в узкой колонке на 1280 подпись полосы обрезалась бы до «Невдалі в…»),
+ * под ним полоса; с нерозібраними — фиолетовым, остальные — «прочим».
+ */
+function RuleRows({ bars }: { bars: ReturnType<typeof ruleBars> }) {
+  const top = Math.max(1, ...bars.map((b) => b.value ?? 0));
+  return (
+    <ul className="m-0 flex list-none flex-col gap-2 p-0">
+      {bars.map((b) => (
+        <li key={b.key} className="min-w-0">
+          <div className="flex items-baseline gap-3 text-small">
+            <span className={b.strong ? "min-w-0 font-bold text-text" : "min-w-0 text-text-2"}>{b.label}</span>
+            <span className="ml-auto shrink-0 font-bold tabular-nums text-text">{b.text ?? b.value}</span>
+          </div>
+          <div aria-hidden className="mt-1 h-1.5 overflow-hidden rounded-full bg-track">
+            <i
+              className={b.strong ? "block h-full rounded-full bg-violet" : "block h-full rounded-full bg-series-5"}
+              style={{ width: `${Math.round(((b.value ?? 0) / top) * 100)}%` }}
+            />
+          </div>
+        </li>
+      ))}
+    </ul>
   );
 }
