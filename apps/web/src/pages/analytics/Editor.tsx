@@ -173,7 +173,8 @@ function ModelEditor({ id, copyFrom }: { id: string | null; copyFrom: string | n
   };
 
   const save = useCallback(() => {
-    if (!draft || busy) return;
+    /* без права правок кнопки погашены — и ⌘S тоже ничего не шлёт: сервер ответил бы 403 */
+    if (!draft || busy || !canManage) return;
     setTried(true);
     if (draftIssues(draft).length) return;
     void run(
@@ -191,7 +192,7 @@ function ModelEditor({ id, copyFrom }: { id: string | null; copyFrom: string | n
       },
       ut(id === null ? "am.createdOk" : "am.saved"),
     );
-  }, [draft, busy, id, run, navigate, rules, ut]);
+  }, [draft, busy, canManage, id, run, navigate, rules, ut]);
 
   /* ⌘S / Ctrl S — сохранить, как в любом редакторе; браузерное «сохранить страницу» здесь бессмысленно */
   useEffect(() => {
@@ -205,15 +206,19 @@ function ModelEditor({ id, copyFrom }: { id: string | null; copyFrom: string | n
     return () => document.removeEventListener("keydown", onKey);
   }, [save]);
 
-  /* несохранённое при закрытии вкладки — спросит браузер своими словами */
+  /*
+   * Несохранённое при закрытии вкладки — спросит браузер своими словами. И у
+   * новой модели (и у копии): её набирают с нуля, и закрытая вкладка унесла
+   * бы всю форму, а не одну правку.
+   */
   useEffect(() => {
-    if (!dirty || isNew) return;
+    if (!dirty) return;
     const onLeave = (e: BeforeUnloadEvent) => {
       e.preventDefault();
     };
     window.addEventListener("beforeunload", onLeave);
     return () => window.removeEventListener("beforeunload", onLeave);
-  }, [dirty, isNew]);
+  }, [dirty]);
 
   if (missing) {
     return (
