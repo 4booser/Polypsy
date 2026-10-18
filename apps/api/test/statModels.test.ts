@@ -12,6 +12,7 @@ import {
   adminA,
   adminB,
   api,
+  appApi,
   createSurveySchema,
   createVersion,
   db,
@@ -778,6 +779,10 @@ describe("пресеты фильтров: свои и только свои", (
     expect(got.body.usedBy, "карточка назвала чужую модель или сбила номера выборок").toEqual([
       { id: own.body.id, title: "Друга вибірка за пресетом", samples: [2] },
     ]);
+    // под ролью приложения, через политику строк, — то же самое
+    const viaApp = await appApi(`/api/filter-presets/${id}`, adminA.token);
+    expect(viaApp.status).toBe(200);
+    expect(viaApp.body.usedBy).toEqual(got.body.usedBy);
     const asRoot = await api(`/api/filter-presets/${id}`, root.token);
     expect((asRoot.body.usedBy as { id: string }[]).map((m) => m.id).sort()).toEqual([own.body.id, foreign.body.id].sort());
 
@@ -873,6 +878,10 @@ describe("статистические модели: заведение, пер�
       highRiskCount: 2,
       presetColumns: 1,
     });
+    // под ролью приложения сводка та же: название методики и номер версии видны владельцу через политику строк
+    const viaApp = await appApi(`/api/stat-models?q=${encodeURIComponent(`Зведення-${tag}`)}&limit=10`, adminA.token);
+    expect(viaApp.status, JSON.stringify(viaApp.body)).toBe(200);
+    expect(viaApp.body.items[0]).toMatchObject({ surveyTitle: "Статистична методика", versionNumber: version!.n });
   });
 
   /**
