@@ -1410,11 +1410,31 @@ export interface MailingListItem {
   sentAt: string | null;
   recipientCount: number;
   answeredCount: number;
+  /** Сколько получателей открыли — у черновика 0 */
+  readCount: number;
+  /** Варианты ответа: у черновика — что уйдёт, у отправленной — что ушло */
+  options: string[];
+  /** Сколько выбрали каждый вариант — в порядке `options`; у черновика нули */
+  answers: number[];
+  /** Группа-адресат черновика или отправленной; null — без группы */
+  patientGroupId: string | null;
 }
 
 export interface MailingListPage {
   items: MailingListItem[];
   total: number;
+  /**
+   * Счётчики видов «Усі / Чернетки / Відправлені / Приховані» — по всем
+   * рассылкам автора без поиска и вида: число у пилюли не меняется от того,
+   * какая пилюля нажата.
+   */
+  counts?: { all: number; draft: number; sent: number; hidden: number };
+  /**
+   * Итог за 30 дней по отправленным и не скрытым: сколько ушло, скольким
+   * доставлено, сколько получателей спрошено (у рассылки есть варианты) и
+   * сколько из них ответили. Строка под заголовком экрана, не плитки.
+   */
+  month?: { sent: number; recipients: number; asked: number; answered: number };
 }
 
 /** Получатель на карточке отправленной рассылки — из зоны видимости читателя */

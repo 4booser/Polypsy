@@ -1932,6 +1932,21 @@ export const api = {
         patientId?: string;
         lastMessageAt: string;
         unread: number;
+        /*
+         * Только у специалиста (консоль 2.0): начало последнего письма, чьё
+         * оно, прочитано ли моё и ближайший свой приём человека.
+         */
+        preview?: string | null;
+        lastMine?: boolean | null;
+        lastReadAt?: string | null;
+        next?: {
+          id: string;
+          startsAt: string;
+          endsAt: string;
+          room: string | null;
+          mode: "onsite" | "remote";
+          status: string;
+        } | null;
       }[];
       lead: string | null;
     }>("/api/messages"),
@@ -1960,11 +1975,22 @@ export const api = {
    * всё равно расшифровывается там; тянуть его целиком ради страницы 3
    * значило бы расшифровывать всё на каждую букву поиска.
    */
-  mailings: (params: { q?: string; hidden?: boolean; limit: number; offset: number }) => {
+  mailings: (params: {
+    q?: string;
+    hidden?: boolean;
+    status?: "draft" | "sent";
+    group?: string;
+    order?: "new" | "old";
+    limit: number;
+    offset: number;
+  }) => {
     const qs = new URLSearchParams();
     if (params.q) qs.set("q", params.q);
     /* «скрытые» — отдельный список, а не вперемешку: так устроен сервер (?hidden=1) */
     if (params.hidden) qs.set("hidden", "1");
+    if (params.status) qs.set("status", params.status);
+    if (params.group) qs.set("group", params.group);
+    if (params.order === "old") qs.set("order", "old");
     qs.set("limit", String(params.limit));
     qs.set("offset", String(params.offset));
     return request<MailingListPage>(`/api/mailings?${qs}`);
@@ -1985,6 +2011,8 @@ export const api = {
   /** «Видалити» — черновик; отправленную сервер не удаляет (409), её скрывают */
   deleteMailing: (id: string) => request<void>(`/api/mailings/${id}`, { method: "DELETE" }),
   hideMailing: (id: string) => request<Mailing>(`/api/mailings/${id}/hide`, { method: "POST" }),
+  /** «Повернути» скрытую в список */
+  unhideMailing: (id: string) => request<Mailing>(`/api/mailings/${id}/unhide`, { method: "POST" }),
   /*
    * Раздел «Статистика» (кадры f08, f09, f17, f18, f23, f24, f29): модели и
    * пресеты фильтров. Имён сервер здесь не отдаёт никогда — только доли с
@@ -2344,6 +2372,12 @@ export const api = {
     }),
   confirmAppointment: (id: string) =>
     request<{ ok: true }>(`/api/clinic/appointments/${id}/confirm`, { method: "POST" }),
+  /** Перенос — отмена и запись одним действием на сервере (clinic.ts): слот не успеет уйти между ними */
+  rescheduleAppointment: (id: string, slotId: string) =>
+    request<{ ok: true }>(`/api/clinic/appointments/${id}/reschedule`, {
+      method: "POST",
+      body: JSON.stringify({ slotId }),
+    }),
   cancelAppointment: (id: string, reason?: string) =>
     request<{ ok: true; late: boolean }>(`/api/clinic/appointments/${id}/cancel`, {
       method: "POST",

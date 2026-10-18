@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { and, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import {
   mailingAnswerSchema,
   mailingInboxQuery,
@@ -219,8 +219,14 @@ function assertRevision(row: MailingRow, seen: number | undefined) {
  */
 mailingRoutes.get("/", ...staffOnly, async (c) => {
   const user = c.get("user");
-  const { q, hidden, limit, offset } = parseQuery(c, mailingListQuery);
+  const { q, hidden, status, group, order, limit, offset } = parseQuery(c, mailingListQuery);
 
+  /*
+   * Все рассылки автора, скрытые тоже: из одного чтения считаются и строки
+   * вида, и числа у пилюль «Усі / Чернетки / Відправлені / Приховані». Список
+   * одного автора — десятки строк (см. выше), второй запрос ради счётчиков
+   * стоил бы дороже, чем лишние строки в первом.
+   */
   const rows = await db
     .select({
       row: mailings,
@@ -228,18 +234,47 @@ mailingRoutes.get("/", ...staffOnly, async (c) => {
         where r.mailing_id = "mailings"."id")`,
       answeredCount: sql<number>`(select count(*)::int from mailing_recipients r
         where r.mailing_id = "mailings"."id" and r.answer is not null)`,
+      readCount: sql<number>`(select count(*)::int from mailing_recipients r
+        where r.mailing_id = "mailings"."id" and r.read_at is not null)`,
+      /* выбравшие каждый вариант: [номер, сколько] — без строк для невыбранных */
+      answerCounts: sql<[number, number][] | null>`(select json_agg(json_build_array(a.answer, a.n))
+        from (select r.answer, count(*)::int as n from mailing_recipients r
+          where r.mailing_id = "mailings"."id" and r.answer is not null group by r.answer) a)`,
     })
     .from(mailings)
-    .where(
-      and(
-        isSuperadmin(user) ? undefined : eq(mailings.authorId, user.id),
-        hidden ? isNotNull(mailings.hiddenAt) : isNull(mailings.hiddenAt),
-      ),
-    )
+    .where(isSuperadmin(user) ? undefined : eq(mailings.authorId, user.id))
     .orderBy(desc(sql`coalesce(${mailings.sentAt}, ${mailings.updatedAt})`));
 
-  const decrypted = rows.map((r) => {
+  const counts = { all: 0, draft: 0, sent: 0, hidden: 0 };
+  const month = { sent: 0, recipients: 0, asked: 0, answered: 0 };
+  const monthAgo = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString();
+  for (const r of rows) {
+    if (r.row.hiddenAt) counts.hidden += 1;
+    else {
+      counts.all += 1;
+      counts[r.row.status] += 1;
+      if (r.row.sentAt && r.row.sentAt >= monthAgo) {
+        const recipients = Number(r.recipientCount ?? 0);
+        month.sent += 1;
+        month.recipients += recipients;
+        if ((r.row.options ?? []).length) {
+          month.asked += recipients;
+          month.answered += Number(r.answeredCount ?? 0);
+        }
+      }
+    }
+  }
+
+  const shown = rows.filter(
+    (r) =>
+      (hidden ? r.row.hiddenAt !== null : r.row.hiddenAt === null) &&
+      (!status || r.row.status === status) &&
+      (!group || r.row.patientGroupId === group),
+  );
+  if (order === "old") shown.reverse();
+  const decrypted = shown.map((r) => {
     const m = toMailing(r.row);
+    const byOption = new Map((r.answerCounts ?? []).map(([i, n]) => [Number(i), Number(n)]));
     const item: MailingListItem = {
       id: m.id,
       title: m.title,
@@ -249,6 +284,10 @@ mailingRoutes.get("/", ...staffOnly, async (c) => {
       sentAt: m.sentAt,
       recipientCount: Number(r.recipientCount ?? 0),
       answeredCount: Number(r.answeredCount ?? 0),
+      readCount: Number(r.readCount ?? 0),
+      options: m.options,
+      answers: m.options.map((_, i) => byOption.get(i) ?? 0),
+      patientGroupId: m.patientGroupId,
     };
     // полный текст нужен только поиску; наружу уходит начало
     return { item, haystack: `${m.title} ${m.body}`.toLowerCase() };
@@ -258,6 +297,8 @@ mailingRoutes.get("/", ...staffOnly, async (c) => {
   const page: MailingListPage = {
     items: matched.slice(offset, offset + limit).map((d) => d.item),
     total: matched.length,
+    counts,
+    month,
   };
   return c.json(page);
 });

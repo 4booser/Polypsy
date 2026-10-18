@@ -1419,6 +1419,12 @@ export const mailingListQuery = z.object({
     .string()
     .optional()
     .transform((v) => v === "1"),
+  /** Вид «Чернетки» / «Відправлені»; без него — все не скрытые */
+  status: z.enum(["draft", "sent"]).optional(),
+  /** Только рассылки этой группе пациентов */
+  group: z.string().min(1).max(64).optional(),
+  /** Порядок по дате строки: новые сверху (умолчание) или старые */
+  order: z.enum(["new", "old"]).optional(),
   limit: queryInt(1, 200, 10),
   offset: queryInt(0, LIST_OFFSET_MAX, 0),
 });

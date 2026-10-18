@@ -307,7 +307,7 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
    * получателя своё право — строка доставки в mailing_recipients, и его
    * маршруты закрыты ею, а не справочником прав персонала.
    */
-  "GET /api/mailings": { summary: "Рассылки автора: тема, начало текста, дата; поиск, страницы; ?hidden=1 — скрытые", access: "staff", permission: "mailings.manage" },
+  "GET /api/mailings": { summary: "Рассылки автора: тема, начало текста, дата, ответы по вариантам, счётчики видов; поиск, страницы; ?status=draft|sent — вид, ?hidden=1 — скрытые", access: "staff", permission: "mailings.manage" },
   "POST /api/mailings": { summary: "Завести черновик рассылки: название, текст, варианты ответа, адресаты", access: "staff", permission: "mailings.manage", body: mailingInputSchema },
   "GET /api/mailings/inbox": { summary: "Свои рассылки получателя: непрочитанные, ответы, счётчик для меню", access: "user", whyNoPermission: "свои рассылки получатель видит сам: его право — строка доставки на его имя, а не запись в справочнике прав персонала" },
   "POST /api/mailings/:id/read": { summary: "Отметить рассылку прочитанной; повтор ничего не меняет", access: "user", whyNoPermission: "отметку прочтения ставит сам получатель на своей строке доставки; чужая рассылка для него не существует" },
@@ -598,7 +598,7 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   "POST /api/recordings/:appointmentId/start": { summary: "Начать запись; без согласия отказ", access: "user", whyNoPermission: "начинает ведущий приём, и проверка согласия стоит внутри" },
   "POST /api/recordings/:appointmentId/stop": { summary: "Остановить и передать аудио (формат — по байтам: WebM, Ogg, MP4, WAV); повтор с тем же uploadId подтверждается; аудио дослаётся и после остановки пациентом; остановить может любая сторона", access: "user", whyNoPermission: "это разговор двоих, и право прекратить запись есть у обоих" },
   "POST /api/recordings/:appointmentId/discard": { summary: "Удалить запись до расшифровки", access: "user", whyNoPermission: "сказанное сгоряча человек вправе забрать назад, пока оно не стало текстом" },
-  "GET /api/messages": { summary: "Разговоры: у пациента один, у специалиста список", access: "user", whyNoPermission: "свою переписку человек видит сам; у специалиста список ограничен его же разговорами" },
+  "GET /api/messages": { summary: "Разговоры: у пациента один, у специалиста список — с началом последнего письма, его автором и прочтением, ближайшим своим приёмом", access: "user", whyNoPermission: "свою переписку человек видит сам; у специалиста список ограничен его же разговорами" },
   "GET /api/messages/:id": { summary: "Разговор: последние письма и курсор назад; чтение ничего не помечает", access: "user", whyNoPermission: "разговор видят только двое его участников, и это проверяется по самому разговору" },
   "POST /api/messages/:id/read": { summary: "Отметить прочитанными показанные письма собеседника", access: "user", whyNoPermission: "отмечает только участник разговора и только письма другой стороны" },
   "POST /api/messages": { summary: "Написать: пациент своему специалисту, специалист — своему пациенту", access: "user", whyNoPermission: "пациент пишет своему и адресата не выбирает; отправка специалистом проверяется правом внутри" },
