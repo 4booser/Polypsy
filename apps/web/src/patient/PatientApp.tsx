@@ -7,11 +7,8 @@ import { useAuth } from "../auth";
 import { useLang } from "../lang";
 import { MaintenanceBanner } from "../service/MaintenanceBanner";
 import { ShellIcon, type IconName } from "../shell/icons";
-import { LangMenu } from "../shell/LangMenu";
 import { LogoTile } from "../shell/Logo";
 import { DrawerHead, ShellDrawer } from "../shell/overlays";
-import { setThemeChoice, type ThemeChoice } from "../shell/theme";
-import { ThemeToggle } from "../shell/ThemeToggle";
 import { initials } from "../shell/UserMenu";
 import { ConnectionLine } from "../ui/ConnectionLine";
 import { cx } from "../ui/cx";
@@ -28,7 +25,7 @@ import { OutboxStrip } from "./OutboxStrip";
  * мог бы решить, что его карту читает кто угодно.
  *
  * Polypsy 2.0 (patient() в kit/shell.py): шапка на сиреневой полосе —
- * знак, четыре вкладки, всегда видимая «Допомога», тема, язык и имя; одна
+ * знак, четыре вкладки, всегда видимая «Допомога» и имя; одна
  * колонка 1120, основной текст 16, мишени от 44. На телефоне вкладки
  * уходят вниз, под большой палец, а «Допомога» остаётся в шапке: её ищут в
  * тяжёлую минуту, и искать её не должно быть нужно.
@@ -76,12 +73,6 @@ function PatientShell() {
   const here = TABS.find((t) => (t.end ? pathname === t.to : pathname.startsWith(t.to))) ?? TABS[0]!;
 
   const pending = useOutbox(user?.id ?? null);
-
-  /* выбор темы — во вкладке, в браузере и в профиле: пациент тоже садится за разные устройства */
-  const chooseTheme = (c: ThemeChoice) => {
-    setThemeChoice(c);
-    void api.saveWorkspace({ theme: c }).catch(() => {});
-  };
 
   return (
     /*
@@ -147,8 +138,11 @@ function PatientShell() {
               <ShellIcon name="life-buoy" size={18} />
               {ut("pt.help")}
             </button>
-            <ThemeToggle tone="band" onChoose={chooseTheme} className="max-[600px]:hidden" />
-            <LangMenu tone="band" />
+            {/*
+              Язык и тема — в профиле (LangSwitch и выбор темы): в шапке им
+              не хватило бы места рядом с «Допомогою» при мишенях 44, а
+              кабинет — место спокойное, без лишних кнопок на каждом экране.
+            */}
             <Link
               to="/me/profile"
               aria-label={user?.fullName ?? ut("pt.tabProfile")}
@@ -188,13 +182,14 @@ function PatientShell() {
 
       <footer className="border-t border-border bg-panel max-[899px]:hidden">
         <div className="mx-auto flex h-16 w-full max-w-[1152px] items-center gap-6 whitespace-nowrap px-4 text-[13.5px] text-muted">
-          <span className="inline-flex items-center gap-[6px]">
+          <a
+            href={`tel:${ut("home.hotlineNumber")}`}
+            className="inline-flex items-center gap-[6px] text-muted no-underline hover:text-text hover:no-underline"
+          >
             <ShellIcon name="phone" size={14} />
             {ut("home.hotline")}
-            <a href={`tel:${ut("home.hotlineNumber")}`} className="font-extrabold text-text-2 no-underline hover:underline">
-              {ut("home.hotlineNumber")}
-            </a>
-          </span>
+            <b className="font-extrabold text-text-2">{ut("home.hotlineNumber")}</b>
+          </a>
           <Link to="/status" className="ml-auto inline-flex items-center gap-[6px] text-text-2 no-underline hover:underline">
             <ShellIcon name="circle-check" size={14} className="text-good" />
             {ut("svc.title")}

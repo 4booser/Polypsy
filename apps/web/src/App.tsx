@@ -401,7 +401,12 @@ export default function App() {
    * Временный пароль — то же самое: сервер пускает только к смене
    * (lib/tempPassword.ts), и опрос до неё — строка отказа на каждый такт.
    */
-  const counting = !!user && !user.mfaSetupRequired && !user.mustChangePassword;
+  /*
+   * И не у пациента: счётчики — числа консоли (рельса, центр событий), а
+   * кабинет их не рисует; запросы к очереди и случаям от пациента — отказ
+   * сервера и строка access.denied в журнале на каждый такт.
+   */
+  const counting = !!user && user.role !== "user" && !user.mfaSetupRequired && !user.mustChangePassword;
   /*
    * Тревоги — единственное в консоли, что должно догонять само: пока
    * email-канал не настроен, поллинг раз в минуту + бейдж на favicon —
@@ -450,7 +455,7 @@ export default function App() {
         .then((t) => t.items.reduce((n, x) => n + (x.unread ?? 0), 0))
         .catch(() => 0),
     [user?.id],
-    { ...tally, enabled: counting && user?.role !== "user" },
+    tally,
   );
   useLiveReload(
     ["alert.created", "case.changed"],

@@ -7,7 +7,7 @@ import { api } from "../api";
 import { useAuth } from "../auth";
 import { useResource, type Resource } from "../useResource";
 import { loadView } from "../ui";
-import { dateTime, severityKey } from "../format";
+import { day, severityKey, timeOfDay } from "../format";
 import { cx } from "../ui/cx";
 import { occurrenceKeys } from "../ui/rowKeys";
 import { SeverityTag } from "../ui/primitives";
@@ -175,7 +175,7 @@ export function EventCenter() {
             <div className="flex items-center gap-[10px] pb-[6px] pt-[14px]">
               <h3 className="m-0 text-[15px] font-extrabold leading-5 tracking-[-0.01em] text-text">{ut("ec.missed")}</h3>
               <span className="min-w-0 flex-1 truncate text-[12.5px] text-muted">
-                {ut("ec.since")} {dateTime(since)}
+                {ut("ec.since")} {when(since)}
               </span>
               {missedCount > 0 ? (
                 <button
@@ -259,7 +259,7 @@ function LiveFeed({ events, filter, onGo }: { events: AppEvent[]; filter: Filter
         <Link key={keys[i]} to="/alerts" className={ROW} onClick={onGo}>
           <span className="min-w-0 flex-1 truncate font-semibold text-text">{ut(EVENT_KEY[e.kind].key)}</span>
           {e.severity ? <SevMark level={e.severity} /> : null}
-          <span className="shrink-0 text-[12.5px] text-muted tabular-nums">{dateTime(e.at).slice(11)}</span>
+          <span className="shrink-0 text-[12.5px] text-muted tabular-nums">{when(e.at)}</span>
         </Link>
       ))}
     </div>
@@ -341,7 +341,7 @@ export function MissedList({
                 </span>
                 {item.severity ? <SevMark level={item.severity} /> : null}
                 <span className="shrink-0 self-start pt-[1px] text-[12.5px] text-muted tabular-nums">
-                  {dateTime(item.at).slice(5, 16)}
+                  {when(item.at)}
                 </span>
               </Link>
             ))}
@@ -350,6 +350,16 @@ export function MissedList({
       })}
     </div>
   );
+}
+
+/**
+ * Когда: сегодняшнее — часами («14:12»), прежнее — днём и часами
+ * («17 жовт., 18:40»). Прежде здесь резалась строка полной даты по
+ * позициям, и с длинным месяцем на экран выходил её обрывок.
+ */
+function when(iso: string): string {
+  const sameDay = new Date(iso).toDateString() === new Date().toDateString();
+  return sameDay ? timeOfDay(iso) : `${day(iso)}, ${timeOfDay(iso)}`;
 }
 
 /* строка ленты: подложка наведения и кольцо фокуса — внутри строки, ящик прокручивается сам */

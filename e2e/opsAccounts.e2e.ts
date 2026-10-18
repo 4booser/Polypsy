@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { apiToken, auth, menuButton } from "./helpers";
+import { apiToken, auth, eventsBell } from "./helpers";
 
 /**
  * Выключенная учётка на экране входа (техпанель, волна 10).
@@ -39,5 +39,5 @@ test("выключенная учётка не входит и видит, по�
 
   // отказ объявлен диктору и назван словами сервера — на любом из двух языков
   await expect(page.getByRole("alert")).toContainText(/вимкнено|отключена/i);
-  await expect(menuButton(page)).toHaveCount(0);
+  await expect(eventsBell(page)).toHaveCount(0);
 });

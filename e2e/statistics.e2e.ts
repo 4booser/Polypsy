@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { SEED_SURVEY, apiToken, auth, goTop, login } from "./helpers";
+import { SEED_SURVEY, apiToken, auth, goSection, login } from "./helpers";
 
 /**
  * Раздел «Статистика» (кадры f08, f09, f18, f29, f24): смоук пути, которым
@@ -66,8 +66,8 @@ test("статистика: перечень → модель → свёрнут
 
   await login(page, "superadmin");
 
-  /* f08: пункт полосы ведёт в перечень, модель находится поиском по своему названию */
-  await goTop(page, /^Статистика$/);
+  /* f08: «Статистические модели» в колонке аналитики ведут в перечень, модель находится поиском по своему названию */
+  await goSection(page, /^Аналитика/, "Статистические модели");
   await expect(page).toHaveURL(/\/statistics$/);
   await expect(page.getByRole("heading", { name: /^(Перелік статистики|Перечень статистики)$/ })).toBeVisible();
   await page.getByRole("textbox", { name: /^(Пошук|Поиск) статисти/ }).fill(title);

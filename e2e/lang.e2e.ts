@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { LANG_FULL, langToggle, login, openMenu, setLang, topNav } from "./helpers";
+import { LANG_FULL, langToggle, login, openUserMenu, railNav, setLang } from "./helpers";
 
 /**
  * Двуязычная оболочка.
@@ -10,15 +10,13 @@ import { LANG_FULL, langToggle, login, openMenu, setLang, topNav } from "./helpe
  */
 test("переключение языка меняет оболочку и запоминается", async ({ page }) => {
   await login(page, "psy");
-  const nav = topNav(page);
+  const nav = railNav(page);
   const toggle = langToggle(page);
 
   /*
-   * Берутся пункты полосы и слово на переключателе. Полоса стоит всегда и
-   * целиком — в отличие от рельсы, где пункты закрытой группы не
-   * существовали в разметке, и проверять по ним значило бы проверять заодно
-   * умолчание раскрытия. Слово на переключателе — не украшение: оно называет
-   * текущий язык, и человек по нему понимает, где он.
+   * Берутся пункты рельсы и слово на переключателе. Рельса стоит всегда и
+   * целиком. Слово на переключателе — не украшение: оно называет текущий
+   * язык, и человек по нему понимает, где он.
    */
   // конфигурация смоука ходит с русской локалью — стартуем с неё
   await expect(nav.getByRole("link", { name: "Пациенты" })).toBeVisible();
@@ -43,15 +41,15 @@ test("переключение языка меняет оболочку и за�
   await expect(toggle).toBeFocused();
 
   /*
-   * Бургер переведён тем же нажатием: разделы в нём берутся из того же
-   * словаря, что и полоса, но рисуются другим кодом — и забытый ut() там
-   * полоса бы не выдала. Закрывается по Esc, чтобы дальше не читать оболочку
-   * сквозь список.
+   * Карточка учётной записи переведена тем же нажатием: она рисуется другим
+   * кодом, чем рельса, и забытый ut() там рельса бы не выдала. Закрывается
+   * по Esc, чтобы дальше не читать оболочку сквозь неё.
    */
-  const menu = await openMenu(page);
-  await expect(menu.getByRole("link", { name: "Випадки ризику" })).toBeVisible();
+  await expect(nav.getByRole("link", { name: /^Випадки ризику/ })).toBeVisible();
+  const card = await openUserMenu(page);
+  await expect(card.getByRole("link", { name: "Обліковий запис" })).toBeVisible();
   await page.keyboard.press("Escape");
-  await expect(menu).toBeHidden();
+  await expect(card).toBeHidden();
 
   // язык страницы меняется тоже: от него зависят диктор и переносы слов
   await expect(page.locator("html")).toHaveAttribute("lang", "uk");

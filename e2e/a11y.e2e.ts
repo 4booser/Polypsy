@@ -421,7 +421,7 @@ test("день отмечается с клавиатуры, без мыши", a
    * Заголовком экрана стоит дата, а «Сегодня» — вкладка: сводка и приём
    * слиты в один экран.
    */
-  await page.getByRole("link", { name: "Сегодня" }).waitFor();
+  await page.getByRole("main").getByRole("link", { name: "Сегодня" }).waitFor();
 
   const row = dayRow(page, own.id);
   const came = row.getByRole("button", { name: "Пришёл", exact: true });

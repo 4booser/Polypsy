@@ -478,7 +478,7 @@ const SCREENS: Array<{
     name: "today",
     open: async (page) => {
       await page.goto("/today");
-      await page.getByRole("link", { name: "Сегодня" }).waitFor();
+      await page.getByRole("main").getByRole("link", { name: "Сегодня" }).waitFor();
     },
     /*
      * Заголовком этого экрана стоит сегодняшняя дата — и это сознательно:
@@ -555,7 +555,7 @@ const SCREENS: Array<{
        * есть и на списке, — ожидание проходило мгновенно, и снимок ловил
        * карту в состоянии загрузки.
        */
-      await page.getByRole("link", { name: "Хронология" }).waitFor();
+      await page.getByRole("main").getByRole("link", { name: "Хронология" }).waitFor();
       // карта дозагружает динамику и эпизоды отдельными запросами
       await expect.poll(async () => page.locator(".skeleton").count(), { timeout: 10_000 }).toBe(0);
     },
