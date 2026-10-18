@@ -94,7 +94,7 @@ export function ActTag({ a, testTitle }: { a: RuleAction; testTitle: (id: string
   if (a.kind === "suggest_survey") {
     return (
       <Tag icon={ACT_ICON.suggest_survey} className="max-w-full">
-        <span className="min-w-0 truncate">
+        <span className="min-w-0 max-w-[230px] truncate">
           {ut("am.actSuggest")}: {testTitle(a.surveyId)}
         </span>
       </Tag>
@@ -112,7 +112,7 @@ export function ActTag({ a, testTitle }: { a: RuleAction; testTitle: (id: string
   if (a.kind === "suggest_pathway") {
     return (
       <Tag icon={ACT_ICON.suggest_pathway} className="max-w-full">
-        <span className="min-w-0 truncate">
+        <span className="min-w-0 max-w-[230px] truncate">
           {ut("am.actPathway")}: {a.pathwayId}
         </span>
       </Tag>

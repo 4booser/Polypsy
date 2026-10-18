@@ -8214,7 +8214,7 @@ export const UI = {
   "am.newMeta2": { uk: "одразу перевіряє завершені тести", ru: "сразу проверяет завершённые тесты", en: "it checks completed tests right away" },
   "am.create": { uk: "Створити модель", ru: "Создать модель", en: "Create model" },
   "am.createdOk": { uk: "Модель створено", ru: "Модель создана", en: "Model created" },
-  "am.saveKbd": { uk: "Зберегти — Ctrl S або ⌘S", ru: "Сохранить — Ctrl S или ⌘S", en: "Save — Ctrl S or ⌘S" },
+  "am.saveKbd": { uk: "Зберегти — Ctrl S", ru: "Сохранить — Ctrl S", en: "Save — Ctrl S" },
   "am.versionCap": { uk: "Версія {n}", ru: "Версия {n}", en: "Version {n}" },
   "am.unsaved": { uk: "не збережено", ru: "не сохранено", en: "unsaved" },
   "am.discard": { uk: "Скасувати зміни", ru: "Отменить изменения", en: "Discard changes" },
@@ -8507,7 +8507,7 @@ export const UI = {
   },
   "ant.filePyNote": { uk: "Те саме для pandas", ru: "То же для pandas", en: "The same for pandas" },
   "ant.ageN": { uk: "{n} р.", ru: "{n} л.", en: "{n} y" },
-  "ant.testsTaken": { uk: "тестів у динаміці: {n}", ru: "тестов в динамике: {n}", en: "tests with a course: {n}" },
+  "ant.testsTaken": { uk: "пройдено тестів: {n}", ru: "пройдено тестов: {n}", en: "tests taken: {n}" },
   "ant.newestFirst": { uk: "спершу нові", ru: "сначала новые", en: "newest first" },
   "ant.patientFastNone": {
     uk: "Надто швидких проходжень у цього пацієнта немає.",

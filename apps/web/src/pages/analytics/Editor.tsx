@@ -1102,7 +1102,8 @@ function ActionRow({
         /* «повідомити чергового» параметров не имеет — вместо поля одна фраза о том, что случится */
         <p className="m-0 text-small text-text-2 @[600px]:pt-7">{ut("am.notifyHint")}</p>
       )}
-      <span className="flex items-center gap-1 pt-7">
+      {/* у «повідомити чергового» во второй колонке фраза без подписи — отметке не нужен отступ под подпись, пока строка узкая */}
+      <span className={cx("flex items-center gap-1", a.kind === "notify_duty" ? "@[600px]:pt-7" : "pt-7")}>
         <Checkbox checked={a.picked} aria-label={ut("am.pickAction")} onChange={(e) => onChange({ picked: e.target.checked })} />
         <Button variant="quiet" size="icon-sm" aria-label={ut("am.removeAct")} title={ut("am.removeAct")} onClick={onRemove}>
           <AIc.trash size={15} />

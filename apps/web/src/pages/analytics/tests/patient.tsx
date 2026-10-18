@@ -386,7 +386,7 @@ function Matrix({ matrix, surveyId, onlyChanged }: { matrix: AnswerMatrix; surve
                           c?.changed && "ring-[1.5px] ring-text-2 ring-offset-2 ring-offset-panel",
                         )}
                       >
-                        {c === null ? "—" : c.skipped ? "·" : c.score !== null ? numText(c.score) : "✓"}
+                        {c === null ? "—" : c.skipped ? "·" : c.score !== null ? numText(c.score) : <Ic.check size={12} />}
                         <RowTip>
                           <TipHead note={matrix.responses[i]?.submittedAt ? day(matrix.responses[i]!.submittedAt!) : undefined}>
                             {`${row.position + 1}. ${row.title}`}

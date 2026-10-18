@@ -232,11 +232,7 @@ function BandsPanel({ scale: s, onView }: { scale: ScaleAnalytics; onView: () =>
       <HBars
         items={s.bands.map((b) => ({
           key: `${b.label}-${b.min}`,
-          label: (
-            <>
-              {b.label} <span className="text-caption font-medium text-muted">{`${numText(b.min)}–${numText(b.max)}`}</span>
-            </>
-          ),
+          label: b.label,
           value: b.count,
           text: nf(b.count),
         }))}
@@ -267,7 +263,10 @@ function BandsPanel({ scale: s, onView }: { scale: ScaleAnalytics; onView: () =>
       {enough && rungs.length ? (
         <>
           <span className="mb-2 mt-3 block text-caption font-bold text-muted">{ut("ant.medianLadder")}</span>
-          <SeverityMeter rungs={rungs} value={s.median} label={`${s.title}: ${numText(s.median)}${hit ? ` — ${hit.label}` : ""}`} />
+          {/* поля по краям: слово ступени у края шкалы шире своего места и иначе уходит за край панели */}
+          <div className="px-5">
+            <SeverityMeter rungs={rungs} value={s.median} label={`${s.title}: ${numText(s.median)}${hit ? ` — ${hit.label}` : ""}`} />
+          </div>
         </>
       ) : null}
       <ul className="m-0 mt-3 flex list-none flex-col gap-1.5 p-0 text-small text-text-2">
@@ -1078,14 +1077,17 @@ export function ResponsesTable({ pages, surveyId, showName = true }: { pages: Re
     },
     { key: "time", header: ut("an.time"), required: true, width: 100, render: (r) => <span className="whitespace-nowrap text-text-2">{duration(r.durationMs)}</span> },
     { key: "scores", header: ut("an.scores"), required: true, render: (r) => <ScoresCell r={r} /> },
-    {
+  ];
+  /* версия — только когда сервер её прислал: пустая колонка читается как «версии нет» */
+  if (pages.rows.some((r) => r.versionNumber)) {
+    columns.push({
       key: "ver",
       header: ut("an.version"),
       required: true,
       width: 80,
       render: (r) => (r.versionNumber ? <span className="text-text-2">{fill(ut("ant.verShort"), { n: r.versionNumber })}</span> : null),
-    },
-  ];
+    });
+  }
 
   return (
     <>

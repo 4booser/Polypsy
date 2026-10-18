@@ -98,7 +98,7 @@ function FileButton({
       title={hint}
       onClick={onClick}
       className={cx(
-        "grid min-h-0 cursor-pointer grid-cols-[32px_minmax(0,1fr)_20px] items-start gap-2.5 rounded-[12px] border-0 bg-panel px-3 py-2.5 text-left",
+        "grid min-h-0 cursor-pointer grid-cols-[32px_minmax(0,1fr)_20px] items-start gap-2.5 whitespace-normal rounded-[12px] border-0 bg-panel px-3 py-2.5 text-left",
         "shadow-[inset_0_0_0_1px_var(--border)] transition-[background-color,box-shadow] duration-[var(--dur-fast)]",
         "hover:bg-panel-2 hover:shadow-[inset_0_0_0_1px_var(--ctl)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
         "disabled:cursor-not-allowed disabled:opacity-48",

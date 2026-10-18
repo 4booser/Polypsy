@@ -311,13 +311,14 @@ function Shown({
 }) {
   const { ut } = useLang();
   const rest = [version, who, group, period].filter(Boolean).join(", ");
+  /* пока методика не пришла, строка начинается со среза, а не с запятой */
   return (
     <div className="mt-2.5 flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-divider pt-2.5 text-small text-text-2">
       <Ic.eye size={14} className="text-muted" />
       <span className="text-muted">{ut("ant.shown")}</span>
       <span className="min-w-0 flex-1">
-        <b className="font-extrabold text-text">{title}</b>
-        {rest ? `, ${rest}.` : "."}
+        {title ? <b className="font-extrabold text-text">{title}</b> : null}
+        {title ? (rest ? `, ${rest}.` : ".") : `${rest}.`}
         {groupNote ? ` ${ut("ant.groupNotInPatient")}` : null}
       </span>
       <span className="text-caption text-muted">{ut("ant.readOnly")}</span>
