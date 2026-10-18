@@ -20,7 +20,19 @@ import { Agenda, useUntil } from "./today/Agenda";
 import { Between } from "./today/Between";
 import { useDayDrawer } from "./today/drawers";
 import { Di } from "./today/icons";
-import { betweenSessions, caseTimer, clashes, focusSession, hhmm, localDate, overdueWork, sessionStates, shiftDate, urgentCases } from "./today/model";
+import {
+  betweenSessions,
+  caseTimer,
+  clashes,
+  focusSession,
+  hhmm,
+  localDate,
+  overdueWork,
+  prepAfterSelect,
+  sessionStates,
+  shiftDate,
+  urgentCases,
+} from "./today/model";
 import { useCodeKeys } from "./today/keys";
 import { Prep } from "./today/Prep";
 
@@ -105,6 +117,17 @@ export default function TodayPage() {
   const clash = useMemo(() => clashes(items), [items]);
   const focus = focusSession(items, now);
   const selected = items.find((a) => a.id === picked) ?? focus ?? null;
+  /*
+   * Подготовка открывается только явно (кнопка или P): её открытие сервер
+   * пишет в журнал доступа. Смена выбранной сессии её закрывает.
+   */
+  const [prepFor, setPrepFor] = useState<string | null>(null);
+  const selectedId = selected?.id ?? null;
+  useEffect(() => setPrepFor((p) => prepAfterSelect(p, selectedId)), [selectedId]);
+  const prepOpen = selectedId !== null && prepFor === selectedId;
+  const openPrep = () => {
+    if (selectedId) setPrepFor(selectedId);
+  };
 
   const cases = side.data?.cases ? urgentCases(side.data.cases, user?.id ?? null) : null;
   const hero = cases?.[0] ?? null;
@@ -140,6 +163,7 @@ export default function TodayPage() {
       KeyJ: () => step(1),
       KeyK: () => step(-1),
       KeyN: () => note(selected),
+      KeyP: selected ? openPrep : undefined,
       KeyR: hero ? () => navigate(reviewHref(hero.userId)) : undefined,
       KeyM: heroMsg ? replyHero : undefined,
     },
@@ -185,7 +209,15 @@ export default function TodayPage() {
               />
               <SideLayout
                 side={
-                  <Prep a={selected} state={selected ? states.get(selected.id) : undefined} clash={selected ? clash.get(selected.id) : undefined} now={now} onNote={note} />
+                  <Prep
+                  a={selected}
+                  state={selected ? states.get(selected.id) : undefined}
+                  clash={selected ? clash.get(selected.id) : undefined}
+                  now={now}
+                  open={prepOpen}
+                  onOpen={openPrep}
+                  onNote={note}
+                />
                 }
               >
                 <Agenda
@@ -204,6 +236,7 @@ export default function TodayPage() {
                   hints={[
                     ["J K", ut("dayA.hintSessions")],
                     ["N", ut("dayA.hintNote")],
+                  ["P", ut("dayA.hintPrep")],
                     ...(hero ? ([["R", ut("dayA.hintReview")]] as [string, string][]) : []),
                     ...(heroMsg && hero ? ([["M", fill(ut("dayA.hintReply"), { name: hero.userName.split(" ")[1] ?? hero.userName })]] as [string, string][]) : []),
                     ["Enter", ut("dayA.hintCard")],

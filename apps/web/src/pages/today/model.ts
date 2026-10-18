@@ -210,6 +210,18 @@ export function focusSession(items: readonly AppointmentView[], now: number | nu
   return items.find((a) => states.get(a.id) === "here") ?? items.find((a) => states.get(a.id) === "next") ?? null;
 }
 
+/**
+ * Чья подготовка открыта после смены выбора: только той же сессии.
+ *
+ * Клинический контекст открывается явным действием («Показати підготовку»),
+ * и сервер пишет это открытие в журнал доступа. Выбор другой сессии —
+ * щелчком, J/K или сам собой по ходу дня — панель закрывает; вернувшись,
+ * человек открывает её снова сам, а не получает чужой контекст обратно.
+ */
+export function prepAfterSelect(openFor: string | null, selectedId: string | null): string | null {
+  return openFor !== null && openFor === selectedId ? openFor : null;
+}
+
 /** Где в списке встаёт строка «Зараз»: перед первой сессией, что начнётся позже */
 export function nowIndex(items: readonly AppointmentView[], now: number): number {
   const i = items.findIndex((a) => Date.parse(a.startsAt) > now);

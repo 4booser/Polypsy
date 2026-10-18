@@ -13,16 +13,19 @@ import { useResource } from "../../useResource";
 import { fill } from "../dashboard/model";
 import { Di } from "./icons";
 import { hhmm, type Clash, type SessionState } from "./model";
-import { useUntil } from "./Agenda";
+import { ReadinessCells, useUntil } from "./Agenda";
 
 /**
  * Підготовка до сесії — липкая панель справа: выбранная сессия (по
  * умолчанию идущая или следующая).
  *
- * Только то, что приложение знает о человеке: что изменилось с прошлого
- * приёма (сервер считает это для экрана приёма), ключевые числа из динамики
- * с надёжностью изменения, последняя запись о человеке. Плана сессии в
- * данных нет — его здесь и нет.
+ * Без явного действия панель показывает только то, что уже есть в расписании:
+ * кто, когда, формат, кабинет, готовность из загруженного дня. Клинический
+ * контекст — что изменилось с прошлого приёма, ключевые числа, последняя
+ * запись — открывается кнопкой «Показати підготовку» (P): сервер пишет такое
+ * открытие в журнал доступа (clinic.visit_open), и запись должна значить
+ * «человек открыл», а не «курсор прошёл по строке». Выбор другой сессии
+ * панель закрывает: чужой контекст на экране не остаётся.
  */
 
 type Ctx = Awaited<ReturnType<typeof api.visitContext>>;
@@ -109,33 +112,40 @@ const CHANGE_ICON: Record<string, { tone: string; icon: ReactNode }> = {
   conclusion: { tone: "bg-good-tint text-good", icon: <Di.fileText size={14} /> },
 };
 
+/**
+ * Клинический контекст сессии — три запроса разом. Только отсюда панель
+ * зовёт /api/clinic/appointments/:id/context, и только по явному открытию
+ * (apps/web/test/todayPrep.test.tsx).
+ */
+export async function loadPrep(a: Pick<AppointmentView, "id" | "patientId">) {
+  const [ctx, dyn, notes] = await Promise.all([
+    api.visitContext(a.id).catch((): Ctx | null => null),
+    api.dynamics(a.patientId).catch((): RespondentDynamics | null => null),
+    api.notes(a.patientId).catch((): NoteState | null => null),
+  ]);
+  return { ctx, dyn, notes };
+}
+
 export function Prep({
   a,
   state,
   clash,
   now,
+  open,
+  onOpen,
   onNote,
 }: {
   a: AppointmentView | null;
   state: SessionState | undefined;
   clash: Clash | undefined;
   now: number | null;
+  /** Открыта ли подготовка этой сессии — явным действием, а не выбором строки */
+  open: boolean;
+  onOpen: () => void;
   onNote: (a: AppointmentView) => void;
 }) {
   const { ut } = useLang();
   const until = useUntil();
-  const res = useResource(
-    async () => {
-      if (!a) return null;
-      const [ctx, dyn, notes] = await Promise.all([
-        api.visitContext(a.id).catch((): Ctx | null => null),
-        api.dynamics(a.patientId).catch((): RespondentDynamics | null => null),
-        api.notes(a.patientId).catch((): NoteState | null => null),
-      ]);
-      return { ctx, dyn, notes };
-    },
-    [a?.id],
-  );
 
   if (!a) {
     return (
@@ -161,11 +171,6 @@ export function Prep({
       </Tag>
     ) : null;
 
-  const ctx = res.data?.ctx ?? null;
-  const rows = keyRows(res.data?.dyn ?? null);
-  const note = res.data?.notes?.current ?? null;
-  const prev = ctx?.previous ?? null;
-
   return (
     <Panel
       title={ut("dayA.prep")}
@@ -190,11 +195,7 @@ export function Prep({
         <Avatar name={a.patientName} size={48} />
         <div className="min-w-0">
           <h3 className="m-0 truncate text-lead font-extrabold leading-[23px] tracking-[-0.02em] text-text">{a.patientName}</h3>
-          <span className="block truncate text-small text-muted">
-            {[ctx?.patient.unit, ctx?.patient.leadName ? fill(ut("dayA.leadBy"), { name: ctx.patient.leadName }) : a.leadSpecialistId === null ? ut("day.noLead") : null]
-              .filter(Boolean)
-              .join(", ")}
-          </span>
+          {a.leadSpecialistId === null ? <span className="block truncate text-small text-muted">{ut("day.noLead")}</span> : null}
         </div>
       </div>
       <div className="flex flex-wrap gap-1.5 px-4 pb-3.5">
@@ -227,6 +228,44 @@ export function Prep({
         </div>
       ) : null}
 
+      {open ? (
+        <PrepDetails a={a} />
+      ) : (
+        <>
+          <section className="border-t border-divider px-4 pb-3 pt-3.5">
+            <h3 className="m-0 mb-2 text-h3 font-extrabold text-text">{ut("dayA.readiness")}</h3>
+            <ReadinessCells a={a} stacked />
+          </section>
+          <section data-prep-closed className="border-t border-divider px-4 pb-4 pt-3.5">
+            <Tooltip label={ut("dayA.prepShow")} kbd="P">
+              <Button icon={<Ic.eye />} onClick={onOpen} aria-keyshortcuts="P">
+                {ut("dayA.prepShow")}
+              </Button>
+            </Tooltip>
+            <p className="m-0 mt-2 text-caption text-text-2">{ut("dayA.prepShowHint")}</p>
+          </section>
+        </>
+      )}
+    </Panel>
+  );
+}
+
+/**
+ * Открытая подготовка: свой запрос, только пока она открыта. `keep: false` —
+ * контекст прежнего человека не стоит на экране под именем следующего.
+ */
+function PrepDetails({ a }: { a: AppointmentView }) {
+  const { ut } = useLang();
+  const res = useResource(() => loadPrep(a), [a.id], { keep: false });
+  const ctx = res.data?.ctx ?? null;
+  const rows = keyRows(res.data?.dyn ?? null);
+  const note = res.data?.notes?.current ?? null;
+  const prev = ctx?.previous ?? null;
+  const who = [ctx?.patient.unit, ctx?.patient.leadName ? fill(ut("dayA.leadBy"), { name: ctx.patient.leadName }) : null].filter(Boolean);
+
+  return (
+    <div data-prep-details>
+      {who.length ? <p className="m-0 border-t border-divider px-4 py-2.5 text-small text-text-2">{who.join(", ")}</p> : null}
       {res.error ? (
         <div className="border-t border-divider p-4">
           <Loading bare error={res.error} onRetry={res.reload} />
@@ -350,7 +389,7 @@ export function Prep({
           ) : null}
         </>
       )}
-    </Panel>
+    </div>
   );
 }
 
