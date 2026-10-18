@@ -227,9 +227,9 @@ test("бланк вводится с клавиатуры и строкой це
     .click();
   await page.waitForTimeout(800);
   /*
-   * Аналитика методики переехала во вкладку «Тести» раздела «Аналітика»:
-   * прежний /surveys/:id перенаправляет на /analytics/tests?survey=:id.
-   * Идентификатор берётся из любого из двух видов адреса.
+   * Строка каталога ведёт на обзор методики /surveys/:id (волна 25), а
+   * прежде вела на аналитику /analytics/tests?survey=:id. Идентификатор
+   * берётся из любого из двух видов адреса.
    */
   const url = new URL(page.url());
   const surveyId = url.searchParams.get("survey") ?? url.pathname.split("/surveys/")[1]!.split("/")[0]!;

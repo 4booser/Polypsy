@@ -193,6 +193,10 @@ batteryRoutes.get("/", requireStaff, requirePermission("batteries.manage"), asyn
       groupTitle: surveyGroups.title,
       activeAssignments: sql<number>`(select count(*) from battery_assignments a
         where a.battery_id = "batteries"."id" and a.completed_at is null and a.cancelled_at is null)`,
+      /* то же условие, что «overdue» у назначения (loadAssignments ниже): срок прошёл, не закрыто, не отменено */
+      overdueAssignments: sql<number>`(select count(*) from battery_assignments a
+        where a.battery_id = "batteries"."id" and a.completed_at is null and a.cancelled_at is null
+          and a.due_at is not null and a.due_at < now())`,
     })
     .from(batteries)
     .leftJoin(surveyGroups, eq(surveyGroups.id, batteries.groupId))
@@ -217,6 +221,7 @@ batteryRoutes.get("/", requireStaff, requirePermission("batteries.manage"), asyn
     createdAt: r.battery.createdAt,
     items: (items.get(r.battery.id) ?? []).map(toBatteryItem),
     activeAssignments: Number(r.activeAssignments ?? 0),
+    overdueAssignments: Number(r.overdueAssignments ?? 0),
   }));
   return c.json({ items: result });
 });

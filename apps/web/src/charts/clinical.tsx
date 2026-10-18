@@ -186,7 +186,18 @@ export function SeverityMeter({ rungs, value, max, size = "lg", valueLabel, labe
           </div>
           {value !== null ? (
             <div className="relative h-[18px] text-caption">
-              <span className="absolute -translate-x-1/2 font-extrabold whitespace-nowrap text-text" style={{ left: pct(wordAt) }}>
+              {/*
+                Длинное слово ступени («Депресія відсутня, 2») у края шкалы
+                вылезало за её левый или правый край и обрезалось панелью:
+                у краёв подпись прижимается к краю, а не центрируется.
+              */}
+              <span
+                className={cx(
+                  "absolute font-extrabold whitespace-nowrap text-text",
+                  wordAt < 0.3 ? "" : wordAt > 0.7 ? "-translate-x-full" : "-translate-x-1/2",
+                )}
+                style={{ left: wordAt < 0.3 ? 0 : wordAt > 0.7 ? "100%" : pct(wordAt) }}
+              >
                 {hit ? `${hit.label}, ` : ""}
                 {valueLabel ?? num(value)}
               </span>

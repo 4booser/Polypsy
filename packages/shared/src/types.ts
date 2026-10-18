@@ -1983,6 +1983,21 @@ export interface SurveyListItem extends Survey {
   dueAt?: string | null;
   /** Когда ключи сверены с пособием */
   keysVerifiedAt?: string | null;
+  /*
+   * Паспорт строки каталога — только сотруднику (routes/surveys.ts): у
+   * обследуемого этих полей нет вовсе. Критический пункт — часть ключа,
+   * а ключ обследуемому не отдаётся (#141).
+   */
+  /** Номер действующей версии; null — версии ещё нет */
+  versionNumber?: number | null;
+  /** Шкал в действующей версии */
+  scaleCount?: number;
+  /** Смуг интерпретации во всех шкалах действующей версии */
+  bandCount?: number;
+  /** Завершённых прохождений за последние 30 дней */
+  recentResponseCount?: number;
+  /** Есть вариант, который сразу открывает случай риска */
+  hasCriticalItem?: boolean;
 }
 
 /** Ответ на один вопрос вместе с телеметрией */
@@ -2787,6 +2802,8 @@ export interface Battery {
   items: BatteryItem[];
   /** Сколько активных назначений висит на батарее */
   activeAssignments: number;
+  /** Из них просрочено: срок прошёл, а обязательные методики не пройдены */
+  overdueAssignments?: number;
 }
 
 /**

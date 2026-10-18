@@ -1,11 +1,18 @@
-import { Link, useParams } from "react-router-dom";
+import { useState } from "react";
+import { useParams } from "react-router-dom";
 import type { SurveyFull } from "@quizzy/shared";
 import { api, download, type KeySheet } from "../api";
+import { useAuth } from "../auth";
 import { useResource } from "../useResource";
-import { Loading, useAction } from "../ui";
-import { Button } from "../ui/primitives";
-import { Page, Panel, Stack } from "../ui/layout";
+import { Loading, Modal, useAction } from "../ui";
+import { Button, ButtonLink } from "../ui/primitives";
+import { Page } from "../ui/layout";
+import { Callout } from "../ui/states";
 import { useLang } from "../lang";
+import { ShellIcon } from "../shell/icons";
+import { Mi } from "./methods/icons";
+import { shortDate, splitCode } from "./methods/model";
+import { useCount } from "./methods/useCount";
 import {
   Facts,
   fill,
@@ -28,54 +35,111 @@ import {
  * с распечаткой и оригиналом, поэтому ключи выводятся в том же виде, в каком
  * они напечатаны в пособии.
  *
- * Экран — панель действий и сам лист (UI 3, print-key): на печать идёт только
- * лист (styles/legacy.css, `data-print-sheet`), его и видно заранее.
+ * Экран (UI 3, «Виразна»): шапка с методикой, «Вивантажити JSON», «Порожній
+ * бланк» и «Друк»; под ней — как сверять, и сам лист (print-key). На печать
+ * идёт только лист (styles/legacy.css, `data-print-sheet`), шапка и заметка —
+ * нет. Суперадмин после сверки ставит отметку «Ключі звірено» — её видно в
+ * каталоге и в паспорте методики.
  */
 export default function KeyPrint() {
   const { ut } = useLang();
+  const count = useCount();
+  const { user } = useAuth();
   const { id } = useParams<{ id: string }>();
   const { run, busy } = useAction();
+  const [confirming, setConfirming] = useState(false);
   const { data: sheet, error } = useResource(() => api.keySheet(id!), [id], { enabled: !!id });
   /* методика целиком — ради баллов вариантов, критических вариантов и ступеней полос */
-  const { data: survey } = useResource(() => api.survey(id!), [id], { enabled: !!id });
+  const surveyRes = useResource(() => api.survey(id!), [id], { enabled: !!id });
+  const survey = surveyRes.data;
+  const verifiedAt = (survey as (SurveyFull & { keysVerifiedAt?: string | null }) | null)?.keysVerifiedAt ?? null;
 
   if (error)
     return (
-      <p role="alert" className="text-danger">
+      <p role="alert" className="m-5 text-risk-ink">
         {error}
       </p>
     );
   if (!sheet) return <Loading rows={4} />;
 
+  const { code, name } = splitCode(sheet.title);
+  const canVerify = user?.role === "superadmin";
+
   return (
     <Page
+      back={{ to: `/surveys/${sheet.surveyId}`, label: ut("mc.backMethod") }}
       title={ut("kp.title")}
-      sub={
+      meta={[code ? `${code}, ${name}` : name, `${ut("ant.versionN").replace("{n}", String(sheet.version))}, ${count(sheet.questionCount, "items")}`]}
+      actions={
         <>
-          <Link to={`/surveys/${sheet.surveyId}`}>{sheet.title}</Link> · {ut("ds.version")} {sheet.version} ·{" "}
-          {sheet.questionCount} {ut("bt.items")}
+          <Button
+            variant="secondary"
+            icon={<Mi.fileJson />}
+            disabled={busy}
+            onClick={() => run(() => download(api.methodologyUrl(sheet.surveyId), "methodology.json"))}
+          >
+            {ut("key.exportJson")}
+          </Button>
+          <ButtonLink to={`/surveys/${sheet.surveyId}/blank`} variant="secondary">
+            <Mi.printer size={15} />
+            {ut("kp.blank")}
+          </ButtonLink>
+          <Button variant="primary" icon={<Mi.printer />} onClick={() => window.print()}>
+            {ut("kp.print")}
+          </Button>
         </>
       }
       // см. пояснение в BlankForm.tsx: подстраховка от печати только видимой прокрутки
       className="print:overflow-visible"
     >
-      <Stack>
-        <Panel className="no-print">
-          <p className="m-0 text-small text-muted">{ut("key.checkInstructions")}</p>
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <Button variant="primary" onClick={() => window.print()}>
-              {ut("kp.print")}
-            </Button>
-            <Button disabled={busy} onClick={() => run(() => download(api.methodologyUrl(sheet.surveyId), "methodology.json"))}>
-              {ut("key.exportJson")}
-            </Button>
-            <Link className="btn" to={`/surveys/${sheet.surveyId}/blank`}>
-              {ut("kp.blank")}
-            </Link>
-          </div>
-        </Panel>
+      <div className="flex flex-col gap-4">
+        <Callout
+          kind={verifiedAt ? "good" : "warn"}
+          icon={<ShellIcon name={verifiedAt ? "badge-check" : "key-round"} size={16} />}
+          title={verifiedAt ? `${ut("cat.keysVerified")} ${shortDate(verifiedAt)}` : ut("mc.attKeysTitle")}
+          actions={
+            canVerify && survey ? (
+              <Button size="xs" variant="secondary" icon={<ShellIcon name="badge-check" size={14} />} onClick={() => setConfirming(true)}>
+                {verifiedAt ? ut("mc.kpVerifyAgain") : ut("mc.kpVerify")}
+              </Button>
+            ) : null
+          }
+        >
+          {ut("key.checkInstructions")}
+        </Callout>
         <KeyPaper sheet={sheet} survey={survey ?? null} />
-      </Stack>
+      </div>
+      {confirming ? (
+        <Modal
+          title={ut("mc.kpVerifyTitle").replace("{v}", String(sheet.version))}
+          sub={code ? `${code}, ${name}` : name}
+          icon={<ShellIcon name="badge-check" />}
+          tone="good"
+          onClose={() => setConfirming(false)}
+          footer={
+            <>
+              <Button
+                variant="primary"
+                disabled={busy}
+                onClick={() =>
+                  void run(async () => {
+                    await api.surveyRights(sheet.surveyId, { keysVerified: true });
+                    setConfirming(false);
+                    surveyRes.reload();
+                  }, ut("mc.kpVerified"))
+                }
+              >
+                {ut("mc.kpVerifyConfirm")}
+              </Button>
+              <Button variant="quiet" onClick={() => setConfirming(false)}>
+                {ut("ui.cancel")}
+              </Button>
+            </>
+          }
+        >
+          <p className="m-0 text-body text-text-2">{ut("mc.kpVerifyText")}</p>
+        </Modal>
+      ) : null}
     </Page>
   );
 }
