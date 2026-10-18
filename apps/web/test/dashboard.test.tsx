@@ -4,10 +4,12 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
 import type { AlertCase, BandSpread, ConditionSummary, ConditionsResult, OverviewAnalytics, Page, Worklist } from "@quizzy/shared";
 import { UI } from "@quizzy/shared";
+import { ApiError } from "../src/api";
 import { LangProvider } from "../src/lang";
 import { ConditionsBody, DomainRow } from "../src/pages/dashboard/parts";
 import { PassesWidget } from "../src/pages/dashboard/passes";
 import { CasesWidget, WorkWidget } from "../src/pages/dashboard/widgets";
+import { ActNow, unlessForbidden } from "../src/pages/today/ActNow";
 import {
   addDays,
   dailyColumns,
@@ -406,5 +408,57 @@ describe("очередь и случаи: рисование", () => {
     const html = draw(<CasesWidget alerts={empty} meId={null} />);
     expect(either(html, "dashA.noCases")).toBe(true);
     for (const re of LEGACY) expect(html).not.toMatch(re);
+  });
+
+  /*
+   * Віджет случаев риска не выключается — и сбой загрузки не вправе убрать
+   * его тише настройки: прежде любой отказ выглядел как «разбор не
+   * положен», віджет исчезал, а шапка писала «Відкритих випадків 0».
+   */
+  test("случаи не загрузились — віджет на месте, говорит об отказе и даёт «повторити», а не «немає»", () => {
+    const html = draw(<CasesWidget alerts={null} meId={null} error="Сервер не відповідає" onRetry={() => {}} />);
+    expect(html).not.toBe("");
+    expect(either(html, "dayA.casesFailed")).toBe(true);
+    expect(html).toContain("Сервер не відповідає");
+    expect(either(html, "common.retry")).toBe(true);
+    expect(html).toContain('role="alert"');
+    expect(either(html, "dashA.noCases")).toBe(false);
+  });
+
+  test("случаи ещё в пути — скелет, а не «немає»", () => {
+    const html = draw(<CasesWidget alerts={null} meId={null} loading />);
+    expect(html).not.toBe("");
+    expect(html).toContain('role="status"');
+    expect(either(html, "dashA.noCases")).toBe(false);
+  });
+
+  test("перечитывание не удалось — прежнее «немає» больше не утверждается", () => {
+    const empty: Page<AlertCase> = { items: [], nextCursor: null, total: 0 };
+    const html = draw(<CasesWidget alerts={empty} meId={null} error="Сервер не відповідає" />);
+    expect(either(html, "dayA.casesFailed")).toBe(true);
+    expect(either(html, "dashA.noCases")).toBe(false);
+  });
+});
+
+describe("«Дія зараз»: случаи не загрузились", () => {
+  const act = (over: Partial<Parameters<typeof ActNow>[0]> = {}) =>
+    draw(<ActNow cases={null} work={[]} appointments={[]} meId={null} onReply={() => {}} {...over} />);
+
+  test("отказ загрузки — словами с «повторити», а не зелёное «нічого термінового»", () => {
+    const html = act({ casesError: "Сервер не відповідає", onRetryCases: () => {} });
+    expect(either(html, "dayA.casesFailed")).toBe(true);
+    expect(either(html, "common.retry")).toBe(true);
+    expect(either(html, "dayA.nothingUrgent")).toBe(false);
+  });
+
+  test("разбор не положен, а в очереди срочного нет — «нічого термінового», как и прежде", () => {
+    expect(either(act(), "dayA.nothingUrgent")).toBe(true);
+  });
+
+  test("отказ в праве (403) — «разбор не положен», прочие отказы идут дальше", async () => {
+    expect(await unlessForbidden(Promise.reject(new ApiError("заборонено", 403)))).toBeNull();
+    await expect(unlessForbidden(Promise.reject(new ApiError("сервер не відповідає", 503)))).rejects.toThrow("сервер не відповідає");
+    await expect(unlessForbidden(Promise.reject(new ApiError("немає зв'язку", 0)))).rejects.toThrow();
+    expect(await unlessForbidden(Promise.resolve(5))).toBe(5);
   });
 });

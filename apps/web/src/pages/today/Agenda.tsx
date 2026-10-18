@@ -1,4 +1,4 @@
-import { Fragment, type ReactNode } from "react";
+import { Fragment, type ReactNode, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import type { AppointmentView } from "@quizzy/shared";
 import { day } from "../../format";
@@ -217,6 +217,16 @@ export function ReadinessCells({ a, selected = false, stacked = false }: { a: Ap
       ))}
     </div>
   );
+}
+
+/** Часы стены: минута — достаточно для «через 30 хв» и таймера нормы */
+export function useNow(stepMs = 30_000): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), stepMs);
+    return () => clearInterval(t);
+  }, [stepMs]);
+  return now;
 }
 
 /** «через 30 хв», «через 2 год» — до начала сессии */

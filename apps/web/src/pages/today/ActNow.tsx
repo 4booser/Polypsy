@@ -1,9 +1,9 @@
 import type { ComponentType } from "react";
 import { Link } from "react-router-dom";
 import type { AlertCase, AppointmentView, WorkItem } from "@quizzy/shared";
-import { api } from "../../api";
+import { ApiError, api } from "../../api";
 import { day } from "../../format";
-import { AlertChip, AlertStrip, Avatar, Kbd, Skeleton } from "../../ui";
+import { AlertChip, AlertStrip, Avatar, Callout, Kbd, Skeleton } from "../../ui";
 import { cx } from "../../ui/cx";
 import { Ic, type IconProps } from "../../ui/icons";
 import { Panel } from "../../ui/layout";
@@ -32,6 +32,45 @@ import type { DrawerTarget } from "./drawers";
 
 export function reviewHref(userId: string): string {
   return `/alerts?patient=${encodeURIComponent(userId)}`;
+}
+
+/**
+ * Случаи риска — или null, если разбор не положен (403).
+ *
+ * Только отказ в праве значит «случаев здесь не показываем». Прежде любой
+ * отказ (обрыв, пятисотка) превращался в тот же null, и «Дія зараз»
+ * говорила «Нічого термінового», а зведення убирало віджет случаев и
+ * писало «Відкритих випадків 0» — открытый риск прятался за сбоем загрузки.
+ * Прочие отказы уходят дальше: экран показывает их словами с «повторити».
+ * По ответу сервера, а не по правам в консоли: не дошедший при входе
+ * справочник прав спрятал бы риск так же.
+ */
+export function unlessForbidden<T>(load: Promise<T>): Promise<T | null> {
+  return load.catch((e: unknown) => {
+    if (e instanceof ApiError && e.status === 403) return null;
+    throw e;
+  });
+}
+
+/** Случаи не загрузились: что это значит и «повторити» — вместо «нічого термінового» */
+export function CasesFailed({ error, onRetry }: { error: string; onRetry?: () => void }) {
+  const { ut } = useLang();
+  return (
+    <Callout
+      kind="warn"
+      role="alert"
+      title={ut("dayA.casesFailed")}
+      actions={
+        onRetry ? (
+          <Button size="xs" icon={<Ic.refresh />} onClick={onRetry}>
+            {ut("common.retry")}
+          </Button>
+        ) : undefined
+      }
+    >
+      {error}
+    </Callout>
+  );
 }
 
 /** «4 год», «30 хв», «1 год 30 хв» */
@@ -94,11 +133,16 @@ export function ActNow({
   meId,
   onReply,
   loading = false,
+  casesError = null,
+  onRetryCases,
 }: {
-  /** Открытые случаи в порядке срочности (urgentCases); null — разбор не положен */
+  /** Открытые случаи в порядке срочности (urgentCases); null — разбор не положен или они не пришли */
   cases: AlertCase[] | null;
   /** Случаи и очередь ещё в пути: «нічого термінового» до ответа было бы неправдой */
   loading?: boolean;
+  /** Случаи не загрузились: «нічого термінового» при этом было бы неправдой тоже */
+  casesError?: string | null;
+  onRetryCases?: () => void;
   work: WorkItem[];
   appointments: readonly AppointmentView[];
   meId: string | null;
@@ -129,15 +173,22 @@ export function ActNow({
       actions={cases ? <TextAction to="/alerts">{fill(ut("dayA.casesN"), { n: total })}</TextAction> : null}
       flush
     >
+      {casesError && !loading ? (
+        <div className="px-2.5 pb-2.5">
+          <CasesFailed error={casesError} onRetry={onRetryCases} />
+        </div>
+      ) : null}
       {loading ? (
         <div className="px-4 pb-4" role="status" aria-label={ut("common.loading")}>
           <Skeleton lines={3} />
         </div>
       ) : !hero && !sideWork.length ? (
-        <p className="m-0 mx-2.5 mb-2.5 flex items-center gap-2.5 rounded-[12px] bg-good-tint px-3.5 py-3 text-small font-semibold text-good">
-          <Ic.circleCheck size={17} />
-          {ut("dayA.nothingUrgent")}
-        </p>
+        casesError ? null : (
+          <p className="m-0 mx-2.5 mb-2.5 flex items-center gap-2.5 rounded-[12px] bg-good-tint px-3.5 py-3 text-small font-semibold text-good">
+            <Ic.circleCheck size={17} />
+            {ut("dayA.nothingUrgent")}
+          </p>
+        )
       ) : (
         <div
           className={cx(

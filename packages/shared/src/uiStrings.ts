@@ -16310,6 +16310,13 @@ export const UI = {
   "opx.vt.verdictTitle": { uk: "p75 {v} — {rating}", ru: "p75 {v} — {rating}", en: "p75 {v} — {rating}" },
   "opx.vt.verdict": { uk: "Добре ≤ {good}, погано > {poor}.", ru: "Хорошо ≤ {good}, плохо > {poor}.", en: "Good ≤ {good}, poor > {poor}." },
   "opx.vt.verdictFew": { uk: "Замірів лише {n} — це випадок, а не міра.", ru: "Замеров всего {n} — это случай, а не мера.", en: "Only {n} samples: an anecdote, not a measure." },
+
+  // ── v2-fix-day ──
+  "dayA.casesFailed": {
+    uk: "Випадки ризику не завантажилися: відкриті сигнали тут можуть бути не показані",
+    ru: "Случаи риска не загрузились: открытые сигналы здесь могут быть не показаны",
+    en: "Risk cases did not load: open signals may be missing here",
+  },
 } as const satisfies Record<string, UiEntry>;
 
 export type UiKey = keyof typeof UI;
