@@ -25,7 +25,7 @@ import {
   users,
   type Person,
 } from "./fixtures";
-import { patientGroups, staffRoles } from "../src/db/schema";
+import { patientGroups, staffRoles, surveyVersions } from "../src/db/schema";
 
 /**
  * Раздел «Статистика»: пресеты фильтров и статистические модели.
@@ -751,6 +751,39 @@ describe("пресеты фильтров: свои и только свои", (
     expect((await api(`/api/filter-presets/${id}`, adminA.token)).status).toBe(404);
   });
 
+  /**
+   * «Де використовується» на экране пресета: модели и номера выборок.
+   *
+   * Мутация: отдать модели без условия по владельцу — модель суперадмина на
+   * чужом пресете попадает в карточку владельца, проверка называет её.
+   * Мутация: номера выборок с нуля — проверка ждёт [2].
+   */
+  test("карточка пресета называет свои модели и номера их выборок", async () => {
+    const id = await makePreset(adminA, `Де стоїть ${crypto.randomUUID().slice(0, 6)}`);
+    const own = await api("/api/stat-models", adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ title: "Друга вибірка за пресетом", columns: [column(), column({ presetId: id })] }),
+    });
+    expect(own.status, JSON.stringify(own.body)).toBe(201);
+    // суперадмин вправе собрать модель на чужом пресете; владелец пресета её имени не видит
+    const foreign = await api("/api/stat-models", root.token, {
+      method: "POST",
+      body: JSON.stringify({ title: "Модель суперадміна", columns: [column({ presetId: id })] }),
+    });
+    expect(foreign.status, JSON.stringify(foreign.body)).toBe(201);
+
+    const got = await api(`/api/filter-presets/${id}`, adminA.token);
+    expect(got.status).toBe(200);
+    expect(got.body.modelCount, "число считает и чужие модели").toBe(2);
+    expect(got.body.usedBy, "карточка назвала чужую модель или сбила номера выборок").toEqual([
+      { id: own.body.id, title: "Друга вибірка за пресетом", samples: [2] },
+    ]);
+    const asRoot = await api(`/api/filter-presets/${id}`, root.token);
+    expect((asRoot.body.usedBy as { id: string }[]).map((m) => m.id).sort()).toEqual([own.body.id, foreign.body.id].sort());
+
+    for (const m of [own, foreign]) await api(`/api/stat-models/${m.body.id}`, root.token, { method: "DELETE" });
+  });
+
   test("возраст «від» больше «до» и период задом наперёд — отказ схемы", async () => {
     const bad = await api("/api/filter-presets", adminA.token, {
       method: "POST",
@@ -805,6 +838,41 @@ describe("статистические модели: заведение, пер�
     expect(rest.body.items).toHaveLength(1);
     // колонки в перечень не входят
     expect(page.body.items[0].columns).toBeUndefined();
+  });
+
+  /**
+   * Строка перечня говорит, что модель считает: методику с версией, число
+   * полос, вопросов и пометок «ВШР», сколько выборок идёт по пресету.
+   *
+   * Мутация: считать «ВШР» только по вариантам — проверка ждёт два (полоса
+   * «Високий» и вариант «Погано»). Мутация: брать номер версии у
+   * действующей, а не у колонки, — после новой версии строка врёт.
+   */
+  test("перечень: в строке — методика с версией, показатели и выборки по пресету", async () => {
+    const tag = crypto.randomUUID().slice(0, 8);
+    const preset = await api("/api/filter-presets", adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ title: `Зведення ${tag}`, criteria: { sex: "male" } }),
+    });
+    expect(preset.status).toBe(201);
+    await makeModel(adminA, `Зведення-${tag}`, [column(), column({ presetId: preset.body.id }), column()]);
+
+    const found = await api(`/api/stat-models?q=${encodeURIComponent(`Зведення-${tag}`)}`, adminA.token);
+    expect(found.status, JSON.stringify(found.body)).toBe(200);
+    const [row] = found.body.items as Record<string, unknown>[];
+    const [version] = await db
+      .select({ n: surveyVersions.version })
+      .from(surveyVersions)
+      .where(eq(surveyVersions.id, content.versionId));
+    expect(row).toMatchObject({
+      columnCount: 3,
+      surveyTitle: "Статистична методика",
+      versionNumber: version!.n,
+      bandCount: 3,
+      questionCount: 2,
+      highRiskCount: 2,
+      presetColumns: 1,
+    });
   });
 
   /**

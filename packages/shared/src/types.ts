@@ -4824,6 +4824,23 @@ export interface FilterPresetListItem extends FilterPreset {
   modelCount: number;
 }
 
+/** Где пресет стоит: модель и номера её выборок (с единицы), как они подписаны на экране модели */
+export interface FilterPresetUse {
+  id: string;
+  title: string;
+  samples: number[];
+}
+
+/**
+ * Карточка пресета: то же, что строка списка, и модели, которые на него
+ * ссылаются, — «Де використовується» на экране пресета. Только модели,
+ * видные спрашивающему (свои; суперадмину — все): modelCount считает и
+ * чужие, потому что из-под них пресет тоже не удалить.
+ */
+export interface FilterPresetDetail extends FilterPresetListItem {
+  usedBy: FilterPresetUse[];
+}
+
 /**
  * Показатель «Варіант результату»: полоса шкалы. `highRisk` — пометка
  * «ВШР» (високий ступінь ризику) с кадров f07/f14/f21/f28: попадание в этот
@@ -4886,6 +4903,18 @@ export interface StatModelListItem {
   description: string | null;
   ownerId: string;
   columnCount: number;
+  /**
+   * Что модель считает — по первой колонке, как и форма правки: методика
+   * с номером версии, сколько полос и вопросов, сколько пометок «ВШР».
+   * Название методики — null, если её не видно (снята, вне зоны).
+   */
+  surveyTitle: string | null;
+  versionNumber: number | null;
+  bandCount: number;
+  questionCount: number;
+  highRiskCount: number;
+  /** Сколько выборок считается по пресету; остальные — своими фильтрами */
+  presetColumns: number;
   createdAt: string;
   updatedAt: string;
 }
