@@ -310,8 +310,13 @@ function SecuritySection() {
       >
         {pane === "mfa" ? (
           <div className="py-3">
+            {/* строка «Двоетапна перевірка» читает своё состояние — перечитать и после включения, и после выключения */}
             <SecondFactorSettings
               onEnabled={() => {
+                void refreshUser();
+                mfa.reload();
+              }}
+              onDisabled={() => {
                 void refreshUser();
                 mfa.reload();
               }}

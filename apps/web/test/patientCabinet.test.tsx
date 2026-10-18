@@ -148,3 +148,17 @@ describe("территория пальца объявлена, а не прос
     expect(bad, "используйте Input/Textarea/Select из ui/primitives").toEqual([]);
   });
 });
+
+describe("профиль: строка второго фактора не отстаёт от ящика", () => {
+  test("выключение в ящике перечитывает строку профиля, как и включение", () => {
+    /*
+     * Строка «Двоетапна перевірка» читает своё состояние, а ящик — своё. Ящик
+     * звал профиль только после включения, и после выключения строка
+     * показывала «увімкнено» до перезагрузки страницы (ревью волны 26).
+     */
+    const profile = code(readFileSync(join(PATIENT, "Profile.tsx"), "utf8"));
+    const factor = code(readFileSync(join(WEB, "src/pages/ops/people2/SecondFactor.tsx"), "utf8"));
+    expect(/onDisabled=\{\(\) => \{[^}]*mfa\.reload\(\);/.test(profile), "профиль не перечитывает строку после выключения").toBe(true);
+    expect(/await api\.mfaDisable\([^;]*\);[\s\S]{0,160}?onDisabled\?\.\(\);/.test(factor), "ящик не сообщает о выключении").toBe(true);
+  });
+});
