@@ -203,14 +203,23 @@ opsPeopleRoutes.get("/mfa", requirePermission("ops.manage"), async (c) => {
       enabled: false,
       confirmedAt: null,
       disabled: Boolean(u.disabledAt),
+      /* «останній вхід був до вимоги» — экран сравнивает его со временем политики */
+      lastSeenAt: u.lastSeenAt ?? null,
     });
   }
-  const factors = coverage.length
+  /*
+   * Фактор — и у тех, кому он нужен, и у всего действующего персонала: доля
+   * по всему персоналу стоит рядом для справки (Polypsy 2.0, «Частка з другим
+   * фактором»). Выключенные не считаются: войти они не могут.
+   */
+  const live = staff.filter((u) => !u.disabledAt);
+  const ids = [...new Set([...coverage.map((r) => r.id), ...live.map((u) => u.id)])];
+  const factors = ids.length
     ? await asSystem(() =>
         db
           .select({ userId: userSecondFactor.userId, confirmedAt: userSecondFactor.confirmedAt })
           .from(userSecondFactor)
-          .where(and(inArray(userSecondFactor.userId, coverage.map((r) => r.id)), isNotNull(userSecondFactor.confirmedAt))),
+          .where(and(inArray(userSecondFactor.userId, ids), isNotNull(userSecondFactor.confirmedAt))),
       )
     : [];
   const confirmed = new Map(factors.map((f) => [f.userId, f.confirmedAt]));
@@ -223,6 +232,7 @@ opsPeopleRoutes.get("/mfa", requirePermission("ops.manage"), async (c) => {
   const body: MfaPolicyView = {
     policy: { superadmins: policy.superadmins, ops: policy.ops, updatedAt: policy.updatedAt, updatedByEmail: author?.email ?? null },
     coverage,
+    staff: { total: live.length, enabled: live.filter((u) => confirmed.has(u.id)).length },
   };
   return c.json(body);
 });

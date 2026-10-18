@@ -739,11 +739,15 @@ export interface MfaCoverageRow {
   enabled: boolean;
   confirmedAt: string | null;
   disabled: boolean;
+  /** Последний вход или обмен refresh; null — ещё не входил */
+  lastSeenAt?: string | null;
 }
 
 export interface MfaPolicyView {
   policy: MfaPolicy;
   coverage: MfaCoverageRow[];
+  /** Весь действующий персонал и сколько из него с фактором — для справки рядом с покрытием */
+  staff: { total: number; enabled: number };
 }
 
 /** Выдача токена «от имени» (POST /api/ops/people/impersonate/:id) */
