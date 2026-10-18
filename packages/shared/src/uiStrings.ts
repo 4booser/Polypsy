@@ -5304,8 +5304,6 @@ export const UI = {
   "pt.lastMeasure": { uk: "Останній замір", ru: "Последний замер", en: "Latest measurement" },
   "pt.interpretation": { uk: "Інтерпретація", ru: "Интерпретация", en: "Interpretation" },
   "pt.rciTitle": { uk: "Достовірність зсуву", ru: "Достоверность сдвига", en: "Reliable change" },
-  "pt.rciAbove": { uk: "перевищує похибку вимірювання", ru: "превышает ошибку измерения", en: "exceeds measurement error" },
-  "pt.rciWithin": { uk: "у межах похибки вимірювання", ru: "в пределах ошибки измерения", en: "within measurement error" },
   "pt.needSecond": { uk: "потрібен другий замір для динаміки", ru: "нужен второй замер для динамики", en: "a second measurement is needed for dynamics" },
   "co.checkFailed": { uk: "Не вдалося перевірити", ru: "Не удалось проверить", en: "Could not check" },
   "co.versionNote": { uk: "Правка через конструктор", ru: "Правка через конструктор", en: "Edited in the builder" },
