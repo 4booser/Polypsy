@@ -1,4 +1,4 @@
-import type { SurveyFull } from "@quizzy/shared";
+import type { SurveyFull, SurveyVersion } from "@quizzy/shared";
 import { api, withSignal } from "../../api";
 import { useResource } from "../../useResource";
 
@@ -74,4 +74,21 @@ export function useLocalityHints(): string[] {
       staleMs: Number.POSITIVE_INFINITY,
     }).data ?? []
   );
+}
+
+/**
+ * Версии методики — выбор «Версія» в редакторе модели. Отказ (методика вне
+ * зоны, сняли) — пустой список: выбор тогда показывает только записанную
+ * версию, а сохранение решит сервер своим отказом.
+ *
+ * null — ещё грузится.
+ */
+export function useSurveyVersions(surveyId: string | null): SurveyVersion[] | null {
+  const res = useResource(() => api.versions(surveyId!).catch(() => [] as SurveyVersion[]), [surveyId], {
+    enabled: !!surveyId,
+    keep: false,
+    key: "statistics.versions",
+  });
+  if (!surveyId) return [];
+  return res.data ?? null;
 }

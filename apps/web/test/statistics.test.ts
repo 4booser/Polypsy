@@ -1,25 +1,39 @@
 import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import type { StatCell, StatModel, StatModelColumn } from "@quizzy/shared";
+import type { StatCell, StatModel, StatModelColumn, StatRunColumn, SurveyFull } from "@quizzy/shared";
 import {
   HIDDEN_MARK,
+  MAX_SAMPLES,
   addSample,
+  applyPreset,
+  cellAt,
+  cellShare,
   cellText,
   cleanFilters,
   columnsChanged,
   columnsFromDraft,
   criteriaOf,
   criterionValue,
-  describeSample,
   diffText,
+  duplicateSample,
+  editSampleDraft,
   emptyStructure,
+  figureCount,
   filterErrors,
   newBandRow,
+  newQuestionBlock,
+  removeSample,
+  reportRows,
   sameFilters,
+  sampleDraft,
+  sampleDraftChanged,
+  setScaleBands,
   structureFromModel,
+  toggleBand,
+  toggleOption,
   validateStructure,
-  withSpare,
+  withSampleDraft,
   withoutCriteria,
 } from "../src/pages/statistics/model";
 import { navAccess, railEntries, subNavFor } from "../src/shell/nav";
@@ -68,6 +82,17 @@ describe("печать ячеек отчёта", () => {
     const leaky = { suppressed: true, count: 3, percent: 12 } as unknown as StatCell;
     expect(diffText(shown(30), leaky), "разность через число скрытой ячейки").toBe("");
     expect(diffText(undefined, shown(1))).toBe("");
+  });
+
+  /*
+   * Мутация: в cellShare брать percent без проверки suppressed — полоса
+   * графика у скрытой ячейки встаёт длиной скрытого числа.
+   */
+  test("полоса графика у скрытой ячейки — пустота, а не длина скрытого числа", () => {
+    expect(cellShare(shown(42))).toBe(42);
+    const leaky = { suppressed: true, count: 3, percent: 12 } as unknown as StatCell;
+    expect(cellShare(leaky), "длина полосы выдала скрытое").toBeNull();
+    expect(cellShare(null)).toBeNull();
   });
 });
 
@@ -138,11 +163,6 @@ describe("строки-критерии выборки", () => {
     expect(criterionValue("patient", f, t as never)).toBe("");
   });
 
-  test("выборка словами — для легенды диаграммы", () => {
-    const t = (k: string) => ({ "nm.menCap": "Чоловіки", "st.ageWord": "вік", "st.everyone": "Усі" })[k] ?? k;
-    expect(describeSample({ sex: "male", ageMin: 25, ageMax: 30 }, t as never)).toBe("Чоловіки, вік 25–30");
-    expect(describeSample({}, t as never)).toBe("Усі");
-  });
 });
 
 const column = (over: Partial<StatModelColumn> = {}): StatModelColumn => ({
@@ -156,7 +176,7 @@ const column = (over: Partial<StatModelColumn> = {}): StatModelColumn => ({
   ...over,
 });
 
-describe("структура модели (форма f17)", () => {
+describe("структура модели (редактор)", () => {
   test("правка кладёт структуру на каждую колонку и не трогает выборки", () => {
     const cols = [column(), column({ title: null, presetId: "p1", filters: null })];
     const model: StatModel = {
@@ -181,8 +201,11 @@ describe("структура модели (форма f17)", () => {
     expect(out[0]!.questions).toEqual(cols[0]!.questions);
 
     /* другой тест — версию берёт сервер, старая сюда не годится */
-    const moved = columnsFromDraft({ ...draft, surveyId: "s2", bands: [], questions: [] }, cols);
+    const moved = columnsFromDraft({ ...draft, surveyId: "s2", versionId: null, bands: [], questions: [] }, cols);
     expect(moved[0]!.versionId).toBeNull();
+    /* выбранная в редакторе версия ложится на каждую колонку */
+    const pinned = columnsFromDraft({ ...draft, versionId: "v2" }, cols);
+    expect(pinned.map((c) => c.versionId)).toEqual(["v2", "v2"]);
   });
 
   test("новая модель — одна выборка без фильтров, пустые строки не едут", () => {
@@ -205,17 +228,45 @@ describe("структура модели (форма f17)", () => {
     expect(validateStructure({ ...emptyStructure(), title: "Т", surveyId: "s1" })).toEqual(["st.errIndicators"]);
   });
 
-  test("строк в группе — выбранные и одна пустая, не меньше двух", () => {
-    const empty = (r: { v: string }) => !r.v;
-    const make = () => ({ v: "" });
-    expect(withSpare([{ v: "" }], empty, make)).toHaveLength(2);
-    expect(withSpare([{ v: "a" }, { v: "b" }], empty, make).map((r) => r.v)).toEqual(["a", "b", ""]);
-    expect(withSpare([{ v: "" }, { v: "a" }, { v: "" }], empty, make).map((r) => r.v)).toEqual(["a", ""]);
+  /*
+   * Мутация: в toggleBand не сортировать по порядку методики — «рядок звіту
+   * N» в редакторе расходится с местом строки в отчёте.
+   */
+  test("смуги отмечаются галочками в порядке шкалы, «Усі / Жодної» не трогают соседнюю шкалу", () => {
+    const order = ["s1:a", "s1:b", "s1:c", "s2:x"];
+    let bands = toggleBand([], "s1:c", order);
+    bands = toggleBand(bands, "s1:a", order);
+    expect(bands.map((b) => b.value)).toEqual(["s1:a", "s1:c"]);
+    expect(toggleBand(bands, "s1:a", order).map((b) => b.value)).toEqual(["s1:c"]);
+
+    const risky = [newBandRow("s1:b", true), newBandRow("s2:x")];
+    const all = setScaleBands(risky, ["s1:a", "s1:b", "s1:c"], true, order);
+    expect(all.map((b) => b.value)).toEqual(["s1:a", "s1:b", "s1:c", "s2:x"]);
+    expect(all.find((b) => b.value === "s1:b")!.highRisk, "«Усі» стёрли пометку «ВШР» отмеченной смуги").toBe(true);
+    expect(setScaleBands(all, ["s1:a", "s1:b", "s1:c"], false, order).map((b) => b.value)).toEqual(["s2:x"]);
+  });
+
+  test("варианты ответа — галочками в порядке вопроса", () => {
+    const order = ["o1", "o2", "o3"];
+    const a = toggleOption(toggleOption(newQuestionBlock("q1"), "o3", order), "o1", order);
+    expect(a.options.map((o) => o.optionId)).toEqual(["o1", "o3"]);
+    expect(toggleOption(a, "o3", order).options.map((o) => o.optionId)).toEqual(["o1"]);
+  });
+
+  /*
+   * Тот же счёт, что у сервера (MAX_FIGURES_PER_COLUMN): основание, по шкале
+   * — смуги и «Решта», по вопросу — варианты и «Решта», «ВШР».
+   */
+  test("чисел в колонке: основание, смуги с «Рештою», варианты с «Рештою», «ВШР»", () => {
+    const col = column();
+    // 1 основание + 1 смуга + 1 «Решта» шкалы + 2 варианта + 1 «Решта» вопроса + «ВШР»
+    expect(figureCount(col.bands, col.questions)).toBe(7);
+    expect(figureCount([], [{ options: [{ highRisk: false }] }])).toBe(3);
   });
 });
 
-describe("выборки рядом (f29)", () => {
-  test("«+» добавляет выборку с теми же показателями и пустыми фильтрами", () => {
+describe("выборки рядом (экран модели и график)", () => {
+  test("«Додати вибірку» — те же показатели и пустые фильтры, не больше восьми", () => {
     const next = addSample([column({ presetId: "p1", filters: null })]);
     expect(next).toHaveLength(2);
     expect(next[1]!.filters).toEqual({});
@@ -223,6 +274,118 @@ describe("выборки рядом (f29)", () => {
     expect(next[1]!.questions).toEqual(next[0]!.questions);
     expect(columnsChanged([column()], next)).toBe(true);
     expect(columnsChanged([column()], [column({ filters: { locality: "Київ", ageMin: null } })])).toBe(false);
+    const full = Array.from({ length: MAX_SAMPLES }, () => column());
+    expect(addSample(full), "девятая выборка — отказ сервера, а не колонка").toHaveLength(MAX_SAMPLES);
+  });
+
+  test("дубль встаёт рядом без подписи, последнюю выборку не убрать", () => {
+    const cols = [column({ title: "Київ" }), column({ title: "Львів", filters: { locality: "Львів" } })];
+    const twice = duplicateSample(cols, 0);
+    expect(twice.map((c) => c.title)).toEqual(["Київ", null, "Львів"]);
+    expect(twice[1]!.filters).toEqual(cols[0]!.filters);
+    expect(removeSample(cols, 0).map((c) => c.title)).toEqual(["Львів"]);
+    expect(removeSample([cols[0]!], 0), "модель осталась без выборки").toHaveLength(1);
+  });
+
+  test("пресет к выбранным выборкам заменяет их фильтры; новая выборка — с тем же пресетом", () => {
+    const cols = [column(), column({ filters: { sex: "male" } })];
+    const next = applyPreset(cols, "p9", [1], true);
+    expect(next[0]).toBe(cols[0]!);
+    expect(next[1]).toMatchObject({ presetId: "p9", filters: null });
+    expect(next).toHaveLength(3);
+    expect(next[2]).toMatchObject({ presetId: "p9", filters: null, title: null });
+  });
+
+  /*
+   * Ящик выборки: правка поля при выбранном пресете переводит выборку на
+   * свои фильтры — начиная с критериев пресета. Мутация: начинать с
+   * пустого — проверка ждёт пол из пресета рядом с новым возрастом.
+   */
+  test("черновик ящика: пресет, правка поля, подпись", () => {
+    const criteria = (id: string) => (id === "p1" ? { sex: "male" as const, locality: "Київ" } : undefined);
+    const col = column({ presetId: "p1", filters: null, title: "" });
+    const d = sampleDraft(col, criteria);
+    expect(d.filters).toEqual({ sex: "male", locality: "Київ" });
+    expect(sampleDraftChanged(col, d)).toBe(false);
+
+    const edited = editSampleDraft(d, { ageMin: 30 });
+    expect(edited.presetId).toBeNull();
+    expect(withSampleDraft(col, edited)).toMatchObject({
+      presetId: null,
+      filters: { sex: "male", locality: "Київ", ageMin: 30 },
+    });
+    expect(sampleDraftChanged(col, edited)).toBe(true);
+    /* пустая подпись — null, а не пустая строка на сервере */
+    expect(withSampleDraft(col, { ...d, title: "  " }).title).toBeNull();
+  });
+});
+
+describe("строки отчёта", () => {
+  const survey = {
+    scales: [
+      {
+        id: "sc",
+        code: "TOT",
+        title: "Загальний бал",
+        bands: [
+          { id: "b0", label: "мінімальна", minScore: 0, maxScore: 4, severity: "none" },
+          { id: "b1", label: "помірна", minScore: 5, maxScore: 9, severity: "moderate" },
+        ],
+      },
+    ],
+    questions: [
+      { id: "q0", type: "text", title: "Коментар", options: [] },
+      {
+        id: "q1",
+        type: "single",
+        title: "Сон",
+        options: [
+          { id: "o1", text: "Добре", kind: "option" },
+          { id: "o2", text: "Погано", kind: "option" },
+          { id: "o3", text: "Зовсім ні", kind: "option" },
+        ],
+      },
+    ],
+  } as unknown as SurveyFull;
+  const col = column({
+    bands: [{ scaleId: "sc", bandId: "b1", highRisk: false }],
+    questions: [{ questionId: "q1", options: [{ optionId: "o2", highRisk: true }] }],
+  });
+
+  test("порядок: шкала, смуги, «Решта», вопрос, варианты, «Решта», «ВШР»; подписи — из версии", () => {
+    const rows = reportRows([col], () => survey);
+    expect(rows.map((r) => r.kind)).toEqual(["scale", "band", "rest", "question", "option", "rest", "risk"]);
+    expect(rows[1]).toMatchObject({ label: "помірна", severity: "moderate", range: "5–9" });
+    expect(rows[2], "в «Решті» названы непоказанные смуги").toMatchObject({ others: "мінімальна" });
+    expect(rows[3], "номер пункта — по версии методики").toMatchObject({ number: 2 });
+    expect(rows[5]).toMatchObject({ others: "Добре, Зовсім ні" });
+  });
+
+  /*
+   * Мутация: искать ячейку по месту в списке, а не по идентификатору —
+   * колонка с другим набором показателей кладёт число в чужую строку.
+   */
+  test("ячейка берётся по идентификатору показателя, а не по месту", () => {
+    const res = {
+      scales: [{ scaleId: "sc", bands: [{ bandId: "b1", cell: shown(40, 4) }], rest: shown(60, 6) }],
+      questions: [{ questionId: "q1", options: [{ optionId: "o2", cell: hidden }], rest: shown(70, 7) }],
+      highRisk: shown(30, 3),
+    } as unknown as StatRunColumn;
+    const rows = reportRows([col], () => survey, [res]);
+    const byKind = (k: string) => rows.filter((r) => r.kind === k);
+    expect(cellAt(byKind("band")[0]!, res)).toEqual(shown(40, 4));
+    expect(cellAt(byKind("option")[0]!, res)).toEqual(hidden);
+    expect(byKind("rest").map((r) => cellAt(r, res))).toEqual([shown(60, 6), shown(70, 7)]);
+    expect(cellAt(byKind("risk")[0]!, res)).toEqual(shown(30, 3));
+    expect(cellAt(byKind("scale")[0]!, res), "у заголовка группы числа нет").toBeNull();
+    expect(cellAt(byKind("band")[0]!, undefined), "до расчёта ячейки нет").toBeNull();
+  });
+
+  test("колонки с разной структурой — объединением, без повторов", () => {
+    const other = column({ bands: [{ scaleId: "sc", bandId: "b0", highRisk: false }], questions: [] });
+    const rows = reportRows([col, other], () => survey);
+    expect(rows.flatMap((r) => (r.kind === "band" ? [r.bandId] : []))).toEqual(["b1", "b0"]);
+    expect(rows.filter((r) => r.kind === "scale")).toHaveLength(1);
   });
 });
 
