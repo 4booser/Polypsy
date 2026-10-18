@@ -282,24 +282,32 @@ export function StateCell({ row }: { row: OpsUserRow }) {
 /**
  * Чип отбора с меню значений (.fchip набора): «Роль ⌄», выбранное —
  * тонированным со значением и крестиком «зняти». Первое значение списка —
- * «усі» (пустая строка).
+ * «усі» (пустая строка). Один на техпанель: «Користувачі», «Сесії»,
+ * «Аудит», «Тимчасові доступи» и правило «Підозрілої активності».
  */
 export function ChoiceChip({
   label,
   choices,
   value,
   onChange,
+  align,
+  plateClassName = "min-w-[220px]",
 }: {
   label: string;
-  choices: { value: string; label: string }[];
+  /** `code` — значение-идентификатор (код права): моноширинно, его ищут буква в букву */
+  choices: { value: string; label: string; code?: boolean }[];
   value: string;
   onChange: (v: string) => void;
+  /** Край, к которому прижато меню: у чипа в правом углу панели — правый */
+  align?: "left" | "right";
+  plateClassName?: string;
 }) {
   const current = choices.find((c) => c.value === value && value);
   return (
     <MenuButton
       label={label}
-      plateClassName="min-w-[220px]"
+      align={align}
+      plateClassName={plateClassName}
       trigger={(p) => (
         <FilterChip
           label={label}
@@ -324,7 +332,7 @@ export function ChoiceChip({
               onChange(c.value);
             }}
           >
-            <span className="min-w-0 flex-1 truncate">{c.label}</span>
+            <span className={cx("min-w-0 flex-1 truncate", c.code && "font-mono text-[12px]")}>{c.label}</span>
             {c.value === value ? <Ic.check size={15} className="text-violet-ink" /> : null}
           </button>
         ))

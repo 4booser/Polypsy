@@ -1,16 +1,14 @@
 import { Fragment, type ReactNode } from "react";
-import type { Role, SuspiciousRule } from "@quizzy/shared";
-import { useLang } from "../../../lang";
+import type { SuspiciousRule } from "@quizzy/shared";
 import { cx } from "../../../ui/cx";
 import { Ic, type IconProps } from "../../../ui/icons";
 import { Tag } from "../../../ui/primitives";
-import { ROLE_KEY } from "../model";
 import { Ix, makeIcon } from "./icons";
 
 /*
  * Детали экранов безопасности техпанели в «Виразній»: значки, которых нет в
- * наборе и в общих значках участка, код права пилюлей, пилюля роли,
- * полоска срока и доли.
+ * наборе и в общих значках участка, код права пилюлей, полоска срока и
+ * доли. Пилюля роли — общая с реестром (users/parts.tsx, RolePill).
  */
 
 const FILE = "M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z";
@@ -63,17 +61,6 @@ export function FactChip({ children, tone, icon, mono }: { children: ReactNode; 
   return (
     <Tag tone={tone === "warn" ? "attention" : "plain"} icon={icon} className={mono ? "font-mono font-semibold" : undefined}>
       {children}
-    </Tag>
-  );
-}
-
-/** Роль пилюлей со значком: суперадміністратор — фиолетовым, остальные — нейтрально */
-export function RolePill({ role }: { role: Role }) {
-  const { ut } = useLang();
-  const icon = role === "superadmin" ? <Ic.shieldCheck /> : role === "admin" ? <Ix.userCog /> : <Ix.userRound />;
-  return (
-    <Tag tone={role === "superadmin" ? "primary" : "plain"} icon={icon}>
-      {ut(ROLE_KEY[role])}
     </Tag>
   );
 }

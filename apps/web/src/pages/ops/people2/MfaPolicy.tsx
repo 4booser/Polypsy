@@ -15,7 +15,8 @@ import { useResource } from "../../../useResource";
 import { personHref } from "../model";
 import { SectionPage } from "./frame";
 import { Ix } from "./icons";
-import { CodeChip, FootNote, Meter, RolePill, Rich, Sx } from "./securityParts";
+import { RolePill } from "../users/parts";
+import { CodeChip, FootNote, Meter, Rich, Sx } from "./securityParts";
 import {
   MFA_VIEWS,
   coverageGroups,

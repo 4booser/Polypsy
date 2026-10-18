@@ -7,13 +7,12 @@ import { ShareBar, TimeColumns, type SharePart } from "../../../charts/clinical"
 import { useLang } from "../../../lang";
 import { Avatar, DataTable, Drawer, DrawerPane, DrawerSection, KV, Loading, Modal, useAction } from "../../../ui";
 import type { Column } from "../../../ui/DataTable";
-import { FilterChip } from "../../../ui/filters";
 import { Ic } from "../../../ui/icons";
 import { Panel } from "../../../ui/layout";
-import { MenuButton, menuItemClass } from "../../../ui/menu";
 import { Tooltip } from "../../../ui/Popover";
 import { Button, ButtonLink, Field, Input, Segmented, Select, Tag, Textarea } from "../../../ui/primitives";
 import { useResource } from "../../../useResource";
+import { ChoiceChip } from "../users/parts";
 import { SectionPage } from "./frame";
 import { Ix } from "./icons";
 import { timeLeft, weekColumns } from "./model";
@@ -166,13 +165,15 @@ export default function OpsGrants() {
                       label={ut("ops.grants.permission")}
                       value={permFilter}
                       onChange={setPermFilter}
-                      options={[{ value: "", label: ut("opps.grants.anyPermission") }, ...activePerms.map((p) => ({ value: p, label: p, code: true }))]}
+                      align="right"
+                      choices={[{ value: "", label: ut("opps.grants.anyPermission") }, ...activePerms.map((p) => ({ value: p, label: p, code: true }))]}
                     />
                     <ChoiceChip
                       label={ut("opps.grants.action")}
                       value={modeFilter}
                       onChange={(v) => setModeFilter(v as ModeFilter)}
-                      options={[
+                      align="right"
+                      choices={[
                         { value: "", label: ut("opps.grants.bothModes") },
                         { value: "grant", label: ut("ops.grants.given") },
                         { value: "revoke", label: ut("ops.grants.taken") },
@@ -233,56 +234,6 @@ export default function OpsGrants() {
 
       {revoking ? <RevokeModal g={revoking} onClose={() => setRevoking(null)} onDone={done} /> : null}
     </SectionPage>
-  );
-}
-
-/** Пилюля отбора с меню значений — «Право ⌄», «Дія ⌄» */
-function ChoiceChip({
-  label,
-  value,
-  onChange,
-  options,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  options: { value: string; label: string; code?: boolean }[];
-}) {
-  const current = options.find((o) => o.value === value && o.value);
-  return (
-    <MenuButton
-      label={label}
-      align="right"
-      trigger={(p) => (
-        <FilterChip
-          label={label}
-          value={current?.label}
-          on={!!current}
-          expanded={p["aria-expanded"]}
-          onClick={p.onClick}
-          onClear={current ? () => onChange("") : undefined}
-        />
-      )}
-    >
-      {(close) =>
-        options.map((o) => (
-          <button
-            key={o.value || "all"}
-            type="button"
-            role="menuitemradio"
-            aria-checked={o.value === value}
-            className={menuItemClass("left")}
-            onClick={() => {
-              close();
-              onChange(o.value);
-            }}
-          >
-            <span className={o.code ? "min-w-0 flex-1 truncate font-mono text-[12px]" : "min-w-0 flex-1 truncate"}>{o.label}</span>
-            {o.value === value ? <Ic.check size={15} className="text-violet-ink" /> : null}
-          </button>
-        ))
-      }
-    </MenuButton>
   );
 }
 
