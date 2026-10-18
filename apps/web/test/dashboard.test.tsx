@@ -19,6 +19,7 @@ import {
   passColumns,
   passSummary,
   periodTotals,
+  saveQueue,
   shareState,
   sparkValues,
   spreadParts,
@@ -437,6 +438,61 @@ describe("очередь и случаи: рисование", () => {
     const html = draw(<CasesWidget alerts={empty} meId={null} error="Сервер не відповідає" />);
     expect(either(html, "dayA.casesFailed")).toBe(true);
     expect(either(html, "dashA.noCases")).toBe(false);
+  });
+});
+
+describe("«Налаштувати зведення»: сохранение по очереди", () => {
+  /*
+   * Через useAction второе сохранение, пришедшее в полёте первого,
+   * отбрасывалось молча: два щелчка по переключателям — и на экране одно,
+   * а в профиле прежнее.
+   */
+  const tick = () => new Promise((r) => setTimeout(r, 0));
+
+  test("пришедшее в полёте не теряется: уходит следом одним запросом, последним словом", async () => {
+    const sent: object[] = [];
+    const gates: (() => void)[] = [];
+    let idle = 0;
+    const push = saveQueue<{ order?: string[]; hidden?: string[] }>(
+      (p) => {
+        sent.push(p);
+        return new Promise<void>((r) => gates.push(r));
+      },
+      { idle: () => idle++ },
+    );
+    const all = push({ order: ["a", "b"] });
+    void push({ order: ["b", "a"] });
+    void push({ hidden: ["work"] });
+    expect(sent).toEqual([{ order: ["a", "b"] }]);
+    gates.shift()!();
+    await tick();
+    expect(sent).toEqual([{ order: ["a", "b"] }, { order: ["b", "a"], hidden: ["work"] }]);
+    expect(idle).toBe(0);
+    gates.shift()!();
+    await all;
+    expect(idle).toBe(1);
+  });
+
+  test("отказ одного сохранения не останавливает следующие", async () => {
+    const sent: object[] = [];
+    const failed: unknown[] = [];
+    let first = true;
+    const push = saveQueue<{ density?: string }>(
+      async (p) => {
+        sent.push(p);
+        if (first) {
+          first = false;
+          await tick();
+          throw new Error("сервер не відповідає");
+        }
+      },
+      { failed: (e) => failed.push(e) },
+    );
+    const all = push({ density: "compact" });
+    void push({ density: "cozy" });
+    await all;
+    expect(sent).toEqual([{ density: "compact" }, { density: "cozy" }]);
+    expect(failed).toHaveLength(1);
   });
 });
 

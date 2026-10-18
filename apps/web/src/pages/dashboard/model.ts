@@ -299,6 +299,46 @@ export function widgetLayout(prefs: { order?: string[]; hidden?: string[] } | nu
   return { order, hidden };
 }
 
+/**
+ * Сохранение настроек по очереди, последним словом.
+ *
+ * Ящик «Налаштувати зведення» применяет правку сразу и шлёт её в профиль.
+ * Через useAction второе сохранение, пришедшее, пока первое в пути,
+ * молча отбрасывалось (run не начинает второе действие): два щелчка по
+ * переключателям или Alt+↓ дважды подряд — и на экране одно, а в профиле
+ * прежнее, и на другой машине зведення собиралось не так, как его настроили.
+ *
+ * Здесь пришедшее в полёте копится и уходит следом, одним запросом: правка
+ * віджетів несёт порядок и выключенные целиком, поэтому последняя —
+ * правда, и промежуточные слать незачем. Отказ одной не останавливает
+ * следующие; `idle` — когда всё отправлено (перечитать профиль).
+ */
+export function saveQueue<P extends object>(
+  send: (patch: P) => Promise<unknown>,
+  hooks: { failed?: (error: unknown) => void; idle?: () => void } = {},
+): (patch: P) => Promise<void> {
+  let next: P | null = null;
+  let running: Promise<void> | null = null;
+  const drain = async () => {
+    while (next) {
+      const patch = next;
+      next = null;
+      try {
+        await send(patch);
+      } catch (e) {
+        hooks.failed?.(e);
+      }
+    }
+    running = null;
+    hooks.idle?.();
+  };
+  return (patch: P) => {
+    next = { ...(next ?? {}), ...patch } as P;
+    if (!running) running = drain();
+    return running;
+  };
+}
+
 /** Сдвиг віджета на одно место (Alt ↑ / Alt ↓) */
 export function moveWidget(order: readonly DashWidget[], key: DashWidget, dir: -1 | 1): DashWidget[] {
   const at = order.indexOf(key);
