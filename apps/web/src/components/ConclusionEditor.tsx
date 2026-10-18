@@ -30,6 +30,13 @@ export interface SignLock {
   body: ReactNode;
   /** «Розібрати сигнал» — переход к разбору */
   action: ReactNode;
+  /**
+   * risk — сигнал не разобран (по умолчанию); warn — разобран ли он,
+   * неизвестно: обстановка не пришла, и это не риск, а отказ загрузки.
+   */
+  tone?: "risk" | "warn";
+  /** Строка у кнопки подписи; без неё — «Підпис відкриється після розбору сигналу» */
+  note?: ReactNode;
 }
 
 export function ConclusionEditor({
@@ -47,6 +54,7 @@ export function ConclusionEditor({
   summary,
   signals,
   lock,
+  signPending = false,
   onHistory,
   canWrite = true,
   canSign = true,
@@ -69,6 +77,11 @@ export function ConclusionEditor({
   /** Сигналы этого прохождения — разделом под выводом */
   signals?: ReactNode;
   lock?: SignLock | null;
+  /**
+   * Судить о сигналах ещё не из чего — обстановка едет: подпись ждёт молча,
+   * без заметки (она мелькнула бы на каждом открытии).
+   */
+  signPending?: boolean;
   /** «Історія» — к истории версий */
   onHistory?: () => void;
   /** Права читающего: писать черновик (conclusions.write) и подписывать (conclusions.sign) */
@@ -176,7 +189,12 @@ export function ConclusionEditor({
 
       {lock && !signed ? (
         <div className="px-4 pb-3.5">
-          <Callout kind="risk" icon={<Ic.lock />} title={lock.title} actions={lock.action}>
+          <Callout
+            kind={lock.tone ?? "risk"}
+            icon={lock.tone === "warn" ? <Ic.circleAlert /> : <Ic.lock />}
+            title={lock.title}
+            actions={lock.action}
+          >
             {lock.body}
           </Callout>
         </div>
@@ -304,14 +322,18 @@ export function ConclusionEditor({
 
       <div className="flex flex-wrap items-center gap-2.5 border-t border-divider px-4 pb-4 pt-3">
         <span className={cx("inline-flex min-w-0 items-center gap-1.5 text-small", lock && !signed ? "text-text-2" : "text-muted")}>
-          {lock && !signed ? <Ic.lock size={14} className="shrink-0 text-risk-ink" /> : <Ic.info size={14} className="shrink-0" />}
-          {lock && !signed ? ut("rp.signLocked") : !canSign ? ut("cnx.noSignRight") : ut("cnc.onlySignedInReport")}
+          {lock && !signed ? (
+            <Ic.lock size={14} className={cx("shrink-0", lock.tone === "warn" ? "text-warn" : "text-risk-ink")} />
+          ) : (
+            <Ic.info size={14} className="shrink-0" />
+          )}
+          {lock && !signed ? (lock.note ?? ut("rp.signLocked")) : !canSign ? ut("cnx.noSignRight") : ut("cnc.onlySignedInReport")}
         </span>
         <div className="ml-auto flex flex-wrap gap-2">
           <Button
             variant="primary"
             icon={<Rx.signature />}
-            disabled={busy || !plan.canSign || !!lock || !canSign}
+            disabled={busy || !plan.canSign || !!lock || signPending || !canSign}
             onClick={() => void sign()}
           >
             {ut("cn3.form")}
