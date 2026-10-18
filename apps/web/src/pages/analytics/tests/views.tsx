@@ -393,7 +393,7 @@ function QualitySummary({ data, onView }: { data: SurveyAnalytics; onView: () =>
               icon={<AIc.usersRound />}
               tone={worst && (worst.completionRate ?? 100) < 80 ? "warn" : "neutral"}
               title={ut("dq.completionTitle")}
-              value={worst ? `${sexOf(worst.sex)} ${worst.band}: ${worst.completionRate} %` : "—"}
+              value={worst ? `${sexOf(worst.sex)} ${worst.band}: ${numText(worst.completionRate, 1)} %` : "—"}
             >
               {worst && (worst.completionRate ?? 100) < 80 ? `${ut("dq.underrepresented")} ` : ""}
               {fill(ut("ant.groupsHidden"), { n: q.smallCellFloor })}

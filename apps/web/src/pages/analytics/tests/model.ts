@@ -1,4 +1,5 @@
 import type { QuestionAnalytics, SurveyAnalytics } from "@quizzy/shared";
+import { locale } from "../../../format";
 
 /**
  * Чистая часть вкладки «Тести» раздела «Аналітика»: состояние экрана в
@@ -218,11 +219,17 @@ export function dayText(iso: string): string {
   return y && m && d ? `${d}.${m}.${y}` : iso;
 }
 
-/** Число для подписи: целое без хвоста, дробное — до двух знаков, запятая по-украински */
+/**
+ * Число для подписи: целое без хвоста, дробное — до `digits` знаков,
+ * разделитель — языка страницы: запятая по-украински и по-русски, точка
+ * по-английски. Прежде запятая стояла при любом языке, и английский экран
+ * печатал «10,8» — по-английски это читается как тысячи. Разрядов нет, как
+ * и раньше: счётчики печатает nf (views.tsx).
+ */
 export function numText(v: number | null | undefined, digits = 2): string {
   if (v === null || v === undefined || !Number.isFinite(v)) return "—";
   const f = 10 ** digits;
-  return String(Math.round(v * f) / f).replace(".", ",");
+  return new Intl.NumberFormat(locale(), { maximumFractionDigits: digits, useGrouping: false }).format(Math.round(v * f) / f);
 }
 
 /* ─────────── ряд прохождений по времени ─────────── */

@@ -39,6 +39,7 @@ import {
   ruleTests,
   sameDraft,
   surveysToLoad,
+  thresholdText,
 } from "./model";
 import { ACT_ICON, ACT_KEY } from "./parts";
 import { testsHref } from "./tests/model";
@@ -1011,7 +1012,7 @@ function ScaleCond({
           </Field>
           {changed && !errors.threshold ? (
             <ErrorText tone="warn" className="-mt-2">
-              {ut("kit.was").replace("{v}", was!.value)}
+              {ut("kit.was").replace("{v}", thresholdText(was!.value))}
             </ErrorText>
           ) : null}
         </div>
@@ -1031,7 +1032,7 @@ function ScaleCond({
               <SeverityMeter
                 rungs={rungs}
                 value={value !== null && Number.isFinite(value) ? value : null}
-                label={`${scale.title}: ${ut(OP_KEY[p.op])} ${p.value}`}
+                label={`${scale.title}: ${ut(OP_KEY[p.op])} ${thresholdText(p.value)}`}
               />
             </>
           ) : (
@@ -1203,7 +1204,7 @@ function ReadModel({
     return (
       <>
         {other}
-        {scaleNode} {ut(OP_KEY[p.op]).toLowerCase()} {ok ? <b>{p.value.trim()}</b> : gap("am.gapThreshold")} (
+        {scaleNode} {ut(OP_KEY[p.op]).toLowerCase()} {ok ? <b>{thresholdText(p.value)}</b> : gap("am.gapThreshold")} (
         {ut(p.metric === "raw" ? "am.metricRaw" : "am.metricNormed").toLowerCase()})
       </>
     );
@@ -1275,7 +1276,9 @@ function changeText(ut: (k: UiKey) => string, c: DraftChange): string {
     case "enabled":
       return ut(c.on ? "am.chOn" : "am.chOff");
     case "threshold":
-      return ut("am.chThreshold").replace("{from}", c.from).replace("{to}", c.to || "—");
+      return ut("am.chThreshold")
+        .replace("{from}", thresholdText(c.from))
+        .replace("{to}", c.to.trim() ? thresholdText(c.to) : "—");
     case "param":
       return n("am.condN", c.index + 1).toLowerCase();
     case "paramsAdded":

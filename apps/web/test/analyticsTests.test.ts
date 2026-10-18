@@ -146,6 +146,27 @@ describe("подписи", () => {
     expect(numText(Number.NaN)).toBe("—");
     expect(dayText("2026-09-01")).toBe("01.09.2026");
   });
+
+  /*
+   * Разделитель — языка страницы. Прежде запятая стояла при любом языке, и
+   * английский экран печатал «10,8» — по-английски это тысячи. Мутация:
+   * вернуть .replace(".", ",") — падает английская проверка.
+   */
+  test("разделитель дробной части — языка страницы: запятая в uk, точка в en", () => {
+    const g = globalThis as { document?: unknown };
+    const had = "document" in g;
+    const prev = g.document;
+    try {
+      g.document = { documentElement: { lang: "en" } };
+      expect(numText(10.8)).toBe("10.8");
+      expect(numText(1096.25)).toBe("1096.25");
+      g.document = { documentElement: { lang: "uk" } };
+      expect(numText(10.8)).toBe("10,8");
+    } finally {
+      if (had) g.document = prev;
+      else delete g.document;
+    }
+  });
 });
 
 describe("ряд прохождений", () => {
