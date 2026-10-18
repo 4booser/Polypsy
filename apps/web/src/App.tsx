@@ -388,7 +388,8 @@ export default function App() {
   // ⌘K — единственный вход в поиск; в поле ввода не перехватываем
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+      /* K — по месту клавиши: на кириллической раскладке Ctrl+K приходит знаком «л» (как useHotkeys) */
+      if ((e.metaKey || e.ctrlKey) && (e.code === "KeyK" || e.key?.toLowerCase() === "k")) {
         e.preventDefault();
         setPaletteOpen((v) => !v);
       }

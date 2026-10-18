@@ -244,7 +244,7 @@ export function TooltipPlate({ label, kbd, className }: { label: ReactNode; kbd?
   return (
     <span className={cx(tipPlate, kbd ? "pr-2" : "pr-[11px]", className)}>
       {label}
-      {kbd ? <Kbd onTip>{kbd}</Kbd> : null}
+      {kbd ? <Kbd tone="tip">{kbd}</Kbd> : null}
     </span>
   );
 }
@@ -501,7 +501,7 @@ export function Tooltip({
           className={cx(tipPlate, "pointer-events-none z-[90]", kbd ? "pr-2" : "pr-[11px]")}
         >
           {label}
-          {kbd ? <Kbd onTip>{kbd}</Kbd> : null}
+          {kbd ? <Kbd tone="tip">{kbd}</Kbd> : null}
         </span>
       ) : null}
     </>
