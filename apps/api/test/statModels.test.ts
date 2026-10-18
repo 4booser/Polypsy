@@ -783,6 +783,19 @@ describe("пресеты фильтров: свои и только свои", (
     const viaApp = await appApi(`/api/filter-presets/${id}`, adminA.token);
     expect(viaApp.status).toBe(200);
     expect(viaApp.body.usedBy).toEqual(got.body.usedBy);
+    /*
+     * И число — тоже все модели: политика строк показывает владельцу только
+     * его модели, и подсчёт под ней называл пресет «использованным в одной»,
+     * а «Видалити» в карточке стояло доступным, хотя DELETE (он считает
+     * системной ролью) откажет из-за модели суперадмина.
+     *
+     * Мутация: считать modelCount в GET /:id и GET / без asSystem — под
+     * ролью приложения оба называют 1.
+     */
+    expect(viaApp.body.modelCount, "под политикой строк карточка не досчитала чужую модель").toBe(2);
+    const listed = await appApi<{ items: { id: string; modelCount: number }[] }>("/api/filter-presets", adminA.token);
+    expect(listed.status).toBe(200);
+    expect(listed.body.items.find((p) => p.id === id)?.modelCount, "под политикой строк перечень не досчитал чужую модель").toBe(2);
     const asRoot = await api(`/api/filter-presets/${id}`, root.token);
     expect((asRoot.body.usedBy as { id: string }[]).map((m) => m.id).sort()).toEqual([own.body.id, foreign.body.id].sort());
 
