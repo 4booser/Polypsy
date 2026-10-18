@@ -1,14 +1,17 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import * as auth from "../src/auth";
 import {
   facetCounts,
   filterHits,
+  forgetRecent,
   groupHits,
   highlight,
   inPeriod,
   parseRecent,
   pushRecent,
+  RECENT_KEY,
   RECENT_MAX,
   type Hit,
 } from "../src/pages/search/model";
@@ -97,5 +100,63 @@ describe("нещодавні запити", () => {
     const src = readFileSync(resolve(import.meta.dir, "../src/pages/Search.tsx"), "utf8");
     expect(src).toContain("sessionStorage.getItem(RECENT_KEY)");
     expect(src).not.toContain("localStorage");
+  });
+
+  /*
+   * Ноутбук ординаторской общий: вышедший оставляет вкладку открытой, и
+   * следующий входит в ту же — список «что искали» (слова клинических
+   * записей, фамилии) доставался ему целиком. Теперь он стирается при выходе,
+   * при входе другого человека и при конце сессии.
+   *
+   * Мутация: убрать forgetRecent из dropTabTraces (auth.tsx) — падает вторая
+   * проверка; убрать вызов из выхода или входа — падает своя строка третьей.
+   */
+  test("стираются при выходе, при входе другого и при конце сессии", () => {
+    const memory = (): Storage => {
+      const data = new Map<string, string>();
+      return {
+        get length() {
+          return data.size;
+        },
+        clear: () => data.clear(),
+        getItem: (k) => data.get(k) ?? null,
+        key: (i) => [...data.keys()][i] ?? null,
+        removeItem: (k) => void data.delete(k),
+        setItem: (k, v) => void data.set(k, String(v)),
+      };
+    };
+    const own = memory();
+    own.setItem(RECENT_KEY, JSON.stringify(["самоушкодження"]));
+    forgetRecent(own);
+    expect(own.getItem(RECENT_KEY)).toBeNull();
+
+    // конец сессии (окончательный 401, вход другого в соседней вкладке) — сброс вкладки
+    const g = globalThis as { sessionStorage?: Storage };
+    const saved = g.sessionStorage;
+    g.sessionStorage = memory();
+    g.sessionStorage.setItem(RECENT_KEY, JSON.stringify(["план безпеки"]));
+    try {
+      auth.dropTabSession({ user: () => {}, perms: () => {}, mfa: () => {} }, { clear: () => {} });
+      expect(g.sessionStorage.getItem(RECENT_KEY), "после конца сессии список запросов остался во вкладке").toBeNull();
+    } finally {
+      g.sessionStorage = saved;
+    }
+
+    // выход, вход (свой и чужой) и мёртвая сессия при открытии вкладки — тем же dropTabTraces
+    const src = readFileSync(resolve(import.meta.dir, "../src/auth.tsx"), "utf8");
+    /* тело от начала до закрывающей скобки своего отступа */
+    const body = (start: string, end: string) => {
+      const at = src.indexOf(start);
+      return at < 0 ? "" : src.slice(at, src.indexOf(end, at));
+    };
+    const paths: [string, string, string][] = [
+      ["выход", "function logout() {", "\n  }\n"],
+      ["вход", "async function adopt(", "\n  }\n"],
+      ["мёртвая сессия при открытии", "} else if (boot.error) {", "\n    }"],
+      ["сброс вкладки", "export function dropTabSession(", "\n}\n"],
+    ];
+    for (const [name, start, end] of paths) {
+      expect(body(start, end), `${name}: недавние запросы не стираются`).toContain("dropTabTraces();");
+    }
   });
 });
