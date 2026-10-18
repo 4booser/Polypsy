@@ -73,6 +73,14 @@ async function fetchDirectory(viewer: Viewer, src: DirectorySource): Promise<Dir
  */
 let cached: { viewerId: string; dir: Directory } | null = null;
 
+/**
+ * Забыть кеш: после действия, которое меняет числа справочника (передача
+ * пациентов), карточка обязана перечитать его, а не показать прежнюю нагрузку.
+ */
+export function forgetDirectory(): void {
+  cached = null;
+}
+
 /** Список: всегда свежий ответ, он же становится кешем для карточек */
 export async function loadDirectory(viewer: Viewer, src: DirectorySource = api): Promise<Directory> {
   const dir = await fetchDirectory(viewer, src);

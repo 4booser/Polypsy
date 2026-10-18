@@ -8312,6 +8312,11 @@ export const UI = {
   "adm2.sortAttention": { uk: "увага спершу", ru: "внимание сначала", en: "attention first" },
   "adm2.sortRecent": { uk: "свіжі заміри спершу", ru: "свежие замеры сначала", en: "recent measures first" },
   "adm2.transferTo": { uk: "Передати іншому лікарю", ru: "Передать другому врачу", en: "Hand over to another clinician" },
+  "adm2.partialPatients": {
+    uk: "Показано {n} з {total}: решту знайдіть пошуком у розділі «Пацієнти»",
+    ru: "Показано {n} из {total}: остальных найдите поиском в разделе «Пациенты»",
+    en: "Showing {n} of {total}: find the rest with search in Patients",
+  },
   "adm2.leadsNobody": { uk: "Фахівець ще нікого не веде", ru: "Специалист пока никого не ведёт", en: "This clinician isn’t lead for anyone yet" },
   "adm2.keyTransfer": { uk: "передати вибраних", ru: "передать выбранных", en: "hand over selected" },
   "adm2.transferNote": {

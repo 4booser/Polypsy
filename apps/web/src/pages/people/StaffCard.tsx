@@ -36,8 +36,8 @@ import { ActionMenu } from "../../ui/menu";
 import { Button, Field, Input, Select, Tag, Textarea } from "../../ui/primitives";
 import { useResource } from "../../useResource";
 import { actionLabel } from "../ops/model";
-import { ladderReadable, loadDirectory, loadMember } from "./data";
-import { type StaffRow, STALE_DAYS, accountState, birthYear, isDoctor, isStale, mainRole, ownGroups, workplaceOf } from "./model";
+import { forgetDirectory, ladderReadable, loadDirectory, loadMember } from "./data";
+import { type StaffRow, STALE_DAYS, accountState, birthYear, isDoctor, isStale, mainRole, ownGroups, peopleLists, workplaceOf } from "./model";
 import { AIc, daysAgo, dm, dmy, fill, hm, plural, shortName, whenShort } from "./parts";
 
 /*
@@ -190,7 +190,7 @@ export default function StaffCard() {
           <CardTab to={base} end label={ut("ppl.tabProfile")} />
           <CardTab to={`${base}/patients`} label={ut("top.patients")} count={row.account?.patients ?? null} />
           <CardTab to={`${base}/groups`} label={ut("top.groups")} count={groups ? groups.length : null} />
-          {ladderReadable({ id: viewerId, isSuper }, row) && (isSuper || can("users.manage") || me) ? (
+          {ladderReadable({ id: viewerId, isSuper }, row) && (peopleLists(user).admins || me) ? (
             <CardTab to={`/permissions?user=${row.id}`} label={ut("adm2.tabPermissions")} external />
           ) : null}
           {can("audit.read") ? <CardTab to={`/ops/audit?actor=${row.id}`} label={ut("adm2.actionLog")} external /> : null}
@@ -982,7 +982,7 @@ export function StaffPatients() {
 type PatientView = "all" | "stale" | "never";
 
 function LedPatients() {
-  const { row } = useOutletContext<CardCtx>();
+  const { row, reload } = useOutletContext<CardCtx>();
   const { ut, lang } = useLang();
   const { can } = useAuth();
   const canTransfer = can("users.manage");
@@ -1158,6 +1158,10 @@ function LedPatients() {
           ]}
         />
       </Panel>
+      {/* сервер отдаёт не больше 200 строк за раз: если людей больше — сказать прямо, а не притворяться полным списком */}
+      {page.data && page.data.total > items.length ? (
+        <Callout kind="warn">{fill(ut("adm2.partialPatients"), { n: items.length, total: page.data.total })}</Callout>
+      ) : null}
       <Callout kind="info">{ut("adm2.transferNote")}</Callout>
       {transfer ? (
         <TransferModal
@@ -1169,6 +1173,9 @@ function LedPatients() {
             setTransfer(false);
             setPicked(new Set());
             page.reload();
+            /* числа в полосе и во вкладке — из справочника: перечитать его, а не показывать прежнюю нагрузку */
+            forgetDirectory();
+            reload();
           }}
         />
       ) : null}
