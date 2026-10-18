@@ -307,7 +307,7 @@ export function useQuickViewPane({
                   ut("plist.lead"),
                   card.data?.lead ? `${card.data.lead.name}${card.data.lead.mine ? `, ${ut("qv.you")}` : ""}` : (person.leadName ?? ut("plist.noLead")),
                 ],
-                card.data?.groups.length ? [ut("pg.title"), card.data.groups.map((g) => g.title).join(", ")] : null,
+                card.data?.groups.length ? [ut("sn.patientGroups"), card.data.groups.map((g) => g.title).join(", ")] : null,
                 person.dispensary
                   ? [
                       ut("disp.title"),

@@ -402,7 +402,6 @@ export const UI = {
   /* выбор галочками: «18 вибрано» — нижний рядок кадра f05 */
   "pg.selected": { uk: "вибрано", ru: "выбрано", en: "selected" },
   "pg.select": { uk: "Вибрати", ru: "Выбрать", en: "Select" },
-  "pg.clearSelection": { uk: "Зняти вибір", ru: "Снять выбор", en: "Clear selection" },
   "pg.addToGroup": { uk: "Додати до групи", ru: "Добавить в группу", en: "Add to group" },
   "pg.added": { uk: "Додано до групи", ru: "Добавлены в группу", en: "Added to the group" },
   "pg.removeFromGroup": { uk: "Прибрати з групи", ru: "Убрать из группы", en: "Remove from group" },

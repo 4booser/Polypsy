@@ -19,8 +19,8 @@ import { ddmm, fmtNum, kitSeverity, shownValue } from "./patients/model";
  * копию тех же словарей — верный способ однажды показать «принято» в одном
  * месте и «прийнято» в другом.
  */
-import { DESTINATION_KEY, STATUS_KEY, URGENCY_KEY } from "./referrals/model";
-import { NEXT_STATUS } from "./Referrals";
+import { DESTINATION_KEY } from "./referrals/model";
+import { NEXT_STATUS, StatusTag, UrgencyTag } from "./Referrals";
 
 /**
  * Вкладка «Огляд справи» — кадр patients-case: что с человеком сейчас.
@@ -346,15 +346,12 @@ function Referrals() {
           {data.referrals.map((r) => (
             <tr key={r.id}>
               <td className={`${td} font-bold text-text`}>{ut(DESTINATION_KEY[r.destination])}</td>
+              {/* те же пилюли, что в реестре направлений: «негайно» — красным, это риск для человека */}
               <td className={td}>
-                <Tag tone={r.urgency === "routine" ? "plain" : "attention"} icon={r.urgency === "routine" ? undefined : <Ic.timer />}>
-                  {ut(URGENCY_KEY[r.urgency]).toLowerCase()}
-                </Tag>
+                <UrgencyTag urgency={r.urgency} />
               </td>
               <td className={td}>
-                <Tag tone={r.status === "completed" ? "good" : r.status === "declined" ? "done" : "info"}>
-                  {ut(STATUS_KEY[r.status]).toLowerCase()}
-                </Tag>
+                <StatusTag status={r.status} />
               </td>
               <td className={`${td} max-w-[320px]`}>
                 <span className="block text-text">{r.reason ?? "—"}</span>
