@@ -1,10 +1,13 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
 import { UI, type AppointmentStatus, type AppointmentView, type UiKey } from "@quizzy/shared";
-import { api } from "../src/api";
+import { ApiError, api } from "../src/api";
 import { LangProvider } from "../src/lang";
 import { AppointmentRow, moveOf, rowActions } from "../src/pages/Today";
+import { saveOrStale } from "../src/pages/today/drawers";
 
 /**
  * Столбец действий на экране дня стоит на месте.
@@ -252,5 +255,33 @@ describe("шаг назад на экране дня", () => {
         ["/api/clinic/appointments/a-2/status", "POST", { status: "arrived" }],
       ]);
     });
+  });
+});
+
+describe("нотатка до сесії в ящике", () => {
+  /*
+   * Запись переписали, пока ящик был открыт, — 409. Прежде ящик показывал
+   * только тост, база сохранения оставалась прежней, и каждое следующее
+   * «Зберегти» упиралось в тот же отказ до перезагрузки страницы. Теперь —
+   * строка со словами сервера и «перечитати», как у протокола приёма.
+   */
+  test("409 — строка для «перечитати»; принятое — новое состояние; прочие отказы идут дальше", async () => {
+    expect(await saveOrStale(() => Promise.reject(new ApiError("Запис змінили, поки він був відкритий", 409)))).toEqual({
+      stale: "Запис змінили, поки він був відкритий",
+    });
+    expect(await saveOrStale(() => Promise.resolve(7))).toEqual({ saved: 7 });
+    await expect(saveOrStale(() => Promise.reject(new ApiError("сервер не відповідає", 503)))).rejects.toThrow("сервер не відповідає");
+  });
+
+  test("ящик ловит 409 тем же законом и даёт «перечитати»; вид записи — как у протокола приёма", () => {
+    const dir = resolve(import.meta.dir, "../src/pages");
+    const drawers = readFileSync(join(dir, "today", "drawers.tsx"), "utf8");
+    const body = drawers.slice(drawers.indexOf("function NoteBody"));
+    expect(body).toContain("saveOrStale(");
+    expect(body).toContain('ut("integrity.reread")');
+    // первичный приём — «intake», как на экране приёма; не «session» на всё подряд
+    expect(body).toContain('target.kind ?? "session"');
+    const today = readFileSync(join(dir, "Today.tsx"), "utf8");
+    expect(today).toContain('kind: a.kind === "primary" ? "intake" : "session"');
   });
 });

@@ -6,6 +6,7 @@ import { cx } from "../../ui/cx";
 import { Ic } from "../../ui/icons";
 import { useLang } from "../../lang";
 import { day } from "../../format";
+import { staleMessage } from "../../components/versioned";
 import { fill } from "../dashboard/model";
 import { Di } from "./icons";
 import { hhmm } from "./model";
@@ -31,6 +32,30 @@ export interface DrawerTarget {
   /** Приём, к которому пишется нотатка */
   appointmentId?: string | null;
   appointmentAt?: string | null;
+  /**
+   * Вид записи — как у протокола того же приёма на экране приёма: первичный
+   * — «intake», повторный — «session». Без него нотатка к первичному
+   * приёму переписывала бы вид его протокола на «сесію».
+   */
+  kind?: "intake" | "session";
+}
+
+/**
+ * Итог сохранения записи: принято — новое состояние; 409 (запись
+ * переписали, пока она была открыта) — строка для «перечитати»; прочее —
+ * дальше, тостом действия. Тот же закон, что у протокола приёма и
+ * NotesEditor: прежде ящик на 409 только показывал тост, а база сохранения
+ * оставалась прежней — и каждое следующее «Зберегти» упиралось в тот же
+ * отказ, пока не перезагрузишь страницу.
+ */
+export async function saveOrStale<T>(save: () => Promise<T>): Promise<{ saved: T } | { stale: string }> {
+  try {
+    return { saved: await save() };
+  } catch (e) {
+    const message = staleMessage(e);
+    if (message === null) throw e;
+    return { stale: message };
+  }
 }
 
 type Mode = "reply" | "note";
@@ -240,6 +265,8 @@ function NoteBody({
   const [state, setState] = useState<{ notes: NoteState | null; error: string | null }>({ notes: null, error: null });
   const [text, setText] = useState<string | null>(null);
   const [seen, setSeen] = useState("");
+  /* 409 — запись переписали, пока ящик был открыт: строкой у кнопки, с «перечитати» */
+  const [stale, setStale] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setState({ notes: null, error: null });
@@ -263,20 +290,38 @@ function NoteBody({
   const current = state.notes?.current ?? null;
   const save = () =>
     run(async () => {
-      const saved = await api.saveNote(
-        target.patientId,
-        (text ?? "").trim(),
-        current ? { version: current.version, revision: current.revision } : null,
-        "session",
-        target.appointmentId ?? undefined,
+      const out = await saveOrStale(() =>
+        api.saveNote(
+          target.patientId,
+          (text ?? "").trim(),
+          current ? { version: current.version, revision: current.revision } : null,
+          target.kind ?? "session",
+          target.appointmentId ?? undefined,
+        ),
       );
+      if ("stale" in out) {
+        setStale(out.stale);
+        return false;
+      }
+      const saved = out.saved;
       setState({ notes: saved, error: null });
+      setStale(null);
       const body = saved.current?.text ?? "";
       setText(body);
       setSeen(body);
       onDirty(false);
       toast(fill(ut("dayA.noteSaved"), { name: target.patientName }), "ok");
       onSaved();
+    });
+  /* «перечитати» после 409: набранное заменяется записью сервера — так же, как на экране приёма */
+  const reread = () =>
+    run(async () => {
+      const notes = await api.notes(target.patientId);
+      const draft = notes.current?.status === "draft" ? notes.current.text : "";
+      setState({ notes, error: null });
+      setText(draft);
+      setSeen(draft);
+      setStale(null);
     });
 
   return (
@@ -310,6 +355,15 @@ function NoteBody({
             <Textarea data-autofocus rows={9} value={text} onChange={(e) => setText(e.target.value)} placeholder={ut("dayA.notePh")} />
           </Field>
         )}
+        {stale ? (
+          <div role="alert" data-note-stale className="mt-3 rounded-panel bg-warn-tint px-3.5 py-3 text-small text-text-2">
+            <p className="m-0 font-bold text-text">{stale}</p>
+            <p className="m-0 mt-1">{ut("integrity.rereadHint")}</p>
+            <Button size="xs" className="mt-2" disabled={busy} onClick={reread}>
+              {ut("integrity.reread")}
+            </Button>
+          </div>
+        ) : null}
         <div className="mt-3 flex flex-wrap gap-2">
           <Button variant="primary" icon={<Di.notebook />} disabled={busy || !text?.trim() || text.trim() === seen.trim()} onClick={save}>
             {ut("dayA.noteSave")}

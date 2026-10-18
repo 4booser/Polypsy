@@ -149,7 +149,15 @@ export default function TodayPage() {
     document.querySelector(`[data-appointment="${next}"]`)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
   };
   const note = (a: AppointmentView | null) => {
-    if (a) openNote({ patientId: a.patientId, patientName: a.patientName, appointmentId: a.id, appointmentAt: a.startsAt });
+    if (a)
+      openNote({
+        patientId: a.patientId,
+        patientName: a.patientName,
+        appointmentId: a.id,
+        appointmentAt: a.startsAt,
+        // вид записи — как у протокола этого приёма на экране приёма
+        kind: a.kind === "primary" ? "intake" : "session",
+      });
   };
   const replyHero = () => {
     if (hero && heroMsg) openReply({ patientId: hero.userId, patientName: hero.userName, threadId: heroMsg.id });
