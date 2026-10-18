@@ -224,8 +224,16 @@ describe("строки интерфейса", () => {
       ...new Set([...sources.matchAll(/`([a-z][A-Za-z0-9.]*)\.\$\{/g)].map((m) => m[1]!)),
     ];
 
+    /*
+     * Ключи в кавычках — одним проходом по исходникам, а не `includes` на
+     * каждый ключ: словарь перевалил за четыре с половиной тысячи записей,
+     * и квадратичный поиск по нескольким мегабайтам упирался в пятисекундный
+     * предел теста под нагрузкой полного прогона. Ответ тот же: ключ «зван»,
+     * если он стоит в исходнике в двойных кавычках целиком.
+     */
+    const quoted = new Set([...sources.matchAll(/"([A-Za-z0-9_.-]+)"/g)].map((m) => m[1]!));
     const unused = Object.keys(UI).filter((key) => {
-      if (sources.includes(`"${key}"`)) return false;
+      if (quoted.has(key)) return false;
       return !dynamicPrefixes.some((prefix) => key.startsWith(`${prefix}.`));
     });
 

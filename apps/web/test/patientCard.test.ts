@@ -1,119 +1,41 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import type { PatientCard } from "@quizzy/shared";
-import {
-  conclusionName,
-  groupStatsText,
-  leadAction,
-  personFields,
-  resultText,
-  statsText,
-} from "../src/pages/patientCard/model";
+import { conclusionName, leadAction, resultText, statsText } from "../src/pages/patientCard/model";
 
 /**
- * Карточка пациента (кадр f19): то, что на живом экране проверяется лишь
- * случайно.
+ * Карточка пациента (Polypsy 2.0, «Дія без переходу»): то, что на живом
+ * экране проверяется лишь случайно.
  *
- * Порядок плашек — это порядок кадра: перестановка «Стать» и «Прізвище»
- * ничего не ломает и глазом ловится не сразу. Подпись «Відписатись /
- * Підписатись» — это право: «Відписатись» на чужом закреплении сервер
- * отвергает, и кнопка, которая обещает отпустить чужого пациента, — обман.
- * Адреса — третье: на карточку ведут ссылки с десятка экранов, а прежняя
- * клиническая карта переехала на /case, и её старые адреса обязаны
- * перенаправляться, иначе очередь работы с сервера уводит на сводку через
- * запасной маршрут, молча.
+ * Подпись «Відписатись / Підписатись» — это право: «Відписатись» на чужом
+ * закреплении сервер отвергает, и пункт, который обещает отпустить чужого
+ * пациента, — обман. Адреса — второе: на карточку ведут ссылки с десятка
+ * экранов, клиническая карта живёт на /case, и её старые адреса обязаны
+ * перенаправляться. Клиника карточки — в patientCardClinical.test.ts,
+ * колонка «Мої пацієнти» — в patientCardList.test.ts.
  */
 
 const SRC = resolve(import.meta.dir, "../src");
-const labels = {
-  firstName: "Ім’я",
-  lastName: "Прізвище",
-  middleName: "Ім’я по батькові",
-  sex: "Стать",
-  birthDate: "Дата народження",
-  phone: "Телефон",
-  city: "Населений пункт",
-  email: "Email",
-  male: "чоловіча",
-  female: "жіноча",
-};
 const iso = (s: string) => `d:${s}`;
 
-const person = (over: Partial<PatientCard> = {}): PatientCard => ({
-  id: "u1",
-  firstName: "Олена",
-  lastName: "Коваль",
-  middleName: null,
-  fullName: "Коваль Олена",
-  anonymous: false,
-  pseudonym: null,
-  email: "olena@example.org",
-  sex: "female",
-  birthDate: "1990-04-12",
-  phone: "+380671234567",
-  unit: null,
-  position: null,
-  specialty: null,
-  rank: null,
-  createdAt: "2026-01-01T00:00:00Z",
-  lead: null,
-  responses: [],
-  groups: [],
-  conclusions: [],
-  ...over,
-});
-
-describe("карточка пациента: плашки", () => {
-  test("восемь плашек в порядке кадра; пустые показывают подпись, а не прочерк", () => {
-    const fields = personFields(person(), labels, iso);
-    expect(fields.map((f) => f.key)).toEqual(["firstName", "lastName", "middleName", "sex", "birthDate", "phone", "city", "email"]);
-    expect(fields.map((f) => f.value)).toEqual([
-      "Олена",
-      "Коваль",
-      null,
-      "жіноча",
-      "d:1990-04-12",
-      "+380671234567",
-      null,
-      "olena@example.org",
-    ]);
-    // населённого пункта в учётной записи нет — плашка на месте, значения нет
-    expect(fields.find((f) => f.key === "city")!.value).toBeNull();
-    // номера нет — плашка показывает подпись, как пустые поля кадра
-    expect(personFields(person({ phone: null }), labels, iso).find((f) => f.key === "phone")!.value).toBeNull();
-  });
-
-  test("анонимный пациент: вместо имени псевдоним, фамилии и отчества нет", () => {
-    const fields = personFields(person({ anonymous: true, pseudonym: "Сокіл-12", firstName: "", lastName: "" }), labels, iso);
-    expect(fields[0]!.value).toBe("Сокіл-12");
-    expect(fields[1]!.value).toBeNull();
-    expect(fields[2]!.value).toBeNull();
-  });
-});
-
-describe("карточка пациента: колонки строк", () => {
+describe("карточка пациента: вкладка «Заміри»", () => {
   const scales = [
     { code: "A", title: "Тривожність", value: 14, normalization: "raw" as const, percent: 70, bandLabel: "підвищена", severity: "moderate" as const },
     { code: "D", title: "Депресія", value: 3, normalization: "raw" as const, percent: 15, bandLabel: null, severity: null },
   ];
 
-  test("«Результат тесту» — балл и полоса каждой шкалы одной строкой", () => {
+  test("«Результат» — балл и полоса каждой шкалы одной строкой", () => {
     expect(resultText(scales, { none: "Балів немає" })).toBe("Тривожність: 14 — підвищена; Депресія: 3");
     expect(resultText([], { none: "Балів немає" })).toBe("Балів немає");
   });
 
-  test("«Статистика» — дата, доля от максимума по шкалам, недостоверность словом", () => {
+  test("«Статистика» — дата, доля от максимума по шкалам, недостоверность словом; без « · »", () => {
     expect(statsText({ submittedAt: "2026-03-01T10:00:00Z", reliable: true, scales }, { unreliable: "Протокол недостовірний" }, iso)).toBe(
-      "d:2026-03-01T10:00:00Z · A 70%, D 15%",
+      "d:2026-03-01T10:00:00Z, A 70%, D 15%",
     );
     expect(statsText({ submittedAt: null, reliable: false, scales: [] }, { unreliable: "Протокол недостовірний" }, iso)).toBe(
       "Протокол недостовірний",
     );
-  });
-
-  test("«Статистика Групи» — те же числа, что на вкладке группы", () => {
-    expect(groupStatsText({ memberCount: 12, surveyCount: 3 }, { members: "учасників", tests: "тестів" })).toBe("12 учасників · 3 тестів");
   });
 
   test("имя заключения — методика; черновик помечен словом", () => {
@@ -132,9 +54,12 @@ describe("карточка пациента: закрепление", () => {
 
 describe("карточка пациента: адреса", () => {
   const app = readFileSync(join(SRC, "App.tsx"), "utf8");
-  const card = readFileSync(join(SRC, "pages/patientCard/PatientCard.tsx"), "utf8");
+  const read = (f: string) => readFileSync(join(SRC, "pages/patientCard", f), "utf8");
+  const card = read("PatientCard.tsx");
+  const banner = read("Banner.tsx");
+  const tabs = read("TabViews.tsx");
 
-  test("карточка кадра стоит на адресе человека, клиническая карта — под /case", () => {
+  test("карточка стоит на адресе человека, клиническая карта — под /case", () => {
     expect(app).toContain('<Route path="/patients/:userId" element={<PatientCard />} />');
     expect(app).toContain('<Route path="/patients/:userId/case" element={<CaseCard />}>');
   });
@@ -147,20 +72,21 @@ describe("карточка пациента: адреса", () => {
 
   test("ссылки карточки собраны по форме объявленных маршрутов", () => {
     // группа пациентов и заключение — свои экраны со своими адресами (App.tsx)
-    expect(card).toContain("`/patient-groups/${g.id}`");
+    expect(banner).toContain("`/patient-groups/${g.id}`");
     expect(app).toContain('path="/patient-groups/:id"');
-    expect(card).toContain("`/responses/${c.responseId}/conclusion`");
+    expect(tabs).toContain("`/responses/${c.responseId}/conclusion`");
     expect(app).toContain('path="/responses/:id/conclusion"');
     /*
-     * Дверь к клинической карте — в колонке подразделов пациентов (Polypsy
-     * 2.0, shell/nav.ts → clinicalLinks), а не в строке заголовка карточки:
-     * на кадре f13 в ней одна кнопка «Відписатись». Проверяется то же самое,
-     * что и раньше, — что дверь ведёт на новый адрес и что она вообще есть, —
-     * но по её нынешнему месту.
+     * Дверь к клинической карте — в самой карточке: колонка подразделов на
+     * адресе человека спрятана (своя колонка «Мої пацієнти»), и без ссылки в
+     * шапке карту в кризис было бы не открыть.
      */
-    const nav = readFileSync(join(SRC, "shell/nav.ts"), "utf8");
-    expect(nav).toContain("`/patients/${id}/case`");
-    /* в самой карточке ссылки на /case больше нет — только упоминание в докблоке */
-    expect(card).not.toContain('to={`${base}/case');
+    expect(banner).toContain("to={`/patients/${card.id}/case`}");
+    expect(app).toContain('path="dynamics"');
+    expect(app).toContain('path="timeline"');
+  });
+
+  test("открытие карточки — по-прежнему чтение GET /api/patients/:id/card (журнал сервера)", () => {
+    expect(card).toContain("useResource(() => api.patientCard(id), [id], { keep: false })");
   });
 });

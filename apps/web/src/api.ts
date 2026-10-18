@@ -66,6 +66,7 @@ import type {
   SurveyFolder,
   SurveyFolderWithCounts,
   PatientCard,
+  PatientListPage,
   PatientGroup,
   PatientGroupCard,
   PatientGroupInput,
@@ -1717,6 +1718,18 @@ export const api = {
    * карты /patients/:id/case, а этот — на вопрос кадра.
    */
   patientCard: (userId: string) => request<PatientCard>(`/api/patients/${userId}/card`),
+  /**
+   * Пациенты зоны страницей — с ведущим и последней сдачей (GET /api/patients).
+   * Колонка «Мої пацієнти» карточки берёт отсюда «мой» (ведущий — я) и
+   * «нові результати»; чтение списка журналируется сервером.
+   */
+  patientsPage: (params: { q?: string; limit?: number; offset?: number } = {}) => {
+    const qs = new URLSearchParams();
+    if (params.q) qs.set("q", params.q);
+    if (params.limit) qs.set("limit", String(params.limit));
+    if (params.offset) qs.set("offset", String(params.offset));
+    return request<PatientListPage>(`/api/patients?${qs}`);
+  },
   assignSurveyToPatientGroup: (groupId: string, body: AssignSurveyToPatientGroupInput) =>
     request<{ groupId: string; surveyId: string; recipients: number }>(`/api/patient-groups/${groupId}/surveys`, {
       method: "POST",

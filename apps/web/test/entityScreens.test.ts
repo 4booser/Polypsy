@@ -45,7 +45,7 @@ describe("keep: false — после смены id загрузка, а не д�
   const screens: [string, string][] = [
     ["pages/patientCard/PatientCard.tsx", "useResource(() => api.patientCard(id), [id], { keep: false })"],
     ["components/PatientContext.tsx", "useResource(() => api.dynamics(person.userId), [person.userId], { keep: false })"],
-    ["pages/Alerts.tsx", "useResource(() => api.caseSummary(userId), [userId], { keep: false })"],
+    ["pages/Alerts.tsx", "useResource(() => api.caseSummary(userId), [userId], { keep: false, key: \"alerts:summary\" })"],
     ["pages/CaseCard.tsx", "{ enabled: !!userId, keep: false }"],
     ["pages/Timeline.tsx", "{ enabled: !!userId, keep: false }"],
   ];
