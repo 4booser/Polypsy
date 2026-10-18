@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ALWAYS_VISIBLE_WIDGETS, DASH_WIDGETS, type DashWidget, type UiKey, type WorkspacePrefs } from "@quizzy/shared";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../../api";
 import { useAuth } from "../../auth";
 import { Callout, Drawer, DrawerSection, Tooltip, useAction } from "../../ui";
@@ -61,6 +62,9 @@ export function CustomizeDrawer({
   const { ut } = useLang();
   const { user, refreshUser } = useAuth();
   const { run, busy } = useAction();
+  const navigate = useNavigate();
+  const { pathname } = useLocation();
+  const [params] = useSearchParams();
   const [grab, setGrab] = useState<DashWidget | null>(null);
   /* что было при открытии — для «Скасувати» */
   const snapshot = useRef<{ layout: WidgetLayout; start: Start } | null>(null);
@@ -135,7 +139,17 @@ export function CustomizeDrawer({
               name="start-screen"
               value={s.key}
               checked={start === s.key}
-              onChange={(v) => void save({ startScreen: v as Start })}
+              onChange={(v) => {
+                /*
+                 * Другой стартовый экран займёт «/» сразу после сохранения.
+                 * Огляд с этим ящиком остаётся открытым по своей ссылке —
+                 * иначе он исчез бы посреди настройки и стал недостижим.
+                 */
+                if (v !== "dashboard" && pathname === "/" && params.get("view") !== "overview") {
+                  navigate("/?view=overview&customize=1", { replace: true });
+                }
+                void save({ startScreen: v as Start });
+              }}
               title={
                 <span className="inline-flex items-center gap-1.5">
                   {s.icon}

@@ -1,6 +1,7 @@
-import { createContext, useContext, useState, type ReactNode } from "react";
+import { createContext, lazy, Suspense, useContext, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { Outlet, useLocation } from "react-router-dom";
+import { Outlet, useLocation, useSearchParams } from "react-router-dom";
+import { Loading } from "../ui";
 import { Page } from "../ui/layout";
 import { Tabs } from "../ui/primitives";
 import { useAuth } from "../auth";
@@ -48,20 +49,38 @@ export function StartHead({ meta, actions }: { meta?: ReactNode; actions?: React
 }
 
 /** Стоит ли на этом адресе рамка: на «/» — только когда стартовый экран — огляд */
-export function framed(pathname: string, startScreen: string | undefined): boolean {
-  if (pathname !== "/") return true;
+export function framed(pathname: string, startScreen: string | undefined, view?: string | null): boolean {
+  if (pathname !== "/" || view === "overview") return true;
   return !startScreen || startScreen === "dashboard";
 }
+
+/**
+ * Куда ведёт вкладка «Огляд».
+ *
+ * Если стартовый экран — не огляд, на «/» стоит выбранный экран (черга,
+ * випадки, пацієнти), и огляд со своим «Налаштувати зведення» был бы
+ * недостижим вовсе: вкладка вела бы на тот же «/». Поэтому тогда огляд
+ * открывается с `?view=overview` — тем же экраном, не трогая маршруты.
+ */
+export function overviewHref(startScreen: string | undefined): string {
+  return !startScreen || startScreen === "dashboard" ? "/" : "/?view=overview";
+}
+
+const Overview = lazy(() => import("./Dashboard"));
 
 export default function Start() {
   const { ut } = useLang();
   const { user } = useAuth();
   const { pathname } = useLocation();
+  const [params] = useSearchParams();
   const nav = useShellNav();
   const [meta, setMeta] = useState<HTMLElement | null>(null);
   const [actions, setActions] = useState<HTMLElement | null>(null);
+  const start = user?.workspace?.startScreen;
+  /* огляд по ссылке вкладки, когда на «/» стоит другой стартовый экран */
+  const overview = pathname === "/" && params.get("view") === "overview" && !!start && start !== "dashboard";
 
-  if (!framed(pathname, user?.workspace?.startScreen)) return <Outlet />;
+  if (!framed(pathname, start, params.get("view"))) return <Outlet />;
 
   /*
    * Вкладка приглашений стоит не у всех: её показывает право с сервера.
@@ -74,7 +93,7 @@ export default function Start() {
    */
   const waiting = nav?.counts.today;
   const items = [
-    { to: "/", label: ut("dash.tabOverview"), end: true },
+    { to: overviewHref(start), label: ut("dash.tabOverview"), end: true },
     { to: "/today", label: ut("day.title"), count: waiting ? waiting : null },
     ...(user?.canInvite ? [{ to: "/invites", label: ut("inv.title") }] : []),
   ];
@@ -87,7 +106,13 @@ export default function Start() {
         actions={<span ref={setActions} className="contents" />}
         toolbar={<Tabs label={ut("dash.title")} items={items} />}
       >
-        <Outlet />
+        {overview ? (
+          <Suspense fallback={<Loading rows={5} />}>
+            <Overview />
+          </Suspense>
+        ) : (
+          <Outlet />
+        )}
       </Page>
     </SlotsCtx.Provider>
   );

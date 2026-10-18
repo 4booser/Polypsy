@@ -4,7 +4,7 @@ import { DASH_WIDGETS } from "@quizzy/shared";
 import { api } from "../api";
 import { useAuth } from "../auth";
 import { dayFull } from "../format";
-import { Screen } from "../ui";
+import { Screen, useUrlState } from "../ui";
 import { Button, ButtonLink } from "../ui/primitives";
 import { useLang } from "../lang";
 import { useResource } from "../useResource";
@@ -45,7 +45,14 @@ const NO_WORK: Worklist = {
 export default function Dashboard() {
   const { ut } = useLang();
   const { user } = useAuth();
-  const [customize, setCustomize] = useState(false);
+  /*
+   * Ящик настройки — в адресе (`?customize=1`): смена стартового экрана
+   * перестраивает «/», и ящик должен пережить это, а не закрыться посреди
+   * настройки (Customize.tsx переводит на «/?view=overview»).
+   */
+  const [customizeParam, setCustomizeParam] = useUrlState("customize");
+  const customize = customizeParam === "1";
+  const setCustomize = (open: boolean) => setCustomizeParam(open ? "1" : "");
   /* правка из ящика видна сразу, до ответа сервера */
   const [local, setLocal] = useState<WidgetLayout | null>(null);
   const layout = local ?? widgetLayout(user?.workspace?.dashboard);
