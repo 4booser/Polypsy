@@ -2408,6 +2408,10 @@ export interface UsageReport {
     total: number;
     top: ScreenUsageRow[];
     byDay: { date: string; views: number }[];
+    /** Открытия по приложениям — по всем шаблонам окна, а не по верхушке top */
+    byApp: { app: ScreenUsageRow["app"]; views: number }[];
+    /** Сколько разных шаблонов открывали за окно (top — только первые из них) */
+    routes: number;
   };
   /**
    * Уникальные люди по дням. Специалисты — числом всегда, пациенты — через
@@ -2484,7 +2488,13 @@ export interface PushReport {
   byDay: { date: string; sent: number; errors: number }[];
   byKind: { kind: string; sent: number; errors: number; delivered: number }[];
   errors: { code: string; count: number; tokens: number }[];
-  tokens: { registered: number; stale: number; byPlatform: { platform: string; count: number }[] };
+  tokens: {
+    registered: number;
+    stale: number;
+    byPlatform: { platform: string; count: number }[];
+    /** Три самых давних — отпечатком (16 знаков sha256), сам токен наружу не выходит */
+    oldest: { platform: string; fingerprint: string; lastSeenAt: string }[];
+  };
   /** События из push_deliveries за окно — «кому решили отправить», по типам */
   events: { kind: string; count: number }[];
 }

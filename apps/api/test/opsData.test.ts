@@ -417,6 +417,11 @@ describe("телеметрия экранов", () => {
     expect(usage.status).toBe(200);
     expect(usage.body.screens.top).toContainEqual({ app: "patient", route, views: 7, days: 1 });
     expect(usage.body.screens.byDay).toHaveLength(7);
+    // доля приложений — по всем шаблонам окна: сходится с итогом по дням, а не с верхушкой
+    const byApp = usage.body.screens.byApp;
+    expect(byApp.reduce((s, a) => s + a.views, 0)).toBe(usage.body.screens.total);
+    expect(byApp.find((a) => a.app === "patient")?.views ?? 0).toBeGreaterThanOrEqual(7);
+    expect(usage.body.screens.routes).toBeGreaterThanOrEqual(Math.max(1, usage.body.screens.top.length));
   });
 
   test("адрес с идентификатором отвергается — и ничего не пишется", async () => {
@@ -735,6 +740,33 @@ describe("пуш-уведомления", () => {
     expect(res.body.errors.find((e) => e.code === "http_503")).toBeDefined();
     expect(res.body.byDay).toHaveLength(7);
     expect(JSON.stringify(res.body)).not.toContain("ExponentPushToken");
+  });
+
+  test("самые давние токены — отпечатком и датой, сам токен наружу не выходит", async () => {
+    const p = await makeUser("user", `push-ops-oldest-${id()}@test`);
+    const token = `ExponentPushToken[${id()}]`;
+    const tokenId = id();
+    // давнее любого живого устройства: строка встаёт первой, в какой бы базе ни шёл прогон
+    await db
+      .insert(pushTokens)
+      .values({ id: tokenId, userId: p.id, token, platform: "android", lastSeenAt: "1990-01-02T03:04:05.000Z" } as never);
+    try {
+      const res = await api<PushReport>("/api/ops/data/push?days=30", root.token);
+      expect(res.status).toBe(200);
+      const oldest = res.body.tokens.oldest;
+      expect(oldest.length).toBeGreaterThanOrEqual(1);
+      expect(oldest.length).toBeLessThanOrEqual(3);
+      expect(oldest[0]).toEqual({ platform: "android", fingerprint: tokenFingerprint(token), lastSeenAt: "1990-01-02T03:04:05Z" });
+      // по возрасту: от самого давнего; у каждого — только отпечаток
+      const seen = oldest.map((t) => t.lastSeenAt);
+      expect(seen).toEqual([...seen].sort());
+      for (const t of oldest) expect(t.fingerprint).toMatch(/^[0-9a-f]{16}$/);
+      expect(JSON.stringify(res.body)).not.toContain(token);
+      expect(JSON.stringify(res.body)).not.toContain("ExponentPushToken");
+    } finally {
+      // строка из прошлого не должна оставаться «самой давней» для соседних прогонов
+      await db.delete(pushTokens).where(eq(pushTokens.id, tokenId));
+    }
   });
 });
 

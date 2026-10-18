@@ -9,7 +9,7 @@ import type {
   UiKey,
   UsageReport,
 } from "@quizzy/shared";
-import type { Column } from "../../../charts/clinical";
+import type { Column, TimeTick } from "../../../charts/clinical";
 
 /**
  * Чистая логика разделов техпанели «Дані й продукт»: куда ведёт пример
@@ -78,9 +78,10 @@ export const LEVEL_LABEL: Record<DataCheck["level"], UiKey> = {
   info: "opsd.level.info",
 };
 
-export const KIND_UNIT: Record<"response" | "survey", UiKey> = {
-  response: "opsd.q.unitResponses",
-  survey: "opsd.q.unitSurveys",
+/** Слово единицы при числе — тремя формами: «1 методика», «2 методики», «12 методик» */
+export const KIND_UNIT: Record<"response" | "survey", { one: UiKey; few: UiKey; many: UiKey }> = {
+  response: { one: "oppd.unit.response.one", few: "oppd.unit.response.few", many: "oppd.unit.response.many" },
+  survey: { one: "oppd.unit.survey.one", few: "oppd.unit.survey.few", many: "oppd.unit.survey.many" },
 };
 
 /**
@@ -124,6 +125,29 @@ export function checkSummary(checks: readonly Pick<DataCheck, "level" | "count">
 }
 
 /**
+ * Ручная перепроверка — та же задача, что идёт по расписанию (lib/opsManual.ts,
+ * DATA_QUALITY_JOB на сервере): запуск — POST /api/ops/jobs/data.quality/run.
+ */
+export const QUALITY_JOB = "data.quality";
+
+/** Вкладки «Якості даних»: все находки, по уровню или чистые */
+export type QualityView = "all" | DataCheck["level"] | "clean";
+export const QUALITY_VIEWS: readonly QualityView[] = ["all", "error", "warning", "info", "clean"];
+
+export function qualityView(raw: string): QualityView {
+  return (QUALITY_VIEWS as readonly string[]).includes(raw) ? (raw as QualityView) : "all";
+}
+
+/**
+ * Сработавшие проверки вкладки — в порядке сервера («від небезпечнішого»:
+ * сначала то, что уже врёт). «Чисто» находок не показывает вовсе.
+ */
+export function findingsOf<T extends Pick<DataCheck, "level" | "count">>(checks: readonly T[], view: QualityView): T[] {
+  if (view === "clean") return [];
+  return checks.filter((c) => c.count > 0 && (view === "all" || c.level === view));
+}
+
+/**
  * Дополнительные числа проверки с подписями — в постоянном порядке.
  *
  * Порядок задан здесь, а не взят из ответа: у корзин давности он смысловой
@@ -161,6 +185,42 @@ export const APP_LABEL: Record<UsageReport["screens"]["top"][number]["app"], UiK
   patient: "opsd.app.patient",
   mobile: "opsd.app.mobile",
 };
+
+/** Приложения в постоянном порядке и цвете: цвет следует за сущностью и в полосе, и в легенде */
+export const APPS: readonly { app: UsageReport["screens"]["byApp"][number]["app"]; color: string }[] = [
+  { app: "console", color: "var(--c1)" },
+  { app: "patient", color: "var(--c2)" },
+  { app: "mobile", color: "var(--c4)" },
+];
+
+/** Открытия по приложениям в порядке APPS; приложения без открытий — нулём, чтобы легенда не прыгала */
+export function appSplit(byApp: UsageReport["screens"]["byApp"]): { app: (typeof APPS)[number]["app"]; color: string; views: number }[] {
+  return APPS.map((a) => ({ ...a, views: byApp.find((b) => b.app === a.app)?.views ?? 0 }));
+}
+
+/** Доля от итога окна в процентах с одним знаком; от нуля доли нет */
+export function shareOf(part: number, total: number): number | null {
+  return total > 0 ? Math.round((part / total) * 1000) / 10 : null;
+}
+
+/**
+ * Активные люди по дням — две линии на одних корзинах.
+ *
+ * Пациенты идут через порог малых ячеек: null — «меньше порога», и линия
+ * в этот день рвётся, а не падает в ноль (ноль — это «никого», а скрытый
+ * день — «кто-то был»). Специалисты — числом всегда.
+ */
+export function activeLines(
+  byDay: UsageReport["active"]["byDay"],
+  label: (iso: string) => string,
+  tip: (iso: string) => string,
+): { x: TimeTick[]; staff: number[]; patients: (number | null)[] } {
+  return {
+    x: byDay.map((d) => ({ key: d.date, label: label(d.date), tip: tip(d.date) })),
+    staff: byDay.map((d) => d.staff),
+    patients: maybeDayColumns(byDay, (d) => d.patients, label).map((c) => c.value),
+  };
+}
 
 /**
  * Доля ступени от предыдущей — только когда обе напечатаны.
@@ -279,11 +339,90 @@ export const PLATFORM_LABEL: Record<string, UiKey> = {
   web: "opsd.platform.web",
 };
 
+/** Устройства по платформам — от большей; строки без платформы в разбивку не входят */
+export function platformSplit(rows: readonly MobileVersionRow[]): { platform: string; devices: number }[] {
+  const acc = new Map<string, number>();
+  for (const r of rows) if (r.platform) acc.set(r.platform, (acc.get(r.platform) ?? 0) + r.devices);
+  return [...acc.entries()]
+    .map(([platform, devices]) => ({ platform, devices }))
+    .sort((a, b) => b.devices - a.devices || a.platform.localeCompare(b.platform));
+}
+
+/** Сборки самой новой версии — от новой к старой; у версии их бывает по одной на платформу */
+export function newestBuilds(rows: readonly MobileVersionRow[], newest: string | null): string[] {
+  if (!newest) return [];
+  const builds = new Set(rows.filter((r) => r.version === newest && r.build).map((r) => r.build!));
+  return [...builds].sort((a, b) => cmpVersion(b, a));
+}
+
 /* ─────────── пуши ─────────── */
 
 /** Ошибка — всё, что не «принято и не отвергнуто квитанцией» (как на сервере) */
 export function pushErrors(t: PushReport["totals"]): number {
   return t.rejected + t.failed + t.receiptErrors;
+}
+
+export interface PathStep {
+  key: "sent" | "accepted" | "delivered" | "awaiting";
+  label: UiKey;
+  value: number;
+  /** Доля от предыдущего этапа в процентах с одним знаком; null — у первого и у «в дороге», либо от нуля */
+  share: number | null;
+  /** Что значит этап — словами */
+  means: UiKey;
+}
+
+/**
+ * Путь уведомления этапами: отправлено → принято Expo → передано Apple и
+ * Google, и отдельно — что ещё в дороге.
+ *
+ * Доля — от предыдущего этапа, а не от отправленного: вопрос строки — «где
+ * теряется», и потеря на передаче не должна прятаться за потерей на приёме.
+ * «Чекають квитанції» — не этап пути, а остаток в дороге: доли у него нет.
+ */
+export function pushPath(t: PushReport["totals"]): PathStep[] {
+  const share = (prev: number, cur: number) => (prev > 0 ? Math.round((cur / prev) * 1000) / 10 : null);
+  return [
+    { key: "sent", label: "opsd.p.sent", value: t.sent, share: null, means: "oppd.p.sentMeans" },
+    { key: "accepted", label: "opsd.p.accepted", value: t.accepted, share: share(t.sent, t.accepted), means: "oppd.p.acceptedMeans" },
+    {
+      key: "delivered",
+      label: "opsd.p.delivered",
+      value: t.delivered,
+      share: share(t.accepted, t.delivered),
+      means: "oppd.p.deliveredMeans",
+    },
+    { key: "awaiting", label: "opsd.p.awaiting", value: t.awaitingReceipt, share: null, means: "opsd.p.awaitingHint" },
+  ];
+}
+
+/**
+ * Типы уведомлений строкой: события (кому решили отправить, push_deliveries)
+ * рядом с исходами (что вышло на каждом устройстве, push_outcomes).
+ *
+ * Тип, у которого были события, но не было ни одной отправки, остаётся
+ * строкой с нулём отправлений: «решили, но не ушло» — тоже ответ.
+ */
+export function kindRows(
+  byKind: PushReport["byKind"],
+  events: PushReport["events"],
+): { kind: string; events: number; sent: number; errors: number; delivered: number }[] {
+  const ev = new Map(events.map((e) => [e.kind, e.count]));
+  const rows = byKind.map((k) => ({ ...k, events: ev.get(k.kind) ?? 0 }));
+  for (const e of events) {
+    if (!byKind.some((k) => k.kind === e.kind)) rows.push({ kind: e.kind, events: e.count, sent: 0, errors: 0, delivered: 0 });
+  }
+  return rows;
+}
+
+/** Отпечаток коротко: «a91f…02cd» — начало и конец, по которым его сверяют */
+export function shortPrint(fingerprint: string): string {
+  return fingerprint.length > 10 ? `${fingerprint.slice(0, 4)}\u2026${fingerprint.slice(-4)}` : fingerprint;
+}
+
+/** Полных суток с момента: «128 дн. тому» */
+export function daysSince(iso: string, now: number): number {
+  return Math.max(0, Math.floor((now - Date.parse(iso)) / 86_400_000));
 }
 
 /* ═══════════ графики (волна 11) ═══════════ */

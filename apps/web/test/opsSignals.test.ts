@@ -293,12 +293,14 @@ describe("випуски: частота по неделям", () => {
 describe("графики сигналов без наследия", () => {
   const src = (p: string) => readFileSync(resolve(import.meta.dir, "../src/pages/ops", p), "utf8");
   const CHARTS = "obs2b/charts.tsx";
-  const SCREENS = ["data/Usage.tsx", "data/Push.tsx", "data/Mobile.tsx", "maint/Releases.tsx", "sec/Integrity.tsx", "sec/parts.tsx"];
+  /* «Дані й продукт» в «Виразній»: свои мелкие фигуры (полоса доли, образец цвета) — те же правила, что у графиков */
+  const DATA_CHARTS = "data/charts.tsx";
+  const SCREENS = ["data/Usage.tsx", "data/Push.tsx", "data/Mobile.tsx", "data/Quality.tsx", "maint/Releases.tsx", "sec/Integrity.tsx", "sec/parts.tsx"];
   const LEGACY = new Set(["card", "tile", "row", "chip", "btn", "hint", "muted", "tabs", "grid-cols-2", "cols-2", "cols-3", "cols-4"]);
 
   test("нет классов наследия и хексов", () => {
     const found: string[] = [];
-    for (const file of [CHARTS, ...SCREENS]) {
+    for (const file of [CHARTS, DATA_CHARTS, ...SCREENS]) {
       const text = src(file);
       for (const m of text.matchAll(/className=\{?["'`]([^"'`]*)["'`]/g)) {
         for (const token of m[1]!.split(/\s+/)) if (LEGACY.has(token)) found.push(`${file}: ${token}`);
@@ -313,6 +315,11 @@ describe("графики сигналов без наследия", () => {
     const keys = [...src(CHARTS).matchAll(/style=\{\{([^}]*)\}\}/g)].flatMap((m) => [...m[1]!.matchAll(/(\w+):/g)].map((k) => k[1]!));
     expect(keys.length).toBeGreaterThan(0);
     expect(keys.filter((k) => !["width", "left", "background"].includes(k))).toEqual([]);
+    const dataKeys = [...src(DATA_CHARTS).matchAll(/style=\{\{([^}]*)\}\}/g)].flatMap((m) =>
+      [...m[1]!.matchAll(/(\w+):/g)].map((k) => k[1]!),
+    );
+    expect(dataKeys.length).toBeGreaterThan(0);
+    expect(dataKeys.filter((k) => !["width", "background"].includes(k))).toEqual([]);
   });
 });
 

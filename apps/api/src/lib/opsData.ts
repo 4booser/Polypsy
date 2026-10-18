@@ -132,6 +132,23 @@ export async function usageReport(days: number, scope: { inviterId?: string } = 
       from s left join screen_views v on v.day = s.day
      group by s.day order by s.day
   `);
+  /*
+   * Доля приложений — по всем шаблонам окна, а не по присланной верхушке:
+   * верхушка обрезана сорока строками, и сумма по ней занизила бы хвост
+   * того приложения, у которого экранов много, а открытий на каждом мало.
+   * Число шаблонов — для строки «інші: ще N шаблонів» под верхушкой.
+   */
+  const byApp = await rowsOf<{ app: string; views: number }>(sql`
+    select app, sum(views)::int as views
+      from screen_views
+     where day > ${today()} - ${days}::int
+     group by app
+     order by sum(views) desc, app
+  `);
+  const [routeCount] = await rowsOf<{ n: number }>(sql`
+    select count(*)::int as n
+      from (select distinct app, route from screen_views where day > ${today()} - ${days}::int) t
+  `);
 
   /*
    * ── активные люди ──
@@ -222,6 +239,8 @@ export async function usageReport(days: number, scope: { inviterId?: string } = 
       total: screensByDay.reduce((s, d) => s + d.views, 0),
       top: top.map((r) => ({ ...r, app: r.app as UsageReport["screens"]["top"][number]["app"] })),
       byDay: screensByDay,
+      byApp: byApp.map((r) => ({ app: r.app as UsageReport["screens"]["byApp"][number]["app"], views: r.views })),
+      routes: routeCount?.n ?? 0,
     },
     active: {
       byDay: activeByDay.map((d) => ({ date: d.date, staff: d.staff, patients: suppress(d.patients) })),
@@ -418,6 +437,20 @@ export async function pushReport(days: number): Promise<PushReport> {
     select kind, count(*)::int as count from push_deliveries
      where sent_at >= ${since} group by kind order by count(*) desc, kind
   `);
+  /*
+   * Самые давние токены — отпечатками, как и всё о токенах в панели: первые
+   * 16 знаков sha256 (тот же отпечаток, что в push_outcomes.token_hash и
+   * lib/push.ts tokenFingerprint). Сам токен — адрес устройства человека:
+   * с ним уведомление ушло бы в обход системы, и наружу он не выходит.
+   */
+  const oldest = await rowsOf<PushReport["tokens"]["oldest"][number]>(sql`
+    select platform,
+           left(encode(sha256(convert_to(token, 'UTF8')), 'hex'), 16) as fingerprint,
+           to_char(last_seen_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') as "lastSeenAt"
+      from push_tokens
+     order by last_seen_at, id
+     limit 3
+  `);
 
   return {
     days,
@@ -430,6 +463,7 @@ export async function pushReport(days: number): Promise<PushReport> {
       registered: platforms.reduce((s, p) => s + p.count, 0),
       stale: platforms.reduce((s, p) => s + p.stale, 0),
       byPlatform: platforms.map((p) => ({ platform: p.platform, count: p.count })),
+      oldest,
     },
     events,
   };

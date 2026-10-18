@@ -1,164 +1,217 @@
-import { useRef, useState, type ReactNode } from "react";
-import type { DataCheck } from "@quizzy/shared";
-import { useChartWidth } from "../../../charts/index";
-import { num } from "../../../charts/ladder";
-import { axisFor } from "../../../charts/scale";
+import type { ReactNode } from "react";
+import type { DataCheck, Lang, UiKey } from "@quizzy/shared";
+import { locale } from "../../../format";
 import { useLang } from "../../../lang";
 import { cx } from "../../../ui/cx";
-import { NoData, Tag } from "../../../ui/primitives";
-import { PeriodSwitch } from "../../dashboard/parts";
-import { LEVEL_LABEL, WINDOWS, WINDOW_LABEL, type MaybeColumn, type Window } from "./model";
+import { Ic } from "../../../ui/icons";
+import { Tooltip } from "../../../ui/Popover";
+import { Segmented, Tag } from "../../../ui/primitives";
+import { fill } from "../../dashboard/model";
+import { Ix } from "../people2/icons";
+import { LEVEL_LABEL, WINDOWS, WINDOW_LABEL, type Window } from "./model";
 
 /*
- * Общие куски четырёх разделов «Дані й продукт».
- *
- * Ячейки таблиц — те же утилиты, что у таблиц качества методики
- * (components/DataQualityPanel.tsx): техпанель — тот же лист консоли, и
- * таблица на ней не должна выглядеть вставкой из другого приложения.
+ * Общие куски четырёх разделов «Дані й продукт» в «Виразній»: окно 7 / 30 /
+ * 90 дней сегментами в шапке, уровень проверки пилюлей со словом и знаком,
+ * числа с разрядами, короткие даты, пары «подпись — число» строками панели,
+ * строка-пояснение под таблицей и замаскированный секрет.
  */
-export const TH =
-  "border-b border-hairline py-[8px] pr-[16px] text-left align-bottom text-[13px] font-bold leading-[16px] text-muted";
-export const TD = "border-b border-hairline py-[8px] pr-[16px] align-top text-[13px] leading-[18px] text-text-2";
-export const NUM = "text-right font-mono tabular-nums";
 
-/** Сетка плиток: складывается в столбец на узком экране сама — minmax от 200 */
-export const KPI_GRID = "grid grid-cols-[repeat(auto-fit,minmax(min(200px,100%),1fr))] gap-[16px]";
-/** Две фигуры рядом с 900 px, одна под другой ниже */
-export const PAIR_GRID = "grid grid-cols-1 gap-x-[32px] gap-y-[24px] min-[900px]:grid-cols-2";
+/* ─────────── числа и даты ─────────── */
 
-/** Пояснение под фигурой или таблицей: 13 серым, как подпись фигуры */
-export function Note({ children, className }: { children: ReactNode; className?: string }) {
-  return <p className={cx("m-0 mt-[10px] max-w-[760px] text-[13px] leading-[18px] text-muted", className)}>{children}</p>;
+/** Число с разрядами по языку экрана: «81 420» */
+export function int(v: number): string {
+  return new Intl.NumberFormat(locale(), { maximumFractionDigits: 0 }).format(v);
 }
 
-/** Переключатель окна 7 / 30 / 90 дней — та же кнопка-группа, что у «Зведення» */
+/** Доля с одним знаком: «99,6 %» — по языку экрана */
+export function pct(v: number): string {
+  return `${new Intl.NumberFormat(locale(), { maximumFractionDigits: 1 }).format(v)} %`;
+}
+
+/** Календарный день «YYYY-MM-DD» — полночью по местному, а не по UTC (иначе западнее Гринвича он сдвинется) */
+function calendarDay(iso: string): Date {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : new Date(iso);
+}
+
+/** Подпись дня под осью: «10.09» — коротко, столбцов тридцать */
+export function dayTick(iso: string): string {
+  return calendarDay(iso).toLocaleDateString(locale(), { day: "2-digit", month: "2-digit" });
+}
+
+/** День с годом: «08.10.2026» — конец окна в мета-строке */
+export function dayWithYear(iso: string): string {
+  return calendarDay(iso).toLocaleDateString(locale(), { day: "2-digit", month: "2-digit", year: "numeric" });
+}
+
+/** Момент коротко: «08.10, 16:59»; не нынешнего года — с годом */
+export function stamp(iso: string): string {
+  const d = new Date(iso);
+  const thisYear = d.getFullYear() === new Date().getFullYear();
+  return d.toLocaleString(locale(), {
+    day: "2-digit",
+    month: "2-digit",
+    ...(thisYear ? {} : { year: "numeric" }),
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+/* ─────────── число со словом ─────────── */
+
+/** Три формы слова при числе: 1 проходження, 2 проходження, 5 проходжень */
+export interface Forms {
+  one: UiKey;
+  few: UiKey;
+  many: UiKey;
+}
+
+/** Форма по правилу числа языка (Intl.PluralRules); дробное и «other» — как «many» */
+export function pluralForm(lang: Lang, n: number): keyof Forms {
+  const rule = new Intl.PluralRules(lang).select(n);
+  return rule === "one" ? "one" : rule === "few" ? "few" : "many";
+}
+
+/** Строка формы с подставленным числом: «{n} проходжень» → «14 проходжень» */
+export function usePlural(): (n: number, forms: Forms) => string {
+  const { ut, lang } = useLang();
+  return (n, forms) => fill(ut(forms[pluralForm(lang, n)]), { n: int(n) });
+}
+
+/* ─────────── окно ─────────── */
+
+/** Окно 7 / 30 / 90 дней — сегментами набора у правого края шапки */
 export function WindowSwitch({ value, onChange }: { value: Window; onChange: (w: Window) => void }) {
   const { ut } = useLang();
   return (
-    <PeriodSwitch
+    <Segmented
       label={ut("dash.rangeLabel")}
       value={String(value) as `${Window}`}
       onChange={(v) => onChange(Number(v) as Window)}
-      options={WINDOWS.map((w) => [String(w) as `${Window}`, ut(WINDOW_LABEL[w])] as const)}
+      items={WINDOWS.map((w) => ({ key: String(w) as `${Window}`, label: ut(WINDOW_LABEL[w]) }))}
     />
   );
 }
 
+/* ─────────── уровень проверки ─────────── */
+
 /**
- * Уровень проверки — словом в метке, не цветом.
+ * Уровень проверки — словом и знаком, цвет вторым.
  *
- * «Помилка» — красной рамкой danger (данные уже врут), «Попередження» —
- * янтарём: это ровно «требует внимания», для чего янтарь и заведён; «До
- * відома» — нейтральной меткой. Цвет здесь второе, слово — первое: метка
- * читается и в печати, и тем, кто цветов не различает.
+ * «Помилка» — янтарём со знаком стоп: данные уже врут, и это ровно
+ * «требует внимания»; красный в консоли отдан риску для человека, а
+ * разошедшаяся запись — забота того, кто держит систему. «Попередження» —
+ * нейтральной пилюлей с треугольником, «До відома» — сведениями. Слово и
+ * форма знака читаются и в печати, и тем, кто цветов не различает.
  */
 export function LevelTag({ level }: { level: DataCheck["level"] }) {
   const { ut } = useLang();
-  const tone = level === "error" ? "danger" : level === "warning" ? "attention" : "plain";
-  return <Tag tone={tone}>{ut(LEVEL_LABEL[level])}</Tag>;
+  if (level === "error") {
+    return (
+      <Tag tone="attention" icon={<Ix.octagonAlert />}>
+        {ut(LEVEL_LABEL[level])}
+      </Tag>
+    );
+  }
+  if (level === "warning") {
+    return (
+      <Tag tone="plain" icon={<Ic.alert />}>
+        {ut(LEVEL_LABEL[level])}
+      </Tag>
+    );
+  }
+  return (
+    <Tag tone="info" icon={<Ic.info />}>
+      {ut(LEVEL_LABEL[level])}
+    </Tag>
+  );
 }
 
-const CP = { top: 12, right: 8, bottom: 26, left: 40 };
+/* ─────────── строки панели ─────────── */
+
+export interface Fact {
+  key: string;
+  label: ReactNode;
+  value: ReactNode;
+  /** Приглушённое пояснение после числа: «з 186 пристроїв», «на 6 пристроях» */
+  note?: ReactNode;
+  /** Число требует внимания — янтарём */
+  warn?: boolean;
+}
 
 /**
- * Столбцы по дням, где день бывает скрыт порогом малых ячеек.
- *
- * TimeColumns (charts/clinical.tsx) скрытого не знает — у него value: number.
- * Нарисовать скрытый день нулём нельзя: ноль — это «никого», а скрытый день —
- * «кто-то был, но меньше порога»; подменить одно другим значит соврать
- * (docs/ARCHITECTURE.md: невычислимое — null, а не ноль). Выпустить день из
- * ряда тоже нельзя — время сожмётся. Поэтому своя форма той же геометрии:
- * скрытый день — короткая черта у оси цветом подписей оси, в подсказке —
- * «приховано». Высоты у черты нет: высота столбца — тоже число.
- *
- * Общий набор графиков не правится (его держит координатор); если форма
- * понадобится второму экрану — её место там.
+ * Пары «подпись — число» строками через волосяную линию (.kvl набора):
+ * подпись слева, число 800 у правого края, пояснение за ним. Для сводок,
+ * где чисел три-четыре и каждое со своим сравнением, — вместо плиток.
  */
-export function MaybeColumns({ columns, height = 200, label }: { columns: readonly MaybeColumn[]; height?: number; label: string }) {
-  const { ut } = useLang();
-  const [W, boxRef] = useChartWidth();
-  const svgRef = useRef<SVGSVGElement>(null);
-  const [hover, setHover] = useState<number | null>(null);
-  if (!columns.length) return <NoData />;
-
-  const axis = axisFor({ lo: 0, hi: Math.max(...columns.map((c) => c.value ?? 0), 0) });
-  const pw = Math.max(40, W - CP.left - CP.right);
-  const ph = height - CP.top - CP.bottom;
-  const slot = pw / columns.length;
-  const bw = Math.max(2, Math.min(28, slot * 0.62));
-  const yAt = (v: number) => CP.top + ph - (v / Math.max(axis.max, 1)) * ph;
-  const xAt = (i: number) => CP.left + slot * i + slot / 2;
-  const every = Math.max(1, Math.ceil(64 / slot));
-
-  const onMove = (e: React.MouseEvent<SVGSVGElement>) => {
-    const box = svgRef.current?.getBoundingClientRect();
-    if (!box) return;
-    const x = ((e.clientX - box.left) / box.width) * W - CP.left;
-    const i = Math.floor(x / slot);
-    setHover(i >= 0 && i < columns.length ? i : null);
-  };
-  const at = hover === null ? null : columns[hover]!;
-  const hidden = columns.filter((c) => c.value === null).length;
-
+export function Facts({ rows, className }: { rows: readonly Fact[]; className?: string }) {
   return (
-    <div className="chart-wrap" ref={boxRef}>
-      <svg
-        ref={svgRef}
-        viewBox={`0 0 ${W} ${height}`}
-        width="100%"
-        height={height}
-        role="img"
-        aria-label={`${label}: ${columns[0]!.label} — ${columns.at(-1)!.label}${hidden ? `; ${ut("kit.hidden")}: ${hidden}` : ""}`}
-        onMouseMove={onMove}
-        onMouseLeave={() => setHover(null)}
-      >
-        {axis.ticks.map((t) => (
-          <g key={t}>
-            <line x1={CP.left} x2={W - CP.right} y1={yAt(t)} y2={yAt(t)} stroke="var(--grid)" />
-            <text x={CP.left - 8} y={yAt(t) + 4} fontSize="11" fill="var(--axis)" textAnchor="end" fontFamily="var(--font-mono)">
-              {num(t)}
-            </text>
-          </g>
-        ))}
-        {columns.map((c, i) =>
-          c.value === null ? (
-            <line
-              key={c.key}
-              x1={xAt(i) - bw / 2}
-              x2={xAt(i) + bw / 2}
-              y1={yAt(0) - 3}
-              y2={yAt(0) - 3}
-              stroke="var(--axis)"
-              strokeWidth={2}
-              strokeLinecap="round"
-            />
-          ) : (
-            <rect
-              key={c.key}
-              x={xAt(i) - bw / 2}
-              y={yAt(c.value)}
-              width={bw}
-              height={Math.max(0, yAt(0) - yAt(c.value))}
-              rx={2}
-              fill="var(--primary)"
-              fillOpacity={hover === null || hover === i ? 0.85 : 0.4}
-            />
-          ),
-        )}
-        {columns.map((c, i) =>
-          (columns.length - 1 - i) % every === 0 ? (
-            <text key={c.key} x={xAt(i)} y={height - 8} fontSize="11" fill="var(--axis)" textAnchor="middle">
-              {c.label}
-            </text>
-          ) : null,
-        )}
-      </svg>
-      {at ? (
-        <div className="chart-tip" style={{ left: `${((xAt(hover!) / W) * 100).toFixed(2)}%` }} role="status">
-          <span className="chart-tip-x">{at.label}</span>
-          <span className="chart-tip-row">{at.value === null ? ut("kit.hidden") : <b>{num(at.value)}</b>}</span>
+    <dl className={cx("m-0 flex flex-col", className)}>
+      {rows.map((r) => (
+        <div
+          key={r.key}
+          className="flex items-baseline gap-2.5 border-t border-divider py-[7px] text-small text-text-2 first:border-t-0 first:pt-0"
+        >
+          <dt className="min-w-0">{r.label}</dt>
+          <dd className="m-0 ml-auto flex shrink-0 items-baseline gap-2.5">
+            <b className={cx("whitespace-nowrap font-extrabold tabular-nums", r.warn ? "text-warn" : "text-text")}>{r.value}</b>
+            {r.note ? <span className="whitespace-nowrap text-caption text-muted">{r.note}</span> : null}
+          </dd>
         </div>
-      ) : null}
-    </div>
+      ))}
+    </dl>
+  );
+}
+
+/** Подпись над фигурой внутри панели (.lbl набора): 12/700 приглушённым */
+export function Label({ children, className }: { children: ReactNode; className?: string }) {
+  return <div className={cx("text-caption font-bold leading-4 text-muted", className)}>{children}</div>;
+}
+
+/** Строка-пояснение в подвале панели (.pfx набора): знак и текст text-2 */
+export function FootNote({ icon, children }: { icon?: ReactNode; children: ReactNode }) {
+  return (
+    <span className="flex min-w-0 items-start gap-2 text-small text-text-2">
+      <span aria-hidden className="mt-px inline-flex shrink-0 text-muted [&>svg]:size-[15px]">
+        {icon ?? <Ic.info />}
+      </span>
+      <span className="min-w-0">{children}</span>
+    </span>
+  );
+}
+
+/** Код или идентификатор в плашке (.cd набора): моноширинным, на утопленной подложке */
+export function Code({ children, className }: { children: ReactNode; className?: string }) {
+  return (
+    <span
+      className={cx(
+        "inline-flex h-5 items-center whitespace-nowrap rounded-[6px] bg-sunk px-1.5 align-middle font-mono text-[11.5px] font-semibold leading-none text-text-2",
+        className,
+      )}
+    >
+      {children}
+    </span>
+  );
+}
+
+/**
+ * Значение, которое не показывается никому (.mask набора): замок и точки.
+ * Стоит там, где у записи есть секрет, — чтобы было видно, что он есть и
+ * что его здесь нет. Подпись для диктора — словами.
+ */
+export function Masked() {
+  const { ut } = useLang();
+  return (
+    <Tooltip label={ut("oppd.masked")}>
+      <span
+        tabIndex={0}
+        className="inline-flex h-[22px] shrink-0 items-center gap-[5px] rounded-[6px] bg-sunk px-[7px] text-[12px] font-bold leading-none tracking-[.14em] text-muted outline-none focus-visible:ring-2 focus-visible:ring-violet-ring"
+      >
+        <Ic.lock size={11} />
+        <span aria-hidden>{"•".repeat(10)}</span>
+        <span className="sr-only">{ut("oppd.masked")}</span>
+      </span>
+    </Tooltip>
   );
 }
