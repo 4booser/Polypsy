@@ -117,10 +117,10 @@ describe("строка «немає зв’язку»", () => {
     expect(either(html, "conn.lost")).toBe(true);
     expect(either(html, "conn.keep")).toBe(true);
     expect(either(html, "conn.checkNow")).toBe(true);
-    // время обрыва — цифрами моноширинным, как все числа консоли
-    expect(html).toMatch(/font-mono tabular-nums">\d{2}:\d{2}</);
+    // время обрыва — цифрами одной ширины (Manrope, tabular-nums), как все числа консоли
+    expect(html).toMatch(/tabular-nums">\d{2}:\d{2}</);
     // янтарь — ровно потому, что это требует внимания
-    expect(html).toContain("text-accent");
+    expect(html).toContain("text-warn");
   });
 
   test("ни одного хекса и инлайнового стиля в разметке строки", () => {

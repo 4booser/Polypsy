@@ -7,6 +7,7 @@ import { Button, Field, Input, Select } from "../ui/primitives";
 import { LangSwitch, useLang } from "../lang";
 import { ALWAYS_VISIBLE_RAIL } from "@quizzy/shared";
 import { railGroups } from "../shell/Rail";
+import { setThemeChoice, useThemeChoice } from "../shell/theme";
 import { SecondFactorSettings } from "./ops/people2/SecondFactor";
 import { changePassword, passwordProblems, passwordReady } from "./passwordModel";
 
@@ -37,8 +38,8 @@ export default function Account() {
   /* пароль, который сервер уже принял: повтор после неудачного входа только входит (passwordModel.ts) */
   const [accepted, setAccepted] = useState<string | null>(null);
   const passwordIssues = passwordProblems({ current, next });
-  // умолчание светлое — как макет; см. пояснение в patient/Profile.tsx
-  const theme = user?.workspace?.theme ?? (localStorage.getItem("quizzy.theme.v2") || "light");
+  /* выбор темы — общий для вкладки (shell/theme.ts): тот же, что у переключателя на полосе приложения */
+  const theme = useThemeChoice();
   const density = user?.workspace?.density ?? "cozy";
   const motion = user?.workspace?.motion ?? "system";
   const hidden = user?.workspace?.railHidden ?? [];
@@ -236,20 +237,28 @@ export default function Account() {
             <div className="flex items-center justify-between gap-4">
               <span className="text-small text-muted">{ut("pt.theme")}</span>
               <div className="flex gap-1">
-                <Button
-                  size="sm"
-                  variant={theme === "dark" ? "primary" : "quiet"}
-                  onClick={() => applyPref({ theme: "dark" }, ["theme", "dark"])}
-                >
-                  {ut("nav.themeDark")}
-                </Button>
-                <Button
-                  size="sm"
-                  variant={theme === "light" ? "primary" : "quiet"}
-                  onClick={() => applyPref({ theme: "light" }, ["theme", "light"])}
-                >
-                  {ut("nav.themeLight")}
-                </Button>
+                {(
+                  [
+                    ["light", "nav.themeLight"],
+                    ["dark", "nav.themeDark"],
+                    ["system", "nav.themeSystem"],
+                  ] as const
+                ).map(([value, label]) => (
+                  <Button
+                    key={value}
+                    size="sm"
+                    variant={theme === value ? "primary" : "quiet"}
+                    aria-pressed={theme === value}
+                    disabled={busy}
+                    onClick={() => {
+                      /* тема применяется сразу (App следит за выбором), сервер — следом */
+                      setThemeChoice(value);
+                      void applyPref({ theme: value });
+                    }}
+                  >
+                    {ut(label)}
+                  </Button>
+                ))}
               </div>
             </div>
 

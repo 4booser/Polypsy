@@ -1,14 +1,21 @@
 import { useCallback, useEffect, useState } from "react";
-import { NavLink, Outlet, useLocation } from "react-router-dom";
+import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
+import type { UiKey } from "@quizzy/shared";
 import { api } from "../api";
 import { connection } from "../connection";
 import { useAuth } from "../auth";
 import { useLang } from "../lang";
 import { MaintenanceBanner } from "../service/MaintenanceBanner";
+import { ShellIcon, type IconName } from "../shell/icons";
+import { LangMenu } from "../shell/LangMenu";
+import { LogoTile } from "../shell/Logo";
+import { DrawerHead, ShellDrawer } from "../shell/overlays";
+import { setThemeChoice, type ThemeChoice } from "../shell/theme";
+import { ThemeToggle } from "../shell/ThemeToggle";
+import { initials } from "../shell/UserMenu";
 import { ConnectionLine } from "../ui/ConnectionLine";
 import { cx } from "../ui/cx";
 import { TouchArea } from "../ui/primitives";
-import { IconCalendar, IconHome, IconPerson, IconTest } from "./icons";
 import { outbox, type OutboxItem } from "./outbox";
 import { ConsentGate, useRecheckConsent } from "./ConsentGate";
 import { OutboxStrip } from "./OutboxStrip";
@@ -16,19 +23,15 @@ import { OutboxStrip } from "./OutboxStrip";
 /**
  * Кабинет пациента.
  *
- * Отдельная оболочка, а не консоль с урезанным меню. Человек, вошедший
- * пациентом, видел рельсу специалиста — «Пациенты», «Очередь работы»,
- * «Случаи риска» — и получал отказ доступа на каждом пункте: интерфейс
- * обещал то, чего не даст. Хуже того, он показывал, что такие экраны
- * существуют, и человек мог решить, что его карту читает кто угодно.
+ * Отдельная оболочка, а не консоль с урезанным меню: человек, вошедший
+ * пациентом, видел бы разделы специалиста и получал отказ на каждом — и
+ * мог бы решить, что его карту читает кто угодно.
  *
- * Разметка мобильная в первую очередь: телефон, а не окно. Отсюда нижняя
- * полоса вкладок вместо боковой рельсы — большим пальцем достаётся низ
- * экрана, а не левый край, — и одна колонка на любой ширине.
- *
- * Четыре вкладки, и это потолок: пятую на нижней полосе уже не разобрать
- * пальцем, а всё, что не помещается в четыре, человеку в кабинете и не
- * нужно.
+ * Polypsy 2.0 (patient() в kit/shell.py): шапка на сиреневой полосе —
+ * знак, четыре вкладки, всегда видимая «Допомога», тема, язык и имя; одна
+ * колонка 1120, основной текст 16, мишени от 44. На телефоне вкладки
+ * уходят вниз, под большой палец, а «Допомога» остаётся в шапке: её ищут в
+ * тяжёлую минуту, и искать её не должно быть нужно.
  */
 export default function PatientApp() {
   // сначала согласие: без принятой редакции сервер ответов не примет (ConsentGate)
@@ -39,42 +42,46 @@ export default function PatientApp() {
   );
 }
 
+interface Tab {
+  to: string;
+  end?: boolean;
+  /** Подпись вкладки — короткая, внизу телефона помещается одно слово */
+  label: UiKey;
+  /** Подпись вкладки в шапке — на широком окне место есть */
+  wide: UiKey;
+  /** Заголовок экрана: его слышат и читают первым */
+  title: UiKey;
+  icon: IconName;
+}
+
+const TABS: Tab[] = [
+  { to: "/me", end: true, label: "pt.home", wide: "pt.home", title: "pt.titleHome", icon: "house" },
+  { to: "/me/tests", label: "pt.tests", wide: "pt.titleTests", title: "pt.titleTests", icon: "clipboard-check" },
+  { to: "/me/booking", label: "pt.booking", wide: "pt.titleBooking", title: "pt.titleBooking", icon: "calendar-plus" },
+  { to: "/me/profile", label: "pt.tabProfile", wide: "pt.tabProfile", title: "pt.titleProfile", icon: "circle-user-round" },
+];
+
 function PatientShell() {
   const { ut } = useLang();
   const { user } = useAuth();
   const { pathname } = useLocation();
+  const [help, setHelp] = useState(false);
+  const closeHelp = useCallback(() => setHelp(false), []);
 
   /*
-   * У вкладки две подписи, и это не дублирование.
-   *
-   * `label` — надпись под значком внизу: там помещается одно слово. `title`
-   * — заголовок экрана, который человек слышит и читает первым; ему одного
-   * слова мало. «Я» на вкладке понятно рядом со значком человека, а
-   * заголовок «Я» не называет ничего.
+   * Заголовок экрана — из той же таблицы вкладок, что и навигация: новый
+   * экран кабинета получает заголовок оттого, что он экран кабинета, —
+   * забыть нечего.
    */
-  const tabs = [
-    { to: "/me", end: true, label: ut("pt.home"), title: ut("pt.titleHome"), icon: <IconHome /> },
-    { to: "/me/tests", label: ut("pt.tests"), title: ut("pt.titleTests"), icon: <IconTest /> },
-    { to: "/me/booking", label: ut("pt.booking"), title: ut("pt.titleBooking"), icon: <IconCalendar /> },
-    { to: "/me/profile", label: ut("pt.me"), title: ut("pt.titleProfile"), icon: <IconPerson /> },
-  ];
-
-  /*
-   * Заголовок экрана берётся из той же таблицы вкладок, что и навигация.
-   *
-   * Раньше заголовка не было вовсе ни на одном из четырёх экранов: шапка
-   * рисовала знак и имя человека, а дальше начинались h2 — на «Тестах» и
-   * их не было, весь экран состоял из одного списка. Диктор в таком месте
-   * не может ответить на вопрос «где я»: он перечисляет ссылки, и всё.
-   *
-   * Заголовок стоит здесь, в оболочке, а не на каждом экране, ровно по той
-   * же причине, что и высота мишеней: написанное на каждом экране отдельно
-   * держится на памяти автора экрана. Новый экран кабинета получает
-   * заголовок оттого, что он экран кабинета, — забыть нечего.
-   */
-  const here = tabs.find((t) => (t.end ? pathname === t.to : pathname.startsWith(t.to))) ?? tabs[0];
+  const here = TABS.find((t) => (t.end ? pathname === t.to : pathname.startsWith(t.to))) ?? TABS[0]!;
 
   const pending = useOutbox(user?.id ?? null);
+
+  /* выбор темы — во вкладке, в браузере и в профиле: пациент тоже садится за разные устройства */
+  const chooseTheme = (c: ThemeChoice) => {
+    setThemeChoice(c);
+    void api.saveWorkspace({ theme: c }).catch(() => {});
+  };
 
   return (
     /*
@@ -82,17 +89,82 @@ function PatientShell() {
       тяжёлом состоянии. Отсюда 44 px у любой мишени внутри, включая чужие
       компоненты вроде переключателя языка. См. TouchArea.
     */
-    <TouchArea className="flex min-h-[100dvh] flex-col bg-bg">
-      <header className="flex items-center gap-2 border-b border-hairline px-4 py-3">
-        <span
-          aria-hidden
-          className="grid size-6 shrink-0 place-items-center rounded-[7px] border border-primary font-display text-caption font-semibold text-primary shadow-[0_0_12px_color-mix(in_srgb,var(--primary)_35%,transparent)]"
-        >
-          Q
-        </span>
-        <span className="truncate text-small text-muted">{user?.fullName ?? ""}</span>
-      </header>
+    <TouchArea className="flex min-h-dvh flex-col bg-ground text-[16px] leading-6 text-text">
       <MaintenanceBanner place="patient" />
+      <div className="border-b border-band-card-line bg-band">
+        <header className="mx-auto flex h-[76px] w-full max-w-[1152px] items-center gap-7 px-4 max-[1099px]:gap-4 max-[600px]:gap-2">
+          <Link
+            to="/me"
+            aria-label={ut("shell.home")}
+            className="flex shrink-0 items-center gap-[10px] rounded-[12px] text-text no-underline hover:no-underline"
+          >
+            <LogoTile size={40} ring />
+            <span className="text-[18px] font-extrabold leading-none tracking-[-0.015em] max-[1099px]:hidden">
+              {ut("shell.brand")}
+            </span>
+          </Link>
+          <nav aria-label={ut("pt.cabinet")} className="flex items-center gap-1 max-[899px]:hidden">
+            {TABS.map((t) => (
+              <NavLink
+                key={t.to}
+                to={t.to}
+                end={t.end}
+                className={({ isActive }) =>
+                  cx(
+                    "group inline-flex h-11 items-center gap-2 whitespace-nowrap rounded-[12px] px-4 text-[15px] leading-none no-underline hover:no-underline",
+                    "transition-colors duration-[var(--dur-fast)] ease-[var(--ease)] max-[1099px]:px-3",
+                    isActive
+                      ? "bg-band-card font-extrabold text-violet-ink shadow-tile"
+                      : "font-bold text-text-2 hover:bg-tab-hover hover:text-text",
+                  )
+                }
+              >
+                {({ isActive }) => (
+                  <>
+                    <ShellIcon name={t.icon} size={18} className={isActive ? "text-violet-ink" : "text-muted"} />
+                    {ut(t.wide)}
+                  </>
+                )}
+              </NavLink>
+            ))}
+          </nav>
+          <div className="ml-auto flex items-center gap-[10px] max-[600px]:gap-[6px]">
+            {/*
+              «Допомога» — всегда в шапке, на любой ширине и любом экране
+              кабинета: кому сейчас плохо, тот не должен искать, где позвонить.
+            */}
+            <button
+              type="button"
+              onClick={() => setHelp((v) => !v)}
+              aria-haspopup="dialog"
+              aria-expanded={help}
+              className={cx(
+                "inline-flex h-11 shrink-0 items-center gap-[7px] rounded-[22px] border-0 bg-band-card pl-[13px] pr-4",
+                "text-[15px] font-bold leading-none text-violet-ink shadow-[inset_0_0_0_1px_var(--bcardline)]",
+                "transition-colors hover:bg-violet-tint-2 aria-expanded:bg-violet-tint-2 aria-expanded:shadow-[inset_0_0_0_1.5px_var(--v)]",
+              )}
+            >
+              <ShellIcon name="life-buoy" size={18} />
+              {ut("pt.help")}
+            </button>
+            <ThemeToggle tone="band" onChoose={chooseTheme} className="max-[600px]:hidden" />
+            <LangMenu tone="band" />
+            <Link
+              to="/me/profile"
+              aria-label={user?.fullName ?? ut("pt.tabProfile")}
+              className="flex h-11 shrink-0 items-center gap-[10px] rounded-[12px] pl-[5px] pr-3 text-[14px] font-bold text-text no-underline hover:bg-tab-hover hover:no-underline max-[899px]:pr-[5px]"
+            >
+              <span
+                aria-hidden
+                className="grid size-[34px] shrink-0 place-items-center rounded-full bg-violet text-[12px] font-extrabold text-onfill"
+              >
+                {initials(user?.fullName ?? "")}
+              </span>
+              <span className="max-w-[160px] truncate max-[899px]:hidden">{user?.fullName ?? ""}</span>
+            </Link>
+          </div>
+        </header>
+      </div>
       <ConnectionLine place="patient" />
       <OutboxStrip
         waiting={pending.waiting}
@@ -106,40 +178,123 @@ function PatientShell() {
         }}
       />
 
-      {/* pb под высоту полосы вкладок: иначе последняя кнопка экрана под ней */}
-      <main className="flex-1 pb-20">
-        <h1 className="px-4 pt-4 font-display text-section font-medium tracking-tight">
-          {here.title}
+      {/* внизу на телефоне — место под полосу вкладок, иначе последняя кнопка экрана под ней */}
+      <main className="mx-auto w-full max-w-[1152px] flex-1 pb-14 max-[899px]:pb-24">
+        <h1 className="m-0 px-4 pt-7 text-[28px] font-extrabold leading-8 tracking-[-0.03em] text-text max-[600px]:pt-5 max-[600px]:text-[22px] max-[600px]:leading-7">
+          {ut(here.title)}
         </h1>
         <Outlet />
       </main>
 
+      <footer className="border-t border-border bg-panel max-[899px]:hidden">
+        <div className="mx-auto flex h-16 w-full max-w-[1152px] items-center gap-6 whitespace-nowrap px-4 text-[13.5px] text-muted">
+          <span className="inline-flex items-center gap-[6px]">
+            <ShellIcon name="phone" size={14} />
+            {ut("home.hotline")}
+            <a href={`tel:${ut("home.hotlineNumber")}`} className="font-extrabold text-text-2 no-underline hover:underline">
+              {ut("home.hotlineNumber")}
+            </a>
+          </span>
+          <Link to="/status" className="ml-auto inline-flex items-center gap-[6px] text-text-2 no-underline hover:underline">
+            <ShellIcon name="circle-check" size={14} className="text-good" />
+            {ut("svc.title")}
+          </Link>
+        </div>
+      </footer>
+
       {/*
-        Полоса отступает снизу на безопасную зону.
-        Под ней у телефона своя домашняя черта, и вкладка, прижатая к самому
-        краю, попадает под неё: нажатие уходит системе, а не приложению.
+        Вкладки на телефоне — внизу, под большим пальцем. Полоса отступает
+        снизу на безопасную зону: вкладка, прижатая к самому краю, попадает
+        под домашнюю черту телефона, и нажатие уходит системе.
       */}
-      <nav className="fixed inset-x-0 bottom-0 z-40 flex border-t border-hairline bg-rail pb-[max(env(safe-area-inset-bottom),8px)]">
-        {tabs.map((t) => (
+      <nav
+        aria-label={ut("pt.cabinet")}
+        className="fixed inset-x-0 bottom-0 z-40 hidden border-t border-border bg-panel pb-[max(env(safe-area-inset-bottom),8px)] max-[899px]:flex"
+      >
+        {TABS.map((t) => (
           <NavLink
             key={t.to}
             to={t.to}
             end={t.end}
             className={({ isActive }) =>
               cx(
-                "flex min-h-[48px] flex-1 flex-col items-center justify-center gap-1 py-2 text-micro",
-                "transition-colors duration-[var(--dur-fast)]",
-                "outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]",
-                isActive ? "text-primary" : "text-muted",
+                "flex min-h-[56px] flex-1 flex-col items-center justify-center gap-1 pt-2 text-[12px] leading-4 no-underline hover:no-underline",
+                isActive ? "font-extrabold text-violet-ink" : "font-semibold text-text-2",
               )
             }
           >
-            <span className="[&>svg]:size-[22px]">{t.icon}</span>
-            {t.label}
+            {({ isActive }) => (
+              <>
+                <span
+                  aria-hidden
+                  className={cx(
+                    "grid h-[30px] w-[52px] place-items-center rounded-[15px]",
+                    isActive ? "bg-violet text-onfill" : "text-muted",
+                  )}
+                >
+                  <ShellIcon name={t.icon} size={21} />
+                </span>
+                {ut(t.label)}
+              </>
+            )}
           </NavLink>
         ))}
       </nav>
+
+      {help ? <HelpDrawer onClose={closeHelp} /> : null}
     </TouchArea>
+  );
+}
+
+/**
+ * «Потрібна допомога зараз» — кому звонить, одним нажатием (help_pane
+ * набора). Красным — только 103: это единственная строка про угрозу жизни.
+ *
+ * Номера — настоящими ссылками tel:, без подтверждения: в кризис лишний шаг
+ * между человеком и звонком стоит дороже всего остального на экране.
+ * Строк, которых у кабинета нет (семья, дежурный отделения), здесь нет:
+ * номера им выдумывать нельзя.
+ */
+function HelpDrawer({ onClose }: { onClose: () => void }) {
+  const { ut } = useLang();
+  const rows = [
+    { key: "hotline", name: ut("home.hotline"), sub: ut("pt.helpHotlineSub"), num: ut("home.hotlineNumber"), risk: false },
+    { key: "emergency", name: ut("pt.emergency"), sub: ut("pt.emergencySub"), num: ut("pt.emergencyNumber"), risk: true },
+  ];
+  return (
+    <ShellDrawer side="right" label={ut("pt.helpTitle")} onClose={onClose} under={0}>
+      <DrawerHead icon="life-buoy" title={ut("pt.helpTitle")} sub={ut("pt.helpSub")} onClose={onClose} />
+      <div className="min-h-0 flex-1 overflow-y-auto px-[18px] pb-[18px] pt-[14px]">
+        <div className="overflow-hidden rounded-[16px] border border-border">
+          {rows.map((r) => (
+            <a
+              key={r.key}
+              href={`tel:${r.num}`}
+              aria-label={`${ut("pt.helpCall")}: ${r.name}, ${r.num}`}
+              className="group grid min-h-[66px] grid-cols-[minmax(0,1fr)_auto_44px] items-center gap-3 border-t border-divider py-[9px] pl-4 pr-[14px] text-text no-underline first:border-t-0 hover:bg-panel-2 hover:no-underline"
+            >
+              <span className="min-w-0">
+                <b className={cx("block text-[16px] font-extrabold leading-[22px]", r.risk && "text-risk-ink")}>{r.name}</b>
+                <small className="block truncate text-[14px] font-semibold leading-[19px] text-muted">{r.sub}</small>
+              </span>
+              <span className={cx("text-[20px] font-extrabold leading-none tabular-nums", r.risk ? "text-risk-ink" : "text-violet-ink")}>
+                {r.num}
+              </span>
+              <span
+                aria-hidden
+                className={cx(
+                  "grid size-11 place-items-center rounded-[14px]",
+                  r.risk ? "bg-risk text-onfill group-hover:bg-risk-hover" : "bg-violet-tint text-violet-ink group-hover:bg-violet-tint-2",
+                )}
+              >
+                <ShellIcon name="phone" size={19} />
+              </span>
+            </a>
+          ))}
+        </div>
+        <p className="m-0 mt-3 text-[14px] leading-5 text-muted">{ut("pt.helpNote")}</p>
+      </div>
+    </ShellDrawer>
   );
 }
 

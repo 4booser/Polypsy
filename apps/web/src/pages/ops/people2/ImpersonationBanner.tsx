@@ -3,10 +3,11 @@ import type { ImpersonationInfo, User } from "@quizzy/shared";
 import { api, impersonationStore } from "../../../api";
 import { timeOfDay } from "../../../format";
 import { useLang } from "../../../lang";
-import { Button } from "../../../ui/primitives";
+import { Strip, stripAction } from "../../../shell/Strip";
 
 /**
- * Янтарная полоса во всю ширину: «Ви переглядаєте як … · Вийти».
+ * Янтарная полоса во всю ширину: «Ви переглядаєте як …» и «Вийти» справа
+ * (выноска набора, shell/Strip.tsx).
  *
  * Решение заказчика 2026-09-26: вход «от имени» — с баннером на всех экранах.
  * Янтарь здесь по прямому назначению — «требует внимания»: это единственное
@@ -34,26 +35,25 @@ export function ImpersonationBanner({ user, info }: { user: User; info: Imperson
       .finally(() => window.location.assign("/ops/users"));
   };
   return (
-    <div
-      role="status"
-      className="w-full shrink-0 border-b border-accent bg-accent-soft print:hidden"
+    <Strip
+      tone="warn"
+      icon="eye"
+      title={
+        <>
+          {ut("ops.imp.banner")} <span className="text-text">{user.fullName || user.email}</span>
+        </>
+      }
+      action={
+        <button type="button" onClick={exit} disabled={busy} className={stripAction}>
+          {ut("ops.imp.exit")}
+        </button>
+      }
     >
-      <div className="mx-auto flex w-full max-w-[1200px] flex-wrap items-center gap-x-[14px] gap-y-[6px] px-[16px] py-[8px] text-[15px] leading-[20px] text-text">
-        <span className="min-w-0 [overflow-wrap:anywhere]">
-          {ut("ops.imp.banner")} <strong className="font-bold">{user.fullName || user.email}</strong>
-          <span className="text-text-2"> ({user.email})</span>
-        </span>
-        <span className="text-[13px] text-text-2">
-          {ut("ops.imp.readOnly")} · {ut("ops.imp.until")} <span className="font-mono tabular-nums">{timeOfDay(info.expiresAt)}</span>
-          {" · "}
-          {info.actorEmail}
-        </span>
-        <span className="ml-auto">
-          <Button variant="ghost" onClick={exit} disabled={busy}>
-            {ut("ops.imp.exit")}
-          </Button>
-        </span>
-      </div>
-    </div>
+      <span className="min-w-0 [overflow-wrap:anywhere]">({user.email})</span>
+      <span>
+        {ut("ops.imp.readOnly")}, {ut("ops.imp.until")} <span className="font-bold text-text tabular-nums">{timeOfDay(info.expiresAt)}</span>
+      </span>
+      <span className="text-muted">{info.actorEmail}</span>
+    </Strip>
   );
 }

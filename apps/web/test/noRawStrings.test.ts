@@ -89,6 +89,11 @@ const NAMES: LatinName[] = [
   { word: "ICC", why: "Intraclass Correlation — то же" },
   { word: "RCI", why: "Reliable Change Index (Jacobson–Truax) — то же" },
   {
+    word: "Ctrl",
+    file: "apps/web/src/shell/HelpDrawer.tsx",
+    why: "подпись клавиши-модификатора в <kbd> (не на маке): так она напечатана на самой клавиатуре при любой раскладке",
+  },
+  {
     word: "NULL",
     file: "apps/web/src/pages/ops/sec/Sql.tsx",
     why: "SQL-консоль суперадмина: пустое значение ячейки показано так, как его пишет сам SQL, — «порожньо» спутать с пустой строкой",

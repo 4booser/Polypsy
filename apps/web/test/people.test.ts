@@ -3,7 +3,8 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { Permission, StaffDirectoryUser, User } from "@quizzy/shared";
 import { type DirectorySource, loadDirectory, loadMember } from "../src/pages/people/data";
-import { TOP, barItems, barKind, barSection, isCurrentTop } from "../src/shell/Topbar";
+import { navAccess, railEntries, railKeyOf, subNavFor } from "../src/shell/nav";
+import { barKind, barSection } from "../src/shell/workplace";
 import {
   type StaffRow,
   birthYear,
@@ -375,8 +376,8 @@ describe("вкладки списков", () => {
 /**
  * Разделы людей объявлены в приложении и в меню одними и теми же адресами.
  *
- * Бургер (Rail.tsx) и полоса (Topbar.tsx) держат свои списки ссылок; если
- * маршрут переименуют в App.tsx, обе ссылки уведут на сводку молча — общий
+ * Общий список (Rail.tsx) и навигация оболочки (nav.ts) держат свои списки
+ * ссылок; если маршрут переименуют в App.tsx, обе ссылки уведут на сводку молча — общий
  * перехват не падает. Проверка та же, что у палитры команд, только на этих
  * трёх адресах: они появились вместе и обязаны исчезнуть вместе.
  */
@@ -393,7 +394,7 @@ describe("адреса разделов людей", () => {
 
   test("меню ведёт на объявленные адреса", () => {
     /* и вкладки над самими списками (решение заказчика 2026-09-26): они тоже ссылки на эти адреса */
-    const menu = `${src("shell/Rail.tsx")}\n${src("shell/Topbar.tsx")}\n${src("pages/people/StaffList.tsx")}`;
+    const menu = `${src("shell/Rail.tsx")}\n${src("shell/nav.ts")}\n${src("pages/people/StaffList.tsx")}`;
     const links = [...menu.matchAll(/\bto[:=]\s*"(\/(?:staff|admins)[^"]*)"/g)].map((m) => m[1]!);
     expect(links.length).toBeGreaterThan(1);
     expect(links.filter((to) => !declared.has(to))).toEqual([]);
@@ -555,64 +556,61 @@ describe("рабочее место", () => {
 });
 
 /**
- * Состав полосы — решение заказчика 2026-09-26: «на вкладке админов
- * пропадают другие кнопки, доделай бар получше».
+ * Состав рельсы и подразделов администрирования (Polypsy 2.0).
  *
- * Кадры f40–f50 рисуют в разделе людей полосу из одного пункта, и она такой
- * и была: суперадмін, зайдя к администраторам, терял шесть разделов. Теперь
- * полоса — свойство человека, а не раздела, и проверяется это по обоим
- * адресам раздела людей сразу, а не по одному: пункт, пропавший только на
- * /admins, прежде и был той самой поломкой.
+ * Рельса — свойство человека, а не раздела: десять разделов набора, из
+ * которых человеку показаны те, куда у него есть вход. Решение заказчика
+ * 2026-09-26 («на вкладке админов пропадают другие кнопки») держится и
+ * здесь: состав не зависит от того, в каком разделе человек стоит, — и
+ * проверяется по нескольким адресам сразу.
  */
-describe("состав полосы", () => {
+describe("состав рельсы", () => {
   const superadmin = { role: "superadmin" };
   const chief = { role: "admin", ladderRank: 3 };
-  const keysOf = (kind: Parameters<typeof barItems>[0], can?: (p: Permission) => boolean): string[] =>
-    barItems(kind, can).map((it) => it.key);
-  const FULL = ["top.patients", "ppl.staff", "top.groups", "top.tests", "top.analytics", "top.statistics", "top.messages"];
+  const specialist = { role: "admin", ladderRank: 1 };
+  const keysOf = (who: { role: string; ladderRank?: number }, can: (p: Permission) => boolean) =>
+    railEntries(navAccess(who, can)).map((e): string => e.key);
+  const FULL: string[] = ["today", "worklist", "cases", "patients", "schedule", "messages", "methods", "analytics", "admin"];
 
-  test("суперадміну — одна полная полоса на всех адресах, и в разделе людей тоже", () => {
-    for (const path of ["/patients", "/staff", "/staff/u1", "/admins", "/admins/new", "/organisations"]) {
-      expect(keysOf(barKind(superadmin, true, path), () => true), path).toEqual(FULL);
-    }
+  test("суперадміну — все разделы, включая администрирование", () => {
+    expect(keysOf(superadmin, () => true)).toEqual(FULL);
   });
 
-  test("«Лікарі» — текущий пункт и на /staff, и на /admins: раздел людей один", () => {
-    const staff = barItems("admin").find((it) => it.key === "ppl.staff")!;
-    for (const path of ["/staff", "/staff/u1", "/admins", "/admins/new"]) {
-      expect(isCurrentTop(staff, path), path).toBe(true);
-    }
-    expect(isCurrentTop(staff, "/patients/staff")).toBe(false);
-    expect(isCurrentTop(staff, "/adminsx")).toBe(false);
-    /* и отдельного пункта «Адміністратори» в полосе нет ни у кого */
-    for (const kind of ["specialist", "admin", "peopleStaff", "peopleAdmins"] as const) {
-      expect(keysOf(kind)).not.toContain("adm.admins");
-    }
+  test("заведующему, который лечит, — те же разделы, что суперадміну", () => {
+    expect(keysOf(chief, (p) => p === "patients.read")).toEqual(FULL);
   });
 
-  test("заведующему, который лечит, — те же семь, что суперадміну, в любом разделе (f30–f35)", () => {
-    const can = (p: Permission) => p === "patients.read";
-    for (const path of ["/patients", "/staff", "/admins"]) {
-      expect(keysOf(barKind(chief, true, path), can), path).toEqual(FULL);
-    }
-  });
-
-  test("тот, кто не лечит, — не «один пункт по центру», а все доступные ему разделы, одинаково везде", () => {
+  test("тот, кто ведёт людей и не лечит, — без пациентов, но с тем, что ему открыто", () => {
     /* право на статистику есть, на аналитику и рассылки — нет */
-    const can = (p: Permission) => p === "statistics.read" || p === "users.manage";
-    const inside = keysOf(barKind(chief, false, "/staff"), can);
-    const outside = keysOf(barKind(chief, false, "/patients"), can);
-    expect(inside).toEqual(["ppl.staff", "top.tests", "top.statistics"]);
-    /* полоса не прыгает при переходе в раздел людей и обратно */
-    expect(outside).toEqual(inside);
-    /* клинических пунктов у него нет: они вели бы в отказ сервера */
-    expect(inside).not.toContain("top.patients");
-    expect(inside).not.toContain("top.groups");
+    const keys = keysOf(chief, (p) => p === "statistics.read" || p === "users.manage");
+    expect(keys).not.toContain("patients");
+    expect(keys).toContain("analytics");
+    expect(keys).toContain("admin");
+    /* «Аналітика» у него ведёт прямо в статистику: перечень моделей аналитики ему закрыт */
+    const entry = railEntries(navAccess(chief, (p) => p === "statistics.read")).find((e) => e.key === "analytics");
+    expect(entry?.to).toBe("/statistics");
   });
 
-  test("рядовому лікарю — шесть пунктов без «Лікарі» (f04), права полосу не режут", () => {
-    const specialist = { role: "admin", ladderRank: 1 };
-    expect(keysOf(barKind(specialist, true, "/patients"), () => false)).toEqual(TOP.map((it) => it.key));
+  test("рядовому лікарю — без администрирования; права рельсу не режут", () => {
+    const keys = keysOf(specialist, () => false);
+    expect(keys).toEqual(FULL.filter((k) => k !== "admin"));
+  });
+
+  test("раздел рельсы — по корню адреса: «Лікарі» и «Адміністратори» — администрирование", () => {
+    for (const path of ["/staff", "/staff/u1", "/admins", "/admins/new", "/permissions", "/ops/logs"]) {
+      expect(railKeyOf(path), path).toBe("admin");
+    }
+    expect(railKeyOf("/patients/staff")).toBe("patients");
+    expect(railKeyOf("/adminsx")).toBeNull();
+  });
+
+  test("подразделы администрирования: «Лікарі» и «Адміністратори» — тем, кому есть кого назначать", () => {
+    const items = (who: { role: string; ladderRank?: number }) =>
+      (subNavFor("admin", "/staff", navAccess(who, () => false))?.groups ?? []).flatMap((g) => g.items.map((i) => i.to));
+    expect(items(chief)).toEqual(expect.arrayContaining(["/staff", "/admins", "/permissions"]));
+    expect(items(superadmin)).toEqual(expect.arrayContaining(["/staff", "/admins", "/ops", "/console"]));
+    /* специалисту раздела нет вовсе: колонка из одной «Учётной записи» была бы обломком */
+    expect(subNavFor("admin", "/account", navAccess(specialist, () => false))).toBeNull();
   });
 });
 
@@ -651,16 +649,6 @@ describe("разметка раздела по кадрам", () => {
     const card = src("pages/people/StaffCard.tsx");
     expect(card).toContain("shadow-[inset_0_-2px_0_var(--hairline)]");
     expect(card).not.toContain("border-b-2");
-  });
-
-  test("текущий пункт полосы не подсвечен ничем, кроме aria-current (восемь кадров из десяти)", () => {
-    const bar = src("shell/Topbar.tsx");
-    /* только сама полоса: в списке бургера подсветка текущего пункта своя и со своих кадров */
-    const nav = bar.slice(bar.indexOf('aria-label={ut("shell.sections")}'), bar.indexOf("</nav>"));
-    expect(nav.length).toBeGreaterThan(200);
-    expect(nav).not.toContain("isActive");
-    /* сам бледный тон кадра назван в пояснении — ищем его как класс, а не как слово */
-    expect(nav).not.toContain("text-[#ab8fcc]");
   });
 
   /*

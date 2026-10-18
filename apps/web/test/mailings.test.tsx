@@ -17,14 +17,14 @@ import {
 } from "../src/pages/messages/model";
 import { Row } from "../src/pages/messages/MailingList";
 import { railGroups } from "../src/shell/Rail";
-import { TOP } from "../src/shell/Topbar";
+import { navAccess, railEntries, subNavFor } from "../src/shell/nav";
 
 /**
  * Раздел «Повідомлення» (розсилки) и переписка — две двери, обе на месте.
  *
- * Тихая ошибка, ради которой это написано: пункт полосы «Повідомлення» и
- * экран переписки называются одним словом, и подмена адреса у пункта — или
- * потеря переписки из бургера — глазами не отличается: и то и другое
+ * Тихая ошибка, ради которой это написано: розсилки и переписка
+ * называются похожими словами, и подмена адреса у пункта — или потеря
+ * переписки из общего списка — глазами не отличается: и то и другое
  * открывается, и на обоих экранах написано «повідомлення». Проверяется
  * состав навигации, а не отрисовка: маршруты читаются из App.tsx, пункты —
  * из тех же списков, из которых их читает оболочка.
@@ -35,8 +35,16 @@ const declared = new Set([...APP.matchAll(/path="([^"]+)"/g)].map((m) => m[1]!))
 const COUNTS = { today: 0, worklist: 0, alerts: 0, referrals: 0 };
 
 describe("навигация раздела «Повідомлення»", () => {
-  test("пункт верхней полосы ведёт на розсилки, а не на переписку", () => {
-    expect(TOP.find((it) => it.key === "top.messages")?.to).toBe("/mailings");
+  test("розсилки — пункт подразделов пациентов, «Листування» на рельсе — переписка", () => {
+    /*
+     * Polypsy 2.0: розсилки — подраздел пациентов (набор, SUBNAV['patients']),
+     * а «Листування» на рельсе — разговор с пациентом. Слова разные, адреса
+     * разные, и подмена одного другим проверяется здесь.
+     */
+    const all = navAccess({ role: "superadmin" }, () => true);
+    const patients = subNavFor("patients", "/patients", all)!.groups.flatMap((g) => g.items);
+    expect(patients.find((it) => it.label === "sn.mailings")?.to).toBe("/mailings");
+    expect(railEntries(all).find((e) => e.key === "messages")?.to).toBe("/messages");
   });
 
   test("переписка осталась по прежнему адресу и в бургере под своим именем", () => {

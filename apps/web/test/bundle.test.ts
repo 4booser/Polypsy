@@ -134,7 +134,8 @@ describe("начальный кусок консоли", () => {
     const mods = [...graph.modules].map(rel);
     expect(mods).toContain("App.tsx");
     expect(mods).toContain("pages/Login.tsx");
-    expect(mods).toContain("shell/Topbar.tsx");
+    expect(mods).toContain("shell/AppBar.tsx");
+    expect(mods).toContain("shell/Rail.tsx");
     expect(graph.packages.has("react-router-dom")).toBe(true);
     expect(graph.sharedNames.size).toBeGreaterThan(10);
   });

@@ -1557,7 +1557,8 @@ export const workspacePrefsSchema = z.object({
    * себе — вправе.
    */
   motion: z.enum(["system", "reduced"]).optional(),
-  theme: z.enum(["dark", "light"]).optional(),
+  /* «system» — следовать теме системы (Polypsy 2.0: третий выбор переключателя темы) */
+  theme: z.enum(["dark", "light", "system"]).optional(),
   lang: z.enum(LANGS).optional(),
   dismissedHints: z.array(z.string().max(60)).max(100).optional(),
   /*

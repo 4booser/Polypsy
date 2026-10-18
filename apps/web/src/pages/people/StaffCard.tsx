@@ -12,7 +12,7 @@ import { IconGear, IconPlusThick } from "../../ui/glyphs";
 import { ActionMenu } from "../../ui/menu";
 import { Pager } from "../../ui/pager";
 import { Button, Field, Input, Readout, Select } from "../../ui/primitives";
-import { barKind, type BarKind } from "../../shell/Topbar";
+import { barKind, type BarKind } from "../../shell/workplace";
 import { usePagedResource, useResource } from "../../useResource";
 import { DEFAULT_PER, pageCount, pageFrom, perFrom } from "../constructor/catalogue";
 import { ladderReadable, loadDirectory, loadMember } from "./data";

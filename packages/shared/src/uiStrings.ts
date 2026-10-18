@@ -370,9 +370,6 @@ export const UI = {
   "pub.loginTitle": { uk: "Введіть логін та пароль щоб продовжити", ru: "Введите логин и пароль, чтобы продолжить", en: "Enter your login and password to continue" },
   /* поле подписано «Логін», как на кадре; сервер принимает в него почту (см. Login.tsx) */
   "pub.login": { uk: "Логін", ru: "Логин", en: "Login" },
-  "pub.faq": { uk: "FAQ", ru: "FAQ", en: "FAQ" },
-  "pub.press": { uk: "Для преси", ru: "Для прессы", en: "For the press" },
-  "pub.contacts": { uk: "Контакти:", ru: "Контакты:", en: "Contacts:" },
   /*
    * Номер и город — ДВЕ записи, хотя на кадре это одна строка.
    *
@@ -1102,7 +1099,6 @@ export const UI = {
   "pt.home": { uk: "Головна", ru: "Главная", en: "Home" },
   "pt.tests": { uk: "Тести", ru: "Тесты", en: "Tests" },
   "pt.booking": { uk: "Запис", ru: "Запись", en: "Booking" },
-  "pt.me": { uk: "Я", ru: "Я", en: "Me" },
   /*
    * Заголовки экранов кабинета — отдельно от подписей вкладок.
    *
@@ -6448,7 +6444,6 @@ export const UI = {
   "cmd.move": { uk: "рух", ru: "движение", en: "move" },
   "cmd.open": { uk: "відкрити", ru: "открыть", en: "open" },
   "cmd.close": { uk: "закрити", ru: "закрыть", en: "close" },
-  "shell.search": { uk: "Пошук і команди", ru: "Поиск и команды", en: "Search and commands" },
   /*
    * Имя рельсы. Нужно там, где она выезжает поверх содержимого: ящик,
    * перекрывающий экран, диктор обязан назвать, иначе человек не понимает,
@@ -7994,6 +7989,86 @@ export const UI = {
   "kit.timerOf": { uk: "{elapsed} з {of}", ru: "{elapsed} из {of}", en: "{elapsed} of {of}" },
   "kit.unread": { uk: "непрочитане", ru: "непрочитанное", en: "unread" },
 
+  // ── v2-shell ──
+  /* полоса приложения консоли (shell/AppBar.tsx) */
+  "shell.brand": { uk: "Polypsy", ru: "Polypsy", en: "Polypsy" },
+  "shell.home": { uk: "Polypsy, на головну", ru: "Polypsy, на главную", en: "Polypsy, home" },
+  "shell.searchHint": {
+    uk: "Пошук пацієнта, методики або дії",
+    ru: "Поиск пациента, методики или действия",
+    en: "Find a patient, instrument or action",
+  },
+  "shell.close": { uk: "Закрити", ru: "Закрыть", en: "Close" },
+  "nav.themeSystem": { uk: "Як у системі", ru: "Как в системе", en: "Match system" },
+  /* рельса: короткие слова под значками и полные имена (shell/nav.ts) */
+  "rail.worklist": { uk: "Черга", ru: "Очередь", en: "Queue" },
+  "rail.cases": { uk: "Ризик", ru: "Риск", en: "Risk" },
+  "rail.schedule": { uk: "Розклад", ru: "Расписание", en: "Schedule" },
+  "rail.admin": { uk: "Адмін", ru: "Админ", en: "Admin" },
+  "rail.help": { uk: "Довідка", ru: "Справка", en: "Help" },
+  "rail.helpFull": { uk: "Довідка і клавіші", ru: "Справка и клавиши", en: "Help and shortcuts" },
+  "rail.analyticsFull": { uk: "Аналітика і статистика", ru: "Аналитика и статистика", en: "Analytics and statistics" },
+  /* колонка подразделов (shell/SubNav.tsx) */
+  "sn.allPatients": { uk: "Усі пацієнти", ru: "Все пациенты", en: "All patients" },
+  "sn.patientGroups": { uk: "Групи пацієнтів", ru: "Группы пациентов", en: "Patient groups" },
+  "sn.mailings": { uk: "Розсилки", ru: "Рассылки", en: "Mailings" },
+  "sn.catalog": { uk: "Каталог", ru: "Каталог", en: "Catalogue" },
+  "sn.drafts": { uk: "Чернетки", ru: "Черновики", en: "Drafts" },
+  "sn.archive": { uk: "Архів", ru: "Архив", en: "Archive" },
+  "sn.creating": { uk: "Створення", ru: "Создание", en: "Create" },
+  "sn.constructor": { uk: "Конструктор", ru: "Конструктор", en: "Builder" },
+  "sn.norms": { uk: "Норми", ru: "Нормы", en: "Norms" },
+  "sn.analyticsModels": { uk: "Моделі аналітики", ru: "Модели аналитики", en: "Analytics models" },
+  "sn.statModels": { uk: "Статистичні моделі", ru: "Статистические модели", en: "Statistical models" },
+  "sn.chart": { uk: "Графік", ru: "График", en: "Chart" },
+  "sn.sampleFilters": { uk: "Фільтри вибірки", ru: "Фильтры выборки", en: "Sample filters" },
+  "sn.personal": { uk: "Особисте", ru: "Личное", en: "Personal" },
+  /* центр событий (shell/EventCenter.tsx) */
+  "ec.newCount": { uk: "Нових: {n}", ru: "Новых: {n}", en: "New: {n}" },
+  "ec.allCaught": { uk: "Нового немає", ru: "Нового нет", en: "Nothing new" },
+  "ec.filter": { uk: "Які події показати", ru: "Какие события показать", en: "Which events to show" },
+  /* справка и клавиши (shell/HelpDrawer.tsx) */
+  "help.keys": { uk: "Клавіші на будь-якому екрані", ru: "Клавиши на любом экране", en: "Shortcuts on any screen" },
+  "help.palette": {
+    uk: "Пошук пацієнта, екрана або дії",
+    ru: "Поиск пациента, экрана или действия",
+    en: "Find a patient, screen or action",
+  },
+  "help.escape": {
+    uk: "Закрити вікно, панель або меню",
+    ru: "Закрыть окно, панель или меню",
+    en: "Close a dialog, panel or menu",
+  },
+  "help.casesKeys": { uk: "У випадках ризику", ru: "В случаях риска", en: "In risk cases" },
+  "help.rows": { uk: "Наступний і попередній випадок", ru: "Следующий и предыдущий случай", en: "Next and previous case" },
+  "help.search": { uk: "Пошук у черзі", ru: "Поиск в очереди", en: "Search the queue" },
+  "help.outcome": {
+    uk: "Підсумок розбору в порядку кнопок",
+    ru: "Итог разбора в порядке кнопок",
+    en: "Review outcome, in button order",
+  },
+  "help.take": { uk: "Взяти випадок собі", ru: "Взять случай себе", en: "Take the case" },
+  "help.more": { uk: "Ще", ru: "Ещё", en: "More" },
+  /* кабинет пациента: шапка и «Допомога» (patient/PatientApp.tsx) */
+  "pt.tabProfile": { uk: "Профіль", ru: "Профиль", en: "Profile" },
+  "pt.cabinet": { uk: "Кабінет", ru: "Кабинет", en: "Portal" },
+  "pt.help": { uk: "Допомога", ru: "Помощь", en: "Help" },
+  "pt.helpTitle": { uk: "Потрібна допомога зараз", ru: "Нужна помощь сейчас", en: "Need help now" },
+  "pt.helpSub": {
+    uk: "Дзвінок почнеться одразу, без підтверджень",
+    ru: "Звонок начнётся сразу, без подтверждений",
+    en: "The call starts right away, no confirmations",
+  },
+  "pt.helpCall": { uk: "Зателефонувати", ru: "Позвонить", en: "Call" },
+  "pt.helpHotlineSub": { uk: "цілодобово", ru: "круглосуточно", en: "24/7" },
+  "pt.emergency": { uk: "Екстрена допомога", ru: "Экстренная помощь", en: "Emergency" },
+  "pt.emergencySub": { uk: "швидка, якщо є загроза життю", ru: "скорая, если есть угроза жизни", en: "ambulance, if a life is at risk" },
+  "pt.emergencyNumber": { uk: "103", ru: "103", en: "103" },
+  "pt.helpNote": {
+    uk: "Повідомлення фахівцю — не екстрений зв’язок: відповідь приходить у робочий час.",
+    ru: "Сообщение специалисту — не экстренная связь: ответ приходит в рабочее время.",
+    en: "A message to your specialist is not an emergency line: replies come during working hours.",
+  },
 } as const satisfies Record<string, UiEntry>;
 
 export type UiKey = keyof typeof UI;
