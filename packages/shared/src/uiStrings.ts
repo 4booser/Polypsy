@@ -7879,6 +7879,64 @@ export const UI = {
     en: "Google Meet for a booked appointment",
   },
 
+  // ── v2-charts ──
+  /* графики «Виразної» (apps/web/src/charts): скрытая малая ячейка и её объяснение */
+  "chart.smallCell": { uk: "n < {n}", ru: "n < {n}", en: "n < {n}" },
+  "chart.smallCellWhy": {
+    uk: "Менше {n} людей: число не показуємо, щоб нікого не можна було впізнати за малою групою.",
+    ru: "Меньше {n} человек: число не показываем, чтобы никого нельзя было узнать по малой группе.",
+    en: "Fewer than {n} people: the number is hidden so that no one can be recognised in a small group.",
+  },
+  /* переключатель фигуры: картинка или те же числа таблицей */
+  "chart.viewChart": { uk: "Діаграма", ru: "Диаграмма", en: "Chart" },
+  "chart.viewTable": { uk: "Таблиця", ru: "Таблица", en: "Table" },
+  /* подсказка ящика с усами */
+  "chart.median": { uk: "медіана", ru: "медиана", en: "median" },
+  "chart.iqr": { uk: "середні 50 %", ru: "средние 50 %", en: "middle 50 %" },
+  "chart.range": { uk: "розмах", ru: "размах", en: "range" },
+  /* график курса пациента (charts/course.tsx) */
+  "course.points": { uk: "бали", ru: "баллы", en: "points" },
+  "course.betterDown": { uk: "краще ↓", ru: "лучше ↓", en: "better ↓" },
+  "course.betterUp": { uk: "краще ↑", ru: "лучше ↑", en: "better ↑" },
+  "course.today": { uk: "сьогодні", ru: "сегодня", en: "today" },
+  "course.rcZone": { uk: "межі похибки від старту: {base} ± {rc}", ru: "пределы ошибки от старта: {base} ± {rc}", en: "error margin from start: {base} ± {rc}" },
+  "course.rcBelow": { uk: "надійне покращення: нижче {v}", ru: "надёжное улучшение: ниже {v}", en: "reliable improvement: below {v}" },
+  "course.rcAbove": { uk: "надійне покращення: вище {v}", ru: "надёжное улучшение: выше {v}", en: "reliable improvement: above {v}" },
+  "course.sessions": { uk: "Сесії", ru: "Сессии", en: "Sessions" },
+  "course.noshowOn": { uk: "неявка {d}", ru: "неявка {d}", en: "no-show {d}" },
+  "course.signal": { uk: "сигнал", ru: "сигнал", en: "signal" },
+  "course.start": { uk: "старт", ru: "старт", en: "start" },
+  "course.last": { uk: "останній замір", ru: "последний замер", en: "latest" },
+  "course.baseline": { uk: "Базовий замір.", ru: "Базовый замер.", en: "Baseline measurement." },
+  "course.baselineRc": {
+    uk: "Базовий замір. Межі похибки {base} ± {rc}.",
+    ru: "Базовый замер. Пределы ошибки {base} ± {rc}.",
+    en: "Baseline measurement. Error margin {base} ± {rc}.",
+  },
+  "course.fromStart": { uk: "Від старту", ru: "От старта", en: "From start" },
+  "course.fromPrev": { uk: "Від {d}", ru: "От {d}", en: "Since {d}" },
+  "course.threshold": { uk: "поріг {n}", ru: "порог {n}", en: "threshold {n}" },
+  "course.v.better": { uk: "надійно краще", ru: "надёжно лучше", en: "reliably better" },
+  "course.v.worse": { uk: "надійно гірше", ru: "надёжно хуже", en: "reliably worse" },
+  "course.v.changed": { uk: "надійна зміна", ru: "надёжное изменение", en: "reliable change" },
+  "course.v.unknown": { uk: "похибку не оцінено", ru: "ошибка не оценена", en: "error not estimated" },
+  "course.ev.session": { uk: "Сесія {n}", ru: "Сессия {n}", en: "Session {n}" },
+  "course.ev.planned": { uk: "Запланована сесія", ru: "Запланированная сессия", en: "Planned session" },
+  "course.ev.signal": { uk: "Сигнал ризику", ru: "Сигнал риска", en: "Risk signal" },
+  "course.lg.measures": { uk: "заміри", ru: "замеры", en: "measurements" },
+  "course.lg.rc": { uk: "межі похибки", ru: "пределы ошибки", en: "error margin" },
+  "course.lg.noshow": { uk: "неявка", ru: "неявка", en: "no-show" },
+  "course.noRc": {
+    uk: "Межі похибки не показано: похибку вимірювання ще не оцінено — замала вибірка або не порахована узгодженість.",
+    ru: "Пределы ошибки не показаны: ошибка измерения ещё не оценена — мала выборка или не посчитана согласованность.",
+    en: "No error margin shown: measurement error is not estimated yet — the sample is too small or consistency is not computed.",
+  },
+  "course.hint": {
+    uk: "Наведіть на графік або перейдіть до нього клавішею Tab: точне значення, дата, тяжкість і зміна від старту й попереднього заміру.",
+    ru: "Наведите на график или перейдите к нему клавишей Tab: точное значение, дата, тяжесть и изменение от старта и предыдущего замера.",
+    en: "Hover over the chart or Tab to it: exact value, date, severity and change since the start and the previous measurement.",
+  },
+
 } as const satisfies Record<string, UiEntry>;
 
 export type UiKey = keyof typeof UI;

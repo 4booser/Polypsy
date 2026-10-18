@@ -13,6 +13,10 @@ import { ReleaseCharts, StatementCharts, TraceTime } from "../src/pages/ops/obs2
  * запуска процесса, разрыв ряда, ни одной пятисотки, история без часов.
  * Как в clinicalCharts.test.tsx — разметка получилась, в ней нет NaN, янтарь
  * стоит ровно там, где что-то требует внимания, и пустое сказано словами.
+ *
+ * С «Виразною» (v2) янтарь «требует внимания» — токен набора --warn (тот же
+ * цвет, что прежний --accent); ряды, которым цвет даёт сам экран, рисуются
+ * его токеном как есть.
  */
 const draw = (node: ReactNode) =>
   renderToStaticMarkup(
@@ -70,11 +74,13 @@ describe("формы набора", () => {
       />,
     );
     expect(html).not.toContain("NaN");
-    // один отрезок из двух корзин — линией, две одиночные — точками
+    // один отрезок из двух корзин — линией, две одиночные — меткой
     expect(countOf(html, 'stroke="var(--primary)" stroke-width="2"')).toBe(1);
-    expect(countOf(html, 'r="2.5"')).toBe(2);
-    expect(countOf(html, 'fill="var(--accent)"')).toBe(1);
-    expect(html).toContain('stroke-dasharray="3 4"');
+    expect(countOf(html, "data-single")).toBe(2);
+    // выше порога — одна корзина, янтарным ромбом; порог — пунктиром
+    expect(countOf(html, 'data-over="threshold"')).toBe(1);
+    expect(html).toContain("fill:var(--warn)");
+    expect(html).toContain('stroke-dasharray="4 3"');
   });
 
   test("линии без единого значения — «нет данных»", () => {
@@ -93,8 +99,9 @@ describe("формы набора", () => {
         ]}
       />,
     );
-    expect(countOf(html, "<rect")).toBe(1);
-    expect(html).toContain('fill="var(--accent)"');
+    // столбец — путём со скруглённым концом; у корзины без замера его нет вовсе
+    expect(countOf(html, "data-col=")).toBe(1);
+    expect(html).toContain('fill="var(--warn)"');
   });
 
   test("пары: «стало» янтарём только у отмеченной строки; нулевой полосы нет", () => {
@@ -109,15 +116,17 @@ describe("формы набора", () => {
         ]}
       />,
     );
-    expect(countOf(html, "background:var(--accent)")).toBe(1);
-    // до: a, b (c — null); после: a (янтарь), c; у b «стало» — ноль, полосы нет
-    expect(countOf(html, "background:var(--primary)")).toBe(2);
+    // в полосах и в подсказках строк: янтарь — только у отмеченной строки
+    expect(countOf(html, '<div class="h-full rounded-r-[3px]" style="width:100.00%;background:var(--warn)"')).toBe(1);
+    // до: a, b (c — null) — серым «прочего»; после: a (янтарь), c; у b «стало» — ноль, полосы нет
+    expect(countOf(html, 'rounded-r-[3px]" style="width:')).toBe(4);
+    expect(countOf(html, 'background:var(--c5)"></div>')).toBe(2);
     expect(html).toContain("було");
     expect(html).not.toContain("NaN");
   });
 
   test("полосы: тон внимания; доли — своим форматом, без повторного процента", () => {
-    expect(draw(<HBars items={[{ key: "a", label: "a", value: 3, attention: true }]} />)).toContain("bg-accent");
+    expect(draw(<HBars items={[{ key: "a", label: "a", value: 3, attention: true }]} />)).toContain("background:var(--warn)");
     const html = draw(
       <ShareBar
         label="L"
@@ -131,7 +140,8 @@ describe("формы набора", () => {
     );
     expect(html).toContain("25 %");
     expect(html).toContain("background:var(--grid)");
-    expect(html).not.toContain("· 25%");
+    // доля не повторена процентом от целого
+    expect(html).not.toContain("33 %");
   });
 });
 
@@ -198,14 +208,14 @@ describe("блоки вкладок", () => {
     const html = draw(<ErrorCharts data={errors} window="24h" now={Date.parse(since)} />);
     expect(says(html, "ops.ch.errNoHours")).toBe(true);
     expect(html).toContain("TypeError");
-    expect(html).toContain("bg-accent");
+    expect(html).toContain("background:var(--warn)");
   });
 
   test("ошибки с часами истории — янтарные столбцы по часам периода", () => {
     const now = Date.parse(since);
     const data = { ...errors, from: new Date(now - 86_400_000).toISOString(), hours: [{ at: new Date(now - 3_600_000).toISOString(), count: 7 }] };
     const html = draw(<ErrorCharts data={data} window="24h" now={now} />);
-    expect(html).toContain('fill="var(--accent)"');
+    expect(html).toContain('fill="var(--warn)"');
     expect(html).not.toContain("NaN");
   });
 
@@ -248,7 +258,7 @@ describe("блоки вкладок", () => {
     };
     const html = draw(<JobCharts items={[job]} />);
     expect(says(html, "ops.ch.jobNoFails")).toBe(true);
-    expect(html).not.toContain("bg-accent");
+    expect(html).not.toContain("var(--warn)");
   });
 
   test("мёртвые строки: янтарь только у таблицы, где автоочистка не успевает", () => {
@@ -265,7 +275,8 @@ describe("блоки вкладок", () => {
       lastAutoanalyze: null,
     });
     const html = draw(<TableCharts tables={[t("hot", 5000, 1000), t("calm", 10, 100_000)]} />);
-    expect(countOf(html, "bg-accent")).toBe(1);
+    // янтарная полоса — у одной строки из всех
+    expect(countOf(html, 'data-bar="true" class="block h-full rounded-r-[4px]" style="width:100.00%;background:var(--warn)"')).toBe(1);
   });
 });
 
@@ -277,7 +288,7 @@ describe("блоки obs2a", () => {
     expect(says(draw(<ReleaseCharts items={few} />), "ops.ch.relFew")).toBe(true);
     const worse: OpsRouteCompare[] = [{ method: "GET", route: "/x", before: side(100), after: side(400, 9), latency: "worse", errors: "worse" }];
     const html = draw(<ReleaseCharts items={worse} />);
-    expect(html).toContain("background:var(--accent)");
+    expect(html).toContain("background:var(--warn)");
     expect(says(html, "ops.rel.worse")).toBe(true);
   });
 
