@@ -1058,7 +1058,6 @@ export const UI = {
   "dash.casesOldest": { uk: "довше за всіх чекає {n} дн.", ru: "дольше всех ждёт {n} дн.", en: "longest waiting {n} days" },
   "dash.casesUrgent": { uk: "з них термінових: {n}", ru: "из них срочных: {n}", en: "of which urgent: {n}" },
   "dash.respondents": { uk: "Респондентів", ru: "Респондентов", en: "Respondents" },
-  "dash.published": { uk: "опубліковано", ru: "опубликовано", en: "published" },
   "dash.avgTime": { uk: "Середній час", ru: "Среднее время", en: "Average time" },
   "dash.inProgress": { uk: "Проходять зараз", ru: "Проходят сейчас", en: "In progress now" },
 
@@ -8904,6 +8903,7 @@ export const UI = {
   "v2v.booked": { uk: "Записано на {when}", ru: "Записано на {when}", en: "Booked for {when}" },
 
   // ── v2-comms ──
+  "dash.review": { uk: "Розібрати", ru: "Разобрать", en: "Review" },
   /* листування: список разговоров (pages/Messages.tsx) */
   "msx.search": { uk: "Пацієнт або текст", ru: "Пациент или текст", en: "Patient or text" },
   "msx.viewAll": { uk: "Усі", ru: "Все", en: "All" },
