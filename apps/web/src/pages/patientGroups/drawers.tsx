@@ -323,7 +323,8 @@ export function AssignDrawer({
           {surveys.error ? (
             <Loading error={surveys.error} onRetry={surveys.reload} bare />
           ) : !surveys.data ? (
-            <Loading rows={3} bare />
+            /* закрытый ящик не размонтируется: скелет — только пока он открыт и список в пути */
+            open ? <Loading rows={3} bare /> : null
           ) : shown.length === 0 ? (
             <p className="m-0 mt-3 text-small text-muted">{ut("srch.nothing")}</p>
           ) : (
@@ -462,7 +463,7 @@ export function AddMembersDrawer({
         {found.error ? (
           <Loading error={found.error} onRetry={found.reload} bare />
         ) : !found.data ? (
-          <Loading rows={4} bare />
+          open ? <Loading rows={4} bare /> : null
         ) : found.data.items.length === 0 ? (
           <p className="m-0 mt-3 text-small text-muted">{ut("pt.nobodyFound")}</p>
         ) : (

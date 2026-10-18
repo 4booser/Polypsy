@@ -525,7 +525,8 @@ function NoteDrawer({
         {notes.error ? (
           <Loading error={notes.error} onRetry={notes.reload} bare />
         ) : !notes.data || shownId !== hit.id ? (
-          <Loading rows={4} bare />
+          /* закрытый ящик не размонтируется: скелет — только пока он открыт */
+          open ? <Loading rows={4} bare /> : null
         ) : version ? (
           <p className="m-0 whitespace-pre-line text-body leading-[22px] text-text">
             <Marked text={version.text} words={words} />

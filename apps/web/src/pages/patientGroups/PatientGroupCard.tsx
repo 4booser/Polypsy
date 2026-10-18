@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useMatch, useNavigate, useParams } from "react-router-dom";
 import { t, type PatientGroupMember, type PatientGroupSurvey } from "@quizzy/shared";
 import { api } from "../../api";
@@ -62,6 +62,14 @@ export default function PatientGroupCard() {
   const editing = useMatch("/patient-groups/:id/edit") !== null;
   const [drawer, setDrawer] = useState<DrawerKind>(editing ? "edit" : null);
   const open = (d: DrawerKind) => setDrawer(d);
+  /*
+   * Переход с карточки на «Редагувати групу» в колонке подразделов — тот же
+   * экран под другим адресом: React оставляет его смонтированным, и ящик
+   * открывается по смене адреса, а не только при первом открытии.
+   */
+  useEffect(() => {
+    if (editing) setDrawer("edit");
+  }, [editing]);
   const close = () => {
     setDrawer(null);
     /* ящик правки, открытый адресом, при закрытии возвращает адрес карточки: иначе перезагрузка открыла бы его снова */

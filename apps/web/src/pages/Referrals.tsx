@@ -495,14 +495,14 @@ function ReferralRow({
       <td className={cx(td, tone)}>
         <StatusTag status={r.status} />
         {wait.kind === "late" ? (
-          <small className="mt-1 flex items-center gap-1 text-caption font-bold text-warn">
+          <small className="mt-1 flex items-center gap-1 whitespace-nowrap text-caption font-bold text-warn">
             <Pi.clockAlert size={12} />
             {fill(ut("ref2.noAnswerFor"), { span: spanText(wait.minutes, units) })}
           </small>
         ) : wait.kind === "issued" ? (
-          <small className="mt-1 block text-caption text-muted">{fill(ut("ref2.issuedAgo"), { span: spanText(wait.minutes, units) })}</small>
+          <small className="mt-1 block whitespace-nowrap text-caption text-muted">{fill(ut("ref2.issuedAgo"), { span: spanText(wait.minutes, units) })}</small>
         ) : wait.kind === "accepted" ? (
-          <small className="mt-1 block text-caption text-muted">{fill(ut("ref2.acceptedIn"), { span: spanText(wait.minutes, units) })}</small>
+          <small className="mt-1 block whitespace-nowrap text-caption text-muted">{fill(ut("ref2.acceptedIn"), { span: spanText(wait.minutes, units) })}</small>
         ) : null}
       </td>
       <td className={cx(td, tone)}>
@@ -522,9 +522,19 @@ function ReferralRow({
       <td className={cx(td, tone, "whitespace-nowrap")}>
         <span className="flex items-center justify-end gap-1">
           {forward ? (
-            <Button size="xs" icon={forward.value === "completed" ? <Ic.checkCheck /> : <Ic.check />} disabled={busy} onClick={() => onMove(forward.value)}>
-              {ut(forward.key)}
-            </Button>
+            /* на 1280 подпись прячется (остаётся для диктора и в подсказке): иначе колонка «Підстава» сжимается до двух слов */
+            <Tooltip label={ut(forward.key)} kbd="A">
+              <Button
+                size="xs"
+                icon={forward.value === "completed" ? <Ic.checkCheck /> : <Ic.check />}
+                disabled={busy}
+                onClick={() => onMove(forward.value)}
+                aria-label={`${ut(forward.key)}: ${r.userName}`}
+                className="max-[1399px]:px-2"
+              >
+                <span className="max-[1399px]:sr-only">{ut(forward.key)}</span>
+              </Button>
+            </Tooltip>
           ) : null}
           {next.some((n) => n.value === "declined") ? (
             <Tooltip label={ut("ref.declined")}>
