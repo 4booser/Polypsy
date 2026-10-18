@@ -55,7 +55,7 @@ export default function ResponseCharts() {
   const nav = ctx && detail.userId ? attemptNav(ctx.attempts, detail.id, main?.scaleCode ?? null) : null;
 
   return (
-    <ResponseFrame banner={<ResponseBanner detail={detail} ctx={ctx} conclusion={x.conclusion.data} place="charts" />}>
+    <ResponseFrame banner={<ResponseBanner detail={detail} ctx={ctx} conclusion={x.conclusion.data} place="charts" pending={!x.ctx.data && !x.ctx.error} />}>
       <ResponseTabs surveyId={detail.survey.id} responseId={detail.id} nav={nav} charts />
       <div className="flex flex-col gap-4">
         <ResultPanel detail={detail} dynamics={x.dynamics} ctx={ctx} variant="charts" />

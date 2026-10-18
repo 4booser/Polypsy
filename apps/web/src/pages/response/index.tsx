@@ -66,7 +66,7 @@ export default function ResponseView() {
   const chartsHref = `/surveys/${detail.survey.id}/responses/${detail.id}/charts`;
 
   return (
-    <ResponseFrame banner={<ResponseBanner detail={detail} ctx={ctx} conclusion={x.conclusion.data} place="protocol" />}>
+    <ResponseFrame banner={<ResponseBanner detail={detail} ctx={ctx} conclusion={x.conclusion.data} place="protocol" pending={!x.ctx.data && !x.ctx.error} />}>
       <ResponseTabs surveyId={detail.survey.id} responseId={detail.id} nav={nav} charts={false} />
       <div className="grid items-start gap-4 grid-cols-[minmax(0,1fr)_360px] max-[1360px]:grid-cols-[minmax(0,1fr)_320px] max-[1100px]:grid-cols-1">
         <div className="flex min-w-0 flex-col gap-4">

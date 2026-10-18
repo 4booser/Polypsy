@@ -46,12 +46,15 @@ export function ResponseBanner({
   ctx,
   conclusion,
   place,
+  pending = false,
 }: {
   detail: ResponseDetail;
   /** null — обстановка ещё грузится или не пришла: шапка без строки открытого */
   ctx: ResponseContext | null;
   conclusion: ConclusionState | null;
   place: BannerPlace;
+  /** Обстановка ещё едет: на месте имени — скелет (отказ — не скелет навсегда) */
+  pending?: boolean;
 }) {
   const { ut } = useLang();
   const { can } = useAuth();
@@ -242,13 +245,27 @@ export function ResponseBanner({
     >
       <div className="rounded-drawer border border-band-card-line bg-band-card py-3 pl-3.5 pr-3 shadow-banner">
         <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
-          <div className="flex min-w-0 items-center gap-3.5">
-            <Avatar name={name} size={56} />
-            <div className="flex min-w-0 flex-col gap-[5px]">
-              <h1 className="m-0 truncate text-title font-extrabold tracking-[-0.03em] text-text">{name}</h1>
-              <span className="flex min-w-0 flex-wrap gap-x-4 gap-y-1 text-[13px] font-semibold text-text-2">{facts}</span>
+          {/* человек ещё едет — место держит скелет, а не прочерк вместо имени */}
+          {pending && detail.userId ? (
+            <div className="flex min-w-0 items-center gap-3.5">
+              <span aria-hidden className="size-14 shrink-0 animate-pulse rounded-full bg-sunk-2" />
+              <div className="flex min-w-0 flex-col gap-2.5">
+                <h1 className="m-0">
+                  <span className="sr-only">{ut("common.loading")}</span>
+                  <span aria-hidden className="block h-6 w-[280px] max-w-full animate-pulse rounded-[6px] bg-sunk-2" />
+                </h1>
+                <span aria-hidden className="block h-3 w-[200px] max-w-full animate-pulse rounded-[6px] bg-sunk-2" />
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="flex min-w-0 items-center gap-3.5">
+              <Avatar name={name} size={56} />
+              <div className="flex min-w-0 flex-col gap-[5px]">
+                <h1 className="m-0 truncate text-title font-extrabold tracking-[-0.03em] text-text">{name}</h1>
+                <span className="flex min-w-0 flex-wrap gap-x-4 gap-y-1 text-[13px] font-semibold text-text-2">{facts}</span>
+              </div>
+            </div>
+          )}
           <div className="ml-auto flex shrink-0 flex-wrap items-center gap-2">{actions}</div>
         </div>
         {chips.length ? <AlertStrip className="mt-3">{chips}</AlertStrip> : null}

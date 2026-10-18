@@ -96,7 +96,7 @@ export default function ConclusionPage() {
   const main = mainScore(detail.scores);
 
   return (
-    <ResponseFrame banner={<ResponseBanner detail={detail} ctx={ctx} conclusion={conclusion.data} place="conclusion" />}>
+    <ResponseFrame banner={<ResponseBanner detail={detail} ctx={ctx} conclusion={conclusion.data} place="conclusion" pending={!x.ctx.data && !x.ctx.error} />}>
       <div className="grid items-start gap-4 grid-cols-[minmax(0,1fr)_360px] max-[1360px]:grid-cols-[minmax(0,1fr)_320px] max-[1100px]:grid-cols-1">
         <div className="flex min-w-0 flex-col gap-4">
           {detail.status !== "completed" ? (
