@@ -336,10 +336,13 @@ export function Popover({
     hide(0);
   };
 
+  /* фокус, возвращённый на триггер после Esc, не должен открыть поповер снова */
+  const quiet = useRef(false);
   const onKey = (e: KeyboardEvent) => {
     if (e.key === "Escape" && open) {
       e.stopPropagation();
       hide(0);
+      quiet.current = true;
       triggerRef.current?.focus();
     }
   };
@@ -372,10 +375,15 @@ export function Popover({
     },
     onFocus: (e: unknown) => {
       call("onFocus", e);
+      if (quiet.current) {
+        quiet.current = false;
+        return;
+      }
       show(0);
     },
     onBlur: (e: FocusEvent) => {
       call("onBlur", e);
+      quiet.current = false;
       onBlurAny(e);
     },
     onKeyDown: (e: KeyboardEvent) => {

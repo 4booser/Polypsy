@@ -248,7 +248,9 @@ export function Drawer({
   const currentMode = single.title !== undefined ? mode : panes[at]?.props.mode;
 
   /* кто открыл немодальный ящик — ему вернуть фокус (модальному возвращает ловушка) */
-  if (open && !modal && !opener.current) opener.current = document.activeElement as HTMLElement | null;
+  if (open && !modal && !opener.current && typeof document !== "undefined") {
+    opener.current = document.activeElement as HTMLElement | null;
+  }
 
   const requestClose = useCallback(() => {
     if (current?.dirty) {
@@ -282,11 +284,19 @@ export function Drawer({
   /* при открытии — фокус на [data-autofocus] вида или на крестик, как в наборе */
   useLayoutEffect(() => {
     if (!open) return;
-    const root = box.current;
-    if (!root || root.contains(document.activeElement)) return;
-    const pane = root.querySelector<HTMLElement>("section[data-pane]:not([hidden])") ?? root;
-    const target = pane.querySelector<HTMLElement>("[data-autofocus]") ?? pane.querySelector<HTMLElement>("[data-drawer-close]");
-    target?.focus({ preventScroll: true });
+    const place = () => {
+      const root = box.current;
+      if (!root) return;
+      const pane = root.querySelector<HTMLElement>("section[data-pane]:not([hidden])") ?? root;
+      if (pane.contains(document.activeElement)) return;
+      const target =
+        pane.querySelector<HTMLElement>("[data-autofocus]") ?? pane.querySelector<HTMLElement>("[data-drawer-close]");
+      target?.focus({ preventScroll: true });
+    };
+    place();
+    /* и ещё раз в следующем кадре: ловушка фокуса ставит его на сам ящик после этой правки */
+    const raf = requestAnimationFrame(place);
+    return () => cancelAnimationFrame(raf);
   }, [open, at, box]);
 
   const name = label ?? (typeof current?.title === "string" ? current.title : undefined);
@@ -309,9 +319,16 @@ export function Drawer({
         className={cx(
           "fixed bottom-2.5 right-0 top-[calc(var(--ah,56px)+10px)] z-[35] flex max-w-[calc(100vw-16px)] flex-col overflow-hidden outline-none",
           "rounded-l-drawer border border-r-0 border-border bg-panel shadow-drawer",
-          "transition-[transform,visibility] duration-[var(--dur-slow)] ease-[var(--ease)]",
+          "duration-[var(--dur-slow)] ease-[var(--ease)]",
           wide ? "w-[520px]" : "w-[440px]",
-          open ? "visible translate-x-0" : "invisible translate-x-[104%]",
+          /*
+           * Видимость переключается сразу при открытии и только в конце при
+           * закрытии: переходом она становится видимой не в первый кадр, и
+           * фокус, поставленный при открытии, падал бы на ещё невидимое поле.
+           */
+          open
+            ? "visible translate-x-0 transition-transform"
+            : "invisible translate-x-[104%] transition-[transform,visibility]",
         )}
       >
         {single.title !== undefined ? (

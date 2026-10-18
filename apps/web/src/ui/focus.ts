@@ -115,7 +115,10 @@ export function useFocusTrap<T extends HTMLElement>(active = true): React.RefObj
    * ⌘K. Берём именно document.activeElement, а не «кнопку, по которой
    * кликнули»: у открытия с клавиатуры клика нет вовсе.
    */
-  if (active && !openNow.current) opener.current = document.activeElement as HTMLElement | null;
+  /* вне браузера (отрисовка в строку в проверках) документа нет — и открывшего тоже */
+  if (active && !openNow.current && typeof document !== "undefined") {
+    opener.current = document.activeElement as HTMLElement | null;
+  }
   openNow.current = active;
 
   useEffect(() => {
