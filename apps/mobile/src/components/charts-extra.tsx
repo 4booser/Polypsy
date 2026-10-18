@@ -1,29 +1,28 @@
-import { Text, View } from "react-native";
-import { radius, spacing, useChart, useColors } from "../theme";
+import { View } from "react-native";
+import { spacing, useChart } from "../theme";
+import { T } from "../ui/Text";
 import { useLang } from "@/lang";
 
-/** Положение балла в накопленной выборке */
+/** Положение балла в накопленной выборке: дорожка и метка на ней */
 export function PercentileBar({ percentile }: { percentile: number }) {
   const chart = useChart();
-  const c = useColors();
   const { ut } = useLang();
   return (
     <View style={{ gap: spacing.xs }}>
-      <View style={{ height: 8, backgroundColor: chart.grid, borderRadius: radius.sm }}>
+      <View style={{ height: 8, backgroundColor: chart.track, borderRadius: 4 }}>
         <View
           style={{
             position: "absolute",
             left: `${Math.min(98, Math.max(0, percentile))}%`,
-            width: 3,
-            height: 8,
+            top: -3,
+            width: 4,
+            height: 14,
             backgroundColor: chart.bar,
             borderRadius: 2,
           }}
         />
       </View>
-      <Text style={{ color: c.muted, fontSize: 12 }}>
-        {ut("mv.aboveShare").replace("{n}", String(percentile))}
-      </Text>
+      <T v="sub">{ut("mv.aboveShare").replace("{n}", String(percentile))}</T>
     </View>
   );
 }

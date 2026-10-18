@@ -7879,6 +7879,27 @@ export const UI = {
     en: "Google Meet for a booked appointment",
   },
 
+  // ── v2-mobile-base ──
+  /* мобилка «Виразна»: шапка, лист помощи, вкладка профиля (apps/mobile/src/ui) */
+  "mui.help": { uk: "Допомога", ru: "Помощь", en: "Help" },
+  "mui.helpTitle": { uk: "Потрібна допомога зараз", ru: "Нужна помощь сейчас", en: "Need help right now" },
+  "mui.helpSub": {
+    uk: "Дзвінок почнеться одразу, без підтверджень.",
+    ru: "Звонок начнётся сразу, без подтверждений.",
+    en: "The call starts right away, with no confirmation.",
+  },
+  "mui.hotlineSub": { uk: "цілодобово", ru: "круглосуточно", en: "around the clock" },
+  "mui.emergency": { uk: "Екстрена допомога", ru: "Экстренная помощь", en: "Emergency services" },
+  "mui.emergencySub": { uk: "якщо є загроза життю", ru: "если есть угроза жизни", en: "if a life is in danger" },
+  "mui.emergencyNumber": { uk: "103", ru: "103", en: "103" },
+  "mui.profile": { uk: "Профіль", ru: "Профиль", en: "Profile" },
+  /* мобилка «Виразна»: график курса (apps/mobile/src/components/viz/CourseChart.tsx) */
+  "mui.better": { uk: "краще", ru: "лучше", en: "better" },
+  "mui.today": { uk: "сьогодні", ru: "сегодня", en: "today" },
+  "mui.measures": { uk: "заміри", ru: "замеры", en: "measurements" },
+  "mui.rcZone": { uk: "межі похибки", ru: "границы погрешности", en: "error margin" },
+  "mui.signal": { uk: "сигнал", ru: "сигнал", en: "alert" },
+  "mui.fromStart": { uk: "від старту {d}", ru: "от старта {d}", en: "{d} since start" },
 } as const satisfies Record<string, UiEntry>;
 
 export type UiKey = keyof typeof UI;

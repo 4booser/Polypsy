@@ -1,16 +1,20 @@
 import { useEffect, useRef } from "react";
 import { AppState, Platform } from "react-native";
 import Constants from "expo-constants";
-import { Stack, usePathname, useRouter, useSegments } from "expo-router";
+import { SplashScreen, Stack, usePathname, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
+import { useFonts } from "expo-font";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { AuthProvider } from "@/auth/AuthContext";
 import { LangProvider, useLang } from "@/lang";
-import { ThemeProvider } from "@/theme";
+import { ThemeProvider, useColors, useIsDark } from "@/theme";
 import { TextScaleProvider } from "@/textScale";
 import { api } from "@/api/client";
 import { AppLock } from "@/components/AppLock";
-import { useColors } from "@/theme";
+import { FONT_FILES } from "@/fontFiles";
+import { setFontsLoaded } from "@/fonts";
+import { StackHeader } from "@/ui/headers";
+import { ToastProvider } from "@/ui/Toast";
 import { useScreenTelemetry } from "@/telemetry/screens";
 import { API_URL } from "@/config";
 import { tokenStorage } from "@/storage";
@@ -36,7 +40,27 @@ const telemetry = createMobileTelemetry({
 });
 telemetry.install((globalThis as { ErrorUtils?: ErrorUtilsLike }).ErrorUtils);
 
+/*
+ * Заставка держится, пока грузится Manrope: иначе первый кадр рисовался бы
+ * системным шрифтом и через мгновение «прыгал» в наш — у человека, который
+ * открыл методику, текст под пальцем сдвигался бы. В вебе заставки нет —
+ * там до загрузки пустая земля.
+ */
+void SplashScreen.preventAutoHideAsync();
+
 export default function RootLayout() {
+  /*
+   * Шрифт не загрузился (файл повреждён, нет места) — приложение не встаёт
+   * на пустом экране, а рисует системным шрифтом: прочесть методику важнее,
+   * чем прочесть её нашим шрифтом (fonts.ts).
+   */
+  const [fontsReady, fontError] = useFonts(FONT_FILES);
+  const fontsSettled = fontsReady || !!fontError;
+  setFontsLoaded(fontsReady);
+  useEffect(() => {
+    if (fontsSettled) void SplashScreen.hideAsync();
+  }, [fontsSettled]);
+
   const pathname = usePathname();
   useEffect(() => {
     currentRoute = pathname;
@@ -84,23 +108,35 @@ export default function RootLayout() {
     };
   }, []);
 
+  if (!fontsSettled) return null;
+
   return (
     <SafeAreaProvider>
       <ThemeProvider>
       <LangProvider>
       <TextScaleProvider>
       <AuthProvider>
-        <StatusBar style="auto" />
+      <ToastProvider>
+        <ThemedStatusBar />
         {/* замок оборачивает всё приложение: он про экран, а не про отдельный маршрут */}
         <AppLock>
           <RootStack />
         </AppLock>
+      </ToastProvider>
       </AuthProvider>
       </TextScaleProvider>
       </LangProvider>
       </ThemeProvider>
     </SafeAreaProvider>
   );
+}
+
+/**
+ * Строка состояния — по теме приложения, а не системы: выбрана тёмная при
+ * светлом телефоне — часы и батарея светлые на тёмной полосе, а не тёмные.
+ */
+function ThemedStatusBar() {
+  return <StatusBar style={useIsDark() ? "light" : "dark"} />;
 }
 
 /**
@@ -187,11 +223,9 @@ function RootStack() {
     <Stack
       screenOptions={{
         headerShown: false,
-        // шапка должна следовать теме — иначе на тёмной теме она остаётся белой
-        headerStyle: { backgroundColor: c.card },
-        headerTitleStyle: { color: c.text },
-        headerTintColor: c.primary,
-        contentStyle: { backgroundColor: c.bg },
+        // шапка — полоса «Виразной»: подпись, «назад» и действие справа из опций экрана (ui/headers.tsx)
+        header: (props) => <StackHeader {...props} />,
+        contentStyle: { backgroundColor: c.ground },
         /*
          * Подпись стрелки на iOS — имя предыдущего экрана, а у группы
          * вкладок его нет: стрелка читалась «‹ (app)».
@@ -206,9 +240,18 @@ function RootStack() {
       {/* смена временного пароля: до согласия и до всего остального (auth/passwordGate.ts) */}
       <Stack.Screen name="password" />
       <Stack.Screen name="(app)" />
+      {/*
+        «Допомога» в шапке прохождения: методика может спросить о том, после
+        чего помощь нужна сразу, и искать её на другой вкладке некогда.
+      */}
       <Stack.Screen
         name="survey/[id]"
-        options={{ headerShown: true, title: ut("mnav.instrument"), headerLeft: closeIfAlone }}
+        options={{
+          headerShown: true,
+          title: ut("mnav.instrument"),
+          headerLeft: closeIfAlone,
+          header: (props) => <StackHeader {...props} help />,
+        }}
       />
       {/*
         Карта пациента в обходе не была объявлена здесь и наследовала

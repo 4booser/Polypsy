@@ -1,10 +1,10 @@
-import { View } from "react-native";
 import { Redirect, Tabs, useRouter } from "expo-router";
 import { useAuth } from "@/auth/AuthContext";
 import { Loader } from "@/components/ui";
-import { OfflineBar } from "@/components/OfflineBar";
 import { useColors } from "@/theme";
 import { useLang } from "@/lang";
+import { TabBar } from "@/ui/TabBar";
+import { TabHeader } from "@/ui/headers";
 
 /**
  * Вкладки: прохождение, обход и аналитика (для сотрудников), план безопасности
@@ -24,18 +24,18 @@ export default function AppLayout() {
   if (user.mustChangePassword) return <Redirect href="/password" />;
 
   return (
-    // полоса очереди над вкладками: она должна быть видна на любом экране,
-    // а не только там, куда человек догадается зайти
-    <View style={{ flex: 1, backgroundColor: c.bg }}>
-      <OfflineBar />
-      <Tabs
+    <Tabs
+      /*
+       * Шапка и панель вкладок «Виразной» (src/ui): крупный заголовок на
+       * полосе, «Допомога» справа у пациента — помощь видна с любой вкладки.
+       * Полоса очереди («нет связи», «не принято») — в шапке, под заголовком:
+       * она видна на любом экране, а не только там, куда человек догадается
+       * зайти.
+       */
+      tabBar={(props) => <TabBar {...props} />}
       screenOptions={{
-        headerStyle: { backgroundColor: c.card },
-        headerTitleStyle: { color: c.text },
-        tabBarStyle: { backgroundColor: c.card, borderTopColor: c.border },
-        tabBarActiveTintColor: c.primary,
-        tabBarInactiveTintColor: c.muted,
-        sceneStyle: { backgroundColor: c.bg },
+        header: (props) => <TabHeader {...props} help={!isAdmin} />,
+        sceneStyle: { backgroundColor: c.ground },
       }}
     >
       {/*
@@ -90,10 +90,10 @@ export default function AppLayout() {
         нижнюю панель нечитаемой на узком телефоне.
       */}
       <Tabs.Screen name="safety" options={{ href: null, title: ut("tab.safety") }} />
-      <Tabs.Screen name="profile" options={{ title: ut("tab.account") }} />
+      {/* в шапке — «Обліковий запис», на вкладке — короткое «Профіль»: пять подписей в ряд на узком телефоне */}
+      <Tabs.Screen name="profile" options={{ title: ut("tab.account"), tabBarLabel: ut("mui.profile") }} />
       {/* очередь открывается из полосы состояния, отдельной вкладки ей не нужно */}
       <Tabs.Screen name="queue" options={{ href: null, title: ut("tab.queue") }} />
-      </Tabs>
-    </View>
+    </Tabs>
   );
 }

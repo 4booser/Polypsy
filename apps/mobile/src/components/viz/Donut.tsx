@@ -1,7 +1,8 @@
-import { Text as RNText, View } from "react-native";
+import { View } from "react-native";
 import Svg, { G, Path, Text as SvgText } from "react-native-svg";
 import { spacing, useColors } from "../../theme";
-import { Caption, useMeasuredWidth } from "./primitives";
+import { T } from "../../ui/Text";
+import { Caption, svgFont, useMeasuredWidth } from "./primitives";
 import { useLang } from "@/lang";
 
 export interface Slice {
@@ -68,11 +69,11 @@ export function Donut({
         </G>
         {centerValue ? (
           <>
-            <SvgText x={cx} y={cy + 2} fontSize={22} fontWeight="700" fill={c.text} textAnchor="middle">
+            <SvgText x={cx} y={cy + 2} fontSize={22} {...svgFont(800)} fill={c.text} textAnchor="middle">
               {centerValue}
             </SvgText>
             {centerLabel ? (
-              <SvgText x={cx} y={cy + 18} fontSize={10} fill={c.muted} textAnchor="middle">
+              <SvgText x={cx} y={cy + 18} fontSize={11} {...svgFont(600)} fill={c.muted} textAnchor="middle">
                 {centerLabel}
               </SvgText>
             ) : null}
@@ -84,12 +85,12 @@ export function Donut({
         {slices.map((s) => (
           <View key={s.label} style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
             <View style={{ width: 10, height: 10, borderRadius: 3, backgroundColor: s.color }} />
-            <RNText style={{ color: c.text, fontSize: 13, flex: 1 }} numberOfLines={1}>
+            <T v="sub" size={14} tone="text" style={{ flex: 1 }} numberOfLines={1}>
               {s.label}
-            </RNText>
-            <RNText style={{ color: c.muted, fontSize: 12, fontVariant: ["tabular-nums"] }}>
-              {s.value} · {Math.round((s.value / total) * 100)}%
-            </RNText>
+            </T>
+            <T v="sub" size={13} num>
+              {s.value}, {Math.round((s.value / total) * 100)}%
+            </T>
           </View>
         ))}
       </View>

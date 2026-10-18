@@ -2,6 +2,7 @@ import { Stack } from "expo-router";
 import { useColors } from "@/theme";
 import { useLang } from "@/lang";
 import { ExitHeaderButton } from "@/nav/useExit";
+import { StackHeader } from "@/ui/headers";
 
 /*
  * Корень раздела лежит под любым вложенным экраном.
@@ -43,10 +44,9 @@ export default function AnalyticsLayout() {
   return (
     <Stack
       screenOptions={{
-        headerStyle: { backgroundColor: c.card },
-        headerTitleStyle: { color: c.text },
-        headerTintColor: c.primary,
-        contentStyle: { backgroundColor: c.bg },
+        // полоса «Виразной» без «Допомоги»: раздел сотрудника (ui/headers.tsx)
+        header: (props) => <StackHeader {...props} />,
+        contentStyle: { backgroundColor: c.ground },
       }}
     >
       <Stack.Screen name="index" options={{ title: ut("mnav.analytics"), headerLeft: closeButton }} />

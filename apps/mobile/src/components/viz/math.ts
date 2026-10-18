@@ -140,3 +140,15 @@ export function xFractions(series: readonly { points: readonly { t?: number }[] 
   const count = Math.max(0, ...series.map((s) => s.points.length));
   return series.map((s) => s.points.map((_, i) => (count > 1 ? i / (count - 1) : 0.5)));
 }
+
+/**
+ * Ступень тепловой лестницы h1…h5 (0…4) по доле от максимума.
+ *
+ * Лестница — один фиолетовый тон, пять ступеней с заранее подобранным
+ * текстом на каждой (chart.heatInk): прозрачность поверх листа давала
+ * серединки, на которых не читался ни белый, ни тёмный текст.
+ */
+export function heatStep(share: number): number {
+  if (!Number.isFinite(share) || share <= 0) return 0;
+  return Math.min(4, Math.floor(share * 5));
+}

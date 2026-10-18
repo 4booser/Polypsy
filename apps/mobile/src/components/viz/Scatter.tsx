@@ -1,8 +1,8 @@
 import React from "react";
 import { View } from "react-native";
 import Svg, { Circle, Line, Text as SvgText } from "react-native-svg";
-import { severityColor, useChart, useColors } from "../../theme";
-import { Caption, Legend, PLOT, formatShort, niceTicks, useMeasuredWidth } from "./primitives";
+import { useChart, useColors } from "../../theme";
+import { Caption, Legend, PLOT, formatShort, niceTicks, useAxisText, useMeasuredWidth } from "./primitives";
 import { useLang } from "@/lang";
 
 export interface ScatterPoint {
@@ -35,6 +35,7 @@ export function Scatter({
 }) {
   const { ut } = useLang();
   const chart = useChart();
+  const axis = useAxisText();
   const c = useColors();
   const [width, onLayout] = useMeasuredWidth();
 
@@ -57,13 +58,13 @@ export function Scatter({
         {yTicks.map((t) => (
           <React.Fragment key={`y${t}`}>
             <Line x1={PLOT.padLeft} x2={PLOT.padLeft + plotW} y1={yAt(t)} y2={yAt(t)} stroke={chart.grid} strokeWidth={1} />
-            <SvgText x={PLOT.padLeft - 6} y={yAt(t) + 4} fontSize={10} fill={chart.axis} textAnchor="end">
+            <SvgText x={PLOT.padLeft - 6} y={yAt(t) + 4} {...axis} textAnchor="end">
               {formatShort(t)}
             </SvgText>
           </React.Fragment>
         ))}
         {xTicks.map((t) => (
-          <SvgText key={`x${t}`} x={xAt(t)} y={height - 12} fontSize={10} fill={chart.axis} textAnchor="middle">
+          <SvgText key={`x${t}`} x={xAt(t)} y={height - 12} {...axis} textAnchor="middle">
             {formatShort(t)}
           </SvgText>
         ))}
@@ -75,11 +76,11 @@ export function Scatter({
               x2={xAt(xThreshold)}
               y1={PLOT.padTop}
               y2={PLOT.padTop + plotH}
-              stroke={severityColor.severe}
+              stroke={c.warn}
               strokeWidth={1}
               strokeDasharray="4 3"
             />
-            <SvgText x={xAt(xThreshold) + 4} y={PLOT.padTop + 10} fontSize={9} fill={severityColor.severe}>
+            <SvgText x={xAt(xThreshold) + 4} y={PLOT.padTop + 10} {...axis} fill={c.warn}>
               {ut("mv.threshold")}
             </SvgText>
           </>
@@ -91,17 +92,17 @@ export function Scatter({
             cx={xAt(p.x)}
             cy={yAt(p.y)}
             r={p.flagged ? 6 : 4}
-            fill={p.flagged ? severityColor.severe : chart.series[0]}
+            fill={p.flagged ? c.warn : chart.series[0]}
             fillOpacity={p.flagged ? 0.9 : 0.55}
             stroke={p.flagged ? c.card : "none"}
             strokeWidth={p.flagged ? 2 : 0}
           />
         ))}
 
-        <SvgText x={PLOT.padLeft} y={height - 1} fontSize={10} fill={chart.axis}>
+        <SvgText x={PLOT.padLeft} y={height - 1} {...axis}>
           {xLabel}
         </SvgText>
-        <SvgText x={PLOT.padLeft - 6} y={PLOT.padTop - 2} fontSize={10} fill={chart.axis} textAnchor="end">
+        <SvgText x={PLOT.padLeft - 6} y={PLOT.padTop - 2} {...axis} textAnchor="end">
           {yLabel}
         </SvgText>
       </Svg>
@@ -110,7 +111,7 @@ export function Scatter({
           flagged
             ? [
                 { label: ut("mv.ordinary"), color: chart.series[0]! },
-                { label: ut("mv.markedCareless").replace("{n}", String(flagged)), color: severityColor.severe },
+                { label: ut("mv.markedCareless").replace("{n}", String(flagged)), color: c.warn },
               ]
             : []
         }

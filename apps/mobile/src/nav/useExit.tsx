@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef } from "react";
-import { BackHandler, Platform, Pressable, Text } from "react-native";
+import { BackHandler, Platform } from "react-native";
 import { useRouter, useSegments, type Href } from "expo-router";
-import { spacing, useColors } from "@/theme";
+import { NavTextButton } from "@/ui/NavBar";
 import { exitFrom } from "./exits";
 
 /**
@@ -72,18 +72,7 @@ export function ExitHeaderButton({
   /** Рисовать и тогда, когда стрелка была бы: у раздела аналитики своя подпись «‹ Меню» */
   always?: boolean;
 }) {
-  const c = useColors();
   const exit = useExit();
   if (canGoBack && !always) return null;
-  return (
-    <Pressable
-      onPress={exit}
-      accessibilityRole="button"
-      accessibilityLabel={accessibilityLabel ?? label}
-      hitSlop={12}
-      style={{ paddingRight: spacing.sm }}
-    >
-      <Text style={{ color: c.primary, fontSize: 16 }}>{label}</Text>
-    </Pressable>
-  );
+  return <NavTextButton label={label} onPress={exit} accessibilityLabel={accessibilityLabel ?? label} />;
 }

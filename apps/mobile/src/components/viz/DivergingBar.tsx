@@ -1,8 +1,8 @@
 import React from "react";
 import { View } from "react-native";
 import Svg, { Line, Rect, Text as SvgText } from "react-native-svg";
-import { severityColor, useChart, useColors } from "../../theme";
-import { Caption, useMeasuredWidth } from "./primitives";
+import { useChart, useColors } from "../../theme";
+import { Caption, svgFont, useMeasuredWidth } from "./primitives";
 import { useLang } from "@/lang";
 
 export interface DivergingItem {
@@ -52,12 +52,13 @@ export function DivergingBar({
 
         {items.map((it, i) => {
           const weak = goodThreshold !== undefined && it.value < goodThreshold;
-          const color = it.value < 0 ? severityColor.severe : weak ? severityColor.mild : chart.series[0]!;
+          // отрицательная связь — «требует внимания», слабая — нейтральная c5: красный здесь не риск для человека
+          const color = it.value < 0 ? c.warn : weak ? chart.series[4]! : chart.series[0]!;
           const x = xAt(it.value);
           const y = i * rowH + 9;
           return (
             <React.Fragment key={it.label}>
-              <SvgText x={0} y={y + 11} fontSize={11} fill={c.text}>
+              <SvgText x={0} y={y + 11} fontSize={12} fill={c.text} {...svgFont(600)}>
                 {it.label.length > 24 ? `${it.label.slice(0, 23)}…` : it.label}
               </SvgText>
               <Rect
@@ -71,8 +72,9 @@ export function DivergingBar({
               <SvgText
                 x={width - 2}
                 y={y + 11}
-                fontSize={11}
-                fill={c.muted}
+                fontSize={12}
+                fill={c.text2}
+                {...svgFont(700)}
                 textAnchor="end"
               >
                 {it.value.toFixed(2)}

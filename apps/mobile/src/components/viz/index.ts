@@ -7,3 +7,4 @@ export * from "./Heatmap";
 export * from "./Donut";
 export * from "./DivergingBar";
 export * from "./Funnel";
+export * from "./CourseChart";

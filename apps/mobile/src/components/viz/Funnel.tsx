@@ -1,8 +1,8 @@
 import React from "react";
 import { View } from "react-native";
 import Svg, { Path, Text as SvgText } from "react-native-svg";
-import { severityColor, useChart, useColors } from "../../theme";
-import { Caption, useMeasuredWidth } from "./primitives";
+import { useChart, useColors } from "../../theme";
+import { Caption, svgFont, useMeasuredWidth } from "./primitives";
 import { useLang } from "@/lang";
 
 export interface FunnelStage {
@@ -45,7 +45,7 @@ export function Funnel({ stages, height }: { stages: FunnelStage[]; height?: num
           const lostShare = s.value > 0 ? s.lost / (s.value + s.lost) : 0;
           return (
             <React.Fragment key={s.label}>
-              <SvgText x={0} y={y0 + 18} fontSize={11} fill={c.text}>
+              <SvgText x={0} y={y0 + 18} fontSize={12} fill={c.text} {...svgFont(600)}>
                 {s.label.length > 22 ? `${s.label.slice(0, 21)}…` : s.label}
               </SvgText>
               <Path
@@ -53,15 +53,16 @@ export function Funnel({ stages, height }: { stages: FunnelStage[]; height?: num
                 fill={chart.series[0]}
                 fillOpacity={0.75}
               />
-              <SvgText x={width - 2} y={y0 + 18} fontSize={11} fill={c.muted} textAnchor="end">
+              <SvgText x={width - 2} y={y0 + 18} fontSize={12} fill={c.text2} {...svgFont(700)} textAnchor="end">
                 {s.value}
               </SvgText>
               {s.lost > 0 ? (
                 <SvgText
                   x={cx}
                   y={y1 + 1}
-                  fontSize={9}
-                  fill={lostShare > 0.15 ? severityColor.severe : c.muted}
+                  fontSize={11}
+                  {...svgFont(700)}
+                  fill={lostShare > 0.15 ? c.warn : c.muted}
                   textAnchor="middle"
                 >
                   −{s.lost}

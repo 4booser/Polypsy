@@ -1,7 +1,7 @@
 import { View } from "react-native";
 import Svg, { Circle, Line, Polygon, Text as SvgText } from "react-native-svg";
 import { useChart, useColors } from "../../theme";
-import { Caption, Legend, useMeasuredWidth } from "./primitives";
+import { Caption, Legend, svgFont, useMeasuredWidth } from "./primitives";
 import { useLang } from "@/lang";
 
 export interface RadarAxis {
@@ -92,7 +92,7 @@ export function RadarChart({
 
         {axes.map((a, i) => {
           const [x, y] = point(i, Math.max(0, Math.min(1, a.value)));
-          return <Circle key={`dot-${i}`} cx={x} cy={y} r={4} fill={chart.series[0]} stroke={c.card} strokeWidth={2} />;
+          return <Circle key={`dot-${i}`} cx={x} cy={y} r={4} fill={chart.series[0]} stroke={c.panel} strokeWidth={2} />;
         })}
 
         {axes.map((a, i) => {
@@ -103,8 +103,9 @@ export function RadarChart({
               key={`lbl-${i}`}
               x={x}
               y={y + 4}
-              fontSize={10}
-              fill={c.muted}
+              fontSize={11}
+              fill={c.text2}
+              {...svgFont(600)}
               textAnchor={anchor as "middle" | "start" | "end"}
             >
               {a.label.length > 14 ? `${a.label.slice(0, 13)}…` : a.label}
