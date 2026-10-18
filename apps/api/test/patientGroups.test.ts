@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq, sql } from "drizzle-orm";
 import {
   adminA,
@@ -7,11 +7,12 @@ import {
   db,
   makeUser,
   root,
+  submitSurvey,
   surveyInA,
   surveyInB,
   type Person,
 } from "./fixtures";
-import { patientGroupMembers, patientGroups, surveyAccess } from "../src/db/schema";
+import { alertCases, patientGroupMembers, patientGroups, surveyAccess } from "../src/db/schema";
 
 /**
  * Группы ПАЦИЕНТОВ.
@@ -448,6 +449,70 @@ describe("Тести Групи — назначение методики на �
       where: and(eq(surveyAccess.surveyId, surveyInA), eq(surveyAccess.userId, leaves.id)),
     });
     expect(row, `назначение доехало до выбывшего из зоны: ${leaves.id}`).toBeFalsy();
+  });
+});
+
+/**
+ * Строка таблицы групп и строка состава в карточке: коды методик, кто прошёл
+ * назначенное, ризик, кто веде, когда менялась, закладка «обрана».
+ *
+ * Мутации: считать doneCount по любой одной методике вместо всех — падает
+ * «пройшли»; брать в riskCount разобранные случаи — падает «ризик» после
+ * разбора; отдавать favourite карточки постоянным false — падает закладка.
+ */
+describe("строка списка групп и состав карточки", () => {
+  const cases: string[] = [];
+  afterAll(async () => {
+    // открытые случаи — в очереди дежурного; оставлять их живыми нельзя
+    for (const id of cases) {
+      await db.update(alertCases).set({ acknowledgedAt: new Date().toISOString() }).where(eq(alertCases.id, id));
+    }
+  });
+
+  test("коды, пройшли призначене, ризик, веде и закладка", async () => {
+    const id = await makeGroup(adminA, `Рядок ${crypto.randomUUID().slice(0, 8)}`);
+    const passed = await patientInZoneOfA("row-passed");
+    const risky = await patientInZoneOfA("row-risky");
+    await api(`/api/patient-groups/${id}/members`, adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ userIds: [passed.id, risky.id] }),
+    });
+    const assigned = await api(`/api/patient-groups/${id}/surveys`, adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ surveyId: surveyInA, attemptsAllowed: 2 }),
+    });
+    expect(assigned.status).toBe(201);
+    const sent = await submitSurvey(surveyInA, passed.token);
+    expect(sent.status, "прохождение участника не сохранилось").toBe(201);
+    const caseId = crypto.randomUUID();
+    await db.insert(alertCases).values({ id: caseId, userId: risky.id, surveyId: surveyInA, severity: "severe" });
+    cases.push(caseId);
+
+    const list = await api("/api/patient-groups", adminA.token);
+    const row = (list.body.items as Record<string, unknown>[]).find((g) => g.id === id)!;
+    expect(row, "группы нет в списке").toBeTruthy();
+    expect((row.surveys as { surveyId: string }[]).map((s) => s.surveyId)).toEqual([surveyInA]);
+    expect(row.doneCount, "«пройшли призначене» не сходится").toBe(1);
+    expect(row.riskCount, "«ризик у групі» не сходится").toBe(1);
+    expect(row.ownerName).not.toBe("—");
+    expect(String(row.changedAt) >= String(row.createdAt)).toBe(true);
+
+    const card = await api(`/api/patient-groups/${id}`, adminA.token);
+    const byId = new Map((card.body.members as { userId: string }[]).map((m) => [m.userId, m]));
+    expect(byId.get(passed.id)).toMatchObject({ completedSurveyIds: [surveyInA], openRisk: false });
+    expect(byId.get(risky.id)).toMatchObject({ completedSurveyIds: [], openRisk: true });
+    expect(card.body.ownerName).toBe(row.ownerName);
+    expect(card.body.favourite).toBe(false);
+
+    expect((await api(`/api/patient-groups/${id}/favourite`, adminA.token, { method: "PUT" })).status).toBe(200);
+    expect((await api(`/api/patient-groups/${id}`, adminA.token)).body.favourite, "закладка не видна в карточке").toBe(true);
+
+    // разобранный случай — уже не ризик
+    await db.update(alertCases).set({ acknowledgedAt: new Date().toISOString() }).where(eq(alertCases.id, caseId));
+    const after = await api("/api/patient-groups", adminA.token);
+    const again = (after.body.items as Record<string, unknown>[]).find((g) => g.id === id)!;
+    expect(again.riskCount, "разобранный случай всё ещё считается ризиком").toBe(0);
+    expect(again.favourite).toBe(true);
   });
 });
 

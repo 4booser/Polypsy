@@ -1179,6 +1179,14 @@ export interface PatientGroupMember {
   phone: string | null;
   addedAt: string;
   addedBy: string | null;
+  /**
+   * Какие из методик группы человек уже прошёл (хотя бы раз) — отметки
+   * «Тести групи» в строке состава. Правило то же, что у completedCount
+   * методики группы: иначе строка и сводка говорили бы разное.
+   */
+  completedSurveyIds: string[];
+  /** Есть открытый случай риска (alert_cases без разбора) */
+  openRisk: boolean;
 }
 
 /** Методика, назначенная на группу целиком — «Тести Групи» */
@@ -1213,12 +1221,29 @@ export interface PatientGroupWithCounts extends PatientGroup {
    * разбирающий чужие вкладки, видит свои закладки, а не закладки владельца.
    */
   favourite: boolean;
+  /** Методики группы в порядке назначения — коды в строке списка групп */
+  surveys: { surveyId: string; title: LocalizedText }[];
+  /**
+   * Сколько видимых участников прошли ВСЕ методики группы (каждую хотя бы
+   * раз; правило completedCount). Без методик — 0: проходить нечего.
+   */
+  doneCount: number;
+  /** Сколько видимых участников с открытым случаем риска */
+  riskCount: number;
+  /** Кто ведёт группу — её владелец */
+  ownerName: string;
+  /** Последнее изменение: заведение, добавление участника или назначение методики */
+  changedAt: string;
 }
 
 /** Карточка группы: описание, состав и назначенные методики на одном экране */
 export interface PatientGroupCard extends PatientGroup {
   members: PatientGroupMember[];
   surveys: PatientGroupSurvey[];
+  /** Кто ведёт группу — её владелец */
+  ownerName: string;
+  /** «Обрана» читателем — та же закладка, что в списке групп */
+  favourite: boolean;
 }
 
 /* ─────────── Пациенты зоны видимости и карточка пациента ─────────── */
@@ -2837,6 +2862,16 @@ export interface Referral {
   createdByName: string;
   createdAt: string;
   updatedAt: string | null;
+}
+
+/**
+ * Страница реестра направлений. На первой странице — ещё и число направлений
+ * зоны по каждому статусу: по нему стоят пилюли видов реестра, и считать их
+ * по загруженным строкам значило бы показывать «Завершені 12», когда их
+ * сорок, просто потому что вторая страница ещё не приехала.
+ */
+export interface ReferralPage extends Page<Referral> {
+  counts?: Record<ReferralStatus, number>;
 }
 
 /** Сводка для консилиума (6.5): всё о пациенте на одной странице */

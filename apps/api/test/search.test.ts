@@ -113,6 +113,19 @@ describe("поиск", () => {
     expect(mine.excerpt).toContain("раздражительн");
   });
 
+  /*
+   * Автор — для строки уривка и отбора «Автор» на экране поиска.
+   * Мутация: отдать authorName постоянным «—» — проверка называет запись.
+   */
+  test("у найденной записи названо, кто её написал", async () => {
+    const person = await noteFor("Авторская пометка кукушонок");
+    const found = await api("/api/search/notes?q=кукушонок", adminA.token);
+    const mine = found.body.items.find((i: { userId: string }) => i.userId === person.id);
+    expect(mine, "запись не нашлась").toBeTruthy();
+    expect(mine.authorName, `у записи ${mine.id} нет автора`).not.toBe("—");
+    expect(typeof mine.authorName).toBe("string");
+  });
+
   test("чужой админ чужих записей не находит", async () => {
     const person = await noteFor("Уникальнейшее слово фазаньев");
 
