@@ -300,7 +300,9 @@ describe("место списка у «Користувачів» и «Ауди�
     expect(users).toMatch(/const place = listBody\(res\.data\?\.items \?\? null, res\.error\);/);
     expect(users).toMatch(/place\.stale \? \(/);
     const audit = readFileSync(resolve(import.meta.dir, "../src/pages/ops/AuditLog.tsx"), "utf8");
-    expect(audit).toMatch(/<ListPlace items=\{list\.items\} error=\{error\} onRetry=\{list\.reload\} empty=\{ut\("ops\.audit\.none"\)\}/);
+    /* «Аудит» в 2.0 рисует журнал своей таблицей с раскрытием строк — по тому же правилу listBody */
+    expect(audit).toMatch(/const place = listBody\(list\.items, error\);/);
+    expect(audit).toMatch(/place\.stale \? \(/);
     for (const src of [users, audit]) expect(src).not.toMatch(/\{(res\.)?error \? \(\s*<Loading/);
   });
 

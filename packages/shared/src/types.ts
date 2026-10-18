@@ -3972,6 +3972,13 @@ export interface AuditEntry {
   ip: string | null;
   userAgent: string | null;
   details: Record<string, unknown> | null;
+  /**
+   * Место в хэш-цепочке (GET /api/audit отдаёт строку журнала целиком):
+   * номер, хэш записи и хэш предыдущей. У записей до цепочки — null.
+   */
+  seq?: number | null;
+  entryHash?: string | null;
+  prevHash?: string | null;
 }
 
 export interface AuditPage {
