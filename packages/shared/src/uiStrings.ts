@@ -9423,6 +9423,11 @@ export const UI = {
   "inv2.done": { uk: "Готово", ru: "Готово", en: "Done" },
   "inv2.another": { uk: "Створити ще одне", ru: "Создать ещё одно", en: "Create another" },
   "inv2.onceTitle": { uk: "Посилання показується один раз", ru: "Ссылка показывается один раз", en: "The link is shown once" },
+  "inv2.onceText": {
+    uk: "У системі зберігається лише його відбиток. Скопіюйте або роздрукуйте зараз; код лишиться видимим у списку запрошень.",
+    ru: "В системе хранится только её отпечаток. Скопируйте или распечатайте сейчас; код останется виден в списке приглашений.",
+    en: "Only its fingerprint is stored. Copy or print it now; the code stays visible in the invitations list.",
+  },
   "inv2.scan": { uk: "наведіть камеру телефона", ru: "наведите камеру телефона", en: "point a phone camera" },
   "inv2.copy": { uk: "Копіювати", ru: "Копировать", en: "Copy" },
   "inv2.codeHint": {
@@ -9504,6 +9509,8 @@ export const UI = {
   "case.noLead": { uk: "фахівця не закріплено", ru: "специалист не закреплён", en: "no clinician assigned" },
   "case.card": { uk: "Картка", ru: "Карточка", en: "Card" },
   "case.visit": { uk: "Прийом", ru: "Приём", en: "Appointment" },
+  "case.message": { uk: "Повідомлення", ru: "Сообщение", en: "Message" },
+  "case.unreadN": { uk: "нових: {n}", ru: "новых: {n}", en: "{n} new" },
   "case.assignedOn": { uk: "призначено {d}, ще не розпочато", ru: "назначено {d}, ещё не начато", en: "assigned {d}, not started" },
   "case.overview": { uk: "Огляд справи", ru: "Обзор дела", en: "Case overview" },
   "case.copyLink": { uk: "Копіювати посилання", ru: "Копировать ссылку", en: "Copy link" },

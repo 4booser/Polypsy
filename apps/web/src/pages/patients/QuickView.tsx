@@ -183,7 +183,7 @@ export function useQuickViewPane({
           ) : null}
           {anyOpen ? <div className={alerts.length ? "mt-2.5" : ""}>{strip}</div> : null}
           {!anyOpen && sum.data ? <p className="m-0 text-small text-text-2">{ut("qv.nothingOpen")}</p> : null}
-          {!sum.data && !sum.error ? <Loading rows={1} /> : null}
+          {!sum.data && !sum.error ? <Loading rows={1} bare /> : null}
           {sum.error ? <p className="m-0 text-small text-risk-ink">{sum.error}</p> : null}
         </DrawerSection>
 
@@ -198,7 +198,7 @@ export function useQuickViewPane({
           {dyn.error ? (
             <p className="m-0 text-small text-risk-ink">{dyn.error}</p>
           ) : !dyn.data ? (
-            <Loading rows={3} />
+            <Loading rows={3} bare />
           ) : !instruments.length ? (
             <p className="m-0 text-small text-muted">{ut("pt.noCompleted")}</p>
           ) : (
@@ -339,7 +339,7 @@ export function useQuickViewPane({
           {tl.error ? (
             <p className="m-0 text-small text-risk-ink">{tl.error}</p>
           ) : !tl.data ? (
-            <Loading rows={3} />
+            <Loading rows={3} bare />
           ) : !tl.data.length ? (
             <p className="m-0 text-small text-muted">{ut("tl.empty")}</p>
           ) : (

@@ -372,7 +372,7 @@ function ReadyDialog({
       }
     >
       <Callout kind="violet" icon={<Ic.eye />} title={ut("inv2.onceTitle")}>
-        {ut("inv.linkWarning")}
+        {ut("inv2.onceText")}
       </Callout>
       <div className="mt-4 grid gap-5 [grid-template-columns:184px_minmax(0,1fr)] max-[600px]:grid-cols-1">
         <figure className="m-0 flex flex-col items-center gap-2">
@@ -388,7 +388,7 @@ function ReadyDialog({
             <div className="flex gap-2">
               <Input readOnly value={url} onFocus={(e) => e.currentTarget.select()} className="font-mono text-[12.5px]" />
               <Button
-                icon={<Ic.layers />}
+                icon={<CopyIcon />}
                 disabled={busy}
                 onClick={() => run(async () => navigator.clipboard.writeText(url), ut("inv.linkCopied"))}
               >
@@ -403,7 +403,7 @@ function ReadyDialog({
                 {code}
               </span>
               <Button
-                icon={<Ic.layers />}
+                icon={<CopyIcon />}
                 disabled={busy}
                 onClick={() => run(async () => navigator.clipboard.writeText(code), ut("inv.codeCopied"))}
               >
@@ -423,5 +423,15 @@ function ReadyDialog({
         </div>
       </div>
     </Modal>
+  );
+}
+
+/** Два листа внахлёст — «копіювати» (контур lucide, как значки набора) */
+function CopyIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <rect width="14" height="14" x="8" y="8" rx="2" />
+      <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
+    </svg>
   );
 }

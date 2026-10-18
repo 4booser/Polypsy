@@ -51,6 +51,7 @@ import { Button, ErrorText, Segmented, SeverityTag, Switch, Tabs, Tag } from "..
 import { patchParams } from "../ui/viewParams";
 import { useDebounced, useResource } from "../useResource";
 import { ShellIcon } from "../shell/icons";
+import { useMedia } from "../shell/Rail";
 import { usePatientViews } from "./patientGroups/views";
 import { InviteDialog } from "./patients/InviteDialog";
 import {
@@ -251,7 +252,12 @@ export function PatientList() {
 
   const now = Date.now();
   const words = { today: ut("plist.today"), tomorrow: ut("plist.tomorrow") };
-  const columns = useColumns({ locale, now, words });
+  /*
+   * На 13-дюймовом ноутбуке (1280) шести колонок с подписями не уместить:
+   * дата замера уходит строкой под ход «19 → 16 → 14» той же ячейки.
+   */
+  const narrow = useMedia("(max-width: 1380px)");
+  const columns = useColumns({ locale, now, words, narrow });
 
   /* вкладки групп: первые пять на виду, остальные — «Ще N»; открытая из «Ще» встаёт на последнее место */
   const allGroups = groups.data ?? [];
@@ -638,18 +644,20 @@ function useColumns({
   locale,
   now,
   words,
+  narrow,
 }: {
   locale: string;
   now: number;
   words: { today: string; tomorrow: string };
+  narrow: boolean;
 }): Column<PatientListItem>[] {
   const { ut } = useLang();
-  return [
+  const all: Column<PatientListItem>[] = [
     {
       key: "name",
       header: ut("ref.patient"),
       required: true,
-      width: 280,
+      width: 250,
       render: (r) => {
         const age = ageOf(r.birthYear, now);
         const sub = [
@@ -673,14 +681,14 @@ function useColumns({
       key: "state",
       required: true,
       header: ut("plist.state"),
-      width: 190,
+      width: 170,
       render: (r) => <StateCell r={r} locale={locale} now={now} />,
     },
     {
       key: "measure",
       required: true,
       header: ut("pt.lastMeasure"),
-      width: 200,
+      width: 210,
       render: (r) => {
         const m = r.measure;
         if (!m) return <span className="text-small text-muted">{ut("plist.noMeasure")}</span>;
@@ -699,14 +707,21 @@ function useColumns({
                 </SeverityTag>
               ) : null}
             </span>
-            {m.better ? (
-              <CourseDigits code={shortCode(m.code)} values={shownSeries(m.values, m.normalization)} better={m.better} />
-            ) : (
-              <span className="text-caption text-text-2">
-                <b className="mr-1 text-[11px] font-bold text-muted">{shortCode(m.code)}</b>
-                {shownSeries(m.values, m.normalization).join(" → ")}
-              </span>
-            )}
+            <span className="flex items-center gap-2.5">
+              {m.better ? (
+                <CourseDigits code={shortCode(m.code)} values={shownSeries(m.values, m.normalization)} better={m.better} />
+              ) : (
+                <span className="text-caption text-text-2">
+                  <b className="mr-1 text-[11px] font-bold text-muted">{shortCode(m.code)}</b>
+                  {shownSeries(m.values, m.normalization).join(" → ")}
+                </span>
+              )}
+              {narrow ? (
+                <span className="text-caption">
+                  <MeasuredAt r={r} now={now} locale={locale} today={words.today} />
+                </span>
+              ) : null}
+            </span>
           </span>
         );
       },
@@ -716,24 +731,13 @@ function useColumns({
       required: true,
       header: ut("plist.measuredAt"),
       width: 130,
-      render: (r) => {
-        if (!r.lastResponseAt) return <span className="text-small text-muted">{ut("plist.never")}</span>;
-        const d = daysAgo(r.lastResponseAt, now);
-        const stale = d >= 30;
-        return (
-          <span className={cx("inline-flex items-center gap-1 whitespace-nowrap text-small", stale ? "font-bold text-warn" : "text-text-2")}>
-            {stale ? <Ic.timer size={13} /> : null}
-            {d === 0 ? words.today : ddmm(r.lastResponseAt, locale)}
-            {stale ? <span className="font-semibold">{ut("plist.daysAgo").replace("{n}", String(d))}</span> : null}
-          </span>
-        );
-      },
+      render: (r) => <MeasuredAt r={r} now={now} locale={locale} today={words.today} />,
     },
     {
       key: "lead",
       required: true,
       header: ut("plist.lead"),
-      width: 150,
+      width: 140,
       render: (r) =>
         r.leadName ? (
           <span className="inline-flex min-w-0 items-center gap-2" title={r.leadName}>
@@ -748,7 +752,7 @@ function useColumns({
       key: "next",
       required: true,
       header: ut("plist.nextVisit"),
-      width: 170,
+      width: 160,
       render: (r) => {
         if (!r.nextVisit)
           return (
@@ -767,6 +771,22 @@ function useColumns({
       },
     },
   ];
+  return narrow ? all.filter((c) => c.key !== "last") : all;
+}
+
+/** Когда мерили: дата, сегодня — словом; 30+ дней — янтарём с числом дней */
+function MeasuredAt({ r, now, locale, today }: { r: PatientListItem; now: number; locale: string; today: string }) {
+  const { ut } = useLang();
+  if (!r.lastResponseAt) return <span className="text-small text-muted">{ut("plist.never")}</span>;
+  const d = daysAgo(r.lastResponseAt, now);
+  const stale = d >= 30;
+  return (
+    <span className={cx("inline-flex items-center gap-1 whitespace-nowrap text-small", stale ? "font-bold text-warn" : "text-text-2")}>
+      {stale ? <Ic.timer size={13} /> : null}
+      {d === 0 ? today : ddmm(r.lastResponseAt, locale)}
+      {stale ? <span className="font-semibold">{ut("plist.daysAgo").replace("{n}", String(d))}</span> : null}
+    </span>
+  );
 }
 
 /** Почему человек в списке сейчас: случай, неявка, учёт — красным только риск */

@@ -77,6 +77,8 @@ export default function CaseCard() {
   const card = useResource(() => api.patientCard(userId!), [userId], { enabled: !!userId, keep: false });
   const dynamics = useResource(() => api.dynamics(userId!), [userId], { enabled: !!userId, keep: false, key: DYN_KEY });
   const timeline = useResource(() => api.timeline(userId!), [userId], { enabled: !!userId, keep: false, key: TL_KEY });
+  /* разговоры читателя: письмо пациента, на которое ещё не ответили, — тоже открытое */
+  const threads = useResource(() => api.threads(), [], { key: "case-threads" });
   const form = useReferralPane(res.data, () => {
     setReferral(false);
     res.reload();
@@ -107,6 +109,7 @@ export default function CaseCard() {
   const measures = (dynamics.data?.surveys ?? []).reduce((n, s) => n + s.responseCount, 0);
   const firstAt = (dynamics.data?.surveys ?? []).map((s) => s.firstAt ?? "").filter(Boolean).sort()[0];
   const lead = card.data?.lead ?? null;
+  const thread = threads.data?.items.find((t) => t.patientId === data.userId && t.unread > 0) ?? null;
 
   const facts = [
     {
@@ -210,6 +213,15 @@ export default function CaseCard() {
                   }
                 />
               ) : null}
+              {thread ? (
+                <AlertChip
+                  kind="message"
+                  icon={<Ic.message />}
+                  label={ut("case.message")}
+                  detail={ut("case.unreadN").replace("{n}", String(thread.unread))}
+                  to={`/messages/${thread.id}`}
+                />
+              ) : null}
               {noShow ? (
                 <AlertChip
                   kind="warn"
@@ -262,7 +274,7 @@ export default function CaseCard() {
                   }
                 />
               ) : null}
-              {!data.openAlerts.length && !noShow && !nextVisit && !drafts.length && !openAssignments.length && !openRefs.length ? (
+              {!data.openAlerts.length && !thread && !noShow && !nextVisit && !drafts.length && !openAssignments.length && !openRefs.length ? (
                 <AlertChip kind="good" icon={<Ic.circleCheck />} label={ut("qv.nothingOpen")} />
               ) : null}
             </AlertStrip>
