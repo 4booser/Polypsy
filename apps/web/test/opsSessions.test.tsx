@@ -283,3 +283,19 @@ describe("место списка у «Користувачів» и «Ауди�
     expect(users).toMatch(/onSelectAll=\{\(\) =>\s*void run\(async \(\) => \{\s*const r = await api\.opsUserIds\(/);
   });
 });
+
+describe("числа в шапке и строке «Знайдено» — в форме языка", () => {
+  /*
+   * Реестр учреждения — тысячи учёток, и «Облікових записів: 8123» по-украински
+   * и по-русски пишется «8 123». Счётчики шапки и «Знайдено» шли сырым числом.
+   */
+  test("«Користувачі» и «Сесії» форматируют итоги языком страницы", () => {
+    const users = readFileSync(resolve(import.meta.dir, "../src/pages/ops/Users.tsx"), "utf8");
+    expect(users).toContain("v.toLocaleString(locale())");
+    expect(users).toContain("{res.data.total.toLocaleString(locale())}");
+    const sessions = readFileSync(resolve(import.meta.dir, "../src/pages/ops/Sessions.tsx"), "utf8");
+    expect(sessions).toContain("const num = (v: number) => v.toLocaleString(locale());");
+    expect(sessions).toContain("{num(res.data.total)}");
+    expect(sessions).toContain('fill(ut("oppa.metaTotal"), { n: num(total) })');
+  });
+});

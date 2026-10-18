@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import type { OpsSession, OpsSessionPage, Role } from "@quizzy/shared";
 import { api } from "../../api";
 import { useAuth } from "../../auth";
+import { locale } from "../../format";
 import { useLang } from "../../lang";
 import { Callout, DataTable, FilterBar, KbdHints, Loading, useAction, type Column } from "../../ui";
 import { Ic } from "../../ui/icons";
@@ -100,6 +101,8 @@ export default function OpsSessions() {
     res.reload();
     summary.reload();
   };
+  /* числа — в форме языка: «1 284», а не «1284» */
+  const num = (v: number) => v.toLocaleString(locale());
 
   return (
     <SectionPage
@@ -107,8 +110,8 @@ export default function OpsSessions() {
       meta={
         summary.data
           ? [
-              total !== null ? fill(ut("oppa.metaTotal"), { n: total }) : fill(ut("oppa.metaStaff"), { n: staff ?? 0 }),
-              fill(ut("oppu.metaSplit"), { s: staff ?? "—", p: patients ?? "—" }),
+              total !== null ? fill(ut("oppa.metaTotal"), { n: num(total) }) : fill(ut("oppa.metaStaff"), { n: num(staff ?? 0) }),
+              fill(ut("oppu.metaSplit"), { s: staff === null ? "—" : num(staff), p: patients === null ? "—" : num(patients) }),
             ]
           : undefined
       }
@@ -188,7 +191,7 @@ export default function OpsSessions() {
               count={
                 res.data ? (
                   <span className="whitespace-nowrap text-small text-muted" aria-live="polite">
-                    {ut("ppl.found")} <b className="font-extrabold tabular-nums text-text">{res.data.total}</b>
+                    {ut("ppl.found")} <b className="font-extrabold tabular-nums text-text">{num(res.data.total)}</b>
                   </span>
                 ) : undefined
               }

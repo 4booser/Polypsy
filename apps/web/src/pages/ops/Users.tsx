@@ -3,6 +3,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import type { BulkUserAction, OpsUserRow, Permission, Role, UiKey } from "@quizzy/shared";
 import { api, ApiError } from "../../api";
 import { useAuth } from "../../auth";
+import { locale } from "../../format";
 import { useLang } from "../../lang";
 import { BulkBar, DataTable, FilterBar, KbdHints, Loading, Modal, useAction, type Column } from "../../ui";
 import { Ic } from "../../ui/icons";
@@ -186,9 +187,11 @@ export default function OpsUsers() {
   const entriesFor = (row: OpsUserRow): MenuEntry[] => userRowMenu(row, { me: user, can, ut, open, extras });
   const view = viewOf(filters);
   const counts = summary.data ? viewCounts(summary.data.roles) : null;
-  const total = counts?.all ?? null;
-  const staffN = counts?.staff ?? null;
-  const patientsN = counts?.patients ?? null;
+  /* числа — в форме языка: «1 284», а не «1284» */
+  const n = (v: number | null | undefined) => (v === null || v === undefined ? null : v.toLocaleString(locale()));
+  const total = n(counts?.all);
+  const staffN = n(counts?.staff);
+  const patientsN = n(counts?.patients);
 
   const columns: Column<OpsUserRow>[] = [
     {
@@ -323,7 +326,7 @@ export default function OpsUsers() {
               count={
                 res.data ? (
                   <span className="whitespace-nowrap text-small text-muted" aria-live="polite">
-                    {ut("ppl.found")} <b className="font-extrabold tabular-nums text-text">{res.data.total}</b>
+                    {ut("ppl.found")} <b className="font-extrabold tabular-nums text-text">{res.data.total.toLocaleString(locale())}</b>
                   </span>
                 ) : undefined
               }
