@@ -10,7 +10,7 @@ import { useResource } from "../useResource";
 import { freeCancelUntil } from "./Home";
 import { Glyph, type GlyphName } from "./icons";
 import { BandCard, Body, FactList, Hero, HelpLink, PtPanel, SideGrid } from "./parts";
-import { chosenSlot, slotsView } from "./slots";
+import { chosenSlot, moveTarget, slotsView } from "./slots";
 import { dayPart, dm, hm, localDayKey, shortDay, visitWhen, weekdayLong, weekdayShort, type DayPart } from "./when";
 
 type Slot = Awaited<ReturnType<typeof api.freeSlots>>["items"][number];
@@ -46,7 +46,8 @@ export default function PatientBooking() {
 
   const visits = useResource(() => api.myAppointments(), []);
   const history = useResource(() => api.myAppointments(true), []);
-  const moving = moveId ? (visits.data?.items ?? []).find((v) => v.id === moveId && v.status !== "cancelled") ?? null : null;
+  /* переносимый приём; пока список не пришёл, неизвестно, перенос это или запись (slots.ts, moveTarget) */
+  const { moving, pending: moveUnknown } = moveTarget(moveId, visits.data?.items ?? null);
 
   const [specialistId, setSpecialistId] = useState<string | null | undefined>(undefined);
   /* перенос — по умолчанию к тому же специалисту: курс продолжается с ним */
@@ -96,7 +97,7 @@ export default function PatientBooking() {
   const whoName = who ? (people.find((p) => p.userId === who)?.fullName ?? null) : null;
 
   const submit = async () => {
-    if (!chosen) return;
+    if (!chosen || moveUnknown) return;
     const ok = await run(
       async () => {
         if (moving) await api.rescheduleAppointment(moving.id, chosen);
@@ -372,7 +373,7 @@ export default function PatientBooking() {
             <Button
               variant="primary"
               size="lg"
-              disabled={!chosen || busy}
+              disabled={!chosen || busy || moveUnknown}
               aria-haspopup="dialog"
               onClick={() => setChecking(true)}
               iconEnd={<Ic.arrowRight size={18} />}
@@ -393,7 +394,7 @@ export default function PatientBooking() {
           onClose={() => setChecking(false)}
           footer={
             <>
-              <Button variant="primary" icon={<Glyph name="calendar-check" size={16} />} disabled={busy} onClick={() => void submit()}>
+              <Button variant="primary" icon={<Glyph name="calendar-check" size={16} />} disabled={busy || moveUnknown} onClick={() => void submit()}>
                 {moving ? ut("ptw.moveConfirm") : ut("pt.bookNow")}
               </Button>
               <Button variant="quiet" onClick={() => setChecking(false)}>
