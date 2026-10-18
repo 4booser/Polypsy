@@ -373,7 +373,8 @@ export function UserDrawer({
       noteIcon={<Ix.fileSearch />}
       footer={footer}
     >
-      {!row ? (
+      {/* закрытая панель не держит скелетов: ящик не размонтируется, и пустой скелет висел бы в странице */}
+      {!id ? null : !row ? (
         res.error ? (
           <Loading error={res.error} onRetry={res.reload} bare />
         ) : (
