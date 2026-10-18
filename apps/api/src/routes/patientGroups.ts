@@ -9,6 +9,7 @@ import {
   type PatientGroupMember,
   type PatientGroupSurvey,
   type PatientGroupWithCounts,
+  type User,
 } from "@quizzy/shared";
 import { db } from "../db";
 import {
@@ -33,6 +34,7 @@ import {
   assertPatientGroupAccess,
   assertSurveyAccess,
   assertSurveysInUse,
+  surveyScopeFilter,
 } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
@@ -165,7 +167,7 @@ patientGroupRoutes.get("/", async (c) => {
     shown.map((m) => m.userId),
     surveyRows.map((s) => s.surveyId),
   );
-  const atRisk = await openRiskOf(shown.map((m) => m.userId));
+  const atRisk = await openRiskOf(user, shown.map((m) => m.userId));
   const ownerName = await namesOf(rows.map((r) => r.ownerId));
 
   const items: PatientGroupWithCounts[] = rows.map((r) => {
@@ -214,14 +216,28 @@ async function completedPairs(userIds: string[], surveyIds: string[]): Promise<S
   return new Set(rows.map((r) => `${r.userId}|${r.surveyId}`));
 }
 
-/** У кого из списка есть открытый случай риска — тот же признак, что у очереди случаев */
-async function openRiskOf(userIds: string[]): Promise<Set<string>> {
+/**
+ * У кого из списка есть открытый случай риска — тот же признак, что у очереди
+ * случаев: неразобранный случай по методике зоны читателя (routes/alertCases.ts).
+ *
+ * Политика строк держит случаи там же, но она — страховка под правилом, а не
+ * замена ему: без условия здесь владелец базы считал ризиком группы случай
+ * чужого отделения, а «1 з ризиком» вёл в очередь, где его не было.
+ */
+async function openRiskOf(user: User, userIds: string[]): Promise<Set<string>> {
   const people = [...new Set(userIds)];
   if (!people.length) return new Set();
+  const scope = await surveyScopeFilter(user);
   const rows = await db
     .selectDistinct({ userId: alertCases.userId })
     .from(alertCases)
-    .where(and(isNull(alertCases.acknowledgedAt), inArray(alertCases.userId, people)));
+    .where(
+      and(
+        isNull(alertCases.acknowledgedAt),
+        inArray(alertCases.userId, people),
+        scope ? inArray(alertCases.surveyId, db.select({ id: surveys.id }).from(surveys).where(scope)) : undefined,
+      ),
+    );
   return new Set(rows.map((r) => r.userId));
 }
 
@@ -306,7 +322,7 @@ patientGroupRoutes.get("/:id", async (c) => {
     visibleRows.map((r) => r.userId),
     groupSurveyIds,
   );
-  const atRisk = await openRiskOf(visibleRows.map((r) => r.userId));
+  const atRisk = await openRiskOf(user, visibleRows.map((r) => r.userId));
 
   const members: PatientGroupMember[] = visibleRows
     .map((r) => ({

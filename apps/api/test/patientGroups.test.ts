@@ -514,6 +514,64 @@ describe("строка списка групп и состав карточки"
     expect(again.riskCount, "разобранный случай всё ещё считается ризиком").toBe(0);
     expect(again.favourite).toBe(true);
   });
+
+  /*
+   * Ризик группы — тот же признак, что у очереди случаев: открытый случай по
+   * методике зоны читателя. Очередь берёт только такие (routes/alertCases.ts),
+   * политика строк держит их там же, а список групп спрашивал случаи без зоны
+   * методик: владельцем базы считал ризиком случай чужого отделения, под
+   * ролью приложения — нет, и «1 з ризиком» вёл в очередь, где случая не было.
+   *
+   * Мутация: снять условие по зоне методик в openRiskOf — под владельцем
+   * падает первая проверка.
+   */
+  test("случай по методике чужой зоны — не ризик группы, как и в очереди", async () => {
+    const id = await makeGroup(adminA, `Чужий випадок ${crypto.randomUUID().slice(0, 8)}`);
+    const person = await patientInZoneOfA("foreign-case");
+    await api(`/api/patient-groups/${id}/members`, adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ userIds: [person.id] }),
+    });
+    const foreign = crypto.randomUUID();
+    await db.insert(alertCases).values({ id: foreign, userId: person.id, surveyId: surveyInB, severity: "severe" });
+    cases.push(foreign);
+
+    const rowOf = async () =>
+      ((await api("/api/patient-groups", adminA.token)).body.items as Record<string, unknown>[]).find((g) => g.id === id)!;
+    expect((await rowOf()).riskCount, `случай ${foreign} чужой зоны посчитан ризиком группы`).toBe(0);
+    const card = await api(`/api/patient-groups/${id}`, adminA.token);
+    expect((card.body.members as { openRisk: boolean }[])[0]?.openRisk, "в составе — ризик чужой зоны").toBe(false);
+    const queue = await api(`/api/alert-cases?patientGroup=${id}`, adminA.token);
+    expect(queue.body.total, "очередь группы показала случай чужой зоны").toBe(0);
+
+    // положительный контроль: случай по методике своей зоны — ризик
+    const own = crypto.randomUUID();
+    await db.insert(alertCases).values({ id: own, userId: person.id, surveyId: surveyInA, severity: "severe" });
+    cases.push(own);
+    expect((await rowOf()).riskCount).toBe(1);
+  });
+
+  /*
+   * Числа строки — по видимым участникам: выбывший из зоны не считается ни
+   * участником, ни ризиком (под владельцем — фильтр membersVisibleTo, под
+   * ролью приложения — ещё и политика строк состава).
+   */
+  test("выбывший из зоны не считается ризиком группы", async () => {
+    const id = await makeGroup(adminA, `Вибув ${crypto.randomUUID().slice(0, 8)}`);
+    const person = await patientInZoneOfA("leaves-risk");
+    await api(`/api/patient-groups/${id}/members`, adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ userIds: [person.id] }),
+    });
+    const caseId = crypto.randomUUID();
+    await db.insert(alertCases).values({ id: caseId, userId: person.id, surveyId: surveyInA, severity: "severe" });
+    cases.push(caseId);
+    await db.delete(surveyAccess).where(and(eq(surveyAccess.surveyId, surveyInA), eq(surveyAccess.userId, person.id)));
+
+    const row = ((await api("/api/patient-groups", adminA.token)).body.items as Record<string, unknown>[]).find((g) => g.id === id)!;
+    expect(row.memberCount).toBe(0);
+    expect(row.riskCount, `ризик человека вне зоны ${person.id} посчитан в группе`).toBe(0);
+  });
 });
 
 describe("группа как вкладка списка пациентов", () => {
