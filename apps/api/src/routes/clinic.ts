@@ -434,6 +434,128 @@ clinicRoutes.delete(
   },
 );
 
+/**
+ * Неделя календарём: приёмы, окна и исключения за несколько дней подряд.
+ *
+ * Расписание читают картиной недели — «во вторник у меня трое, в пятницу
+ * один поза розкладом», — а не списком часов. Для этого экрану нужно то, что
+ * отдельными маршрутами отдаётся только по дню (/today) или только вперёд от
+ * сегодня (/slots, /schedule): приёмы за прошедшие дни недели, окна, которые
+ * в эти дни были, и исключения, уже наступившие. Семь запросов /today вместо
+ * одного писали бы семь строк журнала о просмотре одного экрана.
+ *
+ * Дни считаются по часам отделения, как в /today: граница — местная полночь,
+ * переведённая в момент, а не сутки, прибавленные к моменту (#22).
+ *
+ * Чужая неделя — с тем же правом, что чужое расписание (scheduleTarget), и с
+ * правом читать людей: в приёмах — имена пациентов.
+ */
+const weekQuery = z.object({
+  from: z.string(),
+  days: z.coerce.number().int().min(1).max(42).optional(),
+  specialistId: z.string().optional(),
+});
+
+/** Календарная дата плюс дни: «YYYY-MM-DD» без поясов */
+function addDays(date: string, days: number): string {
+  const [y, m, d] = date.split("-").map(Number);
+  const at = new Date(Date.UTC(y!, m! - 1, d! + days));
+  return at.toISOString().slice(0, 10);
+}
+
+clinicRoutes.get(
+  "/schedule/week",
+  requireStaff,
+  requirePermission("schedule.own"),
+  requirePermission("patients.read"),
+  async (c) => {
+    const specialistId = await scheduleTarget(c);
+    const q = parseQuery(c, weekQuery);
+    const from = requireDateParam(q.from, "from", { dayOnly: true });
+    const days = q.days ?? 7;
+    const to = addDays(from, days);
+
+    const profile = await db.query.specialistProfiles.findFirst({
+      where: eq(specialistProfiles.userId, specialistId),
+    });
+    const department = profile
+      ? await db.query.departments.findFirst({ where: eq(departments.id, profile.departmentId) })
+      : null;
+    const tz = department?.timezone ?? "Europe/Kyiv";
+    const start = sql`(${`${from} 00:00`}::timestamp at time zone ${tz})`;
+    const end = sql`(${`${to} 00:00`}::timestamp at time zone ${tz})`;
+
+    const items = await loadAppointments(
+      and(
+        eq(appointments.specialistId, specialistId),
+        ne(appointments.status, "cancelled"),
+        sql`${slots.startsAt} >= ${start}`,
+        sql`${slots.startsAt} < ${end}`,
+      )!,
+    );
+
+    /* открытые окна недели — и свободные, и занятые: занятость экран сверяет с приёмами */
+    const open = await db
+      .select({ id: slots.id, startsAt: slots.startsAt, endsAt: slots.endsAt, offSchedule: slots.offSchedule })
+      .from(slots)
+      .where(
+        and(
+          eq(slots.specialistId, specialistId),
+          eq(slots.status, "open"),
+          sql`${slots.startsAt} >= ${start}`,
+          sql`${slots.startsAt} < ${end}`,
+        ),
+      )
+      .orderBy(asc(slots.startsAt));
+
+    const exceptions = await db
+      .select()
+      .from(scheduleExceptions)
+      .where(
+        and(
+          eq(scheduleExceptions.specialistId, specialistId),
+          gte(scheduleExceptions.date, from),
+          lt(scheduleExceptions.date, to),
+        ),
+      )
+      .orderBy(asc(scheduleExceptions.date));
+
+    const nowLocal = await db.execute<{ today: string }>(
+      sql`select to_char(now() at time zone ${tz}, 'YYYY-MM-DD') as today`,
+    );
+
+    /*
+     * Та же строка журнала, что у дня (/today): просмотр приёмов с именами
+     * за несколько дней, а не новое действие. Своё имя потребовало бы своей
+     * подписи в журнале техпанели, а различает их поле view.
+     */
+    await audit(c, {
+      action: "clinic.today",
+      details: { view: "week", from, days, specialistId, count: items.length },
+    });
+    return c.json({
+      specialistId,
+      from,
+      to,
+      tz,
+      today: nowLocal[0]!.today,
+      appointments: items,
+      slots: open,
+      exceptions: exceptions.map(
+        (r): ScheduleExceptionView => ({
+          id: r.id,
+          date: r.date,
+          kind: r.kind,
+          startsAt: r.startsAt?.slice(0, 5) ?? null,
+          endsAt: r.endsAt?.slice(0, 5) ?? null,
+          slotMinutes: r.slotMinutes,
+          note: r.note,
+        }),
+      ),
+    });
+  },
+);
+
 /* ═══════════ свободное время ═══════════ */
 
 const slotQuery = z.object({

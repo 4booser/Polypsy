@@ -11,6 +11,7 @@ import {
   users,
 } from "../db/schema";
 import { log } from "./log";
+import { intervalsForDay, layOutDay, sliceInterval } from "@quizzy/shared";
 
 /**
  * Генерация слотов из шаблона недели.
@@ -29,13 +30,12 @@ import { log } from "./log";
 /** На сколько вперёд держим сетку. Восемь недель — два месяца записи. */
 export const HORIZON_WEEKS = 8;
 
-interface Interval {
-  /** Стенное время начала, HH:MM */
-  from: string;
-  /** Стенное время конца, HH:MM */
-  to: string;
-  slotMinutes: number;
-}
+/*
+ * Арифметика сетки дня (вычесть отпуск, нарезать слоты, разложить день без
+ * пересечений) живёт в @quizzy/shared/scheduleGrid: по ней же календарь
+ * недели в консоли рисует часы приёма и считает окна. Здесь — только
+ * календарные даты окна и перевод в моменты.
+ */
 
 /** Календарная дата без времени и без пояса: с ней часовых ошибок не бывает */
 function dateKey(d: Date): string {
@@ -48,94 +48,12 @@ function isoWeekday(d: Date): number {
   return day === 0 ? 7 : day;
 }
 
-function toMinutes(hhmm: string): number {
-  const [h, m] = hhmm.split(":");
-  return Number(h) * 60 + Number(m);
-}
-
-function fromMinutes(total: number): string {
-  const h = Math.floor(total / 60);
-  const m = total % 60;
-  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
-}
-
 /** Время из Postgres приходит как HH:MM:SS — нам нужны часы и минуты */
 function hhmm(raw: string): string {
   return raw.slice(0, 5);
 }
 
-/**
- * Что именно вычесть из интервала.
- *
- * Отпуск на весь день убирает его целиком; отпуск с часами вырезает середину
- * и может разорвать один интервал на два — поэтому возвращается список, а не
- * один интервал.
- */
-function subtract(interval: Interval, off: { from: string; to: string } | null): Interval[] {
-  if (!off) return [];
-  const a = toMinutes(interval.from);
-  const b = toMinutes(interval.to);
-  const x = toMinutes(off.from);
-  const y = toMinutes(off.to);
-  if (y <= a || x >= b) return [interval];
-  const parts: Interval[] = [];
-  if (x > a) parts.push({ ...interval, from: interval.from, to: fromMinutes(x) });
-  if (y < b) parts.push({ ...interval, from: fromMinutes(y), to: interval.to });
-  return parts;
-}
-
-/** Желаемая сетка на один день: шаблон дня недели минус отпуска плюс дополнительные часы */
-export function intervalsForDay(
-  weekday: number,
-  templates: (Interval & { weekday: number })[],
-  offs: { from: string | null; to: string | null }[],
-  extras: Interval[],
-): Interval[] {
-  let result: Interval[] = templates.filter((t) => t.weekday === weekday).map((t) => ({ ...t }));
-
-  for (const off of offs) {
-    // отпуск без часов — весь день целиком
-    if (!off.from || !off.to) return extras;
-    result = result.flatMap((i) => subtract(i, { from: off.from!, to: off.to! }));
-  }
-  return [...result, ...extras];
-}
-
-/** Разбивка интервала на слоты. Хвост короче слота отбрасывается: приём в 20 минут вместо 50 — это не приём. */
-export function sliceInterval(interval: Interval): { from: string; to: string }[] {
-  const start = toMinutes(interval.from);
-  const end = toMinutes(interval.to);
-  const out: { from: string; to: string }[] = [];
-  for (let t = start; t + interval.slotMinutes <= end; t += interval.slotMinutes) {
-    out.push({ from: fromMinutes(t), to: fromMinutes(t + interval.slotMinutes) });
-  }
-  return out;
-}
-
-/**
- * Слоты одного дня без пересечений.
- *
- * Интервалы берутся по порядку — обычная неделя раньше дополнительных
- * часов, — и каждый следующий режется только по времени, которое ещё не
- * занято уже разложенными слотами. Без этого дополнительные часы 09:45–11:00
- * поверх обычных 09:00–10:00 давали 09:45–10:15 поверх 09:30–10:00: два
- * открытых слота на одни и те же четверть часа. Теперь такое не примет и
- * база (миграция 0105), и сетка обязана строиться так, чтобы ей нечего было
- * отвергать, — иначе дополнительные часы молча пропадали бы целиком.
- *
- * Вычитаются именно слоты, а не интервалы: отброшенный хвост обычного
- * интервала (09:50–10:10 при слотах по 50 минут) свободен, и дополнительные
- * часы вправе его занять.
- */
-export function layOutDay(intervals: Interval[]): { from: string; to: string }[] {
-  const laid: { from: string; to: string }[] = [];
-  for (const interval of intervals) {
-    let free: Interval[] = [interval];
-    for (const piece of laid) free = free.flatMap((part) => subtract(part, piece));
-    for (const part of free) laid.push(...sliceInterval(part));
-  }
-  return laid.sort((a, b) => toMinutes(a.from) - toMinutes(b.from));
-}
+export { intervalsForDay, layOutDay, sliceInterval };
 
 interface Wanted {
   date: string;
