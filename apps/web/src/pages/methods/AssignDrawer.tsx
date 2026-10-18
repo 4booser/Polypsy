@@ -35,6 +35,31 @@ export interface ExistingAssignment {
   done?: boolean;
 }
 
+/**
+ * Назначить каждому по очереди: отказ одному (уже назначено, чужой пациент)
+ * не отменяет остальных.
+ *
+ * Не прошедшие возвращаются людьми, а не именами. Прежде ящик оставлял в
+ * выборе тех, чьё ФИО совпало с ФИО не прошедшего, — и тёзка, которому уже
+ * назначили, оставался в выборе и получал назначение второй раз при повторе.
+ */
+export async function assignEach<P extends { id: string }>(
+  people: readonly P[],
+  assignOne: (userId: string) => Promise<unknown>,
+): Promise<{ done: number; failed: P[] }> {
+  const failed: P[] = [];
+  let done = 0;
+  for (const p of people) {
+    try {
+      await assignOne(p.id);
+      done += 1;
+    } catch {
+      failed.push(p);
+    }
+  }
+  return { done, failed };
+}
+
 /** Быстрые сроки: календарные дни от сегодня; null — без срока */
 const QUICK: { key: UiKey; days: number | null }[] = [
   { key: "mc.due3", days: 3 },
@@ -129,27 +154,21 @@ export function AssignDrawer({
       }
       return;
     }
-    /* поимённо — по одному: отказ одному (уже назначено, чужой пациент) не отменяет остальных */
-    const miss: string[] = [];
-    let done = 0;
+    /* поимённо — по одному (assignEach): отказ одному не отменяет остальных */
+    let outcome: { done: number; failed: Patient[] } = { done: 0, failed: [] };
     await run(async () => {
-      for (const p of picked) {
-        try {
-          await assignOne(p.id, dueValue, noteValue);
-          done += 1;
-        } catch {
-          miss.push(p.fullName);
-        }
-      }
-      if (!done && miss.length) throw new Error(ut("mc.assignFailedAll"));
+      outcome = await assignEach(picked, (userId) => assignOne(userId, dueValue, noteValue));
+      if (!outcome.done && outcome.failed.length) throw new Error(ut("mc.assignFailedAll"));
     });
+    const { done, failed: missed } = outcome;
     if (done) {
       toast(ut("mc.assignedN").replace("{n}", String(done)), "ok");
       onAssigned();
     }
-    if (miss.length) {
-      setPicked((prev) => prev.filter((p) => miss.includes(p.fullName)));
-      setFailed(miss);
+    if (missed.length) {
+      const left = new Set(missed.map((p) => p.id));
+      setPicked((prev) => prev.filter((p) => left.has(p.id)));
+      setFailed(missed.map((p) => p.fullName));
     } else if (done) {
       reset();
       onClose();
