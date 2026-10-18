@@ -322,7 +322,12 @@ function Editor({ id }: { id: string | null }) {
               <Select
                 value={draft.versionId ?? ""}
                 disabled={!draft.surveyId}
-                onChange={(e) => patch({ versionId: e.target.value || null, ...resetRows })}
+                /*
+                 * «Поточна» у сохранённой модели — именно действующая версия, а
+                 * не «оставить записанную»: колонки того же теста иначе остались
+                 * бы на старой версии (columnsFromDraft).
+                 */
+                onChange={(e) => patch({ versionId: e.target.value || current?.versionId || null, ...resetRows })}
               >
                 <option value="">
                   {current
