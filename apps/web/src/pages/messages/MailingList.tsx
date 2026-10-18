@@ -1,53 +1,146 @@
-import { useCallback, useEffect, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
-import type { MailingListItem } from "@quizzy/shared";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import type { MailingListItem, PatientGroupWithCounts } from "@quizzy/shared";
 import { api } from "../../api";
 import { day, timeOfDay } from "../../format";
 import { useLang } from "../../lang";
-import { IconSearchGlass, Loading } from "../../ui";
+import { DataTable, Empty, FilterBar, FilterChip, Ic, KbdHints, Loading, Modal, Tooltip, useAction, useHotkeys, useToast, type Column } from "../../ui";
 import { cx } from "../../ui/cx";
-import { IconPlusThick } from "../../ui/glyphs";
-import { Page } from "../../ui/layout";
+import { Page, Panel } from "../../ui/layout";
+import { MenuButton, menuItemClass } from "../../ui/menu";
 import { Pager } from "../../ui/pager";
 import { DEFAULT_PER, offsetPageCount, pageFrom, pageOffset, perFrom } from "../../ui/paging";
-import { GlyphLink, Input } from "../../ui/primitives";
+import { Button, ButtonLink, Tag } from "../../ui/primitives";
 import { useResource } from "../../useResource";
-import { mailingHref } from "./model";
+import { AnswersDrawer } from "./answers";
+import { Mi } from "./icons";
+import { answerShares, mailingHref, mailingQuery, mailingViewFrom } from "./model";
 
 /*
- * «Повідомлення» — кадр f11 макета: перечень розсилок автора.
+ * «Розсилки» — повідомлення групам пацієнтів (comms-mailings).
  *
- * Это не переписка. Переписка пациент ↔ специалист (/messages, Messages.tsx)
- * осталась как была и открывается из бургера («Листування»); пункт полосы
- * «Повідомлення» ведёт сюда, как нарисовано: тема, начало текста, дата.
+ * Не переписка. Переписка пациент ↔ специалист — /messages (Messages.tsx),
+ * «Листування» на рельсе; здесь — сообщения «одному многим» с вариантами
+ * ответа, подраздел «Пацієнти».
  *
- * Что на кадре и как это легло на код:
+ * Таблица, а не список: розсилки сравнивают по колонкам — кому, сколько
+ * ответили и как, в каком состоянии. Строка черновика ведёт в редактор,
+ * строка отправленной открывает ответы в ящике справа — страница остаётся
+ * на месте. Отправленное не меняется: его можно только скрыть и вернуть.
  *
- *   «Повідомлення» · поле поиска с лупой · «+»    → заголовок, ?q, ссылка на форму
- *   «елементів на сторінці · сторінка 1 з 10 ‹ ›» → ?per и ?page, Pager
- *   строки: тема | три строки текста | дата       → список ниже
- *   шестая строка подсвечена                      → наведение
- *
- * Чего на кадре нет и здесь нет: колонок-подписей, счётчика у заголовка,
- * вкладок «чернетки / відправлені», статусов и числа получателей в строке.
- * Черновик от отправленной в списке не отличается ничем, кроме даты: у
- * отправленной это дата отправки, у черновика — последней правки (так
- * отдаёт сервер, поле `at`). Скрытые автором розсилки сервер показывает
- * только по ?hidden=1 — параметр адреса поддержан, органа управления на
- * кадре нет, и он не нарисован.
- *
- * Страницы и поиск — на сервере (limit/offset, q): тема и текст лежат
- * зашифрованными и расшифровываются там; тянуть список целиком, как у
- * групп, значило бы расшифровывать всё на каждую букву.
+ * Страницы, поиск, вид, группа и порядок — на сервере (limit/offset, q,
+ * status, hidden, group, order): тема и текст лежат зашифрованными и
+ * расшифровываются там. Состояние — в адресе: ссылку на «чернетки групи Х»
+ * пересылают.
  */
+
+/** Цвета вариантов ответа в полосе — ряды графиков набора по порядку */
+const OPTION_TONES = ["bg-series-1", "bg-series-2", "bg-series-3", "bg-series-4", "bg-series-5"] as const;
+export const optionTone = (i: number) => OPTION_TONES[i % OPTION_TONES.length]!;
+
+/** Дата строки: «07.10, 10:00» */
+const stamp = (iso: string) => `${day(iso)}, ${timeOfDay(iso)}`;
+
+/**
+ * Ячейка «Повідомлення»: тема ссылкой и начало текста.
+ *
+ * Имя ссылки — одна тема: перечень ссылок диктор читает темами, а не
+ * абзацами. Начало текста лежит рядом со ссылкой и видно диктору как
+ * содержимое ячейки — прятать его (aria-hidden) однажды уже пробовали.
+ */
+export function TitleCell({ m }: { m: Pick<MailingListItem, "id" | "title" | "preview"> }) {
+  return (
+    <div className="min-w-0 py-1">
+      <Link
+        to={mailingHref(m.id)}
+        className="block text-[14px] font-extrabold leading-5 text-text no-underline hover:underline hover:decoration-violet-line hover:decoration-2 hover:underline-offset-[3px]"
+      >
+        {m.title}
+      </Link>
+      <p className="m-0 mt-0.5 line-clamp-2 max-w-[460px] text-small leading-[18px] text-text-2">{m.preview}</p>
+    </div>
+  );
+}
+
+/** Ячейка «Відповіді»: у черновика — варианты, у отправленной — полоса долей и легенда */
+export function AnswersCell({ m }: { m: Pick<MailingListItem, "status" | "options" | "answers" | "answeredCount" | "recipientCount"> }) {
+  const { ut } = useLang();
+  if (!m.options.length) return <span className="text-small text-text-2">{ut("mlx.noOptions")}</span>;
+  if (m.status === "draft") {
+    return (
+      <div className="py-1">
+        <span className="flex flex-wrap gap-1">
+          {m.options.map((o, i) => (
+            <Tag key={i}>{o}</Tag>
+          ))}
+        </span>
+        <small className="mt-1 block text-caption text-muted">{ut("mlx.optionsWord")}</small>
+      </div>
+    );
+  }
+  const shares = answerShares(m.answers, m.recipientCount);
+  return (
+    <div className="py-1">
+      <span className="flex items-center gap-2.5">
+        <span aria-hidden className="flex h-2.5 w-[150px] shrink-0 overflow-hidden rounded-[5px] bg-track">
+          {shares.option.map((f, i) => (
+            <i key={i} className={cx("block h-full", optionTone(i))} style={{ width: `${(f * 100).toFixed(2)}%` }} />
+          ))}
+        </span>
+        <span className="whitespace-nowrap text-small font-bold tabular-nums text-text-2">
+          {ut("mlx.answeredOf").replace("{n}", String(m.answeredCount)).replace("{total}", String(m.recipientCount))}
+        </span>
+      </span>
+      <span className="mt-1.5 flex flex-wrap gap-x-2.5 gap-y-[3px] text-caption text-text-2">
+        {m.options.map((o, i) => (
+          <span key={i} className="inline-flex items-center gap-[5px] whitespace-nowrap">
+            <i aria-hidden className={cx("block size-[9px] rounded-[3px]", optionTone(i))} />
+            {o} <b className="font-extrabold tabular-nums text-text">{m.answers[i] ?? 0}</b>
+          </span>
+        ))}
+      </span>
+    </div>
+  );
+}
+
+/** Ячейка «Стан»: черновик или отправлено, дата и охват */
+export function StateCell({ m }: { m: Pick<MailingListItem, "status" | "at" | "readCount" | "recipientCount"> }) {
+  const { ut } = useLang();
+  return (
+    <div className="py-1">
+      {m.status === "draft" ? (
+        <Tag icon={<Ic.pen />}>{ut("mlx.draft")}</Tag>
+      ) : (
+        <Tag tone="good" icon={<Mi.send />}>
+          {ut("mlx.sentTag")}
+        </Tag>
+      )}
+      <small className="mt-1 block whitespace-nowrap text-caption text-text-2">
+        {m.status === "draft" ? ut("mlx.changed").replace("{d}", stamp(m.at)) : stamp(m.at)}
+      </small>
+      {m.status === "sent" ? (
+        <small className="block whitespace-nowrap text-caption text-text-2">
+          {ut("mlx.readOf").replace("{n}", String(m.readCount)).replace("{total}", String(m.recipientCount))}
+        </small>
+      ) : null}
+    </div>
+  );
+}
 
 export default function MailingList() {
   const { ut } = useLang();
+  const navigate = useNavigate();
+  const toast = useToast();
+  const { run, busy } = useAction();
   const [params, setParams] = useSearchParams();
   const q = params.get("q") ?? "";
-  const hidden = params.get("hidden") === "1";
+  const view = mailingViewFrom(params.get("view"));
+  const group = params.get("group") ?? "";
+  const order = params.get("order") === "old" ? "old" : "new";
   const page = pageFrom(params.get("page"));
   const per = perFrom(params.get("per"));
+  const [open, setOpen] = useState<string | null>(null);
+  const [removing, setRemoving] = useState<MailingListItem | null>(null);
 
   /* состояние — в адресе, как у каталога и групп: ссылку на «страницу 3» пересылают */
   const update = useCallback(
@@ -76,203 +169,343 @@ export default function MailingList() {
 
   const list = useResource(
     // смещение — не дальше предела сервера (ui/paging.ts, #205): страница из закладки за ним — на последнюю
-    () => api.mailings({ q: dq, hidden, limit: per, offset: pageOffset(page, per) }),
-    [dq, hidden, page, per],
+    () =>
+      api.mailings({
+        q: dq,
+        ...mailingQuery(view),
+        ...(group ? { group } : {}),
+        ...(order === "old" ? { order } : {}),
+        limit: per,
+        offset: pageOffset(page, per),
+      }),
+    [dq, view, group, order, page, per],
   );
+  const groups = useResource(() => api.patientGroups().catch(() => null), []);
+  const groupBy = useMemo(() => new Map((groups.data ?? []).map((g) => [g.id, g])), [groups.data]);
   const pages = offsetPageCount(list.data?.total ?? 0, per);
+  const counts = list.data?.counts;
 
   /* последняя страница может опустеть после удаления или поиска — возвращаемся на ближайшую */
   useEffect(() => {
     if (list.data && page > pages) update({ page: pages > 1 ? String(pages) : null });
   }, [list.data, page, pages, update]);
 
+  useHotkeys({ n: () => navigate("/mailings/new") }, open === null && removing === null);
+
+  const hide = (m: MailingListItem) =>
+    run(async () => {
+      await api.hideMailing(m.id);
+      list.reload();
+      toast(ut("mail.hidden"), "ok", {
+        action: {
+          label: ut("mlx.unhide"),
+          onClick: () =>
+            void run(async () => {
+              await api.unhideMailing(m.id);
+              list.reload();
+            }),
+        },
+      });
+    });
+  const unhide = (m: MailingListItem) =>
+    run(async () => {
+      await api.unhideMailing(m.id);
+      list.reload();
+    }, ut("mlx.unhidden"));
+  const remove = (m: MailingListItem) =>
+    run(async () => {
+      await api.deleteMailing(m.id);
+      setRemoving(null);
+      list.reload();
+    }, ut("mail.deleted"));
+
+  const columns: Column<MailingListItem>[] = [
+    { key: "title", header: ut("mlx.colMessage"), required: true, render: (m) => <TitleCell m={m} /> },
+    {
+      key: "to",
+      required: true,
+      header: ut("mlx.colTo"),
+      width: 210,
+      render: (m) => <ToCell m={m} group={m.patientGroupId ? (groupBy.get(m.patientGroupId) ?? null) : null} />,
+    },
+    { key: "answers", header: ut("mlx.colAnswers"), required: true, width: 270, render: (m) => <AnswersCell m={m} /> },
+    { key: "state", header: ut("mlx.colState"), required: true, width: 170, render: (m) => <StateCell m={m} /> },
+  ];
+
+  const groupTitle = group ? (groupBy.get(group)?.title ?? null) : null;
+
   return (
     <Page
-      title={ut("top.messages")}
-      /*
-       * Просветы этого кадра: 40 от низа верхней полосы до строки заголовка
-       * (полоса f11 идёт 0…97, верхняя рамка поля поиска — на 138), 22 от неё
-       * до первой строки списка (низ коробки поля 174, верх первой строки 196
-       * = 536 − 5·68 по подложке наведения шестой строки) и 16 между
-       * заголовком и полем (чернила «Повідомлення» кончаются на 363, левая
-       * рамка поля стоит на 379). Общие умолчания каркаса — 50/28/24, они
-       * сведены на f05/f07, и трогать их нельзя.
-       */
-      topGap={40}
-      listGap={22}
-      headGap={16}
-      /*
-       * 105 от «+» до блока страниц — замер f11: правый край плюса 1070,
-       * левый край блока страниц ≈1175 (чернила «на сторінці» с 1186,
-       * коробка подписи правым краем на 1231). На общем зазоре строки (16)
-       * поле поиска дотянулось бы до 1116 вместо 1029 — на 87 шире кадра.
-       */
-      pagerGap={105}
-      toolbar={
-        /*
-         * Поле тянется от заголовка до «+», лупа — украшение: поиск идёт по
-         * мере набора. Имя полю даёт aria-label, а не Field: на кадре поле
-         * пустое, без подписи-плейсхолдера. Зазор 13 — замер f11: рамка поля
-         * кончается на 1029, штрих плюса начинается на 1043.
-         */
-        <div className="flex min-w-0 flex-1 items-center gap-[13px]">
-          <div className="relative min-w-0 flex-1">
-            <Input
-              look="outline"
-              aria-label={ut("mail.search")}
-              value={q}
-              onChange={(e) => update({ q: e.target.value, page: null })}
-              className="pr-[44px]"
-              autoComplete="off"
-              /* предел сервера (mailingListQuery, q ≤ 120): длиннее — не «нет результатов», а 400 */
-              maxLength={120}
-            />
-            {/* 8 от рамки: чернила лупы на кадре идут 1000…1021 при правой рамке поля на 1029 */}
-            <span aria-hidden className="pointer-events-none absolute right-[8px] top-1/2 -translate-y-1/2 text-text-2 [&>svg]:size-[22px]">
-              <IconSearchGlass />
-            </span>
-          </div>
-          {/* «+» — ссылка на форму, а не кнопка с окном: новое повідомлення — отдельный экран (f20) */}
-          <GlyphLink to="/mailings/new" aria-label={ut("mail.add")}>
-            <IconPlusThick />
-          </GlyphLink>
-        </div>
-      }
+      title={ut("sn.mailings")}
+      count={counts ? counts.all : null}
       actions={
-        <Pager
-          page={page}
-          pages={pages}
-          per={per}
-          onPer={(n) => update({ per: n === DEFAULT_PER ? null : String(n), page: null })}
-          onPage={(n) => update({ page: n > 1 ? String(n) : null })}
-        />
+        <Tooltip label={ut("mlx.newTip")} kbd="N" side="bottom" align="end">
+          <ButtonLink to="/mailings/new" variant="primary" className="gap-2">
+            <Ic.plus size={16} />
+            {ut("mail.add")}
+          </ButtonLink>
+        </Tooltip>
       }
     >
-      {list.error ? (
-        <Loading error={list.error} onRetry={list.reload} />
-      ) : !list.data ? (
-        <Loading rows={5} />
-      ) : list.data.items.length === 0 ? (
-        <p className="m-0 py-[24px] text-[13px] text-muted">{dq.trim() ? ut("mail.emptySearch") : ut("mail.empty")}</p>
-      ) : (
-        /*
-         * Список, а не таблица: у строки нет шапки колонок ни на кадре, ни
-         * по смыслу — тема, начало текста и дата читаются диктором как один
-         * элемент списка, а не как три безымянные ячейки.
-         */
-        <ul className="m-0 list-none p-0">
-          {list.data.items.map((m) => (
-            <Row key={m.id} m={m} />
-          ))}
-        </ul>
-      )}
+      <Panel flush>
+        <div className="px-4 pb-3 pt-3.5">
+          <FilterBar
+            search={{
+              value: q,
+              onChange: (v) => update({ q: v, page: null }),
+              placeholder: ut("mail.search"),
+              width: 260,
+            }}
+            views={{
+              value: view,
+              onChange: (k) => update({ view: k === "all" ? null : k, page: null }),
+              items: [
+                { key: "all", label: ut("mlx.viewAll"), count: counts?.all ?? null },
+                { key: "draft", label: ut("mlx.viewDrafts"), count: counts?.draft ?? null },
+                { key: "sent", label: ut("mlx.viewSent"), count: counts?.sent ?? null },
+                { key: "hidden", label: ut("mlx.viewHidden"), count: counts?.hidden ?? null },
+              ],
+            }}
+            chips={
+              groups.data && groups.data.length ? (
+                <GroupChip
+                  groups={groups.data}
+                  value={group}
+                  label={groupTitle}
+                  onChange={(id) => update({ group: id || null, page: null })}
+                />
+              ) : null
+            }
+            sort={{
+              options: [
+                { key: "new", label: ut("mlx.newFirst") },
+                { key: "old", label: ut("mlx.oldFirst") },
+              ],
+              value: order,
+              onChange: (k) => update({ order: k === "old" ? "old" : null, page: null }),
+            }}
+          />
+        </div>
+        {list.error && !list.data ? (
+          <div className="px-4 pb-4">
+            <Loading error={list.error} onRetry={list.reload} bare />
+          </div>
+        ) : !list.data ? (
+          <div className="px-4 pb-4">
+            <Loading rows={5} bare />
+          </div>
+        ) : (
+          <DataTable
+            label={ut("sn.mailings")}
+            rows={list.data.items}
+            columns={columns}
+            rowKey={(m) => m.id}
+            hotkeys={open === null && removing === null}
+            isRowActive={(m) => m.id === open}
+            onRowClick={(m) => (m.status === "sent" ? setOpen(m.id) : navigate(mailingHref(m.id)))}
+            empty={
+              <Empty
+                compact
+                title={dq.trim() || group || view !== "all" ? ut("mail.emptySearch") : ut("mail.empty")}
+              />
+            }
+            rowActions={(m) =>
+              view === "hidden" ? (
+                <RowAction label={ut("mlx.unhide")} onClick={() => void unhide(m)} disabled={busy}>
+                  <Ic.undo size={15} />
+                </RowAction>
+              ) : m.status === "draft" ? (
+                <>
+                  <RowAction label={ut("mlx.edit")} to={mailingHref(m.id)}>
+                    <Mi.pencil size={15} />
+                  </RowAction>
+                  <RowAction label={ut("mlx.deleteDraft")} onClick={() => setRemoving(m)}>
+                    <Mi.trash size={15} />
+                  </RowAction>
+                </>
+              ) : (
+                <>
+                  <RowAction label={ut("mlx.openAnswers")} onClick={() => setOpen(m.id)} data-answers>
+                    <Mi.panelRight size={15} />
+                  </RowAction>
+                  <RowAction label={ut("mlx.hide")} onClick={() => void hide(m)} disabled={busy}>
+                    <Mi.eyeOff size={15} />
+                  </RowAction>
+                </>
+              )
+            }
+          />
+        )}
+        <div className="border-t border-divider px-4 py-2.5">
+          <Pager
+            page={page}
+            pages={pages}
+            per={per}
+            total={list.data?.total ?? null}
+            onPer={(n) => update({ per: n === DEFAULT_PER ? null : String(n), page: null })}
+            onPage={(n) => update({ page: n > 1 ? String(n) : null })}
+          />
+        </div>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-divider px-4 py-3 text-small text-text-2">
+          <span className="inline-flex items-center gap-1.5">
+            <Ic.lock size={13} className="text-muted" />
+            {ut("mlx.immutable")}
+          </span>
+          <KbdHints
+            className="ml-auto"
+            keys={[
+              ["J K", ut("mlx.keyRows")],
+              ["Enter", ut("mlx.keyOpen")],
+              ["N", ut("mlx.keyNew")],
+            ]}
+          />
+        </div>
+      </Panel>
+
+      <AnswersDrawer
+        id={open}
+        onClose={() => setOpen(null)}
+        group={open ? (groupBy.get(list.data?.items.find((m) => m.id === open)?.patientGroupId ?? "") ?? null) : null}
+        onHidden={() => {
+          setOpen(null);
+          list.reload();
+        }}
+      />
+
+      {removing ? (
+        <Modal
+          title={ut("mail.confirmDelete")}
+          onClose={() => setRemoving(null)}
+          icon={<Mi.trash />}
+          tone="warn"
+          width={460}
+          footer={
+            <>
+              <Button variant="danger" icon={<Mi.trash />} disabled={busy} onClick={() => void remove(removing)}>
+                {ut("mail.delete")}
+              </Button>
+              <Button onClick={() => setRemoving(null)}>{ut("mlx.keep")}</Button>
+            </>
+          }
+        >
+          <p className="m-0 text-body text-text-2">{ut("mlx.deleteBody").replace("{title}", removing.title)}</p>
+        </Modal>
+      ) : null}
     </Page>
   );
 }
 
-/**
- * Строка списка — замеры f11 (кадр 1600, колонка 1200 один к одному):
- *
- *   тема       17/700 фиолетовым, интерлиньяж 20, колонка 156 + зазор 24
- *   текст      13/400 серым, интерлиньяж 14, три строки и обрез
- *   дата       14/700 серым, правый край колонки, 96 + зазор 24
- *   шаг строк  68 = три строки текста (42) + по 13 сверху и снизу
- *
- * Тема набрана крупнее «имени в списке» других экранов (13/700) — так на
- * кадре: «Тема повідомлення» стоит 153px шириной при 17 знаках, а 13-м
- * кеглем те же знаки заняли бы 119. Замер сильнее общего правила.
- *
- * Интерлиньяж темы 20, а не 23, и это тоже замер: у первой строки чернила
- * идут 211…225, у второй — 234…245; первая начинается заглавной «Т», вторая
- * строчной «м», а заглавная выше строчной на 3 — значит между строками 20
- * (по нижним выносным «д» те же 225 → 245). При 23 двухстрочная тема выросла
- * бы до 46 и сама стала бы задавать высоту строки: 46 + 13 + 13 = 72 вместо
- * 68. Высоту задаёт текст в три строки (42), тема в две в него укладывается.
- *
- * Шаг 68 сверен по двум колонкам: верх темы в девяти строках стоит на 211,
- * 279, 347 … 755, верх текста — там же. Колонка даты на кадре ползёт по
- * пикселю вниз на строку (221, 290, 359 … 773) — это небрежность рисунка, а
- * не третий шаг: по двум колонкам из трёх ровно 68, и полоса подсветки
- * шестой строки (536…602) укладывается именно в них.
- *
- * Линий между строками нет: на кадре между строками белое (проверено
- * пипеткой на трёх колонках), расшифровка макета в этом месте ошиблась.
- *
- * Подсветка наведения — #f7f5fa с кадра, то есть ровно 5 % фиолетового на
- * белом (247 = 0,95·255 + 0,05·102). Берётся готовой ступенью словаря
- * (--primary-tint, заведена подписью «самая тонкая заливка, строка под
- * курсором»), а не той же смесью, набранной в классе руками: второе место,
- * где живёт один и тот же цвет, однажды поправят наполовину. Полоса замерена от 205 до 1404 — это ровно
- * колонка 1200, не шире и не у́же.
- *
- * Колонки выровнены по центру, а не по верху, и это замер, а не вкус: дата
- * первой строки стоит на 222…231, а при выравнивании по верху её глиф лёг бы
- * на 213…223 — девять пикселей мимо. Центр даёт 222…232.
- */
-export function Row({ m }: { m: MailingListItem }) {
+/** Ячейка «Кому»: группа пилюлей и сколько людей — получили (отправленная) или в группе сейчас (черновик) */
+function ToCell({ m, group }: { m: MailingListItem; group: PatientGroupWithCounts | null }) {
+  const { ut } = useLang();
+  const people = m.status === "sent" ? m.recipientCount : (group?.memberCount ?? null);
   return (
-    /*
-      Ссылка — вся строка, а не одна тема.
+    <div className="py-1">
+      {m.patientGroupId ? (
+        <Tag tone="primary" icon={<Ic.users />}>
+          {group?.title ?? ut("mlx.someGroup")}
+        </Tag>
+      ) : (
+        <span className="text-small text-muted">{ut("mlx.noGroup")}</span>
+      )}
+      {people !== null ? (
+        <small className="mt-1.5 block text-caption text-text-2">{ut("mlx.people").replace("{n}", String(people))}</small>
+      ) : null}
+    </div>
+  );
+}
 
-      Подложка наведения на кадре закрашивает колонку целиком (200…1399 по
-      x, 536…602 по y у шестой строки), то есть обещает нажатие по всей
-      строке; чернила темы занимают в ней 200…353. Пока <Link> стоял только
-      вокруг темы, человек, целившийся в начало текста или в дату, не
-      попадал никуда — подсветка загоралась, а нажатие уходило в пустоту.
+/** Значковое действие строки с подписью-подсказкой */
+function RowAction({
+  label,
+  onClick,
+  to,
+  disabled,
+  children,
+  ...data
+}: {
+  label: string;
+  onClick?: () => void;
+  to?: string;
+  disabled?: boolean;
+  children: React.ReactNode;
+} & { [k: `data-${string}`]: boolean | string }) {
+  return (
+    <Tooltip label={label}>
+      {to ? (
+        <ButtonLink to={to} variant="quiet" size="icon-sm" aria-label={label}>
+          {children}
+        </ButtonLink>
+      ) : (
+        <Button variant="quiet" size="icon-sm" aria-label={label} onClick={onClick} disabled={disabled} {...data}>
+          {children}
+        </Button>
+      )}
+    </Tooltip>
+  );
+}
 
-      Строку целиком ссылка накрывает НАКЛАДКОЙ (`after:absolute inset-0`), а
-      не собой: начало текста и дата лежат в <li> РЯДОМ со ссылкой и потому
-      остаются в дереве доступности — диктор читает их как содержимое
-      элемента списка. Дата в этом списке — единственное, чем черновик
-      отличается от отправленной, и прятать её нельзя.
-
-      Отвергнуто: держать оба блока внутри ссылки под `aria-hidden` (так было
-      — видимое пропадало из дерева начисто) и `aria-label` вида «тема,
-      дата» на ссылке (превью всё равно пропадает, а имя ссылки перестаёт
-      начинаться с видимого текста — 2.5.3).
-
-      Подчёркивание у темы при наведении на строку остаётся: это
-      единственный знак, что строка — ссылка, а не просто подсвеченная
-      полоса.
-    */
-    <li
-      className={cx(
-        "group relative m-0 flex list-none items-center gap-[24px] py-[13px]",
-        "transition-colors duration-[var(--dur-fast)]",
-        /* #f7f5fa кадра — ступень словаря, заведённая ровно под строку под курсором */
-        "hover:bg-primary-tint",
+/** Чип «Група»: меню групп автора, «усі» — снять отбор */
+function GroupChip({
+  groups,
+  value,
+  label,
+  onChange,
+}: {
+  groups: PatientGroupWithCounts[];
+  value: string;
+  label: string | null;
+  onChange: (id: string) => void;
+}) {
+  const { ut } = useLang();
+  return (
+    <MenuButton
+      label={ut("mlx.group")}
+      trigger={(p) => (
+        <FilterChip
+          label={ut("mlx.group")}
+          value={label ?? ut("mlx.allGroups")}
+          on={!!value}
+          expanded={p["aria-expanded"]}
+          onClick={p.onClick}
+          onClear={value ? () => onChange("") : undefined}
+        />
       )}
     >
-      <Link
-        to={mailingHref(m.id)}
-        className={cx(
-          "w-[156px] shrink-0 text-[17px] font-bold leading-[20px] text-primary no-underline",
-          "group-hover:underline",
-          /* накладка нажатия: места не занимает, вид кадра не трогает */
-          "after:absolute after:inset-0 after:content-['']",
-        )}
-      >
-        {m.title}
-      </Link>
-      <span className="m-0 min-w-0 flex-1 text-[13px] leading-[14px] text-muted line-clamp-3">{m.preview}</span>
-      {/*
-        «14 may 20:15» на кадре — день, месяц словом, время. Месяц по языку
-        консоли (day → «14 трав.»), время — timeOfDay; английское «may» на
-        кадре — заглушка рисунка, не формат. Одна дата на строку, как на
-        кадре: у отправленной — отправки, у черновика — правки.
-
-        Колонка не `w-[96px]`, а `min-w-[96px]`: day() дописывает год, когда
-        он не текущий («14 трав. 2025 20:15»), и в жёсткие 96 это не влезало
-        — строка не переносится и не жмётся, а значит наезжала бы на текст. С
-        минимумом кадр не трогается вовсе (дата кадра «14 may 20:15» — 87px,
-        то есть у́же 96 и прижата вправо), а длинный вариант раздвигает
-        колонку за счёт текста, у которого min-w-0 и обрез по трём строкам.
-        Отвергнуто: обрез самой даты (truncate) — «14 трав. 202…» хуже, чем
-        строка текста на пару знаков короче.
-      */}
-      <span className="min-w-[96px] shrink-0 whitespace-nowrap text-right text-[14px] font-bold leading-[23px] text-muted">
-        {day(m.at)} {timeOfDay(m.at)}
-      </span>
-    </li>
+      {(close) => (
+        <>
+          <button
+            type="button"
+            role="menuitemradio"
+            aria-checked={!value}
+            className={menuItemClass("left")}
+            onClick={() => {
+              close();
+              onChange("");
+            }}
+          >
+            <span className="min-w-0 flex-1 truncate">{ut("mlx.allGroups")}</span>
+            {!value ? <Ic.check size={15} className="text-violet-ink" /> : null}
+          </button>
+          {groups.map((g) => (
+            <button
+              key={g.id}
+              type="button"
+              role="menuitemradio"
+              aria-checked={g.id === value}
+              className={menuItemClass("left")}
+              onClick={() => {
+                close();
+                onChange(g.id);
+              }}
+            >
+              <span className="min-w-0 flex-1 truncate">{g.title}</span>
+              <span className="text-caption font-bold tabular-nums text-muted">{g.memberCount}</span>
+              {g.id === value ? <Ic.check size={15} className="text-violet-ink" /> : null}
+            </button>
+          ))}
+        </>
+      )}
+    </MenuButton>
   );
 }

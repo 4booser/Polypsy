@@ -219,7 +219,7 @@ function assertRevision(row: MailingRow, seen: number | undefined) {
  */
 mailingRoutes.get("/", ...staffOnly, async (c) => {
   const user = c.get("user");
-  const { q, hidden, status, limit, offset } = parseQuery(c, mailingListQuery);
+  const { q, hidden, status, group, order, limit, offset } = parseQuery(c, mailingListQuery);
 
   /*
    * Все рассылки автора, скрытые тоже: из одного чтения считаются и строки
@@ -255,8 +255,12 @@ mailingRoutes.get("/", ...staffOnly, async (c) => {
   }
 
   const shown = rows.filter(
-    (r) => (hidden ? r.row.hiddenAt !== null : r.row.hiddenAt === null) && (!status || r.row.status === status),
+    (r) =>
+      (hidden ? r.row.hiddenAt !== null : r.row.hiddenAt === null) &&
+      (!status || r.row.status === status) &&
+      (!group || r.row.patientGroupId === group),
   );
+  if (order === "old") shown.reverse();
   const decrypted = shown.map((r) => {
     const m = toMailing(r.row);
     const byOption = new Map((r.answerCounts ?? []).map(([i, n]) => [Number(i), Number(n)]));

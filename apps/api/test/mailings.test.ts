@@ -531,6 +531,30 @@ describe("список автора: виды и ответы по вариан�
     const wrong = await api("/api/mailings?status=archived", author.token);
     expect(wrong.status).toBe(400);
   });
+
+  test("отбор по группе и порядок «давніші спершу»", async () => {
+    const author = await makeUser("admin", `ml-group-${crypto.randomUUID()}@test`);
+    const group = await makeGroup(author, `Група ${crypto.randomUUID().slice(0, 6)}`);
+    const first = await draft(author, { title: "Перша групі", patientGroupId: group });
+    const other = await draft(author, { title: "Без групи" });
+    const second = await draft(author, { title: "Друга групі", patientGroupId: group });
+    const stamp = (id: string, minutesAgo: number) =>
+      db
+        .update(mailings)
+        .set({ updatedAt: new Date(Date.now() - minutesAgo * 60_000).toISOString() })
+        .where(eq(mailings.id, id));
+    await stamp(first.id, 30);
+    await stamp(other.id, 20);
+    await stamp(second.id, 10);
+
+    const byGroup = await api(`/api/mailings?group=${group}`, author.token);
+    expect(byGroup.body.items.map((i: { id: string }) => i.id)).toEqual([second.id, first.id]);
+    expect(byGroup.body.items[0].patientGroupId).toBe(group);
+    const oldFirst = await api(`/api/mailings?group=${group}&order=old`, author.token);
+    expect(oldFirst.body.items.map((i: { id: string }) => i.id)).toEqual([first.id, second.id]);
+    // счётчики видов — по всем рассылкам автора, группа их не режет
+    expect(byGroup.body.counts.all).toBe(3);
+  });
 });
 
 describe("пуш о рассылке", () => {
