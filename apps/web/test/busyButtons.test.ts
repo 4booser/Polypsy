@@ -37,11 +37,6 @@ interface Exception {
 
 const EXCEPTIONS: Exception[] = [
   {
-    file: "src/pages/Account.tsx",
-    click: "() => applyPref(",
-    why: "тема, плотность и движение: вид меняется сразу, на этом же нажатии, а сервер лишь запоминает выбор — гасить переключатель на время записи значило бы мигать им на каждом нажатии",
-  },
-  {
     file: "src/pages/Invites.tsx",
     click: "() => run(async () => navigator.clipboard.writeText(",
     why: "копирование ссылки и кода приглашения в буфер: без сервера и мгновенно, и второе нажатие копирует то же самое — гасить нечего",

@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import type { LocalizedText, PermissionEffectKind } from "@quizzy/shared";
 import { ROLE_LADDER, roleRank, t } from "@quizzy/shared";
@@ -113,11 +113,12 @@ export function draftDiff(saved: string[], draft: string[]): { added: string[]; 
   return { added: draft.filter((c) => !saved.includes(c)), removed: saved.filter((c) => !draft.includes(c)) };
 }
 
-const KIND_ICON: Record<PermissionEffectKind, ReactNode> = {
-  screen: <Ic.layers size={15} />,
-  action: <Ic.mousePointer size={15} />,
-  analysis: <Ic.chart size={15} />,
-};
+/** Значок того, что право открывает: раздел меню, действие, аналитика */
+function KindIcon({ kind }: { kind: PermissionEffectKind }) {
+  if (kind === "action") return <Ic.mousePointer size={15} />;
+  if (kind === "analysis") return <Ic.chart size={15} />;
+  return <Ic.layers size={15} />;
+}
 
 export default function Permissions() {
   const { ut, lang } = useLang();
@@ -547,7 +548,7 @@ function RoleMatrix({
                       <span className="flex items-start gap-2.5">
                         <Tooltip label={t(p.effect.opens, lang)}>
                           <span tabIndex={0} className="mt-px text-muted outline-none focus-visible:text-violet-ink">
-                            {KIND_ICON[p.effect.kind]}
+                            <KindIcon kind={p.effect.kind} />
                           </span>
                         </Tooltip>
                         <span className="min-w-0">

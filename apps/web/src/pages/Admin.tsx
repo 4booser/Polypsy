@@ -529,11 +529,11 @@ function PublishModal({
 }) {
   const { ut, lang } = useLang();
   const changes = paragraphChanges(saved.uk, draft.uk).slice(0, 6);
-  const langRow = (l: Lang3): { icon: ReactNode; state: ReactNode } => {
-    if (!draft[l].trim()) return { icon: <Ic.minus size={15} className="text-muted" />, state: <span className="text-muted">{ut("adm2.enFallback")}</span> };
-    if (l === "ru" && ruStale) return { icon: <Ic.alert size={15} className="text-warn" />, state: <b className="font-bold text-warn">{ut("adm2.notUpdated")}</b> };
-    if (draft[l].trim() !== saved[l].trim()) return { icon: <Ic.circleCheck size={15} className="text-good" />, state: <span className="text-text-2">{ut("adm2.updated")}</span> };
-    return { icon: <Ic.circleCheck size={15} className="text-muted" />, state: <span className="text-muted">{ut("adm2.unchanged")}</span> };
+  const langRow = (l: Lang3): { icon: ReactNode; note: ReactNode } => {
+    if (!draft[l].trim()) return { icon: <Ic.minus size={15} className="text-muted" />, note: <span className="text-muted">{ut("adm2.enFallback")}</span> };
+    if (l === "ru" && ruStale) return { icon: <Ic.alert size={15} className="text-warn" />, note: <b className="font-bold text-warn">{ut("adm2.notUpdated")}</b> };
+    if (draft[l].trim() !== saved[l].trim()) return { icon: <Ic.circleCheck size={15} className="text-good" />, note: <span className="text-text-2">{ut("adm2.updated")}</span> };
+    return { icon: <Ic.circleCheck size={15} className="text-muted" />, note: <span className="text-muted">{ut("adm2.unchanged")}</span> };
   };
   return (
     <Modal
@@ -581,7 +581,7 @@ function PublishModal({
               <li key={l} className="flex items-center gap-2.5 border-b border-divider px-3 py-2.5 text-small last:border-0">
                 {r.icon}
                 <b className="font-bold text-text">{ut(l === "uk" ? "adm.inUkrainian" : l === "ru" ? "adm.inRussian" : "adm2.inEnglish")}</b>
-                <span className="ml-auto">{r.state}</span>
+                <span className="ml-auto">{r.note}</span>
               </li>
             );
           })}
