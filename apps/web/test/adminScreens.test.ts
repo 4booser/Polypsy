@@ -6,7 +6,7 @@ import { paragraphChanges, wordDiff } from "../src/pages/Admin";
 import { byTag, routeMatches } from "../src/pages/ApiDocs";
 import { strengthOf } from "../src/pages/Account";
 import { completions, readRecent, recentKey, saveRecent } from "../src/pages/Console";
-import { draftDiff, roleOrder } from "../src/pages/Permissions";
+import { draftDiff, roleChanges, roleOrder, saveRoleSets } from "../src/pages/Permissions";
 import {
   type StaffRow,
   accountState,
@@ -227,6 +227,38 @@ describe("права", () => {
 
   test("черновик набора: что добавлено и что убрано", () => {
     expect(draftDiff(["a", "b"], ["b", "c"])).toEqual({ added: ["c"], removed: ["a"] });
+  });
+
+  test("правится роль, чей черновик отличается: клетка, нажатая дважды, правки не оставляет", () => {
+    const roles = [
+      { id: "r1", permissions: ["a", "b"] },
+      { id: "r2", permissions: ["a"] },
+    ];
+    const changed = roleChanges(roles, { r1: ["b", "a"], r2: ["a", "c"] });
+    expect(changed.map((c) => c.role.id)).toEqual(["r2"]);
+    expect(changed[0]).toMatchObject({ added: ["c"], removed: [] });
+  });
+
+  /*
+   * Черновик снимался до ответа сервера, а матрица перечитывалась только после
+   * удачи: откажи вторая роль — первая, уже сохранённая, стояла бы на экране
+   * прежней, а нажатое во второй пропадало бы.
+   */
+  test("сохранение наборов: сохранённое называется сразу, отказ — после него", async () => {
+    const saved: string[] = [];
+    const run = saveRoleSets(
+      [
+        { id: "r1", permissions: ["a"] },
+        { id: "r2", permissions: ["b"] },
+        { id: "r3", permissions: ["c"] },
+      ],
+      async (id) => {
+        if (id === "r2") throw new Error("403");
+      },
+      (id) => saved.push(id),
+    );
+    await expect(run).rejects.toThrow("403");
+    expect(saved).toEqual(["r1"]);
   });
 });
 

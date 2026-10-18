@@ -113,6 +113,38 @@ export function draftDiff(saved: string[], draft: string[]): { added: string[]; 
   return { added: draft.filter((c) => !saved.includes(c)), removed: saved.filter((c) => !draft.includes(c)) };
 }
 
+/**
+ * Роли, у которых черновик набора и правда отличается от сохранённого.
+ *
+ * По разнице, а не по наличию черновика: клетка, нажатая дважды, вернула
+ * набор к сохранённому, и роль больше не правится — ни в строке «кого
+ * торкнеться», ни подсветкой колонки.
+ */
+export function roleChanges<R extends { id: string; permissions: string[] }>(
+  roles: R[],
+  drafts: Readonly<Record<string, string[]>>,
+): { role: R; added: string[]; removed: string[] }[] {
+  return roles
+    .map((role) => ({ role, ...draftDiff(role.permissions, drafts[role.id] ?? role.permissions) }))
+    .filter((c) => c.added.length || c.removed.length);
+}
+
+/**
+ * Сохранить черновики наборов — роль за ролью. Сохранённая называется сразу
+ * (`onSaved`), до следующей: откажет третья — первые две экран покажет
+ * сохранёнными, а не прежними, и черновиком останется только несохранённое.
+ */
+export async function saveRoleSets(
+  changes: { id: string; permissions: string[] }[],
+  put: (id: string, permissions: string[]) => Promise<unknown>,
+  onSaved: (id: string, permissions: string[]) => void,
+): Promise<void> {
+  for (const c of changes) {
+    await put(c.id, c.permissions);
+    onSaved(c.id, c.permissions);
+  }
+}
+
 /** Значок того, что право открывает: раздел меню, действие, аналитика */
 function KindIcon({ kind }: { kind: PermissionEffectKind }) {
   if (kind === "action") return <Ic.mousePointer size={15} />;
@@ -222,9 +254,17 @@ export default function Permissions() {
           busy={busy}
           onPerson={openPerson}
           onSave={(changes) =>
-            void run(async () => {
-              for (const c of changes) await api.setRolePermissions(c.id, c.permissions);
-              rolesRes.reload();
+            run(async () => {
+              let shown = rolesRes.data ?? [];
+              try {
+                await saveRoleSets(changes, api.setRolePermissions, (id, permissions) => {
+                  shown = shown.map((r) => (r.id === id ? { ...r, permissions } : r));
+                  rolesRes.patch(shown);
+                });
+              } finally {
+                /* и после отказа: что сохранено, а что нет, — по ответу сервера */
+                rolesRes.reload();
+              }
             }, ut("perm.roleSaved"))
           }
         />
@@ -252,6 +292,7 @@ export default function Permissions() {
         <NewRoleDrawer
           open={creating}
           onClose={() => setCreating(false)}
+          onReturn={() => setCreating(true)}
           onCreated={() => {
             setCreating(false);
             rolesRes.reload();
@@ -410,7 +451,8 @@ function RoleMatrix({
   editable: boolean;
   busy: boolean;
   onPerson: (id: string) => void;
-  onSave: (changes: { id: string; permissions: string[] }[]) => void;
+  /** true — сохранено всё; иначе черновик остаётся, сохранённое уже в ролях */
+  onSave: (changes: { id: string; permissions: string[] }[]) => Promise<boolean>;
 }) {
   const { ut, lang } = useLang();
   const [q, setQ] = useState("");
@@ -419,9 +461,8 @@ function RoleMatrix({
   /* черновики наборов по ролям: что нажато, но ещё не сохранено */
   const [drafts, setDrafts] = useState<Record<string, string[]>>({});
   const setOf = (r: RoleItem) => drafts[r.id] ?? r.permissions;
-  const changed = roles
-    .map((r) => ({ role: r, ...draftDiff(r.permissions, setOf(r)) }))
-    .filter((c) => c.added.length || c.removed.length);
+  const changed = roleChanges(roles, drafts);
+  const editing = new Set(changed.map((c) => c.role.id));
 
   const all = groups.flatMap((g) => g.permissions);
   const kindCount = (k: KindView) => (k === "all" ? all.length : all.filter((p) => p.effect.kind === k).length);
@@ -508,7 +549,7 @@ function RoleMatrix({
                   key={r.id}
                   className={cx(
                     "sticky top-[var(--sticky-top,0px)] z-[3] w-[112px] border-y border-divider px-2 py-2 text-center align-bottom",
-                    drafts[r.id] ? "bg-violet-tint" : "bg-panel-2",
+                    editing.has(r.id) ? "bg-violet-tint" : "bg-panel-2",
                   )}
                 >
                   <span className="flex flex-col items-center gap-1">
@@ -536,7 +577,7 @@ function RoleMatrix({
                     {t(g.title, lang)}
                   </th>
                   {roles.map((r) => (
-                    <td key={r.id} className={cx("border-b border-divider px-2 py-2 text-center text-caption tabular-nums text-muted", drafts[r.id] ? "bg-violet-tint" : "bg-panel-2")}>
+                    <td key={r.id} className={cx("border-b border-divider px-2 py-2 text-center text-caption tabular-nums text-muted", editing.has(r.id) ? "bg-violet-tint" : "bg-panel-2")}>
                       {fill(ut("adm2.nOf"), { n: g.permissions.filter((p) => setOf(r).includes(p.code)).length, total: g.permissions.length })}
                     </td>
                   ))}
@@ -564,7 +605,7 @@ function RoleMatrix({
                       const label = `${t(r.title, lang)}: ${t(p.title, lang)} — ${now ? ut("adm2.markRole") : ut("adm2.markOff")}`;
                       const canEdit = editable && !r.isBuiltin;
                       return (
-                        <td key={r.id} className={cx("border-b border-divider px-2 py-2 text-center", drafts[r.id] && "bg-violet-tint/60")}>
+                        <td key={r.id} className={cx("border-b border-divider px-2 py-2 text-center", editing.has(r.id) && "bg-violet-tint/60")}>
                           {canEdit ? (
                             <button
                               type="button"
@@ -627,10 +668,12 @@ function RoleMatrix({
             size="xs"
             icon={<Ic.check size={14} />}
             disabled={busy}
-            onClick={() => {
-              onSave(changed.map((c) => ({ id: c.role.id, permissions: setOf(c.role) })));
-              setDrafts({});
-            }}
+            onClick={() =>
+              /* черновик снимается после сохранения, а не до: отказ не стирает нажатое */
+              void onSave(changed.map((c) => ({ id: c.role.id, permissions: setOf(c.role) }))).then((ok) => {
+                if (ok) setDrafts({});
+              })
+            }
           >
             {ut("perm.saveRole")}
           </Button>
@@ -827,7 +870,12 @@ function PersonDrawer({
           onRoles={(next) =>
             void run(async () => {
               await api.setUserRoles(c.userId, next);
-              card.reload();
+              /*
+               * Карточка — свежей и до конца действия: следующий набор считается
+               * от её ролей, и вторая галочка, нажатая раньше перечитывания,
+               * отправила бы набор без первой — та молча снялась бы.
+               */
+              card.patch(await api.userPermissions(c.userId));
               onChanged();
             })
           }
@@ -1117,7 +1165,18 @@ function PersonView({
  * шагов до понятного состояния — роль сразу видна колонкой рядом с
  * остальными, и её набор правится тем же способом, что и у прочих.
  */
-function NewRoleDrawer({ open, onClose, onCreated }: { open: boolean; onClose: () => void; onCreated: () => void }) {
+function NewRoleDrawer({
+  open,
+  onClose,
+  onReturn,
+  onCreated,
+}: {
+  open: boolean;
+  onClose: () => void;
+  /** «Повернутися» из всплывашки «чернетку збережено»: ящик закрыли с набранным */
+  onReturn: () => void;
+  onCreated: () => void;
+}) {
   const { ut } = useLang();
   const { run, busy } = useAction();
   const [code, setCode] = useState("");
@@ -1129,7 +1188,7 @@ function NewRoleDrawer({ open, onClose, onCreated }: { open: boolean; onClose: (
     <Drawer
       open={open}
       onClose={onClose}
-      onReturn={() => undefined}
+      onReturn={onReturn}
       title={ut("perm.newRole")}
       sub={ut("adm2.newRoleSub")}
       icon={<AIc.shieldHalf />}
