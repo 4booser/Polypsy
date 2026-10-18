@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../api";
 import { useLang } from "../lang";
 import { ShellIcon } from "../shell/icons";
-import { Callout, Ic, KV, Modal, useAction } from "../ui";
+import { Callout, Ic, KV, Modal, initialsOf, useAction } from "../ui";
 import { cx } from "../ui/cx";
 import { Button, ButtonLink, Field, Tag, Textarea } from "../ui/primitives";
 import { useResource } from "../useResource";
@@ -441,11 +441,6 @@ const weekArrow = cx(
 /** «Ковальчук» из «Ковальчук Ярослав Богданович» — под временем помещается одно слово */
 function surname(name: string): string {
   return name.split(" ")[0] ?? name;
-}
-
-function initialsOf(name: string): string {
-  const parts = name.split(" ").filter(Boolean);
-  return ((parts[0]?.[0] ?? "") + (parts[1]?.[0] ?? "")).toUpperCase();
 }
 
 function slotLine(slot: Slot, ut: (key: "pt.room") => string): string {
