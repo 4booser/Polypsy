@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { type Lang, type PermissionEffectKind, type Sex, roleRank, t } from "@quizzy/shared";
 import { ApiError, api } from "../../api";
@@ -9,7 +9,7 @@ import { cx } from "../../ui/cx";
 import { Page, Panel } from "../../ui/layout";
 import { Button, ChoiceCard, ErrorText, Field, Input, Select, Switch } from "../../ui/primitives";
 import { useResource } from "../../useResource";
-import { loadDirectory } from "./data";
+import { createStaff, loadDirectory } from "./data";
 import { facetValues, isDoctor, workplaceOf } from "./model";
 import { AIc, fill, plural, shortName } from "./parts";
 
@@ -124,45 +124,51 @@ export default function StaffNew({ kind }: { kind: NewKind }) {
   const positions = useMemo(() => facetValues((dir.data?.rows ?? []).filter(isDoctor), "position"), [dir.data]);
   const department = (departments.data ?? []).find((d) => d.id === departmentId) ?? null;
 
+  /* второе нажатие (или Ctrl+Enter), пока первое в полёте, не заводит вторую запись: решение — в момент нажатия, до перерисовки */
+  const inFlight = useRef(false);
+
   async function submit() {
     setTried(true);
-    if (!canSubmit) return;
+    if (!canSubmit || inFlight.current) return;
+    inFlight.current = true;
     setBusy(true);
     setError(null);
     try {
-      const created = await api.createUser({
-        email: email.trim(),
-        password,
-        firstName: firstName.trim(),
-        lastName: lastName.trim(),
-        middleName: middleName.trim() || null,
-        role: chosen === SUPER ? "superadmin" : "admin",
-        mustChangePassword: temporary,
-        sex: sex || null,
-        birthDate: birthDate || null,
-        unit: unit.trim() || null,
-        position: position.trim() || null,
-        specialty: specialty.trim() || null,
-        locality: locality.trim() || null,
-      });
-      if (chosen && chosen !== SUPER && chosen !== NONE) {
-        const card = await api.userPermissions(created.id);
-        const have = card.roles.map((r) => r.roleId);
-        if (!have.includes(chosen)) await api.setUserRoles(created.id, [...have, chosen]);
-      }
-      if (departmentId && canDepartments) {
-        /* профиль приёма — отдельным шагом: запись уже есть, и отказ здесь не должен её прятать */
-        await api
-          .saveSpecialistProfile(created.id, { departmentId, position: position.trim() || null, room: room.trim() || null })
-          .catch((e: unknown) => toast(e instanceof Error ? e.message : ut("adm.createFailed"), "err"));
-      }
+      /*
+       * Роль и профиль приёма — после записи, и их отказ записи не отменяет
+       * (createStaff): человек уходит в карточку с сообщением, а не остаётся
+       * на форме, повтор которой упёрся бы в «почта занята».
+       */
+      const { id, problems } = await createStaff(
+        {
+          email: email.trim(),
+          password,
+          firstName: firstName.trim(),
+          lastName: lastName.trim(),
+          middleName: middleName.trim() || null,
+          role: chosen === SUPER ? "superadmin" : "admin",
+          mustChangePassword: temporary,
+          sex: sex || null,
+          birthDate: birthDate || null,
+          unit: unit.trim() || null,
+          position: position.trim() || null,
+          specialty: specialty.trim() || null,
+          locality: locality.trim() || null,
+        },
+        {
+          roleId: chosen && chosen !== SUPER && chosen !== NONE ? chosen : null,
+          profile: departmentId && canDepartments ? { departmentId, position: position.trim() || null, room: room.trim() || null } : null,
+        },
+      );
+      for (const p of problems) toast(p, "err");
       toast(ut("ppl.created"), "ok");
-      navigate(`/staff/${created.id}`);
+      navigate(`/staff/${id}`);
     } catch (e) {
       /* 409 у этого маршрута — только занятая почта: отказ встаёт под полем, а не общей строкой */
       if (e instanceof ApiError && (e.status === 409 || /email/i.test(e.message))) setEmailError(e.message);
       else setError(e instanceof Error ? e.message : ut("adm.createFailed"));
     } finally {
+      inFlight.current = false;
       setBusy(false);
     }
   }

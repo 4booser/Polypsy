@@ -1,4 +1,4 @@
-import type { AssignableStaff, StaffDirectoryUser, User } from "@quizzy/shared";
+import type { AssignableStaff, CreateUserInput, StaffDirectoryUser, User } from "@quizzy/shared";
 import { api } from "../../api";
 import { type StaffRow, fromAssignable, fromUser, isStaff, sortByName } from "./model";
 
@@ -165,4 +165,57 @@ export async function loadMember(
   if (hit) return { row: hit };
   const dir = await loadDirectory(viewer, src);
   return { row: dir.rows.find((r) => r.id === id) ?? null };
+}
+
+/** Что делает «Створити» сверх самой записи: роль-шаблон и профиль приёма */
+export interface StaffExtras {
+  /** Роль-шаблон к встроенной; null — только встроенная */
+  roleId: string | null;
+  /** Профиль приёма в відділенні; null — без него */
+  profile: { departmentId: string; position: string | null; room: string | null } | null;
+}
+
+/** Запросы заведения — подменяются в проверке (apps/web/test/people.test.ts) */
+export interface CreateStaffSource {
+  createUser: (input: CreateUserInput) => Promise<User>;
+  userPermissions: (id: string) => Promise<{ roles: { roleId: string }[] }>;
+  setUserRoles: (id: string, roleIds: string[]) => Promise<unknown>;
+  saveSpecialistProfile: (id: string, input: { departmentId: string; position: string | null; room: string | null }) => Promise<unknown>;
+}
+
+/**
+ * Заведение сотрудника: запись, затем роль-шаблон и профиль приёма.
+ *
+ * Заведён ли человек, решает только первый запрос. Отказ роли или профиля
+ * после него — не отказ заведения: запись уже есть, и форма, оставшись на
+ * месте с ошибкой, повтором упёрлась бы в «почта занята» (а человек решил
+ * бы, что учётки нет). Такие отказы возвращаются словами (`problems`):
+ * экран показывает их и уходит в карточку, где роль и назначают.
+ */
+export async function createStaff(
+  input: CreateUserInput,
+  extras: StaffExtras,
+  src: CreateStaffSource = api,
+): Promise<{ id: string; problems: string[] }> {
+  const created = await src.createUser(input);
+  const problems: string[] = [];
+  const said = (e: unknown) => (e instanceof Error ? e.message : String(e));
+  if (extras.roleId) {
+    try {
+      /* встроенную роль сервер выдал сам — набор дописывается, а не заменяется */
+      const card = await src.userPermissions(created.id);
+      const have = card.roles.map((r) => r.roleId);
+      if (!have.includes(extras.roleId)) await src.setUserRoles(created.id, [...have, extras.roleId]);
+    } catch (e) {
+      problems.push(said(e));
+    }
+  }
+  if (extras.profile) {
+    try {
+      await src.saveSpecialistProfile(created.id, extras.profile);
+    } catch (e) {
+      problems.push(said(e));
+    }
+  }
+  return { id: created.id, problems };
 }
