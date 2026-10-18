@@ -312,7 +312,7 @@ export function RecordSide({
       <Panel
         title={ut("msx.nextVisit")}
         icon={<Ic.calendar />}
-        actions={next ? <Tag>{when(next.startsAt)}</Tag> : null}
+        sub={next ? when(next.startsAt) : undefined}
         footer={
           next && canMove ? (
             <Button size="xs" icon={<Mi.calendarSync />} onClick={onMove}>

@@ -225,11 +225,11 @@ export default function MailingList() {
       key: "to",
       required: true,
       header: ut("mlx.colTo"),
-      width: 210,
+      width: 190,
       render: (m) => <ToCell m={m} group={m.patientGroupId ? (groupBy.get(m.patientGroupId) ?? null) : null} />,
     },
-    { key: "answers", header: ut("mlx.colAnswers"), required: true, width: 270, render: (m) => <AnswersCell m={m} /> },
-    { key: "state", header: ut("mlx.colState"), required: true, width: 170, render: (m) => <StateCell m={m} /> },
+    { key: "answers", header: ut("mlx.colAnswers"), required: true, width: 250, render: (m) => <AnswersCell m={m} /> },
+    { key: "state", header: ut("mlx.colState"), required: true, width: 160, render: (m) => <StateCell m={m} /> },
   ];
 
   const groupTitle = group ? (groupBy.get(group)?.title ?? null) : null;
@@ -254,7 +254,7 @@ export default function MailingList() {
               value: q,
               onChange: (v) => update({ q: v, page: null }),
               placeholder: ut("mail.search"),
-              width: 260,
+              width: 220,
             }}
             views={{
               value: view,

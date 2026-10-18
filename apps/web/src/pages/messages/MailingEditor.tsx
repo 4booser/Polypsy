@@ -462,20 +462,24 @@ function OptionsBox({
       ) : (
         <p className="m-0 text-small text-text-2">{ut("mlx.noOptionsHint")}</p>
       )}
-      <div className="mt-3 flex flex-wrap items-center gap-1.5">
+      <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2">
         <Button size="xs" icon={<Ic.plus />} disabled={options.length >= MAX_OPTIONS} onClick={onAdd}>
           {ut("mail.addOption")}
         </Button>
-        <span className="ml-auto text-small text-muted">{ut("mlx.presets")}</span>
-        <Button size="xs" variant="quiet" onClick={() => onPreset("yesNo")}>
-          {ut("mlx.presetYesNo")}
-        </Button>
-        <Button size="xs" variant="quiet" onClick={() => onPreset("yesNoMaybe")}>
-          {ut("mlx.presetYesNoMaybe")}
-        </Button>
-        <Button size="xs" variant="quiet" onClick={() => onPreset("none")}>
-          {ut("mlx.presetNone")}
-        </Button>
+        <span role="group" aria-label={ut("mlx.presets")} className="ml-auto flex flex-wrap items-center gap-1">
+          <span aria-hidden className="mr-1 text-small text-muted">
+            {ut("mlx.presets")}
+          </span>
+          <Button size="xs" variant="quiet" onClick={() => onPreset("yesNo")}>
+            {ut("mlx.presetYesNo")}
+          </Button>
+          <Button size="xs" variant="quiet" onClick={() => onPreset("yesNoMaybe")}>
+            {ut("mlx.presetYesNoMaybe")}
+          </Button>
+          <Button size="xs" variant="quiet" onClick={() => onPreset("none")}>
+            {ut("mlx.presetNone")}
+          </Button>
+        </span>
       </div>
     </div>
   );
@@ -635,7 +639,7 @@ function SentPage({
           ) : null}
         </div>
         <div className="flex min-w-0 flex-col gap-4">
-          <Panel title={ut("mlx.whom")} icon={<Mi.send />}>
+          <Panel title={ut("mlx.colTo")} icon={<Mi.send />}>
             <div className="flex flex-wrap gap-1.5">
               {group ? (
                 <Tag tone="primary" icon={<Ic.users />}>
