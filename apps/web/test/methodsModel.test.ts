@@ -11,6 +11,9 @@ import {
   shortDate,
   splitCode,
   tShift,
+  topLosses,
+  weekStart,
+  weeklyCounts,
 } from "../src/pages/methods/model";
 
 /*
@@ -143,5 +146,42 @@ describe("зсув середнього T", () => {
   test("без нормы или с нулевым SD — не определён", () => {
     expect(tShift(undefined, { mean: 1 })).toBeNull();
     expect(tShift({ mean: 1, sd: 0 }, { mean: 2 })).toBeNull();
+  });
+});
+
+describe("огляд: тижні й втрати", () => {
+  test("тиждень починається з понеділка", () => {
+    expect(weekStart("2026-10-08")).toBe("2026-10-05");
+    expect(weekStart("2026-10-05")).toBe("2026-10-05");
+    expect(weekStart("2026-10-11")).toBe("2026-10-05");
+  });
+
+  test("дні складаються в тижні, порожні — нулем, поточний — неповний", () => {
+    const now = new Date(2026, 9, 8, 17, 0);
+    const weeks = weeklyCounts(
+      [
+        { date: "2026-09-21", count: 2 },
+        { date: "2026-09-27", count: 3 },
+        { date: "2026-10-06", count: 4 },
+      ],
+      4,
+      now,
+    );
+    expect(weeks).toEqual([
+      { week: "2026-09-14", count: 0, partial: false },
+      { week: "2026-09-21", count: 5, partial: false },
+      { week: "2026-09-28", count: 0, partial: false },
+      { week: "2026-10-05", count: 4, partial: true },
+    ]);
+  });
+
+  test("втрати — лише з втратами, за спаданням, не більше n", () => {
+    const rows = [
+      { position: 0, lost: 0 },
+      { position: 1, lost: 6 },
+      { position: 2, lost: 21 },
+      { position: 3, lost: 6 },
+    ];
+    expect(topLosses(rows, 2)).toEqual([rows[2], rows[1]]);
   });
 });

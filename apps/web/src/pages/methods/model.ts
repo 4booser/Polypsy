@@ -204,3 +204,46 @@ export function tShift(manual: { mean: number; sd: number } | undefined, sample:
 
 /** Межа, за якою вибірка систематично відрізняється від нормувальної */
 export const T_SHIFT_LIMIT = 5;
+
+/* ─────────── огляд методики ─────────── */
+
+const ymd = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+
+/** Понедельник недели дня «ГГГГ-ММ-ДД» (местный календарь) — тем же видом */
+export function weekStart(date: string): string {
+  const d = new Date(`${date.slice(0, 10)}T00:00:00`);
+  const back = (d.getDay() + 6) % 7;
+  return ymd(new Date(d.getFullYear(), d.getMonth(), d.getDate() - back));
+}
+
+/**
+ * Проходження по неделям из счёта по дням: последние `weeks` недель до
+ * текущей включительно, пустые — нулём (неделя без проходжень — тоже ответ),
+ * последняя помечена `partial`, пока не кончилась.
+ */
+export function weeklyCounts(
+  timeline: readonly { date: string; count: number }[],
+  weeks: number,
+  now: Date = new Date(),
+): { week: string; count: number; partial: boolean }[] {
+  const by = new Map<string, number>();
+  for (const p of timeline) {
+    const w = weekStart(p.date);
+    by.set(w, (by.get(w) ?? 0) + p.count);
+  }
+  const base = new Date(`${weekStart(ymd(now))}T00:00:00`);
+  const out: { week: string; count: number; partial: boolean }[] = [];
+  for (let i = weeks - 1; i >= 0; i -= 1) {
+    const w = ymd(new Date(base.getFullYear(), base.getMonth(), base.getDate() - 7 * i));
+    out.push({ week: w, count: by.get(w) ?? 0, partial: i === 0 });
+  }
+  return out;
+}
+
+/** Пункты, после которых бросали чаще всего: только с потерями, по убыванию, не больше `n` */
+export function topLosses<T extends { lost: number; position: number }>(rows: readonly T[], n: number): T[] {
+  return rows
+    .filter((r) => r.lost > 0)
+    .sort((a, b) => b.lost - a.lost || a.position - b.position)
+    .slice(0, n);
+}
