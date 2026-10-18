@@ -1,7 +1,17 @@
 import { describe, expect, test } from "bun:test";
 import { instrumentCode } from "@quizzy/shared";
-import { adminA, adminB, api, db, makeUser, submitSurvey, surveyInA, type Person } from "./fixtures";
-import { alertCases, appointments, departments, dispensary, slots, specialistProfiles, surveyAccess } from "../src/db/schema";
+import { adminA, adminB, api, db, groupA, makeUser, submitSurvey, surveyInA, type Person } from "./fixtures";
+import {
+  alertCases,
+  appointments,
+  batteries,
+  batteryAssignments,
+  departments,
+  dispensary,
+  slots,
+  specialistProfiles,
+  surveyAccess,
+} from "../src/db/schema";
 
 /**
  * Реестр пациентов 2.0 (кадр patients-list): строка говорит, почему человек
@@ -142,6 +152,24 @@ describe("GET /api/dynamics/respondents/:id — полосы шкалы", () => 
     expect(typeof sr.bands[0].label).toBe("string");
     const mins = sr.bands.map((b: { min: number }) => b.min);
     expect(mins).toEqual([...mins].sort((a: number, b: number) => a - b));
+  });
+});
+
+describe("GET /api/timeline/:id — назначение набора", () => {
+  test("в строке — название набора, а не его идентификатор", async () => {
+    const p = await patientOfA(`${crypto.randomUUID().slice(0, 8)}-battery`);
+    const batteryId = crypto.randomUUID();
+    await db.insert(batteries).values({ id: batteryId, groupId: groupA, title: "Перед сесією 6", createdBy: adminA.id } as never);
+    await db.insert(batteryAssignments).values({
+      id: crypto.randomUUID(),
+      batteryId,
+      userId: p.id,
+      assignedBy: adminA.id,
+    } as never);
+    const res = await api(`/api/timeline/${p.id}`, adminA.token);
+    expect(res.status).toBe(200);
+    const row = res.body.items.find((i: { kind: string }) => i.kind === "assignment");
+    expect(row.title).toBe("Перед сесією 6");
   });
 });
 

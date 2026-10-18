@@ -66,6 +66,7 @@ import type {
   SurveyFolder,
   SurveyFolderWithCounts,
   PatientCard,
+  PatientListPage,
   PatientGroup,
   PatientGroupCard,
   PatientGroupInput,
@@ -1712,6 +1713,24 @@ export const api = {
    * карты /patients/:id/case, а этот — на вопрос кадра.
    */
   patientCard: (userId: string) => request<PatientCard>(`/api/patients/${userId}/card`),
+  /*
+   * Реестр пациентов 2.0: все, кого читатель вправе видеть (не только
+   * обследованные), с поводом в строке — открытый случай, главная шкала
+   * последнего замера, приём, неявка, учёт, ведущий — и счётчиками подань.
+   * Пустые значения не уходят: `view=` и `q=` сервер читал бы как отбор.
+   */
+  patients: (params: {
+    q?: string;
+    patientGroup?: string;
+    view?: string;
+    sort?: string;
+    limit?: number;
+    offset?: number;
+  } = {}) => {
+    const qs = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== "" && v !== null) qs.set(k, String(v));
+    return request<PatientListPage>(`/api/patients?${qs}`);
+  },
   assignSurveyToPatientGroup: (groupId: string, body: AssignSurveyToPatientGroupInput) =>
     request<{ groupId: string; surveyId: string; recipients: number }>(`/api/patient-groups/${groupId}/surveys`, {
       method: "POST",
