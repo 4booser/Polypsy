@@ -8278,7 +8278,7 @@ export const UI = {
   "v2v.consentChip": { uk: "Згода на запис", ru: "Согласие на запись", en: "Recording consent" },
   "v2v.visits": { uk: "Прийомів", ru: "Приёмов", en: "Appointments" },
   "v2v.visitsNoMiss": { uk: "проведено {done}, неявок немає", ru: "проведено {done}, неявок нет", en: "{done} held, no no-shows" },
-  "v2v.visitsMissed": { uk: "проведено {done}, неявок {missed}", ru: "проведено {done}, неявок {missed}", en: "{done} held, {missed} no-shows" },
+  "v2v.visitsMissed": { uk: "проведено {done}, неявки: {missed}", ru: "проведено {done}, неявок: {missed}", en: "{done} held, {missed} no-shows" },
   "v2v.since": { uk: "з {date}", ru: "с {date}", en: "since {date}" },
   "v2v.protocolDraft": {
     uk: "Зберігається чернеткою в записах пацієнта; підписують у картці",
