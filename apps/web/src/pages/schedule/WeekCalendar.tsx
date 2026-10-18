@@ -113,9 +113,12 @@ export function WeekCalendar({
                 {p.date.slice(8, 10)}
               </span>
               <span className={cx("block tabular-nums", today && "font-extrabold text-violet-ink")}>
-                {p.windows || taken
+                {p.windows
                   ? ut("v2s.dayTaken").replace("{n}", String(taken)).replace("{m}", String(p.windows))
-                  : ut("v2s.dayOffShort")}
+                  : taken
+                    ? /* приёмы в день без окон по сетке: не «1 з 0», а сколько записано */
+                      ut("v2s.dayTakenOnly").replace("{n}", String(taken))
+                    : ut("v2s.dayOffShort")}
               </span>
             </div>
           );

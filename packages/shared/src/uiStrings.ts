@@ -8145,6 +8145,7 @@ export const UI = {
   "v2s.statOff": { uk: "поза розкладом: {n} — вирішіть", ru: "вне расписания: {n} — решите", en: "off schedule: {n} — decide" },
   "v2s.dayTaken": { uk: "{n} з {m}", ru: "{n} из {m}", en: "{n} of {m}" },
   "v2s.dayOffShort": { uk: "вихідний", ru: "выходной", en: "day off" },
+  "v2s.dayTakenOnly": { uk: "записано {n}", ru: "записано {n}", en: "{n} booked" },
   "v2s.offScheduleNote": {
     uk: "Поза розкладом: цей час випав із годин прийому, але запис лишився. Перенесіть або лишіть.",
     ru: "Вне расписания: это время выпало из часов приёма, но запись осталась. Перенесите или оставьте.",
@@ -8262,11 +8263,7 @@ export const UI = {
   "v2v.cancelled": { uk: "Прийом скасовано", ru: "Приём отменён", en: "Appointment cancelled" },
   "v2v.keep": { uk: "Лишити", ru: "Оставить", en: "Keep" },
   "v2v.undoDo": { uk: "Зняти відмітку", ru: "Снять отметку", en: "Remove the mark" },
-  "v2v.undoBody": {
-    uk: "Відмітку часу буде знято, як ніби кнопку не натискали. Прийом лишиться на своєму часі.",
-    ru: "Отметка времени будет снята, как будто кнопку не нажимали. Приём останется на своём времени.",
-    en: "The time mark is removed, as if the button had not been pressed. The appointment keeps its time.",
-  },
+  "v2v.undoAsk": { uk: "Зняти відмітку?", ru: "Снять отметку?", en: "Remove the mark?" },
   "v2v.openItems": { uk: "Відкрите по прийому", ru: "Открытое по приёму", en: "Open items for this appointment" },
   "v2v.startsAt": { uk: "Початок о {time}", ru: "Начало в {time}", en: "Starts at {time}" },
   "v2v.inMin": { uk: "через {n} хв", ru: "через {n} мин", en: "in {n} min" },

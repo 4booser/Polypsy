@@ -170,11 +170,21 @@ function VisitScreen({ id }: { id: string }) {
         const a = data.appointment;
         const move = (to: "booked" | "arrived" | "in_progress" | "done" | "no_show", ok?: string) =>
           run(() => moveAndReload(() => api.appointmentStatus(a.id, to), reload), ok);
-        const steps = startPath(a.status);
         const undo = undoStep(a.status);
         const s = wallOf(a.startsAt, a.tz);
         const e = wallOf(a.endsAt, a.tz);
-        const when = `${s.date === wallOf(new Date(now).toISOString(), a.tz).date ? ut("v2v.today") : `${ut(SHORT_KEY[weekdayOf(s.date)]!)} ${dayMonth(s.date)}`}, ${clock(s.minutes)}–${clock(e.minutes)}`;
+        const todayLocal = wallOf(new Date(now).toISOString(), a.tz).date;
+        /*
+         * «Почати» и «Не прийшов» — только в день приёма и позже. Сервер
+         * переход разрешает в любой день, но приём следующей недели,
+         * открытый из календаря, начатым или неявкой быть не может: такое
+         * нажатие — промах, и исправлять его пришлось бы шагом назад.
+         */
+        const due = s.date <= todayLocal;
+        const steps = due ? startPath(a.status) : [];
+        const when = capital(
+          `${s.date === todayLocal ? ut("v2v.today") : `${ut(SHORT_KEY[weekdayOf(s.date)]!)} ${dayMonth(s.date)}`}, ${clock(s.minutes)}–${clock(e.minutes)}`,
+        );
         const place = a.mode === "remote" ? ut("day.remote") : a.room ? `${ut("day.room")} ${a.room}` : ut("v2v.onsite");
         const details = [ut(a.kind === "primary" ? "day.primary" : "day.repeat"), place, ut(STATUS_KEY[a.status])].join(", ");
         /* меню: справка (если человек пришёл), снятие ошибочной отметки, отмена приёма */
@@ -182,7 +192,7 @@ function VisitScreen({ id }: { id: string }) {
           ...(certificateAvailable(a.status)
             ? [{ label: ut("visit.certificate"), icon: <V.fileBadge />, onSelect: () => openInTab(`/api/reports/visits/${a.id}`) }]
             : []),
-          ...(undo ? [{ label: ut(undo.confirm), icon: <Ic.undo />, onSelect: () => setAsking("undo") }] : []),
+          ...(undo ? [{ label: ut("v2v.undoDo"), icon: <Ic.undo />, onSelect: () => setAsking("undo") }] : []),
           ...(cancellable(a.status)
             ? [{ label: ut("v2v.cancelVisit"), icon: <V.calendarX />, danger: true, ruled: true, onSelect: () => setAsking("cancel") }]
             : []),
@@ -195,7 +205,7 @@ function VisitScreen({ id }: { id: string }) {
             meta={[when, details]}
             actions={
               <>
-                {canMarkNoShow(a.status) ? (
+                {due && canMarkNoShow(a.status) ? (
                   <Button icon={<V.userX />} disabled={busy} onClick={() => void move("no_show", ut("v2v.noShowDone"))}>
                     {ut("day.noShow")}
                   </Button>
@@ -465,7 +475,7 @@ function VisitScreen({ id }: { id: string }) {
 
             {asking === "undo" && undo ? (
               <Modal
-                title={ut(undo.confirm)}
+                title={ut("v2v.undoAsk")}
                 icon={<Ic.undo />}
                 width={460}
                 onClose={() => setAsking(null)}
@@ -485,7 +495,7 @@ function VisitScreen({ id }: { id: string }) {
                   </>
                 }
               >
-                <p className="m-0 text-body text-text-2">{ut("v2v.undoBody")}</p>
+                <p className="m-0 text-body text-text-2">{ut(undo.confirm)}</p>
               </Modal>
             ) : null}
           </Page>
