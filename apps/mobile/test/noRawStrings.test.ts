@@ -42,7 +42,6 @@ const EXCEPTIONS: Exception[] = [
 ];
 
 const NAMES: LatinName[] = [
-  { word: "Quizzy", file: "apps/mobile/app/login.tsx", why: "название продукта на экране входа" },
   {
     word: "XXXX",
     file: "apps/mobile/app/register.tsx",

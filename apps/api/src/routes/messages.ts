@@ -1,9 +1,9 @@
 import { Hono } from "hono";
-import { and, desc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, isNull, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../db";
 import { requestIsReadOnly } from "../db/context";
-import { messages, threads, users } from "../db/schema";
+import { appointments, messages, slots, specialistProfiles, threads, users } from "../db/schema";
 import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
 import { namesOf } from "../lib/names";
@@ -106,18 +106,119 @@ messageRoutes.get("/", async (c) => {
     .orderBy(desc(threads.lastMessageAt))
     .limit(200);
 
+  const lastOf = await lastMessages(rows.map((r) => r.thread.id));
+  const nextOf = await nextVisits(
+    me.id,
+    rows.map((r) => r.thread.patientId),
+  );
+
   const items = [];
   for (const r of rows) {
+    const last = lastOf.get(r.thread.id) ?? null;
     items.push({
       id: r.thread.id,
       withName: fullNameOf(r.patient),
       patientId: r.thread.patientId,
       lastMessageAt: r.thread.lastMessageAt,
       unread: await unreadCount(r.thread.id, me.id),
+      preview: last ? previewOf(decryptField(last.textEnc) ?? "") : null,
+      lastMine: last ? last.authorId === me.id : null,
+      lastReadAt: last ? last.readAt : null,
+      next: nextOf.get(r.thread.patientId) ?? null,
     });
   }
   return c.json({ items, lead: null });
 });
+
+/**
+ * Начало последнего письма для строки списка.
+ *
+ * Режется здесь, а не на экране: двести разговоров с полным текстом
+ * последнего письма — двести расшифрованных писем в ответе ради двух строк
+ * в колонке. Переводы строк схлопываются: строка списка одна.
+ */
+const PREVIEW_CHARS = 160;
+
+function previewOf(text: string): string {
+  const flat = text.replace(/\s+/g, " ").trim();
+  if (flat.length <= PREVIEW_CHARS) return flat;
+  const cut = flat.slice(0, PREVIEW_CHARS);
+  const space = cut.lastIndexOf(" ");
+  return `${space > PREVIEW_CHARS / 2 ? cut.slice(0, space) : cut}…`;
+}
+
+/**
+ * Последнее письмо каждого разговора — одним запросом.
+ *
+ * Список читается сверху вниз по вопросу «кому я должен ответить»: ответ
+ * на него — чьё письмо последнее (`lastMine`) и прочитано ли моё
+ * (`lastReadAt`). Без этого «чекає відповіді» пришлось бы угадывать по
+ * числу непрочитанных, а прочитанное, но оставленное без ответа письмо из
+ * списка пропадало бы.
+ */
+async function lastMessages(threadIds: string[]) {
+  if (!threadIds.length) return new Map<string, { authorId: string; textEnc: string; readAt: string | null }>();
+  const rows = await db
+    .selectDistinctOn([messages.threadId], {
+      threadId: messages.threadId,
+      authorId: messages.authorId,
+      textEnc: messages.textEnc,
+      readAt: messages.readAt,
+    })
+    .from(messages)
+    .where(inArray(messages.threadId, threadIds))
+    .orderBy(messages.threadId, desc(messages.sentAt), desc(messages.id));
+  return new Map(rows.map((r) => [r.threadId, r]));
+}
+
+/**
+ * Ближайший приём человека У ЭТОГО специалиста — для строки списка и
+ * панели «Наступний прийом» с переносом.
+ *
+ * Только свои приёмы: переписка — разговор двоих, и переносить из неё
+ * можно свою сессию, а не запись человека к коллеге. Только живые и ещё не
+ * начавшиеся — те, что переносятся (RESCHEDULABLE в clinic.ts).
+ */
+async function nextVisits(specialistId: string, patientIds: string[]) {
+  const out = new Map<
+    string,
+    { id: string; startsAt: string; endsAt: string; room: string | null; mode: "onsite" | "remote"; status: string }
+  >();
+  if (!patientIds.length) return out;
+  const rows = await db
+    .selectDistinctOn([appointments.patientId], {
+      patientId: appointments.patientId,
+      id: appointments.id,
+      mode: appointments.mode,
+      status: appointments.status,
+      startsAt: slots.startsAt,
+      endsAt: slots.endsAt,
+      room: specialistProfiles.room,
+    })
+    .from(appointments)
+    .innerJoin(slots, eq(slots.id, appointments.slotId))
+    .leftJoin(specialistProfiles, eq(specialistProfiles.userId, appointments.specialistId))
+    .where(
+      and(
+        eq(appointments.specialistId, specialistId),
+        inArray(appointments.patientId, [...new Set(patientIds)]),
+        inArray(appointments.status, ["booked", "confirmed"]),
+        gt(slots.startsAt, new Date().toISOString()),
+      ),
+    )
+    .orderBy(appointments.patientId, asc(slots.startsAt));
+  for (const r of rows) {
+    out.set(r.patientId, {
+      id: r.id,
+      startsAt: r.startsAt,
+      endsAt: r.endsAt,
+      room: r.room ?? null,
+      mode: r.mode,
+      status: r.status,
+    });
+  }
+  return out;
+}
 
 /** Непрочитанное — то, что написал не я и что я ещё не открыл */
 async function unreadCount(threadId: string, meId: string): Promise<number> {

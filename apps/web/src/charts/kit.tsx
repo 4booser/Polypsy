@@ -341,8 +341,12 @@ export function ChartLegend({ items, className, always }: { items: readonly Lege
  * Ячейка, скрытая порогом малых чисел: «n < 5» и объяснение по наведению и
  * фокусу. Не ноль и не прочерк без слов: человек должен понять, что число
  * есть, но его не показывают, — и почему.
+ *
+ * `why` — своё объяснение вместо общего «менше N людей»: там, где сервер
+ * прячет и большие числа (статистика: вместе с соседними они называют
+ * людей), общая фраза была бы неправдой.
  */
-export function SmallCell({ floor = 5, className }: { floor?: number; className?: string }) {
+export function SmallCell({ floor = 5, className, why }: { floor?: number; className?: string; why?: ReactNode }) {
   const { ut } = useLang();
   return (
     <span tabIndex={0} className={cx("group/sc relative inline-flex cursor-default rounded-[4px] outline-none focus-visible:outline-2 focus-visible:outline-[var(--focus)]", className)}>
@@ -352,7 +356,7 @@ export function SmallCell({ floor = 5, className }: { floor?: number; className?
         className="pointer-events-none invisible absolute right-0 bottom-[calc(100%+6px)] z-[4] w-[240px] rounded-panel border border-border bg-panel px-[12px] py-[10px] text-left text-small leading-[18px] font-medium whitespace-normal text-text-2 opacity-0 shadow-pop transition-opacity duration-[120ms] group-hover/sc:visible group-hover/sc:opacity-100 group-focus-visible/sc:visible group-focus-visible/sc:opacity-100"
       >
         <b className="block font-extrabold text-text">{ut("kit.hidden")}</b>
-        {fillIn(ut("chart.smallCellWhy"), { n: floor })}
+        {why ?? fillIn(ut("chart.smallCellWhy"), { n: floor })}
       </span>
     </span>
   );

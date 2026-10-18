@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import {
   assignSurveyToPatientGroupSchema,
   patientGroupInputSchema,
@@ -12,10 +12,12 @@ import {
 } from "@quizzy/shared";
 import { db } from "../db";
 import {
+  alertCases,
   patientGroupFavourites,
   patientGroupMembers,
   patientGroups,
   patientGroupSurveys,
+  responses,
   surveys,
   users,
 } from "../db/schema";
@@ -127,26 +129,109 @@ patientGroupRoutes.get("/", async (c) => {
    * Состав всех групп одним запросом, а не по запросу на группу: восемь
    * вкладок — это восемь обращений к базе ради одного числа под каждой.
    */
+  const groupIds = rows.map((r) => r.id);
   const memberRows = rows.length
     ? await db
-        .select({ groupId: patientGroupMembers.groupId, userId: patientGroupMembers.patientId })
+        .select({
+          groupId: patientGroupMembers.groupId,
+          userId: patientGroupMembers.patientId,
+          addedAt: patientGroupMembers.addedAt,
+        })
         .from(patientGroupMembers)
-        .where(inArray(patientGroupMembers.groupId, rows.map((r) => r.id)))
+        .where(inArray(patientGroupMembers.groupId, groupIds))
     : [];
+  const shown = memberRows.filter(membersVisibleTo(visible));
 
-  const counts = new Map<string, number>();
-  for (const m of memberRows.filter(membersVisibleTo(visible))) {
-    counts.set(m.groupId, (counts.get(m.groupId) ?? 0) + 1);
-  }
+  /*
+   * Строка списка — таблица консоли: методики группы кодами, «пройшли
+   * призначене», ризик в группе, кто веде, когда менялась. Всё — тем же
+   * пакетом запросов на весь список, а не по группе: число запросов не
+   * растёт с числом вкладок.
+   */
+  const surveyRows = rows.length
+    ? await db
+        .select({
+          groupId: patientGroupSurveys.groupId,
+          surveyId: patientGroupSurveys.surveyId,
+          title: surveys.title,
+          assignedAt: patientGroupSurveys.assignedAt,
+        })
+        .from(patientGroupSurveys)
+        .innerJoin(surveys, eq(surveys.id, patientGroupSurveys.surveyId))
+        .where(inArray(patientGroupSurveys.groupId, groupIds))
+        .orderBy(asc(patientGroupSurveys.assignedAt))
+    : [];
+  const done = await completedPairs(
+    shown.map((m) => m.userId),
+    surveyRows.map((s) => s.surveyId),
+  );
+  const atRisk = await openRiskOf(shown.map((m) => m.userId));
+  const ownerName = await namesOf(rows.map((r) => r.ownerId));
 
-  const items: PatientGroupWithCounts[] = rows.map((r) => ({
-    ...r,
-    memberCount: counts.get(r.id) ?? 0,
-    surveyCount: Number(r.surveyCount ?? 0),
-    favourite: Boolean(r.favourite),
-  }));
+  const items: PatientGroupWithCounts[] = rows.map((r) => {
+    const people = shown.filter((m) => m.groupId === r.id);
+    const tests = surveyRows.filter((s) => s.groupId === r.id);
+    /*
+     * «Пройшли призначене» — каждую методику группы хотя бы раз, по тому же
+     * правилу, что completedCount у методики в карточке: «18 з 24» в списке
+     * и отметки в карточке обязаны сходиться.
+     */
+    const doneCount = tests.length
+      ? people.filter((m) => tests.every((s) => done.has(`${m.userId}|${s.surveyId}`))).length
+      : 0;
+    const changedAt = [r.createdAt, ...people.map((m) => m.addedAt), ...tests.map((s) => s.assignedAt)].reduce(
+      (a, b) => (b > a ? b : a),
+    );
+    return {
+      ...r,
+      memberCount: people.length,
+      surveyCount: Number(r.surveyCount ?? 0),
+      favourite: Boolean(r.favourite),
+      surveys: tests.map((s) => ({ surveyId: s.surveyId, title: s.title })),
+      doneCount,
+      riskCount: people.filter((m) => atRisk.has(m.userId)).length,
+      ownerName: ownerName.get(r.ownerId) ?? "—",
+      changedAt,
+    };
+  });
   return c.json({ items });
 });
+
+/**
+ * Пары «человек — методика», где есть хотя бы одно завершённое прохождение.
+ * Ключ — `userId|surveyId`. Пустые списки — пустой ответ без запроса.
+ */
+async function completedPairs(userIds: string[], surveyIds: string[]): Promise<Set<string>> {
+  const people = [...new Set(userIds)];
+  const tests = [...new Set(surveyIds)];
+  if (!people.length || !tests.length) return new Set();
+  const rows = await db
+    .selectDistinct({ userId: responses.userId, surveyId: responses.surveyId })
+    .from(responses)
+    .where(
+      and(eq(responses.status, "completed"), inArray(responses.surveyId, tests), inArray(responses.userId, people)),
+    );
+  return new Set(rows.map((r) => `${r.userId}|${r.surveyId}`));
+}
+
+/** У кого из списка есть открытый случай риска — тот же признак, что у очереди случаев */
+async function openRiskOf(userIds: string[]): Promise<Set<string>> {
+  const people = [...new Set(userIds)];
+  if (!people.length) return new Set();
+  const rows = await db
+    .selectDistinct({ userId: alertCases.userId })
+    .from(alertCases)
+    .where(and(isNull(alertCases.acknowledgedAt), inArray(alertCases.userId, people)));
+  return new Set(rows.map((r) => r.userId));
+}
+
+/** Имена сотрудников — ведущих групп */
+async function namesOf(ids: string[]): Promise<Map<string, string>> {
+  const unique = [...new Set(ids)];
+  if (!unique.length) return new Map();
+  const people = await db.select().from(users).where(inArray(users.id, unique));
+  return new Map(people.map((u) => [u.id, fullNameOf(u)]));
+}
 
 /** Заведение группы. Владельцем становится тот, кто её завёл, — иначе некому */
 patientGroupRoutes.post("/", async (c) => {
@@ -210,8 +295,20 @@ patientGroupRoutes.get("/:id", async (c) => {
     .innerJoin(users, eq(users.id, patientGroupMembers.patientId))
     .where(eq(patientGroupMembers.groupId, groupId));
 
-  const members: PatientGroupMember[] = memberRows
-    .filter(membersVisibleTo(visible))
+  const visibleRows = memberRows.filter(membersVisibleTo(visible));
+  const groupSurveyIds = (
+    await db
+      .select({ surveyId: patientGroupSurveys.surveyId })
+      .from(patientGroupSurveys)
+      .where(eq(patientGroupSurveys.groupId, groupId))
+  ).map((r) => r.surveyId);
+  const done = await completedPairs(
+    visibleRows.map((r) => r.userId),
+    groupSurveyIds,
+  );
+  const atRisk = await openRiskOf(visibleRows.map((r) => r.userId));
+
+  const members: PatientGroupMember[] = visibleRows
     .map((r) => ({
       userId: r.userId,
       fullName: fullNameOf(r),
@@ -223,6 +320,8 @@ patientGroupRoutes.get("/:id", async (c) => {
       phone: decryptField(r.phoneEnc),
       addedAt: r.addedAt,
       addedBy: r.addedBy,
+      completedSurveyIds: groupSurveyIds.filter((id) => done.has(`${r.userId}|${id}`)),
+      openRisk: atRisk.has(r.userId),
     }))
     .sort((a, b) => a.fullName.localeCompare(b.fullName));
 
@@ -280,6 +379,11 @@ patientGroupRoutes.get("/:id", async (c) => {
     details: { members: members.length, surveys: groupSurveys.length, phones: true },
   });
 
+  const [fav] = await db
+    .select({ groupId: patientGroupFavourites.groupId })
+    .from(patientGroupFavourites)
+    .where(and(eq(patientGroupFavourites.userId, user.id), eq(patientGroupFavourites.groupId, groupId)));
+
   const card: PatientGroupCard = {
     id: group.id,
     title: group.title,
@@ -290,6 +394,8 @@ patientGroupRoutes.get("/:id", async (c) => {
     createdAt: group.createdAt,
     members,
     surveys: groupSurveys,
+    ownerName: (await namesOf([group.ownerId])).get(group.ownerId) ?? "—",
+    favourite: !!fav,
   };
   return c.json(card);
 });

@@ -102,7 +102,7 @@ const events = courseEventsFromTimeline(await api.timeline(userId));
 | `BandTrend` | как балл шёл по лестнице | поле полос как у курса, SEM-полоса, подсказка |
 | `ShareBar` | из чего состоит целое | 16 px, просвет 2 px, легенда «число  доля %», `null` — «n < 5» |
 | `HBars` | сравнение строками | подпись, полоса 14 px, число; `strong` — фиолетовым, прочие c5; `attention`, `severity`; `reference` — отметка сравнения; `floor` |
-| `GroupedHBars` | несколько рядов на строку | цвет ряда из `series`, легенда, `null` — «n < 5» |
+| `GroupedHBars` | несколько рядов на строку | цвет ряда из `series`, легенда (`legend={false}` — одну рисует экран), `null` — «n < 5», `hiddenWhy` — своё объяснение скрытого |
 | `PairBars` | було / стало | «було» c5, «стало» фиолетовым или янтарём |
 | `HeatTable` | ответы по пунктам во времени | значение в каждой клетке, лестница h1…h5, `critical` — ненулевой ответ красным, `legend` значений |
 | `TimeColumns` | сколько за корзину | `values`, `partial` (корзина ещё идёт), `hidden` (скрыто порогом), `tone="attention"` |

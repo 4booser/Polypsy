@@ -1,15 +1,17 @@
-import { useEffect, useId, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
-import type { MailingCard } from "@quizzy/shared";
+import { useEffect, useState } from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import { renderPush, type MailingCard, type PatientGroupWithCounts } from "@quizzy/shared";
 import { api } from "../../api";
-import { useLang } from "../../lang";
-import { Loading, Modal, useAction, useToast } from "../../ui";
-import { IconGear, IconPlusThick } from "../../ui/glyphs";
-import { Page } from "../../ui/layout";
-import { ActionMenu, type MenuEntry } from "../../ui/menu";
-import { Button, Field, Input, Readout, Select, Textarea } from "../../ui/primitives";
-import { useResource } from "../../useResource";
+import { HBars } from "../../charts/clinical";
 import { staleMessage } from "../../components/versioned";
+import { day, timeOfDay } from "../../format";
+import { useLang } from "../../lang";
+import { Callout, Ic, Loading, Modal, Tooltip, useAction, useHotkeys, useToast } from "../../ui";
+import { Page, Panel } from "../../ui/layout";
+import { Button, Field, Input, Select, Tag, Textarea } from "../../ui/primitives";
+import { useResource } from "../../useResource";
+import { AnswerBars, SilentList, answeredLine } from "./answers";
+import { Mi } from "./icons";
 import {
   MAX_OPTIONS,
   type MailingDraft,
@@ -18,177 +20,67 @@ import {
   draftToUpdate,
   isFilled,
   mailingHref,
+  optionPreset,
+  pluralForm,
   saveThenSend,
+  withoutOption,
 } from "./model";
 
 /*
- * Повідомлення (розсилка) — кадры f20 и f26 макета, один экран.
+ * Розсилка — редактор чернетки и сторінка відправленої (comms-mailing-editor).
  *
- * Два кадра — одна форма в двух состояниях:
+ * Чернетка: слева само повідомлення — назва, текст із лічильником, варіанти
+ * відповіді (до десяти, з шаблонами «Так / Ні», «Так / Ні / Ще не знаю»,
+ * «Без відповіді»), под ним — как будут выглядеть ответы и что раньше
+ * уходило этой группе; справа — кому отправить, сколько людей получат,
+ * предупреждение о незмінності и «Відправити N людям» с подтверждением, и
+ * что пациент увидит на телефоне.
  *
- *   f20 — новое: «Назва повідомлення», «Текст повідомлення», рамка «Відповідь»
- *         с полями «Так» / «Ні» и «+», кнопка «Створити». Шестерёнки нет.
- *   f26 — существующее: та же форма, справа над колонкой шестерёнка с меню
- *         «Відправити / Видалити / Зберегти»; варианты ответа — залитые плашки
- *         по центру рамки, без «+» и без «Створити».
+ * Відправлена: то же место, только для чтения, и вместо формы — ответы:
+ * полосы по вариантам и кто ещё молчит. Текст после отправки сервер не
+ * меняет (409), поэтому и экран не притворяется формой.
  *
- * Где кадры расходятся, взято более полное прочтение, и вот как:
- *
- * 1. Черновик открывается редактируемым (f20: контурные поля вариантов и
- *    «+»), потому что в его меню есть «Зберегти» — сохранять нечего, если
- *    править нельзя. Отправленное открывается как f26 буквально: текст
- *    заморожен (сервер отвечает 409 на правку), варианты — залитые плашки.
- * 2. Кегль и цвет у двух состояний РАЗНЫЕ, и это тоже два кадра, а не
- *    разнобой. Пустая форма (f20) набрана 17 серым обычным: подпись-
- *    плейсхолдер «Назва повідомлення» — чернила 460…615 цветом (102,102,102)
- *    при кап-высоте «Н» 161…172. Заполненное (f26) набрано 20: та же строка
- *    идёт 460…655 фиолетовым полужирным при кап-высоте 160…173. Отношение
- *    кап/кегль 0,70 сверено на двух известных константах кадра — меню 20/700
- *    (кап 13–14) и заголовок 24/700 (кап 17). Отсюда `ph="plain"` у полей
- *    черновика и 20-й кегль у показа.
- * 3. В меню стоит «Відправити» — слово кадра f26 (чернила пункта 1293…1376).
- *    Словарь держит одну форму слова на весь интерфейс, поэтому вместе с
- *    этим пунктом на «відправити/відправлення/відправлено» переведены ВСЕ
- *    строки словаря (см. uiStrings.ts у якоря audit:messages).
- *
- * Чего на кадрах нет — того нет и на экране. Поле «Група отримувачів» с
- * формы убрано: на f20 под рамкой «Відповідь» сразу кнопка «Створити»
- * (заливка #f0ecff 935…1149 × 561…605 при нижней линии рамки 515), то есть
- * просвет ровно 46, а поле с его шагом 51 давало 97. Сама возможность при
- * этом никуда не делась: группа спрашивается в окне шага «Відправити» из
- * меню-шестерни, перед api.sendMailing, — сервер без адресатов отправлять
- * отказывается (err.mailingNoRecipients), и обещание без исполнения тут
- * было бы хуже лишнего поля.
- *
- * Чего на кадрах нет и здесь НЕТ, хотя сервер отдаёт: счётчиков по
- * вариантам, числа получателей и их списка на карточке отправленного
- * (MailingCard.counts / answers / recipients). Правило волны — на экране
- * ровно то, что нарисовано; данные ждут своего кадра.
- *
- * Убрать вариант ответа можно, стерев его текст: глифа «убрать» на кадре нет,
- * пустые варианты выбрасываются при сохранении (model.ts, cleanOptions).
- *
- * Колонка формы 700 по центру — замер обоих кадров: левая рамка полей стоит
- * на 450, правая на 1149 при кадре 1600, то есть центр колонки 800 = центр
- * кадра. Шестерёнка на f26 стоит НЕ у самого края колонки: её чернила идут
- * 1355…1380 при правом крае колонки 1400, то есть в 20 от него.
+ * Редакция черновика уходит в правку и отправку (волна 15): поверх чужой
+ * правки сервер отвечает 409, и экран предлагает перечитать.
  */
 
-/**
- * Обёртка с ключом: форма нового повідомлення и форма существующего — один
- * компонент на двух маршрутах, и без ключа переход с /mailings/:id на
- * /mailings/new оставил бы в полях чужой текст.
- */
 export default function MailingPage() {
   const { id } = useParams<{ id: string }>();
+  /*
+   * Форма пересоздаётся по адресу: правки черновика A не переезжают в
+   * черновик B, когда человек переходит по ссылке, не уходя с экрана.
+   */
   return <MailingEditor key={id ?? "new"} id={id ?? null} />;
 }
 
-/** Плейсхолдер селекта — фиолетовым полужирным, как подпись поля на макете */
-const PLACEHOLDER = { color: "var(--primary)", fontWeight: 700 } as const;
+/** Предел текста сервера (mailingInputSchema: body ≤ 4000) */
+const BODY_MAX = 4000;
 
-/*
- * Рамка «Відповідь»: линия #666666, та же, что у полей, радиус 5. Все поля —
- * от рамок, а не от внутренней белизны: во всём проекте box-sizing: border-box
- * (legacy.css), и число в классе — это border-box.
- *
- * Тон рамки — --field-border (#666666), а не --border (#cccccc): на обоих
- * кадрах горизонтальные линии рамки (f20: y = 411 и 520) и боковые (x = 450 и
- * 1149) идут ровно (102,102,102), как и рамки полей вариантов внутри неё.
- * Комментарий здесь это и говорил, а класс брал тон линий-разделителей.
- *
- * f20: рамка 411…520 (110 по border-box), border-box первого варианта
- * начинается на 470 → слева 19, а не 21: 476 — это уже чернила буквы «В», у
- * неё свой отступ внутри знака. Верх: 411 + 1 + 19 = 431, подпись ростом 17,
- * зазор 18 — вариант встаёт на 466; та же арифметика сходится и на f26
- * (411 + 1 + 19 + 17 + 18 = 466 при плашках 466…501 и нижней линии 520).
- *
- * Ординаты пересчитаны от ЧЁРНОЙ РАМКИ КАДРА, а не от общего начала: рамка
- * начинается у f20 на 11, у f26 на 12, а не на 16, и прежняя редакция этого
- * комментария занизила каждое число на 4–5. Высоты, просветы и шаги верны и
- * здесь не трогались — разъехались только цитируемые координаты.
- */
-const answerBox = "rounded-[5px] border border-field-border px-[19px] pb-[18px] pt-[19px]";
-/*
- * Рост строки подписи 17 — не вкус, а условие: высота рамки на обоих кадрах
- * ровно 110, и 1+19+17+18+36+18+1 = 110. Кегль внутрь этой строки помещается
- * любой: она задаёт шаг, а не рост знака.
- *
- * Кегль и начертание у подписи разные, и это два разных состояния, а не
- * разнобой макета. Пустая форма (f20): чернила «Відповідь» 471…543 (73px)
- * цветом (102,102,102), кап-высота «В» 434…445 — это 17/400. Отправленное
- * (f26): 471…563 (93px) фиолетовым, кап-высота «В» 433…446 — это 20/700.
- * Прежний вывод «13» для f20 был сделан из отношения ширин 73/93, а ширины
- * здесь мерить нельзя: слова набраны разным начертанием, и полужирный шире
- * обычного сам по себе. Мерить надо кап-высоту, что и сделано.
- */
-const answerHeadingBase = "m-0 leading-[17px]";
-const answerHeadingDraft = `${answerHeadingBase} text-[17px] text-muted`;
-const answerHeadingSent = `${answerHeadingBase} text-[20px] font-bold text-primary`;
-
-/**
- * Ширина варианта — 139, замер по рамкам: f20 первый вариант 470…608, второй
- * 626…764; f26 заливка #f0ecff 653…791 и 809…947 при середине колонки 800.
- * Белое нутро у́же на 2 — это рамки, и в border-box они входят в ширину.
- */
-const optionWidth = "w-[139px]";
-
-/*
- * Набор ЗАПОЛНЕННОГО повідомлення — кадр f26: 20-й кегль там, где пустая
- * форма (f20) набрана 17-м.
- *
- * Замер по кап-высоте, а не по ширине строки (начертание разное): «Назва
- * повідомлення» на f26 — чернила 460…655, кап «Н» 160…173 = 14, то есть 20
- * при отношении кап/кегль 0,70; на f20 та же строка — 460…615, кап 161…172 =
- * 12, то есть 17. Текст письма на f26 — кап 228…241 = 14 при шаге строк 22,
- * цвет (102,102,102).
- *
- * Высоты коробок от смены кегля не едут и потому не трогаются: у названия 36
- * (24 строка + 6 + 6 у Readout), у текста 195, у рамки «Відповідь» 110, у
- * плашек вариантов 139×36. Кегль просится свойством `size` у Readout, а не
- * классом снаружи: два `text-[…]` в одной строке классов спорят.
- */
+const stamp = (iso: string) => `${day(iso)}, ${timeOfDay(iso)}`;
 
 function MailingEditor({ id }: { id: string | null }) {
-  const { ut } = useLang();
+  const { ut, lang } = useLang();
   const navigate = useNavigate();
   const toast = useToast();
   const { run, busy } = useAction();
-  const answerId = useId();
-
-  /*
-   * keep: false (#200) — вдобавок к ключу обёртки (MailingPage): форма
-   * заливается из карточки один раз, и карточка прежнего повідомлення под
-   * адресом нового стала бы его черновиком.
-   */
   const card = useResource(() => api.mailing(id!), [id], { enabled: id !== null, keep: false });
-  /*
-   * Группы — для окна отправки, а не для формы: на кадрах поля адресатов нет,
-   * и оно убрано с глаз (см. шапку файла). Отказ списка форму не запирает:
-   * черновик сохраняется и без группы, а в окне отправки виден честный отказ.
-   */
   const groups = useResource(() => api.patientGroups(), []);
-  /* окно шага «Відправити»: выбор группы + подтверждение, вместо поля в форме */
-  const [sending, setSending] = useState(false);
-
-  /*
-   * «Так» и «Ні» — умолчание нового повідомлення, как на f20: два варианта
-   * вписаны заранее, автор их правит или добавляет третий.
-   */
+  const [confirming, setConfirming] = useState<"send" | "delete" | null>(null);
   const [draft, setDraft] = useState<MailingDraft | null>(() =>
     id === null
       ? { title: "", body: "", options: [ut("mail.yes"), ut("mail.no")], patientGroupId: "", revision: null }
       : null,
   );
-  /*
-   * Отказ 409 — черновик переписали (или отправили), пока он был открыт:
-   * фраза сервера на языке экрана. Пока она стоит, набранное не трогается —
-   * человек решает сам, забрать ли текст перед «Перечитати».
-   */
+  /* отказ «черновик изменили» (409) — словами сервера, до перечитывания */
   const [stale, setStale] = useState<string | null>(null);
-  /* черновик заполняется из карточки один раз: перечитывание карточки набранное не затирает */
+  /* когда последний раз сохранено — из ответа сервера, а не из часов клиента */
+  const [savedAt, setSavedAt] = useState<string | null>(null);
+
   useEffect(() => {
-    if (card.data && draft === null) setDraft(draftFromMailing(card.data));
+    if (card.data && draft === null) {
+      setDraft(draftFromMailing(card.data));
+      setSavedAt(card.data.updatedAt);
+    }
   }, [card.data, draft]);
 
   const sent = card.data?.status === "sent";
@@ -197,40 +89,34 @@ function MailingEditor({ id }: { id: string | null }) {
     setDraft((d) => (d ? { ...d, options: d.options.map((o, k) => (k === i ? text : o)) } : d));
   const addOption = () =>
     setDraft((d) => (d && d.options.length < MAX_OPTIONS ? { ...d, options: [...d.options, ""] } : d));
+  const preset = (kind: "yesNo" | "yesNoMaybe" | "none") =>
+    patch({ options: optionPreset(kind, { yes: ut("mail.yes"), no: ut("mail.no"), maybe: ut("mlx.maybe") }) });
 
-  /* «Створити» — черновик; отправка отдельным действием из меню-шестерни, как задумано сервером */
-  const create = () => {
-    if (!draft) return;
-    void run(async () => {
-      const created = await api.createMailing(draftToInput(draft));
-      /* replace: «назад» из карточки нового повідомлення ведёт в список, а не в пустую форму */
-      navigate(mailingHref(created.id), { replace: true });
-    }, ut("mail.created"));
-  };
-
-  /*
-   * 409 из правки или отправки: показать фразу сервера и перечитать карточку
-   * в фоне — если повідомлення успели отправить, экран сам перейдёт к
-   * отправленному. Поля формы при этом не трогаются (черновик заливается из
-   * карточки один раз), их заменит только «Перечитати». Прочие отказы —
-   * всплывающим сообщением действия, как любая ошибка.
-   */
   const onStale = (e: unknown) => {
     const message = staleMessage(e);
     if (message === null) throw e;
     setStale(message);
-    setSending(false);
+    setConfirming(null);
     card.reload();
     return false;
   };
 
+  const create = () => {
+    if (!draft) return;
+    void run(async () => {
+      const created = await api.createMailing(draftToInput(draft));
+      navigate(mailingHref(created.id), { replace: true });
+    }, ut("mail.created"));
+  };
+
   const save = () => {
-    if (!draft || id === null) return;
+    if (!draft) return;
+    if (id === null) return create();
     void run(async () => {
       try {
         const updated = await api.updateMailing(id, draftToUpdate(draft));
-        /* сервер вернул вычищенные варианты (без пустых) — форма показывает их, а не набранное */
         setDraft(draftFromMailing(updated));
+        setSavedAt(updated.updatedAt);
         setStale(null);
       } catch (e) {
         return onStale(e);
@@ -239,414 +125,540 @@ function MailingEditor({ id }: { id: string | null }) {
   };
 
   /*
-   * Отправка сначала сохраняет: человек правил текст и нажал «Відправити», не
-   * нажимая «Зберегти», — уйти должно то, что он видит, а не то, что лежало
-   * на сервере с прошлого раза. Группа адресатов уходит тем же сохранением:
-   * поля на экране нет, и выбранное в окне надо донести до сервера до
-   * api.sendMailing, иначе он ответит err.mailingNoRecipients. Отправляется
-   * ровно сохранённая редакция (model.ts, saveThenSend).
+   * «Відправити»: сохранить то, что видно, и отправить ровно сохранённую
+   * редакцию (saveThenSend). Новое повідомлення сначала заводится — тем же
+   * действием, человек не обязан помнить про «Зберегти».
    */
   const send = () => {
-    if (!draft || id === null) return;
+    if (!draft) return;
     void run(async () => {
       try {
-        await saveThenSend(draft, {
-          save: (input) => api.updateMailing(id, input),
-          send: (revision) => api.sendMailing(id, revision),
+        let target = id;
+        let base = draft;
+        if (target === null) {
+          const created = await api.createMailing(draftToInput(draft));
+          target = created.id;
+          base = draftFromMailing(created);
+        }
+        const mailingId = target;
+        await saveThenSend(base, {
+          save: (input) => api.updateMailing(mailingId, input),
+          send: (revision) => api.sendMailing(mailingId, revision),
           apply: (saved) => setDraft(draftFromMailing(saved)),
         });
+        setConfirming(null);
+        setStale(null);
+        if (id === null) navigate(mailingHref(mailingId), { replace: true });
+        else card.reload();
       } catch (e) {
         return onStale(e);
       }
-      setSending(false);
-      setStale(null);
-      card.reload();
     }, ut("mail.sent"));
   };
 
-  /* «Перечитати»: черновик с сервера целиком — набранное пропадает, о чём сказано под отказом */
   const reread = () => {
     if (id === null) return;
     void run(async () => {
       const fresh = await api.mailing(id);
       card.patch(fresh);
       setDraft(draftFromMailing(fresh));
+      setSavedAt(fresh.updatedAt);
       setStale(null);
     });
   };
 
-  /*
-   * «Видалити» у отправленного превращается в «приховати»: сервер отправленное
-   * не удаляет (409 err.mailingSentNotDeletable — его уже читали и на него
-   * отвечали), а скрывает у автора. Пункт меню один, как на кадре; разницу
-   * называет вопрос перед действием.
-   */
   const remove = () => {
     if (id === null) return;
     void run(async () => {
-      if (sent) {
-        if (!window.confirm(ut("mail.confirmHide"))) return false;
-        await api.hideMailing(id);
-        toast(ut("mail.hidden"), "ok");
-      } else {
-        if (!window.confirm(ut("mail.confirmDelete"))) return false;
-        await api.deleteMailing(id);
-        toast(ut("mail.deleted"), "ok");
-      }
+      await api.deleteMailing(id);
+      toast(ut("mail.deleted"), "ok");
       navigate("/mailings", { replace: true });
     });
   };
 
+  const hide = (back: boolean) => {
+    if (id === null) return;
+    void run(
+      async () => {
+        if (back) await api.unhideMailing(id);
+        else await api.hideMailing(id);
+        card.reload();
+      },
+      ut(back ? "mlx.unhidden" : "mail.hidden"),
+    );
+  };
+
+  useHotkeys({ s: save }, !sent && confirming === null && !!draft);
+
+  const back = { to: "/mailings", label: ut("sn.mailings") };
+
   if (id !== null && card.error) {
     return (
-      <Page title={ut("top.messages")} titleHidden>
+      <Page title={ut("mail.add")} titleHidden back={back}>
         <Loading error={card.error} onRetry={card.reload} />
       </Page>
     );
   }
   if (!draft || (id !== null && !card.data)) {
     return (
-      <Page title={ut("top.messages")} titleHidden>
+      <Page title={ut("mail.add")} titleHidden back={back}>
         <Loading rows={6} />
       </Page>
     );
   }
 
+  const group = draft.patientGroupId ? ((groups.data ?? []).find((g) => g.id === draft.patientGroupId) ?? null) : null;
+
+  if (sent && card.data) {
+    return <SentPage m={card.data} group={group} busy={busy} onHide={hide} back={back} stale={stale} />;
+  }
+
   const filled = isFilled(draft);
-  /* недоступный пункт остаётся в меню с подсказкой, почему: на кадре все три нарисованы всегда */
-  const lock = sent ? ut("mail.alreadySent") : !filled ? ut("mail.fillIn") : undefined;
-  const entries: MenuEntry[] = [
-    { label: ut("mail.send"), onSelect: () => setSending(true), disabled: busy || !!lock, hint: lock },
-    { label: ut("mail.delete"), onSelect: remove, disabled: busy },
-    { label: ut("common.save"), onSelect: save, disabled: busy || !!lock, hint: lock },
-  ];
+  const people = group?.memberCount ?? 0;
+  const sendLock = !filled ? ut("mail.fillIn") : !draft.patientGroupId ? ut("mlx.pickGroup") : people === 0 ? ut("mlx.emptyGroup") : null;
 
   return (
     <Page
-      title={ut("top.messages")}
-      titleHidden
-      /*
-       * tight: от нижнего края верхней панели до первого поля ровно 50 (f20:
-       * полоса 0…99, верхняя рамка поля 150; f26 — те же 0…99 и 150). Обычная шапка
-       * добавляет строку и 28 снизу — форма уезжала на 55 ниже кадра. Распорки
-       * у нового повідомлення больше нет и не нужно: при tight строка действий
-       * высоты не занимает, и форма стоит одинаково на обоих маршрутах —
-       * прыжка после «Створити» нет.
-       */
-      tight
+      title={draft.title.trim() || ut("mail.add")}
+      back={back}
+      meta={
+        <>
+          <span>
+            <Tag icon={<Ic.pen />}>{ut("mlx.draft")}</Tag>
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            {savedAt ? (
+              <>
+                <Ic.cloudCheck size={13} className="text-good" />
+                {ut("mlx.savedAt").replace("{t}", stamp(savedAt))}
+              </>
+            ) : (
+              ut("mlx.notSaved")
+            )}
+          </span>
+        </>
+      }
       actions={
-        id === null ? undefined : (
-          <ActionMenu
-            label={ut("mail.menu")}
-            glyph={<IconGear />}
-            entries={entries}
-            /*
-             * Шестерня отодвинута от края колонки на 20: её чернила на f26
-             * идут 1355…1380 при правом крае колонки 1400, тогда как у
-             * карточек людей (f47, f50) шестерня стоит вплотную (1368…1392 и
-             * 1374…1398 при том же крае). Отступ местный, у общего каркаса
-             * умолчание не меняется.
-             */
-            className="mr-[20px]"
-            /*
-             * Плашка меню на f26 — 209×95 (рамка #999999 идёт 1179…1387 ×
-             * 143…237) против 142×94 на кадрах людей; пункты 17/400 против 15
-             * (кап «В» у «Відправити» 154…165 при шаге пунктов 30). Оба числа
-             * просит экран — умолчания ветки остаются людям.
-             *
-             * Наезд плашки на глиф (её верх 143 при чернилах шестерни,
-             * кончающихся на 142) не повторяется: это небрежность рисунка, а
-             * зазор 8 из каркаса читается и не прячет знак, которым меню
-             * открыли.
-             *
-             * По горизонтали плашка f26 тоже не сходится: её правая рамка на
-             * 1387, то есть на 7 правее правого края коробки шестерни (1380).
-             * Не повторяется по той же причине, что и наезд, и вот доказательство,
-             * что это рисунок, а не правило: на f04 и f30 плашка стоит правым
-             * краем ровно под правым краем шестерни (1398 против чернил
-             * 1375…1399), и обе они прибиты к краю колонки. Прибивать плашку к
-             * ЧУЖОМУ краю (колонке) ради одного кадра значило бы увести её из-под
-             * глифа на всех остальных — отвергнуто.
-             */
-            plateClassName="min-w-[209px]"
-            itemSize={17}
-          />
-        )
+        <>
+          {id !== null ? (
+            <Button variant="danger" icon={<Mi.trash />} disabled={busy} onClick={() => setConfirming("delete")}>
+              {ut("mail.delete")}
+            </Button>
+          ) : null}
+          <Tooltip label={id === null ? ut("mlx.createTip") : ut("mlx.saveTip")} kbd="S" side="bottom" align="end">
+            <Button icon={<Mi.save />} disabled={busy || !filled} onClick={save}>
+              {id === null ? ut("mail.create") : ut("common.save")}
+            </Button>
+          </Tooltip>
+        </>
       }
     >
-      <form
-        className="mx-auto w-full max-w-[700px]"
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (id === null) create();
-          else if (!sent) save();
-        }}
-      >
-        {sent && card.data ? (
-          <SentView m={card.data} answerId={answerId} />
-        ) : (
-          <>
-            {/*
-              ph="plain" — 17/400 серым: так подпись-плейсхолдер набрана на
-              кадре ЭТОГО экрана. «Назва повідомлення» на f20 — чернила
-              460…615 цветом (102,102,102), «Текст повідомлення» — 459…609 тем
-              же цветом и весом. Общая константа задания («плейсхолдер 17/700»,
-              фиолетовый полужирный, как на f02/f41/f19) здесь отступает перед
-              кадром экрана, и отступление записано.
-            */}
-            <Field label={ut("mail.name")}>
-              <Input
-                ph="plain"
-                value={draft.title}
-                onChange={(e) => patch({ title: e.target.value })}
-                maxLength={200}
-                autoComplete="off"
-              />
-            </Field>
-            {/* 195 — высота текстовой области на кадре (197→391); тянуть вниз можно, ужать ниже нельзя */}
-            <Field label={ut("mail.body")}>
-              <Textarea
-                ph="plain"
-                value={draft.body}
-                onChange={(e) => patch({ body: e.target.value })}
-                maxLength={4000}
-                className="h-[195px] resize-y"
-              />
-            </Field>
-            <div role="group" aria-labelledby={answerId} className={answerBox}>
-              <p id={answerId} className={answerHeadingDraft}>
-                {ut("mail.answer")}
-              </p>
-              {/*
-                Варианты — контурные поля 139×36, как на f20. Имя каждому даёт
-                aria-label с номером: подписи у них нет, а два безымянных поля
-                подряд диктор различить не может. Ширина — обёрткой: у Input
-                стоит w-full, и второй класс ширины с ним спорил бы порядком в
-                собранном CSS.
-
-                Два зазора, а не один, и это замер по рамкам: между вариантами
-                17 (правая рамка первого на 608, левая второго на 626 — белого
-                609…625), а до «+» 15 (второй вариант кончается рамкой на 764,
-                чернила креста идут с 781, а у глифа 27 крест начинается на
-                2,5 от края — значит квадрат стоит с 778). Один общий зазор
-                пришлось бы выбрать неверным в одном из двух мест.
-
-                Глиф остаётся 27, хотя на этом кадре его чернила 781…804 ×
-                472…495, то есть 24: f11 рисует тот же знак у поля поиска
-                размером 1043…1069 × 143…169 (27), и общая константа глифа —
-                тоже 27. Один кадр против двух — небрежность рисунка.
-              */}
-              <div className="mt-[18px] flex items-start gap-[15px]">
-                <div className="flex flex-wrap items-center gap-[17px]">
-                  {draft.options.map((o, i) => (
-                    <div key={i} className={optionWidth}>
-                      <Input
-                        aria-label={`${ut("mail.option")} ${i + 1}`}
-                        value={o}
-                        onChange={(e) => setOption(i, e.target.value)}
-                        maxLength={100}
-                        autoComplete="off"
-                        className="text-center"
-                      />
-                    </div>
-                  ))}
-                </div>
-                {/* глиф встаёт по верху ряда: при переносе вариантов он остаётся у первой строки */}
-                <Button
-                  size="glyph"
-                  variant="ghost"
-                  className="mt-[4px] shrink-0"
-                  aria-label={ut("mail.addOption")}
-                  disabled={draft.options.length >= MAX_OPTIONS}
-                  onClick={addOption}
-                >
-                  <IconPlusThick />
-                </Button>
-              </div>
-            </div>
-            {/*
-              Поля «Група отримувачів» здесь нет: на f20 под рамкой «Відповідь»
-              сразу кнопка. Выбор группы переехал в окно шага «Відправити» —
-              см. <SendDialog> ниже и шапку файла.
-            */}
-            {id === null ? (
-              /* 215×45 у правого края колонки, 46 от рамки — замер f20 */
-              <div className="mt-[46px] flex justify-end">
-                <Button type="submit" size="md" className="w-[215px]" disabled={busy || !filled}>
-                  {ut("mail.create")}
-                </Button>
-              </div>
-            ) : null}
-          </>
-        )}
-        {/*
-          Отказ «черновик изменили» — под формой, на месте, где на f20
-          стоит «Створити»: у существующего повідомлення там пусто, и блок
-          не сдвигает поля, которые человек сейчас читает. Стоит и под
-          отправленным: если черновик успели отправить из другой вкладки,
-          экран перейдёт к отправленному, и фраза объяснит почему. Янтарь —
-          «требует внимания»: решать человеку. Того же вида блок стоит под
-          заключением (ConclusionEditor).
-        */}
-        {stale ? (
-          <div role="alert" className="mt-[18px] rounded-[5px] bg-accent-soft px-[14px] py-[10px]">
-            <p className="m-0 text-[15px] leading-[20px] text-text">{stale}</p>
-            <p className="m-0 mt-[4px] text-[13px] text-muted">{ut("mail.rereadHint")}</p>
-            <Button variant="quiet" className="mt-[8px]" disabled={busy} onClick={reread}>
+      {stale ? (
+        <Callout
+          kind="warn"
+          role="alert"
+          title={stale}
+          className="mb-4"
+          actions={
+            <Button size="xs" disabled={busy} onClick={reread}>
               {ut("integrity.reread")}
             </Button>
-          </div>
-        ) : null}
-      </form>
-      {sending ? (
-        <SendDialog
-          groups={groups.data ?? null}
-          error={groups.error}
-          onRetry={groups.reload}
-          value={draft.patientGroupId}
-          busy={busy}
-          onPick={(patientGroupId) => patch({ patientGroupId })}
-          onClose={() => setSending(false)}
-          onSend={send}
-        />
+          }
+        >
+          <p className="m-0 mt-0.5">{ut("mail.rereadHint")}</p>
+        </Callout>
+      ) : null}
+      <div className="grid grid-cols-[minmax(0,1fr)_360px] items-start gap-4 max-[1180px]:grid-cols-1">
+        <div className="flex min-w-0 flex-col gap-4">
+          <Panel title={ut("mlx.message")} icon={<Mi.megaphone />}>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                save();
+              }}
+            >
+              <Field label={ut("mail.name")} hint={ut("mlx.nameHint")}>
+                <Input
+                  value={draft.title}
+                  onChange={(e) => patch({ title: e.target.value })}
+                  maxLength={200}
+                  autoComplete="off"
+                  className="h-12 text-[15px]"
+                />
+              </Field>
+              <Field
+                label={ut("mail.body")}
+                hint={`${ut("mlx.bodyHint")} ${ut("mlx.chars").replace("{n}", String(draft.body.length)).replace("{max}", String(BODY_MAX))}`}
+              >
+                <Textarea
+                  rows={6}
+                  value={draft.body}
+                  onChange={(e) => patch({ body: e.target.value })}
+                  maxLength={BODY_MAX}
+                  className="resize-y"
+                />
+              </Field>
+              <OptionsBox
+                options={draft.options}
+                onChange={setOption}
+                onAdd={addOption}
+                onRemove={(i) => patch({ options: withoutOption(draft.options, i) })}
+                onPreset={preset}
+              />
+            </form>
+          </Panel>
+          <Panel title={ut("mlx.after")} icon={<Mi.chartBars />} sub={ut("mlx.afterSub")}>
+            {draft.options.some((o) => o.trim()) ? (
+              <>
+                <HBars
+                  max={Math.max(1, people)}
+                  items={[
+                    ...draft.options
+                      .map((o, i) => ({ o: o.trim(), i }))
+                      .filter((x) => x.o)
+                      .map((x) => ({ key: `o${x.i}`, label: x.o, value: 0, strong: true })),
+                    { key: "silent", label: ut("mlx.silent"), value: people },
+                  ]}
+                />
+                <p className="m-0 mt-2.5 text-small text-muted">{ut("mlx.afterHint")}</p>
+              </>
+            ) : (
+              <p className="m-0 text-small text-text-2">{ut("mlx.afterNoOptions")}</p>
+            )}
+            {draft.patientGroupId ? <Earlier group={draft.patientGroupId} skip={id} /> : null}
+          </Panel>
+        </div>
+        <div className="flex min-w-0 flex-col gap-4">
+          <Panel title={ut("mlx.whom")} icon={<Mi.send />}>
+            <GroupSelect
+              groups={groups.data}
+              error={groups.error}
+              onRetry={groups.reload}
+              value={draft.patientGroupId}
+              onPick={(patientGroupId) => patch({ patientGroupId })}
+            />
+            {group ? (
+              <p className="m-0 mt-1 flex items-center gap-2 text-small text-text-2">
+                <Ic.users size={14} className="text-violet-ink" />
+                {ut(`mlx.inGroup.${pluralForm(people, lang)}` as const).replace("{n}", String(people))}
+              </p>
+            ) : null}
+            <Callout kind="warn" icon={<Ic.lock />} className="mt-3">
+              <p className="m-0">{ut("mlx.immutableLong")}</p>
+            </Callout>
+            <Button
+              variant="primary"
+              icon={<Mi.send />}
+              className="mt-3 w-full"
+              disabled={busy || !!sendLock}
+              onClick={() => setConfirming("send")}
+            >
+              {people ? ut(`mlx.sendTo.${pluralForm(people, lang)}` as const).replace("{n}", String(people)) : ut("mail.send")}
+            </Button>
+            {sendLock ? <p className="m-0 mt-2 text-small text-muted">{sendLock}</p> : null}
+          </Panel>
+          <PatientPreview />
+        </div>
+      </div>
+
+      {confirming === "send" ? (
+        <Modal
+          title={ut(`mlx.sendConfirm.${pluralForm(people, lang)}` as const).replace("{n}", String(people))}
+          onClose={() => setConfirming(null)}
+          icon={<Mi.send />}
+          sub={group?.title}
+          width={480}
+          footer={
+            <>
+              <Button variant="primary" icon={<Mi.send />} disabled={busy} onClick={send}>
+                {ut("mail.send")}
+              </Button>
+              <Button onClick={() => setConfirming(null)}>{ut("mlx.checkAgain")}</Button>
+            </>
+          }
+        >
+          <p className="m-0 text-body text-text-2">
+            {ut("mlx.sendBody").replace("{title}", draft.title.trim()).replace("{group}", group?.title ?? "")}
+          </p>
+        </Modal>
+      ) : null}
+      {confirming === "delete" ? (
+        <Modal
+          title={ut("mail.confirmDelete")}
+          onClose={() => setConfirming(null)}
+          icon={<Mi.trash />}
+          tone="warn"
+          width={460}
+          footer={
+            <>
+              <Button variant="danger" icon={<Mi.trash />} disabled={busy} onClick={remove}>
+                {ut("mail.delete")}
+              </Button>
+              <Button onClick={() => setConfirming(null)}>{ut("mlx.keep")}</Button>
+            </>
+          }
+        >
+          <p className="m-0 text-body text-text-2">{ut("mlx.deleteBody").replace("{title}", draft.title.trim())}</p>
+        </Modal>
       ) : null}
     </Page>
   );
 }
 
 /**
- * Шаг «Відправити»: выбор группы адресатов и подтверждение.
- *
- * Поля адресатов на кадрах формы нет (ни на f20, ни на f26) — под рамкой
- * «Відповідь» сразу кнопка. Но сервер без адресатов отправлять отказывается
- * (err.mailingNoRecipients), и пункт меню без них был бы обещанием без
- * исполнения. Поэтому выбор переехал сюда: форма исполняет кадр буквально, а
- * возможность осталась на том же экране, за тем же действием.
- *
- * Окно же и подтверждает: прежний window.confirm задавал тот же вопрос, а
- * теперь рядом с вопросом стоит и ответ на «кому».
+ * Варианты ответа: номер, поле, «прибрати». Пустой вариант на сервер не
+ * уходит (cleanOptions), но убрать его можно и крестиком. Шаблоны
+ * подменяют весь набор: «Без відповіді» — просто повідомлення.
  */
-function SendDialog({
+function OptionsBox({
+  options,
+  onChange,
+  onAdd,
+  onRemove,
+  onPreset,
+}: {
+  options: string[];
+  onChange: (i: number, text: string) => void;
+  onAdd: () => void;
+  onRemove: (i: number) => void;
+  onPreset: (kind: "yesNo" | "yesNoMaybe" | "none") => void;
+}) {
+  const { ut } = useLang();
+  return (
+    <div role="group" aria-labelledby="ml-answer" className="mt-1 rounded-panel p-3.5 shadow-[inset_0_0_0_1px_var(--border)]">
+      <div className="mb-3 flex items-start gap-3">
+        <div className="min-w-0">
+          <b id="ml-answer" className="block text-h3 font-extrabold text-text">
+            {ut("mail.answer")}
+          </b>
+          <small className="block text-small text-muted">{ut("mlx.answerHint")}</small>
+        </div>
+        <span className="ml-auto whitespace-nowrap text-caption font-bold tabular-nums text-muted">
+          {ut("mlx.optionsOf").replace("{n}", String(options.length)).replace("{max}", String(MAX_OPTIONS))}
+        </span>
+      </div>
+      {options.length ? (
+        <ol className="m-0 flex list-none flex-col gap-2 p-0">
+          {options.map((o, i) => (
+            <li key={i} className="grid grid-cols-[18px_minmax(0,1fr)_32px] items-center gap-2">
+              <span className="text-caption font-extrabold tabular-nums text-muted">{i + 1}</span>
+              <Input
+                aria-label={`${ut("mail.option")} ${i + 1}`}
+                value={o}
+                onChange={(e) => onChange(i, e.target.value)}
+                maxLength={100}
+                autoComplete="off"
+              />
+              <Button
+                variant="quiet"
+                size="icon-sm"
+                aria-label={ut("mlx.removeOption").replace("{n}", String(i + 1))}
+                onClick={() => onRemove(i)}
+              >
+                <Ic.x size={15} />
+              </Button>
+            </li>
+          ))}
+        </ol>
+      ) : (
+        <p className="m-0 text-small text-text-2">{ut("mlx.noOptionsHint")}</p>
+      )}
+      <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2">
+        <Button size="xs" icon={<Ic.plus />} disabled={options.length >= MAX_OPTIONS} onClick={onAdd}>
+          {ut("mail.addOption")}
+        </Button>
+        <span role="group" aria-label={ut("mlx.presets")} className="ml-auto flex flex-wrap items-center gap-1">
+          <span aria-hidden className="mr-1 text-small text-muted">
+            {ut("mlx.presets")}
+          </span>
+          <Button size="xs" variant="quiet" onClick={() => onPreset("yesNo")}>
+            {ut("mlx.presetYesNo")}
+          </Button>
+          <Button size="xs" variant="quiet" onClick={() => onPreset("yesNoMaybe")}>
+            {ut("mlx.presetYesNoMaybe")}
+          </Button>
+          <Button size="xs" variant="quiet" onClick={() => onPreset("none")}>
+            {ut("mlx.presetNone")}
+          </Button>
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/** Группа получателей. Отказ списка групп не запирает форму молча: видно, почему выбирать не из чего */
+function GroupSelect({
   groups,
   error,
   onRetry,
   value,
-  busy,
   onPick,
-  onClose,
-  onSend,
 }: {
-  groups: { id: string; title: string }[] | null;
+  groups: PatientGroupWithCounts[] | null;
   error: string | null;
   onRetry: () => void;
   value: string;
-  busy: boolean;
   onPick: (id: string) => void;
-  onClose: () => void;
-  onSend: () => void;
 }) {
   const { ut } = useLang();
+  if (error) return <Loading error={error} onRetry={onRetry} bare />;
   return (
-    <Modal title={ut("mail.send")} onClose={onClose}>
-      <p className="m-0 mb-[15px] text-[13px] leading-[19px] text-muted">{ut("mail.confirmSend")}</p>
-      {/*
-        Отказ списка групп не запирает окно молча: человек видит, почему
-        выбирать не из чего, и может попробовать снова, не закрывая
-        повідомлення.
-      */}
-      {error ? (
-        <Loading error={error} onRetry={onRetry} />
-      ) : (
-        <Field inline label={ut("mail.recipients")}>
-          <Select
-            value={value}
-            style={value ? undefined : PLACEHOLDER}
-            onChange={(e) => onPick(e.target.value)}
-          >
-            <option value="">{ut("mail.recipients")}</option>
-            {(groups ?? []).map((g) => (
-              <option key={g.id} value={g.id}>
-                {g.title}
-              </option>
-            ))}
-          </Select>
-        </Field>
-      )}
-      <div className="mt-[24px] flex justify-end gap-[12px]">
-        <Button type="button" variant="ghost" onClick={onClose}>
-          {ut("common.cancel")}
-        </Button>
-        {/* без группы сервер откажет словами — кнопка не притворяется, что отправит */}
-        <Button type="button" disabled={busy || !value} onClick={onSend}>
-          {ut("mail.send")}
-        </Button>
-      </div>
-    </Modal>
+    <Field label={ut("mail.recipients")}>
+      <Select value={value} onChange={(e) => onPick(e.target.value)}>
+        <option value="">{ut("mlx.pickGroupOption")}</option>
+        {(groups ?? []).map((g) => (
+          <option key={g.id} value={g.id}>
+            {g.title} ({g.memberCount})
+          </option>
+        ))}
+      </Select>
+    </Field>
+  );
+}
+
+/** «Раніше цій групі» — последние отправленные той же группе */
+function Earlier({ group, skip }: { group: string; skip: string | null }) {
+  const { ut } = useLang();
+  const prev = useResource(() => api.mailings({ group, status: "sent", limit: 4, offset: 0 }), [group]);
+  const items = (prev.data?.items ?? []).filter((m) => m.id !== skip).slice(0, 3);
+  if (!items.length) return null;
+  return (
+    <div className="mt-4 border-t border-divider pt-3">
+      <b className="block text-h3 font-extrabold text-text">{ut("mlx.earlier")}</b>
+      <ul className="m-0 mt-1 list-none p-0">
+        {items.map((m) => (
+          <li key={m.id} className="grid grid-cols-[64px_minmax(0,1fr)] gap-2 py-1.5 text-small leading-[17px]">
+            <span className="font-extrabold tabular-nums text-muted">{day(m.at)}</span>
+            <span className="min-w-0">
+              <Link to={mailingHref(m.id)} className="block truncate font-bold text-text">
+                {m.title}
+              </Link>
+              <small className="block text-caption text-muted">
+                {ut("mlx.readOf").replace("{n}", String(m.readCount)).replace("{total}", String(m.recipientCount))}
+              </small>
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
 /**
- * Отправленное — кадр f26 буквально: название в силуэте поля фиолетовым
- * полужирным, текст серым в рамке, варианты — залитые плашки 139×36 по
- * центру рамки «Відповідь» (653…791 и 809…947 при середине колонки 800).
- * Не поля, а показ (Readout): править нечего, и диктору незачем объявлять
- * «поле ввода, только чтение» трижды.
- *
- * Весь набор здесь 20-й, а не 17-й (см. пояснение к кеглю выше): это кадр
- * заполненного повідомлення, и он набран крупнее пустой формы.
+ * Что пациент увидит на телефоне: уведомление без названия и текста —
+ * «Група ризику: анкета настрою» на экране блокировки сообщила бы соседу
+ * то, чего сообщать нельзя (push.mailingTitle / push.mailingBody). Тексты
+ * — те же, что уходят в уведомление, на языке консоли.
  */
-function SentView({ m, answerId }: { m: MailingCard; answerId: string }) {
-  const { ut } = useLang();
+function PatientPreview() {
+  const { ut, lang } = useLang();
   return (
-    <>
-      <Readout look="outline" size={20} className="font-bold text-primary">
-        {m.title}
-      </Readout>
-      {/*
-        Текст письма: 20/22 серым, первая строка в 22 от нутра верхней рамки.
-        Замер f26 (ординаты от чёрной рамки кадра, она начинается на 12, а не
-        на 16 — прежняя редакция комментария считала от общего начала и
-        занизила все числа на 4): линии коробки 201 и 395, то есть высота
-        ровно 195; чернила строк 227…245, 249…267, 271…289 … 359…377, то есть
-        шаг 22. Прежние py-[8px] ставили первую строку примерно на 217 — на
-        десяток пикселей выше кадра.
-
-        Левый отступ — 10, как у полей рядом, а не 12. Замер того же кадра:
-        левая линия коробки на 450, самые левые чернила строк на 459…461, и
-        ровно там же (460) стоят чернила в поле названия, у которого отступ
-        приходит из Input (`px-[10px]`). Двенадцать положили бы текст на 463
-        — на три пикселя правее соседнего поля, и разъезд двух коробок,
-        нарисованных в кадре по одной линии, было бы видно глазом.
-        Отвергнуто: оставить 12 и подвинуть поле — поле не своё, отступ
-        приходит из примитива и держит все остальные экраны.
-
-        Рамка — #666666, как у полей и у рамки «Відповідь» (на кадре
-        (102,102,102) по всем четырём сторонам), а не тон линий-разделителей.
-      */}
-      <div className="mt-[15px] min-h-[195px] whitespace-pre-wrap break-words rounded-[5px] border border-field-border px-[10px] pb-[8px] pt-[22px] text-[20px] leading-[22px] text-muted">
-        {m.body}
+    <Panel title={ut("mlx.preview")} icon={<Mi.smartphone />}>
+      <div className="flex justify-center rounded-panel bg-appbar px-4 pb-6 pt-8">
+        <div className="w-full max-w-[290px]">
+          <p className="m-0 text-center text-[34px] font-extrabold leading-none tabular-nums text-appbar-ink">
+            {timeOfDay(new Date().toISOString())}
+          </p>
+          <div className="mt-6 flex items-start gap-2.5 rounded-[18px] bg-panel px-3.5 py-3 shadow-pop">
+            <span aria-hidden className="grid size-8 shrink-0 place-items-center rounded-[9px] bg-violet text-onfill">
+              <Mi.megaphone size={16} />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="flex items-baseline gap-2">
+                <b className="text-body font-extrabold text-text">{renderPush("push.mailingTitle", lang)}</b>
+                <small className="ml-auto text-caption text-muted">{ut("mlx.now")}</small>
+              </span>
+              <span className="block text-small text-text-2">{renderPush("push.mailingBody", lang)}</span>
+            </span>
+          </div>
+        </div>
       </div>
-      <div role="group" aria-labelledby={answerId} className={`mt-[15px] ${answerBox}`}>
-        <p id={answerId} className={answerHeadingSent}>
-          {ut("mail.answer")}
-        </p>
-        {m.options.length ? (
-          /* зазор 17: заливка на f26 идёт 653…791 и 809…947, белого между ними 792…808 */
-          <ul className="m-0 mt-[18px] flex list-none flex-wrap justify-center gap-[17px] p-0">
-            {m.options.map((o, i) => (
-              <Readout
-                key={i}
-                as="li"
-                look="fill"
-                size={20}
-                className={`${optionWidth} justify-center font-bold text-primary`}
-              >
-                {o}
-              </Readout>
-            ))}
-          </ul>
-        ) : null}
+      <p className="m-0 mt-3 text-small text-text-2">{ut("mlx.previewNote")}</p>
+    </Panel>
+  );
+}
+
+/** Відправлена розсилка: только чтение, ответы и кто молчит */
+function SentPage({
+  m,
+  group,
+  busy,
+  onHide,
+  back,
+  stale,
+}: {
+  m: MailingCard;
+  group: PatientGroupWithCounts | null;
+  busy: boolean;
+  onHide: (back: boolean) => void;
+  back: { to: string; label: string };
+  stale: string | null;
+}) {
+  const { ut, lang } = useLang();
+  const asks = m.options.length > 0;
+  return (
+    <Page
+      title={m.title}
+      back={back}
+      meta={
+        <>
+          <span>
+            <Tag tone="good" icon={<Mi.send />}>
+              {ut("mlx.sentTag")}
+            </Tag>
+          </span>
+          <span>{m.sentAt ? stamp(m.sentAt) : null}</span>
+        </>
+      }
+      actions={
+        <Button icon={m.hiddenAt ? <Ic.undo /> : <Mi.eyeOff />} disabled={busy} onClick={() => onHide(!!m.hiddenAt)}>
+          {m.hiddenAt ? ut("mlx.unhide") : ut("mlx.hide")}
+        </Button>
+      }
+    >
+      {stale ? (
+        <Callout kind="warn" role="alert" title={stale} className="mb-4">
+          <p className="m-0 mt-0.5">{ut("mail.alreadySent")}</p>
+        </Callout>
+      ) : null}
+      <div className="grid grid-cols-[minmax(0,1fr)_360px] items-start gap-4 max-[1180px]:grid-cols-1">
+        <div className="flex min-w-0 flex-col gap-4">
+          <Panel title={ut("mlx.message")} icon={<Mi.megaphone />} sub={ut("mlx.frozen")}>
+            <p className="m-0 whitespace-pre-wrap break-words text-body text-text">{m.body}</p>
+            {asks ? (
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                {m.options.map((o, i) => (
+                  <Tag key={i}>{o}</Tag>
+                ))}
+              </div>
+            ) : null}
+          </Panel>
+          {asks ? (
+            <Panel title={ut("mlx.colAnswers")} icon={<Mi.chartBars />} sub={answeredLine(m, { of: ut("mlx.answeredOf") }) ?? undefined}>
+              <AnswerBars card={m} />
+            </Panel>
+          ) : null}
+        </div>
+        <div className="flex min-w-0 flex-col gap-4">
+          <Panel title={ut("mlx.colTo")} icon={<Mi.send />}>
+            <div className="flex flex-wrap gap-1.5">
+              {group ? (
+                <Tag tone="primary" icon={<Ic.users />}>
+                  {group.title}
+                </Tag>
+              ) : null}
+              {m.counts ? <Tag>{ut(`mlx.people.${pluralForm(m.counts.recipients, lang)}` as const).replace("{n}", String(m.counts.recipients))}</Tag> : null}
+              {m.counts ? <Tag icon={<Ic.checkCheck />}>{ut("mlx.readCount").replace("{n}", String(m.counts.read))}</Tag> : null}
+            </div>
+            <Callout kind="line" icon={<Ic.lock />} className="mt-3">
+              <p className="m-0">{ut("mlx.immutable")}</p>
+            </Callout>
+          </Panel>
+          <Panel title={ut(asks ? "mlx.whoSilent" : "mlx.whoUnread")} icon={<Ic.users />}>
+            <SilentList card={m} />
+          </Panel>
+        </div>
       </div>
-    </>
+    </Page>
   );
 }

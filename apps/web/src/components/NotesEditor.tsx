@@ -1,13 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { api, type NoteVersion } from "../api";
 import { day } from "../format";
-import { useAction } from "../ui";
+import { Loading, useAction } from "../ui";
 import { usePresence } from "../events";
 import { useLang } from "../lang";
 import { useResource } from "../useResource";
 import type { UiKey } from "@quizzy/shared";
-import { cx } from "../ui/cx";
-import { Button, Textarea } from "../ui/primitives";
+import { Button, ErrorText, Segmented, Textarea } from "../ui/primitives";
 import { draftOf, draftSavable, saveThenSign, signPlan, staleMessage } from "./versioned";
 
 /**
@@ -75,12 +74,11 @@ export function NotesEditor({ userId }: { userId: string }) {
   }, [userId]);
 
   if (!state) {
+    /* отказ — словами со значком и «повторити», а не строкой «Загрузка», которая висит вечно */
     return res.error ? (
-      <p className="text-muted">
-        {ut("note.loadFailed")}: {res.error}
-      </p>
+      <Loading rows={2} error={`${ut("note.loadFailed")}: ${res.error}`} onRetry={res.reload} busy={res.loading} />
     ) : (
-      <p className="text-muted">{ut("common.loading")}</p>
+      <Loading rows={2} />
     );
   }
 
@@ -93,38 +91,32 @@ export function NotesEditor({ userId }: { userId: string }) {
   const plan = signPlan(text, draft, !draft || draft.kind === kind);
 
   return (
-    <div className="nested">
-      <div className="card-head">
-        <h3>{ut("note.title")}</h3>
+    <div className="flex min-w-0 flex-col gap-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <h3 className="m-0 text-h3 font-extrabold text-text">{ut("note.title")}</h3>
         {state.versions.length > 1 ? (
-          <Button variant="quiet" onClick={() => setShowHistory((v) => !v)}>
+          <Button size="xs" variant="ghost" className="ml-auto" aria-expanded={showHistory} onClick={() => setShowHistory((v) => !v)}>
             {showHistory ? ut("cn.hideHistory") : `${ut("note.history")} (${state.versions.length})`}
           </Button>
         ) : null}
       </div>
 
       {signed && !draft ? (
-        <div className="conclusion-view">
-          <p className="m-0 whitespace-pre-wrap">{state.current!.text}</p>
-          <p className="text-caption text-muted">
-            {ut(KIND_KEY[state.current!.kind])} · {state.current!.authorName},{" "}
-            {day(state.current!.signedAt!)} · {ut("note.version")} {state.current!.version}
+        <div className="rounded-panel bg-sunk px-3.5 py-3">
+          <p className="m-0 whitespace-pre-wrap text-body text-text">{state.current!.text}</p>
+          <p className="m-0 mt-1.5 text-caption text-muted">
+            {ut(KIND_KEY[state.current!.kind])}, {state.current!.authorName}, {day(state.current!.signedAt!)}, {ut("note.version")}{" "}
+            {state.current!.version}
           </p>
         </div>
       ) : null}
 
-      <div className="row tight mb-2">
-        {(Object.keys(KIND_KEY) as NoteVersion["kind"][]).map((k) => (
-          <button
-            key={k}
-            type="button"
-            className={cx("chip", kind === k && "active")}
-            onClick={() => setKind(k)}
-          >
-            {ut(KIND_KEY[k])}
-          </button>
-        ))}
-      </div>
+      <Segmented
+        label={ut("note.title")}
+        value={kind}
+        onChange={setKind}
+        items={(Object.keys(KIND_KEY) as NoteVersion["kind"][]).map((k) => ({ key: k, label: ut(KIND_KEY[k]) }))}
+      />
 
       {alsoHere.length ? (
         /*
@@ -132,14 +124,15 @@ export function NotesEditor({ userId }: { userId: string }) {
          * чтобы человек узнал до того, как напишет абзац, а не после того,
          * как сохранение упало на проверке версии.
          */
-        <p className="warn-line">
+        <ErrorText tone="warn">
           {alsoHere.map((o) => o.name).join(", ")} — {ut("here.editing")}
-        </p>
+        </ErrorText>
       ) : null}
 
       <Textarea
         rows={4}
         value={text}
+        aria-label={ut("note.title")}
         onChange={(e) => {
           touched.current = true;
           setText(e.target.value);
@@ -148,12 +141,12 @@ export function NotesEditor({ userId }: { userId: string }) {
       />
 
       {stale ? (
-        <div role="alert" className="mt-2 rounded-[5px] bg-accent-soft px-[14px] py-[10px]">
-          <p className="m-0 text-[15px] leading-[20px] text-text">{stale}</p>
-          <p className="m-0 mt-[4px] text-[13px] text-muted">{ut("integrity.rereadHint")}</p>
+        <div role="alert" className="rounded-panel bg-warn-tint px-3.5 py-3 text-small text-text-2">
+          <p className="m-0 font-bold text-text">{stale}</p>
+          <p className="m-0 mt-1">{ut("integrity.rereadHint")}</p>
           <Button
-            variant="quiet"
-            className="mt-[8px]"
+            size="xs"
+            className="mt-2"
             onClick={() => {
               setStale(null);
               // перечитанное должно встать в поле: признак «тронуто» его бы не пустил
@@ -166,25 +159,7 @@ export function NotesEditor({ userId }: { userId: string }) {
         </div>
       ) : null}
 
-      <div className="row mt-2">
-        <Button
-          disabled={busy || !draftSavable(text)}
-          onClick={() =>
-            void run(async () => {
-              try {
-                res.patch(await api.saveNote(userId, text, state.current, kind));
-                setStale(null);
-              } catch (e) {
-                const message = staleMessage(e);
-                if (message === null) throw e;
-                setStale(message);
-                return false;
-              }
-            }, ut("cn.draftSaved"))
-          }
-        >
-          {ut("note.saveDraft")}
-        </Button>
+      <div className="flex flex-wrap gap-2">
         <Button
           variant="primary"
           disabled={busy || !plan.canSign}
@@ -213,20 +188,39 @@ export function NotesEditor({ userId }: { userId: string }) {
         >
           {ut("note.sign")}
         </Button>
+        <Button
+          disabled={busy || !draftSavable(text)}
+          onClick={() =>
+            void run(async () => {
+              try {
+                res.patch(await api.saveNote(userId, text, state.current, kind));
+                setStale(null);
+              } catch (e) {
+                const message = staleMessage(e);
+                if (message === null) throw e;
+                setStale(message);
+                return false;
+              }
+            }, ut("cn.draftSaved"))
+          }
+        >
+          {ut("note.saveDraft")}
+        </Button>
       </div>
 
-      {showHistory
-        ? state.versions.map((v) => (
-            <div key={v.id} className="conclusion-view mt-2">
-              <p className="m-0 whitespace-pre-wrap text-small">{v.text}</p>
-              <p className="text-caption text-muted">
-                {ut("note.version")} {v.version} · {ut(KIND_KEY[v.kind])} ·{" "}
-                {v.status === "signed" ? `${ut("note.signedAt")} ${day(v.signedAt!)}` : ut("note.draft")} ·{" "}
-                {v.authorName}
+      {showHistory ? (
+        <ol className="m-0 flex list-none flex-col gap-2 p-0">
+          {state.versions.map((v) => (
+            <li key={v.id} className="rounded-panel bg-sunk px-3.5 py-3">
+              <p className="m-0 whitespace-pre-wrap text-small text-text">{v.text}</p>
+              <p className="m-0 mt-1.5 text-caption text-muted">
+                {ut("note.version")} {v.version}, {ut(KIND_KEY[v.kind])},{" "}
+                {v.status === "signed" ? `${ut("note.signedAt")} ${day(v.signedAt!)}` : ut("note.draft")}, {v.authorName}
               </p>
-            </div>
-          ))
-        : null}
+            </li>
+          ))}
+        </ol>
+      ) : null}
     </div>
   );
 }

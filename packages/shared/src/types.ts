@@ -1179,6 +1179,14 @@ export interface PatientGroupMember {
   phone: string | null;
   addedAt: string;
   addedBy: string | null;
+  /**
+   * Какие из методик группы человек уже прошёл (хотя бы раз) — отметки
+   * «Тести групи» в строке состава. Правило то же, что у completedCount
+   * методики группы: иначе строка и сводка говорили бы разное.
+   */
+  completedSurveyIds: string[];
+  /** Есть открытый случай риска (alert_cases без разбора) */
+  openRisk: boolean;
 }
 
 /** Методика, назначенная на группу целиком — «Тести Групи» */
@@ -1213,12 +1221,29 @@ export interface PatientGroupWithCounts extends PatientGroup {
    * разбирающий чужие вкладки, видит свои закладки, а не закладки владельца.
    */
   favourite: boolean;
+  /** Методики группы в порядке назначения — коды в строке списка групп */
+  surveys: { surveyId: string; title: LocalizedText }[];
+  /**
+   * Сколько видимых участников прошли ВСЕ методики группы (каждую хотя бы
+   * раз; правило completedCount). Без методик — 0: проходить нечего.
+   */
+  doneCount: number;
+  /** Сколько видимых участников с открытым случаем риска */
+  riskCount: number;
+  /** Кто ведёт группу — её владелец */
+  ownerName: string;
+  /** Последнее изменение: заведение, добавление участника или назначение методики */
+  changedAt: string;
 }
 
 /** Карточка группы: описание, состав и назначенные методики на одном экране */
 export interface PatientGroupCard extends PatientGroup {
   members: PatientGroupMember[];
   surveys: PatientGroupSurvey[];
+  /** Кто ведёт группу — её владелец */
+  ownerName: string;
+  /** «Обрана» читателем — та же закладка, что в списке групп */
+  favourite: boolean;
 }
 
 /* ─────────── Пациенты зоны видимости и карточка пациента ─────────── */
@@ -1385,11 +1410,31 @@ export interface MailingListItem {
   sentAt: string | null;
   recipientCount: number;
   answeredCount: number;
+  /** Сколько получателей открыли — у черновика 0 */
+  readCount: number;
+  /** Варианты ответа: у черновика — что уйдёт, у отправленной — что ушло */
+  options: string[];
+  /** Сколько выбрали каждый вариант — в порядке `options`; у черновика нули */
+  answers: number[];
+  /** Группа-адресат черновика или отправленной; null — без группы */
+  patientGroupId: string | null;
 }
 
 export interface MailingListPage {
   items: MailingListItem[];
   total: number;
+  /**
+   * Счётчики видов «Усі / Чернетки / Відправлені / Приховані» — по всем
+   * рассылкам автора без поиска и вида: число у пилюли не меняется от того,
+   * какая пилюля нажата.
+   */
+  counts?: { all: number; draft: number; sent: number; hidden: number };
+  /**
+   * Итог за 30 дней по отправленным и не скрытым: сколько ушло, скольким
+   * доставлено, сколько получателей спрошено (у рассылки есть варианты) и
+   * сколько из них ответили. Строка под заголовком экрана, не плитки.
+   */
+  month?: { sent: number; recipients: number; asked: number; answered: number };
 }
 
 /** Получатель на карточке отправленной рассылки — из зоны видимости читателя */
@@ -2837,6 +2882,16 @@ export interface Referral {
   createdByName: string;
   createdAt: string;
   updatedAt: string | null;
+}
+
+/**
+ * Страница реестра направлений. На первой странице — ещё и число направлений
+ * зоны по каждому статусу: по нему стоят пилюли видов реестра, и считать их
+ * по загруженным строкам значило бы показывать «Завершені 12», когда их
+ * сорок, просто потому что вторая страница ещё не приехала.
+ */
+export interface ReferralPage extends Page<Referral> {
+  counts?: Record<ReferralStatus, number>;
 }
 
 /** Сводка для консилиума (6.5): всё о пациенте на одной странице */
@@ -4824,6 +4879,23 @@ export interface FilterPresetListItem extends FilterPreset {
   modelCount: number;
 }
 
+/** Где пресет стоит: модель и номера её выборок (с единицы), как они подписаны на экране модели */
+export interface FilterPresetUse {
+  id: string;
+  title: string;
+  samples: number[];
+}
+
+/**
+ * Карточка пресета: то же, что строка списка, и модели, которые на него
+ * ссылаются, — «Де використовується» на экране пресета. Только модели,
+ * видные спрашивающему (свои; суперадмину — все): modelCount считает и
+ * чужие, потому что из-под них пресет тоже не удалить.
+ */
+export interface FilterPresetDetail extends FilterPresetListItem {
+  usedBy: FilterPresetUse[];
+}
+
 /**
  * Показатель «Варіант результату»: полоса шкалы. `highRisk` — пометка
  * «ВШР» (високий ступінь ризику) с кадров f07/f14/f21/f28: попадание в этот
@@ -4886,6 +4958,18 @@ export interface StatModelListItem {
   description: string | null;
   ownerId: string;
   columnCount: number;
+  /**
+   * Что модель считает — по первой колонке, как и форма правки: методика
+   * с номером версии, сколько полос и вопросов, сколько пометок «ВШР».
+   * Название методики — null, если её не видно (снята, вне зоны).
+   */
+  surveyTitle: string | null;
+  versionNumber: number | null;
+  bandCount: number;
+  questionCount: number;
+  highRiskCount: number;
+  /** Сколько выборок считается по пресету; остальные — своими фильтрами */
+  presetColumns: number;
   createdAt: string;
   updatedAt: string;
 }

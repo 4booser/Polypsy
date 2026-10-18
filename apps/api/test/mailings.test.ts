@@ -482,6 +482,83 @@ describe("список автора: порядок, страницы, поис�
   });
 });
 
+describe("список автора: виды и ответы по вариантам (v2)", () => {
+  /**
+   * Пилюли «Усі / Чернетки / Відправлені / Приховані» и полоса ответов в
+   * строке списка. Числа у пилюль — по всем рассылкам автора, а не по
+   * показанной странице: иначе «Чернетки 2» превращались бы в «Чернетки 0»,
+   * стоило нажать «Відправлені».
+   */
+  test("вид по состоянию, счётчики видов и ответы по вариантам в строке", async () => {
+    const author = await makeUser("admin", `ml-views-${crypto.randomUUID()}@test`);
+    const { groupAdmins } = await import("../src/db/schema");
+    const { groupA } = await import("./fixtures");
+    await db.insert(groupAdmins).values({ groupId: groupA, userId: author.id, addedBy: root.id });
+    const one = await patientOfA("view-1");
+    const two = await patientOfA("view-2");
+    const three = await patientOfA("view-3");
+
+    const kept = await draft(author, { title: "Лишається чернеткою", options: ["Так", "Ні"] });
+    const sent = await draft(author, { options: ["Так", "Ні", "Ще не знаю"], patientIds: [one.id, two.id, three.id] });
+    await send(author, sent.id);
+    await api(`/api/mailings/${sent.id}/answer`, one.token, { method: "POST", body: JSON.stringify({ answer: 2 }) });
+    await api(`/api/mailings/${sent.id}/answer`, two.token, { method: "POST", body: JSON.stringify({ answer: 2 }) });
+    await api(`/api/mailings/${sent.id}/read`, three.token, { method: "POST" });
+    const gone = await draft(author, { patientIds: [one.id] });
+    await send(author, gone.id);
+    expect((await api(`/api/mailings/${gone.id}/hide`, author.token, { method: "POST" })).status).toBe(200);
+
+    const all = await api("/api/mailings", author.token);
+    expect(all.body.counts).toEqual({ all: 2, draft: 1, sent: 1, hidden: 1 });
+    // итог за 30 дней — по отправленным и не скрытым: скрытая в него не входит
+    expect(all.body.month).toEqual({ sent: 1, recipients: 3, asked: 3, answered: 2 });
+    const row = all.body.items.find((i: { id: string }) => i.id === sent.id);
+    expect(row.options).toEqual(["Так", "Ні", "Ще не знаю"]);
+    expect(row.answers, "ответы по вариантам — в порядке вариантов, с нулями").toEqual([0, 0, 2]);
+    expect(row.readCount, "ответ означает и «прочитано»: двое ответили, третий открыл").toBe(3);
+    const draftRow = all.body.items.find((i: { id: string }) => i.id === kept.id);
+    expect(draftRow.answers).toEqual([0, 0]);
+    expect(draftRow.readCount).toBe(0);
+
+    const drafts = await api("/api/mailings?status=draft", author.token);
+    expect(drafts.body.items.map((i: { id: string }) => i.id)).toEqual([kept.id]);
+    expect(drafts.body.total).toBe(1);
+    // счётчики видов не зависят от выбранного вида
+    expect(drafts.body.counts).toEqual(all.body.counts);
+    const sentOnly = await api("/api/mailings?status=sent", author.token);
+    expect(sentOnly.body.items.map((i: { id: string }) => i.id)).toEqual([sent.id]);
+    const hidden = await api("/api/mailings?hidden=1", author.token);
+    expect(hidden.body.items.map((i: { id: string }) => i.id)).toEqual([gone.id]);
+
+    const wrong = await api("/api/mailings?status=archived", author.token);
+    expect(wrong.status).toBe(400);
+  });
+
+  test("отбор по группе и порядок «давніші спершу»", async () => {
+    const author = await makeUser("admin", `ml-group-${crypto.randomUUID()}@test`);
+    const group = await makeGroup(author, `Група ${crypto.randomUUID().slice(0, 6)}`);
+    const first = await draft(author, { title: "Перша групі", patientGroupId: group });
+    const other = await draft(author, { title: "Без групи" });
+    const second = await draft(author, { title: "Друга групі", patientGroupId: group });
+    const stamp = (id: string, minutesAgo: number) =>
+      db
+        .update(mailings)
+        .set({ updatedAt: new Date(Date.now() - minutesAgo * 60_000).toISOString() })
+        .where(eq(mailings.id, id));
+    await stamp(first.id, 30);
+    await stamp(other.id, 20);
+    await stamp(second.id, 10);
+
+    const byGroup = await api(`/api/mailings?group=${group}`, author.token);
+    expect(byGroup.body.items.map((i: { id: string }) => i.id)).toEqual([second.id, first.id]);
+    expect(byGroup.body.items[0].patientGroupId).toBe(group);
+    const oldFirst = await api(`/api/mailings?group=${group}&order=old`, author.token);
+    expect(oldFirst.body.items.map((i: { id: string }) => i.id)).toEqual([first.id, second.id]);
+    // счётчики видов — по всем рассылкам автора, группа их не режет
+    expect(byGroup.body.counts.all).toBe(3);
+  });
+});
+
 describe("пуш о рассылке", () => {
   test("уходит получателю с устройством один раз, без темы и текста", async () => {
     const withDevice = await patientOfA("push");

@@ -91,6 +91,7 @@ import type {
   InvitePreview,
   CreateInviteInput,
   Referral,
+  ReferralPage,
   CreateReferralInput,
   CaseSummary,
   VersionDiff,
@@ -117,6 +118,7 @@ import type {
   MailingInput,
   MailingUpdateInput,
   FilterPreset,
+  FilterPresetDetail,
   FilterPresetInput,
   FilterPresetListItem,
   FilterPresetUpdateInput,
@@ -1208,6 +1210,8 @@ export const api = {
         version: number;
         status: string;
         createdAt: string;
+        /** Автор записи — для строки уривка и отбора «Автор» */
+        authorName: string;
         excerpt: string;
       }[];
     }>(`/api/search/notes?q=${encodeURIComponent(q)}`),
@@ -1293,7 +1297,7 @@ export const api = {
     if (all) qs.set("all", "1");
     if (cursor) qs.set("cursor", cursor);
     const tail = qs.toString();
-    return request<Page<Referral>>(`/api/referrals${tail ? `?${tail}` : ""}`);
+    return request<ReferralPage>(`/api/referrals${tail ? `?${tail}` : ""}`);
   },
   createReferral: (input: CreateReferralInput) =>
     request<Referral>("/api/referrals", { method: "POST", body: JSON.stringify(input) }),
@@ -1701,6 +1705,9 @@ export const api = {
     }),
   /** Карточка группы: описание, «Пацієнти Групи» и «Тести Групи» одним ответом */
   patientGroup: (id: string) => request<PatientGroupCard>(`/api/patient-groups/${id}`),
+  /** «Обрана» — закладка читателя на группу (PUT ставит, DELETE снимает) */
+  favouritePatientGroup: (id: string, on: boolean) =>
+    request<unknown>(`/api/patient-groups/${id}/favourite`, { method: on ? "PUT" : "DELETE" }),
   createPatientGroup: (input: PatientGroupInput) =>
     request<PatientGroup>("/api/patient-groups", { method: "POST", body: JSON.stringify(input) }),
   updatePatientGroup: (id: string, patch: Partial<PatientGroupInput>) =>
@@ -1714,6 +1721,12 @@ export const api = {
   /** Выданные человеку назначения при этом остаются — см. routes/patientGroups.ts */
   removePatientGroupMember: (groupId: string, userId: string) =>
     request<void>(`/api/patient-groups/${groupId}/members/${userId}`, { method: "DELETE" }),
+  /** Убрать вибраних одним запросом: сервер проверяет список целиком, «троих убрал, на четвёртом отказал» не бывает */
+  removePatientGroupMembers: (groupId: string, userIds: string[]) =>
+    request<{ groupId: string; removed: number }>(`/api/patient-groups/${groupId}/members`, {
+      method: "DELETE",
+      body: JSON.stringify({ userIds }),
+    }),
   /**
    * Пациенты. Отдаётся не всё: список упорядочен по ФИО, а оно зашифровано —
    * упорядочить его в SQL нечем, поэтому сервер ищет и обрезает выдачу.
@@ -1920,6 +1933,21 @@ export const api = {
         patientId?: string;
         lastMessageAt: string;
         unread: number;
+        /*
+         * Только у специалиста (консоль 2.0): начало последнего письма, чьё
+         * оно, прочитано ли моё и ближайший свой приём человека.
+         */
+        preview?: string | null;
+        lastMine?: boolean | null;
+        lastReadAt?: string | null;
+        next?: {
+          id: string;
+          startsAt: string;
+          endsAt: string;
+          room: string | null;
+          mode: "onsite" | "remote";
+          status: string;
+        } | null;
       }[];
       lead: string | null;
     }>("/api/messages"),
@@ -1948,11 +1976,22 @@ export const api = {
    * всё равно расшифровывается там; тянуть его целиком ради страницы 3
    * значило бы расшифровывать всё на каждую букву поиска.
    */
-  mailings: (params: { q?: string; hidden?: boolean; limit: number; offset: number }) => {
+  mailings: (params: {
+    q?: string;
+    hidden?: boolean;
+    status?: "draft" | "sent";
+    group?: string;
+    order?: "new" | "old";
+    limit: number;
+    offset: number;
+  }) => {
     const qs = new URLSearchParams();
     if (params.q) qs.set("q", params.q);
     /* «скрытые» — отдельный список, а не вперемешку: так устроен сервер (?hidden=1) */
     if (params.hidden) qs.set("hidden", "1");
+    if (params.status) qs.set("status", params.status);
+    if (params.group) qs.set("group", params.group);
+    if (params.order === "old") qs.set("order", "old");
     qs.set("limit", String(params.limit));
     qs.set("offset", String(params.offset));
     return request<MailingListPage>(`/api/mailings?${qs}`);
@@ -1973,6 +2012,8 @@ export const api = {
   /** «Видалити» — черновик; отправленную сервер не удаляет (409), её скрывают */
   deleteMailing: (id: string) => request<void>(`/api/mailings/${id}`, { method: "DELETE" }),
   hideMailing: (id: string) => request<Mailing>(`/api/mailings/${id}/hide`, { method: "POST" }),
+  /** «Повернути» скрытую в список */
+  unhideMailing: (id: string) => request<Mailing>(`/api/mailings/${id}/unhide`, { method: "POST" }),
   /*
    * Раздел «Статистика» (кадры f08, f09, f17, f18, f23, f24, f29): модели и
    * пресеты фильтров. Имён сервер здесь не отдаёт никогда — только доли с
@@ -2007,7 +2048,7 @@ export const api = {
     }),
   filterPresets: (q?: string) =>
     unwrap(request<Items<FilterPresetListItem>>(`/api/filter-presets${q ? `?q=${encodeURIComponent(q)}` : ""}`)),
-  filterPreset: (id: string) => request<FilterPresetListItem>(`/api/filter-presets/${id}`),
+  filterPreset: (id: string) => request<FilterPresetDetail>(`/api/filter-presets/${id}`),
   createFilterPreset: (input: FilterPresetInput) =>
     request<FilterPreset>("/api/filter-presets", { method: "POST", body: JSON.stringify(input) }),
   updateFilterPreset: (id: string, patch: FilterPresetUpdateInput) =>
@@ -2162,9 +2203,17 @@ export const api = {
         endsAt: string;
         kind: "primary" | "repeat";
         mode: "onsite" | "remote";
-        status: string;
+        status: AppointmentView["status"];
         reason: string | null;
+        specialistId: string;
+        confirmedAt: string | null;
+        meetingUrl: string | null;
+        room: string | null;
+        /** Пояс отделения: часы приёма и окна следующей сессии — по нему */
+        tz: string;
       };
+      /** Прошлые приёмы человека (без этого): проведено и неявок */
+      visits: { done: number; noShow: number };
       patient: {
         id: string;
         fullName: string;
@@ -2222,6 +2271,25 @@ export const api = {
     ),
   removeScheduleException: (id: string) =>
     request<{ ok: true }>(`/api/clinic/schedule/exceptions/${id}`, { method: "DELETE" }),
+  /** Неделя календарём: приёмы, открытые окна и исключения с `from` на `days` дней по часам отделения */
+  scheduleWeek: (from: string, days = 7, specialistId?: string) => {
+    const q = new URLSearchParams({ from, days: String(days) });
+    if (specialistId) q.set("specialistId", specialistId);
+    return request<{
+      specialistId: string;
+      from: string;
+      to: string;
+      tz: string;
+      today: string;
+      appointments: AppointmentView[];
+      slots: { id: string; startsAt: string; endsAt: string; offSchedule: boolean }[];
+      exceptions: ScheduleExceptionView[];
+    }>(`/api/clinic/schedule/week?${q}`);
+  },
+  /** Календарь Google специалиста для ссылок Meet: настроен ли на сервере и подключён ли */
+  meetStatus: () =>
+    request<{ configured: boolean; connected: boolean; email: string | null }>("/api/meet/status"),
+  meetDisconnect: () => request<{ connected: false }>("/api/meet/disconnect", { method: "POST" }),
   departments: () =>
     request<{ items: { id: string; title: string; timezone: string }[] }>("/api/clinic/departments"),
   specialists: (departmentId?: string) => {
@@ -2291,13 +2359,23 @@ export const api = {
         meetingUrl: string | null;
       }[];
     }>("/api/clinic/appointments/mine"),
-  book: (body: { slotId: string; reason?: string | null; mode?: "onsite" | "remote" }) =>
+  /** Записать: себя (пациент) или человека по patientId (сотрудник с правом вести приёмы) */
+  book: (body: { slotId: string; reason?: string | null; mode?: "onsite" | "remote"; patientId?: string }) =>
     request<{ id: string; screeningSurveyId: string | null }>("/api/clinic/appointments", {
       method: "POST",
       body: JSON.stringify(body),
     }),
   confirmAppointment: (id: string) =>
     request<{ ok: true }>(`/api/clinic/appointments/${id}/confirm`, { method: "POST" }),
+  /**
+   * Перенос в свободное окно — отмена и запись одним действием на сервере (clinic.ts): слот не успеет уйти
+   * между ними; событие календаря Google, если оно есть, переносится вместе с приёмом
+   */
+  rescheduleAppointment: (id: string, slotId: string) =>
+    request<{ ok: true }>(`/api/clinic/appointments/${id}/reschedule`, {
+      method: "POST",
+      body: JSON.stringify({ slotId }),
+    }),
   cancelAppointment: (id: string, reason?: string) =>
     request<{ ok: true; late: boolean }>(`/api/clinic/appointments/${id}/cancel`, {
       method: "POST",

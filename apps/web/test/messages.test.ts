@@ -1,7 +1,22 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { UI } from "@quizzy/shared";
+import { UI, type PatientCard } from "@quizzy/shared";
+import {
+  daysFrom,
+  feedByDay,
+  orderThreads,
+  slotsByDay,
+  stepThread,
+  threadInView,
+  threadMatches,
+  threadViewCounts,
+  unansweredId,
+  viewFrom,
+  waitsForReply,
+  type ThreadRow,
+} from "../src/pages/messages/model";
+import { ageOf, measuresOf, openFor } from "../src/pages/messages/thread";
 
 /**
  * Экран переписки: три вещи, которые уже были сломаны и ломаются молча.
@@ -101,5 +116,169 @@ describe("панель чтения", () => {
       .filter((l) => l.text.includes('"ms.title"'))
       .map((l) => `${FILE}:${l.line}`);
     expect(lines.length, `название экрана зовётся ${lines.length} раз: ${lines.join(", ")}`).toBe(1);
+  });
+});
+
+/* ─────────── консоль 2.0: список и запись (v2-comms) ─────────── */
+
+const row = (id: string, over: Partial<ThreadRow> = {}): ThreadRow => ({
+  id,
+  withName: `Пацієнт ${id}`,
+  patientId: `p-${id}`,
+  lastMessageAt: "2026-10-08T10:00:00.000Z",
+  unread: 0,
+  preview: null,
+  lastMine: null,
+  lastReadAt: null,
+  next: null,
+  ...over,
+});
+
+describe("кто ждёт ответа", () => {
+  test("ждёт — последнее письмо от пациента, а не «есть непрочитанное»", () => {
+    /*
+     * Прочитанное, но оставленное без ответа письмо ждёт так же; число
+     * непрочитанных гаснет от одного открытия разговора, и по нему
+     * «чекає відповіді» пропадало бы, ничего не дождавшись.
+     */
+    expect(waitsForReply({ lastMine: false })).toBe(true);
+    expect(waitsForReply({ lastMine: true })).toBe(false);
+    expect(waitsForReply({ lastMine: null }), "писем нет — ждать нечего").toBe(false);
+    const read = row("a", { lastMine: false, unread: 0 });
+    expect(threadInView(read, "wait")).toBe(true);
+    expect(threadInView(read, "unread")).toBe(false);
+  });
+
+  test("порядок: ждущие с сигналом, ждущие, остальные; внутри — свежие сверху", () => {
+    const items = [
+      row("calm-new", { lastMine: true, lastMessageAt: "2026-10-08T16:00:00.000Z" }),
+      row("wait-old", { lastMine: false, lastMessageAt: "2026-10-08T09:00:00.000Z" }),
+      row("risk-older", { lastMine: false, lastMessageAt: "2026-10-07T19:40:00.000Z" }),
+      row("wait-new", { lastMine: false, lastMessageAt: "2026-10-08T16:20:00.000Z" }),
+      row("calm-old", { lastMine: true, lastMessageAt: "2026-10-01T09:00:00.000Z" }),
+    ];
+    const order = orderThreads(items, (pid) => pid === "p-risk-older").map((t) => t.id);
+    expect(order).toEqual(["risk-older", "wait-new", "wait-old", "calm-new", "calm-old"]);
+  });
+
+  test("счётчики видов и поиск по имени и началу письма", () => {
+    const items = [
+      row("a", { unread: 2, lastMine: false, preview: "Чи можна пити мелатонін?" }),
+      row("b", { lastMine: true, withName: "Бойко Тарас" }),
+      row("c", { lastMine: false }),
+    ];
+    expect(threadViewCounts(items)).toEqual({ all: 3, unread: 1, wait: 2 });
+    expect(items.filter((t) => threadMatches(t, "МЕЛАТОНІН")).map((t) => t.id)).toEqual(["a"]);
+    expect(items.filter((t) => threadMatches(t, "бойко")).map((t) => t.id)).toEqual(["b"]);
+    expect(items.filter((t) => threadMatches(t, "  ")).length).toBe(3);
+    expect(viewFrom("wait")).toBe("wait");
+    expect(viewFrom("archive"), "незнакомый вид из адреса — «усі»").toBe("all");
+  });
+
+  test("J/K: шаг по видимым строкам, по краям — стоп", () => {
+    const order = ["a", "b", "c"];
+    expect(stepThread(order, undefined, 1)).toBe("a");
+    expect(stepThread(order, undefined, -1)).toBe("c");
+    expect(stepThread(order, "b", 1)).toBe("c");
+    expect(stepThread(order, "c", 1)).toBeNull();
+    expect(stepThread(order, "a", -1)).toBeNull();
+    expect(stepThread([], "a", 1)).toBeNull();
+  });
+});
+
+describe("лента", () => {
+  test("дни — разделитель перед первым письмом дня; без ответа — последнее письмо пациента", () => {
+    const items = [
+      { id: "1", mine: true, sentAt: "2026-09-25T10:05:00.000Z" },
+      { id: "2", mine: false, sentAt: "2026-10-02T09:15:00.000Z" },
+      { id: "3", mine: true, sentAt: "2026-10-02T09:40:00.000Z" },
+      { id: "4", mine: false, sentAt: "2026-10-07T16:40:00.000Z" },
+    ];
+    const days = feedByDay(items, (iso) => iso.slice(0, 10));
+    expect(days.map((d) => [d.key, d.items.map((m) => m.id)])).toEqual([
+      ["2026-09-25", ["1"]],
+      ["2026-10-02", ["2", "3"]],
+      ["2026-10-07", ["4"]],
+    ]);
+    expect(unansweredId(items)).toBe("4");
+    expect(unansweredId(items.slice(0, 3)), "последнее — моё: ответ дан").toBeNull();
+    expect(unansweredId([])).toBeNull();
+  });
+
+  test("дни — по местным полуночам, а не сутками от «сейчас»", () => {
+    const now = new Date(2026, 9, 8, 23, 30).getTime();
+    expect(daysFrom(new Date(2026, 9, 9, 0, 30).toISOString(), now), "через час, но завтра").toBe(1);
+    expect(daysFrom(new Date(2026, 9, 8, 0, 5).toISOString(), now)).toBe(0);
+    expect(daysFrom(new Date(2026, 9, 7, 19, 40).toISOString(), now)).toBe(-1);
+  });
+});
+
+describe("перенос приёма", () => {
+  test("окна по дням: без прошедших и без самого приёма, по времени", () => {
+    const now = Date.parse("2026-10-08T14:00:00.000Z");
+    const slot = (id: string, startsAt: string) => ({ id, startsAt, endsAt: startsAt, room: "214" });
+    const byDay = slotsByDay(
+      [
+        slot("late", "2026-10-10T15:00:00.000Z"),
+        slot("past", "2026-10-08T09:00:00.000Z"),
+        slot("own", "2026-10-10T07:30:00.000Z"),
+        slot("early", "2026-10-10T14:00:00.000Z"),
+        slot("next-week", "2026-10-13T08:00:00.000Z"),
+      ],
+      (iso) => iso.slice(0, 10),
+      now,
+      "2026-10-10T07:30:00.000Z",
+    );
+    expect([...byDay.keys()]).toEqual(["2026-10-10", "2026-10-13"]);
+    expect(byDay.get("2026-10-10")!.map((s) => s.id)).toEqual(["early", "late"]);
+  });
+});
+
+describe("запись: возраст, сигнал, заміри", () => {
+  test("полных лет — с учётом дня рождения в этом году", () => {
+    const now = new Date(2026, 9, 8).getTime();
+    expect(ageOf("1988-05-12", now)).toBe(38);
+    expect(ageOf("1988-11-12", now), "день рождения ещё не наступил").toBe(37);
+    expect(ageOf(null, now)).toBeNull();
+    expect(ageOf("не дата", now)).toBeNull();
+  });
+
+  test("сколько открыт сигнал: часы в первые сутки, дальше дни", () => {
+    expect(openFor(168, "{n} дн.")).toBe("2:48");
+    expect(openFor(5, "{n} дн.")).toBe("0:05");
+    expect(openFor(9 * 24 * 60 + 300, "{n} дн."), "216:19 читалось бы как время суток").toBe("9 дн.");
+  });
+
+  test("заміри: последний по методике, одна шкала с тяжестью, история той же шкалы", () => {
+    const scale = (code: string, value: number, severity: "mild" | "moderate" | null = null) => ({
+      code,
+      title: code,
+      value,
+      normalization: "raw" as const,
+      percent: 0,
+      bandLabel: severity ? "помірна" : null,
+      severity,
+    });
+    const resp = (surveyId: string, at: string, scales: ReturnType<typeof scale>[]) => ({
+      responseId: `${surveyId}-${at}`,
+      surveyId,
+      surveyTitle: surveyId.toUpperCase(),
+      submittedAt: at,
+      reliable: true,
+      scales,
+    });
+    const card = {
+      responses: [
+        resp("phq", "2026-08-24", [scale("lie", 1), scale("total", 19, "moderate")]),
+        resp("gad", "2026-09-01", [scale("total", 11, "moderate")]),
+        resp("phq", "2026-09-11", [scale("lie", 0), scale("total", 16, "moderate")]),
+        resp("phq", "2026-10-08", [scale("lie", 0), scale("total", 14, "moderate")]),
+        resp("empty", "2026-10-09", []),
+      ],
+    } as unknown as Pick<PatientCard, "responses">;
+    const lines = measuresOf(card);
+    expect(lines.map((l) => l.surveyId), "свежие сверху, без прохождений без шкал").toEqual(["phq", "gad"]);
+    expect(lines[0]).toMatchObject({ code: "total", value: 14, history: [19, 16, 14], word: "помірна" });
+    expect(lines[1]!.history, "один замер — истории нет").toEqual([11]);
   });
 });

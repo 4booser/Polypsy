@@ -37,7 +37,7 @@ describe("словарь оболочки", () => {
      * ключ уходит отсюда — и проверка снова начнёт его сторожить. Список
      * может только уменьшаться.
      */
-    const PLACEHOLDER = new Set<string>(["pub.aboutText"]);
+    const PLACEHOLDER = new Set<string>([]);
     const suspicious = entries
       .filter(([k, v]) => v.uk === v.ru && v.ru.length > 24 && !PLACEHOLDER.has(k))
       .map(([k, v]) => `${k}: ${v.ru}`);

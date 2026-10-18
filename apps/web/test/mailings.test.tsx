@@ -1,21 +1,28 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
-import type { Mailing, MailingListItem, MailingUpdateInput } from "@quizzy/shared";
+import { UI, type Mailing, type MailingListItem, type MailingUpdateInput } from "@quizzy/shared";
 import { LangProvider } from "../src/lang";
 import {
+  answerShares,
   cleanOptions,
   draftFromMailing,
   draftToInput,
   draftToUpdate,
   isFilled,
+  mailingQuery,
+  mailingViewFrom,
   MAX_OPTIONS,
   type MailingDraft,
+  optionPreset,
+  pluralForm,
   saveThenSend,
+  withoutOption,
 } from "../src/pages/messages/model";
-import { Row } from "../src/pages/messages/MailingList";
+import { AnswersCell, StateCell, TitleCell } from "../src/pages/messages/MailingList";
 import { railGroups } from "../src/shell/Rail";
 import { navAccess, railEntries, subNavFor } from "../src/shell/nav";
 
@@ -71,9 +78,8 @@ describe("навигация раздела «Повідомлення»", () =>
 describe("черновик повідомлення", () => {
   test("пустые варианты выбрасываются, пробелы по краям снимаются", () => {
     /*
-     * На кадре у варианта нет глифа «убрать»: единственный способ избавиться
-     * от лишней кнопки — стереть текст. Пустое поле поэтому не ошибка, а
-     * «убрать», и на сервер оно не уходит.
+     * Стереть текст варианта — тоже способ его убрать. Пустое поле поэтому
+     * не ошибка, а «прибрати», и на сервер оно не уходит.
      */
     expect(cleanOptions([" Так ", "", "Ні", "   "])).toEqual(["Так", "Ні"]);
   });
@@ -175,49 +181,117 @@ describe("редакция черновика", () => {
  *
  * Однажды это уже сломали: чтобы имя ссылки не разрасталось до трёх строк
  * текста, начало текста и дату пометили `aria-hidden` — и они пропали у
- * диктора начисто. Дата в этом списке единственная отличает черновик от
- * отправленной, и глазами такая потеря не видна: экран остаётся прежним.
- * Проверяется не вид, а состав разметки строки.
+ * диктора начисто. Глазами такая потеря не видна: экран остаётся прежним.
+ * В 2.0 строка — ряд таблицы (comms-mailings), и проверяются её ячейки:
+ * «Повідомлення» (тема и начало текста) и «Стан» (дата, охват).
  */
 
 const ROW: MailingListItem = {
   id: "m1",
   title: "Тема повідомлення",
   preview: "Початок тексту розсилки",
-  status: "draft",
+  status: "sent",
   at: "2025-05-14T17:15:00.000Z",
-  sentAt: null,
-  recipientCount: 0,
-  answeredCount: 0,
+  sentAt: "2025-05-14T17:15:00.000Z",
+  recipientCount: 24,
+  answeredCount: 18,
+  readCount: 22,
+  options: ["Так", "Ні"],
+  answers: [15, 3],
+  patientGroupId: "g1",
 };
 
-const drawRow = (m: MailingListItem) =>
+const draw = (node: ReactNode) =>
   renderToStaticMarkup(
     <LangProvider>
-      <MemoryRouter>
-        <ul>
-          <Row m={m} />
-        </ul>
-      </MemoryRouter>
+      <MemoryRouter>{node}</MemoryRouter>
     </LangProvider>,
   );
 
 describe("строка списка розсилок", () => {
-  test("начало текста и дата видны диктору: aria-hidden в строке нет вовсе", () => {
-    const html = drawRow(ROW);
-    expect(html).toContain(ROW.preview);
+  test("начало текста и дата видны диктору: aria-hidden в ячейках нет", () => {
+    const title = draw(<TitleCell m={ROW} />);
+    expect(title).toContain(ROW.preview);
+    expect(title, "видимое в строке спрятано от дерева доступности").not.toContain("aria-hidden");
+    const state = draw(<StateCell m={ROW} />);
     /* формат даты меряет format.test; здесь важно одно — что она вообще в разметке */
-    expect(html).toMatch(/>[^<]*\b14\b[^<]*17:15[^<]*</);
-    expect(html, "видимое в строке спрятано от дерева доступности").not.toContain("aria-hidden");
+    expect(state).toMatch(/>[^<]*\b14\b[^<]*17:15[^<]*</);
+    expect(state).toContain("22");
   });
 
   test("имя ссылки — по-прежнему одна тема, а не вся строка", () => {
-    /*
-     * Ссылка накрывает строку накладкой, а не содержимым: перечень ссылок
-     * должен читаться темами, иначе диктор зачитывает абзацы.
-     */
-    const inner = drawRow(ROW).match(/<a\b[^>]*>([\s\S]*?)<\/a>/);
+    /* перечень ссылок должен читаться темами, иначе диктор зачитывает абзацы */
+    const inner = draw(<TitleCell m={ROW} />).match(/<a\b[^>]*>([\s\S]*?)<\/a>/);
     expect(inner, "ссылки в строке не стало").not.toBeNull();
     expect(inner![1]).toBe(ROW.title);
+  });
+
+  test("ответы отправленной — числа по вариантам словами, не только цветом полосы", () => {
+    const html = draw(<AnswersCell m={ROW} />);
+    // полоса — украшение для глаза; числа и подписи вариантов стоят текстом рядом
+    expect(html).toContain("Так");
+    expect(html).toMatch(/>15</);
+    expect(html).toMatch(/>3</);
+    expect(html).toMatch(/18[^<]*24/);
+  });
+
+  test("черновик показывает варианты, а не нули ответов", () => {
+    const html = draw(<AnswersCell m={{ ...ROW, status: "draft", answers: [0, 0], answeredCount: 0 }} />);
+    expect(html).toContain("Так");
+    expect(html).not.toMatch(/0[^<]*24/);
+  });
+});
+
+describe("вид списка и полоса ответов", () => {
+  test("вид из адреса: незнакомое значение — «усі»", () => {
+    expect(mailingViewFrom("draft")).toBe("draft");
+    expect(mailingViewFrom("archived")).toBe("all");
+    expect(mailingViewFrom(null)).toBe("all");
+  });
+
+  test("вид — в параметры запроса: скрытые отдельным списком, состояние фильтром", () => {
+    expect(mailingQuery("all")).toEqual({});
+    expect(mailingQuery("draft")).toEqual({ status: "draft" });
+    expect(mailingQuery("sent")).toEqual({ status: "sent" });
+    expect(mailingQuery("hidden")).toEqual({ hidden: true });
+  });
+
+  test("доли полосы — от числа получателей, молчащие — остатком", () => {
+    const s = answerShares([15, 3], 24);
+    expect(s.option[0]).toBeCloseTo(15 / 24);
+    expect(s.option[1]).toBeCloseTo(3 / 24);
+    expect(s.silent).toBeCloseTo(6 / 24);
+    // ответов больше, чем получателей (счётчики разошлись) — полоса не вылезает за край
+    const over = answerShares([3, 2], 4);
+    expect(over.option.reduce((a, b) => a + b, 0) + over.silent).toBeCloseTo(1);
+    expect(answerShares([0, 0], 0)).toEqual({ option: [0, 0], silent: 0 });
+  });
+
+  test("шаблоны вариантов и «прибрати»", () => {
+    const words = { yes: "Так", no: "Ні", maybe: "Ще не знаю" };
+    expect(optionPreset("yesNo", words)).toEqual(["Так", "Ні"]);
+    expect(optionPreset("yesNoMaybe", words)).toEqual(["Так", "Ні", "Ще не знаю"]);
+    expect(optionPreset("none", words)).toEqual([]);
+    expect(withoutOption(["а", "б", "в"], 1)).toEqual(["а", "в"]);
+  });
+});
+
+describe("число людей словами", () => {
+  test("три формы у украинского и русского, две у английского", () => {
+    expect([1, 3, 5, 11, 21, 22, 25].map((n) => pluralForm(n, "uk"))).toEqual(["one", "few", "many", "many", "one", "few", "many"]);
+    expect([1, 2, 5].map((n) => pluralForm(n, "ru"))).toEqual(["one", "few", "many"]);
+    expect([1, 2, 5].map((n) => pluralForm(n, "en"))).toEqual(["one", "many", "many"]);
+  });
+
+  test("у каждой формы есть строка в словаре — «1 людина», «3 людини», «5 людей»", () => {
+    for (const base of ["mlx.people", "mlx.inGroup", "mlx.sendTo", "mlx.sendConfirm", "mlx.metaCount"]) {
+      for (const form of ["one", "few", "many"]) {
+        const key = `${base}.${form}` as keyof typeof UI;
+        expect(UI[key], `нет ${key}`).toBeDefined();
+      }
+    }
+    expect(UI["mlx.people.one"].uk.replace("{n}", "1")).toBe("1 людина");
+    expect(UI["mlx.people.few"].uk.replace("{n}", "3")).toBe("3 людини");
+    expect(UI["mlx.people.many"].uk.replace("{n}", "5")).toBe("5 людей");
   });
 });

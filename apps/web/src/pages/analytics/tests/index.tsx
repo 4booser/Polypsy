@@ -1,62 +1,59 @@
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
 import type { SurveyAnalytics } from "@quizzy/shared";
 import { api, type AnalyticsSlice } from "../../../api";
+import { duration } from "../../../format";
 import { useLang } from "../../../lang";
-import { Loading } from "../../../ui";
+import { Empty, KbdHints, Loading, useHotkeys } from "../../../ui";
+import { Ic } from "../../../ui/icons";
 import { Page } from "../../../ui/layout";
-import { Button, Input, Tabs } from "../../../ui/primitives";
+import { Button, Input, Segmented, Tabs } from "../../../ui/primitives";
 import { useResource } from "../../../useResource";
-import { AnalyticsTabs } from "../tabs";
+import { AIc } from "../icons";
 import { SurveyActions } from "./actions";
-import { FillSelect, PatientPicker, ScopeSwitch, SurveyPicker } from "./fields";
+import { ChipMenu, PatientPicker, SurveyPicker } from "./fields";
 import {
+  PRESETS,
   RESET_PATCH,
   VIEWS,
   dayText,
   defaultSurvey,
   fill,
   isFiltered,
+  kyivDay,
+  numText,
   patchParams,
+  presetFrom,
+  presetOf,
   readState,
   surveyPatch,
   type Param,
+  type Preset,
   type QuestionSort,
   type View,
 } from "./model";
 import { PatientView } from "./patient";
-import { OverviewView, QualityView, QuestionsView, ResponsesList, ScalesView, TimeView, useResponsePages } from "./views";
+import { OverviewView, QualityView, QuestionsView, ResponsesView, ScalesView, TimeView, nf } from "./views";
 
 /*
- * «Аналітика → Тести» — полная аналитика одной методики.
+ * «Аналітика тестів» — полная аналитика одной методики (analytics-tests,
+ * analytics-tests-patient).
  *
- * Задача заказчика (2026-09-26, к кадру f10): «вкладку с полной аналитикой
- * по тестам, чтобы можно было глянуть прохождения пациента или всех
+ * Задача заказчика (2026-09-26): «глянуть прохождения пациента или всех
  * пациентов, статистику по вопросам, ответам, времени ответа, общее
  * состояние по разным шкалам всех пациентов». Экран заменяет прежнюю
- * страницу /surveys/:id (оформление «Пульта»: плитки, кольца, голые
- * таблицы); её адрес перенаправляется сюда с ?survey=, и все её двери —
- * выгрузки, нормы, назначения, конструктор, бланк, ключ, «заповнити за
- * пацієнта» — стоят в шестерёнке у заголовка (actions.tsx).
+ * страницу /surveys/:id; её адрес перенаправляется сюда с ?survey=, а все её
+ * двери — выгрузки, нормы, назначения, конструктор, бланк, ключ,
+ * «заповнити за пацієнта» — стоят у заголовка (actions.tsx).
  *
- * Как устроен экран:
- *
- *   шапка (прибита)   вкладки раздела · «Аналітика тестів» + ⚙ · строка
- *                     фильтров: Тест, Хто, Пацієнт|Група, період, версія
- *   содержимое        «Показано: …» + «Скинути» → вкладки видов (для всех)
- *                     либо разделы одного человека (patient.tsx)
+ *   шапка        «Аналітика тестів», сводка среза числами, «Вивантаження», «⋯»
+ *   фильтры      Тест, Хто, Пацієнт | Група, Період, Версія; строка «Показано»
+ *   содержимое   вкладки видов (для всех) либо панели одного человека
  *
  * Состояние целиком в адресе (?survey=&scope=&patient=&group=&from=&to=
  * &version=&view=&sort=), правка — `replace`: ссылку на «PHQ-9, один
- * пациент, с сентября» пересылают коллеге, а каждая буква поиска шагом в
- * истории браузера не становится.
- *
- * Две строки шапки не укладываются в рамку Page с одной строкой — как у
- * перечня статистики (statistics/List.tsx), заголовок отдан рамке скрытым
- * (`titleHidden`, <h1> для диктора), а видимая строка с именем экрана и
- * строка фильтров печатаются в полосе инструментов. Просветы строки — `snug`,
- * как у перечня моделей f10: вкладки раздела стоят на обоих экранах в одном
- * и том же месте.
+ * пациент, з вересня» пересылают коллеге. Экран только смотрит — ничего на
+ * нём не сохраняется, и строка «Показано» это говорит.
  */
 export default function TestsAnalytics() {
   const { ut } = useLang();
@@ -91,14 +88,13 @@ export default function TestsAnalytics() {
     patientGroup: !patientScope ? (state.group ?? undefined) : undefined,
   };
   /*
-   * Ответ помечается срезом, по которому он запрошен.
-   *
-   * useResource держит последний пришедший ответ, пока едет следующий. Для
-   * шапки это хорошо (версии и шестерёнка методики не мигают на каждую
-   * смену даты), а для содержимого — нет: графики «всех пациентов» под
-   * только что выбранным «Один пацієнт» — это чужие цифры под верной
-   * подписью. Поэтому содержимое рисуется только по ответу своего среза, а
-   * шапка — по любому ответу той же методики.
+   * Ответ помечается срезом, по которому он запрошен: useResource держит
+   * последний пришедший ответ, пока едет следующий. Шапке это на руку
+   * (версии и действия методики не мигают на каждую смену даты), а
+   * содержимому — нет: графики «всех пациентов» под только что выбранным
+   * «Один пацієнт» — чужие цифры под верной подписью. Поэтому содержимое
+   * рисуется только по ответу своего среза, шапка — по любому ответу той же
+   * методики.
    */
   const reqKey = JSON.stringify([state.survey, state.version, slice]);
   const ready = !!state.survey && (!patientScope || !!state.patient);
@@ -120,116 +116,160 @@ export default function TestsAnalytics() {
 
   const surveyTitle = known?.title ?? choices?.find((c) => c.id === state.survey)?.title ?? "";
   const groupTitle = groups.data?.find((g) => g.id === state.group)?.title ?? null;
+  const today = kyivDay();
+  const preset = presetOf(state.from, state.to, today);
+  const [customDates, setCustomDates] = useState(false);
+  const showDates = customDates || ((!!state.from || !!state.to) && !preset);
 
-  const toolbar = (
-    <div className="flex w-full min-w-0 flex-col gap-[13px]">
-      <div className="flex min-h-9 items-center justify-between gap-[24px]">
-        {/* видимое имя экрана — не второй <h1>: тот уже объявлен рамке скрытым ровно этими словами */}
-        <p aria-hidden className="m-0 flex items-baseline gap-[10px] text-[24px] font-bold leading-tight text-primary">
-          {ut("ant.title")}
-          {known ? <span className="font-mono text-[13px] font-normal tabular-nums text-muted">{known.completed}</span> : null}
-        </p>
-        {known ? <SurveyActions data={known} /> : null}
-      </div>
-      <div role="group" aria-label={ut("ant.filtersLabel")} className="flex flex-wrap items-center gap-x-[13px] gap-y-[8px]">
+  const PRESET_KEY: Record<Preset, "ant.p30" | "ant.p90" | "ant.p365"> = { "30": "ant.p30", "90": "ant.p90", "365": "ant.p365" };
+  const periodText =
+    state.from || state.to ? `${state.from ? dayText(state.from) : "…"} – ${state.to ? dayText(state.to) : "…"}` : ut("an.allHistory").toLowerCase();
+
+  /* сводка среза числами — в мета-строке шапки, без плиток */
+  const meta: [ReactNode, ReactNode] | undefined = !data
+    ? undefined
+    : patientScope
+      ? [fill(ut("ant.metaPatient"), { n: nf(data.completed) }), `${person?.fullName ?? ut("ant.onePatient")}, ${periodText}`]
+      : [
+          fill(ut("ant.metaAll"), { n: nf(data.completed), p: nf(data.respondentCount) }),
+          fill(ut("ant.metaAll2"), {
+            s: nf(data.started),
+            r: data.started ? `${numText(data.completionRate, 1)} %` : "—",
+            t: data.medianDurationMs > 0 ? duration(data.medianDurationMs) : "—",
+          }),
+        ];
+
+  const filters = (
+    <section role="group" aria-label={ut("ant.filtersLabel")} className="rounded-panel border border-border bg-panel px-3.5 py-3 shadow-panel">
+      <div className="flex flex-wrap items-center gap-2">
         <SurveyPicker
-          className="w-[300px] max-[900px]:w-full"
+          className="w-[316px] max-[900px]:w-full"
           choices={choices}
           value={state.survey}
           valueTitle={surveyTitle}
           onChange={(id) => update(surveyPatch(id))}
         />
-        <ScopeSwitch value={state.scope} onChange={(scope) => update({ scope, patient: scope === "all" ? null : state.patient })} />
+        <Segmented
+          label={ut("ant.who")}
+          value={state.scope}
+          onChange={(scope) => update({ scope, patient: scope === "all" ? null : state.patient })}
+          items={[
+            { key: "all", label: ut("ant.allPatients") },
+            { key: "patient", label: ut("ant.onePatient") },
+          ]}
+          className="self-center"
+        />
         {patientScope ? (
           <PatientPicker
-            className="w-[260px] max-[900px]:w-full"
+            className="w-[270px] max-[900px]:w-full"
             value={state.patient}
             valueName={person?.fullName ?? ""}
             onChange={(id) => update({ patient: id, version: null })}
           />
         ) : groups.data?.length ? (
-          <FillSelect
-            label={ut("ant.group")}
-            value={state.group ?? ""}
-            onChange={(v) => update({ group: v || null })}
-            className="w-[200px] max-[900px]:w-full"
-          >
-            <option value="">{ut("ant.anyGroup")}</option>
-            {groups.data.map((g) => (
-              <option key={g.id} value={g.id}>
-                {g.title}
-              </option>
-            ))}
-          </FillSelect>
+          <ChipMenu
+            label={ut("ant.groupChip")}
+            value={groupTitle ?? ut("ant.anyGroupShort")}
+            on={!!groupTitle}
+            onClear={() => update({ group: null })}
+            current={state.group ?? ""}
+            onPick={(id) => update({ group: id || null })}
+            options={[
+              { key: "", label: ut("ant.anyGroup"), icon: <AIc.usersRound size={15} /> },
+              ...groups.data.map((g) => ({ key: g.id, label: g.title, icon: <AIc.usersRound size={15} /> })),
+            ]}
+          />
         ) : null}
-        <div className="flex items-center gap-[6px]">
-          <Input
-            look="fill"
-            type="date"
-            aria-label={ut("ant.from")}
-            value={state.from ?? ""}
-            max={state.to ?? undefined}
-            onChange={(e) => update({ from: e.target.value || null })}
-            className="w-[160px] font-mono tabular-nums"
-          />
-          <span aria-hidden className="text-muted">
-            –
+        <ChipMenu<Preset | "all" | "custom">
+          label={ut("ant.periodChip")}
+          value={preset ? ut(PRESET_KEY[preset]) : periodText}
+          on={!!state.from || !!state.to}
+          onClear={() => {
+            setCustomDates(false);
+            update({ from: null, to: null });
+          }}
+          head={ut("ant.periodChip")}
+          current={preset ?? (state.from || state.to ? "custom" : "all")}
+          onPick={(k) => {
+            if (k === "custom") {
+              setCustomDates(true);
+              return;
+            }
+            setCustomDates(false);
+            update(k === "all" ? { from: null, to: null } : { from: presetFrom(k, today), to: null });
+          }}
+          options={[
+            ...PRESETS.map((p) => ({ key: p, label: ut(PRESET_KEY[p]), icon: <Ic.calendar size={15} /> })),
+            { key: "all" as const, label: ut("an.allHistory"), icon: <Ic.calendar size={15} /> },
+            { key: "custom" as const, label: ut("ant.pCustom"), icon: <Ic.calendar size={15} />, ruled: true },
+          ]}
+        />
+        {showDates ? (
+          <span className="flex items-center gap-1.5">
+            <Input
+              type="date"
+              aria-label={ut("ant.from")}
+              value={state.from ?? ""}
+              max={state.to ?? undefined}
+              onChange={(e) => update({ from: e.target.value || null })}
+              className="w-[150px]"
+            />
+            <span aria-hidden className="text-muted">
+              –
+            </span>
+            <Input
+              type="date"
+              aria-label={ut("ant.to")}
+              value={state.to ?? ""}
+              min={state.from ?? undefined}
+              onChange={(e) => update({ to: e.target.value || null })}
+              className="w-[150px]"
+            />
           </span>
-          <Input
-            look="fill"
-            type="date"
-            aria-label={ut("ant.to")}
-            value={state.to ?? ""}
-            min={state.from ?? undefined}
-            onChange={(e) => update({ to: e.target.value || null })}
-            className="w-[160px] font-mono tabular-nums"
-          />
-        </div>
+        ) : null}
         {/* версия — только когда их больше одной: выбирать из одной нечего */}
         {known && known.versions.length > 1 ? (
-          <FillSelect
+          <ChipMenu
             label={ut("an.version")}
-            value={known.versionId ?? ""}
-            onChange={(v) => update({ version: v || null })}
-            className="w-[150px]"
-          >
-            {known.versions.map((v) => (
-              <option key={v.id} value={v.id}>
-                {fill(ut("ant.versionN"), { n: v.version })} · {v.responseCount}
-              </option>
-            ))}
-          </FillSelect>
+            value={String(known.versionNumber)}
+            on={!!state.version}
+            onClear={() => update({ version: null })}
+            head={fill(ut("ant.versionsOf"), { title: known.title })}
+            current={known.versionId ?? ""}
+            onPick={(v) => update({ version: v || null })}
+            options={known.versions.map((v) => ({
+              key: v.id,
+              label: fill(ut("ant.versionN"), { n: v.version }),
+              aside: nf(v.responseCount),
+            }))}
+          />
         ) : null}
       </div>
-    </div>
+      <Shown
+        title={surveyTitle}
+        version={known ? fill(ut("ant.versionN"), { n: known.versionNumber }) : null}
+        who={patientScope ? (person?.fullName ?? ut("ant.onePatient")) : ut("ant.allPatients").toLowerCase()}
+        group={!patientScope && groupTitle ? groupTitle : null}
+        period={periodText}
+        groupNote={patientScope && !!groups.data?.length}
+        canReset={isFiltered(state)}
+        onReset={() => {
+          setCustomDates(false);
+          update(RESET_PATCH);
+        }}
+      />
+    </section>
   );
 
-  /* строка «что показано»: срез словами, чтобы скриншот экрана говорил сам за себя */
-  const shown = [
-    surveyTitle,
-    known ? fill(ut("ant.versionN"), { n: known.versionNumber }) : null,
-    patientScope ? (person?.fullName ?? ut("ant.onePatient")) : ut("ant.allPatients"),
-    !patientScope && groupTitle ? groupTitle : null,
-    state.from || state.to ? `${state.from ? dayText(state.from) : "…"} – ${state.to ? dayText(state.to) : "…"}` : ut("an.allHistory"),
-  ].filter(Boolean);
-
   return (
-    <Page title={ut("ant.title")} titleHidden snug crumbs={<AnalyticsTabs />} toolbar={toolbar}>
+    <Page title={ut("ant.title")} meta={meta} actions={known ? <SurveyActions data={known} /> : null}>
       {surveys.data && !surveys.data.length && !state.survey ? (
-        <p className="m-0 py-[24px] text-[13px] text-muted">{ut("ant.noSurvey")}</p>
+        <Empty title={ut("ant.noSurveyTitle")} hint={ut("ant.noSurvey")} icon={<Ic.gauge />} />
       ) : (
-        <>
-          <div className="mb-[18px] mt-[10px] flex flex-wrap items-center gap-x-[16px] gap-y-[6px]">
-            <p className="m-0 min-w-0 text-[13px] leading-[18px] text-muted">
-              {ut("ant.active")} <span className="text-text-2">{shown.join(" · ")}</span>
-            </p>
-            <Button variant="quiet" disabled={!isFiltered(state)} onClick={() => update(RESET_PATCH)}>
-              {ut("ant.reset")}
-            </Button>
-          </div>
-
+        <div className="flex flex-col gap-4">
+          {filters}
           {patientScope && !state.patient ? (
-            <p className="m-0 max-w-[640px] py-[12px] text-[15px] leading-[21px] text-muted">{ut("ant.pickPatient")}</p>
+            <Empty title={ut("ant.pickPatientTitle")} hint={ut("ant.pickPatient")} icon={<Ic.user />} />
           ) : res.error && !data ? (
             <Loading error={res.error} onRetry={res.reload} />
           ) : !data ? (
@@ -239,9 +279,53 @@ export default function TestsAnalytics() {
           ) : (
             <AllPatients data={data} view={state.view} sort={state.sort} slice={slice} update={update} />
           )}
-        </>
+        </div>
       )}
     </Page>
+  );
+}
+
+/**
+ * Строка «Показано»: срез словами — скриншот экрана говорит сам за себя, —
+ * пометка «лише перегляд» и «Скинути». Сброс снимает всё, кроме методики и
+ * открытого вида: их выбирали не как фильтр.
+ */
+function Shown({
+  title,
+  version,
+  who,
+  group,
+  period,
+  groupNote,
+  canReset,
+  onReset,
+}: {
+  title: string;
+  version: string | null;
+  who: string;
+  group: string | null;
+  period: string;
+  groupNote: boolean;
+  canReset: boolean;
+  onReset: () => void;
+}) {
+  const { ut } = useLang();
+  const rest = [version, who, group, period].filter(Boolean).join(", ");
+  /* пока методика не пришла, строка начинается со среза, а не с запятой */
+  return (
+    <div className="mt-2.5 flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-divider pt-2.5 text-small text-text-2">
+      <Ic.eye size={14} className="text-muted" />
+      <span className="text-muted">{ut("ant.shown")}</span>
+      <span className="min-w-0 flex-1">
+        {title ? <b className="font-extrabold text-text">{title}</b> : null}
+        {title ? (rest ? `, ${rest}.` : ".") : `${rest}.`}
+        {groupNote ? ` ${ut("ant.groupNotInPatient")}` : null}
+      </span>
+      <span className="text-caption text-muted">{ut("ant.readOnly")}</span>
+      <Button variant="quiet" size="xs" icon={<AIc.rotateCcw />} disabled={!canReset} onClick={onReset}>
+        {ut("ant.reset")}
+      </Button>
+    </div>
   );
 }
 
@@ -255,11 +339,11 @@ const VIEW_KEY: Record<View, "ant.viewOverview" | "an.tabScales" | "an.tabQuesti
 };
 
 /**
- * Срез «Усі пацієнти»: вкладки видов и один вид под ними.
+ * Срез «Усі пацієнти»: вкладки видов с числами и один вид под ними;
+ * клавиши 1–6 переключают вкладки.
  *
  * Вкладки — кнопочный вид Tabs (role=tablist), а не ссылки: вид живёт в
- * параметре адреса (?view=), а NavLink сравнивает только путь — ссылочные
- * вкладки подсвечивались бы все разом (тот же довод у списка пациентов).
+ * параметре адреса (?view=), а NavLink сравнивает только путь.
  */
 function AllPatients({
   data,
@@ -276,32 +360,44 @@ function AllPatients({
 }) {
   const { ut } = useLang();
   const panel = "tests-view-panel";
+  const counts: Partial<Record<View, number>> = {
+    scales: data.scales.length,
+    questions: data.questions.length,
+    quality: data.quality.length,
+    responses: data.completed,
+  };
+  const go = (v: View) => update({ view: v });
+  useHotkeys(Object.fromEntries(VIEWS.map((v, i) => [String(i + 1), () => go(v)])));
+
   return (
     <>
-      <Tabs
-        label={ut("ant.views")}
-        items={VIEWS.map((v) => ({
-          label: ut(VIEW_KEY[v]),
-          active: v === view,
-          onSelect: () => update({ view: v }),
-          id: `tests-view-${v}`,
-          controls: panel,
-        }))}
-      />
-      <div id={panel} role="tabpanel" aria-labelledby={`tests-view-${view}`} className="pt-[24px]">
-        {view === "overview" ? <OverviewView data={data} /> : null}
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+        <Tabs
+          label={ut("ant.views")}
+          items={VIEWS.map((v) => ({
+            label: ut(VIEW_KEY[v]),
+            active: v === view,
+            onSelect: () => go(v),
+            id: `tests-view-${v}`,
+            controls: panel,
+            count: counts[v] ?? null,
+          }))}
+        />
+        <KbdHints
+          keys={[
+            ["1–6", ut("ant.kViews")],
+            ["E", ut("ant.kExports")],
+          ]}
+        />
+      </div>
+      <div id={panel} role="tabpanel" aria-labelledby={`tests-view-${view}`}>
+        {view === "overview" ? <OverviewView data={data} slice={slice} onView={go} /> : null}
         {view === "scales" ? <ScalesView data={data} /> : null}
         {view === "questions" ? <QuestionsView data={data} sort={sort} onSort={(s) => update({ sort: s })} /> : null}
         {view === "time" ? <TimeView data={data} /> : null}
         {view === "quality" ? <QualityView data={data} /> : null}
-        {view === "responses" ? <AllResponses data={data} slice={slice} /> : null}
+        {view === "responses" ? <ResponsesView data={data} slice={slice} /> : null}
       </div>
     </>
   );
-}
-
-/** Список прохождений под срезом экрана — той же версии, что и графики над ним */
-function AllResponses({ data, slice }: { data: SurveyAnalytics; slice: AnalyticsSlice }) {
-  const pages = useResponsePages(data.surveyId, { ...slice, versionId: data.versionId ?? undefined });
-  return <ResponsesList pages={pages} surveyId={data.surveyId} />;
 }

@@ -1,76 +1,62 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import type { StatModel, SurveyFull, UiKey } from "@quizzy/shared";
+import type { StatModel, StatModelColumn, SurveyFull, UiKey } from "@quizzy/shared";
 import { api } from "../../api";
+import { ATTENTION_COLOR } from "../../charts/kit";
 import { useLang } from "../../lang";
-import { Loading, useAction, useToast } from "../../ui";
+import { Empty, Ic, Loading, Modal, Tooltip, useAction, useToast } from "../../ui";
 import { cx } from "../../ui/cx";
-import { IconPlusThick } from "../../ui/glyphs";
-import { Page } from "../../ui/layout";
-import { Button, Textarea } from "../../ui/primitives";
-import { useResource } from "../../useResource";
-import { TestPicker } from "../analytics/Editor";
-import { useSurveyAt } from "./data";
+import { Page, Panel, SideLayout } from "../../ui/layout";
 import {
-  STATS_LIST,
-  type BandRow,
-  type OptionRow,
+  Button,
+  ButtonLink,
+  Checkbox,
+  ErrorText,
+  Field,
+  Input,
+  Select,
+  SeverityTag,
+  Switch,
+  Textarea,
+} from "../../ui/primitives";
+import { useResource } from "../../useResource";
+import { useSurveyAt, useSurveyVersions } from "./data";
+import {
+  MAX_FIGURES,
+  MAX_SAMPLES,
   type QuestionBlock,
+  type ReportRow,
+  STATS_LIST,
   type StructureDraft,
   columnsFromDraft,
   emptyStructure,
-  newBandRow,
-  newOptionRow,
+  figureCount,
+  indicatorsFromDraft,
   newQuestionBlock,
+  removeSample,
+  reportRows,
+  setOptionRisk,
+  setScaleBands,
   statHref,
   structureFromModel,
+  toggleBand,
+  toggleOption,
   validateStructure,
-  withSpare,
 } from "./model";
-import { GlyphButton, IconMinusThick, Readout, StatSelect, VshrToggle } from "./parts";
+import { SampleBadge, St, VshrMark, useSampleName } from "./parts";
 
 /*
- * Створення статистичної моделі — кадр f17; тот же экран на
- * /statistics/:id/edit правит сохранённую модель.
+ * Редактор статистичної моделі — дизайн statistics-model-edit; тот же экран
+ * на /statistics/new создаёт модель.
  *
- * Что на кадре и как это легло на код (замеры f17 в координатах кадра 1600,
- * низ полосы шапки = 100; колонка 700 по центру, 450…1149):
+ * Здесь — ЧТО считать: название и описание, тест и его версия, смуги
+ * результату галочками по шкалам, питання з відповідями й позначкою «ВШР».
+ * КОГО считать — на экране модели: выборки и их фильтры. При правке
+ * структура ложится на каждую колонку, а выборки остаются (columnsFromDraft).
  *
- *   «Статистика» 24/700                         → Page `snug tight`
- *   «Назва статистичної моделі» 20/700 (189)    → поле-заголовок: на кадре
- *                                                  это строка, а не поле, и
- *                                                  пустое оно выглядит ровно
- *                                                  так; набранное — тем же
- *                                                  начертанием, это имя модели
- *   карточка теста 230…387, рамка #666666       → «Назва тесту» (выбор теста
- *   (поля 649 шириной, «−» 27 справа,              из аналитики, TestPicker) и
- *   просветы 9/6/7)                                строки «Варіант результату»
- *   карточка вопроса 30 ниже, «+» справа        → блок вопроса
- *   «Створити» 215×45, 23 ниже карточек         → Button size="md"
- *
- * Подписи в полях — 17/400 серым (как ph="plain" общего Input): форма ещё
- * только просит ввода.
- *
- * Глифы карточек. «−» у блока теста сбрасывает тест со всеми строками — это
- * единственное, что можно «убрать» у блока, без которого модель не модель.
- * У блока вопроса глиф зависит от места: у последнего «+» (добавить блок
- * после него — так на кадре, где блок один), у остальных «−» (убрать блок).
- * Отвергнуто: «+» и «−» у каждого блока сразу — на кадре у карточки ровно
- * один глиф.
- *
- * Строк в группе — выбранные плюс одна пустая, не меньше двух, как на
- * кадре: выбрал вариант в пустой — появилась следующая (withSpare).
- * «Відсоток відповідей» в форме пуст всегда: долю считает экран модели, а
- * форма лишь держит место, как на кадре, — поэтому для диктора оно скрыто.
- *
- * Чего кадр не рисует, а здесь есть (только в правке, /:id/edit):
- *   · «Короткий опис» — второй столбец перечня f08; вводить его больше негде;
- *   · «Вибірки» с «−» — убрать выборку, добавленную «+» на экране модели
- *     (f29): иначе раз добавленная выборка оставалась бы навсегда;
- *   · «Видалити модель» слева от «Зберегти».
- * Фильтров в форме нет, как на кадре: выборку задают на экране модели
- * (f09), и при правке структура ложится на каждую колонку, а их выборки
- * остаются (columnsFromDraft).
+ * Справа — «Рядки звіту»: так выглядит каждая колонка, с «Рештою» и
+ * «Респонденти з ВШР», и сколько чисел она напечатает против потолка
+ * сервера. Ниже — выборки модели: убрать лишнюю можно и здесь.
  */
 
 export default function StatEditorPage() {
@@ -87,8 +73,10 @@ function Editor({ id }: { id: string | null }) {
   const navigate = useNavigate();
   const toast = useToast();
   const { run, busy } = useAction();
+  const sampleName = useSampleName();
 
   const surveys = useResource(() => api.surveys(), []);
+  const presets = useResource(() => api.filterPresets(), []);
   /* источник черновика: сам не перечитывается — правку не затрёт (useResource, manual) */
   const model = useResource(() => api.statModel(id!), [id], { enabled: id !== null, manual: true });
 
@@ -96,23 +84,36 @@ function Editor({ id }: { id: string | null }) {
   const [columns, setColumns] = useState<StatModel["columns"] | null>(null);
   useEffect(() => {
     if (!model.data) return;
-    setDraft(tidy(structureFromModel(model.data)));
+    setDraft(structureFromModel(model.data));
     setColumns(model.data.columns);
   }, [model.data]);
 
-  /*
-   * Версия для подписей и выбора: у правки — версия колонки, пока тест тот
-   * же (полосы модели принадлежат ей), у нового теста — действующая.
-   */
-  const head = model.data?.columns[0];
-  const version = head && draft && head.surveyId === draft.surveyId ? head.versionId : null;
-  const survey = useSurveyAt(draft?.surveyId || null, version);
+  const survey = useSurveyAt(draft?.surveyId || null, draft?.versionId ?? null);
+  const current = useSurveyAt(draft?.surveyId || null, null);
+  const versions = useSurveyVersions(draft?.surveyId || null);
 
   const [errors, setErrors] = useState<UiKey[]>([]);
+  const [doomed, setDoomed] = useState(false);
+
+  /* Ctrl/⌘ + S — «Зберегти»; пока форма грузится — ничего */
+  const [saveRef] = useState<{ current: () => void }>(() => ({ current: () => {} }));
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        saveRef.current();
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [saveRef]);
+
+  const heading = id === null ? ut("st.newModel") : ut("st.editTitle");
+  const back = id === null ? STATS_LIST : statHref(id);
 
   if (!draft || !surveys.data || (id !== null && !columns)) {
     return (
-      <Page title={ut("top.statistics")} snug tight>
+      <Page title={heading} back={{ to: back, label: ut("st.backToList") }}>
         <Loading
           rows={6}
           error={model.error ?? surveys.error}
@@ -125,7 +126,7 @@ function Editor({ id }: { id: string | null }) {
     );
   }
 
-  const patch = (next: Partial<StructureDraft>) => setDraft((d) => (d ? tidy({ ...d, ...next }) : d));
+  const patch = (next: Partial<StructureDraft>) => setDraft((d) => (d ? { ...d, ...next } : d));
 
   const save = () => {
     const errs = validateStructure(draft);
@@ -134,7 +135,7 @@ function Editor({ id }: { id: string | null }) {
     void run(async () => {
       const body = {
         title: draft.title.trim(),
-        description: id === null ? null : draft.description.trim() || null,
+        description: draft.description.trim() || null,
         columns: columnsFromDraft(draft, columns),
       };
       if (id === null) {
@@ -147,337 +148,552 @@ function Editor({ id }: { id: string | null }) {
       }
     }, ut("st.saved"));
   };
+  saveRef.current = save;
 
-  const remove = () => {
-    if (id === null) return;
+  const remove = () =>
     void run(async () => {
-      if (!window.confirm(ut("st.deleteConfirm"))) return false;
+      if (id === null) return false;
       await api.deleteStatModel(id);
       toast(ut("st.deleted"), "ok");
       navigate(STATS_LIST, { replace: true });
     });
-  };
 
-  /* название выбранной методики для выбора теста — даже если её нет в коротком списке (снята) */
-  const loaded =
-    survey && draft.surveyId
-      ? { [draft.surveyId]: { title: survey.title, archivedAt: survey.archivedAt ?? null, scales: survey.scales } }
-      : {};
+  /* смена теста или версии сбрасывает строки: полосы и варианты принадлежат версии */
+  const resetRows = { bands: [], questions: [] };
+  const counted = (survey?.questions ?? []).filter((q) => COUNTED.has(q.type));
+  const taken = new Set(draft.questions.map((q) => q.questionId));
+  const free = counted.filter((q) => !taken.has(q.id));
+
+  /* строки отчёта — по черновику, как одна колонка: тот же разбор, что у экрана модели */
+  const ind = indicatorsFromDraft(draft);
+  const preview: StatModelColumn = {
+    title: null,
+    presetId: null,
+    filters: {},
+    surveyId: draft.surveyId,
+    versionId: draft.versionId ?? "",
+    bands: ind.bands,
+    questions: ind.questions,
+  };
+  const rows = draft.surveyId ? reportRows([preview], () => survey) : [];
+  const figures = figureCount(ind.bands, ind.questions);
+  const presetTitle = (pid: string | null) => (pid ? presets.data?.find((p) => p.id === pid)?.title : undefined);
+  const testMissing = draft.surveyId && !surveys.data.some((s) => s.id === draft.surveyId);
 
   return (
-    <Page title={ut("top.statistics")} snug tight>
-      {/*
-        Поле-заголовок: 20/700 фиолетовым, строка 24, без рамки, у левого
-        края колонки содержимого (f17: чернила с 201), а не формы 700 — на
-        кадре здесь строка «Назва статистичної моделі», и пустое поле
-        выглядит ровно ею. Не <h2>: это ввод, и диктор обязан услышать «поле».
-      */}
-      <input
-        aria-label={ut("st.modelName")}
-        placeholder={ut("st.modelName")}
-        value={draft.title}
-        maxLength={200}
-        onChange={(e) => patch({ title: e.target.value })}
-        className={cx(
-          "mt-[19px] block h-[24px] w-full border-0 bg-transparent p-0 rounded-[3px]",
-          "text-[20px] font-bold leading-[24px] text-primary placeholder:text-primary",
-          "outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]",
-        )}
-      />
+    <Page
+      title={heading}
+      back={{ to: back, label: id === null ? ut("sn.statModels") : (model.data?.title ?? "") }}
+      meta={[id === null ? ut("st.newModelMeta") : (model.data?.title ?? ""), ut("st.editLead")]}
+      actions={
+        <>
+          <ButtonLink to={back} variant="ghost">
+            {ut("common.cancel")}
+          </ButtonLink>
+          <Tooltip label={id === null ? ut("st.create") : ut("common.save")} kbd="Ctrl S">
+            <Button variant="primary" icon={<Ic.check />} disabled={busy} onClick={save}>
+              {id === null ? ut("st.create") : ut("common.save")}
+            </Button>
+          </Tooltip>
+        </>
+      }
+    >
+      {errors.length ? (
+        <div role="alert" className="mb-4 flex flex-col gap-1 rounded-panel border border-border bg-panel px-4 py-3">
+          {errors.map((k) => (
+            <ErrorText key={k}>{ut(k)}</ErrorText>
+          ))}
+        </div>
+      ) : null}
 
-      <div className="mx-auto w-[700px] max-w-full">
-        {/* карточка теста — 17 под заголовком (213 → 230) */}
-        <section
-          aria-label={ut("am.testName")}
-          className="mt-[17px] rounded-[5px] border border-field-border py-[9px] pl-[9px] pr-[7px]"
-        >
-          <div className="flex flex-col gap-[15px]">
-            <div className="flex items-center gap-[6px]">
-              <div className="flex w-[649px] min-w-0">
-                <TestPicker
-                  value={draft.surveyId}
-                  surveys={surveys.data}
-                  loaded={loaded}
-                  /* смена теста сбрасывает строки: полосы и варианты принадлежат методике */
-                  onChange={(surveyId) =>
-                    patch({
-                      surveyId,
-                      bands: [newBandRow(), newBandRow()],
-                      questions: [newQuestionBlock("", [newOptionRow(), newOptionRow()])],
-                    })
-                  }
-                />
+      <SideLayout
+        narrow
+        side={
+          <>
+            <Panel title={ut("st.previewTitle")} icon={<Ic.table />} sub={ut("st.previewSub")}>
+              {rows.length ? <Tree rows={rows} /> : <p className="m-0 text-small text-muted">{ut("st.previewEmpty")}</p>}
+              {/* счёт чисел — когда есть что считать: у пустой формы «1 з 16» было бы одним основанием */}
+              <div className={cx("mt-4 border-t border-divider pt-3", !rows.length && "hidden")}>
+                <div className="flex items-baseline justify-between text-small">
+                  <span className="text-text-2">{ut("st.figures")}</span>
+                  <b className="tabular-nums text-text">
+                    {ut("kit.ofTotal").replace("{n}", String(figures)).replace("{total}", String(MAX_FIGURES))}
+                  </b>
+                </div>
+                <div aria-hidden className="mt-2 h-2 overflow-hidden rounded-[4px] bg-track">
+                  <i
+                    className="block h-full rounded-[4px]"
+                    style={{
+                      width: `${Math.min(100, (figures / MAX_FIGURES) * 100)}%`,
+                      background: figures > MAX_FIGURES ? ATTENTION_COLOR : "var(--violet)",
+                    }}
+                  />
+                </div>
+                <p className={cx("m-0 mt-2 text-small", figures > MAX_FIGURES ? "font-bold text-warn" : "text-muted")}>
+                  {ut("st.figuresNote").replace("{max}", String(MAX_FIGURES))}
+                </p>
               </div>
-              <GlyphButton
-                label={ut("st.resetTest")}
-                disabled={!draft.surveyId}
-                onClick={() => patch({ ...emptyStructure(), title: draft.title, description: draft.description })}
+            </Panel>
+            {id !== null && columns ? (
+              <Panel
+                title={ut("st.samples")}
+                icon={<St.usersRound />}
+                actions={
+                  <span className="text-caption text-muted">
+                    {ut("kit.ofTotal").replace("{n}", String(columns.length)).replace("{total}", String(MAX_SAMPLES))}
+                  </span>
+                }
               >
-                <IconMinusThick />
-              </GlyphButton>
-            </div>
-            {draft.bands.map((b, i) => (
-              <BandLine
-                key={b.key}
-                n={i + 1}
-                row={b}
-                survey={survey}
-                onChange={(value) => patch({ bands: draft.bands.map((x) => (x.key === b.key ? { ...x, value } : x)) })}
-              />
-            ))}
-          </div>
-        </section>
-
-        {draft.questions.map((q, qi) => (
-          <QuestionCard
-            key={q.key}
-            n={qi + 1}
-            block={q}
-            survey={survey}
-            last={qi === draft.questions.length - 1}
-            onChange={(next) => patch({ questions: draft.questions.map((x) => (x.key === q.key ? next : x)) })}
-            onAdd={() => {
-              const at = draft.questions.findIndex((x) => x.key === q.key);
-              const questions = [...draft.questions];
-              questions.splice(at + 1, 0, newQuestionBlock("", [newOptionRow(), newOptionRow()]));
-              patch({ questions });
-            }}
-            onRemove={() => patch({ questions: draft.questions.filter((x) => x.key !== q.key) })}
-          />
-        ))}
-
-        {id !== null ? (
-          <div className="mt-[30px] flex flex-col gap-[15px]">
+                <ul className="m-0 flex list-none flex-col gap-1 p-0">
+                  {columns.map((c, i) => {
+                    const name = sampleName(c.title, presetTitle(c.presetId), i);
+                    return (
+                      <li key={i} className="flex items-center gap-3 rounded-control px-1 py-1.5">
+                        <SampleBadge n={i + 1} of={columns.length} />
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate font-bold text-text">{name}</span>
+                          <small className="block truncate text-caption text-muted">
+                            {c.presetId
+                              ? `${ut("st.presetWord")}: ${presetTitle(c.presetId) ?? ut("st.presetGone")}`
+                              : ut("st.ownFilters")}
+                          </small>
+                        </span>
+                        <Button
+                          variant="quiet"
+                          size="icon-sm"
+                          aria-label={`${ut("st.removeSample")}: ${name}`}
+                          title={columns.length > 1 ? `${ut("st.removeSample")}: ${name}` : ut("st.lastSample")}
+                          disabled={columns.length <= 1}
+                          onClick={() => setColumns((cs) => (cs ? removeSample(cs, i) : cs))}
+                        >
+                          <Ic.x />
+                        </Button>
+                      </li>
+                    );
+                  })}
+                </ul>
+                <p className="m-0 mt-2 text-small text-muted">{ut("st.samplesNote")}</p>
+              </Panel>
+            ) : null}
+          </>
+        }
+      >
+        <Panel title={ut("st.nameTitle")} icon={<Ic.type />}>
+          <Field label={ut("st.modelName")}>
+            <Input
+              data-autofocus
+              value={draft.title}
+              maxLength={200}
+              aria-invalid={errors.includes("st.errTitle") || undefined}
+              onChange={(e) => patch({ title: e.target.value })}
+            />
+          </Field>
+          <Field
+            label={ut("st.description")}
+            hint={ut("st.descHint").replace("{n}", String(draft.description.length))}
+          >
             <Textarea
-              ph="plain"
-              aria-label={ut("st.description")}
-              placeholder={ut("st.description")}
-              rows={3}
+              rows={2}
               maxLength={4000}
               value={draft.description}
               onChange={(e) => patch({ description: e.target.value })}
             />
-            {columns && columns.length > 1 ? (
-              <SamplesList
-                count={columns.length}
-                titles={columns.map((c) => c.title)}
-                onRemove={(i) => setColumns((cs) => (cs ? cs.filter((_, j) => j !== i) : cs))}
-              />
-            ) : null}
-          </div>
-        ) : null}
+          </Field>
+        </Panel>
 
-        {errors.length ? (
-          /* role="alert" на обёртке: на самом <ul> он заменил бы роль списка */
-          <div role="alert">
-            <ul className="m-0 mt-[20px] list-none p-0 text-[13px] leading-[19px] text-danger">
-              {errors.map((k) => (
-                <li key={k}>{ut(k)}</li>
-              ))}
-            </ul>
+        <Panel title={ut("st.testTitle")} icon={<Ic.clipboard />} sub={ut("st.testSub")}>
+          <div className="grid grid-cols-[minmax(0,1fr)_220px] gap-x-3 max-[900px]:grid-cols-1">
+            <Field label={ut("am.testName")} error={errors.includes("st.errSurvey") ? ut("st.errSurvey") : null}>
+              <Select
+                value={draft.surveyId}
+                onChange={(e) => patch({ surveyId: e.target.value, versionId: null, ...resetRows })}
+              >
+                <option value="">{ut("st.pickTest")}</option>
+                {/* тест модели, которого нет в списке (снят, вне зоны), остаётся выбранным, а не пропадает */}
+                {testMissing ? <option value={draft.surveyId}>{survey?.title ?? ut("st.testHidden")}</option> : null}
+                {surveys.data.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.title}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label={ut("st.versionField")}>
+              <Select
+                value={draft.versionId ?? ""}
+                disabled={!draft.surveyId}
+                /*
+                 * «Поточна» у сохранённой модели — именно действующая версия, а
+                 * не «оставить записанную»: колонки того же теста иначе остались
+                 * бы на старой версии (columnsFromDraft).
+                 */
+                onChange={(e) => patch({ versionId: e.target.value || current?.versionId || null, ...resetRows })}
+              >
+                <option value="">
+                  {current
+                    ? ut("st.versionCurrentN").replace("{n}", String(current.versionNumber))
+                    : ut("st.versionCurrent")}
+                </option>
+                {draft.versionId && !(versions ?? []).some((v) => v.id === draft.versionId) ? (
+                  <option value={draft.versionId}>
+                    {survey ? ut("st.versionN").replace("{n}", String(survey.versionNumber)) : ut("st.versionField")}
+                  </option>
+                ) : null}
+                {[...(versions ?? [])]
+                  .sort((a, b) => b.version - a.version)
+                  .map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {ut("st.versionPick")
+                        .replace("{n}", String(v.version))
+                        .replace("{count}", String(v.responseCount))}
+                    </option>
+                  ))}
+              </Select>
+            </Field>
           </div>
-        ) : null}
-
-        <div className={cx("mt-[23px] flex items-center gap-[15px]", id === null ? "justify-end" : "justify-between")}>
-          {id !== null ? (
-            <Button variant="danger" size="sm" disabled={busy} onClick={remove}>
-              {ut("st.deleteModel")}
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-small text-text-2">
+            <Ic.info size={14} className="text-muted" />
+            <span className="min-w-0 flex-1">{ut("st.versionNote")}</span>
+            <Button
+              variant="ghost"
+              size="xs"
+              icon={<Ic.x />}
+              disabled={!draft.surveyId}
+              onClick={() => patch({ surveyId: "", versionId: null, ...resetRows })}
+            >
+              {ut("st.resetTest")}
             </Button>
-          ) : null}
-          <Button size="md" className="w-[215px]" disabled={busy} onClick={save}>
-            {id === null ? ut("st.create") : ut("common.save")}
-          </Button>
-        </div>
-      </div>
+          </div>
+        </Panel>
+
+        <BandsPanel draft={draft} survey={survey} onChange={(bands) => patch({ bands })} />
+
+        <Panel
+          title={ut("st.questionsTitle")}
+          icon={<St.listOrdered />}
+          sub={ut("st.questionsSub")}
+          actions={
+            <span className="text-caption text-muted">
+              {ut("st.questionsCount").replace("{n}", String(draft.questions.length))}
+            </span>
+          }
+        >
+          <div className="flex flex-col gap-3">
+            {draft.questions.map((q, qi) => (
+              <QuestionCard
+                key={q.key}
+                n={qi + 1}
+                block={q}
+                survey={survey}
+                taken={taken}
+                onChange={(next) => patch({ questions: draft.questions.map((x) => (x.key === q.key ? next : x)) })}
+                onRemove={() => patch({ questions: draft.questions.filter((x) => x.key !== q.key) })}
+              />
+            ))}
+          </div>
+          <div className={cx("flex flex-wrap items-center gap-3", draft.questions.length > 0 && "mt-3")}>
+            <Button
+              size="xs"
+              icon={<Ic.plus />}
+              disabled={!survey || !free.length}
+              onClick={() => patch({ questions: [...draft.questions, newQuestionBlock()] })}
+            >
+              {ut("st.addQuestion")}
+            </Button>
+            <span className="text-small text-muted">
+              {survey ? ut("st.addQuestionHint").replace("{n}", String(free.length)) : ut("st.pickTestFirst")}
+            </span>
+          </div>
+        </Panel>
+
+        {id !== null && columns ? (
+          <Panel title={ut("st.deleteModel")} icon={<St.trash />} tone="neutral">
+            <div className="flex flex-wrap items-center gap-4">
+              <p className="m-0 min-w-0 flex-1 text-small text-text-2">
+                {ut("st.deleteBlock").replace("{n}", String(columns.length))}
+              </p>
+              <Button icon={<St.trash />} onClick={() => setDoomed(true)}>
+                {ut("st.deleteModel")}
+              </Button>
+            </div>
+          </Panel>
+        ) : null}
+      </SideLayout>
+
+      {doomed ? (
+        <Modal
+          title={ut("st.deleteConfirm")}
+          sub={ut("st.cannotUndo")}
+          icon={<St.trash />}
+          tone="warn"
+          onClose={() => setDoomed(false)}
+          footer={
+            <>
+              <Button variant="primary" icon={<St.trash />} disabled={busy} onClick={remove}>
+                {ut("st.deleteModel")}
+              </Button>
+              <Button onClick={() => setDoomed(false)}>{ut("common.cancel")}</Button>
+            </>
+          }
+        >
+          <p className="m-0 pt-3.5 text-body text-text-2">
+            {ut("st.deleteText").replace("{title}", model.data?.title ?? draft.title)}
+          </p>
+        </Modal>
+      ) : null}
     </Page>
   );
 }
 
-/** Пустые строки подтягиваются к одной в конце группы — и так после каждой правки */
-function tidy(d: StructureDraft): StructureDraft {
-  return {
-    ...d,
-    bands: withSpare(d.bands, (b) => !b.value, () => newBandRow()),
-    questions: d.questions.map((q) => ({
-      ...q,
-      options: withSpare(q.options, (o) => !o.optionId, () => newOptionRow()),
-    })),
-  };
-}
+/* ─────────── смуги ─────────── */
 
-/**
- * «Варіант результату N | Відсоток відповідей N» — 317 | 15 | 317 (замер
- * f17: 469…785 и 801…1117). Полосы сгруппированы по шкалам: у методики
- * шкал бывает несколько, и «Середній» без имени шкалы не говорит ничего.
- */
-function BandLine({
-  n,
-  row,
+function BandsPanel({
+  draft,
   survey,
   onChange,
 }: {
-  n: number;
-  row: BandRow;
+  draft: StructureDraft;
   survey: SurveyFull | null | undefined;
-  onChange: (value: string) => void;
+  onChange: (bands: StructureDraft["bands"]) => void;
 }) {
   const { ut } = useLang();
-  const many = (survey?.scales.length ?? 0) > 1;
+  const scales = (survey?.scales ?? []).filter((s) => s.bands.length);
+  const order = scales.flatMap((s) => s.bands.map((b) => `${s.id}:${b.id}`));
+  const picked = new Map(draft.bands.map((b, i) => [b.value, i + 1] as const));
+  const total = order.length;
   return (
-    <div className="flex w-[649px] max-w-full gap-[15px]">
-      <StatSelect
-        look="plain"
-        label={`${ut("st.band")} ${n}`}
-        value={row.value}
-        onChange={onChange}
-        disabled={!survey}
-        className="w-[317px] shrink-0"
-      >
-        {(survey?.scales ?? []).map((s) =>
-          many ? (
-            <optgroup key={s.id} label={s.title}>
-              {s.bands.map((b) => (
-                <option key={b.id} value={`${s.id}:${b.id}`}>
-                  {b.label}
-                </option>
-              ))}
-            </optgroup>
-          ) : (
-            s.bands.map((b) => (
-              <option key={b.id} value={`${s.id}:${b.id}`}>
-                {b.label}
-              </option>
-            ))
-          ),
-        )}
-      </StatSelect>
-      <div aria-hidden className="min-w-0 flex-1">
-        <Readout look="plain" label={`${ut("st.percent")} ${n}`} />
-      </div>
-    </div>
+    <Panel
+      title={ut("st.bandsTitle")}
+      icon={<Ic.layers />}
+      sub={ut("st.bandsSub")}
+      actions={
+        total ? (
+          <span className="text-caption text-muted">
+            {ut("st.pickedOf").replace("{n}", String(draft.bands.length)).replace("{total}", String(total))}
+          </span>
+        ) : null
+      }
+    >
+      {!draft.surveyId ? (
+        <Empty compact title={ut("st.pickTestFirst")} />
+      ) : survey === undefined ? (
+        <Loading bare rows={3} />
+      ) : !scales.length ? (
+        <Empty compact title={ut("st.noScales")} />
+      ) : (
+        <div className="flex flex-col gap-4">
+          {scales.map((s) => {
+            const values = s.bands.map((b) => `${s.id}:${b.id}`);
+            const min = Math.min(...s.bands.map((b) => b.minScore));
+            const max = Math.max(...s.bands.map((b) => b.maxScore));
+            return (
+              <div key={s.id}>
+                <div className="mb-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
+                  {s.code ? <b className="font-extrabold text-text">{s.code}</b> : null}
+                  <b className="font-bold text-text">{s.title}</b>
+                  <span className="text-small text-muted">
+                    {ut("st.scaleRange")
+                      .replace("{r}", `${min}–${max}`)
+                      .replace("{n}", String(s.bands.length))}
+                  </span>
+                  <span className="ml-auto flex gap-1">
+                    <Button variant="ghost" size="xs" onClick={() => onChange(setScaleBands(draft.bands, values, true, order))}>
+                      {ut("st.all")}
+                    </Button>
+                    <Button variant="ghost" size="xs" onClick={() => onChange(setScaleBands(draft.bands, values, false, order))}>
+                      {ut("st.none")}
+                    </Button>
+                  </span>
+                </div>
+                <div className="flex flex-col gap-0.5">
+                  {s.bands.map((b) => {
+                    const value = `${s.id}:${b.id}`;
+                    const at = picked.get(value);
+                    return (
+                      <label
+                        key={b.id}
+                        className={cx(
+                          "m-0 flex min-h-[42px] cursor-pointer items-center gap-3 rounded-control px-3",
+                          at ? "bg-violet-tint shadow-[inset_0_0_0_1px_var(--vline)]" : "hover:bg-sunk",
+                        )}
+                      >
+                        <Checkbox checked={!!at} onChange={() => onChange(toggleBand(draft.bands, value, order))} />
+                        <SeverityTag level={b.severity} small>
+                          {b.label}
+                        </SeverityTag>
+                        <span className="text-caption text-muted">
+                          {ut("st.points").replace("{r}", `${b.minScore}–${b.maxScore}`)}
+                        </span>
+                        <span className={cx("ml-auto text-small", at ? "font-bold text-violet-ink" : "text-muted")}>
+                          {at ? ut("st.reportRowN").replace("{n}", String(at)) : ut("st.inRest")}
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+          <p className="m-0 flex items-center gap-1.5 text-small text-muted">
+            <St.split size={14} />
+            {ut("st.restHint")}
+          </p>
+        </div>
+      )}
+    </Panel>
   );
 }
 
-/**
- * Блок вопроса: «Текст питання N» с глифом, ниже ответы «Текст відповіді |
- * Відсоток відповідей | ВШР» — 277 | 15 | 277 | 15 | 65 (замер f17: 469…745,
- * 761…1037, 1053…1117). Карточка 30 ниже предыдущей.
- */
+/* ─────────── питання ─────────── */
+
 function QuestionCard({
   n,
   block,
   survey,
-  last,
+  taken,
   onChange,
-  onAdd,
   onRemove,
 }: {
   n: number;
   block: QuestionBlock;
   survey: SurveyFull | null | undefined;
-  last: boolean;
+  taken: Set<string>;
   onChange: (next: QuestionBlock) => void;
-  onAdd: () => void;
   onRemove: () => void;
 }) {
   const { ut } = useLang();
-  const questions = (survey?.questions ?? []).filter((q) => COUNTED.has(q.type));
-  const question = questions.find((q) => q.id === block.questionId);
+  const all = survey?.questions ?? [];
+  const counted = all.filter((q) => COUNTED.has(q.type));
+  const question = counted.find((q) => q.id === block.questionId);
   const options = (question?.options ?? []).filter((o) => o.kind === "option");
-  const setOption = (row: OptionRow, next: Partial<OptionRow>) =>
-    onChange({ ...block, options: block.options.map((o) => (o.key === row.key ? { ...o, ...next } : o)) });
+  const order = options.map((o) => o.id);
+  const label = `${ut("st.question")} ${n}`;
   return (
-    <section
-      aria-label={`${ut("st.question")} ${n}`}
-      className="mt-[30px] rounded-[5px] border border-field-border py-[9px] pl-[9px] pr-[7px]"
-    >
-      <div className="flex flex-col gap-[15px]">
-        <div className="flex items-center gap-[6px]">
-          <StatSelect
-            look="plain"
-            label={`${ut("st.question")} ${n}`}
+    <section aria-label={label} className="rounded-panel border border-border px-4 py-3.5">
+      <div className="flex items-end gap-2">
+        <Field label={label} className="mb-0 min-w-0 flex-1">
+          <Select
             value={block.questionId}
             disabled={!survey}
             /* смена вопроса сбрасывает ответы: варианты принадлежат вопросу */
-            onChange={(questionId) => onChange({ ...block, questionId, options: [newOptionRow(), newOptionRow()] })}
-            className="w-[649px] max-w-full shrink-0"
+            onChange={(e) => onChange({ ...block, questionId: e.target.value, options: [] })}
           >
-            {questions.map((q) => (
-              <option key={q.id} value={q.id}>
-                {q.title}
-              </option>
-            ))}
-          </StatSelect>
-          {last ? (
-            <GlyphButton label={ut("st.addQuestion")} onClick={onAdd}>
-              <IconPlusThick />
-            </GlyphButton>
-          ) : (
-            <GlyphButton label={ut("st.removeQuestion")} onClick={onRemove}>
-              <IconMinusThick />
-            </GlyphButton>
-          )}
-        </div>
-        {block.options.map((o, i) => (
-          <div key={o.key} className="flex w-[649px] max-w-full gap-[15px]">
-            <StatSelect
-              look="plain"
-              label={`${ut("st.answer")} ${i + 1}`}
-              value={o.optionId}
-              disabled={!question}
-              onChange={(optionId) => setOption(o, { optionId })}
-              className="w-[277px] shrink-0"
-            >
-              {options.map((x) => (
-                <option key={x.id} value={x.id}>
-                  {x.text}
+            <option value="">{ut("st.pickQuestion")}</option>
+            {block.questionId && !question ? <option value={block.questionId}>{ut("st.questionGone")}</option> : null}
+            {counted
+              .filter((q) => q.id === block.questionId || !taken.has(q.id))
+              .map((q) => (
+                <option key={q.id} value={q.id}>
+                  {ut("st.itemNo").replace("{n}", String(all.indexOf(q) + 1))}. {q.title}
                 </option>
               ))}
-            </StatSelect>
-            <div aria-hidden className="min-w-0 flex-1">
-              <Readout look="plain" label={`${ut("st.percent")} ${i + 1}`} />
-            </div>
-            <VshrToggle
-              look="plain"
-              pressed={o.highRisk}
-              onToggle={() => setOption(o, { highRisk: !o.highRisk })}
-              className="w-[65px] shrink-0"
-            />
-          </div>
-        ))}
+          </Select>
+        </Field>
+        <Button variant="quiet" size="icon" aria-label={`${ut("st.removeQuestion")} ${n}`} title={ut("st.removeQuestion")} onClick={onRemove}>
+          <St.trash />
+        </Button>
       </div>
+      {question ? (
+        <>
+          <p className="m-0 mb-2 mt-2 text-small text-muted">
+            {ut("st.optionsOf")
+              .replace(
+                "{type}",
+                question.type === "multiple"
+                  ? ut("st.typeMultiple")
+                  : question.type === "yesno"
+                    ? ut("st.typeYesNo")
+                    : ut("st.typeSingle"),
+              )
+              .replace("{n}", String(options.length))}
+          </p>
+          <div className="flex flex-col gap-0.5">
+            {options.map((o, oi) => {
+              const row = block.options.find((x) => x.optionId === o.id);
+              return (
+                <div
+                  key={o.id}
+                  className={cx(
+                    "grid min-h-[44px] grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-control px-3",
+                    row ? "bg-violet-tint shadow-[inset_0_0_0_1px_var(--vline)]" : "hover:bg-sunk",
+                  )}
+                >
+                  <label className="m-0 flex min-w-0 cursor-pointer items-center gap-3 py-1.5">
+                    <Checkbox checked={!!row} onChange={() => onChange(toggleOption(block, o.id, order))} />
+                    <span className="min-w-0">
+                      <small className="block text-[11.5px] leading-[14px] text-muted">
+                        {ut("st.answer")} {oi + 1}
+                      </small>
+                      <span className="block text-text">{o.text}</span>
+                    </span>
+                  </label>
+                  <Switch
+                    label={ut("st.vshr")}
+                    checked={!!row?.highRisk}
+                    disabled={!row}
+                    onChange={(v) => onChange(setOptionRisk(block, o.id, v))}
+                  />
+                </div>
+              );
+            })}
+          </div>
+          <p className="m-0 mt-2 flex items-start gap-1.5 text-small text-muted">
+            <St.shieldAlert size={14} className="mt-0.5 shrink-0 text-risk-ink" />
+            <span>{ut("st.vshrHint")}</span>
+          </p>
+        </>
+      ) : null}
     </section>
   );
 }
 
-/**
- * «Вибірки» правки — по строке на колонку модели с «−». Кадром не
- * нарисовано (см. шапку файла); начертание — подпись 16/700 в залитом поле,
- * как строки фильтров f29, откуда выборки и приходят.
- */
-function SamplesList({
-  count,
-  titles,
-  onRemove,
-}: {
-  count: number;
-  titles: (string | null)[];
-  onRemove: (i: number) => void;
-}) {
+/* ─────────── рядки звіту ─────────── */
+
+/** Строки отчёта деревом: шкала и её смуги, вопрос и его варианты, «Решта», «ВШР» */
+function Tree({ rows }: { rows: ReportRow[] }) {
   const { ut } = useLang();
   return (
-    <section aria-label={ut("st.samples")} className="flex flex-col gap-[15px]">
-      {Array.from({ length: count }, (_, i) => {
-        const name = titles[i] || `${ut("st.sample")} ${i + 1}`;
-        return (
-          <div key={i} className="flex items-center gap-[6px]">
-            <Readout look="fill" label={name} className="w-[649px] max-w-full" />
-            <GlyphButton label={`${ut("st.removeSample")}: ${name}`} onClick={() => onRemove(i)}>
-              <IconMinusThick />
-            </GlyphButton>
-          </div>
-        );
+    <div className="flex flex-col">
+      {rows.map((r, i) => {
+        switch (r.kind) {
+          case "scale":
+            return (
+              <div key={r.key} className={cx("mb-1 flex items-center gap-2 text-[13px] font-bold text-text", i > 0 && "mt-3")}>
+                {r.code ? <b className="font-extrabold">{r.code}</b> : null}
+                <span className="truncate">{r.title}</span>
+              </div>
+            );
+          case "question":
+            return (
+              <div key={r.key} className={cx("mb-1 flex items-center gap-2 text-[13px] font-bold text-text", i > 0 && "mt-3")}>
+                {r.number ? <b className="font-extrabold">{ut("st.itemNo").replace("{n}", String(r.number))}</b> : null}
+                <span className="truncate">{r.title}</span>
+              </div>
+            );
+          case "risk":
+            return (
+              <div key={r.key} className="mt-3 flex items-center gap-2 text-[13px] font-bold text-text">
+                <St.shieldAlert size={14} className="text-risk-ink" />
+                {ut("st.vshrRow")}
+              </div>
+            );
+          default:
+            return (
+              <div
+                key={r.key}
+                className={cx(
+                  "ml-2 flex min-h-[26px] items-center gap-2 border-l-[1.5px] border-border pl-3 text-small",
+                  r.kind === "rest" ? "text-muted" : "text-text",
+                )}
+              >
+                <span className="min-w-0 flex-1 truncate">
+                  {r.kind === "band" ? r.label : r.kind === "option" ? r.text : ut("st.rest")}
+                </span>
+                {r.kind === "option" && r.highRisk ? <VshrMark /> : null}
+              </div>
+            );
+        }
       })}
-    </section>
+    </div>
   );
 }
