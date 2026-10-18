@@ -1,6 +1,6 @@
 import { Hono, type Context } from "hono";
 import { HTTPException } from "hono/http-exception";
-import { and, asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, lt } from "drizzle-orm";
 import { baseDb, db } from "../db";
 import { systemContext, withRequestContext } from "../db/context";
 import {
@@ -12,8 +12,10 @@ import {
   referrals,
   responseScores,
   responses,
+  scales,
   slots,
   specialistProfiles,
+  surveys,
   users,
 } from "../db/schema";
 import { env } from "../env";
@@ -21,7 +23,24 @@ import { audit } from "../lib/audit";
 import { badRequest, forbidden, langOf, notFound, type ErrorInfo } from "../lib/http";
 import { referencePercentile, reportReferenceSamples } from "../lib/referenceSample";
 import { chartHistory } from "../lib/chartHistory";
-import { printCalendarDay, printDay, printStamp } from "../lib/printDates";
+import { printCalendarDay, printDay, printMoment, printTime } from "../lib/printDates";
+import {
+  esc,
+  facts,
+  icon,
+  scaleSvg,
+  section,
+  sevPill,
+  sheetDocument,
+  sheetFoot,
+  sheetHead,
+  signs,
+  stepOf,
+  stepsOfBands,
+  type IconName,
+  type ScaleBandView,
+} from "../lib/printSheet";
+import { gonePage, linkPage, noticePage, panel, point, printButtons } from "../lib/printLink";
 import { assertResponseRead } from "../lib/clinicalRead";
 import { assertPatientAccess, isStaff } from "../lib/scope";
 import { fullNameOf, toPublicUser } from "../lib/auth";
@@ -33,13 +52,11 @@ import {
   formatDuration,
   LOCALE_OF,
   renderError,
-  SEVERITY_FILL,
   serverText,
   t,
   uiText,
   type Lang,
   type ServerTextKey,
-  type Severity,
   type TextParams,
   type UiKey,
   type User,
@@ -109,7 +126,43 @@ const CODE_WORDS: Record<string, Record<string, UiKey>> = {
     dropped: "ep.outDropped",
     transferred: "ep.outTransferred",
   },
+  noteKind: { intake: "note.intake", session: "note.session", observation: "note.observation", consult: "note.consult" },
 };
+
+/*
+ * Состояние на бумаге — знаком и словом, а не цветом (монохромный принтер):
+ * состоялся — галочка, не пришёл — перечёркнутый календарь, отменён —
+ * крестик, впереди — календарь с часами. Цвет остаётся подсказкой экрана.
+ */
+const VISIT_MARK: Record<string, [cls: string, icon: IconName]> = {
+  done: ["ok", "check"],
+  arrived: ["ok", "userCheck"],
+  in_progress: ["v", "dot"],
+  no_show: ["wn", "calendarX"],
+  cancelled: ["off", "x"],
+  booked: ["v", "calendarClock"],
+  confirmed: ["v", "calendarClock"],
+};
+
+const REFERRAL_MARK: Record<string, [cls: string, icon: IconName]> = {
+  created: ["v", "send"],
+  accepted: ["v", "calendarClock"],
+  completed: ["ok", "check"],
+  declined: ["off", "x"],
+};
+
+/** Состояние словом со знаком */
+function stateMark(lang: Lang, table: "appointment" | "referralStatus", code: string): string {
+  const [cls, ic] = (table === "appointment" ? VISIT_MARK : REFERRAL_MARK)[code] ?? ["", "dot"];
+  return `<span class="ps-st ${cls}">${icon(ic, 12)}${esc(codeWord(lang, table, code))}</span>`;
+}
+
+/** День недели коротким словом языка листа, в поясе приёма */
+function weekday(iso: string, lang: Lang, tz: string): string {
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return "";
+  return at.toLocaleDateString(LOCALE_OF[lang], { weekday: "short", timeZone: tz });
+}
 
 function codeWord(lang: Lang, table: keyof typeof CODE_WORDS, code: string | null | undefined): string {
   if (!code) return "—";
@@ -227,6 +280,46 @@ async function responseReport(
   const scaleById = new Map(survey.scales.map((s) => [s.id, s]));
   const answerByQuestion = new Map(answerRows.map((a) => [a.questionId, a]));
   const optionText = new Map(survey.questions.flatMap((q) => q.options.map((o) => [o.id, o.text])));
+  /*
+   * Критический ответ помечается на листе только для сотрудника. Обследуемый
+   * печатает тот же лист себе, а какие ответы поднимают тревогу, ему не
+   * отдаётся и в самой методике (#141, ключ методики пациенту не отдаётся).
+   */
+  const staffView = isStaff(user);
+  const riskOptions = new Set(
+    staffView ? survey.questions.flatMap((q) => q.options.filter((o) => o.riskFlag).map((o) => o.id)) : [],
+  );
+
+  /*
+   * Прежние замеры той же шкалы у того же человека — кольцами на шкале листа
+   * и строкой «Заміри». Та же методика, тот же код шкалы и тот же размах:
+   * балл другой версии с другим потолком на одной оси врал бы. Порядок —
+   * от раннего к позднему, в листе — два последних перед этим.
+   */
+  const history =
+    response.userId && response.submittedAt
+      ? await db
+          .select({
+            code: scales.code,
+            raw: responseScores.rawScore,
+            corrected: responseScores.correctedScore,
+            max: responseScores.maxScore,
+            at: responses.submittedAt,
+          })
+          .from(responseScores)
+          .innerJoin(responses, eq(responses.id, responseScores.responseId))
+          .innerJoin(scales, eq(scales.id, responseScores.scaleId))
+          .where(
+            and(
+              eq(responses.userId, response.userId),
+              eq(responses.surveyId, response.surveyId),
+              eq(responses.status, "completed"),
+              lt(responses.submittedAt, response.submittedAt),
+            ),
+          )
+          .orderBy(desc(responses.submittedAt))
+          .limit(100)
+      : [];
 
   await audit(c, {
     action: "report.render",
@@ -244,23 +337,39 @@ async function responseReport(
   const age = patient ? ageAt(decryptField(patient.birthDate), response.submittedAt, env.institutionTz) : null;
   return renderReport(lang, {
     surveyTitle: survey.title,
+    surveyDescription: survey.description,
     versionNumber: survey.versionNumber,
     patientName: patient ? fullNameOf(patient) : say("print.anonymous"),
-    patientMeta: patient
+    sexAge: patient
       ? [
           patient.sex ? say(patient.sex === "male" ? "print.sexMale" : "print.sexFemale") : null,
           age !== null ? ageText(lang, age) : null,
-          patient.rank,
-          patient.unit,
         ]
           .filter(Boolean)
-          .join(" · ")
+          .join(", ") || null
       : null,
+    rank: patient?.rank ?? null,
+    unit: patient?.unit ?? null,
     startedAt: response.startedAt,
     submittedAt: response.submittedAt,
     durationMs: response.durationMs,
+    staffView,
     scores: scoreRows.map((s) => {
       const scale = scaleById.get(s.scaleId);
+      /*
+       * Полосы шкалы — только сотруднику, как и в самой методике (#141):
+       * пороги полос обследуемому не отдаются. Его лист рисует шкалу без
+       * зон — балл, прежние замеры и слово своей полосы.
+       */
+      const bandRows = staffView && scale?.normalization === "raw" ? [...scale.bands].sort((a, b) => a.minScore - b.minScore) : [];
+      const bandSteps = stepsOfBands(bandRows);
+      const own = bandRows.findIndex((b) => b.label === s.bandLabel);
+      const earlier = scale
+        ? history
+            .filter((h) => h.code === scale.code && h.max === s.maxScore)
+            .map((h) => ({ value: h.corrected ?? h.raw, at: h.at! }))
+            .reverse()
+        : [];
       /*
        * «Бал з максимуму» — балл ПОСЛЕ поправок (#133): от него считаются
        * процент и максимум (scoring.ts, scaleMaxScore), и с ним же
@@ -277,7 +386,10 @@ async function responseReport(
         maxScore: s.maxScore,
         percent: s.percent,
         band: s.bandLabel,
-        severity: s.severity,
+        /* ступень своей полосы — с учётом соседних тяжёлых (s3/s4), иначе по выраженности */
+        step: own >= 0 ? (bandSteps[own] ?? null) : stepOf(s.severity),
+        bands: bandRows.map((b, i) => ({ min: b.minScore, max: b.maxScore, step: bandSteps[i] ?? null })),
+        history: earlier,
         percentile: referencePercentile(score, sample.get(s.scaleId) ?? []),
       };
     }),
@@ -289,6 +401,8 @@ async function responseReport(
           title: q.title,
           value: formatValue(a, optionText, say("print.notAnswered")),
           durationMs: a?.durationMs ?? 0,
+          answered: !!a && !a.skipped,
+          critical: !!a?.optionIds?.some((id) => riskOptions.has(id)),
         };
       }),
     conclusion:
@@ -302,6 +416,7 @@ async function responseReport(
         : null,
     printedBy: fullNameOf(user),
     printedAt: new Date().toISOString(),
+    linked: !!via,
   });
 }
 
@@ -442,18 +557,14 @@ async function refuseLink(c: Context<AppEnv>, link: ReportLinkRow, reason: strin
   });
 }
 
+/** Мёртвая ссылка — страницей «Посилання вже недійсне» (lib/printLink.ts) */
 function deadLink(c: Context<AppEnv>, lang: Lang) {
-  return c.html(linkNotice(lang, renderError("err.reportLinkGone", lang)), 410);
+  return c.html(gonePage(lang), 410);
 }
 
 /** Страница отказа для браузера: одна фраза на языке ссылки */
 function linkNotice(lang: Lang, text: string): string {
-  return `<!doctype html>
-<html lang="${lang}"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${esc(text)}</title>
-<style>body { font: 16px/1.5 system-ui, -apple-system, sans-serif; color: #111; margin: 0; padding: 24px; max-width: 560px; }</style>
-</head><body><p>${esc(text)}</p></body></html>`;
+  return noticePage(lang, text);
 }
 
 function formatValue(
@@ -473,18 +584,32 @@ function formatValue(
   return decryptField(a.text) ?? "—";
 }
 
-/**
- * Цвет ступени на бумаге — из общей палитры, а не своей копией.
- *
- * Здесь лежали те же четыре хекса, переписанные руками. Пока они совпадали с
- * палитрой, копия выглядела безобидной; разошлись бы они молча — печать
- * продолжала бы выдавать старый оттенок ещё долго после того, как его
- * поправили в одном месте. Подложка у листа своя (белая), поэтому берётся
- * именно SEVERITY_FILL: экранные ступени подобраны под тёмную землю и на
- * бумаге не читаются.
+
+/* ─────────── лист прохождения и заключение ─────────── */
+
+/*
+ * Выраженность на листе — слово в обводке ступени набора s0…s4 на белом
+ * (SEVERITY_STEPS_SCREEN_LIGHT из palette.ts, через lib/printSheet.ts): та
+ * же лестница, что у консоли в светлой теме, — лист и экран называют
+ * ступень одним цветом. Прежде здесь стояла цветная точка заливки
+ * SEVERITY_FILL: на монохромном принтере четыре точки становились одной
+ * серой, и выраженность держалась только на подписи рядом.
  */
-function severityColor(severity: string | null): string {
-  return SEVERITY_FILL[(severity ?? "none") as Severity] ?? "#888";
+
+interface ScoreView {
+  title: string;
+  /** Балл после поправок — тот, от которого процент */
+  score: number;
+  maxScore: number;
+  percent: number;
+  band: string | null;
+  /** Ступень набора своей полосы, 0…4 */
+  step: number | null;
+  /** Полосы шкалы для рисунка — только сотруднику (#141) */
+  bands: ScaleBandView[];
+  /** Прежние замеры той же шкалы, от раннего к позднему */
+  history: { value: number; at: string }[];
+  percentile: number | null;
 }
 
 interface ReportData {
@@ -492,47 +617,94 @@ interface ReportData {
   printedBy: string;
   printedAt: string;
   surveyTitle: string;
+  surveyDescription: string | null;
   versionNumber: number;
   patientName: string;
-  patientMeta: string | null;
+  sexAge: string | null;
+  rank: string | null;
+  unit: string | null;
   startedAt: string;
   submittedAt: string | null;
   durationMs: number;
-  scores: {
-    title: string;
-    /** Балл после поправок — тот, от которого процент */
-    score: number;
-    maxScore: number;
-    percent: number;
-    band: string | null;
-    severity: string | null;
-    percentile: number | null;
-  }[];
-  answers: { title: string; value: string; durationMs: number }[];
+  staffView: boolean;
+  scores: ScoreView[];
+  answers: { title: string; value: string; durationMs: number; answered: boolean; critical: boolean }[];
+  /** Лист открыт одноразовой ссылкой: рамка гостевой страницы (lib/printLink.ts) */
+  linked: boolean;
 }
 
-function esc(v: string): string {
-  return v.replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[ch]!);
+/** Балл в крупной цифре и на шкале: целый — как есть, дробный — до сотых */
+function num(v: number): string {
+  return String(Math.round(v * 100) / 100);
+}
+
+/** Изменение со знаком: «−8», «+3», «0» (минус — типографский, он есть в шрифте листа) */
+function signedDelta(v: number): string {
+  const r = Math.round(v * 100) / 100;
+  return r > 0 ? `+${r}` : r < 0 ? `−${-r}` : "0";
+}
+
+/** Когда обследовали: начало и конец, без повтора даты в один день */
+function assessedWhen(lang: Lang, d: ReportData): string {
+  const say = sayer(lang);
+  if (!d.submittedAt) return `${printMoment(d.startedAt, lang)}, ${say("print.notFinished")}`;
+  if (d.startedAt === d.submittedAt) return printMoment(d.submittedAt, lang);
+  return printDay(d.startedAt, lang) === printDay(d.submittedAt, lang)
+    ? `${printMoment(d.startedAt, lang)}–${printTime(d.submittedAt)}`
+    : `${printMoment(d.startedAt, lang)} – ${printMoment(d.submittedAt, lang)}`;
+}
+
+/**
+ * Результат одношкальной методики крупно: балл из максимума, полоса словом,
+ * шкала с прежними замерами, проценты и перцентиль сбоку. Многошкальная —
+ * таблицей (ниже): двадцать карточек МЛО заняли бы лист целиком.
+ */
+function resultCard(lang: Lang, s: ScoreView): string {
+  const say = sayer(lang);
+  const has = s.maxScore > 0;
+  const before = s.history.slice(-2).map((h) => h.value);
+  const values = [...before, s.score].map(num).join(" → ");
+  const mini: [string, string][] = [];
+  if (before.length) mini.push([say("print.history"), values]);
+  if (has) mini.push([say("print.colPercent"), `${s.percent}%`]);
+  if (s.percentile !== null) mini.push([say("print.colPercentile"), say("print.percentileN", { n: s.percentile })]);
+  const svg = has ? scaleSvg(s.maxScore, s.bands, s.score, before, say("print.scaleLabel", { scale: s.title, values })) : "";
+  return `<div class="ps-res"><div class="ps-big"><span class="nm">${esc(s.title)}</span><div class="v"><b>${num(s.score)}</b>${
+    has ? `<span>${esc(say("print.ofMax", { max: num(s.maxScore) }))}</span>` : ""
+  }</div>${s.band ? sevPill(s.band, s.step, true) : ""}</div><div>${svg}</div><dl class="ps-mini">${mini
+    .map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`)
+    .join("")}</dl></div>`;
 }
 
 function renderReport(lang: Lang, d: ReportData): string {
   const say = sayer(lang);
-  /* длительность — общим форматом консоли: «4,2 с», «1 хв 12 с», «—» у неизмеренной */
-  const duration = formatDuration(d.durationMs, lang);
+  const at = d.submittedAt ?? d.startedAt;
+  const c = d.conclusion;
+  const title = c
+    ? say("print.titleConclusion", { survey: d.surveyTitle })
+    : say("print.titleResults", { survey: d.surveyTitle });
 
-  /*
-   * Про стили листа: подпись (.sign) не отрывается от документа переносом
-   * страницы, строки таблиц (tr) не рвутся посередине. Пояснение — здесь, а
-   * не CSS-комментарием в <style>: комментарий в разметке уезжал вместе с
-   * листом и читался по-русски в исходнике страницы на любом языке (то же
-   * правило, что у справки ниже).
-   *
-   * Ширина экрана (viewport) — потому что с волны 14 лист открывает и
-   * браузер телефона (мобилка, одноразовая ссылка): без неё телефон
-   * раскладывал бы лист на 980 точек и показывал мелким шрифтом целиком.
-   * На печать она не влияет — там ширину задаёт @page.
-   */
+  /* дата справа вверху — дата документа: подписи у заключения, сдачи у листа без него */
+  const head = c?.signedAt
+    ? { primary: printDay(c.signedAt, lang), secondary: say("print.head.signedAt", { time: printTime(c.signedAt) }) }
+    : { primary: printDay(at, lang), secondary: say("print.head.takenAt", { time: printTime(at) }) };
 
+  /* описание методики — подзаголовком, пока это строка, а не страница инструкции */
+  const description = d.surveyDescription && d.surveyDescription.length <= 200 ? d.surveyDescription.trim() : "";
+  const sub = [description && !/[.!?…]$/.test(description) ? `${description}.` : description, say("print.subVersion", { n: d.versionNumber })]
+    .filter(Boolean)
+    .join(" ");
+
+  const factGrid = facts([
+    [say("print.fact.patient"), d.patientName],
+    [say("print.fact.sexAge"), d.sexAge],
+    [say("print.fact.rank"), d.rank],
+    [say("print.fact.unit"), d.unit],
+    [say("print.fact.assessed"), assessedWhen(lang, d)],
+    [say("print.fact.duration"), formatDuration(d.durationMs, lang)],
+  ]);
+
+  const single = d.scores.length === 1 ? d.scores[0]! : null;
   const scoreRows = d.scores
     .map(
       (s) => `
@@ -540,135 +712,143 @@ function renderReport(lang: Lang, d: ReportData): string {
         <td>${esc(s.title)}</td>
         <td class="num">${s.maxScore > 0 ? esc(say("print.scoreOf", { raw: s.score, max: s.maxScore })) : "—"}</td>
         <td class="num">${s.maxScore > 0 ? `${s.percent}%` : "—"}</td>
-        <td>${
-          s.band
-            ? `<span class="dot" style="background:${severityColor(s.severity)}"></span>${esc(s.band)}`
-            : "—"
-        }</td>
+        <td>${s.band ? sevPill(s.band, s.step) : "—"}</td>
         <td class="num">${s.percentile === null ? "—" : esc(say("print.percentileN", { n: s.percentile }))}</td>
       </tr>`,
     )
     .join("");
+  const results = !d.scores.length
+    ? ""
+    : single
+      ? resultCard(lang, single)
+      : section(
+          say("print.scoresTitle"),
+          `<table class="ps-tbl mid"><thead><tr><th>${say("print.colSubscale")}</th><th class="num">${say("print.colScore")}</th><th class="num">${say("print.colPercent")}</th><th>${say("print.colInterpretation")}</th><th class="num">${say("print.colPercentile")}</th></tr></thead><tbody>${scoreRows}</tbody></table>`,
+        );
 
+  /*
+   * Ответы. На странице ссылки (телефон) — первые четыре и «показать все»:
+   * переключатель — флажок без скрипта; на печать идут все строки.
+   */
+  const fold = d.linked && d.answers.length > 6;
   const answerRows = d.answers
-    .map(
-      (a, i) => `
-      <tr>
-        <td class="num">${i + 1}</td>
-        <td>${esc(a.title)}</td>
-        <td>${esc(a.value)}</td>
+    .map((a, i) => {
+      const cls = [a.critical ? "crit" : "", fold && i >= 4 ? "more" : ""].filter(Boolean).join(" ");
+      const mark = a.critical ? `<br><span class="ck">${icon("alert", 12)}${esc(say("print.criticalAnswer"))}</span>` : "";
+      return `
+      <tr${cls ? ` class="${cls}"` : ""}>
+        <td class="no">${i + 1}</td>
+        <td>${esc(a.title)}${mark}</td>
+        <td class="ans">${esc(a.value)}</td>
         <td class="num">${esc(formatDuration(a.durationMs, lang))}</td>
-      </tr>`,
-    )
+      </tr>`;
+    })
     .join("");
+  const answered = d.answers.filter((a) => a.answered).length;
+  const answersTable = `<table class="ps-tbl"><thead><tr><th class="no">${say("print.colNo")}</th><th>${say("print.colQuestion")}</th><th class="ans">${say("print.colAnswer")}</th><th class="num">${say("print.colTime")}</th></tr></thead><tbody>${answerRows}</tbody></table>`;
+  const answersPart = section(
+    say("print.answersTitle"),
+    fold
+      ? `<input type="checkbox" id="lk-all" class="lk-all" aria-controls="lk-answers">${answersTable.replace("<table", '<table id="lk-answers"')}<label for="lk-all" class="lk-more">${icon("chevrons", 14)}${esc(say("print.link.showAll", { n: d.answers.length }))}</label>`
+      : answersTable,
+    esc(say("print.answeredOf", { n: answered, total: d.answers.length })),
+  );
 
-  return `<!doctype html>
-<html lang="${lang}"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${esc(say("print.reportTitle", { survey: d.surveyTitle }))}</title>
-<style>
-  @page { margin: 18mm; }
-  body { font: 13px/1.5 system-ui, -apple-system, sans-serif; color: #111; margin: 0; }
-  h1 { font-size: 19px; margin: 0 0 4px; }
-  h2 { font-size: 15px; margin: 26px 0 8px; }
-  .meta { color: #555; font-size: 12px; }
-  table { width: 100%; border-collapse: collapse; margin-top: 8px; }
-  th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid #e3e3e3; vertical-align: top; }
-  th { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: #666; }
-  .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
-  .dot { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 6px; }
-  .conclusion { white-space: normal; padding: 10px 12px; border: 1px solid #d8d8d4; border-radius: 6px; }
-  .note { margin-top: 22px; padding: 10px 12px; background: #f5f5f3; border-radius: 6px; font-size: 12px; color: #444; }
+  const conclusionPart = c
+    ? section(
+        say("print.conclusionTitle"),
+        `<p class="ps-text">${esc(c.text)}</p>`,
+        `${icon("badge", 13)} ${esc(
+          say("print.signedElectronically", { who: c.signedBy, at: c.signedAt ? printMoment(c.signedAt, lang) : "—", n: c.version }),
+        )}`,
+      )
+    : "";
 
-  .letterhead { border-bottom: 2px solid #111; padding-bottom: 8px; margin-bottom: 16px; }
-  .letterhead .org { font-size: 14px; font-weight: 700; letter-spacing: .01em; }
-  .letterhead .unit { font-size: 12px; color: #555; margin-top: 2px; }
+  /*
+   * Место для подписи — и у подписанного в системе заключения: бумажный
+   * экземпляр, который ложится в дело, всё равно подписывают рукой, и место
+   * для этого предусмотрено, а не дописывается поверх текста.
+   */
+  const signRow = signs(
+    c
+      ? [
+          { name: c.signedBy, caption: say("print.signature") },
+          { name: c.signedAt ? printDay(c.signedAt, lang) : "", caption: say("print.signDate") },
+        ]
+      : [
+          { name: "", caption: `${say("print.clinician")}, ${say("print.signature")}` },
+          { name: "", caption: say("print.date") },
+        ],
+    say("print.seal"),
+  );
 
-  .sign { margin-top: 26px; break-inside: avoid; display: flex; gap: 32px; flex-wrap: wrap; }
-  .sign-line { display: flex; align-items: flex-end; gap: 8px; font-size: 12px; color: #444; }
-  .sign-line i { display: inline-block; width: 190px; border-bottom: 1px solid #111; }
-  .sign-hint { font-size: 10px; color: #888; }
+  const sheet = `<main class="ps">
+${sheetHead(head)}
+<h1 class="ps-t">${esc(title)}</h1>
+<p class="ps-sub">${esc(sub)}</p>
+${factGrid}
+${results}
+${answersPart}
+${conclusionPart}
+<p class="ps-note">${esc(say("print.disclaimer"))}</p>
+<div class="ps-end">${signRow}${sheetFoot(
+    [say("print.printedBy", { who: d.printedBy, at: printMoment(d.printedAt, lang) }), say("print.secrecy")],
+    d.surveyTitle,
+  )}</div>
+</main>`;
 
-  .footer { margin-top: 18px; border-top: 1px solid #e3e3e3; padding-top: 8px; }
-  tr { break-inside: avoid; }
-  h2 { break-after: avoid; }
-</style></head>
-<body>
-  ${
-    /*
-     * Шапка учреждения. Лист без неё — просто распечатка, а не документ,
-     * который можно подшить в дело.
-     */
-    env.institutionName
-      ? `<div class="letterhead">
-    <div class="org">${esc(env.institutionName)}</div>
-    ${env.institutionUnit ? `<div class="unit">${esc(env.institutionUnit)}</div>` : ""}
-  </div>`
-      : ""
+  const docTitle = say("print.reportTitle", { survey: d.surveyTitle });
+  const running = say("print.running", { doc: title, who: d.patientName });
+  if (!d.linked) return sheetDocument({ lang, title: docTitle, running, body: sheet });
+  return linkPage({ lang, title: docTitle, running, sheet, side: linkSide(lang, d) });
+}
+
+/**
+ * Пояснения справа на странице ссылки: что с ссылкой, как сохранить, и
+ * результат простыми словами — балл из максимума, полоса, сдвиг от первого
+ * замера и кто объяснит. Оценок «лучше/хуже» здесь нет: направление шкалы
+ * знает специалист, и лист не решает за него.
+ */
+function linkSide(lang: Lang, d: ReportData): string {
+  const say = sayer(lang);
+  const once = panel(
+    say("print.link.onceHead"),
+    "link",
+    `<p>${esc(say("print.link.openedAt", { time: printTime(d.printedAt) }))}</p>${printButtons(lang)}<p class="lk-small">${esc(
+      say("print.link.reopen", { section: uiText("tab.surveys", lang) }),
+    )}</p>`,
+    "wn",
+  );
+  const points = d.scores
+    .filter((s) => s.maxScore > 0)
+    .slice(0, 4)
+    .map((s) =>
+      point(
+        "gauge",
+        `${esc(say("print.link.readScore", { scale: s.title, score: num(s.score), max: num(s.maxScore) }))}${
+          s.band ? ` ${esc(say("print.link.readBand", { band: s.band }))}` : ""
+        }`,
+      ),
+    );
+  const single = d.scores.length === 1 ? d.scores[0]! : null;
+  const first = single?.history[0];
+  if (single && first) {
+    const delta = single.score - first.value;
+    points.push(
+      point(
+        delta < 0 ? "trendDown" : delta > 0 ? "trendUp" : "gauge",
+        esc(say("print.link.readChange", { date: printDay(first.at, lang), delta: signedDelta(delta) })),
+      ),
+    );
   }
-  <h1>${esc(d.surveyTitle)}</h1>
-  <div class="meta">
-    ${esc(d.patientName)}${d.patientMeta ? ` · ${esc(d.patientMeta)}` : ""} · ${esc(say("print.surveyVersion", { n: d.versionNumber }))} ·
-    ${d.submittedAt ? esc(printStamp(d.submittedAt)) : esc(say("print.notFinished"))} ·
-    ${esc(say("print.timeTaken", { duration }))}
-  </div>
-
-  ${
-    d.scores.length
-      ? `<h2>${say("print.scoresTitle")}</h2>
-  <table>
-    <tr><th>${say("print.colSubscale")}</th><th class="num">${say("print.colScore")}</th><th class="num">${say("print.colPercent")}</th><th>${say("print.colInterpretation")}</th><th class="num">${say("print.colPercentile")}</th></tr>
-    ${scoreRows}
-  </table>`
-      : ""
-  }
-
-  <h2>${say("print.answersTitle")}</h2>
-  <table>
-    <tr><th class="num">${say("print.colNo")}</th><th>${say("print.colQuestion")}</th><th>${say("print.colAnswer")}</th><th class="num">${say("print.colTime")}</th></tr>
-    ${answerRows}
-  </table>
-
-  ${
-    d.conclusion
-      ? `<h2>${say("print.conclusionTitle")}</h2>
-  <div class="conclusion">${esc(d.conclusion.text).replaceAll("\n", "<br>")}</div>
-  <div class="meta" style="margin-top:6px">
-    ${esc(say("print.signedBy", { who: d.conclusion.signedBy }))}${
-      d.conclusion.signedAt ? `, ${esc(printStamp(d.conclusion.signedAt))}` : ""
-    } · ${esc(say("print.version", { n: d.conclusion.version }))}
-  </div>`
-      : ""
-  }
-
-  <div class="note">${say("print.disclaimer")}</div>
-
-  ${
-    /*
-     * Место для подписи. Заключение может быть подписано в системе, но
-     * бумажный экземпляр, который ложится в дело, всё равно подписывают
-     * рукой — и место для этого должно быть предусмотрено, а не
-     * дописываться поверх текста.
-     */
-    d.conclusion
-      ? ""
-      : `<div class="sign">
-    <div class="sign-line">
-      <span>${say("print.clinician")}</span>
-      <i></i>
-      <span class="sign-hint">${say("print.signature")}</span>
-    </div>
-    <div class="sign-line">
-      <span>${say("print.date")}</span>
-      <i></i>
-    </div>
-  </div>`
-  }
-
-  <div class="meta footer">
-    ${esc(say("print.printedBy", { who: d.printedBy, at: printStamp(d.printedAt) }))}
-  </div>
-</body></html>`;
+  points.push(
+    point(
+      "help",
+      esc(d.conclusion ? say("print.link.notDiagnosis", { who: d.conclusion.signedBy }) : say("print.link.notDiagnosisAny")),
+      "n",
+    ),
+  );
+  return `${once}${panel(say("print.link.howToRead"), "book", `<div class="lk-li">${points.join("")}</div>`)}`;
 }
 
 /**
@@ -749,10 +929,13 @@ reportRoutes.get("/visits/:id", async (c) => {
     visitCertificateHtml(langOf(c), {
       fullName: fullNameOf(patient),
       unit: patient.unit,
+      birthDate: decryptField(patient.birthDate),
       startsAt: slot!.startsAt,
       endsAt: slot!.endsAt,
       timezone: tz,
+      remote: appointment.mode === "remote",
       specialistName,
+      issuedBy: fullNameOf(user),
     }),
   );
 });
@@ -761,11 +944,16 @@ reportRoutes.get("/visits/:id", async (c) => {
  * Разметка справки.
  *
  * Ни причины обращения, ни содержания разговора, ни НАЗВАНИЯ ОТДЕЛЕНИЯ здесь
- * нет. Первые два очевидны; третье — нет, и первая редакция его печатала:
- * строка «психологическое отделение» сообщает тому, кому справку отдадут, к
- * кому человек ходил, — а отдают её на работу или в часть. Название
- * учреждения в шапке остаётся: это обычный уровень раскрытия, и без него
- * документ перестаёт быть документом.
+ * нет, ни должности специалиста. Первые два очевидны; третье — нет, и первая
+ * редакция его печатала: строка «психологическое отделение» сообщает тому,
+ * кому справку отдадут, к кому человек ходил, — а отдают её на работу или в
+ * часть. Должность («психолог») сообщила бы то же самое, поэтому в справке
+ * только имя специалиста. Название учреждения в шапке остаётся: это обычный
+ * уровень раскрытия, и без него документ перестаёт быть документом.
+ *
+ * Корешок под линией отреза остаётся в учреждении: кому, когда, кто выдал и
+ * подпись получившего. Проверочного кода и QR, как на макете, нет — проверки
+ * справки по коду в системе нет, а код без проверки был бы украшением.
  *
  * Пояснение живёт здесь, а не HTML-комментарием внутри страницы. Комментарий
  * в разметке уезжает вместе с ней: объяснение того, чего в документе нет,
@@ -777,63 +965,99 @@ function visitCertificateHtml(
   d: {
     fullName: string;
     unit: string | null;
+    birthDate: string | null;
     startsAt: string;
     endsAt: string;
     timezone: string;
+    remote: boolean;
     specialistName: string;
+    issuedBy: string;
   },
 ): string {
   const say = sayer(lang);
-  const locale = LOCALE_OF[lang];
-  const date = new Date(d.startsAt).toLocaleDateString(locale, { timeZone: d.timezone });
-  const from = new Date(d.startsAt).toLocaleTimeString(locale, {
-    hour: "2-digit",
-    minute: "2-digit",
-    timeZone: d.timezone,
-  });
-  const to = new Date(d.endsAt).toLocaleTimeString(locale, {
-    hour: "2-digit",
-    minute: "2-digit",
-    timeZone: d.timezone,
-  });
+  const now = new Date().toISOString();
+  const date = printDay(d.startsAt, lang, d.timezone);
+  const from = printTime(d.startsAt, d.timezone);
+  const to = printTime(d.endsAt, d.timezone);
+  const issued = printDay(now, lang, d.timezone);
+  const minutes = Math.max(0, Math.round((Date.parse(d.endsAt) - Date.parse(d.startsAt)) / 60_000));
+  const day = new Date(d.startsAt).toLocaleDateString(LOCALE_OF[lang], { weekday: "long", timeZone: d.timezone });
+  const time = [say("print.fact.minutes", { from, to, n: minutes }), d.remote ? uiText("day.remote", lang) : null]
+    .filter(Boolean)
+    .join(", ");
+  const born = d.birthDate ? say("print.bornOn", { date: printCalendarDay(d.birthDate, lang) }) : null;
 
-  return `<!doctype html>
-<html lang="${lang}"><head><meta charset="utf-8">
-<title>${say("print.certTitle")}</title>
-<style>
-  @page { margin: 20mm; }
-  body { font: 14px/1.6 system-ui, -apple-system, sans-serif; color: #111; margin: 0; }
-  .letterhead { border-bottom: 2px solid #111; padding-bottom: 8px; margin-bottom: 24px; }
-  .letterhead .org { font-size: 14px; font-weight: 700; }
-  .letterhead .unit { font-size: 12px; color: #555; margin-top: 2px; }
-  h1 { font-size: 18px; margin: 0 0 20px; text-align: center; }
-  p { margin: 0 0 12px; }
-  .sign { margin-top: 44px; display: flex; gap: 32px; flex-wrap: wrap; break-inside: avoid; }
-  .sign-line { display: flex; align-items: flex-end; gap: 8px; font-size: 12px; color: #444; }
-  .sign-line i { display: inline-block; width: 200px; border-bottom: 1px solid #111; }
-  .issued { margin-top: 28px; font-size: 12px; color: #666; }
-</style></head>
-<body>
-  ${
-    env.institutionName
-      ? `<div class="letterhead">
-      <div class="org">${esc(env.institutionName)}</div>
-      ${env.institutionUnit ? `<div class="unit">${esc(env.institutionUnit)}</div>` : ""}
-    </div>`
-      : ""
-  }
-  <h1>${say("print.certTitle")}</h1>
-  <p>${esc(say("print.certBody", { name: d.fullName, unit: d.unit ? `, ${d.unit}` : "", date, from, to }))}</p>
-  <p>${say("print.certPurpose")}</p>
+  /* имя и дату — жирным, сама фраза — словарная: метки подставляются и заменяются после экранирования */
+  const lead = esc(say("print.certBody", { name: "\u00001", unit: d.unit ? `, ${d.unit}` : "", date: "\u00002", from, to }))
+    .replace("\u00001", `<b>${esc(d.fullName)}</b>`)
+    .replace("\u00002", `<b>${esc(date)}</b>`);
 
-  <div class="sign">
-    <div class="sign-line">${say("print.clinician")} <i></i></div>
-    <div class="sign-line">${esc(d.specialistName)}</div>
-  </div>
-  <p class="issued">${esc(say("print.certIssued", { date: new Date().toLocaleDateString(locale, { timeZone: d.timezone }) }))}</p>
-</body></html>`;
+  const stub = `<div class="ps-stub"><dl>
+<dt>${esc(say("print.stubTo"))}</dt><dd>${esc([d.fullName, born].filter(Boolean).join(", "))}</dd>
+<dt>${esc(say("print.stubVisit"))}</dt><dd>${esc(`${date}, ${time}`)}</dd>
+<dt>${esc(say("print.clinician"))}</dt><dd>${esc(d.specialistName)}</dd>
+<dt>${esc(say("print.stubIssued"))}</dt><dd>${esc(`${d.issuedBy}, ${issued}`)}</dd>
+</dl>${signs([{ caption: say("print.stubReceived") }], null)}</div>`;
+
+  const sheet = `<main class="ps">
+${sheetHead({ primary: issued, secondary: say("print.head.issued") }, { unit: false })}
+<h1 class="ps-t">${esc(say("print.certTitle"))}</h1>
+<p class="ps-sub">${esc(say("print.certSub"))}</p>
+<p class="ps-lead">${lead}</p>
+${facts([
+  [say("print.fact.visitDate"), `${date}, ${day}`],
+  [say("print.colTime"), time],
+  [say("print.clinician"), d.specialistName],
+])}
+<div class="ps-plain">${icon("shield", 15)}<span>${esc(say("print.certNote"))}</span></div>
+<p class="ps-text" style="margin-top:16px">${esc(say("print.certPurpose"))}</p>
+<div style="margin-top:40px">${signs(
+    [
+      { name: d.specialistName, caption: say("print.signature") },
+      { name: issued, caption: say("print.head.issued") },
+    ],
+    say("print.seal"),
+  )}</div>
+<div class="ps-end">
+<div class="ps-cut">${icon("scissors", 14)}<i></i><span>${esc(say("print.cutLine"))}</span><i></i></div>
+${section(say("print.stubTitle"), stub, esc(say("print.stubStays")), "ps-stubsec")}
+${sheetFoot([say("print.printedBy", { who: d.issuedBy, at: printMoment(now, lang, d.timezone) }), say("print.certFoot")], say("print.certTitle"))}
+</div>
+</main>`;
+
+  return sheetDocument({
+    lang,
+    title: say("print.certTitle"),
+    running: say("print.running", { doc: say("print.certTitle"), who: d.fullName }),
+    body: sheet,
+    bodyAttrs: 'class="fit"',
+  });
 }
 
+/* ─────────── приёмы в две колонки ─────────── */
+
+/**
+ * Приёмы строками в две колонки: дата с днём недели, вид и специалист,
+ * состояние знаком и словом. Колонки — многоколоночной вёрсткой, а не двумя
+ * таблицами рядом: на длинной истории страница заполняется слева направо и
+ * продолжается на следующей, строка не рвётся.
+ */
+function visitRows(
+  lang: Lang,
+  visits: { at: string; timezone: string; specialist: string; status: string; kind?: string | null }[],
+  /** Ведущий обращения: его имя не повторяется в каждой строке, чужое — пишется */
+  lead: string | null = null,
+): string {
+  if (!visits.length) return `<p class="ps-empty">${esc(serverText("print.noVisits", lang))}</p>`;
+  return `<div class="ps-cols">${visits
+    .map(
+      (v) =>
+        `<div class="ps-row"><span><b>${esc(printDay(v.at, lang, v.timezone))}</b> <span class="mute">${esc(weekday(v.at, lang, v.timezone))}</span></span><span>${
+          v.kind ? `${esc(codeWord(lang, "visitKind", v.kind))} ` : ""
+        }${v.specialist === lead ? "" : `<span class="mute">${esc(v.specialist)}</span>`}</span>${stateMark(lang, "appointment", v.status)}</div>`,
+    )
+    .join("")}</div>`;
+}
 
 /**
  * Выписка по обращению — печатным листом.
@@ -870,10 +1094,13 @@ reportRoutes.get("/episodes/:id", requireStaff, requirePermission("patients.read
     .where(eq(appointments.episodeId, episode.id))
     .orderBy(asc(slots.startsAt), asc(appointments.id));
 
+  /* методика заключения — названием рядом с текстом: «PHQ-9, підписано 08.10» */
   const signed = await db
-    .select({ row: conclusions, author: users })
+    .select({ row: conclusions, author: users, survey: surveys.title })
     .from(conclusions)
     .leftJoin(users, eq(users.id, conclusions.signedBy))
+    .leftJoin(responses, eq(responses.id, conclusions.responseId))
+    .leftJoin(surveys, eq(surveys.id, responses.surveyId))
     .where(and(eq(conclusions.episodeId, episode.id), eq(conclusions.status, "signed")))
     .orderBy(asc(conclusions.signedAt));
 
@@ -890,24 +1117,29 @@ reportRoutes.get("/episodes/:id", requireStaff, requirePermission("patients.read
     subjectUserId: episode.patientId,
   });
 
+  const lang = langOf(c);
   return c.html(
-    episodeExtractHtml(langOf(c), {
+    episodeExtractHtml(lang, {
       fullName: fullNameOf(patient),
       unit: patient.unit,
+      birthDate: decryptField(patient.birthDate),
       openedAt: episode.openedAt,
       closedAt: episode.closedAt,
       reason: decryptField(episode.reasonEnc),
       outcome: decryptField(episode.outcomeEnc),
+      outcomeKind: episode.outcomeKind,
       leadName: lead ? fullNameOf(lead) : null,
       visits: visits.map((v) => ({
         at: v.slot.startsAt,
         timezone: v.timezone ?? env.institutionTz,
         specialist: fullNameOf(v.specialist),
         status: v.a.status,
+        kind: v.a.kind,
       })),
       conclusions: signed.map((s) => ({
         at: s.row.signedAt ?? s.row.createdAt,
         author: s.author ? fullNameOf(s.author) : "—",
+        survey: s.survey ? t(s.survey as never, lang) : null,
         text: decryptField(s.row.text) ?? "",
       })),
       referrals: sent.map((r) => ({
@@ -915,6 +1147,7 @@ reportRoutes.get("/episodes/:id", requireStaff, requirePermission("patients.read
         destination: r.destination,
         status: r.status,
       })),
+      printedBy: fullNameOf(c.get("user")),
     }),
   );
 });
@@ -924,101 +1157,84 @@ function episodeExtractHtml(
   d: {
     fullName: string;
     unit: string | null;
+    birthDate: string | null;
     openedAt: string;
     closedAt: string | null;
     reason: string | null;
     outcome: string | null;
+    outcomeKind: string | null;
     leadName: string | null;
-    visits: { at: string; timezone: string; specialist: string; status: string }[];
-    conclusions: { at: string; author: string; text: string }[];
+    visits: { at: string; timezone: string; specialist: string; status: string; kind: string }[];
+    conclusions: { at: string; author: string; survey: string | null; text: string }[];
     referrals: { at: string; destination: string; status: string }[];
+    printedBy: string;
   },
 ): string {
   const say = sayer(lang);
   /* моменты — днём учреждения, приём — днём своего отделения (lib/printDates.ts), как в карте */
   const day = (iso: string) => printDay(iso, lang);
-  const rows = (items: string[]) => items.join("");
+  const now = new Date().toISOString();
+  const period = `${day(d.openedAt)} — ${d.closedAt ? day(d.closedAt) : say("print.ongoing")}`;
+  const outcome = d.outcome ?? (d.outcomeKind ? codeWord(lang, "outcome", d.outcomeKind) : null);
 
-  return `<!doctype html>
-<html lang="${lang}"><head><meta charset="utf-8">
-<title>${say("print.extractTitle")}</title>
-<style>
-  @page { margin: 18mm; }
-  body { font: 13px/1.55 system-ui, -apple-system, sans-serif; color: #111; margin: 0; }
-  .letterhead { border-bottom: 2px solid #111; padding-bottom: 8px; margin-bottom: 16px; }
-  .letterhead .org { font-size: 14px; font-weight: 700; }
-  h1 { font-size: 18px; margin: 0 0 4px; }
-  h2 { font-size: 14px; margin: 22px 0 6px; }
-  .meta { color: #555; font-size: 12px; }
-  table { width: 100%; border-collapse: collapse; margin-top: 6px; }
-  td, th { text-align: left; padding: 6px 8px; border-bottom: 1px solid #e3e3e3; vertical-align: top; }
-  th { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: #666; }
-  .conclusion { white-space: pre-wrap; padding: 8px 10px; border: 1px solid #d8d8d4; border-radius: 6px; margin-top: 6px; }
-  .sign { margin-top: 32px; display: flex; gap: 32px; break-inside: avoid; }
-  .sign-line { display: flex; align-items: flex-end; gap: 8px; font-size: 12px; color: #444; }
-  .sign-line i { display: inline-block; width: 200px; border-bottom: 1px solid #111; }
-  tr { break-inside: avoid; }
-  h2 { break-after: avoid; }
-</style></head>
-<body>
-  ${
-    env.institutionName
-      ? `<div class="letterhead"><div class="org">${esc(env.institutionName)}</div></div>`
-      : ""
-  }
-  <h1>${say("print.extractTitle")}</h1>
-  <p class="meta">${esc(d.fullName)}${d.unit ? `, ${esc(d.unit)}` : ""} ·
-     ${esc(day(d.openedAt))} — ${d.closedAt ? esc(day(d.closedAt)) : say("print.ongoing")}
-     ${d.leadName ? ` · ${esc(say("print.leadBy", { name: d.leadName }))}` : ""}</p>
-
-  ${d.reason ? `<h2>${say("print.reasonTitle")}</h2><p>${esc(d.reason)}</p>` : ""}
-
-  <h2>${say("print.visitsTitle")}</h2>
-  ${
-    d.visits.length
-      ? `<table><tr><th>${say("print.date")}</th><th>${say("print.clinician")}</th><th>${say("print.colStatus")}</th></tr>${rows(
-          d.visits.map(
-            (v) =>
-              `<tr><td>${esc(printDay(v.at, lang, v.timezone))}</td><td>${esc(v.specialist)}</td><td>${esc(codeWord(lang, "appointment", v.status))}</td></tr>`,
-          ),
-        )}</table>`
-      : `<p>${say("print.noVisits")}</p>`
-  }
-
-  <h2>${say("print.conclusionsTitle")}</h2>
-  ${
-    /*
-     * Только подписанные. Черновик — мысль вслух, и попасть в дело он не
-     * должен: подшитый черновик потом не отличити от рішення.
-     */
-    d.conclusions.length
-      ? rows(
-          d.conclusions.map(
-            (x) =>
-              `<div class="conclusion">${esc(x.text)}<div class="meta">${esc(x.author)}, ${esc(day(x.at))}</div></div>`,
-          ),
+  /*
+   * Только подписанные. Черновик — мысль вслух, и попасть в дело он не
+   * должен: подшитый черновик потом не отличить от решения.
+   */
+  const conclusionsPart = d.conclusions.length
+    ? `<table class="ps-tbl"><tbody>${d.conclusions
+        .map(
+          (x) =>
+            `<tr><td class="nw"><b>${esc(day(x.at))}</b></td><td class="nw">${esc(x.survey ?? "—")}</td><td><span class="ps-text">${esc(x.text)}</span> <span class="mute">${esc(
+              say("print.signedOn", { who: x.author, date: day(x.at) }),
+            )}</span></td></tr>`,
         )
-      : `<p>${say("print.noConclusions")}</p>`
-  }
+        .join("")}</tbody></table>`
+    : `<p class="ps-empty">${esc(say("print.noConclusions"))}</p>`;
 
-  ${
-    d.referrals.length
-      ? `<h2>${say("print.referralsTitle")}</h2><table><tr><th>${say("print.date")}</th><th>${say("print.colDestination")}</th><th>${say("print.colStatus")}</th></tr>${rows(
-          d.referrals.map(
+  const referralsPart = d.referrals.length
+    ? section(
+        say("print.referralsTitle"),
+        `<table class="ps-tbl"><tbody>${d.referrals
+          .map(
             (r) =>
-              `<tr><td>${esc(day(r.at))}</td><td>${esc(codeWord(lang, "destination", r.destination))}</td><td>${esc(codeWord(lang, "referralStatus", r.status))}</td></tr>`,
-          ),
-        )}</table>`
-      : ""
-  }
+              `<tr><td class="nw"><b>${esc(day(r.at))}</b></td><td>${esc(codeWord(lang, "destination", r.destination))}</td><td class="num">${stateMark(lang, "referralStatus", r.status)}</td></tr>`,
+          )
+          .join("")}</tbody></table>`,
+      )
+    : "";
+  const outcomePart = outcome ? section(say("print.outcomeTitle"), `<p class="ps-text">${esc(outcome)}</p>`) : "";
 
-  ${d.outcome ? `<h2>${say("print.outcomeTitle")}</h2><p>${esc(d.outcome)}</p>` : ""}
+  const sheet = `<main class="ps">
+${sheetHead({ primary: day(now), secondary: say("print.head.asOf", { time: printTime(now) }) })}
+<h1 class="ps-t">${esc(say("print.extractTitle"))}</h1>
+<p class="ps-sub">${esc(say("print.extractSub", { date: day(d.openedAt) }))}</p>
+${facts([
+  [say("print.fact.patient"), d.fullName],
+  [say("print.fact.born"), d.birthDate ? say("print.bornOn", { date: printCalendarDay(d.birthDate, lang) }) : null],
+  [say("print.fact.unit"), d.unit],
+  [say("print.fact.episode"), period],
+  [say("print.colLead"), d.leadName],
+])}
+${d.reason ? section(say("print.reasonTitle"), `<p class="ps-text">${esc(d.reason)}</p>`) : ""}
+${section(say("print.visitsTitle"), visitRows(lang, d.visits, d.leadName), esc(say("print.total", { n: d.visits.length })))}
+${section(say("print.conclusionsTitle"), conclusionsPart, d.conclusions.length ? String(d.conclusions.length) : "")}
+${referralsPart || outcomePart ? `<div class="ps-two">${referralsPart}${outcomePart}</div>` : ""}
+<div class="ps-end">${signs(
+    [
+      { name: d.leadName ?? "", caption: say("print.signature") },
+      { name: "", caption: say("print.date") },
+    ],
+    say("print.seal"),
+  )}${sheetFoot([say("print.printedBy", { who: d.printedBy, at: printMoment(now, lang) }), say("print.secrecy")], say("print.extractTitle"))}</div>
+</main>`;
 
-  <div class="sign">
-    <div class="sign-line">${say("print.clinician")} <i></i></div>
-    ${d.leadName ? `<div class="sign-line">${esc(d.leadName)}</div>` : ""}
-  </div>
-</body></html>`;
+  return sheetDocument({
+    lang,
+    title: say("print.extractTitle"),
+    running: say("print.running", { doc: say("print.extractTitle"), who: d.fullName }),
+    body: sheet,
+  });
 }
 
 /**
@@ -1090,6 +1306,7 @@ reportRoutes.get("/patients/:userId/chart", requireStaff, requirePermission("pat
         title: t(x.title as never, lang),
         source: x.r.source,
       })),
+      printedBy: fullNameOf(c.get("user")),
     }),
   );
 });
@@ -1112,6 +1329,7 @@ function chartHtml(
     visits: { at: string; timezone: string; specialist: string; kind: string; status: string }[];
     notes: { at: string; author: string; kind: string; text: string }[];
     responses: { at: string; title: string; source: string | null }[];
+    printedBy: string;
   },
 ): string {
   const say = sayer(lang);
@@ -1121,94 +1339,76 @@ function chartHtml(
    * пояса, то есть по часам процесса (волна 15, внешний разбор, п. 21).
    */
   const day = (iso: string) => printDay(iso, lang);
+  const now = new Date().toISOString();
+  const empty = (key: ServerTextKey) => `<p class="ps-empty">${esc(say(key))}</p>`;
 
-  return `<!doctype html>
-<html lang="${lang}"><head><meta charset="utf-8">
-<title>${say("print.chartTitle")} — ${esc(d.fullName)}</title>
-<style>
-  @page { margin: 16mm; }
-  body { font: 12.5px/1.5 system-ui, -apple-system, sans-serif; color: #111; margin: 0; }
-  .letterhead { border-bottom: 2px solid #111; padding-bottom: 8px; margin-bottom: 14px; }
-  .letterhead .org { font-size: 14px; font-weight: 700; }
-  h1 { font-size: 18px; margin: 0 0 2px; }
-  h2 { font-size: 13px; margin: 20px 0 6px; text-transform: uppercase; letter-spacing: .05em; color: #555; }
-  .meta { color: #555; font-size: 12px; }
-  table { width: 100%; border-collapse: collapse; margin-top: 4px; }
-  td, th { text-align: left; padding: 5px 8px; border-bottom: 1px solid #e6e6e6; vertical-align: top; }
-  th { font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em; color: #666; }
-  .note { white-space: pre-wrap; padding: 7px 9px; border: 1px solid #ddd; border-radius: 5px; margin-top: 5px; }
-  .empty { color: #777; }
-  tr, .note { break-inside: avoid; }
-  h2 { break-after: avoid; }
-</style></head>
-<body>
-  ${
-    env.institutionName
-      ? `<div class="letterhead"><div class="org">${esc(env.institutionName)}</div></div>`
-      : ""
-  }
-  <h1>${say("print.chartTitle")}</h1>
-  <p class="meta">${esc(d.fullName)}${d.birthDate ? `, ${esc(say("print.bornOn", { date: printCalendarDay(d.birthDate, lang) }))}` : ""}${
-    d.unit ? ` · ${esc(d.unit)}` : ""
-  }${d.rank ? ` · ${esc(d.rank)}` : ""}</p>
+  const episodesPart = d.episodes.length
+    ? `<table class="ps-tbl"><thead><tr><th>${say("print.colPeriod")}</th><th>${say("print.colReason")}</th><th>${say("print.colLead")}</th><th>${say("print.outcomeTitle")}</th></tr></thead><tbody>${d.episodes
+        .map(
+          (e) =>
+            `<tr><td class="nw">${esc(day(e.openedAt))} — ${e.closedAt ? esc(day(e.closedAt)) : say("print.ongoing")}</td>` +
+            `<td>${esc(e.reason ?? "—")}</td><td class="nw">${esc(e.lead ?? "—")}</td>` +
+            `<td>${esc(e.outcome ?? codeWord(lang, "outcome", e.outcomeKind))}</td></tr>`,
+        )
+        .join("")}</tbody></table>`
+    : empty("print.noEpisodes");
 
-  <h2>${say("print.episodesTitle")}</h2>
-  ${
-    d.episodes.length
-      ? `<table><tr><th>${say("print.colPeriod")}</th><th>${say("print.colReason")}</th><th>${say("print.colLead")}</th><th>${say("print.outcomeTitle")}</th></tr>${d.episodes
-          .map(
-            (e) =>
-              `<tr><td>${esc(day(e.openedAt))} — ${e.closedAt ? esc(day(e.closedAt)) : say("print.ongoing")}</td>` +
-              `<td>${esc(e.reason ?? "—")}</td><td>${esc(e.lead ?? "—")}</td>` +
-              `<td>${esc(e.outcome ?? codeWord(lang, "outcome", e.outcomeKind))}</td></tr>`,
-          )
-          .join("")}</table>`
-      : `<p class="empty">${say("print.noEpisodes")}</p>`
-  }
+  /*
+   * Источник прохождения печатается рядом: «сам» и «за призначенням» — это
+   * разные сведения о человеке, и в карте они значат разное.
+   */
+  const responsesPart = d.responses.length
+    ? `<table class="ps-tbl"><thead><tr><th>${say("print.date")}</th><th>${say("print.colAssessment")}</th><th>${say("print.colSource")}</th></tr></thead><tbody>${d.responses
+        .map(
+          (r) =>
+            `<tr><td class="nw"><b>${esc(day(r.at))}</b></td><td>${esc(r.title)}</td><td class="t2">${esc(codeWord(lang, "source", r.source))}</td></tr>`,
+        )
+        .join("")}</tbody></table>`
+    : empty("print.noAssessments");
 
-  <h2>${say("print.visitsTitle")}</h2>
-  ${
-    d.visits.length
-      ? `<table><tr><th>${say("print.date")}</th><th>${say("print.clinician")}</th><th>${say("print.colKind")}</th><th>${say("print.colStatus")}</th></tr>${d.visits
-          .map(
-            (v) =>
-              `<tr><td>${esc(printDay(v.at, lang, v.timezone))}</td><td>${esc(v.specialist)}</td>` +
-              `<td>${esc(codeWord(lang, "visitKind", v.kind))}</td><td>${esc(codeWord(lang, "appointment", v.status))}</td></tr>`,
-          )
-          .join("")}</table>`
-      : `<p class="empty">${say("print.noVisits")}</p>`
-  }
+  /*
+   * Только подписанные. Черновик — рабочий текст, и в карте, которую
+   * подшивают, он неотличим от решения.
+   */
+  const notesPart = d.notes.length
+    ? `<table class="ps-tbl"><tbody>${d.notes
+        .map(
+          (n) =>
+            `<tr><td class="nw"><b>${esc(day(n.at))}</b><br><span class="mute">${esc(codeWord(lang, "noteKind", n.kind))}</span></td><td><span class="ps-text">${esc(n.text)}</span> <span class="mute">— ${esc(n.author)}</span></td></tr>`,
+        )
+        .join("")}</tbody></table>`
+    : empty("print.noNotes");
 
-  <h2>${say("print.assessmentsTitle")}</h2>
-  ${
-    /*
-     * Источник прохождения печатается рядом: «сам» и «за призначенням» — это
-     * разные сведения о человеке, и в карте они значат разное.
-     */
-    d.responses.length
-      ? `<table><tr><th>${say("print.date")}</th><th>${say("print.colAssessment")}</th><th>${say("print.colSource")}</th></tr>${d.responses
-          .map(
-            (r) =>
-              `<tr><td>${esc(day(r.at))}</td><td>${esc(r.title)}</td><td>${esc(codeWord(lang, "source", r.source))}</td></tr>`,
-          )
-          .join("")}</table>`
-      : `<p class="empty">${say("print.noAssessments")}</p>`
-  }
+  const sheet = `<main class="ps">
+${sheetHead({ primary: day(now), secondary: say("print.head.asOf", { time: printTime(now) }) })}
+<h1 class="ps-t">${esc(say("print.chartTitle"))}</h1>
+<p class="ps-sub">${esc(say("print.chartSub"))}</p>
+${facts(
+  [
+    [say("print.fact.patient"), d.fullName],
+    [say("print.fact.born"), d.birthDate ? say("print.bornOn", { date: printCalendarDay(d.birthDate, lang) }) : null],
+    [say("print.fact.rank"), d.rank],
+    [say("print.fact.unit"), d.unit],
+  ],
+  2,
+)}
+${section(say("print.episodesTitle"), episodesPart, d.episodes.length ? String(d.episodes.length) : "")}
+${section(say("print.visitsTitle"), visitRows(lang, d.visits), esc(say("print.total", { n: d.visits.length })))}
+${section(say("print.assessmentsTitle"), responsesPart, esc(say("print.total", { n: d.responses.length })))}
+${section(say("print.notesTitle"), notesPart, esc(say("print.signedOnly")))}
+<div class="ps-end">${signs(
+    [
+      { name: d.printedBy, caption: say("print.signature") },
+      { name: day(now), caption: say("print.date") },
+    ],
+    say("print.seal"),
+  )}${sheetFoot([say("print.printedBy", { who: d.printedBy, at: printMoment(now, lang) }), say("print.secrecy")], say("print.chartTitle"))}</div>
+</main>`;
 
-  <h2>${say("print.notesTitle")}</h2>
-  ${
-    /*
-     * Только подписанные. Черновик — рабочий текст, и в карте, которую
-     * подшивают, он неотличим от решения.
-     */
-    d.notes.length
-      ? d.notes
-          .map(
-            (n) =>
-              `<div class="note">${esc(n.text)}<div class="meta">${esc(n.author)}, ${esc(day(n.at))}</div></div>`,
-          )
-          .join("")
-      : `<p class="empty">${say("print.noNotes")}</p>`
-  }
-</body></html>`;
+  return sheetDocument({
+    lang,
+    title: `${say("print.chartTitle")} — ${d.fullName}`,
+    running: say("print.running", { doc: say("print.chartTitle"), who: d.fullName }),
+    body: sheet,
+  });
 }

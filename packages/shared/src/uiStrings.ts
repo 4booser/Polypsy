@@ -2068,7 +2068,6 @@ export const UI = {
   "sum.conclusions": { uk: "Висновки фахівців", ru: "Заключения специалистов", en: "Specialists' conclusions" },
   "sum.measurements": { uk: "замірів", ru: "замеров", en: "measurements" },
   "sum.lastAt": { uk: "останній", ru: "последний", en: "latest" },
-  "sum.formedAt": { uk: "Зведення сформовано", ru: "Сводка сформирована", en: "Overview generated" },
 
   /* ─────────── состояние подразделения ─────────── */
 
@@ -5530,15 +5529,11 @@ export const UI = {
   "cb.escalation": { uk: "Ескалація тривоги, хвилин", ru: "Эскалация тревоги, минут", en: "Alert escalation, minutes" },
   "cb.noEscalation": { uk: "без ескалації", ru: "без эскалации", en: "no escalation" },
   "kp.title": { uk: "Ключі методики", ru: "Ключи методики", en: "Instrument scoring keys" },
-  "kp.hideItems": { uk: "Сховати пункти", ru: "Скрыть пункты", en: "Hide items" },
-  "kp.showItems": { uk: "Показати пункти", ru: "Показать пункты", en: "Show items" },
   "kp.validityScale": { uk: "шкала достовірності", ru: "шкала достоверности", en: "validity scale" },
   "kp.clinicalScale": { uk: "змістовна", ru: "содержательная", en: "clinical" },
   "kp.rawScore": { uk: "сирий бал", ru: "сырой балл", en: "raw score" },
   "kp.ratio": { uk: "частка", ru: "доля", en: "share" },
   "kp.stens": { uk: "стени", ru: "стены", en: "stens" },
-  "kp.answerYes": { uk: "Відповідь «Так»", ru: "Ответ «Да»", en: "Answer “Yes”" },
-  "kp.answerNo": { uk: "Відповідь «Ні»", ru: "Ответ «Нет»", en: "Answer “No”" },
   "kp.byOptionScores": { uk: "За балами варіантів", ru: "По баллам вариантов", en: "By option scores" },
   "kp.corrections": { uk: "Поправки", ru: "Поправки", en: "Corrections" },
   "kp.norms": { uk: "Норми", ru: "Нормы", en: "Norms" },
@@ -7993,6 +7988,76 @@ export const UI = {
   "kit.openItems": { uk: "Відкрите по пацієнту", ru: "Открытое по пациенту", en: "Open items for the patient" },
   "kit.timerOf": { uk: "{elapsed} з {of}", ru: "{elapsed} из {of}", en: "{elapsed} of {of}" },
   "kit.unread": { uk: "непрочитане", ru: "непрочитанное", en: "unread" },
+
+  // ── v2-print ──
+  /* печатный лист «Виразної» в консолі: pages/printSheet.tsx */
+  "ps.brand": { uk: "Polypsy", ru: "Polypsy", en: "Polypsy" },
+  "ps.pageOf": { uk: "Сторінка {page} з {pages}", ru: "Страница {page} из {pages}", en: "Page {page} of {pages}" },
+  "ps.asOf": { uk: "станом на {time}", ru: "по состоянию на {time}", en: "as of {time}" },
+  "ps.printedBy": { uk: "Роздруковано: {who}, {at}", ru: "Распечатано: {who}, {at}", en: "Printed by {who}, {at}" },
+  "ps.seal": { uk: "М. П.", ru: "М. П.", en: "Seal" },
+  "ps.secrecy": {
+    uk: "Документ містить медичну таємницю: передача третім особам лише за згодою пацієнта.",
+    ru: "Документ содержит врачебную тайну: передача третьим лицам только с согласия пациента.",
+    en: "This document contains confidential medical information: share it only with the patient’s consent.",
+  },
+  "ps.emergencyNumber": { uk: "103", ru: "103", en: "103" },
+  /* ключ методики: pages/KeyPrint.tsx */
+  "kp.sheetTitle": { uk: "Ключ методики {title}", ru: "Ключ методики {title}", en: "Scoring key: {title}" },
+  "kp.factScales": { uk: "Шкали", ru: "Шкалы", en: "Scales" },
+  "kp.factOptions": { uk: "Варіантів відповіді", ru: "Вариантов ответа", en: "Answer options" },
+  "kp.factCritical": { uk: "Критичні пункти", ru: "Критические пункты", en: "Critical items" },
+  "kp.answerCode": { uk: "Відповідь «{label}»", ru: "Ответ «{label}»", en: "Answer “{label}”" },
+  "kp.scoresTitle": { uk: "Бали за варіантами відповіді", ru: "Баллы за варианты ответа", en: "Scores by answer option" },
+  "kp.item": { uk: "Пункт", ru: "Пункт", en: "Item" },
+  "kp.optionScores": { uk: "Варіанти й бали", ru: "Варианты и баллы", en: "Options and scores" },
+  "kp.criticalOptions": { uk: "критичні варіанти", ru: "критические варианты", en: "critical options" },
+  "kp.riskRuleTitle": { uk: "Критичні варіанти", ru: "Критические варианты", en: "Critical options" },
+  "kp.riskRule": {
+    uk: "Вибір критичного варіанта піднімає тривогу одразу після здачі, незалежно від суми балів.",
+    ru: "Выбор критического варианта поднимает тревогу сразу после сдачи, независимо от суммы баллов.",
+    en: "Choosing a critical option raises an alert as soon as the response is submitted, whatever the total score.",
+  },
+  "kp.checkLead": { uk: "Звірка.", ru: "Сверка.", en: "Cross-check." },
+  "kp.reconciledBy": { uk: "звірив(ла) з посібником, підпис", ru: "сверил(а) с пособием, подпись", en: "checked against the manual, signature" },
+  "kp.reconcileDate": { uk: "дата звірки", ru: "дата сверки", en: "date checked" },
+  "kp.discrepancyChoice": { uk: "немає / є", ru: "нет / есть", en: "none / found" },
+  "kp.discrepancies": { uk: "розбіжності, закресліть зайве", ru: "расхождения, зачеркните лишнее", en: "discrepancies, cross out one" },
+  "kp.serviceDoc": {
+    uk: "Ключ — службовий документ відділення, не для пацієнта.",
+    ru: "Ключ — служебный документ отделения, не для пациента.",
+    en: "The key is an internal document of the department, not for the patient.",
+  },
+  /* пустий бланк: pages/BlankForm.tsx */
+  "bf.titleOf": { uk: "{title} — бланк для заповнення", ru: "{title} — бланк для заполнения", en: "{title}: answer sheet" },
+  "bf.crisisTitle": {
+    uk: "Якщо у вас є думки про те, щоб зашкодити собі",
+    ru: "Если у вас есть мысли о том, чтобы навредить себе",
+    en: "If you have thoughts of harming yourself",
+  },
+  "bf.crisisText": {
+    uk: "Скажіть про це фахівцю зараз або зателефонуйте на цілодобову лінію {hotline}. Якщо є загроза життю — {emergency}.",
+    ru: "Скажите об этом специалисту сейчас или позвоните на круглосуточную линию {hotline}. Если есть угроза жизни — {emergency}.",
+    en: "Tell the clinician now or call the 24/7 line {hotline}. If a life is in danger, call {emergency}.",
+  },
+  "bf.forStaff": { uk: "Заповнює фахівець", ru: "Заполняет специалист", en: "For the clinician" },
+  "bf.sum": { uk: "Сума балів", ru: "Сумма баллов", en: "Total score" },
+  "bf.criticalPassed": {
+    uk: "критичну відповідь передано черговому",
+    ru: "критический ответ передан дежурному",
+    en: "critical answer passed to the on-call clinician",
+  },
+  "bf.entered": { uk: "Внесено в систему", ru: "Внесено в систему", en: "Entered into the system" },
+  "bf.footEntry": {
+    uk: "Після заповнення відповіді вносяться через «Провести»: нумерація пунктів збігається з бланком.",
+    ru: "После заполнения ответы вносятся через «Провести»: нумерация пунктов совпадает с бланком.",
+    en: "Once filled in, the answers are entered via “Administer”: the item numbers match the sheet.",
+  },
+  "bf.footNoData": {
+    uk: "Бланк не містить персональних даних, доки його не заповнено.",
+    ru: "Бланк не содержит персональных данных, пока его не заполнили.",
+    en: "The sheet holds no personal data until it is filled in.",
+  },
 
 } as const satisfies Record<string, UiEntry>;
 

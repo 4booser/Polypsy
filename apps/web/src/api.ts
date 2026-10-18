@@ -771,7 +771,11 @@ export interface KeySheet {
   version: number;
   questionCount: number;
   questions: { n: number; title: string }[];
+  /** Коды ответов в порядке появления в вариантах; label — текст первого варианта с этим кодом */
+  keyCodes: { code: string; label: string }[];
   scales: {
+    /** Номера пунктов по каждому коду из keyCodes; пусто — код в этой шкале не ждут */
+    keys: { code: string; label: string; items: string }[];
     code: string;
     title: string;
     kind: string;

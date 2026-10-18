@@ -33,7 +33,31 @@ import {
  * молча — нельзя.
  */
 
-const CSS = readFileSync(resolve(import.meta.dir, "../src/styles/tokens.css"), "utf8");
+/*
+ * Печатный блок (@media print) — не тема экрана: его селектор перечисляет и
+ * `:root[data-theme="dark"]`, и без вырезки его бумажные значения ложились
+ * бы в тёмную тему. Сверяются только экранные блоки.
+ */
+const CSS = withoutPrint(readFileSync(resolve(import.meta.dir, "../src/styles/tokens.css"), "utf8"));
+
+function withoutPrint(css: string): string {
+  let out = css;
+  for (;;) {
+    const at = out.indexOf("@media print");
+    if (at < 0) return out;
+    const open = out.indexOf("{", at);
+    let depth = 0;
+    let end = open;
+    for (let i = open; i < out.length; i++) {
+      if (out[i] === "{") depth++;
+      else if (out[i] === "}" && --depth === 0) {
+        end = i;
+        break;
+      }
+    }
+    out = out.slice(0, at) + out.slice(end + 1);
+  }
+}
 
 /** Значения всех блоков с данным селектором — файл делит :root на слои */
 function block(selector: string): Map<string, string> {

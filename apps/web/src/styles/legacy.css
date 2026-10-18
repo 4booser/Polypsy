@@ -704,7 +704,6 @@ kbd, .kbd {
 }
 .battery-steps.editable li { cursor: grab; }
 .step-track { display: flex; gap: 4px; }
-.opt { display: flex; align-items: center; gap: 9px; }
 .legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: var(--fs-caption); color: var(--muted); }
 .tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--hairline); margin-bottom: 16px; }
 .tabs button {
@@ -823,19 +822,196 @@ kbd, .kbd {
  * различает красное и жёлтое.
  */
 .print-only { display: none; }
-.blank { display: grid; gap: 14px; }
-.blank-grid { width: 100%; border-collapse: collapse; font-size: 11px; }
-.blank-grid td, .blank-grid th { border: 1px solid #999; padding: 3px 5px; }
-.blank-list { display: grid; gap: 5px; font-size: 12px; }
-.grid-sheet { display: grid; gap: 3px; }
+
+/* ═══ печатный лист «Виразной» (UI 3, pages/printSheet.tsx) ═══
+ * Те же части и классы, что у листов сервера (apps/api/src/lib/printSheet.ts):
+ * шапка, сетка фактов, разделы, подписи, подвал. На экране лист — предпросмотр
+ * в теме консоли; на бумаге — чёрное на белом (печатные токены в tokens.css).
+ * Выраженность — слово в обводке ступени: монохромный принтер оставляет слово
+ * и рамку. Числа — Manrope с моноширинными цифрами.
+ */
+.ps {
+  max-width: 794px;
+  margin: 0 auto;
+  padding: 40px 48px 36px;
+  border-radius: var(--radius-panel, 14px);
+  background: var(--panel);
+  box-shadow: var(--shadow-panel);
+  color: var(--text);
+  font: 500 13px/19px var(--font-text);
+  font-variant-numeric: tabular-nums;
+}
+:where(.ps) :is(h1, h3, h4, p, dl, dd, ol) { margin: 0; }
+:where(.ps) ol { padding: 0; list-style: none; }
+.ps b { font-weight: 800; }
+.ps .mute { color: var(--muted); }
+.ps .t2 { color: var(--text-2); }
+.ps .ic { display: inline-block; flex-shrink: 0; vertical-align: -2px; }
+.ps-h { display: flex; align-items: center; gap: 12px; padding-bottom: 14px; border-bottom: 1.5px solid var(--text); }
+.ps-h .logo { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; flex-shrink: 0; color: var(--v); box-shadow: inset 0 0 0 1px var(--border); }
+.ps-h .org { font-size: 12px; line-height: 16px; color: var(--text-2); }
+.ps-h .org b { display: block; font-size: 13px; color: var(--text); }
+.ps-h .no { margin-left: auto; text-align: right; font-size: 12px; line-height: 16px; color: var(--text-2); }
+.ps-h .no b { display: block; font-size: 14px; color: var(--text); }
+.ps-th { display: flex; align-items: flex-start; gap: 16px; }
+.ps-th .ps-t { flex: 1; min-width: 0; }
+.ps-t { margin-top: 24px; font: 800 22px/28px var(--font-text); letter-spacing: -0.02em; color: var(--text); }
+.ps-sub { margin-top: 4px; font-size: 13px; line-height: 19px; color: var(--text-2); }
+.ps-facts { display: grid; gap: 1px; margin-top: 14px; background: var(--border); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.ps-facts.c2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.ps-facts.c3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.ps-facts.c4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.ps-facts > div { min-width: 0; padding: 5px 12px 6px; background: var(--panel); }
+.ps-facts dt { font-size: 11px; line-height: 14px; font-weight: 600; color: var(--muted); }
+.ps-facts dd { margin-top: 1px; font-size: 12.5px; line-height: 17px; font-weight: 700; }
+.ps-sec { margin-top: 16px; }
+.ps-sec > h3 { display: flex; align-items: baseline; gap: 12px; padding-bottom: 5px; margin: 0 0 8px; border-bottom: 1px solid var(--border); font: 800 13.5px/18px var(--font-text); color: var(--text); text-transform: none; letter-spacing: 0; }
+.ps-sec > h3 .r { margin-left: auto; font: 600 11.5px/16px var(--font-text); color: var(--muted); text-align: right; }
+.ps-tbl { width: 100%; border-collapse: collapse; font-size: 11.5px; line-height: 15px; }
+.ps-tbl th { position: static; height: auto; padding: 0 6px 5px; text-align: left; font: 700 11px/14px var(--font-text); color: var(--text-2); border-bottom: 1px solid var(--text); vertical-align: bottom; background: none; text-transform: none; letter-spacing: 0; white-space: normal; }
+.ps-tbl td { height: auto; padding: 4px 6px; border-bottom: 1px solid var(--border); vertical-align: top; white-space: normal; }
+.ps-tbl tbody tr:hover, .ps-tbl tbody tr:focus-within { background: none; }
+.ps-tbl tbody tr:last-child td { border-bottom: 1px solid var(--border); }
+.ps-tbl th:first-child, .ps-tbl td:first-child { padding-left: 0; }
+.ps-tbl th:last-child, .ps-tbl td:last-child { padding-right: 0; }
+.ps-tbl .nw { white-space: nowrap; }
+.ps-tbl .c { text-align: center; }
+.ps-tbl th.ps-opt { width: 64px; font-size: 10.5px; line-height: 13px; text-align: center; }
+.ps-tbl .no { width: 24px; color: var(--muted); font-weight: 700; }
+.ps-tbl.mid td { vertical-align: middle; }
+.ps-tbl tr.crit td, .ps-tbl tr.crit td.no { color: var(--riskink); }
+.ps-tbl .ck { display: flex; align-items: center; gap: 4px; margin-top: 2px; font-weight: 800; }
+.ps-form { margin-top: 8px; font-size: 12.5px; line-height: 17px; }
+.ps-form td { padding: 6px 8px; }
+.ps-form tbody tr:nth-child(even) td { background: var(--panel2); }
+.ps-grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 24px; align-items: start; }
+.ps-sev { display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: 10px; border: 1px solid currentColor; font: 700 11px/1 var(--font-text); white-space: nowrap; }
+.ps-sev.l0 { color: var(--sev-0); }
+.ps-sev.l1 { color: var(--sev-1); }
+.ps-sev.l2 { color: var(--sev-2); }
+.ps-sev.l3 { color: var(--sev-3); }
+.ps-sev.l4 { color: var(--sev-4); }
+.ps-sev.ln { color: var(--text-2); }
+.ps-key { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 20px; margin-top: 12px; padding: 10px 14px 8px; border: 1px solid var(--border); border-radius: 10px; }
+.ps-key .hd { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 8px; margin-bottom: 6px; font: 800 12.5px/18px var(--font-text); }
+.ps-key .ps-sev { height: auto; min-height: 20px; padding: 2px 8px; line-height: 14px; white-space: normal; }
+.ps-key .hd .r { font: 600 11px/16px var(--font-text); color: var(--muted); }
+.ps-kv2 { display: grid; gap: 2px; font-size: 12px; line-height: 17px; }
+.ps-kv2 > div { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 12px; }
+.ps-kv2 dt { color: var(--muted); font-weight: 600; }
+.ps-kv2 dd { font-weight: 600; overflow-wrap: anywhere; }
+.ps-box { padding: 10px 14px; border: 1px solid var(--border); border-radius: 10px; }
+.ps-box h4 { display: flex; align-items: center; gap: 6px; margin-bottom: 2px; font: 800 12.5px/18px var(--font-text); color: var(--text); }
+.ps-box p { font-size: 12.5px; line-height: 19px; }
+.ps-box.rk { border-color: var(--riskline); }
+.ps-box.rk h4 { color: var(--riskink); }
+.ps-staff { background: var(--panel2); }
+.ps-two-box { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 12px; margin-top: 12px; align-items: stretch; }
+.ps-two-box > .ps-box + .ps-box, .ps > .ps-box { margin-top: 0; }
+.ps > .ps-staff { margin-top: 12px; }
+.ps-note { margin-top: 12px; font-size: 11px; line-height: 16px; color: var(--muted); }
+.ps-plain { display: flex; gap: 8px; margin-top: 14px; font-size: 12px; line-height: 18px; color: var(--text-2); }
+.ps-plain b { color: var(--text); }
+.ps-ask { margin-top: 12px; padding: 9px 14px; border-radius: 10px; background: var(--sunk); font-size: 13px; line-height: 19px; color: var(--text-2); white-space: pre-line; }
+.ps-o { display: inline-block; width: 15px; height: 15px; border-radius: 50%; box-shadow: inset 0 0 0 1.4px var(--text-2); vertical-align: middle; flex-shrink: 0; }
+.ps-sq { display: inline-block; width: 12px; height: 12px; border-radius: 3px; box-shadow: inset 0 0 0 1.3px var(--text-2); flex-shrink: 0; }
+.ps-code { display: flex; align-items: center; gap: 12px; margin-top: 12px; flex-shrink: 0; }
+.ps-code > div { display: flex; flex-direction: column; align-items: flex-end; width: 200px; text-align: right; font-size: 11px; line-height: 15px; }
+.ps-code b { font: 800 13px/18px var(--font-text); letter-spacing: 0.02em; }
+.ps-code small { font-size: 10.5px; line-height: 14px; color: var(--muted); }
+.ps-qr { display: block; width: 84px; padding: 4px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); }
+.ps-qr svg { display: block; width: 100%; height: auto; }
+.ps-lines { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 10px 16px; margin-top: 8px; }
+.ps-ln i { display: block; height: 22px; border-bottom: 1px solid var(--text); }
+.ps-ln span { display: block; margin-top: 3px; font-size: 11px; line-height: 14px; font-weight: 600; color: var(--muted); }
+.ps-fill { display: flex; align-items: flex-end; gap: 8px; margin-top: 8px; font-size: 11.5px; line-height: 15px; color: var(--text-2); }
+.ps-fill i { flex: 1; height: 14px; border-bottom: 1px solid var(--muted); }
+.ps-fill .ps-sq { align-self: center; }
+.ps-long { display: grid; gap: 8px; margin-top: 8px; }
+.ps-long > li { display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: 6px; padding-bottom: 8px; border-bottom: 1px solid var(--border); break-inside: avoid; font-size: 12.5px; line-height: 18px; }
+.ps-long .no { color: var(--muted); font-weight: 700; }
+.ps-opts { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 6px; font-size: 12px; line-height: 16px; font-weight: 600; color: var(--text-2); }
+.ps-opts > span { display: inline-flex; align-items: center; gap: 7px; }
+.ps-write { display: block; height: 36px; margin-top: 6px; border-bottom: 1px solid var(--text); }
+.ps-empty { font-size: 12.5px; line-height: 19px; color: var(--muted); }
+.ps-signs { display: grid; gap: 28px; margin-top: 18px; align-items: end; }
+.ps-signs .s { min-width: 0; font-size: 11.5px; line-height: 16px; color: var(--text-2); }
+.ps-signs .s i { display: block; height: 20px; margin-bottom: 6px; border-bottom: 1px solid var(--text); }
+.ps-signs .s b { display: block; font-size: 12.5px; color: var(--text); }
+.ps-stamp { width: 56px; height: 56px; border-radius: 50%; border: 1.5px dashed var(--ctl); display: grid; place-items: center; font: 700 11px/14px var(--font-text); color: var(--muted); text-align: center; }
+.ps-end { margin-top: 14px; }
+.case-print .ps-h { margin-bottom: 18px; }
+.case-print .ps-foot { margin-top: 24px; }
+.ps-foot { display: flex; gap: 16px; align-items: flex-end; margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--border); font-size: 11px; line-height: 15px; color: var(--muted); }
+.ps-foot .r { margin-left: auto; text-align: right; white-space: nowrap; }
+.ps-foot .r b { display: block; color: var(--text-2); font-weight: 700; }
+@media (max-width: 760px) {
+  .ps { padding: 20px 16px 24px; }
+  .ps-facts.c3, .ps-facts.c4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ps-facts > div { grid-column: auto !important; }
+  .ps-key, .ps-two-box, .ps-grid2 { grid-template-columns: minmax(0, 1fr); }
+  .ps-th { flex-direction: column; }
+}
 
 @media print {
   /* печатные значения токенов живут в styles/tokens.css — см. пояснение там */
   body { font-size: 11pt; }
   .sidebar, .toasts, [data-connection], .table-tools, .filters, button, .load-more { display: none !important; }
+  /*
+   * Рамка консоли высотой в экран со своей прокруткой (App.tsx: h-screen,
+   * overflow-hidden; экран — overflow-y-auto) на бумаге обрезала бы всё,
+   * что ниже первого экрана. На печати рамка растёт по содержимому.
+   */
+  html, body, #root { height: auto !important; overflow: visible !important; }
+  #root .overflow-hidden, #root .overflow-y-auto, #root .overflow-auto { overflow: visible !important; }
+  /*
+   * И сами колонки рамки — блоками: «занять остаток высоты» (min-h-0 flex-1)
+   * на бумаге не нужно, а гибкая колонка, разрезанная на страницы, теряла
+   * хвост содержимого — у карты пациента пропадал последний раздел со
+   * штампом «кто распечатал».
+   */
+  #root :is(.h-screen, .main, .min-h-0.flex-1, .flex-col:has(> .min-h-0.flex-1)) {
+    display: block !important;
+    height: auto !important;
+    min-height: 0 !important;
+  }
+  /* поле ввода на бумаге — пустая рамка: черновик записи в дело не идёт */
+  #root textarea { display: none !important; }
+  /* вкладки и навигация экрана на бумаге не нужны: лист — то, что открыто */
+  #root nav, #root [role="tablist"] { display: none !important; }
   .app { display: block; }
   .main { padding: 0; max-width: none; }
   .print-only { display: block; }
+
+  /*
+   * Лист на экране (ключ, бланк) — единственное, что печатается: всё, что
+   * его не содержит и не лежит в нём, — вон, предки теряют поля и рамки.
+   * Ctrl+P печатает то же, что кнопка «Друк».
+   */
+  body:has([data-print-sheet]) *:not([data-print-sheet], [data-print-sheet] *, :has([data-print-sheet])) { display: none !important; }
+  body:has([data-print-sheet]) :has([data-print-sheet]) {
+    display: block !important;
+    width: auto !important;
+    max-width: none !important;
+    height: auto !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    background: none !important;
+  }
+  .ps { max-width: none; margin: 0; padding: 0; border-radius: 0; box-shadow: none; background: none; }
+  .ps-facts > div, .ps-form tbody tr:nth-child(even) td, .ps-staff { background: var(--panel); }
+  .ps-ask { background: none; border: 1px solid var(--border); }
+  .ps-t, .ps-sec > h3 { break-after: avoid; }
+  .ps-tbl tr, .ps-key, .ps-box, .ps-facts, .ps-signs, .ps-end, .ps-lines { break-inside: avoid; }
+  .ps-end { break-before: avoid; }
+  .ps-t { margin-top: 16px; }
+  .ps-form td { padding-top: 4px; padding-bottom: 4px; }
+  .ps-ask { margin-top: 10px; padding: 6px 12px; }
+  .ps-lines { gap: 6px 16px; }
+  .ps-signs { margin-top: 12px; }
   .card { border: none; padding: 0; margin: 0 0 10pt; break-inside: avoid; }
   .card-head { border-bottom: 1px solid #000; padding-bottom: 3pt; }
   h1 { font-size: 16pt; }
