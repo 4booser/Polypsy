@@ -7,9 +7,9 @@ import Login from "./pages/Login";
 import { AppBar } from "./shell/AppBar";
 import { HelpDrawer } from "./shell/HelpDrawer";
 import { MoreMenu } from "./shell/MoreMenu";
-import { navAccess, railEntries, sectionOf, subNavFor, type NavCounts } from "./shell/nav";
+import { navAccess, railEntries, type NavCounts } from "./shell/nav";
 import { Rail } from "./shell/Rail";
-import { SubNav } from "./shell/SubNav";
+import { SectionColumn, ShellNavProvider } from "./shell/useShellNav";
 import { isThemeChoice, setThemeChoice, useResolvedTheme, type ThemeChoice } from "./shell/theme";
 import type { AccountCard } from "./shell/UserMenu";
 import { useLiveReload } from "./events";
@@ -623,9 +623,8 @@ export default function App() {
    * них не расходятся.
    */
   const access = navAccess(user, can);
-  const entries = railEntries(access, counts, user.workspace?.railHidden ?? []);
-  const section = sectionOf(pathname);
-  const subNav = section ? subNavFor(section, pathname, access, counts) : null;
+  const hidden = user.workspace?.railHidden ?? [];
+  const entries = railEntries(access, counts, hidden);
 
   /*
    * Кто вошёл и что он может сделать со своей записью — карточка за именем
@@ -694,6 +693,8 @@ export default function App() {
   };
 
   return (
+    /* права и счётчики — экранам, которым навигация нужна в своём месте (shell/useShellNav.tsx) */
+    <ShellNavProvider value={{ access, counts, hidden }}>
     <div className="flex h-dvh flex-col overflow-hidden bg-ground">
       {banner}
       <AppBar
@@ -724,7 +725,7 @@ export default function App() {
       */}
       <div className="flex min-h-0 flex-1">
         <Rail entries={entries} onHelp={() => setHelpOpen((v) => !v)} helpOpen={helpOpen} />
-        {subNav ? <SubNav data={subNav} /> : null}
+        <SectionColumn />
       <main className="main min-w-0">
         {/*
           Пока догружается экран, на его месте стоит скелет — то же, что при
@@ -1024,6 +1025,7 @@ export default function App() {
         </Suspense>
       ) : null}
     </div>
+    </ShellNavProvider>
   );
 }
 
