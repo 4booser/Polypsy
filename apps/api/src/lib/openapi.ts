@@ -297,7 +297,7 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
    * в карточке не отдаётся: он открывается отдельным журналируемым действием
    * GET /api/clinic/patients/:userId/phone.
    */
-  "GET /api/patients": { summary: "Пациенты зоны видимости: поиск, вкладка группы, страницы {items,total}", access: "staff", permission: "patients.read" },
+  "GET /api/patients": { summary: "Пациенты зоны видимости: поиск, вкладка группы, подання `?view=risk|stale|unbooked|mine`, порядок `?sort=name|risk|last|next`, страницы {items,total,counts}; в строке — открытый случай, главная шкала последнего замера, ближайший приём, неявка, учёт, ведущий", access: "staff", permission: "patients.read" },
   "GET /api/patients/:id/card": { summary: "Карточка пациента: персональные данные, «Тести», «Групи», «Заключення», ведущий", access: "staff", permission: "patients.read" },
 
   /* ── рассылки (кадры f09, f16, f22) ──

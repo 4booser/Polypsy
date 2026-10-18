@@ -5,7 +5,7 @@ import type { RespondentDynamics, ScaleDynamics, ScaleNormalization, Sex } from 
 import { db } from "../db";
 import { decodeCursor, encodeCursor } from "../lib/cursor";
 import { langOf } from "../lib/http";
-import { responseScores, responses, scales, surveys, surveyVersions, users } from "../db/schema";
+import { responseScores, responses, scaleBands, scales, surveys, surveyVersions, users } from "../db/schema";
 import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
 import { alphasOf, changeOverSeries, normativeSamples } from "../lib/changeBasis";
@@ -358,6 +358,32 @@ dynamicsRoutes.get("/respondents/:userId", async (c) => {
       .filter((r): r is typeof r & { versionId: string } => !!r.versionId)
       .map((r) => ({ surveyId: r.surveyId, versionId: r.versionId })),
   );
+  /*
+   * Полосы интерпретации — лестница графика курса (полосы тяжести и «краще
+   * ↓ / ↑»). Берутся у шкалы ПОСЛЕДНЕГО замера: график рисует ряд в
+   * единицах последней версии, и полосы обязаны быть из неё же. Одним
+   * запросом по уже известным шкалам.
+   */
+  const lastScaleOf = new Map<string, string>();
+  for (const r of responseRows) {
+    for (const score of scoresByResponse.get(r.id) ?? []) {
+      const scale = scaleById.get(score.scaleId);
+      if (scale) lastScaleOf.set(`${r.surveyId}|${scale.code}`, scale.id);
+    }
+  }
+  const bandRows = lastScaleOf.size
+    ? await db
+        .select()
+        .from(scaleBands)
+        .where(inArray(scaleBands.scaleId, [...new Set(lastScaleOf.values())]))
+        .orderBy(asc(scaleBands.minScore))
+    : [];
+  const bandsOf = new Map<string, NonNullable<ScaleDynamics["bands"]>>();
+  for (const b of bandRows) {
+    const list = bandsOf.get(b.scaleId) ?? [];
+    list.push({ min: b.minScore, max: b.maxScore, label: t(b.label as never, lang), severity: b.severity });
+    bandsOf.set(b.scaleId, list);
+  }
   const versionIdOf = new Map(responseRows.map((r) => [r.id, r.versionId ?? null]));
   const reliableOf = new Map(responseRows.map((r) => [r.id, r.reliable]));
 
@@ -490,6 +516,7 @@ dynamicsRoutes.get("/respondents/:userId", async (c) => {
         entry.incomparable = change.incomparable;
         entry.equated = change.equated;
         entry.sem = change.sem;
+        entry.bands = bandsOf.get(lastScaleOf.get(`${surveyId}|${code}`) ?? "") ?? [];
       }
 
       return {
