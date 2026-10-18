@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import type { PublicServiceStatus, ServiceAnnouncement, ServiceStatus } from "@quizzy/shared";
-import { dateTime, locale, timeOfDay } from "../format";
+import { locale, timeOfDay } from "../format";
 import { useLang } from "../lang";
 import { minutesLeft, sameLocalDay, statusPollMs } from "../service/model";
 import { refreshServiceStatus, useServiceStatus } from "../service/status";
@@ -212,7 +212,11 @@ function NowState({ status, unreachable }: { status: PublicServiceStatus; unreac
   const look = LOOK[s];
   const attention = s !== "ok" || unreachable;
   const title = s === "maintenance" ? ut("svc.banner.maintenance") : s === "degraded" ? ut("svc.banner.degraded") : ut("ax.st.okTitle");
-  const at = (iso: string) => (sameLocalDay(iso, now) ? timeOfDay(iso) : dateTime(iso));
+  /* сегодня — только часы; другой день — «18.10, 21:00»: полная дата не помещается в колонку */
+  const at = (iso: string) =>
+    sameLocalDay(iso, now)
+      ? timeOfDay(iso)
+      : `${new Date(iso).toLocaleDateString(locale(), { day: "2-digit", month: "2-digit" })}, ${timeOfDay(iso)}`;
   const left = minutesLeft(status.expectedEnd, now);
   const span =
     status.since && status.expectedEnd ? Date.parse(status.expectedEnd) - Date.parse(status.since) : 0;
@@ -266,7 +270,7 @@ function NowState({ status, unreachable }: { status: PublicServiceStatus; unreac
           {status.since ? (
             <>
               <dt className="font-semibold text-text-2">{ut("svc.since")}</dt>
-              <dd className="m-0 text-right font-extrabold tabular-nums text-text">{dateTime(status.since)}</dd>
+              <dd className="m-0 text-right font-extrabold tabular-nums text-text">{at(status.since)}</dd>
             </>
           ) : null}
           {status.expectedEnd ? (

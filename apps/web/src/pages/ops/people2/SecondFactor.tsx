@@ -294,7 +294,7 @@ export function MfaSetupGate() {
           <p className="m-0">{ut("ax.mg.why")}</p>
         </Callout>
 
-        <div className="mt-5 grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.22fr)] items-stretch gap-4 max-[1180px]:grid-cols-2 max-[760px]:grid-cols-1">
+        <div className="mt-5 grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.36fr)] items-stretch gap-4 max-[1180px]:grid-cols-2 max-[760px]:grid-cols-1">
           {/* шаг 1: ключ — QR-кодом и строкой */}
           <Panel
             title={ut("ax.mg.s1")}

@@ -306,8 +306,8 @@ function PhoneRow({ icon, title, sub, tag }: { icon: ReactNode; title: string; s
     <div className="grid grid-cols-[28px_minmax(0,1fr)_12px] items-center gap-2.5 border-t border-divider px-3 py-2.5 first:border-t-0">
       <IconTile icon={icon} size={28} />
       <span className="min-w-0">
-        <b className="block truncate text-caption font-extrabold leading-4 text-text">{title}</b>
-        <small className="block truncate text-[10.5px] leading-[14px] text-muted">{sub}</small>
+        <b className="block text-[11.5px] font-extrabold leading-[15px] text-text">{title}</b>
+        <small className="block text-[10.5px] leading-[14px] text-muted">{sub}</small>
         <span className="mt-1 block">{tag}</span>
       </span>
       <Ic.chevronRight size={12} className="text-muted" />
@@ -404,7 +404,7 @@ export function SampleValues() {
             unit="%"
             severity={{ word: ut("lp.m.lowered"), level: "moderate" }}
             history={["24 %", "32 %"]}
-            change={{ delta: 16, threshold: 14, unit: ut("lp.m.pp") }}
+            change={{ delta: 16, threshold: 14, unit: ` ${ut("lp.m.pp")}` }}
           />
         </BigValues>
       </Shot>

@@ -66,11 +66,13 @@ export default function Join() {
       className={cx(
         "inline-flex h-11 min-h-0 shrink-0 cursor-pointer items-center gap-2 rounded-pill border-0 bg-panel px-4",
         "text-[15px] font-extrabold text-violet-ink shadow-[inset_0_0_0_1px_var(--ctl)] hover:bg-violet-tint",
-        "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--focus)] max-[600px]:px-3",
+        "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--focus)]",
+        /* на телефоне — круглая кнопка со значком: шапка гостя в 390 иначе не помещается */
+        "max-[600px]:w-11 max-[600px]:justify-center max-[600px]:px-0",
       )}
     >
       <ShellIcon name="life-buoy" size={18} />
-      {ut("pt.help")}
+      <span className="max-[600px]:sr-only">{ut("pt.help")}</span>
     </button>
   );
 
