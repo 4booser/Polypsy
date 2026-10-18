@@ -199,6 +199,7 @@ function SummaryPanel({ t }: { t: OpsTrace }) {
           icon={<OpsIcon name={failed ? "octagon-x" : s ? "circle-check" : "circle-dashed"} />}
         />
         <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+          {s ? (
           <div className="flex min-w-0 flex-wrap items-center gap-2.5">
             <MethodRoute
               method={s?.method ?? null}
@@ -207,6 +208,9 @@ function SummaryPanel({ t }: { t: OpsTrace }) {
             />
             <HttpCode code={s?.status ?? null} />
           </div>
+          ) : (
+            <b className="text-[15px] font-extrabold text-text">{ut("opx.tr.noSummaryTitle")}</b>
+          )}
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-small text-text-2">
             {at ? <span className="tabular-nums">{fullStamp(at, loc)}</span> : null}
             <span aria-hidden className="h-3 w-px bg-border" />

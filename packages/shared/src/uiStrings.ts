@@ -8397,6 +8397,7 @@ export const UI = {
   },
 
   /* траса, порівняння випусків, повільні SQL (obs2a) */
+  "opx.tr.noSummaryTitle": { uk: "Запит без підсумку", ru: "Запрос без итога", en: "Request without a summary" },
   "opx.tr.metaAudit": { uk: "перегляд траси теж пишеться в журнал", ru: "просмотр трассы тоже пишется в журнал", en: "viewing a trace is audited too" },
   "opx.tr.sqlShare": { uk: "з них SQL — {v} часу", ru: "из них SQL — {v} времени", en: "SQL took {v} of it" },
   "opx.tr.noSql": { uk: "SQL не виміряно", ru: "SQL не измерен", en: "SQL not measured" },
@@ -8430,6 +8431,7 @@ export const UI = {
   "opx.st.metaTime": { uk: "{t} часу бази", ru: "{t} времени базы", en: "{t} of database time" },
   "opx.st.metaSub": { uk: "накопичено pg_stat_statements, а не те, що висить зараз", ru: "накоплено pg_stat_statements, а не то, что висит сейчас", en: "accumulated by pg_stat_statements, not what is running now" },
   "opx.st.offTitle": { uk: "Статистика не збирається", ru: "Статистика не собирается", en: "Statistics aren’t collected" },
+  "opx.st.offMeta": { uk: "pg_stat_statements для цієї бази не працює", ru: "pg_stat_statements для этой базы не работает", en: "pg_stat_statements isn’t working for this database" },
   "opx.st.where": { uk: "Куди йде час бази", ru: "Куда уходит время базы", en: "Where database time goes" },
   "opx.st.whereSub": { uk: "{t} за {days} дн., викликів {calls}", ru: "{t} за {days} дн., вызовов {calls}", en: "{t} over {days} days, {calls} calls" },
   "opx.st.whereSubNoDays": { uk: "{t}, викликів {calls}", ru: "{t}, вызовов {calls}", en: "{t}, {calls} calls" },
@@ -8485,6 +8487,8 @@ export const UI = {
   },
 
   /* обслуговування, прапорці, випуски (maint) */
+  "opx.mt.bannerTitleDot": { uk: "{title}.", ru: "{title}.", en: "{title}." },
+  "opx.mt.bannerTitleColon": { uk: "{title}:", ru: "{title}:", en: "{title}:" },
   "opx.mt.metaOk": { uk: "Працює, банера немає", ru: "Работает, баннера нет", en: "Running, no banner" },
   "opx.mt.metaOn": { uk: "Іде обслуговування: зміни не зберігаються", ru: "Идёт обслуживание: изменения не сохраняются", en: "Maintenance: changes aren’t saved" },
   "opx.mt.metaDegraded": { uk: "Оголошено збої: люди бачать банер", ru: "Объявлены сбои: люди видят баннер", en: "Disruption announced: people see a banner" },
@@ -8542,6 +8546,7 @@ export const UI = {
   "opx.fl.metaBold": { uk: "{flags}, увімкнено {on}", ru: "{flags}, включено {on}", en: "{flags}, {on} on" },
   "opx.fl.metaEditing": { uk: "змінюється «{name}»", ru: "меняется «{name}»", en: "editing “{name}”" },
   "opx.fl.metaNobody": { uk: "увімкнено, але нікому: {n}", ru: "включено, но никому: {n}", en: "on but for nobody: {n}" },
+  "opx.fl.metaNone": { uk: "жоден не ввімкнений", ru: "ни один не включён", en: "none is on" },
   "opx.fl.metaOk": { uk: "кожен увімкнений комусь діє", ru: "каждый включённый кому-то действует", en: "every flag that is on applies to someone" },
   "opx.fl.sub": { uk: "увімкнено {on}, з них нікому — {nobody}", ru: "включено {on}, из них никому — {nobody}", en: "{on} on, {nobody} of them for nobody" },
   "opx.fl.notRight": { uk: "Прапорець — не право: закрите правом лишається закритим", ru: "Флаг — не право: закрытое правом остаётся закрытым", en: "A flag isn’t a permission: what a permission closes stays closed" },

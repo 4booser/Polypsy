@@ -3,7 +3,7 @@ import type { ReleaseEntry, ReleasesView } from "@quizzy/shared";
 import { api } from "../../../api";
 import { useAuth } from "../../../auth";
 import { Figure, TimeColumns } from "../../../charts/clinical";
-import { dateTime, day, duration, locale } from "../../../format";
+import { day, locale } from "../../../format";
 import { useLang } from "../../../lang";
 import { DataTable, Loading, Modal, useAction, type Column } from "../../../ui";
 import { cx } from "../../../ui/cx";
@@ -12,6 +12,7 @@ import { Button, ButtonLink, Tag } from "../../../ui/primitives";
 import { useResource } from "../../../useResource";
 import { fill } from "../../dashboard/model";
 import { OpsIcon } from "../icons";
+import { fmtUptime } from "../model";
 import { CopyLinkButton, Mono, OpsHead, PanelNote, Quiet, StatusMark } from "../parts";
 import { perWeek, rollbackPlan, shortSha, uptimeMs, weeklyDeploys, type RollbackPlan } from "./model";
 
@@ -98,6 +99,13 @@ export default function OpsReleases() {
   );
 }
 
+/** Время жизни выпуска двумя старшими единицами: «5 дн. 2 год», «38 хв» */
+const life = (ms: number) => fmtUptime(Math.round(ms / 1000), locale());
+
+/** Момент выкатки коротко: «06.10.2026, 21:41» */
+const stamp = (iso: string) =>
+  new Date(iso).toLocaleString(locale(), { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+
 /** Номер миграции из её тега: «0118_visit_recording_retention» → «0118» */
 const migNo = (tag: string) => /^\d+/.exec(tag)?.[0] ?? tag;
 
@@ -147,8 +155,8 @@ function CurrentPanel({ view }: { view: ReleasesView }) {
       sub: r.lastMigration ? <Mono className="text-muted">{r.lastMigration}</Mono> : null,
     },
     { key: "by", label: ut("rl.by"), value: r.deployedBy ?? "—", sub: null },
-    { key: "at", label: ut("opx.rl.started"), value: dateTime(r.startedAt), sub: null },
-    { key: "up", label: ut("rl.uptime"), value: duration(uptimeMs(r, now)), sub: r.endedAt ? null : ut("rl.now") },
+    { key: "at", label: ut("opx.rl.started"), value: stamp(r.startedAt), sub: null },
+    { key: "up", label: ut("rl.uptime"), value: life(uptimeMs(r, now)), sub: r.endedAt ? null : ut("rl.now") },
     {
       key: "ci",
       label: ut("rl.run"),
@@ -170,7 +178,7 @@ function CurrentPanel({ view }: { view: ReleasesView }) {
         <div className="min-w-0">
           <span className="block text-caption font-bold text-muted">{ut("rl.running")}</span>
           <span className="flex flex-wrap items-center gap-2">
-            <Mono className="text-big font-extrabold leading-7 text-text">{version}</Mono>
+            <span className="font-mono text-[22px] font-bold leading-7 text-text">{version}</span>
             <Tag tone="good" icon={<OpsIcon name="check" />}>
               {ut("opx.rl.live")}
             </Tag>
@@ -242,7 +250,7 @@ function RollbackPanel({ view, plan }: { view: ReleasesView; plan: RollbackPlan 
     ? fill(ut("opx.rl.ran"), {
         from: day(t.startedAt),
         to: day(t.endedAt),
-        d: duration(uptimeMs(t, Date.now())),
+        d: life(uptimeMs(t, Date.now())),
       })
     : null;
   return (
@@ -393,7 +401,7 @@ function CadenceFacts({ items }: { items: readonly ReleaseEntry[] }) {
     <dl className="m-0 mt-4 grid grid-cols-[repeat(2,minmax(0,1fr))] gap-4 border-t border-divider pt-3">
       <div>
         <dt className="text-caption font-bold text-muted">{ut("opx.rl.avgLife")}</dt>
-        <dd className="m-0 mt-0.5 font-extrabold">{avg === null ? "—" : duration(avg)}</dd>
+        <dd className="m-0 mt-0.5 font-extrabold">{avg === null ? "—" : life(avg)}</dd>
       </div>
       <div>
         <dt className="text-caption font-bold text-muted">{ut("opx.rl.rollbacks")}</dt>
@@ -456,7 +464,7 @@ function HistoryPanel({ items }: { items: ReleaseEntry[] }) {
         ),
     },
     { key: "by", header: ut("rl.by"), width: 140, required: true, render: (r) => <span className="text-text-2">{r.deployedBy ?? "—"}</span> },
-    { key: "at", header: ut("opx.rl.started"), width: 150, required: true, render: (r) => <span className="tabular-nums text-text-2">{dateTime(r.startedAt)}</span> },
+    { key: "at", header: ut("opx.rl.started"), width: 150, required: true, render: (r) => <span className="tabular-nums text-text-2">{stamp(r.startedAt)}</span> },
     {
       key: "up",
       header: ut("rl.uptime"),
@@ -464,9 +472,9 @@ function HistoryPanel({ items }: { items: ReleaseEntry[] }) {
       required: true,
       render: (r) =>
         r.endedAt ? (
-          <span className="tabular-nums text-text-2">{duration(uptimeMs(r, now))}</span>
+          <span className="tabular-nums text-text-2">{life(uptimeMs(r, now))}</span>
         ) : (
-          <b className="font-extrabold text-good">{fill(ut("opx.rl.stillRunning"), { d: duration(uptimeMs(r, now)) })}</b>
+          <b className="font-extrabold text-good">{fill(ut("opx.rl.stillRunning"), { d: life(uptimeMs(r, now)) })}</b>
         ),
     },
     {

@@ -60,7 +60,7 @@ export default function OpsStatementsPage() {
           ? null
           : d.state === "ok"
             ? [fill(ut("opx.st.metaTime"), { t: fmtLong(dbTotal ?? 0, loc) }), ut("opx.st.metaSub")]
-            : [ut("opx.st.offTitle"), ut(STATEMENTS_STATE_KEY[d.state])]
+            : [ut("opx.st.offTitle"), ut("opx.st.offMeta")]
       }
       actions={
         <>
@@ -197,7 +197,7 @@ function StatementsPanel({
       footer={
         d.hidden > 0 ? (
           <PanelNote icon="eye-off">
-            {fill(ut("ops.sql.hidden"), { n: fmtInt(d.hidden, loc) })} <Mono className="text-text">GRANT pg_read_all_stats TO quizzy_app;</Mono>
+            {fill(ut("ops.sql.hidden"), { n: fmtInt(d.hidden, loc) })} <Mono className="text-text">{CODE.grant}</Mono>
           </PanelNote>
         ) : (
           <PanelNote>{ut("ops.sql.hint")}</PanelNote>

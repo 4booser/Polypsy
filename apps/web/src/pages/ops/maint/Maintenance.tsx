@@ -184,16 +184,12 @@ function ModeAndPreview({ data, manage, onChanged }: { data: OpsServiceStatus; m
                   <Textarea rows={3} maxLength={500} value={message} onChange={(e) => setMessage(e.target.value)} placeholder={ut("opx.ov.messagePh")} />
                 </Field>
                 <div className="flex flex-wrap items-end gap-4">
-                  <Field label={ut("mt.until")}>
-                    <Input
-                      type="datetime-local"
-                      value={until}
-                      onChange={(e) => setUntil(e.target.value)}
-                      icon={<OpsIcon name="calendar-clock" />}
-                      className="w-[240px]"
-                    />
-                  </Field>
-                  <span className="max-w-[320px] pb-2 text-caption leading-4 text-muted">{ut("opx.mt.countdownNote")}</span>
+                  <div className="w-[240px] shrink-0">
+                    <Field label={ut("mt.until")}>
+                      <Input type="datetime-local" value={until} onChange={(e) => setUntil(e.target.value)} />
+                    </Field>
+                  </div>
+                  <span className="max-w-[280px] pb-2 text-caption leading-4 text-muted">{ut("opx.mt.countdownNote")}</span>
                 </div>
                 <div className="flex flex-wrap items-center gap-4">
                   <Button variant="primary" icon={<OpsIcon name="construction" />} disabled={busy} onClick={() => setConfirm(true)}>
@@ -296,7 +292,8 @@ function BannerPreview({ message, until }: { message: string | null; until: stri
     <div className="flex items-start gap-2.5 bg-warn-tint px-3 py-2.5 text-small leading-[18px] text-text-2 shadow-[inset_0_-1px_0_var(--warnline)]">
       <OpsIcon name="construction" size={16} className="mt-px shrink-0 text-warn" />
       <span className="min-w-0 flex-1">
-        <b className="font-extrabold text-warn">{ut("svc.banner.maintenance")}.</b> {message ?? ut("svc.banner.maintenanceHint")}
+        <b className="font-extrabold text-warn">{fill(ut(message ? "opx.mt.bannerTitleDot" : "opx.mt.bannerTitleColon"), { title: ut("svc.banner.maintenance") })}</b>{" "}
+        {message ?? ut("svc.banner.maintenanceHint")}
       </span>
       {until ? (
         <span className="shrink-0 whitespace-nowrap font-semibold text-text-2">

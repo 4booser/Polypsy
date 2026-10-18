@@ -367,7 +367,7 @@ export function TraceBox({ wide, initial = "", className }: { wide?: boolean; in
     <form
       role="search"
       aria-label={ut("ops.trace.search")}
-      className={cx("relative max-[700px]:w-full", className)}
+      className={cx("relative shrink-0 max-[700px]:w-full", wide ? "w-[370px]" : "w-[260px]", className)}
       onSubmit={(e) => {
         e.preventDefault();
         const id = parseRequestId(value);
@@ -386,10 +386,7 @@ export function TraceBox({ wide, initial = "", className }: { wide?: boolean; in
         }}
         icon={<OpsIcon name="route" size={15} />}
         suffix={<Kbd>↵</Kbd>}
-        className={cx(
-          wide ? "w-[370px]" : "w-[260px]",
-          "max-[700px]:w-full [&_input]:font-mono [&_input]:text-[12.5px] [&_input::placeholder]:font-sans [&_input::placeholder]:text-[13px]",
-        )}
+        className="[&_input]:font-mono [&_input]:text-[12.5px] [&_input::placeholder]:font-sans [&_input::placeholder]:text-[13px]"
         autoComplete="off"
         spellCheck={false}
         maxLength={64}

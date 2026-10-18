@@ -129,22 +129,26 @@ export default function OpsReleasesPage() {
             }
           >
             <span className="text-small text-muted">{ut("ops.rel.before")}</span>
-            <Select aria-label={ut("ops.rel.before")} value={before} onChange={(e) => setBefore(e.target.value)} className="w-[220px]">
+            <span className="w-[230px] shrink-0">
+            <Select aria-label={ut("ops.rel.before")} value={before} onChange={(e) => setBefore(e.target.value)}>
               {releases.map((r) => (
                 <option key={r.version} value={r.version}>
                   {versionOption(r.version)}
                 </option>
               ))}
             </Select>
+            </span>
             <OpsIcon name="arrow-right" size={15} className="text-muted" />
             <span className="text-small text-muted">{ut("ops.rel.after")}</span>
-            <Select aria-label={ut("ops.rel.after")} value={after} onChange={(e) => setAfter(e.target.value)} className="w-[220px]">
+            <span className="w-[230px] shrink-0">
+            <Select aria-label={ut("ops.rel.after")} value={after} onChange={(e) => setAfter(e.target.value)}>
               {releases.map((r) => (
                 <option key={r.version} value={r.version}>
                   {versionOption(r.version)}
                 </option>
               ))}
             </Select>
+            </span>
             <Button
               variant="ghost"
               size="xs"
@@ -356,7 +360,7 @@ function CompareTable({ rows }: { rows: OpsRouteCompare[] }) {
       key: "requests",
       header: ut("ops.rel.requests"),
       num: true,
-      width: 96,
+      width: 80,
       required: true,
       sort: (r) => (r.after?.requests ?? 0) + (r.before?.requests ?? 0),
       render: (r) => (
@@ -369,7 +373,7 @@ function CompareTable({ rows }: { rows: OpsRouteCompare[] }) {
       key: "p95b",
       header: ut("ops.rel.p95Before"),
       num: true,
-      width: 92,
+      width: 84,
       required: true,
       sort: (r) => r.before?.p95 ?? null,
       render: (r) => <span className={few(r) ? "text-muted" : "text-text-2"}>{fmtMs(r.before?.p95 ?? null, loc)}</span>,
@@ -378,7 +382,7 @@ function CompareTable({ rows }: { rows: OpsRouteCompare[] }) {
       key: "p95a",
       header: ut("ops.rel.p95After"),
       num: true,
-      width: 92,
+      width: 84,
       required: true,
       sort: (r) => r.after?.p95 ?? null,
       render: (r) => (
@@ -388,7 +392,7 @@ function CompareTable({ rows }: { rows: OpsRouteCompare[] }) {
     {
       key: "latency",
       header: ut("ops.rel.p95Shift"),
-      width: 150,
+      width: 136,
       required: true,
       sort: (r) => (r.latency === "worse" ? 0 : r.latency === "better" ? 1 : r.latency === "same" ? 2 : 3),
       render: (r) => <Shift shift={r.latency} detail={latencyDetail(r.before, r.after, loc)} />,
@@ -397,7 +401,7 @@ function CompareTable({ rows }: { rows: OpsRouteCompare[] }) {
       key: "eb",
       header: ut("ops.rel.errBefore"),
       num: true,
-      width: 76,
+      width: 68,
       required: true,
       sort: (r) => r.before?.share5xx ?? null,
       render: (r) => <span className="text-text-2">{fmtShare(r.before?.share5xx ?? null, loc)}</span>,
@@ -406,7 +410,7 @@ function CompareTable({ rows }: { rows: OpsRouteCompare[] }) {
       key: "ea",
       header: ut("ops.rel.errAfter"),
       num: true,
-      width: 76,
+      width: 68,
       required: true,
       sort: (r) => r.after?.share5xx ?? null,
       render: (r) => <span className={r.errors === "worse" ? "font-extrabold text-warn" : "text-text-2"}>{fmtShare(r.after?.share5xx ?? null, loc)}</span>,
@@ -414,7 +418,7 @@ function CompareTable({ rows }: { rows: OpsRouteCompare[] }) {
     {
       key: "errors",
       header: ut("ops.rel.errShift"),
-      width: 130,
+      width: 120,
       required: true,
       sort: (r) => (r.errors === "worse" ? 0 : r.errors === "better" ? 1 : r.errors === "same" ? 2 : 3),
       render: (r) => {

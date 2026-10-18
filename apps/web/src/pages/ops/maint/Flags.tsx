@@ -86,7 +86,13 @@ export default function OpsFlags() {
         data
           ? [
               fill(ut("opx.fl.metaBold"), { flags: count(["opx.fl.flags.one", "opx.fl.flags.few", "opx.fl.flags.many"], items.length), on }),
-              drawerOpen && flag ? fill(ut("opx.fl.metaEditing"), { name: title(flag) }) : nobody ? fill(ut("opx.fl.metaNobody"), { n: nobody }) : ut("opx.fl.metaOk"),
+              drawerOpen && flag
+                ? fill(ut("opx.fl.metaEditing"), { name: title(flag) })
+                : nobody
+                  ? fill(ut("opx.fl.metaNobody"), { n: nobody })
+                  : on
+                    ? ut("opx.fl.metaOk")
+                    : ut("opx.fl.metaNone"),
             ]
           : null
       }
@@ -194,7 +200,7 @@ const PART_ICON: Record<"roles" | "staffRoles" | "users" | "surveyGroups" | "dep
 };
 
 /** «Кому» пилюлями: класс, должность, человек, группа, отделение — каждая со своим значком */
-function Audience({ a, view }: { a: FeatureFlagAudience; view: OpsFlagsView }) {
+function Audience({ a, view, enabled }: { a: FeatureFlagAudience; view: OpsFlagsView; enabled: boolean }) {
   const { ut, lang } = useLang();
   if (a.all) return <Tag tone="primary">{ut("fl.everyone")}</Tag>;
   const parts: { key: string; icon: Parameters<typeof OpsIcon>[0]["name"]; label: string }[] = [
@@ -204,7 +210,7 @@ function Audience({ a, view }: { a: FeatureFlagAudience; view: OpsFlagsView }) {
     ...a.surveyGroups.map((id) => ({ key: `g-${id}`, icon: PART_ICON.surveyGroups, label: view.names.surveyGroups[id] ?? id })),
     ...a.departments.map((id) => ({ key: `d-${id}`, icon: PART_ICON.departments, label: view.names.departments[id] ? t(view.names.departments[id]!, lang) : id })),
   ];
-  if (!parts.length) return <b className="text-small font-extrabold text-warn">{ut("fl.nobody")}</b>;
+  if (!parts.length) return <b className={cx("text-small font-extrabold", enabled ? "text-warn" : "text-muted")}>{ut("fl.nobody")}</b>;
   return (
     <>
       {parts.map((p) => (
@@ -260,7 +266,7 @@ function FlagRow({
         {flag.description ? <p className="m-0 mt-0.5 text-[13px] leading-[19px] text-text-2">{flag.description[lang] ?? flag.description.uk}</p> : null}
         <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1.5 text-small text-muted">
           <span>{ut("fl.audience")}</span>
-          <Audience a={flag.audience} view={view} />
+          <Audience a={flag.audience} view={view} enabled={flag.enabled} />
           {flag.updatedAt ? (
             <span className="ml-1">{fill(ut("opx.fl.changed"), { time: dateTime(flag.updatedAt), by: flag.updatedBy ?? "—" })}</span>
           ) : null}
