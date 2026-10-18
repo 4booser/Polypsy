@@ -1238,17 +1238,30 @@ export const dateRangeQuery = z.object({
 });
 
 /**
+ * Идентификатор группы пациентов в параметре запроса — формой id, а не uuid.
+ *
+ * patient_groups.id — text. Группы, заведённые кнопкой, получают uuid, а у
+ * групп посева и demo-fill постоянные id вида «demo-pg-risk»
+ * (seed/demoGroupsRules.ts), и в живых базах они уже лежат. Проверка как uuid
+ * отвечала на них 400: «Стан групи» демо-группы стоял отказом, а «з ризиком»
+ * вёл в очередь случаев с ошибкой. Буквы, цифры, дефис и подчёркивание до 64
+ * знаков покрывают обе формы и по-прежнему не пускают в условие что угодно;
+ * чужая или несуществующая группа — «не найдено» (assertPatientGroupAccess).
+ */
+export const patientGroupRef = z.string().regex(/^[\w-]{1,64}$/);
+
+/**
  * Срез аналитики методики: период, версия, один человек или группа людей.
  *
  * Идентификаторы проверяются формой, а не только существованием: строка в
  * параметре уходит в условие запроса, и «что угодно длиной до мегабайта»
  * там не нужно. Версия — не uuid по форме у старых записей, поэтому только
- * длиной.
+ * длиной; группа пациентов — формой id (patientGroupRef).
  */
 export const surveyAnalyticsQuery = dateRangeQuery.extend({
   versionId: z.string().max(64).optional(),
   userId: z.string().uuid().optional(),
-  patientGroup: z.string().uuid().optional(),
+  patientGroup: patientGroupRef.optional(),
 });
 
 /**
