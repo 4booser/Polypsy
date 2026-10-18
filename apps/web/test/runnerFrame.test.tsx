@@ -76,16 +76,32 @@ describe("инструкция — до первого пункта", () => {
     expect(html).toContain("Як часто за останні 2 тижні вас турбувало…");
     expect(has(html, "ms.start")).toBe(true);
     expect(has(html, "ms.questions")).toBe(true);
-    expect(html).toContain(">9<");
-    // выход с экрана инструкции — тот же, что над пунктами
-    expect(has(html, "pw.leave")).toBe(true);
+    // сколько пунктов — числом рядом с подписью: «Питань: 9»
+    const q = UI["ms.questions"] as { uk: string; ru: string; en?: string };
+    expect([q.uk, q.ru, q.en].some((t) => !!t && html.includes(`${t}: 9`))).toBe(true);
+    // уйти с инструкции можно «Пізніше»; «Вийти з методики» — на полосе прохождения над любым экраном
+    expect(has(html, "ptw.later")).toBe(true);
+    expect(RUNNER).toContain("<RunnerBar");
+    // начатое на устройстве — «Продовжити» и «Почати заново»
+    const resumed = draw(
+      <RunnerIntro
+        survey={{ title: "PHQ-9", instructions: "т" }}
+        count={9}
+        onStart={() => {}}
+        onLeave={() => {}}
+        resume={{ answered: 3, savedAt: null }}
+        onRestart={() => {}}
+      />,
+    );
+    expect(has(resumed, "ptw.restart")).toBe(true);
+    expect(has(resumed, "ptw.continue")).toBe(true);
   });
 
   test("Runner показывает инструкцию раньше первого пункта", () => {
     const intro = RUNNER.indexOf("<RunnerIntro");
     expect(intro, "Runner не рисует экран инструкции").toBeGreaterThan(0);
     expect(RUNNER).toContain("!started && hasIntro(survey)");
-    expect(intro, "инструкция рисуется после пункта").toBeLessThan(RUNNER.indexOf("ref={headingRef}\n                id={titleId}"));
+    expect(intro, "инструкция рисуется после пункта").toBeLessThan(RUNNER.indexOf("id={titleId}"));
   });
 });
 
@@ -159,8 +175,10 @@ describe("allowBack", () => {
     expect(canGoBack({ allowBack: true }, 1)).toBe(true);
   });
 
-  test("кнопку «Назад» Runner рисует по canGoBack", () => {
-    expect(RUNNER).toContain("canGoBack(survey, step) ? (");
+  test("кнопку «Назад» Runner рисует по allowBack и включает по canGoBack", () => {
+    // запрещён возврат — кнопки нет вовсе; на первом пункте — есть, но выключена
+    expect(RUNNER).toContain("survey.allowBack !== false ? (");
+    expect(RUNNER).toContain("disabled={!canGoBack(survey, step)}");
     expect(RUNNER).not.toContain("{step > 0 ? (");
   });
 });

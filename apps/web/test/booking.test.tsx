@@ -80,9 +80,11 @@ describe("экран записи в разметке", () => {
     );
     expect(has(html, "pt.noSlots"), "пока список грузится, экран говорит, что записаться некуда").toBe(false);
     expect(has(html, "common.loading")).toBe(true);
-    // и записываться не на что: кнопка выключена, пока время не выбрано
-    const e = UI["pt.bookNow"] as { uk: string; ru: string; en?: string };
-    const book = [...html.matchAll(/<button([^>]*)>([^<]*)<\/button>/g)].find((m) => [e.uk, e.ru, e.en].includes(m[2]!));
+    // и записываться не на что: «Перевірити й записатися» выключена, пока время не выбрано
+    const e = UI["ptw.reviewBook"] as { uk: string; ru: string; en?: string };
+    const book = [...html.matchAll(/<button([^>]*)>(.*?)<\/button>/g)].find((m) =>
+      [e.uk, e.ru, e.en].some((t) => !!t && m[2]!.includes(t)),
+    );
     expect(book?.[1]).toMatch(/\sdisabled=""/);
   });
 });

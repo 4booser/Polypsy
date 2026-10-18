@@ -129,9 +129,12 @@ describe("матрица", () => {
       </LangProvider>,
     );
     for (const row of rows(q)) expect(html).toContain(row.text);
-    expect(html.match(/role="group"/g)?.length).toBe(4);
-    expect(html.match(/aria-pressed="(true|false)"/g)?.length).toBe(16);
-    expect(html.match(/aria-pressed="true"/g)?.length).toBe(1);
+    // строка — радиогруппа, названная своей подписью; ячейка — радио с отметкой выбора
+    expect(html.match(/role="radiogroup"/g)?.length).toBe(4);
+    expect(html.match(/role="radio"/g)?.length).toBe(16);
+    expect(html.match(/aria-checked="true"/g)?.length).toBe(1);
+    // подпись столбца — именем ячейки (на широком экране видна в шапке, у ячейки — для диктора)
+    for (const c of columns(q)) expect(html).toContain(c.text);
   });
 });
 
@@ -159,7 +162,7 @@ describe("ранжирование", () => {
         <RankingInput question={q} answer={toggleRank(undefined, columns(q)[1]!.id)} onChange={() => {}} />
       </LangProvider>,
     );
-    expect(html).toContain("<ol");
+    // варианты стоят на своих местах; расставленный — с номером места, остальные — с местом, куда встанут
     expect(html).toContain("1: Робота");
     expect(html).toContain("Сон. ");
     expect(html.match(/<button/g)?.length).toBe(3);
