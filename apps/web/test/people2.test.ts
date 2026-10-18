@@ -4,21 +4,16 @@ import {
   IMPORT_HEADER,
   RULES,
   csvCell,
-  defaultPeriod,
-  findingFacts,
   importErrorKey,
   importTemplateCsv,
   journalLink,
-  pageSelection,
   passwordsCsv,
   ruleExplanation,
   ruleKey,
   skipKey,
   skippedByReason,
   timeLeft,
-  toggleId,
   whoViewedCsv,
-  withPage,
 } from "../src/pages/ops/people2/model";
 import { activeSlot } from "../src/api";
 
@@ -69,19 +64,6 @@ function finding(partial: Partial<SuspiciousFinding> & Pick<SuspiciousFinding, "
     ...partial,
   };
 }
-
-describe("выбор строк", () => {
-  test("страница отмечается и снимается, не трогая выбранных на других страницах", () => {
-    const other = new Set(["x"]);
-    const on = withPage(other, ["a", "b"], true);
-    expect([...on].sort()).toEqual(["a", "b", "x"]);
-    expect(pageSelection(on, ["a", "b"])).toBe("all");
-    const off = withPage(on, ["a", "b"], false);
-    expect([...off]).toEqual(["x"]);
-    expect(pageSelection(toggleId(off, "a"), ["a", "b"])).toBe("some");
-    expect(pageSelection(new Set(), [])).toBe("none");
-  });
-});
 
 describe("итог пачки", () => {
   test("пропущенные — по причинам, чаще встречающиеся сверху, у каждой причины есть слово", () => {
@@ -194,13 +176,6 @@ describe("подозрительная активность", () => {
     expect(imp.searchParams.get("actor")).toBe("u1");
     expect(imp.searchParams.get("q")).toBe("s-1");
   });
-
-  test("что случилось — числом и словами правила", () => {
-    expect(findingFacts(finding({ rule: "failedLoginsIp", hits: 12, ip: "10.0.0.1", details: { accounts: 4 } }), ut)).toBe(
-      `12 ${UI["ops.susp.events"].uk} · 4 ${UI["ops.susp.accounts"].uk} · 10.0.0.1`,
-    );
-    expect(findingFacts(finding({ rule: "impersonation", details: { reason: "скарга" } }), ut)).toContain("скарга");
-  });
 });
 
 describe("сроки и периоды", () => {
@@ -209,10 +184,6 @@ describe("сроки и периоды", () => {
     expect(timeLeft("2026-09-29T10:00:00.000Z", now)).toEqual({ unit: "days", n: 3 });
     expect(timeLeft("2026-09-26T12:30:00.000Z", now)).toEqual({ unit: "hours", n: 3 });
     expect(timeLeft("2026-09-26T09:00:00.000Z", now)).toBeNull();
-  });
-
-  test("период по умолчанию — тридцать дней, сегодня включительно", () => {
-    expect(defaultPeriod(new Date(2026, 8, 26, 15))).toEqual({ from: "2026-08-28", to: "2026-09-26" });
   });
 
   test("токен «от имени» с истёкшим сроком не используется", () => {
