@@ -10,6 +10,7 @@ import {
   type UiKey,
 } from "@quizzy/shared";
 import { api, openInTab } from "../api";
+import { useAuth } from "../auth";
 import { CourseChart } from "../charts/course";
 import { courseEventsFromTimeline, courseFromDynamics } from "../charts/courseModel";
 import { TimeLines } from "../charts/clinical";
@@ -132,6 +133,7 @@ const CLOSED: DrawerState = { open: false, mode: "who", who: null, people: [] };
 
 export function PatientList() {
   const { ut, lang } = useLang();
+  const { user } = useAuth();
   const locale = LOCALE_OF[lang];
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
@@ -160,7 +162,7 @@ export function PatientList() {
     if (stale) update({ group: null });
   }, [stale, update]);
 
-  const query = registerQuery({ q: qSent, group: current?.id ?? null, view, mine, sort, page, per });
+  const query = registerQuery({ q: qSent, group: current?.id ?? null, view, mine, me: user?.id ?? null, sort, page, per });
   const list = useResource(() => api.patientRegister(query), [JSON.stringify(query)], { enabled: !pending });
   const rows = list.data?.items ?? [];
   const total = list.data?.total ?? 0;
@@ -177,12 +179,13 @@ export function PatientList() {
   }, [list.data, page, pages, update]);
 
   /*
-   * Числа шапки и вкладки «Усі» — без поиска: «248 людей» не должно
-   * превращаться в «3» на каждую букву. Запоминаются по вкладке из ответа без
-   * поиска; пока такого ответа не было, числа нет, а не ноль.
+   * Числа шапки и вкладки «Усі» — без поиска и без «за мною»: «248 людей» не
+   * должно превращаться в «3» на каждую букву или в число моих. Запоминаются
+   * по вкладке из ответа без сужения; пока такого ответа не было, числа нет,
+   * а не ноль.
    */
   const baseCounts = useRef(new Map<string, PatientListCounts>());
-  if (list.data?.counts && !query.q) baseCounts.current.set(current?.id ?? "", list.data.counts);
+  if (list.data?.counts && !query.q && !query.lead) baseCounts.current.set(current?.id ?? "", list.data.counts);
   const allCounts = baseCounts.current.get("") ?? null;
   const counts = list.data?.counts ?? null;
 

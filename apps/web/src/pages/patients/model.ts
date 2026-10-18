@@ -44,23 +44,31 @@ export function registerPer(raw: string | null): number {
 
 /**
  * Что из адреса уходит на сервер реестра. Пустое не уходит вовсе: `q=` и
- * `view=` сервер читал бы как отбор. «Закреплённые за мной» — то же
- * подання `mine`, только чипом: на кадре оно стоит в строке фильтров.
+ * `view=` сервер читал бы как отбор.
+ *
+ * «Закріплені за мною» — сужение поверх подання (`lead` — ведущий я), а не
+ * другое подання. Прежде чип отправлял `view=mine` вместо выбранной пилюли:
+ * на экране горели обе — «з ризиком» и «за мною», — а в списке стояли все
+ * мои, в том числе без риска. Сервер пересекает `lead` с зоной и с поданням,
+ * и счётчики пилюль считаются уже среди моих.
  */
 export function registerQuery(s: {
   q: string;
   group: string | null;
   view: ListView | null;
   mine: boolean;
+  /** Кто смотрит: «за мною» — его идентификатор */
+  me: string | null;
   sort: ListSort;
   page: number;
   per: number;
-}): { q?: string; patientGroup?: string; view?: string; sort: ListSort; limit: number; offset: number } {
+}): { q?: string; patientGroup?: string; view?: string; lead?: string; sort: ListSort; limit: number; offset: number } {
   const q = searchOf(s.q);
   return {
     ...(q ? { q } : {}),
     ...(s.group ? { patientGroup: s.group } : {}),
-    ...(s.mine ? { view: "mine" } : s.view ? { view: s.view } : {}),
+    ...(s.view ? { view: s.view } : {}),
+    ...(s.mine && s.me ? { lead: s.me } : {}),
     sort: s.sort,
     limit: s.per,
     offset: (s.page - 1) * s.per,

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { inArray } from "drizzle-orm";
 import { instrumentCode } from "@quizzy/shared";
 import { adminA, adminB, api, db, groupA, groupB, makeUser, submitSurvey, surveyInA, type Person } from "./fixtures";
 import {
@@ -128,6 +129,37 @@ describe("GET /api/patients — реестр 2.0", () => {
     expect(res.body.items[1].measure).toBeNull();
     /* замерянный сегодня — уже не «без заміру 30+ днів» */
     expect(res.body.counts.stale).toBe(1);
+  });
+
+  test("«за мною» поверх подання: lead пересекается с поданням, счётчики — среди моих", async () => {
+    /*
+     * Чип «Закріплені за мною» реестра уходит как lead (ведущий — я), а
+     * выбранная пилюля «Потребує уваги» — как view: обе действуют вместе.
+     */
+    const tag = crypto.randomUUID().slice(0, 8);
+    const mineRisky = await patientOfA(`${tag}-mine-risk`, { leadSpecialistId: adminA.id });
+    await patientOfA(`${tag}-mine-quiet`, { leadSpecialistId: adminA.id });
+    const otherRisky = await patientOfA(`${tag}-other-risk`);
+    const caseIds = [crypto.randomUUID(), crypto.randomUUID()];
+    await db.insert(alertCases).values([
+      { id: caseIds[0]!, userId: mineRisky.id, surveyId: surveyInA, severity: "severe" },
+      { id: caseIds[1]!, userId: otherRisky.id, surveyId: surveyInA, severity: "moderate" },
+    ]);
+    try {
+      const both = await api(`/api/patients?q=${tag}&view=risk&lead=${adminA.id}`, adminA.token);
+      expect(both.status).toBe(200);
+      expect(ids(both.body)).toEqual([mineRisky.id]);
+      expect(both.body.counts).toMatchObject({ all: 2, mine: 2, risk: 1 });
+
+      const risk = await api(`/api/patients?q=${tag}&view=risk`, adminA.token);
+      expect(ids(risk.body).sort()).toEqual([mineRisky.id, otherRisky.id].sort());
+    } finally {
+      /* открытые случаи — в разобранные: очередь adminA общая для всей сюиты */
+      await db
+        .update(alertCases)
+        .set({ acknowledgedAt: new Date().toISOString(), acknowledgedBy: adminA.id, outcome: "not_confirmed" })
+        .where(inArray(alertCases.id, caseIds));
+    }
   });
 
   test("чужая зона: случай и строка по чужому человеку не видны", async () => {

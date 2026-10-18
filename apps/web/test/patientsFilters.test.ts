@@ -94,11 +94,12 @@ describe("адрес → запрос: до сервера", () => {
 
   test("поиск, подання, порядок и страница — в запросе; пустое не уходит вовсе", async () => {
     // так зовёт загрузку реестр (Patients.tsx, PatientList)
-    const base = { group: null, view: null, mine: false, sort: "risk" as const, page: 1, per: 20 };
+    const base = { group: null, view: null, mine: false, me: "me-1", sort: "risk" as const, page: 1, per: 20 };
     await api.patientRegister(registerQuery({ ...base, q: " Коваль " }));
     await api.patientRegister(registerQuery({ ...base, q: "   ", group: "g1", view: "stale", page: 3, per: 50 }));
     await api.patientRegister(registerQuery({ ...base, q: "", view: "risk", mine: true }));
-    const [first, second, third] = seen.map((s) => new URL(s, "http://x"));
+    await api.patientRegister(registerQuery({ ...base, q: "", mine: true }));
+    const [first, second, third, fourth] = seen.map((s) => new URL(s, "http://x"));
     expect(first!.pathname).toBe("/api/patients");
     expect(first!.searchParams.get("q")).toBe("Коваль");
     expect(first!.searchParams.get("limit")).toBe("20");
@@ -110,8 +111,17 @@ describe("адрес → запрос: до сервера", () => {
     expect(second!.searchParams.get("patientGroup")).toBe("g1");
     expect(second!.searchParams.get("view")).toBe("stale");
     expect(second!.searchParams.get("offset")).toBe("100");
-    // «закріплені за мною» — то же подання mine, и оно главнее выбранной пилюли
-    expect(third!.searchParams.get("view")).toBe("mine");
+    /*
+     * «Закріплені за мною» — сужение поверх подання, а не подання вместо
+     * пилюли: на экране горят обе, и в списке — мои С РИСКОМ. Прежде уходило
+     * `view=mine`, выбранная «з ризиком» молча терялась, и в списке стояли
+     * все мои.
+     */
+    expect(third!.searchParams.get("view")).toBe("risk");
+    expect(third!.searchParams.get("lead")).toBe("me-1");
+    expect(fourth!.searchParams.has("view")).toBe(false);
+    expect(fourth!.searchParams.get("lead")).toBe("me-1");
+    expect(first!.searchParams.has("lead")).toBe(false);
   });
 });
 
