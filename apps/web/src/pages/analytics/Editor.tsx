@@ -1223,7 +1223,7 @@ function ReadModel({
     <Panel title={ut(isNew ? "am.readTitleNew" : "am.readTitle")} icon={<AIc.bookOpenText />}>
       <p className="m-0 text-body leading-[21px] text-text [&_b]:font-extrabold">
         {ut("am.rdLead")} {leadNode}
-        {clauses.length ? ", " : " "}
+        {", "}
         {clauses.map((c, i) => (
           <Fragment key={i}>
             {i > 0 ? (i === clauses.length - 1 ? ` ${ut("am.and")} ` : ", ") : null}
