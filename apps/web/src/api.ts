@@ -2174,9 +2174,17 @@ export const api = {
         endsAt: string;
         kind: "primary" | "repeat";
         mode: "onsite" | "remote";
-        status: string;
+        status: AppointmentView["status"];
         reason: string | null;
+        specialistId: string;
+        confirmedAt: string | null;
+        meetingUrl: string | null;
+        room: string | null;
+        /** Пояс отделения: часы приёма и окна следующей сессии — по нему */
+        tz: string;
       };
+      /** Прошлые приёмы человека (без этого): проведено и неявок */
+      visits: { done: number; noShow: number };
       patient: {
         id: string;
         fullName: string;
@@ -2234,6 +2242,31 @@ export const api = {
     ),
   removeScheduleException: (id: string) =>
     request<{ ok: true }>(`/api/clinic/schedule/exceptions/${id}`, { method: "DELETE" }),
+  /** Неделя календарём: приёмы, открытые окна и исключения с `from` на `days` дней по часам отделения */
+  scheduleWeek: (from: string, days = 7, specialistId?: string) => {
+    const q = new URLSearchParams({ from, days: String(days) });
+    if (specialistId) q.set("specialistId", specialistId);
+    return request<{
+      specialistId: string;
+      from: string;
+      to: string;
+      tz: string;
+      today: string;
+      appointments: AppointmentView[];
+      slots: { id: string; startsAt: string; endsAt: string; offSchedule: boolean }[];
+      exceptions: ScheduleExceptionView[];
+    }>(`/api/clinic/schedule/week?${q}`);
+  },
+  /** Перенести приём в свободное окно (сервер переносит и событие календаря Google, если оно есть) */
+  rescheduleAppointment: (id: string, slotId: string) =>
+    request<{ ok: true }>(`/api/clinic/appointments/${id}/reschedule`, {
+      method: "POST",
+      body: JSON.stringify({ slotId }),
+    }),
+  /** Календарь Google специалиста для ссылок Meet: настроен ли на сервере и подключён ли */
+  meetStatus: () =>
+    request<{ configured: boolean; connected: boolean; email: string | null }>("/api/meet/status"),
+  meetDisconnect: () => request<{ connected: false }>("/api/meet/disconnect", { method: "POST" }),
   departments: () =>
     request<{ items: { id: string; title: string; timezone: string }[] }>("/api/clinic/departments"),
   specialists: (departmentId?: string) => {
@@ -2303,7 +2336,8 @@ export const api = {
         meetingUrl: string | null;
       }[];
     }>("/api/clinic/appointments/mine"),
-  book: (body: { slotId: string; reason?: string | null; mode?: "onsite" | "remote" }) =>
+  /** Записать: себя (пациент) или человека по patientId (сотрудник с правом вести приёмы) */
+  book: (body: { slotId: string; reason?: string | null; mode?: "onsite" | "remote"; patientId?: string }) =>
     request<{ id: string; screeningSurveyId: string | null }>("/api/clinic/appointments", {
       method: "POST",
       body: JSON.stringify(body),

@@ -575,6 +575,7 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   "PUT /api/clinic/schedule": { summary: "Задать обычную неделю целиком; слоты пересобираются", access: "staff", permission: "schedule.own" },
   "POST /api/clinic/schedule/exceptions": { summary: "Отпуск, замена или дополнительный день", access: "staff", permission: "schedule.own", body: scheduleExceptionSchema },
   "DELETE /api/clinic/schedule/exceptions/:id": { summary: "Снять исключение", access: "staff", permission: "schedule.own" },
+  "GET /api/clinic/schedule/week": { summary: "Неделя календарём: приёмы, открытые окна и исключения по часам отделения", access: "staff", permission: "schedule.own" },
   "GET /api/clinic/slots": { summary: "Свободное время; повторные слоты видны прикреплённым", access: "user", whyNoPermission: "свободное время — не персональные данные, а расписание приёма; его смотрит и тот, кто ещё никуда не записан" },
   "POST /api/clinic/appointments": { summary: "Записаться; на первичном приёме создаётся прикрепление к отделению", access: "user", whyNoPermission: "себя записывает сам пациент; запись за другого проверяется правом внутри", body: bookAppointmentSchema },
   "GET /api/clinic/appointments/mine": { summary: "Свои приёмы", access: "user", whyNoPermission: "свои приёмы человек видит сам, и ограничивать это правом нечем" },

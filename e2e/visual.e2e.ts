@@ -511,7 +511,7 @@ const SCREENS: Array<{
        * снимок успевал дорисоваться, — а при воспроизведении экран получал
        * на свой запрос выдуманный 404.
        */
-      await page.getByRole("heading", { name: "Приём", exact: true }).waitFor();
+      await page.getByRole("heading", { name: "Протокол приёма" }).waitFor();
     },
   },
   {
