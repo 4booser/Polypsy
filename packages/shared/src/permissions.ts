@@ -665,3 +665,21 @@ export function accountRefusal(actor: AccountSide, target: AccountSide): Account
  * что это поломка, и пойдёт искать обход.
  */
 export const ALWAYS_VISIBLE_RAIL = ["nav.dashboard", "nav.worklist", "nav.cases"] as const;
+
+/**
+ * Віджети «Зведення» (Polypsy 2.0, pages/Dashboard.tsx) — в порядке по
+ * умолчанию.
+ *
+ * Порядок и выключенные хранятся в профиле (WorkspacePrefs.dashboard), а не
+ * в браузере: сотрудник садится за разные машины отделения.
+ */
+export const DASH_WIDGETS = ["cases", "day", "missed", "work", "passes", "collect", "conditions"] as const;
+export type DashWidget = (typeof DASH_WIDGETS)[number];
+
+/**
+ * Віджет, который не выключается: случаи риска. Правило то же, что у
+ * ALWAYS_VISIBLE_RAIL, — спрятав его, человек прячет не блок, а знание о
+ * неразобранном сигнале, и потому проверка стоит в схеме, а не только на
+ * экране настроек.
+ */
+export const ALWAYS_VISIBLE_WIDGETS = ["cases"] as const;

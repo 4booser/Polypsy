@@ -4383,6 +4383,14 @@ export interface AlertCase {
   minutesOpen: number;
   /** Просрочен по настройке эскалации методики */
   overdue: boolean;
+  /**
+   * Норма разбора методики, минут; null — эскалации у методики нет.
+   *
+   * Отдаётся числом рядом с `minutesOpen`, чтобы экран мог показать таймер
+   * «2:48 з 4 год» и время «розібрати до 18:12» той же нормой, по которой
+   * сервер ставит `overdue`, а не своей догадкой (Polypsy 2.0, «Сьогодні»).
+   */
+  escalateMinutes?: number | null;
 
   assignedTo: string | null;
   assignedToName: string | null;
@@ -4652,6 +4660,13 @@ export interface WorkspacePrefs {
    * должна показать смену, а не «всё с начала времён».
    */
   eventsSeenAt?: string | null;
+  /**
+   * Віджети «Зведення»: порядок и выключенные (ключи DASH_WIDGETS).
+   *
+   * Хранится порядок и список ВЫКЛЮЧЕННЫХ, а не включённых — по той же
+   * причине, что railHidden: новый віджет должен появиться у всех сам.
+   */
+  dashboard?: { order?: string[]; hidden?: string[] } | null;
 }
 
 /* ═══════════ Когорты ═══════════ */

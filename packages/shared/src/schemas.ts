@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ALWAYS_VISIBLE_RAIL } from "./permissions";
+import { ALWAYS_VISIBLE_RAIL, ALWAYS_VISIBLE_WIDGETS, DASH_WIDGETS } from "./permissions";
 import { CONTENT_LANGS, LANGS, type ContentLang } from "./types";
 import { calendarDay, dateInput } from "./dates";
 
@@ -1576,6 +1576,22 @@ export const workspacePrefsSchema = z.object({
     .optional(),
   /* метка «прочитано до» сравнивается с временем событий — кривая строка в ней ломала бы ленту */
   eventsSeenAt: dateInput.nullable().optional(),
+  /*
+   * Віджети «Зведення»: порядок и выключенные. Ключи — только известные
+   * (DASH_WIDGETS), а случаи риска выключить нельзя и запросом мимо экрана.
+   */
+  dashboard: z
+    .object({
+      order: z.array(z.enum(DASH_WIDGETS)).max(DASH_WIDGETS.length).optional(),
+      hidden: z
+        .array(z.enum(DASH_WIDGETS))
+        .max(DASH_WIDGETS.length)
+        .refine((keys) => !keys.some((k) => (ALWAYS_VISIBLE_WIDGETS as readonly string[]).includes(k)), {
+          message: "err.v.widgetAlwaysVisible",
+        })
+        .optional(),
+    })
+    .optional(),
 });
 
 /* ── Поликлиника: расписание и приёмы ── */

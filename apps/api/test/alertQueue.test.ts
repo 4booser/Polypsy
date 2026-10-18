@@ -320,6 +320,22 @@ describe("очередь на сотнях случаев", () => {
     expect(f.oldestOpenedAt).toBe(spec.flatMap(openCases).map((c) => c.openedAt).sort()[0]!);
   });
 
+  test("норма разбора приходит с каждым случаем — та же, по которой стоит «просрочено»", async () => {
+    /*
+     * Таймер «2:48 з 4 год» на «Сьогодні» и в сводке строится из
+     * minutesOpen и нормы методики. Норма приходит числом с сервера, а не
+     * угадывается экраном: иначе таймер и пометка «прострочено» расходились
+     * бы на любой методике с нормой не в четыре часа.
+     */
+    const res = await page("limit=40");
+    expect(res.status).toBe(200);
+    expect(res.body.items.length).toBeGreaterThan(0);
+    for (const row of res.body.items) {
+      expect(row.escalateMinutes).toBe(60);
+      expect(row.overdue).toBe(row.minutesOpen >= 60);
+    }
+  });
+
   test("счётчик варианта фильтра равен тому, что покажет нажатие", async () => {
     const all = (await page("limit=1")).body.facets!;
     const severe = await page("severity=severe&limit=1");

@@ -410,6 +410,7 @@ alertCaseRoutes.get("/", async (c) => {
         .select({
           c: alertCases,
           surveyTitle: surveys.title,
+          escalateMinutes: surveys.alertEscalateMinutes,
           overdue: overdueSql,
           unit: users.unit,
           // имена полей ровно как ждёт fullNameOf: он же расшифровывает и умеет
@@ -511,6 +512,7 @@ alertCaseRoutes.get("/", async (c) => {
         signals: signalsByCase.get(r.c.id) ?? [],
         minutesOpen,
         overdue: !!r.overdue,
+        escalateMinutes: r.escalateMinutes ?? null,
         assignedTo: r.c.assignedTo,
         assignedToName: r.c.assignedTo ? (staffNames.get(r.c.assignedTo) ?? null) : null,
         acknowledgedBy: r.c.acknowledgedBy,
