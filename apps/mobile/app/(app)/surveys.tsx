@@ -4,6 +4,7 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { LOCALE_OF } from "@quizzy/shared";
 import type { BatteryAssignment, BatteryStep, Lang, SurveyGroupWithCounts, SurveyListItem } from "@quizzy/shared";
 import { api } from "@/api/client";
+import { loadSurveysTab } from "@/catalog/surveysTab";
 import { useAuth } from "@/auth/AuthContext";
 import { Body, Card, Chip, Empty, ErrorText, Loader, Row, Title } from "@/components/ui";
 import { severityColor, spacing, useColors } from "@/theme";
@@ -39,24 +40,19 @@ export default function SurveysScreen() {
   const { onBehalfOf } = useLocalSearchParams<{ onBehalfOf?: string }>();
   const forPatient = onBehalfOf ? `?onBehalfOf=${onBehalfOf}` : "";
 
+  /*
+   * Группы — справочник консоли, пациенту он закрыт (403): его отказ
+   * ронял весь Promise.all, и вместо списка стояло «Доступно лише
+   * співробітникам». Загрузка — в catalog/surveysTab.ts: пациенту группы не
+   * запрашиваются, вспомогательные отказы список не роняют.
+   */
   const load = useCallback(async () => {
-    try {
-      setError(null);
-      const [g, s, b] = await Promise.all([
-        api.listGroups(),
-        api.listSurveys(),
-        // батареи не критичны для экрана: если они не поднялись, список
-        // методик всё равно должен открыться
-        api.myBatteries().catch(() => [] as BatteryAssignment[]),
-      ]);
-      setGroups(g);
-      setSurveys(s);
-      setBatteries(b.filter((x) => !x.completedAt && x.doneRequired < x.totalRequired));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : ut("surveys.loadFailed"));
-      setSurveys([]);
-    }
-  }, [ut]);
+    const data = await loadSurveysTab(api, { staff: isAdmin });
+    setError(data.surveysFailed ? ut("surveys.loadFailed") : null);
+    setGroups(data.groups);
+    setSurveys(data.surveys);
+    setBatteries(data.batteries);
+  }, [ut, isAdmin]);
 
   useFocusEffect(
     useCallback(() => {
