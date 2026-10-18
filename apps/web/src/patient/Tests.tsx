@@ -11,7 +11,7 @@ import { cx } from "../ui/cx";
 import { Button, ButtonLink, Tag } from "../ui/primitives";
 import { useResource, type Resource } from "../useResource";
 import { Glyph } from "./icons";
-import { drafts, type RunnerDraft } from "./outbox";
+import { drafts, type RunnerDraft } from "./drafts";
 import { OutboxPanel } from "./OutboxStrip";
 import type { PatientOutlet } from "./PatientApp";
 import { Count } from "../ui/layout";

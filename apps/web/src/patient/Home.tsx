@@ -12,7 +12,7 @@ import { ActionMenu } from "../ui/menu";
 import { Button, ButtonLink, Field, SeverityTag, Tag, Textarea, type Severity } from "../ui/primitives";
 import { useResource, type Resource } from "../useResource";
 import { Glyph } from "./icons";
-import { drafts, type RunnerDraft } from "./outbox";
+import { drafts, type RunnerDraft } from "./drafts";
 import type { PatientOutlet } from "./PatientApp";
 import { BandCard, Body, CallRows, CodeTile, Hero, MetaLine, Pending, PtPanel, SideGrid, instrumentCode, instrumentName } from "./parts";
 import { SafetyPlanDrawer } from "./SafetyPlan";

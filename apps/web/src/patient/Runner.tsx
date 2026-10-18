@@ -36,7 +36,8 @@ import {
 } from "./answerInputs";
 import { ConsentAside, ConsentScreen } from "./ConsentGate";
 import { Glyph } from "./icons";
-import { drafts, offlineSafetyPlan, outbox, type RunnerDraft } from "./outbox";
+import { drafts, type RunnerDraft } from "./drafts";
+import { offlineSafetyPlan, outbox } from "./outbox";
 import { PatientFrame } from "./PatientApp";
 import { scoreValue } from "./results";
 import { Body, COLUMN, CallRows, FactList, HelpLink, PtPanel, instrumentCode, instrumentName } from "./parts";

@@ -8,7 +8,8 @@ import { TouchArea } from "../src/ui/primitives";
 import { ChoiceInput, pickChoice } from "../src/patient/answerInputs";
 import { consentSections } from "../src/patient/ConsentGate";
 import { freeCancelUntil } from "../src/patient/Home";
-import { createDrafts, type OutboxItem, type OutboxStorage, type RunnerDraft } from "../src/patient/outbox";
+import { DRAFT_TTL_MS, createDrafts, forgetDrafts, type DeviceStorage, type RunnerDraft } from "../src/patient/drafts";
+import type { OutboxItem, OutboxStorage } from "../src/patient/outbox";
 import { instrumentCode, instrumentName } from "../src/patient/parts";
 import { mainScore, scoreValue } from "../src/patient/results";
 import { TestsBody } from "../src/patient/Tests";
@@ -38,15 +39,23 @@ const has = (html: string, key: UiKey) => {
 
 const ut = (key: UiKey) => uiText(key, "uk");
 
-function memory(): OutboxStorage & { map: Map<string, string> } {
+function memory(): OutboxStorage & DeviceStorage & { map: Map<string, string> } {
   const map = new Map<string, string>();
   return {
     map,
+    get length() {
+      return map.size;
+    },
+    key: (i) => [...map.keys()][i] ?? null,
     getItem: (k) => map.get(k) ?? null,
     setItem: (k, v) => void map.set(k, v),
     removeItem: (k) => void map.delete(k),
   };
 }
+
+/** Часы проверок: через час после последнего ответа черновика ниже */
+const NOW = Date.parse("2026-10-18T10:01:00.000Z");
+const clock = () => NOW;
 
 const draft = (over: Partial<RunnerDraft> = {}): RunnerDraft => ({
   surveyId: "s1",
@@ -64,14 +73,14 @@ const draft = (over: Partial<RunnerDraft> = {}): RunnerDraft => ({
 
 describe("черновик прохождения на устройстве", () => {
   test("ответы, время и место ложатся и читаются как были", () => {
-    const store = createDrafts(memory());
+    const store = createDrafts(memory(), clock);
     expect(store.save("u1", draft())).toBe(true);
     expect(store.get("u1", "s1")).toEqual(draft());
     expect(store.get("u1", "s2")).toBeNull();
   });
 
   test("черновик одного человека другому не виден: за одним компьютером входят разные люди", () => {
-    const store = createDrafts(memory());
+    const store = createDrafts(memory(), clock);
     store.save("u1", draft());
     expect(store.get("u2", "s1")).toBeNull();
     expect(store.list("u2")).toEqual([]);
@@ -79,7 +88,7 @@ describe("черновик прохождения на устройстве", ()
 
   test("список — свежие первыми; сданный черновик удаляется, и пустая запись не остаётся", () => {
     const mem = memory();
-    const store = createDrafts(mem);
+    const store = createDrafts(mem, clock);
     store.save("u1", draft({ surveyId: "a", savedAt: "2026-10-18T09:00:00.000Z" }));
     store.save("u1", draft({ surveyId: "b", savedAt: "2026-10-18T10:00:00.000Z" }));
     expect(store.list("u1").map((d) => d.surveyId)).toEqual(["b", "a"]);
@@ -103,7 +112,65 @@ describe("черновик прохождения на устройстве", ()
   test("испорченная запись читается как пустая", () => {
     const mem = memory();
     mem.setItem("quizzy.drafts.u1", "{не json");
-    expect(createDrafts(mem).list("u1")).toEqual([]);
+    expect(createDrafts(mem, clock).list("u1")).toEqual([]);
+  });
+
+  test("черновик, к которому не возвращались неделю, не продолжается и уходит со следующей записью", () => {
+    const mem = memory();
+    let now = NOW;
+    const store = createDrafts(mem, () => now);
+    store.save("u1", draft({ surveyId: "old" }));
+    now = Date.parse(draft().savedAt) + DRAFT_TTL_MS - 1;
+    expect(store.get("u1", "old"), "за миг до срока черновик ещё живой").not.toBeNull();
+    now = Date.parse(draft().savedAt) + DRAFT_TTL_MS;
+    expect(store.get("u1", "old"), "просроченный черновик предложен продолжить").toBeNull();
+    expect(store.list("u1")).toEqual([]);
+    store.save("u1", draft({ surveyId: "new", savedAt: new Date(now).toISOString() }));
+    expect(Object.keys(JSON.parse(mem.map.get("quizzy.drafts.u1")!)), "просроченный остался лежать на устройстве").toEqual(["new"]);
+  });
+});
+
+describe("черновики на общем компьютере — только того, кто внутри", () => {
+  /* тексты ответов как есть: за компьютером палаты после выхода их читал бы следующий */
+  const seeded = () => {
+    const mem = memory();
+    const store = createDrafts(mem, clock);
+    store.save("u1", draft({ surveyId: "a", answers: { q1: { text: "мені погано" } } }));
+    store.save("u2", draft({ surveyId: "b" }));
+    store.save("u2", draft({ surveyId: "stale", savedAt: "2026-10-01T09:00:00.000Z" }));
+    mem.setItem("quizzy.outbox.u1", "[]");
+    mem.setItem("quizzy.web.lang", "uk");
+    return { mem, store };
+  };
+
+  test("выход и конец сессии (внутри никого) стирают черновики всех, а прочее на устройстве не трогают", () => {
+    const { mem } = seeded();
+    forgetDrafts(null, mem, NOW);
+    expect([...mem.map.keys()].filter((k) => k.startsWith("quizzy.drafts.")), "черновики остались после выхода").toEqual([]);
+    // очередь сдач — не черновик: в ней законченные ответы, которых больше нигде нет (outbox.ts)
+    expect(mem.map.get("quizzy.outbox.u1")).toBe("[]");
+    expect(mem.map.get("quizzy.web.lang")).toBe("uk");
+  });
+
+  test("вошёл другой — черновики прежнего стёрты, свои целы, кроме просроченных", () => {
+    const { mem, store } = seeded();
+    forgetDrafts("u2", mem, NOW);
+    expect(mem.map.has("quizzy.drafts.u1"), "черновик прежнего человека пережил вход следующего").toBe(false);
+    expect(store.list("u2").map((d) => d.surveyId)).toEqual(["b"]);
+    expect(Object.keys(JSON.parse(mem.map.get("quizzy.drafts.u2")!))).toEqual(["b"]);
+  });
+
+  test("недоступное хранилище — не повод ронять выход", () => {
+    const broken = {
+      get length(): number {
+        throw new Error("SecurityError");
+      },
+      key: () => null,
+      getItem: () => null,
+      setItem: () => {},
+      removeItem: () => {},
+    };
+    expect(() => forgetDrafts(null, broken, NOW)).not.toThrow();
   });
 });
 
