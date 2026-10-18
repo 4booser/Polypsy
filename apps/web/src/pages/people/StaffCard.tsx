@@ -415,7 +415,7 @@ function DataPanel({ row, onEdit }: { row: StaffRow; onEdit: (() => void) | null
   const left: [ReactNode, ReactNode][] = [
     [ut("person.lastName"), v(row.lastName)],
     [ut("person.firstName"), v(row.firstName)],
-    [ut("ppl.middleName"), v(row.middleName)],
+    [ut("adm2.middleName"), v(row.middleName)],
     [ut("person.sex"), v(sex)],
     [ut("adm2.born"), row.birthDate ? `${dmy(row.birthDate)}${age !== null ? `, ${age} ${ut("ppl.yearShort")}` : ""}` : dash],
     [ut("adm2.since"), row.createdAt ? dmy(row.createdAt) : dash],
@@ -485,7 +485,7 @@ function ReceptionPanel({ row, me }: { row: StaffRow; me: boolean }) {
       sub={ut("adm2.receptionSub")}
       actions={me ? <TextAction to="/schedule">{ut("adm2.change")}</TextAction> : null}
     >
-      <div className="grid items-start gap-6 min-[900px]:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
+      <div className="grid items-start gap-6 min-[1360px]:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
         <KV
           w={120}
           rows={[
@@ -929,7 +929,7 @@ function ProfileDrawer({
           <Field label={ut("person.firstName")}>
             <Input value={firstName} onChange={(e) => setFirstName(e.target.value)} maxLength={80} required />
           </Field>
-          <Field label={ut("ppl.middleName")} optional>
+          <Field label={ut("adm2.middleName")} optional>
             <Input value={middleName} onChange={(e) => setMiddleName(e.target.value)} maxLength={80} />
           </Field>
           <Field label={ut("person.sex")}>

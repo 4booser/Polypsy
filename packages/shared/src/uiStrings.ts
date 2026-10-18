@@ -8645,9 +8645,9 @@ export const UI = {
   /* «Опис API» (pages/ApiDocs.tsx) */
   "adm2.apiMeta": { uk: "{title} {version}, маршрутів: {n}", ru: "{title} {version}, маршрутов: {n}", en: "{title} {version}, {n} routes" },
   "adm2.apiMetaSub": {
-    uk: "шляхи — з таблиці маршрутів, схеми — з тих самих перевірок, що й запити",
-    ru: "пути — из таблицы маршрутов, схемы — из тех же проверок, что и запросы",
-    en: "paths come from the route table, schemas from the same checks requests go through",
+    uk: "шляхи — з таблиці маршрутів, схеми — з перевірок запитів",
+    ru: "пути — из таблицы маршрутов, схемы — из проверок запросов",
+    en: "paths from the route table, schemas from request checks",
   },
   "adm2.copyBase": { uk: "Копіювати базову адресу", ru: "Копировать базовый адрес", en: "Copy base address" },
   "adm2.downloadSpec": { uk: "Завантажити openapi.json", ru: "Скачать openapi.json", en: "Download openapi.json" },
@@ -8664,7 +8664,8 @@ export const UI = {
   "adm2.accessUser": { uk: "після входу", ru: "после входа", en: "signed in" },
   "adm2.accessStaff": { uk: "співробітник", ru: "сотрудник", en: "staff" },
   "adm2.accessSuper": { uk: "суперадміністратор", ru: "суперадминистратор", en: "superadministrator" },
-  "adm2.showResponses": { uk: "Показати відповіді", ru: "Показать ответы", en: "Show responses" },
+  "adm2.accessIs": { uk: "Доступ: {who}", ru: "Доступ: {who}", en: "Access: {who}" },
+  "adm2.accessUnknown": { uk: "не описано", ru: "не описано", en: "not documented" },
   "adm2.closedByPermission": { uk: "закрито правом {code}", ru: "закрыто правом {code}", en: "requires {code}" },
   "adm2.requestBody": { uk: "Тіло запиту", ru: "Тело запроса", en: "Request body" },
   "adm2.responses": { uk: "Відповіді", ru: "Ответы", en: "Responses" },

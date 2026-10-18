@@ -473,7 +473,7 @@ function useDoctorColumns(now: number): Column<StaffRow>[] {
         required: true,
         sort: (r) => workplaceOf(r),
         csv: (r) => workplaceOf(r),
-        render: (r) => <span className="whitespace-nowrap text-text-2">{workplaceOf(r) ?? ""}</span>,
+        render: (r) => <span className="text-text-2">{workplaceOf(r) ?? ""}</span>,
       },
       {
         key: "role",
@@ -757,7 +757,7 @@ function AdminsView({ admins, all }: { admins: StaffRow[]; all: StaffRow[] }) {
           }
         />
       </Panel>
-      <div className="grid items-start gap-4 min-[1180px]:grid-cols-[minmax(0,1fr)_360px]">
+      <div className="grid items-start gap-4 min-[1360px]:grid-cols-[minmax(0,1fr)_360px]">
         <Panel
           title={ut("adm2.whoCan")}
           icon={<Ic.list />}

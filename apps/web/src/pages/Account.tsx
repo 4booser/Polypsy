@@ -194,17 +194,18 @@ export default function Account() {
                   разбирает случаи, — очередь.
                 */}
                 <Setting label={ut("acct.startScreen")} hint={ut("adm2.startHint")}>
-                  <Select
-                    aria-label={ut("acct.startScreen")}
-                    value={user?.workspace?.startScreen ?? "dashboard"}
-                    onChange={(e) => void applyPref({ startScreen: e.target.value as never })}
-                    className="w-[200px]"
-                  >
-                    <option value="dashboard">{ut("nav.dashboard")}</option>
-                    <option value="worklist">{ut("nav.worklist")}</option>
-                    <option value="alerts">{ut("nav.cases")}</option>
-                    <option value="patients">{ut("nav.patients")}</option>
-                  </Select>
+                  <span className="block w-[220px] shrink-0">
+                    <Select
+                      aria-label={ut("acct.startScreen")}
+                      value={user?.workspace?.startScreen ?? "dashboard"}
+                      onChange={(e) => void applyPref({ startScreen: e.target.value as never })}
+                    >
+                      <option value="dashboard">{ut("nav.dashboard")}</option>
+                      <option value="worklist">{ut("nav.worklist")}</option>
+                      <option value="alerts">{ut("nav.cases")}</option>
+                      <option value="patients">{ut("nav.patients")}</option>
+                    </Select>
+                  </span>
                 </Setting>
               </ul>
             </Panel>
@@ -770,7 +771,10 @@ function RecoveryCodes({ codes, onDone }: { codes: string[]; onDone: () => void 
       sub={ut("adm2.newCodesSub")}
       icon={<AIc.key />}
       esc={false}
-      onClose={onDone}
+      /* и крестик закрывает только после отметки «зберіг»: иначе он был бы обходом той же отметки */
+      onClose={() => {
+        if (saved) onDone();
+      }}
       footer={
         <>
           <Button variant="primary" icon={<Ic.check size={15} />} disabled={!saved} onClick={onDone}>

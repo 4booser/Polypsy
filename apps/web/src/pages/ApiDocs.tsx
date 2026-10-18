@@ -1,4 +1,5 @@
 import { Fragment, useMemo, useState, type ReactNode } from "react";
+import type { UiKey } from "@quizzy/shared";
 import { api, type OpenApiOperation as Operation } from "../api";
 import { useResource } from "../useResource";
 import { Empty, FilterChip, Ic, Loading, SearchField, useToast } from "../ui";
@@ -233,18 +234,21 @@ export default function ApiDocs() {
                           <Fragment key={key}>
                             <tr className={cx(isOpen && "bg-panel-2")}>
                               <td className="border-b border-divider py-2 pl-3">
-                                <button
-                                  type="button"
-                                  aria-expanded={isOpen}
-                                  aria-label={schema ? ut("api.showSchema") : ut("adm2.showResponses")}
-                                  onClick={() => setOpen(isOpen ? null : key)}
-                                  className={cx(
-                                    "inline-grid size-8 min-h-0 cursor-pointer place-items-center rounded-[9px] border-0 text-muted",
-                                    isOpen ? "bg-violet-tint text-violet-ink" : "bg-transparent hover:bg-sunk",
-                                  )}
-                                >
-                                  {isOpen ? <Ic.chevronDown size={15} /> : <Ic.chevronRight size={15} />}
-                                </button>
+                                {/* раскрывается то, у чего есть тело: схема — главное, что за раскрытием ищут */}
+                                {schema ? (
+                                  <button
+                                    type="button"
+                                    aria-expanded={isOpen}
+                                    aria-label={ut("api.showSchema")}
+                                    onClick={() => setOpen(isOpen ? null : key)}
+                                    className={cx(
+                                      "inline-grid size-8 min-h-0 cursor-pointer place-items-center rounded-[9px] border-0 text-muted",
+                                      isOpen ? "bg-violet-tint text-violet-ink" : "bg-transparent hover:bg-sunk",
+                                    )}
+                                  >
+                                    {isOpen ? <Ic.chevronDown size={15} /> : <Ic.chevronRight size={15} />}
+                                  </button>
+                                ) : null}
                               </td>
                               <td className="border-b border-divider px-2.5 py-2">
                                 <MethodBadge method={r.method} />
@@ -322,16 +326,7 @@ function AccessCell({ op }: { op: Operation }) {
   const a = op["x-access"] ?? null;
   const icon: ReactNode =
     a === "public" ? <AIc.globe size={14} /> : a === "superadmin" ? <AIc.shieldHalf size={14} /> : a === "staff" ? <AIc.stethoscope size={14} /> : <Ic.user size={14} />;
-  const label =
-    a === "public"
-      ? ut("adm2.accessPublic")
-      : a === "user"
-        ? ut("adm2.accessUser")
-        : a === "staff"
-          ? ut("adm2.accessStaff")
-          : a === "superadmin"
-            ? ut("adm2.accessSuper")
-            : op.description;
+  const label = accessText(op, ut);
   return (
     <span className="flex flex-col gap-0.5">
       <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-small text-text">
@@ -343,6 +338,16 @@ function AccessCell({ op }: { op: Operation }) {
   );
 }
 
+/** Кому маршрут открыт — словами интерфейса, по машинному x-access */
+function accessText(op: Operation, ut: (k: UiKey) => string): string {
+  const a = op["x-access"] ?? null;
+  if (a === "public") return ut("adm2.accessPublic");
+  if (a === "user") return ut("adm2.accessUser");
+  if (a === "staff") return ut("adm2.accessStaff");
+  if (a === "superadmin") return ut("adm2.accessSuper");
+  return ut("adm2.accessUnknown");
+}
+
 function RouteDetail({ route, schema }: { route: Route; schema: Record<string, unknown> | null }) {
   const { ut } = useLang();
   const toast = useToast();
@@ -352,10 +357,10 @@ function RouteDetail({ route, schema }: { route: Route; schema: Record<string, u
     <div className="flex flex-col gap-3">
       <p className="m-0 flex items-start gap-1.5 text-small text-text-2">
         <Ic.info size={14} className="mt-0.5 shrink-0 text-muted" />
-        {route.op.description}
-        {route.op["x-permission"] ? ` — ${fill(ut("adm2.closedByPermission"), { code: route.op["x-permission"] })}` : ""}
+        {fill(ut("adm2.accessIs"), { who: accessText(route.op, ut) })}
+        {route.op["x-permission"] ? `; ${fill(ut("adm2.closedByPermission"), { code: route.op["x-permission"] })}` : ""}
       </p>
-      <div className="grid gap-3 min-[900px]:grid-cols-[minmax(0,1fr)_240px]">
+      <div className="grid items-start gap-3 min-[900px]:grid-cols-[minmax(0,1fr)_240px]">
         <div className="min-w-0 overflow-hidden rounded-panel border border-border bg-panel">
           <div className="flex items-center gap-2 border-b border-divider px-3.5 py-2">
             <b className="text-small font-extrabold text-text">{ut("adm2.requestBody")}</b>
