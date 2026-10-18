@@ -1,8 +1,9 @@
-import { Redirect, Tabs, useRouter } from "expo-router";
+import { Redirect, Tabs, useSegments } from "expo-router";
 import { useAuth } from "@/auth/AuthContext";
 import { Loader } from "@/components/ui";
 import { useColors } from "@/theme";
 import { useLang } from "@/lang";
+import { useStaffBadges } from "@/staff/badges";
 import { TabBar } from "@/ui/TabBar";
 import { TabHeader } from "@/ui/headers";
 import { PatientHeader } from "@/components/patient/PatientHeader";
@@ -11,8 +12,8 @@ import { PatientHeader } from "@/components/patient/PatientHeader";
 const PATIENT_SCREENS = new Set(["home", "booking", "surveys", "health", "profile", "messages", "safety", "queue"]);
 
 /**
- * Вкладки: прохождение, обход и аналитика (для сотрудников), план безопасности
- * и аккаунт.
+ * Вкладки: у пациента — день, запись, прохождение, здоровье и профиль; у
+ * сотрудника — обход, сигналы, пациенты, аналитика и листування.
  * Конструктор методик и управление доступами живут в веб-консоли — на телефоне
  * такую работу делать неудобно, а экран нужен целиком под прохождение.
  */
@@ -20,15 +21,34 @@ export default function AppLayout() {
   const { ut } = useLang();
   const { user, loading, isAdmin } = useAuth();
   const c = useColors();
-  const router = useRouter();
+  const segments = useSegments();
+  // счётчики вкладок сотрудника: люди на разбор сигнала и непрочитанные письма (staff/badges.ts)
+  const badges = useStaffBadges(isAdmin);
 
   if (loading) return <Loader />;
   if (!user) return <Redirect href="/login" />;
   // с временным паролем сервер вкладкам ничего не отдаст — сначала смена (auth/passwordGate.ts)
   if (user.mustChangePassword) return <Redirect href="/password" />;
+  // вход ведёт на «Головну» пациента; у сотрудника своя первая вкладка — обход
+  if (isAdmin && (segments as string[])[1] === "home") return <Redirect href="/(app)/rounds" />;
+
+  /*
+   * Вкладки сотрудника — пять из набора: Обхід, Сигнали, Пацієнти,
+   * Аналітика, Листування. Вкладки пациента у него скрыты, но остаются
+   * экранами: «Заповнити за пацієнта» ведёт в «Опитування», кружок
+   * учётной записи в шапке — в профиль, полоса «нет связи» — в очередь.
+   * У пациента — наоборот: его пять вкладок как были.
+   */
+  const patientOnly = isAdmin ? ({ href: null } as const) : null;
+  const staffOnly = (href: "/rounds" | "/alerts" | "/patients" | "/insights" | "/inbox") => ({ href: isAdmin ? href : null });
 
   return (
     <Tabs
+      /*
+       * «Назад» со скрытого экрана (профиль, «Опитування») у сотрудника —
+       * туда, откуда пришёл, а не на первую вкладку: первая у него скрыта.
+       */
+      backBehavior={isAdmin ? "history" : undefined}
       /*
        * Шапка и панель вкладок «Виразной» (src/ui): крупный заголовок на
        * полосе, «Допомога» справа у пациента — помощь видна с любой вкладки.
@@ -57,40 +77,35 @@ export default function AppLayout() {
         потом «записаться», потом «что пройти». «Здоровье» и «Профиль» —
         то, куда заходят в спокойную минуту, и они последние.
       */}
-      <Tabs.Screen name="home" options={{ title: ut("tab.home") }} />
-      <Tabs.Screen name="booking" options={{ title: ut("tab.booking") }} />
-      <Tabs.Screen name="surveys" options={{ title: ut("tab.surveys") }} />
+      <Tabs.Screen name="home" options={{ title: ut("tab.home"), ...patientOnly }} />
+      <Tabs.Screen name="booking" options={{ title: ut("tab.booking"), ...patientOnly }} />
+      <Tabs.Screen name="surveys" options={{ title: ut("tab.surveys"), ...patientOnly }} />
       {/*
-        Обход — вкладка специалиста: планшет в палате вместо ноутбука.
-        Пациенту она не нужна и не показывается.
+        Вкладки специалиста. Шапку каждая рисует сама (staff/ui.tsx, StaffTop):
+        под крупным заголовком у них поиск, фильтры и переключатели.
+        «Аналітика» — теперь настоящая вкладка: раздел /analytics кладётся
+        поверх вкладок только вложенными экранами (методика, пациент), и
+        «назад» с них возвращает на ту же вкладку.
       */}
+      <Tabs.Screen name="rounds" options={{ title: ut("rounds.title"), headerShown: false, ...staffOnly("/rounds") }} />
       <Tabs.Screen
-        name="rounds"
-        options={{ title: ut("rounds.title"), href: isAdmin ? "/rounds" : null }}
-      />
-      {/*
-        Аналитика открывается ПОВЕРХ вкладок, а не вместо них.
-
-        Раньше нажатие вело на экран-переадресацию, и та заменяла вкладки
-        разделом: вернуться стеку было некуда, стрелки «назад» не было, кнопка
-        Android сворачивала приложение. Теперь нажатие перехватывается и
-        раздел кладётся в стек над вкладками — «назад» (стрелка, жест, кнопка
-        Android, «‹ Меню») возвращает туда, откуда пришли, на ту же вкладку.
-        Сама вкладка при этом не становится текущей: иначе, вернувшись,
-        человек снова попал бы на переадресацию и обратно в раздел.
-        Экран insights остаётся — для прямого адреса /insights.
-      */}
-      <Tabs.Screen
-        name="insights"
-        options={{ title: ut("tab.analytics"), headerShown: false, href: isAdmin ? "/insights" : null }}
-        listeners={{
-          tabPress: (e) => {
-            e.preventDefault();
-            router.push("/analytics");
-          },
+        name="alerts"
+        options={{
+          title: ut("mst.tabAlerts"),
+          headerShown: false,
+          tabBarBadge: badges.alerts || undefined,
+          // красный — риск для человека: люди, которые ждут разбора
+          tabBarBadgeStyle: { backgroundColor: c.risk },
+          ...staffOnly("/alerts"),
         }}
       />
-      <Tabs.Screen name="health" options={{ title: ut("tab.health") }} />
+      <Tabs.Screen name="patients" options={{ title: ut("mnav.patients"), headerShown: false, ...staffOnly("/patients") }} />
+      <Tabs.Screen name="insights" options={{ title: ut("tab.analytics"), headerShown: false, ...staffOnly("/insights") }} />
+      <Tabs.Screen
+        name="inbox"
+        options={{ title: ut("ms.title"), headerShown: false, tabBarBadge: badges.inbox || undefined, ...staffOnly("/inbox") }}
+      />
+      <Tabs.Screen name="health" options={{ title: ut("tab.health"), ...patientOnly }} />
       {/*
         Переписка — экран, а не вкладка: шестая вкладка сделала бы нижнюю
         панель нечитаемой на узком телефоне. Ведёт сюда блок «связь и помощь»
@@ -105,7 +120,7 @@ export default function AppLayout() {
       */}
       <Tabs.Screen name="safety" options={{ href: null, title: ut("tab.safety") }} />
       {/* в шапке — «Обліковий запис», на вкладке — короткое «Профіль»: пять подписей в ряд на узком телефоне */}
-      <Tabs.Screen name="profile" options={{ title: ut("tab.account"), tabBarLabel: ut("mui.profile") }} />
+      <Tabs.Screen name="profile" options={{ title: ut("tab.account"), tabBarLabel: ut("mui.profile"), ...patientOnly }} />
       {/* очередь открывается из полосы состояния, отдельной вкладки ей не нужно */}
       <Tabs.Screen name="queue" options={{ href: null, title: ut("tab.queue") }} />
     </Tabs>

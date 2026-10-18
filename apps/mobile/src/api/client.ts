@@ -20,6 +20,7 @@ import type {
   UpdateSurveyInput,
   User,
   AlertCase,
+  AlertSignalBasis,
   AuditPage,
   Worklist,
   Page,
@@ -493,7 +494,8 @@ export const api = {
   /* ── переписка ── */
   threads: () =>
     request<{
-      items: { id: string; withName: string; lastMessageAt: string; unread: number }[];
+      /* patientId — у сотрудника: переписка ведётся с пациентом, по нему и пишут */
+      items: { id: string; withName: string; lastMessageAt: string; unread: number; patientId?: string }[];
       lead: string | null;
     }>("/api/messages"),
   /* последние письма и курсор назад; чтение ничего не помечает — см. markRead */
@@ -507,10 +509,11 @@ export const api = {
   /** «Прочитано» — только показанные письма собеседника */
   markRead: (id: string, ids: string[]) =>
     request<{ marked: number }>(`/api/messages/${id}/read`, { method: "POST", body: JSON.stringify({ ids }) }),
-  sendMessage: (text: string) =>
+  sendMessage: (text: string, patientId?: string) =>
     request<{ id: string; threadId: string }>("/api/messages", {
       method: "POST",
-      body: JSON.stringify({ text }),
+      // кому — только у сотрудника: пациент пишет своему специалисту и адресата не выбирает
+      body: JSON.stringify(patientId ? { text, patientId } : { text }),
     }),
 
   /* ── приём ── */
@@ -930,11 +933,20 @@ export const api = {
    * Разбор случая. Исход обязателен: без него разбор — это «посмотрел и
    * закрыл», а по исходам калибруются пороги скрининга.
    */
-  resolveCase: (id: string, outcome: string, note?: string) =>
+  resolveCase: (id: string, outcome: string, note?: string, seenLastAlertAt?: string) =>
     request<unknown>(`/api/alert-cases/${id}`, {
       method: "PATCH",
-      body: JSON.stringify({ outcome, note }),
+      /*
+       * Время последнего сигнала, который человек видел, решая: пришёл новый,
+       * пока читал основание, — сервер откажет (409), а не закроет его
+       * решением, принятым без него. Консоль шлёт его всегда.
+       */
+      body: JSON.stringify({ outcome, note, seenLastAlertAt }),
     }),
+  /** Основание сигналов случая: пункт, что отмечено, полоса шкалы */
+  caseSignals: (id: string) => request<{ items: AlertSignalBasis[] }>(`/api/alert-cases/${id}/signals`),
+  /** План безопасности пациента — версии, свежая первой (сотрудник с правом читать пациентов) */
+  patientSafetyPlan: (userId: string) => request<{ versions: SafetyPlan[] }>(`/api/safety/patients/${userId}`),
   assignCase: (id: string, release = false) =>
     request<unknown>(`/api/alert-cases/${id}/assign`, {
       method: "POST",

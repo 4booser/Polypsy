@@ -1,103 +1,230 @@
 import { useCallback, useState } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
-import { useFocusEffect, useLocalSearchParams } from "expo-router";
-import type { SurveyResponse } from "@quizzy/shared";
+import { Pressable, ScrollView, View } from "react-native";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import type { Severity, SurveyResponse, UiKey } from "@quizzy/shared";
 import { api, type ResponseDetail } from "@/api/client";
-import { SeverityTag } from "@/components/charts";
-import { Body, Card, Divider, Empty, ErrorText, Loader, Row } from "@/components/ui";
-import { formatDuration, spacing, useColors } from "@/theme";
 import { useLang } from "@/lang";
+import { useOpenReport } from "@/report/useOpenReport";
+import { formatDuration, useColors } from "@/theme";
+import { Btn } from "@/ui/Button";
+import { Icon } from "@/ui/Icon";
+import { SevPill } from "@/ui/Pill";
+import { T } from "@/ui/Text";
+import { byDay, dayKey, hm, num, shortName } from "@/staff/model";
+import { Avatar, Card, Chip, Loading, PillRow, SearchField, Section, StaffNav, StateBlock } from "@/staff/ui";
 
+type Filter = "all" | "completed" | "abandoned" | "in_progress";
+
+/**
+ * Проходження методики — по дням, новые сверху.
+ *
+ * Строка: кто, когда, сколько длилось и чем кончилось, балл первой шкалы с
+ * выраженностью словом. Раскрытая — ответы и время по каждому пункту,
+ * сколько раз меняли ответ и пропуски; оттуда же — карта человека и
+ * заключение по этому проходженню.
+ */
 export default function ResponsesScreen() {
-  const { ut } = useLang();
+  const { ut, locale } = useLang();
   const c = useColors();
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, title } = useLocalSearchParams<{ id: string; title?: string }>();
   const [rows, setRows] = useState<SurveyResponse[] | null>(null);
   const [detail, setDetail] = useState<ResponseDetail | null>(null);
+  const [opening, setOpening] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [filter, setFilter] = useState<Filter>("all");
+  const [query, setQuery] = useState("");
 
   const load = useCallback(async () => {
     if (!id) return;
     try {
       setRows(await api.surveyResponses(id));
+      setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : ut("mrs.loadFailed"));
-      setRows([]);
+      setRows((r) => r ?? []);
     }
-  }, [id]);
+  }, [id, ut]);
 
   useFocusEffect(
     useCallback(() => {
-      load();
+      void load();
     }, [load]),
   );
 
-  if (!rows) return <Loader />;
+  const toggle = async (r: SurveyResponse) => {
+    if (detail?.id === r.id) {
+      setDetail(null);
+      return;
+    }
+    setOpening(r.id);
+    try {
+      setDetail(await api.responseDetail(r.id));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : ut("mrs.loadFailed"));
+    } finally {
+      setOpening(null);
+    }
+  };
+
+  const all = rows ?? [];
+  const count = (f: Filter) => (f === "all" ? all.length : all.filter((r) => r.status === f).length);
+  const needle = query.trim().toLowerCase();
+  const shown = all.filter(
+    (r) =>
+      (filter === "all" || r.status === filter) &&
+      (!needle || (r.userName ?? ut("mrs.anon")).toLowerCase().includes(needle) || (r.submittedAt ?? r.startedAt).includes(needle) || dayLabelNum(r.submittedAt ?? r.startedAt).includes(needle)),
+  );
+  const now = new Date();
+  const groups = byDay(shown, (r) => r.submittedAt ?? r.startedAt, now);
+  const pills = (["all", "completed", "abandoned", "in_progress"] as const)
+    .filter((f) => f === "all" || count(f) > 0)
+    .map((f) => ({ key: f, label: f === "all" ? ut("mal.all") : ut(`rstatus.${f}`), count: count(f) }));
+  const dayTitle = (day: string, ago: number) => {
+    const d = new Date(`${day}T12:00:00`).toLocaleDateString(locale, { day: "numeric", month: "long" });
+    return ago === 0 ? `${ut("mst.today")}, ${d}` : ago === 1 ? `${ut("mst.yesterday")}, ${d}` : d;
+  };
 
   return (
-    <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.md }}>
-      <ErrorText>{error}</ErrorText>
-      {rows.length === 0 ? <Empty text={ut("mrs.none")} /> : null}
-
-      {rows.map((r) => (
-        <Pressable
-          key={r.id}
-          onPress={async () => {
-            setDetail(detail?.id === r.id ? null : await api.responseDetail(r.id));
-          }}
-          accessibilityRole="button"
-          accessibilityLabel={r.userName ?? ut("mrs.anon")}
-          accessibilityState={{ expanded: detail?.id === r.id }}
-        >
-          <Card>
-            <Row>
-              <Body>{r.userName ?? ut("mrs.anon")}</Body>
-              <View style={{ flex: 1 }} />
-              <Text style={{ color: c.muted, fontSize: 12 }}>
-                {r.submittedAt ? r.submittedAt.slice(0, 16).replace("T", " ") : ut("mrs.notSubmitted")}
-              </Text>
-            </Row>
-            <Row gap={spacing.md}>
-              <Text style={{ color: c.muted, fontSize: 12 }}>{formatDuration(r.durationMs)}</Text>
-              {/* тот же разбор, что в вебе: completed/abandoned — код протокола, а не подпись */}
-              <Text style={{ color: c.muted, fontSize: 12 }}>{ut(`rstatus.${r.status}`, r.status)}</Text>
-            </Row>
-            {r.scores.map((s) => (
-              <Row key={s.scaleId}>
-                <Text style={{ color: c.text, fontSize: 13, flex: 1 }}>{s.scaleTitle}</Text>
-                {/* балл после поправок — максимум записан для него (#133): у ЛАП МЛО сырой всегда 0 */}
-                <Text style={{ color: c.muted, fontSize: 13, fontVariant: ["tabular-nums"] }}>
-                  {s.correctedScore}/{s.maxScore}
-                </Text>
-                {s.band ? (
-                  <View style={{ marginLeft: spacing.sm }}>
-                    <SeverityTag severity={s.band.severity} label={s.band.label} />
-                  </View>
-                ) : null}
-              </Row>
-            ))}
-
-            {detail?.id === r.id ? (
-              <View style={{ gap: spacing.sm, marginTop: spacing.sm }}>
-                <Divider />
-                <Body muted>{ut("mrs.answersAndTime")}</Body>
-                {detail.answers.map((a) => (
-                  <Row key={a.questionId}>
-                    <Text style={{ color: c.text, fontSize: 13, flex: 1 }} numberOfLines={1}>
-                      {a.position + 1}. {a.title}
-                    </Text>
-                    <Text style={{ color: c.muted, fontSize: 12, fontVariant: ["tabular-nums"] }}>
-                      {formatDuration(a.durationMs)}
-                      {a.changeCount ? ut("ma.edits").replace("{n}", String(a.changeCount)) : ""}
-                      {a.answered ? "" : ` · ${ut("ant.cellSkipped")}`}
-                    </Text>
-                  </Row>
+    <View style={{ flex: 1, backgroundColor: c.ground }}>
+      <StaffNav back={title || ut("mnav.survey")} title={ut("mnav.responses")}>
+        <View style={{ gap: 12 }}>
+          <SearchField value={query} onChange={setQuery} placeholder={ut("mst.searchResponses")} />
+          <PillRow onBand value={filter} onChange={setFilter} items={pills} />
+        </View>
+      </StaffNav>
+      {rows === null ? (
+        <Loading />
+      ) : (
+        <ScrollView contentContainerStyle={{ paddingBottom: 24 }} keyboardShouldPersistTaps="handled">
+          {error ? <StateBlock icon="circle-alert" title={error} action={{ label: ut("common.retry"), onPress: () => void load() }} /> : null}
+          {groups.map((g) => (
+            <View key={g.day}>
+              <Section title={g.day ? dayTitle(g.day, g.ago) : ut("mrs.notSubmitted")} count={g.rows.length} sub={g.ago === 0 && groups[0] === g ? ut("mst.newFirst") : undefined} />
+              <Card>
+                {g.rows.map((r, i) => (
+                  <ResponseRow key={r.id} r={r} first={i === 0} detail={detail?.id === r.id ? detail : null} busy={opening === r.id} onToggle={() => void toggle(r)} />
                 ))}
+              </Card>
+            </View>
+          ))}
+          {!shown.length && !error ? <StateBlock title={all.length ? ut("mst.nothingFound") : ut("mrs.none")} text={all.length ? ut("mst.nothingFoundHint") : undefined} /> : null}
+        </ScrollView>
+      )}
+    </View>
+  );
+}
+
+/** «08.10» — по нему ищут, как по дате на бланке */
+function dayLabelNum(iso: string): string {
+  const k = dayKey(new Date(iso));
+  return `${k.slice(8, 10)}.${k.slice(5, 7)}`;
+}
+
+function ResponseRow({ r, first, detail, busy, onToggle }: { r: SurveyResponse; first: boolean; detail: ResponseDetail | null; busy: boolean; onToggle: () => void }) {
+  const { ut } = useLang();
+  const c = useColors();
+  const router = useRouter();
+  const report = useOpenReport();
+  const s = r.scores[0];
+  const open = !!detail;
+  return (
+    <View style={{ borderTopWidth: first ? 0 : 1, borderTopColor: c.divider }}>
+      <Pressable onPress={onToggle} accessibilityRole="button" accessibilityState={{ expanded: open, busy }} accessibilityLabel={`${r.userName ?? ut("mrs.anon")}, ${hm(r.submittedAt ?? r.startedAt)}`}>
+        {({ pressed }) => (
+          <View style={{ flexDirection: "row", gap: 12, paddingTop: 12, paddingBottom: 13, paddingLeft: 16, paddingRight: 14, backgroundColor: open ? c.panel2 : pressed ? c.panel2 : "transparent" }}>
+            {r.userName ? (
+              <Avatar name={r.userName} />
+            ) : (
+              <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: c.sunk2, alignItems: "center", justifyContent: "center" }}>
+                <Icon name="user-round" size={17} color={c.text2} />
               </View>
+            )}
+            <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
+              <View style={{ flexDirection: "row", alignItems: "baseline", gap: 8 }}>
+                <T v="headline" numberOfLines={1} style={{ flex: 1 }}>
+                  {r.userName ? shortName(r.userName) : ut("mrs.anon")}
+                </T>
+                <T v="sub" size={14} weight={700} tone="text2" num>
+                  {hm(r.submittedAt ?? r.startedAt)}
+                </T>
+              </View>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                <Icon name="timer" size={13} color={c.muted} />
+                <T v="sub" num>{`${formatDuration(r.durationMs)}, ${ut(`rstatus.${r.status}` as UiKey, r.status).toLowerCase()}`}</T>
+              </View>
+              {s ? (
+                <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 8, marginTop: 4 }}>
+                  {/* балл после поправок — максимум записан для него (#133) */}
+                  <View style={{ flexDirection: "row", alignItems: "baseline", gap: 3 }}>
+                    <T v="number" size={20} num scale={false}>
+                      {num(s.correctedScore)}
+                    </T>
+                    <T v="sub" size={12.5} weight={700} num>
+                      {`${ut("common.of")} ${num(s.maxScore)}`}
+                    </T>
+                  </View>
+                  {s.band ? <SevPill small severity={s.band.severity as Severity} label={s.band.label} /> : null}
+                  {r.scores.length > 1 ? <Chip label={ut("mst.plusScales").replace("{n}", String(r.scores.length - 1))} /> : null}
+                </View>
+              ) : null}
+            </View>
+            <View style={{ alignSelf: "center" }}>
+              <Icon name={open ? "chevron-up" : "chevron-down"} size={20} color={c.muted} />
+            </View>
+          </View>
+        )}
+      </Pressable>
+      {detail ? (
+        <View style={{ backgroundColor: c.panel2, paddingBottom: 12 }}>
+          <View style={{ flexDirection: "row", gap: 8, paddingHorizontal: 14, paddingVertical: 8, borderTopWidth: 1, borderTopColor: c.divider, backgroundColor: c.panel }}>
+            <T v="caption" style={{ flex: 1 }}>
+              {ut("mst.itemCol")}
+            </T>
+            <T v="caption" style={{ width: 58, textAlign: "right" }}>
+              {ut("mst.changesCol")}
+            </T>
+            <T v="caption" style={{ width: 52, textAlign: "right" }}>
+              {ut("mst.timeCol")}
+            </T>
+            <T v="caption" style={{ width: 40, textAlign: "right" }}>
+              {ut("mst.scoreCol")}
+            </T>
+          </View>
+          {detail.answers.map((a) => (
+            <View key={a.questionId} style={{ flexDirection: "row", alignItems: "center", gap: 8, minHeight: 38, paddingHorizontal: 14, borderTopWidth: 1, borderTopColor: c.divider }}>
+              <T v="sub" size={14} tone="text" numberOfLines={1} style={{ flex: 1 }}>
+                <T v="sub" size={14} weight={800} tone="muted">{`${a.position + 1}  `}</T>
+                {a.title}
+              </T>
+              <T v="sub" size={13} weight={700} color={a.changeCount ? c.warn : c.muted} num style={{ width: 58, textAlign: "right" }}>
+                {a.changeCount ? ut("mst.changesN").replace("{n}", String(a.changeCount)) : ""}
+              </T>
+              <T v="sub" size={13} num style={{ width: 52, textAlign: "right" }}>
+                {formatDuration(a.durationMs)}
+              </T>
+              <View style={{ width: 40, alignItems: "flex-end" }}>
+                {a.answered && a.score !== null ? (
+                  <View style={{ minWidth: 28, height: 24, paddingHorizontal: 6, borderRadius: 7, backgroundColor: a.score ? c.vtint : c.sunk, alignItems: "center", justifyContent: "center" }}>
+                    <T v="sub" size={13} weight={800} color={a.score ? c.vink : c.muted} num scale={false}>
+                      {num(a.score)}
+                    </T>
+                  </View>
+                ) : (
+                  <T v="sub" size={13} num>
+                    {a.answered ? "" : ut("mst.skippedShort")}
+                  </T>
+                )}
+              </View>
+            </View>
+          ))}
+          <View style={{ flexDirection: "row", gap: 8, paddingHorizontal: 14, paddingTop: 12 }}>
+            {r.userId ? (
+              <Btn title={ut("mst.card")} icon="user-round" size="s" flex={1} onPress={() => router.push({ pathname: "/analytics/patients/[userId]", params: { userId: r.userId! } })} />
             ) : null}
-          </Card>
-        </Pressable>
-      ))}
-    </ScrollView>
+            {r.status === "completed" ? <Btn title={ut("mst.conclusion")} icon="file-text" size="s" flex={1} loading={report.opening} onPress={() => report.open(r.id)} /> : null}
+          </View>
+        </View>
+      ) : null}
+    </View>
   );
 }
