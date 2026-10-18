@@ -1,7 +1,8 @@
-import { useState, type ReactNode } from "react";
+import { useId, useState, type ReactNode } from "react";
 import { useLang } from "../../lang";
 import { Modal } from "../../ui";
-import { Button, Field, Input } from "../../ui/primitives";
+import { Button, ErrorText, Field, Input } from "../../ui/primitives";
+import { OpsIcon } from "./icons";
 
 /*
  * Общие окна техпанели: подтверждение перепечатыванием и простое «да/нет».
@@ -9,11 +10,11 @@ import { Button, Field, Input } from "../../ui/primitives";
  * Перепечатывание — тот же приём, что ConfirmByName (ui/index.tsx): обычный
  * confirm снимается не глядя, а напечатать почту человека, которого
  * удаляешь, на автомате нельзя. Своим окном, а не ConfirmByName, потому что
- * тот ещё свёрстан классами прежней оболочки (card, danger-card, field) и
- * стоит в потоке страницы, а не слоем: на вкладке техпанели он уехал бы
+ * тот стоит в потоке страницы, а не слоем: на вкладке техпанели он уехал бы
  * под список, и человек нажимал бы «Видалити» у одной строки, а
- * подтверждение появлялось бы в сотне строк ниже. Окно — Modal из общего
- * набора: ловушка фокуса, Esc и возврат фокуса там уже есть.
+ * подтверждение появлялось бы в сотне строк ниже. Окно — Modal набора
+ * «Виразної»: значок в квадрате, кнопки внизу через волосяную линию
+ * (основная первой), ловушка фокуса, Esc и возврат фокуса.
  */
 
 export function ConfirmTyped({
@@ -37,33 +38,42 @@ export function ConfirmTyped({
   onClose: () => void;
 }) {
   const { ut } = useLang();
+  const formId = useId();
   const [typed, setTyped] = useState("");
   const match = typed.trim() === expected;
   return (
-    <Modal title={title} onClose={onClose}>
+    <Modal
+      title={title}
+      onClose={onClose}
+      icon={<OpsIcon name="triangle-alert" />}
+      tone="warn"
+      footer={
+        <>
+          <Button type="submit" form={formId} variant="danger" disabled={!match || busy}>
+            {actionLabel}
+          </Button>
+          <Button variant="quiet" onClick={onClose}>
+            {ut("common.cancel")}
+          </Button>
+        </>
+      }
+    >
       <form
+        id={formId}
         className="flex flex-col"
         onSubmit={(e) => {
           e.preventDefault();
           if (match && !busy) onConfirm();
         }}
       >
-        <div className="mb-[15px] text-[15px] leading-[21px] text-text-2">{warning}</div>
+        <div className="mb-4 text-body leading-[21px] text-text-2">{warning}</div>
         <Field
           label={`${ut("ui.typeToConfirm")} «${expected}»`}
-          labelClassName="mb-[6px] block text-[13px] font-bold text-muted [overflow-wrap:anywhere]"
+          labelClassName="mb-1.5 block text-caption font-bold text-muted [overflow-wrap:anywhere]"
         >
           <Input value={typed} onChange={(e) => setTyped(e.target.value)} autoFocus autoComplete="off" spellCheck={false} />
         </Field>
-        {error ? <p className="m-0 mt-[15px] text-[13px] text-danger">{error}</p> : null}
-        <div className="mt-[15px] flex justify-end gap-[14px]">
-          <Button variant="ghost" onClick={onClose}>
-            {ut("common.cancel")}
-          </Button>
-          <Button type="submit" variant="danger" disabled={!match || busy}>
-            {actionLabel}
-          </Button>
-        </div>
+        {error ? <ErrorText className="mt-3">{error}</ErrorText> : null}
       </form>
     </Modal>
   );
@@ -91,17 +101,24 @@ export function ConfirmPlain({
 }) {
   const { ut } = useLang();
   return (
-    <Modal title={title} onClose={onClose}>
-      <div className="text-[15px] leading-[21px] text-text-2">{children}</div>
-      {error ? <p className="m-0 mt-[15px] text-[13px] text-danger">{error}</p> : null}
-      <div className="mt-[20px] flex justify-end gap-[14px]">
-        <Button variant="ghost" onClick={onClose}>
-          {ut("common.cancel")}
-        </Button>
-        <Button variant={danger ? "danger" : "primary"} disabled={busy} onClick={onConfirm} autoFocus>
-          {actionLabel}
-        </Button>
-      </div>
+    <Modal
+      title={title}
+      onClose={onClose}
+      icon={<OpsIcon name={danger ? "triangle-alert" : "circle-help"} />}
+      tone={danger ? "warn" : "violet"}
+      footer={
+        <>
+          <Button variant={danger ? "danger" : "primary"} disabled={busy} onClick={onConfirm} autoFocus>
+            {actionLabel}
+          </Button>
+          <Button variant="quiet" onClick={onClose}>
+            {ut("common.cancel")}
+          </Button>
+        </>
+      }
+    >
+      <div className="text-body leading-[21px] text-text-2">{children}</div>
+      {error ? <ErrorText className="mt-3">{error}</ErrorText> : null}
     </Modal>
   );
 }
@@ -109,26 +126,27 @@ export function ConfirmPlain({
 /**
  * Пароль, показанный один раз, — с кнопкой копирования.
  *
- * Показывается плашкой данных (моноширинно, крупно, группами), а не полем
- * ввода: его не правят, его переписывают или копируют. Копирование — через
- * буфер обмена браузера; если браузер его не дал (не https, запрет),
- * пароль остаётся на экране, и человек выделит его руками — сообщение об
- * этом стоит под плашкой, а не пропадает молча.
+ * Показывается плашкой данных (моноширинно, крупно), а не полем ввода: его
+ * не правят, его переписывают или копируют. Копирование — через буфер
+ * обмена браузера; если браузер его не дал (не https, запрет), пароль
+ * остаётся на экране, и человек выделит его руками — сообщение об этом
+ * стоит под плашкой, а не пропадает молча.
  */
 export function OneTimePassword({ password }: { password: string }) {
   const { ut } = useLang();
   const [copied, setCopied] = useState<"yes" | "no" | null>(null);
   return (
     <div>
-      <div className="flex flex-wrap items-center gap-[12px]">
+      <div className="flex flex-wrap items-center gap-3">
         <output
           aria-label={ut("ops.users.tempPassword")}
-          className="select-all rounded-[5px] bg-primary-soft px-[12px] py-[8px] font-mono text-[20px] leading-[24px] tracking-[0.04em] text-primary tabular-nums"
+          className="select-all rounded-control bg-violet-tint px-3 py-2 font-mono text-[20px] font-semibold leading-6 tracking-[0.04em] text-violet-ink tabular-nums"
         >
           {password}
         </output>
         <Button
           variant="ghost"
+          icon={<OpsIcon name="copy" />}
           onClick={() => {
             if (!navigator.clipboard) {
               setCopied("no");
@@ -143,7 +161,7 @@ export function OneTimePassword({ password }: { password: string }) {
           {ut("co.copy")}
         </Button>
       </div>
-      <p className="m-0 mt-[8px] text-[13px] leading-[18px] text-muted" aria-live="polite">
+      <p className="m-0 mt-2 text-small text-muted" aria-live="polite">
         {copied === "yes" ? ut("ops.users.copied") : copied === "no" ? ut("ops.users.copyFailed") : ut("ops.users.onceHint")}
       </p>
     </div>
