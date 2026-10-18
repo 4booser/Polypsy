@@ -397,6 +397,7 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   "GET /api/conclusions/responses/:id/conclusion/draft": { summary: "Черновик заключения из результатов: подставляет то, что и так есть в системе", access: "staff", permission: "conclusions.write" },
   "PUT /api/conclusions/responses/:id/conclusion": { summary: "Черновик заключения", access: "staff", permission: "conclusions.write" },
   "POST /api/conclusions/responses/:id/conclusion/sign": { summary: "Подпись заключения — фиксирует снапшот", access: "staff", permission: "conclusions.sign" },
+  "GET /api/response-context/:id": { summary: "Обстановка вокруг протокола: человек, открытые сигналы, попытки методики, срабатывания правил", access: "staff", permission: "patients.read" },
 
   /* ── аналитика ── */
   "GET /api/analytics/overview": { summary: "Сводка по всем методикам", access: "staff", permission: "analytics.read" },

@@ -1,11 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { MemoryRouter } from "react-router-dom";
 import { LangProvider } from "../src/lang";
-import { AnsweringSection, ContributionSection, DynamicsSection, ResultSection } from "../src/pages/response/charts";
+import { ContributionPanel, DynamicsBody } from "../src/pages/response/charts";
 import { ItemTimes, itemAxisTop } from "../src/pages/response/ItemTimes";
-import { resultRows } from "../src/pages/response/model";
-import { ANSWERS, LABELS, answer, band, detail, dynamics, score, series, surveyFull } from "./responseFixtures";
+import { AnsweringPanel, ResultPanel } from "../src/pages/response/panels";
+import { ANSWERS, answer, band, detail, dynamics, score, series, surveyFull } from "./responseFixtures";
 
 /**
  * Графики прохождения рисуются на краях: первое прохождение, одиннадцать
@@ -15,7 +16,12 @@ import { ANSWERS, LABELS, answer, band, detail, dynamics, score, series, surveyF
  * деление на ноль в координатах стирает SVG молча, — и вместо пустоты
  * стоит слово.
  */
-const draw = (node: ReactNode) => renderToStaticMarkup(<LangProvider>{node}</LangProvider>);
+const draw = (node: ReactNode) =>
+  renderToStaticMarkup(
+    <MemoryRouter>
+      <LangProvider>{node}</LangProvider>
+    </MemoryRouter>,
+  );
 const clean = (html: string) => {
   expect(html).not.toContain("NaN");
   expect(html).not.toContain("Infinity");
@@ -23,36 +29,60 @@ const clean = (html: string) => {
 };
 
 describe("результат", () => {
-  test("одна шкала: линейка, полоса словом, описание и рекомендация", () => {
-    const html = draw(<ResultSection rows={resultRows(detail(), LABELS)} />);
+  test("одна шкала: шкала тяжести, ступень словом, лестница с рекомендацией и пометкой «це проходження»", () => {
+    const html = draw(<ResultPanel detail={detail()} dynamics={null} ctx={null} variant="protocol" />);
     clean(html);
     expect(html).toContain('role="img"');
-    expect(html).toContain("12 з 27");
-    expect(html).toContain("Помірна: опис");
+    expect(html).toContain("Помірна");
     expect(html).toContain("Повторний замір за місяць");
+    // попавшая ступень помечена словом, а не одной заливкой
+    expect(html).toContain("це проходження");
+    expect(html.match(/<li/g)?.length ?? 0).toBe(4);
+  });
+
+  test("шкала без полос — лестницы нет; на графиках — смысл и рекомендация словами", () => {
+    const bare = draw(<ResultPanel detail={detail({ scores: [score({ band: null, bands: [] })] })} dynamics={null} ctx={null} variant="protocol" />);
+    clean(bare);
+    expect(bare).not.toContain("<ol");
+    expect(bare).toContain("без інтерпретаційних меж");
+    const charts = draw(<ResultPanel detail={detail()} dynamics={null} ctx={null} variant="charts" />);
+    clean(charts);
+    expect(charts).toContain("Повторний замір за місяць");
+  });
+
+  test("сдвиг от предыдущего и от старта с порогом надёжной зміни — словами", () => {
+    const dyn = dynamics([
+      series([
+        { responseId: "r1", rawScore: 19 },
+        { responseId: "r2", rawScore: 16 },
+        { responseId: "r3", rawScore: 12 },
+      ]),
+    ]);
+    const html = draw(<ResultPanel detail={detail()} dynamics={dyn} ctx={null} variant="protocol" />);
+    clean(html);
+    expect(html).toContain("−4");
+    expect(html).toContain("−7");
+    expect(html).toContain("поріг надійної зміни");
   });
 
   test("профиль: шкала без полос, ненормированная и T-балл без верха — пометки словами, без NaN", () => {
-    const rows = resultRows(
-      detail({
-        scores: [
-          score(),
-          score({ scaleId: "s2", scaleCode: "A", scaleTitle: "Тривога", band: null, bands: [] }),
-          score({
-            scaleId: "s3",
-            scaleCode: "Hs",
-            scaleTitle: "Іпохондрія",
-            normalization: "tscore",
-            normalized: false,
-            band: null,
-            bands: [band("t1", 0, 44.9, "Низький", "none"), band("t2", 45, 120, "Високий", "severe")],
-          }),
-          score({ scaleId: "s4", scaleCode: "T", scaleTitle: "Т-шкала", normalization: "tscore", value: 61, band: null, bands: [] }),
-        ],
-      }),
-      LABELS,
-    );
-    const html = draw(<ResultSection rows={rows} />);
+    const d = detail({
+      scores: [
+        score(),
+        score({ scaleId: "s2", scaleCode: "A", scaleTitle: "Тривога", band: null, bands: [] }),
+        score({
+          scaleId: "s3",
+          scaleCode: "Hs",
+          scaleTitle: "Іпохондрія",
+          normalization: "tscore",
+          normalized: false,
+          band: null,
+          bands: [band("t1", 0, 44.9, "Низький", "none"), band("t2", 45, 120, "Високий", "severe")],
+        }),
+        score({ scaleId: "s4", scaleCode: "T", scaleTitle: "Т-шкала", normalization: "tscore", value: 61, band: null, bands: [] }),
+      ],
+    });
+    const html = draw(<ResultPanel detail={d} dynamics={null} ctx={null} variant="charts" />);
     clean(html);
     expect(html).toContain("не нормовано");
     expect(html).toContain("без інтерпретаційних меж");
@@ -62,16 +92,17 @@ describe("результат", () => {
 
 describe("динамика", () => {
   test("одно прохождение — строка, а не график", () => {
-    const html = draw(<DynamicsSection detail={detail()} dyn={dynamics([series([{ responseId: "r3", rawScore: 12 }])], 1)} />);
+    const html = draw(<DynamicsBody detail={detail()} dyn={dynamics([series([{ responseId: "r3", rawScore: 12 }])], 1)} events={[]} />);
     clean(html);
     expect(html).toContain("Перше проходження");
-    expect(html).not.toContain("<svg");
+    expect(html).not.toMatch(/<svg[^>]*role="img"/);
   });
 
-  test("ряд: график с кольцом этого прохождения и сдвигом словами", () => {
+  test("ряд: график курса с полосами тяжести", () => {
     const html = draw(
-      <DynamicsSection
+      <DynamicsBody
         detail={detail()}
+        events={[]}
         dyn={dynamics([
           series([
             { responseId: "r1", rawScore: 6, bandLabel: "Легка", severity: "mild" },
@@ -82,50 +113,44 @@ describe("динамика", () => {
     );
     clean(html);
     expect(html).toContain("<svg");
-    expect(html).toContain("+6");
-    expect(html).toContain("більше за похибку вимірювання");
     expect(html).toContain("Легка");
   });
 
-  test("больше шести шкал — выбор шкалы и перечень сдвигов, а не одиннадцать графиков", () => {
+  test("несколько шкал — выбор шкалы и один график, а не одиннадцать", () => {
     const codes = ["L", "F", "K", "Hs", "D", "Hy", "Pd", "Pa", "Pt", "Sc", "Ma"];
     const d = detail({ scores: codes.map((c) => score({ scaleId: c, scaleCode: c, scaleTitle: c })) });
     const dyn = dynamics(
-      codes.map((c) =>
-        series([{ responseId: "r1", rawScore: 50 }, { responseId: "r3", rawScore: 60 }], { code: c, title: c, sem: null }),
-      ),
+      codes.map((c) => series([{ responseId: "r1", rawScore: 50 }, { responseId: "r3", rawScore: 60 }], { code: c, title: c, sem: null })),
     );
-    const html = draw(<DynamicsSection detail={d} dyn={dyn} />);
+    const html = draw(<DynamicsBody detail={d} dyn={dyn} events={[]} />);
     clean(html);
     expect(html).toContain("<select");
-    expect(html.match(/<svg/g)?.length ?? 0).toBe(1);
-    expect(html).toContain("оцінити надійність зміни нема з чого");
+    expect(html.match(/<svg[^>]*role="img"/g)?.length ?? 0).toBe(1);
   });
 });
 
 describe("вклад пунктов", () => {
   test("перечень с пометкой критического варианта и счётчиком пропусков", () => {
-    const html = draw(<ContributionSection detail={detail({ answers: ANSWERS })} survey={surveyFull()} />);
+    const html = draw(<ContributionPanel detail={detail({ answers: ANSWERS })} survey={surveyFull()} loading={false} prev={null} />);
     clean(html);
-    expect(html).toContain("критичний варіант");
     expect(html).toContain("без відповіді: 1 з 7");
-    expect(html).toContain("3 з 4");
+    expect(html).toContain("text-risk-ink");
   });
 
   test("методика той версии недоступна или чужая — слово, а не пустота", () => {
-    expect(draw(<ContributionSection detail={detail({ answers: ANSWERS })} survey={null} />)).toContain("не вдалося");
-    expect(draw(<ContributionSection detail={detail({ answers: ANSWERS })} survey={surveyFull({ versionNumber: 9 })} />)).toContain(
-      "Методику змінено",
-    );
+    expect(draw(<ContributionPanel detail={detail({ answers: ANSWERS })} survey={null} loading={false} prev={null} />)).toContain("не вдалося");
+    expect(
+      draw(<ContributionPanel detail={detail({ answers: ANSWERS })} survey={surveyFull({ versionNumber: 9 })} loading={false} prev={null} />),
+    ).toContain("Методику змінено");
   });
 });
 
 describe("как отвечал", () => {
-  test("выброс в десять минут не сплющивает остальные столбцы; плитки с числами", () => {
+  test("выброс в десять минут не сплющивает остальные столбцы; смена ответа — в перечне", () => {
     const answers = Array.from({ length: 12 }, (_, i) =>
       answer({ questionId: `q${i}`, position: i + 1, durationMs: i === 5 ? 600_000 : 900 + i * 700, changeCount: i === 2 ? 1 : 0 }),
     );
-    const html = draw(<AnsweringSection detail={detail({ answers })} tooFastMs={null} locale="uk" />);
+    const html = draw(<AnsweringPanel detail={detail({ answers })} survey={null} surveyLoading={false} variant="charts" />);
     clean(html);
     expect(html).toContain("поріг");
     expect(html).toContain("№3");
@@ -135,14 +160,15 @@ describe("как отвечал", () => {
 
   test("ничего не замерено — прочерки и строка вместо графика", () => {
     const html = draw(
-      <AnsweringSection
+      <AnsweringPanel
         detail={detail({ durationMs: 0, answers: [answer({ questionId: "a", position: 1 }), answer({ questionId: "b", position: 2, answered: false })] })}
-        tooFastMs={null}
-        locale="uk"
+        survey={null}
+        surveyLoading={false}
+        variant="charts"
       />,
     );
     clean(html);
-    expect(html).not.toContain("<svg");
+    expect(html).not.toMatch(/<svg[^>]*role="img"/);
     expect(html).toContain("не записано");
     expect(html).toContain("—");
   });
