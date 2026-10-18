@@ -227,9 +227,15 @@ export const disableUserSchema = z.object({
   reason: z.string().trim().min(3).max(500),
 });
 
-/** Активные сессии (GET /api/ops/sessions): по человеку или поиском, страницами */
+/**
+ * Активные сессии (GET /api/ops/sessions): по человеку или поиском, страницами.
+ * Роль (как у реестра, «staff» — весь персонал) и возраст сессии от входа —
+ * закрытыми списками: отбор «сесії пацієнтів старші за 30 днів» из сводки.
+ */
 export const opsSessionQuery = z.object({
   userId: z.string().uuid().optional(),
+  role: registryRole.optional(),
+  age: z.enum(["day", "week", "month", "older"]).optional(),
   q: z
     .string()
     .max(120)

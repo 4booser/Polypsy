@@ -34,7 +34,7 @@ import {
 import { conflict, forbidden, langOf, notFound, parseBody, parseQuery } from "../lib/http";
 import { clearFailures } from "../lib/loginGuard";
 import { currentRequestId } from "../lib/log";
-import { sessionsSummary, usersSummary } from "../lib/peopleStats";
+import { ageBucket, sessionsSummary, usersSummary } from "../lib/peopleStats";
 import { revokeAllFor, revokeFamily } from "../lib/refresh";
 import { guardAccountAction } from "../lib/accountClass";
 import { rowSecurityOf, usersAttention } from "../lib/usersAttention";
@@ -488,7 +488,8 @@ opsUserRoutes.delete("/:id", async (c) => {
  * бы показывать догадку как факт.
  */
 opsSessionRoutes.get("/", async (c) => {
-  const { userId, q, page, per } = parseQuery(c, opsSessionQuery);
+  const { userId, q, role, age, page, per } = parseQuery(c, opsSessionQuery);
+  const now = Date.now();
 
   const rows = await db
     .select({
@@ -520,13 +521,17 @@ opsSessionRoutes.get("/", async (c) => {
     const fullName = fullNameOf(r);
     const hay = `${fullName} ${r.email}`.toLowerCase();
     if (words.length && !words.every((w) => hay.includes(w))) continue;
+    if (role && (role === "staff" ? r.role === "user" : r.role !== role)) continue;
+    const startedAt = new Date(r.startedAt ?? r.lastUsedAt).toISOString();
+    /* возраст — от входа, теми же корзинами, что у сводки (ageBucket) */
+    if (age && ageBucket(startedAt, now) !== age) continue;
     sessions.push({
       id: r.familyId,
       userId: r.userId,
       fullName,
       email: r.email,
       role: r.role,
-      startedAt: new Date(r.startedAt ?? r.lastUsedAt).toISOString(),
+      startedAt,
       lastUsedAt: r.lastUsedAt,
       expiresAt: r.expiresAt,
     });
@@ -557,7 +562,7 @@ opsSessionRoutes.get("/", async (c) => {
   await audit(c, {
     action: "session.list",
     subjectUserId: userId ?? null,
-    details: { matched: sessions.length, returned: items.length, searched: Boolean(q) },
+    details: { matched: sessions.length, returned: items.length, searched: Boolean(q), role, age },
   });
 
   const body: OpsSessionPage = { items, total: sessions.length, page, per };

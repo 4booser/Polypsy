@@ -40,7 +40,7 @@ const U1 = "0b8f6a3e-1c2d-4e5f-8a9b-0c1d2e3f4a5b";
 describe("«Сесії»: отбор из адреса", () => {
   test("человек, поиск, страница и размер восстанавливаются из адреса и принимаются сервером", () => {
     const f = readSessionsFilters(url(`user=${U1}&q=Коваль&page=3&per=50`));
-    expect(f).toEqual({ q: "Коваль", userId: U1, page: 3, per: 50 });
+    expect(f).toEqual({ q: "Коваль", userId: U1, role: "", age: "", page: 3, per: 50 });
     expect(sessionsQuery(f)).toEqual({ q: "Коваль", userId: U1, page: "3", per: "50" });
     expect(accepted(sessionsQuery(f))).toBe(true);
   });
@@ -88,13 +88,25 @@ describe("«Сесії»: отбор из адреса", () => {
     expect(sessionsEmptyKey({ q: "коваль", userId: "" })).toBe("wt.sess.noneFound");
     expect(sessionsEmptyKey({ q: "коваль", userId: U1 })).toBe("wt.sess.noneFound");
     expect(sessionsEmptyKey({ q: "  ", userId: U1 })).toBe("wt.sess.noneOfUser");
+    // отбор по роли или возрасту — «за цим відбором», а не «сесій немає взагалі»
+    expect(sessionsEmptyKey({ q: "", userId: "", role: "user", age: "" })).toBe("oppa.noneFiltered");
+    expect(sessionsEmptyKey({ q: "", userId: "", role: "", age: "older" })).toBe("oppa.noneFiltered");
+  });
+
+  test("роль и возраст — из закрытых списков схемы сервера; незнакомое — «условия нет»", () => {
+    const f = readSessionsFilters(url("role=staff&age=older"));
+    expect([f.role, f.age]).toEqual(["staff", "older"]);
+    expect(accepted(sessionsQuery(f))).toBe(true);
+    const bad = readSessionsFilters(url("role=doctor&age=year"));
+    expect([bad.role, bad.age]).toEqual(["", ""]);
+    expect(sessionsQuery(bad)).toMatchObject({ role: undefined, age: undefined });
   });
 
   test("вкладка читает отбор через разбор и шлёт на сервер разобранное", () => {
     const src = readFileSync(resolve(import.meta.dir, "../src/pages/ops/Sessions.tsx"), "utf8");
     expect(src).toContain("readSessionsFilters(params)");
     expect(src).toMatch(/api\.opsSessions\(query\)/);
-    expect(src).toMatch(/sessionsEmptyKey\(\{ q: settledQ, userId \}\)/);
+    expect(src).toMatch(/sessionsEmptyKey\(\{ q: settledQ, userId, role, age \}\)/);
     // сырой адрес на сервер больше не уходит
     expect(src).not.toContain('params.get("user")');
   });

@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import type { OpsUserPage, OpsUserRow, OpsUsersAttention } from "@quizzy/shared";
+import type { OpsSessionPage, OpsUserPage, OpsUserRow, OpsUsersAttention } from "@quizzy/shared";
 import { auditLog, loginAttempts, permissionExceptions, userSecondFactor } from "../src/db/schema";
 import { classifyAttention, IDLE_STAFF_DAYS, TEMP_PASSWORD_HOURS, type AttentionAccount } from "../src/lib/usersAttention";
 import { writePolicy } from "../src/lib/secondFactor";
-import { and, api, appApi, db, eq, makeUser, root } from "./fixtures";
+import { and, api, app, appApi, db, eq, makeUser, root } from "./fixtures";
 
 /**
  * «Користувачі» техпанели в Polypsy 2.0: вкладка «Персонал», второй фактор и
@@ -217,4 +217,31 @@ describe("«Потребує уваги» — маршрут", () => {
       .limit(1);
     expect((row!.details as { view?: string }).view).toBe("attention");
   }, 20_000);
+});
+
+describe("«Сесії»: отбор по роли и возрасту", () => {
+  test("staff — только персонал, user — только пациенты; возраст — от входа, корзинами сводки", async () => {
+    const t = tag();
+    const staffEmail = `w25-sess-${t}-a@test.dev`;
+    const patientEmail = `w25-sess-${t}-p@test.dev`;
+    await makeUser("admin", staffEmail);
+    await makeUser("user", patientEmail);
+    for (const email of [staffEmail, patientEmail]) {
+      const res = await app.request("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password: "secret12345" }),
+      });
+      expect(res.status).toBe(200);
+    }
+    const emails = async (query: string) =>
+      (await api<OpsSessionPage>(`/api/ops/sessions?q=${t}${query}`, root.token)).body.items.map((s) => s.email).sort();
+
+    expect(await emails("")).toEqual([staffEmail, patientEmail].sort());
+    expect(await emails("&role=staff")).toEqual([staffEmail]);
+    expect(await emails("&role=user")).toEqual([patientEmail]);
+    expect(await emails("&age=day")).toEqual([staffEmail, patientEmail].sort());
+    expect(await emails("&age=older")).toEqual([]);
+    expect((await api(`/api/ops/sessions?age=year`, root.token)).status).toBe(400);
+  });
 });

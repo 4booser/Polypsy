@@ -8347,6 +8347,49 @@ export const UI = {
   /* — конец участка «користувачі» — */
 
   /* v2-ops-people: сесії й аудит */
+  /* «Сесії» (pages/ops/Sessions.tsx, sessions/summary.tsx) */
+  "oppa.lead": {
+    uk: "Входи, що діють зараз. Завершена сесія закриває вхід на тому пристрої — людині доведеться увійти знову.",
+    ru: "Входы, которые действуют сейчас. Завершённая сессия закрывает вход на том устройстве — человеку придётся войти снова.",
+    en: "Sign-ins in effect right now. Ending a session closes sign-in on that device — the person has to sign in again.",
+  },
+  "oppa.metaTotal": { uk: "Активних: {n}", ru: "Активных: {n}", en: "Active: {n}" },
+  "oppa.metaStaff": { uk: "Персонал: {n}", ru: "Персонал: {n}", en: "Staff: {n}" },
+  "oppa.updated": { uk: "оновлено {t}", ru: "обновлено {t}", en: "updated {t}" },
+  "oppa.refresh": { uk: "Оновити", ru: "Обновить", en: "Refresh" },
+  "oppa.whoTitle": { uk: "Хто тримає вхід", ru: "Кто держит вход", en: "Who is signed in" },
+  "oppa.whoSub": { uk: "усі сесії, що діють зараз", ru: "все сессии, которые действуют сейчас", en: "all sessions in effect now" },
+  "oppa.ageSub": { uk: "від входу", ru: "от входа", en: "since sign-in" },
+  "oppa.olderTitle": {
+    uk: "Сесії пацієнтів, старші за 30 днів: {n}",
+    ru: "Сессии пациентов старше 30 дней: {n}",
+    en: "Patient sessions older than 30 days: {n}",
+  },
+  "oppa.olderText": {
+    uk: "Застосунок оновлює їх сам; така сесія — звичайна для пацієнта, що щодня відкриває застосунок.",
+    ru: "Приложение обновляет их само; такая сессия — обычна для пациента, который каждый день открывает приложение.",
+    en: "The app refreshes them on its own; such a session is normal for a patient who opens the app daily.",
+  },
+  "oppa.pick": { uk: "Відібрати", ru: "Отобрать", en: "Filter" },
+  "oppa.age": { uk: "Вік", ru: "Возраст", en: "Age" },
+  "oppa.anyAge": { uk: "Будь-який вік", ru: "Любой возраст", en: "Any age" },
+  "oppa.noneFiltered": { uk: "За цим відбором сесій немає", ru: "По этому отбору сессий нет", en: "No sessions match this filter" },
+  "oppa.over30": { uk: "понад 30 днів", ru: "больше 30 дней", en: "over 30 days" },
+  "oppa.justNow": { uk: "щойно", ru: "только что", en: "just now" },
+  "oppa.minAgo": { uk: "{n} хв тому", ru: "{n} мин назад", en: "{n} min ago" },
+  "oppa.hoursAgo": { uk: "{n} год тому", ru: "{n} ч назад", en: "{n} h ago" },
+  "oppa.above": { uk: "старший", ru: "старший", en: "senior" },
+  "oppa.aboveTip": {
+    uk: "Сесію старшого за посадою завершити не можна",
+    ru: "Сессию старшего по должности завершить нельзя",
+    en: "A senior colleague's session cannot be ended",
+  },
+  "oppa.lockNote": {
+    uk: "Сесії старших за посадою завершити не можна — у них замість кнопки замок",
+    ru: "Сессии старших по должности завершить нельзя — у них вместо кнопки замок",
+    en: "Sessions of senior colleagues cannot be ended — they show a lock instead of the button",
+  },
+  "oppa.keys": { uk: "Клавіші списку", ru: "Клавиши списка", en: "List shortcuts" },
   /* — конец участка «сесії й аудит» — */
 
   /* v2-ops-people: підозріла активність, тимчасові доступи, хто переглядав, другий фактор */
