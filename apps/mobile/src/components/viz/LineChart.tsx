@@ -1,9 +1,10 @@
 import { View } from "react-native";
 import Svg, { Circle, G, Line, Path, Text as SvgText } from "react-native-svg";
-import { severityColor, useChart, useColors } from "../../theme";
-import { Caption, Legend, PLOT, formatShort, niceTicks, useMeasuredWidth } from "./primitives";
+import { useChart, useColors, useSeverity } from "../../theme";
+import { Caption, Legend, PLOT, formatShort, niceTicks, svgFont, useAxisText, useMeasuredWidth } from "./primitives";
 import { lineRuns, xFractions } from "./math";
 import { useLang } from "@/lang";
+import type { Severity } from "@quizzy/shared";
 
 export interface SeriesPoint {
   x: string;
@@ -11,8 +12,8 @@ export interface SeriesPoint {
   y: number | null;
   /** Момент замера, мс. Есть у всех точек — ось X по времени, а не по номеру (math.ts, xFractions) */
   t?: number;
-  /** Цветовая метка точки — например степень выраженности */
-  tone?: keyof typeof severityColor;
+  /** Цветовая метка точки — степень выраженности; цвет ступени — из темы */
+  tone?: Severity;
 }
 
 export interface Series {
@@ -49,6 +50,8 @@ export function LineChart({
   const { ut } = useLang();
   const chart = useChart();
   const c = useColors();
+  const sev = useSeverity();
+  const axis = useAxisText();
   const [width, onLayout] = useMeasuredWidth();
 
   const known = series.flatMap((s) => s.points.map((p) => p.y).filter((y): y is number => y !== null));
@@ -84,8 +87,7 @@ export function LineChart({
             key={`t-${t}`}
             x={PLOT.padLeft - 6}
             y={yAt(t) + 4}
-            fontSize={10}
-            fill={chart.axis}
+            {...axis}
             textAnchor="end"
           >
             {formatShort(t)}
@@ -121,8 +123,8 @@ export function LineChart({
                     cx={xOf(si, i)}
                     cy={yAt(p.y)}
                     r={PLOT.markRadius}
-                    fill={p.tone ? severityColor[p.tone] : color}
-                    stroke={c.card}
+                    fill={p.tone ? sev.color[p.tone] : color}
+                    stroke={c.panel}
                     strokeWidth={2}
                   />
                 ),
@@ -146,8 +148,8 @@ export function LineChart({
                     key={`lbl-${i}`}
                     x={xOf(0, i)}
                     y={yAt(p.y) - 10}
-                    fontSize={11}
-                    fontWeight="600"
+                    fontSize={12}
+                    {...svgFont(800)}
                     fill={c.text}
                     textAnchor={k === 0 ? "start" : "end"}
                   >
@@ -162,19 +164,18 @@ export function LineChart({
           x2={PLOT.padLeft + plotW}
           y1={yAt(0)}
           y2={yAt(0)}
-          stroke={chart.axis}
+          stroke={chart.base}
           strokeWidth={1}
         />
         {known.length > 0 ? (
           <>
-            <SvgText x={PLOT.padLeft} y={height - 6} fontSize={10} fill={chart.axis}>
+            <SvgText x={PLOT.padLeft} y={height - 6} {...axis}>
               {series[0]!.points[0]?.x ?? ""}
             </SvgText>
             <SvgText
               x={PLOT.padLeft + plotW}
               y={height - 6}
-              fontSize={10}
-              fill={chart.axis}
+              {...axis}
               textAnchor="end"
             >
               {series[0]!.points[series[0]!.points.length - 1]?.x ?? ""}

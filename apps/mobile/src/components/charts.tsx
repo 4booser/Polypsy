@@ -1,20 +1,26 @@
-import { Text, View } from "react-native";
+import { View } from "react-native";
 import type { Severity } from "@quizzy/shared";
-import { radius, severityColor, spacing, useChart, useColors } from "../theme";
+import { radius, spacing, useChart, useColors, useSeverity } from "../theme";
 import { SEVERITY_KEY } from "@quizzy/shared";
 import { useLang } from "../lang";
-import { Body, Card } from "./ui";
+import { T } from "../ui/Text";
+import { Panel } from "../ui/Panel";
+import { Body } from "./ui";
 
 /**
  * Диаграммы собраны на View: столбики тонкие, с закруглённым концом и
  * прижаты к базовой линии, между сегментами — зазор цвета поверхности,
  * подписи стоят рядом со значением, сетка и оси приглушены.
+ *
+ * Цвета — палитра графиков «Виразной» (useChart): один ряд — фиолетовый
+ * набора, дорожка — track; выраженность — ступени темы (useSeverity) и
+ * всегда со словом.
  */
 
 const BAR_HEIGHT = 10;
 const SEGMENT_GAP = 2;
 
-/** Крупная цифра-показатель. Без графика — это осознанно не диаграмма. */
+/** Крупная цифра-показатель с подписью. Без графика — это осознанно не диаграмма. */
 export function StatTile({
   label,
   value,
@@ -30,17 +36,19 @@ export function StatTile({
       style={{
         flex: 1,
         minWidth: 140,
-        backgroundColor: c.card,
+        backgroundColor: c.panel,
         borderColor: c.border,
         borderWidth: 1,
-        borderRadius: radius.md,
+        borderRadius: radius.panel,
         padding: spacing.lg,
         gap: 2,
       }}
     >
-      <Text style={{ color: c.muted, fontSize: 12 }}>{label}</Text>
-      <Text style={{ color: c.text, fontSize: 26, fontWeight: "700" }}>{value}</Text>
-      {hint ? <Text style={{ color: c.muted, fontSize: 12 }}>{hint}</Text> : null}
+      <T v="sub">{label}</T>
+      <T v="number" size={32} num scale={false}>
+        {value}
+      </T>
+      {hint ? <T v="sub">{hint}</T> : null}
     </View>
   );
 }
@@ -57,30 +65,29 @@ export function BarList({
   unit?: string;
 }) {
   const chart = useChart();
-  const c = useColors();
   const max = Math.max(...items.map((i) => i.value), 1);
 
   return (
     <View style={{ gap: spacing.md }}>
       {items.map((item, i) => (
-        <View key={i} style={{ gap: spacing.xs }}>
-          <View style={{ flexDirection: "row", justifyContent: "space-between", gap: spacing.sm }}>
-            <Text style={{ color: c.text, fontSize: 14, flex: 1 }} numberOfLines={2}>
+        <View key={i} style={{ gap: 6 }}>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "baseline", gap: spacing.sm }}>
+            <T v="body" size={15} style={{ flex: 1 }} numberOfLines={2}>
               {item.label}
-            </Text>
-            <Text style={{ color: c.muted, fontSize: 13, fontVariant: ["tabular-nums"] }}>
+            </T>
+            <T v="sub" size={14} weight={700} tone="text2" num>
               {valueFormatter ? valueFormatter(item.value) : item.value}
               {unit ?? ""}
-              {item.caption ? ` · ${item.caption}` : ""}
-            </Text>
+              {item.caption ? `, ${item.caption}` : ""}
+            </T>
           </View>
-          <View style={{ height: BAR_HEIGHT, backgroundColor: chart.grid, borderRadius: radius.sm }}>
+          <View style={{ height: BAR_HEIGHT, backgroundColor: chart.track, borderRadius: BAR_HEIGHT / 2 }}>
             <View
               style={{
                 height: BAR_HEIGHT,
                 width: `${Math.max(2, (item.value / max) * 100)}%`,
                 backgroundColor: item.color ?? chart.bar,
-                borderRadius: radius.sm,
+                borderRadius: BAR_HEIGHT / 2,
               }}
             />
           </View>
@@ -92,8 +99,7 @@ export function BarList({
 
 /**
  * Распределение по нормам: одна составная полоса + легенда.
- * Цвет выраженности всегда идёт с подписью — на светлой поверхности часть
- * статусных ролей не добирает 3:1, и подпись здесь обязательная страховка.
+ * Цвет выраженности всегда идёт с подписью — цвет не говорит один.
  */
 export function SeverityBar({
   bands,
@@ -101,7 +107,7 @@ export function SeverityBar({
   bands: { label: string; severity: Severity; count: number; percent: number }[];
 }) {
   const { ut } = useLang();
-  const c = useColors();
+  const sev = useSeverity();
   const total = bands.reduce((sum, b) => sum + b.count, 0);
   if (!total) return <Body muted>{ut("mch.noDistribution")}</Body>;
 
@@ -113,8 +119,8 @@ export function SeverityBar({
             key={i}
             style={{
               flex: Math.max(b.count, 0.001),
-              backgroundColor: severityColor[b.severity],
-              borderRadius: radius.sm,
+              backgroundColor: sev.color[b.severity],
+              borderRadius: BAR_HEIGHT / 2,
             }}
           />
         ))}
@@ -122,20 +128,13 @@ export function SeverityBar({
       <View style={{ gap: spacing.sm }}>
         {bands.map((b, i) => (
           <View key={i} style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
-            <View
-              style={{
-                width: 10,
-                height: 10,
-                borderRadius: 3,
-                backgroundColor: severityColor[b.severity],
-              }}
-            />
-            <Text style={{ color: c.text, fontSize: 14, flex: 1 }} numberOfLines={1}>
+            <View style={{ width: 10, height: 10, borderRadius: 3, backgroundColor: sev.color[b.severity] }} />
+            <T v="body" size={15} style={{ flex: 1 }} numberOfLines={1}>
               {b.label}
-            </Text>
-            <Text style={{ color: c.muted, fontSize: 13, fontVariant: ["tabular-nums"] }}>
-              {b.count} · {b.percent}%
-            </Text>
+            </T>
+            <T v="sub" size={14} weight={700} tone="text2" num>
+              {b.count}, {b.percent}%
+            </T>
           </View>
         ))}
       </View>
@@ -143,18 +142,24 @@ export function SeverityBar({
   );
 }
 
-/** Метка выраженности: кружок + текст, никогда не только цвет */
+/** Метка выраженности: слово на подложке своей ступени — никогда не только цвет */
 export function SeverityTag({ severity, label }: { severity: Severity; label?: string }) {
-  const c = useColors();
   const { ut } = useLang();
+  const sev = useSeverity();
   return (
-    <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.xs }}>
-      <View
-        style={{ width: 10, height: 10, borderRadius: 3, backgroundColor: severityColor[severity] }}
-      />
-      <Text style={{ color: c.text, fontSize: 13, fontWeight: "600" }}>
+    <View
+      style={{
+        alignSelf: "flex-start",
+        justifyContent: "center",
+        height: 28,
+        paddingHorizontal: 12,
+        borderRadius: 14,
+        backgroundColor: sev.tint[severity],
+      }}
+    >
+      <T v="sub" size={14} weight={700} color={sev.color[severity]} scale={false}>
         {label ?? ut(SEVERITY_KEY[severity])}
-      </Text>
+      </T>
     </View>
   );
 }
@@ -169,7 +174,6 @@ export function Histogram({
 }) {
   const { ut } = useLang();
   const chart = useChart();
-  const c = useColors();
   if (!data.length) return <Body muted>{ut("mch.noNumeric")}</Body>;
   const max = Math.max(...data.map((d) => d.count), 1);
 
@@ -178,9 +182,9 @@ export function Histogram({
       <View style={{ flexDirection: "row", alignItems: "flex-end", gap: SEGMENT_GAP, height }}>
         {data.map((d) => (
           <View key={d.value} style={{ flex: 1, alignItems: "center", gap: 2 }}>
-            <Text style={{ color: c.muted, fontSize: 10, fontVariant: ["tabular-nums"] }}>
+            <T v="caption" size={11} weight={700} tone="text2" num scale={false}>
               {d.count}
-            </Text>
+            </T>
             <View
               style={{
                 width: "100%",
@@ -193,21 +197,12 @@ export function Histogram({
           </View>
         ))}
       </View>
-      <View style={{ height: 1, backgroundColor: chart.axis, opacity: 0.5 }} />
+      <View style={{ height: 1, backgroundColor: chart.base }} />
       <View style={{ flexDirection: "row", gap: SEGMENT_GAP }}>
         {data.map((d) => (
-          <Text
-            key={d.value}
-            style={{
-              flex: 1,
-              textAlign: "center",
-              color: chart.axis,
-              fontSize: 10,
-              fontVariant: ["tabular-nums"],
-            }}
-          >
+          <T key={d.value} v="caption" size={11} num scale={false} style={{ flex: 1, textAlign: "center" }}>
             {d.value}
-          </Text>
+          </T>
         ))}
       </View>
     </View>
@@ -218,7 +213,6 @@ export function Histogram({
 export function Timeline({ data }: { data: { date: string; count: number }[] }) {
   const { ut } = useLang();
   const chart = useChart();
-  const c = useColors();
   if (!data.length) return <Body muted>{ut("mch.noResponses")}</Body>;
 
   const max = Math.max(...data.map((d) => d.count), 1);
@@ -242,17 +236,23 @@ export function Timeline({ data }: { data: { date: string; count: number }[] }) 
           />
         ))}
       </View>
-      <View style={{ height: 1, backgroundColor: chart.axis, opacity: 0.5 }} />
+      <View style={{ height: 1, backgroundColor: chart.base }} />
       <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-        <Text style={{ color: chart.axis, fontSize: 11 }}>{short(first)}</Text>
-        <Text style={{ color: c.muted, fontSize: 11 }}>{ut("mv.peakPerDay").replace("{n}", String(max))}</Text>
-        <Text style={{ color: chart.axis, fontSize: 11 }}>{short(last)}</Text>
+        <T v="caption" size={11} num scale={false}>
+          {short(first)}
+        </T>
+        <T v="caption" size={11} scale={false}>
+          {ut("mv.peakPerDay").replace("{n}", String(max))}
+        </T>
+        <T v="caption" size={11} num scale={false}>
+          {short(last)}
+        </T>
       </View>
     </View>
   );
 }
 
-/** Заголовок блока диаграммы */
+/** Блок диаграммы — панель набора с заголовком и подписью */
 export function ChartCard({
   title,
   subtitle,
@@ -262,12 +262,9 @@ export function ChartCard({
   subtitle?: string;
   children: React.ReactNode;
 }) {
-  const c = useColors();
   return (
-    <Card>
-      <Text style={{ color: c.text, fontSize: 16, fontWeight: "700" }}>{title}</Text>
-      {subtitle ? <Text style={{ color: c.muted, fontSize: 13 }}>{subtitle}</Text> : null}
-      <View style={{ marginTop: spacing.sm }}>{children}</View>
-    </Card>
+    <Panel title={title} sub={subtitle} icon="chart-line">
+      {children}
+    </Panel>
   );
 }
