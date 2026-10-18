@@ -391,8 +391,6 @@ export const UI = {
   "pg.assignTest": { uk: "Призначити тест", ru: "Назначить тест", en: "Assign test" },
   "pg.assigned": { uk: "Тест призначено", ru: "Тест назначен", en: "Test assigned" },
   /* выбор галочками: «18 вибрано» — нижний рядок кадра f05 */
-  "pg.selected": { uk: "вибрано", ru: "выбрано", en: "selected" },
-  "pg.select": { uk: "Вибрати", ru: "Выбрать", en: "Select" },
   "pg.addToGroup": { uk: "Додати до групи", ru: "Добавить в группу", en: "Add to group" },
   "pg.added": { uk: "Додано до групи", ru: "Добавлены в группу", en: "Added to the group" },
   "pg.removeFromGroup": { uk: "Прибрати з групи", ru: "Убрать из группы", en: "Remove from group" },
@@ -1737,7 +1735,6 @@ export const UI = {
    * Подписи того, что кадр не рисует на виду: меню шестерёнки списка и меню
    * «⋯» над выборкой. Сами действия с экрана не ушли — ушли с глаз.
    */
-  "pt.selectionActions": { uk: "Дії з вибраними", ru: "Действия с выбранными", en: "Actions on selected" },
   /*
    * Раздел бургера с дверями, которых кадр не рисует на самом экране.
    * Два адреса — /responses/:id/conclusion/draft и /patient-groups/:id/edit —
