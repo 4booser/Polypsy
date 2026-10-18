@@ -1,6 +1,7 @@
 import { beforeAll, describe, expect, test } from "bun:test";
 import { env } from "../src/env";
 import { percentileOf } from "../src/lib/norms";
+import { isNamedExport } from "../src/lib/suspicious";
 import { durationBins, weekOf, weeklyMeans } from "../src/lib/stats";
 import { adminA, adminB, and, api, app, createSurveySchema, createVersion, db, eq, groupA, makeUser, patient, responsesTable, root, sql, sr45, submitSurvey, surveyInA, surveys } from "./fixtures";
 
@@ -320,6 +321,68 @@ describe("воспроизводимость выгрузки", () => {
         e.action === "analytics.export" && e.details?.purpose === "Проверка журнала",
     );
     expect(entry).toBeTruthy();
+  });
+
+  /**
+   * Окно «Вивантаження» (analytics/tests/actions.tsx) кладёт цель в адрес
+   * КАЖДОГО из восьми файлов и обещает «Потрапить у журнал доступу». Сценарий
+   * SPSS и словарь переменных писали строку журнала без цели, скрипты
+   * загрузки не писали её вовсе: в журнале выходило «выгрузил сценарий» без
+   * «зачем» — или ничего.
+   *
+   * Мутация: убрать purpose из details у syntax.sps, codebook.csv или
+   * load/:ext — проверка называет формат, у которого цели нет.
+   */
+  test("цель доходит до журнала у каждого файла окна выгрузок", async () => {
+    const purpose = `Перевірка мети ${crypto.randomUUID().slice(0, 8)}`;
+    const q = `purpose=${encodeURIComponent(purpose)}`;
+    const files = [
+      `/api/analytics/surveys/${surveyInA}/export?${q}`,
+      `/api/spss/surveys/${surveyInA}/data.csv?profile=deidentified&${q}`,
+      `/api/spss/surveys/${surveyInA}/syntax.sps?profile=deidentified&${q}`,
+      `/api/spss/surveys/${surveyInA}/codebook.csv?profile=deidentified&${q}`,
+      `/api/spss/surveys/${surveyInA}/long.csv?profile=deidentified&${q}`,
+      `/api/spss/surveys/${surveyInA}/manifest.json?profile=deidentified&${q}`,
+      `/api/spss/surveys/${surveyInA}/load/r?profile=deidentified&${q}`,
+      `/api/spss/surveys/${surveyInA}/load/py?profile=deidentified&${q}`,
+    ];
+    for (const path of files) {
+      const res = await app.request(path, { headers: { Authorization: `Bearer ${root.token}` } });
+      expect(res.status, path).toBe(200);
+      await res.arrayBuffer();
+    }
+
+    const log = await api("/api/audit?action=analytics.export&limit=100", root.token);
+    const formats = (log.body.entries as { details?: { purpose?: string; format?: string } }[])
+      .filter((e) => e.details?.purpose === purpose)
+      .map((e) => e.details?.format)
+      .sort();
+    expect(formats, "у части файлов цель не дошла до журнала").toEqual(
+      ["codebook", "csv", "load-py", "load-r", "long", "manifest", "spss-data", "spss-syntax"].sort(),
+    );
+
+    /*
+     * Сценарий и скрипт имён не несут и при профиле «full»: их строка не
+     * должна читаться сторожем журнала как выгрузка с именами
+     * (lib/suspicious.ts, isNamedExport).
+     */
+    const fullPurpose = `${purpose} full`;
+    for (const file of ["syntax.sps", "load/r"]) {
+      const res = await app.request(
+        `/api/spss/surveys/${surveyInA}/${file}?profile=full&purpose=${encodeURIComponent(fullPurpose)}`,
+        { headers: { Authorization: `Bearer ${root.token}` } },
+      );
+      expect(res.status, file).toBe(200);
+      await res.arrayBuffer();
+    }
+    const again = await api("/api/audit?action=analytics.export&limit=100", root.token);
+    const rows = (again.body.entries as { action: string; outcome: string; details?: Record<string, unknown> }[]).filter(
+      (e) => e.details?.purpose === fullPurpose,
+    );
+    expect(rows.length).toBe(2);
+    for (const e of rows) {
+      expect(isNamedExport(e as never), `${String(e.details?.format)} записан как выгрузка с именами`).toBe(false);
+    }
   });
 
   test("скрипт загрузки объявляет категориальные переменные факторами", async () => {
