@@ -239,6 +239,7 @@ function QueuePanel({ d }: { d: OpsRecordings }) {
             {ut("o2b.rec.transcriber")} {ut(d.transcriberHere ? "o2b.rec.transcriber.here" : "o2b.rec.transcriber.elsewhere")}
           </p>
         </div>
+        <div className="self-start">
         <Facts
           w={170}
           items={[
@@ -264,6 +265,7 @@ function QueuePanel({ d }: { d: OpsRecordings }) {
             ],
           ]}
         />
+        </div>
       </div>
     </Panel>
   );

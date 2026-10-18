@@ -122,12 +122,17 @@ function TraceBody({ t, onReload }: { t: OpsTrace; onReload: () => void }) {
   return (
     <>
       <SummaryPanel t={t} />
-      <div className="grid grid-cols-[minmax(0,1fr)_400px] items-start gap-4 max-[1180px]:grid-cols-1">
+      {/*
+        Две колонки — с 1366: на 1280 строкам лога и тексту SQL нужна вся
+        ширина. В одну колонку сбой запроса (если он есть) встаёт первым —
+        ради него трассу и открывают.
+      */}
+      <div className="grid grid-cols-[minmax(0,1fr)_400px] items-start gap-4 max-[1365px]:grid-cols-1">
         <div className="flex min-w-0 flex-col gap-4">
           <LinesPanel t={t} />
           <SqlPanel t={t} />
         </div>
-        <div className="flex min-w-0 flex-col gap-4">
+        <div className={cx("flex min-w-0 flex-col gap-4", t.errors.length > 0 && "max-[1365px]:order-first")}>
           {t.errors.map((g) => (
             <ErrorPanel key={g.fingerprint} g={g} />
           ))}

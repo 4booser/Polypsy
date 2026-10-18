@@ -131,7 +131,8 @@ export default function OpsAlertsPage() {
     <div className="flex flex-col gap-4">
       {head}
       <p className="m-0 max-w-[110ch] text-small text-text-2">{ut("opx.al.lead")}</p>
-      <div className="grid grid-cols-[minmax(0,1fr)_360px] items-start gap-4 max-[1180px]:grid-cols-1">
+      {/* каналы сбоку — с 1366; уже — под правилами, карточки рядом: имени правила нужна ширина */}
+      <div className="grid grid-cols-[minmax(0,1fr)_360px] items-start gap-4 max-[1365px]:grid-cols-1">
         <RulesPanel
           d={d}
           manage={manage}
@@ -420,8 +421,9 @@ function ChannelsPanel({
   return (
     <Panel title={ut("o2b.alerts.channels")} icon={<OpsIcon name="radio-tower" />} flush>
       <p className="m-0 px-4 pb-3 text-small text-muted">{ut("opx.al.channelsLead")}</p>
+      <div className="grid grid-cols-1 max-[1365px]:grid-cols-[repeat(2,minmax(0,1fr))] max-[760px]:grid-cols-1">
       {cards.map((c) => (
-        <div key={c.ch} className="border-t border-divider px-4 py-3.5">
+        <div key={c.ch} className="border-t border-divider px-4 py-3.5 max-[1365px]:even:border-l max-[760px]:even:border-l-0">
           <div className="flex items-start gap-2.5">
             <span aria-hidden className="grid size-8 shrink-0 place-items-center rounded-control bg-violet-tint text-violet-ink">
               <OpsIcon name={CHANNEL_ICON[c.ch]} size={16} />
@@ -454,6 +456,7 @@ function ChannelsPanel({
           </div>
         </div>
       ))}
+      </div>
     </Panel>
   );
 }

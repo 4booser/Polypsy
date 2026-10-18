@@ -231,11 +231,13 @@ export default function OpsClientErrors() {
           </div>
         ) : (
           <div role="table" aria-label={ut("opx.ce.groups")} className="overflow-x-auto">
-            <div className="min-w-[980px]">
+            <div className="min-w-[860px]">
               <div role="row" className={cx(ROW, "h-[38px] border-y border-divider bg-panel-2 text-caption font-bold leading-none text-muted")}>
                 <span role="columnheader" />
                 <span role="columnheader">{ut("o2b.ce.kind")}</span>
-                <span role="columnheader">{ut("o2b.ce.platform")}</span>
+                <span role="columnheader">
+                  <span className="max-[1365px]:sr-only">{ut("o2b.ce.platform")}</span>
+                </span>
                 <span role="columnheader">{ut("opx.ce.colWhat")}</span>
                 <span role="columnheader">{ut("opx.ce.colBuild")}</span>
                 <span role="columnheader" className="text-right">
@@ -376,7 +378,9 @@ export function ErrorShape({
 
 /* ─────────── строка группы ─────────── */
 
-const ROW = "grid grid-cols-[40px_136px_100px_minmax(0,1fr)_110px_64px_150px] items-center gap-3 px-4";
+/* на 1280 платформа — значком (слово остаётся для диктора): ширина нужнее тексту ошибки */
+const ROW =
+  "grid grid-cols-[40px_136px_100px_minmax(0,1fr)_110px_64px_150px] items-center gap-3 px-4 max-[1365px]:grid-cols-[40px_136px_24px_minmax(0,1fr)_104px_56px_142px]";
 
 const KIND_TAG: Record<ClientErrorKind, { tone: TagTone; icon: OpsIconName }> = {
   react: { tone: "attention", icon: "monitor-x" },
@@ -403,9 +407,9 @@ function GroupRow({ g, fresh, open, onToggle }: { g: OpsClientErrorGroup; fresh:
             {ut(KIND_KEY[g.kind])}
           </Tag>
         </span>
-        <span role="cell" className="inline-flex items-center gap-1.5 text-small text-text-2">
-          <OpsIcon name={PLATFORM_ICON[g.platform]} size={15} className="text-muted" />
-          {ut(PLATFORM_KEY[g.platform])}
+        <span role="cell" title={ut(PLATFORM_KEY[g.platform])} className="inline-flex items-center gap-1.5 text-small text-text-2">
+          <OpsIcon name={PLATFORM_ICON[g.platform]} size={15} className="shrink-0 text-muted" />
+          <span className="max-[1365px]:sr-only">{ut(PLATFORM_KEY[g.platform])}</span>
         </span>
         <span role="cell" className="flex min-w-0 flex-col gap-1">
           <span className="flex min-w-0 items-center gap-2">

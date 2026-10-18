@@ -459,11 +459,20 @@ export function MarkedColumns({
   height?: number;
 }) {
   const n = columns.length;
+  /*
+   * Две выкатки рядом — две подписи друг на друге. Подпись остаётся у
+   * поздней: черта ранней видна, а её версия — в соседнем столбце подписи
+   * не поместилась бы всё равно.
+   */
+  const crowded = (i: number) => {
+    const next = marks[i + 1];
+    return next !== undefined && (next.index - marks[i]!.index) / Math.max(1, n) < 0.22;
+  };
   return (
     <div className="relative min-w-0">
       <TimeColumns columns={columns} label={label} tone={tone} height={height} />
       {n
-        ? marks.map((m) => (
+        ? marks.map((m, i) => (
             <span
               key={`${m.index}-${m.label}`}
               aria-hidden
@@ -474,15 +483,17 @@ export function MarkedColumns({
                 height: height - COL_TOP - COL_BOTTOM + 4,
               }}
             >
-              <span
-                className={cx(
-                  "absolute top-0 whitespace-nowrap rounded-[4px] bg-panel px-0.5 text-micro font-extrabold leading-none text-violet-ink",
-                  /* у правого края подпись — слева от черты, иначе она уходит за график */
-                  (m.index + 0.5) / n > 0.7 ? "right-1" : "left-1",
-                )}
-              >
-                {m.label}
-              </span>
+              {crowded(i) ? null : (
+                <span
+                  className={cx(
+                    "absolute top-0 whitespace-nowrap rounded-[4px] bg-panel px-0.5 text-micro font-extrabold leading-none text-violet-ink",
+                    /* у правого края подпись — слева от черты, иначе она уходит за график */
+                    (m.index + 0.5) / n > 0.7 ? "right-1" : "left-1",
+                  )}
+                >
+                  {m.label}
+                </span>
+              )}
             </span>
           ))
         : null}

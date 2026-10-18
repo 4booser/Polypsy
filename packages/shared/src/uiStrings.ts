@@ -4290,7 +4290,6 @@ export const UI = {
   "o2b.v.metric": { uk: "Міра", ru: "Мера", en: "Metric" },
   "o2b.v.trend": { uk: "p75 {metric} по днях", ru: "p75 {metric} по дням", en: "{metric} p75 by day" },
   "o2b.v.noMetric": { uk: "За цією мірою замірів немає", ru: "По этой мере замеров нет", en: "No samples for this metric" },
-  "o2b.v.what": { uk: "Що міряє", ru: "Что измеряет", en: "What it measures" },
   "o2b.rating.good": { uk: "добре", ru: "хорошо", en: "good" },
   "o2b.rating.needs": { uk: "потребує уваги", ru: "требует внимания", en: "needs attention" },
   "o2b.rating.poor": { uk: "погано", ru: "плохо", en: "poor" },

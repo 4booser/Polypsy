@@ -205,7 +205,7 @@ function ModeAndPreview({ data, manage, onChanged }: { data: OpsServiceStatus; m
         </Panel>
         {manage ? (
           <Panel title={ut("mt.announce")} icon={<OpsIcon name="megaphone" />} sub={ut("opx.mt.announceSub")} footer={<PanelNote>{ut("mt.announceHint")}</PanelNote>}>
-            <div className="grid grid-cols-[180px_minmax(0,1fr)_auto] items-end gap-3 max-[700px]:grid-cols-1">
+            <div className="grid grid-cols-[180px_minmax(0,1fr)_auto] items-end gap-3 max-[1365px]:grid-cols-[180px_minmax(0,1fr)] max-[700px]:grid-cols-1">
               <Field label={ut("mt.status")}>
                 <Select value={kind} onChange={(e) => setKind(e.target.value as "ok" | "degraded")}>
                   <option value="degraded">{ut("svc.status.degraded")}</option>
@@ -218,6 +218,7 @@ function ModeAndPreview({ data, manage, onChanged }: { data: OpsServiceStatus; m
               <Button
                 icon={<OpsIcon name="megaphone" />}
                 disabled={busy}
+                className="max-[1365px]:justify-self-start"
                 onClick={() =>
                   void run(async () => {
                     await publish({ status: kind, message: note.trim() || null, expectedEnd: null });

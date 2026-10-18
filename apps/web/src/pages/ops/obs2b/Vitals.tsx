@@ -192,12 +192,14 @@ function MetricsPanel({ routes, metric, onMetric }: { routes: readonly OpsVitalR
     {
       key: "metric",
       header: ut("o2b.v.metric"),
-      width: 190,
       required: true,
+      /* что мера меряет — второй строкой под названием: отдельной колонкой на 1280 она ломалась в четыре строки */
       render: (l) => (
-        <span className="flex flex-col">
+        <span className="flex min-w-0 flex-col">
           <b className="text-[14px] font-extrabold leading-5 text-text">{ut(METRIC_NAME[l.metric])}</b>
-          <Mono className="text-muted">{l.metric === "NAV" ? ut("opx.vt.ours") : l.metric}</Mono>
+          <span className="text-small leading-[17px] text-muted">
+            <Mono className="text-text-2">{l.metric === "NAV" ? ut("opx.vt.ours") : l.metric}</Mono> · {ut(METRIC_WHAT[l.metric])}
+          </span>
         </span>
       ),
     },
@@ -238,7 +240,6 @@ function MetricsPanel({ routes, metric, onMetric }: { routes: readonly OpsVitalR
       required: true,
       render: (l) => <span className="whitespace-nowrap tabular-nums text-text-2">&gt; {thresholdsOf(l.metric, loc).poor}</span>,
     },
-    { key: "what", header: ut("o2b.v.what"), required: true, render: (l) => <span className="text-text-2">{ut(METRIC_WHAT[l.metric])}</span> },
   ];
   return (
     <Panel
