@@ -42,7 +42,8 @@ export interface CourseLayout {
   zone: { y0: number; y1: number } | null;
   todayX: number | null;
   futureX: number | null;
-  pts: { x: number; y: number; labelY: number; cls: BandClass; isToday: boolean; dateHidden: boolean }[];
+  /** labeled — подписывать ли значение у точки: при густом ряде только края и крайние значения */
+  pts: { x: number; y: number; labelY: number; cls: BandClass; isToday: boolean; dateHidden: boolean; labeled: boolean }[];
   signals: { x: number; label: string }[];
   hits: { x0: number; x1: number }[];
 }
@@ -52,6 +53,8 @@ const DAY = 86_400_000;
 const DATE_GAP = 38;
 /** Деления оси ближе этого сливаются в одно число */
 const TICK_GAP = 12;
+/** До стольких замеров подписан каждый; гуще — только первый, последний, наибольший и наименьший */
+const LABEL_ALL = 6;
 
 /** Полоса, в которой стоит значение; верхняя граница последней полосы — её же */
 export function bandOf<B extends { from: number; to: number }>(bands: B[], v: number): B | undefined {
@@ -136,6 +139,15 @@ export function courseLayout({
     const cls = idx >= 0 ? bandCls(bands[idx], idx) : "b0";
     return { x, y, labelY, cls, isToday: today !== undefined && sameDay(p.t, today), i };
   });
+  /*
+   * Число у каждой точки превращает график в таблицу, а при пятнадцати
+   * замерах подписи налезают друг на друга. Густой ряд подписан по краям и
+   * в крайних значениях — остальное по нажатию на точку.
+   */
+  const values = points.map((p) => p.value);
+  const hi = values.indexOf(Math.max(...values));
+  const lo = values.indexOf(Math.min(...values));
+  const keep = new Set([0, points.length - 1, hi, lo]);
   // последняя дата всегда видна — это «сейчас»; остальные уступают ей место
   const lastX = raw.length ? raw[raw.length - 1]!.x : 0;
   const pts = raw.map((p, i) => {
@@ -143,7 +155,8 @@ export function courseLayout({
     const fits = p.x - lastShown >= DATE_GAP && (isLast || lastX - p.x >= DATE_GAP);
     const dateHidden = !(isLast || fits);
     if (!dateHidden) lastShown = p.x;
-    return { x: p.x, y: p.y, labelY: p.labelY, cls: p.cls, isToday: p.isToday, dateHidden };
+    const labeled = points.length <= LABEL_ALL || keep.has(i);
+    return { x: p.x, y: p.y, labelY: p.labelY, cls: p.cls, isToday: p.isToday, dateHidden, labeled };
   });
 
   const clampX = (x: number) => Math.max(left + 4, Math.min(left + plotWidth - 4, x));

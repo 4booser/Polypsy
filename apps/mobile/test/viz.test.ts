@@ -240,6 +240,13 @@ describe("график курса", () => {
     expect(pts[4]!.dateHidden).toBe(false);
   });
 
+  test("до шести замеров подписан каждый; гуще — края и крайние значения", () => {
+    expect(lay().pts.every((p) => p.labeled)).toBe(true);
+    const many = [9, 7, 12, 3, 8, 8, 15, 6, 10].map((v, i) => ({ t: t0 + i * 3 * day, label: `d${i}`, value: v }));
+    const { pts } = courseLayout({ points: many, max: 27, width: 326 });
+    expect(pts.flatMap((p, i) => (p.labeled ? [i] : []))).toEqual([0, 3, 6, 8]);
+  });
+
   test("деления оси — границы полос и верх шкалы, без слипшихся", () => {
     const { ticks } = lay();
     expect(ticks.map((t) => t.v)).toEqual([27, 20, 15, 10, 5, 0]);

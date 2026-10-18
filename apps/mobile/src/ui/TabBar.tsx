@@ -35,6 +35,15 @@ const TAB_ICON: Record<string, IconName> = {
 export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const c = useColors();
   const insets = useSafeAreaInsets();
+  /*
+   * Набор рассчитан на пять вкладок. У сотрудника их сейчас семь (вкладки
+   * пациента плюс обход и аналитика) — тогда пилюля и подпись мельче, иначе
+   * «Опитування» и «Аналітика» обрезаются на узком телефоне.
+   */
+  const visible = state.routes.filter(
+    (r) => (descriptors[r.key]!.options.tabBarItemStyle as { display?: string } | undefined)?.display !== "none",
+  ).length;
+  const dense = visible > 5;
 
   return (
     <View
@@ -42,7 +51,7 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
       style={{
         flexDirection: "row",
         paddingTop: 6,
-        paddingHorizontal: 4,
+        paddingHorizontal: dense ? 2 : 4,
         paddingBottom: Math.max(insets.bottom, 8),
         backgroundColor: c.panel,
         borderTopWidth: 1,
@@ -79,7 +88,7 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
               <>
                 <View
                   style={{
-                    width: 52,
+                    width: dense ? 44 : 52,
                     height: 30,
                     borderRadius: 15,
                     alignItems: "center",
@@ -91,7 +100,7 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
                 </View>
                 <T
                   v="caption"
-                  size={11.5}
+                  size={dense ? 10 : 11.5}
                   weight={focused ? 800 : 600}
                   color={focused ? c.vink : c.text2}
                   scale={false}

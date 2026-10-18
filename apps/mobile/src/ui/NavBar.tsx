@@ -47,18 +47,44 @@ export function NavBar({
   const insets = useSafeAreaInsets();
   const leftNode = left ?? (back ? <BackButton label={back.label} onPress={back.onPress} /> : null);
   const row = leftNode || right || (title && !large);
+  /*
+   * Заголовок — по центру экрана, а не по центру промежутка: стороны
+   * разной ширины («Закрити» и «Допомога») сдвинули бы его вбок. Поэтому он
+   * лежит поверх строки с отступом по более широкой стороне и обрезается
+   * многоточием, а не наезжает на кнопки.
+   */
+  const [sides, setSides] = useState({ l: 0, r: 0 });
+  const inset = 8 + Math.max(sides.l, sides.r) + 6;
 
   return (
     <View style={{ backgroundColor: c.band, paddingTop: insets.top, borderBottomWidth: 1, borderBottomColor: c.bcardline }}>
       {row ? (
-        <View style={{ height: 44, flexDirection: "row", alignItems: "center", paddingHorizontal: 8 }}>
-          <View style={{ flex: 1, alignItems: "flex-start", minWidth: 0 }}>{leftNode}</View>
+        <View style={{ height: 44, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 8 }}>
           {title && !large ? (
-            <T v="navTitle" numberOfLines={1} accessibilityRole="header" style={{ flexShrink: 1, maxWidth: "56%", textAlign: "center" }}>
-              {title}
-            </T>
+            <View pointerEvents="none" style={{ position: "absolute", top: 0, bottom: 0, left: inset, right: inset, justifyContent: "center" }}>
+              <T v="navTitle" numberOfLines={1} accessibilityRole="header" center>
+                {title}
+              </T>
+            </View>
           ) : null}
-          <View style={{ flex: 1, alignItems: "flex-end", minWidth: 0 }}>{right}</View>
+          <View
+            onLayout={(e) => {
+              const l = Math.round(e.nativeEvent.layout.width);
+              setSides((s) => (s.l === l ? s : { ...s, l }));
+            }}
+            style={{ maxWidth: "42%" }}
+          >
+            {leftNode}
+          </View>
+          <View
+            onLayout={(e) => {
+              const r = Math.round(e.nativeEvent.layout.width);
+              setSides((s) => (s.r === r ? s : { ...s, r }));
+            }}
+            style={{ maxWidth: "50%" }}
+          >
+            {right}
+          </View>
         </View>
       ) : (
         <View style={{ height: 8 }} />

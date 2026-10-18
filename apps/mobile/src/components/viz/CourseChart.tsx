@@ -181,7 +181,9 @@ export function CourseChart({
           </G>
         ))}
         {L.pts.map((p, i) =>
-          halo(`v${i}`, p.x + (i === 0 && L.pts.length > 1 ? 9 : 0), p.labelY, valueLabel(points[i]!.value), c.text, fill(p.cls), 800, 13, i === 0 && L.pts.length > 1 ? "start" : "middle"),
+          p.labeled || i === sel
+            ? halo(`v${i}`, p.x + (i === 0 && L.pts.length > 1 ? 9 : 0), p.labelY, valueLabel(points[i]!.value), c.text, fill(p.cls), 800, 13, i === 0 && L.pts.length > 1 ? "start" : "middle")
+            : null,
         )}
 
         {/* сигнал риска — красной меткой на оси */}
