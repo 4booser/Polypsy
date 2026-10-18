@@ -844,6 +844,8 @@ export interface TimelineItem {
   detail?: string | null;
   severity?: "none" | "mild" | "moderate" | "severe" | null;
   href?: string | null;
+  /** Срок назначения — только у назначений */
+  dueAt?: string | null;
 }
 
 /**
@@ -1278,6 +1280,27 @@ export const api = {
     request<void>(`/api/alert-cases/${id}`, {
       method: "PATCH",
       body: JSON.stringify({ outcome, note, seenLastAlertAt }),
+    }),
+  /*
+   * Хронология случая: кто брал, кто отпускал, кто разобрал — выборка журнала
+   * по этому случаю (GET /api/alert-cases/:id/history). Экран случая ставит её
+   * рядом с разбором: заступивший видит, почему случай ещё открыт.
+   */
+  alertCaseHistory: (id: string) =>
+    request<{ items: { action: string; at: string; actorName: string; details: Record<string, unknown> | null }[] }>(
+      `/api/alert-cases/${id}/history`,
+    ).then((r) => r.items),
+  /** Перенести приём в другой свободный слот — сотрудник с appointments.manage или сам пациент */
+  rescheduleAppointment: (id: string, slotId: string) =>
+    request<{ ok: true }>(`/api/clinic/appointments/${id}/reschedule`, {
+      method: "POST",
+      body: JSON.stringify({ slotId }),
+    }),
+  /** Записать человека на приём в свободный слот: за другого — только с appointments.manage */
+  bookFor: (patientId: string, slotId: string, mode: "onsite" | "remote" = "onsite") =>
+    request<{ id: string; screeningSurveyId: string | null }>("/api/clinic/appointments", {
+      method: "POST",
+      body: JSON.stringify({ slotId, patientId, mode }),
     }),
 
   openapi: () => request<OpenApiSpec>("/api/openapi.json"),

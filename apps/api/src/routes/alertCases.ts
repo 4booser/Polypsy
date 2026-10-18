@@ -410,6 +410,8 @@ alertCaseRoutes.get("/", async (c) => {
         .select({
           c: alertCases,
           surveyTitle: surveys.title,
+          // норма разбора методики: по ней консоль рисует таймер «2:48 з 4 год»
+          escalateMinutes: surveys.alertEscalateMinutes,
           overdue: overdueSql,
           unit: users.unit,
           // имена полей ровно как ждёт fullNameOf: он же расшифровывает и умеет
@@ -510,6 +512,7 @@ alertCaseRoutes.get("/", async (c) => {
         signalCount: Number(r.signalCount ?? 0),
         signals: signalsByCase.get(r.c.id) ?? [],
         minutesOpen,
+        escalateMinutes: r.escalateMinutes ?? null,
         overdue: !!r.overdue,
         assignedTo: r.c.assignedTo,
         assignedToName: r.c.assignedTo ? (staffNames.get(r.c.assignedTo) ?? null) : null,

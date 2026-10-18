@@ -5,6 +5,7 @@ import type { Severity } from "@quizzy/shared";
 import { db } from "../db";
 import {
   appointments,
+  batteries,
   batteryAssignments,
   conclusions,
   referrals,
@@ -62,6 +63,8 @@ export interface TimelineItem {
   severity?: Severity | null;
   /** Куда вести по нажатию — уже готовый путь консоли */
   href?: string | null;
+  /** Срок назначения — у строк назначений; у прочих поля нет */
+  dueAt?: string | null;
 }
 
 timelineRoutes.get("/:userId", async (c) => {
@@ -219,21 +222,29 @@ timelineRoutes.get("/:userId", async (c) => {
     });
   }
 
+  /*
+   * Назначение — с названием набора и сроком: идентификатор набора в строке
+   * хронологии ничего не говорит, а «до 15.10» карточка пациента ставит в
+   * строку открытого. Набор — левым соединением: недоступный по зоне набор
+   * не выбрасывает строку назначения, она остаётся с идентификатором.
+   */
   const assigned = await db
-    .select()
+    .select({ a: batteryAssignments, title: batteries.title })
     .from(batteryAssignments)
+    .leftJoin(batteries, eq(batteries.id, batteryAssignments.batteryId))
     .where(eq(batteryAssignments.userId, userId))
     .orderBy(desc(batteryAssignments.assignedAt))
     .limit(100);
 
-  for (const a of assigned) {
+  for (const { a, title } of assigned) {
     items.push({
       id: `assignment:${a.id}`,
       kind: "assignment",
       at: a.assignedAt,
-      title: a.batteryId,
+      title: title ?? a.batteryId,
       detail: a.completedAt ? "completed" : a.cancelledAt ? "cancelled" : "open",
       href: "/batteries",
+      dueAt: a.dueAt ?? null,
     });
   }
 
