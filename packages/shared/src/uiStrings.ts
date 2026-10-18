@@ -8404,6 +8404,12 @@ export const UI = {
   "mst.card": { uk: "Картка", ru: "Карта", en: "Card" },
   "mst.unitSec": { uk: "с", ru: "с", en: "s" },
   "mst.unitMin": { uk: "хв", ru: "мин", en: "min" },
+  "mst.catalog": { uk: "Каталог методик", ru: "Каталог методик", en: "Instrument catalogue" },
+  "mst.catalogSub": {
+    uk: "Переглянути методику або пройти її самому",
+    ru: "Посмотреть методику или пройти её самому",
+    en: "Look through an instrument or take it yourself",
+  },
   /* мобилка сотрудника: листування (app/(app)/inbox.tsx, app/inbox/[patientId].tsx) */
   "mst.inboxLead": { uk: "Пацієнти, яких ви ведете", ru: "Пациенты, которых вы ведёте", en: "Patients in your care" },
   "mst.searchInbox": { uk: "Пошук у листуванні", ru: "Поиск в переписке", en: "Search conversations" },

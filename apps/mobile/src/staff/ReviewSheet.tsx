@@ -143,7 +143,19 @@ export function ReviewSheet({
       refreshStaffBadges();
       onDone();
     } catch (e) {
-      setError(e instanceof Error ? e.message : ut("mal.saveFailed"));
+      const message = e instanceof Error ? e.message : ut("mal.saveFailed");
+      /*
+       * 409 — пока человек читал основание, случай изменился: пришёл новый
+       * сигнал или его разобрал другой. Решение по старому случаю не
+       * сохраняется; лист закрывается, список перечитывается, а черновик
+       * остаётся — открыть заново и решить уже с новым сигналом.
+       */
+      if ((e as { status?: number }).status === 409) {
+        toast.show(message, { icon: "circle-alert" });
+        onDone();
+      } else {
+        setError(message);
+      }
     } finally {
       setBusy(null);
     }

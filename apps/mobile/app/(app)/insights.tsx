@@ -186,6 +186,28 @@ function Overview() {
           <StateBlock title={ut("mrs.none")} />
         )}
         <Line>{ut("mst.analyticsHint")}</Line>
+
+        {/*
+          Каталог методик у сотрудника — не вкладка, но и не потерян: пройти
+          методику самому или открыть её до назначения можно отсюда. За
+          пациента заполняют из обхода и карты («Заповнити за пацієнта»).
+        */}
+        <Card style={{ marginTop: 16 }}>
+          <Pressable onPress={() => router.navigate("/(app)/surveys")} accessibilityRole="button" accessibilityLabel={ut("mst.catalog")} accessibilityHint={ut("mst.catalogSub")}>
+            {({ pressed }) => (
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 12, padding: 14, backgroundColor: pressed ? c.panel2 : "transparent" }}>
+                <Squircle icon="clipboard-list" />
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <T v="body" size={15} weight={800}>
+                    {ut("mst.catalog")}
+                  </T>
+                  <T v="sub">{ut("mst.catalogSub")}</T>
+                </View>
+                <Icon name="chevron-right" size={20} color={c.muted} />
+              </View>
+            )}
+          </Pressable>
+        </Card>
       </ScrollView>
     </View>
   );
