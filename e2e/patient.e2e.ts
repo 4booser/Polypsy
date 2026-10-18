@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { eventsBell, login } from "./helpers";
+import { emailField, eventsBell, login, passwordField } from "./helpers";
 
 /**
  * Кабинет пациента: вход, прохождение и запись.
@@ -54,8 +54,8 @@ test("человек заводит учётную запись и проход�
   expect(created.ok(), `регистрация не прошла: ${created.status()}`).toBeTruthy();
 
   await page.goto("/login");
-  await page.getByLabel(/^(Логин|Логін)$/).fill(email);
-  await page.getByLabel("Пароль").fill(password);
+  await emailField(page).fill(email);
+  await passwordField(page).fill(password);
   await page.getByRole("button", { name: /^(Войти|Увійти)$/ }).click();
 
   await page.waitForURL(/\/me/);

@@ -84,7 +84,6 @@ const EXCEPTIONS: Exception[] = [
  * разрешено только в нём.
  */
 const NAMES: LatinName[] = [
-  { word: "Quizzy", why: "название продукта" },
   { word: "PSI", why: "Population Stability Index — сокращение международное, в украинских и русских работах пишется латиницей" },
   { word: "ICC", why: "Intraclass Correlation — то же" },
   { word: "RCI", why: "Reliable Change Index (Jacobson–Truax) — то же" },

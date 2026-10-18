@@ -1,13 +1,20 @@
-import { useRef, useState } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { api } from "../api";
 import { useAuth } from "../auth";
 import { useLang } from "../lang";
-import { Page } from "../ui/layout";
-import { Button, Field, Input } from "../ui/primitives";
-import { type PasswordDraft, changePassword, passwordProblems, passwordReady } from "./passwordModel";
+import { ShellIcon } from "../shell/icons";
+import { Avatar, Ic } from "../ui";
+import { cx } from "../ui/cx";
+import { Button, ErrorText, Field } from "../ui/primitives";
+import { AccessIcon } from "./public/accessIcons";
+import { AuthCard, AuthLead, AuthTitle, BandAside, FactRow, NoteRow, PasswordInput, WhoRow, fill } from "./public/authParts";
+import { PublicFrame } from "./public/PublicFrame";
+import { type PasswordDraft, PASSWORD_MIN, changePassword, passwordProblems, passwordReady } from "./passwordModel";
 
 /**
- * Смена временного пароля — вместо рабочего места.
+ * Смена временного пароля — вместо рабочего места (набор «Виразна»,
+ * access-force-password): лист формы слева, справа на полосе — как придумать
+ * пароль, который знаете только вы, и что будет после смены.
  *
  * Пароль выдан техпанелью (заведение или сброс, users.must_change_password)
  * и его видел тот, кто выдавал. Консоль с таким паролем не открывает ни
@@ -17,8 +24,7 @@ import { type PasswordDraft, changePassword, passwordProblems, passwordReady } f
  * Экран — не единственный замок: сервер с временным паролем пускает только
  * к смене пароля, «кто я» и настройкам, остальное — 403 с кодом
  * password_change_required (решение заказчика 2026-09-26, внешний разбор;
- * apps/api/src/lib/tempPassword.ts). Раньше ограничивал только этот экран,
- * и запросы мимо консоли проходили. Цена для мобилки записана у поля в
+ * apps/api/src/lib/tempPassword.ts). Цена для мобилки записана у поля в
  * packages/shared/src/types.ts.
  *
  * Смена пароля обрывает все сессии (routes/auth.ts, POST /password), в том
@@ -59,26 +65,30 @@ export default function ForcePassword() {
   };
 
   return (
-    <ForcePasswordView
-      email={user?.email ?? ""}
-      draft={draft}
-      busy={busy}
-      error={error}
-      accepted={accepted !== null}
-      onEdit={(patch) => {
-        setDraft((d) => ({ ...d, ...patch }));
-        /* отказ относится к отправленному: правка поля его снимает */
-        setError(null);
-      }}
-      onSubmit={submit}
-      onLogout={logout}
-    />
+    <PublicFrame signIn={false}>
+      <ForcePasswordView
+        email={user?.email ?? ""}
+        name={user?.fullName ?? ""}
+        draft={draft}
+        busy={busy}
+        error={error}
+        accepted={accepted !== null}
+        onEdit={(patch) => {
+          setDraft((d) => ({ ...d, ...patch }));
+          /* отказ относится к отправленному: правка поля его снимает */
+          setError(null);
+        }}
+        onSubmit={submit}
+        onLogout={logout}
+      />
+    </PublicFrame>
   );
 }
 
 /** Разметка экрана: всё, что она показывает, — из пропсов (test/passwordChange.test.tsx) */
 export function ForcePasswordView({
   email,
+  name = "",
   draft,
   busy,
   error,
@@ -88,6 +98,8 @@ export function ForcePasswordView({
   onLogout,
 }: {
   email: string;
+  /** «Фамилия Имя» — в строке «кто входит»; пусто — строка держится на почте */
+  name?: string;
   draft: Required<PasswordDraft>;
   busy: boolean;
   error: string | null;
@@ -101,20 +113,49 @@ export function ForcePasswordView({
   const problems = passwordProblems(draft);
   const ready = accepted || passwordReady(draft);
 
+  /*
+   * Требования — те же правила, что и отказы у полей (passwordModel.ts), только
+   * списком: какие уже выполнены, а какое мешает. Пока поле пусто, его правило
+   * не горит ни зелёным, ни отказом — форма просто ещё не готова.
+   */
+  const rules: { ok: boolean; idle: boolean; text: string }[] = [
+    {
+      ok: draft.next.length >= PASSWORD_MIN,
+      idle: !draft.next,
+      text: fill(ut("ax.fp.ruleLen"), { n: draft.next.length }),
+    },
+    { ok: !!draft.next && draft.next !== draft.current, idle: !draft.next || !draft.current, text: ut("ax.fp.ruleDiff") },
+    { ok: !!draft.repeat && draft.repeat === draft.next, idle: !draft.repeat, text: ut("ax.fp.ruleRepeat") },
+  ];
+
   return (
-    <main className="mx-auto w-full max-w-[1200px]">
-      <Page title={ut("ops.force.title")} sub={ut("ops.force.sub")}>
+    <div className="grid grid-cols-[440px_minmax(0,1fr)] items-start gap-14 pb-4 pt-6 max-[1100px]:gap-8 max-[1000px]:grid-cols-1 max-[1000px]:justify-items-center">
+      <AuthCard labelledBy="fp-title" className="max-w-[440px]">
+        <WhoRow
+          lead={<Avatar name={name || email} size={28} tone="soft" />}
+          title={name || email}
+          sub={name ? email : undefined}
+          aside={
+            <Button variant="ghost" size="xs" icon={<ShellIcon name="log-out" size={14} />} onClick={onLogout}>
+              {ut("nav.logout")}
+            </Button>
+          }
+        />
+        <AuthTitle id="fp-title" className="mt-5">
+          {ut("ops.force.title")}
+        </AuthTitle>
+        <AuthLead>
+          {ut("ops.force.sub")} {ut("ax.fp.closed")}
+        </AuthLead>
         <form
-          className="flex max-w-[420px] flex-col"
+          className="mt-5 flex flex-col gap-4"
           onSubmit={(e) => {
             e.preventDefault();
             onSubmit();
           }}
         >
-          <p className="m-0 mb-[15px] text-[15px] text-text-2 [overflow-wrap:anywhere]">{email}</p>
-          <Field label={ut("ops.force.temp")}>
-            <Input
-              type="password"
+          <Field label={ut("ops.force.temp")} hint={ut("ax.fp.tempHint")} className="!mb-0">
+            <PasswordInput
               value={draft.current}
               onChange={(e) => onEdit({ current: e.target.value })}
               autoComplete="current-password"
@@ -122,39 +163,121 @@ export function ForcePasswordView({
               disabled={accepted}
             />
           </Field>
-          <Field label={ut("acct.newPassword")} error={problems.next ? ut(problems.next) : null}>
-            <Input
-              type="password"
+          <Field label={ut("acct.newPassword")} error={problems.next ? ut(problems.next) : null} className="!mb-0">
+            <PasswordInput
               value={draft.next}
               onChange={(e) => onEdit({ next: e.target.value })}
               autoComplete="new-password"
               disabled={accepted}
             />
           </Field>
-          <Field label={ut("ops.force.repeat")} error={problems.repeat ? ut(problems.repeat) : null}>
-            <Input
-              type="password"
+          <Field label={ut("ops.force.repeat")} error={problems.repeat ? ut(problems.repeat) : null} className="!mb-0">
+            <PasswordInput
               value={draft.repeat}
               onChange={(e) => onEdit({ repeat: e.target.value })}
               autoComplete="new-password"
               disabled={accepted}
             />
           </Field>
+
+          {accepted ? null : (
+            <ul aria-label={ut("ax.fp.rules")} className="m-0 flex list-none flex-col gap-2 rounded-[12px] bg-sunk px-3.5 py-3">
+              {rules.map((r) => (
+                <li
+                  key={r.text}
+                  className={cx(
+                    "flex items-center gap-2.5 text-small font-semibold leading-[17px]",
+                    !r.ok && !r.idle ? "font-bold text-risk-ink" : "text-text-2",
+                  )}
+                >
+                  <span
+                    aria-hidden
+                    className={cx(
+                      "grid size-5 shrink-0 place-items-center rounded-full",
+                      r.ok
+                        ? "bg-good-tint text-good"
+                        : r.idle
+                          ? "shadow-[inset_0_0_0_1.5px_var(--ctl)]"
+                          : "text-risk-ink shadow-[inset_0_0_0_1.5px_var(--riskline)]",
+                    )}
+                  >
+                    {r.ok ? <Ic.check size={12} /> : r.idle ? null : <Ic.x size={12} />}
+                  </span>
+                  {r.text}
+                </li>
+              ))}
+            </ul>
+          )}
+
           {error ? (
-            <p role="alert" className="m-0 mb-[15px] text-[13px] text-danger">
-              {error}
-            </p>
+            <div role="alert">
+              <ErrorText>{error}</ErrorText>
+            </div>
           ) : null}
-          <div className="flex gap-[14px]">
-            <Button type="submit" size="form" disabled={!ready || busy}>
-              {ut("acct.changePassword")}
-            </Button>
-            <Button variant="ghost" onClick={onLogout}>
-              {ut("nav.logout")}
-            </Button>
-          </div>
+          <Button
+            type="submit"
+            variant="primary"
+            size="md"
+            className="w-full"
+            disabled={!ready || busy}
+            icon={<ShellIcon name="key-round" size={18} />}
+          >
+            {accepted ? ut("ax.fp.relogin") : ut("acct.changePassword")}
+          </Button>
         </form>
-      </Page>
-    </main>
+        <p className="m-0 mt-2 text-center text-caption leading-4 text-muted">{ut("ax.fp.after")}</p>
+      </AuthCard>
+
+      <BandAside title={ut("ax.fp.sideTitle")} lead={ut("ax.fp.sideLead")} className="max-[1000px]:w-full max-[1000px]:max-w-[640px]">
+        <ul className="m-0 mt-6 flex list-none flex-col gap-[18px] p-0">
+          <NoteRow icon={<AccessIcon name="text-cursor" size={17} />} title={ut("ax.fp.tip1t")}>
+            {ut("ax.fp.tip1")}
+          </NoteRow>
+          <NoteRow icon={<AccessIcon name="repeat" size={17} />} title={ut("ax.fp.tip2t")}>
+            {ut("ax.fp.tip2")}
+          </NoteRow>
+          <NoteRow icon={<ShellIcon name="key-round" size={17} />} title={ut("ax.fp.tip3t")}>
+            {ut("ax.fp.tip3")}
+          </NoteRow>
+          <NoteRow icon={<AccessIcon name="user-x" size={17} />} title={ut("ax.fp.tip4t")}>
+            {ut("ax.fp.tip4")}
+          </NoteRow>
+        </ul>
+        <Door icon={<ShellIcon name="scroll-text" size={19} />} title={ut("ax.fp.whyTitle")}>
+          {ut("ax.fp.why")}
+        </Door>
+        <div className="my-6 h-px bg-band-card-line" />
+        <h3 className="m-0 text-h3 font-extrabold text-text">{ut("ax.fp.afterTitle")}</h3>
+        <ul className="m-0 mt-3 grid list-none grid-cols-2 gap-x-6 gap-y-3.5 p-0 max-[600px]:grid-cols-1">
+          <FactRow icon={<ShellIcon name="log-in" size={16} />} title={ut("ax.fp.a1t")}>
+            {ut("ax.fp.a1")}
+          </FactRow>
+          <FactRow icon={<ShellIcon name="key-round" size={16} />} title={ut("ax.fp.a2t")}>
+            {ut("ax.fp.a2")}
+          </FactRow>
+          <FactRow icon={<ShellIcon name="monitor-smartphone" size={16} />} title={ut("ax.fp.a3t")}>
+            {ut("ax.fp.a3")}
+          </FactRow>
+          <FactRow icon={<AccessIcon name="lock-keyhole" size={16} />} title={ut("ax.fp.a4t")}>
+            {ut("ax.fp.a4")}
+          </FactRow>
+        </ul>
+      </BandAside>
+    </div>
+  );
+}
+
+/** Карточка на полосе (.door): значок, заголовок и пояснение на листе полосы */
+function Door({ icon, title, children }: { icon: ReactNode; title: ReactNode; children: ReactNode }) {
+  return (
+    <div className="mt-[22px] grid grid-cols-[40px_minmax(0,1fr)] items-start gap-3.5 rounded-[16px] border border-band-card-line bg-band-card py-4 pl-4 pr-[18px]">
+      <span aria-hidden className="grid size-10 place-items-center rounded-[12px] bg-violet-tint text-violet-ink">
+        {icon}
+      </span>
+      <div>
+        <b className="block text-h3 font-extrabold leading-5 text-text">{title}</b>
+        <p className="m-0 mt-[3px] text-[13px] leading-[19px] text-text-2">{children}</p>
+      </div>
+    </div>
   );
 }
