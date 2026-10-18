@@ -1,8 +1,8 @@
 import { Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../../auth";
 import { useLang } from "../../lang";
-import { Page } from "../../ui/layout";
 import { groupOf, opsGroups } from "./model";
+import { OpsFrame } from "./parts";
 
 /*
  * Техпанель — экран для разработчиков и того, кто держит сервер.
@@ -25,7 +25,9 @@ import { groupOf, opsGroups } from "./model";
  *
  * Здесь остаётся рамка экрана: заголовок раздела над его содержимым.
  * Разделы — адресами (/ops, /ops/requests, …): ссылку на «ошибки за
- * последний час» пересылают коллеге.
+ * последний час» пересылают коллеге. Мета-строку, действия и полосу
+ * инструментов раздел ставит в шапку сам — через <OpsHead> (parts.tsx):
+ * рамка даёт им места, а не рисует за раздел.
  */
 export default function OpsPanel() {
   const { ut } = useLang();
@@ -37,8 +39,8 @@ export default function OpsPanel() {
   /* имя открытого раздела — заголовком экрана; трасса запроса и прочие страницы без пункта — «Техпанель» */
   const here = tabs.filter((t) => t.group === group).find((t) => (t.end ? pathname === t.to : pathname.startsWith(t.to)));
   return (
-    <Page title={here ? ut(here.key) : ut("ops.title")}>
+    <OpsFrame title={here ? ut(here.key) : ut("ops.title")}>
       <Outlet />
-    </Page>
+    </OpsFrame>
   );
 }

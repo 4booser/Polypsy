@@ -43,7 +43,15 @@ export function toneColor(tone: Tone, step?: number): string {
 }
 
 /* форма точки — как у StatusMark: круг — порядок и «ничего», квадрат — внимание, ромб — сбой */
-const MARK_SHAPE: Record<Tone, string> = { ok: "rounded-full", warn: "rounded-[1px]", fail: "rotate-45", quiet: "rounded-full" };
+const MARK_SHAPE: Record<Tone, string> = {
+  ok: "rounded-full",
+  warn: "rounded-[1px]",
+  fail: "rotate-45",
+  quiet: "rounded-full",
+  info: "rounded-full",
+  run: "rounded-full",
+  unk: "rounded-full",
+};
 
 /** Метка ряда или доли: форма по тону, цвет — тот же, что у отрезка */
 export function ToneMark({ tone, step }: { tone: Tone; step?: number }) {
