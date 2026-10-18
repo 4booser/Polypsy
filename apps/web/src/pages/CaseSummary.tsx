@@ -149,7 +149,7 @@ function ResultsTable({ instruments, dates, index }: { instruments: Instrument[]
             const ratio = s.last.normalization === "ratio";
             const lastDay = dates.at(-1);
             const atLast = lastDay ? valueOn(s, lastDay) : null;
-            const big = shownValue((atLast ?? s.last).rawScore, s.last.normalization);
+            const big = shownValue(s.last.rawScore, s.last.normalization);
             const rc = s.scale.reliableChange;
             const thr = shownThreshold(s);
             return (
@@ -189,11 +189,15 @@ function ResultsTable({ instruments, dates, index }: { instruments: Instrument[]
                       </td>
                     );
                   })}
+                  {/* последний замер методики — всегда; если он был не в день последней колонки, рядом его дата */}
                   <td className={`${td} text-right`}>
                     <b className="text-[26px] font-extrabold leading-none tracking-[-0.02em] tabular-nums text-text">
-                      {atLast || !lastDay ? big.text : "—"}
-                      {big.unit && (atLast || !lastDay) ? <small className="ml-0.5 text-caption font-bold text-muted">{big.unit}</small> : null}
+                      {big.text}
+                      {big.unit ? <small className="ml-0.5 text-caption font-bold text-muted">{big.unit}</small> : null}
                     </b>
+                    {lastDay && !atLast ? (
+                      <small className="block text-caption tabular-nums text-muted">{ddmm(s.last.submittedAt, locale())}</small>
+                    ) : null}
                   </td>
                   <td className={td}>
                     {s.last.severity || s.last.bandLabel ? (
