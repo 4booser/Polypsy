@@ -358,27 +358,63 @@ export function Modal({
         ref={ref}
         onClick={(e) => e.stopPropagation()}
       >
-        <header className="flex shrink-0 items-center gap-3 border-b border-divider py-4 pl-5 pr-3.5">
-          {icon ? <IconTile icon={icon} tone={tone} size={40} /> : null}
-          <div className="min-w-0 flex-1">
-            <h2 className="m-0 text-[18px] font-extrabold leading-6 tracking-[-0.02em] text-text">{title}</h2>
-            {sub ? <span className="block text-small text-muted">{sub}</span> : null}
-          </div>
+        <DialogFrame title={title} sub={sub} icon={icon} tone={tone} footer={footer} onClose={closeProp} closeLabel={ut("bp.close")}>
+          {children}
+        </DialogFrame>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Внутренность окна (.modal набора): шапка с квадратом значка 40, заголовком
+ * 18/800 и крестиком, тело с прокруткой, подвал с кнопками. Modal рисует её
+ * внутри слоя; страница дизайн-системы — открытой на месте (тогда без
+ * role=dialog: настоящий диалог на странице один).
+ */
+export function DialogFrame({
+  title,
+  sub,
+  icon,
+  tone = "violet",
+  footer,
+  onClose,
+  closeLabel,
+  children,
+}: {
+  title: string;
+  sub?: ReactNode;
+  icon?: ReactNode;
+  tone?: PanelTone;
+  footer?: ReactNode;
+  onClose?: () => void;
+  closeLabel?: string;
+  children: ReactNode;
+}) {
+  return (
+    <>
+      <header className="flex shrink-0 items-center gap-3 border-b border-divider py-4 pl-5 pr-3.5">
+        {icon ? <IconTile icon={icon} tone={tone} size={40} /> : null}
+        <div className="min-w-0 flex-1">
+          <h2 className="m-0 text-[18px] font-extrabold leading-6 tracking-[-0.02em] text-text">{title}</h2>
+          {sub ? <span className="block text-small text-muted">{sub}</span> : null}
+        </div>
+        {onClose ? (
           <button
             type="button"
-            onClick={closeProp}
-            aria-label={ut("bp.close")}
+            onClick={onClose}
+            aria-label={closeLabel}
             className="inline-grid size-9 min-h-0 shrink-0 cursor-pointer place-items-center rounded-control border-0 bg-sunk p-0 text-text-2 hover:bg-sunk-2 hover:text-text"
           >
             <Ic.x size={17} />
           </button>
-        </header>
-        <div className="kit-scroll min-h-0 flex-1 overflow-y-auto px-5 pb-4 pt-4 text-body">{children}</div>
-        {footer ? (
-          <footer className="flex shrink-0 flex-wrap items-center gap-2 border-t border-divider px-5 pb-4 pt-3">{footer}</footer>
         ) : null}
-      </div>
-    </div>
+      </header>
+      <div className="kit-scroll min-h-0 flex-1 overflow-y-auto px-5 pb-4 pt-4 text-body">{children}</div>
+      {footer ? (
+        <footer className="flex shrink-0 flex-wrap items-center gap-2 border-t border-divider px-5 pb-4 pt-3">{footer}</footer>
+      ) : null}
+    </>
   );
 }
 

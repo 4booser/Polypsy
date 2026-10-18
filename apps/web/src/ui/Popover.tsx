@@ -15,7 +15,9 @@ import {
   type Ref,
 } from "react";
 import { cx } from "./cx";
+import { Link, NavLink } from "react-router-dom";
 import { Kbd } from "./kbd";
+import { Button, ButtonLink } from "./primitives";
 
 /*
  * Сведения по требованию (.pop и .tip набора): имя, число, пилюля, точка
@@ -105,10 +107,13 @@ export function placePopover({
   };
 }
 
-/** Триггер с фокусом: кнопка или ссылка получают aria-expanded, прочие — tabIndex и aria-describedby */
-function isActionable(el: ReactElement): boolean {
-  const props = el.props as { role?: string; href?: string };
-  return el.type === "button" || el.type === "a" || props.role === "button";
+/** Фокусируется ли триггер сам: иначе ему ставится tabIndex=0 */
+function isFocusable(el: ReactElement): boolean {
+  const props = el.props as { role?: string; href?: string; tabIndex?: number };
+  if (props.tabIndex !== undefined || props.role === "button") return true;
+  if (typeof el.type === "string") return ["button", "a", "input", "select", "textarea"].includes(el.type);
+  /* компоненты набора и маршрутизатора рисуют кнопку или ссылку */
+  return el.type === Button || el.type === ButtonLink || el.type === Link || el.type === NavLink;
 }
 
 interface FloatingOptions {
@@ -174,6 +179,78 @@ function mergeRefs<T>(...refs: (Ref<T> | undefined)[]) {
     }
   };
 }
+
+/** Лист поповера (.pop): лист 14 с ободом и тенью слоя, 12.5 text-2 */
+const popCard = "block w-max rounded-panel border border-border bg-panel px-3.5 pb-[13px] pt-3 text-left text-small font-medium text-text-2 shadow-pop";
+
+/** Содержимое поповера: заголовок с пометкой справа, тело, строка действий */
+function PopoverBody({
+  titleId,
+  title,
+  note,
+  content,
+  actions,
+}: {
+  titleId?: string;
+  title?: ReactNode;
+  note?: ReactNode;
+  content?: ReactNode;
+  actions?: ReactNode;
+}) {
+  return (
+    <>
+      {title ? (
+        <span className="flex items-center gap-2">
+          <b id={titleId} className="text-body font-extrabold text-text">
+            {title}
+          </b>
+          {note ? <span className="ml-auto whitespace-nowrap text-caption font-semibold text-muted">{note}</span> : null}
+        </span>
+      ) : null}
+      {content ? <span className={cx("block", title ? "mt-[5px]" : null)}>{content}</span> : null}
+      {actions ? <span className="mt-3 flex flex-wrap items-center gap-2">{actions}</span> : null}
+    </>
+  );
+}
+
+/**
+ * Поповер, нарисованный открытым на месте (страница дизайн-системы,
+ * описания): тот же лист, без механики наведения.
+ */
+export function PopoverCard({
+  title,
+  note,
+  content,
+  actions,
+  width = 340,
+  className,
+}: {
+  title?: ReactNode;
+  note?: ReactNode;
+  content?: ReactNode;
+  actions?: ReactNode;
+  width?: number;
+  className?: string;
+}) {
+  return (
+    <div className={cx(popCard, className)} style={{ maxWidth: width }}>
+      <PopoverBody title={title} note={note} content={content} actions={actions} />
+    </div>
+  );
+}
+
+/** Подсказка, нарисованная открытой на месте */
+export function TooltipPlate({ label, kbd, className }: { label: ReactNode; kbd?: string; className?: string }) {
+  return (
+    <span className={cx(tipPlate, kbd ? "pr-2" : "pr-[11px]", className)}>
+      {label}
+      {kbd ? <Kbd onTip>{kbd}</Kbd> : null}
+    </span>
+  );
+}
+
+const tipPlate =
+  "flex h-[30px] w-max items-center gap-2 whitespace-nowrap rounded-[9px] bg-tip pl-[11px] text-small font-semibold leading-none text-tip-ink";
 
 /**
  * Поповер на наведении и фокусе.
@@ -269,18 +346,22 @@ export function Popover({
 
   if (!isValidElement(children)) return children;
   const child = children as ReactElement<Record<string, unknown> & { ref?: Ref<HTMLElement> }>;
-  const actionable = isActionable(child);
+  /* с действиями внутри слой — диалог (без модальности), без них — подсказка */
+  const interactive = !!actions;
   const childProps = child.props;
   const call = (name: string, e: unknown) => (childProps[name] as ((ev: unknown) => void) | undefined)?.(e);
 
+  /*
+   * Связь триггера со слоем — aria-describedby: текст поповера читается
+   * описанием. aria-expanded здесь не ставится: у кнопок набора он рисует
+   * «нажатость», а поповер на наведении кнопку не нажимает.
+   */
   const trigger = cloneElement(child, {
     ref: mergeRefs(child.props.ref, (n: HTMLElement | null) => {
       triggerRef.current = n;
     }),
-    tabIndex: actionable ? childProps.tabIndex : (childProps.tabIndex ?? 0),
-    ...(actionable
-      ? { "aria-expanded": open, "aria-controls": open ? id : undefined }
-      : { "aria-describedby": open ? id : (childProps["aria-describedby"] as string | undefined) }),
+    tabIndex: isFocusable(child) ? childProps.tabIndex : 0,
+    "aria-describedby": open ? id : (childProps["aria-describedby"] as string | undefined),
     onMouseEnter: (e: unknown) => {
       call("onMouseEnter", e);
       show(delay);
@@ -312,31 +393,18 @@ export function Popover({
             popRef.current = n;
           }}
           id={id}
-          role={actionable ? "dialog" : "tooltip"}
-          aria-label={actionable && !title ? label : undefined}
-          aria-labelledby={actionable && title ? `${id}-t` : undefined}
+          role={interactive ? "dialog" : "tooltip"}
+          aria-label={interactive && !title ? label : undefined}
+          aria-labelledby={interactive && title ? `${id}-t` : undefined}
           data-popover
           style={{ ...style, maxWidth: width }}
           onMouseEnter={() => clear()}
           onMouseLeave={() => hide(150)}
           onBlur={onBlurAny}
           onKeyDown={onKey}
-          className={cx(
-            "z-[80] block w-max rounded-panel border border-border bg-panel px-3.5 pb-[13px] pt-3 text-left",
-            "text-small font-medium text-text-2 shadow-pop",
-            "animate-[kit-rise_var(--dur-fast)_var(--ease)]",
-          )}
+          className={cx(popCard, "z-[80] animate-[kit-rise_var(--dur-fast)_var(--ease)]")}
         >
-          {title ? (
-            <span className="flex items-center gap-2">
-              <b id={`${id}-t`} className="text-body font-extrabold text-text">
-                {title}
-              </b>
-              {note ? <span className="ml-auto whitespace-nowrap text-caption font-semibold text-muted">{note}</span> : null}
-            </span>
-          ) : null}
-          {content ? <span className={cx("block", title ? "mt-[5px]" : null)}>{content}</span> : null}
-          {actions ? <span className="mt-3 flex flex-wrap items-center gap-2">{actions}</span> : null}
+          <PopoverBody titleId={`${id}-t`} title={title} note={note} content={content} actions={actions} />
         </span>
       ) : null}
     </>
@@ -422,11 +490,7 @@ export function Tooltip({
           id={id}
           role="tooltip"
           style={style}
-          className={cx(
-            "pointer-events-none z-[90] flex h-[30px] w-max items-center gap-2 whitespace-nowrap rounded-[9px] bg-tip pl-[11px]",
-            kbd ? "pr-2" : "pr-[11px]",
-            "text-small font-semibold leading-none text-tip-ink",
-          )}
+          className={cx(tipPlate, "pointer-events-none z-[90]", kbd ? "pr-2" : "pr-[11px]")}
         >
           {label}
           {kbd ? <Kbd onTip>{kbd}</Kbd> : null}

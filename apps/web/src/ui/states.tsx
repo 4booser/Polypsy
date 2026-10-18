@@ -71,8 +71,11 @@ export function Loading({
   onRetry,
   busy,
   title,
+  bare,
 }: {
   rows?: number;
+  /** Внутри панели: без своего листа и обода */
+  bare?: boolean;
   error?: string | null;
   /** Повторить запрос; без него экран, который не загрузился, — тупик */
   onRetry?: () => void;
@@ -85,7 +88,10 @@ export function Loading({
     return (
       <div
         role="alert"
-        className="flex flex-col items-center rounded-panel border border-border bg-panel px-6 pb-11 pt-10 text-center"
+        className={cx(
+          "flex flex-col items-center px-6 pb-11 pt-10 text-center",
+          !bare && "rounded-panel border border-border bg-panel",
+        )}
       >
         <IconTile icon={<Ic.cloudOff />} tone="warn" size={48} />
         {/* не заголовок: состояние встаёт где угодно, и h3 под h1 ломал бы порядок заголовков */}
@@ -100,7 +106,7 @@ export function Loading({
     );
   }
   return (
-    <div role="status" aria-busy="true" className="rounded-panel border border-border bg-panel pt-3">
+    <div role="status" aria-busy="true" className={cx("pt-3", !bare && "rounded-panel border border-border bg-panel")}>
       <div className="px-4 pb-1">
         <span className={cx(bar, "h-4")} style={{ width: "38%" }} />
       </div>

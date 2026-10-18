@@ -55,10 +55,26 @@ export function menuItemClass(_align: MenuAlign = "left", tone: MenuTone = "norm
 /** Пункт меню списка — по умолчанию */
 export const menuItem = menuItemClass("left");
 
+/** Лист меню: 14, обод, тень слоя, поля 6 */
+const plate = "flex min-w-[232px] max-w-[340px] flex-col items-stretch rounded-panel border border-border bg-panel p-1.5 shadow-pop outline-none";
+
+/**
+ * Меню, нарисованное открытым на месте (страница дизайн-системы, справка):
+ * тот же лист, без кнопки-переключателя и ловушки фокуса.
+ */
+export function MenuPanel({ children, label, className }: { children: ReactNode; label: string; className?: string }) {
+  return (
+    <div role="menu" aria-label={label} className={cx(plate, className)}>
+      {children}
+    </div>
+  );
+}
+
 /** Плашка меню: вид один, `align` решает только сторону */
 function plateClass(align: MenuAlign, plateClassName?: string): string {
   return cx(
-    "absolute z-50 flex min-w-[232px] max-w-[340px] flex-col items-stretch rounded-panel border border-border bg-panel p-1.5 shadow-pop outline-none",
+    "absolute z-50",
+    plate,
     "animate-[kit-rise_var(--dur)_var(--ease)]",
     align === "right-out" ? "left-0 top-[calc(100%+6px)]" : "right-0 top-[calc(100%+6px)]",
     plateClassName,

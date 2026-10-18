@@ -14,6 +14,7 @@ import { BulkBar, SearchField } from "./filters";
 import { Ic } from "./icons";
 import { useHotkeys } from "./keys";
 import { Pager } from "./pager";
+import { Count } from "./layout";
 import { Button, Checkbox } from "./primitives";
 import { rowKeyOf } from "./rowKeys";
 import { Loading } from "./states";
@@ -417,7 +418,7 @@ export function DataTable<T>({
   };
 
   const th = cx(
-    "h-[38px] whitespace-nowrap border-y border-divider bg-panel-2 px-2.5 text-left align-middle text-caption font-bold leading-none text-muted",
+    "h-[38px] whitespace-nowrap border-y border-divider bg-panel-2 px-2.5 text-left align-middle text-caption font-bold normal-case leading-none tracking-normal text-muted",
     "first:pl-4 last:pr-4",
     sticky && "sticky top-[var(--sticky-top,0px)] z-[3]",
   );
@@ -507,7 +508,8 @@ export function DataTable<T>({
           ) : null}
           {csvName && sorted.length ? (
             <Button variant="quiet" size="xs" icon={<Ic.download />} onClick={exportCsv}>
-              {ut("ui.exportCsv")} · {sorted.length}
+              {ut("ui.exportCsv")}
+              <Count n={sorted.length} />
             </Button>
           ) : null}
         </div>
@@ -777,7 +779,8 @@ function ColumnPicker<T>({
         aria-haspopup="true"
         onClick={() => setOpen((v) => !v)}
       >
-        {ut("tbl.columns")} · {count}/{columns.length}
+        {ut("tbl.columns")}
+        <Count n={`${count}/${columns.length}`} />
       </Button>
       {open ? (
         <>
@@ -855,8 +858,9 @@ function FacetBar<T>({
         );
       })}
       {active ? (
-        <Button variant="quiet" size="xs" onClick={() => onChange({})}>
-          {ut("tbl.resetFacets")} · {shownCount}/{totalCount}
+        <Button variant="quiet" size="xs" icon={<Ic.x />} onClick={() => onChange({})}>
+          {ut("tbl.resetFacets")}
+          <Count n={`${shownCount}/${totalCount}`} />
         </Button>
       ) : null}
       {note ? <span className="text-caption text-muted">{note}</span> : null}

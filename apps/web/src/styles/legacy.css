@@ -399,30 +399,30 @@ th, td {
 }
 /* ячейка с переносом текста имеет право быть выше — но это редкий случай */
 td.wrap { height: auto; padding: var(--pad-cell-y) 12px; white-space: normal; }
+/* шапка таблицы набора «Виразна» (.dtbl th): 12/700 приглушённым на panel2, без капители */
 thead th {
-  color: var(--ink-faint);
-  font-weight: 600;
-  font-size: var(--fs-micro);
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
+  color: var(--muted);
+  font-weight: 700;
+  font-size: var(--fs-caption);
   white-space: nowrap;
-  border-bottom: 1px solid var(--border);
-  background: var(--surface);
+  border-top: 1px solid var(--divider);
+  border-bottom: 1px solid var(--divider);
+  background: var(--panel2);
   position: sticky;
   top: 0;
   z-index: 1;
 }
+/* числа — та же гарнитура табличными цифрами; моноширинный — только для кодов */
 th.num, td.num {
   text-align: right;
-  font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 tbody tr { transition: background var(--dur-fast) var(--ease); }
-tbody tr:hover { background: var(--surface-2); }
+tbody tr:hover { background: var(--panel2); }
 /* строка под курсором и строка под клавиатурой выглядят одинаково: работа со
    списком одинаково часто идёт и мышью, и стрелками */
-tbody tr:focus-within { background: var(--surface-2); }
+tbody tr:focus-within { background: var(--panel2); }
 tbody tr:last-child td { border-bottom: none; }
 th.sortable { cursor: pointer; user-select: none; }
 th.sortable:hover { color: var(--text); }

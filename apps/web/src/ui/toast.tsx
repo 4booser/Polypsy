@@ -90,7 +90,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
  * Одна плашка. Время жизни ставится на паузу, пока на плашке мышь или фокус:
  * сообщение с действием не должно исчезнуть из-под руки.
  */
-function ToastPlate({ item, onDone }: { item: Item; onDone: (id: number) => void }) {
+function ToastPlate({ item, onDone, still }: { item: Item; onDone: (id: number) => void; still?: boolean }) {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const start = useCallback(() => {
     if (timer.current) clearTimeout(timer.current);
@@ -100,9 +100,10 @@ function ToastPlate({ item, onDone }: { item: Item; onDone: (id: number) => void
     if (timer.current) clearTimeout(timer.current);
   };
   useEffect(() => {
+    if (still) return;
     start();
     return pause;
-  }, [start]);
+  }, [start, still]);
 
   const icon =
     item.icon ??
@@ -112,9 +113,9 @@ function ToastPlate({ item, onDone }: { item: Item; onDone: (id: number) => void
     <div
       data-kind={item.kind}
       className={cx(
-        "toast pointer-events-auto flex min-h-12 items-center gap-2.5 rounded-panel bg-tip py-2 pl-4 pr-2",
+        "toast pointer-events-auto flex min-h-12 w-max max-w-full items-center gap-2.5 rounded-panel bg-tip py-2 pl-4 pr-2",
         "text-[13px] font-semibold leading-[18px] text-tip-ink shadow-pop",
-        "animate-[kit-rise_var(--dur)_var(--ease)]",
+        !still && "animate-[kit-rise_var(--dur)_var(--ease)]",
         !item.action && "pr-4",
       )}
       onMouseEnter={pause}
@@ -151,6 +152,11 @@ function ToastPlate({ item, onDone }: { item: Item; onDone: (id: number) => void
       ) : null}
     </div>
   );
+}
+
+/** Сообщение, нарисованное на месте (страница дизайн-системы): тот же вид, без таймера */
+export function ToastView({ text, kind = "info", action, icon }: { text: string; kind?: ToastKind } & ToastOptions) {
+  return <ToastPlate item={{ id: 0, text, kind, action, icon }} onDone={() => {}} still />;
 }
 
 /**

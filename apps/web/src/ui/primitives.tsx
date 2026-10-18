@@ -166,7 +166,7 @@ const iconSize: Record<Size, string> = {
  */
 export function buttonClass(variant: Variant = "secondary", size: Size = "sm", className?: string): string {
   return cx(
-    "relative inline-flex shrink-0 cursor-pointer items-center justify-center whitespace-nowrap border-0 font-bold leading-none no-underline",
+    "relative inline-flex min-h-0 shrink-0 cursor-pointer items-center justify-center whitespace-nowrap border-0 font-bold leading-none no-underline",
     "transition-[background-color,box-shadow,color] duration-[var(--dur-fast)] ease-[var(--ease)]",
     "hover:no-underline active:translate-y-px",
     "disabled:cursor-not-allowed disabled:opacity-48 disabled:active:translate-y-0",
@@ -342,12 +342,13 @@ export function SeverityTag({
   );
 }
 
-export type TagTone = "plain" | "attention" | "danger" | "primary" | "good" | "info" | "done";
+export type TagTone = "plain" | "attention" | "danger" | "handover" | "primary" | "good" | "info" | "done";
 
 const tagTone: Record<TagTone, string> = {
   plain: "bg-sunk text-text-2",
   attention: "bg-warn-tint-2 text-warn",
   danger: "bg-risk-tint-2 text-risk-ink",
+  handover: "bg-transparent text-risk-ink shadow-[inset_0_0_0_1px_var(--riskline)]",
   primary: "bg-violet-tint text-violet-ink",
   good: "bg-good-tint text-good",
   info: "bg-info-tint text-info",
@@ -358,7 +359,8 @@ const tagTone: Record<TagTone, string> = {
  * Пилюля состояния (.st набора): причина, состояние, признак. Не для тяжести.
  *
  * Тоны: `plain` нейтральная, `attention` янтарь (просрочено, неявка),
- * `danger` — только риск для человека, `primary` — «ваше, сегодня»,
+ * `danger` — только риск для человека, `handover` — случай передан
+ * черговому (контур вместо заливки), `primary` — «ваше, сегодня»,
  * `good` — сделано, `info` — сообщение, `done` — погашено.
  */
 export function Tag({
@@ -405,7 +407,7 @@ export type PlaceholderLook = "label" | "plain";
 
 /** Общая форма полей: рамка 3:1, радиус 10, 13.5/500, фокус — рамка цвета кольца и мягкий ореол */
 const fieldFrame = cx(
-  "w-full min-w-0 border border-field-border font-medium text-text",
+  "w-full min-h-0 min-w-0 border border-field-border font-medium text-text",
   "placeholder:text-muted placeholder:opacity-100",
   "transition-[border-color,box-shadow,background-color] duration-[var(--dur-fast)] ease-[var(--ease)]",
   "hover:border-muted",
@@ -835,7 +837,7 @@ export function Switch({
         disabled={disabled}
         onClick={() => onChange(!checked)}
         className={cx(
-          "relative h-[22px] w-[38px] shrink-0 cursor-pointer rounded-[11px] border-0 p-0",
+          "relative h-[22px] min-h-0 w-[38px] shrink-0 cursor-pointer rounded-[11px] border-0 p-0",
           "transition-colors duration-[var(--dur)] ease-[var(--ease)]",
           checked ? "bg-violet" : "bg-field-border",
           "disabled:cursor-not-allowed disabled:opacity-48",
@@ -935,7 +937,7 @@ export function Segmented<K extends string>({
             aria-pressed={on}
             onClick={() => onChange(it.key)}
             className={cx(
-              "h-8 cursor-pointer rounded-[9px] border-0 px-[11px] text-caption font-bold leading-none",
+              "h-8 min-h-0 cursor-pointer rounded-[9px] border-0 px-[11px] text-caption font-bold leading-none",
               "transition-colors duration-[var(--dur-fast)] ease-[var(--ease)]",
               wide && "flex-1",
               on ? "bg-panel text-violet-ink shadow-tile" : "bg-transparent text-text-2 hover:bg-sunk-2 hover:text-text",
@@ -998,7 +1000,7 @@ export interface TabItem {
  */
 const tabClass = (isActive: boolean) =>
   cx(
-    "relative inline-flex h-9 shrink-0 items-center gap-[7px] whitespace-nowrap rounded-control border-0 px-[13px]",
+    "relative inline-flex h-9 min-h-0 shrink-0 items-center gap-[7px] whitespace-nowrap rounded-control border-0 px-[13px]",
     "text-body leading-none no-underline hover:no-underline",
     "transition-[background-color,color] duration-[var(--dur-fast)] ease-[var(--ease)]",
     focus,

@@ -77,9 +77,12 @@ describe("меню набора: пункт один, плашка одна", ()
     const at = src.indexOf("function plateClass");
     expect(at, "plateClass переименован — сторож смотрит не туда").toBeGreaterThan(0);
     const body = src.slice(at, src.indexOf("\n}", at));
+    /* лист один на живое меню и на нарисованное (MenuPanel): константа plate */
+    const plate = src.match(/const plate =\s*"([^"]+)"/)?.[1] ?? "";
     for (const cls of ["rounded-panel", "border-border", "bg-panel", "shadow-pop"]) {
-      expect(body, `у плашки пропало ${cls}`).toContain(cls);
+      expect(plate, `у плашки пропало ${cls}`).toContain(cls);
     }
+    expect(body).toContain("plate,");
     expect(body).toMatch(/align === "right-out" \? "left-0/);
   });
 });
