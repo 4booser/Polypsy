@@ -96,7 +96,8 @@ export async function withLadder(
   viewer: LadderViewer,
   card: (id: string) => Promise<{ roles: { code: string }[] }> = api.userPermissions,
 ): Promise<StaffRow[]> {
-  const asked = rows.filter((r) => ladderReadable(viewer, r));
+  /* строки справочника 2.0 приходят со ступенями (model.ts, withAccount) — о них не спрашиваем */
+  const asked = rows.filter((r) => !r.ladder && ladderReadable(viewer, r));
   const cards = await Promise.allSettled(asked.map((r) => card(r.id)));
   const ladders = new Map(asked.map((r, i) => [r.id, cards[i]]));
   return rows.map((r) => {

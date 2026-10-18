@@ -2239,6 +2239,11 @@ export const api = {
     request<{ ok: true }>(`/api/clinic/schedule/exceptions/${id}`, { method: "DELETE" }),
   departments: () =>
     request<{ items: { id: string; title: string; timezone: string }[] }>("/api/clinic/departments"),
+  /* відділення, посада й кабінет сотрудника (departments.manage): форма «Додати лікаря», 2.0 */
+  saveSpecialistProfile: (
+    userId: string,
+    input: { departmentId: string; position?: string | null; room?: string | null; defaultSlotMinutes?: number; acceptsBookings?: boolean },
+  ) => request<{ ok: true }>(`/api/clinic/specialists/${userId}`, { method: "PUT", body: JSON.stringify(input) }),
   specialists: (departmentId?: string) => {
     const q = departmentId ? `?departmentId=${encodeURIComponent(departmentId)}` : "";
     return request<{

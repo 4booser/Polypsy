@@ -1708,7 +1708,7 @@ export const ERRORS = {
     en: "Patients can only be handed over to another clinician with an active account",
   },
   "err.transferLeadChanged": {
-    uk: "Когось із цих пацієнтів уже веде інший фахівець. Оновіть список і спробуйте ще раз",
+    uk: "Когось із цих пацієнтів вже веде інший фахівець. Оновіть список і спробуйте ще раз",
     ru: "Кого-то из этих пациентов уже ведёт другой специалист. Обновите список и попробуйте ещё раз",
     en: "Some of these patients already have another lead clinician. Refresh the list and try again",
   },

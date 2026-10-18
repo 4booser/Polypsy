@@ -181,6 +181,48 @@ describe("передача пациентов другому лікарю", () =
   });
 });
 
+describe("заведение сотрудника с анкетой", () => {
+  test("пол, дата рождения, подразделение, должность, специализация и населённый пункт сохраняются; дата — шифром", async () => {
+    const email = `adm-new-${tag}@test.dev`;
+    const res = await api("/api/users", root.token, {
+      method: "POST",
+      body: JSON.stringify({
+        email,
+        password: "temp-pass-1234",
+        firstName: "Ольга",
+        lastName: "Харченко",
+        middleName: null,
+        role: "admin",
+        mustChangePassword: true,
+        sex: "female",
+        birthDate: "1991-11-22",
+        unit: "Психологічне відділення",
+        position: "дитяча психологиня",
+        specialty: "Ігрова терапія",
+        locality: "Житомир",
+      }),
+    });
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    expect(res.body).toMatchObject({ sex: "female", birthDate: "1991-11-22", specialty: "Ігрова терапія", mustChangePassword: true });
+    const [row] = await db.select().from(users).where(eq(users.email, email));
+    expect(row?.locality).toBe("Житомир");
+    expect(row?.unit).toBe("Психологічне відділення");
+    /* дата рождения в базе — не открытым текстом */
+    expect(row?.birthDate).not.toBe("1991-11-22");
+  });
+
+  test("кривая дата рождения — отказ, записи нет", async () => {
+    const email = `adm-bad-${tag}@test.dev`;
+    const res = await api("/api/users", root.token, {
+      method: "POST",
+      body: JSON.stringify({ email, password: "temp-pass-1234", firstName: "А", lastName: "Б", role: "admin", birthDate: "22.11.1991" }),
+    });
+    expect(res.status).toBe(400);
+    const rows = await db.select().from(users).where(eq(users.email, email));
+    expect(rows).toHaveLength(0);
+  });
+});
+
 describe("версии текста согласия", () => {
   test("только суперадмину", async () => {
     const res = await api("/api/consents/versions", from.token);
