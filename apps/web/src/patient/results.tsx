@@ -46,7 +46,7 @@ export function ResultCell({
   const v = scoreValue(score, ut);
   return (
     <div className={cx("text-right", className)}>
-      <div className="flex flex-wrap items-center justify-end gap-2">
+      <div className="flex flex-wrap items-center justify-end gap-2 max-[760px]:justify-start">
         <span className="text-[20px] font-extrabold leading-none tracking-[-0.01em] tabular-nums text-text">
           {v.big}
           {v.of ? <span className="ml-1 text-[15px] font-bold text-muted">{v.of}</span> : null}
