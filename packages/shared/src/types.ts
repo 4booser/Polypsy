@@ -5171,3 +5171,67 @@ export interface AppEvent {
   /** Кто сделал; null у фоновых проходов */
   actorId?: string | null;
 }
+
+/* ─────────── Прохождение: обстановка вокруг протокола ───────────
+ *
+ * Экраны прохождения (протокол, графики, заключение) рисуют над протоколом
+ * шапку пациента со строкой открытого и переключатель попыток. Сам
+ * GET /api/responses/:id этого не несёт намеренно — он открыт и самому
+ * обследуемому. Здесь — только персоналу, с той же проверкой доступа, что у
+ * заключения (lib/clinicalRead.ts).
+ */
+
+/** Откуда взялось прохождение (responses.source) */
+export type ResponseSource = "assigned" | "self" | "kiosk" | "clinician" | "informant" | "intake";
+
+/** Сигнал риска в строке открытого над протоколом */
+export interface ResponseContextSignal {
+  id: string;
+  label: string;
+  severity: RiskSeverity;
+  at: string;
+  /** Поднят этим прохождением, а не другим замером того же человека */
+  here: boolean;
+  questionId: string | null;
+  surveyTitle: string;
+  /** Сколько минут висит неразобранным (у разобранного — сколько висел) */
+  minutesOpen: number;
+  /** Норма разбора методики в минутах; null — нормы нет */
+  escalateMinutes: number | null;
+  overdue: boolean;
+  reviewedAt: string | null;
+  reviewedByName: string | null;
+  outcome: RiskAlert["outcome"];
+}
+
+/** Завершённая попытка той же методики тем же человеком — для переключателя */
+export interface ResponseAttempt {
+  id: string;
+  submittedAt: string;
+  /** Номер версии методики, которую проходили: ответы по пунктам сравнимы только внутри версии */
+  versionNumber: number | null;
+  /** Баллы по кодам шкал: код живёт между версиями, id шкалы — нет */
+  scores: { code: string; value: number; band: string | null; severity: Severity | null }[];
+}
+
+export interface ResponseContext {
+  source: ResponseSource | null;
+  /** Протокол достоверен по шкалам достоверности */
+  reliable: boolean;
+  /** null у анонимной методики и у заполненного со слов другого */
+  patient: {
+    id: string;
+    fullName: string;
+    sex: Sex | null;
+    /** Полных лет на день прохождения */
+    age: number | null;
+    unit: string | null;
+    lead: { name: string; mine: boolean } | null;
+  } | null;
+  /** Завершённые попытки этой методики этим человеком, по возрастанию даты; пусто у прохождения без человека */
+  attempts: ResponseAttempt[];
+  /** Открытые сигналы человека и все сигналы этого прохождения; null — у читающего нет права разбирать сигналы */
+  signals: ResponseContextSignal[] | null;
+  /** Срабатывания правил по этому прохождению; null — нет права на правила */
+  hits: RuleHit[] | null;
+}

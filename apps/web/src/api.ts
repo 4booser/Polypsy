@@ -98,6 +98,7 @@ import type {
   AlertSignalBasis,
   GroupAnalytics,
   ResponseDetail,
+  ResponseContext,
   Page,
   Respondent,
   Worklist,
@@ -1119,6 +1120,8 @@ export const api = {
     unwrap(request<Items<AlertSignalBasis>>(`/api/alert-cases/${id}/signals`)),
   /** Прохождение целиком: ответы по пунктам вместе с вариантами той же версии */
   responseDetail: (id: string) => request<ResponseDetail>(`/api/responses/${id}`),
+  /** Обстановка вокруг протокола: человек, сигналы, попытки, правила — только персоналу */
+  responseContext: (id: string) => request<ResponseContext>(`/api/response-context/${id}`),
   worklist: () => request<Worklist>("/api/worklist"),
 
   ruleHits: (status: RuleHit["status"] = "suggested") =>
