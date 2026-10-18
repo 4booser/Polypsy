@@ -510,6 +510,8 @@ describe("список автора: виды и ответы по вариан�
 
     const all = await api("/api/mailings", author.token);
     expect(all.body.counts).toEqual({ all: 2, draft: 1, sent: 1, hidden: 1 });
+    // итог за 30 дней — по отправленным и не скрытым: скрытая в него не входит
+    expect(all.body.month).toEqual({ sent: 1, recipients: 3, asked: 3, answered: 2 });
     const row = all.body.items.find((i: { id: string }) => i.id === sent.id);
     expect(row.options).toEqual(["Так", "Ні", "Ще не знаю"]);
     expect(row.answers, "ответы по вариантам — в порядке вариантов, с нулями").toEqual([0, 0, 2]);

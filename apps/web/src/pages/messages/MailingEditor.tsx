@@ -21,6 +21,7 @@ import {
   isFilled,
   mailingHref,
   optionPreset,
+  pluralForm,
   saveThenSend,
   withoutOption,
 } from "./model";
@@ -58,7 +59,7 @@ const BODY_MAX = 4000;
 const stamp = (iso: string) => `${day(iso)}, ${timeOfDay(iso)}`;
 
 function MailingEditor({ id }: { id: string | null }) {
-  const { ut } = useLang();
+  const { ut, lang } = useLang();
   const navigate = useNavigate();
   const toast = useToast();
   const { run, busy } = useAction();
@@ -339,7 +340,7 @@ function MailingEditor({ id }: { id: string | null }) {
             {group ? (
               <p className="m-0 mt-1 flex items-center gap-2 text-small text-text-2">
                 <Ic.users size={14} className="text-violet-ink" />
-                {ut("mlx.inGroup").replace("{n}", String(people))}
+                {ut(`mlx.inGroup.${pluralForm(people, lang)}` as const).replace("{n}", String(people))}
               </p>
             ) : null}
             <Callout kind="warn" icon={<Ic.lock />} className="mt-3">
@@ -352,7 +353,7 @@ function MailingEditor({ id }: { id: string | null }) {
               disabled={busy || !!sendLock}
               onClick={() => setConfirming("send")}
             >
-              {people ? ut("mlx.sendTo").replace("{n}", String(people)) : ut("mail.send")}
+              {people ? ut(`mlx.sendTo.${pluralForm(people, lang)}` as const).replace("{n}", String(people)) : ut("mail.send")}
             </Button>
             {sendLock ? <p className="m-0 mt-2 text-small text-muted">{sendLock}</p> : null}
           </Panel>
@@ -362,7 +363,7 @@ function MailingEditor({ id }: { id: string | null }) {
 
       {confirming === "send" ? (
         <Modal
-          title={ut("mlx.sendConfirm").replace("{n}", String(people))}
+          title={ut(`mlx.sendConfirm.${pluralForm(people, lang)}` as const).replace("{n}", String(people))}
           onClose={() => setConfirming(null)}
           icon={<Mi.send />}
           sub={group?.title}
@@ -593,7 +594,7 @@ function SentPage({
   back: { to: string; label: string };
   stale: string | null;
 }) {
-  const { ut } = useLang();
+  const { ut, lang } = useLang();
   const asks = m.options.length > 0;
   return (
     <Page
@@ -646,7 +647,7 @@ function SentPage({
                   {group.title}
                 </Tag>
               ) : null}
-              {m.counts ? <Tag>{ut("mlx.people").replace("{n}", String(m.counts.recipients))}</Tag> : null}
+              {m.counts ? <Tag>{ut(`mlx.people.${pluralForm(m.counts.recipients, lang)}` as const).replace("{n}", String(m.counts.recipients))}</Tag> : null}
               {m.counts ? <Tag icon={<Ic.checkCheck />}>{ut("mlx.readCount").replace("{n}", String(m.counts.read))}</Tag> : null}
             </div>
             <Callout kind="line" icon={<Ic.lock />} className="mt-3">

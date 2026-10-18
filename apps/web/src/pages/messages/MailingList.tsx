@@ -14,7 +14,7 @@ import { Button, ButtonLink, Tag } from "../../ui/primitives";
 import { useResource } from "../../useResource";
 import { AnswersDrawer } from "./answers";
 import { Mi } from "./icons";
-import { answerShares, mailingHref, mailingQuery, mailingViewFrom } from "./model";
+import { answerShares, mailingHref, mailingQuery, mailingViewFrom, pluralForm } from "./model";
 
 /*
  * «Розсилки» — повідомлення групам пацієнтів (comms-mailings).
@@ -128,7 +128,7 @@ export function StateCell({ m }: { m: Pick<MailingListItem, "status" | "at" | "r
 }
 
 export default function MailingList() {
-  const { ut } = useLang();
+  const { ut, lang } = useLang();
   const navigate = useNavigate();
   const toast = useToast();
   const { run, busy } = useAction();
@@ -233,11 +233,29 @@ export default function MailingList() {
   ];
 
   const groupTitle = group ? (groupBy.get(group)?.title ?? null) : null;
+  const month = list.data?.month;
+  /* итог за 30 дней одной строкой под заголовком — словами, без плиток */
+  const monthLine = !month
+    ? null
+    : month.sent === 0
+      ? ut("mlx.monthNone")
+      : `${ut("mlx.month").replace("{sent}", String(month.sent)).replace("{recipients}", String(month.recipients))}${
+          month.asked > 0
+            ? ut("mlx.monthAnswered")
+                .replace("{answered}", String(month.answered))
+                .replace("{asked}", String(month.asked))
+                .replace("{pct}", String(Math.round((month.answered / month.asked) * 100)))
+            : ""
+        }`;
 
   return (
     <Page
       title={ut("sn.mailings")}
-      count={counts ? counts.all : null}
+      meta={
+        counts && monthLine
+          ? [ut(`mlx.metaCount.${pluralForm(counts.all, lang)}` as const).replace("{n}", String(counts.all)), monthLine]
+          : undefined
+      }
       actions={
         <Tooltip label={ut("mlx.newTip")} kbd="N" side="bottom" align="end">
           <ButtonLink to="/mailings/new" variant="primary" className="gap-2">
@@ -397,7 +415,7 @@ export default function MailingList() {
 
 /** Ячейка «Кому»: группа пилюлей и сколько людей — получили (отправленная) или в группе сейчас (черновик) */
 function ToCell({ m, group }: { m: MailingListItem; group: PatientGroupWithCounts | null }) {
-  const { ut } = useLang();
+  const { ut, lang } = useLang();
   const people = m.status === "sent" ? m.recipientCount : (group?.memberCount ?? null);
   return (
     <div className="py-1">
@@ -409,7 +427,7 @@ function ToCell({ m, group }: { m: MailingListItem; group: PatientGroupWithCount
         <span className="text-small text-muted">{ut("mlx.noGroup")}</span>
       )}
       {people !== null ? (
-        <small className="mt-1.5 block text-caption text-text-2">{ut("mlx.people").replace("{n}", String(people))}</small>
+        <small className="mt-1.5 block text-caption text-text-2">{ut(`mlx.people.${pluralForm(people, lang)}` as const).replace("{n}", String(people))}</small>
       ) : null}
     </div>
   );

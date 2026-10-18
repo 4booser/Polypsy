@@ -246,11 +246,22 @@ mailingRoutes.get("/", ...staffOnly, async (c) => {
     .orderBy(desc(sql`coalesce(${mailings.sentAt}, ${mailings.updatedAt})`));
 
   const counts = { all: 0, draft: 0, sent: 0, hidden: 0 };
+  const month = { sent: 0, recipients: 0, asked: 0, answered: 0 };
+  const monthAgo = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString();
   for (const r of rows) {
     if (r.row.hiddenAt) counts.hidden += 1;
     else {
       counts.all += 1;
       counts[r.row.status] += 1;
+      if (r.row.sentAt && r.row.sentAt >= monthAgo) {
+        const recipients = Number(r.recipientCount ?? 0);
+        month.sent += 1;
+        month.recipients += recipients;
+        if ((r.row.options ?? []).length) {
+          month.asked += recipients;
+          month.answered += Number(r.answeredCount ?? 0);
+        }
+      }
     }
   }
 
@@ -287,6 +298,7 @@ mailingRoutes.get("/", ...staffOnly, async (c) => {
     items: matched.slice(offset, offset + limit).map((d) => d.item),
     total: matched.length,
     counts,
+    month,
   };
   return c.json(page);
 });

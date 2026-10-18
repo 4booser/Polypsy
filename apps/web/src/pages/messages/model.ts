@@ -265,6 +265,17 @@ export function slotsByDay(
   return out;
 }
 
+/**
+ * Форма числа для словаря: «1 людина», «3 людини», «5 людей». Правило — языка
+ * (Intl.PluralRules): у украинского и русского три формы, у английского две
+ * («other» сводится к «many», и у английской записи many = other).
+ */
+export type PluralForm = "one" | "few" | "many";
+export function pluralForm(n: number, lang: string): PluralForm {
+  const form = new Intl.PluralRules(lang).select(n);
+  return form === "one" ? "one" : form === "few" ? "few" : "many";
+}
+
 /* ═══════════ розсилки: список ═══════════ */
 
 /** Виды списка розсилок: все не скрытые, черновики, отправленные, скрытые */

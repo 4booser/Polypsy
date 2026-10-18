@@ -7,6 +7,7 @@ import { Avatar, Drawer, DrawerSection, Ic, Loading, useAction } from "../../ui"
 import { Button, Tag } from "../../ui/primitives";
 import { useResource } from "../../useResource";
 import { Mi } from "./icons";
+import { pluralForm } from "./model";
 
 /*
  * Ответы на отправленную розсилку: полосы по вариантам с «ще не
@@ -94,7 +95,7 @@ export function AnswersDrawer({
   group: PatientGroupWithCounts | null;
   onHidden: () => void;
 }) {
-  const { ut } = useLang();
+  const { ut, lang } = useLang();
   const { run, busy } = useAction();
   const card = useResource(() => api.mailing(id!), [id], { enabled: id !== null, keep: false });
   const m = card.data && card.data.id === id ? card.data : null;
@@ -142,7 +143,7 @@ export function AnswersDrawer({
                   {group.title}
                 </Tag>
               ) : null}
-              {m.counts ? <Tag>{ut("mlx.people").replace("{n}", String(m.counts.recipients))}</Tag> : null}
+              {m.counts ? <Tag>{ut(`mlx.people.${pluralForm(m.counts.recipients, lang)}` as const).replace("{n}", String(m.counts.recipients))}</Tag> : null}
               {m.counts ? (
                 <Tag icon={<Ic.checkCheck />}>{ut("mlx.readCount").replace("{n}", String(m.counts.read))}</Tag>
               ) : null}

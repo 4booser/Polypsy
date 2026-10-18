@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
-import type { Mailing, MailingListItem, MailingUpdateInput } from "@quizzy/shared";
+import { UI, type Mailing, type MailingListItem, type MailingUpdateInput } from "@quizzy/shared";
 import { LangProvider } from "../src/lang";
 import {
   answerShares,
@@ -18,6 +18,7 @@ import {
   MAX_OPTIONS,
   type MailingDraft,
   optionPreset,
+  pluralForm,
   saveThenSend,
   withoutOption,
 } from "../src/pages/messages/model";
@@ -272,5 +273,25 @@ describe("вид списка и полоса ответов", () => {
     expect(optionPreset("yesNoMaybe", words)).toEqual(["Так", "Ні", "Ще не знаю"]);
     expect(optionPreset("none", words)).toEqual([]);
     expect(withoutOption(["а", "б", "в"], 1)).toEqual(["а", "в"]);
+  });
+});
+
+describe("число людей словами", () => {
+  test("три формы у украинского и русского, две у английского", () => {
+    expect([1, 3, 5, 11, 21, 22, 25].map((n) => pluralForm(n, "uk"))).toEqual(["one", "few", "many", "many", "one", "few", "many"]);
+    expect([1, 2, 5].map((n) => pluralForm(n, "ru"))).toEqual(["one", "few", "many"]);
+    expect([1, 2, 5].map((n) => pluralForm(n, "en"))).toEqual(["one", "many", "many"]);
+  });
+
+  test("у каждой формы есть строка в словаре — «1 людина», «3 людини», «5 людей»", () => {
+    for (const base of ["mlx.people", "mlx.inGroup", "mlx.sendTo", "mlx.sendConfirm", "mlx.metaCount"]) {
+      for (const form of ["one", "few", "many"]) {
+        const key = `${base}.${form}` as keyof typeof UI;
+        expect(UI[key], `нет ${key}`).toBeDefined();
+      }
+    }
+    expect(UI["mlx.people.one"].uk.replace("{n}", "1")).toBe("1 людина");
+    expect(UI["mlx.people.few"].uk.replace("{n}", "3")).toBe("3 людини");
+    expect(UI["mlx.people.many"].uk.replace("{n}", "5")).toBe("5 людей");
   });
 });
