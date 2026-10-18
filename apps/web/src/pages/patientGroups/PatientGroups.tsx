@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { t, type PatientGroup, type PatientGroupWithCounts } from "@quizzy/shared";
 import { api } from "../../api";
@@ -55,6 +55,29 @@ import {
 
 type Drawer = { kind: "edit"; id: string | null } | { kind: "assign"; id: string } | null;
 
+/**
+ * Отметки «обрана», поставленные в браузере до серверной закладки, — на
+ * сервер, и ключ браузера стирается. Повторный вызов после переноса ничего
+ * не делает: ключа уже нет. Хранилище недоступно или сервер отказал —
+ * список отдаётся как пришёл, перенос повторится при следующем открытии.
+ */
+async function moveLocalFavourites(groups: PatientGroupWithCounts[]): Promise<PatientGroupWithCounts[]> {
+  let ids: string[];
+  try {
+    ids = favouritesToMove(parseFavorites(localStorage.getItem(FAVORITES_KEY)), groups);
+  } catch {
+    return groups;
+  }
+  try {
+    for (const id of ids) await api.favouritePatientGroup(id, true);
+    localStorage.removeItem(FAVORITES_KEY);
+  } catch {
+    return groups;
+  }
+  const moved = new Set(ids);
+  return moved.size ? groups.map((g) => (moved.has(g.id) ? { ...g, favourite: true } : g)) : groups;
+}
+
 export default function PatientGroups() {
   const { ut, lang } = useLang();
   const navigate = useNavigate();
@@ -66,31 +89,9 @@ export default function PatientGroups() {
   const view: GroupView = (["fav", "mine", "notests"] as const).find((v) => v === viewRaw) ?? "all";
   const sort: GroupSort = (["title", "members", "risk"] as const).find((v) => v === sortRaw) ?? "fav";
 
-  const list = useResource(() => api.patientGroups(), []);
+  /* прежние отметки браузера переезжают на сервер в самой загрузке списка, один раз (moveLocalFavourites) */
+  const list = useResource(async () => moveLocalFavourites(await api.patientGroups()), []);
   const groups = list.data;
-
-  /* прежние отметки браузера — на сервер, один раз; хранилище может быть недоступно — тогда переносить нечего */
-  const moved = useRef(false);
-  useEffect(() => {
-    if (!groups || moved.current) return;
-    moved.current = true;
-    let local: Set<string>;
-    try {
-      local = parseFavorites(localStorage.getItem(FAVORITES_KEY));
-    } catch {
-      return;
-    }
-    const ids = favouritesToMove(local, groups);
-    void (async () => {
-      try {
-        for (const id of ids) await api.favouritePatientGroup(id, true);
-        localStorage.removeItem(FAVORITES_KEY);
-        if (ids.length) list.reload();
-      } catch {
-        /* перенос повторится при следующем открытии */
-      }
-    })();
-  }, [groups, list]);
 
   const owners = useMemo(() => new Set((groups ?? []).map((g) => g.ownerId)), [groups]);
   const othersToo = owners.size > 1 || (owners.size === 1 && !owners.has(user?.id ?? ""));

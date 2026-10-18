@@ -401,11 +401,12 @@ export default function Search() {
                   <button
                     key={r}
                     type="button"
+                    disabled={busy}
                     onClick={() => {
                       setQ(r);
                       search(r);
                     }}
-                    className="inline-flex h-9 min-h-0 cursor-pointer items-center rounded-[18px] border-0 bg-sunk px-3 text-small font-semibold text-text-2 hover:bg-sunk-2 hover:text-text"
+                    className="inline-flex h-9 min-h-0 cursor-pointer items-center rounded-[18px] border-0 bg-sunk px-3 text-small font-semibold text-text-2 hover:bg-sunk-2 hover:text-text disabled:cursor-wait disabled:opacity-60"
                   >
                     {r}
                   </button>
