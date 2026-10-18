@@ -97,8 +97,6 @@ export default function Cohorts() {
   const surveys = useResource(() => api.surveys(), []);
   const saved = useResource(() => api.cohorts(), []);
   const survey = useResource(() => api.survey(spec.surveyId!), [spec.surveyId], { enabled: !!spec.surveyId });
-  /* «з N у вашій зоні» — предпросмотр без условий, один раз на экран */
-  const everyone = useResource(() => api.cohortPreview({}), []);
 
   const surveyTitle = useCallback(
     (id: string) => surveys.data?.find((s) => s.id === id)?.title ?? (survey.data?.id === id ? survey.data.title : undefined),
@@ -130,6 +128,17 @@ export default function Cohorts() {
   );
   const preview = count.data;
   const previewError = count.error;
+  /*
+   * «з N у вашій зоні» — предпросмотр без условий. После основного счёта, а
+   * не вместе с ним: предпросмотр тяжёлый (десяток запросов к базе), и два
+   * сразу замедляли главное число экрана вдвое. Ответ свежий пять минут и
+   * общий для всех открытий экрана: зона за это время не меняется.
+   */
+  const everyone = useResource(() => api.cohortPreview({}), [], {
+    enabled: !!preview || !!previewError,
+    key: "cohorts.zone",
+    staleMs: 5 * 60_000,
+  });
   const counting = !invalid && (settledKey !== key || count.loading || count.refreshing);
   const view = resultView({ invalid, hasPreview: !!preview, error: previewError });
 
