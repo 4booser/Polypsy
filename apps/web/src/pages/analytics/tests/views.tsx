@@ -1,131 +1,456 @@
-import { useMemo, useState, type ReactNode } from "react";
-import { Link } from "react-router-dom";
+import { Fragment, useMemo, useState, type ReactNode } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import type { QuestionAnalytics, ScaleAnalytics, SurveyAnalytics, SurveyResponse } from "@quizzy/shared";
 import { api, openInTab, type AnalyticsSlice } from "../../../api";
 import { LineChart } from "../../../charts";
-import { BandTrend, Figure, HBars, Kpi, ScaleProfile, ShareBar, TimeColumns } from "../../../charts/clinical";
+import { BandTrend, Figure, HBars, ScaleProfile, SeverityMeter, ShareBar, TimeColumns } from "../../../charts/clinical";
+import { DataTable as ChartTable, ViewSwitch } from "../../../charts/kit";
 import { rungOf, type Rung } from "../../../charts/ladder";
 import { DataQualityPanel } from "../../../components/DataQualityPanel";
 import { ItemHeatmap } from "../../../components/ItemHeatmap";
-import { dateTime, day, duration } from "../../../format";
+import { day, duration, locale } from "../../../format";
 import { useLang } from "../../../lang";
-import { Loading, useAction } from "../../../ui";
-import { cx } from "../../../ui/cx";
-import { IconDots } from "../../../ui/glyphs";
+import { Avatar, Callout, DataTable, type Column, Loading, PersonCell, TextAction, useAction } from "../../../ui";
+import { SortMenu } from "../../../ui/filters";
+import { Ic } from "../../../ui/icons";
+import { IconTile, Panel } from "../../../ui/layout";
 import { ActionMenu } from "../../../ui/menu";
-import { Button, NoData, SeverityTag } from "../../../ui/primitives";
-import { RuleSection } from "../../../ui/section";
-import { usePagedResource } from "../../../useResource";
-import { FillSelect } from "./fields";
+import { Button, ButtonLink, NoData, Segmented, SeverityTag, Tag } from "../../../ui/primitives";
+import { usePagedResource, useResource } from "../../../useResource";
+import { AIc } from "../icons";
 import {
   SMALL_CELL,
   SORTS,
   alphaLevel,
+  bucketSummary,
   chartsHref,
+  dayText,
   fill,
+  heavyShare,
+  kyivDay,
   lossRows,
+  mainScale,
   medianPoints,
   numText,
   numericBars,
   optionParts,
+  partialKey,
   protocolHref,
   sortQuestions,
   timeBuckets,
   tooFastRows,
   weekPoints,
   type QuestionSort,
+  type View,
 } from "./model";
 
 /*
- * Виды вкладки «Тести» при срезе «Усі пацієнти».
+ * Виды «Аналітики тестів» при срезе «Усі пацієнти» (analytics-tests).
  *
- * Шесть видов вкладками, а не шесть разделов одним свитком: у методики на
- * семьдесят пунктов свиток «шкалы + все пункты + время + качество» уходит на
- * три десятка экранов, и до качества протоколов не долистывает никто. Внутри
- * вида — разделы с линией 2px (RuleSection), как на карточке пациента.
- *
- * Все формы — из общего набора charts/clinical.tsx: одна форма на один
- * вопрос, и тот же вопрос на прохождении, сводке и здесь выглядит одинаково.
+ * «Огляд» — панели: прохождения по неделям и общий балл по полосам, где
+ * теряют людей и качество данных, последние прохождения. Остальные виды —
+ * то же по одному вопросу подробно: шкалы, пункты, время, качество, все
+ * прохождения. Графики — только из общего набора (charts/clinical, charts/
+ * index): одна форма на один вопрос, и тот же вопрос на прохождении, в
+ * карточке и здесь выглядит одинаково.
  */
 
-/** Подпись колонки строки-списка: 13/700 серым, как на карточке пациента */
-const CAPTION = "text-[13px] font-bold leading-[16px] text-muted";
-
-/** Ячейки таблиц этого экрана: утилитами, без голых <table> наследия */
-export const TH = "border-b border-hairline py-[8px] pr-[16px] text-left align-bottom text-[13px] font-bold leading-[16px] text-muted";
-export const TD = "border-b border-hairline py-[8px] pr-[16px] align-top text-[13px] leading-[18px] text-text-2";
-export const NUM = "text-right font-mono tabular-nums";
+/** Ячейки простых таблиц этого экрана — токенами набора */
+export const TH = "border-b border-divider py-2 pr-4 text-left align-bottom text-caption font-bold text-muted";
+export const TD = "border-b border-divider py-2 pr-4 align-top text-small text-text-2";
+export const NUM = "text-right tabular-nums";
 
 /** Лестница полос шкалы — в той форме, которую понимают линейка и динамика */
 export function rungsOf(scale: Pick<ScaleAnalytics, "bands">): Rung[] {
   return scale.bands.map((b) => ({ min: b.min, max: b.max, label: b.label, severity: b.severity }));
 }
 
+/** Число с разрядами по языку страницы: «1 096» */
+export function nf(n: number): string {
+  return n.toLocaleString(locale());
+}
+
+/** «08.10, 14:12» — дата и время строки списка: коротко, без года и названия месяца */
+export function shortDateTime(iso: string): string {
+  return new Date(iso).toLocaleString(locale(), { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+}
+
+/**
+ * Строка словаря с числами жирным: «Середнє {mean}, медіана {median}» →
+ * «Середнє **10,8**, медіана **10**». Подстановки — числа и короткие
+ * значения; жирным их печатает дизайн-система, чтобы глаз находил число в
+ * строке, не читая её.
+ */
+export function rich(template: string, vars: Record<string, ReactNode>): ReactNode {
+  return template.split(/(\{\w+\})/).map((part, i) => {
+    const m = /^\{(\w+)\}$/.exec(part);
+    if (m && m[1]! in vars) {
+      return (
+        <b key={i} className="font-extrabold text-text">
+          {vars[m[1]!]}
+        </b>
+      );
+    }
+    return <Fragment key={i}>{part}</Fragment>;
+  });
+}
+
+/** Первая буква фразы — заглавная: строка словаря написана для середины предложения */
+const capital = (s: string) => (s ? s[0]!.toUpperCase() + s.slice(1) : s);
+
+/** Переход «Шкали ↗» в шапке панели обзора: тот же экран, другой вид */
+function ToView({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <TextAction onClick={onClick}>
+      {label}
+      <AIc.arrowUpRight size={14} />
+    </TextAction>
+  );
+}
+
 /* ─────────── огляд ─────────── */
 
-export function OverviewView({ data }: { data: SurveyAnalytics }) {
+export function OverviewView({ data, slice, onView }: { data: SurveyAnalytics; slice: AnalyticsSlice; onView: (v: View) => void }) {
   const { ut } = useLang();
-  const { mode, buckets } = useMemo(() => timeBuckets(data.timeline), [data.timeline]);
-  const losses = useMemo(() => lossRows(data.dropOff), [data.dropOff]);
+  const scale = mainScale(data.scales);
+  const total = data.questions.filter((q) => q.type !== "info").length;
 
   return (
-    <>
-      {/*
-        Четыре числа, которые читают первыми. Доходимость и медиана времени
-        при пустом срезе — прочерк, а не «0%» и не «0 с»: ноль здесь был бы
-        результатом, которого нет.
-      */}
-      <div className="grid grid-cols-4 gap-[16px] max-[900px]:grid-cols-2 max-[520px]:grid-cols-1">
-        <Kpi label={ut("an.responses")} value={data.completed} hint={`${ut("an.started")} ${data.started}`} />
-        <Kpi label={ut("ant.kpiPatients")} value={data.respondentCount} hint={ut("ant.kpiPatientsHint")} />
-        <Kpi
-          label={ut("an.completion")}
-          value={data.started ? `${numText(data.completionRate, 1)}%` : null}
-          hint={`${ut("an.abandoned")} ${data.abandoned}`}
-        />
-        <Kpi label={ut("an.medianTime")} value={data.medianDurationMs > 0 ? duration(data.medianDurationMs) : null} />
-      </div>
-
+    <div className="flex flex-col gap-4">
       {/*
         «Зараз проходять» — сведения, а не сигнал: человек, спокойно
-        отвечающий на вопросы, внимания не требует, поэтому строка тихая,
-        без янтаря.
+        отвечающий на вопросы, внимания не требует, поэтому заметка тихая.
       */}
       {data.inProgressNow.length ? (
-        <p className="m-0 mt-[14px] text-[13px] leading-[18px] text-muted">
-          <span className="font-bold text-text">
+        <Callout kind="neutral" role="status" icon={<AIc.penLine />}>
+          <b className="font-extrabold text-text">
             {ut("an.inProgressNow")} {data.inProgressNow.length}
-          </span>{" "}
-          — {data.inProgressNow.map((p) => `${p.userName ?? ut("an.anon")} (${p.answered} ${ut("an.answeredAbbr")})`).join(", ")} ·{" "}
-          {ut("an.draftsAutosaved")}
-        </p>
+          </b>{" "}
+          —{" "}
+          {data.inProgressNow
+            .map((p) => `${p.userName ?? ut("an.anon")}, ${fill(ut("ant.answeredOf"), { n: p.answered, of: total })}`)
+            .join("; ")}
+          . {capital(ut("an.draftsAutosaved"))}.
+        </Callout>
       ) : null}
 
-      <RuleSection title={ut(mode === "week" ? "ant.byWeek" : "ant.byDay")} className="mt-[28px]">
-        <TimeColumns
-          label={ut(mode === "week" ? "ant.byWeek" : "ant.byDay")}
-          columns={buckets.map((b) => ({ key: b.key, label: day(b.date), value: b.value }))}
-        />
-      </RuleSection>
+      <div className="grid grid-cols-[minmax(0,1fr)_420px] items-stretch gap-4 max-[1280px]:grid-cols-[minmax(0,1fr)_380px] max-[1100px]:grid-cols-1">
+        <WeeklyPanel data={data} />
+        {scale ? <BandsPanel scale={scale} onView={() => onView("scales")} /> : null}
+      </div>
+      <div className="grid grid-cols-[minmax(0,1fr)_420px] items-stretch gap-4 max-[1280px]:grid-cols-[minmax(0,1fr)_380px] max-[1100px]:grid-cols-1">
+        <DropoffPanel data={data} onView={() => onView("questions")} />
+        <QualitySummary data={data} onView={() => onView("quality")} />
+      </div>
+      <RecentPanel data={data} slice={slice} onView={() => onView("responses")} />
+    </div>
+  );
+}
 
-      <RuleSection
-        title={ut("an.dropOff")}
-        hint={losses.cut ? `${ut("ant.dropOffCaption")}. ${fill(ut("ant.dropOffMore"), { n: losses.rows.length })}` : ut("ant.dropOffCaption")}
-      >
-        {losses.rows.length ? (
-          <HBars
-            items={losses.rows.map((r) => ({
-              key: r.key,
-              label: `${r.position + 1}. ${r.title}`,
-              value: r.lost,
-              text: fill(ut("ant.lostN"), { n: r.lost }),
-            }))}
+/**
+ * «Проходження за тижнями» (или за днями): столбцы с нулями там, где никого
+ * не было, идущая неделя — светлее. Под графиком — сводка словами: среднее
+ * по полным корзинам и самая полная.
+ */
+function WeeklyPanel({ data }: { data: SurveyAnalytics }) {
+  const { ut } = useLang();
+  const [asTable, setAsTable] = useState(false);
+  const { mode, buckets } = useMemo(() => timeBuckets(data.timeline), [data.timeline]);
+  const today = kyivDay();
+  const partial = partialKey(buckets, mode, today);
+  const sum = bucketSummary(buckets, partial);
+  const title = ut(mode === "week" ? "ant.byWeek" : "ant.byDay");
+  const label = (date: string) => dayText(date).slice(0, 5);
+
+  return (
+    <Panel
+      title={title}
+      icon={<AIc.chartColumn />}
+      sub={mode === "week" ? ut("ant.weeklySub") : undefined}
+      actions={buckets.length ? <ViewSwitch table={asTable} onTable={setAsTable} /> : null}
+    >
+      {!buckets.length ? (
+        <NoData />
+      ) : asTable ? (
+        <div className="max-h-[300px] overflow-auto">
+          <ChartTable
+            caption={title}
+            table={{
+              head: [ut(mode === "week" ? "ant.colWeek" : "ant.colDay"), ut("an.responses")],
+              rows: [...buckets].reverse().map((b) => [dayText(b.date), nf(b.value)]),
+            }}
           />
+        </div>
+      ) : (
+        <TimeColumns
+          label={title}
+          height={280}
+          columns={buckets.map((b) => ({
+            key: b.key,
+            label: label(b.date),
+            tip: mode === "week" ? fill(ut("ant.weekOf"), { date: dayText(b.date) }) : dayText(b.date),
+            value: b.value,
+            partial: b.key === partial,
+          }))}
+        />
+      )}
+      {sum ? (
+        <p className="m-0 mt-2 text-small leading-[19px] text-text-2">
+          {rich(ut(mode === "week" ? "ant.weekAvg" : "ant.dayAvg"), {
+            n: sum.full,
+            avg: nf(Math.round(sum.avg)),
+            max: nf(sum.top.value),
+            date: label(sum.top.date),
+          })}
+          {partial ? ` ${fill(ut(mode === "week" ? "ant.weekPartial" : "ant.dayPartial"), { date: label(partial) })}` : null}
+        </p>
+      ) : null}
+    </Panel>
+  );
+}
+
+/**
+ * «Загальний бал за смугами»: сколько завершённых прохождений легло в каждую
+ * полосу, доля «помірна й важче», среднее с квартилями, медиана на лестнице
+ * тяжести, порог похибки и надёжность. Ниже порога малых чисел — словами
+ * «замало даних», не числами.
+ */
+function BandsPanel({ scale: s, onView }: { scale: ScaleAnalytics; onView: () => void }) {
+  const { ut } = useLang();
+  const rungs = rungsOf(s);
+  const n = s.shape?.n ?? 0;
+  const enough = n >= SMALL_CELL;
+  const heavy = heavyShare(s.bands);
+  const hit = enough ? rungOf(rungs, s.median) : null;
+  return (
+    <Panel
+      title={fill(ut("ant.bandsOf"), { title: s.title })}
+      icon={<AIc.chartBar />}
+      sub={fill(ut("ant.scaleCode"), { code: s.code })}
+      actions={<ToView label={ut("an.tabScales")} onClick={onView} />}
+    >
+      <HBars
+        items={s.bands.map((b) => ({
+          key: `${b.label}-${b.min}`,
+          label: (
+            <>
+              {b.label} <span className="text-caption font-medium text-muted">{`${numText(b.min)}–${numText(b.max)}`}</span>
+            </>
+          ),
+          value: b.count,
+          text: nf(b.count),
+        }))}
+      />
+      {heavy && enough ? (
+        <p className="m-0 mt-2 text-small text-text-2">
+          {rich(ut("ant.heavyShare"), {
+            band: heavy.label,
+            p: `${numText((heavy.count / heavy.total) * 100, 0)} %`,
+            k: nf(heavy.count),
+            n: nf(heavy.total),
+          })}
+        </p>
+      ) : null}
+      <p className="m-0 mt-3 text-small text-text-2">
+        {enough
+          ? rich(ut("ant.statsLine"), {
+              mean: numText(s.average, 1),
+              median: numText(s.median),
+              q1: numText(s.p25),
+              q3: numText(s.p75),
+              min: numText(s.min),
+              max: numText(s.max),
+              top: numText(s.maxPossible),
+            })
+          : ut("ant.tooFew")}
+      </p>
+      {enough && rungs.length ? (
+        <>
+          <span className="mb-2 mt-3 block text-caption font-bold text-muted">{ut("ant.medianLadder")}</span>
+          <SeverityMeter rungs={rungs} value={s.median} label={`${s.title}: ${numText(s.median)}${hit ? ` — ${hit.label}` : ""}`} />
+        </>
+      ) : null}
+      <ul className="m-0 mt-3 flex list-none flex-col gap-1.5 p-0 text-small text-text-2">
+        {enough && s.measurement ? (
+          <li className="flex items-start gap-2">
+            <AIc.ruler size={14} className="mt-0.5 text-muted" />
+            <span>{rich(ut("ant.mdc"), { n: numText(s.measurement.mdc95, 1) })}</span>
+          </li>
+        ) : null}
+        <ReliabilityLine scale={s} />
+      </ul>
+    </Panel>
+  );
+}
+
+/** Надёжность одной строкой: слово, α, пунктов и проходжень */
+function ReliabilityLine({ scale: s }: { scale: ScaleAnalytics }) {
+  const { ut } = useLang();
+  const r = s.reliability;
+  if (!r) {
+    return (
+      <li className="flex items-start gap-2">
+        <Ic.info size={14} className="mt-0.5 text-muted" />
+        <span>{ut("an.noReliability")}</span>
+      </li>
+    );
+  }
+  const level = alphaLevel(r.alpha);
+  const word = level === "high" ? ut("ant.alphaHigh") : level === "ok" ? ut("ant.alphaOk") : ut("ant.alphaLow");
+  return (
+    <li className="flex items-start gap-2">
+      {/* низкая согласованность — повод посмотреть на пункты, то есть «требует внимания» */}
+      {level === "low" ? <Ic.alert size={14} className="mt-0.5 text-warn" /> : <Ic.circleCheck size={14} className="mt-0.5 text-good" />}
+      <span>
+        <span className={level === "low" ? "font-bold text-warn" : undefined}>{word}</span>
+        {": "}
+        {rich(ut("ant.alphaBasis"), { alpha: numText(r.alpha), items: r.itemCount, n: r.sampleN ?? "—" })}
+      </span>
+    </li>
+  );
+}
+
+/** «Де губляться респонденти»: пункты, после которых бросали, — с итогом словами */
+function DropoffPanel({ data, onView }: { data: SurveyAnalytics; onView: () => void }) {
+  const { ut } = useLang();
+  const losses = useMemo(() => lossRows(data.dropOff), [data.dropOff]);
+  return (
+    <Panel title={ut("an.dropOff")} icon={<AIc.chartBarDecreasing />} actions={<ToView label={ut("an.tabQuestions")} onClick={onView} />}>
+      <p className="m-0 mb-3 text-small leading-[19px] text-text-2">
+        {ut("ant.dropOffCaption")}.{" "}
+        {data.started
+          ? rich(ut("ant.dropOffTotal"), { a: nf(data.abandoned), s: nf(data.started), r: `${numText(data.completionRate, 1)} %` })
+          : null}
+        {losses.cut ? ` ${fill(ut("ant.dropOffMore"), { n: losses.rows.length })}.` : null}
+      </p>
+      {losses.rows.length ? (
+        <HBars
+          items={losses.rows.map((r) => ({
+            key: r.key,
+            label: `${r.position + 1}. ${r.title}`,
+            value: r.lost,
+            text: fill(ut("ant.lostN"), { n: r.lost }),
+          }))}
+        />
+      ) : (
+        <p className="m-0 text-small text-muted">{ut("ant.noDropOff")}</p>
+      )}
+    </Panel>
+  );
+}
+
+/** Строка сводки качества: квадрат значка, жирное начало, число справа и пояснение */
+function QualityRow({ icon, tone, title, value, children }: { icon: ReactNode; tone: "warn" | "neutral"; title: string; value: ReactNode; children: ReactNode }) {
+  return (
+    <li className="grid grid-cols-[32px_minmax(0,1fr)] gap-3 border-t border-divider py-3 first:border-t-0 first:pt-0.5">
+      <IconTile icon={icon} tone={tone} />
+      <div className="min-w-0">
+        <div className="flex items-baseline gap-2.5">
+          <b className="min-w-0 text-body font-extrabold text-text">{title}</b>
+          <span className="ml-auto whitespace-nowrap text-body font-extrabold text-text">{value}</span>
+        </div>
+        <p className="m-0 mt-0.5 text-small leading-[18px] text-text-2">{children}</p>
+      </div>
+    </li>
+  );
+}
+
+const SEX_KEY = { male: "dq.men", female: "dq.women" } as const;
+
+/**
+ * «Якість даних» на обзоре — четыре строки сводки: небрежное заполнение
+ * (по срезу экрана), доходимость по группам, дрейф и повторяемость (по
+ * всей истории методики — так их считает сервер). Подробно — вид «Якість».
+ */
+function QualitySummary({ data, onView }: { data: SurveyAnalytics; onView: () => void }) {
+  const { ut } = useLang();
+  const dq = useResource(() => api.dataQuality(data.surveyId), [data.surveyId]);
+  const q = dq.data;
+  const worst = q?.strata
+    .filter((s) => !s.suppressed && s.completionRate !== undefined)
+    .sort((a, b) => (a.completionRate ?? 100) - (b.completionRate ?? 100))[0];
+  const drift = q?.drift.length ? q.drift.reduce((a, b) => (b.psi > a.psi ? b : a)) : null;
+  const retest = q?.retest.find((r) => r.icc !== null) ?? null;
+  const sexOf = (sex: string) => (sex in SEX_KEY ? ut(SEX_KEY[sex as keyof typeof SEX_KEY]) : sex);
+
+  return (
+    <Panel title={ut("ant.qualityTitle")} icon={<Ic.shieldCheck />} actions={<ToView label={ut("an.tabQuality")} onClick={onView} />}>
+      <ul className="m-0 list-none p-0">
+        <QualityRow
+          icon={<AIc.flag />}
+          tone={data.quality.length ? "warn" : "neutral"}
+          title={ut("an.carelessTitle")}
+          value={fill(ut("kit.ofTotal"), { n: nf(data.quality.length), total: nf(data.completed) })}
+        >
+          {fill(ut("ant.fastThreshold"), { s: numText(data.tooFastThresholdMs / 1000, 1) })} {ut("an.flagHint")}
+        </QualityRow>
+        {dq.error ? null : !q ? (
+          <li className="py-3">
+            <Loading bare rows={2} />
+          </li>
         ) : (
-          <p className="m-0 text-[13px] text-muted">{ut("ant.noDropOff")}</p>
+          <>
+            <QualityRow
+              icon={<AIc.usersRound />}
+              tone={worst && (worst.completionRate ?? 100) < 80 ? "warn" : "neutral"}
+              title={ut("dq.completionTitle")}
+              value={worst ? `${sexOf(worst.sex)} ${worst.band}: ${worst.completionRate} %` : "—"}
+            >
+              {worst && (worst.completionRate ?? 100) < 80 ? `${ut("dq.underrepresented")} ` : ""}
+              {fill(ut("ant.groupsHidden"), { n: q.smallCellFloor })}
+            </QualityRow>
+            {drift ? (
+              <QualityRow icon={<AIc.waves />} tone={drift.psi > 0.2 ? "warn" : "neutral"} title={ut("dq.driftTitle")} value={`PSI ${numText(drift.psi)}`}>
+                {drift.code}: {drift.verdict}
+              </QualityRow>
+            ) : null}
+            <QualityRow icon={<AIc.repeat />} tone="neutral" title={ut("dq.repeatTitle")} value={retest ? `ICC ${numText(retest.icc)}` : "—"}>
+              {retest
+                ? fill(ut("ant.retestPairs"), { n: retest.pairs, min: q.retestWindow.minDays, max: q.retestWindow.maxDays })
+                : fill(ut("ant.retestNone"), { n: q.retestWindow.minPairs })}
+            </QualityRow>
+          </>
         )}
-      </RuleSection>
-    </>
+      </ul>
+    </Panel>
+  );
+}
+
+/** Сколько строк в «Останні проходження» обзора — остальное во вкладке «Проходження» */
+const RECENT = 6;
+
+type StatusPick = "all" | "completed" | "abandoned";
+
+/** «Останні проходження»: шесть последних строк среза с отбором по состоянию */
+function RecentPanel({ data, slice, onView }: { data: SurveyAnalytics; slice: AnalyticsSlice; onView: () => void }) {
+  const { ut } = useLang();
+  const [status, setStatus] = useState<StatusPick>("all");
+  const pages = useResponsePages(data.surveyId, { ...slice, versionId: data.versionId ?? undefined });
+  const rows = pages.rows.filter((r) => status === "all" || r.status === status).slice(0, RECENT);
+  return (
+    <Panel
+      title={ut("ant.recentTitle")}
+      icon={<Ic.list />}
+      count={data.completed}
+      flush
+      actions={
+        <>
+          <Segmented
+            label={ut("ant.statusPick")}
+            value={status}
+            onChange={setStatus}
+            items={[
+              { key: "all", label: ut("ant.stAll") },
+              { key: "completed", label: ut("ant.stDone") },
+              { key: "abandoned", label: ut("ant.stAbandoned") },
+            ]}
+          />
+          <ToView label={ut("ant.allResponses")} onClick={onView} />
+        </>
+      }
+    >
+      <ResponsesTable pages={{ ...pages, rows, hasMore: false }} surveyId={data.surveyId} />
+    </Panel>
   );
 }
 
@@ -134,12 +459,11 @@ export function OverviewView({ data }: { data: SurveyAnalytics }) {
 /**
  * «Загальний стан за шкалами»: сначала профиль медиан всех содержательных
  * шкал — одним взглядом, где на лестнице тяжести стоит отделение, — потом
- * раздел на каждую шкалу: из чего состоит целое (доли полос), числа строкой
+ * панель на каждую шкалу: из чего состоит целое (доли полос), числа строкой
  * и ход среднего по неделям на фоне той же лестницы.
  *
  * Шкалы достоверности идут последними и с пометкой: их полоса говорит о
- * заполнении, а не о человеке, и в общей картине состояния они стоять
- * наравне с депрессией не должны.
+ * заполнении, а не о человеке.
  */
 export function ScalesView({ data }: { data: SurveyAnalytics }) {
   const { ut } = useLang();
@@ -149,16 +473,18 @@ export function ScalesView({ data }: { data: SurveyAnalytics }) {
   if (!data.scales.length) return <NoData />;
 
   return (
-    <>
-      <p className="m-0 mb-[8px] max-w-[760px] text-[13px] leading-[18px] text-muted">{ut("ant.scalesHint")}</p>
-      {data.unreliableCount ? (
-        <p className="m-0 mb-[8px] max-w-[760px] text-[13px] leading-[18px] text-muted">
-          {ut("stats.unreliableScales")} <span className="font-mono tabular-nums">{data.unreliableCount}</span>.{" "}
-          {ut("stats.unreliableScalesTail")}
-        </p>
-      ) : null}
+    <div className="flex flex-col gap-4">
+      <p className="m-0 max-w-[80ch] text-small text-text-2">
+        {ut("ant.scalesHint")}
+        {data.unreliableCount ? (
+          <>
+            {" "}
+            {ut("stats.unreliableScales")} <b className="font-extrabold text-text">{data.unreliableCount}</b>. {ut("stats.unreliableScalesTail")}
+          </>
+        ) : null}
+      </p>
       {clinical.length > 1 ? (
-        <RuleSection title={ut("ant.profileTitle")} hint={ut("ant.profileCaption")}>
+        <Panel title={ut("ant.profileTitle")} icon={<AIc.chartBar />} hint={ut("ant.profileCaption")}>
           <ScaleProfile
             rows={clinical.map((s) => {
               const rungs = rungsOf(s);
@@ -176,12 +502,12 @@ export function ScalesView({ data }: { data: SurveyAnalytics }) {
               };
             })}
           />
-        </RuleSection>
+        </Panel>
       ) : null}
       {ordered.map((s) => (
         <ScaleBlock key={s.scaleId} scale={s} weeks={data.scaleTimeline.find((t) => t.scaleId === s.scaleId)?.weeks ?? []} />
       ))}
-    </>
+    </div>
   );
 }
 
@@ -195,27 +521,29 @@ function ScaleBlock({ scale: s, weeks }: { scale: ScaleAnalytics; weeks: SurveyA
   const fc = s.floorCeiling;
 
   return (
-    <RuleSection
+    <Panel
       title={s.title}
-      actions={<span className="font-mono text-[13px] text-muted">{s.code}</span>}
+      icon={<AIc.chartBar />}
+      tone={s.kind === "validity" ? "neutral" : "violet"}
+      sub={fill(ut("ant.scaleCode"), { code: s.code })}
       hint={s.kind === "validity" ? ut("ant.validity") : undefined}
     >
-      <div className="grid grid-cols-2 gap-x-[45px] gap-y-[24px] max-[900px]:grid-cols-1">
-        <div className="flex min-w-0 flex-col gap-[12px]">
+      <div className="grid grid-cols-2 gap-x-10 gap-y-6 max-[1180px]:grid-cols-1">
+        <div className="flex min-w-0 flex-col gap-3">
           {s.bands.length === 0 ? (
-            <p className="m-0 text-[13px] text-muted">{ut("an.noInterpretiveNorms")}</p>
+            <p className="m-0 text-small text-muted">{ut("an.noInterpretiveNorms")}</p>
           ) : counted === 0 ? (
-            <p className="m-0 text-[13px] text-muted">{ut("ant.bandsEmpty")}</p>
+            <p className="m-0 text-small text-muted">{ut("ant.bandsEmpty")}</p>
           ) : (
             <ShareBar
               label={s.title}
               parts={s.bands.map((b) => ({ key: `${b.label}-${b.min}`, label: b.label, value: b.count, severity: b.severity }))}
             />
           )}
-          <p className="m-0 font-mono text-[13px] leading-[18px] text-text-2 tabular-nums">
+          <p className="m-0 text-small text-text-2">
             {enough
-              ? fill(ut("ant.statsLine"), {
-                  mean: numText(s.average),
+              ? rich(ut("ant.statsLine"), {
+                  mean: numText(s.average, 1),
                   median: numText(s.median),
                   q1: numText(s.p25),
                   q3: numText(s.p75),
@@ -225,16 +553,28 @@ function ScaleBlock({ scale: s, weeks }: { scale: ScaleAnalytics; weeks: SurveyA
                 })
               : ut("ant.tooFew")}
           </p>
-          {enough && s.measurement ? (
-            <p className="m-0 text-[13px] leading-[18px] text-muted">{fill(ut("ant.mdc"), { n: numText(s.measurement.mdc95, 1) })}</p>
-          ) : null}
-          {fc?.ceilingProblem ? (
-            <p className="m-0 text-[13px] leading-[18px] text-muted">{fill(ut("ant.ceiling"), { n: numText(fc.ceilingPercent, 0) })}</p>
-          ) : null}
-          {fc?.floorProblem ? (
-            <p className="m-0 text-[13px] leading-[18px] text-muted">{fill(ut("ant.floor"), { n: numText(fc.floorPercent, 0) })}</p>
-          ) : null}
-          <Reliability scale={s} />
+          <ul className="m-0 flex list-none flex-col gap-1.5 p-0 text-small text-text-2">
+            {enough && s.measurement ? (
+              <li className="flex items-start gap-2">
+                <AIc.ruler size={14} className="mt-0.5 text-muted" />
+                <span>{rich(ut("ant.mdc"), { n: numText(s.measurement.mdc95, 1) })}</span>
+              </li>
+            ) : null}
+            {fc?.ceilingProblem ? (
+              <li className="flex items-start gap-2 text-warn">
+                <Ic.alert size={14} className="mt-0.5" />
+                <span>{fill(ut("ant.ceiling"), { n: numText(fc.ceilingPercent, 0) })}</span>
+              </li>
+            ) : null}
+            {fc?.floorProblem ? (
+              <li className="flex items-start gap-2 text-warn">
+                <Ic.alert size={14} className="mt-0.5" />
+                <span>{fill(ut("ant.floor"), { n: numText(fc.floorPercent, 0) })}</span>
+              </li>
+            ) : null}
+            <ReliabilityLine scale={s} />
+          </ul>
+          <ItemsTable scale={s} />
         </div>
 
         <Figure title={ut("ant.weekly")} caption={fill(ut("ant.weeklyHint"), { n: SMALL_CELL })}>
@@ -243,7 +583,7 @@ function ScaleBlock({ scale: s, weeks }: { scale: ScaleAnalytics; weeks: SurveyA
               label={`${s.title}: ${ut("ant.weekly")}`}
               rungs={rungs}
               max={rungs.length ? null : s.maxPossible}
-              height={200}
+              height={220}
               points={trend.points.map((p) => {
                 const hit = rungOf(rungs, p.value);
                 return {
@@ -256,63 +596,59 @@ function ScaleBlock({ scale: s, weeks }: { scale: ScaleAnalytics; weeks: SurveyA
               })}
             />
           ) : (
-            <p className="m-0 text-[13px] leading-[18px] text-muted">{fill(ut("ant.weeklyTooFew"), { n: SMALL_CELL })}</p>
+            <p className="m-0 text-small text-muted">{fill(ut("ant.weeklyTooFew"), { n: SMALL_CELL })}</p>
           )}
         </Figure>
       </div>
-    </RuleSection>
+    </Panel>
   );
 }
 
 /**
- * Надёжность словами: «висока узгодженість» читается без справочника, α —
- * рядом мелко для того, кто справочник знает. Таблица пунктов — раскрытием:
- * она нужна тому, кто правит методику, а не тому, кто смотрит на состояние.
+ * Таблица пунктов шкалы — раскрытием: она нужна тому, кто правит методику,
+ * а не тому, кто смотрит на состояние.
  */
-function Reliability({ scale: s }: { scale: ScaleAnalytics }) {
+function ItemsTable({ scale: s }: { scale: ScaleAnalytics }) {
   const { ut } = useLang();
   const r = s.reliability;
-  if (!r) return <p className="m-0 text-[13px] leading-[18px] text-muted">{ut("an.noReliability")}</p>;
-  const level = alphaLevel(r.alpha);
-  const word = level === "high" ? ut("ant.alphaHigh") : level === "ok" ? ut("ant.alphaOk") : ut("ant.alphaLow");
+  if (!r) return null;
   return (
-    <div className="min-w-0">
-      <p className="m-0 text-[13px] leading-[18px]">
-        {/* низкая согласованность — повод посмотреть на пункты, то есть «требует внимания» */}
-        <span className={cx("font-bold", level === "low" ? "text-accent" : "text-text")}>{word}</span>{" "}
-        <span className="font-mono text-muted tabular-nums">
-          {fill(ut("ant.alphaBasis"), { alpha: numText(r.alpha), items: r.itemCount, n: r.sampleN ?? "—" })}
-        </span>
-      </p>
-      <details className="mt-[6px]">
-        <summary className="cursor-pointer text-[13px] font-bold text-primary">{ut("ant.itemsTable")}</summary>
-        <div className="mt-[8px] overflow-x-auto">
-          <table className="w-full border-collapse">
-            <thead>
-              <tr>
-                <th scope="col" className={TH}>{ut("an.item")}</th>
-                <th scope="col" className={cx(TH, "text-right")}>{ut("an.link")}</th>
-                <th scope="col" className={cx(TH, "text-right")}>{ut("an.alphaWithout")}</th>
-                <th scope="col" className={cx(TH, "text-right")}>{ut("an.variance")}</th>
+    <details>
+      <summary className="cursor-pointer text-small font-bold text-violet-ink">{ut("ant.itemsTable")}</summary>
+      <div className="mt-2 overflow-x-auto">
+        <table className="w-full border-collapse">
+          <thead>
+            <tr>
+              <th scope="col" className={TH}>
+                {ut("an.item")}
+              </th>
+              <th scope="col" className={`${TH} text-right`}>
+                {ut("an.link")}
+              </th>
+              <th scope="col" className={`${TH} text-right`}>
+                {ut("an.alphaWithout")}
+              </th>
+              <th scope="col" className={`${TH} text-right`}>
+                {ut("an.variance")}
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {r.items.map((it) => (
+              <tr key={it.questionId}>
+                <td className={`${TD} max-w-[320px]`}>{it.title}</td>
+                <td className={`${TD} ${NUM}`}>{numText(it.itemTotalCorrelation)}</td>
+                {/* альфа без пункта выше общей — пункт мешает шкале: на него стоит посмотреть */}
+                <td className={`${TD} ${NUM} ${it.alphaIfDeleted !== null && it.alphaIfDeleted > r.alpha ? "font-bold text-warn" : ""}`}>
+                  {numText(it.alphaIfDeleted)}
+                </td>
+                <td className={`${TD} ${NUM}`}>{numText(it.variance)}</td>
               </tr>
-            </thead>
-            <tbody>
-              {r.items.map((it) => (
-                <tr key={it.questionId}>
-                  <td className={cx(TD, "max-w-[320px]")}>{it.title}</td>
-                  <td className={cx(TD, NUM)}>{numText(it.itemTotalCorrelation)}</td>
-                  {/* альфа без пункта выше общей — пункт мешает шкале: на него стоит посмотреть */}
-                  <td className={cx(TD, NUM, it.alphaIfDeleted !== null && it.alphaIfDeleted > r.alpha && "font-bold text-accent")}>
-                    {numText(it.alphaIfDeleted)}
-                  </td>
-                  <td className={cx(TD, NUM)}>{numText(it.variance)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </details>
-    </div>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </details>
   );
 }
 
@@ -343,27 +679,33 @@ export function QuestionsView({
   if (!sorted.length) return <NoData />;
 
   return (
-    <>
-      <div className="mb-[8px] flex justify-end">
-        <FillSelect label={ut("ant.sortBy")} value={sort} onChange={(v) => onSort(v as QuestionSort)} className="w-[260px] max-[520px]:w-full">
-          {SORTS.map((s) => (
-            <option key={s} value={s}>
-              {ut(SORT_KEY[s])}
-            </option>
-          ))}
-        </FillSelect>
-      </div>
-      <ol className="m-0 list-none border-t-2 border-primary-rule p-0">
+    <Panel
+      title={ut("an.tabQuestions")}
+      icon={<AIc.listOrdered />}
+      count={sorted.length}
+      flush
+      actions={
+        <SortMenu
+          label={ut("ant.sortBy")}
+          options={SORTS.map((s) => ({ key: s, label: ut(SORT_KEY[s]) }))}
+          value={sort}
+          onChange={(k) => onSort(k as QuestionSort)}
+        />
+      }
+    >
+      <ol className="m-0 list-none border-t border-divider p-0">
         {sorted.slice(0, limit).map((q) => (
           <QuestionRow key={q.questionId} q={q} />
         ))}
       </ol>
       {sorted.length > limit ? (
-        <Button variant="ghost" className="mt-[16px]" onClick={() => setLimit((l) => l + QUESTIONS_PAGE)}>
-          {ut("ui.loadMore")}
-        </Button>
+        <div className="border-t border-divider px-4 py-3">
+          <Button size="xs" onClick={() => setLimit((l) => l + QUESTIONS_PAGE)}>
+            {ut("ui.loadMore")}
+          </Button>
+        </div>
       ) : null}
-    </>
+    </Panel>
   );
 }
 
@@ -372,7 +714,7 @@ function QuestionRow({ q }: { q: QuestionAnalytics }) {
   let body: ReactNode = null;
 
   if (q.answered === 0) {
-    body = <p className="m-0 text-[13px] text-muted">{ut("ant.noAnswers")}</p>;
+    body = <p className="m-0 text-small text-muted">{ut("ant.noAnswers")}</p>;
   } else if (q.type === "ranking" && q.options?.length) {
     body = (
       <HBars
@@ -391,8 +733,8 @@ function QuestionRow({ q }: { q: QuestionAnalytics }) {
     body = (
       <>
         <HBars items={numericBars(q.numeric.distribution)} />
-        <p className="m-0 mt-[6px] font-mono text-[12px] text-muted tabular-nums">
-          {fill(ut("ant.numericLine"), {
+        <p className="m-0 mt-1.5 text-caption text-muted">
+          {rich(ut("ant.numericLine"), {
             mean: numText(q.numeric.average),
             median: numText(q.numeric.median),
             min: numText(q.numeric.min),
@@ -406,19 +748,19 @@ function QuestionRow({ q }: { q: QuestionAnalytics }) {
   }
 
   return (
-    <li className="grid grid-cols-[44px_minmax(0,1fr)] gap-x-[12px] border-b border-hairline py-[14px]">
-      <span className="font-mono text-[15px] font-bold leading-[19px] text-muted tabular-nums">{q.position + 1}</span>
+    <li className="grid grid-cols-[40px_minmax(0,1fr)] gap-x-3 border-b border-divider px-4 py-3.5 last:border-b-0">
+      <span className="text-[15px] font-extrabold leading-5 tabular-nums text-muted">{q.position + 1}</span>
       <div className="min-w-0">
-        <p className="m-0 text-[15px] font-bold leading-[19px] text-text">
-          {q.title}
-          <span className="ml-[8px] text-[11px] font-normal text-muted">{ut(`qt.${q.type}`, q.type)}</span>
+        <p className="m-0 flex flex-wrap items-baseline gap-x-2 gap-y-1 text-body font-bold leading-5 text-text">
+          <span className="min-w-0">{q.title}</span>
+          <Tag tone="plain">{ut(`qt.${q.type}`, q.type)}</Tag>
         </p>
-        {body ? <div className="mt-[10px] max-w-[760px]">{body}</div> : null}
-        <p className="m-0 mt-[8px] font-mono text-[12px] leading-[16px] text-muted tabular-nums">
-          {fill(ut("ant.questionLine"), {
-            n: q.answered,
-            skip: numText(q.skipRate, 1),
-            changed: numText(q.changedShare, 1),
+        {body ? <div className="mt-2.5 max-w-[760px]">{body}</div> : null}
+        <p className="m-0 mt-2 text-caption leading-4 text-muted">
+          {rich(ut("ant.questionLine"), {
+            n: nf(q.answered),
+            skip: `${numText(q.skipRate, 1)} %`,
+            changed: `${numText(q.changedShare, 1)} %`,
             time: q.medianDurationMs > 0 ? duration(q.medianDurationMs) : "—",
           })}
         </p>
@@ -439,18 +781,18 @@ function FreeTexts({ texts }: { texts: string[] }) {
   const { ut } = useLang();
   return (
     <details>
-      <summary className="cursor-pointer text-[13px] font-bold text-primary">{fill(ut("ant.showTexts"), { n: texts.length })}</summary>
-      <p className="m-0 mt-[8px] text-[13px] leading-[18px] text-muted">{ut("ant.freeTextNote")}</p>
-      <ul className="m-0 mt-[8px] flex list-none flex-col gap-[6px] p-0">
+      <summary className="cursor-pointer text-small font-bold text-violet-ink">{fill(ut("ant.showTexts"), { n: texts.length })}</summary>
+      <Callout kind="warn" className="mt-2">
+        {ut("ant.freeTextNote")}
+      </Callout>
+      <ul className="m-0 mt-2 flex list-none flex-col gap-1.5 p-0">
         {texts.slice(0, TEXTS_SHOWN).map((t, i) => (
-          <li key={i} className="border-l-2 border-hairline pl-[10px] text-[13px] leading-[18px] text-text-2">
+          <li key={i} className="rounded-[8px] bg-sunk px-2.5 py-1.5 text-small leading-[18px] text-text-2">
             {t}
           </li>
         ))}
       </ul>
-      {texts.length > TEXTS_SHOWN ? (
-        <p className="m-0 mt-[6px] text-[12px] text-muted">{fill(ut("ant.textsCut"), { n: TEXTS_SHOWN })}</p>
-      ) : null}
+      {texts.length > TEXTS_SHOWN ? <p className="m-0 mt-1.5 text-caption text-muted">{fill(ut("ant.textsCut"), { n: TEXTS_SHOWN })}</p> : null}
     </details>
   );
 }
@@ -469,116 +811,122 @@ export function TimeView({ data }: { data: SurveyAnalytics }) {
   const seconds = numText(data.tooFastThresholdMs / 1000, 1);
 
   return (
-    <>
-      <RuleSection title={ut("an.timePerQuestion")} hint={ut("an.spreadNotMean")}>
+    <div className="flex flex-col gap-4">
+      <Panel title={ut("an.timePerQuestion")} icon={<Ic.timer />} hint={ut("an.spreadNotMean")}>
         {/*
           Линия медианы с полосой межквартильного размаха, а не ряд ящиков:
           спрашивают здесь, где по ходу методики люди начинают задумываться,
-          и ряд из пятидесяти ящиков этого не показывает — глаз не проводит
-          между ними линии.
+          и ряд из пятидесяти ящиков этого не показывает.
         */}
         <LineChart
           unit={` ${ut("an.secAbbr")}`}
           series={[{ label: ut("an.medianTime"), points: medianPoints(data.questions, ut("an.questionAbbr")) }]}
         />
-      </RuleSection>
-
-      <RuleSection title={ut("ant.tooFastTitle")} hint={fill(ut("ant.tooFastCaption"), { n: seconds })}>
-        {fast.length ? (
-          <HBars
-            max={100}
-            items={fast.map((q) => ({
-              key: q.questionId,
-              label: `${q.position + 1}. ${q.title}`,
-              value: q.tooFastShare,
-              text: `${numText(q.tooFastShare, 1)}%`,
-            }))}
-          />
-        ) : (
-          <p className="m-0 text-[13px] text-muted">{ut("ant.noFast")}</p>
-        )}
-      </RuleSection>
-
-      <RuleSection title={ut("ant.durationTitle")} hint={ut("ant.durationCaption")}>
-        {data.durationBins.length ? (
-          <HBars
-            items={data.durationBins.map((b) => ({
-              key: String(b.fromMs),
-              label: binLabel(b, ut("ant.andLonger")),
-              value: b.count,
-            }))}
-          />
-        ) : (
-          <NoData />
-        )}
-      </RuleSection>
-    </>
+      </Panel>
+      <div className="grid grid-cols-2 items-stretch gap-4 max-[1180px]:grid-cols-1">
+        <Panel title={ut("ant.tooFastTitle")} icon={<AIc.flag />} hint={fill(ut("ant.tooFastCaption"), { n: seconds })}>
+          {fast.length ? (
+            <HBars
+              max={100}
+              items={fast.map((q) => ({
+                key: q.questionId,
+                label: `${q.position + 1}. ${q.title}`,
+                value: q.tooFastShare,
+                text: `${numText(q.tooFastShare, 1)} %`,
+                attention: true,
+              }))}
+            />
+          ) : (
+            <p className="m-0 text-small text-muted">{ut("ant.noFast")}</p>
+          )}
+        </Panel>
+        <Panel title={ut("ant.durationTitle")} icon={<AIc.chartBar />} hint={ut("ant.durationCaption")}>
+          {data.durationBins.length ? (
+            <HBars
+              items={data.durationBins.map((b) => ({
+                key: String(b.fromMs),
+                label: binLabel(b, ut("ant.andLonger")),
+                value: b.count,
+              }))}
+            />
+          ) : (
+            <NoData />
+          )}
+        </Panel>
+      </div>
+    </div>
   );
 }
 
 /* ─────────── якість ─────────── */
 
+type QualityRowData = SurveyAnalytics["quality"][number];
+
 export function QualityView({ data }: { data: SurveyAnalytics }) {
   const { ut } = useLang();
+  const navigate = useNavigate();
   const sid = data.surveyId;
+  const columns: Column<QualityRowData>[] = [
+    {
+      key: "who",
+      header: ut("an.respondent"),
+      required: true,
+      sort: (q) => q.respondent ?? "",
+      render: (q) => (
+        <Link className="font-bold text-text no-underline hover:text-violet-ink hover:underline" to={chartsHref(sid, q.responseId)}>
+          {q.respondent ?? ut("an.anonCap")}
+        </Link>
+      ),
+    },
+    { key: "date", header: ut("ant.colDate"), required: true, sort: (q) => q.submittedAt ?? "", render: (q) => (q.submittedAt ? day(q.submittedAt) : "—") },
+    { key: "time", header: ut("an.time"), num: true, required: true, sort: (q) => q.durationMs, render: (q) => duration(q.durationMs) },
+    { key: "fast", header: ut("an.fast"), num: true, required: true, sort: (q) => q.tooFastShare, render: (q) => `${numText(q.tooFastShare, 1)} %` },
+    { key: "run", header: ut("an.streak"), num: true, required: true, sort: (q) => q.longestStraightLine, render: (q) => q.longestStraightLine },
+    { key: "why", header: ut("an.reasons"), required: true, render: (q) => <span className="text-text-2">{q.reasons.join("; ")}</span> },
+  ];
   return (
-    <>
-      <RuleSection title={ut("an.carelessTitle")}>
-        <p className="m-0 mb-[14px] max-w-[760px] text-[13px] leading-[18px] text-muted">
-          {fill(ut("ant.flaggedLine"), {
-            n: data.quality.length,
-            of: data.completed,
-            s: numText(data.tooFastThresholdMs / 1000, 1),
-          })}{" "}
-          {ut("an.flagHint")}
-        </p>
+    <div className="flex flex-col gap-4">
+      <Panel
+        title={ut("an.carelessTitle")}
+        icon={<AIc.flag />}
+        tone={data.quality.length ? "warn" : "violet"}
+        count={data.quality.length}
+        hint={
+          <>
+            {rich(ut("ant.flaggedLine"), { n: nf(data.quality.length), of: nf(data.completed), s: numText(data.tooFastThresholdMs / 1000, 1) })}{" "}
+            {ut("an.flagHint")}
+          </>
+        }
+        flush
+      >
         {data.quality.length ? (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[640px] border-collapse">
-              <thead>
-                <tr>
-                  <th scope="col" className={TH}>{ut("an.respondent")}</th>
-                  <th scope="col" className={TH}>{ut("ant.colDate")}</th>
-                  <th scope="col" className={cx(TH, "text-right")}>{ut("an.time")}</th>
-                  <th scope="col" className={cx(TH, "text-right")}>{ut("an.fast")}</th>
-                  <th scope="col" className={cx(TH, "text-right")}>{ut("an.streak")}</th>
-                  <th scope="col" className={TH}>{ut("an.reasons")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.quality.map((q) => (
-                  <tr key={q.responseId} className="hover:bg-primary-tint">
-                    <td className={cx(TD, "font-bold")}>
-                      <Link className="text-primary no-underline hover:underline" to={chartsHref(sid, q.responseId)}>
-                        {q.respondent ?? ut("an.anonCap")}
-                      </Link>
-                    </td>
-                    <td className={cx(TD, "whitespace-nowrap text-muted")}>{q.submittedAt ? day(q.submittedAt) : "—"}</td>
-                    <td className={cx(TD, NUM)}>{duration(q.durationMs)}</td>
-                    <td className={cx(TD, NUM)}>{numText(q.tooFastShare, 1)}%</td>
-                    <td className={cx(TD, NUM)}>{q.longestStraightLine}</td>
-                    <td className={cx(TD, "text-muted")}>{q.reasons.join("; ")}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <DataTable
+            rows={data.quality}
+            columns={columns}
+            rowKey={(q) => q.responseId}
+            label={ut("an.carelessTitle")}
+            onRowClick={(q) => navigate(chartsHref(sid, q.responseId))}
+            sticky={false}
+            dense
+          />
         ) : (
-          <p className="m-0 text-[13px] text-muted">{ut("an.noSuspicious")}</p>
+          <p className="m-0 px-4 pb-4 text-small text-muted">{ut("an.noSuspicious")}</p>
         )}
-      </RuleSection>
+      </Panel>
 
       {/*
         Карта пунктов — выше сводных таблиц: небрежное заполнение выдаёт
         себя формой, а не средним, и полоса одинаковых ответов от сорокового
         пункта до конца видна только здесь.
       */}
-      <RuleSection title={ut("qh.title")}>
+      <Panel title={ut("qh.title")} icon={<AIc.table2 />}>
         <ItemHeatmap surveyId={sid} />
-      </RuleSection>
+      </Panel>
 
-      <DataQualityPanel surveyId={sid} />
-    </>
+      <Panel title={ut("ant.qualityTitle")} icon={<Ic.shieldCheck />}>
+        <DataQualityPanel surveyId={sid} />
+      </Panel>
+    </div>
   );
 }
 
@@ -597,12 +945,9 @@ export interface ResponsePages {
 /**
  * Страницы списка прохождений под срезом экрана.
  *
- * Через usePagedResource (волна 13). Прежде первая страница шла через
- * useResource, а следующие дописывались своим состоянием с ключом среза:
- * смену среза это переживало, а перечитывание — нет. После «перечитати»
- * первая страница приходила свежей, а дописанные к ней оставались
- * прежними — с удалёнными и задвоенными строками. Теперь страницы лежат
- * под ключом среза вместе и перечитываются вместе.
+ * Через usePagedResource: страницы лежат под ключом среза вместе и
+ * перечитываются вместе — после «перечитати» первая страница не приходит
+ * свежей при прежних дописанных.
  */
 export function useResponsePages(surveyId: string, slice: AnalyticsSlice & { versionId?: string }): ResponsePages {
   const key = JSON.stringify([surveyId, slice]);
@@ -625,109 +970,154 @@ export function useResponsePages(surveyId: string, slice: AnalyticsSlice & { ver
 }
 
 /** Сколько баллов шкал стоит в строке; остальное — «і ще N» и на графиках прохождения */
-const SCORES_SHOWN = 6;
+const SCORES_SHOWN = 3;
 
-/**
- * Список прохождений строками — как список пациентов: имя 17/700 ведёт на
- * карточку человека, дата — на графики прохождения, баллы шкал с меткой
- * тяжести (цвет + форма точки + слово). Остальные двери — протокол,
- * заключение, печать — в «⋯» строки.
- */
-export function ResponsesList({ pages, surveyId, showName = true }: { pages: ResponsePages; surveyId: string; showName?: boolean }) {
+/** Баллы строки: значение, «/макс» у сырого балла и слово полосы; у незавершённого — состояние */
+export function ScoresCell({ r }: { r: SurveyResponse }) {
+  const { ut } = useLang();
+  if (r.status !== "completed") {
+    return (
+      <Tag tone={r.status === "abandoned" ? "attention" : "info"} icon={r.status === "abandoned" ? <AIc.circleDot /> : <Ic.timer />}>
+        {ut(`rstatus.${r.status}`, r.status)}
+      </Tag>
+    );
+  }
+  const scores = r.scores.slice(0, SCORES_SHOWN);
+  const many = r.scores.length > 1;
+  return (
+    <span className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+      {scores.map((s) => (
+        <span key={s.scaleId} className="inline-flex items-center gap-1.5" title={s.scaleTitle}>
+          {many ? <span className="text-caption font-semibold text-muted">{s.scaleCode}</span> : null}
+          <b className="text-body font-extrabold tabular-nums text-text">{numText(s.value)}</b>
+          {s.normalization === "raw" ? <span className="text-caption text-muted">/{numText(s.maxScore)}</span> : null}
+          {s.band ? (
+            <SeverityTag small level={s.band.severity}>
+              {s.band.label}
+            </SeverityTag>
+          ) : null}
+        </span>
+      ))}
+      {r.scores.length > SCORES_SHOWN ? (
+        <span className="text-caption text-muted">
+          {ut("ui.andMore")} {r.scores.length - SCORES_SHOWN}
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
+/** Действия строки прохождения: графики и протокол значками, остальное в «⋯» */
+export function ResponseActions({ surveyId, r }: { surveyId: string; r: SurveyResponse }) {
   const { ut } = useLang();
   const { run } = useAction();
+  const charts = chartsHref(surveyId, r.id);
+  return (
+    <>
+      <ButtonLink to={charts} variant="quiet" size="icon-sm" aria-label={ut("ant.openCharts")} title={ut("ant.openCharts")}>
+        <Ic.chart size={15} />
+      </ButtonLink>
+      <ButtonLink to={protocolHref(surveyId, r.id)} variant="quiet" size="icon-sm" aria-label={ut("ant.openProtocol")} title={ut("ant.openProtocol")}>
+        <Ic.file size={15} />
+      </ButtonLink>
+      <ActionMenu
+        label={ut("ant.rowActions")}
+        triggerSize="icon-sm"
+        plateClassName="min-w-[220px]"
+        entries={[
+          { label: ut("ant.openCharts"), to: charts, icon: <Ic.chart size={15} /> },
+          { label: ut("ant.openProtocol"), to: protocolHref(surveyId, r.id), icon: <Ic.file size={15} /> },
+          { label: ut("an.conclusion"), to: `/responses/${r.id}/conclusion`, icon: <AIc.filePen size={15} /> },
+          { label: ut("an.print"), onSelect: () => void run(() => openInTab(api.reportUrl(r.id))), icon: <AIc.printer size={15} /> },
+        ]}
+      />
+    </>
+  );
+}
 
-  if (pages.error && !pages.rows.length) return <Loading error={pages.error} onRetry={pages.reload} />;
-  if (pages.loading) return <Loading rows={4} />;
-  if (!pages.rows.length) return <p className="m-0 py-[13px] text-[13px] text-muted">{ut("ant.noResponses")}</p>;
+/**
+ * Прохождения таблицей набора: человек (на его карточку), дата (на графики
+ * прохождения), время, баллы со словом полосы, версия. Строка открывает
+ * графики; протокол, заключение и печать — в действиях строки.
+ */
+export function ResponsesTable({ pages, surveyId, showName = true }: { pages: ResponsePages; surveyId: string; showName?: boolean }) {
+  const { ut } = useLang();
+  const navigate = useNavigate();
 
-  const cols = showName
-    ? "grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_88px_minmax(0,2.4fr)_27px]"
-    : "grid-cols-[minmax(0,1fr)_88px_minmax(0,2.8fr)_27px]";
+  if (pages.error && !pages.rows.length) return <Loading bare error={pages.error} onRetry={pages.reload} />;
+  if (pages.loading) return <Loading bare rows={4} />;
+  if (!pages.rows.length) return <p className="m-0 px-4 pb-4 pt-1 text-small text-muted">{ut("ant.noResponses")}</p>;
+
+  const columns: Column<SurveyResponse>[] = [
+    ...(showName
+      ? [
+          {
+            key: "who",
+            header: ut("ant.colPatient"),
+            required: true,
+            width: 280,
+            render: (r: SurveyResponse) =>
+              r.userId ? (
+                <PersonCell name={r.userName ?? ut("an.anonCap")} avatar={<Avatar name={r.userName ?? "—"} size={28} />} to={`/patients/${r.userId}`} />
+              ) : (
+                <PersonCell name={ut("an.anonCap")} avatar={<Avatar name="—" size={28} tone="neutral" />} />
+              ),
+          },
+        ]
+      : []),
+    {
+      key: "date",
+      header: ut("ant.colDate"),
+      required: true,
+      width: 130,
+      render: (r) => (
+        <Link to={chartsHref(surveyId, r.id)} className="whitespace-nowrap font-bold text-violet-ink no-underline hover:underline">
+          {shortDateTime(r.submittedAt ?? r.startedAt)}
+        </Link>
+      ),
+    },
+    { key: "time", header: ut("an.time"), required: true, width: 100, render: (r) => <span className="whitespace-nowrap text-text-2">{duration(r.durationMs)}</span> },
+    { key: "scores", header: ut("an.scores"), required: true, render: (r) => <ScoresCell r={r} /> },
+    {
+      key: "ver",
+      header: ut("an.version"),
+      required: true,
+      width: 80,
+      render: (r) => (r.versionNumber ? <span className="text-text-2">{fill(ut("ant.verShort"), { n: r.versionNumber })}</span> : null),
+    },
+  ];
 
   return (
     <>
-      <div className={cx("grid items-end gap-x-[24px] border-b border-hairline pb-[8px] max-[900px]:hidden", cols)}>
-        {showName ? <span className={CAPTION}>{ut("ant.colPatient")}</span> : null}
-        <span className={CAPTION}>{ut("ant.colDate")}</span>
-        <span className={cx(CAPTION, "text-right")}>{ut("an.time")}</span>
-        <span className={CAPTION}>{ut("an.scores")}</span>
-        <span />
-      </div>
-      <ul className="m-0 list-none p-0">
-        {pages.rows.map((r) => {
-          const charts = chartsHref(surveyId, r.id);
-          const scores = r.scores.slice(0, SCORES_SHOWN);
-          return (
-            <li
-              key={r.id}
-              className={cx(
-                "grid items-start gap-x-[24px] gap-y-[6px] border-b border-hairline py-[12px]",
-                "has-[a:hover]:bg-primary-tint has-[a:focus-visible]:bg-primary-tint",
-                "max-[900px]:grid-cols-1",
-                cols,
-              )}
-            >
-              {showName ? (
-                r.userId ? (
-                  <Link
-                    to={`/patients/${r.userId}`}
-                    className="min-w-0 truncate text-[17px] font-bold leading-[20px] text-primary no-underline hover:no-underline"
-                  >
-                    {r.userName ?? ut("an.anonCap")}
-                  </Link>
-                ) : (
-                  <span className="min-w-0 truncate text-[17px] font-bold leading-[20px] text-primary">{r.userName ?? ut("an.anonCap")}</span>
-                )
-              ) : null}
-              <Link to={charts} className="text-[13px] leading-[20px] text-text-2 no-underline hover:underline">
-                {dateTime(r.submittedAt ?? r.startedAt)}
-              </Link>
-              <span className="text-right font-mono text-[13px] leading-[20px] text-text tabular-nums max-[900px]:text-left">
-                {duration(r.durationMs)}
-              </span>
-              <div className="flex min-w-0 flex-wrap gap-x-[16px] gap-y-[6px]">
-                {r.status !== "completed" ? (
-                  <span className="text-[13px] leading-[20px] text-muted">{ut(`rstatus.${r.status}`, r.status)}</span>
-                ) : (
-                  <>
-                    {scores.map((s) => (
-                      <span key={s.scaleId} className="inline-flex min-w-0 items-center gap-[6px] text-[13px] leading-[20px]">
-                        <span className="truncate text-text-2">{s.scaleTitle}</span>
-                        <span className="font-mono text-text tabular-nums">{numText(s.value)}</span>
-                        {s.band ? <SeverityTag level={s.band.severity}>{s.band.label}</SeverityTag> : null}
-                      </span>
-                    ))}
-                    {r.scores.length > SCORES_SHOWN ? (
-                      <span className="text-[13px] leading-[20px] text-muted">
-                        {ut("ui.andMore")} {r.scores.length - SCORES_SHOWN}
-                      </span>
-                    ) : null}
-                  </>
-                )}
-              </div>
-              <ActionMenu
-                label={ut("ant.rowActions")}
-                glyph={<IconDots />}
-                entries={[
-                  { label: ut("ant.openCharts"), to: charts },
-                  { label: ut("ant.openProtocol"), to: protocolHref(surveyId, r.id) },
-                  { label: ut("an.conclusion"), to: `/responses/${r.id}/conclusion` },
-                  { label: ut("an.print"), onSelect: () => void run(() => openInTab(api.reportUrl(r.id))) },
-                ]}
-                plateClassName="min-w-[220px]"
-              />
-            </li>
-          );
-        })}
-      </ul>
+      <DataTable
+        rows={pages.rows}
+        columns={columns}
+        rowKey={(r) => r.id}
+        label={ut("an.tabResponses")}
+        onRowClick={(r) => navigate(chartsHref(surveyId, r.id))}
+        rowActions={(r) => <ResponseActions surveyId={surveyId} r={r} />}
+        sticky={false}
+      />
       {/* отказ дозагрузки — под списком, а не вместо него: показанные строки верны */}
-      {pages.error ? <p className="m-0 mt-[12px] text-[13px] text-danger">{pages.error}</p> : null}
+      {pages.error ? <p className="m-0 px-4 py-2 text-small font-bold text-risk-ink">{pages.error}</p> : null}
       {pages.hasMore ? (
-        <Button variant="ghost" className="mt-[16px]" disabled={pages.busy} onClick={pages.loadMore}>
-          {pages.busy ? ut("ui.loadingMore") : ut("ui.loadMore")}
-        </Button>
+        <div className="border-t border-divider px-4 py-3">
+          <Button size="xs" disabled={pages.busy} onClick={pages.loadMore}>
+            {pages.busy ? ut("ui.loadingMore") : ut("ui.loadMore")}
+          </Button>
+        </div>
       ) : null}
     </>
+  );
+}
+
+/** Вид «Проходження»: все прохождения среза той же версии, что и графики, — страницами по 50 */
+export function ResponsesView({ data, slice }: { data: SurveyAnalytics; slice: AnalyticsSlice }) {
+  const { ut } = useLang();
+  const pages = useResponsePages(data.surveyId, { ...slice, versionId: data.versionId ?? undefined });
+  return (
+    <Panel title={ut("an.tabResponses")} icon={<Ic.list />} count={data.started} flush>
+      <ResponsesTable pages={pages} surveyId={data.surveyId} />
+    </Panel>
   );
 }

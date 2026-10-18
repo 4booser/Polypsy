@@ -121,7 +121,7 @@ test("методика создаётся из вставленного текс
    * перенаправляет, а методику и версию называет строка «Показано: …».
    */
   await expect(page).toHaveURL(/\/analytics\/tests\?(.*&)?survey=/);
-  await expect(page.getByText(`${title} · версия 1`)).toBeVisible();
+  await expect(page.getByText(`${title}, версия 1`)).toBeVisible();
 
   // каталог открывается на опубликованных, свежая методика — первой строкой
   await goRail(page, "Методики");
