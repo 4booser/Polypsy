@@ -148,7 +148,7 @@ function KeyPaper({ sheet, survey }: { sheet: KeySheet; survey: SurveyFull | nul
               </div>
               <dl className="ps-kv2">
                 {rows.map(([k, v]) => (
-                  <div key={k}>
+                  <div key={`${k}:${v}`}>
                     <dt>{k}</dt>
                     <dd>{v}</dd>
                   </div>
