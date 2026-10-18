@@ -26,6 +26,14 @@ import {
   toneStep,
   tooFastRows,
   weekPoints,
+  bucketSummary,
+  heavyShare,
+  kyivDay,
+  mainScale,
+  partialKey,
+  presetFrom,
+  presetOf,
+  spanDays,
 } from "../src/pages/analytics/tests/model";
 
 /**
@@ -285,5 +293,68 @@ describe("матрица ответов", () => {
     expect(toneStep(0)).toBe(0);
     expect(toneStep(1)).toBe(4);
     expect(toneStep(0.5)).toBe(2);
+  });
+});
+
+describe("период", () => {
+  test("день — по Киеву: 23:30 UTC 17-го — это уже 18-е в отделении", () => {
+    expect(kyivDay(Date.parse("2026-10-17T23:30:00Z"))).toBe("2026-10-18");
+    expect(kyivDay(Date.parse("2026-10-17T12:00:00Z"))).toBe("2026-10-17");
+  });
+
+  test("готовый период — последние N дней сегодня включительно, конец открыт", () => {
+    expect(presetFrom("30", "2026-10-18")).toBe("2026-09-19");
+    expect(presetFrom("90", "2026-10-18")).toBe("2026-07-21");
+    expect(presetOf("2026-09-19", null, "2026-10-18")).toBe("30");
+    /* закрытый конец или чужое начало — свой диапазон, а не готовый */
+    expect(presetOf("2026-09-19", "2026-10-18", "2026-10-18")).toBeNull();
+    expect(presetOf("2026-09-20", null, "2026-10-18")).toBeNull();
+    expect(presetOf(null, null, "2026-10-18")).toBeNull();
+    expect(spanDays("2026-09-19", null, "2026-10-18")).toBe(30);
+  });
+});
+
+describe("сводка ряда", () => {
+  const { buckets } = timeBuckets([
+    { date: "2026-07-06", count: 10 },
+    { date: "2026-08-03", count: 30 },
+    { date: "2026-10-12", count: 5 },
+  ]);
+
+  test("идущая неделя — та, в которую входит сегодня; прошедшая — нет", () => {
+    expect(partialKey(buckets, "week", "2026-10-15")).toBe("2026-10-12");
+    expect(partialKey(buckets, "week", "2026-10-19")).toBeNull();
+    expect(partialKey([], "week", "2026-10-15")).toBeNull();
+  });
+
+  test("среднее — по полным корзинам, наибольшая — среди всех", () => {
+    const sum = bucketSummary(buckets, "2026-10-12")!;
+    expect(sum.full).toBe(buckets.length - 1);
+    expect(sum.avg).toBeCloseTo(40 / (buckets.length - 1));
+    expect(sum.top.value).toBe(30);
+    expect(bucketSummary([], null)).toBeNull();
+  });
+});
+
+describe("полосы", () => {
+  test("«помірна й важче» — с первой полосы тяжести moderate, по числам полос", () => {
+    const bands = [
+      { label: "Мінімальна", severity: "none", count: 6 },
+      { label: "Помірна", severity: "moderate", count: 3 },
+      { label: "Тяжка", severity: "severe", count: 1 },
+    ];
+    expect(heavyShare(bands)).toEqual({ label: "Помірна", count: 4, total: 10 });
+    expect(heavyShare([{ label: "Норма", severity: "none", count: 5 }])).toBeNull();
+    expect(heavyShare([])).toBeNull();
+  });
+
+  test("главная шкала обзора — первая содержательная с полосами", () => {
+    const scales = [
+      { code: "L", kind: "validity", bands: [1] },
+      { code: "X", kind: "clinical", bands: [] },
+      { code: "D", kind: "clinical", bands: [1, 2] },
+    ];
+    expect(mainScale(scales)?.code).toBe("D");
+    expect(mainScale([{ code: "L", kind: "validity", bands: [1] }])).toBeNull();
   });
 });

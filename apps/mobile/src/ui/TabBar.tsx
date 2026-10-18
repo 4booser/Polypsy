@@ -21,6 +21,8 @@ const TAB_ICON: Record<string, IconName> = {
   alerts: "triangle-alert",
   patients: "users",
   messages: "messages-square",
+  // «Листування» сотрудника — своя скринька, у пациента переписка — экран messages
+  inbox: "messages-square",
 };
 
 /**

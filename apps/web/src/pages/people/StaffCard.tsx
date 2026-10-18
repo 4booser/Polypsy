@@ -4,7 +4,7 @@ import type { AuditEntry, PatientGroupWithCounts, PatientListItem, Sex, UiKey } 
 import { ROLE_LADDER, t } from "@quizzy/shared";
 import { api } from "../../api";
 import { useAuth } from "../../auth";
-import { locale } from "../../format";
+import { locale, severityKey } from "../../format";
 import { useLang } from "../../lang";
 import {
   ActivityList,
@@ -13,6 +13,7 @@ import {
   Avatar,
   Callout,
   type Column,
+  CourseDigits,
   DataTable,
   Drawer,
   DrawerSection,
@@ -33,7 +34,9 @@ import {
 import { cx } from "../../ui/cx";
 import { Panel } from "../../ui/layout";
 import { ActionMenu } from "../../ui/menu";
-import { Button, Field, Input, Select, Tag, Textarea } from "../../ui/primitives";
+import { Button, Field, Input, Select, SeverityTag, Tag, Textarea } from "../../ui/primitives";
+import { kitSeverity, shownSeries, shownValue } from "../patients/model";
+import { shortCode } from "../patients/instruments";
 import { useResource } from "../../useResource";
 import { actionLabel } from "../ops/model";
 import { forgetDirectory, ladderReadable, loadDirectory, loadMember } from "./data";
@@ -979,7 +982,23 @@ export function StaffPatients() {
   );
 }
 
-type PatientView = "all" | "stale" | "never";
+type PatientView = "all" | "risk" | "noshow" | "stale" | "never" | "record";
+
+/**
+ * Что сейчас главное про человека — одно слово для колонки «Стан», вида и
+ * порядка «увага спершу». Красным — только случай ризику; неявка, давний
+ * замір и прострочений огляд — янтарём; остальное спокойно.
+ */
+export function patientState(p: PatientListItem, now: number): "risk" | "noshow" | "stale" | "record" | "never" | "ok" {
+  if (p.risk) return "risk";
+  if (p.lastNoShowAt) return "noshow";
+  if (p.lastResponseAt && now - new Date(p.lastResponseAt).getTime() >= STALE_DAYS * 86_400_000) return "stale";
+  if (p.dispensary?.overdue) return "record";
+  if (!p.lastResponseAt) return "never";
+  return "ok";
+}
+
+const STATE_RANK = { risk: 0, noshow: 1, stale: 2, record: 3, never: 4, ok: 5 } as const;
 
 function LedPatients() {
   const { row, reload } = useOutletContext<CardCtx>();
@@ -994,25 +1013,23 @@ function LedPatients() {
   const [transfer, setTransfer] = useState(false);
   const [now] = useState(() => Date.now());
   const items = page.data?.items ?? [];
-  const staleOf = (p: PatientListItem) => !!p.lastResponseAt && now - new Date(p.lastResponseAt).getTime() >= STALE_DAYS * 86_400_000;
-  const counts = {
-    all: items.length,
-    stale: items.filter(staleOf).length,
-    never: items.filter((p) => !p.lastResponseAt).length,
+  const stateOf = (p: PatientListItem) => patientState(p, now);
+  const inPatientView = (p: PatientListItem, v: PatientView) => {
+    if (v === "all") return true;
+    const s = stateOf(p);
+    if (v === "record") return !!p.dispensary;
+    return s === v;
   };
+  const views: PatientView[] = ["all", "risk", "noshow", "stale", "never", "record"];
+  const counts = Object.fromEntries(views.map((v) => [v, items.filter((p) => inPatientView(p, v)).length])) as Record<PatientView, number>;
   const shown = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    const list = items.filter(
-      (p) =>
-        (!needle || `${p.name} ${p.email}`.toLowerCase().includes(needle)) &&
-        (view === "all" || (view === "stale" ? staleOf(p) : !p.lastResponseAt)),
-    );
+    const list = items.filter((p) => (!needle || `${p.name} ${p.email}`.toLowerCase().includes(needle)) && inPatientView(p, view));
     const at = (p: PatientListItem) => (p.lastResponseAt ? new Date(p.lastResponseAt).getTime() : 0);
     if (sort === "name") return [...list].sort((a, b) => a.name.localeCompare(b.name, "uk"));
     if (sort === "recent") return [...list].sort((a, b) => at(b) - at(a));
-    /* увага спершу: давно без заміру, потім ще не проходили, потім решта — за ім’ям */
-    const rank = (p: PatientListItem) => (staleOf(p) ? 0 : p.lastResponseAt ? 2 : 1);
-    return [...list].sort((a, b) => rank(a) - rank(b) || at(a) - at(b) || a.name.localeCompare(b.name, "uk"));
+    /* увага спершу: випадок ризику, неявка, давній замір, прострочений огляд, ще не проходили — потім решта */
+    return [...list].sort((a, b) => STATE_RANK[stateOf(a)] - STATE_RANK[stateOf(b)] || at(a) - at(b) || a.name.localeCompare(b.name, "uk"));
   }, [items, q, view, sort, now]);
   useHotkeys({ t: () => picked.size && setTransfer(true) }, canTransfer && !transfer);
 
@@ -1025,7 +1042,11 @@ function LedPatients() {
       render: (p) => (
         <PersonCell
           name={p.name}
-          sub={[p.birthYear ? plural(ut("adm2.nYears"), new Date().getFullYear() - p.birthYear, lang) : null, p.sex === "male" ? ut("adm2.sexMaleShort") : p.sex === "female" ? ut("adm2.sexFemaleShort") : null]
+          sub={[
+            p.birthYear ? plural(ut("adm2.nYears"), new Date().getFullYear() - p.birthYear, lang) : null,
+            p.sex === "male" ? ut("adm2.sexMaleShort") : p.sex === "female" ? ut("adm2.sexFemaleShort") : null,
+            p.unit,
+          ]
             .filter(Boolean)
             .join(", ")}
           avatar={<Avatar name={p.name} size={30} tone="soft" />}
@@ -1037,49 +1058,87 @@ function LedPatients() {
       key: "state",
       header: ut("adm2.colState"),
       required: true,
-      sort: (p) => (staleOf(p) ? 0 : p.lastResponseAt ? 2 : 1),
-      render: (p) =>
-        staleOf(p) ? (
-          <Tag tone="attention" icon={<Ic.timer />}>
-            {fill(ut("adm2.noMeasureDays"), { n: daysAgo(p.lastResponseAt!) })}
-          </Tag>
-        ) : p.lastResponseAt ? (
-          <Tag tone="done" icon={<Ic.check />}>
-            {ut("adm2.measuring")}
-          </Tag>
-        ) : (
-          <Tag icon={<Ic.clipboard />}>{ut("adm2.notYetMeasured")}</Tag>
-        ),
+      sort: (p) => STATE_RANK[stateOf(p)],
+      render: (p) => <PatientStateCell p={p} now={now} />,
+    },
+    {
+      key: "measure",
+      header: ut("adm2.colLastMeasure"),
+      required: true,
+      render: (p) => {
+        const m = p.measure;
+        if (!m) return <span className="text-small text-muted">—</span>;
+        const v = shownValue(m.values.at(-1) ?? 0, m.normalization);
+        return (
+          <span className="flex min-w-0 flex-col gap-0.5" title={m.title}>
+            <span className="inline-flex items-center gap-2">
+              <b className="text-[15px] font-extrabold tabular-nums text-text">
+                {v.text}
+                {v.unit ? <small className="ml-0.5 text-caption font-bold text-muted">{v.unit}</small> : null}
+              </b>
+              {m.severity || m.bandLabel ? (
+                <SeverityTag level={kitSeverity(m.severity)} small>
+                  {m.bandLabel ?? ut(severityKey[m.severity ?? "none"])}
+                </SeverityTag>
+              ) : null}
+            </span>
+            {m.better ? (
+              <CourseDigits code={shortCode(m.code)} values={shownSeries(m.values, m.normalization)} better={m.better} />
+            ) : (
+              <span className="text-caption text-text-2">
+                <b className="mr-1 text-[11px] font-bold text-muted">{shortCode(m.code)}</b>
+                {shownSeries(m.values, m.normalization).join(" → ")}
+              </span>
+            )}
+          </span>
+        );
+      },
     },
     {
       key: "last",
-      header: ut("adm2.colLastMeasure"),
+      header: ut("adm2.colMeasureDate"),
       required: true,
       sort: (p) => p.lastResponseAt ?? null,
       render: (p) =>
         p.lastResponseAt ? (
           <span className="flex flex-col leading-[17px]">
-            <span className={cx("tabular-nums", staleOf(p) ? "font-bold text-warn" : "text-text")}>{dm(p.lastResponseAt)}</span>
-            {staleOf(p) ? <small className="text-caption font-bold text-warn">{fill(ut("adm2.daysAgo"), { n: daysAgo(p.lastResponseAt) })}</small> : null}
+            <span className={cx("tabular-nums", stateOf(p) === "stale" ? "font-bold text-warn" : "text-text")}>{dm(p.lastResponseAt)}</span>
+            {stateOf(p) === "stale" ? (
+              <small className="text-caption font-bold text-warn">{fill(ut("adm2.daysAgo"), { n: daysAgo(p.lastResponseAt) })}</small>
+            ) : null}
           </span>
         ) : (
           <span className="text-muted">—</span>
         ),
     },
     {
-      key: "unit",
-      header: ut("adm2.unit"),
+      key: "next",
+      header: ut("adm2.colNextVisit"),
       required: true,
-      sort: (p) => p.unit ?? null,
-      render: (p) => <span className="text-text-2">{p.unit ?? ""}</span>,
+      sort: (p) => p.nextVisit?.at ?? null,
+      render: (p) =>
+        p.nextVisit ? (
+          <span className="inline-flex items-center gap-1.5 whitespace-nowrap tabular-nums text-text">
+            {visitWhen(p.nextVisit.at)}
+            {p.nextVisit.mode === "remote" ? <Tag tone="info">{ut("adm2.remote")}</Tag> : null}
+          </span>
+        ) : (
+          <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-small font-semibold text-warn">
+            <Ic.calendar size={13} />
+            {ut("adm2.notBooked")}
+          </span>
+        ),
     },
   ];
 
-  const viewItems: { key: PatientView; label: string }[] = [
-    { key: "all", label: ut("adm2.viewAll") },
-    { key: "stale", label: ut("adm2.viewNoMeasure") },
-    { key: "never", label: ut("adm2.viewNotYet") },
-  ];
+  const viewLabel: Record<PatientView, string> = {
+    all: ut("adm2.viewAll"),
+    risk: ut("adm2.viewRisk"),
+    noshow: ut("adm2.viewNoShow"),
+    stale: ut("adm2.viewNoMeasure"),
+    never: ut("adm2.viewNotYet"),
+    record: ut("adm2.viewRecord"),
+  };
 
   return (
     <div className="flex flex-col gap-4">
@@ -1099,22 +1158,29 @@ function LedPatients() {
           />
         </div>
         <div className="flex flex-wrap gap-x-[5px] gap-y-1.5 px-4 pb-3" role="group" aria-label={ut("kit.savedViews")}>
-          {viewItems
-            .filter((v) => v.key === "all" || v.key === view || counts[v.key] > 0)
+          {views
+            .filter((v) => v === "all" || v === view || counts[v] > 0)
             .map((v) => (
               <button
-                key={v.key}
+                key={v}
                 type="button"
-                aria-pressed={v.key === view}
-                onClick={() => setView(v.key)}
+                aria-pressed={v === view}
+                onClick={() => setView(v)}
                 className={cx(
                   "inline-flex h-8 min-h-0 cursor-pointer items-center gap-[5px] whitespace-nowrap rounded-2xl border-0 px-2.5 text-small leading-none",
                   "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
-                  v.key === view ? "bg-violet font-bold text-onfill" : "bg-sunk font-semibold text-text-2 hover:bg-sunk-2 hover:text-text",
+                  v === view ? "bg-violet font-bold text-onfill" : "bg-sunk font-semibold text-text-2 hover:bg-sunk-2 hover:text-text",
                 )}
               >
-                {v.label}
-                <span className={cx("font-bold tabular-nums", v.key === view ? "text-onfill-muted" : "text-muted")}>{counts[v.key]}</span>
+                {viewLabel[v]}
+                <span
+                  className={cx(
+                    "font-bold tabular-nums",
+                    v === view ? "text-onfill-muted" : v === "risk" ? "text-risk-ink" : "text-muted",
+                  )}
+                >
+                  {counts[v]}
+                </span>
               </button>
             ))}
         </div>
@@ -1135,6 +1201,7 @@ function LedPatients() {
             selectable={canTransfer}
             selected={picked}
             onSelectedChange={setPicked}
+            rowTone={(p) => (p.risk ? "risk" : undefined)}
             bulkActions={(rows) => (
               <Button variant="primary" size="xs" icon={<AIc.transfer size={14} />} onClick={() => rows.length && setTransfer(true)}>
                 {ut("adm2.transferTo")}
@@ -1180,6 +1247,61 @@ function LedPatients() {
         />
       ) : null}
     </div>
+  );
+}
+
+/** «ср 14.10, 09:00» — ближайший прием: день недели помогает больше даты */
+function visitWhen(iso: string): string {
+  const d = new Date(iso);
+  return `${d.toLocaleDateString(locale(), { weekday: "short" })} ${dm(iso)}, ${hm(iso)}`;
+}
+
+/** Колонка «Стан» пациента: одно главное, с пояснением строкой ниже */
+function PatientStateCell({ p, now }: { p: PatientListItem; now: number }) {
+  const { ut, lang } = useLang();
+  const s = patientState(p, now);
+  if (s === "risk" && p.risk) {
+    return (
+      <span className="flex flex-col items-start gap-0.5">
+        <Tag tone={p.risk.assigneeName ? "handover" : "danger"} icon={<Ic.alert />}>
+          {plural(ut("adm2.nRiskCases"), p.risk.cases, lang)}
+        </Tag>
+        <small className="text-caption text-text-2">{fill(ut("adm2.caseSince"), { date: `${dm(p.risk.openedAt)}, ${hm(p.risk.openedAt)}` })}</small>
+      </span>
+    );
+  }
+  if (s === "noshow" && p.lastNoShowAt) {
+    return (
+      <span className="flex flex-col items-start gap-0.5">
+        <Tag tone="attention" icon={<Ic.calendar />}>
+          {fill(ut("adm2.noShowOn"), { date: dm(p.lastNoShowAt) })}
+        </Tag>
+        {!p.nextVisit ? <small className="text-caption text-text-2">{ut("adm2.notBooked")}</small> : null}
+      </span>
+    );
+  }
+  if (s === "stale" && p.lastResponseAt) {
+    return (
+      <Tag tone="attention" icon={<Ic.timer />}>
+        {fill(ut("adm2.noMeasureDays"), { n: daysAgo(p.lastResponseAt) })}
+      </Tag>
+    );
+  }
+  if (p.dispensary) {
+    return (
+      <span className="flex flex-col items-start gap-0.5">
+        <Tag tone={p.dispensary.overdue ? "attention" : "plain"} icon={p.dispensary.overdue ? <Ic.timer /> : <Ic.eye />}>
+          {p.dispensary.overdue ? ut("adm2.checkOverdue") : ut("adm2.onRecord")}
+        </Tag>
+        <small className="truncate text-caption text-text-2">{p.dispensary.groupLabel}</small>
+      </span>
+    );
+  }
+  if (s === "never") return <Tag icon={<Ic.clipboard />}>{ut("adm2.notYetMeasured")}</Tag>;
+  return (
+    <Tag tone="done" icon={<Ic.check />}>
+      {ut("adm2.measuring")}
+    </Tag>
   );
 }
 

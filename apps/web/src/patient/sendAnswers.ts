@@ -1,4 +1,4 @@
-import { consentViewOf, isTransientStatus, type ConsentStatus } from "@quizzy/shared";
+import { consentViewOf, isTransientStatus, type ConsentStatus, type ScoreResult } from "@quizzy/shared";
 import { api, ApiError } from "../api";
 import { acceptFailure } from "./ConsentGate";
 import { isConsentRefusal } from "./outbox";
@@ -34,7 +34,10 @@ import { isConsentRefusal } from "./outbox";
 export type SubmitBody = Parameters<typeof api.submitResponse>[1] & { clientRequestId: string };
 
 export interface SendIo {
-  submit: (surveyId: string, body: SubmitBody) => Promise<{ safetyPlan: string | null }>;
+  submit: (
+    surveyId: string,
+    body: SubmitBody,
+  ) => Promise<{ safetyPlan: string | null; id?: string; scores?: ScoreResult[]; submittedAt?: string | null }>;
   consentStatus: () => Promise<ConsentStatus>;
   acceptConsent: (textId: string | null) => Promise<unknown>;
   /** Положить сдачу ждать (outbox.ts); null — некому: никто не вошёл */
@@ -51,12 +54,26 @@ export interface ConsentHold {
   error: string | null;
 }
 
-export type SendOutcome = { kind: "sent"; safetyPlan: string | null } | { kind: "queued" } | ConsentHold;
+/**
+ * Принято сервером. Баллы — только у методик, которые их показывают
+ * (showResultsToPatient: сервер у остальных отдаёт пустой список); пустые
+ * сюда не кладутся вовсе, как и id с временем, если их не прислали.
+ */
+export type SendOutcome =
+  | { kind: "sent"; safetyPlan: string | null; id?: string; scores?: ScoreResult[]; submittedAt?: string }
+  | { kind: "queued" }
+  | ConsentHold;
 
 export async function sendAnswers(io: SendIo, surveyId: string, body: SubmitBody): Promise<SendOutcome> {
   try {
     const result = await io.submit(surveyId, body);
-    return { kind: "sent", safetyPlan: result.safetyPlan ?? null };
+    return {
+      kind: "sent",
+      safetyPlan: result.safetyPlan ?? null,
+      ...(result.id ? { id: result.id } : {}),
+      ...(result.scores?.length ? { scores: result.scores } : {}),
+      ...(result.submittedAt ? { submittedAt: result.submittedAt } : {}),
+    };
   } catch (error) {
     if (!(error instanceof ApiError)) throw error;
     if (isTransientStatus(error.status) && io.enqueue) {

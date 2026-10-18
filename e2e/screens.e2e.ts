@@ -176,10 +176,12 @@ test.describe("экраны с параметром", () => {
     const name = (await page.locator("h1").textContent())!.trim();
     await tab.click();
     await expect(page.locator("h1")).toHaveText(name);
-    await expect(page.locator(".tl-event").first()).toBeVisible();
+    // строка события ленты (Timeline.tsx, data-evt) — не класс, который сменят на первой правке
+    await expect(page.locator("[data-evt]").first()).toBeVisible();
 
-    // дни идут от свежего к старому: историю читают с конца
-    const days = await page.locator(".tl-date").allTextContents();
+    // дни идут от свежего к старому: историю читают с конца (ключ дня — в data-day)
+    const days = await page.locator("[data-day]").evaluateAll((els) => els.map((e) => e.getAttribute("data-day") ?? ""));
+    expect(days.length).toBeGreaterThan(0);
     expect([...days].sort().reverse()).toEqual(days);
     await expect(page.locator(".error")).toHaveCount(0);
   });

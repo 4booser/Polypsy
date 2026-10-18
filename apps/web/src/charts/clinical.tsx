@@ -186,7 +186,18 @@ export function SeverityMeter({ rungs, value, max, size = "lg", valueLabel, labe
           </div>
           {value !== null ? (
             <div className="relative h-[18px] text-caption">
-              <span className="absolute -translate-x-1/2 font-extrabold whitespace-nowrap text-text" style={{ left: pct(wordAt) }}>
+              {/*
+                Длинное слово ступени («Депресія відсутня, 2») у края шкалы
+                вылезало за её левый или правый край и обрезалось панелью:
+                у краёв подпись прижимается к краю, а не центрируется.
+              */}
+              <span
+                className={cx(
+                  "absolute font-extrabold whitespace-nowrap text-text",
+                  wordAt < 0.3 ? "" : wordAt > 0.7 ? "-translate-x-full" : "-translate-x-1/2",
+                )}
+                style={{ left: wordAt < 0.3 ? 0 : wordAt > 0.7 ? "100%" : pct(wordAt) }}
+              >
                 {hit ? `${hit.label}, ` : ""}
                 {valueLabel ?? num(value)}
               </span>
@@ -756,12 +767,18 @@ export function GroupedHBars({
   max,
   format = num,
   floor = 5,
+  hiddenWhy,
+  legend = true,
 }: {
   rows: readonly GroupedRow[];
   series: readonly SeriesKey[];
   max?: number;
   format?: (v: number) => string;
   floor?: number;
+  /** Своё объяснение скрытой ячейки (SmallCell, `why`) */
+  hiddenWhy?: ReactNode;
+  /** false — легенду рисует экран, одну на несколько групп полос */
+  legend?: boolean;
 }) {
   if (!rows.length || !series.length) return <NoData />;
   const top = max ?? Math.max(0, ...rows.flatMap((r) => r.values.map((v) => v ?? 0)));
@@ -787,7 +804,7 @@ export function GroupedHBars({
                         />
                       ) : null}
                     </span>
-                    <span className="text-right text-caption font-bold whitespace-nowrap text-text">{v === null ? <SmallCell floor={floor} /> : format(v)}</span>
+                    <span className="text-right text-caption font-bold whitespace-nowrap text-text">{v === null ? <SmallCell floor={floor} why={hiddenWhy} /> : format(v)}</span>
                   </span>
                 );
               })}
@@ -802,7 +819,7 @@ export function GroupedHBars({
           </li>
         ))}
       </ul>
-      <SeriesLegend items={series} />
+      {legend ? <SeriesLegend items={series} /> : null}
     </div>
   );
 }

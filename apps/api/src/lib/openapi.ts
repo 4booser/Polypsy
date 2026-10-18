@@ -298,7 +298,7 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
    * в карточке не отдаётся: он открывается отдельным журналируемым действием
    * GET /api/clinic/patients/:userId/phone.
    */
-  "GET /api/patients": { summary: "Пациенты зоны видимости: поиск, вкладка группы, страницы {items,total}", access: "staff", permission: "patients.read" },
+  "GET /api/patients": { summary: "Пациенты зоны видимости: поиск, вкладка группы, подання `?view=risk|stale|unbooked|mine`, порядок `?sort=name|risk|last|next`, страницы {items,total,counts}; в строке — открытый случай, главная шкала последнего замера, ближайший приём, неявка, учёт, ведущий", access: "staff", permission: "patients.read" },
   "GET /api/patients/:id/card": { summary: "Карточка пациента: персональные данные, «Тести», «Групи», «Заключення», ведущий", access: "staff", permission: "patients.read" },
 
   /* ── рассылки (кадры f09, f16, f22) ──
@@ -308,7 +308,7 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
    * получателя своё право — строка доставки в mailing_recipients, и его
    * маршруты закрыты ею, а не справочником прав персонала.
    */
-  "GET /api/mailings": { summary: "Рассылки автора: тема, начало текста, дата; поиск, страницы; ?hidden=1 — скрытые", access: "staff", permission: "mailings.manage" },
+  "GET /api/mailings": { summary: "Рассылки автора: тема, начало текста, дата, ответы по вариантам, счётчики видов; поиск, страницы; ?status=draft|sent — вид, ?hidden=1 — скрытые", access: "staff", permission: "mailings.manage" },
   "POST /api/mailings": { summary: "Завести черновик рассылки: название, текст, варианты ответа, адресаты", access: "staff", permission: "mailings.manage", body: mailingInputSchema },
   "GET /api/mailings/inbox": { summary: "Свои рассылки получателя: непрочитанные, ответы, счётчик для меню", access: "user", whyNoPermission: "свои рассылки получатель видит сам: его право — строка доставки на его имя, а не запись в справочнике прав персонала" },
   "POST /api/mailings/:id/read": { summary: "Отметить рассылку прочитанной; повтор ничего не меняет", access: "user", whyNoPermission: "отметку прочтения ставит сам получатель на своей строке доставки; чужая рассылка для него не существует" },
@@ -358,10 +358,10 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   /* ── статистика: пресеты фильтров и модели ── */
   "GET /api/filter-presets": { summary: "Свои пресеты фильтров выборки; ?q= — поиск по названию", access: "staff", permission: "statistics.read" },
   "POST /api/filter-presets": { summary: "«Зберегти» фильтр как пресет", access: "staff", permission: "statistics.read", body: filterPresetInputSchema },
-  "GET /api/filter-presets/:id": { summary: "Пресет с числом моделей, которые на него ссылаются", access: "staff", permission: "statistics.read" },
+  "GET /api/filter-presets/:id": { summary: "Пресет с числом моделей, которые на него ссылаются, и видными спрашивающему моделями с номерами выборок", access: "staff", permission: "statistics.read" },
   "PATCH /api/filter-presets/:id": { summary: "Правка названия и критериев пресета", access: "staff", permission: "statistics.read", body: filterPresetUpdateSchema },
   "DELETE /api/filter-presets/:id": { summary: "Удалить пресет; занятый моделями — отказ с их числом", access: "staff", permission: "statistics.read" },
-  "GET /api/stat-models": { summary: "Перечень статистических моделей: ?q=, ?limit=, ?offset= → {items, total}", access: "staff", permission: "statistics.read" },
+  "GET /api/stat-models": { summary: "Перечень статистических моделей: ?q=, ?limit=, ?offset= → {items, total}; в строке — методика с версией, число полос, вопросов, пометок «ВШР» и выборок по пресету", access: "staff", permission: "statistics.read" },
   "POST /api/stat-models": { summary: "«Створити» модель: колонки-выборки с показателями", access: "staff", permission: "statistics.read", body: statModelInputSchema },
   "POST /api/stat-models/run": { summary: "«Порівняти» без сохранения; скрыто всё, что вместе с остальным ответом называет людей; фильтры — в журнал", access: "staff", permission: "statistics.read", body: statModelRunSchema },
   "GET /api/stat-models/:id": { summary: "Модель с колонками", access: "staff", permission: "statistics.read" },
@@ -398,6 +398,7 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   "GET /api/conclusions/responses/:id/conclusion/draft": { summary: "Черновик заключения из результатов: подставляет то, что и так есть в системе", access: "staff", permission: "conclusions.write" },
   "PUT /api/conclusions/responses/:id/conclusion": { summary: "Черновик заключения", access: "staff", permission: "conclusions.write" },
   "POST /api/conclusions/responses/:id/conclusion/sign": { summary: "Подпись заключения — фиксирует снапшот", access: "staff", permission: "conclusions.sign" },
+  "GET /api/response-context/:id": { summary: "Обстановка вокруг протокола: человек, открытые сигналы, попытки методики, срабатывания правил", access: "staff", permission: "patients.read" },
 
   /* ── аналитика ── */
   "GET /api/analytics/overview": { summary: "Сводка по всем методикам", access: "staff", permission: "analytics.read" },
@@ -577,6 +578,7 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   "PUT /api/clinic/schedule": { summary: "Задать обычную неделю целиком; слоты пересобираются", access: "staff", permission: "schedule.own" },
   "POST /api/clinic/schedule/exceptions": { summary: "Отпуск, замена или дополнительный день", access: "staff", permission: "schedule.own", body: scheduleExceptionSchema },
   "DELETE /api/clinic/schedule/exceptions/:id": { summary: "Снять исключение", access: "staff", permission: "schedule.own" },
+  "GET /api/clinic/schedule/week": { summary: "Неделя календарём: приёмы, открытые окна и исключения по часам отделения", access: "staff", permission: "schedule.own" },
   "GET /api/clinic/slots": { summary: "Свободное время; повторные слоты видны прикреплённым", access: "user", whyNoPermission: "свободное время — не персональные данные, а расписание приёма; его смотрит и тот, кто ещё никуда не записан" },
   "POST /api/clinic/appointments": { summary: "Записаться; на первичном приёме создаётся прикрепление к отделению", access: "user", whyNoPermission: "себя записывает сам пациент; запись за другого проверяется правом внутри", body: bookAppointmentSchema },
   "GET /api/clinic/appointments/mine": { summary: "Свои приёмы", access: "user", whyNoPermission: "свои приёмы человек видит сам, и ограничивать это правом нечем" },
@@ -599,7 +601,7 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   "POST /api/recordings/:appointmentId/start": { summary: "Начать запись; без согласия отказ", access: "user", whyNoPermission: "начинает ведущий приём, и проверка согласия стоит внутри" },
   "POST /api/recordings/:appointmentId/stop": { summary: "Остановить и передать аудио (формат — по байтам: WebM, Ogg, MP4, WAV); повтор с тем же uploadId подтверждается; аудио дослаётся и после остановки пациентом; остановить может любая сторона", access: "user", whyNoPermission: "это разговор двоих, и право прекратить запись есть у обоих" },
   "POST /api/recordings/:appointmentId/discard": { summary: "Удалить запись до расшифровки", access: "user", whyNoPermission: "сказанное сгоряча человек вправе забрать назад, пока оно не стало текстом" },
-  "GET /api/messages": { summary: "Разговоры: у пациента один, у специалиста список", access: "user", whyNoPermission: "свою переписку человек видит сам; у специалиста список ограничен его же разговорами" },
+  "GET /api/messages": { summary: "Разговоры: у пациента один, у специалиста список — с началом последнего письма, его автором и прочтением, ближайшим своим приёмом", access: "user", whyNoPermission: "свою переписку человек видит сам; у специалиста список ограничен его же разговорами" },
   "GET /api/messages/:id": { summary: "Разговор: последние письма и курсор назад; чтение ничего не помечает", access: "user", whyNoPermission: "разговор видят только двое его участников, и это проверяется по самому разговору" },
   "POST /api/messages/:id/read": { summary: "Отметить прочитанными показанные письма собеседника", access: "user", whyNoPermission: "отмечает только участник разговора и только письма другой стороны" },
   "POST /api/messages": { summary: "Написать: пациент своему специалисту, специалист — своему пациенту", access: "user", whyNoPermission: "пациент пишет своему и адресата не выбирает; отправка специалистом проверяется правом внутри" },

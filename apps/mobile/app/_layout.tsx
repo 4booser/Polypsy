@@ -254,15 +254,11 @@ function RootStack() {
         }}
       />
       {/*
-        Карта пациента в обходе не была объявлена здесь и наследовала
-        headerShown: false — без шапки и без стрелки. На Android выручала
-        системная кнопка, на iPhone оставался только жест от края, о котором
-        никто не знает. Заголовок экран ставит сам (имя пациента).
+        Карта пациента в обходе рисует шапку сама (staff/ui.tsx, StaffNav):
+        под строкой навигации — человек на полосе. «‹ Обхід» есть всегда:
+        позади пусто (открыто по ссылке) — уводит на обход (nav/exits.ts).
       */}
-      <Stack.Screen
-        name="rounds/[userId]"
-        options={{ headerShown: true, title: ut("rounds.title"), headerLeft: closeIfAlone }}
-      />
+      <Stack.Screen name="rounds/[userId]" options={{ title: ut("rounds.title") }} />
       <Stack.Screen name="analytics" />
     </Stack>
   );

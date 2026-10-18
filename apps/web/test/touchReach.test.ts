@@ -27,66 +27,64 @@ const bare = (rel: string) =>
     .replace(/\{\/\*[\s\S]*?\*\/\}/g, "")
     .replace(/^\s*\/\/.*$/gm, "");
 
+/*
+ * С волны 25 действия строки каталога всплывают не своим «⋯», а полосой
+ * действий таблицы набора (DataTable, rowActions): каталог больше не прячет
+ * их сам. Сторож стоит там, где теперь живёт правило, — на полосе таблицы,
+ * — и следит, что каталог не завёл себе прежнюю самодельную невидимость.
+ */
 const SURVEY_LIST = bare("../src/pages/constructor/SurveyList.tsx");
+const DATA_TABLE = bare("../src/ui/DataTable.tsx");
 
-/** Строка классов, в которой лежит меню строки каталога */
+/** Строка классов полосы действий строки в таблице набора */
 const glyphClasses = (() => {
-  const at = SURVEY_LIST.indexOf("{menu}");
-  expect(at, "в строке каталога больше нет {menu} — проверять нечего").toBeGreaterThan(0);
-  const head = SURVEY_LIST.slice(0, at);
+  const at = DATA_TABLE.indexOf("{actions}");
+  expect(at, "в строке таблицы больше нет {actions} — проверять нечего").toBeGreaterThan(0);
+  const head = DATA_TABLE.slice(0, at);
   const open = head.lastIndexOf("<span");
   return head.slice(open);
 })();
 
-describe("«⋯» строки каталога достижим без мыши", () => {
+const UNCONDITIONAL = /(^|[\s"'`])opacity-0(?![-:\w])/;
+
+describe("действия строки каталога достижимы без мыши", () => {
+  test("каталог отдаёт действия строки таблице, а не прячет их сам", () => {
+    expect(SURVEY_LIST.includes("rowActions={rowActions}"), "каталог больше не передаёт действия строки таблице").toBe(true);
+    expect(UNCONDITIONAL.test(SURVEY_LIST), "каталог снова прячет что-то безусловным opacity-0: на планшете это недостижимо").toBe(
+      false,
+    );
+  });
+
   test("невидимость объявлена только там, где есть наведение", () => {
     expect(
       glyphClasses.includes("[@media(hover:hover)]:opacity-0"),
-      "невидимость глифа не ограничена @media (hover: hover)",
+      "невидимость полосы действий не ограничена @media (hover: hover)",
     ).toBe(true);
   });
 
-  test("безусловного opacity-0 на глифе нет", () => {
-    /*
-     * Ищется именно безусловный класс: `"opacity-0"` без варианта перед ним.
-     * Вариант пишется через двоеточие, поэтому достаточно посмотреть, что
-     * стоит слева от слова.
-     */
-    const unconditional = /(^|[\s"'`])opacity-0(?![-:\w])/.test(glyphClasses);
+  test("безусловного opacity-0 на полосе нет", () => {
     expect(
-      unconditional,
-      "глиф снова спрятан безусловно: на планшете и телефоне действия строки недостижимы",
+      UNCONDITIONAL.test(glyphClasses),
+      "полоса действий снова спрятана безусловно: на планшете и телефоне действия строки недостижимы",
     ).toBe(false);
   });
 
   test("проявление наведением и фокусом стоит под тем же медиазапросом", () => {
-    for (const variant of ["group-hover", "group-focus-within"]) {
+    for (const variant of ["group-hover/row", "group-focus-within/row"]) {
       expect(
         glyphClasses.includes(`[@media(hover:hover)]:${variant}:opacity-100`),
-        `${variant} вынесен из @media (hover: hover): порядок в собранном CSS решал бы, видно ли глиф`,
+        `${variant} вынесен из @media (hover: hover): порядок в собранном CSS решал бы, видно ли полосу`,
       ).toBe(true);
     }
   });
 
-  test("глиф остаётся в разметке: ни hidden, ни display:none", () => {
+  test("полоса остаётся в разметке: ни hidden, ни display:none", () => {
     for (const hiding of ["hidden", "display:none"]) {
       expect(
         glyphClasses.includes(hiding),
-        `глиф убран из разметки (${hiding}) — вместе с ним из обхода клавиатурой выпадает меню`,
+        `полоса убрана из разметки (${hiding}) — вместе с ней из обхода клавиатурой выпадает меню`,
       ).toBe(false);
     }
-  });
-
-  test("колонка отодвигается от глифа там, где он виден всегда", () => {
-    /*
-     * Обратная сторона починки: на устройстве без наведения глиф нарисован
-     * поверх правого края «Статистики». Отступ колонки под такое устройство
-     * задан отдельно, кадровые 12 остаются там, где наведение есть.
-     */
-    expect(
-      SURVEY_LIST.includes("[@media(hover:none)]:pr-["),
-      "текст «Статистики» уходит под всегда видимый «⋯»: правый отступ колонки не увеличен",
-    ).toBe(true);
   });
 });
 

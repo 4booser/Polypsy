@@ -1,97 +1,154 @@
 import { createContext, useContext, type ReactNode } from "react";
 import type { ContentLang } from "@quizzy/shared";
-import { Field, Input, Textarea } from "../../ui/primitives";
+import { useLang } from "../../lang";
+import { cx } from "../../ui/cx";
+import { Field, Input, Segmented, Switch, Textarea } from "../../ui/primitives";
 
 /*
  * Язык, на котором сейчас правится текст теста.
  *
- * Прежде каждое поле было сдвоенным: слева украинский, справа русский. Макет
- * рисует одно поле и переключатель «Укр ▾» справа от вкладок — язык выбирают
- * один раз, а не в каждом поле. Хранение не изменилось: jsonb {uk, ru}, и
- * переключатель лишь решает, какой из двух ключей показывает поле. Второй
- * язык при этом не теряется — он ждёт своей очереди за переключателем, о чём
- * под ним написано.
+ * Поле одно, а не пара «украинский | русский»: язык выбирают один раз на
+ * экран, а хранение остаётся парой jsonb {uk, ru} — переключатель лишь
+ * решает, какой из двух ключей показывает каждое поле. Второй язык не
+ * теряется, он ждёт за переключателем.
  *
- * Контекст, а не проп через десять уровней: переключатель один на экран, а
- * полей — десятки, и пропс забыли бы на первом же новом поле.
- */
-/*
+ * Контекст, а не проп через десять уровней: полей — десятки, и проп забыли
+ * бы на первом же новом. Переключатель стоит в нескольких местах экрана (в
+ * «Основному», в раскрытом пункте — так на макете methods-constructor), и
+ * все они правят одно и то же состояние экрана.
+ *
  * Язык СОДЕРЖИМОГО, а не интерфейса: английского текста у методик нет
  * намеренно (CONTENT_LANGS в shared/types.ts), и поле, которое правило бы
  * ключ en, писало бы в пустоту — схема записи его отбрасывает.
  */
 const EditLang = createContext<ContentLang>("uk");
-export const EditLangProvider = EditLang.Provider;
+const SetEditLang = createContext<((l: ContentLang) => void) | null>(null);
+
+export function EditLangProvider({
+  value,
+  onChange,
+  children,
+}: {
+  value: ContentLang;
+  onChange?: (l: ContentLang) => void;
+  children: ReactNode;
+}) {
+  return (
+    <EditLang.Provider value={value}>
+      <SetEditLang.Provider value={onChange ?? null}>{children}</SetEditLang.Provider>
+    </EditLang.Provider>
+  );
+}
 export const useEditLang = () => useContext(EditLang);
+
+/**
+ * Переключатель языка текста: «Українська | Російська» сегментами (макет
+ * methods-constructor). Имя группы для диктора — «Мова тексту тесту»: по нему
+ * его находит и смоук (e2e/helpers.ts, setEditLang).
+ */
+export function EditLangSwitch({ className }: { className?: string }) {
+  const { ut } = useLang();
+  const lang = useEditLang();
+  const set = useContext(SetEditLang);
+  if (!set) return null;
+  return (
+    <Segmented
+      label={ut("cn.editLang")}
+      value={lang}
+      onChange={set}
+      className={className}
+      items={[
+        { key: "uk", label: ut("ce.langUk") },
+        { key: "ru", label: ut("ce.langRu") },
+      ]}
+    />
+  );
+}
 
 /**
  * Текстовое поле теста на языке правки.
  *
- * Подпись видна плейсхолдером и остаётся именем поля для диктора — это делает
- * Field сам (см. пояснение к нему в primitives.tsx). Своего плейсхолдера здесь
- * нет намеренно: два разных текста — подпись и подсказка — на одном поле были
- * бы двумя именами.
- *
- * `above` — второй случай, и он с кадра: «Назва тесту» и «Опис тесту» на
- * f23_1/f24_1 набраны ВИДИМОЙ подписью 18/700 фиолетовым НАД пустым полем, а
- * поле под ней пустое. Тогда подпись перестаёт быть скрытой, а плейсхолдера
- * внутри поля нет: тот же текст дважды — один раз глазу над полем, другой раз
- * внутри — читался бы как два разных поля.
+ * Подпись — видимая подпись набора над полем (12/700); `inline` прячет её в
+ * плейсхолдер для поля в строке таблицы. Своего плейсхолдера здесь нет
+ * намеренно: два разных текста — подпись и подсказка — на одном поле были бы
+ * двумя именами.
  */
 export function Loc({
   label,
-  above,
   value,
   onChange,
   multiline,
   rows,
   hint,
   className,
+  inline,
+  inputClassName,
+  id,
 }: {
   label: string;
-  /** Печатать подпись видимой строкой над полем (кадры f23_1, f24_1) */
-  above?: boolean;
   value: Record<string, string> | null | undefined;
   onChange: (v: Record<string, string>) => void;
   multiline?: boolean;
   rows?: number;
   hint?: ReactNode;
   className?: string;
+  inline?: boolean;
+  inputClassName?: string;
+  id?: string;
 }) {
   const lang = useEditLang();
   const v = value ?? {};
   const current = v[lang] ?? "";
   const set = (text: string) => onChange({ ...v, [lang]: text });
-  const field = multiline ? (
-    <Textarea value={current} rows={rows ?? 4} onChange={(e) => set(e.target.value)} />
-  ) : (
-    <Input value={current} onChange={(e) => set(e.target.value)} />
-  );
-  if (!above) {
-    return (
-      <Field label={label} hint={hint} className={className}>
-        {field}
-      </Field>
-    );
-  }
-  /*
-   * Видимая подпись — та же подпись Field, только не скрытая: она по-прежнему
-   * оборачивает поле и по-прежнему его называет. Заводить рядом отдельный
-   * заголовок и связывать его с полем через aria-labelledby значило бы
-   * назвать поле дважды тем же словом.
-   */
   return (
-    <Field label={label} hint={hint} className={className} labelClassName="mb-[14px] block text-[18px] font-bold leading-tight text-primary">
-      {field}
+    <Field label={label} hint={hint} className={className} inline={inline}>
+      {multiline ? (
+        <Textarea id={id} value={current} rows={rows ?? 4} onChange={(e) => set(e.target.value)} className={inputClassName} />
+      ) : (
+        <Input id={id} value={current} onChange={(e) => set(e.target.value)} className={inputClassName} />
+      )}
     </Field>
   );
 }
 
-export function Toggle({ label, value, onChange }: { label: string; value: boolean; onChange: (v: boolean) => void }) {
+/**
+ * Подпись над сегментами — тем же видом, что у поля (12/700), но не <label>:
+ * подпись-обёртка вокруг группы кнопок отдавала бы нажатие на подпись первой
+ * кнопке. Имя группе даёт её собственный aria-label (Segmented).
+ */
+export function Labeled({
+  label,
+  hint,
+  children,
+  className,
+}: {
+  label: ReactNode;
+  hint?: ReactNode;
+  children: ReactNode;
+  className?: string;
+}) {
   return (
-    <label className="flex cursor-pointer items-center gap-2 py-1">
-      <input type="checkbox" checked={value} onChange={(e) => onChange(e.target.checked)} className="size-4 shrink-0" />
-      <span className="text-small text-text">{label}</span>
-    </label>
+    <div data-field className={cx("mb-3.5 flex min-w-0 flex-col last:mb-0", className)}>
+      <span aria-hidden className="mb-1.5 block text-caption font-bold text-muted">
+        {label}
+      </span>
+      {children}
+      {hint ? <span className="mt-1.5 block text-small text-muted">{hint}</span> : null}
+    </div>
   );
+}
+
+/** Переключатель настройки (role=switch набора) с подписью и пояснением */
+export function Toggle({
+  label,
+  sub,
+  value,
+  onChange,
+}: {
+  label: string;
+  sub?: ReactNode;
+  value: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  return <Switch checked={value} onChange={onChange} label={label} sub={sub} className="py-1.5" />;
 }

@@ -180,11 +180,15 @@ describe("конструктор: варианты и полосы со свои
     expect(fixed.answers?.every((a) => !!a.uid)).toBe(true);
   });
 
-  test("новые ответы по умолчанию различимы, а общий набор в вопросах держит их ключи", () => {
+  test("новые ответы по умолчанию различимы, а варианты пункта держат свои ключи через правку набора", () => {
     const answers = defaultAnswers();
     expect(new Set(answers.map((a) => a.uid)).size).toBe(2);
     const d = applyAnswers({ ...toDraft(survey, []), mode: "specific" }, answers);
-    expect(d.questions[0]!.options.map((o) => o.uid)).toEqual(answers.map((a) => a.uid));
+    const uids = d.questions[0]!.options.map((o) => o.uid);
+    expect(new Set(uids).size).toBe(uids.length);
+    // переименовали ответ в наборе — строки пункта те же, ключи те же: поле с курсором не переезжает
+    const renamed = applyAnswers(d, answers.map((a) => ({ ...a, text: { uk: `${a.text.uk ?? ""}!` } })));
+    expect(renamed.questions[0]!.options.map((o) => o.uid)).toEqual(uids);
   });
 });
 

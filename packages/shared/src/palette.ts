@@ -124,3 +124,13 @@ export const SEVERITY_KEY = {
   moderate: "severity.moderate",
   severe: "severity.severe",
 } as const;
+
+/**
+ * Цвета групп методик на выбор (экран «Групи методик», apps/web/src/pages/Groups.tsx).
+ *
+ * Цвет группы — данные, а не оформление: он хранится в базе хексом и
+ * читается мобильным приложением как есть (apps/mobile/app/(app)/surveys.tsx,
+ * плашка группы в списке методик). Поэтому набор живёт здесь, рядом с
+ * остальными хексами, а не в разметке консоли, где цвета — только токены.
+ */
+export const GROUP_COLORS = ["#3b5bfd", "#1baf7a", "#eb6834", "#4a3aa7", "#e87ba4"] as const;

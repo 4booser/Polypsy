@@ -5,6 +5,7 @@ import type { Severity } from "@quizzy/shared";
 import { db } from "../db";
 import {
   appointments,
+  batteries,
   batteryAssignments,
   conclusions,
   referrals,
@@ -219,19 +220,25 @@ timelineRoutes.get("/:userId", async (c) => {
     });
   }
 
+  /*
+   * Название набора — в строку, а не идентификатор: лента печатала
+   * «b1c2…» там, где специалист ищет «Первинна оцінка ветерана». Набор
+   * удалён — остаётся идентификатор, а не пустая строка.
+   */
   const assigned = await db
-    .select()
+    .select({ a: batteryAssignments, title: batteries.title })
     .from(batteryAssignments)
+    .leftJoin(batteries, eq(batteries.id, batteryAssignments.batteryId))
     .where(eq(batteryAssignments.userId, userId))
     .orderBy(desc(batteryAssignments.assignedAt))
     .limit(100);
 
-  for (const a of assigned) {
+  for (const { a, title } of assigned) {
     items.push({
       id: `assignment:${a.id}`,
       kind: "assignment",
       at: a.assignedAt,
-      title: a.batteryId,
+      title: title ?? a.batteryId,
       detail: a.completedAt ? "completed" : a.cancelledAt ? "cancelled" : "open",
       href: "/batteries",
     });

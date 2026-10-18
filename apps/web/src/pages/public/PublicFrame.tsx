@@ -32,9 +32,26 @@ import { IconFacebook, IconTelegram, IconYouTube } from "./social";
 /** Колонка 1200 по центру, с полями по 16 на узком окне */
 const COLUMN = "mx-auto w-full max-w-[1232px] px-4";
 
-export function PublicFrame({ children }: { children: ReactNode }) {
+export function PublicFrame({
+  children,
+  signIn,
+  bleed,
+  extra,
+}: {
+  children: ReactNode;
+  /**
+   * «Увійти» в шапке. По умолчанию — везде, кроме самого входа. Ворота после
+   * входа (временный пароль, второй фактор) прячут её: человек уже вошёл.
+   */
+  signIn?: boolean;
+  /** Содержимое само раскладывает колонку: лендинг с полосами во всю ширину */
+  bleed?: boolean;
+  /** Своё перед состоянием системы: «Допомога» у приглашения пациента */
+  extra?: ReactNode;
+}) {
   const { ut } = useLang();
   const { pathname } = useLocation();
+  const showSignIn = signIn ?? pathname !== "/login";
   return (
     <div className="flex min-h-dvh flex-col bg-ground text-text">
       <header className={cx(COLUMN, "flex h-20 shrink-0 items-center gap-6 max-[600px]:gap-3")}>
@@ -49,11 +66,12 @@ export function PublicFrame({ children }: { children: ReactNode }) {
           </span>
         </Link>
         <div className="ml-auto flex items-center gap-[10px] max-[600px]:gap-[6px]">
+          {extra}
           <StatusLink />
           <ThemeToggle tone="band" onChoose={(c) => setThemeChoice(c)} className="max-[600px]:hidden" />
           <LangMenu tone="band" />
           {/* «Увійти» — везде, кроме самого входа: на нём кнопка вела бы туда, где человек уже стоит */}
-          {pathname === "/login" ? null : (
+          {!showSignIn ? null : (
             <Link
               to="/login"
               className={cx(
@@ -67,7 +85,7 @@ export function PublicFrame({ children }: { children: ReactNode }) {
           )}
         </div>
       </header>
-      <main className={cx(COLUMN, "flex-1 pb-[56px]")}>{children}</main>
+      <main className={bleed ? "min-w-0 flex-1" : cx(COLUMN, "flex-1 pb-[56px]")}>{children}</main>
       <Footer />
     </div>
   );

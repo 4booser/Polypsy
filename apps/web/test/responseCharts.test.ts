@@ -295,7 +295,7 @@ describe("вклад пунктов: движком, по ключу той ве
    * — пункт с обратным ключом даёт 3 вместо 0, «совпал с ключом» — 1 вместо
    * веса 2, проверка называет перечень.
    */
-  test("вклад каждого вида пункта — тот же, что у движка; нули и нечисловые не попадают", () => {
+  test("вклад каждого вида пункта — тот же, что у движка; ноль — в перечне, нечисловые — нет", () => {
     const view = buildContributions(detail({ answers: ANSWERS }), surveyFull());
     expect(view.stale).toBe(false);
     const [s] = view.scales;
@@ -306,11 +306,30 @@ describe("вклад пунктов: движком, по ключу той ве
       [1, 3],
       [4, 3],
       [3, 2],
+      // обратный ключ: выбран «3» → вклад 0 — пункт в перечне с пустой полосой
+      [2, 0],
     ]);
     // верх — наибольшее, что мог дать пункт: матрица из двух строк по 2
     expect(s!.top).toBe(4);
     expect(s!.items.find((i) => i.number === 4)!.max).toBe(4);
     expect(s!.items.find((i) => i.number === 3)!.max).toBe(2);
+  });
+
+  /**
+   * Мутация: брать отметку «було» у прежней попытки другой версии — ключ мог
+   * смениться, и отметка легла бы чужим числом; проверка называет пункт.
+   */
+  test("отметка «було» — вклад того же пункта в прежней попытке той же версии", () => {
+    const before = detail({
+      id: "r2",
+      answers: ANSWERS.map((a) => (a.questionId === "q1" ? { ...a, optionIds: ["q1a"] } : a)),
+    });
+    const [s] = buildContributions(detail({ answers: ANSWERS }), surveyFull(), before).scales;
+    expect(s!.items.find((i) => i.number === 1)!.prev).toBe(0);
+    expect(s!.items.find((i) => i.number === 4)!.prev).toBe(3);
+    const other = { ...before, survey: { ...before.survey, versionNumber: 1 } };
+    const [t] = buildContributions(detail({ answers: ANSWERS }), surveyFull(), other).scales;
+    expect(t!.items.every((i) => i.prev === null), "отметка от другой версии").toBe(true);
   });
 
   test("критический выбранный вариант помечен; пропущенный пункт — в счётчике", () => {

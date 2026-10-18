@@ -163,18 +163,23 @@ export function eventsBell(page: Page): Locator {
 /**
  * Ссылки на людей в списке пациентов.
  *
- * Список больше не таблица: по макету (кадр f05) это сетка карточек в три
- * колонки, и «table tbody tr td a» на нём ничего не находит. Признак
- * `data-patients` стоит на самой сетке (pages/patientGroups/PersonGrid.tsx)
- * ровно ради этой проверки: классы там менять можно, признак — нет.
+ * С 2.0 реестр — снова таблица набора (кадр patients-list), а состав группы
+ * в карточке группы — сетка (PersonGrid). Признак `data-patients` стоит и
+ * там и там (обёртка таблицы в Patients.tsx, сама сетка в PersonGrid) ровно
+ * ради этой проверки: классы менять можно, признак — нет. Первая ссылка
+ * строки — имя человека, она ведёт в карточку.
  */
 export function patientLinks(page: Page): Locator {
-  return page.locator("[data-patients] a");
+  return page.locator("[data-patients] tbody tr td a, [data-patients] > li a");
 }
 
-/** Поле поиска над списком пациентов: на макете без подписи внутри, имя даёт aria-label */
+/**
+ * Поле поиска над реестром пациентов: поиск набора (type=search, роль
+ * searchbox), имя даёт aria-label. Ищется в main: у полосы приложения свой
+ * поиск — палитра.
+ */
 export function patientSearch(page: Page): Locator {
-  return page.getByRole("textbox", { name: /^(Поиск|Пошук)$/ });
+  return page.getByRole("main").getByRole("searchbox", { name: /^(Поиск|Пошук)$/ });
 }
 
 /*
@@ -217,16 +222,23 @@ export async function setLang(page: Page, lang: "uk" | "ru"): Promise<void> {
 }
 
 /*
- * Форма входа живёт на «/login»: корень для гостя — лендинг «Про кампанію»
- * (кадр f00), и с него до формы ещё одно нажатие. Поле почты подписано
- * «Логін», как на кадре f01, — на обоих языках, потому что язык стенда
- * заранее не известен.
+ * Поля формы входа (Polypsy 2.0, «Вхід до Polypsy»): почта подписана
+ * «Електронна пошта», пароль — «Пароль». На обоих языках, потому что язык
+ * стенда заранее не известен. Пароль — точным именем: рядом кнопка
+ * «Показати пароль», и подстрока «пароль» нашла бы её тоже.
+ */
+export const emailField = (page: Page) => page.getByLabel(/^(Електронна пошта|Электронная почта)$/);
+export const passwordField = (page: Page) => page.getByLabel("Пароль", { exact: true });
+
+/*
+ * Форма входа живёт на «/login»: корень для гостя — лендинг, и с него до
+ * формы ещё одно нажатие.
  */
 export async function login(page: Page, who: keyof typeof ACCOUNTS) {
   const acc = ACCOUNTS[who];
   await page.goto("/login");
-  await page.getByLabel(/^(Логин|Логін)$/).fill(acc.email);
-  await page.getByLabel("Пароль").fill(acc.password);
+  await emailField(page).fill(acc.email);
+  await passwordField(page).fill(acc.password);
   await page.getByRole("button", { name: /^(Войти|Увійти)$/ }).click();
   /*
    * Сначала уход с «/login», и только потом оболочка.
@@ -316,32 +328,32 @@ export function fieldByLabel(page: Page, label: string): Locator {
  * украинский текст методики. Хранение осталось двуязычным ({uk, ru}), и
  * переключатель решает лишь, какой из двух ключей показывает каждое поле.
  *
- * С правки по кадрам f23_1/f24_1 это не селект в рамке, а меню: кнопка без
- * рамки с короткой надписью «Укр»/«Рус» (имя для диктора — «Язык текста
- * теста», ключ cn.editLang), а в раскрытом списке языки названы полностью.
- * Поэтому здесь два шага вместо selectOption. Ожидание по надписи кнопки —
- * признак, что выбор дошёл до формы, а не только до пункта меню: следующий
- * fill обязан попасть в поле нового языка.
+ * С макета methods-constructor это сегменты «Украинский | Русский» (группа с
+ * именем «Язык текста теста», ключ cn.editLang). Переключателей на экране
+ * бывает несколько — в «Основном», в раскрытом пункте, у шкал, — и все они
+ * правят одно состояние, поэтому берётся первый. Ожидание aria-pressed —
+ * признак, что выбор дошёл до формы: следующий fill обязан попасть в поле
+ * нового языка.
  */
-const EDIT_LANG_FULL = { uk: "Українська", ru: "Русский" } as const;
-const EDIT_LANG_SHORT = { uk: "Укр", ru: "Рус" } as const;
+const EDIT_LANG_NAME = { uk: "Украинский", ru: "Русский" } as const;
 
 export async function setEditLang(page: Page, lang: "uk" | "ru"): Promise<void> {
-  const trigger = page.getByRole("button", { name: "Язык текста теста" });
-  await trigger.click();
-  await page.getByRole("menuitem", { name: EDIT_LANG_FULL[lang], exact: true }).click();
-  await expect(trigger).toHaveText(EDIT_LANG_SHORT[lang]);
+  const button = page
+    .getByRole("group", { name: "Язык текста теста" })
+    .first()
+    .getByRole("button", { name: EDIT_LANG_NAME[lang], exact: true });
+  await button.click();
+  await expect(button).toHaveAttribute("aria-pressed", "true");
 }
 
 /**
- * Строки списка пациентов текстом. Список с волны 4 — сетка карточек
- * (<ul data-patients>, кадр f05), а не таблица: читаются её пункты, по тому
- * же признаку, что и patientLinks. Через expect.poll, а не waitFor: после
+ * Строки списка пациентов текстом: строки таблицы реестра (2.0) или пункты
+ * сетки группы — по тому же признаку, что и patientLinks. Через expect.poll, а не waitFor: после
  * смены пользователя старый список какое-то время ещё в DOM, и одиночное
  * ожидание успевает совпасть с ним, а читается уже пустой экран загрузки.
  */
 export async function rowTexts(page: Page): Promise<string[]> {
-  const rows = page.locator("[data-patients] > li");
+  const rows = page.locator("[data-patients] tbody tr, [data-patients] > li");
   /*
    * Возвращается ровно тот список, который удовлетворил проверке, а не
    * прочитанный заново.

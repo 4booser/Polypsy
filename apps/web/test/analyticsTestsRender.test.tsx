@@ -214,8 +214,8 @@ const data: SurveyAnalytics = {
 };
 
 describe("вкладка «Тести»: все пациенты", () => {
-  test("огляд: плитки, столбцы с достроенным днём, потери", () => {
-    const html = draw(<OverviewView data={data} />);
+  test("огляд: столбцы с достроенным днём, потери, «зараз проходять»", () => {
+    const html = draw(<OverviewView data={data} slice={{}} onView={() => {}} />);
     clean(html);
     expect(html).toContain("Іваненко");
     // четыре дня (1…4 сентября), а не два: пустые достроены нулями
@@ -322,9 +322,10 @@ describe("вкладка «Тести»: один пациент", () => {
     clean(html);
     expect(html).toContain("Петренко Іван");
     expect(html).toContain("/patients/u1");
-    // тон верхней ступени у максимального балла и нижней — у нулевого
-    expect(html).toContain("var(--primary)_46%");
-    expect(html).toContain("var(--primary)_6%");
+    // тон верхней ступени у максимального балла и нижней — у нулевого; ступени — лестница h1…h5 набора
+    expect(html).toContain('data-tone="4"');
+    expect(html).toContain('data-tone="0"');
+    expect(html).toContain("var(--h5)");
     // свободный текст в клетку не попадает — только отметка, что ответ есть
     expect(either("ant.cellHidden").some((t) => html.includes(t))).toBe(true);
     expect(either("ant.cellChanged").some((t) => html.includes(t))).toBe(true);

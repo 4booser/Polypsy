@@ -7,8 +7,9 @@ import {
   t,
   updateReferralSchema,
   type CaseSummary,
-  type Page,
   type Referral,
+  type ReferralPage,
+  type ReferralStatus,
   type ScaleNormalization,
   type Severity,
   type Sex,
@@ -121,9 +122,22 @@ referralRoutes.get("/", async (c) => {
   const page = rows.slice(0, limit);
 
   let total: number | undefined;
+  let counts: Record<ReferralStatus, number> | undefined;
   if (!cursor) {
     const [row] = await db.select({ n: sql<number>`count(*)::int` }).from(referrals).where(filter);
     total = Number(row?.n ?? 0);
+    /*
+     * Число по статусам — по всей зоне, а не по `all`: пилюли видов реестра
+     * («Виписані 2, Завершені 12») говорят о направлениях отделения, а не о
+     * том, какую часть из них экран сейчас загрузил.
+     */
+    const byStatus = await db
+      .select({ status: referrals.status, n: sql<number>`count(*)::int` })
+      .from(referrals)
+      .where(zone === null ? undefined : zone.size ? inArray(referrals.userId, [...zone]) : sql`false`)
+      .groupBy(referrals.status);
+    counts = { created: 0, accepted: 0, completed: 0, declined: 0 };
+    for (const r of byStatus) counts[r.status] = Number(r.n);
   }
 
   await audit(c, {
@@ -137,7 +151,8 @@ referralRoutes.get("/", async (c) => {
     nextCursor: truncated && last ? encodeCursor(last.at, last.r.id) : null,
     truncated,
     total,
-  } satisfies Page<Referral>);
+    ...(counts ? { counts } : {}),
+  } satisfies ReferralPage);
 });
 
 referralRoutes.post("/", async (c) => {

@@ -47,7 +47,8 @@ describe("keep: false — после смены id загрузка, а не д�
     ["components/PatientContext.tsx", "useResource(() => api.dynamics(person.userId), [person.userId], { keep: false })"],
     ["pages/Alerts.tsx", "useResource(() => api.caseSummary(userId), [userId], { keep: false })"],
     ["pages/CaseCard.tsx", "{ enabled: !!userId, keep: false }"],
-    ["pages/Timeline.tsx", "{ enabled: !!userId, keep: false }"],
+    /* хронология делит кэш с шапкой справы (общий ключ), keep: false — на месте */
+    ["pages/Timeline.tsx", "{ enabled: !!userId, keep: false, key: TL_KEY }"],
   ];
   for (const [file, call] of screens) {
     test(`${file}: загрузка одного человека — с keep: false`, () => {
@@ -65,7 +66,8 @@ describe("остатки #177: заключение, протокол, груп�
     ["pages/Conclusion.tsx", "[responseId],\n    { keep: false },"],
     ["pages/Conclusion.tsx", "[responseId], { manual: true, keep: false })"],
     ["pages/Conclusion.tsx", "enabled: !!surveyId,\n    keep: false,"],
-    ["pages/response/index.tsx", "{ enabled: !!rid && !!surveyId, keep: false }"],
+    ["pages/response/index.tsx", "[rid], { enabled: !!rid, keep: false }"],
+    ["pages/response/data.ts", "[id], { enabled: !!id, keep: false }"],
     ["pages/patientGroups/PatientGroupCard.tsx", "useResource(() => api.patientGroup(groupId), [groupId], { keep: false })"],
     ["pages/messages/MailingEditor.tsx", "useResource(() => api.mailing(id!), [id], { enabled: id !== null, keep: false })"],
   ];

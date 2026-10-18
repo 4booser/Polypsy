@@ -140,6 +140,14 @@ export const cache = {
     get<{ at: string; card: unknown }>(owner, `rounds:card:${userId}`),
 
   /*
+   * Отметки «відвідано» сегодняшнего обхода — только на устройстве и под
+   * владельцем: это память обходящего, а не запись в карте. Семейство
+   * `rounds:` — уходят вместе с обходом при отказе доступа и при выходе.
+   */
+  saveRoundsVisited: (owner: Owner, marks: { day: string; ids: string[] }) => put(owner, "rounds:visited", marks),
+  roundsVisited: (owner: Owner) => get<{ day: string; ids: string[] }>(owner, "rounds:visited"),
+
+  /*
    * Сервер отказал в доступе (#126): обход или карта этому человеку больше не
    * положены — пациента вывели из зоны, учётку выключили. Копия, снятая,
    * пока было можно, уходит: отдавать её дальше значило бы показывать то, что

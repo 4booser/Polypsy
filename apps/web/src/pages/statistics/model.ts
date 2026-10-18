@@ -1,45 +1,47 @@
 import type {
+  QuestionType,
   SampleFilters,
+  Severity,
   StatCell,
   StatModel,
   StatModelColumn,
   StatModelColumnInput,
   StatRunColumn,
+  SurveyFull,
   UiKey,
 } from "@quizzy/shared";
 import { pageOffset } from "../../ui/paging";
 
 /**
  * Чистая часть раздела «Статистика»: адреса, строки-критерии выборки,
- * черновик структуры модели ↔ колонки на сервере, печать ячеек отчёта.
+ * черновик структуры модели ↔ колонки на сервере, строки отчёта и печать
+ * ячеек.
  *
  * Вынесено из экранов ради проверки без React и сервера
- * (apps/web/test/statistics.test.ts). Главное, что здесь сторожится, — печать
- * ячейки: скрытая сервером ячейка обязана доехать до экрана прочерком, а не
- * числом, и разность колонок не имеет права «досчитать» скрытое вычитанием
- * (см. cellText, diffText).
+ * (apps/web/test/statistics.test.ts, statisticsFilters.test.ts). Главное,
+ * что здесь сторожится, — печать ячейки: скрытая сервером ячейка обязана
+ * доехать до экрана прочерком, а не числом, и разность колонок не имеет
+ * права «досчитать» скрытое вычитанием (см. cellText, diffText).
  *
- * ── Как модель легла на кадры ──
+ * ── Как модель легла на экраны «Виразної» ──
  *
  * Модель на сервере — колонки-выборки, у каждой свои фильтры (или пресет),
- * методика и показатели (packages/shared/src/types.ts, StatModelColumn). На
- * кадрах это разнесено по экранам так:
+ * методика с версией и показатели (packages/shared/src/types.ts,
+ * StatModelColumn). На экранах это разнесено так:
  *
- *   f17 «Створити»          — ЧТО считаем: тест, варианты результата, вопросы
- *                             с ответами и пометкой «ВШР». Фильтров на кадре
- *                             нет — выборку задают на экране модели;
- *   f09/f18 модель          — ПО КОМУ считаем: карточка «Фільтри» одной
- *                             выборки и «Порівняти»;
- *   f29 две выборки рядом   — та же модель с двумя колонками: «+» в строке
- *                             заголовка добавляет выборку;
- *   f24 «Статистика»        — пресеты по колонкам, «Оновити», диаграмма;
- *   f23 «Створення фільтра» — пресеты фильтров.
+ *   редактор модели   — ЧТО считаем: тест и версия, смуги результату,
+ *                       питання з відповідями і позначкою «ВШР»;
+ *   модель            — ПО КОМУ считаем: выборки рядом, фильтры каждой — в
+ *                       ящике, «Порівняти» и таблица долей;
+ *   графік            — те же доли полосами, критерии выборок снимаются на
+ *                       один запуск, пресет — к выбранным выборкам;
+ *   фільтри вибірки   — пресеты фильтров.
  *
  * Отсюда правило: показатели у колонок одной модели одинаковые (их задаёт
- * f17 один раз), различаются колонки только выборкой. Сервер позволяет и
- * разные показатели в разных колонках — такую модель экран читает
- * поколоночно (каждая колонка печатает свои строки), а форма f17 при
- * сохранении приводит все колонки к структуре первой (columnsFromDraft).
+ * редактор один раз), различаются колонки только выборкой. Сервер позволяет
+ * и разные показатели в разных колонках — такую модель экран читает
+ * построчно по объединению (reportRows), а редактор при сохранении приводит
+ * все колонки к структуре первой (columnsFromDraft).
  */
 
 /* ─────────── адреса ─────────── */
@@ -51,29 +53,34 @@ import { pageOffset } from "../../ui/paging";
  * есть ни одной двери.
  */
 export const STATS_LIST = "/statistics";
-/** f17: форма новой модели — «+» перечня f08 */
+/** Редактор новой модели */
 export const STATS_NEW = "/statistics/new";
-/** f24: вид «діаграма» — первая иконка строки заголовка f08 */
+/** Графік: те же доли полосами */
 export const STATS_CHART = "/statistics/chart";
-/** f23: «Створення фільтра» и «Пресети фільтрів» — пункт «Керувати фільтрами» шестерёнки f24 */
+/** Пресеты фильтров: перечень и новый пресет */
 export const STATS_FILTERS = "/statistics/filters";
 
-/** Модель: f09/f18/f29 */
+/** Модель: выборки рядом и «Порівняти» */
 export function statHref(id: string): string {
   return `/statistics/${id}`;
 }
 
-/** Та же форма f17 над сохранённой моделью: название, описание, структура, удаление */
+/** Редактор сохранённой модели: название, описание, структура, удаление */
 export function statEditHref(id: string): string {
   return `/statistics/${id}/edit`;
 }
 
-/** Пресет в форме f23 */
+/** Пресет фильтров */
 export function presetHref(id: string): string {
   return `/statistics/filters/${id}`;
 }
 
-/* ─────────── адрес экранов ─────────── */
+/** Графік, открытый на модели */
+export function chartHref(id: string): string {
+  return `/statistics/chart?model=${encodeURIComponent(id)}`;
+}
+
+/* ─────────── адрес перечня ─────────── */
 
 /*
  * Пределы перечня моделей у сервера (statModelListQuery): поиск ≤ 200,
@@ -84,7 +91,7 @@ export function presetHref(id: string): string {
  */
 const LIST_SEARCH_MAX = 200;
 
-/** Параметры GET /api/stat-models для перечня f08 */
+/** Параметры GET /api/stat-models для перечня моделей */
 export function statListQuery(q: string, page: number, per: number): { q: string; limit: number; offset: number } {
   return {
     q: q.trim().slice(0, LIST_SEARCH_MAX),
@@ -94,7 +101,7 @@ export function statListQuery(q: string, page: number, per: number): { q: string
 }
 
 /**
- * Какая модель выбрана на экране «Статистика» (f24).
+ * Какая модель выбрана на графике.
  *
  * Перечень приходит целиком (без ?limit сервер отдаёт все модели, что
  * человеку видны), поэтому модель из адреса, которой в нём нет, — чужая,
@@ -117,22 +124,14 @@ export function pickedModel(raw: string | null, list: readonly { id: string }[] 
 /* ─────────── строки-критерии ─────────── */
 
 /**
- * Строка формы фильтра. Пять — с кадров (f09, f23, f29) и в их порядке;
- * шестая, «Група пацієнтів», кадром не нарисована, но сервер её умеет, и
- * живёт она за «+» формы пресета (f23) — см. Filters.tsx.
- *
- * «age» — одна строка «Вік від — Вік до», а не две: на кадре это один ряд с
- * одним «−», и убрать одну границу без второй «−» не умеет.
+ * Строка-критерий выборки. «age» — одна строка «Вік від — Вік до», «date» —
+ * один период «від — до»: убрать одну границу без второй умеет само поле.
  */
 export type Criterion = "date" | "patient" | "age" | "sex" | "locality" | "group";
 
-export const FRAME_CRITERIA: readonly Criterion[] = ["date", "patient", "age", "sex", "locality"];
-export const ALL_CRITERIA: readonly Criterion[] = [...FRAME_CRITERIA, "group"];
+export const ALL_CRITERIA: readonly Criterion[] = ["date", "patient", "age", "sex", "locality", "group"];
 
-/**
- * Подпись критерия в чипе f24 и в меню «+» f23. «Віковий діапазон» — слово
- * чипа f24; в форме та же строка подписана двумя полями «Вік від / Вік до».
- */
+/** Подпись критерия в чипе выборки и в «Додати умову» пресета */
 export const CRITERION_LABEL: Record<Criterion, UiKey> = {
   date: "st.date",
   patient: "st.patient",
@@ -170,13 +169,13 @@ export function cleanFilters(f: SampleFilters | null | undefined): SampleFilters
   return out as SampleFilters;
 }
 
-/** Какие строки-критерии заданы — в порядке кадра */
+/** Какие строки-критерии заданы — в порядке формы */
 export function criteriaOf(f: SampleFilters | null | undefined): Criterion[] {
   const clean = cleanFilters(f);
   return ALL_CRITERIA.filter((c) => CRITERION_FIELDS[c].some((k) => filled(clean[k])));
 }
 
-/** Фильтры без указанных строк — «−» у строки формы и выключенный чип f24 */
+/** Фильтры без указанных строк — «прибрати умову» пресета и выключенный чип графика */
 export function withoutCriteria(f: SampleFilters | null | undefined, off: readonly Criterion[]): SampleFilters {
   const out = { ...cleanFilters(f) };
   for (const c of off) for (const k of CRITERION_FIELDS[c]) delete out[k];
@@ -190,8 +189,8 @@ export function withoutCriteria(f: SampleFilters | null | undefined, off: readon
  * 25» и период с концом раньше начала сервер отвергает (sampleFiltersSchema),
  * но отказ приходил после нажатия и строкой схемы, а не словами экрана.
  * Теперь поле краснеет сразу, а «Зберегти» и «Порівняти» называют причину
- * тостом и не уходят на сервер. Ключи — те же, что у «Добору людей»: одна и
- * та же ошибка набора не должна звучать в двух разделах по-разному.
+ * и не уходят на сервер. Ключи — те же, что у «Добору людей»: одна и та же
+ * ошибка набора не должна звучать в двух разделах по-разному.
  */
 export function filterErrors(f: SampleFilters | null | undefined): UiKey[] {
   const c = cleanFilters(f);
@@ -202,11 +201,11 @@ export function filterErrors(f: SampleFilters | null | undefined): UiKey[] {
 }
 
 /**
- * Почему пресет фильтра (f23) нельзя сохранить — ключ словаря или null.
+ * Почему пресет фильтра нельзя сохранить — ключ словаря или null.
  *
  * Сначала название: без него пресет не найти в списке, а сервер отказал
  * бы строкой схемы. Затем перевёрнутый диапазон — теми же словами, что
- * красное поле. Ответ — одна причина: всплывашка говорит одну вещь, а
+ * красное поле. Ответ — одна причина: сообщение говорит одну вещь, а
  * остальные видны у полей.
  */
 export function presetProblem(title: string, f: SampleFilters | null | undefined): UiKey | null {
@@ -214,19 +213,23 @@ export function presetProblem(title: string, f: SampleFilters | null | undefined
   return filterErrors(f)[0] ?? null;
 }
 
+/** «2026-09-01» → «01.09.2026»: дата выборки — день, без времени и пояса */
+export function dayText(iso: string): string {
+  const [y, m, d] = iso.split("-");
+  return y && m && d ? `${d}.${m}.${y}` : iso;
+}
+
 /**
- * Значение строки-критерия словами — для чипа выборки на экране
- * «Статистика»: «Стать: Чоловіки», «Віковий діапазон: 25–45».
+ * Значение строки-критерия словами — для чипа выборки: «Стать: Чоловіки»,
+ * «Віковий діапазон: 25–45».
  *
- * Решение заказчика 2026-09-26: адекватные фильтры. На кадре чип несёт
- * только имя критерия, и по чипу «Стать» нельзя было понять, какая именно
- * стать отобрана, не открывая пресет. Группа и человек значением не
- * печатаются — по тому же правилу, что в легенде (describeSample): чип
- * читают через плечо.
+ * Решение заказчика 2026-09-26: адекватные фильтры. По имени критерия нельзя
+ * было понять, кого именно отбирает выборка, не открывая пресет. Группа и
+ * человек значением не печатаются: чип читают через плечо, а «кто в
+ * выборке» видно в её фильтрах.
  */
 export function criterionValue(c: Criterion, f: SampleFilters | null | undefined, t: (key: UiKey) => string): string {
   const x = cleanFilters(f);
-  const day = (iso: string) => iso.split("-").reverse().join(".");
   switch (c) {
     case "sex":
       return x.sex ? t(x.sex === "male" ? "nm.menCap" : "nm.womenCap") : "";
@@ -238,9 +241,9 @@ export function criterionValue(c: Criterion, f: SampleFilters | null | undefined
     case "locality":
       return x.locality ?? "";
     case "date":
-      if (x.from && x.to) return `${day(x.from)} – ${day(x.to)}`;
-      if (x.from) return `${t("coh.fromWord")} ${day(x.from)}`;
-      if (x.to) return `${t("coh.ageTo")} ${day(x.to)}`;
+      if (x.from && x.to) return `${dayText(x.from)} – ${dayText(x.to)}`;
+      if (x.from) return `${t("coh.fromWord")} ${dayText(x.from)}`;
+      if (x.to) return `${t("coh.ageTo")} ${dayText(x.to)}`;
       return "";
     case "group":
     case "patient":
@@ -262,7 +265,7 @@ export function ageFromInput(raw: string): number | null {
 }
 
 /**
- * Правка фильтров одной выборки модели (f09/f29).
+ * Правка фильтров одной выборки модели.
  *
  * Выборка с пресетом, тронутая правкой, становится выборкой со своими
  * фильтрами — начиная с критериев пресета, а не с пустого места: колонка на
@@ -299,6 +302,49 @@ export function sameFilters(a: SampleFilters | null | undefined, b: SampleFilter
   return true;
 }
 
+/* ─────────── черновик выборки (ящик фильтров) ─────────── */
+
+/**
+ * Что правится в ящике выборки: подпись, пресет либо свои фильтры.
+ *
+ * Пока выбран пресет, поля показывают его критерии; правка любого поля
+ * переводит выборку на свои фильтры — начиная с критериев пресета (см.
+ * withColumnFilters). Сам пресет отсюда не правится.
+ */
+export interface SampleDraft {
+  title: string;
+  presetId: string | null;
+  filters: SampleFilters;
+}
+
+export function sampleDraft(c: StatModelColumn, presetCriteria: (id: string) => SampleFilters | undefined): SampleDraft {
+  return {
+    title: c.title ?? "",
+    presetId: c.presetId,
+    filters: c.presetId ? cleanFilters(presetCriteria(c.presetId)) : cleanFilters(c.filters),
+  };
+}
+
+/** Правка поля черновика: выборка с пресетом становится своей, с критериями пресета */
+export function editSampleDraft(d: SampleDraft, patch: Partial<SampleFilters>): SampleDraft {
+  return { ...d, presetId: null, filters: patchFilters(d.filters, patch) };
+}
+
+/** Колонка с черновиком ящика: показатели остаются, меняется только «кого» */
+export function withSampleDraft(c: StatModelColumn, d: SampleDraft): StatModelColumn {
+  const title = d.title.trim() || null;
+  return d.presetId
+    ? { ...c, title, presetId: d.presetId, filters: null }
+    : { ...c, title, presetId: null, filters: cleanFilters(d.filters) };
+}
+
+/** Изменил ли черновик колонку — от этого зависит «Застосувати» и пометка черновика */
+export function sampleDraftChanged(c: StatModelColumn, d: SampleDraft): boolean {
+  /* пустая подпись и подпись из пробелов — то же, что её отсутствие */
+  const now = { ...c, title: c.title?.trim() || null };
+  return JSON.stringify(columnInput(now)) !== JSON.stringify(columnInput(withSampleDraft(c, d)));
+}
+
 /* ─────────── колонки: рабочая копия экрана ↔ сервер ─────────── */
 
 /** Колонка в том виде, в каком её принимает сервер: пресет либо свои фильтры */
@@ -320,22 +366,57 @@ export function columnsChanged(saved: readonly StatModelColumn[], work: readonly
   return saved.some((s, i) => JSON.stringify(columnInput(s)) !== JSON.stringify(columnInput(work[i]!)));
 }
 
+/** Потолок колонок — тот же, что у схемы сервера (statModelInputSchema, max 8) */
+export const MAX_SAMPLES = 8;
+
 /**
- * Новая выборка для сравнения — «+» строки заголовка модели (f09 → f29).
+ * Новая выборка для сравнения — «Додати вибірку».
  *
- * Те же тест и показатели, что у последней колонки, а фильтры пустые: на
- * f29 вторая колонка повторяет строки первой один в один, а выборку человек
- * задаёт сам. Копировать фильтры значило бы получить две одинаковые колонки
- * — и первое, что с ними сделают, это сотрут скопированное.
+ * Те же тест и показатели, что у последней колонки, а фильтры пустые:
+ * строки отчёта у выборок одной модели одинаковые, а выборку человек задаёт
+ * сам. Копировать фильтры значило бы получить две одинаковые колонки — и
+ * первое, что с ними сделают, это сотрут скопированное.
  */
 export function addSample(columns: readonly StatModelColumn[]): StatModelColumn[] {
   const last = columns[columns.length - 1];
-  if (!last) return [...columns];
+  if (!last || columns.length >= MAX_SAMPLES) return [...columns];
   return [...columns, { ...last, title: null, presetId: null, filters: {} }];
 }
 
-/** Потолок колонок — тот же, что у схемы сервера (statModelInputSchema, max 8) */
-export const MAX_SAMPLES = 8;
+/**
+ * «Дублювати вибірку»: та же выборка рядом, без подписи — чтобы её сузили.
+ * Подпись не копируется: две колонки с одним именем читались бы как одна.
+ */
+export function duplicateSample(columns: readonly StatModelColumn[], index: number): StatModelColumn[] {
+  const src = columns[index];
+  if (!src || columns.length >= MAX_SAMPLES) return [...columns];
+  const out = [...columns];
+  out.splice(index + 1, 0, { ...src, title: null });
+  return out;
+}
+
+/** «Прибрати вибірку»: последняя не убирается — модель без выборки ничего не считает */
+export function removeSample(columns: readonly StatModelColumn[], index: number): StatModelColumn[] {
+  if (columns.length <= 1) return [...columns];
+  return columns.filter((_, i) => i !== index);
+}
+
+/**
+ * Пресет к выбранным выборкам — окно графика «До яких вибірок застосувати
+ * пресет». `extra` — ещё одна выборка с этим пресетом (та же структура,
+ * что у последней), пока есть место до восьми.
+ */
+export function applyPreset(
+  columns: readonly StatModelColumn[],
+  presetId: string,
+  targets: readonly number[],
+  extra = false,
+): StatModelColumn[] {
+  const out = columns.map((c, i) => (targets.includes(i) ? { ...c, presetId, filters: null } : c));
+  const last = columns[columns.length - 1];
+  if (extra && last && out.length < MAX_SAMPLES) out.push({ ...last, title: null, presetId, filters: null });
+  return out;
+}
 
 /* ─────────── печать ячеек ─────────── */
 
@@ -343,7 +424,7 @@ export const MAX_SAMPLES = 8;
  * Прочерк скрытой ячейки — U+2014, из подмножества Manrope (fonts.css,
  * U+2000–206F). Один знак на весь раздел: сервер прячет не только малые
  * числа, но и большие, если вместе с соседями они называют людей, — поэтому
- * «менше 5» здесь было бы неправдой, а прочерк не утверждает ничего.
+ * прочерк не утверждает ничего, кроме «скрыто».
  */
 export const HIDDEN_MARK = "—";
 
@@ -363,10 +444,19 @@ export function cellText(cell: StatCell | null | undefined): string {
 }
 
 /**
- * Разность долей двух колонок — плашка правой колонки f29.
+ * Доля для полосы графика: число или null за скрытой ячейкой. Та же
+ * граница, что у cellText: число скрытой ячейки сюда не доезжает.
+ */
+export function cellShare(cell: StatCell | null | undefined): number | null {
+  if (!cell || cell.suppressed) return null;
+  return cell.percent;
+}
+
+/**
+ * Разность долей ячейки и опорной выборки — «+11 в. п.» в таблице модели.
  *
  * Печатается ТОЛЬКО когда обе ячейки показаны. Если скрыта хоть одна,
- * плашка пустая: разность показанной и скрытой — это скрытое, выписанное
+ * разности нет: разность показанной и скрытой — это скрытое, выписанное
  * через показанное, то есть ровно та утечка, ради которой сервер решает
  * систему (lib/privacy.ts). Разность двух показанных при этом ничего нового
  * не выдаёт — читатель посчитал бы её в уме.
@@ -381,39 +471,205 @@ export function diffText(a: StatCell | null | undefined, b: StatCell | null | un
   return d > 0 ? `+${d}` : `−${Math.abs(d)}`;
 }
 
-/* ─────────── строки отчёта колонки ─────────── */
+/* ─────────── строки отчёта ─────────── */
 
-/** Показатель колонки, опознанный в ответе расчёта по идентификатору */
-export interface IndicatorCell {
-  key: string;
-  label: string;
-  cell: StatCell;
+/**
+ * Строка таблицы модели и группы полос графика.
+ *
+ * Ключ — идентификатор полосы, варианта, шкалы или вопроса: по нему ячейки
+ * РАЗНЫХ колонок встают в одну строку. Сопоставление по месту в списке
+ * разъехалось бы на первой модели, где у колонок разные показатели.
+ */
+export type ReportRow =
+  | { kind: "scale"; key: string; scaleId: string; code: string; title: string }
+  | {
+      kind: "band";
+      key: string;
+      scaleId: string;
+      bandId: string;
+      label: string;
+      severity: Severity | null;
+      /** «10–14» — границы полосы в баллах, если версия методики известна */
+      range: string | null;
+      highRisk: boolean;
+    }
+  | {
+      kind: "question";
+      key: string;
+      questionId: string;
+      title: string;
+      type: QuestionType | null;
+      /** Номер пункта в версии методики (с единицы); null — версия неизвестна */
+      number: number | null;
+    }
+  | { kind: "option"; key: string; questionId: string; optionId: string; text: string; highRisk: boolean }
+  /** «Решта»: все, кто не попал ни в один показанный вариант; `others` — непоказанные варианты словами */
+  | { kind: "rest"; key: string; of: "scale" | "question"; id: string; others: string }
+  /** «Респонденти з ВШР» — когда в модели есть хоть одна пометка */
+  | { kind: "risk"; key: string };
+
+/**
+ * Строки отчёта в порядке экрана: по шкале — заголовок, полосы, «Решта»;
+ * по вопросу — заголовок, варианты, «Решта»; в конце — «ВШР».
+ *
+ * Подписи — из расчёта, когда он есть (он присылает их на языке запроса),
+ * иначе из версии методики, записанной в колонке. Колонок может быть
+ * несколько с разной структурой — строки идут объединением, в порядке
+ * первой колонки.
+ */
+export function reportRows(
+  columns: readonly StatModelColumn[],
+  surveyOf: (c: StatModelColumn) => SurveyFull | null | undefined,
+  result?: readonly (StatRunColumn | undefined)[],
+): ReportRow[] {
+  const out: ReportRow[] = [];
+  const seen = new Set<string>();
+  const push = (r: ReportRow) => {
+    if (seen.has(r.key)) return;
+    seen.add(r.key);
+    out.push(r);
+  };
+  let risk = false;
+  columns.forEach((col, ci) => {
+    const survey = surveyOf(col) ?? null;
+    const res = result?.[ci];
+    /* полосы — группами по шкале, в порядке первой встречи, как их считает сервер */
+    const scaleOrder: string[] = [];
+    for (const b of col.bands) if (!scaleOrder.includes(b.scaleId)) scaleOrder.push(b.scaleId);
+    for (const scaleId of scaleOrder) {
+      const scale = survey?.scales.find((s) => s.id === scaleId);
+      const gotScale = res?.scales.find((s) => s.scaleId === scaleId);
+      push({
+        kind: "scale",
+        key: `s:${scaleId}`,
+        scaleId,
+        code: gotScale?.scaleCode ?? scale?.code ?? "",
+        title: gotScale?.scaleTitle ?? scale?.title ?? "",
+      });
+      const picked = col.bands.filter((b) => b.scaleId === scaleId);
+      for (const b of picked) {
+        const band = scale?.bands.find((x) => x.id === b.bandId);
+        const got = gotScale?.bands.find((x) => x.bandId === b.bandId);
+        if (b.highRisk) risk = true;
+        push({
+          kind: "band",
+          key: `b:${b.bandId}`,
+          scaleId,
+          bandId: b.bandId,
+          label: got?.label ?? band?.label ?? "",
+          severity: got?.severity ?? band?.severity ?? null,
+          range: band ? `${band.minScore}–${band.maxScore}` : null,
+          highRisk: b.highRisk,
+        });
+      }
+      const ids = new Set(picked.map((b) => b.bandId));
+      push({
+        kind: "rest",
+        key: `rs:${scaleId}`,
+        of: "scale",
+        id: scaleId,
+        others: (scale?.bands ?? [])
+          .filter((x) => !ids.has(x.id))
+          .map((x) => x.label)
+          .join(", "),
+      });
+    }
+    for (const q of col.questions) {
+      const question = survey?.questions.find((x) => x.id === q.questionId);
+      const gotQ = res?.questions.find((x) => x.questionId === q.questionId);
+      push({
+        kind: "question",
+        key: `q:${q.questionId}`,
+        questionId: q.questionId,
+        title: gotQ?.title ?? question?.title ?? "",
+        type: gotQ?.type ?? question?.type ?? null,
+        number: question ? survey!.questions.indexOf(question) + 1 : null,
+      });
+      for (const o of q.options) {
+        const got = gotQ?.options.find((x) => x.optionId === o.optionId);
+        if (o.highRisk) risk = true;
+        push({
+          kind: "option",
+          key: `o:${q.questionId}:${o.optionId}`,
+          questionId: q.questionId,
+          optionId: o.optionId,
+          text: got?.text ?? question?.options.find((x) => x.id === o.optionId)?.text ?? "",
+          highRisk: o.highRisk,
+        });
+      }
+      const ids = new Set(q.options.map((o) => o.optionId));
+      push({
+        kind: "rest",
+        key: `rq:${q.questionId}`,
+        of: "question",
+        id: q.questionId,
+        others: (question?.options ?? [])
+          .filter((x) => x.kind === "option" && !ids.has(x.id))
+          .map((x) => x.text)
+          .join(", "),
+      });
+    }
+  });
+  if (risk) push({ kind: "risk", key: "risk" });
+  return out;
+}
+
+/** Ячейка строки отчёта в расчёте колонки; null — у колонки такой строки нет или расчёта не было */
+export function cellAt(row: ReportRow, col: StatRunColumn | undefined): StatCell | null {
+  if (!col) return null;
+  switch (row.kind) {
+    case "band":
+      return col.scales.find((s) => s.scaleId === row.scaleId)?.bands.find((b) => b.bandId === row.bandId)?.cell ?? null;
+    case "option":
+      return (
+        col.questions.find((q) => q.questionId === row.questionId)?.options.find((o) => o.optionId === row.optionId)
+          ?.cell ?? null
+      );
+    case "rest":
+      return row.of === "scale"
+        ? (col.scales.find((s) => s.scaleId === row.id)?.rest ?? null)
+        : (col.questions.find((q) => q.questionId === row.id)?.rest ?? null);
+    case "risk":
+      return col.highRisk;
+    default:
+      return null;
+  }
+}
+
+/** Строки с числами: всё, кроме заголовков шкал и вопросов */
+export function isFigureRow(row: ReportRow): boolean {
+  return row.kind !== "scale" && row.kind !== "question";
 }
 
 /**
- * Показатели колонки в порядке экрана: полосы шкал, затем варианты ответов.
+ * Сколько чисел печатает одна колонка: основание, по шкале — полосы и
+ * «Решта», по вопросу — варианты и «Решта», «ВШР», если что-то помечено.
  *
- * Ключ — идентификатор полосы или варианта: по нему диаграмма f24 ставит
- * рядом столбики РАЗНЫХ колонок одного показателя. Сопоставление по месту в
- * списке разъехалось бы на первой модели, где у колонок разные показатели.
+ * Тот же счёт, что у сервера (lib/statModels.ts, MAX_FIGURES_PER_COLUMN):
+ * больше шестнадцати ненулевых чисел колонка не печатает, и редактор
+ * показывает это до сохранения, а не прочерками после расчёта.
  */
-export function indicatorsOf(col: StatRunColumn): IndicatorCell[] {
-  return [
-    ...col.scales.flatMap((s) => s.bands.map((b) => ({ key: `b:${b.bandId}`, label: b.label, cell: b.cell }))),
-    ...col.questions.flatMap((q) => q.options.map((o) => ({ key: `o:${o.optionId}`, label: o.text, cell: o.cell }))),
-  ];
+export const MAX_FIGURES = 16;
+
+export function figureCount(
+  bands: readonly { scaleId: string; highRisk: boolean }[],
+  questions: readonly { options: readonly { highRisk: boolean }[] }[],
+): number {
+  const scales = new Set(bands.map((b) => b.scaleId)).size;
+  const risk = bands.some((b) => b.highRisk) || questions.some((q) => q.options.some((o) => o.highRisk));
+  return 1 + bands.length + scales + questions.reduce((n, q) => n + q.options.length + 1, 0) + (risk ? 1 : 0);
 }
 
-/* ─────────── черновик структуры (f17) ─────────── */
+/* ─────────── черновик структуры (редактор) ─────────── */
 
 let seq = 0;
 const nextKey = (p: string) => `${p}${++seq}`;
 
 export interface BandRow {
   key: string;
-  /** «scaleId:bandId» — полоса однозначна только вместе со шкалой; "" — пустая строка */
+  /** «scaleId:bandId» — полоса однозначна только вместе со шкалой */
   value: string;
-  /** Пометка «ВШР» у полосы: на f17 её не рисуют, но сохранённая модель её несёт — не теряем */
+  /** Пометка «ВШР» у полосы: переключателя у полосы нет, но сохранённая модель её несёт — не теряем */
   highRisk: boolean;
 }
 
@@ -433,6 +689,13 @@ export interface StructureDraft {
   title: string;
   description: string;
   surveyId: string;
+  /**
+   * Версия методики; null — действующая на момент сохранения (сервер
+   * запишет её сам). Полосы и варианты принадлежат версии: смена версии,
+   * как и теста, сбрасывает строки.
+   */
+  versionId: string | null;
+  /** Выбранные полосы — в порядке шкал методики */
   bands: BandRow[];
   questions: QuestionBlock[];
 }
@@ -445,33 +708,9 @@ export const newQuestionBlock = (questionId = "", options: OptionRow[] = []): Qu
   options,
 });
 
-/**
- * Пустая форма — ровно кадр f17: блок теста с двумя строками «Варіант
- * результату» и один блок вопроса с двумя строками ответа.
- */
+/** Пустой редактор: ни теста, ни строк — «Додати питання» добавляет вопрос, когда тест выбран */
 export function emptyStructure(): StructureDraft {
-  return {
-    title: "",
-    description: "",
-    surveyId: "",
-    bands: [newBandRow(), newBandRow()],
-    questions: [newQuestionBlock("", [newOptionRow(), newOptionRow()])],
-  };
-}
-
-/**
- * Строк в группе на экране — выбранные плюс одна пустая, но не меньше двух.
- *
- * Пустая строка в конце — это и есть «добавить ещё»: выбрал в ней вариант —
- * появилась следующая. Кнопки «додати варіант» на кадре нет, а две строки
- * на кадре — это минимум, с которого форма начинается.
- */
-export function withSpare<T>(rows: readonly T[], isEmpty: (r: T) => boolean, make: () => T, min = 2): T[] {
-  const out = rows.filter((r) => !isEmpty(r));
-  /* пустая строка берётся прежняя, а не новая: у неё тот же ключ, и фокус с неё не слетает */
-  out.push([...rows].reverse().find(isEmpty) ?? make());
-  while (out.length < min) out.push(make());
-  return out;
+  return { title: "", description: "", surveyId: "", versionId: null, bands: [], questions: [] };
 }
 
 /** Структура сохранённой модели — по первой колонке */
@@ -482,6 +721,7 @@ export function structureFromModel(model: StatModel): StructureDraft {
     title: model.title,
     description: model.description ?? "",
     surveyId: first.surveyId,
+    versionId: first.versionId,
     bands: first.bands.map((b) => newBandRow(`${b.scaleId}:${b.bandId}`, b.highRisk)),
     questions: first.questions.map((q) =>
       newQuestionBlock(
@@ -492,8 +732,52 @@ export function structureFromModel(model: StatModel): StructureDraft {
   };
 }
 
+/**
+ * Отметить или снять полосу. Отмеченные стоят в порядке шкал методики
+ * (`order` — «scaleId:bandId» всех полос): номер «рядок звіту N» тогда
+ * совпадает с местом строки в отчёте, а не с порядком нажатий.
+ */
+export function toggleBand(bands: readonly BandRow[], value: string, order: readonly string[]): BandRow[] {
+  if (bands.some((b) => b.value === value)) return bands.filter((b) => b.value !== value);
+  return sortBy([...bands, newBandRow(value)], (b) => b.value, order);
+}
+
+/** «Усі» / «Жодної» по шкале: полосы других шкал остаются, пометки отмеченных — тоже */
+export function setScaleBands(
+  bands: readonly BandRow[],
+  scaleValues: readonly string[],
+  on: boolean,
+  order: readonly string[],
+): BandRow[] {
+  const rest = bands.filter((b) => !scaleValues.includes(b.value));
+  if (!on) return rest;
+  const kept = scaleValues.map((v) => bands.find((b) => b.value === v) ?? newBandRow(v));
+  return sortBy([...rest, ...kept], (b) => b.value, order);
+}
+
+/** Отметить или снять вариант ответа — в порядке вариантов вопроса */
+export function toggleOption(block: QuestionBlock, optionId: string, order: readonly string[]): QuestionBlock {
+  if (block.options.some((o) => o.optionId === optionId)) {
+    return { ...block, options: block.options.filter((o) => o.optionId !== optionId) };
+  }
+  return { ...block, options: sortBy([...block.options, newOptionRow(optionId)], (o) => o.optionId, order) };
+}
+
+/** Пометка «ВШР» у отмеченного варианта */
+export function setOptionRisk(block: QuestionBlock, optionId: string, highRisk: boolean): QuestionBlock {
+  return { ...block, options: block.options.map((o) => (o.optionId === optionId ? { ...o, highRisk } : o)) };
+}
+
+function sortBy<T>(rows: T[], keyOf: (r: T) => string, order: readonly string[]): T[] {
+  const at = (r: T) => {
+    const i = order.indexOf(keyOf(r));
+    return i < 0 ? Number.MAX_SAFE_INTEGER : i;
+  };
+  return rows.sort((a, b) => at(a) - at(b));
+}
+
 /** Показатели черновика в виде сервера: пустые строки и пустые блоки не едут */
-function indicatorsFromDraft(draft: StructureDraft) {
+export function indicatorsFromDraft(draft: StructureDraft) {
   const seen = new Set<string>();
   const bands = draft.bands
     .filter((b) => b.value && !seen.has(b.value) && seen.add(b.value))
@@ -517,14 +801,14 @@ function indicatorsFromDraft(draft: StructureDraft) {
 }
 
 /**
- * Колонки для сервера из черновика f17.
+ * Колонки для сервера из черновика редактора.
  *
- * Новая модель — одна колонка без фильтров: выборку задают на экране модели
- * (f09). Правка — структура ложится на КАЖДУЮ колонку, а их выборки,
- * пресеты и подписи остаются: форма правит «что считаем», а не «по кому».
- * Версия не передаётся, если сменился тест: сервер возьмёт действующую и
- * запишет её (resolveColumns); при том же тесте версия колонки сохраняется,
- * иначе идентификаторы полос разошлись бы с версией.
+ * Новая модель — одна колонка без фильтров: выборку задают на экране
+ * модели. Правка — структура ложится на КАЖДУЮ колонку, а их выборки,
+ * пресеты и подписи остаются: редактор правит «что считаем», а не «по
+ * кому». Версия — выбранная в редакторе; не выбрана — у колонки того же
+ * теста остаётся её версия (идентификаторы полос принадлежат ей), у нового
+ * теста её берёт сервер (действующую) и записывает (resolveColumns).
  */
 export function columnsFromDraft(
   draft: StructureDraft,
@@ -532,14 +816,23 @@ export function columnsFromDraft(
 ): StatModelColumnInput[] {
   const indicators = indicatorsFromDraft(draft);
   if (!existing?.length) {
-    return [{ title: null, presetId: null, filters: {}, surveyId: draft.surveyId, ...indicators }];
+    return [
+      {
+        title: null,
+        presetId: null,
+        filters: {},
+        surveyId: draft.surveyId,
+        ...(draft.versionId ? { versionId: draft.versionId } : {}),
+        ...indicators,
+      },
+    ];
   }
   return existing.map((c) => ({
     title: c.title,
     presetId: c.presetId,
     filters: c.presetId ? null : cleanFilters(c.filters),
     surveyId: draft.surveyId,
-    versionId: c.surveyId === draft.surveyId ? c.versionId : null,
+    versionId: draft.versionId ?? (c.surveyId === draft.surveyId ? c.versionId : null),
     ...indicators,
   }));
 }
@@ -552,27 +845,4 @@ export function validateStructure(draft: StructureDraft): UiKey[] {
   const { bands, questions } = indicatorsFromDraft(draft);
   if (draft.surveyId && !bands.length && !questions.length) errs.push("st.errIndicators");
   return errs;
-}
-
-/* ─────────── подпись выборки (легенда f24) ─────────── */
-
-/**
- * Выборка словами — строка легенды f24 («Group 1: Males, age 25-30, 30
- * users»): пол, возраст, город, период, группа, человек — через запятую, в
- * порядке кадра. Имена группы и человека сюда не едут: легенду читают
- * через плечо, а «кто в выборке» и так видно в её фильтрах на экране модели.
- */
-export function describeSample(f: SampleFilters | null | undefined, t: (key: UiKey) => string): string {
-  const c = cleanFilters(f);
-  const parts: string[] = [];
-  if (c.sex) parts.push(t(c.sex === "male" ? "nm.menCap" : "nm.womenCap"));
-  if (c.ageMin != null || c.ageMax != null) parts.push(`${t("st.ageWord")} ${c.ageMin ?? ""}–${c.ageMax ?? ""}`);
-  if (c.locality) parts.push(c.locality);
-  if (c.from || c.to) {
-    const day = (iso: string) => iso.split("-").reverse().join(".");
-    parts.push(`${c.from ? day(c.from) : ""} – ${c.to ? day(c.to) : ""}`.trim());
-  }
-  if (c.patientGroupId) parts.push(t("st.group"));
-  if (c.patientId) parts.push(t("st.patient"));
-  return parts.length ? parts.join(", ") : t("st.everyone");
 }

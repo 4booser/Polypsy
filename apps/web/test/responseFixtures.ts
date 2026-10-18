@@ -254,7 +254,7 @@ export const ANSWERS: ResponseDetailAnswer[] = [
       { id: "q1c", text: "c", riskFlag: true, riskSeverity: "severe", score: 3 },
     ],
   }),
-  // обратный ключ: выбран «3» → вклад 0 + 3 − 3 = 0, в перечень не попадает
+  // обратный ключ: выбран «3» → вклад 0 + 3 − 3 = 0, в перечне с пустой полосой
   answer({ questionId: "q2", position: 2, optionIds: ["q2b"] }),
   answer({ questionId: "q3", position: 3, type: "yesno", optionIds: ["q3y"] }),
   answer({ questionId: "q4", position: 4, type: "matrix", matrix: { r1: "m1", r2: "m2" } }),

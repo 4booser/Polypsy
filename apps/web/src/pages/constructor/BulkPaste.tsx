@@ -1,9 +1,11 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { UI, type ContentLang, type UiKey } from "@quizzy/shared";
 import { newUid, type DraftQuestion } from "./model";
+import { Labeled } from "./fields";
+import { CnIc } from "./icons";
 import { useLang } from "../../lang";
-import { Grid, Panel } from "../../ui/layout";
-import { Button, Field, Select, Textarea } from "../../ui/primitives";
+import { Drawer, DrawerSection } from "../../ui";
+import { Button, ErrorText, Field, Segmented, Textarea } from "../../ui/primitives";
 
 /**
  * Массовая вставка пунктов из текста пособия.
@@ -64,95 +66,164 @@ export function numberingProblems(items: ParsedItem[], ut?: (key: UiKey) => stri
   return problems.slice(0, 8);
 }
 
+/** Как разобрать вставленное: язык текста и вид пунктов */
+export interface PasteKind {
+  lang: ContentLang;
+  type: "yesno" | "single";
+}
+
+/** Пункты из разобранного текста — в выбранный язык; второй язык остаётся пустым и виден как незаполненный */
+export function pastedQuestions(items: ParsedItem[], kind: PasteKind): DraftQuestion[] {
+  return items.map((item) => ({
+    uid: newUid(),
+    type: kind.type,
+    title: kind.lang === "uk" ? { uk: item.text, ru: "" } : { uk: "", ru: item.text },
+    required: true,
+    options:
+      kind.type === "yesno"
+        ? [
+            { uid: newUid(), text: { uk: UI["bp.yes"].uk, ru: UI["bp.yes"].ru }, keyCode: "yes" },
+            { uid: newUid(), text: { uk: UI["bp.no"].uk, ru: UI["bp.no"].ru }, keyCode: "no" },
+          ]
+        : [],
+  }));
+}
+
+/**
+ * Ящик «Вставка пунктів з тексту» (макет methods-bulk-paste-dialog).
+ *
+ * Ящик, а не панель посреди формы: вставка — действие над методикой, и
+ * страница под ним остаётся на месте. Ящик не размонтируется при закрытии —
+ * вставленный текст живёт, пока не применён; закрытие с текстом говорит
+ * «чернетку збережено» и даёт вернуться.
+ *
+ * Два места зовут его по-разному: старт новой методики заводит из пунктов
+ * черновик, конструктор — дописывает их в конец списка. Поэтому подпись
+ * основной кнопки и строка над ней приходят снаружи.
+ */
 export function BulkPaste({
-  onAppend,
+  open,
   onClose,
+  onReturn,
+  onApply,
+  applyLabel,
+  sub,
+  note,
+  defaultLang = "uk",
 }: {
-  onAppend: (questions: DraftQuestion[]) => void;
+  open: boolean;
   onClose: () => void;
+  onReturn?: () => void;
+  onApply: (questions: DraftQuestion[], kind: PasteKind) => void;
+  applyLabel: string;
+  /** Подпись под заголовком: имя методики, в которую вставляют */
+  sub?: ReactNode;
+  /** Строка над кнопками: куда лягут пункты */
+  note?: ReactNode;
+  defaultLang?: ContentLang;
 }) {
   const { ut } = useLang();
   const [raw, setRaw] = useState("");
-  const [lang, setLang] = useState<ContentLang>("uk");
+  const [lang, setLang] = useState<ContentLang>(defaultLang);
   const [type, setType] = useState<"yesno" | "single">("yesno");
 
   const items = useMemo(() => parseBulk(raw), [raw]);
   const problems = useMemo(() => numberingProblems(items, ut), [items, ut]);
 
   function apply() {
-    const questions: DraftQuestion[] = items.map((item) => ({
-      uid: newUid(),
-      type,
-      // текст кладётся в выбранный язык; второй остаётся пустым и виден
-      // в форме как незаполненный — честнее, чем дублировать не тот язык
-      title: lang === "uk" ? { uk: item.text, ru: "" } : { uk: "", ru: item.text },
-      required: true,
-      options:
-        type === "yesno"
-          ? [
-              { uid: newUid(), text: { uk: UI["bp.yes"].uk, ru: UI["bp.yes"].ru }, keyCode: "yes" },
-              { uid: newUid(), text: { uk: UI["bp.no"].uk, ru: UI["bp.no"].ru }, keyCode: "no" },
-            ]
-          : [],
-    }));
-    onAppend(questions);
+    onApply(pastedQuestions(items, { lang, type }), { lang, type });
+    setRaw("");
     onClose();
   }
 
   return (
-    <Panel
+    <Drawer
+      open={open}
+      onClose={onClose}
+      onReturn={onReturn}
+      wide
       title={ut("bp.title")}
-      actions={<Button variant="quiet" onClick={onClose}>{ut("bp.close")}</Button>}
-      hint={ut("bp.hint")}
+      sub={sub}
+      icon={<CnIc.paste size={18} />}
+      dirty={raw.trim() !== ""}
+      draftName={ut("cst.pasteDraftName")}
+      note={note}
+      noteIcon={note ? <CnIc.folder size={14} /> : undefined}
+      footer={
+        <>
+          <Button variant="primary" icon={<CnIc.listPlus />} disabled={!items.length} onClick={apply}>
+            {applyLabel}
+          </Button>
+          <Button onClick={onClose}>{ut("bp.close")}</Button>
+        </>
+      }
     >
-      <Textarea
-        value={raw}
-        onChange={(e) => setRaw(e.target.value)}
-        rows={12}
-        placeholder={ut("bp.placeholderExample")}
-        spellCheck={false}
-      />
-      <Grid min={200} className="mt-3">
-        <Field label={ut("bp.lang")}>
-          <Select value={lang} onChange={(e) => setLang(e.target.value as never)}>
-            <option value="uk">{ut("bp.langUk")}</option>
-            <option value="ru">{ut("bp.langRu")}</option>
-          </Select>
+      <DrawerSection>
+        <p className="m-0 mb-3 text-small text-text-2">{ut("bp.hint")}</p>
+        <Field label={ut("cst.pasteText")}>
+          <Textarea
+            data-autofocus
+            value={raw}
+            onChange={(e) => setRaw(e.target.value)}
+            rows={12}
+            placeholder={ut("bp.placeholderExample")}
+            spellCheck={false}
+            className="leading-[21px]"
+          />
         </Field>
-        <Field label={ut("bp.type")}>
-          <Select value={type} onChange={(e) => setType(e.target.value as never)}>
-            <option value="yesno">{ut("bp.yesNo")}</option>
-            <option value="single">{ut("bp.single")}</option>
-          </Select>
-        </Field>
-      </Grid>
-
-      {items.length ? (
-        <p className="mt-3 text-caption text-muted">
-          {ut("bp.recognizedCount")}: <strong className="font-medium text-text">{items.length}</strong>
-          {items[0] ? <> · {ut("bp.firstItem")}: «{items[0].text.slice(0, 60)}»</> : null}
-          {items.length > 1 ? <> · {ut("bp.lastItem")}: «{items[items.length - 1]!.text.slice(0, 60)}»</> : null}
-        </p>
-      ) : null}
-      {problems.length ? (
-        /*
-         * Нумерация подозрительна — почти наверняка ошибка распознавания PDF.
-         * Это ровно случай «требует внимания» до сохранения, поэтому янтарь
-         * здесь уместен.
-         */
-        <div className="mt-3 rounded-md border border-[color-mix(in_srgb,var(--accent)_45%,transparent)] bg-accent-soft p-3 text-caption text-accent">
-          {ut("bp.numberingWarn")}
-          {problems.map((p) => (
-            <div key={p}>• {p}</div>
-          ))}
-        </div>
-      ) : null}
-
-      <div className="mt-3">
-        <Button variant="primary" disabled={!items.length} onClick={apply}>
-          {ut("bp.addPrefix")} {items.length} {ut("co.itemsGenitive")}
-        </Button>
-      </div>
-    </Panel>
+      </DrawerSection>
+      <DrawerSection title={ut("cst.howToRead")}>
+        <Labeled label={ut("bp.lang")}>
+          <Segmented
+            wide
+            label={ut("bp.lang")}
+            value={lang}
+            onChange={setLang}
+            items={[
+              { key: "uk", label: ut("bp.langUk") },
+              { key: "ru", label: ut("bp.langRu") },
+            ]}
+          />
+        </Labeled>
+        <Labeled label={ut("bp.type")} hint={type === "single" ? ut("cst.optionsLater") : undefined}>
+          <Segmented
+            wide
+            label={ut("bp.type")}
+            value={type}
+            onChange={setType}
+            items={[
+              { key: "yesno", label: ut("bp.yesNo") },
+              { key: "single", label: ut("cst.single") },
+            ]}
+          />
+        </Labeled>
+      </DrawerSection>
+      <DrawerSection title={ut("cst.result")}>
+        {items.length ? (
+          <div className="flex items-start gap-3 rounded-panel bg-sunk px-3.5 py-3">
+            <span className="text-[26px] font-extrabold leading-none tracking-[-0.02em] tabular-nums text-text">
+              {items.length}
+            </span>
+            <div className="min-w-0 text-small text-text-2">
+              <b className="block font-bold text-text">{ut("bp.recognizedCount")}</b>
+              {ut("bp.firstItem")} «{items[0]!.text.slice(0, 80)}»
+              {items.length > 1 ? (
+                <>
+                  , {ut("bp.lastItem")} «{items[items.length - 1]!.text.slice(0, 80)}»
+                </>
+              ) : null}
+            </div>
+          </div>
+        ) : (
+          <p className="m-0 text-small text-muted">{ut("cst.nothingYet")}</p>
+        )}
+        {problems.length ? (
+          /* нумерация подозрительна — почти наверняка ошибка распознавания PDF: внимание, не риск */
+          <ErrorText tone="warn" className="mt-3">
+            {ut("bp.numberingWarn")} {problems.join("; ")}.
+          </ErrorText>
+        ) : null}
+      </DrawerSection>
+    </Drawer>
   );
 }

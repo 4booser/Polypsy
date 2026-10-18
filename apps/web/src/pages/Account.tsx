@@ -1,7 +1,7 @@
 import { useMemo, useState, type ReactNode } from "react";
 import qrcode from "qrcode-generator";
 import type { MfaSetup, Sex } from "@quizzy/shared";
-import { ALWAYS_VISIBLE_RAIL } from "@quizzy/shared";
+import { ALWAYS_VISIBLE_RAIL, LANG_NAMES } from "@quizzy/shared";
 import { api } from "../api";
 import { useAuth } from "../auth";
 import { useLang } from "../lang";
@@ -136,9 +136,10 @@ export default function Account() {
                     value={lang}
                     onChange={setLang}
                     items={[
-                      { key: "uk", label: ut("lang.uk") },
-                      { key: "ru", label: ut("lang.ru") },
-                      { key: "en", label: ut("lang.en") },
+                      /* язык называется на себе самом (LANG_NAMES): иначе не найти свой, если интерфейс на чужом */
+                      { key: "uk", label: LANG_NAMES.uk.full },
+                      { key: "ru", label: LANG_NAMES.ru.full },
+                      { key: "en", label: LANG_NAMES.en.full },
                     ]}
                   />
                 </Setting>

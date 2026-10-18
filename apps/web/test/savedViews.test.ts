@@ -100,9 +100,10 @@ describe("пункты шестерёнки", () => {
     expect(new Set(keys).size).toBe(keys.length);
   });
 
-  test("список пациентов берёт виды в шестерёнку, а не строкой старого образца", () => {
+  test("реестр пациентов берёт виды меню «Подання», а не строкой старого образца", () => {
+    /* 2.0 (кадр patients-list): виды — пункты меню «Подання: …» в шапке, те же viewMenu */
     const screen = readFileSync(resolve(import.meta.dir, "../src/pages/Patients.tsx"), "utf8");
-    expect(screen).toContain("...views.entries");
+    expect(screen).toContain("views.entries.map(");
     expect(screen).not.toContain("<SavedViews");
   });
 });

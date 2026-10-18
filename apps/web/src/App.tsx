@@ -821,6 +821,8 @@ export default function App() {
           */}
           <Route path="/surveys/:id/responses/:rid/charts" element={<ResponseCharts />} />
           <Route path="/constructor" element={<Constructor />} />
+          {/* новая, ещё не сохранённая методика: /constructor — её старт (Start.tsx), здесь — правка */}
+          <Route path="/constructor/new" element={<Constructor />} />
           <Route path="/constructor/:id" element={<Constructor />} />
           <Route path="/surveys/:id/access" element={<Access />} />
           {/*

@@ -28,6 +28,7 @@ export function NavBar({
   right,
   children,
   below,
+  flush,
 }: {
   title?: string;
   /** Крупный заголовок вместо компактного — корневые экраны */
@@ -42,6 +43,11 @@ export function NavBar({
   children?: ReactNode;
   /** Последним на полосе, во всю её ширину: полоса «нет связи» */
   below?: ReactNode;
+  /**
+   * Без черты снизу: под шапкой экран продолжает полосу своим крупным
+   * заголовком (Hero экрана пациента), и черта легла бы посреди полосы.
+   */
+  flush?: boolean;
 }) {
   const c = useColors();
   const insets = useSafeAreaInsets();
@@ -57,7 +63,7 @@ export function NavBar({
   const inset = 8 + Math.max(sides.l, sides.r) + 6;
 
   return (
-    <View style={{ backgroundColor: c.band, paddingTop: insets.top, borderBottomWidth: 1, borderBottomColor: c.bcardline }}>
+    <View style={{ backgroundColor: c.band, paddingTop: insets.top, borderBottomWidth: flush ? 0 : 1, borderBottomColor: c.bcardline }}>
       {row ? (
         <View style={{ height: 44, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 8 }}>
           {title && !large ? (
