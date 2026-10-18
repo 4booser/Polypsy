@@ -72,12 +72,13 @@ describe("общее окно и окна одноразового секрет�
   test("временный пароль после сброса и после заведения, пароли импорта — окна секрета", () => {
     const users = src("pages/ops/Users.tsx");
     const tools = src("pages/ops/people2/UserTools.tsx");
-    for (const [text, line] of [
-      [users, '<Modal title={ut("ops.users.tempPassword")} onClose={done} secret>'],
-      [users, '<Modal title={ut("adm.newUser")} onClose={onDone} secret>'],
-      [tools, '<Modal title={ut("ops.import.createdTitle")} onClose={onDone} wide secret>'],
+    /* свойства окна могут стоять в строку или столбиком — важно, что `secret` у того самого окна */
+    for (const [text, tag] of [
+      [users, /<Modal\s+title=\{ut\("ops\.users\.tempPassword"\)\}\s+onClose=\{done\}\s+secret\b/],
+      [users, /<Modal\s+title=\{ut\("adm\.newUser"\)\}\s+onClose=\{onDone\}\s+secret\b/],
+      [tools, /<Modal\s+title=\{ut\("ops\.import\.createdTitle"\)\}\s+onClose=\{onDone\}\s+wide\s+secret\b/],
     ] as const) {
-      expect(text.includes(line), line).toBe(true);
+      expect(tag.test(text), String(tag)).toBe(true);
     }
   });
 });

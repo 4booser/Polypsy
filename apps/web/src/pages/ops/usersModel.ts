@@ -1,4 +1,4 @@
-import type { OpsUserRow, Role, UiKey } from "@quizzy/shared";
+import type { OpsUserRow, OpsUsersRoleSummary, Role, UiKey } from "@quizzy/shared";
 import { accountRefusal, accountStanding, createUserSchema } from "@quizzy/shared";
 import { pageFrom, perFrom } from "../../ui/paging";
 import { patchParams } from "../../ui/viewParams";
@@ -28,7 +28,9 @@ import { patchParams } from "../../ui/viewParams";
  * поле фильтра показывает «усі», а не пустоту. Совпадение списков со схемой
  * сервера держит тест.
  */
-export const USER_ROLES: readonly Role[] = ["superadmin", "admin", "user"];
+/** Роль в отборе: роль учётки или «staff» — весь персонал (вкладка «Персонал») */
+export type RegistryRole = Role | "staff";
+export const USER_ROLES: readonly RegistryRole[] = ["superadmin", "admin", "user", "staff"];
 export const USER_STATES = ["active", "disabled"] as const;
 export type UserState = (typeof USER_STATES)[number];
 export const USER_SORTS = ["name", "created", "lastSeen", "role"] as const;
@@ -42,7 +44,7 @@ export const USERS_PAGE_MAX = 100_000;
 export interface UsersFilters {
   /** Поиск как набран: поле показывает его целиком, на сервер уходит обрезанный (usersQuery) */
   q: string;
-  role: Role | "";
+  role: RegistryRole | "";
   status: UserState | "";
   sort: UserSort;
   page: number;
@@ -254,4 +256,74 @@ export function accountOutOfReach(
     { id: row.id, role: row.role, standing: accountStanding(row.role, row.ladderRank) },
   );
   return refusal === "aboveYours" || refusal === "superadminOnly";
+}
+
+/* ─────────── вкладки реестра ─────────── */
+
+/**
+ * Вкладки над реестром (Polypsy 2.0): «Усі», «Персонал», «Пацієнти»,
+ * «Вимкнені». Вкладка — это готовое сочетание роли и состояния в адресе, а не
+ * своё поле: ссылка «вимкнені» остаётся той же ссылкой, что и раньше
+ * (`?status=disabled`), а отбор чипами «Роль» и «Стан» вкладку уточняет.
+ */
+export const USER_VIEWS = ["all", "staff", "patients", "disabled"] as const;
+export type UserView = (typeof USER_VIEWS)[number];
+
+/** Какая вкладка соответствует отбору; null — сочетание, которого во вкладках нет */
+export function viewOf(f: Pick<UsersFilters, "role" | "status">): UserView | null {
+  if (!f.role && !f.status) return "all";
+  if (f.role === "staff" && !f.status) return "staff";
+  if (f.role === "user" && !f.status) return "patients";
+  if (!f.role && f.status === "disabled") return "disabled";
+  return null;
+}
+
+/** Правка адреса от вкладки: роль и состояние вместе, на первую страницу */
+export function viewPatch(view: UserView): Record<string, string | null> {
+  const role = view === "staff" ? "staff" : view === "patients" ? "user" : null;
+  const status = view === "disabled" ? "disabled" : null;
+  return { role, status, page: null };
+}
+
+/**
+ * Числа вкладок из сводки реестра. Пациентов, скрытых порогом малых чисел,
+ * нет и в сумме: «Усі» тогда без числа, а не с числом без пациентов.
+ */
+export function viewCounts(roles: readonly OpsUsersRoleSummary[]): Record<UserView, number | null> {
+  const total = (r: Role) => roles.find((x) => x.role === r)?.total ?? null;
+  const disabled = (r: Role) => roles.find((x) => x.role === r)?.states.find((s) => s.key === "disabled")?.count ?? null;
+  const sum = (xs: (number | null)[]) => (xs.some((x) => x === null) ? null : xs.reduce<number>((a, b) => a + (b ?? 0), 0));
+  return {
+    all: sum([total("superadmin"), total("admin"), total("user")]),
+    staff: sum([total("superadmin"), total("admin")]),
+    patients: total("user"),
+    disabled: sum([disabled("superadmin"), disabled("admin"), disabled("user")]),
+  };
+}
+
+/* ─────────── состояние строки ─────────── */
+
+/**
+ * Одно состояние строки реестра — по старшинству, как у сводки
+ * (accountState сервера): вимкнено → заблоковано перебором → тимчасовий
+ * пароль → активний. «Ще не входив» состоянием не считается: это видно в
+ * колонке входа.
+ */
+export type RowState = "disabled" | "locked" | "temp" | "active";
+
+export function rowState(r: Pick<OpsUserRow, "disabledAt" | "lock" | "mustChangePassword">): RowState {
+  if (r.disabledAt) return "disabled";
+  if (r.lock) return "locked";
+  if (r.mustChangePassword) return "temp";
+  return "active";
+}
+
+/** Второй фактор строки: настроено, обов’язковий і немає, не обов’язковий, не стосується (пацієнт) */
+export type RowFactor = "on" | "missing" | "optional" | "none";
+
+export function rowFactor(r: Pick<OpsUserRow, "secondFactor">): RowFactor {
+  const f = r.secondFactor;
+  if (!f) return "none";
+  if (f.enabled) return "on";
+  return f.required ? "missing" : "optional";
 }

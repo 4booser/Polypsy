@@ -431,6 +431,12 @@ export function isClientDecisionCode(code: unknown): code is string {
   return typeof code === "string" && CLIENT_DECISION_CODES.includes(code);
 }
 
+/**
+ * Сколько длится просмотр «от имени»: сервер выдаёт токен на этот срок, окно
+ * входа называет его словами — одно число на обоих.
+ */
+export const IMPERSONATION_MINUTES = 30;
+
 /** Кто смотрит «от имени» — см. User.impersonation */
 export interface ImpersonationInfo {
   sessionId: string;

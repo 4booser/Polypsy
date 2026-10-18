@@ -1,25 +1,45 @@
-import { useCallback, useEffect, useReducer, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useId, useReducer, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import type { BulkUserAction, OpsUserRow, Permission, Role, UiKey } from "@quizzy/shared";
 import { api, ApiError } from "../../api";
 import { useAuth } from "../../auth";
-import { dateTime, day } from "../../format";
 import { useLang } from "../../lang";
-import { Modal, useAction } from "../../ui";
-import { IconDots, IconPlusThick } from "../../ui/glyphs";
-import { ActionMenu, type MenuEntry } from "../../ui/menu";
+import { BulkBar, DataTable, FilterBar, KbdHints, Loading, Modal, useAction, type Column } from "../../ui";
+import { Ic } from "../../ui/icons";
+import { useHotkeys } from "../../ui/keys";
+import { Panel } from "../../ui/layout";
+import { ActionMenu, MenuButton, menuItemClass, type MenuEntry } from "../../ui/menu";
+import { Tooltip } from "../../ui/Popover";
 import { Pager } from "../../ui/pager";
-import { pageCount } from "../../ui/paging";
-import { Button, ButtonLink, Field, Input, Select, Tag, Textarea } from "../../ui/primitives";
-import { RuleSection } from "../../ui/section";
+import { listBody, pageCount } from "../../ui/paging";
+import { Button, ErrorText, Field, Input, Select, Tabs, Textarea } from "../../ui/primitives";
 import { useResource } from "../../useResource";
-import { Cell, ColumnHead, FilterSelect, ListPlace, SearchField, metaClass, nameClass, rowClass, useDebounced } from "./controls";
-import { ConfirmPlain, ConfirmTyped, OneTimePassword } from "./dialogs";
-import { type Hold, ROLE_KEY, generatePassword, holdKey, holdsOfRow, personHref, traceParts } from "./model";
+import { useDebounced } from "./controls";
+import { OneTimePassword } from "./dialogs";
+import { type Hold, ROLE_KEY, generatePassword, holdKey, holdsOfRow } from "./model";
+import { importTemplateCsv } from "./people2/model";
+import { saveText } from "./people2/parts";
+import { SectionPage } from "./people2/frame";
+import { Ix } from "./people2/icons";
+import { BulkDialog, ImpersonateDialog, ImportDialog, ResetMfaDialog, type RowExtrasOpen, useRowExtras } from "./people2/UserTools";
+import { AttentionPanel } from "./users/attention";
+import {
+  AccountCell,
+  ChoiceChip,
+  FactorCell,
+  fill,
+  LastSeenCell,
+  RoleCell,
+  SessionsCell,
+  StateCell,
+} from "./users/parts";
+import { RegistrySummary } from "./users/summary";
+import { UserDrawer } from "./users/UserDrawer";
 import {
   type AccountDraft,
   type AccountEvent,
   type AccountForm,
+  USER_VIEWS,
   accountBody,
   accountOutOfReach,
   accountProblems,
@@ -31,20 +51,10 @@ import {
   usersIdsQuery,
   usersPatch,
   usersQuery,
+  viewCounts,
+  viewOf,
+  viewPatch,
 } from "./usersModel";
-import { UserDevices } from "./UserDevices";
-import { toggleId, withPage } from "./people2/model";
-import { RowCheck } from "./people2/parts";
-import {
-  BulkDialog,
-  ImpersonateDialog,
-  ImportDialog,
-  ResetMfaDialog,
-  type RowExtrasOpen,
-  SelectionBar,
-  useRowExtras,
-} from "./people2/UserTools";
-import { UsersOverview } from "./people2/charts";
 
 /*
  * Техпанель → «Користувачі»: весь реестр учётных записей и всё, что с ними
@@ -57,10 +67,13 @@ import { UsersOverview } from "./people2/charts";
  * права и исключения (ссылкой на экран прав с выбранным человеком), сброс
  * пароля, завершение сессий, выключение и удаление того, что удалять можно.
  *
- * Строки, а не таблица: имя 17/700 ссылкой на карточку человека, под ним
- * почта; дальше роль, последний вход, сессии, состояние и след. Отбор,
- * порядок и страница — в адресе, как у остальных списков консоли: «вимкнені
- * за останній місяць» пересылают коллеге ссылкой.
+ * Polypsy 2.0 («Виразна»): реестр — таблицей (сравнивают многие строки по
+ * многим колонкам), запись — панелью справа, а не переходом: строка, Enter,
+ * имя в «Потребує уваги» и ссылка `?user=:id` открывают её рядом, J/K ведут
+ * по соседним. Над таблицей — что требует внимания сейчас и сводка всего
+ * реестра. Отбор, порядок, страница и открытая запись — в адресе, как у
+ * остальных списков консоли: «вимкнені за останній місяць» пересылают
+ * коллеге ссылкой.
  *
  * Что человеку нельзя, в меню остаётся погашенным с объяснением, а не
  * пропадает: на своей строке нет «вимкнути» потому, что себя выключить
@@ -70,13 +83,6 @@ import { UsersOverview } from "./people2/charts";
  * ними не-суперадмину не показывают вовсе, остаются переходы «посмотреть»
  * (userRowMenu, accountOutOfReach в usersModel.ts).
  */
-
-/*
- * Первая колонка — флажок выбора для массовых действий (people2): 44 — зона
- * нажатия, как у выбора людей в группах.
- */
-const GRID =
-  "grid grid-cols-[44px_minmax(0,2.3fr)_minmax(0,1.4fr)_minmax(0,1.3fr)_56px_minmax(0,1.6fr)_44px] gap-x-[16px]";
 
 export type Dialog =
   | { kind: "create" }
@@ -94,6 +100,13 @@ export type Dialog =
   | { kind: "resetMfa"; row: OpsUserRow }
   | { kind: "bulk"; action: BulkUserAction }
   | { kind: "import" };
+
+const VIEW_LABEL: Record<(typeof USER_VIEWS)[number], UiKey> = {
+  all: "oppu.view.all",
+  staff: "oppu.view.staff",
+  patients: "oppu.view.patients",
+  disabled: "oppu.view.disabled",
+};
 
 export default function OpsUsers() {
   const { ut } = useLang();
@@ -117,8 +130,12 @@ export default function OpsUsers() {
     [setParams],
   );
 
+  /* перечитать всё, что зависит от записей: список, сводку, «Потребує уваги», открытую запись */
+  const [version, bump] = useReducer((n: number) => n + 1, 0);
   const query = usersQuery(filters, settledQ);
-  const res = useResource(() => api.opsUsers(query), [query]);
+  const res = useResource(() => api.opsUsers(query), [query, version]);
+  const summary = useResource(() => api.opsUsersSummary(), [version]);
+  const attention = useResource(() => api.opsUsersAttention(), [version]);
   const pages = pageCount(res.data?.total ?? 0, per);
 
   /* страница за концом списка (сузили отбор) — на последнюю существующую */
@@ -126,12 +143,34 @@ export default function OpsUsers() {
     if (res.data && page > pages) update({ page: pages > 1 ? String(pages) : null });
   }, [res.data, page, pages, update]);
 
+  /* открытая запись — в адресе: ссылку на запись пересылают; Esc закрывает, страница остаётся */
+  const openId = params.get("user");
+  const openUser = useCallback((id: string) => setParams((prev) => applyPatch(prev, { user: id })), [setParams]);
+  const closeUser = useCallback(() => setParams((prev) => applyPatch(prev, { user: null }), { replace: true }), [setParams]);
+  const items = res.data?.items ?? [];
+  const place = listBody(res.data?.items ?? null, res.error);
+  const openRow = items.find((r) => r.id === openId) ?? null;
+  const step = (d: 1 | -1) => {
+    if (!items.length) return;
+    const at = items.findIndex((r) => r.id === openId);
+    const next = items[at < 0 ? 0 : Math.min(items.length - 1, Math.max(0, at + d))];
+    if (next && next.id !== openId) openUser(next.id);
+  };
+
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const close = () => setDialog(null);
   const done = () => {
     setDialog(null);
-    res.reload();
+    bump();
   };
+  /* «Пристрої» из меню строки — раздел панели записи, а не отдельное окно */
+  const open = (d: Dialog) => {
+    if (d.kind === "devices") openUser(d.row.id);
+    else setDialog(d);
+  };
+
+  /* N — новая запись, когда ни окна, ни панели нет */
+  useHotkeys({ n: () => setDialog({ kind: "create" }) }, !dialog && !openId);
 
   /*
    * Выбор для массовых действий (people2). Живёт через листание, но не через
@@ -142,143 +181,280 @@ export default function OpsUsers() {
   useEffect(() => {
     setSelected(new Set());
   }, [settledQ, role, status]);
-  const pageIds = res.data?.items.map((r) => r.id) ?? [];
   const extras = useRowExtras();
 
-  const entriesFor = (row: OpsUserRow): MenuEntry[] =>
-    userRowMenu(row, { me: user, can, ut, open: setDialog, extras });
+  const entriesFor = (row: OpsUserRow): MenuEntry[] => userRowMenu(row, { me: user, can, ut, open, extras });
+  const view = viewOf(filters);
+  const counts = summary.data ? viewCounts(summary.data.roles) : null;
+  const total = counts?.all ?? null;
+  const staffN = counts?.staff ?? null;
+  const patientsN = counts?.patients ?? null;
+
+  const columns: Column<OpsUserRow>[] = [
+    {
+      key: "account",
+      header: ut("ops.users.account"),
+      required: true,
+      width: 260,
+      render: (r) => <AccountCell row={r} self={r.id === user?.id} />,
+    },
+    { key: "role", header: ut("adm.role"), required: true, width: 250, render: (r) => <RoleCell row={r} /> },
+    { key: "last", header: ut("ops.users.lastSeen"), required: true, width: 132, render: (r) => <LastSeenCell row={r} /> },
+    {
+      key: "sessions",
+      header: ut("ops.tab.sessions"),
+      required: true,
+      num: true,
+      width: 72,
+      render: (r) => <SessionsCell row={r} onOpen={() => setParams((prev) => applyPatch(prev, { user: r.id }))} />,
+    },
+    { key: "mfa", header: ut("ops.tab.mfa"), required: true, width: 124, render: (r) => <FactorCell row={r} /> },
+    { key: "state", header: ut("ops.users.state"), required: true, render: (r) => <StateCell row={r} /> },
+  ];
+
+  const roleChoices: { value: string; label: string }[] = [
+    { value: "", label: ut("ops.users.allRoles") },
+    { value: "staff", label: ut("oppu.view.staff") },
+    { value: "superadmin", label: ut("adm.roleSuper") },
+    { value: "admin", label: ut("adm.roleAdmin") },
+    { value: "user", label: ut("adm.rolePatient") },
+  ];
+  const stateChoices = [
+    { value: "", label: ut("ops.users.allStates") },
+    { value: "active", label: ut("ops.users.active") },
+    { value: "disabled", label: ut("ops.users.disabledMany") },
+  ];
 
   return (
-    <>
-      {/*
-        Волна 11: сводка реестра графиками — над списком, по всему реестру и
-        без его отбора (решение заказчика 2026-09-26: «должны быть графики в
-        админ панеле»). Список ниже — своим разделом, чтобы линия раздела
-        отделяла «весь реестр» от «отобранного».
-      */}
-      <UsersOverview />
-      <RuleSection title={ut("adm.allAccounts")}>
-        {/*
-          Строка отбора: поиск тянется, три выбора по колонке, «+» — заведение.
-          Всё — залитыми полями фильтра (look="fill"), как фильтры «Статистики»:
-          это отбор, а не форма.
-        */}
-        <div className="mb-[12px] grid grid-cols-[minmax(0,2fr)_repeat(3,minmax(0,1fr))_auto] items-center gap-[12px] max-[900px]:grid-cols-1">
-          <SearchField label={ut("ops.users.search")} value={q} onChange={(v) => update(usersPatch("q", v))} />
-          <FilterSelect
-            label={ut("adm.role")}
-            value={role}
-            onChange={(v) => update(usersPatch("role", v))}
-            options={[
-              { value: "", label: ut("ops.users.allRoles") },
-              { value: "superadmin", label: ut("adm.roleSuper") },
-              { value: "admin", label: ut("adm.roleAdmin") },
-              { value: "user", label: ut("adm.rolePatient") },
-            ]}
-          />
-          <FilterSelect
-            label={ut("ops.users.state")}
-            value={status}
-            onChange={(v) => update(usersPatch("status", v))}
-            options={[
-              { value: "", label: ut("ops.users.allStates") },
-              { value: "active", label: ut("ops.users.active") },
-              { value: "disabled", label: ut("ops.users.disabledMany") },
-            ]}
-          />
-          <FilterSelect
-            label={ut("ppl.sort")}
-            value={sort}
-            onChange={(v) => update(usersPatch("sort", v))}
-            options={[
-              { value: "name", label: ut("ppl.sortByName") },
-              { value: "created", label: ut("ops.users.sortCreated") },
-              { value: "lastSeen", label: ut("ops.users.sortLastSeen") },
-              { value: "role", label: ut("ops.users.sortRole") },
-            ]}
-          />
-          <Button size="glyph" variant="ghost" aria-label={ut("adm.newUser")} onClick={() => setDialog({ kind: "create" })}>
-            <IconPlusThick />
+    <SectionPage
+      title={ut("ops.tab.users")}
+      meta={
+        total !== null
+          ? [fill(ut("oppu.metaTotal"), { n: total }), fill(ut("oppu.metaSplit"), { s: staffN ?? "—", p: patientsN ?? "—" })]
+          : staffN !== null
+            ? [fill(ut("oppu.metaStaff"), { s: staffN }), ut("oppu.metaPatientsHidden")]
+            : undefined
+      }
+      perm="users.manage"
+      actions={
+        <>
+          <Button icon={<Ix.fileUp />} onClick={() => setDialog({ kind: "import" })}>
+            {ut("ops.import.button")}
           </Button>
-        </div>
-
-        <div className="mb-[18px] flex flex-wrap items-center justify-between gap-[12px]">
-          <div className="flex flex-wrap items-center gap-[16px]">
-            <span className="font-mono text-[13px] text-muted tabular-nums" aria-live="polite">
-              {res.data ? `${ut("ppl.found")} ${res.data.total}` : ""}
-            </span>
-            {/*
-              Текст згоди жил вкладкой прежнего экрана учёток; экран снят, дверь
-              к тексту согласия остаётся здесь — править его может суперадмин.
-            */}
-            {isSuper ? (
-              <ButtonLink to="/consent-text" variant="ghost">
-                {ut("adm.consentTitle")}
-              </ButtonLink>
-            ) : null}
-            {/* импорт сотрудников из CSV (people2) — рядом с заведением по одному */}
-            <Button variant="ghost" onClick={() => setDialog({ kind: "import" })}>
-              {ut("ops.import.button")}
+          <Tooltip label={ut("adm.newUser")} kbd="N">
+            <Button variant="primary" icon={<Ix.userPlus />} onClick={() => setDialog({ kind: "create" })}>
+              {ut("adm.newUser")}
             </Button>
-          </div>
-          <Pager
-            page={page}
-            pages={pages}
-            per={per}
-            onPer={(n) => update(usersPatch("per", String(n)))}
-            onPage={(p) => update({ page: p > 1 ? String(p) : null })}
-          />
-        </div>
+          </Tooltip>
+          <MenuButton label={ut("oppu.moreHeader")} glyph={<Ic.ellipsis />} triggerSize="icon" align="right" plateClassName="min-w-[260px]">
+            {(closeMenu) => (
+              <>
+                {/*
+                  Текст згоди жил вкладкой прежнего экрана учёток; экран снят, дверь
+                  к тексту согласия остаётся здесь — править его может суперадмин.
+                */}
+                {isSuper ? (
+                  <Link to="/consent-text" role="menuitem" className={menuItemClass("left")} onClick={closeMenu}>
+                    <Ix.fileText size={16} className="text-muted" />
+                    {ut("adm.consentTitle")}
+                  </Link>
+                ) : null}
+                <button
+                  type="button"
+                  role="menuitem"
+                  className={menuItemClass("left")}
+                  onClick={() => {
+                    closeMenu();
+                    saveText(importTemplateCsv(), "polypsy-staff-template.csv");
+                  }}
+                >
+                  <Ix.fileSpreadsheet size={16} className="text-muted" />
+                  {ut("oppu.templateCsv")}
+                </button>
+              </>
+            )}
+          </MenuButton>
+        </>
+      }
+      lead={ut("oppu.lead")}
+      toolbar={
+        <Tabs
+          label={ut("oppu.views")}
+          items={USER_VIEWS.map((v) => ({
+            id: `ops-users-view-${v}`,
+            label: ut(VIEW_LABEL[v]),
+            count: counts?.[v] ?? undefined,
+            active: view === v,
+            onSelect: () => update(viewPatch(v)),
+          }))}
+        />
+      }
+    >
+      <div className="flex flex-col gap-4">
+        {attention.data ? <AttentionPanel data={attention.data} onOpen={openUser} /> : null}
+        <RegistrySummary data={summary.data} error={summary.error} onRetry={summary.reload} />
 
-        {/*
-          Место списка — общее у вкладок (ListPlace): отказ перечитывания после
-          действия над учёткой строкой над списком, а строки остаются. Прежде
-          упавшее перечитывание стирало список, и администратор, только что
-          выключивший учётку, видел вместо реестра одну ошибку.
-        */}
-        <ListPlace items={res.data?.items ?? null} error={res.error} onRetry={res.reload} empty={ut("pt.nobodyFound")}>
-          {() => (
-            <>
-              <SelectionBar
-                selected={selected}
-                pageIds={pageIds}
-                total={res.data!.total}
-                onPage={(on) => setSelected(withPage(selected, pageIds, on))}
-                /*
-                  Отказ «вибрати всіх у відборі» — всплывающим отказом, а не
-                  молчанием (w14:webtails): прежде он глотался, выбор
-                  оставался одной страницей, и человек, уверенный, что выбрал
-                  весь отбор, отправлял массовое действие на её часть.
-                */
-                onAll={() =>
-                  void run(async () => {
-                    const r = await api.opsUserIds(usersIdsQuery(filters, settledQ));
-                    setSelected(new Set(r.ids));
-                  })
-                }
-                onClear={() => setSelected(new Set())}
-                onAction={(action) => setDialog({ kind: "bulk", action })}
-                canAssign={isSuper || (user?.ladderRank ?? 0) > 1}
-              />
-              <ColumnHead
-                grid={GRID}
-                labels={[null, ut("ops.users.account"), ut("adm.role"), ut("ops.users.lastSeen"), ut("ops.tab.sessions"), ut("ops.users.state"), null]}
-              />
-              <ul className="m-0 list-none p-0" aria-label={ut("adm.allAccounts")}>
-                {res.data!.items.map((row) => (
-                  <UserRow
-                    key={row.id}
-                    row={row}
-                    menu={entriesFor(row)}
-                    checked={selected.has(row.id)}
-                    onToggle={() => setSelected(toggleId(selected, row.id))}
+        <Panel flush>
+          <div className="px-4 pb-3 pt-3.5">
+            <FilterBar
+              search={{
+                value: q,
+                onChange: (v) => update(usersPatch("q", v)),
+                placeholder: ut("oppu.searchPh"),
+                label: ut("ops.users.search"),
+                width: 250,
+              }}
+              chips={
+                <>
+                  <ChoiceChip
+                    label={ut("adm.role")}
+                    choices={roleChoices}
+                    value={role}
+                    onChange={(v) => update(usersPatch("role", v))}
                   />
-                ))}
-              </ul>
+                  <ChoiceChip
+                    label={ut("ops.users.state")}
+                    choices={stateChoices}
+                    value={status}
+                    onChange={(v) => update(usersPatch("status", v))}
+                  />
+                </>
+              }
+              count={
+                res.data ? (
+                  <span className="whitespace-nowrap text-small text-muted" aria-live="polite">
+                    {ut("ppl.found")} <b className="font-extrabold tabular-nums text-text">{res.data.total}</b>
+                  </span>
+                ) : undefined
+              }
+              sort={{
+                label: ut("ppl.sort"),
+                value: sort,
+                onChange: (v) => update(usersPatch("sort", v)),
+                options: [
+                  { key: "name", label: ut("ppl.sortByName") },
+                  { key: "lastSeen", label: ut("ops.users.sortLastSeen") },
+                  { key: "created", label: ut("ops.users.sortCreated") },
+                  { key: "role", label: ut("ops.users.sortRole") },
+                ],
+              }}
+            />
+          </div>
+          <BulkBar
+            className="mx-3 mb-2.5"
+            count={selected.size}
+            total={res.data?.total}
+            /*
+              Отказ «вибрати всіх у відборі» — всплывающим отказом, а не
+              молчанием (w14:webtails): прежде он глотался, выбор оставался
+              одной страницей, и человек, уверенный, что выбрал весь отбор,
+              отправлял массовое действие на её часть.
+            */
+            onSelectAll={() =>
+              void run(async () => {
+                const r = await api.opsUserIds(usersIdsQuery(filters, settledQ));
+                setSelected(new Set(r.ids));
+              })
+            }
+            onClear={() => setSelected(new Set())}
+          >
+            <Button size="xs" variant="panel" icon={<Ix.logOut />} onClick={() => setDialog({ kind: "bulk", action: "revoke-sessions" })}>
+              {ut("ops.bulk.revoke")}
+            </Button>
+            {isSuper || (user?.ladderRank ?? 0) > 1 ? (
+              <Button size="xs" variant="panel" icon={<Ix.shieldPlus />} onClick={() => setDialog({ kind: "bulk", action: "assign-role" })}>
+                {ut("ops.bulk.assignRole")}
+              </Button>
+            ) : (
+              /* погашена с объяснением, а не пропала: кому ролей не назначать, тот видит почему */
+              <Tooltip label={ut("ops.bulk.notAssigner")}>
+                <span tabIndex={0} className="inline-flex rounded-[9px]">
+                  <Button size="xs" variant="panel" icon={<Ix.shieldPlus />} disabled>
+                    {ut("ops.bulk.assignRole")}
+                  </Button>
+                </span>
+              </Tooltip>
+            )}
+            <Button size="xs" variant="panel" icon={<Ic.circleCheck />} onClick={() => setDialog({ kind: "bulk", action: "enable" })}>
+              {ut("ops.bulk.enable")}
+            </Button>
+            <Button size="xs" variant="panel" icon={<Ic.ban />} onClick={() => setDialog({ kind: "bulk", action: "disable" })}>
+              {ut("ops.bulk.disable")}
+            </Button>
+          </BulkBar>
+          {/*
+            Место списка — по общему правилу консоли (listBody, ui/paging.ts):
+            пока строк нет — скелет или отказ с «повторити» на их месте; когда
+            строки есть — отказ перечитывания строкой над ними, а строки
+            остаются. Упавшее перечитывание после «вимкнути» не стирает реестр.
+          */}
+          {place.body === "loading" || place.body === "failed" ? (
+            <div className="px-4 pb-4">
+              <Loading rows={6} error={res.error} onRetry={res.reload} bare />
+            </div>
+          ) : (
+            <>
+              {place.stale ? (
+                <div role="alert" className="mx-4 mb-2.5 flex items-center gap-2.5">
+                  <ErrorText className="min-w-0 flex-1">{place.stale}</ErrorText>
+                  <Button size="xs" variant="quiet" onClick={res.reload}>
+                    {ut("common.retry")}
+                  </Button>
+                </div>
+              ) : null}
+              {place.body === "empty" ? (
+                <p className="m-0 px-4 pb-5 pt-2 text-small text-muted">{ut("pt.nobodyFound")}</p>
+              ) : (
+                <DataTable
+                  rows={items}
+                  columns={columns}
+                  rowKey={(r) => r.id}
+                  label={ut("adm.allAccounts")}
+                  selectable
+                  selected={selected}
+                  onSelectedChange={(keys) => setSelected(keys)}
+                  onRowClick={(r) => openUser(r.id)}
+                  isRowActive={(r) => r.id === openId}
+                  hotkeys={!openId && !dialog}
+                  rowActions={(r) => <RowActions row={r} entries={entriesFor(r)} onOpen={() => openUser(r.id)} onDialog={open} />}
+                />
+              )}
             </>
           )}
-        </ListPlace>
-      </RuleSection>
+          <div className="border-t border-divider py-2.5 pl-4 pr-3">
+            <Pager
+              page={page}
+              pages={pages}
+              per={per}
+              total={res.data?.total ?? null}
+              onPer={(n) => update(usersPatch("per", String(n)))}
+              onPage={(p) => update({ page: p > 1 ? String(p) : null })}
+            />
+          </div>
+          <KbdHints
+            bar
+            label={ut("oppu.keys")}
+            keys={[
+              ["J K", ut("oppu.kRows")],
+              ["X", ut("oppu.kSelect")],
+              ["Enter", ut("oppu.kOpen")],
+              ["/", ut("hotkey.search")],
+              ["N", ut("oppu.kNew")],
+            ]}
+          />
+        </Panel>
+      </div>
+
+      <UserDrawer
+        open={!!openId}
+        id={openId}
+        hint={openRow}
+        version={version}
+        onClose={closeUser}
+        onDialog={open}
+        menu={entriesFor}
+        onStep={step}
+      />
 
       {dialog?.kind === "create" ? <CreateDialog isSuper={isSuper} onClose={close} onDone={done} /> : null}
       {dialog?.kind === "role" ? <RoleDialog row={dialog.row} isSuper={isSuper} onClose={close} onDone={done} /> : null}
@@ -286,14 +462,20 @@ export default function OpsUsers() {
         <ResetDialog row={dialog.row} onClose={close} onReset={(password) => setDialog({ kind: "password", row: dialog.row, password })} />
       ) : null}
       {dialog?.kind === "password" ? (
-        <Modal title={ut("ops.users.tempPassword")} onClose={done} secret>
-          <p className="m-0 mb-[12px] text-[15px] leading-[21px] text-text-2 [overflow-wrap:anywhere]">
-            {dialog.row.email}: {ut("ops.users.resetDone")}
-          </p>
+        <Modal
+          title={ut("ops.users.tempPassword")}
+          onClose={done}
+          secret
+          sub={dialog.row.email}
+          icon={<Ix.keyRound />}
+          footer={
+            <Button variant="primary" onClick={done}>
+              {ut("ops.users.gotIt")}
+            </Button>
+          }
+        >
+          <p className="m-0 mb-3 text-body text-text-2 [overflow-wrap:anywhere]">{ut("ops.users.resetDone")}</p>
           <OneTimePassword password={dialog.password} />
-          <div className="mt-[20px] flex justify-end">
-            <Button onClick={done}>{ut("ops.users.gotIt")}</Button>
-          </div>
         </Modal>
       ) : null}
       {dialog?.kind === "revoke" ? <RevokeDialog row={dialog.row} onClose={close} onDone={done} /> : null}
@@ -303,7 +485,10 @@ export default function OpsUsers() {
         <DeleteDialog
           row={dialog.row}
           onClose={close}
-          onDone={done}
+          onDone={() => {
+            closeUser();
+            done();
+          }}
           onHeld={(holds) => setDialog({ kind: "held", row: dialog.row, holds })}
         />
       ) : null}
@@ -316,7 +501,6 @@ export default function OpsUsers() {
           onDisable={() => setDialog({ kind: "disable", row: dialog.row })}
         />
       ) : null}
-      {dialog?.kind === "devices" ? <UserDevices userId={dialog.row.id} name={dialog.row.fullName} onClose={close} /> : null}
       {dialog?.kind === "impersonate" ? <ImpersonateDialog row={dialog.row} onClose={close} /> : null}
       {dialog?.kind === "resetMfa" ? <ResetMfaDialog id={dialog.row.id} email={dialog.row.email} onClose={close} onDone={done} /> : null}
       {dialog?.kind === "bulk" ? (
@@ -331,7 +515,53 @@ export default function OpsUsers() {
         />
       ) : null}
       {dialog?.kind === "import" ? <ImportDialog onClose={close} onDone={done} /> : null}
-    </>
+    </SectionPage>
+  );
+}
+
+/* ─────────── действия строки ─────────── */
+
+/** Всплывают справа на наведении и фокусе: открыть запись, завершить сессии, меню */
+function RowActions({
+  row,
+  entries,
+  onOpen,
+  onDialog,
+}: {
+  row: OpsUserRow;
+  entries: MenuEntry[];
+  onOpen: () => void;
+  onDialog: (d: Dialog) => void;
+}) {
+  const { ut } = useLang();
+  const { user } = useAuth();
+  const canRevoke = row.sessions > 0 && !accountOutOfReach(user, row);
+  const name = row.fullName || row.email;
+  return (
+    <span className="flex items-center gap-1">
+      <Tooltip label={ut("oppu.openRecord")} kbd="Enter">
+        <Button size="icon-sm" variant="quiet" aria-label={`${ut("oppu.openRecord")}: ${name}`} icon={<Ix.panelRightOpen />} onClick={onOpen} />
+      </Tooltip>
+      {canRevoke ? (
+        <Tooltip label={ut("ops.users.revokeSessions")}>
+          <Button
+            size="icon-sm"
+            variant="quiet"
+            aria-label={`${ut("ops.users.revokeSessions")}: ${name}`}
+            icon={<Ix.logOut />}
+            onClick={() => onDialog({ kind: "revoke", row })}
+          />
+        </Tooltip>
+      ) : null}
+      <ActionMenu
+        label={`${ut("ops.users.actions")}: ${name}`}
+        glyph={<Ic.ellipsis />}
+        entries={entries}
+        triggerSize="icon-sm"
+        align="right"
+        plateClassName="min-w-[280px]"
+      />
+    </span>
   );
 }
 
@@ -361,11 +591,13 @@ export function userRowMenu(row: OpsUserRow, ctx: RowMenuContext): MenuEntry[] {
   const isSuper = me?.role === "superadmin";
   const self = row.id === me?.id;
 
-  const views: MenuEntry[] = [{ label: ut("ops.users.sessionsOf"), to: `/ops/sessions?user=${row.id}` }];
+  const views: MenuEntry[] = [
+    { label: ut("ops.users.sessionsOf"), to: `/ops/sessions?user=${row.id}`, icon: <Ix.monitorSmartphone /> },
+  ];
   if (can("audit.read")) {
     views.push(
-      { label: ut("ops.users.actorLog"), to: `/ops/audit?actor=${row.id}` },
-      { label: ut("ops.users.subjectLog"), to: `/ops/audit?subject=${row.id}` },
+      { label: ut("ops.users.actorLog"), to: `/ops/audit?actor=${row.id}`, icon: <Ix.fileSearch /> },
+      { label: ut("ops.users.subjectLog"), to: `/ops/audit?subject=${row.id}`, icon: <Ix.fileText /> },
     );
   }
   if (accountOutOfReach(me, row)) return views;
@@ -377,30 +609,46 @@ export function userRowMenu(row: OpsUserRow, ctx: RowMenuContext): MenuEntry[] {
    */
   const why = self ? ut("ops.users.notSelf") : undefined;
   return [
-    { label: ut("ops.users.changeRole"), onSelect: () => open({ kind: "role", row }), disabled: self, hint: why },
+    { label: ut("ops.users.changeRole"), onSelect: () => open({ kind: "role", row }), disabled: self, hint: why, icon: <Ix.userCog /> },
     {
       label: ut("ops.users.permissions"),
       to: `/permissions?user=${row.id}`,
       disabled: row.role === "user",
       hint: ut("ops.users.patientNoPerms"),
+      icon: <Ix.keyRound />,
     },
-    { label: ut("dev.title"), onSelect: () => open({ kind: "devices", row }), disabled: !isSuper, hint: ut("ops.users.superOnly") },
-    ...views,
-    { label: ut("ops.users.resetPassword"), onSelect: () => open({ kind: "reset", row }), disabled: self, hint: why },
+    {
+      label: ut("dev.title"),
+      onSelect: () => open({ kind: "devices", row }),
+      disabled: !isSuper,
+      hint: ut("ops.users.superOnly"),
+      icon: <Ix.smartphone />,
+    },
+    ...views.map((v, i) => (i === 0 ? { ...v, ruled: true } : v)),
+    {
+      label: ut("ops.users.resetPassword"),
+      onSelect: () => open({ kind: "reset", row }),
+      disabled: self,
+      hint: why,
+      icon: <Ix.rotateCcw />,
+      ruled: true,
+    },
     {
       label: ut("ops.users.revokeSessions"),
       onSelect: () => open({ kind: "revoke", row }),
       disabled: row.sessions === 0,
       hint: ut("ops.users.noSessions"),
+      icon: <Ix.logOut />,
     },
     row.disabledAt
-      ? { label: ut("ops.users.enable"), onSelect: () => open({ kind: "enable", row }) }
-      : { label: ut("ops.users.disable"), onSelect: () => open({ kind: "disable", row }), disabled: self, hint: why },
+      ? { label: ut("ops.users.enable"), onSelect: () => open({ kind: "enable", row }), icon: <Ic.circleCheck /> }
+      : { label: ut("ops.users.disable"), onSelect: () => open({ kind: "disable", row }), disabled: self, hint: why, icon: <Ic.ban /> },
     {
       label: ut("ops.users.delete"),
       danger: true,
       disabled: !isSuper || self,
       hint: self ? ut("ops.users.notSelf") : ut("ops.users.deleteSuperOnly"),
+      icon: <Ix.trash />,
       /* учётка со следом — сразу объяснение, а не подтверждение, которое кончится отказом */
       onSelect: () => {
         const holds = holdsOfRow(row);
@@ -408,91 +656,13 @@ export function userRowMenu(row: OpsUserRow, ctx: RowMenuContext): MenuEntry[] {
       },
     },
     /* people2: «переглянути як ця людина» и сброс второго фактора — оба только суперадмину */
-    ...ctx.extras(row, {
-      impersonate: () => open({ kind: "impersonate", row }),
-      resetMfa: () => open({ kind: "resetMfa", row }),
-    }),
+    ...ctx
+      .extras(row, {
+        impersonate: () => open({ kind: "impersonate", row }),
+        resetMfa: () => open({ kind: "resetMfa", row }),
+      })
+      .map((e, i) => (i === 0 ? { ...e, ruled: true } : e)),
   ];
-}
-
-/* ─────────── строка ─────────── */
-
-function UserRow({
-  row,
-  menu,
-  checked,
-  onToggle,
-}: {
-  row: OpsUserRow;
-  menu: MenuEntry[];
-  checked: boolean;
-  onToggle: () => void;
-}) {
-  const { ut } = useLang();
-  const trace = traceParts(row.trace);
-  return (
-    <li className={rowClass(GRID)}>
-      {/* зона нажатия 44 выше строки имени (22): поднята на половину разницы, чтобы квадрат стоял вровень с именем */}
-      <div className="-mt-[11px] max-[900px]:mt-0">
-        <RowCheck checked={checked} onChange={onToggle} label={`${ut("ops.bulk.selectRow")}: ${row.fullName || row.email}`} />
-      </div>
-      <div className="min-w-0">
-        <Link to={personHref(row)} className={nameClass}>
-          {row.fullName || row.email}
-          {/* учётка под кодом: вместо имени — псевдоним, и это сказано словами */}
-          {row.anonymous ? <span className="font-normal text-muted"> {ut("sel.noName")}</span> : null}
-        </Link>
-        <span className={metaClass}>{row.email}</span>
-      </div>
-      <Cell label={ut("adm.role")}>
-        <span className="block">{ut(ROLE_KEY[row.role])}</span>
-        {row.roleTitles.length || row.exceptions ? (
-          <span className={metaClass}>
-            {row.roleTitles.join(", ")}
-            {row.exceptions ? `${row.roleTitles.length ? " · " : ""}${ut("ops.users.exceptions")}: ${row.exceptions}` : ""}
-          </span>
-        ) : null}
-      </Cell>
-      <Cell label={ut("ops.users.lastSeen")}>
-        <span className="block">{row.lastSeenAt ? dateTime(row.lastSeenAt) : ut("ops.users.neverSeen")}</span>
-        <span className={metaClass}>
-          {ut("adm.createdAt")} {day(row.createdAt)}
-        </span>
-      </Cell>
-      <Cell label={ut("ops.tab.sessions")}>
-        <span className="font-mono tabular-nums">{row.sessions}</span>
-      </Cell>
-      <Cell label={ut("ops.users.state")}>
-        <span className="flex flex-wrap items-center gap-[6px]">
-          {/*
-            Состояние словом, а не цветом: «вимкнено» — метка с текстом. Не
-            янтарём и не красным: выключенная учётка не требует внимания и не
-            опасна, это просто закрытая дверь.
-          */}
-          {row.disabledAt ? <Tag>{ut("ops.users.disabledOne")}</Tag> : <span>{ut("ops.users.activeOne")}</span>}
-          {row.mustChangePassword ? <Tag>{ut("ops.users.tempMark")}</Tag> : null}
-        </span>
-        {row.disabledAt ? (
-          <span className={metaClass}>
-            {day(row.disabledAt)}
-            {row.disabledByEmail ? ` · ${row.disabledByEmail}` : ""}
-            {row.disabledReason ? ` · ${row.disabledReason}` : ""}
-          </span>
-        ) : null}
-        <span className={metaClass}>
-          {trace.length
-            ? trace
-                .slice(0, 3)
-                .map((h) => `${ut(holdKey(h.key))} ${h.count}`)
-                .join(" · ") + (trace.length > 3 ? " · …" : "")
-            : ut("ops.users.noTrace")}
-        </span>
-      </Cell>
-      <div className="flex justify-end max-[900px]:justify-start">
-        <ActionMenu label={`${ut("ops.users.actions")}: ${row.fullName || row.email}`} glyph={<IconDots />} entries={menu} plateClassName="min-w-[280px]" />
-      </div>
-    </li>
-  );
 }
 
 /* ─────────── окна ─────────── */
@@ -500,6 +670,11 @@ function UserRow({
 /** Текст отказа сервера — как есть: право и причина читаются словами сервера */
 function errorText(e: unknown, fallback: string): string {
   return e instanceof Error ? e.message : fallback;
+}
+
+/** Подпись окна над записью: почта и роль словом */
+function whoOf(row: OpsUserRow, ut: (k: UiKey) => string): string {
+  return `${row.email}, ${ut(ROLE_KEY[row.role]).toLowerCase()}`;
 }
 
 /**
@@ -540,21 +715,26 @@ function CreateDialog({ isSuper, onClose, onDone }: { isSuper: boolean; onClose:
 
   if (state.created) {
     return (
-      <Modal title={ut("adm.newUser")} onClose={onDone} secret>
-        <p className="m-0 mb-[12px] text-[15px] leading-[21px] text-text-2 [overflow-wrap:anywhere]">
-          {state.created}: {ut("ops.users.createdDone")}
-        </p>
+      <Modal
+        title={ut("adm.newUser")}
+        onClose={onDone}
+        secret
+        sub={state.created}
+        icon={<Ix.userPlus />}
+        footer={
+          <Button variant="primary" onClick={onDone}>
+            {ut("ops.users.gotIt")}
+          </Button>
+        }
+      >
+        <p className="m-0 mb-3 text-body text-text-2 [overflow-wrap:anywhere]">{ut("ops.users.createdDone")}</p>
         <OneTimePassword password={state.form.password} />
-        <div className="mt-[20px] flex justify-end">
-          <Button onClick={onDone}>{ut("ops.users.gotIt")}</Button>
-        </div>
       </Modal>
     );
   }
 
   return (
-    <Modal title={ut("adm.newUser")} onClose={onClose}>
-      <p className="m-0 mb-[15px] text-[13px] leading-[18px] text-muted">{ut("adm.accountsSub")}</p>
+    <Modal title={ut("adm.newUser")} onClose={onClose} sub={ut("adm.accountsSub")} icon={<Ix.userPlus />}>
       <CreateAccountForm
         state={state}
         isSuper={isSuper}
@@ -591,19 +771,21 @@ export function CreateAccountForm({
 
   return (
     <form
-      className="flex flex-col"
+      className="flex flex-col gap-3 pt-3.5"
       onSubmit={(e) => {
         e.preventDefault();
         onSubmit();
       }}
     >
-      <Field label={ut("adm.lastName")}>
-        <Input value={form.lastName} onChange={(e) => edit({ lastName: e.target.value })} autoFocus required maxLength={80} />
-      </Field>
-      <Field label={ut("adm.firstName")}>
-        <Input value={form.firstName} onChange={(e) => edit({ firstName: e.target.value })} required maxLength={80} />
-      </Field>
-      <Field label={ut("adm.middleName")}>
+      <div className="grid grid-cols-2 gap-3 max-[640px]:grid-cols-1">
+        <Field label={ut("adm.lastName")}>
+          <Input value={form.lastName} onChange={(e) => edit({ lastName: e.target.value })} autoFocus required maxLength={80} />
+        </Field>
+        <Field label={ut("adm.firstName")}>
+          <Input value={form.firstName} onChange={(e) => edit({ firstName: e.target.value })} required maxLength={80} />
+        </Field>
+      </div>
+      <Field label={ut("adm.middleName")} optional>
         <Input value={form.middleName} onChange={(e) => edit({ middleName: e.target.value })} maxLength={80} />
       </Field>
       {/* почта с ошибкой называется словами у поля: погашенная кнопка сама не говорит, чего ей не хватает */}
@@ -617,30 +799,30 @@ export function CreateAccountForm({
           aria-invalid={problems.email ? true : undefined}
         />
       </Field>
-      <Field label={ut("adm.role")} labelClassName="mb-[6px] block text-[13px] font-bold text-muted">
+      <Field label={ut("adm.role")}>
         <Select value={form.role} onChange={(e) => edit({ role: e.target.value as Role })}>
           <option value="admin">{ut("adm.roleAdmin")}</option>
           <option value="user">{ut("adm.rolePatient")}</option>
           {isSuper ? <option value="superadmin">{ut("adm.roleSuper")}</option> : null}
         </Select>
       </Field>
-      <div className="mb-[15px]">
-        <span className="mb-[6px] block text-[13px] font-bold text-muted">{ut("ops.users.tempPassword")}</span>
+      <div>
+        <span className="mb-1.5 block text-caption font-bold text-text-2">{ut("ops.users.tempPassword")}</span>
         <OneTimePassword password={form.password} />
-        <Button variant="quiet" className="mt-[6px]" onClick={onRegenerate}>
+        <Button size="xs" variant="quiet" className="mt-1.5" icon={<Ix.rotateCcw />} onClick={onRegenerate}>
           {ut("ops.users.regenerate")}
         </Button>
       </div>
       {error ? (
-        <p role="alert" className="m-0 mb-[15px] text-[13px] text-danger">
-          {error}
-        </p>
+        <div role="alert">
+          <ErrorText>{error}</ErrorText>
+        </div>
       ) : null}
-      <div className="flex justify-end gap-[14px]">
+      <div className="mt-1 flex flex-wrap justify-end gap-2">
         <Button variant="ghost" onClick={onClose}>
           {ut("common.cancel")}
         </Button>
-        <Button type="submit" disabled={!ready || busy}>
+        <Button type="submit" variant="primary" icon={<Ix.userPlus />} disabled={!ready || busy}>
           {ut("adm.create")}
         </Button>
       </div>
@@ -658,38 +840,95 @@ function RoleDialog({ row, isSuper, onClose, onDone }: { row: OpsUserRow; isSupe
   const { run, busy } = useAction();
   const [role, setRole] = useState<Role>(row.role);
   return (
-    <Modal title={`${ut("ops.users.changeRole")} · ${row.fullName || row.email}`} onClose={onClose}>
-      <Field label={ut("adm.role")} labelClassName="mb-[6px] block text-[13px] font-bold text-muted">
-        <Select value={role} onChange={(e) => setRole(e.target.value as Role)}>
-          <option value="admin">{ut("adm.roleAdmin")}</option>
-          <option value="user">{ut("adm.rolePatient")}</option>
-          {isSuper ? <option value="superadmin">{ut("adm.roleSuper")}</option> : null}
-        </Select>
-      </Field>
-      <p className="m-0 mt-[10px] text-[13px] leading-[18px] text-muted">{ut("ops.users.roleHint")}</p>
-      {row.role !== "user" ? (
-        <p className="m-0 mt-[10px] text-[13px]">
-          <Link to={`/permissions?user=${row.id}`} className="text-primary">
+    <Modal
+      title={ut("ops.users.changeRole")}
+      sub={whoOf(row, ut)}
+      icon={<Ix.userCog />}
+      onClose={onClose}
+      footer={
+        <>
+          <Button
+            variant="primary"
+            disabled={busy || role === row.role}
+            onClick={() =>
+              void run(async () => {
+                await api.setUserRole(row.id, role);
+                onDone();
+              }, ut("acct.saved"))
+            }
+          >
+            {ut("common.save")}
+          </Button>
+          <Button variant="ghost" onClick={onClose}>
+            {ut("common.cancel")}
+          </Button>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-3 pt-3.5">
+        <Field label={ut("adm.role")}>
+          <Select value={role} onChange={(e) => setRole(e.target.value as Role)}>
+            <option value="admin">{ut("adm.roleAdmin")}</option>
+            <option value="user">{ut("adm.rolePatient")}</option>
+            {isSuper ? <option value="superadmin">{ut("adm.roleSuper")}</option> : null}
+          </Select>
+        </Field>
+        <p className="m-0 text-small text-text-2">{ut("ops.users.roleHint")}</p>
+        {row.role !== "user" ? (
+          <Link to={`/permissions?user=${row.id}`} className="text-small font-bold text-violet-ink">
             {ut("ops.users.permissions")}
           </Link>
-        </p>
-      ) : null}
-      <div className="mt-[20px] flex justify-end gap-[14px]">
-        <Button variant="ghost" onClick={onClose}>
-          {ut("common.cancel")}
-        </Button>
-        <Button
-          disabled={busy || role === row.role}
-          onClick={() =>
-            void run(async () => {
-              await api.setUserRole(row.id, role);
-              onDone();
-            }, ut("acct.saved"))
-          }
-        >
-          {ut("common.save")}
-        </Button>
+        ) : null}
       </div>
+    </Modal>
+  );
+}
+
+/** Подтверждение одним нажатием: текст, основная кнопка и «Скасувати» */
+function Confirm({
+  title,
+  sub,
+  icon,
+  action,
+  actionIcon,
+  busy,
+  error,
+  onConfirm,
+  onClose,
+  children,
+}: {
+  title: string;
+  sub: string;
+  icon: ReactNode;
+  action: string;
+  actionIcon?: ReactNode;
+  busy?: boolean;
+  error?: string | null;
+  onConfirm: () => void;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  const { ut } = useLang();
+  return (
+    <Modal
+      title={title}
+      sub={sub}
+      icon={icon}
+      tone="warn"
+      onClose={onClose}
+      footer={
+        <>
+          <Button variant="primary" icon={actionIcon} disabled={busy} onClick={onConfirm} autoFocus>
+            {action}
+          </Button>
+          <Button variant="ghost" onClick={onClose}>
+            {ut("common.cancel")}
+          </Button>
+        </>
+      }
+    >
+      <div className="pt-3.5 text-body text-text-2 [overflow-wrap:anywhere]">{children}</div>
+      {error ? <ErrorText className="mt-3">{error}</ErrorText> : null}
     </Modal>
   );
 }
@@ -699,9 +938,12 @@ function ResetDialog({ row, onClose, onReset }: { row: OpsUserRow; onClose: () =
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   return (
-    <ConfirmPlain
+    <Confirm
       title={ut("ops.users.resetPassword")}
-      actionLabel={ut("ops.users.resetPassword")}
+      sub={whoOf(row, ut)}
+      icon={<Ix.rotateCcw />}
+      action={ut("oppu.resetShow")}
+      actionIcon={<Ix.rotateCcw />}
       busy={busy}
       error={error}
       onClose={onClose}
@@ -715,10 +957,8 @@ function ResetDialog({ row, onClose, onReset }: { row: OpsUserRow; onClose: () =
           .finally(() => setBusy(false));
       }}
     >
-      <p className="m-0 [overflow-wrap:anywhere]">
-        {row.email}: {ut("ops.users.resetWarn")}
-      </p>
-    </ConfirmPlain>
+      {ut("ops.users.resetWarn")}
+    </Confirm>
   );
 }
 
@@ -726,9 +966,12 @@ function RevokeDialog({ row, onClose, onDone }: { row: OpsUserRow; onClose: () =
   const { ut } = useLang();
   const { run, busy } = useAction();
   return (
-    <ConfirmPlain
+    <Confirm
       title={ut("ops.users.revokeSessions")}
-      actionLabel={ut("ops.users.revokeSessions")}
+      sub={whoOf(row, ut)}
+      icon={<Ix.logOut />}
+      action={ut("ops.users.revokeSessions")}
+      actionIcon={<Ix.logOut />}
       busy={busy}
       onClose={onClose}
       onConfirm={() =>
@@ -738,10 +981,8 @@ function RevokeDialog({ row, onClose, onDone }: { row: OpsUserRow; onClose: () =
         }, ut("ops.users.sessionsEnded"))
       }
     >
-      <p className="m-0 [overflow-wrap:anywhere]">
-        {row.email}: {ut("ops.users.revokeWarn")}
-      </p>
-    </ConfirmPlain>
+      {ut("ops.users.revokeWarn")}
+    </Confirm>
   );
 }
 
@@ -753,31 +994,50 @@ function DisableDialog({ row, onClose, onDone }: { row: OpsUserRow; onClose: () 
   const { ut } = useLang();
   const { run, busy } = useAction();
   const [reason, setReason] = useState("");
+  const formId = useId();
+  const ok = reason.trim().length >= 3;
   return (
-    <Modal title={`${ut("ops.users.disable")} · ${row.fullName || row.email}`} onClose={onClose}>
+    <Modal
+      title={ut("oppu.disableTitle")}
+      sub={whoOf(row, ut)}
+      icon={<Ic.ban />}
+      tone="warn"
+      onClose={onClose}
+      footer={
+        <>
+          <Button type="submit" form={formId} variant="primary" icon={<Ic.ban />} disabled={busy || !ok}>
+            {ut("oppu.disableAction")}
+          </Button>
+          <Button variant="ghost" onClick={onClose}>
+            {ut("common.cancel")}
+          </Button>
+        </>
+      }
+    >
       <form
-        className="flex flex-col"
+        id={formId}
+        className="flex flex-col gap-3 pt-3.5"
         onSubmit={(e) => {
           e.preventDefault();
-          if (reason.trim().length < 3) return;
+          if (!ok) return;
           void run(async () => {
             await api.disableUser(row.id, reason.trim());
             onDone();
           }, ut("ops.users.disabledDone"));
         }}
       >
-        <p className="m-0 mb-[15px] text-[15px] leading-[21px] text-text-2">{ut("ops.users.disableWarn")}</p>
+        <p className="m-0 text-body text-text-2">{ut("ops.users.disableWarn")}</p>
         <Field label={ut("ops.users.reason")}>
-          <Textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={3} maxLength={500} autoFocus required />
+          <Textarea
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            rows={3}
+            maxLength={500}
+            autoFocus
+            required
+            placeholder={ut("oppu.disablePh")}
+          />
         </Field>
-        <div className="mt-[15px] flex justify-end gap-[14px]">
-          <Button variant="ghost" onClick={onClose}>
-            {ut("common.cancel")}
-          </Button>
-          <Button type="submit" variant="danger" disabled={busy || reason.trim().length < 3}>
-            {ut("ops.users.disable")}
-          </Button>
-        </div>
       </form>
     </Modal>
   );
@@ -787,9 +1047,12 @@ function EnableDialog({ row, onClose, onDone }: { row: OpsUserRow; onClose: () =
   const { ut } = useLang();
   const { run, busy } = useAction();
   return (
-    <ConfirmPlain
+    <Confirm
       title={ut("ops.users.enable")}
-      actionLabel={ut("ops.users.enable")}
+      sub={whoOf(row, ut)}
+      icon={<Ic.circleCheck />}
+      action={ut("ops.users.enable")}
+      actionIcon={<Ic.circleCheck />}
       busy={busy}
       onClose={onClose}
       onConfirm={() =>
@@ -799,19 +1062,16 @@ function EnableDialog({ row, onClose, onDone }: { row: OpsUserRow; onClose: () =
         }, ut("ops.users.enabledDone"))
       }
     >
-      <p className="m-0 [overflow-wrap:anywhere]">
-        {row.email}
-        {row.disabledReason ? ` · ${row.disabledReason}` : ""}
-      </p>
-      <p className="m-0 mt-[8px]">{ut("ops.users.enableWarn")}</p>
-    </ConfirmPlain>
+      {row.disabledReason ? <p className="m-0 mb-2">«{row.disabledReason}»</p> : null}
+      {ut("ops.users.enableWarn")}
+    </Confirm>
   );
 }
 
 /**
  * Удаление: подтверждение перепечатыванием почты.
  *
- * Сюда попадают только строки без следа (см. entriesFor), но решает сервер:
+ * Сюда попадают только строки без следа (см. userRowMenu), но решает сервер:
  * между загрузкой списка и нажатием человек мог пройти методику. Отказ 409
  * несёт перечень «что держит» — окно переходит в объяснение, а не
  * показывает голую ошибку.
@@ -830,29 +1090,56 @@ function DeleteDialog({
   const { ut } = useLang();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [typed, setTyped] = useState("");
+  const formId = useId();
+  const match = typed.trim() === row.email;
+  const submit = () => {
+    if (!match || busy) return;
+    setBusy(true);
+    setError(null);
+    api
+      .deleteUser(row.id)
+      .then(onDone)
+      .catch((e) => {
+        const holds = e instanceof ApiError ? (e.body as { holds?: Hold[] } | undefined)?.holds : undefined;
+        if (e instanceof ApiError && e.status === 409 && holds?.length) onHeld(holds);
+        else setError(errorText(e, ut("ui.actionFailed")));
+      })
+      .finally(() => setBusy(false));
+  };
   return (
-    <ConfirmTyped
+    <Modal
       title={ut("ops.users.delete")}
-      expected={row.email}
-      warning={ut("ops.users.deleteWarn")}
-      actionLabel={ut("ops.users.delete")}
-      busy={busy}
-      error={error}
+      sub={whoOf(row, ut)}
+      icon={<Ix.trash />}
+      tone="warn"
       onClose={onClose}
-      onConfirm={() => {
-        setBusy(true);
-        setError(null);
-        api
-          .deleteUser(row.id)
-          .then(onDone)
-          .catch((e) => {
-            const holds = e instanceof ApiError ? (e.body as { holds?: Hold[] } | undefined)?.holds : undefined;
-            if (e instanceof ApiError && e.status === 409 && holds?.length) onHeld(holds);
-            else setError(errorText(e, ut("ui.actionFailed")));
-          })
-          .finally(() => setBusy(false));
-      }}
-    />
+      footer={
+        <>
+          <Button type="submit" form={formId} variant="danger" icon={<Ix.trash />} disabled={!match || busy}>
+            {ut("ops.users.delete")}
+          </Button>
+          <Button variant="ghost" onClick={onClose}>
+            {ut("common.cancel")}
+          </Button>
+        </>
+      }
+    >
+      <form
+        id={formId}
+        className="flex flex-col gap-3 pt-3.5"
+        onSubmit={(e) => {
+          e.preventDefault();
+          submit();
+        }}
+      >
+        <p className="m-0 text-body text-text-2">{ut("ops.users.deleteWarn")}</p>
+        <Field label={`${ut("ui.typeToConfirm")} «${row.email}»`}>
+          <Input value={typed} onChange={(e) => setTyped(e.target.value)} autoFocus autoComplete="off" spellCheck={false} />
+        </Field>
+        {error ? <ErrorText>{error}</ErrorText> : null}
+      </form>
+    </Modal>
   );
 }
 
@@ -879,25 +1166,34 @@ function HeldDialog({
 }) {
   const { ut } = useLang();
   return (
-    <Modal title={ut("ops.users.cannotDelete")} onClose={onClose}>
-      <p className="m-0 mb-[12px] text-[15px] leading-[21px] text-text-2 [overflow-wrap:anywhere]">
-        {row.email}: {ut("ops.users.heldBy")}
-      </p>
-      <ul className="m-0 mb-[12px] list-none p-0">
+    <Modal
+      title={ut("ops.users.cannotDelete")}
+      sub={whoOf(row, ut)}
+      icon={<Ic.info />}
+      onClose={onClose}
+      footer={
+        <>
+          {canDisable ? (
+            <Button variant="primary" icon={<Ic.ban />} onClick={onDisable}>
+              {ut("ops.users.disableInstead")}
+            </Button>
+          ) : null}
+          <Button variant="ghost" onClick={onClose}>
+            {ut("common.close")}
+          </Button>
+        </>
+      }
+    >
+      <p className="m-0 mb-2 pt-3.5 text-body text-text-2">{ut("ops.users.heldBy")}</p>
+      <ul className="m-0 mb-3 list-none p-0">
         {holds.map((h) => (
-          <li key={h.key} className="flex justify-between gap-[12px] border-b border-hairline py-[6px] text-[15px]">
+          <li key={h.key} className="flex justify-between gap-3 border-t border-divider py-1.5 text-body first:border-t-0">
             <span className="text-text-2">{ut(holdKey(h.key))}</span>
-            <span className="font-mono tabular-nums text-muted">{h.count}</span>
+            <b className="font-extrabold tabular-nums text-text">{h.count}</b>
           </li>
         ))}
       </ul>
-      <p className="m-0 text-[13px] leading-[18px] text-muted">{ut("ops.users.heldWhy")}</p>
-      <div className="mt-[20px] flex justify-end gap-[14px]">
-        <Button variant="ghost" onClick={onClose}>
-          {ut("common.close")}
-        </Button>
-        {canDisable ? <Button onClick={onDisable}>{ut("ops.users.disableInstead")}</Button> : null}
-      </div>
+      <p className="m-0 text-small text-muted">{ut("ops.users.heldWhy")}</p>
     </Modal>
   );
 }

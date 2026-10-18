@@ -283,10 +283,10 @@ describe("место списка у «Користувачів» и «Ауди�
      * перечитывания стирал показанный реестр, неудачное «Показати ще» —
      * весь долистанный журнал.
      */
+    /* «Користувачі» в 2.0 рисуют таблицу набора в своей панели — по тому же правилу listBody, что и ListPlace */
     const users = readFileSync(resolve(import.meta.dir, "../src/pages/ops/Users.tsx"), "utf8");
-    expect(users).toMatch(
-      /<ListPlace items=\{res\.data\?\.items \?\? null\} error=\{res\.error\} onRetry=\{res\.reload\} empty=\{ut\("pt\.nobodyFound"\)\}>/,
-    );
+    expect(users).toMatch(/const place = listBody\(res\.data\?\.items \?\? null, res\.error\);/);
+    expect(users).toMatch(/place\.stale \? \(/);
     const audit = readFileSync(resolve(import.meta.dir, "../src/pages/ops/AuditLog.tsx"), "utf8");
     expect(audit).toMatch(/<ListPlace items=\{list\.items\} error=\{error\} onRetry=\{list\.reload\} empty=\{ut\("ops\.audit\.none"\)\}/);
     for (const src of [users, audit]) expect(src).not.toMatch(/\{(res\.)?error \? \(\s*<Loading/);
@@ -296,6 +296,6 @@ describe("место списка у «Користувачів» и «Ауди�
     /* было: `.catch(() => {})` — выбор молча оставался страницей */
     const users = readFileSync(resolve(import.meta.dir, "../src/pages/ops/Users.tsx"), "utf8");
     expect(users).not.toContain(".catch(() => {})");
-    expect(users).toMatch(/onAll=\{\(\) =>\s*void run\(async \(\) => \{\s*const r = await api\.opsUserIds\(/);
+    expect(users).toMatch(/onSelectAll=\{\(\) =>\s*void run\(async \(\) => \{\s*const r = await api\.opsUserIds\(/);
   });
 });
