@@ -9,7 +9,6 @@ import {
   Drawer,
   DrawerSection,
   FilterBar,
-  FilterChip,
   KV,
   KbdHints,
   Loading,
@@ -32,6 +31,7 @@ import { OpsIcon } from "./icons";
 import { ROLE_KEY, clock, filterRoutes, fmtInt, fmtMs, fmtShare, fmtUptime, hhmm, parseTrafficWindow } from "./model";
 import {
   CopyLinkButton,
+  FilterToggle,
   HttpCode,
   Live,
   MethodRoute,
@@ -151,17 +151,11 @@ export default function OpsRequests() {
               { key: "24h", label: ut("ops.window.24h") },
             ]}
           />
-          <FilterChip
-            label={ut("opx.rq.only5xx")}
-            on={!!only5xx}
-            onClick={() => setOnly5xx(only5xx ? "" : "1")}
-            onClear={() => setOnly5xx("")}
-          />
-          <FilterChip
+          <FilterToggle label={ut("opx.rq.only5xx")} on={!!only5xx} onChange={(v) => setOnly5xx(v ? "1" : "")} />
+          <FilterToggle
             label={fill(ut("opx.rq.slowFrom"), { v: fmtMs(slowFrom, loc) })}
             on={!!onlySlow}
-            onClick={() => setOnlySlow(onlySlow ? "" : "1")}
-            onClear={() => setOnlySlow("")}
+            onChange={(v) => setOnlySlow(v ? "1" : "")}
           />
         </OpsToolbar>
       }

@@ -291,6 +291,29 @@ export function SinceNote({ since }: { since: string }) {
   return <PanelNote>{fill(ut("opx.sinceNote"), { time: sinceText(since, locale()) })}</PanelNote>;
 }
 
+/**
+ * Фильтр-переключатель полосы инструментов («Лише нові», «Лише з 5xx»):
+ * нажат — фильтр стоит (тонированный, с галочкой), повторное нажатие
+ * снимает. Кнопка с aria-pressed, а не чип с меню: значений у него два.
+ */
+export function FilterToggle({ label, on, onChange }: { label: string; on: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <button
+      type="button"
+      aria-pressed={on}
+      onClick={() => onChange(!on)}
+      className={cx(
+        "inline-flex h-9 min-h-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-[18px] border-0 px-3 text-small font-semibold leading-none",
+        "transition-colors duration-[var(--dur-fast)] ease-[var(--ease)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
+        on ? "bg-violet-tint text-violet-ink hover:bg-violet-tint-2" : "bg-sunk text-text-2 hover:bg-sunk-2",
+      )}
+    >
+      {on ? <OpsIcon name="check" size={14} /> : null}
+      {label}
+    </button>
+  );
+}
+
 /* ─────────── число со словом ─────────── */
 
 /** Три формы слова при числе — ключи `.one` / `.few` / `.many`, как print.age.* */
@@ -312,6 +335,20 @@ export function useCount() {
     },
     [ut, lang, loc],
   );
+}
+
+/**
+ * Шаблон словаря с разметкой на месте подстановок: «востаннє {time}» с
+ * жирным временем. Подстановки без разметки — как у fill.
+ */
+export function fillNode(template: string, vars: Record<string, ReactNode>): ReactNode {
+  const parts = template.split(/(\{[a-zA-Z0-9_]+\})/);
+  return parts.map((part, i) => {
+    const m = /^\{([a-zA-Z0-9_]+)\}$/.exec(part);
+    if (!m) return part;
+    const v = vars[m[1]!];
+    return v === undefined ? part : <span key={i}>{v}</span>;
+  });
 }
 
 /* ─────────── действия шапки ─────────── */

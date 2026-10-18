@@ -208,7 +208,21 @@ describe("блоки вкладок", () => {
     const html = draw(<ErrorCharts data={errors} window="24h" now={Date.parse(since)} />);
     expect(says(html, "ops.ch.errNoHours")).toBe(true);
     expect(html).toContain("TypeError");
-    expect(html).toContain("background:var(--warn)");
+    // полоса группы есть; янтарь — только у новых в периоде, а без истории периода «новых» не бывает
+    expect(countOf(html, "data-bar")).toBe(1);
+    expect(html).not.toContain("bg-warn");
+  });
+
+  test("ошибки: новая в периоде группа — янтарём, выкатка — отметкой над её корзиной", () => {
+    const now = Date.parse(since);
+    const from = new Date(now - 86_400_000).toISOString();
+    const data = { ...errors, from, hours: [{ at: new Date(now - 3_600_000).toISOString(), count: 7 }] };
+    const html = draw(<ErrorCharts data={data} window="24h" now={now} releases={[{ version: "v9.9.9", firstAt: new Date(now - 2 * 3_600_000).toISOString() }]} />);
+    expect(html).toContain("bg-warn");
+    expect(html).toContain("v9.9.9");
+    // выкатка до начала периода — без отметки
+    const old = draw(<ErrorCharts data={data} window="24h" now={now} releases={[{ version: "v0.1.0", firstAt: new Date(now - 9 * 86_400_000).toISOString() }]} />);
+    expect(old).not.toContain("v0.1.0");
   });
 
   test("ошибки с часами истории — янтарные столбцы по часам периода", () => {

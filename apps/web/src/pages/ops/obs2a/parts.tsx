@@ -5,7 +5,8 @@ import { locale } from "../../../format";
 import { useLang } from "../../../lang";
 import { Button, Input } from "../../../ui/primitives";
 import { fill } from "../../dashboard/model";
-import { PERIOD_KEY, clock, fmtInt, hhmm, storeNote } from "../model";
+import { clock, fmtInt, hhmm, storeNote } from "../model";
+import { OpsIcon } from "../icons";
 import { StatusMark } from "../parts";
 import { parseRequestId } from "./model";
 
@@ -21,7 +22,7 @@ import { parseRequestId } from "./model";
  * экран знает, и говорить о ней было бы неправдой в другую сторону.
  */
 export function HistoryNote({
-  window,
+  window: _window,
   from,
   retentionDays,
   store,
@@ -39,14 +40,14 @@ export function HistoryNote({
     return <StatusMark tone="warn">{ut("ops.history.unavailable")}</StatusMark>;
   }
   const note = storeNote(store);
-  const since = from
-    ? `${new Date(from).toLocaleDateString(loc, { day: "numeric", month: "long" })} ${hhmm(from, loc)}`
-    : "—";
+  const since = from ? `${new Date(from).toLocaleDateString(loc, { day: "2-digit", month: "2-digit" })}, ${hhmm(from, loc)}` : "—";
   return (
-    <span className="inline-flex flex-wrap items-baseline gap-x-[14px] gap-y-[4px]">
-      <span>
-        {fill(ut("ops.history.period"), { period: ut(PERIOD_KEY[window]), time: since })}
-        {retentionDays ? ` ${fill(ut("ops.history.keep"), { n: retentionDays })}` : ""}
+    <span className="inline-flex min-w-0 flex-wrap items-center gap-x-3.5 gap-y-1 text-small text-muted">
+      <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+        <OpsIcon name="history" size={14} />
+        {retentionDays
+          ? fill(ut("opx.hist.note"), { time: since, n: retentionDays })
+          : fill(ut("opx.hist.noteShort"), { time: since })}
       </span>
       {note.kind === "failing" ? (
         <StatusMark tone="warn">

@@ -11,7 +11,7 @@ import type {
   OpsTrafficBucket,
   UiKey,
 } from "@quizzy/shared";
-import { Figure, HBars, ShareBar, StackColumns, TimeColumns, TimeLines, type HBar, type TimeLineMark } from "../../charts/clinical";
+import { Figure, HBars, ShareBar, StackColumns, TimeColumns, TimeLines, type GapColumn, type HBar, type TimeLineMark } from "../../charts/clinical";
 import { RowTip, TipHead, TipRow, TipText } from "../../charts/kit";
 import { locale } from "../../format";
 import { useLang } from "../../lang";
@@ -37,6 +37,7 @@ import {
   connectionShares,
   deadRowsAlarm,
   errorGroupsTop,
+  fmtAgo,
   fmtBytes,
   fmtInt,
   fmtMs,
@@ -58,7 +59,7 @@ import {
   trafficTotals,
   type TopRest,
 } from "./model";
-import { Quiet } from "./parts";
+import { Facts, Mono, Quiet } from "./parts";
 
 /**
  * Графики вкладок наблюдаемости (волна 11): нагрузка, маршруты, ошибки,
@@ -419,55 +420,202 @@ export function RouteCharts({
   );
 }
 
+/* ─────────── отметки выкаток на столбцах ─────────── */
+
+/** Отметка выкатки над столбцом: индекс корзины и подпись («v1.22.0») */
+export interface ColumnMark {
+  index: number;
+  label: string;
+}
+
+/*
+ * Геометрия TimeColumns набора (charts/clinical.tsx, CP): поле слева 40,
+ * справа 8, сверху 16, снизу 26; столбец i стоит в середине своего слота.
+ * Отметка рисуется слоем поверх графика по тем же числам — в процентах от
+ * ширины, поэтому живёт при любой ширине контейнера.
+ */
+const COL_LEFT = 40;
+const COL_SIDES = 48;
+const COL_TOP = 16;
+const COL_BOTTOM = 26;
+
+/** Отметки выкаток (пунктир с подписью) поверх столбцов по корзинам */
+export function MarkedColumns({
+  columns,
+  marks,
+  label,
+  tone,
+  height = 200,
+}: {
+  columns: readonly GapColumn[];
+  marks: readonly ColumnMark[];
+  label: string;
+  tone?: "plain" | "attention";
+  height?: number;
+}) {
+  const n = columns.length;
+  return (
+    <div className="relative min-w-0">
+      <TimeColumns columns={columns} label={label} tone={tone} height={height} />
+      {n
+        ? marks.map((m) => (
+            <span
+              key={`${m.index}-${m.label}`}
+              aria-hidden
+              className="pointer-events-none absolute w-0 border-l border-dashed border-violet-ink"
+              style={{
+                left: `calc(${COL_LEFT}px + (100% - ${COL_SIDES}px) * ${((m.index + 0.5) / n).toFixed(4)})`,
+                top: COL_TOP - 4,
+                height: height - COL_TOP - COL_BOTTOM + 4,
+              }}
+            >
+              <span
+                className={cx(
+                  "absolute top-0 whitespace-nowrap rounded-[4px] bg-panel px-0.5 text-micro font-extrabold leading-none text-violet-ink",
+                  /* у правого края подпись — слева от черты, иначе она уходит за график */
+                  (m.index + 0.5) / n > 0.7 ? "right-1" : "left-1",
+                )}
+              >
+                {m.label}
+              </span>
+            </span>
+          ))
+        : null}
+    </div>
+  );
+}
+
+/** Индекс корзины, в которую попадает момент; вне ряда — null */
+export function binIndexOf(bins: readonly { start: number }[], at: number, end: number): number | null {
+  if (!bins.length || at < bins[0]!.start || at > end) return null;
+  let idx = 0;
+  for (let i = 0; i < bins.length; i++) if (bins[i]!.start <= at) idx = i;
+  return idx;
+}
+
 /* ─────────── ошибки ─────────── */
 
 /**
- * Случаи по времени и самые частые группы — за период истории.
+ * Огляд периоду ошибок: случаи по времени с отметками выкаток слева,
+ * самые частые группы и сводка периода справа.
  *
  * Столбцы — из часов базы (`hours`), разложенных в местные корзины; без
  * них (история не прочиталась — экран показывает память процесса) времени
  * у групп нет, и график говорит об этом словами. Янтарь — вся фигура:
- * каждый случай здесь необработанное исключение.
+ * каждый случай здесь необработанное исключение. Выкатки — из истории
+ * версий в запросах (`releases`): пунктир в корзине, где версия появилась.
  */
-export function ErrorCharts({ data, window, now }: { data: OpsErrors; window: OpsErrorWindow; now: number }) {
+export function ErrorCharts({
+  data,
+  window,
+  now,
+  releases = [],
+}: {
+  data: OpsErrors;
+  window: OpsErrorWindow;
+  now: number;
+  releases?: readonly { version: string; firstAt: string }[];
+}) {
   const { ut } = useLang();
   const loc = locale();
   const step = ERROR_STEP[window];
-  const top = errorGroupsTop(data.items);
-  const columns =
-    data.hours && data.from ? binColumns(binSeries(data.hours, ["count"], Date.parse(data.from), now, step), "count", step, loc) : null;
+  const top = errorGroupsTop(data.items, 5);
+  const bins = data.hours && data.from ? binSeries(data.hours, ["count"], Date.parse(data.from), now, step) : null;
+  const columns = bins ? binColumns(bins, "count", step, loc) : null;
+  /* в одной корзине — одна отметка, самой поздней версии: две подписи в одном столбце не читаются */
+  const byBin = new Map<number, { at: number; label: string }>();
+  if (bins) {
+    for (const r of releases) {
+      const at = Date.parse(r.firstAt);
+      const i = binIndexOf(bins, at, now);
+      if (i === null) continue;
+      const cur = byBin.get(i);
+      if (!cur || at > cur.at) byBin.set(i, { at, label: r.version });
+    }
+  }
+  const marks: ColumnMark[] = [...byBin].map(([index, m]) => ({ index, label: m.label }));
+  const from = data.from ? Date.parse(data.from) : null;
+  const fresh = from === null ? 0 : data.items.filter((g) => Date.parse(g.firstAt) >= from).length;
+  const total = data.items.reduce((s, g) => s + g.count, 0);
+  const routes = new Set(data.items.filter((g) => g.route).map((g) => `${g.method} ${g.route}`)).size;
+  const outside = data.items.filter((g) => !g.route).length;
+  const last = data.items.reduce<OpsErrors["items"][number] | null>((m, g) => (!m || g.lastAt > m.lastAt ? g : m), null);
+  const caption = marks.length ? fill(ut("opx.er.stepMarks"), { step: ut(STEP_KEY[step]) }) : ut(STEP_KEY[step]);
 
   return (
-    <div className={CHART_GRID}>
-      <Figure title={ut("ops.ch.errCases")} caption={ut(STEP_KEY[step])}>
+    <div className="grid grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)] gap-6 max-[1100px]:grid-cols-1">
+      <Figure title={ut("ops.ch.errCases")} caption={caption}>
         {columns ? (
-          <TimeColumns columns={columns} label={ut("ops.ch.errCases")} tone="attention" />
+          <MarkedColumns columns={columns} marks={marks} label={ut("ops.ch.errCases")} tone="attention" />
         ) : (
           <Quiet>{ut("ops.ch.errNoHours")}</Quiet>
         )}
       </Figure>
-      <Figure title={ut("ops.ch.errTop")} caption={ut("ops.ch.errTopHint")}>
-        {top.top.length ? (
-          <HBars
-            items={[
-              ...top.top.map((g) => ({
-                key: g.fingerprint,
-                label: (
-                  <span className="font-mono text-[12px]" title={g.message}>
-                    <span className="font-bold text-text">{g.name}</span> <span className="text-muted">{g.message}</span>
-                  </span>
-                ),
-                value: g.count,
-                text: fmtInt(g.count, loc),
-                attention: true,
-              })),
-              ...restBar(top, fill(ut("ops.ch.others"), { n: top.rest }), fmtInt(top.restSum, loc)),
-            ]}
-          />
-        ) : (
-          <Quiet>{data.from ? ut("ops.history.errorsEmpty") : ut("ops.errors.empty")}</Quiet>
-        )}
-      </Figure>
+      <div className="flex min-w-0 flex-col gap-4">
+        <Figure title={ut("ops.ch.errTop")} caption={ut("ops.ch.errTopHint")}>
+          {top.top.length ? (
+            <RankBars
+              labelW={176}
+              items={[
+                ...top.top.map((g) => ({
+                  key: g.fingerprint,
+                  title: `${g.name}: ${g.message}`,
+                  label: (
+                    <span className="font-mono text-[11.5px] font-medium text-text">
+                      <b className="font-bold">{g.name}</b> {g.message}
+                    </span>
+                  ),
+                  value: g.count,
+                  text: fmtInt(g.count, loc),
+                  attention: from !== null && Date.parse(g.firstAt) >= from,
+                })),
+                ...(top.rest > 0
+                  ? [
+                      {
+                        key: "__rest",
+                        title: fill(ut("ops.ch.others"), { n: top.rest }),
+                        label: <span className="text-small text-text-2">{fill(ut("ops.ch.others"), { n: top.rest })}</span>,
+                        value: top.restSum,
+                        text: fmtInt(top.restSum, loc),
+                      },
+                    ]
+                  : []),
+              ]}
+            />
+          ) : (
+            <Quiet>{data.from ? ut("ops.history.errorsEmpty") : ut("ops.errors.empty")}</Quiet>
+          )}
+        </Figure>
+        {data.items.length ? (
+          <div className="border-t border-divider pt-3">
+            <Facts
+              w={130}
+              items={[
+                [ut("opx.er.kvGroups"), fill(ut("opx.er.groupsNew"), { n: fmtInt(data.items.length, loc), k: fmtInt(fresh, loc) })],
+                [ut("opx.er.kvCases"), <b key="c" className="font-extrabold">{fmtInt(total, loc)}</b>],
+                [
+                  ut("opx.er.kvRoutes"),
+                  outside
+                    ? fill(ut("opx.er.routesOutside"), { n: fmtInt(routes, loc), k: fmtInt(outside, loc) })
+                    : fill(ut("opx.er.routesHit"), { n: fmtInt(routes, loc) }),
+                ],
+                [
+                  ut("opx.er.kvLast"),
+                  last ? (
+                    <span key="l">
+                      <b className="font-extrabold">{hhmm(last.lastAt, loc)}</b>
+                      {`, ${fmtAgo(last.lastAt, now, loc)}, `}
+                      <Mono>{last.name}</Mono>
+                    </span>
+                  ) : (
+                    "—"
+                  ),
+                ],
+              ]}
+            />
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }
