@@ -14,7 +14,7 @@ import {
   surveys,
   users,
 } from "./fixtures";
-import { alertCases, patientGroupMembers, patientGroups, responses, riskAlerts } from "../src/db/schema";
+import { alertCases, patientGroupMembers, patientGroups, responses, riskAlerts, surveyAccess } from "../src/db/schema";
 
 /**
  * Очередь случаев на сотнях открытых случаев.
@@ -145,6 +145,16 @@ beforeAll(async () => {
         role: "user",
         unit: p.unit,
       })) as never,
+    );
+    /*
+     * Люди очереди — в зоне сотрудников, как в жизни: случай по методике
+     * бывает у того, кому её выдали. Без выдачи под ролью приложения состав
+     * группы пациентов не виден (patient_group_members требует
+     * rls_admin_sees_patient), и отбор по группе молча пустел: проверка
+     * сверяла бы не очередь, а посев, которого в бою не бывает.
+     */
+    await db.insert(surveyAccess).values(
+      spec.slice(from, from + 200).map((p) => ({ surveyId, userId: p.userId, grantedBy: staff.id })),
     );
   }
   const rows = spec.flatMap((p) =>
