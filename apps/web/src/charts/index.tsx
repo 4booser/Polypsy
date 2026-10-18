@@ -451,7 +451,7 @@ export function LineChart({
       </svg>
 
       {at >= 0 && label ? (
-        <ChartTip x={(xAt(at) / W) * W} y={Math.min(...series.map((s) => (s.points[at] ? yAt(s.points[at]!.y) : height)))} width={W}>
+        <ChartTip x={xAt(at)} y={Math.min(...series.map((s) => (s.points[at] ? yAt(s.points[at]!.y) : height)))} width={W}>
           <TipHead>{label}</TipHead>
           {series.map((s, si) => {
             const point = s.points[at];

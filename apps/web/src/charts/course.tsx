@@ -6,6 +6,7 @@ import { NoData } from "../ui/primitives";
 import {
   bandSpans,
   courseLayout,
+  freeSpot,
   labelledPoints,
   placeLabels,
   pointTip,
@@ -13,6 +14,7 @@ import {
   type ChangeVerdict,
   type CourseEvent,
   type CoursePoint,
+  type Box,
   type PointTip,
 } from "./courseModel";
 import { useChartWidth } from "./index";
@@ -119,8 +121,17 @@ export function CourseChart({
   const sessions = lay.events.filter((e) => e.kind !== "signal");
   const signals = lay.events.filter((e) => e.kind === "signal");
 
-  /* полоса справа под подписи полос — данные в неё не заходят, и подписи не на чем перекрыть */
-  const strip = ladder.length ? Math.min(120, Math.max(56, ...ladder.map((r) => textW(r.label) + 12))) : 14;
+  /*
+   * Полоса справа под подписи полос — данные в неё не заходят, и подписи
+   * не на чем перекрыть. Не шире трети графика: длинное название полосы
+   * («Легка (субклінічна) депресія») сокращается многоточием, целиком оно
+   * в подсказке замера.
+   */
+  const strip = ladder.length ? Math.min(Math.round(W * 0.3), 176, Math.max(56, ...ladder.map((r) => textW(r.label) + 12))) : 14;
+  const fitLabel = (s: string) => {
+    const room = Math.floor((strip - 12) / (11 * 0.56));
+    return s.length <= room ? s : `${s.slice(0, Math.max(1, room - 1)).trimEnd()}…`;
+  };
   const x0 = L + (sessions.length ? 26 : 16);
   const x1 = W - R - strip;
   const X = (t: number) => x0 + ((t - lay.t0) / Math.max(1, lay.t1 - lay.t0)) * (x1 - x0);
@@ -134,6 +145,14 @@ export function CourseChart({
   const xs = points.map((p) => X(p.t));
   const ys = points.map((p) => Y(p.value));
   const labelled = labelledPoints(points.map((p) => p.value));
+  /* число у замера — над точкой (у «краще ↑» — под ней), у кромки поля — с другой стороны */
+  const valueY = points.map((_, i) => {
+    const above = better !== "up";
+    let y = above ? ys[i]! - 11 : ys[i]! + 19;
+    if (above && y < T + 12) y = ys[i]! + 19;
+    if (!above && y > PB - 4) y = ys[i]! - 11;
+    return y;
+  });
   const sy = PB + 44;
   const H = sessions.length ? sy + 30 : PB + 26;
 
@@ -141,6 +160,52 @@ export function CourseChart({
   const dateShown = placeLabels(xs, points.map((p) => textW(p.label)));
   const todayX = lay.today !== null ? X(lay.today) : null;
   const sameDay = (t: number) => lay.today !== null && Math.abs(t - lay.today) < 12 * 3_600_000;
+
+  /*
+   * Подписи межі похибки и надёжного улучшения ставятся туда, где они ничего
+   * не закрывают: ни замер, ни линию, ни число, ни «сьогодні»; места нет —
+   * подписи нет, смысл остаётся в легенде и подсказке.
+   */
+  const obstacles: Box[] = [
+    ...xs.map((x, i) => ({ x0: x - 8, y0: ys[i]! - 8, x1: x + 8, y1: ys[i]! + 8 })),
+    ...points.flatMap((p, i) => {
+      if (!labelled.has(i)) return [];
+      const w = textW(dec(p.value), 13);
+      return [{ x0: xs[i]! - w / 2 - 2, y0: valueY[i]! - 12, x1: xs[i]! + w / 2 + 2, y1: valueY[i]! + 3 }];
+    }),
+    ...xs.slice(1).flatMap((x, i) => {
+      const xa = xs[i]!;
+      const ya = ys[i]!;
+      const n = Math.max(1, Math.ceil(Math.hypot(x - xa, ys[i + 1]! - ya) / 4));
+      return Array.from({ length: n }, (_, k) => {
+        const px = xa + ((x - xa) * k) / n;
+        const py = ya + ((ys[i + 1]! - ya) * k) / n;
+        return { x0: px - 3, y0: py - 3, x1: px + 3, y1: py + 3 };
+      });
+    }),
+    ...(todayX !== null ? [{ x0: todayX - 3, y0: T, x1: todayX + 3, y1: PB }] : []),
+  ];
+  const field: Box = { x0: L + 2, y0: T + 2, x1: x1 - 2, y1: PB - 2 };
+  const spotFor = (text: string, ys0: readonly number[]) => {
+    const w = textW(text);
+    /* слева направо: у старта, на четверти, посередине, на трёх четвертях, у правого края */
+    const xsC = [x0 + 6, ...[0.25, 0.5, 0.75].map((q) => x0 + (x1 - x0) * q - w / 2), x1 - 8 - w];
+    const cands = ys0.flatMap((y) => xsC.map((x) => ({ x0: x, y0: y - 10, x1: x + w, y1: y + 3, y })));
+    const got = freeSpot(cands, obstacles, field);
+    if (got) obstacles.push(got);
+    return got;
+  };
+  const zoneText = zone ? fillIn(ut("course.rcZone"), { base: dec(base), rc: dec(rc!, 1) }) : "";
+  const edge = zone && better ? Y(better === "down" ? zone.lo : zone.hi) : null;
+  const edgeText =
+    zone && better ? fillIn(ut(better === "down" ? "course.rcBelow" : "course.rcAbove"), { v: dec(better === "down" ? base - rc! : base + rc!, 1) }) : "";
+  const edgeSpot = edge !== null ? spotFor(edgeText, better === "down" ? [edge + 14, edge - 5] : [edge - 5, edge + 14]) : null;
+  const zoneSpot = zone
+    ? spotFor(
+        zoneText,
+        better === "up" ? [Y(zone.lo) - 6, Y(zone.lo) + 14, Y(zone.hi) - 5] : [Y(zone.hi) + 14, Y(zone.hi) - 5, Y(zone.lo) - 6],
+      )
+    : null;
 
   const unitWord = !normalization || normalization === "raw" ? ut("course.points") : ut(`norm.${normalization}` as UiKey);
   const pAt = pointHover.at;
@@ -238,7 +303,7 @@ export function CourseChart({
                 fontWeight={s.rung === current ? 800 : 700}
                 fill={s.rung === current ? "var(--vink)" : "var(--muted)"}
               >
-                {s.rung.label}
+                {fitLabel(s.rung.label)}
               </text>
               {two ? (
                 <text x={W - R - 8} y={f1(yc + 12)} textAnchor="end" fontSize={10.5} fontWeight={500} fill="var(--muted)">
@@ -268,38 +333,19 @@ export function CourseChart({
         {/* межі похибки от старта и граница надёжного улучшения */}
         {zone ? (
           <g style={{ paintOrder: "stroke" }} stroke="var(--plot)" strokeWidth={4} strokeLinejoin="round">
-            {better ? (
-              <>
-                <line
-                  x1={L}
-                  x2={f1(x1)}
-                  y1={f1(Y(better === "down" ? zone.lo : zone.hi))}
-                  y2={f1(Y(better === "down" ? zone.lo : zone.hi))}
-                  stroke="var(--vink)"
-                  strokeWidth={1.2}
-                  strokeDasharray="4 3"
-                  opacity={0.85}
-                />
-                <text
-                  x={L + 6}
-                  y={f1(better === "down" ? Y(zone.lo) + 14 : Y(zone.hi) - 5)}
-                  fontSize={11}
-                  fontWeight={700}
-                  fill="var(--vink)"
-                >
-                  {fillIn(ut(better === "down" ? "course.rcBelow" : "course.rcAbove"), { v: dec(better === "down" ? base - rc! : base + rc!, 1) })}
-                </text>
-              </>
+            {edge !== null ? (
+              <line x1={L} x2={f1(x1)} y1={f1(edge)} y2={f1(edge)} stroke="var(--vink)" strokeWidth={1.2} strokeDasharray="4 3" opacity={0.85} />
             ) : null}
-            <text
-              x={x0 + 8}
-              y={f1(better === "up" ? Y(zone.lo) - 6 : Y(zone.hi) + 14)}
-              fontSize={11}
-              fontWeight={600}
-              fill="var(--vink)"
-            >
-              {fillIn(ut("course.rcZone"), { base: dec(base), rc: dec(rc!, 1) })}
-            </text>
+            {edgeSpot ? (
+              <text data-label="rc-edge" x={f1(edgeSpot.x0)} y={f1(edgeSpot.y)} fontSize={11} fontWeight={700} fill="var(--vink)">
+                {edgeText}
+              </text>
+            ) : null}
+            {zoneSpot ? (
+              <text data-label="rc-zone" x={f1(zoneSpot.x0)} y={f1(zoneSpot.y)} fontSize={11} fontWeight={600} fill="var(--vink)">
+                {zoneText}
+              </text>
+            ) : null}
           </g>
         ) : null}
 
@@ -341,16 +387,12 @@ export function CourseChart({
         ))}
         {points.map((p, i) => {
           if (!labelled.has(i)) return null;
-          const above = better !== "up";
-          let y = above ? ys[i]! - 11 : ys[i]! + 19;
-          if (above && y < T + 12) y = ys[i]! + 19;
-          if (!above && y > PB - 4) y = ys[i]! - 11;
           return (
             <text
               key={`v-${p.key}`}
               data-value={i}
               x={f1(xs[i]!)}
-              y={f1(y)}
+              y={f1(valueY[i]!)}
               textAnchor="middle"
               fontSize={13}
               fontWeight={800}
@@ -370,7 +412,8 @@ export function CourseChart({
           const x = X(e.t);
           const lastOne = k === signals.length - 1;
           const word = ut("course.signal");
-          const right = x + 9 + textW(word) < W - R;
+          /* подпись не заходит в полосу подписей полос справа */
+          const right = x + 9 + textW(word) < x1;
           return (
             <g key={e.key} data-event="signal">
               <rect x={f1(x - 4.5)} y={PB - 4.5} width={9} height={9} rx={2.5} fill="var(--risk)" />

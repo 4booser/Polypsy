@@ -10,6 +10,7 @@ import {
   courseEventsFromTimeline,
   courseFromDynamics,
   courseLayout,
+  freeSpot,
   pointTip,
   reliableThreshold,
   type CourseEvent,
@@ -199,6 +200,18 @@ describe("раскладка", () => {
     // приём больше года назад на ось курса не попадает
     expect(lay.events.some((e) => e.key === "old")).toBe(false);
     expect(lay.ticks).toEqual([0, 5, 10, 15, 20, 27]);
+  });
+});
+
+describe("подписи межі похибки", () => {
+  test("первое свободное место; занято всё — подписи нет", () => {
+    const field = { x0: 0, y0: 0, x1: 100, y1: 100 };
+    const a = { x0: 10, y0: 10, x1: 50, y1: 20 };
+    const b = { x0: 10, y0: 40, x1: 50, y1: 50 };
+    expect(freeSpot([a, b], [{ x0: 20, y0: 12, x1: 24, y1: 16 }], field)).toBe(b);
+    expect(freeSpot([a, b], [{ x0: 0, y0: 0, x1: 100, y1: 100 }], field)).toBeNull();
+    // за краем поля — не место
+    expect(freeSpot([{ x0: 90, y0: 10, x1: 140, y1: 20 }], [], field)).toBeNull();
   });
 });
 

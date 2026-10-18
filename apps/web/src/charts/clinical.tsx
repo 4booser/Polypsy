@@ -22,6 +22,7 @@ import {
   ViewSwitch,
   fillIn,
   sevBg,
+  useDecimal,
   sevColor,
   shapeOf,
   useIndexHover,
@@ -325,6 +326,7 @@ export function BandTrend({
   label: string;
 }) {
   const { ut } = useLang();
+  const dec = useDecimal();
   const [W, boxRef] = useChartWidth();
   const svgRef = useRef<SVGSVGElement>(null);
   const hover = useIndexHover(points.length);
@@ -353,8 +355,13 @@ export function BandTrend({
   }
   const span = Math.max(hi - lo, Number.EPSILON);
   const spans = bandSpans(sorted, lo, hi);
-  const labelW = sorted.length ? Math.min(110, Math.max(48, ...sorted.map((r) => r.label.length * 6.2 + 14))) : 0;
+  /* полоса подписей не шире трети графика: длинное название полосы сокращается многоточием */
+  const labelW = sorted.length ? Math.min(Math.round(W * 0.3), 176, Math.max(48, ...sorted.map((r) => r.label.length * 6.2 + 14))) : 0;
   const showBandLabels = sorted.length > 0 && W - labelW > 300;
+  const fitLabel = (s: string) => {
+    const room = Math.floor((labelW - 14) / 6.2);
+    return s.length <= room ? s : `${s.slice(0, Math.max(1, room - 1)).trimEnd()}…`;
+  };
 
   const right = TP.right + (showBandLabels ? labelW : 0);
   const pw = Math.max(40, W - TP.left - right - 10);
@@ -451,11 +458,11 @@ export function BandTrend({
                     strokeLinejoin="round"
                     style={{ paintOrder: "stroke" }}
                   >
-                    {s.rung.label}
+                    {fitLabel(s.rung.label)}
                   </text>
                   {two ? (
                     <text x={W - TP.right - 8} y={f1(yc + 12)} textAnchor="end" fontSize={10.5} fontWeight={500} fill="var(--muted)">
-                      {num(s.rung.min)}–{num(s.rung.max)}
+                      {dec(s.rung.min)}–{dec(s.rung.max)}
                     </text>
                   ) : null}
                 </g>
@@ -465,7 +472,7 @@ export function BandTrend({
 
         {ticks.map((t) => (
           <text key={`t-${t}`} x={TP.left - 7} y={yAt(t) + 4} fontSize={11} fontWeight={600} fill="var(--axis)" textAnchor="end">
-            {num(t)}
+            {dec(t)}
           </text>
         ))}
 
@@ -495,7 +502,7 @@ export function BandTrend({
           strokeLinejoin="round"
           style={{ paintOrder: "stroke" }}
         >
-          {num(last.value)}
+          {dec(last.value)}
         </text>
 
         {points.map((p, i) =>
@@ -511,7 +518,7 @@ export function BandTrend({
         <ChartTip x={xAt(at.t)} y={yAt(at.value)} width={W}>
           <TipHead note={at.focus ? ut("kit.thisOne") : undefined}>{at.label}</TipHead>
           <p className="m-0 mt-[6px] flex items-center gap-[8px]">
-            <b className="text-[15px] font-extrabold text-text">{num(at.value)}</b>
+            <b className="text-[15px] font-extrabold text-text">{dec(at.value)}</b>
             {at.band ? <SevChip severity={at.band.severity} label={at.band.label} small /> : null}
           </p>
         </ChartTip>
@@ -926,13 +933,13 @@ export function HeatTable({
   };
   return (
     <div className="overflow-x-auto">
-      <table className="border-separate border-spacing-[3px] text-small">
+      <table className="w-auto border-separate border-spacing-[3px] text-small">
         {caption ? <caption className="sr-only">{caption}</caption> : null}
         <thead>
           <tr>
-            <th scope="col" />
+            <th scope="col" className="static h-auto border-0 bg-transparent p-0" />
             {columns.map((c, j) => (
-              <th key={`${j}-${c}`} scope="col" className="px-[4px] pb-[4px] text-center text-[11.5px] leading-none font-bold whitespace-nowrap text-muted">
+              <th key={`${j}-${c}`} scope="col" className="static h-auto border-0 bg-transparent px-[4px] pt-0 pb-[4px] text-center text-[11.5px] leading-none font-bold tracking-normal whitespace-nowrap normal-case text-muted">
                 {c}
               </th>
             ))}
@@ -940,15 +947,18 @@ export function HeatTable({
         </thead>
         <tbody>
           {rows.map((r) => (
-            <tr key={r.key}>
-              <th scope="row" className={cx("pr-[12px] text-left text-[13px] font-semibold whitespace-nowrap", r.critical ? "text-risk-ink" : "text-text-2")}>
+            <tr key={r.key} className="hover:bg-transparent">
+              <th
+                scope="row"
+                className={cx("h-auto border-0 py-0 pr-[12px] pl-0 text-left text-[13px] font-semibold whitespace-nowrap", r.critical ? "text-risk-ink" : "text-text-2")}
+              >
                 {r.label}
               </th>
               {columns.map((c, j) => {
                 const v = r.cells[j] ?? null;
                 const crit = !!r.critical && v !== null && v > 0;
                 return (
-                  <td key={`${j}-${c}`} className="p-0">
+                  <td key={`${j}-${c}`} className="h-auto border-0 p-0">
                     <span
                       tabIndex={0}
                       data-cell={crit ? "critical" : v === null ? "empty" : `h${level(v)}`}
@@ -1442,15 +1452,21 @@ export function TimeLines({
   };
   const at = hover.at === null ? null : x[hover.at]!;
 
-  /* подписи у концов: значение и имя ряда у последней известной корзины, раздвинутые на строку */
-  const endRows = ends
-    ? series
-        .map((s) => {
-          const i = s.values.reduce<number>((m, v, k) => (v === null ? m : k), -1);
-          return i < 0 ? null : { key: s.key, y: yAt(s.values[i]!), x: xAt(i), v: s.values[i]!, label: s.label };
-        })
-        .filter((r): r is NonNullable<typeof r> => r !== null)
-        .sort((a, b) => a.y - b.y)
+  /*
+   * Подписи у концов: значение и имя ряда у последней известной корзины,
+   * раздвинутые на строку. Подпись порога стоит в том же столбце справа —
+   * внутри поля её перечёркивали бы сами ряды.
+   */
+  const endRows: { key: string; y: number; x: number; v: number | null; label: string }[] = ends
+    ? [
+        ...series
+          .map((s) => {
+            const i = s.values.reduce<number>((m, v, k) => (v === null ? m : k), -1);
+            return i < 0 ? null : { key: s.key, y: yAt(s.values[i]!), x: xAt(i), v: s.values[i]!, label: s.label };
+          })
+          .filter((r): r is NonNullable<typeof r> => r !== null),
+        ...(threshold ? [{ key: "__threshold", y: yAt(threshold.value), x: W - right, v: null, label: threshold.label }] : []),
+      ].sort((a, b) => a.y - b.y)
     : [];
   for (let k = 1; k < endRows.length; k++) if (endRows[k]!.y - endRows[k - 1]!.y < 13) endRows[k]!.y = endRows[k - 1]!.y + 13;
 
@@ -1487,20 +1503,22 @@ export function TimeLines({
               strokeOpacity={0.8}
               strokeDasharray="4 3"
             />
-            <text
-              x={W - right}
-              y={yAt(threshold.value) - 5}
-              fontSize={11}
-              fontWeight={700}
-              fill="var(--warn)"
-              textAnchor="end"
-              stroke="var(--panel)"
-              strokeWidth={4}
-              strokeLinejoin="round"
-              style={{ paintOrder: "stroke" }}
-            >
-              {threshold.label}
-            </text>
+            {ends ? null : (
+              <text
+                x={W - right}
+                y={yAt(threshold.value) - 5}
+                fontSize={11}
+                fontWeight={700}
+                fill="var(--warn)"
+                textAnchor="end"
+                stroke="var(--panel)"
+                strokeWidth={4}
+                strokeLinejoin="round"
+                style={{ paintOrder: "stroke" }}
+              >
+                {threshold.label}
+              </text>
+            )}
           </g>
         ) : null}
 
@@ -1570,14 +1588,20 @@ export function TimeLines({
           );
         })}
 
-        {endRows.map((r) => (
-          <text key={`e-${r.key}`} x={r.x + 9} y={r.y + 4} fontSize={11} fontWeight={600} fill="var(--text-2)">
-            <tspan fontWeight={800} fill="var(--text)">
-              {format(r.v)}
-            </tspan>
-            {single ? "" : ` ${r.label}`}
-          </text>
-        ))}
+        {endRows.map((r) =>
+          r.v === null ? (
+            <text key={`e-${r.key}`} x={r.x + 9} y={r.y + 4} fontSize={11} fontWeight={700} fill="var(--warn)">
+              {r.label}
+            </text>
+          ) : (
+            <text key={`e-${r.key}`} x={r.x + 9} y={r.y + 4} fontSize={11} fontWeight={600} fill="var(--text-2)">
+              <tspan fontWeight={800} fill="var(--text)">
+                {format(r.v)}
+              </tspan>
+              {single ? "" : ` ${r.label}`}
+            </text>
+          ),
+        )}
 
         {x.map((c, i) =>
           (x.length - 1 - i) % every === 0 ? (
@@ -1618,8 +1642,9 @@ export function TimeLines({
  * Крупное число набора (big value): подпись, число 32/800 со своей
  * единицей, ход рядом с числом, которое он объясняет, и пояснение-сравнение
  * под ним. Без плитки: ни заливки, ни рамки, ни тени — набор запрещает ряды
- * плиток «число + подпись + дельта». Стоящие в ряд числа разделены
- * волосяной линией, как столбцы «Методик» в карточке пациента.
+ * плиток «число + подпись + дельта». Разделить стоящие в ряд числа
+ * линией, как столбцы «Методик» в карточке пациента, — дело экрана: только
+ * он знает, где кончается строка сетки.
  *
  * `tone="attention"` красит число янтарём — и только когда число само по
  * себе требует действия (просроченное, необработанные случаи).
@@ -1644,7 +1669,7 @@ export function Kpi({
   return (
     <div
       data-kpi
-      className={cx("flex min-w-0 flex-col gap-[6px] not-first:border-l not-first:border-divider not-first:pl-[16px]", className)}
+      className={cx("flex min-w-0 flex-col gap-[6px]", className)}
     >
       <span className="text-[13px] leading-[16px] font-bold text-text-2">{label}</span>
       <span className="flex min-w-0 flex-wrap items-baseline gap-x-[8px] gap-y-[4px]">

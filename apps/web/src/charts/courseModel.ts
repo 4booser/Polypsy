@@ -347,6 +347,32 @@ export function labelledPoints(values: readonly number[]): Set<number> {
   return out;
 }
 
+/** Прямоугольник на поле графика: x0, y0 — левый верхний угол */
+export interface Box {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+}
+
+const hits = (a: Box, b: Box) => a.x0 < b.x1 && a.x1 > b.x0 && a.y0 < b.y1 && a.y1 > b.y0;
+
+/**
+ * Первое место для подписи, где она ничего не закрывает: ни замер, ни
+ * линию, ни число у замера, ни другую подпись, — и не вылезает за поле.
+ * Места перебираются в порядке предпочтения (как у набора: сначала у
+ * левого края в своей полосе, потом у её другой кромки, потом дальше).
+ * Ни одного свободного — null: подпись не рисуется, её смысл остаётся в
+ * легенде и в подсказке.
+ */
+export function freeSpot<T extends Box>(candidates: readonly T[], obstacles: readonly Box[], field: Box): T | null {
+  for (const c of candidates) {
+    if (c.x0 < field.x0 || c.x1 > field.x1 || c.y0 < field.y0 || c.y1 > field.y1) continue;
+    if (!obstacles.some((o) => hits(c, o))) return c;
+  }
+  return null;
+}
+
 /**
  * Подписи дат под осью без наложения: сначала последняя, потом первая,
  * потом остальные с конца — каждая, только если не налезает на уже

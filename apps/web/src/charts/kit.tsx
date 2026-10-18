@@ -401,7 +401,7 @@ export function DataTable({ table, caption }: { table: TableView; caption?: stri
                 key={i}
                 scope="col"
                 className={cx(
-                  "border-b border-divider py-[7px] pr-[14px] align-bottom text-caption font-bold text-muted",
+                  "static h-auto border-b border-divider bg-transparent py-[7px] pr-[14px] pl-0 align-bottom text-caption font-bold tracking-normal normal-case text-muted",
                   i ? "text-right" : "text-left",
                 )}
               >
@@ -415,11 +415,11 @@ export function DataTable({ table, caption }: { table: TableView; caption?: stri
             <tr key={k}>
               {r.map((c, i) =>
                 i ? (
-                  <td key={i} className="border-b border-divider py-[7px] pr-[14px] text-right font-semibold text-text tabular-nums">
+                  <td key={i} className="h-auto border-b border-divider py-[7px] pr-[14px] pl-0 text-right font-semibold text-text tabular-nums">
                     {c}
                   </td>
                 ) : (
-                  <th key={i} scope="row" className="border-b border-divider py-[7px] pr-[14px] text-left font-semibold text-text-2">
+                  <th key={i} scope="row" className="h-auto border-b border-divider py-[7px] pr-[14px] pl-0 text-left font-semibold text-text-2">
                     {c}
                   </th>
                 ),
