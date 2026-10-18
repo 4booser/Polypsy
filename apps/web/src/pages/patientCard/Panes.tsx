@@ -50,12 +50,9 @@ export function useThreadPane(v: CardView, active: boolean): DrawerPaneProps {
   const firstName = v.card.firstName || v.card.fullName;
   const canMove = !!v.next && v.nextIsMine && v.can("appointments.manage");
   const slots = useMySlots(active && canMove);
-  const near = useMemo(() => nearSlots(slots.data ?? [], v.next?.at ?? null).concat(), [slots.data, v.next?.at]);
-  const more = useMemo(() => {
-    const ids = new Set(near.map((s) => s.id));
-    return (slots.data ?? []).filter((s) => !ids.has(s.id) && Date.parse(s.startsAt) > Date.now()).slice(0, 3);
-  }, [slots.data, near]);
-  const choice = [...near, ...more];
+  /* шесть окон ближе всего ко времени приёма — сначала тот же день, по порядку времени */
+  const choice = useMemo(() => nearSlots(slots.data ?? [], v.next?.at ?? null, 6), [slots.data, v.next?.at]);
+
   const picked = choice.find((s) => s.id === v.slotId) ?? null;
 
   useEffect(() => setText(""), [v.id]);

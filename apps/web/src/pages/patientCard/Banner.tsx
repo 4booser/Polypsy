@@ -161,8 +161,9 @@ export const Banner = forwardRef<
         </div>
         <Strip v={v} drafts={drafts} />
       </div>
-      <div className="flex min-w-0 items-center gap-2 py-2">
-        <div className="min-w-0 overflow-x-auto [scrollbar-width:none] [&>[role=tablist]]:flex-nowrap">
+      {/* полоса вкладок узкая (1280 со списком) — счётчики уходят, подписи остаются */}
+      <div className="@container flex min-w-0 items-center gap-2 py-2">
+        <div className="min-w-0 overflow-x-auto [scrollbar-width:none] [&>[role=tablist]]:flex-nowrap @max-[960px]:[&_[role=tab]>span]:hidden">
           <Tabs
             label={ut("card.tabsLabel")}
             items={CARD_TABS.map((t) => ({
@@ -177,11 +178,12 @@ export const Banner = forwardRef<
         </div>
         <Link
           to={`/patients/${card.id}/case`}
-          className="ml-auto inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-control px-3 text-body font-bold text-violet-ink no-underline hover:bg-tab-hover hover:no-underline max-[1365px]:px-2.5"
+          className="ml-auto inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-control px-3 text-body font-bold text-violet-ink no-underline hover:bg-tab-hover hover:no-underline @max-[1080px]:px-2.5"
           title={ut("pcard.clinical")}
         >
           <Ic.layers size={15} />
-          <span className="max-[1365px]:sr-only">{ut("pcard.clinical")}</span>
+          <span className="@max-[1080px]:sr-only">{ut("pcard.clinical")}</span>
+
         </Link>
       </div>
     </section>
@@ -361,7 +363,7 @@ function Strip({ v, drafts }: { v: CardView; drafts: { thread: boolean; concl: b
       <AlertChip
         key={`draft-${c.id}`}
         icon={<Pi.filePen />}
-        label={ut("card.draftOf").replace("{s}", shortTitle(c.surveyTitle))}
+        label={ut("card.draftOf").replace("{s}", clip(shortTitle(c.surveyTitle), 18))}
         pressed={v.pane === "concl"}
         draft={drafts.concl && v.pane !== "concl"}
         onClick={() => v.open("concl", { responseId: c.responseId })}
@@ -385,7 +387,7 @@ function Strip({ v, drafts }: { v: CardView; drafts: { thread: boolean; concl: b
         key="assigned"
         kind={overdue ? "warn" : "neutral"}
         icon={<Pi.clipboardClock />}
-        label={a.dueAt ? ut("card.assignedDue").replace("{s}", a.title).replace("{d}", dm(a.dueAt)) : a.title}
+        label={a.dueAt ? ut("card.assignedDue").replace("{s}", clip(a.title, 22)).replace("{d}", dm(a.dueAt)) : clip(a.title, 28)}
         detail={v.assignments.length > 1 ? `+${v.assignments.length - 1}` : undefined}
         popTitle={a.title}
         popNote={a.dueAt ? ut("card.dueOn").replace("{d}", dm(a.dueAt)) : undefined}
@@ -430,6 +432,11 @@ function Strip({ v, drafts }: { v: CardView; drafts: { thread: boolean; concl: b
       {items.length ? items : <span className="text-small text-muted">{ut("card.nothingOpen")}</span>}
     </AlertStrip>
   );
+}
+
+/** Длинное название в пилюле строки — с многоточием: строка одна, и пилюли не должны выталкивать соседей */
+function clip(s: string, n: number): string {
+  return s.length > n ? `${s.slice(0, n - 1).trimEnd()}…` : s;
 }
 
 /** «PHQ-9» из «Депресія (PHQ-9)» или из «PHQ-9. Опитувальник здоров’я пацієнта» */

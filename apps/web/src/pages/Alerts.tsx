@@ -277,7 +277,8 @@ export default function Alerts() {
   }, [selected?.id]);
 
   return (
-    <div className="flex min-h-0 flex-1">
+    /* узкое окно: очередь сверху своей прокруткой, случай под ней — всё листается вместе */
+    <div className="flex min-h-0 flex-1 max-[900px]:flex-col max-[900px]:overflow-y-auto">
       {/* ── очередь ── */}
       <aside
         id="cases-queue"
@@ -423,7 +424,13 @@ export default function Alerts() {
             {ut("al.sortLine")} <b className="font-bold text-text-2">{ut("al.sortLineB")}</b>
           </div>
         </div>
-        <div ref={listRef} id="cases-queue-list" className="kit-scroll min-h-0 flex-1 overflow-y-auto border-t border-divider pb-2.5">
+        <div
+          ref={listRef}
+          id="cases-queue-list"
+          role="tabpanel"
+          aria-labelledby={`cases-status-${view}`}
+          className="kit-scroll min-h-0 flex-1 overflow-y-auto border-t border-divider pb-2.5"
+        >
           {queue.stale ? (
             <div role="alert" className="flex items-center gap-2.5 border-b border-divider px-4 py-2">
               <p className="m-0 min-w-0 flex-1 text-small font-bold text-risk-ink">{queue.stale}</p>
@@ -474,11 +481,12 @@ export default function Alerts() {
             <KbdHints
               className="hotkeys"
               keys={[
-                ["J K", ut("hotkey.next")],
-                ["T", ut("hotkey.take")],
+                ["J K", ut("card.kRows")],
+                ["T", ut("al.kTake")],
                 ["R", ut("al.kReview")],
               ]}
             />
+
           </div>
           {facets ? (
             <span className="ml-auto whitespace-nowrap font-bold text-text-2">
@@ -489,7 +497,12 @@ export default function Alerts() {
       </aside>
 
       {/* ── выбранный случай ── */}
-      <section data-triage-case="" aria-label={ut("al.recordLabel")} className="kit-scroll min-h-0 min-w-0 flex-1 overflow-y-auto">
+      <section
+        data-triage-case=""
+        aria-label={ut("al.recordLabel")}
+        className="kit-scroll min-h-0 min-w-0 flex-1 overflow-y-auto max-[900px]:flex-none max-[900px]:overflow-visible"
+      >
+
         {shown ? (
           <CaseRecord
             key={shown.id}
@@ -682,7 +695,7 @@ function CaseRecord({
     <article data-case-card="" className="flex min-h-full flex-col">
       <PatientBand c={c} now={now} onReview={onReview} reviewOpen={reviewOpen} />
       <div className="@container px-5 pb-8 pt-5">
-        <div className="grid items-start gap-5 @min-[960px]:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="grid items-start gap-5 @min-[780px]:grid-cols-[minmax(0,1fr)_300px] @min-[1000px]:grid-cols-[minmax(0,1fr)_360px]">
           <div className="flex min-w-0 flex-col gap-4">
             <ReviewPanel c={c} me={me} now={now} onTake={onTake} onReview={onReview}>
               {many ? (
@@ -728,11 +741,14 @@ function PatientBand({ c, now, onReview, reviewOpen }: { c: AlertCase; now: numb
               {s && (s.age !== null || sex) ? (
                 <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
                   <Pi.userRound size={15} className="text-violet-ink" />
-                  {s.age !== null ? <b className="font-extrabold text-text">{ut("card.years").replace("{n}", String(s.age))}</b> : null}
-                  {s.age !== null && sex ? ", " : null}
-                  {sex}
+                  <span>
+                    {s.age !== null ? <b className="font-extrabold text-text">{ut("card.years").replace("{n}", String(s.age))}</b> : null}
+                    {s.age !== null && sex ? ", " : null}
+                    {sex}
+                  </span>
                 </span>
               ) : null}
+
               {c.unit ? (
                 <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
                   <Ic.idCard size={15} className="text-violet-ink" />

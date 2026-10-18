@@ -137,7 +137,7 @@ function CardRecord({
   const messages = useResource(
     () => (thread ? api.thread(thread.id).then((r) => r.items as ThreadMessage[]) : Promise.resolve(null)),
     [thread?.id, thread?.lastMessageAt, thread?.unread],
-    { enabled: !!thread, keep: false },
+    { enabled: !!thread },
   );
   const notes = useResource(() => api.notes(id).catch(() => null), [id], { keep: false });
   const plans = useResource(() => api.safetyPlans(id).catch(() => null), [id], { keep: false });

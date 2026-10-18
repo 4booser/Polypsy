@@ -33,16 +33,21 @@ import type { CardView } from "./types";
  */
 
 export function Overview({ v }: { v: CardView }) {
+  /*
+   * Две колонки, пока в ширине есть место правой: 540 + остаток на 1440, а на
+   * 1280 со списком (820 под запись) — гибкая левая и правая 300. Уже — одна
+   * колонка, правые панели уходят вниз сеткой.
+   */
   return (
     <div className="@container">
-      <div className="grid items-start gap-5 @min-[940px]:grid-cols-[minmax(0,540px)_minmax(0,1fr)]">
+      <div className="grid items-start gap-5 @min-[780px]:grid-cols-[minmax(0,1fr)_300px] @min-[940px]:grid-cols-[minmax(0,540px)_minmax(0,1fr)]">
         <div className="flex min-w-0 flex-col gap-4">
           <SincePanel v={v} />
           <InstrumentsPanel v={v} />
           <CoursePanel v={v} />
           <ItemsPanel v={v} />
         </div>
-        <div className="grid min-w-0 grid-cols-[repeat(auto-fill,minmax(340px,1fr))] items-start gap-4">
+        <div className="grid min-w-0 grid-cols-[repeat(auto-fill,minmax(min(100%,300px),1fr))] items-start gap-4">
           <NextVisitPanel v={v} />
           <ConclusionsPanel v={v} />
           <AssignedPanel v={v} />
@@ -240,13 +245,15 @@ function InstrumentsPanel({ v }: { v: CardView }) {
       {!rows.length ? (
         <p className="m-0 border-t border-divider px-4 py-3.5 text-small text-muted">{ut("pcard.noTests")}</p>
       ) : (
+        <div className="@container">
         <table className="w-full table-fixed border-collapse text-body">
+          {/* узкая левая колонка (1280 со списком): имя и тяжесть уже, изменение — с запасом на «надійно краще» */}
           <colgroup>
-            <col className="w-[150px]" />
-            <col className="w-[46px]" />
-            <col className="w-[46px]" />
-            <col className="w-[72px]" />
-            <col className="w-[112px]" />
+            <col className="w-[164px] @max-[530px]:w-[132px]" />
+            <col className="w-[44px] @max-[530px]:w-[40px]" />
+            <col className="w-[44px] @max-[530px]:w-[40px]" />
+            <col className="w-[70px] @max-[530px]:w-[64px]" />
+            <col className="w-[100px] @max-[530px]:w-[92px]" />
             <col />
           </colgroup>
           <thead>
@@ -266,12 +273,14 @@ function InstrumentsPanel({ v }: { v: CardView }) {
             ))}
           </tbody>
         </table>
+        </div>
       )}
     </Panel>
   );
 }
 
-function InstrumentLine({ r, open, onToggle }: { r: InstrumentRow; open: boolean; onToggle: () => void }) {
+function InstrumentLine(
+{ r, open, onToggle }: { r: InstrumentRow; open: boolean; onToggle: () => void }) {
   const { ut } = useLang();
   const pts = r.points.slice(-3);
   const last = pts[pts.length - 1]!;
@@ -298,16 +307,21 @@ function InstrumentLine({ r, open, onToggle }: { r: InstrumentRow; open: boolean
               <Ic.chevronRight size={14} className={cx("transition-transform", open && "rotate-90")} />
             </button>
             <span className="min-w-0">
-              <span className="flex flex-wrap items-baseline gap-x-1.5">
-                <b className="line-clamp-2 font-extrabold leading-[17px] text-text" title={r.code}>
-                  {r.code}
-                </b>
-                {r.better ? <span className="text-[11.5px] font-bold text-muted">{ut(r.better === "down" ? "kit.betterDown" : "kit.betterUp")}</span> : null}
-              </span>
-              <span className="block truncate text-caption text-muted" title={r.title}>
-                {r.title}
+              <b className="block truncate font-extrabold text-text" title={r.code}>
+                {r.code}
+              </b>
+              <span className="flex min-w-0 items-baseline gap-x-1.5 text-caption text-muted">
+                {r.better ? (
+                  <span className="shrink-0 whitespace-nowrap text-[11.5px] font-bold">
+                    {ut(r.better === "down" ? "kit.betterDown" : "kit.betterUp")}
+                  </span>
+                ) : null}
+                <span className="min-w-0 truncate" title={r.title}>
+                  {r.title}
+                </span>
               </span>
             </span>
+
           </div>
         </td>
         {[0, 1].map((i) => {
@@ -827,17 +841,18 @@ function NextVisitPanel({ v }: { v: CardView }) {
   );
 }
 
-/** Три свободных окна ближе всего ко времени приёма: сначала тот же день */
-export function nearSlots<T extends { startsAt: string }>(slots: readonly T[], at: string | null): T[] {
+/** Свободные окна ближе всего ко времени приёма (сначала тот же день), по времени */
+export function nearSlots<T extends { startsAt: string }>(slots: readonly T[], at: string | null, count = 3): T[] {
   if (!at) return [];
   const t = Date.parse(at);
   const sameDay = (s: T) => new Date(s.startsAt).toDateString() === new Date(t).toDateString();
   return [...slots]
     .filter((s) => Date.parse(s.startsAt) > Date.now())
     .sort((a, b) => Number(sameDay(b)) - Number(sameDay(a)) || Math.abs(Date.parse(a.startsAt) - t) - Math.abs(Date.parse(b.startsAt) - t))
-    .slice(0, 3)
+    .slice(0, count)
     .sort((a, b) => Date.parse(a.startsAt) - Date.parse(b.startsAt));
 }
+
 
 /* ─────────── заключення ─────────── */
 
@@ -963,9 +978,9 @@ function LastNotePanel({ v }: { v: CardView }) {
   const cur = v.notes?.current ?? null;
   return (
     <Panel
-      title={cur ? ut(NOTE_KIND[cur.kind]) : ut("card.notePanel")}
+      title={ut("card.notePanel")}
       icon={<Pi.notebookText />}
-      sub={cur ? day(cur.signedAt ?? cur.createdAt) : undefined}
+      sub={cur ? `${ut(NOTE_KIND[cur.kind]).toLowerCase()}, ${day(cur.signedAt ?? cur.createdAt)}` : undefined}
       actions={
         v.can("notes.write") ? (
           <Button variant="ghost" size="xs" icon={<Pi.notebookPen />} onClick={() => v.open("note")}>

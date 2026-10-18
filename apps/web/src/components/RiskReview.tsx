@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import type { AlertCase, AlertOutcome, AlertSignalBasis, ResponseDetail, SafetyPlan } from "@quizzy/shared";
 import { api, ApiError } from "../api";
 import { useAuth } from "../auth";
-import { dateTime, day, timeOfDay } from "../format";
+import { dateTime, day, severityKey, timeOfDay } from "../format";
 import { useLang } from "../lang";
 import { useResource, useResourceMap } from "../useResource";
 import {
@@ -281,7 +281,7 @@ export function useRiskReview({ userId, caseId, known, enabled = true, onChanged
                 )}
               >
                 <SeverityTag level={c.severity === "severe" ? "severe" : "moderate"} small>
-                  {ut(c.severity === "severe" ? "cases.sectionSevere" : "cases.moderate")}
+                  {ut(severityKey[c.severity === "severe" ? "severe" : "moderate"])}
                 </SeverityTag>
                 <span className="min-w-0 flex-1 truncate font-semibold text-text">{c.surveyTitle}</span>
                 <span className="shrink-0 text-caption text-muted">{day(c.openedAt)}</span>
@@ -557,7 +557,7 @@ function OtherSignals({ list }: { list: readonly AlertSignalBasis[] }) {
       {list.map((s) => (
         <li key={s.id} className="flex items-start gap-2.5 border-t border-divider py-2 text-[13px] leading-[18px] first:border-t-0 first:pt-0">
           <SeverityTag level={s.severity === "severe" ? "severe" : "moderate"} small>
-            {ut(s.severity === "severe" ? "cases.sectionSevere" : "cases.moderate")}
+            {ut(severityKey[s.severity === "severe" ? "severe" : "moderate"])}
           </SeverityTag>
           <span className="min-w-0 flex-1 text-text">
             {s.kind === "option" ? (

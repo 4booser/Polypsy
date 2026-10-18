@@ -5354,8 +5354,6 @@ export const UI = {
   "severity.severe": { uk: "Виражена", ru: "Выраженная", en: "Severe" },
 
   /* горячие клавиши разбора */
-  "hotkey.next": { uk: "наступний випадок", ru: "следующий случай", en: "next case" },
-  "hotkey.take": { uk: "взяти на себе", ru: "взять на себя", en: "take ownership" },
   "hotkey.confirm": { uk: "підтвердити ризик", ru: "подтвердить риск", en: "confirm risk" },
   "hotkey.followup": { uk: "спостереження", ru: "наблюдение", en: "follow-up" },
   "hotkey.reject": { uk: "не підтверджено", ru: "не подтверждён", en: "not confirmed" },
@@ -8415,6 +8413,7 @@ export const UI = {
   "al.sortLine": { uk: "Спершу тяжкі,", ru: "Сначала тяжёлые,", en: "Severe first," },
   "al.sortLineB": { uk: "далі за останнім сигналом", ru: "дальше по последнему сигналу", en: "then by the latest signal" },
   "al.youTook": { uk: "Ви взяли в роботу", ru: "Вы взяли в работу", en: "You took it on" },
+  "al.kTake": { uk: "взяти", ru: "взять", en: "take" },
 
 } as const satisfies Record<string, UiEntry>;
 
