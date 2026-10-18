@@ -685,6 +685,43 @@ export function moveQuestion(draft: Draft, i: number, delta: number): Draft {
 }
 
 /**
+ * Перетащить вопрос с места `from` на место `to` (оба с нуля): остальные
+ * сдвигаются, а не меняются с ним местами, как при ↑/↓. Ключ идёт за
+ * каждым сдвинутым пунктом — та же переписка номеров, что у перестановки.
+ */
+export function reorderQuestion(draft: Draft, from: number, to: number): Draft {
+  const n = draft.questions.length;
+  if (from < 0 || from >= n || to < 0 || to >= n || from === to) return draft;
+  const next = [...draft.questions];
+  const [moved] = next.splice(from, 1);
+  next.splice(to, 0, moved!);
+  const a = from + 1;
+  const b = to + 1;
+  return {
+    ...draft,
+    questions: next,
+    scales: renumberKeys(draft.scales, (k) => {
+      if (k === a) return b;
+      if (a < b && k > a && k <= b) return k - 1;
+      if (a > b && k >= b && k < a) return k + 1;
+      return k;
+    }),
+  };
+}
+
+/**
+ * Пункты, у которых текст есть на одном языке и нет на другом, — номерами.
+ * Методика хранится на двух языках содержимого, и пропуск обнаруживался на
+ * консоли пациента другого языка; здесь он виден, пока правят.
+ */
+export function missingLang(draft: Draft, lang: "uk" | "ru"): number[] {
+  return draft.questions.flatMap((q, i) => {
+    const other = lang === "uk" ? "ru" : "uk";
+    return q.type !== "info" && (q.title[other] ?? "").trim() && !(q.title[lang] ?? "").trim() ? [i + 1] : [];
+  });
+}
+
+/**
  * Копия вопроса `i` встаёт сразу за ним. Копия — новый пункт: в ключ она
  * не попадает (решать, считать ли её, — автору), а номера пунктов после неё
  * сдвигаются вниз.

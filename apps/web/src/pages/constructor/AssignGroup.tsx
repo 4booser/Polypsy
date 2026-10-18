@@ -1,28 +1,37 @@
 import { useState } from "react";
 import { api } from "../../api";
 import { useResource } from "../../useResource";
-import { Modal } from "../../ui";
-import { Button, Field, Input, Select } from "../../ui/primitives";
+import { Callout, Drawer, DrawerSection } from "../../ui";
+import { Button, ErrorText, Field, Input, Select } from "../../ui/primitives";
 import { useLang } from "../../lang";
 import { pastDeadline, today } from "../../components/deadline";
+import { CnIc } from "./icons";
 
 /**
- * «Призначити групі» — второй значок кадра f17.
+ * «Призначити групі» — ящик, а не окно: назначение — действие, и экран
+ * конструктора под ним остаётся на месте.
  *
  * Групповое назначение на сервере есть: POST /api/patient-groups/:id/surveys
  * разворачивает его в поимённые назначения со своим сроком у каждого, и в
- * карте человека видно, что методика пришла через группу. Экран группы
- * пациентов делает другая волна, поэтому значок не ведёт туда, а открывает
- * окно здесь: группа, срок — и назначить. Одно действие не стоит перехода на
- * другой экран.
- *
- * Права те же, что у поимённой выдачи (assignments.manage), и их проверяет
- * сервер: отказ показывается как есть. Пустая группа — тоже отказ, а не тихий
- * успех: «назначено» при нуле адресатов читалось бы как сделанная работа.
+ * карте человека видно, что методика пришла через группу. Права те же, что у
+ * поимённой выдачи (assignments.manage), и их проверяет сервер: отказ
+ * показывается как есть. Пустая группа — тоже отказ, а не тихий успех:
+ * «назначено» при нуле адресатов читалось бы как сделанная работа.
  */
-export function AssignGroup({ surveyId, onClose }: { surveyId: string; onClose: () => void }) {
+export function AssignGroup({
+  surveyId,
+  open,
+  onClose,
+  sub,
+}: {
+  surveyId: string;
+  open: boolean;
+  onClose: () => void;
+  /** Подпись под заголовком: название методики */
+  sub?: string;
+}) {
   const { ut } = useLang();
-  const groups = useResource(() => api.patientGroups(), []);
+  const groups = useResource(() => api.patientGroups(), [], { enabled: open });
   const [groupId, setGroupId] = useState("");
   const [expires, setExpires] = useState("");
   const [busy, setBusy] = useState(false);
@@ -46,48 +55,66 @@ export function AssignGroup({ surveyId, onClose }: { surveyId: string; onClose: 
     }
   }
 
+  const close = () => {
+    onClose();
+    /* следующее открытие — с чистого листа, а не с прошлым «призначено» */
+    setDone(null);
+    setError(null);
+  };
+
   return (
-    <Modal title={ut("cn.assignGroup")} onClose={onClose}>
-      {done ? (
-        <div className="flex flex-col gap-[15px]">
-          {/* число адресатов — после тире: слово не склоняется по числу */}
-          <p className="m-0 text-small text-text">
-            {ut("cn.assignedToGroup")} «{done.title}»: {ut("cn.recipients")} — {done.recipients}
-          </p>
-          <div className="flex justify-end">
-            <Button onClick={onClose}>{ut("bp.close")}</Button>
-          </div>
-        </div>
-      ) : (
-        <div className="flex flex-col gap-[15px]">
-          <p className="m-0 text-[13px] text-muted">{ut("cn.assignGroupHint")}</p>
-          {groups.data && groups.data.length === 0 ? (
-            <p className="m-0 text-small text-text">{ut("cn.noPatientGroups")}</p>
-          ) : (
-            /* число в скобках — кто получит методику: состав, видимый читателю, а не «сколько в группе» */
-            <Field label={ut("cn.patientGroup")} hint={ut("cn.groupCountHint")}>
-              <Select value={groupId} onChange={(e) => setGroupId(e.target.value)} disabled={!groups.data}>
-                <option value="">{ut("sel.pick")}</option>
-                {(groups.data ?? []).map((g) => (
-                  <option key={g.id} value={g.id}>
-                    {g.title} ({g.memberCount})
-                  </option>
-                ))}
-              </Select>
-            </Field>
-          )}
-          <Field label={ut("acc.until")} error={expiresInPast ? ut("uit.form.pastDeadline") : undefined}>
-            <Input type="date" value={expires} min={today()} onChange={(e) => setExpires(e.target.value)} />
-          </Field>
-          {error || groups.error ? <p className="m-0 text-[13px] text-danger">{error ?? groups.error}</p> : null}
-          <div className="flex justify-end gap-[14px]">
-            <Button variant="ghost" onClick={onClose}>{ut("common.cancel")}</Button>
-            <Button onClick={assign} disabled={!groupId || busy || expiresInPast}>
+    <Drawer
+      open={open}
+      onClose={close}
+      title={ut("cn.assignGroup")}
+      sub={sub}
+      icon={<CnIc.userPlus size={18} />}
+      footer={
+        done ? (
+          <Button variant="primary" onClick={close}>
+            {ut("bp.close")}
+          </Button>
+        ) : (
+          <>
+            <Button variant="primary" onClick={assign} disabled={!groupId || busy || expiresInPast}>
               {busy ? ut("co.saving") : ut("acc.grant")}
             </Button>
-          </div>
-        </div>
-      )}
-    </Modal>
+            <Button onClick={close}>{ut("common.cancel")}</Button>
+          </>
+        )
+      }
+    >
+      <DrawerSection>
+        {done ? (
+          /* число адресатов — после тире: слово не склоняется по числу */
+          <Callout kind="good" role="status" title={`${ut("cn.assignedToGroup")} «${done.title}»`}>
+            {ut("cn.recipients")} — {done.recipients}
+          </Callout>
+        ) : (
+          <>
+            <p className="m-0 mb-3 text-small text-text-2">{ut("cn.assignGroupHint")}</p>
+            {groups.data && groups.data.length === 0 ? (
+              <p className="m-0 mb-3 text-small text-text">{ut("cn.noPatientGroups")}</p>
+            ) : (
+              /* число в скобках — кто получит методику: состав, видимый читателю, а не «сколько в группе» */
+              <Field label={ut("cn.patientGroup")} hint={ut("cn.groupCountHint")}>
+                <Select data-autofocus value={groupId} onChange={(e) => setGroupId(e.target.value)} disabled={!groups.data}>
+                  <option value="">{ut("sel.pick")}</option>
+                  {(groups.data ?? []).map((g) => (
+                    <option key={g.id} value={g.id}>
+                      {g.title} ({g.memberCount})
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            )}
+            <Field label={ut("acc.until")} error={expiresInPast ? ut("uit.form.pastDeadline") : undefined}>
+              <Input type="date" value={expires} min={today()} onChange={(e) => setExpires(e.target.value)} />
+            </Field>
+            {error || groups.error ? <ErrorText>{error ?? groups.error}</ErrorText> : null}
+          </>
+        )}
+      </DrawerSection>
+    </Drawer>
   );
 }
