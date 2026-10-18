@@ -17,7 +17,6 @@ import {
   connectionShares,
   deadRowsAlarm,
   jobsByDuration,
-  jobsByFailures,
   latencyLines,
   parseTrafficWindow,
   routes5xx,
@@ -239,9 +238,8 @@ const job = (over: Partial<OpsJob>): OpsJob => ({
 });
 
 describe("задачи и база", () => {
-  test("сбои — только у тех, у кого были; длительность — только у ходивших", () => {
+  test("длительность — только у ходивших", () => {
     const items = [job({ name: "a", runs: 5, failures: 0, lastDurationMs: 12 }), job({ name: "b", runs: 3, failures: 2, lastDurationMs: 800 }), job({ name: "c" })];
-    expect(jobsByFailures(items).map((j) => j.name)).toEqual(["b"]);
     expect(jobsByDuration(items).top.map((j) => j.name)).toEqual(["b", "a"]);
   });
 

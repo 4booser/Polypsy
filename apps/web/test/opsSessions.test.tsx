@@ -6,7 +6,6 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
 import { type OpsSession, type OpsSessionPage, UI, type UiKey, opsSessionQuery } from "@quizzy/shared";
 import { LangProvider } from "../src/lang";
-import { ListPlace } from "../src/pages/ops/controls";
 import { SessionsList } from "../src/pages/ops/Sessions";
 import {
   SESSIONS_PAGE_MAX,
@@ -253,49 +252,20 @@ describe("«Сесії»: «Завершити» — только там, где
   });
 });
 
+/*
+ * Место списка у «Користувачів» и «Аудиту» — то же правило listBody
+ * (ui/paging.ts), что у «Сесій» выше; само правило проверяют
+ * alertsFilters.test.ts и referralsInvites.test.ts. Прежний общий ListPlace
+ * ушёл с экранами до Polypsy 2.0: вкладки рисуют таблицы набора сами.
+ */
 describe("место списка у «Користувачів» и «Аудиту»", () => {
-  const place = (items: string[] | null, error: string | null) =>
-    draw(
-      <ListPlace items={items} error={error} onRetry={() => {}} empty={EMPTY}>
-        {() => (
-          <ul>
-            {items!.map((i) => (
-              <li key={i}>{i}</li>
-            ))}
-          </ul>
-        )}
-      </ListPlace>,
-    );
-
-  test("четыре состояния: скелет, отказ с «повторити», пусто по ответу, строки", () => {
-    expect(skeleton(place(null, null))).toBe(true);
-    const failed = place(null, OOPS);
-    expect(failed).toContain(OOPS);
-    expect(retry(failed)).toBe(true);
-    expect(failed).not.toContain(EMPTY);
-    expect(place([], null)).toContain(EMPTY);
-    expect(place(["запис-1"], null)).toContain("запис-1");
-  });
-
-  test("отказ «Показати ще» или перечитывания — строкой над записями, записи остаются", () => {
-    const html = place(["запис-1", "запис-2"], OOPS);
-    expect(html).toContain("запис-1");
-    expect(html).toContain("запис-2");
-    expect(html).toContain(OOPS);
-    expect(retry(html)).toBe(true);
-    // и над пустым ответом — тоже строкой, а не вместо него
-    const empty = place([], OOPS);
-    expect(empty).toContain(EMPTY);
-    expect(empty).toContain(OOPS);
-  });
-
   test("вкладки рисуют список через общее место, а не своей лесенкой", () => {
     /*
      * Было: у «Користувачів» и «Аудиту» `res.error ? <Loading/> : …` — отказ
      * перечитывания стирал показанный реестр, неудачное «Показати ще» —
      * весь долистанный журнал.
      */
-    /* «Користувачі» в 2.0 рисуют таблицу набора в своей панели — по тому же правилу listBody, что и ListPlace */
+    /* «Користувачі» в 2.0 рисуют таблицу набора в своей панели — по правилу listBody */
     const users = readFileSync(resolve(import.meta.dir, "../src/pages/ops/Users.tsx"), "utf8");
     expect(users).toMatch(/const place = listBody\(res\.data\?\.items \?\? null, res\.error\);/);
     expect(users).toMatch(/place\.stale \? \(/);

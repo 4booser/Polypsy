@@ -39,17 +39,8 @@ export function parseLevel(v: string | null): OpsLevel | null {
 }
 
 /*
- * На обзоре окон два — час и сутки. Шесть часов сервер тоже умеет, но на
- * обзоре третья кнопка ничего не добавляет: час отвечает «что сейчас»,
- * сутки — «как обычно».
- */
-export type OverviewWindow = "1h" | "24h";
-export const parseWindow = (v: string | null): OverviewWindow => (v === "24h" ? "24h" : "1h");
-
-/*
- * На «Запитах» (волна 11) окон три: там смотрят, когда именно пошла
- * нагрузка на маршруты, и шесть часов — «с утра» — отвечают на это лучше
- * суток по пятнадцать минут.
+ * Окна нагрузки на «Огляді» и «Запитах»: час — «что сейчас», шесть часов —
+ * «с утра», сутки — «как обычно».
  */
 export const parseTrafficWindow = (v: string | null): OpsWindow => (v === "6h" || v === "24h" ? v : "1h");
 
@@ -93,32 +84,7 @@ export function storeNote(s: OpsStoreState | undefined): StoreNote {
   return { kind: "ok" };
 }
 
-export type RouteSort = "count" | "p95" | "errors";
-export const parseSort = (v: string | null): RouteSort => (v === "p95" || v === "errors" ? v : "count");
-
 /* ─────────── запросы ─────────── */
-
-/** Величина, по которой сортируется и рисуется полоска строки */
-export function sortMetric(r: OpsRouteStat, sort: RouteSort): number {
-  if (sort === "p95") return r.p95 ?? 0;
-  if (sort === "errors") return r.errors5xx + r.errors4xx;
-  return r.requests;
-}
-
-/**
- * Порядок маршрутов. «По ошибкам» — сначала пятисотки, потом 4xx: сто
- * отказов «нет прав» — это поведение, а одна пятисотка — поломка, и
- * смешать их в одну сумму значило бы поставить поведение выше поломки.
- */
-export function sortRoutes(items: readonly OpsRouteStat[], sort: RouteSort): OpsRouteStat[] {
-  const out = items.slice();
-  out.sort((a, b) => {
-    if (sort === "errors") return b.errors5xx - a.errors5xx || b.errors4xx - a.errors4xx || b.requests - a.requests;
-    if (sort === "p95") return (b.p95 ?? -1) - (a.p95 ?? -1) || b.requests - a.requests;
-    return b.requests - a.requests || a.route.localeCompare(b.route);
-  });
-  return out;
-}
 
 export function filterRoutes(items: readonly OpsRouteStat[], q: string): OpsRouteStat[] {
   const needle = q.trim().toLowerCase();
@@ -206,26 +172,6 @@ export const shortId = (id: string) => (id.length > 8 ? id.slice(0, 8) : id);
  */
 
 /**
- * Цвета рядов — токенами, в постоянном порядке, и их всего три: основной
- * ряд — фиолетовый действия, как одиночный ряд везде; фоновый —
- * --series-quiet (серый: 4xx, предупреждения, «пропущено» — то, что рядом,
- * но само ничего не требует); янтарь — только тому, что требует внимания
- * (пятисотки, строки «помилка»). Категориальные --cat-* — синий и оранжевый
- * старой палитры — в фиолетовой консоли читались чужими, а оранжевый рядом
- * с янтарём — вторым «вниманием» (решение заказчика 2026-09-26).
- */
-export const CLASS_COLOR = { ok: "var(--primary)", c4: "var(--series-quiet)", c5: "var(--accent)" } as const;
-export const LEVEL_COLOR = { warn: "var(--series-quiet)", error: "var(--accent)" } as const;
-/*
- * p95 — число плиток и порогов, поэтому основной ряд; p50 — фоновый; p99 —
- * тем же фиолетовым пунктиром: третьего различимого цвета в гамме нет, а
- * пунктир различим и без цвета вовсе (и в легенде показан пунктиром же).
- */
-export const PCT_COLOR = { p50: "var(--series-quiet)", p95: "var(--primary)", p99: "var(--primary)" } as const;
-/** Вторая часть пары, которая сама ничего не требует: «пропущено» у расписаний */
-export const QUIET_COLOR = "var(--series-quiet)";
-
-/**
  * Порог доли пятисоток на графике — тот же, что у плитки «Частка 5xx», у
  * проверки здоровья и у оповещения в RUNBOOK: больше процента.
  */
@@ -250,7 +196,7 @@ export function bucketKnown(at: string, stepSec: number, since: string): boolean
 
 /**
  * Запросы по классам ответа: [успешные и перенаправления, 4xx, 5xx] —
- * снизу вверх, в порядке CLASS_COLOR. «Успешные» — остаток: сервер считает
+ * снизу вверх, в порядке CLASS_TONE (charts.tsx). «Успешные» — остаток: сервер считает
  * 4xx и 5xx, а всё прочее (2xx и 3xx) для нагрузки одно и то же.
  */
 export function trafficStack(
@@ -475,11 +421,6 @@ export const errorGroupsTop = (items: readonly OpsErrorGroup[], n = 8) => topRes
 
 /** Задачи по числу проходов с момента запуска */
 export const jobsByRuns = (items: readonly OpsJob[], n = 8) => topRest(items, n, (j) => j.runs);
-
-/** Задачи со сбоями — только они: ноль сбоев полосой не рисуется, он строка «збоїв немає» */
-export function jobsByFailures(items: readonly OpsJob[]): OpsJob[] {
-  return items.filter((j) => j.failures > 0).sort((a, b) => b.failures - a.failures || a.name.localeCompare(b.name));
-}
 
 /** Длительность последнего прохода; задача, которая ещё не ходила, в рейтинг не идёт */
 export function jobsByDuration(items: readonly OpsJob[], n = 8): TopRest<OpsJob> {
