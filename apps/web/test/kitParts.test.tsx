@@ -6,7 +6,11 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
 import { LangProvider } from "../src/lang";
 import {
+  BigValue,
+  ChangeCell,
+  CourseDigits,
   DataTable,
+  decimal,
   Drawer,
   DrawerPane,
   Modal,
@@ -43,6 +47,9 @@ const draw = (node: ReactNode) =>
       </LangProvider>
     </MemoryRouter>,
   );
+
+/** Текст разметки без тегов и атрибутов: классы вроде gap-1.5 — не числа на экране */
+const textOf = (html: string) => html.replace(/<[^>]*>/g, " ");
 
 /* ─────────── поповер: место ─────────── */
 
@@ -364,5 +371,34 @@ describe("число со смыслом", () => {
     expect(signed(-14)).toBe("−14");
     expect(signed(16, " в. п.")).toBe("+16 в. п.");
     expect(signed(0)).toBe("0");
+  });
+
+  test("дробь — языка экрана: запятая в украинском и русском, точка в английском", () => {
+    expect(signed(-2.5, "", "uk")).toBe("−2,5");
+    expect(signed(2.5, " в. п.", "ru")).toBe("+2,5 в. п.");
+    expect(signed(-2.5, "", "en")).toBe("−2.5");
+    expect(decimal(5.55, "uk")).toBe("5,55");
+    expect(decimal(0.1 + 0.2, "ru")).toBe("0,3");
+    expect(decimal(1.96 * Math.SQRT2 * 2, "uk", 1)).toBe("5,5");
+    expect(decimal(14, "en")).toBe("14");
+  });
+
+  test("ячейка изменения печатает порог и сдвиг дробью языка, а не точкой", () => {
+    const html = draw(<ChangeCell delta={-2.5} threshold={5.54} better="down" />);
+    expect(html).toContain("−2,5");
+    expect(html).toContain("5,54");
+    expect(textOf(html)).not.toMatch(/\d\.\d/);
+  });
+
+  test("большое значение, «було» и мини-курс — тоже", () => {
+    const html = draw(
+      <>
+        <BigValue code="T" value={44.9} history={[51.5, 47]} better="down" change={{ delta: -6.5, threshold: 5.5 }} />
+        <CourseDigits code="T" values={[51.5, 47, 44.9]} better="down" />
+      </>,
+    );
+    expect(html).toContain("44,9");
+    expect(html).toContain("51,5 → 47");
+    expect(textOf(html)).not.toMatch(/\d\.\d/);
   });
 });

@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { LANGS, LANG_NAMES, LANG_SELF_LABEL, detectLang, isLang, makeUiT, type Lang, type UiKey } from "@quizzy/shared";
 
 /**
@@ -30,6 +30,23 @@ const KEY = "quizzy.web.lang";
  */
 export let currentLang: Lang = readSavedLang();
 
+/*
+ * Язык документа — тот же, что у оболочки, и с первого кадра.
+ *
+ * По атрибуту `lang` пишут даты и длительности (format.ts) и числа (ui/
+ * numbers.ts) — функции вне React. Атрибут ставился эффектом провайдера, то
+ * есть ПОСЛЕ отрисовки: при переключении языка экран перерисовывался новыми
+ * словами, а даты на нём печатались прежним языком и оставались такими до
+ * следующей перерисовки («жовтня» посреди русского экрана). Index.html
+ * открывается с «ru», и первый кадр украинской консоли тоже шёл русскими
+ * датами. Теперь атрибут и `currentLang` меняются раньше перерисовки.
+ */
+function applyDocumentLang(lang: Lang): void {
+  currentLang = lang;
+  if (typeof document !== "undefined") document.documentElement.lang = lang;
+}
+applyDocumentLang(currentLang);
+
 function readSavedLang(): Lang {
   try {
     const saved = localStorage.getItem(KEY);
@@ -52,12 +69,20 @@ const Ctx = createContext<LangState | null>(null);
 
 export function LangProvider({ children }: { children: ReactNode }) {
   const [lang, setLangRaw] = useState<Lang>(readSavedLang);
+  /* язык документа — до перерисовки, а не эффектом после неё (applyDocumentLang) */
+  const setLang = useCallback((next: Lang) => {
+    applyDocumentLang(next);
+    setLangRaw(next);
+  }, []);
 
   useEffect(() => {
-    currentLang = lang;
-    localStorage.setItem(KEY, lang);
-    // язык страницы — для экранного диктора и переносов слов
-    document.documentElement.lang = lang;
+    // язык страницы — для экранного диктора и переносов слов; и в начале, и после выбора
+    applyDocumentLang(lang);
+    try {
+      localStorage.setItem(KEY, lang);
+    } catch {
+      /* приватный режим: выбор живёт до перезагрузки */
+    }
     /*
      * Заголовок вкладки тоже следует за языком.
      *
@@ -68,10 +93,7 @@ export function LangProvider({ children }: { children: ReactNode }) {
     document.title = makeUiT(lang)("app.title");
   }, [lang]);
 
-  const value = useMemo<LangState>(
-    () => ({ lang, setLang: setLangRaw, ut: makeUiT(lang) }),
-    [lang],
-  );
+  const value = useMemo<LangState>(() => ({ lang, setLang, ut: makeUiT(lang) }), [lang, setLang]);
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 
