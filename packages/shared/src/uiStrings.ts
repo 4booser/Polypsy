@@ -15845,7 +15845,7 @@ export const UI = {
   },
   "opx.cmp.optCurrent": { uk: "{v}, поточна", ru: "{v}, текущая", en: "{v}, current" },
   "opx.cmp.optSince": { uk: "{v}, з {date}", ru: "{v}, с {date}", en: "{v}, since {date}" },
-  "opx.cmp.metaSub": { uk: "{min} хв до й {min} хв після; версія процесу {current}", ru: "{min} мин до и {min} мин после; версия процесса {current}", en: "{min} min before and after; this process runs {current}" },
+  "opx.cmp.metaSub": { uk: "{min} хв до й {min} хв після; версія процесу {current}", ru: "{min} мин до и {min} мин после; версия процесса {current}", en: "{min} min before and {min} min after; this process runs {current}" },
   "opx.cmp.kept": { uk: "Суми запитів за версіями зберігаються {n} днів", ru: "Суммы запросов по версиям хранятся {n} дней", en: "Request totals per version are kept {n} days" },
   "opx.cmp.swap": { uk: "Поміняти", ru: "Поменять", en: "Swap" },
   "opx.cmp.windows": { uk: "Вікна порівняння", ru: "Окна сравнения", en: "Comparison windows" },
