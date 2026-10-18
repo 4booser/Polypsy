@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import type { RuleAction } from "@quizzy/shared";
 import { api } from "../../api";
@@ -99,8 +99,25 @@ export default function AnalyticsList() {
     [titles, ut],
   );
 
-  /* выключатель меняет строку на месте, не дожидаясь перечитывания всего списка */
+  /*
+   * Выключатель меняет строку на месте, не дожидаясь перечитывания всего
+   * списка. Пока запрос по модели в полёте, второе нажатие по ней не уходит:
+   * два PATCH с разными enabled приходили на сервер в любом порядке, и в базе
+   * оставалось не то, что на экране. Ответ кладётся в загруженный перечень
+   * (patch), и подмена снимается — а не висит до ухода с экрана поверх
+   * свежего перечня.
+   */
   const [flipped, setFlipped] = useState<Record<string, boolean>>({});
+  /* решение «в полёте ли запрос» — в момент нажатия, до перерисовки: поэтому ref, а не состояние */
+  const inFlight = useRef(new Set<string>());
+  const latest = useRef(list.data);
+  latest.current = list.data;
+  useEffect(() => {
+    setFlipped((f) => {
+      const keep = Object.entries(f).filter(([id]) => inFlight.current.has(id));
+      return keep.length === Object.keys(f).length ? f : Object.fromEntries(keep);
+    });
+  }, [list.data]);
   const rows = useMemo(
     () => (list.data ? list.data.map((m) => (m.id in flipped ? { ...m, enabled: flipped[m.id]! } : m)) : null),
     [list.data, flipped],
@@ -121,16 +138,19 @@ export default function AnalyticsList() {
   useHotkeys({ n: () => navigate(modelHref("new")) });
 
   const toggle = async (m: SavedModel, on: boolean) => {
+    if (inFlight.current.has(m.id)) return;
+    inFlight.current.add(m.id);
     setFlipped((f) => ({ ...f, [m.id]: on }));
     try {
-      await api.updateDecisionRule(m.id, { enabled: on });
+      const res = await api.updateDecisionRule(m.id, { enabled: on });
+      inFlight.current.delete(m.id);
+      const now = latest.current;
+      if (now) list.patch(now.map((r) => (r.id === m.id ? { ...r, enabled: on, version: res.version } : r)));
       toast(ut(on ? "am.turnedOn" : "am.turnedOff").replace("{title}", m.title), "ok");
       list.reload();
     } catch (e) {
-      setFlipped((f) => {
-        const { [m.id]: _drop, ...rest } = f;
-        return rest;
-      });
+      inFlight.current.delete(m.id);
+      setFlipped(({ [m.id]: _drop, ...rest }) => rest);
       toast(e instanceof Error ? e.message : ut("ui.actionFailed"), "err");
     }
   };

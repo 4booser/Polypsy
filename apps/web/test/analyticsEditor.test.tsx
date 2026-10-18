@@ -245,6 +245,24 @@ describe("форма модели: несохранённое и право пр
   });
 });
 
+/**
+ * Выключатель модели в перечне: правка модели — право decisions.manage
+ * (PATCH /api/decisions/rules/:id), и без него выключатель только
+ * показывает состояние. Два быстрых нажатия слали два PATCH с разными
+ * enabled, которые приходили на сервер в любом порядке, а подмена строки
+ * висела поверх перечня до ухода с экрана.
+ *
+ * Мутация: убрать проверку inFlight или patch — падает своя строка.
+ */
+describe("выключатель модели в перечне", () => {
+  test("право правок, одно нажатие в полёте, ответ — в перечень", () => {
+    expect(LIST).toContain('nav.access.can("decisions.manage")');
+    expect(LIST).toContain("disabled={!canManage}");
+    expect(LIST).toContain("if (inFlight.current.has(m.id)) return;");
+    expect(LIST).toContain("list.patch(now.map(");
+  });
+});
+
 describe("перечень моделей: состояние в адресе", () => {
   test("поиск, страница, размер, вид, фильтры и порядок читаются из адреса", () => {
     for (const key of ["q", "page", "per", "view", "sort", "test", "act"]) {
