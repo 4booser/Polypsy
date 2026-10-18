@@ -1277,11 +1277,73 @@ export interface PatientListItem {
   leadSpecialistId: string | null;
   /** Когда сдавал методику в последний раз; null — ещё ни разу */
   lastResponseAt: string | null;
+  /*
+   * Реестр 2.0 (кадр patients-list): почему человек здесь сейчас и что
+   * дальше — строкой, без захода в карту. Всё из зоны читателя: случаи и
+   * замеры — по методикам его зоны, приёмы и учёт — под политиками базы.
+   * Поля необязательны: старый клиент и старый сервер их не знают.
+   */
+  /** Имя ведущего специалиста */
+  leadName?: string | null;
+  /** Открытые случаи риска: сколько, и самый тяжёлый из самых давних */
+  risk?: PatientListRisk | null;
+  /** Главная шкала последнего замера с ходом «19 → 16 → 14» */
+  measure?: PatientListMeasure | null;
+  /** Ближайший записанный приём */
+  nextVisit?: { at: string; mode: "onsite" | "remote" } | null;
+  /** Неявка за последние 30 дней — самая поздняя */
+  lastNoShowAt?: string | null;
+  /** Диспансерный учёт: группа и срок контрольного осмотра */
+  dispensary?: { groupLabel: string; nextDueAt: string; overdue: boolean } | null;
+}
+
+export interface PatientListRisk {
+  /** Сколько открытых случаев */
+  cases: number;
+  caseId: string;
+  openedAt: string;
+  severity: "moderate" | "severe";
+  /** Кто взял случай на себя; null — ещё никто */
+  assigneeName: string | null;
+}
+
+export interface PatientListMeasure {
+  surveyId: string;
+  /** Короткое имя методики: «PHQ-9» из «Депресія (PHQ-9)», иначе код шкалы */
+  code: string;
+  /** Название методики */
+  title: string;
+  /** До трёх последних значений главной шкалы, по времени */
+  values: number[];
+  at: string;
+  severity: Severity | null;
+  bandLabel: string | null;
+  /** Единицы значений: доля 0–1 печатается процентом, T-балл и стен — как есть */
+  normalization: ScaleNormalization;
+  /** «Краще ↓ / ↑» по полосам шкалы; null — полосы немонотонны или их нет */
+  better: "down" | "up" | null;
+}
+
+/**
+ * Счётчики подань реестра «Потребує уваги» — по поиску и вкладке группы, до
+ * выбора подання: пилюля говорит, сколько людей окажется в списке.
+ */
+export interface PatientListCounts {
+  all: number;
+  /** Закреплены за читателем */
+  mine: number;
+  /** С открытым случаем риска */
+  risk: number;
+  /** Без замера 30+ дней (или ни разу) */
+  stale: number;
+  /** Без записанного следующего приёма */
+  unbooked: number;
 }
 
 export interface PatientListPage {
   items: PatientListItem[];
   total: number;
+  counts?: PatientListCounts;
 }
 
 /** Одна сданная методика на карточке: баллы по шкалам и полоса каждой */
@@ -1865,6 +1927,12 @@ export interface ScaleDynamics {
   code: string;
   title: string;
   points: DynamicsPoint[];
+  /**
+   * Полосы интерпретации шкалы в версии последнего замера — лестница для
+   * графика курса (полосы тяжести, «краще ↓ / ↑»). Нет поля — старый
+   * сервер; пусто — у шкалы полос нет.
+   */
+  bands?: { min: number; max: number; label: string; severity: Severity }[];
   /** Изменение между первым и последним замером; null — сравнивать нечего или нельзя (см. incomparable) */
   delta: number | null;
   /** Направление: улучшение зависит от того, что шкала измеряет */

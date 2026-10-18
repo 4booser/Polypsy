@@ -1409,6 +1409,20 @@ export const patientListQuery = z.object({
   patientGroup: z.string().max(64).optional().transform((v) => v || undefined),
   limit: queryInt(1, 200, 50),
   offset: queryInt(0, LIST_OFFSET_MAX, 0),
+  /**
+   * Подання «Потребує уваги» (реестр 2.0): открытый риск, без замера 30+
+   * дней, без следующего приёма, закреплённые за читателем. Пусто — все.
+   * Незнакомое значение — тоже все: ссылку из старой закладки не роняем.
+   */
+  view: z
+    .enum(["risk", "stale", "unbooked", "mine"])
+    .optional()
+    .catch(undefined),
+  /** Порядок: ПІБ (умолчание), риск первым, свежий замер, ближайший приём */
+  sort: z
+    .enum(["name", "risk", "last", "next"])
+    .optional()
+    .catch(undefined),
 });
 
 export const mailingListQuery = z.object({

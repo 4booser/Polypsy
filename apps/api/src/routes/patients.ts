@@ -1,17 +1,22 @@
 import { Hono } from "hono";
-import { and, asc, desc, eq, inArray, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, or, sql, type SQL } from "drizzle-orm";
 import {
+  instrumentCode,
   patientListQuery,
+  polarityOfBands,
   t,
   type PatientCard,
   type PatientCardConclusion,
   type PatientCardGroup,
   type PatientCardResponse,
+  type PatientListCounts,
   type PatientListItem,
+  type PatientListMeasure,
   type PatientListPage,
   type ScaleNormalization,
   type Severity,
   type Sex,
+  type Lang,
 } from "@quizzy/shared";
 import { db } from "../db";
 import {
@@ -20,6 +25,7 @@ import {
   patientGroups,
   responses,
   responseScores,
+  scaleBands,
   scales,
   surveys,
   users,
@@ -27,6 +33,7 @@ import {
 import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
 import { decryptField } from "../lib/crypto";
+import { namesOf } from "../lib/names";
 import { langOf, notFound, parseQuery } from "../lib/http";
 import { birthYearOf } from "../lib/privacy";
 import {
@@ -82,7 +89,8 @@ patientRoutes.use("*", requireAuth, requireStaff, requirePermission("patients.re
  */
 patientRoutes.get("/", async (c) => {
   const user = c.get("user");
-  const { q, patientGroup, limit, offset } = parseQuery(c, patientListQuery);
+  const lang = langOf(c);
+  const { q, patientGroup, limit, offset, view, sort } = parseQuery(c, patientListQuery);
   const visible = await accessiblePatientIds(user);
 
   let ids: string[] | null = visible === null ? null : [...visible];
@@ -117,6 +125,37 @@ patientRoutes.get("/", async (c) => {
     : sql<string | null>`(select max(r.submitted_at) from responses r
         where r.user_id = "users"."id" and r.status = 'completed')`;
 
+  /*
+   * Открытые случаи — по методикам зоны читателя, тем же условием, что
+   * «последняя сдача»: случай по чужой методике — сведение о прохождении,
+   * которого ему не показывают нигде больше. Под ролью приложения то же
+   * режет и политика alert_cases. Первым — самый тяжёлый из самых давних:
+   * его и разбирать первым; count() over () — сколько их всего.
+   */
+  const openCaseSql = sql<{ n: number; id: string; at: string; severity: string; assignedTo: string | null } | null>`(
+    select json_build_object('n', count(*) over (), 'id', ac.id, 'at', ac.opened_at,
+      'severity', ac.severity, 'assignedTo', ac.assigned_to)
+    from alert_cases ac join surveys s on s.id = ac.survey_id
+    where ac.user_id = "users"."id" and ac.acknowledged_at is null ${ownSurvey ? sql`and ${ownSurvey}` : sql``}
+    order by (ac.severity = 'severe') desc, ac.opened_at asc
+    limit 1)`;
+  /* ближайший записанный приём — только будущий и не отменённый */
+  const nextVisitSql = sql<{ at: string; mode: "onsite" | "remote" } | null>`(
+    select json_build_object('at', sl.starts_at, 'mode', a.mode)
+    from appointments a join slots sl on sl.id = a.slot_id
+    where a.patient_id = "users"."id" and a.status in ('booked', 'confirmed') and sl.starts_at >= now()
+    order by sl.starts_at asc
+    limit 1)`;
+  /* неявка — за последние 30 дней: давняя неявка — история, а не повод сейчас */
+  const lastNoShowSql = sql<string | null>`(
+    select max(sl.starts_at)
+    from appointments a join slots sl on sl.id = a.slot_id
+    where a.patient_id = "users"."id" and a.status = 'no_show' and sl.starts_at > now() - interval '30 days')`;
+  const dispensarySql = sql<{ group: string; due: string } | null>`(
+    select json_build_object('group', d.group_label, 'due', d.next_due_at)
+    from dispensary d
+    where d.patient_id = "users"."id" and d.removed_at is null)`;
+
   const rows =
     ids !== null && !ids.length
       ? []
@@ -140,10 +179,21 @@ patientRoutes.get("/", async (c) => {
              * на каждую букву поиска.
              */
             lastResponseAt: lastResponse,
+            /*
+             * Реестр 2.0: почему человек в списке сейчас — подвыборками той
+             * же строки, а не запросами за каждым: реестр читается на каждую
+             * букву поиска, а подання и порядок «ризик спершу» нужны по ВСЕМ
+             * найденным, не только по странице.
+             */
+            openCase: openCaseSql,
+            nextVisit: nextVisitSql,
+            lastNoShowAt: lastNoShowSql,
+            dispensary: dispensarySql,
           })
           .from(users)
           .where(and(eq(users.role, "user"), ids ? inArray(users.id, ids) : undefined));
 
+  const now = Date.now();
   const named = rows.map(
     (r): PatientListItem => ({
       id: r.id,
@@ -156,11 +206,52 @@ patientRoutes.get("/", async (c) => {
       phone: decryptField(r.phoneEnc),
       leadSpecialistId: r.leadSpecialistId ?? null,
       lastResponseAt: r.lastResponseAt ? new Date(r.lastResponseAt).toISOString() : null,
+      risk: r.openCase
+        ? {
+            cases: Number(r.openCase.n),
+            caseId: r.openCase.id,
+            openedAt: iso(r.openCase.at),
+            severity: r.openCase.severity === "moderate" ? "moderate" : "severe",
+            /* пока идентификатор: имя — ниже, только для строк страницы */
+            assigneeName: r.openCase.assignedTo,
+          }
+        : null,
+      nextVisit: r.nextVisit ? { at: iso(r.nextVisit.at), mode: r.nextVisit.mode } : null,
+      lastNoShowAt: r.lastNoShowAt ? iso(r.lastNoShowAt) : null,
+      dispensary: r.dispensary
+        ? {
+            groupLabel: r.dispensary.group,
+            nextDueAt: iso(r.dispensary.due),
+            overdue: Date.parse(r.dispensary.due) < now,
+          }
+        : null,
     }),
   );
-  const matched = (q ? named.filter((p) => `${p.name} ${p.email}`.toLowerCase().includes(q)) : named).sort(
+  const found = (q ? named.filter((p) => `${p.name} ${p.email}`.toLowerCase().includes(q)) : named).sort(
     (a, b) => a.name.localeCompare(b.name),
   );
+
+  /*
+   * Подання «Потребує уваги» и их счётчики — по найденному поиском и
+   * вкладкой, до выбора подання: пилюля говорит, сколько людей окажется в
+   * списке, если её нажать.
+   */
+  const staleBefore = now - STALE_DAYS * 86_400_000;
+  const inView: Record<NonNullable<typeof view>, (p: PatientListItem) => boolean> = {
+    mine: (p) => p.leadSpecialistId === user.id,
+    risk: (p) => !!p.risk,
+    stale: (p) => !p.lastResponseAt || Date.parse(p.lastResponseAt) < staleBefore,
+    unbooked: (p) => !p.nextVisit,
+  };
+  const counts: PatientListCounts = {
+    all: found.length,
+    mine: found.filter(inView.mine).length,
+    risk: found.filter(inView.risk).length,
+    stale: found.filter(inView.stale).length,
+    unbooked: found.filter(inView.unbooked).length,
+  };
+  const matched = view ? found.filter(inView[view]) : found;
+  if (sort && sort !== "name") matched.sort(ORDER[sort]);
 
   // чтение списка людей — доступ к персональным данным; имя действия то же,
   // что у прежнего списка: журнал отвечает на вопрос «кто листал пациентов»
@@ -176,9 +267,184 @@ patientRoutes.get("/", async (c) => {
     },
   });
 
-  const page: PatientListPage = { items: matched.slice(offset, offset + limit), total: matched.length };
+  const items = matched.slice(offset, offset + limit);
+  /*
+   * Имена ведущих и взявших случай, главная шкала последнего замера — только
+   * для строк страницы: это расшифровка и баллы, и считать их ради людей,
+   * которых на экране нет, незачем.
+   */
+  const names = await namesOf(items.flatMap((p) => [p.leadSpecialistId, p.risk?.assigneeName]));
+  const measures = await measuresOf(
+    items.map((p) => p.id),
+    ownSurvey,
+    lang,
+  );
+  for (const p of items) {
+    p.leadName = p.leadSpecialistId ? (names.get(p.leadSpecialistId) ?? null) : null;
+    if (p.risk) p.risk.assigneeName = p.risk.assigneeName ? (names.get(p.risk.assigneeName) ?? null) : null;
+    p.measure = measures.get(p.id) ?? null;
+  }
+
+  const page: PatientListPage = { items, total: matched.length, counts };
   return c.json(page);
 });
+
+/** «Без заміру 30+ днів» */
+const STALE_DAYS = 30;
+
+const iso = (v: string) => new Date(v).toISOString();
+
+/**
+ * Порядки реестра. «Ризик спершу»: открытый случай (тяжёлый, потом давний),
+ * неявка за месяц, просроченный контрольный осмотр, остальные — по ПІБ.
+ * Пустое (нет замера, нет приёма) — в конце при любом порядке.
+ */
+const ORDER: Record<"risk" | "last" | "next", (a: PatientListItem, b: PatientListItem) => number> = {
+  risk: (a, b) => {
+    const rank = (p: PatientListItem) =>
+      p.risk ? (p.risk.severity === "severe" ? 0 : 1) : p.lastNoShowAt ? 2 : p.dispensary?.overdue ? 3 : 4;
+    return (
+      rank(a) - rank(b) ||
+      (a.risk && b.risk ? a.risk.openedAt.localeCompare(b.risk.openedAt) : 0) ||
+      a.name.localeCompare(b.name)
+    );
+  },
+  last: (a, b) =>
+    a.lastResponseAt === b.lastResponseAt
+      ? a.name.localeCompare(b.name)
+      : !a.lastResponseAt
+        ? 1
+        : !b.lastResponseAt
+          ? -1
+          : b.lastResponseAt.localeCompare(a.lastResponseAt),
+  next: (a, b) =>
+    (a.nextVisit?.at ?? "") === (b.nextVisit?.at ?? "")
+      ? a.name.localeCompare(b.name)
+      : !a.nextVisit
+        ? 1
+        : !b.nextVisit
+          ? -1
+          : a.nextVisit.at.localeCompare(b.nextVisit.at),
+};
+
+/**
+ * Главная шкала последнего замера по каждому человеку страницы и её ход.
+ *
+ * «Последний замер» — свежайшее из двенадцати последних прохождений по
+ * методикам зоны читателя, у которого ровно одна клиническая шкала с
+ * полосой тяжести (скрининг); нет такого — свежайшее с любой полосой; нет и
+ * его — свежайшее вообще (личностный опросник без полос о состоянии не
+ * говорит, но лучше он, чем пустая ячейка). Главная шкала — первая по
+ * порядку методики среди клинических с полосой. Ход — до трёх последних
+ * значений этой шкалы той же методики.
+ */
+async function measuresOf(
+  userIds: string[],
+  ownSurvey: SQL | undefined,
+  lang: Lang,
+): Promise<Map<string, PatientListMeasure>> {
+  const out = new Map<string, PatientListMeasure>();
+  if (!userIds.length) return out;
+  const rows = await db.execute<{
+    user_id: string;
+    response_id: string;
+    survey_id: string;
+    survey_title: unknown;
+    submitted_at: string;
+    scale_id: string;
+    code: string;
+    position: number;
+    kind: string;
+    value: number;
+    severity: string | null;
+    band_label: string | null;
+    normalization: string;
+  }>(sql`
+    with recent as (
+      select r.id, r.user_id, r.survey_id, r.submitted_at,
+        row_number() over (partition by r.user_id order by r.submitted_at desc) as rn
+      from responses r join surveys s on s.id = r.survey_id
+      where r.user_id in ${userIds} and r.status = 'completed' and r.submitted_at is not null
+        ${ownSurvey ? sql`and ${ownSurvey}` : sql``}
+    )
+    select rc.user_id, rc.id as response_id, rc.survey_id, sv.title as survey_title, rc.submitted_at,
+      sc.id as scale_id, sc.code, sc.position, sc.kind, rs.value, rs.severity, rs.band_label,
+      rs.normalization
+    from recent rc
+      join surveys sv on sv.id = rc.survey_id
+      join response_scores rs on rs.response_id = rc.id
+      join scales sc on sc.id = rs.scale_id
+    where rc.rn <= 12
+    order by rc.user_id, rc.submitted_at asc, sc.position asc`);
+
+  type Row = (typeof rows)[number];
+  const byUser = new Map<string, Row[]>();
+  for (const r of rows) {
+    const list = byUser.get(r.user_id) ?? [];
+    list.push(r);
+    byUser.set(r.user_id, list);
+  }
+
+  const picks = new Map<string, { main: Row; values: number[] }>();
+  for (const [userId, list] of byUser) {
+    const newest = [...new Set(list.map((r) => r.response_id))].reverse();
+    const clinical = (responseId: string) => list.filter((r) => r.response_id === responseId && r.kind === "clinical");
+    const banded = (responseId: string) => clinical(responseId).filter((r) => r.severity !== null);
+    /*
+     * Скрининг с одним итогом (PHQ-9, GAD-7, PCL-5) говорит о состоянии
+     * одним числом — он и стоит в строке. Профиль из десятка шкал (Міні-мульт)
+     * одним числом не пересказать: первая его шкала в строке выдала бы
+     * случайное за главное. Он — только если скрининга не было.
+     */
+    const chosen =
+      newest.map((id) => banded(id)).find((b) => b.length === 1)?.[0] ??
+      newest.map((id) => banded(id)[0]).find((m) => m !== undefined) ??
+      (newest[0] ? clinical(newest[0])[0] : undefined);
+    if (!chosen) continue;
+    const series = list.filter(
+      (r) => r.survey_id === chosen.survey_id && r.code === chosen.code && String(r.submitted_at) <= String(chosen.submitted_at),
+    );
+    picks.set(userId, {
+      main: chosen,
+      values: series.slice(-3).map((r) => Math.round(Number(r.value) * 10) / 10),
+    });
+  }
+
+  const scaleIds = [...new Set([...picks.values()].map((p) => p.main.scale_id))];
+  const bandRows = scaleIds.length
+    ? await db
+        .select({
+          scaleId: scaleBands.scaleId,
+          minScore: scaleBands.minScore,
+          maxScore: scaleBands.maxScore,
+          severity: scaleBands.severity,
+        })
+        .from(scaleBands)
+        .where(inArray(scaleBands.scaleId, scaleIds))
+    : [];
+  const betterOf = new Map<string, "down" | "up" | null>();
+  for (const id of scaleIds) {
+    const higherWorse = polarityOfBands(bandRows.filter((b) => b.scaleId === id));
+    betterOf.set(id, higherWorse === null ? null : higherWorse ? "down" : "up");
+  }
+
+  for (const [userId, { main, values }] of picks) {
+    const title = t(main.survey_title as never, lang);
+    out.set(userId, {
+      surveyId: main.survey_id,
+      /* нет кода в названии — само название: код шкалы («F», «sleep») о методике не говорит */
+      code: instrumentCode(title, title),
+      title,
+      values,
+      at: iso(String(main.submitted_at)),
+      severity: (main.severity as PatientListMeasure["severity"]) ?? null,
+      bandLabel: main.band_label,
+      normalization: main.normalization as ScaleNormalization,
+      better: betterOf.get(main.scale_id) ?? null,
+    });
+  }
+  return out;
+}
 
 /**
  * Карточка пациента: персональные данные, «Тести», «Групи», «Заключення» и

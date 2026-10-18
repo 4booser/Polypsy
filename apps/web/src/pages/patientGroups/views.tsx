@@ -30,11 +30,13 @@ import { activeView, viewParams, viewSearch } from "../../ui/viewParams";
  * (saved_views, scope «patients») — сохранённые людьми раньше видны и
  * открываются, лишние в них ?page и ?per просто не читаются.
  *
- * Отбор — это группа и поиск. Строк на странице — не отбор, а привычка
- * глаза: вид «Вечірня група» не должен менять человеку размер страницы.
+ * Отбор — это группа, поиск и (с реестра 2.0) подання «Потребує уваги»,
+ * «закріплені за мною» и порядок: вид «Ризик спершу» без порядка был бы
+ * пустым именем. Строк на странице — не отбор, а привычка глаза: вид
+ * «Вечірня група» не должен менять человеку размер страницы.
  */
 const SCOPE = "patients";
-export const PATIENT_VIEW_KEYS = ["group", "q"] as const;
+export const PATIENT_VIEW_KEYS = ["group", "q", "view", "mine", "sort"] as const;
 
 export function usePatientViews(): { entries: MenuEntry[]; dialog: ReactNode } {
   const { ut } = useLang();

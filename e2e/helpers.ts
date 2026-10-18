@@ -163,18 +163,23 @@ export function eventsBell(page: Page): Locator {
 /**
  * Ссылки на людей в списке пациентов.
  *
- * Список больше не таблица: по макету (кадр f05) это сетка карточек в три
- * колонки, и «table tbody tr td a» на нём ничего не находит. Признак
- * `data-patients` стоит на самой сетке (pages/patientGroups/PersonGrid.tsx)
- * ровно ради этой проверки: классы там менять можно, признак — нет.
+ * С 2.0 реестр — снова таблица набора (кадр patients-list), а состав группы
+ * в карточке группы — сетка (PersonGrid). Признак `data-patients` стоит и
+ * там и там (обёртка таблицы в Patients.tsx, сама сетка в PersonGrid) ровно
+ * ради этой проверки: классы менять можно, признак — нет. Первая ссылка
+ * строки — имя человека, она ведёт в карточку.
  */
 export function patientLinks(page: Page): Locator {
-  return page.locator("[data-patients] a");
+  return page.locator("[data-patients] tbody tr td a, [data-patients] > li a");
 }
 
-/** Поле поиска над списком пациентов: на макете без подписи внутри, имя даёт aria-label */
+/**
+ * Поле поиска над реестром пациентов: поиск набора (type=search, роль
+ * searchbox), имя даёт aria-label. Ищется в main: у полосы приложения свой
+ * поиск — палитра.
+ */
 export function patientSearch(page: Page): Locator {
-  return page.getByRole("textbox", { name: /^(Поиск|Пошук)$/ });
+  return page.getByRole("main").getByRole("searchbox", { name: /^(Поиск|Пошук)$/ });
 }
 
 /*
@@ -342,14 +347,13 @@ export async function setEditLang(page: Page, lang: "uk" | "ru"): Promise<void> 
 }
 
 /**
- * Строки списка пациентов текстом. Список с волны 4 — сетка карточек
- * (<ul data-patients>, кадр f05), а не таблица: читаются её пункты, по тому
- * же признаку, что и patientLinks. Через expect.poll, а не waitFor: после
+ * Строки списка пациентов текстом: строки таблицы реестра (2.0) или пункты
+ * сетки группы — по тому же признаку, что и patientLinks. Через expect.poll, а не waitFor: после
  * смены пользователя старый список какое-то время ещё в DOM, и одиночное
  * ожидание успевает совпасть с ним, а читается уже пустой экран загрузки.
  */
 export async function rowTexts(page: Page): Promise<string[]> {
-  const rows = page.locator("[data-patients] > li");
+  const rows = page.locator("[data-patients] tbody tr, [data-patients] > li");
   /*
    * Возвращается ровно тот список, который удовлетворил проверке, а не
    * прочитанный заново.
