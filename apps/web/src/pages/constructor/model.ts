@@ -481,20 +481,34 @@ export function nextKeyCode(existing: (string | null | undefined)[]): string {
  * Своё у пункта при этом остаётся: позначка «критичний» (с подписью и
  * уровнем) и uid варианта. Набор раньше копировался в пункты целиком, и
  * переименование «Так» снимало критические позначки со всех пунктов СР-45
- * разом — молча, а сигнал риска по ним больше не поднимался. Вариант пункта
- * узнаётся по коду ответа (yes/no/k3), без кода — по месту.
+ * разом — молча, а сигнал риска по ним больше не поднимался.
+ *
+ * Вариант пункта узнаётся по коду ответа (yes/no/k3). Без кода — по месту,
+ * но по месту в ПРЕЖНЕМ наборе: варианты пункта стоят так, как стоял набор,
+ * а ответ набора узнаётся по своему uid. Место в новом наборе для этого не
+ * годится: удалили первый ответ PHQ-9 — места сдвинулись, и позначка
+ * переезжала на соседний вариант (критичным становился «Часто» вместо
+ * «Іноді»). Набора ещё не было (смена вида теста) — по месту в новом.
  */
 export function applyAnswers(draft: Draft, answers: DraftOption[]): Draft {
+  const prev = draft.answers ?? [];
+  /* место ответа в прежнем наборе; -1 — ответ новый, своего у пункта для него нет */
+  const before = answers.map((a, i) => {
+    if (!prev.length) return i;
+    if (a.uid) return prev.findIndex((p) => p.uid === a.uid);
+    return prev.length === answers.length ? i : -1;
+  });
   return {
     ...draft,
     answers,
     questions: draft.questions.map((q) => {
       if (q.type === "info") return q;
-      const own = new Map(q.options.map((o, i) => [o.keyCode ?? `@${i}`, o]));
+      const byCode = new Map(q.options.flatMap((o) => (o.keyCode ? [[o.keyCode, o] as const] : [])));
       return {
         ...q,
         options: answers.map((a, i) => {
-          const was = own.get(a.keyCode ?? `@${i}`);
+          const at = before[i]!;
+          const was = a.keyCode ? byCode.get(a.keyCode) : at >= 0 ? q.options[at] : undefined;
           const base = { ...plainAnswer(structuredClone(a)), uid: was?.uid ?? newUid() };
           return was?.riskFlag
             ? { ...base, riskFlag: true, riskLabel: was.riskLabel ?? null, riskSeverity: was.riskSeverity ?? null }
