@@ -432,7 +432,8 @@ async function measuresOf(
     const title = t(main.survey_title as never, lang);
     out.set(userId, {
       surveyId: main.survey_id,
-      code: instrumentCode(title, main.code),
+      /* нет кода в названии — само название: код шкалы («F», «sleep») о методике не говорит */
+      code: instrumentCode(title, title),
       title,
       values,
       at: iso(String(main.submitted_at)),

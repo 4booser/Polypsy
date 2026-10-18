@@ -1,13 +1,25 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import type { InfiniteData, InfiniteQueryObserverResult } from "@tanstack/react-query";
-import type { Respondent } from "@quizzy/shared";
 import { api, tokenStore } from "../src/api";
-import { allTabBody, groupTab, groupTabBody, searchOf, SEARCH_MAX } from "../src/pages/patients/model";
+import {
+  ageOf,
+  groupTab,
+  initialsName,
+  plural,
+  registerBody,
+  registerPer,
+  registerQuery,
+  searchOf,
+  SEARCH_MAX,
+  shownSeries,
+  shownValue,
+  sortOf,
+  viewOf,
+  whenShort,
+} from "../src/pages/patients/model";
 import { cursorPagePlan, pageFrom, perFrom, refilter, toPage, toPer } from "../src/ui/paging";
 import { patchParams } from "../src/ui/viewParams";
-import { pagedState, type Page } from "../src/useResource";
 
 /**
  * Список пациентов: адрес → запрос, адрес → вкладка, адрес → что на месте
@@ -80,19 +92,26 @@ describe("адрес → запрос: до сервера", () => {
     (globalThis as { localStorage?: Storage }).localStorage = saved.localStorage;
   });
 
-  test("поиск и размер страницы — в запросе; пустой поиск не уходит вовсе", async () => {
-    // так зовёт загрузку вкладка «Усі» (Patients.tsx, AllPatients)
-    const load = (q: string, per: number, cursor: string | null) =>
-      api.respondents({ search: searchOf(q) || undefined, cursor: cursor ?? undefined, limit: String(per) });
-
-    await load(" Коваль ", 20, null);
-    await load("   ", 10, "CUR");
-    const [first, second] = seen.map((s) => new URL(s, "http://x"));
-    expect(first!.pathname).toBe("/api/dynamics/respondents");
-    expect(first!.searchParams.get("search")).toBe("Коваль");
+  test("поиск, подання, порядок и страница — в запросе; пустое не уходит вовсе", async () => {
+    // так зовёт загрузку реестр (Patients.tsx, PatientList)
+    const base = { group: null, view: null, mine: false, sort: "risk" as const, page: 1, per: 20 };
+    await api.patientRegister(registerQuery({ ...base, q: " Коваль " }));
+    await api.patientRegister(registerQuery({ ...base, q: "   ", group: "g1", view: "stale", page: 3, per: 50 }));
+    await api.patientRegister(registerQuery({ ...base, q: "", view: "risk", mine: true }));
+    const [first, second, third] = seen.map((s) => new URL(s, "http://x"));
+    expect(first!.pathname).toBe("/api/patients");
+    expect(first!.searchParams.get("q")).toBe("Коваль");
     expect(first!.searchParams.get("limit")).toBe("20");
-    expect(second!.searchParams.has("search")).toBe(false);
-    expect(second!.searchParams.get("cursor")).toBe("CUR");
+    expect(first!.searchParams.get("offset")).toBe("0");
+    expect(first!.searchParams.get("sort")).toBe("risk");
+    expect(first!.searchParams.has("view")).toBe(false);
+    expect(first!.searchParams.has("patientGroup")).toBe(false);
+    expect(second!.searchParams.has("q")).toBe(false);
+    expect(second!.searchParams.get("patientGroup")).toBe("g1");
+    expect(second!.searchParams.get("view")).toBe("stale");
+    expect(second!.searchParams.get("offset")).toBe("100");
+    // «закріплені за мною» — то же подання mine, и оно главнее выбранной пилюли
+    expect(third!.searchParams.get("view")).toBe("mine");
   });
 });
 
@@ -245,79 +264,82 @@ describe("страница поверх курсора", () => {
   });
 });
 
-/*
- * Состояние вкладки «Усі» — из настоящего перевода состояния запроса
- * TanStack в слова экрана (pagedState), а не из придуманных флагов: «нет
- * связи» здесь — это ровно то, что видит экран, когда запрос стоит на паузе.
- */
-type R = InfiniteQueryObserverResult<InfiniteData<Page<Respondent>, string | null>, unknown>;
-function paged(over: Partial<R> & { pages?: Page<Respondent>[] }) {
-  const { pages, ...rest } = over;
-  const r = {
-    data: pages ? { pages, pageParams: pages.map(() => null) } : undefined,
-    fetchStatus: "idle",
-    error: null,
-    isFetchingNextPage: false,
-    isPlaceholderData: false,
-    hasNextPage: false,
-    ...rest,
-  } as unknown as R;
-  return pagedState<Respondent, Page<Respondent>>(r, pages ? pages.flatMap((p) => p.items) : null);
-}
-const person = (n: number): Respondent => ({ userId: `u${n}`, fullName: `Людина ${n}`, email: `p${n}@x` }) as Respondent;
-const portion = (from: number, n: number, next: string | null): Page<Respondent> => ({
-  items: Array.from({ length: n }, (_, i) => person(from + i)),
-  nextCursor: next,
-});
-
-function body(s: ReturnType<typeof paged>, page: number, per: number) {
-  const loaded = s.items ?? [];
-  const rows = loaded.slice((page - 1) * per, page * per);
-  return allTabBody({ items: s.items, error: s.error, rowsOnPage: rows.length, hasMore: s.hasMore, loadingMore: s.loadingMore });
-}
-
-describe("что на месте сетки: вкладка «Усі»", () => {
-  test("первая загрузка — скелет; обрыв связи до первого ответа — тоже скелет, а не «нікого»", () => {
-    expect(body(paged({ fetchStatus: "fetching" }), 1, 10)).toBe("loading");
-    expect(body(paged({ fetchStatus: "paused" }), 1, 10)).toBe("loading");
+describe("адрес реестра: подання, порядок, строк на странице", () => {
+  test("чужое подання и порядок из закладки — «все» и «ризик спершу», а не отказ сервера", () => {
+    expect(viewOf("risk")).toBe("risk");
+    expect(viewOf("stale")).toBe("stale");
+    expect(viewOf("mine")).toBeNull(); // «за мною» — свой параметр ?mine, не пилюля
+    expect(viewOf("drop table")).toBeNull();
+    expect(viewOf(null)).toBeNull();
+    expect(sortOf("next")).toBe("next");
+    expect(sortOf("bogus")).toBe("risk");
+    expect(sortOf(null)).toBe("risk");
   });
 
-  test("отказ сервера — отказ с «повторити», а не пустота", () => {
-    const s = paged({ error: new Error("Сервер не відповідає"), fetchStatus: "idle" });
-    expect(body(s, 1, 10)).toBe("failed");
-  });
-
-  test("пусто — только по ответу сервера, за которым ничего не обещано", () => {
-    expect(body(paged({ pages: [portion(0, 0, null)] }), 1, 10)).toBe("empty");
-  });
-
-  test("листнули вперёд при оборвавшейся связи — ждём порцию, а не «нікого не знайдено»", () => {
-    /*
-     * Страница 2: первая порция есть, вторая попрошена, но связь пропала, и
-     * запрос встал на паузу. «Идёт подгрузка» при паузе не поднят — и экран
-     * читал пустую страницу как «никого нет».
-     */
-    const s = paged({ pages: [portion(0, 10, "c2")], hasNextPage: true, fetchStatus: "paused" });
-    expect(s.offline).toBe(true);
-    expect(s.loadingMore).toBe(false);
-    expect(body(s, 2, 10)).toBe("loading");
-  });
-
-  test("страница с людьми — сетка, в том числе без связи: последние загруженные остаются на экране", () => {
-    expect(body(paged({ pages: [portion(0, 10, "c2")], hasNextPage: true }), 1, 10)).toBe("rows");
-    expect(body(paged({ pages: [portion(0, 10, "c2")], hasNextPage: true, fetchStatus: "paused" }), 1, 10)).toBe("rows");
+  test("строк на странице — 20 по умолчанию, чужое число — тоже 20", () => {
+    expect(registerPer(null)).toBe(20);
+    expect(registerPer("50")).toBe(50);
+    expect(registerPer("7")).toBe(20);
   });
 });
 
-describe("что на месте сетки: вкладка группы", () => {
-  test("пусто по запросу и пусто в группе — разные слова", () => {
-    expect(groupTabBody({ hasCard: true, error: null, rowsOnPage: 0, q: "Коваль" })).toBe("noMatch");
-    expect(groupTabBody({ hasCard: true, error: null, rowsOnPage: 0, q: "  " })).toBe("empty");
+describe("что на месте таблицы реестра", () => {
+  const at = (over: Partial<Parameters<typeof registerBody>[0]>) =>
+    registerBody({ hasData: true, error: null, rows: 0, filtered: false, group: false, ...over });
+
+  test("до ответа — скелет, в том числе без связи; отказ — отказ с «повторити», а не пустота", () => {
+    expect(at({ hasData: false })).toBe("loading");
+    expect(at({ hasData: false, error: "Сервер не відповідає" })).toBe("failed");
   });
 
-  test("отказ — главнее; без карточки — скелет", () => {
-    expect(groupTabBody({ hasCard: false, error: "Групу не знайдено", rowsOnPage: 0, q: "" })).toBe("failed");
-    expect(groupTabBody({ hasCard: false, error: null, rowsOnPage: 0, q: "" })).toBe("loading");
-    expect(groupTabBody({ hasCard: true, error: null, rowsOnPage: 3, q: "" })).toBe("rows");
+  test("пусто по отбору, пусто в группе и пусто вообще — три разных слова", () => {
+    expect(at({ filtered: true })).toBe("noMatch");
+    expect(at({ group: true })).toBe("emptyGroup");
+    expect(at({})).toBe("empty");
+    // отбор главнее группы: «нікого не знайдено» зовёт снять отбор
+    expect(at({ filtered: true, group: true })).toBe("noMatch");
+  });
+
+  test("строки есть — таблица, даже если перечитывание не удалось: прежние остаются на экране", () => {
+    expect(at({ rows: 3 })).toBe("rows");
+    expect(at({ rows: 3, error: "обрыв" })).toBe("rows");
+  });
+});
+
+describe("числа и слова строки реестра", () => {
+  test("доля — процентом, остальное — числом без лишних знаков", () => {
+    expect(shownValue(0.5, "ratio")).toEqual({ text: "50", unit: "%" });
+    expect(shownValue(64.24, "tscore")).toEqual({ text: "64.2", unit: "" });
+    expect(shownValue(14, "raw")).toEqual({ text: "14", unit: "" });
+    expect(shownSeries([0.3, 0.5, 0.55], "ratio")).toEqual([30, 50, 55]);
+  });
+
+  test("форма слова по числу — правилами языка, три формы в одной строке словаря", () => {
+    const forms = "{n} людина|{n} людини|{n} людей";
+    expect(plural(forms, 1, "uk-UA")).toBe("1 людина");
+    expect(plural(forms, 3, "uk-UA")).toBe("3 людини");
+    expect(plural(forms, 11, "uk-UA")).toBe("11 людей");
+    expect(plural(forms, 134, "uk-UA")).toBe("134 людини");
+    expect(plural("{n} person|{n} people|{n} people", 248, "en-GB")).toBe("248 people");
+  });
+
+  test("когда приём: сегодня и завтра — словом, иначе день недели с датой", () => {
+    const now = new Date(2026, 9, 8, 17, 0).getTime();
+    const words = { today: "сьогодні", tomorrow: "завтра" };
+    const today = whenShort(new Date(2026, 9, 8, 18, 0).toISOString(), now, "uk-UA", words);
+    expect(today).toEqual({ text: "сьогодні, 18:00", soon: true });
+    expect(whenShort(new Date(2026, 9, 9, 10, 30).toISOString(), now, "uk-UA", words).text).toBe("завтра, 10:30");
+    const later = whenShort(new Date(2026, 9, 10, 10, 30).toISOString(), now, "uk-UA", words);
+    expect(later.soon).toBe(false);
+    expect(later.text).toContain("10.10, 10:30");
+  });
+
+  test("возраст по году рождения и фамилия с инициалами", () => {
+    const now = new Date(2026, 9, 8).getTime();
+    expect(ageOf(1988, now)).toBe(38);
+    expect(ageOf(null, now)).toBeNull();
+    expect(ageOf(1800, now)).toBeNull();
+    expect(initialsName("Шевченко Марія Василівна")).toBe("Шевченко М. В.");
+    expect(initialsName("Шевченко")).toBe("Шевченко");
   });
 });

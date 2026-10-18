@@ -62,7 +62,8 @@ test("от тревоги до закрытого направления", async
   const reason = `Смоук ${Date.now()}`;
   await expect(page.getByText(reason)).toHaveCount(0);
 
-  await page.getByRole("button", { name: "Выписать направление" }).click();
+  /* «Виписати направлення» стоит в шапке справы и в панели направлений — оба открывают один ящик */
+  await page.getByRole("button", { name: "Выписать направление" }).first().click();
   await page.getByPlaceholder("что послужило поводом").fill(reason);
   await page.getByRole("button", { name: "Выписать", exact: true }).click();
 

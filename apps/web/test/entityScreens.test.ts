@@ -47,7 +47,8 @@ describe("keep: false — после смены id загрузка, а не д�
     ["components/PatientContext.tsx", "useResource(() => api.dynamics(person.userId), [person.userId], { keep: false })"],
     ["pages/Alerts.tsx", "useResource(() => api.caseSummary(userId), [userId], { keep: false })"],
     ["pages/CaseCard.tsx", "{ enabled: !!userId, keep: false }"],
-    ["pages/Timeline.tsx", "{ enabled: !!userId, keep: false }"],
+    /* хронология делит кэш с шапкой справы (общий ключ), keep: false — на месте */
+    ["pages/Timeline.tsx", "{ enabled: !!userId, keep: false, key: TL_KEY }"],
   ];
   for (const [file, call] of screens) {
     test(`${file}: загрузка одного человека — с keep: false`, () => {

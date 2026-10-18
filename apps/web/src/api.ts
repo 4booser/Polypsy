@@ -843,7 +843,7 @@ export interface SavedView {
 
 export interface TimelineItem {
   id: string;
-  kind: "response" | "alert" | "referral" | "conclusion" | "assignment";
+  kind: "response" | "alert" | "referral" | "conclusion" | "assignment" | "visit";
   at: string;
   title: string;
   detail?: string | null;
@@ -1719,7 +1719,7 @@ export const api = {
    * последнего замера, приём, неявка, учёт, ведущий — и счётчиками подань.
    * Пустые значения не уходят: `view=` и `q=` сервер читал бы как отбор.
    */
-  patients: (params: {
+  patientRegister: (params: {
     q?: string;
     patientGroup?: string;
     view?: string;
