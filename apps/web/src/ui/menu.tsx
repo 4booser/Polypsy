@@ -122,7 +122,7 @@ function plateClass(align: MenuAlign, plateClassName?: string): string {
   return cx(
     "absolute z-50 flex flex-col items-stretch outline-none",
     align === "left"
-      ? "right-0 top-[calc(100%+6px)] min-w-[220px] gap-0.5 rounded-md border border-border bg-surface p-1 shadow-panel"
+      ? "right-0 top-[calc(100%+6px)] min-w-[220px] gap-0.5 rounded-md border border-border bg-surface p-1 shadow-pop"
       : "rounded-[5px] bg-[var(--bg)] shadow-pop",
     /*
      * Плашка карточки — 142×94 по рамке, и рамка #999999 в пиксель.

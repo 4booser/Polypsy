@@ -621,7 +621,7 @@ export function Rail({
           горизонтально — на списке из восьми тысяч человек это невыносимо.
           Поэтому здесь она выводится из потока и выезжает по кнопке.
         */
-        "max-[900px]:fixed max-[900px]:left-0 max-[900px]:top-0 max-[900px]:w-[var(--rail-w)] max-[900px]:px-3 max-[900px]:shadow-panel",
+        "max-[900px]:fixed max-[900px]:left-0 max-[900px]:top-0 max-[900px]:w-[var(--rail-w)] max-[900px]:px-3 max-[900px]:shadow-pop",
         offscreen
           ? "max-[900px]:invisible max-[900px]:-translate-x-full"
           : "max-[900px]:visible max-[900px]:translate-x-0",

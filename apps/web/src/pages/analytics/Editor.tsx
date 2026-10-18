@@ -756,7 +756,7 @@ export function TestPicker({
             className={cx(
               "absolute left-0 top-0 z-50 max-h-[674px] w-full overflow-y-auto rounded-[5px]",
               "border border-field-border bg-[var(--bg)] py-[11px] shadow-pop",
-              "[scrollbar-color:var(--polsy-edge)_transparent] [scrollbar-width:thin]",
+              "[scrollbar-color:var(--ctl)_transparent] [scrollbar-width:thin]",
             )}
           >
             {items.length === 0 ? (

@@ -10,15 +10,25 @@
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
 
+/*
+ * Страница стоит на земле, а не на листе: --bg в консоли значит «лист» —
+ * им залиты панели, поля и меню, — и белые панели лежат на сиреневой
+ * земле, как в наборе «Виразной».
+ *
+ * Цифры моноширинные везде: столбцы чисел и «19 → 16 → 14» выравниваются
+ * без моноширинной гарнитуры.
+ */
 body {
   margin: 0;
-  background: var(--bg);
+  background: var(--ground);
   color: var(--text);
   font-family: var(--font-text);
   font-size: var(--fs-body);
   line-height: var(--lh-normal);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
   -webkit-font-smoothing: antialiased;
-  font-feature-settings: "cv01", "ss01";
+  caret-color: var(--vring);
 }
 
 /*
@@ -38,7 +48,7 @@ a { color: inherit; text-decoration: none; }
 a:hover { text-decoration: underline; text-underline-offset: 3px; }
 .link { color: var(--primary); }
 
-/* Фокус — янтарный и всегда видимый. Ни одного `outline: none` в проекте. */
+/* Фокус — фиолетовое кольцо и всегда видимый. Ни одного `outline: none` в проекте. */
 :where(a, button, input, select, textarea, [tabindex]):focus-visible {
   outline: 2px solid var(--focus);
   outline-offset: 2px;
@@ -47,7 +57,8 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
   border-radius: var(--r-sm);
 }
 
-::selection { background: var(--accent-soft); color: var(--text); }
+/* выделение — цветом бренда: янтарь значит «требует внимания» */
+::selection { background: var(--brand); color: var(--onfill); }
 
 /* оболочка перенесена в shell/Rail.tsx и App.tsx — правил здесь больше нет */
 
@@ -649,8 +660,8 @@ kbd, .kbd {
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  background: color-mix(in srgb, var(--slate-950) 72%, transparent);
-  backdrop-filter: blur(3px);
+  /* затемнение набора, без размытия: стекла в «Виразной» нет */
+  background: var(--scrim);
   display: grid;
   place-items: center;
   padding: 24px;

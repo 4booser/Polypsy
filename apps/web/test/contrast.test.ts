@@ -132,8 +132,14 @@ function contrast(a: Rgb, b: Rgb): number {
   return (hi! + 0.05) / (lo! + 0.05);
 }
 
-/** Поверхности, на которых вообще бывает текст */
-const GROUNDS = ["--bg", "--surface", "--surface-2", "--surface-3"] as const;
+/**
+ * Поверхности, на которых вообще бывает текст.
+ *
+ * С «Виразной» земля страницы (--ground) и лист (--bg, --surface) — разные
+ * цвета: заголовки страниц и подписи стоят прямо на земле, а полоса карточки
+ * пациента (--band) и светлая ступень панели (--panel2) несут свой текст.
+ */
+const GROUNDS = ["--ground", "--bg", "--surface", "--panel2", "--surface-2", "--surface-3", "--band"] as const;
 
 /**
  * Пороги — из правил самого проекта, а не из WCAG вообще.
@@ -149,6 +155,25 @@ const TEXT_TOKENS: [string, number][] = [
   ["--accent", 4.5],
   ["--primary", 4.5],
 ];
+
+/*
+ * Состав тем совпадает.
+ *
+ * Голый `:root` светлой темы виден и под тёмной меткой. Токен, объявленный
+ * только в светлом блоке, в тёмной теме не пропадает, а тихо остаётся
+ * светлым — тёмный текст на тёмной земле, и ни одна проверка выше этого не
+ * увидит, если токена нет в её списке.
+ */
+describe("темы", () => {
+  test("светлый и тёмный блоки объявляют одни и те же токены", () => {
+    const light = [...block(':root[data-theme="light"]').keys()].sort();
+    const dark = [...block(':root[data-theme="dark"]').keys()].sort();
+    expect(light.filter((k) => !dark.includes(k)), "есть только в светлой").toEqual([]);
+    expect(dark.filter((k) => !light.includes(k)), "есть только в тёмной").toEqual([]);
+    // положительный контроль разбора: блоки найдены целиком, а не пустыми
+    expect(light.length).toBeGreaterThan(50);
+  });
+});
 
 describe("контраст токенов", () => {
   for (const [themeName, theme] of [
