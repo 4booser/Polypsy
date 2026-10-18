@@ -7954,6 +7954,10 @@ export const UI = {
     en: "Hover over the chart or Tab to it: exact value, date, severity and change since the start and the previous measurement.",
   },
 
+  // ── v2-kit ──
+  /* набор «Виразна» (apps/web/src/ui): поле, ящик, таблица, фильтры, числа */
+  "kit.optional": { uk: "необов’язково", ru: "необязательно", en: "optional" },
+
 } as const satisfies Record<string, UiEntry>;
 
 export type UiKey = keyof typeof UI;

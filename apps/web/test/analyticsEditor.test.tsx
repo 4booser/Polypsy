@@ -277,11 +277,13 @@ describe("каретка выпадающего списка", () => {
     expect(html).toContain("linear-gradient");
   });
 
-  test("нарисована тоном рамки поля, а не своим числом", () => {
-    expect(html).toContain("--field-border");
+  /* шеврон набора — приглушённым тоном (.inp > значок: --muted), токеном, а не своим числом */
+  test("нарисована токеном темы, а не своим числом", () => {
+    expect(html).toContain("var(--muted)");
+    expect(html).not.toMatch(/#[0-9a-fA-F]{3,6}\b/);
   });
 
   test("место под каретку в поле отведено", () => {
-    expect(html).toContain("pr-[26px]");
+    expect(html).toContain("pr-9");
   });
 });

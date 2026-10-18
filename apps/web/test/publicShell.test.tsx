@@ -30,19 +30,16 @@ describe("ButtonLink — близнец Button", () => {
   test("без свойств обе рисуют одну кнопку", () => {
     /*
      * Сравниваются не «умолчания в исходнике», а то, что из них вышло: у
-     * обеих размер и заливка приходят из одних таблиц `sizes`/`variants`, и
-     * при согласных умолчаниях наборы классов расходятся ровно на то, чем
-     * ссылка отличается от кнопки, — на подчёркивание и на недоступность.
-     * Разойдись умолчания (было «md»/«paper» против «sm»/«primary»), в
-     * разнице оказались бы h-, px-, text-[…] и заливка.
+     * обеих размер и заливка приходят из одной функции buttonClass, и при
+     * согласных умолчаниях наборы классов совпадают целиком. Разойдись
+     * умолчания (было «md»/«paper» против «sm»/«primary»), в разнице
+     * оказались бы h-, px-, text-[…] и заливка.
      */
     const button = classes(render(<Button>дія</Button>));
     const link = classes(render(<ButtonLink to="/куди">дія</ButtonLink>));
-    expect([...button].filter((c) => !link.has(c)).sort()).toEqual([
-      "disabled:opacity-45",
-      "disabled:pointer-events-none",
-    ]);
-    expect([...link].filter((c) => !button.has(c)).sort()).toEqual(["hover:no-underline", "no-underline"]);
+    /* одна таблица классов (buttonClass): ссылка и кнопка не расходятся ни в чём */
+    expect([...button].filter((c) => !link.has(c)).sort()).toEqual([]);
+    expect([...link].filter((c) => !button.has(c)).sort()).toEqual([]);
   });
 });
 

@@ -78,10 +78,11 @@ describe("бургер: один вид у всего списка", () => {
 
   test("янтарём — только случаи риска; остальные числа — нейтральной меткой", () => {
     const html = sections("/");
-    const amber = [...html.matchAll(/<span class="[^"]*bg-accent-soft[^"]*">([^<]*)<\/span>/g)].map((m) => m[1]);
+    /* янтарь набора — Tag attention (bg-warn-tint-2), нейтральная — Tag plain (bg-sunk text-text-2) */
+    const amber = [...html.matchAll(/<span class="[^"]*bg-warn-tint-2[^"]*">([^<]*)<\/span>/g)].map((m) => m[1]);
     expect(amber, "янтарь стоит не у одного числа случаев риска").toEqual([String(COUNTS.alerts)]);
     /* 120 людей на сегодня — «99+», и серым: это объём работы, а не тревога */
-    const plain = [...html.matchAll(/<span class="[^"]*border-border text-muted[^"]*">([^<]*)<\/span>/g)].map((m) => m[1]);
+    const plain = [...html.matchAll(/<span class="[^"]*bg-sunk text-text-2[^"]*">([^<]*)<\/span>/g)].map((m) => m[1]);
     expect(plain).toContain("99+");
     expect(plain).toContain(String(COUNTS.worklist));
     expect(plain).toContain(String(COUNTS.referrals));
@@ -121,7 +122,7 @@ describe("бургер: подвал учётной записи", () => {
     expect(html).toMatch(/class="[^"]*text-\[16px\] font-bold[^"]*">Іваненко Олена</);
     expect(html).toMatch(/class="[^"]*text-\[13px\][^"]*text-muted[^"]*">.*Адміністратор групи/);
     expect(html).toMatch(/class="[^"]*font-mono text-\[11px\][^"]*"[^>]*>dev</);
-    expect(html).toMatch(/class="[^"]*bg-accent-soft[^"]*">Режим перегляду</);
+    expect(html).toMatch(/class="[^"]*bg-warn-tint-2[^"]*">Режим перегляду</);
   });
 });
 
