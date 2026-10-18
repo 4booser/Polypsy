@@ -123,9 +123,11 @@ export default function SurveysScreen() {
             onChange={setTab}
             accessibilityLabel={ut("tab.surveys")}
             options={[
-              { value: "assigned", label: ut("mpt.sv.assigned"), count: assignedCount },
-              { value: "done", label: ut("mpt.sv.done"), count: tabs.done.length },
-              { value: "self", label: ut("mpt.sv.self"), count: tabs.self.length },
+              // список не загрузился — счётчиков нет: «Пройдені 0» без сети читалось бы как «ничего не сдано»
+              { value: "assigned", label: ut("mpt.sv.assigned"), count: failed ? undefined : assignedCount },
+              { value: "done", label: ut("mpt.sv.done"), count: failed ? undefined : tabs.done.length },
+              // у каталога «самостійно» счётчик не нужен: это не список дел, и число в нём — шум
+              { value: "self", label: ut("mpt.sv.self") },
             ]}
           />
         </View>

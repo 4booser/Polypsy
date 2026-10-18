@@ -134,22 +134,24 @@ export default function ConsentScreen() {
   };
 
   const BUTTON: Record<ConsentAction, { title: string; kind: "primary" | "secondary" | "ghost"; icon?: IconName }> = {
-    accept: { title: ut("consent.accept"), kind: "primary", icon: "check" },
+    // без значка: «Не погоджуюся» и «Погоджуюся» на 17 в ряд на 390 иначе не помещаются целиком
+    accept: { title: ut("consent.accept"), kind: "primary" },
     decline: { title: ut("consent.decline"), kind: "secondary" },
     retry: { title: ut("common.retry"), kind: "primary", icon: "refresh-cw" },
     signOut: { title: ut("consent.signOut"), kind: view.kind === "declined" ? "ghost" : "secondary", icon: "log-out" },
     reconsider: { title: ut("consent.reconsider"), kind: "primary", icon: "file-text" },
   };
   const actions = actionsOf(view);
-  const button = (action: ConsentAction, flex?: number) => (
+  const button = (action: ConsentAction, inRow?: boolean) => (
     <Btn
       key={action}
       title={BUTTON[action].title}
       kind={BUTTON[action].kind}
       icon={BUTTON[action].icon}
       size="l"
-      flex={flex}
-      full={!flex}
+      full={!inRow}
+      // в ряду «Не погоджуюся» длиннее «Погоджуюся» — ей и места чуть больше
+      flex={inRow ? (BUTTON[action].kind === "primary" ? 1 : 1.2) : undefined}
       loading={busy && action === "accept"}
       disabled={busy}
       onPress={() => void run[action]()}
@@ -252,8 +254,7 @@ export default function ConsentScreen() {
           <View style={{ flexDirection: "row", gap: 10 }}>
             {[...actions]
               .sort((a, b) => Number(BUTTON[a].kind === "primary") - Number(BUTTON[b].kind === "primary"))
-              // главная чуть шире: «Погоджуюся» со значком не обрезается многоточием
-              .map((a) => button(a, BUTTON[a].kind === "primary" ? 1.25 : 1))}
+              .map((a) => button(a, true))}
           </View>
         </View>
       </ActionBar>

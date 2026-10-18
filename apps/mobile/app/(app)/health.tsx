@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useState } from "react";
+import { useCallback, useState } from "react";
 import { ScrollView, View } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import type { MyDynamics, SafetyPlan } from "@quizzy/shared";
@@ -7,6 +7,7 @@ import { codeOf } from "@/catalog/surveysTab";
 import { Loader } from "@/components/ui";
 import { personName } from "@/components/patient/Avatar";
 import { CodeTile } from "@/components/patient/CodeTile";
+import { HistoryTiles, formatScore } from "@/components/patient/History";
 import { Hero } from "@/components/patient/Hero";
 import { useLang } from "@/lang";
 import { useColors } from "@/theme";
@@ -17,9 +18,6 @@ import { T } from "@/ui/Text";
 
 type Scale = MyDynamics["surveys"][number]["scales"][number];
 type Point = Scale["points"][number];
-
-/** Сколько последних замеров стоит плитками: больше трёх на 390 не читается */
-const TILES = 3;
 
 /**
  * Здоровье: как меняется и что делать, если станет тяжелее.
@@ -157,7 +155,7 @@ export default function HealthScreen() {
   );
 }
 
-const fmt = (v: number) => (Number.isInteger(v) ? String(v) : String(Math.round(v * 10) / 10));
+const fmt = formatScore;
 
 /** Одна шкала: последнее значение со словом, сдвиг от первого замера, последние замеры плитками */
 function ScaleBlock({ title, code, points }: { title: string; code: string | null; points: Point[] }) {
@@ -166,7 +164,6 @@ function ScaleBlock({ title, code, points }: { title: string; code: string | nul
   const last = points.at(-1)!;
   const first = points[0]!;
   const delta = Math.round((last.value - first.value) * 10) / 10;
-  const tiles = points.slice(-TILES);
   const day = (iso: string) => new Date(iso).toLocaleDateString(locale, { day: "2-digit", month: "2-digit" });
   return (
     <View style={{ paddingTop: 14, paddingHorizontal: 16, paddingBottom: 14, borderTopWidth: 1, borderTopColor: c.divider }}>
@@ -197,38 +194,7 @@ function ScaleBlock({ title, code, points }: { title: string; code: string | nul
           {` ${ut("mpt.hl.fromFirst").replace("{d}", day(first.submittedAt))}`}
         </T>
       </View>
-      <View accessibilityLabel={ut("mpt.hl.history")} style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 10 }}>
-        {tiles.map((p, i) => {
-          const now = i === tiles.length - 1;
-          return (
-            <Fragment key={p.submittedAt}>
-              {i ? <Icon name="chevron-right" size={15} color={c.muted} /> : null}
-              <View
-                style={{
-                  flex: 1,
-                  height: 40,
-                  flexDirection: "row",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: 6,
-                  paddingHorizontal: 12,
-                  borderRadius: 12,
-                  backgroundColor: now ? c.vtint : c.sunk,
-                  borderWidth: now ? 1 : 0,
-                  borderColor: c.vline,
-                }}
-              >
-                <T v="sub" num scale={false} color={now ? c.vink : c.muted}>
-                  {day(p.submittedAt)}
-                </T>
-                <T v="headline" size={17} num scale={false} color={now ? c.vink : c.text}>
-                  {fmt(p.value)}
-                </T>
-              </View>
-            </Fragment>
-          );
-        })}
-      </View>
+      <HistoryTiles points={points} label={ut("mpt.hl.history")} />
     </View>
   );
 }

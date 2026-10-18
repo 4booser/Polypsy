@@ -8,6 +8,7 @@ import {
   type Answer,
   type AnswerEvent,
   type BatteryAssignment,
+  type MyDynamics,
   type Question,
   type ScoreResult,
   type SurveyFull,
@@ -15,7 +16,7 @@ import {
 import * as Haptics from "expo-haptics";
 import { api } from "@/api/client";
 import { useAuth } from "@/auth/AuthContext";
-import { codeOf, nextInSet, placeInSet } from "@/catalog/surveysTab";
+import { codeOf, nextInSet, placeInSet, setProgress } from "@/catalog/surveysTab";
 import { draftRequestBody, drafts, pickDraft, type LocalDraft } from "@/offline/cache";
 import { draftLaneKey, draftLanes } from "@/offline/draftLane";
 import { mayStore } from "@/offline/owner";
@@ -31,6 +32,7 @@ import { ErrorText, Loader } from "@/components/ui";
 import { Avatar } from "@/components/patient/Avatar";
 import { CrisisStrip } from "@/components/patient/Crisis";
 import { FactList, type Fact } from "@/components/patient/Facts";
+import { HistoryTiles, formatScore } from "@/components/patient/History";
 import { BandCard, Hero, HeroMeta } from "@/components/patient/Hero";
 import { ActionBar, Btn } from "@/ui/Button";
 import { BigValue } from "@/ui/BigValue";
@@ -100,6 +102,8 @@ export default function TakeSurveyScreen() {
   const [sets, setSets] = useState<BatteryAssignment[]>([]);
   /** Люди и службы из плана безопасности — в карточку «Якщо стане важко» после сдачи */
   const [contacts, setContacts] = useState<{ name: string; contact: string }[]>([]);
+  /** Свои прежние замеры этой методики — «19 → 16 → 14» под результатом, где методика их показывает */
+  const [history, setHistory] = useState<MyDynamics["surveys"][number] | null>(null);
   /** «Пізніше» сохранило черновик — уход без вопроса «перервати?» */
   const leaving = useRef(false);
   const body = useRef<ScrollView>(null);
@@ -147,6 +151,20 @@ export default function TakeSurveyScreen() {
       .then(setSets)
       .catch(() => {});
   }, [onBehalfOf, result]);
+
+  /*
+   * Динамика после сдачи — с сервера, а значит, только когда сдача дошла:
+   * в очереди её на сервере ещё нет, и «прежние замеры» без сегодняшнего
+   * читались бы как результат. Сервер отдаёт её лишь по методикам, где
+   * показ человеку разрешён.
+   */
+  useEffect(() => {
+    if (!result || queued || onBehalfOf || !survey) return;
+    void api
+      .myDynamics()
+      .then((d) => setHistory(d.surveys.find((x) => x.surveyId === survey.id) ?? null))
+      .catch(() => {});
+  }, [result, queued, onBehalfOf, survey]);
 
   // план безопасности при риске: люди и службы из своего плана, с кэша устройства без сети
   useEffect(() => {
@@ -563,6 +581,7 @@ export default function TakeSurveyScreen() {
     const answeredTotal = asked.filter((q) => isAnswered(q, answers.get(q.id))).length;
     const doneAt = new Date().toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" });
     const nextStep = onBehalfOf ? null : nextInSet(sets, survey.id);
+    const setNow = onBehalfOf ? null : setProgress(sets, survey.id, nextStep?.surveyId ?? null);
     const toList = () => router.replace("/(app)/surveys");
     return (
       <View style={{ flex: 1, backgroundColor: c.ground }}>
@@ -634,11 +653,35 @@ export default function TakeSurveyScreen() {
                     severityLabel={s.band?.label ?? undefined}
                   />
                   {s.band?.description ? <T v="note">{s.band.description}</T> : null}
+                  {(() => {
+                    const points = history?.scales.find((h) => h.code === s.scaleCode)?.points ?? [];
+                    return points.length >= 2 ? <HistoryTiles points={points} label={ut("mpt.hl.history")} /> : null;
+                  })()}
                 </View>
               ))}
               <T v="note" style={{ marginTop: 8 }}>
                 {ut("msv.notDiagnosis")}
               </T>
+            </Panel>
+          ) : null}
+
+          {setNow ? (
+            /*
+             * Набор, в котором эта методика: что уже сдано, что дальше. Только
+             * что сданная — сданной, даже если сервер ещё не ответил (очередь):
+             * человек её прошёл, и ждать от него её снова нечего.
+             */
+            <Panel title={setNow.title} icon="layers" style={{ marginTop: 16, marginHorizontal: 16 }}>
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+                {setNow.steps.map((st) => (
+                  <Pill
+                    key={st.surveyId}
+                    kind={st.done ? "good" : st.next ? "v" : "n"}
+                    icon={st.done ? "check" : undefined}
+                    label={st.next ? ut("mpt.rn.stepNext").replace("{title}", st.label) : st.label}
+                  />
+                ))}
+              </View>
             </Panel>
           ) : null}
 
@@ -1083,11 +1126,6 @@ function OkMark({ queued }: { queued: boolean }) {
       <Icon name={queued ? "cloud-off" : "check"} size={26} color={queued ? c.text2 : c.good} />
     </View>
   );
-}
-
-/** Балл без хвоста: «14», а у среднего — «2,4» */
-function formatScore(v: number): string {
-  return Number.isInteger(v) ? String(v) : String(Math.round(v * 10) / 10);
 }
 
 function formatWhen(iso: string, locale: string): string {

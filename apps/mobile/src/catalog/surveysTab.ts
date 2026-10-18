@@ -151,6 +151,33 @@ export function placeInSet(
 }
 
 /**
+ * Набор после сдачи — пилюлями «✓ PHQ-9 · GAD-7, далі · PCL-5». Только что
+ * сданная методика — сданной, даже если сервер её ещё не отметил (ответы в
+ * очереди): человек её прошёл. Методика не в наборе — null.
+ */
+export function setProgress(
+  sets: BatteryAssignment[],
+  surveyId: string,
+  nextId: string | null,
+): { title: string; steps: { surveyId: string; label: string; done: boolean; next: boolean }[] } | null {
+  for (const set of sets) {
+    if (set.cancelledAt) continue;
+    const steps = set.steps.filter(ownStep);
+    if (!steps.some((s) => s.surveyId === surveyId)) continue;
+    return {
+      title: set.batteryTitle,
+      steps: steps.map((s) => ({
+        surveyId: s.surveyId,
+        label: codeOf(s.title).code ?? s.title,
+        done: s.state === "done" || s.surveyId === surveyId,
+        next: s.surveyId === nextId,
+      })),
+    };
+  }
+  return null;
+}
+
+/**
  * Что пройти следующим после сдачи — «Далі: GAD-7». Следующий по порядку
  * несданный свой шаг того же набора; за ним — несданный раньше (пропущенный
  * необязательный). Ничего не осталось — null, и кнопка ведёт к списку.

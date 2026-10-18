@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { BatteryAssignment, SurveyListItem, SurveyResponse } from "@quizzy/shared";
-import { codeOf, loadSurveysTab, nextInSet, patientTabs, placeInSet, type SurveysTabApi } from "../src/catalog/surveysTab";
+import { codeOf, loadSurveysTab, nextInSet, patientTabs, placeInSet, setProgress, type SurveysTabApi } from "../src/catalog/surveysTab";
 
 /**
  * Вкладка «Опитування» у пациента (прод, волна 25).
@@ -197,6 +197,17 @@ describe("место в наборе", () => {
       next: ["WHO-5"],
     });
     expect(placeInSet([set()], "pss")).toBeNull();
+  });
+
+  test("после сдачи — набор пилюлями: сданная только что уже сдана, следующая помечена", () => {
+    const progress = setProgress([set()], "Депресія (PHQ-9)", "Благополуччя (WHO-5)");
+    expect(progress?.title).toBe("Перед сесією");
+    expect(progress?.steps.map((s) => [s.label, s.done, s.next])).toEqual([
+      ["GAD-7", false, false],
+      ["PHQ-9", true, false],
+      ["WHO-5", false, true],
+    ]);
+    expect(setProgress([set()], "pss", null)).toBeNull();
   });
 
   test("после сдачи — следующий свой несданный шаг, часть специалиста пропускается", () => {
