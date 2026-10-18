@@ -450,6 +450,7 @@ export default function OpsUsers() {
         id={openId}
         hint={openRow}
         version={version}
+        keys={!dialog}
         onClose={closeUser}
         onDialog={open}
         menu={entriesFor}
