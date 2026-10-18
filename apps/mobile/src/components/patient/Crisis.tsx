@@ -4,6 +4,8 @@ import { useLang } from "../../lang";
 import { radius, useColors } from "../../theme";
 import { HelpSheet } from "../../ui/HelpSheet";
 import { Squircle } from "../../ui/Panel";
+import { CallRow } from "../../ui/Rows";
+import { BottomSheet } from "../../ui/Sheet";
 import { T } from "../../ui/Text";
 
 /**
@@ -14,8 +16,12 @@ import { T } from "../../ui/Text";
  * На экранах до входа и без согласия она тоже есть: телефон доверия не
  * требует учётной записи, и человек в кризисе не должен сначала
  * регистрироваться.
+ *
+ * bare — лист только с телефоном доверия и 103, без людей из плана и без
+ * переходов: так на замке приложения, где имена и номера близких — ровно то,
+ * что замок закрывает.
  */
-export function CrisisStrip({ note }: { note?: string }) {
+export function CrisisStrip({ note, bare }: { note?: string; bare?: boolean }) {
   const c = useColors();
   const { ut } = useLang();
   const [open, setOpen] = useState(false);
@@ -52,7 +58,16 @@ export function CrisisStrip({ note }: { note?: string }) {
           {number}
         </T>
       </Pressable>
-      <HelpSheet visible={open} onClose={() => setOpen(false)} />
+      {bare ? (
+        <BottomSheet visible={open} onClose={() => setOpen(false)} title={ut("mui.helpTitle")} sub={ut("mui.helpSub")}>
+          <View style={{ marginHorizontal: 16, borderWidth: 1, borderColor: c.border, borderRadius: radius.tile, overflow: "hidden" }}>
+            <CallRow first name={ut("home.hotline")} sub={ut("mui.hotlineSub")} number={number} />
+            <CallRow name={ut("mui.emergency")} sub={ut("mui.emergencySub")} number={ut("mui.emergencyNumber")} tone="risk" />
+          </View>
+        </BottomSheet>
+      ) : (
+        <HelpSheet visible={open} onClose={() => setOpen(false)} />
+      )}
     </>
   );
 }

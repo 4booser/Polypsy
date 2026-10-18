@@ -51,7 +51,6 @@ export const UI = {
   "common.close": { uk: "Закрити", ru: "Закрыть", en: "Close" },
   "common.next": { uk: "Далі", ru: "Дальше", en: "Next" },
   "common.back": { uk: "Назад", ru: "Назад", en: "Back" },
-  "common.finish": { uk: "Завершити", ru: "Завершить", en: "Finish" },
   "common.save": { uk: "Зберегти", ru: "Сохранить", en: "Save" },
   "common.of": { uk: "з", ru: "из", en: "of" },
 
@@ -135,11 +134,9 @@ export const UI = {
   "auth.registerTitle": { uk: "Реєстрація", ru: "Регистрация", en: "Registration" },
   "auth.register": { uk: "Зареєструватися", ru: "Зарегистрироваться", en: "Register" },
   "auth.loginFailed": { uk: "Не вдалося увійти", ru: "Не удалось войти", en: "Sign-in failed" },
-  "auth.inviteCode": { uk: "Код запрошення (якщо видали)", ru: "Код приглашения (если выдали)", en: "Invitation code (if you were given one)" },
   "auth.logout": { uk: "Вийти", ru: "Выйти", en: "Sign out" },
 
   /* мобилка: списки методик */
-  "surveys.title": { uk: "Методики", ru: "Методики", en: "Instruments" },
   "surveys.empty": { uk: "Доступних методик поки немає. Загляньте пізніше.", ru: "Доступных методик пока нет. Загляните позже.", en: "No instruments are available yet. Check back later." },
   "surveys.questions": { uk: "питань", ru: "вопросов", en: "questions" },
   "surveys.completed": { uk: "Пройдена", ru: "Пройдена", en: "Completed" },
@@ -152,7 +149,6 @@ export const UI = {
   "battery.dueBy": { uk: "Пройти до", ru: "Пройти до", en: "Due by" },
   "battery.noDue": { uk: "Без строку", ru: "Без срока", en: "No deadline" },
   "battery.step.done": { uk: "пройдена", ru: "пройдена", en: "completed" },
-  "battery.step.current": { uk: "наступна — натисніть, щоб почати", ru: "следующая — нажмите, чтобы начать", en: "next — tap to start" },
   "battery.step.available": { uk: "доступна", ru: "доступна", en: "available" },
   "battery.step.locked": { uk: "відкриється після попередньої", ru: "откроется после предыдущей", en: "unlocks after the previous one" },
   "battery.step.clinician": { uk: "заповнює фахівець", ru: "заполняет специалист", en: "completed by the specialist" },
@@ -188,7 +184,6 @@ export const UI = {
   },
 
   /* мобилка: профиль */
-  "profile.title": { uk: "Обліковий запис", ru: "Аккаунт", en: "Account" },
   "profile.language": { uk: "Мова застосунку", ru: "Язык приложения", en: "App language" },
 
   /* ─────────── консоль: навигация ─────────── */
@@ -1318,7 +1313,6 @@ export const UI = {
   "work.onReview": { uk: "на розбір", ru: "на разбор", en: "for review" },
   "work.all": { uk: "Усе", ru: "Всё", en: "All" },
   "work.kindReferral": { uk: "направлення", ru: "направление", en: "referral" },
-  "ms.savedHere": { uk: "збережено на телефоні", ru: "сохранено на телефоне", en: "saved on the phone" },
   "ms.savedHereOnly": { uk: "Відповіді збережено на телефоні, але ще не відправлені", ru: "Ответы сохранены на телефоне, но ещё не отправлены", en: "Answers are saved on the phone but not sent yet" },
   "co.previewEmpty": { uk: "Додайте перший пункт — тут з’явиться його вигляд", ru: "Добавьте первый пункт — здесь появится его вид", en: "Add the first item — its preview will appear here" },
   "co.previewNoText": { uk: "без формулювання", ru: "без формулировки", en: "no wording" },
@@ -1335,7 +1329,6 @@ export const UI = {
   "runner.missed": { uk: "пропущено", ru: "пропущено", en: "skipped" },
   "runner.missedGoTo": { uk: "Перейти до першого пропущеного пункту", ru: "Перейти к первому пропущенному пункту", en: "Go to the first skipped item" },
   "mp.themeNight": { uk: "Нічна", ru: "Ночная", en: "Night" },
-  "mp.themeNightHint": { uk: "Для обстеження в казармі після відбою: тепла палітра без синього, екран не будить сусідів", ru: "Для обследования в казарме после отбоя: тёплая палитра без синего, экран не будит соседей", en: "For assessments in barracks after lights-out: a warm palette without blue, the screen won't wake anyone nearby" },
   "ec.missed": { uk: "Поки вас не було", ru: "Пока вас не было", en: "While you were away" },
   "ec.since": { uk: "з", ru: "с", en: "since" },
   "ec.nothing": { uk: "Нічого нового", ru: "Ничего нового", en: "Nothing new" },
@@ -1560,7 +1553,6 @@ export const UI = {
     ru: "Записать этот приём? Пациент должен согласиться именно на этот приём — не «вообще»",
     en: "Record this appointment? The patient must consent to this specific appointment — not “in general”",
   },
-  "rec.consentGive": { uk: "Погоджуюся на запис", ru: "Согласен на запись", en: "I consent to recording" },
   "rec.consentBySelf": { uk: "погодився сам", ru: "согласился сам", en: "consented personally" },
   "rec.consentByStaff": { uk: "записано з його слів", ru: "записано с его слов", en: "verbal consent noted" },
   "rec.consentMark": { uk: "Позначити згоду з його слів", ru: "Отметить согласие с его слов", en: "Note verbal consent" },
@@ -1704,14 +1696,11 @@ export const UI = {
   "tab.home": { uk: "Головна", ru: "Главная", en: "Home" },
   "tab.booking": { uk: "Запис", ru: "Запись", en: "Booking" },
   "tab.health": { uk: "Здоров’я", ru: "Здоровье", en: "Health" },
-  "hl.dynamics": { uk: "Як змінюється", ru: "Как меняется", en: "How it is changing" },
   "hl.noDynamics": {
     uk: "Динаміка з’явиться після другого проходження: порівнювати поки нема з чим",
     ru: "Динамика появится после второго прохождения: сравнивать пока не с чем",
     en: "Dynamics will appear after the second completion: there is nothing to compare with yet",
   },
-  "hl.latest": { uk: "Останнє", ru: "Последнее", en: "Latest" },
-  "hl.before": { uk: "До того", ru: "До того", en: "Previous" },
 
   /* регистрация: телефон и честная оговорка про «анонимно» */
   "reg.phone": { uk: "Телефон", ru: "Телефон", en: "Phone" },
@@ -1749,7 +1738,6 @@ export const UI = {
   "rv.done": { uk: "Готово. Тепер документи виписати можна", ru: "Готово. Теперь документы выписать можно", en: "Done. Documents can now be issued" },
   "sv.due": { uk: "до", ru: "до", en: "due" },
   "sv.overdue": { uk: "строк минув", ru: "срок прошёл", en: "past due" },
-  "sv.minutes": { uk: "хв", ru: "мин", en: "min" },
   "reg.inviteHint": {
     uk: "Код відкриває призначене обстеження одразу після входу. Якщо розгорнуто закриту реєстрацію — без коду увійти не вийде",
     ru: "Код открывает назначенное обследование сразу после входа. Если развёрнута закрытая регистрация — без кода войти не получится",
@@ -1764,7 +1752,6 @@ export const UI = {
   "home.noVisit": { uk: "Прийом не призначено", ru: "Приём не назначен", en: "No appointment scheduled" },
   "home.bookNow": { uk: "Записатися", ru: "Записаться", en: "Book" },
   "home.confirm": { uk: "Підтверджую, прийду", ru: "Подтверждаю, приду", en: "I confirm, I'll be there" },
-  "home.confirmed": { uk: "Ви підтвердили", ru: "Вы подтвердили", en: "You have confirmed" },
   "home.reschedule": { uk: "Перенести", ru: "Перенести", en: "Reschedule" },
   "home.cancel": { uk: "Скасувати", ru: "Отменить", en: "Cancel" },
   "home.cancelSure": { uk: "Скасувати прийом?", ru: "Отменить приём?", en: "Cancel the appointment?" },
@@ -1773,7 +1760,6 @@ export const UI = {
     ru: "До приёма меньше суток. Отменить можно, но специалист это увидит",
     en: "The appointment is less than 24 hours away. You can cancel, but the specialist will see it",
   },
-  "home.room": { uk: "Кабінет", ru: "Кабинет", en: "Room" },
   "home.remote": { uk: "Дистанційно", ru: "Дистанционно", en: "Remote" },
   "home.toDo": { uk: "Пройти до прийому", ru: "Пройти до приёма", en: "Complete before your appointment" },
   "home.nothingToDo": { uk: "Нічого проходити не треба", ru: "Ничего проходить не нужно", en: "Nothing to complete" },
@@ -6155,10 +6141,7 @@ export const UI = {
 
   /* мобильное приложение: очередь, профиль, вход, регистрация */
   "ml.createAccount": { uk: "Створити обліковий запис", ru: "Создать аккаунт", en: "Create account" },
-  "ml.subtitle": { uk: "Вхід для пацієнтів і фахівців", ru: "Вход для пациентов и специалистов", en: "Sign-in for patients and specialists" },
   "mp.appLock": { uk: "Замок на застосунок", ru: "Замок на приложение", en: "App lock" },
-  "mp.lockOff": { uk: "Вимкнути замок", ru: "Выключить замок", en: "Turn off lock" },
-  "mp.lockOn": { uk: "Увімкнути замок", ru: "Включить замок", en: "Turn on lock" },
   "mp.myDynamics": { uk: "Моя динаміка", ru: "Моя динамика", en: "My dynamics" },
   "mq.allSent": { uk: "Усе відправлено", ru: "Всё отправлено", en: "Everything sent" },
   "mq.attempts": { uk: "спроб", ru: "попыток", en: "attempts" },
@@ -6167,8 +6150,6 @@ export const UI = {
   "mq.title": { uk: "Черга відправлення", ru: "Очередь отправки", en: "Send queue" },
   "mq.tryNow": { uk: "Спробувати зараз", ru: "Попробовать сейчас", en: "Try now" },
   "mq.waiting": { uk: "Чекають на зв’язок", ru: "Ждут связи", en: "Waiting for connection" },
-  "mr.backToLogin": { uk: "Назад до входу", ru: "Назад ко входу", en: "Back to sign-in" },
-  "mr.createsPatient": { uk: "Реєстрація створює обліковий запис пацієнта", ru: "Регистрация создаёт учётную запись пациента", en: "Registration creates a patient account" },
   "mq.hint": {
     uk: "Відповіді зберігаються на пристрої й підуть самі, щойно з’явиться мережа. Нічого не втрачено.",
     ru: "Ответы сохранены на устройстве и уйдут сами, как только появится сеть. Ничего не потеряно.",
@@ -6205,12 +6186,9 @@ export const UI = {
   "ms.continueTest": { uk: "Продовжити тест", ru: "Продолжить тест", en: "Continue test" },
   "ms.exit": { uk: "Вийти", ru: "Выйти", en: "Exit" },
   "ms.loadFailed": { uk: "Не вдалося завантажити методику", ru: "Не удалось загрузить методику", en: "Could not load the instrument" },
-  "ms.done": { uk: "Готово", ru: "Готово", en: "Done" },
-  "ms.subscaleResults": { uk: "Результати за субшкалами", ru: "Результаты по субшкалам", en: "Results by subscale" },
   "ms.openConclusion": { uk: "Відкрити висновок", ru: "Открыть заключение", en: "Open conclusion" },
   "ms.unfinishedFound": { uk: "Знайдено незавершене проходження", ru: "Найдено незавершённое прохождение", en: "Unfinished test found" },
   "ms.questions": { uk: "Питань", ru: "Вопросов", en: "Questions" },
-  "ms.timeLimit": { uk: "Обмеження часу", ru: "Ограничение времени", en: "Time limit" },
   "ms.continue": { uk: "Продовжити", ru: "Продолжить", en: "Continue" },
   "ms.start": { uk: "Почати", ru: "Начать", en: "Start" },
   "mp.roleSuper": { uk: "Суперадміністратор", ru: "Суперадминистратор", en: "Superadministrator" },
@@ -6232,7 +6210,6 @@ export const UI = {
     ru: "По результату назначено дополнительное обследование: {list}. Оно уже ждёт на главном экране.",
     en: "Based on the result, an additional assessment has been assigned: {list}. It is already waiting on the home screen.",
   },
-  "msv.importantNow": { uk: "Важливо просто зараз", ru: "Важно прямо сейчас", en: "Important right now" },
   "msv.notDiagnosis": {
     uk: "Результат скринінгу не є діагнозом — його тлумачить фахівець.",
     ru: "Результат скрининга не является диагнозом — его интерпретирует специалист.",
@@ -6261,7 +6238,6 @@ export const UI = {
   },
   "qi.rangeHint": { uk: "від {min} до {max}", ru: "от {min} до {max}", en: "from {min} to {max}" },
   "qi.datePattern": { uk: "РРРР-ММ-ДД", ru: "ГГГГ-ММ-ДД", en: "YYYY-MM-DD" },
-  "ob.rejected": { uk: "Не вдалося відправити: {n}", ru: "Не удалось отправить: {n}", en: "Failed to send: {n}" },
   "ob.rejectedHint": {
     uk: "Не вдалося відправити: {n}. Натисніть, щоб подивитися",
     ru: "Не удалось отправить: {n}. Нажмите, чтобы посмотреть",
@@ -6272,33 +6248,19 @@ export const UI = {
     ru: "Ответы сохранены на устройстве и ждут связи: {n}",
     en: "Answers saved on the device and waiting for connection: {n}",
   },
-  "ob.waitingHint": {
-    uk: "Чекають на відправлення: {n}. Натисніть, щоб відправити зараз",
-    ru: "Ждут отправки: {n}. Нажмите, чтобы отправить сейчас",
-    en: "Waiting to be sent: {n}. Tap to send now",
-  },
-  "mp.queueLeft": {
-    uk: "Не відправлено відповідей: {n}. Підуть самі, щойно з’явиться мережа.",
-    ru: "Не отправлено ответов: {n}. Уйдут сами, как только появится сеть.",
-    en: "Answers not sent: {n}. They will be sent automatically as soon as the network is back.",
-  },
   "mp.noSexBirth": {
     uk: "Не заповнено стать і дату народження. Частина методик користується нормами, що залежать від статі та віку, — без них результат буде порахований без нормування.",
     ru: "Не заполнены пол и дата рождения. Часть методик использует нормы, которые зависят от пола и возраста, — без них результат будет посчитан без нормирования.",
     en: "Sex and date of birth are not filled in. Some instruments use norms that depend on sex and age — without them the result will be calculated without norming.",
   },
-  "mp.dynamicsHint": { uk: "Зміна ваших показників від заміру до заміру. Інтерпретацію дає фахівець.", ru: "Изменение ваших показателей от замера к замеру. Интерпретацию даёт специалист.", en: "How your scores change from one measurement to the next. Interpretation is given by a specialist." },
   "mp.male": { uk: "Чоловіча", ru: "Мужской", en: "Male" },
   "mp.female": { uk: "Жіноча", ru: "Женский", en: "Female" },
   "mp.dateFormat": { uk: "РРРР-ММ-ДД", ru: "ГГГГ-ММ-ДД", en: "YYYY-MM-DD" },
   "mp.position": { uk: "Посада", ru: "Должность", en: "Position" },
   "mp.specialty": { uk: "Спеціальність", ru: "Специальность", en: "Specialty" },
   "mp.rank": { uk: "Звання", ru: "Звание", en: "Rank" },
-  "mp.age": { uk: "Вік", ru: "Возраст", en: "Age" },
-  "mp.since": { uk: "У системі з", ru: "В системе с", en: "In the system since" },
   "mp.edit": { uk: "Редагувати", ru: "Редактировать", en: "Edit" },
   "ms.answersSaved": { uk: "Відповіді збережено", ru: "Ответы сохранены", en: "Answers saved" },
-  "ms.saved": { uk: "збережено", ru: "сохранено", en: "saved" },
   "ms.requiredQuestion": { uk: "Обов’язкове питання", ru: "Обязательный вопрос", en: "Required question" },
   "mp.server": { uk: "Сервер", ru: "Сервер", en: "Server" },
   "surveys.emptyAdmin": {
@@ -6400,8 +6362,6 @@ export const UI = {
   "msv.changesAvg": { uk: "Змін відповіді в середньому", ru: "Смен ответа в среднем", en: "Answer changes on average" },
   "msv.changedAnswer": { uk: "Змінювали відповідь", ru: "Меняли ответ", en: "Changed their answer" },
   "msv.tooFast": { uk: "Відповіли занадто швидко", ru: "Отвечено слишком быстро", en: "Answered too fast" },
-  "mob.resolve": { uk: "Розібрати", ru: "Разобрать", en: "Review" },
-  "mob.sending": { uk: "Відправляю…", ru: "Отправляю…", en: "Sending…" },
   "mch.noDistribution": { uk: "Немає даних для розподілу", ru: "Нет данных для распределения", en: "No data for a distribution" },
   "mch.noNumeric": { uk: "Немає числових відповідей", ru: "Нет числовых ответов", en: "No numeric answers" },
   "mch.noResponses": { uk: "Проходжень поки немає", ru: "Прохождений пока нет", en: "No completions yet" },
@@ -6421,7 +6381,6 @@ export const UI = {
   "msv.alphaLow": { uk: "низька", ru: "низкая", en: "low" },
 
   /* мобильный конструктор и замок */
-  "mlock.confirm": { uk: "Підтвердьте особу, щоб продовжити", ru: "Подтвердите личность, чтобы продолжить", en: "Confirm your identity to continue" },
   "mlock.unlock": { uk: "Розблокувати", ru: "Разблокировать", en: "Unlock" },
 
   /* палитра команд */
@@ -6551,11 +6510,6 @@ export const UI = {
     uk: "Плану поки немає. Його складають разом із фахівцем — попросіть на найближчому прийомі.",
     ru: "Плана пока нет. Его составляют вместе со специалистом — попросите на ближайшем приёме.",
     en: "There is no plan yet. It is made together with a specialist — ask for it at your next appointment.",
-  },
-  "msp.offlineHint": {
-    uk: "План зберігається на пристрої й відкривається без мережі",
-    ru: "План хранится на устройстве и открывается без сети",
-    en: "The plan is stored on the device and opens without a network",
   },
   "tab.safety": { uk: "План безпеки", ru: "План безопасности", en: "Safety plan" },
 
@@ -7104,11 +7058,6 @@ export const UI = {
    * же миг закрывался, — её не видел никто.
    */
   "consent.declinedTitle": { uk: "Ви не погодилися", ru: "Вы не согласились", en: "You did not agree" },
-  "consent.declinedWhat": {
-    uk: "Без згоди обстеження не проводиться, тож далі застосунок не відкривається: пройти методики, побачити результати, записатися на прийом чи написати фахівцю тут не вийде.",
-    ru: "Без согласия обследование не проводится, поэтому дальше приложение не открывается: пройти методики, увидеть результаты, записаться на приём или написать специалисту здесь не получится.",
-    en: "The assessment is not conducted without consent, so the app will not open any further: you cannot take assessments, see results, book an appointment or message a specialist here.",
-  },
   "consent.declinedNext": {
     uk: "Хочете обговорити умови — зверніться до свого фахівця особисто. Передумаєте — поверніться до тексту або увійдіть знову: погодитися можна будь-коли.",
     ru: "Хотите обсудить условия — обратитесь к своему специалисту лично. Передумаете — вернитесь к тексту или войдите снова: согласиться можно в любой момент.",
@@ -7121,12 +7070,6 @@ export const UI = {
     uk: "Не вдалося отримати текст згоди. Погодитися з текстом, якого ви не бачили, не можна — спробуйте ще раз або вийдіть з облікового запису.",
     ru: "Не удалось получить текст согласия. Согласиться с текстом, которого вы не видели, нельзя — попробуйте ещё раз или выйдите из учётной записи.",
     en: "Could not load the consent text. You cannot agree to a text you have not seen — try again or sign out.",
-  },
-  /* выход с замка, когда подтверждение не проходит (AppLock.tsx) */
-  "mlock.signOutHint": {
-    uk: "Не вдається підтвердити? Вийдіть з облікового запису й увійдіть знову з паролем.",
-    ru: "Не получается подтвердить? Выйдите из учётной записи и войдите снова с паролем.",
-    en: "Cannot confirm? Sign out and sign in again with your password.",
   },
   /*
    * Результат методики, которую пациенту не показывают (showResultsToPatient
@@ -8214,10 +8157,10 @@ export const UI = {
     ru: "Черновик не сохраняется — пройдите до конца за один раз.",
     en: "No draft is kept — finish in one go.",
   },
-  "mpt.rn.send": { uk: "Надіслати", ru: "Отправить", en: "Send" },
-  "mpt.rn.sentTitle": { uk: "Відповіді надіслано", ru: "Ответы отправлены", en: "Answers sent" },
+  "mpt.rn.send": { uk: "Відправити", ru: "Отправить", en: "Send" },
+  "mpt.rn.sentTitle": { uk: "Відповіді відправлено", ru: "Ответы отправлены", en: "Answers sent" },
   "mpt.rn.queuedTitle": { uk: "Відповіді на телефоні", ru: "Ответы на телефоне", en: "Answers on the phone" },
-  "mpt.rn.sentAt": { uk: "надіслано о {t}", ru: "отправлено в {t}", en: "sent at {t}" },
+  "mpt.rn.sentAt": { uk: "відправлено о {t}", ru: "отправлено в {t}", en: "sent at {t}" },
   "mpt.rn.waitsNet": { uk: "чекає на мережу", ru: "ждёт сети", en: "waiting for a network" },
   "mpt.rn.ifHard": { uk: "Якщо стане важко", ru: "Если станет тяжело", en: "If it gets hard" },
   "mpt.rn.myPlan": { uk: "Мій план безпеки", ru: "Мой план безопасности", en: "My safety plan" },
@@ -8464,6 +8407,109 @@ export const UI = {
     uk: "Нічна — тепла палітра без синього, для опитувань після відбою",
     ru: "Ночная — тёплая палитра без синего, для опросов после отбоя",
     en: "Night is a warm palette without blue, for questionnaires after lights-out",
+  },
+  /* вход (app/login.tsx) */
+  "mpt.lg.lead": {
+    uk: "Для пацієнтів і фахівців психологічного відділення.",
+    ru: "Для пациентов и специалистов психологического отделения.",
+    en: "For patients and specialists of the psychology department.",
+  },
+  "mpt.lg.forgot": {
+    uk: "Забули пароль? Новий тимчасовий видасть реєстратура або ваш фахівець.",
+    ru: "Забыли пароль? Новый временный выдаст регистратура или ваш специалист.",
+    en: "Forgot your password? The front desk or your specialist will issue a temporary one.",
+  },
+  "mpt.lg.show": { uk: "Показати пароль", ru: "Показать пароль", en: "Show password" },
+  "mpt.lg.hide": { uk: "Сховати пароль", ru: "Скрыть пароль", en: "Hide password" },
+  "mpt.lg.lang": { uk: "Мова", ru: "Язык", en: "Language" },
+  "mpt.lg.codeLead": {
+    uk: "Введіть шість цифр із застосунку-автентифікатора для {email}.",
+    ru: "Введите шесть цифр из приложения-аутентификатора для {email}.",
+    en: "Enter the six digits from the authenticator app for {email}.",
+  },
+  "mpt.lg.codeOf": { uk: "Код, цифр: {n} з 6", ru: "Код, цифр: {n} из 6", en: "Code, digits: {n} of 6" },
+  "mpt.lg.codeHint": {
+    uk: "Кнопка запрацює після шостої цифри.",
+    ru: "Кнопка заработает после шестой цифры.",
+    en: "The button works after the sixth digit.",
+  },
+  "mpt.lg.noPhone": { uk: "Немає телефону під рукою?", ru: "Нет телефона под рукой?", en: "No phone at hand?" },
+  "mpt.lg.noPhoneText": {
+    uk: "Введіть один із кодів відновлення, які ви зберегли під час налаштування.",
+    ru: "Введите один из кодов восстановления, которые вы сохранили при настройке.",
+    en: "Enter one of the recovery codes you saved during setup.",
+  },
+  "mpt.lg.useRecovery": { uk: "Ввести код відновлення", ru: "Ввести код восстановления", en: "Enter a recovery code" },
+  "mpt.lg.recoveryCode": { uk: "Код відновлення", ru: "Код восстановления", en: "Recovery code" },
+  /* регистрация (app/register.tsx) */
+  "mpt.rg.lead": {
+    uk: "Створює обліковий запис пацієнта. Далі — згода на обстеження.",
+    ru: "Создаёт учётную запись пациента. Дальше — согласие на обследование.",
+    en: "Creates a patient account. Next comes consent to the assessment.",
+  },
+  "mpt.rg.about": { uk: "Про вас", ru: "О вас", en: "About you" },
+  "mpt.rg.contact": { uk: "Зв’язок і вхід", ru: "Связь и вход", en: "Contact and sign-in" },
+  "mpt.rg.passwordMin": { uk: "від 8 знаків", ru: "от 8 знаков", en: "8+ characters" },
+  "mpt.rg.invite": { uk: "Код запрошення", ru: "Код приглашения", en: "Invite code" },
+  /* смена пароля (app/password.tsx) */
+  "mpt.pw.lead": {
+    uk: "Новий пароль — від 10 знаків. Далі входьте з ним.",
+    ru: "Новый пароль — от 10 знаков. Дальше входите с ним.",
+    en: "The new password needs 10+ characters. Sign in with it from now on.",
+  },
+  "mpt.pw.rules": { uk: "Вимоги до пароля", ru: "Требования к паролю", en: "Password requirements" },
+  "mpt.pw.notTemp": {
+    uk: "Не такий, як тимчасовий",
+    ru: "Не такой, как временный",
+    en: "Not the same as the temporary one",
+  },
+  "mpt.pw.notCurrent": {
+    uk: "Не такий, як нинішній",
+    ru: "Не такой, как нынешний",
+    en: "Not the same as the current one",
+  },
+  "mpt.pw.match": { uk: "збігаються", ru: "совпадают", en: "match" },
+  "mpt.pw.endsSessions": {
+    uk: "Зміна завершить усі інші входи. На цьому телефоні ми одразу увійдемо з новим паролем.",
+    ru: "Смена завершит все другие входы. На этом телефоне мы сразу войдём с новым паролем.",
+    en: "The change signs you out everywhere else. On this phone we sign you straight back in with the new password.",
+  },
+  /* согласие (app/consent.tsx) */
+  "mpt.cs.lead": {
+    uk: "Прочитайте, перш ніж почати обстеження.",
+    ru: "Прочитайте, прежде чем начать обследование.",
+    en: "Please read before starting the assessment.",
+  },
+  "mpt.cs.version": { uk: "Редакція {v}", ru: "Редакция {v}", en: "Version {v}" },
+  "mpt.cs.fullText": { uk: "Повний текст", ru: "Полный текст", en: "Full text" },
+  "mpt.cs.more": { uk: "Читати далі", ru: "Читать дальше", en: "Read more" },
+  "mpt.cs.less": { uk: "Згорнути", ru: "Свернуть", en: "Show less" },
+  "mpt.cs.declinedLead": {
+    uk: "Без згоди обстеження не проводиться, тож далі застосунок не відкривається.",
+    ru: "Без согласия обследование не проводится, поэтому дальше приложение не открывается.",
+    en: "Without consent the assessment is not carried out, so the app does not open further.",
+  },
+  "mpt.cs.locked": {
+    uk: "Без згоди тут не вийде",
+    ru: "Без согласия здесь не получится",
+    en: "Not possible without consent",
+  },
+  "mpt.cs.noSurveys": { uk: "Пройти методики", ru: "Пройти методики", en: "Take questionnaires" },
+  "mpt.cs.noResults": { uk: "Побачити свої результати", ru: "Увидеть свои результаты", en: "See your results" },
+  "mpt.cs.noBooking": { uk: "Записатися на прийом", ru: "Записаться на приём", en: "Book a visit" },
+  "mpt.cs.noMessages": { uk: "Написати фахівцю", ru: "Написать специалисту", en: "Write to a specialist" },
+  /* замок приложения (components/AppLock.tsx) */
+  "mpt.lock.text": {
+    uk: "Підтвердьте, що це ви, щоб відкрити свої відповіді, план безпеки й листування.",
+    ru: "Подтвердите, что это вы, чтобы открыть свои ответы, план безопасности и переписку.",
+    en: "Confirm it’s you to open your answers, safety plan and messages.",
+  },
+  "mpt.lock.cant": { uk: "Не вдається?", ru: "Не получается?", en: "Not working?" },
+  "mpt.lock.out": { uk: "Вийдіть", ru: "Выйдите", en: "Sign out" },
+  "mpt.lock.rest": {
+    uk: "і увійдіть знову з паролем.",
+    ru: "и войдите снова с паролем.",
+    en: "and sign in again with your password.",
   },
 
 } as const satisfies Record<string, UiEntry>;
