@@ -16,6 +16,7 @@ import { locale } from "../../format";
 import { useLang } from "../../lang";
 import { DataTable, Kbd, Tooltip, useToast, type Column } from "../../ui";
 import { cx } from "../../ui/cx";
+import { IconEnter } from "../../ui/glyphs";
 import { Page } from "../../ui/layout";
 import { Button, Input } from "../../ui/primitives";
 import { type Resource, useResource } from "../../useResource";
@@ -385,7 +386,11 @@ export function TraceBox({ wide, initial = "", className }: { wide?: boolean; in
           setBad(false);
         }}
         icon={<OpsIcon name="route" size={15} />}
-        suffix={<Kbd>↵</Kbd>}
+        suffix={
+          <Kbd>
+            <IconEnter />
+          </Kbd>
+        }
         className="[&_input]:font-mono [&_input]:text-[12.5px] [&_input::placeholder]:font-sans [&_input::placeholder]:text-[13px]"
         autoComplete="off"
         spellCheck={false}
