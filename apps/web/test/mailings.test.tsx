@@ -9,6 +9,7 @@ import { LangProvider } from "../src/lang";
 import {
   answerShares,
   cleanOptions,
+  createThenSend,
   draftFromMailing,
   draftToInput,
   draftToUpdate,
@@ -173,6 +174,70 @@ describe("редакция черновика", () => {
     });
     await expect(refused).rejects.toThrow("409");
     expect(sent).toBe(false);
+  });
+
+  /*
+   * «Відправити» нового повідомлення заводит его тем же нажатием. Отказ
+   * отправки после заведения оставлял экран «новым», и каждый повтор заводил
+   * ещё одну копию в черновиках.
+   */
+  test("новое: отправка не удалась — экран узнаёт заведённое, повтор не заводит второе", async () => {
+    const created: string[] = [];
+    const moved: string[] = [];
+    const draft: MailingDraft = { title: "Тема", body: "Текст", options: [], patientGroupId: "g1", revision: null };
+    const io = {
+      create: async () => {
+        created.push("m9");
+        return { ...MAILING, id: "m9", revision: 1 };
+      },
+      sendIo: (id: string) => ({
+        save: async (input: MailingUpdateInput) => ({ ...MAILING, id, body: input.body!, revision: 2 }),
+        apply: () => {},
+        send: async () => {
+          throw new Error("err.mailingNoRecipients");
+        },
+      }),
+      onFailedAfterCreate: (id: string) => moved.push(id),
+    };
+    await expect(createThenSend(draft, io)).rejects.toThrow("err.mailingNoRecipients");
+    expect(created).toEqual(["m9"]);
+    expect(moved).toEqual(["m9"]);
+  });
+
+  test("новое: ушло — возвращается заведённое, перехода «на черновик» нет", async () => {
+    const moved: string[] = [];
+    const sent: number[] = [];
+    const id = await createThenSend(
+      { title: "Тема", body: "Текст", options: ["Так"], patientGroupId: "g1", revision: null },
+      {
+        create: async () => ({ ...MAILING, id: "m10", revision: 1 }),
+        sendIo: () => ({
+          save: async (input: MailingUpdateInput) => ({ ...MAILING, id: "m10", revision: (input.baseRevision ?? 0) + 1 }),
+          apply: () => {},
+          send: async (revision) => void sent.push(revision),
+        }),
+        onFailedAfterCreate: (x) => moved.push(x),
+      },
+    );
+    expect(id).toBe("m10");
+    expect(sent).toEqual([2]);
+    expect(moved).toEqual([]);
+  });
+
+  test("не удалось завести — переходить некуда", async () => {
+    const moved: string[] = [];
+    const refused = createThenSend(
+      { title: "Тема", body: "Текст", options: [], patientGroupId: "", revision: null },
+      {
+        create: async () => {
+          throw new Error("400");
+        },
+        sendIo: () => ({ save: async () => MAILING, apply: () => {}, send: async () => {} }),
+        onFailedAfterCreate: (x) => moved.push(x),
+      },
+    );
+    await expect(refused).rejects.toThrow("400");
+    expect(moved).toEqual([]);
   });
 });
 
