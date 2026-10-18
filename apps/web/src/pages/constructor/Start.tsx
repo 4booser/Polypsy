@@ -271,11 +271,11 @@ export function NewMethod() {
         icon={<CnIc.folderPlus />}
         footer={
           <>
-            <span className="flex min-w-0 items-center gap-1.5 text-small text-muted">
+            <span className="flex min-w-0 flex-1 items-center gap-1.5 text-small text-muted">
               <Ic.info size={14} />
               {start === "copy" ? ut("cst.copyWhereHint") : ut("cst.whereHint")}
             </span>
-            <span className="ml-auto flex items-center gap-2">
+            <span className="ml-auto flex shrink-0 items-center gap-2">
               {error ? <ErrorText>{error}</ErrorText> : null}
               <Button variant="primary" icon={primary.icon} disabled={primary.off} onClick={primary.run}>
                 {primary.label}

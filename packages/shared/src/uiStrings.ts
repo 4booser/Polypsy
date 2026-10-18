@@ -8181,7 +8181,16 @@ export const UI = {
     ru: "балл и пометка «критический» — у каждого ответа",
     en: "a score and a “critical” mark for each answer",
   },
-  "ce.sharedSet": { uk: "спільний набір тесту", ru: "общий набор теста", en: "the test's shared set" },
+  "ce.sharedSetHint": {
+    uk: "Набір спільний для всіх пунктів; текст правиться в розділі «Відповіді»",
+    ru: "Набор общий для всех пунктов; текст правится в разделе «Ответы»",
+    en: "The set is shared by all items; edit its text under “Answers”",
+  },
+  "ce.criticalHere": {
+    uk: "позначка «критичний» — лише в цьому пункті",
+    ru: "пометка «критический» — только в этом пункте",
+    en: "the “critical” mark applies to this item only",
+  },
   "ce.ownSet": { uk: "у цього пункту свій набір", ru: "у этого пункта свой набор", en: "this item has its own set" },
   "ce.editSet": { uk: "Правити набір", ru: "Править набор", en: "Edit the set" },
   "ce.riskLabel": { uk: "Підпис сигналу ризику", ru: "Подпись сигнала риска", en: "Risk signal label" },

@@ -438,10 +438,24 @@ export function deriveMode(scales: DraftScale[]): Mode {
   return "complex";
 }
 
-/** Общий набор ответов из уже заведённых вопросов: первый вопрос с вариантами */
+/**
+ * Вариант общего набора без того, что принадлежит пункту: позначка
+ * «критичний» с подписью и уровнем — своя у каждого пункта (у PHQ-9 — только
+ * у девятого), и набор, разнесённый по всем пунктам, нёс бы её во все.
+ */
+function plainAnswer({ riskFlag: _f, riskLabel: _l, riskSeverity: _s, ...rest }: DraftOption): DraftOption {
+  return rest;
+}
+
+/** Общий набор ответов из уже заведённых вопросов: первый вопрос с вариантами, без позначок пункта */
 export function deriveAnswers(questions: DraftQuestion[]): DraftOption[] {
   const first = questions.find((q) => q.options.length > 0);
-  return first ? structuredClone(first.options) : defaultAnswers();
+  return first ? structuredClone(first.options).map(plainAnswer) : defaultAnswers();
+}
+
+/** Варианты нового пункта конкретного теста — копия общего набора со своими uid */
+export function sharedOptions(answers: DraftOption[] | undefined): DraftOption[] {
+  return structuredClone(answers ?? []).map((a) => ({ ...plainAnswer(a), uid: newUid() }));
 }
 
 /**
@@ -461,12 +475,33 @@ export function nextKeyCode(existing: (string | null | undefined)[]): string {
   }
 }
 
-/** Общий набор ответов — во все вопросы разом (см. Draft.answers) */
+/**
+ * Общий набор ответов — во все вопросы разом (см. Draft.answers).
+ *
+ * Своё у пункта при этом остаётся: позначка «критичний» (с подписью и
+ * уровнем) и uid варианта. Набор раньше копировался в пункты целиком, и
+ * переименование «Так» снимало критические позначки со всех пунктов СР-45
+ * разом — молча, а сигнал риска по ним больше не поднимался. Вариант пункта
+ * узнаётся по коду ответа (yes/no/k3), без кода — по месту.
+ */
 export function applyAnswers(draft: Draft, answers: DraftOption[]): Draft {
   return {
     ...draft,
     answers,
-    questions: draft.questions.map((q) => (q.type === "info" ? q : { ...q, options: structuredClone(answers) })),
+    questions: draft.questions.map((q) => {
+      if (q.type === "info") return q;
+      const own = new Map(q.options.map((o, i) => [o.keyCode ?? `@${i}`, o]));
+      return {
+        ...q,
+        options: answers.map((a, i) => {
+          const was = own.get(a.keyCode ?? `@${i}`);
+          const base = { ...plainAnswer(structuredClone(a)), uid: was?.uid ?? newUid() };
+          return was?.riskFlag
+            ? { ...base, riskFlag: true, riskLabel: was.riskLabel ?? null, riskSeverity: was.riskSeverity ?? null }
+            : base;
+        }),
+      };
+    }),
   };
 }
 

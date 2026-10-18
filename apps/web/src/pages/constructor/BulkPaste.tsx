@@ -185,7 +185,7 @@ export function BulkPaste({
             ]}
           />
         </Labeled>
-        <Labeled label={ut("bp.type")} hint={ut("cst.optionsLater")}>
+        <Labeled label={ut("bp.type")} hint={type === "single" ? ut("cst.optionsLater") : undefined}>
           <Segmented
             wide
             label={ut("bp.type")}

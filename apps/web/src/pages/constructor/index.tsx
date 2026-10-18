@@ -29,6 +29,7 @@ import {
   oneAtATime,
   removeQuestion,
   reorderQuestion,
+  sharedOptions,
   switchMode,
   toDraft,
   toPayload,
@@ -64,6 +65,26 @@ export default function Constructor() {
   const { pathname } = useLocation();
   if (!id && !pathname.startsWith("/constructor/new")) return <NewMethod />;
   return <Editor key={id ?? "new"} id={id} />;
+}
+
+/**
+ * Показать раскрытый пункт в области прокрутки страницы.
+ *
+ * Не scrollIntoView: тот прокручивает каждого предка, в том числе рамку с
+ * overflow: hidden, — и полоса приложения уезжала из окна вверх, оставляя
+ * пустоту снизу. Здесь прокручивается только ближайшая область с
+ * собственной прокруткой (содержимое Page).
+ */
+function reveal(id: string): void {
+  requestAnimationFrame(() => {
+    const el = document.getElementById(id)?.closest("section");
+    if (!el) return;
+    let box = el.parentElement;
+    while (box && !/(auto|scroll)/.test(getComputedStyle(box).overflowY)) box = box.parentElement;
+    if (!box) return;
+    const top = el.getBoundingClientRect().top - box.getBoundingClientRect().top + box.scrollTop - 12;
+    box.scrollTo({ top, behavior: "smooth" });
+  });
 }
 
 interface Saved {
@@ -433,9 +454,7 @@ function Editor({ id }: { id?: string }) {
     setSection("questions");
     setOpen(q.uid);
     setFocused(i);
-    requestAnimationFrame(() =>
-      document.getElementById(`cn-q-${q.uid}`)?.closest("section")?.scrollIntoView({ block: "start", behavior: "smooth" }),
-    );
+    reveal(`cn-q-${q.uid}`);
   };
 
   const addQuestion = () => {
@@ -450,16 +469,14 @@ function Editor({ id }: { id?: string }) {
           type: (d.mode ?? "specific") === "specific" ? "yesno" : "single",
           title: { uk: "", ru: "" },
           required: true,
-          options: (d.mode ?? "specific") === "specific" ? structuredClone(d.answers ?? []) : [],
+          options: (d.mode ?? "specific") === "specific" ? sharedOptions(d.answers) : [],
         },
       ],
     }));
     setSection("questions");
     setOpen(uid);
     setFocused(at);
-    requestAnimationFrame(() =>
-      document.getElementById(`cn-q-${uid}`)?.closest("section")?.scrollIntoView({ block: "start", behavior: "smooth" }),
-    );
+    reveal(`cn-q-${uid}`);
   };
 
   /* удаление — сразу, с «Скасувати» в сообщении: отмена надёжнее окна «ви впевнені» */

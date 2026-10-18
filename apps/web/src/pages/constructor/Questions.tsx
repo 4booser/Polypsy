@@ -10,6 +10,7 @@ import {
   newUid,
   optionKey,
   questionsWithOwnAnswers,
+  sharedOptions,
   type Draft,
   type DraftOption,
   type DraftQuestion,
@@ -87,7 +88,7 @@ export function Questions({
                       type: (d.mode ?? "specific") === "specific" ? "yesno" : "single",
                       title,
                       required: true,
-                      options: (d.mode ?? "specific") === "specific" ? structuredClone(d.answers ?? []) : [],
+                      options: (d.mode ?? "specific") === "specific" ? sharedOptions(d.answers) : [],
                     },
                   ],
                 }))
@@ -289,7 +290,7 @@ function QuestionEditor({
         {q.type === "info" ? null : mode === "complex" ? (
           <OwnAnswers options={q.options} onChange={(options) => upd({ options })} />
         ) : (
-          <SharedAnswersNote draft={draft} q={q} goto={goto} />
+          <SharedAnswers draft={draft} q={q} onChange={(options) => upd({ options })} goto={goto} />
         )}
 
         {isCritical(q) ? (
@@ -333,37 +334,108 @@ function listNumbers(ns: number[], more: string): string {
   return ns.length > 5 ? `${head} ${more} ${ns.length - 5}` : head;
 }
 
+/** Переключатель «критичний»: красный по праву — ответ поднимает сигнал риска для человека */
+function CriticalSwitch({ option, onChange }: { option: DraftOption; onChange: (v: boolean) => void }) {
+  const { ut } = useLang();
+  return (
+    <Switch
+      checked={!!option.riskFlag}
+      onChange={onChange}
+      label={
+        <span className={option.riskFlag ? "font-extrabold text-risk-ink" : "text-muted"}>
+          {option.riskFlag ? ut("ce.critical") : ut("ce.ordinary")}
+        </span>
+      }
+      className="text-small [&_button[aria-checked=true]]:bg-risk"
+    />
+  );
+}
+
 /**
- * Конкретный тест: варианты пункта — общий набор теста («Відповіді»). Здесь
- * он только назван, правится в своём разделе: правка в пункте разошлась бы с
- * набором, а ключ шкал ссылается на коды набора.
+ * Подпись и уровень сигнала у критического ответа: без подписи проверка
+ * структуры предупреждает (val.riskWithoutLabel), а специалист видит в
+ * сигнале безымянный ответ. Уровень не задан — «високий»: так его читает и
+ * сервер.
  */
-function SharedAnswersNote({ draft, q, goto }: { draft: Draft; q: DraftQuestion; goto: (s: Section) => void }) {
+function RiskRow({ option, onChange }: { option: DraftOption; onChange: (patch: Partial<DraftOption>) => void }) {
   const { ut } = useLang();
   const lang = useEditLang();
-  const answers = draft.answers ?? [];
-  const own =
-    questionsWithOwnAnswers({ ...draft, questions: [q] }) > 0 && q.options.length > 0 ? q.options : null;
-  const shown = own ?? answers;
+  return (
+    <div className="ml-[30px] mt-1.5 grid grid-cols-[minmax(0,1fr)_170px] gap-2.5 pb-1 max-[1100px]:grid-cols-1">
+      <Field label={ut("ce.riskLabel")} inline>
+        <Input
+          className="h-[34px]"
+          value={option.riskLabel?.[lang] ?? ""}
+          onChange={(e) => onChange({ riskLabel: { ...(option.riskLabel ?? {}), [lang]: e.target.value } })}
+        />
+      </Field>
+      <Field label={ut("ce.riskSeverity")} inline>
+        <Select
+          className="h-[34px]"
+          value={option.riskSeverity ?? "severe"}
+          onChange={(e) => onChange({ riskSeverity: e.target.value as "moderate" | "severe" })}
+        >
+          <option value="severe">{ut("ce.riskSevere")}</option>
+          <option value="moderate">{ut("ce.riskModerate")}</option>
+        </Select>
+      </Field>
+    </div>
+  );
+}
+
+/**
+ * Конкретный тест: варианты пункта — общий набор теста («Відповіді»). Текст
+ * и порядок правятся в своём разделе: правка в пункте разошлась бы с набором,
+ * а ключ шкал ссылается на коды набора. Здесь — то, что у пункта своё:
+ * позначка «критичний» (как у пункта 9 PHQ-9 или 3 СР-45). Правка набора её
+ * не стирает (model.ts, applyAnswers).
+ */
+function SharedAnswers({
+  draft,
+  q,
+  onChange,
+  goto,
+}: {
+  draft: Draft;
+  q: DraftQuestion;
+  onChange: (o: DraftOption[]) => void;
+  goto: (s: Section) => void;
+}) {
+  const { ut } = useLang();
+  const lang = useEditLang();
+  const own = questionsWithOwnAnswers({ ...draft, questions: [q] }) > 0 && q.options.length > 0;
+  const set = (k: number, patch: Partial<DraftOption>) => onChange(q.options.map((o, i) => (i === k ? { ...o, ...patch } : o)));
+  const grid = "grid grid-cols-[20px_minmax(0,1fr)_150px] items-center gap-2.5 max-[1100px]:grid-cols-[20px_minmax(0,1fr)_118px]";
   return (
     <div className="mt-1.5">
       <div className="mb-1.5 flex items-baseline justify-between gap-2">
         <span className="text-caption font-bold text-muted">{ut("cn.answers")}</span>
-        <span className="text-micro text-muted">{own ? ut("ce.ownSet") : ut("ce.sharedSet")}</span>
+        <span className="text-micro text-muted">{ut("ce.criticalHere")}</span>
       </div>
-      <div className="flex flex-wrap items-center gap-1.5 rounded-control bg-sunk p-2">
-        {shown.map((a, k) => (
-          <span
-            key={optionKey(a, k)}
-            className="inline-flex h-8 items-center gap-2 rounded-[9px] bg-panel px-2.5 text-small font-semibold text-text shadow-tile"
-          >
-            <b className="font-extrabold tabular-nums text-muted">{k + 1}</b>
-            {a.text[lang] || a.text.uk || a.text.ru || "—"}
-          </span>
+      <div className="overflow-hidden rounded-[12px] border border-border">
+        <div className={cx(grid, "bg-panel-2 px-2.5 py-2 text-[11.5px] font-bold leading-[14px] text-muted")}>
+          <span>№</span>
+          <span>{ut("cn.answerText")}</span>
+          <span>{ut("ce.criticalCol")}</span>
+        </div>
+        {q.options.map((o, k) => (
+          <div key={optionKey(o, k)} className="border-t border-divider px-2.5 py-1.5">
+            <div className={grid}>
+              <span className="text-caption font-extrabold tabular-nums text-muted">{k + 1}</span>
+              <span className="flex h-[34px] min-w-0 items-center truncate rounded-control bg-sunk px-3 text-body text-text">
+                {o.text[lang] || o.text.uk || o.text.ru || "—"}
+              </span>
+              <CriticalSwitch option={o} onChange={(v) => set(k, { riskFlag: v })} />
+            </div>
+            {o.riskFlag ? <RiskRow option={o} onChange={(patch) => set(k, patch)} /> : null}
+          </div>
         ))}
-        <Button variant="ghost" size="xs" className="ml-auto" onClick={() => goto("answers")}>
-          {ut("ce.editSet")}
-        </Button>
+        <div className="flex flex-wrap items-center gap-2.5 border-t border-divider px-2.5 py-1.5 text-caption text-muted">
+          <Button variant="ghost" size="xs" icon={<CnIc.pencilLine />} onClick={() => goto("answers")}>
+            {ut("ce.editSet")}
+          </Button>
+          <span className="ml-auto">{own ? ut("ce.ownSet") : ut("ce.sharedSetHint")}</span>
+        </div>
       </div>
     </div>
   );
@@ -372,11 +444,6 @@ function SharedAnswersNote({ draft, q, goto }: { draft: Draft; q: DraftQuestion;
 /**
  * Ответы пункта с баллом — комплексный тест: таблица «№ · текст · бал ·
  * критичний · прибрати» (макет methods-constructor).
- *
- * «Критичний» (options.risk_flag) — ответ, поднимающий сигнал риска сразу;
- * переключатель красный по праву: это риск для человека. Включённому
- * открывается строка подписи сигнала: без неё проверка структуры
- * предупреждает (val.riskWithoutLabel), а специалист видит в сигнале безымянный ответ.
  */
 function OwnAnswers({ options, onChange }: { options: DraftOption[]; onChange: (o: DraftOption[]) => void }) {
   const { ut } = useLang();
@@ -418,16 +485,7 @@ function OwnAnswers({ options, onChange }: { options: DraftOption[]; onChange: (
                   onChange={(e) => set(k, { score: Number(e.target.value) })}
                 />
               </Field>
-              <Switch
-                checked={!!o.riskFlag}
-                onChange={(v) => set(k, { riskFlag: v })}
-                label={
-                  <span className={o.riskFlag ? "font-extrabold text-risk-ink" : "text-muted"}>
-                    {o.riskFlag ? ut("ce.critical") : ut("ce.ordinary")}
-                  </span>
-                }
-                className="text-small [&_button[aria-checked=true]]:bg-risk"
-              />
+              <CriticalSwitch option={o} onChange={(v) => set(k, { riskFlag: v })} />
               <Tooltip label={ut("cn.removeOption")}>
                 <Button
                   variant="quiet"
@@ -439,27 +497,7 @@ function OwnAnswers({ options, onChange }: { options: DraftOption[]; onChange: (
                 </Button>
               </Tooltip>
             </div>
-            {o.riskFlag ? (
-              <div className="ml-[30px] mt-1.5 grid grid-cols-[minmax(0,1fr)_170px] gap-2.5 pb-1 max-[1100px]:grid-cols-1">
-                <Field label={ut("ce.riskLabel")} inline>
-                  <Input
-                    className="h-[34px]"
-                    value={o.riskLabel?.[lang] ?? ""}
-                    onChange={(e) => set(k, { riskLabel: { ...(o.riskLabel ?? {}), [lang]: e.target.value } })}
-                  />
-                </Field>
-                <Field label={ut("ce.riskSeverity")} inline>
-                  <Select
-                    className="h-[34px]"
-                    value={o.riskSeverity ?? "severe"}
-                    onChange={(e) => set(k, { riskSeverity: e.target.value as "moderate" | "severe" })}
-                  >
-                    <option value="severe">{ut("ce.riskSevere")}</option>
-                    <option value="moderate">{ut("ce.riskModerate")}</option>
-                  </Select>
-                </Field>
-              </div>
-            ) : null}
+            {o.riskFlag ? <RiskRow option={o} onChange={(patch) => set(k, patch)} /> : null}
           </div>
         ))}
         <div className="flex items-center gap-2.5 border-t border-divider px-2.5 py-1.5 text-caption text-muted">

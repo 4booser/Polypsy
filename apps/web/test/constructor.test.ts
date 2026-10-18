@@ -4,6 +4,7 @@ import {
   addRowItem,
   applyAnswers,
   createTarget,
+  deriveAnswers,
   deriveMode,
   keyRows,
   nextKeyCode,
@@ -246,6 +247,34 @@ describe("конструктор по макету", () => {
     // копия, а не ссылка: правка одного вопроса не должна менять соседний
     expect(next.questions[0]!.options[0]).not.toBe(next.questions[1]!.options[0]);
     expect(questionsWithOwnAnswers(next)).toBe(0);
+  });
+
+  test("правка набора не снимает с пункта позначку «критичний» и не разносит её по соседям", () => {
+    /*
+     * Набор копировался в пункты целиком, и переименование «Так» снимало
+     * критические позначки со всех пунктов СР-45 разом: сигнал риска по ним
+     * больше не поднимался, а на экране это не было видно ничем.
+     */
+    const answers = [
+      { text: { uk: "Так" }, keyCode: "yes" },
+      { text: { uk: "Ні" }, keyCode: "no" },
+    ];
+    const d = applyAnswers(base(), answers);
+    const flagged: Draft = {
+      ...d,
+      questions: d.questions.map((x, i) =>
+        i === 0
+          ? { ...x, options: x.options.map((o) => (o.keyCode === "yes" ? { ...o, riskFlag: true, riskLabel: { uk: "ризик" } } : o)) }
+          : x,
+      ),
+    };
+    const renamed = applyAnswers(flagged, [{ ...answers[0]!, text: { uk: "Так!" } }, answers[1]!]);
+    expect(renamed.questions[0]!.options[0]).toMatchObject({ text: { uk: "Так!" }, riskFlag: true, riskLabel: { uk: "ризик" } });
+    expect(renamed.questions[1]!.options.some((o) => o.riskFlag)).toBe(false);
+    // ключ строки варианта пункта тот же: поле не переезжает к соседу
+    expect(renamed.questions[0]!.options.map((o) => o.uid)).toEqual(flagged.questions[0]!.options.map((o) => o.uid));
+    // набор, собранный из пунктов, позначку пункта не берёт — иначе разнёс бы её во все
+    expect(deriveAnswers(renamed.questions).some((a) => a.riskFlag)).toBe(false);
   });
 
   test("ряды таблицы баллов: по ответам, плюс чужой ключ и балл варианта, если они есть", () => {
