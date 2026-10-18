@@ -638,7 +638,6 @@ input[type="checkbox"], input[type="radio"] { width: auto; accent-color: var(--p
 .good { color: var(--sev-none-text); }
 .bad { color: var(--sev-severe-text); }
 .muted { color: var(--muted); }
-.error { color: var(--sev-severe-text); font-size: var(--fs-small); }
 .hint.warn { color: var(--sev-mild-text); }
 
 /* клавиша на виду: подпись рядом с действием, а не в справке */
@@ -657,29 +656,7 @@ kbd, .kbd {
 .assign-row { display: flex; align-items: center; gap: 10px; padding: 7px 0; }
 
 /* ═══ всплывающие слои ═══ */
-.modal-backdrop {
-  position: fixed;
-  inset: 0;
-  /* затемнение набора, без размытия: стекла в «Виразной» нет */
-  background: var(--scrim);
-  display: grid;
-  place-items: center;
-  padding: 24px;
-  z-index: 60;
-  animation: fade var(--dur) var(--ease);
-}
-.modal {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--r-lg);
-  box-shadow: var(--shadow);
-  padding: 20px;
-  width: min(560px, 100%);
-  max-height: 86vh;
-  overflow-y: auto;
-  animation: rise var(--dur) var(--ease);
-}
-.modal.wide { width: min(940px, 100%); }
+/* окно и всплывающие сообщения — компоненты набора (ui/index.tsx, ui/toast.tsx); здесь только лист .sheet */
 .sheet {
   position: fixed;
   top: 0;
@@ -699,70 +676,8 @@ kbd, .kbd {
 @keyframes rise { from { opacity: 0; transform: translateY(8px) scale(0.99); } }
 @keyframes slide-in { from { transform: translateX(16px); opacity: 0; } }
 
-.toasts {
-  position: fixed;
-  right: 18px;
-  bottom: 18px;
-  display: grid;
-  gap: 8px;
-  z-index: 80;
-}
-/* две живые области внутри — раскладка должна остаться прежней */
-.toasts > div { display: grid; gap: 8px; }
-.toast {
-  padding: 10px 14px;
-  border-radius: var(--r-md);
-  border: 1px solid var(--border);
-  border-left: 3px solid var(--primary);
-  background: var(--surface);
-  box-shadow: var(--shadow);
-  font-size: var(--fs-small);
-  animation: rise var(--dur) var(--ease);
-  max-width: 420px;
-}
-.toast.ok { border-left-color: var(--sev-none); }
-.toast.err { border-left-color: var(--sev-severe); }
-
 /* ═══ состояния ═══ */
-.skeleton-group { display: grid; gap: 9px; }
-.skeleton {
-  border-radius: var(--r-sm);
-  background: linear-gradient(90deg, var(--surface-2), var(--surface-3), var(--surface-2));
-  background-size: 240% 100%;
-  animation: sweep 1.4s var(--ease) infinite;
-}
-@keyframes sweep { to { background-position: -240% 0; } }
-
-.empty {
-  display: grid;
-  gap: 6px;
-  justify-items: center;
-  text-align: center;
-  padding: 44px 20px;
-  color: var(--muted);
-}
-.empty strong { color: var(--text-2); font-family: var(--font-display); font-weight: 500; }
-
-/*
- * Пустое состояние внутри заполненного экрана.
- *
- * Обычное пустое состояние — это ответ на вопрос всего экрана: «пациентов
- * ещё нет», и оно вправе занимать место и звать к действию. Но та же
- * вёрстка внутри боковой панели превращает отсутствие новостей в
- * утверждение: «С прошлого приёма ничего не произошло» набиралось крупным
- * по центру и читалось как вывод, ради которого открыли экран.
- *
- * Здесь то же самое сообщение занимает одну строку и говорит обычным
- * голосом.
- */
-.empty.is-compact {
-  justify-items: start;
-  text-align: left;
-  padding: 10px 16px;
-}
-.empty.is-compact strong { font-family: inherit; font-weight: 400; color: var(--muted); font-size: var(--fs-caption); }
-.end-of-list { text-align: center; color: var(--muted); font-size: var(--fs-caption); padding: 12px; }
-.load-more { width: 100%; justify-content: center; margin-top: 10px; }
+/* скелет, пусто и отказ — компоненты набора (ui/states.tsx) */
 
 .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); flex: none; }
 .dot.live, .live-dot { background: var(--sev-none); animation: pulse 2s ease-in-out infinite; }

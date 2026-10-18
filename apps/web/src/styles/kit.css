@@ -119,3 +119,10 @@
   scrollbar-width: thin;
   scrollbar-color: var(--ctl) transparent;
 }
+
+/* подложка окна проявляется, а не выезжает */
+@keyframes kit-fade {
+  from {
+    opacity: 0;
+  }
+}

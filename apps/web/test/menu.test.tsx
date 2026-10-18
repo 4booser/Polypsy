@@ -34,91 +34,52 @@ describe("ui/menu", () => {
     }
   });
 
-  test("тон пункта не спорит с обычным цветом: в строке классов один text-*", () => {
+  test("тон пункта не спорит с обычным цветом: в строке классов один цвет чернил", () => {
+    const inks = (cls: string) => cls.split(/\s+/).filter((c) => /^text-(text|muted|risk-ink|danger|violet-ink)$/.test(c));
+    /* разрушительное — обычными чернилами: красный в наборе только для риска для человека */
     const danger = menuItemClass("left", "danger");
-    expect(danger).toContain("text-danger");
-    expect(danger).not.toMatch(/\btext-text\b/);
-    expect(danger).not.toContain("hover:bg-primary-soft");
+    expect(inks(danger)).toEqual(["text-text"]);
+    expect(danger).not.toContain("text-danger");
 
     const disabled = menuItemClass("right", "disabled");
+    expect(inks(disabled)).toEqual(["text-muted"]);
     expect(disabled).toContain("cursor-not-allowed");
     expect(disabled).not.toContain("hover:");
 
-    /* пункт списка — левый, 13-й кегль; пункт карточки — правый, 15-й */
+    /* пункт набора — один для всех меню: 36 px, 13/600, у левого края */
     expect(menuItem).toContain("text-left");
     expect(menuItem).toContain("text-[13px]");
-    expect(menuItemClass("right")).toContain("justify-end");
-    expect(menuItemClass("right")).toContain("text-[15px]");
+    expect(menuItem).toContain("h-9");
   });
 });
 
 /**
- * Замер одного кадра остаётся при своём меню.
+ * Один вид пункта на все меню.
  *
- * Меню структуры аналитической модели (f19) сведено с кадром: пункты 17/400
- * #666666 шагом 30, плашка 159 с рамкой #999999. Первая редакция записала
- * эти числа в «right» — то есть разом в меню инструментов конструктора, в
- * переключатель языка «Укр» и в ActionMenu карточек людей и розсилок, кадры
- * которых в той сверке не открывались, и высота пункта у них ушла с 32 на 30
- * без всякого замера.
- *
- * Потом сверка раздела людей перемерила «right» по СВОИМ семи кадрам (f47 и
- * далее): пункт 15/400 серым, поля 12 и 5, плашка 142 с той же рамкой. Числа
- * у веток снова разные — и разными они обязаны остаться: у каждой свой кадр,
- * и замер одного на другое не распространяется.
+ * Прежний макет рисовал три меню тремя замерами (13/400 списка, 15/400
+ * карточки, 17/400 структуры модели), и замер одного кадра расползался по
+ * чужим меню. В наборе «Виразна» пункт один (.mi: 36 px, 13/600), а `align`
+ * решает только, к какому краю глифа прижата плашка. Сторож держит это:
+ * разные `align` и прежний `itemSize` дают ровно одну строку классов.
  */
-describe("меню структуры модели не переписывает чужие меню", () => {
-  const OUT = menuItemClass("right-out");
-  const CARD = menuItemClass("right");
-
-  test("пункт карточки — свой: 15/…, поля 12 и 5, цвет --muted (замер f47)", () => {
-    for (const cls of ["text-[15px]", "px-[12px]", "py-[5px]", "text-muted"]) {
-      expect(CARD, `у пункта карточки пропало ${cls}`).toContain(cls);
+describe("меню набора: пункт один, плашка одна", () => {
+  test("align и прежний кегль не меняют вида пункта", () => {
+    const base = menuItemClass("left");
+    for (const align of ["left", "right", "right-out"] as const) {
+      for (const size of [15, 17] as const) {
+        expect(menuItemClass(align, "normal", size), `${align}/${size}`).toBe(base);
+      }
     }
   });
 
-  test("пункт меню структуры — свой: 17/…, поля 10 и 5, цвет --muted", () => {
-    for (const cls of ["text-[17px]", "px-[10px]", "py-[5px]", "text-muted"]) {
-      expect(OUT, `у пункта меню структуры пропало ${cls}`).toContain(cls);
-    }
-  });
-
-  test("ни один размер одного меню не перетёк в другое", () => {
-    /*
-     * Серый у обеих веток теперь один (--muted): кадры f47 и f19 дают
-     * (102,102,102) обоим, и второй серый в словаре был бы выдумкой. Сторож
-     * поэтому держит РАЗМЕРЫ — кегль и поля, — а не цвет.
-     */
-    for (const cls of ["text-[17px]", "px-[10px]"]) {
-      expect(CARD, `${cls} из меню структуры оказалось в меню карточки`).not.toContain(cls);
-    }
-    for (const cls of ["text-[15px]", "px-[12px]"]) {
-      expect(OUT, `${cls} из меню карточки оказалось в меню структуры`).not.toContain(cls);
-    }
-  });
-
-  test("рамка #999999 стоит в ветке меню структуры, а не в общей", () => {
-    /*
-     * Плашка рисуется только у открытого меню, а открыть его в статической
-     * разметке нечем, поэтому сторож читает сам plateClass: строка с рамкой
-     * обязана быть привязана к "right-out" и ни к чему больше.
-     */
-    const src = readFileSync(new URL("../src/ui/menu.tsx", import.meta.url), "utf8")
-      .replace(/\/\*[\s\S]*?\*\//g, "");
+  test("плашка — лист 14 с ободом и тенью слоя; сторона — в ветке align", () => {
+    const src = readFileSync(new URL("../src/ui/menu.tsx", import.meta.url), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
     const at = src.indexOf("function plateClass");
     expect(at, "plateClass переименован — сторож смотрит не туда").toBeGreaterThan(0);
     const body = src.slice(at, src.indexOf("\n}", at));
-    const lines = body.split("\n");
-    /*
-     * Рамка #999999 теперь у двух плашек — карточки (f47: 142×94) и
-     * структуры (f19: 159). Важно не «сколько их», а что ни одна не стоит в
-     * общей строке: там её увидели бы и меню списка, и все будущие.
-     */
-    const marks = lines.map((l, i) => [l, i] as const).filter(([l]) => l.includes("border-border-strong"));
-    expect(marks.length, "рамки #999999 у плашек нет вовсе").toBeGreaterThan(0);
-    for (const [, i] of marks) {
-      const guard = lines.slice(0, i).reverse().find((l) => l.includes("align ==="));
-      expect(guard, "рамка #999999 стоит вне ветки вида плашки — её увидят все меню").toMatch(/"right"|"right-out"/);
+    for (const cls of ["rounded-panel", "border-border", "bg-panel", "shadow-pop"]) {
+      expect(body, `у плашки пропало ${cls}`).toContain(cls);
     }
+    expect(body).toMatch(/align === "right-out" \? "left-0/);
   });
 });

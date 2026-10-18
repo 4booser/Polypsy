@@ -101,9 +101,10 @@ export function TouchArea({
  *                  подтверждении, а не на цвете. Отдельным именем — чтобы
  *                  такое место было видно в разметке.
  *  - `paper` / `outline` — лист с тонкой рамкой: кнопка на тонированной
- *                  поверхности (полоса массовых действий, чипы ящика).
+ *                  поверхности, где нужна граница (чипы ящика, «Відкрити»).
+ *  - `panel`     — лист без рамки на тонированной полосе (массовые действия).
  */
-type Variant = "primary" | "secondary" | "ghost" | "quiet" | "risk" | "danger" | "paper" | "outline";
+type Variant = "primary" | "secondary" | "ghost" | "quiet" | "risk" | "danger" | "paper" | "outline" | "panel";
 
 /**
  * Размер.
@@ -128,6 +129,7 @@ const variants: Record<Variant, string> = {
   danger: "bg-violet-tint text-violet-ink hover:bg-violet-tint-2",
   paper: "bg-panel text-violet-ink shadow-[inset_0_0_0_1px_var(--ctl)] hover:bg-violet-tint",
   outline: "bg-panel text-violet-ink shadow-[inset_0_0_0_1px_var(--ctl)] hover:bg-violet-tint",
+  panel: "bg-panel text-violet-ink hover:bg-violet-tint-2",
 };
 
 const sizes: Record<Size, string> = {
@@ -502,7 +504,7 @@ export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
  * внутри без рамки; className тогда ложится на коробку — им задают ширину.
  */
 export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
-  { className, look = "outline", ph: _ph, icon, suffix, ...rest },
+  { className, style, look = "outline", ph: _ph, icon, suffix, ...rest },
   ref,
 ) {
   useFieldNameGuard("input", rest);
@@ -513,6 +515,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
       <input
         ref={ref}
         className={cx(fieldFrame, looks[look], "h-10 rounded-control px-3 text-body", className)}
+        style={style}
         {...attrs}
         {...rest}
       />
@@ -533,6 +536,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
         look === "fill" && "focus-within:bg-panel",
         className,
       )}
+      style={style}
     >
       {icon ? <span className="inline-flex text-muted [&>svg]:size-[15px]">{icon}</span> : null}
       <input

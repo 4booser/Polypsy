@@ -4,33 +4,29 @@ import { api, type SavedView } from "../api";
 import { useLang } from "../lang";
 import { useResource } from "../useResource";
 import { loadView, useAction } from "./index";
-import { IconClose } from "./glyphs";
-import { Button } from "./primitives";
+import { ViewPill } from "./filters";
+import { Ic } from "./icons";
+import { Button, Input } from "./primitives";
 import { openView } from "./viewParams";
 
 /**
- * Сохранённые виды экрана.
+ * Сохранённые виды экрана — пилюлями набора (.vw): открытый — фиолетовой
+ * заливкой, общий чужой — со значком «поделено».
  *
- * Фильтры уже живут в адресе и передаются ссылкой; здесь снимается вторая
- * половина работы — не собирать «мои просроченные по третьей роте» заново
- * каждое утро.
- *
- * Хранится строка запроса, а не результат. Поэтому общий вид безопасен:
- * открыв его, коллега получит тот же фильтр, но выборку сервер соберёт по
- * его правам — вид не может показать больше, чем человеку положено.
+ * Вид хранит адрес целиком (viewParams.ts) и узнаётся открытым при любом
+ * порядке параметров. Число строк в виде — `counts`, если экран его знает:
+ * сервер видов числа не считает.
  */
-export function SavedViews({ scope }: { scope: string }) {
+export function SavedViews({ scope, counts }: { scope: string; counts?: Record<string, number | null | undefined> }) {
   const { ut } = useLang();
   const navigate = useNavigate();
   const location = useLocation();
   const { run, busy } = useAction();
   const [naming, setNaming] = useState(false);
   const [name, setName] = useState("");
-
   const res = useResource(() => api.views(scope), [scope]);
   const views = res.data ?? [];
   const current = location.search.replace(/^\?/, "");
-  /* узнаётся по составу отбора, а не посимвольно: порядок параметров — это порядок, в котором трогали фильтры */
   const active = openView(views, current);
 
   const apply = (v: SavedView) => navigate({ search: v.params ? `?${v.params}` : "" });
@@ -44,59 +40,65 @@ export function SavedViews({ scope }: { scope: string }) {
     }, ut("views.saved"));
 
   return (
-    <div className="views">
+    <div role="group" aria-label={ut("kit.savedViews")} className="flex flex-wrap items-center gap-x-[5px] gap-y-1.5">
       {/*
         Отказ загрузки — не «видов нет»: строка без видов при отказе
         выглядела ровно как у человека, который их не заводил, и свои виды
         считались пропавшими. Здесь — сказать и дать повторить.
       */}
       {loadView(res) === "failed" ? (
-        <Button variant="quiet" size="sm" onClick={res.reload}>
+        <Button variant="quiet" size="xs" onClick={res.reload}>
           {ut("uit.views.loadFailed")}
         </Button>
       ) : null}
       {views.map((v) => (
-        <button
+        <ViewPill
           key={v.id}
-          className={`chip${active?.id === v.id ? " active" : ""}`}
+          label={v.name}
+          count={counts?.[v.id]}
+          on={active?.id === v.id}
           onClick={() => apply(v)}
           title={v.mine ? v.name : `${v.name} · ${v.ownerName}`}
-        >
-          {v.shared && !v.mine ? <IconShared /> : null}
-          {v.name}
-        </button>
+          icon={v.shared && !v.mine ? <IconShared /> : null}
+        />
       ))}
-
       {naming ? (
-        <span className="views-form">
-          <input
+        <span className="inline-flex items-center gap-1.5">
+          <Input
             autoFocus
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder={ut("views.namePlaceholder")}
+            className="h-8 w-[190px] rounded-[9px]"
             onKeyDown={(e) => {
               if (e.key === "Enter" && name.trim()) save();
               if (e.key === "Escape") setNaming(false);
             }}
           />
-          <button className="primary" disabled={busy || !name.trim()} onClick={save}>
+          <Button variant="primary" size="xs" disabled={busy || !name.trim()} onClick={save}>
             {ut("common.save")}
-          </button>
-          <button className="ghost" onClick={() => setNaming(false)}>
+          </Button>
+          <Button variant="quiet" size="xs" onClick={() => setNaming(false)}>
             {ut("common.cancel")}
-          </button>
+          </Button>
         </span>
       ) : (
-        <button className="chip views-add" onClick={() => setNaming(true)} title={ut("views.saveHint")}>
-          + {ut("views.save")}
+        <button
+          type="button"
+          onClick={() => setNaming(true)}
+          title={ut("views.saveHint")}
+          className="inline-flex h-8 min-h-0 cursor-pointer items-center gap-1 rounded-2xl border-0 bg-transparent pl-2 pr-2.5 text-small font-semibold text-text-2 shadow-[inset_0_0_0_1.5px_var(--ctl)] hover:bg-sunk"
+        >
+          <Ic.plus size={14} />
+          {ut("views.save")}
         </button>
       )}
-
       {active?.mine ? (
         <>
-          <button
+          <Button
+            variant="quiet"
+            size="xs"
             disabled={busy}
-            className="chip"
             onClick={() =>
               void run(async () => {
                 await api.updateView(active.id, { shared: !active.shared });
@@ -105,10 +107,11 @@ export function SavedViews({ scope }: { scope: string }) {
             }
           >
             {active.shared ? ut("views.makePersonal") : ut("views.makeShared")}
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="quiet"
+            size="icon-sm"
             disabled={busy}
-            className="chip-x"
             aria-label={ut("views.remove")}
             title={ut("views.remove")}
             onClick={() =>
@@ -118,18 +121,18 @@ export function SavedViews({ scope }: { scope: string }) {
               }, ut("views.removed"))
             }
           >
-            <IconClose />
-          </button>
+            <Ic.x size={15} />
+          </Button>
         </>
       ) : null}
     </div>
   );
 }
 
-/** Общий вид помечается: важно понимать, что срез собрал не ты */
+/** Значок «вид поделён»: три узла — кто-то из коллег завёл его для всех */
 function IconShared() {
   return (
-    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
       <circle cx="18" cy="5" r="3" />
       <circle cx="6" cy="12" r="3" />
       <circle cx="18" cy="19" r="3" />
