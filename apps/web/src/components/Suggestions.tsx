@@ -127,7 +127,7 @@ export function SuggestionsBody({
           </p>
         ) : null}
         {items.map((hit: RuleHit) => (
-          <article key={hit.id} className="flex flex-col gap-2 border-b border-divider px-4 py-3 last:border-b-0">
+          <article key={hit.id} data-suggestion="" className="flex flex-col gap-2 border-b border-divider px-4 py-3 last:border-b-0">
             <div className="flex flex-wrap items-baseline gap-x-2">
               <b className="font-extrabold text-text">{hit.ruleTitle}</b>
               <span className="text-small text-muted">
@@ -140,7 +140,7 @@ export function SuggestionsBody({
             </Link>
 
             {/* объяснение — то, на основании чего человек примет решение */}
-            <ul className="m-0 flex list-disc flex-col gap-0.5 pl-5 text-body text-text-2">
+            <ul data-because="" className="m-0 flex list-disc flex-col gap-0.5 pl-5 text-body text-text-2">
               {hit.explanation.because.map((b, i) => (
                 <li key={i}>{b.text}</li>
               ))}
