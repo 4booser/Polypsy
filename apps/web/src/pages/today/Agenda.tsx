@@ -181,6 +181,44 @@ const CELL_ICON: Record<CellTone, string> = {
   risk: "text-risk-ink",
 };
 
+/**
+ * Готовность к сессии клетками: заміри, запис, привід — из данных дня, без
+ * запросов. Та же разметка в строке таймлайна и в закрытой подготовке.
+ */
+export function ReadinessCells({ a, selected = false, stacked = false }: { a: AppointmentView; selected?: boolean; stacked?: boolean }) {
+  const { ut } = useLang();
+  return (
+    <div className={cx("grid gap-1.5", stacked ? "grid-cols-1" : "grid-cols-3 max-[760px]:grid-cols-1")}>
+      {readiness(a).map((c) => (
+        <div
+          key={c.key}
+          className={cx("flex min-w-0 items-start gap-2 rounded-control px-2.5 pb-[9px] pt-2 text-small leading-[17px] text-text-2", selected ? "bg-panel" : "bg-sunk")}
+        >
+          <span className={cx("mt-px inline-flex", CELL_ICON[c.tone])}>
+            {c.key === "measures" ? <Di.clipboardCheck size={14} /> : c.key === "booking" ? <Di.calendarClock size={14} /> : <Ic.message size={14} />}
+          </span>
+          <span className="min-w-0">
+            <span className="block text-[11.5px] font-bold leading-[15px] text-muted">
+              {ut(c.key === "measures" ? "dayA.cellMeasures" : c.key === "booking" ? "dayA.cellBooking" : "day.reason")}
+            </span>
+            {c.key === "reason" && a.reason ? (
+              <span className="line-clamp-2 text-text">{a.reason}</span>
+            ) : c.text.key === "day.pending" ? (
+              <>
+                {ut("day.pending")} <b className="font-extrabold text-text">{c.text.n}</b>
+              </>
+            ) : c.text.at ? (
+              fill(ut(c.text.key as never), { t: hhmm(c.text.at), d: day(c.text.at) })
+            ) : (
+              ut(c.text.key as never)
+            )}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /** «через 30 хв», «через 2 год» — до начала сессии */
 export function useUntil() {
   const { ut } = useLang();
@@ -331,33 +369,8 @@ export function AppointmentRow({
           ) : null}
       </div>
 
-      <div className="col-[3/5] row-start-3 mt-2.5 grid grid-cols-3 gap-1.5 max-[1100px]:col-[3/4] max-[760px]:grid-cols-1">
-        {readiness(a).map((c) => (
-          <div
-            key={c.key}
-            className={cx("flex min-w-0 items-start gap-2 rounded-control px-2.5 pb-[9px] pt-2 text-small leading-[17px] text-text-2", selected ? "bg-panel" : "bg-sunk")}
-          >
-            <span className={cx("mt-px inline-flex", CELL_ICON[c.tone])}>
-              {c.key === "measures" ? <Di.clipboardCheck size={14} /> : c.key === "booking" ? <Di.calendarClock size={14} /> : <Ic.message size={14} />}
-            </span>
-            <span className="min-w-0">
-              <span className="block text-[11.5px] font-bold leading-[15px] text-muted">
-                {ut(c.key === "measures" ? "dayA.cellMeasures" : c.key === "booking" ? "dayA.cellBooking" : "day.reason")}
-              </span>
-              {c.key === "reason" && a.reason ? (
-                <span className="line-clamp-2 text-text">{a.reason}</span>
-              ) : c.text.key === "day.pending" ? (
-                <>
-                  {ut("day.pending")} <b className="font-extrabold text-text">{c.text.n}</b>
-                </>
-              ) : c.text.at ? (
-                fill(ut(c.text.key as never), { t: hhmm(c.text.at), d: day(c.text.at) })
-              ) : (
-                ut(c.text.key as never)
-              )}
-            </span>
-          </div>
-        ))}
+      <div className="col-[3/5] row-start-3 mt-2.5 max-[1100px]:col-[3/4]">
+        <ReadinessCells a={a} selected={selected} />
       </div>
 
       {/*
