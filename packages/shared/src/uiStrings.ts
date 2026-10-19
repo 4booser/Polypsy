@@ -5068,7 +5068,6 @@ export const UI = {
   "cl.editAction": { uk: "Правити", ru: "Править", en: "Edit" },
   "cq.score": { uk: "Бал", ru: "Балл", en: "Score" },
   "mv.aboveShare": { uk: "вище, ніж у {n}% обстежених", ru: "выше, чем у {n}% обследованных", en: "higher than {n}% of those assessed" },
-  "mv.peakPerDay": { uk: "пік: {n} на день", ru: "пик: {n} в день", en: "peak: {n} per day" },
   "mv.radarNeedsThree": {
     uk: "Профіль будується від трьох субшкал — зараз їх {n}",
     ru: "Профиль строится от трёх субшкал — сейчас их {n}",
@@ -5077,11 +5076,6 @@ export const UI = {
   "mv.threshold": { uk: "поріг", ru: "порог", en: "threshold" },
   "mv.ordinary": { uk: "звичайні", ru: "обычные", en: "regular" },
   "mv.markedCareless": { uk: "позначено як недбалі ({n})", ru: "помечены как небрежные ({n})", en: "flagged as careless ({n})" },
-  "mv.lowItemLink": {
-    uk: "Пункти зі зв’язком нижче {n} виділено — вони погано узгоджуються зі своєю шкалою",
-    ru: "Пункты со связью ниже {n} выделены — они плохо согласуются со своей шкалой",
-    en: "Items correlating below {n} with the rest of their scale are highlighted — they fit their scale poorly",
-  },
   /* люди, а не случаи: очередь сложена по человеку (см. dash.casesOpen) */
   "ma.completion": { uk: "доходимість {n}%", ru: "доходимость {n}%", en: "completion rate {n}%" },
   "ma.published": { uk: "опубліковано", ru: "опубликовано", en: "published" },
@@ -5468,13 +5462,10 @@ export const UI = {
   "msv.changesAvg": { uk: "Змін відповіді в середньому", ru: "Смен ответа в среднем", en: "Answer changes on average" },
   "msv.changedAnswer": { uk: "Змінювали відповідь", ru: "Меняли ответ", en: "Changed their answer" },
   "msv.tooFast": { uk: "Відповіли занадто швидко", ru: "Отвечено слишком быстро", en: "Answered too fast" },
-  "mch.noDistribution": { uk: "Немає даних для розподілу", ru: "Нет данных для распределения", en: "No data for a distribution" },
   "mch.noNumeric": { uk: "Немає числових відповідей", ru: "Нет числовых ответов", en: "No numeric answers" },
-  "mch.noResponses": { uk: "Проходжень поки немає", ru: "Прохождений пока нет", en: "No completions yet" },
   "mqi.rankHint": { uk: "Натискайте в порядку важливості — від найважливішого до найменш важливого", ru: "Нажимайте в порядке важности — от самого важного к наименее важному", en: "Tap in order of importance — from most to least important" },
   "mqi.yourAnswer": { uk: "Ваша відповідь", ru: "Ваш ответ", en: "Your answer" },
   "mviz.noData": { uk: "Даних поки немає", ru: "Данных пока нет", en: "No data yet" },
-  "mviz.funnelHint": { uk: "Звуження показує, на якому питанні респонденти припиняють проходження", ru: "Сужение показывает, на каком вопросе респонденты прекращают прохождение", en: "The narrowing shows at which question respondents stop the test" },
   "mviz.boxHint": { uk: "Ящик — міжквартильний розмах, жирна риска — медіана, вуса — крайні значення", ru: "Ящик — межквартильный размах, жирная черта — медиана, усы — крайние значения", en: "Box — interquartile range, bold line — median, whiskers — extreme values" },
   "mviz.heatHint": { uk: "Насиченість кодує величину; значення продубльовано числом", ru: "Насыщенность кодирует величину; значение продублировано числом", en: "Saturation encodes magnitude; the value is also shown as a number" },
   "mviz.current": { uk: "Поточний", ru: "Текущий", en: "Current" },
