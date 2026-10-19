@@ -460,7 +460,7 @@
   --grid-fine: color-mix(in srgb, var(--divider) 55%, transparent);
   --axis: var(--muted);
 
-  /* ряды графиков консоли (SERIES в format.ts) — на проверенную палитру */
+  /* ряды графиков консоли (seriesColor в charts/kit.tsx) — на проверенную палитру */
   --s1: var(--c1);
   --s2: var(--c2);
   --s3: var(--c3);

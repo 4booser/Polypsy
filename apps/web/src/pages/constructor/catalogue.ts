@@ -45,7 +45,7 @@ export function tabFromPath(pathname: string): CatalogueTab {
  * Имена отдаются отсюда по-прежнему — проверки каталога и его экран зовут
  * их как звали, а второго места, где живёт «10 — значение с макета», нет.
  */
-export { DEFAULT_PER, PER_PAGE, offsetPageCount, pageCount, pageFrom, perFrom } from "../../ui/paging";
+export { DEFAULT_PER, offsetPageCount, pageCount, pageFrom, perFrom } from "../../ui/paging";
 
 /* ─────────── запрос ─────────── */
 

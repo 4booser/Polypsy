@@ -5,7 +5,7 @@ import { seriesColor } from "../../charts/kit";
 import { useLang } from "../../lang";
 import { Popover } from "../../ui";
 import { cx } from "../../ui/cx";
-import { Button, ErrorText, Field, Input, Segmented, Select, Tag } from "../../ui/primitives";
+import { ErrorText, Field, Input, Segmented, Select, Tag } from "../../ui/primitives";
 import { useDebounced, useResource } from "../../useResource";
 import { useLocalityHints } from "./data";
 import {
@@ -171,50 +171,6 @@ export const St = {
     </>,
   ),
 };
-
-/*
- * Глиф «−» и кнопка-глиф прежних экранов раздела. Экраны статистики ими
- * больше не пользуются, но их берёт «Добір людей» (pages/Cohorts.tsx) —
- * чужой участок; убрать их здесь значило бы сломать его сборку.
- */
-
-/** «−» строки условия: штрих 5 в квадрате 27 — близнец IconPlusThick (ui/glyphs.tsx) */
-export function IconMinusThick() {
-  return (
-    <svg viewBox="0 0 27 27" width={27} height={27} aria-hidden focusable="false">
-      <path d="M2.5 13.5h22" stroke="currentColor" strokeWidth={5} />
-    </svg>
-  );
-}
-
-/** Голый глиф «+»/«−» с подписью для диктора и подсказкой тем же словом */
-export function GlyphButton({
-  label,
-  onClick,
-  children,
-  disabled,
-  className,
-}: {
-  label: string;
-  onClick: () => void;
-  children: ReactNode;
-  disabled?: boolean;
-  className?: string;
-}) {
-  return (
-    <Button
-      size="glyph"
-      variant="ghost"
-      aria-label={label}
-      title={label}
-      onClick={onClick}
-      disabled={disabled}
-      className={className}
-    >
-      {children}
-    </Button>
-  );
-}
 
 /** Значок строки-критерия: тот же в чипе, в строке пресета и в «Додати умову» */
 export const CRITERION_ICON: Record<Criterion, ReactNode> = {

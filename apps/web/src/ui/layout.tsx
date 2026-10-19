@@ -308,26 +308,6 @@ export function Count({ n, tone = "plain", className }: { n: ReactNode; tone?: "
   );
 }
 
-/** Сетка панелей: колонки не уже `min`, сколько поместится */
-export function Grid({
-  min = 320,
-  children,
-  className,
-}: {
-  min?: number;
-  children: ReactNode;
-  className?: string;
-}) {
-  return (
-    <div
-      className={cx("grid items-start gap-4", className)}
-      style={{ gridTemplateColumns: `repeat(auto-fit, minmax(min(${min}px, 100%), 1fr))` }}
-    >
-      {children}
-    </div>
-  );
-}
-
 export function Stack({ children, className }: { children: ReactNode; className?: string }) {
   return <div className={cx("flex min-w-0 flex-col gap-4", className)}>{children}</div>;
 }

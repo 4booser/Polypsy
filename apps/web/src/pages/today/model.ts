@@ -165,8 +165,6 @@ export function lanes(spans: readonly Span[]): Map<string, "full" | "top" | "bot
 
 /* ─────────── сессия ─────────── */
 
-export type Status = AppointmentView["status"];
-
 /** Приём, который ещё идёт по ходу дня: не отменён и не отмечен неявкой */
 export const live = (a: Pick<AppointmentView, "status">) => a.status !== "cancelled" && a.status !== "no_show";
 
