@@ -1,5 +1,5 @@
 import type { AlertCase, PatientCard, Permission, RespondentDynamics, ResponseDetail, SafetyPlan } from "@quizzy/shared";
-import type { NoteState } from "../../api";
+import type { ConclusionState, NoteState } from "../../api";
 import type { Assignment, InstrumentRow, TimelineRow, Visit } from "./clinical";
 import type { ThreadLike } from "./listModel";
 
@@ -63,5 +63,27 @@ export interface CardView {
   /** Открыт ли ящик и на каком виде — пилюли строки рисуются «нажатыми» */
   pane: PaneMode | null;
   can: (p: Permission) => boolean;
-  reload: () => void;
+  refresh: CardRefresh;
+}
+
+/**
+ * Что перечитать после действия в ящике — только то, что действие меняет
+ * (волна 27).
+ *
+ * Прежде любое действие перечитывало всё: карточку, хронологию, разговоры,
+ * письма, нотатки, случаи и план безпеки. Пять из этих чтений пишут журнал
+ * (карточка — patient.card_read, хронология, нотатки, план — response.read,
+ * случаи — alert.list), и «Зберегти чернетку» нотатки оставляло пять строк о
+ * чтениях, которых человек не делал, — а подпись после сохранения десять.
+ * Чтение карточки — одно на открытие.
+ */
+export interface CardRefresh {
+  /** Разговоры; письма открытого разговора идут за ним сами — их загрузка ключена временем последнего письма и непрочитанным */
+  messages: () => void;
+  /** Хронология: в ней приёмы (записали, перенесли) и события заключений */
+  timeline: () => void;
+  /** Нотатки: ответ сохранения или подписи — их новое состояние; без него — перечитать (чужая правка, 409) */
+  notes: (state?: NoteState) => void;
+  /** Строки «Заключення» карточки — из ответа сохранения или подписи, без нового чтения карточки */
+  conclusion: (responseId: string, state: ConclusionState) => void;
 }

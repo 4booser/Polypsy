@@ -100,7 +100,7 @@ function view(over: Partial<CardView> = {}): CardView {
     goTab: () => {},
     pane: null,
     can: () => true,
-    reload: () => {},
+    refresh: { messages: () => {}, timeline: () => {}, notes: () => {}, conclusion: () => {} },
     ...over,
   };
 }
