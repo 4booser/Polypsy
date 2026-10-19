@@ -1,4 +1,4 @@
-import { useSyncExternalStore, type ReactElement, type ReactNode } from "react";
+import { useMemo, useSyncExternalStore, type ReactElement, type ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { ALWAYS_VISIBLE_RAIL, type UiKey } from "@quizzy/shared";
 import { useLang } from "../lang";
@@ -253,10 +253,18 @@ function subscribeMedia(query: string) {
   };
 }
 
-/** Подходит ли окно под медиазапрос — и перерисовка, когда перестаёт */
+/**
+ * Подходит ли окно под медиазапрос — и перерисовка, когда перестаёт.
+ *
+ * Подписка — одна на запрос, а не новая на каждую отрисовку: новая функция
+ * подписки заставляет useSyncExternalStore отписываться и подписываться
+ * заново при любой перерисовке рельсы и экранов (каждый переход, каждый такт
+ * счётчиков).
+ */
 export function useMedia(query: string): boolean {
+  const subscribe = useMemo(() => subscribeMedia(query), [query]);
   return useSyncExternalStore(
-    subscribeMedia(query),
+    subscribe,
     () => window.matchMedia(query).matches,
     () => false,
   );
