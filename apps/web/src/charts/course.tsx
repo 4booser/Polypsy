@@ -10,6 +10,7 @@ import {
   labelledPoints,
   placeLabels,
   pointTip,
+  todayLabelAt,
   type Better,
   type ChangeVerdict,
   type CourseEvent,
@@ -162,9 +163,25 @@ export function CourseChart({
   const sameDay = (t: number) => lay.today !== null && Math.abs(t - lay.today) < 12 * 3_600_000;
 
   /*
+   * Слово «сигнал» у последнего сигнала на оси: справа от квадрата, а если
+   * справа не помещается до полосы подписей полос — слева от него.
+   */
+  const signalWord = ut("course.signal");
+  const lastSignal = signals.at(-1) ?? null;
+  const signalX = lastSignal ? X(lastSignal.t) : null;
+  const signalRight = signalX !== null && signalX + 9 + textW(signalWord) < x1;
+  const signalBox: Box | null =
+    signalX === null
+      ? null
+      : signalRight
+        ? { x0: signalX + 7, y0: PB - 18, x1: signalX + 11 + textW(signalWord), y1: PB - 2 }
+        : { x0: signalX - 11 - textW(signalWord), y0: PB - 18, x1: signalX - 7, y1: PB - 2 };
+
+  /*
    * Подписи межі похибки и надёжного улучшения ставятся туда, где они ничего
-   * не закрывают: ни замер, ни линию, ни число, ни «сьогодні»; места нет —
-   * подписи нет, смысл остаётся в легенде и подсказке.
+   * не закрывают: ни замер, ни линию, ни число, ни «сьогодні», ни слово
+   * «сигнал» у оси; места нет — подписи нет, смысл остаётся в легенде и
+   * подсказке.
    */
   const obstacles: Box[] = [
     ...xs.map((x, i) => ({ x0: x - 8, y0: ys[i]! - 8, x1: x + 8, y1: ys[i]! + 8 })),
@@ -184,6 +201,7 @@ export function CourseChart({
       });
     }),
     ...(todayX !== null ? [{ x0: todayX - 3, y0: T, x1: todayX + 3, y1: PB }] : []),
+    ...(signalBox ? [signalBox] : []),
   ];
   const field: Box = { x0: L + 2, y0: T + 2, x1: x1 - 2, y1: PB - 2 };
   const spotFor = (text: string, ys0: readonly number[]) => {
@@ -208,6 +226,11 @@ export function CourseChart({
     : null;
 
   const unitWord = !normalization || normalization === "raw" ? ut("course.points") : ut(`norm.${normalization}` as UiKey);
+  const betterWord = better ? ut(better === "down" ? "course.betterDown" : "course.betterUp") : "";
+  /* подпись оси и «сьогодні» стоят в одной строке над полем — вторая не наезжает на первую */
+  const axisTitle = `${unitWord} ${dec(lay.lo)}–${dec(lay.hi)}${betterWord ? `, ${betterWord}` : ""}`;
+  const todayWord = ut("course.today");
+  const todayAt = todayX === null ? null : todayLabelAt(todayX, textW(todayWord), L - 7 + textW(axisTitle), W - R);
   const pAt = pointHover.at;
   const tip = pAt === null ? null : pointTip(points, pAt, ladder, rc, better);
   const ev = evAt === null ? null : (lay.events[evAt] ?? null);
@@ -322,10 +345,10 @@ export function CourseChart({
         ))}
         <text x={L - 7} y={T - 12} fontSize={11} fontWeight={600} fill="var(--muted)">
           {unitWord} {dec(lay.lo)}–{dec(lay.hi)}
-          {better ? (
+          {betterWord ? (
             <>
               {", "}
-              <tspan fill="var(--text)">{ut(better === "down" ? "course.betterDown" : "course.betterUp")}</tspan>
+              <tspan fill="var(--text)">{betterWord}</tspan>
             </>
           ) : null}
         </text>
@@ -349,11 +372,11 @@ export function CourseChart({
           </g>
         ) : null}
 
-        {todayX !== null ? (
+        {todayX !== null && todayAt ? (
           <>
             <line x1={f1(todayX)} x2={f1(todayX)} y1={T - 6} y2={PB} stroke="var(--text)" strokeWidth={1.2} />
-            <text x={f1(todayX)} y={T - 10} textAnchor="middle" fontSize={11} fontWeight={800} fill="var(--text)">
-              {ut("course.today")}
+            <text data-label="today" x={f1(todayAt.x)} y={T - 10} textAnchor={todayAt.anchor} fontSize={11} fontWeight={800} fill="var(--text)">
+              {todayWord}
             </text>
           </>
         ) : null}
@@ -408,17 +431,17 @@ export function CourseChart({
         })}
 
         {/* сигналы — красным квадратом на оси, подписан последний */}
-        {signals.map((e, k) => {
+        {signals.map((e) => {
           const x = X(e.t);
-          const lastOne = k === signals.length - 1;
-          const word = ut("course.signal");
-          /* подпись не заходит в полосу подписей полос справа */
-          const right = x + 9 + textW(word) < x1;
+          const lastOne = e === lastSignal;
+          /* подпись не заходит в полосу подписей полос справа (signalRight выше) */
+          const right = signalRight;
           return (
             <g key={e.key} data-event="signal">
               <rect x={f1(x - 4.5)} y={PB - 4.5} width={9} height={9} rx={2.5} fill="var(--risk)" />
               {lastOne ? (
                 <text
+                  data-label="signal"
                   x={f1(right ? x + 9 : x - 9)}
                   y={PB - 6}
                   textAnchor={right ? "start" : "end"}
@@ -430,7 +453,7 @@ export function CourseChart({
                   strokeLinejoin="round"
                   style={{ paintOrder: "stroke" }}
                 >
-                  {word}
+                  {signalWord}
                 </text>
               ) : null}
             </g>

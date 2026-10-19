@@ -375,6 +375,29 @@ export function freeSpot<T extends Box>(candidates: readonly T[], obstacles: rea
 }
 
 /**
+ * Где подписать «сьогодні» над полем.
+ *
+ * По центру своей линии, как в наборе. Но в той же строке слева стоит
+ * подпись оси («бали 0–25, краще ↑»), и на узком графике с сессиями,
+ * назначенными вперёд, линия «сьогодні» уходит к левому краю — подписи
+ * наезжали одна на другую. Тогда подпись встаёт флажком справа от линии, а
+ * если линия проходит под самой подписью оси — сразу за её концом. За
+ * правый край графика не выходит.
+ *
+ * `titleEnd` — правый край подписи оси, `right` — правый край графика.
+ */
+export function todayLabelAt(
+  lineX: number,
+  labelW: number,
+  titleEnd: number,
+  right: number,
+  gap = 8,
+): { x: number; anchor: "middle" | "start" } {
+  if (lineX - labelW / 2 >= titleEnd + gap) return { x: Math.min(lineX, right - labelW / 2), anchor: "middle" };
+  return { x: Math.min(Math.max(lineX + 4, titleEnd + gap), right - labelW), anchor: "start" };
+}
+
+/**
  * Подписи дат под осью без наложения: сначала последняя, потом первая,
  * потом остальные с конца — каждая, только если не налезает на уже
  * поставленные. `width` — оценка ширины подписи в пикселях.
