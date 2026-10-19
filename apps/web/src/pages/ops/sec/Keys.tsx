@@ -223,8 +223,12 @@ export function KeySection({ report }: { report: OpsKeysReport }) {
             <Verdict tone="danger">{fill(ut("ops.sec.keys.lost"), { n: report.lostTotal, keys: lostKeys.join(", ") })}</Verdict>
           </div>
         ) : null}
+        {/*
+          На 1280 панель — половина строки, ~450 px: подписи колонок переносятся,
+          а не уводят «Пробне розшифрування» за край под прокрутку вбок.
+        */}
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[480px] border-separate border-spacing-0">
+          <table className="w-full min-w-[400px] border-separate border-spacing-0 [&_th]:whitespace-normal">
             <thead>
               <tr>
                 <th scope="col" className={TH}>
