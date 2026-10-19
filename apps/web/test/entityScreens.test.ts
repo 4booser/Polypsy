@@ -77,8 +77,10 @@ describe("остатки #177: заключение, протокол, груп�
     });
   }
 
-  test("заключение: название, набранное к прежнему прохождению, к новому не переходит", () => {
-    expect(source("pages/Conclusion.tsx")).toContain('useEffect(() => setTitle(""), [responseId]);');
+  test("заключение: названия нет вовсе — переносить набранное к новому прохождению нечего", () => {
+    // поле «Назва заключення» убрано: сервер его не хранил (conclusion.test.tsx)
+    expect(source("pages/Conclusion.tsx")).not.toContain("setTitle");
+    expect(source("components/ConclusionEditor.tsx")).not.toContain("setTitle");
   });
 
   test("заключение: отказ 409 прежнего прохождения к новому не переходит", () => {

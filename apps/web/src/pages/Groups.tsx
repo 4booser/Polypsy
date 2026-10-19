@@ -22,6 +22,7 @@ import { Mi } from "./methods/icons";
 import { ListAndRecord, ListColumn, ListEmpty } from "./methods/ListColumn";
 import { Fact } from "./methods/MethodPage";
 import { dayDiff, shortDate } from "./methods/model";
+import { useSettledSelection } from "./methods/settle";
 import { num, useCount } from "./methods/useCount";
 
 /*
@@ -81,12 +82,16 @@ function GroupsScreen({ groups, staff, reload }: { groups: SurveyGroupWithCounts
   const showRetired = view !== "active";
   const order = [...(showActive ? active : []), ...(showRetired ? retired : [])];
   const current = groups.find((g) => g.id === selected) ?? order[0] ?? null;
+  /* аналитика записи — по строке, на которой остановились: шаг J/K догоняет, щелчок грузит сразу (methods/settle.ts) */
+  const { settled, stepped } = useSettledSelection(current?.id ?? null);
 
   const step = (dir: 1 | -1) => {
     if (!order.length) return;
     const at = current ? order.findIndex((g) => g.id === current.id) : -1;
     const next = order[Math.min(order.length - 1, Math.max(0, at + dir))];
-    if (next) setSelected(next.id);
+    if (!next || next.id === current?.id) return;
+    stepped();
+    setSelected(next.id);
   };
 
   const tile = (g: SurveyGroupWithCounts) => (
@@ -174,6 +179,7 @@ function GroupsScreen({ groups, staff, reload }: { groups: SurveyGroupWithCounts
         <GroupRecord
           key={current.id}
           group={current}
+          load={settled === current.id}
           staff={staff}
           onEdit={() => setEditing(current)}
           onChanged={reload}
@@ -215,12 +221,15 @@ function GroupsScreen({ groups, staff, reload }: { groups: SurveyGroupWithCounts
 
 function GroupRecord({
   group: g,
+  load,
   staff,
   onEdit,
   onChanged,
   onDeleted,
 }: {
   group: SurveyGroupWithCounts;
+  /** Выбор устоялся: аналитику группы (чтение со строкой журнала) можно грузить */
+  load: boolean;
   staff: User[];
   onEdit: () => void;
   onChanged: () => void;
@@ -233,7 +242,7 @@ function GroupRecord({
   const [removing, setRemoving] = useState<GroupAdmin | null>(null);
   const [adding, setAdding] = useState("");
   const archived = !!g.archivedAt;
-  const analytics = useResource(() => api.groupAnalytics(g.id), [g.id]);
+  const analytics = useResource(() => api.groupAnalytics(g.id), [g.id], { enabled: load });
 
   useHotkeys({
     e: () => {

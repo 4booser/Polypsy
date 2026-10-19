@@ -721,13 +721,6 @@ export interface ConclusionVersion {
    * «тот ли это текст, что я читал» не проверить.
    */
   revision: number;
-  /**
-   * Название документа с экрана «Заключення» (кадр f38, поле «Назва
-   * заключення»). Столбца title в таблице conclusions пока нет, поэтому поле
-   * необязательное: пока сервер его не отдаёт, экран держит набранное
-   * название у себя и не затирает его пустотой из ответа.
-   */
-  title?: string | null;
   text: string;
   status: "draft" | "signed";
   createdAt: string;
@@ -1682,21 +1675,14 @@ export const api = {
     responseId: string,
     text: string,
     base: Pick<ConclusionVersion, "version" | "revision"> | null,
-    title?: string,
   ) =>
     request<ConclusionState>(`/api/conclusions/responses/${responseId}/conclusion`, {
       method: "PUT",
-      /*
-       * Название уходит вместе с текстом по описанному договору (столбец
-       * conclusions.title). Сегодняшний сервер лишнее поле отбрасывает при
-       * разборе тела — запрос от этого не ломается, а в день, когда столбец
-       * появится, клиент править не придётся.
-       */
+      /* названия нет: столбца title у заключения нет, и сервер поле отбросил бы молча */
       body: JSON.stringify({
         text,
         baseVersion: base?.version ?? 0,
         baseRevision: base?.revision,
-        ...(title !== undefined ? { title } : {}),
       }),
     }),
   /** Подписывается конкретная версия и конкретная редакция её текста — та, что была на экране */

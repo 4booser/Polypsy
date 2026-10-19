@@ -12122,7 +12122,6 @@ export const UI = {
   "cnx.fmtList": { uk: "Список", ru: "Список", en: "List" },
   "cnx.savedAt": { uk: "збережено о {t}", ru: "сохранено в {t}", en: "saved at {t}" },
   "cnx.unsaved": { uk: "є незбережені зміни", ru: "есть несохранённые изменения", en: "unsaved changes" },
-  "cnx.name": { uk: "Назва заключення", ru: "Название заключения", en: "Conclusion title" },
   "cnx.verdict": { uk: "Висновок", ru: "Вывод", en: "Conclusion" },
   "cnx.chars": { uk: "знаків у висновку: {n}", ru: "знаков в выводе: {n}", en: "characters: {n}" },
   "cnx.noSignRight": {

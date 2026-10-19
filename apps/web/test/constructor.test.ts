@@ -3,6 +3,7 @@ import { numberingProblems, parseBulk } from "../src/pages/constructor/BulkPaste
 import {
   addRowItem,
   applyAnswers,
+  applyJsonDraft,
   createTarget,
   deriveAnswers,
   deriveMode,
@@ -275,6 +276,24 @@ describe("конструктор по макету", () => {
     expect(renamed.questions[0]!.options.map((o) => o.uid)).toEqual(flagged.questions[0]!.options.map((o) => o.uid));
     // набор, собранный из пунктов, позначку пункта не берёт — иначе разнёс бы её во все
     expect(deriveAnswers(renamed.questions).some((a) => a.riskFlag)).toBe(false);
+  });
+
+  test("свой текст после 409 ложится на перечитанную версию, а не на ту, что в тексте", () => {
+    /*
+     * Отказ 409 → «Показати мої правки» (текст черновика, в нём старая
+     * базовая версия) → «Перечитати методику» (экран на новой версии) →
+     * «Застосувати». Текст возвращал старую базу, и следующее сохранение
+     * снова получало 409 — по кругу. Мутация: брать базу из текста —
+     * проверка базы падает.
+     */
+    const mine = { ...base(), title: { uk: "Мої правки" }, baseVersionId: "v-old" };
+    const reread = { ...base(), title: { uk: "Чужі правки" }, baseVersionId: "v-new" };
+    const applied = applyJsonDraft(reread, JSON.parse(JSON.stringify(mine)) as Draft);
+    expect(applied.title.uk, "текст не применился").toBe("Мої правки");
+    expect(applied.baseVersionId).toBe("v-new");
+    expect(toPayload(applied).baseVersionId, "на сервер уходит старая база").toBe("v-new");
+    // новая, ещё не сохранённая методика: базы нет ни в экране, ни после текста
+    expect(applyJsonDraft({ baseVersionId: undefined }, mine).baseVersionId).toBeNull();
   });
 
   test("набор без кодов: удалённый ответ не переносит позначку «критичний» на соседа", () => {

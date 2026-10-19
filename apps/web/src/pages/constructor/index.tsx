@@ -19,6 +19,7 @@ import { EditLangProvider } from "./fields";
 import { CnIc } from "./icons";
 import {
   EMPTY,
+  applyJsonDraft,
   createTarget,
   defaultAnswers,
   draftKey,
@@ -449,7 +450,8 @@ function Editor({ id }: { id?: string }) {
     try {
       const parsed = JSON.parse(json) as Draft;
       if (!parsed.title) throw new Error(ut("co.noTitleField"));
-      setDraft(normalizeDraft({ ...EMPTY, ...parsed }));
+      /* текст — поверх версии, что сейчас в экране (после 409 — перечитанной), а не той, что в тексте */
+      setDraft((d) => applyJsonDraft(d, parsed));
       toast(ut("ce.jsonApplied"), "ok");
     } catch (e) {
       setError(e instanceof Error ? `${ut("co.jsonParseError")}: ${e.message}` : ut("co.jsonParseError"));

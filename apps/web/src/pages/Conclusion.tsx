@@ -55,17 +55,10 @@ export default function ConclusionPage() {
   const conclusion = useResource(() => api.conclusion(responseId), [responseId], { manual: true, keep: false });
 
   /*
-   * Название набирается на экране. Столбца title у заключения на сервере
-   * пока нет: сохранение его передаёт, сегодняшний сервер отбрасывает, и
-   * экран держит набранное у себя, не затирая пустотой из ответа. Набранное к
-   * прежнему прохождению к новому не переходит.
+   * Поля «Назва заключення» с кадра нет: столбца title у заключения на
+   * сервере нет, и набранное название молча не сохранялось бы. Поле, которое
+   * не сохраняется, хуже его отсутствия; вернётся вместе со столбцом.
    */
-  const [title, setTitle] = useState("");
-  useEffect(() => setTitle(""), [responseId]);
-  useEffect(() => {
-    const t = conclusion.data?.current?.title;
-    if (typeof t === "string") setTitle(t);
-  }, [conclusion.data]);
 
   /* в поле — черновик, если он есть; после подписи поле пустеет под новую версию */
   const [text, setText] = useState("");
@@ -133,8 +126,6 @@ export default function ConclusionPage() {
             error={conclusion.error}
             onState={conclusion.patch}
             onReload={conclusion.reload}
-            title={title}
-            setTitle={setTitle}
             text={text}
             setText={setText}
             areaRef={areaRef}
