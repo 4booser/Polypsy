@@ -622,9 +622,14 @@ const SCREENS: Array<{
     open: async (page) => {
       const { surveyId, responseId } = await recordedScoredResponse(page);
       await page.goto(`/surveys/${surveyId}/responses/${responseId}`);
-      // «Результаты» и кнопка стоят в самом низу свитка — если они есть, есть и всё выше
-      await page.getByRole("heading", { name: "Результаты" }).waitFor();
+      /*
+       * Панель «Результат» с лестницей и кнопка в панели заключения — то,
+       * ради чего экран снимается. Заключение и контекст попытки едут своими
+       * запросами: ждём и их, пока не останется скелетов.
+       */
+      await page.getByRole("main").getByRole("heading", { level: 2, name: /^Результат$/ }).waitFor();
       await page.getByRole("link", { name: "Создать заключение" }).waitFor();
+      await expect.poll(async () => visibleSkeletons(page).count(), { timeout: 10_000 }).toBe(0);
     },
     // ради лестницы результатов и кнопки внизу экран и нарисован
     fit: true,
@@ -634,7 +639,8 @@ const SCREENS: Array<{
     open: async (page) => {
       const { responseId } = await recordedScoredResponse(page);
       await page.goto(`/responses/${responseId}/conclusion`);
-      await page.getByRole("heading", { name: "Выводы заключения" }).waitFor();
+      await page.getByRole("heading", { level: 2, name: /^(Заключение|Заключення)$/ }).waitFor();
+      await page.getByRole("heading", { level: 2, name: /^(Результаты для заключения|Результати для заключення)$/ }).waitFor();
       /*
        * Модели и само заключение приезжают своими запросами и до того
        * стоят строкой «Загрузка…». Ждём, пока её не останется: снимок с ней
@@ -720,11 +726,12 @@ const SCREENS: Array<{
       await page.goto("/analytics/new");
       /*
        * Форма рисуется, когда приехал список методик (селект параметра);
-       * до того экран — «Загрузка». Кнопка сохранения стоит последней в
+       * до того экран — «Загрузка». Панель «Действия» стоит последней в
        * форме: есть она — есть и всё выше.
        */
       await page.getByText("Название аналитической модели").waitFor();
-      await page.getByRole("button", { name: "Сохранить" }).waitFor();
+      await page.getByRole("heading", { level: 2, name: /^(Действия|Дії)$/ }).waitFor();
+      await page.getByRole("button", { name: /^(Создать модель|Створити модель)$/ }).waitFor();
       await expect.poll(async () => visibleSkeletons(page).count(), { timeout: 10_000 }).toBe(0);
     },
     // название, структура, карточка действий — до кнопки внизу
@@ -790,15 +797,15 @@ const SCREENS: Array<{
       const first = await recordedPatientId(page);
       await page.goto(`/patients/${first}`);
       /*
-       * Ждём заголовок раздела «Тесты» — второй уровень, а не первый:
-       * первым стоит слово «Пациент», и оно есть в разметке ещё до того,
-       * как приехала карточка. Разделы рисуются по одному ответу
-       * (/api/patients/:id/card), так что появился первый — есть и все.
+       * Ждём панель «Методики» — второй уровень, а не первый: первым стоит
+       * имя пациента, и место под него есть ещё до того, как приехала
+       * карточка. Панели рисуются по одному ответу (/api/patients/:id/card),
+       * а динамика в «Методиках» догружается — её ждут скелеты ниже.
        */
-      await page.getByRole("heading", { level: 2, name: /^(Тесты|Тести)$/ }).waitFor();
+      await page.getByRole("main").getByRole("heading", { level: 2, name: /^Методики$/ }).waitFor();
       await expect.poll(async () => visibleSkeletons(page).count(), { timeout: 10_000 }).toBe(0);
     },
-    // личные данные, «Тесты», «Группы» и «Заключения» — кадры f19_1 и f19_2 подряд
+    // панели карточки — «Методики», курс, визит, заключения, назначенное — свитком целиком
     fit: true,
   },
   {
@@ -837,11 +844,11 @@ const SCREENS: Array<{
       const id = await recordedSentMailing(page);
       await page.goto(`/mailings/${id}`);
       /*
-       * Ждём рамку «Ответ» с вариантами — то, чем отправленная рассылка
-       * отличается от формы: пока карточка едет, на экране строка загрузки,
-       * и заголовка у экрана нет вовсе (titleHidden).
+       * Ждём панель «Ответы» с полосами вариантов — то, чем отправленная
+       * рассылка отличается от формы: пока карточка едет, на экране строка
+       * загрузки, и заголовка у экрана нет вовсе (titleHidden).
        */
-      await page.getByRole("group", { name: /^(Ответ|Відповідь)$/ }).waitFor();
+      await page.getByRole("main").getByRole("heading", { level: 2, name: /^(Ответы|Відповіді)$/ }).waitFor();
       await expect.poll(async () => visibleSkeletons(page).count(), { timeout: 10_000 }).toBe(0);
     },
     fit: true,
