@@ -67,4 +67,12 @@ describe("«Додати до групи» выборке", () => {
       expect(src).toContain("await api.addPatientGroupMembers(");
     }
   });
+
+  /* волна 27: «Додати до групи» реестра пациентов ходил запросом на человека */
+  test("«Додати до групи» реестра пациентов — тоже списком", () => {
+    const src = readFileSync(resolve(import.meta.dir, "../src/pages/patients/actions.tsx"), "utf8");
+    expect(src, "выборка добавляется по одному").not.toMatch(/for \(const \w+ of \w+\) await api\.addPatientGroupMember\(/);
+    expect(src).not.toContain("api.addPatientGroupMember(");
+    expect(src).toContain("await api.addPatientGroupMembers(");
+  });
 });
