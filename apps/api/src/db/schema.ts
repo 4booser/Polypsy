@@ -1196,6 +1196,8 @@ export const responses = pgTable(
     surveySubmittedIdx: index("responses_survey_submitted_idx").on(t.surveyId, t.submittedAt),
     clientRequestIdx: uniqueIndex("responses_client_request_idx").on(t.clientRequestId),
     surveyStatusIdx: index("responses_survey_status_idx").on(t.surveyId, t.status),
+    // прохождения человека по методике: «повтора так и не было» в очереди работы (миграция 0132)
+    userSurveyIdx: index("responses_user_survey_idx").on(t.userId, t.surveyId),
   }),
 );
 
