@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { cx } from "./cx";
 import { grouped } from "./decimal";
 import { Ic } from "./icons";
-import { useLang } from "../lang";
+import { useScreenLang } from "../lang";
 
 /*
  * Рамка экрана в наборе «Виразна» (page_header + .main набора).
@@ -86,7 +86,7 @@ export function Page({
   /** @deprecated */
   pagerGap?: 74 | 78 | 105;
 }) {
-  const { lang } = useLang();
+  const lang = useScreenLang();
   const metaBlock =
     meta === undefined || meta === null ? null : Array.isArray(meta) && meta.length === 2 ? (
       <>
@@ -288,7 +288,7 @@ export function Panel({
 
 /** Пилюля-счётчик (.cnt набора): `risk` — только риск для человека; число — разрядами языка экрана */
 export function Count({ n, tone = "plain", className }: { n: ReactNode; tone?: "plain" | "risk" | "violet" | "tint"; className?: string }) {
-  const { lang } = useLang();
+  const lang = useScreenLang();
   return (
     <span
       className={cx(

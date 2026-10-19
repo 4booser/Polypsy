@@ -6,7 +6,7 @@ import { Kbd } from "./kbd";
 import { useHotkeys } from "./keys";
 import { MenuButton, menuItemClass } from "./menu";
 import { Input } from "./primitives";
-import { useLang } from "../lang";
+import { useLang, useScreenLang } from "../lang";
 
 /*
  * Полоса фильтров над списком (.fbar набора): поиск с «/», сохранённые
@@ -196,7 +196,7 @@ export function ViewPill({
   icon?: ReactNode;
   title?: string;
 }) {
-  const { lang } = useLang();
+  const lang = useScreenLang();
   return (
     <button
       type="button"

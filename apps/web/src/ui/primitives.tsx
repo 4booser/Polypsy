@@ -12,7 +12,7 @@ import { createContext, forwardRef, useContext, useEffect, useId, useImperativeH
 import { cx } from "./cx";
 import { grouped } from "./decimal";
 import { Ic } from "./icons";
-import { useLang } from "../lang";
+import { useLang, useScreenLang } from "../lang";
 
 /*
  * Примитивы консоли в наборе «Виразна».
@@ -1011,7 +1011,7 @@ const tabClass = (isActive: boolean) =>
 
 /** Счётчик вкладки: разрядами языка экрана — «8 123», а не «8123» */
 function TabCount({ n }: { n?: number | null }) {
-  const { lang } = useLang();
+  const lang = useScreenLang();
   if (n === undefined || n === null) return null;
   return (
     <span className="inline-grid h-5 min-w-5 place-items-center rounded-[10px] bg-tab-count px-1.5 text-[11.5px] font-bold text-text-2">

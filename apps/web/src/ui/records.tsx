@@ -6,7 +6,7 @@ import { Ic } from "./icons";
 import { IconTile } from "./layout";
 import { Popover } from "./Popover";
 import { buttonClass } from "./primitives";
-import { useLang } from "../lang";
+import { useLang, useScreenLang } from "../lang";
 
 /*
  * Запись о человеке в наборе «Виразна»: строка открытого (alert strip),
@@ -269,7 +269,7 @@ export function ListGroup({
   mark?: GroupMark;
   note?: ReactNode;
 }) {
-  const { lang } = useLang();
+  const lang = useScreenLang();
   return (
     <div className="mt-1.5 flex h-9 w-full items-center gap-2 pl-5 pr-4 text-small font-extrabold text-text">
       <span aria-hidden className={cx("inline-block size-2.5 shrink-0 rounded-[3px]", markTone[mark])} />

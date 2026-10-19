@@ -439,6 +439,20 @@ describe("счёт — разрядами языка экрана, а не «812
     expect(text).not.toMatch(/\b(8123|1204|12045)\b/);
   });
 
+  test("счётчик не требует провайдера языка: вне него — язык модуля, а не исключение", () => {
+    const html = renderToStaticMarkup(
+      <MemoryRouter>
+        <Tabs items={[{ label: "Усі", count: 8123, active: true, onSelect: () => {} }]} />
+        <Tabs items={[{ label: "Архів", to: "/archive", count: 8123 }]} />
+        <Count n={8123} />
+        <Page title="Пацієнти" count={8123}>
+          {null}
+        </Page>
+      </MemoryRouter>,
+    );
+    expect(textOf(html).split(grouped(8123)).length - 1).toBe(4);
+  });
+
   test("пейджер, полоса фильтров и полоса массовых действий", () => {
     const html = draw(
       <>
