@@ -7,7 +7,7 @@ import { useLang } from "../../lang";
 import { useResource, useResourceMap } from "../../useResource";
 import { Drawer, DrawerPane, Loading, useAction, useUrlState } from "../../ui";
 import { Here } from "../../components/Here";
-import { usePersonCases, useRiskReview } from "../../components/RiskReview";
+import { usePersonCases, useRiskReview, useSafetyPlans } from "../../components/RiskReview";
 import { AssignSurveyDialog } from "../patientGroups/dialogs";
 import { Banner, CARD_TABS, type CardTab } from "./Banner";
 import {
@@ -140,7 +140,8 @@ function CardRecord({
     { enabled: !!thread },
   );
   const notes = useResource(() => api.notes(id).catch(() => null), [id], { keep: false });
-  const plans = useResource(() => api.safetyPlans(id).catch(() => null), [id], { keep: false });
+  /* тот же запрос, что у ящика разбора (общее имя): план читается раз на карточку */
+  const plans = useSafetyPlans(id);
 
   const latestIds = useMemo(
     () => (dynamics.data?.surveys ?? []).map(latestResponseOf).filter((x): x is string => !!x),
@@ -195,10 +196,15 @@ function CardRecord({
     noShow: openNoShow(visits, now),
     assignments: openAssignments(tl ?? []),
     cases: cases.data ?? null,
+    casesError: cases.data ? null : cases.error,
+    reloadCases: cases.reload,
     thread,
     messages: messages.data ?? null,
     notes: notes.data ?? null,
     plan: plans.data?.versions.find((p) => p.active) ?? null,
+    planKnown: !!plans.data,
+    planError: plans.data ? null : plans.error,
+    reloadPlan: plans.reload,
     details,
     rows,
     nextIsMine: !!next && !!me && next.specialist.trim() === me,
@@ -212,10 +218,16 @@ function CardRecord({
   };
 
   const firstDraft = card.conclusions.find((c) => c.status === "draft");
+  const reviewing = drawer.open && drawer.mode === "signal";
+  /*
+   * Разбор грузит своё (основание, историю пункта, план безпеки) только
+   * открытым: открытие карточки — не чтение ответов о риске, и в журнал
+   * «alert.signals» уходит, когда основание показали. Случаи человека —
+   * общий с шапкой запрос: решение перечитывает их, и шапка видит то же.
+   */
   const review = useRiskReview({
     userId: id,
-    enabled: true,
-    onChanged: reload,
+    enabled: reviewing,
     after:
       firstDraft && can("conclusions.write") ? (
         <ButtonLike onClick={() => open("concl", { responseId: firstDraft.responseId })}>{ut("card.toConclusion")}</ButtonLike>
@@ -226,10 +238,11 @@ function CardRecord({
   const notePane = useNotePane(v, drawer.open && drawer.mode === "note");
   const bookPane = useBookPane(v, drawer.open && drawer.mode === "book");
 
-  /* ── клавиши: R — разбор, M — письмо, N — нотатка ── */
+  /* ── клавиши: R — разбор, M — письмо, N — нотатка; 1–3 — исход в открытом разборе ── */
   useCodeKeys({
     KeyR: () => {
-      if (can("alerts.review") && cases.data?.length) open("signal");
+      /* и при отказе: ящик скажет «не вдалося перевірити» и даст повторить */
+      if (can("alerts.review") && (cases.data?.length || cases.error)) open("signal");
     },
     KeyM: () => {
       if (can("messages.write")) open("thread");
@@ -237,6 +250,14 @@ function CardRecord({
     KeyN: () => {
       if (can("notes.write")) open("note");
     },
+    /* цифры — только при открытом разборе: подсказки 1–3 стоят на исходах, и без ящика клавиши свободны */
+    ...(reviewing
+      ? {
+          Digit1: () => review.pick("confirmed"),
+          Digit2: () => review.pick("needs_followup"),
+          Digit3: () => review.pick("not_confirmed"),
+        }
+      : {}),
   });
 
   /* ── закрепление ── */

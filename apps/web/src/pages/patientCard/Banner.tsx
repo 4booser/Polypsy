@@ -1,6 +1,5 @@
 import { forwardRef, type ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { useAuth } from "../../auth";
 import { dateTime, day, timeOfDay } from "../../format";
 import { useLang } from "../../lang";
 import { AlertChip, AlertStrip, Avatar, Ic, Kbd, Popover, RiskChip, RiskTimer, Tooltip } from "../../ui";
@@ -240,9 +239,13 @@ function WhoPeek({ v }: { v: CardView }) {
 
 /* ─────────── строка открытого ─────────── */
 
-function Strip({ v, drafts }: { v: CardView; drafts: { thread: boolean; concl: boolean; note: boolean; signal: boolean } }) {
+/**
+ * Строка открытого. Права — из CardView, а не из контекста входа: строка
+ * проверяется разметкой без входа (test/riskReview.test.tsx) — что она
+ * говорит, когда случаи и план не пришли.
+ */
+export function Strip({ v, drafts }: { v: CardView; drafts: { thread: boolean; concl: boolean; note: boolean; signal: boolean } }) {
   const { ut } = useLang();
-  const { can } = useAuth();
   const items: ReactNode[] = [];
   const cases = v.cases ?? [];
   const first = cases[0];
@@ -285,7 +288,7 @@ function Strip({ v, drafts }: { v: CardView; drafts: { thread: boolean; concl: b
           </div>
         }
         action={
-          can("alerts.review") ? (
+          v.can("alerts.review") ? (
             <Tooltip label={ut("card.reviewTip")} kbd="R">
               <Button
                 variant="risk"
@@ -300,6 +303,21 @@ function Strip({ v, drafts }: { v: CardView; drafts: { thread: boolean; concl: b
             </Tooltip>
           ) : undefined
         }
+      />,
+    );
+  } else if (v.casesError) {
+    /*
+     * Случаи не пришли — открытый риск неизвестен. Пилюлей с повтором, а не
+     * «Нічого відкритого»: прежде отказ сервера читался как «сигналов нет».
+     */
+    items.push(
+      <AlertChip
+        key="risk-failed"
+        kind="warn"
+        icon={<Ic.alert />}
+        label={ut("rr.casesFailed")}
+        detail={ut("common.retry")}
+        onClick={v.reloadCases}
       />,
     );
   }
@@ -348,7 +366,7 @@ function Strip({ v, drafts }: { v: CardView; drafts: { thread: boolean; concl: b
         popNote={`${dm(ns.at)}, ${timeOfDay(ns.at)}`}
         pop={<p className="m-0">{ut("card.noShowWith").replace("{n}", ns.specialist)}</p>}
         popActions={
-          can("appointments.manage") ? (
+          v.can("appointments.manage") ? (
             <Button size="xs" onClick={() => v.open("book")}>
               {ut("card.bookAgain")}
             </Button>
@@ -414,7 +432,8 @@ function Strip({ v, drafts }: { v: CardView; drafts: { thread: boolean; concl: b
         pop={<p className="m-0">{ut("card.planBy").replace("{n}", p.authorName)}</p>}
       />,
     );
-  } else if (first) {
+  } else if (first && v.planKnown) {
+    /* «плану немає» — только по ответу сервера: пока план не пришёл или не пришёл вовсе, это не правда */
     items.push(
       <AlertChip
         key="noplan"
@@ -427,9 +446,10 @@ function Strip({ v, drafts }: { v: CardView; drafts: { thread: boolean; concl: b
     );
   }
 
+  /* «Нічого відкритого» — когда случаи известны; пока они в пути, строка молчит */
   return (
     <AlertStrip className={cx("mt-3 min-h-10")}>
-      {items.length ? items : <span className="text-small text-muted">{ut("card.nothingOpen")}</span>}
+      {items.length ? items : v.cases !== null ? <span className="text-small text-muted">{ut("card.nothingOpen")}</span> : null}
     </AlertStrip>
   );
 }

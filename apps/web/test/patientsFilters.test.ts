@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import type { RespondentDynamics } from "@quizzy/shared";
 import { api, tokenStore } from "../src/api";
+import { instrumentsOf } from "../src/pages/patients/instruments";
 import {
   ageOf,
   groupTab,
@@ -12,8 +14,13 @@ import {
   registerQuery,
   searchOf,
   SEARCH_MAX,
+  shownLimit,
+  shownNumber,
   shownSeries,
+  shownSeriesText,
+  shownStep,
   shownValue,
+  signedShown,
   sortOf,
   viewOf,
   whenShort,
@@ -94,11 +101,12 @@ describe("адрес → запрос: до сервера", () => {
 
   test("поиск, подання, порядок и страница — в запросе; пустое не уходит вовсе", async () => {
     // так зовёт загрузку реестр (Patients.tsx, PatientList)
-    const base = { group: null, view: null, mine: false, sort: "risk" as const, page: 1, per: 20 };
+    const base = { group: null, view: null, mine: false, me: "me-1", sort: "risk" as const, page: 1, per: 20 };
     await api.patientRegister(registerQuery({ ...base, q: " Коваль " }));
     await api.patientRegister(registerQuery({ ...base, q: "   ", group: "g1", view: "stale", page: 3, per: 50 }));
     await api.patientRegister(registerQuery({ ...base, q: "", view: "risk", mine: true }));
-    const [first, second, third] = seen.map((s) => new URL(s, "http://x"));
+    await api.patientRegister(registerQuery({ ...base, q: "", mine: true }));
+    const [first, second, third, fourth] = seen.map((s) => new URL(s, "http://x"));
     expect(first!.pathname).toBe("/api/patients");
     expect(first!.searchParams.get("q")).toBe("Коваль");
     expect(first!.searchParams.get("limit")).toBe("20");
@@ -110,8 +118,17 @@ describe("адрес → запрос: до сервера", () => {
     expect(second!.searchParams.get("patientGroup")).toBe("g1");
     expect(second!.searchParams.get("view")).toBe("stale");
     expect(second!.searchParams.get("offset")).toBe("100");
-    // «закріплені за мною» — то же подання mine, и оно главнее выбранной пилюли
-    expect(third!.searchParams.get("view")).toBe("mine");
+    /*
+     * «Закріплені за мною» — сужение поверх подання, а не подання вместо
+     * пилюли: на экране горят обе, и в списке — мои С РИСКОМ. Прежде уходило
+     * `view=mine`, выбранная «з ризиком» молча терялась, и в списке стояли
+     * все мои.
+     */
+    expect(third!.searchParams.get("view")).toBe("risk");
+    expect(third!.searchParams.get("lead")).toBe("me-1");
+    expect(fourth!.searchParams.has("view")).toBe(false);
+    expect(fourth!.searchParams.get("lead")).toBe("me-1");
+    expect(first!.searchParams.has("lead")).toBe(false);
   });
 });
 
@@ -309,9 +326,32 @@ describe("что на месте таблицы реестра", () => {
 describe("числа и слова строки реестра", () => {
   test("доля — процентом, остальное — числом без лишних знаков", () => {
     expect(shownValue(0.5, "ratio")).toEqual({ text: "50", unit: "%" });
-    expect(shownValue(64.24, "tscore")).toEqual({ text: "64.2", unit: "" });
+    // вне браузера язык консоли — русский: дробь пишется запятой
+    expect(shownValue(64.24, "tscore")).toEqual({ text: "64,2", unit: "" });
     expect(shownValue(14, "raw")).toEqual({ text: "14", unit: "" });
     expect(shownSeries([0.3, 0.5, 0.55], "ratio")).toEqual([30, 50, 55]);
+  });
+
+  test("дробь — запятой украинского и русского, точкой английского; минус — знаком минуса", () => {
+    expect(shownNumber(62.5, "uk-UA")).toBe("62,5");
+    expect(shownNumber(62.5, "ru-RU")).toBe("62,5");
+    expect(shownNumber(62.5, "en-GB")).toBe("62.5");
+    expect(shownNumber(1234.56, "uk-UA")).toBe("1234,6");
+    expect(signedShown(-16.8, "uk-UA")).toBe("−16,8");
+    expect(signedShown(2.5, "uk-UA")).toBe("+2,5");
+    expect(signedShown(0, "uk-UA")).toBe("0");
+    /* ряд «було → стало» строки реестра и карточки фахівця — той же дробью */
+    expect(shownSeriesText([64.24, 61.78], "tscore", "uk-UA")).toEqual(["64,2", "61,8"]);
+    expect(shownSeriesText([64.24, 61.78], "tscore", "en-GB")).toEqual(["64.2", "61.8"]);
+    expect(shownSeriesText([0.3, 0.555], "ratio", "uk-UA")).toEqual(["30", "56"]);
+  });
+
+  test("сдвиг и порог — в единицах экрана: у доли процентные пункты", () => {
+    expect(shownStep(0.49 - 0.29, "ratio")).toBe(20);
+    expect(shownStep(-6.66, "tscore")).toBe(-6.7);
+    expect(shownLimit(0.104, "ratio")).toBe(11);
+    expect(shownLimit(3.6, "raw")).toBe(4);
+    expect(shownLimit(3.64, "tscore")).toBe(3.6);
   });
 
   test("форма слова по числу — правилами языка, три формы в одной строке словаря", () => {
@@ -341,5 +381,63 @@ describe("числа и слова строки реестра", () => {
     expect(ageOf(1800, now)).toBeNull();
     expect(initialsName("Шевченко Марія Василівна")).toBe("Шевченко М. В.");
     expect(initialsName("Шевченко")).toBe("Шевченко");
+  });
+});
+
+describe("методика человека: главная шкала", () => {
+  /** Міні-мульт в миниатюре: шкала достоверности F тяжелее содержательной Hs */
+  function profile(withKind: boolean): RespondentDynamics {
+    const point = (severity: "mild" | "moderate", v: number) => ({
+      responseId: "r1",
+      submittedAt: "2026-10-09T10:00:00.000Z",
+      rawScore: v,
+      maxScore: 100,
+      percent: v,
+      bandLabel: null,
+      severity,
+      percentile: null,
+      reliable: true,
+      normalization: "tscore" as const,
+    });
+    const scale = (scaleId: string, code: string, title: string, kind: "clinical" | "validity", p: ReturnType<typeof point>) => ({
+      scaleId,
+      code,
+      title,
+      ...(withKind ? { kind } : {}),
+      points: [p],
+      delta: null,
+      direction: null,
+    });
+    return {
+      userId: "u1",
+      fullName: "Мельник Андрій",
+      email: "a@example.org",
+      sex: "male",
+      age: 38,
+      surveys: [
+        {
+          surveyId: "mm",
+          title: "Опитувальник Міні-мульт",
+          responseCount: 1,
+          firstAt: "2026-10-09T10:00:00.000Z",
+          lastAt: "2026-10-09T10:00:00.000Z",
+          scales: [
+            scale("f", "F", "Шкала достовірності", "validity", point("moderate", 67)),
+            scale("hs", "Hs", "Іпохондрія", "clinical", point("mild", 61)),
+          ],
+        },
+      ],
+    } as unknown as RespondentDynamics;
+  }
+
+  test("шкала достоверности главной не встаёт, пока есть содержательная", () => {
+    const [mm] = instrumentsOf(profile(true));
+    expect(mm!.main.scale.code).toBe("Hs");
+    // остальные шкалы методики — на месте, главная первой
+    expect(mm!.scales.map((s) => s.scale.code)).toEqual(["Hs", "F"]);
+  });
+
+  test("без вида шкалы (старый сервер) — как прежде: тяжелее последний замер", () => {
+    expect(instrumentsOf(profile(false))[0]!.main.scale.code).toBe("F");
   });
 });

@@ -290,6 +290,23 @@ describe("случаи человека в панели разбора", () => {
     expect(either(html, "cases.showPersonCases")).toBe(true);
     for (const re of LEGACY) expect(html).not.toMatch(re);
   });
+
+  test("случаи человека не пришли — отказ с «Повторити», а не скелет навсегда", () => {
+    const html = draw(
+      <PersonCases
+        total={2}
+        cases={null}
+        error="Сервер тимчасово недоступний"
+        onRetry={() => {}}
+        pickedId="case-x"
+        onPick={() => {}}
+        onShowPerson={() => {}}
+      />,
+    );
+    expect(html).toContain("Сервер тимчасово недоступний");
+    expect(either(html, "common.retry")).toBe(true);
+    expect(html).not.toContain('aria-busy="true"');
+  });
 });
 
 describe("сводка: случаи на разбор", () => {

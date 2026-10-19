@@ -24,6 +24,7 @@ import {
 } from "./listModel";
 import { dm } from "./format";
 import { useCodeKeys } from "./keys";
+import { useSettledSelection } from "../../components/settledSelection";
 
 /*
  * Колонка «Мої пацієнти» (.plist макета): список слева от карточки, каждая
@@ -115,13 +116,15 @@ export function PatientList({
   }, []);
 
   const patients = useResource(() => allPatients(), []);
+  /*
+   * Отказ по случаям — ошибкой, а не пустым списком: иначе сбой сервера
+   * выглядел бы как «Ризик 0» и пустая группа «Дія зараз». Строка над
+   * списком говорит «не вдалося перевірити» и даёт повторить.
+   */
   const cases = useResource(
     () =>
       can("alerts.review")
-        ? api
-            .alertCases({ status: "open", limit: "100" })
-            .then((p) => p.items)
-            .catch(() => [] as AlertCase[])
+        ? api.alertCases({ status: "open", limit: "100" }).then((p) => p.items)
         : Promise.resolve([] as AlertCase[]),
     [],
   );
@@ -168,18 +171,34 @@ export function PatientList({
   const ids = flatIds(groups, stableOpen || view !== "mine");
   const shown = groups.reduce((n, g) => n + g.items.length, 0);
 
+  /*
+   * J/K ведут курсор по колонке, а карточка открывается, когда он
+   * остановился (SETTLE_MS): открытие карточки — чтение, которое сервер
+   * пишет в журнал (patient.card_read, хронология, динамика), и человек,
+   * прошедший по десяти строкам к одиннадцатой, не открывал десяти карточек.
+   * Нажатие на строку мышью (ссылка) открывает сразу.
+   */
+  const sel = useSettledSelection<string | null>(null);
+  const cursor = sel.current ?? currentId;
+  const { select } = sel;
+  useEffect(() => {
+    if (sel.settled && sel.settled !== currentId) navigate(`/patients/${sel.settled}`);
+  }, [sel.settled, currentId, navigate]);
+  /* открыта другая карточка (ссылкой или остановившимся курсором) — курсор встаёт на неё, ожидание снимается */
+  useEffect(() => select(null, "click"), [currentId, select]);
+
   /* выбранная строка — в поле зрения: J/K и переход по ссылке не теряют её за краем */
   const scroller = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    const el = scroller.current?.querySelector<HTMLElement>(`[data-person="${currentId}"]`);
+    const el = scroller.current?.querySelector<HTMLElement>(`[data-person="${cursor}"]`);
     el?.scrollIntoView({ block: "nearest" });
-  }, [currentId, view]);
+  }, [cursor, view]);
 
   const step = (d: number) => {
     if (!ids.length) return;
-    const at = ids.indexOf(currentId);
+    const at = ids.indexOf(cursor);
     const next = ids[Math.min(Math.max((at < 0 ? (d > 0 ? -1 : 0) : at) + d, 0), ids.length - 1)];
-    if (next && next !== currentId) navigate(`/patients/${next}`);
+    if (next && next !== cursor) sel.select(next, "key");
   };
   useCodeKeys({ KeyJ: () => step(1), KeyK: () => step(-1), BracketLeft: onCollapse });
 
@@ -235,7 +254,8 @@ export function PatientList({
           items={VIEWS.map((v) => ({
             key: v.key,
             label: ut(v.label),
-            count: counts[v.key],
+            /* случаи не пришли — у «Ризик» числа нет, а не «0»: ноль значил бы «сигналов нет» */
+            count: v.key === "risk" && cases.error && !cases.data ? null : counts[v.key],
             risk: v.key === "risk" && counts.risk > 0,
           }))}
         />
@@ -251,6 +271,14 @@ export function PatientList({
         </div>
       </div>
       <div ref={scroller} className="kit-scroll min-h-0 w-[340px] flex-1 overflow-y-auto border-t border-divider pb-2.5" data-rows="">
+        {cases.error && !cases.data ? (
+          <div role="alert" className="flex items-center gap-2.5 border-b border-divider px-4 py-2">
+            <p className="m-0 min-w-0 flex-1 text-small font-bold text-risk-ink">{ut("rr.casesFailed")}</p>
+            <Button variant="quiet" size="xs" onClick={cases.reload}>
+              {ut("common.retry")}
+            </Button>
+          </div>
+        ) : null}
         {loading ? (
           <div className="p-4">
             <Loading rows={6} bare />
@@ -281,7 +309,7 @@ export function PatientList({
                   <Ic.chevronRight size={14} className={cx("text-muted transition-transform", stableOpen && "rotate-90")} />
                 </button>
                 <div id="card-list-stable" hidden={!stableOpen}>
-                  {stableOpen ? g.items.map((p) => <Row key={p.id} p={p} selected={p.id === currentId} now={now} />) : null}
+                  {stableOpen ? g.items.map((p) => <Row key={p.id} p={p} selected={p.id === cursor} now={now} />) : null}
                 </div>
               </div>
             ) : (
@@ -295,7 +323,7 @@ export function PatientList({
                   />
                 ) : null}
                 {g.items.map((p) => (
-                  <Row key={p.id} p={p} selected={p.id === currentId} now={now} />
+                  <Row key={p.id} p={p} selected={p.id === cursor} now={now} />
                 ))}
               </section>
             ),

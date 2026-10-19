@@ -38,6 +38,16 @@ describe("карточка пациента: вкладка «Заміри»", (
     );
   });
 
+  test("доля — процентом, дробь — запятой языка: «57%», а не «0.571»; «18,8%», а не «18.8%»", () => {
+    const ratio = [
+      { code: "Sr", title: "Схильність", value: 0.571, normalization: "ratio" as const, percent: 57.1, bandLabel: "середній", severity: "moderate" as const },
+      { code: "Pa", title: "Параноя", value: 64.24, normalization: "tscore" as const, percent: 18.8, bandLabel: null, severity: null },
+    ];
+    // вне браузера язык консоли — русский: дробь пишется запятой
+    expect(resultText(ratio, { none: "—" })).toBe("Схильність: 57% — середній; Параноя: 64,2");
+    expect(statsText({ submittedAt: null, reliable: true, scales: ratio }, { unreliable: "—" }, iso)).toBe("Sr 57,1%, Pa 18,8%");
+  });
+
   test("имя заключения — методика; черновик помечен словом", () => {
     expect(conclusionName({ surveyTitle: "PHQ-9", status: "signed" }, { draft: "чернетка" })).toBe("PHQ-9");
     expect(conclusionName({ surveyTitle: "PHQ-9", status: "draft" }, { draft: "чернетка" })).toBe("PHQ-9 (чернетка)");

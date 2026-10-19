@@ -1742,6 +1742,8 @@ export const api = {
     q?: string;
     patientGroup?: string;
     view?: string;
+    /** Только те, кого ведёт этот сотрудник: «Закріплені за мною» — поверх подання */
+    lead?: string;
     sort?: string;
     limit?: number;
     offset?: number;

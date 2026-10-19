@@ -142,10 +142,33 @@ describe("методики: строки таблицы", () => {
   test("сдвиг от старта, порог MDC95 из основы RCI и «краще ↓» по полосам", () => {
     const r = rows[0]!;
     expect(r.delta).toBe(-5);
-    // MDC95 = 1,96·√2·SEM, SEM = SD·√(1−α) = 5·√0,14
-    expect(r.threshold).toBeCloseTo(1.96 * Math.SQRT2 * 5 * Math.sqrt(1 - 0.86), 1);
+    /*
+     * MDC95 = 1,96·√2·SEM, SEM = SD·√(1−α) = 5·√0,14 ≈ 5,19. У сырого
+     * балла (целые суммы) — вверх до целого, как в «Огляді справи» и «Хто
+     * це»: сдвиг на 6 надёжен, на 5 — нет, и «поріг 6» говорит ровно это.
+     */
+    expect(r.threshold).toBe(Math.ceil(1.96 * Math.SQRT2 * 5 * Math.sqrt(1 - 0.86)));
     expect(r.better).toBe("down");
     expect(r.rungs.map((x) => x.label)).toEqual(["мінімальна", "легка", "помірна", "тяжка"]);
+  });
+
+  test("доля — сдвиг и порог в процентных пунктах, а не долей рядом с «49%»", () => {
+    /*
+     * У шкалы в долях (СР-45) точка — 0,29 и 0,49. Прежде сдвиг вычитался
+     * как есть и округлялся до десятых: «+0,2 в. п.» рядом с «49%».
+     */
+    const ratio = dynamics([
+      [at(-10), 0.29],
+      [at(0), 0.49],
+    ]);
+    for (const sc of ratio.surveys[0]!.scales) {
+      for (const p of sc.points) p.normalization = "ratio";
+      sc.reliableChange = { rci: 1.7, significant: false, direction: "up", basis: { sd: 0.15, alpha: 0.86, sampleN: 120 } };
+    }
+    const r = instrumentRows(ratio, {})[0]!;
+    expect(r.delta).toBe(20);
+    // MDC95 = 1,96·√2·0,15·√0,14 ≈ 0,16 (общее правило, до сотых) → 16 в. п.
+    expect(r.threshold).toBe(16);
   });
 
   test("один замер — сдвига нет; несравнимые концы — сдвига нет, причина названа", () => {

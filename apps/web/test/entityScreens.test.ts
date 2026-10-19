@@ -44,7 +44,8 @@ describe("keep: false — после смены id загрузка, а не д�
 
   const screens: [string, string][] = [
     ["pages/patientCard/PatientCard.tsx", "useResource(() => api.patientCard(id), [id], { keep: false })"],
-    ["components/PatientContext.tsx", "useResource(() => api.dynamics(person.userId), [person.userId], { keep: false })"],
+    /* «Хто це» реестра 2.0 — на месте прежней панели components/PatientContext */
+    ["pages/patients/QuickView.tsx", "useResource(() => api.dynamics(id), [id], { enabled, keep: false })"],
     ["pages/Alerts.tsx", "useResource(() => api.caseSummary(userId), [userId], { keep: false, key: \"alerts:summary\" })"],
     ["pages/CaseCard.tsx", "{ enabled: !!userId, keep: false }"],
     /* хронология делит кэш с шапкой справы (общий ключ), keep: false — на месте */

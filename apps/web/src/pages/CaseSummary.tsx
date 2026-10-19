@@ -14,7 +14,7 @@ import { ShellIcon } from "../shell/icons";
 import { useMedia } from "../shell/Rail";
 import { useCaseCard } from "./CaseCard";
 import { changeOf, instrumentsOf, measureDates, shownDelta, shownThreshold, valueOn, type Instrument } from "./patients/instruments";
-import { ddmm, fmtNum, kitSeverity, shownValue } from "./patients/model";
+import { ddmm, fmtNum, kitSeverity, shownNumber, shownValue, signedShown } from "./patients/model";
 /*
  * Подписи направлений берутся из модели экрана направлений: держать вторую
  * копию тех же словарей — верный способ однажды показать «принято» в одном
@@ -248,13 +248,13 @@ function ResultsTable({ instruments, dates, index }: { instruments: Instrument[]
                                 {vals.join(" → ")}
                                 {d !== null ? (
                                   <>
-                                    , {d > 0 ? `+${d}` : d < 0 ? `−${Math.abs(d)}` : "0"}
+                                    , {signedShown(d)}
                                     {word ? (
                                       <>
                                         : <span className={good ? "font-bold text-good" : undefined}>{word}</span>
                                       </>
                                     ) : null}
-                                    {t !== null ? <span className="text-muted"> ({ut("kit.threshold").replace("{n}", String(t))})</span> : null}
+                                    {t !== null ? <span className="text-muted"> ({ut("kit.threshold").replace("{n}", shownNumber(t))})</span> : null}
                                   </>
                                 ) : null}
                               </dd>

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { inArray } from "drizzle-orm";
 import { instrumentCode } from "@quizzy/shared";
-import { adminA, adminB, api, db, groupA, makeUser, submitSurvey, surveyInA, type Person } from "./fixtures";
+import { adminA, adminB, api, db, groupA, groupB, makeUser, submitSurvey, surveyInA, type Person } from "./fixtures";
 import {
   alertCases,
   appointments,
@@ -130,6 +131,37 @@ describe("GET /api/patients — реестр 2.0", () => {
     expect(res.body.counts.stale).toBe(1);
   });
 
+  test("«за мною» поверх подання: lead пересекается с поданням, счётчики — среди моих", async () => {
+    /*
+     * Чип «Закріплені за мною» реестра уходит как lead (ведущий — я), а
+     * выбранная пилюля «Потребує уваги» — как view: обе действуют вместе.
+     */
+    const tag = crypto.randomUUID().slice(0, 8);
+    const mineRisky = await patientOfA(`${tag}-mine-risk`, { leadSpecialistId: adminA.id });
+    await patientOfA(`${tag}-mine-quiet`, { leadSpecialistId: adminA.id });
+    const otherRisky = await patientOfA(`${tag}-other-risk`);
+    const caseIds = [crypto.randomUUID(), crypto.randomUUID()];
+    await db.insert(alertCases).values([
+      { id: caseIds[0]!, userId: mineRisky.id, surveyId: surveyInA, severity: "severe" },
+      { id: caseIds[1]!, userId: otherRisky.id, surveyId: surveyInA, severity: "moderate" },
+    ]);
+    try {
+      const both = await api(`/api/patients?q=${tag}&view=risk&lead=${adminA.id}`, adminA.token);
+      expect(both.status).toBe(200);
+      expect(ids(both.body)).toEqual([mineRisky.id]);
+      expect(both.body.counts).toMatchObject({ all: 2, mine: 2, risk: 1 });
+
+      const risk = await api(`/api/patients?q=${tag}&view=risk`, adminA.token);
+      expect(ids(risk.body).sort()).toEqual([mineRisky.id, otherRisky.id].sort());
+    } finally {
+      /* открытые случаи — в разобранные: очередь adminA общая для всей сюиты */
+      await db
+        .update(alertCases)
+        .set({ acknowledgedAt: new Date().toISOString(), acknowledgedBy: adminA.id, outcome: "not_confirmed" })
+        .where(inArray(alertCases.id, caseIds));
+    }
+  });
+
   test("чужая зона: случай и строка по чужому человеку не видны", async () => {
     const tag = crypto.randomUUID().slice(0, 8);
     const risky = await patientOfA(`${tag}-zone`);
@@ -147,6 +179,9 @@ describe("GET /api/dynamics/respondents/:id — полосы шкалы", () => 
     const res = await api(`/api/dynamics/respondents/${p.id}`, adminA.token);
     expect(res.status).toBe(200);
     const sr = res.body.surveys[0].scales.find((s: { code: string }) => s.code === "Sr");
+    /* вид шкалы: экран не ставит шкалу достоверности главной шкалой методики */
+    expect(sr.kind).toBe("clinical");
+    expect(res.body.surveys[0].scales.find((s: { code: string }) => s.code === "L")?.kind).toBe("validity");
     expect(sr.bands.length).toBeGreaterThan(2);
     expect(sr.bands[0]).toMatchObject({ min: 0, severity: "none" });
     expect(typeof sr.bands[0].label).toBe("string");
@@ -170,6 +205,36 @@ describe("GET /api/timeline/:id — назначение набора", () => {
     expect(res.status).toBe(200);
     const row = res.body.items.find((i: { kind: string }) => i.kind === "assignment");
     expect(row.title).toBe("Перед сесією 6");
+  });
+
+  test("набор чужого отделения в хронологии не виден — ни названием, ни строкой; без группы — виден", async () => {
+    /*
+     * У таблицы наборов нет политики строк: левое соединение отдавало
+     * название любого набора, и человек, общий для двух отделений, в
+     * хронологии отделения A показывал «Набір чужого відділення». Назначение
+     * набора чужой группы уходит целиком — как прохождения и тревоги по
+     * чужим методикам; набор без группы виден всем сотрудникам, как в списке
+     * наборов.
+     */
+    const tag = crypto.randomUUID().slice(0, 8);
+    const p = await patientOfA(`${tag}-foreign-battery`);
+    const foreign = crypto.randomUUID();
+    const shared = crypto.randomUUID();
+    await db.insert(batteries).values([
+      { id: foreign, groupId: groupB, title: `Набір чужого відділення ${tag}`, createdBy: adminB.id },
+      { id: shared, groupId: null, title: `Набір без групи ${tag}`, createdBy: adminB.id },
+    ] as never);
+    await db.insert(batteryAssignments).values([
+      { id: crypto.randomUUID(), batteryId: foreign, userId: p.id, assignedBy: adminB.id },
+      { id: crypto.randomUUID(), batteryId: shared, userId: p.id, assignedBy: adminB.id },
+    ] as never);
+
+    const res = await api(`/api/timeline/${p.id}`, adminA.token);
+    expect(res.status).toBe(200);
+    const rows = res.body.items.filter((i: { kind: string }) => i.kind === "assignment") as { title: string }[];
+    expect(rows.map((r) => r.title)).toEqual([`Набір без групи ${tag}`]);
+    expect(JSON.stringify(res.body)).not.toContain(foreign);
+    expect(JSON.stringify(res.body)).not.toContain("чужого відділення");
   });
 });
 

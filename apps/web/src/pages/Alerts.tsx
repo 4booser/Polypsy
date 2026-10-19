@@ -33,6 +33,7 @@ import { SavedViews } from "../ui/SavedViews";
 import { listBody } from "../ui/paging";
 import { patchParams } from "../ui/viewParams";
 import { CaseBasisPanel, OUTCOME_KEY, RiskReviewDrawer } from "../components/RiskReview";
+import { useSettledSelection } from "../components/settledSelection";
 import { useCodeKeys } from "./patientCard/keys";
 import { Pi } from "./patientCard/icons";
 import { dm } from "./patientCard/format";
@@ -147,8 +148,18 @@ export default function Alerts() {
     patch({ ...statusPatch(status), assigned: v === "mine" ? "me" : filters.assigned === "me" ? "" : filters.assigned });
   };
 
-  /* какой случай «под рукой» — по идентификатору, а не по номеру строки */
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  /*
+   * Какой случай «под рукой» — по идентификатору, а не по номеру строки.
+   *
+   * Подсвеченная строка и случай, чья запись читается, — разное. Запись
+   * (сводка человека, основание сигнала с ответами, история пункта, случаи
+   * человека) сервер пишет в журнал, и шаг клавишами J/K её не грузит, пока
+   * курсор не простоит SETTLE_MS (components/settledSelection): иначе каждая
+   * строка, мимо которой прошли, ложилась бы в журнал прочитанной. Нажатие
+   * мышью — выбор сразу.
+   */
+  const sel = useSettledSelection<string | null>(null);
+  const selectedId = sel.current;
   const [pickedId, setPickedId] = useState<string | null>(null);
   const [reviewOpen, setReviewOpen] = useState(false);
   const narrowCount = [filters.severity, filters.unit, filters.patientGroup, filters.from || filters.to, filters.patient].filter(Boolean)
@@ -169,18 +180,24 @@ export default function Alerts() {
   const open = rows.filter((c) => !c.acknowledgedAt);
   const current = rows.find((c) => c.id === selectedId) ?? open[0];
   const selected = current ?? rows[0] ?? null;
+  /* запись — у строки, на которой остановились; пока курсор идёт по списку, её нет */
+  const settled = sel.isSettled ? selected : null;
 
   /* случаи человека строки — отдельным запросом, только когда их больше одного */
-  const many = (selected?.group?.cases ?? 1) > 1;
+  const many = (settled?.group?.cases ?? 1) > 1;
   const personCases = useResource(
     () =>
-      many && selected
-        ? api.alertCases({ status: "open", group: "case", patient: selected.userId, limit: "20" }).then((p) => p.items)
+      many && settled
+        ? api.alertCases({ status: "open", group: "case", patient: settled.userId, limit: "20" }).then((p) => p.items)
         : Promise.resolve<AlertCase[]>([]),
-    [many, selected?.userId, selected?.lastAlertAt, selected?.group?.cases],
+    [many, settled?.userId, settled?.lastAlertAt, settled?.group?.cases],
   );
-  useEffect(() => setPickedId(null), [selected?.userId]);
-  const shown = personCases.data?.find((c) => c.id === pickedId) ?? selected;
+  useEffect(() => setPickedId(null), [settled?.userId]);
+  const shown = settled ? (personCases.data?.find((c) => c.id === pickedId && c.userId === settled.userId) ?? settled) : null;
+  /* открытый ящик разбора, пока курсор идёт по очереди, держит прежний случай — не схлопывается на каждом шаге */
+  const lastShown = useRef<AlertCase | null>(null);
+  if (shown) lastShown.current = shown;
+  const reviewCase = shown ?? (reviewOpen ? lastShown.current : null);
 
   const refresh = useCallback(() => {
     page.reload();
@@ -201,7 +218,7 @@ export default function Alerts() {
     if (!list.length) return;
     const at = list.findIndex((c) => c.id === current?.id);
     const next = list[Math.min(Math.max((at < 0 ? 0 : at) + delta, 0), list.length - 1)];
-    if (next) setSelectedId(next.id);
+    if (next) sel.select(next.id, "key");
   };
 
   /*
@@ -215,7 +232,7 @@ export default function Alerts() {
       } finally {
         refresh();
       }
-      setSelectedId(null);
+      sel.select(null, "click");
       setPickedId(null);
     }, ut("cases.resolved"));
 
@@ -233,7 +250,9 @@ export default function Alerts() {
     KeyJ: () => move(1),
     KeyK: () => move(-1),
     KeyR: () => {
-      if (shown) setReviewOpen(true);
+      /* R — явное действие: курсор, ещё не остановившийся, выбирает строку сразу */
+      if (!shown && selected) sel.select(selected.id, "click");
+      if (shown || selected) setReviewOpen(true);
     },
     KeyT: () => {
       if (canAct(shown) && !shown.assignedTo && !reviewOpen) void take(shown, false);
@@ -459,7 +478,7 @@ export default function Alerts() {
                   />
                 </div>
                 {s.items.map((c) => (
-                  <QueueRow key={c.id} c={c} active={c.id === selected?.id} me={user?.id} now={now} onPick={() => setSelectedId(c.id)} />
+                  <QueueRow key={c.id} c={c} active={c.id === selected?.id} me={user?.id} now={now} onPick={() => sel.select(c.id, "click")} />
                 ))}
               </section>
             ))
@@ -507,8 +526,10 @@ export default function Alerts() {
           <CaseRecord
             key={shown.id}
             c={shown}
-            row={selected!}
+            row={settled!}
             personCases={many ? (personCases.data ?? null) : null}
+            personCasesError={many && !personCases.data ? personCases.error : null}
+            onRetryPersonCases={personCases.reload}
             onPickCase={setPickedId}
             onShowPerson={() => patch({ patient: shown.userId })}
             onTake={(release) => take(shown, release)}
@@ -518,6 +539,11 @@ export default function Alerts() {
             facets={filters.status === "open" ? facets : undefined}
             now={now}
           />
+        ) : selected ? (
+          /* курсор ещё идёт по очереди: запись встанет, когда он остановится */
+          <div className="p-5" data-settling="">
+            <Loading rows={6} />
+          </div>
         ) : (
           /* «ничего не выбрано» — не то же, что «ничего нет» */
           <div className="p-5">
@@ -531,16 +557,16 @@ export default function Alerts() {
       </section>
 
       <RiskReviewDrawer
-        open={reviewOpen && !!shown}
+        open={reviewOpen && !!reviewCase}
         onClose={() => setReviewOpen(false)}
         onReturn={() => setReviewOpen(true)}
-        userId={shown?.userId ?? null}
-        caseId={shown?.id ?? null}
-        known={shown}
+        userId={reviewCase?.userId ?? null}
+        caseId={reviewCase?.id ?? null}
+        known={reviewCase}
         onChanged={refresh}
         onResolved={() => {
           setReviewOpen(false);
-          setSelectedId(null);
+          sel.select(null, "click");
           setPickedId(null);
         }}
       />
@@ -666,6 +692,8 @@ function CaseRecord({
   c,
   row,
   personCases,
+  personCasesError,
+  onRetryPersonCases,
   onPickCase,
   onShowPerson,
   onTake,
@@ -680,6 +708,9 @@ function CaseRecord({
   row: AlertCase;
   /** Открытые случаи человека, если их больше одного; null — один или ещё грузятся */
   personCases: AlertCase[] | null;
+  /** Случаи человека не пришли — отказ с «Повторити», а не вечный скелет */
+  personCasesError: string | null;
+  onRetryPersonCases: () => void;
   onPickCase: (id: string) => void;
   onShowPerson: () => void;
   onTake: (release: boolean) => Promise<unknown>;
@@ -699,7 +730,15 @@ function CaseRecord({
           <div className="flex min-w-0 flex-col gap-4">
             <ReviewPanel c={c} me={me} now={now} onTake={onTake} onReview={onReview}>
               {many ? (
-                <PersonCases total={row.group!.cases} cases={personCases} pickedId={c.id} onPick={onPickCase} onShowPerson={onShowPerson} />
+                <PersonCases
+                  total={row.group!.cases}
+                  cases={personCases}
+                  error={personCasesError}
+                  onRetry={onRetryPersonCases}
+                  pickedId={c.id}
+                  onPick={onPickCase}
+                  onShowPerson={onShowPerson}
+                />
               ) : null}
             </ReviewPanel>
             <CaseBasisPanel userId={c.userId} c={c} />
@@ -977,12 +1016,17 @@ function Fact({
 export function PersonCases({
   total,
   cases,
+  error = null,
+  onRetry,
   pickedId,
   onPick,
   onShowPerson,
 }: {
   total: number;
   cases: AlertCase[] | null;
+  /** Случаи не пришли — отказ с «Повторити», а не скелет навсегда */
+  error?: string | null;
+  onRetry?: () => void;
   pickedId: string;
   onPick: (id: string) => void;
   onShowPerson: () => void;
@@ -1004,7 +1048,7 @@ export function PersonCases({
       className="border-t border-divider pt-[18px]"
     >
       {!cases ? (
-        <Loading rows={2} bare />
+        <Loading rows={2} bare error={error} onRetry={onRetry} />
       ) : (
         <ul className="m-0 flex list-none flex-col gap-1.5 p-0">
           {cases.map((pc) => {

@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { and, desc, eq, inArray, ne } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, ne, or } from "drizzle-orm";
 import { t } from "@quizzy/shared";
 import type { Severity } from "@quizzy/shared";
 import { db } from "../db";
@@ -19,7 +19,7 @@ import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
 import { decryptField } from "../lib/crypto";
 import { langOf, notFound } from "../lib/http";
-import { patientsInScope, surveyScopeFilterFor } from "../lib/scope";
+import { accessibleGroupIds, patientsInScope, surveyScopeFilterFor } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
 export const timelineRoutes = new Hono<AppEnv>();
@@ -225,14 +225,29 @@ timelineRoutes.get("/:userId", async (c) => {
   /*
    * Назначение — с названием набора и сроком: идентификатор набора в строке
    * хронологии ничего не говорит, а «до 15.10» карточка пациента ставит в
-   * строку открытого. Набор — левым соединением: недоступный по зоне набор
-   * не выбрасывает строку назначения, она остаётся с идентификатором.
+   * строку открытого.
+   *
+   * Только наборы зоны читателя — по тому же правилу, что список наборов
+   * (routes/batteries.ts): своя группа или набор без группы; свой набор —
+   * тоже. Назначение набора чужого отделения уходит из хронологии целиком,
+   * как прохождения и тревоги по чужим методикам выше: у таблицы наборов нет
+   * политики строк, и левое соединение отдавало название любого набора —
+   * «Набір чужого відділення» в карточке человека, общего с этим отделением.
    */
+  const groupIds = await accessibleGroupIds(staff);
+  const batteryInZone =
+    groupIds === null
+      ? undefined
+      : or(
+          isNull(batteries.groupId),
+          groupIds.length ? inArray(batteries.groupId, groupIds) : undefined,
+          eq(batteries.createdBy, staff.id),
+        );
   const assigned = await db
     .select({ a: batteryAssignments, title: batteries.title })
     .from(batteryAssignments)
-    .leftJoin(batteries, eq(batteries.id, batteryAssignments.batteryId))
-    .where(eq(batteryAssignments.userId, userId))
+    .innerJoin(batteries, eq(batteries.id, batteryAssignments.batteryId))
+    .where(and(eq(batteryAssignments.userId, userId), batteryInZone))
     .orderBy(desc(batteryAssignments.assignedAt))
     .limit(100);
 
@@ -241,7 +256,7 @@ timelineRoutes.get("/:userId", async (c) => {
       id: `assignment:${a.id}`,
       kind: "assignment",
       at: a.assignedAt,
-      title: title ?? a.batteryId,
+      title,
       detail: a.completedAt ? "completed" : a.cancelledAt ? "cancelled" : "open",
       href: "/batteries",
       dueAt: a.dueAt ?? null,

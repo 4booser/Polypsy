@@ -188,7 +188,6 @@ export const UI = {
    * сущностям: «Сегодня» — то, с чего начинается смена, «Разбор» — то, что
    * делают, когда приёмы закончились.
    */
-  "pt.byMethod": { uk: "За методиками", ru: "По методикам", en: "By instrument" },
   "pt.openCard": { uk: "Відкрити картку", ru: "Открыть карту", en: "Open card" },
   "pt.whoIsThis": { uk: "Хто це", ru: "Кто это", en: "Who is this" },
   "pt.pickRow": { uk: "Виберіть рядок, щоб побачити коротку довідку", ru: "Выберите строку, чтобы увидеть краткую справку", en: "Select a row to see a brief summary" },
@@ -1276,9 +1275,9 @@ export const UI = {
   "ep.outTransferred": { uk: "переданий іншому фахівцю", ru: "передан другому специалисту", en: "transferred to another specialist" },
   "ep.openSince": { uk: "триває з", ru: "идёт с", en: "ongoing since" },
   "ep.closedAt": { uk: "закрито", ru: "закрыто", en: "closed" },
-  "ep.visits": { uk: "прийомів", ru: "приёмов", en: "appointments" },
-  "ep.conclusions": { uk: "висновків", ru: "заключений", en: "conclusions" },
-  "ep.referrals": { uk: "направлень", ru: "направлений", en: "referrals" },
+  "ep.visits": { uk: "прийом|прийоми|прийомів", ru: "приём|приёма|приёмов", en: "appointment|appointments|appointments" },
+  "ep.conclusions": { uk: "висновок|висновки|висновків", ru: "заключение|заключения|заключений", en: "conclusion|conclusions|conclusions" },
+  "ep.referrals": { uk: "направлення|направлення|направлень", ru: "направление|направления|направлений", en: "referral|referrals|referrals" },
   "ep.none": { uk: "Звернень не було", ru: "Обращений не было", en: "No episodes" },
   "ep.extract": { uk: "Витяг", ru: "Выписка", en: "Extract" },
   "ep.attachVisit": { uk: "Віднести цей прийом до звернення", ru: "Отнести этот приём к обращению", en: "Link this appointment to the episode" },
@@ -1720,8 +1719,6 @@ export const UI = {
 
   /* ─────────── консоль: пациенты ─────────── */
   "patients.title": { uk: "Пацієнти", ru: "Пациенты", en: "Patients" },
-  "patients.measurements": { uk: "Замірів", ru: "Замеров", en: "Measurements" },
-  "patients.last": { uk: "Останнє", ru: "Последнее", en: "Latest" },
 
   /* ── audit:patients ── */
   /*
@@ -5502,10 +5499,6 @@ export const UI = {
   "tl.empty": { uk: "Подій немає", ru: "Событий нет", en: "No events" },
   "tl.emptyHint": { uk: "У зоні вашої відповідальності за цією людиною ще нічого не відбувалося", ru: "В зоне вашей ответственности по этому человеку ещё ничего не происходило", en: "Nothing has happened with this person within your area of responsibility yet" },
   "tl.response": { uk: "проходження", ru: "прохождение", en: "completion" },
-  "tl.alert": { uk: "тривога", ru: "тревога", en: "alert" },
-  "tl.referral": { uk: "направлення", ru: "направление", en: "referral" },
-  "tl.conclusion": { uk: "висновок", ru: "заключение", en: "conclusion" },
-  "tl.assignment": { uk: "призначення", ru: "назначение", en: "assignment" },
   "mp.theme": { uk: "Тема", ru: "Тема", en: "Theme" },
   "mp.themeSystem": { uk: "Системна", ru: "Системная", en: "System" },
   "mp.themeDark": { uk: "Темна", ru: "Тёмная", en: "Dark" },
@@ -9418,7 +9411,7 @@ export const UI = {
   "qv.next": { uk: "Наступний рядок", ru: "Следующая строка", en: "Next row" },
   "qv.draft": { uk: "Чернетка заключення", ru: "Черновик заключения", en: "Draft conclusion" },
   "qv.nothingOpen": { uk: "Відкритого по пацієнту немає.", ru: "Открытого по пациенту нет.", en: "Nothing open for this patient." },
-  "qv.measuresSub": { uk: "{n} замірів, останній {d}", ru: "{n} замеров, последний {d}", en: "{n} measures, latest {d}" },
+  "qv.measuresSub": { uk: "замірів: {n}, останній {d}", ru: "замеров: {n}, последний {d}", en: "measures: {n}, latest {d}" },
   "qv.noThreshold": { uk: "поріг невідомий", ru: "порог неизвестен", en: "threshold unknown" },
   "qv.now": { uk: "Зараз", ru: "Сейчас", en: "Now" },
   "qv.brief": { uk: "Коротко", ru: "Коротко", en: "In brief" },
@@ -9571,7 +9564,6 @@ export const UI = {
     en: "The course appears after the first measure — assign an instrument from the patient card.",
   },
   /* події хронології (pages/patients/events.tsx) */
-  "evt.visit": { uk: "прийом", ru: "приём", en: "appointment" },
   "evt.responses": { uk: "Проходження", ru: "Прохождения", en: "Responses" },
   "evt.alerts": { uk: "Тривоги", ru: "Тревоги", en: "Alerts" },
   "evt.referrals": { uk: "Направлення", ru: "Направления", en: "Referrals" },
@@ -16352,6 +16344,13 @@ export const UI = {
     uk: "{n} віджет|{n} віджети|{n} віджетів|{n} віджета",
     ru: "{n} виджет|{n} виджета|{n} виджетов|{n} виджета",
     en: "{n} widget|{n} widgets|{n} widgets|{n} widgets",
+  },
+
+  // ── v2-fix-clinical ──
+  "rr.casesFailed": {
+    uk: "Не вдалося перевірити сигнали ризику",
+    ru: "Не удалось проверить сигналы риска",
+    en: "Could not check risk signals",
   },
 } as const satisfies Record<string, UiEntry>;
 

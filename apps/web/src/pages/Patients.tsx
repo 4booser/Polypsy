@@ -10,6 +10,7 @@ import {
   type UiKey,
 } from "@quizzy/shared";
 import { api, openInTab } from "../api";
+import { useAuth } from "../auth";
 import { CourseChart } from "../charts/course";
 import { courseEventsFromTimeline, courseFromDynamics } from "../charts/courseModel";
 import { TimeLines } from "../charts/clinical";
@@ -79,8 +80,10 @@ import {
   REGISTER_PER,
   registerPer,
   registerQuery,
+  shownSeriesText,
   shownSeries,
   shownValue,
+  signedShown,
   sortOf,
   viewOf,
   whenShort,
@@ -88,6 +91,7 @@ import {
 } from "./patients/model";
 import { useAssignPane, useGroupPane, useMessagePane, type PaneParts, type Who } from "./patients/actions";
 import { useQuickViewPane } from "./patients/QuickView";
+import type { Via } from "../components/settledSelection";
 
 /*
  * Реестр пациентов 2.0 — кадр patients-list набора «Виразна».
@@ -132,6 +136,7 @@ const CLOSED: DrawerState = { open: false, mode: "who", who: null, people: [] };
 
 export function PatientList() {
   const { ut, lang } = useLang();
+  const { user } = useAuth();
   const locale = LOCALE_OF[lang];
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
@@ -160,7 +165,7 @@ export function PatientList() {
     if (stale) update({ group: null });
   }, [stale, update]);
 
-  const query = registerQuery({ q: qSent, group: current?.id ?? null, view, mine, sort, page, per });
+  const query = registerQuery({ q: qSent, group: current?.id ?? null, view, mine, me: user?.id ?? null, sort, page, per });
   const list = useResource(() => api.patientRegister(query), [JSON.stringify(query)], { enabled: !pending });
   const rows = list.data?.items ?? [];
   const total = list.data?.total ?? 0;
@@ -177,12 +182,13 @@ export function PatientList() {
   }, [list.data, page, pages, update]);
 
   /*
-   * Числа шапки и вкладки «Усі» — без поиска: «248 людей» не должно
-   * превращаться в «3» на каждую букву. Запоминаются по вкладке из ответа без
-   * поиска; пока такого ответа не было, числа нет, а не ноль.
+   * Числа шапки и вкладки «Усі» — без поиска и без «за мною»: «248 людей» не
+   * должно превращаться в «3» на каждую букву или в число моих. Запоминаются
+   * по вкладке из ответа без сужения; пока такого ответа не было, числа нет,
+   * а не ноль.
    */
   const baseCounts = useRef(new Map<string, PatientListCounts>());
-  if (list.data?.counts && !query.q) baseCounts.current.set(current?.id ?? "", list.data.counts);
+  if (list.data?.counts && !query.q && !query.lead) baseCounts.current.set(current?.id ?? "", list.data.counts);
   const allCounts = baseCounts.current.get("") ?? null;
   const counts = list.data?.counts ?? null;
 
@@ -196,10 +202,21 @@ export function PatientList() {
   const focused = drawer.who ? (byId.get(drawer.who) ?? null) : null;
   const at = focused ? rows.indexOf(focused) : -1;
 
-  const openWho = (r: PatientListItem) => setDrawer({ open: true, mode: "who", who: r.id, people: [] });
+  /*
+   * Чем сменили человека «Хто це»: открытие строки — выбор сразу; шаг J/K и
+   * стрелками шапки — по списку, и его сводка, карточка и хронология (чтения
+   * в журнал) грузятся, когда курсор остановился (components/settledSelection).
+   */
+  const whoVia = useRef<Via>("click");
+  const openWho = (r: PatientListItem) => {
+    whoVia.current = "click";
+    setDrawer({ open: true, mode: "who", who: r.id, people: [] });
+  };
   const step = (d: 1 | -1) => {
     const next = rows[at + d];
-    if (next) setDrawer((s) => ({ ...s, who: next.id }));
+    if (!next) return;
+    whoVia.current = "key";
+    setDrawer((s) => ({ ...s, who: next.id }));
   };
   const whoOf = (r: PatientListItem): Who => ({ id: r.id, name: r.name });
 
@@ -212,6 +229,7 @@ export function PatientList() {
   const close = () => setDrawer((s) => ({ ...s, open: false }));
   const who = useQuickViewPane({
     person: focused,
+    via: whoVia.current,
     position: focused ? { at, of: rows.length, sort: ut(SORT_LABEL[sort]) } : null,
     onStep: step,
     onWrite: () => focused && setDrawer({ open: true, mode: "message", who: focused.id, people: [whoOf(focused)] }),
@@ -713,7 +731,7 @@ function useColumns({
               ) : (
                 <span className="text-caption text-text-2">
                   <b className="mr-1 text-[11px] font-bold text-muted">{shortCode(m.code)}</b>
-                  {shownSeries(m.values, m.normalization).join(" → ")}
+                  {shownSeriesText(m.values, m.normalization).join(" → ")}
                 </span>
               )}
               {narrow ? (
@@ -1124,7 +1142,7 @@ function ReliabilityRow({ i }: { i: Instrument }) {
       <span className={cx("whitespace-nowrap text-right text-small font-bold", good ? "text-good" : worse ? "text-warn" : "text-text")}>
         {delta !== null ? (
           <b className="mr-1.5 text-[14px] font-extrabold">
-            {signedNum(shownDelta(s, delta))}
+            {signedShown(shownDelta(s, delta))}
             {ratio ? ut("dyn.pp") : ""}
           </b>
         ) : null}
@@ -1150,11 +1168,6 @@ function MarkerGlyph({ shape, color }: { shape: string; color: string }) {
   if (shape === "diamond") return <path d="M6 1 11 6 6 11 1 6Z" fill={color} />;
   if (shape === "triangle") return <path d="M6 1.5 11 10.5H1Z" fill={color} />;
   return <circle cx="6" cy="6" r="4.5" fill={color} />;
-}
-
-/** «−14», «+16» — минус знаком минуса */
-function signedNum(v: number): string {
-  return v > 0 ? `+${v}` : v < 0 ? `−${Math.abs(v)}` : "0";
 }
 
 /**
@@ -1316,7 +1329,7 @@ function ScaleProfileTable({ i }: { i: Instrument }) {
                         <ChangeCell delta={shownDelta(s, delta)} threshold={shownThreshold(s)!} better={s.better} />
                       </span>
                     ) : delta !== null ? (
-                      <span className="tabular-nums">{signedNum(shownDelta(s, delta))}</span>
+                      <span className="tabular-nums">{signedShown(shownDelta(s, delta))}</span>
                     ) : (
                       <span className="text-muted">—</span>
                     )}
