@@ -855,6 +855,11 @@ export function Switch({
 /**
  * Карточка выбора (радио-карточка «Рішення»): жирный заголовок и приглушённое
  * пояснение; выбранная — тонированная с фиолетовым кольцом.
+ *
+ * `disabled` — вариант есть, но не для этого человека (профиль выгрузки
+ * «повний» без права): радио выключено по-настоящему — Tab его проходит
+ * мимо, диктор называет «недоступно», нажатие ничего не выбирает; почему —
+ * пишет `sub`.
  */
 export function ChoiceCard({
   name,
@@ -863,6 +868,7 @@ export function ChoiceCard({
   onChange,
   title,
   sub,
+  disabled,
 }: {
   name: string;
   value: string;
@@ -870,16 +876,31 @@ export function ChoiceCard({
   onChange: (value: string) => void;
   title: ReactNode;
   sub?: ReactNode;
+  disabled?: boolean;
 }) {
   return (
     <label
+      aria-disabled={disabled || undefined}
       className={cx(
-        "m-0 flex cursor-pointer items-start gap-3 rounded-[12px] px-3.5 py-2.5",
+        "m-0 flex items-start gap-3 rounded-[12px] px-3.5 py-2.5",
         "transition-[background-color,box-shadow] duration-[var(--dur-fast)] ease-[var(--ease)]",
-        checked ? "bg-violet-tint shadow-[inset_0_0_0_1.5px_var(--vring)]" : "bg-sunk hover:bg-sunk-2",
+        disabled
+          ? "cursor-not-allowed bg-sunk opacity-60"
+          : checked
+            ? "cursor-pointer bg-violet-tint shadow-[inset_0_0_0_1.5px_var(--vring)]"
+            : "cursor-pointer bg-sunk hover:bg-sunk-2",
       )}
     >
-      <Radio name={name} value={value} checked={checked} onChange={() => onChange(value)} className="mt-px" />
+      <Radio
+        name={name}
+        value={value}
+        checked={checked}
+        disabled={disabled}
+        onChange={() => {
+          if (!disabled) onChange(value);
+        }}
+        className="mt-px"
+      />
       <span className="min-w-0">
         <b className={cx("block text-[13px] font-extrabold leading-[18px]", checked ? "text-violet-ink" : "text-text")}>
           {title}

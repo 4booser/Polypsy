@@ -15,6 +15,7 @@ import { IconTile, type PanelTone } from "./layout";
 import { useToast } from "./toast";
 import { Tooltip } from "./Popover";
 import { useLang } from "../lang";
+import type { UiKey } from "@quizzy/shared";
 
 /*
  * Ящик действий (.drawer набора): плавающая панель справа, 440 (широкая —
@@ -65,6 +66,15 @@ export interface DrawerPaneProps {
 }
 
 /**
+ * Подсказка крестика. «Закрити, чернетка лишиться» — только у вида, где
+ * черновик бывает (есть ввод или имя черновика); у ящика просмотра — просто
+ * «Закрити»: обещание о черновике там, где его нет, сбивает.
+ */
+export function closeTipKey(pane: Pick<DrawerPaneProps, "dirty" | "draftName">): UiKey {
+  return pane.dirty || pane.draftName ? "kit.closeKeep" : "common.close";
+}
+
+/**
  * Один вид ящика: шапка, прокручиваемое тело, липкий подвал.
  * Внутри Drawer; отдельно не рисуется.
  */
@@ -79,6 +89,7 @@ export function DrawerPane({
   noteIcon,
   saved,
   dirty,
+  draftName,
   children,
   hidden,
   onRequestClose,
@@ -95,7 +106,7 @@ export function DrawerPane({
             <h2 className="m-0 truncate text-[18px] font-extrabold leading-6 tracking-[-0.02em] text-text">{title}</h2>
             {sub ? <span className="block truncate text-small text-muted">{sub}</span> : null}
           </div>
-          <Tooltip label={ut("kit.closeKeep")} kbd="Esc" side="bottom" align="end">
+          <Tooltip label={ut(closeTipKey({ dirty, draftName }))} kbd="Esc" side="bottom" align="end">
             <button
               type="button"
               data-drawer-close

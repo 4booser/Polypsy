@@ -17,7 +17,9 @@ import {
   Popover,
   ToastProvider,
   activePane,
+  closeTipKey,
   draftToastText,
+  focusFromKeyboard,
   placePopover,
   reliabilityOf,
   selectAllState,
@@ -29,7 +31,7 @@ import {
   type Column,
 } from "../src/ui";
 import { pageList, shownRange } from "../src/ui/pager";
-import { Field, Input } from "../src/ui/primitives";
+import { ChoiceCard, Field, Input } from "../src/ui/primitives";
 
 /**
  * Набор «Виразна»: то, что у ящика, поповера и таблицы проверяется без
@@ -113,6 +115,20 @@ describe("поповер: разметка", () => {
     );
     expect(html).not.toContain("tabindex");
   });
+
+  test("подсказка и поповер открываются на видимом фокусе (клавиатура), а не на программном", () => {
+    /*
+     * Ящик ставит фокус на крестик сам, и подсказка «Закрити…» висела над
+     * каждым ящиком, открытым мышью. Решает :focus-visible элемента.
+     */
+    const el = (visible: boolean) => ({ matches: (sel: string) => sel === ":focus-visible" && visible }) as unknown as EventTarget;
+    expect(focusFromKeyboard(el(true))).toBe(true);
+    expect(focusFromKeyboard(el(false))).toBe(false);
+    expect(focusFromKeyboard(null)).toBe(false);
+    // браузер без :focus-visible — прежнее правило: любой фокус
+    const old = { matches: () => { throw new SyntaxError("unknown pseudo-class"); } } as unknown as EventTarget;
+    expect(focusFromKeyboard(old)).toBe(true);
+  });
 });
 
 /* ─────────── ящик ─────────── */
@@ -172,6 +188,31 @@ describe("ящик: черновик живёт, пока ящик закрыт"
   test("сообщение с действием живёт дольше: «Повернутися» не исчезает из-под руки", () => {
     expect(toastLifetime("info", true)).toBeGreaterThan(toastLifetime("info", false));
     expect(toastLifetime("err", false)).toBeGreaterThan(toastLifetime("ok", false));
+  });
+
+  test("подсказка крестика обещает черновик только там, где он бывает", () => {
+    expect(closeTipKey({ dirty: true })).toBe("kit.closeKeep");
+    expect(closeTipKey({ draftName: "розбору сигналу № 214" })).toBe("kit.closeKeep");
+    expect(closeTipKey({})).toBe("common.close");
+    expect(closeTipKey({ dirty: false })).toBe("common.close");
+  });
+});
+
+describe("карточка выбора", () => {
+  test("недоступный вариант выключен по-настоящему: радио disabled, карточка — «недоступно», не выбирается", () => {
+    const html = draw(
+      <ChoiceCard name="profile" value="full" checked={false} onChange={() => {}} title="Повний" sub="потрібне право exports.full" disabled />,
+    );
+    expect(html).toMatch(/<input[^>]*type="radio"[^>]*disabled=""/);
+    expect(html).toContain('aria-disabled="true"');
+    expect(html).toContain("cursor-not-allowed");
+    expect(html).not.toContain("hover:bg-sunk-2");
+  });
+
+  test("доступный — как прежде", () => {
+    const html = draw(<ChoiceCard name="profile" value="short" checked onChange={() => {}} title="Короткий" />);
+    expect(html).not.toContain("disabled");
+    expect(html).toContain("bg-violet-tint");
   });
 });
 
