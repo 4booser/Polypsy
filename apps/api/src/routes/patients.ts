@@ -3,6 +3,7 @@ import { and, asc, desc, eq, inArray, or, sql, type SQL } from "drizzle-orm";
 import {
   instrumentCode,
   patientListQuery,
+  patientNamesQuery,
   polarityOfBands,
   t,
   type PatientCard,
@@ -453,6 +454,49 @@ async function measuresOf(
   }
   return out;
 }
+
+/**
+ * Имена людей зоны по идентификаторам — без карточки (волна 27).
+ *
+ * Поле «Пацієнт» в условиях выборки статистики (pages/statistics/parts.tsx)
+ * показывает имя человека из сохранённого фильтра — и ради одного имени
+ * читало карточку: «Тести», «Групи», «Заключення», телефон и строку
+ * patient.card_read на каждую выборку с таким фильтром при каждом
+ * открытии страницы. Журнал говорил «открывал карточку» о том, кто карточку
+ * не открывал.
+ *
+ * Здесь — только имя, и по тому же правилу, что у выбора пациента
+ * (GET /api/access/patients, PatientPicker): чтение имён людей пишется
+ * в журнал как access.patient_list. Зона — та же, что у карточки и у
+ * проверки фильтра выборки (patientsInScope, assertFilterRefs): человек вне
+ * зоны и не пациент в ответ не попадают вовсе — не «нет такого», а нет
+ * строки, как у списка.
+ */
+patientRoutes.get("/names", async (c) => {
+  const user = c.get("user");
+  const { ids } = parseQuery(c, patientNamesQuery);
+  const visible = await patientsInScope(user, ids);
+  const asked = visible === null ? ids : ids.filter((id) => visible.has(id));
+  const rows = asked.length
+    ? await db
+        .select({
+          id: users.id,
+          firstName: users.firstName,
+          lastName: users.lastName,
+          middleName: users.middleName,
+          anonymous: users.anonymous,
+          pseudonym: users.pseudonym,
+        })
+        .from(users)
+        .where(and(inArray(users.id, asked), eq(users.role, "user")))
+    : [];
+  const items = rows.map((r) => ({ id: r.id, fullName: fullNameOf(r) }));
+  await audit(c, {
+    action: "access.patient_list",
+    details: { returned: items.length, asked: ids.length, via: "names" },
+  });
+  return c.json({ items });
+});
 
 /**
  * Карточка пациента: персональные данные, «Тести», «Групи», «Заключення» и

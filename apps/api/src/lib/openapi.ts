@@ -312,6 +312,7 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
    */
   "GET /api/patients": { summary: "Пациенты зоны видимости: поиск, вкладка группы, подання `?view=risk|stale|unbooked|mine`, порядок `?sort=name|risk|last|next`, страницы {items,total,counts}; в строке — открытый случай, главная шкала последнего замера, ближайший приём, неявка, учёт, ведущий", access: "staff", permission: "patients.read" },
   "GET /api/patients/:id/card": { summary: "Карточка пациента: персональные данные, «Тести», «Групи», «Заключення», ведущий", access: "staff", permission: "patients.read" },
+  "GET /api/patients/names": { summary: "Имена людей зоны по `?ids=` (через запятую, до ста) — без карточки, для подписей полей; вне зоны и не пациенты — без строки; журнал — access.patient_list, как у выбора пациента", access: "staff", permission: "patients.read" },
 
   /* ── рассылки (кадры f09, f16, f22) ──
    *

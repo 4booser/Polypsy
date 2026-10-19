@@ -1471,6 +1471,24 @@ export const patientListQuery = z.object({
     .catch(undefined),
 });
 
+/**
+ * Имена людей по идентификаторам — `ids`, через запятую (волна 27).
+ *
+ * Поле «Пацієнт» в условиях выборки статистики показывает имя человека из
+ * сохранённого фильтра и ради одного имени читало его карточку — чтение
+ * персональных данных с телефоном и строкой patient.card_read на каждую
+ * выборку при каждом открытии страницы. Имя без карточки — GET
+ * /api/patients/names. Не больше ста: это подписи полей, а не список.
+ */
+export const PATIENT_NAMES_MAX = 100;
+export const patientNamesQuery = z.object({
+  ids: z
+    .string()
+    .max(PATIENT_NAMES_MAX * 65)
+    .transform((raw) => [...new Set(raw.split(",").map((s) => s.trim()).filter(Boolean))])
+    .pipe(z.array(z.string().max(64)).min(1).max(PATIENT_NAMES_MAX)),
+});
+
 export const mailingListQuery = z.object({
   /** Поиск по расшифрованным теме и тексту — в приложении, здесь только длина */
   q: z.string().max(120).optional().transform((v) => (v ?? "").trim().toLowerCase()),
