@@ -375,6 +375,61 @@ export async function getSurvey(
   return full ?? null;
 }
 
+/** Ключ пары «методика, версия» в ответе surveysAtVersions */
+export const versionKey = (surveyId: string, versionId: string | null) => `${surveyId}:${versionId ?? ""}`;
+
+/**
+ * getSurvey для набора пар «методика, версия» — тот же ответ на каждую пару,
+ * но строки методик одним запросом, а содержимое — одним заходом на версию
+ * (attachContent собирает его разом для всех методик захода и кладёт в кэш).
+ *
+ * Динамика человека спрашивает версии всех его методик: отпечатки шкал для
+ * выборки перцентиля и вопросы для альфы. По getSurvey на пару это была
+ * строка методики на каждую версию и, на холодном кэше, десяток запросов
+ * содержимого на каждую — сотня обращений к базе ради одной карточки.
+ *
+ * Заходов столько, сколько версий у самой «многоверсионной» методики: в
+ * одном заходе у методики одна версия — attachContent раскладывает
+ * содержимое по методике, а не по версии. Роль — вызывающего, как у getSurvey.
+ */
+export async function surveysAtVersions(
+  pairs: readonly { surveyId: string; versionId: string | null }[],
+  lang: Lang = "uk",
+): Promise<Map<string, SurveyFull | null>> {
+  const out = new Map<string, SurveyFull | null>();
+  const ids = [...new Set(pairs.map((p) => p.surveyId))];
+  if (!ids.length) return out;
+  const rows = await db.select().from(surveys).where(inArray(surveys.id, ids));
+  const rowById = new Map(rows.map((r) => [r.id, r]));
+
+  /* методики нет (или её не видно этой ролью) — null, как у getSurvey */
+  const pending = new Map<string, (string | null)[]>();
+  for (const { surveyId, versionId } of pairs) {
+    const key = versionKey(surveyId, versionId);
+    if (out.has(key)) continue;
+    out.set(key, null);
+    if (!rowById.has(surveyId)) continue;
+    pending.set(surveyId, [...(pending.get(surveyId) ?? []), versionId]);
+  }
+
+  for (let round = 0; ; round++) {
+    const batch = [...pending.entries()].filter(([, versions]) => round < versions.length);
+    if (!batch.length) break;
+    const override = new Map<string, string>();
+    for (const [surveyId, versions] of batch) {
+      const versionId = versions[round];
+      if (versionId) override.set(surveyId, versionId);
+    }
+    const full = await attachContent(
+      batch.map(([surveyId]) => rowById.get(surveyId)!),
+      override.size ? override : undefined,
+      lang,
+    );
+    batch.forEach(([surveyId, versions], i) => out.set(versionKey(surveyId, versions[round] ?? null), full[i] ?? null));
+  }
+  return out;
+}
+
 /** Методика в том виде, в каком её видел конкретный респондент */
 /**
  * Методика той версии, которую проходили, — на языке того, кто читает.

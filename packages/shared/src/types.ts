@@ -3130,6 +3130,19 @@ export interface ReferralPage extends Page<Referral> {
   counts?: Record<ReferralStatus, number>;
 }
 
+/**
+ * Реестр направлений числами — для бейджа навигации (GET /api/referrals/count).
+ *
+ * Та же зона, что у списка, без людей и без строки журнала. `total` — ровно
+ * `total` списка без `?all=1` (всё, кроме завершённых): его и показывал
+ * бейдж. `open` — виписані и прийняті, то, что ждёт действия (вид
+ * «Відкриті» реестра и вид «направление» очереди работы).
+ */
+export interface ReferralCount {
+  total: number;
+  open: number;
+}
+
 /** Сводка для консилиума (6.5): всё о пациенте на одной странице */
 export interface CaseSummary {
   userId: string;
@@ -3437,6 +3450,30 @@ export interface OpsOverview {
   accounts: { superadmin: number; admin: number; user: number } | null;
   traffic: { m5: OpsWindowStats; h1: OpsWindowStats; h24: OpsWindowStats };
   health: OpsHealthCheck[];
+  /** Только с `?window=` — всё, что «Огляд» опрашивает, одним ответом (OpsOverviewLive) */
+  live?: OpsOverviewLive;
+}
+
+/**
+ * «Огляд» одним запросом на такт (волна 27, perf-day).
+ *
+ * Экран опрашивал раз в двадцать секунд пять маршрутов — сводку, ряд окна,
+ * суточный ряд, ошибки и оповещения — и при окне «24 год» брал сутки дважды.
+ * Ряды и группы ошибок — память процесса, и отдаются здесь же, рядом со
+ * сводкой; оповещения (правила в базе, меняются редко) — своим маршрутом
+ * раз в минуту.
+ */
+export interface OpsOverviewLive {
+  /** Ряд выбранного окна — график «Навантаження» */
+  traffic: OpsTraffic;
+  /** Сутки для «Показників процесу»; null — окно и так сутки, ряд тот же (traffic) */
+  day: OpsTraffic | null;
+  /**
+   * Группы ошибок памяти процесса, впервые появившиеся за последний час, —
+   * пилюля «нова група» в «Потребує уваги»; без кадров стека: их читает
+   * вкладка «Помилки». Чтение — та же строка ops.errors.read со склейкой.
+   */
+  errors: OpsErrorGroup[];
 }
 
 export interface OpsTrafficBucket {
@@ -4745,6 +4782,15 @@ export interface AlertCasePage extends Page<AlertCase> {
   facets?: AlertCaseFacets;
 }
 
+/**
+ * Очередь случаев числом — для бейджа навигации и значка вкладки
+ * (GET /api/alert-cases/count): сколько людей с неразобранными случаями,
+ * ровно `total` открытой очереди по людям, без имён и без строки журнала.
+ */
+export interface AlertCaseCount {
+  total: number;
+}
+
 /** duplicate ставит не человек, а чистка черновиков-призраков (#197): случай закрыт как дубль сданной попытки */
 export type AlertOutcome = "confirmed" | "not_confirmed" | "needs_followup" | "duplicate";
 
@@ -4829,6 +4875,17 @@ export interface WorkItem {
   assignedTo: string | null;
   since: string;
   href: string;
+}
+
+/**
+ * Очередь работы числами — для бейджа навигации (GET /api/worklist/count):
+ * те же `total`, `byKind` и `mine`, что у списка, без строк, без имён и без
+ * строки журнала.
+ */
+export interface WorklistCount {
+  total: number;
+  byKind: Record<WorkKind, number>;
+  mine: number;
 }
 
 export interface Worklist {
@@ -5436,6 +5493,18 @@ export interface AppointmentView {
    * запрет, а пометка: незакреплённых видно, а не приходится искать.
    */
   leadSpecialistId: string | null;
+}
+
+/**
+ * Свой день числом — для бейджа «Сьогодні» в навигации (GET /api/clinic/today/count).
+ *
+ * Те же сутки и тот же круг приёмов, что у /today без параметров, но без
+ * людей: ни имён, ни поводов. `waiting` — ещё не принятые (записан или
+ * подтвердил), как и считала навигация по списку дня.
+ */
+export interface TodayCount {
+  date: string;
+  waiting: number;
 }
 
 /** Обычная неделя специалиста */

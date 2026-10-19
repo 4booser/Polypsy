@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { and, eq, inArray, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
-import { serverText, t, type WorkKind } from "@quizzy/shared";
+import { serverText, t, type Lang, type User, type WorkKind, type WorklistCount } from "@quizzy/shared";
 import { db } from "../db";
 import {
   appointments,
@@ -108,10 +108,12 @@ const KIND_WEIGHT: Record<Kind, number> = {
   assignment: 6,
 };
 
-worklistRoutes.get("/", async (c) => {
-  const user = c.get("user");
-  // язык читателя: t() без него отдаёт украинский всегда
-  const lang = langOf(c);
+/**
+ * Строки очереди всех видов в порядке срочности — одна сборка на список и на
+ * его числа (GET /count): бейдж навигации обязан считать ровно то, что
+ * покажет экран, а две сборки однажды разошлись бы.
+ */
+async function collectWork(user: User, lang: Lang): Promise<Item[]> {
   const items: Item[] = [];
   const now = Date.now();
 
@@ -576,29 +578,59 @@ worklistRoutes.get("/", async (c) => {
       KIND_WEIGHT[a.kind] - KIND_WEIGHT[b.kind] ||
       a.since.localeCompare(b.since),
   );
+  return items;
+}
 
-  const mine = items.filter((i) => i.assignedTo === user.id).length;
-  await audit(c, { action: "worklist.read", details: { total: items.length, mine } });
-
-  return c.json({
-    items: items.slice(0, 100),
+/**
+ * Числа очереди: всего, по видам и «мои» — одни на список и бейдж.
+ *
+ * Счётчики по всем видам сразу, а не по трём выбранным вручную.
+ * Перечисленные поимённо, они отстали от списка видов: экран рисовал
+ * вкладки «Просроченные повторы · 0 · Направления · 0 · Назначения · 0» над
+ * строкой с непрочитанным письмом. Сумма вкладок не сходилась с «Всё · 1», а
+ * до самой строки нельзя было отфильтроваться вовсе.
+ *
+ * Обход ключей KIND_WEIGHT привязывает счётчики к тому же списку, из
+ * которого берётся порядок: новый вид работы приезжает со своей вкладкой
+ * сам, и забыть его негде.
+ */
+function workCounts(items: readonly Item[], me: string): WorklistCount {
+  return {
     total: items.length,
-    truncated: items.length > 100,
-    /*
-     * Счётчики по всем видам сразу, а не по трём выбранным вручную.
-     *
-     * Перечисленные поимённо, они отстали от списка видов: экран рисовал
-     * вкладки «Просроченные повторы · 0 · Направления · 0 · Назначения · 0»
-     * над строкой с непрочитанным письмом. Сумма вкладок не сходилась с
-     * «Всё · 1», а до самой строки нельзя было отфильтроваться вовсе.
-     *
-     * Обход ключей KIND_WEIGHT привязывает счётчики к тому же списку, из
-     * которого берётся порядок: новый вид работы приезжает со своей вкладкой
-     * сам, и забыть его негде.
-     */
     byKind: Object.fromEntries(
       (Object.keys(KIND_WEIGHT) as Kind[]).map((kind) => [kind, items.filter((i) => i.kind === kind).length]),
     ) as Record<Kind, number>,
-    mine,
+    mine: items.filter((i) => i.assignedTo === me).length,
+  };
+}
+
+worklistRoutes.get("/", async (c) => {
+  const user = c.get("user");
+  // язык читателя: t() без него отдаёт украинский всегда
+  const items = await collectWork(user, langOf(c));
+  const counts = workCounts(items, user.id);
+  await audit(c, { action: "worklist.read", details: { total: counts.total, mine: counts.mine } });
+
+  return c.json({
+    items: items.slice(0, 100),
+    total: counts.total,
+    truncated: items.length > 100,
+    byKind: counts.byKind,
+    mine: counts.mine,
   });
+});
+
+/**
+ * Очередь числами — бейдж навигации (WorklistCount).
+ *
+ * Бейдж опрашивал список раз в минуту с каждой открытой консоли: сотня строк
+ * с расшифрованными именами уходила в браузер ради одного числа, и каждый
+ * такт писал worklist.read — строку «смотрел очередь», которую никто не
+ * открывал. Сборка та же (collectWork) — число не может разойтись с экраном;
+ * наружу — только числа, и потому без строки журнала.
+ */
+worklistRoutes.get("/count", async (c) => {
+  const user = c.get("user");
+  const items = await collectWork(user, langOf(c));
+  return c.json(workCounts(items, user.id));
 });

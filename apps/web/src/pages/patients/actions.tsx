@@ -182,8 +182,11 @@ export function useAssignPane(people: Who[], onDone: () => void): PaneParts {
 /* ─────────── «Додати до групи» ─────────── */
 
 /**
- * Положить людей в свою группу — по запросу на человека (маршрута «пачкой»
- * нет; повтор сервер читает как «уже там»).
+ * Положить людей в свою группу — одним запросом на выборку, как и «Додати
+ * пацієнтів» карточки группы (api.addPatientGroupMembers): сервер проверяет
+ * пачку целиком до первой записи, и «троих добавил, на четвёртом отказал» не
+ * бывает. Повтор сервер читает как «уже там»; строка журнала — у каждого
+ * человека своя, как и прежде.
  */
 export function useGroupPane(people: Who[], groups: PatientGroupWithCounts[], onDone: () => void): PaneParts {
   const { ut } = useLang();
@@ -197,7 +200,10 @@ export function useGroupPane(people: Who[], groups: PatientGroupWithCounts[], on
     setBusy(true);
     setError(null);
     try {
-      for (const p of people) await api.addPatientGroupMember(groupId, p.id);
+      await api.addPatientGroupMembers(
+        groupId,
+        people.map((p) => p.id),
+      );
       toast(ut("pg.added"), "ok");
       setGroupId("");
       onDone();

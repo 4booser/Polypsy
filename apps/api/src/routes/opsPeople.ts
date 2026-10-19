@@ -52,7 +52,7 @@ import { endImpersonation, startImpersonation } from "../lib/impersonation";
 import { currentRequestId } from "../lib/log";
 import { bulkSkip, groupWhoViewed, roleFrom, validateImport, type BulkActor, type BulkRole, type BulkTarget } from "../lib/people";
 import { grantStats, suspiciousStats } from "../lib/peopleStats";
-import { ensureBuiltinRole, ladderRankOf, permissionsOf } from "../lib/permissions";
+import { ensureBuiltinRole, ladderRankOf, permissionsOf, permissionsOfMany } from "../lib/permissions";
 import { guardAccountAction, standingOf } from "../lib/accountClass";
 import { revokeAllFor } from "../lib/refresh";
 import { readPolicy, removeFactor, writePolicy } from "../lib/secondFactor";
@@ -185,13 +185,15 @@ opsPeopleRoutes.post("/impersonate/:id/end", requireSuperadmin, async (c) => {
 opsPeopleRoutes.get("/mfa", requirePermission("ops.manage"), async (c) => {
   const policy = await readPolicy();
   const staff = await db.select().from(users).where(ne(users.role, "user"));
+  /* права всего персонала — двумя запросами, а не двумя на сотрудника (lib/permissions.ts) */
+  const permsOf = await permissionsOfMany(staff.filter((u) => u.role !== "superadmin"));
   const coverage: MfaCoverageRow[] = [];
   for (const u of staff) {
     let because: MfaCoverageRow["because"] | null = null;
     if (u.role === "superadmin") because = "superadmin";
     else {
-      const perms = await permissionsOf({ id: u.id, role: u.role } as never);
-      if (perms.has("ops.read") || perms.has("ops.manage")) because = "ops";
+      const perms = permsOf.get(u.id);
+      if (perms?.has("ops.read") || perms?.has("ops.manage")) because = "ops";
     }
     if (!because) continue;
     coverage.push({

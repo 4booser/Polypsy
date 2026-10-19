@@ -26,7 +26,8 @@ import { Overview } from "./Overview";
 import { useBookPane, useConclusionPane, useNotePane, useThreadPane } from "./Panes";
 import { PatientList } from "./PatientList";
 import { ConclusionsTab, DynamicsTab, MeasuresTab, MessagesTab, NotesTab, TimelineTab, VisitsTab } from "./TabViews";
-import type { CardView, OpenOpts, PaneMode, ThreadMessage } from "./types";
+import { withConclusion, withLead } from "./model";
+import type { CardRefresh, CardView, OpenOpts, PaneMode, ThreadMessage } from "./types";
 import type { ThreadLike } from "./listModel";
 
 /*
@@ -87,7 +88,7 @@ export default function PatientCard() {
       <PatientList currentId={id} collapsed={collapsed} onCollapse={toggle} />
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         {res.data && res.data.id === id ? (
-          <CardRecord key={id} card={res.data} reloadCard={res.reload} collapsed={collapsed} onExpand={toggle} />
+          <CardRecord key={id} card={res.data} patchCard={res.patch} collapsed={collapsed} onExpand={toggle} />
         ) : (
           <div className="p-5">
             <Loading rows={6} error={res.error} onRetry={res.reload} />
@@ -100,12 +101,13 @@ export default function PatientCard() {
 
 function CardRecord({
   card,
-  reloadCard,
+  patchCard,
   collapsed,
   onExpand,
 }: {
   card: PatientCardData;
-  reloadCard: () => void;
+  /** Подменить карточку после своего действия: чтение карточки — одно на открытие (журнал) */
+  patchCard: (next: PatientCardData) => void;
   collapsed: boolean;
   onExpand: () => void;
 }) {
@@ -172,15 +174,35 @@ function CardRecord({
     [],
   );
 
-  const reload = useCallback(() => {
-    timeline.reload();
-    threads.reload();
-    messages.reload();
-    notes.reload();
-    cases.reload();
-    plans.reload();
-    reloadCard();
-  }, [timeline.reload, threads.reload, messages.reload, notes.reload, cases.reload, plans.reload, reloadCard]);
+  /*
+   * После действия в ящике — только то, что оно меняет (CardRefresh): ни
+   * карточка, ни случаи, ни план безпеки от переписки, нотатки, заключения или
+   * записи на приём не меняются, а их чтения пишут журнал. Карточка правится
+   * на месте от последней своей правки, а не от той, что видел рендер:
+   * подпись после сохранения — две правки подряд.
+   */
+  const latest = useRef(card);
+  const arrived = useRef(card);
+  if (arrived.current !== card) {
+    arrived.current = card;
+    latest.current = card;
+  }
+  const patch = useCallback(
+    (edit: (c: PatientCardData) => PatientCardData) => {
+      latest.current = edit(latest.current);
+      patchCard(latest.current);
+    },
+    [patchCard],
+  );
+  const refresh = useMemo<CardRefresh>(
+    () => ({
+      messages: threads.reload,
+      timeline: timeline.reload,
+      notes: (state) => (state ? notes.patch(state) : notes.reload()),
+      conclusion: (responseId, state) => patch((c) => withConclusion(c, responseId, state)),
+    }),
+    [threads.reload, timeline.reload, notes.patch, notes.reload, patch],
+  );
 
   const v: CardView = {
     id,
@@ -214,7 +236,7 @@ function CardRecord({
     goTab: (t) => setTab(t),
     pane: drawer.open ? drawer.mode : null,
     can,
-    reload,
+    refresh,
   };
 
   const firstDraft = card.conclusions.find((c) => c.status === "draft");
@@ -263,8 +285,9 @@ function CardRecord({
   /* ── закрепление ── */
   const toggleLead = () =>
     void run(async () => {
-      await api.takeLead(card.id, !card.lead?.mine);
-      reloadCard();
+      const take = !card.lead?.mine;
+      await api.takeLead(card.id, take);
+      if (user) patch((c) => withLead(c, take, user));
     }, ut(card.lead?.mine ? "pcard.unsubscribed" : "pcard.subscribed"));
   const [assigning, setAssigning] = useState(false);
 
@@ -357,8 +380,8 @@ function CardRecord({
         <AssignSurveyDialog
           title={ut("pg.assignTest")}
           onAssign={async (surveyId, expiresAt) => {
+            /* выдача методики — строка доступа: ни карточка, ни хронология от неё не меняются */
             await api.grant(surveyId, card.id, undefined, expiresAt);
-            reload();
             return ut("pg.assigned");
           }}
           onClose={() => setAssigning(false)}

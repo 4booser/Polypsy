@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Linking, Pressable, View } from "react-native";
 import type { AlertCase, AlertSignalBasis, RespondentDynamics, SafetyPlan } from "@quizzy/shared";
+import { isAborted } from "../api/abort";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { useLang } from "../lang";
@@ -13,7 +14,7 @@ import { BottomSheet } from "../ui/Sheet";
 import { T } from "../ui/Text";
 import { useToast } from "../ui/Toast";
 import { refreshStaffBadges } from "./badges";
-import { caseClock, dm, hm, num, shortName } from "./model";
+import { caseClock, dm, hm, normOf, num, shortName } from "./model";
 import { reviewDrafts, type ReviewOutcome } from "./reviewDrafts";
 import { Chip, History, TimerBar, useClock, useClockText } from "./ui";
 
@@ -41,13 +42,19 @@ const OUTCOMES: { value: Outcome; key: "mal.confirmed" | "mal.needsFollowup" | "
 
 export function ReviewSheet({
   item,
-  norm,
+  dynamics,
   onClose,
   onDone,
 }: {
   /** Случай; null — лист закрыт */
   item: AlertCase | null;
-  norm: number | null;
+  /**
+   * Динамика человека, уже прочитанная экраном под листом (карта пациента,
+   * карта у койки). Есть — курс методики случая берётся из неё, без второго
+   * чтения той же карты; нет (очереди обхода и сигналов) — лист читает
+   * динамику одной методики случая.
+   */
+  dynamics?: RespondentDynamics | null;
   onClose: () => void;
   /** Решение сохранено или случай взят — список перечитать */
   onDone: () => void;
@@ -94,25 +101,40 @@ export function ReviewSheet({
     setPlan(undefined);
     setDyn(null);
     setNow(Date.now());
-    let live = true;
+    /*
+     * Чтения листа отменяются, когда его закрыли или открыли другой случай
+     * (api/abort.ts): основание, план и динамика закрытого листа никому не
+     * нужны, а динамика бывает медленной.
+     */
+    const ctrl = new AbortController();
+    const { signal } = ctrl;
     api
-      .caseSignals(item.id)
-      .then((r) => live && setBasis(r.items))
-      .catch(() => live && setBasis([]));
+      .caseSignals(item.id, { signal })
+      .then((r) => setBasis(r.items))
+      .catch((e) => !isAborted(e) && setBasis([]));
     api
-      .patientSafetyPlan(item.userId)
-      .then((r) => live && setPlan(r.versions[0] ?? null))
-      .catch(() => live && setPlan(null));
-    api
-      .respondentDynamics(item.userId)
-      .then((d) => live && setDyn(d))
-      .catch(() => {});
+      .patientSafetyPlan(item.userId, { signal })
+      .then((r) => setPlan(r.versions[0] ?? null))
+      .catch((e) => !isAborted(e) && setPlan(null));
+    /*
+     * Курс методики случая. Карта под листом свою динамику уже прочитала —
+     * она и рисуется. Иначе — динамика одной методики случая
+     * (?survey=): лист показывает только её, а полная карта человека —
+     * самый медленный ответ сервера (до двадцати секунд на холодной базе).
+     */
+    if (dynamics && dynamics.userId === item.userId) setDyn(dynamics);
+    else
+      api
+        .respondentDynamics(item.userId, { survey: item.surveyId, signal })
+        .then(setDyn)
+        .catch(() => {});
     // часы разбора идут, пока лист открыт
     const timer = setInterval(() => setNow(Date.now()), 30_000);
     return () => {
-      live = false;
+      ctrl.abort();
       clearInterval(timer);
     };
+    // динамика экрана — только при открытии листа: её перечитывание под открытым листом курс не дёргает
   }, [item, owner]);
 
   const remember = (next: { outcome?: Outcome | null; note?: string }) => {
@@ -180,7 +202,7 @@ export function ReviewSheet({
     }
   };
 
-  const k = shown ? caseClock(shown.openedAt, norm, now) : null;
+  const k = shown ? caseClock(shown.openedAt, normOf(shown), now) : null;
   const survey = dyn?.surveys.find((s) => s.surveyId === shown?.surveyId);
   const course = survey?.scales.filter((s) => s.points.length > 1) ?? [];
 

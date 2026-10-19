@@ -69,18 +69,19 @@ export default function ConclusionPage() {
   }, [conclusion.data]);
 
   const detail = res.data && res.data.detail.id === responseId ? res.data.detail : null;
-  const x = useResponseExtras(detail, { dynamics: true, conclusion: false });
+  /*
+   * Динамика — одна, по всем методикам: «Результати» справа показывают все
+   * методики человека, а сводка над выводом берёт из неё блок этой методики.
+   * Прежде рядом с общей читалась ещё и узкая (?survey=) — то же самое
+   * вторым запросом и второй строкой журнала (волна 27).
+   */
+  const x = useResponseExtras(responseId, detail, { dynamics: "all", conclusion: false });
   const surveyId = detail?.survey.id;
   /* правила поддержки решений — «моделі аналітики»; вердикт — по срабатываниям этого прохождения */
   const models = useResource(() => api.decisionRules(), [responseId, surveyId], {
     enabled: !!surveyId,
     keep: false,
   });
-  const all = useResource(
-    () => api.dynamics(detail!.userId!).then((d): { d: RespondentDynamics | null } => ({ d }), () => ({ d: null })),
-    [detail?.userId],
-    { enabled: !!detail?.userId && x.wantsDynamics, keep: false },
-  );
   const historyRef = useRef<HTMLElement | null>(null);
 
   if (!detail) return <Loading rows={8} error={res.error} onRetry={res.reload} />;
@@ -146,7 +147,7 @@ export default function ConclusionPage() {
           <ReportPanel responseId={responseId} />
         </div>
         <div className="flex min-w-0 flex-col gap-4">
-          <ResultsSide detail={detail} dyn={all.data?.d ?? null} loading={all.loading} enabled={x.wantsDynamics} />
+          <ResultsSide detail={detail} dyn={x.dynamics} loading={x.dynamicsLoading} enabled={x.wantsDynamics} />
           {ctx?.hits ? <RulesPanel hits={ctx.hits} reload={x.ctx.reload} title={ut("ds.title")} hint={ut("ds.sub")} /> : null}
           <ModelsPanel rules={models.data} error={models.error} hits={ctx?.hits ?? []} responseId={responseId} surveyId={detail.survey.id} />
           <HistoryPanel state={conclusion.data} anchor={historyRef} />

@@ -1,5 +1,6 @@
 import type {
   AppointmentView,
+  TodayCount,
   ScheduleExceptionView,
   ScheduleTemplateView,
   LocalizedText,
@@ -94,10 +95,12 @@ import type {
   InvitePreview,
   CreateInviteInput,
   Referral,
+  ReferralCount,
   ReferralPage,
   CreateReferralInput,
   CaseSummary,
   VersionDiff,
+  AlertCaseCount,
   AlertCasePage,
   AlertSignalBasis,
   GroupAnalytics,
@@ -106,6 +109,7 @@ import type {
   Page,
   Respondent,
   Worklist,
+  WorklistCount,
   RuleHit,
   DecisionRule,
   RuleAction,
@@ -929,6 +933,28 @@ const unwrap = <T>(p: Promise<Items<T>>): Promise<T[]> => p.then((r) => r.items)
 /** Сколько человек принимает одно «додати до групи» списком — потолок patientGroupMemberSchema */
 export const PATIENT_GROUP_BATCH = 200;
 
+/** Карточка доступа человека: роли, личные исключения и итог (GET /api/permissions/users/:id) */
+export interface PermissionCard {
+  userId: string;
+  fullName: string;
+  role: string;
+  readOnly: boolean;
+  roles: { roleId: string; code: string; title: LocalizedText; isBuiltin: boolean }[];
+  exceptions: {
+    id: string;
+    permission: string;
+    mode: "grant" | "revoke";
+    reason: string;
+    grantedAt: string;
+    expiresAt: string | null;
+    revokedAt: string | null;
+  }[];
+  effective: string[];
+}
+
+/** Сколько карточек доступа сервер отдаёт за один запрос — CARDS_MAX в routes/permissions.ts */
+export const PERMISSION_CARDS_BATCH = 100;
+
 export const api = {
   /** Вход: пара токенов или, если включён второй фактор, просьба о коде (MfaChallenge) */
   login: (email: string, password: string) =>
@@ -1140,6 +1166,8 @@ export const api = {
     return request<AlertCasePage>(`/api/alert-cases?${qs}`);
   },
   alertCaseUnits: () => unwrap(request<Items<string>>("/api/alert-cases/units")),
+  /** Очередь случаев числом — для бейджа и значка вкладки: без имён и без строки журнала */
+  alertCaseCount: () => request<AlertCaseCount>("/api/alert-cases/count"),
   /** Основание тревог случая: пункт с отмеченным вариантом либо полоса шкалы */
   alertCaseSignals: (id: string) =>
     unwrap(request<Items<AlertSignalBasis>>(`/api/alert-cases/${id}/signals`)),
@@ -1148,6 +1176,8 @@ export const api = {
   /** Обстановка вокруг протокола: человек, сигналы, попытки, правила — только персоналу */
   responseContext: (id: string) => request<ResponseContext>(`/api/response-context/${id}`),
   worklist: () => request<Worklist>("/api/worklist"),
+  /** Очередь работы числами — для бейджа навигации: без строк и без строки журнала */
+  worklistCount: () => request<WorklistCount>("/api/worklist/count"),
 
   ruleHits: (status: RuleHit["status"] = "suggested") =>
     request<{ items: RuleHit[] }>(`/api/decisions/hits?status=${status}`).then((r) => r.items),
@@ -1309,14 +1339,18 @@ export const api = {
    * Реестр направлений — страницей по сотне. `total` приходит на первой
    * странице: по нему стоит счётчик в навигации. Адрес первой страницы —
    * прежний (`/api/referrals`, `?all=1`): его же спрашивает счётчик.
+   * `closedSince` — только закрытые с этого момента («Закриті за 30 днів»).
    */
-  referrals: (all = false, cursor?: string | null) => {
+  referrals: (all = false, cursor?: string | null, opts: { closedSince?: string } = {}) => {
     const qs = new URLSearchParams();
     if (all) qs.set("all", "1");
+    if (opts.closedSince) qs.set("closedSince", opts.closedSince);
     if (cursor) qs.set("cursor", cursor);
     const tail = qs.toString();
     return request<ReferralPage>(`/api/referrals${tail ? `?${tail}` : ""}`);
   },
+  /** Реестр направлений числами — для бейджа навигации: без людей и без строки журнала */
+  referralCount: () => request<ReferralCount>("/api/referrals/count"),
   createReferral: (input: CreateReferralInput) =>
     request<Referral>("/api/referrals", { method: "POST", body: JSON.stringify(input) }),
   updateReferral: (id: string, status: string, outcomeNote?: string) =>
@@ -1388,24 +1422,22 @@ export const api = {
       method: "PUT",
       body: JSON.stringify({ permissions }),
     }),
-  userPermissions: (id: string) =>
-    request<{
-      userId: string;
-      fullName: string;
-      role: string;
-      readOnly: boolean;
-      roles: { roleId: string; code: string; title: LocalizedText; isBuiltin: boolean }[];
-      exceptions: {
-        id: string;
-        permission: string;
-        mode: "grant" | "revoke";
-        reason: string;
-        grantedAt: string;
-        expiresAt: string | null;
-        revokedAt: string | null;
-      }[];
-      effective: string[];
-    }>(`/api/permissions/users/${id}`),
+  userPermissions: (id: string) => request<PermissionCard>(`/api/permissions/users/${id}`),
+  /*
+   * Те же карточки нескольких людей — одним запросом на сотню (волна 27):
+   * матрица «Що може кожен» спрашивала карточку каждого администратора
+   * отдельно. Невидимых по лестнице сервер в ответ не кладёт.
+   */
+  permissionCards: async (ids: readonly string[]): Promise<PermissionCard[]> => {
+    const parts: string[][] = [];
+    for (let i = 0; i < ids.length; i += PERMISSION_CARDS_BATCH) parts.push(ids.slice(i, i + PERMISSION_CARDS_BATCH));
+    const pages = await Promise.all(
+      parts.map((part) =>
+        request<Items<PermissionCard>>(`/api/permissions/cards?ids=${part.map(encodeURIComponent).join(",")}`),
+      ),
+    );
+    return pages.flatMap((p) => p.items);
+  },
   setUserRoles: (id: string, roleIds: string[]) =>
     request<{ ok: true }>(`/api/permissions/users/${id}/roles`, {
       method: "PUT",
@@ -1544,7 +1576,8 @@ export const api = {
    * Техпанель: наблюдаемость (/api/ops, право ops.read). Всё — память
    * процесса API до его перезапуска; `since` в каждом ответе.
    */
-  opsOverview: () => request<OpsOverview>("/api/ops/overview"),
+  /** С окном — «Огляд» целиком одним запросом: сводка, ряды нагрузки и новые группы ошибок (OpsOverviewLive) */
+  opsOverview: (window?: OpsWindow) => request<OpsOverview>(`/api/ops/overview${window ? `?window=${window}` : ""}`),
   opsTraffic: (window: OpsWindow) => request<OpsTraffic>(`/api/ops/traffic?window=${window}`),
   opsRoutes: () => request<OpsRoutes>("/api/ops/routes"),
   opsSlow: () => request<OpsSlow>("/api/ops/slow"),
@@ -1713,6 +1746,13 @@ export const api = {
    * карты /patients/:id/case, а этот — на вопрос кадра.
    */
   patientCard: (userId: string) => request<PatientCard>(`/api/patients/${userId}/card`),
+  /*
+   * Только имена людей зоны — для подписи поля, где карточка не нужна
+   * (условия выборки статистики). Журнал — как у выбора пациента
+   * (access.patient_list), а не «открывал карточку»; вне зоны — строки нет.
+   */
+  patientNames: (ids: readonly string[]) =>
+    request<{ items: { id: string; fullName: string }[] }>(`/api/patients/names?ids=${encodeURIComponent(ids.join(","))}`),
   /*
    * Реестр пациентов 2.0: все, кого читатель вправе видеть (не только
    * обследованные), с поводом в строке — открытый случай, главная шкала
@@ -2013,6 +2053,8 @@ export const api = {
       }[];
       lead: string | null;
     }>("/api/messages"),
+  /* число непрочитанного по тем же разговорам, что в списке: для счётчика рельсы, без текста и имён */
+  unreadCount: () => request<{ unread: number }>("/api/messages/unread-count"),
   /*
    * Последние письма разговора; before — курсор к более ранним (nextBefore).
    * Чтение ничего не помечает: «прочитано» — markRead по показанным.
@@ -2294,6 +2336,8 @@ export const api = {
     if (params.specialistId) q.set("specialistId", params.specialistId);
     return request<{ date: string; items: AppointmentView[] }>(`/api/clinic/today?${q}`);
   },
+  /** Свой день числом — для бейджа навигации: без людей и без строки журнала, в отличие от today() */
+  todayCount: () => request<TodayCount>("/api/clinic/today/count"),
   /** «booked» и «arrived» из более позднего состояния — шаг назад, снимающий ошибочную отметку (#38) */
   appointmentStatus: (id: string, status: "booked" | "arrived" | "in_progress" | "done" | "no_show") =>
     request<{ ok: true }>(`/api/clinic/appointments/${id}/status`, {

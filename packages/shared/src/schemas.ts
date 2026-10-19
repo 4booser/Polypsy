@@ -1285,10 +1285,33 @@ export const surveyAnalyticsQuery = dateRangeQuery.extend({
  */
 export const AUDIT_OFFSET_MAX = 5_000;
 
+/**
+ * Несколько действий одним отбором — `actions`, коды через запятую (волна 27).
+ *
+ * «Адміністратори» показывают журнал назначений — пять действий сразу, доступ
+ * методики — выдачи и отзывы. По одному действию на запрос это пять и два
+ * чтения журнала на каждое открытие экрана, и у каждого свой счёт и своя
+ * строка audit.read. Одним отбором — одно чтение, и восемь последних строк
+ * по всем действиям вместе те же, что восемь последних из каждого, сведённые
+ * и обрезанные на экране. Пустой список — отбора нет, как и без параметра;
+ * кодов не больше двадцати: это отбор, а не перечень журнала.
+ */
+export const AUDIT_ACTIONS_MAX = 20;
+const auditActions = z
+  .string()
+  .max(AUDIT_ACTIONS_MAX * 65)
+  .optional()
+  .transform((raw) => {
+    const codes = [...new Set((raw ?? "").split(",").map((s) => s.trim()).filter(Boolean))];
+    return codes.length ? codes : undefined;
+  })
+  .pipe(z.array(z.string().max(64)).max(AUDIT_ACTIONS_MAX).optional());
+
 export const auditQuery = dateRangeQuery.extend({
   limit: queryInt(1, 500, 100),
   offset: queryInt(0, AUDIT_OFFSET_MAX, 0),
   action: z.string().max(64).optional(),
+  actions: auditActions,
   actorId: z.string().uuid().optional(),
   subjectUserId: z.string().uuid().optional(),
   actor: z.string().trim().max(200).optional(),
@@ -1383,12 +1406,21 @@ export const cursorPageQuery = (defaultLimit: number, maxLimit: number) =>
     cursor: z.string().max(400).optional(),
   });
 
-/** Реестр направлений: ?all=1 — вместе с завершёнными; страница по 100, не больше 200 */
+/**
+ * Реестр направлений: ?all=1 — вместе с завершёнными; страница по 100, не
+ * больше 200.
+ *
+ * ?closedSince= — только закрытые (завершены или отклонены) с этого момента,
+ * по времени последнего перехода: группа «Закриті за 30 днів». Давнее
+ * направление, закрытое на днях, лежит в реестре по дате выписки далеко за
+ * загруженными страницами, и по ним одним группа его теряла (волна 27).
+ */
 export const referralListQuery = cursorPageQuery(100, 200).extend({
   all: z
     .string()
     .optional()
     .transform((v) => v === "1"),
+  closedSince: z.preprocess((v) => (v === "" ? undefined : v), queryDate.optional()),
 });
 
 /**
@@ -1469,6 +1501,24 @@ export const patientListQuery = z.object({
     .enum(["name", "risk", "last", "next"])
     .optional()
     .catch(undefined),
+});
+
+/**
+ * Имена людей по идентификаторам — `ids`, через запятую (волна 27).
+ *
+ * Поле «Пацієнт» в условиях выборки статистики показывает имя человека из
+ * сохранённого фильтра и ради одного имени читало его карточку — чтение
+ * персональных данных с телефоном и строкой patient.card_read на каждую
+ * выборку при каждом открытии страницы. Имя без карточки — GET
+ * /api/patients/names. Не больше ста: это подписи полей, а не список.
+ */
+export const PATIENT_NAMES_MAX = 100;
+export const patientNamesQuery = z.object({
+  ids: z
+    .string()
+    .max(PATIENT_NAMES_MAX * 65)
+    .transform((raw) => [...new Set(raw.split(",").map((s) => s.trim()).filter(Boolean))])
+    .pipe(z.array(z.string().max(64)).min(1).max(PATIENT_NAMES_MAX)),
 });
 
 export const mailingListQuery = z.object({

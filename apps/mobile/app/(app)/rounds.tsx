@@ -1,16 +1,18 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Pressable, RefreshControl, ScrollView, View } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import type { AlertCase, UiKey, WorkItem } from "@quizzy/shared";
 import { api } from "@/api/client";
 import { shownAfterFailure } from "@/api/access";
+import { activeOwner } from "@/offline/owner";
 import { useLang } from "@/lang";
 import { useColors } from "@/theme";
 import { Icon, type IconName } from "@/ui/Icon";
 import { ProgressSegments } from "@/ui/Progress";
 import { T } from "@/ui/Text";
-import { useNow, useSurveyIndex } from "@/staff/data";
+import { useNow } from "@/staff/data";
 import { dm, hm, roundsCounts, roundsMatch, roundsWards, WORK_KINDS, type RoundsFilter, type RoundsPerson } from "@/staff/model";
+import { heads } from "@/staff/people";
 import { ReviewSheet } from "@/staff/ReviewSheet";
 import { StaffOnly } from "@/staff/StaffOnly";
 import { Avatar, BandIcon, Card, Chip, Line, Loading, PillRow, RiskNow, SearchField, Section, StaffTop, StateBlock } from "@/staff/ui";
@@ -46,7 +48,20 @@ function RoundsScreen() {
   const c = useColors();
   const router = useRouter();
   const now = useNow();
-  const { norm } = useSurveyIndex();
+
+  /*
+   * Каталог методик — на устройство заранее, раз за сессию: «Заповнити» у
+   * койки без сети берёт список и содержимое методик из кэша (api/client.ts,
+   * listSurveys → prefetchSurveys), а обход — первый экран сотрудника.
+   *
+   * Прежде этот же запрос шёл ради нормы разбора (общий хук индекса
+   * методик) — здесь, на «Пацієнтах», «Сигналах» и при каждом открытии
+   * карты. Норма теперь приходит со случаем (model.ts, normOf), а прогрев
+   * офлайна остался один и назван своим именем.
+   */
+  useEffect(() => {
+    void api.listSurveys().catch(() => {});
+  }, []);
 
   const [items, setItems] = useState<WorkItem[] | null>(null);
   const [cachedAt, setCachedAt] = useState<string | null>(null);
@@ -152,7 +167,7 @@ function RoundsScreen() {
         contentContainerStyle={{ paddingBottom: 24 }}
         refreshControl={<RefreshControl refreshing={busy} onRefresh={() => void load()} tintColor={c.vink} />}
       >
-        {urgent ? <RiskNow item={urgent} norm={norm(urgent.surveyId)} now={now} onReview={() => setReview(urgent)} /> : null}
+        {urgent ? <RiskNow item={urgent} now={now} onReview={() => setReview(urgent)} /> : null}
 
         {items.length === 0 ? (
           <StateBlock icon="circle-check" title={ut("rounds.empty")} text={ut("rounds.emptyHint")} />
@@ -164,7 +179,16 @@ function RoundsScreen() {
                 <Section title={w.unit ?? ut("rounds.noUnit")} count={w.people.length} />
                 <Card>
                   {w.people.map((p, i) => (
-                    <PersonRow key={p.userId} p={p} first={i === 0} onPress={() => router.push(`/rounds/${p.userId}`)} />
+                    <PersonRow
+                      key={p.userId}
+                      p={p}
+                      first={i === 0}
+                      onPress={() => {
+                        // карта у койки покажет имя сразу, пока сама идёт (staff/people.ts)
+                        heads.noteRow(activeOwner(), p.userId, { name: p.userName, unit: p.unit });
+                        router.push(`/rounds/${p.userId}`);
+                      }}
+                    />
                   ))}
                 </Card>
               </View>
@@ -188,7 +212,6 @@ function RoundsScreen() {
       </ScrollView>
       <ReviewSheet
         item={review}
-        norm={review ? norm(review.surveyId) : null}
         onClose={() => setReview(null)}
         onDone={() => {
           setReview(null);

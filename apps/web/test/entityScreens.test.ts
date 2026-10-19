@@ -68,7 +68,7 @@ describe("остатки #177: заключение, протокол, груп�
     ["pages/Conclusion.tsx", "[responseId], { manual: true, keep: false })"],
     ["pages/Conclusion.tsx", "enabled: !!surveyId,\n    keep: false,"],
     ["pages/response/index.tsx", "[rid], { enabled: !!rid, keep: false }"],
-    ["pages/response/data.ts", "[id], { enabled: !!id, keep: false }"],
+    ["pages/response/data.ts", "[rid], { enabled: early, keep: false }"],
     ["pages/patientGroups/PatientGroupCard.tsx", "useResource(() => api.patientGroup(groupId), [groupId], { keep: false })"],
     ["pages/messages/MailingEditor.tsx", "useResource(() => api.mailing(id!), [id], { enabled: id !== null, keep: false })"],
   ];

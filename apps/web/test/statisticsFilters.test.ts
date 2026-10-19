@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { type StatModelColumn, statModelListQuery } from "@quizzy/shared";
+import { api } from "../src/api";
 import {
   ageFromInput,
   patchFilters,
@@ -8,6 +11,35 @@ import {
   statListQuery,
   withColumnFilters,
 } from "../src/pages/statistics/model";
+import { patientName } from "../src/pages/statistics/names";
+
+describe("поле «Пацієнт»: имя без карточки (волна 27)", () => {
+  test("поле не читает карточку человека — только имя (patientName)", () => {
+    const parts = readFileSync(resolve(import.meta.dir, "../src/pages/statistics/parts.tsx"), "utf8");
+    expect(parts).not.toContain("api.patientCard(");
+    expect(parts).toContain("patientName(value!)");
+  });
+
+  test("имена, спрошенные в один такт, — одним запросом; нет в ответе — null; отказ — всем", async () => {
+    const original = api.patientNames;
+    const asked: string[][] = [];
+    try {
+      api.patientNames = (ids) => {
+        asked.push([...ids]);
+        return Promise.resolve({ items: ids.filter((id) => id !== "p3").map((id) => ({ id, fullName: `Ім'я ${id}` })) });
+      };
+      const got = await Promise.all([patientName("p1"), patientName("p2"), patientName("p1"), patientName("p3")]);
+      expect(got).toEqual(["Ім'я p1", "Ім'я p2", "Ім'я p1", null]);
+      expect(asked).toEqual([["p1", "p2", "p3"]]);
+
+      api.patientNames = () => Promise.reject(new Error("500"));
+      const failed = await Promise.allSettled([patientName("p4"), patientName("p5")]);
+      expect(failed.map((r) => r.status)).toEqual(["rejected", "rejected"]);
+    } finally {
+      api.patientNames = original;
+    }
+  });
+});
 
 /**
  * «Статистика»: поведение отбора — адрес перечня и экрана диаграммы,

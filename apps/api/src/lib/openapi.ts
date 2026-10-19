@@ -198,6 +198,12 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
     whyNoPermission:
       "карточку доступа читает тот, кто назначает: правило то же, что у назначения — ступенью ниже своей и свою собственную, и второе правило про одну лестницу однажды разошлось бы с первым молча",
   },
+  "GET /api/permissions/cards": {
+    summary: "Те же карточки доступа нескольких людей одним запросом (`?ids=` через запятую, до 100); невидимые по лестнице в ответ не попадают",
+    access: "staff",
+    whyNoPermission:
+      "то же правило, что у одиночной карточки (GET /api/permissions/users/:id): свою и тех, кто ступенью ниже, — пачкой, а не запросом на человека",
+  },
   "PUT /api/permissions/users/:id/roles": {
     summary: "Роли человека; цепочка назначения: только ступень ниже своей",
     access: "staff",
@@ -312,6 +318,7 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
    */
   "GET /api/patients": { summary: "Пациенты зоны видимости: поиск, вкладка группы, подання `?view=risk|stale|unbooked|mine`, порядок `?sort=name|risk|last|next`, страницы {items,total,counts}; в строке — открытый случай, главная шкала последнего замера, ближайший приём, неявка, учёт, ведущий", access: "staff", permission: "patients.read" },
   "GET /api/patients/:id/card": { summary: "Карточка пациента: персональные данные, «Тести», «Групи», «Заключення», ведущий", access: "staff", permission: "patients.read" },
+  "GET /api/patients/names": { summary: "Имена людей зоны по `?ids=` (через запятую, до ста) — без карточки, для подписей полей; вне зоны и не пациенты — без строки; журнал — access.patient_list, как у выбора пациента", access: "staff", permission: "patients.read" },
 
   /* ── рассылки (кадры f09, f16, f22) ──
    *
@@ -392,8 +399,10 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   "POST /api/presence": { summary: "Пульс присутствия: я на этом экране", access: "staff", whyNoPermission: "пульс присутствия шлёт сам клиент за того, кто уже вошёл" },
   "GET /api/presence": { summary: "Кто ещё держит открытым этот экран", access: "staff", whyNoPermission: "кто ещё держит открытым этот экран — видно тем, кто на этом же экране; скрывать нечего" },
   "GET /api/worklist": { summary: "Что от меня ждут сегодня: случаи, направления, просроченные назначения", access: "staff", permission: "patients.read" },
+  "GET /api/worklist/count": { summary: "Очередь работы числами для навигации: всего, по видам и «мои» — та же сборка, без строк и без строки журнала", access: "staff", permission: "patients.read" },
   "GET /api/alert-cases": { summary: "Очередь случаев риска: курсор, строгие фильтры (статус, выраженность, взят, пациент, группа пациентов, период), строка на человека в открытой очереди, счётчики из SQL на первой странице", access: "staff", permission: "alerts.review" },
   "GET /api/alert-cases/units": { summary: "Подразделения среди случаев — для фильтра", access: "staff", permission: "alerts.review" },
+  "GET /api/alert-cases/count": { summary: "Очередь случаев числом для навигации и значка вкладки: люди с неразобранными случаями, без имён и без строки журнала", access: "staff", permission: "alerts.review" },
   "GET /api/alert-cases/:id/signals": {
     summary: "Основание тревоги: пункт и отмеченный вариант либо шкала, значение и границы полосы",
     access: "staff",
@@ -403,6 +412,7 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   "POST /api/alert-cases/:id/assign": { summary: "Взять случай на себя или отпустить", access: "staff", permission: "alerts.review" },
   "PATCH /api/alert-cases/:id": { summary: "Разбор случая: одно решение о человеке; seenLastAlertAt — отказ 409, если после просмотра пришёл новый сигнал", access: "staff", permission: "alerts.review" },
   "GET /api/referrals": { summary: "Направления, свежие сверху; ?all=1 — вместе с завершёнными. Страница `{items, nextCursor, truncated, total}`: `?limit=` (100, не больше 200), `?cursor=`; total — на первой странице", access: "staff", permission: "referrals.manage" },
+  "GET /api/referrals/count": { summary: "Реестр направлений числами для навигации: всё, кроме завершённых, и открытые — та же зона условием, без людей и без строки журнала", access: "staff", permission: "referrals.manage" },
   "POST /api/referrals": { summary: "Выписать направление", access: "staff", permission: "referrals.manage", body: createReferralSchema },
   "PATCH /api/referrals/:id": { summary: "Движение статуса направления (только вперёд)", access: "staff", permission: "referrals.manage", body: updateReferralSchema },
   "GET /api/referrals/summary/:userId": { summary: "Сводка для консилиума", access: "staff", permission: "referrals.manage" },
@@ -616,6 +626,7 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   "POST /api/recordings/:appointmentId/stop": { summary: "Остановить и передать аудио (формат — по байтам: WebM, Ogg, MP4, WAV); повтор с тем же uploadId подтверждается; аудио дослаётся и после остановки пациентом; остановить может любая сторона", access: "user", whyNoPermission: "это разговор двоих, и право прекратить запись есть у обоих" },
   "POST /api/recordings/:appointmentId/discard": { summary: "Удалить запись до расшифровки", access: "user", whyNoPermission: "сказанное сгоряча человек вправе забрать назад, пока оно не стало текстом" },
   "GET /api/messages": { summary: "Разговоры: у пациента один, у специалиста список — с началом последнего письма, его автором и прочтением, ближайшим своим приёмом", access: "user", whyNoPermission: "свою переписку человек видит сам; у специалиста список ограничен его же разговорами" },
+  "GET /api/messages/unread-count": { summary: "Сколько непрочитанного в тех же разговорах, что в списке, — одним числом, без текста и имён (счётчики консоли и мобилки)", access: "user", whyNoPermission: "своё непрочитанное человек видит сам; у специалиста — только по своим разговорам, как в списке" },
   "GET /api/messages/:id": { summary: "Разговор: последние письма и курсор назад; чтение ничего не помечает", access: "user", whyNoPermission: "разговор видят только двое его участников, и это проверяется по самому разговору" },
   "POST /api/messages/:id/read": { summary: "Отметить прочитанными показанные письма собеседника", access: "user", whyNoPermission: "отмечает только участник разговора и только письма другой стороны" },
   "POST /api/messages": { summary: "Написать: пациент своему специалисту, специалист — своему пациенту", access: "user", whyNoPermission: "пациент пишет своему и адресата не выбирает; отправка специалистом проверяется правом внутри" },
@@ -625,6 +636,7 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   "GET /api/reports/episodes/:id": { summary: "Выписка по обращению: приёмы, подписанные заключения, направления, исход", access: "staff", permission: "patients.read" },
   "GET /api/reports/visits/:id": { summary: "Справка о посещении — печатная страница", access: "user", whyNoPermission: "свою справку берёт сам обследуемый; выдача чужой проверяется правом внутри" },
   "GET /api/clinic/today": { summary: "Приёмы дня: картина целиком, включая уже принятых", access: "staff", permission: "patients.read" },
+  "GET /api/clinic/today/count": { summary: "Свой день числом для навигации: сколько ещё ждёт, без людей и без строки журнала", access: "staff", permission: "patients.read" },
   "POST /api/clinic/patients/:userId/lead": { summary: "Закрепить пациента за собой или отпустить", access: "staff", permission: "patients.read" },
   "GET /api/openapi.json": { summary: "Это описание", access: "staff", whyNoPermission: "описание самого API: что кому доступно, читает любой сотрудник, и скрывать состав маршрутов от своих же смысла нет" },
 

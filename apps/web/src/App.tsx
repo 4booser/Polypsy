@@ -14,7 +14,7 @@ import { isThemeChoice, restoreStoredTheme, setThemeChoice, useResolvedTheme, ty
 import type { AccountCard } from "./shell/UserMenu";
 import { useLiveReload } from "./events";
 import { useResource } from "./useResource";
-import type { WorkspacePrefs } from "@quizzy/shared";
+import type { Permission, WorkspacePrefs } from "@quizzy/shared";
 import { peopleLists } from "./pages/people/model";
 import { Loading } from "./ui/states";
 import { useAction } from "./ui/action";
@@ -456,41 +456,67 @@ export default function App() {
    * держит прежнее число, пока следующий такт его не обновит. Ключ — кто
    * вошёл: смена человека за тем же компьютером не покажет ему чужие числа.
    */
+  /*
+   * Числа — маршрутами чисел (/count у очереди, случаев, направлений и дня):
+   * без имён и без строки журнала на каждый такт. Прежде каждый такт брал
+   * первую страницу списка — с расшифрованными именами людей — и писал в
+   * журнал «смотрел очередь / случаи / направления / день» строку, которой
+   * никто не смотрел (волна 27).
+   *
+   * И только тому, кому сервер их отдаст: без права каждый такт был отказом
+   * и строкой access.denied в журнале, а бейдж всё равно стоял нулём.
+   */
   // и в скрытой вкладке: значок с числом тревог на ней ради этого и заведён;
   // прежние числа под новым вошедшим не держим — это были бы его числа только с виду
-  const tally = { enabled: counting, pollMs: COUNTS_POLL_MS, pollHidden: true, keep: false };
-  // счётчик считает случаи, а не сработавшие пункты: в навигации должно
+  const tally = { pollMs: COUNTS_POLL_MS, pollHidden: true, keep: false };
+  /*
+   * Остальные числа рельсы скрытую вкладку не опрашивают (волна 27): на
+   * значке вкладки их нет, а вернувшись, человек видит их перечитанными
+   * сразу (refetchOnWindowFocus у живых загрузок, useResource.ts). Забытая
+   * вкладка иначе сутками опрашивала бы сервер раз в минуту.
+   */
+  const shownTally = { ...tally, pollHidden: false };
+  const allowed = (permission: Permission) => counting && can(permission);
+  // счётчик считает людей, а не сработавшие пункты: в навигации должно
   // стоять число людей, которых надо разобрать, а не число сигналов
-  const alertCount = useResource(() => api.alertCases({ limit: "1" }).then((p) => p.total ?? 0), [user?.id], tally);
+  const alertCount = useResource(() => api.alertCaseCount().then((p) => p.total), [user?.id], {
+    ...tally,
+    enabled: allowed("alerts.review"),
+  });
   // направления в том же такте: незакрытое направление ждёт так же долго
-  // общее число — с первой страницы; длина страницы упёрлась бы в её размер
-  const referralCount = useResource(() => api.referrals().then((r) => r.total ?? r.items.length), [user?.id], tally);
-  const worklistRes = useResource(() => api.worklist().then((w) => w.total), [user?.id], tally);
+  const referralCount = useResource(() => api.referralCount().then((r) => r.total), [user?.id], {
+    ...shownTally,
+    enabled: allowed("referrals.manage"),
+  });
+  const worklistRes = useResource(() => api.worklistCount().then((w) => w.total), [user?.id], {
+    ...shownTally,
+    enabled: allowed("patients.read"),
+  });
   /*
    * В бейдже — сколько ещё не принято, а не сколько записано. Число,
    * которое не убывает по ходу дня, ничего не сообщает: к обеду оно то
    * же самое, что утром, и смотреть на него перестают.
    */
-  const todayRes = useResource(
-    () =>
-      api.today().then((d) => d.items.filter((a) => a.status === "booked" || a.status === "confirmed").length),
-    [user?.id],
-    tally,
-  );
+  const todayRes = useResource(() => api.todayCount().then((d) => d.waiting), [user?.id], {
+    ...shownTally,
+    enabled: allowed("patients.read"),
+  });
   /*
-   * Непрочитанные письма пациентов — число у «Листування» на рельсе. Тот же
-   * список разговоров, что читает экран переписки (GET /api/messages открыт
-   * каждому сотруднику и отдаёт только его разговоры); отказ — ноль, а не
-   * ошибка на полосе: число — подсказка, а не экран.
+   * Непрочитанные письма пациентов — число у «Листування» на рельсе. Те же
+   * разговоры, что в списке экрана переписки (GET /api/messages открыт
+   * каждому сотруднику и отдаёт только его разговоры), но одним числом
+   * (волна 27): опрос раз в минуту тянул весь список — двести строк с
+   * расшифрованным началом письма ради суммы. Отказ — ноль, а не ошибка на
+   * полосе: число — подсказка, а не экран.
    */
   const messagesRes = useResource(
     () =>
       api
-        .threads()
-        .then((t) => t.items.reduce((n, x) => n + (x.unread ?? 0), 0))
+        .unreadCount()
+        .then((r) => r.unread)
         .catch(() => 0),
     [user?.id],
-    tally,
+    { ...shownTally, enabled: counting },
   );
   useLiveReload(
     ["alert.created", "case.changed"],

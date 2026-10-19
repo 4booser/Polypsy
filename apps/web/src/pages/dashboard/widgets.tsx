@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useMemo, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import type { AlertCase, AlertCasePage, AppointmentView, OverviewAnalytics, Page as CursorPage, Worklist } from "@quizzy/shared";
 import { api } from "../../api";
@@ -343,7 +343,15 @@ export function MissedWidget() {
   const { user, refreshUser } = useAuth();
   const { run, busy } = useAction();
   const seenAt = user?.workspace?.eventsSeenAt ?? null;
-  const since = seenAt ?? new Date(Date.now() - 86_400_000).toISOString();
+  /*
+   * Точка отсчёта устойчива между отрисовками — как в центре событий
+   * (shell/EventCenter.tsx). Запасная «сутки назад», посчитанная в теле
+   * компонента, давала новую строку на каждой отрисовке, строка стояла в
+   * ключе загрузки, ответ вызывал отрисовку — и «Зведення» спрашивало
+   * /api/missed без остановки, раз в 70 мс, у каждого, кто ни разу не нажал
+   * «Прочитано» (волна 27; сторожит e2e/responsive.e2e.ts).
+   */
+  const since = useMemo(() => seenAt ?? new Date(Date.now() - 86_400_000).toISOString(), [seenAt]);
   const res = useResource(() => api.missed(since), [since]);
   const groups = (res.data?.groups ?? []).filter((g) => g.count > 0);
   const total = groups.reduce((n, g) => n + g.count, 0);

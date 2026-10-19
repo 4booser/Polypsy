@@ -2,7 +2,9 @@ import { useCallback, useState } from "react";
 import { Pressable, ScrollView, View } from "react-native";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import type { QuestionAnalytics, SurveyAnalytics, UiKey } from "@quizzy/shared";
+import { isAborted } from "@/api/abort";
 import { api } from "@/api/client";
+import { useReads } from "@/api/useReads";
 import { Histogram } from "@/components/charts";
 import { BoxPlot, Heatmap, Scatter, boxStatsOf } from "@/components/viz";
 import { useLang } from "@/lang";
@@ -40,21 +42,27 @@ export default function SurveyAnalyticsScreen() {
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("overview");
   const [versionId, setVersionId] = useState<string | undefined>(undefined);
+  const reads = useReads();
 
   const load = useCallback(async () => {
     if (!id) return;
+    // новое чтение отменяет прежнее (api/useReads.ts): срез версии, выбранной раньше, не ляжет поверх нового
+    const signal = reads.next();
     try {
-      setData(await api.surveyAnalytics(id, versionId));
+      setData(await api.surveyAnalytics(id, versionId, { signal }));
       setError(null);
     } catch (e) {
+      if (isAborted(e)) return;
       setError(e instanceof Error ? e.message : ut("ma.loadFailed"));
     }
-  }, [id, versionId, ut]);
+  }, [id, versionId, ut, reads]);
 
+  // уход с экрана обрывает чтение аналитики; вернулись — читаем заново
   useFocusEffect(
     useCallback(() => {
       void load();
-    }, [load]),
+      return reads.cancel;
+    }, [load, reads]),
   );
 
   const back = ut("tab.analytics");

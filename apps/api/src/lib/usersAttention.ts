@@ -1,11 +1,19 @@
 import { and, inArray, isNotNull, sql } from "drizzle-orm";
-import type { MfaCoverageRow, OpsAttentionGroup, OpsAttentionPerson, OpsUserRow, OpsUsersAttention, Role } from "@quizzy/shared";
+import type {
+  MfaCoverageRow,
+  OpsAttentionGroup,
+  OpsAttentionPerson,
+  OpsUserRow,
+  OpsUsersAttention,
+  Permission,
+  Role,
+} from "@quizzy/shared";
 import { db } from "../db";
 import { asSystem } from "../db/context";
 import { auditLog, userSecondFactor, users } from "../db/schema";
 import { fullNameOf } from "./auth";
 import { lockStates } from "./loginGuard";
-import { permissionsOf } from "./permissions";
+import { permissionsOfMany } from "./permissions";
 import { readPolicy } from "./secondFactor";
 
 /*
@@ -35,16 +43,31 @@ const DAY_MS = 86_400_000;
 
 type Because = MfaCoverageRow["because"];
 
+/**
+ * Права сотрудников списка — одним заходом и только когда о них спрашивает
+ * политика (требование «для держателей ops.*»). Прежде права читались на
+ * каждую строку: два запроса на сотрудника, на странице реестра в сотню
+ * человек — двести (волна 27, perf-day).
+ */
+async function opsHolders(
+  people: readonly { id: string; role: Role }[],
+  policy: { ops: boolean },
+): Promise<ReadonlyMap<string, ReadonlySet<Permission>>> {
+  if (!policy.ops) return new Map();
+  return permissionsOfMany(people.filter((p) => p.role === "admin"));
+}
+
 /** По какой причине политика требует второй фактор от учётки; null — не требует */
-async function requiredBecause(
+function requiredBecause(
   u: { id: string; role: Role },
   policy: { superadmins: boolean; ops: boolean },
-): Promise<Because | null> {
+  perms: ReadonlyMap<string, ReadonlySet<Permission>>,
+): Because | null {
   if (u.role === "user") return null;
   if (u.role === "superadmin") return policy.superadmins ? "superadmin" : null;
   if (!policy.ops) return null;
-  const perms = await permissionsOf({ id: u.id, role: u.role } as never);
-  return perms.has("ops.read") || perms.has("ops.manage") ? "ops" : null;
+  const mine = perms.get(u.id);
+  return mine && (mine.has("ops.read") || mine.has("ops.manage")) ? "ops" : null;
 }
 
 /** Учётки с подтверждённым вторым фактором — из переданных */
@@ -75,10 +98,11 @@ export async function rowSecurityOf(
   const policy = await readPolicy();
   const factors = await confirmedFactors(staff.map((r) => r.id));
   const locks = await asSystem(() => lockStates());
+  const perms = await opsHolders(staff, policy);
   const out = new Map<string, Pick<OpsUserRow, "secondFactor" | "lock">>();
   for (const r of rows) {
     const secondFactor =
-      r.role === "user" ? null : { enabled: factors.has(r.id), required: await requiredBecause(r, policy) };
+      r.role === "user" ? null : { enabled: factors.has(r.id), required: requiredBecause(r, policy, perms) };
     out.set(r.id, { secondFactor, lock: locks.get(r.email.toLowerCase()) ?? null });
   }
   return out;
@@ -209,9 +233,10 @@ export async function usersAttention(now = Date.now()): Promise<OpsUsersAttentio
   const policy = await readPolicy();
   const because = new Map<string, Because>();
   if (policy.superadmins || policy.ops) {
-    for (const u of staff) {
-      if (factors.has(u.id)) continue;
-      const why = await requiredBecause(u, policy);
+    const pending = staff.filter((u) => !factors.has(u.id));
+    const perms = await opsHolders(pending, policy);
+    for (const u of pending) {
+      const why = requiredBecause(u, policy, perms);
       if (why) because.set(u.id, why);
     }
   }

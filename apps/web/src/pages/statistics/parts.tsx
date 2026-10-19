@@ -8,6 +8,7 @@ import { cx } from "../../ui/cx";
 import { ErrorText, Field, Input, Segmented, Select, Tag } from "../../ui/primitives";
 import { useDebounced, useResource } from "../../useResource";
 import { useLocalityHints } from "./data";
+import { patientName } from "./names";
 import {
   CRITERION_LABEL,
   type Criterion,
@@ -600,9 +601,13 @@ export function PatientField({
   /*
    * Имя сохранённого в фильтре человека — один раз, по идентификатору.
    * Загрузкой, а не голым запросом: имя прежнего человека, приехавшее после
-   * смены фильтра, не встанет в поле нового.
+   * смены фильтра, не встанет в поле нового. Только имя, а не карточка
+   * (names.ts): карточка — чтение персональных данных с телефоном, и в
+   * журнал оно шло как «открывал карточку» на каждую выборку при каждом
+   * открытии страницы. Человека нет в ответе (вне зоны) — «недоступний», как
+   * прежде отказ карточки.
    */
-  const name = useResource(() => api.patientCard(value!).then((p) => p.fullName), [value], {
+  const name = useResource(() => patientName(value!).then((n) => ({ n })), [value], {
     enabled: !!value && !known.current.has(value),
     keep: false,
   });
@@ -616,10 +621,10 @@ export function PatientField({
       setText(kept);
       return;
     }
-    if (name.data) {
-      known.current.set(value, name.data);
-      setText(name.data);
-    } else if (name.error) setText(ut("st.patientUnavailable"));
+    if (name.data?.n) {
+      known.current.set(value, name.data.n);
+      setText(name.data.n);
+    } else if (name.data || name.error) setText(ut("st.patientUnavailable"));
   }, [value, name.data, name.error, ut]);
 
   /* поиск ждёт паузу в наборе: сервер расшифровывает ФИО на каждый запрос */

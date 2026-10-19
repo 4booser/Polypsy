@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, RefreshControl, ScrollView, View } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
-import type { AlertCase, Respondent, WorkItem, Worklist } from "@quizzy/shared";
+import type { AlertCase, Respondent, Sex, WorkItem, Worklist } from "@quizzy/shared";
 import { api } from "@/api/client";
 import { cache } from "@/offline/cache";
 import { activeOwner } from "@/offline/owner";
@@ -10,8 +10,9 @@ import { useColors } from "@/theme";
 import { Btn } from "@/ui/Button";
 import { Icon } from "@/ui/Icon";
 import { T } from "@/ui/Text";
-import { useNow, useSurveyIndex } from "@/staff/data";
-import { caseClock, dm } from "@/staff/model";
+import { useNow } from "@/staff/data";
+import { caseClock, dm, normOf } from "@/staff/model";
+import { heads } from "@/staff/people";
 import { StaffOnly } from "@/staff/StaffOnly";
 import { Avatar, Card, Chip, Loading, PillRow, SearchField, Section, StaffTop, StateBlock, useClock, useClockText } from "@/staff/ui";
 
@@ -21,6 +22,7 @@ interface PersonRow {
   userId: string;
   name: string;
   unit: string | null;
+  sex: Sex | null;
   birthYear: number | null;
   count: number | null;
   last: string | null;
@@ -51,7 +53,6 @@ function Patients() {
   const c = useColors();
   const router = useRouter();
   const now = useNow();
-  const { norm } = useSurveyIndex();
 
   const [view, setView] = useState<View_>("all");
   const [query, setQuery] = useState("");
@@ -139,6 +140,7 @@ function Patients() {
         userId,
         name: p?.fullName ?? name,
         unit: p?.unit ?? unit,
+        sex: p?.sex ?? null,
         birthYear: p?.birthYear ?? null,
         count: p?.count ?? null,
         last: p?.last ?? null,
@@ -160,7 +162,11 @@ function Patients() {
 
   const attention = view === "all" ? rows.filter((r) => r.open || r.work.length) : rows;
   const calm = view === "all" ? rows.filter((r) => !r.open && !r.work.length) : [];
-  const open = (userId: string) => router.push({ pathname: "/analytics/patients/[userId]", params: { userId, back: "patients" } });
+  const open = (r: PersonRow) => {
+    // карта покажет имя сразу, пока её динамика идёт (staff/people.ts)
+    heads.noteRow(activeOwner(), r.userId, { name: r.name, sex: r.sex, unit: r.unit });
+    router.push({ pathname: "/analytics/patients/[userId]", params: { userId: r.userId, back: "patients" } });
+  };
 
   return (
     <View style={{ flex: 1, backgroundColor: c.ground }}>
@@ -204,7 +210,7 @@ function Patients() {
               />
               <Card>
                 {attention.map((r, i) => (
-                  <Row key={r.userId} r={r} first={i === 0} now={now} norm={r.open ? norm(r.open.surveyId) : null} onPress={() => open(r.userId)} />
+                  <Row key={r.userId} r={r} first={i === 0} now={now} onPress={() => open(r)} />
                 ))}
               </Card>
             </>
@@ -214,7 +220,7 @@ function Patients() {
               <Section title={ut("mst.others")} count={calm.length} sub={ut("mst.othersSub")} />
               <Card>
                 {calm.map((r, i) => (
-                  <Row key={r.userId} r={r} first={i === 0} now={now} norm={null} onPress={() => open(r.userId)} />
+                  <Row key={r.userId} r={r} first={i === 0} now={now} onPress={() => open(r)} />
                 ))}
               </Card>
             </>
@@ -235,13 +241,14 @@ function Patients() {
  * Строка пациента: почему он здесь сейчас — сигнал с часами разбора или
  * открытое в обходе, — и сколько замеров с датой последнего.
  */
-function Row({ r, first, now, norm, onPress }: { r: PersonRow; first: boolean; now: number; norm: number | null; onPress: () => void }) {
+function Row({ r, first, now, onPress }: { r: PersonRow; first: boolean; now: number; onPress: () => void }) {
   const c = useColors();
   const { ut } = useLang();
   const of = useClockText();
   const clockOf = useClock();
   const age = r.birthYear ? new Date(now).getFullYear() - r.birthYear : null;
-  const k = r.open ? caseClock(r.open.openedAt, norm, now) : null;
+  // норма — со случаем (model.ts, normOf): ради неё больше не грузится список методик
+  const k = r.open ? caseClock(r.open.openedAt, normOf(r.open), now) : null;
   const sub = [age !== null ? ut("mst.age").replace("{n}", String(age)) : null, r.unit].filter(Boolean).join(", ");
   const overdue = r.work.filter((w) => w.overdue);
   return (

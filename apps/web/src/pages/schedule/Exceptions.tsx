@@ -5,11 +5,14 @@ import { Ic } from "../../ui/icons";
 import { Panel } from "../../ui/layout";
 import { Button, Field, Input, Segmented } from "../../ui/primitives";
 import { useLang } from "../../lang";
-import { useResource } from "../../useResource";
+import { useDebounced, useResource } from "../../useResource";
 import { G } from "./glyphs";
 import { type ExceptionForm, clock, exceptionProblem, gridOverlap, wallOf, weekdayOf } from "./model";
 import { dayMonth } from "./WeekCalendar";
 import { SHORT_KEY } from "./WeekEdit";
+
+/** Сколько дата в поле должна постоять, прежде чем спросить её день: набор года и стрелки — не вопросы */
+export const DATE_SETTLE_MS = 400;
 
 /** «пт 16.10» — день исключения коротко */
 export function useDayLabel() {
@@ -97,18 +100,28 @@ export function ExceptionFields({
 }) {
   const { ut } = useLang();
   const problem = exceptionProblem(form);
-  const day = useResource(() => api.scheduleWeek(form.date, 1), [form.date], {
-    enabled: /^\d{4}-\d{2}-\d{2}$/.test(form.date) && form.kind === "off",
+  /*
+   * День спрашивается, когда дата перестала меняться, а не на каждое её
+   * изменение: поле даты меняет значение на каждую цифру года и каждое
+   * нажатие стрелки, и каждое изменение было запросом недели и строкой
+   * clinic.today в журнале (волна 27). Показ — только ответа на ту дату,
+   * что стоит в поле сейчас: ответ на прежнюю под новой подписью был бы
+   * чужим днём.
+   */
+  const settled = useDebounced(form.date, DATE_SETTLE_MS);
+  const day = useResource(() => api.scheduleWeek(settled, 1), [settled], {
+    enabled: /^\d{4}-\d{2}-\d{2}$/.test(settled) && form.kind === "off",
   });
+  const shown = day.data && day.data.from === form.date ? day.data : null;
   const label = useDayLabel();
 
   /* задетые приёмы: живые и попадающие в часы «не приймаю» (пустые часы — весь день) */
   const hit =
-    form.kind === "off" && day.data
-      ? day.data.appointments.filter((a) => {
+    form.kind === "off" && shown
+      ? shown.appointments.filter((a) => {
           if (!["booked", "confirmed", "arrived", "in_progress"].includes(a.status)) return false;
           if (!form.from || !form.to) return true;
-          const s = wallOf(a.startsAt, day.data!.tz).minutes;
+          const s = wallOf(a.startsAt, shown.tz).minutes;
           const e = s + Math.round((Date.parse(a.endsAt) - Date.parse(a.startsAt)) / 60_000);
           return gridOverlap(s, e, form.from, form.to);
         })
@@ -159,7 +172,7 @@ export function ExceptionFields({
             {hit.map((a) => (
               <li key={a.id}>
                 <b className="font-bold text-text">{a.patientName}</b>{" "}
-                <span className="tabular-nums">{clock(wallOf(a.startsAt, day.data!.tz).minutes)}</span>
+                <span className="tabular-nums">{clock(wallOf(a.startsAt, shown!.tz).minutes)}</span>
               </li>
             ))}
           </ul>

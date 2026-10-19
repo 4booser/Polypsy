@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { conclusionName, leadAction, resultText, statsText } from "../src/pages/patientCard/model";
+import type { PatientCard } from "@quizzy/shared";
+import type { ConclusionVersion } from "../src/api";
+import { conclusionName, leadAction, resultText, statsText, withConclusion, withLead } from "../src/pages/patientCard/model";
 
 /**
  * Карточка пациента (Polypsy 2.0, «Дія без переходу»): то, что на живом
@@ -98,5 +100,111 @@ describe("карточка пациента: адреса", () => {
 
   test("открытие карточки — по-прежнему чтение GET /api/patients/:id/card (журнал сервера)", () => {
     expect(card).toContain("useResource(() => api.patientCard(id), [id], { keep: false })");
+  });
+});
+
+describe("карточка пациента: после действия — только то, что оно меняет (волна 27)", () => {
+  const read = (f: string) => readFileSync(join(SRC, "pages/patientCard", f), "utf8");
+  const card = read("PatientCard.tsx");
+  const panes = read("Panes.tsx");
+
+  /*
+   * Каждое чтение здесь пишет журнал: карточка — patient.card_read,
+   * хронология, нотатки и план — response.read, случаи — alert.list. Прежде
+   * любое действие в ящике перечитывало их все, подпись после сохранения —
+   * дважды.
+   */
+  test("ни одно действие ящика не перечитывает карточку, случаи и план безпеки", () => {
+    expect(panes).not.toContain("v.reload()");
+    expect(card).not.toContain("reloadCard");
+    const refresh = card.slice(card.indexOf("const refresh = useMemo<CardRefresh>"), card.indexOf("const v: CardView"));
+    for (const read of ["cases.reload", "plans.reload", "res.reload", "dynamics.reload", "messages.reload"]) {
+      expect(refresh, read).not.toContain(read);
+    }
+  });
+
+  test("выдача методики и закрепление ничего не перечитывают", () => {
+    const assign = card.slice(card.indexOf("onAssign="), card.indexOf("onClose={() => setAssigning(false)}"));
+    expect(assign).toContain("api.grant(");
+    expect(assign).not.toMatch(/reload|refresh/);
+    const lead = card.slice(card.indexOf("const toggleLead"), card.indexOf("const [assigning"));
+    expect(lead).toContain("withLead(");
+    expect(lead).not.toMatch(/reload|refresh/);
+  });
+
+  const base = (over: Partial<PatientCard> = {}): PatientCard =>
+    ({
+      id: "p1",
+      responses: [
+        { responseId: "r1", surveyId: "s1", surveyTitle: "PHQ-9", submittedAt: "2026-10-01", reliable: true, scales: [] },
+        { responseId: "r2", surveyId: "s2", surveyTitle: "GAD-7", submittedAt: "2026-10-02", reliable: true, scales: [] },
+      ],
+      conclusions: [
+        {
+          id: "c2",
+          responseId: "r2",
+          surveyId: "s2",
+          surveyTitle: "GAD-7",
+          version: 1,
+          status: "signed",
+          text: "Інше",
+          createdAt: "2026-10-05 10:00:00+03",
+          signedAt: "2026-10-05 10:05:00+03",
+          authorName: "Колега",
+        },
+      ],
+      lead: null,
+      ...over,
+    }) as unknown as PatientCard;
+  const version = (over: Partial<ConclusionVersion>): ConclusionVersion => ({
+    id: "v",
+    version: 1,
+    revision: 1,
+    text: "",
+    status: "draft",
+    createdAt: "2026-10-10 09:00:00+03",
+    authorName: "Я",
+    signedAt: null,
+    ...over,
+  });
+
+  test("сохранили черновик поверх подписанного — на карточке подписанная и свой черновик, как отдаёт сервер", () => {
+    const signed = version({ id: "c1v1", version: 1, status: "signed", text: "Було", createdAt: "2026-10-03 09:00:00+03", signedAt: "2026-10-03 09:30:00+03", authorName: "Колега" });
+    const draft = version({ id: "c1v2", version: 2, text: "Стало", createdAt: "2026-10-10 09:00:00+03" });
+    const before = base();
+    const next = withConclusion(before, "r1", { current: draft, versions: [draft, signed] });
+    expect(next.conclusions.map((c) => [c.id, c.status, c.surveyTitle, c.text])).toEqual([
+      ["c1v2", "draft", "PHQ-9", "Стало"],
+      ["c2", "signed", "GAD-7", "Інше"],
+      ["c1v1", "signed", "PHQ-9", "Було"],
+    ]);
+    // остальное карточки — то же, что пришло с её чтением
+    expect(next.responses).toBe(before.responses);
+    expect(next.lead).toBe(before.lead);
+  });
+
+  test("подписали — черновика нет, одна подписанная последняя; чужие строки не тронуты", () => {
+    const old = version({ id: "c1v1", version: 1, status: "signed", createdAt: "2026-10-03 09:00:00+03" });
+    const signed = version({ id: "c1v2", version: 2, status: "signed", text: "Підписано", signedAt: "2026-10-10 09:10:00+03" });
+    const before = base({
+      conclusions: [...base().conclusions, { ...base().conclusions[0]!, id: "c1v2", responseId: "r1", surveyId: "s1", surveyTitle: "PHQ-9", status: "draft", version: 2 }],
+    });
+    const next = withConclusion(before, "r1", { current: signed, versions: [signed, old] });
+    expect(next.conclusions.filter((c) => c.responseId === "r1").map((c) => [c.id, c.status, c.text])).toEqual([
+      ["c1v2", "signed", "Підписано"],
+    ]);
+    expect(next.conclusions.find((c) => c.responseId === "r2")).toEqual(base().conclusions[0]!);
+  });
+
+  test("первый черновик по прохождению — одна строка-черновик", () => {
+    const draft = version({ id: "n1", text: "Перший" });
+    const next = withConclusion(base(), "r1", { current: draft, versions: [draft] });
+    expect(next.conclusions.filter((c) => c.responseId === "r1").map((c) => [c.id, c.status])).toEqual([["n1", "draft"]]);
+  });
+
+  test("закрепление: взял — ведущий я, отпустил — никого", () => {
+    const me = { id: "s1", fullName: "Іваненко Ірина" };
+    expect(withLead(base(), true, me).lead).toEqual({ specialistId: "s1", name: "Іваненко Ірина", mine: true });
+    expect(withLead(base({ lead: { specialistId: "s1", name: "Іваненко Ірина", mine: true } }), false, me).lead).toBeNull();
   });
 });

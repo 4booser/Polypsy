@@ -70,19 +70,23 @@ export function useThreadPane(v: CardView, active: boolean): DrawerPaneProps {
     marked.current = key;
     void api
       .markRead(v.thread.id, ids)
-      .then(() => v.reload())
+      .then(() => v.refresh.messages())
       .catch(() => {});
   }, [active, v.thread, v.messages, v]);
 
   const send = (move: boolean) =>
     void run(async () => {
-      if (move && picked && v.next) {
-        await api.rescheduleAppointment(v.next.id, picked.id);
+      const moving = !!(move && picked && v.next);
+      if (moving) {
+        await api.rescheduleAppointment(v.next!.id, picked!.id);
         v.setSlotId(null);
       }
-      if (text.trim()) await api.sendMessage({ patientId: v.id, text: text.trim() });
+      const sending = !!text.trim();
+      if (sending) await api.sendMessage({ patientId: v.id, text: text.trim() });
       setText("");
-      v.reload();
+      /* перенос — приём в хронологии; письмо — разговор */
+      if (moving) v.refresh.timeline();
+      if (sending) v.refresh.messages();
     }, ut(move && picked ? (text.trim() ? "card.movedAndSent" : "card.moved") : "card.sent"));
 
   const body = (
@@ -283,9 +287,10 @@ export function useConclusionPane(v: CardView, active: boolean, wantResponse: st
   const signed = state?.versions.find((x) => x.status === "signed") ?? null;
   const main = resp?.scales[0] ?? null;
 
+  /* ответ сохранения или подписи — и состояние ящика, и строка «Заключення» карточки; хронологию — по итогу действия */
   const apply = (next: ConclusionState) => {
     res.patch(next);
-    v.reload();
+    if (rid) v.refresh.conclusion(rid, next);
   };
   const guard = async (fn: () => Promise<unknown>) => {
     try {
@@ -462,6 +467,7 @@ export function useConclusionPane(v: CardView, active: boolean, wantResponse: st
                         apply,
                       });
                       touched.current = false;
+                      v.refresh.timeline();
                     }),
                   ut("cn.signed"),
                 )
@@ -478,6 +484,7 @@ export function useConclusionPane(v: CardView, active: boolean, wantResponse: st
                   guard(async () => {
                     apply(await api.saveConclusion(rid, text, state.current));
                     touched.current = false;
+                    v.refresh.timeline();
                   }),
                 ut("cn.draftSaved"),
               )
@@ -563,7 +570,7 @@ export function useNotePane(v: CardView, active: boolean): DrawerPaneProps {
                 onClick={() => {
                   setStale(null);
                   touched.current = false;
-                  v.reload();
+                  v.refresh.notes();
                 }}
               >
                 {ut("integrity.reread")}
@@ -615,7 +622,7 @@ export function useNotePane(v: CardView, active: boolean): DrawerPaneProps {
                   await saveThenSign(state, plan, {
                     save: () => api.saveNote(v.id, text, state.current, kind),
                     sign: (seen) => api.signNote(v.id, seen),
-                    apply: () => v.reload(),
+                    apply: (next) => v.refresh.notes(next),
                   });
                   touched.current = false;
                   setText("");
@@ -632,9 +639,9 @@ export function useNotePane(v: CardView, active: boolean): DrawerPaneProps {
             void run(
               () =>
                 guard(async () => {
-                  await api.saveNote(v.id, text, state.current, kind);
+                  const saved = await api.saveNote(v.id, text, state.current, kind);
                   touched.current = false;
-                  v.reload();
+                  v.refresh.notes(saved);
                 }),
               ut("cn.draftSaved"),
             )
@@ -739,7 +746,7 @@ export function useBookPane(v: CardView, active: boolean): DrawerPaneProps {
             await api.bookFor(v.id, picked!.id, mode);
             setSlotId(null);
             slots.reload();
-            v.reload();
+            v.refresh.timeline();
           }, ut("card.booked"))
         }
       >

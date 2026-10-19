@@ -2,6 +2,7 @@ import { useMemo, useState, type ReactNode } from "react";
 import { useParams } from "react-router-dom";
 import type { AuditEntry, SurveyGrant } from "@quizzy/shared";
 import { api } from "../api";
+import { useAuth } from "../auth";
 import { useLang } from "../lang";
 import { ShellIcon } from "../shell/icons";
 import { Avatar, Modal, Screen, useAction } from "../ui";
@@ -376,24 +377,35 @@ function NowRow({ title, sub, value, warn }: { title: string; sub: string | null
   );
 }
 
+/** Действия журнала доступу методики: выдачи и отзывы */
+export const ACCESS_LOG_ACTIONS = ["access.grant", "access.revoke"] as const;
+
+/** Журнал доступу методики — восемь последних выдач и отзывов одним чтением; источник подменяется в проверке */
+export function loadAccessLog(surveyId: string, src: Pick<typeof api, "auditPage"> = api): Promise<AuditEntry[]> {
+  return src
+    .auditPage({ actions: ACCESS_LOG_ACTIONS.join(","), resourceType: "survey", q: surveyId, limit: "8" })
+    .then((p) => p.entries);
+}
+
 /**
  * Журнал доступу: выдачи и отзывы этой методики из журнала аудита.
  *
  * Журнал закрыт правом audit.read — у кого его нет, панели нет (а не пустой
  * панели «змін немає»). Поиск журнала по тексту ищет не дальше 31 дня (сервер,
  * routes/audit.ts), поэтому подпись так и говорит — «за 31 день».
+ *
+ * Одним чтением на оба действия (волна 27): прежде — два чтения, у каждого
+ * свой счёт и своя строка audit.read на каждое открытие экрана. И только с
+ * правом: без audit.read оба запроса были заведомым отказом — строкой
+ * access.denied в журнале на каждое открытие, а панели не было всё равно.
  */
 function AccessLog({ surveyId, grants }: { surveyId: string; grants: SurveyGrant[] }) {
   const { ut } = useLang();
-  const log = useResource(async () => {
-    const [given, taken] = await Promise.all([
-      api.auditPage({ action: "access.grant", resourceType: "survey", q: surveyId, limit: "8" }),
-      api.auditPage({ action: "access.revoke", resourceType: "survey", q: surveyId, limit: "8" }),
-    ]);
-    return [...given.entries, ...taken.entries].sort((a, b) => (a.at < b.at ? 1 : -1)).slice(0, 8);
-  }, [surveyId]);
+  const { can } = useAuth();
+  const canAudit = can("audit.read");
+  const log = useResource(() => loadAccessLog(surveyId), [surveyId], { enabled: canAudit });
 
-  if (log.error || !log.data) return null;
+  if (!canAudit || log.error || !log.data) return null;
   const names = new Map<string, string>();
   for (const g of grants) {
     names.set(g.userId, g.fullName);
