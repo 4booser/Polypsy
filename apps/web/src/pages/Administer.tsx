@@ -7,7 +7,7 @@ import { useAuth } from "../auth";
 import { betterOf } from "../charts/courseModel";
 import { useDecimal } from "../charts/kit";
 import { administerPayload, blankVersion, loadAdminister, preliminary } from "./administerModel";
-import { useResource } from "../useResource";
+import { useDebounced, useResource } from "../useResource";
 import { Callout, CourseDigits, Ic, Loading } from "../ui";
 import { cx } from "../ui/cx";
 import { Page, Panel } from "../ui/layout";
@@ -29,6 +29,9 @@ import { Rx } from "./response/icons";
  * предварительный подсчёт, критические пункты и что будет после сохранения.
  */
 type Mode = "fast" | "mouse";
+
+/** Сколько выбор пациента должен простоять, прежде чем грузить его прежние замеры */
+const SUBJECT_SETTLE_MS = 600;
 
 export default function Administer() {
   const { ut } = useLang();
@@ -55,11 +58,21 @@ export default function Administer() {
 
   const res = useResource(() => loadAdminister(id!, version), [id, version], { enabled: !!id });
   const survey: SurveyFull | null = res.data?.survey ?? null;
+  /*
+   * Прежние замеры — по человеку, на котором выбор ОСТАНОВИЛСЯ. Выбор —
+   * родной <select>: в Windows и Linux стрелки на нём меняют значение и шлют
+   * change на каждом шаге, и динамика — чтение клинических данных со строкой
+   * журнала — уходила по каждому, мимо кого прошли стрелкой. Пока выбор не
+   * устоялся, прежних замеров не видно вовсе: показать замеры прошлого
+   * человека под новым — чужие данные.
+   */
+  const settledSubject = useDebounced(subject, SUBJECT_SETTLE_MS);
   const history = useResource(
-    () => api.dynamics(subject, id!).then((d): { d: RespondentDynamics | null } => ({ d }), () => ({ d: null })),
-    [subject, id],
-    { enabled: !!subject && !!id && can("patients.read"), keep: false },
+    () => api.dynamics(settledSubject, id!).then((d): { d: RespondentDynamics | null } => ({ d }), () => ({ d: null })),
+    [settledSubject, id],
+    { enabled: !!settledSubject && settledSubject === subject && !!id && can("patients.read"), keep: false },
   );
+  const historyShown = settledSubject === subject ? (history.data?.d ?? null) : null;
 
   // ошибка ниже — про сдачу, а не про загрузку: у них разные состояния
   if (!survey) return <Loading error={res.error} onRetry={res.reload} busy={res.loading} />;
@@ -188,7 +201,7 @@ export default function Administer() {
         </div>
 
         <div className="flex min-w-0 flex-col gap-4 min-[1101px]:sticky min-[1101px]:top-0">
-          <SummaryPanel survey={survey} answers={answers} history={history.data?.d ?? null} />
+          <SummaryPanel survey={survey} answers={answers} history={historyShown} />
           {asked.some((q) => choicesOf(q).some((o) => o.riskFlag)) ? <CriticalNote survey={survey} /> : null}
           <Panel title={ut("adx.after")} icon={<Rx.listChecks />}>
             <ul className="m-0 flex list-none flex-col gap-1 p-0">
