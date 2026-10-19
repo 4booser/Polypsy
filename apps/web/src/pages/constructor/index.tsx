@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
-import { contentLangFor, type ContentLang, type Issue, type SurveyStatus } from "@quizzy/shared";
+import { contentLangFor, type ContentLang, type Issue, type SurveyGrant, type SurveyStatus } from "@quizzy/shared";
 import { api } from "../../api";
 import { useAuth } from "../../auth";
 import { day, timeOfDay } from "../../format";
@@ -11,7 +11,6 @@ import { Callout, Ic, Loading, Tooltip, useToast } from "../../ui";
 import { Count, Page, Panel } from "../../ui/layout";
 import { ActionMenu, type MenuEntry } from "../../ui/menu";
 import { Button, ErrorText, Textarea } from "../../ui/primitives";
-import { AssignGroup } from "./AssignGroup";
 import { MainSection, Settings } from "./Basics";
 import { BulkPaste } from "./BulkPaste";
 import { CheckDrawer, HistoryDrawer, issueTarget } from "./Check";
@@ -42,6 +41,8 @@ import { Answers, BandsSection, Scales, ScalesSummary } from "./Scales";
 import { NewMethod, type ConstructorSeed } from "./Start";
 import { editorShortcut } from "./shortcuts";
 import { Structure } from "./Structure";
+import { AssignDrawer, type ExistingAssignment } from "../methods/AssignDrawer";
+import { grantState, splitCode } from "../methods/model";
 
 /*
  * Конструктор методики (макеты methods-new и methods-constructor).
@@ -172,6 +173,21 @@ function Editor({ id }: { id?: string }) {
   const [busy, setBusy] = useState(false);
   const [loaded, setLoaded] = useState(!id);
   const [drawer, setDrawer] = useState<null | "check" | "history" | "assign" | "paste">(null);
+  /*
+   * Назначения методики — только когда открыт ящик «Призначити»: сказать, у
+   * кого она уже есть (как в рамке методики, methods/MethodPage.tsx).
+   */
+  const grants = useResource(() => api.grants(id!).catch(() => [] as SurveyGrant[]), [id], {
+    enabled: !!id && drawer === "assign",
+  });
+  const existing = useMemo(() => {
+    const now = new Date();
+    return new Map<string, ExistingAssignment>(
+      (grants.data ?? [])
+        .filter((g) => grantState(g, now) !== "late")
+        .map((g) => [g.userId, { until: g.expiresAt, done: g.completed }] as const),
+    );
+  }, [grants.data]);
   /*
    * Язык, на котором правится текст теста, — не язык консоли. Начинается с
    * него (или с выбранного на старте), но переключается отдельно: специалист
@@ -521,6 +537,8 @@ function Editor({ id }: { id?: string }) {
 
   const backTo = (saved?.folderId ?? draft.folderId) ? `/surveys?folder=${encodeURIComponent((saved?.folderId ?? draft.folderId)!)}` : "/surveys";
   const name = text(draft.title);
+  /* код методики крупно, как в каталоге: «Призначити PHQ-9» */
+  const short = splitCode(name).code ?? (name || ut("cst.title"));
   const versionDate = saved?.versionId && info.data ? day(info.data.updatedAt) : null;
   const nextVersion = (saved?.version ?? 0) + 1;
   const groupTitle = draft.groupId ? groups.data?.find((g) => g.id === draft.groupId)?.title : null;
@@ -802,7 +820,22 @@ function Editor({ id }: { id?: string }) {
             sub={name}
           />
         ) : null}
-        {id && published ? <AssignGroup surveyId={id} open={drawer === "assign"} onClose={() => setDrawer(null)} sub={name} /> : null}
+        {id && published ? (
+          /* тот же ящик, что у каталога и рамки методики (methods-assign-dialog), — с группы: так зовёт его меню */
+          <AssignDrawer
+            open={drawer === "assign"}
+            onClose={() => setDrawer(null)}
+            onReturn={() => setDrawer("assign")}
+            initialMode="group"
+            title={ut("mc.assignTitle").replace("{code}", short)}
+            sub={`${ut("ant.versionN").replace("{n}", String(saved?.version ?? ""))}`}
+            draftName={ut("mc.assignDraft").replace("{code}", short)}
+            existing={existing}
+            assignOne={(userId, due, note) => api.grant(id, userId, note ?? undefined, due)}
+            assignGroup={(groupId, due, note) => api.assignSurveyToPatientGroup(groupId, { surveyId: id, expiresAt: due, note })}
+            onAssigned={() => grants.reload()}
+          />
+        ) : null}
         <BulkPaste
           open={drawer === "paste"}
           onClose={() => setDrawer(null)}

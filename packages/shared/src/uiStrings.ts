@@ -707,13 +707,7 @@ export const UI = {
    * так слово не требует склонения по числу.
    */
   "cn.assignGroup": { uk: "Призначити групі", ru: "Назначить группе", en: "Assign to group" },
-  "cn.assignGroupHint": {
-    uk: "Кожен учасник групи отримає окреме призначення зі своїм строком; склад групи береться на момент призначення",
-    ru: "Каждый участник группы получит отдельное назначение со своим сроком; состав группы берётся на момент назначения",
-    en: "Each group member will receive a separate assignment with its own deadline; group membership is taken as of the moment of assignment",
-  },
   "cn.patientGroup": { uk: "Група пацієнтів", ru: "Группа пациентов", en: "Patient group" },
-  "cn.groupCountHint": { uk: "У дужках — скільки учасників отримають методику", ru: "В скобках — сколько участников получат методику", en: "In parentheses — how many members will receive the instrument" },
   "cn.noPatientGroups": {
     uk: "Груп пацієнтів поки немає — їх збирають у розділі «Групи»",
     ru: "Групп пациентов пока нет — их собирают в разделе «Группы»",

@@ -80,6 +80,7 @@ export function AssignDrawer({
   exclusive,
   assignOne,
   assignGroup,
+  initialMode = "people",
   onAssigned,
 }: {
   open: boolean;
@@ -103,12 +104,14 @@ export function AssignDrawer({
   assignOne: (userId: string, due: string | null, note: string | null) => Promise<unknown>;
   /** Назначить группе пациентов; без него — только поимённо */
   assignGroup?: (groupId: string, due: string | null, note: string | null) => Promise<{ recipients: number }>;
+  /** С чего начинает ящик: «Призначити групі» в меню конструктора открывает его на группе */
+  initialMode?: "people" | "group";
   onAssigned: () => void;
 }) {
   const { ut } = useLang();
   const { run, busy } = useAction();
   const toast = useToast();
-  const [mode, setMode] = useState<"people" | "group">("people");
+  const [mode, setMode] = useState<"people" | "group">(assignGroup ? initialMode : "people");
   const [picked, setPicked] = useState<Patient[]>([]);
   const [query, setQuery] = useState("");
   const [groupId, setGroupId] = useState("");
