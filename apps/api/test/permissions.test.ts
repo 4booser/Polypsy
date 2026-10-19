@@ -15,7 +15,7 @@ import { users } from "../src/db/schema";
 import { toPublicUser } from "../src/lib/auth";
 import { permissionExceptions, rolePermissions, roles, staffRoles } from "../src/db/schema";
 import { hasPermission, permissionsOf, syncBuiltinRole } from "../src/lib/permissions";
-import { ROUTE_DOCS } from "../src/lib/openapi";
+import { ROUTE_DOCS, routePermissions } from "../src/lib/openapi";
 import { adminA, api, makeUser, root } from "./fixtures";
 
 /**
@@ -320,15 +320,21 @@ describe("маршруты под правом", () => {
    */
   const NOWHERE = "00000000-0000-4000-8000-000000000000";
 
+  /*
+   * По строке на каждое объявленное право: маршрут под двумя правами
+   * (неделя расписания) обязан закрываться без любого из них, а не только
+   * без первого.
+   */
   const DECLARED = Object.entries(ROUTE_DOCS)
     .filter(([, doc]) => doc.permission)
-    .map(([key, doc]) => {
+    .flatMap(([key, doc]) => routePermissions(doc).map((permission) => ({ key, doc, permission })))
+    .map(({ key, doc, permission }) => {
       const [method, path] = key.split(" ") as [string, string];
       return {
         key,
         method,
         url: path.replace(/:[^/]+/g, NOWHERE),
-        permission: doc.permission!,
+        permission,
         /*
          * Положительная половина — «с правом проходит» — выполняется только
          * на читающих маршрутах. На пишущем она означала бы выполнить запись
@@ -386,9 +392,7 @@ describe("маршруты под правом", () => {
 
   test("у каждого объявленного права есть проверяемый маршрут", () => {
     // иначе право объявлено, но ни одним маршрутом не закрыто, и пробел молчит
-    const declared = new Set(
-      Object.values(ROUTE_DOCS).flatMap((d) => (d.permission ? [d.permission] : [])),
-    );
+    const declared = new Set(Object.values(ROUTE_DOCS).flatMap((d) => routePermissions(d)));
     const covered = new Set(DECLARED.map((r) => r.permission));
     expect([...declared].filter((p) => !covered.has(p))).toEqual([]);
   });

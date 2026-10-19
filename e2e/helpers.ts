@@ -163,14 +163,13 @@ export function eventsBell(page: Page): Locator {
 /**
  * Ссылки на людей в списке пациентов.
  *
- * С 2.0 реестр — снова таблица набора (кадр patients-list), а состав группы
- * в карточке группы — сетка (PersonGrid). Признак `data-patients` стоит и
- * там и там (обёртка таблицы в Patients.tsx, сама сетка в PersonGrid) ровно
- * ради этой проверки: классы менять можно, признак — нет. Первая ссылка
- * строки — имя человека, она ведёт в карточку.
+ * С 2.0 реестр — снова таблица набора (кадр patients-list). Признак
+ * `data-patients` стоит на обёртке таблицы в Patients.tsx ровно ради этой
+ * проверки: классы менять можно, признак — нет. Первая ссылка строки — имя
+ * человека, она ведёт в карточку.
  */
 export function patientLinks(page: Page): Locator {
-  return page.locator("[data-patients] tbody tr td a, [data-patients] > li a");
+  return page.locator("[data-patients] tbody tr td a");
 }
 
 /**
@@ -367,13 +366,13 @@ export async function setEditLang(page: Page, lang: "uk" | "ru"): Promise<void> 
 }
 
 /**
- * Строки списка пациентов текстом: строки таблицы реестра (2.0) или пункты
- * сетки группы — по тому же признаку, что и patientLinks. Через expect.poll, а не waitFor: после
+ * Строки списка пациентов текстом: строки таблицы реестра (2.0) — по тому же
+ * признаку, что и patientLinks. Через expect.poll, а не waitFor: после
  * смены пользователя старый список какое-то время ещё в DOM, и одиночное
  * ожидание успевает совпасть с ним, а читается уже пустой экран загрузки.
  */
 export async function rowTexts(page: Page): Promise<string[]> {
-  const rows = page.locator("[data-patients] tbody tr, [data-patients] > li");
+  const rows = page.locator("[data-patients] tbody tr");
   /*
    * Возвращается ровно тот список, который удовлетворил проверке, а не
    * прочитанный заново.

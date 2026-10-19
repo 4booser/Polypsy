@@ -3,6 +3,7 @@ import { numberingProblems, parseBulk } from "../src/pages/constructor/BulkPaste
 import {
   addRowItem,
   applyAnswers,
+  applyJsonDraft,
   createTarget,
   deriveAnswers,
   deriveMode,
@@ -275,6 +276,57 @@ describe("конструктор по макету", () => {
     expect(renamed.questions[0]!.options.map((o) => o.uid)).toEqual(flagged.questions[0]!.options.map((o) => o.uid));
     // набор, собранный из пунктов, позначку пункта не берёт — иначе разнёс бы её во все
     expect(deriveAnswers(renamed.questions).some((a) => a.riskFlag)).toBe(false);
+  });
+
+  test("свой текст после 409 ложится на перечитанную версию, а не на ту, что в тексте", () => {
+    /*
+     * Отказ 409 → «Показати мої правки» (текст черновика, в нём старая
+     * базовая версия) → «Перечитати методику» (экран на новой версии) →
+     * «Застосувати». Текст возвращал старую базу, и следующее сохранение
+     * снова получало 409 — по кругу. Мутация: брать базу из текста —
+     * проверка базы падает.
+     */
+    const mine = { ...base(), title: { uk: "Мої правки" }, baseVersionId: "v-old" };
+    const reread = { ...base(), title: { uk: "Чужі правки" }, baseVersionId: "v-new" };
+    const applied = applyJsonDraft(reread, JSON.parse(JSON.stringify(mine)) as Draft);
+    expect(applied.title.uk, "текст не применился").toBe("Мої правки");
+    expect(applied.baseVersionId).toBe("v-new");
+    expect(toPayload(applied).baseVersionId, "на сервер уходит старая база").toBe("v-new");
+    // новая, ещё не сохранённая методика: базы нет ни в экране, ни после текста
+    expect(applyJsonDraft({ baseVersionId: undefined }, mine).baseVersionId).toBeNull();
+  });
+
+  test("набор без кодов: удалённый ответ не переносит позначку «критичний» на соседа", () => {
+    /*
+     * У методик с баллом варианта (PHQ-9, ASSIST, «большая пятёрка») кодов
+     * ответов нет, и вариант пункта узнавался по месту. Удалили первый ответ
+     * набора — места сдвинулись: критическим становился следующий за ним
+     * вариант, а настоящий критический ответ сигнала больше не поднимал.
+     */
+    const set = [
+      { uid: "a1", text: { uk: "Ніколи" }, keyCode: null, score: 0 },
+      { uid: "a2", text: { uk: "Іноді" }, keyCode: null, score: 1 },
+      { uid: "a3", text: { uk: "Часто" }, keyCode: null, score: 2 },
+    ];
+    const d = applyAnswers({ ...base(), answers: set }, set);
+    const flagged: Draft = {
+      ...d,
+      questions: d.questions.map((x, i) =>
+        i === 3 ? { ...x, options: x.options.map((o, k) => (k === 1 ? { ...o, riskFlag: true, riskLabel: { uk: "іноді" } } : o)) } : x,
+      ),
+    };
+    const removed = applyAnswers(flagged, [set[1]!, set[2]!]);
+    expect(removed.questions[3]!.options.map((o) => [o.text.uk, !!o.riskFlag])).toEqual([
+      ["Іноді", true],
+      ["Часто", false],
+    ]);
+    expect(removed.questions[3]!.options[0]!.riskLabel).toEqual({ uk: "іноді" });
+    // соседние пункты как были — без позначок
+    expect(removed.questions[0]!.options.some((o) => o.riskFlag)).toBe(false);
+
+    // новый ответ в конце — без позначки, прежние остаются на своих ответах
+    const added = applyAnswers(removed, [set[1]!, set[2]!, { uid: "a4", text: { uk: "Завжди" }, keyCode: null, score: 3 }]);
+    expect(added.questions[3]!.options.map((o) => !!o.riskFlag)).toEqual([true, false, false]);
   });
 
   test("ряды таблицы баллов: по ответам, плюс чужой ключ и балл варианта, если они есть", () => {

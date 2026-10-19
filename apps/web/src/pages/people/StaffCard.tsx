@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react
 import { Link, NavLink, Outlet, useNavigate, useOutletContext, useParams } from "react-router-dom";
 import type { AuditEntry, PatientGroupWithCounts, PatientListItem, Sex, UiKey } from "@quizzy/shared";
 import { ROLE_LADDER, t } from "@quizzy/shared";
-import { api } from "../../api";
+import { ApiError, api } from "../../api";
 import { useAuth } from "../../auth";
 import { locale, severityKey } from "../../format";
 import { useLang } from "../../lang";
@@ -35,7 +35,7 @@ import { cx } from "../../ui/cx";
 import { Panel } from "../../ui/layout";
 import { ActionMenu } from "../../ui/menu";
 import { Button, Field, Input, Select, SeverityTag, Tag, Textarea } from "../../ui/primitives";
-import { kitSeverity, shownSeries, shownValue } from "../patients/model";
+import { kitSeverity, shownSeries, shownSeriesText, shownValue } from "../patients/model";
 import { shortCode } from "../patients/instruments";
 import { useResource } from "../../useResource";
 import { actionLabel } from "../ops/model";
@@ -70,6 +70,9 @@ interface CardCtx {
   reload: () => void;
   /** Группы этого человека, если смотрящему открыты пациенты (patients.read); null — ещё едут или закрыты */
   groups: PatientGroupWithCounts[] | null;
+  /** Отказ загрузки групп — с «Повторити», а не вечный скелет */
+  groupsError: string | null;
+  reloadGroups: () => void;
   canPatients: boolean;
   /** Открыть правку своей анкеты (ящик); у чужой карточки — null */
   edit: (() => void) | null;
@@ -123,7 +126,17 @@ export default function StaffCard() {
   }
 
   const groups = groupsRes.data ? ownGroups(groupsRes.data, row.id, "") : canPatients ? null : [];
-  const ctx: CardCtx = { row, me, isSuper, reload, groups, canPatients, edit: me ? () => setEditing(true) : null };
+  const ctx: CardCtx = {
+    row,
+    me,
+    isSuper,
+    reload,
+    groups,
+    groupsError: groupsRes.error,
+    reloadGroups: groupsRes.reload,
+    canPatients,
+    edit: me ? () => setEditing(true) : null,
+  };
   const name = row.fullName || row.email;
   const base = `/staff/${row.id}`;
   /* под суперадмином нет лестницы: роль ему не меняют, и отключить его может только другой суперадмин (сервер решит) */
@@ -1032,6 +1045,19 @@ function LedPatients() {
     return [...list].sort((a, b) => STATE_RANK[stateOf(a)] - STATE_RANK[stateOf(b)] || at(a) - at(b) || a.name.localeCompare(b.name, "uk"));
   }, [items, q, view, sort, now]);
   useHotkeys({ t: () => picked.size && setTransfer(true) }, canTransfer && !transfer);
+  /*
+   * Отметка — только у тех, кто в списке есть: после перечитывания (передача,
+   * 409 «уже ведёт другой») ушедший к другому лікарю из неё выпадает, и
+   * полоса отметки не считает людей, которых на экране нет.
+   */
+  useEffect(() => {
+    if (!page.data) return;
+    const present = new Set(page.data.items.map((p) => p.id));
+    setPicked((prev) => {
+      const next = new Set([...prev].filter((id) => present.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [page.data]);
 
   const columns: Column<PatientListItem>[] = [
     {
@@ -1087,7 +1113,7 @@ function LedPatients() {
             ) : (
               <span className="text-caption text-text-2">
                 <b className="mr-1 text-[11px] font-bold text-muted">{shortCode(m.code)}</b>
-                {shownSeries(m.values, m.normalization).join(" → ")}
+                {shownSeriesText(m.values, m.normalization).join(" → ")}
               </span>
             )}
           </span>
@@ -1244,6 +1270,12 @@ function LedPatients() {
             forgetDirectory();
             reload();
           }}
+          onStale={() => {
+            /* окно остаётся: в нём — те из отмеченных, кого этот лікар ещё ведёт */
+            page.reload();
+            forgetDirectory();
+            reload();
+          }}
         />
       ) : null}
     </div>
@@ -1316,12 +1348,15 @@ function TransferModal({
   total,
   onClose,
   onDone,
+  onStale,
 }: {
   from: StaffRow;
   patients: PatientListItem[];
   total: number;
   onClose: () => void;
   onDone: () => void;
+  /** 409: кого-то из отмеченных уже ведёт другой — список перечитывается */
+  onStale: () => void;
 }) {
   const { ut, lang } = useLang();
   const { user, can } = useAuth();
@@ -1362,9 +1397,15 @@ function TransferModal({
             disabled={busy || !target || reason.trim().length < 10 || !n}
             onClick={() =>
               void run(async () => {
-                const r = await api.transferPatients(from.id, { patientIds: patients.map((p) => p.id), to: target!.id, reason: reason.trim() });
-                toast(fill(ut("adm2.transferred"), { n: plural(ut("adm2.nPatients"), r.moved, lang), to: shortName(target!.fullName) }), "ok");
-                onDone();
+                try {
+                  const r = await api.transferPatients(from.id, { patientIds: patients.map((p) => p.id), to: target!.id, reason: reason.trim() });
+                  toast(fill(ut("adm2.transferred"), { n: plural(ut("adm2.nPatients"), r.moved, lang), to: shortName(target!.fullName) }), "ok");
+                  onDone();
+                } catch (e) {
+                  /* «оновіть список» — экран перечитывает его сам; отказ словами сервера показывает run */
+                  if (e instanceof ApiError && e.status === 409) onStale();
+                  throw e;
+                }
               })
             }
           >
@@ -1475,7 +1516,7 @@ function TransferModal({
  * группы становится тот, кто её заводит, и завести её другому нельзя.
  */
 export function StaffGroups() {
-  const { me, isSuper, groups, canPatients } = useOutletContext<CardCtx>();
+  const { me, isSuper, groups, groupsError, reloadGroups, canPatients } = useOutletContext<CardCtx>();
   const { ut, lang } = useLang();
   const navigate = useNavigate();
   const [q, setQ] = useState("");
@@ -1583,7 +1624,7 @@ export function StaffGroups() {
         </div>
       ) : !shown ? (
         <div className="px-4 pb-4">
-          <Loading rows={4} bare />
+          <Loading rows={4} bare error={groupsError} onRetry={reloadGroups} />
         </div>
       ) : (
         <DataTable

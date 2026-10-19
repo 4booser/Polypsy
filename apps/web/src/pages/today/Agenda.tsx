@@ -1,4 +1,4 @@
-import { Fragment, type ReactNode } from "react";
+import { Fragment, type ReactNode, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import type { AppointmentView } from "@quizzy/shared";
 import { day } from "../../format";
@@ -9,7 +9,7 @@ import { Panel } from "../../ui/layout";
 import { Button, Tag } from "../../ui/primitives";
 import { TextAction } from "../../ui/records";
 import { useLang } from "../../lang";
-import { fill } from "../dashboard/model";
+import { fill, withCount } from "../dashboard/model";
 import { moveOf, rowActions, SLOTS, STATUS_KEY, type Move } from "./actions";
 import { Di } from "./icons";
 import { hhmm, nowIndex, readiness, splitDuration, type CellTone, type Clash, type SessionState } from "./model";
@@ -51,7 +51,7 @@ export function Agenda({
   nowNote: ReactNode;
   hints: [string, string][];
 }) {
-  const { ut } = useLang();
+  const { ut, lang } = useLang();
   const alive = items.filter((a) => a.status !== "cancelled");
   const done = alive.filter((a) => a.status === "done").length;
   const ahead = alive.filter((a) => states.get(a.id) === "next" || states.get(a.id) === "later" || states.get(a.id) === "here").length;
@@ -67,7 +67,7 @@ export function Agenda({
       icon={<Di.calendarClock />}
       sub={
         <>
-          {fill(ut("dayA.sessionsN"), { n: alive.length })}
+          {withCount(ut("dayA.sessionsN"), alive.length, lang)}
           {where ? `, ${where}` : ""}
         </>
       }
@@ -217,6 +217,16 @@ export function ReadinessCells({ a, selected = false, stacked = false }: { a: Ap
       ))}
     </div>
   );
+}
+
+/** Часы стены: минута — достаточно для «через 30 хв» и таймера нормы */
+export function useNow(stepMs = 30_000): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), stepMs);
+    return () => clearInterval(t);
+  }, [stepMs]);
+  return now;
 }
 
 /** «через 30 хв», «через 2 год» — до начала сессии */

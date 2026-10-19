@@ -1,6 +1,7 @@
 import { View } from "react-native";
 import { spacing, useChart } from "../theme";
 import { T } from "../ui/Text";
+import { formatShort } from "./viz/math";
 import { useLang } from "@/lang";
 
 /** Положение балла в накопленной выборке: дорожка и метка на ней */
@@ -22,7 +23,8 @@ export function PercentileBar({ percentile }: { percentile: number }) {
           }}
         />
       </View>
-      <T v="sub">{ut("mv.aboveShare").replace("{n}", String(percentile))}</T>
+      {/* «вище, ніж у 11,3% обстежених» — дробь в формате языка, а не «11.3» (viz/math.ts, localDecimal) */}
+      <T v="sub">{ut("mv.aboveShare").replace("{n}", formatShort(percentile))}</T>
     </View>
   );
 }

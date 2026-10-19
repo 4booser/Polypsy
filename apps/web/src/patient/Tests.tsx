@@ -11,7 +11,7 @@ import { cx } from "../ui/cx";
 import { Button, ButtonLink, Tag } from "../ui/primitives";
 import { useResource, type Resource } from "../useResource";
 import { Glyph } from "./icons";
-import { drafts, type RunnerDraft } from "./outbox";
+import { drafts, liveDrafts, type RunnerDraft } from "./drafts";
 import { OutboxPanel } from "./OutboxStrip";
 import type { PatientOutlet } from "./PatientApp";
 import { Count } from "../ui/layout";
@@ -67,7 +67,8 @@ export function TestsBody({
   const [againOpen, setAgainOpen] = useState<boolean | null>(null);
   const view = loadView(surveys);
   const list = (surveys.data ?? []).filter((s) => s.status === "published");
-  const draftOf = new Map(local.map((d) => [d.surveyId, d]));
+  /* черновик сданной без права повтора методики продолжать нечем (drafts.ts, liveDrafts) */
+  const draftOf = liveDrafts(local, list);
   const queued = new Set((outbox?.waiting ?? []).map((i) => i.surveyId));
   const open = list.filter((s) => (!s.completedByMe || draftOf.has(s.id)) && !queued.has(s.id));
   /* спершу почате, далі назначенное по сроку, потом доступное — как сказано в подписи панели */

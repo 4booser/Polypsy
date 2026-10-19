@@ -1,5 +1,5 @@
 import { Hono, type Context } from "hono";
-import { and, asc, desc, eq, gt, gte, inArray, isNull, lt, lte, ne, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, gte, inArray, isNull, lt, lte, ne, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
 import { meetingSyncIfEvent, moveAppointment, type AppointmentStatus } from "../lib/appointmentMove";
 import {
@@ -44,7 +44,7 @@ import { bookingLease, createBookedMeeting, syncMeeting } from "../lib/meetSync"
 import { transferRecording } from "../lib/recordingTransfer";
 import { pendingWorkByUser } from "../lib/pendingWork";
 import { HORIZON_WEEKS, lockSchedule, syncSlots } from "../lib/schedule";
-import { assertPatientAccess, isStaff, patientsInScope } from "../lib/scope";
+import { assertPatientAccess, isStaff, patientScopeCondition, patientsInScope } from "../lib/scope";
 import { assertNotInOtherCare } from "../lib/otherCare";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
@@ -457,11 +457,41 @@ const weekQuery = z.object({
   specialistId: z.string().optional(),
 });
 
-/** Календарная дата плюс дни: «YYYY-MM-DD» без поясов */
-function addDays(date: string, days: number): string {
+/**
+ * Календарная дата плюс дни: «YYYY-MM-DD» без поясов; null — дальше
+ * 9999-12-31, где база дат уже не читает.
+ *
+ * Год ставится setUTCFullYear, а не Date.UTC: тот читает годы 0–99 как
+ * 1900–1999, и неделя с «0050-01-04» кончалась в 1950-м — мимо предела в
+ * 63 дня. Пятизначный год из toISOString («+010000-…») ронял запрос
+ * пятисоткой.
+ */
+function addDays(date: string, days: number): string | null {
   const [y, m, d] = date.split("-").map(Number);
-  const at = new Date(Date.UTC(y!, m! - 1, d! + days));
-  return at.toISOString().slice(0, 10);
+  const at = new Date(0);
+  at.setUTCFullYear(y!, m! - 1, d! + days);
+  const year = at.getUTCFullYear();
+  if (year > 9999) return null;
+  const pad = (n: number, w = 2) => String(n).padStart(w, "0");
+  return `${pad(year, 4)}-${pad(at.getUTCMonth() + 1)}-${pad(at.getUTCDate())}`;
+}
+
+/**
+ * Приёмы чужого дня или недели — только людей из зоны спрашивающего.
+ *
+ * Право вести чужие приёмы (scheduleTarget, ownSpecialistOr) отвечает «чьё
+ * расписание», а не «о ком»: оно есть у каждого специалиста по умолчанию, и
+ * без этого условия коллега из любого отделения читал бы имена и поводы
+ * обращения всех людей чужой недели. В бою это прикрывала RLS
+ * (appointments_access), но своя проверка обязана быть и здесь — см. loadOne.
+ * Условие — то же правило зоны, что у RLS (patientScopeCondition): своё
+ * расписание не сужается, суперадмину ограничений нет.
+ */
+async function othersInZone(c: Context<AppEnv>, specialistId: string): Promise<SQL | undefined> {
+  const me = c.get("user");
+  if (specialistId === me.id) return undefined;
+  const inScope = await patientScopeCondition(me);
+  return inScope ? inScope(appointments.patientId) : undefined;
 }
 
 clinicRoutes.get(
@@ -474,7 +504,8 @@ clinicRoutes.get(
     const q = parseQuery(c, weekQuery);
     const from = requireDateParam(q.from, "from", { dayOnly: true });
     const days = q.days ?? 7;
-    const to = addDays(from, days);
+    const to = addDays(from, days) ?? badRequest("err.invalidDateParam", { field: "from" });
+    const zone = await othersInZone(c, specialistId);
 
     const profile = await db.query.specialistProfiles.findFirst({
       where: eq(specialistProfiles.userId, specialistId),
@@ -492,6 +523,7 @@ clinicRoutes.get(
         ne(appointments.status, "cancelled"),
         sql`${slots.startsAt} >= ${start}`,
         sql`${slots.startsAt} < ${end}`,
+        zone,
       )!,
     );
 
@@ -1167,6 +1199,8 @@ clinicRoutes.get("/today", requireStaff, requirePermission("patients.read"), asy
       ne(appointments.status, "cancelled"),
       sql`${slots.startsAt} >= ${dayStart}`,
       sql`${slots.startsAt} < ${dayEnd}`,
+      // чужой день — только люди своей зоны, как и чужая неделя (othersInZone)
+      await othersInZone(c, specialistId),
     )!,
   );
 

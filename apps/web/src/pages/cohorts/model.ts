@@ -1,5 +1,6 @@
 import type { CohortCell, CohortPreview, CohortSpec, SampleFilters, Severity, UiKey } from "@quizzy/shared";
 import { isDateInput } from "@quizzy/shared";
+import { dayKey } from "../../format";
 
 /**
  * Чистая часть «Добору людей»: правило отбора ⇄ адрес страницы, проверка
@@ -392,6 +393,16 @@ export function barRows(cells: readonly CohortCell[], size: number | null): BarR
     share: c.count === null || !size ? null : Math.round((c.count / size) * 100),
     width: c.count === null ? null : top > 0 ? c.count / top : 0,
   }));
+}
+
+/**
+ * Имя файла выгрузки разбивок — днём по часам консоли, как поле даты
+ * (format.ts, dayKey), а не срезом ISO: с полуночи до трёх ночи по Киеву
+ * срез давал вчерашнее число, и выгрузка ночного дежурства ложилась в папку
+ * под чужим днём. `timeZone` — для проверок.
+ */
+export function breakdownFileName(now: number = Date.now(), timeZone?: string): string {
+  return `cohort-${dayKey(new Date(now).toISOString(), timeZone)}.csv`;
 }
 
 /**

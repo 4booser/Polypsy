@@ -91,7 +91,8 @@ export function NotesEditor({ userId }: { userId: string }) {
   const plan = signPlan(text, draft, !draft || draft.kind === kind);
 
   return (
-    <div className="flex min-w-0 flex-col gap-3">
+    /* контейнер — по своей ширине, а не по окну: редактор стоит и в узкой колонке карты (360 на 1280), и шире */
+    <div className="@container flex min-w-0 flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
         <h3 className="m-0 text-h3 font-extrabold text-text">{ut("note.title")}</h3>
         {state.versions.length > 1 ? (
@@ -111,7 +112,15 @@ export function NotesEditor({ userId }: { userId: string }) {
         </div>
       ) : null}
 
+      {/*
+        Вид записи — во всю ширину, как на макете. Строкой четырём видам нужно
+        около 390 px (украинский — шире всех): в колонке карты на 1440 это
+        помещается (406), а на 1280 (326) «Консультація» уходила за край — уже
+        400 px они встают сеткой два на два, а не обрезаются.
+      */}
       <Segmented
+        wide
+        className="@max-[400px]:grid @max-[400px]:grid-cols-2"
         label={ut("note.title")}
         value={kind}
         onChange={setKind}

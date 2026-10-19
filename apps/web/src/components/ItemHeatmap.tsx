@@ -8,6 +8,7 @@ import { DEFAULT_THRESHOLDS, markOf, rowSummary, type CellMark, type QualityCell
 import { Loading } from "../ui";
 import { cx } from "../ui/cx";
 import { CheckLabel, Checkbox } from "../ui/primitives";
+import { fixedIn } from "../pages/methods/model";
 
 /**
  * Карта пунктов методики: строка — прохождение, столбец — пункт, отметки
@@ -30,7 +31,9 @@ const MARK: Record<CellMark, string> = {
 const CELL = "inline-block h-[14px] w-[6px] shrink-0 rounded-[2px] align-middle";
 
 export function ItemHeatmap({ surveyId }: { surveyId: string }) {
-  const { ut } = useLang();
+  const { ut, lang } = useLang();
+  /* доли — на языке экрана: «0,2» в uk и ru */
+  const share = (v: number) => fixedIn(lang, v, 2, false);
   const res = useResource(() => api.itemQuality(surveyId), [surveyId]);
   const [sortByMarks, setSortByMarks] = useState(true);
 
@@ -77,7 +80,7 @@ export function ItemHeatmap({ surveyId }: { surveyId: string }) {
 
       <p className="m-0 max-w-[80ch] text-small text-text-2">{ut("qh.hint")}</p>
       <p className="m-0 mb-3 mt-1 text-caption text-muted">
-        {ut("qh.fastRule")} {DEFAULT_THRESHOLDS.fastRatio}; {ut("qh.runRule")} {DEFAULT_THRESHOLDS.runLength}
+        {ut("qh.fastRule")} {share(DEFAULT_THRESHOLDS.fastRatio)}; {ut("qh.runRule")} {DEFAULT_THRESHOLDS.runLength}
       </p>
 
       <div className="overflow-x-auto">
@@ -104,7 +107,7 @@ export function ItemHeatmap({ surveyId }: { surveyId: string }) {
                       <i
                         key={i}
                         className={cx(CELL, MARK[markOf(cell as QualityCell)])}
-                        title={`${ut("qh.item")} ${i + 1}${cell.rel !== null ? `, ×${cell.rel}` : ""}${
+                        title={`${ut("qh.item")} ${i + 1}${cell.rel !== null ? `, ×${share(cell.rel)}` : ""}${
                           cell.run > 1 ? `, ${ut("qh.runOf")} ${cell.run}` : ""
                         }`}
                       />

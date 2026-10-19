@@ -101,12 +101,19 @@ describe("отбор из адреса", () => {
         severity: "critical",
         assigned: "somebody",
         patient: "not-a-uuid",
-        patientGroup: "42",
+        patientGroup: "demo pg",
         from: "2026-02-31",
         status: "bogus",
       }),
     );
     expect(f).toMatchObject({ severity: "", assigned: "", patient: "", patientGroup: "", from: "", status: "open" });
+    /*
+     * Постоянный id группы посева — законная форма (patientGroupRef сервера):
+     * прежде экран отбрасывал его как «не uuid», и «з ризиком» из демо-группы
+     * открывал всю очередь вместо очереди группы. Мутация: вернуть проверку
+     * uuid — падает эта строка.
+     */
+    expect(readFilters(params({ patientGroup: "demo-pg-risk" })).patientGroup).toBe("demo-pg-risk");
     expect(isDay("2026-02-28")).toBe(true);
     expect(isDay("2026-02-31")).toBe(false);
   });
@@ -282,6 +289,23 @@ describe("случаи человека в панели разбора", () => {
     expect(either(html, "severity.severe")).toBe(true);
     expect(either(html, "cases.showPersonCases")).toBe(true);
     for (const re of LEGACY) expect(html).not.toMatch(re);
+  });
+
+  test("случаи человека не пришли — отказ с «Повторити», а не скелет навсегда", () => {
+    const html = draw(
+      <PersonCases
+        total={2}
+        cases={null}
+        error="Сервер тимчасово недоступний"
+        onRetry={() => {}}
+        pickedId="case-x"
+        onPick={() => {}}
+        onShowPerson={() => {}}
+      />,
+    );
+    expect(html).toContain("Сервер тимчасово недоступний");
+    expect(either(html, "common.retry")).toBe(true);
+    expect(html).not.toContain('aria-busy="true"');
   });
 });
 

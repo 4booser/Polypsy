@@ -5,7 +5,7 @@ import { Button, ErrorText, Field, Input } from "../../ui/primitives";
 import { OpsIcon } from "./icons";
 
 /*
- * Общие окна техпанели: подтверждение перепечатыванием и простое «да/нет».
+ * Общие окна техпанели: подтверждение перепечатыванием и пароль, показанный один раз.
  *
  * Перепечатывание — тот же приём, что ConfirmByName (ui/index.tsx): обычный
  * confirm снимается не глядя, а напечатать почту человека, которого
@@ -75,50 +75,6 @@ export function ConfirmTyped({
         </Field>
         {error ? <ErrorText className="mt-3">{error}</ErrorText> : null}
       </form>
-    </Modal>
-  );
-}
-
-/** Подтверждение обратимого действия: завершить сессии, включить, сбросить пароль */
-export function ConfirmPlain({
-  title,
-  children,
-  actionLabel,
-  busy,
-  error,
-  danger,
-  onConfirm,
-  onClose,
-}: {
-  title: string;
-  children: ReactNode;
-  actionLabel: string;
-  busy?: boolean;
-  error?: string | null;
-  danger?: boolean;
-  onConfirm: () => void;
-  onClose: () => void;
-}) {
-  const { ut } = useLang();
-  return (
-    <Modal
-      title={title}
-      onClose={onClose}
-      icon={<OpsIcon name={danger ? "triangle-alert" : "circle-help"} />}
-      tone={danger ? "warn" : "violet"}
-      footer={
-        <>
-          <Button variant={danger ? "danger" : "primary"} disabled={busy} onClick={onConfirm} autoFocus>
-            {actionLabel}
-          </Button>
-          <Button variant="quiet" onClick={onClose}>
-            {ut("common.cancel")}
-          </Button>
-        </>
-      }
-    >
-      <div className="text-body leading-[21px] text-text-2">{children}</div>
-      {error ? <ErrorText className="mt-3">{error}</ErrorText> : null}
     </Modal>
   );
 }

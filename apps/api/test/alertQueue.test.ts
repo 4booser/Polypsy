@@ -14,7 +14,7 @@ import {
   surveys,
   users,
 } from "./fixtures";
-import { alertCases, patientGroupMembers, patientGroups, responses, riskAlerts } from "../src/db/schema";
+import { alertCases, patientGroupMembers, patientGroups, responses, riskAlerts, surveyAccess } from "../src/db/schema";
 
 /**
  * Очередь случаев на сотнях открытых случаев.
@@ -145,6 +145,16 @@ beforeAll(async () => {
         role: "user",
         unit: p.unit,
       })) as never,
+    );
+    /*
+     * Люди очереди — в зоне сотрудников, как в жизни: случай по методике
+     * бывает у того, кому её выдали. Без выдачи под ролью приложения состав
+     * группы пациентов не виден (patient_group_members требует
+     * rls_admin_sees_patient), и отбор по группе молча пустел: проверка
+     * сверяла бы не очередь, а посев, которого в бою не бывает.
+     */
+    await db.insert(surveyAccess).values(
+      spec.slice(from, from + 200).map((p) => ({ surveyId, userId: p.userId, grantedBy: staff.id })),
     );
   }
   const rows = spec.flatMap((p) =>
@@ -421,7 +431,9 @@ describe("кривые параметры — отказ, а не молчали
     ["from=2026-02-31", "несуществующая дата"],
     ["from=2026-09-10&to=2026-09-01", "конец периода раньше начала"],
     ["patient=not-a-uuid", "идентификатор пациента не той формы"],
-    ["patientGroup=42", "идентификатор группы не той формы"],
+    /* «42» — законная форма id группы (у посева они текстовые, patientGroupRef); кривая — пробел и кириллица */
+    ["patientGroup=demo%20pg", "идентификатор группы не той формы"],
+    ["patientGroup=%D0%B3%D1%80%D1%83%D0%BF%D0%B0", "идентификатор группы кириллицей"],
     ["severty=severe", "опечатка в имени параметра"],
     ["status=all&group=person", "по человеку группируется только открытая очередь"],
   ] as const;

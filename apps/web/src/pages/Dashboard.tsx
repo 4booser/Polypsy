@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useCallback, useState, type ReactNode } from "react";
 import type { AlertCase, AppointmentView, DashWidget, Page as CursorPage, Worklist } from "@quizzy/shared";
 import { DASH_WIDGETS } from "@quizzy/shared";
 import { api } from "../api";
@@ -15,7 +15,8 @@ import { CustomizeDrawer } from "./dashboard/Customize";
 import { ConditionsWidget } from "./dashboard/parts";
 import { PassesWidget } from "./dashboard/passes";
 import { CasesWidget, CollectWidget, DayWidget, MissedWidget, WorkWidget } from "./dashboard/widgets";
-import { WIDGET_COLUMN, fill, localDay, periodTotals, widgetLayout, type WidgetLayout } from "./dashboard/model";
+import { WIDGET_COLUMN, fill, localDay, periodTotals, widgetLayout, withCount, type WidgetLayout } from "./dashboard/model";
+import { unlessForbidden } from "./today/ActNow";
 import { Di } from "./today/icons";
 
 /**
@@ -43,7 +44,7 @@ const NO_WORK: Worklist = {
 };
 
 export default function Dashboard() {
-  const { ut } = useLang();
+  const { ut, lang } = useLang();
   const { user } = useAuth();
   /*
    * Ящик настройки — в адресе (`?customize=1`): смена стартового экрана
@@ -58,24 +59,36 @@ export default function Dashboard() {
   const layout = local ?? widgetLayout(user?.workspace?.dashboard);
 
   /*
-   * Одна загрузка на сводку, очередь, случаи и день: экран без сводки
-   * неполон, остальное — дополнение, и отказ любого из них (нет права
-   * разбирать случаи) не повод прятать всё.
+   * Одна загрузка на сводку, очередь и день: экран без сводки неполон,
+   * остальное — дополнение, и отказ любого из них не повод прятать всё.
    */
   const res = useResource(async () => {
-    const [overview, alerts, work, day] = await Promise.all([
+    const [overview, work, day] = await Promise.all([
       api.overview(),
-      api.alertCases({ status: "open", limit: "6" }).catch((): CursorPage<AlertCase> | null => null),
       api.worklist().catch((): Worklist => NO_WORK),
       api
         .today()
         .then((d) => d.items)
         .catch((): AppointmentView[] | null => null),
     ]);
-    return { overview, alerts, work, day };
+    return { overview, work, day };
   }, []);
+  /*
+   * Случаи — своей загрузкой: «разбор не положен» (403, null) прячет
+   * віджет, а сбой загрузки — нет. Віджет случаев риска не выключается и
+   * настройкой, и пропасть из-за обрыва связи ему тоже нельзя (unlessForbidden).
+   */
+  const cases = useResource(() => unlessForbidden(api.alertCases({ status: "open", limit: "6" })), []);
+  const reloadOverview = res.reload;
+  const reloadCases = cases.reload;
+  const reload = useCallback(() => {
+    reloadOverview();
+    reloadCases();
+  }, [reloadOverview, reloadCases]);
   // сводка дежурного стареет от чужих действий: сдача, тревога, тик расписания
-  useLiveReload(["alert.created", "case.changed", "response.submitted", "schedule.run"], res.reload);
+  useLiveReload(["alert.created", "case.changed", "response.submitted", "schedule.run"], reload);
+  const alerts: CursorPage<AlertCase> | null = cases.data;
+  const casesPending = alerts === null && (cases.loading || cases.offline);
 
   const today = localDay(new Date());
   const visible = layout.order.filter((k) => !layout.hidden.has(k));
@@ -89,7 +102,8 @@ export default function Dashboard() {
             <span>
               {res.data
                 ? fill(ut("dashA.metaLine"), {
-                    cases: res.data.alerts?.total ?? res.data.alerts?.items.length ?? 0,
+                    /* не пришли или не положены — прочерк, а не «0»: ноль здесь звучал бы как «рисков нет» */
+                    cases: alerts ? (alerts.total ?? alerts.items.length) : "—",
                     work: res.data.work.total,
                     sessions: res.data.day?.filter((a) => a.status !== "cancelled").length ?? 0,
                   })
@@ -112,10 +126,19 @@ export default function Dashboard() {
         }
       />
       <Screen res={res} rows={5}>
-        {({ overview, alerts, work, day }) => {
+        {({ overview, work, day }) => {
           const { current, previous } = periodTotals(overview.timeline, 30, localDay(new Date()));
           const node: Record<DashWidget, ReactNode> = {
-            cases: <CasesWidget alerts={alerts} meId={user?.id ?? null} />,
+            cases: (
+              <CasesWidget
+                alerts={alerts}
+                meId={user?.id ?? null}
+                loading={casesPending}
+                error={cases.error}
+                onRetry={reloadCases}
+                updatedAt={cases.updatedAt}
+              />
+            ),
             day: <DayWidget items={day} />,
             missed: <MissedWidget />,
             work: <WorkWidget work={work} />,
@@ -140,7 +163,7 @@ export default function Dashboard() {
               <p className="m-0 flex flex-wrap items-center justify-center gap-x-2 gap-y-1 pb-2 text-small text-text-2">
                 <Di.dashboard size={14} className="text-muted" />
                 {fill(ut("dashA.shownNote"), {
-                  n: visible.length,
+                  widgets: withCount(ut("dashA.nWidgets"), visible.length, lang),
                   of: DASH_WIDGETS.length,
                   start: ut(START_TITLE[user?.workspace?.startScreen ?? "dashboard"] ?? "dash.title"),
                 })}

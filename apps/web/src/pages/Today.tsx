@@ -14,9 +14,9 @@ import { useLiveReload } from "../events";
 import { useResource } from "../useResource";
 import { moveAndReload } from "./visitModel";
 import { StartHead } from "./Start";
-import { fill } from "./dashboard/model";
-import { ActNow, reviewHref } from "./today/ActNow";
-import { Agenda, useUntil } from "./today/Agenda";
+import { fill, withCount } from "./dashboard/model";
+import { ActNow, reviewHref, unlessForbidden } from "./today/ActNow";
+import { Agenda, useNow, useUntil } from "./today/Agenda";
 import { Between } from "./today/Between";
 import { useDayDrawer } from "./today/drawers";
 import { Di } from "./today/icons";
@@ -26,6 +26,7 @@ import {
   clashes,
   focusSession,
   hhmm,
+  liveCases,
   localDate,
   overdueWork,
   prepAfterSelect,
@@ -52,16 +53,6 @@ export { moveOf, rowActions } from "./today/actions";
  * Прийшов → Почати → Завершити» стоит в каждой строке на одном месте.
  */
 
-/** Часы стены: минута — достаточно для «через 30 хв» и таймера нормы */
-function useNow(stepMs = 30_000): number {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), stepMs);
-    return () => clearInterval(t);
-  }, [stepMs]);
-  return now;
-}
-
 /* отказ очереди или разбора не прячет день: пустая очередь полной формы */
 const NO_WORK: Worklist = {
   items: [],
@@ -81,21 +72,23 @@ export default function TodayPage() {
 
   const res = useResource(() => api.today(dateParam ? { date: dateParam } : {}), [dateParam]);
   /*
-   * Случаи и очередь — своей загрузкой: их отказ (разбор не положен) не
-   * должен гасить день, а листание дней — перезапрашивать их.
+   * Случаи и очередь — своими загрузками: их отказ не должен гасить день, а
+   * листание дней — перезапрашивать их. Случаи — отдельно от очереди: «разбор
+   * не положен» (403, null) и «не загрузились» (отказ со словами) — разные
+   * ответы, и второй не вправе звучать как «нічого термінового».
    */
-  const side = useResource(async () => {
-    const [cases, work] = await Promise.all([
-      api
-        .alertCases({ status: "open", limit: "20" })
-        .then((p) => p.items)
-        .catch((): AlertCase[] | null => null),
-      api.worklist().catch((): Worklist => NO_WORK),
-    ]);
-    return { cases, work };
-  }, []);
+  const casesRes = useResource(
+    () => unlessForbidden(api.alertCases({ status: "open", limit: "20" }).then((p) => p.items)),
+    [],
+  );
+  const workRes = useResource(() => api.worklist().catch((): Worklist => NO_WORK), []);
   const reloadDay = res.reload;
-  const reloadSide = side.reload;
+  const reloadCases = casesRes.reload;
+  const reloadWork = workRes.reload;
+  const reloadSide = useCallback(() => {
+    reloadCases();
+    reloadWork();
+  }, [reloadCases, reloadWork]);
   const reloadAll = useCallback(() => {
     reloadDay();
     reloadSide();
@@ -129,9 +122,12 @@ export default function TodayPage() {
     if (selectedId) setPrepFor(selectedId);
   };
 
-  const cases = side.data?.cases ? urgentCases(side.data.cases, user?.id ?? null) : null;
+  /* минуты случаев идут по часам экрана: таймер нормы не стоит между перечитываниями (liveCases) */
+  const cases = casesRes.data ? urgentCases(liveCases(casesRes.data, wall, casesRes.updatedAt), user?.id ?? null) : null;
+  /* случаи ещё в пути (или связи нет, а прежнего ответа не было) — «нічого термінового» сказать нельзя */
+  const casesPending = casesRes.data === null && (casesRes.loading || casesRes.offline);
   const hero = cases?.[0] ?? null;
-  const work = side.data?.work ?? NO_WORK;
+  const work = workRes.data ?? NO_WORK;
   const heroMsg = hero ? work.items.find((w) => w.userId === hero.userId && w.kind === "message") : undefined;
   /* то, что уже стоит плитками в «Дія зараз», ниже не повторяется */
   const sideCases = Math.max(0, Math.min(2, (cases?.length ?? 0) - 1));
@@ -153,7 +149,15 @@ export default function TodayPage() {
     document.querySelector(`[data-appointment="${next}"]`)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
   };
   const note = (a: AppointmentView | null) => {
-    if (a) openNote({ patientId: a.patientId, patientName: a.patientName, appointmentId: a.id, appointmentAt: a.startsAt });
+    if (a)
+      openNote({
+        patientId: a.patientId,
+        patientName: a.patientName,
+        appointmentId: a.id,
+        appointmentAt: a.startsAt,
+        // вид записи — как у протокола этого приёма на экране приёма
+        kind: a.kind === "primary" ? "intake" : "session",
+      });
   };
   const replyHero = () => {
     if (hero && heroMsg) openReply({ patientId: hero.userId, patientName: hero.userName, threadId: heroMsg.id });
@@ -205,7 +209,9 @@ export default function TodayPage() {
                 appointments={isToday ? items : []}
                 meId={user?.id ?? null}
                 onReply={openReply}
-                loading={!side.data && !side.error}
+                loading={!workRes.data || casesPending}
+                casesError={casesRes.error}
+                onRetryCases={reloadCases}
               />
               <SideLayout
                 side={
@@ -293,7 +299,7 @@ function DayHead({
   isToday: boolean;
   onDate: (d: string) => void;
 }) {
-  const { ut } = useLang();
+  const { ut, lang } = useLang();
   const alive = items.filter((a) => a.status !== "cancelled");
   const done = alive.filter((a) => a.status === "done").length;
   const ahead = alive.filter((a) => a.status === "booked" || a.status === "confirmed" || a.status === "arrived" || a.status === "in_progress").length;
@@ -301,7 +307,7 @@ function DayHead({
   const sum = loading
     ? ut("common.loading")
     : alive.length
-      ? fill(ut("dayA.daySum"), { n: alive.length, done, ahead, end: end ?? "" })
+      ? fill(ut("dayA.daySum"), { sessions: withCount(ut("dayA.sessionsN"), alive.length, lang), done, ahead, end: end ?? "" })
       : ut("day.nobody");
   const prev = shiftDate(date, -1);
   const next = shiftDate(date, 1);

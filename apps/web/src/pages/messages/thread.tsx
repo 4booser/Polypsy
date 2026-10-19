@@ -245,10 +245,22 @@ export interface MeasureLine {
   title: string;
   code: string;
   value: number;
+  /** Как читать число: доля — процентом, остальное — числом */
+  normalization: PatientCard["responses"][number]["scales"][number]["normalization"];
   severity: PatientCard["responses"][number]["scales"][number]["severity"];
   word: string | null;
   history: number[];
   at: string | null;
+}
+
+/**
+ * Значение замера словами экрана: доля — процентом («73 %»), остальное — с
+ * десятичной запятой языка («14», «2,7»). Голое число печатало «2.67» и
+ * «0.73» — точкой и долей там, где весь набор пишет запятую и проценты.
+ */
+export function measureText(v: number, normalization: MeasureLine["normalization"], localeTag: string): string {
+  if (normalization === "ratio") return `${Math.round(v * 100)} %`;
+  return new Intl.NumberFormat(localeTag, { maximumFractionDigits: 1 }).format(v);
 }
 
 /**
@@ -278,6 +290,7 @@ export function measuresOf(card: Pick<PatientCard, "responses">, limit = 4): Mea
       title: last.surveyTitle,
       code: scale.code,
       value: scale.value,
+      normalization: scale.normalization,
       severity: scale.severity,
       word: scale.bandLabel,
       history,
@@ -371,7 +384,7 @@ export function RecordSide({
               <li key={m.surveyId} className="border-t border-divider py-2 first:border-t-0 first:pt-0 last:pb-0">
                 <span className="block truncate text-small font-bold text-text-2">{m.title}</span>
                 <span className="mt-1 flex items-center gap-2">
-                  <b className="text-[16px] font-extrabold leading-none tabular-nums text-text">{m.value}</b>
+                  <b className="text-[16px] font-extrabold leading-none tabular-nums text-text">{measureText(m.value, m.normalization, locale())}</b>
                   {m.severity ? (
                     <SeverityTag level={m.severity} small>
                       {m.word ?? ut(severityKey[m.severity])}
@@ -380,7 +393,9 @@ export function RecordSide({
                     <Tag>{m.word}</Tag>
                   ) : null}
                   {m.history.length > 1 ? (
-                    <span className="ml-auto whitespace-nowrap text-small tabular-nums text-muted">{m.history.join(" → ")}</span>
+                    <span className="ml-auto whitespace-nowrap text-small tabular-nums text-muted">
+                      {m.history.map((v) => measureText(v, m.normalization, locale())).join(" → ")}
+                    </span>
                   ) : null}
                 </span>
               </li>

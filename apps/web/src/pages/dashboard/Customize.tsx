@@ -3,13 +3,13 @@ import { ALWAYS_VISIBLE_WIDGETS, DASH_WIDGETS, type DashWidget, type UiKey, type
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../../api";
 import { useAuth } from "../../auth";
-import { Callout, Drawer, DrawerSection, Tooltip, useAction } from "../../ui";
+import { Callout, Drawer, DrawerSection, Tooltip, useToast } from "../../ui";
 import { cx } from "../../ui/cx";
 import { Ic } from "../../ui/icons";
 import { Button, ChoiceCard, Segmented, Switch } from "../../ui/primitives";
 import { useLang } from "../../lang";
 import { Di } from "../today/icons";
-import { dropWidget, fill, moveWidget, widgetLayout, type WidgetLayout } from "./model";
+import { dropWidget, fill, moveWidget, saveQueue, widgetLayout, type WidgetLayout } from "./model";
 
 /**
  * «Налаштувати зведення» — ящик справа (кадр day-start-customize).
@@ -61,7 +61,7 @@ export function CustomizeDrawer({
 }) {
   const { ut } = useLang();
   const { user, refreshUser } = useAuth();
-  const { run, busy } = useAction();
+  const toast = useToast();
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const [params] = useSearchParams();
@@ -75,11 +75,18 @@ export function CustomizeDrawer({
     snapshot.current = open ? { layout, start } : null;
   }, [open]);
 
-  const save = (patch: Parameters<typeof api.saveWorkspace>[0]) =>
-    run(async () => {
-      await api.saveWorkspace(patch);
-      await refreshUser();
-    });
+  /*
+   * По очереди и последним словом (saveQueue): правка, пришедшая, пока
+   * прежняя в пути, не теряется. Профиль перечитывается, когда всё ушло.
+   */
+  const live = useRef({ toast, refreshUser, failed: ut("ui.actionFailed") });
+  live.current = { toast, refreshUser, failed: ut("ui.actionFailed") };
+  const [save] = useState(() =>
+    saveQueue<Parameters<typeof api.saveWorkspace>[0]>((patch) => api.saveWorkspace(patch), {
+      failed: (e) => live.current.toast(e instanceof Error ? e.message : live.current.failed, "err"),
+      idle: () => live.current.refreshUser(),
+    }),
+  );
 
   const setLayout = (next: WidgetLayout) => {
     onLayout(next);
@@ -113,7 +120,6 @@ export function CustomizeDrawer({
             {ut("dashA.done")}
           </Button>
           <Button
-            disabled={busy}
             onClick={() => {
               const s = snapshot.current;
               if (s) {
@@ -125,7 +131,7 @@ export function CustomizeDrawer({
           >
             {ut("dashA.cancel")}
           </Button>
-          <Button variant="quiet" disabled={busy} onClick={() => setLayout(widgetLayout(null))}>
+          <Button variant="quiet" onClick={() => setLayout(widgetLayout(null))}>
             {ut("dashA.reset")}
           </Button>
         </>

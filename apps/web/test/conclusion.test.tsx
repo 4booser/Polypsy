@@ -2,11 +2,11 @@ import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
 import { UI, type DecisionRule, type ResponseContextSignal, type RuleHit } from "@quizzy/shared";
-import type { ConclusionState, ConclusionVersion } from "../src/api";
+import { api, type ConclusionState, type ConclusionVersion } from "../src/api";
 import { ConclusionEditor } from "../src/components/ConclusionEditor";
 import { LangProvider } from "../src/lang";
 import { applicableModels, resultLines } from "../src/pages/Conclusion";
-import { signLockedBySignal } from "../src/pages/response/context";
+import { signGate, signLockedBySignal } from "../src/pages/response/context";
 import { dynamics, series } from "./responseFixtures";
 
 /**
@@ -74,7 +74,6 @@ describe("подпись после разбора сигнала", () => {
         error={null}
         onState={() => {}}
         onReload={() => {}}
-        title=""
         text={text}
         setText={() => {}}
         areaRef={{ current: null }}
@@ -101,6 +100,95 @@ describe("подпись после разбора сигнала", () => {
     const html = draw(false);
     expect(button(html, "cn3.form").disabled).toBe(false);
     expect(button(draw(false, "  "), "cn3.form").disabled).toBe(true);
+  });
+
+  /**
+   * Замок считался только по пришедшей обстановке: пока шёл запрос — и
+   * навсегда при его отказе — кнопка подписи была живой при неразобранном
+   * сигнале. Мутация: вернуть «нет обстановки — открыто» для того, кто
+   * разбирает сигналы, — проверки pending и unknown падают.
+   */
+  test("обстановка ещё едет или не пришла — подпись закрыта для того, кто разбирает сигналы", () => {
+    expect(signGate(null, false, true)).toBe("pending");
+    expect(signGate(null, true, true)).toBe("unknown");
+    expect(signGate({ signals: [signal()] }, false, true)).toBe("locked");
+    expect(signGate({ signals: [signal({ reviewedAt: "2026-10-08T13:00:00.000Z" })] }, false, true)).toBe("open");
+    // без права разбирать сигналы сервер их не отдаёт — правило экрана не действует ни до, ни после ответа
+    expect(signGate(null, false, false)).toBe("open");
+    expect(signGate({ signals: null }, false, false)).toBe("open");
+  });
+
+  /**
+   * Поле «Назва заключення» было на листе, а сервер название не хранит
+   * (столбца нет) и отбрасывал его молча: набрал, сохранил, открыл — пусто.
+   * Поле, которое не сохраняется, хуже его отсутствия. Мутация: вернуть
+   * поле — в разметке появляется поле ввода; вернуть title в тело — тело
+   * сохранения его несёт.
+   */
+  test("названия заключения нет: ни поля на листе, ни поля в теле сохранения", async () => {
+    const html = draw(false);
+    expect(html).not.toMatch(/<input\b/);
+    expect(html).not.toContain("Назва заключення");
+
+    const sent: unknown[] = [];
+    const g = globalThis as { localStorage?: Storage; sessionStorage?: Storage };
+    const saved = { fetch: globalThis.fetch, localStorage: g.localStorage, sessionStorage: g.sessionStorage };
+    const memory = (): Storage => {
+      const data = new Map<string, string>();
+      return {
+        get length() {
+          return data.size;
+        },
+        clear: () => data.clear(),
+        getItem: (k) => data.get(k) ?? null,
+        key: (i) => [...data.keys()][i] ?? null,
+        removeItem: (k) => void data.delete(k),
+        setItem: (k, val) => void data.set(k, String(val)),
+      };
+    };
+    g.localStorage = memory();
+    g.sessionStorage = memory();
+    globalThis.fetch = (async (_: RequestInfo | URL, init?: RequestInit) => {
+      sent.push(JSON.parse(String(init?.body)));
+      return new Response(JSON.stringify(state(v())), { status: 200, headers: { "Content-Type": "application/json" } });
+    }) as typeof fetch;
+    try {
+      await api.saveConclusion("r1", "Висновок", { version: 1, revision: 3 });
+    } finally {
+      globalThis.fetch = saved.fetch;
+      g.localStorage = saved.localStorage;
+      g.sessionStorage = saved.sessionStorage;
+    }
+    expect(sent).toEqual([{ text: "Висновок", baseVersion: 1, baseRevision: 3 }]);
+  });
+
+  test("подпись ждёт обстановку молча, а при отказе называет причину; черновик сохраняется в обоих случаях", () => {
+    const base = {
+      responseId: "r1",
+      state: state(v()),
+      error: null,
+      onState: () => {},
+      onReload: () => {},
+      text: "Симптоми зменшуються",
+      setText: () => {},
+      areaRef: { current: null },
+    };
+    const pending = render(<ConclusionEditor {...base} signPending />);
+    expect(button(pending, "cn3.form").disabled).toBe(true);
+    expect(button(pending, "cnc.saveDraft").disabled).toBe(false);
+    expect(pending).not.toContain(UI["cnx.lockTitle"].uk);
+
+    const unknown = render(
+      <ConclusionEditor
+        {...base}
+        lock={{ title: UI["cnx.lockUnknownTitle"].uk, body: UI["cnx.lockUnknownBody"].uk, action: null, tone: "warn", note: UI["cnx.lockUnknownBody"].uk }}
+      />,
+    );
+    expect(button(unknown, "cn3.form").disabled).toBe(true);
+    expect(button(unknown, "cnc.saveDraft").disabled).toBe(false);
+    expect(unknown).toContain(UI["cnx.lockUnknownTitle"].uk);
+    // это не сигнал, а отказ загрузки: строка у кнопки — не «після розбору сигналу»
+    expect(unknown).not.toContain(UI["rp.signLocked"].uk);
   });
 });
 

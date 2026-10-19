@@ -207,8 +207,10 @@ export function SafetyPlanBody({
                 <h3 className="m-0 text-h3 font-extrabold text-text">{ut(label)}</h3>
                 {draft[key].map((row) => (
                   <div className="flex items-center gap-2" key={row.key}>
+                    {/* имя поля — разделом: подсказка-заглушка исчезает с первой буквой, и диктор её не держит */}
                     <Input
                       className="flex-1"
+                      aria-label={ut(label)}
                       value={row.value}
                       onChange={(e) => setList(key, row.key, e.target.value)}
                       placeholder={ut("sp.ownWords")}
@@ -236,12 +238,14 @@ export function SafetyPlanBody({
                   <div className="flex items-center gap-2" key={rowKey}>
                     <Input
                       className="flex-1"
+                      aria-label={`${ut(label)}: ${ut("sp.who")}`}
                       value={p.name}
                       onChange={(e) => setPerson(key, rowKey, { name: e.target.value })}
                       placeholder={ut("sp.who")}
                     />
                     <Input
                       className="flex-1"
+                      aria-label={`${ut(label)}: ${ut("sp.contact")}`}
                       value={p.contact}
                       onChange={(e) => setPerson(key, rowKey, { contact: e.target.value })}
                       placeholder={ut("sp.contact")}

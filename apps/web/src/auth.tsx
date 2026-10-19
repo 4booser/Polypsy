@@ -1,8 +1,10 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import type { QueryClient } from "@tanstack/react-query";
 import type { Permission, User } from "@quizzy/shared";
-import { api, impersonationStore, tokenStore, watchSession } from "./api";
+import { api, impersonationStore, ownerOfToken, tokenStore, watchSession } from "./api";
 import { dropLegacyDrafts } from "./pages/constructor/draftKey";
+import { forgetDrafts } from "./patient/drafts";
+import { forgetRecent } from "./pages/search/model";
 import { queryClient } from "./query";
 import { useResource } from "./useResource";
 
@@ -81,16 +83,39 @@ async function permissionsFor(user: User): Promise<ReadonlySet<string>> {
  * второго фактора и вход «от имени» — сразу, кэш загрузок — после того, как
  * экраны сняты (см. logout). Токены не трогаются: они либо уже стёрты
  * (окончательный 401), либо чужие (вошёл другой человек).
+ *
+ * Черновики прохождений кабинета (patient/drafts.ts) остаются только у того,
+ * чей токен теперь в браузере: сессия кончилась — ни у кого, вошёл другой —
+ * у него одного. Прежний человек ушёл, а его ответы лежали бы открытыми на
+ * общем компьютере.
  */
 export function dropTabSession(
   set: { user: (u: null) => void; perms: (p: ReadonlySet<string>) => void; mfa: (m: null) => void },
   cache: Pick<QueryClient, "clear"> = queryClient,
 ): void {
   impersonationStore.clear();
+  forgetDrafts(ownerOfToken(tokenStore.own()));
+  dropTabTraces();
   set.user(null);
   set.perms(new Set());
   set.mfa(null);
   setTimeout(() => cache.clear(), 0);
+}
+
+/**
+ * Следы прежнего человека в хранилище вкладки — прочь при выходе, при входе
+ * другого и при конце сессии. Недавние запросы поиска по записям — слова из
+ * клинических текстов («самоушкодження», фамилия), а ноутбук ординаторской
+ * общий: вкладку, из которой вышел один, открывает следующий, и закрытия
+ * вкладки, до которого список живёт (pages/search/model.ts), не бывает.
+ * Хранилище недоступно (приватное окно, запрет сайта) — чистить нечего.
+ */
+function dropTabTraces(): void {
+  try {
+    forgetRecent(sessionStorage);
+  } catch {
+    /* хранилища нет — и следов в нём тоже */
+  }
 }
 
 /**
@@ -121,6 +146,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    */
   async function accept(next: User) {
     setPerms(await permissionsFor(next));
+    // черновики кабинета на устройстве — только вошедшего (patient/drafts.ts)
+    forgetDrafts(next.id);
     setUser(next);
   }
 
@@ -159,12 +186,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (boot.data) {
       // сессия восстановлена — тоже вход: держится неделями, и ждать нового входа ради чистки незачем
       dropLegacyConstructorDrafts();
+      forgetDrafts(boot.data.me.id);
       // права и профиль — одним проходом отрисовки, права не позже профиля (см. accept)
       setPerms(boot.data.perms);
       setUser(boot.data.me);
       setSettled(true);
     } else if (boot.error) {
       tokenStore.clear();
+      // сессия не восстановилась — внутри никого, и черновики кабинета на устройстве ничьи
+      forgetDrafts(null);
+      dropTabTraces();
       setSettled(true);
     }
   }, [boot.data, boot.error, settled]);
@@ -233,6 +264,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
      */
     queryClient.clear();
     dropLegacyConstructorDrafts();
+    dropTabTraces();
     tokenStore.set(res.token);
     tokenStore.setRefresh(res.refreshToken);
     await accept(await api.me().catch(() => res.user));
@@ -277,6 +309,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const raw = tokenStore.getRefresh();
     if (raw) void api.logout(raw).catch(() => {});
     tokenStore.clear();
+    /* ответы недосданных прохождений не остаются на общем компьютере (patient/drafts.ts) */
+    forgetDrafts(null);
+    dropTabTraces();
     setUser(null);
     setPerms(new Set());
     /* кэш — после того, как экраны сняты: иначе они успели бы перечитать себя уже без токена */

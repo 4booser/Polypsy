@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { and, asc, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import { ageAt, respondentDynamicsQuery, respondentQuery, t } from "@quizzy/shared";
-import type { RespondentDynamics, ScaleDynamics, ScaleNormalization, Sex } from "@quizzy/shared";
+import type { RespondentDynamics, ScaleDynamics, ScaleKind, ScaleNormalization, Sex } from "@quizzy/shared";
 import { db } from "../db";
 import { decodeCursor, encodeCursor } from "../lib/cursor";
 import { langOf } from "../lib/http";
@@ -416,6 +416,12 @@ dynamicsRoutes.get("/respondents/:userId", async (c) => {
             direction: null,
             reliableChange: null,
           };
+          /*
+           * Вид шкалы — версии свежего замера (прохождения идут от старых к
+           * новым): шкала достоверности говорит о бланке, а не о человеке, и
+           * экран не ставит её главной шкалой методики.
+           */
+          entry.kind = scale.kind as ScaleKind;
           entry.points.push({
             responseId: response.id,
             submittedAt: response.submittedAt ?? response.startedAt,

@@ -1,4 +1,5 @@
 import type { PatientCard, PatientCardConclusion, PatientCardResponse } from "@quizzy/shared";
+import { shownNumber, shownValue } from "../patients/model";
 
 /**
  * Чистая часть карточки пациента: что печатается в столбцах вкладки
@@ -13,11 +14,18 @@ import type { PatientCard, PatientCardConclusion, PatientCardResponse } from "@q
 
 /**
  * «Результат»: по каждой содержательной шкале — название, балл и полоса
- * интерпретации: «Тривожність: 14 — підвищена; Депресія: 3 — норма».
+ * интерпретации: «Тривожність: 14 — підвищена; Депресія: 3 — норма». Балл —
+ * как его читают: доля — процентом («57%», а не «0.571»), дробь — запятой
+ * языка («64,2»).
  */
 export function resultText(scales: PatientCardResponse["scales"], t: { none: string }): string {
   if (!scales.length) return t.none;
-  return scales.map((s) => `${s.title}: ${s.value}${s.bandLabel ? ` — ${s.bandLabel}` : ""}`).join("; ");
+  return scales
+    .map((s) => {
+      const v = shownValue(s.value, s.normalization);
+      return `${s.title}: ${v.text}${v.unit}${s.bandLabel ? ` — ${s.bandLabel}` : ""}`;
+    })
+    .join("; ");
 }
 
 /**
@@ -34,7 +42,7 @@ export function statsText(
 ): string {
   const parts: string[] = [];
   if (r.submittedAt) parts.push(formatDay(r.submittedAt));
-  if (r.scales.length) parts.push(r.scales.map((s) => `${s.code} ${s.percent}%`).join(", "));
+  if (r.scales.length) parts.push(r.scales.map((s) => `${s.code} ${shownNumber(s.percent)}%`).join(", "));
   if (!r.reliable) parts.push(t.unreliable);
   return parts.join(", ");
 }

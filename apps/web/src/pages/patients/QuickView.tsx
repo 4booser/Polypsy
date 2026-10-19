@@ -9,9 +9,10 @@ import { Button, ButtonLink, SeverityTag } from "../../ui/primitives";
 import { useResource } from "../../useResource";
 import { DESTINATION_KEY, STATUS_KEY, URGENCY_KEY } from "../referrals/model";
 import type { PaneParts } from "./actions";
+import { useSettledValue, type Via } from "../../components/settledSelection";
 import { eventView } from "./events";
 import { changeOf, instrumentsOf, shownDelta, shownThreshold } from "./instruments";
-import { ageOf, ddmm, hhmm, kitSeverity, shownSeries, shownValue, whenShort } from "./model";
+import { ageOf, ddmm, hhmm, kitSeverity, shownSeriesText, shownValue, signedShown, whenShort } from "./model";
 
 /*
  * «Хто це» — быстрый просмотр человека из реестра (кадр patients-quick-view):
@@ -25,6 +26,7 @@ import { ageOf, ddmm, hhmm, kitSeverity, shownSeries, shownValue, whenShort } fr
 
 export function useQuickViewPane({
   person,
+  via = "click",
   position,
   onStep,
   onWrite,
@@ -32,6 +34,8 @@ export function useQuickViewPane({
   locale,
 }: {
   person: PatientListItem | null;
+  /** Чем сменили человека: шаг J/K и стрелками — его записи ждут, пока курсор остановится */
+  via?: Via;
   /** Место строки в реестре: «Рядок 1 з 20, ризик спершу» */
   position: { at: number; of: number; sort: string } | null;
   onStep: (d: 1 | -1) => void;
@@ -42,7 +46,14 @@ export function useQuickViewPane({
   const { ut } = useLang();
   const navigate = useNavigate();
   const id = person?.id ?? "";
-  const enabled = !!person;
+  /*
+   * Сводка, карточка, динамика и хронология — чтения, которые сервер пишет
+   * в журнал. Шаг клавишами их не грузит, пока курсор не простоит
+   * SETTLE_MS: строка, мимо которой прошли, — не прочитанная. Шапка (имя,
+   * подразделение, строка открытого из реестра) видна сразу.
+   */
+  const settledId = useSettledValue(person?.id ?? null, via);
+  const enabled = !!person && settledId === person.id;
   /* keep: false — данные прежнего человека не стоят под именем следующего (#177) */
   const dyn = useResource(() => api.dynamics(id), [id], { enabled, keep: false });
   const sum = useResource(() => api.caseSummary(id), [id], { enabled, keep: false });
@@ -230,7 +241,7 @@ export function useQuickViewPane({
                   const thr = shownThreshold(s);
                   const reliable = shown !== null && thr !== null && Math.abs(shown) >= thr && shown !== 0;
                   const good = reliable && !!s.better && (s.better === "down" ? shown! < 0 : shown! > 0);
-                  const was = shownSeries(s.history.slice(-2), s.last.normalization);
+                  const was = shownSeriesText(s.history.slice(-2), s.last.normalization);
                   return (
                     <tr key={i.surveyId}>
                       <td className="border-b border-divider py-2 pl-2.5 pr-2 align-top">
@@ -241,7 +252,9 @@ export function useQuickViewPane({
                           {s.scale.title}
                         </span>
                         {was.length ? (
-                          <span className="block text-caption tabular-nums text-text-2">{ut("kit.was").replace("{v}", was.join(" → "))}</span>
+                          <span className="block text-caption tabular-nums text-text-2">
+                            {ut("kit.was").replace("{v}", was.join(" → "))}
+                          </span>
                         ) : null}
                       </td>
                       <td className="border-b border-divider px-2 py-2 text-right align-top">
@@ -265,7 +278,7 @@ export function useQuickViewPane({
                         ) : (
                           <span className="flex flex-col">
                             <b className={`text-[13.5px] font-extrabold tabular-nums ${good ? "text-good" : reliable ? "text-warn" : "text-text"}`}>
-                              {shown > 0 ? `+${shown}` : shown < 0 ? `−${Math.abs(shown)}` : "0"}
+                              {signedShown(shown)}
                               {ratio ? ut("dyn.pp") : ""}
                             </b>
                             <span className={`text-caption ${good ? "font-bold text-good" : reliable ? "font-bold text-warn" : "text-text-2"}`}>

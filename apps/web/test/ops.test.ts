@@ -18,11 +18,8 @@ import {
   latencyLines,
   mergeFeed,
   parseLevel,
-  parseSort,
-  parseWindow,
+  parseTrafficWindow,
   shortId,
-  sortMetric,
-  sortRoutes,
   trafficStack,
 } from "../src/pages/ops/model";
 
@@ -63,10 +60,9 @@ describe("адрес", () => {
     expect(parseLevel("warn")).toBe("warn");
     expect(parseLevel("loud")).toBeNull();
     expect(parseLevel(null)).toBeNull();
-    expect(parseWindow("24h")).toBe("24h");
-    expect(parseWindow("6h")).toBe("1h");
-    expect(parseSort("errors")).toBe("errors");
-    expect(parseSort("bogus")).toBe("count");
+    expect(parseTrafficWindow("24h")).toBe("24h");
+    expect(parseTrafficWindow("6h")).toBe("6h");
+    expect(parseTrafficWindow("7d")).toBe("1h");
   });
 });
 
@@ -76,14 +72,6 @@ describe("маршруты", () => {
     route({ route: "/api/b", requests: 50, p95: 900, errors5xx: 1 }),
     route({ route: "/api/c", requests: 5, p95: null }),
   ];
-
-  test("по числу, по p95 (пустые в конце), по ошибкам — пятисотки впереди 4xx", () => {
-    expect(sortRoutes(items, "count").map((r) => r.route)).toEqual(["/api/b", "/api/a", "/api/c"]);
-    expect(sortRoutes(items, "p95").map((r) => r.route)).toEqual(["/api/b", "/api/a", "/api/c"]);
-    // одна пятисотка важнее тридцати отказов «нет прав»
-    expect(sortRoutes(items, "errors").map((r) => r.route)).toEqual(["/api/b", "/api/a", "/api/c"]);
-    expect(sortMetric(items[0]!, "errors")).toBe(30);
-  });
 
   test("поиск — по методу и шаблону, без учёта регистра", () => {
     expect(filterRoutes(items, "API/B").map((r) => r.route)).toEqual(["/api/b"]);

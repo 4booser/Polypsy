@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { ResponseContext, ResponseContextSignal } from "@quizzy/shared";
 import { Link } from "react-router-dom";
 import { api, type ConclusionState, type NoteVersion } from "../../api";
 import { useAuth } from "../../auth";
@@ -14,6 +15,8 @@ import { dm, wdm } from "./format";
 import { Pi } from "./icons";
 import { nearSlots } from "./Overview";
 import type { CardView } from "./types";
+import { signGate, signalStrip, signalTimer, type SignGate } from "../response/context";
+import { shownNumber, shownValue } from "../patients/model";
 
 /*
  * Виды ящика карточки, кроме разбора сигнала (он общий — components/RiskReview):
@@ -212,6 +215,34 @@ export function useThreadPane(v: CardView, active: boolean): DrawerPaneProps {
 
 /* ─────────── заключення ─────────── */
 
+/**
+ * Замок подписи заключения в ящике карточки — тем же правилом, что
+ * страница заключения (pages/response/context.ts, signGate): подпись закрыта,
+ * пока не разобран сигнал, поднятый этим прохождением; пока обстановка
+ * прохождения едет — ждёт; не пришла — закрыта, и ящик говорит «не вдалося
+ * перевірити» с «Повторити». Прежде ящик подписывал мимо замка, который
+ * держит полная страница.
+ */
+export function conclusionLock(
+  ctx: Pick<ResponseContext, "signals"> | null,
+  failed: boolean,
+  reviewer: boolean,
+): { gate: SignGate; open: ResponseContextSignal[] } {
+  const gate = signGate(ctx, failed, reviewer);
+  return { gate, open: gate === "locked" ? signalStrip(ctx?.signals ?? null).openHere : [] };
+}
+
+/** Подпись замка: какие сигналы и сколько висят — словами страницы заключения */
+function lockText(open: readonly ResponseContextSignal[], ut: ReturnType<typeof useLang>["ut"]): string {
+  const oldest = [...open].sort((a, b) => b.minutesOpen - a.minutesOpen)[0];
+  if (!oldest) return "";
+  const timer = signalTimer(oldest, ut("rp.hours"), (n) => shownNumber(n));
+  const since = timer
+    ? ut("cnx.lockTimer").replace("{t}", ut("kit.timerOf").replace("{elapsed}", timer.elapsed).replace("{of}", timer.of))
+    : ut("cnx.lockSince").replace("{t}", timeOfDay(oldest.at));
+  return `${open.map((s) => s.label).join("; ")}. ${since}.`;
+}
+
 export function useConclusionPane(v: CardView, active: boolean, wantResponse: string | null): DrawerPaneProps {
   const { ut } = useLang();
   const { run, busy } = useAction();
@@ -231,6 +262,10 @@ export function useConclusionPane(v: CardView, active: boolean, wantResponse: st
     keep: false,
   });
   const state = res.data as ConclusionState | null;
+  /* обстановка прохождения — для замка подписи; читается, когда ящик заключения открыт */
+  const ctxRes = useResource(() => api.responseContext(rid!), [rid], { enabled: active && !!rid, keep: false });
+  const lock = conclusionLock(ctxRes.data ?? null, !!ctxRes.error, v.can("alerts.review"));
+  const locked = lock.gate !== "open";
   const [text, setText] = useState("");
   const touched = useRef(false);
   const [stale, setStale] = useState<string | null>(null);
@@ -280,7 +315,11 @@ export function useConclusionPane(v: CardView, active: boolean, wantResponse: st
         </Field>
         {main ? (
           <div className="flex items-center gap-3.5 rounded-panel bg-sunk px-3.5 py-3 text-[13px] text-text-2">
-            <span className="text-stat font-extrabold leading-none tracking-[-0.03em] text-text">{main.value}</span>
+            {/* доля — процентом («57%», а не «0.571»), дробь — запятой языка */}
+            <span className="text-stat font-extrabold leading-none tracking-[-0.03em] text-text">
+              {shownValue(main.value, main.normalization).text}
+              {shownValue(main.value, main.normalization).unit}
+            </span>
             <span className="min-w-0">
               <b className="block font-extrabold text-text">{main.title}</b>
               {main.severity && main.bandLabel ? (
@@ -339,7 +378,37 @@ export function useConclusionPane(v: CardView, active: boolean, wantResponse: st
             ) : null}
           </>
         )}
-        {v.cases?.length ? (
+        {lock.gate === "locked" ? (
+          <Callout
+            kind="risk"
+            className="mt-2.5"
+            icon={<Ic.lock />}
+            title={ut("cnx.lockTitle")}
+            actions={
+              v.can("alerts.review") ? (
+                <Button variant="risk" size="xs" icon={<Ic.alert />} onClick={() => v.open("signal")}>
+                  {ut("rp.reviewSignal")}
+                </Button>
+              ) : undefined
+            }
+          >
+            {lockText(lock.open, ut)} {ut("cnx.lockDraftOk")}
+          </Callout>
+        ) : lock.gate === "unknown" ? (
+          <Callout
+            kind="warn"
+            className="mt-2.5"
+            icon={<Ic.circleAlert />}
+            title={ut("cnx.lockUnknownTitle")}
+            actions={
+              <Button variant="secondary" size="xs" onClick={() => ctxRes.reload()}>
+                {ut("common.retry")}
+              </Button>
+            }
+          >
+            {ut("cnx.lockUnknownBody")} {ut("cnx.lockDraftOk")}
+          </Callout>
+        ) : v.cases?.length ? (
           <Callout kind="neutral" className="mt-2.5" icon={<Ic.info />}>
             {ut("card.signalOpenNote")}{" "}
             {v.can("alerts.review") ? (
@@ -366,8 +435,14 @@ export function useConclusionPane(v: CardView, active: boolean, wantResponse: st
     icon: <Pi.filePen />,
     dirty: touched.current && !!draftSavable(text) && text !== (draft?.text ?? ""),
     draftName: ut("card.draftConcl"),
-    note: v.can("conclusions.sign") ? ut("card.signsAs") : undefined,
-    noteIcon: <Pi.signature />,
+    note: v.can("conclusions.sign")
+      ? lock.gate === "locked"
+        ? ut("rp.signLocked")
+        : lock.gate === "unknown"
+          ? ut("cnx.lockUnknownBody")
+          : ut("card.signsAs")
+      : undefined,
+    noteIcon: lock.gate === "locked" || lock.gate === "unknown" ? <Ic.lock /> : <Pi.signature />,
     footer:
       rid && state ? (
         <>
@@ -375,7 +450,8 @@ export function useConclusionPane(v: CardView, active: boolean, wantResponse: st
             <Button
               variant="primary"
               icon={<Pi.signature />}
-              disabled={busy || !plan.canSign}
+              /* замок сигнала — как на странице заключения: неразобран, неизвестен или ещё едет — подписи нет */
+              disabled={busy || !plan.canSign || locked}
               onClick={() =>
                 void run(
                   () =>

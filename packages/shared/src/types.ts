@@ -432,6 +432,35 @@ export function isClientDecisionCode(code: unknown): code is string {
 }
 
 /**
+ * Отказы возврата от Google (apps/api routes/auth.ts, GET /google/callback).
+ *
+ * На этот адрес браузер приходит переходом от Google, а не запросом консоли,
+ * — отказ телом ответа человек видел сырым JSON на странице API. Сервер
+ * отдаёт его переходом в консоль: /auth/google?error=<ключ>, и экран
+ * возврата (web pages/GoogleReturn.tsx) говорит причину на языке страницы.
+ * Ключ из адреса принимается, только если он в этом списке: адрес может
+ * набрать кто угодно, и чужой текст на экране входа стоять не должен.
+ */
+export const GOOGLE_RETURN_CODES = [
+  "err.googleDisabled",
+  "err.googleState",
+  "err.googleExchange",
+  "err.googleUnverified",
+  "err.googleDomain",
+  "err.googleNotLinked",
+  "err.googleTaken",
+  "err.googleAnonymous",
+  "err.accountDisabled",
+  "err.sessionExpired",
+] as const;
+
+export type GoogleReturnCode = (typeof GOOGLE_RETURN_CODES)[number];
+
+export function isGoogleReturnCode(code: unknown): code is GoogleReturnCode {
+  return typeof code === "string" && (GOOGLE_RETURN_CODES as readonly string[]).includes(code);
+}
+
+/**
  * Сколько длится просмотр «от имени»: сервер выдаёт токен на этот срок, окно
  * входа называет его словами — одно число на обоих.
  */
@@ -2032,6 +2061,12 @@ export interface ScaleDynamics {
   scaleId: string;
   code: string;
   title: string;
+  /**
+   * Вид шкалы в версии последнего замера: шкала достоверности («L», «F»)
+   * говорит о бланке, а не о человеке, и главной шкалой методики на экране
+   * не встаёт. Нет поля — старый сервер.
+   */
+  kind?: ScaleKind;
   points: DynamicsPoint[];
   /**
    * Полосы интерпретации шкалы в версии последнего замера — лестница для

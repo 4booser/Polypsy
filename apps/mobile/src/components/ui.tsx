@@ -59,18 +59,6 @@ export function Title({ children }: { children: ReactNode }) {
   );
 }
 
-/** Крупное число: баллы и счётчики читают с расстояния, а не вчитываются */
-export function Stat({ value, label }: { value: string | number; label?: string }) {
-  return (
-    <View style={{ gap: 2 }}>
-      <T v="number" size={32} num scale={false}>
-        {value}
-      </T>
-      {label ? <T v="sub">{label}</T> : null}
-    </View>
-  );
-}
-
 /** Текст 16/24; muted — второй текст, он приглушён, но читается в плохом свете */
 export function Body({ children, muted }: { children: ReactNode; muted?: boolean }) {
   return (
@@ -187,19 +175,6 @@ export function Segmented<V extends string>(props: {
   return <UiSegmented {...props} />;
 }
 
-export function Divider() {
-  const c = useColors();
-  return <View style={{ height: 1, backgroundColor: c.divider }} />;
-}
-
 export function Row({ children, gap = spacing.sm }: { children: ReactNode; gap?: number }) {
   return <View style={{ flexDirection: "row", alignItems: "center", gap }}>{children}</View>;
-}
-
-export function Empty({ text }: { text: string }) {
-  return (
-    <Card>
-      <Body muted>{text}</Body>
-    </Card>
-  );
 }

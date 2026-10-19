@@ -44,7 +44,8 @@ describe("keep: false — после смены id загрузка, а не д�
 
   const screens: [string, string][] = [
     ["pages/patientCard/PatientCard.tsx", "useResource(() => api.patientCard(id), [id], { keep: false })"],
-    ["components/PatientContext.tsx", "useResource(() => api.dynamics(person.userId), [person.userId], { keep: false })"],
+    /* «Хто це» реестра 2.0 — на месте прежней панели components/PatientContext */
+    ["pages/patients/QuickView.tsx", "useResource(() => api.dynamics(id), [id], { enabled, keep: false })"],
     ["pages/Alerts.tsx", "useResource(() => api.caseSummary(userId), [userId], { keep: false, key: \"alerts:summary\" })"],
     ["pages/CaseCard.tsx", "{ enabled: !!userId, keep: false }"],
     /* хронология делит кэш с шапкой справы (общий ключ), keep: false — на месте */
@@ -77,8 +78,10 @@ describe("остатки #177: заключение, протокол, груп�
     });
   }
 
-  test("заключение: название, набранное к прежнему прохождению, к новому не переходит", () => {
-    expect(source("pages/Conclusion.tsx")).toContain('useEffect(() => setTitle(""), [responseId]);');
+  test("заключение: названия нет вовсе — переносить набранное к новому прохождению нечего", () => {
+    // поле «Назва заключення» убрано: сервер его не хранил (conclusion.test.tsx)
+    expect(source("pages/Conclusion.tsx")).not.toContain("setTitle");
+    expect(source("components/ConclusionEditor.tsx")).not.toContain("setTitle");
   });
 
   test("заключение: отказ 409 прежнего прохождения к новому не переходит", () => {

@@ -8,6 +8,7 @@ import {
   focusSession,
   hmm,
   lanes,
+  liveCases,
   nowIndex,
   readiness,
   sessionStates,
@@ -193,6 +194,27 @@ describe("«Дія зараз»", () => {
       "me",
     );
     expect(list.map((c) => c.id)).toEqual(["heavy", "soon", "slow", "other"]);
+  });
+
+  test("таймер идёт по часам экрана: экран открыт час — минут на час больше, норма пройдена — просрочено", () => {
+    const loadedAt = Date.parse(at("17:00"));
+    // ответ пришёл в 17:00: 2:48 из 4 год, лишилось 1:12
+    const [fresh] = liveCases([kase("a")], loadedAt, loadedAt);
+    expect(caseTimer(fresh!)!.elapsed).toBe("2:48");
+    // через 30 минут без перечитывания — 3:18, лишилось 0:42
+    const [half] = liveCases([kase("a")], loadedAt + 30 * 60_000, loadedAt);
+    expect(caseTimer(half!)!.elapsed).toBe("3:18");
+    expect(caseTimer(half!)!.left).toBe(42);
+    expect(half!.overdue).toBe(false);
+    // через 80 минут норма пройдена: случай просрочен и таймер говорит «понад»
+    const [late] = liveCases([kase("a")], loadedAt + 80 * 60_000, loadedAt);
+    expect(late!.minutesOpen).toBe(248);
+    expect(late!.overdue).toBe(true);
+    expect(caseTimer(late!)!.left).toBeLessThan(0);
+    // разобранный не тикает; без момента ответа — как пришло
+    const [done] = liveCases([kase("d", { acknowledgedAt: at("16:00") })], loadedAt + 80 * 60_000, loadedAt);
+    expect(done!.minutesOpen).toBe(168);
+    expect(liveCases([kase("a")], loadedAt + 80 * 60_000, null)[0]!.minutesOpen).toBe(168);
   });
 
   test("«Між сесіями» не повторяет человека героя и то, что уже стоит плитками", () => {

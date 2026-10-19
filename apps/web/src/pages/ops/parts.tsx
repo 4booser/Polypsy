@@ -242,30 +242,6 @@ export function Live({ pollSec, updatedAt, paused }: { pollSec: number; updatedA
   );
 }
 
-/**
- * «Дані з моменту запуску процесу…» и «оновлено о …».
- *
- * Первая половина обязательна на каждой вкладке с памятью процесса: пустые
- * ошибки и тихий график после перезапуска выглядят как «всё хорошо», хотя
- * значат «ничего не помню». `since` не передан — у вкладки нет памяти
- * процесса (база отвечает о своём состоянии сейчас), и сказано это другими
- * словами.
- */
-export function Stamp({ since, updatedAt, note }: { since?: string; updatedAt: number | null; note?: ReactNode }) {
-  const { ut } = useLang();
-  const loc = locale();
-  return (
-    <div className="mb-1 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1 text-small text-muted">
-      <span className="min-w-0">{since ? fill(ut("ops.since"), { time: sinceText(since, loc) }) : note}</span>
-      {updatedAt !== null ? (
-        <span role="status" className="shrink-0 tabular-nums">
-          {fill(ut("ops.updated"), { time: clock(updatedAt, loc) })}
-        </span>
-      ) : null}
-    </div>
-  );
-}
-
 /** Момент запуска процесса коротко: «06.10, 21:41» */
 export function sinceText(since: string, loc: string): string {
   const d = new Date(since);
@@ -435,17 +411,6 @@ export function RefreshButton({ onRefresh, busy }: { onRefresh: () => void; busy
     <Tooltip label={label}>
       <Button size="icon" aria-label={label} icon={<OpsIcon name="refresh-cw" />} onClick={onRefresh} disabled={busy} />
     </Tooltip>
-  );
-}
-
-/** Обычные действия шапки раздела: номер → траса и ссылка на вид */
-export function HeadActions({ children }: { children?: ReactNode }) {
-  return (
-    <>
-      <TraceBox />
-      <CopyLinkButton />
-      {children}
-    </>
   );
 }
 
@@ -731,9 +696,6 @@ export function Cell({ children, num, className }: { children?: ReactNode; num?:
     </span>
   );
 }
-
-/** Шапка числовой колонки — по правому краю, как сами числа */
-export const NumHead = ({ children }: { children: ReactNode }) => <span className="block text-right">{children}</span>;
 
 /** Подпись и значение столбцом (.kv набора): сборка, сведения о базе */
 export function Facts({ items, w = 170 }: { items: readonly (readonly [ReactNode, ReactNode])[]; w?: 130 | 150 | 170 | 200 }) {

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import { resetStore } from "./store.mock";
 import {
+  homeOf,
   isPasswordChangeRequired,
   isPasswordGate,
   MIN_PASSWORD,
@@ -49,6 +50,13 @@ describe("куда после входа", () => {
     expect(routeAfterSignIn({ mustChangePassword: false })).toBe("/consent");
     expect(routeAfterSignIn({})).toBe("/consent");
     expect(routeAfterSignIn(null)).toBe("/login");
+  });
+
+  test("после согласия пациент — на «Головну», сотрудник — сразу на обход", () => {
+    expect(homeOf({ role: "user" })).toBe("/(app)/home");
+    expect(homeOf({ role: "admin" })).toBe("/(app)/rounds");
+    expect(homeOf({ role: "superadmin" })).toBe("/(app)/rounds");
+    expect(homeOf(null)).toBe("/(app)/home");
   });
 });
 

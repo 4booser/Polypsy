@@ -5,6 +5,7 @@ import { api } from "../../../api";
 import { useAuth } from "../../../auth";
 import { useLang } from "../../../lang";
 import { Avatar, Callout, DataTable, Loading, Modal, useAction, useToast } from "../../../ui";
+import { cx } from "../../../ui/cx";
 import type { Column } from "../../../ui/DataTable";
 import { ViewPills } from "../../../ui/filters";
 import { Ic } from "../../../ui/icons";
@@ -14,7 +15,8 @@ import { useResource } from "../../../useResource";
 import { personHref } from "../model";
 import { SectionPage } from "./frame";
 import { Ix } from "./icons";
-import { CodeChip, FootNote, Meter, RolePill, Rich, Sx } from "./securityParts";
+import { RolePill } from "../users/parts";
+import { CodeChip, FootNote, Meter, Rich, Sx } from "./securityParts";
 import {
   MFA_VIEWS,
   coverageGroups,
@@ -346,12 +348,17 @@ function CoveragePanel({ data }: { data: MfaPolicyView }) {
   );
 }
 
+/** Шаги экрана-барьера — те же и в том же порядке, что у MfaSetupGate */
+const GATE_STEPS: readonly UiKey[] = ["ax.mg.s1", "ax.mg.s2", "acct.mfa.codesTitle"];
+
 /**
- * «Що бачить людина без фактора»: экран-барьер в уменьшенном виде, теми же
- * словами, что настоящий (SecondFactor.tsx, MfaSetupGate). Не нажимается —
- * это показ.
+ * «Що бачить людина без фактора»: экран-барьер в уменьшенном виде — тот же,
+ * что настоящий (SecondFactor.tsx, MfaSetupGate), теми же словами: заголовок
+ * с пометкой «обов’язковий крок», пояснение и три шага — QR-код или ключ,
+ * проверка кодом, коды восстановления. Открыт первый шаг, его кнопка
+ * показывает ключ; выйти можно всегда. Не нажимается — это показ.
  */
-function GatePanel() {
+export function GatePanel() {
   const { ut } = useLang();
   return (
     <Panel title={ut("opps.mfa.gateTitle")} icon={<Ic.eye />}>
@@ -359,12 +366,35 @@ function GatePanel() {
       <div inert aria-hidden className="rounded-panel bg-ground p-3.5 shadow-[inset_0_0_0_1px_var(--border)]">
         <div className="rounded-[12px] border border-border bg-panel p-4 shadow-panel">
           <div className="flex items-center gap-2.5">
-            <IconTile icon={<Sx.smartphoneNfc />} />
-            <b className="text-h3 font-extrabold text-text">{ut("mfa.gate.title")}</b>
+            <IconTile icon={<Ic.shieldCheck />} />
+            <span className="flex min-w-0 flex-col">
+              <b className="text-h3 font-extrabold leading-[19px] text-text">{ut("mfa.gate.title")}</b>
+              <span className="text-caption text-text-2">
+                <b className="font-bold text-text">{ut("ax.mg.required")}</b>, {ut("ax.mg.policy")}
+              </span>
+            </span>
           </div>
           <p className="m-0 mt-2 text-small text-text-2">{ut("mfa.gate.sub")}</p>
+          <ol className="m-0 mt-3 flex list-none flex-col gap-1.5 p-0">
+            {GATE_STEPS.map((key, i) => (
+              <li
+                key={key}
+                className={cx("flex min-w-0 items-center gap-2.5 rounded-control px-2.5 py-[7px]", i === 0 ? "bg-violet-tint" : "bg-sunk")}
+              >
+                <span
+                  className={cx(
+                    "inline-grid size-[22px] shrink-0 place-items-center rounded-full text-[11px] font-extrabold tabular-nums",
+                    i === 0 ? "bg-violet text-onfill" : "bg-panel text-muted",
+                  )}
+                >
+                  {i + 1}
+                </span>
+                <span className={cx("min-w-0 truncate text-small font-bold", i === 0 ? "text-violet-ink" : "text-text-2")}>{ut(key)}</span>
+              </li>
+            ))}
+          </ol>
           <div className="mt-3 flex gap-2">
-            <span className={buttonClass("primary", "xs")}>{ut("acct.mfa.enable")}</span>
+            <span className={buttonClass("primary", "xs")}>{ut("ax.mg.start")}</span>
             <span className={buttonClass("quiet", "xs")}>{ut("nav.logout")}</span>
           </div>
         </div>
@@ -404,13 +434,17 @@ function CoverageTable({
       required: true,
       width: 260,
       sort: (r) => r.fullName || r.email,
+      /*
+        Имя переносится, а не обрезается: обрезка держит колонку по всей длине
+        имени, и на 1280 таблица выходила за панель вместе с «Скинути».
+      */
       render: (r) => (
         <span className="flex min-w-0 items-center gap-2.5">
           <Avatar name={r.fullName || r.email} size={28} tone={r.disabled ? "neutral" : "soft"} />
           <span className="flex min-w-0 flex-col">
             <Link
               to={personHref(r)}
-              className="truncate font-bold leading-[18px] text-text no-underline hover:underline hover:decoration-violet-line hover:decoration-2 hover:underline-offset-[3px]"
+              className="font-bold leading-[18px] text-text no-underline [overflow-wrap:anywhere] hover:underline hover:decoration-violet-line hover:decoration-2 hover:underline-offset-[3px]"
             >
               {r.fullName || r.email}
             </Link>

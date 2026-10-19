@@ -219,11 +219,53 @@ function TraceSection({ row }: { row: OpsUserRow }) {
   );
 }
 
+/**
+ * Тело записи. Что открыто смотрящему, приходит свойствами, а не решается
+ * здесь (test/opsUserDrawer.test.tsx).
+ *
+ * «Останні дії» — чтение журнала: GET /api/audit закрыт без audit.read, а
+ * панель записи открывает и тот, у кого есть только users.manage. Без права
+ * раздела нет вовсе: иначе каждое открытие записи было бы отказом сервера в
+ * журнале доступа и ошибкой на месте раздела.
+ *
+ * Устройства — с ключом записи: J/K меняют запись и под открытым окном
+ * стирания, а окно, пережившее смену человека, отправило бы команду с
+ * устройством прежнего и учёткой нового.
+ */
+export function RecordBody({
+  row,
+  name,
+  isSuper,
+  canAudit,
+  canEnd,
+  onEndAll,
+}: {
+  row: OpsUserRow;
+  name: string;
+  isSuper: boolean;
+  /** Есть ли audit.read: «Останні дії» читают журнал */
+  canAudit: boolean;
+  /** Можно ли завершать сессии этой учётки (не выше смотрящего) */
+  canEnd: boolean;
+  onEndAll: () => void;
+}) {
+  return (
+    <>
+      <Facts row={row} />
+      {isSuper ? <DevicesSection key={row.id} userId={row.id} name={name} /> : null}
+      <SessionsSection row={row} canEnd={canEnd} onEndAll={onEndAll} />
+      <TraceSection row={row} />
+      {canAudit ? <RecentSection row={row} /> : null}
+    </>
+  );
+}
+
 export function UserDrawer({
   open,
   id,
   hint,
   version,
+  keys = true,
   onClose,
   onDialog,
   menu,
@@ -235,6 +277,11 @@ export function UserDrawer({
   hint: OpsUserRow | null;
   /** Счётчик перечитывания после действия над записью */
   version: number;
+  /**
+   * J / K работают: экран гасит их, пока поверх панели открыто окно действия
+   * (подтверждение, одноразовый пароль) — шаг сменил бы запись под окном.
+   */
+  keys?: boolean;
   onClose: () => void;
   onDialog: (d: Dialog) => void;
   menu: (row: OpsUserRow) => MenuEntry[];
@@ -242,11 +289,11 @@ export function UserDrawer({
   onStep: (step: 1 | -1) => void;
 }) {
   const { ut } = useLang();
-  const { user } = useAuth();
+  const { user, can } = useAuth();
   const isSuper = user?.role === "superadmin";
   const res = useResource(() => api.opsUser(id!), [id, version], { enabled: !!id });
   const row = res.data && res.data.id === id ? res.data : hint && hint.id === id ? hint : null;
-  useHotkeys({ j: () => onStep(1), k: () => onStep(-1) }, open);
+  useHotkeys({ j: () => onStep(1), k: () => onStep(-1) }, open && keys);
 
   const self = row ? row.id === user?.id : false;
   const outOfReach = row ? accountOutOfReach(user, row) : true;
@@ -381,13 +428,14 @@ export function UserDrawer({
           <Loading rows={6} bare />
         )
       ) : (
-        <>
-          <Facts row={row} />
-          {isSuper ? <DevicesSection userId={row.id} name={name} /> : null}
-          <SessionsSection row={row} canEnd={!outOfReach} onEndAll={() => onDialog({ kind: "revoke", row })} />
-          <TraceSection row={row} />
-          <RecentSection row={row} />
-        </>
+        <RecordBody
+          row={row}
+          name={name}
+          isSuper={isSuper}
+          canAudit={can("audit.read")}
+          canEnd={!outOfReach}
+          onEndAll={() => onDialog({ kind: "revoke", row })}
+        />
       )}
     </Drawer>
   );

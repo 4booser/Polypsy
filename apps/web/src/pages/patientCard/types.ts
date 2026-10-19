@@ -36,12 +36,20 @@ export interface CardView {
   last: { visit: Visit; n: number } | null;
   noShow: Visit | null;
   assignments: Assignment[];
-  /** Открытые случаи риска; null — грузятся, [] — нет или нет права */
+  /** Открытые случаи риска; null — грузятся или не пришли (см. casesError), [] — нет или нет права */
   cases: AlertCase[] | null;
+  /** Случаи не пришли: открытый риск неизвестен — это не «нічого відкритого» */
+  casesError: string | null;
+  reloadCases: () => void;
   thread: ThreadLike | null;
   messages: ThreadMessage[] | null;
   notes: NoteState | null;
+  /** Действующая версия плана безпеки; null — плана нет или он ещё не пришёл (см. planKnown) */
   plan: SafetyPlan | null;
+  /** Версии плана пришли: только тогда «плану немає» — правда */
+  planKnown: boolean;
+  planError: string | null;
+  reloadPlan: () => void;
   details: Record<string, ResponseDetail | null>;
   rows: InstrumentRow[];
   /** Я ли веду ближайший приём: перенос — только в свои окна */

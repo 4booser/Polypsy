@@ -1,10 +1,12 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import type { StaffAccount } from "@quizzy/shared";
 import { paragraphChanges, wordDiff } from "../src/pages/Admin";
 import { byTag, routeMatches } from "../src/pages/ApiDocs";
 import { strengthOf } from "../src/pages/Account";
-import { completions } from "../src/pages/Console";
-import { draftDiff, roleOrder } from "../src/pages/Permissions";
+import { completions, isClearKey, readRecent, recentKey, saveRecent } from "../src/pages/Console";
+import { draftDiff, roleChanges, roleOrder, saveRoleSets } from "../src/pages/Permissions";
 import {
   type StaffRow,
   accountState,
@@ -17,6 +19,7 @@ import {
   viewCounts,
 } from "../src/pages/people/model";
 import { plural, shortName, whenShort } from "../src/pages/people/parts";
+import { adminMark, permissionCardReadable } from "../src/pages/people/StaffList";
 
 /**
  * Раздел «Адміністрування» 2.0 (участок v2-admin): чистая логика экранов —
@@ -185,6 +188,38 @@ describe("консоль", () => {
     expect(completions(commands, "catalog in").map((c) => c.name)).toEqual(["catalog"]);
     expect(completions(commands, "")).toEqual([]);
   });
+
+  /*
+   * Строка команды несёт аргументы — `user find ivan@…` ищет и пациентов.
+   * Недавние живут во вкладке и под ключом учётной записи: следующий за общим
+   * ноутбуком их не получает ни после выхода, ни после закрытия вкладки.
+   */
+  test("недавние — под ключом учётной записи: другой человек в той же вкладке их не видит", () => {
+    const box = new Map<string, string>();
+    const store = { getItem: (k: string) => box.get(k) ?? null, setItem: (k: string, v: string) => void box.set(k, v) };
+    saveRecent(store, "u1", ["user find ivan.petrenko@mail.test", "help"]);
+    expect(readRecent(store, "u1")).toEqual(["user find ivan.petrenko@mail.test", "help"]);
+    expect(readRecent(store, "u2")).toEqual([]);
+    expect([...box.keys()]).toEqual([recentKey("u1")]);
+    /* без учётной записи и без хранилища — ни записи, ни чтения */
+    saveRecent(store, "", ["stats"]);
+    expect(box.size).toBe(1);
+    expect(readRecent(null, "u1")).toEqual([]);
+  });
+
+  test("Ctrl+L очищает ленту в любой раскладке: по клавише, а не по букве", () => {
+    expect(isClearKey({ code: "KeyL", ctrlKey: true })).toBe(true);
+    /* украинская раскладка: та же клавиша, буква «д» — e.code тот же */
+    expect(isClearKey({ code: "KeyL", ctrlKey: true, key: "д" } as never)).toBe(true);
+    expect(isClearKey({ code: "KeyL", ctrlKey: false })).toBe(false);
+    expect(isClearKey({ code: "KeyK", ctrlKey: true })).toBe(false);
+  });
+
+  test("недавние команды — в хранилище вкладки, не в localStorage", () => {
+    const src = readFileSync(resolve(import.meta.dir, "../src/pages/Console.tsx"), "utf8");
+    expect(src).toContain("sessionStorage");
+    expect(src).not.toMatch(/localStorage\.(getItem|setItem)/);
+  });
 });
 
 describe("права", () => {
@@ -201,6 +236,57 @@ describe("права", () => {
 
   test("черновик набора: что добавлено и что убрано", () => {
     expect(draftDiff(["a", "b"], ["b", "c"])).toEqual({ added: ["c"], removed: ["a"] });
+  });
+
+  test("правится роль, чей черновик отличается: клетка, нажатая дважды, правки не оставляет", () => {
+    const roles = [
+      { id: "r1", permissions: ["a", "b"] },
+      { id: "r2", permissions: ["a"] },
+    ];
+    const changed = roleChanges(roles, { r1: ["b", "a"], r2: ["a", "c"] });
+    expect(changed.map((c) => c.role.id)).toEqual(["r2"]);
+    expect(changed[0]).toMatchObject({ added: ["c"], removed: [] });
+  });
+
+  /*
+   * Черновик снимался до ответа сервера, а матрица перечитывалась только после
+   * удачи: откажи вторая роль — первая, уже сохранённая, стояла бы на экране
+   * прежней, а нажатое во второй пропадало бы.
+   */
+  test("сохранение наборов: сохранённое называется сразу, отказ — после него", async () => {
+    const saved: string[] = [];
+    const run = saveRoleSets(
+      [
+        { id: "r1", permissions: ["a"] },
+        { id: "r2", permissions: ["b"] },
+        { id: "r3", permissions: ["c"] },
+      ],
+      async (id) => {
+        if (id === "r2") throw new Error("403");
+      },
+      (id) => saved.push(id),
+    );
+    await expect(run).rejects.toThrow("403");
+    expect(saved).toEqual(["r1"]);
+  });
+});
+
+describe("«Що може кожен»", () => {
+  test("непрочитанная карточка — «не известно», а не «не може»", () => {
+    expect(adminMark({ role: "admin" }, null, "users.manage")).toBe("unknown");
+    expect(adminMark({ role: "admin" }, ["users.manage"], "users.manage")).toBe("role");
+    expect(adminMark({ role: "admin" }, ["audit.read"], "users.manage")).toBe("no");
+    expect(adminMark({ role: "superadmin" }, null, "users.manage")).toBe("super");
+  });
+
+  test("карточку старшего и равного не запрашивают — сервер её не отдаёт", () => {
+    const head = { id: "h", role: "admin", ladderRank: 2 };
+    expect(permissionCardReadable(head, { id: "s", role: "admin", ladderRank: 1 })).toBe(true);
+    expect(permissionCardReadable(head, { id: "h2", role: "admin", ladderRank: 2 })).toBe(false);
+    expect(permissionCardReadable(head, { id: "c", role: "admin", ladderRank: 3 })).toBe(false);
+    expect(permissionCardReadable(head, { id: "root", role: "superadmin", ladderRank: 0 })).toBe(false);
+    expect(permissionCardReadable(head, { id: "h", role: "admin", ladderRank: 2 })).toBe(true);
+    expect(permissionCardReadable({ id: "root", role: "superadmin", ladderRank: 0 }, { id: "c", role: "admin", ladderRank: 3 })).toBe(true);
   });
 });
 

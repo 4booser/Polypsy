@@ -1,7 +1,7 @@
 import { Fragment, useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as KeyEvent, type ReactNode } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import type { Scale, SurveyListItem, UiKey } from "@quizzy/shared";
-import { api } from "../../api";
+import { ApiError, api } from "../../api";
 import { SeverityMeter } from "../../charts/clinical";
 import { rungOf, type Rung } from "../../charts/ladder";
 import { day } from "../../format";
@@ -39,6 +39,7 @@ import {
   ruleTests,
   sameDraft,
   surveysToLoad,
+  thresholdText,
 } from "./model";
 import { ACT_ICON, ACT_KEY } from "./parts";
 import { testsHref } from "./tests/model";
@@ -116,6 +117,12 @@ function ModelEditor({ id, copyFrom }: { id: string | null; copyFrom: string | n
   const [draft, setDraft] = useState<ModelDraft | null>(base);
   const [missing, setMissing] = useState(false);
   const saved: SavedModel | null = id !== null ? (rules.data?.find((r) => r.id === id) ?? null) : null;
+  /*
+   * Перечитывание после 409 (правку обогнала чужая): исходным становится
+   * правило с сервера, а набранное остаётся черновиком — «Зміни» и версия
+   * показывают его против новой версии, и следующее «Зберегти» ляжет на неё.
+   */
+  const keepDraft = useRef(false);
 
   useEffect(() => {
     if (!rules.data) return;
@@ -126,8 +133,10 @@ function ModelEditor({ id, copyFrom }: { id: string | null; copyFrom: string | n
         return;
       }
       const d = draftFromRule(rule);
+      const keep = keepDraft.current;
+      keepDraft.current = false;
       setBase(d);
-      setDraft(d);
+      setDraft((cur) => (keep && cur ? cur : d));
       return;
     }
     if (copyFrom) {
@@ -173,7 +182,8 @@ function ModelEditor({ id, copyFrom }: { id: string | null; copyFrom: string | n
   };
 
   const save = useCallback(() => {
-    if (!draft || busy) return;
+    /* без права правок кнопки погашены — и ⌘S тоже ничего не шлёт: сервер ответил бы 403 */
+    if (!draft || busy || !canManage) return;
     setTried(true);
     if (draftIssues(draft).length) return;
     void run(
@@ -184,14 +194,23 @@ function ModelEditor({ id, copyFrom }: { id: string | null; copyFrom: string | n
           /* replace: «назад» из правки новой модели ведёт в перечень, а не в пустую форму */
           navigate(modelHref(created.id), { replace: true });
         } else {
-          await api.updateDecisionRule(id, payload);
+          try {
+            /* версия, от которой правили: правило, изменённое с тех пор кем-то другим, ответит 409 */
+            await api.updateDecisionRule(id, { ...payload, ...(saved ? { version: saved.version } : {}) });
+          } catch (e) {
+            if (e instanceof ApiError && e.status === 409) {
+              keepDraft.current = true;
+              rules.reload();
+            }
+            throw e;
+          }
           setTried(false);
           rules.reload();
         }
       },
       ut(id === null ? "am.createdOk" : "am.saved"),
     );
-  }, [draft, busy, id, run, navigate, rules, ut]);
+  }, [draft, busy, canManage, id, saved, run, navigate, rules, ut]);
 
   /* ⌘S / Ctrl S — сохранить, как в любом редакторе; браузерное «сохранить страницу» здесь бессмысленно */
   useEffect(() => {
@@ -205,15 +224,19 @@ function ModelEditor({ id, copyFrom }: { id: string | null; copyFrom: string | n
     return () => document.removeEventListener("keydown", onKey);
   }, [save]);
 
-  /* несохранённое при закрытии вкладки — спросит браузер своими словами */
+  /*
+   * Несохранённое при закрытии вкладки — спросит браузер своими словами. И у
+   * новой модели (и у копии): её набирают с нуля, и закрытая вкладка унесла
+   * бы всю форму, а не одну правку.
+   */
   useEffect(() => {
-    if (!dirty || isNew) return;
+    if (!dirty) return;
     const onLeave = (e: BeforeUnloadEvent) => {
       e.preventDefault();
     };
     window.addEventListener("beforeunload", onLeave);
     return () => window.removeEventListener("beforeunload", onLeave);
-  }, [dirty, isNew]);
+  }, [dirty]);
 
   if (missing) {
     return (
@@ -569,19 +592,25 @@ export function paramPick(p: DraftParam): ParamPick {
  * бессмысленно: методика при переходе на «будь-який тест» и обратно (это
  * разные вопросы — «какой тест» и «любой»), а вместе с ней код шкалы,
  * потому что коды у методик свои.
+ *
+ * Решает записанная методика, а не вид, с которого меняют: флаг риска и
+ * история хранят её нетронутой, и обход через них обязан вести туда же,
+ * куда и прямой переход. Иначе «Будь-який тест» → «Прапор ризику» →
+ * «Результат тесту» возвращал «Будь-який тест», а «Результат тесту» → «Прапор
+ * ризику» → «Будь-який тест» уносил код шкалы прежней методики.
  */
 export function paramKindOver(p: DraftParam, next: ParamPick): Partial<DraftParam> {
-  const now = paramPick(p);
-  if (now === next) return {};
+  if (paramPick(p) === next) return {};
+  const named = p.surveyId !== "" && p.surveyId !== ANY_TEST;
   switch (next) {
     case "risk":
       return { kind: "risk" };
     case "history":
       return { kind: "history" };
     case "any":
-      return { kind: "scale", surveyId: ANY_TEST, scaleCode: now === "scale" ? "" : p.scaleCode };
+      return { kind: "scale", surveyId: ANY_TEST, scaleCode: named ? "" : p.scaleCode };
     case "scale":
-      return now === "any" ? { kind: "scale", surveyId: "", scaleCode: "" } : { kind: "scale" };
+      return p.surveyId === ANY_TEST ? { kind: "scale", surveyId: "", scaleCode: "" } : { kind: "scale" };
   }
 }
 
@@ -1000,7 +1029,7 @@ function ScaleCond({
           </Field>
           {changed && !errors.threshold ? (
             <ErrorText tone="warn" className="-mt-2">
-              {ut("kit.was").replace("{v}", was!.value)}
+              {ut("kit.was").replace("{v}", thresholdText(was!.value))}
             </ErrorText>
           ) : null}
         </div>
@@ -1020,7 +1049,7 @@ function ScaleCond({
               <SeverityMeter
                 rungs={rungs}
                 value={value !== null && Number.isFinite(value) ? value : null}
-                label={`${scale.title}: ${ut(OP_KEY[p.op])} ${p.value}`}
+                label={`${scale.title}: ${ut(OP_KEY[p.op])} ${thresholdText(p.value)}`}
               />
             </>
           ) : (
@@ -1192,7 +1221,7 @@ function ReadModel({
     return (
       <>
         {other}
-        {scaleNode} {ut(OP_KEY[p.op]).toLowerCase()} {ok ? <b>{p.value.trim()}</b> : gap("am.gapThreshold")} (
+        {scaleNode} {ut(OP_KEY[p.op]).toLowerCase()} {ok ? <b>{thresholdText(p.value)}</b> : gap("am.gapThreshold")} (
         {ut(p.metric === "raw" ? "am.metricRaw" : "am.metricNormed").toLowerCase()})
       </>
     );
@@ -1264,7 +1293,9 @@ function changeText(ut: (k: UiKey) => string, c: DraftChange): string {
     case "enabled":
       return ut(c.on ? "am.chOn" : "am.chOff");
     case "threshold":
-      return ut("am.chThreshold").replace("{from}", c.from).replace("{to}", c.to || "—");
+      return ut("am.chThreshold")
+        .replace("{from}", thresholdText(c.from))
+        .replace("{to}", c.to.trim() ? thresholdText(c.to) : "—");
     case "param":
       return n("am.condN", c.index + 1).toLowerCase();
     case "paramsAdded":

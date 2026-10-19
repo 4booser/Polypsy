@@ -102,11 +102,6 @@ export function weeklyColumns(
   return out;
 }
 
-/** Ход по неделям для линии в плитке: только числа */
-export function weeklyCounts(timeline: readonly DayCount[], weeks: number, today: string): number[] {
-  return weeklyColumns(timeline, weeks, today, () => "").map((c) => c.value);
-}
-
 /**
  * Итог окна и такого же окна перед ним.
  *
@@ -255,6 +250,27 @@ export function fill(template: string, values: Record<string, string | number>):
   return template.replace(/\{(\w+)\}/g, (m, k: string) => (k in values ? String(values[k]) : m));
 }
 
+/**
+ * Форма строки словаря по числу: «1 сесія», «3 сесії», «5 сесій».
+ *
+ * Формы — через «|», в порядке категорий Intl.PluralRules: украинский и
+ * русский — one|few|many|other, английский — one|other (тот же порядок, что
+ * у people/parts.tsx, plural). Форма возвращается с подстановками как есть:
+ * число, по которому она выбрана, не обязано быть {n} — у «0 з 1 входу»
+ * форма идёт по {of}. Строка без «|» возвращается целиком.
+ */
+export function byCount(template: string, n: number, lang: string): string {
+  const forms = template.split("|");
+  const order = lang === "en" ? ["one", "other"] : ["one", "few", "many", "other"];
+  const at = order.indexOf(new Intl.PluralRules(lang).select(n));
+  return forms[Math.min(at < 0 ? forms.length - 1 : at, forms.length - 1)] ?? template;
+}
+
+/** Число со словом в нужной форме: byCount и {n} — тем же числом */
+export function withCount(template: string, n: number, lang: string): string {
+  return fill(byCount(template, n, lang), { n });
+}
+
 /* ─────────── віджети: порядок и выключенные ─────────── */
 
 /*
@@ -297,6 +313,46 @@ export function widgetLayout(prefs: { order?: string[]; hidden?: string[] } | nu
     (prefs?.hidden ?? []).filter(isWidget).filter((k) => !(ALWAYS_VISIBLE_WIDGETS as readonly string[]).includes(k)),
   );
   return { order, hidden };
+}
+
+/**
+ * Сохранение настроек по очереди, последним словом.
+ *
+ * Ящик «Налаштувати зведення» применяет правку сразу и шлёт её в профиль.
+ * Через useAction второе сохранение, пришедшее, пока первое в пути,
+ * молча отбрасывалось (run не начинает второе действие): два щелчка по
+ * переключателям или Alt+↓ дважды подряд — и на экране одно, а в профиле
+ * прежнее, и на другой машине зведення собиралось не так, как его настроили.
+ *
+ * Здесь пришедшее в полёте копится и уходит следом, одним запросом: правка
+ * віджетів несёт порядок и выключенные целиком, поэтому последняя —
+ * правда, и промежуточные слать незачем. Отказ одной не останавливает
+ * следующие; `idle` — когда всё отправлено (перечитать профиль).
+ */
+export function saveQueue<P extends object>(
+  send: (patch: P) => Promise<unknown>,
+  hooks: { failed?: (error: unknown) => void; idle?: () => void } = {},
+): (patch: P) => Promise<void> {
+  let next: P | null = null;
+  let running: Promise<void> | null = null;
+  const drain = async () => {
+    while (next) {
+      const patch = next;
+      next = null;
+      try {
+        await send(patch);
+      } catch (e) {
+        hooks.failed?.(e);
+      }
+    }
+    running = null;
+    hooks.idle?.();
+  };
+  return (patch: P) => {
+    next = { ...(next ?? {}), ...patch } as P;
+    if (!running) running = drain();
+    return running;
+  };
 }
 
 /** Сдвиг віджета на одно место (Alt ↑ / Alt ↓) */

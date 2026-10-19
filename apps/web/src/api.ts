@@ -736,13 +736,6 @@ export interface ConclusionVersion {
    * «тот ли это текст, что я читал» не проверить.
    */
   revision: number;
-  /**
-   * Название документа с экрана «Заключення» (кадр f38, поле «Назва
-   * заключення»). Столбца title в таблице conclusions пока нет, поэтому поле
-   * необязательное: пока сервер его не отдаёт, экран держит набранное
-   * название у себя и не затирает его пустотой из ответа.
-   */
-  title?: string | null;
   text: string;
   status: "draft" | "signed";
   createdAt: string;
@@ -931,6 +924,9 @@ interface DecisionRuleInput {
 }
 
 const unwrap = <T>(p: Promise<Items<T>>): Promise<T[]> => p.then((r) => r.items);
+
+/** Сколько человек принимает одно «додати до групи» списком — потолок patientGroupMemberSchema */
+export const PATIENT_GROUP_BATCH = 200;
 
 export const api = {
   /** Вход: пара токенов или, если включён второй фактор, просьба о коде (MfaChallenge) */
@@ -1164,8 +1160,12 @@ export const api = {
   /** Завести модель; сервер отвечает идентификатором новой строки */
   createDecisionRule: (input: DecisionRuleInput) =>
     request<{ id: string }>("/api/decisions/rules", { method: "POST", body: JSON.stringify(input) }),
-  /** Правка поднимает версию правила — срабатывания помнят, при какой версии сработали */
-  updateDecisionRule: (id: string, input: Partial<DecisionRuleInput>) =>
+  /**
+   * Правка поднимает версию правила — срабатывания помнят, при какой версии
+   * сработали. `version` — та, что видел правящий: правило, изменённое с тех
+   * пор кем-то другим, отвечает 409 (err.ruleChanged), и экран его перечитывает.
+   */
+  updateDecisionRule: (id: string, input: Partial<DecisionRuleInput> & { version?: number }) =>
     request<{ ok: true; version: number }>(`/api/decisions/rules/${id}`, {
       method: "PATCH",
       body: JSON.stringify(input),
@@ -1655,21 +1655,14 @@ export const api = {
     responseId: string,
     text: string,
     base: Pick<ConclusionVersion, "version" | "revision"> | null,
-    title?: string,
   ) =>
     request<ConclusionState>(`/api/conclusions/responses/${responseId}/conclusion`, {
       method: "PUT",
-      /*
-       * Название уходит вместе с текстом по описанному договору (столбец
-       * conclusions.title). Сегодняшний сервер лишнее поле отбрасывает при
-       * разборе тела — запрос от этого не ломается, а в день, когда столбец
-       * появится, клиент править не придётся.
-       */
+      /* названия нет: столбца title у заключения нет, и сервер поле отбросил бы молча */
       body: JSON.stringify({
         text,
         baseVersion: base?.version ?? 0,
         baseRevision: base?.revision,
-        ...(title !== undefined ? { title } : {}),
       }),
     }),
   /** Подписывается конкретная версия и конкретная редакция её текста — та, что была на экране */
@@ -1729,9 +1722,9 @@ export const api = {
     q?: string;
     patientGroup?: string;
     view?: string;
-    sort?: string;
-    /** Только тех, кого ведёт этот сотрудник (карточка фахівця) */
+    /** Только те, кого ведёт этот сотрудник: «Закріплені за мною» поверх подання, карточка фахівця */
     lead?: string;
+    sort?: string;
     limit?: number;
     offset?: number;
   } = {}) => {
@@ -1766,6 +1759,20 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ userId }),
     }),
+  /**
+   * Выборку — списком (`userIds`), а не запросом на человека: сервер проверяет
+   * пачку целиком до первой записи, и «троих добавил, на четвёртом отказал»
+   * внутри неё не бывает. Пачка — не больше PATIENT_GROUP_BATCH (потолок
+   * patientGroupMemberSchema); повтор — «уже там», как и у одного.
+   */
+  addPatientGroupMembers: async (groupId: string, userIds: readonly string[]) => {
+    for (let at = 0; at < userIds.length; at += PATIENT_GROUP_BATCH) {
+      await request<{ groupId: string; userIds: string[] }>(`/api/patient-groups/${groupId}/members`, {
+        method: "POST",
+        body: JSON.stringify({ userIds: userIds.slice(at, at + PATIENT_GROUP_BATCH) }),
+      });
+    }
+  },
   /** Убрать вибраних одним запросом: сервер проверяет список целиком, «троих убрал, на четвёртом отказал» не бывает */
   removePatientGroupMembers: (groupId: string, userIds: string[]) =>
     request<{ groupId: string; removed: number }>(`/api/patient-groups/${groupId}/members`, {

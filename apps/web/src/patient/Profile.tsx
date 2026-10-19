@@ -8,7 +8,7 @@ import { changePassword, passwordProblems, passwordReady } from "../pages/passwo
 import { SecondFactorSettings } from "../pages/ops/people2/SecondFactor";
 import { ShellIcon } from "../shell/icons";
 import { setThemeChoice, useThemeChoice, type ThemeChoice } from "../shell/theme";
-import { Callout, Drawer, Ic, Modal, useAction } from "../ui";
+import { Callout, Drawer, Ic, Modal, initialsOf, useAction } from "../ui";
 import { cx } from "../ui/cx";
 import { Button, Field, Input, Segmented, Select, Tag } from "../ui/primitives";
 import { useResource } from "../useResource";
@@ -92,11 +92,6 @@ export default function PatientProfile() {
       </Body>
     </>
   );
-}
-
-function initialsOf(name: string): string {
-  const parts = name.split(" ").filter(Boolean);
-  return ((parts[0]?.[0] ?? "") + (parts[1]?.[0] ?? "")).toUpperCase();
 }
 
 /** Строка настройки (srow): значок, что это и как сейчас, справа — действие */
@@ -310,8 +305,13 @@ function SecuritySection() {
       >
         {pane === "mfa" ? (
           <div className="py-3">
+            {/* строка «Двоетапна перевірка» читает своё состояние — перечитать и после включения, и после выключения */}
             <SecondFactorSettings
               onEnabled={() => {
+                void refreshUser();
+                mfa.reload();
+              }}
+              onDisabled={() => {
                 void refreshUser();
                 mfa.reload();
               }}

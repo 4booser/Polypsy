@@ -93,9 +93,18 @@ export function filterHits(
  * клинических записей («самоушкодження», «план безпеки»). Держать их после
  * закрытия вкладки значило бы оставить следующему сотруднику список того,
  * что искали до него. Внутри смены вкладка живёт — и короткий список полезен.
+ *
+ * Закрытия вкладки мало: вышедший оставляет её открытой, и следующий входит в
+ * ту же. Поэтому список стирается и при выходе, при входе другого человека и
+ * при конце сессии (auth.tsx, forgetRecent).
  */
 export const RECENT_KEY = "quizzy.search.recent";
 export const RECENT_MAX = 6;
+
+/** Стереть недавние запросы вкладки: человек за консолью сменился или вышел */
+export function forgetRecent(storage: Pick<Storage, "removeItem">): void {
+  storage.removeItem(RECENT_KEY);
+}
 
 export function parseRecent(raw: string | null): string[] {
   if (!raw) return [];

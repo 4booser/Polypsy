@@ -14,6 +14,7 @@ import { useNow, useOpenCase, useSurveyContents, useSurveyIndex } from "@/staff/
 import { dm, hm, instrumentRows, shortName } from "@/staff/model";
 import { ReviewSheet } from "@/staff/ReviewSheet";
 import { PatientHead, WorkStrip } from "@/staff/patient";
+import { StaffOnly } from "@/staff/StaffOnly";
 import { BandIcon, Card, InstrumentLine, Line, LinkButton, Loading, RiskNow, Section, StaffNav, StateBlock } from "@/staff/ui";
 import { flipVisited, visitedToday } from "@/staff/visited";
 
@@ -29,7 +30,16 @@ import { flipVisited, visitedToday } from "@/staff/visited";
  * шкале с выраженностью словом и сдвигом от старта. Полная динамика с
  * графиками — в карте пациента: на обходе её листать некогда.
  */
-export default function RoundsCardScreen() {
+export default function RoundsCard() {
+  // карта у койки — экран сотрудника: пациенту по ссылке — его «Головна» (staff/StaffOnly.tsx)
+  return (
+    <StaffOnly>
+      <RoundsCardScreen />
+    </StaffOnly>
+  );
+}
+
+function RoundsCardScreen() {
   const { ut } = useLang();
   const c = useColors();
   const router = useRouter();

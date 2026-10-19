@@ -45,7 +45,6 @@ const SCREENS: [string, string[]][] = [
   ["src/pages/patientCard/PatientCard.tsx", ["patients", "groups"]],
   ["src/pages/patientGroups/PatientGroups.tsx", ["patients", "groups", "tests"]],
   ["src/pages/patientGroups/PatientGroupCard.tsx", ["patients", "groups"]],
-  ["src/pages/patientGroups/PersonGrid.tsx", ["patients", "groups"]],
   ["src/pages/Conclusion.tsx", ["patients", "groups"]],
   ["src/components/ConclusionEditor.tsx", ["patients", "groups"]],
 ];
