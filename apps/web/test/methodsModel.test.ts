@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { UI, type SurveyListItem, type UiKey } from "@quizzy/shared";
+import { pluralForm } from "../src/ui/plural";
 import {
   attentionOf,
   dayDiff,
@@ -8,7 +9,6 @@ import {
   grantCounts,
   grantState,
   nextExpiring,
-  pluralForm,
   shortDate,
   splitCode,
   tShift,
@@ -52,7 +52,7 @@ describe("код методики из названия", () => {
 
 describe("форма слова при числе", () => {
   test("украинский и русский: один, несколько, много", () => {
-    expect([1, 2, 4, 5, 11, 21, 22, 25].map((n) => pluralForm("uk", n))).toEqual([
+    expect([1, 2, 4, 5, 11, 21, 22, 25].map((n) => pluralForm(n, "uk"))).toEqual([
       "one",
       "few",
       "few",
@@ -62,12 +62,12 @@ describe("форма слова при числе", () => {
       "few",
       "many",
     ]);
-    expect(pluralForm("ru", 3)).toBe("few");
+    expect(pluralForm(3, "ru")).toBe("few");
   });
 
   test("английский: one и many", () => {
-    expect(pluralForm("en", 1)).toBe("one");
-    expect(pluralForm("en", 3)).toBe("many");
+    expect(pluralForm(1, "en")).toBe("one");
+    expect(pluralForm(3, "en")).toBe("many");
   });
 });
 
@@ -211,7 +211,7 @@ describe("числа со словом в строках раздела", () => 
    * формы mc.n.* (useCount); где слово не нужно — подпись с двоеточием.
    */
   const counted = (lang: "uk" | "ru", n: number) =>
-    `${n} ${UI[`mc.n.responses.${pluralForm(lang, n)}` as UiKey][lang]}`;
+    `${n} ${UI[`mc.n.responses.${pluralForm(n, lang)}` as UiKey][lang]}`;
 
   test("проходження за 30 днів — в форме числа", () => {
     const line = (lang: "uk" | "ru", n: number) => UI["mc.recentMeta"][lang].replace("{n}", counted(lang, n));

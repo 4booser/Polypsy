@@ -10,9 +10,9 @@ import { ConditionsBody, DomainRow } from "../src/pages/dashboard/parts";
 import { PassesWidget } from "../src/pages/dashboard/passes";
 import { CasesWidget, WorkWidget } from "../src/pages/dashboard/widgets";
 import { ActNow, unlessForbidden } from "../src/pages/today/ActNow";
+import { byCount, withCount } from "../src/ui/plural";
 import {
   addDays,
-  byCount,
   dailyColumns,
   dropWidget,
   fill,
@@ -28,7 +28,6 @@ import {
   weekdayOf,
   weeklyColumns,
   widgetLayout,
-  withCount,
   workTiles,
   type BandLabels,
 } from "../src/pages/dashboard/model";

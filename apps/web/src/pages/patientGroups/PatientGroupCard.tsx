@@ -16,7 +16,8 @@ import { PickGroupDialog } from "./dialogs";
 import { AddMembersDrawer, AssignDrawer, GroupEditDrawer, useGroupKeys } from "./drawers";
 import { GroupState } from "./GroupState";
 import { HeartIcon, Pi } from "./icons";
-import { fill, grantEach, matchesQuery, newProgress, partialFailure, pluralOf, shortDate, surveyCode } from "./model";
+import { pluralForm } from "../../ui/plural";
+import { fill, grantEach, matchesQuery, newProgress, partialFailure, shortDate, surveyCode } from "./model";
 
 /*
  * Карточка группы пациентов (patients-group-card «Виразної»).
@@ -191,11 +192,11 @@ export default function PatientGroupCard() {
     <span className="flex flex-wrap items-center gap-x-3.5 gap-y-1 text-[13px] text-text-2">
       <span className="inline-flex items-center gap-1.5">
         <Pi.usersRound size={14} className="text-muted" />
-        {fill(ut(`pg2.membersN.${pluralOf(group.members.length, lang)}`), { n: group.members.length })}
+        {fill(ut(`pg2.membersN.${pluralForm(group.members.length, lang)}`), { n: group.members.length })}
       </span>
       <span className="inline-flex items-center gap-1.5">
         <Pi.clipboardList size={14} className="text-muted" />
-        {fill(ut(`pg2.testsN.${pluralOf(surveys.length, lang)}`), { n: surveys.length })}
+        {fill(ut(`pg2.testsN.${pluralForm(surveys.length, lang)}`), { n: surveys.length })}
       </span>
       <span className="inline-flex items-center gap-1.5">
         <Avatar name={group.ownerName} size={22} />
@@ -444,7 +445,7 @@ export default function PatientGroupCard() {
       />
       <AssignDrawer
         open={drawer === "assign"}
-        who={fill(ut(`pg2.whoGroup.${pluralOf(group.members.length, lang)}`), { name: group.title, n: group.members.length })}
+        who={fill(ut(`pg2.whoGroup.${pluralForm(group.members.length, lang)}`), { name: group.title, n: group.members.length })}
         whoNote={ut("pg2.assignGroupNote")}
         already={new Set(surveys.map((s) => s.surveyId))}
         onAssign={async (surveyId, expiresAt) => {
@@ -486,7 +487,7 @@ export default function PatientGroupCard() {
 
       {removing ? (
         <Modal
-          title={fill(ut(`pg2.removeTitle.${pluralOf(removing.length, lang)}`), { n: removing.length })}
+          title={fill(ut(`pg2.removeTitle.${pluralForm(removing.length, lang)}`), { n: removing.length })}
           sub={group.title}
           icon={<Pi.userMinus />}
           tone="warn"

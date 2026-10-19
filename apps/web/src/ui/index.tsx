@@ -31,6 +31,8 @@ export * from "./Popover";
 export * from "./records";
 export * from "./numbers";
 export * from "./filters";
+/* число со словом: одно правило Intl.PluralRules на всю консоль (ui/plural.ts) */
+export * from "./plural";
 /*
  * Части, которые нужны и начальному куску (рельса, оболочка, вход), — своими
  * модулями: оболочка берёт их оттуда напрямую, а не через эту точку входа,

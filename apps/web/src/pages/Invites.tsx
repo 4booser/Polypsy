@@ -13,7 +13,8 @@ import { useLang } from "../lang";
 import { usePagedResource, useResource } from "../useResource";
 import { listBody, shownNote } from "../ui/paging";
 import { StartHead } from "./Start";
-import { byCount, fill } from "./dashboard/model";
+import { byCount } from "../ui/plural";
+import { fill } from "./dashboard/model";
 import { Di } from "./today/icons";
 import { hhmm } from "./today/model";
 import {

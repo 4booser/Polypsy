@@ -15,7 +15,8 @@ import { CustomizeDrawer } from "./dashboard/Customize";
 import { ConditionsWidget } from "./dashboard/parts";
 import { PassesWidget } from "./dashboard/passes";
 import { CasesWidget, CollectWidget, DayWidget, MissedWidget, WorkWidget } from "./dashboard/widgets";
-import { WIDGET_COLUMN, fill, localDay, periodTotals, widgetLayout, withCount, type WidgetLayout } from "./dashboard/model";
+import { withCount } from "../ui/plural";
+import { WIDGET_COLUMN, fill, localDay, periodTotals, widgetLayout, type WidgetLayout } from "./dashboard/model";
 import { unlessForbidden } from "./today/ActNow";
 import { Di } from "./today/icons";
 

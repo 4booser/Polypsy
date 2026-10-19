@@ -12,6 +12,7 @@ import { Button, Field, Input, Select, Tag, Textarea } from "../../ui/primitives
 import { useResource } from "../../useResource";
 import { AnswerBars, SilentList, answeredLine } from "./answers";
 import { Mi } from "./icons";
+import { pluralForm } from "../../ui/plural";
 import {
   MAX_OPTIONS,
   type MailingDraft,
@@ -23,7 +24,6 @@ import {
   isFilled,
   mailingHref,
   optionPreset,
-  pluralForm,
   saveThenSend,
   withoutOption,
 } from "./model";

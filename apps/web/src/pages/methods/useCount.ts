@@ -2,7 +2,7 @@ import { useCallback } from "react";
 import type { UiKey } from "@quizzy/shared";
 import { locale } from "../../format";
 import { useLang } from "../../lang";
-import { pluralForm } from "./model";
+import { pluralForm } from "../../ui/plural";
 
 /** Слова, которые раздел ставит при числе: «9 пунктів», «1 шкала», «231 людина» */
 export type CountNoun = "items" | "scales" | "bands" | "methods" | "responses" | "people" | "admins" | "steps" | "batteries" | "groups";
@@ -19,7 +19,7 @@ export function num(n: number): string {
 export function useCount() {
   const { ut, lang } = useLang();
   return useCallback(
-    (n: number, noun: CountNoun) => `${num(n)} ${ut(`mc.n.${noun}.${pluralForm(lang, n)}` as UiKey)}`,
+    (n: number, noun: CountNoun) => `${num(n)} ${ut(`mc.n.${noun}.${pluralForm(n, lang)}` as UiKey)}`,
     [ut, lang],
   );
 }

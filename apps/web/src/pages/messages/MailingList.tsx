@@ -14,7 +14,8 @@ import { Button, ButtonLink, Tag } from "../../ui/primitives";
 import { useResource } from "../../useResource";
 import { AnswersDrawer } from "./answers";
 import { Mi } from "./icons";
-import { answerShares, mailingHref, mailingQuery, mailingViewFrom, pluralForm } from "./model";
+import { pluralForm } from "../../ui/plural";
+import { answerShares, mailingHref, mailingQuery, mailingViewFrom } from "./model";
 
 /*
  * «Розсилки» — повідомлення групам пацієнтів (comms-mailings).

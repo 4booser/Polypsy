@@ -153,17 +153,6 @@ export function shownLimit(t: number, normalization: ScaleNormalization | null |
   return Math.round(t * 10) / 10;
 }
 
-/**
- * Форма слова по числу: в словаре три формы через «|» — «людина|людини|людей».
- * Правило — Intl.PluralRules языка (one / few / many-other), без своих таблиц.
- */
-export function plural(forms: string, n: number, locale: string): string {
-  const [one = "", few = one, many = few] = forms.split("|");
-  const rule = new Intl.PluralRules(locale).select(n);
-  const word = rule === "one" ? one : rule === "few" ? few : many;
-  return word.replace("{n}", String(n));
-}
-
 /** Число с десятичной запятой языка консоли: «1,37», «0,969» */
 export function fmtNum(v: number, locale: string): string {
   return new Intl.NumberFormat(locale, { maximumFractionDigits: 3 }).format(v);

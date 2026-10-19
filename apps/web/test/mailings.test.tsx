@@ -6,6 +6,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
 import { UI, type Mailing, type MailingListItem, type MailingUpdateInput } from "@quizzy/shared";
 import { LangProvider } from "../src/lang";
+import { pluralForm } from "../src/ui/plural";
 import {
   answerShares,
   cleanOptions,
@@ -19,7 +20,6 @@ import {
   MAX_OPTIONS,
   type MailingDraft,
   optionPreset,
-  pluralForm,
   saveThenSend,
   withoutOption,
 } from "../src/pages/messages/model";

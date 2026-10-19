@@ -41,7 +41,8 @@ import { Breakdown, Check, FilterSection, FilterTag, Group, MultiPick, Segmented
 import { PickGroupDialog } from "./patientGroups/dialogs";
 import { AssignDrawer } from "./patientGroups/drawers";
 import { Pi } from "./patientGroups/icons";
-import { fill, grantEach, newProgress, partialFailure, pluralOf, shortDate } from "./patientGroups/model";
+import { pluralForm } from "../ui/plural";
+import { fill, grantEach, newProgress, partialFailure, shortDate } from "./patientGroups/model";
 import { presetHref } from "./statistics/model";
 
 /**
@@ -345,7 +346,7 @@ export default function Cohorts() {
       meta={
         size !== null
           ? [
-              fill(ut(`coh2.peopleN.${pluralOf(size, lang)}`), { n: size }),
+              fill(ut(`coh2.peopleN.${pluralForm(size, lang)}`), { n: size }),
               zone !== null
                 ? fill(ut("coh2.metaOf"), { zone, n: tags.length })
                 : fill(ut("coh2.metaConds"), { n: tags.length }),
@@ -771,7 +772,7 @@ export default function Cohorts() {
 
       {asking && preview?.size ? (
         <Modal
-          title={fill(ut(`coh2.askNames.${pluralOf(preview.size, lang)}`), { n: preview.size })}
+          title={fill(ut(`coh2.askNames.${pluralForm(preview.size, lang)}`), { n: preview.size })}
           sub={opened?.title}
           icon={<Ic.eye />}
           onClose={() => setAsking(false)}
@@ -930,7 +931,7 @@ function Result({ preview, zone, sexSet, busy }: { preview: CohortPreview; zone:
             <span className="block text-caption font-bold text-muted">{ut("coh2.inCohort")}</span>
             <span className="mt-1 flex items-baseline gap-2">
               <span className="text-[48px] font-extrabold leading-none tracking-[-0.04em] tabular-nums text-text">{preview.size}</span>
-              <span className="font-bold text-text-2">{ut(`coh2.people.${pluralOf(preview.size, lang)}`)}</span>
+              <span className="font-bold text-text-2">{ut(`coh2.people.${pluralForm(preview.size, lang)}`)}</span>
             </span>
           </div>
           {zone ? (

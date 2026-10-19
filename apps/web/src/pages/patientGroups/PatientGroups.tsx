@@ -15,6 +15,7 @@ import { useUrlState } from "../../ui/urlState";
 import { useResource } from "../../useResource";
 import { AssignDrawer, GroupEditDrawer, useGroupKeys } from "./drawers";
 import { HeartIcon, Pi } from "./icons";
+import { pluralForm } from "../../ui/plural";
 import {
   FAVORITES_KEY,
   favouritesToMove,
@@ -23,7 +24,6 @@ import {
   inGroupView,
   matchesQuery,
   parseFavorites,
-  pluralOf,
   shortDate,
   sortGroups,
   surveyCode,
@@ -299,13 +299,13 @@ export default function PatientGroups() {
 
   const meta: [string, string] | undefined = groups
     ? [
-        `${fill(ut(`pg2.groupsN.${pluralOf(summary.groups, lang)}`), { n: summary.groups })}, ${fill(
-          ut(`pg2.membersN.${pluralOf(summary.members, lang)}`),
+        `${fill(ut(`pg2.groupsN.${pluralForm(summary.groups, lang)}`), { n: summary.groups })}, ${fill(
+          ut(`pg2.membersN.${pluralForm(summary.members, lang)}`),
           { n: summary.members },
         )}`,
         [
           summary.risk
-            ? fill(ut(`pg2.metaRisk.${pluralOf(summary.riskGroups, lang)}`), { n: summary.risk, g: summary.riskGroups }) : ut("pg2.metaNoRisk"),
+            ? fill(ut(`pg2.metaRisk.${pluralForm(summary.riskGroups, lang)}`), { n: summary.risk, g: summary.riskGroups }) : ut("pg2.metaNoRisk"),
           summary.assigned ? fill(ut("pg2.metaWaiting"), { n: summary.waiting, of: summary.assigned }) : null,
         ]
           .filter(Boolean)
@@ -434,7 +434,7 @@ export default function PatientGroups() {
       />
       <AssignDrawer
         open={drawer?.kind === "assign"}
-        who={assigning ? fill(ut(`pg2.whoGroup.${pluralOf(assigning.memberCount, lang)}`), { name: assigning.title, n: assigning.memberCount }) : ""}
+        who={assigning ? fill(ut(`pg2.whoGroup.${pluralForm(assigning.memberCount, lang)}`), { name: assigning.title, n: assigning.memberCount }) : ""}
         whoNote={ut("pg2.assignGroupNote")}
         already={new Set(assigning?.surveys.map((s) => s.surveyId) ?? [])}
         onAssign={async (surveyId, expiresAt) => {

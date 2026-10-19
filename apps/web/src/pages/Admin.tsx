@@ -8,7 +8,8 @@ import { Callout, Empty, Ic, Loading, Modal, NotLoaded, TextAction, loadView, us
 import { cx } from "../ui/cx";
 import { Page, Panel } from "../ui/layout";
 import { Button, Segmented, Switch, Tag, Textarea } from "../ui/primitives";
-import { AIc, dmy, fill, plural, shortName } from "./people/parts";
+import { AIc, dmy, fill, shortName } from "./people/parts";
+import { withCount } from "../ui/plural";
 
 /*
  * Экран групп переехал в собственный файл.
@@ -196,7 +197,7 @@ export function ConsentTextBody({
           </div>
 
           <div className="flex min-w-0 flex-col gap-4">
-            <Callout kind="warn" icon={<Ic.users size={16} />} title={fill(ut("adm2.publishAsks"), { n: v ? plural(ut("adm2.nPatientsAll"), v.patients, lang) : "" })}>
+            <Callout kind="warn" icon={<Ic.users size={16} />} title={fill(ut("adm2.publishAsks"), { n: v ? withCount(ut("adm2.nPatientsAll"), v.patients, lang) : "" })}>
               {ut("adm2.publishAsksBody")}
             </Callout>
             <PreviewPanel text={draft[tab].trim() || draft.uk} />
@@ -314,17 +315,17 @@ function DraftFooter({ draft, saved, ruStale }: { draft: string; saved: string; 
   const del = pieces.filter((p) => p.kind === "del").length;
   return (
     <div className="flex w-full flex-wrap items-center gap-x-4 gap-y-1 text-small text-text-2">
-      <span className="tabular-nums">{plural(ut("adm2.nChars"), draft.length, lang)}</span>
+      <span className="tabular-nums">{withCount(ut("adm2.nChars"), draft.length, lang)}</span>
       {ins ? (
         <span className="inline-flex items-center gap-1 font-bold text-violet-ink">
           <Ic.plus size={13} />
-          {plural(ut("adm2.nInserts"), ins, lang)}
+          {withCount(ut("adm2.nInserts"), ins, lang)}
         </span>
       ) : null}
       {del ? (
         <span className="inline-flex items-center gap-1 text-muted">
           <Ic.minus size={13} />
-          {plural(ut("adm2.nDeletes"), del, lang)}
+          {withCount(ut("adm2.nDeletes"), del, lang)}
         </span>
       ) : null}
       {ruStale ? (
@@ -462,7 +463,7 @@ function VersionsPanel({ versions, draftVersion }: { versions: Resource<ConsentV
                 title={fill(ut("adm2.versionN"), { n: x.version })}
                 tag={i === 0 ? <Tag tone="good">{ut("adm2.currentTag")}</Tag> : null}
                 sub={`${until ? `${dmy(x.createdAt)} — ${dmy(until)}` : fill(ut("adm2.sinceDate"), { date: dmy(x.createdAt) })}${x.author ? `, ${shortName(x.author)}` : ""}`}
-                right={plural(ut("adm2.nAccepted"), x.accepted, lang)}
+                right={withCount(ut("adm2.nAccepted"), x.accepted, lang)}
               />
             );
           })}
@@ -588,7 +589,7 @@ function PublishModal({
         </ul>
       </section>
       <div className="pt-3.5">
-        <Callout kind="warn" icon={<Ic.users size={16} />} title={patients !== null ? fill(ut("adm2.willSee"), { n: plural(ut("adm2.nPatientsAll"), patients, lang) }) : undefined}>
+        <Callout kind="warn" icon={<Ic.users size={16} />} title={patients !== null ? fill(ut("adm2.willSee"), { n: withCount(ut("adm2.nPatientsAll"), patients, lang) }) : undefined}>
           {ut("adm2.willSeeBody")}
         </Callout>
       </div>
