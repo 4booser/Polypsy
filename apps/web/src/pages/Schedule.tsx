@@ -29,6 +29,7 @@ import {
 import { type FreeSlot, MoveSlots } from "./schedule/MoveSlots";
 import { RegularWeek, dayHours } from "./schedule/RegularWeek";
 import { WeekCalendar, type WeekData, weekRange } from "./schedule/WeekCalendar";
+import { moveAndReload } from "./visitModel";
 import { type Row, SHORT_KEY, WEEK, WeekEdit } from "./schedule/WeekEdit";
 
 type Pane = "week" | "exception" | "move";
@@ -96,6 +97,8 @@ export default function SchedulePage() {
   const [form, setForm] = useState<ExceptionForm>(EMPTY_EXCEPTION);
   const [moving, setMoving] = useState<AppointmentView | null>(null);
   const [slot, setSlot] = useState<FreeSlot | null>(null);
+  /* окна переноса перечитываются заново после отказа: занятое окно не должно стоять выбранным */
+  const [slotsRev, setSlotsRev] = useState(0);
   const [focusId, setFocusId] = useState<string | null>(null);
   const calendarRef = useRef<HTMLDivElement>(null);
   const dayLabel = useDayLabel();
@@ -356,12 +359,22 @@ export default function SchedulePage() {
                       const w = wallOf(slot.startsAt, tz);
                       void run(
                         async () => {
-                          await api.rescheduleAppointment(moving.id, slot.id);
+                          try {
+                            /*
+                             * Перечитывается и на отказе (#178): приём уже перенёс
+                             * коллега (409), он начался или окно заняли — неделя на
+                             * экране устарела, а окна переноса — тоже.
+                             */
+                            await moveAndReload(() => api.rescheduleAppointment(moving.id, slot.id), week.reload);
+                          } catch (e) {
+                            setSlot(null);
+                            setSlotsRev((n) => n + 1);
+                            throw e;
+                          }
                           setOpen(false);
                           setMoving(null);
                           setSlot(null);
                           setFocusId(null);
-                          week.reload();
                         },
                         ut("v2s.moved").replace("{when}", `${dayLabel(w.date)}, ${clock(w.minutes)}`),
                       );
@@ -381,7 +394,7 @@ export default function SchedulePage() {
                     </p>
                   </DrawerSection>
                   <DrawerSection title={ut("v2s.moveNew")} sub={ut("v2s.moveNewSub")}>
-                    <MoveSlots specialistId={moving.specialistId} tz={week.data.tz} picked={slot} onPick={setSlot} />
+                    <MoveSlots key={slotsRev} specialistId={moving.specialistId} tz={week.data.tz} picked={slot} onPick={setSlot} />
                   </DrawerSection>
                 </>
               ) : null}
