@@ -16,6 +16,7 @@ import {
   type FreeSlot,
   type ScheduleExceptionView,
   type ScheduleTemplateView,
+  type TodayCount,
 } from "@quizzy/shared";
 import { baseDb, db } from "../db";
 import { afterCommit, asSystem, systemContext } from "../db/context";
@@ -1158,41 +1159,7 @@ clinicRoutes.get("/today", requireStaff, requirePermission("patients.read"), asy
    * (scheduleTarget), и здесь она просто отсутствовала.
    */
   const specialistId = await ownSpecialistOr(c, c.req.query("specialistId"));
-
-  /*
-   * Сутки считаются по часам отделения, а не по часам сервера.
-   *
-   * `::timestamptz` берёт пояс сессии Postgres — то есть пояс машины, где
-   * запущена база. Приём в девять вечера по Киеву при сервере в UTC попал бы
-   * в тот же день, а вот при сервере западнее — во вчерашний, и специалист
-   * просто не увидел бы его в своём дне.
-   */
-  const profile = await db.query.specialistProfiles.findFirst({
-    where: eq(specialistProfiles.userId, specialistId),
-  });
-  const department = profile
-    ? await db.query.departments.findFirst({ where: eq(departments.id, profile.departmentId) })
-    : null;
-  const tz = department?.timezone ?? "Europe/Kyiv";
-
-  const nowLocal = await db.execute<{ today: string }>(
-    sql`select to_char(now() at time zone ${tz}, 'YYYY-MM-DD') as today`,
-  );
-  /* день, а не что угодно: строка склеивается в «${date} 00:00»::timestamp, и «вчора» было пятисоткой */
-  const asked = c.req.query("date");
-  const date = asked ? requireDateParam(asked, "date", { dayOnly: true }) : nowLocal[0]!.today;
-
-  /*
-   * Верхняя граница — СЛЕДУЮЩАЯ местная полночь, переведённая в момент, а не
-   * «эта полночь плюс interval '1 day'». Сутки прибавляются к timestamptz по
-   * поясу сессии базы: в docker-compose это UTC, и день становился ровно 24
-   * часами, а день Europe/Kyiv бывает 23 и 25 часов. Приём 25.10 в 23:30 не
-   * попадал ни в 25-е, ни в 26-е, приём 30.03 в 00:30 — и в 29-е, и в 30-е
-   * (внешний разбор, #22). Календарный день прибавляется к местной дате
-   * (timestamp без пояса), и только потом она переводится в момент.
-   */
-  const dayStart = sql`(${`${date} 00:00`}::timestamp at time zone ${tz})`;
-  const dayEnd = sql`((${`${date} 00:00`}::timestamp + interval '1 day') at time zone ${tz})`;
+  const { date, dayStart, dayEnd } = await specialistDay(specialistId, c.req.query("date"));
   const items = await loadAppointments(
     and(
       eq(appointments.specialistId, specialistId),
@@ -1210,6 +1177,77 @@ clinicRoutes.get("/today", requireStaff, requirePermission("patients.read"), asy
   });
   return c.json({ date, items });
 });
+
+/**
+ * Сколько людей сегодня ещё ждёт — число для бейджа «Сьогодні» в навигации.
+ *
+ * Те же сутки и тот же круг, что у /today без параметров: свои приёмы, свой
+ * день по часам отделения, без отменённых; ждут — записанные и
+ * подтвердившие, как навигация и считала по списку дня. Без людей: ни имён,
+ * ни поводов обращения, и потому без строки журнала.
+ *
+ * Отдельный маршрут, а не /today: бейдж опрашивается раз в минуту с каждой
+ * открытой консоли, и через /today каждый такт расшифровывал ФИО и поводы
+ * всех приёмов дня (девятнадцать запросов к базе) и писал clinic.today. В
+ * журнале «кто смотрел день» тонули строки, которых никто не открывал, а
+ * число на рельсе к содержимому дня доступа и так не даёт.
+ */
+clinicRoutes.get("/today/count", requireStaff, requirePermission("patients.read"), async (c) => {
+  const me = c.get("user");
+  const { date, dayStart, dayEnd } = await specialistDay(me.id);
+  const [row] = await db
+    .select({ waiting: sql<number>`count(*)::int` })
+    .from(appointments)
+    .innerJoin(slots, eq(slots.id, appointments.slotId))
+    .where(
+      and(
+        eq(appointments.specialistId, me.id),
+        inArray(appointments.status, ["booked", "confirmed"]),
+        sql`${slots.startsAt} >= ${dayStart}`,
+        sql`${slots.startsAt} < ${dayEnd}`,
+      ),
+    );
+  const body: TodayCount = { date, waiting: Number(row?.waiting ?? 0) };
+  return c.json(body);
+});
+
+/**
+ * Сутки специалиста: дата и её границы моментами — для /today и его числа.
+ *
+ * Сутки считаются по часам отделения, а не по часам сервера.
+ * `::timestamptz` берёт пояс сессии Postgres — то есть пояс машины, где
+ * запущена база. Приём в девять вечера по Киеву при сервере в UTC попал бы
+ * в тот же день, а вот при сервере западнее — во вчерашний, и специалист
+ * просто не увидел бы его в своём дне.
+ *
+ * Верхняя граница — СЛЕДУЮЩАЯ местная полночь, переведённая в момент, а не
+ * «эта полночь плюс interval '1 day'». Сутки прибавляются к timestamptz по
+ * поясу сессии базы: в docker-compose это UTC, и день становился ровно 24
+ * часами, а день Europe/Kyiv бывает 23 и 25 часов. Приём 25.10 в 23:30 не
+ * попадал ни в 25-е, ни в 26-е, приём 30.03 в 00:30 — и в 29-е, и в 30-е
+ * (внешний разбор, #22). Календарный день прибавляется к местной дате
+ * (timestamp без пояса), и только потом она переводится в момент.
+ */
+async function specialistDay(specialistId: string, asked?: string): Promise<{ date: string; dayStart: SQL; dayEnd: SQL }> {
+  const profile = await db.query.specialistProfiles.findFirst({
+    where: eq(specialistProfiles.userId, specialistId),
+  });
+  const department = profile
+    ? await db.query.departments.findFirst({ where: eq(departments.id, profile.departmentId) })
+    : null;
+  const tz = department?.timezone ?? "Europe/Kyiv";
+
+  const nowLocal = await db.execute<{ today: string }>(
+    sql`select to_char(now() at time zone ${tz}, 'YYYY-MM-DD') as today`,
+  );
+  /* день, а не что угодно: строка склеивается в «${date} 00:00»::timestamp, и «вчора» было пятисоткой */
+  const date = asked ? requireDateParam(asked, "date", { dayOnly: true }) : nowLocal[0]!.today;
+  return {
+    date,
+    dayStart: sql`(${`${date} 00:00`}::timestamp at time zone ${tz})`,
+    dayEnd: sql`((${`${date} 00:00`}::timestamp + interval '1 day') at time zone ${tz})`,
+  };
+}
 
 /**
  * Приём, к которому у спрашивающего есть отношение.

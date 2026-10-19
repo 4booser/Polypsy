@@ -5438,6 +5438,18 @@ export interface AppointmentView {
   leadSpecialistId: string | null;
 }
 
+/**
+ * Свой день числом — для бейджа «Сьогодні» в навигации (GET /api/clinic/today/count).
+ *
+ * Те же сутки и тот же круг приёмов, что у /today без параметров, но без
+ * людей: ни имён, ни поводов. `waiting` — ещё не принятые (записан или
+ * подтвердил), как и считала навигация по списку дня.
+ */
+export interface TodayCount {
+  date: string;
+  waiting: number;
+}
+
 /** Обычная неделя специалиста */
 export interface ScheduleTemplateView {
   id: string;
