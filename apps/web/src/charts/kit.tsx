@@ -2,7 +2,7 @@ import { useState, type KeyboardEvent, type ReactNode } from "react";
 import type { Severity } from "@quizzy/shared";
 import { useLang } from "../lang";
 import { cx } from "../ui/cx";
-import { decimal } from "../ui/numbers";
+import { decimal } from "../ui/decimal";
 
 /**
  * Общие детали графиков «Виразної»: цвета рядов, метки, подсказка, легенда,

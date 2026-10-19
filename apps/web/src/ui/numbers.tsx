@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import type { Lang } from "@quizzy/shared";
 import { cx } from "./cx";
+import { decimal } from "./decimal";
 import { Ic } from "./icons";
 import { Popover } from "./Popover";
 import { SeverityTag, type Severity } from "./primitives";
@@ -51,19 +52,7 @@ export function reliabilityOf(delta: number, threshold: number, better: "down" |
   return improved ? "better" : "worse";
 }
 
-/**
- * Число на языке экрана: до `digits` знаков, лишние нули прочь, дробная
- * часть — через запятую в украинском и русском («5,5») и через точку в
- * английском («5.5»). Без 0.30000000000000004 из суммы.
- *
- * Язык по умолчанию — языка консоли (lang.tsx, currentLang): функцию зовут и
- * вне компонентов. Компонент передаёт свой `lang` из useLang явно.
- */
-export function decimal(v: number, lang: Lang = currentLang, digits = 2): string {
-  const k = 10 ** digits;
-  const s = String(Math.round(v * k) / k);
-  return lang === "en" ? s : s.replace(".", ",");
-}
+export { decimal };
 
 /** «−14», «+16 в. п.», «−2,5» — со знаком минус, а не дефисом, и дробью языка экрана */
 export function signed(delta: number, unit = "", lang: Lang = currentLang): string {
