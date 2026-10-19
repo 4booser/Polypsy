@@ -57,7 +57,17 @@ const RUNS_SHOWN = 6;
 
 const RESULT_TONE: Record<OpsJobResult, Tone> = { ok: "ok", error: "fail", skipped: "warn", running: "run" };
 
-const JOB_COLS = "grid-cols-[minmax(200px,1.3fr)_minmax(96px,0.6fr)_150px_110px_76px_96px_96px_minmax(150px,auto)]";
+/*
+ * Колонки «Тактів процесу». Ниже 1440 (13-дюймовые 1280 и 1366) — уже, с
+ * меньшим зазором: в ширине макета таблица на 1280 уходила под прокрутку
+ * вбок вместе с «Запустити зараз», и ручной запуск был не виден вовсе.
+ * Последняя колонка — постоянной ширины: строки — отдельные сетки, и колонка
+ * «по содержимому» у строки с кнопкой была бы шире, чем у строки без неё.
+ */
+const JOB_COLS = cx(
+  "grid-cols-[minmax(200px,1.3fr)_minmax(96px,0.6fr)_150px_110px_76px_96px_96px_minmax(150px,auto)]",
+  "max-[1439px]:grid-cols-[minmax(140px,1.3fr)_minmax(80px,0.6fr)_112px_92px_68px_92px_84px_148px] max-[1439px]:gap-x-2.5",
+);
 
 type View = "all" | "failing" | "manual";
 
@@ -187,7 +197,7 @@ export default function OpsJobs() {
           </div>
         ) : (
           <div role="table" aria-label={ut("ops.jobs.title")} className="overflow-x-auto">
-            <div className="min-w-[1000px]">
+            <div className="min-w-[1000px] max-[1439px]:min-w-[900px]">
               <div
                 role="row"
                 className={cx("grid h-[38px] items-center gap-3 border-y border-divider bg-panel-2 px-4 text-caption font-bold leading-none text-muted", JOB_COLS)}
@@ -309,7 +319,7 @@ function JobRow({ j, now, manage, onStarted }: { j: OpsJob; now: number; manage:
     <div className={cx("border-b border-divider last:border-b-0", failed && "bg-warn-tint", j.lastResult === "running" && "bg-violet-tint")}>
       <div role="row" className={cx("grid min-h-11 items-center gap-3 px-4 py-1.5 text-body", JOB_COLS)}>
         <span role="cell" className="min-w-0">
-          <b className="block truncate text-[13.5px] font-bold leading-[18px] text-text">{key ? ut(key) : j.name}</b>
+          <b className="block text-[13.5px] font-bold leading-[18px] text-text [overflow-wrap:anywhere]">{key ? ut(key) : j.name}</b>
           <Mono className="block truncate text-text-2">{j.name}</Mono>
         </span>
         <span role="cell" className="text-text-2">

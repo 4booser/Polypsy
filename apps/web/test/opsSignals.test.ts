@@ -5,9 +5,7 @@ import type { MobileVersionRow, OpsAlertHistory, OpsClientErrorGroup, OpsRecordi
 import { cmpVersion, errorShare, topScreens, versionParts } from "../src/pages/ops/data/model";
 import { perWeek, weekOf, weeklyDeploys } from "../src/pages/ops/maint/model";
 import {
-  ALERT_SERIES,
   REST_KEY,
-  alertGroups,
   anyAlerts,
   browserFamily,
   diskParts,
@@ -17,8 +15,6 @@ import {
   rankBy,
   ratingTotals,
   slowestRoutes,
-  statusParts,
-  topGroups,
 } from "../src/pages/ops/obs2b/model";
 import { checkDays } from "../src/pages/ops/sec/model";
 
@@ -53,16 +49,6 @@ describe("сповіщення: форма истории", () => {
     { date: "2026-09-25", fired: 2, repeat: 5, resolved: 1 },
     { date: "2026-09-26", fired: 0, repeat: 0, resolved: 1 },
   ];
-
-  test("пара рядов «збій» и «відновлено»; повтор в столбцы не идёт", () => {
-    const groups = alertGroups(daily, (d) => d.slice(8));
-    expect(groups.map((g) => g.label)).toEqual(["24", "25", "26"]);
-    expect(groups[1]!.values).toEqual({ fired: 2, resolved: 1 });
-    expect(ALERT_SERIES.map((s) => [s.key, s.tone])).toEqual([
-      ["fired", "fail"],
-      ["resolved", "ok"],
-    ]);
-  });
 
   test("пустой месяц — словами, а не пустыми осями", () => {
     expect(anyAlerts(daily)).toBe(true);
@@ -125,14 +111,10 @@ describe("помилки клієнта: форма списка", () => {
     expect(browsers.top.map((b) => b.key)).toEqual(["", "Chrome"]);
   });
 
-  test("семейство браузера без версии; самые частые группы — по счётчику, при равенстве свежая выше", () => {
+  test("семейство браузера без версии", () => {
     expect(browserFamily("Chrome 128")).toBe("Chrome");
     expect(browserFamily("Safari")).toBe("Safari");
     expect(browserFamily(null)).toBeNull();
-    const old = group({ count: 3, lastAt: at(2026, 9, 1) });
-    const fresh = group({ count: 3, lastAt: at(2026, 9, 20) });
-    const big = group({ count: 9 });
-    expect(topGroups([old, fresh, big], 2)).toEqual([big, fresh]);
   });
 });
 
@@ -180,15 +162,6 @@ describe("записи прийомів: полосы", () => {
     failed: [],
     transcriberHere: false,
     ...over,
-  });
-
-  test("состояния — путём записи, сбой янтарём, пустые не рисуются", () => {
-    const parts = statusParts(rec());
-    expect(parts.map((p) => [p.status, p.value, p.tone])).toEqual([
-      ["done", 40, "ok"],
-      ["uploaded", 3, "ok"],
-      ["failed", 2, "fail"],
-    ]);
   });
 
   test("том: записи, прочее, свободно; не прочитан или обрезан — полосы нет", () => {

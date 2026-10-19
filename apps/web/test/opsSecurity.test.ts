@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import {
   UI,
   type MfaCoverageRow,
@@ -305,5 +307,31 @@ describe("числа словами", () => {
       }
     }
     for (const rule of RULES) expect(UI[`opps.fact.${rule}` as UiKey], rule).toBeDefined();
+  });
+});
+
+describe("общие части экранов безопасности", () => {
+  const src = (p: string) => readFileSync(resolve(import.meta.dir, "../src/pages/ops", p), "utf8");
+
+  test("роль в таблице «Другого фактора» — та же пилюля, что в реестре: строчными словами набора", () => {
+    expect(src("people2/MfaPolicy.tsx")).toContain('import { RolePill } from "../users/parts";');
+    expect(src("people2/securityParts.tsx")).not.toContain("export function RolePill");
+  });
+
+  test("чип отбора с меню — один на техпанель, а не копия в каждом разделе", () => {
+    for (const file of ["people2/Grants.tsx", "people2/Suspicious.tsx"]) {
+      expect(src(file), file).toContain('import { ChoiceChip } from "../users/parts";');
+      expect(src(file), file).not.toMatch(/^function ChoiceChip/m);
+      expect(src(file), file).not.toContain("menuItemClass");
+    }
+  });
+
+  test("меню «Правило» раскрывается вправо: у левого края области его обрезала прокрутка", () => {
+    /* на 1280 чип стоит под поиском у левого края, и меню влево уходило под колонку подразделов на 186 px */
+    expect(src("people2/Suspicious.tsx")).toMatch(/onChange=\{onChange\}\s+align="right-out"\s+plateClassName="min-w-\[300px\]"/);
+  });
+
+  test("R не открывает разбор под окном «завершити сесії»", () => {
+    expect(src("people2/Suspicious.tsx")).toMatch(/!!openItems\.length && status !== "resolved" && !ending,/);
   });
 });

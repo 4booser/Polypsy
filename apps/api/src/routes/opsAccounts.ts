@@ -29,6 +29,7 @@ import {
   journalEntriesOf,
   liveTokenCondition,
   matchRegistry,
+  registryAccount,
   sessionCountsOf,
 } from "../lib/accounts";
 import { conflict, forbidden, langOf, notFound, parseBody, parseQuery } from "../lib/http";
@@ -261,11 +262,11 @@ opsUserRoutes.get("/attention", async (c) => {
  */
 opsUserRoutes.get("/:id", async (c) => {
   const id = c.req.param("id");
-  const { all } = await matchRegistry({ q: "" }, langOf(c));
-  const account = all.find((u) => u.id === id);
-  if (!account) notFound("err.userNotFound");
-  const emailOf = new Map(all.map((u) => [u.id, u.email]));
-  const [row] = await registryRows([{ ...account, fullName: fullNameOf(account) }], emailOf, langOf(c));
+  const found = await registryAccount(id);
+  if (!found) notFound("err.userNotFound");
+  const { account, disabledByEmail } = found;
+  const emailOf = new Map(account.disabledBy && disabledByEmail ? [[account.disabledBy, disabledByEmail]] : []);
+  const [row] = await registryRows([account], emailOf, langOf(c));
   await audit(c, {
     action: "user.list",
     resourceType: "user",

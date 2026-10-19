@@ -6,14 +6,14 @@ import { useAuth } from "../../../auth";
 import { StackColumns } from "../../../charts/clinical";
 import { useLang } from "../../../lang";
 import { Callout, Drawer, DrawerSection, Empty, Loading, Modal, useAction, useToast } from "../../../ui";
-import { FilterBar, FilterChip } from "../../../ui/filters";
+import { FilterBar } from "../../../ui/filters";
 import { Ic } from "../../../ui/icons";
 import { useHotkeys } from "../../../ui/keys";
 import { Panel } from "../../../ui/layout";
-import { MenuButton, menuItemClass } from "../../../ui/menu";
 import { Tooltip } from "../../../ui/Popover";
 import { Button, ButtonLink, Field, Segmented, Tag, Textarea } from "../../../ui/primitives";
 import { useResource } from "../../../useResource";
+import { ChoiceChip } from "../users/parts";
 import { SectionPage } from "./frame";
 import { Ix } from "./icons";
 import { RULES, journalLink, ruleBars, ruleExplanation, ruleKey } from "./model";
@@ -102,7 +102,11 @@ export default function OpsSuspicious() {
     setTarget(f);
     setOpen(true);
   };
-  useHotkeys({ r: () => (openItems[0] && !open ? startResolve(openItems[0]) : undefined) }, !!openItems.length && status !== "resolved");
+  /* R — разобрать первое нерозібране; не под окном «завершити сесії»: ящик открылся бы под ним */
+  useHotkeys(
+    { r: () => (openItems[0] && !open ? startResolve(openItems[0]) : undefined) },
+    !!openItems.length && status !== "resolved" && !ending,
+  );
 
   const scan = () =>
     void run(async () => {
@@ -316,46 +320,22 @@ function CountLabel({ text, n }: { text: string; n: number }) {
   );
 }
 
-/** «Правило ⌄» — отбор одним правилом; выбранное снимается крестиком */
+/**
+ * «Правило ⌄» — отбор одним правилом; выбранное снимается крестиком. Чип
+ * стоит у левого края области: меню раскрывается вправо, а не влево под
+ * колонку подразделов, где область прокрутки обрезала названия правил.
+ */
 function RuleFilter({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const { ut } = useLang();
-  const current = RULES.find((r) => r === value);
   return (
-    <MenuButton
+    <ChoiceChip
       label={ut("ops.susp.rule")}
+      value={RULES.some((r) => r === value) ? value : ""}
+      onChange={onChange}
+      align="right-out"
       plateClassName="min-w-[300px]"
-      trigger={(p) => (
-        <FilterChip
-          label={ut("ops.susp.rule")}
-          value={current ? ut(ruleKey(current)) : undefined}
-          on={!!current}
-          expanded={p["aria-expanded"]}
-          onClick={p.onClick}
-          onClear={current ? () => onChange("") : undefined}
-        />
-      )}
-    >
-      {(close) => (
-        <>
-          {["", ...RULES].map((r) => (
-            <button
-              key={r || "all"}
-              type="button"
-              role="menuitemradio"
-              aria-checked={r === value}
-              className={menuItemClass("left")}
-              onClick={() => {
-                close();
-                onChange(r);
-              }}
-            >
-              <span className="min-w-0 flex-1 truncate">{r ? ut(ruleKey(r as (typeof RULES)[number])) : ut("ops.susp.allRules")}</span>
-              {r === value ? <Ic.check size={15} className="text-violet-ink" /> : null}
-            </button>
-          ))}
-        </>
-      )}
-    </MenuButton>
+      choices={[{ value: "", label: ut("ops.susp.allRules") }, ...RULES.map((r) => ({ value: r, label: ut(ruleKey(r)) }))]}
+    />
   );
 }
 

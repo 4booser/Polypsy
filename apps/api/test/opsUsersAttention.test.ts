@@ -191,6 +191,23 @@ describe("одна запись реестра", () => {
       .limit(1);
     expect((row!.details as { view?: string }).view).toBe("account");
   });
+
+  test("выключенная — та же строка, что в списке: кто выключил, когда и почему", async () => {
+    const t = tag();
+    const person = await makeUser("admin", `w26-one-off-${t}@test.dev`);
+    const off = await api(`/api/ops/users/${person.id}/disable`, root.token, {
+      method: "POST",
+      body: JSON.stringify({ reason: "Перевод в другое отделение" }),
+    });
+    expect(off.status).toBe(200);
+
+    const list = await api<OpsUserPage>(`/api/ops/users?q=${t}`, root.token);
+    const one = await api<OpsUserRow>(`/api/ops/users/${person.id}`, root.token);
+    expect(one.status).toBe(200);
+    expect(one.body).toEqual(list.body.items[0]!);
+    expect(one.body.disabledByEmail).toBe("root@test");
+    expect(one.body.disabledReason).toBe("Перевод в другое отделение");
+  });
 });
 
 describe("«Потребує уваги» — маршрут", () => {
