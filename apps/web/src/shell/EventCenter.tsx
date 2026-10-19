@@ -6,13 +6,14 @@ import { useLang } from "../lang";
 import { api } from "../api";
 import { useAuth } from "../auth";
 import { useResource, type Resource } from "../useResource";
-import { loadView } from "../ui";
+import { loadView } from "../ui/loadView";
 import { day, severityKey, timeOfDay } from "../format";
 import { cx } from "../ui/cx";
 import { occurrenceKeys } from "../ui/rowKeys";
 import { SeverityTag } from "../ui/primitives";
 import { ShellIcon, type IconName } from "./icons";
-import { Drawer, Tooltip } from "../ui";
+import { Drawer } from "../ui/Drawer";
+import { Tooltip } from "../ui/Popover";
 
 /**
  * Центр событий — колокольчик на полосе приложения и ящик справа.

@@ -9,7 +9,7 @@ import {
 } from "react";
 import { useLang } from "../../lang";
 import { ShellIcon } from "../../shell/icons";
-import { Callout } from "../../ui";
+import { Callout } from "../../ui/states";
 import { cx } from "../../ui/cx";
 import { ErrorText, Input, type InputProps } from "../../ui/primitives";
 import { AccessIcon } from "./accessIcons";

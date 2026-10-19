@@ -6,7 +6,7 @@ import { useLang } from "../lang";
 import { minutesLeft, sameLocalDay, statusPollMs } from "../service/model";
 import { refreshServiceStatus, useServiceStatus } from "../service/status";
 import { ShellIcon, type IconName } from "../shell/icons";
-import { IconLock, IconOk, IconWarn, Ic, Loading, Popover } from "../ui";
+import { Ic, Loading, Popover } from "../ui";
 import { cx } from "../ui/cx";
 import { IconTile, Page, Panel, type PanelTone } from "../ui/layout";
 import { Button, ButtonLink, Tag, type TagTone } from "../ui/primitives";
@@ -122,12 +122,6 @@ const clock = (iso: string) =>
 function pollText(ut: ReturnType<typeof useLang>["ut"], ms: number): string {
   return ms >= 60_000 ? fill(ut("ax.st.everyMin"), { n: Math.round(ms / 60_000) }) : fill(ut("ax.st.everySec"), { n: Math.round(ms / 1000) });
 }
-
-const GLYPH: Record<ServiceStatus, ReactNode> = {
-  ok: <IconOk />,
-  maintenance: <IconLock />,
-  degraded: <IconWarn />,
-};
 
 /** Значок и тон состояния — один на все места страницы */
 const LOOK: Record<ServiceStatus, { icon: IconName; tag: TagTone; tile: PanelTone }> = {
@@ -539,24 +533,5 @@ function CrisisCalls() {
         ))}
       </div>
     </Panel>
-  );
-}
-
-/** Состояние словом и значком — форма значка несёт то же, что цвет (техпанель, раздел работ) */
-export function StatusLine({ status, small }: { status: ServiceStatus; small?: boolean }) {
-  const { ut } = useLang();
-  return (
-    <span
-      className={cx(
-        "inline-flex items-center gap-[8px] font-bold",
-        small ? "text-[14px] leading-[20px] [&_svg]:size-[16px]" : "text-[20px] leading-[24px] [&_svg]:size-[22px]",
-        status === "ok" ? "text-primary" : "text-accent",
-      )}
-    >
-      <span aria-hidden className="inline-flex shrink-0">
-        {GLYPH[status]}
-      </span>
-      {ut(`svc.status.${status}`)}
-    </span>
   );
 }

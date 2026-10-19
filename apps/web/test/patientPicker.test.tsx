@@ -156,18 +156,18 @@ describe("экраны ищут на сервере", () => {
   const src = (f: string) => readFileSync(resolve(import.meta.dir, "../src/pages", f), "utf8");
 
   test("ни один из трёх не берёт первую сотню без поиска", () => {
-    for (const f of ["Access.tsx", "Batteries.tsx", "methods/AssignDrawer.tsx", "Administer.tsx", "administerModel.ts"]) {
+    for (const f of ["Access.tsx", "Batteries.tsx", "../components/AssignDrawer.tsx", "Administer.tsx", "administerModel.ts"]) {
       expect(/api\.patients\(\s*\)/.test(src(f)), `${f}: api.patients() без поиска`).toBe(false);
     }
   });
 
   /*
    * С волны 25 «Доступ до методики» и «Набори» назначают в общем ящике
-   * (methods/AssignDrawer.tsx): поиск там — по набранному, на сервере.
+   * (components/AssignDrawer.tsx, с волны 27 — общий и для групп): поиск там — по набранному, на сервере.
    * Сторож идёт за ящиком и следит, что оба экрана назначают через него.
    */
   test("«Доступ до методики» и «Набори» — ящик с поиском по набранному, «Провести методику» — выбор с поиском", () => {
-    expect(src("methods/AssignDrawer.tsx")).toContain("usePatientSearch(query, { onlyTyped: true })");
+    expect(src("../components/AssignDrawer.tsx")).toContain("usePatientSearch(query, { onlyTyped: true })");
     expect(src("methods/MethodPage.tsx")).toContain("<AssignDrawer");
     expect(src("Access.tsx")).toContain("<MethodPage");
     expect(src("Batteries.tsx")).toContain("<AssignDrawer");

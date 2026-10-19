@@ -178,10 +178,6 @@ export function sameSpec(a: CohortSpec, b: CohortSpec): boolean {
   return paramsFromSpec(a).toString() === paramsFromSpec(b).toString();
 }
 
-export function isEmptySpec(spec: CohortSpec): boolean {
-  return paramsFromSpec(spec).toString() === "";
-}
-
 /**
  * Что мешает отправить правило — ключи словаря.
  *

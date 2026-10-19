@@ -75,7 +75,6 @@ import {
   hhmm,
   kitSeverity,
   LIST_VIEWS,
-  plural,
   registerBody,
   REGISTER_PER,
   registerPer,
@@ -92,6 +91,7 @@ import {
 import { useAssignPane, useGroupPane, useMessagePane, type PaneParts, type Who } from "./patients/actions";
 import { useQuickViewPane } from "./patients/QuickView";
 import type { Via } from "../components/settledSelection";
+import { withCount } from "../ui/plural";
 
 /*
  * Реестр пациентов 2.0 — кадр patients-list набора «Виразна».
@@ -291,7 +291,7 @@ export function PatientList() {
       meta={
         allCounts
           ? [
-              plural(ut("plist.people"), allCounts.all, locale),
+              withCount(ut("plist.people"), allCounts.all, lang),
               ut("plist.metaLine").replace("{mine}", String(allCounts.mine)).replace("{risk}", String(allCounts.risk)),
             ]
           : undefined

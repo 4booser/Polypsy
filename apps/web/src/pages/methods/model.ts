@@ -47,22 +47,6 @@ export function splitCode(title: string): { code: string | null; name: string } 
   return { code: null, name: t };
 }
 
-/* ─────────── число со словом ─────────── */
-
-export type PluralForm = "one" | "few" | "many";
-
-/**
- * Форма слова при числе: «1 пункт», «3 пункти», «9 пунктів». Правило —
- * языка (Intl.PluralRules), как у возраста в печатных листах; дробные и
- * английский — «many»/«one» по тому же правилу.
- */
-export function pluralForm(lang: Lang, n: number): PluralForm {
-  const cat = new Intl.PluralRules(lang === "en" ? "en" : lang).select(n);
-  if (cat === "one") return "one";
-  if (cat === "few") return "few";
-  return "many";
-}
-
 /**
  * Дробное число на языке экрана: «0,82» в uk и ru, «0.82» в en; `pad` — с
  * нулями в конце («50,0»), без него — сколько есть («2,3», «2»). Запятая,
@@ -161,12 +145,6 @@ export function nextExpiring<G extends Pick<SurveyGrant, "completed" | "expiresA
     if (!best || new Date(g.expiresAt) < new Date(best.expiresAt!)) best = g;
   }
   return best;
-}
-
-/** Срок из поля даты (ГГГГ-ММ-ДД) через `days` календарных дней от сегодня */
-export function dueIn(days: number, now: Date = new Date()): string {
-  const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() + days);
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
 /* ─────────── каталог: что требует внимания ─────────── */

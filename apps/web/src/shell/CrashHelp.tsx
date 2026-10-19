@@ -1,5 +1,5 @@
 import { useLang } from "../lang";
-import { CallRows } from "../patient/parts";
+import { CallRows } from "../patient/callRows";
 
 /**
  * Номера помощи на листе падения кабинета пациента (App.tsx, граница ошибок

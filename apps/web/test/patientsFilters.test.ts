@@ -4,11 +4,11 @@ import { resolve } from "node:path";
 import type { RespondentDynamics } from "@quizzy/shared";
 import { api, tokenStore } from "../src/api";
 import { instrumentsOf } from "../src/pages/patients/instruments";
+import { withCount } from "../src/ui/plural";
 import {
   ageOf,
   groupTab,
   initialsName,
-  plural,
   registerBody,
   registerPer,
   registerQuery,
@@ -356,11 +356,11 @@ describe("числа и слова строки реестра", () => {
 
   test("форма слова по числу — правилами языка, три формы в одной строке словаря", () => {
     const forms = "{n} людина|{n} людини|{n} людей";
-    expect(plural(forms, 1, "uk-UA")).toBe("1 людина");
-    expect(plural(forms, 3, "uk-UA")).toBe("3 людини");
-    expect(plural(forms, 11, "uk-UA")).toBe("11 людей");
-    expect(plural(forms, 134, "uk-UA")).toBe("134 людини");
-    expect(plural("{n} person|{n} people|{n} people", 248, "en-GB")).toBe("248 people");
+    expect(withCount(forms, 1, "uk-UA")).toBe("1 людина");
+    expect(withCount(forms, 3, "uk-UA")).toBe("3 людини");
+    expect(withCount(forms, 11, "uk-UA")).toBe("11 людей");
+    expect(withCount(forms, 134, "uk-UA")).toBe("134 людини");
+    expect(withCount("{n} person|{n} people|{n} people", 248, "en-GB")).toBe("248 people");
   });
 
   test("когда приём: сегодня и завтра — словом, иначе день недели с датой", () => {

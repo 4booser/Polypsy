@@ -1,15 +1,15 @@
 import { useEffect, useId, useState, type FormEvent, type KeyboardEvent } from "react";
 import { Link } from "react-router-dom";
-import { renderError } from "@quizzy/shared";
 import { api } from "../api";
 import { useAuth } from "../auth";
+import { renderError } from "../dictionary";
 import { dateTime, timeOfDay } from "../format";
 import { useLang } from "../lang";
 import { bannerFor, sameLocalDay } from "../service/model";
 import { useServiceStatus } from "../service/status";
 import { ShellIcon } from "../shell/icons";
 import { Logo } from "../shell/Logo";
-import { Callout } from "../ui";
+import { Callout } from "../ui/states";
 import { cx } from "../ui/cx";
 import { IconTile } from "../ui/layout";
 import { Button, ErrorText, Field, Input, Tag, buttonClass } from "../ui/primitives";

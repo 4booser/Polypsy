@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { pluralForm } from "../src/ui/plural";
 import {
   FAVORITES_KEY,
   favouritesToMove,
@@ -10,7 +11,6 @@ import {
   newProgress,
   parseFavorites,
   partialFailure,
-  pluralOf,
   shortDate,
   sortGroups,
   surveyCode,
@@ -249,7 +249,7 @@ describe("таблица групп", () => {
   test("подстановка и формы слова", () => {
     expect(fill("{n} з {total}", { n: 3, total: 8 })).toBe("3 з 8");
     expect(fill("{n} і {missing}", { n: 1 })).toBe("1 і {missing}");
-    expect([1, 3, 5, 21, 22, 25].map((n) => pluralOf(n, "uk"))).toEqual(["one", "few", "many", "one", "few", "many"]);
-    expect(pluralOf(2, "en")).toBe("many");
+    expect([1, 3, 5, 21, 22, 25].map((n) => pluralForm(n, "uk"))).toEqual(["one", "few", "many", "one", "few", "many"]);
+    expect(pluralForm(2, "en")).toBe("many");
   });
 });

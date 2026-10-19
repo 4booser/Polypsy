@@ -61,16 +61,6 @@ export const FILTER_KEY: Record<WorkKind, UiKey> = {
   assignment: "work.filterAssignments",
 };
 
-/** Метка вида в строке — одно слово, по нему глаз ищет разряд */
-export const KIND_KEY: Record<WorkKind, UiKey> = {
-  noshow: "work.kindNoshow",
-  message: "work.kindMessage",
-  dispensary: "work.kindDispensary",
-  followup: "work.kindFollowup",
-  referral: "work.kindReferral",
-  assignment: "work.kindAssignment",
-};
-
 /** Вид отбора: всё, просроченное или один вид работы */
 export type WorkView = "" | "overdue" | WorkKind;
 

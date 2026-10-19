@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode, type RefObject } from "react";
-import { backdropPress, isTopLayer, useFocusTrap } from "../ui";
+import { backdropPress } from "../ui/backdrop";
+import { isTopLayer, useFocusTrap } from "../ui/focus";
 import { cx } from "../ui/cx";
 
 /*

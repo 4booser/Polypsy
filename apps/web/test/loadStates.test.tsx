@@ -6,7 +6,7 @@ import type { RuleHit, SurveyListItem } from "@quizzy/shared";
 import { UI, type UiKey } from "@quizzy/shared";
 import type { api } from "../src/api";
 import { DispensaryBody, EpisodesBody } from "../src/components/Episodes";
-import { plural } from "../src/pages/patients/model";
+import { withCount } from "../src/ui/plural";
 import { SafetyPlanBody } from "../src/components/SafetyPlanEditor";
 import { SuggestionsBody } from "../src/components/Suggestions";
 import { LibraryState } from "../src/components/TemplatePicker";
@@ -204,14 +204,14 @@ describe("обращения человека", () => {
   test("счётчики обращения — форма слова по числу: «1 прийом», «3 висновки», «5 направлень»", () => {
     const forms = (key: "ep.visits" | "ep.conclusions" | "ep.referrals", lang: "uk" | "ru" | "en") =>
       (UI[key] as { uk: string; ru: string; en: string })[lang];
-    expect(plural(forms("ep.visits", "uk"), 1, "uk-UA")).toBe("прийом");
-    expect(plural(forms("ep.visits", "uk"), 2, "uk-UA")).toBe("прийоми");
-    expect(plural(forms("ep.conclusions", "uk"), 3, "uk-UA")).toBe("висновки");
-    expect(plural(forms("ep.referrals", "uk"), 5, "uk-UA")).toBe("направлень");
-    expect(plural(forms("ep.visits", "ru"), 2, "ru-RU")).toBe("приёма");
-    expect(plural(forms("ep.conclusions", "ru"), 21, "ru-RU")).toBe("заключение");
-    expect(plural(forms("ep.visits", "en"), 1, "en-GB")).toBe("appointment");
-    expect(plural(forms("ep.referrals", "en"), 0, "en-GB")).toBe("referrals");
+    expect(withCount(forms("ep.visits", "uk"), 1, "uk-UA")).toBe("прийом");
+    expect(withCount(forms("ep.visits", "uk"), 2, "uk-UA")).toBe("прийоми");
+    expect(withCount(forms("ep.conclusions", "uk"), 3, "uk-UA")).toBe("висновки");
+    expect(withCount(forms("ep.referrals", "uk"), 5, "uk-UA")).toBe("направлень");
+    expect(withCount(forms("ep.visits", "ru"), 2, "ru-RU")).toBe("приёма");
+    expect(withCount(forms("ep.conclusions", "ru"), 21, "ru-RU")).toBe("заключение");
+    expect(withCount(forms("ep.visits", "en"), 1, "en-GB")).toBe("appointment");
+    expect(withCount(forms("ep.referrals", "en"), 0, "en-GB")).toBe("referrals");
   });
 
   test("диспансерный учёт: отказ виден, а не блок пропадает; до ответа блока нет", () => {

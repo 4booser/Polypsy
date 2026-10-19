@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
-import { isGoogleReturnCode, renderError, type Lang } from "@quizzy/shared";
+import { isGoogleReturnCode, type Lang } from "@quizzy/shared";
 import { ApiError, api, tokenStore } from "../api";
 import { useAuth } from "../auth";
+import { renderError } from "../dictionary";
 import { useLang } from "../lang";
 import { ShellIcon } from "../shell/icons";
 import { Logo } from "../shell/Logo";

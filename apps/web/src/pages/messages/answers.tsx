@@ -7,7 +7,7 @@ import { Avatar, Drawer, DrawerSection, Ic, Loading, useAction } from "../../ui"
 import { Button, Tag } from "../../ui/primitives";
 import { useResource } from "../../useResource";
 import { Mi } from "./icons";
-import { pluralForm } from "./model";
+import { pluralForm } from "../../ui/plural";
 
 /*
  * Ответы на отправленную розсилку: полосы по вариантам с «ще не

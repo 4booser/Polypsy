@@ -12,7 +12,8 @@ import { Loading, Skeleton } from "../../ui";
 import { Panel } from "../../ui/layout";
 import { Segmented } from "../../ui/primitives";
 import { Di } from "../today/icons";
-import { DOMAIN_KEY, fill, meanShift, shareState, sparkValues, spreadParts, withCount, type BandLabels } from "./model";
+import { withCount } from "../../ui/plural";
+import { DOMAIN_KEY, fill, meanShift, shareState, sparkValues, spreadParts, type BandLabels } from "./model";
 
 function useBandLabels(): BandLabels {
   const { ut } = useLang();

@@ -1,5 +1,7 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { LANGS, LANG_NAMES, LANG_SELF_LABEL, detectLang, isLang, makeUiT, type Lang, type UiKey } from "@quizzy/shared";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { detectLang, isLang, type Lang, type UiKey } from "@quizzy/shared";
+import { hasLanguage, loadLanguage, makeUiT } from "./dictionary";
+import { LANG_KEY } from "./langKey";
 
 /**
  * Язык консоли.
@@ -17,7 +19,6 @@ import { LANGS, LANG_NAMES, LANG_SELF_LABEL, detectLang, isLang, makeUiT, type L
  * отправлялся, сервер отвечал по умолчанию по-украински, и переключатель
  * менял только оболочку.
  */
-const KEY = "quizzy.web.lang";
 
 /**
  * Текущий выбор — синхронно для api.ts, который живёт вне React.
@@ -49,7 +50,7 @@ applyDocumentLang(currentLang);
 
 function readSavedLang(): Lang {
   try {
-    const saved = localStorage.getItem(KEY);
+    const saved = localStorage.getItem(LANG_KEY);
     if (isLang(saved)) return saved;
     return detectLang(navigator.languages ?? [navigator.language]);
   } catch {
@@ -69,17 +70,36 @@ const Ctx = createContext<LangState | null>(null);
 
 export function LangProvider({ children }: { children: ReactNode }) {
   const [lang, setLangRaw] = useState<Lang>(readSavedLang);
-  /* язык документа — до перерисовки, а не эффектом после неё (applyDocumentLang) */
+  /* последний выбор: словарь, доехавший после другого нажатия, его не перебивает */
+  const wanted = useRef<Lang>(lang);
+  /*
+   * Словарь в памяти — только выбранного языка (dictionary/index.ts), и
+   * другой язык сначала догружается, а уже потом меняет экран. Язык
+   * документа — до перерисовки, а не эффектом после неё (applyDocumentLang).
+   *
+   * Не доехал (нет сети, кусок прежней выкатки) — экран остаётся на прежнем
+   * языке, целиком, а не наполовину переведённым; следующее нажатие пробует
+   * снова.
+   */
   const setLang = useCallback((next: Lang) => {
-    applyDocumentLang(next);
-    setLangRaw(next);
+    wanted.current = next;
+    const apply = () => {
+      if (wanted.current !== next) return;
+      applyDocumentLang(next);
+      setLangRaw(next);
+    };
+    if (hasLanguage(next)) apply();
+    else
+      loadLanguage(next).then(apply, (error: unknown) => {
+        console.warn("словарь языка не загрузился", next, error);
+      });
   }, []);
 
   useEffect(() => {
     // язык страницы — для экранного диктора и переносов слов; и в начале, и после выбора
     applyDocumentLang(lang);
     try {
-      localStorage.setItem(KEY, lang);
+      localStorage.setItem(LANG_KEY, lang);
     } catch {
       /* приватный режим: выбор живёт до перезагрузки */
     }
@@ -112,52 +132,4 @@ export function useLang(): LangState {
  */
 export function useScreenLang(): Lang {
   return useContext(Ctx)?.lang ?? currentLang;
-}
-
-/**
- * Переключатель языка. Одинаковый для публичных страниц (киоск, приглашение)
- * и боковой панели консоли — язык один на всё приложение, и два разных
- * переключателя означали бы два разных состояния.
- */
-export function LangSwitch() {
-  const { lang, setLang } = useLang();
-  return (
-    /*
-      Сегментированный переключатель, а не кнопки рядом: кнопки выглядят
-      как отдельные действия, а здесь одно состояние из нескольких. Текущий
-      язык виден заливкой, а не только жирностью — жирность на трёх буквах
-      прописными не читается.
-    */
-    <div
-      role="group"
-      /* многоязычное имя одной записью на оба переключателя — см. types.ts */
-      aria-label={LANG_SELF_LABEL}
-      className="flex items-center overflow-hidden rounded-md border border-hairline"
-    >
-      {/* все языки перечнем из общего пакета: третий язык появился здесь без правки разметки */}
-      {LANGS.map((code) => (
-        <button
-          key={code}
-          type="button"
-          onClick={() => setLang(code)}
-          aria-pressed={lang === code}
-          className={
-            "min-h-0 rounded-md px-2.5 py-1.5 text-micro font-semibold tracking-[var(--tracking-label)] " +
-            "outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)] " +
-            /*
-              Выбранный язык отмечен вписанной рамкой акцента, а не заливкой.
-              Заливка внутри и без того обведённой группы даёт коробку в
-              коробке; вписанная рамка занимает те же пиксели, что и граница
-              группы, и читается как «эта доля выбрана».
-            */
-            (lang === code
-              ? "text-primary shadow-[inset_0_0_0_1px_var(--primary)]"
-              : "text-muted hover:text-text")
-          }
-        >
-          {LANG_NAMES[code].short}
-        </button>
-      ))}
-    </div>
-  );
 }

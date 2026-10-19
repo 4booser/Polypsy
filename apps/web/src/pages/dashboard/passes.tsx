@@ -9,7 +9,8 @@ import { Panel } from "../../ui/layout";
 import { NoData, Segmented } from "../../ui/primitives";
 import { useLang } from "../../lang";
 import { Di } from "../today/icons";
-import { fill, localDay, passColumns, passSummary, withCount, type PassColumn, type PassRange } from "./model";
+import { withCount } from "../../ui/plural";
+import { fill, localDay, passColumns, passSummary, type PassColumn, type PassRange } from "./model";
 
 /**
  * «Проходження за останній час» — завершённые прохождения столбцами.

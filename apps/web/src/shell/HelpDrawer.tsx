@@ -5,7 +5,8 @@ import { useLang } from "../lang";
 import { cx } from "../ui/cx";
 import { IconCommand } from "../ui/glyphs";
 import { ShellIcon } from "./icons";
-import { Drawer, Kbd } from "../ui";
+import { Drawer } from "../ui/Drawer";
+import { Kbd } from "../ui/kbd";
 
 /** Мак или нет: на маке палитру открывают Command+K, у остальных — Ctrl K */
 export function isMac(): boolean {

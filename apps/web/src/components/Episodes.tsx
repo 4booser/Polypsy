@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { LOCALE_OF, type UiKey } from "@quizzy/shared";
+import type { UiKey } from "@quizzy/shared";
 import { ApiError, api, openInTab } from "../api";
 import { day } from "../format";
 import { Callout, Empty, Ic, NotLoaded, loadView, useAction } from "../ui";
@@ -8,7 +8,7 @@ import { Button, Field, Input, Num, Select, Tag } from "../ui/primitives";
 import { useLang } from "../lang";
 import { useResource, type Resource } from "../useResource";
 import { ShellIcon } from "../shell/icons";
-import { plural } from "../pages/patients/model";
+import { withCount } from "../ui/plural";
 
 const OUTCOME_KEY: Record<string, UiKey> = {
   improved: "ep.outImproved",
@@ -63,7 +63,6 @@ export function EpisodesBody({
   res: Loaded<Awaited<ReturnType<typeof api.episodes>>>;
 }) {
   const { ut, lang } = useLang();
-  const locale = LOCALE_OF[lang];
   const { run, busy } = useAction();
   const reload = res.reload;
   const view = loadView(res, (d) => d.items.length === 0);
@@ -152,13 +151,13 @@ export function EpisodesBody({
               {/* слово — по числу правилами языка: «1 прийом», «3 прийоми», «5 прийомів», а не «1 прийомів» */}
               <span className="ml-auto flex flex-wrap gap-x-3 text-caption text-text-2">
                 <span>
-                  <Num className="font-bold text-text">{e.visits}</Num> {plural(ut("ep.visits"), e.visits, locale)}
+                  <Num className="font-bold text-text">{e.visits}</Num> {withCount(ut("ep.visits"), e.visits, lang)}
                 </span>
                 <span>
-                  <Num className="font-bold text-text">{e.conclusions}</Num> {plural(ut("ep.conclusions"), e.conclusions, locale)}
+                  <Num className="font-bold text-text">{e.conclusions}</Num> {withCount(ut("ep.conclusions"), e.conclusions, lang)}
                 </span>
                 <span>
-                  <Num className="font-bold text-text">{e.referrals}</Num> {plural(ut("ep.referrals"), e.referrals, locale)}
+                  <Num className="font-bold text-text">{e.referrals}</Num> {withCount(ut("ep.referrals"), e.referrals, lang)}
                 </span>
               </span>
             </div>

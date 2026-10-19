@@ -211,11 +211,9 @@ export function fill(template: string, values: Record<string, string | number>):
   return template.replace(/\{(\w+)\}/g, (m, k: string) => (k in values ? String(values[k]) : m));
 }
 
-/**
- * Форма слова при числе — по правилу языка (Intl.PluralRules): «1 учасник,
- * 3 учасники, 5 учасників». Английскому и дробным хватает «many».
+/*
+ * Форма слова при числе — правило набора (ui/plural.ts, pluralForm). Имя
+ * pluralOf оставлено ради Referrals.tsx (раздел направлений): экраны этого
+ * раздела берут pluralForm из набора напрямую.
  */
-export function pluralOf(n: number, lang: string): "one" | "few" | "many" {
-  const cat = new Intl.PluralRules(lang).select(n);
-  return cat === "one" ? "one" : cat === "few" ? "few" : "many";
-}
+export { pluralForm as pluralOf } from "../../ui/plural";

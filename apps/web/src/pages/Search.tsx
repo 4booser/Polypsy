@@ -13,7 +13,8 @@ import { MenuButton, menuItemClass } from "../ui/menu";
 import { Button, ButtonLink, Checkbox, CheckLabel, Segmented, Tag } from "../ui/primitives";
 import { useResource } from "../useResource";
 import { Pi } from "./patientGroups/icons";
-import { fill, pluralOf, shortDate } from "./patientGroups/model";
+import { pluralForm } from "../ui/plural";
+import { fill, shortDate } from "./patientGroups/model";
 import {
   RECENT_KEY,
   facetCounts,
@@ -149,8 +150,8 @@ export default function Search() {
     el?.focus();
     el?.scrollIntoView({ block: "nearest" });
   };
-  useHotkeys({ "/": () => inputRef.current?.focus(), j: () => stepFocus(1), k: () => stepFocus(-1), о: () => stepFocus(1), л: () => stepFocus(-1) }, !drawerOpen);
-  useHotkeys({ j: () => nextHit(1), k: () => nextHit(-1), о: () => nextHit(1), л: () => nextHit(-1) }, drawerOpen);
+  useHotkeys({ "/": () => inputRef.current?.focus(), j: () => stepFocus(1), k: () => stepFocus(-1) }, !drawerOpen);
+  useHotkeys({ j: () => nextHit(1), k: () => nextHit(-1) }, drawerOpen);
 
   const toggle = (set: Set<string>, value: string) => {
     const next = new Set(set);
@@ -190,7 +191,7 @@ export default function Search() {
       title={ut("srch.title")}
       meta={
         result
-          ? [fill(ut(`srch2.recordsN.${pluralOf(hits.length, lang)}`), { n: hits.length }), ut("srch2.metaWhat")]
+          ? [fill(ut(`srch2.recordsN.${pluralForm(hits.length, lang)}`), { n: hits.length }), ut("srch2.metaWhat")]
           : [ut("srch2.metaIdle"), ut("srch2.metaWhat")]
       }
     >
@@ -263,7 +264,7 @@ export default function Search() {
           icon={<Pi.files />}
           sub={
             result && shown.length
-              ? fill(ut(`srch2.inPatients.${pluralOf(new Set(shown.map((h) => h.userId)).size, lang)}`), {
+              ? fill(ut(`srch2.inPatients.${pluralForm(new Set(shown.map((h) => h.userId)).size, lang)}`), {
                   n: new Set(shown.map((h) => h.userId)).size,
                 })
               : undefined
@@ -304,7 +305,7 @@ export default function Search() {
                     <div className="flex items-center gap-2.5">
                       <Avatar name={g.userName} size={34} />
                       <b className="min-w-0 flex-1 truncate text-body font-bold">{g.userName}</b>
-                      <span className="text-small text-muted">{fill(ut(`srch2.recordsN.${pluralOf(g.hits.length, lang)}`), { n: g.hits.length })}</span>
+                      <span className="text-small text-muted">{fill(ut(`srch2.recordsN.${pluralForm(g.hits.length, lang)}`), { n: g.hits.length })}</span>
                       <ButtonLink to={`/patients/${g.userId}/case`} size="xs">
                         <Pi.folderOpen size={14} />
                         {ut("ref2.case")}
@@ -369,7 +370,7 @@ export default function Search() {
             </ul>
           </Panel>
           {result && hits.length ? (
-            <Panel title={ut("srch2.narrow")} icon={<Pi.listFilter />} sub={fill(ut(`srch2.recordsN.${pluralOf(shown.length, lang)}`), { n: shown.length })}>
+            <Panel title={ut("srch2.narrow")} icon={<Pi.listFilter />} sub={fill(ut(`srch2.recordsN.${pluralForm(shown.length, lang)}`), { n: shown.length })}>
               <span className="mb-1.5 block text-caption font-bold text-muted">{ut("srch2.kind")}</span>
               <div className="flex flex-col gap-1.5">
                 {facetCounts(hits, "kind").map((f) => (

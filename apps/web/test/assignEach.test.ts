@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { assignEach } from "../src/pages/methods/AssignDrawer";
+import { assignEach } from "../src/components/AssignDrawer";
 
 /**
- * «Призначити» поимённо (methods/AssignDrawer): каждому по очереди, отказ
+ * «Призначити» поимённо (components/AssignDrawer): каждому по очереди, отказ
  * одному не отменяет остальных — и в выборе остаются именно не прошедшие.
  *
  * Мутация: вернуть отбор по ФИО — в выборе остаются оба тёзки, и повтор

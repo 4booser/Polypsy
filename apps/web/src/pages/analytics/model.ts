@@ -380,7 +380,6 @@ export function surveysToLoad(d: ModelDraft, listed: ReadonlySet<string>): strin
 
 /** Виды перечня: все, только включённые, только выключенные */
 export type ModelView = "all" | "on" | "off";
-export const MODEL_VIEWS: readonly ModelView[] = ["all", "on", "off"];
 
 export function viewFrom(raw: string | null): ModelView {
   return raw === "on" || raw === "off" ? raw : "all";

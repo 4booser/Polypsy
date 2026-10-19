@@ -320,20 +320,8 @@ export function whenShort(iso: string, t: (k: UiKey) => string, now = new Date()
   return `${day}, ${hm(iso)}`;
 }
 
-/**
- * Число со словом в нужной форме: «1 лікар», «3 лікарі», «18 лікарів».
- *
- * Формы в строке словаря — через «|», в порядке категорий Intl.PluralRules:
- * украинский и русский — one|few|many|other, английский — one|other. Не
- * хватило формы — берётся последняя. {n} подставляется числом.
- */
-export function plural(template: string, n: number, lang: string): string {
-  const forms = template.split("|");
-  const order = lang === "en" ? ["one", "other"] : ["one", "few", "many", "other"];
-  const at = order.indexOf(new Intl.PluralRules(lang).select(n));
-  const form = forms[Math.min(at < 0 ? forms.length - 1 : at, forms.length - 1)] ?? template;
-  return form.replace("{n}", String(n));
-}
+/** Число со словом в нужной форме: «1 лікар», «3 лікарі», «18 лікарів» — правило набора (ui/plural.ts) */
+export { withCount as plural } from "../../ui/plural";
 
 /** Подстановка {name} в строку словаря */
 export function fill(template: string, values: Record<string, string | number>): string {

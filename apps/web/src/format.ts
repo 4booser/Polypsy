@@ -1,17 +1,6 @@
 import { LOCALE_OF, formatDuration, isLang, type Lang, type Severity, type UiKey } from "@quizzy/shared";
 
 /**
- * Цвет заливки: метки на графиках, полоски, доли кольца.
- * Рядом с ними нет мелкого текста, и насыщенность важнее контраста с фоном.
- */
-export const severityColor: Record<Severity, string> = {
-  none: "var(--sev-none)",
-  mild: "var(--sev-mild)",
-  moderate: "var(--sev-moderate)",
-  severe: "var(--sev-severe)",
-};
-
-/**
  * Ключи подписей степени выраженности.
  *
  * Сами подписи живут в общем словаре: они видны на каждом экране с
@@ -24,8 +13,6 @@ export const severityKey = {
   moderate: "severity.moderate",
   severe: "severity.severe",
 } as const satisfies Record<Severity, UiKey>;
-
-export const SERIES = ["var(--s1)", "var(--s2)", "var(--s3)", "var(--s4)"];
 
 /**
  * Длительность — из общего пакета: у мобилки была своя копия, и они бы разошлись.

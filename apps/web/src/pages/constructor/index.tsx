@@ -42,7 +42,7 @@ import { Answers, BandsSection, Scales, ScalesSummary } from "./Scales";
 import { NewMethod, type ConstructorSeed } from "./Start";
 import { editorShortcut } from "./shortcuts";
 import { Structure } from "./Structure";
-import { AssignDrawer, type ExistingAssignment } from "../methods/AssignDrawer";
+import { AssignDrawer, type ExistingAssignment } from "../../components/AssignDrawer";
 import { grantState, splitCode } from "../methods/model";
 
 /*
@@ -825,6 +825,7 @@ function Editor({ id }: { id?: string }) {
         {id && published ? (
           /* тот же ящик, что у каталога и рамки методики (methods-assign-dialog), — с группы: так зовёт его меню */
           <AssignDrawer
+            choose="recipients"
             open={drawer === "assign"}
             onClose={() => setDrawer(null)}
             onReturn={() => setDrawer("assign")}

@@ -18,7 +18,8 @@ import { caseTimer, clashes, hhmm, liveCases, sessionStates, urgentCases } from 
 import { DayStrip } from "../today/strip";
 import { useNow, useUntil } from "../today/Agenda";
 import { workWhy } from "../worklist/model";
-import { WORK_KIND, fill, withCount, workTiles } from "./model";
+import { withCount } from "../../ui/plural";
+import { WORK_KIND, fill, workTiles } from "./model";
 
 /**
  * Віджети «Зведення» (кадр day-start Polypsy 2.0). Каждый — панель набора с

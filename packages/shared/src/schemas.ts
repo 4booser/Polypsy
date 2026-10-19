@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ALWAYS_VISIBLE_RAIL, ALWAYS_VISIBLE_WIDGETS, DASH_WIDGETS } from "./permissions";
+import { ALWAYS_VISIBLE_RAIL, ALWAYS_VISIBLE_WIDGETS, DASH_WIDGETS } from "./alwaysVisible";
 import { CONTENT_LANGS, LANGS, type ContentLang } from "./types";
 import { calendarDay, dateInput } from "./dates";
 
