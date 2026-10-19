@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
-import { UI, type AlertCase, type AlertCasePage, type SafetyPlan } from "@quizzy/shared";
+import { UI, type AlertCase, type AlertCasePage, type ResponseContextSignal, type SafetyPlan } from "@quizzy/shared";
 import { LangProvider } from "../src/lang";
 import {
   appendPhrase,
@@ -17,6 +17,7 @@ import {
   withoutDraft,
 } from "../src/components/RiskReview";
 import { Strip } from "../src/pages/patientCard/Banner";
+import { conclusionLock } from "../src/pages/patientCard/Panes";
 import type { CardView } from "../src/pages/patientCard/types";
 
 /**
@@ -199,6 +200,47 @@ describe("план безпеки в ящике разбора", () => {
     expect(has(shown, "rr.noPlan")).toBe(false);
     const none = draw(<SafetyPlanSection userId="p1" plans={[]} loading={false} error={null} onRetry={() => {}} />);
     expect(has(none, "rr.noPlan")).toBe(true);
+  });
+});
+
+describe("заключение в ящике карточки: замок подписи — как на странице заключения", () => {
+  const signal = (over: Partial<ResponseContextSignal> = {}): ResponseContextSignal =>
+    ({
+      id: "sig-1",
+      label: "Пункт 9: думки про смерть",
+      severity: "severe",
+      at: "2026-10-19T08:00:00.000Z",
+      here: true,
+      questionId: "q9",
+      surveyTitle: "PHQ-9",
+      minutesOpen: 95,
+      escalateMinutes: 240,
+      reviewedAt: null,
+      ...over,
+    }) as ResponseContextSignal;
+
+  test("неразобранный сигнал этого прохождения — подпись закрыта, сигнал назван", () => {
+    const lock = conclusionLock({ signals: [signal()] }, false, true);
+    expect(lock.gate).toBe("locked");
+    expect(lock.open.map((s) => s.label)).toEqual(["Пункт 9: думки про смерть"]);
+  });
+
+  test("сигнал другого замера или разобранный — подпись открыта", () => {
+    expect(conclusionLock({ signals: [signal({ here: false })] }, false, true).gate).toBe("open");
+    expect(conclusionLock({ signals: [signal({ reviewedAt: "2026-10-19T09:00:00.000Z" })] }, false, true).gate).toBe("open");
+  });
+
+  test("обстановка едет — подпись ждёт; не пришла — закрыта, а не открыта", () => {
+    expect(conclusionLock(null, false, true).gate).toBe("pending");
+    expect(conclusionLock(null, true, true).gate).toBe("unknown");
+    // без права разбора сигналы не видны — судить не из чего, подпись по правилам сервера
+    expect(conclusionLock(null, true, false).gate).toBe("open");
+  });
+
+  test("кнопка «Підписати» ящика заперта замком, как на полной странице", () => {
+    const panes = readFileSync(resolve(import.meta.dir, "../src/pages/patientCard/Panes.tsx"), "utf8");
+    expect(panes).toContain("disabled={busy || !plan.canSign || locked}");
+    expect(panes).toContain("api.responseContext(rid!)");
   });
 });
 
