@@ -220,6 +220,12 @@ describe("ящик «Допомога» открывается на звонке
     expect(draw(<CallRows />)).not.toContain("data-autofocus");
   });
 
+  test("регистрация по приглашению спрашивает сервер на языке страницы", () => {
+    // запрос идёт мимо клиента API (api.ts шлёт язык сам); без заголовка отказ был украинским на любой странице
+    const join = readFileSync(resolve(import.meta.dir, "../src/pages/Join.tsx"), "utf8");
+    expect(join).toMatch(/fetch\("\/api\/auth\/register", \{[\s\S]{0,300}?"Accept-Language": lang/);
+  });
+
   test("оба ящика помощи — кабинета и приглашения — просят фокус на звонок", () => {
     const shell = readFileSync(resolve(import.meta.dir, "../src/patient/PatientApp.tsx"), "utf8");
     const join = readFileSync(resolve(import.meta.dir, "../src/pages/Join.tsx"), "utf8");

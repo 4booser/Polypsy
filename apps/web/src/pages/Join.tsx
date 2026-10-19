@@ -112,7 +112,7 @@ function Register({
   onDone: () => void;
   onHelp: () => void;
 }) {
-  const { ut } = useLang();
+  const { ut, lang } = useLang();
   const [error, setError] = useState<string | null>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -131,7 +131,8 @@ function Register({
     try {
       const res = await fetch("/api/auth/register", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        /* отказ сервера — на языке страницы, как у остальных запросов (api.ts); без заголовка он был украинским всегда */
+        headers: { "Content-Type": "application/json", "Accept-Language": lang },
         body: JSON.stringify({
           email,
           password,
