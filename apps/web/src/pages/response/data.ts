@@ -27,6 +27,7 @@ export interface ResponseExtras {
   surveyLoading: boolean;
   conclusion: Resource<ConclusionState>;
   prev: ResponseDetail | null;
+  /** Динамика человека — по методике прохождения или по всем (opts.dynamics) */
   dynamics: RespondentDynamics | null;
   dynamicsLoading: boolean;
   /** Динамику спрашивать есть смысл и право */
@@ -35,7 +36,18 @@ export interface ResponseExtras {
 
 export function useResponseExtras(
   detail: ResponseDetail | null,
-  opts: { prev?: boolean; dynamics?: boolean; conclusion?: boolean } = {},
+  opts: {
+    prev?: boolean;
+    /**
+     * Динамика человека: true — по методике прохождения (?survey=), "all" —
+     * по всем его методикам одним чтением. Блок методики в общей динамике —
+     * тот же, что в узкой (routes/dynamics.ts считает методики порознь), и
+     * экран, которому нужны все методики (заключение: «Результати»), читает
+     * динамику один раз, а не узкую рядом с общей.
+     */
+    dynamics?: boolean | "all";
+    conclusion?: boolean;
+  } = {},
 ): ResponseExtras {
   const { can } = useAuth();
   const id = detail?.id ?? null;
@@ -61,13 +73,14 @@ export function useResponseExtras(
     { enabled: !!prevId, keep: false },
   );
   const wantsDynamics = !!opts.dynamics && !!detail?.userId && detail.scores.length > 0 && can("patients.read");
+  const scope = opts.dynamics === "all" ? null : (detail?.survey.id ?? null);
   const dyn = useResource(
     () =>
-      api.dynamics(detail!.userId!, detail!.survey.id).then(
+      api.dynamics(detail!.userId!, scope ?? undefined).then(
         (d): { d: RespondentDynamics | null } => ({ d }),
         () => ({ d: null }),
       ),
-    [detail?.userId, detail?.survey.id],
+    [detail?.userId, scope],
     { enabled: wantsDynamics, keep: false },
   );
   return {

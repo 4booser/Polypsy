@@ -7,6 +7,9 @@ import { ConclusionEditor } from "../src/components/ConclusionEditor";
 import { LangProvider } from "../src/lang";
 import { applicableModels, resultLines } from "../src/pages/Conclusion";
 import { signGate, signLockedBySignal } from "../src/pages/response/context";
+import { scaleChange } from "../src/pages/response/model";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { dynamics, series } from "./responseFixtures";
 
 /**
@@ -189,6 +192,41 @@ describe("подпись после разбора сигнала", () => {
     expect(unknown).toContain(UI["cnx.lockUnknownTitle"].uk);
     // это не сигнал, а отказ загрузки: строка у кнопки — не «після розбору сигналу»
     expect(unknown).not.toContain(UI["rp.signLocked"].uk);
+  });
+});
+
+describe("динамика человека на листе — одним чтением (волна 27)", () => {
+  const SRC = resolve(import.meta.dir, "../src");
+  const page = readFileSync(resolve(SRC, "pages/Conclusion.tsx"), "utf8");
+  const data = readFileSync(resolve(SRC, "pages/response/data.ts"), "utf8");
+
+  test("лист не читает динамику сам: одна общая из useResponseExtras, без узкой рядом", () => {
+    expect(page).not.toContain("api.dynamics(");
+    expect(page).toContain('useResponseExtras(detail, { dynamics: "all", conclusion: false })');
+    // общая — без ?survey=: в узкой не было бы других методик для «Результатів»
+    expect(data).toContain('const scope = opts.dynamics === "all" ? null : (detail?.survey.id ?? null);');
+  });
+
+  test("сводка над выводом из общей динамики — та же, что из узкой по этой методике", () => {
+    const full = dynamics([
+      series([
+        { responseId: "r1", rawScore: 19, bandLabel: "Помірно тяжка", severity: "moderate" },
+        { responseId: "r2", rawScore: 12, bandLabel: "Помірна", severity: "moderate" },
+      ]),
+    ]);
+    full.surveys.push({
+      surveyId: "s2",
+      title: "GAD-7",
+      responseCount: 1,
+      firstAt: null,
+      lastAt: null,
+      scales: [series([{ responseId: "g1", rawScore: 11 }], { code: "D", title: "Тривога" })],
+    });
+    const narrow = { ...full, surveys: full.surveys.filter((s) => s.surveyId === "s1") };
+    const detail = { id: "r2", survey: { id: "s1" } } as Parameters<typeof scaleChange>[0];
+    const rungs = [{ min: 0, max: 9, label: "Норма", severity: "none" as const }];
+    expect(scaleChange(detail, full, "D", rungs)).toEqual(scaleChange(detail, narrow, "D", rungs));
+    expect(scaleChange(detail, full, "D", rungs)?.fromPrev?.delta).toBe(-7);
   });
 });
 
