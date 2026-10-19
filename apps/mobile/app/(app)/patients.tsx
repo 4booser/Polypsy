@@ -63,10 +63,20 @@ function Patients() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const seq = useRef(0);
+  /*
+   * Строка поиска «сейчас» — для возвращения на вкладку. Перечитывание по
+   * фокусу брало её из первого показа, то есть пустой: вернулся из карты —
+   * список снова весь, а в поле по-прежнему «Мельник».
+   */
+  const queryNow = useRef(query);
+  queryNow.current = query;
+  /** С каким поиском список уже запрошен: пауза после набора не повторяет запрос фокуса (первый — пустой) */
+  const asked = useRef("");
 
   const loadPeople = useCallback(
     async (search: string, from: string | null = null) => {
       const my = ++seq.current;
+      if (!from) asked.current = search.trim();
       setBusy(true);
       try {
         const page = await api.respondents({ search: search.trim() || undefined, cursor: from ?? undefined });
@@ -101,13 +111,14 @@ function Patients() {
 
   useFocusEffect(
     useCallback(() => {
-      void loadPeople(query);
+      void loadPeople(queryNow.current);
       loadQueues();
     }, [loadPeople, loadQueues]),
   );
 
-  // поиск — на сервере (ФИО зашифровано), с паузой после набора
+  // поиск — на сервере (ФИО зашифровано), с паузой после набора; то, что уже запрошено, не повторяется
   useEffect(() => {
+    if (query.trim() === asked.current) return;
     const t = setTimeout(() => void loadPeople(query), 300);
     return () => clearTimeout(t);
   }, [query, loadPeople]);
