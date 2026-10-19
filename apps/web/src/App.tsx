@@ -23,6 +23,7 @@ import { MaintenanceBanner } from "./service/MaintenanceBanner";
 import { ConnectionLine } from "./ui/ConnectionLine";
 import { useTelemetryRoute } from "./telemetry/client";
 import { ErrorBoundary } from "./telemetry/ErrorBoundary";
+import { CrashHelp } from "./shell/CrashHelp";
 import "./shell/shell.css";
 import { ImpersonationBanner } from "./pages/ops/people2/ImpersonationBanner";
 
@@ -599,8 +600,13 @@ export default function App() {
    */
   if (user.role === "user") {
     return (
-      /* граница ошибок кабинета: упавший экран не снимает кабинет целиком; переход сбрасывает её */
-      <ErrorBoundary resetKey={pathname}>
+      /*
+        Граница ошибок кабинета: упавший экран не снимает кабинет целиком;
+        переход сбрасывает её. На листе падения — номера помощи: экран упал у
+        человека, которому, возможно, плохо прямо сейчас, и без номера лист
+        «щось пішло не так» был бы тупиком (сетка безопасности кабинета).
+      */
+      <ErrorBoundary resetKey={pathname} extra={<CrashHelp />}>
       <Suspense fallback={<Loading rows={4} />}>
         {banner}
         {/* TrackedRoutes — тот же <Routes>, плюс счёт открытых экранов шаблоном маршрута (telemetry/screens.tsx) */}
