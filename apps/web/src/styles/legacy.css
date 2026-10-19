@@ -573,7 +573,6 @@ kbd, .kbd {
   animation: slide-in var(--dur) var(--ease);
 }
 
-@keyframes fade { from { opacity: 0; } }
 @keyframes rise { from { opacity: 0; transform: translateY(8px) scale(0.99); } }
 @keyframes slide-in { from { transform: translateX(16px); opacity: 0; } }
 
