@@ -1,4 +1,4 @@
-import type { AlertCase, AlertCaseFacets, AlertCasePage, RiskSeverity } from "@quizzy/shared";
+import { PATIENT_GROUP_ID, type AlertCase, type AlertCaseFacets, type AlertCasePage, type RiskSeverity } from "@quizzy/shared";
 
 /*
  * Очередь случаев: чистая логика экрана разбора.
@@ -76,7 +76,8 @@ export function readFilters(get: (name: string) => string): QueueFilters {
      * значение сервер отвергает (400), и отказ вставал на месте всей очереди.
      */
     unit: unit.length <= TEXT_MAX ? unit : "",
-    patientGroup: UUID.test(patientGroup) ? patientGroup : "",
+    /* форма id группы — та же, что у сервера (patientGroupRef): у групп посева id текстовые, «demo-pg-risk» */
+    patientGroup: PATIENT_GROUP_ID.test(patientGroup) ? patientGroup : "",
     patient: UUID.test(patient) ? patient : "",
     from: isDay(from) ? from : "",
     // перевёрнутый период не применяется целиком: «с 10-го по 1-е» — это опечатка, а не выборка

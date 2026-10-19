@@ -1248,7 +1248,8 @@ export const dateRangeQuery = z.object({
  * знаков покрывают обе формы и по-прежнему не пускают в условие что угодно;
  * чужая или несуществующая группа — «не найдено» (assertPatientGroupAccess).
  */
-export const patientGroupRef = z.string().regex(/^[\w-]{1,64}$/);
+export const PATIENT_GROUP_ID = /^[\w-]{1,64}$/;
+export const patientGroupRef = z.string().regex(PATIENT_GROUP_ID);
 
 /**
  * Срез аналитики методики: период, версия, один человек или группа людей.
