@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import type { RuleAction } from "@quizzy/shared";
-import { api } from "../../api";
+import { ApiError, api } from "../../api";
 import { day } from "../../format";
 import { useLang } from "../../lang";
 import { useShellNav } from "../../shell/useShellNav";
@@ -142,7 +142,8 @@ export default function AnalyticsList() {
     inFlight.current.add(m.id);
     setFlipped((f) => ({ ...f, [m.id]: on }));
     try {
-      const res = await api.updateDecisionRule(m.id, { enabled: on });
+      /* версия строки перечня: модель, изменённую с тех пор кем-то другим, сервер не тронет (409) */
+      const res = await api.updateDecisionRule(m.id, { enabled: on, version: m.version });
       inFlight.current.delete(m.id);
       const now = latest.current;
       if (now) list.patch(now.map((r) => (r.id === m.id ? { ...r, enabled: on, version: res.version } : r)));
@@ -152,6 +153,8 @@ export default function AnalyticsList() {
       inFlight.current.delete(m.id);
       setFlipped(({ [m.id]: _drop, ...rest }) => rest);
       toast(e instanceof Error ? e.message : ut("ui.actionFailed"), "err");
+      // перечень устарел — перечитываем, чтобы следующее нажатие шло от нынешней версии
+      if (e instanceof ApiError && e.status === 409) list.reload();
     }
   };
 

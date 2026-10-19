@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { and, desc, eq, inArray, isNull, or } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { explanationFor, type StoredExplanation } from "@quizzy/shared";
 import { db } from "../db";
@@ -7,7 +7,7 @@ import { decisionRules, ruleHits, surveys, users } from "../db/schema";
 import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
 import { badRequest, conflict, langOf, notFound, parseBody } from "../lib/http";
-import { accessibleGroupIds, canAccessSurvey, surveyScopeFilter } from "../lib/scope";
+import { accessibleGroupIds, assertGroupAccess, canAccessGroup, canAccessSurvey, surveyScopeFilter } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
 export const decisionRoutes = new Hono<AppEnv>();
@@ -61,6 +61,15 @@ const ruleSchema = z.object({
   note: z.string().max(2000).nullable().optional(),
 });
 
+const ruleUpdateSchema = ruleSchema.partial().extend({
+  /**
+   * Версия, которую видел правящий. Есть — правка ложится, только если
+   * правило с тех пор не меняли, иначе 409, и экран перечитывает правило;
+   * нет — последняя правка побеждает, как прежде.
+   */
+  version: z.number().int().positive().optional(),
+});
+
 /* ── правила ── */
 
 decisionRoutes.get("/rules", requirePermission("alerts.review"), async (c) => {
@@ -83,13 +92,21 @@ decisionRoutes.get("/rules", requirePermission("alerts.review"), async (c) => {
 });
 
 /*
- * Правило заводит только суперадмин. Оно действует на все прохождения своей
- * группы и подсказывает клинические шаги — это уровень настройки учреждения,
- * а не рабочий инструмент дежурного.
+ * Правило заводит обладатель decisions.manage. Оно действует на все
+ * прохождения своей группы и подсказывает клинические шаги — это уровень
+ * настройки учреждения, а не рабочий инструмент дежурного.
+ *
+ * Группа — только та, которой заводящий управляет, как у методики
+ * (routes/surveys.ts, assertGroupAccess): иначе он поставил бы правило на
+ * прохождения чужой группы, которых сам не видит. Под ролью приложения такую
+ * вставку отвергла бы и политика строк decision_rules_access — но пятисоткой;
+ * проверка здесь отвечает словами и одинаково при любой роли. Без группы —
+ * общее правило, как и прежде (форма модели аналитики группы не выбирает).
  */
 decisionRoutes.post("/rules", requirePermission("decisions.manage"), async (c) => {
   const user = c.get("user");
   const input = await parseBody(c.req.raw, ruleSchema);
+  if (input.groupId) await assertGroupAccess(user, input.groupId);
 
   const id = crypto.randomUUID();
   await db.insert(decisionRules).values({
@@ -108,18 +125,31 @@ decisionRoutes.post("/rules", requirePermission("decisions.manage"), async (c) =
 });
 
 decisionRoutes.patch("/rules/:id", requirePermission("decisions.manage"), async (c) => {
+  const user = c.get("user");
   const id = c.req.param("id");
-  const input = await parseBody(c.req.raw, ruleSchema.partial());
+  const { version: seen, ...input } = await parseBody(c.req.raw, ruleUpdateSchema);
 
+  /*
+   * Правило вне зоны — «не найдено»: перечень (GET /rules) его не показывает,
+   * и под ролью приложения политика строк прячет его так же. Зона — та же:
+   * общее правило или группа, которой правящий управляет.
+   */
   const row = await db.query.decisionRules.findFirst({ where: eq(decisionRules.id, id) });
-  if (!row) notFound("err.ruleNotFound");
+  if (!row || (row.groupId !== null && !(await canAccessGroup(user, row.groupId)))) notFound("err.ruleNotFound");
+  // перенести правило можно только в свою группу — как и завести (POST /rules)
+  if (input.groupId) await assertGroupAccess(user, input.groupId);
 
   /*
    * Правка поднимает версию. Срабатывания хранят версию, при которой сработали:
    * правило потом поправят, а объяснение должно остаться верным для случая,
    * который уже разобрали.
+   *
+   * Версия поднимается в самой базе, и сверка с увиденной — тем же
+   * оператором: две правки, прочитавшие одну версию, прежде обе писали
+   * «версия + 1» от неё — номер повторялся, а вторая молча стирала первую.
+   * Теперь вторая ждёт замка строки, видит новую версию и получает 409.
    */
-  await db
+  const [saved] = await db
     .update(decisionRules)
     .set({
       ...(input.title !== undefined ? { title: input.title } : {}),
@@ -128,13 +158,15 @@ decisionRoutes.patch("/rules/:id", requirePermission("decisions.manage"), async 
       ...(input.conditions !== undefined ? { conditions: input.conditions } : {}),
       ...(input.actions !== undefined ? { actions: input.actions } : {}),
       ...(input.note !== undefined ? { note: input.note } : {}),
-      version: row!.version + 1,
+      version: sql`${decisionRules.version} + 1`,
       updatedAt: new Date().toISOString(),
     })
-    .where(eq(decisionRules.id, id));
+    .where(and(eq(decisionRules.id, id), seen !== undefined ? eq(decisionRules.version, seen) : undefined))
+    .returning({ version: decisionRules.version });
+  if (!saved) conflict("err.ruleChanged");
 
-  await audit(c, { action: "rule.save", resourceType: "rule", resourceId: id, details: { version: row!.version + 1 } });
-  return c.json({ ok: true, version: row!.version + 1 });
+  await audit(c, { action: "rule.save", resourceType: "rule", resourceId: id, details: { version: saved.version } });
+  return c.json({ ok: true, version: saved.version });
 });
 
 /* ── срабатывания ── */

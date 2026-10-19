@@ -1164,8 +1164,12 @@ export const api = {
   /** Завести модель; сервер отвечает идентификатором новой строки */
   createDecisionRule: (input: DecisionRuleInput) =>
     request<{ id: string }>("/api/decisions/rules", { method: "POST", body: JSON.stringify(input) }),
-  /** Правка поднимает версию правила — срабатывания помнят, при какой версии сработали */
-  updateDecisionRule: (id: string, input: Partial<DecisionRuleInput>) =>
+  /**
+   * Правка поднимает версию правила — срабатывания помнят, при какой версии
+   * сработали. `version` — та, что видел правящий: правило, изменённое с тех
+   * пор кем-то другим, отвечает 409 (err.ruleChanged), и экран его перечитывает.
+   */
+  updateDecisionRule: (id: string, input: Partial<DecisionRuleInput> & { version?: number }) =>
     request<{ ok: true; version: number }>(`/api/decisions/rules/${id}`, {
       method: "PATCH",
       body: JSON.stringify(input),

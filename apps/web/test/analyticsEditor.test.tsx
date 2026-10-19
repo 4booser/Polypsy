@@ -263,6 +263,29 @@ describe("выключатель модели в перечне", () => {
   });
 });
 
+/**
+ * Правка модели — от версии, которую видел правящий (PATCH с version):
+ * правило, изменённое с тех пор кем-то другим, сервер не трогает и отвечает
+ * 409. Экран перечитывает правило. Форма при этом сохраняет набранное:
+ * исходным становится новая версия, а «Зміни» показывают черновик против неё.
+ *
+ * Мутация: не слать version, не перечитывать по 409 или затирать черновик
+ * при перечитывании — падает своя строка.
+ */
+describe("правка модели от увиденной версии", () => {
+  test("форма шлёт версию и по 409 перечитывает правило, не теряя набранного", () => {
+    expect(EDITOR).toContain("version: saved.version");
+    expect(EDITOR).toContain("if (e instanceof ApiError && e.status === 409) {");
+    expect(EDITOR).toContain("keepDraft.current = true;");
+    expect(EDITOR).toContain("setDraft((cur) => (keep && cur ? cur : d));");
+  });
+
+  test("выключатель перечня шлёт версию строки и по 409 перечитывает перечень", () => {
+    expect(LIST).toContain("{ enabled: on, version: m.version }");
+    expect(LIST).toContain("if (e instanceof ApiError && e.status === 409) list.reload();");
+  });
+});
+
 describe("перечень моделей: состояние в адресе", () => {
   test("поиск, страница, размер, вид, фильтры и порядок читаются из адреса", () => {
     for (const key of ["q", "page", "per", "view", "sort", "test", "act"]) {

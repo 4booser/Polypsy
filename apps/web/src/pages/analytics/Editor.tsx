@@ -1,7 +1,7 @@
 import { Fragment, useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as KeyEvent, type ReactNode } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import type { Scale, SurveyListItem, UiKey } from "@quizzy/shared";
-import { api } from "../../api";
+import { ApiError, api } from "../../api";
 import { SeverityMeter } from "../../charts/clinical";
 import { rungOf, type Rung } from "../../charts/ladder";
 import { day } from "../../format";
@@ -117,6 +117,12 @@ function ModelEditor({ id, copyFrom }: { id: string | null; copyFrom: string | n
   const [draft, setDraft] = useState<ModelDraft | null>(base);
   const [missing, setMissing] = useState(false);
   const saved: SavedModel | null = id !== null ? (rules.data?.find((r) => r.id === id) ?? null) : null;
+  /*
+   * Перечитывание после 409 (правку обогнала чужая): исходным становится
+   * правило с сервера, а набранное остаётся черновиком — «Зміни» и версия
+   * показывают его против новой версии, и следующее «Зберегти» ляжет на неё.
+   */
+  const keepDraft = useRef(false);
 
   useEffect(() => {
     if (!rules.data) return;
@@ -127,8 +133,10 @@ function ModelEditor({ id, copyFrom }: { id: string | null; copyFrom: string | n
         return;
       }
       const d = draftFromRule(rule);
+      const keep = keepDraft.current;
+      keepDraft.current = false;
       setBase(d);
-      setDraft(d);
+      setDraft((cur) => (keep && cur ? cur : d));
       return;
     }
     if (copyFrom) {
@@ -186,14 +194,23 @@ function ModelEditor({ id, copyFrom }: { id: string | null; copyFrom: string | n
           /* replace: «назад» из правки новой модели ведёт в перечень, а не в пустую форму */
           navigate(modelHref(created.id), { replace: true });
         } else {
-          await api.updateDecisionRule(id, payload);
+          try {
+            /* версия, от которой правили: правило, изменённое с тех пор кем-то другим, ответит 409 */
+            await api.updateDecisionRule(id, { ...payload, ...(saved ? { version: saved.version } : {}) });
+          } catch (e) {
+            if (e instanceof ApiError && e.status === 409) {
+              keepDraft.current = true;
+              rules.reload();
+            }
+            throw e;
+          }
           setTried(false);
           rules.reload();
         }
       },
       ut(id === null ? "am.createdOk" : "am.saved"),
     );
-  }, [draft, busy, canManage, id, run, navigate, rules, ut]);
+  }, [draft, busy, canManage, id, saved, run, navigate, rules, ut]);
 
   /* ⌘S / Ctrl S — сохранить, как в любом редакторе; браузерное «сохранить страницу» здесь бессмысленно */
   useEffect(() => {
