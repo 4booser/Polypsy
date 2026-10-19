@@ -70,6 +70,12 @@ import {
  *
  * Обновляется сам раз в двадцать секунд, пока вкладка открыта; окно
  * графика — в адресе (?window=24h), ссылку «вот так было сутки» пересылают.
+ *
+ * Один запрос на такт (волна 27): сводка приходит вместе с рядом окна,
+ * суточным рядом и новыми группами ошибок (OpsOverviewLive) — раньше это
+ * были четыре опроса каждые двадцать секунд, и при окне «24 год» сутки
+ * брались дважды. Оповещения — своим опросом раз в минуту: правила меняются
+ * редко. Скрытую вкладку не опрашивает ни один (useOpsResource).
  */
 
 const POLL_MS = 20_000;
@@ -82,14 +88,13 @@ export default function OpsOverview() {
   const [rawWindow, setWindow] = useUrlState("window", "1h");
   const win = parseTrafficWindow(rawWindow);
 
-  const ov = useOpsResource(() => api.opsOverview(), [], POLL_MS);
-  const traffic = useOpsResource(() => api.opsTraffic(win), [win], POLL_MS);
-  /* сутки — для сравнения в «Показниках»: «6 год тому», ход за шесть часов */
-  const day = useOpsResource(() => api.opsTraffic("24h"), [], POLL_MS);
-  const errors = useOpsResource(() => api.opsErrors(), [], POLL_MS);
+  const ov = useOpsResource(() => api.opsOverview(win), [win], POLL_MS);
   const alerts = useOpsResource(() => api.opsAlerts(), [], SLOW_POLL_MS);
 
   const d = ov.data;
+  const traffic = d?.live?.traffic ?? null;
+  /* сутки — для сравнения в «Показниках»: «6 год тому», ход за шесть часов; при окне «24 год» это тот же ряд */
+  const day = d?.live ? (d.live.day ?? d.live.traffic) : null;
   const head = (
     <OpsHead
       meta={d ? [ut(overallKey(d.health, "meta")), fill(ut("opx.ov.metaSince"), { time: sinceText(d.since, locale()) })] : null}
@@ -101,9 +106,6 @@ export default function OpsOverview() {
             busy={ov.loading}
             onRefresh={() => {
               ov.reload();
-              traffic.reload();
-              day.reload();
-              errors.reload();
               alerts.reload();
             }}
           />
@@ -132,11 +134,11 @@ export default function OpsOverview() {
   return (
     <div className="flex flex-col gap-4">
       {head}
-      <SystemPanel d={d} updatedAt={ov.updatedAt} errors={errors.data?.items ?? null} alerts={alerts.data ?? null} />
+      <SystemPanel d={d} updatedAt={ov.updatedAt} errors={d.live?.errors ?? null} alerts={alerts.data ?? null} />
       <Panel title={ut("opx.ov.metrics")} icon={<OpsIcon name="gauge" />} sub={ut("opx.ov.metricsSub")} flush>
-        <MetricsTable label={ut("opx.ov.metrics")} rows={metricRows(d, day.data, alerts.data ?? null, ut)} />
+        <MetricsTable label={ut("opx.ov.metrics")} rows={metricRows(d, day, alerts.data ?? null, ut)} />
       </Panel>
-      <LoadPanel win={win} onWindow={setWindow} traffic={traffic.data} error={traffic.error} onRetry={traffic.reload} d={d} />
+      <LoadPanel win={win} onWindow={setWindow} traffic={traffic} error={ov.error} onRetry={ov.reload} d={d} />
       <div className="grid grid-cols-[minmax(0,1fr)_360px] items-start gap-4 max-[1100px]:grid-cols-1">
         <ChecksPanel d={d} onCheck={ov.reload} />
         <PeoplePanel alerts={alerts.data ?? null} />

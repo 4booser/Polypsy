@@ -99,4 +99,13 @@ describe("кто чем опрашивает", () => {
     expect(line).toContain("api.todayCount()");
     expect(line).toContain("pollHidden: false");
   });
+
+  test("«Огляд» техпанели — сводка с рядами и ошибками одним опросом, сутки не берутся дважды", () => {
+    const ov = src("pages/ops/Overview.tsx");
+    expect(ov).not.toMatch(/api\.opsTraffic\(|api\.opsErrors\(/);
+    expect(ov).toContain("api.opsOverview(win)");
+    // опросов три: такт сводки (20 с), оповещения и состояние для людей (раз в минуту)
+    expect(ov.match(/useOpsResource\(/g)).toHaveLength(3);
+    expect(ov.match(/useOpsResource\([^\n]*POLL_MS\)/g)?.filter((m) => !m.includes("SLOW_POLL_MS"))).toHaveLength(1);
+  });
 });

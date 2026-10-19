@@ -1564,7 +1564,8 @@ export const api = {
    * Техпанель: наблюдаемость (/api/ops, право ops.read). Всё — память
    * процесса API до его перезапуска; `since` в каждом ответе.
    */
-  opsOverview: () => request<OpsOverview>("/api/ops/overview"),
+  /** С окном — «Огляд» целиком одним запросом: сводка, ряды нагрузки и новые группы ошибок (OpsOverviewLive) */
+  opsOverview: (window?: OpsWindow) => request<OpsOverview>(`/api/ops/overview${window ? `?window=${window}` : ""}`),
   opsTraffic: (window: OpsWindow) => request<OpsTraffic>(`/api/ops/traffic?window=${window}`),
   opsRoutes: () => request<OpsRoutes>("/api/ops/routes"),
   opsSlow: () => request<OpsSlow>("/api/ops/slow"),

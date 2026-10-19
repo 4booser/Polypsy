@@ -3437,6 +3437,30 @@ export interface OpsOverview {
   accounts: { superadmin: number; admin: number; user: number } | null;
   traffic: { m5: OpsWindowStats; h1: OpsWindowStats; h24: OpsWindowStats };
   health: OpsHealthCheck[];
+  /** Только с `?window=` — всё, что «Огляд» опрашивает, одним ответом (OpsOverviewLive) */
+  live?: OpsOverviewLive;
+}
+
+/**
+ * «Огляд» одним запросом на такт (волна 27, perf-day).
+ *
+ * Экран опрашивал раз в двадцать секунд пять маршрутов — сводку, ряд окна,
+ * суточный ряд, ошибки и оповещения — и при окне «24 год» брал сутки дважды.
+ * Ряды и группы ошибок — память процесса, и отдаются здесь же, рядом со
+ * сводкой; оповещения (правила в базе, меняются редко) — своим маршрутом
+ * раз в минуту.
+ */
+export interface OpsOverviewLive {
+  /** Ряд выбранного окна — график «Навантаження» */
+  traffic: OpsTraffic;
+  /** Сутки для «Показників процесу»; null — окно и так сутки, ряд тот же (traffic) */
+  day: OpsTraffic | null;
+  /**
+   * Группы ошибок памяти процесса, впервые появившиеся за последний час, —
+   * пилюля «нова група» в «Потребує уваги»; без кадров стека: их читает
+   * вкладка «Помилки». Чтение — та же строка ops.errors.read со склейкой.
+   */
+  errors: OpsErrorGroup[];
 }
 
 export interface OpsTrafficBucket {
