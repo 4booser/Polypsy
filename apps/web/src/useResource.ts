@@ -11,11 +11,11 @@ import {
   type QueryObserverOptions,
   type QueryObserverResult,
 } from "@tanstack/react-query";
-import { uiText } from "@quizzy/shared";
 import { ApiError, withSignal } from "./api";
 import { connection } from "./connection";
 import { hashResourceKey, queryClient } from "./query";
 import { currentLang } from "./lang";
+import { uiText } from "./dictionary";
 
 /**
  * Загрузка данных с отменой устаревших ответов.

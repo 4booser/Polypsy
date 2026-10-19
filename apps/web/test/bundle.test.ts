@@ -140,11 +140,39 @@ describe("начальный кусок консоли", () => {
     expect(graph.sharedNames.size).toBeGreaterThan(10);
   });
 
-  test("начальный кусок делится: React и словарь — своими файлами", () => {
+  test("начальный кусок делится: React — своим файлом, словарь — куском на язык", () => {
     const config = readFileSync(resolve(import.meta.dir, "../vite.config.ts"), "utf8");
     expect(config).toContain("manualChunks");
     expect(config).toMatch(/return "react"/);
-    expect(config).toMatch(/uiStrings\.ts"\)\) return "strings"/);
+    // словарь — плагином: ядро куском на язык, строки экранов — с экранами (dictionaryPlugin.ts)
+    expect(config).toContain("dictionaryByLanguage()");
+    expect(config).toContain("languageChunk(id)");
+  });
+
+  test("словарь консоль берёт у себя, а не трёхъязычным целым из общего пакета", () => {
+    /*
+     * makeUiT, uiText и renderError из "@quizzy/shared" вернули бы в сборку
+     * весь словарь на трёх языках — 1,4 МБ, ради которых его и разбили по
+     * языку и по экрану (волна 27). У консоли свои с теми же подписями —
+     * src/dictionary. Значениями UI и ERRORS берёт лишь источник для
+     * проверок (src/dictionary/source.ts), и в сборке его подменяет плагин.
+     */
+    const FULL = new Set(["UI", "ERRORS", "PUSH", "makeUiT", "uiText", "renderError", "untranslatedEn", "EMPTY_BY_DESIGN_EN"]);
+    const offenders: string[] = [];
+    const walk = (dir: string) => {
+      for (const name of readdirSync(dir)) {
+        const full = join(dir, name);
+        if (statSync(full).isDirectory()) walk(full);
+        else if (/\.tsx?$/.test(name) && rel(full) !== "dictionary/source.ts") {
+          for (const { spec, names } of staticImports(readFileSync(full, "utf8"))) {
+            if (spec !== "@quizzy/shared") continue;
+            for (const n of names) if (FULL.has(n)) offenders.push(`${rel(full)}: ${n}`);
+          }
+        }
+      }
+    };
+    walk(SRC);
+    expect(offenders, "переводчик консоли — из src/dictionary, а не из общего пакета").toEqual([]);
   });
 });
 

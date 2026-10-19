@@ -1,5 +1,6 @@
 import { useMemo, useState, type ReactNode } from "react";
-import { UI, type ContentLang, type UiKey } from "@quizzy/shared";
+import type { ContentLang, UiKey } from "@quizzy/shared";
+import { contentDefault, makeUiT } from "../../dictionary";
 import { newUid, type DraftQuestion } from "./model";
 import { Labeled } from "./fields";
 import { CnIc } from "./icons";
@@ -50,7 +51,7 @@ export function parseBulk(raw: string): ParsedItem[] {
  */
 export function numberingProblems(items: ParsedItem[], ut?: (key: UiKey) => string): string[] {
   // без ut (например, в тестах) — русский по умолчанию, как раньше
-  const t = (key: UiKey) => (ut ? ut(key) : UI[key].ru);
+  const t = ut ?? makeUiT("ru");
   const problems: string[] = [];
   const numbers = items.map((i) => i.n).filter((n): n is number => n !== null);
   if (!numbers.length) return problems;
@@ -82,8 +83,8 @@ export function pastedQuestions(items: ParsedItem[], kind: PasteKind): DraftQues
     options:
       kind.type === "yesno"
         ? [
-            { uid: newUid(), text: { uk: UI["bp.yes"].uk, ru: UI["bp.yes"].ru }, keyCode: "yes" },
-            { uid: newUid(), text: { uk: UI["bp.no"].uk, ru: UI["bp.no"].ru }, keyCode: "no" },
+            { uid: newUid(), text: contentDefault("bp.yes"), keyCode: "yes" },
+            { uid: newUid(), text: contentDefault("bp.no"), keyCode: "no" },
           ]
         : [],
   }));

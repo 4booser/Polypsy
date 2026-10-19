@@ -147,7 +147,7 @@ import type {
   ReleasesView,
   ServiceStatusInput,
 } from "@quizzy/shared";
-import { MAINTENANCE_CODE, renderError, uiText } from "@quizzy/shared";
+import { MAINTENANCE_CODE } from "@quizzy/shared";
 import type {
   OpsAlertChannel,
   OpsAlertDelivery,
@@ -163,6 +163,7 @@ import type {
 /* раздел «Адміністрування» 2.0 (участок v2-admin) */
 import type { ConsentVersions, TransferPatientsInput } from "@quizzy/shared";
 import { currentLang } from "./lang";
+import { renderError, uiText } from "./dictionary";
 import { noteNetworkFailure } from "./telemetry/bus";
 import { connection, serverAnswered } from "./connection";
 import { audioFileName } from "./components/recorder/model";

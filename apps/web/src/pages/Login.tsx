@@ -1,8 +1,8 @@
 import { useEffect, useId, useState, type FormEvent, type KeyboardEvent } from "react";
 import { Link } from "react-router-dom";
-import { renderError } from "@quizzy/shared";
 import { api } from "../api";
 import { useAuth } from "../auth";
+import { renderError } from "../dictionary";
 import { dateTime, timeOfDay } from "../format";
 import { useLang } from "../lang";
 import { bannerFor, sameLocalDay } from "../service/model";

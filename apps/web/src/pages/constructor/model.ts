@@ -1,4 +1,5 @@
-import { UI, type Administration, type Lang, type SurveyFull, type SurveyGroupWithCounts, type UiKey } from "@quizzy/shared";
+import type { Administration, Lang, SurveyFull, SurveyGroupWithCounts, UiKey } from "@quizzy/shared";
+import { contentDefault } from "../../dictionary";
 
 /*
  * Вид теста по макету: «Конкретний тест» и «Комплексний тест».
@@ -240,8 +241,8 @@ export interface DraftBand {
  * макета — порядковый, он рисуется, а не хранится.
  */
 export const defaultAnswers = (): DraftOption[] => [
-  { uid: newUid(), text: { uk: UI["bp.yes"].uk, ru: UI["bp.yes"].ru }, keyCode: "yes" },
-  { uid: newUid(), text: { uk: UI["bp.no"].uk, ru: UI["bp.no"].ru }, keyCode: "no" },
+  { uid: newUid(), text: contentDefault("bp.yes"), keyCode: "yes" },
+  { uid: newUid(), text: contentDefault("bp.no"), keyCode: "no" },
 ];
 
 export const EMPTY: Draft = {
@@ -612,7 +613,7 @@ export function newScale(existing: DraftScale[]): DraftScale {
 
 /** Итоговая шкала комплексного теста — единственная, её полосы и есть «Результати» */
 export function totalScale(): DraftScale {
-  return { ...newScale([]), code: "total", title: { uk: UI["cn.results"].uk, ru: UI["cn.results"].ru } };
+  return { ...newScale([]), code: "total", title: contentDefault("cn.results") };
 }
 
 /**
