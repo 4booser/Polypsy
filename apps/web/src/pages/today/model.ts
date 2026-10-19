@@ -310,6 +310,33 @@ export interface Timer {
   due: string;
 }
 
+/**
+ * Минуты открытых случаев на часах экрана, а не на момент ответа.
+ *
+ * Сервер считает minutesOpen в миг чтения, а «Сьогодні» и зведення держат
+ * открытыми часами и перечитывают случаи только по событию. Без поправки
+ * таймер «2:48 з 4 год» стоял на месте, «лишилось 1:12» не убывало, и
+ * случай, переваливший за норму у человека на глазах, просрочкой так и не
+ * становился. Поправка — время с ответа по часам этой же машины
+ * (`loadedAt` — Resource.updatedAt), поэтому неверно выставленные часы
+ * ноутбука её не сдвигают. Разобранные случаи не меняются: их время
+ * остановилось.
+ */
+export function liveCases<T extends Pick<AlertCase, "minutesOpen" | "escalateMinutes" | "overdue" | "acknowledgedAt">>(
+  cases: readonly T[],
+  now: number,
+  loadedAt: number | null,
+): T[] {
+  const extra = loadedAt === null ? 0 : (now - loadedAt) / 60_000;
+  if (extra <= 0) return [...cases];
+  return cases.map((c) => {
+    if (c.acknowledgedAt) return c;
+    const minutesOpen = Math.max(c.minutesOpen, Math.round(c.minutesOpen + extra));
+    const overdue = c.overdue || (!!c.escalateMinutes && minutesOpen >= c.escalateMinutes);
+    return { ...c, minutesOpen, overdue };
+  });
+}
+
 /** Таймер случая по норме методики; без нормы — null, и таймера нет вовсе */
 export function caseTimer(c: Pick<AlertCase, "minutesOpen" | "escalateMinutes" | "openedAt">): Timer | null {
   const norm = c.escalateMinutes ?? null;

@@ -82,6 +82,13 @@ describe("перечитывание после перехода", () => {
     expect(reloads).toBe(1);
   });
 
+  test("перенос из календаря недели — тоже через moveAndReload: отказ перечитывает неделю, а окна переноса — заново", () => {
+    const src = readFileSync(resolve(import.meta.dir, "../src/pages", "Schedule.tsx"), "utf8");
+    expect(src).toContain("moveAndReload(() => api.rescheduleAppointment(");
+    expect(src).not.toMatch(/await api\.rescheduleAppointment\(/);
+    expect(src).toContain("<MoveSlots key={slotsRev}");
+  });
+
   test("«Сьогодні» и экран приёма переходят через moveAndReload, а не `.then(reload)`", () => {
     for (const f of ["Today.tsx", "Visit.tsx"]) {
       const src = readFileSync(resolve(import.meta.dir, "../src/pages", f), "utf8");

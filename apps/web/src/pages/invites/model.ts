@@ -67,6 +67,15 @@ export function placesLeft(inv: Pick<Invite, "usedCount" | "maxUses">): number |
   return inv.maxUses > 1 && left > 0 && left <= 3 ? left : null;
 }
 
+/**
+ * Число по загруженным страницам: пока есть ещё страницы — нижняя граница
+ * («12+»), а не итог. Общего счёта сервер для приглашений не отдаёт, и
+ * «Діючих запрошень: 12» при непоказанных страницах было бы неправдой.
+ */
+export function atLeast(n: number, more: boolean): string | number {
+  return more ? `${n}+` : n;
+}
+
 /** Сколько людей вошло по ссылкам за последние `days` дней — по загруженным строкам */
 export function joinedSince(rows: readonly Invite[], now: number, days = 30): number {
   const from = now - days * 86_400_000;

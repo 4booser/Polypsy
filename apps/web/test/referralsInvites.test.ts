@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { UI, type UiKey } from "@quizzy/shared";
 import { api, tokenStore } from "../src/api";
-import { inviteState } from "../src/pages/invites/model";
+import { atLeast, inviteState } from "../src/pages/invites/model";
 import {
   DESTINATION_KEY,
   closedWithin,
@@ -16,7 +16,7 @@ import {
   viewFrom,
   waitOf,
 } from "../src/pages/referrals/model";
-import { listBody } from "../src/ui/paging";
+import { listBody, shownNote } from "../src/ui/paging";
 
 /**
  * Направления и приглашения: отбор, запрос, состояние строки и что стоит на
@@ -106,6 +106,19 @@ describe("приглашения: выписанные ссылки страни
     expect(sent(0).search).toBe("");
     // курсор кодируется: в нём бывают «/» и «+», а сервер читает его как есть
     expect(sent(1).searchParams.get("cursor")).toBe("a/b+c");
+  });
+
+  test("пока есть ещё страницы, счёт — нижняя граница, а подпись — «перші N», а не «N з N»", () => {
+    expect(atLeast(12, true)).toBe("12+");
+    expect(atLeast(12, false)).toBe(12);
+    // общего итога у приглашений сервер не отдаёт: подпись говорит «перші», а не выдумывает «з N»
+    const ut = (k: "lists.shownOf" | "lists.shownFirst") => (UI[k] as { uk: string }).uk;
+    expect(shownNote(ut, 100, null, true)).toContain("100");
+    expect(shownNote(ut, 100, null, true)).toBe(UI["lists.shownFirst"].uk.replace("{shown}", "100"));
+    expect(shownNote(ut, 40, null, false)).toBeNull();
+    const page = readFileSync(resolve(import.meta.dir, "../src/pages/Invites.tsx"), "utf8");
+    expect(page).toContain("shownNote(ut, rows.length, list.total, list.hasMore)");
+    expect(page).toContain("atLeast(counts.live, list.hasMore)");
   });
 });
 

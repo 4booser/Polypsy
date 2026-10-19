@@ -84,8 +84,13 @@ interface RouteDoc {
    * requirePermission в маршруте, и проверяется она поведенческим тестом.
    * Здесь оно нужно, чтобы описание API говорило правду о том, что кому
    * доступно.
+   *
+   * Список — когда маршрут стоит за несколькими requirePermission подряд и
+   * требует их все: неделя расписания закрыта и schedule.own, и
+   * patients.read (в приёмах — имена людей). Одно объявленное из двух
+   * говорило бы неправду о том, что нужно для входа.
    */
-  permission?: Permission;
+  permission?: Permission | readonly [Permission, ...Permission[]];
   /**
    * Почему маршрут не закрыт правом — если он и не должен быть.
    *
@@ -119,6 +124,13 @@ interface RouteDoc {
  */
 const SEC_ROLE_ONLY =
   "SQL-консоль, ключи и секреты, карта политик строк — только роль суперадмина: право выдают «на неделю, для разбора» и забывают снять, роль так не раздают (решение заказчика 2026-09-26)";
+
+/** Все права, которые маршрут требует, — списком, сколько бы их ни было объявлено */
+export function routePermissions(doc: Pick<RouteDoc, "permission"> | undefined): Permission[] {
+  const p = doc?.permission;
+  if (!p) return [];
+  return typeof p === "string" ? [p] : [...p];
+}
 
 /** Ключ — `МЕТОД /путь` ровно в том виде, в каком его знает Hono */
 export const ROUTE_DOCS: Record<string, RouteDoc> = {
@@ -580,7 +592,7 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   "PUT /api/clinic/schedule": { summary: "Задать обычную неделю целиком; слоты пересобираются", access: "staff", permission: "schedule.own" },
   "POST /api/clinic/schedule/exceptions": { summary: "Отпуск, замена или дополнительный день", access: "staff", permission: "schedule.own", body: scheduleExceptionSchema },
   "DELETE /api/clinic/schedule/exceptions/:id": { summary: "Снять исключение", access: "staff", permission: "schedule.own" },
-  "GET /api/clinic/schedule/week": { summary: "Неделя календарём: приёмы, открытые окна и исключения по часам отделения", access: "staff", permission: "schedule.own" },
+  "GET /api/clinic/schedule/week": { summary: "Неделя календарём: приёмы, открытые окна и исключения по часам отделения; в чужой неделе — только люди своей зоны", access: "staff", permission: ["schedule.own", "patients.read"] },
   "GET /api/clinic/slots": { summary: "Свободное время; повторные слоты видны прикреплённым", access: "user", whyNoPermission: "свободное время — не персональные данные, а расписание приёма; его смотрит и тот, кто ещё никуда не записан" },
   "POST /api/clinic/appointments": { summary: "Записаться; на первичном приёме создаётся прикрепление к отделению", access: "user", whyNoPermission: "себя записывает сам пациент; запись за другого проверяется правом внутри", body: bookAppointmentSchema },
   "GET /api/clinic/appointments/mine": { summary: "Свои приёмы", access: "user", whyNoPermission: "свои приёмы человек видит сам, и ограничивать это правом нечем" },
@@ -680,7 +692,11 @@ export function buildOpenApi(routes: RuntimeRoute[], version: string) {
        * зависеть от её формулировки. Расширения x-* стандарт допускает.
        */
       "x-access": doc?.access ?? null,
-      "x-permission": doc?.permission ?? null,
+      /*
+       * Строкой, как и прежде: несколько прав — через « + », все обязательны
+       * (экран «Опис API» показывает и ищет её как есть).
+       */
+      "x-permission": doc?.permission ? routePermissions(doc).join(" + ") : null,
       responses: {
         "200": { description: "Успех" },
         "400": { description: "Некорректный запрос" },

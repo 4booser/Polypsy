@@ -12,13 +12,13 @@ import { Button, ButtonLink, Tag } from "../../ui/primitives";
 import { TextAction } from "../../ui/records";
 import { useLang } from "../../lang";
 import { useResource } from "../../useResource";
-import { reviewHref, signalText, useNormText, WorkIcon } from "../today/ActNow";
+import { CasesFailed, reviewHref, signalText, useNormText, WorkIcon } from "../today/ActNow";
 import { Di } from "../today/icons";
-import { caseTimer, clashes, hhmm, sessionStates, urgentCases } from "../today/model";
+import { caseTimer, clashes, hhmm, liveCases, sessionStates, urgentCases } from "../today/model";
 import { DayStrip } from "../today/strip";
-import { useUntil } from "../today/Agenda";
+import { useNow, useUntil } from "../today/Agenda";
 import { workWhy } from "../worklist/model";
-import { WORK_KIND, fill, workTiles } from "./model";
+import { WORK_KIND, fill, withCount, workTiles } from "./model";
 
 /**
  * Віджети «Зведення» (кадр day-start Polypsy 2.0). Каждый — панель набора с
@@ -80,22 +80,41 @@ function Foot({ children }: { children: ReactNode }) {
  * счётчики по всей очереди с сервера (facets), а не по загруженным строкам:
  * по шести строкам выходило «термінових: 6» при сотне тяжёлых.
  */
-export function CasesWidget({ alerts, meId }: { alerts: CursorPage<AlertCase> | null; meId: string | null }) {
-  const { ut } = useLang();
+export function CasesWidget({
+  alerts,
+  meId,
+  loading = false,
+  error = null,
+  onRetry,
+  updatedAt = null,
+}: {
+  /** Открытые случаи; null — разбор не положен (и тогда віджета нет), либо они ещё не пришли или не загрузились */
+  alerts: CursorPage<AlertCase> | null;
+  meId: string | null;
+  loading?: boolean;
+  /** Отказ загрузки: віджет остаётся на месте и говорит об отказе, а не исчезает */
+  error?: string | null;
+  onRetry?: () => void;
+  /** Когда пришёл ответ — от него идут минуты таймера нормы (liveCases) */
+  updatedAt?: number | null;
+}) {
+  const { ut, lang } = useLang();
   const norm = useNormText();
-  if (!alerts) return null;
-  const facets = "facets" in alerts ? (alerts as AlertCasePage).facets : undefined;
-  const total = alerts.total ?? alerts.items.length;
-  const urgent = facets ? facets.sections.severe : alerts.items.filter((x) => x.severity === "severe").length;
-  const overdue = facets ? facets.overdue : alerts.items.filter((x) => x.overdue).length;
+  const now = useNow();
+  if (!alerts && !loading && !error) return null;
+  const items = alerts ? liveCases(alerts.items, now, updatedAt) : [];
+  const facets = alerts && "facets" in alerts ? (alerts as AlertCasePage).facets : undefined;
+  const total = alerts ? (alerts.total ?? alerts.items.length) : 0;
+  const urgent = facets ? facets.sections.severe : items.filter((x) => x.severity === "severe").length;
+  const overdue = facets ? facets.overdue : items.filter((x) => x.overdue).length;
   const oldestAt = facets
     ? facets.oldestOpenedAt
-    : alerts.items.length
-      ? alerts.items.map((x) => x.openedAt).sort()[0]!
+    : items.length
+      ? items.map((x) => x.openedAt).sort()[0]!
       : null;
-  const oldest = oldestAt ? Math.floor((Date.now() - new Date(oldestAt).getTime()) / 86_400_000) : 0;
-  const rows = urgentCases(alerts.items, meId).slice(0, 3);
-  const norms = [...new Set(alerts.items.map((c) => c.escalateMinutes).filter((n): n is number => !!n))];
+  const oldest = oldestAt ? Math.floor((now - new Date(oldestAt).getTime()) / 86_400_000) : 0;
+  const rows = urgentCases(items, meId).slice(0, 3);
+  const norms = [...new Set(items.map((c) => c.escalateMinutes).filter((n): n is number => !!n))];
 
   return (
     <Panel
@@ -103,18 +122,34 @@ export function CasesWidget({ alerts, meId }: { alerts: CursorPage<AlertCase> | 
       icon={<Ic.alert />}
       tone="risk"
       sub={
-        norms.length === 1
-          ? fill(ut("dashA.casesSubNorm"), { n: total, norm: norm(norms[0]!) })
-          : fill(ut("dashA.casesSub"), { n: total })
+        !alerts
+          ? undefined
+          : norms.length === 1
+            ? fill(ut("dashA.casesSubNorm"), { open: withCount(ut("dashA.casesSub"), total, lang), norm: norm(norms[0]!) })
+            : withCount(ut("dashA.casesSub"), total, lang)
       }
       actions={<TextAction to="/alerts">{ut("dashA.allCases")}</TextAction>}
       flush
     >
-      {rows.length === 0 ? (
-        <p className="m-0 mx-2.5 mb-2.5 flex items-center gap-2.5 rounded-[12px] bg-good-tint px-3.5 py-3 text-small font-semibold text-good">
-          <Ic.circleCheck size={17} />
-          {ut("dashA.noCases")}
-        </p>
+      {error ? (
+        <div className="px-2.5 pb-2.5">
+          <CasesFailed error={error} onRetry={onRetry} />
+        </div>
+      ) : null}
+      {!alerts ? (
+        error ? null : (
+          <div className="pb-2" role="status" aria-label={ut("common.loading")}>
+            <SkeletonRows rows={2} />
+          </div>
+        )
+      ) : rows.length === 0 ? (
+        /* «немає» — только по свежему ответу: при отказе перечитывания прежний ноль уже неправда */
+        error ? null : (
+          <p className="m-0 mx-2.5 mb-2.5 flex items-center gap-2.5 rounded-[12px] bg-good-tint px-3.5 py-3 text-small font-semibold text-good">
+            <Ic.circleCheck size={17} />
+            {ut("dashA.noCases")}
+          </p>
+        )
       ) : (
         <div className="flex flex-col gap-1 px-2 pb-2">
           {rows.map((c, i) => {
@@ -184,7 +219,7 @@ export function CasesWidget({ alerts, meId }: { alerts: CursorPage<AlertCase> | 
 /* ─────────── прийом сьогодні ─────────── */
 
 export function DayWidget({ items }: { items: AppointmentView[] | null }) {
-  const { ut } = useLang();
+  const { ut, lang } = useLang();
   const until = useUntil();
   if (!items) return null;
   const sorted = [...items].sort((a, b) => Date.parse(a.startsAt) - Date.parse(b.startsAt));
@@ -200,7 +235,7 @@ export function DayWidget({ items }: { items: AppointmentView[] | null }) {
     <Panel
       title={ut("dayA.dayTitle")}
       icon={<Di.calendarClock />}
-      sub={alive.length ? fill(ut("dashA.daySub"), { n: alive.length, done, ahead }) : undefined}
+      sub={alive.length ? fill(ut("dashA.daySub"), { sessions: withCount(ut("dayA.sessionsN"), alive.length, lang), done, ahead }) : undefined}
       actions={<TextAction to="/today">{ut("dashA.openDay")}</TextAction>}
       flush
     >

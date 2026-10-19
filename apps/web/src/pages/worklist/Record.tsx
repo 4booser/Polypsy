@@ -139,22 +139,35 @@ export function WorkRecord({
   all,
   onReply,
   onNote,
+  settled = true,
 }: {
   item: WorkItem;
   /** Все пункты очереди этого человека — строка открытого */
   all: WorkItem[];
   onReply: () => void;
   onNote: () => void;
+  /**
+   * Выбор остановился на этом пункте. Хронология, заміри и план безопасности
+   * — чтение клинических данных, и каждое сервер пишет в журнал доступа:
+   * J/K по очереди читали и записывали в журнал каждого, мимо кого прошли.
+   * Грузится только устоявшийся выбор (Worklist.tsx, RECORD_SETTLE_MS);
+   * до того на месте панелей — скелет.
+   */
+  settled?: boolean;
 }) {
   const { ut } = useLang();
-  const res = useResource(async () => {
-    const [dyn, timeline, plans] = await Promise.all([
-      api.dynamics(item.userId).catch((): RespondentDynamics | null => null),
-      api.timeline(item.userId).catch((): TimelineItem[] | null => null),
-      api.safetyPlans(item.userId).then((r) => r.versions).catch((): SafetyPlan[] | null => null),
-    ]);
-    return { dyn, timeline, plans };
-  }, [item.userId]);
+  const res = useResource(
+    async () => {
+      const [dyn, timeline, plans] = await Promise.all([
+        api.dynamics(item.userId).catch((): RespondentDynamics | null => null),
+        api.timeline(item.userId).catch((): TimelineItem[] | null => null),
+        api.safetyPlans(item.userId).then((r) => r.versions).catch((): SafetyPlan[] | null => null),
+      ]);
+      return { dyn, timeline, plans };
+    },
+    [item.userId],
+    { enabled: settled },
+  );
   const dyn = res.data?.dyn ?? null;
   const plan = res.data?.plans?.find((p) => p.active) ?? res.data?.plans?.[0] ?? null;
 

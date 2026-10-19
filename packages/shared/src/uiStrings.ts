@@ -14835,11 +14835,15 @@ export const UI = {
   "dashA.appliedNow": { uk: "зміни застосовано одразу", ru: "изменения применены сразу", en: "changes apply at once" },
   "dashA.cancel": { uk: "Скасувати", ru: "Отменить", en: "Cancel" },
   "dashA.cases": { uk: "Випадки ризику", ru: "Случаи риска", en: "Risk cases" },
-  "dashA.casesSub": { uk: "{n} відкриті", ru: "{n} открыто", en: "{n} open" },
+  "dashA.casesSub": {
+    uk: "{n} відкритий|{n} відкриті|{n} відкритих|{n} відкритого",
+    ru: "{n} открытый|{n} открытых|{n} открытых|{n} открытого",
+    en: "{n} open|{n} open|{n} open|{n} open",
+  },
   "dashA.casesSubNorm": {
-    uk: "{n} відкриті, норма розбору {norm}",
-    ru: "{n} открыто, норма разбора {norm}",
-    en: "{n} open, review standard {norm}",
+    uk: "{open}, норма розбору {norm}",
+    ru: "{open}, норма разбора {norm}",
+    en: "{open}, review standard {norm}",
   },
   "dashA.change": { uk: "Змінити", ru: "Изменить", en: "Change" },
   "dashA.colDomain": { uk: "Напрям і методика", ru: "Направление и методика", en: "Domain and instrument" },
@@ -14864,9 +14868,9 @@ export const UI = {
     en: "start screen, widgets, look",
   },
   "dashA.daySub": {
-    uk: "{n} сесій: {done} проведено, {ahead} попереду",
-    ru: "{n} сессий: {done} проведено, {ahead} впереди",
-    en: "{n} sessions: {done} done, {ahead} ahead",
+    uk: "{sessions}: {done} проведено, {ahead} попереду",
+    ru: "{sessions}: {done} проведено, {ahead} впереди",
+    en: "{sessions}: {done} done, {ahead} ahead",
   },
   "dashA.done": { uk: "Готово", ru: "Готово", en: "Done" },
   "dashA.dragHint": {
@@ -14934,14 +14938,18 @@ export const UI = {
   "dashA.passesDaily": { uk: "завершені за днями", ru: "завершённые по дням", en: "completed, by day" },
   "dashA.passesWeekly": { uk: "завершені за тижнями", ru: "завершённые по неделям", en: "completed, by week" },
   "dashA.passesWord": { uk: "проходжень", ru: "прохождений", en: "completions" },
-  "dashA.peopleN": { uk: "{n} людей", ru: "{n} человек", en: "{n} people" },
+  "dashA.peopleN": {
+    uk: "{n} людина|{n} людини|{n} людей|{n} людини",
+    ru: "{n} человек|{n} человека|{n} человек|{n} человека",
+    en: "{n} person|{n} people|{n} people|{n} people",
+  },
   "dashA.pp": { uk: "{d} в. п.", ru: "{d} п. п.", en: "{d} pp" },
   "dashA.prep": { uk: "Підготовка", ru: "Подготовка", en: "Prep" },
   "dashA.reset": { uk: "Повернути як було", ru: "Вернуть как было", en: "Restore defaults" },
   "dashA.shownNote": {
-    uk: "Показано {n} віджетів з {of}. Стартовий екран — «{start}».",
-    ru: "Показано {n} виджетов из {of}. Стартовый экран — «{start}».",
-    en: "Showing {n} of {of} widgets. Start screen: “{start}”.",
+    uk: "Показано {widgets} з {of}. Стартовий екран — «{start}».",
+    ru: "Показано {widgets} из {of}. Стартовый экран — «{start}».",
+    en: "Showing {widgets} of {of}. Start screen: “{start}”.",
   },
   "dashA.signalDay": { uk: "сигнал {d}", ru: "сигнал {d}", en: "signal {d}" },
   "dashA.startCases": {
@@ -14970,7 +14978,11 @@ export const UI = {
     en: "for those who process the inbox",
   },
   "dashA.sumPrev": { uk: "попередні {n}: {prev}", ru: "предыдущие {n}: {prev}", en: "previous {n}: {prev}" },
-  "dashA.sumWindow": { uk: "За {n} днів", ru: "За {n} дней", en: "In {n} days" },
+  "dashA.sumWindow": {
+    uk: "За {n} день|За {n} дні|За {n} днів|За {n} дня",
+    ru: "За {n} день|За {n} дня|За {n} дней|За {n} дня",
+    en: "In {n} day|In {n} days|In {n} days|In {n} days",
+  },
   "dashA.todayUntil": { uk: "Сьогодні до {t}", ru: "Сегодня до {t}", en: "Today until {t}" },
   "dashA.wCasesSub": {
     uk: "завжди видно, поки є відкриті",
@@ -15009,9 +15021,9 @@ export const UI = {
   },
   "dayA.between": { uk: "Між сесіями", ru: "Между сессиями", en: "Between sessions" },
   "dayA.betweenSub": {
-    uk: "{n} швидких дій, кожна відкривається тут же",
-    ru: "{n} быстрых действий, каждое открывается здесь же",
-    en: "{n} quick actions, each opens right here",
+    uk: "{actions}, кожна відкривається тут же",
+    ru: "{actions}, каждое открывается здесь же",
+    en: "{actions}, each opens right here",
   },
   "dayA.blkDone": { uk: "{t}, проведено", ru: "{t}, проведено", en: "{t}, done" },
   "dayA.card": { uk: "Картка", ru: "Карта", en: "Record" },
@@ -15047,9 +15059,9 @@ export const UI = {
     en: "Appointments are over for today.",
   },
   "dayA.daySum": {
-    uk: "{n} сесій: {done} проведено, {ahead} попереду, прийом до {end}",
-    ru: "{n} сессий: {done} проведено, {ahead} впереди, приём до {end}",
-    en: "{n} sessions: {done} done, {ahead} ahead, until {end}",
+    uk: "{sessions}: {done} проведено, {ahead} попереду, прийом до {end}",
+    ru: "{sessions}: {done} проведено, {ahead} впереди, приём до {end}",
+    en: "{sessions}: {done} done, {ahead} ahead, until {end}",
   },
   "dayA.dayTitle": { uk: "Прийом сьогодні", ru: "Приём сегодня", en: "Today’s appointments" },
   "dayA.endOfDay": {
@@ -15227,7 +15239,11 @@ export const UI = {
   "dayA.send": { uk: "Відправити", ru: "Отправить", en: "Send" },
   "dayA.sessionToday": { uk: "Сесія сьогодні", ru: "Сессия сегодня", en: "Session today" },
   "dayA.sessionsList": { uk: "Сесії дня", ru: "Сессии дня", en: "Sessions of the day" },
-  "dayA.sessionsN": { uk: "{n} сесій", ru: "{n} сессий", en: "{n} sessions" },
+  "dayA.sessionsN": {
+    uk: "{n} сесія|{n} сесії|{n} сесій|{n} сесії",
+    ru: "{n} сессия|{n} сессии|{n} сессий|{n} сессии",
+    en: "{n} session|{n} sessions|{n} sessions|{n} sessions",
+  },
   "dayA.signalAt": { uk: "Сигнал ризику, {d}, {t}", ru: "Сигнал риска, {d}, {t}", en: "Risk signal, {d}, {t}" },
   "dayA.since": { uk: "з {d}", ru: "с {d}", en: "since {d}" },
   "dayA.sinceLast": { uk: "З минулої сесії", ru: "С прошлой сессии", en: "Since the last session" },
@@ -15257,7 +15273,11 @@ export const UI = {
   "invA.clear": { uk: "Очистити", ru: "Очистить", en: "Clear" },
   "invA.createdAt": { uk: "створено о {t}", ru: "создано в {t}", en: "created at {t}" },
   "invA.createdBy": { uk: "{name}, створено {d}", ru: "{name}, создано {d}", en: "{name}, created {d}" },
-  "invA.entriesOf": { uk: "{n} з {of} входів", ru: "{n} из {of} входов", en: "{n} of {of} sign-ins" },
+  "invA.entriesOf": {
+    uk: "{n} з {of} входу|{n} з {of} входів|{n} з {of} входів|{n} з {of} входу",
+    ru: "{n} из {of} входа|{n} из {of} входов|{n} из {of} входов|{n} из {of} входа",
+    en: "{n} of {of} sign-in|{n} of {of} sign-ins|{n} of {of} sign-ins|{n} of {of} sign-ins",
+  },
   "invA.formLead": {
     uk: "Пацієнт зареєструється сам і отримає призначене.",
     ru: "Пациент зарегистрируется сам и получит назначенное.",
@@ -16315,6 +16335,23 @@ export const UI = {
     uk: "Увійдіть знову, щоб продовжити. Відповіді, які ще не відправлено, збережено на цьому пристрої.",
     ru: "Войдите снова, чтобы продолжить. Ответы, которые ещё не отправлены, сохранены на этом устройстве.",
     en: "Sign in again to continue. Answers that have not been sent yet are kept on this device.",
+  },
+
+  // ── v2-fix-day ──
+  "dayA.casesFailed": {
+    uk: "Випадки ризику не завантажилися: відкриті сигнали тут можуть бути не показані",
+    ru: "Случаи риска не загрузились: открытые сигналы здесь могут быть не показаны",
+    en: "Risk cases did not load: open signals may be missing here",
+  },
+  "dayA.nActions": {
+    uk: "{n} швидка дія|{n} швидкі дії|{n} швидких дій|{n} швидкої дії",
+    ru: "{n} быстрое действие|{n} быстрых действия|{n} быстрых действий|{n} быстрого действия",
+    en: "{n} quick action|{n} quick actions|{n} quick actions|{n} quick actions",
+  },
+  "dashA.nWidgets": {
+    uk: "{n} віджет|{n} віджети|{n} віджетів|{n} віджета",
+    ru: "{n} виджет|{n} виджета|{n} виджетов|{n} виджета",
+    en: "{n} widget|{n} widgets|{n} widgets|{n} widgets",
   },
 } as const satisfies Record<string, UiEntry>;
 
