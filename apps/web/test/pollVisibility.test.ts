@@ -92,21 +92,43 @@ describe("опрос и скрытая вкладка", () => {
 describe("кто чем опрашивает", () => {
   const src = (p: string) => readFileSync(resolve(import.meta.dir, "../src", p), "utf8");
 
-  test("бейдж «Сьогодні» — числом без людей и только видимой вкладкой", () => {
+  /** Объявление счётчика рельсы целиком: от `const имя = useResource(` до следующего объявления */
+  const counter = (app: string, name: string): string => {
+    const start = app.indexOf(`const ${name} = useResource(`);
+    expect(start, `счётчик ${name} не найден`).toBeGreaterThan(-1);
+    const rest = app.slice(start + 1);
+    const end = rest.search(/\n {2}(const |useLiveReload\()/);
+    return app.slice(start, start + 1 + end);
+  };
+
+  test("числа рельсы — маршрутами чисел: без имён и без строки журнала, только тому, кому их отдадут", () => {
     const app = src("App.tsx");
-    expect(app).not.toMatch(/api\.today\(/);
-    const line = app.split("\n").find((l) => l.includes("const todayRes"));
-    expect(line).toContain("api.todayCount()");
-    expect(line).toContain("shownTally");
-    expect(app).toContain("const shownTally = { ...tally, pollHidden: false };");
+    // списки с людьми ради числа больше не опрашиваются
+    expect(app).not.toMatch(/api\.(today|alertCases|referrals|worklist)\(/);
+    const expectations: [string, string, string | null][] = [
+      ["alertCount", "api.alertCaseCount()", '"alerts.review"'],
+      ["referralCount", "api.referralCount()", '"referrals.manage"'],
+      ["worklistRes", "api.worklistCount()", '"patients.read"'],
+      ["todayRes", "api.todayCount()", '"patients.read"'],
+      ["messagesRes", ".unreadCount()", null],
+    ];
+    for (const [name, call, permission] of expectations) {
+      const block = counter(app, name);
+      expect(block, name).toContain(call);
+      if (permission) expect(block, name).toContain(`enabled: allowed(${permission})`);
+    }
+    expect(app).toContain("const allowed = (permission: Permission) => counting && can(permission);");
   });
 
-  test("скрытую вкладку опрашивает только число тревог (значок вкладки); очередь и направления — нет", () => {
+  test("скрытую вкладку опрашивает только число тревог (значок вкладки); остальные числа встают", () => {
     const app = src("App.tsx");
-    const tallyOf = (name: string) => app.split("\n").find((l) => l.includes(`const ${name} = useResource`));
-    expect(tallyOf("alertCount")).toMatch(/, tally\);$/);
-    expect(tallyOf("referralCount")).toMatch(/shownTally\);$/);
-    expect(tallyOf("worklistRes")).toMatch(/shownTally\);$/);
+    expect(app).toContain("const shownTally = { ...tally, pollHidden: false };");
+    expect(app).toMatch(/const tally = \{[^}]*pollHidden: true/);
+    expect(counter(app, "alertCount")).toContain("...tally,");
+    for (const name of ["referralCount", "worklistRes", "todayRes", "messagesRes"]) {
+      expect(counter(app, name), name).toContain("...shownTally");
+      expect(counter(app, name), name).not.toMatch(/\.\.\.tally\b/);
+    }
   });
 
   test("«Огляд» техпанели — сводка с рядами и ошибками одним опросом, сутки не берутся дважды", () => {

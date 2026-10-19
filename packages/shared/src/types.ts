@@ -3130,6 +3130,19 @@ export interface ReferralPage extends Page<Referral> {
   counts?: Record<ReferralStatus, number>;
 }
 
+/**
+ * Реестр направлений числами — для бейджа навигации (GET /api/referrals/count).
+ *
+ * Та же зона, что у списка, без людей и без строки журнала. `total` — ровно
+ * `total` списка без `?all=1` (всё, кроме завершённых): его и показывал
+ * бейдж. `open` — виписані и прийняті, то, что ждёт действия (вид
+ * «Відкриті» реестра и вид «направление» очереди работы).
+ */
+export interface ReferralCount {
+  total: number;
+  open: number;
+}
+
 /** Сводка для консилиума (6.5): всё о пациенте на одной странице */
 export interface CaseSummary {
   userId: string;
@@ -4769,6 +4782,15 @@ export interface AlertCasePage extends Page<AlertCase> {
   facets?: AlertCaseFacets;
 }
 
+/**
+ * Очередь случаев числом — для бейджа навигации и значка вкладки
+ * (GET /api/alert-cases/count): сколько людей с неразобранными случаями,
+ * ровно `total` открытой очереди по людям, без имён и без строки журнала.
+ */
+export interface AlertCaseCount {
+  total: number;
+}
+
 /** duplicate ставит не человек, а чистка черновиков-призраков (#197): случай закрыт как дубль сданной попытки */
 export type AlertOutcome = "confirmed" | "not_confirmed" | "needs_followup" | "duplicate";
 
@@ -4853,6 +4875,17 @@ export interface WorkItem {
   assignedTo: string | null;
   since: string;
   href: string;
+}
+
+/**
+ * Очередь работы числами — для бейджа навигации (GET /api/worklist/count):
+ * те же `total`, `byKind` и `mine`, что у списка, без строк, без имён и без
+ * строки журнала.
+ */
+export interface WorklistCount {
+  total: number;
+  byKind: Record<WorkKind, number>;
+  mine: number;
 }
 
 export interface Worklist {

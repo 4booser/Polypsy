@@ -14,7 +14,7 @@ import { isThemeChoice, restoreStoredTheme, setThemeChoice, useResolvedTheme, ty
 import type { AccountCard } from "./shell/UserMenu";
 import { useLiveReload } from "./events";
 import { useResource } from "./useResource";
-import type { WorkspacePrefs } from "@quizzy/shared";
+import type { Permission, WorkspacePrefs } from "@quizzy/shared";
 import { peopleLists } from "./pages/people/model";
 import { Loading, useAction } from "./ui";
 import { canOpenOps, opsHome } from "./pages/ops/model";
@@ -455,33 +455,51 @@ export default function App() {
    * держит прежнее число, пока следующий такт его не обновит. Ключ — кто
    * вошёл: смена человека за тем же компьютером не покажет ему чужие числа.
    */
+  /*
+   * Числа — маршрутами чисел (/count у очереди, случаев, направлений и дня):
+   * без имён и без строки журнала на каждый такт. Прежде каждый такт брал
+   * первую страницу списка — с расшифрованными именами людей — и писал в
+   * журнал «смотрел очередь / случаи / направления / день» строку, которой
+   * никто не смотрел (волна 27).
+   *
+   * И только тому, кому сервер их отдаст: без права каждый такт был отказом
+   * и строкой access.denied в журнале, а бейдж всё равно стоял нулём.
+   */
   // и в скрытой вкладке: значок с числом тревог на ней ради этого и заведён;
   // прежние числа под новым вошедшим не держим — это были бы его числа только с виду
-  const tally = { enabled: counting, pollMs: COUNTS_POLL_MS, pollHidden: true, keep: false };
+  const tally = { pollMs: COUNTS_POLL_MS, pollHidden: true, keep: false };
   /*
    * Остальные числа рельсы скрытую вкладку не опрашивают (волна 27): на
    * значке вкладки их нет, а вернувшись, человек видит их перечитанными
    * сразу (refetchOnWindowFocus у живых загрузок, useResource.ts). Забытая
-   * вкладка иначе сутками писала бы в журнал чтение очереди и направлений.
+   * вкладка иначе сутками опрашивала бы сервер раз в минуту.
    */
   const shownTally = { ...tally, pollHidden: false };
-  // счётчик считает случаи, а не сработавшие пункты: в навигации должно
+  const allowed = (permission: Permission) => counting && can(permission);
+  // счётчик считает людей, а не сработавшие пункты: в навигации должно
   // стоять число людей, которых надо разобрать, а не число сигналов
-  const alertCount = useResource(() => api.alertCases({ limit: "1" }).then((p) => p.total ?? 0), [user?.id], tally);
+  const alertCount = useResource(() => api.alertCaseCount().then((p) => p.total), [user?.id], {
+    ...tally,
+    enabled: allowed("alerts.review"),
+  });
   // направления в том же такте: незакрытое направление ждёт так же долго
-  // общее число — с первой страницы; длина страницы упёрлась бы в её размер
-  const referralCount = useResource(() => api.referrals().then((r) => r.total ?? r.items.length), [user?.id], shownTally);
-  const worklistRes = useResource(() => api.worklist().then((w) => w.total), [user?.id], shownTally);
+  const referralCount = useResource(() => api.referralCount().then((r) => r.total), [user?.id], {
+    ...shownTally,
+    enabled: allowed("referrals.manage"),
+  });
+  const worklistRes = useResource(() => api.worklistCount().then((w) => w.total), [user?.id], {
+    ...shownTally,
+    enabled: allowed("patients.read"),
+  });
   /*
    * В бейдже — сколько ещё не принято, а не сколько записано. Число,
    * которое не убывает по ходу дня, ничего не сообщает: к обеду оно то
    * же самое, что утром, и смотреть на него перестают.
-   *
-   * Числом с сервера (/api/clinic/today/count), а не списком дня: список
-   * на каждом такте расшифровывал имена и поводы всех приёмов и писал в
-   * журнал clinic.today — строку «смотрел день», которого никто не открывал.
    */
-  const todayRes = useResource(() => api.todayCount().then((d) => d.waiting), [user?.id], shownTally);
+  const todayRes = useResource(() => api.todayCount().then((d) => d.waiting), [user?.id], {
+    ...shownTally,
+    enabled: allowed("patients.read"),
+  });
   /*
    * Непрочитанные письма пациентов — число у «Листування» на рельсе. Те же
    * разговоры, что в списке экрана переписки (GET /api/messages открыт
@@ -497,7 +515,7 @@ export default function App() {
         .then((r) => r.unread)
         .catch(() => 0),
     [user?.id],
-    tally,
+    { ...shownTally, enabled: counting },
   );
   useLiveReload(
     ["alert.created", "case.changed"],
