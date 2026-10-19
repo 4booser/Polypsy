@@ -14,7 +14,8 @@ import { Button, ButtonLink, Tag } from "../../ui/primitives";
 import { useUrlState } from "../../ui/urlState";
 import { useResource } from "../../useResource";
 import { AssignDrawer } from "../../components/AssignDrawer";
-import { GroupEditDrawer, useGroupKeys } from "./drawers";
+import { GroupEditDrawer } from "./drawers";
+import { useHotkeys } from "../../ui/keys";
 import { HeartIcon, Pi } from "./icons";
 import { pluralForm } from "../../ui/plural";
 import {
@@ -137,14 +138,15 @@ export default function PatientGroups() {
     const key = (document.activeElement as HTMLElement | null)?.closest<HTMLElement>("tr[data-key]")?.dataset.key;
     return rows.find((g) => g.id === key) ?? null;
   };
-  useGroupKeys(
+  /* N — новая группа, E — правка, F — обрана: по месту клавиши, в любой раскладке (ui/keys.ts) */
+  useHotkeys(
     {
-      add: () => open({ kind: "edit", id: null }),
-      edit: () => {
+      n: () => open({ kind: "edit", id: null }),
+      e: () => {
         const g = focused();
         if (g) open({ kind: "edit", id: g.id });
       },
-      fav: () => {
+      f: () => {
         const g = focused();
         if (g) void toggleFavourite(g);
       },

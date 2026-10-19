@@ -12,7 +12,7 @@ import { fill } from "./dashboard/model";
 import { chipLabel, stamp, WorkIcon } from "./today/ActNow";
 import { useDayDrawer } from "./today/drawers";
 import { Di } from "./today/icons";
-import { useCodeKeys } from "./today/keys";
+import { useHotkeys } from "../ui/keys";
 import { WorkRecord } from "./worklist/Record";
 import { FILTER_KEY, isWorkView, shownWork, stepWork, workGroups, workKey, workWhy, type WorkView } from "./worklist/model";
 
@@ -79,12 +79,13 @@ export default function WorklistPage() {
   const reply = () => current && openReply({ patientId: current.userId, patientName: current.userName, threadId: current.kind === "message" ? current.id : null });
   const note = () => current && openNote({ patientId: current.userId, patientName: current.userName });
 
-  useCodeKeys(
+  /* по месту клавиши, а не по букве: на кириллической раскладке J печатает «о» (ui/keys.ts) */
+  useHotkeys(
     {
-      KeyJ: () => select(stepWork(keys, current ? workKey(current) : null, 1)),
-      KeyK: () => select(stepWork(keys, current ? workKey(current) : null, -1)),
-      KeyM: current ? reply : undefined,
-      KeyN: current ? note : undefined,
+      j: () => select(stepWork(keys, current ? workKey(current) : null, 1)),
+      k: () => select(stepWork(keys, current ? workKey(current) : null, -1)),
+      m: current ? reply : undefined,
+      n: current ? note : undefined,
     },
     !isOpen,
   );

@@ -35,7 +35,7 @@ import {
   shiftDate,
   urgentCases,
 } from "./today/model";
-import { useCodeKeys } from "./today/keys";
+import { useHotkeys } from "../ui/keys";
 import { Prep } from "./today/Prep";
 
 export { AppointmentRow } from "./today/Agenda";
@@ -163,14 +163,15 @@ export default function TodayPage() {
   const replyHero = () => {
     if (hero && heroMsg) openReply({ patientId: hero.userId, patientName: hero.userName, threadId: heroMsg.id });
   };
-  useCodeKeys(
+  /* по месту клавиши, а не по букве: на кириллической раскладке J печатает «о» (ui/keys.ts) */
+  useHotkeys(
     {
-      KeyJ: () => step(1),
-      KeyK: () => step(-1),
-      KeyN: () => note(selected),
-      KeyP: selected ? openPrep : undefined,
-      KeyR: hero ? () => navigate(reviewHref(hero.userId)) : undefined,
-      KeyM: heroMsg ? replyHero : undefined,
+      j: () => step(1),
+      k: () => step(-1),
+      n: () => note(selected),
+      p: selected ? openPrep : undefined,
+      r: hero ? () => navigate(reviewHref(hero.userId)) : undefined,
+      m: heroMsg ? replyHero : undefined,
     },
     !isOpen,
   );

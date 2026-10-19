@@ -6,7 +6,7 @@ import { Avatar, Drawer, DrawerSection, Loading, useToast } from "../../ui";
 import { cx } from "../../ui/cx";
 import { SearchField } from "../../ui/filters";
 import { Ic } from "../../ui/icons";
-import { submitOnCtrlEnter, useHotkeys } from "../../ui/keys";
+import { submitOnCtrlEnter } from "../../ui/keys";
 import { Button, Field, Input, Switch, Tag, Textarea } from "../../ui/primitives";
 import { useResource } from "../../useResource";
 import { Pi } from "./icons";
@@ -312,13 +312,4 @@ export function AddMembersDrawer({
       </DrawerSection>
     </Drawer>
   );
-}
-
-/** Клавиши ящиков группы на экране: E — правка, N — новая (обе раскладки) */
-export function useGroupKeys(map: { edit?: () => void; add?: () => void; fav?: () => void }, enabled: boolean) {
-  const keys: Record<string, () => void> = {};
-  if (map.edit) Object.assign(keys, { e: map.edit, у: map.edit });
-  if (map.add) Object.assign(keys, { n: map.add, т: map.add });
-  if (map.fav) Object.assign(keys, { f: map.fav, а: map.fav });
-  useHotkeys(keys, enabled);
 }

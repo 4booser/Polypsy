@@ -14,7 +14,8 @@ import { Button, ButtonLink, Tag } from "../../ui/primitives";
 import { useResource } from "../../useResource";
 import { PickGroupDialog } from "./dialogs";
 import { AssignDrawer } from "../../components/AssignDrawer";
-import { AddMembersDrawer, GroupEditDrawer, useGroupKeys } from "./drawers";
+import { AddMembersDrawer, GroupEditDrawer } from "./drawers";
+import { useHotkeys } from "../../ui/keys";
 import { GroupState } from "./GroupState";
 import { HeartIcon, Pi } from "./icons";
 import { pluralForm } from "../../ui/plural";
@@ -130,7 +131,8 @@ export default function PatientGroupCard() {
     }
   };
 
-  useGroupKeys({ edit: () => open("edit"), fav: () => void toggleFavourite() }, drawer === null && !!group);
+  /* E — правка, F — обрана: по месту клавиши, в любой раскладке (ui/keys.ts) */
+  useHotkeys({ e: () => open("edit"), f: () => void toggleFavourite() }, drawer === null && !!group);
 
   if (card.error) return <Loading error={card.error} onRetry={card.reload} />;
   if (!group) return <Loading rows={6} />;

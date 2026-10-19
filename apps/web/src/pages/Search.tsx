@@ -150,8 +150,8 @@ export default function Search() {
     el?.focus();
     el?.scrollIntoView({ block: "nearest" });
   };
-  useHotkeys({ "/": () => inputRef.current?.focus(), j: () => stepFocus(1), k: () => stepFocus(-1), о: () => stepFocus(1), л: () => stepFocus(-1) }, !drawerOpen);
-  useHotkeys({ j: () => nextHit(1), k: () => nextHit(-1), о: () => nextHit(1), л: () => nextHit(-1) }, drawerOpen);
+  useHotkeys({ "/": () => inputRef.current?.focus(), j: () => stepFocus(1), k: () => stepFocus(-1) }, !drawerOpen);
+  useHotkeys({ j: () => nextHit(1), k: () => nextHit(-1) }, drawerOpen);
 
   const toggle = (set: Set<string>, value: string) => {
     const next = new Set(set);
