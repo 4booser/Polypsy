@@ -2,15 +2,17 @@ import { useCallback, useMemo, useState } from "react";
 import { ScrollView, View } from "react-native";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import type { AlertCase, RespondentDynamics, Worklist } from "@quizzy/shared";
+import { isAborted } from "@/api/abort";
 import { api } from "@/api/client";
 import { isAccessDenied, shownAfterFailure } from "@/api/access";
+import { useReads } from "@/api/useReads";
 import { cache } from "@/offline/cache";
 import { activeOwner } from "@/offline/owner";
 import { useLang } from "@/lang";
 import { useColors } from "@/theme";
 import { ActionBar, Btn } from "@/ui/Button";
 import { Callout } from "@/ui/Panel";
-import { useNow, useOpenCase, useSurveyContents, useSurveyIndex } from "@/staff/data";
+import { useNow, useOpenCase, usePersonHead, useSurveyContents } from "@/staff/data";
 import { dm, hm, instrumentRows, shortName } from "@/staff/model";
 import { ReviewSheet } from "@/staff/ReviewSheet";
 import { PatientHead, WorkStrip } from "@/staff/patient";
@@ -45,8 +47,10 @@ function RoundsCardScreen() {
   const router = useRouter();
   const now = useNow();
   const { userId } = useLocalSearchParams<{ userId: string }>();
-  const { norm } = useSurveyIndex();
   const { open, reload: reloadCase } = useOpenCase(userId);
+  // имя и подразделение — из строки обхода, сразу: карта может идти секунды
+  const head = usePersonHead(userId);
+  const reads = useReads();
 
   const [data, setData] = useState<RespondentDynamics | null>(null);
   const [cachedAt, setCachedAt] = useState<string | null>(null);
@@ -56,12 +60,15 @@ function RoundsCardScreen() {
 
   const load = useCallback(async () => {
     if (!userId) return;
+    const signal = reads.next();
     try {
-      const { card, cachedAt: at } = await api.roundsCard(userId);
+      const { card, cachedAt: at } = await api.roundsCard(userId, { signal });
       setData(card);
       setCachedAt(at);
       setError(null);
     } catch (e) {
+      // ушли с экрана, пока карта шла (api/abort.ts) — показывать нечего и некому
+      if (isAborted(e)) return;
       /*
        * Отказ доступа (#126) — карта, открытая раньше, больше не положена:
        * экран её сбрасывает и показывает ошибку. Без сети показанное остаётся.
@@ -70,12 +77,14 @@ function RoundsCardScreen() {
       setCachedAt((at) => shownAfterFailure(at, e));
       setError(isAccessDenied(e) || !(e instanceof Error) ? ut("rounds.loadFailed") : e.message);
     }
-  }, [userId, ut]);
+  }, [userId, ut, reads]);
 
+  // уход с экрана обрывает чтение карты; вернулись — читаем заново
   useFocusEffect(
     useCallback(() => {
       void load();
-    }, [load]),
+      return reads.cancel;
+    }, [load, reads]),
   );
 
   // что от специалиста ждут по этому человеку — из снимка обхода, он есть и без сети
@@ -96,9 +105,13 @@ function RoundsCardScreen() {
   const openFull = () => router.push({ pathname: "/analytics/patients/[userId]", params: { userId: userId!, back: "rounds" } });
 
   if (!data) {
+    // пока карта идёт — шапка из того, что уже на устройстве; ошибка — без имени: карта может быть уже не положена
+    const hint = error ? null : head;
     return (
       <View style={{ flex: 1, backgroundColor: c.ground }}>
-        <StaffNav back={back} title={ut("rounds.title")} />
+        <StaffNav back={back} title={hint ? shortName(hint.name) : ut("rounds.title")}>
+          {hint ? <PatientHead name={hint.name} age={hint.age} sex={hint.sex} extra={unit ?? hint.unit} /> : null}
+        </StaffNav>
         {error ? <StateBlock icon="circle-alert" title={error} action={{ label: ut("common.retry"), onPress: () => void load() }} /> : <Loading />}
       </View>
     );
@@ -127,7 +140,6 @@ function RoundsCardScreen() {
         {open ? (
           <RiskNow
             item={open}
-            norm={norm(open.surveyId)}
             now={now}
             text={[`${open.surveyTitle}, ${dm(open.lastAlertAt)}, ${hm(open.lastAlertAt)}`, open.signals[0]?.label].filter(Boolean).join(": ")}
             onReview={() => setReview(open)}
@@ -175,7 +187,7 @@ function RoundsCardScreen() {
 
       <ReviewSheet
         item={review}
-        norm={review ? norm(review.surveyId) : null}
+        dynamics={data}
         onClose={() => setReview(null)}
         onDone={() => {
           setReview(null);

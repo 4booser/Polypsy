@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, View } from "react-native";
+import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, View } from "react-native";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import {
   contentLangNotice,
@@ -24,6 +24,7 @@ import { useExit } from "@/nav/useExit";
 import { finishFailureText, finishSubmission } from "@/runner/finish";
 import { resultView } from "@/runner/resultView";
 import { useOpenReport } from "@/report/useOpenReport";
+import { type FillState, useFillSubject } from "@/staff/data";
 import { missedBefore } from "@/runner/progress";
 import { restoreDraft } from "@/runner/resume";
 import { draftsToResume, dropOwnDraft } from "@/runner/ownDraft";
@@ -68,7 +69,20 @@ export default function TakeSurveyScreen() {
   const { id, onBehalfOf } = useLocalSearchParams<{ id: string; onBehalfOf?: string }>();
   // чей черновик: локальная копия лежит под владельцем (offline/cache.ts)
   const owner = useAuth().user?.id ?? null;
-  const [patient, setPatient] = useState<{ fullName: string; sex: "male" | "female" | null; age: number | null } | null>(null);
+  /*
+   * Кого заполняем в режиме обхода (staff/data.ts, useFillSubject).
+   *
+   * Карточка «Заповнюєте за» нужна, чтобы не перепутать человека, когда
+   * заполняют подряд нескольких, а пол и возраст уезжают со сдачей: нормы
+   * методик стратифицированы, и чужой профиль даёт у койки неверный
+   * результат. Человек — из карты, с которой пришли (у койки она лежит на
+   * устройстве), без второго чтения всей его истории; нет её — суженное
+   * чтение. Пока человек не известен, «Почати» ждёт: здесь стояло
+   * многоточие вместо имени и рабочая кнопка, и начать можно было, не видя,
+   * за кого.
+   */
+  const fill = useFillSubject(onBehalfOf, id);
+  const patient = fill.state?.kind === "known" ? fill.state.person : null;
 
   const [survey, setSurvey] = useState<SurveyFull | null>(null);
   const [answers, setAnswers] = useState<Map<string, Answer>>(new Map());
@@ -182,34 +196,6 @@ export default function TakeSurveyScreen() {
    * Выход из незавершённого теста — потеря сессии измерения (тайминги
    * начнутся заново). Системный жест «назад» перехватываем и переспрашиваем.
    */
-  /*
-   * Кого заполняем в режиме обхода.
-   *
-   * Состояние было, а загрузки не было: на карточке стояло многоточие
-   * вместо имени, а подсчёт уходил без пола и возраста. И то, и другое —
-   * прямо против написанного рядом: карточка нужна, чтобы не перепутать
-   * человека, когда заполняют подряд нескольких, а нормы методик
-   * стратифицированы, и чужой профиль даёт у койки неверный результат.
-   *
-   * Отказ не рушит прохождение: без профиля баллы считаются как есть, а
-   * имя остаётся многоточием — это хуже, чем с профилем, но лучше, чем
-   * невозможность заполнить бланк у койки.
-   */
-  useEffect(() => {
-    if (!onBehalfOf) return;
-    let cancelled = false;
-    api
-      .roundsCard(onBehalfOf)
-      .then(({ card }) => {
-        if (cancelled) return;
-        setPatient({ fullName: card.fullName, sex: card.sex, age: card.age });
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [onBehalfOf]);
-
   useEffect(() => {
     const sub = navigation.addListener("beforeRemove", (e) => {
       if (result || answers.size === 0) return; // завершено или не начато
@@ -782,17 +768,7 @@ export default function TakeSurveyScreen() {
                * заполняют подряд нескольких, и ошибиться человеком легче, чем
                * кажется; заметить такую ошибку потом будет негде.
                */
-              <BandCard>
-                <Avatar name={patient?.fullName ?? ""} size={44} />
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <T v="sub" tone="text2">
-                    {ut("rounds.fillingFor")}
-                  </T>
-                  <T v="headline" size={18}>
-                    {patient?.fullName ?? "…"}
-                  </T>
-                </View>
-              </BandCard>
+              <FillingFor state={fill.state} onRetry={fill.retry} />
             ) : resumed ? (
               <BandCard>
                 <Squircle icon="history" />
@@ -842,6 +818,9 @@ export default function TakeSurveyScreen() {
             flex={2}
             icon="arrow-right"
             iconEnd
+            // за пациента — только когда видно, за кого: имя на карточке выше и пол с возрастом для норм
+            disabled={!!onBehalfOf && !patient}
+            accessibilityHint={onBehalfOf && !patient ? ut("rounds.subjectNeeded") : undefined}
             onPress={() => {
               if (!resumed) {
                 sessionStart.current = Date.now();
@@ -1125,6 +1104,54 @@ function OkMark({ queued }: { queued: boolean }) {
     >
       <Icon name={queued ? "cloud-off" : "check"} size={26} color={queued ? c.text2 : c.good} />
     </View>
+  );
+}
+
+/**
+ * «Заповнюєте за: …» в трёх состояниях (staff/data.ts, useFillSubject).
+ *
+ * Человек известен — аватар и имя. Пока грузится — имя, если его уже видели
+ * в строке, на которую нажали, и «Завантажуємо дані пацієнта…» с
+ * индикатором: «Почати» ждёт. Не загрузился — что случилось и «Повторити».
+ */
+function FillingFor({ state, onRetry }: { state: FillState | null; onRetry: () => void }) {
+  const c = useColors();
+  const { ut } = useLang();
+  const name = state?.kind === "known" ? state.person.fullName : (state?.head?.name ?? null);
+  const failed = state?.kind === "failed";
+  return (
+    <BandCard>
+      {name ? <Avatar name={name} size={44} /> : <Squircle icon={failed ? "circle-alert" : "user-round"} tone={failed ? "warn" : "n"} size={44} />}
+      <View style={{ flex: 1, minWidth: 0 }} accessibilityLiveRegion="polite">
+        <T v="sub" tone="text2">
+          {ut("rounds.fillingFor")}
+        </T>
+        {name ? (
+          <T v="headline" size={18}>
+            {name}
+          </T>
+        ) : null}
+        {state?.kind === "loading" ? (
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginTop: 4 }}>
+            <ActivityIndicator size="small" color={c.vink} />
+            <T v="note" tone="text2" style={{ flex: 1 }}>
+              {ut("rounds.subjectLoading")}
+            </T>
+          </View>
+        ) : null}
+        {state?.kind === "failed" ? (
+          <View style={{ marginTop: 4, gap: 2 }}>
+            <T v="note" weight={700} color={c.warn}>
+              {ut("rounds.subjectFailed")}
+            </T>
+            {state.message ? <T v="sub">{state.message}</T> : null}
+            <View style={{ marginTop: 8, alignSelf: "flex-start" }}>
+              <Btn title={ut("common.retry")} size="s" icon="refresh-cw" onPress={onRetry} />
+            </View>
+          </View>
+        ) : null}
+      </View>
+    </BandCard>
   );
 }
 

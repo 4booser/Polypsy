@@ -2,7 +2,9 @@ import { useCallback, useState } from "react";
 import { ScrollView, View } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import type { MyDynamics, SafetyPlan } from "@quizzy/shared";
+import { isAborted } from "@/api/abort";
 import { api } from "@/api/client";
+import { useReads } from "@/api/useReads";
 import { codeOf } from "@/catalog/surveysTab";
 import { Loader } from "@/components/ui";
 import { personName } from "@/components/patient/Avatar";
@@ -40,18 +42,22 @@ export default function HealthScreen() {
   const router = useRouter();
   const [data, setData] = useState<MyDynamics | null | undefined>(undefined);
   const [plan, setPlan] = useState<SafetyPlan | null>(null);
+  const reads = useReads();
 
   useFocusEffect(
     useCallback(() => {
+      // динамика — медленное чтение: уход с вкладки его обрывает (api/useReads.ts), вернулись — читаем заново
       void api
-        .myDynamics()
+        .myDynamics({ signal: reads.next() })
         .then(setData)
-        .catch(() => setData(null));
+        .catch((e) => !isAborted(e) && setData(null));
+      // план — без отмены: он ложится в кэш устройства на кризис без сети (api/client.ts, mySafetyPlan)
       void api
         .mySafetyPlan()
         .then((r) => setPlan(r.plan))
         .catch(() => {});
-    }, []),
+      return reads.cancel;
+    }, [reads]),
   );
 
   if (data === undefined) return <Loader />;

@@ -1,3 +1,4 @@
+import { heads } from "../staff/people";
 import { reviewDrafts } from "../staff/reviewDrafts";
 import { forgetOwnerCache } from "./cache";
 import { draftLanes, ownerLanePrefix } from "./draftLane";
@@ -42,10 +43,12 @@ export function logoutNotice(unsent: { submissions: number; drafts: number }): L
  *
  * Черновики разбора сигналов (решение и заметка о пациенте) живут в памяти
  * и уходят все: следующий на этом планшете не должен найти их в листе
- * разбора того же случая (staff/reviewDrafts.ts).
+ * разбора того же случая (staff/reviewDrafts.ts). С ними — запомненные
+ * шапки открытых людей (staff/people.ts).
  */
 export function leaveDevice(owner: string | null): void {
   reviewDrafts.forgetAll();
+  heads.forgetAll();
   if (!owner) return;
   signedOut(owner);
   try {

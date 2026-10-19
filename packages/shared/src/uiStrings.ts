@@ -16307,6 +16307,23 @@ export const UI = {
     ru: "Не удалось проверить сигналы риска",
     en: "Could not check risk signals",
   },
+
+  // ── v2-perf-mobile ──
+  "rounds.subjectLoading": {
+    uk: "Завантажуємо дані пацієнта…",
+    ru: "Загружаем данные пациента…",
+    en: "Loading the patient’s details…",
+  },
+  "rounds.subjectFailed": {
+    uk: "Не вдалося завантажити дані пацієнта",
+    ru: "Не удалось загрузить данные пациента",
+    en: "Could not load the patient’s details",
+  },
+  "rounds.subjectNeeded": {
+    uk: "Стане доступно, коли завантажаться дані пацієнта",
+    ru: "Станет доступно, когда загрузятся данные пациента",
+    en: "Available once the patient’s details have loaded",
+  },
 } as const satisfies Record<string, UiEntry>;
 
 export type UiKey = keyof typeof UI;

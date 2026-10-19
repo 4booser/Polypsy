@@ -2,7 +2,9 @@ import { useCallback, useState } from "react";
 import { Pressable, ScrollView, View } from "react-native";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import type { Severity, SurveyResponse, UiKey } from "@quizzy/shared";
+import { isAborted } from "@/api/abort";
 import { api, type ResponseDetail } from "@/api/client";
+import { useReads } from "@/api/useReads";
 import { useLang } from "@/lang";
 import { useOpenReport } from "@/report/useOpenReport";
 import { formatDuration, useColors } from "@/theme";
@@ -33,22 +35,33 @@ export default function ResponsesScreen() {
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filter>("all");
   const [query, setQuery] = useState("");
+  const reads = useReads();
+  // раскрытая строка — своим чтением: раскрыли другую, пока первая шла, — первая отменяется
+  const details = useReads();
 
   const load = useCallback(async () => {
     if (!id) return;
+    const signal = reads.next();
     try {
-      setRows(await api.surveyResponses(id));
+      setRows(await api.surveyResponses(id, { signal }));
       setError(null);
     } catch (e) {
+      if (isAborted(e)) return;
       setError(e instanceof Error ? e.message : ut("mrs.loadFailed"));
       setRows((r) => r ?? []);
     }
-  }, [id, ut]);
+  }, [id, ut, reads]);
 
+  // уход с экрана обрывает чтения списка и раскрытой строки; вернулись — список читаем заново
   useFocusEffect(
     useCallback(() => {
       void load();
-    }, [load]),
+      return () => {
+        reads.cancel();
+        details.cancel();
+        setOpening(null);
+      };
+    }, [load, reads, details]),
   );
 
   const toggle = async (r: SurveyResponse) => {
@@ -56,13 +69,16 @@ export default function ResponsesScreen() {
       setDetail(null);
       return;
     }
+    const signal = details.next();
     setOpening(r.id);
     try {
-      setDetail(await api.responseDetail(r.id));
+      setDetail(await api.responseDetail(r.id, { signal }));
     } catch (e) {
+      if (isAborted(e)) return;
       setError(e instanceof Error ? e.message : ut("mrs.loadFailed"));
     } finally {
-      setOpening(null);
+      // отменённое чтение «открывается» уже другой строкой — её отметку не снимаем
+      if (!signal.aborted) setOpening(null);
     }
   };
 

@@ -2,7 +2,9 @@ import { useCallback, useState } from "react";
 import { Pressable, RefreshControl, ScrollView, View } from "react-native";
 import { Redirect, useFocusEffect, useRouter } from "expo-router";
 import type { AlertCase, OverviewAnalytics, Severity, SurveyListItem } from "@quizzy/shared";
+import { isAborted } from "@/api/abort";
 import { api } from "@/api/client";
+import { useReads } from "@/api/useReads";
 import { useAuth } from "@/auth/AuthContext";
 import { Loader } from "@/components/ui";
 import { useLang } from "@/lang";
@@ -44,29 +46,38 @@ function Overview() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const duration = useDurationValue();
+  const reads = useReads();
 
   const load = useCallback(async () => {
+    // одно чтение на всю загрузку: сводка, случаи и список методик отменяются вместе (api/useReads.ts)
+    const signal = reads.next();
     setBusy(true);
     try {
       setError(null);
-      const [overview, open] = await Promise.all([api.overview(), api.alertCases({ limit: "3" })]);
+      const [overview, open] = await Promise.all([api.overview({ signal }), api.alertCases({ limit: "3" }, { signal })]);
       setData(overview);
       setCases({ items: open.items, total: open.total ?? open.items.length });
     } catch (e) {
+      if (isAborted(e)) return;
       setError(e instanceof Error ? e.message : ut("ma.loadFailed"));
     } finally {
-      setBusy(false);
+      if (!signal.aborted) setBusy(false);
     }
     api
-      .listSurveys()
+      .listSurveys(undefined, { signal })
       .then((rows) => setSurveys(rows ?? []))
       .catch(() => {});
-  }, [ut]);
+  }, [ut, reads]);
 
+  // уход с вкладки обрывает чтения сводки; вернулись — читаем заново
   useFocusEffect(
     useCallback(() => {
       void load();
-    }, [load]),
+      return () => {
+        reads.cancel();
+        setBusy(false);
+      };
+    }, [load, reads]),
   );
 
   const top = (
