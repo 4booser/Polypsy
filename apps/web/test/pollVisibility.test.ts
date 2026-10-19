@@ -97,7 +97,16 @@ describe("кто чем опрашивает", () => {
     expect(app).not.toMatch(/api\.today\(/);
     const line = app.split("\n").find((l) => l.includes("const todayRes"));
     expect(line).toContain("api.todayCount()");
-    expect(line).toContain("pollHidden: false");
+    expect(line).toContain("shownTally");
+    expect(app).toContain("const shownTally = { ...tally, pollHidden: false };");
+  });
+
+  test("скрытую вкладку опрашивает только число тревог (значок вкладки); очередь и направления — нет", () => {
+    const app = src("App.tsx");
+    const tallyOf = (name: string) => app.split("\n").find((l) => l.includes(`const ${name} = useResource`));
+    expect(tallyOf("alertCount")).toMatch(/, tally\);$/);
+    expect(tallyOf("referralCount")).toMatch(/shownTally\);$/);
+    expect(tallyOf("worklistRes")).toMatch(/shownTally\);$/);
   });
 
   test("«Огляд» техпанели — сводка с рядами и ошибками одним опросом, сутки не берутся дважды", () => {

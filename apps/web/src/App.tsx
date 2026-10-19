@@ -458,13 +458,20 @@ export default function App() {
   // и в скрытой вкладке: значок с числом тревог на ней ради этого и заведён;
   // прежние числа под новым вошедшим не держим — это были бы его числа только с виду
   const tally = { enabled: counting, pollMs: COUNTS_POLL_MS, pollHidden: true, keep: false };
+  /*
+   * Остальные числа рельсы скрытую вкладку не опрашивают (волна 27): на
+   * значке вкладки их нет, а вернувшись, человек видит их перечитанными
+   * сразу (refetchOnWindowFocus у живых загрузок, useResource.ts). Забытая
+   * вкладка иначе сутками писала бы в журнал чтение очереди и направлений.
+   */
+  const shownTally = { ...tally, pollHidden: false };
   // счётчик считает случаи, а не сработавшие пункты: в навигации должно
   // стоять число людей, которых надо разобрать, а не число сигналов
   const alertCount = useResource(() => api.alertCases({ limit: "1" }).then((p) => p.total ?? 0), [user?.id], tally);
   // направления в том же такте: незакрытое направление ждёт так же долго
   // общее число — с первой страницы; длина страницы упёрлась бы в её размер
-  const referralCount = useResource(() => api.referrals().then((r) => r.total ?? r.items.length), [user?.id], tally);
-  const worklistRes = useResource(() => api.worklist().then((w) => w.total), [user?.id], tally);
+  const referralCount = useResource(() => api.referrals().then((r) => r.total ?? r.items.length), [user?.id], shownTally);
+  const worklistRes = useResource(() => api.worklist().then((w) => w.total), [user?.id], shownTally);
   /*
    * В бейдже — сколько ещё не принято, а не сколько записано. Число,
    * которое не убывает по ходу дня, ничего не сообщает: к обеду оно то
@@ -473,11 +480,8 @@ export default function App() {
    * Числом с сервера (/api/clinic/today/count), а не списком дня: список
    * на каждом такте расшифровывал имена и поводы всех приёмов и писал в
    * журнал clinic.today — строку «смотрел день», которого никто не открывал.
-   * И не в скрытой вкладке: значок вкладки — про тревоги, а день, к
-   * которому вернулись, перечитывается сразу (refetchOnWindowFocus у
-   * живых загрузок, useResource.ts).
    */
-  const todayRes = useResource(() => api.todayCount().then((d) => d.waiting), [user?.id], { ...tally, pollHidden: false });
+  const todayRes = useResource(() => api.todayCount().then((d) => d.waiting), [user?.id], shownTally);
   /*
    * Непрочитанные письма пациентов — число у «Листування» на рельсе. Те же
    * разговоры, что в списке экрана переписки (GET /api/messages открыт
