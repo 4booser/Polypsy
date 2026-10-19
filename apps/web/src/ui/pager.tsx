@@ -1,5 +1,7 @@
-import { useLang } from "../lang";
+import type { Lang } from "@quizzy/shared";
+import { currentLang, useLang } from "../lang";
 import { cx } from "./cx";
+import { grouped } from "./decimal";
 import { Ic } from "./icons";
 import { PER_PAGE } from "./perPage";
 
@@ -26,12 +28,12 @@ export function pageList(page: number, pages: number): (number | "gap")[] {
   return out;
 }
 
-/** «1–25» для «Показано 1–25 з 248» */
-export function shownRange(page: number, per: number, total: number): string {
+/** «1–25» для «Показано 1–25 з 248»; разряды — языка экрана: «1 001–1 100» */
+export function shownRange(page: number, per: number, total: number, lang: Lang = currentLang): string {
   if (total <= 0) return "0";
   const from = (page - 1) * per + 1;
   const to = Math.min(page * per, total);
-  return from >= to ? String(to) : `${from}–${to}`;
+  return from >= to ? grouped(to, lang) : `${grouped(from, lang)}–${grouped(to, lang)}`;
 }
 
 /**
@@ -62,7 +64,7 @@ export function Pager({
   sizes?: readonly number[];
   className?: string;
 }) {
-  const { ut } = useLang();
+  const { ut, lang } = useLang();
   const [before, after] = ut("kit.perPage").split("{n}");
   const btn = cx(
     "inline-grid h-8 min-h-0 min-w-8 cursor-pointer place-items-center rounded-[9px] border-0 bg-transparent px-1.5",
@@ -78,11 +80,11 @@ export function Pager({
             .map((part, i) =>
               part === "{range}" ? (
                 <b key={i} className="font-extrabold text-text">
-                  {shownRange(page, per, total)}
+                  {shownRange(page, per, total, lang)}
                 </b>
               ) : part === "{total}" ? (
                 <b key={i} className="font-extrabold text-text">
-                  {total}
+                  {grouped(total, lang)}
                 </b>
               ) : (
                 part

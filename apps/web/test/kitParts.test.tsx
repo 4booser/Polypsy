@@ -7,12 +7,14 @@ import { MemoryRouter } from "react-router-dom";
 import { LangProvider } from "../src/lang";
 import {
   BigValue,
+  BulkBar,
   ChangeCell,
   CourseDigits,
   DataTable,
   decimal,
   Drawer,
   DrawerPane,
+  FilterBar,
   Modal,
   Popover,
   ToastProvider,
@@ -20,6 +22,7 @@ import {
   closeTipKey,
   draftToastText,
   focusFromKeyboard,
+  grouped,
   placePopover,
   reliabilityOf,
   selectAllState,
@@ -28,10 +31,12 @@ import {
   toggleAll,
   toggleKey,
   toastLifetime,
+  ViewPills,
   type Column,
 } from "../src/ui";
-import { pageList, shownRange } from "../src/ui/pager";
-import { ChoiceCard, Field, Input } from "../src/ui/primitives";
+import { Count, Page } from "../src/ui/layout";
+import { Pager, pageList, shownRange } from "../src/ui/pager";
+import { ChoiceCard, Field, Input, Tabs } from "../src/ui/primitives";
 
 /**
  * Набор «Виразна»: то, что у ящика, поповера и таблицы проверяется без
@@ -395,6 +400,58 @@ describe("пейджер: номера и подпись", () => {
     expect(shownRange(10, 25, 248)).toBe("226–248");
     expect(shownRange(1, 25, 1)).toBe("1");
     expect(shownRange(1, 25, 0)).toBe("0");
+  });
+});
+
+/* ─────────── счёт разрядами языка ─────────── */
+
+describe("счёт — разрядами языка экрана, а не «8123»", () => {
+  /* неразрывный пробел: «8 123» не рвётся переносом */
+  const nb = "\u00a0";
+
+  test("украинский и русский — пробелом, английский — запятой", () => {
+    expect(grouped(8123, "uk")).toBe(`8${nb}123`);
+    expect(grouped(8123, "ru")).toBe(`8${nb}123`);
+    expect(grouped(8123, "en")).toBe("8,123");
+    expect(grouped(812, "uk")).toBe("812");
+    expect(shownRange(2, 1000, 8123, "uk")).toBe(`1${nb}001–2${nb}000`);
+    expect(shownRange(9, 1000, 8123, "en")).toBe("8,001–8,123");
+  });
+
+  test("вкладки, пилюли видов, пилюля-счётчик и число у заголовка", () => {
+    const html = draw(
+      <>
+        <Tabs items={[{ label: "Усі", count: 8123, active: true, onSelect: () => {} }, { label: "Мої", count: 1204, onSelect: () => {} }]} />
+        <Tabs items={[{ label: "Архів", to: "/archive", count: 12045 }]} />
+        <ViewPills items={[{ key: "all", label: "Усі", count: 8123 }]} value="all" onChange={() => {}} />
+        <Count n={1204} />
+        <Count n="3/5" />
+        <Page title="Пацієнти" count={8123}>
+          {null}
+        </Page>
+      </>,
+    );
+    const text = textOf(html);
+    expect(text).toContain(`8${nb}123`);
+    expect(text).toContain(`1${nb}204`);
+    expect(text).toContain(`12${nb}045`);
+    expect(text).toContain("3/5");
+    expect(text).not.toMatch(/\b(8123|1204|12045)\b/);
+  });
+
+  test("пейджер, полоса фильтров и полоса массовых действий", () => {
+    const html = draw(
+      <>
+        <Pager page={2} pages={9} per={1000} onPer={() => {}} onPage={() => {}} total={8123} />
+        <FilterBar count={{ shown: 1204, total: 8123 }} />
+        <BulkBar count={1204} total={8123} onSelectAll={() => {}} />
+      </>,
+    );
+    const text = textOf(html);
+    expect(text).toContain(`1${nb}001–2${nb}000`);
+    expect(text).toContain(`8${nb}123`);
+    expect(text).toContain(`1${nb}204`);
+    expect(text).not.toMatch(/\b(8123|1204|1001)\b/);
   });
 });
 

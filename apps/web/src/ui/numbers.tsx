@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import type { Lang } from "@quizzy/shared";
 import { cx } from "./cx";
-import { decimal } from "./decimal";
+import { decimal, grouped } from "./decimal";
 import { Ic } from "./icons";
 import { Popover } from "./Popover";
 import { SeverityTag, type Severity } from "./primitives";
@@ -52,7 +52,7 @@ export function reliabilityOf(delta: number, threshold: number, better: "down" |
   return improved ? "better" : "worse";
 }
 
-export { decimal };
+export { decimal, grouped };
 
 /** «−14», «+16 в. п.», «−2,5» — со знаком минус, а не дефисом, и дробью языка экрана */
 export function signed(delta: number, unit = "", lang: Lang = currentLang): string {

@@ -1,7 +1,9 @@
 import { useId, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { cx } from "./cx";
+import { grouped } from "./decimal";
 import { Ic } from "./icons";
+import { useLang } from "../lang";
 
 /*
  * Рамка экрана в наборе «Виразна» (page_header + .main набора).
@@ -84,6 +86,7 @@ export function Page({
   /** @deprecated */
   pagerGap?: 74 | 78 | 105;
 }) {
+  const { lang } = useLang();
   const metaBlock =
     meta === undefined || meta === null ? null : Array.isArray(meta) && meta.length === 2 ? (
       <>
@@ -124,7 +127,7 @@ export function Page({
             <div className="flex min-w-0 items-baseline gap-2">
               <h1 className="m-0 text-page font-extrabold text-text">{title}</h1>
               {count !== undefined && count !== null ? (
-                <span className="text-[22px] font-semibold tabular-nums tracking-[-0.02em] text-muted">{count}</span>
+                <span className="text-[22px] font-semibold tabular-nums tracking-[-0.02em] text-muted">{grouped(count, lang)}</span>
               ) : null}
             </div>
             {metaBlock ? (
@@ -283,8 +286,9 @@ export function Panel({
   );
 }
 
-/** Пилюля-счётчик (.cnt набора): `risk` — только риск для человека */
+/** Пилюля-счётчик (.cnt набора): `risk` — только риск для человека; число — разрядами языка экрана */
 export function Count({ n, tone = "plain", className }: { n: ReactNode; tone?: "plain" | "risk" | "violet" | "tint"; className?: string }) {
+  const { lang } = useLang();
   return (
     <span
       className={cx(
@@ -299,7 +303,7 @@ export function Count({ n, tone = "plain", className }: { n: ReactNode; tone?: "
         className,
       )}
     >
-      {n}
+      {typeof n === "number" ? grouped(n, lang) : n}
     </span>
   );
 }

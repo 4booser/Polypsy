@@ -10,6 +10,7 @@ import type {
 import { Link, NavLink, type LinkProps } from "react-router-dom";
 import { createContext, forwardRef, useContext, useEffect, useId, useImperativeHandle, useRef } from "react";
 import { cx } from "./cx";
+import { grouped } from "./decimal";
 import { Ic } from "./icons";
 import { useLang } from "../lang";
 
@@ -1008,11 +1009,13 @@ const tabClass = (isActive: boolean) =>
       : "bg-transparent font-semibold text-text-2 hover:bg-tab-hover hover:text-text",
   );
 
+/** Счётчик вкладки: разрядами языка экрана — «8 123», а не «8123» */
 function TabCount({ n }: { n?: number | null }) {
+  const { lang } = useLang();
   if (n === undefined || n === null) return null;
   return (
     <span className="inline-grid h-5 min-w-5 place-items-center rounded-[10px] bg-tab-count px-1.5 text-[11.5px] font-bold text-text-2">
-      {n}
+      {grouped(n, lang)}
     </span>
   );
 }

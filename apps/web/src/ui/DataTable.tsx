@@ -1,5 +1,6 @@
 import { Suspense, lazy, useMemo, useRef, useState, type ReactNode } from "react";
 import { cx } from "./cx";
+import { grouped } from "./decimal";
 import {
   applyFacets,
   facetOptions,
@@ -840,7 +841,7 @@ function FacetBar<T>({
   totalCount: number;
   note?: string;
 }) {
-  const { ut } = useLang();
+  const { ut, lang } = useLang();
   const active = Object.values(selection).some((v) => v.length);
 
   return (
@@ -862,7 +863,7 @@ function FacetBar<T>({
                   o.selected ? "bg-violet font-bold text-onfill" : "bg-sunk font-semibold text-text-2 hover:bg-sunk-2",
                 )}
               >
-                {o.value} <span className={cx("font-bold tabular-nums", o.selected ? "text-onfill-muted" : "text-muted")}>{o.count}</span>
+                {o.value} <span className={cx("font-bold tabular-nums", o.selected ? "text-onfill-muted" : "text-muted")}>{grouped(o.count, lang)}</span>
               </button>
             ))}
           </div>
@@ -871,7 +872,7 @@ function FacetBar<T>({
       {active ? (
         <Button variant="quiet" size="xs" icon={<Ic.x />} onClick={() => onChange({})}>
           {ut("tbl.resetFacets")}
-          <Count n={`${shownCount}/${totalCount}`} />
+          <Count n={`${grouped(shownCount, lang)}/${grouped(totalCount, lang)}`} />
         </Button>
       ) : null}
       {note ? <span className="text-caption text-muted">{note}</span> : null}

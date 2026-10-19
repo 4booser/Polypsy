@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { cx } from "./cx";
+import { grouped } from "./decimal";
 import { Ic } from "./icons";
 import { IconTile } from "./layout";
 import { Popover } from "./Popover";
@@ -268,12 +269,13 @@ export function ListGroup({
   mark?: GroupMark;
   note?: ReactNode;
 }) {
+  const { lang } = useLang();
   return (
     <div className="mt-1.5 flex h-9 w-full items-center gap-2 pl-5 pr-4 text-small font-extrabold text-text">
       <span aria-hidden className={cx("inline-block size-2.5 shrink-0 rounded-[3px]", markTone[mark])} />
       {label}
       {count !== undefined ? (
-        <span className="inline-grid h-5 min-w-5 place-items-center rounded-[10px] bg-sunk px-1.5 text-[11.5px] font-bold text-text-2">{count}</span>
+        <span className="inline-grid h-5 min-w-5 place-items-center rounded-[10px] bg-sunk px-1.5 text-[11.5px] font-bold text-text-2">{grouped(count, lang)}</span>
       ) : null}
       {note ? <span className="ml-auto text-caption font-medium text-muted">{note}</span> : null}
     </div>
