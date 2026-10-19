@@ -530,7 +530,7 @@ function HelpCalls({ open, onClose }: { open: boolean; onClose: () => void }) {
       icon={<ShellIcon name="life-buoy" size={18} />}
     >
       <div className="pb-[18px] pt-[14px]">
-        <CallRows />
+        <CallRows autoFocus />
         <p className="m-0 mt-3 text-[14px] leading-5 text-muted">{ut("ax.jn.helpNote")}</p>
       </div>
     </Drawer>

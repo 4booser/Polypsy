@@ -149,6 +149,23 @@ describe("территория пальца объявлена, а не прос
   });
 });
 
+describe("нижние вкладки телефона не закрывают ящик", () => {
+  test("полоса вкладок — ниже подложки ящика набора", () => {
+    /*
+     * Ящик идёт до низа экрана (Drawer, bottom-2.5). Полоса вкладок кабинета
+     * стояла слоем выше него и его подложки: на 390 подвал ящика уходил под
+     * неё, и кнопку «Змінити пароль» в профиле было не нажать (ревью волны 26).
+     */
+    const shell = code(readFileSync(join(PATIENT, "PatientApp.tsx"), "utf8"));
+    const drawer = code(readFileSync(join(WEB, "src/ui/Drawer.tsx"), "utf8"));
+    const tabs = /className="fixed inset-x-0 bottom-0 z-(\d+) /.exec(shell)?.[1];
+    const scrim = /z-\[(\d+)\] bg-scrim/.exec(drawer)?.[1];
+    expect(tabs, "полоса вкладок кабинета не найдена").toBeTruthy();
+    expect(scrim, "подложка ящика не найдена").toBeTruthy();
+    expect(Number(tabs)).toBeLessThan(Number(scrim));
+  });
+});
+
 describe("профиль: строка второго фактора не отстаёт от ящика", () => {
   test("выключение в ящике перечитывает строку профиля, как и включение", () => {
     /*

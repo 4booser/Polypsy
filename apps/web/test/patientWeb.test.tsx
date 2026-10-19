@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
@@ -10,7 +12,7 @@ import { consentSections } from "../src/patient/ConsentGate";
 import { freeCancelUntil } from "../src/patient/Home";
 import { DRAFT_TTL_MS, createDrafts, forgetDrafts, type DeviceStorage, type RunnerDraft } from "../src/patient/drafts";
 import type { OutboxItem, OutboxStorage } from "../src/patient/outbox";
-import { instrumentCode, instrumentName } from "../src/patient/parts";
+import { CallRows, instrumentCode, instrumentName } from "../src/patient/parts";
 import { mainScore, scoreNumber, scoreValue } from "../src/patient/results";
 import { TestsBody } from "../src/patient/Tests";
 import { dayOffset, dayPart, greetingKey, localDayKey, whenSaid } from "../src/patient/when";
@@ -171,6 +173,31 @@ describe("черновики на общем компьютере — тольк
       removeItem: () => {},
     };
     expect(() => forgetDrafts(null, broken, NOW)).not.toThrow();
+  });
+});
+
+describe("ящик «Допомога» открывается на звонке", () => {
+  test("фокус при открытии — на первой строке-звонке, а не на крестике с подсказкой поверх 103", () => {
+    /*
+     * Ящик набора ставит фокус на [data-autofocus], иначе на крестик, а
+     * подсказка крестика встаёт на фокусе и на телефоне ложилась поверх
+     * строки 103 (ревью волны 26).
+     */
+    const html = draw(<CallRows autoFocus />);
+    const links = [...html.matchAll(/<a [^>]*>/g)].map((m) => m[0]);
+    expect(links).toHaveLength(2);
+    expect(links[0]).toContain('href="tel:7333"');
+    expect(links[0]).toContain("data-autofocus");
+    expect(links[1]).not.toContain("data-autofocus");
+    // строки помощи на экранах кабинета фокус не забирают
+    expect(draw(<CallRows />)).not.toContain("data-autofocus");
+  });
+
+  test("оба ящика помощи — кабинета и приглашения — просят фокус на звонок", () => {
+    const shell = readFileSync(resolve(import.meta.dir, "../src/patient/PatientApp.tsx"), "utf8");
+    const join = readFileSync(resolve(import.meta.dir, "../src/pages/Join.tsx"), "utf8");
+    expect(shell).toContain("<CallRows autoFocus />");
+    expect(join).toContain("<CallRows autoFocus />");
   });
 });
 
