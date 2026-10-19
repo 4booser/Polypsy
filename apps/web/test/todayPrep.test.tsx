@@ -7,6 +7,7 @@ import { UI, type AppointmentView } from "@quizzy/shared";
 import { LangProvider } from "../src/lang";
 import { prepAfterSelect } from "../src/pages/today/model";
 import { loadPrep, Prep } from "../src/pages/today/Prep";
+import { WorkRecord } from "../src/pages/worklist/Record";
 
 /**
  * Подготовка к сессии открывается только явно (решение заказчика после
@@ -144,5 +145,50 @@ describe("подготовка: открывается только явно", (
       expect(calls).toContain("/api/clinic/appointments/a-1/context");
       expect(calls.filter((u) => u.includes("/context"))).toHaveLength(1);
     });
+  });
+});
+
+describe("черга роботи: запись — по устоявшемуся выбору", () => {
+  /*
+   * Тот же закон, что у подготовки: чтение клинических данных пишется в
+   * журнал доступа, и строка журнала должна значить «человек смотрел», а не
+   * «курсор прошёл». Запись очереди — хронология, заміри и план безопасности,
+   * три чтения на пункт, — по J/K уходила за каждым, мимо кого прошли.
+   * Теперь грузится только пункт, на котором выбор простоял RECORD_SETTLE_MS.
+   */
+  const item = {
+    kind: "message" as const,
+    id: "t-1",
+    userId: "p-1",
+    userName: "Коваленко Оксана Петрівна",
+    unit: null,
+    title: "",
+    overdue: false,
+    assignedTo: null,
+    since: "2026-10-08T09:00:00.000Z",
+    href: "/messages",
+    signals: 1,
+    days: 0,
+  };
+
+  test("пока выбор не устоялся — шапка человека есть, а на месте хронологии и замеров скелет", () => {
+    const html = renderToStaticMarkup(
+      <MemoryRouter>
+        <LangProvider>
+          <WorkRecord item={item} all={[item]} onReply={() => {}} onNote={() => {}} settled={false} />
+        </LangProvider>
+      </MemoryRouter>,
+    );
+    expect(html).toContain(item.userName);
+    expect(html).toContain('role="status"');
+  });
+
+  test("экран отдаёт записи только устоявшийся выбор, и запись без него не грузится", () => {
+    const dir = resolve(import.meta.dir, "../src/pages");
+    const page = readFileSync(join(dir, "Worklist.tsx"), "utf8");
+    expect(page).toContain("useDebounced(currentKey, RECORD_SETTLE_MS)");
+    expect(page).toContain("settled={settledKey === currentKey}");
+    const record = readFileSync(join(dir, "worklist", "Record.tsx"), "utf8");
+    expect(record).toContain("{ enabled: settled }");
   });
 });

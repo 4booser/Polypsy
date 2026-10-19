@@ -6,7 +6,7 @@ import { Empty, KbdHints, ListGroup, ListTile, Loading, SearchField, useUrlState
 import { Ic } from "../ui/icons";
 import { Tag } from "../ui/primitives";
 import { useLang } from "../lang";
-import { useResource } from "../useResource";
+import { useDebounced, useResource } from "../useResource";
 import { useLiveReload } from "../events";
 import { fill } from "./dashboard/model";
 import { chipLabel, stamp, WorkIcon } from "./today/ActNow";
@@ -29,6 +29,13 @@ import { FILTER_KEY, isWorkView, shownWork, stepWork, workGroups, workKey, workW
  * вид и поиск живут в адресе — «вот эти семь» отправляются коллеге как есть,
  * а плитки зведення ведут сразу в отобранный вид.
  */
+
+/**
+ * Сколько выбор пункта должен простоять, прежде чем запись грузит хронологию,
+ * заміри и план безопасности: J/K не должны читать и писать в журнал доступа
+ * каждого, мимо кого прошли (WorkRecord, settled).
+ */
+const RECORD_SETTLE_MS = 500;
 
 const NEXT_KEY: Record<WorkKind, string> = {
   message: "wlA.nextMessage",
@@ -59,6 +66,8 @@ export default function WorklistPage() {
   const keys = ordered.map(workKey);
   const current = ordered.find((i) => workKey(i) === picked) ?? data?.items.find((i) => workKey(i) === picked) ?? ordered[0] ?? null;
   const overdue = data ? data.items.filter((i) => i.overdue).length : 0;
+  const currentKey = current ? workKey(current) : null;
+  const settledKey = useDebounced(currentKey, RECORD_SETTLE_MS);
 
   const select = (key: string | null) => {
     if (!key) return;
@@ -193,6 +202,7 @@ export default function WorklistPage() {
             all={(data?.items ?? []).filter((i) => i.userId === current.userId)}
             onReply={reply}
             onNote={note}
+            settled={settledKey === currentKey}
           />
         ) : data ? (
           <div className="p-8">
