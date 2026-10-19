@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { Permission, StaffDirectoryUser, User } from "@quizzy/shared";
-import { type DirectorySource, loadDirectory, loadMember } from "../src/pages/people/data";
+import { type CreateStaffSource, type DirectorySource, createStaff, loadDirectory, loadMember } from "../src/pages/people/data";
 import { navAccess, railEntries, railKeyOf, subNavFor } from "../src/shell/nav";
 import { barKind, barSection } from "../src/shell/workplace";
 import {
@@ -500,6 +500,63 @@ describe("справочник сотрудников", () => {
     const { row } = await loadMember("u1", { id: "u1", canManageUsers: false }, src);
     expect(row?.fullName).toBe("Іванов");
     expect(calls).toEqual({ users: 0, staff: 0, me: 1 });
+  });
+});
+
+/**
+ * «Створити» сотрудника: запись, роль-шаблон, профиль приёма. Отказ шага
+ * после записи оставлял форму на месте с ошибкой, и повтор упирался в
+ * «почта занята» — человек решал, что учётки нет, хотя она уже была.
+ */
+describe("заведение сотрудника", () => {
+  const INPUT = { email: "new@x.y", password: "temp-pass-1234", firstName: "Ольга", lastName: "Харченко", role: "admin" as const };
+  const fake = (fail: { create?: boolean; roles?: boolean; profile?: boolean } = {}) => {
+    const calls: string[] = [];
+    const src: CreateStaffSource = {
+      createUser: async () => {
+        calls.push("create");
+        if (fail.create) throw new Error("Користувач з такою поштою вже є");
+        return { id: "n1" } as User;
+      },
+      userPermissions: async () => {
+        calls.push("card");
+        return { roles: [{ roleId: "builtin" }] };
+      },
+      setUserRoles: async (_id, roleIds) => {
+        calls.push(`roles:${roleIds.join(",")}`);
+        if (fail.roles) throw new Error("Цю роль ви не призначаєте");
+      },
+      saveSpecialistProfile: async () => {
+        calls.push("profile");
+        if (fail.profile) throw new Error("Відділення не знайдено");
+      },
+    };
+    return { calls, src };
+  };
+  const extras = { roleId: "head", profile: { departmentId: "d1", position: null, room: "214" } };
+
+  test("роль дописывается к встроенной, профиль — следом", async () => {
+    const { calls, src } = fake();
+    expect(await createStaff(INPUT, extras, src)).toEqual({ id: "n1", problems: [] });
+    expect(calls).toEqual(["create", "card", "roles:builtin,head", "profile"]);
+  });
+
+  test("отказ роли после записи — не отказ заведения: запись есть, отказ словами, профиль всё равно сохраняется", async () => {
+    const { calls, src } = fake({ roles: true });
+    expect(await createStaff(INPUT, extras, src)).toEqual({ id: "n1", problems: ["Цю роль ви не призначаєте"] });
+    expect(calls).toContain("profile");
+  });
+
+  test("отказ самой записи — отказ: ни роли, ни профиля", async () => {
+    const { calls, src } = fake({ create: true });
+    await expect(createStaff(INPUT, extras, src)).rejects.toThrow("вже є");
+    expect(calls).toEqual(["create"]);
+  });
+
+  test("без роли-шаблона и відділення — одна запись", async () => {
+    const { calls, src } = fake();
+    await createStaff(INPUT, { roleId: null, profile: null }, src);
+    expect(calls).toEqual(["create"]);
   });
 });
 

@@ -16,7 +16,7 @@ import {
   waitsForReply,
   type ThreadRow,
 } from "../src/pages/messages/model";
-import { ageOf, measuresOf, openFor } from "../src/pages/messages/thread";
+import { ageOf, measureText, measuresOf, openFor } from "../src/pages/messages/thread";
 
 /**
  * Экран переписки: три вещи, которые уже были сломаны и ломаются молча.
@@ -280,5 +280,14 @@ describe("запись: возраст, сигнал, заміри", () => {
     expect(lines.map((l) => l.surveyId), "свежие сверху, без прохождений без шкал").toEqual(["phq", "gad"]);
     expect(lines[0]).toMatchObject({ code: "total", value: 14, history: [19, 16, 14], word: "помірна" });
     expect(lines[1]!.history, "один замер — истории нет").toEqual([11]);
+  });
+
+  test("число замера — запятой языка и процентом для доли, а не голым «2.67» и «0.73»", () => {
+    expect(measureText(14, "raw", "uk-UA")).toBe("14");
+    expect(measureText(2.67, "raw", "uk-UA")).toBe("2,7");
+    expect(measureText(2.67, "raw", "ru-RU")).toBe("2,7");
+    expect(measureText(2.67, "raw", "en-GB")).toBe("2.7");
+    expect(measureText(0.734, "ratio", "uk-UA")).toBe("73 %");
+    expect(measureText(52.3, "tscore", "uk-UA")).toBe("52,3");
   });
 });

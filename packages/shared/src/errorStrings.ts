@@ -1717,6 +1717,14 @@ export const ERRORS = {
     ru: "Кого-то из этих пациентов уже ведёт другой специалист. Обновите список и попробуйте ещё раз",
     en: "Some of these patients already have another lead clinician. Refresh the list and try again",
   },
+
+  /* ── v2-fix-admin ── */
+  /* передача пациентов лікарю, который их не видит: ответить им было бы некому (routes/users.ts, POST /:id/patients/transfer) */
+  "err.transferTargetZone": {
+    uk: "Новий лікар не бачить когось із цих пацієнтів, тож не зможе ні відповісти їм, ні відкрити картку. Оберіть лікаря, який з ними працює",
+    ru: "Новый врач не видит кого-то из этих пациентов, поэтому не сможет ни ответить им, ни открыть карточку. Выберите врача, который с ними работает",
+    en: "The new clinician cannot see some of these patients, so they could neither reply to them nor open their records. Choose a clinician who works with them",
+  },
 } as const satisfies Record<string, ErrorEntry>;
 
 export type ErrorKey = keyof typeof ERRORS;
