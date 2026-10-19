@@ -22,6 +22,7 @@ import { useUrlState } from "../ui/urlState";
 import { useResource } from "../useResource";
 import { busyAssignees } from "./batteries/model";
 import { AssignDrawer, type ExistingAssignment } from "./methods/AssignDrawer";
+import { useSettledSelection } from "./methods/settle";
 import { Mi } from "./methods/icons";
 import { ListAndRecord, ListColumn, ListEmpty } from "./methods/ListColumn";
 import { Fact } from "./methods/MethodPage";
@@ -127,12 +128,16 @@ function BatteriesScreen({
   }, [shown]);
   const order = [...grouped.flatMap(([, list]) => list), ...(archiveOpen ? shownArchived : [])];
   const current = rows.find((b) => b.id === selected) ?? order[0] ?? null;
+  /* назначения записи — по строке, на которой остановились: шаг J/K догоняет, щелчок грузит сразу (methods/settle.ts) */
+  const { settled, stepped } = useSettledSelection(current?.id ?? null);
 
   const step = (dir: 1 | -1) => {
     if (!order.length) return;
     const at = current ? order.findIndex((b) => b.id === current.id) : -1;
     const next = order[Math.min(order.length - 1, Math.max(0, at + dir))];
-    if (next) setSelected(next.id);
+    if (!next || next.id === current?.id) return;
+    stepped();
+    setSelected(next.id);
   };
 
   const tile = (b: Battery) => {
@@ -250,6 +255,7 @@ function BatteriesScreen({
         <BatteryRecord
           key={current.id}
           battery={current}
+          load={settled === current.id}
           retiredIds={retiredIds}
           onEdit={() => setEditing(current)}
           onChanged={reload}
@@ -331,12 +337,15 @@ type AsgView = "all" | "active" | "late" | "done";
 
 function BatteryRecord({
   battery: b,
+  load,
   retiredIds,
   onEdit,
   onChanged,
   onDeleted,
 }: {
   battery: Battery;
+  /** Выбор устоялся: назначения (люди, прогресс — чтение со строкой журнала) можно грузить */
+  load: boolean;
   retiredIds: Set<string>;
   onEdit: () => void;
   onChanged: () => void;
@@ -349,7 +358,7 @@ function BatteryRecord({
   const [view, setView] = useState<AsgView>("all");
   const [cancelling, setCancelling] = useState<BatteryAssignment | null>(null);
   const [deleting, setDeleting] = useState(false);
-  const asg = useResource(() => api.batteryAssignments(b.id), [b.id]);
+  const asg = useResource(() => api.batteryAssignments(b.id), [b.id], { enabled: load });
   const rows = asg.data ?? [];
   const now = new Date();
 
