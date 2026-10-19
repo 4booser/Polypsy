@@ -15,19 +15,15 @@ import { DESTINATION_KEY, STATUS_KEY } from "../referrals/model";
  * зелёный — завершённое направление и подписанное заключение.
  */
 
-/** Вид события, как его показывает лента; у сервера ещё и «visit» */
-export type EventKind = TimelineItem["kind"] | "visit";
+/**
+ * Вид события, как его показывает лента. Подпись каждого вида, приёма
+ * тоже, — у eventView ниже (голова строки) и во множественном числе у
+ * EVENT_PLURAL; отдельного словаря «вид → слово», в котором прежде не было
+ * приёма, у ленты больше нет.
+ */
+export type EventKind = TimelineItem["kind"];
 
 export const EVENT_KINDS: readonly EventKind[] = ["response", "alert", "referral", "conclusion", "assignment", "visit"];
-
-export const EVENT_KEY: Record<EventKind, UiKey> = {
-  response: "tl.response",
-  alert: "tl.alert",
-  referral: "tl.referral",
-  conclusion: "tl.conclusion",
-  assignment: "tl.assignment",
-  visit: "evt.visit",
-};
 
 /** Множественное название вида — для фильтра ленты и сводки «За курс» */
 export const EVENT_PLURAL: Record<EventKind, UiKey> = {
