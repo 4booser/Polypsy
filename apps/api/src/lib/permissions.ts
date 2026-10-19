@@ -1,4 +1,4 @@
-import { and, eq, isNull, or, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import type { Permission, User } from "@quizzy/shared";
 import { ALL_PERMISSIONS, PSYCHOLOGIST_PERMISSIONS, SUPERADMIN_RANK, roleRank } from "@quizzy/shared";
 import { db } from "../db";
@@ -75,6 +75,65 @@ export async function permissionsOf(user: User): Promise<Set<Permission>> {
 
 export async function hasPermission(user: User, permission: Permission): Promise<boolean> {
   return (await permissionsOf(user)).has(permission);
+}
+
+/**
+ * Права нескольких человек — двумя запросами на весь список, а не двумя на
+ * каждого.
+ *
+ * Для списков, где право — свойство строки: реестр учёток техпанели,
+ * «Потребує уваги» и покрытие второго фактора спрашивают о каждом
+ * сотруднике, держит ли он ops.* (политика второго фактора). permissionsOf
+ * на строку — два запроса на человека: на странице в сотню сотрудников
+ * двести походов в базу (волна 27, perf-day).
+ *
+ * Правило то же, что у permissionsOf, и в том же порядке: суперадмин — весь
+ * справочник, не сотрудник — ничего, сотрудник — права ролей плюс
+ * действующие личные исключения, и отнятое побеждает добавленное
+ * независимо от порядка строк. test/permissionsMany.test.ts сверяет оба на
+ * одних и тех же людях.
+ */
+export async function permissionsOfMany(
+  people: readonly { id: string; role: User["role"] }[],
+): Promise<Map<string, Set<Permission>>> {
+  const out = new Map<string, Set<Permission>>();
+  const staff = new Set<string>();
+  for (const p of people) {
+    if (p.role === "superadmin") out.set(p.id, new Set(ALL_PERMISSIONS));
+    else {
+      out.set(p.id, new Set());
+      if (p.role === "admin") staff.add(p.id);
+    }
+  }
+  if (!staff.size) return out;
+  const ids = [...staff];
+
+  const fromRoles = await db
+    .select({ userId: staffRoles.userId, permission: rolePermissions.permission })
+    .from(staffRoles)
+    .innerJoin(roles, eq(roles.id, staffRoles.roleId))
+    .innerJoin(rolePermissions, eq(rolePermissions.roleId, roles.id))
+    .where(inArray(staffRoles.userId, ids));
+  for (const r of fromRoles) out.get(r.userId)?.add(r.permission as Permission);
+
+  const exceptions = await db
+    .select({
+      userId: permissionExceptions.userId,
+      permission: permissionExceptions.permission,
+      mode: permissionExceptions.mode,
+    })
+    .from(permissionExceptions)
+    .where(
+      and(
+        inArray(permissionExceptions.userId, ids),
+        isNull(permissionExceptions.revokedAt),
+        or(isNull(permissionExceptions.expiresAt), sql`${permissionExceptions.expiresAt} > now()`),
+      ),
+    );
+  for (const e of exceptions) if (e.mode === "grant") out.get(e.userId)?.add(e.permission as Permission);
+  for (const e of exceptions) if (e.mode === "revoke") out.get(e.userId)?.delete(e.permission as Permission);
+
+  return out;
 }
 
 /**
