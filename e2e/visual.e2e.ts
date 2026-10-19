@@ -216,6 +216,9 @@ function keyOf(url: string): string {
     .replace(/\d{4}-\d{2}-\d{2}/g, "<date>");
 }
 
+/** Минута записи в наборе ответов — под ключом, который не бывает путём API */
+const CLOCK_KEY = "@clock";
+
 async function withRecordedApi(
   page: import("@playwright/test").Page,
   screen: string,
@@ -225,6 +228,21 @@ async function withRecordedApi(
   const saved: Record<string, { status: number; body: string }> = recording
     ? {}
     : JSON.parse(await readFile(file, "utf8"));
+
+  /*
+   * Часы страницы стоят на минуте записи — и при записи, и при воспроизведении.
+   *
+   * Экраны 2.0 считают время сами: линия «сейчас» на приёме, «1 проведено,
+   * 3 впереди», «сигнал 9 дн.», «сегодня» на графике. Ответы записаны раз и
+   * навсегда, а часы браузера идут — и эталон, снятый утром, краснел бы к
+   * обеду. Останавливается только Date: таймеры идут как шли.
+   */
+  if (recording) {
+    const minute = new Date(Math.floor(Date.now() / 60_000) * 60_000);
+    saved[CLOCK_KEY] = { status: 0, body: minute.toISOString() };
+  }
+  const at = saved[CLOCK_KEY]?.body;
+  if (at) await page.clock.setFixedTime(new Date(at));
 
   await page.route("**/api/**", async (route) => {
     const request = route.request();
