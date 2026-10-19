@@ -52,7 +52,7 @@ import { endImpersonation, startImpersonation } from "../lib/impersonation";
 import { currentRequestId } from "../lib/log";
 import { bulkSkip, groupWhoViewed, roleFrom, validateImport, type BulkActor, type BulkRole, type BulkTarget } from "../lib/people";
 import { grantStats, suspiciousStats } from "../lib/peopleStats";
-import { ensureBuiltinRole, ladderRankOf, permissionsOf } from "../lib/permissions";
+import { ensureBuiltinRole, ladderRankOf, permissionsOf, permissionsOfMany } from "../lib/permissions";
 import { guardAccountAction, standingOf } from "../lib/accountClass";
 import { revokeAllFor } from "../lib/refresh";
 import { readPolicy, removeFactor, writePolicy } from "../lib/secondFactor";
@@ -185,13 +185,15 @@ opsPeopleRoutes.post("/impersonate/:id/end", requireSuperadmin, async (c) => {
 opsPeopleRoutes.get("/mfa", requirePermission("ops.manage"), async (c) => {
   const policy = await readPolicy();
   const staff = await db.select().from(users).where(ne(users.role, "user"));
+  /* права всего персонала — двумя запросами, а не двумя на сотрудника (lib/permissions.ts) */
+  const permsOf = await permissionsOfMany(staff.filter((u) => u.role !== "superadmin"));
   const coverage: MfaCoverageRow[] = [];
   for (const u of staff) {
     let because: MfaCoverageRow["because"] | null = null;
     if (u.role === "superadmin") because = "superadmin";
     else {
-      const perms = await permissionsOf({ id: u.id, role: u.role } as never);
-      if (perms.has("ops.read") || perms.has("ops.manage")) because = "ops";
+      const perms = permsOf.get(u.id);
+      if (perms?.has("ops.read") || perms?.has("ops.manage")) because = "ops";
     }
     if (!because) continue;
     coverage.push({
@@ -203,14 +205,23 @@ opsPeopleRoutes.get("/mfa", requirePermission("ops.manage"), async (c) => {
       enabled: false,
       confirmedAt: null,
       disabled: Boolean(u.disabledAt),
+      /* «останній вхід був до вимоги» — экран сравнивает его со временем политики */
+      lastSeenAt: u.lastSeenAt ?? null,
     });
   }
-  const factors = coverage.length
+  /*
+   * Фактор — и у тех, кому он нужен, и у всего действующего персонала: доля
+   * по всему персоналу стоит рядом для справки (Polypsy 2.0, «Частка з другим
+   * фактором»). Выключенные не считаются: войти они не могут.
+   */
+  const live = staff.filter((u) => !u.disabledAt);
+  const ids = [...new Set([...coverage.map((r) => r.id), ...live.map((u) => u.id)])];
+  const factors = ids.length
     ? await asSystem(() =>
         db
           .select({ userId: userSecondFactor.userId, confirmedAt: userSecondFactor.confirmedAt })
           .from(userSecondFactor)
-          .where(and(inArray(userSecondFactor.userId, coverage.map((r) => r.id)), isNotNull(userSecondFactor.confirmedAt))),
+          .where(and(inArray(userSecondFactor.userId, ids), isNotNull(userSecondFactor.confirmedAt))),
       )
     : [];
   const confirmed = new Map(factors.map((f) => [f.userId, f.confirmedAt]));
@@ -223,6 +234,7 @@ opsPeopleRoutes.get("/mfa", requirePermission("ops.manage"), async (c) => {
   const body: MfaPolicyView = {
     policy: { superadmins: policy.superadmins, ops: policy.ops, updatedAt: policy.updatedAt, updatedByEmail: author?.email ?? null },
     coverage,
+    staff: { total: live.length, enabled: live.filter((u) => confirmed.has(u.id)).length },
   };
   return c.json(body);
 });

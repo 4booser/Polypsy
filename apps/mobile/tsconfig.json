@@ -5,6 +5,9 @@
     "paths": {
       "@/*": [
         "./src/*"
+      ],
+      "@quizzy/shared": [
+        "./src/shared.ts"
       ]
     },
     "types": [

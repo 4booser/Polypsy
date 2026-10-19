@@ -1,114 +1,129 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
-import { CONTENT_LANGS, contentLangFor, makeUiT, type ContentLang, type Issue } from "@quizzy/shared";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
+import { contentLangFor, type ContentLang, type Issue, type SurveyGrant, type SurveyStatus } from "@quizzy/shared";
 import { api } from "../../api";
 import { useAuth } from "../../auth";
+import { day, timeOfDay } from "../../format";
+import { useLang } from "../../lang";
 import { useResource } from "../../useResource";
-import { AssignGroup } from "./AssignGroup";
-import { Settings } from "./Basics";
-import { EditLangProvider, Loc, Toggle } from "./fields";
-import { Questions, SectionHead } from "./Questions";
-import { Answers, Bands, Scales } from "./Scales";
+import { ShellIcon } from "../../shell/icons";
+import { Callout, Ic, Loading, Tooltip, useToast } from "../../ui";
+import { Count, Page, Panel } from "../../ui/layout";
+import { ActionMenu, type MenuEntry } from "../../ui/menu";
+import { Button, ErrorText, Textarea } from "../../ui/primitives";
+import { MainSection, Settings } from "./Basics";
+import { BulkPaste } from "./BulkPaste";
+import { CheckDrawer, HistoryDrawer, issueTarget } from "./Check";
+import { VersionConflict, saveThenPublish } from "./Conflict";
+import { EditLangProvider } from "./fields";
+import { CnIc } from "./icons";
 import {
   EMPTY,
+  applyJsonDraft,
   createTarget,
   defaultAnswers,
   draftKey,
+  moveQuestion,
+  newUid,
   normalizeDraft,
   oneAtATime,
+  removeQuestion,
+  reorderQuestion,
+  sharedOptions,
   switchMode,
   toDraft,
   toPayload,
-  totalScale,
   type Draft,
   type Mode,
 } from "./model";
 import { Preview } from "./Preview";
-import { VersionConflict, saveThenPublish } from "./Conflict";
-import { IconGroup, IconPatients, Loading, useToast } from "../../ui";
-import { Page } from "../../ui/layout";
-import { Button, Tabs, Textarea } from "../../ui/primitives";
-import { cx } from "../../ui/cx";
-import { useLang } from "../../lang";
-import { IconCaution, IconCross, IconGear } from "../../ui/glyphs";
-import { MenuButton, menuItemClass } from "../../ui/menu";
+import { Questions, type Section } from "./Questions";
+import { Answers, BandsSection, Scales, ScalesSummary } from "./Scales";
+import { NewMethod, type ConstructorSeed } from "./Start";
+import { editorShortcut } from "./shortcuts";
+import { Structure } from "./Structure";
+import { AssignDrawer, type ExistingAssignment } from "../../components/AssignDrawer";
+import { grantState, splitCode } from "../methods/model";
 
 /*
- * Конструктор теста — один свиток по кадрам заказчика.
+ * Конструктор методики (макеты methods-new и methods-constructor).
  *
- * Порядок сверху вниз повторяет f24/f23: вкладки «Конкретний / Комплексний
- * тест» (только при создании — на кадрах правки f18/f29 их нет), «Назва
- * тесту», «Опис тесту», «Питання» аккордеоном (f12), затем либо «Відповіді»
- * и шкалы с таблицей баллов (f24_2/f30/f37), либо «Результати» (f23/f18),
- * внизу «Створити». Прежняя редакция делила ту же работу на четыре вкладки;
- * макет их не знает, и разбивка ушла вместе с ними.
+ *   /constructor          — старт новой методики: пять способов начать и
+ *                           «куди створити» (Start.tsx);
+ *   /constructor/new      — правка новой, ещё не сохранённой методики;
+ *   /constructor/:id      — правка сохранённой.
  *
- * Чего на кадрах нет — и куда оно убрано с глаз (функции при этом живы,
- * см. меню шестерёнки рядом с «Створити»):
+ * Правка — три колонки: «Структура» слева (разделы и пункты, Structure.tsx),
+ * середина — выбранный раздел, справа — перегляд пункта и перевірка ключа
+ * (Preview.tsx). Действия над методикой — в ящиках: перевірка структури,
+ * історія змін, вставка пунктів, призначення групі.
  *
- *   заголовок «Новий тест» и крошка над вкладками (f24_1: над вкладками пусто)
- *     → заголовок скрыт (titleHidden), крошки нет; возврат к каталогу и к
- *       карточке методики — пунктами того же меню;
- *   «чернетка зберігається сама», «Перевірити структуру», отмена и возврат
- *     → в меню шестерёнки; строка про автосейв — подписью самого меню;
- *   предпросмотр пункта (панель контекста справа; на всех кадрах справа пусто)
- *     → пунктом меню, раскрывается блоком под формой;
- *   «Налаштування проходження» и «Тест як JSON» (f23_2: между «Результати» и
- *   «Створити» пусто)
- *     → пунктами того же меню, раскрываются блоками под формой.
- *
- * Убрать их совсем было нельзя: это возможности, а не украшения, и без них
- * встроенные методики (МЛО, Мини-мульт, СР-45) перестают быть методиками.
- *
- * Границу прав макет тоже не видит, а она есть: «Опублікувати» требует
- * surveys.publish, «Створити»/«Зберегти» — только surveys.edit. Поэтому
- * кнопок две, как на f18 (публикация в шапке) и f23 (создание внизу).
- *
- * Чего кадры f17/f18/f29/f37 сюда НЕ приносят и почему.
- *
- * Эти четыре кадра рисуют один и тот же свиток: «Назва тесту» заголовком,
- * «Опис тесту» подписью и текстом во всю колонку 1200, «Питання №N» с рядами
- * «текст | бал» и «Результати». Различаются они только состоянием в шапке:
- * f17 — два значка назначения (опубликована), f18 — «Опублікувати»
- * (не опубликована), f29 и f37 — ни того ни другого.
- *
- * Свиток этот — ПОКАЗ, а не правка, и это видно по пикселям: ряды на f17,
- * f18 и f29 залиты #f0ecff, то есть набраны силуэтом «поля с данными»
- * (Readout look="fill"), а на кадре конструктора f23_2 те же ряды —
- * контурные поля ввода на белом (#ffffff) с серым плейсхолдером. Поля для
- * набора текста питання на f17/f18 нет вовсе: заголовок «Питання №2» стоит
- * над рядами вариантов, и вписать туда формулировку негде. Конструктор —
- * это f23 и f24: их и опознают собственные вкладки «Конкретний /
- * Комплексний тест», которых на f17/f18/f29/f37 нет.
- *
- * Поэтому свиток f17/f18 принадлежит карточке методики (/surveys/:id), и
- * переносить его сюда — значит заменить редактор просмотром. Отсюда взято
- * только то, что относится к состоянию шапки самого конструктора: значки
- * назначения показываются у опубликованной методики, «Опублікувати» — у
- * неопубликованной, крошки над заголовком нет, описание при правке идёт во
- * всю колонку 1200. Остальное — работа волны карточки методики.
+ * Граница прав: «Опублікувати» требует surveys.publish, «Створити» и
+ * «Зберегти» — только surveys.edit. Поэтому кнопок две; у опубликованной
+ * методики сохранение и есть публикация новой версии (сервер делает её
+ * действующей сразу), и кнопка называет это прямо.
  */
-
 export default function Constructor() {
+  const { id } = useParams<{ id: string }>();
+  const { pathname } = useLocation();
+  if (!id && !pathname.startsWith("/constructor/new")) return <NewMethod />;
+  return <Editor key={id ?? "new"} id={id} />;
+}
+
+/**
+ * Показать раскрытый пункт в области прокрутки страницы.
+ *
+ * Не scrollIntoView: тот прокручивает каждого предка, в том числе рамку с
+ * overflow: hidden, — и полоса приложения уезжала из окна вверх, оставляя
+ * пустоту снизу. Здесь прокручивается только ближайшая область с
+ * собственной прокруткой (содержимое Page).
+ */
+function reveal(id: string): void {
+  requestAnimationFrame(() => {
+    const el = document.getElementById(id)?.closest("section");
+    if (!el) return;
+    let box = el.parentElement;
+    while (box && !/(auto|scroll)/.test(getComputedStyle(box).overflowY)) box = box.parentElement;
+    if (!box) return;
+    const top = el.getBoundingClientRect().top - box.getBoundingClientRect().top + box.scrollTop - 12;
+    box.scrollTo({ top, behavior: "smooth" });
+  });
+}
+
+interface Saved {
+  status: SurveyStatus;
+  version: number;
+  versionId: string | null;
+  folderId: string | null;
+}
+
+function Editor({ id }: { id?: string }) {
   const { ut, lang } = useLang();
   const toast = useToast();
-  const { id } = useParams<{ id: string }>();
+  const location = useLocation();
+  const navigate = useNavigate();
   /* автосохранение — своё у каждой учётки: чужой черновик здесь не восстанавливается (#176, model.ts) */
   const { user } = useAuth();
   const autosaveKey = draftKey(user?.id, id);
   const forgetAutosave = () => {
-    if (autosaveKey) localStorage.removeItem(autosaveKey);
+    try {
+      if (autosaveKey) localStorage.removeItem(autosaveKey);
+    } catch {
+      /* хранилище закрыто — забывать нечего */
+    }
   };
-  const location = useLocation();
-  const navigate = useNavigate();
+  /* что принёс старт новой методики: черновик и язык текста (Start.tsx) */
+  const fromStart = (location.state ?? null) as ConstructorSeed | null;
+
   const [draft, setDraftRaw] = useState<Draft>(EMPTY);
   const [restored, setRestored] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const [savedAt, setSavedAt] = useState<string | null>(null);
 
   /*
    * Undo/redo: стек снапшотов. Пишется на каждое изменение черновика —
    * дёшево (structured clone маленького объекта), а отмена случайного
-   * «Удалить» на большой методике бесценна.
+   * «Видалити» на большой методике бесценна.
    */
   const undoStack = useRef<Draft[]>([]);
   const redoStack = useRef<Draft[]>([]);
@@ -143,12 +158,14 @@ export default function Constructor() {
       return next;
     });
   }, []);
+
   /*
-   * Группы — для настроек. Отказ больше не превращается в пустой список:
-   * пустой список показывал группу методики как «Без групи», хотя она в
-   * группе, — просто список не пришёл (Basics.tsx, Settings).
+   * Группы — для настроек. Отказ не превращается в пустой список: пустой
+   * показывал группу методики как «Без групи», хотя она в группе (Basics.tsx).
    */
   const groups = useResource(() => api.groups(), []);
+  const [section, setSection] = useState<Section>(id ? "questions" : "main");
+  const [open, setOpen] = useState<string | null>(null);
   const [focused, setFocused] = useState(0);
   const [json, setJson] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -156,43 +173,42 @@ export default function Constructor() {
   const [conflict, setConflict] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [loaded, setLoaded] = useState(!id);
-  const [issues, setIssues] = useState<Issue[] | null>(null);
+  const [drawer, setDrawer] = useState<null | "check" | "history" | "assign" | "paste">(null);
+  /*
+   * Назначения методики — только когда открыт ящик «Призначити»: сказать, у
+   * кого она уже есть (как в рамке методики, methods/MethodPage.tsx).
+   */
+  const grants = useResource(() => api.grants(id!).catch(() => [] as SurveyGrant[]), [id], {
+    enabled: !!id && drawer === "assign",
+  });
+  const existing = useMemo(() => {
+    const now = new Date();
+    return new Map<string, ExistingAssignment>(
+      (grants.data ?? [])
+        .filter((g) => grantState(g, now) !== "late")
+        .map((g) => [g.userId, { until: g.expiresAt, done: g.completed }] as const),
+    );
+  }, [grants.data]);
   /*
    * Язык, на котором правится текст теста, — не язык консоли. Начинается с
-   * него, потому что чаще всего они совпадают, но переключается отдельно:
-   * специалист с русской консолью вписывает украинский текст методики.
-   *
-   * Английская консоль начинает с украинского: английского текста у методик
-   * нет (CONTENT_LANGS), а украинский — первое, что английский интерфейс
-   * покажет вместо него.
+   * него (или с выбранного на старте), но переключается отдельно: специалист
+   * с русской консолью вписывает украинский текст методики. Английская
+   * консоль начинает с украинского: английского текста у методик нет.
    */
-  const [editLang, setEditLang] = useState<ContentLang>(contentLangFor(lang));
-  /*
-   * Что развёрнуто из меню шестерёнки. Одно за раз: это блоки под формой, и
-   * два открытых сразу увели бы «Створити» на два экрана вниз.
-   */
-  const [tool, setTool] = useState<null | "preview" | "settings" | "json">(null);
-  /*
-   * Опубликована ли методика. Кадр f17 — опубликованная: два значка
-   * назначения и никакой кнопки. Кадр f18 — неопубликованная: «Опублікувати»
-   * и никаких значков. Печатать и то и другое разом — значит показывать
-   * «опубликовать» у того, что уже опубликовано.
-   */
-  const [published, setPublished] = useState(false);
-  /* окно «призначити групі» — второй значок кадра f17 */
-  const [assignGroup, setAssignGroup] = useState(false);
+  const [editLang, setEditLang] = useState<ContentLang>(fromStart?.editLang ?? contentLangFor(lang));
+  /* состояние сохранённой методики: статус, версия, папка — для шапки и кнопок */
+  const [saved, setSaved] = useState<Saved | null>(null);
+  const published = saved?.status === "published";
 
   /* куда заводить тест: «+ → Новий тест» из папки каталога */
   const target = useMemo(() => createTarget(location.search), [location.search]);
 
   /*
-   * Методика с сервера — загрузкой (волна 13), но черновик из неё
-   * заливается только по явной просьбе: при открытии и по «перечитати з
-   * сервера» / «відкинути чернетку». Черновик — живая правка человека, и
-   * перезалить его ответом, пришедшим сам собой, значит стереть работу.
-   * Поэтому ответ сам не перечитывается (manual — вернувшаяся связь его не
-   * тронет), а каждая просьба — свой ключ (`ask`): ответ на неё ложится в
-   * черновик ровно один раз.
+   * Методика с сервера — загрузкой, но черновик из неё заливается только по
+   * явной просьбе: при открытии и по «перечитати з сервера» / «відкинути
+   * чернетку». Черновик — живая правка человека, и перезалить его ответом,
+   * пришедшим сам собой, значит стереть работу. Поэтому ответ сам не
+   * перечитывается (manual), а каждая просьба — свой ключ (`ask`).
    */
   const [ask, setAsk] = useState<{ id: string; n: number } | null>(null);
   const server = useResource(() => api.surveyRaw(ask!.id), [ask?.id, ask?.n], {
@@ -205,29 +221,50 @@ export default function Constructor() {
     if (!ask || !server.data || seeded.current === ask) return;
     seeded.current = ask;
     setDraftRaw(toDraft(server.data, []));
-    setPublished(server.data.status === "published");
     setLoaded(true);
   }, [ask, server.data]);
+  /* статус и версия — из ответа сервера всегда, даже когда черновик восстановлен из автосохранения */
+  const [meta, setMeta] = useState<{ id: string; n: number } | null>(null);
+  const info = useResource(() => api.surveyRaw(id!), [id, meta?.n], { enabled: !!id, manual: true });
   useEffect(() => {
-    if (!server.error) return;
-    setError(server.error);
-    setLoaded(true);
-  }, [server.error]);
+    if (!info.data) return;
+    setSaved({
+      status: info.data.status,
+      version: info.data.versionNumber,
+      versionId: info.data.versionId,
+      folderId: info.data.folderId,
+    });
+  }, [info.data]);
+  const loadError = server.error ?? (!loaded && info.error ? info.error : null);
   const askServer = () => {
     if (id) setAsk((prev) => ({ id, n: (prev?.n ?? 0) + 1 }));
   };
 
   useEffect(() => {
+    /* старт новой методики принёс черновик — он и есть намерение, автосейв прежней новой уступает */
+    if (!id && fromStart?.seed) {
+      setDraftRaw(normalizeDraft({ ...EMPTY, ...fromStart.seed }));
+      setDirty(true);
+      setLoaded(true);
+      // из истории — прочь: перезагрузка вкладки должна поднять автосейв, а не исходный черновик старта
+      navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
+      return;
+    }
     // сначала автосейв: несохранённая работа важнее серверной версии
-    const saved = autosaveKey ? localStorage.getItem(autosaveKey) : null;
-    if (saved) {
+    let kept: string | null = null;
+    try {
+      kept = autosaveKey ? localStorage.getItem(autosaveKey) : null;
+    } catch {
+      kept = null;
+    }
+    if (kept) {
       try {
-        const kept = normalizeDraft({ ...EMPTY, ...(JSON.parse(saved) as Draft) });
+        const parsed = normalizeDraft({ ...EMPTY, ...(JSON.parse(kept) as Draft) });
         /*
          * Папка и группа — из адреса, если он их несёт: человек только что
          * пришёл из этой папки, и его намерение новее сохранённого черновика.
          */
-        setDraftRaw(!id && target.groupId ? { ...kept, groupId: target.groupId, folderId: target.folderId } : kept);
+        setDraftRaw(!id && target.groupId ? { ...parsed, groupId: target.groupId, folderId: target.folderId } : parsed);
         setRestored(true);
         setLoaded(true);
         setAsk(null);
@@ -251,7 +288,12 @@ export default function Constructor() {
   useEffect(() => {
     if (!dirty || !autosaveKey) return;
     const timer = setTimeout(() => {
-      localStorage.setItem(autosaveKey, JSON.stringify(draft));
+      try {
+        localStorage.setItem(autosaveKey, JSON.stringify(draft));
+        setSavedAt(new Date().toISOString());
+      } catch {
+        /* хранилище закрыто или полно — правка живёт в памяти вкладки */
+      }
     }, 800);
     return () => clearTimeout(timer);
   }, [draft, dirty, autosaveKey]);
@@ -266,48 +308,43 @@ export default function Constructor() {
     return () => window.removeEventListener("beforeunload", handler);
   }, [dirty]);
 
-  // Ctrl+S — черновик, Ctrl+Z/Ctrl+Shift+Z — отмена/возврат
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      const mod = e.metaKey || e.ctrlKey;
-      if (!mod) return;
-      if (e.key === "s") {
-        e.preventDefault();
-        void save(false);
-      } else if (e.key === "z" && !e.shiftKey) {
-        // в полях ввода браузерная отмена полезнее нашей
-        const tag = (e.target as HTMLElement | null)?.tagName;
-        if (tag === "INPUT" || tag === "TEXTAREA") return;
-        e.preventDefault();
-        undo();
-      } else if ((e.key === "z" && e.shiftKey) || e.key === "y") {
-        const tag = (e.target as HTMLElement | null)?.tagName;
-        if (tag === "INPUT" || tag === "TEXTAREA") return;
-        e.preventDefault();
-        redo();
+  /*
+   * Проверка структуры — сама, после паузы в правке: число замечаний стоит на
+   * кнопке, точки — у разделов и пунктов. Тот же маршрут, что и по кнопке
+   * (POST /api/surveys/validate, тот же validateSurvey, что держит публикацию);
+   * ответ на устаревший черновик отбрасывается по номеру просьбы.
+   */
+  const [issues, setIssues] = useState<Issue[] | null>(null);
+  const [checkError, setCheckError] = useState<string | null>(null);
+  const [checking, setChecking] = useState(false);
+  const checkSeq = useRef(0);
+  const runCheck = useCallback(
+    async (d: Draft) => {
+      const seq = ++checkSeq.current;
+      setChecking(true);
+      try {
+        const res = await api.validateSurvey(toPayload(d));
+        if (seq === checkSeq.current) {
+          setIssues(res.issues);
+          setCheckError(null);
+        }
+      } catch (e) {
+        if (seq === checkSeq.current) setCheckError(e instanceof Error ? e.message : ut("co.checkFailed"));
+      } finally {
+        if (seq === checkSeq.current) setChecking(false);
       }
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [draft, undo, redo]);
+    },
+    [ut],
+  );
+  useEffect(() => {
+    if (!loaded) return;
+    const timer = setTimeout(() => void runCheck(draft), 1200);
+    return () => clearTimeout(timer);
+  }, [draft, loaded, runCheck]);
 
   const patch = (p: Partial<Draft>) => setDraft((d) => ({ ...d, ...p }));
   const mode: Mode = draft.mode ?? "specific";
   const text = (v: Record<string, string> | null | undefined) => v?.[editLang] || v?.uk || v?.ru || "";
-
-  async function check() {
-    setBusy(true);
-    setError(null);
-    try {
-      const res = await api.validateSurvey(toPayload(draft));
-      setIssues(res.issues);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : ut("co.checkFailed"));
-    } finally {
-      setBusy(false);
-    }
-  }
 
   /* одно сохранение за раз — и для кнопок, и для Ctrl+S (model.ts, oneAtATime) */
   const saving = useRef({ busy: false });
@@ -321,12 +358,8 @@ export default function Constructor() {
         const payload = toPayload(draft);
         /*
          * Папка уходит только при заведении: правка методики папку не меняет,
-         * для переноса есть свой маршрут со своей записью в журнале
-         * (PUT /api/surveys/:id/folder).
-         */
-        /*
+         * для переноса есть свой маршрут (PUT /api/surveys/:id/folder).
          * baseVersionId — только правке: при заведении сверяться не с чем.
-         * Черновик без неё (старый автосейв) уходит, как прежде, — в очередь.
          */
         const { baseVersionId, ...content } = payload;
         const outcome = await saveThenPublish(
@@ -352,9 +385,8 @@ export default function Constructor() {
         /*
          * Записано — значит записано, даже если публикация отказала: автосейв
          * стирается, экран уходит к методике. Остаться здесь значило бы, что
-         * следующее «Створити» заведёт вторую такую же (Conflict.tsx,
-         * saveThenPublish). Отказ публикации — всплывающим сообщением: оно
-         * переживает переход, а строка ошибки этого экрана — нет.
+         * следующее «Створити» заведёт вторую такую же (Conflict.tsx).
+         * Отказ публикации — сообщением: оно переживает переход.
          */
         forgetAutosave();
         setDirty(false);
@@ -365,6 +397,28 @@ export default function Constructor() {
       }
     });
   }
+
+  // Ctrl+S — черновик, Ctrl+Z/Ctrl+Shift+Z — отмена/возврат; по клавише, а не по знаку раскладки (shortcuts.ts)
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const shortcut = editorShortcut(e);
+      if (!shortcut) return;
+      const tag = (e.target as HTMLElement | null)?.tagName;
+      if (shortcut === "save") {
+        e.preventDefault();
+        void save(false);
+        return;
+      }
+      // в полях ввода браузерная отмена полезнее нашей
+      if (tag === "INPUT" || tag === "TEXTAREA") return;
+      e.preventDefault();
+      if (shortcut === "undo") undo();
+      else redo();
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft, undo, redo]);
 
   /*
    * Перечитать методику с сервера — со свежей версией и её versionId: свои
@@ -379,6 +433,16 @@ export default function Constructor() {
     setConflict(null);
     undoStack.current = [];
     askServer();
+    setMeta((m) => ({ id, n: (m?.n ?? 0) + 1 }));
+  }
+
+  function discardDraft() {
+    forgetAutosave();
+    setRestored(false);
+    setDirty(false);
+    undoStack.current = [];
+    if (id) askServer();
+    else setDraftRaw({ ...EMPTY, answers: defaultAnswers(), groupId: target.groupId, folderId: target.folderId });
   }
 
   function applyJson() {
@@ -386,441 +450,409 @@ export default function Constructor() {
     try {
       const parsed = JSON.parse(json) as Draft;
       if (!parsed.title) throw new Error(ut("co.noTitleField"));
-      setDraft(normalizeDraft({ ...EMPTY, ...parsed }));
+      /* текст — поверх версии, что сейчас в экране (после 409 — перечитанной), а не той, что в тексте */
+      setDraft((d) => applyJsonDraft(d, parsed));
+      toast(ut("ce.jsonApplied"), "ok");
     } catch (e) {
       setError(e instanceof Error ? `${ut("co.jsonParseError")}: ${e.message}` : ut("co.jsonParseError"));
     }
   }
 
+  const goto = (s: Section) => {
+    if (s === "json") setJson(JSON.stringify(draft, null, 2));
+    setSection(s);
+  };
+
+  /* открыть пункт в середине и показать его: из колонки структуры, из клетки ключа, из замечания */
+  const openItem = (i: number) => {
+    const q = draft.questions[i];
+    if (!q) return;
+    setSection("questions");
+    setOpen(q.uid);
+    setFocused(i);
+    reveal(`cn-q-${q.uid}`);
+  };
+
+  const addQuestion = () => {
+    const uid = newUid();
+    const at = draft.questions.length;
+    setDraft((d) => ({
+      ...d,
+      questions: [
+        ...d.questions,
+        {
+          uid,
+          type: (d.mode ?? "specific") === "specific" ? "yesno" : "single",
+          title: { uk: "", ru: "" },
+          required: true,
+          options: (d.mode ?? "specific") === "specific" ? sharedOptions(d.answers) : [],
+        },
+      ],
+    }));
+    setSection("questions");
+    setOpen(uid);
+    setFocused(at);
+    reveal(`cn-q-${uid}`);
+  };
+
+  /* удаление — сразу, с «Скасувати» в сообщении: отмена надёжнее окна «ви впевнені» */
+  const removeAt = (i: number) => {
+    setOpen(null);
+    setDraft((d) => removeQuestion(d, i));
+    toast(`${ut("ce.removed")} ${i + 1}`, "info", { action: { label: ut("ce.undoAction"), onClick: undo } });
+  };
+
+  /* ── замечания проверки: по пункту, по разделу ── */
+  const scaleCodes = draft.scales.map((s) => s.code);
+  const located = useMemo(
+    () => (issues ?? []).map((it) => ({ it, at: issueTarget(it, draft.questions.length, scaleCodes) })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [issues, draft.questions.length, scaleCodes.join("\0")],
+  );
+  const itemIssues = useMemo(() => {
+    const m = new Map<number, Issue[]>();
+    for (const { it, at } of located) if (at?.kind === "item") m.set(at.n, [...(m.get(at.n) ?? []), it]);
+    return m;
+  }, [located]);
+  const warnSections = useMemo(() => {
+    const s = new Set<Section>();
+    for (const { it, at } of located) {
+      if (at?.kind === "scale") s.add(mode === "complex" || /band/i.test(it.code) ? "bands" : "scales");
+      else s.add("questions");
+    }
+    return s;
+  }, [located, mode]);
+  const errors = (issues ?? []).filter((i) => i.level === "error").length;
+  const warnings = (issues ?? []).length - errors;
+
+  /* в комплексном тесте разделов «Відповіді» и «Шкали» нет — их работу делают «Результати» */
+  const shownSection: Section = mode === "complex" && (section === "answers" || section === "scales") ? "bands" : section;
+
+  if (loadError && !loaded) {
+    return (
+      <Page title={ut("cn.testTitle")} back={{ to: "/surveys", label: ut("cn.backToCatalogue") }}>
+        <Loading error={loadError} onRetry={askServer} />
+      </Page>
+    );
+  }
   if (!loaded) return <Loading rows={5} />;
 
-  const backTo = draft.folderId ? `/surveys?folder=${encodeURIComponent(draft.folderId)}` : "/surveys";
+  const backTo = (saved?.folderId ?? draft.folderId) ? `/surveys?folder=${encodeURIComponent((saved?.folderId ?? draft.folderId)!)}` : "/surveys";
+  const name = text(draft.title);
+  /* код методики крупно, как в каталоге: «Призначити PHQ-9» */
+  const short = splitCode(name).code ?? (name || ut("cst.title"));
+  const versionDate = saved?.versionId && info.data ? day(info.data.updatedAt) : null;
+  const nextVersion = (saved?.version ?? 0) + 1;
+  const groupTitle = draft.groupId ? groups.data?.find((g) => g.id === draft.groupId)?.title : null;
 
-  const modePanel =
-    mode === "specific" ? (
-      <>
-        <Answers draft={draft} setDraft={setDraft} />
-        <Scales draft={draft} setDraft={setDraft} />
-      </>
-    ) : (
-      <Results draft={draft} setDraft={setDraft} />
-    );
+  const metaLine: [string, string] = !id
+    ? [ut("ce.draft"), ut("ce.newMeta")]
+    : published
+      ? [
+          `${ut("ce.published")}, ${ut("ce.versionLower")} ${saved?.version ?? ""}`,
+          `${versionDate ? `${ut("ce.changed")} ${versionDate}; ` : ""}${ut("ce.saveGoesLive")} ${nextVersion}`,
+        ]
+      : [
+          `${ut("ce.draft")}, ${ut("ce.versionLower")} ${saved?.version ?? ""}`,
+          `${versionDate ? `${ut("ce.changed")} ${versionDate}; ` : ""}${ut("ce.saveMakes")} ${nextVersion}`,
+        ];
 
-  /*
-   * Меню инструментов — приёмник всего, чего на кадрах нет: проверки
-   * структуры, отмены и возврата, предпросмотра, настроек прохождения и
-   * JSON. Подпись меню несёт строку «чернетка зберігається сама» — на кадре
-   * её нет, а сказать о самосохранении надо.
-   */
-  const tools = (
-    <MenuButton
-      label={dirty ? `${ut("cn.tools")} — ${ut("co.draftAutosaves")}` : ut("cn.tools")}
-      glyph={<IconGear />}
-      align="right"
-    >
-      {(close) => (
-        <>
-          <button
-            type="button"
-            role="menuitem"
-            className={menuItemClass("right")}
-            disabled={busy}
-            onClick={() => {
-              close();
-              void check();
-            }}
-          >
-            {ut("co.checkStructure")}
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            className={menuItemClass("right")}
-            disabled={!undoStack.current.length}
-            onClick={() => {
-              close();
-              undo();
-            }}
-          >
-            {ut("co.undo")}
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            className={menuItemClass("right")}
-            disabled={!redoStack.current.length}
-            onClick={() => {
-              close();
-              redo();
-            }}
-          >
-            {ut("co.redo")}
-          </button>
-          <hr className="my-1 border-0 border-t border-hairline" />
-          {(["preview", "settings", "json"] as const).map((t) => (
-            <button
-              key={t}
-              type="button"
-              role="menuitem"
-              aria-pressed={tool === t}
-              className={menuItemClass("right")}
+  const menu: MenuEntry[] = [
+    ...(id
+      ? [
+          {
+            key: "copy",
+            label: ut("ce.copyMethod"),
+            icon: <CnIc.copy size={15} />,
+            onSelect: () => {
+              void api
+                .duplicateSurvey(id)
+                .then((made) => {
+                  toast(ut("cst.copied"), "ok");
+                  navigate(`/constructor/${made.id}`);
+                })
+                .catch((e: unknown) => toast(e instanceof Error ? e.message : ut("cst.copyFailed"), "err"));
+            },
+          },
+        ]
+      : []),
+    { key: "json", label: ut("cn.jsonSection"), icon: <ShellIcon name="braces" size={15} />, onSelect: () => goto("json") },
+    ...(id ? [{ key: "history", label: ut("ce.history"), icon: <Ic.history size={15} />, onSelect: () => setDrawer("history") }] : []),
+    ...(id && published
+      ? [
+          { key: "patient", label: ut("cn.assignPatient"), icon: <CnIc.userPlus size={15} />, to: `/surveys/${id}/access`, ruled: true },
+          { key: "group", label: ut("cn.assignGroup"), icon: <ShellIcon name="users-round" size={15} />, onSelect: () => setDrawer("assign") },
+        ]
+      : []),
+    ...(id
+      ? [
+          { key: "card", label: ut("ce.toMethod"), icon: <Ic.chart size={15} />, to: `/surveys/${id}`, ruled: true },
+          { key: "reload", label: ut("co.conflictReload"), icon: <Ic.refresh size={15} />, onSelect: reloadFromServer },
+        ]
+      : [{ key: "back", label: ut("cn.backToCatalogue"), icon: <Ic.chevronLeft size={15} />, to: backTo, ruled: true }]),
+  ];
+
+  const publishLabel = published ? `${ut("ce.publishVersion")} ${nextVersion}` : ut("cn.publish");
+  /* у опубликованной сохранение и есть публикация: сервер делает новую версию действующей сразу */
+  const publishNow = () => void save(!published);
+  const publishButton = (
+    <Button variant="primary" icon={<CnIc.upload />} onClick={publishNow} disabled={busy}>
+      {busy ? ut("co.saving") : publishLabel}
+    </Button>
+  );
+
+  const content = (() => {
+    switch (shownSection) {
+      case "main":
+        return <MainSection draft={draft} patch={patch} isNew={!id} onMode={(m) => setDraft((d) => switchMode(d, m))} />;
+      case "settings":
+        return <Settings draft={draft} groups={groups.data} groupsError={groups.error} patch={patch} />;
+      case "answers":
+        return <Answers draft={draft} setDraft={setDraft} />;
+      case "scales":
+        return <Scales draft={draft} setDraft={setDraft} />;
+      case "bands":
+        return <BandsSection draft={draft} setDraft={setDraft} />;
+      case "json":
+        return (
+          <Panel title={ut("cn.jsonSection")} icon={<ShellIcon name="braces" />} hint={ut("co.jsonHint")}>
+            <Textarea
+              aria-label={ut("co.wholeJson")}
+              value={json}
+              onChange={(e) => setJson(e.target.value)}
+              rows={22}
+              spellCheck={false}
+              className="font-mono text-caption leading-[18px]"
+            />
+            <div className="mt-3 flex gap-2">
+              <Button variant="primary" onClick={applyJson}>
+                {ut("co.apply")}
+              </Button>
+              <Button onClick={() => void navigator.clipboard?.writeText(json)}>{ut("co.copy")}</Button>
+            </div>
+          </Panel>
+        );
+      default:
+        return (
+          <div className="flex flex-col gap-2.5">
+            {issues?.length ? (
+              <Callout
+                kind="warn"
+                icon={<ShellIcon name="list-checks" />}
+                title={`${ut("co.issuesSummary")}: ${errors} ${ut("co.errorsCount")}, ${warnings} ${ut("co.warningsCount")}`}
+                actions={
+                  <Button size="xs" onClick={() => setDrawer("check")}>
+                    {ut("ce.allIssues")}
+                  </Button>
+                }
+              >
+                <ul className="m-0 mt-1 flex list-none flex-col gap-1 p-0">
+                  {issues.slice(0, 3).map((it, k) => (
+                    <li key={k}>
+                      <b className="font-extrabold text-warn">{it.where}.</b> {it.message}
+                    </li>
+                  ))}
+                </ul>
+                <p className="m-0 mt-1 text-muted">{ut("co.checkHint")}</p>
+              </Callout>
+            ) : null}
+            <Questions
+              draft={draft}
+              setDraft={setDraft}
+              open={open}
+              setOpen={setOpen}
+              onFocusQuestion={setFocused}
+              itemIssues={itemIssues}
+              goto={goto}
+              onRemove={removeAt}
+              onAdd={addQuestion}
+              onPaste={() => setDrawer("paste")}
+            />
+            {draft.questions.length ? (
+              <div className="mt-1.5">
+                <ScalesSummary draft={draft} setDraft={setDraft} goto={goto} />
+              </div>
+            ) : null}
+          </div>
+        );
+    }
+  })();
+
+  const modeWord = mode === "specific" ? ut("ce.modeSpecific") : ut("ce.modeComplex");
+  const autosaveWord = dirty
+    ? savedAt
+      ? `${ut("co.draftAutosaves")}, ${timeOfDay(savedAt)}`
+      : ut("co.draftAutosaves")
+    : id
+      ? ut("ce.noChanges")
+      : ut("co.draftAutosaves");
+
+  return (
+    <EditLangProvider value={editLang} onChange={setEditLang}>
+      <Page
+        title={name || (id ? ut("cn.testTitle") : ut("cst.title"))}
+        meta={metaLine}
+        back={{ to: backTo, label: ut("cn.backToCatalogue") }}
+        actions={
+          <>
+            <Tooltip label={ut("co.undo")} kbd="Ctrl Z">
+              <Button variant="quiet" size="icon" aria-label={ut("co.undo")} disabled={!undoStack.current.length} onClick={undo}>
+                <CnIc.undo />
+              </Button>
+            </Tooltip>
+            <Tooltip label={ut("co.redo")} kbd="Ctrl Shift Z">
+              <Button variant="quiet" size="icon" aria-label={ut("co.redo")} disabled={!redoStack.current.length} onClick={redo}>
+                <CnIc.redo />
+              </Button>
+            </Tooltip>
+            <Button
+              icon={<ShellIcon name="list-checks" />}
+              aria-expanded={drawer === "check"}
               onClick={() => {
-                close();
-                setTool((cur) => (cur === t ? null : t));
-                if (t === "json") setJson(JSON.stringify(draft, null, 2));
+                setDrawer("check");
+                void runCheck(draft);
               }}
             >
-              {ut(t === "preview" ? "co.preview" : t === "settings" ? "cn.settings" : "cn.jsonSection")}
-            </button>
-          ))}
-          <hr className="my-1 border-0 border-t border-hairline" />
-          {/* крошка кадра «До тестів» / «До аналітики» — сюда же: над вкладками на кадре пусто */}
-          <Link role="menuitem" to={id ? `/surveys/${id}` : backTo} className={menuItemClass("right")} onClick={close}>
-            {id ? ut("back.toAnalytics") : ut("cn.backToCatalogue")}
-          </Link>
-        </>
-      )}
-    </MenuButton>
-  );
-
-  return (
-    <Page
-      /* на кадрах правки (f18, f29) заголовок экрана — название самого теста */
-      title={id ? text(draft.title) || ut("cn.testTitle") : ut("cn.newTest")}
-      /*
-       * При заведении заголовка на экране нет: кадр f24_1 начинается прямо
-       * вкладками «Конкретний / Комплексний тест». При правке заголовок — имя
-       * самого теста (f18/f29). Крошки нет ни там, ни там: обратные дороги
-       * ушли в меню шестерёнки.
-       */
-      titleHidden={!id}
-      actions={
-        <>
-          {/*
-            Кадр f17 — опубликованная методика: два значка назначения,
-            «Опублікувати» нет. Кадр f18 — неопубликованная: кнопка есть,
-            значков нет. Показывать оба состояния разом значило бы предлагать
-            опубликовать то, что опубликовано.
-          */}
-          {id && published ? (
-            <>
-              <Link
-                to={`/surveys/${id}/access`}
-                aria-label={ut("cn.assignPatient")}
-                title={ut("cn.assignPatient")}
-                className="inline-flex size-[44px] items-center justify-center rounded-[5px] text-primary hover:bg-primary-soft [&>svg]:size-6"
-              >
-                <IconPatients />
-              </Link>
-              <button
-                type="button"
-                onClick={() => setAssignGroup(true)}
-                aria-label={ut("cn.assignGroup")}
-                title={ut("cn.assignGroup")}
-                className="inline-flex size-[44px] items-center justify-center rounded-[5px] border-0 bg-transparent p-0 text-primary hover:bg-primary-soft [&>svg]:size-6"
-              >
-                <IconGroup />
-              </button>
-            </>
-          ) : null}
-          {!published ? (
-            <Button onClick={() => save(true)} disabled={busy}>
-              {busy ? ut("co.saving") : ut("cn.publish")}
+              {ut("co.checkStructure")}
+              {issues?.length ? <Count n={issues.length} tone={errors ? "violet" : "tint"} /> : null}
             </Button>
-          ) : null}
-          {/*
-            Переключатель языка текста — у правого края колонки, короткой
-            подписью «Укр», как на кадрах f23_1/f24_1, f31 и f37.
-
-            На кадре это НЕ поле в рамке: «Укр» набрано 17/700 фиолетовым без
-            рамки и без заливки, а раскрытый список — белая плашка с рамкой,
-            где языки печатаются полными именами («Українська», «Русский»),
-            прижатыми к правому краю. Обычный <select> так не умеет: у него
-            надпись на кнопке и надпись в списке — одна и та же строка, и
-            выбирать приходилось между коротким «Укр» на кнопке и полным
-            именем в списке. Поэтому здесь меню (align="right" — та же плашка,
-            что у меню карточек f15/f33/f38), а не поле.
-
-            Третий пункт кадра — «English» — не заведён: Lang в модели
-            содержит только uk и ru, и пустая строка в списке обещала бы язык,
-            которого нет ни в одном поле теста.
-
-            С английским интерфейсом (решение заказчика 2026-09-26) довод
-            уточнился, но не отпал: английский стал языком ОБОЛОЧКИ, а текст
-            методик остаётся на двух языках намеренно — нормы сняты с
-            украинского и русского текста (CONTENT_LANGS в shared/types.ts,
-            docs/INSTRUMENTS.md). Пункт «English» здесь позволил бы написать
-            английские пункты, которые схема записи отбросит, а норма — не
-            признает.
-          */}
-          {/*
-            Пояснение «текст хранится обоими языками» — подписью наведения на
-            обёртке, а не на самой кнопке меню: кнопка уже несёт имя меню для
-            диктора (aria-label), и второй `title` на ней диктор прочёл бы
-            поверх имени. На кадре этого пояснения нет — оно и не видно, пока
-            на переключатель не навели.
-          */}
-          <span title={ut("cn.editLangHint")} className="inline-flex shrink-0">
-            <MenuButton
-              label={ut("cn.editLang")}
-              align="right"
-              triggerSize="sm"
-              triggerClassName="h-auto px-0 text-[17px] font-bold text-primary"
-              glyph={makeUiT(editLang)("top.lang")}
-            >
-              {(close) =>
-                CONTENT_LANGS.map((l) => (
-                  <button
-                    key={l}
-                    type="button"
-                    role="menuitem"
-                    aria-current={l === editLang}
-                    className={menuItemClass("right")}
-                    onClick={() => {
-                      setEditLang(l);
-                      close();
-                    }}
-                  >
-                    {ut(`lang.${l}`)}
-                  </button>
-                ))
-              }
-            </MenuButton>
-          </span>
-          {tools}
-        </>
-      }
-      toolbar={
-        !id ? (
-          /* вкладки состояния: role="tab" и панель ниже (cn-mode-panel), см. Tabs */
-          <Tabs
-            label={ut("cn.testKind")}
-            items={[
-              {
-                id: "cn-mode-specific",
-                controls: "cn-mode-panel",
-                label: ut("cn.specific"),
-                active: mode === "specific",
-                onSelect: () => setDraft((d) => switchMode(d, "specific")),
-              },
-              {
-                id: "cn-mode-complex",
-                controls: "cn-mode-panel",
-                label: ut("cn.complex"),
-                active: mode === "complex",
-                onSelect: () => setDraft((d) => switchMode(d, "complex")),
-              },
-            ]}
+            <Tooltip label={ut("ce.rename")}>
+              <Button
+                variant="quiet"
+                size="icon"
+                aria-label={ut("ce.rename")}
+                onClick={() => {
+                  setSection("main");
+                  requestAnimationFrame(() => document.getElementById("cn-title")?.focus());
+                }}
+              >
+                <ShellIcon name="pencil" />
+              </Button>
+            </Tooltip>
+            <ActionMenu label={ut("cn.tools")} entries={menu} />
+            {published ? null : (
+              <Button onClick={() => void save(false)} disabled={busy}>
+                {id ? ut("common.save") : ut("cn.create")}
+              </Button>
+            )}
+            {publishButton}
+          </>
+        }
+        below={
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-small font-semibold text-text-2">
+            <span className="inline-flex items-center gap-1.5">
+              <CnIc.folder size={14} className="text-muted" />
+              {groupTitle ?? ut("ce.noGroup")}
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <CnIc.shapes size={14} className="text-muted" />
+              {modeWord}
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <Ic.cloudCheck size={14} className="text-good" />
+              {autosaveWord}
+            </span>
+          </div>
+        }
+      >
+        {restored ? (
+          <Callout
+            kind="warn"
+            className="mb-4"
+            title={ut("co.draftRestored")}
+            actions={
+              <Button size="xs" variant="quiet" onClick={discardDraft}>
+                {ut("co.discardDraft")}
+              </Button>
+            }
           />
-        ) : undefined
-      }
-    >
-      {assignGroup && id ? <AssignGroup surveyId={id} onClose={() => setAssignGroup(false)} /> : null}
+        ) : null}
+        {conflict ? <VersionConflict message={conflict} onReload={reloadFromServer} onShowMine={() => goto("json")} /> : null}
+        {error ? <ErrorText className="mb-3">{error}</ErrorText> : null}
 
-      {restored ? (
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-[5px] border border-[color-mix(in_srgb,var(--accent)_45%,transparent)] bg-accent-soft px-4 py-3">
-          <p className="m-0 text-small text-text">{ut("co.draftRestored")}</p>
-          <Button
-            variant="quiet"
-            size="sm"
-            onClick={() => {
-              forgetAutosave();
-              setRestored(false);
-              setDirty(false);
-              undoStack.current = [];
-              if (id) {
-                askServer();
-              } else {
-                setDraftRaw({ ...EMPTY, answers: defaultAnswers(), groupId: target.groupId, folderId: target.folderId });
-              }
-            }}
-          >
-            {ut("co.discardDraft")}
-          </Button>
+        <div className="grid grid-cols-[248px_minmax(0,1fr)_340px] items-start gap-4 max-[1360px]:grid-cols-[216px_minmax(0,1fr)_300px] max-[1180px]:grid-cols-[216px_minmax(0,1fr)] max-[900px]:grid-cols-1">
+          <Structure
+            draft={draft}
+            section={shownSection}
+            onSection={goto}
+            open={open}
+            onOpen={openItem}
+            onReorder={(from, to) => setDraft((d) => reorderQuestion(d, from, to))}
+            onMove={(i, delta) => setDraft((d) => moveQuestion(d, i, delta))}
+            warnSections={warnSections}
+            warnItems={new Set(itemIssues.keys())}
+            onAdd={addQuestion}
+            onPaste={() => setDrawer("paste")}
+          />
+          <div className="min-w-0">{content}</div>
+          <div className="kit-scroll sticky top-3 max-h-[calc(100vh-var(--ah,56px)-150px)] min-w-0 overflow-y-auto max-[1180px]:static max-[1180px]:col-start-2 max-[1180px]:max-h-none max-[900px]:col-start-1">
+            <Preview draft={draft} at={focused} onPick={openItem} />
+          </div>
         </div>
-      ) : null}
 
-      {conflict ? (
-        <VersionConflict
-          message={conflict}
-          onReload={reloadFromServer}
-          onShowMine={() => {
-            setJson(JSON.stringify(draft, null, 2));
-            setTool("json");
+        <CheckDrawer
+          open={drawer === "check"}
+          onClose={() => setDrawer(null)}
+          issues={issues}
+          checking={checking}
+          error={checkError}
+          sub={name || ut("cst.title")}
+          items={draft.questions.length}
+          scaleCodes={scaleCodes}
+          onGoto={(t) => {
+            setDrawer(null);
+            if (t.kind === "item") openItem(t.n - 1);
+            else goto(mode === "complex" ? "bands" : "scales");
+          }}
+          onRecheck={() => void runCheck(draft)}
+          note={published ? `${ut("ce.publishNote")} ${nextVersion}` : ut("ce.publishNoteNew")}
+          footer={
+            <>
+              {errors ? null : publishButton}
+              <Button onClick={() => setDrawer(null)}>{ut("ui.close")}</Button>
+            </>
+          }
+        />
+        {id ? (
+          <HistoryDrawer
+            open={drawer === "history"}
+            onClose={() => setDrawer(null)}
+            surveyId={id}
+            currentVersionId={saved?.versionId ?? null}
+            sub={name}
+          />
+        ) : null}
+        {id && published ? (
+          /* тот же ящик, что у каталога и рамки методики (methods-assign-dialog), — с группы: так зовёт его меню */
+          <AssignDrawer
+            choose="recipients"
+            open={drawer === "assign"}
+            onClose={() => setDrawer(null)}
+            onReturn={() => setDrawer("assign")}
+            initialMode="group"
+            title={ut("mc.assignTitle").replace("{code}", short)}
+            sub={`${ut("ant.versionN").replace("{n}", String(saved?.version ?? ""))}`}
+            draftName={ut("mc.assignDraft").replace("{code}", short)}
+            existing={existing}
+            assignOne={(userId, due, note) => api.grant(id, userId, note ?? undefined, due)}
+            assignGroup={(groupId, due, note) => api.assignSurveyToPatientGroup(groupId, { surveyId: id, expiresAt: due, note })}
+            onAssigned={() => grants.reload()}
+          />
+        ) : null}
+        <BulkPaste
+          open={drawer === "paste"}
+          onClose={() => setDrawer(null)}
+          onReturn={() => setDrawer("paste")}
+          sub={name || ut("cst.title")}
+          note={ut("ce.pasteAppends")}
+          applyLabel={ut("ce.pasteApply")}
+          defaultLang={editLang}
+          onApply={(questions) => {
+            setDraft((d) => ({ ...d, questions: [...d.questions, ...questions] }));
+            setSection("questions");
           }}
         />
-      ) : null}
-      {error ? <p className="mb-3 text-small text-danger">{error}</p> : null}
-
-      {issues ? (
-        <div
-          className={cx(
-            "mb-4 rounded-[5px] border p-4",
-            issues.some((i) => i.level === "error")
-              ? "border-[color-mix(in_srgb,var(--danger)_45%,transparent)] bg-danger-soft"
-              : issues.length
-                ? "border-[color-mix(in_srgb,var(--accent)_45%,transparent)] bg-accent-soft"
-                : "border-[color-mix(in_srgb,var(--sev-none)_45%,transparent)]",
-          )}
-        >
-          <h2 className="m-0 text-[18px] font-bold leading-tight text-primary">
-            {issues.length === 0
-              ? ut("co.noIssues")
-              : `${ut("co.issuesSummary")}: ${issues.filter((i) => i.level === "error").length} ${ut("co.errorsCount")}, ${issues.filter((i) => i.level === "warning").length} ${ut("co.warningsCount")}`}
-          </h2>
-          <p className="mt-1 text-[13px] text-muted">{ut("co.checkHint")}</p>
-          {issues.map((i, k) => (
-            <p key={k} className="my-1 text-small">
-              <span className={i.level === "error" ? "text-danger" : "text-accent"}>
-                {i.level === "error" ? <IconCross /> : <IconCaution />}
-              </span>{" "}
-              <strong>{i.where}:</strong> <span className="text-muted">{i.message}</span>
-            </p>
-          ))}
-        </div>
-      ) : null}
-
-      <EditLangProvider value={editLang}>
-        {/*
-          Название и описание.
-
-          При заведении (кадры f23_1, f24_1) они стоят в колонке формы 700 —
-          видимыми подписями 18/700 НАД пустыми полями. При правке (f18, f29)
-          описание идёт во всю колонку содержимого 1200: там оно уже текст, а
-          не поле для набора, и читают его целиком. Название на кадрах правки
-          печатается заголовком экрана, но поле под ним остаётся — иначе
-          методику нельзя переименовать.
-        */}
-        <div className={id ? "" : "mx-auto w-full max-w-[700px]"}>
-          <Loc above label={ut("cn.testTitle")} value={draft.title} onChange={(v) => patch({ title: v })} />
-          {/* четыре строки: поле описания на кадре f24_1 — 125px при 17/1.55 */}
-          <Loc above label={ut("cn.testDescription")} value={draft.description} onChange={(v) => patch({ description: v })} multiline rows={4} />
-        </div>
-      </EditLangProvider>
-
-      {/* остальная форма — колонка 700 по центру, как на кадрах */}
-      <div className="mx-auto w-full max-w-[700px]">
-        <EditLangProvider value={editLang}>
-
-          <Questions draft={draft} setDraft={setDraft} onFocusQuestion={setFocused} />
-
-          {/*
-            Панель вкладок «Вид тесту» — то, что вкладка переключает целиком:
-            общий набор ответов и шкалы против результатов (питання выше
-            общие для обоих видов). При правке вкладок нет (f18/f29), и панель
-            без списка вкладок диктору ни к чему — тогда это просто разметка.
-          */}
-          {id ? (
-            modePanel
-          ) : (
-            <div
-              id="cn-mode-panel"
-              role="tabpanel"
-              aria-labelledby={mode === "specific" ? "cn-mode-specific" : "cn-mode-complex"}
-            >
-              {modePanel}
-            </div>
-          )}
-
-          {/*
-            Блоки, открытые из меню шестерёнки. На кадре f23_2 между
-            «Результати» и «Створити» пусто, поэтому в потоке их нет: они
-            появляются ровно тогда, когда их позвали, и закрываются тем же
-            пунктом меню.
-          */}
-          {tool === "preview" ? (
-            <ToolBlock title={ut("co.preview")} onClose={() => setTool(null)}>
-              <Preview draft={draft} at={focused} />
-            </ToolBlock>
-          ) : null}
-          {tool === "settings" ? (
-            <ToolBlock title={ut("cn.settings")} onClose={() => setTool(null)}>
-              <Settings draft={draft} groups={groups.data} groupsError={groups.error} patch={patch} />
-            </ToolBlock>
-          ) : null}
-          {tool === "json" ? (
-            <ToolBlock title={ut("cn.jsonSection")} onClose={() => setTool(null)}>
-              <p className="m-0 mb-[8px] text-[13px] text-muted">{ut("co.jsonHint")}</p>
-              <Textarea
-                aria-label={ut("co.wholeJson")}
-                value={json}
-                onChange={(e) => setJson(e.target.value)}
-                rows={22}
-                spellCheck={false}
-                className="font-mono text-caption"
-              />
-              <div className="mt-3 flex gap-2">
-                <Button onClick={applyJson}>{ut("co.apply")}</Button>
-                <Button variant="ghost" onClick={() => navigator.clipboard?.writeText(json)}>{ut("co.copy")}</Button>
-              </div>
-            </ToolBlock>
-          ) : null}
-        </EditLangProvider>
-
-        {/* «Створити» 215×45 из f23/f24, отступ сверху 45 — замер кадра f23_2 */}
-        <div className="mt-[45px] flex justify-end">
-          <Button size="md" className="min-w-[215px]" onClick={() => save(false)} disabled={busy}>
-            {busy ? ut("co.saving") : id ? ut("common.save") : ut("cn.create")}
-          </Button>
-        </div>
-      </div>
-    </Page>
-  );
-}
-
-/**
- * «Результати» комплексного теста (f23/f18/f29): диапазоны суммы баллов.
- *
- * Полосы в модели принадлежат шкале, а не тесту, поэтому здесь они лежат на
- * единственной итоговой шкале — она заводится при первом диапазоне, а её
- * ключ на все вопросы проставляется при отправке (withTotalKey). Для автора
- * это «результаты теста», для движка — та же полоса той же шкалы.
- */
-function Results({ draft, setDraft }: { draft: Draft; setDraft: (f: (d: Draft) => Draft) => void }) {
-  const { ut } = useLang();
-  /*
-   * Все, с архивными: выбранный каскад на архивную батарею остаётся виден с
-   * пометкой (Bands). Пока список не пришёл — null, а не пустой список:
-   * пустой назвал бы выбранный каскад удалённым.
-   */
-  const batteries = useResource(() => api.batteries(), []).data;
-  const [details, setDetails] = useState(false);
-  const bands = draft.scales[0]?.bands ?? [];
-  return (
-    <section aria-labelledby="cn-results">
-      <SectionHead id="cn-results" title={ut("cn.results")} />
-      <Bands
-        bands={bands}
-        details={details}
-        batteries={batteries}
-        onChange={(next) =>
-          setDraft((d) => {
-            const first = d.scales[0] ?? totalScale();
-            return { ...d, scales: [{ ...first, bands: next }, ...d.scales.slice(1)] };
-          })
-        }
-      />
-      <div className="mt-[8px]">
-        <Toggle label={ut("cn.bandDetails")} value={details} onChange={setDetails} />
-      </div>
-    </section>
-  );
-}
-
-/**
- * Блок, открытый из меню шестерёнки: то, чего нет на кадре, но есть у
- * методики. Заголовок и «закрити» — чтобы блок нельзя было принять за часть
- * формы и чтобы закрывался он не только тем же пунктом меню.
- */
-function ToolBlock({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
-  const { ut } = useLang();
-  return (
-    <section className="mt-[28px] rounded-[5px] border border-hairline bg-[var(--bg)] px-[20px] py-[12px]">
-      <div className="mb-[12px] flex items-center justify-between gap-[14px]">
-        <h2 className="m-0 text-[17px] font-bold text-primary">{title}</h2>
-        <Button variant="quiet" size="sm" onClick={onClose}>{ut("ui.close")}</Button>
-      </div>
-      {children}
-    </section>
+      </Page>
+    </EditLangProvider>
   );
 }

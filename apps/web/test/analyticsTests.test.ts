@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 import {
   RESET_PATCH,
   alphaLevel,
@@ -6,6 +7,7 @@ import {
   chartsHref,
   dayText,
   defaultSurvey,
+  exportCount,
   fill,
   findSurveys,
   isFiltered,
@@ -26,6 +28,14 @@ import {
   toneStep,
   tooFastRows,
   weekPoints,
+  bucketSummary,
+  heavyShare,
+  kyivDay,
+  mainScale,
+  partialKey,
+  presetFrom,
+  presetOf,
+  spanDays,
 } from "../src/pages/analytics/tests/model";
 
 /**
@@ -37,6 +47,32 @@ import {
  * людей», выстроенное по величине вместо порядка пунктов; скрытая неделя,
  * нарисованная нулём.
  */
+
+/**
+ * Окно «Вивантаження»: плашка рядом с целью говорит, что увозят файлы.
+ *
+ * Выгрузка срез экрана не принимает — в файлах вся методика, все версии и
+ * все люди. Плашка печатала версию и число завершённых по срезу (в «Один
+ * пацієнт» — по одному человеку), и выгрузку всех можно было принять за
+ * выгрузку одного.
+ *
+ * Мутация: вернуть в плашку data.completed — падает проверка исходника.
+ */
+describe("окно выгрузок", () => {
+  test("число в плашке — завершённые всех версий, а не среза экрана", () => {
+    expect(exportCount([{ responseCount: 940 }, { responseCount: 311 }, { responseCount: 0 }])).toBe(1251);
+    expect(exportCount([])).toBe(0);
+  });
+
+  test("плашка считает по версиям методики, а не по срезу", () => {
+    const src = readFileSync(new URL("../src/pages/analytics/tests/actions.tsx", import.meta.url), "utf8");
+    const tag = /fill\(ut\("ant\.exportScope"\), \{([^}]*)\}\)/.exec(src)?.[1] ?? "";
+    expect(tag, "плашка выгрузок не найдена").not.toBe("");
+    expect(tag).toContain("exportCount(data.versions)");
+    expect(tag).not.toContain("completed");
+    expect(tag).not.toContain("versionNumber");
+  });
+});
 
 describe("состояние в адресе", () => {
   test("мусор в адресе читается как «не задано», а не роняет экран", () => {
@@ -109,6 +145,27 @@ describe("подписи", () => {
     expect(numText(null)).toBe("—");
     expect(numText(Number.NaN)).toBe("—");
     expect(dayText("2026-09-01")).toBe("01.09.2026");
+  });
+
+  /*
+   * Разделитель — языка страницы. Прежде запятая стояла при любом языке, и
+   * английский экран печатал «10,8» — по-английски это тысячи. Мутация:
+   * вернуть .replace(".", ",") — падает английская проверка.
+   */
+  test("разделитель дробной части — языка страницы: запятая в uk, точка в en", () => {
+    const g = globalThis as { document?: unknown };
+    const had = "document" in g;
+    const prev = g.document;
+    try {
+      g.document = { documentElement: { lang: "en" } };
+      expect(numText(10.8)).toBe("10.8");
+      expect(numText(1096.25)).toBe("1096.25");
+      g.document = { documentElement: { lang: "uk" } };
+      expect(numText(10.8)).toBe("10,8");
+    } finally {
+      if (had) g.document = prev;
+      else delete g.document;
+    }
   });
 });
 
@@ -285,5 +342,68 @@ describe("матрица ответов", () => {
     expect(toneStep(0)).toBe(0);
     expect(toneStep(1)).toBe(4);
     expect(toneStep(0.5)).toBe(2);
+  });
+});
+
+describe("период", () => {
+  test("день — по Киеву: 23:30 UTC 17-го — это уже 18-е в отделении", () => {
+    expect(kyivDay(Date.parse("2026-10-17T23:30:00Z"))).toBe("2026-10-18");
+    expect(kyivDay(Date.parse("2026-10-17T12:00:00Z"))).toBe("2026-10-17");
+  });
+
+  test("готовый период — последние N дней сегодня включительно, конец открыт", () => {
+    expect(presetFrom("30", "2026-10-18")).toBe("2026-09-19");
+    expect(presetFrom("90", "2026-10-18")).toBe("2026-07-21");
+    expect(presetOf("2026-09-19", null, "2026-10-18")).toBe("30");
+    /* закрытый конец или чужое начало — свой диапазон, а не готовый */
+    expect(presetOf("2026-09-19", "2026-10-18", "2026-10-18")).toBeNull();
+    expect(presetOf("2026-09-20", null, "2026-10-18")).toBeNull();
+    expect(presetOf(null, null, "2026-10-18")).toBeNull();
+    expect(spanDays("2026-09-19", null, "2026-10-18")).toBe(30);
+  });
+});
+
+describe("сводка ряда", () => {
+  const { buckets } = timeBuckets([
+    { date: "2026-07-06", count: 10 },
+    { date: "2026-08-03", count: 30 },
+    { date: "2026-10-12", count: 5 },
+  ]);
+
+  test("идущая неделя — та, в которую входит сегодня; прошедшая — нет", () => {
+    expect(partialKey(buckets, "week", "2026-10-15")).toBe("2026-10-12");
+    expect(partialKey(buckets, "week", "2026-10-19")).toBeNull();
+    expect(partialKey([], "week", "2026-10-15")).toBeNull();
+  });
+
+  test("среднее — по полным корзинам, наибольшая — среди всех", () => {
+    const sum = bucketSummary(buckets, "2026-10-12")!;
+    expect(sum.full).toBe(buckets.length - 1);
+    expect(sum.avg).toBeCloseTo(40 / (buckets.length - 1));
+    expect(sum.top.value).toBe(30);
+    expect(bucketSummary([], null)).toBeNull();
+  });
+});
+
+describe("полосы", () => {
+  test("«помірна й важче» — с первой полосы тяжести moderate, по числам полос", () => {
+    const bands = [
+      { label: "Мінімальна", severity: "none", count: 6 },
+      { label: "Помірна", severity: "moderate", count: 3 },
+      { label: "Тяжка", severity: "severe", count: 1 },
+    ];
+    expect(heavyShare(bands)).toEqual({ label: "Помірна", count: 4, total: 10 });
+    expect(heavyShare([{ label: "Норма", severity: "none", count: 5 }])).toBeNull();
+    expect(heavyShare([])).toBeNull();
+  });
+
+  test("главная шкала обзора — первая содержательная с полосами", () => {
+    const scales = [
+      { code: "L", kind: "validity", bands: [1] },
+      { code: "X", kind: "clinical", bands: [] },
+      { code: "D", kind: "clinical", bands: [1, 2] },
+    ];
+    expect(mainScale(scales)?.code).toBe("D");
+    expect(mainScale([{ code: "L", kind: "validity", bands: [1] }])).toBeNull();
   });
 });

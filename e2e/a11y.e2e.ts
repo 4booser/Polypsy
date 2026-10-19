@@ -363,7 +363,8 @@ for (const theme of ["dark", "light"] as const) {
      */
     // язык консоли стенда — любой из трёх: подпись «Почати» / «Начать» / «Start» (ms.start)
     const start = page.getByRole("button", { name: /^(Почати|Начать|Start)$/ });
-    const firstOption = page.locator("button[aria-pressed]").first();
+    /* один ответ — радио (плитки «Виразної»), несколько и шкала — переключатели */
+    const firstOption = page.getByRole("radio").or(page.locator("button[aria-pressed]")).first();
     await Promise.race([start.waitFor(), firstOption.waitFor()]);
     if (await start.isVisible()) {
       expect(await violationsOf(page, "/me/tests/:id — інструкція")).toEqual([]);
@@ -389,7 +390,7 @@ for (const theme of ["dark", "light"] as const) {
     await login(page, "psy");
     await page.goto("/today");
     await dayRow(page, own.id).locator('a[href^="/visit/"]').click();
-    await page.getByRole("heading", { name: "Приём", exact: true }).waitFor();
+    await page.getByRole("heading", { name: "Протокол приёма" }).waitFor();
     await page.waitForTimeout(600);
     expect(await violationsOf(page, "/visit/:id")).toEqual([]);
   });
@@ -421,7 +422,7 @@ test("день отмечается с клавиатуры, без мыши", a
    * Заголовком экрана стоит дата, а «Сегодня» — вкладка: сводка и приём
    * слиты в один экран.
    */
-  await page.getByRole("link", { name: "Сегодня" }).waitFor();
+  await page.getByRole("main").getByRole("link", { name: "Сегодня" }).waitFor();
 
   const row = dayRow(page, own.id);
   const came = row.getByRole("button", { name: "Пришёл", exact: true });

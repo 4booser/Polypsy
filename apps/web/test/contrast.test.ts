@@ -132,8 +132,14 @@ function contrast(a: Rgb, b: Rgb): number {
   return (hi! + 0.05) / (lo! + 0.05);
 }
 
-/** Поверхности, на которых вообще бывает текст */
-const GROUNDS = ["--bg", "--surface", "--surface-2", "--surface-3"] as const;
+/**
+ * Поверхности, на которых вообще бывает текст.
+ *
+ * С «Виразной» земля страницы (--ground) и лист (--bg, --surface) — разные
+ * цвета: заголовки страниц и подписи стоят прямо на земле, а полоса карточки
+ * пациента (--band) и светлая ступень панели (--panel2) несут свой текст.
+ */
+const GROUNDS = ["--ground", "--bg", "--surface", "--panel2", "--surface-2", "--surface-3", "--band"] as const;
 
 /**
  * Пороги — из правил самого проекта, а не из WCAG вообще.
@@ -149,6 +155,25 @@ const TEXT_TOKENS: [string, number][] = [
   ["--accent", 4.5],
   ["--primary", 4.5],
 ];
+
+/*
+ * Состав тем совпадает.
+ *
+ * Голый `:root` светлой темы виден и под тёмной меткой. Токен, объявленный
+ * только в светлом блоке, в тёмной теме не пропадает, а тихо остаётся
+ * светлым — тёмный текст на тёмной земле, и ни одна проверка выше этого не
+ * увидит, если токена нет в её списке.
+ */
+describe("темы", () => {
+  test("светлый и тёмный блоки объявляют одни и те же токены", () => {
+    const light = [...block(':root[data-theme="light"]').keys()].sort();
+    const dark = [...block(':root[data-theme="dark"]').keys()].sort();
+    expect(light.filter((k) => !dark.includes(k)), "есть только в светлой").toEqual([]);
+    expect(dark.filter((k) => !light.includes(k)), "есть только в тёмной").toEqual([]);
+    // положительный контроль разбора: блоки найдены целиком, а не пустыми
+    expect(light.length).toBeGreaterThan(50);
+  });
+});
 
 describe("контраст токенов", () => {
   for (const [themeName, theme] of [
@@ -194,4 +219,68 @@ describe("контраст токенов", () => {
       expect(bad).toEqual([]);
     });
   }
+});
+
+/*
+ * Рамка поля — 3:1 к тому, на чём поле стоит (WCAG 1.4.11).
+ *
+ * Набор рисует поле тоном --ctl, и на белом это 1,56:1: при плохом свете на
+ * общих ноутбуках поле без различимой рамки читается пустым местом. Рамку
+ * полей, флажков и переключателя набор берёт из --field-border; проверяется
+ * она на всех листах, где стоят формы: панель, panel2 (шапки, подвалы), sunk
+ * (залитые плашки) и земля.
+ */
+describe("рамка поля", () => {
+  for (const [themeName, theme] of [
+    ["светлая", LIGHT],
+    ["тёмная", DARK],
+  ] as const) {
+    test(`${themeName} тема: --field-border — не меньше 3:1 на каждом листе формы`, () => {
+      const bad: string[] = [];
+      for (const groundName of ["--panel", "--panel2", "--sunk", "--ground"]) {
+        const ground = resolve_(groundName, theme, [0, 0, 0]);
+        const ratio = contrast(resolve_("--field-border", theme, ground), ground);
+        if (ratio < 3) bad.push(`--field-border на ${groundName}: ${ratio.toFixed(2)}:1`);
+      }
+      expect(bad).toEqual([]);
+    });
+  }
+});
+
+/*
+ * Клавиша-подсказка (Kbd) — 10,5/700: мелкий текст, порог 4,5 на той
+ * поверхности, где клавиша стоит (`tone` в ui/kbd.tsx).
+ *
+ * Клавиша плашки подсказки (`tip`) несёт чернила плашки: в тёмной теме
+ * плашка светлая, и чернила тёмные. Поставленная на фиолетовую кнопку, она
+ * читалась на 2,8:1 — для залитой кнопки у клавиши свой тон (`fill`), и
+ * проверка держит обе стороны: свой тон проходит, чужой — нет.
+ */
+describe("клавиша-подсказка", () => {
+  const KBD: [string, string, string][] = [
+    ["panel", "--text-2", "--panel"],
+    ["tip", "--tipink", "--tipbg"],
+    ["fill", "--onfill", "--v"],
+    ["fill на красной", "--onfill", "--risk"],
+    ["appbar", "--appmute", "--appbar"],
+  ];
+  for (const [themeName, theme] of [
+    ["светлая", LIGHT],
+    ["тёмная", DARK],
+  ] as const) {
+    test(`${themeName} тема: подпись клавиши читается на своей поверхности`, () => {
+      const bad: string[] = [];
+      for (const [tone, ink, surface] of KBD) {
+        const ground = resolve_(surface, theme, [0, 0, 0]);
+        const ratio = contrast(resolve_(ink, theme, ground), ground);
+        if (ratio < 4.5) bad.push(`${tone}: ${ink} на ${surface} — ${ratio.toFixed(2)}:1`);
+      }
+      expect(bad).toEqual([]);
+    });
+  }
+
+  test("тёмная тема: клавиша плашки на фиолетовой кнопке не читается — поэтому у кнопки свой тон", () => {
+    const violet = resolve_("--v", DARK, [0, 0, 0]);
+    expect(contrast(resolve_("--tipink", DARK, violet), violet)).toBeLessThan(4.5);
+  });
 });

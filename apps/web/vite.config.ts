@@ -3,6 +3,7 @@ import react from "@vitejs/plugin-react";
 import tailwind from "@tailwindcss/vite";
 import { execSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { dictionaryByLanguage, languageChunk } from "./dictionaryPlugin";
 
 /** Короткий sha сборки: при разборе инцидента сверяем «что задеплоено» */
 function gitSha(): string {
@@ -18,7 +19,8 @@ export default defineConfig({
     __BUILD_SHA__: JSON.stringify(gitSha()),
     __BUILD_DATE__: JSON.stringify(new Date().toISOString().slice(0, 10)),
   },
-  plugins: [react(), tailwind()],
+  /* словарь — ядро куском на язык, строки экранов — с экранами (dictionaryPlugin.ts) */
+  plugins: [dictionaryByLanguage(), react(), tailwind()],
   build: {
     /* карта исходников — по запросу: по ней разбирается состав кусков (см. bundle.test.ts) */
     sourcemap: !!process.env.BUILD_SOURCEMAP,
@@ -44,10 +46,13 @@ export default defineConfig({
          *            (TanStack Query, волна 13): меняются раз в полгода, а
          *            не с каждой выкаткой, и браузер держит их в кэше между
          *            версиями консоли;
-         *  strings — словарь интерфейса на трёх языках, почти половина
-         *            начального куска по весу: меняется почти с каждой
-         *            выкаткой, и отдельным файлом не тянет за собой
-         *            перекачку всего остального;
+         *  strings-uk, strings-ru, strings-en — ядро словаря (строки
+         *            входа, оболочки и набора) куском на язык (волна 27): в
+         *            начальной загрузке — только кусок выбранного языка,
+         *            другой догружается при переключении, а строки экранов
+         *            едут с самими экранами (dictionaryPlugin.ts). Меняется
+         *            почти с каждой выкаткой, и отдельным файлом не тянет за
+         *            собой перекачку всего остального;
          *  index   — сама консоль: оболочка, вход, общие компоненты.
          *
          * Экраны и тяжёлые библиотеки (графики, cmdk, виртуализация) сюда не
@@ -55,8 +60,7 @@ export default defineConfig({
          */
         manualChunks(id: string) {
           if (/\/node_modules\/(react|react-dom|scheduler|react-router|react-router-dom|@tanstack\/(react-query|query-core))\//.test(id)) return "react";
-          if (id.includes("/packages/shared/src/uiStrings.ts")) return "strings";
-          return undefined;
+          return languageChunk(id);
         },
       },
     },

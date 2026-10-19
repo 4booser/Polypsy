@@ -1,691 +1,563 @@
-import { useEffect, useState } from "react";
-import type { ScheduleTemplateView, UiKey } from "@quizzy/shared";
+import { useEffect, useRef, useState } from "react";
+import type { AppointmentView } from "@quizzy/shared";
 import { api } from "../api";
-import { Empty, Screen, useAction } from "../ui";
-import { Page, Panel, Stack } from "../ui/layout";
-import { Button, Field, Input, Num, Select } from "../ui/primitives";
-import { cx } from "../ui/cx";
+import { useAuth } from "../auth";
+import { dayKey, locale } from "../format";
+import { Callout, Drawer, DrawerPane, DrawerSection, Loading, Modal, Screen, useAction, useToast } from "../ui";
+import { Ic } from "../ui/icons";
+import { Page, Panel } from "../ui/layout";
+import { Button } from "../ui/primitives";
 import { useLang } from "../lang";
 import { useResource } from "../useResource";
+import { ExceptionFields, ExceptionsPanel, useDayLabel } from "./schedule/Exceptions";
+import { G } from "./schedule/glyphs";
+import { GoogleSync } from "./schedule/GoogleSync";
 import {
   EMPTY_EXCEPTION,
-  afterAdd,
-  exceptionProblem,
-  hoursProblem,
-  weekProblems,
   type ExceptionForm,
-  type HoursProblem,
+  addDays,
+  afterAdd,
+  clock,
+  exceptionProblem,
+  mondayOf,
+  planDay,
+  wallOf,
+  weekDates,
+  weekProblems,
+  weekStats,
 } from "./schedule/model";
+import { type FreeSlot, MoveSlots } from "./schedule/MoveSlots";
+import { RegularWeek, dayHours } from "./schedule/RegularWeek";
+import { WeekCalendar, type WeekData, weekRange } from "./schedule/WeekCalendar";
+import { moveAndReload } from "./visitModel";
+import { type Row, SHORT_KEY, WEEK, WeekEdit } from "./schedule/WeekEdit";
 
-/** Что сказать о промежутке с ошибкой (schedule/model.ts) */
-const PROBLEM_KEY: Record<HoursProblem, UiKey> = {
-  order: "uit.form.endBeforeStart",
-  slot: "uit.sched.slotRange",
-};
+type Pane = "week" | "exception" | "move";
 
-/** Короткие подписи дней: срез длинного названия даёт «Че» и «Су» */
-const SHORT_KEY: Record<number, UiKey> = {
-  1: "wd.1",
-  2: "wd.2",
-  3: "wd.3",
-  4: "wd.4",
-  5: "wd.5",
-  6: "wd.6",
-  7: "wd.7",
-};
-
-/*
- * Неделя перечислена один раз, а не литералом [1..7] в каждом месте.
- *
- * Мест этих три — чтение недели, группы в правке, кнопки дней в простой
- * неделе, — и каждое обязано перечислять ровно те же дни в том же порядке.
- * Недостача одного дня в одном из них выглядела бы не поломкой, а
- * расписанием без субботы: ни ошибки, ни пустого места.
- */
-const WEEK = [1, 2, 3, 4, 5, 6, 7];
-
-const WEEKDAY_KEY: Record<number, UiKey> = {
-  1: "sched.mon",
-  2: "sched.tue",
-  3: "sched.wed",
-  4: "sched.thu",
-  5: "sched.fri",
-  6: "sched.sat",
-  7: "sched.sun",
-};
-
-type Row = Omit<ScheduleTemplateView, "id">;
-
-/** Часы по умолчанию у дня, в котором приёма ещё не было */
-const DEFAULT_HOURS = { startsAt: "09:00", endsAt: "13:00", slotMinutes: 50 };
-
-/** Минуты от полуночи и обратно: HH:MM сравнивается строкой, а складывается только числом */
-function toMinutes(hhmm: string): number {
-  const [h, m] = hhmm.split(":");
-  return Number(h) * 60 + Number(m);
+/** Итог сохранения недели или исключения: числа, а не слово «збережено» */
+interface Saved {
+  added: number;
+  removed: number;
+  flagged: number;
+  at: number;
 }
 
-function fromMinutes(total: number): string {
-  const clamped = Math.max(0, Math.min(total, 23 * 60 + 59));
-  return `${String(Math.floor(clamped / 60)).padStart(2, "0")}:${String(clamped % 60).padStart(2, "0")}`;
-}
+const sameRows = (a: readonly Row[], b: readonly Row[]) => JSON.stringify(a) === JSON.stringify(b);
 
 /**
- * Часы для ещё одного приёмного промежутка в дне.
+ * Расписание специалиста: неделя календарём, обычная неделя, исключения.
  *
- * Второй промежуток в дне заводят ровно по одной причине — обеденный перерыв,
- * — поэтому он начинается после конца предыдущего, а не с тех же девяти утра.
- * Прежняя кнопка «добавить часы» подставляла 09:00–13:00 независимо ни от
- * чего: в дне с приёмом до часу это давало второй промежуток поверх первого.
- * Вреда базе от него нет (слоты сходятся по уникальному ключу), но человек
- * получал строку, которую сначала надо стереть, и только потом заполнить.
+ * Неделю читают картиной — «во вторник у меня трое, в пятницу один поза
+ * розкладом», — поэтому главное место у календаря: часы приёма полосами,
+ * исключения фоном, приёмы блоками с подробностями на наведении. Правят
+ * расписание в панели справа: обычную неделю — целиком и одним
+ * сохранением (сервер принимает её только так: PUT стирает все шаблоны
+ * специалиста и кладёт присланные заново, а сетка на восемь недель вперёд
+ * пересобирается одним проходом), исключение — одной формой.
  *
- * Если день упёрся в полночь, подставляются часы по умолчанию: промежуток
- * нулевой длины сервер отвергает целиком, вместе со всей неделей.
- */
-export function nextHours(day: Row[]): { startsAt: string; endsAt: string; slotMinutes: number } {
-  const last = day[day.length - 1];
-  if (!last) return { ...DEFAULT_HOURS };
-  const startsAt = fromMinutes(toMinutes(last.endsAt) + 60);
-  const endsAt = fromMinutes(toMinutes(startsAt) + 240);
-  if (endsAt <= startsAt) return { ...DEFAULT_HOURS };
-  return { startsAt, endsAt, slotMinutes: last.slotMinutes };
-}
-
-/**
- * Обычная неделя специалиста.
- *
- * Расписание читают как картину недели, и правят так же: «по вторникам с
- * девяти до часу, по четвергам с двух». Поэтому неделя задаётся целиком и
- * сохраняется одной кнопкой, а не строка за строкой: правка по одной строке
- * позволила бы половине изменений доехать, а половине нет — и человек
- * остался бы с расписанием, которого не задумывал.
+ * Правило, которое экран обязан донести до нажатия: занятое время, выпавшее
+ * из часов, не исчезает — приём становится «поза розкладом», и перенести его
+ * или оставить решает человек. Об этом сказано в панели правки, в окне
+ * «Скласти тиждень» и в итоге сохранения — с переходом к таким приёмам.
  */
 export default function SchedulePage() {
   const { ut } = useLang();
   const { run, busy } = useAction();
+  const toast = useToast();
+  const canMove = useAuth().can("appointments.manage");
   /* источник черновика: сам не перечитывается — правку не затрёт (useResource, manual) */
   const res = useResource(() => api.schedule(), [], { manual: true });
-  const reload = res.reload;
+  const server = res.data?.templates.map(({ id: _id, ...rest }) => rest) ?? null;
 
   const [rows, setRows] = useState<Row[] | null>(null);
-  /*
-   * Неделю по умолчанию читают, а не правят.
-   *
-   * Раньше экран открывался таблицей из шестидесяти полей ввода — по шесть
-   * на каждую из десяти строк. Настраивают расписание раз в год, а смотрят
-   * на него постоянно: «во сколько я во вторник», «принимаю ли в пятницу».
-   * Читать это по выпадающим спискам нельзя, а случайно изменить — можно.
-   *
-   * Из трёх способов открыть правку выбран режим на всю неделю. Чего стоили
-   * остальные:
-   *
-   *  — Правка одного дня на месте (нажал на четверг — четверг стал полями).
-   *    Выглядит дешевле всего, но сохранять приходится по дню, а сервер
-   *    такого не умеет и уметь не должен: PUT /api/clinic/schedule стирает
-   *    ВСЕ шаблоны специалиста и кладёт присланные заново. Сохранение по дню
-   *    означало бы семь запросов, каждый из которых заново гоняет syncSlots
-   *    по сетке на восемь недель вперёд и может пометить занятое время вне
-   *    расписания. Оборвись связь на четвёртом — человек остался бы с
-   *    неделей, которую никто не задумывал, и с семью разными числами
-   *    «помечено занятых» вместо одного.
-   *
-   *  — Правка дня в отдельном окне. Сохранение можно было бы накапливать и
-   *    слать одним запросом, но окно закрывает собой неделю — а именно на
-   *    неё и смотрят, решая, куда переставить часы. «Перенести приём со
-   *    среды на четверг» в таком окне делается вслепую.
-   *
-   *  — Режим правки на всю неделю (выбран). Стоит одного лишнего нажатия
-   *    перед правкой и того, что до сохранения на экране висит несохранённое
-   *    состояние. Взамен: один запрос, одно «сохранить», одна общая отмена и
-   *    неделя целиком перед глазами, пока её правят, — ровно та единица, в
-   *    которой её и мыслят, и в которой её принимает сервер.
-   */
-  const [editing, setEditing] = useState(false);
-  const [result, setResult] = useState<{ added: number; removed: number; flagged: number } | null>(
-    null,
-  );
   useEffect(() => {
-    if (res.data) {
-      setRows(res.data.templates.map(({ id: _id, ...rest }) => rest));
-    }
+    if (res.data) setRows(res.data.templates.map(({ id: _id, ...rest }) => rest));
   }, [res.data]);
+
+  const [from, setFrom] = useState(() => mondayOf(dayKey(new Date().toISOString())));
+  const week = useResource(() => api.scheduleWeek(from), [from]);
+  const thisWeek = week.data ? mondayOf(week.data.today) : mondayOf(dayKey(new Date().toISOString()));
+
+  /* «сейчас» сдвигается раз в минуту: линия «зараз» и следующий приём */
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 60_000);
+    return () => clearInterval(id);
+  }, []);
+
+  const [open, setOpen] = useState(false);
+  const [pane, setPane] = useState<Pane>("week");
+  const show = (p: Pane) => {
+    setPane(p);
+    setOpen(true);
+  };
+
+  const [saved, setSaved] = useState<Saved | null>(null);
+  const [rebuild, setRebuild] = useState<Row[] | null>(null);
+  const [form, setForm] = useState<ExceptionForm>(EMPTY_EXCEPTION);
+  const [moving, setMoving] = useState<AppointmentView | null>(null);
+  const [slot, setSlot] = useState<FreeSlot | null>(null);
+  /* окна переноса перечитываются заново после отказа: занятое окно не должно стоять выбранным */
+  const [slotsRev, setSlotsRev] = useState(0);
+  const [focusId, setFocusId] = useState<string | null>(null);
+  const calendarRef = useRef<HTMLDivElement>(null);
+  const dayLabel = useDayLabel();
+
+  const reloadAll = () => {
+    res.reload();
+    week.reload();
+  };
+
   /*
-   * Неделя с ошибкой не сохраняется: сервер отверг бы её строкой разбора
-   * тела, не назвав, какой из промежутков виноват. Сами ошибки показывает
-   * WeekEdit — у той строки, где они есть.
+   * Итог показывается числами, а не словом «сохранено»: правка тихо
+   * переписывает сетку на два месяца вперёд, и человеку важно ровно одно —
+   * сколько занятого времени оказалось вне расписания. Без этого числа он
+   * узнает о чужом выпавшем приёме от пациента.
    */
+  const saveWeek = (next: Row[]) =>
+    run(async () => {
+      const r = await api.saveSchedule(next);
+      setSaved({ ...r, at: Date.now() });
+      setOpen(false);
+      setRebuild(null);
+      reloadAll();
+      return r;
+    }, ut("sched.saved"));
+
+  /* «Показати поза розкладом»: неделя первого такого приёма впереди, сам приём — обведён */
+  const showOff = () =>
+    run(async () => {
+      const today = week.data?.today ?? dayKey(new Date().toISOString());
+      /* весь горизонт записи: дальше него приёмов нет, ближе — может не найтись */
+      const ahead = await api.scheduleWeek(today, (res.data?.horizonWeeks ?? 8) * 7);
+      const first = ahead.appointments.find(
+        (a) => a.offSchedule && ["booked", "confirmed", "arrived", "in_progress"].includes(a.status),
+      );
+      if (!first) {
+        toast(ut("v2s.noOff"), "info");
+        return false;
+      }
+      setFrom(mondayOf(wallOf(first.startsAt, ahead.tz).date));
+      setFocusId(first.id);
+      calendarRef.current?.scrollIntoView({ block: "start", behavior: "smooth" });
+    });
+
+  const rowsDirty = rows !== null && server !== null && !sameRows(rows, server);
   const invalid = rows !== null && weekProblems(rows).size > 0;
+  const formDirty = form.date !== "" || form.from !== "" || form.to !== "" || form.note !== "";
+  const formProblem = exceptionProblem(form);
 
   return (
-    <Screen res={res} rows={4}>
+    <Screen res={res} rows={6}>
       {(data) => (
         <Page
           title={ut("sched.title")}
-          sub={ut("sched.horizon").replace("{weeks}", String(data.horizonWeeks))}
+          meta={[
+            ut("v2s.weekOf").replace("{range}", weekRange(from, addDays(from, 6), false)),
+            ut("sched.horizon").replace("{weeks}", String(data.horizonWeeks)),
+          ]}
+          actions={
+            <>
+              <Button icon={<G.calendarX />} onClick={() => show("exception")} aria-expanded={open && pane === "exception"}>
+                {ut("sched.addException")}
+              </Button>
+              <Button variant="primary" icon={<Ic.pen />} onClick={() => show("week")} aria-expanded={open && pane === "week"}>
+                {ut("sched.edit")}
+              </Button>
+            </>
+          }
         >
-          <Stack>
-            <Panel
-              title={ut("sched.week")}
+          {saved ? (
+            <Callout
+              kind="good"
+              role="status"
+              className="mb-4"
+              title={ut("v2s.savedAt").replace(
+                "{time}",
+                new Date(saved.at).toLocaleTimeString(locale(), { hour: "2-digit", minute: "2-digit" }),
+              )}
               actions={
-                editing ? (
-                <div className="flex gap-2">
+                saved.flagged > 0 ? (
+                  <Button size="xs" disabled={busy} onClick={() => void showOff()}>
+                    {ut("v2s.showOff")}
+                  </Button>
+                ) : undefined
+              }
+            >
+              {ut("sched.result")
+                .replace("{added}", String(saved.added))
+                .replace("{removed}", String(saved.removed))
+                .replace("{flagged}", String(saved.flagged))}
+              {". "}
+              {ut("sched.offNote")}
+            </Callout>
+          ) : null}
+
+          <div className="grid items-start gap-4 grid-cols-[minmax(0,1fr)_360px] max-[1360px]:grid-cols-[minmax(0,1fr)_330px] max-[1100px]:grid-cols-1">
+            <div className="flex min-w-0 flex-col gap-4" ref={calendarRef}>
+              <Panel title={ut("v2s.week")} icon={<Ic.calendar />} sub={ut("v2s.weekHint")} flush>
+                <WeekNav
+                  from={from}
+                  current={from === thisWeek}
+                  onStep={(d) => {
+                    setFocusId(null);
+                    setFrom(addDays(from, d * 7));
+                  }}
+                  onToday={() => {
+                    setFocusId(null);
+                    setFrom(thisWeek);
+                  }}
+                />
+                {week.data && week.data.from === from ? (
+                  <WeekBody
+                    week={week.data}
+                    /* календарь — по сохранённой неделе: несохранённая правка в панели его не двигает */
+                    templates={server ?? []}
+                    now={now}
+                    focusId={focusId}
+                    canMove={canMove}
+                    onMove={(a) => {
+                      setMoving(a);
+                      setSlot(null);
+                      show("move");
+                    }}
+                  />
+                ) : (
+                  <div className="px-4 pb-4">
+                    <Loading rows={6} error={week.error} onRetry={week.reload} busy={week.loading} />
+                  </div>
+                )}
+              </Panel>
+              <GoogleSync />
+            </div>
+
+            <div className="flex min-w-0 flex-col gap-4">
+              <RegularWeek rows={server ?? []} onEdit={() => show("week")} onBuild={setRebuild} />
+              <ExceptionsPanel
+                items={data.exceptions}
+                busy={busy}
+                onAdd={() => show("exception")}
+                onRemove={(e) =>
+                  void run(async () => {
+                    await api.removeScheduleException(e.id);
+                    reloadAll();
+                  }, ut("v2s.excRemoved").replace("{day}", dayLabel(e.date)))
+                }
+              />
+            </div>
+          </div>
+
+          <Drawer
+            open={open}
+            mode={pane}
+            wide={pane === "week"}
+            onClose={() => setOpen(false)}
+            onReturn={(m) => show((m as Pane) ?? "week")}
+          >
+            <DrawerPane
+              mode="week"
+              title={ut("sched.week")}
+              sub={ut("sched.byDay")}
+              icon={<G.calendarRange />}
+              dirty={rowsDirty}
+              draftName={ut("v2s.draftWeek")}
+              note={ut("v2s.weekSaveNote")}
+              noteIcon={<Ic.users />}
+              footer={
+                <>
                   <Button
-                    size="sm"
-                    variant="ghost"
+                    variant="primary"
+                    disabled={busy || rows === null || invalid}
+                    onClick={() => void saveWeek(rows ?? [])}
+                  >
+                    {ut("sched.save")}
+                  </Button>
+                  <Button
                     onClick={() => {
                       // отказ возвращает то, что на сервере, а не то, что успели натыкать
-                      setRows(res.data?.templates.map(({ id: _id, ...rest }) => rest) ?? []);
-                      setEditing(false);
+                      setRows(server ?? []);
+                      setOpen(false);
                     }}
                   >
                     {ut("sched.cancelEdit")}
                   </Button>
-                  {/*
-                    Кнопки «добавить часы» здесь больше нет: она стояла над
-                    всей неделей и добавляла строку с понедельником, потому
-                    что какой-то день выбрать была обязана. Человек метил в
-                    четверг, получал понедельник и шёл исправлять день
-                    выпадающим списком. Теперь часы добавляются внутри дня,
-                    и выбирать день не нужно — он уже известен из того, куда
-                    нажали.
-                  */}
-                  <Button
-                    size="sm"
-                    disabled={busy || rows === null || invalid}
-                    onClick={() =>
-                      run(async () => {
-                        /*
-                         * Итог показывается числами, а не словом «сохранено».
-                         *
-                         * Правка недели тихо переписывает сетку на два месяца
-                         * вперёд, и человеку важно ровно одно: сколько
-                         * занятого времени оказалось вне расписания. Без этого
-                         * числа он узнает о чужом перенесённом приёме от
-                         * пациента.
-                         */
-                        const r = await api.saveSchedule(rows ?? []);
-                        await reload();
-                        setResult(r);
-                        setEditing(false);
-                        return r;
-                      }, ut("sched.saved"))
-                    }
-                  >
-                    {ut("sched.save")}
-                  </Button>
-                </div>
-                ) : (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => {
-                      // итог прошлого сохранения относится к прошлой неделе, а не к той, что правят сейчас
-                      setResult(null);
-                      setEditing(true);
-                    }}
-                  >
-                    {ut("sched.edit")}
-                  </Button>
-                )
+                </>
               }
             >
-              {/*
-                Занятое время вне расписания не исчезает при сужении часов, и
-                написано это здесь, а не в справке: сузить часы задним числом —
-                самый вероятный способ молча отменить чужой приём, и человек
-                должен знать, что этого не произойдёт, ДО того как нажмёт.
-              */}
-              <p className="px-4 pb-3 text-caption text-muted">{ut("sched.offNote")}</p>
-              {result ? (
-                <p
-                  className={`px-4 pb-3 text-caption ${result.flagged ? "text-accent" : "text-muted"}`}
-                >
-                  {ut("sched.result")
-                    .replace("{added}", String(result.added))
-                    .replace("{removed}", String(result.removed))
-                    .replace("{flagged}", String(result.flagged))}
-                </p>
-              ) : null}
+              <DrawerSection>
+                {/*
+                  Занятое время вне расписания не исчезает при сужении часов, и
+                  написано это здесь, до кнопки, а не в справке: сузить часы
+                  задним числом — самый вероятный способ молча отменить чужой
+                  приём, и человек должен знать, что этого не произойдёт.
+                */}
+                <Callout kind="info" className="mb-4">
+                  {ut("sched.offNote")}
+                </Callout>
+                {rows ? <WeekEdit rows={rows} onChange={setRows} /> : null}
+              </DrawerSection>
+            </DrawerPane>
 
-              {/*
-                Пустая неделя показывается заглушкой только в чтении.
-                Раньше условие стояло первым и в правке тоже: у человека без
-                единого часа приёма экран правки состоял из надписи «Неделя
-                пуста» и ничего больше. Завести первые часы было нельзя —
-                добавлять их некуда, потому что добавление живёт внутри дня.
-              */}
-              {rows === null || (rows.length === 0 && !editing) ? (
-                <Empty title={ut("sched.empty")} />
-              ) : !editing ? (
-                <WeekRead rows={rows} />
-              ) : (
+            <DrawerPane
+              mode="exception"
+              title={ut("v2s.newException")}
+              sub={ut("v2s.newExceptionSub")}
+              icon={<G.calendarX />}
+              dirty={formDirty}
+              draftName={ut("v2s.draftException")}
+              note={ut(form.kind === "off" ? "v2s.excNoteOff" : "v2s.excNoteExtra")}
+              noteIcon={<Ic.lock />}
+              footer={
                 <>
-                  <SimpleWeek onApply={(next) => setRows(next)} />
-                  <WeekEdit rows={rows} onChange={setRows} />
+                  <Button
+                    variant="primary"
+                    disabled={busy || formProblem !== null}
+                    onClick={async () => {
+                      const sent = form;
+                      const ok = await run(async () => {
+                        const r = await api.addScheduleException({
+                          date: sent.date,
+                          kind: sent.kind,
+                          startsAt: sent.from || null,
+                          endsAt: sent.to || null,
+                          note: sent.note || null,
+                        });
+                        setSaved({ added: r.added, removed: r.removed, flagged: r.flagged, at: Date.now() });
+                        reloadAll();
+                      }, ut("v2s.excAdded").replace("{day}", dayLabel(sent.date)));
+                      /* стирается только принятое: отказ оставляет набранное для правки и повтора */
+                      setForm((f) => (f === sent ? afterAdd(f, ok) : f));
+                      if (ok) setOpen(false);
+                    }}
+                  >
+                    {ut("sched.addException")}
+                  </Button>
+                  <Button onClick={() => setOpen(false)}>{ut("visit.cancel")}</Button>
                 </>
-              )}
-            </Panel>
+              }
+            >
+              <DrawerSection>
+                <ExceptionFields form={form} set={(patch) => setForm((f) => ({ ...f, ...patch }))} />
+              </DrawerSection>
+            </DrawerPane>
 
-            <Exceptions
-              items={data.exceptions}
-              busy={busy}
-              /* успех или отказ — форма решает, стирать ли набранное (schedule/model.ts, afterAdd) */
-              onAdd={(input) => run(() => api.addScheduleException(input).then(reload))}
-              onRemove={(id) => run(() => api.removeScheduleException(id).then(reload))}
-            />
-          </Stack>
+            <DrawerPane
+              mode="move"
+              title={moving ? ut("v2s.moveTitle").replace("{name}", moving.patientName) : ut("v2s.move")}
+              sub={moving && week.data ? moveSub(moving, week.data.tz, ut, dayLabel) : undefined}
+              icon={<G.calendarClock />}
+              tone={moving?.offSchedule ? "warn" : "violet"}
+              footer={
+                <>
+                  <Button
+                    variant="primary"
+                    icon={<G.calendarCheck />}
+                    disabled={busy || !moving || !slot}
+                    onClick={() => {
+                      if (!moving || !slot || !week.data) return;
+                      const tz = week.data.tz;
+                      const w = wallOf(slot.startsAt, tz);
+                      void run(
+                        async () => {
+                          try {
+                            /*
+                             * Перечитывается и на отказе (#178): приём уже перенёс
+                             * коллега (409), он начался или окно заняли — неделя на
+                             * экране устарела, а окна переноса — тоже.
+                             */
+                            await moveAndReload(() => api.rescheduleAppointment(moving.id, slot.id), week.reload);
+                          } catch (e) {
+                            setSlot(null);
+                            setSlotsRev((n) => n + 1);
+                            throw e;
+                          }
+                          setOpen(false);
+                          setMoving(null);
+                          setSlot(null);
+                          setFocusId(null);
+                        },
+                        ut("v2s.moved").replace("{when}", `${dayLabel(w.date)}, ${clock(w.minutes)}`),
+                      );
+                    }}
+                  >
+                    {ut("v2s.moveDo")}
+                  </Button>
+                  <Button onClick={() => setOpen(false)}>{ut("visit.cancel")}</Button>
+                </>
+              }
+            >
+              {moving && week.data ? (
+                <>
+                  <DrawerSection title={ut("v2s.moveWhat")}>
+                    <p className="m-0 text-small text-text-2">
+                      {ut(moving.offSchedule ? "v2s.moveWhyOff" : "v2s.moveWhy")}
+                    </p>
+                  </DrawerSection>
+                  <DrawerSection title={ut("v2s.moveNew")} sub={ut("v2s.moveNewSub")}>
+                    <MoveSlots key={slotsRev} specialistId={moving.specialistId} tz={week.data.tz} picked={slot} onPick={setSlot} />
+                  </DrawerSection>
+                </>
+              ) : null}
+            </DrawerPane>
+          </Drawer>
+
+          {rebuild ? (
+            <Modal
+              title={ut("v2s.rebuildAsk")}
+              sub={rebuildSummary(rebuild, ut)}
+              icon={<G.calendarRange />}
+              tone="warn"
+              width={500}
+              onClose={() => setRebuild(null)}
+              footer={
+                <>
+                  <Button variant="primary" disabled={busy} onClick={() => void saveWeek(rebuild)}>
+                    {ut("sched.apply")}
+                  </Button>
+                  <Button onClick={() => setRebuild(null)}>{ut("visit.cancel")}</Button>
+                </>
+              }
+            >
+              <p className="m-0 text-body text-text-2">{ut("v2s.rebuildBody")}</p>
+            </Modal>
+          ) : null}
         </Page>
       )}
     </Screen>
   );
 }
 
-/**
- * Неделя как текст.
- *
- * Дни идут все семь подряд, включая те, в которые приёма нет: расписание
- * читают вопросом «принимаю ли я в четверг», и день, которого просто нет в
- * списке, на этот вопрос не отвечает — его приходится искать, чтобы
- * убедиться, что не нашёл.
- */
-/**
- * Обычная неделя одной строкой.
- *
- * Настраивают расписание один раз, и настраивает его человек, который знает
- * про свой приём ровно три вещи: в какие дни, с которого по который час и
- * сколько длится приём. Таблица из строк на каждый интервал спрашивала то же
- * самое пять раз подряд, и заполнить её без ошибки труднее, чем сказать
- * вслух.
- *
- * Построчная правка не убрана: обеденный перерыв и короткая пятница иначе не
- * задаются. Но она перестала быть первым, что видит человек, — и стала тем,
- * чем и является: поправкой к обычной неделе.
- */
-function SimpleWeek({ onApply }: { onApply: (rows: Row[]) => void }) {
+type Ut = ReturnType<typeof useLang>["ut"];
+
+/** «пн, вт, ср, чт, пт 09:00–17:00, по 50 хв» — что заменит неделю */
+function rebuildSummary(rows: Row[], ut: Ut): string {
+  const first = rows[0];
+  if (!first) return "";
+  const days = WEEK.filter((d) => dayHours(rows, d)).map((d) => ut(SHORT_KEY[d]!));
+  return `${days.join(", ")} ${first.startsAt}–${first.endsAt}, ${ut("sched.perSlot").replace("{n}", String(first.slotMinutes))}`;
+}
+
+function moveSub(a: AppointmentView, tz: string, ut: Ut, dayLabel: (d: string) => string): string {
+  const w = wallOf(a.startsAt, tz);
+  const when = `${dayLabel(w.date)}, ${clock(w.minutes)}`;
+  return a.offSchedule ? `${when}, ${ut("v2s.offShort")}` : when;
+}
+
+/** Строка навигации: назад, неделя, вперёд, «Цей тиждень» */
+function WeekNav({
+  from,
+  current,
+  onStep,
+  onToday,
+}: {
+  from: string;
+  current: boolean;
+  onStep: (d: -1 | 1) => void;
+  onToday: () => void;
+}) {
   const { ut } = useLang();
-  const [days, setDays] = useState<number[]>([1, 2, 3, 4, 5]);
-  const [from, setFrom] = useState("09:00");
-  const [to, setTo] = useState("17:00");
-  const [minutes, setMinutes] = useState(50);
-
-  const toggle = (d: number) =>
-    setDays((prev) => (prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d].sort()));
-  /* та же проверка, что у строки недели: «с 17 до 9» и приём в 0 минут не раскладываются по дням */
-  const problem = hoursProblem({ startsAt: from, endsAt: to, slotMinutes: minutes });
-
   return (
-    <div className="px-4 pb-4">
-      <div className="pb-1 text-micro uppercase tracking-[var(--tracking-label)] text-faint">
-        {ut("sched.simple")}
-      </div>
-      <p className="pb-3 text-caption text-muted">{ut("sched.simpleHint")}</p>
-      <div className="flex flex-wrap items-end gap-3">
-        <div className="flex flex-wrap gap-1">
-          {WEEK.map((d) => (
-            <button
-              key={d}
-              type="button"
-              aria-pressed={days.includes(d)}
-              onClick={() => toggle(d)}
-              className={cx(
-                "h-9 rounded-sm px-3 text-small transition-colors",
-                "outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]",
-                days.includes(d)
-                  ? "bg-surface-3 font-medium text-text"
-                  : "text-muted hover:bg-surface-2 hover:text-text",
-              )}
-            >
-              {ut(SHORT_KEY[d]!)}
-            </button>
-          ))}
-        </div>
-        <Field label={ut("sched.from")}>
-          <Input type="time" value={from} onChange={(e) => setFrom(e.target.value)} />
-        </Field>
-        <Field label={ut("sched.to")}>
-          <Input type="time" value={to} onChange={(e) => setTo(e.target.value)} />
-        </Field>
-        <Field label={ut("sched.slotMinutes")}>
-          <Input
-            type="number"
-            min={5}
-            max={480}
-            value={minutes}
-            onChange={(e) => setMinutes(Number(e.target.value))}
-          />
-        </Field>
-        <Button
-          size="sm"
-          disabled={!days.length || problem !== null}
-          onClick={() =>
-            onApply(days.map((weekday) => ({ weekday, startsAt: from, endsAt: to, slotMinutes: minutes })))
-          }
-        >
-          {ut("sched.apply")}
-        </Button>
-      </div>
-      {problem ? <p className="pt-2 text-caption text-danger">{ut(PROBLEM_KEY[problem])}</p> : null}
-      <p className="pt-2 text-caption text-faint">{ut("sched.applyWarn")}</p>
+    <div className="flex flex-wrap items-center gap-2 px-4 pb-3">
+      <Button size="icon-sm" icon={<Ic.chevronLeft />} aria-label={ut("v2s.prevWeek")} title={ut("v2s.prevWeek")} onClick={() => onStep(-1)} />
+      <span className="px-1 text-[16px] font-extrabold leading-5 tracking-[-0.015em] text-text">
+        {weekRange(from, addDays(from, 6), true)}
+      </span>
+      <Button size="icon-sm" icon={<Ic.chevronRight />} aria-label={ut("v2s.nextWeek")} title={ut("v2s.nextWeek")} onClick={() => onStep(1)} />
+      <Button size="xs" variant="ghost" disabled={current} onClick={onToday}>
+        {ut("v2s.thisWeek")}
+      </Button>
     </div>
   );
 }
 
-function WeekRead({ rows }: { rows: Row[] }) {
+/** Строка чисел недели, сам календарь и легенда */
+function WeekBody({
+  week,
+  templates,
+  now,
+  focusId,
+  canMove,
+  onMove,
+}: {
+  week: WeekData;
+  templates: Row[];
+  now: number;
+  focusId: string | null;
+  canMove: boolean;
+  onMove: (a: AppointmentView) => void;
+}) {
   const { ut } = useLang();
-
-  return (
-    <div className="px-4 pb-4">
-      {WEEK.map((weekday) => {
-        const day = rows
-          .filter((r) => r.weekday === weekday)
-          .sort((a, b) => a.startsAt.localeCompare(b.startsAt));
-        return (
-          <div
-            key={weekday}
-            /* столбец дня тот же, что в правке: нажатие «изменить неделю» не должно сдвигать дни вбок */
-            className="grid items-baseline gap-x-2 border-t border-hairline py-2 first:border-t-0"
-            style={{ gridTemplateColumns: `${DAY_COLUMN} minmax(0,1fr)` }}
-          >
-            <span className={day.length ? "font-medium" : "text-faint"}>
-              {ut(WEEKDAY_KEY[weekday]!)}
-            </span>
-            {day.length === 0 ? (
-              <span className="text-caption text-faint">{ut("sched.dayOff")}</span>
-            ) : (
-              <div className="flex flex-col gap-0.5">
-                {day.map((r, i) => (
-                  <div key={i} className="flex flex-wrap items-baseline gap-x-3 text-caption">
-                    <Num>
-                      {r.startsAt}–{r.endsAt}
-                    </Num>
-                    <span className="text-muted">
-                      {ut("sched.perSlot").replace("{n}", String(r.slotMinutes))}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        );
-      })}
-    </div>
+  const plans = weekDates(week.from).map((d) => planDay(d, templates, week.exceptions));
+  const st = weekStats(plans, week.appointments, week.slots, week.to, now, week.tz);
+  const num = new Intl.NumberFormat(locale(), { maximumFractionDigits: 1 });
+  const firstOff = week.appointments.find(
+    (a) => a.offSchedule && ["booked", "confirmed", "arrived", "in_progress"].includes(a.status),
   );
-}
-
-/*
- * Ширины столбцов заданы один раз, и шапка складывается из тех же кусков,
- * что и строки, а не повторяет их числами.
- *
- * Повторение уже разъезжалось: в столбце дня стояло 150px у шапки и 132px у
- * чтения недели, и подпись «День» висела над пустотой. Здесь шапка — это
- * `DAY_COLUMN + INTERVAL_COLUMNS`, а строка дня — `DAY_COLUMN` и вложенная
- * сетка `INTERVAL_COLUMNS` с тем же зазором gap-2. Разойтись им нечем: числа
- * одни и те же, поправка в одном месте.
- */
-const DAY_COLUMN = "132px";
-// с · по · длительность · снять
-const INTERVAL_COLUMNS = "116px 116px 92px 1fr";
-
-/**
- * Правка недели: день — заголовок группы, а не значение в строке.
- *
- * Было так: плоский список промежутков, и в каждом — выпадающий список дня.
- * У специалиста с обедом понедельник стоял в списке дважды подряд, и это
- * читалось не как «понедельник, два приёма», а как «две одинаковые строки,
- * в одной из которых, наверное, опечатка». Сортировки не было вовсе: два
- * понедельника могли оказаться через четверг друг от друга.
- *
- * Теперь дней ровно семь, каждый назван один раз и стоит на своём месте.
- * Выпадающий список дня исчез вместе с возможностью выбрать день неверно:
- * промежуток заводится внутри дня и принадлежит ему по построению. Заодно
- * это убрало из строки самый широкий элемент — а с ним и четвёртую часть
- * полей ввода на экране.
- *
- * Дни без приёма показываются наравне с остальными. Пропускать их нельзя по
- * той же причине, что и в чтении: «принимаю ли я в субботу» — вопрос, на
- * который отсутствие строки не отвечает, а отвечает надпись «не принимаю».
- */
-export function WeekEdit({ rows, onChange }: { rows: Row[]; onChange: (next: Row[]) => void }) {
-  const { ut } = useLang();
-  /* ошибки — у своей строки: «конец раньше начала» без номера строки в неделе из десяти не найти */
-  const problems = weekProblems(rows);
+  const part = (key: Parameters<Ut>[0], values: Record<string, string | number>) => {
+    const text = ut(key);
+    return text.split(/(\{\w+\})/).map((piece, i) => {
+      const m = /^\{(\w+)\}$/.exec(piece);
+      return m && m[1]! in values ? (
+        <b key={i} className="text-[15px] font-extrabold tabular-nums text-text">
+          {values[m[1]!]}
+        </b>
+      ) : (
+        piece
+      );
+    });
+  };
 
   return (
     <>
-      <div className="border-t border-hairline px-4 pt-3 text-micro uppercase tracking-[var(--tracking-label)] text-faint">
-        {ut("sched.byDay")}
-      </div>
-      <div className="overflow-x-auto px-4 pb-4">
-        <div className="min-w-[560px]">
-          {/*
-            Шапка стоит НАД столбцами, а не сбоку от полей.
-
-            Подписи жили в каждой строке рядом со своим полем: десять строк
-            давали сорок повторённых слов, и ни одна колонка не совпадала с
-            соседней — ширину задавала длина подписи, а она у «С» и у
-            «Приём, мин» разная. Неделю же читают сверху вниз: «во сколько я
-            начинаю» — это столбец, а не строка. Значит, подпись у столбца
-            должна быть одна и стоять у него над головой.
-          */}
-          <div
-            className="grid items-end gap-2 pb-1 text-micro uppercase tracking-[var(--tracking-label)] text-faint"
-            style={{ gridTemplateColumns: `${DAY_COLUMN} ${INTERVAL_COLUMNS}` }}
+      <div className="flex flex-wrap gap-x-[22px] gap-y-1.5 border-t border-divider px-4 py-3 text-small text-text-2">
+        <span>{part("v2s.statHours", { n: num.format(st.hours) })}</span>
+        {st.windows ? (
+          <span>
+            {part("v2s.statTaken", { n: st.taken, m: st.windows, p: Math.round((st.taken / st.windows) * 100) })}
+          </span>
+        ) : null}
+        {st.ahead ? <span>{part("v2s.statFree", { n: st.free })}</span> : null}
+        {st.off && firstOff ? (
+          <button
+            type="button"
+            disabled={!canMove}
+            onClick={() => onMove(firstOff)}
+            className="cursor-pointer border-0 bg-transparent p-0 text-small font-semibold text-warn hover:underline disabled:cursor-default disabled:no-underline [&_b]:text-warn"
           >
-            <span>{ut("sched.weekday")}</span>
-            <span>{ut("sched.from")}</span>
-            <span>{ut("sched.to")}</span>
-            <span>{ut("sched.slotMinutes")}</span>
-            <span />
-          </div>
-          {WEEK.map((weekday) => (
-            <DayGroup
-              key={weekday}
-              weekday={weekday}
-              /*
-               * Промежутки дня идут в том порядке, в каком лежат в неделе, и
-               * НЕ сортируются по времени начала.
-               *
-               * В чтении сортировка есть и нужна. Здесь она означала бы, что
-               * строка уезжает из-под курсора: поправил начало с 14:00 на
-               * 08:00 — и поле, в котором набираешь, прыгнуло выше соседнего.
-               * Сервер отдаёт шаблоны уже упорядоченными, так что при входе в
-               * правку порядок и так верный; разъезжается он только на время
-               * самой правки и выправляется сохранением.
-               */
-              day={rows.flatMap((row, at) => (row.weekday === weekday ? [{ row, at, problem: problems.get(at) ?? null }] : []))}
-              onChange={(at, next) => onChange(rows.map((r, j) => (j === at ? next : r)))}
-              onRemove={(at) => onChange(rows.filter((_, j) => j !== at))}
-              onAdd={(hours) => onChange([...rows, { weekday, ...hours }])}
-            />
-          ))}
-        </div>
+            {part("v2s.statOff", { n: st.off })}
+          </button>
+        ) : null}
       </div>
+      <WeekCalendar week={week} plans={plans} now={now} focusId={focusId} onMove={canMove ? onMove : null} />
+      <Legend />
     </>
   );
 }
 
-function DayGroup({
-  weekday,
-  day,
-  onChange,
-  onRemove,
-  onAdd,
-}: {
-  weekday: number;
-  /** Промежутки дня вместе с их местом в общем списке недели (правка идёт по нему) и ошибкой, если есть */
-  day: { row: Row; at: number; problem: HoursProblem | null }[];
-  onChange: (at: number, next: Row) => void;
-  onRemove: (at: number) => void;
-  onAdd: (hours: { startsAt: string; endsAt: string; slotMinutes: number }) => void;
-}) {
+/** Легенда: каждый вид блока словом — цвет не единственный признак */
+function Legend() {
   const { ut } = useLang();
-  const name = ut(WEEKDAY_KEY[weekday]!);
-
+  const items: [string, string][] = [
+    ["bg-sunk shadow-[inset_0_0_0_1px_var(--border)]", ut("v2s.lgHours")],
+    ["bg-violet-tint shadow-[inset_0_0_0_1px_var(--vline)]", ut("v2s.lgBooked")],
+    ["bg-panel shadow-[inset_0_0_0_1px_var(--border)]", ut("v2s.lgDone")],
+    ["bg-warn-tint", ut("v2s.lgNoShow")],
+    ["bg-panel shadow-[inset_0_0_0_1.5px_var(--warn)]", ut("v2s.lgOff")],
+    ["bg-good-tint shadow-[inset_0_0_0_1.5px_var(--goodline)]", ut("sched.excExtra")],
+    ["bg-panel shadow-[inset_0_0_0_1.5px_var(--ctl)]", ut("sched.excOff")],
+  ];
   return (
-    <div
-      className="grid items-start gap-x-2 border-t border-hairline py-1.5 first:border-t-0"
-      style={{ gridTemplateColumns: `${DAY_COLUMN} minmax(0,1fr)` }}
-    >
-      <span className={cx("py-2 text-small", day.length ? "font-medium" : "text-faint")}>{name}</span>
-      <div className="flex flex-col items-start gap-1">
-        {day.map(({ row, at, problem }) => (
-          <div key={at} className="flex w-full flex-col gap-0.5">
-          <div
-            className="grid w-full items-center gap-2"
-            style={{ gridTemplateColumns: INTERVAL_COLUMNS }}
-          >
-            {/*
-              Подписи полей есть, но спрятаны от глаз: столбец подписан в
-              шапке, а для диктора шапка — это далеко. Именем дня они
-              начинаются намеренно: без него диктор читает десять пар полей
-              «С», «До» подряд, и понять, в чьём дне стоит курсор, нельзя.
-            */}
-            <Input
-              aria-label={`${name} · ${ut("sched.from")}`}
-              type="time"
-              value={row.startsAt}
-              onChange={(e) => onChange(at, { ...row, startsAt: e.target.value })}
-            />
-            <Input
-              aria-label={`${name} · ${ut("sched.to")}`}
-              aria-invalid={problem === "order" || undefined}
-              type="time"
-              value={row.endsAt}
-              onChange={(e) => onChange(at, { ...row, endsAt: e.target.value })}
-            />
-            <Input
-              aria-label={`${name} · ${ut("sched.slotMinutes")}`}
-              aria-invalid={problem === "slot" || undefined}
-              type="number"
-              min={5}
-              max={480}
-              value={row.slotMinutes}
-              onChange={(e) => onChange(at, { ...row, slotMinutes: Number(e.target.value) })}
-            />
-            <Button
-              className="justify-self-start"
-              aria-label={`${ut("sched.remove")} · ${name} ${row.startsAt}–${row.endsAt}`}
-              size="sm"
-              variant="ghost"
-              onClick={() => onRemove(at)}
-            >
-              {ut("sched.remove")}
-            </Button>
-          </div>
-          {/* что не так — под той строкой, где не так: сохранение недели при этом погашено */}
-          {problem ? <span className="text-caption text-danger">{ut(PROBLEM_KEY[problem])}</span> : null}
-          </div>
-        ))}
-        {day.length === 0 ? (
-          <span className="py-2 text-caption text-faint">{ut("sched.dayOff")}</span>
-        ) : null}
-        <Button
-          aria-label={`${ut("sched.addRow")} · ${name}`}
-          size="sm"
-          variant="ghost"
-          onClick={() => onAdd(nextHours(day.map((d) => d.row)))}
-        >
-          {ut("sched.addRow")}
-        </Button>
-      </div>
+    <div className="flex flex-wrap gap-x-4 gap-y-1.5 border-t border-divider px-4 pb-3.5 pt-2.5 text-caption font-semibold text-text-2">
+      {items.map(([swatch, label]) => (
+        <span key={label} className="inline-flex items-center gap-1.5">
+          <i aria-hidden className={`block h-3 w-3.5 rounded ${swatch}`} />
+          {label}
+        </span>
+      ))}
+      <span className="inline-flex items-center gap-1.5">
+        <G.video size={13} />
+        {ut("v2s.lgOnline")}
+      </span>
     </div>
-  );
-}
-
-function Exceptions({
-  items,
-  busy,
-  onAdd,
-  onRemove,
-}: {
-  items: { id: string; date: string; kind: "off" | "extra"; startsAt: string | null; endsAt: string | null; note: string | null }[];
-  busy: boolean;
-  /** Отправить; true — сервер принял, и только тогда форма очищается */
-  onAdd: (input: { date: string; kind: "off" | "extra"; startsAt?: string | null; endsAt?: string | null; note?: string | null }) => Promise<boolean>;
-  onRemove: (id: string) => void;
-}) {
-  const { ut } = useLang();
-  const [form, setForm] = useState<ExceptionForm>(EMPTY_EXCEPTION);
-  const set = (patch: Partial<ExceptionForm>) => setForm((f) => ({ ...f, ...patch }));
-  const problem = exceptionProblem(form);
-
-  return (
-    <Panel title={ut("sched.exceptions")}>
-      <div className="flex flex-wrap items-end gap-2 px-4 pb-3">
-        <Field label={ut("sched.date")}>
-          <Input type="date" value={form.date} onChange={(e) => set({ date: e.target.value })} />
-        </Field>
-        <Field label={ut("sched.kind")}>
-          <Select value={form.kind} onChange={(e) => set({ kind: e.target.value as "off" | "extra" })}>
-            <option value="off">{ut("sched.excOff")}</option>
-            <option value="extra">{ut("sched.excExtra")}</option>
-          </Select>
-        </Field>
-        {/*
-          Часы для «не принимаю» необязательны: пустые означают весь день.
-          Для дополнительных часов — обязательны, иначе непонятно, что
-          добавлять; это же проверяет и сервер.
-        */}
-        <Field label={ut("sched.from")}>
-          <Input type="time" value={form.from} onChange={(e) => set({ from: e.target.value })} />
-        </Field>
-        <Field label={ut("sched.to")} error={problem === "order" ? ut("uit.form.endBeforeStart") : undefined}>
-          <Input type="time" value={form.to} onChange={(e) => set({ to: e.target.value })} />
-        </Field>
-        <Field label={ut("sched.note")}>
-          <Input value={form.note} onChange={(e) => set({ note: e.target.value })} />
-        </Field>
-        <Button
-          size="sm"
-          disabled={busy || problem !== null}
-          onClick={async () => {
-            const sent = form;
-            const ok = await onAdd({
-              date: sent.date,
-              kind: sent.kind,
-              startsAt: sent.from || null,
-              endsAt: sent.to || null,
-              note: sent.note || null,
-            });
-            /* стирается только принятое: отказ оставляет набранное для правки и повтора */
-            setForm((f) => (f === sent ? afterAdd(f, ok) : f));
-          }}
-        >
-          {ut("sched.addException")}
-        </Button>
-      </div>
-
-      {items.length === 0 ? (
-        <Empty title={ut("sched.excNone")} />
-      ) : (
-        <div className="flex flex-col">
-          {items.map((e) => (
-            <div
-              key={e.id}
-              className="flex items-center gap-3 border-t border-hairline px-4 py-2 text-caption"
-            >
-              <span className="w-[104px] shrink-0 font-mono">{e.date}</span>
-              <span className="text-muted">
-                {ut(e.kind === "off" ? "sched.excOff" : "sched.excExtra")}
-              </span>
-              <span className="text-muted">
-                {e.startsAt && e.endsAt ? `${e.startsAt}–${e.endsAt}` : ut("sched.excAllDay")}
-              </span>
-              {e.note ? <span className="truncate text-faint">{e.note}</span> : null}
-              <Button
-                className="ml-auto"
-                size="sm"
-                variant="ghost"
-                disabled={busy}
-                onClick={() => onRemove(e.id)}
-              >
-                {ut("sched.remove")}
-              </Button>
-            </div>
-          ))}
-        </div>
-      )}
-    </Panel>
   );
 }

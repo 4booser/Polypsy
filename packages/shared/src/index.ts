@@ -13,6 +13,9 @@ export * from "./pushStrings";
 /* тексты, которые собирает сервер или общий пакет, — на языке смотрящего (волна 13, srv-i18n) */
 export * from "./serverStrings";
 export * from "./permissions";
+/* лестница должностей и то, что нельзя спрятать с глаз, — отдельно от справочника прав (волна 27) */
+export * from "./ladder";
+export * from "./alwaysVisible";
 /* техпанель, эксплуатация: состояние системы и флаги функций */
 export * from "./serviceStatus";
 export * from "./featureFlags";
@@ -32,3 +35,5 @@ export * from "./wireSchemas";
 export * from "./telemetry";
 /* экран информированного согласия: состояния и выходы — общие для приложения и веб-кабинета */
 export * from "./consentFlow";
+/* сетка приёмного дня в стенных часах: сервер раскладывает слоты, консоль рисует неделю */
+export * from "./scheduleGrid";

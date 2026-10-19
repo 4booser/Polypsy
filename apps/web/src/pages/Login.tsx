@@ -1,277 +1,553 @@
-import { useState, type FormEvent, type InputHTMLAttributes } from "react";
+import { useEffect, useId, useState, type FormEvent, type KeyboardEvent } from "react";
 import { Link } from "react-router-dom";
+import { api } from "../api";
 import { useAuth } from "../auth";
-import { MaintenanceBanner } from "../service/MaintenanceBanner";
+import { renderError } from "../dictionary";
+import { dateTime, timeOfDay } from "../format";
 import { useLang } from "../lang";
-import { Button, Field } from "../ui/primitives";
+import { bannerFor, sameLocalDay } from "../service/model";
+import { useServiceStatus } from "../service/status";
+import { ShellIcon } from "../shell/icons";
+import { Logo } from "../shell/Logo";
+import { Callout } from "../ui/states";
+import { cx } from "../ui/cx";
+import { IconTile } from "../ui/layout";
+import { Button, ErrorText, Field, Input, Tag, buttonClass } from "../ui/primitives";
+import { useResource } from "../useResource";
+import { AccessIcon } from "./public/accessIcons";
+import {
+  AuthCard,
+  AuthLead,
+  AuthTitle,
+  BandAside,
+  CrisisNote,
+  OrLine,
+  OtpInput,
+  PasswordInput,
+  WhoRow,
+  fill,
+  tallField,
+} from "./public/authParts";
 import { PublicFrame } from "./public/PublicFrame";
+import { GoogleMark } from "./public/social";
 
 /**
- * Вход — кадр f01: под знаком POLSY заголовок «Введіть логін та пароль щоб
- * продовжити» в две строки и два белых поля «Логін» и «Пароль». Больше на
- * кадре ничего нет — и здесь ничего больше нет.
+ * Вход — экран «Вхід до Polypsy» (набор «Виразна», access-login): одна
+ * спокойная колонка 440 по центру — лист формы, под ним «Пацієнтам —
+ * застосунок» и «Стан системи», ниже — кому звонить, если плохо сейчас.
  *
- * Что ушло с экрана вместе с этим и почему.
+ * Состояния — этого же экрана, а не отдельные страницы:
+ *  - технические работы (access-login-maintenance): выноска работ над
+ *    заголовком, внутри листа. Войти можно — сервер пускает вход и во время
+ *    работ, — не сохраняется только изменяемое;
+ *  - забагато спроб (access-login-locked): выноска с отсчётом под паролем,
+ *    погашенная кнопка «Увійти можна о …» и подсказка, кто сбрасывает пароль;
+ *  - второй шаг (access-login-mfa): код из приложения, рядом — телефон с
+ *    приложением-аутентификатором.
  *
- * Карточка на пустом фоне, знак «Q» и подпись «консоль аналитики для
- * сотрудников» — это был экран другого продукта; макет рисует вход тем же
- * листом, что и лендинг, с той же иллюстрацией и подвалом.
+ * Вход через Google возвращён кнопкой — набор рисует её, а сервер её
+ * обслуживает (GET /api/auth/google/status, /start). Кнопка стоит, только
+ * если способ настроен на сервере: кнопка в отказ хуже отсутствующей.
  *
- * Вход через Google и самостоятельная регистрация с полями фамилия / имя /
- * телефон. На кадре их нет, а заказчик просил экран один в один и логику под
- * него. Маршруты на сервере (/api/auth/google/*, /api/auth/register) при
- * этом остались как были — их снимать здесь не место, и связь с Google у
- * вошедшего по-прежнему живёт в бургере (App.tsx). Регистрация пациента
- * идёт по приглашению (/join/:token), как и шла.
- *
- * Чего это стоило, названо прямо, потому что экрана под это нет ни одного.
- *
- * 1. Учреждение, поднятое с OPEN_REGISTRATION, из веба учётную запись больше
- *    не заводит: формы нет, а приглашение выписывает сотрудник изнутри.
- *    Признак `openRegistration` из GET /api/auth/google/status с тех пор не
- *    читает никто (клиент берёт из ответа одно поле `enabled`). Взаперти при
- *    этом никто не остаётся, но способность осталась без экрана — нужен
- *    кадр, и это вопрос к заказчику, а не к сборщику.
- * 2. Вход через Google начинается кнопкой, которой на кадре нет. Возврат от
- *    Google при этом починен (App.tsx: «/auth/google» пускается мимо гейта —
- *    раньше не пускался, и код из адреса не разменивался на токены вовсе).
- *    Никто не заперт и здесь: googleCallback учётных записей не заводит и
- *    без привязки отвечает googleNotLinked — значит пароль есть у каждого,
- *    кому Google был доступен.
- *
- * Возвращать снятое «на всякий случай» нельзя: кадр — это и есть задание, а
- * лишняя кнопка на нём — такой же брак, как недостающая.
- *
- * Что осталось сверх кадра, и это названо: кнопка «Увійти» под полями —
- * форма без кнопки не отправляется мышью, а Enter знают не все; и строка
- * отказа под полями с role="alert" — без неё человек перед не сработавшей
- * формой не узнает, почему. Кнопка — та же белая плашка 215 × 45, что и
- * «Увійти» на лендинге: экран входа продолжает лендинг, а не спорит с ним.
- *
- * Поле подписано «Логін», как на кадре, но принимает почту: отдельного
- * логина у учётной записи нет (users.email — единственный ключ входа, по
- * нему же считается защита от перебора), и заводить его — миграция, а не
- * экран. type="email" оставлен ради автозаполнения и клавиатуры телефона;
- * проверку формы браузер не делает (noValidate) — отказ приходит с сервера
- * одной и той же строкой.
+ * Поведение входа не менялось: тот же login() из auth.tsx, тот же второй шаг,
+ * отказ сервера — его словами в строке role="alert".
  */
+
+/** Окно блокировки входа на сервере (lib/loginGuard.ts): пять неудач за 15 минут */
+const LOCK_MS = 15 * 60_000;
+
 export default function Login() {
-  const { ut } = useLang();
+  const { ut, lang } = useLang();
   const { login, mfa } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [caps, setCaps] = useState(false);
+  const [forgot, setForgot] = useState(false);
+  /*
+   * Блокировка по почте. Сервер говорит только «забагато спроб» — когда она
+   * кончится, он не сообщает (и API входа здесь не меняется). Последняя
+   * неудача была до этого отказа, значит окно в 15 минут кончится не позже
+   * чем через 15 минут от него: это верхняя граница, и она честно названа
+   * «не пізніше ніж».
+   */
+  const [lock, setLock] = useState<{ email: string; since: number; until: number } | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+  const pwId = useId();
+  const google = useResource(() => api.googleStatus().catch(() => ({ enabled: false })), []).data?.enabled ?? false;
+
+  const key = email.trim().toLowerCase();
+  const locked = !!lock && lock.email === key && now < lock.until;
+
+  useEffect(() => {
+    if (!lock) return;
+    const id = setInterval(() => {
+      const t = Date.now();
+      setNow(t);
+      if (t >= lock.until) setLock(null);
+    }, 1000);
+    return () => clearInterval(id);
+  }, [lock]);
 
   /*
-   * Второй шаг — «код із застосунку» (техпанель, people2): пароль верный, у
-   * учётки включён второй фактор. Тот же лист, те же плашки полей — это
-   * продолжение входа, а не другой экран.
+   * Второй шаг — «код із застосунку» (people2): пароль верный, у учётки
+   * включён второй фактор. Почта — та, что набрали: строка «кто входит».
+   * После возврата от Google почты здесь нет, и строки нет.
    */
-  if (mfa) return <MfaStep />;
+  if (mfa) return <MfaStep email={key || null} />;
 
   async function submit(e: FormEvent) {
     e.preventDefault();
+    if (busy || locked) return;
     setBusy(true);
     setError(null);
     try {
       await login(email.trim(), password);
     } catch (err) {
-      setError(err instanceof Error ? err.message : ut("lg.failed"));
+      const text = err instanceof Error ? err.message : ut("lg.failed");
+      if (text.startsWith(renderError("err.tooManyAttempts", lang))) {
+        const t = Date.now();
+        setNow(t);
+        setLock({ email: key, since: t, until: t + LOCK_MS });
+      } else setError(text);
     } finally {
       setBusy(false);
     }
   }
 
+  const onPasswordKey = (e: KeyboardEvent<HTMLInputElement>) => setCaps(e.getModifierState("CapsLock"));
+  const at = (ms: number) => timeOfDay(new Date(ms).toISOString());
+  const left = lock ? Math.max(0, lock.until - now) : 0;
+  const mmss = `${Math.floor(left / 60_000)}:${String(Math.floor((left % 60_000) / 1000)).padStart(2, "0")}`;
+
   return (
     <PublicFrame>
-      {/*
-        Баннер работ и ссылка на статус — сверх кадра f01, по решению
-        заказчика 2026-09-26 (техпанель, пункты 8 и 10): войти во время работ
-        можно, а сохранить — нет, и человек должен узнать это до входа, а не
-        после первой отказанной кнопки. Баннера нет, пока всё работает, —
-        кадр в обычный день остаётся нетронутым.
-      */}
-      <MaintenanceBanner place="public" />
-      {/*
-        В две строки — не переносом руками, а шириной: 400 вмещает «Введіть
-        логін та пароль» (374 на кадре) и не вмещает следующее слово. Перенос
-        <br> сломался бы на русском, где строки делятся иначе.
-      */}
-      <h1 className="m-0 mt-[57px] max-w-[400px] text-[32px] font-bold leading-[44px] text-primary">
-        {ut("pub.loginTitle")}
-      </h1>
-      {/*
-        48 от коробки заголовка до первого поля, 22 между полями — с кадра.
+      <div className="flex justify-center pb-4 pt-6">
+        <div className="flex w-full max-w-[440px] flex-col gap-4">
+          <AuthCard labelledBy="lg-title">
+            <ServiceNotice />
+            <AuthTitle id="lg-title">{ut("ax.lg.title")}</AuthTitle>
+            <AuthLead>{ut("ax.lg.lead")}</AuthLead>
 
-        Было 50 при интерлиньяже 43; интерлиньяж выправлен на 44 (см. h1
-        выше), заголовок здесь в две строки, и его коробка выросла на 2 —
-        отсюда 48. Первое поле как стояло на 503, так и стоит: на кадре его
-        белая плашка идёт 503…547 (215 × 45). Отвергнуто: оставить 50 —
-        поле уехало бы на два пикселя ниже кадра.
+            {google ? (
+              <>
+                <div className="mt-5">
+                  <a href="/api/auth/google/start" className={buttonClass("secondary", "md", "w-full")}>
+                    <GoogleMark />
+                    {ut("ax.lg.google")}
+                  </a>
+                  <p
+                    className={cx(
+                      "m-0 mt-2 text-center text-caption leading-4",
+                      locked ? "font-bold text-violet-ink" : "text-muted",
+                    )}
+                  >
+                    {locked ? ut("ax.lg.googleLocked") : ut("ax.lg.googleNote")}
+                  </p>
+                </div>
+                <OrLine>{ut("ax.lg.or")}</OrLine>
+              </>
+            ) : (
+              <div className="mt-5" />
+            )}
 
-        `[&>label]:mb-0` — снятие чужого отступа, а не украшение: в слое
-        наследия у каждой `label` стоит `margin-bottom: 5px`, а поле у Field
-        лежит внутри подписи. Коробка поля выходила на 5 выше самого поля, и
-        шаг «Логін» → «Пароль» получался 72 вместо 67 с кадра. Снято здесь, на
-        двух полях этого экрана, а не в Field: те же 5 заложены в шаг строк
-        формы (51 = поле 36 + 15) на остальных экранах консоли, и правка в
-        каркасе сдвинула бы их все.
-      */}
-      <form className="mt-[48px] flex flex-col items-start gap-[22px]" onSubmit={submit} noValidate>
-        <Field inline label={ut("pub.login")} className="w-[215px] [&>label]:mb-0">
-          <PlateInput
-            label={ut("pub.login")}
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            type="email"
-            autoComplete="username"
-            autoFocus
-          />
-        </Field>
-        <Field inline label={ut("lg.password")} className="w-[215px] [&>label]:mb-0">
-          <PlateInput
-            label={ut("lg.password")}
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            type="password"
-            autoComplete="current-password"
-          />
-        </Field>
+            {/*
+              noValidate: проверку формы браузер не делает — отказ приходит с
+              сервера одной и той же строкой, на языке консоли.
+            */}
+            <form className="flex flex-col gap-4" onSubmit={submit} noValidate>
+              <Field label={ut("ax.lg.email")} className="!mb-0">
+                <Input
+                  type="email"
+                  icon={<AccessIcon name="at-sign" size={16} />}
+                  className={tallField}
+                  value={email}
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    setError(null);
+                  }}
+                  autoComplete="username"
+                  autoFocus
+                />
+              </Field>
 
-        {/*
-          Ошибка стоит между полями и кнопкой: смотрят туда, куда только что
-          нажали. Роль alert — чтобы диктор прочитал причину отказа, а не
-          оставил человека перед не сработавшей кнопкой.
-        */}
-        {error ? (
-          <p role="alert" className="m-0 max-w-[510px] text-[14px] leading-[22px] text-danger">
-            {error}
-          </p>
-        ) : null}
+              <div className="flex min-w-0 flex-col">
+                <div className="mb-1.5 flex items-center justify-between gap-2">
+                  <label htmlFor={pwId} className="text-caption font-bold text-muted">
+                    {ut("lg.password")}
+                  </label>
+                  <button
+                    type="button"
+                    aria-expanded={forgot || locked}
+                    aria-controls="lg-forgot"
+                    onClick={() => setForgot((f) => !f)}
+                    className="min-h-0 cursor-pointer rounded-[6px] border-0 bg-transparent p-0 text-small font-bold text-violet-ink hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--focus)]"
+                  >
+                    {ut("ax.lg.forgot")}
+                  </button>
+                </div>
+                <PasswordInput
+                  id={pwId}
+                  value={password}
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    setError(null);
+                  }}
+                  onKeyDown={onPasswordKey}
+                  onKeyUp={onPasswordKey}
+                  onBlur={() => setCaps(false)}
+                  disabled={locked}
+                  autoComplete="current-password"
+                />
+                {caps && !locked ? (
+                  <ErrorText tone="warn" className="mt-2">
+                    <span className="inline-flex items-center gap-1.5">
+                      <AccessIcon name="arrow-big-up" size={14} />
+                      {ut("ax.lg.caps")}
+                    </span>
+                  </ErrorText>
+                ) : null}
+                {/*
+                  Отказ стоит под паролем: смотрят туда, куда только что нажали.
+                  Роль alert — чтобы диктор прочитал причину отказа.
+                */}
+                {error ? (
+                  <div role="alert" className="mt-2">
+                    <ErrorText>{error}</ErrorText>
+                  </div>
+                ) : null}
+                {locked && lock ? (
+                  <Callout
+                    kind="warn"
+                    role="alert"
+                    icon={<AccessIcon name="lock-keyhole" size={16} />}
+                    title={ut("ax.lg.lockTitle")}
+                    className="mt-3"
+                  >
+                    <p className="m-0 leading-[18px]">{ut("ax.lg.lockText")}</p>
+                    <div className="mt-2.5 flex flex-wrap items-center gap-x-2.5 gap-y-1">
+                      <span className="h-1.5 min-w-[120px] flex-1 overflow-hidden rounded-[3px] bg-warn-line">
+                        <i
+                          className="block h-full rounded-[3px] bg-warn"
+                          style={{ width: `${Math.min(100, ((now - lock.since) / (lock.until - lock.since)) * 100)}%` }}
+                        />
+                      </span>
+                      <b className="text-[13px] font-extrabold tabular-nums text-warn">{mmss}</b>
+                      <span className="text-caption text-text-2">{fill(ut("ax.lg.lockLeft"), { time: at(lock.until) })}</span>
+                    </div>
+                  </Callout>
+                ) : null}
+              </div>
 
-        <Button type="submit" size="md" variant="paper" disabled={busy} className="w-[215px]">
-          {busy ? ut("lg.signingIn") : ut("lg.signIn")}
-        </Button>
-      </form>
-      {/*
-        Ссылка на страницу статуса — тихая строка под формой: она нужна тому,
-        у кого вход не получается, и в обычный день не спорит с кнопкой.
-      */}
-      <Link
-        to="/status"
-        className="mt-[22px] inline-block rounded-sm text-[14px] text-primary underline underline-offset-2 outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]"
-      >
-        {ut("svc.title")}
-      </Link>
+              <Button
+                type="submit"
+                variant="primary"
+                size="md"
+                className="w-full"
+                disabled={busy || locked}
+                icon={locked ? <AccessIcon name="lock-keyhole" size={18} /> : undefined}
+              >
+                {busy
+                  ? ut("lg.signingIn")
+                  : locked && lock
+                    ? fill(ut("ax.lg.lockButton"), { time: at(lock.until) })
+                    : ut("lg.signIn")}
+              </Button>
+            </form>
+
+            {forgot || locked ? (
+              <div id="lg-forgot" className="mt-4 rounded-panel bg-sunk px-3.5 pb-3 pt-3.5 text-small text-text-2">
+                <b className="block text-body font-extrabold text-text">{ut("ax.lg.forgotTitle")}</b>
+                <p className="m-0 mt-0.5">{ut("ax.lg.forgotText")}</p>
+              </div>
+            ) : null}
+          </AuthCard>
+
+          <UsefulLinks />
+          <CrisisNote template={ut("ax.crisis.login")} />
+        </div>
+      </div>
     </PublicFrame>
   );
 }
 
 /**
- * Белое поле 215 × 45 на сиреневом листе — так нарисованы «Логін» и
- * «Пароль» на кадре f01: без рамки, радиус 5, подпись внутри 20/400 серым.
+ * Работы или сбои — выноской в листе входа, над заголовком: человек должен
+ * узнать о них до входа, а не после первой отказанной кнопки. Пока всё
+ * работает, выноски нет.
  *
- * Это не Input из примитивов, и не потому, что тот плох. У Input два
- * начертания консоли — контурное 36 с рамкой #666666 и залитое сиреневым, —
- * и оба с подписью 17/700 фиолетовым. Здесь другая подпись, другая высота и
- * нет рамки: три спорящих класса поверх Input решались бы порядком утилит в
- * собранном CSS, а не тем, что написано в разметке (см. пояснение к высоте
- * полей в primitives.tsx). Поле лежит в Field: подпись остаётся именем для
- * диктора, плейсхолдер — тем, что видно глазу.
- *
- * Набранный текст — фиолетовым, как всё на этом листе; серым набран только
- * плейсхолдер, иначе пустое поле не отличить от заполненного.
- *
- * Подпись приходит пропсом от того, кто поле ставит, а не угадывается по
- * `type`. Угадывание («type === password» → «Пароль», иначе «Логін») делало
- * из одной строки экрана две правды в семи строках друг от друга: подпись
- * стояла и у Field, и здесь, а связывало их совпадение типа. Третье поле с
- * type="text" молча подписалось бы «Логін».
+ * Отсчёта «ще 40 хв» здесь нет намеренно: он у баннера консоли за флагом
+ * функции, а флаги — про человека, которого на входе ещё нет. Время начала и
+ * ожидаемого конца — из объявления как есть.
  */
+function ServiceNotice() {
+  const { ut } = useLang();
+  const { status } = useServiceStatus();
+  const banner = bannerFor(status);
+  if (!banner) return null;
+  const maintenance = banner.tone === "maintenance";
+  const now = Date.now();
+  const at = (iso: string) => (sameLocalDay(iso, now) ? timeOfDay(iso) : dateTime(iso));
+  const title = maintenance
+    ? banner.expectedEnd
+      ? fill(ut("ax.lg.maintUntil"), { time: at(banner.expectedEnd) })
+      : ut("svc.banner.maintenance")
+    : ut("svc.banner.degraded");
+  return (
+    <Callout
+      kind="warn"
+      icon={<ShellIcon name={maintenance ? "wrench" : "circle-alert"} size={16} />}
+      title={title}
+      className="mb-4"
+      actions={
+        <>
+          {status?.since ? (
+            <span className="inline-flex items-center gap-1.5 text-caption text-text-2">
+              <AccessIcon name="clock" size={13} />
+              {fill(ut("ax.lg.since"), { time: at(status.since) })}
+            </span>
+          ) : null}
+          <Link to="/status" className="ml-auto text-small font-bold text-violet-ink no-underline hover:underline">
+            {maintenance ? ut("ax.lg.maintMore") : ut("svc.details")}
+          </Link>
+        </>
+      }
+    >
+      <p className="m-0 leading-[18px]">{maintenance ? ut("ax.lg.maintText") : ut("ax.lg.degradedText")}</p>
+      {banner.message ? (
+        <p className="m-0 mt-1 whitespace-pre-line leading-[18px] text-text [overflow-wrap:anywhere]">{banner.message}</p>
+      ) : null}
+    </Callout>
+  );
+}
+
+/** Под листом: застосунок для пациентов и состояние системы — тихой строкой */
+function UsefulLinks() {
+  const { ut } = useLang();
+  const { status } = useServiceStatus();
+  const state = status?.status ?? "ok";
+  const link =
+    "inline-flex items-center gap-1.5 rounded-[6px] text-small font-semibold text-text-2 no-underline hover:text-violet-ink";
+  return (
+    <nav aria-label={ut("ax.lg.links")} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-1">
+      <Link to="/#app" className={link}>
+        <ShellIcon name="smartphone" size={15} className="text-muted" />
+        {ut("ax.lg.app")}
+      </Link>
+      <Link to="/status" className={cx(link, "ml-auto")}>
+        <ShellIcon
+          name={state === "ok" ? "circle-check" : "circle-alert"}
+          size={15}
+          className={state === "ok" ? "text-good" : "text-warn"}
+        />
+        {state === "ok" ? ut("svc.title") : ut(`svc.status.${state}`)}
+      </Link>
+    </nav>
+  );
+}
+
 /**
- * Второй шаг входа (people2): одно поле на оба случая — шесть цифр из
- * приложения и код восстановления. Человек с потерянным телефоном вводит то,
- * что у него есть; различает их сервер (lib/totp.ts, looksLikeRecovery).
- * `autocomplete=one-time-code` — телефон сам предложит код.
+ * Второй шаг входа (people2, access-login-mfa): шесть клеток кода из
+ * приложения или — по кнопке «немає телефону» — одно поле кода
+ * восстановления. Различает их сервер (lib/totp.ts, looksLikeRecovery), как и
+ * прежде: экран только решает, какое поле показать.
  */
-function MfaStep() {
+function MfaStep({ email }: { email: string | null }) {
   const { ut } = useLang();
   const { completeMfa, cancelMfa } = useAuth();
+  const [mode, setMode] = useState<"app" | "recovery">("app");
   const [code, setCode] = useState("");
+  const [recovery, setRecovery] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const ready = code.trim().length >= 6;
+  const value = mode === "app" ? code : recovery.trim();
+  const ready = mode === "app" ? code.length === 6 : recovery.replace(/[\s-]/g, "").length >= 8;
+
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    if (!ready || busy) return;
+    setBusy(true);
+    setError(null);
+    completeMfa(value)
+      .catch((err) => setError(err instanceof Error ? err.message : ut("lg.failed")))
+      .finally(() => setBusy(false));
+  };
+
+  const switchMode = () => {
+    setMode((m) => (m === "app" ? "recovery" : "app"));
+    setError(null);
+  };
+
   return (
     <PublicFrame>
-      <h1 className="m-0 mt-[57px] max-w-[400px] text-[32px] font-bold leading-[44px] text-primary">{ut("lg.mfa.title")}</h1>
-      <form
-        className="mt-[24px] flex flex-col items-start gap-[22px]"
-        noValidate
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (!ready || busy) return;
-          setBusy(true);
-          setError(null);
-          completeMfa(code.trim())
-            .catch((err) => setError(err instanceof Error ? err.message : ut("lg.failed")))
-            .finally(() => setBusy(false));
-        }}
-      >
-        <p className="m-0 max-w-[420px] text-[15px] leading-[21px] text-primary">{ut("lg.mfa.hint")}</p>
-        <Field inline label={ut("lg.mfa.title")} className="w-[215px] [&>label]:mb-0">
-          <PlateInput
-            label={ut("lg.mfa.title")}
-            value={code}
-            onChange={(e) => setCode(e.target.value)}
-            autoComplete="one-time-code"
-            maxLength={12}
-            autoFocus
-            className="font-mono tabular-nums"
-          />
-        </Field>
-        {error ? (
-          <p role="alert" className="m-0 max-w-[510px] text-[14px] leading-[22px] text-danger">
-            {error}
-          </p>
-        ) : null}
-        <Button type="submit" size="md" variant="paper" disabled={busy || !ready} className="w-[215px]">
-          {busy ? ut("lg.signingIn") : ut("lg.signIn")}
-        </Button>
-        <Button variant="quiet" onClick={cancelMfa}>
-          {ut("lg.mfa.back")}
-        </Button>
-      </form>
+      <div className="flex flex-wrap items-start justify-center gap-14 pb-4 pt-6 max-[1000px]:gap-8">
+        <div className="flex w-full max-w-[440px] flex-col gap-4">
+          <AuthCard labelledBy="mf-title">
+            <button
+              type="button"
+              onClick={cancelMfa}
+              className={cx(
+                "-ml-2 -mt-1.5 mb-3.5 inline-flex h-8 min-h-0 cursor-pointer items-center gap-1.5 rounded-[9px] border-0 bg-transparent pl-1.5 pr-2.5",
+                "text-small font-bold text-violet-ink hover:bg-violet-tint",
+                "focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--focus)]",
+              )}
+            >
+              <AccessIcon name="arrow-left" size={15} />
+              {ut("lg.mfa.back")}
+            </button>
+            <AuthTitle id="mf-title">{ut("lg.mfa.title")}</AuthTitle>
+            <AuthLead>{ut("lg.mfa.hint")}</AuthLead>
+
+            {email ? (
+              <WhoRow
+                className="mt-5"
+                lead={<IconTile icon={<ShellIcon name="circle-user-round" />} tone="violet" />}
+                title={email}
+                aside={
+                  <Tag tone="good" icon={<ShellIcon name="circle-check" size={12} />}>
+                    {ut("ax.mfa.accepted")}
+                  </Tag>
+                }
+              />
+            ) : null}
+
+            <form className="mt-5 flex flex-col" onSubmit={submit} noValidate>
+              {mode === "app" ? (
+                <div className="flex flex-col">
+                  <span id="mf-code-label" className="mb-1.5 text-caption font-bold text-muted">
+                    {ut("lg.mfa.title")}
+                  </span>
+                  <OtpInput value={code} onChange={setCode} label={ut("ax.mfa.digits")} autoFocus />
+                  <span className="mt-2.5 flex items-center gap-1.5 text-small text-muted">
+                    <AccessIcon name="clipboard-paste" size={14} />
+                    {ut("ax.mfa.paste")}
+                  </span>
+                </div>
+              ) : (
+                <Field label={ut("ax.mfa.recovery")} hint={ut("ax.mfa.recoveryHint")} className="!mb-0">
+                  <Input
+                    value={recovery}
+                    onChange={(e) => setRecovery(e.target.value)}
+                    icon={<ShellIcon name="key-round" size={16} />}
+                    className={tallField}
+                    placeholder={ut("ax.mfa.recoveryPh")}
+                    autoComplete="one-time-code"
+                    autoCapitalize="none"
+                    spellCheck={false}
+                    maxLength={12}
+                    autoFocus
+                  />
+                </Field>
+              )}
+              {error ? (
+                <div role="alert" className="mt-2">
+                  <ErrorText>{error}</ErrorText>
+                </div>
+              ) : null}
+              <div className="mt-5">
+                <Button type="submit" variant="primary" size="md" className="w-full" disabled={busy || !ready}>
+                  {busy ? ut("lg.signingIn") : ut("lg.signIn")}
+                </Button>
+                {mode === "app" && !ready ? (
+                  <p className="m-0 mt-2 text-center text-caption leading-4 text-muted">{ut("ax.mfa.ready")}</p>
+                ) : null}
+              </div>
+            </form>
+
+            <OrLine>{ut("ax.mfa.noPhone")}</OrLine>
+            <Button
+              size="md"
+              className="w-full"
+              icon={mode === "app" ? <ShellIcon name="life-buoy" size={18} /> : <ShellIcon name="smartphone" size={18} />}
+              onClick={switchMode}
+            >
+              {mode === "app" ? ut("ax.mfa.useRecovery") : ut("ax.mfa.useApp")}
+            </Button>
+            <Callout kind="info" icon={<ShellIcon name="timer" size={16} />} className="mt-4">
+              <p className="m-0 leading-[18px]">{ut("ax.mfa.timeout")}</p>
+            </Callout>
+          </AuthCard>
+          <CrisisNote template={ut("ax.crisis.login")} />
+        </div>
+
+        <BandAside
+          center
+          title={ut("ax.mfa.whereTitle")}
+          lead={ut("ax.mfa.whereText")}
+          className="w-[400px] max-[1000px]:hidden"
+        >
+          <AuthenticatorPhone />
+        </BandAside>
+      </div>
     </PublicFrame>
   );
 }
 
-function PlateInput({
-  label,
-  className,
-  ...rest
-}: { label: string } & InputHTMLAttributes<HTMLInputElement>) {
+/**
+ * Телефон с приложением-аутентификатором — рисунок, а не данные: строка
+ * Polypsy подсвечена, цифры кода нарисованы плашками (настоящий код знает
+ * только телефон человека), соседние записи — серые полосы.
+ */
+function AuthenticatorPhone() {
+  const { ut } = useLang();
+  const r = 9;
+  const c = 2 * Math.PI * r;
   return (
-    <input
-      placeholder={label}
-      /*
-       * `block`: строчное поле оставляет под собой место под выносные буквы
-       * строки, и подпись-обёртка становится выше своих 45.
-       */
-      className={
-        "block h-[45px] w-[215px] rounded-[5px] border-0 bg-[var(--bg)] px-[14px] text-[20px] text-primary " +
-        /*
-         * Подпись в пустом поле — #666666 с кадра f01 (роль --placeholder,
-         * см. tokens.css). Стоял --muted, приглушённый консоли: он на
-         * тринадцать единиц темнее, потому что поднят ради сиреневых
-         * поверхностей, которых у этого поля нет.
-         */
-        "placeholder:text-[20px] placeholder:font-normal placeholder:text-[var(--placeholder)] " +
-        "outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:ring-offset-2 " +
-        "focus-visible:ring-offset-[var(--surface-2)] " +
-        (className ?? "")
-      }
-      {...rest}
-    />
+    <div role="img" aria-label={ut("ax.mfa.phoneAlt")} className="mt-6 w-[244px] rounded-[40px] bg-appbar p-[9px] shadow-banner">
+      <div className="relative h-[400px] overflow-hidden rounded-[31px] bg-panel px-3 pt-11 text-left">
+        <span aria-hidden className="absolute left-1/2 top-2.5 h-5 w-[70px] -translate-x-1/2 rounded-[10px] bg-appbar" />
+        <div className="flex items-center justify-between px-1.5 text-[17px] font-extrabold leading-[22px] text-text">
+          {ut("ax.mfa.phoneCodes")}
+          <AccessIcon name="plus" size={16} className="text-muted" />
+        </div>
+        <div className="mt-1 rounded-[14px] bg-violet-tint px-3 pb-[11px] pt-2.5 shadow-[inset_0_0_0_1px_var(--vline)]">
+          <div className="flex items-center gap-1.5 text-[11.5px] font-extrabold leading-[15px] text-text-2">
+            <span className="grid size-4 place-items-center rounded-[5px] bg-onfill text-brand shadow-[inset_0_0_0_1px_var(--border)]">
+              <Logo size={12} />
+            </span>
+            {ut("shell.brand")}
+          </div>
+          <div className="mt-1.5 flex items-center justify-between">
+            <span className="flex items-center gap-1">
+              {[0, 1, 2, 3, 4, 5].map((i) => (
+                <i key={i} className={cx("block h-[22px] w-3.5 rounded-[4px] bg-violet-ink/80", i === 3 && "ml-2")} />
+              ))}
+            </span>
+            <svg width="22" height="22" viewBox="0 0 22 22" aria-hidden>
+              <circle cx="11" cy="11" r={r} fill="none" stroke="var(--vline)" strokeWidth="2.5" />
+              <circle
+                cx="11"
+                cy="11"
+                r={r}
+                fill="none"
+                stroke="var(--vink)"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeDasharray={`${(c * 19) / 30} ${c}`}
+                transform="rotate(-90 11 11)"
+              />
+            </svg>
+          </div>
+        </div>
+        {[0, 1, 2].map((i) => (
+          <div key={i} className="border-t border-divider px-3 pb-[11px] pt-2.5 first-of-type:border-t-0">
+            <div className="flex items-center gap-1.5">
+              <span className="size-4 rounded-[5px] bg-sunk-2" />
+              <span className="h-2.5 rounded-[3px] bg-sunk-2" style={{ width: 44 + i * 10 }} />
+            </div>
+            <span className="mt-2 flex items-center gap-1">
+              {[0, 1, 2, 3, 4, 5].map((j) => (
+                <i key={j} className={cx("block h-[22px] w-3.5 rounded-[4px] bg-sunk-2", j === 3 && "ml-2")} />
+              ))}
+            </span>
+          </div>
+        ))}
+        <p className="m-0 mx-1.5 mt-3 flex items-center gap-1.5 text-micro leading-[14px] text-muted">
+          <AccessIcon name="refresh-cw" size={12} />
+          {ut("ax.mfa.phoneEvery")}
+        </p>
+      </div>
+    </div>
   );
 }

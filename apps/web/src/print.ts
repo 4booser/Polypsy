@@ -13,6 +13,13 @@
 
 /** Блок, который печатается */
 export const PRINT_SCOPE = "data-print-scope";
+/**
+ * Печатный лист «Виразной» на экране (pages/printSheet.tsx: ключ методики,
+ * пустой бланк). Пока он смонтирован, печать — и кнопкой, и Ctrl+P — отдаёт
+ * только его: правило в styles/legacy.css (`body:has([data-print-sheet])`)
+ * убирает рамку консоли и всё вокруг листа, без пометок на время печати.
+ */
+export const PRINT_SHEET = "data-print-sheet";
 /** Страница печатает только помеченный блок */
 export const PRINTING_SCOPE = "data-printing-scope";
 

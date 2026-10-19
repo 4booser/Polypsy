@@ -24,7 +24,7 @@ test("день виден целиком и явка отмечается одн
   await page.goto("/today");
 
   // «Сегодня» — вкладка экрана начала смены; заголовком стоит дата
-  await expect(page.getByRole("link", { name: "Сегодня" })).toBeVisible();
+  await expect(page.getByRole("main").getByRole("link", { name: "Сегодня" })).toBeVisible();
 
   /*
    * В посеве четыре приёма в разных состояниях — именно поэтому экран и
@@ -91,20 +91,20 @@ test("сохранение недели отвечает числами, а не
   await page.goto("/my-schedule");
 
   await expect(page.getByRole("heading", { name: "Расписание приёма" })).toBeVisible();
-  // предупреждение о занятом времени стоит до кнопки, а не в справке
-  await expect(page.getByText("Занятое время вне расписания не исчезает")).toBeVisible();
 
   /*
    * Неделя открывается на чтение: экран смотрят постоянно, а правят раз в
    * год. Проверяем заодно, что читаемый вид действительно показывает
    * неделю, а не пустое место, — и что выходной назван словами, а не
-   * пропущен.
+   * пропущен. Правка — в панели справа, и до нажатия её нет.
    */
-  await expect(page.getByText("Понедельник")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Обычная неделя" })).toBeVisible();
   await expect(page.getByText("не принимаю").first()).toBeVisible();
   await expect(page.getByRole("button", { name: "Сохранить неделю" })).toHaveCount(0);
 
   await page.getByRole("button", { name: "Изменить неделю" }).click();
+  // предупреждение о занятом времени стоит до кнопки сохранения, а не в справке
+  await expect(page.getByText("Занятое время вне расписания не исчезает")).toBeVisible();
   await page.getByRole("button", { name: "Сохранить неделю" }).click();
   await expect(page.getByText(/Добавлено \d+, снято \d+/)).toBeVisible();
 });
@@ -124,12 +124,13 @@ test("экран приёма собирается одним запросом �
 
   // с «Сегодня» — прямо на приём
   await dayRow(page, own.id).locator('a[href^="/visit/"]').click();
-  await expect(page.getByRole("heading", { name: "Приём", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Протокол приёма" })).toBeVisible();
 
   // все три панели на месте сразу, а не по очереди
   await expect(page.getByText("Что было")).toBeVisible();
   await expect(page.getByText("Протокол приёма")).toBeVisible();
-  await expect(page.getByText("Действия")).toBeVisible();
+  /* целым словом: в поле поиска на полосе приложения есть «…или действия» */
+  await expect(page.getByText("Действия", { exact: true })).toBeVisible();
 
   // шаблон подставляется по нажатию, а не сам
   const area = page.locator("textarea").first();
@@ -140,7 +141,7 @@ test("экран приёма собирается одним запросом �
   // и сохраняется, не уводя с экрана
   await area.fill("Состояние ровное, договорились о повторе через неделю.");
   await page.getByRole("button", { name: "Сохранить" }).click();
-  await expect(page.getByRole("heading", { name: "Приём", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Протокол приёма" })).toBeVisible();
   await expect(area).toHaveValue(/договорились/);
 });
 
@@ -171,7 +172,7 @@ test("методика назначается прямо с приёма, не �
   await login(page, "psy");
   await page.goto("/today");
   await dayRow(page, own.id).locator('a[href^="/visit/"]').click();
-  await page.getByRole("heading", { name: "Приём", exact: true }).waitFor();
+  await page.getByRole("heading", { name: "Протокол приёма" }).waitFor();
 
   /*
    * Поле выбирается по подсказке, а не как «первое textarea на странице».
@@ -195,7 +196,7 @@ test("методика назначается прямо с приёма, не �
   await page.getByRole("button", { name: "Назначить методику" }).click();
 
   // остались на том же экране, и текст на месте
-  await expect(page.getByRole("heading", { name: "Приём", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Протокол приёма" })).toBeVisible();
   await expect(area).toHaveValue(/не должен пропасть/);
 });
 
@@ -226,9 +227,9 @@ test("бланк вводится с клавиатуры и строкой це
     .click();
   await page.waitForTimeout(800);
   /*
-   * Аналитика методики переехала во вкладку «Тести» раздела «Аналітика»:
-   * прежний /surveys/:id перенаправляет на /analytics/tests?survey=:id.
-   * Идентификатор берётся из любого из двух видов адреса.
+   * Строка каталога ведёт на обзор методики /surveys/:id (волна 25), а
+   * прежде вела на аналитику /analytics/tests?survey=:id. Идентификатор
+   * берётся из любого из двух видов адреса.
    */
   const url = new URL(page.url());
   const surveyId = url.searchParams.get("survey") ?? url.pathname.split("/surveys/")[1]!.split("/")[0]!;

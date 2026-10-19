@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { dateTime, timeOfDay } from "../format";
 import { useLang } from "../lang";
-import { cx } from "../ui/cx";
+import { Strip, stripAction } from "../shell/Strip";
 import { useFlag } from "./flags";
 import { bannerFor, minutesLeft, sameLocalDay } from "./model";
 import { useServiceStatus } from "./status";
@@ -22,9 +22,10 @@ import { useServiceStatus } from "./status";
  * человека, и перебивать диктора посреди чтения карты незачем — он скажет
  * о нём, когда дочитает.
  *
- * `place` меняет только поля: в консоли колонка та же, что у полосы и
- * экрана (1248 с полями 24), в кабинете и на входе — узкая колонка
- * телефона.
+ * Вид — выноской набора во всю ширину (shell/Strip.tsx): значок и
+ * заголовок янтарём, пояснение обычным текстом, «Докладніше» справа.
+ * `place` меняет только раму: в консоли — полоса под полосой приложения,
+ * в кабинете и на входе — выноска в колонке экрана.
  */
 export function MaintenanceBanner({ place }: { place: "console" | "patient" | "public" }) {
   const { ut } = useLang();
@@ -54,48 +55,33 @@ export function MaintenanceBanner({ place }: { place: "console" | "patient" | "p
     : null;
 
   return (
-    <div
-      role="status"
+    <Strip
+      tone="warn"
+      icon={banner.tone === "maintenance" ? "wrench" : "circle-alert"}
+      place={place}
       data-banner={banner.tone}
-      className={cx(
-        "border-b border-accent bg-accent-soft text-accent",
-        place === "console" && "shrink-0",
-        place === "public" && "mt-[24px] max-w-[640px] rounded-[5px] border",
-      )}
-    >
-      <div
-        className={cx(
-          "flex flex-wrap items-baseline gap-x-[12px] gap-y-[2px] py-[8px] text-[14px] leading-[20px]",
-          place === "console" ? "mx-auto w-full max-w-[1248px] px-6 max-[900px]:px-4" : "px-4",
-        )}
-      >
-        <span className="font-bold">
-          {banner.tone === "maintenance" ? ut("svc.banner.maintenance") : ut("svc.banner.degraded")}
-        </span>
-        {banner.tone === "maintenance" ? <span>{ut("svc.banner.maintenanceHint")}</span> : null}
-        {/* текст объявления — словами того, кто объявил; тёмным, чтобы читался, а не мерцал янтарём */}
-        {banner.message ? <span className="min-w-0 text-text [overflow-wrap:anywhere]">{banner.message}</span> : null}
-        {until ? (
-          <span>
-            {ut("svc.until")} <span className="font-mono tabular-nums">{until}</span>
-            {left !== null ? (
-              <span className="font-mono tabular-nums">
-                {" · ≈ "}
-                {ut("common.minutes").replace("{n}", String(left))}
-              </span>
-            ) : null}
-          </span>
-        ) : null}
-        <Link
-          to="/status"
-          className={cx(
-            "ml-auto rounded-sm font-bold text-accent underline underline-offset-2",
-            "outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]",
-          )}
-        >
+      title={banner.tone === "maintenance" ? ut("svc.banner.maintenance") : ut("svc.banner.degraded")}
+      action={
+        <Link to="/status" className={stripAction}>
           {ut("svc.details")}
         </Link>
-      </div>
-    </div>
+      }
+    >
+      {banner.tone === "maintenance" ? <span>{ut("svc.banner.maintenanceHint")}</span> : null}
+      {/* текст объявления — словами того, кто объявил; основным цветом, чтобы читался, а не мерцал янтарём */}
+      {banner.message ? <span className="min-w-0 text-text [overflow-wrap:anywhere]">{banner.message}</span> : null}
+      {until ? (
+        <span>
+          {ut("svc.until")} <span className="font-bold text-text tabular-nums">{until}</span>
+          {left !== null ? (
+            <span className="tabular-nums">
+              {" (≈ "}
+              {ut("common.minutes").replace("{n}", String(left))}
+              {")"}
+            </span>
+          ) : null}
+        </span>
+      ) : null}
+    </Strip>
   );
 }

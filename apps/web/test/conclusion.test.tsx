@@ -1,219 +1,260 @@
 import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
-import type { DecisionRule, ResponseDetailAnswer, RuleHit, Scale, ScoreResult } from "@quizzy/shared";
+import { MemoryRouter } from "react-router-dom";
+import { UI, type DecisionRule, type ResponseContextSignal, type RuleHit } from "@quizzy/shared";
+import { api, type ConclusionState, type ConclusionVersion } from "../src/api";
+import { ConclusionEditor } from "../src/components/ConclusionEditor";
 import { LangProvider } from "../src/lang";
-import { DocumentMenu, QuestionSheet, ResultLadder, SectionHead, applicableModels } from "../src/pages/Conclusion";
+import { applicableModels, resultLines } from "../src/pages/Conclusion";
+import { signGate, signLockedBySignal } from "../src/pages/response/context";
+import { scaleChange } from "../src/pages/response/model";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { dynamics, series } from "./responseFixtures";
 
 /**
- * Протокол заключения не различает выбранное одним цветом.
+ * Лист заключения (Polypsy 2.0).
  *
- * На кадре выбранный вариант и попавшая полоса отличаются от остальных
- * заливкой — и больше ничем, что видно диктору. Экран добавляет к заливке два
- * признака: полужирное начертание и скрытую пометку. Оба легко потерять при
- * правке разметки — заливка останется, и глазом поломка не заметна: страница
- * выглядит ровно как макет. Поэтому проверяется разметка, а не картинка.
+ * Здесь проверяется то, что глазом не видно: подпись закрыта, пока не
+ * разобран сигнал, поднятый этим самым прохождением, — а черновик писать и
+ * сохранять можно; вердикт аналитической модели — по срабатыванию именно
+ * этого прохождения; результаты человека для вывода — последний замер каждой
+ * методики, и «це проходження» — то, по которому пишут.
  */
 
-const answer = (over: Partial<ResponseDetailAnswer> = {}): ResponseDetailAnswer => ({
-  questionId: "q1",
-  title: "Чи бували напади паніки?",
-  type: "single",
-  position: 1,
-  answered: true,
-  optionIds: ["o2"],
-  options: [
-    { id: "o1", text: "Ні", riskFlag: false, riskSeverity: null, score: null },
-    { id: "o2", text: "Так", riskFlag: false, riskSeverity: null, score: null },
-  ],
-  text: null,
-  number: null,
-  date: null,
-  matrix: null,
-  ranking: null,
-  score: 2,
-  durationMs: 1000,
-  changeCount: 0,
-  visitCount: 1,
-  events: [],
+const render = (node: React.ReactElement) =>
+  renderToStaticMarkup(
+    <MemoryRouter>
+      <LangProvider>{node}</LangProvider>
+    </MemoryRouter>,
+  );
+
+const signal = (over: Partial<ResponseContextSignal> = {}): ResponseContextSignal => ({
+  id: "a1",
+  label: "PHQ-9: пункт 9",
+  severity: "severe",
+  at: "2026-10-08T11:12:00.000Z",
+  here: true,
+  questionId: "q9",
+  surveyTitle: "PHQ-9",
+  minutesOpen: 168,
+  escalateMinutes: 240,
+  overdue: false,
+  reviewedAt: null,
+  reviewedByName: null,
+  outcome: null,
   ...over,
 });
 
-const render = (node: React.ReactElement) => renderToStaticMarkup(<LangProvider>{node}</LangProvider>);
-
-/** Строки протокола по признаку data-chosen / data-hit — так, как они доехали до разметки */
-function rows(html: string, attr: "data-chosen" | "data-hit"): { on: boolean; html: string }[] {
-  return [...html.matchAll(new RegExp(`<(?:li|div)[^>]*${attr}="(yes|no)"[^>]*>([\\s\\S]*?)<\\/(?:li|div)>`, "g"))].map(
-    (m) => ({ on: m[1] === "yes", html: m[2]! }),
-  );
-}
-
-describe("протокол заключения", () => {
-  test("выбранный вариант помечен начертанием и скрытой подписью, а не одной заливкой", () => {
-    const html = render(<QuestionSheet n={1} answer={answer()} scoreOf={(id) => (id === "o1" ? 0 : 2)} />);
-    const lines = rows(html, "data-chosen");
-    expect(lines.map((l) => l.on), "строк столько же, сколько вариантов, выбрана вторая").toEqual([false, true]);
-
-    const chosen = lines[1]!;
-    expect(chosen.html, "выбранный вариант не набран полужирным").toContain("font-bold");
-    expect(chosen.html, "у выбранного нет скрытой пометки для диктора").toContain('class="sr-only"');
-    expect(chosen.html).toContain("обрана відповідь");
-
-    const other = lines[0]!;
-    expect(other.html, "невыбранный вариант выглядит выбранным").not.toContain("font-bold");
-    expect(other.html, "невыбранный вариант получил пометку выбранного").not.toContain("sr-only");
+describe("подпись после разбора сигнала", () => {
+  test("закрыта неразобранным сигналом этого прохождения — и только им", () => {
+    expect(signLockedBySignal([signal()])).toBe(true);
+    // разобранный сигнал подпись не держит
+    expect(signLockedBySignal([signal({ reviewedAt: "2026-10-08T13:00:00.000Z", outcome: "not_confirmed" })])).toBe(false);
+    // открытый сигнал другого замера ждёт своей очереди, этот документ — о другом протоколе
+    expect(signLockedBySignal([signal({ here: false })])).toBe(false);
+    // без права разбирать сигналы экрану не из чего судить
+    expect(signLockedBySignal(null)).toBe(false);
   });
 
-  test("балл варианта берётся из методики, у неизвестного — прочерк, у выбранного — из ответа", () => {
-    /*
-     * Прохождение на старой версии методики: ни один вариант в действующей
-     * версии не находится. Выбранный всё равно показывает балл — он записан в
-     * самом ответе; остальные — прочерк, а не ноль: ноль был бы баллом.
-     */
-    const html = render(<QuestionSheet n={1} answer={answer()} scoreOf={() => null} />);
-    const lines = rows(html, "data-chosen");
-    expect(lines[0]!.html).toContain("—");
-    expect(lines[0]!.html).not.toMatch(/>0</);
-    expect(lines[1]!.html).toMatch(/>2</);
+  const v = (over: Partial<ConclusionVersion> = {}): ConclusionVersion => ({
+    id: "c1",
+    version: 1,
+    revision: 3,
+    text: "Симптоми зменшуються",
+    status: "draft",
+    createdAt: "2026-10-08T13:40:00.000Z",
+    authorName: "Ірина Савчук",
+    signedAt: null,
+    ...over,
+  });
+  const state = (current: ConclusionVersion | null): ConclusionState => ({ current, versions: current ? [current] : [] });
+  const draw = (lock: boolean, text = "Симптоми зменшуються") =>
+    render(
+      <ConclusionEditor
+        responseId="r1"
+        state={state(v())}
+        error={null}
+        onState={() => {}}
+        onReload={() => {}}
+        text={text}
+        setText={() => {}}
+        areaRef={{ current: null }}
+        lock={lock ? { title: "Підписати можна після розбору сигналу", body: "Пункт 9", action: null } : null}
+      />,
+    );
+  const button = (html: string, key: "cn3.form" | "cnc.saveDraft") => {
+    const e = UI[key] as { uk: string; ru: string; en?: string };
+    const found = [...html.matchAll(/<button([^>]*)>([\s\S]*?)<\/button>/g)].find((m) =>
+      [e.uk, e.ru, e.en].includes(m[2]!.replace(/<[^>]*>/g, "")),
+    );
+    expect(found, `кнопки ${key} нет в разметке`).toBeDefined();
+    return { disabled: /\sdisabled=""/.test(found![1]!) };
+  };
+
+  test("сигнал не разобран — подпись выключена, черновик сохраняется, причина названа", () => {
+    const html = draw(true);
+    expect(button(html, "cn3.form").disabled).toBe(true);
+    expect(button(html, "cnc.saveDraft").disabled).toBe(false);
+    expect(html).toContain("Підписати можна після розбору сигналу");
   });
 
-  test("балл пункта не приписывается каждому из нескольких выбранных вариантов", () => {
-    /*
-     * У ответа один балл на весь пункт. На старой версии методики, где
-     * баллов вариантов не найти, он подставляется выбранному варианту — но
-     * только когда выбран один. Два выбранных с одной и той же суммой у
-     * каждого выглядели бы как два балла по 5, которых не было.
-     */
-    const two = answer({ type: "multiple", optionIds: ["o1", "o2"], score: 5 });
-    const both = rows(render(<QuestionSheet n={2} answer={two} scoreOf={() => null} />), "data-chosen");
-    expect(both.map((l) => l.on)).toEqual([true, true]);
-    for (const line of both) {
-      expect(line.html).toContain("—");
-      expect(line.html).not.toMatch(/>5</);
+  test("сигнала нет — подпись по правилам сервера: текст есть, кнопка живая", () => {
+    const html = draw(false);
+    expect(button(html, "cn3.form").disabled).toBe(false);
+    expect(button(draw(false, "  "), "cn3.form").disabled).toBe(true);
+  });
+
+  /**
+   * Замок считался только по пришедшей обстановке: пока шёл запрос — и
+   * навсегда при его отказе — кнопка подписи была живой при неразобранном
+   * сигнале. Мутация: вернуть «нет обстановки — открыто» для того, кто
+   * разбирает сигналы, — проверки pending и unknown падают.
+   */
+  test("обстановка ещё едет или не пришла — подпись закрыта для того, кто разбирает сигналы", () => {
+    expect(signGate(null, false, true)).toBe("pending");
+    expect(signGate(null, true, true)).toBe("unknown");
+    expect(signGate({ signals: [signal()] }, false, true)).toBe("locked");
+    expect(signGate({ signals: [signal({ reviewedAt: "2026-10-08T13:00:00.000Z" })] }, false, true)).toBe("open");
+    // без права разбирать сигналы сервер их не отдаёт — правило экрана не действует ни до, ни после ответа
+    expect(signGate(null, false, false)).toBe("open");
+    expect(signGate({ signals: null }, false, false)).toBe("open");
+  });
+
+  /**
+   * Поле «Назва заключення» было на листе, а сервер название не хранит
+   * (столбца нет) и отбрасывал его молча: набрал, сохранил, открыл — пусто.
+   * Поле, которое не сохраняется, хуже его отсутствия. Мутация: вернуть
+   * поле — в разметке появляется поле ввода; вернуть title в тело — тело
+   * сохранения его несёт.
+   */
+  test("названия заключения нет: ни поля на листе, ни поля в теле сохранения", async () => {
+    const html = draw(false);
+    expect(html).not.toMatch(/<input\b/);
+    expect(html).not.toContain("Назва заключення");
+
+    const sent: unknown[] = [];
+    const g = globalThis as { localStorage?: Storage; sessionStorage?: Storage };
+    const saved = { fetch: globalThis.fetch, localStorage: g.localStorage, sessionStorage: g.sessionStorage };
+    const memory = (): Storage => {
+      const data = new Map<string, string>();
+      return {
+        get length() {
+          return data.size;
+        },
+        clear: () => data.clear(),
+        getItem: (k) => data.get(k) ?? null,
+        key: (i) => [...data.keys()][i] ?? null,
+        removeItem: (k) => void data.delete(k),
+        setItem: (k, val) => void data.set(k, String(val)),
+      };
+    };
+    g.localStorage = memory();
+    g.sessionStorage = memory();
+    globalThis.fetch = (async (_: RequestInfo | URL, init?: RequestInit) => {
+      sent.push(JSON.parse(String(init?.body)));
+      return new Response(JSON.stringify(state(v())), { status: 200, headers: { "Content-Type": "application/json" } });
+    }) as typeof fetch;
+    try {
+      await api.saveConclusion("r1", "Висновок", { version: 1, revision: 3 });
+    } finally {
+      globalThis.fetch = saved.fetch;
+      g.localStorage = saved.localStorage;
+      g.sessionStorage = saved.sessionStorage;
     }
-
-    const one = answer({ type: "multiple", optionIds: ["o2"], score: 5 });
-    const lines = rows(render(<QuestionSheet n={2} answer={one} scoreOf={() => null} />), "data-chosen");
-    expect(lines[1]!.html).toMatch(/>5</);
-    expect(lines[0]!.html).toContain("—");
+    expect(sent).toEqual([{ text: "Висновок", baseVersion: 1, baseRevision: 3 }]);
   });
 
-  test("вопрос без вариантов печатает ответ одной строкой, пропущенный — «без відповіді»", () => {
-    const skipped = answer({ type: "number", answered: false, optionIds: null, options: [], score: null });
-    const html = render(<QuestionSheet n={3} answer={skipped} scoreOf={() => null} />);
-    const [line] = rows(html, "data-chosen");
-    expect(line!.on).toBe(false);
-    expect(line!.html).toContain("без відповіді");
-  });
-});
+  test("подпись ждёт обстановку молча, а при отказе называет причину; черновик сохраняется в обоих случаях", () => {
+    const base = {
+      responseId: "r1",
+      state: state(v()),
+      error: null,
+      onState: () => {},
+      onReload: () => {},
+      text: "Симптоми зменшуються",
+      setText: () => {},
+      areaRef: { current: null },
+    };
+    const pending = render(<ConclusionEditor {...base} signPending />);
+    expect(button(pending, "cn3.form").disabled).toBe(true);
+    expect(button(pending, "cnc.saveDraft").disabled).toBe(false);
+    expect(pending).not.toContain(UI["cnx.lockTitle"].uk);
 
-const scale = (bands: [number, number, string][]): Scale => ({
-  id: "s1",
-  surveyId: "sv",
-  code: "A",
-  title: "Тривога",
-  description: null,
-  aggregation: "sum",
-  position: 1,
-  kind: "clinical",
-  normalization: "raw",
-  ratioDenominator: null,
-  validityThreshold: null,
-  validityDirection: null,
-  validityMessage: null,
-  bands: bands.map(([minScore, maxScore, label], i) => ({
-    id: `b${i}`,
-    scaleId: "s1",
-    minScore,
-    maxScore,
-    label,
-    severity: "none",
-    description: null,
-    grade: null,
-    recommendation: null,
-    cascadeBatteryId: null,
-    cascadeDueDays: null,
-    followUpDays: null,
-    position: i,
-  })),
-  items: [],
-  corrections: [],
-  norms: [],
-  stenTable: [],
-});
-
-const score = (value: number, band: ScoreResult["band"]): ScoreResult => ({
-  scaleId: "s1",
-  scaleCode: "A",
-  scaleTitle: "Тривога",
-  kind: "clinical",
-  rawScore: value,
-  correctedScore: value,
-  value,
-  normalized: true,
-  normalization: "raw",
-  maxScore: 30,
-  percent: 50,
-  band,
-});
-
-describe("лестница результатов", () => {
-  const ladder = scale([
-    [1, 10, "низький"],
-    [11, 20, "помірний"],
-    [21, 30, "високий"],
-  ]);
-
-  test("попавшая полоса выбирается по значению и помечена не только заливкой", () => {
-    const html = render(
-      <ResultLadder scores={[score(15, { id: null, label: "помірний", severity: "mild", description: null, grade: null, recommendation: null })]} scales={[ladder]} />,
+    const unknown = render(
+      <ConclusionEditor
+        {...base}
+        lock={{ title: UI["cnx.lockUnknownTitle"].uk, body: UI["cnx.lockUnknownBody"].uk, action: null, tone: "warn", note: UI["cnx.lockUnknownBody"].uk }}
+      />,
     );
-    const lines = rows(html, "data-hit");
-    expect(lines.map((l) => l.on), "полос три, попала средняя").toEqual([false, true, false]);
-    expect(lines[1]!.html).toContain("font-bold");
-    expect(lines[1]!.html).toContain("результат пацієнта");
-    expect(lines[0]!.html).not.toContain("font-bold");
-  });
-
-  test("ненормированный балл не попадает ни в одну полосу, даже если число в диапазоне", () => {
-    /*
-     * Движок подсчёта не назначает полосу, когда нормировать не удалось
-     * (нет нормы для пола, балл вне таблицы стенов): значение не в тех
-     * единицах. Лестница обязана повторять это, а не «подбирать» полосу по
-     * числу — иначе на экране заключения стояла бы интерпретация, которой
-     * движок не давал.
-     */
-    const html = render(<ResultLadder scores={[score(15, null)]} scales={[ladder]} />);
-    expect(rows(html, "data-hit").map((l) => l.on)).toEqual([false, false, false]);
-  });
-
-  test("шкала без полос лестницы не рисует", () => {
-    expect(render(<ResultLadder scores={[score(15, null)]} scales={[scale([])]} />)).toBe("");
+    expect(button(unknown, "cn3.form").disabled).toBe(true);
+    expect(button(unknown, "cnc.saveDraft").disabled).toBe(false);
+    expect(unknown).toContain(UI["cnx.lockUnknownTitle"].uk);
+    // это не сигнал, а отказ загрузки: строка у кнопки — не «після розбору сигналу»
+    expect(unknown).not.toContain(UI["rp.signLocked"].uk);
   });
 });
 
-describe("заголовки и меню документа", () => {
-  test("действие при заголовке раздела стоит рядом с h2, а не внутри него", () => {
-    /*
-     * Имя заголовка для диктора собирается из содержимого h2. Ссылка внутри
-     * приклеила бы свою подпись к имени раздела — и секции, которая через
-     * aria-labelledby на него ссылается. Глазом не видно: ряд тот же.
-     */
-    const html = render(
-      <SectionHead id="cn-tests" action={<a href="/batteries" aria-label="Додати тест">+</a>}>
-        Список тестів
-      </SectionHead>,
-    );
-    const heading = /<h2 id="cn-tests"[^>]*>([\s\S]*?)<\/h2>/.exec(html);
-    expect(heading?.[1]).toBe("Список тестів");
-    expect(html, "ссылка пропала вместе с выносом из заголовка").toContain('aria-label="Додати тест"');
+describe("динамика человека на листе — одним чтением (волна 27)", () => {
+  const SRC = resolve(import.meta.dir, "../src");
+  const page = readFileSync(resolve(SRC, "pages/Conclusion.tsx"), "utf8");
+  const data = readFileSync(resolve(SRC, "pages/response/data.ts"), "utf8");
+
+  test("лист не читает динамику сам: одна общая из useResponseExtras, без узкой рядом", () => {
+    expect(page).not.toContain("api.dynamics(");
+    expect(page).toContain('useResponseExtras(responseId, detail, { dynamics: "all", conclusion: false })');
+    // общая — без ?survey=: в узкой не было бы других методик для «Результатів»
+    expect(data).toContain('const scope = opts.dynamics === "all" ? null : (detail?.survey.id ?? null);');
   });
 
-  test("закрытое меню не ссылается на несуществующий элемент", () => {
-    /* aria-controls обязан указывать на существующий id; закрытое меню в разметке отсутствует */
-    const html = render(<DocumentMenu responseId="r1" />);
-    expect(html).toContain('aria-expanded="false"');
-    expect(html).not.toContain("aria-controls");
-    expect(html).not.toContain('id="conclusion-menu"');
+  test("сводка над выводом из общей динамики — та же, что из узкой по этой методике", () => {
+    const full = dynamics([
+      series([
+        { responseId: "r1", rawScore: 19, bandLabel: "Помірно тяжка", severity: "moderate" },
+        { responseId: "r2", rawScore: 12, bandLabel: "Помірна", severity: "moderate" },
+      ]),
+    ]);
+    full.surveys.push({
+      surveyId: "s2",
+      title: "GAD-7",
+      responseCount: 1,
+      firstAt: null,
+      lastAt: null,
+      scales: [series([{ responseId: "g1", rawScore: 11 }], { code: "D", title: "Тривога" })],
+    });
+    const narrow = { ...full, surveys: full.surveys.filter((s) => s.surveyId === "s1") };
+    const detail = { id: "r2", survey: { id: "s1" } } as Parameters<typeof scaleChange>[0];
+    const rungs = [{ min: 0, max: 9, label: "Норма", severity: "none" as const }];
+    expect(scaleChange(detail, full, "D", rungs)).toEqual(scaleChange(detail, narrow, "D", rungs));
+    expect(scaleChange(detail, full, "D", rungs)?.fromPrev?.delta).toBe(-7);
+  });
+});
+
+describe("результаты человека для вывода", () => {
+  test("последний замер каждой методики; замер этого прохождения — свой, даже если был не последним", () => {
+    const d = dynamics([
+      series([
+        { responseId: "r1", rawScore: 19, bandLabel: "Помірно тяжка", severity: "moderate" },
+        { responseId: "r2", rawScore: 16, bandLabel: "Помірна", severity: "moderate" },
+        { responseId: "r3", rawScore: 14, bandLabel: "Помірна", severity: "moderate" },
+      ]),
+    ]);
+    d.surveys.push({
+      surveyId: "s2",
+      title: "GAD-7",
+      responseCount: 1,
+      firstAt: null,
+      lastAt: null,
+      scales: [series([{ responseId: "g1", rawScore: 11, bandLabel: "Помірна", severity: "moderate" }], { code: "G", title: "Тривога" })],
+    });
+    const now = resultLines(d, "r3");
+    expect(now.map((l) => [l.survey, l.value, l.delta, l.here])).toEqual([
+      ["PHQ-9", 14, -5, true],
+      ["GAD-7", 11, null, false],
+    ]);
+    // заключение по второму замеру: в строке — он, а не последний, и сдвиг — от старта до него
+    const second = resultLines(d, "r2").find((l) => l.survey === "PHQ-9")!;
+    expect([second.value, second.delta, second.here]).toEqual([16, -3, true]);
   });
 });
 

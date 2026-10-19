@@ -1,4 +1,5 @@
-import { UI, type Administration, type Lang, type SurveyFull, type SurveyGroupWithCounts, type UiKey } from "@quizzy/shared";
+import type { Administration, Lang, SurveyFull, SurveyGroupWithCounts, UiKey } from "@quizzy/shared";
+import { contentDefault } from "../../dictionary";
 
 /*
  * Вид теста по макету: «Конкретний тест» и «Комплексний тест».
@@ -240,8 +241,8 @@ export interface DraftBand {
  * макета — порядковый, он рисуется, а не хранится.
  */
 export const defaultAnswers = (): DraftOption[] => [
-  { uid: newUid(), text: { uk: UI["bp.yes"].uk, ru: UI["bp.yes"].ru }, keyCode: "yes" },
-  { uid: newUid(), text: { uk: UI["bp.no"].uk, ru: UI["bp.no"].ru }, keyCode: "no" },
+  { uid: newUid(), text: contentDefault("bp.yes"), keyCode: "yes" },
+  { uid: newUid(), text: contentDefault("bp.no"), keyCode: "no" },
 ];
 
 export const EMPTY: Draft = {
@@ -438,10 +439,24 @@ export function deriveMode(scales: DraftScale[]): Mode {
   return "complex";
 }
 
-/** Общий набор ответов из уже заведённых вопросов: первый вопрос с вариантами */
+/**
+ * Вариант общего набора без того, что принадлежит пункту: позначка
+ * «критичний» с подписью и уровнем — своя у каждого пункта (у PHQ-9 — только
+ * у девятого), и набор, разнесённый по всем пунктам, нёс бы её во все.
+ */
+function plainAnswer({ riskFlag: _f, riskLabel: _l, riskSeverity: _s, ...rest }: DraftOption): DraftOption {
+  return rest;
+}
+
+/** Общий набор ответов из уже заведённых вопросов: первый вопрос с вариантами, без позначок пункта */
 export function deriveAnswers(questions: DraftQuestion[]): DraftOption[] {
   const first = questions.find((q) => q.options.length > 0);
-  return first ? structuredClone(first.options) : defaultAnswers();
+  return first ? structuredClone(first.options).map(plainAnswer) : defaultAnswers();
+}
+
+/** Варианты нового пункта конкретного теста — копия общего набора со своими uid */
+export function sharedOptions(answers: DraftOption[] | undefined): DraftOption[] {
+  return structuredClone(answers ?? []).map((a) => ({ ...plainAnswer(a), uid: newUid() }));
 }
 
 /**
@@ -461,12 +476,47 @@ export function nextKeyCode(existing: (string | null | undefined)[]): string {
   }
 }
 
-/** Общий набор ответов — во все вопросы разом (см. Draft.answers) */
+/**
+ * Общий набор ответов — во все вопросы разом (см. Draft.answers).
+ *
+ * Своё у пункта при этом остаётся: позначка «критичний» (с подписью и
+ * уровнем) и uid варианта. Набор раньше копировался в пункты целиком, и
+ * переименование «Так» снимало критические позначки со всех пунктов СР-45
+ * разом — молча, а сигнал риска по ним больше не поднимался.
+ *
+ * Вариант пункта узнаётся по коду ответа (yes/no/k3). Без кода — по месту,
+ * но по месту в ПРЕЖНЕМ наборе: варианты пункта стоят так, как стоял набор,
+ * а ответ набора узнаётся по своему uid. Место в новом наборе для этого не
+ * годится: удалили первый ответ PHQ-9 — места сдвинулись, и позначка
+ * переезжала на соседний вариант (критичным становился «Часто» вместо
+ * «Іноді»). Набора ещё не было (смена вида теста) — по месту в новом.
+ */
 export function applyAnswers(draft: Draft, answers: DraftOption[]): Draft {
+  const prev = draft.answers ?? [];
+  /* место ответа в прежнем наборе; -1 — ответ новый, своего у пункта для него нет */
+  const before = answers.map((a, i) => {
+    if (!prev.length) return i;
+    if (a.uid) return prev.findIndex((p) => p.uid === a.uid);
+    return prev.length === answers.length ? i : -1;
+  });
   return {
     ...draft,
     answers,
-    questions: draft.questions.map((q) => (q.type === "info" ? q : { ...q, options: structuredClone(answers) })),
+    questions: draft.questions.map((q) => {
+      if (q.type === "info") return q;
+      const byCode = new Map(q.options.flatMap((o) => (o.keyCode ? [[o.keyCode, o] as const] : [])));
+      return {
+        ...q,
+        options: answers.map((a, i) => {
+          const at = before[i]!;
+          const was = a.keyCode ? byCode.get(a.keyCode) : at >= 0 ? q.options[at] : undefined;
+          const base = { ...plainAnswer(structuredClone(a)), uid: was?.uid ?? newUid() };
+          return was?.riskFlag
+            ? { ...base, riskFlag: true, riskLabel: was.riskLabel ?? null, riskSeverity: was.riskSeverity ?? null }
+            : base;
+        }),
+      };
+    }),
   };
 }
 
@@ -563,7 +613,7 @@ export function newScale(existing: DraftScale[]): DraftScale {
 
 /** Итоговая шкала комплексного теста — единственная, её полосы и есть «Результати» */
 export function totalScale(): DraftScale {
-  return { ...newScale([]), code: "total", title: { uk: UI["cn.results"].uk, ru: UI["cn.results"].ru } };
+  return { ...newScale([]), code: "total", title: contentDefault("cn.results") };
 }
 
 /**
@@ -682,6 +732,43 @@ export function moveQuestion(draft: Draft, i: number, delta: number): Draft {
   const a = i + 1;
   const b = j + 1;
   return { ...draft, questions: next, scales: renumberKeys(draft.scales, (n) => (n === a ? b : n === b ? a : n)) };
+}
+
+/**
+ * Перетащить вопрос с места `from` на место `to` (оба с нуля): остальные
+ * сдвигаются, а не меняются с ним местами, как при ↑/↓. Ключ идёт за
+ * каждым сдвинутым пунктом — та же переписка номеров, что у перестановки.
+ */
+export function reorderQuestion(draft: Draft, from: number, to: number): Draft {
+  const n = draft.questions.length;
+  if (from < 0 || from >= n || to < 0 || to >= n || from === to) return draft;
+  const next = [...draft.questions];
+  const [moved] = next.splice(from, 1);
+  next.splice(to, 0, moved!);
+  const a = from + 1;
+  const b = to + 1;
+  return {
+    ...draft,
+    questions: next,
+    scales: renumberKeys(draft.scales, (k) => {
+      if (k === a) return b;
+      if (a < b && k > a && k <= b) return k - 1;
+      if (a > b && k >= b && k < a) return k + 1;
+      return k;
+    }),
+  };
+}
+
+/**
+ * Пункты, у которых текст есть на одном языке и нет на другом, — номерами.
+ * Методика хранится на двух языках содержимого, и пропуск обнаруживался на
+ * консоли пациента другого языка; здесь он виден, пока правят.
+ */
+export function missingLang(draft: Draft, lang: "uk" | "ru"): number[] {
+  return draft.questions.flatMap((q, i) => {
+    const other = lang === "uk" ? "ru" : "uk";
+    return q.type !== "info" && (q.title[other] ?? "").trim() && !(q.title[lang] ?? "").trim() ? [i + 1] : [];
+  });
 }
 
 /**
@@ -827,6 +914,22 @@ export function withUids(draft: Draft): Draft {
     scales: draft.scales.map((sc) => ({ ...keyed(sc), bands: (sc.bands ?? []).map(keyed) })),
     ...(draft.answers ? { answers: draft.answers.map(keyed) } : {}),
   };
+}
+
+/**
+ * Текст из «Тест як JSON» — в черновик поверх той версии, от которой экран
+ * правит сейчас.
+ *
+ * baseVersionId — не содержание, а то, от чего начата правка, и знает его
+ * экран (открытая или перечитанная методика), а не текст. После отказа 409
+ * человек забирал свои правки текстом («Показати мої правки»), перечитывал
+ * методику и применял текст обратно — а с текстом возвращалась и прежняя
+ * базовая версия, и следующее сохранение снова получало 409. Теперь текст
+ * ложится на версию, перечитанную с сервера; правку, сохранённую уже после
+ * неё, сервер по-прежнему не даст затереть.
+ */
+export function applyJsonDraft(current: Pick<Draft, "baseVersionId">, parsed: Draft): Draft {
+  return normalizeDraft({ ...EMPTY, ...parsed, baseVersionId: current.baseVersionId ?? null });
 }
 
 /**

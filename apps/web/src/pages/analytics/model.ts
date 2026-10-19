@@ -1,4 +1,5 @@
 import type { DecisionRule, RuleAction, RuleCondition, ScaleCondition, UiKey } from "@quizzy/shared";
+import { numText } from "./tests/model";
 
 /**
  * Чистая часть раздела «Аналітика»: поиск и страницы перечня, черновик
@@ -33,7 +34,12 @@ import type { DecisionRule, RuleAction, RuleCondition, ScaleCondition, UiKey } f
 
 /* ─────────── перечень ─────────── */
 
-export type SavedModel = DecisionRule & { note: string | null };
+/**
+ * Модель с сервера. Даты строки — из того же GET /api/decisions/rules
+ * (маршрут отдаёт строку таблицы целиком): перечень печатает «змінено …», а
+ * окно «Про модель» — когда создана и когда правлена.
+ */
+export type SavedModel = DecisionRule & { note: string | null; createdAt?: string; updatedAt?: string };
 
 /**
  * Поиск — на клиенте, по названию и описанию.
@@ -81,6 +87,20 @@ export const OP_KEY: Record<Op, UiKey> = {
   ">": "am.opGt",
   "<": "am.opLt",
 };
+
+/**
+ * Порог условия — языком страницы: «2,5» по-украински и по-русски, «2.5»
+ * по-английски.
+ *
+ * Сервер хранит число, а поле числа отдаёт набранное с точкой при любом
+ * языке; печатать как есть значило ставить точку в украинском перечне.
+ * Знаков — сколько записано (до шести): порог округлением не подменяется.
+ * Не число (поле ещё набирают, «-») — как набрано.
+ */
+export function thresholdText(v: string | number): string {
+  const n = typeof v === "number" ? v : v.trim() === "" ? Number.NaN : Number(v);
+  return Number.isFinite(n) ? numText(n, 6) : String(v).trim();
+}
 
 /**
  * «Будь-який тест»: условие по коду шкалы в той методике, которую сдали.
@@ -260,33 +280,71 @@ export function draftToPayload(d: ModelDraft): ModelPayload {
 }
 
 /**
- * Что мешает сохранить — ключами словаря, по одному на причину.
+ * Где именно черновик не готов: ключ словаря и место — поле формы, условие
+ * или действие по номеру. Форма ставит отказ под самим полем, а сводка над
+ * формой ведёт к нему ссылкой («Умова 1: вкажіть шкалу»).
+ */
+export type IssueField =
+  | "title"
+  | "params"
+  | "actions"
+  | "test"
+  | "scale"
+  | "threshold"
+  | "count"
+  | "advise"
+  | "suggest"
+  | "pathway";
+
+export interface DraftIssue {
+  key: UiKey;
+  field: IssueField;
+  /** Номер условия (с нуля), если отказ — у условия */
+  param?: number;
+  /** Номер действия (с нуля), если отказ — у действия */
+  action?: number;
+}
+
+/**
+ * Все отказы черновика по местам — в порядке формы: название, условия
+ * сверху вниз, действия.
  *
  * Проверяется то же, что проверит сервер (ruleSchema в routes/decisions.ts),
  * но раньше и словами: отказ 400 с именем поля zod человеку в кабинете не
  * читается. Порог у истории — 0…100, как в схеме.
  */
-export function validateDraft(d: ModelDraft): UiKey[] {
-  const errs = new Set<UiKey>();
-  if (!d.title.trim()) errs.add("am.errTitle");
-  if (d.params.length === 0) errs.add("am.errNoParams");
-  for (const p of d.params) {
+export function draftIssues(d: ModelDraft): DraftIssue[] {
+  const out: DraftIssue[] = [];
+  if (!d.title.trim()) out.push({ key: "am.errTitle", field: "title" });
+  if (d.params.length === 0) out.push({ key: "am.errNoParams", field: "params" });
+  d.params.forEach((p, i) => {
     if (p.kind === "scale") {
-      if (!p.surveyId) errs.add("am.errTest");
-      if (!p.scaleCode.trim()) errs.add("am.errScale");
-      if (p.value.trim() === "" || !Number.isFinite(Number(p.value))) errs.add("am.errThreshold");
+      if (!p.surveyId) out.push({ key: "am.errTest", field: "test", param: i });
+      if (!p.scaleCode.trim()) out.push({ key: "am.errScale", field: "scale", param: i });
+      if (p.value.trim() === "" || !Number.isFinite(Number(p.value))) out.push({ key: "am.errThreshold", field: "threshold", param: i });
     } else if (p.kind === "history") {
       const n = Number(p.completedAtLeast);
-      if (p.completedAtLeast.trim() === "" || !Number.isInteger(n) || n < 0 || n > 100) errs.add("am.errCount");
+      if (p.completedAtLeast.trim() === "" || !Number.isInteger(n) || n < 0 || n > 100) {
+        out.push({ key: "am.errCount", field: "count", param: i });
+      }
     }
-  }
-  if (d.actions.length === 0) errs.add("am.errNoActions");
-  for (const a of d.actions) {
-    if (a.kind === "advise" && !a.text.trim()) errs.add("am.errAdvise");
-    if (a.kind === "suggest_survey" && !a.surveyId) errs.add("am.errSuggest");
-    if (a.kind === "suggest_pathway" && !a.pathwayId.trim()) errs.add("am.errPathway");
-  }
-  return [...errs];
+  });
+  if (d.actions.length === 0) out.push({ key: "am.errNoActions", field: "actions" });
+  d.actions.forEach((a, i) => {
+    if (a.kind === "advise" && !a.text.trim()) out.push({ key: "am.errAdvise", field: "advise", action: i });
+    if (a.kind === "suggest_survey" && !a.surveyId) out.push({ key: "am.errSuggest", field: "suggest", action: i });
+    if (a.kind === "suggest_pathway" && !a.pathwayId.trim()) out.push({ key: "am.errPathway", field: "pathway", action: i });
+  });
+  return out;
+}
+
+/**
+ * Что мешает сохранить — ключами словаря, по одному на причину: та же
+ * проверка, что draftIssues, без мест. Одна причина не повторяется по числу
+ * строк — для сводки «чего не хватает» это одно и то же.
+ */
+export function validateDraft(d: ModelDraft): UiKey[] {
+  return [...new Set(draftIssues(d).map((i) => i.key))];
 }
 
 /** Убрать отмеченные строки; ничего не отмечено — черновик тот же объект */
@@ -316,4 +374,175 @@ export function surveysToLoad(d: ModelDraft, listed: ReadonlySet<string>): strin
     if (a.kind === "suggest_survey" && a.surveyId && !listed.has(a.surveyId)) ids.add(a.surveyId);
   }
   return [...ids];
+}
+
+/* ─────────── перечень: виды, порядок, фильтры ─────────── */
+
+/** Виды перечня: все, только включённые, только выключенные */
+export type ModelView = "all" | "on" | "off";
+
+export function viewFrom(raw: string | null): ModelView {
+  return raw === "on" || raw === "off" ? raw : "all";
+}
+
+export function inView(m: Pick<SavedModel, "enabled">, view: ModelView): boolean {
+  return view === "all" || (view === "on" ? m.enabled : !m.enabled);
+}
+
+/**
+ * Порядок перечня. «Спершу нові» — порядок сервера (createdAt по убыванию),
+ * поэтому и умолчание: его не пишут в адрес. «Спершу змінені» — по дате
+ * правки; у строки без даты (старый сервер) порядок сервера сохраняется.
+ */
+export type ModelSort = "new" | "changed" | "title";
+export const MODEL_SORTS: readonly ModelSort[] = ["new", "changed", "title"];
+
+export function sortFrom(raw: string | null): ModelSort {
+  return raw === "changed" || raw === "title" ? raw : "new";
+}
+
+export function sortModels<T extends Pick<SavedModel, "title" | "createdAt" | "updatedAt">>(rows: readonly T[], sort: ModelSort): T[] {
+  const at = (v: string | undefined) => (v ? Date.parse(v) || 0 : 0);
+  const list = [...rows];
+  if (sort === "title") return list.sort((a, b) => a.title.localeCompare(b.title));
+  if (sort === "changed") return list.sort((a, b) => at(b.updatedAt) - at(a.updatedAt));
+  return list.sort((a, b) => at(b.createdAt) - at(a.createdAt));
+}
+
+/**
+ * Методики, о которых говорят условия модели: идентификаторы без повторов,
+ * ANY_TEST — условие «будь-який тест». Флаг риска и число прохождений
+ * методики не называют.
+ */
+export function ruleTests(rule: Pick<SavedModel, "conditions">): string[] {
+  const out = new Set<string>();
+  for (const c of rule.conditions) if (c.kind === "scale") out.add(c.surveyId ?? ANY_TEST);
+  return [...out];
+}
+
+export interface ModelQuery {
+  q: string;
+  view: ModelView;
+  /** Методика в условиях (или ANY_TEST); null — любая */
+  test: string | null;
+  /** Вид действия; null — любой */
+  act: RuleAction["kind"] | null;
+}
+
+/** Все фильтры перечня разом: поиск, вид, методика в условиях, вид действия */
+export function selectModels<T extends SavedModel>(rows: readonly T[], query: ModelQuery): T[] {
+  return filterModels(rows, query.q).filter(
+    (m) =>
+      inView(m, query.view) &&
+      (query.test === null || ruleTests(m).includes(query.test)) &&
+      (query.act === null || m.actions.some((a) => a.kind === query.act)),
+  );
+}
+
+/** Строка «Під моделями»: методика (или ANY_TEST) и модели, которые её проверяют */
+export interface CoverRow {
+  key: string;
+  on: SavedModel[];
+  off: SavedModel[];
+}
+
+/**
+ * Какие методики под моделями. Сначала те, где включённых больше; «будь-який
+ * тест» — после названных методик: он покрывает всё понемногу и читается
+ * как страховка, а не как ответ про конкретный тест. Методика, у которой
+ * только выключенные модели, — в конце: под защитой она формально, а не на
+ * деле.
+ */
+export function coverage(rows: readonly SavedModel[]): CoverRow[] {
+  const by = new Map<string, CoverRow>();
+  for (const m of rows) {
+    for (const key of ruleTests(m)) {
+      const row = by.get(key) ?? { key, on: [], off: [] };
+      (m.enabled ? row.on : row.off).push(m);
+      by.set(key, row);
+    }
+  }
+  const rank = (r: CoverRow) => (r.on.length === 0 ? 2 : r.key === ANY_TEST ? 1 : 0);
+  return [...by.values()].sort((a, b) => rank(a) - rank(b) || b.on.length - a.on.length);
+}
+
+/** Методики из списка, которых не называет ни одна модель, — в порядке списка */
+export function uncovered<T extends { id: string }>(surveys: readonly T[], rows: readonly SavedModel[]): T[] {
+  const named = new Set(rows.flatMap((m) => ruleTests(m)));
+  return surveys.filter((s) => !named.has(s.id));
+}
+
+/* ─────────── черновик: изменения и копия ─────────── */
+
+/** Черновик без служебного: ключи строк и отметки не меняют модель */
+function plain(d: ModelDraft) {
+  return {
+    title: d.title,
+    note: d.note,
+    enabled: d.enabled,
+    params: d.params.map(({ key: _k, picked: _p, ...rest }) => rest),
+    actions: d.actions.map(({ key: _k, picked: _p, ...rest }) => rest),
+  };
+}
+
+/** Одна ли модель в двух черновиках — по смыслу, а не по ключам строк */
+export function sameDraft(a: ModelDraft, b: ModelDraft): boolean {
+  return JSON.stringify(plain(a)) === JSON.stringify(plain(b));
+}
+
+export type DraftChange =
+  | { kind: "title" }
+  | { kind: "note" }
+  | { kind: "enabled"; on: boolean }
+  | { kind: "threshold"; index: number; from: string; to: string }
+  | { kind: "param"; index: number }
+  | { kind: "paramsAdded"; n: number }
+  | { kind: "paramsRemoved"; n: number }
+  | { kind: "action"; index: number }
+  | { kind: "actionsAdded"; n: number }
+  | { kind: "actionsRemoved"; n: number };
+
+/**
+ * Что поменялось относительно сохранённой модели — для строки «Зміни»
+ * панели «Про модель». Строки сравниваются по месту: условие, у которого
+ * сменился только порог, называется порогом «19 → 20» — это самая частая
+ * правка, и её важно видеть числом.
+ */
+export function draftChanges(saved: ModelDraft, now: ModelDraft): DraftChange[] {
+  const a = plain(saved);
+  const b = plain(now);
+  const same = (x: unknown, y: unknown) => JSON.stringify(x) === JSON.stringify(y);
+  const out: DraftChange[] = [];
+  if (a.title.trim() !== b.title.trim()) out.push({ kind: "title" });
+  if (a.note.trim() !== b.note.trim()) out.push({ kind: "note" });
+  if (a.enabled !== b.enabled) out.push({ kind: "enabled", on: b.enabled });
+  for (let i = 0; i < Math.min(a.params.length, b.params.length); i++) {
+    const x = a.params[i]!;
+    const y = b.params[i]!;
+    if (same(x, y)) continue;
+    if (same({ ...x, value: "" }, { ...y, value: "" })) out.push({ kind: "threshold", index: i, from: x.value, to: y.value });
+    else out.push({ kind: "param", index: i });
+  }
+  if (b.params.length > a.params.length) out.push({ kind: "paramsAdded", n: b.params.length - a.params.length });
+  if (b.params.length < a.params.length) out.push({ kind: "paramsRemoved", n: a.params.length - b.params.length });
+  for (let i = 0; i < Math.min(a.actions.length, b.actions.length); i++) {
+    if (!same(a.actions[i], b.actions[i])) out.push({ kind: "action", index: i });
+  }
+  if (b.actions.length > a.actions.length) out.push({ kind: "actionsAdded", n: b.actions.length - a.actions.length });
+  if (b.actions.length < a.actions.length) out.push({ kind: "actionsRemoved", n: a.actions.length - b.actions.length });
+  return out;
+}
+
+/**
+ * Черновик новой модели по образцу: условия, действия и описание — как у
+ * образца, имя — с пометкой копии (`title` уже собран экраном на языке
+ * человека), включена. Сохраняется новой строкой — образец не меняется.
+ */
+export function copyDraft(rule: SavedModel, title: string): ModelDraft {
+  return { ...draftFromRule(rule), title, enabled: true };
+}
+
+/** Адрес формы новой модели по образцу */
+export function copyHref(id: string): string {
+  return `${modelHref("new")}?copy=${encodeURIComponent(id)}`;
 }

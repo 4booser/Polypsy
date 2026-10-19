@@ -1,6 +1,6 @@
 import type { Context } from "hono";
 import { and, eq, gt, isNull } from "drizzle-orm";
-import type { ErrorKey, ImpersonationInfo, ImpersonationStart, User } from "@quizzy/shared";
+import { IMPERSONATION_MINUTES, type ErrorKey, type ImpersonationInfo, type ImpersonationStart, type User } from "@quizzy/shared";
 import { db } from "../db";
 import { impersonationSessions, users } from "../db/schema";
 import { audit } from "./audit";
@@ -45,7 +45,7 @@ import { forbidden } from "./http";
  *    его правами без следа в его собственной сессии; себя — бессмысленно.
  */
 
-export const IMPERSONATION_TTL_MS = 30 * 60_000;
+export const IMPERSONATION_TTL_MS = IMPERSONATION_MINUTES * 60_000;
 
 type Refusal = { ok: false; error: ErrorKey };
 

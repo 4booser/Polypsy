@@ -4,7 +4,7 @@ import { MemoryRouter } from "react-router-dom";
 import { UI } from "@quizzy/shared";
 import { LangProvider } from "../src/lang";
 import PatientBooking from "../src/patient/Booking";
-import { SLOT_LIMIT, chosenSlot, slotsView } from "../src/patient/slots";
+import { SLOT_LIMIT, chosenSlot, moveTarget, slotsView } from "../src/patient/slots";
 
 /**
  * Запись на приём в кабинете как состояние формы (w13:uitests).
@@ -63,6 +63,25 @@ describe("выбранное время", () => {
   });
 });
 
+describe("перенос своего приёма (?move=)", () => {
+  const visit = (id: string, status = "booked") => ({ id, status });
+
+  test("пока свои приёмы не пришли — неизвестно, перенос это или запись: подтверждать рано", () => {
+    // прежде экран считался записью, и «Записатися» заводила второй приём рядом с переносимым
+    expect(moveTarget("v1", null)).toEqual({ moving: null, pending: true });
+  });
+
+  test("приём в списке — переносим его", () => {
+    expect(moveTarget("v1", [visit("v0"), visit("v1", "confirmed")])).toEqual({ moving: visit("v1", "confirmed"), pending: false });
+  });
+
+  test("приёма нет или он отменён — обычная запись, без ожидания", () => {
+    expect(moveTarget("v1", [visit("v0")])).toEqual({ moving: null, pending: false });
+    expect(moveTarget("v1", [visit("v1", "cancelled")])).toEqual({ moving: null, pending: false });
+    expect(moveTarget(null, null), "без ?move= ждать нечего").toEqual({ moving: null, pending: false });
+  });
+});
+
 describe("экран записи в разметке", () => {
   const has = (html: string, key: keyof typeof UI) => {
     const e = UI[key] as { uk: string; ru: string; en?: string };
@@ -80,9 +99,11 @@ describe("экран записи в разметке", () => {
     );
     expect(has(html, "pt.noSlots"), "пока список грузится, экран говорит, что записаться некуда").toBe(false);
     expect(has(html, "common.loading")).toBe(true);
-    // и записываться не на что: кнопка выключена, пока время не выбрано
-    const e = UI["pt.bookNow"] as { uk: string; ru: string; en?: string };
-    const book = [...html.matchAll(/<button([^>]*)>([^<]*)<\/button>/g)].find((m) => [e.uk, e.ru, e.en].includes(m[2]!));
+    // и записываться не на что: «Перевірити й записатися» выключена, пока время не выбрано
+    const e = UI["ptw.reviewBook"] as { uk: string; ru: string; en?: string };
+    const book = [...html.matchAll(/<button([^>]*)>(.*?)<\/button>/g)].find((m) =>
+      [e.uk, e.ru, e.en].some((t) => !!t && m[2]!.includes(t)),
+    );
     expect(book?.[1]).toMatch(/\sdisabled=""/);
   });
 });

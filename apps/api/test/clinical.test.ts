@@ -293,6 +293,31 @@ describe("хронология пациента", () => {
     expect([...times].sort().reverse()).toEqual(times);
   });
 
+  test("назначение в хронологии — с названием набора и сроком, а не с идентификатором", async () => {
+    const { batteries, batteryAssignments } = await import("../src/db/schema");
+    const { groupA } = await import("./fixtures");
+    const person = await makeUser("user", `tl-battery-${crypto.randomUUID()}@test`);
+    await submitSurvey(surveyInA, person.token);
+    const batteryId = crypto.randomUUID();
+    const title = `Набір хронології ${batteryId.slice(0, 6)}`;
+    await db.insert(batteries).values({ id: batteryId, title, groupId: groupA, createdBy: adminA.id } as never);
+    const dueAt = new Date(Date.now() + 7 * 86_400_000).toISOString();
+    await db.insert(batteryAssignments).values({
+      id: crypto.randomUUID(),
+      batteryId,
+      userId: person.id,
+      assignedBy: adminA.id,
+      dueAt,
+    } as never);
+
+    const res = await api(`/api/timeline/${person.id}`, adminA.token);
+    expect(res.status).toBe(200);
+    const row = res.body.items.find((i: { kind: string }) => i.kind === "assignment");
+    expect(row?.title).toBe(title);
+    expect(row?.detail).toBe("open");
+    expect(Date.parse(row?.dueAt)).toBe(Date.parse(dueAt));
+  });
+
   test("чужой админ хронологию не получает", async () => {
     /*
      * Ответ «пациента нет» здесь честный: вне зоны ответственности его

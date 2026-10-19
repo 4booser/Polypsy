@@ -3,7 +3,12 @@ import { UI } from "@quizzy/shared";
 import {
   ANY_TEST,
   type SavedModel,
+  copyDraft,
+  copyHref,
+  coverage,
+  draftChanges,
   draftFromRule,
+  draftIssues,
   draftToPayload,
   dropPicked,
   emptyDraft,
@@ -12,9 +17,53 @@ import {
   newAction,
   newParam,
   pageSlice,
+  ruleTests,
+  sameDraft,
+  selectModels,
+  sortFrom,
+  sortModels,
   surveysToLoad,
+  thresholdText,
+  uncovered,
   validateDraft,
+  viewFrom,
 } from "../src/pages/analytics/model";
+
+/**
+ * Порог условия — языком страницы, а не как его хранит сервер.
+ *
+ * Пилюля перечня, «Як читається модель» и «було …» печатали число как
+ * есть, то есть с точкой: «≥ 2.5» на украинском экране. Мутация: вернуть
+ * String(value) — падает первая проверка (вне браузера страница русская).
+ */
+describe("порог условия словами экрана", () => {
+  test("дробный порог — с запятой, целый — без хвоста, знаки не теряются", () => {
+    expect(thresholdText(2.5)).toBe("2,5");
+    expect(thresholdText("2.5")).toBe("2,5");
+    expect(thresholdText(19)).toBe("19");
+    expect(thresholdText("0.125")).toBe("0,125");
+    expect(thresholdText(-1.5)).toBe("-1,5");
+  });
+
+  test("недонабранное поле печатается как набрано, а не NaN", () => {
+    expect(thresholdText("")).toBe("");
+    expect(thresholdText("-")).toBe("-");
+    expect(thresholdText(" 7 ")).toBe("7");
+  });
+});
+
+/**
+ * Число при слове: «Останні 3 проходжень» и «з 21 тестів» — неверные формы.
+ * Число стоит после двоеточия, где форма слова от него не зависит.
+ */
+describe("строки с числом без формы слова при числе", () => {
+  test("подпись матрицы ответов и покрытие тестов", () => {
+    for (const lang of ["uk", "ru"] as const) {
+      expect(UI["ant.answersCaption"][lang], lang).not.toMatch(/\{n\} прох/);
+      expect(UI["am.coverSub"][lang], lang).not.toMatch(/\{total\} тест/);
+    }
+  });
+});
 
 /**
  * Чистая часть раздела «Аналітика»: поиск и страницы перечня, черновик ↔
@@ -211,5 +260,102 @@ describe("какие методики нужны редактору", () => {
     ];
     /* sv1 нужна ради шкал и без того; sv8 есть в списке; sv7 — сирота, её дочитывают ради названия */
     expect(surveysToLoad(d, new Set(["sv1", "sv8"]))).toEqual(["sv1", "sv7"]);
+  });
+});
+
+describe("перечень: виды, фильтры, порядок", () => {
+  const a = rule({ id: "a", title: "Б", enabled: true, createdAt: "2026-09-01T10:00:00Z", updatedAt: "2026-10-01T10:00:00Z" });
+  const b = rule({
+    id: "b",
+    title: "А",
+    enabled: false,
+    createdAt: "2026-09-10T10:00:00Z",
+    updatedAt: "2026-09-11T10:00:00Z",
+    conditions: [{ kind: "risk", severity: "moderate" }],
+    actions: [{ kind: "notify_duty" }],
+  });
+  const rows = [a, b];
+
+  test("мусор в адресе — вид «усі» и порядок по умолчанию", () => {
+    expect(viewFrom("zzz")).toBe("all");
+    expect(viewFrom("off")).toBe("off");
+    expect(sortFrom(null)).toBe("new");
+    expect(sortFrom("title")).toBe("title");
+  });
+
+  test("вид, методика в условиях и вид действия сужают вместе с поиском", () => {
+    expect(selectModels(rows, { q: "", view: "on", test: null, act: null }).map((m) => m.id)).toEqual(["a"]);
+    expect(selectModels(rows, { q: "", view: "all", test: "sv1", act: null }).map((m) => m.id)).toEqual(["a"]);
+    expect(selectModels(rows, { q: "", view: "all", test: ANY_TEST, act: null }).map((m) => m.id)).toEqual(["a"]);
+    expect(selectModels(rows, { q: "", view: "all", test: null, act: "notify_duty" }).map((m) => m.id)).toEqual(["a", "b"]);
+    expect(selectModels(rows, { q: "ризик", view: "off", test: null, act: null })).toEqual([]);
+  });
+
+  test("порядок: новые по созданию, изменённые по правке, по названию", () => {
+    expect(sortModels(rows, "new").map((m) => m.id)).toEqual(["b", "a"]);
+    expect(sortModels(rows, "changed").map((m) => m.id)).toEqual(["a", "b"]);
+    expect(sortModels(rows, "title").map((m) => m.id)).toEqual(["b", "a"]);
+  });
+
+  test("методики модели — без повторов, «будь-який» отдельным ключом, флаг и история не считаются", () => {
+    expect(ruleTests(a)).toEqual(["sv1", ANY_TEST]);
+    expect(ruleTests(b)).toEqual([]);
+  });
+
+  test("под моделями: включённые впереди, «будь-який» после названных, только выключенные — в конце", () => {
+    const off = rule({ id: "c", enabled: false, conditions: [{ kind: "scale", surveyId: "sv3", scaleCode: "X", metric: "raw", op: ">=", value: 1 }] });
+    const cover = coverage([a, off]);
+    expect(cover.map((c) => c.key)).toEqual(["sv1", ANY_TEST, "sv3"]);
+    expect(cover[2]!.on).toHaveLength(0);
+    expect(uncovered([{ id: "sv1" }, { id: "sv2" }, { id: "sv3" }], [a, off]).map((s) => s.id)).toEqual(["sv2"]);
+  });
+});
+
+describe("форма: отказы по местам, изменения, копия", () => {
+  test("отказ называет условие и действие по номеру, а не только причину", () => {
+    const d = emptyDraft();
+    d.title = "Модель";
+    d.params = [newParam({ surveyId: "sv1", scaleCode: "D", value: "3" }), newParam({ surveyId: "sv1", scaleCode: "", value: "3" })];
+    d.actions = [newAction({ text: "так" }), newAction({ kind: "advise", text: " " })];
+    expect(draftIssues(d)).toEqual([
+      { key: "am.errScale", field: "scale", param: 1 },
+      { key: "am.errAdvise", field: "advise", action: 1 },
+    ]);
+  });
+
+  test("ключи строк и отметки модель не меняют", () => {
+    const x = draftFromRule(rule());
+    const y = draftFromRule(rule());
+    y.params[0]!.picked = true;
+    expect(sameDraft(x, y)).toBe(true);
+    y.params[0]!.value = "70";
+    expect(sameDraft(x, y)).toBe(false);
+  });
+
+  test("правка одного порога называется порогом «было → стало», прочее — местом", () => {
+    const base = draftFromRule(rule());
+    const now = draftFromRule(rule());
+    now.params[0]!.value = "70";
+    now.params[1]!.scaleCode = "K";
+    now.actions = now.actions.slice(0, 3);
+    now.enabled = false;
+    expect(draftChanges(base, now)).toEqual([
+      { kind: "enabled", on: false },
+      { kind: "threshold", index: 0, from: "65.5", to: "70" },
+      { kind: "param", index: 1 },
+      { kind: "actionsRemoved", n: 1 },
+    ]);
+    expect(draftChanges(base, draftFromRule(rule()))).toEqual([]);
+  });
+
+  test("копия — те же условия и действия под новым именем, включена; образец не меняется", () => {
+    const src = rule({ enabled: false });
+    const d = copyDraft(src, "Копія");
+    expect(d.title).toBe("Копія");
+    expect(d.enabled).toBe(true);
+    expect(draftToPayload(d).conditions).toEqual(src.conditions);
+    expect(draftToPayload(d).actions).toEqual(src.actions);
+    expect(src.enabled).toBe(false);
+    expect(copyHref("r 1")).toBe("/analytics/new?copy=r%201");
   });
 });

@@ -1,7 +1,11 @@
 {
-  "/api/alert-cases?limit=1": {
+  "@clock": {
+    "status": 0,
+    "body": "2026-10-19T04:49:00.000Z"
+  },
+  "/api/alert-cases/count": {
     "status": 200,
-    "body": "{\"items\":[{\"id\":\"34c6c5ae-1c96-460c-b173-fabdbef6c428\",\"userId\":\"bbdd67f6-36eb-403c-9eef-ca6e16f692db\",\"userName\":\"Гончаренко Тарас Ігорович\",\"unit\":\"1-й батальон\",\"surveyId\":\"f7894ebb-8148-4fea-a49f-ba2602ab07cb\",\"surveyTitle\":\"СР-45. Склонность к суицидальным реакциям\",\"severity\":\"severe\",\"openedAt\":\"2026-08-27T16:44:22.939Z\",\"lastAlertAt\":\"2026-08-27T16:44:22.939Z\",\"signalCount\":4,\"signals\":[{\"id\":\"5fd49327-81ce-4b40-8c09-2d436a73346c\",\"responseId\":\"984cad32-fdff-42d7-93f4-0828de1ac869\",\"kind\":\"option\",\"questionId\":\"c14efd00-6f03-48a5-9ff4-5b0192c0ed91\",\"questionTitle\":\"Я пробовал разные способы ухода из жизни.\",\"label\":\"СР-45, пункт 19: ствердна відповідь про суїцидальні наміри або спроби\",\"severity\":\"severe\",\"at\":\"2026-08-27T16:44:22.939Z\"},{\"id\":\"4863d06c-b4ed-4323-8fe2-63833c87ef36\",\"responseId\":\"984cad32-fdff-42d7-93f4-0828de1ac869\",\"kind\":\"option\",\"questionId\":\"18d28dd3-d630-44de-beaa-75b26185c9f9\",\"questionTitle\":\"Однажды пытался покончить с собой.\",\"label\":\"СР-45, пункт 31: ствердна відповідь про суїцидальні наміри або спроби\",\"severity\":\"severe\",\"at\":\"2026-08-27T16:44:22.939Z\"},{\"id\":\"7f9777b5-c9a4-4810-932a-9895fc5d229d\",\"responseId\":\"984cad32-fdff-42d7-93f4-0828de1ac869\",\"kind\":\"option\",\"questionId\":\"d0125fb6-cf85-4406-9a87-b6dedaab3a8a\",\"questionTitle\":\"Пробовал покончить с собой так, чтобы не чувствовать боли.\",\"label\":\"СР-45, пункт 33: ствердна відповідь про суїцидальні наміри або спроби\",\"severity\":\"severe\",\"at\":\"2026-08-27T16:44:22.939Z\"},{\"id\":\"84ca7b50-da0b-4f31-b12d-be09c5b23a4e\",\"responseId\":\"984cad32-fdff-42d7-93f4-0828de1ac869\",\"kind\":\"option\",\"questionId\":\"8e643d3d-b5a2-4209-860d-00b8c0a69ec5\",\"questionTitle\":\"Однажды решался покончить с собой.\",\"label\":\"СР-45, пункт 40: ствердна відповідь про суїцидальні наміри або спроби\",\"severity\":\"severe\",\"at\":\"2026-08-27T16:44:22.939Z\"}],\"minutesOpen\":12960,\"overdue\":false,\"assignedTo\":null,\"assignedToName\":null,\"acknowledgedBy\":null,\"acknowledgedByName\":null,\"acknowledgedAt\":null,\"note\":null,\"outcome\":null,\"mergedFromLegacy\":false}],\"nextCursor\":\"MXwyMDI2LTA4LTI3VDE2OjQ0OjIyLjkzOVp8MzRjNmM1YWUtMWM5Ni00NjBjLWIxNzMtZmFiZGJlZjZjNDI4\",\"total\":31}"
+    "body": "{\"total\":12}"
   },
   "/api/auth/google/status": {
     "status": 200,
@@ -9,22 +13,42 @@
   },
   "/api/auth/me": {
     "status": 200,
-    "body": "{\"id\":\"613fb99e-6d13-48ff-8538-d1b8da4e6053\",\"email\":\"psy@quizzy.dev\",\"firstName\":\"Анна\",\"lastName\":\"Иванова\",\"middleName\":\"Петровна\",\"fullName\":\"Иванова Анна Петровна\",\"anonymous\":false,\"pseudonym\":null,\"leadSpecialistId\":null,\"googleLinked\":false,\"sex\":null,\"birthDate\":null,\"unit\":null,\"position\":null,\"specialty\":null,\"rank\":null,\"role\":\"admin\",\"readOnly\":false,\"workspace\":null,\"createdAt\":\"2026-09-05T16:44:21.056Z\",\"ladderRank\":0}"
+    "body": "{\"id\":\"716e7e68-8038-4122-bfe7-f9473e513b45\",\"email\":\"psy@quizzy.dev\",\"firstName\":\"Анна\",\"lastName\":\"Иванова\",\"middleName\":\"Петровна\",\"fullName\":\"Иванова Анна Петровна\",\"anonymous\":false,\"pseudonym\":null,\"leadSpecialistId\":null,\"googleLinked\":false,\"sex\":null,\"birthDate\":null,\"unit\":null,\"position\":null,\"specialty\":null,\"rank\":null,\"locality\":null,\"role\":\"admin\",\"readOnly\":false,\"mustChangePassword\":false,\"workspace\":{\"dismissedHints\":[\"rci\"]},\"createdAt\":\"2026-10-19T04:49:42.429Z\",\"ladderRank\":0,\"canInvite\":true}"
   },
-  "/api/clinic/today": {
+  "/api/clinic/today/count": {
     "status": 200,
-    "body": "{\"date\":\"2026-09-05\",\"items\":[{\"id\":\"c83d666a-518b-4a2d-b324-c13e0db4bdcb\",\"slotId\":\"ed3b8298-5882-4726-bf53-62433a3c9a55\",\"startsAt\":\"2026-09-05T06:00:00.000Z\",\"endsAt\":\"2026-09-05T06:50:00.000Z\",\"kind\":\"primary\",\"mode\":\"onsite\",\"meetingUrl\":null,\"status\":\"done\",\"specialistId\":\"613fb99e-6d13-48ff-8538-d1b8da4e6053\",\"specialistName\":\"Иванова Анна Петровна\",\"room\":\"214\",\"patientId\":\"bbdd67f6-36eb-403c-9eef-ca6e16f692db\",\"patientName\":\"Гончаренко Тарас Ігорович\",\"reason\":\"Не сплю третью неделю, тяжело собраться\",\"bookedAt\":\"2026-09-05T16:44:24.137Z\",\"confirmedAt\":null,\"offSchedule\":false,\"leadSpecialistId\":\"613fb99e-6d13-48ff-8538-d1b8da4e6053\",\"pendingAssignments\":0,\"screeningDone\":null},{\"id\":\"79271bb7-d4f0-45ae-bced-e1f0dc6027bf\",\"slotId\":\"10be0d35-d676-4673-806a-456b311717e2\",\"startsAt\":\"2026-09-05T06:50:00.000Z\",\"endsAt\":\"2026-09-05T07:40:00.000Z\",\"kind\":\"primary\",\"mode\":\"onsite\",\"meetingUrl\":null,\"status\":\"arrived\",\"specialistId\":\"613fb99e-6d13-48ff-8538-d1b8da4e6053\",\"specialistName\":\"Иванова Анна Петровна\",\"room\":\"214\",\"patientId\":\"97c32738-a9c2-4c18-94af-794098c531ba\",\"patientName\":\"Савченко Оксана Миколаївна\",\"reason\":\"После командировки трудно вернуться в обычный режим\",\"bookedAt\":\"2026-09-05T16:44:24.139Z\",\"confirmedAt\":null,\"offSchedule\":false,\"leadSpecialistId\":null,\"pendingAssignments\":0,\"screeningDone\":null},{\"id\":\"10f64322-b5d6-4296-996b-8dfa15fa6462\",\"slotId\":\"61afa68d-c796-476f-9b82-123120da21c3\",\"startsAt\":\"2026-09-05T07:40:00.000Z\",\"endsAt\":\"2026-09-05T08:30:00.000Z\",\"kind\":\"primary\",\"mode\":\"onsite\",\"meetingUrl\":null,\"status\":\"confirmed\",\"specialistId\":\"613fb99e-6d13-48ff-8538-d1b8da4e6053\",\"specialistName\":\"Иванова Анна Петровна\",\"room\":\"214\",\"patientId\":\"22fade78-9850-4628-83c3-e5de80e31bd7\",\"patientName\":\"Ковальчук Андрей Игоревич\",\"reason\":\"Направил командир после разбора\",\"bookedAt\":\"2026-09-05T16:44:24.140Z\",\"confirmedAt\":\"2026-09-05T16:44:24.140Z\",\"offSchedule\":false,\"leadSpecialistId\":null,\"pendingAssignments\":0,\"screeningDone\":null},{\"id\":\"f8bc6861-fee5-4879-92a5-d59918f8690d\",\"slotId\":\"0c9bde4b-7797-4947-8b14-2bbf16b57260\",\"startsAt\":\"2026-09-05T08:30:00.000Z\",\"endsAt\":\"2026-09-05T09:20:00.000Z\",\"kind\":\"primary\",\"mode\":\"onsite\",\"meetingUrl\":null,\"status\":\"booked\",\"specialistId\":\"613fb99e-6d13-48ff-8538-d1b8da4e6053\",\"specialistName\":\"Иванова Анна Петровна\",\"room\":\"214\",\"patientId\":\"1fe10393-6e92-43dc-9125-5cf0e939bfca\",\"patientName\":\"Мельник Оксана Василівна\",\"reason\":null,\"bookedAt\":\"2026-09-05T16:44:24.141Z\",\"confirmedAt\":null,\"offSchedule\":false,\"leadSpecialistId\":null,\"pendingAssignments\":0,\"screeningDone\":null}]}"
+    "body": "{\"date\":\"2026-10-19\",\"waiting\":2}"
+  },
+  "/api/flags": {
+    "status": 200,
+    "body": "{\"flags\":[]}"
+  },
+  "/api/messages/unread-count": {
+    "status": 200,
+    "body": "{\"unread\":1}"
   },
   "/api/missed?since=<time>": {
     "status": 200,
-    "body": "{\"since\":\"2026-09-04T16:44:25.406Z\",\"groups\":[]}"
+    "body": "{\"since\":\"2026-10-18T04:49:00.000Z\",\"groups\":[]}"
   },
-  "/api/referrals": {
+  "/api/permissions/users/716e7e68-8038-4122-bfe7-f9473e513b45": {
     "status": 200,
-    "body": "{\"items\":[],\"truncated\":false}"
+    "body": "{\"userId\":\"716e7e68-8038-4122-bfe7-f9473e513b45\",\"fullName\":\"Иванова Анна Петровна\",\"role\":\"admin\",\"readOnly\":false,\"roles\":[{\"roleId\":\"role-psychologist\",\"code\":\"psychologist\",\"title\":{\"ru\":\"Психолог\",\"uk\":\"Психолог\"},\"isBuiltin\":true}],\"exceptions\":[],\"effective\":[\"administer\",\"alerts.review\",\"analytics.read\",\"appointments.manage\",\"assignments.manage\",\"batteries.manage\",\"cohorts.read\",\"conclusions.sign\",\"conclusions.write\",\"console.use\",\"episodes.manage\",\"export.deidentified\",\"export.full\",\"invites.manage\",\"mailings.manage\",\"messages.write\",\"norms.manage\",\"notes.write\",\"patients.read\",\"referrals.manage\",\"safety.manage\",\"schedule.own\",\"statistics.read\",\"surveys.edit\",\"surveys.publish\",\"surveys.read\"]}"
+  },
+  "/api/referrals/count": {
+    "status": 200,
+    "body": "{\"total\":0,\"open\":0}"
+  },
+  "/api/status": {
+    "status": 200,
+    "body": "{\"status\":\"ok\",\"message\":null,\"expectedEnd\":null,\"since\":null,\"writable\":true,\"auto\":null,\"checkedAt\":\"2026-10-19T04:49:56.861Z\",\"history\":[]}"
   },
   "/api/worklist": {
     "status": 200,
-    "body": "{\"items\":[{\"kind\":\"message\",\"id\":\"c2f8de0f-c926-4505-96c9-1e223a0a2f29\",\"userId\":\"bbdd67f6-36eb-403c-9eef-ca6e16f692db\",\"userName\":\"Гончаренко Тарас Ігорович\",\"unit\":\"1-й батальон\",\"title\":\"Непрочитанное сообщение\",\"signals\":1,\"days\":0,\"overdue\":false,\"assignedTo\":\"613fb99e-6d13-48ff-8538-d1b8da4e6053\",\"since\":\"2026-09-05 18:44:24.143+03\",\"href\":\"/messages/c2f8de0f-c926-4505-96c9-1e223a0a2f29\"}],\"total\":1,\"truncated\":false,\"byKind\":{\"noshow\":0,\"message\":1,\"dispensary\":0,\"followup\":0,\"referral\":0,\"assignment\":0},\"mine\":1}"
+    "body": "{\"items\":[{\"kind\":\"assignment\",\"id\":\"598f5ad3-5510-444e-94cb-5b94e9520ac4\",\"userId\":\"50e76d3b-a3e6-4a66-836d-73c4ade23718\",\"userName\":\"Гончаренко Тарас Ігорович\",\"unit\":\"1-й батальон\",\"title\":\"Входное обследование\",\"days\":3,\"overdue\":true,\"assignedTo\":null,\"since\":\"2026-10-16T04:49:45.417Z\",\"href\":\"/patients/50e76d3b-a3e6-4a66-836d-73c4ade23718/summary\"},{\"kind\":\"message\",\"id\":\"4f4695d4-112b-4dd5-a06d-a0c283002fe8\",\"userId\":\"50e76d3b-a3e6-4a66-836d-73c4ade23718\",\"userName\":\"Гончаренко Тарас Ігорович\",\"unit\":\"1-й батальон\",\"title\":\"Непрочитанное сообщение\",\"signals\":1,\"days\":0,\"overdue\":false,\"assignedTo\":\"716e7e68-8038-4122-bfe7-f9473e513b45\",\"since\":\"2026-10-19 06:49:45.483+03\",\"href\":\"/messages/4f4695d4-112b-4dd5-a06d-a0c283002fe8\"}],\"total\":2,\"truncated\":false,\"byKind\":{\"noshow\":0,\"message\":1,\"dispensary\":0,\"followup\":0,\"referral\":0,\"assignment\":1},\"mine\":1}"
+  },
+  "/api/worklist/count": {
+    "status": 200,
+    "body": "{\"total\":2,\"byKind\":{\"noshow\":0,\"message\":1,\"dispensary\":0,\"followup\":0,\"referral\":0,\"assignment\":1},\"mine\":1}"
   }
 }

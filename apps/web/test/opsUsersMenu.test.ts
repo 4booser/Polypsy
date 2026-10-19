@@ -95,6 +95,8 @@ const row = (p: Person, over: Partial<OpsUserRow> = {}): OpsUserRow => ({
     dispensary: 0,
   },
   journalEntries: 0,
+  secondFactor: p.role === "user" ? null : { enabled: false, required: null },
+  lock: null,
   ...over,
 });
 

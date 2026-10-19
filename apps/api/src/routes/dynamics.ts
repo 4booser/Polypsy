@@ -1,17 +1,17 @@
 import { Hono } from "hono";
 import { and, asc, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import { ageAt, respondentDynamicsQuery, respondentQuery, t } from "@quizzy/shared";
-import type { RespondentDynamics, ScaleDynamics, ScaleNormalization, Sex } from "@quizzy/shared";
+import type { RespondentDynamics, ScaleDynamics, ScaleKind, ScaleNormalization, Sex } from "@quizzy/shared";
 import { db } from "../db";
 import { decodeCursor, encodeCursor } from "../lib/cursor";
 import { langOf } from "../lib/http";
-import { responseScores, responses, scales, surveys, surveyVersions, users } from "../db/schema";
+import { responseScores, responses, scaleBands, scales, surveys, surveyVersions, users } from "../db/schema";
 import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
 import { alphasOf, changeOverSeries, normativeSamples } from "../lib/changeBasis";
 import { decryptField } from "../lib/crypto";
 import { notFound, parseQuery } from "../lib/http";
-import { referencePercentile, referenceSamples, type SampleTarget } from "../lib/referenceSample";
+import { referencePercentile, referenceSampleSets, type SampleTarget } from "../lib/referenceSample";
 import { birthYearOf } from "../lib/privacy";
 import { patientsInScope, surveyScopeFilter, surveyScopeFilterFor } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
@@ -309,20 +309,23 @@ dynamicsRoutes.get("/respondents/:userId", async (c) => {
    * нет. Ненормированная точка — тоже: сырой балл среди T-баллов — то же
    * сравнение в двух единицах, что и прежде.
    */
-  const percentileSamples = new Map<string, (target: SampleTarget) => number[]>();
-  for (const surveyId of new Set(responseRows.map((r) => r.surveyId))) {
-    const targets = responseRows
-      .filter((r) => r.surveyId === surveyId && r.versionId)
-      .flatMap((r) =>
-        (scoresByResponse.get(r.id) ?? []).flatMap((score) => {
-          const code = scaleById.get(score.scaleId)?.code;
-          return score.normalized && code
-            ? [{ versionId: r.versionId!, code, maxScore: score.maxScore, unit: score.normalization }]
-            : [];
-        }),
-      );
-    percentileSamples.set(surveyId, await referenceSamples(surveyId, "value", targets));
-  }
+  /* все методики человека — одним чтением выборок (referenceSampleSets), а не чтением на методику */
+  const percentileSamples: Map<string, (target: SampleTarget) => number[]> = await referenceSampleSets(
+    [...new Set(responseRows.map((r) => r.surveyId))].map((surveyId) => ({
+      surveyId,
+      targets: responseRows
+        .filter((r) => r.surveyId === surveyId && r.versionId)
+        .flatMap((r) =>
+          (scoresByResponse.get(r.id) ?? []).flatMap((score) => {
+            const code = scaleById.get(score.scaleId)?.code;
+            return score.normalized && code
+              ? [{ versionId: r.versionId!, code, maxScore: score.maxScore, unit: score.normalization }]
+              : [];
+          }),
+        ),
+    })),
+    "value",
+  );
 
   /*
    * Номера версий методик, которые человек видел. Одним запросом по уже
@@ -358,6 +361,32 @@ dynamicsRoutes.get("/respondents/:userId", async (c) => {
       .filter((r): r is typeof r & { versionId: string } => !!r.versionId)
       .map((r) => ({ surveyId: r.surveyId, versionId: r.versionId })),
   );
+  /*
+   * Полосы интерпретации — лестница графика курса (полосы тяжести и «краще
+   * ↓ / ↑»). Берутся у шкалы ПОСЛЕДНЕГО замера: график рисует ряд в
+   * единицах последней версии, и полосы обязаны быть из неё же. Одним
+   * запросом по уже известным шкалам.
+   */
+  const lastScaleOf = new Map<string, string>();
+  for (const r of responseRows) {
+    for (const score of scoresByResponse.get(r.id) ?? []) {
+      const scale = scaleById.get(score.scaleId);
+      if (scale) lastScaleOf.set(`${r.surveyId}|${scale.code}`, scale.id);
+    }
+  }
+  const bandRows = lastScaleOf.size
+    ? await db
+        .select()
+        .from(scaleBands)
+        .where(inArray(scaleBands.scaleId, [...new Set(lastScaleOf.values())]))
+        .orderBy(asc(scaleBands.minScore))
+    : [];
+  const bandsOf = new Map<string, NonNullable<ScaleDynamics["bands"]>>();
+  for (const b of bandRows) {
+    const list = bandsOf.get(b.scaleId) ?? [];
+    list.push({ min: b.minScore, max: b.maxScore, label: t(b.label as never, lang), severity: b.severity });
+    bandsOf.set(b.scaleId, list);
+  }
   const versionIdOf = new Map(responseRows.map((r) => [r.id, r.versionId ?? null]));
   const reliableOf = new Map(responseRows.map((r) => [r.id, r.reliable]));
 
@@ -390,6 +419,12 @@ dynamicsRoutes.get("/respondents/:userId", async (c) => {
             direction: null,
             reliableChange: null,
           };
+          /*
+           * Вид шкалы — версии свежего замера (прохождения идут от старых к
+           * новым): шкала достоверности говорит о бланке, а не о человеке, и
+           * экран не ставит её главной шкалой методики.
+           */
+          entry.kind = scale.kind as ScaleKind;
           entry.points.push({
             responseId: response.id,
             submittedAt: response.submittedAt ?? response.startedAt,
@@ -490,6 +525,7 @@ dynamicsRoutes.get("/respondents/:userId", async (c) => {
         entry.incomparable = change.incomparable;
         entry.equated = change.equated;
         entry.sem = change.sem;
+        entry.bands = bandsOf.get(lastScaleOf.get(`${surveyId}|${code}`) ?? "") ?? [];
       }
 
       return {

@@ -1,8 +1,9 @@
 import { Hono, type Context } from "hono";
-import { and, desc, eq, ne } from "drizzle-orm";
+import { and, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import {
   createUserSchema,
   staffDirectoryQuery,
+  transferPatientsSchema,
   userListQuery,
   type Page,
   type StaffDirectoryUser,
@@ -14,11 +15,13 @@ import { audit } from "../lib/audit";
 import { afterCursor, decodeExactCursor, encodeCursor, exactAt } from "../lib/cursor";
 import { decryptField, encryptPersonFields } from "../lib/crypto";
 import { hashPassword, toPublicUser } from "../lib/auth";
-import { conflict, langOf, parseBody, parseQuery } from "../lib/http";
-import { assertMayCreateClass, changeAccountClass } from "../lib/accountClass";
+import { badRequest, conflict, langOf, notFound, parseBody, parseQuery } from "../lib/http";
+import { assertMayCreateClass, changeAccountClass, guardAccountAction } from "../lib/accountClass";
+import { asSystem } from "../db/context";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 import { ensureBuiltinRole } from "../lib/permissions";
-import { placementsOf } from "../lib/staffDirectory";
+import { patientsInScope } from "../lib/scope";
+import { accountsOf, placementsOf } from "../lib/staffDirectory";
 
 export const userRoutes = new Hono<AppEnv>();
 
@@ -89,11 +92,14 @@ async function staffDirectory(c: Context<AppEnv>): Promise<StaffDirectoryUser[]>
     rows.map((r) => r.id),
     langOf(c),
   );
+  /* вход, второй фактор, роли и нагрузка — реестру 2.0 (lib/staffDirectory.ts, accountsOf) */
+  const accounts = await accountsOf(rows, langOf(c));
   await audit(c, { action: "user.list", details: { count: rows.length, directory: true, phones: true } });
   return rows.map((r) => ({
     ...toPublicUser(r),
     phone: decryptField(r.phoneEnc),
     placement: placed.get(r.id) ?? null,
+    account: accounts.get(r.id),
   }));
 }
 
@@ -123,6 +129,14 @@ userRoutes.post("/", async (c) => {
         firstName: input.firstName,
         lastName: input.lastName,
         middleName: input.middleName ?? null,
+        /* анкета при заведении (2.0) — те же поля, что у PATCH /api/auth/me, тем же шифрованием */
+        sex: input.sex ?? null,
+        birthDate: input.birthDate ?? null,
+        unit: input.unit?.trim() || null,
+        position: input.position?.trim() || null,
+        specialty: input.specialty?.trim() || null,
+        rank: input.rank?.trim() || null,
+        locality: input.locality || null,
       }),
       passwordHash: await hashPassword(input.password),
       role: input.role,
@@ -144,6 +158,90 @@ userRoutes.post("/", async (c) => {
   });
 
   return c.json(toPublicUser(row!), 201);
+});
+
+/**
+ * Передать пациентов, которых ведёт сотрудник, другому лікарю (карточка
+ * фахівця, вкладка «Пацієнти», 2.0).
+ *
+ * Переходит одно — закрепление ведущим (users.lead_specialist_id), а с ним
+ * переписка пациента и его место в очереди нового лікаря. Заключения,
+ * записи приёмов и подписи остаются за авторами: передача их не трогает.
+ *
+ * Право — users.manage (общее у маршрутов реестра), а над людьми — три
+ * границы, в этом порядке, и ни одну не держат политики строк (users_update
+ * пускает любого сотрудника):
+ *
+ *  - зона смотрящего: передать можно только тех, кого он видит в списке
+ *    (GET /api/patients?lead= режет по той же зоне). users.manage выдаётся
+ *    и заведующему, а его зона — не всё учреждение: без проверки он забирал
+ *    себе человека, чью карточку ему не открывают, и читал его переписку, а
+ *    ответ «409 / 200» говорил бы, кто кого ведёт за пределами зоны. Вне зоны
+ *    — «не найдено», как у assertPatientAccess и /clinic/.../lead, и раньше
+ *    всего остального: об этих людях смотрящему не отвечают ничем;
+ *  - лестница — та же, что у прочих действий над чужой учёткой
+ *    (guardAccountAction): забрать пациентов у старшего или равного и отдать
+ *    им нельзя. Свои пациенты и пациенты себе — можно: это не действие над
+ *    чужой учёткой, а над людьми, которых держат зоны;
+ *  - зона нового лікаря: переписка пациента уходит ведущему, и ведущий, не
+ *    видящий человека, не может ни ответить (отказ «не найдено»), ни открыть
+ *    карточку — человеку не ответил бы никто. Это касается и суперадмина.
+ *    Зона чужая, поэтому считается системной ролью: политики строк
+ *    смотрящего про неё ничего не знают. После лестницы: чью зону нельзя
+ *    трогать, о той и не спрашивают.
+ *
+ * Строки пациентов — под замок до проверки «ведёт именно он»: коллега,
+ * закрепивший человека за собой между открытием списка и нажатием, иначе
+ * молча терял бы закрепление (то же правило, что у clinic.ts, /lead). Замок
+ * берётся по порядку id: две встречные передачи пересекающихся списков
+ * ждут друг друга, а не взаимоблокируются. Не совпал хоть один — отказ
+ * целиком, без частичной передачи: администратор должен увидеть свежий
+ * список, а не гадать, кто перешёл, а кто нет.
+ *
+ * Новый лікар — действующая учётка класса admin, не тот же человек.
+ * Суперадмин пациентов не ведёт (isDoctor в разделе «Лікарі»).
+ */
+userRoutes.post("/:id/patients/transfer", async (c) => {
+  const me = c.get("user");
+  const fromId = c.req.param("id");
+  const input = await parseBody(c.req.raw, transferPatientsSchema);
+  const from = await db.query.users.findFirst({ where: eq(users.id, fromId) });
+  if (!from || from.role === "user") notFound("err.userNotFound");
+  const to = await db.query.users.findFirst({ where: eq(users.id, input.to) });
+  if (!to || to.role !== "admin" || to.disabledAt || to.id === fromId) badRequest("err.transferTarget");
+
+  const ids = [...new Set(input.patientIds)];
+  const inZone = await patientsInScope(me, ids);
+  if (inZone !== null && ids.some((id) => !inZone.has(id))) notFound("err.userNotFound");
+
+  /* без замка: строки сотрудников не меняются, а два встречных замка на них взаимоблокировали бы встречные передачи */
+  const ladder = { permission: "users.manage", self: "allow", action: "clinic.lead_transfer", lock: false } as const;
+  await guardAccountAction(c, from.id, ladder);
+  await guardAccountAction(c, to.id, ladder);
+
+  const theirs = await asSystem(() => patientsInScope(toPublicUser(to), ids));
+  if (theirs !== null && ids.some((id) => !theirs.has(id))) badRequest("err.transferTargetZone");
+
+  await db.execute(sql`select id from users where id in ${ids} order by id for update`);
+  const rows = await db
+    .select({ id: users.id, role: users.role, lead: users.leadSpecialistId })
+    .from(users)
+    .where(inArray(users.id, ids));
+  if (rows.length !== ids.length || rows.some((r) => r.role !== "user" || r.lead !== fromId)) {
+    conflict("err.transferLeadChanged");
+  }
+
+  await db.update(users).set({ leadSpecialistId: to.id }).where(inArray(users.id, ids));
+  for (const id of ids) {
+    await audit(c, {
+      action: "clinic.lead_transfer",
+      resourceType: "user",
+      resourceId: id,
+      subjectUserId: id,
+      details: { from: fromId, to: to.id, reason: input.reason, batch: ids.length },
+    });
+  }
+  return c.json({ moved: ids.length });
 });
 
 /**

@@ -1,5 +1,5 @@
 import { Hono, type Context } from "hono";
-import { and, asc, desc, eq, gt, gte, inArray, isNull, lt, lte, ne, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, gte, inArray, isNull, lt, lte, ne, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
 import { meetingSyncIfEvent, moveAppointment, type AppointmentStatus } from "../lib/appointmentMove";
 import {
@@ -16,6 +16,7 @@ import {
   type FreeSlot,
   type ScheduleExceptionView,
   type ScheduleTemplateView,
+  type TodayCount,
 } from "@quizzy/shared";
 import { baseDb, db } from "../db";
 import { afterCommit, asSystem, systemContext } from "../db/context";
@@ -44,7 +45,7 @@ import { bookingLease, createBookedMeeting, syncMeeting } from "../lib/meetSync"
 import { transferRecording } from "../lib/recordingTransfer";
 import { pendingWorkByUser } from "../lib/pendingWork";
 import { HORIZON_WEEKS, lockSchedule, syncSlots } from "../lib/schedule";
-import { assertPatientAccess, isStaff, patientsInScope } from "../lib/scope";
+import { assertPatientAccess, isStaff, patientScopeCondition, patientsInScope } from "../lib/scope";
 import { assertNotInOtherCare } from "../lib/otherCare";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
@@ -431,6 +432,161 @@ clinicRoutes.delete(
       details: { date: row.date, ...result },
     });
     return c.json({ ok: true, ...result });
+  },
+);
+
+/**
+ * Неделя календарём: приёмы, окна и исключения за несколько дней подряд.
+ *
+ * Расписание читают картиной недели — «во вторник у меня трое, в пятницу
+ * один поза розкладом», — а не списком часов. Для этого экрану нужно то, что
+ * отдельными маршрутами отдаётся только по дню (/today) или только вперёд от
+ * сегодня (/slots, /schedule): приёмы за прошедшие дни недели, окна, которые
+ * в эти дни были, и исключения, уже наступившие. Семь запросов /today вместо
+ * одного писали бы семь строк журнала о просмотре одного экрана.
+ *
+ * Дни считаются по часам отделения, как в /today: граница — местная полночь,
+ * переведённая в момент, а не сутки, прибавленные к моменту (#22).
+ *
+ * Чужая неделя — с тем же правом, что чужое расписание (scheduleTarget), и с
+ * правом читать людей: в приёмах — имена пациентов.
+ */
+const weekQuery = z.object({
+  from: z.string(),
+  /* до девяти недель: «Показати поза розкладом» ищет по всему горизонту записи (8 недель) */
+  days: z.coerce.number().int().min(1).max(63).optional(),
+  specialistId: z.string().optional(),
+});
+
+/**
+ * Календарная дата плюс дни: «YYYY-MM-DD» без поясов; null — дальше
+ * 9999-12-31, где база дат уже не читает.
+ *
+ * Год ставится setUTCFullYear, а не Date.UTC: тот читает годы 0–99 как
+ * 1900–1999, и неделя с «0050-01-04» кончалась в 1950-м — мимо предела в
+ * 63 дня. Пятизначный год из toISOString («+010000-…») ронял запрос
+ * пятисоткой.
+ */
+function addDays(date: string, days: number): string | null {
+  const [y, m, d] = date.split("-").map(Number);
+  const at = new Date(0);
+  at.setUTCFullYear(y!, m! - 1, d! + days);
+  const year = at.getUTCFullYear();
+  if (year > 9999) return null;
+  const pad = (n: number, w = 2) => String(n).padStart(w, "0");
+  return `${pad(year, 4)}-${pad(at.getUTCMonth() + 1)}-${pad(at.getUTCDate())}`;
+}
+
+/**
+ * Приёмы чужого дня или недели — только людей из зоны спрашивающего.
+ *
+ * Право вести чужие приёмы (scheduleTarget, ownSpecialistOr) отвечает «чьё
+ * расписание», а не «о ком»: оно есть у каждого специалиста по умолчанию, и
+ * без этого условия коллега из любого отделения читал бы имена и поводы
+ * обращения всех людей чужой недели. В бою это прикрывала RLS
+ * (appointments_access), но своя проверка обязана быть и здесь — см. loadOne.
+ * Условие — то же правило зоны, что у RLS (patientScopeCondition): своё
+ * расписание не сужается, суперадмину ограничений нет.
+ */
+async function othersInZone(c: Context<AppEnv>, specialistId: string): Promise<SQL | undefined> {
+  const me = c.get("user");
+  if (specialistId === me.id) return undefined;
+  const inScope = await patientScopeCondition(me);
+  return inScope ? inScope(appointments.patientId) : undefined;
+}
+
+clinicRoutes.get(
+  "/schedule/week",
+  requireStaff,
+  requirePermission("schedule.own"),
+  requirePermission("patients.read"),
+  async (c) => {
+    const specialistId = await scheduleTarget(c);
+    const q = parseQuery(c, weekQuery);
+    const from = requireDateParam(q.from, "from", { dayOnly: true });
+    const days = q.days ?? 7;
+    const to = addDays(from, days) ?? badRequest("err.invalidDateParam", { field: "from" });
+    const zone = await othersInZone(c, specialistId);
+
+    const profile = await db.query.specialistProfiles.findFirst({
+      where: eq(specialistProfiles.userId, specialistId),
+    });
+    const department = profile
+      ? await db.query.departments.findFirst({ where: eq(departments.id, profile.departmentId) })
+      : null;
+    const tz = department?.timezone ?? "Europe/Kyiv";
+    const start = sql`(${`${from} 00:00`}::timestamp at time zone ${tz})`;
+    const end = sql`(${`${to} 00:00`}::timestamp at time zone ${tz})`;
+
+    const items = await loadAppointments(
+      and(
+        eq(appointments.specialistId, specialistId),
+        ne(appointments.status, "cancelled"),
+        sql`${slots.startsAt} >= ${start}`,
+        sql`${slots.startsAt} < ${end}`,
+        zone,
+      )!,
+    );
+
+    /* открытые окна недели — и свободные, и занятые: занятость экран сверяет с приёмами */
+    const open = await db
+      .select({ id: slots.id, startsAt: slots.startsAt, endsAt: slots.endsAt, offSchedule: slots.offSchedule })
+      .from(slots)
+      .where(
+        and(
+          eq(slots.specialistId, specialistId),
+          eq(slots.status, "open"),
+          sql`${slots.startsAt} >= ${start}`,
+          sql`${slots.startsAt} < ${end}`,
+        ),
+      )
+      .orderBy(asc(slots.startsAt));
+
+    const exceptions = await db
+      .select()
+      .from(scheduleExceptions)
+      .where(
+        and(
+          eq(scheduleExceptions.specialistId, specialistId),
+          gte(scheduleExceptions.date, from),
+          lt(scheduleExceptions.date, to),
+        ),
+      )
+      .orderBy(asc(scheduleExceptions.date));
+
+    const nowLocal = await db.execute<{ today: string }>(
+      sql`select to_char(now() at time zone ${tz}, 'YYYY-MM-DD') as today`,
+    );
+
+    /*
+     * Та же строка журнала, что у дня (/today): просмотр приёмов с именами
+     * за несколько дней, а не новое действие. Своё имя потребовало бы своей
+     * подписи в журнале техпанели, а различает их поле view.
+     */
+    await audit(c, {
+      action: "clinic.today",
+      details: { view: "week", from, days, specialistId, count: items.length },
+    });
+    return c.json({
+      specialistId,
+      from,
+      to,
+      tz,
+      today: nowLocal[0]!.today,
+      appointments: items,
+      slots: open,
+      exceptions: exceptions.map(
+        (r): ScheduleExceptionView => ({
+          id: r.id,
+          date: r.date,
+          kind: r.kind,
+          startsAt: r.startsAt?.slice(0, 5) ?? null,
+          endsAt: r.endsAt?.slice(0, 5) ?? null,
+          slotMinutes: r.slotMinutes,
+          note: r.note,
+        }),
+      ),
+    });
   },
 );
 
@@ -1003,15 +1159,76 @@ clinicRoutes.get("/today", requireStaff, requirePermission("patients.read"), asy
    * (scheduleTarget), и здесь она просто отсутствовала.
    */
   const specialistId = await ownSpecialistOr(c, c.req.query("specialistId"));
+  const { date, dayStart, dayEnd } = await specialistDay(specialistId, c.req.query("date"));
+  const items = await loadAppointments(
+    and(
+      eq(appointments.specialistId, specialistId),
+      ne(appointments.status, "cancelled"),
+      sql`${slots.startsAt} >= ${dayStart}`,
+      sql`${slots.startsAt} < ${dayEnd}`,
+      // чужой день — только люди своей зоны, как и чужая неделя (othersInZone)
+      await othersInZone(c, specialistId),
+    )!,
+  );
 
-  /*
-   * Сутки считаются по часам отделения, а не по часам сервера.
-   *
-   * `::timestamptz` берёт пояс сессии Postgres — то есть пояс машины, где
-   * запущена база. Приём в девять вечера по Киеву при сервере в UTC попал бы
-   * в тот же день, а вот при сервере западнее — во вчерашний, и специалист
-   * просто не увидел бы его в своём дне.
-   */
+  await audit(c, {
+    action: "clinic.today",
+    details: { date, specialistId, count: items.length },
+  });
+  return c.json({ date, items });
+});
+
+/**
+ * Сколько людей сегодня ещё ждёт — число для бейджа «Сьогодні» в навигации.
+ *
+ * Те же сутки и тот же круг, что у /today без параметров: свои приёмы, свой
+ * день по часам отделения, без отменённых; ждут — записанные и
+ * подтвердившие, как навигация и считала по списку дня. Без людей: ни имён,
+ * ни поводов обращения, и потому без строки журнала.
+ *
+ * Отдельный маршрут, а не /today: бейдж опрашивается раз в минуту с каждой
+ * открытой консоли, и через /today каждый такт расшифровывал ФИО и поводы
+ * всех приёмов дня (девятнадцать запросов к базе) и писал clinic.today. В
+ * журнале «кто смотрел день» тонули строки, которых никто не открывал, а
+ * число на рельсе к содержимому дня доступа и так не даёт.
+ */
+clinicRoutes.get("/today/count", requireStaff, requirePermission("patients.read"), async (c) => {
+  const me = c.get("user");
+  const { date, dayStart, dayEnd } = await specialistDay(me.id);
+  const [row] = await db
+    .select({ waiting: sql<number>`count(*)::int` })
+    .from(appointments)
+    .innerJoin(slots, eq(slots.id, appointments.slotId))
+    .where(
+      and(
+        eq(appointments.specialistId, me.id),
+        inArray(appointments.status, ["booked", "confirmed"]),
+        sql`${slots.startsAt} >= ${dayStart}`,
+        sql`${slots.startsAt} < ${dayEnd}`,
+      ),
+    );
+  const body: TodayCount = { date, waiting: Number(row?.waiting ?? 0) };
+  return c.json(body);
+});
+
+/**
+ * Сутки специалиста: дата и её границы моментами — для /today и его числа.
+ *
+ * Сутки считаются по часам отделения, а не по часам сервера.
+ * `::timestamptz` берёт пояс сессии Postgres — то есть пояс машины, где
+ * запущена база. Приём в девять вечера по Киеву при сервере в UTC попал бы
+ * в тот же день, а вот при сервере западнее — во вчерашний, и специалист
+ * просто не увидел бы его в своём дне.
+ *
+ * Верхняя граница — СЛЕДУЮЩАЯ местная полночь, переведённая в момент, а не
+ * «эта полночь плюс interval '1 day'». Сутки прибавляются к timestamptz по
+ * поясу сессии базы: в docker-compose это UTC, и день становился ровно 24
+ * часами, а день Europe/Kyiv бывает 23 и 25 часов. Приём 25.10 в 23:30 не
+ * попадал ни в 25-е, ни в 26-е, приём 30.03 в 00:30 — и в 29-е, и в 30-е
+ * (внешний разбор, #22). Календарный день прибавляется к местной дате
+ * (timestamp без пояса), и только потом она переводится в момент.
+ */
+async function specialistDay(specialistId: string, asked?: string): Promise<{ date: string; dayStart: SQL; dayEnd: SQL }> {
   const profile = await db.query.specialistProfiles.findFirst({
     where: eq(specialistProfiles.userId, specialistId),
   });
@@ -1024,35 +1241,13 @@ clinicRoutes.get("/today", requireStaff, requirePermission("patients.read"), asy
     sql`select to_char(now() at time zone ${tz}, 'YYYY-MM-DD') as today`,
   );
   /* день, а не что угодно: строка склеивается в «${date} 00:00»::timestamp, и «вчора» было пятисоткой */
-  const asked = c.req.query("date");
   const date = asked ? requireDateParam(asked, "date", { dayOnly: true }) : nowLocal[0]!.today;
-
-  /*
-   * Верхняя граница — СЛЕДУЮЩАЯ местная полночь, переведённая в момент, а не
-   * «эта полночь плюс interval '1 day'». Сутки прибавляются к timestamptz по
-   * поясу сессии базы: в docker-compose это UTC, и день становился ровно 24
-   * часами, а день Europe/Kyiv бывает 23 и 25 часов. Приём 25.10 в 23:30 не
-   * попадал ни в 25-е, ни в 26-е, приём 30.03 в 00:30 — и в 29-е, и в 30-е
-   * (внешний разбор, #22). Календарный день прибавляется к местной дате
-   * (timestamp без пояса), и только потом она переводится в момент.
-   */
-  const dayStart = sql`(${`${date} 00:00`}::timestamp at time zone ${tz})`;
-  const dayEnd = sql`((${`${date} 00:00`}::timestamp + interval '1 day') at time zone ${tz})`;
-  const items = await loadAppointments(
-    and(
-      eq(appointments.specialistId, specialistId),
-      ne(appointments.status, "cancelled"),
-      sql`${slots.startsAt} >= ${dayStart}`,
-      sql`${slots.startsAt} < ${dayEnd}`,
-    )!,
-  );
-
-  await audit(c, {
-    action: "clinic.today",
-    details: { date, specialistId, count: items.length },
-  });
-  return c.json({ date, items });
-});
+  return {
+    date,
+    dayStart: sql`(${`${date} 00:00`}::timestamp at time zone ${tz})`,
+    dayEnd: sql`((${`${date} 00:00`}::timestamp + interval '1 day') at time zone ${tz})`,
+  };
+}
 
 /**
  * Приём, к которому у спрашивающего есть отношение.
@@ -1568,6 +1763,24 @@ clinicRoutes.get(
       .orderBy(desc(patientNotes.version))
       .limit(1);
 
+    /*
+     * Строка шапки приёма: кабинет, подтверждение, ссылка встречи, пояс
+     * отделения (по нему экран показывает часы и предлагает окна следующей
+     * сессии) и сколько приёмов у человека уже было — «прийомів 3, неявок
+     * немає» читается до первого вопроса.
+     */
+    const profile = await db.query.specialistProfiles.findFirst({
+      where: eq(specialistProfiles.userId, row.specialistId),
+    });
+    const department = await db.query.departments.findFirst({ where: eq(departments.id, slot!.departmentId) });
+    const [counts] = await db
+      .select({
+        done: sql<number>`count(*) filter (where ${appointments.status} = 'done')`,
+        noShow: sql<number>`count(*) filter (where ${appointments.status} = 'no_show')`,
+      })
+      .from(appointments)
+      .where(and(eq(appointments.patientId, row.patientId), ne(appointments.id, row.id)));
+
     await audit(c, {
       action: "clinic.visit_open",
       resourceType: "appointment",
@@ -1584,7 +1797,13 @@ clinicRoutes.get(
         mode: row.mode,
         status: row.status,
         reason: decryptField(row.reasonEnc),
+        specialistId: row.specialistId,
+        confirmedAt: row.confirmedAt ?? null,
+        meetingUrl: row.meetingUrl ?? null,
+        room: profile?.room ?? null,
+        tz: department?.timezone ?? "Europe/Kyiv",
       },
+      visits: { done: Number(counts?.done ?? 0), noShow: Number(counts?.noShow ?? 0) },
       patient: {
         id: patient.id,
         fullName: fullNameOf(patient),

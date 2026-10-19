@@ -2,118 +2,52 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import type { PatientCard } from "@quizzy/shared";
-import {
-  conclusionName,
-  groupStatsText,
-  leadAction,
-  personFields,
-  resultText,
-  statsText,
-} from "../src/pages/patientCard/model";
+import type { ConclusionVersion } from "../src/api";
+import { conclusionName, leadAction, resultText, statsText, withConclusion, withLead } from "../src/pages/patientCard/model";
 
 /**
- * Карточка пациента (кадр f19): то, что на живом экране проверяется лишь
- * случайно.
+ * Карточка пациента (Polypsy 2.0, «Дія без переходу»): то, что на живом
+ * экране проверяется лишь случайно.
  *
- * Порядок плашек — это порядок кадра: перестановка «Стать» и «Прізвище»
- * ничего не ломает и глазом ловится не сразу. Подпись «Відписатись /
- * Підписатись» — это право: «Відписатись» на чужом закреплении сервер
- * отвергает, и кнопка, которая обещает отпустить чужого пациента, — обман.
- * Адреса — третье: на карточку ведут ссылки с десятка экранов, а прежняя
- * клиническая карта переехала на /case, и её старые адреса обязаны
- * перенаправляться, иначе очередь работы с сервера уводит на сводку через
- * запасной маршрут, молча.
+ * Подпись «Відписатись / Підписатись» — это право: «Відписатись» на чужом
+ * закреплении сервер отвергает, и пункт, который обещает отпустить чужого
+ * пациента, — обман. Адреса — второе: на карточку ведут ссылки с десятка
+ * экранов, клиническая карта живёт на /case, и её старые адреса обязаны
+ * перенаправляться. Клиника карточки — в patientCardClinical.test.ts,
+ * колонка «Мої пацієнти» — в patientCardList.test.ts.
  */
 
 const SRC = resolve(import.meta.dir, "../src");
-const labels = {
-  firstName: "Ім’я",
-  lastName: "Прізвище",
-  middleName: "Ім’я по батькові",
-  sex: "Стать",
-  birthDate: "Дата народження",
-  phone: "Телефон",
-  city: "Населений пункт",
-  email: "Email",
-  male: "чоловіча",
-  female: "жіноча",
-};
 const iso = (s: string) => `d:${s}`;
 
-const person = (over: Partial<PatientCard> = {}): PatientCard => ({
-  id: "u1",
-  firstName: "Олена",
-  lastName: "Коваль",
-  middleName: null,
-  fullName: "Коваль Олена",
-  anonymous: false,
-  pseudonym: null,
-  email: "olena@example.org",
-  sex: "female",
-  birthDate: "1990-04-12",
-  phone: "+380671234567",
-  unit: null,
-  position: null,
-  specialty: null,
-  rank: null,
-  createdAt: "2026-01-01T00:00:00Z",
-  lead: null,
-  responses: [],
-  groups: [],
-  conclusions: [],
-  ...over,
-});
-
-describe("карточка пациента: плашки", () => {
-  test("восемь плашек в порядке кадра; пустые показывают подпись, а не прочерк", () => {
-    const fields = personFields(person(), labels, iso);
-    expect(fields.map((f) => f.key)).toEqual(["firstName", "lastName", "middleName", "sex", "birthDate", "phone", "city", "email"]);
-    expect(fields.map((f) => f.value)).toEqual([
-      "Олена",
-      "Коваль",
-      null,
-      "жіноча",
-      "d:1990-04-12",
-      "+380671234567",
-      null,
-      "olena@example.org",
-    ]);
-    // населённого пункта в учётной записи нет — плашка на месте, значения нет
-    expect(fields.find((f) => f.key === "city")!.value).toBeNull();
-    // номера нет — плашка показывает подпись, как пустые поля кадра
-    expect(personFields(person({ phone: null }), labels, iso).find((f) => f.key === "phone")!.value).toBeNull();
-  });
-
-  test("анонимный пациент: вместо имени псевдоним, фамилии и отчества нет", () => {
-    const fields = personFields(person({ anonymous: true, pseudonym: "Сокіл-12", firstName: "", lastName: "" }), labels, iso);
-    expect(fields[0]!.value).toBe("Сокіл-12");
-    expect(fields[1]!.value).toBeNull();
-    expect(fields[2]!.value).toBeNull();
-  });
-});
-
-describe("карточка пациента: колонки строк", () => {
+describe("карточка пациента: вкладка «Заміри»", () => {
   const scales = [
     { code: "A", title: "Тривожність", value: 14, normalization: "raw" as const, percent: 70, bandLabel: "підвищена", severity: "moderate" as const },
     { code: "D", title: "Депресія", value: 3, normalization: "raw" as const, percent: 15, bandLabel: null, severity: null },
   ];
 
-  test("«Результат тесту» — балл и полоса каждой шкалы одной строкой", () => {
+  test("«Результат» — балл и полоса каждой шкалы одной строкой", () => {
     expect(resultText(scales, { none: "Балів немає" })).toBe("Тривожність: 14 — підвищена; Депресія: 3");
     expect(resultText([], { none: "Балів немає" })).toBe("Балів немає");
   });
 
-  test("«Статистика» — дата, доля от максимума по шкалам, недостоверность словом", () => {
+  test("«Статистика» — дата, доля от максимума по шкалам, недостоверность словом; без « · »", () => {
     expect(statsText({ submittedAt: "2026-03-01T10:00:00Z", reliable: true, scales }, { unreliable: "Протокол недостовірний" }, iso)).toBe(
-      "d:2026-03-01T10:00:00Z · A 70%, D 15%",
+      "d:2026-03-01T10:00:00Z, A 70%, D 15%",
     );
     expect(statsText({ submittedAt: null, reliable: false, scales: [] }, { unreliable: "Протокол недостовірний" }, iso)).toBe(
       "Протокол недостовірний",
     );
   });
 
-  test("«Статистика Групи» — те же числа, что на вкладке группы", () => {
-    expect(groupStatsText({ memberCount: 12, surveyCount: 3 }, { members: "учасників", tests: "тестів" })).toBe("12 учасників · 3 тестів");
+  test("доля — процентом, дробь — запятой языка: «57%», а не «0.571»; «18,8%», а не «18.8%»", () => {
+    const ratio = [
+      { code: "Sr", title: "Схильність", value: 0.571, normalization: "ratio" as const, percent: 57.1, bandLabel: "середній", severity: "moderate" as const },
+      { code: "Pa", title: "Параноя", value: 64.24, normalization: "tscore" as const, percent: 18.8, bandLabel: null, severity: null },
+    ];
+    // вне браузера язык консоли — русский: дробь пишется запятой
+    expect(resultText(ratio, { none: "—" })).toBe("Схильність: 57% — середній; Параноя: 64,2");
+    expect(statsText({ submittedAt: null, reliable: true, scales: ratio }, { unreliable: "—" }, iso)).toBe("Sr 57,1%, Pa 18,8%");
   });
 
   test("имя заключения — методика; черновик помечен словом", () => {
@@ -132,9 +66,12 @@ describe("карточка пациента: закрепление", () => {
 
 describe("карточка пациента: адреса", () => {
   const app = readFileSync(join(SRC, "App.tsx"), "utf8");
-  const card = readFileSync(join(SRC, "pages/patientCard/PatientCard.tsx"), "utf8");
+  const read = (f: string) => readFileSync(join(SRC, "pages/patientCard", f), "utf8");
+  const card = read("PatientCard.tsx");
+  const banner = read("Banner.tsx");
+  const tabs = read("TabViews.tsx");
 
-  test("карточка кадра стоит на адресе человека, клиническая карта — под /case", () => {
+  test("карточка стоит на адресе человека, клиническая карта — под /case", () => {
     expect(app).toContain('<Route path="/patients/:userId" element={<PatientCard />} />');
     expect(app).toContain('<Route path="/patients/:userId/case" element={<CaseCard />}>');
   });
@@ -147,19 +84,127 @@ describe("карточка пациента: адреса", () => {
 
   test("ссылки карточки собраны по форме объявленных маршрутов", () => {
     // группа пациентов и заключение — свои экраны со своими адресами (App.tsx)
-    expect(card).toContain("`/patient-groups/${g.id}`");
+    expect(banner).toContain("`/patient-groups/${g.id}`");
     expect(app).toContain('path="/patient-groups/:id"');
-    expect(card).toContain("`/responses/${c.responseId}/conclusion`");
+    expect(tabs).toContain("`/responses/${c.responseId}/conclusion`");
     expect(app).toContain('path="/responses/:id/conclusion"');
     /*
-     * Дверь к клинической карте — в бургере верхней полосы, а не в строке
-     * заголовка карточки: на кадре f13 в ней одна кнопка «Відписатись».
-     * Проверяется то же самое, что и раньше, — что дверь ведёт на новый
-     * адрес и что она вообще есть, — но по её нынешнему месту.
+     * Дверь к клинической карте — в самой карточке: колонка подразделов на
+     * адресе человека спрятана (своя колонка «Мої пацієнти»), и без ссылки в
+     * шапке карту в кризис было бы не открыть.
      */
-    const topbar = readFileSync(join(SRC, "shell/Topbar.tsx"), "utf8");
-    expect(topbar).toContain("`/patients/${id}/case`");
-    /* в самой карточке ссылки на /case больше нет — только упоминание в докблоке */
-    expect(card).not.toContain('to={`${base}/case');
+    expect(banner).toContain("to={`/patients/${card.id}/case`}");
+    expect(app).toContain('path="dynamics"');
+    expect(app).toContain('path="timeline"');
+  });
+
+  test("открытие карточки — по-прежнему чтение GET /api/patients/:id/card (журнал сервера)", () => {
+    expect(card).toContain("useResource(() => api.patientCard(id), [id], { keep: false })");
+  });
+});
+
+describe("карточка пациента: после действия — только то, что оно меняет (волна 27)", () => {
+  const read = (f: string) => readFileSync(join(SRC, "pages/patientCard", f), "utf8");
+  const card = read("PatientCard.tsx");
+  const panes = read("Panes.tsx");
+
+  /*
+   * Каждое чтение здесь пишет журнал: карточка — patient.card_read,
+   * хронология, нотатки и план — response.read, случаи — alert.list. Прежде
+   * любое действие в ящике перечитывало их все, подпись после сохранения —
+   * дважды.
+   */
+  test("ни одно действие ящика не перечитывает карточку, случаи и план безпеки", () => {
+    expect(panes).not.toContain("v.reload()");
+    expect(card).not.toContain("reloadCard");
+    const refresh = card.slice(card.indexOf("const refresh = useMemo<CardRefresh>"), card.indexOf("const v: CardView"));
+    for (const read of ["cases.reload", "plans.reload", "res.reload", "dynamics.reload", "messages.reload"]) {
+      expect(refresh, read).not.toContain(read);
+    }
+  });
+
+  test("выдача методики и закрепление ничего не перечитывают", () => {
+    const assign = card.slice(card.indexOf("onAssign="), card.indexOf("onClose={() => setAssigning(false)}"));
+    expect(assign).toContain("api.grant(");
+    expect(assign).not.toMatch(/reload|refresh/);
+    const lead = card.slice(card.indexOf("const toggleLead"), card.indexOf("const [assigning"));
+    expect(lead).toContain("withLead(");
+    expect(lead).not.toMatch(/reload|refresh/);
+  });
+
+  const base = (over: Partial<PatientCard> = {}): PatientCard =>
+    ({
+      id: "p1",
+      responses: [
+        { responseId: "r1", surveyId: "s1", surveyTitle: "PHQ-9", submittedAt: "2026-10-01", reliable: true, scales: [] },
+        { responseId: "r2", surveyId: "s2", surveyTitle: "GAD-7", submittedAt: "2026-10-02", reliable: true, scales: [] },
+      ],
+      conclusions: [
+        {
+          id: "c2",
+          responseId: "r2",
+          surveyId: "s2",
+          surveyTitle: "GAD-7",
+          version: 1,
+          status: "signed",
+          text: "Інше",
+          createdAt: "2026-10-05 10:00:00+03",
+          signedAt: "2026-10-05 10:05:00+03",
+          authorName: "Колега",
+        },
+      ],
+      lead: null,
+      ...over,
+    }) as unknown as PatientCard;
+  const version = (over: Partial<ConclusionVersion>): ConclusionVersion => ({
+    id: "v",
+    version: 1,
+    revision: 1,
+    text: "",
+    status: "draft",
+    createdAt: "2026-10-10 09:00:00+03",
+    authorName: "Я",
+    signedAt: null,
+    ...over,
+  });
+
+  test("сохранили черновик поверх подписанного — на карточке подписанная и свой черновик, как отдаёт сервер", () => {
+    const signed = version({ id: "c1v1", version: 1, status: "signed", text: "Було", createdAt: "2026-10-03 09:00:00+03", signedAt: "2026-10-03 09:30:00+03", authorName: "Колега" });
+    const draft = version({ id: "c1v2", version: 2, text: "Стало", createdAt: "2026-10-10 09:00:00+03" });
+    const before = base();
+    const next = withConclusion(before, "r1", { current: draft, versions: [draft, signed] });
+    expect(next.conclusions.map((c) => [c.id, c.status, c.surveyTitle, c.text])).toEqual([
+      ["c1v2", "draft", "PHQ-9", "Стало"],
+      ["c2", "signed", "GAD-7", "Інше"],
+      ["c1v1", "signed", "PHQ-9", "Було"],
+    ]);
+    // остальное карточки — то же, что пришло с её чтением
+    expect(next.responses).toBe(before.responses);
+    expect(next.lead).toBe(before.lead);
+  });
+
+  test("подписали — черновика нет, одна подписанная последняя; чужие строки не тронуты", () => {
+    const old = version({ id: "c1v1", version: 1, status: "signed", createdAt: "2026-10-03 09:00:00+03" });
+    const signed = version({ id: "c1v2", version: 2, status: "signed", text: "Підписано", signedAt: "2026-10-10 09:10:00+03" });
+    const before = base({
+      conclusions: [...base().conclusions, { ...base().conclusions[0]!, id: "c1v2", responseId: "r1", surveyId: "s1", surveyTitle: "PHQ-9", status: "draft", version: 2 }],
+    });
+    const next = withConclusion(before, "r1", { current: signed, versions: [signed, old] });
+    expect(next.conclusions.filter((c) => c.responseId === "r1").map((c) => [c.id, c.status, c.text])).toEqual([
+      ["c1v2", "signed", "Підписано"],
+    ]);
+    expect(next.conclusions.find((c) => c.responseId === "r2")).toEqual(base().conclusions[0]!);
+  });
+
+  test("первый черновик по прохождению — одна строка-черновик", () => {
+    const draft = version({ id: "n1", text: "Перший" });
+    const next = withConclusion(base(), "r1", { current: draft, versions: [draft] });
+    expect(next.conclusions.filter((c) => c.responseId === "r1").map((c) => [c.id, c.status])).toEqual([["n1", "draft"]]);
+  });
+
+  test("закрепление: взял — ведущий я, отпустил — никого", () => {
+    const me = { id: "s1", fullName: "Іваненко Ірина" };
+    expect(withLead(base(), true, me).lead).toEqual({ specialistId: "s1", name: "Іваненко Ірина", mine: true });
+    expect(withLead(base({ lead: { specialistId: "s1", name: "Іваненко Ірина", mine: true } }), false, me).lead).toBeNull();
   });
 });

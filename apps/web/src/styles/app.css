@@ -13,9 +13,11 @@
  * `utilities` — утилиты его перебивают, а базовые правила Tailwind не мешают
  * ему работать там, где экран ещё не перенесён.
  */
-@layer theme, base, components, legacy, utilities;
+@layer theme, base, components, legacy, kit, utilities;
 
 @import "tailwindcss";
 @import "./fonts.css";
 @import "./tokens.css";
 @import "./legacy.css" layer(legacy);
+/* набор «Виразна» (src/ui): поверх наследия, под утилитами экрана — см. kit.css */
+@import "./kit.css" layer(kit);

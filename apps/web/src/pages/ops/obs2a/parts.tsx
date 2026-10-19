@@ -1,13 +1,10 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
 import type { OpsErrorWindow, OpsLogWindow, OpsStoreState } from "@quizzy/shared";
 import { locale } from "../../../format";
 import { useLang } from "../../../lang";
-import { Button, Input } from "../../../ui/primitives";
 import { fill } from "../../dashboard/model";
-import { PERIOD_KEY, clock, fmtInt, hhmm, storeNote } from "../model";
+import { clock, fmtInt, hhmm, storeNote } from "../model";
+import { OpsIcon } from "../icons";
 import { StatusMark } from "../parts";
-import { parseRequestId } from "./model";
 
 /**
  * Общие части истории техпанели (участок obs2a): строка о периоде и
@@ -21,7 +18,7 @@ import { parseRequestId } from "./model";
  * экран знает, и говорить о ней было бы неправдой в другую сторону.
  */
 export function HistoryNote({
-  window,
+  window: _window,
   from,
   retentionDays,
   store,
@@ -39,14 +36,14 @@ export function HistoryNote({
     return <StatusMark tone="warn">{ut("ops.history.unavailable")}</StatusMark>;
   }
   const note = storeNote(store);
-  const since = from
-    ? `${new Date(from).toLocaleDateString(loc, { day: "numeric", month: "long" })} ${hhmm(from, loc)}`
-    : "—";
+  const since = from ? `${new Date(from).toLocaleDateString(loc, { day: "2-digit", month: "2-digit" })}, ${hhmm(from, loc)}` : "—";
   return (
-    <span className="inline-flex flex-wrap items-baseline gap-x-[14px] gap-y-[4px]">
-      <span>
-        {fill(ut("ops.history.period"), { period: ut(PERIOD_KEY[window]), time: since })}
-        {retentionDays ? ` ${fill(ut("ops.history.keep"), { n: retentionDays })}` : ""}
+    <span className="inline-flex min-w-0 flex-wrap items-center gap-x-3.5 gap-y-1 text-small text-muted">
+      <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+        <OpsIcon name="history" size={14} />
+        {retentionDays
+          ? fill(ut("opx.hist.note"), { time: since, n: retentionDays })
+          : fill(ut("opx.hist.noteShort"), { time: since })}
       </span>
       {note.kind === "failing" ? (
         <StatusMark tone="warn">
@@ -58,52 +55,5 @@ export function HistoryNote({
         <span>{ut("ops.history.off")}</span>
       ) : null}
     </span>
-  );
-}
-
-/**
- * Поле «номер запиту → траса». Отдельной формой, а не фильтром ленты:
- * номер из экрана ошибки у человека — это вопрос «что случилось с этим
- * обращением», и ответ на него — трасса целиком (/ops/trace/:id).
- */
-export function TraceSearch({ className }: { className?: string }) {
-  const { ut } = useLang();
-  const navigate = useNavigate();
-  const [value, setValue] = useState("");
-  const [bad, setBad] = useState(false);
-  return (
-    <form
-      role="search"
-      aria-label={ut("ops.trace.search")}
-      className={className}
-      onSubmit={(e) => {
-        e.preventDefault();
-        const id = parseRequestId(value);
-        setBad(!id);
-        if (id) navigate(`/ops/trace/${encodeURIComponent(id)}`);
-      }}
-    >
-      <span className="flex flex-wrap items-center gap-[8px]">
-        <Input
-          look="fill"
-          ph="plain"
-          aria-label={ut("ops.trace.search")}
-          aria-invalid={bad || undefined}
-          placeholder={ut("ops.trace.search")}
-          value={value}
-          onChange={(e) => {
-            setValue(e.target.value);
-            setBad(false);
-          }}
-          className="w-[260px] px-[10px] font-mono max-[600px]:w-full"
-          autoComplete="off"
-          maxLength={64}
-        />
-        <Button type="submit" variant="ghost">
-          {ut("ops.trace.go")}
-        </Button>
-      </span>
-      {bad ? <span className="mt-[4px] block text-[12px] leading-[16px] text-danger">{ut("ops.trace.badId")}</span> : null}
-    </form>
   );
 }

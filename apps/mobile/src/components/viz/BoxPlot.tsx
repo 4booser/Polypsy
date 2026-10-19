@@ -2,7 +2,7 @@ import React from "react";
 import { View } from "react-native";
 import Svg, { Line, Rect, Text as SvgText } from "react-native-svg";
 import { useChart } from "../../theme";
-import { Caption, PLOT, formatShort, useMeasuredWidth } from "./primitives";
+import { Caption, PLOT, formatShort, useAxisText, useMeasuredWidth } from "./primitives";
 
 export { boxStatsOf, type BoxStat } from "./math";
 import type { BoxStat } from "./math";
@@ -31,6 +31,7 @@ export function BoxPlot({
 }) {
   const { ut } = useLang();
   const chart = useChart();
+  const axis = useAxisText();
   const [width, onLayout] = useMeasuredWidth();
 
   if (boxes.length === 0) return <Caption>{ut("mviz.noData")}</Caption>;
@@ -55,7 +56,7 @@ export function BoxPlot({
               stroke={chart.grid}
               strokeWidth={1}
             />
-            <SvgText x={PLOT.padLeft - 6} y={yAt(t) + 4} fontSize={10} fill={chart.axis} textAnchor="end">
+            <SvgText x={PLOT.padLeft - 6} y={yAt(t) + 4} {...axis} textAnchor="end">
               {formatShort(t)}
             </SvgText>
           </React.Fragment>
@@ -88,7 +89,7 @@ export function BoxPlot({
                 stroke={categorical ? chart.series[i % chart.series.length] : chart.bar}
                 strokeWidth={3}
               />
-              <SvgText x={cx} y={height - 6} fontSize={10} fill={chart.axis} textAnchor="middle">
+              <SvgText x={cx} y={height - 6} {...axis} textAnchor="middle">
                 {b.label.length > 10 ? `${b.label.slice(0, 9)}…` : b.label}
               </SvgText>
             </React.Fragment>

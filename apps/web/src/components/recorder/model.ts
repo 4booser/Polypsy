@@ -105,13 +105,11 @@ export function pickMimeType(supported: (type: string) => boolean): string | nul
   return null;
 }
 
-/** Имя файла в форме — по типу; сервер ему не верит (смотрит в байты), но в журналах так понятнее */
-export function audioFileName(type: string): string {
-  if (type.includes("ogg")) return "visit.ogg";
-  if (type.includes("mp4")) return "visit.m4a";
-  if (type.includes("wav")) return "visit.wav";
-  return "visit.webm";
-}
+/*
+ * Имя файла записи — своим модулем (audioFile.ts): его берёт клиент API
+ * (api.ts, начальный кусок), а модель записи целиком начальному куску не нужна.
+ */
+export { audioFileName } from "./audioFile";
 
 /** Статус ответа из ошибки клиента API; 0 — до сервера не дошли */
 export function statusOf(error: unknown): number {

@@ -113,7 +113,7 @@ describe("403 «примите согласие» посреди методик�
     expect(held.error).toBeNull();
 
     const outcome = await acceptAndResend(io, held, "Помилка");
-    expect(outcome).toEqual({ kind: "sent", safetyPlan: null });
+    expect(outcome).toEqual({ kind: "sent", safetyPlan: null, id: "r1" });
 
     const sent = submits(calls);
     expect(sent).toHaveLength(2);
@@ -146,7 +146,7 @@ describe("403 «примите согласие» посреди методик�
     expect(submits(calls)).toHaveLength(1);
 
     const done = await acceptAndResend(io, again, "Помилка");
-    expect(done).toEqual({ kind: "sent", safetyPlan: "Зателефонуйте 7333" });
+    expect(done).toEqual({ kind: "sent", safetyPlan: "Зателефонуйте 7333", id: "r1" });
     const sent = submits(calls);
     expect(sent[1]).toBe(sent[0]!);
   });

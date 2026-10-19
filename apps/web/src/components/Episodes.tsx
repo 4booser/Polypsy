@@ -1,12 +1,14 @@
 import { useState } from "react";
+import type { UiKey } from "@quizzy/shared";
 import { ApiError, api, openInTab } from "../api";
 import { day } from "../format";
-import { Empty, NotLoaded, loadView, useAction } from "../ui";
+import { Callout, Empty, Ic, NotLoaded, loadView, useAction } from "../ui";
 import { Panel } from "../ui/layout";
-import { Button, Field, Input, Num, Select } from "../ui/primitives";
+import { Button, Field, Input, Num, Select, Tag } from "../ui/primitives";
 import { useLang } from "../lang";
 import { useResource, type Resource } from "../useResource";
-import type { UiKey } from "@quizzy/shared";
+import { ShellIcon } from "../shell/icons";
+import { withCount } from "../ui/plural";
 
 const OUTCOME_KEY: Record<string, UiKey> = {
   improved: "ep.outImproved",
@@ -26,6 +28,11 @@ const OUTCOME_KEY: Record<string, UiKey> = {
  *
  * Счётчики приходят с сервера собранными. Считать их тремя запросами с экрана
  * значило бы вернуть человека к тому же складыванию, только быстрее.
+ *
+ * Вид — панель набора «Виразна»: квадрат значка в шапке, обращение —
+ * плиткой на подложке с пилюлей состояния («триває з…», «закрито…»),
+ * счётчики числами, действия — обычными кнопками (закрытие подтверждается
+ * исходом, а не красным цветом).
  */
 export function Episodes(props: { patientId: string; appointmentId?: string; className?: string }) {
   const res = useResource(() => api.episodes(props.patientId), [props.patientId]);
@@ -55,7 +62,7 @@ export function EpisodesBody({
   className?: string;
   res: Loaded<Awaited<ReturnType<typeof api.episodes>>>;
 }) {
-  const { ut } = useLang();
+  const { ut, lang } = useLang();
   const { run, busy } = useAction();
   const reload = res.reload;
   const view = loadView(res, (d) => d.items.length === 0);
@@ -78,21 +85,37 @@ export function EpisodesBody({
   const open = items.find((e) => !e.closedAt) ?? null;
 
   return (
-    <Panel title={ut("ep.title")} className={className}>
-      <div className="flex flex-col gap-3 p-4">
+    <Panel
+      title={ut("ep.title")}
+      icon={<ShellIcon name="folder-tree" />}
+      count={known && items.length ? items.length : null}
+      className={className}
+      actions={
+        /*
+          Карта целиком — здесь же, рядом с обращениями: человека собирают в
+          один документ ровно тогда, когда смотрят его обращения, а не ищут
+          отдельную кнопку на четвёртом экране.
+        */
+        <Button variant="quiet" size="xs" icon={<Ic.file />} onClick={() => openInTab(`/api/reports/patients/${patientId}/chart`)}>
+          {ut("ep.chart")}
+        </Button>
+      }
+    >
+      <div className="flex flex-col gap-3">
         {/*
           Открыть можно только когда открытого нет. Правило написано рядом с
           кнопкой, а не спрятано в отказе сервера: человек должен понимать,
           почему кнопки нет, до того как начнёт её искать.
         */}
         {!known ? null : !open ? (
-          <div className="flex flex-col gap-2">
-            <Field label={ut("ep.reason")} hint={ut("ep.reasonHint")}>
+          <div className="flex flex-wrap items-end gap-2">
+            <Field label={ut("ep.reason")} hint={ut("ep.reasonHint")} className="min-w-[220px] flex-1">
               <Input value={reason} onChange={(e) => setReason(e.target.value)} />
             </Field>
             <Button
-              size="sm"
               disabled={busy}
+              icon={<Ic.plus />}
+              className="mb-[22px]"
               onClick={() =>
                 run(async () => {
                   await api.openEpisode({ patientId, reason: reason.trim() || null });
@@ -105,41 +128,44 @@ export function EpisodesBody({
             </Button>
           </div>
         ) : (
-          <p className="text-caption text-muted">{ut("ep.oneOpen")}</p>
+          <p className="m-0 text-caption text-text-2">{ut("ep.oneOpen")}</p>
         )}
-
-        {/*
-          Карта целиком — здесь же, рядом с обращениями: человека собирают в
-          один документ ровно тогда, когда смотрят его обращения, а не ищут
-          отдельную кнопку на четвёртом экране.
-        */}
-        <button className="btn" onClick={() => openInTab(`/api/reports/patients/${patientId}/chart`)}>
-          {ut("ep.chart")}
-        </button>
 
         <Dispensary patientId={patientId} />
 
-        {!known ? <NotLoaded res={res} /> : items.length === 0 ? <Empty title={ut("ep.none")} /> : null}
+        {!known ? <NotLoaded res={res} /> : items.length === 0 ? <Empty compact title={ut("ep.none")} /> : null}
 
         {items.map((e) => (
-          <div key={e.id} className="rounded-md border border-hairline p-3">
-            <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-              <span className="text-caption text-muted">
-                {e.closedAt
-                  ? `${ut("ep.closedAt")} ${day(e.closedAt)}`
-                  : `${ut("ep.openSince")} ${day(e.openedAt)}`}
-              </span>
-              {e.leadName ? <span className="text-caption text-muted">{e.leadName}</span> : null}
-              <span className="ml-auto text-caption text-muted">
-                <Num>{e.visits}</Num> {ut("ep.visits")} · <Num>{e.conclusions}</Num>{" "}
-                {ut("ep.conclusions")} · <Num>{e.referrals}</Num> {ut("ep.referrals")}
+          <article key={e.id} className="rounded-panel bg-sunk px-3.5 py-3">
+            <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+              {e.closedAt ? (
+                <Tag tone="done">
+                  {ut("ep.closedAt")} {day(e.closedAt)}
+                </Tag>
+              ) : (
+                <Tag tone="primary">
+                  {ut("ep.openSince")} {day(e.openedAt)}
+                </Tag>
+              )}
+              {e.leadName ? <span className="text-caption text-text-2">{e.leadName}</span> : null}
+              {/* слово — по числу правилами языка: «1 прийом», «3 прийоми», «5 прийомів», а не «1 прийомів» */}
+              <span className="ml-auto flex flex-wrap gap-x-3 text-caption text-text-2">
+                <span>
+                  <Num className="font-bold text-text">{e.visits}</Num> {withCount(ut("ep.visits"), e.visits, lang)}
+                </span>
+                <span>
+                  <Num className="font-bold text-text">{e.conclusions}</Num> {withCount(ut("ep.conclusions"), e.conclusions, lang)}
+                </span>
+                <span>
+                  <Num className="font-bold text-text">{e.referrals}</Num> {withCount(ut("ep.referrals"), e.referrals, lang)}
+                </span>
               </span>
             </div>
 
-            {e.reason ? <p className="mt-1 text-body">{e.reason}</p> : null}
+            {e.reason ? <p className="m-0 mt-1.5 text-body text-text">{e.reason}</p> : null}
             {e.outcomeKind ? (
-              <p className="mt-1 text-caption">
-                {ut(OUTCOME_KEY[e.outcomeKind] ?? "ep.outStable")}
+              <p className="m-0 mt-1 text-caption text-text-2">
+                <b className="font-bold text-text">{ut(OUTCOME_KEY[e.outcomeKind] ?? "ep.outStable")}</b>
                 {/*
                   `e.outcome` печатается как есть — и должно. Имя поля сбивает
                   с толку: рядом стоит `outcomeKind`, разряд исхода, который
@@ -153,41 +179,39 @@ export function EpisodesBody({
                   когда-нибудь наведётся; тогда правильный ответ не «завести
                   ключи», а посмотреть сюда.
                 */}
-                {e.outcome ? ` · ${e.outcome}` : ""}
+                {e.outcome ? `: ${e.outcome}` : ""}
               </p>
             ) : null}
 
-            <div className="mt-2 flex flex-wrap gap-2">
+            <div className="mt-2.5 flex flex-wrap gap-1.5">
               {/*
                 Выписка — только у закрытого и у идущего: это лист, который
                 подшивают, и его берут по факту, а не «на всякий случай».
               */}
-              <button className="btn" onClick={() => openInTab(`/api/reports/episodes/${e.id}`)}>
+              <Button size="xs" variant="panel" icon={<Ic.file />} onClick={() => openInTab(`/api/reports/episodes/${e.id}`)}>
                 {ut("ep.extract")}
-              </button>
+              </Button>
 
               {appointmentId && !e.closedAt ? (
                 <Button
-                  size="sm"
-                  variant="ghost"
+                  size="xs"
+                  variant="panel"
                   disabled={busy}
-                  onClick={() =>
-                    run(() => api.attachVisit(e.id, appointmentId).then(reload), ut("ep.attached"))
-                  }
+                  onClick={() => run(() => api.attachVisit(e.id, appointmentId).then(reload), ut("ep.attached"))}
                 >
                   {ut("ep.attachVisit")}
                 </Button>
               ) : null}
 
               {!e.closedAt ? (
-                <Button size="sm" variant="ghost" onClick={() => setClosing(e.id)}>
+                <Button size="xs" variant="panel" aria-expanded={closing === e.id} onClick={() => setClosing(closing === e.id ? null : e.id)}>
                   {ut("ep.close")}
                 </Button>
               ) : null}
             </div>
 
             {closing === e.id ? (
-              <div className="mt-2 flex flex-col gap-2">
+              <div className="mt-3 flex flex-col gap-2.5 border-t border-divider pt-3">
                 {/*
                   Исход — разряд плюс слова. «Улучшение» без пояснения через
                   год не читается, а пояснение без разряда не считается.
@@ -209,48 +233,50 @@ export function EpisodesBody({
                     <Input value={referralsNote} onChange={(ev) => setReferralsNote(ev.target.value)} />
                   </Field>
                 ) : null}
-                <Button
-                  size="sm"
-                  disabled={busy || (needsNote && referralsNote.trim().length < 3)}
-                  onClick={() =>
-                    run(async () => {
-                      try {
-                        await api.closeEpisode(
-                          e.id,
-                          outcomeKind,
-                          outcome.trim() || null,
-                          needsNote ? referralsNote.trim() : undefined,
-                        );
-                      } catch (err) {
-                        // незакрытые направления снимаются объяснением; случай риска — только разбором
-                        if (
-                          err instanceof ApiError &&
-                          err.status === 409 &&
-                          (err.body as { overridable?: boolean } | undefined)?.overridable
-                        ) {
-                          setNeedsNote(true);
+                <div>
+                  <Button
+                    variant="primary"
+                    size="xs"
+                    disabled={busy || (needsNote && referralsNote.trim().length < 3)}
+                    onClick={() =>
+                      run(async () => {
+                        try {
+                          await api.closeEpisode(
+                            e.id,
+                            outcomeKind,
+                            outcome.trim() || null,
+                            needsNote ? referralsNote.trim() : undefined,
+                          );
+                        } catch (err) {
+                          // незакрытые направления снимаются объяснением; случай риска — только разбором
+                          if (
+                            err instanceof ApiError &&
+                            err.status === 409 &&
+                            (err.body as { overridable?: boolean } | undefined)?.overridable
+                          ) {
+                            setNeedsNote(true);
+                          }
+                          throw err;
                         }
-                        throw err;
-                      }
-                      setClosing(null);
-                      setOutcome("");
-                      setNeedsNote(false);
-                      setReferralsNote("");
-                      await reload();
-                    })
-                  }
-                >
-                  {ut("ep.close")}
-                </Button>
+                        setClosing(null);
+                        setOutcome("");
+                        setNeedsNote(false);
+                        setReferralsNote("");
+                        await reload();
+                      })
+                    }
+                  >
+                    {ut("ep.close")}
+                  </Button>
+                </div>
               </div>
             ) : null}
-          </div>
+          </article>
         ))}
       </div>
     </Panel>
   );
 }
-
 
 /**
  * Диспансерный учёт.
@@ -288,84 +314,75 @@ export function DispensaryBody({
 
   if (!d.on) {
     return (
-      <div className="flex flex-col gap-2 rounded-md border border-hairline p-3">
-        <p className="text-micro uppercase tracking-[var(--tracking-label)] text-faint">
+      <section className="flex flex-col gap-2 rounded-panel border border-border px-3.5 py-3">
+        <h3 className="m-0 flex items-center gap-2 text-h3 font-extrabold text-text">
+          <Ic.eye size={16} className="text-muted" />
           {ut("disp.title")}
-        </p>
-        <p className="text-caption text-muted">{ut("disp.notOn")}</p>
-        <Field label={ut("disp.group")} hint={ut("disp.groupHint")}>
-          <Input value={group} onChange={(e) => setGroup(e.target.value)} />
-        </Field>
-        <Field label={ut("disp.every")}>
-          <Input
-            type="number"
-            min={1}
-            max={36}
-            value={months}
-            onChange={(e) => setMonths(Number(e.target.value))}
-          />
-        </Field>
-        <Button
-          size="sm"
-          disabled={busy || !group.trim()}
-          onClick={() =>
-            run(async () => {
-              await api.setDispensary({ patientId, groupLabel: group.trim(), intervalMonths: months });
-              setGroup("");
-              await reload();
-            })
-          }
-        >
-          {ut("disp.put")}
-        </Button>
-      </div>
+        </h3>
+        <p className="m-0 text-caption text-text-2">{ut("disp.notOn")}</p>
+        <div className="grid grid-cols-[minmax(0,1fr)_140px] gap-2 max-[520px]:grid-cols-1">
+          <Field label={ut("disp.group")} hint={ut("disp.groupHint")}>
+            <Input value={group} onChange={(e) => setGroup(e.target.value)} />
+          </Field>
+          <Field label={ut("disp.every")}>
+            <Input type="number" min={1} max={36} value={months} onChange={(e) => setMonths(Number(e.target.value))} />
+          </Field>
+        </div>
+        <div>
+          <Button
+            size="xs"
+            disabled={busy || !group.trim()}
+            onClick={() =>
+              run(async () => {
+                await api.setDispensary({ patientId, groupLabel: group.trim(), intervalMonths: months });
+                setGroup("");
+                await reload();
+              })
+            }
+          >
+            {ut("disp.put")}
+          </Button>
+        </div>
+      </section>
     );
   }
 
+  const overdue = (d.overdueDays ?? 0) > 0;
   return (
-    <div className="flex flex-col gap-2 rounded-md border border-hairline p-3">
-      <p className="text-micro uppercase tracking-[var(--tracking-label)] text-faint">
+    <section className="flex flex-col gap-2 rounded-panel border border-border px-3.5 py-3">
+      <h3 className="m-0 flex items-center gap-2 text-h3 font-extrabold text-text">
+        <Ic.eye size={16} className="text-muted" />
         {ut("disp.title")}
-      </p>
-      <div className="flex flex-wrap items-baseline gap-x-3">
-        <span>{d.groupLabel}</span>
-        <span className="text-caption text-muted">
-          {ut("disp.next")} <Num>{d.nextDueAt ? day(d.nextDueAt) : "—"}</Num>
+        <span className="text-small font-semibold text-text-2">{d.groupLabel}</span>
+      </h3>
+      <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 text-caption text-text-2">
+        <span>
+          {ut("disp.next")} <Num className="font-bold text-text">{d.nextDueAt ? day(d.nextDueAt) : "—"}</Num>
         </span>
         {d.lastSeenAt ? (
-          <span className="text-caption text-muted">
+          <span>
             {ut("disp.lastSeen")} {day(d.lastSeenAt)}
           </span>
         ) : null}
-        {/*
-          Просрочка числом дней, а не пометкой: «на три дня» и «на полгода» —
-          разный разговор, и одинаковым знаком их делать нельзя.
-        */}
-        {(d.overdueDays ?? 0) > 0 ? (
-          <span className="text-caption text-accent">
-            {ut("disp.overdue")} <Num>{d.overdueDays}</Num>
-          </span>
-        ) : null}
       </div>
-      <p className="text-caption text-muted">{ut("disp.seenNote")}</p>
-      <div className="flex gap-2">
-        <Button
-          size="sm"
-          variant="ghost"
-          disabled={busy}
-          onClick={() => run(() => api.dispensarySeen(patientId).then(reload))}
-        >
+      {/*
+        Просрочка числом дней, а не пометкой: «на три дня» и «на полгода» —
+        разный разговор, и одинаковым знаком их делать нельзя.
+      */}
+      {overdue ? (
+        <Callout kind="warn" icon={<Ic.timer />}>
+          {ut("disp.overdue")} <Num className="font-bold">{d.overdueDays}</Num>
+        </Callout>
+      ) : null}
+      <p className="m-0 text-caption text-muted">{ut("disp.seenNote")}</p>
+      <div className="flex flex-wrap gap-1.5">
+        <Button size="xs" disabled={busy} icon={<Ic.check />} onClick={() => run(() => api.dispensarySeen(patientId).then(reload))}>
           {ut("disp.seen")}
         </Button>
-        <Button
-          size="sm"
-          variant="ghost"
-          disabled={busy}
-          onClick={() => run(() => api.dispensaryRemove(patientId).then(reload))}
-        >
+        <Button size="xs" variant="quiet" disabled={busy} onClick={() => run(() => api.dispensaryRemove(patientId).then(reload))}>
           {ut("disp.remove")}
         </Button>
       </div>
-    </div>
+    </section>
   );
 }

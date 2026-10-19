@@ -49,17 +49,17 @@ describe("сповіщення: форма истории", () => {
     byRule: [{ rule: "errors5xx", fired: 2, repeat: 4 }],
   };
 
-  test("столбцы парой и правила полосами", () => {
+  test("сбои по дням столбцами и правила полосами — и тихие нулём", () => {
     const html = draw(<HistoryShape h={h} />);
     clean(html);
     expect(html).toContain('role="img"');
     has(html, "sig.al.byDay");
+    has(html, "sig.al.byRule");
     has(html, "o2b.rule.errors5xx");
-    // слово ряда в легенде, а не только цвет
-    has(html, "o2b.event.fired");
-    has(html, "o2b.event.resolved");
+    // правило без сбоев — строкой с нулём, а не пропуском
+    has(html, "o2b.rule.diskFree");
     // янтарь — у сбоя
-    expect(html).toContain("var(--accent)");
+    expect(html).toContain("var(--warn)");
   });
 
   test("пустой месяц — фразой, без осей", () => {
@@ -96,8 +96,8 @@ describe("помилки клієнта: форма списка", () => {
     has(html, "sig.ce.newByDay");
     has(html, "sig.ce.byScreen");
     expect(html).toContain("/patients/:id");
-    // мобилка без браузера — «не відомо», а не пустая часть
-    has(html, "sig.ce.unknown");
+    // мобилка без браузера — «застосунок», а не пустая часть
+    has(html, "opx.ce.app");
     expect(html.match(/role="img"/g)?.length).toBeGreaterThanOrEqual(3);
   });
 
@@ -116,7 +116,7 @@ describe("швидкість екранів: над таблицей", () => {
   ];
 
   test("медленные экраны и доли замеров по оценке — словами", () => {
-    const html = draw(<VitalShape routes={routes} metric="LCP" onMetric={() => {}} days={30} />);
+    const html = draw(<VitalShape routes={routes} metric="LCP" days={30} />);
     clean(html);
     expect(html).toContain("/today");
     has(html, "o2b.rating.good");
@@ -126,7 +126,7 @@ describe("швидкість екранів: над таблицей", () => {
   });
 
   test("по мере нет замеров ни у одного экрана — фраза", () => {
-    const html = draw(<VitalShape routes={routes} metric="CLS" onMetric={() => {}} days={30} />);
+    const html = draw(<VitalShape routes={routes} metric="CLS" days={30} />);
     has(html, "o2b.v.noMetric");
   });
 });
@@ -168,7 +168,7 @@ describe("цілісність: полоса сверок", () => {
     auditHistory: history,
   });
 
-  test("разрыв — ромбом и словами, с датой", () => {
+  test("разрыв — разорванным звеном и словами, с датой", () => {
     const brokenAt = new Date(NOW - 2 * 86_400_000).toISOString();
     const html = draw(
       <ChainHistory
@@ -183,7 +183,9 @@ describe("цілісність: полоса сверок", () => {
     expect(html).toContain('role="img"');
     has(html, "sig.int.brokenDays");
     has(html, "sig.int.notChecked");
-    expect(html).toContain("rotate-45 bg-danger");
+    // клетка разрыва — янтарём со значком разорванного звена, а не только цветом
+    expect(html).toMatch(/bg-warn-tint-2 text-warn"><svg[^>]*><path d="M9 17H7A5 5 0 0 1 7 7/);
+    has(html, "ops.sec.int.broken");
     // день разрыва — в полосе по часам экрана
     expect(days30).toContain(localDay(brokenAt));
   });
@@ -194,7 +196,7 @@ describe("цілісність: полоса сверок", () => {
 });
 
 describe("дані й продукт: добавленные графики", () => {
-  test("використання: экраны полосами и «інші» до итога окна", () => {
+  test("використання: экраны таблицей с долей и «інші» до итога окна", () => {
     const report: UsageReport = {
       days: 7,
       smallCellFloor: 5,
@@ -202,15 +204,24 @@ describe("дані й продукт: добавленные графики", ()
         total: 50,
         top: [{ app: "console", route: "/patients/:userId", views: 12, days: 3 }],
         byDay: [{ date: "2026-09-26", views: 50 }],
+        byApp: [
+          { app: "console", views: 30 },
+          { app: "patient", views: 20 },
+        ],
+        routes: 5,
       },
       active: { byDay: [], staff7: 1, staff30: 1, patients7: null, patients30: null },
       funnel: { days: 90, invites: 0, registered: null, firstResponse: null, repeatResponse: null, selfRegistered: null },
     };
-    const html = draw(<UsageBody data={report} days={7} onDays={() => {}} />);
+    const html = draw(<UsageBody data={report} />);
     clean(html);
-    has(html, "sig.u.topScreens");
-    has(html, "sig.u.otherScreens");
+    has(html, "opsd.u.screens");
+    // остаток до итога окна — строкой «інші», с числом шаблонов за верхушкой
+    has(html, "oppd.u.rest");
+    has(html, "oppd.u.restRoutes.few");
     expect(html).toContain(">38<");
+    // доля приложений — полосой по всем шаблонам окна
+    has(html, "oppd.u.byApp");
   });
 
   test("пуши: доля ошибок по дням — только при отправках", () => {
@@ -224,14 +235,14 @@ describe("дані й продукт: добавленные графики", ()
       ],
       byKind: [],
       errors: [{ code: "DeviceNotRegistered", count: 1, tokens: 1 }],
-      tokens: { registered: 0, stale: 0, byPlatform: [] },
+      tokens: { registered: 0, stale: 0, byPlatform: [], oldest: [] },
       events: [],
     };
-    const html = draw(<PushBody data={push} days={30} onDays={() => {}} />);
+    const html = draw(<PushBody data={push} />);
     clean(html);
     has(html, "sig.p.share");
-    has(html, "sig.p.codes");
-    const none = draw(<PushBody data={{ ...push, byDay: push.byDay.map((d) => ({ ...d, sent: 0, errors: 0 })) }} days={30} onDays={() => {}} />);
+    has(html, "opsd.p.errorCodes");
+    const none = draw(<PushBody data={{ ...push, byDay: push.byDay.map((d) => ({ ...d, sent: 0, errors: 0 })) }} />);
     expect(head("sig.p.share").some((h) => none.includes(h))).toBe(false);
   });
 
@@ -249,7 +260,7 @@ describe("дані й продукт: добавленные графики", ()
       queue: { devicesReporting: 0, pending: 0, rejected: 0, devicesWithPending: 0, devicesWithRejected: 0 },
       late: { total: 0, submitted: 0, buckets: [], medianLagMs: null, p90LagMs: null, byDay: [] },
     };
-    const html = draw(<MobileBody data={mobile} days={90} onDays={() => {}} />);
+    const html = draw(<MobileBody data={mobile} />);
     clean(html);
     has(html, "sig.m.versions");
     has(html, "sig.m.unknownVersion");

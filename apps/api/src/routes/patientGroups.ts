@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, sql, type SQL } from "drizzle-orm";
 import {
   assignSurveyToPatientGroupSchema,
   patientGroupInputSchema,
@@ -12,10 +12,12 @@ import {
 } from "@quizzy/shared";
 import { db } from "../db";
 import {
+  alertCases,
   patientGroupFavourites,
   patientGroupMembers,
   patientGroups,
   patientGroupSurveys,
+  responses,
   surveys,
   users,
 } from "../db/schema";
@@ -31,6 +33,7 @@ import {
   assertPatientGroupAccess,
   assertSurveyAccess,
   assertSurveysInUse,
+  surveyScopeFilter,
 } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
@@ -87,6 +90,7 @@ function membersVisibleTo(visible: Set<string> | null) {
 patientGroupRoutes.get("/", async (c) => {
   const user = c.get("user");
   const visible = await accessiblePatientIds(user);
+  const ownSurvey = await surveyScopeFilter(user);
 
   const rows = await db
     .select({
@@ -127,26 +131,137 @@ patientGroupRoutes.get("/", async (c) => {
    * Состав всех групп одним запросом, а не по запросу на группу: восемь
    * вкладок — это восемь обращений к базе ради одного числа под каждой.
    */
+  const groupIds = rows.map((r) => r.id);
   const memberRows = rows.length
     ? await db
-        .select({ groupId: patientGroupMembers.groupId, userId: patientGroupMembers.patientId })
+        .select({
+          groupId: patientGroupMembers.groupId,
+          userId: patientGroupMembers.patientId,
+          addedAt: patientGroupMembers.addedAt,
+        })
         .from(patientGroupMembers)
-        .where(inArray(patientGroupMembers.groupId, rows.map((r) => r.id)))
+        .where(inArray(patientGroupMembers.groupId, groupIds))
     : [];
+  const shown = memberRows.filter(membersVisibleTo(visible));
 
-  const counts = new Map<string, number>();
-  for (const m of memberRows.filter(membersVisibleTo(visible))) {
-    counts.set(m.groupId, (counts.get(m.groupId) ?? 0) + 1);
-  }
+  /*
+   * Строка списка — таблица консоли: методики группы кодами, «пройшли
+   * призначене», ризик в группе, кто веде, когда менялась. Всё — тем же
+   * пакетом запросов на весь список, а не по группе: число запросов не
+   * растёт с числом вкладок.
+   */
+  const surveyRows = rows.length
+    ? await db
+        .select({
+          groupId: patientGroupSurveys.groupId,
+          surveyId: patientGroupSurveys.surveyId,
+          title: surveys.title,
+          assignedAt: patientGroupSurveys.assignedAt,
+        })
+        .from(patientGroupSurveys)
+        .innerJoin(surveys, eq(surveys.id, patientGroupSurveys.surveyId))
+        .where(inArray(patientGroupSurveys.groupId, groupIds))
+        .orderBy(asc(patientGroupSurveys.assignedAt))
+    : [];
+  const done = await completedPairs(
+    ownSurvey,
+    shown.map((m) => m.userId),
+    surveyRows.map((s) => s.surveyId),
+  );
+  const atRisk = await openRiskOf(ownSurvey, shown.map((m) => m.userId));
+  const ownerName = await namesOf(rows.map((r) => r.ownerId));
 
-  const items: PatientGroupWithCounts[] = rows.map((r) => ({
-    ...r,
-    memberCount: counts.get(r.id) ?? 0,
-    surveyCount: Number(r.surveyCount ?? 0),
-    favourite: Boolean(r.favourite),
-  }));
+  const items: PatientGroupWithCounts[] = rows.map((r) => {
+    const people = shown.filter((m) => m.groupId === r.id);
+    const tests = surveyRows.filter((s) => s.groupId === r.id);
+    /*
+     * «Пройшли призначене» — каждую методику группы хотя бы раз, по тому же
+     * правилу, что completedCount у методики в карточке: «18 з 24» в списке
+     * и отметки в карточке обязаны сходиться.
+     */
+    const doneCount = tests.length
+      ? people.filter((m) => tests.every((s) => done.has(`${m.userId}|${s.surveyId}`))).length
+      : 0;
+    const changedAt = [r.createdAt, ...people.map((m) => m.addedAt), ...tests.map((s) => s.assignedAt)].reduce(
+      (a, b) => (b > a ? b : a),
+    );
+    return {
+      ...r,
+      memberCount: people.length,
+      surveyCount: Number(r.surveyCount ?? 0),
+      favourite: Boolean(r.favourite),
+      surveys: tests.map((s) => ({ surveyId: s.surveyId, title: s.title })),
+      doneCount,
+      riskCount: people.filter((m) => atRisk.has(m.userId)).length,
+      ownerName: ownerName.get(r.ownerId) ?? "—",
+      changedAt,
+    };
+  });
   return c.json({ items });
 });
+
+/*
+ * Прохождения и случаи — только по методикам зоны читателя (`ownSurvey`,
+ * surveyScopeFilter: группы под его управлением и его личные методики без
+ * группы). То же условие ставит реестр пациентов «последней сдаче» и
+ * открытому случаю (ownSurvey в routes/patients.ts), и тем же ограничена
+ * очередь случаев (routes/alertCases.ts): прохождение или случай по чужой
+ * методике — сведение, которого читателю не показывают больше нигде.
+ *
+ * Политика строк режет то же самое под ролью приложения, но она — страховка
+ * под правилом, а не замена ему: без условия здесь владелец базы считал
+ * ризиком группы случай чужого отделения (а «1 з ризиком» вёл в очередь,
+ * где его не было) и отмечал прохождение методики, переехавшей в другую
+ * зону. `undefined` — без ограничения (суперадмин).
+ */
+
+/**
+ * Пары «человек — методика», где есть хотя бы одно завершённое прохождение
+ * методики зоны читателя. Ключ — `userId|surveyId`. Пустые списки — пустой
+ * ответ без запроса.
+ */
+async function completedPairs(
+  ownSurvey: SQL | undefined,
+  userIds: string[],
+  surveyIds: string[],
+): Promise<Set<string>> {
+  const people = [...new Set(userIds)];
+  const tests = [...new Set(surveyIds)];
+  if (!people.length || !tests.length) return new Set();
+  const rows = await db
+    .selectDistinct({ userId: responses.userId, surveyId: responses.surveyId })
+    .from(responses)
+    .innerJoin(surveys, eq(surveys.id, responses.surveyId))
+    .where(
+      and(
+        eq(responses.status, "completed"),
+        inArray(responses.surveyId, tests),
+        inArray(responses.userId, people),
+        ownSurvey,
+      ),
+    );
+  return new Set(rows.map((r) => `${r.userId}|${r.surveyId}`));
+}
+
+/** У кого из списка есть неразобранный случай риска по методике зоны читателя — тот же признак, что у очереди случаев */
+async function openRiskOf(ownSurvey: SQL | undefined, userIds: string[]): Promise<Set<string>> {
+  const people = [...new Set(userIds)];
+  if (!people.length) return new Set();
+  const rows = await db
+    .selectDistinct({ userId: alertCases.userId })
+    .from(alertCases)
+    .innerJoin(surveys, eq(surveys.id, alertCases.surveyId))
+    .where(and(isNull(alertCases.acknowledgedAt), inArray(alertCases.userId, people), ownSurvey));
+  return new Set(rows.map((r) => r.userId));
+}
+
+/** Имена сотрудников — ведущих групп */
+async function namesOf(ids: string[]): Promise<Map<string, string>> {
+  const unique = [...new Set(ids)];
+  if (!unique.length) return new Map();
+  const people = await db.select().from(users).where(inArray(users.id, unique));
+  return new Map(people.map((u) => [u.id, fullNameOf(u)]));
+}
 
 /** Заведение группы. Владельцем становится тот, кто её завёл, — иначе некому */
 patientGroupRoutes.post("/", async (c) => {
@@ -191,6 +306,7 @@ patientGroupRoutes.get("/:id", async (c) => {
   if (!group) notFound("err.patientGroupNotFound");
 
   const visible = await accessiblePatientIds(user);
+  const ownSurvey = await surveyScopeFilter(user);
   const memberRows = await db
     .select({
       userId: patientGroupMembers.patientId,
@@ -210,8 +326,21 @@ patientGroupRoutes.get("/:id", async (c) => {
     .innerJoin(users, eq(users.id, patientGroupMembers.patientId))
     .where(eq(patientGroupMembers.groupId, groupId));
 
-  const members: PatientGroupMember[] = memberRows
-    .filter(membersVisibleTo(visible))
+  const visibleRows = memberRows.filter(membersVisibleTo(visible));
+  const groupSurveyIds = (
+    await db
+      .select({ surveyId: patientGroupSurveys.surveyId })
+      .from(patientGroupSurveys)
+      .where(eq(patientGroupSurveys.groupId, groupId))
+  ).map((r) => r.surveyId);
+  const done = await completedPairs(
+    ownSurvey,
+    visibleRows.map((r) => r.userId),
+    groupSurveyIds,
+  );
+  const atRisk = await openRiskOf(ownSurvey, visibleRows.map((r) => r.userId));
+
+  const members: PatientGroupMember[] = visibleRows
     .map((r) => ({
       userId: r.userId,
       fullName: fullNameOf(r),
@@ -223,6 +352,8 @@ patientGroupRoutes.get("/:id", async (c) => {
       phone: decryptField(r.phoneEnc),
       addedAt: r.addedAt,
       addedBy: r.addedBy,
+      completedSurveyIds: groupSurveyIds.filter((id) => done.has(`${r.userId}|${id}`)),
+      openRisk: atRisk.has(r.userId),
     }))
     .sort((a, b) => a.fullName.localeCompare(b.fullName));
 
@@ -235,18 +366,6 @@ patientGroupRoutes.get("/:id", async (c) => {
       assignedBy: patientGroupSurveys.assignedBy,
       expiresAt: patientGroupSurveys.expiresAt,
       attemptsAllowed: patientGroupSurveys.attemptsAllowed,
-      /*
-       * Прошедшие считаются по людям, а не по прохождениям: «пять из
-       * двенадцати сдали» и «сдали двенадцать раз» — разные ответы, и
-       * специалисту нужен первый. Считается по нынешнему составу группы:
-       * выбывший участник из знаменателя ушёл, и из числителя обязан уйти
-       * тоже, иначе получится «сдали 7 из 5».
-       */
-      completedCount: sql<number>`(select count(distinct r.user_id)::int from responses r
-        where r.survey_id = "patient_group_surveys"."survey_id"
-          and r.status = 'completed'
-          and r.user_id in (select m.patient_id from patient_group_members m
-            where m.group_id = "patient_group_surveys"."group_id"))`,
     })
     .from(patientGroupSurveys)
     .innerJoin(surveys, eq(surveys.id, patientGroupSurveys.surveyId))
@@ -269,7 +388,15 @@ patientGroupRoutes.get("/:id", async (c) => {
     assignedBy: r.assignedBy,
     expiresAt: r.expiresAt,
     attemptsAllowed: r.attemptsAllowed,
-    completedCount: Number(r.completedCount ?? 0),
+    /*
+     * Прошедшие считаются по людям, а не по прохождениям: «пять из
+     * двенадцати сдали» и «сдали двенадцать раз» — разные ответы, и
+     * специалисту нужен первый. Считаются по тем, кто стоит в составе на
+     * экране (нынешний состав в зоне читателя), и по тем же парам, что
+     * отметки строк: знаменатель — состав, и «сдали 7 из 5» не бывает, а
+     * число над полосой и галочки в таблице сходятся.
+     */
+    completedCount: visibleRows.filter((m) => done.has(`${m.userId}|${r.surveyId}`)).length,
   }));
 
   // чтение поимённого состава — доступ к персональным данным, фиксируем
@@ -279,6 +406,11 @@ patientGroupRoutes.get("/:id", async (c) => {
     resourceId: groupId,
     details: { members: members.length, surveys: groupSurveys.length, phones: true },
   });
+
+  const [fav] = await db
+    .select({ groupId: patientGroupFavourites.groupId })
+    .from(patientGroupFavourites)
+    .where(and(eq(patientGroupFavourites.userId, user.id), eq(patientGroupFavourites.groupId, groupId)));
 
   const card: PatientGroupCard = {
     id: group.id,
@@ -290,6 +422,8 @@ patientGroupRoutes.get("/:id", async (c) => {
     createdAt: group.createdAt,
     members,
     surveys: groupSurveys,
+    ownerName: (await namesOf([group.ownerId])).get(group.ownerId) ?? "—",
+    favourite: !!fav,
   };
   return c.json(card);
 });

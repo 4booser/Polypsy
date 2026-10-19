@@ -37,13 +37,21 @@ describe("словарь оболочки", () => {
      * ключ уходит отсюда — и проверка снова начнёт его сторожить. Список
      * может только уменьшаться.
      */
-    const PLACEHOLDER = new Set<string>(["pub.aboutText"]);
+    const PLACEHOLDER = new Set<string>([]);
+    /*
+     * Формы числа, которые совпадают по самому языку («право|права|прав»,
+     * «вставка|вставки|вставок»): переводить в них нечего. Список тоже именной,
+     * а не правило: новое совпадение сначала проверяет человек.
+     */
+    const SAME_WORDS = new Set<string>(["adm2.nRights", "adm2.nInserts"]);
+    // длина — по словам, без подстановок: «{roles}, {rights}, {exceptions}» переводить нечего
+    const words = (text: string) => text.replace(/\{\w+\}/g, "");
     const suspicious = entries
-      .filter(([k, v]) => v.uk === v.ru && v.ru.length > 24 && !PLACEHOLDER.has(k))
+      .filter(([k, v]) => v.uk === v.ru && words(v.ru).length > 24 && !PLACEHOLDER.has(k) && !SAME_WORDS.has(k))
       .map(([k, v]) => `${k}: ${v.ru}`);
     expect(suspicious).toEqual([]);
     // исключение обязано указывать на существующий ключ, иначе оно переживёт свой повод
-    expect([...PLACEHOLDER].filter((k) => !entries.some(([key]) => key === k))).toEqual([]);
+    expect([...PLACEHOLDER, ...SAME_WORDS].filter((k) => !entries.some(([key]) => key === k))).toEqual([]);
   });
 
   test("перевод возвращает строку для любого ключа", () => {

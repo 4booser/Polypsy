@@ -189,7 +189,16 @@ describe("срок и дата в уведомлении", () => {
     const now = new Date();
     await runDueSchedules(now);
     const [a] = await assignmentsOf(s.batteryId);
-    const due = dayOf(new Date(now.getTime() + 7 * DAY).toISOString())!;
+    /*
+     * Срок — через семь календарных дней по часам учреждения, а не через
+     * 7 × 24 часа: в неделю перевода часов (последнее воскресенье октября)
+     * 168 часов от полуночи приходятся ещё на шестой день, и проверка
+     * требовала от сервера ту самую ошибку, от которой его уже избавили
+     * (endOfDayAfter, внешний разбор #23).
+     */
+    const noon = new Date(`${dayOf(now.toISOString())}T12:00:00Z`);
+    noon.setUTCDate(noon.getUTCDate() + 7);
+    const due = noon.toISOString().slice(0, 10);
     expect(a!.dueAt && new Date(a!.dueAt).toISOString()).toBe(endOfDay(due));
     expect(bodies).toHaveLength(1);
     expect(bodies[0]).toContain(due);

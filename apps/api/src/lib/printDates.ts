@@ -44,27 +44,21 @@ export function printCalendarDay(value: string, lang: Lang): string {
   return at.toLocaleDateString(LOCALE_OF[lang], { timeZone: "UTC" });
 }
 
-/**
- * Момент с минутами в поясе: «2026-09-28 00:30».
- *
- * Вид прежний — лист прохождения печатал так и раньше, только по Гринвичу:
- * вид менять незачем, неправ был пояс.
- */
-export function printStamp(iso: string, tz: string = env.institutionTz): string {
+/** Время момента в поясе, часы и минуты: «00:30» */
+export function printTime(iso: string, tz: string = env.institutionTz): string {
   const at = new Date(iso);
   if (Number.isNaN(at.getTime())) return iso;
-  const parts = Object.fromEntries(
-    new Intl.DateTimeFormat("en-CA", {
-      timeZone: tz,
-      hourCycle: "h23",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-    })
-      .formatToParts(at)
-      .map((p) => [p.type, p.value]),
-  );
-  return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}`;
+  return new Intl.DateTimeFormat("en-GB", { timeZone: tz, hourCycle: "h23", hour: "2-digit", minute: "2-digit" }).format(at);
+}
+
+/**
+ * Момент днём и временем в поясе, видом языка листа: «28.09.2026, 00:30».
+ *
+ * Вид «Виразной» (UI 3): дата так же, как в остальном листе, а не
+ * ISO-срезом, — человек сверяет лист с экраном консоли, где дата одна.
+ */
+export function printMoment(iso: string, lang: Lang, tz: string = env.institutionTz): string {
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return iso;
+  return `${printDay(iso, lang, tz)}, ${printTime(iso, tz)}`;
 }

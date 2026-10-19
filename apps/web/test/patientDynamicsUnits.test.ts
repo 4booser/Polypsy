@@ -28,9 +28,10 @@ describe("динамика пациента: доля и подпись в од�
     expect(dynamics).not.toMatch(/\{last\.rawScore\}\s*\{ut\("an\.of"\)\}\s*\{last\.maxScore\}/);
   });
 
-  test("полная шкала под графиком — в единицах значений (pointValueTop)", () => {
-    expect(dynamics).toContain("fullRange={last ? pointValueTop(last) : null}");
-    expect(dynamics).not.toContain("fullRange={last?.maxScore}");
+  test("верх шкалы у графика курса — в единицах значений (pointValueTop)", () => {
+    /* 2.0: вместо LineChart с fullRange — CourseChart набора с max (верх шкалы без лестницы) */
+    expect(dynamics).toContain("max={last ? pointValueTop(last) : null}");
+    expect(dynamics).not.toContain("max={last?.maxScore}");
   });
 
   test("положительный контроль: график по-прежнему рисует значение точки", () => {

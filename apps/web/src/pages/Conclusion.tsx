@@ -1,456 +1,431 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Link, useMatch, useParams } from "react-router-dom";
-import {
-  bandFor,
-  type DecisionRule,
-  type ResponseDetail,
-  type ResponseDetailAnswer,
-  type RuleHit,
-  type Scale,
-  type ScoreResult,
-  type SurveyFull,
-} from "@quizzy/shared";
+import { useEffect, useRef, useState } from "react";
+import { Link, useParams } from "react-router-dom";
+import type { DecisionRule, RespondentDynamics, ResponseContext, ResponseDetail, RuleHit } from "@quizzy/shared";
 import { api, openInTab, type ConclusionState } from "../api";
-import { ConclusionEditor, buildDraft } from "../components/ConclusionEditor";
-import { draftSavable } from "../components/versioned";
+import { useAuth } from "../auth";
+import { useDecimal } from "../charts/kit";
+import { ConclusionEditor, type SignLock } from "../components/ConclusionEditor";
+import { dateTime, day, timeOfDay } from "../format";
 import { useLang } from "../lang";
-import { Loading, useAction, useToast } from "../ui";
+import { ActivityList, Callout, Ic, Loading, Popover, useAction } from "../ui";
 import { cx } from "../ui/cx";
-import { IconGear } from "../ui/glyphs";
-import { Page } from "../ui/layout";
-import { Button, Field, Input } from "../ui/primitives";
+import { Panel } from "../ui/layout";
+import { Button, ButtonLink, SeverityTag } from "../ui/primitives";
 import { useResource } from "../useResource";
+import { mainScore, reviewHref, signGate, signalStrip, signalTimer } from "./response/context";
+import { useResponseExtras } from "./response/data";
+import { ResponseBanner, ResponseFrame } from "./response/frame";
+import { Rx } from "./response/icons";
+import { scaleChange, type ShiftLine } from "./response/model";
+import { RulesPanel } from "./response/panels";
 
 /*
- * Экран «Заключення» — кадры макета f36 и f37.
+ * Заключение по прохождению — лист во всю колонку (Polypsy 2.0, кадр
+ * methods-conclusion).
  *
- * Номера — по действующей описи кадров (index.json). Старые числа из
- * docs/REWRITE-PLAN.md к ней не относятся вовсе и здесь не повторяются даже
- * справкой: повторённые, они и есть то, по чему следующая сверка уходит не
- * на тот кадр. Что номер из своего раздела, сторожит
- * apps/web/test/frameRefs.test.ts.
+ * Над листом — та же шапка пациента, что над протоколом, со строкой
+ * открытого: пилюля черновика здесь «нажата». Слева — редактор: название,
+ * сводка результата, вывод, сигналы этого прохождения, подпись; под ним —
+ * что уйдёт в печатный отчёт. Справа — результаты человека по всем
+ * методикам (для вывода), предложения правил, аналитические модели и
+ * история версий.
  *
- * Два кадра — один экран. f37 рисует его для одного теста: название,
- * описание, вопросы с баллами, лестница результатов, «опитувальник
- * спостереження», выводы. f36 — тот же экран, но полнее: сверху добавлены
- * название документа, список применённых аналитических моделей с вердиктами
- * и список тестов с набранными баллами. Взят f36 как более полный; из f37 не
- * пропало ничего — его блоки входят в f36 целиком. Где кадры расходятся
- * мелочью (в f37 над описанием стоит подпись «Опис тесту», в f36 — нет),
- * выбран f36: экран уже назвал тест заголовком.
- *
- * Прежде заключение жило раскрывающейся строкой в таблице прохождений на
- * экране аналитики методики (SurveyAnalytics.tsx): текст без протокола
- * ответов, без лестницы результатов, без баллов вариантов. Разбирающий читал
- * «12 из 30 — умеренная» и, чтобы понять, из чего сложились 12, открывал
- * печатный отчёт. Здесь всё это на одном свитке, как и нарисовано, а печать
- * осталась печатью — за шестерёнкой.
- *
- * Чего на экране нет и почему (подробно — у каждого места ниже):
- *   · «Опитувальник спостереження за пацієнтом» вторым протоколом нарисован,
- *     но пуст: заключение привязано к ОДНОМУ прохождению
- *     (conclusions.responseId), второго источника у него нет. Блок стоит на
- *     своём месте с кадра и честно говорит, чего ждёт от сервера, — иначе
- *     половина кадра f36_2/f37_1 просто исчезла бы без следа;
- *   · «Надіслати поштою»: см. DocumentMenu.
+ * /responses/:id/conclusion/draft — тот же экран: инструменты черновика
+ * («Зібрати з результатів», шаблоны, формулировки, «Зберегти чернетку»)
+ * теперь стоят на самом листе, а не прячутся за отдельным адресом.
  */
-
 export default function ConclusionPage() {
   const { ut } = useLang();
+  const { can } = useAuth();
+  const dec = useDecimal();
   const { id } = useParams<{ id: string }>();
   const responseId = id!;
-
   /*
-   * Прохождение и методика грузятся одной загрузкой, а не двумя ресурсами.
-   *
-   * Методика нужна ради того, чего в прохождении нет: баллов вариантов и
-   * лестницы полос. Без неё экран показать нечего — половина свитка пустая,
-   * — поэтому «прохождение есть, методики нет» не является состоянием, в
-   * котором экран должен что-то рисовать. Одна загрузка даёт одно состояние
-   * «готово» и одну ошибку.
-   */
-  /*
-   * keep: false у всех трёх загрузок (#200, как у карточек #177): после
-   * перехода к другому прохождению прежние ответ, методика и черновик под
-   * новым адресом — не «устаревающие данные», а чужое заключение. Черновик
-   * прежнего залился бы в поле, и «Зберегти» записал бы его новому.
+   * keep: false (#177, #200): прохождение и заключение прежнего адреса под
+   * новым — чужой документ, а не устаревающий.
    */
   const res = useResource(
     async () => {
       const detail = await api.responseDetail(responseId);
-      const survey = await api.survey(detail.survey.id);
-      return { detail, survey };
+      return { detail };
     },
     [responseId],
     { keep: false },
   );
-
-  /* источник черновика: сам не перечитывается — правку не затрёт (useResource, manual) */
   const conclusion = useResource(() => api.conclusion(responseId), [responseId], { manual: true, keep: false });
 
   /*
-   * Название документа — поле «Назва заключення» с кадра f36.
-   *
-   * Живёт здесь, а не в редакторе: поле стоит первым на экране, редактор —
-   * последним, а сохраняются они одной записью. Из ответа сервера название
-   * берётся только когда оно там есть строкой: столбца title на сервере пока
-   * нет (см. api.ts, ConclusionVersion.title), и «нет поля» не должно
-   * затирать то, что человек набрал.
+   * Поля «Назва заключення» с кадра нет: столбца title у заключения на
+   * сервере нет, и набранное название молча не сохранялось бы. Поле, которое
+   * не сохраняется, хуже его отсутствия; вернётся вместе со столбцом.
    */
-  const [title, setTitle] = useState("");
-  /* название набирается к своему прохождению: переход к другому начинает с пустого (#200) */
-  useEffect(() => setTitle(""), [responseId]);
-  useEffect(() => {
-    const t = conclusion.data?.current?.title;
-    if (typeof t === "string") setTitle(t);
-  }, [conclusion.data]);
 
-  /*
-   * Текст заключения, поле ввода и то, что открыто из меню шестерёнки, живут
-   * здесь, а не в редакторе: на кадре f37_2 полоса над текстом занята
-   * форматированием, и инструменты редактора (сборка из фактов, библиотека
-   * формулировок, история версий, «Зберегти чернетку») ушли в меню документа.
-   * Меню стоит в шапке экрана — значит, и текст должен лежать там, откуда его
-   * видят оба.
-   */
+  /* в поле — черновик, если он есть; после подписи поле пустеет под новую версию */
   const [text, setText] = useState("");
-  const [tool, setTool] = useState<null | "templates" | "history">(null);
   const areaRef = useRef<HTMLTextAreaElement | null>(null);
-
-  /*
-   * Черновик подставляется в поле один раз на загрузку. Делать это на каждый
-   * рендер значило бы затирать то, что специалист печатает прямо сейчас.
-   */
   useEffect(() => {
     const current = conclusion.data?.current;
     setText(current?.status === "draft" ? current.text : "");
   }, [conclusion.data]);
 
-  const surveyId = res.data?.detail.survey.id;
-  const models = useResource(() => loadModels(responseId, surveyId!), [responseId, surveyId], {
+  const detail = res.data && res.data.detail.id === responseId ? res.data.detail : null;
+  /*
+   * Динамика — одна, по всем методикам: «Результати» справа показывают все
+   * методики человека, а сводка над выводом берёт из неё блок этой методики.
+   * Прежде рядом с общей читалась ещё и узкая (?survey=) — то же самое
+   * вторым запросом и второй строкой журнала (волна 27).
+   */
+  const x = useResponseExtras(responseId, detail, { dynamics: "all", conclusion: false });
+  const surveyId = detail?.survey.id;
+  /* правила поддержки решений — «моделі аналітики»; вердикт — по срабатываниям этого прохождения */
+  const models = useResource(() => api.decisionRules(), [responseId, surveyId], {
     enabled: !!surveyId,
     keep: false,
   });
+  const historyRef = useRef<HTMLElement | null>(null);
 
+  if (!detail) return <Loading rows={8} error={res.error} onRetry={res.reload} />;
+  const ctx = x.ctx.data;
   /*
-   * Инструменты черновика (сборка из фактов, библиотека формулировок,
-   * история версий, «Зберегти чернетку») живут в меню шестерёнки только на
-   * отдельном адресе /responses/:id/conclusion/draft: на кадре f36 в
-   * раскрытом меню ровно два пункта, и четыре инструмента рядом с ними —
-   * не кадр. Экран при этом один и тот же, состояние — одно.
+   * Замок подписи — по тому, что известно сейчас (signGate): пока обстановка
+   * едет, подпись ждёт; не пришла — закрыта с «Повторити». Прежде замок
+   * считался только по пришедшей обстановке, и до её ответа (или при отказе)
+   * кнопка подписи была живой при неразобранном сигнале.
    */
-  const draftTools = useMatch("/responses/:id/conclusion/draft") !== null;
+  const gate = signGate(ctx, !!x.ctx.error, can("alerts.review"));
+  const lock =
+    gate === "locked"
+      ? signLock(ctx, detail, ut, dec)
+      : gate === "unknown"
+        ? {
+            title: ut("cnx.lockUnknownTitle"),
+            body: `${ut("cnx.lockUnknownBody")} ${ut("cnx.lockDraftOk")}`,
+            action: (
+              <Button size="xs" variant="secondary" onClick={() => x.ctx.reload()}>
+                {ut("common.retry")}
+              </Button>
+            ),
+            tone: "warn" as const,
+            note: ut("cnx.lockUnknownBody"),
+          }
+        : null;
+  const main = mainScore(detail.scores);
 
   return (
-    <Page
-      title={ut("cn3.title")}
-      /* 40, а не 50: на кадрах f36 и f37 чернила «Заключення» стоят в 47 от низа полосы */
-      topGap={40}
-      actions={
-        <DocumentMenu
-          responseId={responseId}
-          text={draftTools ? text : undefined}
-          setText={draftTools ? setText : undefined}
-          tool={tool}
-          setTool={draftTools ? setTool : undefined}
-          state={draftTools ? conclusion.data : undefined}
-          title={title}
-          onState={conclusion.patch}
-        />
-      }
-    >
-      {!res.data ? (
-        <Loading rows={8} error={res.error} onRetry={res.reload} />
-      ) : (
-        <>
-          {/* 605px — ширина поля на кадре; подпись, как везде на макете, внутри поля */}
-          <Field label={ut("cn3.name")} className="max-w-[605px]">
-            <Input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={200} />
-          </Field>
-
-          <ModelList models={models.data} error={models.error} />
-
-          <TestList detail={res.data.detail} survey={res.data.survey} />
-
-          <TestBody detail={res.data.detail} survey={res.data.survey} />
-
-          <Observation />
-
+    <ResponseFrame banner={<ResponseBanner detail={detail} ctx={ctx} conclusion={conclusion.data} place="conclusion" pending={!x.ctx.data && !x.ctx.error} />}>
+      <div className="grid items-start gap-4 grid-cols-[minmax(0,1fr)_360px] max-[1360px]:grid-cols-[minmax(0,1fr)_320px] max-[1100px]:grid-cols-1">
+        <div className="flex min-w-0 flex-col gap-4">
+          {detail.status !== "completed" ? (
+            /* заключение пишется только по завершённому: сервер ответит 409 — экран говорит это сразу */
+            <Callout kind="warn" title={ut(`rstatus.${detail.status}`, detail.status)}>
+              {ut("rp.concl.afterSubmit")}
+            </Callout>
+          ) : null}
           <ConclusionEditor
             responseId={responseId}
             state={conclusion.data}
             error={conclusion.error}
             onState={conclusion.patch}
             onReload={conclusion.reload}
-            title={title}
             text={text}
             setText={setText}
             areaRef={areaRef}
-            tool={tool}
-            setTool={setTool}
+            heading={ut("cnx.heading")
+              .replace("{survey}", detail.survey.title)
+              .replace("{at}", detail.submittedAt ? `${day(detail.submittedAt)}, ${timeOfDay(detail.submittedAt)}` : "—")}
+            summary={main ? <Summary detail={detail} dynamics={x.dynamics} /> : null}
+            signals={<SignalsSection ctx={ctx} detail={detail} />}
+            lock={lock}
+            signPending={gate === "pending"}
+            canWrite={can("conclusions.write")}
+            canSign={can("conclusions.sign")}
+            onHistory={() => {
+              historyRef.current?.scrollIntoView({ block: "start", behavior: "smooth" });
+              historyRef.current?.focus();
+            }}
           />
-        </>
-      )}
-    </Page>
+          <ReportPanel responseId={responseId} />
+        </div>
+        <div className="flex min-w-0 flex-col gap-4">
+          <ResultsSide detail={detail} dyn={x.dynamics} loading={x.dynamicsLoading} enabled={x.wantsDynamics} />
+          {ctx?.hits ? <RulesPanel hits={ctx.hits} reload={x.ctx.reload} title={ut("ds.title")} hint={ut("ds.sub")} /> : null}
+          <ModelsPanel rules={models.data} error={models.error} hits={ctx?.hits ?? []} responseId={responseId} surveyId={detail.survey.id} />
+          <HistoryPanel state={conclusion.data} anchor={historyRef} />
+        </div>
+      </div>
+    </ResponseFrame>
   );
 }
 
-/* ─────────── шестерёнка ─────────── */
+/* ─────────── подпись после разбора сигнала ─────────── */
 
-/**
- * Меню документа: «Зберегти як PDF» и «Надіслати поштою» — ровно два пункта,
- * как на кадре f36 (плашка 174×70 у правого края, без рамки, мягкая тень).
- *
- * Инструменты редактора черновика меню принимает потомками свойств
- * (`setText`, `setTool`, `state`), и экран передаёт их ТОЛЬКО на адресе
- * /responses/:id/conclusion/draft. На самом заключении их нет: кадр рисует
- * два пункта, и третий — хоть «Чернетка ▸» — был бы уже не кадром.
- *
- * PDF — это печатный отчёт GET /api/reports/responses/:id, открытый в новой
- * вкладке: сервер отдаёт разметку, а PDF делает печать браузера. Так решено
- * в reports.ts намеренно (нет серверной зависимости на рендер PDF), и здесь
- * пункт меню ведёт ровно туда, куда вела кнопка «Друк».
- *
- * Почта остаётся пунктом меню, но не действием: маршрута отправки нет, а
- * почтовый транспорт системы по решению в lib/notify.ts не носит
- * персональных данных вовсе. Нажатие честно говорит об этом сообщением, а не
- * молчит и не делает вид. Убрать пункт значило бы спрятать от заказчика, что
- * вопрос об отправке заключения за контур учреждения ещё не решён.
- */
-export function DocumentMenu({
-  responseId,
-  text,
-  setText,
-  tool,
-  setTool,
-  state,
-  title,
-  onState,
-}: {
-  responseId: string;
-  /** Текст черновика: инструменты редактора живут в этом меню, см. ConclusionEditor */
-  text?: string;
-  setText?: (next: string) => void;
-  tool?: null | "templates" | "history";
-  setTool?: (next: null | "templates" | "history") => void;
-  state?: ConclusionState | null;
-  title?: string;
-  onState?: (next: ConclusionState) => void;
-}) {
-  const { ut } = useLang();
-  const { run } = useAction();
-  const toast = useToast();
-  const [open, setOpen] = useState(false);
-  const rootRef = useRef<HTMLDivElement | null>(null);
-  const buttonRef = useRef<HTMLButtonElement | null>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const close = () => {
-      setOpen(false);
-      buttonRef.current?.focus();
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") close();
-    };
-    /* нажатие мимо меню закрывает его; фокус при этом никуда не возвращается — он ушёл туда, куда нажали */
-    const onDown = (e: MouseEvent) => {
-      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("keydown", onKey);
-    document.addEventListener("mousedown", onDown);
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      document.removeEventListener("mousedown", onDown);
-    };
-  }, [open]);
-
-  /*
-   * Стрелки ходят по пунктам: у role="menu" диктор обещает пользователю
-   * именно такое поведение, и Tab, уводящий из меню на страницу, его бы
-   * обманул.
-   */
-  const onMenuKey = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
-    e.preventDefault();
-    const items = [...(rootRef.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]') ?? [])];
-    const at = items.indexOf(document.activeElement as HTMLButtonElement);
-    const next = e.key === "ArrowDown" ? (at + 1) % items.length : (at - 1 + items.length) % items.length;
-    items[next]?.focus();
+function signLock(
+  ctx: ResponseContext | null,
+  detail: ResponseDetail,
+  ut: ReturnType<typeof useLang>["ut"],
+  dec: (v: number) => string,
+): SignLock | null {
+  const open = signalStrip(ctx?.signals ?? null).openHere;
+  if (!open.length) return null;
+  const oldest = [...open].sort((a, b) => b.minutesOpen - a.minutesOpen)[0]!;
+  const timer = signalTimer(oldest, ut("rp.hours"), dec);
+  return {
+    title: ut("cnx.lockTitle"),
+    body: (
+      <>
+        {open.map((s) => s.label).join("; ")}.{" "}
+        {timer
+          ? ut("cnx.lockTimer").replace("{t}", ut("kit.timerOf").replace("{elapsed}", timer.elapsed).replace("{of}", timer.of))
+          : ut("cnx.lockSince").replace("{t}", timeOfDay(oldest.at))}
+        . {ut("cnx.lockDraftOk")}
+      </>
+    ),
+    action: (
+      <ButtonLink to={reviewHref(ctx?.patient?.id ?? detail.userId)} variant="risk" size="xs">
+        <Ic.alert />
+        {ut("rp.reviewSignal")}
+      </ButtonLink>
+    ),
   };
+}
 
+/* ─────────── сводка результата над выводом ─────────── */
+
+const VERDICT_KEY = {
+  better: "kit.reliablyBetter",
+  worse: "kit.reliablyWorse",
+  within: "kit.withinError",
+  changed: "course.v.changed",
+  unknown: "course.v.unknown",
+  version: "rp.cmp.version",
+  units: "rp.cmp.units",
+  unreliable: "rp.cmp.unreliable",
+} as const;
+
+function Summary({ detail, dynamics }: { detail: ResponseDetail; dynamics: RespondentDynamics | null }) {
+  const { ut } = useLang();
+  const dec = useDecimal();
+  const main = mainScore(detail.scores)!;
+  const rungs = main.bands.map((b) => ({ min: b.minScore, max: b.maxScore, label: b.label, severity: b.severity }));
+  const change = scaleChange(detail, dynamics, main.scaleCode, rungs);
+  const line = change?.fromStart ?? change?.fromPrev ?? null;
+  const shift = (l: ShiftLine) => `${l.delta > 0 ? "+" : l.delta < 0 ? "−" : "±"}${dec(Math.abs(l.delta))}`;
   return (
-    <div ref={rootRef} className="relative">
-      <Button
-        ref={buttonRef}
-        size="glyph"
-        aria-label={ut("cn3.actions")}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        /* ссылка на меню — только пока оно есть: закрытое не в разметке, а idref в пустоту — ошибка ARIA */
-        aria-controls={open ? "conclusion-menu" : undefined}
-        onClick={() => setOpen((v) => !v)}
-      >
-        <IconGear />
-      </Button>
-      {open ? (
-        <div
-          id="conclusion-menu"
-          role="menu"
-          aria-label={ut("cn3.actions")}
-          onKeyDown={onMenuKey}
-          /*
-            Белая плашка с тенью, пункты прижаты к правому краю — как на кадре.
-            Тень — токен, а не число: в тёмной теме плашка белой не будет.
-          */
-          className="absolute right-0 top-[calc(100%+8px)] z-30 flex min-w-[165px] flex-col items-stretch rounded-[5px] bg-[var(--bg)] py-[8px] shadow-pop"
-        >
-          <MenuItem
-            autoFocus
-            onClick={() => {
-              setOpen(false);
-              void run(() => openInTab(api.reportUrl(responseId)));
-            }}
-          >
-            {ut("cn3.savePdf")}
-          </MenuItem>
-          <MenuItem
-            onClick={() => {
-              setOpen(false);
-              toast(ut("cn3.mailUnavailable"), "info");
-            }}
-          >
-            {ut("cn3.sendMail")}
-          </MenuItem>
-          {/*
-            Инструменты редактора заключения — «Зібрати з результатів»,
-            библиотека формулировок, история версий и «Зберегти чернетку».
-            На кадре f37_2 полоса над текстом занята форматированием, а в
-            раскрытом меню кадра f36 стоят только два пункта выше, — поэтому
-            сюда они приходят лишь на адресе .../conclusion/draft, где
-            экрана в макете нет вовсе.
-          */}
-          {setText && setTool && state ? (
-            <>
-              <hr className="my-1 border-0 border-t border-hairline" />
-              <MenuItem
-                onClick={() => {
-                  setOpen(false);
-                  void run(async () => {
-                    if (text?.trim() && !window.confirm(ut("cn.draftReplaced"))) return false;
-                    setText(await buildDraft(responseId, ut as unknown as (k: never) => string));
-                  });
-                }}
-              >
-                {ut("cn.fromResults")}
-              </MenuItem>
-              <MenuItem
-                onClick={() => {
-                  setOpen(false);
-                  setTool(tool === "templates" ? null : "templates");
-                }}
-              >
-                {ut("tpl.insert")}
-              </MenuItem>
-              {state.versions.length > 1 ? (
-                <MenuItem
-                  onClick={() => {
-                    setOpen(false);
-                    setTool(tool === "history" ? null : "history");
-                  }}
-                >
-                  {tool === "history" ? ut("cn.hideHistory") : `${ut("cnc.showHistory")} (${state.versions.length})`}
-                </MenuItem>
-              ) : null}
-              {/* пустое поле черновиком не сохраняется: см. draftSavable (components/versioned.ts) */}
-              <MenuItem
-                disabled={!draftSavable(text ?? "")}
-                onClick={() => {
-                  setOpen(false);
-                  void run(async () => {
-                    onState?.(await api.saveConclusion(responseId, text ?? "", state.current, title ?? ""));
-                  }, ut("cn.draftSaved"));
-                }}
-              >
-                {ut("cnc.saveDraft")}
-              </MenuItem>
-            </>
+    <div className="flex items-center gap-4 rounded-[12px] bg-panel-2 px-4 py-3">
+      <span className="text-stat font-extrabold leading-none tracking-[-0.03em] text-text tabular-nums">{dec(main.value)}</span>
+      <span className="min-w-0 text-small text-text-2">
+        <span className="flex flex-wrap items-center gap-2">
+          <b className="font-extrabold text-text">{main.scaleTitle}</b>
+          {main.band ? (
+            <SeverityTag level={main.band.severity} small>
+              {main.band.label}
+            </SeverityTag>
           ) : null}
-        </div>
-      ) : null}
+        </span>
+        {line ? (
+          <span className="mt-1 block">
+            <b className="font-extrabold text-text">{shift(line)}</b>{" "}
+            {(change?.fromStart ? ut("cnx.fromStart") : ut("rp.since")).replace("{d}", day(line.at))}, {ut(VERDICT_KEY[line.verdict])}
+            {change?.rc != null ? `; ${ut("rp.rcLine").replace("{n}", dec(change.rc))}` : ""}
+          </span>
+        ) : null}
+      </span>
     </div>
   );
 }
 
-function MenuItem({
-  children,
-  onClick,
-  autoFocus,
-  disabled,
-}: {
-  children: ReactNode;
-  onClick: () => void;
-  autoFocus?: boolean;
-  disabled?: boolean;
-}) {
+/* ─────────── сигналы этого прохождения ─────────── */
+
+const OUTCOME_KEY = {
+  confirmed: "rp.outcome.confirmed",
+  not_confirmed: "rp.outcome.not_confirmed",
+  needs_followup: "rp.outcome.needs_followup",
+} as const;
+
+function SignalsSection({ ctx, detail }: { ctx: ResponseContext | null; detail: ResponseDetail }) {
+  const { ut } = useLang();
+  const here = (ctx?.signals ?? []).filter((s) => s.here);
+  if (!here.length) return null;
   return (
-    <button
-      type="button"
-      role="menuitem"
-      autoFocus={autoFocus}
-      disabled={disabled}
-      onClick={onClick}
-      /* `min-h-0` и `border-0` гасят рамку и высоту глобального правила для button из наследия */
-      className={cx(
-        "min-h-0 rounded-[4px] border-0 bg-transparent px-[16px] py-[6px] text-right text-[15px] text-text-2",
-        "transition-colors duration-[var(--dur-fast)] hover:bg-primary-soft hover:text-primary",
-        "outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]",
-      )}
-    >
-      {children}
-    </button>
+    <section className="border-t border-divider pt-4" aria-labelledby="cn-signals">
+      <h3 id="cn-signals" className="m-0 flex items-baseline gap-2 text-h3 font-extrabold text-text">
+        {ut("cnx.signalsTitle")}
+        <span className="text-small font-medium text-muted">{ut("cnx.signalsSub")}</span>
+      </h3>
+      <ul className="m-0 mt-2.5 flex list-none flex-col gap-2 p-0">
+        {here.map((s) => (
+          <li
+            key={s.id}
+            className={cx(
+              "flex flex-wrap items-center gap-x-2.5 gap-y-1 rounded-[12px] px-3.5 py-2.5 text-small",
+              s.reviewedAt ? "bg-sunk text-text-2" : "shadow-[inset_0_0_0_1.5px_var(--ctl)] text-text-2",
+            )}
+          >
+            {s.reviewedAt ? <Ic.circleCheck size={15} className="text-good" /> : <Ic.lock size={15} className="text-risk-ink" />}
+            <span className={cx("min-w-0 flex-1", !s.reviewedAt && "font-bold text-text")}>{s.label}</span>
+            {s.reviewedAt ? (
+              <span>
+                {ut("rp.reviewedBy").replace("{name}", s.reviewedByName ?? "—")}, {dateTime(s.reviewedAt)}
+                {s.outcome ? `: ${ut(OUTCOME_KEY[s.outcome])}` : ""}
+              </span>
+            ) : (
+              <ButtonLink to={reviewHref(ctx?.patient?.id ?? detail.userId)} variant="ghost" size="xs">
+                {ut("rp.review")}
+              </ButtonLink>
+            )}
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 
-/* ─────────── список моделей ─────────── */
+/* ─────────── печатный отчёт ─────────── */
+
+function ReportPanel({ responseId }: { responseId: string }) {
+  const { ut } = useLang();
+  const { run, busy } = useAction();
+  return (
+    <Panel
+      title={ut("cnx.report")}
+      icon={<Rx.printer />}
+      sub={ut("cnx.reportSub")}
+      actions={
+        <Button size="xs" icon={<Ic.eye />} disabled={busy} onClick={() => void run(() => openInTab(api.reportUrl(responseId)))}>
+          {ut("cnx.preview")}
+        </Button>
+      }
+    >
+      <p className="m-0 text-small text-text-2">{ut("cnc.onlySignedInReport")}</p>
+      <Callout kind="info" icon={<Ic.message />} className="mt-3">
+        {ut("cn3.mailUnavailable")}
+      </Callout>
+    </Panel>
+  );
+}
+
+/* ─────────── результаты человека по всем методикам ─────────── */
+
+interface ResultLine {
+  key: string;
+  code: string;
+  survey: string;
+  at: string;
+  value: number;
+  band: { label: string; severity: "none" | "mild" | "moderate" | "severe" } | null;
+  delta: number | null;
+  here: boolean;
+  responseId: string;
+  surveyId: string;
+}
+
+/** Последний замер каждой методики человека — главная шкала: первая с полосой, иначе первая */
+export function resultLines(dyn: RespondentDynamics, responseId: string): ResultLine[] {
+  const out: ResultLine[] = [];
+  for (const sv of dyn.surveys) {
+    const scales = sv.scales.filter((s) => s.points.length);
+    const scale = scales.find((s) => s.points.some((p) => p.severity !== null)) ?? scales[0];
+    if (!scale) continue;
+    const pts = [...scale.points].sort((a, b) => a.submittedAt.localeCompare(b.submittedAt));
+    const here = pts.find((p) => p.responseId === responseId);
+    const last = here ?? pts[pts.length - 1]!;
+    const first = pts[0]!;
+    out.push({
+      key: `${sv.surveyId}-${scale.code}`,
+      code: scale.code,
+      survey: sv.title,
+      at: last.submittedAt,
+      value: last.rawScore,
+      band: last.bandLabel && last.severity ? { label: last.bandLabel, severity: last.severity } : null,
+      delta: pts.length > 1 && last !== first ? Math.round((last.rawScore - first.rawScore) * 100) / 100 : null,
+      here: !!here,
+      responseId: last.responseId,
+      surveyId: sv.surveyId,
+    });
+  }
+  return out.sort((a, b) => Number(b.here) - Number(a.here) || b.at.localeCompare(a.at));
+}
+
+function ResultsSide({
+  detail,
+  dyn,
+  loading,
+  enabled,
+}: {
+  detail: ResponseDetail;
+  dyn: RespondentDynamics | null;
+  loading: boolean;
+  enabled: boolean;
+}) {
+  const { ut } = useLang();
+  const dec = useDecimal();
+  const lines = dyn ? resultLines(dyn, detail.id) : [];
+  return (
+    <Panel title={ut("cnx.results")} icon={<Ic.clipboard />}>
+      {!enabled ? (
+        <p className="m-0 text-small text-muted">{ut("cnx.resultsNone")}</p>
+      ) : loading ? (
+        <Loading rows={3} bare />
+      ) : lines.length ? (
+        <ul className="m-0 list-none p-0">
+          {lines.map((l) => (
+            <li key={l.key} className="border-t border-divider py-2.5 first:border-t-0 first:pt-0.5">
+              <div className="flex min-w-0 items-baseline justify-between gap-2.5">
+                {l.here ? (
+                  <b className="min-w-0 truncate text-small font-bold text-text">{l.survey}</b>
+                ) : (
+                  <Link
+                    to={`/surveys/${l.surveyId}/responses/${l.responseId}`}
+                    className="min-w-0 truncate text-small font-bold text-text no-underline hover:underline hover:decoration-violet-line"
+                  >
+                    {l.survey}
+                  </Link>
+                )}
+                <b className="shrink-0 text-h3 font-extrabold tabular-nums text-text">{dec(l.value)}</b>
+              </div>
+              <div className="mt-1 flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
+                <span className="text-caption text-muted">
+                  {l.here ? ut("cnx.thisAttempt").replace("{d}", day(l.at)) : day(l.at)}
+                  {l.delta !== null ? `, ${ut("cnx.fromStartDelta").replace("{v}", `${l.delta > 0 ? "+" : l.delta < 0 ? "−" : "±"}${dec(Math.abs(l.delta))}`)}` : ""}
+                </span>
+                {l.band ? (
+                  <SeverityTag level={l.band.severity} small>
+                    {l.band.label}
+                  </SeverityTag>
+                ) : null}
+              </div>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="m-0 text-small text-muted">{ut("cnx.resultsNone")}</p>
+      )}
+      <ButtonLink to="/batteries" size="xs" className="mt-3 w-full">
+        <Ic.layers />
+        {ut("cn3.addTest")}
+      </ButtonLink>
+    </Panel>
+  );
+}
+
+/* ─────────── аналитические модели ─────────── */
 
 export interface AppliedModel {
   id: string;
   title: string;
-  /** Описание модели: пояснение к правилу, а для сработавшей — объяснение движка */
   description: string;
   matched: boolean;
 }
 
 /**
- * Аналитические модели экрана — это правила поддержки решений (decision_rules)
- * с вердиктом по этому прохождению.
+ * Модели, применимые к этой методике, и сработала ли каждая на ЭТОМ
+ * прохождении.
  *
- * Вердикт собирается из двух списков, потому что третьего нет: сервер пишет
- * rule_hits только для сработавших правил, «не сработало» не записывается
- * нигде. Значит: правило есть в списке правил и есть срабатывание по этому
- * прохождению — «відповідає умовам»; правило есть, срабатывания нет — «не
- * відповідає». Это честно ровно настолько, насколько правило существовало в
- * момент сдачи: заведённое позже правило покажется «не відповідає», хотя его
- * никто не проверял. Маршрут «модели и вердикты по прохождению» закрыл бы
- * эту дыру, и он назван в отчёте как нехватка сервера.
- *
- * Сопоставление по названию, а не по идентификатору: в срабатывании нет
- * ruleId, только ruleTitle. Два правила с одним названием сольются — цена
- * известна и тоже названа в отчёте.
- *
- * Правила, чьи условия смотрят на шкалу другой методики, к этому прохождению
- * не относятся и в список не попадают; выключенные — тоже.
- *
- * ПОДПИСЬ ВЕРДИКТА. На кадре f36 напечатано «Не Відповідає умовам» — с
- * прописной в середине фразы. Прежняя редакция сочла это опечаткой и
- * оставила строчную; вырезка кадра (x 1150…1420, y 350…640) говорит
- * другое: отрицательных пилюль на нём ДВЕ, и обе с прописной, а
- * положительные набраны «Відповідає умовам». То есть макет не меняет
- * написание слова, приставляя «Не», — и это тот же приём, что в «Опис
- * Групи», «Назва Заключення», «Тести Групи»: прописная стоит у смыслового
- * слова, а не только в начале фразы. Дважды повторённое — не описка.
- * Словарь набран по кадру: cn3.notMatched «Не Відповідає умовам».
+ * Модель — правило поддержки решений (DecisionRule). Применима, если включена
+ * и её условия по шкалам не привязаны к другой методике: условия по риску и
+ * без методики применимы к любой. Вердикт — по срабатыванию этого
+ * прохождения, а не любого: на соседнем прохождении того же человека модель
+ * могла сработать, и «відповідає» тогда было бы неправдой о документе.
  */
 export function applicableModels(
   rules: (DecisionRule & { note: string | null })[],
@@ -474,467 +449,105 @@ export function applicableModels(
     });
 }
 
-async function loadModels(responseId: string, surveyId: string): Promise<AppliedModel[]> {
-  /*
-   * Срабатывания читаются по всем трём состояниям: принятое и отклонённое
-   * предложение — всё равно срабатывание, модель условиям соответствовала.
-   */
-  const [rules, suggested, accepted, declined] = await Promise.all([
-    api.decisionRules(),
-    api.ruleHits("suggested"),
-    api.ruleHits("accepted"),
-    api.ruleHits("declined"),
-  ]);
-  return applicableModels(rules, [...suggested, ...accepted, ...declined], responseId, surveyId);
-}
-
-/**
- * Заголовок раздела свитка — 20/700 фиолетовым, та же ступень, что у
- * разделов карточки пациента, — и при нём действие («+»).
- *
- * Замер f36: прописная «С» в «Список примінених аналітичних моделей» и в
- * «Список тестів» — 15 px, «О» в «Опитувальник…» — 16, «В» в «Висновки
- * заключення» — 14; всё это кегль 20, а не 18. Зазор до «+» — 22 (чернила
- * заголовка кончаются на 597, глиф стоит 619…642).
- *
- * Действие стоит РЯДОМ с h2, а не внутри него. Имя заголовка для диктора
- * собирается из его содержимого, и ссылка внутри h2 приклеивала бы свою
- * подпись к имени раздела: «Список тестів Додати тест: призначити батарею» —
- * так назывались бы и заголовок, и секция, которая ссылается на него через
- * aria-labelledby. Картинка при этом та же: ряд из заголовка и глифа.
- */
-export function SectionHead({ id, action, children }: { id: string; action?: ReactNode; children: ReactNode }) {
-  return (
-    <div className="flex items-center gap-[22px]">
-      <h2 id={id} className="m-0 text-[20px] font-bold leading-[24px] text-primary">
-        {children}
-      </h2>
-      {action}
-    </div>
-  );
-}
-
-function ModelList({ models, error }: { models: AppliedModel[] | null; error: string | null }) {
+function ModelsPanel({
+  rules,
+  error,
+  hits,
+  responseId,
+  surveyId,
+}: {
+  rules: (DecisionRule & { note: string | null })[] | null;
+  error: string | null;
+  hits: RuleHit[];
+  responseId: string;
+  surveyId: string;
+}) {
   const { ut } = useLang();
+  const models = rules ? applicableModels(rules, hits, responseId, surveyId) : null;
   return (
-    <section aria-labelledby="cn-models" className="mt-[50px]">
+    <Panel
+      title={ut("cnx.models")}
+      icon={<Ic.chart />}
+      sub={models?.length ? ut("cnx.modelsCount").replace("{n}", String(models.length)) : undefined}
+      actions={
+        /* завести модель — экран аналитики (/analytics/new) */
+        <ButtonLink to="/analytics/new" variant="ghost" size="icon-sm" aria-label={ut("cnx.newModel")} title={ut("cnx.newModel")}>
+          <Ic.plus />
+        </ButtonLink>
+      }
+    >
       {/*
-        «+» у заголовка — как на кадре f36_1, тем же глифом, что у «Списку
-        тестів». В первой редакции его здесь не было: считалось, что экрана
-        моделей в консоли нет и вести некуда. Экран есть — /analytics/new
-        (App.tsx), — и «+» ведёт туда: завести аналитическую модель.
-      */}
-      <SectionHead id="cn-models" action={<AddGlyph to="/analytics/new" label={ut("cn3.models")} />}>
-        {ut("cn3.models")}
-      </SectionHead>
-      {/*
-        Отказ показывается словами, а не пустотой: у специалиста без права
-        alerts.review список правил закрыт, и «моделей нет» было бы неправдой.
-        Сначала человеческая подпись, за ней — текст сервера с номером
-        запроса: подпись говорит, что случилось, номер даёт найти запись в
-        логе (см. api.ts).
+        Отказ — словами, а не пустотой: у специалиста без права alerts.review
+        список правил закрыт, и «моделей нет» было бы неправдой.
       */}
       {error ? (
-        <p className="m-0 mt-[20px] text-[13px] text-muted">
+        <p className="m-0 text-small text-muted">
           {ut("cn3.modelsUnavailable")}: {error}
         </p>
       ) : models === null ? (
-        <p className="m-0 mt-[20px] text-[13px] text-muted">{ut("common.loading")}</p>
+        <Loading rows={2} bare />
       ) : models.length === 0 ? (
-        <p className="m-0 mt-[20px] text-[13px] text-muted">{ut("cn3.modelsNone")}</p>
+        <p className="m-0 text-small text-muted">{ut("cn3.modelsNone")}</p>
       ) : (
-        /*
-          Шаг строк с кадра: 60 у моделей (имя в две строки — 40) и 54 у
-          тестов (описание в две строки — 34), то есть высота строки плюс 20.
-        */
-        <ul className="m-0 mt-[30px] flex list-none flex-col gap-[20px] p-0">
+        <ul className="m-0 list-none p-0">
           {models.map((m) => (
             <li
               key={m.id}
-              /* три колонки кадра: имя 200, описание по остатку, вердикт 196 */
-              className="grid grid-cols-[200px_1fr_196px] items-center gap-x-[18px] max-[900px]:grid-cols-1 max-[900px]:gap-y-[6px]"
+              data-verdict={m.matched ? "matched" : "not-matched"}
+              className="grid grid-cols-[18px_minmax(0,1fr)_auto] items-start gap-x-2 border-t border-divider py-2 text-small first:border-t-0 first:pt-0.5"
             >
-              {/*
-                Кадр f36_1: cap имени и вердикта 12 px → 17/700, описание 9 px
-                → 13/400. Межстрочник имени — 20: имя модели на кадре занимает
-                две строки («Аналітична модель , / стресостійкість 1»), и их
-                базовые линии отстоят на 20 (замер столбца имён: 64 и 84, затем
-                244 и 264). 22 было взято от заголовков экрана.
-              */}
-              <span className="text-[17px] font-bold leading-[20px] text-primary">{m.title}</span>
-              <span className="text-[13px] leading-[17px] text-muted">{m.description}</span>
-              {/*
-                Вердикт — пилюля 195×30 с заливкой, текст 17/700. Оба вердикта
-                выглядят одинаково и отличаются словами, не цветом: на кадре
-                так, и для дальтоника так лучше.
-              */}
-              <span
-                data-verdict={m.matched ? "matched" : "not-matched"}
-                className="flex h-[30px] items-center justify-center rounded-[5px] bg-primary-soft px-[10px] text-[17px] font-bold leading-none text-primary"
-              >
-                {m.matched ? ut("cn3.matched") : ut("cn3.notMatched")}
+              {m.matched ? <Ic.circleCheck size={15} className="mt-0.5 text-good" /> : <Rx.circleMinus size={15} className="mt-0.5 text-muted" />}
+              <Popover title={m.title} content={m.description ? <p className="m-0">{m.description}</p> : undefined}>
+                <span className="min-w-0 cursor-default text-text-2">{m.title}</span>
+              </Popover>
+              <span className={cx("whitespace-nowrap", m.matched ? "font-bold text-good" : "text-muted")}>
+                {m.matched ? ut("cnx.matched") : ut("cnx.notMatched")}
               </span>
             </li>
           ))}
         </ul>
       )}
-    </section>
+    </Panel>
   );
 }
 
-/* ─────────── список тестов ─────────── */
+/* ─────────── история версий ─────────── */
 
-/**
- * Список тестов заключения. Строка одна: заключение привязано к одному
- * прохождению (conclusions.responseId). На кадре f36 строк две, и это не
- * разница разметки, а нехватка сервера: маршрута «заключення → кілька
- * проходжень» нет — см. отчёт сверки, строка «сервер». Когда он появится,
- * здесь будет map по прохождениям: разметка строки уже на это рассчитана.
- */
-function TestList({ detail, survey }: { detail: ResponseDetail; survey: SurveyFull }) {
+function HistoryPanel({ state, anchor }: { state: ConclusionState | null; anchor: React.RefObject<HTMLElement | null> }) {
   const { ut } = useLang();
-  /*
-   * «+» ведёт к батареям: состав обследования в системе задаётся
-   * назначением батареи, а не набирается внутри документа. Это ссылка,
-   * а не кнопка, — переход на другой экран, который можно открыть в
-   * новой вкладке. Видимый квадрат 27, нажимается 44: тот же приём, что у
-   * Button size="glyph" (см. пояснение там), повторён здесь потому, что
-   * ссылка кнопкой быть не может.
-   */
+  const versions = state?.versions ?? [];
   return (
-    <section aria-labelledby="cn-tests" className="mt-[50px]">
-      <SectionHead id="cn-tests" action={<AddGlyph to="/batteries" label={ut("cn3.addTest")} />}>
-        {ut("cn3.tests")}
-      </SectionHead>
-      {/* тот же шаг 20, что у списка моделей */}
-      <ul className="m-0 mt-[30px] flex list-none flex-col gap-[20px] p-0">
-        <li className="grid grid-cols-[200px_1fr_205px] items-start gap-x-[18px] max-[900px]:grid-cols-1 max-[900px]:gap-y-[6px]">
-          {/* тот же двухстрочный межстрочник 20, что у имён моделей выше */}
-          <span className="text-[17px] font-bold leading-[20px] text-primary">{survey.title}</span>
-          <span className="text-[13px] leading-[17px] text-muted">{survey.description ?? ""}</span>
-          <span className="flex flex-col gap-[6px]">
-            {detail.scores.map((s) => (
-              <span key={s.scaleId} className="flex flex-col">
-                {/*
-                  Кадр f36_1: «набраний бал 72» 13/400 серым, подпись диапазона
-                  13/700 фиолетовым. Было 11 — замер не сходился: цифры «72» на
-                  кадре 10 px в высоту, а высота цифры у этой гарнитуры ≈ 0,72
-                  кегля, то есть кегль 13–14; 11 дал бы цифру 8. Межстрочник 19
-                  — базовая линия «72» на 77, базовая линия подписи диапазона
-                  на 95–96.
-                */}
-                <span className="text-[13px] leading-[19px] text-muted">
-                  {/* у многошкальной методики балл без имени шкалы ничего не значит */}
-                  {detail.scores.length > 1 ? `${s.scaleTitle}: ` : ""}
-                  {ut("cn3.scored")} <span className="tabular-nums">{s.rawScore}</span>
-                </span>
-                {s.band ? (
-                  <span className="text-[13px] font-bold leading-[17px] text-primary">{s.band.label}</span>
-                ) : null}
-              </span>
-            ))}
-          </span>
-        </li>
-      </ul>
+    <section ref={anchor} tabIndex={-1} className="outline-none" aria-label={ut("cnc.showHistory")}>
+      <Panel
+        title={ut("cnc.showHistory")}
+        icon={<Ic.history />}
+        sub={versions.some((v) => v.status === "signed") ? undefined : ut("cnx.noSigned")}
+        flush
+      >
+        {versions.length ? (
+          <ActivityList
+            events={versions.map((v) => ({
+              date: day(v.status === "signed" && v.signedAt ? v.signedAt : v.createdAt),
+              time: timeOfDay(v.status === "signed" && v.signedAt ? v.signedAt : v.createdAt),
+              icon: v.status === "signed" ? <Rx.signature /> : <Rx.filePen />,
+              tone: v.status === "signed" ? "good" : "neutral",
+              text: (
+                <Popover title={versionTitle(v, ut)} content={<p className="m-0 whitespace-pre-wrap">{v.text}</p>} width={380}>
+                  <span className="cursor-default">
+                    <b>{versionTitle(v, ut)}</b> <span className="text-muted">{v.authorName}</span>
+                  </span>
+                </Popover>
+              ),
+            }))}
+          />
+        ) : (
+          <p className="m-0 px-4 pb-4 text-small text-muted">{ut("cnx.historyNone")}</p>
+        )}
+      </Panel>
     </section>
   );
 }
 
-/**
- * «+» у заголовка раздела: ссылка-глиф, одна на «Список примінених
- * аналітичних моделей» и «Список тестів» — на кадре f36_1 они нарисованы
- * одинаково. Видимый квадрат 27, нажимается 44 (тот же приём, что у Button
- * size="glyph"), повторён здесь потому, что ссылка кнопкой быть не может.
- */
-function AddGlyph({ to, label }: { to: string; label: string }) {
-  return (
-    <Link
-      to={to}
-      aria-label={label}
-      className={cx(
-        "relative inline-flex size-[27px] items-center justify-center rounded-[5px] no-underline",
-        "after:absolute after:left-1/2 after:top-1/2 after:size-[44px] after:content-['']",
-        "after:-translate-x-1/2 after:-translate-y-1/2",
-        "outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]",
-      )}
-    >
-      <PlusGlyph />
-    </Link>
-  );
-}
-
-/** «+» штрихом 5 в квадрате 27 — как нарисован на кадре */
-function PlusGlyph() {
-  return (
-    <svg viewBox="0 0 27 27" aria-hidden focusable="false" className="size-[27px]" stroke="currentColor" strokeWidth={5} strokeLinecap="butt">
-      <path d="M13.5 2v23M2 13.5h23" />
-    </svg>
-  );
-}
-
-/**
- * «Опитувальник спостереження за пацієнтом» — второй протокол кадров f36_2 и
- * f37_1: тот же каркас «Питання №N — варианты с баллами — Результати», только
- * заполненный наблюдением специалиста, а не ответами пациента.
- *
- * Источника у него нет. Заключение на сервере держится на одном прохождении
- * (conclusions.responseId), связи «заключення → кілька проходжень» в модели
- * нет, и собрать второй протокол не из чего. Блок нарисован на своём месте с
- * кадра и говорит об этом одной строкой: пустое место под заголовком честнее,
- * чем исчезнувший раздел, — по нему видно, чего экран ждёт от сервера.
- */
-function Observation() {
-  const { ut } = useLang();
-  return (
-    <section aria-labelledby="cn-observation" className="mt-[50px]">
-      <SectionHead id="cn-observation">{ut("cn3.observation")}</SectionHead>
-      <p className="m-0 mt-[20px] text-[13px] text-muted">{ut("cn3.observationNone")}</p>
-    </section>
-  );
-}
-
-/* ─────────── тело теста ─────────── */
-
-/**
- * Тест целиком: название, описание, вопросы с вариантами и баллами,
- * лестница результатов. Вопросы стоят колонкой 700 по центру — так на кадре:
- * протокол у́же описания, и это отделяет его глазом от текста вокруг.
- */
-function TestBody({ detail, survey }: { detail: ResponseDetail; survey: SurveyFull }) {
-  /*
-   * Баллы вариантов берутся из методики по идентификатору варианта.
-   *
-   * Прохождение (GET /api/responses/:id) отдаёт варианты той версии, которую
-   * человек видел, но без баллов; методика (GET /api/surveys/:id) — баллы, но
-   * действующей версии. У совпадающих версий идентификаторы те же, и балл
-   * находится у каждого варианта. У прохождения на старой версии — не
-   * найдётся ни одного: тогда балл известен только у выбранного (он записан
-   * в самом ответе — см. QuestionSheet, когда это так), а у остальных
-   * печатается прочерк. Прочерк, а не ноль: ноль — это балл, прочерк — его
-   * отсутствие.
-   */
-  const scoreByOption = new Map(survey.questions.flatMap((q) => q.options.map((o) => [o.id, o.score] as const)));
-  const scoreOf = (optionId: string) => scoreByOption.get(optionId) ?? null;
-
-  return (
-    <article aria-labelledby="cn-test" className="mt-[50px]">
-      {/* кадр f36_1: «Тест номер 1» cap 12 px → 17/700, описание под ним 13/400 */}
-      <h2 id="cn-test" className="m-0 text-[17px] font-bold leading-[22px] text-primary">
-        {survey.title}
-      </h2>
-      {survey.description ? (
-        <p className="m-0 mt-[10px] text-[13px] leading-[17px] text-text-2">{survey.description}</p>
-      ) : null}
-      <div className="mx-auto mt-[40px] w-full max-w-[700px]">
-        {detail.answers.map((a, i) => (
-          <QuestionSheet key={a.questionId} n={i + 1} answer={a} scoreOf={scoreOf} />
-        ))}
-        <ResultLadder scores={detail.scores} scales={survey.scales} />
-      </div>
-    </article>
-  );
-}
-
-/**
- * Ячейка протокола: силуэт поля с кадра — 36px, радиус 5, кегль 17.
- *
- * Это НЕ Input и не Textarea. В протоколе нечего вводить: варианты и полосы
- * показываются, а не заполняются. Поле только для чтения осталось бы полем
- * для диктора («редактируемый текст, только чтение» сорок раз подряд) и
- * остановкой для Tab на каждой строке. Поэтому силуэт нарисован на span, а
- * два начертания — те же, что у поля: залитое для выбранного, контурное для
- * остальных.
- *
- * Выбранное отличается не только заливкой: начертание полужирное (так и на
- * кадре) и для диктора рядом стоит скрытая пометка. Заливка одна не прошла
- * бы правило «не только цветом».
- */
-function Cell({
-  on,
-  num,
-  className,
-  children,
-}: {
-  on: boolean;
-  num?: boolean;
-  /** Место ячейки в строке: зазоры кадра внутри строки разные, см. ResultLadder */
-  className?: string;
-  children: ReactNode;
-}) {
-  return (
-    <span
-      className={cx(
-        "flex min-h-9 items-center rounded-[5px] text-[17px] leading-[20px] text-primary",
-        num ? "justify-center px-[6px] tabular-nums" : "px-[12px] py-[6px]",
-        /* рамка невыбранной — рамка ПОЛЯ (#666666), как на кадре, а не общая линия #cccccc */
-        on ? "bg-primary-soft font-bold" : "border border-field-border bg-[var(--bg)]",
-        className,
-      )}
-    >
-      {children}
-    </span>
-  );
-}
-
-const WITH_OPTIONS = new Set(["single", "multiple", "yesno"]);
-
-/** Ответ, у которого нет вариантов: число, дата, текст, порядок, матрица */
-function freeValue(a: ResponseDetailAnswer): string {
-  const text = new Map(a.options.map((o) => [o.id, o.text]));
-  if (a.ranking?.length) return a.ranking.map((id) => text.get(id) ?? id).join(" → ");
-  if (a.matrix)
-    return Object.entries(a.matrix)
-      .map(([row, opt]) => `${text.get(row) ?? row}: ${text.get(opt) ?? opt}`)
-      .join("; ");
-  if (a.number !== null) return String(a.number);
-  if (a.date) return a.date;
-  if (a.optionIds?.length) return a.optionIds.map((id) => text.get(id) ?? id).join(", ");
-  return a.text ?? "";
-}
-
-/**
- * Один вопрос протокола: заголовок «Питання №N …», под ним строки
- * «вариант | балл». Строка выбранного — залитая, остальные — контурные.
- */
-export function QuestionSheet({
-  n,
-  answer,
-  scoreOf,
-}: {
-  n: number;
-  answer: ResponseDetailAnswer;
-  scoreOf: (optionId: string) => number | null;
-}) {
-  const { ut } = useLang();
-  const chosen = new Set(answer.optionIds ?? []);
-  /*
-   * Балл в самом ответе — балл пункта целиком, а не варианта. Вариантом он
-   * становится только когда выбран один: у вопроса с несколькими ответами
-   * сумма, напечатанная у каждого выбранного, читалась бы как балл каждого.
-   */
-  const ownScore = chosen.size === 1 ? answer.score : null;
-  const withOptions = WITH_OPTIONS.has(answer.type) && answer.options.length > 0;
-  const headId = `cn-q-${answer.questionId}`;
-
-  return (
-    <section aria-labelledby={headId} className="mb-[40px]">
-      {/* кадр f36_2: от заголовка питання до первой строки варианта 20 px */}
-      {/* 17/700: прописная «П» в «Питання №1» на кадре — 12 px (1040…1051) */}
-      <h3 id={headId} className="m-0 mb-[20px] text-[17px] font-bold leading-[22px] text-primary">
-        {ut("cn3.question")}
-        {n} {answer.title}
-      </h3>
-      {withOptions ? (
-        <ul className="m-0 list-none p-0">
-          {answer.options.map((o) => {
-            const on = chosen.has(o.id);
-            const score = scoreOf(o.id) ?? (on ? ownScore : null);
-            return (
-              <li
-                key={o.id}
-                data-chosen={on ? "yes" : "no"}
-                /* 604 + 16 + 80 — замер кадра; шаг строк 51 = 36 + 15 */
-                className="mb-[15px] grid grid-cols-[1fr_80px] gap-x-[16px] last:mb-0"
-              >
-                <Cell on={on}>
-                  {o.text}
-                  {on ? <span className="sr-only">, {ut("cn3.chosen")}</span> : null}
-                </Cell>
-                <Cell on={on} num>
-                  {score ?? "—"}
-                </Cell>
-              </li>
-            );
-          })}
-        </ul>
-      ) : (
-        <div data-chosen={answer.answered ? "yes" : "no"} className="grid grid-cols-[1fr_80px] gap-x-[16px]">
-          <Cell on={answer.answered}>{answer.answered ? freeValue(answer) : ut("qh.missing")}</Cell>
-          <Cell on={answer.answered} num>
-            {answer.score ?? "—"}
-          </Cell>
-        </div>
-      )}
-    </section>
-  );
-}
-
-/**
- * Попала ли полоса — той же функцией, что и движок подсчёта (scoring.ts,
- * bandFor): соседние полосы читаются полуинтервалом, и «0,743» у СР-45
- * подсвечивает «0,60–0,74», а не ни одну (волна 12, engine).
- */
-function bandHit(score: ScoreResult, band: Scale["bands"][number], bands: Scale["bands"]): boolean {
-  return score.band !== null && bandFor(bands, score.value)?.id === band.id;
-}
-
-/** Числа полос печатаются как заданы: 0.35 — не «0.350000» и не «0» */
-const num = (v: number) => String(Math.round(v * 100) / 100);
-
-/**
- * Лестница результатов: все полосы шкалы, попавшая — залитая и полужирная.
- *
- * На кадре лестница одна — методика с одной шкалой. У многошкальной их
- * несколько, и без имени шкалы над каждой они неразличимы; имя печатается
- * только тогда, когда лестниц больше одной, — на одношкальной кадр
- * повторяется буквально.
- *
- * Попадание считается по значению, а не по совпадению подписи: подпись
- * полосы хранится в прохождении на языке момента сдачи, а полосы методики
- * приходят на языке интерфейса, и на русской консоли подписи не совпали бы
- * ни разу.
- */
-export function ResultLadder({ scores, scales }: { scores: ScoreResult[]; scales: Scale[] }) {
-  const { ut } = useLang();
-  const byId = new Map(scales.map((s) => [s.id, s]));
-  const rows = scores
-    .map((score) => ({ score, scale: byId.get(score.scaleId) }))
-    .filter((r): r is { score: ScoreResult; scale: Scale } => !!r.scale && r.scale.bands.length > 0);
-  if (!rows.length) return null;
-
-  return (
-    <section aria-labelledby="cn-results">
-      {/* 20/700: прописная «Р» в «Результати» на кадре — 14 px (1410…1423) */}
-      <h3 id="cn-results" className="m-0 mb-[14px] text-[20px] font-bold leading-[24px] text-primary">
-        {ut("cn3.results")}
-      </h3>
-      {rows.map(({ score, scale }) => (
-        <div key={scale.id} className="mb-[24px] last:mb-0">
-          {rows.length > 1 ? <p className="m-0 mb-[8px] text-[13px] text-muted">{scale.title}</p> : null}
-          <ol className="m-0 list-none p-0">
-            {[...scale.bands]
-              .sort((a, b) => a.minScore - b.minScore)
-              .map((b) => {
-                const hit = bandHit(score, b, scale.bands);
-                return (
-                  <li
-                    key={b.id}
-                    data-hit={hit ? "yes" : "no"}
-                    /*
-                     * «від [87] до [87] [подпись]» — замер кадра f36_3; шаг строк 51.
-                     * Зазоры не равны: 10 между первыми четырьмя ячейками и 21 перед
-                     * подписью полосы (бокс кончается на 691, текст начинается на 712).
-                     */
-                    className="mb-[15px] grid grid-cols-[auto_87px_auto_87px_1fr] items-center gap-x-[10px] last:mb-0"
-                  >
-                    <span className="text-[13px] text-muted">{ut("cn3.from")}</span>
-                    <Cell on={hit} num>
-                      {num(b.minScore)}
-                    </Cell>
-                    <span className="text-[13px] text-muted">{ut("cn3.to")}</span>
-                    <Cell on={hit} num>
-                      {num(b.maxScore)}
-                    </Cell>
-                    <Cell on={hit} className="ml-[11px]">
-                      {b.label}
-                      {hit ? <span className="sr-only">, {ut("cn3.hit")}</span> : null}
-                    </Cell>
-                  </li>
-                );
-              })}
-          </ol>
-        </div>
-      ))}
-    </section>
-  );
+function versionTitle(v: { status: "draft" | "signed"; version: number }, ut: ReturnType<typeof useLang>["ut"]): string {
+  return (v.status === "signed" ? ut("cnx.signedV") : ut("cnx.draftV")).replace("{n}", String(v.version));
 }

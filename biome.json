@@ -1,6 +1,7 @@
 {
   "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
   "files": {
+    "maxSize": 4194304,
     "includes": [
       "apps/api/src/**",
       "apps/web/src/**",

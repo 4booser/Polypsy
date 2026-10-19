@@ -9,17 +9,19 @@ import type { Severity } from "./types";
  * заключения давала #ec835a, и человек, сверивший экран с распечаткой,
  * находил два разных оранжевых.
  *
- * Разойтись они были обязаны, потому что подложки разные. Экран консоли —
- * земля #101120, и цвета на ней подобраны перебором под порог контраста
+ * Разойтись они были обязаны, потому что подложки разные. Экран консоли в
+ * тёмной теме — земля #141019, и цвета на ней подобраны под порог контраста
  * (см. шапку apps/web/src/styles/tokens.css и apps/web/test/contrast.test.ts).
- * Бумага — белый лист, и тот же #4fa97a на нём даёт 2.6:1 при пороге 4.5.
+ * Бумага — белый лист, и тот же #74D19C на нём даёт 1.8:1 при пороге 4.5.
  * Свести их к одним хексам значит сломать одну из двух сторон.
  *
  * Поэтому сводится не цвет, а ИСТОЧНИК. Ступень объявлена один раз на
  * подложку и в одном файле, а не переписывается руками там, где понадобилась:
  *
- *  — печатное заключение берёт SEVERITY_FILL импортом (apps/api/src/routes/reports.ts);
- *  — мобильное приложение берёт его же (apps/mobile/src/theme.tsx);
+ *  — мобильное приложение берёт SEVERITY_FILL импортом (apps/mobile/src/theme.tsx);
+ *  — печатные листы сервера (apps/api/src/lib/printSheet.ts) берут лестницу
+ *    набора SEVERITY_STEPS_SCREEN_LIGHT ниже: лист белый, как светлая тема, и
+ *    выраженность на нём — слово в обводке ступени, а не цветная заливка;
  *  — консоль не может импортировать TypeScript в CSS, поэтому её ступени
  *    объявлены здесь как SEVERITY_SCREEN* и ПОВТОРЕНЫ переменными --sev-* в
  *    токенах; совпадение проверяет apps/web/test/severityPalette.test.ts, и
@@ -65,45 +67,55 @@ export const SEVERITY_TEXT_LIGHT: Record<Severity, string> = {
 };
 
 /*
- * Ступени консоли. Значения — те, что уже проверены расчётом контраста на
- * земле «Смены»; здесь они не подбираются заново, а объявляются, чтобы у
- * экранной лестницы было такое же место жительства, как у печатной.
+ * Ступени консоли — лестница «Виразной» (UI 3, .superdesign/ui3/kit/page.py,
+ * s0…s4). Здесь они не подбираются заново, а объявляются, чтобы у экранной
+ * лестницы было такое же место жительства, как у печатной.
  *
- * Зеркало — переменные --sev-* и --sev-*-text в tokens.css. Менять цвет
- * консоли надо в ОБОИХ местах; забыть нельзя — тест сверяет их посимвольно.
+ * Ступеней пять: шкалы вроде PHQ-9 различают «помірно тяжку» (s3) и
+ * «тяжку» (s4). У каждой — цвет и подложка: в наборе цвет ступени — это и
+ * надпись на её подложке, и закрашенный отрезок шкалы, поэтому заливка и
+ * текст консоли совпадают.
+ *
+ * Зеркало — переменные --sev-0…--sev-4, --sev-N-bg и --sev-* / --sev-*-text
+ * в tokens.css. Менять цвет консоли надо в ОБОИХ местах; забыть нельзя —
+ * тест сверяет их посимвольно.
+ *
+ * Отступление от набора одно: s0 светлой темы на полшага темнее
+ * (#2E7D32 → #2C7A30) — надпись на собственной подложке давала 4.39:1 при
+ * пороге 4.5.
  */
 
-/** Заливка консоли, тёмная тема (земля #101120) */
-export const SEVERITY_SCREEN_DARK: Record<Severity, string> = {
-  none: "#4fa97a",
-  mild: "#d0a72a",
-  moderate: "#e0813f",
-  severe: "#e45c5c",
-};
+/** Пять ступеней, светлая тема (земля #F5F3FA, лист #FFFFFF): s0 … s4 */
+export const SEVERITY_STEPS_SCREEN_LIGHT = ["#2C7A30", "#55640A", "#955000", "#AC4318", "#B71C1C"] as const;
+/** Подложки ступеней, светлая тема */
+export const SEVERITY_STEPS_SCREEN_BG_LIGHT = ["#E3F1E4", "#EDF1D8", "#FFEACD", "#FCE2D6", "#FBE0E0"] as const;
+/** Пять ступеней, тёмная тема (земля #141019, лист #1E1826) */
+export const SEVERITY_STEPS_SCREEN_DARK = ["#74D19C", "#C9D56E", "#F3B25B", "#FF9F7F", "#FF8A80"] as const;
+/** Подложки ступеней, тёмная тема */
+export const SEVERITY_STEPS_SCREEN_BG_DARK = ["#15281E", "#262A14", "#33250F", "#3A2117", "#3A1A1C"] as const;
 
-/** Заливка консоли, светлая тема (земля #eef0f7) */
-export const SEVERITY_SCREEN_LIGHT: Record<Severity, string> = {
-  none: "#2f7d52",
-  mild: "#7a610f",
-  moderate: "#98481a",
-  severe: "#a82a2a",
-};
+/**
+ * Четыре степени консоли на пяти ступенях: тяжёлая — s4, как «тяжка» в
+ * шкалах набора; s3 у четырёхступенчатой выраженности не бывает.
+ */
+const fourOfFive = (steps: readonly string[]): Record<Severity, string> => ({
+  none: steps[0]!,
+  mild: steps[1]!,
+  moderate: steps[2]!,
+  severe: steps[4]!,
+});
+
+/** Заливка консоли, тёмная тема */
+export const SEVERITY_SCREEN_DARK: Record<Severity, string> = fourOfFive(SEVERITY_STEPS_SCREEN_DARK);
+
+/** Заливка консоли, светлая тема */
+export const SEVERITY_SCREEN_LIGHT: Record<Severity, string> = fourOfFive(SEVERITY_STEPS_SCREEN_LIGHT);
 
 /** Текст степени в консоли, тёмная тема */
-export const SEVERITY_SCREEN_TEXT_DARK: Record<Severity, string> = {
-  none: "#6cc492",
-  mild: "#dfc05a",
-  moderate: "#f0a06a",
-  severe: "#f08080",
-};
+export const SEVERITY_SCREEN_TEXT_DARK: Record<Severity, string> = fourOfFive(SEVERITY_STEPS_SCREEN_DARK);
 
 /** Текст степени в консоли, светлая тема */
-export const SEVERITY_SCREEN_TEXT_LIGHT: Record<Severity, string> = {
-  none: "#1f6b41",
-  mild: "#6b5410",
-  moderate: "#8b4118",
-  severe: "#9c2626",
-};
+export const SEVERITY_SCREEN_TEXT_LIGHT: Record<Severity, string> = fourOfFive(SEVERITY_STEPS_SCREEN_LIGHT);
 
 /** Ключи подписей — сами подписи в словаре оболочки */
 export const SEVERITY_KEY = {
@@ -112,3 +124,13 @@ export const SEVERITY_KEY = {
   moderate: "severity.moderate",
   severe: "severity.severe",
 } as const;
+
+/**
+ * Цвета групп методик на выбор (экран «Групи методик», apps/web/src/pages/Groups.tsx).
+ *
+ * Цвет группы — данные, а не оформление: он хранится в базе хексом и
+ * читается мобильным приложением как есть (apps/mobile/app/(app)/surveys.tsx,
+ * плашка группы в списке методик). Поэтому набор живёт здесь, рядом с
+ * остальными хексами, а не в разметке консоли, где цвета — только токены.
+ */
+export const GROUP_COLORS = ["#3b5bfd", "#1baf7a", "#eb6834", "#4a3aa7", "#e87ba4"] as const;

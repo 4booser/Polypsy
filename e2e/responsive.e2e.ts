@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { goMenu, login, TOP_NAV_MIN_WIDTH, topNav } from "./helpers";
+import { goMenu, login, RAIL_MIN_WIDTH, railNav } from "./helpers";
 
 /**
  * Консоль на планшете и телефоне.
@@ -44,24 +44,47 @@ for (const size of SIZES) {
     test("навигация доступна и ведёт куда надо", async ({ page }) => {
       await login(page, "psy");
       /*
-       * Ниже 1100 px шесть пунктов полосы не помещаются и уходят в бургер
-       * (Topbar.tsx, max-[1100px]); планшет на 1024 — уже ниже порога, и до
-       * пациентов на нём, как и на телефоне, ведёт только бургер. Дверь
-       * выбирается по ширине, а не «какая найдётся»: проверяется, что на
-       * этой ширине открыта та дверь, которую обещает раскладка. Сдвинь
-       * кто-то порог — планшет молча получил бы полосу, которая на нём не
-       * помещается, а запасной ход через бургер это спрятал бы.
+       * Ниже 1100 px рельсы нет: разделы — в меню «Ще розділи» на полосе
+       * приложения (shell/MoreMenu.tsx); планшет на 1024 — уже ниже порога, и
+       * до пациентов на нём, как и на телефоне, ведёт только меню. Дверь
+       * выбирается по ширине, а не «какая найдётся»: сдвинь кто-то порог —
+       * планшет молча получил бы рельсу, которая на нём не помещается, а
+       * запасной ход через меню это спрятал бы.
        */
-      if (size.width >= TOP_NAV_MIN_WIDTH) {
-        await topNav(page).getByRole("link", { name: "Пациенты" }).click();
+      if (size.width >= RAIL_MIN_WIDTH) {
+        await railNav(page).getByRole("link", { name: "Пациенты" }).click();
       } else {
-        await expect(topNav(page), "ниже порога полоса разделов должна быть спрятана").toBeHidden();
+        await expect(railNav(page), "ниже порога рельса разделов должна быть спрятана").toBeHidden();
         await goMenu(page, "Пациенты");
       }
       await expect(page).toHaveURL(/\/patients/);
     });
   });
 }
+
+/*
+ * «Зведення» — тоже (волна 27): его виджет «Поки вас не було» взял ту же
+ * запасную точку отсчёта выражением в теле компонента и спрашивал
+ * /api/missed раз в 70 мс у каждого, кто ни разу не нажал «Прочитано».
+ */
+test("«Зведення» не опрашивает сервер без остановки", async ({ page }) => {
+  await login(page, "psy");
+
+  const counts = new Map<string, number>();
+  page.on("request", (r) => {
+    const url = new URL(r.url());
+    if (!url.pathname.startsWith("/api/")) return;
+    counts.set(url.pathname, (counts.get(url.pathname) ?? 0) + 1);
+  });
+
+  await page.goto("/");
+  await page.getByRole("main").locator("h1").first().waitFor();
+  await page.waitForTimeout(3000);
+
+  const worst = [...counts.entries()].sort((a, b) => b[1] - a[1])[0];
+  expect(worst, "за три секунды не ушло ни одного запроса — тест ничего не проверил").toBeTruthy();
+  expect(worst![1], `чаще всех запрашивался ${worst![0]}`).toBeLessThanOrEqual(5);
+});
 
 test("консоль не опрашивает сервер без остановки", async ({ page }) => {
   /*
@@ -88,7 +111,7 @@ test("консоль не опрашивает сервер без остано�
   });
 
   await page.goto("/today");
-  await page.getByRole("link", { name: "Сегодня" }).waitFor();
+  await page.getByRole("main").getByRole("link", { name: "Сегодня" }).waitFor();
   await page.waitForTimeout(3000);
 
   const worst = [...counts.entries()].sort((a, b) => b[1] - a[1])[0];

@@ -9,12 +9,9 @@ import {
   type OpsClientErrorGroup,
   type OpsJob,
   type OpsRecordings,
-  type OpsVitalCell,
 } from "@quizzy/shared";
 import { JOB_KEY } from "../src/pages/ops/model";
 import {
-  EVENT_TONE,
-  RATING_TONE,
   STATE_TONE,
   canRunNow,
   diskMismatch,
@@ -28,10 +25,8 @@ import {
   parseNum,
   parsePlatform,
   ruleInputOf,
-  sparkOf,
   toggleChannel,
   unavailableKey,
-  vitalSeries,
 } from "../src/pages/ops/obs2b/model";
 import {
   ClsAccumulator,
@@ -113,7 +108,6 @@ describe("сповіщення: правка правила", () => {
   test("сбой — ромбом и янтарём; «недоступно» — не «гаразд»", () => {
     const states: OpsAlertState[] = ["ok", "firing", "unavailable", "off", "unknown"];
     expect(states.map((s) => STATE_TONE[s])).toEqual(["ok", "fail", "quiet", "quiet", "quiet"]);
-    expect(EVENT_TONE.resolved).toBe("ok");
     expect(unavailableKey("noSource")).toBe("o2b.unavail.noSource");
     // время сверки цепочки не прочесть (#160) — своё пояснение, а не пустое место
     expect(unavailableKey("chainStale")).toBe("o2b.unavail.chainStale");
@@ -159,34 +153,11 @@ describe("помилки клієнта: фильтры", () => {
 });
 
 describe("швидкість екранів", () => {
-  const cell: OpsVitalCell = {
-    p75: 1800,
-    n: 40,
-    rating: "good",
-    daily: [null, 1600, null, 2100],
-    ratings: { good: 30, needs: 8, poor: 2 },
-  };
-
-  test("ход — все дни периода; пустой день — разрыв (null), а не ноль и не пропуск", () => {
-    const pts = vitalSeries(cell, ["2026-09-23", "2026-09-24", "2026-09-25", "2026-09-26"], (d) => d.slice(5));
-    expect(pts).toEqual([
-      { key: "2026-09-23", label: "09-23", value: null },
-      { key: "2026-09-24", label: "09-24", value: 1600 },
-      { key: "2026-09-25", label: "09-25", value: null },
-      { key: "2026-09-26", label: "09-26", value: 2100 },
-    ]);
-    expect(sparkOf(cell)).toEqual([1600, 2100]);
-    expect(vitalSeries(undefined, [], String)).toEqual([]);
-    // замеров не было ни в один день — ряда нет, экран скажет словами
-    expect(vitalSeries({ ...cell, daily: [null, null] }, ["a", "b"], String)).toEqual([]);
-  });
-
-  test("значения мер: CLS без единицы, секунды от тысячи, оценка словом и формой", () => {
+  test("значения мер: CLS без единицы, секунды от тысячи", () => {
     expect(fmtVital("CLS", 0.021, "uk")).toBe("0,021");
     expect(fmtVital("LCP", 2500, "en")).toBe("2.5 sec");
     expect(fmtVital("INP", 180, "en")).toBe("180 ms");
     expect(fmtVital("TTFB", null, "en")).toBe("—");
-    expect(RATING_TONE).toEqual({ good: "ok", needs: "warn", poor: "fail" });
     expect(parseMetric("NAV")).toBe("NAV");
     expect(parseMetric("FID")).toBe("LCP");
   });

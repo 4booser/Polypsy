@@ -1,31 +1,54 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import type { AlertCase, AlertCasePage, AlertSignal, AlertSignalBasis, RiskSeverity, UiKey } from "@quizzy/shared";
+import type { AlertCase, AlertCasePage, RiskSeverity, UiKey } from "@quizzy/shared";
 import { api } from "../api";
 import { useAuth } from "../auth";
-import { dateTime, day, severityKey } from "../format";
-import { Avatar, Empty, HotkeyHint, IconSearchGlass, Loading, Modal, useAction, useHotkeys, useUrlState } from "../ui";
-import { Page } from "../ui/layout";
-import { Button, Input, Num, SectionLabel, SeverityTag, Tabs, Tag } from "../ui/primitives";
-import { RuleSection } from "../ui/section";
-import { IconCaret, IconClose } from "../ui/glyphs";
-import { cx } from "../ui/cx";
+import { dateTime, day, severityKey, timeOfDay } from "../format";
 import { useLang } from "../lang";
-import { SavedViews } from "../ui/SavedViews";
 import { onAppEvent } from "../events";
-import { Hint } from "../components/Hint";
 import { usePagedResource, useResource } from "../useResource";
+import {
+  ActivityList,
+  AlertStrip,
+  Avatar,
+  Empty,
+  Ic,
+  KbdHints,
+  ListGroup,
+  Loading,
+  RiskChip,
+  RiskTimer,
+  SearchField,
+  Tooltip,
+  useAction,
+  useHotkeys,
+  useUrlState,
+  type ActivityEvent,
+} from "../ui";
+import { cx } from "../ui/cx";
+import { Panel } from "../ui/layout";
+import { Button, Input, Select, SeverityTag, Tag } from "../ui/primitives";
+import { RuleSection } from "../ui/section";
+import { SavedViews } from "../ui/SavedViews";
 import { listBody } from "../ui/paging";
 import { patchParams } from "../ui/viewParams";
+import { CaseBasisPanel, OUTCOME_KEY, RiskReviewDrawer } from "../components/RiskReview";
+import { useSettledSelection } from "../components/settledSelection";
+import { useCodeKeys } from "./patientCard/keys";
+import { Pi } from "./patientCard/icons";
+import { dm } from "./patientCard/format";
 import {
   CLEAR_NARROWING,
+  clockText,
   emptyQueueKey,
   hasNarrowing,
+  normText,
   ownGroupsOf,
   queueGate,
   queueQuery,
   queueSections,
   readFilters,
+  riskClock,
   rowOverdue,
   statusPatch,
   subtitleParts,
@@ -35,32 +58,16 @@ import {
   type CaseStatus,
 } from "./alerts/model";
 
-const OUTCOME = [
-  { value: "confirmed", key: "cases.confirmed" },
-  { value: "needs_followup", key: "cases.needsFollowup" },
-  { value: "not_confirmed", key: "cases.notConfirmed" },
-] as const;
-
-/** Исход, который ставит система, а не дежурный: только показывается, кнопки у него нет (#197) */
-const SHOWN_OUTCOME = [...OUTCOME, { value: "duplicate", key: "cases.duplicate" }] as const;
-
 /** Строк на страницу очереди: экран высотой в два-три десятка строк и ещё одна «впрок» */
 const PAGE = 30;
 
 /**
  * Сколько минут в человекочитаемом виде.
  *
- * Переводчик аргументом: функция чистая и живёт вне компонента, а сокращения
- * единиц в двух языках разные — «мин» против «хв». В очереди случаев эта
- * подпись стоит у каждой строки, то есть была самым частым русским словом на
- * украинском экране.
+ * Отрицательное или нечисло — часы клиента разошлись с сервером: «-5 хв
+ * тому» читалось бы как время из будущего, а не как сбой. Прочерк честнее.
  */
 function duration(minutes: number, ut: (k: UiKey) => string): string {
-  /*
-   * Отрицательное или нечисло — часы клиента разошлись с сервером (или
-   * данных нет): «-5 хв тому» читалось бы как время из будущего, а не как
-   * сбой. Прочерк честнее — то же правило, что у длительностей в format.ts.
-   */
   if (!Number.isFinite(minutes) || minutes < 0) return "—";
   if (minutes < 60) return `${Math.round(minutes)} ${ut("dur.min")}`;
   const hours = Math.round(minutes / 60);
@@ -68,52 +75,40 @@ function duration(minutes: number, ut: (k: UiKey) => string): string {
   return `${Math.round(hours / 24)} ${ut("dur.day")}`;
 }
 
-/*
- * Форма точки выраженности — та же, что у SeverityTag (primitives.tsx):
- * умеренная — квадрат, тяжёлая — ромб. В строке очереди метки целиком нет —
- * подпись несёт заголовок раздела над строками, — но точка той же формы
- * остаётся: очередь читают боковым зрением, и форма различается там, где
- * цвет не различается вовсе.
- */
-const DOT: Record<RiskSeverity, string> = {
-  moderate: "bg-[var(--sev-moderate)]",
-  severe: "bg-[var(--sev-severe)] rotate-45",
-};
+/** Виды очереди пилюлями: открытые, на мне, разобранные, все — состояние и «хто розбирає» в адресе */
+type QueueView = "open" | "mine" | "resolved" | "all";
+const VIEWS: { key: QueueView; label: UiKey }[] = [
+  { key: "open", label: "cases.filterOpen" },
+  { key: "mine", label: "cases.assignedMe" },
+  { key: "resolved", label: "cases.filterResolved" },
+  { key: "all", label: "cases.filterAll" },
+];
 
 /**
- * Разбор случаев риска.
+ * Разбор случаев риска — список и запись (макет day-alerts «Виразної»).
  *
- * Единица работы — человек, а не сработавший пункт. До этого экран показывал
- * строку на каждый отмеченный пункт: на четырёхстах обследуемых получалось
- * 397 карточек, где один человек встречался пять раз подряд, и дежурный не
- * мог ни расставить приоритеты, ни найти нужного.
+ * Единица работы — человек, а не сработавший пункт: строка очереди стоит за
+ * человека (grouping: person), его случаи — рядом, в разборе. Порядок
+ * задан: тяжёлые сверху, дальше по времени последнего сигнала; кто взял
+ * случай — видно всем, иначе двое разбирают одного человека дважды.
  *
- * Порядок разбора задан, а не оставлен на усмотрение: тяжёлые сверху,
- * дальше по времени последнего сигнала. Кто взял случай — видно всем, иначе
- * двое дежурных разбирают одного человека дважды.
+ *   слева  — очередь: поиск, виды «Відкриті / На мені / Розібрані / Усі»,
+ *            фильтры (терміновість, хто розбирає, підрозділ, група, період,
+ *            пацієнт, збережені види) за кнопкой — в адресе, как и прежде;
+ *            разделы «Важкі / Помірні» с числами по всей выборке (SQL);
+ *   справа — выбранный случай: человек на полосе со строкой открытого,
+ *            «Розбір» (таймер до нормы методики, кто держит, случаи
+ *            человека), «Підстава» (пункт, шкала ответов, история пункта),
+ *            хронология случая из журнала, последние замеры, ритм разбора.
  *
- * ═══ Под нагрузкой (внешний разбор, волна 12) ═══
+ * Решение принимается в ящике разбора (components/RiskReview — тот же, что
+ * в карточке пациента): «Продовжити розбір» или R. Цифры 1–3 по-прежнему
+ * ставят исход сразу, пока ящик закрыт (в ящике — выбирают его), T берёт
+ * случай на себя, J/K ходят по очереди, «/» — поиск.
  *
- * Экран становился непригодным на сотнях открытых случаев. Курсор и
- * несколько фильтров уже были; не хватало того, без чего длинная очередь
- * всё равно врёт или теряется:
- *
- *   · строка на ЧЕЛОВЕКА, а не на случай: у человека бывает несколько
- *     открытых случаев (разные группы, давний за окном методики), и они
- *     раскатывались по разным страницам — разбирая свежий, дежурный не
- *     знал о старом. Сами случаи — рядом, в панели разбора (см. PersonCases);
- *   · разделы «Важкі / Помірні» с числами по всей выборке. Выраженность и
- *     так первый ключ порядка, поэтому разделы подписывают строки, а не
- *     переставляют их; группой по выраженности мы бы ничего не свернули;
- *   · все числа — подзаголовок, разделы, варианты фильтров — из SQL
- *     (facets), а не из загруженной страницы: прежде «прострочено» и
- *     «на мені» считались по тридцати строкам на экране;
- *   · фильтры по статусу, выраженности, «хто розбирає», підрозділу, групі
- *     пацієнтів, пацієнту і періоду — в адресе, как у соседних экранов, и
- *     поэтому сохраняются видом и пересылаются ссылкой.
- *
- * Три панели остаются: выбор строки не уводит со списка — ради этого они и
- * заводились (e2e/triage.e2e.ts).
+ * Под нагрузкой (внешний разбор, волна 12) всё прежнее на месте: курсор
+ * страниц, счётчики из SQL, отбор в адресе, строка «повторити» при отказе
+ * перечитывания, обновление по событиям потока.
  */
 export default function Alerts() {
   const { user } = useAuth();
@@ -121,12 +116,6 @@ export default function Alerts() {
   const { run } = useAction();
   const [, setParams] = useSearchParams();
 
-  /*
-   * Отбор — в адресе, по полю на параметр (useUrlState пишет через replace:
-   * «назад» уводит с экрана, а не отматывает фильтры по одному). Читается
-   * через readFilters: незнакомое значение в адресе, присланном ссылкой, не
-   * применяется, а не роняет экран в ошибку сервера.
-   */
   const [statusRaw] = useUrlState("status");
   const [legacyAll] = useUrlState("all");
   const [severity, setSeverity] = useUrlState("severity");
@@ -137,60 +126,47 @@ export default function Alerts() {
   const [from, setFrom] = useUrlState("from");
   const [to, setTo] = useUrlState("to");
   const [q, setQ] = useUrlState("q");
-  const raw: Record<string, string> = {
-    status: statusRaw,
-    all: legacyAll,
-    severity,
-    assigned,
-    unit,
-    patientGroup,
-    patient,
-    from,
-    to,
-    q,
-  };
+  const raw: Record<string, string> = { status: statusRaw, all: legacyAll, severity, assigned, unit, patientGroup, patient, from, to, q };
+
   /*
-   * Группы пациентов — свои. Права на них может и не быть: разбирать случаи
-   * — одно право, видеть списки пациентов — другое; тогда фильтра нет, а
-   * экран работает. Отказ — null, а не пустой список: «групп нет» и «список
-   * не пришёл» для фильтра значат разное (withOwnGroup).
+   * Группы пациентов — свои. Права на них может и не быть: тогда фильтра нет,
+   * а экран работает. Отказ — null, а не пустой список (withOwnGroup).
    */
   const groupsRes = useResource(() => api.patientGroups().catch(() => null), []);
   const groups = groupsRes.data ?? [];
-  /*
-   * Чужая группа из адреса (вид коллеги) не применяется, а не роняет очередь
-   * в 404; пока свои группы в пути, запрос с группой не уходит вовсе
-   * (queueGate): иначе 404 успевал вспыхнуть до их прихода.
-   */
   const gate = queueGate(readFilters((name) => raw[name] ?? ""), ownGroupsOf(groupsRes));
   const filters = gate.filters;
 
-  /*
-   * Несколько параметров разом — одним переходом. Два вызова useUrlState
-   * подряд писали бы каждый поверх адреса, который видел до другого, и
-   * второй затирал бы первый. Смена статуса снимает и прежний `all=1`
-   * (statusPatch в alerts/model.ts).
-   */
+  /* несколько параметров разом — одним переходом (statusPatch снимает прежний `all=1`) */
   const patch = useCallback(
     (changes: Record<string, string>) => setParams((prev) => patchParams(prev, changes), { replace: true }),
     [setParams],
   );
-  const setStatus = (next: CaseStatus) => patch(statusPatch(next));
+  const view: QueueView = filters.status === "open" && filters.assigned === "me" ? "mine" : filters.status;
+  const setView = (v: QueueView) => {
+    const status: CaseStatus = v === "mine" ? "open" : v;
+    patch({ ...statusPatch(status), assigned: v === "mine" ? "me" : filters.assigned === "me" ? "" : filters.assigned });
+  };
 
   /*
    * Какой случай «под рукой» — по идентификатору, а не по номеру строки.
-   * Указатель на позицию сползал: после «взять на себя» список перечитывался,
-   * порядок менялся, и на экране оказывался уже другой человек — тот, кто
-   * занял освободившееся место.
+   *
+   * Подсвеченная строка и случай, чья запись читается, — разное. Запись
+   * (сводка человека, основание сигнала с ответами, история пункта, случаи
+   * человека) сервер пишет в журнал, и шаг клавишами J/K её не грузит, пока
+   * курсор не простоит SETTLE_MS (components/settledSelection): иначе каждая
+   * строка, мимо которой прошли, ложилась бы в журнал прочитанной. Нажатие
+   * мышью — выбор сразу.
    */
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  /** Случай человека, выбранный в панели разбора; null — самый срочный, тот, что в строке */
+  const sel = useSettledSelection<string | null>(null);
+  const selectedId = sel.current;
   const [pickedId, setPickedId] = useState<string | null>(null);
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const narrowCount = [filters.severity, filters.unit, filters.patientGroup, filters.from || filters.to, filters.patient].filter(Boolean)
+    .length + (filters.assigned && filters.assigned !== "me" ? 1 : 0);
+  const [filtersOpen, setFiltersOpen] = useState(() => narrowCount > 0);
 
-  // ключ отбора строкой: сравнивать объект в зависимостях эффекта бесполезно
   const filterKey = JSON.stringify(filters);
-
-  // 300 мс на набор текста: поиск не дёргает сервер на каждую букву
   const page = usePagedResource<AlertCase, AlertCasePage>(
     (cursor) => api.alertCases(queueQuery(filters, PAGE, cursor)),
     [filterKey],
@@ -198,43 +174,37 @@ export default function Alerts() {
   );
   const facets = page.head?.facets;
   const grouping = page.head?.grouping ?? (filters.status === "open" && !filters.patient ? "person" : "case");
-
   const units = useResource(() => api.alertCaseUnits(), []).data ?? [];
 
   const rows = uniqueRows(page.items ?? [], grouping);
   const open = rows.filter((c) => !c.acknowledgedAt);
-  // выбранный либо тот, что выбрали, либо первый в очереди
   const current = rows.find((c) => c.id === selectedId) ?? open[0];
   const selected = current ?? rows[0] ?? null;
+  /* запись — у строки, на которой остановились; пока курсор идёт по списку, её нет */
+  const settled = sel.isSettled ? selected : null;
 
-  /*
-   * Случаи человека строки — отдельным запросом, только когда их больше
-   * одного: у большинства строк случай один, и ходить за ним второй раз
-   * незачем.
-   */
-  const many = (selected?.group?.cases ?? 1) > 1;
+  /* случаи человека строки — отдельным запросом, только когда их больше одного */
+  const many = (settled?.group?.cases ?? 1) > 1;
   const personCases = useResource(
     () =>
-      many && selected
-        ? api
-            .alertCases({ status: "open", group: "case", patient: selected.userId, limit: "20" })
-            .then((p) => p.items)
+      many && settled
+        ? api.alertCases({ status: "open", group: "case", patient: settled.userId, limit: "20" }).then((p) => p.items)
         : Promise.resolve<AlertCase[]>([]),
-    [many, selected?.userId, selected?.lastAlertAt, selected?.group?.cases],
+    [many, settled?.userId, settled?.lastAlertAt, settled?.group?.cases],
   );
-  useEffect(() => setPickedId(null), [selected?.userId]);
-  const shown = personCases.data?.find((c) => c.id === pickedId) ?? selected;
+  useEffect(() => setPickedId(null), [settled?.userId]);
+  const shown = settled ? (personCases.data?.find((c) => c.id === pickedId && c.userId === settled.userId) ?? settled) : null;
+  /* открытый ящик разбора, пока курсор идёт по очереди, держит прежний случай — не схлопывается на каждом шаге */
+  const lastShown = useRef<AlertCase | null>(null);
+  if (shown) lastShown.current = shown;
+  const reviewCase = shown ?? (reviewOpen ? lastShown.current : null);
 
   const refresh = useCallback(() => {
     page.reload();
     personCases.reload();
   }, [page.reload, personCases.reload]);
 
-  /*
-   * Очередь обновляется по событию: новая тревога должна появиться у
-   * дежурного сразу, а взятый коллегой случай — сразу пометиться, иначе
-   * двое разбирают одного человека.
-   */
+  /* очередь обновляется по событию: новая тревога — сразу, взятый коллегой случай — сразу */
   useEffect(
     () =>
       onAppEvent((e) => {
@@ -243,19 +213,17 @@ export default function Alerts() {
     [refresh],
   );
 
-  /** Сдвиг по очереди клавишами: считается от текущего, а не от позиции */
   const move = (delta: number) => {
-    if (!open.length) return;
-    const at = open.findIndex((c) => c.id === current?.id);
-    const next = open[Math.min(Math.max((at < 0 ? 0 : at) + delta, 0), open.length - 1)];
-    if (next) setSelectedId(next.id);
+    const list = filters.status === "open" ? open : rows;
+    if (!list.length) return;
+    const at = list.findIndex((c) => c.id === current?.id);
+    const next = list[Math.min(Math.max((at < 0 ? 0 : at) + delta, 0), list.length - 1)];
+    if (next) sel.select(next.id, "key");
   };
 
   /*
-   * Решение уходит вместе с временем последнего сигнала, который человек
-   * видел: пришёл новый, пока он читал, — сервер отвечает 409, а не кладёт
-   * исход на непрочитанное. Очередь перечитывается в любом случае: и после
-   * решения, и после отказа — во втором новый сигнал должен встать на экран.
+   * Решение — вместе с временем последнего сигнала, который человек видел:
+   * пришёл новый — 409, и очередь перечитывается в любом случае.
    */
   const resolve = (target: AlertCase, outcome: string, note: string) =>
     run(async () => {
@@ -264,8 +232,7 @@ export default function Alerts() {
       } finally {
         refresh();
       }
-      // разобранный уходит из очереди: следующий сам станет выбранным
-      setSelectedId(null);
+      sel.select(null, "click");
       setPickedId(null);
     }, ut("cases.resolved"));
 
@@ -278,21 +245,30 @@ export default function Alerts() {
       }
     }, ut(release ? "cases.released" : "cases.tookToast"));
 
-  /*
-   * Клавиши подобраны так, чтобы рука не уходила с домашнего ряда: j/k —
-   * движение по списку (как в почтовых клиентах и терминалах, где это
-   * привычно), цифры 1–3 — исход в том же порядке, что кнопки на экране.
-   */
-  useHotkeys({
-    j: () => move(1),
-    k: () => move(-1),
-    "1": () => shown && !shown.acknowledgedAt && void resolve(shown, "confirmed", ""),
-    "2": () => shown && !shown.acknowledgedAt && void resolve(shown, "needs_followup", ""),
-    "3": () => shown && !shown.acknowledgedAt && void resolve(shown, "not_confirmed", ""),
-    t: () => {
-      if (!shown || shown.assignedTo || shown.acknowledgedAt) return;
-      void take(shown, false);
+  const canAct = (c: AlertCase | null): c is AlertCase => !!c && !c.acknowledgedAt;
+  useCodeKeys({
+    KeyJ: () => move(1),
+    KeyK: () => move(-1),
+    KeyR: () => {
+      /* R — явное действие: курсор, ещё не остановившийся, выбирает строку сразу */
+      if (!shown && selected) sel.select(selected.id, "click");
+      if (shown || selected) setReviewOpen(true);
     },
+    KeyT: () => {
+      if (canAct(shown) && !shown.assignedTo && !reviewOpen) void take(shown, false);
+    },
+    /* цифры — исход сразу, пока ящик закрыт; в ящике они выбирают исход (RiskReviewDrawer) */
+    Digit1: () => {
+      if (canAct(shown) && !reviewOpen) void resolve(shown, "confirmed", "");
+    },
+    Digit2: () => {
+      if (canAct(shown) && !reviewOpen) void resolve(shown, "needs_followup", "");
+    },
+    Digit3: () => {
+      if (canAct(shown) && !reviewOpen) void resolve(shown, "not_confirmed", "");
+    },
+  });
+  useHotkeys({
     "/": () => {
       const input = document.querySelector<HTMLInputElement>("[data-queue-search]");
       input?.focus();
@@ -313,342 +289,304 @@ export default function Alerts() {
   const sections = queueSections(rows, facets);
   const now = Date.now();
 
+  /* выбранная строка — в поле зрения после J/K */
+  const listRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    listRef.current?.querySelector<HTMLElement>('[data-queue-row][aria-current="true"]')?.scrollIntoView({ block: "nearest" });
+  }, [selected?.id]);
+
   return (
-    /* заголовок остаётся: без него экран теряет ориентацию, а диктор — точку входа */
-    <Page
-      bleed
-      title={ut("cases.title")}
-      count={facets?.total ?? null}
-      sub={subtitle || undefined}
-      toolbar={
-        <div className="relative w-full max-w-[520px] min-w-0">
-          {/* имя полю — из плейсхолдера (Input сам ставит aria-label); лупа — украшение */}
-          <Input
-            look="fill"
-            data-queue-search=""
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder={ut("ui.surname")}
-            className="pr-[34px]"
-            autoComplete="off"
-          />
-          <span aria-hidden className="pointer-events-none absolute right-[8px] top-1/2 -translate-y-1/2 text-primary [&>svg]:size-[20px]">
-            <IconSearchGlass />
-          </span>
-        </div>
-      }
-    >
-      {/* на узком окне прокручивается всё вместе: строка отбора там выше половины экрана */}
-      <div className="flex h-full min-h-0 flex-col max-[900px]:overflow-y-auto">
-        {/*
-          Строка отбора — над всеми тремя панелями, а не в узкой колонке
-          очереди: семь полей в колонке 320 вставали столбиком и съедали
-          полэкрана списка, ради которого экран и открыт.
-        */}
-        <div className="flex shrink-0 flex-wrap items-center gap-x-[14px] gap-y-[10px] border-b border-hairline px-[22px] pb-[12px]">
-          {/* обёртка с min-w-0: на узком окне полоса вкладок прокручивается сама, а не распирает строку */}
-          <div className="min-w-0 max-w-full">
-            <Tabs
-              label={ut("cases.statusLabel")}
-              items={(
-                [
-                  ["open", "cases.filterOpen"],
-                  ["resolved", "cases.filterResolved"],
-                  ["all", "cases.filterAll"],
-                ] as const
-              ).map(([value, key]) => ({
-                id: `cases-status-${value}`,
-                label: ut(key),
-                active: filters.status === value,
-                onSelect: () => setStatus(value),
-                controls: "cases-queue",
-              }))}
-            />
+    /* узкое окно: очередь сверху своей прокруткой, случай под ней — всё листается вместе */
+    <div className="flex min-h-0 flex-1 max-[900px]:flex-col max-[900px]:overflow-y-auto">
+      {/* ── очередь ── */}
+      <aside
+        id="cases-queue"
+        aria-label={ut("cases.queueLabel")}
+        className="flex w-[340px] min-h-0 shrink-0 flex-col border-r border-border bg-panel max-[900px]:w-full max-[900px]:max-h-[46vh] max-[900px]:border-b max-[900px]:border-r-0"
+      >
+        <div className="shrink-0 px-4 pt-3.5">
+          <div className="flex h-9 items-center gap-2">
+            <h1 className="m-0 whitespace-nowrap text-[18px] font-extrabold leading-none tracking-[-0.02em] text-text">{ut("nav.cases")}</h1>
+            {facets ? (
+              <span className="inline-grid h-[22px] min-w-[26px] place-items-center rounded-[11px] bg-sunk px-[7px] text-caption font-bold text-text-2">
+                {facets.total}
+              </span>
+            ) : null}
+            <span className="ml-auto flex gap-1">
+              <Tooltip label={ut("al.filters")}>
+                <Button
+                  variant="quiet"
+                  size="glyph"
+                  aria-label={ut("al.filters")}
+                  aria-expanded={filtersOpen}
+                  aria-controls="cases-filters"
+                  onClick={() => setFiltersOpen((v) => !v)}
+                >
+                  <Pi.sliders size={16} />
+                  {narrowCount ? (
+                    <span className="absolute -right-0.5 -top-0.5 inline-grid h-4 min-w-4 place-items-center rounded-full bg-violet px-1 text-[10px] font-extrabold text-onfill">
+                      {narrowCount}
+                    </span>
+                  ) : null}
+                </Button>
+              </Tooltip>
+            </span>
           </div>
-          <span className="w-[10px]" aria-hidden />
-          <FillSelect
-            label={ut("cases.severityLabel")}
-            value={filters.severity}
-            onChange={setSeverity}
-            options={[
-              { value: "", label: ut("cases.anySeverity") },
-              { value: "severe", label: withCount(ut("cases.severeOnly"), facets?.severity.severe) },
-              { value: "moderate", label: withCount(ut("cases.moderate"), facets?.severity.moderate) },
-            ]}
+          {subtitle ? <p className="m-0 mt-0.5 text-small text-text-2">{subtitle}</p> : null}
+          <SearchField
+            value={q}
+            onChange={setQ}
+            placeholder={ut("ui.surname")}
+            label={ut("ui.surname")}
+            width={0}
+            className="mt-2.5 w-full"
+            inputProps={{ "data-queue-search": "" }}
           />
-          <FillSelect
-            label={ut("cases.assignedLabel")}
-            value={filters.assigned}
-            onChange={setAssigned}
-            options={[
-              { value: "", label: ut("cases.assignedAny") },
-              { value: "me", label: withCount(ut("cases.assignedMe"), facets?.assigned.me) },
-              { value: "none", label: withCount(ut("cases.assignedNone"), facets?.assigned.none) },
-              { value: "others", label: withCount(ut("cases.assignedOthers"), facets?.assigned.others) },
-            ]}
-          />
-          <FillSelect
-            label={ut("ui.unit")}
-            value={filters.unit}
-            onChange={setUnit}
-            options={[
-              { value: "", label: ut("ui.unitAll") },
-              // значение из адреса, которого нет среди подразделений, всё равно показывается выбранным
-              ...[...new Set([...units, ...(filters.unit ? [filters.unit] : [])])].map((u) => ({ value: u, label: u })),
-            ]}
-          />
-          {groups.length || filters.patientGroup ? (
-            <FillSelect
-              label={ut("cases.groupLabel")}
-              value={filters.patientGroup}
-              onChange={setPatientGroup}
-              options={[
-                { value: "", label: ut("cases.groupAll") },
-                ...groups.map((g) => ({ value: g.id, label: g.title })),
-                ...(filters.patientGroup && !groups.some((g) => g.id === filters.patientGroup)
-                  ? [{ value: filters.patientGroup, label: ut("cases.groupLabel") }]
-                  : []),
+          <div role="tablist" aria-label={ut("cases.statusLabel")} className="mt-2.5 flex flex-wrap gap-x-[5px] gap-y-1.5">
+            {VIEWS.map((v) => {
+              const on = view === v.key;
+              const count = v.key === view ? (facets?.total ?? null) : v.key === "mine" && filters.status === "open" ? (facets?.assigned.me ?? null) : null;
+              return (
+                <button
+                  key={v.key}
+                  type="button"
+                  role="tab"
+                  id={`cases-status-${v.key}`}
+                  aria-selected={on}
+                  aria-controls="cases-queue-list"
+                  onClick={() => setView(v.key)}
+                  className={cx(
+                    "inline-flex h-8 min-h-0 cursor-pointer items-center gap-[5px] whitespace-nowrap rounded-2xl border-0 px-2.5 text-small leading-none",
+                    "outline-none focus-visible:shadow-[0_0_0_2px_var(--vring)]",
+                    on ? "bg-violet font-bold text-onfill" : "bg-sunk font-semibold text-text-2 hover:bg-sunk-2 hover:text-text",
+                  )}
+                >
+                  {ut(v.label)}
+                  {count !== null ? <span className={cx("font-bold tabular-nums", on ? "text-onfill-muted" : "text-muted")}>{count}</span> : null}
+                </button>
+              );
+            })}
+          </div>
+          {filtersOpen ? (
+            <div id="cases-filters" className="mt-3 flex flex-col gap-2 rounded-panel bg-panel-2 p-3 shadow-[inset_0_0_0_1px_var(--divider)]">
+              <Select aria-label={ut("cases.severityLabel")} value={filters.severity} onChange={(e) => setSeverity(e.target.value)}>
+                <option value="">{ut("cases.anySeverity")}</option>
+                <option value="severe">{withCount(ut("cases.severeOnly"), facets?.severity.severe)}</option>
+                <option value="moderate">{withCount(ut("cases.moderate"), facets?.severity.moderate)}</option>
+              </Select>
+              <Select aria-label={ut("cases.assignedLabel")} value={filters.assigned} onChange={(e) => setAssigned(e.target.value)}>
+                <option value="">{ut("cases.assignedAny")}</option>
+                <option value="me">{withCount(ut("cases.assignedMe"), facets?.assigned.me)}</option>
+                <option value="none">{withCount(ut("cases.assignedNone"), facets?.assigned.none)}</option>
+                <option value="others">{withCount(ut("cases.assignedOthers"), facets?.assigned.others)}</option>
+              </Select>
+              <Select aria-label={ut("ui.unit")} value={filters.unit} onChange={(e) => setUnit(e.target.value)}>
+                <option value="">{ut("ui.unitAll")}</option>
+                {[...new Set([...units, ...(filters.unit ? [filters.unit] : [])])].map((u) => (
+                  <option key={u} value={u}>
+                    {u}
+                  </option>
+                ))}
+              </Select>
+              {groups.length || filters.patientGroup ? (
+                <Select aria-label={ut("cases.groupLabel")} value={filters.patientGroup} onChange={(e) => setPatientGroup(e.target.value)}>
+                  <option value="">{ut("cases.groupAll")}</option>
+                  {groups.map((g) => (
+                    <option key={g.id} value={g.id}>
+                      {g.title}
+                    </option>
+                  ))}
+                  {filters.patientGroup && !groups.some((g) => g.id === filters.patientGroup) ? (
+                    <option value={filters.patientGroup}>{ut("cases.groupLabel")}</option>
+                  ) : null}
+                </Select>
+              ) : null}
+              {/* период — по дате открытия случая: она у случая не меняется */}
+              <div className="grid grid-cols-2 gap-2">
+                <Input
+                  type="date"
+                  aria-label={ut("cases.periodFrom")}
+                  value={filters.from}
+                  max={filters.to || undefined}
+                  onChange={(e) => setFrom(e.target.value)}
+                />
+                <Input
+                  type="date"
+                  aria-label={ut("cases.periodTo")}
+                  value={filters.to}
+                  min={filters.from || undefined}
+                  onChange={(e) => setTo(e.target.value)}
+                />
+              </div>
+              {filters.patient ? (
+                <span className="inline-flex items-center gap-1.5">
+                  <Tag tone="primary">
+                    {ut("cases.patientFilter")}: {rows[0]?.userName ?? "…"}
+                  </Tag>
+                  <Button size="icon-sm" variant="quiet" aria-label={ut("cases.clearPatient")} onClick={() => patch({ patient: "" })}>
+                    <Ic.x size={14} />
+                  </Button>
+                </span>
+              ) : null}
+              <div className="flex flex-wrap items-center gap-2">
+                <SavedViews scope="alerts" />
+                {narrowed ? (
+                  <Button variant="quiet" size="xs" onClick={() => patch(CLEAR_NARROWING)}>
+                    {ut("cases.clearFilters")}
+                  </Button>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
+          <div className="mt-1.5 flex h-9 items-center gap-[7px] text-small text-muted">
+            <Ic.sortDesc size={14} />
+            {ut("al.sortLine")} <b className="font-bold text-text-2">{ut("al.sortLineB")}</b>
+          </div>
+        </div>
+        <div
+          ref={listRef}
+          id="cases-queue-list"
+          role="tabpanel"
+          aria-labelledby={`cases-status-${view}`}
+          className="kit-scroll min-h-0 flex-1 overflow-y-auto border-t border-divider pb-2.5"
+        >
+          {queue.stale ? (
+            <div role="alert" className="flex items-center gap-2.5 border-b border-divider px-4 py-2">
+              <p className="m-0 min-w-0 flex-1 text-small font-bold text-risk-ink">{queue.stale}</p>
+              <Button variant="quiet" size="xs" onClick={page.reload}>
+                {ut("common.retry")}
+              </Button>
+            </div>
+          ) : null}
+          {queue.body === "failed" || queue.body === "loading" ? (
+            <div className="p-4">
+              <Loading rows={6} error={page.error} onRetry={page.reload} bare />
+            </div>
+          ) : queue.body === "empty" ? (
+            <div className="p-2">
+              <Empty title={ut(emptyQueueKey(filters))} hint={ut("cases.emptyHint")} icon={<Ic.shieldCheck />} />
+            </div>
+          ) : (
+            sections.map((s) => (
+              <section key={s.severity} aria-labelledby={`cases-section-${s.severity}`}>
+                <div id={`cases-section-${s.severity}`}>
+                  <ListGroup
+                    label={s.severity === "severe" ? ut("cases.sectionSevere") : ut("cases.moderate")}
+                    count={s.total ?? s.items.length}
+                    mark={s.severity === "severe" ? "risk" : "warn"}
+                    note={s.severity === "severe" && filters.status === "open" ? ut("al.severeNote") : undefined}
+                  />
+                </div>
+                {s.items.map((c) => (
+                  <QueueRow key={c.id} c={c} active={c.id === selected?.id} me={user?.id} now={now} onPick={() => sel.select(c.id, "click")} />
+                ))}
+              </section>
+            ))
+          )}
+          {page.items && rows.length ? (
+            <div className="px-4 pb-1 pt-3">
+              {page.hasMore ? (
+                <Button className="w-full" disabled={page.loadingMore} onClick={page.loadMore}>
+                  {page.loadingMore ? ut("ui.loading") : ut("ui.loadMore")}
+                </Button>
+              ) : (
+                <p className="m-0 text-center text-small text-muted">{ut("ui.endOfList")}</p>
+              )}
+            </div>
+          ) : null}
+        </div>
+        <div className="flex h-[42px] shrink-0 items-center gap-3 border-t border-divider px-4 text-caption text-muted">
+          <div className="min-w-0 [&>div]:flex-nowrap [&>div]:gap-x-3">
+            <KbdHints
+              className="hotkeys"
+              keys={[
+                ["J K", ut("card.kRows")],
+                ["T", ut("al.kTake")],
+                ["R", ut("al.kReview")],
               ]}
             />
-          ) : null}
-          {/*
-            Период — по дате открытия случая: она у случая не меняется, и
-            «за вчерашнє чергування» не расползается от нового сигнала.
-          */}
-          <Input
-            type="date"
-            look="fill"
-            aria-label={ut("cases.periodFrom")}
-            value={filters.from}
-            max={filters.to || undefined}
-            onChange={(e) => setFrom(e.target.value)}
-            className="w-[168px]"
-          />
-          <Input
-            type="date"
-            look="fill"
-            aria-label={ut("cases.periodTo")}
-            value={filters.to}
-            min={filters.from || undefined}
-            onChange={(e) => setTo(e.target.value)}
-            className="w-[168px]"
-          />
-          {filters.patient ? (
-            <span className="inline-flex items-center gap-[6px]">
-              <Tag tone="primary">
-                {ut("cases.patientFilter")}: {rows[0]?.userName ?? "…"}
-              </Tag>
-              <Button size="glyph-sm" variant="quiet" aria-label={ut("cases.clearPatient")} onClick={() => patch({ patient: "" })}>
-                <IconClose />
-              </Button>
+
+          </div>
+          {facets ? (
+            <span className="ml-auto whitespace-nowrap font-bold text-text-2">
+              {ut("kit.ofTotal").replace("{n}", String(rows.length)).replace("{total}", String(facets.total))}
             </span>
           ) : null}
-          {narrowed ? (
-            <Button
-              variant="quiet"
-              onClick={() => patch(CLEAR_NARROWING)}
-            >
-              {ut("cases.clearFilters")}
-            </Button>
-          ) : null}
-          <span className="flex-1" />
-          <SavedViews scope="alerts" />
         </div>
+      </aside>
 
-        <div
-          className={cx(
-            "grid min-h-0 flex-1",
-            "grid-cols-[minmax(280px,340px)_minmax(420px,1fr)_minmax(260px,330px)]",
-            /* на 3/4 экрана контекст пациента уходит: три колонки там превращаются в кашу */
-            "max-[1400px]:grid-cols-[minmax(260px,320px)_minmax(0,1fr)]",
-            /* на узком — столбиком, очередь сверху своей прокруткой */
-            "max-[900px]:flex max-[900px]:flex-none max-[900px]:flex-col",
-          )}
-        >
-          {/* ── панель 1: очередь ── */}
-          <aside
-            id="cases-queue"
-            aria-label={ut("cases.queueLabel")}
-            className="flex min-h-0 flex-col overflow-y-auto border-r border-hairline max-[900px]:max-h-[46vh] max-[900px]:shrink-0 max-[900px]:border-b max-[900px]:border-r-0"
-          >
-            {/*
-              Отказ перечитывания поверх уже показанных строк — строкой с
-              «повторити», а строки остаются (listBody в ui/paging.ts):
-              раньше такой отказ не показывался вовсе, и очередь молча
-              устаревала.
-            */}
-            {queue.stale ? (
-              <div role="alert" className="flex shrink-0 items-center gap-[10px] border-b border-hairline px-[12px] py-[8px]">
-                <p className="m-0 min-w-0 flex-1 text-[13px] text-danger">{queue.stale}</p>
-                <Button variant="quiet" size="sm" onClick={page.reload}>
-                  {ut("common.retry")}
-                </Button>
-              </div>
-            ) : null}
-            {queue.body === "failed" || queue.body === "loading" ? (
-              <div className="p-[12px]">
-                <Loading rows={6} error={page.error} onRetry={page.reload} />
-              </div>
-            ) : queue.body === "empty" ? (
-              <div className="p-[12px]">
-                <Empty title={ut(emptyQueueKey(filters))} hint={ut("cases.emptyHint")} />
-              </div>
-            ) : (
-              sections.map((s) => (
-                <section key={s.severity} aria-labelledby={`cases-section-${s.severity}`}>
-                  {/*
-                    Заголовок раздела прилипает к верху колонки: листая
-                    умеренные, дежурный видит, что тяжёлые кончились, — и
-                    сколько их было всего, а не сколько загрузилось.
-                  */}
-                  <h2
-                    id={`cases-section-${s.severity}`}
-                    className="sticky top-0 z-[1] m-0 flex items-center gap-[8px] border-b-2 border-primary-rule bg-[var(--bg)] px-[12px] py-[8px]"
-                  >
-                    <SeverityTag level={s.severity}>
-                      {s.severity === "severe" ? ut("cases.sectionSevere") : ut("cases.moderate")}
-                    </SeverityTag>
-                    {s.total !== null ? <Num className="text-[13px] text-muted">{s.total}</Num> : null}
-                  </h2>
-                  <ul className="m-0 list-none p-0">
-                    {s.items.map((c) => (
-                      <li key={c.id}>
-                        <QueueRow
-                          c={c}
-                          active={c.id === selected?.id}
-                          me={user?.id}
-                          now={now}
-                          onPick={() => setSelectedId(c.id)}
-                        />
-                      </li>
-                    ))}
-                  </ul>
-                </section>
-              ))
-            )}
-            {page.items && rows.length ? (
-              <div className="px-[12px] py-[12px]">
-                {page.hasMore ? (
-                  <Button variant="ghost" className="w-full" disabled={page.loadingMore} onClick={page.loadMore}>
-                    {page.loadingMore ? ut("ui.loading") : ut("ui.loadMore")}
-                  </Button>
-                ) : (
-                  <p className="m-0 text-center text-[13px] text-muted">{ut("ui.endOfList")}</p>
-                )}
-              </div>
-            ) : null}
-          </aside>
-
-          {/* ── панель 2: сам случай ── */}
-          <section data-triage-case="" className="min-h-0 overflow-y-auto px-[22px] pb-[40px] pt-[18px]">
-            {shown ? (
-              <CaseCard
-                key={shown.id}
-                c={shown}
-                row={selected!}
-                personCases={many ? (personCases.data ?? null) : null}
-                pickedId={shown.id}
-                onPickCase={setPickedId}
-                onShowPerson={() => patch({ patient: shown.userId })}
-                onResolve={(outcome, note) => resolve(shown, outcome, note)}
-                onTake={(release) => take(shown, release)}
-                me={user?.id}
-              />
-            ) : (
-              /*
-                «Ничего не выбрано» — не то же, что «ничего нет».
-                Здесь стояло «Открытых случаев нет» — и висело оно при полном
-                списке слева: панель разбора путала пустую очередь с невыбранной
-                строкой и врала о состоянии отделения. Ровно эту же ошибку уже
-                находили в переписке.
-              */
-              <Empty
-                title={ut(rows.length ? "cases.pickOne" : "cases.emptyOpen")}
-                hint={ut(rows.length ? "cases.pickOneHint" : "cases.emptyHint")}
-              />
-            )}
-            <div className="mt-[24px]">
-              <HotkeyHint
-                keys={[
-                  ["J / K", ut("hotkey.next")],
-                  ["1", ut("hotkey.confirm")],
-                  ["2", ut("hotkey.followup")],
-                  ["3", ut("hotkey.reject")],
-                  ["T", ut("hotkey.take")],
-                  ["/", ut("hotkey.search")],
-                ]}
-              />
-            </div>
-          </section>
-
-          {/* ── панель 3: контекст человека ── */}
-          <aside className="flex min-h-0 flex-col gap-[16px] overflow-y-auto border-l border-hairline p-[16px] max-[1400px]:hidden">
-            {selected ? <PatientContext userId={selected.userId} /> : null}
-          </aside>
-        </div>
-      </div>
-    </Page>
-  );
-}
-
-/**
- * Выбор-фильтр в залитом силуэте поля (заливка #f0ecff, без рамки, высота
- * 36, радиус 5) — как фильтры «Лікарі» и «Статистики».
- *
- * Свой, а не общий Select: у того залитого вида нет, а перекрыть рамку и
- * заливку классом снаружи нельзя — две утилиты одного свойства в строке
- * классов спорят, и побеждает та, что ниже в собранном CSS (см. FillSelect в
- * people/StaffList.tsx, откуда взят рисунок). Пустой выбор набран подписью
- * поля — 17/700 фиолетовым, выбранный — начертанием данных: заполненный
- * фильтр обязан отличаться от незаполненного с первого взгляда.
- */
-function FillSelect({
-  label,
-  value,
-  onChange,
-  options,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  options: { value: string; label: string }[];
-}) {
-  const empty = !value;
-  return (
-    <span className="relative block w-[220px] min-w-0 max-[900px]:w-full">
-      <select
-        aria-label={label}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className={cx(
-          "h-9 w-full min-w-0 appearance-none truncate rounded-[5px] border-0 bg-primary-soft pl-[10px] pr-[30px] text-[17px]",
-          empty ? "font-bold text-primary" : "font-normal text-text",
-          "outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]",
-        )}
+      {/* ── выбранный случай ── */}
+      <section
+        data-triage-case=""
+        aria-label={ut("al.recordLabel")}
+        className="kit-scroll min-h-0 min-w-0 flex-1 overflow-y-auto max-[900px]:flex-none max-[900px]:overflow-visible"
       >
-        {options.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
-      </select>
-      <span aria-hidden className="pointer-events-none absolute right-[11px] top-1/2 flex -translate-y-1/2 text-primary">
-        <IconCaret />
-      </span>
-    </span>
+
+        {shown ? (
+          <CaseRecord
+            key={shown.id}
+            c={shown}
+            row={settled!}
+            personCases={many ? (personCases.data ?? null) : null}
+            personCasesError={many && !personCases.data ? personCases.error : null}
+            onRetryPersonCases={personCases.reload}
+            onPickCase={setPickedId}
+            onShowPerson={() => patch({ patient: shown.userId })}
+            onTake={(release) => take(shown, release)}
+            onReview={() => setReviewOpen(true)}
+            reviewOpen={reviewOpen}
+            me={user?.id}
+            facets={filters.status === "open" ? facets : undefined}
+            now={now}
+          />
+        ) : selected ? (
+          /* курсор ещё идёт по очереди: запись встанет, когда он остановится */
+          <div className="p-5" data-settling="">
+            <Loading rows={6} />
+          </div>
+        ) : (
+          /* «ничего не выбрано» — не то же, что «ничего нет» */
+          <div className="p-5">
+            <Empty
+              title={ut(rows.length ? "cases.pickOne" : "cases.emptyOpen")}
+              hint={ut(rows.length ? "cases.pickOneHint" : "cases.emptyHint")}
+              icon={<Ic.shieldCheck />}
+            />
+          </div>
+        )}
+      </section>
+
+      <RiskReviewDrawer
+        open={reviewOpen && !!reviewCase}
+        onClose={() => setReviewOpen(false)}
+        onReturn={() => setReviewOpen(true)}
+        userId={reviewCase?.userId ?? null}
+        caseId={reviewCase?.id ?? null}
+        known={reviewCase}
+        onChanged={refresh}
+        onResolved={() => {
+          setReviewOpen(false);
+          sel.select(null, "click");
+          setPickedId(null);
+        }}
+      />
+    </div>
   );
 }
 
+/* ─────────── строка очереди ─────────── */
+
+const SEVERITY_LEVEL: Record<RiskSeverity, "severe" | "moderate"> = { severe: "severe", moderate: "moderate" };
+
 /**
- * Строка очереди.
+ * Строка очереди (.prow набора): ПОЧЕМУ человек здесь и ЧТО дальше.
  *
- * Всё, что нужно для выбора следующего: выраженность точкой и разделом,
- * кто держит случай, сколько у человека случаев и сколько он ждёт.
- * Разбор идёт подряд, и строка не должна требовать чтения — только взгляда.
+ *   имя                      случаев у человека / подразделение
+ *   причина пилюлей          тяжесть словом
+ *   ↳ следующий шаг          сколько ждёт / «прострочено»
  *
- * Янтарь — только у «прострочено»: это и есть «требует внимания». «Взяв» —
- * состояние, оно фиолетовое; прежде кружок «кто взял» был янтарным и спорил
- * с просроченными за один и тот же цвет.
+ * Красная пилюля — открытый сигнал с таймером; «взяв» — состоянием, не
+ * янтарём: янтарь — только у просроченного.
  */
 export function QueueRow({
   c,
@@ -665,8 +603,39 @@ export function QueueRow({
 }) {
   const { ut } = useLang();
   const done = !!c.acknowledgedAt;
-  const severity: RiskSeverity = c.severity === "severe" ? "severe" : "moderate";
-  const outcome = SHOWN_OUTCOME.find((o) => o.value === c.outcome);
+  const level = SEVERITY_LEVEL[c.severity] ?? "moderate";
+  const outcome = c.outcome ? OUTCOME_KEY[c.outcome] : null;
+  const clock = riskClock(c, now);
+  const timer =
+    clock.norm !== null
+      ? ut("kit.timerOf")
+          .replace("{elapsed}", clockText(clock.elapsed, ut("rr.days")))
+          .replace("{of}", normText(clock.norm, { h: ut("rr.hours"), min: ut("dur.min") }))
+      : clockText(clock.elapsed, ut("rr.days"));
+  const overdue = !done && rowOverdue(c);
+  const mine = !!c.assignedTo && c.assignedTo === me;
+
+  const reason = done ? (
+    <Tag tone="good" icon={<Ic.check />}>
+      {outcome ? ut(outcome) : ut("work.done")}
+    </Tag>
+  ) : c.assignedTo && !mine ? (
+    <Tag tone="handover" icon={<Ic.user />}>
+      {ut("cases.taken")}: {c.assignedToName ?? "—"}
+    </Tag>
+  ) : (
+    <Tag tone="danger" icon={<Ic.timer />}>
+      {ut("card.rsSignal").replace("{t}", timer)}
+    </Tag>
+  );
+  const next = done
+    ? `${c.acknowledgedByName ?? "—"}, ${day(c.acknowledgedAt!)}`
+    : mine
+      ? ut("al.youTook")
+      : clock.dueAt !== null && clock.left !== null && clock.left > 0
+        ? ut("card.nxReviewBy").replace("{t}", timeOfDay(new Date(clock.dueAt).toISOString()))
+        : ut("card.nxReview");
+
   return (
     <button
       type="button"
@@ -675,235 +644,364 @@ export function QueueRow({
       onClick={onPick}
       aria-current={active}
       className={cx(
-        "flex w-full items-start gap-[10px] border-0 border-b border-hairline px-[12px] py-[10px] text-left",
-        "transition-colors duration-[var(--dur-fast)]",
-        "outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--focus)]",
-        active ? "bg-primary-soft" : "bg-transparent hover:bg-primary-tint",
+        "relative mx-1.5 my-0.5 block w-[calc(100%-12px)] cursor-pointer rounded-[12px] border-0 pb-[11px] pl-5 pr-2.5 pt-2.5 text-left",
+        "transition-colors duration-[var(--dur-fast)] ease-[var(--ease)] outline-offset-[-2px] focus-visible:outline-2 focus-visible:outline-focus",
+        active ? "bg-violet-tint shadow-[inset_0_0_0_1px_var(--vline)]" : "bg-transparent hover:bg-sunk",
       )}
     >
-      <span aria-hidden className={cx("mt-[7px] size-2 shrink-0", DOT[severity])} />
-      <span className="min-w-0 flex-1">
+      <span className="flex items-baseline gap-2">
         <span
           data-queue-name=""
-          className={cx("block truncate text-[15px] font-bold leading-[20px]", done ? "text-muted" : "text-primary")}
+          className={cx(
+            "min-w-0 truncate text-[14px] leading-5",
+            active ? "font-extrabold text-violet-ink" : done ? "font-bold text-muted" : "font-bold text-text",
+          )}
         >
           {c.userName}
         </span>
-        <span className="block truncate text-[13px] leading-[18px] text-muted">
-          <span className="sr-only">{ut(severityKey[severity])} · </span>
-          {c.unit ? `${c.unit} · ` : ""}
-          {c.surveyTitle}
-        </span>
-        <span className="mt-[4px] flex flex-wrap gap-[6px] empty:hidden">
-          {!done && rowOverdue(c) ? <Tag tone="attention">{ut("cases.overdue")}</Tag> : null}
-          {c.group && c.group.cases > 1 ? <Tag>{ut("cases.casesN").replace("{n}", String(c.group.cases))}</Tag> : null}
-          {done ? (
-            <Tag>{outcome ? ut(outcome.key) : ut("work.done")}</Tag>
-          ) : c.assignedTo ? (
-            <Tag tone={c.assignedTo === me ? "primary" : "plain"}>
-              {c.assignedTo === me ? ut("cases.mine") : `${ut("cases.taken")}: ${c.assignedToName ?? "—"}`}
-            </Tag>
-          ) : null}
+        <span className="ml-auto whitespace-nowrap text-small text-muted">
+          {c.group && c.group.cases > 1 ? ut("cases.casesN").replace("{n}", String(c.group.cases)) : (c.unit ?? "")}
         </span>
       </span>
-      <span className="shrink-0 pt-[2px] font-mono text-[11px] tabular-nums text-muted">
-        {duration(waitingMinutes(c, now), ut)}
+      <span className="mt-1.5 flex items-center justify-between gap-1.5">
+        {reason}
+        <SeverityTag level={level} small>
+          {ut(severityKey[level])}
+        </SeverityTag>
+      </span>
+      <span className="mt-1.5 flex items-center gap-2.5 text-caption text-text-2">
+        <span className="inline-flex min-w-0 items-center gap-1.5 whitespace-nowrap">
+          <span className="inline-flex text-muted">{done ? <Ic.circleCheck size={13} /> : <Ic.alert size={13} />}</span>
+          <span className="truncate">{next}</span>
+        </span>
+        {overdue ? (
+          <Tag tone="attention" className="ml-auto">
+            {ut("cases.overdue")}
+          </Tag>
+        ) : (
+          <span className="ml-auto whitespace-nowrap text-muted">{duration(waitingMinutes(c, now), ut)}</span>
+        )}
       </span>
     </button>
   );
 }
 
-/**
- * Контекст пациента рядом со случаем.
- *
- * Раньше, чтобы понять, кого разбираешь, нужно было уйти на карту и потерять
- * место в очереди. Здесь то же самое стоит рядом: последние баллы, открытые
- * тревоги, направления и подписанные заключения.
- */
-function PatientContext({ userId }: { userId: string }) {
-  const { ut } = useLang();
-  /* keep: false — сводка прежнего пациента не встаёт рядом со случаем следующего (#177) */
-  const res = useResource(() => api.caseSummary(userId), [userId], { keep: false });
-  const data = res.data;
+/* ─────────── выбранный случай ─────────── */
 
-  if (!data) return <Loading rows={4} error={res.error} onRetry={res.reload} busy={res.loading} />;
-
-  return (
-    <>
-      <div className="flex items-center gap-[10px]">
-        <Avatar name={data.fullName} size={30} />
-        <div className="min-w-0 flex-1">
-          <Link to={`/patients/${userId}`} className="block truncate text-[15px] font-bold text-primary">
-            {data.fullName}
-          </Link>
-          <p className="m-0 text-[13px] text-muted">
-            {[data.unit, data.age ? `${data.age}` : null].filter(Boolean).join(" · ")}
-          </p>
-        </div>
-      </div>
-
-      {data.surveys.map((sv) => (
-        <div key={sv.surveyId} className="flex flex-col gap-[4px]">
-          <h3 className="m-0 text-[13px] font-bold text-text">{sv.title}</h3>
-          {sv.scales.slice(0, 6).map((sc) => (
-            <div key={sc.code} className="flex items-center gap-[8px] border-b border-hairline py-[3px] text-[13px] last:border-b-0">
-              <span className="min-w-0 flex-1 truncate">{sc.title}</span>
-              <Num>{sc.lastValue}</Num>
-              {/* выраженность — меткой с подписью и формой точки, не одним цветом */}
-              {sc.severity ? <SeverityTag level={sc.severity}>{ut(severityKey[sc.severity])}</SeverityTag> : null}
-            </div>
-          ))}
-        </div>
-      ))}
-
-      {data.referrals.length ? (
-        <div className="flex flex-col gap-[4px]">
-          <h3 className="m-0 text-[13px] font-bold text-text">{ut("nav.referrals")}</h3>
-          {data.referrals.slice(0, 3).map((r) => (
-            <div key={r.id} className="flex items-center gap-[8px] border-b border-hairline py-[3px] text-[13px] last:border-b-0">
-              <span className="min-w-0 flex-1 truncate">{r.destination}</span>
-              <span className="text-muted">{day(r.createdAt)}</span>
-            </div>
-          ))}
-        </div>
-      ) : null}
-
-      {data.conclusions.length ? (
-        <div className="flex flex-col gap-[4px]">
-          <h3 className="m-0 text-[13px] font-bold text-text">{ut("an.conclusion")}</h3>
-          <p className="m-0 text-[13px] text-muted">
-            {data.conclusions[0]!.text.slice(0, 180)}
-            {data.conclusions[0]!.text.length > 180 ? "…" : ""}
-          </p>
-        </div>
-      ) : null}
-    </>
-  );
-}
-
-function CaseCard({
+function CaseRecord({
   c,
   row,
   personCases,
-  pickedId,
+  personCasesError,
+  onRetryPersonCases,
   onPickCase,
   onShowPerson,
-  onResolve,
   onTake,
+  onReview,
+  reviewOpen,
   me,
+  facets,
+  now,
 }: {
   c: AlertCase;
   /** Строка очереди, из которой открыт случай: у неё — сводка по всем случаям человека */
   row: AlertCase;
   /** Открытые случаи человека, если их больше одного; null — один или ещё грузятся */
   personCases: AlertCase[] | null;
-  pickedId: string;
+  /** Случаи человека не пришли — отказ с «Повторити», а не вечный скелет */
+  personCasesError: string | null;
+  onRetryPersonCases: () => void;
   onPickCase: (id: string) => void;
   onShowPerson: () => void;
-  onResolve: (outcome: string, note: string) => Promise<unknown>;
   onTake: (release: boolean) => Promise<unknown>;
+  onReview: () => void;
+  reviewOpen: boolean;
   me: string | undefined;
+  facets: AlertCasePage["facets"];
+  now: number;
+}) {
+  const done = !!c.acknowledgedAt;
+  const many = (row.group?.cases ?? 1) > 1;
+  return (
+    <article data-case-card="" className="flex min-h-full flex-col">
+      <PatientBand c={c} now={now} onReview={onReview} reviewOpen={reviewOpen} />
+      <div className="@container px-5 pb-8 pt-5">
+        <div className="grid items-start gap-5 @min-[780px]:grid-cols-[minmax(0,1fr)_300px] @min-[1000px]:grid-cols-[minmax(0,1fr)_360px]">
+          <div className="flex min-w-0 flex-col gap-4">
+            <ReviewPanel c={c} me={me} now={now} onTake={onTake} onReview={onReview}>
+              {many ? (
+                <PersonCases
+                  total={row.group!.cases}
+                  cases={personCases}
+                  error={personCasesError}
+                  onRetry={onRetryPersonCases}
+                  pickedId={c.id}
+                  onPick={onPickCase}
+                  onShowPerson={onShowPerson}
+                />
+              ) : null}
+            </ReviewPanel>
+            <CaseBasisPanel userId={c.userId} c={c} />
+          </div>
+          <div className="flex min-w-0 flex-col gap-4">
+            <HistoryPanel c={c} />
+            <PatientContext userId={c.userId} />
+            {facets && !done ? <RhythmPanel facets={facets} now={now} /> : null}
+          </div>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+/** Человек на полосе (как в карточке пациента): кто это и строка открытого */
+function PatientBand({ c, now, onReview, reviewOpen }: { c: AlertCase; now: number; onReview: () => void; reviewOpen: boolean }) {
+  const { ut } = useLang();
+  const userId = c.userId;
+  /* keep: false — сводка прежнего пациента не встаёт рядом со случаем следующего (#177) */
+  const summary = useResource(() => api.caseSummary(userId), [userId], { keep: false, key: "alerts:summary" });
+  const s = summary.data;
+  const done = !!c.acknowledgedAt;
+  const clock = riskClock(c, now);
+  const others = (s?.openAlerts.length ?? 0) - c.signalCount;
+  const sex = s?.sex === "male" ? ut("card.male") : s?.sex === "female" ? ut("card.female") : null;
+  return (
+    <div className="border-b border-band-card-line bg-band px-4 pb-3.5 pt-3.5">
+      <div className="rounded-drawer border border-band-card-line bg-band-card py-3 pl-3.5 pr-3 shadow-banner">
+        <div className="flex min-w-0 items-center gap-3.5">
+          <Avatar name={c.userName} size={56} />
+          <div className="flex min-w-0 flex-col gap-[5px]">
+            <h2 className="m-0 truncate text-title font-extrabold leading-[30px] tracking-[-0.03em] text-text">
+              <Link to={`/patients/${userId}`} className="text-text no-underline hover:underline hover:decoration-violet-line hover:decoration-2 hover:underline-offset-[5px]">
+                {c.userName}
+              </Link>
+            </h2>
+            <span className="flex min-w-0 flex-wrap gap-x-4 gap-y-1 text-[13px] font-semibold text-text-2">
+              {s && (s.age !== null || sex) ? (
+                <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                  <Pi.userRound size={15} className="text-violet-ink" />
+                  <span>
+                    {s.age !== null ? <b className="font-extrabold text-text">{ut("card.years").replace("{n}", String(s.age))}</b> : null}
+                    {s.age !== null && sex ? ", " : null}
+                    {sex}
+                  </span>
+                </span>
+              ) : null}
+
+              {c.unit ? (
+                <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                  <Ic.idCard size={15} className="text-violet-ink" />
+                  <b className="font-extrabold text-text">{c.unit}</b>
+                </span>
+              ) : null}
+              <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                <Ic.clipboard size={15} className="text-violet-ink" />
+                {c.surveyTitle}
+              </span>
+            </span>
+          </div>
+          <Link
+            to={`/patients/${userId}`}
+            className="ml-auto inline-flex h-10 shrink-0 items-center gap-2 whitespace-nowrap rounded-control bg-violet-tint px-4 text-body font-bold text-violet-ink no-underline hover:bg-violet-tint-2 hover:no-underline"
+          >
+            <Ic.user size={15} />
+            {ut("al.openCard")}
+          </Link>
+        </div>
+        <AlertStrip className="mt-3 min-h-10">
+          <RiskChip
+            title={ut("card.signal")}
+            state={done ? "done" : "open"}
+            timer={
+              done ? (
+                <span className="text-caption font-semibold text-text-2">{dateTime(c.acknowledgedAt)}</span>
+              ) : clock.norm !== null ? (
+                <RiskTimer
+                  elapsed={clockText(clock.elapsed, ut("rr.days"))}
+                  of={normText(clock.norm, { h: ut("rr.hours"), min: ut("dur.min") })}
+                  pct={clock.pct}
+                />
+              ) : (
+                <span className="text-caption font-semibold text-text-2">
+                  <b className="text-body font-extrabold text-risk-ink">{clockText(clock.elapsed, ut("rr.days"))}</b>
+                </span>
+              )
+            }
+            action={
+              <Tooltip label={ut("card.reviewTip")} kbd="R">
+                <Button variant="risk" size="xs" className="rounded-2xl" aria-expanded={reviewOpen} onClick={onReview}>
+                  {ut("card.review")}
+                </Button>
+              </Tooltip>
+            }
+          />
+          {others > 0 ? (
+            <span className="inline-flex h-[34px] shrink-0 items-center gap-[5px] rounded-[17px] bg-sunk pl-[9px] pr-[11px] text-caption font-semibold text-text-2">
+              <Ic.alert size={15} className="text-muted" />
+              <b className="font-bold text-text">{ut("al.otherAlerts").replace("{n}", String(others))}</b>
+            </span>
+          ) : null}
+          {s?.conclusions.length ? (
+            <span className="inline-flex h-[34px] shrink-0 items-center gap-[5px] rounded-[17px] bg-sunk pl-[9px] pr-[11px] text-caption font-semibold text-text-2">
+              <Ic.file size={15} className="text-muted" />
+              <b className="font-bold text-text">{ut("al.signedN").replace("{n}", String(s.conclusions.length))}</b>
+            </span>
+          ) : null}
+        </AlertStrip>
+      </div>
+    </div>
+  );
+}
+
+function ReviewPanel({
+  c,
+  me,
+  now,
+  onTake,
+  onReview,
+  children,
+}: {
+  c: AlertCase;
+  me: string | undefined;
+  now: number;
+  onTake: (release: boolean) => Promise<unknown>;
+  onReview: () => void;
+  children?: ReactNode;
 }) {
   const { ut } = useLang();
-  const [note, setNote] = useState("");
-  const [expanded, setExpanded] = useState(false);
   const done = !!c.acknowledgedAt;
+  const clock = riskClock(c, now);
   const takenByOther = !!c.assignedTo && c.assignedTo !== me;
-  const outcome = SHOWN_OUTCOME.find((o) => o.value === c.outcome);
-  const many = (row.group?.cases ?? 1) > 1;
+  const level = SEVERITY_LEVEL[c.severity] ?? "moderate";
+  const outcome = c.outcome ? OUTCOME_KEY[c.outcome] : null;
+  const who = c.assignedTo ? (c.assignedTo === me ? ut("cases.mine") : `${ut("cases.taken")}: ${c.assignedToName ?? "—"}`) : ut("card.notTaken");
 
   return (
-    <article
-      data-case-card=""
-      // ref-колбэк обязан ничего не возвращать: React трактует возврат как функцию очистки
-      ref={(el) => {
-        el?.scrollIntoView({ block: "nearest" });
-      }}
-      className="flex flex-col gap-[16px]"
+    <Panel
+      title={ut("al.review")}
+      icon={<Ic.alert />}
+      tone="risk"
+      sub={
+        <span className="inline-flex items-center gap-2">
+          {done ? (outcome ? ut(outcome) : ut("work.done")) : who}
+          <SeverityTag level={level} small>
+            {ut(severityKey[level])}
+          </SeverityTag>
+        </span>
+      }
     >
-      <header className="flex flex-wrap items-start gap-[12px]">
-        <Avatar name={c.userName} size={30} />
-        <div className="min-w-0 flex-1">
-          <Link to={`/patients/${c.userId}`} className="text-[20px] font-bold leading-[24px] text-primary">
-            {c.userName}
-          </Link>
-          <p className="m-0 mt-[2px] text-[13px] leading-[18px] text-muted">
-            {c.unit ? `${c.unit} · ` : ""}
-            {c.surveyTitle} · {ut("cases.signals")} <Num>{c.signalCount}</Num> · {ut("cases.openedAgo")}{" "}
-            {duration(c.minutesOpen, ut)} {ut("cases.ago")}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-[6px]">
-          <SeverityTag level={c.severity}>{ut(severityKey[c.severity])}</SeverityTag>
-          {c.overdue ? <Tag tone="attention">{ut("cases.overdue")}</Tag> : null}
-          {done ? (
-            <Tag>{outcome ? ut(outcome.key) : ut("work.done")}</Tag>
-          ) : c.assignedTo ? (
-            <Tag tone={takenByOther ? "plain" : "primary"}>
-              {takenByOther ? `${ut("cases.taken")}: ${c.assignedToName}` : ut("cases.mine")}
-            </Tag>
-          ) : null}
-        </div>
-      </header>
-
-      {many ? (
-        <PersonCases
-          total={row.group!.cases}
-          cases={personCases}
-          pickedId={pickedId}
-          onPick={onPickCase}
-          onShowPerson={onShowPerson}
-        />
+      {!done ? (
+        clock.norm !== null ? (
+          <RiskTimer
+            size="lg"
+            elapsed={clockText(clock.elapsed, ut("rr.days"))}
+            of={normText(clock.norm, { h: ut("rr.hours"), min: ut("dur.min") })}
+            pct={clock.pct}
+            note={
+              clock.left !== null && clock.left > 0 ? (
+                <>
+                  {ut("rr.until")} <b className="font-extrabold text-text">{timeOfDay(new Date(clock.dueAt!).toISOString())}</b>
+                  {", "}
+                  {ut("rr.left").replace("{t}", clockText(clock.left, ut("rr.days")))}
+                </>
+              ) : (
+                <b className="font-extrabold text-risk-ink">{ut("rr.normPassed")}</b>
+              )
+            }
+          />
+        ) : (
+          <div className="flex h-[52px] items-center gap-2.5 rounded-panel bg-risk-tint px-3.5 text-small font-semibold text-text-2">
+            <Ic.timer size={15} className="text-risk-ink" />
+            <span>
+              <b className="mr-1 text-[22px] font-extrabold leading-none tracking-[-0.03em] text-risk-ink">{clockText(clock.elapsed, ut("rr.days"))}</b>
+              {ut("rr.sinceOpened")}
+            </span>
+            <span className="ml-auto text-muted">{ut("rr.noNorm")}</span>
+          </div>
+        )
       ) : null}
 
-      <div>
-        <Button variant="quiet" onClick={() => setExpanded((v) => !v)} aria-expanded={expanded}>
-          {expanded ? ut("cases.hideSignals") : `${ut("cases.showSignals")} (${c.signalCount})`}
-        </Button>
-        {expanded ? <CaseBasis caseId={c.id} preview={c.signals} total={c.signalCount} /> : null}
-      </div>
+      <ul className="m-0 mt-1 list-none p-0">
+        <Fact icon={<Ic.alert />} title={ut("al.signalsN").replace("{n}", String(c.signalCount))} note={`${dm(c.lastAlertAt)}, ${timeOfDay(c.lastAlertAt)}`}>
+          {c.signals[0]?.label ?? c.surveyTitle}
+        </Fact>
+        <Fact icon={<Ic.history />} title={ut("al.opened")} note={dateTime(c.openedAt)}>
+          {clock.norm !== null ? ut("al.normIs").replace("{n}", normText(clock.norm, { h: ut("rr.hours"), min: ut("dur.min") })) : ut("rr.noNorm")}
+        </Fact>
+        <Fact icon={<Ic.user />} title={ut("cases.assignedLabel")} note={null}>
+          {who}
+        </Fact>
+        {done ? (
+          <Fact icon={<Ic.circleCheck />} title={outcome ? ut(outcome) : ut("work.done")} note={dateTime(c.acknowledgedAt)} tone="good">
+            {c.acknowledgedByName}
+            {c.note ? <span className="mt-1 block whitespace-pre-wrap text-text">{c.note}</span> : null}
+            {c.mergedFromLegacy ? <span className="mt-1 block">{ut("cases.mergedNote")}</span> : null}
+          </Fact>
+        ) : null}
+      </ul>
 
-      {done ? (
-        <p className="m-0 text-[13px] text-muted">
-          {c.acknowledgedByName}, {dateTime(c.acknowledgedAt)}
-          {c.note ? ` · ${c.note}` : ""}
-          {c.mergedFromLegacy ? ` · ${ut("cases.mergedNote")}` : ""}
-        </p>
-      ) : (
-        <div className="flex flex-col gap-[10px]">
-          {takenByOther ? <p className="m-0 text-[13px] text-muted">{ut("cases.takenByOther")}</p> : null}
-          <Input
-            look="outline"
-            ph="plain"
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            placeholder={ut("cases.whatDone")}
-          />
-          <div className="flex flex-wrap items-center gap-[8px]">
-            {!c.assignedTo ? (
-              <Button variant="ghost" onClick={() => void onTake(false)}>
-                {ut("cases.take")}
-              </Button>
-            ) : c.assignedTo === me ? (
-              <Button variant="ghost" onClick={() => void onTake(true)}>
-                {ut("cases.release")}
-              </Button>
-            ) : null}
-            {/*
-              Исходы разбора называются коротко, и «без исхода» читается как
-              «ничего не сделал». Объяснение стоит рядом с кнопками, а не в
-              документации, которую в разборе не открывают.
-            */}
-            {OUTCOME.map((o, i) => (
-              <Button key={o.value} variant={i === 0 ? "primary" : "ghost"} onClick={() => void onResolve(o.value, note)}>
-                {ut(o.key)}
-              </Button>
-            ))}
-          </div>
-          <Hint id="case-status" text="hint.caseStatus" />
-        </div>
+      {takenByOther && !done ? <p className="m-0 mt-2 text-small text-text-2">{ut("cases.takenByOther")}</p> : null}
+
+      {children ? <div className="mt-4">{children}</div> : null}
+
+      <div className="mt-4 flex flex-wrap items-center gap-2">
+        <Tooltip label={ut(done ? "al.openReview" : "al.continue")} kbd="R">
+          <Button variant={done ? "secondary" : "risk"} onClick={onReview}>
+            {ut(done ? "al.openReview" : "al.continue")}
+          </Button>
+        </Tooltip>
+        {done ? null : !c.assignedTo ? (
+          <Button onClick={() => void onTake(false)}>{ut("cases.take")}</Button>
+        ) : c.assignedTo === me ? (
+          <Button onClick={() => void onTake(true)}>{ut("cases.release")}</Button>
+        ) : null}
+      </div>
+      {done ? null : (
+        <KbdHints
+          className="mt-3.5"
+          keys={[
+            ["1", ut("hotkey.confirm")],
+            ["2", ut("hotkey.followup")],
+            ["3", ut("hotkey.reject")],
+            ["/", ut("hotkey.search")],
+          ]}
+        />
       )}
-    </article>
+    </Panel>
+
+  );
+}
+
+function Fact({
+  icon,
+  title,
+  note,
+  tone,
+  children,
+}: {
+  icon: ReactNode;
+  title: string;
+  note: ReactNode;
+  tone?: "good";
+  children: ReactNode;
+}) {
+  return (
+    <li className="flex items-start gap-3 border-t border-divider py-2.5 first:border-t-0">
+      <span
+        aria-hidden
+        className={cx(
+          "mt-0.5 inline-grid size-[22px] shrink-0 place-items-center rounded-full [&>svg]:size-3",
+          tone === "good" ? "bg-good-tint text-good" : "bg-sunk text-muted",
+        )}
+      >
+        {icon}
+      </span>
+      <span className="min-w-0 flex-1 text-small text-text-2">
+        <b className="block text-[13px] font-extrabold text-text">{title}</b>
+        {children}
+      </span>
+      {note ? <span className="shrink-0 whitespace-nowrap text-caption font-semibold text-text-2">{note}</span> : null}
+    </li>
   );
 }
 
@@ -912,19 +1010,23 @@ function CaseCard({
  *
  * Строка очереди стоит за человека, а решение принимается о случае: у
  * каждого своя зона видимости (группа методики) и своё окно. Поэтому они
- * здесь перечислены, выбираются по одному, и хоткеи работают с выбранным.
- * «Усі випадки людини» ставит отбор по пациенту — очередь раскладывает его
- * случаи строками, и их можно пройти подряд.
+ * перечислены, выбираются по одному, и клавиши работают с выбранным.
+ * «Усі випадки людини» ставит отбор по пациенту.
  */
 export function PersonCases({
   total,
   cases,
+  error = null,
+  onRetry,
   pickedId,
   onPick,
   onShowPerson,
 }: {
   total: number;
   cases: AlertCase[] | null;
+  /** Случаи не пришли — отказ с «Повторити», а не скелет навсегда */
+  error?: string | null;
+  onRetry?: () => void;
   pickedId: string;
   onPick: (id: string) => void;
   onShowPerson: () => void;
@@ -934,329 +1036,216 @@ export function PersonCases({
     <RuleSection
       title={
         <>
-          {ut("cases.personCases")} <Num className="text-[13px] font-normal text-muted">{total}</Num>
+          {ut("cases.personCases")} <span className="text-small font-semibold text-muted">{total}</span>
         </>
       }
       hint={ut("cases.personCasesHint")}
       actions={
-        <Button variant="ghost" onClick={onShowPerson}>
+        <Button variant="ghost" size="xs" onClick={onShowPerson}>
           {ut("cases.showPersonCases")}
         </Button>
       }
+      className="border-t border-divider pt-[18px]"
     >
       {!cases ? (
-        <Loading rows={2} />
+        <Loading rows={2} bare error={error} onRetry={onRetry} />
       ) : (
-        <ul className="m-0 flex list-none flex-col p-0">
-          {cases.map((pc) => (
-            <li key={pc.id}>
-              <button
-                type="button"
-                aria-pressed={pc.id === pickedId}
-                onClick={() => onPick(pc.id)}
-                className={cx(
-                  "flex w-full flex-wrap items-center gap-[8px] border-0 border-b border-hairline px-[8px] py-[8px] text-left text-[13px]",
-                  "outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--focus)]",
-                  pc.id === pickedId ? "bg-primary-soft" : "bg-transparent hover:bg-primary-tint",
-                )}
-              >
-                <SeverityTag level={pc.severity}>{ut(severityKey[pc.severity])}</SeverityTag>
-                <span className="min-w-0 flex-1 truncate text-text">{pc.surveyTitle}</span>
-                {pc.overdue ? <Tag tone="attention">{ut("cases.overdue")}</Tag> : null}
-                <span className="font-mono text-[11px] tabular-nums text-muted">{day(pc.openedAt)}</span>
-              </button>
-            </li>
-          ))}
+        <ul className="m-0 flex list-none flex-col gap-1.5 p-0">
+          {cases.map((pc) => {
+            const level = SEVERITY_LEVEL[pc.severity] ?? "moderate";
+            return (
+              <li key={pc.id}>
+                <button
+                  type="button"
+                  aria-pressed={pc.id === pickedId}
+                  onClick={() => onPick(pc.id)}
+                  className={cx(
+                    "flex w-full cursor-pointer flex-wrap items-center gap-2 rounded-[12px] border-0 px-3 py-2 text-left text-[13px]",
+                    "outline-none focus-visible:shadow-[0_0_0_2px_var(--vring)]",
+                    pc.id === pickedId ? "bg-violet-tint shadow-[inset_0_0_0_1.5px_var(--vring)]" : "bg-sunk hover:bg-sunk-2",
+                  )}
+                >
+                  <SeverityTag level={level} small>
+                    {ut(severityKey[level])}
+                  </SeverityTag>
+                  <span className="min-w-0 flex-1 truncate font-semibold text-text">{pc.surveyTitle}</span>
+                  {pc.overdue ? <Tag tone="attention">{ut("cases.overdue")}</Tag> : null}
+                  <span className="text-caption text-muted">{day(pc.openedAt)}</span>
+                </button>
+              </li>
+            );
+          })}
         </ul>
       )}
     </RuleSection>
   );
 }
 
-/**
- * Основание тревог случая.
- *
- * Раньше здесь стояли три поля из очереди: время, готовая подпись и
- * «заголовок» — который у половины строк был вовсе не заголовком пункта, а
- * названием шкалы. Разбирающий видел «Суицидальный риск» и не мог узнать
- * главного: человек это отметил или так посчиталось. Разница клиническая:
- * отмеченный вариант — прямое высказывание, полоса — вывод из суммы баллов.
- *
- * Поэтому оба вида подписаны прямо и показываются по-разному, а рядом стоит
- * ход к самому прохождению: ответы по пунктам — единственное, что закрывает
- * вопрос «на основании чего» окончательно.
- *
- * Грузится по раскрытию, а не вместе с очередью: очередь отдаёт тридцать
- * случаев, а основание читают у одного.
- */
-function CaseBasis({
-  caseId,
-  preview,
-  total,
-}: {
-  caseId: string;
-  /** Что уже пришло со случаем: показывается, пока грузится основание */
-  preview: AlertSignal[];
-  total: number;
-}) {
-  const { ut } = useLang();
-  const [openResponse, setOpenResponse] = useState<string | null>(null);
-  const res = useResource(() => api.alertCaseSignals(caseId), [caseId]);
-  const items = res.data;
+/* ─────────── хронология случая ─────────── */
 
-  if (!items) {
-    return (
-      <div className="mt-[8px] flex flex-col gap-[6px]">
-        {preview.map((s) => (
-          <div key={s.id} className="grid grid-cols-[130px_1fr_1fr] gap-[10px] border-b border-hairline py-[5px] text-[13px]">
-            <span className="text-muted">{dateTime(s.at)}</span>
-            <span>{s.label}</span>
-            <span className="text-muted">{s.questionTitle}</span>
-          </div>
-        ))}
-        {res.error ? <p className="m-0 text-[13px] text-muted">{ut("cases.loadBasisFailed")}</p> : null}
-      </div>
-    );
+const ACTION_KEY: Record<string, UiKey> = {
+  "alert.assign": "al.hAssign",
+  "alert.release": "al.hRelease",
+  "alert.acknowledge": "al.hResolved",
+};
+
+/**
+ * Хронология случая: сигналы и действия по нему из журнала (кто брал, кто
+ * отпускал, кто и с каким исходом разобрал). Заступивший видит, почему
+ * случай ещё открыт, не расспрашивая предыдущую смену.
+ */
+function HistoryPanel({ c }: { c: AlertCase }) {
+  const { ut } = useLang();
+  const res = useResource(() => api.alertCaseHistory(c.id).catch(() => []), [c.id, c.lastAlertAt, c.assignedTo, c.acknowledgedAt], {
+    keep: false,
+  });
+  const events: (ActivityEvent & { t: number })[] = [];
+  for (const s of c.signals) {
+    events.push({
+      t: Date.parse(s.at),
+      date: dm(s.at),
+      time: timeOfDay(s.at),
+      icon: <Ic.alert />,
+      tone: "risk",
+      text: (
+        <>
+          <b>{ut("card.evSignal")}</b>: {s.label}
+        </>
+      ),
+    });
   }
-
+  for (const h of res.data ?? []) {
+    const key = ACTION_KEY[h.action];
+    if (!key) continue;
+    const outcome = typeof h.details?.outcome === "string" ? OUTCOME_KEY[h.details.outcome as keyof typeof OUTCOME_KEY] : null;
+    events.push({
+      t: Date.parse(h.at),
+      date: dm(h.at),
+      time: timeOfDay(h.at),
+      icon: h.action === "alert.acknowledge" ? <Ic.circleCheck /> : <Ic.user />,
+      tone: h.action === "alert.acknowledge" ? "good" : "neutral",
+      text: (
+        <>
+          {ut(key)} <b>{h.actorName}</b>
+          {outcome ? <span className="text-muted">, {ut(outcome)}</span> : null}
+        </>
+      ),
+    });
+  }
+  events.sort((a, b) => a.t - b.t);
   return (
-    <div className="mt-2 flex flex-col gap-2">
-      <SectionLabel>{ut("cases.basis")}</SectionLabel>
-      {/*
-        Пояснение стоит здесь, а не в документации: два вида сигнала —
-        отмеченный вариант и полоса шкалы — разные по клиническому весу, и
-        разбирающий должен знать это в момент чтения, а не когда-нибудь.
-      */}
-      <p className="m-0 max-w-[68ch] text-caption text-muted">{ut("cases.basisHint")}</p>
-      {items.map((s) => (
-        <SignalBasisRow key={s.id} s={s} onOpen={() => setOpenResponse(s.responseId)} />
-      ))}
-      {/*
-        Число сигналов в шапке считается по доступным методикам, а список
-        здесь — тоже. Расхождение возможно только если тревогу разобрали
-        между двумя запросами, и тогда честнее сказать, сколько не показано,
-        чем молча показать меньше.
-      */}
-      {total > items.length ? (
-        <p className="m-0 text-[13px] text-muted">
-          …{ut("ui.andMore")} {total - items.length}
-        </p>
-      ) : null}
-      {openResponse ? <ResponseModal id={openResponse} onClose={() => setOpenResponse(null)} /> : null}
-    </div>
-  );
-}
-
-/** Одна строка основания: слева вид сигнала, справа — на чём он держится */
-function SignalBasisRow({ s, onOpen }: { s: AlertSignalBasis; onOpen: () => void }) {
-  const { ut } = useLang();
-  const answered = s.pickedOptions.length > 0 || s.answeredNumber !== null;
-
-  return (
-    <div className="rounded-sm border border-hairline p-2.5">
-      <div className="flex flex-wrap items-center gap-2">
-        <SeverityTag level={s.severity}>{ut(severityKey[s.severity])}</SeverityTag>
-        <Tag>{ut(s.kind === "option" ? "cases.kind.option" : "cases.kind.band")}</Tag>
-        <span className="text-caption text-muted">{s.surveyTitle}</span>
-        <span className="text-caption text-muted">{dateTime(s.at)}</span>
-        <span className="grow" />
-        <Button size="sm" variant="ghost" onClick={onOpen}>
-          {ut("cases.openResponse")}
-        </Button>
-      </div>
-
-      {s.kind === "option" ? (
-        <div className="mt-1.5 text-small">
-          <div>
-            <span className="text-muted">{ut("cases.item")}</span>{" "}
-            {s.questionNumber !== null ? <Num>{s.questionNumber}</Num> : null}
-            {s.questionNumber !== null ? ". " : ""}
-            {s.questionTitle}
-          </div>
-          {answered ? (
-            <div>
-              <span className="text-muted">{ut("cases.picked")}:</span>{" "}
-              <strong>
-                {s.pickedOptions.length ? s.pickedOptions.join(", ") : String(s.answeredNumber)}
-              </strong>
-            </div>
-          ) : (
-            /*
-             * Ответа нет, а тревога есть: так бывает у сигнала, поднятого
-             * автосохранением черновика, который потом переписали. Молчать
-             * об этом нельзя — иначе пустая строка читается как «человек
-             * ничего не отмечал», и сигнал выглядит ложным.
-             */
-            <p className="m-0 text-caption text-muted">{ut("cases.noAnswerStored")}</p>
-          )}
+    <Panel title={ut("al.history")} icon={<Ic.history />} sub={dm(c.openedAt)} flush>
+      {!res.data && res.loading ? (
+        <div className="px-4 pb-4">
+          <Loading rows={3} bare />
         </div>
+      ) : events.length ? (
+        <ActivityList events={events.map(({ t: _t, ...e }) => e)} />
       ) : (
-        <div className="mt-1.5 text-small">
-          <div>
-            <span className="text-muted">{ut("cases.scale")}:</span> {s.scaleTitle}
-            {s.scaleCode ? <span className="text-muted"> · {s.scaleCode}</span> : null}
-          </div>
-          <div>
-            {s.scaleValue !== null ? (
-              <>
-                <strong>
-                  <Num>{s.scaleValue}</Num>
-                </strong>{" "}
-                {s.normalization ? ut(`norm.${s.normalization}`) : ""}
-                {s.scaleRawScore !== null ? (
-                  <span className="text-muted">
-                    {" "}
-                    · {ut("cases.rawScore")} <Num>{s.scaleRawScore}</Num>
-                  </span>
-                ) : null}
-              </>
-            ) : null}
-          </div>
-          {s.bandLabel ? (
-            <div>
-              <span className="text-muted">{ut("cases.band")}:</span> <strong>{s.bandLabel}</strong>
-              {/*
-                Границы полосы — не украшение: без них значение нечитаемо.
-                «2 стена» — это много или мало, зависит от того, где проходит
-                полоса, и держать это в голове разбирающий не обязан.
-              */}
-              {s.bandMin !== null && s.bandMax !== null ? (
-                <span className="text-muted">
-                  {" "}
-                  (<Num>{s.bandMin}</Num>–<Num>{s.bandMax}</Num>)
-                </span>
-              ) : null}
-            </div>
-          ) : null}
-          {s.bandRecommendation ? (
-            <p className="m-0 text-caption text-muted">{s.bandRecommendation}</p>
-          ) : s.bandDescription ? (
-            <p className="m-0 text-caption text-muted">{s.bandDescription}</p>
-          ) : null}
-        </div>
+        <p className="m-0 border-t border-divider px-4 py-3.5 text-small text-muted">{ut("tl.empty")}</p>
       )}
-    </div>
+    </Panel>
   );
 }
 
-const th = "border-b border-hairline px-[8px] py-[6px] text-left text-[13px] font-bold text-muted";
-const td = "border-b border-hairline px-[8px] py-[6px] align-top";
+/* ─────────── контекст человека ─────────── */
 
 /**
- * Прохождение целиком: ответы по пунктам и баллы по шкалам.
- *
- * Открывается прямо из разбора, а не переходом на другой экран: уйдя из
- * очереди, дежурный теряет место в ней, а вернувшись — уже другой порядок.
- *
- * Варианты ответа приходят вместе с прохождением и той версии, которую
- * человек реально видел. Сопоставлять их с действующей версией методики
- * нельзя: после правки набор вариантов другой, и «что он ответил» получилось
- * бы не из того списка.
+ * Последние замеры человека рядом со случаем: чтобы понять, кого разбираешь,
+ * не уходя из очереди, — последние баллы с тяжестью словом, направления и
+ * последнее подписанное заключение.
  */
-function ResponseModal({ id, onClose }: { id: string; onClose: () => void }) {
+function PatientContext({ userId }: { userId: string }) {
   const { ut } = useLang();
-  const res = useResource(() => api.responseDetail(id), [id]);
+  /* keep: false — сводка прежнего пациента не встаёт рядом со случаем следующего (#177) */
+  const res = useResource(() => api.caseSummary(userId), [userId], { keep: false, key: "alerts:summary" });
   const data = res.data;
-
   return (
-    <Modal title={ut("cases.responseTitle")} onClose={onClose} wide>
+    <Panel title={ut("al.context")} icon={<Ic.chart />} flush>
       {!data ? (
-        <Loading rows={5} error={res.error} onRetry={res.reload} busy={res.loading} />
+        <div className="px-4 pb-4">
+          <Loading rows={3} error={res.error} onRetry={res.reload} busy={res.loading} bare />
+        </div>
       ) : (
-        <div className="flex flex-col gap-4">
-          <div className="flex flex-wrap items-baseline gap-x-3">
-            <span>
-              <strong>{data.survey.title}</strong>
-              <span className="text-muted"> · {dateTime(data.submittedAt ?? data.startedAt)}</span>
-            </span>
-            {/*
-              Окно остаётся окном (см. выше, почему не переход), но у
-              прохождения теперь есть и адрес — с весами вариантов и
-              лестницей диапазонов, которых в окне нет. Ссылка ведёт туда
-              тем, кому нужен протокол целиком или ссылка для коллеги.
-            */}
-            <Link to={`/surveys/${data.survey.id}/responses/${id}`} className="text-[13px]">
-              {ut("rsp.openPage")}
-            </Link>
-          </div>
-
-          {data.scores.length ? (
-            <div>
-              <SectionLabel className="mb-2">{ut("cases.scoresTitle")}</SectionLabel>
-              <div className="overflow-x-auto">
-                <table className="w-full border-collapse text-[13px]">
-                  <thead>
-                    <tr>
-                      <th className={th}>{ut("cs.scaleTitle")}</th>
-                      <th className={th}>{ut("cs.raw")}</th>
-                      <th className={th}>{ut("cs.normalization")}</th>
-                      <th className={th}>{ut("cs.bands")}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.scores.map((sc) => (
-                      <tr key={sc.scaleId}>
-                        <td className={td}>{sc.scaleTitle}</td>
-                        <td className={td}>
-                          <Num>{sc.rawScore}</Num>
-                        </td>
-                        <td className={td}>
-                          <Num>{sc.value}</Num> <span className="text-muted">{ut(`norm.${sc.normalization}`)}</span>
-                        </td>
-                        <td className={td}>
-                          {sc.band ? (
-                            <SeverityTag level={sc.band.severity}>{sc.band.label}</SeverityTag>
-                          ) : (
-                            <span className="text-muted">—</span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+        <div className="border-t border-divider">
+          {data.surveys.slice(0, 4).map((sv) => (
+            <div key={sv.surveyId} className="border-b border-divider px-4 py-2.5 last:border-b-0">
+              <div className="flex items-baseline gap-2">
+                <b className="min-w-0 truncate text-[13px] font-extrabold text-text">{sv.title}</b>
+                {sv.lastAt ? <span className="ml-auto shrink-0 text-caption text-muted">{dm(sv.lastAt)}</span> : null}
               </div>
+              {sv.scales.slice(0, 3).map((sc) => (
+                <div key={sc.code} className="mt-1 flex items-center gap-2 text-small">
+                  <span className="min-w-0 flex-1 truncate text-text-2">{sc.title}</span>
+                  <b className="font-extrabold tabular-nums text-text">{sc.lastValue}</b>
+                  {sc.severity ? (
+                    <SeverityTag level={sc.severity} small>
+                      {sc.bandLabel ?? ut(severityKey[sc.severity])}
+                    </SeverityTag>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          ))}
+          {data.referrals.length ? (
+            <div className="border-t border-divider px-4 py-2.5">
+              <p className="m-0 mb-1 text-caption font-bold text-muted">{ut("nav.referrals")}</p>
+              {data.referrals.slice(0, 3).map((r) => (
+                <div key={r.id} className="flex items-center gap-2 py-0.5 text-small">
+                  <span className="min-w-0 flex-1 truncate text-text">{ut(`dest.${r.destination}` as UiKey)}</span>
+                  <span className="text-caption text-muted">{day(r.createdAt)}</span>
+                </div>
+              ))}
             </div>
           ) : null}
-
-          <div>
-            <SectionLabel className="mb-2">{ut("cases.answersTitle")}</SectionLabel>
-            <ol className="m-0 flex flex-col gap-1.5 pl-6">
-              {data.answers.map((a) => {
-                const picked = new Set([...(a.optionIds ?? []), ...Object.values(a.matrix ?? {})]);
-                const chosen = a.options.filter((o) => picked.has(o.id));
-                return (
-                  <li key={a.questionId} className="text-small">
-                    <div>{a.title}</div>
-                    {!a.answered ? (
-                      <span className="text-muted">{ut("cases.skipped")}</span>
-                    ) : chosen.length ? (
-                      <span>
-                        {chosen.map((o, i) => (
-                          <span key={o.id}>
-                            {i ? ", " : ""}
-                            <strong className={o.riskFlag ? "text-danger" : undefined}>{o.text}</strong>
-                            {/*
-                              Критический вариант помечается словом, а не
-                              только цветом: цвет один не работает, и на
-                              разборе риска это не тот случай, где можно
-                              положиться на оттенок.
-                            */}
-                            {o.riskFlag ? (
-                              <span className="text-caption text-danger"> · {ut("cases.criticalOption")}</span>
-                            ) : null}
-                          </span>
-                        ))}
-                      </span>
-                    ) : (
-                      <span>{a.text ?? (a.number !== null ? String(a.number) : (a.date ?? "—"))}</span>
-                    )}
-                  </li>
-                );
-              })}
-            </ol>
-          </div>
+          {data.conclusions.length ? (
+            <div className="border-t border-divider px-4 py-2.5">
+              <p className="m-0 mb-1 text-caption font-bold text-muted">{ut("an.conclusion")}</p>
+              <p className="m-0 line-clamp-3 text-small text-text-2">{data.conclusions[0]!.text}</p>
+            </div>
+          ) : null}
+          {!data.surveys.length && !data.referrals.length && !data.conclusions.length ? (
+            <p className="m-0 px-4 py-3.5 text-small text-muted">{ut("pt.noCompleted")}</p>
+          ) : null}
         </div>
       )}
-    </Modal>
+    </Panel>
+  );
+}
+
+/* ─────────── ритм разбора ─────────── */
+
+/** Числа очереди целиком — из SQL (facets), а не из загруженной страницы */
+function RhythmPanel({ facets, now }: { facets: NonNullable<AlertCasePage["facets"]>; now: number }) {
+  const { ut } = useLang();
+  const oldest = facets.oldestOpenedAt ? Math.max(0, Math.floor((now - Date.parse(facets.oldestOpenedAt)) / 60_000)) : null;
+  const rows: [string, string, ReactNode][] = [
+    [ut("al.rPeople"), ut("al.rPeopleSub").replace("{n}", String(facets.assigned.others)), facets.total],
+    [ut("al.rOverdue"), ut("al.rOverdueSub"), facets.overdue],
+    [ut("al.rMine"), ut("al.rMineSub").replace("{n}", String(facets.assigned.none)), facets.assigned.me],
+  ];
+  return (
+    <Panel title={ut("al.rhythm")} icon={<Ic.gauge />} sub={ut("al.rhythmSub")} flush>
+      <ul className="m-0 list-none border-t border-divider p-0">
+        {rows.map(([label, sub, n]) => (
+          <li key={label} className="flex items-start gap-3 border-b border-divider px-4 py-2.5 last:border-b-0">
+            <span className="min-w-0 flex-1 text-small text-text">
+              {label}
+              <small className="block text-caption text-muted">{sub}</small>
+            </span>
+            <b className="text-[18px] font-extrabold tabular-nums text-text">{n}</b>
+          </li>
+        ))}
+        {oldest !== null ? (
+          <li className="flex items-start gap-3 px-4 py-2.5">
+            <span className="min-w-0 flex-1 text-small text-text">
+              {ut("al.rOldest")}
+              <small className="block text-caption text-muted">{dateTime(facets.oldestOpenedAt)}</small>
+            </span>
+            <b className="text-[18px] font-extrabold tabular-nums text-text">{clockText(oldest, ut("rr.days"))}</b>
+          </li>
+        ) : null}
+      </ul>
+    </Panel>
   );
 }

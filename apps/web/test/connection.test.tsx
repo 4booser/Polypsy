@@ -1,9 +1,10 @@
 import { afterAll, afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
+import { MemoryRouter } from "react-router-dom";
 import { UI } from "@quizzy/shared";
 import { connection, serverAnswered } from "../src/connection";
 import { LangProvider } from "../src/lang";
-import { ConnectionLine } from "../src/ui/ConnectionLine";
+import { ConnectionLine, minutesOffline } from "../src/ui/ConnectionLine";
 
 /**
  * Связь с сервером (волна 13): «понятное восстановление после потери
@@ -92,11 +93,13 @@ describe("состояние связи", () => {
 });
 
 describe("строка «немає зв’язку»", () => {
-  const draw = () =>
+  const draw = (place: "console" | "patient" = "console") =>
     renderToStaticMarkup(
-      <LangProvider>
-        <ConnectionLine place="console" />
-      </LangProvider>,
+      <MemoryRouter>
+        <LangProvider>
+          <ConnectionLine place={place} />
+        </LangProvider>
+      </MemoryRouter>,
     );
   const either = (html: string, key: keyof typeof UI) => {
     const e = UI[key] as { uk: string; ru: string };
@@ -117,10 +120,10 @@ describe("строка «немає зв’язку»", () => {
     expect(either(html, "conn.lost")).toBe(true);
     expect(either(html, "conn.keep")).toBe(true);
     expect(either(html, "conn.checkNow")).toBe(true);
-    // время обрыва — цифрами моноширинным, как все числа консоли
-    expect(html).toMatch(/font-mono tabular-nums">\d{2}:\d{2}</);
+    // время обрыва — цифрами одной ширины (Manrope, tabular-nums), как все числа консоли
+    expect(html).toMatch(/tabular-nums">\d{2}:\d{2}</);
     // янтарь — ровно потому, что это требует внимания
-    expect(html).toContain("text-accent");
+    expect(html).toContain("text-warn");
   });
 
   test("ни одного хекса и инлайнового стиля в разметке строки", () => {
@@ -128,5 +131,40 @@ describe("строка «немає зв’язку»", () => {
     const html = draw();
     expect(html).not.toMatch(/#[0-9a-f]{3,6}\b/i);
     expect(html).not.toContain("style=");
+  });
+
+  test("как в кадре access-offline: значок в квадрате, сколько минут без связи, «Перевірити зараз» кнопкой и «Стан системи»", () => {
+    connection.resetForTest({ probe: async () => false, delays: [60_000], now: () => Date.now() - 8 * 60_000 - 5_000 });
+    connection.lost();
+    const html = draw();
+    // квадрат 36 на листе с янтарным значком, а не значок в строке
+    expect(html).toMatch(/<span aria-hidden="true" class="grid size-9 [^"]*bg-panel[^"]*text-warn/);
+    // «з 16:52, 8 хв»
+    expect(html).toMatch(/\d{2}:\d{2}<\/span>, 8 (хв|мин)/);
+    // проверка — настоящей кнопкой со значком, страница статуса — ссылкой
+    expect(html).toMatch(/<button[^>]*>.*(Перевірити зараз|Проверить сейчас)/);
+    expect(html).toMatch(/<a[^>]*href="\/status"[^>]*>(Стан системи|Состояние системы)<\/a>/);
+  });
+
+  test("первую минуту числа минут нет: «0 хв» ничего не сообщает", () => {
+    connection.lost();
+    expect(draw()).not.toMatch(/, 0 (хв|мин)/);
+  });
+
+  test("в кабинете пациента — те же слова и действия, без квадрата консоли", () => {
+    connection.lost();
+    const html = draw("patient");
+    expect(html).toContain('href="/status"');
+    expect(html).not.toContain("size-9");
+  });
+});
+
+describe("минуты без связи", () => {
+  test("полные минуты, не округлённые вверх", () => {
+    expect(minutesOffline(0, 59_999)).toBe(0);
+    expect(minutesOffline(0, 60_000)).toBe(1);
+    expect(minutesOffline(0, 8 * 60_000 + 59_000)).toBe(8);
+    // часы вкладки отстали — не минус
+    expect(minutesOffline(10_000, 0)).toBe(0);
   });
 });

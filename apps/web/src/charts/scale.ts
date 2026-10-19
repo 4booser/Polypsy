@@ -62,6 +62,12 @@ export interface AxisRequest {
    * растянутого шума остаётся подпись реального диапазона.
    */
   atom?: number;
+  /**
+   * Величина целая — счёт людей, прохождений, событий. Деления тогда тоже
+   * целые: шаг не меньше единицы и без 2,5. Без этого у счёта «0 или 1» ось
+   * шла через 0,2, и график говорил о «0,4 прохождения».
+   */
+  integer?: boolean;
 }
 
 export interface Axis {
@@ -83,15 +89,20 @@ const MAX_STEPS = 5;
  * до шага, и при грубом шаге верх уезжает далеко за данные — то самое пустое
  * поле, ради избавления от которого весь модуль и написан.
  */
-function niceStep(span: number): number {
+function niceStep(span: number, integer = false): number {
   if (!(span > 0)) return 1;
   /*
    * Порядок берётся от нужного шага, а не от размаха: `span / MAX_STEPS` —
    * это наименьший годный шаг, и десятикратный ему всегда годится тоже.
    * Поэтому лесенки из пяти множителей хватает, искать дальше нечего.
+   *
+   * У целой величины дробные шаги выпадают: 0,2 и 0,5 — меньше единицы,
+   * 2,5 — не целое. Остаётся 1–2–5–10 того же порядка, а при размахе меньше
+   * пяти — единица.
    */
   const mag = 10 ** Math.floor(Math.log10(span / MAX_STEPS));
-  return [1, 2, 2.5, 5, 10].map((m) => m * mag).find((s) => span / s <= MAX_STEPS) ?? mag * 10;
+  const steps = [1, 2, 2.5, 5, 10].map((m) => m * mag).filter((s) => !integer || (s >= 1 && Number.isInteger(s)));
+  return steps.find((s) => span / s <= MAX_STEPS) ?? (integer ? Math.max(1, Math.round(mag * 10)) : mag * 10);
 }
 
 /*
@@ -138,7 +149,7 @@ function cover(max: number, hi: number, step: number): number {
   return max < hi - step * 1e-6 ? snap(max + step, step) : max;
 }
 
-export function axisFor({ lo, hi, atom = 0 }: AxisRequest): Axis {
+export function axisFor({ lo, hi, atom = 0, integer = false }: AxisRequest): Axis {
   /*
    * Не-число и бесконечность приходят из данных, а не из ошибки в коде
    * (деление на ноль в доле, пустая выборка): рисовать по ним ось нечем,
@@ -157,7 +168,7 @@ export function axisFor({ lo, hi, atom = 0 }: AxisRequest): Axis {
    */
   if (lo < 0) {
     const top = Math.max(hi, 0);
-    const step = niceStep(top - lo);
+    const step = niceStep(top - lo, integer);
     const min = snap(Math.min(0, stepsDown(lo, step) * step), step);
     const max = cover(snap(Math.max(0, stepsUp(top, step) * step), step), top, step);
     return { min, max, ticks: series(min, max, step), zoomed: false };
@@ -179,7 +190,7 @@ export function axisFor({ lo, hi, atom = 0 }: AxisRequest): Axis {
    * линию негде было нарисовать. Такой ряд честнее показать от нуля.
    */
   if (!narrow || !emptyBottom || !(window > 0)) {
-    const step = niceStep(top);
+    const step = niceStep(top, integer);
     const max = cover(Math.max(step, snap(stepsUp(top, step) * step, step)), hi, step);
     return { min: 0, max, ticks: series(0, max, step), zoomed: false };
   }
@@ -190,7 +201,7 @@ export function axisFor({ lo, hi, atom = 0 }: AxisRequest): Axis {
    * разница; из-за неё ряд, колеблющийся в пределах ошибки измерения, так и
    * останется плоским, а не растянется во весь экран.
    */
-  const step = niceStep(window);
+  const step = niceStep(window, integer);
   const centre = (lo + hi) / 2;
   const min = snap(Math.max(0, stepsDown(centre - window / 2, step) * step), step);
   const max = cover(snap(stepsUp(Math.max(hi, min + window), step) * step, step), hi, step);

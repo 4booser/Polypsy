@@ -1,15 +1,17 @@
 import { Hono } from "hono";
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import {
   filterPresetInputSchema,
   filterPresetListQuery,
   filterPresetUpdateSchema,
   type FilterPreset,
+  type FilterPresetDetail,
   type FilterPresetListItem,
+  type FilterPresetUse,
 } from "@quizzy/shared";
 import { db } from "../db";
 import { asSystem } from "../db/context";
-import { filterPresets } from "../db/schema";
+import { filterPresets, statModels } from "../db/schema";
 import { audit } from "../lib/audit";
 import { badRequest, parseBody, parseQuery } from "../lib/http";
 import { assertFilterPresetAccess, isSuperadmin } from "../lib/scope";
@@ -43,6 +45,30 @@ const modelCount = sql<number>`(select count(*)::int from stat_models m
   where exists (select 1 from jsonb_array_elements(m.columns) c
                  where c->>'presetId' = "filter_presets"."id"))`;
 
+/**
+ * Число моделей на пресетах — все модели, системной ролью.
+ *
+ * Политика строк показывает владельцу только его модели, а суперадмин
+ * вправе собрать модель на чужом пресете. Под ней подсчёт называл такой
+ * пресет «не використовується», и «Видалити» стояло доступным, хотя DELETE
+ * откажет из-за модели, которую владелец не видит. Число — не имя: названия
+ * чужих моделей в ответ по-прежнему не идут (usedBy), а сам отказ DELETE
+ * это число и так называет.
+ *
+ * Пресеты — только уже отданные спрашивающему: идентификаторы приходят из
+ * запроса под его ролью.
+ */
+async function modelCounts(ids: readonly string[]): Promise<Map<string, number>> {
+  if (!ids.length) return new Map();
+  const rows = await asSystem(() =>
+    db
+      .select({ id: filterPresets.id, n: modelCount })
+      .from(filterPresets)
+      .where(inArray(filterPresets.id, [...ids])),
+  );
+  return new Map(rows.map((r) => [r.id, Number(r.n ?? 0)]));
+}
+
 function toItem(row: typeof filterPresets.$inferSelect, count: number): FilterPresetListItem {
   return { ...toPreset(row), modelCount: Number(count ?? 0) };
 }
@@ -73,7 +99,7 @@ filterPresetRoutes.get("/", async (c) => {
   // подстановочные знаки экранируются: «100%» в запросе — это проценты
   const pattern = query.q ? `%${query.q.replace(/[\\%_]/g, (ch) => `\\${ch}`)}%` : null;
   const rows = await db
-    .select({ row: filterPresets, modelCount })
+    .select()
     .from(filterPresets)
     .where(
       and(
@@ -84,7 +110,8 @@ filterPresetRoutes.get("/", async (c) => {
     // в порядке заведения: сетка пресетов не должна перестраиваться от правки
     .orderBy(asc(filterPresets.createdAt), asc(filterPresets.id));
 
-  return c.json({ items: rows.map((r) => toItem(r.row, r.modelCount)) });
+  const counts = await modelCounts(rows.map((r) => r.id));
+  return c.json({ items: rows.map((r) => toItem(r, counts.get(r.id) ?? 0)) });
 });
 
 /**
@@ -113,11 +140,36 @@ filterPresetRoutes.post("/", async (c) => {
   return c.json(toPreset(row!), 201);
 });
 
+/**
+ * Карточка пресета — и где он стоит: модели и номера их выборок
+ * («Де використовується» на экране пресета). Человек правит пресет, и до
+ * «Зберегти» должен видеть, какие сравнения поменяются.
+ *
+ * Модели — только видные спрашивающему, тем же условием по владельцу, что
+ * у перечня моделей: имя чужой модели — тоже чужое. Число же (modelCount)
+ * считает все, системной ролью (modelCounts): из-под чужой модели пресет
+ * тоже не удалить.
+ */
 filterPresetRoutes.get("/:id", async (c) => {
   const user = c.get("user");
   const row = await assertFilterPresetAccess(user, c.req.param("id"));
-  const [count] = await db.select({ modelCount }).from(filterPresets).where(eq(filterPresets.id, row.id));
-  return c.json(toItem(row, count?.modelCount ?? 0));
+  const count = (await modelCounts([row.id])).get(row.id) ?? 0;
+  const models = await db
+    .select({ id: statModels.id, title: statModels.title, columns: statModels.columns })
+    .from(statModels)
+    .where(
+      and(
+        isSuperadmin(user) ? undefined : eq(statModels.ownerId, user.id),
+        sql`exists (select 1 from jsonb_array_elements(${statModels.columns}) c where c->>'presetId' = ${row.id})`,
+      ),
+    )
+    .orderBy(asc(statModels.createdAt), asc(statModels.id));
+  const usedBy: FilterPresetUse[] = models.map((m) => ({
+    id: m.id,
+    title: m.title,
+    samples: m.columns.flatMap((col, i) => (col.presetId === row.id ? [i + 1] : [])),
+  }));
+  return c.json({ ...toItem(row, count), usedBy } satisfies FilterPresetDetail);
 });
 
 /**
@@ -172,14 +224,12 @@ filterPresetRoutes.delete("/:id", async (c) => {
   const preset = await assertFilterPresetAccess(user, c.req.param("id"), "update");
 
   /*
-   * Счёт — системной ролью, не владельца: политика строк показывает ему
-   * только свои модели, а суперадмин вправе собрать модель на чужом пресете.
-   * Такую модель владелец не видит, но удалить пресет из-под неё не должен.
+   * Счёт — системной ролью, не владельца (modelCounts): политика строк
+   * показывает ему только свои модели, а суперадмин вправе собрать модель на
+   * чужом пресете. Такую модель владелец не видит, но удалить пресет из-под
+   * неё не должен.
    */
-  const [count] = await asSystem(() =>
-    db.select({ modelCount }).from(filterPresets).where(eq(filterPresets.id, preset.id)),
-  );
-  const used = Number(count?.modelCount ?? 0);
+  const used = (await modelCounts([preset.id])).get(preset.id) ?? 0;
   if (used > 0) badRequest("err.filterPresetInUse", { count: used });
 
   await db.delete(filterPresets).where(eq(filterPresets.id, preset.id));

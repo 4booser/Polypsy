@@ -2,14 +2,17 @@ import { describe, expect, test } from "bun:test";
 import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
-import type { AlertCase, AlertCaseFacets, AlertCasePage, Worklist } from "@quizzy/shared";
+import type { AlertCase, AlertCaseFacets, AlertCasePage } from "@quizzy/shared";
 import { UI } from "@quizzy/shared";
 import { LangProvider } from "../src/lang";
 import { PersonCases, QueueRow } from "../src/pages/Alerts";
-import { Attention } from "../src/pages/Dashboard";
+import { CasesWidget } from "../src/pages/dashboard/widgets";
 import {
+  clockText,
   hasNarrowing,
   isDay,
+  normText,
+  riskClock,
   queueQuery,
   queueSections,
   readFilters,
@@ -98,12 +101,19 @@ describe("отбор из адреса", () => {
         severity: "critical",
         assigned: "somebody",
         patient: "not-a-uuid",
-        patientGroup: "42",
+        patientGroup: "demo pg",
         from: "2026-02-31",
         status: "bogus",
       }),
     );
     expect(f).toMatchObject({ severity: "", assigned: "", patient: "", patientGroup: "", from: "", status: "open" });
+    /*
+     * Постоянный id группы посева — законная форма (patientGroupRef сервера):
+     * прежде экран отбрасывал его как «не uuid», и «з ризиком» из демо-группы
+     * открывал всю очередь вместо очереди группы. Мутация: вернуть проверку
+     * uuid — падает эта строка.
+     */
+    expect(readFilters(params({ patientGroup: "demo-pg-risk" })).patientGroup).toBe("demo-pg-risk");
     expect(isDay("2026-02-28")).toBe(true);
     expect(isDay("2026-02-31")).toBe(false);
   });
@@ -154,13 +164,14 @@ describe("строки и разделы", () => {
 
   test("подзаголовок — из счётчиков, а не из загруженной страницы", () => {
     const words = { people: "Людей на розбір {n}", overdue: "прострочено", mine: "на мені", resolved: "R", all: "A" };
-    expect(subtitleParts(facets, "open", words)).toBe("Людей на розбір 420 · прострочено 380 · на мені 84");
+    // через запятую: точку-разделитель между словами набор не пускает (KIT.md § 2)
+    expect(subtitleParts(facets, "open", words)).toBe("Людей на розбір 420, прострочено 380, на мені 84");
     expect(subtitleParts({ ...facets, overdue: 0, assigned: { ...facets.assigned, me: 0 } }, "open", words)).toBe(
       "Людей на розбір 420",
     );
     expect(subtitleParts(undefined, "open", words)).toBe("");
     expect(subtitleParts(facets, "resolved", words)).toBe("R");
-    expect(withCount("Лише важкі", 140)).toBe("Лише важкі · 140");
+    expect(withCount("Лише важкі", 140)).toBe("Лише важкі (140)");
     expect(withCount("Лише важкі", undefined)).toBe("Лише важкі");
   });
 
@@ -175,8 +186,39 @@ describe("строки и разделы", () => {
   });
 });
 
+describe("таймер разбора", () => {
+  const opened = "2026-10-08T11:12:00.000Z";
+  const now = Date.parse("2026-10-08T14:00:00.000Z");
+
+  test("2:48 из 4 год: доля, срок нормы и сколько осталось — от настройки эскалации методики", () => {
+    const clock = riskClock({ openedAt: opened, escalateMinutes: 240 }, now);
+    expect(clock.elapsed).toBe(168);
+    expect(clockText(clock.elapsed, "{n} дн.")).toBe("2:48");
+    expect(clock.pct).toBe(70);
+    expect(clock.left).toBe(72);
+    expect(new Date(clock.dueAt!).toISOString()).toBe("2026-10-08T15:12:00.000Z");
+    expect(normText(240, { h: "год", min: "хв" })).toBe("4 год");
+    expect(normText(90, { h: "год", min: "хв" })).toBe("90 хв");
+  });
+
+  test("нормы нет — ни доли, ни срока: придуманная норма врала бы", () => {
+    const clock = riskClock({ openedAt: opened, escalateMinutes: null }, now);
+    expect(clock).toEqual({ elapsed: 168, norm: null, pct: 0, dueAt: null, left: null });
+    // старый сервер поля не шлёт — то же самое
+    expect(riskClock({ openedAt: opened }, now).norm).toBeNull();
+  });
+
+  test("норма минула — доля не больше 100, остаток отрицательный; от суток — днями", () => {
+    const clock = riskClock({ openedAt: "2026-10-05T14:00:00.000Z", escalateMinutes: 60 }, now);
+    expect(clock.pct).toBe(100);
+    expect(clock.left).toBeLessThan(0);
+    expect(clockText(clock.elapsed, "{n} дн.")).toBe("3 дн.");
+  });
+});
+
 describe("строка очереди: рисование", () => {
-  test("янтарь — только у просроченных; «взяв» — фиолетовым; выраженность подписана для диктора", () => {
+
+  test("янтарь — только у просроченных; выбранная — тонированная; выраженность — словом", () => {
     const overdue = draw(
       <QueueRow
         c={row({ group: { cases: 2, signals: 4, overdue: true, oldestOpenedAt: "2026-09-26T08:00:00.000Z" } })}
@@ -186,21 +228,27 @@ describe("строка очереди: рисование", () => {
         onPick={() => {}}
       />,
     );
-    expect(overdue).toContain("text-accent");
+    /* янтарь набора — пилюля «прострочено» (Tag attention: text-warn на warn-tint) */
+    expect(overdue).toContain("text-warn");
     expect(overdue).toContain("data-queue-row");
     expect(either(overdue, "cases.overdue")).toBe(true);
     // число случаев человека — на строке
     expect(overdue).toMatch(/(випадків|случаев): 2/);
-    // выраженность не одним цветом: форма точки и подпись для диктора
-    expect(overdue).toContain("rotate-45");
+    // выраженность не одним цветом: пилюля со словом (SeverityTag), а не точка
+    expect(overdue).toContain("bg-sev-4-bg");
     expect(either(overdue, "severity.severe")).toBe(true);
+    // открытый сигнал — красной пилюлей причины (риск для человека)
+    expect(overdue).toContain("bg-risk-tint-2");
 
     const mine = draw(
       <QueueRow c={row({ assignedTo: "me", severity: "moderate" })} active me="me" now={Date.now()} onPick={() => {}} />,
     );
-    expect(mine).not.toContain("text-accent");
+    expect(mine).not.toContain("text-warn");
     expect(mine).toContain('aria-current="true"');
-    expect(mine).toContain("bg-primary-soft");
+    /* выбранная строка — тонировка набора с кольцом (.prow.sel) */
+    expect(mine).toContain("bg-violet-tint");
+    expect(either(mine, "al.youTook")).toBe(true);
+
     for (const re of LEGACY) {
       expect(overdue).not.toMatch(re);
       expect(mine).not.toMatch(re);
@@ -218,38 +266,51 @@ describe("строка очереди: рисование", () => {
       />,
     );
     expect(html).toContain('data-done="true"');
-    expect(html).not.toContain("text-accent");
+    expect(html).not.toContain("text-warn");
     expect(either(html, "cases.confirmed")).toBe(true);
   });
 });
 
 describe("случаи человека в панели разбора", () => {
-  test("перечислены по одному, выбранный отмечен не цветом одним, а aria-pressed; раздел — с линией 2px", () => {
+  test("перечислены по одному, выбранный отмечен не цветом одним, а aria-pressed; раздел — с волосяной линией", () => {
     const a = row({ severity: "severe", surveyTitle: "Скринінг зони А" });
     const b = row({ severity: "moderate", surveyTitle: "Скринінг зони Б", overdue: true });
     const html = draw(
       <PersonCases total={2} cases={[a, b]} pickedId={a.id} onPick={() => {}} onShowPerson={() => {}} />,
     );
-    expect(html).toContain("border-primary-rule");
+    /* раздел свитка набора: линия в пиксель тоном разделителя (ui/section.tsx) */
+    expect(html).toContain("data-rule-section");
+    expect(html).toContain("border-divider");
     expect(html).toContain("Скринінг зони А");
     expect(html).toContain("Скринінг зони Б");
     expect(html.match(/aria-pressed="true"/g)?.length).toBe(1);
-    // выраженность каждого — меткой с формой точки
-    expect(html).toContain("rotate-45");
+    // выраженность каждого — пилюлей со словом: цвет подсказывает, слово говорит
+    expect(html).toContain("bg-sev-4-bg");
+    expect(either(html, "severity.severe")).toBe(true);
     expect(either(html, "cases.showPersonCases")).toBe(true);
     for (const re of LEGACY) expect(html).not.toMatch(re);
+  });
+
+  test("случаи человека не пришли — отказ с «Повторити», а не скелет навсегда", () => {
+    const html = draw(
+      <PersonCases
+        total={2}
+        cases={null}
+        error="Сервер тимчасово недоступний"
+        onRetry={() => {}}
+        pickedId="case-x"
+        onPick={() => {}}
+        onShowPerson={() => {}}
+      />,
+    );
+    expect(html).toContain("Сервер тимчасово недоступний");
+    expect(either(html, "common.retry")).toBe(true);
+    expect(html).not.toContain('aria-busy="true"');
   });
 });
 
 describe("сводка: случаи на разбор", () => {
-  const work: Worklist = {
-    items: [],
-    total: 0,
-    truncated: false,
-    byKind: { noshow: 0, message: 0, dispensary: 0, followup: 0, referral: 0, assignment: 0 },
-    mine: 0,
-  };
-
+  /* віджет «Випадки ризику» зведення (Polypsy 2.0) — тот же закон: числа подвала из счётчиков */
   test("«термінових» и «найдовший чекає» — из счётчиков, а не из шести строк", () => {
     // шесть строк на странице, все тяжёлые и свежие; по всей очереди — 140 тяжёлых, самый давний — неделю
     const alerts: AlertCasePage = {
@@ -259,7 +320,7 @@ describe("сводка: случаи на разбор", () => {
       grouping: "person",
       facets: { ...facets, oldestOpenedAt: new Date(Date.now() - 7 * 86_400_000 - 60_000).toISOString() },
     };
-    const html = draw(<Attention alerts={alerts} work={work} />);
+    const html = draw(<CasesWidget alerts={alerts} meId={null} />);
     expect(html).toContain("420");
     expect(html).toMatch(/: 140/);
     expect(html).not.toMatch(/: 6\b/);

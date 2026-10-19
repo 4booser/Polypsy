@@ -41,6 +41,39 @@ export async function lockedEmails(): Promise<Set<string>> {
   return new Set(rows.map((r) => r.email));
 }
 
+/**
+ * Запертые адреса с подробностями — для строк и «Потребує уваги» реестра
+ * (Polypsy 2.0): сколько неудач в окне и когда вход откроется сам.
+ *
+ * Правило то же, что у isLockedOut: заперт, пока в окне не меньше порога
+ * неудач. Откроется, когда из окна выйдет (n − порог + 1)-я с конца попытка
+ * — с этого мига в окне останется на одну меньше порога. Ключ — адрес в
+ * нижнем регистре, как его сверяет сводка (accountState). Под asSystem, как
+ * и lockedEmails.
+ */
+export async function lockStates(now = Date.now()): Promise<Map<string, { failures: number; until: string }>> {
+  const since = new Date(now - WINDOW_MINUTES * 60_000).toISOString();
+  const rows = await db
+    .select({ email: loginAttempts.email, at: loginAttempts.at })
+    .from(loginAttempts)
+    .where(gte(loginAttempts.at, since));
+  const byEmail = new Map<string, number[]>();
+  for (const r of rows) {
+    const key = r.email.toLowerCase();
+    const list = byEmail.get(key) ?? [];
+    list.push(new Date(r.at).getTime());
+    byEmail.set(key, list);
+  }
+  const out = new Map<string, { failures: number; until: string }>();
+  for (const [email, times] of byEmail) {
+    if (times.length < MAX_FAILURES) continue;
+    times.sort((a, b) => a - b);
+    const pivot = times[times.length - MAX_FAILURES]!;
+    out.set(email, { failures: times.length, until: new Date(pivot + WINDOW_MINUTES * 60_000).toISOString() });
+  }
+  return out;
+}
+
 /*
  * Отметка неудачи обязана пережить откат запроса (db/context.ts, durable).
  *

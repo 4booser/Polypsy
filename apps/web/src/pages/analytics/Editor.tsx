@@ -1,118 +1,80 @@
-import { Fragment, useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Fragment, useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as KeyEvent, type ReactNode } from "react";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import type { Scale, SurveyListItem, UiKey } from "@quizzy/shared";
-import { api } from "../../api";
+import { ApiError, api } from "../../api";
+import { SeverityMeter } from "../../charts/clinical";
+import { rungOf, type Rung } from "../../charts/ladder";
+import { day } from "../../format";
 import { useLang } from "../../lang";
-import { Loading, Modal, useAction, useToast } from "../../ui";
+import { useShellNav } from "../../shell/useShellNav";
+import { Callout, KV, Loading, useAction, useToast } from "../../ui";
 import { cx } from "../../ui/cx";
-import { IconGear } from "../../ui/glyphs";
-import { Page } from "../../ui/layout";
-import { MenuButton, menuItemClass } from "../../ui/menu";
-import { Button, Field, Input, Select, Textarea } from "../../ui/primitives";
+import { Ic } from "../../ui/icons";
+import { IconTile, Page, Panel, SideLayout } from "../../ui/layout";
+import { MenuButton, MenuSeparator, menuItemClass } from "../../ui/menu";
+import { Button, ButtonLink, Checkbox, ErrorText, Field, Input, Segmented, Select, Switch, Tag, Textarea } from "../../ui/primitives";
 import { useResource, useResourceMap } from "../../useResource";
+import { AIc } from "./icons";
 import {
   ANY_TEST,
   OPS,
   OP_KEY,
   type DraftAction,
+  type DraftChange,
+  type DraftIssue,
   type DraftParam,
   type ModelDraft,
+  type SavedModel,
+  copyDraft,
+  copyHref,
+  draftChanges,
   draftFromRule,
+  draftIssues,
   draftToPayload,
   dropPicked,
   emptyDraft,
   modelHref,
   newAction,
   newParam,
+  ruleTests,
+  sameDraft,
   surveysToLoad,
-  validateDraft,
+  thresholdText,
 } from "./model";
+import { ACT_ICON, ACT_KEY } from "./parts";
+import { testsHref } from "./tests/model";
 
 /*
- * Аналитическая модель — кадры f19 и f25 макета, один экран.
+ * Модель аналитики — правило поддержки решений (analytics-model,
+ * analytics-model-new): одна форма на /analytics/:id и /analytics/new.
  *
- * Два кадра — одна форма в двух состояниях: f19 — структура целиком с
- * раскрытым меню шестерёнки, f25 — та же форма с раскрытым списком выбора
- * теста поверх блоков. Взят f19 как более полный (на f25 карточки притемнены
- * и перекрыты, замерять по ним нельзя); из f25 взята только спецификация
- * раскрытого списка.
+ * Слева — то, что модель делает: имя и описание, условия (все через «і»,
+ * у каждого — свой блок с полями своего вида) и действия. Справа — та же
+ * модель словами («Як читається модель»: пропущенное — пунктиром), её
+ * состояние и версия, а у новой — «Почати з копії».
  *
- * Что на кадре и как это легло на код (все числа — замеры f19, колонка формы
- * 700 по центру кадра 1600, то есть 450…1149):
+ * Чего правило на сервере не умеет, того и здесь нет (packages/shared/
+ * src/rules.ts): «або» между условиями (evaluateRules требует every(met)),
+ * условия по отдельному ответу и времени реакции. Об «або» форма говорит
+ * строкой под условиями, «Об’єднати» в меню структуры стоит недоступным с
+ * причиной.
  *
- *   «Аналітика» на оси колонки формы (450)      → видимый заголовок ВНУТРИ
- *                                                  колонки, а не в строке
- *                                                  рамки Page (см. ниже)
- *   поле «Назва аналітичної моделі» 195…230     → Field/Input, подпись
- *                                                  плейсхолдером 17/400 серым
- *   «Структура» (чернила 273…290) + шестерня    → h2 20/700 + MenuButton,
- *   1125…1149 у правого края колонки               плашка от левого края
- *                                                  шестерни вправо
- *   рамка карточки 450…1149, линия #666666      → карточка условий, поле 20
- *                                                  слева, 10 справа под
- *                                                  квадратик отметки
- *   «Назва тесту» 470…1109 + квадратик          → свой список тестов + Pick
- *   1120…1139
- *   «Результат тесту» 525…1109 (отступ 55)      → строка условия: открывает
- *                                                  окно «Результат тесту»
- *   «Разом з» 1030…1109 между параметрами       → чип, оператор «и»
- *   «Додати правило» 960…1109 внутри карточки   → новый параметр
- *
- * Чего кадр рисует, а здесь нет, — и это граница сервера, а не пропуск
- * (правило поддержки решений, packages/shared/src/rules.ts):
- *
- *   · второй блок и чип «Або» между блоками (f19: карточка 754…926 и чип
- *     1070…1149): условия правила соединяются только «и» — evaluateRules
- *     требует every(met), уровня блоков у правила нет. Нарисовать «Або»,
- *     который на сервере станет «и», значило бы молча подменить смысл
- *     модели;
- *   · нижняя кнопка «Додати правило» (999…1148): она добавляет БЛОК, а
- *     блоков нет — вторая такая же кнопка добавляла бы то же, что
- *     внутрикарточная, и читалась бы как другое действие;
- *   · параметр «Питання / Відповідь / Час реакції» (f19, вторая половина
- *     первой карточки): условий по отдельному ответу и по времени реакции в
- *     правиле нет вовсе (RuleCondition — только scale, risk, history).
- *
- * Пункты «Додати Оператор» и «Об’єднати» при этом на экране ЕСТЬ: они
- * нарисованы на кадре, и меню без них читалось бы как поломанное. Они стоят
- * недоступными с подсказкой о причине — так же, как недоступный пункт меню
- * карточки в каталоге (см. ActionMenu в ui/menu.tsx).
- *
- * Чего на кадре нет, а здесь есть, — и почему:
- *   · окно «Про модель» шестым пунктом меню: за ним описание модели (его
- *     печатает перечень f10 второй колонкой, а вводить его больше негде) и
- *     выключатель модели. Единственная добавка к пяти пунктам кадра;
- *   · окно за строкой параметра: его вид, а для условия по шкале — ещё
- *     шкала, что сравниваем, условие и порог. На кадре строка одна, а
- *     правилу нужны все четыре значения; вид же обязан меняться и после
- *     добавления — иначе строку пришлось бы удалять и заводить заново,
- *     теряя вместе с ней заполненное;
- *   · окно «Додати Параметр» с выбором вида: кадр рисует только условие по
- *     шкале, а правило умеет ещё флаг риска и число прохождений, и открытую
- *     модель с таким условием иначе нельзя было бы ни прочитать, ни сохранить;
- *   · карточка действий: сервер не принимает правило без действия
- *     (ruleSchema, min(1)), а «Додати Дію» стоит в меню шестерёнки на самом
- *     кадре — значит, действия задумывались, только нарисовать их не успели.
- *     Ни заголовка «Дії», ни пустой рамки, ни второй кнопки у неё нет: на
- *     кадре после структуры чистый лист;
- *   · кнопка «Зберегти» — форма без сохранения не форма. Вид и размер —
- *     кнопка формы макета (45px, 22/700), правый край по 1149.
- *
- * Заголовок стоит ВНУТРИ колонки формы, а не в строке рамки Page: на кадре
- * чернила «Аналітика» начинаются на 450, то есть на оси колонки 700, а не
- * колонки 1200 (там было бы 200). Рамке он отдан скрытым (`titleHidden`) —
- * диктор и поиск по странице ищут экран по <h1>, и порядок заголовков обязан
- * начинаться с первого.
+ * Сохранение — «Зберегти» (⌘S/Ctrl S): сначала своя проверка с отказами
+ * под полями и сводкой со ссылками к ним, потом POST или PATCH; сервер
+ * поднимает версию на каждой правке. Несохранённое помечено в шапке, его
+ * можно отменить целиком, а закрытие вкладки с ним спрашивает браузер.
  */
 
 /**
  * Обёртка с ключом: форма новой модели и форма правки — один компонент на
  * двух маршрутах, и без ключа переход с /analytics/:id на /analytics/new
- * оставил бы в полях чужую модель.
+ * оставил бы в полях чужую модель. Копия (?copy=) — тоже свой ключ.
  */
 export default function AnalyticsModelPage() {
   const { id } = useParams<{ id: string }>();
-  return <ModelEditor key={id ?? "new"} id={id ?? null} />;
+  const [params] = useSearchParams();
+  const copy = id ? null : params.get("copy");
+  return <ModelEditor key={`${id ?? "new"}:${copy ?? ""}`} id={id ?? null} copyFrom={copy} />;
 }
 
 /**
@@ -121,68 +83,87 @@ export default function AnalyticsModelPage() {
  */
 type LoadedSurvey = { title: string; archivedAt: string | null; scales: Scale[] } | null;
 
-/* Силуэт поля кадра: 36 высотой, радиус 5, рамка #666666 — для строк, которые полем не являются */
-const FIELD_SHELL =
-  "flex h-9 w-full items-center rounded-[5px] border border-field-border bg-[var(--bg)] px-[10px] text-left text-[17px]";
-/* Обводка фокуса для тех же строк: у <button> её нет там, где нет рамки браузера */
-const FIELD_FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]";
+/** Сначала буква заглавная, потом строчная — значит, это слово, а не код («SI»): его можно начать со строчной */
+function lowerFirst(s: string): string {
+  return s.length > 1 && s[0] !== s[0]!.toLowerCase() && s[1] === s[1]!.toLowerCase() ? s[0]!.toLowerCase() + s.slice(1) : s;
+}
 
-function ModelEditor({ id }: { id: string | null }) {
+/** Место отказа на форме — id поля, к которому ведёт ссылка сводки */
+function fieldId(d: ModelDraft, i: DraftIssue): string {
+  if (i.param !== undefined) return `am-${d.params[i.param]?.key ?? "x"}-${i.field}`;
+  if (i.action !== undefined) return `am-${d.actions[i.action]?.key ?? "x"}-${i.field}`;
+  return `am-${i.field}`;
+}
+
+function ModelEditor({ id, copyFrom }: { id: string | null; copyFrom: string | null }) {
   const { ut } = useLang();
   const navigate = useNavigate();
   const toast = useToast();
   const { run, busy } = useAction();
+  const nav = useShellNav();
+  const canManage = nav ? nav.access.can("decisions.manage") : true;
+  const isNew = id === null;
 
   const surveys = useResource(() => api.surveys(), []);
   /*
    * Правило читается из общего списка: маршрута «одно правило» на сервере
-   * нет (см. api_gaps). Список короткий, и второй запрос не стоит того,
-   * чтобы заводить маршрут ради него.
+   * нет. Список короткий; он же — образцы для «Почати з копії». Сам не
+   * перечитывается (manual) — правку в полях не затрёт.
    */
-  /* источник черновика: сам не перечитывается — правку не затрёт (useResource, manual) */
-  const rules = useResource(() => api.decisionRules(), [], { enabled: id !== null, manual: true });
+  const rules = useResource(() => api.decisionRules(), [], { manual: true });
 
-  const [draft, setDraft] = useState<ModelDraft | null>(id === null ? emptyDraft() : null);
+  /* исходное состояние формы — с чем сравнивается «не збережено» и куда возвращает «Скасувати зміни» */
+  const [base, setBase] = useState<ModelDraft | null>(isNew && !copyFrom ? emptyDraft() : null);
+  const [draft, setDraft] = useState<ModelDraft | null>(base);
   const [missing, setMissing] = useState(false);
+  const saved: SavedModel | null = id !== null ? (rules.data?.find((r) => r.id === id) ?? null) : null;
+  /*
+   * Перечитывание после 409 (правку обогнала чужая): исходным становится
+   * правило с сервера, а набранное остаётся черновиком — «Зміни» и версия
+   * показывают его против новой версии, и следующее «Зберегти» ляжет на неё.
+   */
+  const keepDraft = useRef(false);
+
   useEffect(() => {
-    if (id === null || !rules.data) return;
-    const rule = rules.data.find((r) => r.id === id);
-    if (rule) setDraft(draftFromRule(rule));
-    else setMissing(true);
-  }, [id, rules.data]);
+    if (!rules.data) return;
+    if (id !== null) {
+      const rule = rules.data.find((r) => r.id === id);
+      if (!rule) {
+        setMissing(true);
+        return;
+      }
+      const d = draftFromRule(rule);
+      const keep = keepDraft.current;
+      keepDraft.current = false;
+      setBase(d);
+      setDraft((cur) => (keep && cur ? cur : d));
+      return;
+    }
+    if (copyFrom) {
+      const rule = rules.data.find((r) => r.id === copyFrom);
+      const d = rule ? copyDraft(rule, ut("am.copyOf").replace("{title}", rule.title)) : emptyDraft();
+      setBase(emptyDraft());
+      setDraft((cur) => cur ?? d);
+    }
+    /* язык подписи копии берётся один раз — при открытии формы, поэтому ut не в зависимостях */
+  }, [id, copyFrom, rules.data]);
 
   /*
-   * Методики целиком — по требованию и один раз: выбранные в параметрах
-   * (ради шкал — в SurveyListItem их нет) и стоящие в действиях, но
-   * отсутствующие в коротком списке (ради названия — см. SurveyOptions).
-   * Грузить все методики ради селекта шкал — это сотня запросов при открытии
-   * формы; грузятся только нужные, и только когда понадобились.
-   *
-   * Отказ запоминается как null, а не пропускается: чужую или удалённую
-   * методику сервер не отдаст и со второго раза, а без записи об отказе она
-   * запрашивалась бы заново на каждой перерисовке.
+   * Методики целиком — по требованию и один раз: выбранные в условиях (ради
+   * шкал) и стоящие в действиях, но отсутствующие в коротком списке (ради
+   * названия). Отказ запоминается как null: чужую или удалённую методику
+   * сервер не отдаст и со второго раза.
    */
-  /* волна 13: каждая методика — своей загрузкой через слой загрузки, вместо своего учёта «в полёте» */
   const wanted = draft && surveys.data ? surveysToLoad(draft, new Set(surveys.data.map((s) => s.id))) : [];
   const loaded: Record<string, LoadedSurvey> = useResourceMap("analytics.surveyMeta", wanted, (surveyId) =>
     api.survey(surveyId).then((s) => ({ title: s.title, archivedAt: s.archivedAt ?? null, scales: s.scales })),
   );
 
-  /*
-   * Ключи словаря, а не готовые строки: переводятся при печати. Готовые
-   * строки после неудачной попытки сохранить оставались бы на прежнем языке
-   * до следующего нажатия «Зберегти», хотя весь экран уже переключился.
-   */
-  const [errors, setErrors] = useState<UiKey[]>([]);
-
-  /*
-   * Три окна — три состояния, а не одно с видом внутри: «Про модель»
-   * открывается из меню, «Додати Параметр» — тоже, а окно условия привязано
-   * к строке и помнит, к какой именно (ключ параметра).
-   */
-  const [about, setAbout] = useState(false);
-  const [adding, setAdding] = useState(false);
-  const [editing, setEditing] = useState<string | null>(null);
+  /* отказы видны после первой попытки сохранить и дальше сходят по мере правки */
+  const [tried, setTried] = useState(false);
+  const issues = useMemo(() => (draft ? draftIssues(draft) : []), [draft]);
+  const shownIssues = tried ? issues : [];
+  const dirty = !!draft && !!base && !sameDraft(base, draft);
 
   const patch = (next: Partial<ModelDraft>) => setDraft((d) => (d ? { ...d, ...next } : d));
   const patchParam = (key: string, next: Partial<DraftParam>) =>
@@ -200,37 +181,78 @@ function ModelEditor({ id }: { id: string | null }) {
     setDraft(next);
   };
 
-  const save = () => {
-    if (!draft) return;
-    const errs = validateDraft(draft);
-    setErrors(errs);
-    if (errs.length) return;
-    void run(async () => {
-      const payload = draftToPayload(draft);
-      if (id === null) {
-        const created = await api.createDecisionRule(payload);
-        /* replace: «назад» из правки новой модели ведёт в перечень, а не в пустую форму */
-        navigate(modelHref(created.id), { replace: true });
-      } else {
-        await api.updateDecisionRule(id, payload);
-        rules.reload();
+  const save = useCallback(() => {
+    /* без права правок кнопки погашены — и ⌘S тоже ничего не шлёт: сервер ответил бы 403 */
+    if (!draft || busy || !canManage) return;
+    setTried(true);
+    if (draftIssues(draft).length) return;
+    void run(
+      async () => {
+        const payload = draftToPayload(draft);
+        if (id === null) {
+          const created = await api.createDecisionRule(payload);
+          /* replace: «назад» из правки новой модели ведёт в перечень, а не в пустую форму */
+          navigate(modelHref(created.id), { replace: true });
+        } else {
+          try {
+            /* версия, от которой правили: правило, изменённое с тех пор кем-то другим, ответит 409 */
+            await api.updateDecisionRule(id, { ...payload, ...(saved ? { version: saved.version } : {}) });
+          } catch (e) {
+            if (e instanceof ApiError && e.status === 409) {
+              keepDraft.current = true;
+              rules.reload();
+            }
+            throw e;
+          }
+          setTried(false);
+          rules.reload();
+        }
+      },
+      ut(id === null ? "am.createdOk" : "am.saved"),
+    );
+  }, [draft, busy, canManage, id, saved, run, navigate, rules, ut]);
+
+  /* ⌘S / Ctrl S — сохранить, как в любом редакторе; браузерное «сохранить страницу» здесь бессмысленно */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && !e.altKey && e.code === "KeyS") {
+        e.preventDefault();
+        save();
       }
-    }, ut("am.saved"));
-  };
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [save]);
+
+  /*
+   * Несохранённое при закрытии вкладки — спросит браузер своими словами. И у
+   * новой модели (и у копии): её набирают с нуля, и закрытая вкладка унесла
+   * бы всю форму, а не одну правку.
+   */
+  useEffect(() => {
+    if (!dirty) return;
+    const onLeave = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+    };
+    window.addEventListener("beforeunload", onLeave);
+    return () => window.removeEventListener("beforeunload", onLeave);
+  }, [dirty]);
 
   if (missing) {
     return (
-      <Page title={ut("top.analytics")}>
-        <p className="m-0 text-[13px] text-muted">{ut("am.notFound")}</p>
-        <Link to="/analytics" className="mt-[12px] inline-block text-[15px] font-bold text-primary">
-          {ut("am.backToList")}
-        </Link>
+      <Page title={ut("am.notFound")} back={{ to: "/analytics", label: ut("am.title") }}>
+        <Panel>
+          <p className="m-0 text-body text-text-2">{ut("am.notFoundHint")}</p>
+          <ButtonLink to="/analytics" className="mt-3">
+            {ut("am.backToList")}
+          </ButtonLink>
+        </Panel>
       </Page>
     );
   }
-  if (!draft || !surveys.data) {
+  if (!draft || !surveys.data || (!isNew && !base)) {
     return (
-      <Page title={ut("top.analytics")}>
+      <Page title={isNew ? ut("am.newTitle") : ut("top.analytics")} back={{ to: "/analytics", label: ut("am.title") }}>
         <Loading
           rows={6}
           error={rules.error ?? surveys.error}
@@ -243,331 +265,466 @@ function ModelEditor({ id }: { id: string | null }) {
     );
   }
 
-  /* сужение типа не доживает до замыканий ниже — берём список в константу */
   const surveyList = surveys.data;
-  const edited = draft.params.find((p) => p.key === editing) ?? null;
+  const titleOf = (sid: string) => surveyList.find((s) => s.id === sid)?.title ?? surveyLabel(ut, loaded, sid);
+  const scalesOf = (sid: string) => (sid && sid !== ANY_TEST ? loaded[sid]?.scales : undefined);
+  const issueAt = (field: DraftIssue["field"], at: { param?: number; action?: number } = {}) =>
+    shownIssues.find((i) => i.field === field && i.param === at.param && i.action === at.action) ?? null;
+  const fieldError = (field: DraftIssue["field"], at: { param?: number; action?: number } = {}) => {
+    const hit = issueAt(field, at);
+    return hit ? ut(hit.key) : null;
+  };
+  const picked = draft.params.filter((p) => p.picked).length + draft.actions.filter((a) => a.picked).length;
+  const baseFor = (i: number) => (base && !isNew ? (base.params[i] ?? null) : null);
 
-  return (
-    /*
-     * `snug tight`: 40 от полосы шапки до содержимого и ни пикселя ниже —
-     * замер f19 (коробка заголовка 140…170 при полосе 0…99). Заголовок отдан
-     * рамке скрытым, а видимый напечатан внутри колонки формы, на её оси.
-     */
-    <Page title={ut("top.analytics")} titleHidden snug tight>
-      <div className="mx-auto w-full max-w-[700px]">
-        {/*
-          Видимый заголовок 24/700 фиолетовым. Не второй <h1>: имя экрана уже
-          объявлено скрытым заголовком рамки ровно этими же словами, и второй
-          заголовок диктор прочитал бы дважды, а порядок заголовков получил бы
-          два первых уровня подряд.
-
-          Строка заголовка 36 высотой, текст в ней по центру — как в строке
-          заголовка перечня. Иначе не сходятся чернила: содержимое начинается
-          на 140, а капитель «А» на обоих кадрах стоит на 147 (f10: 147…163,
-          f19: 147…163 — при засечках «і» на 147…149 и основной массе с 151).
-          Голый <p> с leading-tight даёт коробку 140…170 и чернила примерно с
-          144 — те же 24/700 попадают на 147 только внутри строки 36.
-        */}
-        <p aria-hidden className="m-0 flex h-9 items-center text-[24px] font-bold leading-tight text-primary">
-          {ut("top.analytics")}
-        </p>
-
-        {/* 19 от строки заголовка до поля — замер f19 (низ строки 176, верх поля 195) */}
-        <div className="mt-[19px]">
-          <Field label={ut("am.modelName")} inline>
-            <Input
-              ph="plain"
-              value={draft.title}
-              onChange={(e) => patch({ title: e.target.value })}
-              maxLength={200}
-            />
-          </Field>
-        </div>
-
-        {/* 40 от низа поля до коробки h2 — замер f19 (231 → 270) */}
-        <section aria-labelledby="am-structure" className="mt-[40px]">
-          {/* «Структура» слева, шестерёнка у правого края колонки — как на кадре */}
-          <div className="flex items-center justify-between">
-            {/*
-              20/700 — замер f19: капитель «С» занимает 273…286 (14 при
-              отношении 0,708 → 19,8; ниже 287…290 — выносные «р» и «у»), а
-              чернила 451…543 дают 93 на девять знаков против 18-го кегля,
-              которым это было бы ≈84.
-            */}
-            <h2 id="am-structure" className="m-0 text-[20px] font-bold leading-tight text-primary">
-              {ut("am.structure")}
-            </h2>
-            {/*
-              Плашка (align="right-out") висит под шестерней и уходит вправо
-              от колонки формы: на кадре её левый край 1125 совпадает с ЛЕВЫМ
-              краем шестерни (чернила 1125…1149), а правый — 1283, то есть
-              ширина 159. Порядок пунктов — с кадра, дословно.
-            */}
-            <MenuButton label={ut("am.structureMenu")} glyph={<IconGear />} align="right-out">
+  const header = isNew
+    ? {
+        title: ut("am.newTitle"),
+        meta: [ut("am.newMeta1"), ut("am.newMeta2")] as [ReactNode, ReactNode],
+        actions: (
+          <>
+            <Button variant="quiet" onClick={() => navigate("/analytics")}>
+              {ut("common.cancel")}
+            </Button>
+            <Button variant="primary" icon={<Ic.check />} disabled={busy || !canManage} onClick={save} title={ut("am.saveKbd")}>
+              {ut("am.create")}
+            </Button>
+          </>
+        ),
+      }
+    : {
+        title: base?.title || ut("top.analytics"),
+        meta: [
+          ut("am.versionCap").replace("{n}", String(saved?.version ?? "")),
+          saved?.updatedAt ? ut("am.changedOn").replace("{date}", day(saved.updatedAt)) : "",
+        ] as [ReactNode, ReactNode],
+        actions: (
+          <>
+            {dirty ? (
+              <Tag tone="attention" icon={<AIc.circleDot size={12} />}>
+                {ut("am.unsaved")}
+              </Tag>
+            ) : null}
+            <MenuButton label={ut("am.structureMenu")} glyph={<AIc.settings size={16} />} triggerSize="icon" align="right" plateClassName="min-w-[240px]">
               {(close) => (
                 <>
-                  <button
-                    type="button"
-                    role="menuitem"
-                    className={menuItemClass("right-out")}
-                    onClick={() => {
-                      close();
-                      patch({ actions: [...draft.actions, newAction()] });
-                    }}
-                  >
+                  <MenuItem icon={<Ic.plus size={15} />} onClick={() => (close(), patch({ actions: [...draft.actions, newAction()] }))}>
                     {ut("am.addAction")}
-                  </button>
-                  {/*
-                    Оператор между блоками и объединение блоков: пункты с
-                    кадра, оба сейчас недоступны — уровня блоков у правила
-                    нет (см. шапку файла). Остаются в меню с aria-disabled и
-                    подсказкой о причине: пропавший пункт читался бы как
-                    поломка меню, а молча не срабатывающий — как поломка
-                    модели.
-                  */}
-                  <button
-                    type="button"
-                    role="menuitem"
-                    aria-disabled
-                    title={ut("am.operatorOnlyAnd")}
-                    className={menuItemClass("right-out", "disabled")}
-                  >
-                    {ut("am.addOperator")}
-                  </button>
-                  <button
-                    type="button"
-                    role="menuitem"
-                    className={menuItemClass("right-out")}
-                    onClick={() => {
-                      close();
-                      setAdding(true);
-                    }}
-                  >
+                  </MenuItem>
+                  <MenuItem icon={<AIc.listChecks size={15} />} onClick={() => (close(), patch({ params: [...draft.params, newParam()] }))}>
                     {ut("am.addParam")}
-                  </button>
-                  <button
-                    type="button"
-                    role="menuitem"
-                    aria-disabled
-                    title={ut("am.mergeUnavailable")}
-                    className={menuItemClass("right-out", "disabled")}
-                  >
+                  </MenuItem>
+                  {/* блок условий у правила один — объединять нечего; пункт стоит с причиной, а не пропадает */}
+                  <MenuItem icon={<AIc.gitCompare size={15} />} disabled hint={ut("am.mergeUnavailable")}>
                     {ut("am.merge")}
-                  </button>
-                  <button
-                    type="button"
-                    role="menuitem"
-                    className={menuItemClass("right-out")}
-                    onClick={() => {
-                      close();
-                      removePicked();
-                    }}
-                  >
+                  </MenuItem>
+                  <MenuItem icon={<AIc.trash size={15} />} onClick={() => (close(), removePicked())}>
                     {ut("am.deleteSelected")}
-                  </button>
-                  {/* единственная добавка к пяти пунктам кадра: описание модели и выключатель */}
-                  <button
-                    type="button"
-                    role="menuitem"
-                    className={menuItemClass("right-out")}
+                  </MenuItem>
+                  <MenuSeparator />
+                  <MenuItem
+                    icon={<Ic.info size={15} />}
                     onClick={() => {
                       close();
-                      setAbout(true);
+                      const el = document.getElementById("am-about");
+                      el?.scrollIntoView({ block: "center" });
+                      el?.querySelector<HTMLElement>('[role="switch"]')?.focus();
                     }}
                   >
                     {ut("am.about")}
-                  </button>
+                  </MenuItem>
                 </>
               )}
             </MenuButton>
-          </div>
+            <Button variant="quiet" disabled={!dirty} onClick={() => base && (setDraft(base), setTried(false))}>
+              {ut("am.discard")}
+            </Button>
+            <Button variant="primary" icon={<Ic.check />} disabled={busy || !canManage} onClick={save} title={ut("am.saveKbd")}>
+              {ut("common.save")}
+            </Button>
+          </>
+        ),
+      };
 
-          {/*
-            Карточка условий: рамка #666666 (замер f19 — 102,102,102 по всем
-            четырём сторонам), радиус 5, 9 от коробки шестерни до рамки
-            (297 → 306). Поле слева 20, справа 10: справа зарезервирована
-            колонка квадратика отметки (поле кончается на 1109, квадратик
-            1120…1139, рамка 1149). Между строками 15: вместе с полем 36 это
-            шаг 51, ритм формы макета.
-          */}
-          <div className="mt-[9px] flex flex-col gap-[15px] rounded-[5px] border border-field-border py-[20px] pl-[20px] pr-[10px]">
-            {draft.params.map((p, i) => (
-              <Fragment key={p.key}>
-                {i > 0 ? (
-                  /*
-                    «Разом з» — чип 80×36 у правого края поля (1030…1109),
-                    рамка #666666, текст 17/400 серым. Не кнопка: оператор в
-                    правиле один, переключать нечего. Читается диктором как
-                    текст между параметрами — так и задумано, это и есть
-                    смысл строки.
-                  */
-                  <div className="flex justify-end pr-[30px]">
-                    {/*
-                      Ширина чипа 80 — замер f19: рамки 1030 и 1109 по
-                      горизонтали, 428 и 463 по вертикали, чернила 1042…1098
-                      (57). То есть поля по 11, а не 14: при 14 чип выходил
-                      бы ≈87 и уползал влево от правого края поля, который на
-                      кадре стоит.
+  const jump = (target: string) => {
+    const el = document.getElementById(target);
+    el?.scrollIntoView({ block: "center" });
+    el?.focus();
+  };
 
-                      `min-w` с центровкой, а не жёсткие 80: перевод («Вместе
-                      с») длиннее украинского, и фиксированная ширина резала
-                      бы слово.
-                    */}
-                    <span
-                      className={cx(
-                        "inline-flex h-9 min-w-[80px] items-center justify-center rounded-[5px]",
-                        "border border-field-border px-[10px] text-[17px] text-muted",
-                      )}
+  return (
+    <Page title={header.title} meta={header.meta} back={{ to: "/analytics", label: ut("am.title") }} actions={header.actions}>
+      <SideLayout
+        narrow
+        side={
+          <>
+            <ReadModel draft={draft} isNew={isNew} titleOf={titleOf} scalesOf={scalesOf} />
+            <AboutPanel draft={draft} saved={saved} dirty={dirty} changes={base && !isNew ? draftChanges(base, draft) : []} onChange={patch} />
+            {isNew ? (
+              <CopyPanel rules={rules.data ?? []} />
+            ) : (
+              <LinksPanel id={id!} draft={draft} titleOf={titleOf} />
+            )}
+          </>
+        }
+      >
+        {shownIssues.length ? (
+          <Callout kind="line" role="alert" icon={<Ic.circleAlert />} title={ut(isNew ? "am.notCreated" : "am.notSaved")}>
+            <ul className="m-0 mt-1 flex list-none flex-col gap-0.5 p-0">
+              {shownIssues.map((i, n) => {
+                const where =
+                  i.param !== undefined
+                    ? `${ut("am.condN").replace("{n}", String(i.param + 1))}: `
+                    : i.action !== undefined
+                      ? `${ut("am.actN").replace("{n}", String(i.action + 1))}: `
+                      : "";
+                const text = ut(i.key);
+                return (
+                  <li key={n}>
+                    <a
+                      href={`#${fieldId(draft, i)}`}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        jump(i.field === "params" ? "am-add-kinds" : i.field === "actions" ? "am-add-action" : fieldId(draft, i));
+                      }}
+                      className="inline-flex items-start gap-1.5 text-small font-bold text-risk-ink underline decoration-risk-line underline-offset-[3px]"
                     >
-                      {ut("am.together")}
-                    </span>
-                  </div>
-                ) : null}
-                <ParamRow
-                  p={p}
-                  surveys={surveyList}
-                  loaded={loaded}
-                  onChange={(next) => patchParam(p.key, next)}
-                  onOpenCondition={() => setEditing(p.key)}
-                />
-              </Fragment>
-            ))}
-            {/*
-              Кнопка карточки добавляет условие по шкале — тот вид, который и
-              нарисован на кадре. Остальные виды лежат в окне «Додати
-              Параметр» меню шестерёнки: частый случай — одно нажатие, редкий
-              — через выбор вида.
-            */}
-            <div className="flex justify-end pr-[30px]">
-              {/* size="card": 36 высотой и 17/700 — замер заливки f19, см. sizes в primitives.tsx */}
-              <Button size="card" onClick={() => patch({ params: [...draft.params, newParam()] })}>
-                {ut("am.addRule")}
-              </Button>
-            </div>
-          </div>
-
-          {/*
-            Действия — такой же карточкой в той же стопке, шаг 15. Заголовка
-            у неё нет: на кадре после структуры чистый лист, а добавляют
-            действие единственным входом — пунктом «Додати Дію» меню
-            шестерёнки, который на кадре и нарисован.
-          */}
-          {draft.actions.length ? (
-            <div className="mt-[15px] flex flex-col gap-[15px] rounded-[5px] border border-field-border py-[20px] pl-[20px] pr-[10px]">
-              {draft.actions.map((a) => (
-                <ActionRow
-                  key={a.key}
-                  a={a}
-                  surveys={surveyList}
-                  loaded={loaded}
-                  onChange={(next) => patchAction(a.key, next)}
-                />
-              ))}
-            </div>
-          ) : null}
-        </section>
-
-        {errors.length ? (
-          /*
-            role="alert" — на обёртке, а не на самом <ul>: роль alert замещает
-            роль list, и диктор объявил бы текст, но перестал бы сообщать
-            «список из N элементов». Обёртка сохраняет и объявление, и перечень.
-          */
-          <div role="alert">
-            <ul className="m-0 mt-[20px] list-none p-0 text-[13px] leading-[19px] text-danger">
-              {errors.map((k) => (
-                <li key={k}>{ut(k)}</li>
-              ))}
+                      <Ic.circleAlert size={14} className="mt-0.5" />
+                      {where ? where + lowerFirst(text) : text}
+                    </a>
+                  </li>
+                );
+              })}
             </ul>
-          </div>
+          </Callout>
         ) : null}
 
-        <div className="mt-[30px] flex justify-end">
-          <Button size="md" disabled={busy} onClick={save}>
-            {ut("common.save")}
-          </Button>
-        </div>
-      </div>
+        <Panel title={ut("am.nameTitle")} icon={<Ic.type />}>
+          <Field label={ut("am.modelName")} error={fieldError("title")}>
+            <Input id="am-title" value={draft.title} onChange={(e) => patch({ title: e.target.value })} maxLength={200} />
+          </Field>
+          <Field
+            label={ut("am.modelNote")}
+            hint={isNew ? ut("am.noteHintNew") : ut("am.noteHint").replace("{n}", String(draft.note.length))}
+          >
+            <Textarea
+              rows={2}
+              value={draft.note}
+              onChange={(e) => patch({ note: e.target.value })}
+              maxLength={2000}
+              placeholder={ut("am.notePlaceholder")}
+            />
+          </Field>
+        </Panel>
 
-      {about ? (
-        <AboutModel
-          draft={draft}
-          onChange={patch}
-          onClose={() => setAbout(false)}
-        />
-      ) : null}
-      {adding ? (
-        <AddParam
-          onPick={(over) => {
-            patch({ params: [...draft.params, newParam(over)] });
-            setAdding(false);
-          }}
-          onClose={() => setAdding(false)}
-        />
-      ) : null}
-      {edited ? (
-        <ConditionWindow
-          p={edited}
-          scales={edited.surveyId && edited.surveyId !== ANY_TEST ? loaded[edited.surveyId]?.scales : undefined}
-          onChange={(next) => patchParam(edited.key, next)}
-          onClose={() => setEditing(null)}
-        />
-      ) : null}
+        <Panel
+          title={ut("am.condTitle")}
+          icon={<AIc.listChecks />}
+          sub={ut("am.condSub")}
+          actions={
+            isNew ? null : (
+              <>
+                <span className="text-caption text-muted">{ut("am.pickedN").replace("{n}", String(picked))}</span>
+                <Button variant="quiet" size="xs" icon={<AIc.trash />} disabled={picked === 0} onClick={removePicked}>
+                  {ut("am.removePicked")}
+                </Button>
+              </>
+            )
+          }
+        >
+          {draft.params.map((p, i) => (
+            <Fragment key={p.key}>
+              {i > 0 ? <Joiner /> : null}
+              <CondBox
+                p={p}
+                n={i + 1}
+                bad={shownIssues.some((x) => x.param === i)}
+                onChange={(next) => patchParam(p.key, next)}
+                onRemove={() => patch({ params: draft.params.filter((x) => x.key !== p.key) })}
+              >
+                {p.kind === "scale" ? (
+                  <ScaleCond
+                    p={p}
+                    surveys={surveyList}
+                    loaded={loaded}
+                    was={baseFor(i)}
+                    errors={{
+                      test: fieldError("test", { param: i }),
+                      scale: fieldError("scale", { param: i }),
+                      threshold: fieldError("threshold", { param: i }),
+                    }}
+                    onChange={(next) => patchParam(p.key, next)}
+                  />
+                ) : p.kind === "history" ? (
+                  <div className="grid grid-cols-1 items-end gap-x-4 @[420px]:grid-cols-[170px_minmax(0,1fr)]">
+                    <Field label={ut("am.completedAtLeast")} error={fieldError("count", { param: i })}>
+                      <Input
+                        id={`am-${p.key}-count`}
+                        type="number"
+                        min={0}
+                        max={100}
+                        step={1}
+                        value={p.completedAtLeast}
+                        suffix={ut("am.times")}
+                        onChange={(e) => patchParam(p.key, { completedAtLeast: e.target.value })}
+                      />
+                    </Field>
+                    <p className="m-0 pb-2.5 text-small text-text-2">{ut("am.historyHint")}</p>
+                  </div>
+                ) : (
+                  <Field label={ut("am.riskLevel")}>
+                    <Segmented
+                      wide
+                      label={ut("am.riskLevel")}
+                      value={p.severity}
+                      onChange={(v) => patchParam(p.key, { severity: v })}
+                      items={[
+                        { key: "moderate", label: ut("am.riskModerate") },
+                        { key: "severe", label: ut("am.riskSevere") },
+                      ]}
+                    />
+                  </Field>
+                )}
+              </CondBox>
+            </Fragment>
+          ))}
+          <AddKinds onAdd={(over) => patch({ params: [...draft.params, newParam(over)] })} />
+          {fieldError("params") ? <ErrorText className="mt-2">{fieldError("params")}</ErrorText> : null}
+          <p className="m-0 mt-2.5 flex items-center gap-1.5 text-small text-muted">
+            <Ic.info size={13} />
+            {ut("am.operatorOnlyAnd")}
+          </p>
+        </Panel>
+
+        <Panel title={ut("am.actTitle")} icon={<AIc.zap />} sub={ut("am.actSub")}>
+          <ul className="m-0 list-none p-0 @container">
+            {draft.actions.map((a, i) => (
+              <ActionRow
+                key={a.key}
+                a={a}
+                n={i + 1}
+                surveys={surveyList}
+                loaded={loaded}
+                error={fieldError("advise", { action: i }) ?? fieldError("suggest", { action: i }) ?? fieldError("pathway", { action: i })}
+                onChange={(next) => patchAction(a.key, next)}
+                onRemove={() => patch({ actions: draft.actions.filter((x) => x.key !== a.key) })}
+              />
+            ))}
+          </ul>
+          {fieldError("actions") ? <ErrorText className="mb-2">{fieldError("actions")}</ErrorText> : null}
+          <Button id="am-add-action" size="xs" icon={<Ic.plus />} className="mt-2" onClick={() => patch({ actions: [...draft.actions, newAction()] })}>
+            {ut("am.addAction")}
+          </Button>
+        </Panel>
+      </SideLayout>
     </Page>
   );
 }
 
-/* ─────────── параметр ─────────── */
+/** Пункт меню структуры: кнопка с значком; недоступный — с причиной подсказкой */
+function MenuItem({
+  icon,
+  children,
+  onClick,
+  disabled,
+  hint,
+}: {
+  icon: ReactNode;
+  children: ReactNode;
+  onClick?: () => void;
+  disabled?: boolean;
+  hint?: string;
+}) {
+  return (
+    <button
+      type="button"
+      role="menuitem"
+      aria-disabled={disabled || undefined}
+      title={disabled ? hint : undefined}
+      className={menuItemClass("right", disabled ? "disabled" : "normal")}
+      onClick={disabled ? undefined : onClick}
+    >
+      <span className="inline-flex text-muted">{icon}</span>
+      <span className="min-w-0 flex-1 truncate">{children}</span>
+    </button>
+  );
+}
+
+/* ─────────── условие ─────────── */
 
 /**
- * Квадратик отметки справа от «Назва тесту» — 20×20, замер f19 (рамка
- * 1120…1139, у отмеченного заливка 1124…1136, то есть 12×12 внутри);
- * отмеченный залит фиолетовым внутри рамки, как на кадре (не галочка
- * браузера).
+ * Вид параметра одним значением — тем, каким его выбирают и человек, и код.
  *
- * Сам флажок — настоящий <input type="checkbox">, скрытый визуально: диктор
- * и клавиатура получают штатный флажок, глаз — квадрат макета. Область
- * нажатия дорисована псевдоэлементом, как у глифов (см. Button
- * size="glyph"): отступами она раздвинула бы зазор 10 до поля.
- *
- * Но не квадратом 44: 44 по центру квадратика 20 вылезает на 12 в каждую
- * сторону, а слева до поля всего 10 — последние 2px правого края поля (и
- * кнопки выбора теста внутри него) доставались бы флажку. Поэтому по
- * горизонтали накладка растянута на 36 (по 8 в сторону — на 2 меньше
- * зазора, то есть чужого края не касается), по вертикали на 44: строки
- * стоят шагом 51 при высоте 36, между ними 15, и 4 выноса сверху и снизу
- * не дотягиваются даже до соседней строки. 36×44 — это по-прежнему выше
- * порога 2.5.8 (24) и вдвое больше самого квадратика.
+ * «Будь-який тест» — не отдельный вид условия: сервер держит его как то же
+ * условие по шкале с surveyId: null (см. ANY_TEST в model.ts). Но выбирают
+ * его наравне с остальными видами, поэтому здесь четыре значения, а не три.
  */
-function Pick({ checked, label, onChange }: { checked: boolean; label: string; onChange: (v: boolean) => void }) {
+export type ParamPick = "scale" | "any" | "risk" | "history";
+
+export const PARAM_PICKS: readonly ParamPick[] = ["scale", "any", "risk", "history"];
+
+export const PARAM_PICK_KEY: Record<ParamPick, UiKey> = {
+  scale: "am.testResult",
+  any: "am.anyTest",
+  risk: "am.kindRisk",
+  history: "am.kindHistory",
+};
+
+const PICK_ICON: Record<ParamPick, (size: number) => ReactNode> = {
+  scale: (s) => <Ic.clipboard size={s} />,
+  any: (s) => <AIc.shuffle size={s} />,
+  risk: (s) => <AIc.flag size={s} />,
+  history: (s) => <Ic.history size={s} />,
+};
+
+export function paramPick(p: DraftParam): ParamPick {
+  if (p.kind === "risk") return "risk";
+  if (p.kind === "history") return "history";
+  return p.surveyId === ANY_TEST ? "any" : "scale";
+}
+
+/**
+ * Смена вида уже заведённого параметра.
+ *
+ * Возвращает ровно то, что меняется, и НЕ трогает остального: строка,
+ * переведённая на флаг риска и обратно, возвращается со своей шкалой,
+ * условием и порогом. Сбрасывается только то, что после смены заведомо
+ * бессмысленно: методика при переходе на «будь-який тест» и обратно (это
+ * разные вопросы — «какой тест» и «любой»), а вместе с ней код шкалы,
+ * потому что коды у методик свои.
+ *
+ * Решает записанная методика, а не вид, с которого меняют: флаг риска и
+ * история хранят её нетронутой, и обход через них обязан вести туда же,
+ * куда и прямой переход. Иначе «Будь-який тест» → «Прапор ризику» →
+ * «Результат тесту» возвращал «Будь-який тест», а «Результат тесту» → «Прапор
+ * ризику» → «Будь-який тест» уносил код шкалы прежней методики.
+ */
+export function paramKindOver(p: DraftParam, next: ParamPick): Partial<DraftParam> {
+  if (paramPick(p) === next) return {};
+  const named = p.surveyId !== "" && p.surveyId !== ANY_TEST;
+  switch (next) {
+    case "risk":
+      return { kind: "risk" };
+    case "history":
+      return { kind: "history" };
+    case "any":
+      return { kind: "scale", surveyId: ANY_TEST, scaleCode: named ? "" : p.scaleCode };
+    case "scale":
+      return p.surveyId === ANY_TEST ? { kind: "scale", surveyId: "", scaleCode: "" } : { kind: "scale" };
+  }
+}
+
+/**
+ * Блок условия: квадрат значка вида, вид — меню (вид заведённого условия
+ * меняется, не теряя шкалы, условия и порога), «умова N», отметка для
+ * «Прибрати позначені» и корзина. Блок с отказом — в рамке риска.
+ */
+function CondBox({
+  p,
+  n,
+  bad,
+  onChange,
+  onRemove,
+  children,
+}: {
+  p: DraftParam;
+  n: number;
+  bad: boolean;
+  onChange: (next: Partial<DraftParam>) => void;
+  onRemove: () => void;
+  children: ReactNode;
+}) {
+  const { ut } = useLang();
+  const kind = paramPick(p);
   return (
-    <label
-      className={cx(
-        "relative inline-flex size-[20px] shrink-0 cursor-pointer items-center justify-center",
-        "after:absolute after:left-1/2 after:top-1/2 after:h-[44px] after:w-[36px] after:content-['']",
-        "after:-translate-x-1/2 after:-translate-y-1/2",
-      )}
+    <section
+      id={`cond-${n}`}
+      aria-label={`${ut("am.condN").replace("{n}", String(n))}: ${ut(PARAM_PICK_KEY[kind])}`}
+      className={cx("@container rounded-panel border bg-panel px-4 pb-4 pt-3", bad ? "border-risk-line" : "border-border")}
     >
-      <input
-        type="checkbox"
-        className="peer sr-only"
-        checked={checked}
-        aria-label={label}
-        onChange={(e) => onChange(e.target.checked)}
-      />
-      <span
-        aria-hidden
-        className={cx(
-          "size-[20px] rounded-[3px] border border-hairline bg-[var(--bg)]",
-          "transition-colors duration-[var(--dur-fast)] peer-checked:border-primary",
-          "peer-focus-visible:ring-2 peer-focus-visible:ring-[var(--focus)] peer-focus-visible:ring-offset-2",
-        )}
-      />
-      <span
-        aria-hidden
-        className="absolute size-[12px] rounded-[2px] bg-primary opacity-0 transition-opacity duration-[var(--dur-fast)] peer-checked:opacity-100"
-      />
-    </label>
+      <div className="mb-3 flex items-center gap-2.5">
+        <IconTile icon={PICK_ICON[kind](16)} />
+        <MenuButton
+          label={ut("am.paramKind")}
+          plateClassName="min-w-[240px]"
+          trigger={(t) => (
+            <button
+              type="button"
+              {...t}
+              className="inline-flex h-8 min-h-0 cursor-pointer items-center gap-1.5 rounded-[9px] border-0 bg-transparent px-1.5 text-[14px] font-extrabold text-text hover:bg-sunk focus-visible:outline-2 focus-visible:outline-focus"
+            >
+              {ut(PARAM_PICK_KEY[kind])}
+              <Ic.chevronDown size={13} className="text-muted" />
+              <span className="sr-only">{ut("am.changeKind")}</span>
+            </button>
+          )}
+        >
+          {(close) =>
+            PARAM_PICKS.map((k) => (
+              <button
+                key={k}
+                type="button"
+                role="menuitemradio"
+                aria-checked={k === kind}
+                className={menuItemClass("left")}
+                onClick={() => {
+                  close();
+                  onChange(paramKindOver(p, k));
+                }}
+              >
+                <span className="inline-flex text-muted">{PICK_ICON[k](15)}</span>
+                <span className="min-w-0 flex-1 truncate">{ut(PARAM_PICK_KEY[k])}</span>
+                {k === kind ? <Ic.check size={15} className="text-violet-ink" /> : null}
+              </button>
+            ))
+          }
+        </MenuButton>
+        <span className="text-caption text-muted">{ut("am.condN").replace("{n}", String(n)).toLowerCase()}</span>
+        <span className="ml-auto flex items-center gap-1">
+          <Checkbox checked={p.picked} aria-label={ut("am.pickParam")} onChange={(e) => onChange({ picked: e.target.checked })} />
+          <Button variant="quiet" size="icon-sm" aria-label={ut("am.removeCond")} title={ut("am.removeCond")} onClick={onRemove}>
+            <AIc.trash size={15} />
+          </Button>
+        </span>
+      </div>
+      {children}
+    </section>
+  );
+}
+
+/** «і водночас» между блоками: условия правила выполняются все разом */
+function Joiner() {
+  const { ut } = useLang();
+  return (
+    <div className="relative flex h-10 items-center gap-2.5 pl-5 text-small font-semibold text-muted before:absolute before:bottom-0 before:left-8 before:top-0 before:w-[1.5px] before:bg-border">
+      <b aria-hidden className="relative grid size-[26px] place-items-center rounded-full bg-sunk text-caption font-extrabold text-text-2 shadow-[inset_0_0_0_1px_var(--border)]">
+        {ut("am.and")}
+      </b>
+      {ut("am.andAlso")}
+    </div>
+  );
+}
+
+/** Строка «+ Результат тесту · Будь-який тест · …» — новое условие нужного вида одним нажатием */
+function AddKinds({ onAdd }: { onAdd: (over: Partial<DraftParam>) => void }) {
+  const { ut } = useLang();
+  return (
+    <div
+      id="am-add-kinds"
+      tabIndex={-1}
+      role="group"
+      aria-label={ut("am.addParam")}
+      className="mt-3 flex flex-wrap items-center gap-0.5 rounded-[12px] border-[1.5px] border-dashed border-control px-2 py-1.5 outline-none"
+    >
+      <span aria-hidden className="mx-1 inline-flex text-muted">
+        <Ic.plus size={14} />
+      </span>
+      {PARAM_PICKS.map((k) => (
+        <Button key={k} variant="ghost" size="xs" icon={PICK_ICON[k](14)} onClick={() => onAdd(paramKindOver(newParam(), k))}>
+          {ut(PARAM_PICK_KEY[k])}
+        </Button>
+      ))}
+    </div>
   );
 }
 
@@ -575,16 +732,12 @@ function Pick({ checked, label, onChange }: { checked: boolean; label: string; o
  * Опции селекта методик: список api.surveys() и — если выбранной в нём нет —
  * она сама, отдельной опцией впереди.
  *
- * Список не отдаёт снятые с использования (GET /api/surveys без ?archived=1)
- * и методики вне групп сотрудника, а в сохранённом правиле такой
- * идентификатор — обычное дело: модель пережила методику. Без своей опции
- * контролируемый <select> не совпадает ни с одной и рисуется пустым, а при
- * сохранении идентификатор уходит на сервер молча — та же ловушка, что у
- * шкалы-сироты в ConditionWindow. Подпись — название с пометкой «знято з
- * використання», когда методику удалось дочитать (GET /api/surveys/:id
- * снятые отдаёт), и «недоступний», когда сервер отказал: чужая группа или
- * методики уже нет. Показывать голый идентификатор, как у шкалы, нельзя:
- * код шкалы человек узнаёт, uuid — нет.
+ * Список не отдаёт снятые с использования и методики вне групп сотрудника,
+ * а в сохранённом правиле такой идентификатор — обычное дело: модель
+ * пережила методику. Без своей опции контролируемый <select> не совпадает
+ * ни с одной и рисуется пустым, а при сохранении идентификатор уходит на
+ * сервер молча. Подпись — название с пометкой «знято з використання», когда
+ * методику удалось дочитать, и «недоступний», когда сервер отказал.
  */
 export function SurveyOptions({
   surveys,
@@ -619,35 +772,16 @@ function surveyLabel(ut: (k: UiKey) => string, loaded: Record<string, LoadedSurv
 }
 
 /**
- * Выбор теста — собственный раскрывающийся список, а не <select>.
- *
- * Кадр f25 задаёт его целиком, и штатным списком ОС ни одного из этих чисел
- * не задать: панель 470…1109 × 326…999 — ровно по рамке поля и от его
- * верхнего края вниз, рамка #666666, радиус 5, пункты 17/700 фиолетовым с
- * шагом 30, текст в 13 от левого края, своя полоса прокрутки с ползунком
- * #999999 (--polsy-edge, замер: 1100…1104).
- *
- * Поле 11 сверху — единственное число этой панели, которого кадр НЕ даёт, и
- * менять его не на что. Список на f25 прокручен: ползунок стоит на 442…599
- * при дорожке 326…999, то есть примерно на 22% пути, а не у края. Значит
- * расстояние «верх панели → первые чернила» (11) — это остаток прокрутки, а
- * не поле, и ровно так же не поле — любое другое число, которое из него
- * выведут: 22 пункта шагом 30 (660) внутри 672 не закрепляют ни 7, ни 11,
- * пока положение прокрутки свободно. Оставлено 11 как есть; закрыть этот
- * замер сможет только кадр с нераскрученным списком.
+ * Выбор теста с поиском глазами — собственный раскрывающийся список, а не
+ * <select>. Форма модели сама берёт штатный Select (тестов в группах —
+ * десятки, тип-ахед браузера справляется), а этот список живёт для
+ * редактора статистической модели (pages/statistics/Editor.tsx), который
+ * зовёт его отсюда.
  *
  * Что обещает клавиатуре и диктору: role="combobox" с aria-expanded и
  * aria-controls, role="listbox"/"option" внутри, обход стрелками, Home,
  * End, выбор по Enter и пробелу, Esc и Tab закрывают, подсвеченный пункт
  * назван через aria-activedescendant, выбранный помечен aria-selected.
- * Фокус остаётся на самом поле — панель закрывает его собой, как на кадре, и
- * уводить фокус под неё некуда.
- *
- * Высота пункта 30, а не 44: область нажатия, дорисованная до 44 при шаге
- * 30, перекрывала бы соседние пункты на 7 сверху и снизу — промах выбрал бы
- * ЧУЖОЙ тест, то есть лечение оказалось бы опаснее болезни (у глифов
- * перекрытие безобидно: рядом с ними либо ничего, либо соседняя стрелка
- * страницы). 30 берёт порог 2.5.8 (24px) и совпадает с кадром.
  */
 export function TestPicker({
   value,
@@ -689,7 +823,7 @@ export function TestPicker({
     setOpen(false);
   };
 
-  const onKey = (e: KeyboardEvent<HTMLButtonElement>) => {
+  const onKey = (e: KeyEvent<HTMLButtonElement>) => {
     if (!open) {
       if (e.key === "ArrowDown" || e.key === "ArrowUp" || e.key === "Enter" || e.key === " ") {
         e.preventDefault();
@@ -710,22 +844,18 @@ export function TestPicker({
       return;
     }
     const next =
-      e.key === "ArrowDown"
-        ? at + 1
-        : e.key === "ArrowUp"
-          ? at - 1
-          : e.key === "Home"
-            ? 0
-            : e.key === "End"
-              ? items.length - 1
-              : null;
+      e.key === "ArrowDown" ? at + 1 : e.key === "ArrowUp" ? at - 1 : e.key === "Home" ? 0 : e.key === "End" ? items.length - 1 : null;
     if (next === null) return;
     e.preventDefault();
     setAt(Math.max(0, Math.min(items.length - 1, next)));
   };
 
   const chosen =
-    value === "" ? null : value === ANY_TEST ? ut("am.anyTest") : (surveys.find((s) => s.id === value)?.title ?? surveyLabel(ut, loaded, value));
+    value === ""
+      ? null
+      : value === ANY_TEST
+        ? ut("am.anyTest")
+        : (surveys.find((s) => s.id === value)?.title ?? surveyLabel(ut, loaded, value));
 
   return (
     <div className="relative min-w-0 flex-1">
@@ -737,12 +867,17 @@ export function TestPicker({
         aria-controls={open ? id : undefined}
         aria-activedescendant={open ? `${id}-${at}` : undefined}
         aria-label={ut("am.testName")}
-        className={cx(FIELD_SHELL, "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]")}
+        className={cx(
+          "flex h-10 w-full min-w-0 cursor-pointer items-center gap-2 rounded-control border border-field-border bg-panel px-3 text-left text-body font-medium",
+          "transition-[border-color,box-shadow] duration-[var(--dur-fast)] hover:border-muted",
+          "focus-visible:border-violet-ring focus-visible:shadow-[0_0_0_3px_var(--vtint)] focus-visible:outline-none",
+        )}
         onClick={() => (open ? setOpen(false) : show())}
         onKeyDown={onKey}
       >
-        {/* пустое поле — подпись внутри него, 17/400 серым, как на кадре */}
-        <span className={cx("truncate", chosen ? "text-text" : "text-muted")}>{chosen ?? ut("am.testName")}</span>
+        <Ic.clipboard size={15} className="text-muted" />
+        <span className={cx("min-w-0 flex-1 truncate", chosen ? "text-text" : "text-muted")}>{chosen ?? ut("am.testName")}</span>
+        <Ic.chevronDown size={14} className="text-muted" />
       </button>
       {open ? (
         <>
@@ -753,14 +888,10 @@ export function TestPicker({
             id={id}
             role="listbox"
             aria-label={ut("am.testName")}
-            className={cx(
-              "absolute left-0 top-0 z-50 max-h-[674px] w-full overflow-y-auto rounded-[5px]",
-              "border border-field-border bg-[var(--bg)] py-[11px] shadow-pop",
-              "[scrollbar-color:var(--polsy-edge)_transparent] [scrollbar-width:thin]",
-            )}
+            className="kit-scroll absolute left-0 top-[calc(100%+4px)] z-50 max-h-[360px] w-full overflow-y-auto rounded-[12px] border border-border bg-panel p-1 shadow-pop"
           >
             {items.length === 0 ? (
-              <p className="m-0 px-[13px] text-[17px] text-muted">{ut("am.noTests")}</p>
+              <p className="m-0 px-2.5 py-2 text-body text-muted">{ut("am.noTests")}</p>
             ) : (
               items.map((it, i) => (
                 <div
@@ -771,8 +902,9 @@ export function TestPicker({
                   data-at={i === at ? "1" : undefined}
                   onClick={() => choose(it.id)}
                   className={cx(
-                    "flex h-[30px] cursor-pointer items-center px-[13px] text-[17px] font-bold text-primary",
-                    i === at && "bg-primary-tint",
+                    "flex h-9 cursor-pointer items-center rounded-[8px] px-2.5 text-body",
+                    i === at && "bg-violet-tint",
+                    it.id === value ? "font-bold text-violet-ink" : "font-medium text-text",
                   )}
                 >
                   <span className="truncate">{it.title}</span>
@@ -786,372 +918,149 @@ export function TestPicker({
   );
 }
 
-function ParamRow({
+/** Лестница полос шкалы методики — в форме, которую понимает шкала тяжести */
+function rungsOfScale(scale: Scale | undefined): Rung[] {
+  return (scale?.bands ?? []).map((b) => ({ min: b.minScore, max: b.maxScore, label: b.label, severity: b.severity }));
+}
+
+/**
+ * Поля условия по шкале: тест и шкала (или код шкалы у «будь-якого»), что
+ * сравниваем, условие и порог. Под ними — где на лестнице тяжести шкалы
+ * встаёт порог: «не менше 20» у PHQ-9 — это вход в «тяжку», и видеть это
+ * надо до сохранения, а не после первого срабатывания.
+ */
+function ScaleCond({
   p,
   surveys,
   loaded,
+  was,
+  errors,
   onChange,
-  onOpenCondition,
 }: {
   p: DraftParam;
   surveys: SurveyListItem[];
   loaded: Record<string, LoadedSurvey>;
+  /** То же условие в сохранённой модели — для «було 19» под порогом */
+  was: DraftParam | null;
+  errors: { test: string | null; scale: string | null; threshold: string | null };
   onChange: (next: Partial<DraftParam>) => void;
-  onOpenCondition: () => void;
 }) {
   const { ut } = useLang();
-  const isScale = p.kind === "scale";
-  const pick = <Pick checked={p.picked} label={ut("am.pickParam")} onChange={(v) => onChange({ picked: v })} />;
-
-  if (!isScale) {
-    /*
-     * Флаг риска и число прохождений кадр не рисует вовсе (там только
-     * условие по шкале), но сервер их умеет, и открытая модель с таким
-     * условием обязана читаться и сохраняться. Рисуются тем же силуэтом,
-     * что и строка условия кадра: поле 36, рамка #666666, значение словами
-     * внутри, а сами поля — в окне за строкой. Так вид параметра меняется
-     * из любой строки, а не только из строки со шкалой.
-     */
-    const said = paramText(ut, p, loaded);
-    return (
-      <div className="flex items-center gap-[10px]">
-        <div className="flex min-w-0 flex-1">
-          <button
-            type="button"
-            aria-label={`${ut(PARAM_PICK_KEY[paramPick(p)])}: ${said}`}
-            onClick={onOpenCondition}
-            className={cx(FIELD_SHELL, FIELD_FOCUS)}
-          >
-            <span className="truncate text-text">{said}</span>
-          </button>
-        </div>
-        {pick}
-      </div>
-    );
-  }
-
-  /*
-   * Строка условия: на кадре это одно поле «Результат тесту» 525…1109 с
-   * отступом 55 от внутреннего края карточки. Шкала, что сравниваем,
-   * условие и порог правилу нужны все четыре, а поле на кадре одно —
-   * поэтому строка открывает окно, а показывает собранное условие словами.
-   * Имя для диктора начинается с видимой подписи (WCAG 2.5.3): управляющий
-   * голосом попадает по тому, что читает глазами.
-   */
-  const condition = conditionText(ut, p, loaded);
-
-  return (
-    <div className="flex flex-col gap-[15px]">
-      <div className="flex items-center gap-[10px]">
-        <TestPicker
-          value={p.surveyId}
-          surveys={surveys}
-          loaded={loaded}
-          /* смена теста сбрасывает шкалу: коды шкал у методик разные */
-          onChange={(v) => onChange({ surveyId: v, scaleCode: "" })}
-        />
-        {pick}
-      </div>
-      <div className="flex pl-[55px] pr-[30px]">
-        <button
-          type="button"
-          aria-label={condition ? `${ut("am.testResult")}: ${condition}` : ut("am.testResult")}
-          onClick={onOpenCondition}
-          className={cx(FIELD_SHELL, FIELD_FOCUS)}
-        >
-          <span className={cx("truncate", condition ? "text-text" : "text-muted")}>
-            {condition || ut("am.testResult")}
-          </span>
-        </button>
-      </div>
-    </div>
-  );
-}
-
-/**
- * Вид параметра одним значением — тем, каким его выбирают и человек, и код.
- *
- * «Будь-який тест» — не отдельный вид условия: сервер держит его как то же
- * условие по шкале с surveyId: null (см. ANY_TEST в model.ts). Но выбирают
- * его наравне с остальными видами, поэтому здесь четыре значения, а не три:
- * иначе «будь-який тест» пришлось бы задавать двумя полями подряд, а
- * вернуться к нему — нечем (ровно это и вышло у первой редакции: методику в
- * строке меняли через список тестов, а пункта «Будь-який тест» в списке нет,
- * и обратной дороги не было).
- */
-export type ParamPick = "scale" | "any" | "risk" | "history";
-
-export const PARAM_PICKS: readonly ParamPick[] = ["scale", "any", "risk", "history"];
-
-export const PARAM_PICK_KEY: Record<ParamPick, UiKey> = {
-  scale: "am.testResult",
-  any: "am.anyTest",
-  risk: "am.kindRisk",
-  history: "am.kindHistory",
-};
-
-export function paramPick(p: DraftParam): ParamPick {
-  if (p.kind === "risk") return "risk";
-  if (p.kind === "history") return "history";
-  return p.surveyId === ANY_TEST ? "any" : "scale";
-}
-
-/**
- * Смена вида уже заведённого параметра.
- *
- * Возвращает ровно то, что меняется, и НЕ трогает остального: строка,
- * переведённая на флаг риска и обратно, возвращается со своей шкалой,
- * условием и порогом. Сбрасывается только то, что после смены заведомо
- * бессмысленно: методика при переходе на «будь-який тест» и обратно (это
- * разные вопросы — «какой тест» и «любой»), а вместе с ней код шкалы,
- * потому что коды у методик свои.
- */
-export function paramKindOver(p: DraftParam, next: ParamPick): Partial<DraftParam> {
-  const now = paramPick(p);
-  if (now === next) return {};
-  switch (next) {
-    case "risk":
-      return { kind: "risk" };
-    case "history":
-      return { kind: "history" };
-    case "any":
-      return { kind: "scale", surveyId: ANY_TEST, scaleCode: now === "scale" ? "" : p.scaleCode };
-    case "scale":
-      return now === "any" ? { kind: "scale", surveyId: "", scaleCode: "" } : { kind: "scale" };
-  }
-}
-
-/** Что строка параметра говорит о себе, когда её поля убраны в окно */
-function paramText(ut: (k: UiKey) => string, p: DraftParam, loaded: Record<string, LoadedSurvey>): string {
-  const name = ut(PARAM_PICK_KEY[paramPick(p)]);
-  if (p.kind === "risk") return `${name} · ${ut(p.severity === "severe" ? "am.riskSevere" : "am.riskModerate")}`;
-  if (p.kind === "history") return `${name} · ${p.completedAtLeast}`;
-  const condition = conditionText(ut, p, loaded);
-  return condition ? `${name} · ${condition}` : name;
-}
-
-/** Условие по шкале словами: «Тривога · Не менше 12 · Сирий бал»; пусто — шкала не выбрана */
-function conditionText(
-  ut: (k: UiKey) => string,
-  p: DraftParam,
-  loaded: Record<string, LoadedSurvey>,
-): string {
-  if (!p.scaleCode) return "";
-  const scales = p.surveyId && p.surveyId !== ANY_TEST ? loaded[p.surveyId]?.scales : undefined;
-  const scale = scales?.find((s) => s.code === p.scaleCode);
-  const name = scale ? `${scale.code} — ${scale.title}` : p.scaleCode;
-  const metric = ut(p.metric === "raw" ? "am.metricRaw" : "am.metricNormed");
-  return `${name} · ${ut(OP_KEY[p.op])} ${p.value} · ${metric}`;
-}
-
-/**
- * Окно параметра: его вид и поля этого вида.
- *
- * Своим окном, а не рядами полей в карточке: кадры раздела (и f19, и f25)
- * таких рядов не показывают ни в одной карточке — после «Результат тесту»
- * идёт сразу чип или кнопка. Убрать их с глаз, не потеряв, можно только
- * сюда: без порога и условия правило не срабатывает ни разу, а без смены
- * вида заведённый параметр остаётся тем, чем родился.
- *
- * Открывает его ЛЮБАЯ строка параметра: и та, что нарисована на кадре
- * (условие по шкале), и две, которых кадр не рисует (флаг риска, число
- * прохождений). Заголовок окна — имя вида, поэтому меняется вместе с ним.
- */
-function ConditionWindow({
-  p,
-  scales,
-  onChange,
-  onClose,
-}: {
-  p: DraftParam;
-  scales: Scale[] | undefined;
-  onChange: (next: Partial<DraftParam>) => void;
-  onClose: () => void;
-}) {
-  const { ut } = useLang();
-  const list = scales ?? [];
+  const any = p.surveyId === ANY_TEST;
+  const list = !any && p.surveyId ? (loaded[p.surveyId]?.scales ?? []) : [];
   /* шкала из сохранённого правила, которой у методики уже нет, остаётся видимой — иначе её потеряют молча */
   const orphan = p.scaleCode && !list.some((s) => s.code === p.scaleCode) ? p.scaleCode : null;
-  const kind = paramPick(p);
+  const scale = list.find((s) => s.code === p.scaleCode);
+  const rungs = rungsOfScale(scale);
+  const value = p.value.trim() === "" ? null : Number(p.value);
+  const changed = was && was.kind === "scale" && was.scaleCode === p.scaleCode && was.value !== p.value && was.value !== "";
+  const testName = !any && p.surveyId ? (surveys.find((s) => s.id === p.surveyId)?.title ?? surveyLabel(ut, loaded, p.surveyId)) : "";
 
-  return (
-    <Modal title={ut(PARAM_PICK_KEY[kind])} onClose={onClose}>
-      <div className="flex flex-col">
-        {/*
-          Вид параметра — здесь, а не на форме: кадр f19 рисует в карточке
-          одно поле «Результат тесту», второго поля рядом с ним нет. Но
-          заведённый параметр обязан менять вид, а не только рождаться с ним:
-          окно «Додати Параметр» задаёт вид один раз, и без этого селекта
-          строку пришлось бы удалять и заводить заново, теряя вместе с ней
-          шкалу, условие и порог. Само окно открывает ЛЮБАЯ строка
-          параметра — и та, что на кадре, и те два вида, которых кадр не
-          рисует.
-        */}
-        <Field label={ut("am.paramKind")}>
-          <Select value={kind} onChange={(e) => onChange(paramKindOver(p, e.target.value as ParamPick))}>
-            {PARAM_PICKS.map((k) => (
-              <option key={k} value={k}>
-                {ut(PARAM_PICK_KEY[k])}
-              </option>
-            ))}
-          </Select>
-        </Field>
-        {kind === "risk" ? (
-          <Field label={ut("am.riskLevel")}>
-            <Select
-              value={p.severity}
-              onChange={(e) => onChange({ severity: e.target.value as DraftParam["severity"] })}
-            >
-              <option value="moderate">{ut("am.riskModerate")}</option>
-              <option value="severe">{ut("am.riskSevere")}</option>
-            </Select>
-          </Field>
-        ) : kind === "history" ? (
-          <Field label={ut("am.completedAtLeast")}>
-            <Input
-              type="number"
-              min={0}
-              max={100}
-              step={1}
-              value={p.completedAtLeast}
-              onChange={(e) => onChange({ completedAtLeast: e.target.value })}
-            />
-          </Field>
-        ) : (
-          <ScaleCondFields p={p} list={list} orphan={orphan} onChange={onChange} />
-        )}
-        <div className="mt-[15px] flex justify-end">
-          <Button onClick={onClose}>{ut("common.close")}</Button>
-        </div>
-      </div>
-    </Modal>
-  );
-}
-
-/** Четыре поля условия по шкале: сама шкала (или её код), что сравниваем, условие и порог */
-function ScaleCondFields({
-  p,
-  list,
-  orphan,
-  onChange,
-}: {
-  p: DraftParam;
-  list: Scale[];
-  orphan: string | null;
-  onChange: (next: Partial<DraftParam>) => void;
-}) {
-  const { ut } = useLang();
   return (
     <>
-      {p.surveyId === ANY_TEST ? (
-        /* «будь-який тест»: перечислять нечего — правило сверяет код в той методике, которую сдали */
-        <Field label={ut("am.scaleCode")}>
-          <Input value={p.scaleCode} maxLength={40} onChange={(e) => onChange({ scaleCode: e.target.value })} />
+      <div className="grid grid-cols-1 gap-x-4 @[420px]:grid-cols-2">
+        {any ? (
+          <Field label={ut("am.scaleCode")} error={errors.scale} hint={errors.scale ? undefined : ut("am.scaleCodeHint")}>
+            <Input id={`am-${p.key}-scale`} value={p.scaleCode} maxLength={40} onChange={(e) => onChange({ scaleCode: e.target.value })} />
+          </Field>
+        ) : (
+          <>
+            <Field label={ut("am.testLabel")} error={errors.test}>
+              <Select id={`am-${p.key}-test`} value={p.surveyId} onChange={(e) => onChange({ surveyId: e.target.value, scaleCode: "" })}>
+                <option value="" disabled>
+                  {ut("am.pickTest")}
+                </option>
+                <SurveyOptions surveys={surveys} current={p.surveyId} loaded={loaded} />
+              </Select>
+            </Field>
+            <Field label={ut("am.scale")} error={errors.scale}>
+              <Select
+                id={`am-${p.key}-scale`}
+                value={p.scaleCode}
+                disabled={!p.surveyId}
+                onChange={(e) => onChange({ scaleCode: e.target.value })}
+              >
+                <option value="" disabled>
+                  {ut("am.pickScale")}
+                </option>
+                {orphan ? <option value={orphan}>{orphan}</option> : null}
+                {list.map((s) => (
+                  <option key={s.code} value={s.code}>
+                    {s.code} — {s.title}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          </>
+        )}
+      </div>
+      <div className="mt-1 grid grid-cols-2 gap-x-4 @[620px]:grid-cols-[minmax(0,1fr)_170px_160px]">
+        <Field label={ut("am.metric")} className="col-span-2 @[620px]:col-span-1">
+          <Segmented
+            wide
+            label={ut("am.metric")}
+            value={p.metric}
+            onChange={(v) => onChange({ metric: v })}
+            items={[
+              { key: "raw", label: ut("am.metricRaw") },
+              { key: "normed", label: ut("am.metricNormed") },
+            ]}
+          />
         </Field>
-      ) : (
-        <Field label={ut("am.scale")}>
-          <Select value={p.scaleCode} disabled={!p.surveyId} onChange={(e) => onChange({ scaleCode: e.target.value })}>
-            <option value="" disabled>
-              {ut("am.scale")}
-            </option>
-            {orphan ? <option value={orphan}>{orphan}</option> : null}
-            {list.map((s) => (
-              <option key={s.code} value={s.code}>
-                {s.code} — {s.title}
+        <Field label={ut("am.op")}>
+          <Select value={p.op} onChange={(e) => onChange({ op: e.target.value as DraftParam["op"] })}>
+            {OPS.map((op) => (
+              <option key={op} value={op}>
+                {ut(OP_KEY[op])}
               </option>
             ))}
           </Select>
         </Field>
-      )}
-      <Field label={ut("am.metric")}>
-        <Select value={p.metric} onChange={(e) => onChange({ metric: e.target.value as DraftParam["metric"] })}>
-          <option value="raw">{ut("am.metricRaw")}</option>
-          <option value="normed">{ut("am.metricNormed")}</option>
-        </Select>
-      </Field>
-      <Field label={ut("am.op")}>
-        <Select value={p.op} onChange={(e) => onChange({ op: e.target.value as DraftParam["op"] })}>
-          {OPS.map((op) => (
-            <option key={op} value={op}>
-              {ut(OP_KEY[op])}
-            </option>
-          ))}
-        </Select>
-      </Field>
-      <Field label={ut("am.threshold")}>
-        <Input type="number" step="any" value={p.value} onChange={(e) => onChange({ value: e.target.value })} />
-      </Field>
-    </>
-  );
-}
-
-/**
- * Окно «Додати Параметр»: вид условия выбирают при добавлении.
- *
- * На кадре видов нет вовсе — там один вид, условие по шкале, и второго
- * поля «Вид параметра» в ряду тоже нет. Поэтому вид при добавлении выбирают
- * здесь, а у заведённой строки его меняет окно за самой строкой (селект
- * «Вид параметра» в ConditionWindow): удалять и заводить заново, теряя
- * шкалу, условие и порог, человека заставлять нельзя.
- */
-function AddParam({
-  onPick,
-  onClose,
-}: {
-  onPick: (over: Partial<DraftParam>) => void;
-  onClose: () => void;
-}) {
-  const { ut } = useLang();
-  /* Тот же список видов, что и в селекте окна строки: два места, где виды расходятся, — два разных продукта */
-  return (
-    <Modal title={ut("am.addParam")} onClose={onClose}>
-      <div className="flex flex-col gap-[10px]" role="group" aria-label={ut("am.paramKind")}>
-        {PARAM_PICKS.map((k) => (
-          <Button key={k} variant="ghost" onClick={() => onPick(paramKindOver(newParam(), k))}>
-            {ut(PARAM_PICK_KEY[k])}
-          </Button>
-        ))}
-      </div>
-    </Modal>
-  );
-}
-
-/**
- * Окно «Про модель»: описание и выключатель.
- *
- * Обоего на кадрах раздела нет, а без них раздел не работает: описание
- * печатает перечень (f10) второй колонкой, и вводить его больше негде, а
- * выключенная модель, которую нельзя включить обратно, — ловушка. Убраны с
- * глаз одним окном, чтобы не заводить на форме двух полей, которых кадр не
- * рисует.
- */
-function AboutModel({
-  draft,
-  onChange,
-  onClose,
-}: {
-  draft: ModelDraft;
-  onChange: (next: Partial<ModelDraft>) => void;
-  onClose: () => void;
-}) {
-  const { ut } = useLang();
-  return (
-    <Modal title={ut("am.about")} onClose={onClose}>
-      <div className="flex flex-col">
-        <Field label={ut("am.modelNote")}>
-          <Textarea rows={4} value={draft.note} onChange={(e) => onChange({ note: e.target.value })} maxLength={2000} />
-        </Field>
-        {!draft.enabled ? (
-          <p className="m-0 mb-[15px] text-[13px] leading-[19px] text-muted">{ut("am.disabledNote")}</p>
-        ) : null}
-        <div className="flex justify-end gap-[14px]">
-          <Button variant="ghost" onClick={() => onChange({ enabled: !draft.enabled })}>
-            {draft.enabled ? ut("am.disable") : ut("am.enable")}
-          </Button>
-          <Button onClick={onClose}>{ut("common.close")}</Button>
+        <div className="min-w-0">
+          <Field label={ut("am.threshold")} error={errors.threshold}>
+            <Input
+              id={`am-${p.key}-threshold`}
+              type="number"
+              step="any"
+              value={p.value}
+              placeholder={ut("am.numberPh")}
+              onChange={(e) => onChange({ value: e.target.value })}
+            />
+          </Field>
+          {changed && !errors.threshold ? (
+            <ErrorText tone="warn" className="-mt-2">
+              {ut("kit.was").replace("{v}", thresholdText(was!.value))}
+            </ErrorText>
+          ) : null}
         </div>
       </div>
-    </Modal>
+      {any ? null : (
+        <div className="mt-3 border-t border-divider pt-3">
+          {scale && rungs.length && p.metric === "raw" ? (
+            <>
+              <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+                <span className="text-caption font-bold text-muted">{ut("am.rulerTitle").replace("{test}", testName)}</span>
+                {value !== null && Number.isFinite(value) && rungOf(rungs, value) ? (
+                  <span className="text-small text-text-2">
+                    {ut("am.rulerBand").replace("{band}", rungOf(rungs, value)!.label)}
+                  </span>
+                ) : null}
+              </div>
+              <SeverityMeter
+                rungs={rungs}
+                value={value !== null && Number.isFinite(value) ? value : null}
+                label={`${scale.title}: ${ut(OP_KEY[p.op])} ${thresholdText(p.value)}`}
+              />
+            </>
+          ) : (
+            <p className="m-0 flex items-center gap-2 text-small text-muted">
+              <AIc.ruler size={14} />
+              {!scale ? ut("am.rulerPick") : p.metric === "normed" ? ut("am.rulerNormed") : ut("am.rulerNoBands")}
+            </p>
+          )}
+        </div>
+      )}
+    </>
   );
 }
 
@@ -1159,20 +1068,30 @@ function AboutModel({
 
 function ActionRow({
   a,
+  n,
   surveys,
   loaded,
+  error,
   onChange,
+  onRemove,
 }: {
   a: DraftAction;
+  n: number;
   surveys: SurveyListItem[];
   loaded: Record<string, LoadedSurvey>;
+  error: string | null;
   onChange: (next: Partial<DraftAction>) => void;
+  onRemove: () => void;
 }) {
   const { ut } = useLang();
   return (
-    <div className="flex items-center gap-[10px]">
-      <Field label={ut("am.actionKind")} inline className="w-[190px] shrink-0">
-        <Select ph="plain" value={a.kind} onChange={(e) => onChange({ kind: e.target.value as DraftAction["kind"] })}>
+    <li
+      id={`act-${n}`}
+      aria-label={`${ut("am.actN").replace("{n}", String(n))}: ${ut(ACT_KEY[a.kind])}`}
+      className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 border-t border-divider py-3.5 first:border-t-0 first:pt-0.5 @[600px]:grid-cols-[236px_minmax(0,1fr)_auto]"
+    >
+      <Field label={ut("am.actionKind")} className="col-span-2 @[600px]:col-span-1">
+        <Select value={a.kind} onChange={(e) => onChange({ kind: e.target.value as DraftAction["kind"] })}>
           <option value="advise">{ut("am.actAdvise")}</option>
           <option value="notify_duty">{ut("am.actNotify")}</option>
           <option value="suggest_survey">{ut("am.actSuggest")}</option>
@@ -1185,27 +1104,329 @@ function ActionRow({
         </Select>
       </Field>
       {a.kind === "advise" ? (
-        <Field label={ut("am.adviseText")} inline className="min-w-0 flex-1">
-          <Input ph="plain" value={a.text} maxLength={2000} onChange={(e) => onChange({ text: e.target.value })} />
+        <Field label={ut("am.adviseText")} error={error} hint={error ? undefined : ut("am.adviseWhere")}>
+          <Textarea
+            id={`am-${a.key}-advise`}
+            rows={2}
+            value={a.text}
+            maxLength={2000}
+            placeholder={ut("am.advisePh")}
+            onChange={(e) => onChange({ text: e.target.value })}
+          />
         </Field>
       ) : a.kind === "suggest_survey" ? (
-        <Field label={ut("am.suggestTest")} inline className="min-w-0 flex-1">
-          <Select ph="plain" value={a.surveyId} onChange={(e) => onChange({ surveyId: e.target.value })}>
+        <Field label={ut("am.suggestTest")} error={error} hint={error ? undefined : ut("am.suggestWhere")}>
+          <Select id={`am-${a.key}-suggest`} value={a.surveyId} onChange={(e) => onChange({ surveyId: e.target.value })}>
             <option value="" disabled>
-              {ut("am.suggestTest")}
+              {ut("am.pickTest")}
             </option>
             <SurveyOptions surveys={surveys} current={a.surveyId} loaded={loaded} />
           </Select>
         </Field>
       ) : a.kind === "suggest_pathway" ? (
-        <Field label={ut("am.pathwayId")} inline className="min-w-0 flex-1">
-          <Input ph="plain" value={a.pathwayId} onChange={(e) => onChange({ pathwayId: e.target.value })} />
+        <Field label={ut("am.pathwayId")} error={error}>
+          <Input id={`am-${a.key}-pathway`} value={a.pathwayId} onChange={(e) => onChange({ pathwayId: e.target.value })} />
         </Field>
       ) : (
-        /* «повідомити чергового» параметров не имеет — место остаётся пустым, отметка на своём краю */
-        <span className="min-w-0 flex-1" />
+        /* «повідомити чергового» параметров не имеет — вместо поля одна фраза о том, что случится */
+        <p className="m-0 text-small text-text-2 @[600px]:pt-7">{ut("am.notifyHint")}</p>
       )}
-      <Pick checked={a.picked} label={ut("am.pickAction")} onChange={(v) => onChange({ picked: v })} />
-    </div>
+      {/* у «повідомити чергового» во второй колонке фраза без подписи — отметке не нужен отступ под подпись, пока строка узкая */}
+      <span className={cx("flex items-center gap-1", a.kind === "notify_duty" ? "@[600px]:pt-7" : "pt-7")}>
+        <Checkbox checked={a.picked} aria-label={ut("am.pickAction")} onChange={(e) => onChange({ picked: e.target.checked })} />
+        <Button variant="quiet" size="icon-sm" aria-label={ut("am.removeAct")} title={ut("am.removeAct")} onClick={onRemove}>
+          <AIc.trash size={15} />
+        </Button>
+      </span>
+    </li>
+  );
+}
+
+/* ─────────── правая колонка ─────────── */
+
+/** Значок действия по его виду — тот же, что в перечне */
+const iconOf = (a: DraftAction): ReactNode => ACT_ICON[a.kind];
+
+/** Пропуск в подсказке модели: то, чего не хватает, — пунктиром */
+function Gap({ children }: { children: ReactNode }) {
+  return (
+    <span className="inline-flex h-[22px] items-center rounded-[6px] border-[1.5px] border-dashed border-risk-line px-[7px] align-[1px] text-caption font-bold text-risk-ink">
+      {children}
+    </span>
+  );
+}
+
+/**
+ * «Як читається модель»: та же модель одной фразой и списком действий.
+ *
+ * Собирается из черновика на лету — правка поля сразу меняет фразу; чего не
+ * хватает для сохранения, стоит пунктиром на своём месте. Фраза — из кусков
+ * словаря, а не одним шаблоном: число условий и их виды свободны, и шаблон
+ * на все сочетания не написать ни на одном из трёх языков.
+ */
+function ReadModel({
+  draft,
+  isNew,
+  titleOf,
+  scalesOf,
+}: {
+  draft: ModelDraft;
+  isNew: boolean;
+  titleOf: (id: string) => string;
+  scalesOf: (id: string) => Scale[] | undefined;
+}) {
+  const { ut } = useLang();
+  let gaps = false;
+  const gap = (k: UiKey) => {
+    gaps = true;
+    return <Gap>{ut(k)}</Gap>;
+  };
+
+  const lead = draft.params.find((p) => p.kind === "scale" && p.surveyId && p.surveyId !== ANY_TEST)?.surveyId ?? null;
+  const anyOnly = !lead && draft.params.some((p) => p.kind === "scale" && p.surveyId === ANY_TEST);
+  const leadNode = lead ? <b>{titleOf(lead)}</b> : anyOnly ? ut("am.rdAnyTest") : draft.params.some((p) => p.kind === "scale") ? gap("am.gapTest") : ut("am.rdSomeTest");
+
+  const clauses: ReactNode[] = draft.params.map((p) => {
+    if (p.kind === "risk") {
+      return (
+        <>
+          {ut("am.rdRisk")} <b>{ut(p.severity === "severe" ? "am.riskSevere" : "am.riskModerate").toLowerCase()}</b>
+        </>
+      );
+    }
+    if (p.kind === "history") {
+      return (
+        <>
+          {ut("am.rdHistory")} <b>{p.completedAtLeast.trim() || "—"}</b>
+        </>
+      );
+    }
+    const scale = scalesOf(p.surveyId)?.find((s) => s.code === p.scaleCode);
+    const scaleNode =
+      p.surveyId === ANY_TEST ? (
+        p.scaleCode.trim() ? (
+          <>
+            {ut("am.rdScaleWord")} <b>{p.scaleCode.trim()}</b>
+          </>
+        ) : (
+          gap("am.gapCode")
+        )
+      ) : p.scaleCode ? (
+        <b>{scale ? lowerFirst(scale.title) : p.scaleCode}</b>
+      ) : (
+        gap("am.gapScale")
+      );
+    const other = p.surveyId && p.surveyId !== ANY_TEST && p.surveyId !== lead ? <>{titleOf(p.surveyId)}: </> : null;
+    const ok = p.value.trim() !== "" && Number.isFinite(Number(p.value));
+    return (
+      <>
+        {other}
+        {scaleNode} {ut(OP_KEY[p.op]).toLowerCase()} {ok ? <b>{thresholdText(p.value)}</b> : gap("am.gapThreshold")} (
+        {ut(p.metric === "raw" ? "am.metricRaw" : "am.metricNormed").toLowerCase()})
+      </>
+    );
+  });
+
+  const acts = draft.actions.map((a) => {
+    if (a.kind === "notify_duty") return <>{ut("am.rdNotify")}</>;
+    if (a.kind === "advise")
+      return (
+        <>
+          {ut("am.rdAdvise")} {a.text.trim() ? <>«{a.text.trim()}»</> : gap("am.gapAdvice")}
+        </>
+      );
+    if (a.kind === "suggest_survey")
+      return (
+        <>
+          {ut("am.rdSuggest")} {a.surveyId ? <b>{titleOf(a.surveyId)}</b> : gap("am.gapTest")}
+        </>
+      );
+    return (
+      <>
+        {ut("am.rdPathway")} {a.pathwayId.trim() ? <b>{a.pathwayId.trim()}</b> : gap("am.gapPathway")}
+      </>
+    );
+  });
+
+  return (
+    <Panel title={ut(isNew ? "am.readTitleNew" : "am.readTitle")} icon={<AIc.bookOpenText />}>
+      <p className="m-0 text-body leading-[21px] text-text [&_b]:font-extrabold">
+        {ut("am.rdLead")} {leadNode}
+        {", "}
+        {clauses.map((c, i) => (
+          <Fragment key={i}>
+            {i > 0 ? (i === clauses.length - 1 ? ` ${ut("am.and")} ` : ", ") : null}
+            {c}
+          </Fragment>
+        ))}
+        {clauses.length ? ", " : ""}
+        {ut("am.rdThen")}
+      </p>
+      {acts.length ? (
+        <ul className="m-0 mt-2.5 flex list-none flex-col gap-2 p-0 text-[13px] leading-[19px] text-text">
+          {draft.actions.map((a, i) => (
+            <li key={a.key} className="flex gap-2 [&_b]:font-extrabold">
+              <span className="mt-0.5 inline-flex text-violet-ink">{iconOf(a)}</span>
+              <span>
+                {acts[i]}
+                {i === acts.length - 1 ? "." : ";"}
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="m-0 mt-2.5 text-small">{gap("am.gapAction")}</p>
+      )}
+      {gaps ? <p className="m-0 mt-3 text-small text-muted">{ut("am.gapNote")}</p> : null}
+    </Panel>
+  );
+}
+
+/** Что поменялось — словами панели «Про модель» */
+function changeText(ut: (k: UiKey) => string, c: DraftChange): string {
+  const n = (k: UiKey, v: number) => ut(k).replace("{n}", String(v));
+  switch (c.kind) {
+    case "title":
+      return ut("am.chTitle");
+    case "note":
+      return ut("am.chNote");
+    case "enabled":
+      return ut(c.on ? "am.chOn" : "am.chOff");
+    case "threshold":
+      return ut("am.chThreshold")
+        .replace("{from}", thresholdText(c.from))
+        .replace("{to}", c.to.trim() ? thresholdText(c.to) : "—");
+    case "param":
+      return n("am.condN", c.index + 1).toLowerCase();
+    case "paramsAdded":
+      return n("am.chParamsAdded", c.n);
+    case "paramsRemoved":
+      return n("am.chParamsRemoved", c.n);
+    case "action":
+      return n("am.actN", c.index + 1).toLowerCase();
+    case "actionsAdded":
+      return n("am.chActionsAdded", c.n);
+    case "actionsRemoved":
+      return n("am.chActionsRemoved", c.n);
+  }
+}
+
+/** «Про модель»: включена ли (часть формы — сохраняется вместе с ней), версия, правки, даты */
+function AboutPanel({
+  draft,
+  saved,
+  dirty,
+  changes,
+  onChange,
+}: {
+  draft: ModelDraft;
+  saved: SavedModel | null;
+  dirty: boolean;
+  changes: DraftChange[];
+  onChange: (next: Partial<ModelDraft>) => void;
+}) {
+  const { ut } = useLang();
+  const rows: [ReactNode, ReactNode][] = [
+    [
+      ut("am.state"),
+      <Switch
+        key="on"
+        checked={draft.enabled}
+        onChange={(v) => onChange({ enabled: v })}
+        label={ut(draft.enabled ? "am.stateOn" : "am.stateOff")}
+        sub={saved ? (draft.enabled ? undefined : ut("am.disabledNote")) : ut("am.stateNewSub")}
+      />,
+    ],
+    [
+      ut("am.version"),
+      saved ? (
+        <span key="v">
+          <b className="font-extrabold">{saved.version}</b>
+          {dirty ? <span className="text-muted"> {ut("am.versionNext").replace("{n}", String(saved.version + 1))}</span> : null}
+        </span>
+      ) : (
+        <span key="v" className="text-muted">
+          {ut("am.versionLater")}
+        </span>
+      ),
+    ],
+  ];
+  if (saved && changes.length) {
+    rows.push([
+      ut("am.changes"),
+      <span key="c" className="flex flex-wrap gap-1">
+        {changes.map((c, i) => (
+          <Tag key={i} tone="attention" icon={<AIc.circleDot size={12} />}>
+            {changeText(ut, c)}
+          </Tag>
+        ))}
+      </span>,
+    ]);
+  }
+  if (saved?.createdAt) rows.push([ut("am.createdAt"), day(saved.createdAt)]);
+  if (saved?.updatedAt) rows.push([ut("am.updatedAt"), day(saved.updatedAt)]);
+  return (
+    <section id="am-about">
+      <Panel title={ut("am.about")} icon={<Ic.info />}>
+        <KV rows={rows} w={96} className="items-center" />
+      </Panel>
+    </section>
+  );
+}
+
+/** Строка-ссылка правой колонки (.lrow набора): значок, текст с пояснением, стрелка */
+function LinkRow({ to, icon, title, sub, out }: { to: string; icon: ReactNode; title: ReactNode; sub?: ReactNode; out?: boolean }) {
+  return (
+    <Link
+      to={to}
+      className="flex min-h-11 items-center gap-2.5 rounded-control px-2.5 py-1.5 font-semibold text-text no-underline hover:bg-sunk hover:no-underline"
+    >
+      <span className="inline-flex text-muted">{icon}</span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate">{title}</span>
+        {sub ? <small className="block text-caption font-medium text-muted">{sub}</small> : null}
+      </span>
+      {out ? <AIc.arrowUpRight size={15} className="text-muted" /> : null}
+    </Link>
+  );
+}
+
+/** Ссылки модели: аналитика её методики и копия как новая модель */
+function LinksPanel({ id, draft, titleOf }: { id: string; draft: ModelDraft; titleOf: (sid: string) => string }) {
+  const { ut } = useLang();
+  const named = ruleTests({ conditions: draftToPayload(draft).conditions }).find((t) => t !== ANY_TEST) ?? null;
+  return (
+    <section className="rounded-panel border border-border bg-panel p-1.5 shadow-panel" aria-label={ut("am.links")}>
+      {named ? (
+        <LinkRow to={testsHref(named)} icon={<Ic.gauge size={16} />} title={`${ut("ant.title")}: ${titleOf(named)}`} out />
+      ) : null}
+      <LinkRow to={copyHref(id)} icon={<AIc.copy size={16} />} title={ut("am.duplicateAsNew")} sub={ut("am.duplicateSub")} />
+    </section>
+  );
+}
+
+/** «Почати з копії»: образцы — уже заведённые модели; условия и действия переносятся в форму */
+function CopyPanel({ rules }: { rules: SavedModel[] }) {
+  const { ut } = useLang();
+  if (!rules.length) return null;
+  return (
+    <Panel title={ut("am.copyTitle")} icon={<AIc.copy />} sub={ut("am.copySub")} flush>
+      <ul className="m-0 list-none px-1.5 pb-1.5 pt-0">
+        {rules.map((r) => (
+          <li key={r.id} className="flex items-center gap-2.5 rounded-control px-2.5 py-1.5 hover:bg-sunk">
+            <span className="min-w-0 flex-1">
+              <span className="block truncate font-semibold text-text">{r.title}</span>
+              <small className="block text-caption text-muted">
+                {ut("am.copyCounts").replace("{c}", String(r.conditions.length)).replace("{a}", String(r.actions.length))}
+              </small>
+            </span>
+            <ButtonLink to={copyHref(r.id)} size="xs" aria-label={`${ut("am.copyBtn")}: ${r.title}`}>
+              <AIc.copy size={13} />
+              {ut("am.copyBtn")}
+            </ButtonLink>
+          </li>
+        ))}
+      </ul>
+    </Panel>
   );
 }

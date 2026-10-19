@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { acceptConsentIfAsked, apiToken, createVisiblePatient, goMenu, login, openMenu } from "./helpers";
+import { acceptConsentIfAsked, apiToken, createVisiblePatient, eventsBell, goMenu, login } from "./helpers";
 
 /**
  * Разбор случаев — экран, ради которого система и существует.
@@ -18,8 +18,22 @@ import { acceptConsentIfAsked, apiToken, createVisiblePatient, goMenu, login, op
  */
 const rows = (page: import("@playwright/test").Page) => page.locator("[data-queue-row]");
 const detail = (page: import("@playwright/test").Page) => page.locator("[data-triage-case] [data-case-card]");
-/* выраженность — залитый выбор со счётчиками, а не ряд кнопок; имя ему даёт подпись для диктора */
+/* выраженность — выбор со счётчиками, а не ряд кнопок; имя ему даёт подпись для диктора */
 const severity = (page: import("@playwright/test").Page) => page.getByLabel("Срочность", { exact: true });
+
+/*
+ * Фильтры очереди (Polypsy 2.0) — за кнопкой «Фильтры» в шапке колонки:
+ * колонка списка узкая, и семь полей отбора съели бы её целиком. Кнопка
+ * раскрывает их на месте; при заданном отборе они раскрыты сразу.
+ */
+async function openFilters(page: import("@playwright/test").Page) {
+  const toggle = page.getByRole("button", { name: /^(Фильтры|Фільтри)/ });
+  if ((await toggle.getAttribute("aria-expanded")) !== "true") await toggle.click();
+  await severity(page).waitFor();
+}
+
+/* ящик разбора — общий с карточкой пациента (components/RiskReview) */
+const drawer = (page: import("@playwright/test").Page) => page.locator("[data-drawer][data-open=\"true\"]");
 
 test.beforeEach(async ({ page }) => {
   await login(page, "psy");
@@ -44,6 +58,7 @@ test("выбор строки меняет случай, не уводя со с
 test("фильтр по выраженности сужает выборку и держится в адресе", async ({ page }) => {
   const before = await rows(page).count();
 
+  await openFilters(page);
   await severity(page).selectOption("severe");
   await expect.poll(async () => rows(page).count()).toBeLessThanOrEqual(before);
   expect(page.url()).toContain("severity=severe");
@@ -108,8 +123,14 @@ test("разобранный случай уходит из очереди и н
 
   await mine.click();
   await expect(detail(page)).toContainText(patient.lastName);
-  await detail(page).getByPlaceholder("Что предпринято").fill("Смоук разбора");
-  await detail(page).getByRole("button", { name: "Риск подтверждён", exact: true }).click();
+  /*
+   * Решение принимается в ящике разбора («Продолжить разбор» или R): исход
+   * обязателен, нотатка — по желанию; сохранение закрывает ящик.
+   */
+  await detail(page).getByRole("button", { name: "Продолжить разбор" }).click();
+  await drawer(page).getByPlaceholder("Что предпринято").fill("Смоук разбора");
+  await drawer(page).getByRole("radio", { name: /^Риск подтверждён/ }).check();
+  await drawer(page).getByRole("button", { name: "Сохранить разбор" }).click();
 
   await expect.poll(async () => mine.count()).toBe(0);
 
@@ -141,15 +162,13 @@ test("новая тревога догоняет открытый экран б�
   });
   await page.reload();
   /*
-   * Центр событий живёт в бургере, и пока меню закрыто, его нет в разметке —
-   * ни кнопки, ни отметки. Поэтому меню открывается ДО сдачи и остаётся
-   * открытым: «ни одного действия в браузере» ниже относится к самой
-   * тревоге — отметка обязана появиться сама, без обновления страницы и
-   * нажатий, — а не к тому, куда смотреть. Проверка «отметки нет» при
-   * закрытом меню была бы пустой: её там нет и быть не может.
+   * Колокольчик центра событий стоит на полосе приложения всегда (Polypsy
+   * 2.0) — открывать ничего не нужно: «ни одного действия в браузере» ниже
+   * относится к самой тревоге — отметка обязана появиться сама, без
+   * обновления страницы и нажатий.
    */
-  const menu = await openMenu(page);
-  await expect(menu.locator("[data-events-dot]")).toHaveCount(0);
+  const bell = eventsBell(page);
+  await expect(bell.locator("[data-events-dot]")).toHaveCount(0);
 
   /*
    * Запросы идут через page.request и относительные адреса: у стенда свой
@@ -197,7 +216,7 @@ test("новая тревога догоняет открытый экран б�
   });
 
   // ни одного действия в браузере — отметка появляется сама
-  await expect(menu.locator("[data-events-dot]")).toBeVisible({ timeout: 15_000 });
+  await expect(bell.locator("[data-events-dot]")).toBeVisible({ timeout: 15_000 });
 });
 
 test("срез экрана сохраняется под именем и восстанавливается", async ({ page }) => {
@@ -206,10 +225,12 @@ test("срез экрана сохраняется под именем и вос
    * Хранится строка запроса, поэтому проверка идёт по адресу — вид обязан
    * вернуть ровно тот фильтр, при котором его сохранили.
    */
+  await openFilters(page);
   await severity(page).selectOption("severe");
   await expect.poll(() => page.url()).toContain("severity=severe");
 
   const name = `Тяжёлые ${Date.now()}`;
+
   await page.getByRole("button", { name: /Сохранить вид/ }).click();
   await page.getByPlaceholder("Например: мои просроченные").fill(name);
   await page.getByRole("button", { name: "Сохранить", exact: true }).click();

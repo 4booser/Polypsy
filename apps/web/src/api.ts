@@ -1,5 +1,6 @@
 import type {
   AppointmentView,
+  TodayCount,
   ScheduleExceptionView,
   ScheduleTemplateView,
   LocalizedText,
@@ -30,7 +31,9 @@ import type {
   OpsSessionPage,
   OpsSessionsSummary,
   OpsUserPage,
+  OpsUserRow,
   OpsUsersSummary,
+  OpsUsersAttention,
   OpsAuditChainReport,
   OpsIntegrityState,
   OpsKeysReport,
@@ -57,7 +60,6 @@ import type {
   OverviewAnalytics,
   RespondentDynamics,
   RiskAlert,
-  SeverityTrendResult,
   ConditionsResult,
   SurveyAnalytics,
   SurveyFull,
@@ -66,6 +68,7 @@ import type {
   SurveyFolder,
   SurveyFolderWithCounts,
   PatientCard,
+  PatientListPage,
   PatientGroup,
   PatientGroupCard,
   PatientGroupInput,
@@ -74,6 +77,7 @@ import type {
   SurveyListItem,
   SurveyListPage,
   SurveyResponse,
+  ScoreResult,
   SurveyStatus,
   SurveyVersion,
   User,
@@ -91,16 +95,21 @@ import type {
   InvitePreview,
   CreateInviteInput,
   Referral,
+  ReferralCount,
+  ReferralPage,
   CreateReferralInput,
   CaseSummary,
   VersionDiff,
+  AlertCaseCount,
   AlertCasePage,
   AlertSignalBasis,
   GroupAnalytics,
   ResponseDetail,
+  ResponseContext,
   Page,
   Respondent,
   Worklist,
+  WorklistCount,
   RuleHit,
   DecisionRule,
   RuleAction,
@@ -117,6 +126,7 @@ import type {
   MailingInput,
   MailingUpdateInput,
   FilterPreset,
+  FilterPresetDetail,
   FilterPresetInput,
   FilterPresetListItem,
   FilterPresetUpdateInput,
@@ -141,7 +151,7 @@ import type {
   ReleasesView,
   ServiceStatusInput,
 } from "@quizzy/shared";
-import { MAINTENANCE_CODE, renderError, uiText } from "@quizzy/shared";
+import { MAINTENANCE_CODE } from "@quizzy/shared";
 import type {
   OpsAlertChannel,
   OpsAlertDelivery,
@@ -154,10 +164,13 @@ import type {
   OpsRecordings,
   OpsVitals,
 } from "@quizzy/shared";
+/* раздел «Адміністрування» 2.0 (участок v2-admin) */
+import type { ConsentVersions, TransferPatientsInput } from "@quizzy/shared";
 import { currentLang } from "./lang";
+import { renderError, uiText } from "./dictionary";
 import { noteNetworkFailure } from "./telemetry/bus";
 import { connection, serverAnswered } from "./connection";
-import { audioFileName } from "./components/recorder/model";
+import { audioFileName } from "./components/recorder/audioFile";
 
 /*
  * Текст сетевого отказа.
@@ -185,7 +198,7 @@ const IMPERSONATION_KEY = "quizzy.web.impersonation";
  * отказывали бы в записи без видимой причины. Своя пара токенов при этом не
  * трогается: «вийти» возвращает к ней без нового входа.
  */
-export interface ImpersonationSlot {
+interface ImpersonationSlot {
   token: string;
   sessionId: string;
   expiresAt: string;
@@ -252,6 +265,18 @@ export function ownerOfToken(token: string | null | undefined): string | null {
   }
 }
 
+/*
+ * Счёт сессий вкладки: выход (tokenStore.clear) начинает новую.
+ *
+ * Общий ноутбук ординаторской: A вышел, B вошёл в той же вкладке, а запрос
+ * A, ушедший до выхода (счётчики полосы, опрос), вернулся после входа B с
+ * 401 — сессию A сервер погасил выходом. Продление видело в хранилище токен
+ * другого человека, объявляло сессию «чужой» (#166) и выводило из вкладки
+ * уже B. Запрос прежней сессии этой вкладки больше ничего не решает: ни
+ * продления, ни выхода — только его собственный отказ.
+ */
+let sessionEpoch = 0;
+
 export const tokenStore = {
   /*
    * Под входом «от имени» запросы идут его токеном; свой — только для «вийти».
@@ -273,6 +298,7 @@ export const tokenStore = {
   getRefresh: () => localStorage.getItem(REFRESH_KEY),
   setRefresh: (t: string) => localStorage.setItem(REFRESH_KEY, t),
   clear: () => {
+    sessionEpoch += 1;
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(REFRESH_KEY);
     impersonationStore.clear();
@@ -544,6 +570,8 @@ async function request<T>(path: string, init: RequestInit = {}, retried = false)
     throw new ApiError(renderError("err.impersonationEnded", currentLang), 401);
   }
   const token = tokenStore.get();
+  /* сессия, в которой запрос ушёл: вышли из неё, пока он летел, — его 401 уже ничего не решает */
+  const epoch = sessionEpoch;
 
   /*
    * Отсутствие связи — не то же самое, что ошибка сервера, и говорить о нём
@@ -605,9 +633,10 @@ async function request<T>(path: string, init: RequestInit = {}, retried = false)
    * (#167): срок, вышедший, пока запрос летел, уводил 401 в обмен своего
    * refresh, и повтор уходил уже своим токеном.
    */
-  if (res.status === 401 && slot) {
+  const sameSession = epoch === sessionEpoch;
+  if (res.status === 401 && slot && sameSession) {
     leaveImpersonation();
-  } else if (res.status === 401 && !retried && refreshesOn401(path)) {
+  } else if (res.status === 401 && !retried && refreshesOn401(path) && sameSession) {
     const outcome = await tryRefresh(token);
     if (outcome === "renewed") return request<T>(path, init, true);
     // продлить не дала связь: токены целы, вкладка остаётся — ответ как у любого обрыва сети
@@ -712,13 +741,6 @@ export interface ConclusionVersion {
    * «тот ли это текст, что я читал» не проверить.
    */
   revision: number;
-  /**
-   * Название документа с экрана «Заключення» (кадр f38, поле «Назва
-   * заключення»). Столбца title в таблице conclusions пока нет, поэтому поле
-   * необязательное: пока сервер его не отдаёт, экран держит набранное
-   * название у себя и не затирает его пустотой из ответа.
-   */
-  title?: string | null;
   text: string;
   status: "draft" | "signed";
   createdAt: string;
@@ -771,7 +793,11 @@ export interface KeySheet {
   version: number;
   questionCount: number;
   questions: { n: number; title: string }[];
+  /** Коды ответов в порядке появления в вариантах; label — текст первого варианта с этим кодом */
+  keyCodes: { code: string; label: string }[];
   scales: {
+    /** Номера пунктов по каждому коду из keyCodes; пусто — код в этой шкале не ждут */
+    keys: { code: string; label: string; items: string }[];
     code: string;
     title: string;
     kind: string;
@@ -796,8 +822,13 @@ export interface OpenApiOperation {
   requestBody?: {
     content: { "application/json": { schema: Record<string, unknown> } };
   };
+  /** Кому маршрут открыт: public | user | staff | superadmin (null — не описан) */
+  "x-access"?: "public" | "user" | "staff" | "superadmin" | null;
+  /** Право, которым маршрут закрыт */
+  "x-permission"?: string | null;
+  parameters?: { name: string; in: string }[];
 }
-export type OpenApiSpec = {
+type OpenApiSpec = {
   info: { title: string; version: string };
   paths: Record<string, Record<string, OpenApiOperation>>;
 };
@@ -834,12 +865,14 @@ export interface SavedView {
 
 export interface TimelineItem {
   id: string;
-  kind: "response" | "alert" | "referral" | "conclusion" | "assignment";
+  kind: "response" | "alert" | "referral" | "conclusion" | "assignment" | "visit";
   at: string;
   title: string;
   detail?: string | null;
   severity?: "none" | "mild" | "moderate" | "severe" | null;
   href?: string | null;
+  /** Срок назначения — только у назначений */
+  dueAt?: string | null;
 }
 
 /**
@@ -853,7 +886,7 @@ export interface TimelineItem {
  * Разворачивается здесь, чтобы страницы не знали про обёртку там, где им от
  * неё ничего не нужно.
  */
-export interface Items<T> {
+interface Items<T> {
   items: T[];
 }
 
@@ -877,6 +910,8 @@ export interface SurveyPageQuery {
   q?: string;
   /** Показать и снятые с использования (сервер добавляет их к остальным) */
   archived?: boolean;
+  /** Только методики одной группы — «Методики групи» с экрана групп методик */
+  groupId?: string;
 }
 
 /**
@@ -885,7 +920,7 @@ export interface SurveyPageQuery {
  * groupId здесь нет намеренно: экран моделей область правила не показывает,
  * а PATCH без поля оставляет её как была.
  */
-export interface DecisionRuleInput {
+interface DecisionRuleInput {
   title: string;
   note: string | null;
   enabled: boolean;
@@ -894,6 +929,31 @@ export interface DecisionRuleInput {
 }
 
 const unwrap = <T>(p: Promise<Items<T>>): Promise<T[]> => p.then((r) => r.items);
+
+/** Сколько человек принимает одно «додати до групи» списком — потолок patientGroupMemberSchema */
+export const PATIENT_GROUP_BATCH = 200;
+
+/** Карточка доступа человека: роли, личные исключения и итог (GET /api/permissions/users/:id) */
+export interface PermissionCard {
+  userId: string;
+  fullName: string;
+  role: string;
+  readOnly: boolean;
+  roles: { roleId: string; code: string; title: LocalizedText; isBuiltin: boolean }[];
+  exceptions: {
+    id: string;
+    permission: string;
+    mode: "grant" | "revoke";
+    reason: string;
+    grantedAt: string;
+    expiresAt: string | null;
+    revokedAt: string | null;
+  }[];
+  effective: string[];
+}
+
+/** Сколько карточек доступа сервер отдаёт за один запрос — CARDS_MAX в routes/permissions.ts */
+export const PERMISSION_CARDS_BATCH = 100;
 
 export const api = {
   /** Вход: пара токенов или, если включён второй фактор, просьба о коде (MfaChallenge) */
@@ -923,17 +983,6 @@ export const api = {
       body: JSON.stringify({ currentPassword, newPassword }),
     }),
   me: () => request<User>("/api/auth/me"),
-  register: (body: {
-    email: string;
-    password: string;
-    firstName: string;
-    lastName: string;
-    phone: string;
-  }) =>
-    request<{ token: string; refreshToken: string; user: User }>("/api/auth/register", {
-      method: "POST",
-      body: JSON.stringify({ ...body, anonymous: false }),
-    }),
   /*
    * Всё, что принимает PATCH /api/auth/me (updateProfileSchema), а не только
    * ФИО: карточка сотрудника правит пол, дату рождения, специальность и
@@ -972,6 +1021,7 @@ export const api = {
     if (query.status) qs.set("status", query.status);
     if (query.q) qs.set("q", query.q);
     if (query.archived) qs.set("archived", "1");
+    if (query.groupId) qs.set("groupId", query.groupId);
     const tail = qs.toString();
     return request<SurveyListPage>(`/api/surveys${tail ? `?${tail}` : ""}`);
   },
@@ -1020,6 +1070,13 @@ export const api = {
   /** Снимает методику с использования. Данные не удаляются — см. surveyPurge на сервере. */
   archiveSurvey: (id: string) => request<void>(`/api/surveys/${id}`, { method: "DELETE" }),
   restoreSurvey: (id: string) => request<void>(`/api/surveys/${id}/restore`, { method: "POST" }),
+  /**
+   * Права на текст и сверка ключей — только суперадмину (routes/surveys.ts,
+   * PATCH /:id/rights). `keysVerified: true` ставит отметку «ключі звірено»
+   * сегодняшним днём от имени того, кто нажал.
+   */
+  surveyRights: (id: string, body: { rightsStatus?: "own" | "licensed" | "public_domain" | "unclear"; keysVerified?: boolean }) =>
+    request<{ ok: true }>(`/api/surveys/${id}/rights`, { method: "PATCH", body: JSON.stringify(body) }),
   submitFor: (surveyId: string, payload: unknown) =>
     request<{ id: string; scores: unknown[]; reliable: boolean; warnings: string[] }>(
       `/api/surveys/${surveyId}/responses`,
@@ -1030,7 +1087,6 @@ export const api = {
     request<VersionDiffResult>(`/api/surveys/${id}/versions/${a}/diff/${b}`),
 
   overview: () => request<OverviewAnalytics>("/api/analytics/overview"),
-  severityTrend: () => request<SeverityTrendResult>("/api/analytics/severity-trend"),
   /** Состояние пациентов по направлениям за период — стартовый экран «Зведення» */
   dashboardConditions: (days: number) => request<ConditionsResult>(`/api/dashboard/conditions?days=${days}`),
   /**
@@ -1110,12 +1166,18 @@ export const api = {
     return request<AlertCasePage>(`/api/alert-cases?${qs}`);
   },
   alertCaseUnits: () => unwrap(request<Items<string>>("/api/alert-cases/units")),
+  /** Очередь случаев числом — для бейджа и значка вкладки: без имён и без строки журнала */
+  alertCaseCount: () => request<AlertCaseCount>("/api/alert-cases/count"),
   /** Основание тревог случая: пункт с отмеченным вариантом либо полоса шкалы */
   alertCaseSignals: (id: string) =>
     unwrap(request<Items<AlertSignalBasis>>(`/api/alert-cases/${id}/signals`)),
   /** Прохождение целиком: ответы по пунктам вместе с вариантами той же версии */
   responseDetail: (id: string) => request<ResponseDetail>(`/api/responses/${id}`),
+  /** Обстановка вокруг протокола: человек, сигналы, попытки, правила — только персоналу */
+  responseContext: (id: string) => request<ResponseContext>(`/api/response-context/${id}`),
   worklist: () => request<Worklist>("/api/worklist"),
+  /** Очередь работы числами — для бейджа навигации: без строк и без строки журнала */
+  worklistCount: () => request<WorklistCount>("/api/worklist/count"),
 
   ruleHits: (status: RuleHit["status"] = "suggested") =>
     request<{ items: RuleHit[] }>(`/api/decisions/hits?status=${status}`).then((r) => r.items),
@@ -1129,8 +1191,12 @@ export const api = {
   /** Завести модель; сервер отвечает идентификатором новой строки */
   createDecisionRule: (input: DecisionRuleInput) =>
     request<{ id: string }>("/api/decisions/rules", { method: "POST", body: JSON.stringify(input) }),
-  /** Правка поднимает версию правила — срабатывания помнят, при какой версии сработали */
-  updateDecisionRule: (id: string, input: Partial<DecisionRuleInput>) =>
+  /**
+   * Правка поднимает версию правила — срабатывания помнят, при какой версии
+   * сработали. `version` — та, что видел правящий: правило, изменённое с тех
+   * пор кем-то другим, отвечает 409 (err.ruleChanged), и экран его перечитывает.
+   */
+  updateDecisionRule: (id: string, input: Partial<DecisionRuleInput> & { version?: number }) =>
     request<{ ok: true; version: number }>(`/api/decisions/rules/${id}`, {
       method: "PATCH",
       body: JSON.stringify(input),
@@ -1140,29 +1206,6 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify({ status, note: note ?? null }),
     }),
-  conclusionBatch: (unit: string, from: string, to: string) => {
-    const q = new URLSearchParams();
-    if (unit) q.set("unit", unit);
-    if (from) q.set("from", from);
-    if (to) q.set("to", to);
-    return request<{
-      unit: string | null;
-      from: string | null;
-      to: string | null;
-      items: {
-        id: string;
-        responseId: string;
-        version: number;
-        signedAt: string | null;
-        text: string;
-        authorName: string;
-        patientName: string;
-        unit: string | null;
-        surveyTitle: string;
-        submittedAt: string | null;
-      }[];
-    }>(`/api/conclusions/batch?${q}`);
-  },
 
   missed: (since: string) =>
     request<{
@@ -1204,6 +1247,8 @@ export const api = {
         version: number;
         status: string;
         createdAt: string;
+        /** Автор записи — для строки уривка и отбора «Автор» */
+        authorName: string;
         excerpt: string;
       }[];
     }>(`/api/search/notes?q=${encodeURIComponent(q)}`),
@@ -1275,6 +1320,17 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify({ outcome, note, seenLastAlertAt }),
     }),
+  /*
+   * Хронология случая: кто брал, кто отпускал, кто разобрал — выборка журнала
+   * по этому случаю (GET /api/alert-cases/:id/history). Экран случая ставит её
+   * рядом с разбором: заступивший видит, почему случай ещё открыт.
+   */
+  alertCaseHistory: (id: string) =>
+    request<{ items: { action: string; at: string; actorName: string; details: Record<string, unknown> | null }[] }>(
+      `/api/alert-cases/${id}/history`,
+    ).then((r) => r.items),
+  /** Записать человека на приём в свободный слот: за другого — только с appointments.manage (то же, что book с patientId) */
+  bookFor: (patientId: string, slotId: string, mode: "onsite" | "remote" = "onsite") => api.book({ slotId, patientId, mode }),
 
   openapi: () => request<OpenApiSpec>("/api/openapi.json"),
   downloadOpenapi: () => download("/api/openapi.json", "openapi.json"),
@@ -1283,14 +1339,18 @@ export const api = {
    * Реестр направлений — страницей по сотне. `total` приходит на первой
    * странице: по нему стоит счётчик в навигации. Адрес первой страницы —
    * прежний (`/api/referrals`, `?all=1`): его же спрашивает счётчик.
+   * `closedSince` — только закрытые с этого момента («Закриті за 30 днів»).
    */
-  referrals: (all = false, cursor?: string | null) => {
+  referrals: (all = false, cursor?: string | null, opts: { closedSince?: string } = {}) => {
     const qs = new URLSearchParams();
     if (all) qs.set("all", "1");
+    if (opts.closedSince) qs.set("closedSince", opts.closedSince);
     if (cursor) qs.set("cursor", cursor);
     const tail = qs.toString();
-    return request<Page<Referral>>(`/api/referrals${tail ? `?${tail}` : ""}`);
+    return request<ReferralPage>(`/api/referrals${tail ? `?${tail}` : ""}`);
   },
+  /** Реестр направлений числами — для бейджа навигации: без людей и без строки журнала */
+  referralCount: () => request<ReferralCount>("/api/referrals/count"),
   createReferral: (input: CreateReferralInput) =>
     request<Referral>("/api/referrals", { method: "POST", body: JSON.stringify(input) }),
   updateReferral: (id: string, status: string, outcomeNote?: string) =>
@@ -1362,24 +1422,22 @@ export const api = {
       method: "PUT",
       body: JSON.stringify({ permissions }),
     }),
-  userPermissions: (id: string) =>
-    request<{
-      userId: string;
-      fullName: string;
-      role: string;
-      readOnly: boolean;
-      roles: { roleId: string; code: string; title: LocalizedText; isBuiltin: boolean }[];
-      exceptions: {
-        id: string;
-        permission: string;
-        mode: "grant" | "revoke";
-        reason: string;
-        grantedAt: string;
-        expiresAt: string | null;
-        revokedAt: string | null;
-      }[];
-      effective: string[];
-    }>(`/api/permissions/users/${id}`),
+  userPermissions: (id: string) => request<PermissionCard>(`/api/permissions/users/${id}`),
+  /*
+   * Те же карточки нескольких людей — одним запросом на сотню (волна 27):
+   * матрица «Що може кожен» спрашивала карточку каждого администратора
+   * отдельно. Невидимых по лестнице сервер в ответ не кладёт.
+   */
+  permissionCards: async (ids: readonly string[]): Promise<PermissionCard[]> => {
+    const parts: string[][] = [];
+    for (let i = 0; i < ids.length; i += PERMISSION_CARDS_BATCH) parts.push(ids.slice(i, i + PERMISSION_CARDS_BATCH));
+    const pages = await Promise.all(
+      parts.map((part) =>
+        request<Items<PermissionCard>>(`/api/permissions/cards?ids=${part.map(encodeURIComponent).join(",")}`),
+      ),
+    );
+    return pages.flatMap((p) => p.items);
+  },
   setUserRoles: (id: string, roleIds: string[]) =>
     request<{ ok: true }>(`/api/permissions/users/${id}/roles`, {
       method: "PUT",
@@ -1415,6 +1473,8 @@ export const api = {
         reason: string;
         grantedAt: string;
         expiresAt: string | null;
+        /** Кто выдал — именем (2.0); null — учётки уже нет */
+        grantedByName?: string | null;
       }>>("/api/permissions/exceptions"),
     ),
 
@@ -1516,7 +1576,8 @@ export const api = {
    * Техпанель: наблюдаемость (/api/ops, право ops.read). Всё — память
    * процесса API до его перезапуска; `since` в каждом ответе.
    */
-  opsOverview: () => request<OpsOverview>("/api/ops/overview"),
+  /** С окном — «Огляд» целиком одним запросом: сводка, ряды нагрузки и новые группы ошибок (OpsOverviewLive) */
+  opsOverview: (window?: OpsWindow) => request<OpsOverview>(`/api/ops/overview${window ? `?window=${window}` : ""}`),
   opsTraffic: (window: OpsWindow) => request<OpsTraffic>(`/api/ops/traffic?window=${window}`),
   opsRoutes: () => request<OpsRoutes>("/api/ops/routes"),
   opsSlow: () => request<OpsSlow>("/api/ops/slow"),
@@ -1595,6 +1656,8 @@ export const api = {
     request<{ ok: true; withdrawn: boolean }>("/api/consents/me/decline", { method: "POST", body: "{}" }),
   saveConsentText: (body: Record<string, string>) =>
     request<{ version: number }>("/api/consents/text", { method: "PUT", body: JSON.stringify({ body }) }),
+  /* версии согласия и счёт принявших — только числа (2.0) */
+  consentVersions: () => request<ConsentVersions>("/api/consents/versions"),
 
   conclusion: (responseId: string) =>
     request<ConclusionState>(`/api/conclusions/responses/${responseId}/conclusion`),
@@ -1626,21 +1689,14 @@ export const api = {
     responseId: string,
     text: string,
     base: Pick<ConclusionVersion, "version" | "revision"> | null,
-    title?: string,
   ) =>
     request<ConclusionState>(`/api/conclusions/responses/${responseId}/conclusion`, {
       method: "PUT",
-      /*
-       * Название уходит вместе с текстом по описанному договору (столбец
-       * conclusions.title). Сегодняшний сервер лишнее поле отбрасывает при
-       * разборе тела — запрос от этого не ломается, а в день, когда столбец
-       * появится, клиент править не придётся.
-       */
+      /* названия нет: столбца title у заключения нет, и сервер поле отбросил бы молча */
       body: JSON.stringify({
         text,
         baseVersion: base?.version ?? 0,
         baseRevision: base?.revision,
-        ...(title !== undefined ? { title } : {}),
       }),
     }),
   /** Подписывается конкретная версия и конкретная редакция её текста — та, что была на экране */
@@ -1690,6 +1746,40 @@ export const api = {
    * карты /patients/:id/case, а этот — на вопрос кадра.
    */
   patientCard: (userId: string) => request<PatientCard>(`/api/patients/${userId}/card`),
+  /*
+   * Только имена людей зоны — для подписи поля, где карточка не нужна
+   * (условия выборки статистики). Журнал — как у выбора пациента
+   * (access.patient_list), а не «открывал карточку»; вне зоны — строки нет.
+   */
+  patientNames: (ids: readonly string[]) =>
+    request<{ items: { id: string; fullName: string }[] }>(`/api/patients/names?ids=${encodeURIComponent(ids.join(","))}`),
+  /*
+   * Реестр пациентов 2.0: все, кого читатель вправе видеть (не только
+   * обследованные), с поводом в строке — открытый случай, главная шкала
+   * последнего замера, приём, неявка, учёт, ведущий — и счётчиками подань.
+   * Пустые значения не уходят: `view=` и `q=` сервер читал бы как отбор.
+   */
+  patientRegister: (params: {
+    q?: string;
+    patientGroup?: string;
+    view?: string;
+    /** Только те, кого ведёт этот сотрудник: «Закріплені за мною» поверх подання, карточка фахівця */
+    lead?: string;
+    sort?: string;
+    limit?: number;
+    offset?: number;
+  } = {}) => {
+    const qs = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== "" && v !== null) qs.set(k, String(v));
+    return request<PatientListPage>(`/api/patients?${qs}`);
+  },
+  /**
+   * Пациенты зоны страницей — с ведущим и последней сдачей (GET /api/patients).
+   * Колонка «Мої пацієнти» карточки берёт отсюда «мой» (ведущий — я) и
+   * «нові результати»; чтение списка журналируется сервером. Тот же запрос,
+   * что реестр выше: адрес собирается в одном месте.
+   */
+  patientsPage: (params: { q?: string; limit?: number; offset?: number } = {}) => api.patientRegister(params),
   assignSurveyToPatientGroup: (groupId: string, body: AssignSurveyToPatientGroupInput) =>
     request<{ groupId: string; surveyId: string; recipients: number }>(`/api/patient-groups/${groupId}/surveys`, {
       method: "POST",
@@ -1697,6 +1787,9 @@ export const api = {
     }),
   /** Карточка группы: описание, «Пацієнти Групи» и «Тести Групи» одним ответом */
   patientGroup: (id: string) => request<PatientGroupCard>(`/api/patient-groups/${id}`),
+  /** «Обрана» — закладка читателя на группу (PUT ставит, DELETE снимает) */
+  favouritePatientGroup: (id: string, on: boolean) =>
+    request<unknown>(`/api/patient-groups/${id}/favourite`, { method: on ? "PUT" : "DELETE" }),
   createPatientGroup: (input: PatientGroupInput) =>
     request<PatientGroup>("/api/patient-groups", { method: "POST", body: JSON.stringify(input) }),
   updatePatientGroup: (id: string, patch: Partial<PatientGroupInput>) =>
@@ -1707,9 +1800,26 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ userId }),
     }),
-  /** Выданные человеку назначения при этом остаются — см. routes/patientGroups.ts */
-  removePatientGroupMember: (groupId: string, userId: string) =>
-    request<void>(`/api/patient-groups/${groupId}/members/${userId}`, { method: "DELETE" }),
+  /**
+   * Выборку — списком (`userIds`), а не запросом на человека: сервер проверяет
+   * пачку целиком до первой записи, и «троих добавил, на четвёртом отказал»
+   * внутри неё не бывает. Пачка — не больше PATIENT_GROUP_BATCH (потолок
+   * patientGroupMemberSchema); повтор — «уже там», как и у одного.
+   */
+  addPatientGroupMembers: async (groupId: string, userIds: readonly string[]) => {
+    for (let at = 0; at < userIds.length; at += PATIENT_GROUP_BATCH) {
+      await request<{ groupId: string; userIds: string[] }>(`/api/patient-groups/${groupId}/members`, {
+        method: "POST",
+        body: JSON.stringify({ userIds: userIds.slice(at, at + PATIENT_GROUP_BATCH) }),
+      });
+    }
+  },
+  /** Убрать вибраних одним запросом: сервер проверяет список целиком, «троих убрал, на четвёртом отказал» не бывает */
+  removePatientGroupMembers: (groupId: string, userIds: string[]) =>
+    request<{ groupId: string; removed: number }>(`/api/patient-groups/${groupId}/members`, {
+      method: "DELETE",
+      body: JSON.stringify({ userIds }),
+    }),
   /**
    * Пациенты. Отдаётся не всё: список упорядочен по ФИО, а оно зашифровано —
    * упорядочить его в SQL нечем, поэтому сервер ищет и обрезает выдачу.
@@ -1739,6 +1849,11 @@ export const api = {
   staffDirectory: () => unwrap(request<Items<StaffDirectoryUser>>("/api/users?directory=1")),
   createUser: (input: CreateUserInput) =>
     request<User>("/api/users", { method: "POST", body: JSON.stringify(input) }),
+  /* пациенты, которых ведёт сотрудник (карточка фахівця, 2.0): в пределах своей зоны; чтение в журнале */
+  patientsLedBy: (specialistId: string) => api.patientRegister({ lead: specialistId, limit: 200 }),
+  /* передать их другому лікарю: закрепление и переписка переходят, причина — в журнал */
+  transferPatients: (fromId: string, input: TransferPatientsInput) =>
+    request<{ moved: number }>(`/api/users/${fromId}/patients/transfer`, { method: "POST", body: JSON.stringify(input) }),
   /* ── техпанель: учётные записи и сессии (волна 10) ── */
   setUserRole: (id: string, role: User["role"]) =>
     request<User>(`/api/users/${id}/role`, { method: "PATCH", body: JSON.stringify({ role }) }),
@@ -1749,6 +1864,10 @@ export const api = {
   },
   /** Сводка реестра для графиков над списком: только числа, пациенты — через порог (волна 11) */
   opsUsersSummary: () => request<OpsUsersSummary>("/api/ops/users/summary"),
+  /** Одна запись реестра — для панели справа */
+  opsUser: (id: string) => request<OpsUserRow>(`/api/ops/users/${encodeURIComponent(id)}`),
+  /** «Потребує уваги» реестра: заперті, без обов’язкового другого фактора, давній тимчасовий пароль, персонал без входу */
+  opsUsersAttention: () => request<OpsUsersAttention>("/api/ops/users/attention"),
   disableUser: (id: string, reason: string) =>
     request<{ ok: true; disabledAt: string }>(`/api/ops/users/${id}/disable`, {
       method: "POST",
@@ -1916,9 +2035,26 @@ export const api = {
         patientId?: string;
         lastMessageAt: string;
         unread: number;
+        /*
+         * Только у специалиста (консоль 2.0): начало последнего письма, чьё
+         * оно, прочитано ли моё и ближайший свой приём человека.
+         */
+        preview?: string | null;
+        lastMine?: boolean | null;
+        lastReadAt?: string | null;
+        next?: {
+          id: string;
+          startsAt: string;
+          endsAt: string;
+          room: string | null;
+          mode: "onsite" | "remote";
+          status: string;
+        } | null;
       }[];
       lead: string | null;
     }>("/api/messages"),
+  /* число непрочитанного по тем же разговорам, что в списке: для счётчика рельсы, без текста и имён */
+  unreadCount: () => request<{ unread: number }>("/api/messages/unread-count"),
   /*
    * Последние письма разговора; before — курсор к более ранним (nextBefore).
    * Чтение ничего не помечает: «прочитано» — markRead по показанным.
@@ -1944,11 +2080,22 @@ export const api = {
    * всё равно расшифровывается там; тянуть его целиком ради страницы 3
    * значило бы расшифровывать всё на каждую букву поиска.
    */
-  mailings: (params: { q?: string; hidden?: boolean; limit: number; offset: number }) => {
+  mailings: (params: {
+    q?: string;
+    hidden?: boolean;
+    status?: "draft" | "sent";
+    group?: string;
+    order?: "new" | "old";
+    limit: number;
+    offset: number;
+  }) => {
     const qs = new URLSearchParams();
     if (params.q) qs.set("q", params.q);
     /* «скрытые» — отдельный список, а не вперемешку: так устроен сервер (?hidden=1) */
     if (params.hidden) qs.set("hidden", "1");
+    if (params.status) qs.set("status", params.status);
+    if (params.group) qs.set("group", params.group);
+    if (params.order === "old") qs.set("order", "old");
     qs.set("limit", String(params.limit));
     qs.set("offset", String(params.offset));
     return request<MailingListPage>(`/api/mailings?${qs}`);
@@ -1969,6 +2116,8 @@ export const api = {
   /** «Видалити» — черновик; отправленную сервер не удаляет (409), её скрывают */
   deleteMailing: (id: string) => request<void>(`/api/mailings/${id}`, { method: "DELETE" }),
   hideMailing: (id: string) => request<Mailing>(`/api/mailings/${id}/hide`, { method: "POST" }),
+  /** «Повернути» скрытую в список */
+  unhideMailing: (id: string) => request<Mailing>(`/api/mailings/${id}/unhide`, { method: "POST" }),
   /*
    * Раздел «Статистика» (кадры f08, f09, f17, f18, f23, f24, f29): модели и
    * пресеты фильтров. Имён сервер здесь не отдаёт никогда — только доли с
@@ -2003,7 +2152,7 @@ export const api = {
     }),
   filterPresets: (q?: string) =>
     unwrap(request<Items<FilterPresetListItem>>(`/api/filter-presets${q ? `?q=${encodeURIComponent(q)}` : ""}`)),
-  filterPreset: (id: string) => request<FilterPresetListItem>(`/api/filter-presets/${id}`),
+  filterPreset: (id: string) => request<FilterPresetDetail>(`/api/filter-presets/${id}`),
   createFilterPreset: (input: FilterPresetInput) =>
     request<FilterPreset>("/api/filter-presets", { method: "POST", body: JSON.stringify(input) }),
   updateFilterPreset: (id: string, patch: FilterPresetUpdateInput) =>
@@ -2158,9 +2307,17 @@ export const api = {
         endsAt: string;
         kind: "primary" | "repeat";
         mode: "onsite" | "remote";
-        status: string;
+        status: AppointmentView["status"];
         reason: string | null;
+        specialistId: string;
+        confirmedAt: string | null;
+        meetingUrl: string | null;
+        room: string | null;
+        /** Пояс отделения: часы приёма и окна следующей сессии — по нему */
+        tz: string;
       };
+      /** Прошлые приёмы человека (без этого): проведено и неявок */
+      visits: { done: number; noShow: number };
       patient: {
         id: string;
         fullName: string;
@@ -2179,6 +2336,8 @@ export const api = {
     if (params.specialistId) q.set("specialistId", params.specialistId);
     return request<{ date: string; items: AppointmentView[] }>(`/api/clinic/today?${q}`);
   },
+  /** Свой день числом — для бейджа навигации: без людей и без строки журнала, в отличие от today() */
+  todayCount: () => request<TodayCount>("/api/clinic/today/count"),
   /** «booked» и «arrived» из более позднего состояния — шаг назад, снимающий ошибочную отметку (#38) */
   appointmentStatus: (id: string, status: "booked" | "arrived" | "in_progress" | "done" | "no_show") =>
     request<{ ok: true }>(`/api/clinic/appointments/${id}/status`, {
@@ -2218,8 +2377,32 @@ export const api = {
     ),
   removeScheduleException: (id: string) =>
     request<{ ok: true }>(`/api/clinic/schedule/exceptions/${id}`, { method: "DELETE" }),
+  /** Неделя календарём: приёмы, открытые окна и исключения с `from` на `days` дней по часам отделения */
+  scheduleWeek: (from: string, days = 7, specialistId?: string) => {
+    const q = new URLSearchParams({ from, days: String(days) });
+    if (specialistId) q.set("specialistId", specialistId);
+    return request<{
+      specialistId: string;
+      from: string;
+      to: string;
+      tz: string;
+      today: string;
+      appointments: AppointmentView[];
+      slots: { id: string; startsAt: string; endsAt: string; offSchedule: boolean }[];
+      exceptions: ScheduleExceptionView[];
+    }>(`/api/clinic/schedule/week?${q}`);
+  },
+  /** Календарь Google специалиста для ссылок Meet: настроен ли на сервере и подключён ли */
+  meetStatus: () =>
+    request<{ configured: boolean; connected: boolean; email: string | null }>("/api/meet/status"),
+  meetDisconnect: () => request<{ connected: false }>("/api/meet/disconnect", { method: "POST" }),
   departments: () =>
     request<{ items: { id: string; title: string; timezone: string }[] }>("/api/clinic/departments"),
+  /* відділення, посада й кабінет сотрудника (departments.manage): форма «Додати лікаря», 2.0 */
+  saveSpecialistProfile: (
+    userId: string,
+    input: { departmentId: string; position?: string | null; room?: string | null; defaultSlotMinutes?: number; acceptsBookings?: boolean },
+  ) => request<{ ok: true }>(`/api/clinic/specialists/${userId}`, { method: "PUT", body: JSON.stringify(input) }),
   specialists: (departmentId?: string) => {
     const q = departmentId ? `?departmentId=${encodeURIComponent(departmentId)}` : "";
     return request<{
@@ -2256,10 +2439,31 @@ export const api = {
       versionId?: string | null;
     },
   ) =>
-    request<{ id: string; safetyPlan: string | null }>(`/api/surveys/${surveyId}/responses`, {
-      method: "POST",
-      body: JSON.stringify(body),
-    }),
+    /* баллы приходят только там, где методика их показывает (showResultsToPatient, resultsShownTo на сервере) */
+    request<{ id: string; safetyPlan: string | null; scores?: ScoreResult[]; submittedAt?: string | null }>(
+      `/api/surveys/${surveyId}/responses`,
+      {
+        method: "POST",
+        body: JSON.stringify(body),
+      },
+    ),
+  /** Свои прохождения; баллы — только у методик, которые их показывают (resultsShownTo) */
+  myResponses: () => request<{ items: SurveyResponse[] }>("/api/me/responses"),
+  /** Своя динамика — только по методикам, где показ результатов включён (showResultsToPatient) */
+  myDynamics: () =>
+    request<{
+      surveys: {
+        surveyId: string;
+        title: string;
+        scales: {
+          code: string;
+          title: string;
+          points: { submittedAt: string; value: number; bandLabel: string | null; severity: string | null }[];
+        }[];
+      }[];
+    }>("/api/me/dynamics"),
+  /** Свой план безопасности — читает сам человек, в том числе с телефона */
+  mySafetyPlan: () => request<{ plan: SafetyPlan | null }>("/api/safety/me"),
   freeSlots: (params: { specialistId?: string; departmentId?: string } = {}) => {
     const q = new URLSearchParams();
     for (const [k, v] of Object.entries(params)) if (v) q.set(k, v);
@@ -2274,7 +2478,8 @@ export const api = {
       }[];
     }>(`/api/clinic/slots?${q}`);
   },
-  myAppointments: () =>
+  /** past — и прошедшие с отменёнными: «Мої прийоми» на экране записи */
+  myAppointments: (past = false) =>
     request<{
       items: {
         id: string;
@@ -2285,15 +2490,28 @@ export const api = {
         status: string;
         mode: string;
         meetingUrl: string | null;
+        kind?: string;
+        reason?: string | null;
+        specialistId?: string;
       }[];
-    }>("/api/clinic/appointments/mine"),
-  book: (body: { slotId: string; reason?: string | null; mode?: "onsite" | "remote" }) =>
+    }>(`/api/clinic/appointments/mine${past ? "?past=1" : ""}`),
+  /** Записать: себя (пациент) или человека по patientId (сотрудник с правом вести приёмы) */
+  book: (body: { slotId: string; reason?: string | null; mode?: "onsite" | "remote"; patientId?: string }) =>
     request<{ id: string; screeningSurveyId: string | null }>("/api/clinic/appointments", {
       method: "POST",
       body: JSON.stringify(body),
     }),
   confirmAppointment: (id: string) =>
     request<{ ok: true }>(`/api/clinic/appointments/${id}/confirm`, { method: "POST" }),
+  /**
+   * Перенос в свободное окно — отмена и запись одним действием на сервере (clinic.ts): слот не успеет уйти
+   * между ними; событие календаря Google, если оно есть, переносится вместе с приёмом
+   */
+  rescheduleAppointment: (id: string, slotId: string) =>
+    request<{ ok: true }>(`/api/clinic/appointments/${id}/reschedule`, {
+      method: "POST",
+      body: JSON.stringify({ slotId }),
+    }),
   cancelAppointment: (id: string, reason?: string) =>
     request<{ ok: true; late: boolean }>(`/api/clinic/appointments/${id}/cancel`, {
       method: "POST",

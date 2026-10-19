@@ -2,7 +2,8 @@ import { expect, test } from "@playwright/test";
 import {
   goCaseCard,
   goMenu,
-  goTop,
+  goRail,
+  goSection,
   login,
   logout,
   openSeededPatient,
@@ -17,10 +18,10 @@ import {
 test("от тревоги до закрытого направления", async ({ page }) => {
   await login(page, "psy");
 
-  // «Случаи риска» в шесть пунктов полосы не вошли: они в бургере, в «Обзоре»
+  // «Случаи риска» — раздел рельсы («Ризик»), имя пункта — полное
   await goMenu(page, /^Случаи риска/);
   // экран разбора: единица работы — человек, а не сработавший пункт
-  await expect(page.getByRole("heading", { name: "Разбор случаев" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Случаи риска", level: 1 })).toBeVisible();
 
   /*
    * Из тревоги — к пациенту: полосой, как ходят каждый день. Человек из
@@ -31,7 +32,7 @@ test("от тревоги до закрытого направления", async
    * сценарий: у него нет ни хронологии, ни карты, доступной этому
    * специалисту. Та же беда уже ловилась в screens.e2e.ts.
    */
-  await goTop(page, "Пациенты");
+  await goRail(page, "Пациенты");
   await (await openSeededPatient(page)).click();
 
   /*
@@ -40,7 +41,7 @@ test("от тревоги до закрытого направления", async
    * вкладки карты отрисовались: это и есть признак, что карта на месте.
    */
   await goCaseCard(page);
-  await page.getByRole("link", { name: "Хронология" }).waitFor();
+  await page.getByRole("main").getByRole("link", { name: "Хронология" }).waitFor();
 
   // имя берём с самой страницы: в ссылке рядом с ним стоят инициалы-аватарка,
   // и textContent вернул бы «ПДПетров Дмитрий»
@@ -61,7 +62,8 @@ test("от тревоги до закрытого направления", async
   const reason = `Смоук ${Date.now()}`;
   await expect(page.getByText(reason)).toHaveCount(0);
 
-  await page.getByRole("button", { name: "Выписать направление" }).click();
+  /* «Виписати направлення» стоит в шапке справы и в панели направлений — оба открывают один ящик */
+  await page.getByRole("button", { name: "Выписать направление" }).first().click();
   await page.getByPlaceholder("что послужило поводом").fill(reason);
   await page.getByRole("button", { name: "Выписать", exact: true }).click();
 
@@ -77,21 +79,24 @@ test("от тревоги до закрытого направления", async
   await expect(row).toContainText("завершено");
   await expect(row.getByRole("button")).toHaveCount(0);
 
-  // завершённого нет в реестре открытых, но оно находится с фильтром
-  await goMenu(page, "Направления");
-  await expect(page.getByText(reason)).toHaveCount(0);
-  await page.getByRole("button", { name: "Показать завершённые" }).click();
+  /*
+   * Завершённое находится в реестре направлений видом «Завершённые» (2.0:
+   * пилюли видов вместо переключателя «показать закрытые»). Направления —
+   * подраздел пациентов: раздел рельсы, затем пункт колонки.
+   */
+  await goSection(page, "Пациенты", "Направления");
+  await page.getByRole("button", { name: /^Завершённые/ }).click();
   await expect(page.getByText(reason)).toBeVisible();
 });
 
 test("групповой админ не видит чужих пациентов", async ({ page }) => {
   await login(page, "psy");
-  await goTop(page, "Пациенты");
+  await goRail(page, "Пациенты");
   const mine = await rowTexts(page);
 
   await logout(page);
   await login(page, "psy2");
-  await goTop(page, "Пациенты");
+  await goRail(page, "Пациенты");
   const theirs = await rowTexts(page);
 
   expect(mine.length).toBeGreaterThan(0);

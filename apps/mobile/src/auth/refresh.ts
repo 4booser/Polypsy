@@ -35,8 +35,21 @@
 
 export type RefreshOutcome =
   | { kind: "refreshed" }
-  | { kind: "invalid" }
+  | { kind: "invalid"; reason: InvalidReason }
   | { kind: "unavailable"; status: number };
+
+/**
+ * Почему продлить нельзя — от этого зависит, кончилась ли сессия (auth/sessionEnd.ts).
+ *
+ *  — rejected: сервер ответил на обмен 401 — refresh отозван, истёк, учётку
+ *    выключили. Это его слово, а не сбой: сессия кончилась насовсем;
+ *  — none: refresh на устройстве нет — продлевать нечем;
+ *  — superseded: refresh сменился, пока шёл обмен (вышли или вошёл другой) —
+ *    о сессии того, кто сейчас в приложении, это ничего не говорит;
+ *  — refused: прочий 4xx (429 лимита, 400, 403 прокси) — отказ, но не «сессия
+ *    кончилась»: стирать по нему офлайн-копии нельзя.
+ */
+export type InvalidReason = "rejected" | "none" | "superseded" | "refused";
 
 export interface RefreshPair {
   token: string;
@@ -72,7 +85,7 @@ async function once(deps: RefreshDeps, attempt: { current: Attempt | null }): Pr
     // хранилище не ответило — это не «сессии нет», а «сейчас не узнать»
     return { kind: "unavailable", status: 0 };
   }
-  if (!raw) return { kind: "invalid" };
+  if (!raw) return { kind: "invalid", reason: "none" };
 
   if (attempt.current?.raw !== raw) attempt.current = { raw, requestId: newRequestId() };
   const outcome = await exchangeOnce(deps, raw, attempt.current.requestId);
@@ -95,7 +108,10 @@ async function exchangeOnce(deps: RefreshDeps, raw: string, requestId: string): 
   }
   if (!res.ok) {
     // 4xx — сервер посмотрел на токен и отверг его; 5xx — не посмотрел
-    return res.status >= 400 && res.status < 500 ? { kind: "invalid" } : { kind: "unavailable", status: res.status };
+    if (res.status === 401) return { kind: "invalid", reason: "rejected" };
+    return res.status >= 400 && res.status < 500
+      ? { kind: "invalid", reason: "refused" }
+      : { kind: "unavailable", status: res.status };
   }
 
   let pair: RefreshPair;
@@ -113,7 +129,7 @@ async function exchangeOnce(deps: RefreshDeps, raw: string, requestId: string): 
    * бы молча вернуть ему сессию, из которой он только что вышел.
    */
   try {
-    if ((await deps.getRefresh()) !== raw) return { kind: "invalid" };
+    if ((await deps.getRefresh()) !== raw) return { kind: "invalid", reason: "superseded" };
     await deps.save(pair);
   } catch {
     return { kind: "unavailable", status: 0 };

@@ -243,7 +243,8 @@ describe("разметка окна заведения", () => {
 
   test("отказ сервера — строкой с role=alert; после правки его нет", () => {
     const failed = accountStep(ready, { type: "failed", message: "Пошта вже зайнята" });
-    expect(view(failed)).toMatch(/role="alert"[^>]*>Пошта вже зайнята</);
+    /* отказ — текстом со значком внутри живой области (ErrorText набора) */
+    expect(view(failed)).toMatch(/role="alert"[^>]*>(?:(?!<\/div>)[\s\S])*>Пошта вже зайнята</);
     expect(view(accountStep(failed, { type: "edit", patch: { firstName: "Ірина" } }))).not.toContain("Пошта вже зайнята");
   });
 

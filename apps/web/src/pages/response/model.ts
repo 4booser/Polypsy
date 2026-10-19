@@ -1,12 +1,12 @@
 import {
   TOO_FAST_MS,
-  bandFor,
   comparability,
   itemContribution,
   itemMaxContribution,
   quantile,
   rciForDisplay,
   type Answer,
+  type Incomparable,
   type RespondentDynamics,
   type ResponseDetail,
   type ResponseDetailAnswer,
@@ -15,99 +15,48 @@ import {
   type Severity,
   type SurveyFull,
 } from "@quizzy/shared";
+import { betterOf, changeVerdict, reliableThreshold, type Better, type ChangeVerdict } from "../../charts/courseModel";
 import { num, sortRungs, type Rung } from "../../charts/ladder";
 
 /*
- * Модель экрана «пройденный тест»: что показать в строке варианта и в лестнице
- * диапазонов, собранное из двух ответов сервера.
+ * Модель экранов прохождения: протокол (сетка или список ответов),
+ * результат по шкалам, динамика, вклад пунктов, время ответов.
  *
- * Почему из двух. GET /api/responses/:id отдаёт ответы и баллы по шкалам, но
- * намеренно срезает вес варианта (options.score) и не отдаёт соседние
- * полосы — только ту, в которую попал балл (apps/api/src/routes/responses.ts,
- * «Варианты пункта — вместе с ответом»). Срезает не по забывчивости: тот же
- * маршрут открыт самому обследуемому, а баллы за варианты пациент видеть не
- * должен. Кадр f34 рисует и вес каждого варианта, и все три ступени «від —
- * до», и подсвеченную ступень. Недостающее берётся из GET /api/surveys/:id:
- * там и веса, и полосы целиком.
+ * Всё — из ответа GET /api/responses/:id той версии, которую проходили:
+ * сервер отдаёт персоналу вес каждого варианта и всю лестницу полос той же
+ * версии (ResponseDetailScore.bands). Прежняя модель досчитывала веса и
+ * лестницу из ДЕЙСТВУЮЩЕЙ методики и прятала их, если версия сменилась;
+ * с тех пор как прохождение несёт их само, второй источник не нужен, а с
+ * ним ушёл и случай «правдоподобные, но чужие числа».
  *
- * Где граница с пациентом. GET /api/surveys/:id открыт и пациенту — он
- * проходит по нему методику, — но с #141 отдаёт ему копию без ключа
- * (lib/surveys.ts, respondentView): без весов вариантов, критических
- * пунктов, порогов и шкал. Веса и полосы целиком получает только
- * сотрудник, а этот экран — консольный, для role === "user" он не
- * рендерится вовсе (App.tsx, ветка кабинета).
+ * Где граница с пациентом. Тот же маршрут открыт самому обследуемому, и ему
+ * веса не отдаются (#141), — но эти экраны консольные, для role === "user"
+ * они не рендерятся вовсе (App.tsx, ветка кабинета).
  *
- * Чего это стоит и где проходит граница. Методика по этому адресу — ДЕЙСТВУЮЩЕЙ
- * версии, а человек мог проходить прежнюю: каждая правка методики создаёт
- * новую версию с новыми идентификаторами пунктов, вариантов и шкал. Совпасть
- * могут только идентификаторы одной версии, поэтому сопоставление идёт по
- * ним, и когда версия сменилась, вес варианта и лестница не подставляются
- * вовсе — вместо правдоподобных, но чужих чисел на экране прочерк и строка
- * «методику изменено». Это записано в риске сверки макета: «экран покажет
- * правдоподобные, но чужие баллы» — и здесь ровно тот случай, когда лучше
- * не показать, чем показать не то.
- *
- * Функции чистые и вынесены из разметки ради проверки: сценарий «версия
- * сменилась» в браузере воспроизводится только правкой методики на живой
- * базе, а здесь — двумя объектами.
+ * Функции чистые и вынесены из разметки ради проверки.
  */
 
 export interface OptionRow {
   id: string;
   text: string;
   chosen: boolean;
-  /** Вес варианта из действующей версии; null — версия разошлась или вариант не найден */
+  /** Вес варианта; null — сервер не дал (обследуемому) */
   score: number | null;
   riskFlag: boolean;
 }
 
 export interface QuestionView {
   questionId: string;
-  /** Сквозной номер с единицы, как «Питання №1» на кадре */
   number: number;
   title: string;
   answered: boolean;
+  /** Варианты столбиком; пусто у пункта без вариантов и у порядка */
   options: OptionRow[];
-  /**
-   * Ответ не из вариантов: текст, число, дата, порядок. На кадре таких
-   * пунктов нет, и рисуются они одной залитой строкой без веса.
-   */
+  /** Ответ строкой: текст, число, дата, цепочка порядка, ячейки матрицы */
   free: string | null;
-  /** Балл за пункт, который посчитал сервер, — для пунктов без вариантов */
   score: number | null;
 }
 
-export interface LadderRow {
-  id: string;
-  min: number;
-  max: number;
-  label: string;
-  description: string | null;
-  severity: Severity;
-  /** Ступень, в которую попал балл этого прохождения */
-  hit: boolean;
-}
-
-export interface ScaleLadder {
-  scaleId: string;
-  title: string;
-  /** Значение в единицах нормировки — в тех же, в каких заданы ступени */
-  value: number;
-  normalization: ScaleNormalization;
-  /** Подпись попавшей полосы от сервера — остаётся, даже когда лестницы нет */
-  bandLabel: string | null;
-  bandSeverity: Severity | null;
-  rows: LadderRow[];
-}
-
-export interface ResponseViewModel {
-  questions: QuestionView[];
-  ladders: ScaleLadder[];
-  /** Методика изменена после прохождения: веса и лестницы недоступны */
-  stale: boolean;
-}
-
-/** Строка ответа, которого нет среди вариантов: текст, число, дата, порядок */
 function freeAnswer(a: ResponseDetailAnswer, textById: Map<string, string>): string | null {
   if (a.text) return a.text;
   if (a.number !== null) return String(a.number);
@@ -116,135 +65,50 @@ function freeAnswer(a: ResponseDetailAnswer, textById: Map<string, string>): str
   return null;
 }
 
-export function buildResponseView(detail: ResponseDetail, survey: SurveyFull): ResponseViewModel {
-  const optionById = new Map(survey.questions.flatMap((q) => q.options.map((o) => [o.id, o] as const)));
-  const scaleById = new Map(survey.scales.map((s) => [s.id, s] as const));
-
-  /*
-   * Признак разошедшейся версии — хоть один вариант или шкала прохождения,
-   * которых в действующей методике нет. Идентификаторы версии либо совпадают все,
-   * либо не совпадает ни один, поэтому «хоть один» здесь равно «все», а
-   * проверка по одному не доверяет этому свойству базы сверх нужного.
-   */
-  let stale = false;
-
-  const questions: QuestionView[] = [...detail.answers]
+/**
+ * Протокол списком: пункт и его варианты столбиком, выбранный отмечен.
+ *
+ * Порядок (ranking) — цепочкой «А → Б → В», а не столбиком вариантов с
+ * весами: вес у варианта порядка не значит ничего. Матрица — строками
+ * «строка: выбранный столбец». Номер — сквозной по позиции, как в сетке.
+ */
+export function answerList(detail: ResponseDetail): QuestionView[] {
+  return [...detail.answers]
     .sort((a, b) => a.position - b.position)
     .map((a, i) => {
-      /*
-       * Выбранным считается и вариант из optionIds, и значение ячейки
-       * матрицы: у матричного пункта ответ — «строка → вариант», и вариант
-       * лежит в значениях. Строки самой матрицы (kind === "row") среди
-       * вариантов не показываются: это подписи, а не ответы.
-       */
       const picked = new Set([...(a.optionIds ?? []), ...Object.values(a.matrix ?? {})]);
       const rowIds = new Set(Object.keys(a.matrix ?? {}));
       const textById = new Map(a.options.map((o) => [o.id, o.text] as const));
-
-      /*
-       * Пункт «порядок» — не выбор из вариантов, а их перестановка: ответ —
-       * цепочка, и список тех же вариантов под ней показывал бы нуль
-       * напротив каждого (вес у порядка позиционный, у варианта его нет).
-       * Заключение рисует цепочку; просмотр — тоже, иначе один ответ
-       * выглядит на двух экранах двумя разными. Варианты всё же
-       * перебираются: по ним ловится чужая версия.
-       */
       const chain = a.type === "ranking";
-      const rows: OptionRow[] = a.options
-        .filter((o) => !rowIds.has(o.id) && optionById.get(o.id)?.kind !== "row")
-        .map((o) => {
-          const current = optionById.get(o.id);
-          if (!current) stale = true;
-          return {
-            id: o.id,
-            text: o.text,
-            chosen: picked.has(o.id),
-            score: current ? current.score : null,
-            riskFlag: o.riskFlag,
-          };
-        });
-      const options = chain ? [] : rows;
-
-      return {
-        questionId: a.questionId,
-        number: i + 1,
-        title: a.title,
-        answered: a.answered,
-        options,
-        free: options.length ? null : freeAnswer(a, textById),
-        score: a.score,
-      };
+      const matrix = !!a.matrix && Object.keys(a.matrix).length > 0;
+      const options: OptionRow[] =
+        chain || matrix
+          ? []
+          : a.options
+              .filter((o) => !rowIds.has(o.id))
+              .map((o) => ({
+                id: o.id,
+                text: o.text,
+                chosen: picked.has(o.id),
+                /*
+                 * Вес варианта — из прохождения. Нет веса у выбранного, а выбран
+                 * он один — балл пункта и есть его вес; при нескольких выбранных
+                 * балл пункта не приписывается каждому.
+                 */
+                score: o.score ?? (picked.has(o.id) && picked.size === 1 ? a.score : null),
+                riskFlag: o.riskFlag,
+              }));
+      const free = options.length
+        ? null
+        : matrix
+          ? Object.entries(a.matrix!)
+              .map(([row, opt]) => `${textById.get(row) ?? row}: ${textById.get(opt) ?? opt}`)
+              .join("; ")
+          : freeAnswer(a, textById);
+      return { questionId: a.questionId, number: i + 1, title: a.title, answered: a.answered, options, free, score: a.score };
     });
-
-  const ladders: ScaleLadder[] = detail.scores.map((sc) => {
-    const scale = scaleById.get(sc.scaleId);
-    if (!scale) stale = true;
-    const bands = scale ? [...scale.bands].sort((x, y) => x.minScore - y.minScore) : [];
-    /*
-     * Попавшая ступень ищется тем же сравнением, что в движке подсчёта
-     * (packages/shared/src/scoring.ts: value >= min && value <= max), и только
-     * когда сервер сам нашёл полосу. Без полосы от сервера значение не
-     * нормировано — оно не в тех единицах, в которых заданы ступени, и
-     * подсветить по нему было бы подсветкой наугад.
-     *
-     * Запасной путь по подписи — на случай, когда сравнение по значению не
-     * сошлось (хранимое значение округлено иначе, чем считалось): сервер
-     * помнит подпись полосы на момент подсчёта, и совпадение по ней надёжнее,
-     * чем оставить лестницу без подсветки при живой полосе.
-     */
-    // тем же правилом, что движок (bandFor): щель точности между полосами — полуинтервал
-    const byValue = sc.band ? (bandFor(bands, sc.value) ?? undefined) : undefined;
-    const hitId = byValue?.id ?? (sc.band ? bands.find((b) => b.label === sc.band?.label)?.id : undefined);
-    return {
-      scaleId: sc.scaleId,
-      title: sc.scaleTitle,
-      value: sc.value,
-      normalization: sc.normalization,
-      bandLabel: sc.band?.label ?? null,
-      bandSeverity: sc.band?.severity ?? null,
-      rows: bands.map((b) => ({
-        id: b.id,
-        min: b.minScore,
-        max: b.maxScore,
-        label: b.label,
-        description: b.description,
-        severity: b.severity,
-        hit: b.id === hitId,
-      })),
-    };
-  });
-
-  /*
-   * При разошедшейся версии найденные веса и ступени всё равно снимаются:
-   * половина совпавших идентификаторов — не «половина правды», а признак,
-   * что сопоставление идёт не с той версией, и доверять нельзя ничему.
-   */
-  if (!stale) return { questions, ladders, stale };
-  return {
-    stale,
-    questions: questions.map((q) => ({ ...q, options: q.options.map((o) => ({ ...o, score: null })) })),
-    ladders: ladders.map((l) => ({ ...l, rows: [] })),
-  };
 }
 
-/* ═══════════════════ графики прохождения ═══════════════════ */
-
-/*
- * Вкладка «Графіки» того же прохождения (/surveys/:id/responses/:rid/charts):
- * результат на лестнице, динамика этого человека по этой методике, какие
- * ответы дали балл и как человек отвечал. Здесь — только счёт; рисует
- * charts.tsx формами из charts/clinical.tsx.
- *
- * Счёт вынесен сюда по той же причине, что и модель протокола выше: крайние
- * случаи — первое прохождение, смена версии между замерами, неизвестная
- * ошибка измерения, пункт без вариантов, матрица, брошенное прохождение — в
- * браузере воспроизводятся правкой базы, а здесь — одним объектом в тесте
- * (apps/web/test/responseCharts.test.ts). И главное, что эти тесты
- * сторожат: невычислимое остаётся null и на экране становится словом, а не
- * нулём и не NaN на оси.
- */
-
-/** Попавшая полоса со всем, что о ней сказано в методике */
 export interface BandText {
   label: string;
   severity: Severity;
@@ -545,12 +409,18 @@ export interface ContributionItem {
   max: number;
   /** Выбран вариант, помеченный как критический */
   critical: boolean;
+  /**
+   * Вклад того же пункта в прежней попытке той же версии — отметка «було»
+   * на полосе; null — сравнивать не с чем (первая попытка, другая версия,
+   * пункт тогда пропущен).
+   */
+  prev: number | null;
 }
 
 export interface ScaleContribution {
   scaleId: string;
   title: string;
-  /** Пункты с ненулевым вкладом, от большего к меньшему */
+  /** Отвеченные пункты с числовым вкладом (и нулевым), от большего к меньшему */
   items: ContributionItem[];
   /** Пунктов шкалы без ответа: пропущены или не показаны ветвлением */
   unanswered: number;
@@ -564,7 +434,7 @@ export interface ContributionsView {
   /**
    * Методика пришла не той версии, что проходили: номер или идентификаторы
    * не совпали. Вклад тогда не считается вовсе — ключ чужой версии даёт
-   * правдоподобные, но чужие числа (см. buildResponseView).
+   * правдоподобные, но чужие числа.
    */
   stale: boolean;
   scales: ScaleContribution[];
@@ -599,9 +469,18 @@ function numbering(detail: ResponseDetail): Map<string, number> {
  * матрицей, где вклад — сумма по строкам.
  *
  * Пункт без балла (текст, дата, порядок) в перечень не попадает и
- * пропущенным не считается: он ответ, просто не числовой.
+ * пропущенным не считается: он ответ, просто не числовой. Нулевой вклад
+ * попадает (Polypsy 2.0): «сповільненість — 0» тоже ответ на вопрос, из
+ * чего сложилась сумма, а пустая полоса рядом с полными это и показывает.
+ *
+ * `prev` — прежняя попытка той же версии: её вклад по тому же пункту ложится
+ * отметкой на полосу. Другая версия — отметок нет: ключ мог смениться.
  */
-export function buildContributions(detail: ResponseDetail, survey: SurveyFull): ContributionsView {
+export function buildContributions(
+  detail: ResponseDetail,
+  survey: SurveyFull,
+  prev: ResponseDetail | null = null,
+): ContributionsView {
   const questionById = new Map(survey.questions.map((q) => [q.id, q] as const));
   const scaleById = new Map(survey.scales.map((s) => [s.id, s] as const));
   const stale =
@@ -611,6 +490,10 @@ export function buildContributions(detail: ResponseDetail, survey: SurveyFull): 
   if (stale) return { stale: true, scales: [] };
 
   const answerById = new Map(detail.answers.map((a) => [a.questionId, a] as const));
+  const prevById =
+    prev && prev.survey.versionNumber === detail.survey.versionNumber
+      ? new Map(prev.answers.map((a) => [a.questionId, a] as const))
+      : null;
   const numberOf = numbering(detail);
 
   const scales = detail.scores.map((sc): ScaleContribution => {
@@ -629,8 +512,10 @@ export function buildContributions(detail: ResponseDetail, survey: SurveyFull): 
         continue;
       }
       const value = itemContribution(question, item, engineAnswer(a));
-      if (value === null || !Number.isFinite(value) || value === 0) continue;
+      if (value === null || !Number.isFinite(value)) continue;
       const picked = new Set([...(a.optionIds ?? []), ...Object.values(a.matrix ?? {})]);
+      const before = prevById?.get(item.questionId);
+      const was = before?.answered ? itemContribution(question, item, engineAnswer(before)) : null;
       items.push({
         questionId: a.questionId,
         number: numberOf.get(a.questionId) ?? 0,
@@ -638,6 +523,7 @@ export function buildContributions(detail: ResponseDetail, survey: SurveyFull): 
         value: round2(value),
         max: round2(max),
         critical: a.options.some((o) => o.riskFlag && picked.has(o.id)),
+        prev: was === null || !Number.isFinite(was) ? null : round2(was),
       });
     }
     items.sort((x, y) => y.value - x.value || x.number - y.number);
@@ -725,5 +611,223 @@ export function buildAnswering(detail: ResponseDetail, tooFastMs?: number | null
     fast: items.filter((i) => i.fast).map((i) => i.number),
     changed: items.filter((i) => i.changes > 0).map((i) => ({ number: i.number, times: i.changes })),
     unanswered: items.filter((i) => !i.answered).length,
+  };
+}
+
+/* ─────────── сетка ответов ─────────── */
+
+export interface GridColumn {
+  /** Текст варианта — одинаковый у всех пунктов сетки */
+  text: string;
+  /** Вес варианта, если он одинаков у всех пунктов; иначе null (у пунктов с обратным ключом разный) */
+  score: number | null;
+}
+
+export interface GridRow {
+  questionId: string;
+  number: number;
+  title: string;
+  answered: boolean;
+  /** Номер выбранного столбца; null — не отвечено */
+  chosen: number | null;
+  /** Балл за ответ (вес выбранного варианта) */
+  score: number | null;
+  /** Столбец, выбранный в прежней попытке той же версии; null — не с чем сравнить */
+  prev: number | null;
+  prevScore: number | null;
+  /** Выбран критический вариант */
+  critical: boolean;
+  /** Пункт входит в ключ хотя бы одной шкалы; false — «не входить у суму» */
+  inScale: boolean;
+}
+
+/** Пункт вне сетки: другой набор вариантов, текст, число, дата */
+export interface ExtraRow {
+  questionId: string;
+  number: number;
+  title: string;
+  answered: boolean;
+  answer: string | null;
+  score: number | null;
+  critical: boolean;
+  inScale: boolean;
+}
+
+export interface AnswerGrid {
+  columns: GridColumn[];
+  rows: GridRow[];
+  extra: ExtraRow[];
+  /**
+   * Порядковая шкала: у каждого столбца свой вес («0 зовсім ні» … «3 майже
+   * щодня»). Ложь у методик с ключом «так / ні» (СР-45, Міні-мульт): вес
+   * вариантов там нулевой, балл даёт совпадение с ключом, и столбец «Бал»
+   * из одних нулей был бы неправдой — экран его не рисует.
+   */
+  scored: boolean;
+}
+
+/** Наибольшее число вариантов, при котором сетка ещё читается на 1280 */
+const GRID_MAX = 6;
+
+/**
+ * Сетка ответов: пункты строками, варианты столбцами — как бланк PHQ-9.
+ *
+ * Сетка возможна, когда большинство пунктов с одним выбором делит один и
+ * тот же набор вариантов (по тексту и порядку): тогда столбец «Більше
+ * половини днів» значит одно и то же в каждой строке. Пункты с другим
+ * набором (десятый пункт PHQ-9), с текстом или числом — строками под
+ * сеткой. Нет общего набора — сетки нет (null), экран показывает список.
+ *
+ * `prev` — ответы прежней попытки той же версии (пустая карта — не с чем
+ * сравнить): кольцо на прежнем столбце и «від …» по баллу.
+ */
+export function answerGrid(
+  detail: ResponseDetail,
+  survey: Pick<SurveyFull, "scales" | "versionNumber"> | null,
+  prev: ReadonlyMap<string, { optionIds: string[]; score: number | null; answered: boolean }>,
+): AnswerGrid | null {
+  const ordered = [...detail.answers].sort((a, b) => a.position - b.position);
+  const own = (a: ResponseDetailAnswer) => {
+    const rows = new Set(Object.keys(a.matrix ?? {}));
+    return a.options.filter((o) => !rows.has(o.id));
+  };
+  const signature = (a: ResponseDetailAnswer) =>
+    own(a)
+      .map((o) => o.text.trim().toLowerCase())
+      .join("\u0001");
+  const single = ordered.filter((a) => (a.type === "single" || a.type === "yesno") && own(a).length >= 2);
+  const counts = new Map<string, number>();
+  for (const a of single) counts.set(signature(a), (counts.get(signature(a)) ?? 0) + 1);
+  const [sig, n] = [...counts.entries()].sort((x, y) => y[1] - x[1])[0] ?? ["", 0];
+  if (!sig || n < 2 || n * 2 < single.length) return null;
+  const sample = single.find((a) => signature(a) === sig)!;
+  if (own(sample).length > GRID_MAX) return null;
+
+  const sameVersion = survey === null || survey.versionNumber === detail.survey.versionNumber;
+  const scaled = new Set(survey && sameVersion ? survey.scales.flatMap((s) => s.items.map((i) => i.questionId)) : []);
+  const inScale = (id: string) => survey === null || !sameVersion || scaled.has(id);
+
+  const inGrid = new Set(single.filter((a) => signature(a) === sig).map((a) => a.questionId));
+  const gridAnswers = ordered.filter((a) => inGrid.has(a.questionId));
+  const columns: GridColumn[] = own(sample).map((o, k) => {
+    const weights = new Set(gridAnswers.map((a) => own(a)[k]?.score ?? null));
+    const only = weights.size === 1 ? [...weights][0]! : null;
+    return { text: o.text, score: only };
+  });
+
+  const rows: GridRow[] = [];
+  const extra: ExtraRow[] = [];
+  ordered.forEach((a, i) => {
+    const number = i + 1;
+    const picked = new Set(a.optionIds ?? []);
+    const critical = a.options.some((o) => o.riskFlag && picked.has(o.id));
+    if (inGrid.has(a.questionId)) {
+      const opts = own(a);
+      const chosen = opts.findIndex((o) => picked.has(o.id));
+      const was = prev.get(a.questionId);
+      const wasAt = was?.answered ? opts.findIndex((o) => was.optionIds.includes(o.id)) : -1;
+      rows.push({
+        questionId: a.questionId,
+        number,
+        title: a.title,
+        answered: a.answered && chosen >= 0,
+        chosen: a.answered && chosen >= 0 ? chosen : null,
+        score: a.score,
+        prev: wasAt >= 0 ? wasAt : null,
+        prevScore: was?.answered ? was.score : null,
+        critical,
+        inScale: inScale(a.questionId),
+      });
+      return;
+    }
+    const text = new Map(a.options.map((o) => [o.id, o.text] as const));
+    const answer = !a.answered
+      ? null
+      : a.optionIds?.length
+        ? a.optionIds.map((id) => text.get(id) ?? id).join(", ")
+        : a.matrix
+          ? Object.entries(a.matrix)
+              .map(([row, opt]) => `${text.get(row) ?? row}: ${text.get(opt) ?? opt}`)
+              .join("; ")
+          : freeAnswer(a, text);
+    extra.push({
+      questionId: a.questionId,
+      number,
+      title: a.title,
+      answered: a.answered,
+      answer,
+      score: a.score,
+      critical,
+      inScale: inScale(a.questionId),
+    });
+  });
+  const weights = columns.map((c) => c.score);
+  const scored = weights.every((w) => w !== null) && new Set(weights).size === weights.length;
+  return { columns, rows, extra, scored };
+}
+
+/* ─────────── сдвиг этого замера ─────────── */
+
+export interface ShiftLine {
+  delta: number;
+  /** С каким замером сравнили */
+  at: string;
+  /** Вердикт по порогу надёжной зміни или почему пара несравнима */
+  verdict: ChangeVerdict | Incomparable;
+}
+
+export interface ScaleChange {
+  /** Порог надёжной зміни в баллах (MDC95); null — оценить нечем */
+  rc: number | null;
+  /** Стандартная ошибка измерения — «похибка ±» */
+  sem: number | null;
+  better: Better | null;
+  fromPrev: ShiftLine | null;
+  /** От первого замера — только когда он не совпадает с предыдущим */
+  fromStart: ShiftLine | null;
+}
+
+/**
+ * «−2 від 11.09, у межах похибки; −5 від 24.08, поріг надійної зміни 6».
+ *
+ * Порог — тот же, что у графика курса (reliableThreshold: MDC95 из основы
+ * надёжной зміни или из SEM), вердикт — тот же changeVerdict, сравнимость —
+ * то же правило comparability: экран прохождения и график курса не должны
+ * называть один сдвиг по-разному. Это прохождение не в ряду (не завершено)
+ * — null.
+ */
+export function scaleChange(
+  detail: Pick<ResponseDetail, "id" | "survey">,
+  dyn: RespondentDynamics | null,
+  code: string,
+  rungs: readonly Rung[],
+): ScaleChange | null {
+  const scale = dyn?.surveys.find((s) => s.surveyId === detail.survey.id)?.scales.find((s) => s.code === code);
+  if (!scale) return null;
+  const points = [...scale.points].sort((a, b) => a.submittedAt.localeCompare(b.submittedAt));
+  const i = points.findIndex((p) => p.responseId === detail.id);
+  if (i < 0) return null;
+  const cur = points[i]!;
+  const first = points[0]!;
+  const rc = first.reliable === false ? null : reliableThreshold(scale);
+  const better = betterOf(rungs);
+  const mark = (p: (typeof points)[number]) => ({
+    version: p.versionNo ?? null,
+    normalized: p.normalized,
+    normalization: p.normalization ?? null,
+    reliable: p.reliable,
+  });
+  const line = (other: (typeof points)[number]): ShiftLine => {
+    const delta = round2(cur.rawScore - other.rawScore);
+    const why = comparability(mark(other), mark(cur));
+    return { delta, at: other.submittedAt, verdict: why ?? changeVerdict(delta, rc, better) };
+  };
+  const sem = scale.sem != null && Number.isFinite(scale.sem) && scale.sem > 0 ? round2(scale.sem) : null;
+  return {
+    rc,
+    sem,
+    better,
+    fromPrev: i > 0 ? line(points[i - 1]!) : null,
+    fromStart: i > 1 ? line(first) : null,
   };
 }

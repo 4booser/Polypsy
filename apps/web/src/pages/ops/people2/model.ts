@@ -1,17 +1,9 @@
 import type {
-  AccountState,
-  AuditDaily,
   BulkResult,
   BulkSkipReason,
   GrantStats,
   ImportCreated,
   ImportRowError,
-  MfaCoverageRow,
-  OpsSessionsSummary,
-  OpsUsersRoleSummary,
-  OpsUsersSummary,
-  Role,
-  SessionAgeBucket,
   SuspiciousFinding,
   SuspiciousRule,
   SuspiciousStats,
@@ -19,7 +11,7 @@ import type {
   UiKey,
   WhoViewedReport,
 } from "@quizzy/shared";
-import type { Column, HBar, SharePart } from "../../../charts/clinical";
+import type { Column, HBar } from "../../../charts/clinical";
 
 /*
  * Чистая логика раздела «Люди й безпека» (участок people2): выбор строк,
@@ -33,34 +25,6 @@ import type { Column, HBar, SharePart } from "../../../charts/clinical";
 type Ut = (key: UiKey) => string;
 
 /* ═══════════ выбор строк ═══════════ */
-
-export function toggleId(selected: ReadonlySet<string>, id: string): Set<string> {
-  const next = new Set(selected);
-  if (next.has(id)) next.delete(id);
-  else next.add(id);
-  return next;
-}
-
-/** Состояние флажка «вся страница»: ни одного, часть, все */
-export function pageSelection(selected: ReadonlySet<string>, pageIds: readonly string[]): "none" | "some" | "all" {
-  if (!pageIds.length) return "none";
-  const n = pageIds.filter((id) => selected.has(id)).length;
-  return n === 0 ? "none" : n === pageIds.length ? "all" : "some";
-}
-
-/**
- * Отметить или снять страницу — не трогая выбранных на других страницах:
- * человек листает, отмечает на каждой, и перелистывание не должно стирать
- * то, что он уже выбрал.
- */
-export function withPage(selected: ReadonlySet<string>, pageIds: readonly string[], on: boolean): Set<string> {
-  const next = new Set(selected);
-  for (const id of pageIds) {
-    if (on) next.add(id);
-    else next.delete(id);
-  }
-  return next;
-}
 
 /* ═══════════ итог пачки ═══════════ */
 
@@ -199,37 +163,6 @@ export function ruleExplanation(rule: SuspiciousRule, th: SuspiciousThresholds, 
   }
 }
 
-/** Что именно случилось в этой серии — короткой строкой под правилом */
-export function findingFacts(f: SuspiciousFinding, ut: Ut): string {
-  const d = f.details ?? {};
-  const parts: string[] = [];
-  switch (f.rule) {
-    case "failedLoginsAccount":
-      parts.push(`${f.hits} ${ut("ops.susp.events")}`);
-      break;
-    case "failedLoginsIp":
-      parts.push(`${f.hits} ${ut("ops.susp.events")}`, `${Number(d.accounts ?? 0)} ${ut("ops.susp.accounts")}`);
-      break;
-    case "newDevice":
-      parts.push(`${ut("ops.susp.client")}: ${String(d.client ?? "—")}`);
-      break;
-    case "massReads":
-      parts.push(`${f.hits} ${ut("ops.susp.patients")}`, `${Number(d.reads ?? f.hits)} ${ut("ops.susp.events")}`);
-      break;
-    case "nightActivity":
-      parts.push(`${f.hits} ${ut("ops.susp.events")}`, `${Number(d.patients ?? 0)} ${ut("ops.susp.patients")}`);
-      break;
-    case "namedExport":
-      parts.push(`${f.hits} ${ut("ops.susp.patients")}`);
-      break;
-    case "impersonation":
-      if (d.reason) parts.push(`${ut("ops.susp.reason")}: ${String(d.reason)}`);
-      break;
-  }
-  if (f.ip && f.rule !== "impersonation") parts.push(f.ip);
-  return parts.join(" · ");
-}
-
 const dayOf = (iso: string) => iso.slice(0, 10);
 
 /**
@@ -281,27 +214,11 @@ export function timeLeft(expiresAt: string, now: number): { unit: "days" | "hour
   return { unit: "days", n: Math.ceil(ms / 86_400_000) };
 }
 
-/** Продлить на — выбор, а не поле: сроки исключений меряют неделями и сменами */
-export const EXTEND_CHOICES: readonly number[] = [7, 14, 30, 90];
-
-/* ═══════════ хто переглядав ═══════════ */
-
-const isoDay = (d: Date) =>
-  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-
-/** Период по умолчанию — последние 30 дней по местному календарю, сегодня включительно */
-export function defaultPeriod(now: Date): { from: string; to: string } {
-  const from = new Date(now);
-  from.setDate(from.getDate() - 29);
-  return { from: isoDay(from), to: isoDay(now) };
-}
-
-/* ═══════════ графики разделов людей (волна 11) ═══════════ */
+/* ═══════════ ряды разделов людей (волна 11) ═══════════ */
 
 /*
- * Ряды для графиков «Користувачів», «Сесій», «Аудиту», «Підозрілої
- * активності», «Тимчасових доступів», «Хто переглядав» и «Другого
- * фактора». Чистыми функциями — ради проверок без браузера
+ * Ряды для графиков «Підозрілої активності», «Тимчасових доступів» и
+ * «Хто переглядав». Чистыми функциями — ради проверок без браузера
  * (apps/web/test/opsPeopleCharts.test.ts): что скрытое порогом не
  * превращается в ноль, что пустой день остаётся днём, что «інші»
  * складываются, а не теряются.
@@ -310,73 +227,6 @@ export function defaultPeriod(now: Date): { from: string; to: string } {
  * продукт»): формат зависит от языка страницы, а проверке нужен свой,
  * неизменный.
  */
-
-/** Ряд столбцов из частей: `values` — по значению на ряд в порядке `series`; null — скрыто порогом */
-export interface StackSeries {
-  key: string;
-  label: string;
-  color: string;
-}
-
-export interface StackColumn {
-  key: string;
-  label: string;
-  values: readonly (number | null)[];
-}
-
-/*
- * Место в упорядоченном ряду (SharePart.step): одна величина — один тон,
- * порядок читается светлотой. Первое — самое тёмное: то, ради чего смотрят.
- */
-const steps = (n: number): number[] => Array.from({ length: n }, (_, i) => (n > 1 ? 1 - i / (n - 1) : 1));
-
-export const STATE_KEY: Record<AccountState, UiKey> = {
-  active: "opsp.state.active",
-  never: "opsp.state.never",
-  locked: "opsp.state.locked",
-  disabled: "opsp.state.disabled",
-};
-
-/** Состояния роли — частями полосы, в постоянном порядке; скрытое порогом — null, а не ноль */
-export function stateParts(role: OpsUsersRoleSummary, ut: Ut): SharePart[] {
-  const tone = steps(role.states.length);
-  return role.states.map((s, i) => ({ key: s.key, label: ut(STATE_KEY[s.key]), value: s.count, step: tone[i] }));
-}
-
-/** Второй фактор роли: есть / нет — из действующих учёток */
-export function mfaParts(mfa: { enabled: number; total: number }, ut: Ut): SharePart[] {
-  return [
-    { key: "on", label: ut("opsp.mfa.on"), value: mfa.enabled, step: 1 },
-    { key: "off", label: ut("opsp.mfa.off"), value: Math.max(0, mfa.total - mfa.enabled), step: 0 },
-  ];
-}
-
-/** Новые учётки по неделям: персонал и пациенты; неделя пациентов под порогом — null */
-export function newAccountColumns(rows: OpsUsersSummary["newByWeek"], label: (iso: string) => string): StackColumn[] {
-  return rows.map((r) => ({ key: r.week, label: label(r.week), values: [r.staff, r.patients] }));
-}
-
-/** Входы по дням: удачные снизу, неудачные сверху — янтарная шапка столбца видна сразу */
-export function loginColumns(rows: OpsUsersSummary["loginsByDay"], label: (iso: string) => string): StackColumn[] {
-  return rows.map((r) => ({ key: r.date, label: label(r.date), values: [r.success, r.failed] }));
-}
-
-export const AGE_KEY: Record<SessionAgeBucket, UiKey> = {
-  day: "opsp.age.day",
-  week: "opsp.age.week",
-  month: "opsp.age.month",
-  older: "opsp.age.older",
-};
-
-export function ageParts(buckets: OpsSessionsSummary["byAge"][number]["buckets"], ut: Ut): SharePart[] {
-  const tone = steps(buckets.length);
-  return buckets.map((b, i) => ({ key: b.key, label: ut(AGE_KEY[b.key]), value: b.count, step: tone[i] }));
-}
-
-/** Сессии по роли — полосами; у пациентов под порогом — прочерк без полосы */
-export function sessionRoleBars(rows: OpsSessionsSummary["byRole"], roleLabel: (role: Role) => string): HBar[] {
-  return rows.map((r) => ({ key: r.role, label: roleLabel(r.role), value: r.sessions }));
-}
 
 /**
  * Срабатывания по правилам: длина — всего, жирным — где есть нерозібрані.
@@ -392,36 +242,9 @@ export function ruleBars(rows: SuspiciousStats["byRule"], ut: Ut): HBar[] {
   }));
 }
 
-/** По дням: разобранные снизу, нерозібрані — янтарём сверху */
-export function findingColumns(rows: SuspiciousStats["byDay"], label: (iso: string) => string): StackColumn[] {
-  return rows.map((r) => ({ key: r.date, label: label(r.date), values: [r.resolved, r.open] }));
-}
-
-export function grantParts(stats: GrantStats, ut: Ut): SharePart[] {
-  const order = [
-    ["active", "opsp.grant.active", stats.active],
-    ["permanent", "opsp.grant.permanent", stats.permanent],
-    ["expired", "opsp.grant.expired", stats.expired],
-    ["revoked", "opsp.grant.revoked", stats.revoked],
-  ] as const;
-  const tone = steps(order.length);
-  return order.map(([key, text, value], i) => ({ key, label: ut(text), value, step: tone[i] }));
-}
-
 export function weekColumns(rows: GrantStats["byWeek"], label: (iso: string) => string): Column[] {
   return rows.map((r) => ({ key: r.week, label: label(r.week), value: r.count }));
 }
-
-/** Журнал по отбору: удачные снизу, отказы и сбои — янтарём сверху */
-export function auditColumns(daily: AuditDaily, label: (iso: string, step: AuditDaily["step"]) => string): StackColumn[] {
-  return daily.buckets.map((b) => ({ key: b.start, label: label(b.start, daily.step), values: [b.ok, b.refused] }));
-}
-
-export const STEP_KEY: Record<AuditDaily["step"], UiKey> = {
-  day: "opsp.audit.stepDay",
-  week: "opsp.audit.stepWeek",
-  month: "opsp.audit.stepMonth",
-};
 
 const addDay = (iso: string): string => {
   const d = new Date(`${iso}T12:00:00.000Z`);
@@ -473,30 +296,4 @@ export function whoViewedActions(report: WhoViewedReport, label: (action: string
     8,
     othersLabel,
   );
-}
-
-/**
- * Охват вторым фактором по причине требования: доля действующих учёток с
- * подтверждённым фактором. Длина — процент (ось 0–100 задаёт экран), рядом
- * — «2 з 3 · 67%». Выключенные не считаются: войти они не могут, и «не
- * налаштовано» у них ничего не требует. Группа без действующих учёток не
- * рисуется вовсе: доли от нуля нет, а 0 % соврал бы, что все без фактора.
- */
-export function coverageBars(rows: readonly MfaCoverageRow[], ut: Ut): HBar[] {
-  const groups: MfaCoverageRow["because"][] = ["superadmin", "ops"];
-  const out: HBar[] = [];
-  for (const because of groups) {
-    const live = rows.filter((r) => r.because === because && !r.disabled);
-    if (!live.length) continue;
-    const on = live.filter((r) => r.enabled).length;
-    const pct = Math.round((on / live.length) * 100);
-    out.push({
-      key: because,
-      label: ut(because === "superadmin" ? "ops.mfa.because.superadmin" : "ops.mfa.because.ops"),
-      value: pct,
-      text: `${on} ${ut("an.of")} ${live.length} · ${pct}%`,
-      strong: pct < 100,
-    });
-  }
-  return out;
 }

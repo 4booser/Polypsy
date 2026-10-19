@@ -1,293 +1,309 @@
-import { useEffect, useId, useRef, useState, type InputHTMLAttributes, type ReactNode } from "react";
-import type { PatientGroupWithCounts, Sex, StatCell } from "@quizzy/shared";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import type { PatientGroupWithCounts, SampleFilters, Sex, StatCell } from "@quizzy/shared";
 import { api, type Patient } from "../../api";
+import { seriesColor } from "../../charts/kit";
 import { useLang } from "../../lang";
-import { isTopLayer, useFocusTrap } from "../../ui";
+import { Popover } from "../../ui";
 import { cx } from "../../ui/cx";
-import { Button } from "../../ui/primitives";
+import { ErrorText, Field, Input, Segmented, Select, Tag } from "../../ui/primitives";
 import { useDebounced, useResource } from "../../useResource";
-import { HIDDEN_MARK, ageFromInput, cellText } from "./model";
+import { useLocalityHints } from "./data";
+import { patientName } from "./names";
+import {
+  CRITERION_LABEL,
+  type Criterion,
+  HIDDEN_MARK,
+  ageFromInput,
+  cellText,
+  criteriaOf,
+  criterionValue,
+  filterErrors,
+} from "./model";
 
 /*
- * Детали раздела «Статистика», общие для его экранов, — и только для них.
- *
- * Здесь, а не в ui/: у кадров статистики свой набор полей, которого нет
- * больше нигде. Подпись внутри поля набрана 16/700 фиолетовым (f09, f23,
- * f29: капитель «Н» в «Назва тесту» — 11px, ширина слова 88 против 86 у того
- * же слова 17/400 на f17), тогда как общий Input держит 17/700 — и
- * переопределить кегль плейсхолдера классом снаружи нельзя: два
- * `placeholder:text-[…]` в одной строке классов спорят, и кто победит,
- * решает порядок в собранном CSS. Отвергнуто: добавлять в общий Input
- * третий вид подписи ради одного раздела — общий модуль правят параллельно
- * другие сборщики, а кадры остальных разделов этого кегля не просят.
+ * Детали раздела «Статистика», общие для его экранов, — и только для них:
+ * значки, номер выборки, чипы критериев, скрытая ячейка с объяснением,
+ * пометка «ВШР» и поля фильтра выборки (ящик модели и пресет).
  */
 
-/* ─────────── глифы ─────────── */
-
-/**
- * «−» карточки блока (f17) и строки фильтра (f23): штрих 5 в квадрате 27 —
- * близнец IconPlusThick (ui/glyphs.tsx), замер f17: чернила 1124…1150 × 265…269.
- * Локально, а не в glyphs.tsx: новых общих модулей волна не заводит.
- */
-export function IconMinusThick() {
-  return (
-    <svg viewBox="0 0 27 27" width={27} height={27} aria-hidden focusable="false">
-      <path d="M2.5 13.5h22" stroke="currentColor" strokeWidth={5} />
-    </svg>
-  );
-}
-
-/**
- * Вид «діаграма» строки заголовка f08: квадрат 27 с радиусом 3 и четыре
- * столбика. Замер f08 — рамка 1342…1368 × 153…179, столбики по чернилам
- * (x 7…10, 12…14, 17…19, 21…24 от левого края; верхушки 14, 10, 5, 14).
- */
-export function IconViewChart() {
-  return (
-    <svg viewBox="0 0 27 27" width={27} height={27} aria-hidden focusable="false" fill="none">
-      <rect x="1.25" y="1.25" width="24.5" height="24.5" rx="3" stroke="currentColor" strokeWidth={1.5} />
-      <g fill="currentColor">
-        <rect x="7" y="13.5" width="3" height="10" rx="1.5" />
-        <rect x="11.75" y="9" width="3" height="14.5" rx="1" />
-        <rect x="16.5" y="4.5" width="3" height="19" rx="1" />
-        <rect x="21" y="13.5" width="3" height="10" rx="1.5" />
-      </g>
-    </svg>
-  );
-}
-
-/**
- * Вид «перелік»: тот же квадрат, четыре строки «точка + черта» с шагом 4,5
- * (замер f08: 1382…1408, строки 158, 163, 167, 172).
- */
-export function IconViewList() {
-  return (
-    <svg viewBox="0 0 27 27" width={27} height={27} aria-hidden focusable="false" fill="none">
-      <rect x="1.25" y="1.25" width="24.5" height="24.5" rx="3" stroke="currentColor" strokeWidth={1.5} />
-      <g fill="currentColor">
-        {[5.5, 10, 14.5, 19].map((y) => (
-          <g key={y}>
-            <rect x="5" y={y} width="3" height="2.5" rx="1" />
-            <rect x="9.5" y={y} width="13" height="2.5" rx="1" />
-          </g>
-        ))}
-      </g>
-    </svg>
-  );
-}
-
-/* ─────────── поля ─────────── */
-
-/**
- * Три начертания поля на кадрах раздела.
- *
- *   outline — f09/f18: рамка #666666, подпись 16/700 фиолетовым, отступ 10;
- *   fill    — f23/f29: заливка #f0ecff без рамки, та же подпись, отступ 8
- *             (чернила «Дата» на f29 — 223 при левом крае поля 215);
- *   plain   — f17: рамка #666666, подпись 17/400 серым (ph="plain" общего
- *             Input) — форма, где поле ещё только просит ввода.
- */
-export type Look = "outline" | "fill" | "plain";
-
-const SHELL: Record<Look, string> = {
-  outline: "border border-field-border bg-[var(--bg)] px-[10px]",
-  fill: "border-0 bg-primary-soft px-[8px]",
-  plain: "border border-field-border bg-[var(--bg)] px-[10px]",
-};
-
-/**
- * Подпись поля — то, что видно в пустом поле. У текстовых полей она стоит
- * и в заполненном — слева от значения (см. StatInput); плейсхолдеров в
- * разделе больше нет, и их начертание здесь не заводится.
- */
-export const LABEL: Record<Look, string> = {
-  outline: "text-[16px] font-bold text-primary",
-  fill: "text-[16px] font-bold text-primary",
-  plain: "text-[17px] font-normal text-muted",
-};
-
-/** Набранное — данные, а не подпись: обычным начертанием, иначе заполненное не отличить от пустого */
-const VALUE: Record<Look, string> = {
-  outline: "text-[16px] font-normal text-text",
-  fill: "text-[16px] font-normal text-text",
-  plain: "text-[17px] font-normal text-text",
-};
-
-/** То же начертание красным — перевёрнутый диапазон; цвет не один: рядом строка ошибки и aria-invalid */
-const VALUE_INVALID: Record<Look, string> = {
-  outline: "text-[16px] font-normal text-danger",
-  fill: "text-[16px] font-normal text-danger",
-  plain: "text-[17px] font-normal text-danger",
-};
-
-const FOCUS = "outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]";
-/* кольцо на силуэте, когда фокус у поля внутри подписи */
-const FOCUS_WITHIN = "has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-[var(--focus)]";
-
-/** Силуэт поля: 36 высотой, радиус 5 — общее у всех трёх начертаний */
-export function shell(look: Look, extra?: string): string {
-  return cx("flex h-9 min-w-0 items-center rounded-[5px]", SHELL[look], extra);
-}
+/* ─────────── значки ─────────── */
 
 /*
- * Поле внутри силуэта: браузерные и наследные рамка, заливка и поля сняты —
- * силуэт рисует обёртка-подпись.
+ * Значки lucide, которых нет в наборе (ui/icons.tsx): штрих 2 на сетке 24,
+ * currentColor. Здесь, а не в наборе: набор правят параллельно, а нужны они
+ * только экранам статистики.
  */
-const BARE_INPUT = "m-0 h-full min-h-0 w-full min-w-0 flex-1 border-0 bg-transparent p-0 outline-none";
+function glyph(paths: ReactNode) {
+  return function Glyph({ size = 16, className }: { size?: number; className?: string }) {
+    return (
+      <svg
+        width={size}
+        height={size}
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden
+        focusable="false"
+        className={cx("shrink-0", className)}
+      >
+        {paths}
+      </svg>
+    );
+  };
+}
 
-/**
- * Текстовое поле с подписью внутри.
- *
- * Имя полю — aria-label тем же текстом, что стоит в подписи: подписи над
- * полем на кадрах нет. Видимое слово входит в звучащее целиком (WCAG 2.5.3).
- *
- * Решение заказчика 2026-09-26: адекватные фильтры. Подпись стоит в поле
- * ВСЕГДА, а не плейсхолдером: плейсхолдер исчезал при наборе, и заполненная
- * форма читалась как «25 — 45 · Київ» без единого слова о том, что это
- * возраст и город. Пустое поле выглядит ровно как на кадре — подпись
- * 16/700 фиолетовым у левого края; заполненное — «Вік від 25». Отвергнуто:
- * подпись над полем — у кадров раздела её нет, и строки формы разъехались
- * бы на шаг по вертикали.
- */
-export function StatInput({
-  look,
-  label,
-  className,
-  invalid,
-  ...rest
-}: { look: Look; label: string; invalid?: boolean } & Omit<InputHTMLAttributes<HTMLInputElement>, "placeholder">) {
-  return (
-    <label className={cx(shell(look), "m-0 w-full cursor-text gap-[8px]", FOCUS_WITHIN, className)}>
-      <span aria-hidden className={cx("shrink-0 whitespace-nowrap", LABEL[look])}>
-        {label}
-      </span>
-      <input
-        aria-label={label}
-        aria-invalid={invalid || undefined}
-        className={cx(BARE_INPUT, invalid ? VALUE_INVALID[look] : VALUE[look])}
-        {...rest}
-      />
-    </label>
-  );
+export const St = {
+  play: glyph(<polygon points="6 3 20 12 6 21 6 3" />),
+  trash: glyph(
+    <>
+      <path d="M3 6h18" />
+      <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+      <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+      <path d="M10 11v6M14 11v6" />
+    </>,
+  ),
+  sigma: glyph(
+    <path d="M18 7V5a1 1 0 0 0-1-1H6.5a.5.5 0 0 0-.4.8l4.5 6a2 2 0 0 1 0 2.4l-4.5 6a.5.5 0 0 0 .4.8H17a1 1 0 0 0 1-1v-2" />,
+  ),
+  sliders: glyph(
+    <path d="M21 4h-7M10 4H3M21 12h-9M8 12H3M21 20h-5M12 20H3M14 2v4M8 10v4M16 18v4" />,
+  ),
+  mapPin: glyph(
+    <>
+      <path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0" />
+      <circle cx="12" cy="10" r="3" />
+    </>,
+  ),
+  cake: glyph(
+    <>
+      <path d="M20 21v-8a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8" />
+      <path d="M4 16s.5-1 2-1 2.5 2 4 2 2.5-2 4-2 2.5 2 4 2 2-1 2-1" />
+      <path d="M2 21h20M7 8v3M12 8v3M17 8v3M7 4h.01M12 4h.01M17 4h.01" />
+    </>,
+  ),
+  calendarRange: glyph(
+    <>
+      <rect width="18" height="18" x="3" y="4" rx="2" />
+      <path d="M16 2v4M3 10h18M8 2v4M17 14h-6M13 18H7M7 14h.01M17 18h.01" />
+    </>,
+  ),
+  eyeOff: glyph(
+    <>
+      <path d="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49" />
+      <path d="M14.084 14.158a3 3 0 0 1-4.242-4.242" />
+      <path d="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143" />
+      <path d="m2 2 20 20" />
+    </>,
+  ),
+  shieldAlert: glyph(
+    <>
+      <path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" />
+      <path d="M12 8v4M12 16h.01" />
+    </>,
+  ),
+  book: glyph(
+    <>
+      <path d="M12 7v14M16 12h2M16 8h2M6 12h2M6 8h2" />
+      <path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z" />
+    </>,
+  ),
+  listOrdered: glyph(<path d="M10 12h11M10 18h11M10 6h11M4 10h2M4 6h1v4M6 18H4c0-1 2-2 2-3s-1-1.5-2-1" />),
+  link: glyph(
+    <>
+      <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+      <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+    </>,
+  ),
+  arrowUpRight: glyph(<path d="M7 7h10v10M7 17 17 7" />),
+  settings: glyph(
+    <>
+      <path d="M20 7h-9M14 17H5" />
+      <circle cx="17" cy="17" r="3" />
+      <circle cx="7" cy="7" r="3" />
+    </>,
+  ),
+  save: glyph(
+    <>
+      <path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" />
+      <path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7M7 3v4a1 1 0 0 0 1 1h7" />
+    </>,
+  ),
+  copy: glyph(
+    <>
+      <rect width="14" height="14" x="8" y="8" rx="2" />
+      <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
+    </>,
+  ),
+  userSearch: glyph(
+    <>
+      <circle cx="10" cy="7" r="4" />
+      <path d="M10.3 15H7a4 4 0 0 0-4 4v2" />
+      <circle cx="17" cy="17" r="3" />
+      <path d="m21 21-1.9-1.9" />
+    </>,
+  ),
+  userRound: glyph(
+    <>
+      <circle cx="12" cy="8" r="5" />
+      <path d="M20 21a8 8 0 0 0-16 0" />
+    </>,
+  ),
+  usersRound: glyph(
+    <>
+      <path d="M18 21a8 8 0 0 0-16 0" />
+      <circle cx="10" cy="8" r="5" />
+      <path d="M22 20c0-3.37-2-6.5-4-8a5 5 0 0 0-.45-8.3" />
+    </>,
+  ),
+  component: glyph(
+    <path d="M15.5 11.3a1 1 0 0 0 0 1.4l2.4 2.4a1 1 0 0 0 1.4 0l2.4-2.4a1 1 0 0 0 0-1.4l-2.4-2.4a1 1 0 0 0-1.4 0zM2.3 11.3a1 1 0 0 0 0 1.4l2.4 2.4a1 1 0 0 0 1.4 0l2.4-2.4a1 1 0 0 0 0-1.4L6.1 8.9a1 1 0 0 0-1.4 0zM8.9 17.9a1 1 0 0 0 0 1.4l2.4 2.4a1 1 0 0 0 1.4 0l2.4-2.4a1 1 0 0 0 0-1.4l-2.4-2.4a1 1 0 0 0-1.4 0zM8.9 4.7a1 1 0 0 0 0 1.4l2.4 2.4a1 1 0 0 0 1.4 0l2.4-2.4a1 1 0 0 0 0-1.4l-2.4-2.4a1 1 0 0 0-1.4 0z" />,
+  ),
+  chartColumn: glyph(<path d="M3 3v16a2 2 0 0 0 2 2h16M18 17V9M13 17V5M8 17v-3" />),
+  chartBar: glyph(<path d="M3 3v16a2 2 0 0 0 2 2h16M7 16h8M7 11h12M7 6h3" />),
+  filter: glyph(<polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />),
+  split: glyph(<path d="M16 3h5v5M8 3H3v5M12 22v-8.3a4 4 0 0 0-1.172-2.872L3 3M15 9l6-6" />),
+  pencil: glyph(
+    <>
+      <path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z" />
+      <path d="m15 5 4 4" />
+    </>,
+  ),
+};
+
+/** Значок строки-критерия: тот же в чипе, в строке пресета и в «Додати умову» */
+export const CRITERION_ICON: Record<Criterion, ReactNode> = {
+  date: <St.calendarRange size={13} />,
+  patient: <St.userSearch size={13} />,
+  age: <St.cake size={13} />,
+  sex: <St.userRound size={13} />,
+  locality: <St.mapPin size={13} />,
+  group: <St.component size={13} />,
+};
+
+/* ─────────── выборка ─────────── */
+
+/** Цвет выборки — цвет её ряда на графике (c1…c4, дальше — «прочее») */
+export function sampleColor(i: number, n: number): string {
+  return seriesColor(i, n);
 }
 
 /**
- * Выбор в силуэте поля — без каретки: на кадрах (f09 «Стать», f17 «Варіант
- * результату») в правой трети поля нет ни одного пикселя, как и у `bare`
- * общего Select.
- *
- * Пустой выбор показывает подпись поля её же начертанием; выбранный —
- * начертанием данных. Класс собирается одной веткой, а не наложением
- * второго цвета поверх первого: два `text-*` в одной строке классов спорят.
+ * Номер выборки на кольце её цвета. Цвет не единственный признак: номер
+ * тот же, что в подписи «Вибірка N» и в легенде графика.
  */
-export function StatSelect({
-  look,
-  label,
-  value,
-  onChange,
-  children,
-  className,
-  disabled,
-}: {
-  look: Look;
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  children: ReactNode;
-  className?: string;
-  disabled?: boolean;
-}) {
+export function SampleBadge({ n, of, small, fresh }: { n: number; of: number; small?: boolean; fresh?: boolean }) {
   return (
-    <select
-      aria-label={label}
-      value={value}
-      disabled={disabled}
-      onChange={(e) => onChange(e.target.value)}
+    <span
+      aria-hidden
       className={cx(
-        shell(look),
-        /*
-         * Ширина — либо своя от места, либо «во всю строку», но не обе
-         * сразу. Прежде `w-full` стоял всегда, а место добавляло
-         * `w-[96px]`: два правила ширины в одной строке классов спорят, и
-         * победил `w-full` — «Стать» растягивалась на всю строку, а
-         * «Населений пункт» справа сжимался до сиреневого огрызка в 10px.
-         */
-        className ?? "w-full",
-        "appearance-none truncate disabled:opacity-45",
-        value ? VALUE[look] : LABEL[look],
-        FOCUS,
+        "inline-grid shrink-0 place-items-center bg-panel font-extrabold tabular-nums leading-none text-text",
+        small ? "size-[18px] rounded-[6px] text-[10.5px]" : "size-[22px] rounded-[7px] text-[11.5px]",
+        fresh && "text-muted",
       )}
+      style={{ boxShadow: `inset 0 0 0 ${fresh ? 1.5 : 2}px ${fresh ? "var(--ctl)" : sampleColor(n - 1, of)}` }}
     >
-      <option value="">{label}</option>
-      {children}
-    </select>
+      {n}
+    </span>
   );
 }
 
+/** Имя выборки: своя подпись, иначе имя пресета, иначе «Вибірка N» */
+export function useSampleName() {
+  const { ut } = useLang();
+  return (title: string | null | undefined, presetTitle: string | null | undefined, i: number) =>
+    title?.trim() || presetTitle || `${ut("st.sample")} ${i + 1}`;
+}
+
 /**
- * Показ значения в силуэте поля: название теста, подпись полосы, текст
- * вопроса, доля ответов. Не поле: править здесь нечего, и остановка
- * табуляции на каждой строке отчёта была бы шумом.
- *
- * Пустое — подпись с кадра («Варіант результату 1»), заполненное — данные
- * тем же начертанием: на f09/f29 эти поля показывают, а не просят. Диктору
- * подпись читается всегда (скрытой приставкой), иначе «Низький, 42%» без
- * «Варіант результату» не читается как строка отчёта.
+ * Чипы критериев выборки: «Дата: 01.07 – 31.12.2026», «Стать: Чоловіки».
+ * Группа и человек — только именем критерия (criterionValue): чип читают
+ * через плечо. Без критериев — «усі пацієнти».
  */
-export function Readout({
-  look,
-  label,
-  text,
-  className,
-  align = "start",
-  title,
-  pending,
-}: {
-  look: Look;
-  label: string;
-  text?: ReactNode;
-  className?: string;
-  align?: "start" | "center";
-  title?: string;
-  /**
-   * Значение ещё не посчитано: плашка пустая, подпись — только диктору.
-   *
-   * Решение заказчика 2026-09-26 (замечание со стенда): подписи «Відсоток
-   * відповідей 1…4» в пустых плашках до расчёта читались как данные или
-   * поломка. Прочерк здесь не годится — в разделе он значит «приховано
-   * порогом», и один знак с двумя смыслами путал бы именно тогда, когда
-   * важно не путать. Что делать, чтобы плашки заполнились, говорит одна
-   * строка под отчётом (st.percentPending).
-   */
-  pending?: boolean;
-}) {
-  const empty = text === undefined || text === null || text === "";
+export function CriteriaChips({ filters, className }: { filters: SampleFilters | null | undefined; className?: string }) {
+  const { ut } = useLang();
+  const list = criteriaOf(filters);
+  if (!list.length) {
+    return (
+      <div className={cx("flex flex-wrap gap-[5px]", className)}>
+        <Tag icon={<St.usersRound />}>{ut("st.everyone")}</Tag>
+      </div>
+    );
+  }
   return (
-    <div
-      title={title}
-      className={cx(shell(look), LABEL[look], align === "center" && "justify-center", className)}
-    >
-      {empty && pending ? (
-        <span className="sr-only">{label}</span>
-      ) : empty ? (
-        <span className="truncate">{label}</span>
-      ) : (
-        <span className="truncate">
-          <span className="sr-only">{label}: </span>
-          {text}
-        </span>
-      )}
+    <div className={cx("flex flex-wrap gap-[5px]", className)}>
+      {list.map((k) => {
+        const value = criterionValue(k, filters, ut);
+        return (
+          <Tag key={k} icon={CRITERION_ICON[k]} className="max-w-full">
+            <span className="truncate">
+              {ut(CRITERION_LABEL[k])}
+              {value ? `: ${value}` : ""}
+            </span>
+          </Tag>
+        );
+      })}
     </div>
   );
 }
 
+/** «пресет: Чоловіки 25–45» или «власні фільтри» — чем отобрана выборка */
+export function SourceTag({ preset }: { preset: string | null | undefined }) {
+  const { ut } = useLang();
+  return preset ? (
+    <Tag tone="primary" icon={<St.sliders />} className="max-w-full">
+      <span className="truncate">
+        {ut("st.presetWord")}: {preset}
+      </span>
+    </Tag>
+  ) : (
+    <Tag icon={<St.filter />}>{ut("st.ownFilters")}</Tag>
+  );
+}
+
+/* ─────────── скрытое ─────────── */
+
 /**
- * Ячейка отчёта: «42%» или прочерк.
- *
- * Прочерк несёт подпись «приховано» для диктора и в подсказке: знак «—» сам
- * по себе читается как «нет данных», а данные есть — сервер их не печатает,
- * потому что вместе с соседними числами они называют людей.
+ * Что значит «приховано» — одна фраза на весь раздел: число есть, но вместе
+ * с другими числами отчёта оно называло бы людей. Нули печатаются всегда,
+ * выборку меньше порога сервер закрывает целиком.
  */
+export function HiddenWhy({ floor }: { floor: number }) {
+  const { ut } = useLang();
+  return (
+    <>
+      <span className="block">{ut("st.hiddenWhy")}</span>
+      <span className="mt-1 block text-muted">{ut("st.hiddenRules").replace("{n}", String(floor))}</span>
+    </>
+  );
+}
+
+/**
+ * Скрытая ячейка таблицы: пунктирная рамка с прочерком и объяснение по
+ * наведению и фокусу. Число сюда не доезжает: ячейка приходит без него.
+ */
+export function HiddenCell({ floor }: { floor: number }) {
+  const { ut } = useLang();
+  return (
+    <Popover title={ut("st.hiddenTitle")} note={ut("st.privacyRule")} content={<HiddenWhy floor={floor} />} width={300}>
+      <span
+        tabIndex={0}
+        aria-label={ut("st.hidden")}
+        className={cx(
+          "inline-grid h-6 min-w-[38px] cursor-help place-items-center rounded-[7px] border-[1.5px] border-dashed border-control",
+          "text-[15px] font-extrabold leading-none text-muted hover:border-muted hover:text-text",
+          "outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]",
+        )}
+      >
+        {HIDDEN_MARK}
+      </span>
+    </Popover>
+  );
+}
+
+/** Доля строкой с подписью скрытого для диктора — легенда, таблица графика */
 export function CellText({ cell }: { cell: StatCell | null | undefined }) {
   const { ut } = useLang();
   const text = cellText(cell);
@@ -300,199 +316,259 @@ export function CellText({ cell }: { cell: StatCell | null | undefined }) {
   );
 }
 
+/* ─────────── «ВШР» ─────────── */
+
 /**
- * «ВШР» — пометка «високий ступінь ризику» на варианте ответа, кнопкой с
- * состоянием (aria-pressed). Нажатая — фиолетовым полужирным (так все «ВШР»
- * набраны на f09/f29), отпущенная — серым обычным (так пустая форма f17).
- * Цвет тут не единственный признак: меняется и начертание.
+ * Пометка «ВШР» (високий ступінь ризику) на варианте ответа — кнопка с
+ * состоянием. Нажатая — тоном риска с галочкой, отпущенная — контуром:
+ * признак не только цветом, но и знаком. Риск здесь — про человека,
+ * выбравшего такой ответ, поэтому красный уместен.
  */
-export function VshrToggle({
-  look,
-  pressed,
-  onToggle,
-  className,
-  align = "center",
-}: {
-  look: Look;
-  pressed: boolean;
-  onToggle: () => void;
-  className?: string;
-  align?: "start" | "center";
-}) {
+export function VshrToggle({ pressed, onToggle }: { pressed: boolean; onToggle: () => void }) {
   const { ut } = useLang();
   return (
     <button
       type="button"
       aria-pressed={pressed}
-      title={ut("st.vshrLong")}
+      title={ut("st.vshrAll")}
       onClick={onToggle}
       className={cx(
-        shell(look),
-        align === "center" ? "justify-center" : "justify-start",
-        pressed ? LABEL.outline : LABEL.plain,
-        FOCUS,
-        className,
+        "inline-flex h-[22px] min-h-0 shrink-0 cursor-pointer items-center gap-1 rounded-[11px] border-0 px-2",
+        "text-[11px] font-extrabold leading-none",
+        "outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]",
+        pressed
+          ? "bg-risk-tint text-risk-ink shadow-[inset_0_0_0_1px_var(--riskline)]"
+          : "bg-transparent text-muted shadow-[inset_0_0_0_1px_var(--ctl)]",
       )}
     >
-      {/* видимое слово входит в имя целиком (WCAG 2.5.3): голосом говорят «ВШР», а не расшифровку */}
+      {pressed ? <CheckGlyph /> : null}
+      {/* видимое слово входит в имя целиком (WCAG 2.5.3): голосом говорят «ВШР» */}
       {ut("st.vshr")}
       <span className="sr-only"> — {ut("st.vshrLong")}</span>
     </button>
   );
 }
 
-/** Голый глиф «+»/«−» с областью нажатия 44 — Button size="glyph" */
-export function GlyphButton({
-  label,
-  onClick,
-  children,
-  disabled,
-  className,
-}: {
-  label: string;
-  onClick: () => void;
-  children: ReactNode;
-  disabled?: boolean;
-  className?: string;
-}) {
+function CheckGlyph() {
   return (
-    /*
-     * Подсказка при наведении — то же слово, что у диктора: «−» у названия
-     * пресета удаляет пресет целиком, и мышью об этом узнавали только из
-     * окна подтверждения.
-     */
-    <Button
-      size="glyph"
-      variant="ghost"
-      aria-label={label}
-      title={label}
-      onClick={onClick}
-      disabled={disabled}
-      className={className}
-    >
-      {children}
-    </Button>
+    <svg width={11} height={11} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3} aria-hidden>
+      <path d="M20 6 9 17l-5-5" />
+    </svg>
   );
 }
 
-/* ─────────── строки фильтра ─────────── */
-
-/** «2026-09-01» → «01.09.2026»: дата выборки — день, без времени и пояса */
-export function dayText(iso: string): string {
-  const [y, m, d] = iso.split("-");
-  return y && m && d ? `${d}.${m}.${y}` : iso;
+/** Метка «ВШР» без действия — в строках отчёта редактора и графика */
+export function VshrMark() {
+  const { ut } = useLang();
+  return (
+    <span
+      title={ut("st.vshrLong")}
+      className="inline-flex h-5 shrink-0 items-center rounded-[10px] px-[7px] text-[10.5px] font-extrabold leading-none text-risk-ink shadow-[inset_0_0_0_1px_var(--riskline)]"
+    >
+      {ut("st.vshr")}
+    </span>
+  );
 }
 
-/** Период строкой: оба конца, один или ни одного */
-export function periodText(from?: string | null, to?: string | null): string {
-  if (from && to) return `${dayText(from)} – ${dayText(to)}`;
-  if (from) return `${dayText(from)} –`;
-  if (to) return `– ${dayText(to)}`;
-  return "";
-}
+/* ─────────── поля фильтра ─────────── */
 
 /**
- * «Дата» — одно поле на кадрах, а у выборки два конца периода.
- *
- * Поле показывает период строкой и раскрывает под собой два штатных поля
- * даты «Від / До». Отвергнуто: два поля в строке — на кадре их одно, и ряд
- * «Дата» с двумя половинами встал бы вразрез с рядом «Вік від — Вік до»,
- * где половины нарисованы; отвергнуто и одно поле текстом «01.09 – 30.09»
- * с разбором — ошибка набора молча становилась бы другим периодом.
+ * Два поля диапазона: «від» и «до». Отказ — словами под парой. `inline` —
+ * строка условия пресета: подписи только для диктора, между полями тире,
+ * как в строке «Вік 25 — 45».
  */
-export function DateField({
-  look,
+function RangePair({
+  inline,
+  error,
+  labels,
+  children,
+}: {
+  inline?: boolean;
+  error: string | null;
+  labels: [string, string];
+  children: [ReactNode, ReactNode];
+}) {
+  if (!inline) {
+    return (
+      <div className="grid grid-cols-2 gap-x-3">
+        <Field label={labels[0]} error={error} className="mb-0">
+          {children[0]}
+        </Field>
+        <Field label={labels[1]} className="mb-0">
+          {children[1]}
+        </Field>
+      </div>
+    );
+  }
+  return (
+    <div>
+      <div className="flex max-w-[440px] items-center gap-2">
+        <Field label={labels[0]} inline className="min-w-0 flex-1">
+          {children[0]}
+        </Field>
+        <span aria-hidden className="h-[1.5px] w-3 shrink-0 bg-muted" />
+        <Field label={labels[1]} inline className="min-w-0 flex-1">
+          {children[1]}
+        </Field>
+      </div>
+      {error ? <ErrorText className="mt-1.5">{error}</ErrorText> : null}
+    </div>
+  );
+}
+
+/** Период: два поля даты; конец раньше начала — оба поля с отказом и словами под ними */
+export function PeriodFields({
   from,
   to,
   onChange,
-  invalid,
+  inline,
 }: {
-  look: Look;
   from?: string | null;
   to?: string | null;
   onChange: (next: { from: string | null; to: string | null }) => void;
-  /** Начало позже конца — период печатается красным, строка ошибки — у места */
-  invalid?: boolean;
+  inline?: boolean;
 }) {
   const { ut } = useLang();
-  const id = useId();
-  const [open, setOpen] = useState(false);
-  const ref = useFocusTrap<HTMLDivElement>(open);
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && isTopLayer(ref)) setOpen(false);
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [open, ref]);
-  const text = periodText(from, to);
+  const bad = filterErrors({ from, to }).includes("coh.errPeriod");
   return (
-    <div className="relative min-w-0 flex-1">
-      <button
-        type="button"
-        aria-expanded={open}
-        aria-controls={open ? id : undefined}
-        aria-label={text ? `${ut("st.date")}: ${text}` : ut("st.date")}
-        aria-invalid={invalid || undefined}
-        onClick={() => setOpen((v) => !v)}
-        /* m-0, min-h-0, border-0: у кнопки в слое наследия свои поля, высота и рамка */
-        className={cx(shell(look), "m-0 min-h-0 w-full gap-[8px] text-left", FOCUS)}
-      >
-        {/* подпись остаётся и у заполненного поля — см. StatInput */}
-        <span className={cx("shrink-0", LABEL[look])}>{ut("st.date")}</span>
-        {text ? <span className={cx("truncate", invalid ? VALUE_INVALID[look] : VALUE[look])}>{text}</span> : null}
-      </button>
-      {open ? (
-        <>
-          <div aria-hidden onClick={() => setOpen(false)} className="fixed inset-0 z-40" />
-          <div
-            ref={ref}
-            id={id}
-            role="dialog"
-            aria-label={ut("st.date")}
-            tabIndex={-1}
-            className={cx(
-              "absolute left-0 top-[calc(100%+6px)] z-50 flex items-end gap-[15px] rounded-[5px]",
-              "border border-border-strong bg-[var(--bg)] p-[10px] shadow-pop",
-            )}
-          >
-            {(
-              [
-                ["from", "st.dateFrom", from],
-                ["to", "st.dateTo", to],
-              ] as const
-            ).map(([key, labelKey, value]) => (
-              <label key={key} className="flex flex-col gap-[4px] text-[13px] text-muted">
-                {ut(labelKey)}
-                <input
-                  type="date"
-                  value={value ?? ""}
-                  max={key === "from" ? (to ?? undefined) : undefined}
-                  min={key === "to" ? (from ?? undefined) : undefined}
-                  onChange={(e) =>
-                    onChange({
-                      from: key === "from" ? e.target.value || null : (from ?? null),
-                      to: key === "to" ? e.target.value || null : (to ?? null),
-                    })
-                  }
-                  className={cx(shell("outline"), VALUE.outline, FOCUS)}
-                />
-              </label>
-            ))}
-            {/* снять период одним нажатием, а не стирать два поля по очереди */}
-            {from || to ? (
-              <Button size="sm" variant="quiet" onClick={() => onChange({ from: null, to: null })}>
-                {ut("st.clearDate")}
-              </Button>
-            ) : null}
-            <Button size="sm" onClick={() => setOpen(false)}>
-              {ut("common.close")}
-            </Button>
-          </div>
-        </>
+    <RangePair inline={inline} error={bad ? ut("coh.errPeriod") : null} labels={[ut("st.periodFrom"), ut("st.periodTo")]}>
+      <Input
+        type="date"
+        value={from ?? ""}
+        max={to ?? undefined}
+        aria-invalid={bad || undefined}
+        onChange={(e) => onChange({ from: e.target.value || null, to: to ?? null })}
+      />
+      <Input
+        type="date"
+        value={to ?? ""}
+        min={from ?? undefined}
+        aria-invalid={bad || undefined}
+        onChange={(e) => onChange({ from: from ?? null, to: e.target.value || null })}
+      />
+    </RangePair>
+  );
+}
+
+/** Возраст: «від — до» в годах на день сдачи; «від» больше «до» — отказ словами */
+export function AgeFields({
+  min,
+  max,
+  onChange,
+  inline,
+}: {
+  min?: number | null;
+  max?: number | null;
+  onChange: (next: { ageMin: number | null; ageMax: number | null }) => void;
+  inline?: boolean;
+}) {
+  const { ut } = useLang();
+  const bad = filterErrors({ ageMin: min, ageMax: max }).includes("coh.errAge");
+  return (
+    <RangePair inline={inline} error={bad ? ut("coh.errAge") : null} labels={[ut("st.ageFrom"), ut("st.ageTo")]}>
+      <Input
+        type="number"
+        inputMode="numeric"
+        min={0}
+        max={120}
+        placeholder="0"
+        suffix={ut("st.years")}
+        aria-invalid={bad || undefined}
+        value={min ?? ""}
+        onChange={(e) => onChange({ ageMin: ageFromInput(e.target.value), ageMax: max ?? null })}
+      />
+      <Input
+        type="number"
+        inputMode="numeric"
+        min={0}
+        max={120}
+        placeholder="120"
+        suffix={ut("st.years")}
+        aria-invalid={bad || undefined}
+        value={max ?? ""}
+        onChange={(e) => onChange({ ageMin: min ?? null, ageMax: ageFromInput(e.target.value) })}
+      />
+    </RangePair>
+  );
+}
+
+/** «Стать»: будь-яка, чоловіча, жіноча — стать з картки на момент здачі */
+export function SexField({ value, onChange }: { value?: Sex | null; onChange: (v: Sex | null) => void }) {
+  const { ut } = useLang();
+  return (
+    <Segmented
+      label={ut("person.sex")}
+      wide
+      value={value ?? "any"}
+      onChange={(k) => onChange(k === "male" || k === "female" ? k : null)}
+      items={[
+        { key: "any", label: ut("st.anySex") },
+        { key: "male", label: ut("mp.male") },
+        { key: "female", label: ut("mp.female") },
+      ]}
+    />
+  );
+}
+
+/**
+ * «Населений пункт»: свободное поле с подсказками из записанных названий.
+ *
+ * Решение заказчика 2026-09-26: адекватные фильтры. Сравнение точное (без
+ * учёта регистра): «Київ» против «м. Київ» давало пустую выборку, и экран не
+ * говорил почему. Подсказки — штатный datalist.
+ */
+export function LocalityInput({ value, onChange }: { value?: string | null; onChange: (v: string) => void }) {
+  const { ut } = useLang();
+  const hints = useLocalityHints();
+  const listId = useId();
+  return (
+    <>
+      <Input
+        value={value ?? ""}
+        maxLength={160}
+        placeholder={ut("st.anyLocality")}
+        icon={<St.mapPin />}
+        list={hints.length ? listId : undefined}
+        autoComplete="off"
+        onChange={(e) => onChange(e.target.value)}
+      />
+      {hints.length ? (
+        <datalist id={listId}>
+          {hints.map((h) => (
+            <option key={h} value={h} />
+          ))}
+        </datalist>
       ) : null}
-    </div>
+    </>
+  );
+}
+
+/**
+ * «Група пацієнтів» — своя группа сотрудника. Группа, которой больше нет
+ * (или она чужая), остаётся в выборе строкой «Група недоступна»: иначе
+ * выборка считала бы по ней, а поле показывало бы «будь-яка».
+ */
+export function GroupSelect({
+  value,
+  onChange,
+  groups,
+}: {
+  value?: string | null;
+  onChange: (v: string | null) => void;
+  groups: PatientGroupWithCounts[] | null;
+}) {
+  const { ut } = useLang();
+  const orphan = value && groups && !groups.some((g) => g.id === value) ? value : null;
+  return (
+    <Select value={value ?? ""} onChange={(e) => onChange(e.target.value || null)}>
+      <option value="">{ut("st.anyGroup")}</option>
+      {orphan ? <option value={orphan}>{ut("st.groupUnavailable")}</option> : null}
+      {(groups ?? []).map((g) => (
+        <option key={g.id} value={g.id}>
+          {g.title}
+        </option>
+      ))}
+    </Select>
   );
 }
 
@@ -502,18 +578,18 @@ export function DateField({
  * Список под полем — те же люди, что в разделе «Пацієнти» (GET
  * /api/access/patients): сервер отдаёт только тех, кого сотруднику видеть
  * положено, и расчёт проверит это ещё раз (assertFilterRefs). Выборка из
- * одного человека всегда ниже порога и приходит закрытой — строка на кадре
- * есть, и убирать её значило бы спорить с кадром, но чисел по одному
+ * одного человека всегда ниже порога и приходит закрытой — чисел по одному
  * человеку экран не покажет никогда.
  */
 export function PatientField({
-  look,
   value,
   onChange,
+  label,
 }: {
-  look: Look;
   value?: string | null;
-  onChange: (patientId: string | null) => void;
+  onChange: (id: string | null) => void;
+  /** Имя поля для диктора, когда видимая подпись стоит не в <label> вокруг поля */
+  label?: string;
 }) {
   const { ut } = useLang();
   const id = useId();
@@ -524,10 +600,14 @@ export function PatientField({
 
   /*
    * Имя сохранённого в фильтре человека — один раз, по идентификатору.
-   * Загрузкой (волна 13), а не голым запросом: имя прежнего человека,
-   * приехавшее после смены фильтра, не встанет в поле нового.
+   * Загрузкой, а не голым запросом: имя прежнего человека, приехавшее после
+   * смены фильтра, не встанет в поле нового. Только имя, а не карточка
+   * (names.ts): карточка — чтение персональных данных с телефоном, и в
+   * журнал оно шло как «открывал карточку» на каждую выборку при каждом
+   * открытии страницы. Человека нет в ответе (вне зоны) — «недоступний», как
+   * прежде отказ карточки.
    */
-  const name = useResource(() => api.patientCard(value!).then((p) => p.fullName), [value], {
+  const name = useResource(() => patientName(value!).then((n) => ({ n })), [value], {
     enabled: !!value && !known.current.has(value),
     keep: false,
   });
@@ -541,10 +621,10 @@ export function PatientField({
       setText(kept);
       return;
     }
-    if (name.data) {
-      known.current.set(value, name.data);
-      setText(name.data);
-    } else if (name.error) setText(ut("st.patientUnavailable"));
+    if (name.data?.n) {
+      known.current.set(value, name.data.n);
+      setText(name.data.n);
+    } else if (name.data || name.error) setText(ut("st.patientUnavailable"));
   }, [value, name.data, name.error, ut]);
 
   /* поиск ждёт паузу в наборе: сервер расшифровывает ФИО на каждый запрос */
@@ -571,19 +651,17 @@ export function PatientField({
   };
 
   return (
-    <div className="relative min-w-0 flex-1">
-      {/* подпись остаётся и у заполненного поля — см. StatInput */}
-      <label className={cx(shell(look), "m-0 w-full cursor-text gap-[8px]", FOCUS_WITHIN)}>
-      <span aria-hidden className={cx("shrink-0 whitespace-nowrap", LABEL[look])}>
-        {ut("st.patient")}
-      </span>
-      <input
+    <div className="relative">
+      <Input
         role="combobox"
+        aria-label={label}
         aria-expanded={open && !!found}
         aria-controls={open && found ? id : undefined}
         aria-autocomplete="list"
-        aria-label={ut("st.patient")}
         value={text}
+        placeholder={ut("st.patientHint")}
+        icon={<St.userSearch />}
+        autoComplete="off"
         onChange={(e) => {
           setText(e.target.value);
           setOpen(true);
@@ -591,7 +669,12 @@ export function PatientField({
           if (!e.target.value.trim()) onChange(null);
         }}
         onKeyDown={(e) => {
-          if (e.key === "Escape") setOpen(false);
+          if (e.key === "Escape" && open) {
+            /* Esc закрывает список, а не ящик вокруг поля */
+            e.stopPropagation();
+            e.nativeEvent.stopImmediatePropagation();
+            setOpen(false);
+          }
         }}
         /*
          * Ушёл из поля, не выбрав, — в поле снова тот, кто в фильтре (или
@@ -599,173 +682,48 @@ export function PatientField({
          * которого в выборке нет.
          */
         onBlur={(e) => {
-          /* Tab в список — не уход из поля: варианты выбирают и клавиатурой */
           if (listRef.current?.contains(e.relatedTarget as Node | null)) return;
           setOpen(false);
           setText(value ? (known.current.get(value) ?? "") : "");
         }}
-        className={cx(BARE_INPUT, VALUE[look])}
-        autoComplete="off"
       />
-      </label>
       {open && found ? (
-        <>
-          <div aria-hidden onClick={() => setOpen(false)} className="fixed inset-0 z-40" />
-          <div
-            ref={listRef}
-            id={id}
-            role="listbox"
-            aria-label={ut("st.patient")}
-            className={cx(
-              "absolute left-0 top-[calc(100%+4px)] z-50 w-full rounded-[5px]",
-              "border border-border-strong bg-[var(--bg)] py-[4px] shadow-pop",
-            )}
-          >
-            {found.length === 0 ? (
-              <p className="m-0 px-[10px] py-[5px] text-[15px] text-muted">{ut("st.noPatients")}</p>
-            ) : (
-              found.map((p) => (
-                <div
-                  key={p.id}
-                  role="option"
-                  aria-selected={p.id === value}
-                  tabIndex={0}
-                  /* фокус остаётся в поле: иначе его уход закрыл бы список раньше, чем дойдёт нажатие */
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => choose(p)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      choose(p);
-                    }
-                  }}
-                  className={cx(
-                    "flex h-[30px] cursor-pointer items-center px-[10px] text-[15px] text-text hover:bg-primary-tint",
-                    FOCUS,
-                  )}
-                >
-                  <span className="truncate">{p.fullName}</span>
-                </div>
-              ))
-            )}
-          </div>
-        </>
+        <div
+          ref={listRef}
+          id={id}
+          role="listbox"
+          aria-label={ut("st.patient")}
+          className="absolute left-0 top-[calc(100%+4px)] z-50 w-full rounded-control border border-border bg-panel py-1 shadow-pop"
+        >
+          {found.length === 0 ? (
+            <p className="m-0 px-3 py-1.5 text-small text-muted">{ut("st.noPatients")}</p>
+          ) : (
+            found.map((p) => (
+              <div
+                key={p.id}
+                role="option"
+                aria-selected={p.id === value}
+                tabIndex={0}
+                /* фокус остаётся в поле: иначе его уход закрыл бы список раньше, чем дойдёт нажатие */
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => choose(p)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    choose(p);
+                  }
+                }}
+                className={cx(
+                  "flex h-9 cursor-pointer items-center px-3 text-body text-text hover:bg-violet-tint",
+                  "outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]",
+                )}
+              >
+                <span className="truncate">{p.fullName}</span>
+              </div>
+            ))
+          )}
+        </div>
       ) : null}
     </div>
   );
 }
-
-/**
- * «Вік від — Вік до»: два поля числа и тире между ними. Размеры тире и
- * просветов у кадров разные (f09 — тире 25 и просветы 10; f29 — 17 и 6;
- * f23 — 17 и 10), поэтому они — параметры места.
- */
-export function AgeRow({
-  look,
-  min,
-  max,
-  onChange,
-  dash,
-  gap,
-  invalid,
-}: {
-  look: Look;
-  min?: number | null;
-  max?: number | null;
-  onChange: (next: { ageMin: number | null; ageMax: number | null }) => void;
-  dash: 17 | 25;
-  gap: 6 | 10;
-  /** «від» больше «до» — оба поля красным; строку ошибки печатает место */
-  invalid?: boolean;
-}) {
-  const { ut } = useLang();
-  return (
-    <div className={cx("flex min-w-0 flex-1 items-center", gap === 6 ? "gap-[6px]" : "gap-[10px]")}>
-      <StatInput
-        look={look}
-        label={ut("st.ageFrom")}
-        type="number"
-        inputMode="numeric"
-        min={0}
-        max={120}
-        invalid={invalid}
-        value={min ?? ""}
-        onChange={(e) => onChange({ ageMin: ageFromInput(e.target.value), ageMax: max ?? null })}
-      />
-      {/* тире — рисунок #666666 в 2px, а не символ: на кадре оно длиннее «—» набора */}
-      <span aria-hidden className={cx("h-[2px] shrink-0 bg-field-border", dash === 25 ? "w-[25px]" : "w-[17px]")} />
-      <StatInput
-        look={look}
-        label={ut("st.ageTo")}
-        type="number"
-        inputMode="numeric"
-        min={0}
-        max={120}
-        invalid={invalid}
-        value={max ?? ""}
-        onChange={(e) => onChange({ ageMin: min ?? null, ageMax: ageFromInput(e.target.value) })}
-      />
-    </div>
-  );
-}
-
-/** «Стать»: два значения сервера; пустое — критерия нет */
-export function SexSelect({
-  look,
-  value,
-  onChange,
-  className,
-}: {
-  look: Look;
-  value?: Sex | null;
-  onChange: (v: Sex | null) => void;
-  className?: string;
-}) {
-  const { ut } = useLang();
-  return (
-    <StatSelect
-      look={look}
-      label={ut("person.sex")}
-      value={value ?? ""}
-      onChange={(v) => onChange(v === "male" || v === "female" ? v : null)}
-      className={className}
-    >
-      <option value="male">{ut("mp.male")}</option>
-      <option value="female">{ut("mp.female")}</option>
-    </StatSelect>
-  );
-}
-
-/**
- * «Група пацієнтів» — своя группа сотрудника. Кадрами не нарисована: живёт
- * за «+» формы пресета (f23) и показывается на экране модели только у
- * выборки, где она уже задана, — иначе такая выборка считала бы по группе,
- * а экран об этом молчал.
- */
-export function GroupSelect({
-  look,
-  value,
-  onChange,
-  groups,
-}: {
-  look: Look;
-  value?: string | null;
-  onChange: (v: string | null) => void;
-  groups: PatientGroupWithCounts[] | null;
-}) {
-  const { ut } = useLang();
-  const orphan = value && groups && !groups.some((g) => g.id === value) ? value : null;
-  return (
-    <StatSelect look={look} label={ut("st.group")} value={value ?? ""} onChange={(v) => onChange(v || null)}>
-      {orphan ? <option value={orphan}>{ut("st.groupUnavailable")}</option> : null}
-      {(groups ?? []).map((g) => (
-        <option key={g.id} value={g.id}>
-          {g.title}
-        </option>
-      ))}
-    </StatSelect>
-  );
-}
-
-/* правка фильтра — чистая функция модели (проверяется без экрана); здесь — прежнее имя для форм раздела */
-export { patchFilters } from "./model";

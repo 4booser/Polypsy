@@ -6,7 +6,6 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
 import { type OpsSession, type OpsSessionPage, UI, type UiKey, opsSessionQuery } from "@quizzy/shared";
 import { LangProvider } from "../src/lang";
-import { ListPlace } from "../src/pages/ops/controls";
 import { SessionsList } from "../src/pages/ops/Sessions";
 import {
   SESSIONS_PAGE_MAX,
@@ -40,7 +39,7 @@ const U1 = "0b8f6a3e-1c2d-4e5f-8a9b-0c1d2e3f4a5b";
 describe("«Сесії»: отбор из адреса", () => {
   test("человек, поиск, страница и размер восстанавливаются из адреса и принимаются сервером", () => {
     const f = readSessionsFilters(url(`user=${U1}&q=Коваль&page=3&per=50`));
-    expect(f).toEqual({ q: "Коваль", userId: U1, page: 3, per: 50 });
+    expect(f).toEqual({ q: "Коваль", userId: U1, role: "", age: "", page: 3, per: 50 });
     expect(sessionsQuery(f)).toEqual({ q: "Коваль", userId: U1, page: "3", per: "50" });
     expect(accepted(sessionsQuery(f))).toBe(true);
   });
@@ -88,13 +87,25 @@ describe("«Сесії»: отбор из адреса", () => {
     expect(sessionsEmptyKey({ q: "коваль", userId: "" })).toBe("wt.sess.noneFound");
     expect(sessionsEmptyKey({ q: "коваль", userId: U1 })).toBe("wt.sess.noneFound");
     expect(sessionsEmptyKey({ q: "  ", userId: U1 })).toBe("wt.sess.noneOfUser");
+    // отбор по роли или возрасту — «за цим відбором», а не «сесій немає взагалі»
+    expect(sessionsEmptyKey({ q: "", userId: "", role: "user", age: "" })).toBe("oppa.noneFiltered");
+    expect(sessionsEmptyKey({ q: "", userId: "", role: "", age: "older" })).toBe("oppa.noneFiltered");
+  });
+
+  test("роль и возраст — из закрытых списков схемы сервера; незнакомое — «условия нет»", () => {
+    const f = readSessionsFilters(url("role=staff&age=older"));
+    expect([f.role, f.age]).toEqual(["staff", "older"]);
+    expect(accepted(sessionsQuery(f))).toBe(true);
+    const bad = readSessionsFilters(url("role=doctor&age=year"));
+    expect([bad.role, bad.age]).toEqual(["", ""]);
+    expect(sessionsQuery(bad)).toMatchObject({ role: undefined, age: undefined });
   });
 
   test("вкладка читает отбор через разбор и шлёт на сервер разобранное", () => {
     const src = readFileSync(resolve(import.meta.dir, "../src/pages/ops/Sessions.tsx"), "utf8");
     expect(src).toContain("readSessionsFilters(params)");
     expect(src).toMatch(/api\.opsSessions\(query\)/);
-    expect(src).toMatch(/sessionsEmptyKey\(\{ q: settledQ, userId \}\)/);
+    expect(src).toMatch(/sessionsEmptyKey\(\{ q: settledQ, userId, role, age \}\)/);
     // сырой адрес на сервер больше не уходит
     expect(src).not.toContain('params.get("user")');
   });
@@ -241,54 +252,27 @@ describe("«Сесії»: «Завершити» — только там, где
   });
 });
 
+/*
+ * Место списка у «Користувачів» и «Аудиту» — то же правило listBody
+ * (ui/paging.ts), что у «Сесій» выше; само правило проверяют
+ * alertsFilters.test.ts и referralsInvites.test.ts. Прежний общий ListPlace
+ * ушёл с экранами до Polypsy 2.0: вкладки рисуют таблицы набора сами.
+ */
 describe("место списка у «Користувачів» и «Аудиту»", () => {
-  const place = (items: string[] | null, error: string | null) =>
-    draw(
-      <ListPlace items={items} error={error} onRetry={() => {}} empty={EMPTY}>
-        {() => (
-          <ul>
-            {items!.map((i) => (
-              <li key={i}>{i}</li>
-            ))}
-          </ul>
-        )}
-      </ListPlace>,
-    );
-
-  test("четыре состояния: скелет, отказ с «повторити», пусто по ответу, строки", () => {
-    expect(skeleton(place(null, null))).toBe(true);
-    const failed = place(null, OOPS);
-    expect(failed).toContain(OOPS);
-    expect(retry(failed)).toBe(true);
-    expect(failed).not.toContain(EMPTY);
-    expect(place([], null)).toContain(EMPTY);
-    expect(place(["запис-1"], null)).toContain("запис-1");
-  });
-
-  test("отказ «Показати ще» или перечитывания — строкой над записями, записи остаются", () => {
-    const html = place(["запис-1", "запис-2"], OOPS);
-    expect(html).toContain("запис-1");
-    expect(html).toContain("запис-2");
-    expect(html).toContain(OOPS);
-    expect(retry(html)).toBe(true);
-    // и над пустым ответом — тоже строкой, а не вместо него
-    const empty = place([], OOPS);
-    expect(empty).toContain(EMPTY);
-    expect(empty).toContain(OOPS);
-  });
-
   test("вкладки рисуют список через общее место, а не своей лесенкой", () => {
     /*
      * Было: у «Користувачів» и «Аудиту» `res.error ? <Loading/> : …` — отказ
      * перечитывания стирал показанный реестр, неудачное «Показати ще» —
      * весь долистанный журнал.
      */
+    /* «Користувачі» в 2.0 рисуют таблицу набора в своей панели — по правилу listBody */
     const users = readFileSync(resolve(import.meta.dir, "../src/pages/ops/Users.tsx"), "utf8");
-    expect(users).toMatch(
-      /<ListPlace items=\{res\.data\?\.items \?\? null\} error=\{res\.error\} onRetry=\{res\.reload\} empty=\{ut\("pt\.nobodyFound"\)\}>/,
-    );
+    expect(users).toMatch(/const place = listBody\(res\.data\?\.items \?\? null, res\.error\);/);
+    expect(users).toMatch(/place\.stale \? \(/);
     const audit = readFileSync(resolve(import.meta.dir, "../src/pages/ops/AuditLog.tsx"), "utf8");
-    expect(audit).toMatch(/<ListPlace items=\{list\.items\} error=\{error\} onRetry=\{list\.reload\} empty=\{ut\("ops\.audit\.none"\)\}/);
+    /* «Аудит» в 2.0 рисует журнал своей таблицей с раскрытием строк — по тому же правилу listBody */
+    expect(audit).toMatch(/const place = listBody\(list\.items, error\);/);
+    expect(audit).toMatch(/place\.stale \? \(/);
     for (const src of [users, audit]) expect(src).not.toMatch(/\{(res\.)?error \? \(\s*<Loading/);
   });
 
@@ -296,6 +280,22 @@ describe("место списка у «Користувачів» и «Ауди�
     /* было: `.catch(() => {})` — выбор молча оставался страницей */
     const users = readFileSync(resolve(import.meta.dir, "../src/pages/ops/Users.tsx"), "utf8");
     expect(users).not.toContain(".catch(() => {})");
-    expect(users).toMatch(/onAll=\{\(\) =>\s*void run\(async \(\) => \{\s*const r = await api\.opsUserIds\(/);
+    expect(users).toMatch(/onSelectAll=\{\(\) =>\s*void run\(async \(\) => \{\s*const r = await api\.opsUserIds\(/);
+  });
+});
+
+describe("числа в шапке и строке «Знайдено» — в форме языка", () => {
+  /*
+   * Реестр учреждения — тысячи учёток, и «Облікових записів: 8123» по-украински
+   * и по-русски пишется «8 123». Счётчики шапки и «Знайдено» шли сырым числом.
+   */
+  test("«Користувачі» и «Сесії» форматируют итоги языком страницы", () => {
+    const users = readFileSync(resolve(import.meta.dir, "../src/pages/ops/Users.tsx"), "utf8");
+    expect(users).toContain("v.toLocaleString(locale())");
+    expect(users).toContain("{res.data.total.toLocaleString(locale())}");
+    const sessions = readFileSync(resolve(import.meta.dir, "../src/pages/ops/Sessions.tsx"), "utf8");
+    expect(sessions).toContain("const num = (v: number) => v.toLocaleString(locale());");
+    expect(sessions).toContain("{num(res.data.total)}");
+    expect(sessions).toContain('fill(ut("oppa.metaTotal"), { n: num(total) })');
   });
 });

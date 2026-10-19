@@ -1,4 +1,5 @@
 import type { QuestionAnalytics, SurveyAnalytics } from "@quizzy/shared";
+import { locale } from "../../../format";
 
 /**
  * Чистая часть вкладки «Тести» раздела «Аналітика»: состояние экрана в
@@ -181,6 +182,22 @@ export function findSurveys<T extends SurveyChoice>(list: readonly T[], q: strin
  */
 export const SMALL_CELL = 5;
 
+/* ─────────── выгрузки ─────────── */
+
+/**
+ * Сколько завершённых прохождений увозят файлы окна «Вивантаження».
+ *
+ * Маршруты выгрузки среза экрана не принимают: в каждом файле — вся
+ * методика, все её версии и все люди, а не то, что сейчас на экране.
+ * Плашка рядом с целью говорила «версія 3, проходжень: 37» по срезу (в
+ * «Один пацієнт» — по одному человеку), и выгрузку всей методики можно было
+ * принять за выгрузку одного человека. Число — завершённые всех версий:
+ * столько строк в матрице SPSS и в манифесте.
+ */
+export function exportCount(versions: readonly { responseCount: number }[]): number {
+  return versions.reduce((n, v) => n + v.responseCount, 0);
+}
+
 /* ─────────── подстановка в строку словаря ─────────── */
 
 /**
@@ -202,11 +219,17 @@ export function dayText(iso: string): string {
   return y && m && d ? `${d}.${m}.${y}` : iso;
 }
 
-/** Число для подписи: целое без хвоста, дробное — до двух знаков, запятая по-украински */
+/**
+ * Число для подписи: целое без хвоста, дробное — до `digits` знаков,
+ * разделитель — языка страницы: запятая по-украински и по-русски, точка
+ * по-английски. Прежде запятая стояла при любом языке, и английский экран
+ * печатал «10,8» — по-английски это читается как тысячи. Разрядов нет, как
+ * и раньше: счётчики печатает nf (views.tsx).
+ */
 export function numText(v: number | null | undefined, digits = 2): string {
   if (v === null || v === undefined || !Number.isFinite(v)) return "—";
   const f = 10 ** digits;
-  return String(Math.round(v * f) / f).replace(".", ",");
+  return new Intl.NumberFormat(locale(), { maximumFractionDigits: digits, useGrouping: false }).format(Math.round(v * f) / f);
 }
 
 /* ─────────── ряд прохождений по времени ─────────── */
@@ -269,6 +292,92 @@ export function timeBuckets(timeline: readonly { date: string; count: number }[]
     buckets.push({ key: date, date, value: counts.get(date) ?? 0 });
   }
   return { mode, buckets };
+}
+
+/* ─────────── период ─────────── */
+
+/** Сегодняшний день по Киеву — день учреждения, а не браузера и не Гринвича */
+export function kyivDay(ms = Date.now()): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Kyiv", year: "numeric", month: "2-digit", day: "2-digit" }).format(ms);
+}
+
+export function addDays(iso: string, n: number): string {
+  return isoOf(utcOf(iso) + n * DAY_MS);
+}
+
+/** Готовые периоды поля «Період»: последние N дней, сегодня включительно */
+export type Preset = "30" | "90" | "365";
+export const PRESETS: readonly Preset[] = ["30", "90", "365"];
+
+/** Первый день готового периода; конец открыт — ссылка «90 днів» завтра значит те же 90 дней */
+export function presetFrom(p: Preset, today: string): string {
+  return addDays(today, -(Number(p) - 1));
+}
+
+/** Какой готовый период стоит в адресе; свой диапазон или «уся історія» — null */
+export function presetOf(from: string | null, to: string | null, today: string): Preset | null {
+  if (!from || to) return null;
+  return PRESETS.find((p) => presetFrom(p, today) === from) ?? null;
+}
+
+/** Дней в периоде включительно; открытый конец — по сегодня */
+export function spanDays(from: string, to: string | null, today: string): number {
+  return Math.round((utcOf(to ?? today) - utcOf(from)) / DAY_MS) + 1;
+}
+
+/* ─────────── ряд: идущая корзина и сводка ─────────── */
+
+/**
+ * Корзина, которая ещё идёт: неделя, в которую входит сегодня (или сам
+ * сегодняшний день). Её столбец рисуется светлее — иначе четыре дня из
+ * семи читаются как спад.
+ */
+export function partialKey(buckets: readonly TimeBucket[], mode: "day" | "week", today: string): string | null {
+  const last = buckets.at(-1);
+  if (!last) return null;
+  const end = addDays(last.date, mode === "week" ? 7 : 1);
+  return last.date <= today && today < end ? last.key : null;
+}
+
+export interface BucketSummary {
+  /** Полных корзин — без идущей */
+  full: number;
+  /** Среднее по полным корзинам */
+  avg: number;
+  /** Самая полная корзина (среди всех, включая идущую) */
+  top: TimeBucket;
+}
+
+/** Сводка ряда для подписи под графиком: среднее по полным корзинам и наибольшая */
+export function bucketSummary(buckets: readonly TimeBucket[], partial: string | null): BucketSummary | null {
+  const full = buckets.filter((b) => b.key !== partial);
+  if (!full.length) return null;
+  const top = buckets.reduce((a, b) => (b.value > a.value ? b : a), buckets[0]!);
+  return { full: full.length, avg: full.reduce((s, b) => s + b.value, 0) / full.length, top };
+}
+
+/* ─────────── смуги ─────────── */
+
+/**
+ * Доля «помірна й важче»: с первой полосы тяжести moderate и выше. Порог
+ * — по тяжести полосы, а не по её месту в списке: у шкал разное число
+ * полос, а «помірна» — тот уровень, с которого разговор клинический.
+ */
+export function heavyShare(
+  bands: readonly { label: string; severity: string; count: number }[],
+): { label: string; count: number; total: number } | null {
+  const total = bands.reduce((s, b) => s + b.count, 0);
+  const heavy = bands.filter((b) => b.severity === "moderate" || b.severity === "severe");
+  if (!total || !heavy.length) return null;
+  return { label: heavy[0]!.label, count: heavy.reduce((s, b) => s + b.count, 0), total };
+}
+
+/**
+ * Шкала для панели «… за смугами» обзора: первая содержательная шкала с
+ * полосами — у PHQ-9 это общий балл. Без полос показывать там нечего.
+ */
+export function mainScale<T extends { kind: string; bands: readonly unknown[] }>(scales: readonly T[]): T | null {
+  return scales.find((s) => s.kind !== "validity" && s.bands.length > 0) ?? null;
 }
 
 /* ─────────── где теряют людей ─────────── */

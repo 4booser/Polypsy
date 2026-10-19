@@ -1,18 +1,21 @@
 import { Hono } from "hono";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import {
   statModelInputSchema,
   statModelListQuery,
   statModelRunSchema,
   statModelUpdateSchema,
+  t,
+  type Lang,
   type StatModel,
+  type StatModelColumn,
   type StatModelListItem,
   type StatModelListPage,
   type StatRunColumn,
   type StatRunResult,
 } from "@quizzy/shared";
 import { db } from "../db";
-import { statModels } from "../db/schema";
+import { statModels, surveyVersions, surveys } from "../db/schema";
 import { audit } from "../lib/audit";
 import { langOf, parseBody, parseQuery } from "../lib/http";
 import { SMALL_CELL_FLOOR } from "../lib/privacy";
@@ -84,13 +87,68 @@ function runTrail(columns: StatRunColumn[], sizes: number[]) {
 }
 
 /**
+ * Сводка строки перечня: что модель считает — по первой колонке, как и
+ * форма правки, — и сколько выборок идёт по пресету.
+ *
+ * Названия методик и номера версий — двумя запросами на всю страницу, а не
+ * по запросу на строку. Методику, которую политика строк спрашивающему не
+ * отдаёт, перечень оставляет без названия: строка остаётся, а «чья это
+ * методика» решает расчёт своим отказом.
+ */
+async function summaries(
+  rows: { columns: StatModelColumn[] }[],
+  lang: Lang,
+): Promise<
+  Pick<
+    StatModelListItem,
+    "surveyTitle" | "versionNumber" | "bandCount" | "questionCount" | "highRiskCount" | "presetColumns"
+  >[]
+> {
+  const heads = rows.map((r) => r.columns[0]);
+  const surveyIds = [...new Set(heads.flatMap((h) => (h ? [h.surveyId] : [])))];
+  const versionIds = [...new Set(heads.flatMap((h) => (h?.versionId ? [h.versionId] : [])))];
+  const titles = new Map(
+    surveyIds.length
+      ? (await db.select({ id: surveys.id, title: surveys.title }).from(surveys).where(inArray(surveys.id, surveyIds))).map(
+          (s) => [s.id, t(s.title, lang)] as const,
+        )
+      : [],
+  );
+  const numbers = new Map(
+    versionIds.length
+      ? (
+          await db
+            .select({ id: surveyVersions.id, version: surveyVersions.version })
+            .from(surveyVersions)
+            .where(inArray(surveyVersions.id, versionIds))
+        ).map((v) => [v.id, v.version] as const)
+      : [],
+  );
+  return rows.map(({ columns }) => {
+    const head = columns[0];
+    return {
+      surveyTitle: head ? (titles.get(head.surveyId) ?? null) : null,
+      versionNumber: head ? (numbers.get(head.versionId) ?? null) : null,
+      bandCount: head?.bands.length ?? 0,
+      questionCount: head?.questions.length ?? 0,
+      highRiskCount: head
+        ? head.bands.filter((b) => b.highRisk).length +
+          head.questions.reduce((n, q) => n + q.options.filter((o) => o.highRisk).length, 0)
+        : 0,
+      presetColumns: columns.filter((c) => c.presetId).length,
+    };
+  });
+}
+
+/**
  * Перечень моделей (кадр f06): поиск по названию и описанию, страницы —
  * как у каталога методик: без ?limit= весь список (экран «Статистика» на
  * f26 выбирает модель из списка и о страницах знать не должен), с ним —
  * страница и total по тем же условиям.
  *
- * Колонки в перечень не входят: в строке списка стоят название и описание,
- * а колонки нужны только на экране модели.
+ * Колонки в перечень не входят — только сводка по ним (summaries): что
+ * модель считает и чем отобраны выборки. Сами колонки нужны только на
+ * экране модели.
  */
 statModelRoutes.get("/", async (c) => {
   const user = c.get("user");
@@ -112,6 +170,7 @@ statModelRoutes.get("/", async (c) => {
       description: statModels.description,
       ownerId: statModels.ownerId,
       columnCount: sql<number>`jsonb_array_length(${statModels.columns})`,
+      columns: statModels.columns,
       createdAt: statModels.createdAt,
       updatedAt: statModels.updatedAt,
     })
@@ -129,7 +188,12 @@ statModelRoutes.get("/", async (c) => {
       ? rows.length
       : Number((await db.select({ n: sql<number>`count(*)::int` }).from(statModels).where(where))[0]?.n ?? 0);
 
-  const items: StatModelListItem[] = rows.map((r) => ({ ...r, columnCount: Number(r.columnCount ?? 0) }));
+  const sums = await summaries(rows, langOf(c));
+  const items: StatModelListItem[] = rows.map(({ columns: _columns, ...r }, i) => ({
+    ...r,
+    columnCount: Number(r.columnCount ?? 0),
+    ...sums[i]!,
+  }));
   return c.json({ items, total } satisfies StatModelListPage);
 });
 

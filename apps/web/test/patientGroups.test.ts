@@ -1,19 +1,23 @@
 import { describe, expect, test } from "bun:test";
+import { pluralForm } from "../src/ui/plural";
 import {
   FAVORITES_KEY,
+  favouritesToMove,
+  fill,
   grantEach,
-  keepPresent,
+  groupsSummary,
+  inGroupView,
   matchesQuery,
   newProgress,
   parseFavorites,
   partialFailure,
-  personMeta,
-  serializeFavorites,
-  toggleIn,
+  shortDate,
+  sortGroups,
+  surveyCode,
 } from "../src/pages/patientGroups/model";
 import { pagesOf, slicePage } from "../src/ui/paging";
 import { railGroups } from "../src/shell/Rail";
-import { TOP } from "../src/shell/Topbar";
+import { navAccess, subNavFor } from "../src/shell/nav";
 
 /**
  * Группы пациентов: чистая часть экранов и навигация раздела.
@@ -24,33 +28,6 @@ import { TOP } from "../src/shell/Topbar";
  * курсором, — и одна проверка навигации, где ошибка тихая: «Групи» в полосе
  * ведут на группы ПАЦИЕНТОВ, а не методик.
  */
-
-const WORDS = { male: "чол.", female: "жін.", year: "р." };
-
-describe("мета-строка карточки", () => {
-  test("собирается в порядке макета: e-mail, телефон, подразделение, пол, год", () => {
-    expect(
-      personMeta(
-        {
-          userId: "u",
-          fullName: "Х",
-          email: "noga@gmail.com",
-          phone: "+380671234567",
-          unit: "м.Київ",
-          sex: "male",
-          birthYear: 1986,
-        },
-        WORDS,
-      ),
-    ).toEqual(["noga@gmail.com", "+380671234567", "м.Київ", "чол.", "1986р."]);
-  });
-
-  test("пустые поля пропускаются, а не печатаются прочерком", () => {
-    /* строка состава группы приходит без пола и года — их просто нет */
-    expect(personMeta({ userId: "u", fullName: "Х", email: "a@b", unit: null }, WORDS)).toEqual(["a@b"]);
-    expect(personMeta({ userId: "u", fullName: "Х", email: "", sex: "female", birthYear: null }, WORDS)).toEqual(["жін."]);
-  });
-});
 
 describe("поиск по списку", () => {
   test("не зависит от регистра и пробелов по краям", () => {
@@ -68,22 +45,6 @@ describe("поиск по списку", () => {
   });
 });
 
-describe("выбор галочками", () => {
-  test("переключение даёт новое множество, старое не трогает", () => {
-    const a = new Set(["1"]);
-    const b = toggleIn(a, "2");
-    expect([...b].sort()).toEqual(["1", "2"]);
-    expect([...a]).toEqual(["1"]);
-    expect([...toggleIn(b, "1")]).toEqual(["2"]);
-  });
-
-  test("из выбора уходят те, кого в списке больше нет", () => {
-    /* иначе «3 вибрано» при двух видимых галочках — и действие над невидимым */
-    const kept = keepPresent(new Set(["1", "2", "3"]), [{ userId: "2" }, { userId: "3" }]);
-    expect([...kept].sort()).toEqual(["2", "3"]);
-  });
-});
-
 describe("пометка «обрана»", () => {
   test("испорченная запись в хранилище — пустая пометка, а не падение", () => {
     expect(parseFavorites(null).size).toBe(0);
@@ -92,10 +53,8 @@ describe("пометка «обрана»", () => {
     expect([...parseFavorites('["g1", 7, null, "g2"]')]).toEqual(["g1", "g2"]);
   });
 
-  test("запись и чтение — обратны друг другу", () => {
-    const set = new Set(["g1", "g2"]);
-    expect([...parseFavorites(serializeFavorites(set))]).toEqual(["g1", "g2"]);
-    /* ключ с именем раздела: хранилище общее на всю консоль, чужой список сюда не прочитается */
+  test("ключ прежних отметок — с именем раздела", () => {
+    /* хранилище общее на всю консоль: чужой список сюда не прочитается */
     expect(FAVORITES_KEY).toContain("patientGroups");
   });
 });
@@ -122,13 +81,18 @@ describe("страницы", () => {
 });
 
 describe("навигация раздела «Групи»", () => {
-  test("«Групи» в верхней полосе ведут на группы пациентов, не методик", () => {
+  test("«Групи пацієнтів» в подразделах пациентов ведут на группы пациентов, не методик", () => {
     /*
      * Тихая ошибка: оба адреса называются «Групи», оба открываются, и
-     * глазами их не отличить — только по содержимому экрана.
+     * глазами их не отличить — только по содержимому экрана. Polypsy 2.0
+     * разводит и слова: «Групи пацієнтів» у пациентов, «Групи методик» у
+     * методик.
      */
-    const groups = TOP.find((it) => it.key === "top.groups");
-    expect(groups?.to).toBe("/patient-groups");
+    const all = navAccess({ role: "superadmin" }, () => true);
+    const patients = subNavFor("patients", "/patients", all)!.groups.flatMap((g) => g.items);
+    expect(patients.find((it) => it.label === "sn.patientGroups")?.to).toBe("/patient-groups");
+    const methods = subNavFor("methods", "/surveys", all)!.groups.flatMap((g) => g.items);
+    expect(methods.find((it) => it.label === "adm.groupsTitle")?.to).toBe("/groups");
   });
 
   test("группы методик остались в бургере под своим именем", () => {
@@ -136,7 +100,7 @@ describe("навигация раздела «Групи»", () => {
     const surveyGroups = items.find((i) => i.to === "/groups");
     expect(surveyGroups, "у групп методик не осталось двери").toBeDefined();
     expect(surveyGroups!.key).toBe("adm.groupsTitle");
-    /* и группы пациентов в бургере — под тем же словом, что в полосе */
+    /* и группы пациентов в общем списке разделов (настройка «убрать с глаз») — под своим ключом */
     expect(items.find((i) => i.to === "/patient-groups")?.key).toBe("nav.groups");
   });
 });
@@ -211,5 +175,81 @@ describe("«Призначити тест» выборке: отказ посе�
     const s = server(new Set());
     const outcome = await grantEach(newProgress(), "survey-a|", people, s.grant);
     expect(outcome).toEqual({ done: 8, total: 8, error: null });
+  });
+});
+
+describe("таблица групп", () => {
+  test("код методики берётся из названия, а без кода — название целиком", () => {
+    expect(surveyCode("Депресія (PHQ-9)")).toBe("PHQ-9");
+    expect(surveyCode("Поширені психічні розлади (SRQ-20, ВООЗ)")).toBe("SRQ-20");
+    expect(surveyCode("СР-45. Схильність до суїцидальних реакцій")).toBe("СР-45");
+    // «(демо)» — не код: строчная кириллица
+    expect(surveyCode("Якість сну (демо)")).toBe("Якість сну (демо)");
+  });
+
+  test("день строки: «08.10», чужой год — с годом", () => {
+    const now = new Date(2026, 9, 18);
+    expect(shortDate(new Date(2026, 9, 8, 12).toISOString(), now)).toBe("08.10");
+    expect(shortDate(new Date(2025, 2, 12, 12).toISOString(), now)).toBe("12.03.2025");
+    expect(shortDate("не дата", now)).toBe("—");
+  });
+
+  const g = (over: Partial<Parameters<typeof sortGroups>[0][number] & { ownerId: string; surveyCount: number; doneCount: number }>) => ({
+    favourite: false,
+    changedAt: "2026-10-01T00:00:00.000Z",
+    title: "Б",
+    memberCount: 5,
+    riskCount: 0,
+    ownerId: "me",
+    surveyCount: 1,
+    doneCount: 0,
+    ...over,
+  });
+
+  test("по умолчанию — обрані первыми, затем свежая зміна; равные — по названию", () => {
+    const rows = [
+      g({ title: "Стара", changedAt: "2026-09-01T00:00:00.000Z" }),
+      g({ title: "Обрана стара", favourite: true, changedAt: "2026-08-01T00:00:00.000Z" }),
+      g({ title: "Свіжа", changedAt: "2026-10-10T00:00:00.000Z" }),
+      g({ title: "Альфа", changedAt: "2026-10-10T00:00:00.000Z" }),
+    ];
+    expect(sortGroups(rows, "fav").map((r) => r.title)).toEqual(["Обрана стара", "Альфа", "Свіжа", "Стара"]);
+    expect(sortGroups(rows, "title").map((r) => r.title)[0]).toBe("Альфа");
+    // исходный массив не трогается: это состояние экрана
+    expect(rows[0]!.title).toBe("Стара");
+  });
+
+  test("ризик спершу — по числу людей с ризиком", () => {
+    const rows = [g({ title: "А", riskCount: 0 }), g({ title: "Б", riskCount: 3 }), g({ title: "В", riskCount: 1 })];
+    expect(sortGroups(rows, "risk").map((r) => r.title)).toEqual(["Б", "В", "А"]);
+  });
+
+  test("виды: обрані, веду я, без тестів", () => {
+    expect(inGroupView(g({ favourite: true }), "fav", "me")).toBe(true);
+    expect(inGroupView(g({}), "fav", "me")).toBe(false);
+    expect(inGroupView(g({ ownerId: "other" }), "mine", "me")).toBe(false);
+    expect(inGroupView(g({ surveyCount: 0 }), "notests", "me")).toBe(true);
+    expect(inGroupView(g({ surveyCount: 2 }), "all", null)).toBe(true);
+  });
+
+  test("сводка: ризик по группам, «не пройшли» — только в группах с методиками", () => {
+    const s = groupsSummary([
+      g({ memberCount: 8, riskCount: 2, surveyCount: 2, doneCount: 5 }),
+      g({ memberCount: 4, riskCount: 0, surveyCount: 0, doneCount: 0 }),
+      g({ memberCount: 6, riskCount: 1, surveyCount: 1, doneCount: 6 }),
+    ]);
+    expect(s).toEqual({ groups: 3, members: 18, risk: 3, riskGroups: 2, assigned: 14, waiting: 3 });
+  });
+
+  test("прежние отметки браузера переезжают только туда, где их ещё нет", () => {
+    const local = new Set(["a", "b", "gone"]);
+    expect(favouritesToMove(local, [{ id: "a", favourite: true }, { id: "b", favourite: false }, { id: "c", favourite: false }])).toEqual(["b"]);
+  });
+
+  test("подстановка и формы слова", () => {
+    expect(fill("{n} з {total}", { n: 3, total: 8 })).toBe("3 з 8");
+    expect(fill("{n} і {missing}", { n: 1 })).toBe("1 і {missing}");
+    expect([1, 3, 5, 21, 22, 25].map((n) => pluralForm(n, "uk"))).toEqual(["one", "few", "many", "one", "few", "many"]);
+    expect(pluralForm(2, "en")).toBe("many");
   });
 });

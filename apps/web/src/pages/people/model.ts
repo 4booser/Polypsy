@@ -3,6 +3,7 @@ import {
   type PatientGroup,
   type Role,
   type Sex,
+  type StaffAccount,
   type StaffDirectoryUser,
   type User,
   normalizePhone,
@@ -51,6 +52,16 @@ export interface StaffRow {
    * уже загружены. Без них про ступень лестницы сказать нечего.
    */
   ladder?: string[];
+  /** Когда запись заведена — «У системі з»; у строки «кого я вправе назначать» её нет */
+  createdAt?: string;
+  /** Связана ли запись с Google — только у своей карточки (профиль) */
+  googleLinked?: boolean;
+  /**
+   * Учётная запись глазами реестра 2.0: вход, второй фактор, состояние,
+   * роли, исключения, сколько пациентов ведёт. Приходит со справочником
+   * (`?directory=1`); у своей карточки из профиля её нет.
+   */
+  account?: StaffAccount;
 }
 
 /** Пустая строка и строка из пробелов — не значение: иначе «» стала бы группой */
@@ -75,7 +86,9 @@ export function isStaff(u: Pick<User, "role">): boolean {
  */
 export function fromUser(u: User | StaffDirectoryUser): StaffRow {
   const placement = "placement" in u ? u.placement : null;
+  const account = "account" in u ? u.account : undefined;
   return {
+    ...withAccount(account),
     id: u.id,
     fullName: u.fullName,
     firstName: u.firstName,
@@ -90,6 +103,8 @@ export function fromUser(u: User | StaffDirectoryUser): StaffRow {
     department: clean(placement?.department),
     position: clean(placement?.position) ?? clean(u.position),
     phone: "phone" in u ? clean(u.phone) : null,
+    createdAt: u.createdAt,
+    googleLinked: u.googleLinked,
   };
 }
 
@@ -105,6 +120,7 @@ export function fromUser(u: User | StaffDirectoryUser): StaffRow {
  */
 export function fromAssignable(a: AssignableStaff): StaffRow {
   return {
+    ...withAccount(a.account),
     id: a.id,
     fullName: a.fullName,
     firstName: "",
@@ -120,6 +136,19 @@ export function fromAssignable(a: AssignableStaff): StaffRow {
     position: clean(a.placement?.position) ?? clean(a.position),
     phone: clean(a.phone),
   };
+}
+
+/**
+ * Учётная запись из справочника — и ступени лестницы вместе с ней.
+ *
+ * Справочник 2.0 отдаёт роли каждого сразу (account.roles), и поштучный
+ * запрос карточки прав ради ступени (withLadder в data.ts) для таких строк
+ * не нужен: ladder заполняется здесь. Нет учётной записи (свой профиль,
+ * старый сервер) — ни того ни другого, и правило isAdministrator ведёт себя
+ * как прежде.
+ */
+function withAccount(account: StaffAccount | undefined): Pick<StaffRow, "account" | "ladder"> {
+  return account ? { account, ladder: account.roles.map((r) => r.code) } : {};
 }
 
 /**
@@ -473,4 +502,110 @@ export function cardTitleRole(
   if (kind === "peopleAdmins") return me ? "ppl.roleSuperTitle" : "ppl.roleAdmin";
   if (kind === "peopleStaff") return me ? "ppl.roleAdmin" : "ppl.roleDoctor";
   return me ? "ppl.roleDoctor" : null;
+}
+
+/* ─────────── реестр 2.0: состояние учётной записи и виды ─────────── */
+
+/** Сколько дней без входа — уже повод спросить, работает ли человек */
+export const STALE_DAYS = 30;
+
+/**
+ * Состояние учётной записи одним словом — колонка «Стан» реестра.
+ *
+ *   disabled — выключена (техпанель, причина там же);
+ *   invited  — заведена с временным паролем и ни разу не входила: макет
+ *              называет это «запрошена»;
+ *   temp     — входила, но временный пароль ещё не сменила;
+ *   never    — ни разу не входила, пароль постоянный;
+ *   active   — работает.
+ *
+ * Смен, отпусков и дежурств у сервера нет (см. отчёт участка): «на зміні» и
+ * «вихідний» с макета здесь не выдумываются.
+ */
+export type AccountState = "disabled" | "invited" | "temp" | "never" | "active";
+
+export function accountState(a: StaffAccount | undefined): AccountState | null {
+  if (!a) return null;
+  if (a.disabledAt) return "disabled";
+  if (a.mustChangePassword) return a.lastSeenAt ? "temp" : "invited";
+  return a.lastSeenAt ? "active" : "never";
+}
+
+/** Не входил STALE_DAYS дней и больше — только у действующей записи, которая уже входила */
+export function isStale(a: StaffAccount | undefined, now: number): boolean {
+  if (!a?.lastSeenAt || a.disabledAt) return false;
+  return now - new Date(a.lastSeenAt).getTime() >= STALE_DAYS * 86_400_000;
+}
+
+/** Виды реестра «Лікарі» — пилюли над таблицей */
+export type StaffView = "all" | "nomfa" | "stale" | "invited" | "disabled";
+
+export function inView(row: Pick<StaffRow, "account">, view: StaffView, now: number): boolean {
+  const a = row.account;
+  switch (view) {
+    case "all":
+      return true;
+    case "nomfa":
+      return !!a && !a.mfa && !a.disabledAt;
+    case "stale":
+      return isStale(a, now);
+    case "invited": {
+      const s = accountState(a);
+      return s === "invited" || s === "temp";
+    }
+    case "disabled":
+      return !!a?.disabledAt;
+  }
+}
+
+export function viewCounts(rows: Pick<StaffRow, "account">[], now: number): Record<StaffView, number> {
+  const views: StaffView[] = ["all", "nomfa", "stale", "invited", "disabled"];
+  return Object.fromEntries(views.map((v) => [v, rows.filter((r) => inView(r, v, now)).length])) as Record<StaffView, number>;
+}
+
+/** Порядок реестра из адреса: прежние name|unit|position и новые — по пациентам и по входу */
+export type RegistrySort = StaffSort | "patients" | "seen";
+
+export function parseRegistrySort(v: string | null | undefined): RegistrySort {
+  return v === "patients" || v === "seen" ? v : parseSort(v);
+}
+
+/**
+ * Строки в выбранном порядке. По відділенню и посаді — группами, как раньше
+ * (groupStaff: «без відділення» последней), внутри — по имени; по пациентам
+ * и по входу — сначала больше и свежее, пустые в конце.
+ */
+export function orderRegistry<T extends StaffRow>(rows: T[], sort: RegistrySort): T[] {
+  if (sort === "unit" || sort === "position") return groupStaff(rows, sort).flatMap((g) => g.rows);
+  const byName = sortByName(rows);
+  if (sort === "patients") return [...byName].sort((a, b) => (b.account?.patients ?? -1) - (a.account?.patients ?? -1));
+  if (sort === "seen") {
+    const at = (r: T) => (r.account?.lastSeenAt ? new Date(r.account.lastSeenAt).getTime() : -1);
+    return [...byName].sort((a, b) => at(b) - at(a));
+  }
+  return byName;
+}
+
+/**
+ * Роль строкой реестра: старшая ступень лестницы, иначе своя роль
+ * учреждения, иначе встроенная. Встроенную «Психолог» сервер выдаёт каждому,
+ * и рядом со ступенью она ничего не сообщает — её видно в карточке.
+ */
+export function mainRole(row: Pick<StaffRow, "role" | "account">): { code: string; title: string } | null {
+  const roles = row.account?.roles ?? [];
+  if (!roles.length) return null;
+  const ranked = [...roles].sort((a, b) => roleRank(b.code) - roleRank(a.code));
+  const top = ranked[0]!;
+  if (roleRank(top.code) > 0) return top;
+  return roles.find((r) => r.code !== "psychologist") ?? top;
+}
+
+/** Учётные записи на ступени: сколько людей стоит на каждой — «Ланцюжок призначення» */
+export function ladderCounts(rows: Pick<StaffRow, "role" | "account">[]): Map<number, number> {
+  const out = new Map<number, number>();
+  for (const r of rows) {
+    const rank = r.role === "superadmin" ? -1 : (r.account?.ladderRank ?? 0);
+    out.set(rank, (out.get(rank) ?? 0) + 1);
+  }
+  return out;
 }

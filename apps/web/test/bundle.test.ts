@@ -1,6 +1,8 @@
-import { describe, expect, test } from "bun:test";
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { afterAll, describe, expect, test } from "bun:test";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
+import { gzipSync } from "node:zlib";
 
 /**
  * Сторож начального куска консоли (волна 12, разбор кода: «весь бандл
@@ -64,6 +66,12 @@ function initialGraph() {
     modules.add(file);
     // общий пакет берётся по именам (см. ниже), а не по export * — иначе в граф попал бы весь пакет
     if (file.startsWith(SHARED)) continue;
+    /*
+     * Источник словаря для проверок: в сборке его подменяет плагин
+     * (dictionaryPlugin.ts) куском языка, и его импорты UI и ERRORS в
+     * начальный кусок не попадают.
+     */
+    if (rel(file) === "dictionary/source.ts") continue;
     for (const { spec, names } of staticImports(readFileSync(file, "utf8"))) {
       if (spec.endsWith(".css")) continue;
       if (spec === "@quizzy/shared") {
@@ -104,6 +112,21 @@ describe("начальный кусок консоли", () => {
       "shell/CommandPalette.tsx",
       "ui/virtualRows.tsx",
       "pages/constructor/index.tsx",
+      /*
+       * Точка входа набора и части, которые первому экрану не нужны (волна
+       * 27): оболочка берёт свои части из их модулей напрямую (ui/toast,
+       * ui/states, ui/Drawer, ui/strokeIcons…), иначе `export *` точки
+       * входа тянул в начальный кусок таблицу, фильтры и окна. Части
+       * кабинета пациента и модель записи — тоже: листу падения нужны
+       * только строки-звонки (patient/callRows.tsx), клиенту API — только
+       * имя файла записи (components/recorder/audioFile.ts).
+       */
+      "ui/index.tsx",
+      "ui/DataTable.tsx",
+      "ui/filters.tsx",
+      "ui/records.tsx",
+      "patient/parts.tsx",
+      "components/recorder/model.ts",
     ];
     const inside = [...graph.modules].map(rel).filter((m) => heavy.includes(m));
     expect(inside).toEqual([]);
@@ -129,21 +152,66 @@ describe("начальный кусок консоли", () => {
     expect(withZod).toEqual([]);
   });
 
+  test("из общего пакета — без справочников на трёх языках", () => {
+    /*
+     * Модуль прав держит справочник прав на трёх языках (названия, что
+     * открывает каждое право), а начальному куску из него нужны лишь
+     * ступень роли и пункты рельсы, которые нельзя спрятать: они живут в
+     * ladder.ts и alwaysVisible.ts (волна 27). Словарь интерфейса консоль
+     * берёт у себя (src/dictionary), и из uiStrings.ts в начальном куске —
+     * только выбор языка браузера.
+     */
+    const modules = new Map([...graph.sharedNames].map((n) => [n, sharedModuleOf(n)] as const));
+    const fromPermissions = [...modules].filter(([, m]) => m?.endsWith("/permissions.ts")).map(([n]) => n);
+    expect(fromPermissions).toEqual([]);
+    const fromDictionary = [...modules].filter(([, m]) => m?.endsWith("/uiStrings.ts")).map(([n]) => n);
+    expect(fromDictionary.filter((n) => n !== "detectLang")).toEqual([]);
+  });
+
   test("проверка видит то, что проверяет: вход и оболочка в графе есть", () => {
     // без этого пустой граф (сломанный разбор импортов) проходил бы все проверки выше
     const mods = [...graph.modules].map(rel);
     expect(mods).toContain("App.tsx");
     expect(mods).toContain("pages/Login.tsx");
-    expect(mods).toContain("shell/Topbar.tsx");
+    expect(mods).toContain("shell/AppBar.tsx");
+    expect(mods).toContain("shell/Rail.tsx");
     expect(graph.packages.has("react-router-dom")).toBe(true);
     expect(graph.sharedNames.size).toBeGreaterThan(10);
   });
 
-  test("начальный кусок делится: React и словарь — своими файлами", () => {
+  test("начальный кусок делится: React — своим файлом, словарь — куском на язык", () => {
     const config = readFileSync(resolve(import.meta.dir, "../vite.config.ts"), "utf8");
     expect(config).toContain("manualChunks");
     expect(config).toMatch(/return "react"/);
-    expect(config).toMatch(/uiStrings\.ts"\)\) return "strings"/);
+    // словарь — плагином: ядро куском на язык, строки экранов — с экранами (dictionaryPlugin.ts)
+    expect(config).toContain("dictionaryByLanguage()");
+    expect(config).toContain("languageChunk(id)");
+  });
+
+  test("словарь консоль берёт у себя, а не трёхъязычным целым из общего пакета", () => {
+    /*
+     * makeUiT, uiText и renderError из "@quizzy/shared" вернули бы в сборку
+     * весь словарь на трёх языках — 1,4 МБ, ради которых его и разбили по
+     * языку и по экрану (волна 27). У консоли свои с теми же подписями —
+     * src/dictionary. Значениями UI и ERRORS берёт лишь источник для
+     * проверок (src/dictionary/source.ts), и в сборке его подменяет плагин.
+     */
+    const FULL = new Set(["UI", "ERRORS", "PUSH", "makeUiT", "uiText", "renderError", "untranslatedEn", "EMPTY_BY_DESIGN_EN"]);
+    const offenders: string[] = [];
+    const walk = (dir: string) => {
+      for (const name of readdirSync(dir)) {
+        const full = join(dir, name);
+        if (statSync(full).isDirectory()) walk(full);
+        else if (/\.tsx?$/.test(name) && rel(full) !== "dictionary/source.ts") {
+          for (const { spec, names } of staticImports(readFileSync(full, "utf8"))) {
+            if (spec !== "@quizzy/shared") continue;
+            for (const n of names) if (FULL.has(n)) offenders.push(`${rel(full)}: ${n}`);
+          }
+        }
+      }
+    };
+    walk(SRC);
+    expect(offenders, "переводчик консоли — из src/dictionary, а не из общего пакета").toEqual([]);
   });
 });
 
@@ -174,4 +242,92 @@ describe("отладочный вывод", () => {
     walk(SRC);
     expect(found).toEqual([]);
   });
+});
+
+/*
+ * Бюджет начальной загрузки — по настоящей сборке (волна 27, perf-bundle).
+ *
+ * Сторож выше идёт по графу импортов и ловит «тяжёлый модуль попал в
+ * начальный кусок». Чего граф не видит — веса: модуль, оставшийся на месте,
+ * может вырасти вдвое. Поэтому здесь консоль собирается целиком (Vite в
+ * отдельном процессе, во временный каталог) и меряется то, что браузер
+ * качает до первого экрана: вход (index), куски из modulepreload (react),
+ * стили и кусок словаря выбранного языка (strings-uk; ru и en не больше).
+ *
+ * Волна 27 сняла начальную загрузку с 2250 КБ (626 КБ gzip) до 759 КБ
+ * (212 КБ gzip): словарь по языку и по экрану, точка входа набора мимо
+ * оболочки, справочник прав и модель записи вне начального куска,
+ * наследие стилей без мёртвых правил. Пределы ниже — эти числа с запасом
+ * в несколько процентов на обычный рост; превысили — значит, в начальный
+ * кусок что-то приехало, и это надо найти (BUILD_SOURCEMAP=1 и карта
+ * исходников покажут, что именно), а не поднять предел.
+ */
+const BUDGET = {
+  /** вход, modulepreload, стили и кусок словаря одного языка */
+  initialRaw: 800_000,
+  initialGzip: 225_000,
+  /** сама консоль: оболочка, вход, набор */
+  entryRaw: 295_000,
+  /** ядро словаря одного языка: строки входа, оболочки и набора */
+  stringsRaw: 45_000,
+  /** стили целиком: утилиты, токены, наследие, набор */
+  cssRaw: 175_000,
+};
+
+describe("бюджет начальной загрузки", () => {
+  const WEB = resolve(import.meta.dir, "..");
+  const out = mkdtempSync(join(tmpdir(), "quizzy-bundle-"));
+  afterAll(() => rmSync(out, { recursive: true, force: true }));
+
+  let built: Promise<{ html: string; size: (path: string) => { raw: number; gzip: number }; assets: string[] }> | null = null;
+  const build = () =>
+    (built ??= (async () => {
+      const proc = Bun.spawn(
+        [process.execPath, resolve(WEB, "../../node_modules/vite/bin/vite.js"), "build", "--outDir", out, "--emptyOutDir", "--logLevel", "error"],
+        /*
+         * NODE_ENV — боевой явно: bun test ставит «test», Vite его сохраняет,
+         * и в сборку уезжал бы отладочный React — вдвое тяжелее того, что
+         * получает браузер.
+         */
+        { cwd: WEB, stdout: "pipe", stderr: "pipe", env: { ...process.env, NODE_ENV: "production" } },
+      );
+      const code = await proc.exited;
+      if (code !== 0) throw new Error(`vite build: ${code}\n${await new Response(proc.stderr).text()}`);
+      const html = readFileSync(join(out, "index.html"), "utf8");
+      const size = (path: string) => {
+        const buf = readFileSync(join(out, path.replace(/^\//, "")));
+        return { raw: buf.length, gzip: gzipSync(buf).length };
+      };
+      return { html, size, assets: readdirSync(join(out, "assets")) };
+    })());
+
+  test(
+    "в начальной загрузке — вход, React, стили и словарь одного языка; всё в бюджете",
+    async () => {
+      const { html, size, assets } = await build();
+      const entry = [...html.matchAll(/<script type="module"[^>]*src="([^"]+)"/g)].map((m) => m[1]!);
+      const preload = [...html.matchAll(/<link rel="modulepreload"[^>]*href="([^"]+)"/g)].map((m) => m[1]!);
+      const css = [...html.matchAll(/<link rel="stylesheet"[^>]*href="([^"]+)"/g)].map((m) => m[1]!);
+      const strings = assets.filter((a) => /^strings-(uk|ru|en)-.*\.js$/.test(a));
+
+      expect(entry).toHaveLength(1);
+      // словарь в предзагрузку ставит скрипт по выбранному языку, а не сборщик — всем трём
+      expect(preload.filter((p) => p.includes("strings-"))).toEqual([]);
+      expect(strings.map((a) => a.split("-")[1]).sort()).toEqual(["en", "ru", "uk"]);
+      expect(html).toContain('k.rel="modulepreload"');
+
+      const parts = [...entry, ...preload, ...css].map(size);
+      const largestStrings = Math.max(...strings.map((a) => size(`assets/${a}`).raw));
+      const uk = size(`assets/${strings.find((a) => a.startsWith("strings-uk-"))!}`);
+      const total = { raw: parts.reduce((n, p) => n + p.raw, 0) + uk.raw, gzip: parts.reduce((n, p) => n + p.gzip, 0) + uk.gzip };
+      const report = JSON.stringify({ total, entry: size(entry[0]!), css: css.map(size), largestStrings });
+
+      expect(total.raw, report).toBeLessThanOrEqual(BUDGET.initialRaw);
+      expect(total.gzip, report).toBeLessThanOrEqual(BUDGET.initialGzip);
+      expect(size(entry[0]!).raw, report).toBeLessThanOrEqual(BUDGET.entryRaw);
+      expect(largestStrings, report).toBeLessThanOrEqual(BUDGET.stringsRaw);
+      for (const c of css) expect(size(c).raw, report).toBeLessThanOrEqual(BUDGET.cssRaw);
+    },
+    180_000,
+  );
 });

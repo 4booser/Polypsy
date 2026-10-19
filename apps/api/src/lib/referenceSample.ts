@@ -1,14 +1,13 @@
-import { and, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import type { SurveyFull } from "@quizzy/shared";
 import { db } from "../db";
 import { asSystem } from "../db/context";
-import { inIds } from "../db/ids";
-import { inIndexOrder } from "../db/latest";
+import { systemInIndexOrder } from "../db/latest";
 import { responseScores, responses, scales } from "../db/schema";
 import { rawSignature, valueSignature } from "./comparable";
 import { percentileOf } from "./norms";
 import { patientRespondent } from "./population";
-import { getSurvey } from "./surveys";
+import { surveysAtVersions, versionKey } from "./surveys";
 
 /**
  * Референтная выборка для перцентиля — в печатном листе (волна 15, внешний
@@ -164,8 +163,35 @@ export async function referenceSamples(
   measure: Measure,
   targets: readonly SampleTarget[],
 ): Promise<(target: SampleTarget) => number[]> {
-  const pick = await referenceObservationSets(surveyId, measure, targets, () => true, REFERENCE_LATEST);
-  return (target) => pick(target).map((o) => o.value);
+  return (await referenceSampleSets([{ surveyId, targets }], measure)).get(surveyId) ?? (() => []);
+}
+
+/** Методика и её точки — один вопрос к referenceSampleSets */
+export interface SampleRequest {
+  surveyId: string;
+  targets: readonly SampleTarget[];
+}
+
+/**
+ * referenceSamples для нескольких методик сразу — ответ: «методика → выборка
+ * для точки». Политика выборки та же, что выше; разница только в чтении.
+ *
+ * Динамика человека спрашивает выборку на каждую его методику, и прежде это
+ * было по семь обращений к базе на методику: последние прохождения, их
+ * баллы, строка методики и роль на каждую версию. На карточке с семью
+ * методиками — сорок девять обращений и семь проходов по баллам, и всё это
+ * под той же транзакцией, что держит соединение пула (волна 27: 0,9 с на
+ * прогретом стенде, 4–23 с на нагруженном). Теперь методики читаются одним
+ * запросом (observationSets ниже), а их версии — одним заходом.
+ */
+export async function referenceSampleSets(
+  requests: readonly SampleRequest[],
+  measure: Measure,
+): Promise<Map<string, (target: SampleTarget) => number[]>> {
+  const sets = await observationSets(requests, measure, () => true, REFERENCE_LATEST);
+  const out = new Map<string, (target: SampleTarget) => number[]>();
+  for (const [surveyId, pick] of sets) out.set(surveyId, (target) => pick(target).map((o) => o.value));
+  return out;
 }
 
 /**
@@ -202,95 +228,97 @@ export async function referenceObservationSets(
   /** Только последние столько прохождений методики (REFERENCE_LATEST); не задано — все */
   latest?: number,
 ): Promise<(target: SampleTarget) => Observation[]> {
-  const codes = [...new Set(targets.map((t) => t.code))];
-  if (!codes.length) return () => [];
+  return (await observationSets([{ surveyId, targets }], measure, keep, latest)).get(surveyId) ?? (() => []);
+}
 
-  /*
-   * Последние прохождения — отдельным запросом и путём по индексу
-   * (survey_id, submitted_at), а не перебором всех (db/latest.ts); условия
-   * отбора — те же, что у самой выборки ниже.
-   */
-  const recent = latest
-    ? (
-        await asSystem(() =>
-          inIndexOrder(() =>
-            db
-              .select({ id: responses.id })
-              .from(responses)
-              .where(
-                and(
-                  eq(responses.surveyId, surveyId),
-                  eq(responses.status, "completed"),
-                  eq(responses.reliable, true),
-                  isNotNull(responses.userId),
-                  patientRespondent("responses"),
-                ),
-              )
-              .orderBy(desc(responses.submittedAt))
-              .limit(latest),
-          ),
-        )
-      ).map((r) => r.id)
-    : null;
-  if (recent && !recent.length) return () => [];
+/** Наблюдение, как его отдаёт чтение: с кодом шкалы и методикой */
+type CodedObservation = Observation & { surveyId: string; code: string };
 
-  const rows = await asSystem(() =>
-    db
-      .select({
-        responseId: responses.id,
-        userId: responses.userId,
-        versionId: responses.versionId,
-        reliable: responses.reliable,
-        submittedAt: responses.submittedAt,
-        /*
-         * «Сырой» у листа — балл до нормировки, но ПОСЛЕ поправок (#133): лист
-         * печатает его «з максимуму», и максимум записан тоже после поправок.
-         * Сырой балл без поправок у ЛАП МЛО — всегда 0, и выборка из одних
-         * нулей давала 50-й перцентиль любому человеку. У строк до волны 18
-         * балла после поправок нет (0118) — там он и есть сырой.
-         */
-        value:
-          measure === "raw"
-            ? sql<number>`coalesce(${responseScores.correctedScore}, ${responseScores.rawScore})`
-            : responseScores.value,
-        maxScore: responseScores.maxScore,
-        unit: measure === "raw" ? sql<string>`'raw'` : responseScores.normalization,
-        code: scales.code,
-      })
-      .from(responseScores)
-      .innerJoin(responses, eq(responses.id, responseScores.responseId))
-      .innerJoin(scales, eq(scales.id, responseScores.scaleId))
-      .where(
-        and(
-          eq(responses.surveyId, surveyId),
-          recent ? inIds(responses.id, recent) : undefined,
-          eq(responses.status, "completed"),
-          /* то же, что отсечёт политика, — отсекается и здесь: меньше строк тащить */
-          eq(responses.reliable, true),
-          isNotNull(responses.userId),
-          patientRespondent("responses"),
-          inArray(scales.code, codes),
-          measure === "value" ? eq(responseScores.normalized, true) : undefined,
-        ),
-      ),
-  );
-
-  /*
-   * Отпечатки — у каждой версии, встреченной в выборке или в точках; методика
-   * версии читается один раз. Версия точки совместима с собой без сравнения,
-   * даже если отпечатка у неё нет.
-   */
-  const signatureOf = measure === "raw" ? rawSignature : valueSignature;
-  const signatures = new Map<string, Map<string, string | null>>();
-  const versionIds = new Set([
-    ...rows.map((r) => r.versionId).filter((v): v is string => !!v),
-    ...targets.map((t) => t.versionId),
-  ]);
-  for (const versionId of versionIds) {
-    const full = await asSystem(() => getSurvey(surveyId, versionId, "uk"));
-    signatures.set(versionId, new Map(codes.map((code) => [code, full ? signatureOf(full, code) : null])));
+/**
+ * Выборки нескольких методик: «методика → наблюдения для точки». Методика
+ * без кодов или без единого наблюдения отвечает пустой выборкой.
+ */
+async function observationSets(
+  requests: readonly SampleRequest[],
+  measure: Measure,
+  keep: (o: Observation) => boolean,
+  latest: number | undefined,
+): Promise<Map<string, (target: SampleTarget) => Observation[]>> {
+  const codesOf = new Map<string, string[]>();
+  for (const { surveyId, targets } of requests) {
+    const codes = new Set([...(codesOf.get(surveyId) ?? []), ...targets.map((t) => t.code)]);
+    codesOf.set(surveyId, [...codes]);
   }
+  const asked = [...codesOf.entries()].filter(([, codes]) => codes.length);
+  const out = new Map<string, (target: SampleTarget) => Observation[]>();
+  if (!asked.length) return out;
 
+  /*
+   * Наблюдения и отпечатки — одним переключением роли: с пределом — вместе с
+   * путём по индексу (systemInIndexOrder), без предела — как прежде, одной
+   * ролью (asSystem).
+   */
+  const load = async () => {
+    const rows = await readObservations(asked, measure, latest);
+    const rowsOf = new Map<string, CodedObservation[]>();
+    for (const r of rows) {
+      const list = rowsOf.get(r.surveyId) ?? [];
+      list.push(r);
+      rowsOf.set(r.surveyId, list);
+    }
+
+    /*
+     * Отпечатки — у каждой версии, встреченной в выборке или в точках; каждая
+     * версия читается один раз, все методики — одним заходом
+     * (surveysAtVersions). Версия точки совместима с собой без сравнения, даже
+     * если отпечатка у неё нет. Методике без наблюдений отпечатки не нужны:
+     * её выборка пуста при любой совместимости.
+     */
+    const versionsOf = new Map<string, Set<string>>();
+    for (const [surveyId] of asked) {
+      const own = rowsOf.get(surveyId);
+      if (!own?.length) continue;
+      versionsOf.set(
+        surveyId,
+        new Set([
+          ...own.map((r) => r.versionId).filter((v): v is string => !!v),
+          ...requests.filter((q) => q.surveyId === surveyId).flatMap((q) => q.targets.map((t) => t.versionId)),
+        ]),
+      );
+    }
+    const fulls = await surveysAtVersions(
+      [...versionsOf.entries()].flatMap(([surveyId, versions]) =>
+        [...versions].map((versionId) => ({ surveyId, versionId })),
+      ),
+      "uk",
+    );
+    return { rowsOf, versionsOf, fulls };
+  };
+  const { rowsOf, versionsOf, fulls } = await (latest === undefined ? asSystem(load) : systemInIndexOrder(load));
+
+  const signatureOf = measure === "raw" ? rawSignature : valueSignature;
+  for (const [surveyId, codes] of asked) {
+    const versions = versionsOf.get(surveyId);
+    if (!versions) {
+      out.set(surveyId, () => []);
+      continue;
+    }
+    const signatures = new Map<string, Map<string, string | null>>();
+    for (const versionId of versions) {
+      const full = fulls.get(versionKey(surveyId, versionId)) ?? null;
+      signatures.set(versionId, new Map(codes.map((code) => [code, full ? signatureOf(full, code) : null])));
+    }
+    out.set(surveyId, pickerOf(rowsOf.get(surveyId) ?? [], signatures, keep));
+  }
+  return out;
+}
+
+/** Выборка для точки — по прочитанным наблюдениям одной методики и отпечаткам её версий */
+function pickerOf(
+  rows: readonly CodedObservation[],
+  signatures: Map<string, Map<string, string | null>>,
+  keep: (o: Observation) => boolean,
+): (target: SampleTarget) => Observation[] {
   const byCode = new Map<string, Observation[]>();
   for (const r of rows) {
     if (!keep(r)) continue;
@@ -317,6 +345,136 @@ export async function referenceObservationSets(
     memo.set(key, sample);
     return sample;
   };
+}
+
+/*
+ * «Не сотрудник» — подзапросом без отсылки к строке. patientRespondent
+ * (lib/population.ts) пишет то же самое через NOT EXISTS, и внутри LATERAL
+ * планировщик исполнял его пробой индекса людей на каждое прохождение:
+ * 28 тыс. проб и 85 тыс. обращений к буферам на семь методик одного
+ * человека, треть всего чтения. NOT IN по множеству сотрудников — один
+ * проход по людям и хэш. Равносильно здесь, и только здесь: users.id —
+ * первичный ключ (NULL в подзапросе нет), а user_id выборки уже отсечён
+ * «is not null» (для NULL NOT IN дал бы «неизвестно», а NOT EXISTS — «да»).
+ */
+const notStaff = (alias: string) =>
+  sql`${sql.raw(alias)}.user_id not in (select staff_u.id from users staff_u where staff_u.role <> 'user')`;
+
+/**
+ * Наблюдения — баллы шкал с нужными кодами у достоверных прохождений
+ * обследуемых. Роль — системную — ставит вызывающий (observationSets,
+ * см. referenceSamples), с пределом — и путь по индексу.
+ *
+ * С пределом (`latest`) — одним запросом на все методики: последние
+ * прохождения каждой — LATERAL по индексу (survey_id, submitted_at) путём
+ * по порядку (db/latest.ts), и баллы к ним — в том же запросе. Прежде это
+ * были два запроса на методику: список id последних прохождений и затем
+ * баллы «где id в списке» — пять тысяч id туда и обратно и второй проход по
+ * тем же прохождениям ради условий, уже проверенных первым. Условия отбора
+ * — те же, что прежде, и у списка, и у баллов.
+ *
+ * Без предела (возрастные кривые) — как прежде: все прохождения методики.
+ */
+async function readObservations(
+  asked: readonly [surveyId: string, codes: string[]][],
+  measure: Measure,
+  latest: number | undefined,
+): Promise<CodedObservation[]> {
+  if (latest === undefined) {
+    const all: CodedObservation[] = [];
+    for (const [surveyId, codes] of asked) {
+      const rows = await db
+          .select({
+            surveyId: responses.surveyId,
+            responseId: responses.id,
+            userId: responses.userId,
+            versionId: responses.versionId,
+            reliable: responses.reliable,
+            submittedAt: responses.submittedAt,
+            /*
+             * «Сырой» у листа — балл до нормировки, но ПОСЛЕ поправок (#133): лист
+             * печатает его «з максимуму», и максимум записан тоже после поправок.
+             * Сырой балл без поправок у ЛАП МЛО — всегда 0, и выборка из одних
+             * нулей давала 50-й перцентиль любому человеку. У строк до волны 18
+             * балла после поправок нет (0118) — там он и есть сырой.
+             */
+            value:
+              measure === "raw"
+                ? sql<number>`coalesce(${responseScores.correctedScore}, ${responseScores.rawScore})`
+                : responseScores.value,
+            maxScore: responseScores.maxScore,
+            unit: measure === "raw" ? sql<string>`'raw'` : responseScores.normalization,
+            code: scales.code,
+          })
+          .from(responseScores)
+          .innerJoin(responses, eq(responses.id, responseScores.responseId))
+          .innerJoin(scales, eq(scales.id, responseScores.scaleId))
+          .where(
+            and(
+              eq(responses.surveyId, surveyId),
+              eq(responses.status, "completed"),
+              /* то же, что отсечёт политика, — отсекается и здесь: меньше строк тащить */
+              eq(responses.reliable, true),
+              isNotNull(responses.userId),
+              patientRespondent("responses"),
+              inArray(scales.code, codes),
+              measure === "value" ? eq(responseScores.normalized, true) : undefined,
+            ),
+          );
+      all.push(...rows);
+    }
+    return all;
+  }
+
+  /*
+   * Шкалы с нужными кодами — заранее, маленьким запросом, и в большой идут
+   * их id: соединение со шкалами на каждую из 38 тыс. строк баллов было
+   * четвертью времени чтения (лишняя проба индекса шкал на строку). Шкалы —
+   * той же методики: баллы прохождения пишутся по шкалам его версии, а
+   * версия — этой методики. Сортировка — ровно по колонкам индекса
+   * (survey_id, submitted_at): иначе путь по индексу не поможет
+   * (db/latest.ts). Значение «сырого» у листа — как в запросе без предела выше.
+   */
+  const targets = await db
+    .select({ id: scales.id, code: scales.code, surveyId: scales.surveyId })
+    .from(scales)
+    .where(
+      and(
+        inArray(scales.surveyId, asked.map(([surveyId]) => surveyId)),
+        inArray(scales.code, [...new Set(asked.flatMap(([, codes]) => codes))]),
+      ),
+    );
+  const codeOf = new Map(targets.map((s) => [s.id, s.code]));
+  const asks = asked
+    .map(([surveyId, codes]) => ({
+      survey_id: surveyId,
+      scale_ids: targets.filter((s) => s.surveyId === surveyId && codes.includes(s.code)).map((s) => s.id),
+    }))
+    .filter((a) => a.scale_ids.length);
+  if (!asks.length) return [];
+  const rows = (await db.execute(sql`
+    select r.survey_id as "surveyId", r.id as "responseId", r.user_id as "userId",
+           r.version_id as "versionId", r.reliable, r.submitted_at as "submittedAt",
+           ${measure === "raw" ? sql`coalesce(rs.corrected_score, rs.raw_score)` : sql`rs.value`} as value,
+           rs.max_score as "maxScore",
+           ${measure === "raw" ? sql`'raw'` : sql`rs.normalization`} as unit,
+           rs.scale_id as "scaleId"
+    from jsonb_to_recordset(${JSON.stringify(asks)}::jsonb) as p(survey_id text, scale_ids text[])
+    cross join lateral (
+      select x.id, x.survey_id, x.user_id, x.version_id, x.reliable, x.submitted_at
+      from responses x
+      where x.survey_id = p.survey_id
+        and x.status = 'completed'
+        and x.reliable = true
+        and x.user_id is not null
+        and ${notStaff("x")}
+      order by x.submitted_at desc
+      limit ${latest}::int
+    ) r
+    join response_scores rs on rs.response_id = r.id and rs.scale_id = any(p.scale_ids)
+      ${measure === "value" ? sql`and rs.normalized = true` : sql``}
+  `)) as unknown as (Omit<CodedObservation, "code"> & { scaleId: string })[];
+  return rows.map(({ scaleId, ...r }) => ({ ...r, code: codeOf.get(scaleId)! }));
 }
 
 /**

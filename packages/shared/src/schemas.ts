@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ALWAYS_VISIBLE_RAIL } from "./permissions";
+import { ALWAYS_VISIBLE_RAIL, ALWAYS_VISIBLE_WIDGETS, DASH_WIDGETS } from "./alwaysVisible";
 import { CONTENT_LANGS, LANGS, type ContentLang } from "./types";
 import { calendarDay, dateInput } from "./dates";
 
@@ -169,6 +169,13 @@ export const createUserSchema = z.object({
   email: z.string().email(),
   password: z.string().min(8).max(128),
   ...personNameSchema,
+  /*
+   * Анкета — сразу при заведении (форма «Додати лікаря», 2.0): пол, дата
+   * рождения, подразделение, должность, специализация, населённый пункт. Те
+   * же поля и те же границы, что у правки своей анкеты; без них сотрудник
+   * дописывал бы их сам после первого входа.
+   */
+  ...profileFields,
   role: roleSchema,
   /**
    * Пароль временный: при первом входе консоль требует сменить его.
@@ -190,15 +197,18 @@ export const createUserSchema = z.object({
  * списка пациентов: ФИО шифровано, упорядочить и найти его в SQL нечем.
  * Поиск — по ФИО, почте и телефону (телефон — слепым индексом, см. маршрут).
  * Роль и состояние — закрытыми списками: опечатка в `?status=disabld`
- * должна давать отказ, а не молча весь реестр.
+ * должна давать отказ, а не молча весь реестр. Роль «staff» — весь персонал
+ * (суперадмины и администраторы групп): вкладка «Персонал» реестра.
  */
+export const registryRole = z.enum(["superadmin", "admin", "user", "staff"]);
+
 export const opsUserListQuery = z.object({
   q: z
     .string()
     .max(120)
     .optional()
     .transform((v) => (v ?? "").trim().toLowerCase()),
-  role: z.enum(["superadmin", "admin", "user"]).optional(),
+  role: registryRole.optional(),
   status: z.enum(["active", "disabled"]).optional(),
   sort: z.enum(["name", "created", "lastSeen", "role"]).optional().default("name"),
   page: z
@@ -224,9 +234,15 @@ export const disableUserSchema = z.object({
   reason: z.string().trim().min(3).max(500),
 });
 
-/** Активные сессии (GET /api/ops/sessions): по человеку или поиском, страницами */
+/**
+ * Активные сессии (GET /api/ops/sessions): по человеку или поиском, страницами.
+ * Роль (как у реестра, «staff» — весь персонал) и возраст сессии от входа —
+ * закрытыми списками: отбор «сесії пацієнтів старші за 30 днів» из сводки.
+ */
 export const opsSessionQuery = z.object({
   userId: z.string().uuid().optional(),
+  role: registryRole.optional(),
+  age: z.enum(["day", "week", "month", "older"]).optional(),
   q: z
     .string()
     .max(120)
@@ -261,6 +277,20 @@ export const staffDirectoryQuery = z.object({
     .optional()
     .transform((v) => v === "1"),
 });
+
+/**
+ * Передача пациентов другому лікарю (карточка фахівця, 2.0).
+ *
+ * Переходит закрепление ведущим — а с ним переписка и место в очереди нового
+ * лікаря. История, заключения и подписи остаются за авторами: их никто не
+ * переписывает. Причина обязательна — она идёт в журнал с каждым человеком.
+ */
+export const transferPatientsSchema = z.object({
+  patientIds: z.array(z.string().min(1).max(64)).min(1).max(200),
+  to: z.string().min(1).max(64),
+  reason: z.string().trim().min(10).max(500),
+});
+export type TransferPatientsInput = z.infer<typeof transferPatientsSchema>;
 
 /* ─────────────── техпанель: люди и безопасность (участок people2) ─────────────── */
 
@@ -343,7 +373,7 @@ export const opsUserIdsQuery = z.object({
     .max(120)
     .optional()
     .transform((v) => (v ?? "").trim().toLowerCase()),
-  role: z.enum(["superadmin", "admin", "user"]).optional(),
+  role: registryRole.optional(),
   status: z.enum(["active", "disabled"]).optional(),
 });
 
@@ -1208,17 +1238,31 @@ export const dateRangeQuery = z.object({
 });
 
 /**
+ * Идентификатор группы пациентов в параметре запроса — формой id, а не uuid.
+ *
+ * patient_groups.id — text. Группы, заведённые кнопкой, получают uuid, а у
+ * групп посева и demo-fill постоянные id вида «demo-pg-risk»
+ * (seed/demoGroupsRules.ts), и в живых базах они уже лежат. Проверка как uuid
+ * отвечала на них 400: «Стан групи» демо-группы стоял отказом, а «з ризиком»
+ * вёл в очередь случаев с ошибкой. Буквы, цифры, дефис и подчёркивание до 64
+ * знаков покрывают обе формы и по-прежнему не пускают в условие что угодно;
+ * чужая или несуществующая группа — «не найдено» (assertPatientGroupAccess).
+ */
+export const PATIENT_GROUP_ID = /^[\w-]{1,64}$/;
+export const patientGroupRef = z.string().regex(PATIENT_GROUP_ID);
+
+/**
  * Срез аналитики методики: период, версия, один человек или группа людей.
  *
  * Идентификаторы проверяются формой, а не только существованием: строка в
  * параметре уходит в условие запроса, и «что угодно длиной до мегабайта»
  * там не нужно. Версия — не uuid по форме у старых записей, поэтому только
- * длиной.
+ * длиной; группа пациентов — формой id (patientGroupRef).
  */
 export const surveyAnalyticsQuery = dateRangeQuery.extend({
   versionId: z.string().max(64).optional(),
   userId: z.string().uuid().optional(),
-  patientGroup: z.string().uuid().optional(),
+  patientGroup: patientGroupRef.optional(),
 });
 
 /**
@@ -1241,10 +1285,33 @@ export const surveyAnalyticsQuery = dateRangeQuery.extend({
  */
 export const AUDIT_OFFSET_MAX = 5_000;
 
+/**
+ * Несколько действий одним отбором — `actions`, коды через запятую (волна 27).
+ *
+ * «Адміністратори» показывают журнал назначений — пять действий сразу, доступ
+ * методики — выдачи и отзывы. По одному действию на запрос это пять и два
+ * чтения журнала на каждое открытие экрана, и у каждого свой счёт и своя
+ * строка audit.read. Одним отбором — одно чтение, и восемь последних строк
+ * по всем действиям вместе те же, что восемь последних из каждого, сведённые
+ * и обрезанные на экране. Пустой список — отбора нет, как и без параметра;
+ * кодов не больше двадцати: это отбор, а не перечень журнала.
+ */
+export const AUDIT_ACTIONS_MAX = 20;
+const auditActions = z
+  .string()
+  .max(AUDIT_ACTIONS_MAX * 65)
+  .optional()
+  .transform((raw) => {
+    const codes = [...new Set((raw ?? "").split(",").map((s) => s.trim()).filter(Boolean))];
+    return codes.length ? codes : undefined;
+  })
+  .pipe(z.array(z.string().max(64)).max(AUDIT_ACTIONS_MAX).optional());
+
 export const auditQuery = dateRangeQuery.extend({
   limit: queryInt(1, 500, 100),
   offset: queryInt(0, AUDIT_OFFSET_MAX, 0),
   action: z.string().max(64).optional(),
+  actions: auditActions,
   actorId: z.string().uuid().optional(),
   subjectUserId: z.string().uuid().optional(),
   actor: z.string().trim().max(200).optional(),
@@ -1339,12 +1406,21 @@ export const cursorPageQuery = (defaultLimit: number, maxLimit: number) =>
     cursor: z.string().max(400).optional(),
   });
 
-/** Реестр направлений: ?all=1 — вместе с завершёнными; страница по 100, не больше 200 */
+/**
+ * Реестр направлений: ?all=1 — вместе с завершёнными; страница по 100, не
+ * больше 200.
+ *
+ * ?closedSince= — только закрытые (завершены или отклонены) с этого момента,
+ * по времени последнего перехода: группа «Закриті за 30 днів». Давнее
+ * направление, закрытое на днях, лежит в реестре по дате выписки далеко за
+ * загруженными страницами, и по ним одним группа его теряла (волна 27).
+ */
 export const referralListQuery = cursorPageQuery(100, 200).extend({
   all: z
     .string()
     .optional()
     .transform((v) => v === "1"),
+  closedSince: z.preprocess((v) => (v === "" ? undefined : v), queryDate.optional()),
 });
 
 /**
@@ -1407,8 +1483,42 @@ export const patientListQuery = z.object({
   /** Поиск идёт по расшифрованным ФИО и почте уже в приложении — здесь только длина */
   q: z.string().max(120).optional().transform((v) => (v ?? "").trim().toLowerCase()),
   patientGroup: z.string().max(64).optional().transform((v) => v || undefined),
+  /** Только те, кого ведёт этот сотрудник (карточка фахівця, вкладка «Пацієнти»); зона не расширяется */
+  lead: z.string().max(64).optional().transform((v) => v || undefined),
   limit: queryInt(1, 200, 50),
   offset: queryInt(0, LIST_OFFSET_MAX, 0),
+  /**
+   * Подання «Потребує уваги» (реестр 2.0): открытый риск, без замера 30+
+   * дней, без следующего приёма, закреплённые за читателем. Пусто — все.
+   * Незнакомое значение — тоже все: ссылку из старой закладки не роняем.
+   */
+  view: z
+    .enum(["risk", "stale", "unbooked", "mine"])
+    .optional()
+    .catch(undefined),
+  /** Порядок: ПІБ (умолчание), риск первым, свежий замер, ближайший приём */
+  sort: z
+    .enum(["name", "risk", "last", "next"])
+    .optional()
+    .catch(undefined),
+});
+
+/**
+ * Имена людей по идентификаторам — `ids`, через запятую (волна 27).
+ *
+ * Поле «Пацієнт» в условиях выборки статистики показывает имя человека из
+ * сохранённого фильтра и ради одного имени читало его карточку — чтение
+ * персональных данных с телефоном и строкой patient.card_read на каждую
+ * выборку при каждом открытии страницы. Имя без карточки — GET
+ * /api/patients/names. Не больше ста: это подписи полей, а не список.
+ */
+export const PATIENT_NAMES_MAX = 100;
+export const patientNamesQuery = z.object({
+  ids: z
+    .string()
+    .max(PATIENT_NAMES_MAX * 65)
+    .transform((raw) => [...new Set(raw.split(",").map((s) => s.trim()).filter(Boolean))])
+    .pipe(z.array(z.string().max(64)).min(1).max(PATIENT_NAMES_MAX)),
 });
 
 export const mailingListQuery = z.object({
@@ -1419,6 +1529,12 @@ export const mailingListQuery = z.object({
     .string()
     .optional()
     .transform((v) => v === "1"),
+  /** Вид «Чернетки» / «Відправлені»; без него — все не скрытые */
+  status: z.enum(["draft", "sent"]).optional(),
+  /** Только рассылки этой группе пациентов */
+  group: z.string().min(1).max(64).optional(),
+  /** Порядок по дате строки: новые сверху (умолчание) или старые */
+  order: z.enum(["new", "old"]).optional(),
   limit: queryInt(1, 200, 10),
   offset: queryInt(0, LIST_OFFSET_MAX, 0),
 });
@@ -1557,7 +1673,8 @@ export const workspacePrefsSchema = z.object({
    * себе — вправе.
    */
   motion: z.enum(["system", "reduced"]).optional(),
-  theme: z.enum(["dark", "light"]).optional(),
+  /* «system» — следовать теме системы (Polypsy 2.0: третий выбор переключателя темы) */
+  theme: z.enum(["dark", "light", "system"]).optional(),
   lang: z.enum(LANGS).optional(),
   dismissedHints: z.array(z.string().max(60)).max(100).optional(),
   /*
@@ -1575,6 +1692,22 @@ export const workspacePrefsSchema = z.object({
     .optional(),
   /* метка «прочитано до» сравнивается с временем событий — кривая строка в ней ломала бы ленту */
   eventsSeenAt: dateInput.nullable().optional(),
+  /*
+   * Віджети «Зведення»: порядок и выключенные. Ключи — только известные
+   * (DASH_WIDGETS), а случаи риска выключить нельзя и запросом мимо экрана.
+   */
+  dashboard: z
+    .object({
+      order: z.array(z.enum(DASH_WIDGETS)).max(DASH_WIDGETS.length).optional(),
+      hidden: z
+        .array(z.enum(DASH_WIDGETS))
+        .max(DASH_WIDGETS.length)
+        .refine((keys) => !keys.some((k) => (ALWAYS_VISIBLE_WIDGETS as readonly string[]).includes(k)), {
+          message: "err.v.widgetAlwaysVisible",
+        })
+        .optional(),
+    })
+    .optional(),
 });
 
 /* ── Поликлиника: расписание и приёмы ── */

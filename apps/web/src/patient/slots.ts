@@ -42,3 +42,21 @@ export function slotsView<T>(res: { data: { items: T[] } | null; error: string |
 export function chosenSlot(slotId: string | null, times: readonly { id: string }[]): string | null {
   return slotId !== null && times.some((t) => t.id === slotId) ? slotId : null;
 }
+
+/**
+ * Перенос своего приёма (`?move=<id>`): какой приём переносим.
+ *
+ * Пока список своих приёмов не пришёл (или отказал), неизвестно, чем кончится
+ * нажатие: экран рисуется записью, и «Записатися» заводила бы второй приём
+ * рядом с тем, который человек пришёл перенести. Поэтому `pending` — и
+ * подтверждение ждёт ответа. Пришёл без этого приёма (отменён, прошёл) —
+ * обычная запись.
+ */
+export function moveTarget<V extends { id: string; status: string }>(
+  moveId: string | null,
+  visits: readonly V[] | null,
+): { moving: V | null; pending: boolean } {
+  if (!moveId) return { moving: null, pending: false };
+  if (visits === null) return { moving: null, pending: true };
+  return { moving: visits.find((v) => v.id === moveId && v.status !== "cancelled") ?? null, pending: false };
+}

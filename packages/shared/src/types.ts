@@ -431,6 +431,41 @@ export function isClientDecisionCode(code: unknown): code is string {
   return typeof code === "string" && CLIENT_DECISION_CODES.includes(code);
 }
 
+/**
+ * Отказы возврата от Google (apps/api routes/auth.ts, GET /google/callback).
+ *
+ * На этот адрес браузер приходит переходом от Google, а не запросом консоли,
+ * — отказ телом ответа человек видел сырым JSON на странице API. Сервер
+ * отдаёт его переходом в консоль: /auth/google?error=<ключ>, и экран
+ * возврата (web pages/GoogleReturn.tsx) говорит причину на языке страницы.
+ * Ключ из адреса принимается, только если он в этом списке: адрес может
+ * набрать кто угодно, и чужой текст на экране входа стоять не должен.
+ */
+export const GOOGLE_RETURN_CODES = [
+  "err.googleDisabled",
+  "err.googleState",
+  "err.googleExchange",
+  "err.googleUnverified",
+  "err.googleDomain",
+  "err.googleNotLinked",
+  "err.googleTaken",
+  "err.googleAnonymous",
+  "err.accountDisabled",
+  "err.sessionExpired",
+] as const;
+
+export type GoogleReturnCode = (typeof GOOGLE_RETURN_CODES)[number];
+
+export function isGoogleReturnCode(code: unknown): code is GoogleReturnCode {
+  return typeof code === "string" && (GOOGLE_RETURN_CODES as readonly string[]).includes(code);
+}
+
+/**
+ * Сколько длится просмотр «от имени»: сервер выдаёт токен на этот срок, окно
+ * входа называет его словами — одно число на обоих.
+ */
+export const IMPERSONATION_MINUTES = 30;
+
 /** Кто смотрит «от имени» — см. User.impersonation */
 export interface ImpersonationInfo {
   sessionId: string;
@@ -464,6 +499,49 @@ export interface StaffPlacement {
 export interface StaffDirectoryUser extends User {
   phone: string | null;
   placement: StaffPlacement | null;
+  /** Состояние учётной записи и нагрузка — для реестра «Лікарі» / «Адміністратори» (2.0) */
+  account?: StaffAccount;
+}
+
+/** Версии текста согласия и счёт принявших (GET /api/consents/versions, 2.0) — только числа */
+export interface ConsentVersions {
+  /** Действующих учётных записей пациентов */
+  patients: number;
+  /** Отказались от действующей версии и так её и не приняли */
+  declined: number;
+  /** Свежие сверху; первая — действующая */
+  versions: {
+    id: string;
+    version: number;
+    createdAt: string;
+    author: string | null;
+    accepted: number;
+    /** На каких языках текст задан */
+    languages: ("uk" | "ru" | "en")[];
+  }[];
+}
+
+/**
+ * Учётная запись сотрудника глазами реестра (Polypsy 2.0, раздел «Лікарі»):
+ * вход, второй фактор, состояние, роли-шаблоны, исключения и сколько
+ * пациентов человек ведёт. Только числа и отметки — ничего о самих пациентах.
+ */
+export interface StaffAccount {
+  /** Последний вход или обновление сессии; null — ни разу */
+  lastSeenAt: string | null;
+  /** Второй фактор подтверждён */
+  mfa: boolean;
+  disabledAt: string | null;
+  /** Пароль временный: человек ещё не сменил выданный при заведении */
+  mustChangePassword: boolean;
+  /** Ступень лестницы: 0 — вне лестницы; суперадмин — SUPERADMIN_RANK */
+  ladderRank: number;
+  /** Роли-шаблоны на языке запроса */
+  roles: { code: string; title: string }[];
+  /** Действующие личные исключения прав */
+  exceptions: number;
+  /** Пациентов, за которыми человек закреплён ведущим */
+  patients: number;
 }
 
 /* ─────────── техпанель: учётные записи и сессии (волна 10) ─────────── */
@@ -537,6 +615,57 @@ export interface OpsUserRow {
    * держит учётку так же, как клинический след.
    */
   journalEntries: number;
+  /**
+   * Второй фактор: настроен ли и обязателен ли по политике (по какой
+   * причине — суперадмин или права ops.*; null — не обязателен). У
+   * пациентов null: политика второго фактора — про персонал.
+   */
+  secondFactor: { enabled: boolean; required: MfaCoverageRow["because"] | null } | null;
+  /** Заперт перебором пароля: неудач в окне и когда вход откроется сам; null — не заперт */
+  lock: { failures: number; until: string } | null;
+}
+
+/** Человек в группе «Потребує уваги» реестра: кто и чем */
+export interface OpsAttentionPerson {
+  id: string;
+  fullName: string;
+  email: string;
+  role: Role;
+  /**
+   * Срок, к которому относится группа: до какого времени заперт, с какого
+   * времени временный пароль, когда был последний вход (или заведён, если
+   * не входил ни разу)
+   */
+  at: string | null;
+  /** Заперт: неудач в окне; второй фактор: по какой причине обязателен */
+  failures?: number;
+  because?: MfaCoverageRow["because"];
+  /** Ни разу не входил: `at` — время заведения */
+  never?: boolean;
+}
+
+export interface OpsAttentionGroup {
+  count: number;
+  /** Первые из группы — для поповера; весь список открывает отбор реестра */
+  people: OpsAttentionPerson[];
+}
+
+/**
+ * «Потребує уваги» в «Користувачах» (GET /api/ops/users/attention): четыре
+ * группы записей, о которых стоит знать администратору прямо сейчас.
+ * В отличие от сводки (только числа) — с людьми: это рабочий список.
+ */
+export interface OpsUsersAttention {
+  /** Заперты перебором пароля прямо сейчас */
+  locked: OpsAttentionGroup;
+  /** Второй фактор обязателен по политике, а не настроен (действующие учётки) */
+  mfaMissing: OpsAttentionGroup;
+  /** Временный пароль выдан дольше tempHours назад и всё ещё не сменён */
+  tempPassword: OpsAttentionGroup;
+  /** Персонал без входа дольше idleDays (или заведён так давно и ни разу не входил) */
+  idleStaff: OpsAttentionGroup;
+  tempHours: number;
+  idleDays: number;
 }
 
 export interface OpsUserPage {
@@ -682,11 +811,15 @@ export interface MfaCoverageRow {
   enabled: boolean;
   confirmedAt: string | null;
   disabled: boolean;
+  /** Последний вход или обмен refresh; null — ещё не входил */
+  lastSeenAt?: string | null;
 }
 
 export interface MfaPolicyView {
   policy: MfaPolicy;
   coverage: MfaCoverageRow[];
+  /** Весь действующий персонал и сколько из него с фактором — для справки рядом с покрытием */
+  staff: { total: number; enabled: number };
 }
 
 /** Выдача токена «от имени» (POST /api/ops/people/impersonate/:id) */
@@ -933,6 +1066,8 @@ export interface AssignableStaff {
   position?: string | null;
   placement?: StaffPlacement | null;
   phone?: string | null;
+  /** Только в режиме справочника (`?directory=1`) */
+  account?: StaffAccount;
 }
 
 export type Sex = "male" | "female";
@@ -1179,6 +1314,14 @@ export interface PatientGroupMember {
   phone: string | null;
   addedAt: string;
   addedBy: string | null;
+  /**
+   * Какие из методик группы человек уже прошёл (хотя бы раз) — отметки
+   * «Тести групи» в строке состава. Правило то же, что у completedCount
+   * методики группы: иначе строка и сводка говорили бы разное.
+   */
+  completedSurveyIds: string[];
+  /** Есть открытый случай риска (alert_cases без разбора) */
+  openRisk: boolean;
 }
 
 /** Методика, назначенная на группу целиком — «Тести Групи» */
@@ -1213,12 +1356,29 @@ export interface PatientGroupWithCounts extends PatientGroup {
    * разбирающий чужие вкладки, видит свои закладки, а не закладки владельца.
    */
   favourite: boolean;
+  /** Методики группы в порядке назначения — коды в строке списка групп */
+  surveys: { surveyId: string; title: LocalizedText }[];
+  /**
+   * Сколько видимых участников прошли ВСЕ методики группы (каждую хотя бы
+   * раз; правило completedCount). Без методик — 0: проходить нечего.
+   */
+  doneCount: number;
+  /** Сколько видимых участников с открытым случаем риска */
+  riskCount: number;
+  /** Кто ведёт группу — её владелец */
+  ownerName: string;
+  /** Последнее изменение: заведение, добавление участника или назначение методики */
+  changedAt: string;
 }
 
 /** Карточка группы: описание, состав и назначенные методики на одном экране */
 export interface PatientGroupCard extends PatientGroup {
   members: PatientGroupMember[];
   surveys: PatientGroupSurvey[];
+  /** Кто ведёт группу — её владелец */
+  ownerName: string;
+  /** «Обрана» читателем — та же закладка, что в списке групп */
+  favourite: boolean;
 }
 
 /* ─────────── Пациенты зоны видимости и карточка пациента ─────────── */
@@ -1252,11 +1412,73 @@ export interface PatientListItem {
   leadSpecialistId: string | null;
   /** Когда сдавал методику в последний раз; null — ещё ни разу */
   lastResponseAt: string | null;
+  /*
+   * Реестр 2.0 (кадр patients-list): почему человек здесь сейчас и что
+   * дальше — строкой, без захода в карту. Всё из зоны читателя: случаи и
+   * замеры — по методикам его зоны, приёмы и учёт — под политиками базы.
+   * Поля необязательны: старый клиент и старый сервер их не знают.
+   */
+  /** Имя ведущего специалиста */
+  leadName?: string | null;
+  /** Открытые случаи риска: сколько, и самый тяжёлый из самых давних */
+  risk?: PatientListRisk | null;
+  /** Главная шкала последнего замера с ходом «19 → 16 → 14» */
+  measure?: PatientListMeasure | null;
+  /** Ближайший записанный приём */
+  nextVisit?: { at: string; mode: "onsite" | "remote" } | null;
+  /** Неявка за последние 30 дней — самая поздняя */
+  lastNoShowAt?: string | null;
+  /** Диспансерный учёт: группа и срок контрольного осмотра */
+  dispensary?: { groupLabel: string; nextDueAt: string; overdue: boolean } | null;
+}
+
+export interface PatientListRisk {
+  /** Сколько открытых случаев */
+  cases: number;
+  caseId: string;
+  openedAt: string;
+  severity: "moderate" | "severe";
+  /** Кто взял случай на себя; null — ещё никто */
+  assigneeName: string | null;
+}
+
+export interface PatientListMeasure {
+  surveyId: string;
+  /** Короткое имя методики: «PHQ-9» из «Депресія (PHQ-9)», иначе код шкалы */
+  code: string;
+  /** Название методики */
+  title: string;
+  /** До трёх последних значений главной шкалы, по времени */
+  values: number[];
+  at: string;
+  severity: Severity | null;
+  bandLabel: string | null;
+  /** Единицы значений: доля 0–1 печатается процентом, T-балл и стен — как есть */
+  normalization: ScaleNormalization;
+  /** «Краще ↓ / ↑» по полосам шкалы; null — полосы немонотонны или их нет */
+  better: "down" | "up" | null;
+}
+
+/**
+ * Счётчики подань реестра «Потребує уваги» — по поиску и вкладке группы, до
+ * выбора подання: пилюля говорит, сколько людей окажется в списке.
+ */
+export interface PatientListCounts {
+  all: number;
+  /** Закреплены за читателем */
+  mine: number;
+  /** С открытым случаем риска */
+  risk: number;
+  /** Без замера 30+ дней (или ни разу) */
+  stale: number;
+  /** Без записанного следующего приёма */
+  unbooked: number;
 }
 
 export interface PatientListPage {
   items: PatientListItem[];
   total: number;
+  counts?: PatientListCounts;
 }
 
 /** Одна сданная методика на карточке: баллы по шкалам и полоса каждой */
@@ -1385,11 +1607,31 @@ export interface MailingListItem {
   sentAt: string | null;
   recipientCount: number;
   answeredCount: number;
+  /** Сколько получателей открыли — у черновика 0 */
+  readCount: number;
+  /** Варианты ответа: у черновика — что уйдёт, у отправленной — что ушло */
+  options: string[];
+  /** Сколько выбрали каждый вариант — в порядке `options`; у черновика нули */
+  answers: number[];
+  /** Группа-адресат черновика или отправленной; null — без группы */
+  patientGroupId: string | null;
 }
 
 export interface MailingListPage {
   items: MailingListItem[];
   total: number;
+  /**
+   * Счётчики видов «Усі / Чернетки / Відправлені / Приховані» — по всем
+   * рассылкам автора без поиска и вида: число у пилюли не меняется от того,
+   * какая пилюля нажата.
+   */
+  counts?: { all: number; draft: number; sent: number; hidden: number };
+  /**
+   * Итог за 30 дней по отправленным и не скрытым: сколько ушло, скольким
+   * доставлено, сколько получателей спрошено (у рассылки есть варианты) и
+   * сколько из них ответили. Строка под заголовком экрана, не плитки.
+   */
+  month?: { sent: number; recipients: number; asked: number; answered: number };
 }
 
 /** Получатель на карточке отправленной рассылки — из зоны видимости читателя */
@@ -1819,7 +2061,19 @@ export interface ScaleDynamics {
   scaleId: string;
   code: string;
   title: string;
+  /**
+   * Вид шкалы в версии последнего замера: шкала достоверности («L», «F»)
+   * говорит о бланке, а не о человеке, и главной шкалой методики на экране
+   * не встаёт. Нет поля — старый сервер.
+   */
+  kind?: ScaleKind;
   points: DynamicsPoint[];
+  /**
+   * Полосы интерпретации шкалы в версии последнего замера — лестница для
+   * графика курса (полосы тяжести, «краще ↓ / ↑»). Нет поля — старый
+   * сервер; пусто — у шкалы полос нет.
+   */
+  bands?: { min: number; max: number; label: string; severity: Severity }[];
   /** Изменение между первым и последним замером; null — сравнивать нечего или нельзя (см. incomparable) */
   delta: number | null;
   /** Направление: улучшение зависит от того, что шкала измеряет */
@@ -1938,6 +2192,21 @@ export interface SurveyListItem extends Survey {
   dueAt?: string | null;
   /** Когда ключи сверены с пособием */
   keysVerifiedAt?: string | null;
+  /*
+   * Паспорт строки каталога — только сотруднику (routes/surveys.ts): у
+   * обследуемого этих полей нет вовсе. Критический пункт — часть ключа,
+   * а ключ обследуемому не отдаётся (#141).
+   */
+  /** Номер действующей версии; null — версии ещё нет */
+  versionNumber?: number | null;
+  /** Шкал в действующей версии */
+  scaleCount?: number;
+  /** Смуг интерпретации во всех шкалах действующей версии */
+  bandCount?: number;
+  /** Завершённых прохождений за последние 30 дней */
+  recentResponseCount?: number;
+  /** Есть вариант, который сразу открывает случай риска */
+  hasCriticalItem?: boolean;
 }
 
 /** Ответ на один вопрос вместе с телеметрией */
@@ -2408,6 +2677,10 @@ export interface UsageReport {
     total: number;
     top: ScreenUsageRow[];
     byDay: { date: string; views: number }[];
+    /** Открытия по приложениям — по всем шаблонам окна, а не по верхушке top */
+    byApp: { app: ScreenUsageRow["app"]; views: number }[];
+    /** Сколько разных шаблонов открывали за окно (top — только первые из них) */
+    routes: number;
   };
   /**
    * Уникальные люди по дням. Специалисты — числом всегда, пациенты — через
@@ -2484,7 +2757,13 @@ export interface PushReport {
   byDay: { date: string; sent: number; errors: number }[];
   byKind: { kind: string; sent: number; errors: number; delivered: number }[];
   errors: { code: string; count: number; tokens: number }[];
-  tokens: { registered: number; stale: number; byPlatform: { platform: string; count: number }[] };
+  tokens: {
+    registered: number;
+    stale: number;
+    byPlatform: { platform: string; count: number }[];
+    /** Три самых давних — отпечатком (16 знаков sha256), сам токен наружу не выходит */
+    oldest: { platform: string; fingerprint: string; lastSeenAt: string }[];
+  };
   /** События из push_deliveries за окно — «кому решили отправить», по типам */
   events: { kind: string; count: number }[];
 }
@@ -2742,6 +3021,8 @@ export interface Battery {
   items: BatteryItem[];
   /** Сколько активных назначений висит на батарее */
   activeAssignments: number;
+  /** Из них просрочено: срок прошёл, а обязательные методики не пройдены */
+  overdueAssignments?: number;
 }
 
 /**
@@ -2837,6 +3118,29 @@ export interface Referral {
   createdByName: string;
   createdAt: string;
   updatedAt: string | null;
+}
+
+/**
+ * Страница реестра направлений. На первой странице — ещё и число направлений
+ * зоны по каждому статусу: по нему стоят пилюли видов реестра, и считать их
+ * по загруженным строкам значило бы показывать «Завершені 12», когда их
+ * сорок, просто потому что вторая страница ещё не приехала.
+ */
+export interface ReferralPage extends Page<Referral> {
+  counts?: Record<ReferralStatus, number>;
+}
+
+/**
+ * Реестр направлений числами — для бейджа навигации (GET /api/referrals/count).
+ *
+ * Та же зона, что у списка, без людей и без строки журнала. `total` — ровно
+ * `total` списка без `?all=1` (всё, кроме завершённых): его и показывал
+ * бейдж. `open` — виписані и прийняті, то, что ждёт действия (вид
+ * «Відкриті» реестра и вид «направление» очереди работы).
+ */
+export interface ReferralCount {
+  total: number;
+  open: number;
 }
 
 /** Сводка для консилиума (6.5): всё о пациенте на одной странице */
@@ -3146,6 +3450,30 @@ export interface OpsOverview {
   accounts: { superadmin: number; admin: number; user: number } | null;
   traffic: { m5: OpsWindowStats; h1: OpsWindowStats; h24: OpsWindowStats };
   health: OpsHealthCheck[];
+  /** Только с `?window=` — всё, что «Огляд» опрашивает, одним ответом (OpsOverviewLive) */
+  live?: OpsOverviewLive;
+}
+
+/**
+ * «Огляд» одним запросом на такт (волна 27, perf-day).
+ *
+ * Экран опрашивал раз в двадцать секунд пять маршрутов — сводку, ряд окна,
+ * суточный ряд, ошибки и оповещения — и при окне «24 год» брал сутки дважды.
+ * Ряды и группы ошибок — память процесса, и отдаются здесь же, рядом со
+ * сводкой; оповещения (правила в базе, меняются редко) — своим маршрутом
+ * раз в минуту.
+ */
+export interface OpsOverviewLive {
+  /** Ряд выбранного окна — график «Навантаження» */
+  traffic: OpsTraffic;
+  /** Сутки для «Показників процесу»; null — окно и так сутки, ряд тот же (traffic) */
+  day: OpsTraffic | null;
+  /**
+   * Группы ошибок памяти процесса, впервые появившиеся за последний час, —
+   * пилюля «нова група» в «Потребує уваги»; без кадров стека: их читает
+   * вкладка «Помилки». Чтение — та же строка ops.errors.read со склейкой.
+   */
+  errors: OpsErrorGroup[];
 }
 
 export interface OpsTrafficBucket {
@@ -3915,6 +4243,13 @@ export interface AuditEntry {
   ip: string | null;
   userAgent: string | null;
   details: Record<string, unknown> | null;
+  /**
+   * Место в хэш-цепочке (GET /api/audit отдаёт строку журнала целиком):
+   * номер, хэш записи и хэш предыдущей. У записей до цепочки — null.
+   */
+  seq?: number | null;
+  entryHash?: string | null;
+  prevHash?: string | null;
 }
 
 export interface AuditPage {
@@ -4381,6 +4716,15 @@ export interface AlertCase {
 
   /** Минут в открытом состоянии; для разобранных — сколько провисел */
   minutesOpen: number;
+  /**
+   * Норма разбора методики в минутах (настройка эскалации); null — не задана.
+   *
+   * Отдаётся числом рядом с `minutesOpen`, чтобы экран мог показать таймер
+   * «2:48 з 4 год» и время «розібрати до 18:12» той же нормой, по которой
+   * сервер ставит `overdue`, а не своей догадкой. Нет поля — ответ старого
+   * сервера, таймер рисуется без нормы.
+   */
+  escalateMinutes?: number | null;
   /** Просрочен по настройке эскалации методики */
   overdue: boolean;
 
@@ -4436,6 +4780,15 @@ export interface AlertCaseFacets {
 export interface AlertCasePage extends Page<AlertCase> {
   grouping: "person" | "case";
   facets?: AlertCaseFacets;
+}
+
+/**
+ * Очередь случаев числом — для бейджа навигации и значка вкладки
+ * (GET /api/alert-cases/count): сколько людей с неразобранными случаями,
+ * ровно `total` открытой очереди по людям, без имён и без строки журнала.
+ */
+export interface AlertCaseCount {
+  total: number;
 }
 
 /** duplicate ставит не человек, а чистка черновиков-призраков (#197): случай закрыт как дубль сданной попытки */
@@ -4522,6 +4875,17 @@ export interface WorkItem {
   assignedTo: string | null;
   since: string;
   href: string;
+}
+
+/**
+ * Очередь работы числами — для бейджа навигации (GET /api/worklist/count):
+ * те же `total`, `byKind` и `mine`, что у списка, без строк, без имён и без
+ * строки журнала.
+ */
+export interface WorklistCount {
+  total: number;
+  byKind: Record<WorkKind, number>;
+  mine: number;
 }
 
 export interface Worklist {
@@ -4614,7 +4978,8 @@ export interface WorkspacePrefs {
    * системной настройке нельзя — см. схему в schemas.ts.
    */
   motion?: "system" | "reduced";
-  theme?: "dark" | "light";
+  /** «system» — тема следует настройке системы */
+  theme?: "dark" | "light" | "system";
   /*
    * Язык в профиле. Схема его принимает давно, но ни консоль, ни мобилка
    * его пока не пишут и не читают: язык живёт на устройстве (localStorage,
@@ -4651,6 +5016,13 @@ export interface WorkspacePrefs {
    * должна показать смену, а не «всё с начала времён».
    */
   eventsSeenAt?: string | null;
+  /**
+   * Віджети «Зведення»: порядок и выключенные (ключи DASH_WIDGETS).
+   *
+   * Хранится порядок и список ВЫКЛЮЧЕННЫХ, а не включённых — по той же
+   * причине, что railHidden: новый віджет должен появиться у всех сам.
+   */
+  dashboard?: { order?: string[]; hidden?: string[] } | null;
 }
 
 /* ═══════════ Когорты ═══════════ */
@@ -4823,6 +5195,23 @@ export interface FilterPresetListItem extends FilterPreset {
   modelCount: number;
 }
 
+/** Где пресет стоит: модель и номера её выборок (с единицы), как они подписаны на экране модели */
+export interface FilterPresetUse {
+  id: string;
+  title: string;
+  samples: number[];
+}
+
+/**
+ * Карточка пресета: то же, что строка списка, и модели, которые на него
+ * ссылаются, — «Де використовується» на экране пресета. Только модели,
+ * видные спрашивающему (свои; суперадмину — все): modelCount считает и
+ * чужие, потому что из-под них пресет тоже не удалить.
+ */
+export interface FilterPresetDetail extends FilterPresetListItem {
+  usedBy: FilterPresetUse[];
+}
+
 /**
  * Показатель «Варіант результату»: полоса шкалы. `highRisk` — пометка
  * «ВШР» (високий ступінь ризику) с кадров f07/f14/f21/f28: попадание в этот
@@ -4885,6 +5274,18 @@ export interface StatModelListItem {
   description: string | null;
   ownerId: string;
   columnCount: number;
+  /**
+   * Что модель считает — по первой колонке, как и форма правки: методика
+   * с номером версии, сколько полос и вопросов, сколько пометок «ВШР».
+   * Название методики — null, если её не видно (снята, вне зоны).
+   */
+  surveyTitle: string | null;
+  versionNumber: number | null;
+  bandCount: number;
+  questionCount: number;
+  highRiskCount: number;
+  /** Сколько выборок считается по пресету; остальные — своими фильтрами */
+  presetColumns: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -5094,6 +5495,18 @@ export interface AppointmentView {
   leadSpecialistId: string | null;
 }
 
+/**
+ * Свой день числом — для бейджа «Сьогодні» в навигации (GET /api/clinic/today/count).
+ *
+ * Те же сутки и тот же круг приёмов, что у /today без параметров, но без
+ * людей: ни имён, ни поводов. `waiting` — ещё не принятые (записан или
+ * подтвердил), как и считала навигация по списку дня.
+ */
+export interface TodayCount {
+  date: string;
+  waiting: number;
+}
+
 /** Обычная неделя специалиста */
 export interface ScheduleTemplateView {
   id: string;
@@ -5169,4 +5582,68 @@ export interface AppEvent {
   resourceId?: string | null;
   /** Кто сделал; null у фоновых проходов */
   actorId?: string | null;
+}
+
+/* ─────────── Прохождение: обстановка вокруг протокола ───────────
+ *
+ * Экраны прохождения (протокол, графики, заключение) рисуют над протоколом
+ * шапку пациента со строкой открытого и переключатель попыток. Сам
+ * GET /api/responses/:id этого не несёт намеренно — он открыт и самому
+ * обследуемому. Здесь — только персоналу, с той же проверкой доступа, что у
+ * заключения (lib/clinicalRead.ts).
+ */
+
+/** Откуда взялось прохождение (responses.source) */
+export type ResponseSource = "assigned" | "self" | "kiosk" | "clinician" | "informant" | "intake";
+
+/** Сигнал риска в строке открытого над протоколом */
+export interface ResponseContextSignal {
+  id: string;
+  label: string;
+  severity: RiskSeverity;
+  at: string;
+  /** Поднят этим прохождением, а не другим замером того же человека */
+  here: boolean;
+  questionId: string | null;
+  surveyTitle: string;
+  /** Сколько минут висит неразобранным (у разобранного — сколько висел) */
+  minutesOpen: number;
+  /** Норма разбора методики в минутах; null — нормы нет */
+  escalateMinutes: number | null;
+  overdue: boolean;
+  reviewedAt: string | null;
+  reviewedByName: string | null;
+  outcome: RiskAlert["outcome"];
+}
+
+/** Завершённая попытка той же методики тем же человеком — для переключателя */
+export interface ResponseAttempt {
+  id: string;
+  submittedAt: string;
+  /** Номер версии методики, которую проходили: ответы по пунктам сравнимы только внутри версии */
+  versionNumber: number | null;
+  /** Баллы по кодам шкал: код живёт между версиями, id шкалы — нет */
+  scores: { code: string; value: number; band: string | null; severity: Severity | null }[];
+}
+
+export interface ResponseContext {
+  source: ResponseSource | null;
+  /** Протокол достоверен по шкалам достоверности */
+  reliable: boolean;
+  /** null у анонимной методики и у заполненного со слов другого */
+  patient: {
+    id: string;
+    fullName: string;
+    sex: Sex | null;
+    /** Полных лет на день прохождения */
+    age: number | null;
+    unit: string | null;
+    lead: { name: string; mine: boolean } | null;
+  } | null;
+  /** Завершённые попытки этой методики этим человеком, по возрастанию даты; пусто у прохождения без человека */
+  attempts: ResponseAttempt[];
+  /** Открытые сигналы человека и все сигналы этого прохождения; null — у читающего нет права разбирать сигналы */
+  signals: ResponseContextSignal[] | null;
+  /** Срабатывания правил по этому прохождению; null — нет права на правила */
+  hits: RuleHit[] | null;
 }

@@ -100,3 +100,19 @@ export function formatDay(iso: string | null | undefined): string {
 export function formatDateTime(iso: string | null | undefined): string {
   return iso ? iso.slice(0, 16).replace("T", " ") : "—";
 }
+
+/**
+ * Короткое имя методики для строк и подписей: «PHQ-9» из «Депресія
+ * (PHQ-9)», «СР-45» из «СР-45. Схильність до суїцидальних реакцій».
+ *
+ * Скобки в конце названия — только если в них код (есть заглавная буква
+ * или цифра): «(демо)» — пометка, а не имя. Нет кода — `fallback`
+ * (обычно код шкалы).
+ */
+export function instrumentCode(title: string, fallback: string): string {
+  const clean = title.trim();
+  const tail = /\(([^()]{1,16})\)\s*$/.exec(clean)?.[1]?.trim();
+  if (tail && /[A-ZА-ЯІЇЄҐ0-9]/.test(tail)) return tail;
+  const head = /^([A-ZА-ЯІЇЄҐ][A-ZА-ЯІЇЄҐ0-9-]{1,11})\.\s/.exec(clean)?.[1];
+  return head ?? fallback;
+}

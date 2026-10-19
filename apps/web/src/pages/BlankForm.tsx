@@ -1,13 +1,19 @@
 import { useMemo, useState } from "react";
 import qrcode from "qrcode-generator";
-import { Link, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import type { SurveyFull } from "@quizzy/shared";
 import { api } from "../api";
 import { useResource } from "../useResource";
 import { useLang } from "../lang";
-import { Button } from "../ui/primitives";
-import { Page, Panel, Stack } from "../ui/layout";
+import { ShellIcon } from "../shell/icons";
+import { Button, ButtonLink } from "../ui/primitives";
+import { Page } from "../ui/layout";
+import { Callout } from "../ui/states";
 import { Loading } from "../ui";
+import { Mi } from "./methods/icons";
+import { splitCode } from "./methods/model";
+import { useCount } from "./methods/useCount";
+import { fill, Mark, Sheet, SheetFoot, SheetHead, Signs } from "./printSheet";
 
 /**
  * Пустой бланк для бумажного проведения.
@@ -16,16 +22,23 @@ import { Loading } from "../ui";
  * обследование, отказ обследуемого от электронной формы. Ответы потом заносит
  * психолог через «Провести», поэтому нумерация бланка обязана совпадать с
  * нумерацией на экране — она берётся из той же версии методики.
+ *
+ * Экран (UI 3, «Виразна»): шапка с методикой, «Ключі», переключатель
+ * «сітка / з текстом пунктів» и «Друк»; под ней — как бланком пользоваться,
+ * и сам лист (print-blank). На печать идёт только лист (styles/legacy.css,
+ * `data-print-sheet`), шапка и заметка — нет.
  */
 export default function BlankForm() {
   const { ut } = useLang();
+  const count = useCount();
   const { id } = useParams<{ id: string }>();
-  const [compact, setCompact] = useState(true);
+  /* null — по умолчанию: короткая методика — таблицей с текстом пунктов, длинная — сеткой номеров */
+  const [compact, setCompact] = useState<boolean | null>(null);
   const { data: survey, error } = useResource(() => api.survey(id!), [id], { enabled: !!id });
 
   if (error)
     return (
-      <p role="alert" className="text-danger">
+      <p role="alert" className="m-5 text-risk-ink">
         {error}
       </p>
     );
@@ -35,90 +48,140 @@ export default function BlankForm() {
   /* Одинаковый набор вариантов на всю методику — тогда шапку можно вынести
      в заголовок таблицы и бланк сжимается с десяти листов до одного-двух */
   const shared = sharedOptions(asked);
+  const grid = compact ?? asked.length > GRID_FROM;
+  const { code, name } = splitCode(survey.title);
 
   return (
     <Page
+      back={{ to: `/surveys/${survey.id}`, label: ut("mc.backMethod") }}
       title={ut("bf.title")}
-      sub={
+      meta={[code ? `${code}, ${name}` : name, `${ut("ant.versionN").replace("{n}", String(survey.versionNumber))}, ${count(asked.length, "items")}`]}
+      actions={
         <>
-          <Link to={`/surveys/${survey.id}`}>{survey.title}</Link> · {asked.length} {ut("bt.items")}
+          {shared ? (
+            <Button variant="secondary" icon={<Mi.rows />} onClick={() => setCompact(!grid)}>
+              {grid ? ut("bf.expand") : ut("bf.collapse")}
+            </Button>
+          ) : null}
+          <ButtonLink to={`/surveys/${survey.id}/key`} variant="secondary">
+            <ShellIcon name="key-round" size={15} />
+            {ut("mc.menuKeys")}
+          </ButtonLink>
+          <Button variant="primary" icon={<Mi.printer />} onClick={() => window.print()}>
+            {ut("kp.print")}
+          </Button>
         </>
       }
       /*
-       * Рамка экрана прокручивает содержимое сама (`overflow-y-auto`) — приём
-       * для ещё не перенесённых соседей, у бумажного бланка внутри неё нет
-       * своей высоты, только длинный список пунктов. При печати это не должно
-       * означать «видна только прокрученная страница»: подстраховываемся явным
-       * `overflow: visible` под печать, не трогая styles/*.css.
+       * Рамка экрана прокручивает содержимое сама (`overflow-y-auto`), а у
+       * бумажного бланка внутри неё нет своей высоты, только длинный список
+       * пунктов. При печати это не должно означать «видна только
+       * прокрученная страница»: подстраховываемся явным `overflow: visible`
+       * под печать, не трогая styles/*.css.
        */
       className="print:overflow-visible"
     >
-      <Stack>
-        <Panel className="no-print">
-          <p className="m-0 text-small text-muted">
-            {ut("blank.paperIntro")}
-            {shared ? ut("blank.sameOptionsNote") : ut("blank.differentOptionsNote")}
-          </p>
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <Button variant="primary" onClick={() => window.print()}>
-              {ut("kp.print")}
-            </Button>
-            {shared ? (
-              <Button onClick={() => setCompact((v) => !v)}>
-                {compact ? ut("bf.expand") : ut("bf.collapse")}
-              </Button>
-            ) : null}
-          </div>
-        </Panel>
-
-        <Panel title={survey.title} hint={survey.instructions}>
-          {/*
-            Метка бланка: какая методика и какой её версии перед вами.
-            
-            Нужна прямо сейчас и без всякого распознавания отметок: заполненный
-            бланк приносят через неделю, и оператор ищет методику в списке
-            руками — а версий у методики несколько, и нумерация пунктов между
-            ними отличается. Ввести ответы не в ту версию значит получить
-            правдоподобные, но чужие баллы.
-
-            Она же — единственная дешёвая часть фотоввода, которую стоит
-            сделать заранее: распознавать отметки без указания, что это за
-            лист, всё равно нельзя.
-          */}
-          <SheetCode surveyId={survey.id} version={survey.versionNumber} />
-          {/*
-            Раньше строка вёрсталась CSS-гридом (.fields), где явная ширина
-            каждого поля ничего не решала — грид сам режет на равные колонки,
-            и «ФИО на всю строку, дата рождения/пол/дата обследования в одну»
-            не собиралось. Флекс с переносом — то, что действительно уважает
-            проценты ширины ниже.
-          */}
-          <div className="flex flex-wrap gap-3">
-            <Blank label={ut("bf.fullName")} width="100%" />
-            <Blank label={ut("sch.unit")} width="55%" />
-            <Blank label={ut("cmp.rank")} width="40%" />
-            <Blank label={ut("bf.birthDate")} width="30%" />
-            <Blank label={ut("blank.sex")} width="20%" />
-            <Blank label={ut("bf.examDate")} width="30%" />
-            <Blank label={ut("bf.psychologist")} width="45%" />
-          </div>
-
-          <div className="mt-5">
-            {shared && compact ? (
-              <GridSheet questions={asked} options={shared} />
-            ) : (
-              <LongSheet questions={asked} />
-            )}
-          </div>
-
-          <p className="mt-5 text-caption text-muted">{ut("blank.answerEachHint")}</p>
-          <div className="mt-3 flex flex-wrap gap-3">
-            <Blank label={ut("bf.signature")} width="45%" />
-            <Blank label={ut("blank.date")} width="25%" />
-          </div>
-        </Panel>
-      </Stack>
+      <div className="flex flex-col gap-4">
+        <Callout kind="info" icon={<Mi.printer size={16} />}>
+          {ut("blank.paperIntro")}
+          {shared ? ut("blank.sameOptionsNote") : ut("blank.differentOptionsNote")}
+        </Callout>
+        <BlankPaper survey={survey} asked={asked} shared={shared} grid={grid} />
+      </div>
     </Page>
+  );
+}
+
+/** С какого числа пунктов бланк по умолчанию — сеткой номеров (две колонки на лист) */
+const GRID_FROM = 30;
+
+function BlankPaper({ survey, asked, shared, grid }: { survey: SurveyFull; asked: Q[]; shared: string[] | null; grid: boolean }) {
+  const { ut } = useLang();
+  const code = `${survey.id.slice(0, 8)}·v${survey.versionNumber}`;
+  const versionLabel = `${ut("ds.version")} ${survey.versionNumber}`;
+  const title = fill(ut("bf.titleOf"), { title: survey.title });
+  /* критический пункт есть — на бланке телефон помощи и отметка для фахівця */
+  const critical = asked.some((q) => q.options.some((o) => o.riskFlag));
+
+  return (
+    <Sheet running={`${title} · ${code}`}>
+      <SheetHead primary={versionLabel} secondary={survey.title} />
+      <div className="ps-th">
+        <h1 className="ps-t">{title}</h1>
+        {/*
+          Метка бланка: какая методика и какой её версии перед вами.
+
+          Нужна прямо сейчас и без всякого распознавания отметок: заполненный
+          бланк приносят через неделю, и оператор ищет методику в списке
+          руками — а версий у методики несколько, и нумерация пунктов между
+          ними отличается. Ввести ответы не в ту версию значит получить
+          правдоподобные, но чужие баллы.
+
+          Она же — единственная дешёвая часть фотоввода, которую стоит
+          сделать заранее: распознавать отметки без указания, что это за
+          лист, всё равно нельзя.
+        */}
+        <SheetCode surveyId={survey.id} version={survey.versionNumber} code={code} />
+      </div>
+
+      {/* строка для заполнения от руки: доли строки — по полю (ФИО шире, пол уже) */}
+      <div className="ps-lines">
+        <Line label={ut("bf.fullName")} span={7} />
+        <Line label={ut("bf.birthDate")} span={3} />
+        <Line label={ut("blank.sex")} span={2} />
+        <Line label={ut("sch.unit")} span={4} />
+        <Line label={ut("cmp.rank")} span={3} />
+        <Line label={ut("bf.examDate")} span={2} />
+        <Line label={ut("bf.psychologist")} span={3} />
+      </div>
+
+      {survey.instructions ? <div className="ps-ask">{survey.instructions}</div> : null}
+
+      <div className="mt-2">
+        {shared && grid ? (
+          <GridSheet questions={asked} options={shared} />
+        ) : shared ? (
+          <TextSheet questions={asked} options={shared} />
+        ) : (
+          <LongSheet questions={asked} />
+        )}
+      </div>
+
+      <p className="ps-note">{ut("blank.answerEachHint")}</p>
+      <Signs items={[{ caption: ut("bf.signature") }, { caption: ut("blank.date") }]} />
+
+      <div className={critical ? "ps-two-box" : undefined}>
+        {critical ? (
+          <div className="ps-box">
+            <h4>{ut("bf.crisisTitle")}</h4>
+            <p>
+              {fill(ut("bf.crisisText"), { hotline: ut("home.hotlineNumber"), emergency: ut("ps.emergencyNumber") })}
+            </p>
+          </div>
+        ) : null}
+        <div className="ps-box ps-staff">
+          <h4>{ut("bf.forStaff")}</h4>
+          <div className="ps-fill">
+            {ut("bf.sum")}
+            <i />
+          </div>
+          {critical ? (
+            <div className="ps-fill">
+              <span className="ps-sq" aria-hidden />
+              {ut("bf.criticalPassed")}
+            </div>
+          ) : null}
+          <div className="ps-fill">
+            {ut("bf.entered")}
+            <i />
+          </div>
+        </div>
+      </div>
+
+      <div className="ps-end">
+        <SheetFoot lines={[ut("bf.footEntry"), ut("bf.footNoData")]} right={code} />
+      </div>
+    </Sheet>
   );
 }
 
@@ -130,7 +193,7 @@ export default function BlankForm() {
  * печати нельзя — а если бы и было можно, пачка одинаковых листов с чужими
  * именами в коридоре хуже, чем её отсутствие.
  */
-function SheetCode({ surveyId, version }: { surveyId: string; version: number }) {
+function SheetCode({ surveyId, version, code }: { surveyId: string; version: number; code: string }) {
   const { ut } = useLang();
   const svg = useMemo(() => {
     const qr = qrcode(0, "M");
@@ -140,19 +203,18 @@ function SheetCode({ surveyId, version }: { surveyId: string; version: number })
   }, [surveyId, version]);
 
   return (
-    <div className="mb-4 flex items-start gap-3 border-b border-hairline pb-4">
+    <div className="ps-code">
+      <div>
+        <span className="mute">{ut("bf.sheetCode")}</span>
+        <b>{code}</b>
+        <small>{ut("bf.sheetCodeHint")}</small>
+      </div>
       {/*
         biome-ignore lint/security/noDangerouslySetInnerHtml: SVG кода
         собирается здесь же из идентификатора методики и номера версии,
         никакие внешние данные в разметку не попадают
       */}
-      <div className="w-[76px] shrink-0" dangerouslySetInnerHTML={{ __html: svg }} />
-      <div className="text-caption text-muted">
-        <p className="m-0">
-          {ut("bf.sheetCode")}: <span className="font-mono">{surveyId.slice(0, 8)}·v{version}</span>
-        </p>
-        <p className="m-0 mt-1">{ut("bf.sheetCodeHint")}</p>
-      </div>
+      <span className="ps-qr" dangerouslySetInnerHTML={{ __html: svg }} />
     </div>
   );
 }
@@ -171,30 +233,65 @@ function sharedOptions(questions: Q[]): string[] | null {
   return same ? first : null;
 }
 
+/** Таблица с текстом пунктов и кружками под общими вариантами (короткие методики) */
+function TextSheet({ questions, options }: { questions: Q[]; options: string[] }) {
+  return (
+    <table className="ps-tbl ps-form mid">
+      <thead>
+        <tr>
+          <th className="no">№</th>
+          <th />
+          {options.map((o) => (
+            <th key={o} className="c ps-opt">
+              {o}
+            </th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {questions.map((q) => (
+          <tr key={q.id}>
+            <td className="no">{q.position + 1}</td>
+            <td>{q.title}</td>
+            {options.map((o) => (
+              <td key={o} className="c">
+                <Mark />
+              </td>
+            ))}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+/** Сетка номеров: две колонки на лист — 45 пунктов на одной странице вместо двух */
 function GridSheet({ questions, options }: { questions: Q[]; options: string[] }) {
-  /* Две колонки на лист: 45 пунктов помещаются на одну страницу вместо двух */
   const half = Math.ceil(questions.length / 2);
   const columns = [questions.slice(0, half), questions.slice(half)];
   return (
-    <div className="grid-sheet">
+    <div className="ps-grid2">
       {columns.map((column, i) =>
         column.length ? (
-          <table key={i} className="blank-grid">
+          <table key={i} className="ps-tbl ps-form mid">
             <thead>
               <tr>
-                <th className="w-[34px]">№</th>
+                <th className="no">№</th>
                 {options.map((o) => (
-                  <th key={o}>{o}</th>
+                  <th key={o} className="c ps-opt">
+                    {o}
+                  </th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {column.map((q) => (
                 <tr key={q.id}>
-                  <td className="num">{q.position + 1}</td>
-                  {/* клетка отмечается прямо в рамке ячейки .blank-grid td — своя рамка внутри не нужна */}
+                  <td className="no">{q.position + 1}</td>
                   {options.map((o) => (
-                    <td key={o} />
+                    <td key={o} className="c">
+                      <Mark />
+                    </td>
                   ))}
                 </tr>
               ))}
@@ -206,52 +303,41 @@ function GridSheet({ questions, options }: { questions: Q[]; options: string[] }
   );
 }
 
+/** Пункты с разными вариантами: у каждого — свои, кружком для отметки */
 function LongSheet({ questions }: { questions: Q[] }) {
   return (
-    <ol className="blank-list">
+    <ol className="ps-long">
       {questions.map((q) => (
-        <li key={q.id} value={q.position + 1}>
-          <span className="text-small">{q.title}</span>
-          {q.options.length ? (
-            <span className="mt-1 flex flex-col gap-1">
-              {q.options.map((o) => (
-                <span key={o.id} className="opt">
-                  {/*
-                    Квадрат для отметки. У .box в наследии не было ни рамки, ни
-                    размера — на бумаге печаталось пустое место без метки,
-                    ставить крестик было некуда. Рамка держится на токене
-                    границы, который печать переопределяет в #777 — видна и на
-                    экране, и на бумаге.
-                  */}
-                  <i aria-hidden className="inline-block size-3 shrink-0 border border-border-strong align-middle" />
-                  {o.text}
-                </span>
-              ))}
-            </span>
-          ) : (
-            <span
-              aria-hidden
-              className="mt-1 block h-9 rounded-sm border border-dashed border-border-strong"
-            />
-          )}
+        <li key={q.id}>
+          <span className="no">{q.position + 1}</span>
+          <div>
+            <p>{q.title}</p>
+            {q.options.length ? (
+              <span className="ps-opts">
+                {q.options.map((o) => (
+                  <span key={o.id}>
+                    <Mark />
+                    {o.text}
+                  </span>
+                ))}
+              </span>
+            ) : (
+              /* свободный ответ — место для записи от руки */
+              <span aria-hidden className="ps-write" />
+            )}
+          </div>
         </li>
       ))}
     </ol>
   );
 }
 
-function Blank({ label, width }: { label: string; width: string }) {
+/** Поле для заполнения от руки: линия и подпись под ней */
+function Line({ label, span }: { label: string; span: number }) {
   return (
-    /*
-     * Ширина — доля строки конкретного поля бланка (ФИО во всю строку,
-     * подразделение и звание делят строку пополам), у неё нет своего
-     * тейлвиновского шага: это тот самый «рантайм»-случай из REDESIGN.md —
-     * параметр компонента, а не константа разметки.
-     */
-    <label className="blank" style={{ width }}>
+    <div className="ps-ln" style={{ gridColumn: `span ${span}` }}>
+      <i />
       <span>{label}</span>
-      {/* строка для заполнения от руки — раньше здесь не было ни рамки, ни высоты */}
-      <i aria-hidden className="mt-1 block h-5 border-b border-border-strong" />
-    </label>
+    </div>
   );
 }

@@ -1,145 +1,200 @@
-import { useCallback, useState } from "react";
-import { ScrollView, Text, View } from "react-native";
-import { useFocusEffect, useLocalSearchParams, useNavigation, useRouter } from "expo-router";
-import type { RespondentDynamics } from "@quizzy/shared";
+import { useCallback, useMemo, useState } from "react";
+import { ScrollView, View } from "react-native";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import type { AlertCase, RespondentDynamics, Worklist } from "@quizzy/shared";
+import { isAborted } from "@/api/abort";
 import { api } from "@/api/client";
 import { isAccessDenied, shownAfterFailure } from "@/api/access";
-import { SeverityTag } from "@/components/charts";
-import { LineChart } from "@/components/viz";
-import { Body, Button, Card, Divider, ErrorText, Loader, Row, Title } from "@/components/ui";
-import { spacing, useColors } from "@/theme";
+import { useReads } from "@/api/useReads";
+import { cache } from "@/offline/cache";
+import { activeOwner } from "@/offline/owner";
 import { useLang } from "@/lang";
+import { useColors } from "@/theme";
+import { ActionBar, Btn } from "@/ui/Button";
+import { Callout } from "@/ui/Panel";
+import { useNow, useOpenCase, usePersonHead, useSurveyContents } from "@/staff/data";
+import { dm, hm, instrumentRows, shortName } from "@/staff/model";
+import { ReviewSheet } from "@/staff/ReviewSheet";
+import { PatientHead, WorkStrip } from "@/staff/patient";
+import { StaffOnly } from "@/staff/StaffOnly";
+import { BandIcon, Card, InstrumentLine, Line, LinkButton, Loading, RiskNow, Section, StaffNav, StateBlock } from "@/staff/ui";
+import { flipVisited, visitedToday } from "@/staff/visited";
 
 /**
  * Карта пациента в обходе.
  *
  * Открывается из списка обхода и работает по кэшу, если сети нет: в палате её
- * нет чаще, чем есть. Возраст снимка написан прямо в шапке — карта из вчера
+ * нет чаще, чем есть. Возраст снимка написан прямо сверху — карта из вчера
  * выглядит так же, как сегодняшняя, и это опаснее пустого экрана.
  *
- * Показывается только то, что нужно у койки: последний балл по каждой шкале,
- * его толкование и направление изменения. Полная динамика с графиками живёт в
- * разделе аналитики — на обходе её листать некогда.
+ * Показывается только то, что нужно у койки: сигнал ризику с часами до
+ * нормы, что от специалиста ждут по этому человеку, последний балл по каждой
+ * шкале с выраженностью словом и сдвигом от старта. Полная динамика с
+ * графиками — в карте пациента: на обходе её листать некогда.
  */
-export default function RoundsCardScreen() {
+export default function RoundsCard() {
+  // карта у койки — экран сотрудника: пациенту по ссылке — его «Головна» (staff/StaffOnly.tsx)
+  return (
+    <StaffOnly>
+      <RoundsCardScreen />
+    </StaffOnly>
+  );
+}
+
+function RoundsCardScreen() {
   const { ut } = useLang();
   const c = useColors();
   const router = useRouter();
-  const navigation = useNavigation();
+  const now = useNow();
   const { userId } = useLocalSearchParams<{ userId: string }>();
+  const { open, reload: reloadCase } = useOpenCase(userId);
+  // имя и подразделение — из строки обхода, сразу: карта может идти секунды
+  const head = usePersonHead(userId);
+  const reads = useReads();
 
   const [data, setData] = useState<RespondentDynamics | null>(null);
   const [cachedAt, setCachedAt] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [visited, setVisited] = useState(() => visitedToday().has(userId ?? ""));
+  const [review, setReview] = useState<AlertCase | null>(null);
 
   const load = useCallback(async () => {
     if (!userId) return;
+    const signal = reads.next();
     try {
-      const { card, cachedAt: at } = await api.roundsCard(userId);
+      const { card, cachedAt: at } = await api.roundsCard(userId, { signal });
       setData(card);
       setCachedAt(at);
-      navigation.setOptions({ title: card.fullName });
+      setError(null);
     } catch (e) {
+      // ушли с экрана, пока карта шла (api/abort.ts) — показывать нечего и некому
+      if (isAborted(e)) return;
       /*
        * Отказ доступа (#126) — карта, открытая раньше, больше не положена:
-       * экран её сбрасывает и показывает ошибку, а в шапке не остаётся имя
-       * пациента. Без сети показанное остаётся.
+       * экран её сбрасывает и показывает ошибку. Без сети показанное остаётся.
        */
-      if (isAccessDenied(e)) navigation.setOptions({ title: ut("rounds.title") });
       setData((shown) => shownAfterFailure(shown, e));
       setCachedAt((at) => shownAfterFailure(at, e));
-      setError(e instanceof Error ? e.message : ut("rounds.loadFailed"));
+      setError(isAccessDenied(e) || !(e instanceof Error) ? ut("rounds.loadFailed") : e.message);
     }
-  }, [userId, navigation, ut]);
+  }, [userId, ut, reads]);
 
+  // уход с экрана обрывает чтение карты; вернулись — читаем заново
   useFocusEffect(
     useCallback(() => {
       void load();
-    }, [load]),
+      return reads.cancel;
+    }, [load, reads]),
   );
 
-  if (error && !data) return <ErrorText>{error}</ErrorText>;
-  if (!data) return <Loader />;
+  // что от специалиста ждут по этому человеку — из снимка обхода, он есть и без сети
+  const work = useMemo(() => {
+    const saved = cache.rounds(activeOwner())?.rows as Worklist | undefined;
+    return (saved?.items ?? []).filter((i) => i.userId === userId);
+  }, [userId, data]);
+  const contents = useSurveyContents(data?.surveys.map((s) => s.surveyId) ?? []);
+  const rows = useMemo(() => (data ? instrumentRows(data, (id) => contents.get(id)) : []), [data, contents]);
+  const dates = useMemo(() => {
+    const all = new Set<string>();
+    for (const r of rows) all.add(r.last.submittedAt.slice(0, 10));
+    return [...all].sort().slice(-3).map((d) => dm(d));
+  }, [rows]);
+
+  const unit = work.find((w) => w.unit)?.unit ?? null;
+  const back = ut("rounds.title");
+  const openFull = () => router.push({ pathname: "/analytics/patients/[userId]", params: { userId: userId!, back: "rounds" } });
+
+  if (!data) {
+    // пока карта идёт — шапка из того, что уже на устройстве; ошибка — без имени: карта может быть уже не положена
+    const hint = error ? null : head;
+    return (
+      <View style={{ flex: 1, backgroundColor: c.ground }}>
+        <StaffNav back={back} title={hint ? shortName(hint.name) : ut("rounds.title")}>
+          {hint ? <PatientHead name={hint.name} age={hint.age} sex={hint.sex} extra={unit ?? hint.unit} /> : null}
+        </StaffNav>
+        {error ? <StateBlock icon="circle-alert" title={error} action={{ label: ut("common.retry"), onPress: () => void load() }} /> : <Loading />}
+      </View>
+    );
+  }
 
   return (
-    <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.lg }}>
-      <View style={{ gap: spacing.xs }}>
-        <Title>{data.fullName}</Title>
+    <View style={{ flex: 1, backgroundColor: c.ground }}>
+      <StaffNav back={back} title={shortName(data.fullName)} right={<BandIcon icon="user-round" label={ut("mst.openCard")} onPress={openFull} />}>
+        <PatientHead name={data.fullName} age={data.age} sex={data.sex} extra={unit} />
+      </StaffNav>
+      <ScrollView contentContainerStyle={{ paddingBottom: 24 }}>
         {cachedAt ? (
-          <Text style={{ color: c.accent, fontSize: 13 }}>
-            {ut("rounds.cardOffline")} {cachedAt.slice(0, 16).replace("T", " ")}
-          </Text>
-        ) : null}
-      </View>
-
-      {data.surveys.length === 0 ? <Card><Body muted>{ut("rounds.noData")}</Body></Card> : null}
-
-      {data.surveys.map((sv) => (
-        <Card key={sv.surveyId}>
-          <Title>{sv.title}</Title>
-          <Body muted>
-            {sv.responseCount} · {sv.lastAt?.slice(0, 10) ?? ""}
-          </Body>
-          <Divider />
-
-          {sv.scales.map((sc) => {
-            const last = sc.points.at(-1);
-            if (!last) return null;
-            return (
-              <View key={sc.scaleId} style={{ gap: 4, paddingVertical: spacing.xs }}>
-                <Row>
-                  <Text style={{ color: c.text, flex: 1 }}>{sc.title}</Text>
-                  {/*
-                    Число моноширинным: на обходе колонку баллов читают
-                    сверху вниз, и разная ширина цифр сбивает счёт.
-                  */}
-                  <Text style={{ color: c.text, fontVariant: ["tabular-nums"], fontWeight: "600" }}>
-                    {last.rawScore}
-                  </Text>
-                </Row>
-                <Row gap={spacing.xs}>
-                  {last.severity ? (
-                    <SeverityTag severity={last.severity} label={last.bandLabel ?? undefined} />
-                  ) : null}
-                  {sc.reliableChange ? (
-                    <Text style={{ color: c.muted, fontSize: 12 }}>
-                      {sc.reliableChange.significant
-                        ? ut("pt.rciAbove")
-                        : ut("pt.rciWithin")}
-                    </Text>
-                  ) : null}
-                </Row>
-                {sc.points.length > 1 ? (
-                  <LineChart
-                    height={48}
-                    series={[
-                      {
-                        label: sc.title,
-                        points: sc.points.map((p) => ({
-                          x: p.submittedAt.slice(5, 10),
-                          t: Date.parse(p.submittedAt),
-                          y: p.rawScore,
-                          tone: p.severity ?? undefined,
-                        })),
-                      },
-                    ]}
-                  />
-                ) : null}
+          /*
+           * Сети нет — работаем по снимку. Отметка обязательна: обход по
+           * вчерашней карте выглядит точно так же, как по сегодняшней.
+           */
+          <View style={{ marginHorizontal: 16, marginTop: 16 }}>
+            <Callout kind="warn" icon="wifi-off" title={ut("mst.noNetwork")} text={`${ut("rounds.cardOffline")} ${dm(cachedAt)}, ${hm(cachedAt)}`}>
+              <View style={{ marginTop: 8, alignSelf: "flex-start" }}>
+                <Btn title={ut("mst.refresh")} kind="outline" size="s" icon="refresh-cw" onPress={() => void load()} />
               </View>
-            );
-          })}
-        </Card>
-      ))}
+            </Callout>
+          </View>
+        ) : null}
 
-      {/*
-        Заполнить методику за пациента — главное действие у койки: человек
-        лежит рядом, а не сидит с телефоном. Ведёт в обычный список методик,
-        где выбор уже привязан к этому пациенту.
-      */}
-      <Button
-        title={ut("rounds.fill")}
-        onPress={() => router.push(`/(app)/surveys?onBehalfOf=${userId}`)}
+        {open ? (
+          <RiskNow
+            item={open}
+            now={now}
+            text={[`${open.surveyTitle}, ${dm(open.lastAlertAt)}, ${hm(open.lastAlertAt)}`, open.signals[0]?.label].filter(Boolean).join(": ")}
+            onReview={() => setReview(open)}
+          />
+        ) : null}
+
+        <WorkStrip items={work} />
+
+        <Section
+          title={ut("mst.lastMeasures")}
+          count={rows.length}
+          right={<LinkButton label={ut("mst.allDynamics")} onPress={openFull} />}
+          sub={dates.length ? dates.join(", ") : undefined}
+        />
+        {rows.length ? (
+          <Card>
+            {rows.map((r, i) => (
+              <InstrumentLine key={r.key} row={r} first={i === 0} />
+            ))}
+          </Card>
+        ) : (
+          <StateBlock title={ut("rounds.noData")} />
+        )}
+        <Line>{ut("mst.bedsideHint")}</Line>
+      </ScrollView>
+
+      <ActionBar>
+        {/* «Відвідано» — память обходящего на этом устройстве, не запись в карте (staff/visited.ts) */}
+        <Btn
+          title={ut("mst.visitedBtn")}
+          size="m"
+          icon={visited ? "check-check" : "check"}
+          kind={visited ? "outline" : "secondary"}
+          accessibilityLabel={ut(visited ? "mst.visitedOn" : "mst.visitedOff")}
+          accessibilityHint={ut("mst.visitedHint")}
+          onPress={() => setVisited(flipVisited(userId!).has(userId!))}
+        />
+        {/*
+          Заполнить методику за пациента — главное действие у койки: человек
+          лежит рядом, а не сидит с телефоном. Ведёт в обычный список методик,
+          где выбор уже привязан к этому пациенту.
+        */}
+        <Btn title={ut("rounds.fill")} kind="primary" size="m" flex={1} onPress={() => router.push(`/(app)/surveys?onBehalfOf=${userId}`)} />
+      </ActionBar>
+
+      <ReviewSheet
+        item={review}
+        dynamics={data}
+        onClose={() => setReview(null)}
+        onDone={() => {
+          setReview(null);
+          reloadCase();
+        }}
       />
-    </ScrollView>
+    </View>
   );
 }
+

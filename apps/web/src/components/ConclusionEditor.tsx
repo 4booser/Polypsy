@@ -1,377 +1,355 @@
-
 import { useEffect, useId, useState, type ReactNode } from "react";
-import type { UiKey } from "@quizzy/shared";
-import { api, type ConclusionState } from "../api";
+import { api, openInTab, type ConclusionState } from "../api";
 import { cx } from "../ui/cx";
-import { day } from "../format";
-import { useAction } from "../ui";
+import { day, timeOfDay } from "../format";
+import { Callout, Ic, useAction, useToast } from "../ui";
+import { IconTile } from "../ui/layout";
+import { ActionMenu } from "../ui/menu";
 import { useLang } from "../lang";
-import { Button, Textarea } from "../ui/primitives";
-import { TemplatePicker } from "./TemplatePicker";
-import { draftOf, saveThenSign, signPlan, staleMessage } from "./versioned";
+import { Button, Tag, Textarea } from "../ui/primitives";
+import { editorShortcut } from "../pages/constructor/shortcuts";
+import { Rx } from "../pages/response/icons";
+import { TemplateMenus } from "./TemplatePicker";
+import { draftOf, draftSavable, saveThenSign, signPlan, staleMessage } from "./versioned";
 
 /**
- * Заключение специалиста поверх автоматической интерпретации — блок
- * «Висновки заключення» экрана «Заключення» (кадры f36/f37).
+ * Редактор заключения по прохождению — лист во всю колонку (Polypsy 2.0,
+ * кадр methods-conclusion): шапка документа с состоянием и версией, полоса
+ * инструментов (собрать из результатов, шаблоны, формулировки), название,
+ * сводка результата, вывод, сигналы прохождения, строка о версиях и подпись.
  *
- * Черновик правится свободно; подпись фиксирует версию навсегда — дальше
- * только новая версия поверх. В печатный отчёт попадает только подписанное:
- * рабочий текст не должен утекать в документ, который подошьют в дело.
- *
- * Состояние заключения приходит снаружи, а не грузится здесь: экрану оно
- * нужно раньше редактора — название документа стоит в самом верху страницы,
- * а лежит в той же записи. Грузить одну запись дважды ради двух мест на
- * экране значило бы, что после сохранения два места расходятся.
- *
- * Что на кадре f37_2 и как это здесь.
- *
- * Над текстом стоит полоса форматирования: ¶, гарнитура, начертание, кегль,
- * образец цвета, «A», B / I / U и четыре выравнивания. Она нарисована ровно
- * так — и выключена целиком. conclusions.text хранится простым текстом: он
- * шифруется целиком, а печатный отчёт экранирует его и печатает как есть;
- * разметка в этом поле сломала бы обе дороги. Формат хранения объявляет
- * сервер, и до тех пор кнопки стоят на кадре, но не работают — это честнее,
- * чем полоса, которой на экране нет, и честнее, чем кнопки, которые молча
- * ничего не делают.
- *
- * НЕХВАТКА СЕРВЕРА (в отчёте сверки — строкой «сервер»): формат хранения
- * текста заключения не объявлен. Пока он не объявлен, полоса остаётся
- * нарисованной и выключенной; включать её раньше — значит писать в
- * подписанный клинический документ разметку, которую никто не прочтёт.
- *
- * Настоящие инструменты этого редактора — сборка черновика из фактов,
- * библиотека формулировок и история версий — ушли с полосы в меню шестерёнки
- * экрана (Conclusion.tsx, DocumentMenu): на кадре их там нет, а полоса занята
- * форматированием. Туда же ушла кнопка «Зберегти чернетку»: внизу кадра одна
- * кнопка — «Сформувати заключення». Черновик при этом никуда не делся —
- * стажёр готовит текст без права подписи, и без сохранения ему некуда деть
- * работу.
- *
- * Строка «у звіт іде лише підписане» под полем тоже убрана с глаз: на кадре
- * между полем и кнопкой пусто. Она стала подписью наведения самой кнопки —
- * там, где о ней и вспоминают.
+ * Подпись идёт по правилам сервера: завершённое прохождение, сохранённая
+ * редакция, сверка версии и редакции (409 — «перечитати»). Сверху экран
+ * держит своё правило: пока не разобран сигнал, поднятый этим же
+ * прохождением, подписать нельзя (`lock`), — черновик писать и сохранять
+ * можно.
  */
+export interface SignLock {
+  /** Заголовок заметки над текстом: «Підписати можна після розбору сигналу» */
+  title: ReactNode;
+  /** Что за сигнал и сколько он висит */
+  body: ReactNode;
+  /** «Розібрати сигнал» — переход к разбору */
+  action: ReactNode;
+  /**
+   * risk — сигнал не разобран (по умолчанию); warn — разобран ли он,
+   * неизвестно: обстановка не пришла, и это не риск, а отказ загрузки.
+   */
+  tone?: "risk" | "warn";
+  /** Строка у кнопки подписи; без неё — «Підпис відкриється після розбору сигналу» */
+  note?: ReactNode;
+}
+
 export function ConclusionEditor({
   responseId,
   state,
   error,
   onState,
-  title,
+  onReload,
   text,
   setText,
   areaRef,
-  tool,
-  setTool,
-  onReload,
+  heading,
+  summary,
+  signals,
+  lock,
+  signPending = false,
+  onHistory,
+  canWrite = true,
+  canSign = true,
 }: {
   responseId: string;
   state: ConclusionState | null;
   error: string | null;
-  /** Сохранение и подпись возвращают новое состояние целиком — сюда */
   onState: (next: ConclusionState) => void;
-  /** Перечитать заключение с сервера — после отказа 409, см. `stale` ниже */
   onReload: () => void;
-  /** Название документа с поля вверху экрана: уходит на сервер вместе с текстом */
-  title: string;
-  /**
-   * Текст черновика живёт на экране, а не здесь: его правят в этом поле, но
-   * зовут из меню шестерёнки экрана (сборка из фактов, библиотека, черновик).
-   * Держать его в двух местах значило бы расходиться после каждой вставки.
-   */
   text: string;
   setText: (next: string) => void;
   areaRef: React.RefObject<HTMLTextAreaElement | null>;
-  /** Что открыто из меню шестерёнки: библиотека формулировок или история версий */
-  tool: null | "templates" | "history";
-  setTool: (next: null | "templates" | "history") => void;
+  /** Подпись документа в шапке: «PHQ-9 від 8 жовт., 14:12» */
+  heading?: ReactNode;
+  /** Сводка результата над выводом */
+  summary?: ReactNode;
+  /** Сигналы этого прохождения — разделом под выводом */
+  signals?: ReactNode;
+  lock?: SignLock | null;
+  /**
+   * Судить о сигналах ещё не из чего — обстановка едет: подпись ждёт молча,
+   * без заметки (она мелькнула бы на каждом открытии).
+   */
+  signPending?: boolean;
+  /** «Історія» — к истории версий */
+  onHistory?: () => void;
+  /** Права читающего: писать черновик (conclusions.write) и подписывать (conclusions.sign) */
+  canWrite?: boolean;
+  canSign?: boolean;
 }) {
   const { ut } = useLang();
-  /*
-   * busy — чтобы кнопка гасла на время подписи: второе нажатие useAction и
-   * так не пропустит, но живая кнопка, которая ничего не делает, выглядит
-   * зависшей, и по ней жмут ещё.
-   */
   const { run, busy } = useAction();
-  /*
-   * Отказ 409: заключение переписали, пока оно было открыто, — сменилась
-   * версия или редакция черновика (сервер, миграция 0096). Показывается
-   * строкой у кнопки, а не всплывашкой: всплывашка гаснет сама, а человеку
-   * нужно действие — перечитать, — и знать, что станет с набранным.
-   */
+  const toast = useToast();
   const [stale, setStale] = useState<string | null>(null);
-  /*
-   * Отказ — о заключении этого прохождения. Переход к другому начинает без
-   * него: строка «заключение переписали» под чужим адресом звала бы
-   * перечитать то, чего здесь никто не переписывал (#201, хвост #200).
-   */
+  /* отказ 409 прежнего прохождения к новому не переходит — сброс до раннего возврата, порядок хуков постоянен */
   useEffect(() => setStale(null), [responseId]);
+  const why = ut("fmt.unavailable");
+  const whyId = useId();
+  const textId = "cn-text";
+
+  const draft = state ? draftOf(state) : null;
+  const saveDraft = () =>
+    run(async () => {
+      if (!state || !draftSavable(text)) return false;
+      onState(await api.saveConclusion(responseId, text, state.current));
+    }, ut("cn.draftSaved"));
+
+  /* ⌘S / Ctrl+S — сохранить черновик, не уходя с поля; по клавише, а не по знаку раскладки */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (editorShortcut(e) !== "save") return;
+      e.preventDefault();
+      if (!busy) void saveDraft();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  });
 
   if (!state) {
-    // отказ загрузки — не повод прятать редактор: заключение можно написать заново
     return error ? (
-      <p className="text-muted">
+      <p className="m-0 text-small text-muted">
         {ut("cn.loadFailed")}: {error}
       </p>
     ) : (
-      <p className="text-muted">{ut("common.loading")}</p>
+      <p className="m-0 text-small text-muted">{ut("common.loading")}</p>
     );
   }
-
   const signed = state.versions.find((v) => v.status === "signed");
-  const draft = draftOf(state);
-  /* версия и редакция — те, что на экране: сервер сверит обе */
-  const save = () => api.saveConclusion(responseId, text, state.current, title);
-  /* подписывается текст в поле и только он (versioned.ts, signPlan) */
+  const save = () => api.saveConclusion(responseId, text, state.current);
   const plan = signPlan(text, draft);
+  const dirty = draft ? text !== draft.text : text.trim().length > 0;
+  const status = draft ? (
+    <Tag icon={<Rx.filePen />}>{ut("cnx.draftV").replace("{n}", String(draft.version))}</Tag>
+  ) : signed ? (
+    <Tag tone="good" icon={<Ic.check />}>
+      {ut("cnx.signedV").replace("{n}", String(state.current!.version))}
+    </Tag>
+  ) : (
+    <Tag>{ut("cnx.new")}</Tag>
+  );
+
+  const sign = () =>
+    run(async () => {
+      try {
+        await saveThenSign(state, plan, {
+          save,
+          sign: (seen) => api.signConclusion(responseId, seen),
+          apply: onState,
+        });
+        setText("");
+        setStale(null);
+      } catch (e) {
+        const message = staleMessage(e);
+        if (message === null) throw e;
+        setStale(message);
+        return false;
+      }
+    }, ut("cn.signed"));
 
   return (
-    <section aria-labelledby="cn-verdicts" className="mt-[50px]">
-      {/* 20/700 фиолетовым — ступень заголовков свитка: прописная «В» на кадре f36 — 14 px */}
-      <h2 id="cn-verdicts" className="m-0 mb-[10px] text-[20px] font-bold leading-[24px] text-primary">
-        {ut("cn3.verdicts")}
-      </h2>
-
-      {signed && !draft ? (
-        <div className="mb-[14px] rounded-[5px] bg-primary-soft px-[14px] py-[10px]">
-          <p className="m-0 whitespace-pre-wrap text-[15px] leading-[20px] text-text">{state.current!.text}</p>
-          <p className="m-0 mt-[6px] text-[13px] text-muted">
-            {ut("cnc.signedBy")} {state.current!.authorName}, {day(state.current!.signedAt!)} ·{" "}
-            {ut("ds.version")} {state.current!.version}. {ut("cnc.editCreatesVersion")}
-          </p>
-        </div>
-      ) : null}
-
-      {/*
-        Полоса форматирования кадра f37_2/f36_3: сиреневая, 40 высотой, с
-        белыми плашками 30. Набрана по замеру — ¶ · гарнитура · начертание ·
-        кегль · образец цвета · «A» · B · I · U · четыре выравнивания — и
-        выключена целиком: см. пояснение к компоненту. Каждая плашка подписана
-        для диктора; причину недоступности человек видит подсказкой над любой
-        плашкой (подпись на обёртке, а не на выключенной кнопке), диктор —
-        через aria-describedby панели. Глифы кадра («B», «I», «U», полоски
-        выравнивания) нарисованы, а не набраны символами — в подключённых
-        подмножествах шрифтов их нет.
-      */}
-      <FormatBar />
-      {/*
-        Имя поля — видимый заголовок блока, а не скрытая подпись: заголовок
-        на экране уже есть, и второе имя тем же словом диктор прочёл бы дважды.
-      */}
-      <Textarea
-        ref={areaRef}
-        rows={7}
-        aria-labelledby="cn-verdicts"
-        className="rounded-t-none"
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        placeholder={signed ? ut("cn.newOverSigned") : ut("cn.placeholder")}
-      />
-      {tool === "templates" ? (
-        <div className="mt-[10px]">
-          <TemplatePicker kind="conclusion" value={text} onChange={setText} textareaRef={areaRef} />
-        </div>
-      ) : null}
-
-      {tool === "history"
-        ? state.versions.map((v) => (
-            <div key={v.id} className="mt-[10px] rounded-[5px] bg-primary-soft px-[14px] py-[10px]">
-              <p className="m-0 whitespace-pre-wrap text-[13px] leading-[18px] text-text">{v.text}</p>
-              <p className="m-0 mt-[4px] text-[13px] text-muted">
-                {ut("cnc.versionN")} {v.version} ·{" "}
-                {v.status === "signed" ? `${ut("cnc.signedOn")} ${day(v.signedAt!)}` : ut("cnc.draftWord")} ·{" "}
-                {v.authorName}
-              </p>
-            </div>
-          ))
-        : null}
-
-      {/*
-        Внизу кадра f36_3 одна кнопка — «Сформувати заключення», 294×45 у
-        правого края колонки, от поля до неё 78 px. Ширину задаёт текст, а не
-        число: на русском надпись длиннее. «Зберегти чернетку» ушла в меню
-        шестерёнки экрана, пояснение «у звіт іде лише підписане» — в подпись
-        наведения этой кнопки.
-
-        78, а не 64: нижняя рамка поля текста на кадре стоит на 680, верх
-        плашки кнопки — на 758 (вырезка хвоста экрана, 1500×320 от 10600).
-      */}
-      {stale ? (
-        <div role="alert" className="mt-[14px] rounded-[5px] bg-accent-soft px-[14px] py-[10px]">
-          <p className="m-0 text-[15px] leading-[20px] text-text">{stale}</p>
-          <p className="m-0 mt-[4px] text-[13px] text-muted">{ut("integrity.rereadHint")}</p>
+    <section aria-labelledby="cn-verdicts" className="min-w-0 overflow-clip rounded-panel border border-border bg-panel shadow-panel">
+      <div className="flex min-h-[60px] flex-wrap items-center gap-x-2.5 gap-y-1.5 py-3 pl-3.5 pr-3">
+        <IconTile icon={<Rx.filePen />} />
+        <h2 id="cn-verdicts" className="m-0 text-section font-extrabold text-text">
+          {ut("rp.conclusion")}
+        </h2>
+        {heading ? <span className="min-w-0 text-small text-muted">{heading}</span> : null}
+        <div className="ml-auto flex flex-wrap items-center gap-1.5">
+          {status}
           <Button
+            size="icon-sm"
             variant="quiet"
-            className="mt-[8px]"
-            onClick={() => {
-              setStale(null);
-              onReload();
-            }}
+            icon={<Rx.fileDown />}
+            aria-label={ut("cn3.savePdf")}
+            title={ut("cn3.savePdf")}
+            disabled={busy}
+            onClick={() => void run(() => openInTab(api.reportUrl(responseId)))}
+          />
+          <ActionMenu
+            label={ut("cn3.actions")}
+            triggerSize="icon-sm"
+            entries={[
+              { key: "pdf", label: ut("cn3.savePdf"), icon: <Rx.fileDown />, onSelect: () => void run(() => openInTab(api.reportUrl(responseId))) },
+              { key: "mail", label: ut("cn3.sendMail"), icon: <Ic.message />, onSelect: () => toast(ut("cn3.mailUnavailable"), "info") },
+            ]}
+          />
+        </div>
+      </div>
+
+      {lock && !signed ? (
+        <div className="px-4 pb-3.5">
+          <Callout
+            kind={lock.tone ?? "risk"}
+            icon={lock.tone === "warn" ? <Ic.circleAlert /> : <Ic.lock />}
+            title={lock.title}
+            actions={lock.action}
           >
-            {ut("integrity.reread")}
-          </Button>
+            {lock.body}
+          </Callout>
         </div>
       ) : null}
 
-      <div className="mt-[78px] flex justify-end">
+      <div role="toolbar" aria-label={ut("cnx.tools")} className="flex flex-wrap items-center gap-1.5 border-y border-divider bg-panel-2 px-4 py-2.5">
         <Button
-          size="md"
-          title={ut("cnc.onlySignedInReport")}
-          disabled={busy || !plan.canSign}
+          size="xs"
+          icon={<Rx.wand />}
+          disabled={busy || !canWrite}
+          title={ut("cnx.fromResultsHint")}
           onClick={() =>
-            run(async () => {
-              try {
-                /*
-                 * Подписываем именно ту версию и ту редакцию, которую вернуло
-                 * сохранение (или которая была на экране). Если между открытием
-                 * экрана и подписью текст переписал кто-то другой, сервер
-                 * откажет — лучше отказ, чем подпись под чужим текстом.
-                 * Сохранение ложится на экран сразу, не дожидаясь подписи:
-                 * не удалась подпись — повтор не упрётся в свою же правку.
-                 */
-                await saveThenSign(state, plan, {
-                  save,
-                  sign: (seen) => api.signConclusion(responseId, seen),
-                  apply: onState,
-                });
-                setText("");
-                setStale(null);
-              } catch (e) {
-                const message = staleMessage(e);
-                if (message === null) throw e;
-                setStale(message);
-                return false;
-              }
-            }, ut("cn.signed"))
+            void run(async () => {
+              if (text.trim() && !window.confirm(ut("cn.draftReplaced"))) return false;
+              setText(await buildDraft(responseId, ut as unknown as (k: never) => string));
+            })
           }
         >
-          {ut("cn3.form")}
+          {ut("cn.fromResults")}
         </Button>
+        <TemplateMenus
+          kind="conclusion"
+          value={text}
+          onChange={setText}
+          textareaRef={areaRef}
+          templateIcon={<Rx.template />}
+          phraseIcon={<Rx.quote />}
+          disabled={!canWrite}
+        />
+        <span aria-hidden className="mx-1 h-[22px] w-px bg-divider" />
+        {/*
+          Форматирования нет: сервер хранит заключение простым текстом. Кнопки
+          выключены, а причина — на обёртке (выключенной кнопке браузер не
+          доставляет наведение) и для диктора — через aria-describedby.
+        */}
+        <span title={why} className="inline-flex gap-0.5 opacity-60" aria-describedby={whyId}>
+          <button type="button" disabled aria-label={ut("fmt.bold")} className="grid size-8 place-items-center rounded-[9px] border-0 bg-transparent text-text-2">
+            <Rx.bold size={15} />
+          </button>
+          <button type="button" disabled aria-label={ut("fmt.italic")} className="grid size-8 place-items-center rounded-[9px] border-0 bg-transparent text-text-2">
+            <Rx.italic size={15} />
+          </button>
+          <button type="button" disabled aria-label={ut("cnx.fmtList")} className="grid size-8 place-items-center rounded-[9px] border-0 bg-transparent text-text-2">
+            <Rx.bullets size={15} />
+          </button>
+        </span>
+        <p id={whyId} className="sr-only">
+          {why}
+        </p>
+        <span className="ml-auto inline-flex items-center gap-1.5 text-caption text-muted">
+          {draft && !dirty ? (
+            <>
+              <Ic.cloudCheck size={13} />
+              {ut("cnx.savedAt").replace("{t}", timeOfDay(draft.createdAt))}
+            </>
+          ) : dirty ? (
+            <>
+              <Ic.cloudOff size={13} />
+              {ut("cnx.unsaved")}
+            </>
+          ) : null}
+        </span>
+      </div>
+
+      <div className="flex flex-col gap-4 px-4 pb-4 pt-4">
+        {summary}
+        {signed && !draft ? (
+          <div className="rounded-[12px] bg-good-tint px-3.5 py-3">
+            <p className="m-0 whitespace-pre-wrap text-body text-text">{state.current!.text}</p>
+            <p className="m-0 mt-1.5 text-caption text-text-2">
+              {ut("cnc.signedBy")} {state.current!.authorName}, {day(state.current!.signedAt!)}. {ut("cnc.editCreatesVersion")}
+            </p>
+          </div>
+        ) : null}
+        <div>
+          <label htmlFor={textId} className="mb-1.5 block text-caption font-bold text-text-2">
+            {ut("cnx.verdict")}
+          </label>
+          <Textarea
+            ref={areaRef}
+            id={textId}
+            rows={7}
+            value={text}
+            readOnly={!canWrite}
+            onChange={(e) => setText(e.target.value)}
+            placeholder={signed ? ut("cn.newOverSigned") : ut("cn.placeholder")}
+          />
+        </div>
+        {signals}
+      </div>
+
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-divider px-4 py-2.5 text-caption text-muted">
+        <span>{ut("cnx.chars").replace("{n}", String(text.trim().length))}</span>
+        <span>{ut("cnc.editCreatesVersion")}</span>
+        {onHistory && state.versions.length ? (
+          <Button size="xs" variant="ghost" icon={<Ic.history />} className="ml-auto" onClick={onHistory}>
+            {ut("cnc.showHistory")}
+          </Button>
+        ) : null}
+      </div>
+
+      {stale ? (
+        <div className="px-4 pb-3">
+          <Callout kind="warn" role="alert" title={stale} actions={
+            <Button
+              size="xs"
+              variant="ghost"
+              onClick={() => {
+                setStale(null);
+                onReload();
+              }}
+            >
+              {ut("integrity.reread")}
+            </Button>
+          }>
+            {ut("integrity.rereadHint")}
+          </Callout>
+        </div>
+      ) : null}
+
+      <div className="flex flex-wrap items-center gap-2.5 border-t border-divider px-4 pb-4 pt-3">
+        <span className={cx("inline-flex min-w-0 items-center gap-1.5 text-small", lock && !signed ? "text-text-2" : "text-muted")}>
+          {lock && !signed ? (
+            <Ic.lock size={14} className={cx("shrink-0", lock.tone === "warn" ? "text-warn" : "text-risk-ink")} />
+          ) : (
+            <Ic.info size={14} className="shrink-0" />
+          )}
+          {lock && !signed ? (lock.note ?? ut("rp.signLocked")) : !canSign ? ut("cnx.noSignRight") : ut("cnc.onlySignedInReport")}
+        </span>
+        <div className="ml-auto flex flex-wrap gap-2">
+          <Button
+            variant="primary"
+            icon={<Rx.signature />}
+            disabled={busy || !plan.canSign || !!lock || signPending || !canSign}
+            onClick={() => void sign()}
+          >
+            {ut("cn3.form")}
+          </Button>
+          <Button icon={<Rx.save />} disabled={busy || !canWrite || !draftSavable(text)} title={ut("cnx.saveHint")} onClick={() => void saveDraft()}>
+            {ut("cnc.saveDraft")}
+          </Button>
+        </div>
       </div>
     </section>
   );
 }
 
 /**
- * Полоса форматирования кадра f37_2/f36_3 — нарисованная и выключенная целиком.
+ * Черновик заключения из результатов прохождения.
  *
- * Почему выключенная, а не отсутствующая: кадр — истина, и полосы на экране
- * не может не быть. Почему не работающая: conclusions.text хранится простым
- * текстом (шифруется целиком, печатный отчёт экранирует его и печатает как
- * есть), формат разметки сервер не объявлял, и включённые кнопки писали бы в
- * подписанный клинический документ теги, которых никто не прочтёт.
- *
- * Плашки пересобраны по вырезке кадра при колонке 1200 (полоса ровно 1200 в
- * ширину, поля по 16, высота 40, плашка 30): ¶ 30 · 61 · гарнитура 213 · 18 ·
- * начертание 195 · 15 · кегль 45 · 61 · образец цвета 45 · 15 · «A» 45 · 55 ·
- * B 45 · 2 · I 44 · 2 · U 45 · 50 · четыре выравнивания 45/44/44/43 через 2.
- * Числа в сумме с полями дают ровно 1200, и колонка страницы ровно 1200
- * (max-w-1248 минус поля 24) — поэтому ширины заданы пикселями, а не долями.
- * Прежняя редакция держала один зазор 10 на все плашки и размеры 27/214/201/
- * 41/41/42/40/35: полоса собиралась в ту же ширину, но ни одна группа не
- * стояла там, где нарисована.
- *
- * ПРИЧИНА НЕДОСТУПНОСТИ. Прежде она висела `title` на самой `disabled`-кнопке
- * — и не показывалась никогда: выключенной кнопке браузер не доставляет
- * события мыши, а всплывающую подпись рисует по ним. Теперь подпись стоит на
- * ОБЁРТКЕ плашки — обёртка не выключена, наведение до неё доходит, и причина
- * всплывает над любой плашкой полосы. Диктору та же причина дана иначе:
- * `aria-describedby` с панели на скрытый абзац под ней — `title` на
- * выключенной кнопке многие дикторы не читают вовсе.
- */
-function FormatBar() {
-  const { ut } = useLang();
-  const why = ut("fmt.unavailable");
-  const whyId = useId();
-  /* плашка полосы: белая, радиус 4, высота 30 — замер кадра */
-  const chip = (extra: string) =>
-    "flex h-[30px] w-full items-center justify-center rounded-[4px] border-0 bg-[var(--bg)] px-[6px] text-[13px] text-text-2 opacity-100 disabled:opacity-60 " +
-    extra;
-  /*
-   * [ключ, рисунок, класс места (левый отступ и ширина), класс начертания].
-   * Отступ слева, а не общий `gap`: зазоры на кадре разные (61 между группами,
-   * 2 внутри группы), и один `gap` их не выражает.
-   */
-  const plates: [UiKey, ReactNode, string, string][] = [
-    ["fmt.paragraph", "¶", "w-[30px]", ""],
-    ["fmt.font", "Ariel", "ml-[61px] w-[213px]", ""],
-    ["fmt.weight", "Regular", "ml-[18px] w-[195px]", ""],
-    ["fmt.size", "12", "ml-[15px] w-[45px]", ""],
-    /* образец цвета — не буква, а заливка: на кадре это прямоугольник */
-    [
-      "fmt.highlight",
-      <span aria-hidden className="block h-[14px] w-[24px] rounded-[3px] bg-primary-dim" />,
-      "ml-[61px] w-[45px]",
-      "",
-    ],
-    ["fmt.color", "A", "ml-[15px] w-[45px]", "font-bold text-primary"],
-    ["fmt.bold", "B", "ml-[55px] w-[45px]", "font-bold"],
-    ["fmt.italic", "I", "ml-[2px] w-[44px]", "italic"],
-    ["fmt.underline", "U", "ml-[2px] w-[45px]", "underline"],
-    ["fmt.alignLeft", <AlignGlyph at={0} />, "ml-[50px] w-[45px]", ""],
-    ["fmt.alignCenter", <AlignGlyph at={1} />, "ml-[2px] w-[44px]", ""],
-    ["fmt.alignRight", <AlignGlyph at={2} />, "ml-[2px] w-[44px]", ""],
-    ["fmt.alignJustify", <AlignGlyph at={3} />, "ml-[2px] w-[43px]", ""],
-  ];
-  return (
-    <>
-      <div
-        role="toolbar"
-        aria-label={ut("cn3.verdicts")}
-        aria-disabled
-        aria-describedby={whyId}
-        className="flex min-h-[40px] flex-wrap items-center gap-y-[5px] rounded-t-[5px] bg-primary-soft px-[16px] py-[5px]"
-      >
-        {plates.map(([key, glyph, box, look]) => (
-          <span key={key} title={why} className={cx("flex shrink-0", box)}>
-            <button type="button" disabled aria-label={ut(key)} className={chip(look)}>
-              {glyph}
-            </button>
-          </span>
-        ))}
-      </div>
-      {/* причина — словами, а не только подсказкой наведения: см. пояснение выше */}
-      <p id={whyId} className="sr-only">
-        {why}
-      </p>
-    </>
-  );
-}
-
-/** Четыре полоски выравнивания: последняя строка короче у всех, кроме «по ширине» */
-function AlignGlyph({ at }: { at: number }) {
-  const widths = [
-    [14, 10, 14, 8],
-    [14, 10, 14, 10],
-    [14, 10, 14, 8],
-    [14, 14, 14, 14],
-  ][at]!;
-  const shift = (w: number) => (at === 1 ? (14 - w) / 2 : at === 2 ? 14 - w : 0);
-  return (
-    <svg viewBox="0 0 14 12" aria-hidden focusable="false" className="size-[14px]" fill="currentColor">
-      {widths.map((w, i) => (
-        <rect key={i} x={shift(w)} y={i * 3} width={w} height={1.5} rx={0.7} />
-      ))}
-    </svg>
-  );
-}
-
-/**
- * Собрать черновик из фактов.
- *
- * Фразу собирает клиент, а не сервер: у сервера нет языка интерфейса, и
- * собранный там текст пришлось бы переводить вторым словарём. Здесь тот же
- * механизм, которым переведено всё остальное.
- *
- * Подставляется только то, что система знает наверняка: кто, сколько лет,
- * какие баллы, что говорят полосы норм, как изменилось с прошлого раза.
- * Вывод не подставляется вовсе — его пишет человек, и место под него
- * оставлено пустым намеренно: заготовка вывода читалась бы как вывод.
+ * Собирается здесь, на языке интерфейса, из фактов, которые отдаёт сервер:
+ * сервер не знает, на каком языке читает специалист, и готовый абзац с его
+ * стороны был бы на чужом языке. Не сохраняется сам — сохранит тот, кто с ним
+ * согласился.
  */
 export async function buildDraft(responseId: string, ut: (k: never) => string): Promise<string> {
   const t = (k: string) => ut(k as never);
   const d = await api.conclusionDraft(responseId);
   const lines: string[] = [];
-
   if (d.patient) {
     const age = d.patient.age !== null ? `, ${d.patient.age} ${t("cn.draftAge")}` : "";
     const unit = d.patient.unit ? `, ${d.patient.unit}` : "";
@@ -379,32 +357,20 @@ export async function buildDraft(responseId: string, ut: (k: never) => string): 
   }
   lines.push(`${t("cn.draftMethod")}: ${d.surveyTitle}`);
   if (d.submittedAt) lines.push(`${t("cn.draftDate")}: ${day(d.submittedAt)}`);
-
   if (d.scales.length) {
     lines.push("", `${t("cn.draftScales")}:`);
     for (const s of d.scales) {
-      /*
-       * Значение печатается в том виде, в каком шкала нормирована: доля в
-       * процентах, T-балл и стен — числом. Приводить всё к процентам значило
-       * бы напечатать «T-балл 65 %» — правдоподобно и неверно.
-       */
-      const shown =
-        s.normalization === "ratio"
-          ? `${Math.round(s.percent)} %`
-          : String(Math.round(s.value * 10) / 10);
+      const shown = s.normalization === "ratio" ? `${Math.round(s.percent)} %` : String(Math.round(s.value * 10) / 10);
       const band = s.band ? ` — ${s.band}` : "";
       const before =
         s.previousValue !== null
           ? ` (${t("cn.draftWas")} ${
-              s.normalization === "ratio"
-                ? `${Math.round(s.previousValue * 100)} %`
-                : Math.round(s.previousValue * 10) / 10
+              s.normalization === "ratio" ? `${Math.round(s.previousValue * 100)} %` : Math.round(s.previousValue * 10) / 10
             }${d.previousAt ? `, ${day(d.previousAt)}` : ""})`
           : "";
       lines.push(`· ${s.title}: ${shown}${band}${before}`);
     }
   }
-
   lines.push("", t("cn.draftConclusionHere"));
   return lines.join("\n");
 }

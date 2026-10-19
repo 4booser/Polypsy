@@ -7,6 +7,10 @@ import {
   SEVERITY_SCREEN_LIGHT,
   SEVERITY_SCREEN_TEXT_DARK,
   SEVERITY_SCREEN_TEXT_LIGHT,
+  SEVERITY_STEPS_SCREEN_BG_DARK,
+  SEVERITY_STEPS_SCREEN_BG_LIGHT,
+  SEVERITY_STEPS_SCREEN_DARK,
+  SEVERITY_STEPS_SCREEN_LIGHT,
   type Severity,
 } from "@quizzy/shared";
 
@@ -24,12 +28,36 @@ import {
  * Специалист сверял оттенки вместо того, чтобы читать результат.
  *
  * Проверяется именно РАВЕНСТВО зеркалу, а не равенство печати. Земля разная:
- * консоль стоит на #101120, лист бумаги белый, и один набор хексов не может
- * пройти оба порога контраста. Разными им быть можно; расходиться молча —
- * нельзя.
+ * тёмная консоль стоит на #141019, лист бумаги белый, и один набор хексов не
+ * может пройти оба порога контраста. Разными им быть можно; расходиться
+ * молча — нельзя.
  */
 
-const CSS = readFileSync(resolve(import.meta.dir, "../src/styles/tokens.css"), "utf8");
+/*
+ * Печатный блок (@media print) — не тема экрана: его селектор перечисляет и
+ * `:root[data-theme="dark"]`, и без вырезки его бумажные значения ложились
+ * бы в тёмную тему. Сверяются только экранные блоки.
+ */
+const CSS = withoutPrint(readFileSync(resolve(import.meta.dir, "../src/styles/tokens.css"), "utf8"));
+
+function withoutPrint(css: string): string {
+  let out = css;
+  for (;;) {
+    const at = out.indexOf("@media print");
+    if (at < 0) return out;
+    const open = out.indexOf("{", at);
+    let depth = 0;
+    let end = open;
+    for (let i = open; i < out.length; i++) {
+      if (out[i] === "{") depth++;
+      else if (out[i] === "}" && --depth === 0) {
+        end = i;
+        break;
+      }
+    }
+    out = out.slice(0, at) + out.slice(end + 1);
+  }
+}
 
 /** Значения всех блоков с данным селектором — файл делит :root на слои */
 function block(selector: string): Map<string, string> {
@@ -104,6 +132,30 @@ describe("лестница выраженности сведена к одном
   }
 
   /*
+   * Пять ступеней «Виразной» (--sev-0…--sev-4) и их подложки — то же
+   * зеркало: из них собраны четыре степени выше, и плашка ступени берёт
+   * подложку отсюда же.
+   */
+  const steps: [string, Map<string, string>, string, readonly string[]][] = [
+    ["тёмные ступени", DARK, "", SEVERITY_STEPS_SCREEN_DARK],
+    ["светлые ступени", LIGHT, "", SEVERITY_STEPS_SCREEN_LIGHT],
+    ["тёмные подложки", DARK, "-bg", SEVERITY_STEPS_SCREEN_BG_DARK],
+    ["светлые подложки", LIGHT, "-bg", SEVERITY_STEPS_SCREEN_BG_LIGHT],
+  ];
+  for (const [name, theme, suffix, declared] of steps) {
+    test(`${name}: токены повторяют палитру`, () => {
+      expect(declared.length).toBe(5);
+      const drifted: string[] = [];
+      declared.forEach((inTs, n) => {
+        const token = `--sev-${n}${suffix}`;
+        const inCss = hex(token, theme);
+        if (inCss !== inTs.toLowerCase()) drifted.push(`${token}: в токенах ${inCss}, в палитре ${inTs}`);
+      });
+      expect(drifted).toEqual([]);
+    });
+  }
+
+  /*
    * Лестница одна, даже когда оттенки разные.
    *
    * Единственное, что читает человек, — это порядок: спокойнее → тревожнее.
@@ -127,6 +179,10 @@ describe("лестница выраженности сведена к одном
       const ladder = LEVELS.map((l) => redness(set[l]));
       const sorted = [...ladder].sort((a, b) => a - b);
       expect(ladder).toEqual(sorted);
+    }
+    for (const steps of [SEVERITY_STEPS_SCREEN_LIGHT, SEVERITY_STEPS_SCREEN_DARK]) {
+      const ladder = steps.map(redness);
+      expect(ladder).toEqual([...ladder].sort((a, b) => a - b));
     }
   });
 });

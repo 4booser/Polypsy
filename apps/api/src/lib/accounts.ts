@@ -19,7 +19,8 @@ import { normalizePhone, phoneFingerprint } from "./phone";
 
 export interface RegistryQuery {
   q: string;
-  role?: Role;
+  /** «staff» — весь персонал: суперадмины и администраторы групп */
+  role?: Role | "staff";
   status?: "active" | "disabled";
   sort?: "name" | "created" | "lastSeen" | "role";
 }
@@ -34,26 +35,27 @@ export interface RegistryQuery {
  * (ФИО шифровано, искать его в SQL нечем); телефон — слепым индексом и
  * только целым номером (см. пояснение у GET /api/ops/users).
  */
+/** Поля учётки, которые нужны строке реестра, — одни у отбора и у одной записи */
+const REGISTRY_FIELDS = {
+  id: users.id,
+  email: users.email,
+  role: users.role,
+  firstName: users.firstName,
+  lastName: users.lastName,
+  middleName: users.middleName,
+  anonymous: users.anonymous,
+  pseudonym: users.pseudonym,
+  phoneIndex: users.phoneIndex,
+  createdAt: users.createdAt,
+  lastSeenAt: users.lastSeenAt,
+  disabledAt: users.disabledAt,
+  disabledReason: users.disabledReason,
+  disabledBy: users.disabledBy,
+  mustChangePassword: users.mustChangePassword,
+};
+
 export async function matchRegistry(query: RegistryQuery, lang: Lang) {
-  const all = await db
-    .select({
-      id: users.id,
-      email: users.email,
-      role: users.role,
-      firstName: users.firstName,
-      lastName: users.lastName,
-      middleName: users.middleName,
-      anonymous: users.anonymous,
-      pseudonym: users.pseudonym,
-      phoneIndex: users.phoneIndex,
-      createdAt: users.createdAt,
-      lastSeenAt: users.lastSeenAt,
-      disabledAt: users.disabledAt,
-      disabledReason: users.disabledReason,
-      disabledBy: users.disabledBy,
-      mustChangePassword: users.mustChangePassword,
-    })
-    .from(users);
+  const all = await db.select(REGISTRY_FIELDS).from(users);
 
   const { q, role, status, sort = "name" } = query;
   const words = q.split(/\s+/).filter(Boolean);
@@ -61,7 +63,7 @@ export async function matchRegistry(query: RegistryQuery, lang: Lang) {
   const phoneKey = phone ? phoneFingerprint(phone) : null;
 
   const matched = all
-    .filter((u) => !role || u.role === role)
+    .filter((u) => !role || (role === "staff" ? u.role !== "user" : u.role === role))
     .filter((u) => !status || (status === "disabled" ? u.disabledAt !== null : u.disabledAt === null))
     .map((u) => ({ ...u, fullName: fullNameOf(u) }))
     .filter((u) => {
@@ -82,6 +84,21 @@ export async function matchRegistry(query: RegistryQuery, lang: Lang) {
     return byName(a, b);
   });
   return { all, matched };
+}
+
+/**
+ * Одна учётка реестра — для панели записи (GET /api/ops/users/:id): те же
+ * поля, что у строки отбора, и почта того, кто её выключил. Своим запросом,
+ * а не через matchRegistry: тот расшифровывает имена всего реестра и
+ * сортирует его, а панель спрашивает одну запись на каждый шаг J/K.
+ */
+export async function registryAccount(id: string) {
+  const [account] = await db.select(REGISTRY_FIELDS).from(users).where(eq(users.id, id));
+  if (!account) return null;
+  const [by] = account.disabledBy
+    ? await db.select({ email: users.email }).from(users).where(eq(users.id, account.disabledBy))
+    : [];
+  return { account: { ...account, fullName: fullNameOf(account) }, disabledByEmail: by?.email ?? null };
 }
 
 /* ─────────── последний вход ─────────── */

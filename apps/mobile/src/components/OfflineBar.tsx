@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Pressable } from "react-native";
 import { useRouter } from "expo-router";
 import { api } from "../api/client";
-import { spacing, useColors } from "../theme";
+import { radius, useColors } from "../theme";
+import { Icon } from "../ui/Icon";
+import { T } from "../ui/Text";
 import { useLang } from "@/lang";
 
 /**
@@ -16,6 +18,12 @@ import { useLang } from "@/lang";
  * Формулировка выбрана нетревожная: ничего не потеряно, отправится само.
  * Пугать человека, который только что отвечал про суицидальные мысли,
  * сообщением об ошибке — плохая идея.
+ *
+ * Полоса живёт на фиолетовой полосе шапки, под строкой навигации, —
+ * карточкой полосы, как в наборе, — и ведёт на экран очереди: там видно,
+ * что именно ждёт, что сервер не принял и почему, и там же «Спробувати
+ * зараз». Красной она не бывает: несданные ответы — не риск для человека;
+ * отказ сервера отмечен янтарным значком.
  */
 export function OfflineBar() {
   const { ut } = useLang();
@@ -25,7 +33,6 @@ export function OfflineBar() {
   const [rejected, setRejected] = useState(0);
   // сдачи без владельца (offline/queue.ts, ownerless): сами не уйдут, их надо узнать на экране очереди
   const [unclaimed, setUnclaimed] = useState(0);
-  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     const update = () => {
@@ -42,71 +49,45 @@ export function OfflineBar() {
 
   if (left === 0 && rejected === 0 && unclaimed === 0) return null;
 
-  const retry = async () => {
-    setBusy(true);
-    try {
-      await api.flushQueue();
-    } finally {
-      setLeft(api.pendingCount());
-      setRejected(api.rejectedCount());
-      setBusy(false);
-    }
-  };
-
-  /*
-   * Отвергнутое сервером само не уйдёт: там нужен разбор, а не повтор.
-   * Поэтому на такой полосе нажатие ведёт на экран очереди, где видно, что
-   * именно не принято, а не запускает бесполезную попытку.
-   */
   const problem = rejected > 0;
-  /*
-   * Безхозные сдачи — не беда и не повод красить полосу: это не отказ, а
-   * вопрос «чьё это». Но и повтор им бесполезен — сами они не уйдут, —
-   * поэтому полоса ведёт на экран очереди, как и при отказе. Своё
-   * ждущее важнее: пока оно есть, полоса говорит о нём.
-   */
-  const toQueue = problem || (left === 0 && unclaimed > 0);
-  const onPress = toQueue ? () => router.push("/(app)/queue") : retry;
+  const parts = [
+    left ? ut("mpt.ob.waiting").replace("{n}", String(left)) : null,
+    rejected ? ut("mpt.ob.rejected").replace("{n}", String(rejected)) : null,
+    unclaimed ? ut("mpt.ob.ownerless").replace("{n}", String(unclaimed)) : null,
+  ].filter(Boolean);
 
   return (
     <Pressable
-      onPress={onPress}
-      disabled={busy}
+      onPress={() => router.push("/(app)/queue")}
       accessibilityRole="button"
       accessibilityLabel={
         problem
           ? ut("ob.rejectedHint").replace("{n}", String(rejected))
           : left > 0
-            ? ut("ob.waitingHint").replace("{n}", String(left))
+            ? ut("ob.waiting").replace("{n}", String(left))
             : ut("ob.ownerless").replace("{n}", String(unclaimed))
       }
-      style={{
+      style={({ pressed }) => ({
         flexDirection: "row",
         alignItems: "center",
-        gap: spacing.sm,
-        paddingHorizontal: spacing.lg,
-        paddingVertical: spacing.sm,
-        backgroundColor: problem ? c.danger : c.cardAlt,
-      }}
+        gap: 10,
+        minHeight: 44,
+        marginHorizontal: 16,
+        marginBottom: 6,
+        paddingLeft: 14,
+        paddingRight: 12,
+        paddingVertical: 8,
+        borderRadius: radius.panel,
+        borderWidth: 1,
+        borderColor: c.bcardline,
+        backgroundColor: pressed ? c.vtint2 : c.bcard,
+      })}
     >
-      <View
-        style={{
-          width: 7,
-          height: 7,
-          borderRadius: 4,
-          backgroundColor: problem ? "#fff" : c.muted,
-        }}
-      />
-      <Text style={{ flex: 1, fontSize: 13, color: problem ? "#fff" : c.text }}>
-        {problem
-          ? ut("ob.rejected").replace("{n}", String(rejected))
-          : left > 0
-            ? ut("ob.waiting").replace("{n}", String(left))
-            : ut("ob.ownerless").replace("{n}", String(unclaimed))}
-      </Text>
-      <Text style={{ fontSize: 13, fontWeight: "600", color: problem ? "#fff" : c.primary }}>
-        {toQueue ? ut("mob.resolve") : busy ? ut("mob.sending") : ut("common.retry")}
-      </Text>
+      <Icon name={problem ? "circle-alert" : "cloud-off"} size={17} color={problem ? c.warn : c.muted} />
+      <T v="body" size={15} weight={700} style={{ flex: 1 }} numberOfLines={1}>
+        {parts.join(", ")}
+      </T>
+      <Icon name="chevron-right" size={17} color={c.muted} />
     </Pressable>
   );
 }

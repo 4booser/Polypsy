@@ -60,6 +60,38 @@ export const MIN_N_ITEM_STATS = 30;
 export const WEAK_ITEM_LIMIT = 0.2;
 
 /**
+ * Прохождения, где отвечены все пункты шкалы, — строками баллов в порядке
+ * пунктов. null — альфу по ним не оценить: меньше двух пунктов или трёх
+ * полных прохождений.
+ */
+function completeRows(items: Question[], scores: Map<string, Map<string, number>>): number[][] | null {
+  if (items.length < 2) return null;
+  const complete: number[][] = [];
+  for (const byQuestion of scores.values()) {
+    const row = items.map((q) => byQuestion.get(q.id));
+    if (row.some((v) => v === undefined)) continue;
+    complete.push(row as number[]);
+  }
+  return complete.length < 3 ? null : complete;
+}
+
+/**
+ * Одна альфа субшкалы — ровно reliabilityOf(...).alpha, без разбора пунктов
+ * и омеги.
+ *
+ * Альфа для RCI (lib/changeBasis.ts) нужна на каждое открытие динамики, по
+ * каждой версии каждой методики человека, а разбор пунктов — это альфа без
+ * пункта на каждый пункт и степенной метод омеги: на длинной шкале — десятки
+ * миллисекунд ради чисел, которые динамика выбрасывала.
+ */
+export function alphaOf(items: Question[], scores: Map<string, Map<string, number>>): number | null {
+  const complete = completeRows(items, scores);
+  if (!complete) return null;
+  const alpha = cronbachAlpha(complete);
+  return alpha === null ? null : round(alpha, 3);
+}
+
+/**
  * Надёжность субшкалы и вклад каждого пункта.
  *
  * scores[responseId][questionId] — балл пункта на момент прохождения.
@@ -70,15 +102,8 @@ export function reliabilityOf(
   items: Question[],
   scores: Map<string, Map<string, number>>,
 ): Reliability | null {
-  if (items.length < 2) return null;
-
-  const complete: number[][] = [];
-  for (const byQuestion of scores.values()) {
-    const row = items.map((q) => byQuestion.get(q.id));
-    if (row.some((v) => v === undefined)) continue;
-    complete.push(row as number[]);
-  }
-  if (complete.length < 3) return null;
+  const complete = completeRows(items, scores);
+  if (!complete) return null;
 
   const alpha = cronbachAlpha(complete);
   if (alpha === null) return null;

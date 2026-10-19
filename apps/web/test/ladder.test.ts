@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { boundaries, ladderDomain, profileRuns, rungOf, sameLadder, segments, share } from "../src/charts/ladder";
+import { boundaries, ladderDomain, num, profileRuns, rungOf, sameLadder, segments, share } from "../src/charts/ladder";
 
 /**
  * Арифметика лестницы полос — общая для линейки, профиля и динамики.
@@ -123,5 +123,20 @@ describe("отрезки линии профиля", () => {
 
   test("одна строка своей лестницы — не отрезок", () => {
     expect(profileRuns([row(3), row(7, [])])).toEqual([]);
+  });
+});
+
+describe("число подписи", () => {
+  test("дробь — языка экрана: «44,9» по-украински и по-русски, «44.9» по-английски", () => {
+    expect(num(44.9, "uk")).toBe("44,9");
+    expect(num(0.23, "ru")).toBe("0,23");
+    expect(num(44.9, "en")).toBe("44.9");
+    // язык консоли по умолчанию (в проверке — украинский)
+    expect(num(12.5)).toBe("12,5");
+  });
+
+  test("целое без хвоста, два знака без 0.30000000000000004", () => {
+    expect(num(14, "uk")).toBe("14");
+    expect(num(0.1 + 0.2, "en")).toBe("0.3");
   });
 });

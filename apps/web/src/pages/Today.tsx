@@ -1,392 +1,367 @@
-import { Link } from "react-router-dom";
-import type { AppointmentView, UiKey } from "@quizzy/shared";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import type { AlertCase, AppointmentView, Worklist } from "@quizzy/shared";
 import { api } from "../api";
+import { useAuth } from "../auth";
 import { dayFull } from "../format";
-import { Avatar, Badge, Empty, Screen, useAction, useUrlState } from "../ui";
-import { Panel } from "../ui/layout";
-import { Button, Num, SectionLabel } from "../ui/primitives";
+import { Screen, Tooltip, useAction, useUrlState } from "../ui";
+import { cx } from "../ui/cx";
+import { Ic } from "../ui/icons";
+import { SideLayout } from "../ui/layout";
+import { ButtonLink } from "../ui/primitives";
 import { useLang } from "../lang";
+import { useLiveReload } from "../events";
 import { useResource } from "../useResource";
 import { moveAndReload } from "./visitModel";
+import { StartHead } from "./Start";
+import { withCount } from "../ui/plural";
+import { fill } from "./dashboard/model";
+import { ActNow, reviewHref, unlessForbidden } from "./today/ActNow";
+import { Agenda, useNow, useUntil } from "./today/Agenda";
+import { Between } from "./today/Between";
+import { useDayDrawer } from "./today/drawers";
+import { Di } from "./today/icons";
+import {
+  betweenSessions,
+  caseTimer,
+  clashes,
+  focusSession,
+  hhmm,
+  liveCases,
+  localDate,
+  overdueWork,
+  prepAfterSelect,
+  sessionStates,
+  shiftDate,
+  urgentCases,
+} from "./today/model";
+import { useHotkeys } from "../ui/keys";
+import { Prep } from "./today/Prep";
+
+export { AppointmentRow } from "./today/Agenda";
+export { moveOf, rowActions } from "./today/actions";
 
 /**
- * То, куда приём можно двинуть отсюда: остальные переходы этому экрану не
- * принадлежат. «booked» здесь — только шаг назад от ошибочного «пришёл»
- * (см. OFF_PATH), а не запись.
+ * «Сьогодні» — приём дня (затверджений кадр vivid_today, Polypsy 2.0).
+ *
+ * Сверху — «Дія зараз»: случай риска с таймером нормы и всё открытое о
+ * человеке, рядом — остальное срочное. Ниже — «Прийом сьогодні»: шкала дня
+ * с «зараз» и сессии таймлайном с готовностью; справа липнет «Підготовка до
+ * сесії». Под днём — «Між сесіями»: короткие дела из очереди. Ответ и
+ * нотатка открываются в ящике справа, Esc оставляет черновик.
+ *
+ * Явка отмечается одним нажатием, как и прежде: столбец «Не прийшов /
+ * Прийшов → Почати → Завершити» стоит в каждой строке на одном месте.
  */
-type Move = "booked" | "arrived" | "in_progress" | "done" | "no_show";
-type Status = AppointmentView["status"];
 
-const STATUS_KEY: Record<Status, UiKey> = {
-  booked: "day.statusBooked",
-  confirmed: "day.statusConfirmed",
-  arrived: "day.statusArrived",
-  in_progress: "day.statusInProgress",
-  done: "day.statusDone",
-  no_show: "day.statusNoShow",
-  cancelled: "day.statusCancelled",
+/* отказ очереди или разбора не прячет день: пустая очередь полной формы */
+const NO_WORK: Worklist = {
+  items: [],
+  total: 0,
+  truncated: false,
+  byKind: { noshow: 0, message: 0, dispensary: 0, followup: 0, referral: 0, assignment: 0 },
+  mine: 0,
 };
 
-/** Одно действие: куда двинуть приём и как это называется на кнопке */
-interface Act {
-  to: Move;
-  key: UiKey;
-  /**
-   * Вопрос перед нажатием. Есть только у шага назад: он снимает отметку
-   * времени, и случайное нажатие стоило бы ещё одного исправления.
-   */
-  confirm?: UiKey;
-  /** Тихая кнопка: поправка, а не ход приёма — глаз не должен цепляться за неё первой */
-  quiet?: true;
-}
-
-/**
- * Следующее действие для приёма — ровно одно.
- *
- * Список кнопок на каждой строке превратил бы экран в панель управления, где
- * надо выбирать. Специалисту в этот момент нужно одно нажатие: человек вошёл
- * в кабинет. Всё остальное — либо уже случилось, либо случится позже.
- */
-const NEXT: Partial<Record<Status, Act>> = {
-  booked: { to: "arrived", key: "day.came" },
-  confirmed: { to: "arrived", key: "day.came" },
-  arrived: { to: "in_progress", key: "day.start" },
-  in_progress: { to: "done", key: "day.finish" },
-  /*
-   * Неявку можно исправить, и делается это тем же самым «Пришёл».
-   *
-   * Ставит неявку не только человек: через два часа после конца приёма её
-   * ставит фоновый проход — по тому, что никто ничего не нажал. Ошибается он
-   * ровно там, где специалист забыл нажать «пришёл» между двумя приёмами.
-   *
-   * Поправка стоит там же, где обычный ход, а не отдельной кнопкой сбоку:
-   * действие одно и то же — человек в кабинете, — и разводить его по разным
-   * местам значило бы возвращать ту самую пляску, ради которой места и
-   * закреплены. Редкость случая видна не по положению кнопки, а по строке:
-   * «не пришёл» написано рядом, в состоянии приёма.
-   */
-  no_show: { to: "arrived", key: "day.came" },
-};
-
-/**
- * Уход с обычного хода — единственный, который делают отсюда.
- *
- * Отмена приёма сюда не относится: её делают из расписания и по другой
- * причине (слот освобождается для другого человека), а неявка — это отметка
- * факта, что человек не дошёл.
- */
-const OFF_PATH: Partial<Record<Status, Act>> = {
-  booked: { to: "no_show", key: "day.noShow" },
-  confirmed: { to: "no_show", key: "day.noShow" },
-  /*
-   * Шаг назад — снять ошибочно нажатое «пришёл» или «начали» (#38, w19:ui).
-   *
-   * Сервер принимает его с волны 18, а кнопки не было: ошибку нажатия
-   * «исправляли» переносом, и приём уезжал в «записан» с отметками времени
-   * прежнего состояния. Шаг назад снимает ровно одну отметку — «начали»
-   * возвращает в «пришёл», «пришёл» в «записан», — и то же самое делает
-   * сервер (NEXT в routes/clinic.ts).
-   *
-   * Место — левое, рядом с «Не пришёл»: это тоже уход с обычного хода, а
-   * не следующий шаг, и правый столбец остаётся столбцом «дальше». Перед
-   * нажатием — вопрос: кнопка стоит вплотную к «Почати» и «Завершити», и
-   * промах по ней стёр бы отметку, которую потом не восстановить временем.
-   */
-  arrived: { to: "booked", key: "day.undo", confirm: "day.undoArrived", quiet: true },
-  in_progress: { to: "arrived", key: "day.undo", confirm: "day.undoStarted", quiet: true },
-};
-
-/**
- * Места в столбце действий, слева направо.
- *
- * Мест всегда столько, сколько здесь перечислено, — независимо от того,
- * сколько действий доступно в конкретной строке. Раньше кнопки просто
- * прижимались вправо, и положение каждой зависело от числа соседей: «Не
- * пришёл» стоял то у правого края, то на кнопку левее, и столбец нельзя было
- * читать сверху вниз — глаз каждый раз заново разбирал, что где.
- *
- * Альтернатива — общая сетка на всю панель (grid + subgrid), где ширину
- * колонки задаёт самая длинная надпись во всём списке. Она точнее по ширине,
- * но связывает строки между собой: строка перестаёт быть самостоятельной, а
- * ширина столбца начинает зависеть от того, какие приёмы попали в день.
- */
-const SLOTS = ["offPath", "step"] as const;
-type Slot = (typeof SLOTS)[number];
-
-/**
- * Что можно нажать по строке: по действию на каждое место, пустые — тоже места.
- *
- * Отдельная функция, а не выражение в разметке, ради проверки: правило
- * «одинаковое действие — всегда в одном месте» иначе держалось бы на глазах
- * ревьюера (см. test/dayActions.test.tsx).
- */
-export function rowActions(status: Status): Record<Slot, Act | null> {
-  return { offPath: OFF_PATH[status] ?? null, step: NEXT[status] ?? null };
-}
-
-/**
- * Что уйдёт на сервер по нажатию: ход приёма — сразу, шаг назад — только
- * после «да». Отказ в вопросе — null, и запроса нет вовсе.
- *
- * Отдельно от разметки ради проверки без браузера (test/dayActions.test.tsx):
- * `ask` в строке — window.confirm с фразой словаря.
- */
-export function moveOf(act: Act, ask: (question: UiKey) => boolean): Move | null {
-  if (act.confirm && !ask(act.confirm)) return null;
-  return act.to;
-}
-
-/** Часы и минуты по часам того, кто смотрит: время приёма — это стенное время */
-function clock(iso: string): string {
-  return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-}
-
-function shiftDate(date: string, days: number): string {
-  const d = new Date(`${date}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + days);
-  return d.toISOString().slice(0, 10);
-}
-
-/**
- * Приёмы дня.
- *
- * Экран, ради которого затевалось расписание. Он отвечает на один вопрос —
- * кто сегодня придёт и что с ним уже произошло, — и делает это так, чтобы
- * отметка явки стоила одного нажатия.
- *
- * День показывается целиком, включая уже принятых. Убери отработанные — и
- * специалист потеряет возможность вернуться к предыдущему приёму, а картина
- * дня превратится в убывающую очередь, по которой не видно, сколько сделано.
- */
 export default function TodayPage() {
   const [dateParam, setDate] = useUrlState("date");
   const { ut } = useLang();
+  const { user } = useAuth();
+  const navigate = useNavigate();
   const { run, busy } = useAction();
+  const wall = useNow();
 
   const res = useResource(() => api.today(dateParam ? { date: dateParam } : {}), [dateParam]);
-  const reload = res.reload;
+  /*
+   * Случаи и очередь — своими загрузками: их отказ не должен гасить день, а
+   * листание дней — перезапрашивать их. Случаи — отдельно от очереди: «разбор
+   * не положен» (403, null) и «не загрузились» (отказ со словами) — разные
+   * ответы, и второй не вправе звучать как «нічого термінового».
+   */
+  const casesRes = useResource(
+    () => unlessForbidden(api.alertCases({ status: "open", limit: "20" }).then((p) => p.items)),
+    [],
+  );
+  const workRes = useResource(() => api.worklist().catch((): Worklist => NO_WORK), []);
+  const reloadDay = res.reload;
+  const reloadCases = casesRes.reload;
+  const reloadWork = workRes.reload;
+  const reloadSide = useCallback(() => {
+    reloadCases();
+    reloadWork();
+  }, [reloadCases, reloadWork]);
+  const reloadAll = useCallback(() => {
+    reloadDay();
+    reloadSide();
+  }, [reloadDay, reloadSide]);
+  useLiveReload(["alert.created", "case.changed", "schedule.run"], reloadAll);
+  useLiveReload(["response.submitted"], reloadSide);
+
+  const { drawer, openReply, openNote, isOpen } = useDayDrawer(reloadSide);
+  const [picked, setPicked] = useState<string | null>(null);
+
+  const data = res.data;
+  const items = useMemo(
+    () => [...(data?.items ?? [])].sort((a, b) => Date.parse(a.startsAt) - Date.parse(b.startsAt)),
+    [data?.items],
+  );
+  const isToday = !!data && data.date === localDate(new Date(wall));
+  const now = isToday ? wall : null;
+  const states = useMemo(() => sessionStates(items, now), [items, now]);
+  const clash = useMemo(() => clashes(items), [items]);
+  const focus = focusSession(items, now);
+  const selected = items.find((a) => a.id === picked) ?? focus ?? null;
+  /*
+   * Подготовка открывается только явно (кнопка или P): её открытие сервер
+   * пишет в журнал доступа. Смена выбранной сессии её закрывает.
+   */
+  const [prepFor, setPrepFor] = useState<string | null>(null);
+  const selectedId = selected?.id ?? null;
+  useEffect(() => setPrepFor((p) => prepAfterSelect(p, selectedId)), [selectedId]);
+  const prepOpen = selectedId !== null && prepFor === selectedId;
+  const openPrep = () => {
+    if (selectedId) setPrepFor(selectedId);
+  };
+
+  /* минуты случаев идут по часам экрана: таймер нормы не стоит между перечитываниями (liveCases) */
+  const cases = casesRes.data ? urgentCases(liveCases(casesRes.data, wall, casesRes.updatedAt), user?.id ?? null) : null;
+  /* случаи ещё в пути (или связи нет, а прежнего ответа не было) — «нічого термінового» сказать нельзя */
+  const casesPending = casesRes.data === null && (casesRes.loading || casesRes.offline);
+  const hero = cases?.[0] ?? null;
+  const work = workRes.data ?? NO_WORK;
+  const heroMsg = hero ? work.items.find((w) => w.userId === hero.userId && w.kind === "message") : undefined;
+  /* то, что уже стоит плитками в «Дія зараз», ниже не повторяется */
+  const sideCases = Math.max(0, Math.min(2, (cases?.length ?? 0) - 1));
+  const shownAbove = new Set(
+    overdueWork(work.items)
+      .filter((w) => w.userId !== hero?.userId)
+      .slice(0, Math.max(0, (hero ? 2 : 4) - sideCases))
+      .map((w) => `${w.kind}-${w.id}`),
+  );
+  const between = betweenSessions(work.items, hero?.userId ?? null, shownAbove);
+
+  const sessions = items.filter((a) => a.status !== "cancelled");
+  const movable = sessions.map((a) => a.id);
+  const step = (dir: 1 | -1) => {
+    if (!movable.length) return;
+    const at = selected ? movable.indexOf(selected.id) : -1;
+    const next = movable[Math.max(0, Math.min(movable.length - 1, at === -1 ? 0 : at + dir))]!;
+    setPicked(next);
+    document.querySelector(`[data-appointment="${next}"]`)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  };
+  const note = (a: AppointmentView | null) => {
+    if (a)
+      openNote({
+        patientId: a.patientId,
+        patientName: a.patientName,
+        appointmentId: a.id,
+        appointmentAt: a.startsAt,
+        // вид записи — как у протокола этого приёма на экране приёма
+        kind: a.kind === "primary" ? "intake" : "session",
+      });
+  };
+  const replyHero = () => {
+    if (hero && heroMsg) openReply({ patientId: hero.userId, patientName: hero.userName, threadId: heroMsg.id });
+  };
+  /* по месту клавиши, а не по букве: на кириллической раскладке J печатает «о» (ui/keys.ts) */
+  useHotkeys(
+    {
+      j: () => step(1),
+      k: () => step(-1),
+      n: () => note(selected),
+      p: selected ? openPrep : undefined,
+      r: hero ? () => navigate(reviewHref(hero.userId)) : undefined,
+      m: heroMsg ? replyHero : undefined,
+    },
+    !isOpen,
+  );
+
+  /* Enter без фокуса на кнопке или ссылке — карта выбранного */
+  useEffect(() => {
+    if (isOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Enter" || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (document.activeElement && document.activeElement !== document.body) return;
+      if (selected) navigate(`/patients/${selected.patientId}`);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [isOpen, selected, navigate]);
 
   return (
-    <Screen res={res} rows={5}>
-      {(data) => {
-        /*
-         * Сводка дня разбивает день без остатка.
-         *
-         * Раньше считались только ждущие и принятые, а пришедший и сидящий
-         * на приёме не попадали никуда: рядом с числом 4 стояло «Ждут 2 ·
-         * Принято 1», и человек за стойкой искал четвёртого. Пустые группы
-         * не показываются, но каждый приём попадает ровно в одну — сумма
-         * показанных всегда равна числу приёмов.
-         */
-        const groups: Array<[string, number]> = [
-          [ut("day.waiting"), data.items.filter((a) => a.status === "booked" || a.status === "confirmed").length],
-          [ut("day.inRoom"), data.items.filter((a) => a.status === "arrived" || a.status === "in_progress").length],
-          [ut("day.received"), data.items.filter((a) => a.status === "done").length],
-          [ut("day.absent"), data.items.filter((a) => a.status === "no_show" || a.status === "cancelled").length],
-        ];
-        return (
+    <>
+      {/* шапка — до ответа: дата и листание дней не ждут загрузки списка */}
+      <DayHead
+        date={data?.date ?? (dateParam || localDate(new Date(wall)))}
+        items={items}
+        loading={!data}
+        isToday={data ? isToday : !dateParam}
+        onDate={(d) => {
+          setPicked(null);
+          setDate(d);
+        }}
+      />
+      <Screen res={res} rows={5}>
+        {(day) => (
           <>
-            {/*
-              Листание дней стоит над списком, а не в панели экрана: оно
-              относится к этому списку, а панель теперь общая у сводки и
-              приёма — кнопки «вчера/завтра» рядом со сводкой означали бы,
-              что и её можно листать.
-            */}
-            <div className="mb-3 flex flex-wrap items-center gap-2">
-              <Button size="sm" variant="ghost" onClick={() => setDate(shiftDate(data.date, -1))}>
-                {ut("day.prev")}
-              </Button>
-              <span className="min-w-[132px] text-center text-caption text-muted">{dayFull(data.date)}</span>
-              <Button size="sm" variant="ghost" onClick={() => setDate(shiftDate(data.date, 1))}>
-                {ut("day.next")}
-              </Button>
-              {dateParam ? (
-                <Button size="sm" variant="ghost" onClick={() => setDate("")}>
-                  {ut("day.today")}
-                </Button>
-              ) : null}
-              {data.items.length ? (
-                <span className="ml-auto text-caption text-muted">
-                  {groups.filter(([, n]) => n > 0).map(([label, n]) => `${label} ${n}`).join(" · ")}
-                </span>
-              ) : null}
+            <div className="flex flex-col gap-4">
+              <ActNow
+                cases={cases}
+                work={work.items}
+                appointments={isToday ? items : []}
+                meId={user?.id ?? null}
+                onReply={openReply}
+                loading={!workRes.data || casesPending}
+                casesError={casesRes.error}
+                onRetryCases={reloadCases}
+              />
+              <SideLayout
+                side={
+                  <Prep
+                  a={selected}
+                  state={selected ? states.get(selected.id) : undefined}
+                  clash={selected ? clash.get(selected.id) : undefined}
+                  now={now}
+                  open={prepOpen}
+                  onOpen={openPrep}
+                  onNote={note}
+                />
+                }
+              >
+                <Agenda
+                  date={day.date}
+                  items={items}
+                  states={states}
+                  clash={clash}
+                  now={now}
+                  selectedId={selected?.id ?? null}
+                  onSelect={setPicked}
+                  busy={busy}
+                  /* перечитывается и на отказе: 409/400 значит, что строка устарела (visitModel.ts, #178) */
+                  onStatus={(a, to) => run(() => moveAndReload(() => api.appointmentStatus(a.id, to), reloadDay))}
+                  onLead={(a) => run(() => api.takeLead(a.patientId, true).then(reloadDay))}
+                  nowNote={<NowNote items={items} now={now} hero={hero} />}
+                  hints={[
+                    ["J K", ut("dayA.hintSessions")],
+                    ["N", ut("dayA.hintNote")],
+                  ["P", ut("dayA.hintPrep")],
+                    ...(hero ? ([["R", ut("dayA.hintReview")]] as [string, string][]) : []),
+                    ...(heroMsg && hero ? ([["M", fill(ut("dayA.hintReply"), { name: hero.userName.split(" ")[1] ?? hero.userName })]] as [string, string][]) : []),
+                    ["Enter", ut("dayA.hintCard")],
+                    ["Esc", ut("dayA.hintEsc")],
+                  ]}
+                />
+                <Between items={between} total={work.total} onReply={openReply} />
+              </SideLayout>
             </div>
-            {data.items.length === 0 ? (
-              <Empty title={ut("day.nobody")} />
-            ) : (
-              <Panel>
-                {data.items.map((a) => (
-                  <AppointmentRow
-                    key={a.id}
-                    a={a}
-                    busy={busy}
-                    /* перечитывается и на отказе: 409/400 значит, что строка устарела (visitModel.ts, #178) */
-                    onStatus={(to) => run(() => moveAndReload(() => api.appointmentStatus(a.id, to), reload))}
-                    onLead={() => run(() => api.takeLead(a.patientId, true).then(reload))}
-                  />
-                ))}
-              </Panel>
-            )}
+            {drawer}
           </>
-        );
-      }}
-    </Screen>
+        )}
+      </Screen>
+    </>
   );
 }
 
-/** Строка дня. Вынесена наружу ради проверки мест в столбце действий */
-export function AppointmentRow({
-  a,
-  busy,
-  onStatus,
-  onLead,
-}: {
-  a: AppointmentView;
-  busy: boolean;
-  onStatus: (to: Move) => void;
-  onLead: () => void;
-}) {
+/** «Зараз. До сесії Оксани 30 хв. Устигніть розібрати сигнал до 18:12.» */
+function NowNote({ items, now, hero }: { items: AppointmentView[]; now: number | null; hero: AlertCase | null }) {
   const { ut } = useLang();
-  const acts = rowActions(a.status);
-
+  const until = useUntil();
+  if (now === null) return null;
+  const next = items.find((a) => (a.status === "booked" || a.status === "confirmed") && Date.parse(a.startsAt) > now);
+  const timer = hero ? caseTimer(hero) : null;
   return (
-    /*
-      Признак с идентификатором приёма — точка опоры для смоука.
-
-      День общий, и проверка, ищущая «первую строку с кнопкой «Пришёл»»,
-      проверяет не экран, а то, что до неё туда не дотянулся соседний
-      сценарий. Со своим приёмом ей нужна СВОЯ строка, а искать её по имени
-      нельзя: тёзки в списке — обычное дело. Классы здесь менять можно,
-      признак — нет (тот же уговор, что у data-patients в сетке пациентов).
-    */
-    <div
-      data-appointment={a.id}
-      className="flex items-start gap-3 border-t border-hairline px-4 py-3 first:border-t-0"
-    >
-      {/*
-        Время — первое и моноширинным: колонка времени читается сверху вниз,
-        а не по строкам, и глаз ищет в ней ближайший приём.
-      */}
-      {/*
-        Время ведёт на экран приёма: именно с него начинается работа, а имя
-        по-прежнему ведёт в карту. Две разные цели в одной строке — потому
-        что и вопроса тут два: «принять этого человека» и «посмотреть, кто
-        он».
-      */}
-      <Link to={`/visit/${a.id}`} className="w-[52px] shrink-0 pt-0.5">
-        <Num className="text-body">{clock(a.startsAt)}</Num>
-      </Link>
-
-      <Avatar name={a.patientName} />
-
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          <Link to={`/patients/${a.patientId}`} className="truncate font-medium">
-            {a.patientName}
+    <>
+      <b className="font-extrabold text-text">{ut("dayA.nowWord")}</b>{" "}
+      {next
+        ? fill(ut("dayA.untilNext"), { name: next.patientName, t: until((Date.parse(next.startsAt) - now) / 60_000) })
+        : ut("dayA.dayOver")}
+      {hero ? (
+        <>
+          {" "}
+          <Link to={reviewHref(hero.userId)} className="font-bold text-violet-ink">
+            {timer && timer.left > 0 ? fill(ut("dayA.reviewSignalBy"), { t: hhmm(timer.due) }) : ut("dayA.reviewSignal")}
           </Link>
-          <span className="text-micro uppercase tracking-[var(--tracking-label)] text-faint">
-            {ut(a.kind === "primary" ? "day.primary" : "day.repeat")}
-          </span>
-          {a.mode === "remote" ? <Badge>{ut("day.remote")}</Badge> : null}
-          {/*
-            «Не подтвердил» — не упрёк, а рабочий признак: по нему видно, кому
-            стоит позвонить до того, как слот пропадёт впустую. Показывается
-            только пока приём впереди: после явки он ничего не значит.
-          */}
-          {a.status === "booked" ? <Badge tone="warn">{ut("day.unconfirmed")}</Badge> : null}
-          {a.offSchedule ? <Badge tone="warn">{ut("day.offSchedule")}</Badge> : null}
-          {/*
-            Без ведущего — не ошибка и не тревога, а факт, который иначе
-            пришлось бы искать. Записаться можно к любому свободному, и
-            человек легко проходит несколько приёмов, так и не став ничьим.
-          */}
-          {a.leadSpecialistId === null ? (
-            <span className="inline-flex items-center gap-1">
-              <Badge>{ut("day.noLead")}</Badge>
-              {/*
-                Кнопка стоит вплотную к пометке, а не в общем строю действий
-                справа. Там она пряталась среди «Пришёл» и «Не пришёл» и
-                вдобавок сдвигала их: в строке без ведущего кнопок было три,
-                в строке с ведущим — две, и одно и то же действие оказывалось
-                на разном отступе в соседних строках.
+        </>
+      ) : null}
+    </>
+  );
+}
 
-                Здесь связь видна глазом: пометка называет недостачу, кнопка
-                рядом её закрывает.
-              */}
-              <Button size="sm" variant="ghost" onClick={onLead} disabled={busy}>
-                {ut("day.takeLead")}
-              </Button>
-            </span>
-          ) : null}
-          {/*
-            Несданное назначенное — единственная пометка здесь, которая
-            требует внимания до приёма, а не после: без неё специалист узнаёт
-            о ней в момент, когда собирался обсуждать результат, то есть
-            когда время приёма уже идёт.
-          */}
-          {a.pendingAssignments > 0 ? (
-            <Badge tone="warn">
-              {ut("day.pending")} {a.pendingAssignments}
-            </Badge>
-          ) : null}
-        </div>
-
-        <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-caption text-muted">
-          <span>{ut(STATUS_KEY[a.status])}</span>
-          {a.room ? (
-            <span>
-              {ut("day.room")} {a.room}
-            </span>
-          ) : null}
-        </div>
-
-        {a.reason ? (
-          <p className="mt-1 max-w-[70ch] text-caption text-muted">
-            <SectionLabel>{ut("day.reason")}</SectionLabel> {a.reason}
-          </p>
-        ) : null}
-      </div>
-
-      {/*
-        Справа остаются только действия над самим приёмом: действия над
-        человеком (закрепить за собой) стоят выше, у своей пометки.
-
-        У каждого места свой смысл: слева уходят с обычного хода («Не
-        пришёл»), справа идут по нему дальше. Место остаётся на строке и
-        пустым — на строке принятого приёма это выглядит расточительно, но
-        именно пустое место и делает столбец столбцом: «Пришёл» у записанного
-        и «Пришёл» у неявки стоят на одном отступе, а не разъезжаются на
-        ширину соседней кнопки.
-
-        Ширина места задана числом, а не подгоняется под надпись: иначе она
-        поехала бы на украинском («Завершити» длиннее «Завершить») и строки
-        снова разошлись бы между собой. 96 px — самая длинная из надписей
-        столбца плюс поля кнопки.
-      */}
-      <div className="flex shrink-0 items-center gap-2">
-        {SLOTS.map((slot) => {
-          const act = acts[slot];
-          return (
-            /* data-slot — опора для проверки: классы менять можно, признак мест нет */
-            <div key={slot} data-slot={slot} className="w-[96px]">
-              {act ? (
-                <Button
-                  size="sm"
-                  variant={act.quiet ? "ghost" : undefined}
-                  className="w-full"
-                  onClick={() => {
-                    const to = moveOf(act, (question) => window.confirm(ut(question)));
-                    if (to) onStatus(to);
-                  }}
-                  disabled={busy}
-                >
-                  {ut(act.key)}
-                </Button>
-              ) : null}
-            </div>
-          );
-        })}
-      </div>
-    </div>
+/** Мета-строка и листание дней — в шапку «Зведення» */
+function DayHead({
+  date,
+  items,
+  loading,
+  isToday,
+  onDate,
+}: {
+  date: string;
+  items: AppointmentView[];
+  loading: boolean;
+  isToday: boolean;
+  onDate: (d: string) => void;
+}) {
+  const { ut, lang } = useLang();
+  const alive = items.filter((a) => a.status !== "cancelled");
+  const done = alive.filter((a) => a.status === "done").length;
+  const ahead = alive.filter((a) => a.status === "booked" || a.status === "confirmed" || a.status === "arrived" || a.status === "in_progress").length;
+  const end = alive.length ? hhmm([...alive.map((a) => a.endsAt)].sort().pop()!) : null;
+  const sum = loading
+    ? ut("common.loading")
+    : alive.length
+      ? fill(ut("dayA.daySum"), { sessions: withCount(ut("dayA.sessionsN"), alive.length, lang), done, ahead, end: end ?? "" })
+      : ut("day.nobody");
+  const prev = shiftDate(date, -1);
+  const next = shiftDate(date, 1);
+  return (
+    <StartHead
+      meta={
+        <>
+          <b className="font-extrabold text-text">{dayFull(date)}</b>
+          <span>{sum}</span>
+        </>
+      }
+      actions={
+        <>
+          <div role="group" aria-label={ut("dayA.dayNav")} className="inline-flex h-10 items-center gap-0.5 rounded-[12px] bg-sunk p-[3px]">
+            <Tooltip label={dayFull(prev)}>
+              <button
+                type="button"
+                aria-label={ut("day.prev")}
+                onClick={() => onDate(prev)}
+                className="inline-grid size-[34px] min-h-0 cursor-pointer place-items-center rounded-[9px] border-0 bg-transparent p-0 text-text-2 hover:bg-panel hover:text-text"
+              >
+                <Ic.chevronLeft size={16} />
+              </button>
+            </Tooltip>
+            <button
+              type="button"
+              aria-current={isToday ? "date" : undefined}
+              onClick={() => onDate("")}
+              className={cx(
+                "inline-grid h-[34px] min-h-0 cursor-pointer place-items-center rounded-[9px] border-0 px-3 text-small font-extrabold",
+                isToday ? "bg-panel text-violet-ink shadow-tile" : "bg-transparent text-text-2 hover:bg-panel",
+              )}
+            >
+              {ut("day.today")}
+            </button>
+            <Tooltip label={dayFull(next)}>
+              <button
+                type="button"
+                aria-label={ut("day.next")}
+                onClick={() => onDate(next)}
+                className="inline-grid size-[34px] min-h-0 cursor-pointer place-items-center rounded-[9px] border-0 bg-transparent p-0 text-text-2 hover:bg-panel hover:text-text"
+              >
+                <Ic.chevronRight size={16} />
+              </button>
+            </Tooltip>
+          </div>
+          <ButtonLink to="/my-schedule">
+            <Di.calendarDays />
+            {ut("dayA.weekSchedule")}
+          </ButtonLink>
+        </>
+      }
+    />
   );
 }

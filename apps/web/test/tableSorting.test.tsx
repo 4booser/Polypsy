@@ -143,6 +143,13 @@ const draw = (node: ReactNode, url = "/t") =>
     </MemoryRouter>,
   );
 
+/** aria-sort заголовка колонки с этой подписью */
+const sortOf = (html: string, header: string) => {
+  const at = html.indexOf(`>${header}<`);
+  const open = html.lastIndexOf("<th", at);
+  return html.slice(open, at).match(/aria-sort="([a-z]+)"/)?.[1];
+};
+
 /** Имена строк тела таблицы в том порядке, в каком они в разметке */
 const bodyNames = (html: string) =>
   [...(html.split("<tbody>")[1] ?? "").matchAll(/<tr[^>]*><td[^>]*>([^<]*)<\/td>/g)].map((m) => m[1]);
@@ -153,7 +160,9 @@ describe("таблица: порядок из адреса", () => {
   test("сортировка из адреса применяется и видна стрелкой у своей колонки", () => {
     const html = draw(<DataTable rows={people} columns={columns} stateKey="t" />, "/t?t.sort=n:desc");
     expect(bodyNames(html)).toEqual(["Бондар", "Коваль", "Шевчук", "Мельник"]);
-    expect(html).toMatch(/Замірів<span class="arrow">↓<\/span>/);
+    /* направление — у заголовка своей колонки, словом для диктора (aria-sort), а не одной стрелкой */
+    expect(sortOf(html, "Замірів")).toBe("descending");
+    expect(sortOf(html, "ПІБ")).toBe("none");
   });
 
   test("без адреса — порядок по умолчанию; кривой адрес — тоже он, а не порядок сервера", () => {
@@ -162,7 +171,7 @@ describe("таблица: порядок из адреса", () => {
     const broken = draw(<DataTable rows={people} columns={columns} stateKey="t" initialSort={initial} />, "/t?t.sort=vanished:desc");
     expect(bodyNames(plain)).toEqual(["Бондар", "Коваль", "Шевчук", "Мельник"]);
     expect(bodyNames(broken)).toEqual(bodyNames(plain));
-    expect(broken).toMatch(/Замірів<span class="arrow">↓<\/span>/);
+    expect(sortOf(broken, "Замірів")).toBe("descending");
   });
 
   test("выделенная строка остаётся выделенной после сортировки: выбор идёт за данными, а не за местом", () => {

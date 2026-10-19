@@ -1452,6 +1452,11 @@ export const ERRORS = {
     ru: "{field}: этот раздел нельзя убрать: рядом с ним стоит число неразобранного",
     en: "{field}: this section can’t be hidden: it carries the count of unreviewed items",
   },
+  "err.v.widgetAlwaysVisible": {
+    uk: "{field}: віджет випадків ризику не вимикається, поки є відкриті",
+    ru: "{field}: виджет случаев риска не выключается, пока есть открытые",
+    en: "{field}: the risk cases widget can’t be turned off while cases are open",
+  },
   "err.v.timeOfDay": { uk: "{field}: час у вигляді ГГ:ХХ", ru: "{field}: время в виде ЧЧ:ММ", en: "{field}: time as HH:MM" },
   "err.v.appointmentEndsBeforeStart": {
     uk: "{field}: прийом не може закінчуватися раніше, ніж почався",
@@ -1698,6 +1703,35 @@ export const ERRORS = {
     uk: "Це проходження вже здано, тож чернетку не збережено. Щоб пройти методику ще раз, почніть нове проходження",
     ru: "Это прохождение уже сдано, поэтому черновик не сохранён. Чтобы пройти методику ещё раз, начните новое прохождение",
     en: "This attempt has already been submitted, so the draft wasn’t saved. To take the assessment again, start a new attempt",
+  },
+
+  /* ── v2-admin ── */
+  /* передача пациентов другому лікарю (routes/users.ts, POST /:id/patients/transfer) */
+  "err.transferTarget": {
+    uk: "Передати можна лише іншому лікарю з діючим обліковим записом",
+    ru: "Передать можно только другому врачу с действующей учётной записью",
+    en: "Patients can only be handed over to another clinician with an active account",
+  },
+  "err.transferLeadChanged": {
+    uk: "Когось із цих пацієнтів вже веде інший фахівець. Оновіть список і спробуйте ще раз",
+    ru: "Кого-то из этих пациентов уже ведёт другой специалист. Обновите список и попробуйте ещё раз",
+    en: "Some of these patients already have another lead clinician. Refresh the list and try again",
+  },
+
+  /* ── v2-fix-admin ── */
+  /* передача пациентов лікарю, который их не видит: ответить им было бы некому (routes/users.ts, POST /:id/patients/transfer) */
+  "err.transferTargetZone": {
+    uk: "Новий лікар не бачить когось із цих пацієнтів, тож не зможе ні відповісти їм, ні відкрити картку. Оберіть лікаря, який з ними працює",
+    ru: "Новый врач не видит кого-то из этих пациентов, поэтому не сможет ни ответить им, ни открыть карточку. Выберите врача, который с ними работает",
+    en: "The new clinician cannot see some of these patients, so they could neither reply to them nor open their records. Choose a clinician who works with them",
+  },
+
+  /* ── v2-fix-analytics2 ── */
+  /* правку правила обогнала чужая (routes/decisions.ts, PATCH /rules/:id с версией) */
+  "err.ruleChanged": {
+    uk: "Цю модель щойно змінив хтось інший. Ми показали її теперішній стан — перегляньте зміни й збережіть ще раз",
+    ru: "Эту модель только что изменил кто-то другой. Мы показали её текущее состояние — просмотрите изменения и сохраните ещё раз",
+    en: "Someone else has just changed this model. Its current state is now shown — review the changes and save again",
   },
 } as const satisfies Record<string, ErrorEntry>;
 

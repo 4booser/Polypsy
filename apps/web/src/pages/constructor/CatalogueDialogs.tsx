@@ -1,19 +1,21 @@
 import { useState } from "react";
 import type { SurveyFolder, SurveyGroupWithCounts, SurveyListItem } from "@quizzy/shared";
 import { api } from "../../api";
-import { Modal, useAction } from "../../ui";
+import { Drawer, DrawerSection, useAction } from "../../ui";
 import { Button, Field, Input, Select } from "../../ui/primitives";
 import { useLang } from "../../lang";
 import { folderOptions, localToday } from "./catalogue";
+import { CnIc } from "./icons";
 
 /**
- * Окна каталога: папка (завести или переименовать) и перенос теста в папку.
+ * Ящики каталога: папка (завести или переименовать) и перенос теста в папку.
  *
- * Окна, а не строки внутри списка: на макете каталог — плотный список, и
- * форма, раскрывающаяся между строками, сдвигала бы всё под ней. Общий
- * Modal даёт ловушку фокуса, Esc и возврат фокуса на кнопку, из которой
- * окно открыли, — писать это заново для двух форм означало бы третью копию
- * той же логики в проекте.
+ * Ящики, а не окна: это действия, а окно в наборе — только для шага, который
+ * обязан прервать работу (ui/README.md). И не строки внутри списка: на макете
+ * каталог — плотный список, и форма между строками сдвигала бы всё под ней.
+ * Ящик даёт ловушку фокуса, Esc и возврат фокуса на кнопку, из которой его
+ * открыли. Пока ящик смонтирован, он открыт: экран каталога монтирует его на
+ * время действия и снимает по onClose — так было и с окнами.
  */
 
 /**
@@ -62,49 +64,59 @@ export function FolderForm({
     if (ok) onSaved();
   }
 
+  const formId = folder ? `cat-folder-${folder.id}` : "cat-folder-new";
   return (
-    <Modal title={folder ? ut("cat.renameFolder") : ut("cat.newFolder")} onClose={onClose}>
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          void submit();
-        }}
-      >
-        {noGroup ? (
-          <p className="m-0 mb-4 text-[13px] text-muted">{ut("cat.folderNeedsGroup")}</p>
-        ) : (
-          <>
-            <Field label={ut("cat.folderTitle")}>
-              <Input value={title} onChange={(e) => setTitle(e.target.value)} autoFocus maxLength={200} />
-            </Field>
-            <Field label={ut("cat.folderDate")}>
-              <Input type="date" value={startsOn} onChange={(e) => setStartsOn(e.target.value)} required />
-            </Field>
-            {askGroup ? (
-              <Field label={ut("cat.folderGroup")}>
-                <Select value={groupId} onChange={(e) => setGroupId(e.target.value)}>
-                  {living.map((g) => (
-                    <option key={g.id} value={g.id}>
-                      {g.title}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
-            ) : null}
-          </>
-        )}
-        <div className="mt-5 flex items-center gap-[14px]">
+    <Drawer
+      open
+      onClose={onClose}
+      title={folder ? ut("cat.renameFolder") : ut("cat.newFolder")}
+      sub={parent?.title ?? folder?.title}
+      icon={<CnIc.folderPlus size={18} />}
+      footer={
+        <>
           {noGroup ? null : (
-            <Button size="md" type="submit" disabled={busy || !title.trim() || !startsOn || !groupId}>
+            <Button variant="primary" type="submit" form={formId} disabled={busy || !title.trim() || !startsOn || !groupId}>
               {folder ? ut("ui.save") : ut("adm.create")}
             </Button>
           )}
-          <Button variant="ghost" onClick={onClose}>
-            {ut("ui.cancel")}
-          </Button>
-        </div>
-      </form>
-    </Modal>
+          <Button onClick={onClose}>{ut("ui.cancel")}</Button>
+        </>
+      }
+    >
+      <DrawerSection>
+        <form
+          id={formId}
+          onSubmit={(e) => {
+            e.preventDefault();
+            void submit();
+          }}
+        >
+          {noGroup ? (
+            <p className="m-0 text-small text-text-2">{ut("cat.folderNeedsGroup")}</p>
+          ) : (
+            <>
+              <Field label={ut("cat.folderTitle")}>
+                <Input data-autofocus value={title} onChange={(e) => setTitle(e.target.value)} maxLength={200} />
+              </Field>
+              <Field label={ut("cat.folderDate")}>
+                <Input type="date" value={startsOn} onChange={(e) => setStartsOn(e.target.value)} required />
+              </Field>
+              {askGroup ? (
+                <Field label={ut("cat.folderGroup")}>
+                  <Select value={groupId} onChange={(e) => setGroupId(e.target.value)}>
+                    {living.map((g) => (
+                      <option key={g.id} value={g.id}>
+                        {g.title}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+              ) : null}
+            </>
+          )}
+        </form>
+      </DrawerSection>
+    </Drawer>
   );
 }
 
@@ -138,34 +150,41 @@ export function MoveForm({
   }
 
   return (
-    <Modal title={ut("cat.move")} onClose={onClose}>
-      <p className="m-0 mb-4 text-[15px] font-bold text-primary">{survey.title}</p>
-      {survey.groupId ? (
-        <Field label={ut("cat.move")}>
-          <Select value={target} onChange={(e) => setTarget(e.target.value)} autoFocus>
-            <option value="">{ut("cat.rootOption")}</option>
-            {options.map((o) => (
-              <option key={o.id} value={o.id}>
-                {/* отступ глубины — длинным тире, а не пробелами: пробелы селект схлопывает */}
-                {"— ".repeat(o.depth)}
-                {o.title}
-              </option>
-            ))}
-          </Select>
-        </Field>
-      ) : (
-        <p className="m-0 mb-4 text-[13px] text-muted">{ut("cat.noGroupForFolder")}</p>
-      )}
-      <div className="mt-5 flex items-center gap-[14px]">
+    <Drawer
+      open
+      onClose={onClose}
+      title={ut("cat.move")}
+      sub={survey.title}
+      icon={<CnIc.folder size={18} />}
+      footer={
+        <>
+          {survey.groupId ? (
+            <Button variant="primary" disabled={busy || (survey.folderId ?? "") === target} onClick={() => void submit()}>
+              {ut("ui.save")}
+            </Button>
+          ) : null}
+          <Button onClick={onClose}>{ut("ui.cancel")}</Button>
+        </>
+      }
+    >
+      <DrawerSection>
         {survey.groupId ? (
-          <Button size="md" disabled={busy || (survey.folderId ?? "") === target} onClick={() => void submit()}>
-            {ut("ui.save")}
-          </Button>
-        ) : null}
-        <Button variant="ghost" onClick={onClose}>
-          {ut("ui.cancel")}
-        </Button>
-      </div>
-    </Modal>
+          <Field label={ut("cat.move")}>
+            <Select data-autofocus value={target} onChange={(e) => setTarget(e.target.value)}>
+              <option value="">{ut("cat.rootOption")}</option>
+              {options.map((o) => (
+                <option key={o.id} value={o.id}>
+                  {/* отступ глубины — длинным тире, а не пробелами: пробелы селект схлопывает */}
+                  {"— ".repeat(o.depth)}
+                  {o.title}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        ) : (
+          <p className="m-0 text-small text-text-2">{ut("cat.noGroupForFolder")}</p>
+        )}
+      </DrawerSection>
+    </Drawer>
   );
 }

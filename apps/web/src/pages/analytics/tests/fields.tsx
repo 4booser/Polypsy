@@ -2,134 +2,26 @@ import { useEffect, useId, useState, type KeyboardEvent, type ReactNode } from "
 import { api, type Patient } from "../../../api";
 import { useLang } from "../../../lang";
 import { cx } from "../../../ui/cx";
-import { IconCaret } from "../../../ui/glyphs";
+import { FilterChip } from "../../../ui/filters";
+import { Ic } from "../../../ui/icons";
+import { MenuButton, MenuSeparator, menuItemClass } from "../../../ui/menu";
 import { Input } from "../../../ui/primitives";
 import { useDebounced, useResource } from "../../../useResource";
-import { findSurveys, type Scope, type SurveyChoice } from "./model";
+import { findSurveys, type SurveyChoice } from "./model";
 
 /*
- * Поля строки фильтров вкладки «Тести».
+ * Поля панели фильтров «Аналітики тестів» (analytics-tests).
  *
- * Все — залитого вида (`fill`, #f0ecff без рамки): по дизайн-системе это
- * вид поля фильтра и показа состояния, в отличие от контурного поля формы.
- * Высота 36 и радиус 5 — общие с Input.
- *
- * Свои, а не взятые из раздела статистики (statistics/parts.tsx): у того
- * своя сетка «вид поля» под кадры f09/f23, и привязка к нему связала бы два
- * раздела, которые правят разные люди по разным кадрам.
+ * Тест и пациент — поля с поиском (их десятки и сотни), группа, период и
+ * версия — чипы с меню значений: выбирают из немногого, а применённый
+ * фильтр виден тонированным чипом с крестиком.
  */
 
-const FOCUS =
-  "outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg)]";
-
-/** Плашка выпадающего списка: рамка #999999 и тень — как у меню консоли */
+/** Плашка выпадающего списка — как у меню набора */
 const PLATE =
-  "absolute left-0 top-[calc(100%+4px)] z-50 m-0 max-h-[320px] w-full min-w-[280px] list-none overflow-y-auto rounded-[5px] border border-border-strong bg-[var(--bg)] px-0 py-[4px] shadow-pop";
+  "kit-scroll absolute left-0 top-[calc(100%+4px)] z-50 m-0 max-h-[340px] w-full min-w-[300px] list-none overflow-y-auto rounded-[12px] border border-border bg-panel p-1 shadow-pop";
 
-const OPTION = "flex min-h-[32px] cursor-pointer items-center justify-between gap-[12px] px-[10px] py-[5px] text-[15px] leading-[19px]";
-
-/* ─────────── выбор из списка ─────────── */
-
-/**
- * Выбор в залитом силуэте.
- *
- * Select из primitives умеет только контурные виды (`list`, `bare`), а
- * заливку поверх них классом не наложить: `bg-[var(--bg)]` и
- * `bg-primary-soft` в одной строке спорят, и кто победит, решает порядок в
- * собранном CSS. Поэтому свой элемент — тот же штатный <select> с тем же
- * треугольником 9×5 цветом рамки поля, что у Select.
- */
-export function FillSelect({
-  label,
-  value,
-  onChange,
-  children,
-  className,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  children: ReactNode;
-  className?: string;
-}) {
-  return (
-    <div className={cx("relative", className)}>
-      <select
-        aria-label={label}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className={cx(
-          "h-9 w-full min-w-0 cursor-pointer appearance-none truncate rounded-[5px] border-0 bg-primary-soft pl-[10px] pr-[28px]",
-          "text-[17px] text-text",
-          FOCUS,
-        )}
-      >
-        {children}
-      </select>
-      <span aria-hidden className="pointer-events-none absolute right-[10px] top-1/2 flex -translate-y-1/2 text-field-border">
-        <IconCaret />
-      </span>
-    </div>
-  );
-}
-
-/* ─────────── «Усі пацієнти / Один пацієнт» ─────────── */
-
-/**
- * Переключатель «Хто»: две белые плашки на сиреневой полосе.
- *
- * Вид взят с панели инструментов заключения (f36/f37, Button variant
- * "paper"): на залитой полосе выбранное — белое. Два состояния из двух — это
- * радиогруппа, а не селект: оба варианта видны сразу, и выбор делается одним
- * нажатием, а не двумя.
- *
- * Стрелки ← → переключают, как положено радиогруппе; Tab уходит дальше с
- * выбранной плашки (у второй tabIndex −1).
- */
-export function ScopeSwitch({ value, onChange }: { value: Scope; onChange: (v: Scope) => void }) {
-  const { ut } = useLang();
-  const options: [Scope, string][] = [
-    ["all", ut("ant.allPatients")],
-    ["patient", ut("ant.onePatient")],
-  ];
-  const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
-    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
-    e.preventDefault();
-    const next = value === "all" ? "patient" : "all";
-    /* currentTarget после обработки события обнуляется — берём его сейчас */
-    const root = e.currentTarget;
-    onChange(next);
-    requestAnimationFrame(() => root.querySelector<HTMLElement>(`[data-scope="${next}"]`)?.focus());
-  };
-  return (
-    <div
-      role="radiogroup"
-      aria-label={ut("ant.who")}
-      onKeyDown={onKey}
-      className="flex h-9 shrink-0 items-center gap-[3px] rounded-[5px] bg-primary-soft p-[3px]"
-    >
-      {options.map(([scope, label]) => (
-        <button
-          key={scope}
-          type="button"
-          role="radio"
-          data-scope={scope}
-          aria-checked={value === scope}
-          tabIndex={value === scope ? 0 : -1}
-          onClick={() => onChange(scope)}
-          className={cx(
-            "h-[30px] min-h-0 whitespace-nowrap rounded-[4px] border-0 px-[10px] text-[15px] font-bold leading-none",
-            "transition-colors duration-[var(--dur-fast)] ease-[var(--ease)]",
-            value === scope ? "bg-[var(--bg)] text-primary" : "bg-transparent text-primary-dim hover:text-primary",
-            FOCUS,
-          )}
-        >
-          {label}
-        </button>
-      ))}
-    </div>
-  );
-}
+const OPTION = "flex min-h-9 cursor-pointer items-center justify-between gap-3 rounded-[8px] px-2.5 py-1.5 text-body leading-[18px]";
 
 /* ─────────── поле с поиском и списком ─────────── */
 
@@ -144,6 +36,7 @@ export function ScopeSwitch({ value, onChange }: { value: Scope; onChange: (v: S
 function Combo<T extends { id: string }>({
   label,
   placeholder,
+  icon,
   shownText,
   query,
   onQuery,
@@ -152,10 +45,12 @@ function Combo<T extends { id: string }>({
   onPick,
   render,
   empty,
+  head,
   className,
 }: {
   label: string;
   placeholder: string;
+  icon: ReactNode;
   /** Что стоит в поле, пока список закрыт: выбранное */
   shownText: string;
   query: string;
@@ -166,6 +61,8 @@ function Combo<T extends { id: string }>({
   onPick: (item: T) => void;
   render: (item: T) => ReactNode;
   empty: string;
+  /** Подпись над пунктами: «Тести за кількістю проходжень» */
+  head?: string;
   className?: string;
 }) {
   const id = useId();
@@ -203,7 +100,6 @@ function Combo<T extends { id: string }>({
   return (
     <div className={cx("relative", className)}>
       <Input
-        look="fill"
         role="combobox"
         aria-label={label}
         aria-expanded={!!shown}
@@ -211,8 +107,9 @@ function Combo<T extends { id: string }>({
         aria-autocomplete="list"
         aria-activedescendant={shown?.[active] ? `${id}-${active}` : undefined}
         placeholder={placeholder}
-        ph="plain"
         value={open ? query : shownText}
+        icon={icon}
+        suffix={<Ic.chevronDown size={14} />}
         onFocus={() => {
           onQuery("");
           setOpen(true);
@@ -225,15 +122,17 @@ function Combo<T extends { id: string }>({
         onBlur={() => setOpen(false)}
         autoComplete="off"
         maxLength={120}
-        className="truncate pr-[28px]"
+        className="w-full"
       />
-      <span aria-hidden className="pointer-events-none absolute right-[10px] top-1/2 flex -translate-y-1/2 text-field-border">
-        <IconCaret />
-      </span>
       {shown ? (
         <ul id={id} role="listbox" aria-label={label} className={PLATE}>
+          {head ? (
+            <li role="presentation" className="px-2.5 pb-1 pt-1.5 text-caption font-bold text-muted">
+              {head}
+            </li>
+          ) : null}
           {shown.length === 0 ? (
-            <li className="px-[10px] py-[5px] text-[15px] text-muted">{empty}</li>
+            <li className="px-2.5 py-2 text-body text-muted">{empty}</li>
           ) : (
             shown.map((item, i) => (
               <li
@@ -245,7 +144,7 @@ function Combo<T extends { id: string }>({
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => pick(item)}
                 onMouseEnter={() => setActive(i)}
-                className={cx(OPTION, i === active && "bg-primary-tint", item.id === selected ? "font-bold text-primary" : "text-text")}
+                className={cx(OPTION, i === active && "bg-violet-tint", item.id === selected ? "font-bold text-violet-ink" : "font-medium text-text")}
               >
                 {render(item)}
               </li>
@@ -282,6 +181,7 @@ export function SurveyPicker({
     <Combo
       label={ut("ant.test")}
       placeholder={ut("ant.testSearch")}
+      icon={<Ic.clipboard />}
       shownText={valueTitle}
       query={q}
       onQuery={setQ}
@@ -289,11 +189,12 @@ export function SurveyPicker({
       selected={value}
       onPick={(s) => onChange(s.id)}
       empty={ut("ant.noTests")}
+      head={ut("ant.testsByCount")}
       className={className}
       render={(s) => (
         <>
           <span className="min-w-0 truncate">{s.title}</span>
-          <span className="shrink-0 font-mono text-[12px] font-normal tabular-nums text-muted">
+          <span className="shrink-0 text-caption font-bold tabular-nums text-muted">
             {s.responseCount}
             <span className="sr-only"> {ut("ant.responsesLower")}</span>
           </span>
@@ -329,9 +230,9 @@ export function PatientPicker({
   const { ut } = useLang();
   const [q, setQ] = useState("");
   /*
-   * Загрузкой по успокоившейся строке (волна 13) вместо своего номера
-   * билета: ответ ложится под ту строку, которую спрашивали, а стёртая до
-   * одной буквы строка больше не получает запоздалый список прежней.
+   * Загрузкой по успокоившейся строке вместо своего номера билета: ответ
+   * ложится под ту строку, которую спрашивали, а стёртая до одной буквы
+   * строка больше не получает запоздалый список прежней.
    */
   const typed = q.trim();
   const text = useDebounced(typed, 250);
@@ -351,6 +252,7 @@ export function PatientPicker({
     <Combo
       label={ut("ant.patient")}
       placeholder={ut("ant.patientSearch")}
+      icon={<Ic.user />}
       shownText={valueName}
       query={q}
       onQuery={setQ}
@@ -362,9 +264,83 @@ export function PatientPicker({
       render={(p) => (
         <>
           <span className="min-w-0 truncate">{p.fullName}</span>
-          {p.unit ? <span className="shrink-0 text-[12px] font-normal text-muted">{p.unit}</span> : null}
+          {p.unit ? <span className="shrink-0 text-caption font-medium text-muted">{p.unit}</span> : null}
         </>
       )}
     />
+  );
+}
+
+/* ─────────── чип с меню значений ─────────── */
+
+export interface ChipOption<K extends string> {
+  key: K;
+  label: string;
+  /** Справа приглушённо: число, «зараз» */
+  aside?: ReactNode;
+  icon?: ReactNode;
+  /** Черта перед пунктом */
+  ruled?: boolean;
+}
+
+/**
+ * Чип фильтра с меню значений (.fchip набора): «Група усі ⌄». Применённый
+ * фильтр — тонированный, крестик рядом снимает его (`onClear`). Пункт
+ * меню — radio: выбранный отмечен галочкой.
+ */
+export function ChipMenu<K extends string>({
+  label,
+  value,
+  on,
+  onClear,
+  options,
+  current,
+  onPick,
+  head,
+}: {
+  label: string;
+  value: ReactNode;
+  on: boolean;
+  onClear?: () => void;
+  options: ChipOption<K>[];
+  current: K | null;
+  onPick: (key: K) => void;
+  head?: string;
+}) {
+  return (
+    <span className="inline-flex">
+      <MenuButton
+        label={label}
+        plateClassName="min-w-[250px]"
+        trigger={(t) => (
+          <FilterChip label={label} value={value} on={on} onClick={t.onClick} onClear={on ? onClear : undefined} expanded={t["aria-expanded"]} />
+        )}
+      >
+        {(close) => (
+          <>
+            {head ? <div className="px-2.5 pb-1 pt-2 text-caption font-bold text-muted">{head}</div> : null}
+            {options.map((o) => [
+              o.ruled ? <MenuSeparator key={`${o.key}-rule`} /> : null,
+              <button
+                key={o.key}
+                type="button"
+                role="menuitemradio"
+                aria-checked={o.key === current}
+                className={menuItemClass("left")}
+                onClick={() => {
+                  close();
+                  onPick(o.key);
+                }}
+              >
+                {o.icon ? <span className="inline-flex text-muted">{o.icon}</span> : null}
+                <span className="min-w-0 flex-1 truncate">{o.label}</span>
+                {o.aside !== undefined ? <span className="text-caption font-bold tabular-nums text-muted">{o.aside}</span> : null}
+                {o.key === current ? <Ic.check size={15} className="text-violet-ink" /> : null}
+              </button>,
+            ])}
+          </>
+        )}
+      </MenuButton>
+    </span>
   );
 }

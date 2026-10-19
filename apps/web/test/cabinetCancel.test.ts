@@ -119,8 +119,11 @@ describe("экран кабинета", () => {
     expect(src.includes("moveAndReload(() => api.confirmAppointment(id), visits.reload)")).toBe(true);
   });
 
-  test("отмена идёт через вопрос", () => {
+  test("отмена идёт через вопрос — окном с последствием, а не системным диалогом", () => {
     expect(src.includes("cancelVisit(visit, {")).toBe(true);
-    expect(src.includes("ask: (question) => window.confirm(question)")).toBe(true);
+    expect(src.includes("ask: () => askCancel(visit)")).toBe(true);
+    expect(src.includes('title={ut("pt.cancelSure")}')).toBe(true);
+    expect(src.includes('{ut("pt.cancelLate")}')).toBe(true);
+    expect(src.includes("window.confirm")).toBe(false);
   });
 });

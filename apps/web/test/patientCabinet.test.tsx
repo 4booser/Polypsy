@@ -114,7 +114,7 @@ describe("территория пальца объявлена, а не прос
     expect(shell.includes("<TouchArea"), "без TouchArea высота мишеней снова станет делом памяти").toBe(true);
   });
 
-  test("экран кабинета вне оболочки объявляет зону сам", () => {
+  test("экран кабинета вне оболочки объявляет зону сам или встаёт в рамку кабинета", () => {
     const files = lazyFiles();
     const outside = screensOutsideShell();
     // прохождение методики — как раз такой экран: свой маршрут, без вкладок
@@ -122,8 +122,10 @@ describe("территория пальца объявлена, а не прос
     for (const name of outside) {
       const file = files.get(name);
       if (!file) continue;
+      /* рамка кабинета (PatientFrame) сама объявляет зону — экран в ней наследует её */
+      const src = code(readFileSync(file, "utf8"));
       expect(
-        code(readFileSync(file, "utf8")).includes("<TouchArea"),
+        src.includes("<TouchArea") || src.includes("<PatientFrame"),
         `${name}: экран /me вне оболочки без зоны пальца`,
       ).toBe(true);
     }
@@ -144,5 +146,36 @@ describe("территория пальца объявлена, а не прос
       }
     }
     expect(bad, "используйте Input/Textarea/Select из ui/primitives").toEqual([]);
+  });
+});
+
+describe("нижние вкладки телефона не закрывают ящик", () => {
+  test("полоса вкладок — ниже подложки ящика набора", () => {
+    /*
+     * Ящик идёт до низа экрана (Drawer, bottom-2.5). Полоса вкладок кабинета
+     * стояла слоем выше него и его подложки: на 390 подвал ящика уходил под
+     * неё, и кнопку «Змінити пароль» в профиле было не нажать (ревью волны 26).
+     */
+    const shell = code(readFileSync(join(PATIENT, "PatientApp.tsx"), "utf8"));
+    const drawer = code(readFileSync(join(WEB, "src/ui/Drawer.tsx"), "utf8"));
+    const tabs = /className="fixed inset-x-0 bottom-0 z-(\d+) /.exec(shell)?.[1];
+    const scrim = /z-\[(\d+)\] bg-scrim/.exec(drawer)?.[1];
+    expect(tabs, "полоса вкладок кабинета не найдена").toBeTruthy();
+    expect(scrim, "подложка ящика не найдена").toBeTruthy();
+    expect(Number(tabs)).toBeLessThan(Number(scrim));
+  });
+});
+
+describe("профиль: строка второго фактора не отстаёт от ящика", () => {
+  test("выключение в ящике перечитывает строку профиля, как и включение", () => {
+    /*
+     * Строка «Двоетапна перевірка» читает своё состояние, а ящик — своё. Ящик
+     * звал профиль только после включения, и после выключения строка
+     * показывала «увімкнено» до перезагрузки страницы (ревью волны 26).
+     */
+    const profile = code(readFileSync(join(PATIENT, "Profile.tsx"), "utf8"));
+    const factor = code(readFileSync(join(WEB, "src/pages/ops/people2/SecondFactor.tsx"), "utf8"));
+    expect(/onDisabled=\{\(\) => \{[^}]*mfa\.reload\(\);/.test(profile), "профиль не перечитывает строку после выключения").toBe(true);
+    expect(/await api\.mfaDisable\([^;]*\);[\s\S]{0,160}?onDisabled\?\.\(\);/.test(factor), "ящик не сообщает о выключении").toBe(true);
   });
 });

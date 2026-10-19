@@ -1,21 +1,36 @@
 import { useState } from "react";
-import type { MobileReport } from "@quizzy/shared";
+import type { MobileReport, MobileVersionRow } from "@quizzy/shared";
 import { api } from "../../../api";
-import { Figure, Kpi, ShareBar, TimeColumns } from "../../../charts/clinical";
-import { dateTime, day } from "../../../format";
+import { HBars, TimeColumns } from "../../../charts/clinical";
+import { ATTENTION_COLOR, ChartLegend, OTHER_COLOR, SINGLE_COLOR } from "../../../charts/kit";
+import { dayFull } from "../../../format";
 import { useLang } from "../../../lang";
-import { Screen } from "../../../ui";
-import { cx } from "../../../ui/cx";
-import { Tag } from "../../../ui/primitives";
-import { RuleSection } from "../../../ui/section";
+import { Callout, DataTable, Empty, Screen, type Column } from "../../../ui";
+import { Ic } from "../../../ui/icons";
+import { Panel } from "../../../ui/layout";
+import { ButtonLink, Tag } from "../../../ui/primitives";
 import { useResource } from "../../../useResource";
 import { fill } from "../../dashboard/model";
-import { ToneShare } from "../obs2b/charts";
-import { PLATFORM_LABEL, dayColumns, lagParts, lateParts, versionParts, type Window } from "./model";
-import { KPI_GRID, NUM, PAIR_GRID, TD, TH, WindowSwitch } from "./parts";
+import { SectionPage } from "../people2/frame";
+import { Ix } from "../people2/icons";
+import { Id } from "./icons";
+import {
+  PLATFORM_LABEL,
+  dayColumns,
+  lagParts,
+  lateParts,
+  newestBuilds,
+  platformSplit,
+  versionParts,
+  type Window,
+} from "./model";
+import { Facts, FootNote, Label, WindowSwitch, dayTick, int, pct, stamp, usePlural } from "./parts";
 
-/** Версий в полосе поимённо; старше — одной частью «старіші» */
+/** Версий полосами поимённо; старше — одной строкой «старіші» */
 const TOP_VERSIONS = 5;
+
+const ON_DEVICES = { one: "oppd.onDevices.one", few: "oppd.onDevices.few", many: "oppd.onDevices.many" } as const;
+const OF_DEVICES = { one: "oppd.ofDevices.one", few: "oppd.ofDevices.few", many: "oppd.ofDevices.many" } as const;
 
 /**
  * «Мобільний застосунок» — на каких сборках сидят люди, что застряло в
@@ -23,147 +38,299 @@ const TOP_VERSIONS = 5;
  *
  * Сборка важна не сама по себе: приложение считает баллы офлайн тем же
  * движком, что и сервер (docs/ARCHITECTURE.md), и исправление в движке
- * доходит до человека только с новой сборкой. Поэтому «на старых сборках» —
- * янтарём, когда их больше нуля: это ровно «требует внимания».
+ * доходит до человека только с новой сборкой. Поэтому устройства на старых
+ * сборках — янтарной заметкой сверху, когда их больше нуля: это ровно
+ * «требует внимания».
  *
- * Падения здесь не собираются: их сбор — у раздела ошибок клиента
- * техпанели. Место под его сводку оставлено разделом внизу.
+ * Падения здесь не собираются: их сбор — у раздела «Помилки клієнта»
+ * техпанели, и заметка внизу ведёт туда: второй сборщик дублировал бы его
+ * и расходился с ним в числах.
  */
 export default function OpsMobile() {
+  const { ut } = useLang();
+  const plural = usePlural();
   const [days, setDays] = useState<Window>(90);
   const res = useResource(() => api.opsMobile(days), [days]);
-  return <Screen res={res}>{(data) => <MobileBody data={data} days={days} onDays={setDays} />}</Screen>;
-}
-
-export function MobileBody({ data, days, onDays }: { data: MobileReport; days: Window; onDays: (w: Window) => void }) {
-  const { ut } = useLang();
-  const lag = (ms: number | null) => {
-    const p = lagParts(ms);
-    return p ? fill(ut(p.unit), { n: p.n }) : null;
-  };
+  const data = res.data;
+  const platform = usePlatformName();
+  const builds = data ? newestBuilds(data.versions, data.newest) : [];
 
   return (
-    <>
-      <RuleSection title={ut("opsd.m.versions")} hint={ut("opsd.m.versionsHint")} actions={<WindowSwitch value={days} onChange={onDays} />}>
-        <div className={KPI_GRID}>
-          <Kpi label={ut("opsd.m.devices")} value={data.devices.total} />
-          <Kpi
-            label={ut("opsd.m.old")}
-            value={data.old.devices}
-            tone={data.old.devices > 0 ? "attention" : "plain"}
-            hint={data.old.percent === null ? undefined : fill(ut("opsd.m.oldShare"), { p: data.old.percent })}
-          />
-          <Kpi label={ut("opsd.m.newest")} value={data.newest} />
-          <Kpi label={ut("opsd.m.unknown")} value={data.devices.unknown} hint={ut("opsd.m.unknownHint")} />
+    <SectionPage
+      title={ut("opsd.tab.mobile")}
+      perm="ops.read"
+      meta={
+        data
+          ? [
+              plural(data.devices.total, { one: "oppd.m.metaDevices.one", few: "oppd.m.metaDevices.few", many: "oppd.m.metaDevices.many" }),
+              platformSplit(data.versions)
+                .map((p) => `${platform(p.platform)} ${int(p.devices)}`)
+                .join(", "),
+            ]
+          : undefined
+      }
+      actions={<WindowSwitch value={days} onChange={setDays} />}
+      lead={
+        <>
+          {ut("oppd.m.lead")}
+          {data?.newest
+            ? ` ${
+                builds.length
+                  ? fill(ut("oppd.m.leadNewest"), { v: data.newest, b: builds.join(", ") })
+                  : fill(ut("oppd.m.leadNewestOnly"), { v: data.newest })
+              }`
+            : null}
+        </>
+      }
+    >
+      <Screen res={res}>{(d) => <MobileBody data={d} />}</Screen>
+    </SectionPage>
+  );
+}
+
+/** Имя платформы словарём; незнакомую сервер присылает как есть, без платформы — прочерк */
+function usePlatformName(): (p: string | null) => string {
+  const { ut } = useLang();
+  return (p) => (p ? (PLATFORM_LABEL[p] ? ut(PLATFORM_LABEL[p]!) : p) : "—");
+}
+
+export function MobileBody({ data }: { data: MobileReport }) {
+  const { ut } = useLang();
+  const plural = usePlural();
+
+  return (
+    <div className="flex flex-col gap-4">
+      {data.old.devices > 0 ? (
+        <Callout
+          kind="warn"
+          icon={<Id.calculator />}
+          title={plural(data.old.devices, { one: "oppd.m.oldTitle.one", few: "oppd.m.oldTitle.few", many: "oppd.m.oldTitle.many" })}
+        >
+          {data.old.percent === null ? ut("oppd.m.oldText") : fill(ut("oppd.m.oldTextShare"), { p: pct(data.old.percent) })}
+        </Callout>
+      ) : null}
+      <div className="@container">
+        <div className="grid items-stretch gap-4 @min-[860px]:grid-cols-2">
+          <Versions data={data} />
+          <Queue data={data} />
         </div>
-        {/*
-          Волна 11: версии полосой над таблицей — от новой к старым. Новая —
-          фиолетовым, старые — янтарём (исправление движка до них не дошло,
-          это «требует внимания»), неизвестная — серым. Слово «застаріла» в
-          легенде — чтобы старое читалось и без цвета.
-        */}
-        {data.versions.length ? (
-          <Figure className="mt-[24px]" title={ut("sig.m.versions")} caption={ut("sig.m.versionsCaption")}>
-            <ToneShare
-              label={ut("sig.m.versions")}
-              parts={versionParts(data.versions, TOP_VERSIONS).map((p, i, all) => ({
-                key: p.key,
-                label: p.rest ? fill(ut("sig.m.older"), { n: p.rest }) : (p.version ?? ut("sig.m.unknownVersion")),
-                value: p.devices,
-                tone: p.version === null && !p.rest ? "quiet" : p.old ? "warn" : "ok",
-                step: p.old ? 1 - i / Math.max(1, all.length) : 1,
-                note: p.old && !p.rest ? ut("opsd.m.oldTag") : undefined,
-              }))}
-            />
-          </Figure>
-        ) : null}
-        {data.versions.length ? (
-          <div className="mt-[24px] overflow-x-auto">
-            <table className="w-full min-w-[620px] border-collapse">
-              <thead>
-                <tr>
-                  <th scope="col" className={TH}>{ut("opsd.m.platform")}</th>
-                  <th scope="col" className={TH}>{ut("opsd.m.version")}</th>
-                  <th scope="col" className={TH}>{ut("opsd.m.build")}</th>
-                  <th scope="col" className={cx(TH, "text-right")}>{ut("opsd.m.devicesCol")}</th>
-                  <th scope="col" className={TH}>{ut("opsd.m.lastSeen")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.versions.map((v) => {
-                  const platform = v.platform ? (PLATFORM_LABEL[v.platform] ? ut(PLATFORM_LABEL[v.platform]!) : v.platform) : "—";
-                  return (
-                    <tr key={`${v.platform}|${v.version}|${v.build}`}>
-                      <td className={cx(TD, "text-muted")}>{platform}</td>
-                      <td className={TD}>
-                        <span className="font-mono tabular-nums text-text">{v.version ?? "—"}</span>
-                        {v.old ? <Tag tone="attention" className="ml-[8px]">{ut("opsd.m.oldTag")}</Tag> : null}
-                      </td>
-                      <td className={cx(TD, "font-mono tabular-nums text-muted")}>{v.build ?? "—"}</td>
-                      <td className={cx(TD, NUM)}>{v.devices}</td>
-                      <td className={cx(TD, "text-muted")}>{dateTime(v.lastSeenAt)}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+      </div>
+      <VersionTable rows={data.versions} />
+      <Late late={data.late} />
+      <Callout
+        kind="line"
+        icon={<Ix.monitorX />}
+        actions={
+          <ButtonLink to="/ops/client-errors" size="xs">
+            <Ic.external size={14} />
+            {ut("o2b.tab.clientErrors")}
+          </ButtonLink>
+        }
+      >
+        {ut("oppd.m.crashes")}
+      </Callout>
+    </div>
+  );
+}
+
+/* ─────────── устройства по версии ─────────── */
+
+/**
+ * Устройства по версии — строками от новой к старым. Новая — фиолетовым,
+ * старые — янтарём (исправление движка до них не дошло), неизвестная —
+ * серым; слово каждого цвета — в легенде, чтобы старое читалось и без цвета.
+ */
+function Versions({ data }: { data: MobileReport }) {
+  const { ut } = useLang();
+  const parts = versionParts(data.versions, TOP_VERSIONS);
+  return (
+    <Panel title={ut("sig.m.versions")} icon={<Ix.smartphone />} sub={fill(ut("oppd.inWindowN"), { n: int(data.devices.total) })}>
+      {parts.length ? (
+        <>
+          <HBars
+            items={parts.map((p) => ({
+              key: p.key,
+              label: p.rest ? (
+                fill(ut("sig.m.older"), { n: p.rest })
+              ) : p.version === null ? (
+                ut("sig.m.unknownVersion")
+              ) : (
+                <span className="font-mono">{p.version}</span>
+              ),
+              value: p.devices,
+              strong: p.version !== null && !p.old,
+              attention: p.old,
+            }))}
+          />
+          <ChartLegend
+            className="mt-3"
+            items={[
+              { key: "newest", label: ut("oppd.m.newest"), color: SINGLE_COLOR, kind: "band" },
+              { key: "old", label: ut("opsd.m.oldTag"), color: ATTENTION_COLOR, kind: "band" },
+              { key: "unknown", label: ut("oppd.m.unknownShort"), color: OTHER_COLOR, kind: "band" },
+            ]}
+          />
+          <p className="m-0 mt-2 text-caption text-muted">{ut("sig.m.versionsCaption")}</p>
+        </>
+      ) : (
+        <Empty compact title={ut("opsd.m.noDevices")} />
+      )}
+    </Panel>
+  );
+}
+
+/* ─────────── очередь на устройствах ─────────── */
+
+function Queue({ data }: { data: MobileReport }) {
+  const { ut } = useLang();
+  const plural = usePlural();
+  const q = data.queue;
+  return (
+    <Panel title={ut("opsd.m.queue")} icon={<Ic.inbox />}>
+      <p className="m-0 mb-2 text-caption text-muted">{ut("oppd.m.queueNote")}</p>
+      <Facts
+        rows={[
+          {
+            key: "reporting",
+            label: ut("opsd.m.reporting"),
+            value: int(q.devicesReporting),
+            note: plural(data.devices.total, OF_DEVICES),
+          },
+          { key: "pending", label: ut("opsd.m.pending"), value: int(q.pending), note: plural(q.devicesWithPending, ON_DEVICES) },
+          /* отклонённые сами не повторяются — ждут человека: вот это и требует внимания */
+          {
+            key: "rejected",
+            label: ut("opsd.m.rejected"),
+            value: int(q.rejected),
+            warn: q.rejected > 0,
+            note: plural(q.devicesWithRejected, ON_DEVICES),
+          },
+        ]}
+      />
+      {q.rejected > 0 ? (
+        <Callout kind="warn" className="mt-3" icon={<Ic.alert />}>
+          {ut("oppd.m.rejectedNote")}
+        </Callout>
+      ) : null}
+    </Panel>
+  );
+}
+
+/* ─────────── версии таблицей ─────────── */
+
+function VersionTable({ rows }: { rows: readonly MobileVersionRow[] }) {
+  const { ut } = useLang();
+  const platform = usePlatformName();
+  const columns: Column<MobileVersionRow>[] = [
+    {
+      key: "platform",
+      header: ut("opsd.m.platform"),
+      required: true,
+      width: 150,
+      render: (v) => (
+        <span className="flex items-center gap-1.5 text-text-2">
+          <Ix.smartphone size={14} className="text-muted" />
+          {platform(v.platform)}
+        </span>
+      ),
+    },
+    {
+      key: "version",
+      header: ut("opsd.m.version"),
+      required: true,
+      width: 120,
+      render: (v) => <span className="font-mono text-[12.5px] text-text">{v.version ?? "—"}</span>,
+    },
+    {
+      key: "build",
+      header: ut("opsd.m.build"),
+      required: true,
+      width: 110,
+      render: (v) => <span className="font-mono text-[12.5px] text-text-2">{v.build ?? "—"}</span>,
+    },
+    { key: "devices", header: ut("opsd.m.devicesCol"), num: true, required: true, width: 110, render: (v) => int(v.devices) },
+    { key: "seen", header: ut("opsd.m.lastSeen"), required: true, render: (v) => <span className="text-text-2">{stamp(v.lastSeenAt)}</span> },
+    {
+      key: "state",
+      header: "",
+      required: true,
+      width: 150,
+      render: (v) =>
+        v.version === null ? null : v.old ? (
+          <Tag tone="attention" icon={<Ic.history />}>
+            {ut("opsd.m.oldTag")}
+          </Tag>
         ) : (
-          <p className="m-0 mt-[16px] text-[13px] text-muted">{ut("opsd.m.noDevices")}</p>
-        )}
-      </RuleSection>
-
-      <RuleSection title={ut("opsd.m.queue")} hint={ut("opsd.m.queueHint")}>
-        <div className={KPI_GRID}>
-          <Kpi label={ut("opsd.m.reporting")} value={data.queue.devicesReporting} />
-          <Kpi
-            label={ut("opsd.m.pending")}
-            value={data.queue.pending}
-            hint={fill(ut("opsd.m.onDevices"), { n: data.queue.devicesWithPending })}
-          />
-          {/* отклонённые сами не повторяются — ждут человека: вот это и требует внимания */}
-          <Kpi
-            label={ut("opsd.m.rejected")}
-            value={data.queue.rejected}
-            tone={data.queue.rejected > 0 ? "attention" : "plain"}
-            hint={fill(ut("opsd.m.onDevices"), { n: data.queue.devicesWithRejected })}
-          />
+          <Tag tone="good" icon={<Ic.check />}>
+            {ut("oppd.m.newest")}
+          </Tag>
+        ),
+    },
+  ];
+  return (
+    <Panel
+      title={ut("opsd.m.versions")}
+      icon={<Ic.list />}
+      sub={ut("oppd.m.oldDef")}
+      flush
+      footer={<FootNote>{ut("oppd.m.engine")}</FootNote>}
+    >
+      {rows.length ? (
+        <DataTable
+          rows={[...rows]}
+          columns={columns}
+          rowKey={(v) => `${v.platform}|${v.version}|${v.build}`}
+          label={ut("opsd.m.versions")}
+          dense
+          sticky={false}
+        />
+      ) : (
+        <div className="px-4">
+          <Empty compact title={ut("opsd.m.noDevices")} />
         </div>
-      </RuleSection>
+      )}
+    </Panel>
+  );
+}
 
-      <RuleSection title={ut("opsd.m.late")} hint={ut("opsd.m.lateHint")}>
-        <div className={KPI_GRID}>
-          <Kpi
-            label={ut("opsd.m.lateTotal")}
-            value={data.late.total}
-            hint={fill(ut("opsd.m.lateOf"), { n: data.late.submitted })}
-          />
-          {/* null, а не ноль: у пустой выборки медианы нет, и «0 хв» соврало бы */}
-          <Kpi label={ut("opsd.m.median")} value={lag(data.late.medianLagMs)} />
-          <Kpi label={ut("opsd.m.p90")} value={lag(data.late.p90LagMs)} />
-        </div>
-        <div className={cx(PAIR_GRID, "mt-[28px]")}>
-          <Figure title={ut("opsd.m.lateBuckets")}>
-            <ShareBar
-              label={ut("opsd.m.lateBuckets")}
-              parts={lateParts(data.late.buckets).map((p) => ({ key: p.key, label: ut(p.label), value: p.value, step: p.step }))}
+/* ─────────── запоздавшие сдачи ─────────── */
+
+function Late({ late }: { late: MobileReport["late"] }) {
+  const { ut } = useLang();
+  /* null, а не ноль: у пустой выборки медианы нет, и «0 хв» соврало бы */
+  const lag = (ms: number | null) => {
+    const p = lagParts(ms);
+    return p ? fill(ut(p.unit), { n: p.n }) : "—";
+  };
+  return (
+    <Panel title={ut("opsd.m.late")} icon={<Ix.clockAlert />}>
+      <div className="@container">
+        <div className="grid gap-x-8 gap-y-5 @min-[900px]:grid-cols-[240px_minmax(0,1fr)_minmax(0,1.25fr)]">
+          <div className="min-w-0">
+            <p className="m-0 mb-2 text-caption text-muted">{ut("opsd.m.lateHint")}</p>
+            <Facts
+              rows={[
+                { key: "total", label: ut("opsd.m.lateTotal"), value: int(late.total) },
+                { key: "submitted", label: ut("oppd.m.submitted"), value: int(late.submitted) },
+                { key: "median", label: ut("opsd.m.median"), value: lag(late.medianLagMs) },
+                { key: "p90", label: ut("opsd.m.p90"), value: lag(late.p90LagMs) },
+              ]}
             />
-          </Figure>
-          <Figure title={ut("opsd.m.lateByDay")}>
-            <TimeColumns columns={dayColumns(data.late.byDay, (d) => d.count, day)} label={ut("opsd.m.lateByDay")} />
-          </Figure>
+          </div>
+          <div className="min-w-0">
+            <Label className="mb-2">{ut("opsd.m.lateBuckets")}</Label>
+            <HBars items={lateParts(late.buckets).map((p) => ({ key: p.key, label: ut(p.label), value: p.value }))} />
+          </div>
+          <div className="min-w-0">
+            <Label className="mb-2">{ut("opsd.m.lateByDay")}</Label>
+            <TimeColumns
+              columns={dayColumns(late.byDay, (d) => d.count, dayTick).map((c) => ({ ...c, tip: dayFull(c.key) }))}
+              height={170}
+              label={ut("opsd.m.lateByDay")}
+            />
+          </div>
         </div>
-      </RuleSection>
-
-      {/*
-        Падения. Сбор — у раздела ошибок клиента техпанели (участок
-        наблюдаемости): второй сборщик здесь дублировал бы его и расходился
-        с ним в числах. Место оставлено, чтобы сводка встала сюда без
-        перестройки экрана.
-      */}
-      <RuleSection title={ut("opsd.m.crashes")}>
-        <p className="m-0 max-w-[760px] text-[13px] leading-[18px] text-muted">{ut("opsd.m.crashesHint")}</p>
-      </RuleSection>
-    </>
+      </div>
+    </Panel>
   );
 }

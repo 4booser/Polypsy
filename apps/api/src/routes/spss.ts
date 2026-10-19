@@ -851,7 +851,7 @@ spssRoutes.get("/surveys/:id/data.csv", async (c) => {
 spssRoutes.get("/surveys/:id/syntax.sps", async (c) => {
   const surveyId = c.req.param("id");
   await assertSurveyAccess(c.get("user"), surveyId);
-  const { profile, lang, labels } = await exportOptions(c);
+  const { profile, lang, labels, purpose } = await exportOptions(c);
   const { survey, vars } = await buildSchema(surveyId, lang, profile, null, labels);
   const dataFile = `quizzy-${surveyId}-data.csv`;
   const say = sayer(labels);
@@ -899,7 +899,14 @@ spssRoutes.get("/surveys/:id/syntax.sps", async (c) => {
     action: "analytics.export",
     resourceType: "survey",
     resourceId: surveyId,
-    details: { format: "spss-syntax", variables: vars.length, includesUserIds: false },
+    /*
+     * Цель — у каждого файла окна выгрузок, а не только у данных: окно кладёт
+     * её в адрес всех восьми, и «выгрузил сценарий» без «зачем» в журнале —
+     * та же дыра, что у данных без цели. Профиля здесь нет намеренно:
+     * profile «full» сторож журнала читает как выгрузку с именами
+     * (lib/suspicious.ts, isNamedExport), а в сценарии имён нет.
+     */
+    details: { format: "spss-syntax", variables: vars.length, includesUserIds: false, purpose: purpose ?? null },
   });
 
   return new Response(`﻿${lines.join("\r\n")}`, {
@@ -918,7 +925,7 @@ spssRoutes.get("/surveys/:id/syntax.sps", async (c) => {
 spssRoutes.get("/surveys/:id/codebook.csv", async (c) => {
   const surveyId = c.req.param("id");
   await assertSurveyAccess(c.get("user"), surveyId);
-  const { profile, lang, labels } = await exportOptions(c);
+  const { profile, lang, labels, purpose } = await exportOptions(c);
   const { survey, vars } = await buildSchema(surveyId, lang, profile, null, labels);
 
   const lines = [["variable", "type", "label", "values"].join(";")];
@@ -943,7 +950,7 @@ spssRoutes.get("/surveys/:id/codebook.csv", async (c) => {
     action: "analytics.export",
     resourceType: "survey",
     resourceId: surveyId,
-    details: { format: "codebook", profile, variables: vars.length },
+    details: { format: "codebook", profile, variables: vars.length, purpose: purpose ?? null },
   });
 
   return new Response(`\ufeff${lines.join("\r\n")}`, {
@@ -1178,7 +1185,7 @@ spssRoutes.get("/surveys/:id/load/:ext", async (c) => {
   await assertSurveyAccess(c.get("user"), surveyId);
   const ext = c.req.param("ext");
   if (ext !== "r" && ext !== "py") notFound("err.scriptNotFound");
-  const { profile, lang, labels } = await exportOptions(c);
+  const { profile, lang, labels, purpose } = await exportOptions(c);
   const { vars } = await buildSchema(surveyId, lang, profile, null, labels);
   const say = sayer(labels);
 
@@ -1214,6 +1221,20 @@ spssRoutes.get("/surveys/:id/load/:ext", async (c) => {
           "",
           "print(data.dtypes)",
         ].join("\n");
+
+  /*
+   * Строка журнала и у скрипта: данных в нём нет, но он — один из восьми
+   * файлов окна выгрузок, и цель, которую окно положило в его адрес, иначе
+   * не ложилась бы никуда. Без профиля — по той же причине, что у сценария
+   * SPSS: имён в скрипте нет, а «full» сторож журнала счёл бы выгрузкой с
+   * именами.
+   */
+  await audit(c, {
+    action: "analytics.export",
+    resourceType: "survey",
+    resourceId: surveyId,
+    details: { format: `load-${ext}`, variables: vars.length, includesUserIds: false, purpose: purpose ?? null },
+  });
 
   return new Response(script, {
     headers: {

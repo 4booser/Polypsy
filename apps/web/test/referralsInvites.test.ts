@@ -1,13 +1,22 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { UI, type Referral, type UiKey } from "@quizzy/shared";
+import { UI, type UiKey } from "@quizzy/shared";
 import { api, tokenStore } from "../src/api";
-import { inviteState } from "../src/pages/invites/model";
-import { DESTINATION_KEY, closedParam, referralSorts, showClosed } from "../src/pages/referrals/model";
-import { sortRows, type Column } from "../src/ui";
-import { listBody } from "../src/ui/paging";
-import { patchParams } from "../src/ui/viewParams";
+import { atLeast, inviteState } from "../src/pages/invites/model";
+import {
+  DESTINATION_KEY,
+  closedWithin,
+  inView,
+  matchesReferral,
+  openMissing,
+  sortReferrals,
+  spanText,
+  viewCount,
+  viewFrom,
+  waitOf,
+} from "../src/pages/referrals/model";
+import { listBody, shownNote } from "../src/ui/paging";
 
 /**
  * Направления и приглашения: отбор, запрос, состояние строки и что стоит на
@@ -48,97 +57,44 @@ afterEach(() => {
 
 const sent = (i: number) => new URL(seen[i]!, "http://x");
 
-describe("направления: «показати закриті»", () => {
-  test("из адреса: закрытые — только при all=1; опечатка не расширяет реестр", () => {
-    expect(showClosed("1")).toBe(true);
-    for (const raw of ["", "0", "true", "yes", "1 ", "2"]) expect(showClosed(raw), raw).toBe(false);
+describe("направления: вид реестра в адресе", () => {
+  /*
+   * Прежде реестр открывался на незакрытых, а закрытые добавлял `?all=1`.
+   * Теперь виды — пилюлями («Відкриті», «Виписані»… «Усі», ?v=), и защищать
+   * надо то же: опечатка в адресе не расширяет реестр, умолчание в адрес не
+   * пишется.
+   */
+  test("из адреса: незнакомое значение — «Відкриті», а не «Усі»", () => {
+    for (const raw of ["", "0", "1", "true", "yes", "open "]) expect(viewFrom(raw), raw).toBe("open");
+    expect(viewFrom("all")).toBe("all");
   });
 
-  test("переключатель туда и обратно: открытые — умолчание, в адресе их нет", () => {
-    const on = patchParams("referrals.sort=urgency", { all: closedParam(true) });
-    expect(on.get("all")).toBe("1");
-    const off = patchParams(on, { all: closedParam(false) });
-    expect(off.has("all")).toBe(false);
-    // сортировка таблицы переключателем не трогается
-    expect(off.get("referrals.sort")).toBe("urgency");
-  });
-
-  test("в запрос уходит all=1 только для закрытых; курсор — продолжение той же выборки", async () => {
-    await api.referrals(showClosed(""));
-    await api.referrals(showClosed("1"), "CUR");
+  test("в запрос уходит all=1 только по просьбе; курсор — продолжение той же выборки", async () => {
+    await api.referrals(false);
+    await api.referrals(true, "CUR");
     expect(sent(0).pathname).toBe("/api/referrals");
     expect(sent(0).search).toBe("");
     expect(Object.fromEntries(sent(1).searchParams)).toEqual({ all: "1", cursor: "CUR" });
   });
 
-  test("экран читает и пишет отбор через модель", () => {
+  test("экран читает вид через модель и грузит весь реестр: «закриті за 30 днів» стоят под открытыми", () => {
     const src = readFileSync(resolve(import.meta.dir, "../src/pages/Referrals.tsx"), "utf8");
-    expect(src).toContain("showClosed(allParam)");
-    expect(src).toContain("setAllParam(closedParam(v))");
-    // смена отбора — новая выборка: `all` в зависимостях загрузки
-    expect(src).toMatch(/usePagedResource<Referral>\(\(cursor\) => api\.referrals\(all, cursor\), \[all\]\)/);
+    expect(src).toContain("const view = viewFrom(viewRaw);");
+    expect(src).toContain('setViewRaw(k === "open" ? "" : k)');
+    expect(src).toMatch(/usePagedResource<Referral, ReferralPage>\(\(cursor\) => api\.referrals\(true, cursor\), \[\]\)/);
   });
 });
 
-describe("направления: порядок колонок", () => {
-  /*
-   * Колонки «Куди», «Терміновість», «Статус» показывают перевод, а
-   * сортировались по коду: «Терміновість» по алфавиту кодов шла
-   * immediate → routine → urgent, то есть «негайно, планово, терміново» —
-   * ни по срочности, ни по алфавиту; «Куди» по кодам давала «командиру,
-   * стаціонар, інше, амбулаторно, психіатр». Порядок на экране выглядел
-   * несортированным, и человек, нажавший заголовок, решал, что сортировка
-   * сломана, — или не замечал и читал список как упорядоченный.
-   */
-  const ut = (k: UiKey) => UI[k].uk;
-  const sorts = referralSorts(ut);
-  const columns: Column<Referral>[] = (["destination", "urgency", "status"] as const).map((key) => ({
-    key,
-    header: key,
-    sort: sorts[key],
-    render: () => null,
-  }));
-  let n = 0;
-  const ref = (destination: Referral["destination"], urgency: Referral["urgency"], status: Referral["status"]): Referral =>
-    ({ id: `r${++n}`, destination, urgency, status }) as Referral;
-  const rows = [
-    ref("commander", "urgent", "declined"),
-    ref("inpatient", "immediate", "created"),
-    ref("other", "routine", "completed"),
-    ref("outpatient", "urgent", "accepted"),
-    ref("psychiatrist", "routine", "created"),
-  ];
-  const order = (key: string, desc = false) => sortRows(rows, columns, { key, desc });
-
-  test("терміновість — по степени срочности: планово → терміново → негайно, и обратно", () => {
-    expect(order("urgency").map((r) => r.urgency)).toEqual(["routine", "routine", "urgent", "urgent", "immediate"]);
-    expect(order("urgency", true).map((r) => r.urgency)).toEqual(["immediate", "urgent", "urgent", "routine", "routine"]);
-  });
-
-  test("статус — по ходу направления: виписано → прийнято → завершено → відхилено", () => {
-    expect(order("status").map((r) => r.status)).toEqual(["created", "created", "accepted", "completed", "declined"]);
-  });
-
-  test("«Куди» — по алфавиту того, что написано в колонке", () => {
-    expect(order("destination").map((r) => ut(DESTINATION_KEY[r.destination]))).toEqual([
-      "амбулаторно",
-      "інше",
-      "командиру",
-      "психіатр",
-      "стаціонар",
-    ]);
-  });
-
-  test("равные по срочности остаются в порядке сервера (свіжі згори) при любом направлении", () => {
-    const routine = (desc: boolean) => order("urgency", desc).filter((r) => r.urgency === "routine").map((r) => r.id);
-    expect(routine(false)).toEqual(routine(true));
-  });
-
-  test("выгрузка пишет словами то, что видно, а не номер ступени", () => {
+describe("направления: выгрузка", () => {
+  test("выгрузка пишет словами то, что видно, а не код или номер ступени", () => {
     const src = readFileSync(resolve(import.meta.dir, "../src/pages/Referrals.tsx"), "utf8");
-    for (const key of ["destination", "urgency", "status"]) expect(src).toContain(`sort: sorts.${key},`);
-    expect(src).toContain("csv: (r: Referral) => ut(URGENCY_KEY[r.urgency])");
-    expect(src).toContain("csv: (r: Referral) => ut(STATUS_KEY[r.status])");
+    expect(src).toContain("sort: (r) => ut(DESTINATION_KEY[r.destination])");
+    expect(src).toContain("sort: (r) => ut(URGENCY_KEY[r.urgency])");
+    expect(src).toContain("sort: (r) => ut(STATUS_KEY[r.status])");
+  });
+
+  test("подписи «Куди» есть на всех языках", () => {
+    for (const k of Object.values(DESTINATION_KEY)) expect(UI[k as UiKey].uk.length).toBeGreaterThan(0);
   });
 });
 
@@ -150,6 +106,19 @@ describe("приглашения: выписанные ссылки страни
     expect(sent(0).search).toBe("");
     // курсор кодируется: в нём бывают «/» и «+», а сервер читает его как есть
     expect(sent(1).searchParams.get("cursor")).toBe("a/b+c");
+  });
+
+  test("пока есть ещё страницы, счёт — нижняя граница, а подпись — «перші N», а не «N з N»", () => {
+    expect(atLeast(12, true)).toBe("12+");
+    expect(atLeast(12, false)).toBe(12);
+    // общего итога у приглашений сервер не отдаёт: подпись говорит «перші», а не выдумывает «з N»
+    const ut = (k: "lists.shownOf" | "lists.shownFirst") => (UI[k] as { uk: string }).uk;
+    expect(shownNote(ut, 100, null, true)).toContain("100");
+    expect(shownNote(ut, 100, null, true)).toBe(UI["lists.shownFirst"].uk.replace("{shown}", "100"));
+    expect(shownNote(ut, 40, null, false)).toBeNull();
+    const page = readFileSync(resolve(import.meta.dir, "../src/pages/Invites.tsx"), "utf8");
+    expect(page).toContain("shownNote(ut, rows.length, list.total, list.hasMore)");
+    expect(page).toContain("atLeast(counts.live, list.hasMore)");
   });
 });
 
@@ -207,7 +176,121 @@ describe("что стоит на месте списка", () => {
 
   test("направления показывают такой отказ строкой над таблицей", () => {
     const src = readFileSync(resolve(import.meta.dir, "../src/pages/Referrals.tsx"), "utf8");
-    expect(src).toContain("listBody(rows, page.error)");
+    // и отказ отбора «Закриті за 30 днів» (волна 27): группа без него была бы неполной молча
+    expect(src).toContain("listBody(rows, page.error ?? closed.error)");
     expect(src).toContain("{body.stale ? ");
+  });
+});
+
+describe("реестр направлений «Виразної»", () => {
+  const NOW = Date.parse("2026-10-18T12:00:00.000Z");
+  const ago = (h: number) => new Date(NOW - h * 3_600_000).toISOString();
+  const ref = (over: Partial<import("@quizzy/shared").Referral>) => ({
+    id: "r",
+    userId: "u",
+    userName: "Мельник Андрій",
+    responseId: null,
+    alertId: null,
+    destination: "psychiatrist" as const,
+    urgency: "routine" as const,
+    status: "created" as const,
+    reason: "Сигнал PHQ-9",
+    outcomeNote: null,
+    createdByName: "Ірина Савчук",
+    createdAt: ago(1),
+    updatedAt: null,
+    ...over,
+  });
+
+  test("вид из адреса: незнакомое — «Відкриті»", () => {
+    expect(viewFrom("")).toBe("open");
+    expect(viewFrom("declined")).toBe("declined");
+    expect(viewFrom("yes")).toBe("open");
+  });
+
+  test("«Відкриті» — виписані и прийняті; закрытые туда не попадают", () => {
+    expect(inView(ref({ status: "created" }), "open")).toBe(true);
+    expect(inView(ref({ status: "accepted" }), "open")).toBe(true);
+    expect(inView(ref({ status: "declined" }), "open")).toBe(false);
+    expect(inView(ref({ status: "completed" }), "all")).toBe(true);
+  });
+
+  test("числа пилюль — из ответа сервера; без них — «неизвестно», а не ноль", () => {
+    const counts = { created: 2, accepted: 1, completed: 12, declined: 2 };
+    expect(viewCount(counts, "open")).toBe(3);
+    expect(viewCount(counts, "all")).toBe(17);
+    expect(viewCount(counts, "completed")).toBe(12);
+    expect(viewCount(undefined, "open")).toBeNull();
+  });
+
+  /*
+   * Давнее непринятое направление — за первой сотней реестра (он идёт по дате
+   * выписки вперемешку с закрытыми): экран добирает страницы, пока открытых
+   * загружено меньше, чем насчитал сервер. Мутация: считать по всем строкам,
+   * а не по открытым, — падает первая проверка; не добирать — падает последняя.
+   */
+  test("открытые — все: пока их загружено меньше, чем насчитал сервер, страницы добираются", () => {
+    const counts = { created: 2, accepted: 1, completed: 140, declined: 9 };
+    const loaded = [ref({ status: "created" }), ref({ status: "accepted" }), ...Array.from({ length: 98 }, () => ref({ status: "completed" }))];
+    expect(openMissing(loaded, counts), "третье открытое за первой сотней не добирается").toBe(true);
+    expect(openMissing([...loaded, ref({ status: "created" })], counts)).toBe(false);
+    expect(openMissing(null, counts)).toBe(false);
+    expect(openMissing(loaded, undefined), "без чисел сервера добирать не по чему").toBe(false);
+    const src = readFileSync(resolve(import.meta.dir, "../src/pages/Referrals.tsx"), "utf8");
+    expect(src).toContain("const missingOpen = openMissing(rows, counts);");
+    expect(src).toContain("if (missingOpen && hasMore && !loadingMore && !pageError) loadMore();");
+  });
+
+  /*
+   * Ящик после смены статуса начинает с пустой формы. Прежде выбор и
+   * комментарий переживали «Зберегти»: ящик того же направления открывался с
+   * невидимым выбором прежнего перехода и живой кнопкой — сохранение уходило
+   * отказом о недопустимом переходе, а прежний комментарий ушёл бы ответом
+   * следующего шага. Состояние ящика без браузера не нарисовать — проверяется
+   * исходник. Мутация: убрать сброс по статусу или после сохранения — падает своя.
+   */
+  test("ящик: выбор перехода сбрасывается со сменой статуса, форма — после сохранения", () => {
+    const src = readFileSync(resolve(import.meta.dir, "../src/pages/Referrals.tsx"), "utf8");
+    const drawer = src.slice(src.indexOf("function ReferralDrawer("), src.indexOf("const NEXT_HINT"));
+    expect(drawer).toContain("const at = referral?.status ?? null;");
+    expect(drawer, "выбор перехода не сбрасывается со сменой статуса").toMatch(/useEffect\(\(\) => \{\s*setStatus\(""\);\s*\}, \[at\]\);/);
+    expect(drawer, "форма не очищается после сохранения").toMatch(
+      /await api\.updateReferral\(r\.id, status, note\.trim\(\) \|\| undefined\);[^}]*setStatus\(""\);\s*setNote\(""\);\s*\} finally \{/,
+    );
+  });
+
+  test("ожидание: больше суток без ответа — «late», принятое — за сколько приняли", () => {
+    expect(waitOf(ref({ createdAt: ago(0.5) }), NOW)).toEqual({ kind: "issued", minutes: 30 });
+    expect(waitOf(ref({ createdAt: ago(48) }), NOW).kind).toBe("late");
+    expect(waitOf(ref({ status: "accepted", createdAt: ago(2), updatedAt: ago(1) }), NOW)).toEqual({ kind: "accepted", minutes: 60 });
+    expect(waitOf(ref({ status: "completed" }), NOW).kind).toBe("none");
+    const unit = { min: "хв", hour: "год", day: "дн." };
+    expect([spanText(40, unit), spanText(180, unit), spanText(3 * 1440, unit)]).toEqual(["40 хв", "3 год", "3 дн."]);
+  });
+
+  test("«закриті за 30 днів» — по дню закрытия, открытые туда не входят", () => {
+    expect(closedWithin(ref({ status: "completed", createdAt: ago(60 * 24), updatedAt: ago(24) }), NOW)).toBe(true);
+    expect(closedWithin(ref({ status: "declined", createdAt: ago(40 * 24), updatedAt: ago(31 * 24) }), NOW)).toBe(false);
+    expect(closedWithin(ref({ status: "created" }), NOW)).toBe(false);
+  });
+
+  test("«спершу термінові»: открытые выше, внутри — негайно, терміново, планово", () => {
+    const rows = [
+      ref({ id: "plan", urgency: "routine", createdAt: ago(1) }),
+      ref({ id: "closed", status: "completed", urgency: "immediate", updatedAt: ago(1) }),
+      ref({ id: "now", urgency: "immediate", createdAt: ago(5) }),
+      ref({ id: "soon", urgency: "urgent", createdAt: ago(2) }),
+    ];
+    expect(sortReferrals(rows, "urgent").map((r) => r.id)).toEqual(["now", "soon", "plan", "closed"]);
+    expect(sortReferrals(rows, "oldest").map((r) => r.id)[0]).toBe("now");
+  });
+
+  test("отбор: поиск по пациенту и подставе, куди, терміновість, виписав", () => {
+    const r = ref({});
+    const all = { q: "", dest: "", urg: "", by: "" };
+    expect(matchesReferral(r, { ...all, q: "phq" })).toBe(true);
+    expect(matchesReferral(r, { ...all, q: "мельник" })).toBe(true);
+    expect(matchesReferral(r, { ...all, dest: "inpatient" })).toBe(false);
+    expect(matchesReferral(r, { ...all, urg: "routine", by: "Ірина Савчук" })).toBe(true);
   });
 });

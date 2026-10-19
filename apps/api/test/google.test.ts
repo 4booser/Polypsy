@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
+import { GOOGLE_RETURN_CODES } from "@quizzy/shared";
 import { api, app, db, issueToken, makeUser } from "./fixtures";
-import { users } from "../src/db/schema";
+import { auditLog, users } from "../src/db/schema";
 import { revokeAllFor } from "../src/lib/refresh";
 import { domainAllowed, googleEnabled } from "../src/lib/google";
 import { env } from "../src/env";
@@ -12,6 +13,17 @@ import { env } from "../src/env";
  * Проверяется не «работает ли OAuth» — это делается с настоящим Google, а не
  * в тестах, — а три правила, ради которых всё устроено именно так.
  */
+
+/**
+ * Куда возврат от Google отправил браузер: на экран возврата консоли
+ * (/auth/google) — с кодом обмена или с ключом отказа (ревью волны 26:
+ * отказ уходил JSON-ом на адрес API, и человек видел сырой текст).
+ */
+function backTo(res: Response): { path: string; code: string | null; error: string | null } {
+  expect(res.status, "возврат от Google ответил не переходом в консоль").toBe(302);
+  const at = new URL(res.headers.get("location") ?? "", "http://localhost");
+  return { path: at.pathname, code: at.searchParams.get("code"), error: at.searchParams.get("error") };
+}
 
 describe("вход через Google", () => {
   test("выключен, пока не настроен — и тогда его просто нет", async () => {
@@ -42,7 +54,11 @@ describe("вход через Google", () => {
      * в чужую учётную запись.
      */
     const res = await app.request("/api/auth/google/callback?code=подделка&state=выдумка");
-    expect([401, 404]).toContain(res.status);
+    // способ в тестах не настроен — отказ «не настроено»; настроенный отказал бы «сеанс застарів»
+    const back = backTo(res);
+    expect(back.path).toBe("/auth/google");
+    expect(back.code, "без состояния выдан код обмена").toBeNull();
+    expect(["err.googleDisabled", "err.googleState"]).toContain(back.error ?? "");
   });
 
   test("учётную запись под кодом связывать нельзя", async () => {
@@ -180,7 +196,9 @@ describe("состояние входа привязано к браузеру",
      * туда, куда у злоумышленника есть доступ.
      */
     const res = await app.request("/api/auth/google/callback?code=что-то&state=что-то");
-    expect([401, 404]).toContain(res.status);
+    const back = backTo(res);
+    expect(back.code, "без cookie выдан код обмена").toBeNull();
+    expect(["err.googleDisabled", "err.googleState"]).toContain(back.error ?? "");
   });
 
   test("начало входа ставит cookie", async () => {
@@ -275,7 +293,7 @@ describe("начатая привязка не переживает отзыв �
     expect((await api("/api/auth/me", person.token)).status).toBe(401);
 
     const res = await callback(state, cookie);
-    expect(res.status, "возврат от Google завершил привязку после отзыва сессий").toBe(401);
+    expect(backTo(res).error, "возврат от Google завершил привязку после отзыва сессий").toBe("err.sessionExpired");
     expect(await subOf(person.id), "google_sub записан отозванной сессией").toBeNull();
     // и войти этим Google нечем
     const login = await db.query.users.findFirst({ where: eq(users.googleSub, googleSub) });
@@ -290,7 +308,7 @@ describe("начатая привязка не переживает отзыв �
     await db.update(users).set({ disabledAt: new Date().toISOString() }).where(eq(users.id, person.id));
 
     const res = await callback(state, cookie);
-    expect(res.status).toBe(401);
+    expect(backTo(res).error).toBe("err.sessionExpired");
     expect(await subOf(person.id)).toBeNull();
   });
 
@@ -306,7 +324,7 @@ describe("начатая привязка не переживает отзыв �
     expect(await subOf(person.id)).toBe(googleSub);
 
     // состояние одноразовое
-    expect((await callback(state, cookie)).status).toBe(401);
+    expect(backTo(await callback(state, cookie)).error).toBe("err.googleState");
   });
 
   test("привязка, начатая после отзыва новой сессией, проходит", async () => {
@@ -323,5 +341,56 @@ describe("начатая привязка не переживает отзыв �
     const { state, cookie } = await startLink(fresh);
     expect((await callback(state, cookie)).status).toBe(302);
     expect(await subOf(person.id)).toBe(googleSub);
+  });
+
+  /** Начать вход через Google: состояние из адреса Google и cookie этого браузера */
+  async function startLogin() {
+    const res = await app.request("/api/auth/google/start", { redirect: "manual" });
+    expect(res.status).toBe(302);
+    const state = new URL(res.headers.get("location") ?? "").searchParams.get("state")!;
+    const cookie = (res.headers.get("set-cookie") ?? "").split(";")[0]!;
+    return { state, cookie };
+  }
+
+  test("непривязанный Google — переход на экран возврата с причиной, а не JSON на адресе API; отказ в журнале", async () => {
+    googleSub = `sub-${crypto.randomUUID()}`;
+    googleEmail = `g-nolink-${crypto.randomUUID()}@example.com`;
+    const { state, cookie } = await startLogin();
+    const back = backTo(await callback(state, cookie));
+    expect(back.path).toBe("/auth/google");
+    expect(back.code).toBeNull();
+    expect(back.error).toBe("err.googleNotLinked");
+    // отказ возвращается после записи в журнал — переход его не откатил
+    const denied = await db
+      .select({ id: auditLog.id })
+      .from(auditLog)
+      .where(and(eq(auditLog.action, "auth.google_denied"), sql`${auditLog.details}->>'email' = ${googleEmail}`));
+    expect(denied, "отказ входа через Google не остался в журнале").toHaveLength(1);
+  });
+
+  test("привязанный Google входит: в консоль уезжает код обмена, и он меняется на пару", async () => {
+    const person = await makeUser("admin", `g-login-${crypto.randomUUID()}@test`);
+    googleSub = `sub-${crypto.randomUUID()}`;
+    googleEmail = `g-login-${crypto.randomUUID()}@example.com`;
+    await db.update(users).set({ googleSub }).where(eq(users.id, person.id));
+    const { state, cookie } = await startLogin();
+    const back = backTo(await callback(state, cookie));
+    expect(back.path).toBe("/auth/google");
+    expect(back.error).toBeNull();
+    const pair = await app.request("/api/auth/google/exchange", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code: back.code }),
+    });
+    expect(pair.status).toBe(200);
+    const body = (await pair.json()) as { token?: string; refreshToken?: string };
+    expect(typeof body.token).toBe("string");
+    expect(typeof body.refreshToken).toBe("string");
+  });
+
+  test("каждый отказ, который возврат умеет, экран консоли знает по ключу", async () => {
+    // список общий у сервера и консоли (packages/shared/src/types.ts); ключ вне списка уходил бы JSON-ом
+    const { renderError } = await import("@quizzy/shared");
+    for (const key of GOOGLE_RETURN_CODES) expect(renderError(key, "uk"), key).not.toBe(renderError("err.internal", "uk"));
   });
 });

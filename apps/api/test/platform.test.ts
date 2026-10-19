@@ -1029,6 +1029,35 @@ describe("настройки рабочего места", () => {
     });
   });
 
+  test("віджети зведення: порядок и выключенные — в профиле; случаи риска не выключить", async () => {
+    /*
+     * «Налаштувати зведення» (Polypsy 2.0) хранит порядок и выключенные
+     * віджети в профиле: сотрудник садится за разные машины отделения.
+     * Случаи риска не выключаются и запросом мимо экрана — правило то же,
+     * что у сигнальных пунктов рельсы.
+     */
+    const dashboard = { order: ["day", "cases", "work"], hidden: ["collect"] };
+    const saved = await api("/api/auth/me/workspace", adminB.token, {
+      method: "PUT",
+      body: JSON.stringify({ dashboard }),
+    });
+    expect(saved.status).toBe(200);
+    const me = await api("/api/auth/me", adminB.token);
+    expect(me.body.workspace.dashboard).toEqual(dashboard);
+
+    const risk = await api("/api/auth/me/workspace", adminB.token, {
+      method: "PUT",
+      body: JSON.stringify({ dashboard: { hidden: ["cases"] } }),
+    });
+    expect(risk.status, "сервер дал выключить случаи риска").toBe(400);
+
+    const unknown = await api("/api/auth/me/workspace", adminB.token, {
+      method: "PUT",
+      body: JSON.stringify({ dashboard: { order: ["нет такого"] } }),
+    });
+    expect(unknown.status).toBe(400);
+  });
+
   test("неизвестное значение не принимается", async () => {
     const bad = await api("/api/auth/me/workspace", adminA.token, {
       method: "PUT",

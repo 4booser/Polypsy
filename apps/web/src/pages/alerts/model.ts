@@ -1,4 +1,4 @@
-import type { AlertCase, AlertCaseFacets, AlertCasePage, RiskSeverity } from "@quizzy/shared";
+import { PATIENT_GROUP_ID, type AlertCase, type AlertCaseFacets, type AlertCasePage, type RiskSeverity } from "@quizzy/shared";
 
 /*
  * Очередь случаев: чистая логика экрана разбора.
@@ -76,7 +76,8 @@ export function readFilters(get: (name: string) => string): QueueFilters {
      * значение сервер отвергает (400), и отказ вставал на месте всей очереди.
      */
     unit: unit.length <= TEXT_MAX ? unit : "",
-    patientGroup: UUID.test(patientGroup) ? patientGroup : "",
+    /* форма id группы — та же, что у сервера (patientGroupRef): у групп посева id текстовые, «demo-pg-risk» */
+    patientGroup: PATIENT_GROUP_ID.test(patientGroup) ? patientGroup : "",
     patient: UUID.test(patient) ? patient : "",
     from: isDay(from) ? from : "",
     // перевёрнутый период не применяется целиком: «с 10-го по 1-е» — это опечатка, а не выборка
@@ -270,9 +271,13 @@ export function rowOverdue(c: AlertCase): boolean {
   return c.group ? c.group.overdue : c.overdue;
 }
 
-/** Строк у раздела и в вариантах — ровно те числа, что пришли из SQL */
+/**
+ * Строк у раздела и в вариантах — ровно те числа, что пришли из SQL.
+ * Число в скобках, а не через « · »: точка-разделитель между словами набор
+ * не пускает (KIT.md § 2).
+ */
 export function withCount(label: string, n: number | undefined): string {
-  return n === undefined ? label : `${label} · ${n}`;
+  return n === undefined ? label : `${label} (${n})`;
 }
 
 /**
@@ -293,5 +298,57 @@ export function subtitleParts(
   const parts = [words.people.replace("{n}", String(facets.total))];
   if (facets.overdue) parts.push(`${words.overdue} ${facets.overdue}`);
   if (facets.assigned.me) parts.push(`${words.mine} ${facets.assigned.me}`);
-  return parts.join(" · ");
+  return parts.join(", ");
+}
+
+/* ─────────── таймер разбора ─────────── */
+
+/**
+ * Таймер разбора случая: сколько прошло с открытия и сколько осталось до
+ * нормы методики (`escalateMinutes` — настройка эскалации; та же, по
+ * которой сервер ставит «прострочено»).
+ *
+ * Нормы нет — таймер без доли и срока: «2:48» без «з 4 год». Придумывать
+ * норму за методику нельзя — полоска врала бы о сроке, которого нет.
+ */
+export interface RiskClock {
+  /** Минут с открытия случая */
+  elapsed: number;
+  /** Норма разбора, минут; null — методика её не задаёт */
+  norm: number | null;
+  /** Доля нормы, 0–100; без нормы — 0 */
+  pct: number;
+  /** Когда истекает норма (мс); null — нормы нет */
+  dueAt: number | null;
+  /** Минут до нормы; отрицательное — норма минула */
+  left: number | null;
+}
+
+export function riskClock(c: Pick<AlertCase, "openedAt" | "escalateMinutes">, now: number): RiskClock {
+  const opened = Date.parse(c.openedAt);
+  const elapsed = Number.isFinite(opened) ? Math.max(0, Math.floor((now - opened) / 60_000)) : 0;
+  const norm = c.escalateMinutes && c.escalateMinutes > 0 ? c.escalateMinutes : null;
+  if (norm === null || !Number.isFinite(opened)) return { elapsed, norm: null, pct: 0, dueAt: null, left: null };
+  return {
+    elapsed,
+    norm,
+    pct: Math.min(100, Math.round((elapsed / norm) * 100)),
+    dueAt: opened + norm * 60_000,
+    left: norm - elapsed,
+  };
+}
+
+/**
+ * «2:48» — часы и минуты; от суток — «3 дн.» словом из словаря (`days`
+ * с «{n}»): «74:10» никто не читает как три дня.
+ */
+export function clockText(minutes: number, days: string): string {
+  const m = Math.max(0, Math.round(minutes));
+  if (m >= 24 * 60) return days.replace("{n}", String(Math.floor(m / (24 * 60))));
+  return `${Math.floor(m / 60)}:${String(m % 60).padStart(2, "0")}`;
+}
+
+/** Норма словами: «4 год», «90 хв» — единицы из словаря */
+export function normText(minutes: number, units: { h: string; min: string }): string {
+  return minutes % 60 === 0 ? `${minutes / 60} ${units.h}` : `${minutes} ${units.min}`;
 }

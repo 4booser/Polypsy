@@ -20,9 +20,10 @@ import { audit } from "../lib/audit";
 import { fullNameOf, toPublicUser } from "../lib/auth";
 import { decryptField } from "../lib/crypto";
 import { badRequest, forbidden, langOf, notFound, parseBody, parseQuery } from "../lib/http";
-import { ladderRankOf, permissionsOf } from "../lib/permissions";
+import { ladderRankOf, ladderRanksOf, permissionsOf, permissionsOfMany } from "../lib/permissions";
 import { guardAccountAction } from "../lib/accountClass";
-import { placementsOf } from "../lib/staffDirectory";
+import { accountsOf, placementsOf } from "../lib/staffDirectory";
+import { namesOf } from "../lib/names";
 import { requireAuth, requireStaff, requireSuperadmin, type AppEnv } from "../middleware/auth";
 
 /**
@@ -253,13 +254,28 @@ permissionRoutes.get("/staff", requireStaff, async (c) => {
     visible.map((r) => r.id),
     langOf(c),
   );
+  const accounts = await accountsOf(visible, langOf(c));
   await audit(c, { action: "user.list", details: { count: visible.length, directory: true, assignable: true, phones: true } });
   return c.json({
     items: visible.map(
-      (row): AssignableStaff => ({ ...base(row), placement: placed.get(row.id) ?? null, phone: decryptField(row.phoneEnc) }),
+      (row): AssignableStaff => ({
+        ...base(row),
+        placement: placed.get(row.id) ?? null,
+        phone: decryptField(row.phoneEnc),
+        account: accounts.get(row.id),
+      }),
     ),
   });
 });
+
+/**
+ * Читается ли карточка прав — одно правило на одиночную карточку и пачку
+ * (GET /cards): свою — всегда, иначе — того, кто виден по лестнице
+ * (visibleTo): суперадмину любую, остальным — ступенью ниже своей.
+ */
+function cardReadable(actorId: string, actorRank: number, target: { id: string; role: string }, targetRank: number): boolean {
+  return actorId === target.id || visibleTo(actorRank, targetRank, target.role);
+}
 
 permissionRoutes.get("/users/:id", requireStaff, async (c) => {
   const id = c.req.param("id");
@@ -270,7 +286,7 @@ permissionRoutes.get("/users/:id", requireStaff, async (c) => {
   if (actor.id !== id) {
     const mine = await ladderRankOf(actor);
     const theirs = await ladderRankOf(toPublicUser(row));
-    if (mine < SUPERADMIN_RANK && theirs >= mine) forbidden("err.roleAboveYours");
+    if (!cardReadable(actor.id, mine, row, theirs)) forbidden("err.roleAboveYours");
   }
 
   const mine = await db
@@ -295,6 +311,73 @@ permissionRoutes.get("/users/:id", requireStaff, async (c) => {
     /* итог — то, что реально проверяется на маршрутах */
     effective: [...(await permissionsOf({ id, role: row.role } as never))],
   });
+});
+
+/** Сколько карточек за один запрос: администраторов в учреждении десятки */
+export const CARDS_MAX = 100;
+
+const cardsQuery = z.object({
+  /** Идентификаторы через запятую; повторы схлопываются */
+  ids: z
+    .string()
+    .max(CARDS_MAX * 65)
+    .transform((raw) => [...new Set(raw.split(",").map((s) => s.trim()).filter(Boolean))])
+    .pipe(z.array(z.string().regex(/^[\w-]{1,64}$/)).min(1).max(CARDS_MAX)),
+});
+
+/**
+ * Карточки прав нескольких людей одним запросом (волна 27).
+ *
+ * «Що може кожен» на экране «Адміністратори» спрашивал карточку каждого
+ * администратора отдельным GET /users/:id — десять запросов на открытие, у
+ * каждого свои проверки и свои обращения к базе. Здесь — те же карточки, по
+ * тому же правилу видимости (cardReadable), за постоянное число запросов:
+ * люди, ступени, роли, исключения и итоговые права — по одному на всех.
+ *
+ * Невидимые смотрящему и несуществующие в ответ не попадают, без отказа:
+ * один старший в списке не должен ронять карточки остальных, а экран и так
+ * рисует непрочитанную карточку «не известно». Порядок — порядок вопроса. В
+ * журнал не пишется, как не пишется и одиночная карточка.
+ */
+permissionRoutes.get("/cards", requireStaff, async (c) => {
+  const { ids } = parseQuery(c, cardsQuery);
+  const actor = c.get("user");
+  const rows = await db.select().from(users).where(inArray(users.id, ids));
+  const mine = await ladderRankOf(actor);
+  const ranks = await ladderRanksOf(rows);
+  const readable = rows.filter((row) => cardReadable(actor.id, mine, row, ranks.get(row.id) ?? 0));
+  if (!readable.length) return c.json({ items: [] });
+
+  const readableIds = readable.map((r) => r.id);
+  const assigned = await db
+    .select({ userId: staffRoles.userId, roleId: staffRoles.roleId, code: roles.code, title: roles.title, isBuiltin: roles.isBuiltin })
+    .from(staffRoles)
+    .innerJoin(roles, eq(roles.id, staffRoles.roleId))
+    .where(inArray(staffRoles.userId, readableIds));
+  const exceptions = await db
+    .select()
+    .from(permissionExceptions)
+    .where(inArray(permissionExceptions.userId, readableIds))
+    .orderBy(permissionExceptions.grantedAt);
+  const effective = await permissionsOfMany(readable);
+
+  const byId = new Map(readable.map((row) => [row.id, row]));
+  const items = ids.flatMap((id) => {
+    const row = byId.get(id);
+    if (!row) return [];
+    return [
+      {
+        userId: row.id,
+        fullName: fullNameOf(row),
+        role: row.role,
+        readOnly: row.readOnly,
+        roles: assigned.filter((r) => r.userId === row.id).map(({ userId: _, ...r }) => r),
+        exceptions: exceptions.filter((e) => e.userId === row.id),
+        effective: [...(effective.get(row.id) ?? [])],
+      },
+    ];
+  });
+  return c.json({ items });
 });
 
 /**
@@ -531,5 +614,7 @@ permissionRoutes.get("/exceptions", requireStaff, async (c) => {
     visible.push({ ...r.exception, userName: fullNameOf(r as never) });
   }
 
-  return c.json({ items: visible });
+  /* кто выдал — именем: экран прав (2.0) печатает «видав(ла) Ткач В., 05.10» под причиной */
+  const granters = await namesOf(visible.map((e) => e.grantedBy));
+  return c.json({ items: visible.map((e) => ({ ...e, grantedByName: e.grantedBy ? (granters.get(e.grantedBy) ?? null) : null })) });
 });

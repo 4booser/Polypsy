@@ -4,18 +4,30 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
 import type { AlertCase, BandSpread, ConditionSummary, ConditionsResult, OverviewAnalytics, Page, Worklist } from "@quizzy/shared";
 import { UI } from "@quizzy/shared";
+import { ApiError } from "../src/api";
 import { LangProvider } from "../src/lang";
-import { Attention, Passes, WorkQueue } from "../src/pages/Dashboard";
-import { ConditionsBody, DomainCard } from "../src/pages/dashboard/parts";
+import { ConditionsBody, DomainRow } from "../src/pages/dashboard/parts";
+import { PassesWidget } from "../src/pages/dashboard/passes";
+import { CasesWidget, WorkWidget } from "../src/pages/dashboard/widgets";
+import { ActNow, unlessForbidden } from "../src/pages/today/ActNow";
+import { byCount, withCount } from "../src/ui/plural";
 import {
   addDays,
   dailyColumns,
+  dropWidget,
+  fill,
   mondayOf,
+  moveWidget,
+  passColumns,
+  passSummary,
   periodTotals,
+  saveQueue,
   shareState,
   sparkValues,
   spreadParts,
+  weekdayOf,
   weeklyColumns,
+  widgetLayout,
   workTiles,
   type BandLabels,
 } from "../src/pages/dashboard/model";
@@ -42,7 +54,8 @@ const either = (html: string, key: keyof typeof UI) => {
 };
 
 /* наследие «Пульта», которого в переделанном экране быть не должно */
-const LEGACY = [/class="[^"]*\bcard\b/, /class="[^"]*\btile\b/, /class="[^"]*\bbadge\b/, /class="[^"]*\bbtn\b/, /\buppercase\b/];
+/* классом целиком: «shadow-tile» и «band-card» — токены набора, а не наследие */
+const LEGACY = [/class="(?:[^"]*\s)?(?:card|tile|badge|btn)(?:\s[^"]*)?"/, /\buppercase\b/];
 
 describe("даты рядов", () => {
   test("понедельник недели режется как date_trunc('week')", () => {
@@ -158,6 +171,63 @@ describe("стан: доли по ступеням", () => {
   });
 });
 
+describe("віджети: порядок и выключенные", () => {
+  test("порядок из профиля, незнакомые ключи пропущены, новые — в конце своим порядком", () => {
+    const l = widgetLayout({ order: ["work", "нет такого", "cases"], hidden: ["collect", "cases", "чужой"] });
+    expect(l.order).toEqual(["work", "cases", "day", "missed", "passes", "collect", "conditions"]);
+    // случаи риска не выключаются, что бы ни пришло в профиле
+    expect([...l.hidden]).toEqual(["collect"]);
+    expect(widgetLayout(null).order[0]).toBe("cases");
+  });
+
+  test("Alt ↑ / Alt ↓ двигает на одно место, у края — никуда", () => {
+    const order = widgetLayout(null).order;
+    expect(moveWidget(order, "day", -1).slice(0, 2)).toEqual(["day", "cases"]);
+    expect(moveWidget(order, "cases", -1)).toEqual(order);
+    expect(moveWidget(order, "conditions", 1)).toEqual(order);
+  });
+
+  test("перетаскивание ставит віджет на место другого", () => {
+    const order = widgetLayout(null).order;
+    expect(dropWidget(order, "passes", "cases").slice(0, 2)).toEqual(["passes", "cases"]);
+    expect(dropWidget(order, "cases", "day").slice(0, 2)).toEqual(["day", "cases"]);
+  });
+});
+
+describe("проходження: окна и сводка", () => {
+  const tl = [
+    { date: "2026-09-07", count: 6 }, // предыдущее окно
+    { date: "2026-10-03", count: 2 }, // суббота
+    { date: "2026-10-05", count: 4 }, // понедельник
+    { date: "2026-10-01", count: 3 }, // четверг — тот же день неделей раньше
+    { date: "2026-10-08", count: 5 }, // четверг — сегодня
+  ];
+
+  test("будни и выходные различаются, последний столбец — сегодня, средняя линия — предыдущее окно", () => {
+    expect(weekdayOf("2026-10-03")).toBe(5);
+    expect(weekdayOf("2026-10-05")).toBe(0);
+    const { columns, mean } = passColumns(tl, "30d", "2026-10-08", (d) => d);
+    expect(columns).toHaveLength(30);
+    expect(columns.at(-1)).toMatchObject({ key: "2026-10-08", value: 5, current: true, weekend: false });
+    expect(columns.find((c) => c.key === "2026-10-03")!.weekend).toBe(true);
+    expect(mean).toBeCloseTo(6 / 30);
+  });
+
+  test("по неделям: двенадцать, текущая ещё идёт", () => {
+    const { columns } = passColumns(tl, "12w", "2026-10-08", (d) => d);
+    expect(columns).toHaveLength(12);
+    expect(columns.at(-1)).toMatchObject({ key: "2026-10-05", value: 9, partial: true });
+  });
+
+  test("сводка: итог рядом с прошлым окном, средний будний, сегодня и неделю назад", () => {
+    const s = passSummary(tl, 30, "2026-10-08");
+    expect(s).toMatchObject({ current: 14, previous: 6, changePct: 133, today: 5, weekAgo: 3 });
+    // будних дней в окне 22, сдано в трёх из них: 3 + 4 + 5
+    expect(s.weekdayMean).toBeCloseTo(12 / 22, 1);
+    expect(passSummary([], 30, "2026-10-08").changePct).toBeNull();
+  });
+});
+
 /* ─────────── рисование ─────────── */
 
 const summary = (over: Partial<ConditionSummary> & Pick<ConditionSummary, "domain">): ConditionSummary => ({
@@ -214,27 +284,27 @@ describe("стан: рисование", () => {
   });
 
   test("доля показана, скрытое и отсутствующее — словами", () => {
-    expect(html).toContain("27");
+    expect(html).toContain("27 %");
     expect(either(html, "dash.shareHidden")).toBe(true);
     expect(either(html, "dash.noBands")).toBe(true);
     expect(either(html, "dash.tooFew")).toBe(true);
   });
 
-  test("направления без замеров — одной строкой", () => {
+  test("направления без замеров — строками со словами, а не пустыми полосами", () => {
     expect(either(html, "dash.noMeasures")).toBe(true);
     expect(either(html, "dash.dom.burnout")).toBe(true);
   });
 
   test("у благополучия среднее подписано «вище — краще»", () => {
-    const well = draw(<DomainCard d={summary({ domain: "wellbeing", higherIsWorse: false })} />);
+    const well = draw(<DomainRow d={summary({ domain: "wellbeing", higherIsWorse: false })} />);
     expect(either(well, "dash.higherBetter")).toBe(true);
     expect(either(well, "dash.higherWorse")).toBe(false);
   });
 
   test("«замало даних» не печатает ни среднего, ни людей", () => {
-    const few = draw(<DomainCard d={conditions.domains[3]!} />);
-    expect(either(few, "dash.mean")).toBe(false);
-    expect(either(few, "dash.people")).toBe(false);
+    const few = draw(<DomainRow d={conditions.domains[3]!} />);
+    expect(either(few, "dashA.ofMaxShort")).toBe(false);
+    expect(either(few, "dash.tooFew")).toBe(true);
   });
 
   test("без замеров вовсе — фраза, а не пустой раздел", () => {
@@ -265,9 +335,9 @@ const overview = (timeline: OverviewAnalytics["timeline"]): OverviewAnalytics =>
 describe("проходження: рисование", () => {
   test("пустой ряд и ряд с данными рисуются без NaN", () => {
     for (const tl of [[], [{ date: "2026-09-20", count: 7 }]]) {
-      const html = draw(<Passes overview={overview(tl)} />);
+      const html = draw(<PassesWidget overview={overview(tl)} />);
       expect(html).not.toContain("NaN");
-      expect(html).toContain("1641");
+      expect(html).not.toContain("undefined");
       for (const re of LEGACY) expect(html).not.toMatch(re);
     }
   });
@@ -308,32 +378,198 @@ const work: Worklist = {
   mine: 0,
 };
 
-describe("очередь и внимание: рисование", () => {
-  test("строка очереди: имя ссылкой, «Прострочено» меткой обычным регистром, код состояния не торчит", () => {
-    const html = draw(<WorkQueue work={work} inProgress={[]} />);
+/** Разметка строки віджета очереди — по её ссылке в отобранную очередь */
+const rowOf = (html: string, kind: string) => {
+  const at = html.indexOf(`href="/worklist?kind=${kind}"`);
+  return at === -1 ? "" : html.slice(at, html.indexOf("</a>", at));
+};
+
+describe("очередь и случаи: рисование", () => {
+  test("віджет очереди: виды с именами, ссылка в отобранную очередь, код состояния не торчит", () => {
+    const html = draw(<WorkWidget work={work} />);
     expect(html).toContain("Коваленко Андрій");
-    expect(html).toContain("text-[17px]");
-    expect(either(html, "dash.overdueTag")).toBe(true);
-    // направление описано словами, а не кодом «created»
-    expect(html).not.toMatch(/>[^<]*\bcreated\b/);
     expect(html).toContain("71");
+    expect(either(html, "work.filterFollowups")).toBe(true);
+    expect(html).not.toMatch(/>[^<]*\bcreated\b/);
     for (const re of LEGACY) expect(html).not.toMatch(re);
   });
 
-  test("янтарь — у случаев на разбор и просроченных плиток, не у направлений", () => {
-    const alerts: Page<AlertCase> = { items: [], nextCursor: null, total: 3 };
-    const html = draw(<Attention alerts={alerts} work={work} />);
-    expect(either(html, "dash.casesOpen")).toBe(true);
-    const amber = html.split("text-accent").length - 1;
-    // число случаев + три просроченных вида (облік, повтори, призначення); «Направлення» — без янтаря
-    expect(amber).toBe(1 + 3);
+  test("янтарь у числа — только у просроченных видов, не у направлений", () => {
+    const html = draw(<WorkWidget work={work} />);
+    const amberCount = /text-\[17px\][^"]*text-warn/;
+    for (const kind of ["dispensary", "followup", "assignment"]) expect(rowOf(html, kind)).toMatch(amberCount);
+    expect(rowOf(html, "referral")).not.toBe("");
+    expect(rowOf(html, "referral")).not.toMatch(amberCount);
+  });
+
+  test("разбор не положен — віджета случаев нет вовсе", () => {
+    expect(draw(<CasesWidget alerts={null} meId={null} />)).toBe("");
+  });
+
+  test("случаев нет — спокойная строка, а не пустая панель", () => {
+    const empty: Page<AlertCase> = { items: [], nextCursor: null, total: 0 };
+    const html = draw(<CasesWidget alerts={empty} meId={null} />);
+    expect(either(html, "dashA.noCases")).toBe(true);
     for (const re of LEGACY) expect(html).not.toMatch(re);
   });
 
-  test("нечего разбирать и очередь пуста — блока нет вовсе", () => {
-    const html = draw(
-      <Attention alerts={null} work={{ ...work, byKind: { noshow: 0, message: 0, dispensary: 0, followup: 0, referral: 0, assignment: 0 } }} />,
+  /*
+   * Віджет случаев риска не выключается — и сбой загрузки не вправе убрать
+   * его тише настройки: прежде любой отказ выглядел как «разбор не
+   * положен», віджет исчезал, а шапка писала «Відкритих випадків 0».
+   */
+  test("случаи не загрузились — віджет на месте, говорит об отказе и даёт «повторити», а не «немає»", () => {
+    const html = draw(<CasesWidget alerts={null} meId={null} error="Сервер не відповідає" onRetry={() => {}} />);
+    expect(html).not.toBe("");
+    expect(either(html, "dayA.casesFailed")).toBe(true);
+    expect(html).toContain("Сервер не відповідає");
+    expect(either(html, "common.retry")).toBe(true);
+    expect(html).toContain('role="alert"');
+    expect(either(html, "dashA.noCases")).toBe(false);
+  });
+
+  test("случаи ещё в пути — скелет, а не «немає»", () => {
+    const html = draw(<CasesWidget alerts={null} meId={null} loading />);
+    expect(html).not.toBe("");
+    expect(html).toContain('role="status"');
+    expect(either(html, "dashA.noCases")).toBe(false);
+  });
+
+  test("перечитывание не удалось — прежнее «немає» больше не утверждается", () => {
+    const empty: Page<AlertCase> = { items: [], nextCursor: null, total: 0 };
+    const html = draw(<CasesWidget alerts={empty} meId={null} error="Сервер не відповідає" />);
+    expect(either(html, "dayA.casesFailed")).toBe(true);
+    expect(either(html, "dashA.noCases")).toBe(false);
+  });
+});
+
+describe("числа со словами — по правилу языка", () => {
+  /*
+   * «1 сесій», «3 швидких дій», «0 з 1 входів», «За 84 днів» — строки дня
+   * подставляли число в одну форму слова. Форма — по Intl.PluralRules.
+   */
+  const t = (key: keyof typeof UI, lang: "uk" | "ru" | "en") => (UI[key] as Record<string, string>)[lang]!;
+
+  test("сесії, люди, віджети, швидкі дії — одна, кілька, багато", () => {
+    expect([1, 3, 5, 21, 22, 25].map((n) => withCount(t("dayA.sessionsN", "uk"), n, "uk"))).toEqual([
+      "1 сесія",
+      "3 сесії",
+      "5 сесій",
+      "21 сесія",
+      "22 сесії",
+      "25 сесій",
+    ]);
+    expect([1, 3, 5].map((n) => withCount(t("dayA.sessionsN", "ru"), n, "ru"))).toEqual(["1 сессия", "3 сессии", "5 сессий"]);
+    expect([1, 3].map((n) => withCount(t("dayA.sessionsN", "en"), n, "en"))).toEqual(["1 session", "3 sessions"]);
+    expect([1, 2, 7].map((n) => withCount(t("dashA.peopleN", "uk"), n, "uk"))).toEqual(["1 людина", "2 людини", "7 людей"]);
+    expect([1, 2, 7].map((n) => withCount(t("dashA.peopleN", "ru"), n, "ru"))).toEqual(["1 человек", "2 человека", "7 человек"]);
+    expect([1, 4, 7].map((n) => withCount(t("dashA.nWidgets", "uk"), n, "uk"))).toEqual(["1 віджет", "4 віджети", "7 віджетів"]);
+    expect([1, 2, 6].map((n) => withCount(t("dayA.nActions", "uk"), n, "uk"))).toEqual(["1 швидка дія", "2 швидкі дії", "6 швидких дій"]);
+    expect([1, 2, 5].map((n) => withCount(t("dashA.casesSub", "uk"), n, "uk"))).toEqual(["1 відкритий", "2 відкриті", "5 відкритих"]);
+  });
+
+  test("форма — по числу, о котором речь: «0 з 1 входу», «За 84 дні»", () => {
+    expect(fill(byCount(t("invA.entriesOf", "uk"), 1, "uk"), { n: 0, of: 1 })).toBe("0 з 1 входу");
+    expect(fill(byCount(t("invA.entriesOf", "uk"), 5, "uk"), { n: 0, of: 5 })).toBe("0 з 5 входів");
+    expect(fill(byCount(t("invA.entriesOf", "ru"), 1, "ru"), { n: 0, of: 1 })).toBe("0 из 1 входа");
+    expect(withCount(t("dashA.sumWindow", "uk"), 84, "uk")).toBe("За 84 дні");
+    expect(withCount(t("dashA.sumWindow", "uk"), 30, "uk")).toBe("За 30 днів");
+    expect(withCount(t("dashA.sumWindow", "ru"), 84, "ru")).toBe("За 84 дня");
+    // строка без форм — как есть
+    expect(withCount(t("dashA.casesSub", "en"), 2, "en")).toBe("2 open");
+  });
+
+  test("віджет «Прийом сьогодні» и случаи — формой, а не «1 сесій» и «1 відкриті»", () => {
+    const one: Page<AlertCase> = { items: [], nextCursor: null, total: 1 };
+    const html = draw(<CasesWidget alerts={one} meId={null} />);
+    expect(html).toMatch(/1 (відкритий|открытый)/);
+    expect(html).not.toMatch(/1 (відкриті|открыто)\b/);
+  });
+});
+
+describe("«Налаштувати зведення»: сохранение по очереди", () => {
+  /*
+   * Через useAction второе сохранение, пришедшее в полёте первого,
+   * отбрасывалось молча: два щелчка по переключателям — и на экране одно,
+   * а в профиле прежнее.
+   */
+  const tick = () => new Promise((r) => setTimeout(r, 0));
+
+  test("пришедшее в полёте не теряется: уходит следом одним запросом, последним словом", async () => {
+    const sent: object[] = [];
+    const gates: (() => void)[] = [];
+    let idle = 0;
+    const push = saveQueue<{ order?: string[]; hidden?: string[] }>(
+      (p) => {
+        sent.push(p);
+        return new Promise<void>((r) => gates.push(r));
+      },
+      { idle: () => idle++ },
     );
-    expect(html).toBe("");
+    const all = push({ order: ["a", "b"] });
+    void push({ order: ["b", "a"] });
+    void push({ hidden: ["work"] });
+    expect(sent).toEqual([{ order: ["a", "b"] }]);
+    gates.shift()!();
+    await tick();
+    expect(sent).toEqual([{ order: ["a", "b"] }, { order: ["b", "a"], hidden: ["work"] }]);
+    expect(idle).toBe(0);
+    gates.shift()!();
+    await all;
+    expect(idle).toBe(1);
+  });
+
+  test("отказ одного сохранения не останавливает следующие", async () => {
+    const sent: object[] = [];
+    const failed: unknown[] = [];
+    let first = true;
+    const push = saveQueue<{ density?: string }>(
+      async (p) => {
+        sent.push(p);
+        if (first) {
+          first = false;
+          await tick();
+          throw new Error("сервер не відповідає");
+        }
+      },
+      { failed: (e) => failed.push(e) },
+    );
+    const all = push({ density: "compact" });
+    void push({ density: "cozy" });
+    await all;
+    expect(sent).toEqual([{ density: "compact" }, { density: "cozy" }]);
+    expect(failed).toHaveLength(1);
+  });
+});
+
+describe("«Дія зараз»: случаи не загрузились", () => {
+  const act = (over: Partial<Parameters<typeof ActNow>[0]> = {}) =>
+    draw(<ActNow cases={null} work={[]} appointments={[]} meId={null} onReply={() => {}} {...over} />);
+
+  test("отказ загрузки — словами с «повторити», а не зелёное «нічого термінового»", () => {
+    const html = act({ casesError: "Сервер не відповідає", onRetryCases: () => {} });
+    expect(either(html, "dayA.casesFailed")).toBe(true);
+    expect(either(html, "common.retry")).toBe(true);
+    expect(either(html, "dayA.nothingUrgent")).toBe(false);
+  });
+
+  test("разбор не положен, а в очереди срочного нет — «нічого термінового», как и прежде", () => {
+    expect(either(act(), "dayA.nothingUrgent")).toBe(true);
+  });
+
+  test("без героя просроченное встаёт плитками в сетку, а не столбцом во всю ширину", () => {
+    const overdue = work.items.filter((i) => i.overdue && i.kind !== "message");
+    expect(overdue.length).toBeGreaterThan(0);
+    const html = act({ cases: [], work: work.items });
+    // «contents» вместе с «flex» решала очерёдность стилей — побеждал столбец
+    expect(html).toContain('class="contents"');
+    expect(html).not.toMatch(/class="[^"]*\bflex\b[^"]*\bcontents\b[^"]*"/);
+  });
+
+  test("отказ в праве (403) — «разбор не положен», прочие отказы идут дальше", async () => {
+    expect(await unlessForbidden(Promise.reject(new ApiError("заборонено", 403)))).toBeNull();
+    await expect(unlessForbidden(Promise.reject(new ApiError("сервер не відповідає", 503)))).rejects.toThrow("сервер не відповідає");
+    await expect(unlessForbidden(Promise.reject(new ApiError("немає зв'язку", 0)))).rejects.toThrow();
+    expect(await unlessForbidden(Promise.resolve(5))).toBe(5);
   });
 });

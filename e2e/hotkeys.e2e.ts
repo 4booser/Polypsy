@@ -36,9 +36,15 @@ test("клавиши молчат, пока курсор в поле ввода"
   await page.goto("/alerts");
   await page.locator("[data-case-card]").first().waitFor();
 
-  const note = page.locator("[data-case-card]").first().locator("input").first();
+  /*
+   * Нотатка разбора — в ящике разбора (Polypsy 2.0): R открывает его, и
+   * «j», «1» в нотатке — обычные символы, а не ход по очереди и не исход.
+   */
+  await page.keyboard.press("r");
+  const note = page.locator('[data-drawer][data-open="true"] [data-review-note]');
   await note.click();
   await note.fill("");
+
   // «j» и «1» — обычные символы, пока человек печатает
   await page.keyboard.type("j1 наблюдение");
   await expect(note).toHaveValue("j1 наблюдение");

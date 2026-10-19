@@ -12,7 +12,12 @@ import { api, ApiError } from "../api";
 import { useResource } from "../useResource";
 import { useAuth } from "../auth";
 import { useLang } from "../lang";
+import { ShellIcon } from "../shell/icons";
+import { Callout, Ic } from "../ui";
+import { IconTile } from "../ui/layout";
 import { Button, TouchArea } from "../ui/primitives";
+import { Glyph } from "./icons";
+import { Body, Hero, HelpLink, PtPanel } from "./parts";
 
 /**
  * Информированное согласие в веб-кабинете.
@@ -46,7 +51,14 @@ import { Button, TouchArea } from "../ui/primitives";
  * редакцию опубликовали, пока вкладка была открыта. Прежде экран открытой
  * вкладки об этом не узнавал, и повтор очереди падал до перезагрузки.
  */
-export function ConsentGate({ children }: { children: ReactNode }) {
+export function ConsentGate({
+  children,
+  frame = (screen) => screen,
+}: {
+  children: ReactNode;
+  /** Рамка вокруг экрана согласия — кабинет без вкладок (PatientApp, PatientFrame focus) */
+  frame?: (screen: ReactNode) => ReactNode;
+}) {
   const { ut } = useLang();
   const { logout } = useAuth();
   /*
@@ -145,7 +157,24 @@ export function ConsentGate({ children }: { children: ReactNode }) {
     },
   };
 
-  return <ConsentScreen view={view} busy={busy} error={error} onAction={(a) => void run[a]()} />;
+  return frame(
+    <ConsentScreen
+      view={view}
+      busy={busy}
+      error={error}
+      version={status?.version ?? null}
+      onAction={(a) => void run[a]()}
+      aside={<ConsentAside />}
+      /* выйти можно и не решая: у текста в модели только «да» и «нет» */
+      after={
+        view.kind === "read" ? (
+          <Button variant="ghost" size="md" icon={<ShellIcon name="log-out" size={18} />} disabled={busy} onClick={() => void run.signOut()}>
+            {ut("consent.signOut")}
+          </Button>
+        ) : null
+      }
+    />,
+  );
 }
 
 const RecheckConsent = createContext<() => void>(() => {});
@@ -177,14 +206,32 @@ export function acceptFailure(error: unknown, fallback: string): { error: string
   };
 }
 
-/** Подпись и вид кнопки каждого выхода: «согласиться» и «повторить» — главные, остальное тише */
-const BUTTON: Record<ConsentAction, { key: UiKey; variant: "primary" | "quiet" }> = {
-  accept: { key: "consent.accept", variant: "primary" },
-  decline: { key: "consent.decline", variant: "quiet" },
-  retry: { key: "common.retry", variant: "primary" },
-  signOut: { key: "consent.signOut", variant: "quiet" },
-  reconsider: { key: "consent.reconsider", variant: "quiet" },
+/** Подпись и вид кнопки каждого выхода: «согласиться» и «повторить» — главные, остальное — тонированные */
+const BUTTON: Record<ConsentAction, { key: UiKey; variant: "primary" | "secondary"; icon?: ReactNode }> = {
+  accept: { key: "consent.accept", variant: "primary", icon: <Ic.check size={18} /> },
+  decline: { key: "consent.decline", variant: "secondary" },
+  retry: { key: "common.retry", variant: "primary", icon: <Ic.refresh size={18} /> },
+  signOut: { key: "consent.signOut", variant: "secondary", icon: <ShellIcon name="log-out" size={18} /> },
+  reconsider: { key: "consent.reconsider", variant: "primary", icon: <Ic.undo size={18} /> },
 };
+
+/**
+ * Абзацы текста согласия. Текст редакции — простой текст, который пишет
+ * администратор (Admin, «Текст згоди»): абзацы разделены пустой строкой.
+ * Короткая первая строка абзаца без точки в конце — его заголовок, как в
+ * печатном бланке; без такой строки абзац просто текст.
+ */
+export function consentSections(text: string): { title: string | null; body: string }[] {
+  return text
+    .split(/\n\s*\n/)
+    .map((block) => block.trim())
+    .filter(Boolean)
+    .map((block) => {
+      const [first = "", ...rest] = block.split("\n");
+      const heading = rest.length > 0 && first.length <= 60 && !/[.,;:!?…]$/.test(first.trim());
+      return heading ? { title: first.trim(), body: rest.join("\n").trim() } : { title: null, body: block };
+    });
+}
 
 /**
  * Экран согласия в одном из трёх состояний — без загрузки и без сети.
@@ -193,8 +240,12 @@ const BUTTON: Record<ConsentAction, { key: UiKey; variant: "primary" | "quiet" }
  * (apps/web/test/consentGate.test.tsx): кнопки берутся из общей модели
  * (consentActionsOf), и «согласиться» без текста здесь не нарисовать.
  *
- * Весь экран — зона пальца: он открывается в кабинете с телефона, до
- * оболочки кабинета, у которой зона своя (PatientApp.tsx).
+ * Вид — pt-consent и pt-consent-declined «Виразної»: текст панелью с
+ * заголовками абзацев, последствие отказа — строкой до кнопок, справа — к
+ * кому с вопросами и «Допомога» (её отдаёт рамка, `aside`: номер помощи
+ * доступен и без согласия). Отказ — отдельной карточкой по центру.
+ *
+ * Весь экран — зона пальца: он открывается в кабинете с телефона.
  */
 export function ConsentScreen({
   view,
@@ -203,6 +254,8 @@ export function ConsentScreen({
   onAction,
   note,
   after,
+  aside,
+  version,
 }: {
   view: Exclude<ConsentView, { kind: "pass" }>;
   busy: boolean;
@@ -210,48 +263,141 @@ export function ConsentScreen({
   onAction: (action: ConsentAction) => void;
   /** Строка над экраном — зачем он встал (прохождение, #171: ответы держатся и уйдут после согласия) */
   note?: string;
-  /** Выход сверх модели — у прохождения «повернутися до відповідей» */
+  /** Выход сверх модели — у прохождения «повернутися до відповідей», у ворот — выход из учётной записи */
   after?: ReactNode;
+  /** Колонка сбоку: к кому с вопросами, «Допомога» */
+  aside?: ReactNode;
+  /** Номер действующей редакции, если известен */
+  version?: number | null;
 }) {
   const { ut } = useLang();
-  return (
-    <TouchArea className="mx-auto flex min-h-[100dvh] max-w-md flex-col justify-center gap-4 p-4">
-      {note ? (
-        <p role="status" className="rounded-[10px] border border-hairline bg-surface-2 p-3.5 text-small text-text">
-          {note}
-        </p>
-      ) : null}
-      {view.kind === "declined" ? (
-        <>
-          <h1 className="font-display text-section font-medium tracking-tight">{ut("consent.declinedTitle")}</h1>
-          <p className="text-body text-text">{ut("consent.declinedWhatWeb")}</p>
-          <p className="text-small text-muted">{ut("consent.declinedNext")}</p>
-        </>
-      ) : (
-        <>
-          <h1 className="font-display text-section font-medium tracking-tight">{ut("consent.title")}</h1>
-          {view.kind === "read" ? (
-            <>
-              <p className="whitespace-pre-wrap rounded-[5px] border border-hairline p-4 text-body text-text">{view.text}</p>
-              {/* последствие отказа — до выбора, а не после */}
-              <p className="text-small text-muted">{ut("consent.hint")}</p>
-            </>
-          ) : (
-            <p className="text-body text-muted">{ut("consent.loadFailed")}</p>
-          )}
-        </>
-      )}
-      {error ? (
-        <p role="alert" className="text-small text-danger">
-          {error}
-        </p>
-      ) : null}
-      {consentActionsOf(view).map((action) => (
-        <Button key={action} variant={BUTTON[action].variant} disabled={busy} onClick={() => onAction(action)}>
+  const actions = (
+    <div data-consent-actions className="mt-6 flex flex-wrap items-center gap-2.5">
+      {/* главное решение — первым: в модели порядок смысловой, на экране — по весу кнопки */}
+      {[...consentActionsOf(view)]
+        .sort((a, b) => Number(BUTTON[b].variant === "primary") - Number(BUTTON[a].variant === "primary"))
+        .map((action) => (
+        <Button
+          key={action}
+          size="lg"
+          variant={BUTTON[action].variant}
+          icon={BUTTON[action].icon}
+          disabled={busy}
+          onClick={() => onAction(action)}
+        >
           {ut(BUTTON[action].key)}
         </Button>
       ))}
-      {after}
+      {after ? <span className="ml-auto flex flex-wrap gap-2 max-[600px]:ml-0">{after}</span> : null}
+    </div>
+  );
+  const alert = error ? (
+    <div className="mt-4 flex items-start gap-2 text-[15px] font-semibold leading-[22px] text-risk-ink">
+      <Ic.circleAlert size={18} className="mt-0.5 shrink-0" />
+      <p role="alert" className="m-0">
+        {error}
+      </p>
+    </div>
+  ) : null;
+  const notice = note ? (
+    <Callout kind="info" role="status" icon={<ShellIcon name="file-signature" size={16} />} className="text-[15px] leading-[22px]">
+      {note}
+    </Callout>
+  ) : null;
+
+  if (view.kind === "declined") {
+    return (
+      <TouchArea className="contents">
+        <Body className="max-w-[752px]">
+          {notice ? <div className="mb-4">{notice}</div> : null}
+          <section className="rounded-panel border border-border bg-panel px-10 pb-[34px] pt-9 shadow-panel max-[600px]:px-5 max-[600px]:pt-6">
+            <span
+              aria-hidden
+              className="grid size-14 place-items-center rounded-[17px] bg-sunk text-text-2 supports-[corner-shape:squircle]:rounded-[22px] supports-[corner-shape:squircle]:[corner-shape:squircle]"
+            >
+              <Glyph name="file-x" size={26} />
+            </span>
+            <h1 className="m-0 mt-[18px] text-[32px] font-extrabold leading-[38px] tracking-[-0.03em] max-[600px]:text-[26px] max-[600px]:leading-8">
+              {ut("consent.declinedTitle")}
+            </h1>
+            <p className="m-0 mt-3 text-[17px] leading-[27px] text-text">{ut("consent.declinedWhatWeb")}</p>
+            <p className="m-0 mt-2.5 text-[16px] leading-[25px] text-text-2">{ut("consent.declinedNext")}</p>
+            {alert}
+            {actions}
+          </section>
+          {aside ? <div className="mt-4 flex flex-col gap-4">{aside}</div> : null}
+        </Body>
+      </TouchArea>
+    );
+  }
+
+  if (view.kind === "failed") {
+    return (
+      <TouchArea className="contents">
+        <Hero title={ut("consent.title")} notice={notice} />
+        <Body className="max-w-[752px]">
+          <section className="rounded-panel border border-border bg-panel px-8 py-7 shadow-panel max-[600px]:px-5">
+            <div className="flex items-start gap-3">
+              <IconTile icon={<Ic.circleAlert size={18} />} tone="warn" size={40} />
+              <p className="m-0 text-[17px] leading-[27px] text-text">{ut("consent.loadFailed")}</p>
+            </div>
+            {alert}
+            {actions}
+          </section>
+          {aside ? <div className="mt-4 flex flex-col gap-4">{aside}</div> : null}
+        </Body>
+      </TouchArea>
+    );
+  }
+
+  const sections = consentSections(view.text);
+  return (
+    <TouchArea className="contents">
+      <Hero title={ut("consent.title")} lead={ut("ptw.consentLead")} notice={notice} />
+      <Body>
+        <div className="grid grid-cols-[minmax(0,1fr)_380px] items-start gap-5 max-[1099px]:grid-cols-1">
+          <div className="min-w-0">
+            <PtPanel
+              title={ut("ptw.consentText")}
+              icon={<ShellIcon name="file-text" size={16} />}
+              sub={version ? ut("ptw.consentEdition").replace("{n}", String(version)) : undefined}
+            >
+              {sections.map((s, i) => (
+                <section key={i} className="border-t border-divider py-5 first:border-t-0 first:pt-1 last:pb-1">
+                  {s.title ? (
+                    <h3 className="m-0 mb-2 text-[18px] font-extrabold leading-6 tracking-[-0.01em] text-text">{s.title}</h3>
+                  ) : null}
+                  <p className="m-0 max-w-[68ch] whitespace-pre-wrap text-[16.5px] leading-[27px] text-text-2">{s.body}</p>
+                </section>
+              ))}
+            </PtPanel>
+            {/* последствие отказа — до выбора, а не после */}
+            <p className="m-0 mt-4 flex items-start gap-2 text-[15px] leading-[22px] text-text-2">
+              <Ic.info size={16} className="mt-[3px] shrink-0 text-muted" />
+              {ut("consent.hint")}
+            </p>
+            {alert}
+            {actions}
+          </div>
+          {aside ? <div className="flex min-w-0 flex-col gap-4 min-[1100px]:sticky min-[1100px]:top-4">{aside}</div> : null}
+        </div>
+      </Body>
     </TouchArea>
+  );
+}
+
+/**
+ * Колонка сбоку у экрана согласия: к кому с вопросами по тексту и номер
+ * помощи — он доступен и без согласия.
+ */
+export function ConsentAside() {
+  const { ut } = useLang();
+  return (
+    <>
+      <PtPanel title={ut("ptw.consentAsk")} icon={<ShellIcon name="circle-help" size={16} />}>
+        <p className="m-0 text-[15.5px] leading-[23px] text-text-2">{ut("ptw.consentAskText")}</p>
+      </PtPanel>
+      <HelpLink title={ut("ptw.helpHard")} sub={ut("ptw.helpNoConsent")} />
+    </>
   );
 }

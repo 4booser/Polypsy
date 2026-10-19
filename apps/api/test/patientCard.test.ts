@@ -224,6 +224,62 @@ describe("GET /api/patients — пациенты зоны видимости", (
   });
 });
 
+describe("GET /api/patients/names — имена без карточки (волна 27)", () => {
+  const cardReads = async (subject: string) =>
+    (
+      await db
+        .select({ n: sql<number>`count(*)::int` })
+        .from(auditLog)
+        .where(and(eq(auditLog.action, "patient.card_read"), eq(auditLog.subjectUserId, subject)))
+    )[0]!.n;
+
+  /**
+   * Мутация: убрать фильтр по зоне (`visible.has(id)`) — проверка падает и
+   * называет человека вне зоны adminA, чьё имя он получил.
+   */
+  test("своим — имена, как в карточке; чужим, сотрудникам и несуществующим — ни строки", async () => {
+    const mine = await patientOfA("names");
+    const second = await patientOfA("names2");
+    const outside = await makeUser("user", `pc-outside-${crypto.randomUUID()}@test`);
+    const ids = [mine.id, second.id, outside.id, adminB.id, crypto.randomUUID()];
+
+    const res = await api(`/api/patients/names?ids=${ids.join(",")}`, adminA.token);
+    expect(res.status).toBe(200);
+    const got = [...res.body.items].sort((a: { id: string }, b: { id: string }) => a.id.localeCompare(b.id));
+    const card = async (p: Person) => (await api(`/api/patients/${p.id}/card`, adminA.token)).body.fullName as string;
+    const want = [
+      { id: mine.id, fullName: await card(mine) },
+      { id: second.id, fullName: await card(second) },
+    ].sort((a, b) => a.id.localeCompare(b.id));
+    expect(got, `вне зоны или не пациент: ${outside.id}, ${adminB.id}`).toEqual(want);
+    // суперадмину — все пациенты, но не сотрудник
+    const all = await api(`/api/patients/names?ids=${ids.join(",")}`, root.token);
+    expect(all.body.items.map((p: { id: string }) => p.id).sort()).toEqual([mine.id, second.id, outside.id].sort());
+  });
+
+  test("чтение имён — в журнале как выбор пациента (access.patient_list), а не «открывал карточку»", async () => {
+    const mine = await patientOfA("names-audit");
+    const before = await cardReads(mine.id);
+    expect((await api(`/api/patients/names?ids=${mine.id}`, adminA.token)).status).toBe(200);
+    expect(await cardReads(mine.id), "имя прочитано — карточка не открывалась").toBe(before);
+    const [entry] = await db
+      .select()
+      .from(auditLog)
+      .where(and(eq(auditLog.actorId, adminA.id), eq(auditLog.action, "access.patient_list")))
+      .orderBy(desc(auditLog.at))
+      .limit(1);
+    expect(entry?.details).toMatchObject({ returned: 1, asked: 1, via: "names" });
+  });
+
+  test("пациенту закрыто; без ids и сверх ста — отказ запроса", async () => {
+    const person = await patientOfA("names-self");
+    expect((await api(`/api/patients/names?ids=${person.id}`, person.token)).status).toBe(403);
+    expect((await api("/api/patients/names", adminA.token)).status).toBe(400);
+    const many = Array.from({ length: 101 }, () => crypto.randomUUID()).join(",");
+    expect((await api(`/api/patients/names?ids=${many}`, adminA.token)).status).toBe(400);
+  });
+});
+
 describe("GET /api/patients/:id/card — карточка пациента", () => {
   /**
    * Мутация: снять проверку `visible.has(patientId)` из карточки — первая
@@ -564,6 +620,7 @@ describe("описание маршрутов", () => {
     const expected = [
       "GET /api/patients",
       "GET /api/patients/:id/card",
+      "GET /api/patients/names",
       "DELETE /api/patient-groups/:id/members",
       "PUT /api/patient-groups/:id/favourite",
       "DELETE /api/patient-groups/:id/favourite",

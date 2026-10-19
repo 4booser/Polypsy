@@ -141,7 +141,7 @@ describe("сохранить и подписать", () => {
   });
 });
 
-describe("кнопка «Сформувати заключення» в разметке", () => {
+describe("кнопка «Підписати й сформувати» в разметке", () => {
   const draw = (current: ConclusionVersion | null, text: string) =>
     renderToStaticMarkup(
       <LangProvider>
@@ -151,12 +151,9 @@ describe("кнопка «Сформувати заключення» в разм
           error={null}
           onState={() => {}}
           onReload={() => {}}
-          title=""
           text={text}
           setText={() => {}}
           areaRef={{ current: null }}
-          tool={null}
-          setTool={() => {}}
         />
       </LangProvider>,
     );
@@ -168,9 +165,10 @@ describe("кнопка «Сформувати заключення» в разм
    */
   const formDisabled = (html: string): boolean => {
     const e = UI["cn3.form"] as { uk: string; ru: string; en?: string };
-    const all = [...html.matchAll(/<button([^>]*)>([^<]*)<\/button>/g)];
-    const found = all.find((m) => [e.uk, e.ru, e.en].includes(m[2]!));
-    expect(found, "кнопки «Сформувати заключення» нет в разметке").toBeDefined();
+    // у кнопки значок перед подписью: подпись — текст кнопки без разметки
+    const all = [...html.matchAll(/<button([^>]*)>([\s\S]*?)<\/button>/g)];
+    const found = all.find((m) => [e.uk, e.ru, e.en].includes(m[2]!.replace(/<[^>]*>/g, "")));
+    expect(found, "кнопки «Підписати й сформувати» нет в разметке").toBeDefined();
     return /\sdisabled=""/.test(found![1]!);
   };
 

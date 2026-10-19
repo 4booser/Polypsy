@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNull } from "drizzle-orm";
+import { inArray, sql } from "drizzle-orm";
 import {
   MIN_RCI_SAMPLE,
   comparability,
@@ -11,14 +11,12 @@ import {
   type ScaleDynamics,
 } from "@quizzy/shared";
 import { db } from "../db";
-import { asSystem } from "../db/context";
-import { inIds } from "../db/ids";
-import { inIndexOrder } from "../db/latest";
-import { answers, responseScores, responses, scales } from "../db/schema";
+import { systemInIndexOrder } from "../db/latest";
+import { scales } from "../db/schema";
 import { log } from "./log";
-import { reliabilityOf } from "./psychometrics";
+import { alphaOf } from "./psychometrics";
 import { round, variance } from "./stats";
-import { getSurvey } from "./surveys";
+import { surveysAtVersions, versionKey } from "./surveys";
 
 /**
  * Изменение балла между замерами: на чём оно считается и когда его нет.
@@ -64,25 +62,39 @@ const sampleKey = (surveyId: string, code: string, basis: string) => `${surveyId
  */
 export const NORM_SAMPLE = 2000;
 
-/** Последние `limit` завершённых прохождений версии методики — путём по индексу (db/latest.ts) */
-async function latestCompleted(surveyId: string, versionId: string | null, limit: number): Promise<string[]> {
-  const rows = await inIndexOrder(() =>
-    db
-      .select({ id: responses.id })
-      .from(responses)
-      .where(
-        and(
-          eq(responses.surveyId, surveyId),
-          versionId ? eq(responses.versionId, versionId) : isNull(responses.versionId),
-          eq(responses.status, "completed"),
-        ),
-      )
-      // ровно колонки индекса (survey_id, submitted_at): иначе путь по индексу не поможет
-      .orderBy(desc(responses.submittedAt))
-      .limit(limit),
-  );
-  return rows.map((r) => r.id);
+/** Пары «методика, версия» без повторов — в порядке первого появления */
+function distinctPairs<P extends { surveyId: string; versionId: string | null }>(pairs: readonly P[]): P[] {
+  const seen = new Set<string>();
+  return pairs.filter((p) => {
+    const key = `${p.surveyId}:${p.versionId ?? "-"}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
+
+/**
+ * Последние `limit` завершённых прохождений КАЖДОЙ пары «методика, версия»
+ * — подзапросом LATERAL на пару, путём по индексу (survey_id, submitted_at)
+ * (db/latest.ts): сортировка ровно по колонкам индекса, иначе путь по нему не
+ * поможет. Пары — строкой JSON (`k` — номер пары в списке). Версия NULL —
+ * прохождения без версии (её удалили), как прежде isNull.
+ *
+ * Одним запросом на все пары, а не запросом на пару: у человека с семью
+ * методиками прежде это было по семь списков на выборку и на альфу, каждый
+ * в своём переключении роли и сортировки.
+ */
+const latestOfPairs = (pairs: readonly { surveyId: string; versionId: string | null }[], limit: number) => sql`
+  jsonb_to_recordset(${JSON.stringify(pairs.map((p, k) => ({ k, survey_id: p.surveyId, version_id: p.versionId })))}::jsonb)
+    as p(k int, survey_id text, version_id text)
+  cross join lateral (
+    select x.id from responses x
+    where x.survey_id = p.survey_id
+      and x.version_id is not distinct from p.version_id
+      and x.status = 'completed'
+    order by x.submitted_at desc
+    limit ${limit}::int
+  ) r`;
 
 /**
  * Нормативная выборка версий, которые видел человек: нормированные баллы
@@ -103,31 +115,38 @@ export async function normativeSamples(
   pairs: readonly { surveyId: string; versionId: string | null }[],
 ): Promise<Map<string, number[]>> {
   const samples = new Map<string, number[]>();
-  const seen = new Set<string>();
-  for (const { surveyId, versionId } of pairs) {
-    const pairKey = `${surveyId}:${versionId ?? "-"}`;
-    if (seen.has(pairKey)) continue;
-    seen.add(pairKey);
-    const rows = await asSystem(async () => {
-      const ids = await latestCompleted(surveyId, versionId, NORM_SAMPLE);
-      if (!ids.length) return [];
-      return db
-        .select({
-          value: responseScores.value,
-          normalized: responseScores.normalized,
-          normalization: responseScores.normalization,
-          code: scales.code,
-        })
-        .from(responseScores)
-        .innerJoin(scales, eq(scales.id, responseScores.scaleId))
-        .where(and(inIds(responseScores.responseId, ids), eq(responseScores.normalized, true)));
-    });
-    for (const row of rows) {
-      const key = sampleKey(surveyId, row.code, basisOf(versionId, row));
-      const list = samples.get(key) ?? [];
-      list.push(row.value);
-      samples.set(key, list);
-    }
+  const asked = distinctPairs(pairs);
+  if (!asked.length) return samples;
+  /*
+   * Код шкалы — отдельным маленьким запросом по встреченным шкалам, а не
+   * соединением в большом: на соединении планировщик перебирал все шкалы на
+   * каждую из двадцати тысяч строк баллов (674 тыс. отброшенных сравнений).
+   */
+  const { rows, codeOf } = await systemInIndexOrder(async () => {
+    const rows = (await db.execute(sql`
+      select p.k, rs.scale_id as "scaleId", rs.value, rs.normalized, rs.normalization
+      from ${latestOfPairs(asked, NORM_SAMPLE)}
+      join response_scores rs on rs.response_id = r.id and rs.normalized = true`)) as unknown as {
+      k: number;
+      scaleId: string;
+      value: number;
+      normalized: boolean;
+      normalization: string;
+    }[];
+    const scaleIds = [...new Set(rows.map((r) => r.scaleId))];
+    const codes = scaleIds.length
+      ? await db.select({ id: scales.id, code: scales.code }).from(scales).where(inArray(scales.id, scaleIds))
+      : [];
+    return { rows, codeOf: new Map(codes.map((s) => [s.id, s.code])) };
+  });
+  for (const row of rows) {
+    const pair = asked[row.k];
+    const code = codeOf.get(row.scaleId);
+    if (!pair || code === undefined) continue;
+    const key = sampleKey(pair.surveyId, code, basisOf(pair.versionId, row));
+    const list = samples.get(key) ?? [];
+    list.push(row.value);
+    samples.set(key, list);
   }
   return samples;
 }
@@ -148,39 +167,69 @@ const ALPHA_MIN = 10;
  */
 export async function alphasOf(pairs: { surveyId: string; versionId: string }[]): Promise<Map<string, number>> {
   const out = new Map<string, number>();
-  const seen = new Set<string>();
-  for (const { surveyId, versionId } of pairs) {
-    const pairKey = `${surveyId}:${versionId}`;
-    if (seen.has(pairKey)) continue;
-    seen.add(pairKey);
+  const asked = distinctPairs(pairs);
+  if (!asked.length) return out;
+  /*
+   * Методики — ролью вызывающего, как прежде getSurvey на каждую пару, но
+   * разом (surveysAtVersions). Язык — украинский: альфа от текстов не
+   * зависит, а с выборкой перцентиля (lib/referenceSample.ts) он делит кэш
+   * содержимого версий — прежде альфа читала то же содержимое по-русски, и
+   * холодная карточка собирала каждую версию дважды.
+   */
+  const fulls = await surveysAtVersions(asked, "uk");
+  const known = asked.filter((p) => fulls.get(versionKey(p.surveyId, p.versionId)));
+  if (!known.length) return out;
+  /*
+   * Последние прохождения — путём по индексу (db/latest.ts): под
+   * политиками врача планировщик брал все прохождения методики и
+   * сортировал, секунда на версию и рост с каждым чужим прохождением.
+   * Системной ролью, как и нормативная выборка выше: альфа — число об
+   * учреждении, а политика на каждой строке ответов стоила врачу
+   * четверть секунды на версию.
+   *
+   * Все пары — одним запросом, ответы — в нём же. LEFT JOIN: прохождение без
+   * единого ответа — тоже прохождение выборки, и порог ALPHA_MIN считается в
+   * прохождениях, как прежде. Ответы — только те поля, по которым считается
+   * вклад пункта: текст ответа альфе не нужен.
+   */
+  const rows = (await systemInIndexOrder(() =>
+    db.execute(sql`
+      select p.k, r.id as "responseId", a.question_id as "questionId", a.option_ids as "optionIds",
+             a.number, a.matrix, a.skipped
+      from ${latestOfPairs(known, ALPHA_SAMPLE)}
+      left join answers a on a.response_id = r.id`),
+  )) as unknown as {
+    k: number;
+    responseId: string;
+    questionId: string | null;
+    optionIds: string[] | null;
+    number: number | null;
+    matrix: Record<string, string> | null;
+    skipped: boolean | null;
+  }[];
+
+  type Stored = (typeof rows)[number];
+  const samples = known.map(() => ({ responses: new Set<string>(), byResponse: new Map<string, Map<string, Stored>>() }));
+  for (const a of rows) {
+    const sample = samples[a.k];
+    if (!sample) continue;
+    sample.responses.add(a.responseId);
+    if (a.questionId === null) continue;
+    const m = sample.byResponse.get(a.responseId) ?? new Map<string, Stored>();
+    m.set(a.questionId, a);
+    sample.byResponse.set(a.responseId, m);
+  }
+
+  known.forEach(({ surveyId, versionId }, k) => {
     try {
-      const survey = await getSurvey(surveyId, versionId, "ru");
-      if (!survey) continue;
-      /*
-       * Последние прохождения — путём по индексу (db/latest.ts): под
-       * политиками врача планировщик брал все прохождения методики и
-       * сортировал, секунда на версию и рост с каждым чужим прохождением.
-       * Системной ролью, как и нормативная выборка выше: альфа — число об
-       * учреждении, а политика на каждой строке ответов стоила врачу
-       * четверть секунды на версию.
-       */
-      const answerRows = await asSystem(async () => {
-        const sample = await latestCompleted(surveyId, versionId, ALPHA_SAMPLE);
-        if (sample.length < ALPHA_MIN) return null;
-        return db.select().from(answers).where(inArray(answers.responseId, sample));
-      });
-      if (!answerRows) continue;
-      const byResponse = new Map<string, Map<string, (typeof answerRows)[number]>>();
-      for (const a of answerRows) {
-        const m = byResponse.get(a.responseId) ?? new Map();
-        m.set(a.questionId, a);
-        byResponse.set(a.responseId, m);
-      }
+      const survey = fulls.get(versionKey(surveyId, versionId));
+      const sample = samples[k];
+      if (!survey || !sample || sample.responses.size < ALPHA_MIN) return;
       const questionById = new Map(survey.questions.map((q) => [q.id, q]));
       for (const scale of survey.scales) {
         if (scale.items.length < 2) continue;
         const matrix = new Map<string, Map<string, number>>();
-        for (const [responseId, byQuestion] of byResponse) {
+        for (const [responseId, byQuestion] of sample.byResponse) {
           const row = new Map<string, number>();
           for (const item of scale.items) {
             const question = questionById.get(item.questionId);
@@ -191,22 +240,23 @@ export async function alphasOf(pairs: { surveyId: string; versionId: string }[])
               optionIds: stored.optionIds ?? undefined,
               number: stored.number ?? undefined,
               matrix: stored.matrix ?? undefined,
-              skipped: stored.skipped,
+              skipped: stored.skipped ?? false,
             });
             if (value !== null) row.set(item.questionId, value);
           }
           if (row.size) matrix.set(responseId, row);
         }
-        const rel = reliabilityOf(
+        /* только альфа — без разбора пунктов и омеги, которые reliabilityOf считает для «Якості» */
+        const alpha = alphaOf(
           scale.items.map((i) => questionById.get(i.questionId)).filter((q): q is NonNullable<typeof q> => !!q),
           matrix,
         );
-        if (rel) out.set(`${surveyId}:${versionId}:${scale.code}`, rel.alpha);
+        if (alpha !== null) out.set(`${surveyId}:${versionId}:${scale.code}`, alpha);
       }
     } catch (error) {
       log.error("rci.alpha_failed", { surveyId, versionId, error: String(error) });
     }
-  }
+  });
   return out;
 }
 

@@ -7,8 +7,10 @@ import {
   t,
   updateReferralSchema,
   type CaseSummary,
-  type Page,
   type Referral,
+  type ReferralCount,
+  type ReferralPage,
+  type ReferralStatus,
   type ScaleNormalization,
   type Severity,
   type Sex,
@@ -33,7 +35,7 @@ import { decryptField } from "../lib/crypto";
 import { badRequest, conflict, langOf, notFound, parseBody, parseQuery } from "../lib/http";
 import { round } from "../lib/stats";
 import { assertReferralLinks } from "../lib/clinicalRead";
-import { accessiblePatientIds, assertPatientAccess, patientsInScope, surveyScopeFilterFor } from "../lib/scope";
+import { accessiblePatientIds, assertPatientAccess, patientScopeCondition, patientsInScope, surveyScopeFilterFor } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 import { env } from "../env";
 
@@ -94,7 +96,7 @@ async function serialize(rows: (typeof referrals.$inferSelect)[]): Promise<Refer
  * «100», когда ждут ответа сто сорок.
  */
 referralRoutes.get("/", async (c) => {
-  const { all, limit, cursor: rawCursor } = parseQuery(c, referralListQuery);
+  const { all, closedSince, limit, cursor: rawCursor } = parseQuery(c, referralListQuery);
   const cursor = decodeExactCursor(rawCursor);
   /*
    * Только люди своей зоны (волна 13, проверка под ролью приложения).
@@ -104,8 +106,22 @@ referralRoutes.get("/", async (c) => {
    * и живёт оно в lib/scope.ts; политика — страховка под ним, а не замена.
    */
   const zone = await accessiblePatientIds(c.get("user"));
+  /*
+   * Закрытые с момента (?closedSince=) — завершены или отклонены, по времени
+   * последнего перехода; без него — как было: все или все, кроме
+   * завершённых. Отбор закрытых сам решает, какие статусы брать, и `all`
+   * при нём не участвует. Время перехода — updated_at, а у строки без
+   * переходов — время выписки, как и считает экран (closedWithin).
+   */
   const filter = and(
-    all ? undefined : ne(referrals.status, "completed"),
+    closedSince
+      ? and(
+          inArray(referrals.status, ["completed", "declined"]),
+          sql`coalesce(${referrals.updatedAt}, ${referrals.createdAt}) >= ${closedSince}::timestamptz`,
+        )
+      : all
+        ? undefined
+        : ne(referrals.status, "completed"),
     zone === null ? undefined : zone.size ? inArray(referrals.userId, [...zone]) : sql`false`,
   );
 
@@ -121,14 +137,33 @@ referralRoutes.get("/", async (c) => {
   const page = rows.slice(0, limit);
 
   let total: number | undefined;
+  let counts: Record<ReferralStatus, number> | undefined;
   if (!cursor) {
     const [row] = await db.select({ n: sql<number>`count(*)::int` }).from(referrals).where(filter);
     total = Number(row?.n ?? 0);
+    /*
+     * Число по статусам — по всей зоне, а не по `all`: пилюли видов реестра
+     * («Виписані 2, Завершені 12») говорят о направлениях отделения, а не о
+     * том, какую часть из них экран сейчас загрузил.
+     */
+    const byStatus = await db
+      .select({ status: referrals.status, n: sql<number>`count(*)::int` })
+      .from(referrals)
+      .where(zone === null ? undefined : zone.size ? inArray(referrals.userId, [...zone]) : sql`false`)
+      .groupBy(referrals.status);
+    counts = { created: 0, accepted: 0, completed: 0, declined: 0 };
+    for (const r of byStatus) counts[r.status] = Number(r.n);
   }
 
   await audit(c, {
     action: "referral.list",
-    details: { count: page.length, all, truncated, ...(cursor ? { page: "next" } : {}) },
+    details: {
+      count: page.length,
+      all,
+      truncated,
+      ...(closedSince ? { closedSince } : {}),
+      ...(cursor ? { page: "next" } : {}),
+    },
   });
 
   const last = page[page.length - 1];
@@ -137,7 +172,37 @@ referralRoutes.get("/", async (c) => {
     nextCursor: truncated && last ? encodeCursor(last.at, last.r.id) : null,
     truncated,
     total,
-  } satisfies Page<Referral>);
+    ...(counts ? { counts } : {}),
+  } satisfies ReferralPage);
+});
+
+/**
+ * Реестр числами — бейдж навигации (ReferralCount).
+ *
+ * Бейдж опрашивал первую страницу реестра раз в минуту с каждой открытой
+ * консоли: сотня строк с расшифрованными именами и поводами, строка
+ * referral.list в журнале на каждый такт и зона списком всех людей
+ * (accessiblePatientIds) — у врача на стенде со ста тысячами прохождений
+ * больше полутора сотен миллисекунд базы на такт, и почти всё — построение
+ * зоны (волна 27).
+ *
+ * Здесь зона — условием над строками направлений (patientScopeCondition):
+ * то же правило, их держит вместе test/patientScope.test.ts, но база
+ * проверяет только людей, у которых есть незавершённые направления, а не
+ * строит зону целиком. Только числа — и потому без строки журнала, как и у
+ * остальных чисел навигации.
+ */
+referralRoutes.get("/count", async (c) => {
+  const inZone = await patientScopeCondition(c.get("user"));
+  const [row] = await db
+    .select({
+      total: sql<number>`count(*)::int`,
+      open: sql<number>`count(*) filter (where ${referrals.status} in ('created', 'accepted'))::int`,
+    })
+    .from(referrals)
+    .where(and(ne(referrals.status, "completed"), inZone?.(referrals.userId)));
+  const body: ReferralCount = { total: Number(row?.total ?? 0), open: Number(row?.open ?? 0) };
+  return c.json(body);
 });
 
 referralRoutes.post("/", async (c) => {

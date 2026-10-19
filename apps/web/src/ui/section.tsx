@@ -2,19 +2,12 @@ import type { ReactNode } from "react";
 import { cx } from "./cx";
 
 /**
- * Раздел свитка: линия 2px сверху, заголовок 20/700 и действия справа в одной
- * строке, под ним — необязательное пояснение.
+ * Раздел свитка (.fsec набора): волосяная линия сверху, заголовок 15.5/800 и
+ * действия справа в одной строке, под ним — необязательное пояснение.
  *
- * Та же геометрия, что у разделов карточки пациента (patientCard/PatientCard,
- * кадр f13: 32 от линии до заголовка, 14 до содержимого), вынесенная в общий
- * компонент, когда вторым и третьим экраном с разделами стали графики
- * прохождения, аналитика методики и сводка. Карточка пациента держит свою
- * копию с замерами кадра в комментарии — переводить её сюда стоит тогда,
- * когда разойдутся числа, а не раньше: сейчас они совпадают.
- *
- * Линия — --primary-rule (#b299cc кадра), не --primary-dim: приглушённая
- * ступень осветлена до порога контраста текста, а линии порог текста не
- * писан (см. tokens.css у --polsy-violet-soft).
+ * Линия — --divider в пиксель, а не цветная полоса: в наборе разделы держатся
+ * на ритме и заголовке, цветом окрашены только смысл и действие. Первый
+ * раздел в стопке линии не рисует — над ним уже шапка панели или экрана.
  */
 export function RuleSection({
   title,
@@ -32,12 +25,16 @@ export function RuleSection({
   id?: string;
 }) {
   return (
-    <section id={id} className={cx("border-t-2 border-primary-rule pb-[20px] pt-[32px]", className)}>
-      <div className="mb-[14px] flex min-h-[27px] flex-wrap items-center justify-between gap-x-[24px] gap-y-[8px]">
-        <h2 className="m-0 text-[20px] font-bold leading-[24px] text-primary">{title}</h2>
-        {actions ? <div className="flex flex-wrap items-center gap-[12px]">{actions}</div> : null}
+    <section
+      id={id}
+      data-rule-section
+      className={cx("border-t border-divider pb-5 pt-[18px] first:border-t-0 first:pt-0", className)}
+    >
+      <div className="mb-3 flex min-h-8 flex-wrap items-center justify-between gap-x-6 gap-y-2">
+        <h2 className="m-0 text-section font-extrabold text-text">{title}</h2>
+        {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
       </div>
-      {hint ? <p className="m-0 mb-[18px] max-w-[760px] text-[13px] leading-[18px] text-muted">{hint}</p> : null}
+      {hint ? <p className="m-0 mb-4 max-w-[760px] text-small text-text-2">{hint}</p> : null}
       {children}
     </section>
   );

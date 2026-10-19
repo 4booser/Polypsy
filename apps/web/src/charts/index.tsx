@@ -1,22 +1,43 @@
 import { useEffect, useRef, useState } from "react";
-import type { ReactNode } from "react";
-import { SERIES } from "../format";
-import { Panel } from "../ui/layout";
-import { NoData, Num } from "../ui/primitives";
+import { NoData } from "../ui/primitives";
 import { useLang } from "../lang";
+import { cx } from "../ui/cx";
+import { placeLabels } from "./courseModel";
+import {
+  ChartLegend,
+  ChartTip,
+  FOCUSABLE,
+  Marker,
+  TipHead,
+  TipRow,
+  seriesColor,
+  shapeOf,
+  useDecimal,
+  useIndexHover,
+} from "./kit";
 import { axisFor, type Axis } from "./scale";
 
 /**
- * Диаграммы консоли — plain SVG без библиотек.
+ * Диаграммы консоли — plain SVG без библиотек, в языке «Виразної».
  *
- * Правила одни на весь проект: одна величина рисуется одним цветом,
- * категориальные слоты берутся по фиксированному порядку, сетка приглушена,
- * подписи стоят рядом со значением, легенда обязательна при двух и более сериях.
+ * Правила одни на весь проект (подробно — charts/README.md и kit.tsx): цвет
+ * ряда идёт за сущностью в постоянном порядке c1…c4, одиночный ряд —
+ * фиолетовый набора, у метки есть форма; сетка — волосяная линия
+ * разделителя, подписи осей — 11 px приглушённым; линии 2 px, метки с
+ * кольцом поверхности; легенда при двух рядах и больше; подсказка с
+ * перекрестьем у каждого графика — мышью и с клавиатуры.
  */
 
-const PAD = { top: 14, right: 16, bottom: 26, left: 44 };
+const PAD = { top: 18, right: 16, bottom: 26, left: 40 };
 
-const fmt = (v: number) => (Math.abs(v) >= 1000 ? `${Math.round(v / 100) / 10}k` : String(Math.round(v * 100) / 100));
+/** Число подписи: тысячи — «1,2k», остальное — до двух знаков; дробь — языка экрана */
+function useFmt(): (v: number) => string {
+  const dec = useDecimal();
+  return (v) => (Math.abs(v) >= 1000 ? `${dec(v / 1000, 1)}k` : dec(v));
+}
+
+/** Ширина подписи 11 px — оценка для раскладки подписей оси без наложения */
+const textW = (s: string) => s.length * 6.2 + 4;
 
 /**
  * Подпись под графиком, объясняющая ось.
@@ -41,15 +62,16 @@ export function AxisNote({
   unit?: string;
 }) {
   const { ut } = useLang();
+  const fmt = useFmt();
   const hidesFull = fullRange != null && fullRange > axis.max;
   if (!axis.zoomed && !hidesFull) return null;
 
   return (
-    <p className="hint">
-      {axis.zoomed ? <strong>{ut("chart.axisCut")} · </strong> : null}
+    <p className="m-0 mt-[6px] text-caption leading-[16px] text-muted">
+      {axis.zoomed ? <strong className="font-bold text-text-2">{ut("chart.axisCut")}. </strong> : null}
       {ut("chart.actualRange")} {fmt(lo)}–{fmt(hi)}
       {unit}
-      {hidesFull ? ` · ${ut("chart.fullScale")} 0–${fmt(fullRange)}${unit}` : ""}
+      {hidesFull ? `; ${ut("chart.fullScale")} 0–${fmt(fullRange)}${unit}` : ""}
     </p>
   );
 }
@@ -70,43 +92,6 @@ export function AxisBreak({ x, y }: { x: number; y: number }) {
       strokeWidth={1.5}
       fill="none"
     />
-  );
-}
-
-export function Legend({ items }: { items: { label: string; color: string }[] }) {
-  if (items.length < 2) return null;
-  return (
-    <div className="legend">
-      {items.map((i) => (
-        <span key={i.label}>
-          <i className="dot" style={{ background: i.color }} /> {i.label}
-        </span>
-      ))}
-    </div>
-  );
-}
-
-/**
- * Обёртка графика — та же панель, что у остального содержимого.
- *
- * Раньше она рисовала свою карточку с собственным ритмом отступов, и на
- * одном экране график стоял рядом с панелью, отличаясь от неё на несколько
- * пикселей поля. По одному такое расхождение незаметно, но экран из панелей
- * и «почти панелей» читается как собранный из двух разных приложений.
- */
-export function Chart({
-  title,
-  hint,
-  children,
-}: {
-  title: string;
-  hint?: string;
-  children: ReactNode;
-}) {
-  return (
-    <Panel title={title} hint={hint}>
-      {children}
-    </Panel>
   );
 }
 
@@ -134,6 +119,28 @@ export function useChartWidth(fallback = 900): [number, React.RefObject<HTMLDivE
     return () => ro.disconnect();
   }, []);
   return [w, ref];
+}
+
+/** Подписи оси X без наложения: последняя, первая, потом остальные с конца */
+function xLabels(xs: readonly number[], labels: readonly string[]): Set<number> {
+  return placeLabels(xs, labels.map(textW), 12);
+}
+
+/** Сетка и подписи оси Y — общие у линии и сложенной области */
+function YGrid({ ticks, y, left, right }: { ticks: readonly number[]; y: (v: number) => number; left: number; right: number }) {
+  const fmt = useFmt();
+  return (
+    <>
+      {ticks.map((t) => (
+        <g key={t}>
+          <line x1={left} x2={right} y1={y(t)} y2={y(t)} stroke="var(--grid)" />
+          <text x={left - 8} y={y(t) + 4} fontSize={11} fontWeight={600} fill="var(--axis)" textAnchor="end">
+            {fmt(t)}
+          </text>
+        </g>
+      ))}
+    </>
+  );
 }
 
 /* ─────────── линия / область ─────────── */
@@ -195,13 +202,8 @@ export function LineChart({
   /**
    * Полный диапазон величины, если он известен: 27 у PHQ-9, 80 у PCL-5.
    *
-   * Раньше это был `yMax` — и ось растягивалась до него. Именно из-за этого
-   * все графики динамики выглядели одинаково: на демонстрационной базе
-   * данные занимали пятую часть высоты, а четыре пятых были пустым полем над
-   * прижатой к низу линией.
-   *
-   * Теперь ось идёт по данным, а полный диапазон уходит в подпись. Он не
-   * лишний: без него «14» на графике не отличить от «14 из 15» и «14 из 80».
+   * Ось идёт по данным, а полный диапазон уходит в подпись. Он не лишний:
+   * без него «14» на графике не отличить от «14 из 15» и «14 из 80».
    */
   fullRange?: number | null;
   /** Единица для подписи диапазона: « с», « %». Ось подписывается числами */
@@ -209,34 +211,24 @@ export function LineChart({
   marks?: TimeMark[];
 }) {
   const { ut } = useLang();
-  const [hover, setHover] = useState<number | null>(null);
+  const fmt = useFmt();
   const svgRef = useRef<SVGSVGElement>(null);
 
-
   /*
-   * Ширина берётся настоящая, а не выдуманная.
-   *
-   * Раньше здесь стояло W = 900 и preserveAspectRatio="none": браузер
-   * растягивал картинку под ширину контейнера — и вместе с линиями
-   * растягивал текст. Подписи осей выходили на четверть шире, чем задумано,
-   * шрифт «плыл», и график выглядел кривым, потому что кривым и был.
-   *
-   * Измеряем контейнер и рисуем в его собственных пикселях: тогда единица
-   * viewBox равна пикселю экрана, и растягивать нечего.
+   * Ширина берётся настоящая, а не выдуманная: единица viewBox равна
+   * пикселю экрана, и растягивать нечего — ни линии, ни текст.
    */
   const [W, boxRef] = useChartWidth();
 
   const all = series.flatMap((s) => s.points);
+  const n = Math.max(1, ...series.map((s) => s.points.length));
+  const hover = useIndexHover(n);
   const bands = all.map(bandOf);
 
   /*
    * Ось строится по тому, что нарисовано, — вместе с полосами разброса:
    * полоса, вылезшая за край поля, читается как обрезанные данные.
-   *
-   * `atom` — ширина самой полосы. Это и есть та разница, ниже которой
-   * различать нечего: сдвиг медианы на четверть межквартильного размаха не
-   * событие, а обычное дрожание выборки. Из-за него узкий ряд внутри широкой
-   * полосы останется плоским, а не растянется во весь экран.
+   * `atom` — ширина самой полосы: сдвиг меньше неё не событие, а дрожание.
    */
   const lo = bands.length ? Math.min(...bands.map(([a]) => a)) : 0;
   const hi = bands.length ? Math.max(...bands.map(([, b]) => b)) : 0;
@@ -244,9 +236,12 @@ export function LineChart({
   const atom = widths[Math.floor(widths.length / 2)] ?? 0;
   const axis = axisFor({ lo, hi, atom });
 
-  const pw = W - PAD.left - PAD.right;
+  const multi = series.length > 1;
+  /* подписи у концов линий: значение одного ряда, значение и имя — у двух–четырёх */
+  const ends = series.length <= 4;
+  const right = ends ? (multi ? 76 : 34) : PAD.right;
+  const pw = W - PAD.left - right;
   const ph = height - PAD.top - PAD.bottom;
-  const n = Math.max(1, ...series.map((s) => s.points.length));
   const xAt = (i: number) => PAD.left + (n > 1 ? (i / (n - 1)) * pw : pw / 2);
   const span = Math.max(axis.max - axis.min, Number.EPSILON);
   const yAt = (v: number) => PAD.top + ph - ((v - axis.min) / span) * ph;
@@ -262,100 +257,81 @@ export function LineChart({
     const rel = ((e.clientX - box.left) / box.width) * W;
     const share = (rel - PAD.left) / pw;
     if (share < -0.02 || share > 1.02) {
-      setHover(null);
+      hover.setAt(null);
       return;
     }
-    setHover(Math.min(n - 1, Math.max(0, Math.round(share * (n - 1)))));
+    hover.setAt(Math.min(n - 1, Math.max(0, Math.round(share * (n - 1)))));
   };
 
   if (!all.length) return <NoData />;
 
   /*
-   * По одной точке динамики не бывает.
-   *
-   * Раньше единственный замер рисовался точкой посреди пустой сетки в
-   * тысячу пикселей шириной, и ось времени показывала одну и ту же дату с
-   * обоих концов. Это выглядит как поломка и читается как «данных нет», хотя
-   * данные есть — их просто нечем сравнивать.
-   *
-   * Показываем число и говорим прямо: сравнивать не с чем.
+   * По одной точке динамики не бывает: показываем число крупно и говорим
+   * прямо, что сравнивать не с чем, — точка посреди пустой сетки выглядит
+   * как поломка.
    */
   if (all.length === 1) {
     const only = all[0]!;
     return (
-      <div className="flex items-baseline gap-3 px-1 py-3">
-        <Num className="text-stat leading-none">{fmt(only.y)}</Num>
+      <div className="flex items-baseline gap-[10px] py-[8px]">
+        <span className="text-stat font-extrabold text-text">{fmt(only.y)}</span>
         <span className="text-caption text-muted">
-          {only.x} · {ut("chart.singlePoint")}
+          {only.x}, {ut("chart.singlePoint")}
         </span>
       </div>
     );
   }
 
-  const at = hover ?? -1;
+  const at = hover.at ?? -1;
   const label = series[0]?.points[at]?.x;
+  const colorOf = (s: { color?: string }, i: number) => s.color ?? seriesColor(i, series.length);
+  const xsAll = Array.from({ length: n }, (_, i) => xAt(i));
+  const labels = Array.from({ length: n }, (_, i) => series[0]?.points[i]?.x ?? "");
+  const shownX = xLabels(xsAll, labels);
 
-  /*
-   * Одиночный ряд — фиолетовым макета, а не первым категориальным слотом.
-   *
-   * Слот --s1 синий: он нужен там, где рядов несколько и их надо различать.
-   * У одного ряда различать не с чем, и синяя линия на белом листе макета
-   * выглядела чужой — дизайн-система прямо говорит «графики: тонкие линии
-   * primary». С двумя рядами и больше порядок слотов прежний: цвет следует
-   * за рядом, а не за его номером на экране.
-   */
-  const colorOf = (s: { color?: string }, i: number) =>
-    s.color ?? (series.length === 1 ? "var(--primary)" : SERIES[i % SERIES.length]!);
+  /* подписи у концов: по высоте последней точки, раздвинутые на строку */
+  const endRows = ends
+    ? series
+        .map((s, si) => {
+          const p = s.points.at(-1);
+          return p ? { si, y: yAt(p.y), x: xAt(s.points.length - 1), v: p.y, label: s.label } : null;
+        })
+        .filter((r): r is NonNullable<typeof r> => r !== null)
+        .sort((a, b) => a.y - b.y)
+    : [];
+  for (let k = 1; k < endRows.length; k++) if (endRows[k]!.y - endRows[k - 1]!.y < 13) endRows[k]!.y = endRows[k - 1]!.y + 13;
 
   return (
-    <div className="chart-wrap" ref={boxRef}>
+    <div className="relative min-w-0" ref={boxRef}>
       <svg
         ref={svgRef}
         viewBox={`0 0 ${W} ${height}`}
         width="100%"
         height={height}
         onMouseMove={onMove}
-        onMouseLeave={() => setHover(null)}
+        {...hover.focusProps}
         role="img"
+        className={cx("block overflow-visible", FOCUSABLE)}
         /*
          * Роль img обязывает дать имя: без него диктор объявляет «графика» и
-         * замолкает. Имя собирается из рядов и границ периода — это то, что
-         * зрячий читает с осей за секунду.
+         * замолкает. Имя собирается из рядов и границ периода.
          */
         aria-label={`${series.map((s) => s.label).join(", ")}: ${all[0]?.x ?? ""} — ${series[0]?.points.at(-1)?.x ?? ""}`}
       >
-        {axis.ticks.map((t) => (
-          <g key={t}>
-            <line x1={PAD.left} x2={W - PAD.right} y1={yAt(t)} y2={yAt(t)} stroke="var(--grid)" />
-            <text x={PAD.left - 8} y={yAt(t) + 4} fontSize="11" fill="var(--axis)" textAnchor="end">
-              {fmt(t)}
-            </text>
-          </g>
-        ))}
+        <YGrid ticks={axis.ticks} y={yAt} left={PAD.left} right={W - right} />
         {axis.zoomed ? <AxisBreak x={PAD.left} y={PAD.top + ph} /> : null}
 
         {/* перекрестье под линиями: оно ориентир, а не содержание */}
-        {at >= 0 ? (
-          <line
-            x1={xAt(at)}
-            x2={xAt(at)}
-            y1={PAD.top}
-            y2={PAD.top + ph}
-            stroke="var(--accent)"
-            strokeWidth={1}
-            strokeDasharray="3 3"
-          />
-        ) : null}
+        {at >= 0 ? <line x1={xAt(at)} x2={xAt(at)} y1={PAD.top} y2={PAD.top + ph} stroke="var(--vink)" strokeDasharray="2 2" /> : null}
 
         {series.map((s, si) => {
           const color = colorOf(s, si);
-          const d = s.points.map((p, i) => `${i ? "L" : "M"}${xAt(i)},${yAt(p.y)}`).join(" ");
+          const d = s.points.map((p, i) => `${i ? "L" : "M"}${xAt(i).toFixed(1)},${yAt(p.y).toFixed(1)}`).join(" ");
 
           /*
-           * Полоса разброса рисуется под линией и без обводки: это фон, в
-           * котором лежит измерение, а не второй ряд данных. Строится только
-           * если разброс известен у всех точек ряда — полоса «местами» врала
-           * бы про то, где измерение точнее.
+           * Полоса разброса — под линией и без обводки: фон, в котором лежит
+           * измерение, а не второй ряд. Только если разброс известен у всех
+           * точек ряда — полоса «местами» врала бы, где измерение точнее.
            */
           const edges = s.points.map(bandOf);
           const hasBand = s.points.length > 1 && edges.some(([a, b]) => b > a) && edges.every(([a, b]) => b >= a);
@@ -363,415 +339,113 @@ export function LineChart({
           const band =
             hasBand && known
               ? [
-                  ...edges.map(([, b], i) => `${i ? "L" : "M"}${xAt(i)},${yAt(b)}`),
+                  ...edges.map(([, b], i) => `${i ? "L" : "M"}${xAt(i).toFixed(1)},${yAt(b).toFixed(1)}`),
                   ...edges
                     .map(([a], i) => ({ a, i }))
                     .reverse()
-                    .map(({ a, i }) => `L${xAt(i)},${yAt(a)}`),
+                    .map(({ a, i }) => `L${xAt(i).toFixed(1)},${yAt(a).toFixed(1)}`),
                   "Z",
                 ].join(" ")
               : null;
+          const shape = shapeOf(s.color, si);
 
           return (
             <g key={s.label}>
               {band ? <path d={band} fill={color} opacity={0.14} /> : null}
               {area ? (
-                /* заливка идёт до низа поля, а не до нуля: на срезанной оси
-                   ноль лежит ниже рамки, и фигура вывернулась бы наизнанку */
+                /* заливка до низа поля, а не до нуля: на срезанной оси ноль ниже рамки */
                 <path
-                  d={`${d} L${xAt(s.points.length - 1)},${yAt(axis.min)} L${xAt(0)},${yAt(axis.min)} Z`}
+                  d={`${d} L${xAt(s.points.length - 1).toFixed(1)},${yAt(axis.min).toFixed(1)} L${xAt(0).toFixed(1)},${yAt(axis.min).toFixed(1)} Z`}
                   fill={color}
-                  opacity={0.12}
+                  opacity={0.1}
                 />
               ) : null}
-              <path d={d} stroke={color} strokeWidth={2} fill="none" />
+              <path d={d} stroke={color} strokeWidth={2} fill="none" strokeLinejoin="round" strokeLinecap="round" />
               {/*
-                Узлы рисуются только на коротких рядах: на трёхстах замерах
-                они сливаются в сплошную полосу и мешают читать линию.
-                Под курсором узел показывается всегда — он и есть ответ на
-                вопрос «сколько здесь».
+                Метки — только на коротких рядах: на трёхстах замерах они
+                сливаются в полосу. Под курсором метка видна всегда.
               */}
               {s.points.length <= 60
-                ? s.points.map((p, i) => (
-                    <circle
-                      key={i}
-                      cx={xAt(i)}
-                      cy={yAt(p.y)}
-                      r={4}
-                      fill={p.tone ?? color}
-                      stroke="var(--card)"
-                      strokeWidth={2}
-                    />
-                  ))
+                ? s.points.map((p, i) => <Marker key={i} shape={shape} x={xAt(i)} y={yAt(p.y)} color={p.tone ?? color} />)
                 : null}
               {at >= 0 && s.points[at] ? (
-                <circle
-                  cx={xAt(at)}
-                  cy={yAt(s.points[at]!.y)}
-                  r={5}
-                  fill={s.points[at]!.tone ?? color}
-                  stroke="var(--card)"
-                  strokeWidth={2}
-                />
+                <Marker shape={shape} x={xAt(at)} y={yAt(s.points[at]!.y)} r={5.5} color={s.points[at]!.tone ?? color} />
               ) : null}
             </g>
           );
         })}
 
         {/*
-          Отметки событий — вертикальные пунктиры с подписью у верхнего края.
-          Подпись наверху, а не у оси: внизу она столкнулась бы с подписями
-          дат, а событие важнее даты, к которой оно привязано.
+          Отметки событий — пунктир с подписью у верхнего края: внизу она
+          столкнулась бы с датами, а событие важнее даты.
         */}
         {marks?.map((m) => {
           const i = series[0]?.points.findIndex((p) => p.x === m.x) ?? -1;
           if (i < 0) return null;
           return (
-            <g key={`${m.x}-${m.label}`}>
-              <line
-                x1={xAt(i)}
-                x2={xAt(i)}
-                y1={PAD.top}
-                y2={PAD.top + ph}
-                stroke="var(--axis)"
-                strokeWidth={1}
-                strokeDasharray="2 4"
-              />
-              <text x={xAt(i) + 4} y={PAD.top + 10} fontSize="10" fill="var(--axis)">
+            <g key={`${m.x}-${m.label}`} data-mark={m.label}>
+              <line x1={xAt(i)} x2={xAt(i)} y1={PAD.top - 4} y2={PAD.top + ph} stroke="var(--muted)" strokeDasharray="3 3" />
+              <text
+                x={xAt(i) + 4}
+                y={PAD.top + 8}
+                fontSize={11}
+                fontWeight={700}
+                fill="var(--text-2)"
+                stroke="var(--panel)"
+                strokeWidth={4}
+                strokeLinejoin="round"
+                style={{ paintOrder: "stroke" }}
+              >
                 {m.label}
               </text>
             </g>
           );
         })}
 
-        <line
-          x1={PAD.left}
-          x2={W - PAD.right}
-          y1={yAt(axis.min)}
-          y2={yAt(axis.min)}
-          stroke="var(--axis)"
-        />
-        <text x={PAD.left} y={height - 6} fontSize="11" fill="var(--axis)">
-          {all[0]?.x}
-        </text>
-        <text x={W - PAD.right} y={height - 6} fontSize="11" fill="var(--axis)" textAnchor="end">
-          {series[0]?.points.at(-1)?.x}
-        </text>
+        {endRows.map((r) => (
+          <text key={`e-${r.si}`} x={r.x + 9} y={r.y + 4} fontSize={11} fontWeight={600} fill="var(--text-2)">
+            <tspan fontWeight={800} fill="var(--text)">
+              {fmt(r.v)}
+            </tspan>
+            {multi ? ` ${r.label}` : ""}
+          </text>
+        ))}
+
+        <line x1={PAD.left} x2={W - right} y1={yAt(axis.min)} y2={yAt(axis.min)} stroke="var(--ctl)" />
+        {labels.map((l, i) =>
+          shownX.has(i) ? (
+            <text key={i} x={xAt(i)} y={height - 6} fontSize={11} fontWeight={600} fill="var(--axis)" textAnchor="middle">
+              {l}
+            </text>
+          ) : null,
+        )}
       </svg>
 
       {at >= 0 && label ? (
-        <div
-          className="chart-tip"
-          style={{ left: `${((xAt(at) / W) * 100).toFixed(2)}%` }}
-          role="status"
-        >
-          <span className="chart-tip-x">{label}</span>
+        <ChartTip x={xAt(at)} y={Math.min(...series.map((s) => (s.points[at] ? yAt(s.points[at]!.y) : height)))} width={W}>
+          <TipHead>{label}</TipHead>
           {series.map((s, si) => {
             const point = s.points[at];
             if (!point) return null;
-            /* в подсказке разброс стоит рядом со значением: типичное без
-               разброса — половина ответа, а на графике их разделяет цвет */
+            /* разброс рядом со значением: типичное без разброса — половина ответа */
             const [a, b] = bandOf(point);
             return (
-              <span key={s.label} className="chart-tip-row">
-                <i style={{ background: colorOf(s, si) }} />
-                {series.length > 1 ? <span className="grow">{s.label}</span> : null}
-                <b>{fmt(point.y)}</b>
-                {b > a ? (
-                  <span className="text-muted">
-                    {fmt(a)}–{fmt(b)}
-                  </span>
-                ) : null}
-              </span>
+              <TipRow
+                key={s.label}
+                color={colorOf(s, si)}
+                label={multi ? s.label : undefined}
+                value={fmt(point.y)}
+                extra={b > a ? `${fmt(a)}–${fmt(b)}` : undefined}
+              />
             );
           })}
-        </div>
+        </ChartTip>
       ) : null}
 
-      <Legend items={series.map((s, i) => ({ label: s.label, color: colorOf(s, i) }))} />
+      <ChartLegend
+        items={series.map((s, i) => ({ key: s.label, label: s.label, color: colorOf(s, i), kind: "line", shape: shapeOf(s.color, i) }))}
+      />
       <AxisNote axis={axis} lo={lo} hi={hi} fullRange={fullRange} unit={unit} />
-    </div>
-  );
-}
-
-/* ─────────── область с накоплением ─────────── */
-
-export interface StackSeries {
-  label: string;
-  color: string;
-  /** По значению на каждую точку оси времени; длина равна длине `x` */
-  values: number[];
-}
-
-/**
- * Слои, сложенные друг на друга по оси времени.
- *
- * Отвечает на вопрос, на который не отвечает кольцо: не «сколько тяжёлых
- * всего», а «становится ли их больше». Одно и то же кольцо получается и
- * когда тяжёлые копились полгода ровно, и когда все пришли на прошлой
- * неделе.
- *
- * Ось здесь всегда от нуля, и это не оплошность на фоне остальных графиков,
- * а свойство самой формы: у сложенных слоёв читается высота слоя, а высота
- * измеряется от нуля. Срезать низ значило бы отрезать нижний слой и оставить
- * висеть остальные.
- *
- * Порядок слоёв задан снизу вверх и не сортируется по величине: слои —
- * степени выраженности, у них есть собственный порядок, и перестановка его
- * сломала бы главное свойство графика — узнаваемость с одного взгляда.
- */
-export function StackedArea({
-  x,
-  series,
-  height = 240,
-  total,
-}: {
-  x: string[];
-  series: StackSeries[];
-  height?: number;
-  /** Подпись итога в подсказке: «всего», «обследований» */
-  total?: string;
-}) {
-  const [hover, setHover] = useState<number | null>(null);
-  const svgRef = useRef<SVGSVGElement>(null);
-  const [W, boxRef] = useChartWidth();
-
-  const n = x.length;
-  const totals = x.map((_, i) => series.reduce((sum, s) => sum + (s.values[i] ?? 0), 0));
-  const axis = axisFor({ lo: 0, hi: Math.max(...totals, 0) });
-
-  const pw = W - PAD.left - PAD.right;
-  const ph = height - PAD.top - PAD.bottom;
-  const xAt = (i: number) => PAD.left + (n > 1 ? (i / (n - 1)) * pw : pw / 2);
-  /* делитель — настоящий размах оси: единица снизу сжимала доли (0…0,4) в нижние сорок процентов поля */
-  const yAt = (v: number) => PAD.top + ph - ((v - axis.min) / Math.max(axis.max - axis.min, Number.EPSILON)) * ph;
-
-  const onMove = (e: React.MouseEvent<SVGSVGElement>) => {
-    const box = svgRef.current?.getBoundingClientRect();
-    if (!box) return;
-    const share = (((e.clientX - box.left) / box.width) * W - PAD.left) / pw;
-    if (share < -0.02 || share > 1.02) {
-      setHover(null);
-      return;
-    }
-    setHover(Math.min(n - 1, Math.max(0, Math.round(share * (n - 1)))));
-  };
-
-  if (!n || !series.length) return <NoData />;
-
-  /*
-   * Слои считаются один раз снизу вверх: верх предыдущего — низ следующего.
-   * Считать каждый слой отдельной суммой значило бы получить между ними щель
-   * в полпикселя от округления — и график распался бы на полоски.
-   */
-  const floors: number[][] = [];
-  const running = x.map(() => 0);
-  for (const s of series) {
-    floors.push([...running]);
-    for (let i = 0; i < n; i++) running[i] = running[i]! + (s.values[i] ?? 0);
-  }
-
-  const at = hover ?? -1;
-
-  return (
-    <div className="chart-wrap" ref={boxRef}>
-      <svg
-        ref={svgRef}
-        viewBox={`0 0 ${W} ${height}`}
-        width="100%"
-        height={height}
-        onMouseMove={onMove}
-        onMouseLeave={() => setHover(null)}
-        role="img"
-        aria-label={`${series.map((s) => s.label).join(", ")}: ${x[0] ?? ""} — ${x.at(-1) ?? ""}`}
-      >
-        {axis.ticks.map((t) => (
-          <g key={t}>
-            <line x1={PAD.left} x2={W - PAD.right} y1={yAt(t)} y2={yAt(t)} stroke="var(--grid)" />
-            <text x={PAD.left - 8} y={yAt(t) + 4} fontSize="11" fill="var(--axis)" textAnchor="end">
-              {fmt(t)}
-            </text>
-          </g>
-        ))}
-
-        {series.map((s, si) => {
-          const base = floors[si]!;
-          const upper = base.map((b, i) => b + (s.values[i] ?? 0));
-          const d = [
-            ...upper.map((v, i) => `${i ? "L" : "M"}${xAt(i)},${yAt(v)}`),
-            ...base.map((v, i) => ({ v, i })).reverse().map(({ v, i }) => `L${xAt(i)},${yAt(v)}`),
-            "Z",
-          ].join(" ");
-          return (
-            <path
-              key={s.label}
-              d={d}
-              fill={s.color}
-              /* заливка приглушена, кромка нет: без кромки соседние слои
-                 сливаются там, где один из них тонкий */
-              fillOpacity={0.55}
-              stroke={s.color}
-              strokeWidth={1}
-            />
-          );
-        })}
-
-        {at >= 0 ? (
-          <line
-            x1={xAt(at)}
-            x2={xAt(at)}
-            y1={PAD.top}
-            y2={PAD.top + ph}
-            stroke="var(--accent)"
-            strokeWidth={1}
-            strokeDasharray="3 3"
-          />
-        ) : null}
-
-        <line x1={PAD.left} x2={W - PAD.right} y1={yAt(0)} y2={yAt(0)} stroke="var(--axis)" />
-        <text x={PAD.left} y={height - 6} fontSize="11" fill="var(--axis)">
-          {x[0]}
-        </text>
-        <text x={W - PAD.right} y={height - 6} fontSize="11" fill="var(--axis)" textAnchor="end">
-          {x.at(-1)}
-        </text>
-      </svg>
-
-      {at >= 0 ? (
-        <div className="chart-tip" style={{ left: `${((xAt(at) / W) * 100).toFixed(2)}%` }} role="status">
-          <span className="chart-tip-x">{x[at]}</span>
-          {/* сверху вниз, как на графике: снизу лежит первый слой, и в
-              подсказке он должен оказаться последним, иначе список читается
-              задом наперёд относительно картинки */}
-          {[...series].reverse().map((s) => (
-            <span key={s.label} className="chart-tip-row">
-              <i style={{ background: s.color }} />
-              <span className="grow">{s.label}</span>
-              <b>{s.values[at] ?? 0}</b>
-            </span>
-          ))}
-          {total ? (
-            <span className="chart-tip-row">
-              <span className="grow">{total}</span>
-              <b>{totals[at]}</b>
-            </span>
-          ) : null}
-        </div>
-      ) : null}
-
-      <Legend items={series.map((s) => ({ label: s.label, color: s.color }))} />
-    </div>
-  );
-}
-
-/* ─────────── горизонтальные столбики ─────────── */
-
-export function BarList({
-  items,
-  unit = "",
-  max,
-}: {
-  items: { label: string; value: number; color?: string; caption?: string }[];
-  unit?: string;
-  max?: number;
-}) {
-  if (!items.length) return <NoData />;
-  const top = max ?? Math.max(...items.map((i) => i.value), 1);
-  return (
-    <div style={{ display: "grid", gap: 10 }}>
-      {items.map((i, k) => (
-        <div key={k}>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginBottom: 3 }}>
-            <span style={{ fontSize: 13 }}>{i.label}</span>
-            <span className="muted" style={{ fontSize: 12, fontVariantNumeric: "tabular-nums" }}>
-              {i.value}
-              {unit}
-              {i.caption ? ` · ${i.caption}` : ""}
-            </span>
-          </div>
-          <div style={{ height: 10, background: "var(--grid)", borderRadius: 6 }}>
-            <div
-              style={{
-                height: 10,
-                width: `${Math.max(1.5, (i.value / top) * 100)}%`,
-                background: i.color ?? "var(--primary)",
-                borderRadius: 6,
-              }}
-            />
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-/* ─────────── кольцо ─────────── */
-
-export function Donut({
-  slices,
-  center,
-  centerLabel,
-  size = 190,
-}: {
-  slices: { label: string; value: number; color: string }[];
-  center?: string;
-  centerLabel?: string;
-  size?: number;
-}) {
-  const total = slices.reduce((s, x) => s + x.value, 0);
-  if (!total) return <NoData />;
-  const r = size / 2 - 10;
-  const inner = r * 0.62;
-  const c = size / 2;
-  const GAP = 0.02;
-  let a = -Math.PI / 2;
-
-  return (
-    <div style={{ display: "flex", gap: 22, alignItems: "center", flexWrap: "wrap" }}>
-      <svg width={size} height={size}>
-        {slices.map((s) => {
-          const sweep = (s.value / total) * Math.PI * 2;
-          const a0 = a + GAP / 2;
-          const a1 = a + sweep - GAP / 2;
-          a += sweep;
-          const large = sweep > Math.PI ? 1 : 0;
-          const p = (rad: number, ang: number) => [c + Math.cos(ang) * rad, c + Math.sin(ang) * rad];
-          const [x0, y0] = p(r, a0);
-          const [x1, y1] = p(r, a1);
-          const [x2, y2] = p(inner, a1);
-          const [x3, y3] = p(inner, a0);
-          return (
-            <path
-              key={s.label}
-              d={`M${x0},${y0} A${r},${r} 0 ${large} 1 ${x1},${y1} L${x2},${y2} A${inner},${inner} 0 ${large} 0 ${x3},${y3} Z`}
-              fill={s.color}
-            />
-          );
-        })}
-        {center ? (
-          <>
-            <text x={c} y={c + 3} fontSize="23" fontWeight="700" fill="var(--text)" textAnchor="middle">
-              {center}
-            </text>
-            {centerLabel ? (
-              <text x={c} y={c + 20} fontSize="11" fill="var(--muted)" textAnchor="middle">
-                {centerLabel}
-              </text>
-            ) : null}
-          </>
-        ) : null}
-      </svg>
-      <div style={{ flex: 1, minWidth: 200, display: "grid", gap: 6 }}>
-        {slices.map((s) => (
-          <div key={s.label} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <i className="dot" style={{ background: s.color }} />
-            <span style={{ flex: 1, fontSize: 13 }}>{s.label}</span>
-            <span className="muted" style={{ fontSize: 12, fontVariantNumeric: "tabular-nums" }}>
-              {s.value} · {Math.round((s.value / total) * 100)}%
-            </span>
-          </div>
-        ))}
-      </div>
     </div>
   );
 }

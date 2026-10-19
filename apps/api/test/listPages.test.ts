@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { inArray } from "drizzle-orm";
 import type { Page } from "@quizzy/shared";
-import { adminA, adminB, api, db, groupA, hashPassword, makeUser, root, surveyInA, users } from "./fixtures";
+import { adminA, adminB, api, db, groupA, hashPassword, makeUser, root, surveyInA, surveyInB, users } from "./fixtures";
 import { batteries, invites, referrals, surveyAccess } from "../src/db/schema";
 
 /**
@@ -101,6 +101,34 @@ describe("направления", () => {
     expect(second.body.items.filter((r) => firstIds.has(r.id))).toEqual([]);
   });
 
+  /*
+   * Пилюли видов реестра стоят по числам сервера, а не по загруженным
+   * строкам. Мутация: считать counts по `filter` (без завершённых) —
+   * падает сумма; отдавать counts и на второй странице — падает последняя.
+   */
+  test("на первой странице — число направлений зоны по статусам", async () => {
+    const first = await api<Page<{ id: string }> & { counts?: Record<string, number> }>(
+      `/api/referrals?limit=${LIMIT}`,
+      adminA.token,
+    );
+    const counts = first.body.counts!;
+    expect(counts, "первая страница без counts").toBeTruthy();
+    expect(Object.keys(counts).sort()).toEqual(["accepted", "completed", "created", "declined"]);
+    expect(counts.created).toBeGreaterThanOrEqual(MANY);
+    // без ?all реестр прячет завершённые, а counts — нет: незавершённых ровно total
+    expect(counts.created! + counts.accepted! + counts.declined!).toBe(first.body.total!);
+    const all = await api<Page<{ id: string }> & { counts?: Record<string, number> }>(
+      `/api/referrals?all=1&limit=${LIMIT}`,
+      adminA.token,
+    );
+    expect(Object.values(all.body.counts!).reduce((a, b) => a + b, 0)).toBe(all.body.total!);
+    const second = await api<Page<{ id: string }> & { counts?: Record<string, number> }>(
+      `/api/referrals?limit=${LIMIT}&cursor=${encodeURIComponent(first.body.nextCursor!)}`,
+      adminA.token,
+    );
+    expect(second.body.counts).toBeUndefined();
+  });
+
   test("без параметров — страница по умолчанию, а не весь реестр; потолок страницы держится", async () => {
     const res = await api<Page<{ id: string }>>("/api/referrals", adminA.token);
     expect(res.status).toBe(200);
@@ -114,6 +142,29 @@ describe("направления", () => {
     const res = await api<Page<{ id: string }>>(`/api/referrals?limit=${LIMIT}&cursor=${junk}`, adminA.token);
     expect(res.status).toBe(200);
     expect(res.body.total).toBeGreaterThanOrEqual(MANY);
+  });
+
+  /*
+   * Числа по статусам — только зоны читателя: направление человека чужой
+   * зоны не прибавляется ни к одной пилюле. Под владельцем базы это держит
+   * условие зоны в маршруте, под ролью приложения — ещё и политика строк.
+   * Направление заводится сразу отклонённым: в очередь работы оно не попадает.
+   *
+   * Мутация: считать counts без условия зоны — падает «чужое посчитано».
+   */
+  test("числа по статусам — только своей зоны: направление чужой зоны не посчитано", async () => {
+    type Counted = Page<{ id: string }> & { counts?: Record<string, number> };
+    const stranger = await makeUser("user", `ref-zone-${crypto.randomUUID()}@test`);
+    await db.insert(surveyAccess).values({ surveyId: surveyInB, userId: stranger.id, grantedBy: adminB.id });
+    const countsOf = async (token: string) => (await api<Counted>("/api/referrals?all=1&limit=1", token)).body.counts!;
+    const before = { mine: await countsOf(adminA.token), theirs: await countsOf(adminB.token) };
+
+    const id = crypto.randomUUID();
+    await db.insert(referrals).values({ id, userId: stranger.id, destination: "psychiatrist", status: "declined", createdBy: adminB.id });
+
+    expect(await countsOf(adminA.token), `направление ${id} чужой зоны посчитано у adminA`).toEqual(before.mine);
+    // положительный контроль: в своей зоне оно посчитано
+    expect((await countsOf(adminB.token)).declined).toBe(before.theirs.declined! + 1);
   });
 });
 

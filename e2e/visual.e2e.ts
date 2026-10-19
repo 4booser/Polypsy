@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { expect, test } from "@playwright/test";
-import { goCaseCard, login, patientLinks } from "./helpers";
+import { expect, test, type Page } from "@playwright/test";
+import { apiToken, auth, goCaseCard, login, patientLinks, visibleSkeletons } from "./helpers";
 
 /**
  * Скриншотные эталоны витрины.
@@ -54,11 +54,29 @@ const TOKENS = [
   "--focus",
 ];
 
+/**
+ * Тема — и в браузере, и в профиле psy на сервере.
+ *
+ * Вошедшему консоль ставит тему из профиля (настройки рабочего места) поверх
+ * браузерной: сотрудник садится за разные машины. Профиль переживает
+ * сценарии — shell.e2e.ts переключает psy тёмную, — и одной записи в
+ * localStorage хватало, только пока этот файл шёл отдельно: в общем прогоне
+ * CI витрина «светлой» темы снималась тёмной.
+ */
+async function pinTheme(page: Page, theme: "dark" | "light") {
+  await page.addInitScript((value) => {
+    localStorage.setItem("quizzy.theme.v2", value);
+  }, theme);
+  const res = await page.request.put("/api/auth/me/workspace", {
+    headers: auth(await apiToken(page, "psy")),
+    data: { theme },
+  });
+  expect(res.ok(), `тема psy в профиле не встала: ${res.status()}`).toBe(true);
+}
+
 for (const theme of ["dark", "light"] as const) {
   test(`витрина не разъехалась: тема ${theme}`, async ({ page }) => {
-    await page.addInitScript((value) => {
-      localStorage.setItem("quizzy.theme.v2", value);
-    }, theme);
+    await pinTheme(page, theme);
 
     await login(page, "psy");
     await page.goto("/ui");
@@ -75,9 +93,7 @@ for (const theme of ["dark", "light"] as const) {
 
 for (const theme of ["dark", "light"] as const) {
   test(`токены темы не менялись незаметно: ${theme}`, async ({ page }) => {
-    await page.addInitScript((value) => {
-      localStorage.setItem("quizzy.theme.v2", value);
-    }, theme);
+    await pinTheme(page, theme);
 
     await login(page, "psy");
     await page.goto("/ui");
@@ -103,9 +119,7 @@ for (const theme of ["dark", "light"] as const) {
      * Проверяется не картинка, а сами токены: пустой лист на снимке от
      * правильно белого листа не отличить.
      */
-    await page.addInitScript((value) => {
-      localStorage.setItem("quizzy.theme.v2", value);
-    }, theme);
+    await pinTheme(page, theme);
 
     await login(page, "psy");
     await page.emulateMedia({ media: "print" });
@@ -216,6 +230,9 @@ function keyOf(url: string): string {
     .replace(/\d{4}-\d{2}-\d{2}/g, "<date>");
 }
 
+/** Минута записи в наборе ответов — под ключом, который не бывает путём API */
+const CLOCK_KEY = "@clock";
+
 async function withRecordedApi(
   page: import("@playwright/test").Page,
   screen: string,
@@ -225,6 +242,21 @@ async function withRecordedApi(
   const saved: Record<string, { status: number; body: string }> = recording
     ? {}
     : JSON.parse(await readFile(file, "utf8"));
+
+  /*
+   * Часы страницы стоят на минуте записи — и при записи, и при воспроизведении.
+   *
+   * Экраны 2.0 считают время сами: линия «сейчас» на приёме, «1 проведено,
+   * 3 впереди», «сигнал 9 дн.», «сегодня» на графике. Ответы записаны раз и
+   * навсегда, а часы браузера идут — и эталон, снятый утром, краснел бы к
+   * обеду. Останавливается только Date: таймеры идут как шли.
+   */
+  if (recording) {
+    const minute = new Date(Math.floor(Date.now() / 60_000) * 60_000);
+    saved[CLOCK_KEY] = { status: 0, body: minute.toISOString() };
+  }
+  const at = saved[CLOCK_KEY]?.body;
+  if (at) await page.clock.setFixedTime(new Date(at));
 
   await page.route("**/api/**", async (route) => {
     const request = route.request();
@@ -478,7 +510,7 @@ const SCREENS: Array<{
     name: "today",
     open: async (page) => {
       await page.goto("/today");
-      await page.getByRole("link", { name: "Сегодня" }).waitFor();
+      await page.getByRole("main").getByRole("link", { name: "Сегодня" }).waitFor();
     },
     /*
      * Заголовком этого экрана стоит сегодняшняя дата — и это сознательно:
@@ -511,7 +543,7 @@ const SCREENS: Array<{
        * снимок успевал дорисоваться, — а при воспроизведении экран получал
        * на свой запрос выдуманный 404.
        */
-      await page.getByRole("heading", { name: "Приём", exact: true }).waitFor();
+      await page.getByRole("heading", { name: "Протокол приёма" }).waitFor();
     },
   },
   {
@@ -555,9 +587,9 @@ const SCREENS: Array<{
        * есть и на списке, — ожидание проходило мгновенно, и снимок ловил
        * карту в состоянии загрузки.
        */
-      await page.getByRole("link", { name: "Хронология" }).waitFor();
+      await page.getByRole("main").getByRole("link", { name: "Хронология" }).waitFor();
       // карта дозагружает динамику и эпизоды отдельными запросами
-      await expect.poll(async () => page.locator(".skeleton").count(), { timeout: 10_000 }).toBe(0);
+      await expect.poll(async () => visibleSkeletons(page).count(), { timeout: 10_000 }).toBe(0);
     },
   },
   /*
@@ -578,7 +610,7 @@ const SCREENS: Array<{
        * постраничности, которым нужны свои ответы.
        */
       await page.locator("table tbody tr").first().waitFor();
-      await expect.poll(async () => page.locator(".skeleton").count(), { timeout: 10_000 }).toBe(0);
+      await expect.poll(async () => visibleSkeletons(page).count(), { timeout: 10_000 }).toBe(0);
     },
     // страница каталога конечна (десять строк) — в кадре она вся, с последней строкой
     fit: true,
@@ -588,13 +620,13 @@ const SCREENS: Array<{
     open: async (page) => {
       await page.goto("/constructor");
       /*
-       * Заголовка «Новый тест» на экране нет: по кадру f24_1 над вкладками
-       * пусто, и заголовок оставлен скрытым для диктора. Признак готовности —
-       * сами вкладки; снимается вид по умолчанию — «Конкретный».
+       * Старт новой методики (макет methods-new): способы начать карточками-
+       * радио и «Куди створити». Признак готовности — выбранный по умолчанию
+       * «Конкретный тест» и пришедший список групп.
        */
-      await expect(page.getByRole("tab", { name: "Конкретный тест" })).toHaveAttribute("aria-selected", "true");
+      await expect(page.getByRole("radio", { name: /Конкретный тест/ })).toBeChecked();
+      await expect(page.getByRole("combobox").first()).toBeEnabled();
     },
-    // до «Ответов», шкал и кнопки «Создать» внизу — они и есть форма
     fit: true,
   },
   {
@@ -609,8 +641,9 @@ const SCREENS: Array<{
       expect(survey, "на стенде нет опубликованной методики с пунктами").toBeDefined();
       await page.goto(`/constructor/${survey!.id}`);
       /*
-       * Ждём строку аккордеона, а не заголовок: заголовком стоит название
-       * методики, и оно есть в разметке ещё до того, как приехали пункты.
+       * Ждём свёрнутую строку пункта, а не заголовок: заголовком стоит
+       * название методики, и оно есть в разметке ещё до того, как приехали
+       * пункты.
        */
       await page.getByRole("button", { name: /Развернуть вопрос$/ }).first().waitFor();
     },
@@ -621,9 +654,14 @@ const SCREENS: Array<{
     open: async (page) => {
       const { surveyId, responseId } = await recordedScoredResponse(page);
       await page.goto(`/surveys/${surveyId}/responses/${responseId}`);
-      // «Результаты» и кнопка стоят в самом низу свитка — если они есть, есть и всё выше
-      await page.getByRole("heading", { name: "Результаты" }).waitFor();
+      /*
+       * Панель «Результат» с лестницей и кнопка в панели заключения — то,
+       * ради чего экран снимается. Заключение и контекст попытки едут своими
+       * запросами: ждём и их, пока не останется скелетов.
+       */
+      await page.getByRole("main").getByRole("heading", { level: 2, name: /^Результат$/ }).waitFor();
       await page.getByRole("link", { name: "Создать заключение" }).waitFor();
+      await expect.poll(async () => visibleSkeletons(page).count(), { timeout: 10_000 }).toBe(0);
     },
     // ради лестницы результатов и кнопки внизу экран и нарисован
     fit: true,
@@ -633,14 +671,15 @@ const SCREENS: Array<{
     open: async (page) => {
       const { responseId } = await recordedScoredResponse(page);
       await page.goto(`/responses/${responseId}/conclusion`);
-      await page.getByRole("heading", { name: "Выводы заключения" }).waitFor();
+      await page.getByRole("heading", { level: 2, name: /^(Заключение|Заключення)$/ }).waitFor();
+      await page.getByRole("heading", { level: 2, name: /^(Результаты для заключения|Результати для заключення)$/ }).waitFor();
       /*
        * Модели и само заключение приезжают своими запросами и до того
        * стоят строкой «Загрузка…». Ждём, пока её не останется: снимок с ней
        * — снимок ожидания, а не экрана.
        */
       await expect(page.locator("main.main").getByText("Загрузка…")).toHaveCount(0);
-      await expect.poll(async () => page.locator(".skeleton").count(), { timeout: 10_000 }).toBe(0);
+      await expect.poll(async () => visibleSkeletons(page).count(), { timeout: 10_000 }).toBe(0);
     },
     // редактор с полосой инструментов стоит последним в свитке
     fit: true,
@@ -666,7 +705,7 @@ const SCREENS: Array<{
        * (PersonGrid), а не класс, который сменят на первой же правке.
        */
       await patientLinks(page).first().waitFor();
-      await expect.poll(async () => page.locator(".skeleton").count(), { timeout: 10_000 }).toBe(0);
+      await expect.poll(async () => visibleSkeletons(page).count(), { timeout: 10_000 }).toBe(0);
     },
     // сетка 3×N со строкой над списком и панелью контекста — снимается вся
     fit: true,
@@ -678,7 +717,7 @@ const SCREENS: Array<{
       await page.goto("/staff");
       // строка реестра — ссылка на карточку; появилась — справочник приехал
       await page.locator('a[href^="/staff/"]').first().waitFor();
-      await expect.poll(async () => page.locator(".skeleton").count(), { timeout: 10_000 }).toBe(0);
+      await expect.poll(async () => visibleSkeletons(page).count(), { timeout: 10_000 }).toBe(0);
     },
   },
   {
@@ -698,7 +737,7 @@ const SCREENS: Array<{
        */
       await page.getByText(doctor.fullName.split(" ")[0]!, { exact: true }).first().waitFor();
       // права сотрудника и его пациенты догружаются отдельными запросами
-      await expect.poll(async () => page.locator(".skeleton").count(), { timeout: 10_000 }).toBe(0);
+      await expect.poll(async () => visibleSkeletons(page).count(), { timeout: 10_000 }).toBe(0);
     },
     // профиль с полями, сменой пароля и разделами ниже — свиток
     fit: true,
@@ -710,7 +749,7 @@ const SCREENS: Array<{
       await page.goto("/admins");
       await page.locator('a[href^="/staff/"]').first().waitFor();
       // ступени лестницы догружаются поштучно (withLadder) — без них строки неполные
-      await expect.poll(async () => page.locator(".skeleton").count(), { timeout: 10_000 }).toBe(0);
+      await expect.poll(async () => visibleSkeletons(page).count(), { timeout: 10_000 }).toBe(0);
     },
   },
   {
@@ -719,12 +758,13 @@ const SCREENS: Array<{
       await page.goto("/analytics/new");
       /*
        * Форма рисуется, когда приехал список методик (селект параметра);
-       * до того экран — «Загрузка». Кнопка сохранения стоит последней в
+       * до того экран — «Загрузка». Панель «Действия» стоит последней в
        * форме: есть она — есть и всё выше.
        */
       await page.getByText("Название аналитической модели").waitFor();
-      await page.getByRole("button", { name: "Сохранить" }).waitFor();
-      await expect.poll(async () => page.locator(".skeleton").count(), { timeout: 10_000 }).toBe(0);
+      await page.getByRole("heading", { level: 2, name: /^(Действия|Дії)$/ }).waitFor();
+      await page.getByRole("button", { name: /^(Создать модель|Створити модель)$/ }).waitFor();
+      await expect.poll(async () => visibleSkeletons(page).count(), { timeout: 10_000 }).toBe(0);
     },
     // название, структура, карточка действий — до кнопки внизу
     fit: true,
@@ -742,14 +782,17 @@ const SCREENS: Array<{
     root: "body",
     open: async (page) => {
       await page.goto("/");
-      await page.getByRole("heading", { level: 1, name: /^(О кампании|Про кампанію)$/ }).waitFor();
+      await page
+        .getByRole("heading", { level: 1, name: /^(Жоден сигнал ризику не загубиться|Ни один сигнал риска не потеряется)$/ })
+        .waitFor();
       /*
        * Ждём кнопку входа, а не один заголовок: она стоит последней в
        * содержимом листа, и пока её нет, снимок поймал бы лист без неё.
+       * Кнопка — первого экрана (#about): «Увійти» есть и в шапке листа.
        * Фоновая картинка — отдельная забота: её ждём загрузкой, иначе в
        * кадр попадает сиреневая заливка без волн и силуэта.
        */
-      await page.getByRole("link", { name: /^(Войти|Увійти)$/ }).waitFor();
+      await page.locator("#about").getByRole("link", { name: /^(Войти|Увійти)$/ }).waitFor();
       await page.evaluate(
         () =>
           new Promise<void>((done) => {
@@ -786,15 +829,15 @@ const SCREENS: Array<{
       const first = await recordedPatientId(page);
       await page.goto(`/patients/${first}`);
       /*
-       * Ждём заголовок раздела «Тесты» — второй уровень, а не первый:
-       * первым стоит слово «Пациент», и оно есть в разметке ещё до того,
-       * как приехала карточка. Разделы рисуются по одному ответу
-       * (/api/patients/:id/card), так что появился первый — есть и все.
+       * Ждём панель «Методики» — второй уровень, а не первый: первым стоит
+       * имя пациента, и место под него есть ещё до того, как приехала
+       * карточка. Панели рисуются по одному ответу (/api/patients/:id/card),
+       * а динамика в «Методиках» догружается — её ждут скелеты ниже.
        */
-      await page.getByRole("heading", { level: 2, name: /^(Тесты|Тести)$/ }).waitFor();
-      await expect.poll(async () => page.locator(".skeleton").count(), { timeout: 10_000 }).toBe(0);
+      await page.getByRole("main").getByRole("heading", { level: 2, name: /^Методики$/ }).waitFor();
+      await expect.poll(async () => visibleSkeletons(page).count(), { timeout: 10_000 }).toBe(0);
     },
-    // личные данные, «Тесты», «Группы» и «Заключения» — кадры f19_1 и f19_2 подряд
+    // панели карточки — «Методики», курс, визит, заключения, назначенное — свитком целиком
     fit: true,
   },
   {
@@ -806,7 +849,7 @@ const SCREENS: Array<{
        * стоят и над пустым списком, и над списком в загрузке.
        */
       await page.locator('main.main a[href^="/mailings/"]').first().waitFor();
-      await expect.poll(async () => page.locator(".skeleton").count(), { timeout: 10_000 }).toBe(0);
+      await expect.poll(async () => visibleSkeletons(page).count(), { timeout: 10_000 }).toBe(0);
     },
     // страница перечня конечна (десять строк) — в кадре она вся
     fit: true,
@@ -823,7 +866,7 @@ const SCREENS: Array<{
        * тем же экраном.
        */
       await page.getByRole("button", { name: /^(Создать|Створити)$/ }).waitFor();
-      await expect.poll(async () => page.locator(".skeleton").count(), { timeout: 10_000 }).toBe(0);
+      await expect.poll(async () => visibleSkeletons(page).count(), { timeout: 10_000 }).toBe(0);
     },
     fit: true,
   },
@@ -833,12 +876,12 @@ const SCREENS: Array<{
       const id = await recordedSentMailing(page);
       await page.goto(`/mailings/${id}`);
       /*
-       * Ждём рамку «Ответ» с вариантами — то, чем отправленная рассылка
-       * отличается от формы: пока карточка едет, на экране строка загрузки,
-       * и заголовка у экрана нет вовсе (titleHidden).
+       * Ждём панель «Ответы» с полосами вариантов — то, чем отправленная
+       * рассылка отличается от формы: пока карточка едет, на экране строка
+       * загрузки, и заголовка у экрана нет вовсе (titleHidden).
        */
-      await page.getByRole("group", { name: /^(Ответ|Відповідь)$/ }).waitFor();
-      await expect.poll(async () => page.locator(".skeleton").count(), { timeout: 10_000 }).toBe(0);
+      await page.getByRole("main").getByRole("heading", { level: 2, name: /^(Ответы|Відповіді)$/ }).waitFor();
+      await expect.poll(async () => visibleSkeletons(page).count(), { timeout: 10_000 }).toBe(0);
     },
     fit: true,
   },

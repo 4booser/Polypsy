@@ -1,21 +1,31 @@
-import { Suspense, lazy, useEffect, useRef, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useRef, useState } from "react";
 import { Navigate, Route, Routes, useLocation, useParams } from "react-router-dom";
-import { api, tokenStore } from "./api";
+import { api } from "./api";
 import { useAuth } from "./auth";
 import { useLang } from "./lang";
 import Login from "./pages/Login";
-import { Topbar, barKind, type BurgerAccount } from "./shell/Topbar";
+import { AppBar } from "./shell/AppBar";
+import { HelpDrawer } from "./shell/HelpDrawer";
+import { MoreMenu } from "./shell/MoreMenu";
+import { navAccess, railEntries, type NavCounts } from "./shell/nav";
+import { Rail } from "./shell/Rail";
+import { SectionColumn, ShellNavProvider } from "./shell/useShellNav";
+import { isThemeChoice, restoreStoredTheme, setThemeChoice, useResolvedTheme, type ThemeChoice } from "./shell/theme";
+import type { AccountCard } from "./shell/UserMenu";
 import { useLiveReload } from "./events";
 import { useResource } from "./useResource";
-import type { WorkspacePrefs } from "@quizzy/shared";
+import type { Permission, WorkspacePrefs } from "@quizzy/shared";
 import { peopleLists } from "./pages/people/model";
-import { Loading, useAction } from "./ui";
+import { Loading } from "./ui/states";
+import { useAction } from "./ui/action";
 import { canOpenOps, opsHome } from "./pages/ops/model";
 import { TrackedRoutes } from "./telemetry/screens";
 import { MaintenanceBanner } from "./service/MaintenanceBanner";
 import { ConnectionLine } from "./ui/ConnectionLine";
 import { useTelemetryRoute } from "./telemetry/client";
 import { ErrorBoundary } from "./telemetry/ErrorBoundary";
+import { CrashHelp } from "./shell/CrashHelp";
+import "./shell/shell.css";
 import { ImpersonationBanner } from "./pages/ops/people2/ImpersonationBanner";
 
 /*
@@ -231,7 +241,6 @@ const StatEditor = lazy(() => import("./pages/statistics/Editor"));
 const StatChart = lazy(() => import("./pages/statistics/Chart"));
 const StatFilters = lazy(() => import("./pages/statistics/Filters"));
 
-type Theme = "dark" | "light";
 type Density = "cozy" | "compact";
 
 /**
@@ -271,29 +280,12 @@ export default function App() {
   const googleReady = useResource(() => api.googleStatus().catch(() => ({ enabled: false })), []).data?.enabled ?? false;
   const { ut } = useLang();
   /*
-   * Тема хранится явно: тёмная по умолчанию, но в кабинете при дневном свете
-   * она неудобна, а системная настройка на рабочей станции часто не отражает
-   * условия конкретного помещения.
+   * Тема — выбор человека из трёх (светлая, тёмная, «як у системі») и живёт
+   * в общем хранилище вкладки (shell/theme.ts): переключатель на полосе,
+   * «Обліковий запис», профиль пациента и палитра команд читают одно и то
+   * же. Умолчание — светлая: макет нарисован на белом листе.
    */
-  const [theme, setTheme] = useState<Theme>(
-    /*
-     * Умолчание — светлая: макет заказчика нарисован на белом листе, и консоль
-     * обязана открываться так, как нарисована. Тёмная остаётся выбором человека.
-     * То же умолчание стоит в tokens.css (голый :root), в Account.tsx и в
-     * patient/Profile.tsx — иначе первый кадр шёл бы светлым, второй тёмным.
-     */
-    /*
-     * Ключ с суффиксом .v2 — не косметика. Прежний код писал тему в
-     * хранилище при каждом монтировании, то есть в каждом браузере, где
-     * консоль открывали хоть раз, лежит «dark», которого человек не
-     * выбирал. Миграция 0079 чистит такое в профиле на сервере, но до
-     * браузера серверу не дотянуться. Новый ключ означает: старое
-     * авто-значение больше не читается, а новое пишет только переключатель.
-     * Старый ключ остаётся в браузерах мёртвым грузом — это дешевле кода,
-     * который ходил бы его вычищать.
-     */
-    () => (localStorage.getItem("quizzy.theme.v2") as Theme) ?? "light",
-  );
+  const resolvedTheme = useResolvedTheme();
   /*
    * Плотность — не косметика: в плотном режиме на экран помещается 24 строки
    * вместо 14, а разбор случаев — это чтение списка. Держится в профиле
@@ -306,17 +298,12 @@ export default function App() {
   const [density, setDensity] = useState<Density>(
     () => (localStorage.getItem("quizzy.density") as Density) ?? "cozy",
   );
-  /*
-   * Состояния рельсы здесь больше нет.
-   *
-   * Она хранила «открыта ли колонка» и помнила это между заходами — нужное
-   * свойство ровно до тех пор, пока навигация отнимала ширину. Верхняя полоса
-   * не отнимает ничего и не сворачивается, а бургер живёт одним нажатием и
-   * закрывается сам: помнить между заходами нечего. Ключ «quizzy.rail» в
-   * хранилище браузеров остаётся мусором — читать его больше некому, и
-   * подчищать его отдельным кодом дороже, чем оставить.
-   */
   const [paletteOpen, setPaletteOpen] = useState(false);
+  /* «Ще розділи» на узком окне и «Довідка» внизу рельсы — слои оболочки */
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
+  const closeMenu = useCallback(() => setMenuOpen(false), []);
+  const closeHelp = useCallback(() => setHelpOpen(false), []);
 
   /*
    * Настройки рабочего места приходят с профилем и перекрывают локальные.
@@ -326,85 +313,80 @@ export default function App() {
    * за то, чтобы консоль не мигнула чужим оформлением, пока летит запрос за
    * профилем.
    */
-  const applied = useRef(false);
+  /*
+   * Применяются — для каждого вошедшего, а не раз за жизнь вкладки. На общем
+   * ноутбуке ординаторской один выходит, другой входит без перезагрузки
+   * страницы, и флаг «уже применено» оставлял второму тему, плотность и
+   * движение первого. Ушёл человек — тема возвращается к выбору браузера.
+   */
+  const appliedFor = useRef<string | null>(null);
   useEffect(() => {
-    if (!user?.workspace || applied.current) return;
-    applied.current = true;
-    if (user.workspace.theme) setTheme(user.workspace.theme);
-    if (user.workspace.density) setDensity(user.workspace.density);
-    if (user.workspace.motion) setMotion(user.workspace.motion);
+    if (!user) {
+      if (appliedFor.current !== null) {
+        appliedFor.current = null;
+        restoreStoredTheme();
+      }
+      return;
+    }
+    if (appliedFor.current === user.id) return;
+    appliedFor.current = user.id;
+    /*
+     * Профиля настроек ещё нет (никто ничего не сохранял) — применять нечего,
+     * но сохранять уже можно. Прежде пустой профиль запрещал и сохранение:
+     * тема, выбранная на полосе, не доходила до сервера, пока человек не
+     * сохранит что-нибудь в «Обліковому записі».
+     */
+    const ws = user.workspace;
+    if (!ws) return;
+    /* выбор с сервера — в хранилище вкладки, но не в браузер: на общем компьютере он принадлежит вошедшему */
+    if (isThemeChoice(ws.theme)) setThemeChoice(ws.theme, { remember: false });
+    if (ws.density) setDensity(ws.density);
+    if (ws.motion) setMotion(ws.motion);
   }, [user]);
 
   /*
-   * Сохранение — только после того, как серверные настройки применены.
-   * Иначе первый же рендер отправлял бы на сервер локальное значение и
-   * затирал им то, что человек настроил на другой машине.
+   * Сохранение — только после того, как серверные настройки этого человека
+   * применены. Иначе первый же рендер отправлял бы на сервер локальное
+   * значение и затирал им то, что человек настроил на другой машине.
    */
   const persist = (prefs: Parameters<typeof api.saveWorkspace>[0]) => {
-    if (!user || !applied.current) return;
+    if (!user || appliedFor.current !== user.id) return;
     void api.saveWorkspace(prefs).catch(() => {
       /* настройка рабочего места — удобство: её отказ ничего не ломает */
     });
   };
 
   /*
-   * Применение и сохранение темы — разные действия, и здесь это разведено.
+   * Применение и сохранение темы — разные действия.
    *
-   * Эффект раньше и ставил атрибут, и писал в хранилище, и слал на сервер —
-   * на КАЖДОМ монтировании, включая самое первое, когда тема ещё умолчание,
-   * а не выбор. Итог: у каждого, кто хоть раз открывал консоль, в профиле и
-   * в браузере лежит «dark», которого он не выбирал. Стоило умолчанию стать
-   * светлым (макет заказчика — белый лист), как оно перестало работать для
-   * всех, кроме новых: сохранённое умолчание перебивало новое.
+   * Эффект только применяет — на каждом изменении выбора и системной темы
+   * (при «як у системі» консоль темнеет вечером вместе с системой).
+   * Сохраняет — chooseTheme, и только когда человек нажал переключатель:
+   * выбор — это действие, а не состояние. Прежде эффект ещё и писал тему в
+   * профиль на каждом монтировании, и у каждого, кто открывал консоль, в
+   * профиле лежало умолчание, которого он не выбирал.
    *
-   * Теперь эффект только применяет. Сохраняет — chooseTheme, и только когда
-   * человек нажал переключатель: выбор — это действие, а не состояние.
-   * Плотность и движение оставлены как были, они не меняли умолчания.
-   */
-  /*
-   * Пока никто не вошёл — светлая, и не по выбору.
-   *
-   * Лендинг и вход (кадры f00/f01) нарисованы заказчиком одним листом:
-   * сиреневые волны, силуэт с галактикой, фиолетовый текст. Тёмная тема —
-   * настройка рабочего места сотрудника, а до входа неизвестно, чьё это
-   * рабочее место: у общего компьютера в кабинете в хранилище лежит выбор
-   * того, кто сидел последним. Осветлённый фиолетовый тёмной земли поверх
-   * сиреневой картинки читался бы плохо и не был бы тем кадром. Выбор
-   * человека при этом не трогается: после входа возвращается его тема.
-   *
-   * Условие — «гость ли это», а не «есть ли профиль». Пока летит GET /me,
-   * профиля ещё нет, и признак `user` держал светлую тему всю длительность
-   * запроса: сотрудник, работающий в тёмной, получал при каждой перезагрузке
-   * любого экрана белую вспышку во весь экран (включая заглушку `loading`
-   * ниже по файлу) и возврат в тёмную после ответа.
-   *
-   * «Гость» читается по токену, а не по `loading`. С `loading` вспышка
-   * меняла бы сторону: у посетителя без токена первый проход эффектов
-   * застаёт `loading === true` (эффект App выполняется раньше эффекта
-   * AuthProvider — дети раньше родителей), и лендинг успел бы мигнуть
-   * тёмной, если она выбрана на этой машине. Токен известен синхронно и до
-   * первого кадра, и обе стороны вспышки закрываются одним признаком.
-   * `loading` остаётся в зависимостях: протухший токен чистится молча, и
-   * `user` при этом не меняется — пересчитать тему больше не с чего.
-   *
-   * Приглашение (/join/:token) и возврат от Google — не кадры f00/f01, а
-   * обычные экраны консоли, и они остаются в выбранной теме. Путь читается
-   * из window.location, а не из useLocation: тем же способом читает его
-   * гейт публичных страниц ниже по файлу, и два решения об одном и том же
-   * должны опираться на один источник — иначе они разойдутся.
+   * Гостевые страницы — в той же теме: в шапке Polypsy 2.0 у гостя свой
+   * переключатель (PublicFrame), и набор рисует вход и лендинг в обеих
+   * темах. Прежде гость получал светлую всегда — лист заказчика f00/f01 был
+   * нарисован только светлым.
    */
   useEffect(() => {
-    const publicFrame =
-      !user &&
-      !tokenStore.get() &&
-      !location.pathname.startsWith("/join/") &&
-      !location.pathname.startsWith("/auth/google");
-    document.documentElement.dataset.theme = publicFrame ? "light" : theme;
-  }, [theme, user, loading]);
+    document.documentElement.dataset.theme = resolvedTheme;
+  }, [resolvedTheme]);
 
-  const chooseTheme = (next: Theme) => {
-    setTheme(next);
-    localStorage.setItem("quizzy.theme.v2", next);
+  /*
+   * Какая рамка на экране — для крючков набора (shell/shell.css): высота
+   * полосы над ящиком и левый край всплывающих сообщений у консоли, кабинета
+   * и гостевых страниц разные.
+   */
+  const shellKind = !user ? "public" : user.role === "user" ? "patient" : "console";
+  useEffect(() => {
+    document.documentElement.dataset.shell = shellKind;
+  }, [shellKind]);
+
+  const chooseTheme = (next: ThemeChoice) => {
+    setThemeChoice(next);
     persist({ theme: next });
   };
 
@@ -429,7 +411,8 @@ export default function App() {
   // ⌘K — единственный вход в поиск; в поле ввода не перехватываем
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+      /* K — по месту клавиши: на кириллической раскладке Ctrl+K приходит знаком «л» (как useHotkeys) */
+      if ((e.metaKey || e.ctrlKey) && (e.code === "KeyK" || e.key?.toLowerCase() === "k")) {
         e.preventDefault();
         setPaletteOpen((v) => !v);
       }
@@ -453,7 +436,12 @@ export default function App() {
    * Временный пароль — то же самое: сервер пускает только к смене
    * (lib/tempPassword.ts), и опрос до неё — строка отказа на каждый такт.
    */
-  const counting = !!user && !user.mfaSetupRequired && !user.mustChangePassword;
+  /*
+   * И не у пациента: счётчики — числа консоли (рельса, центр событий), а
+   * кабинет их не рисует; запросы к очереди и случаям от пациента — отказ
+   * сервера и строка access.denied в журнале на каждый такт.
+   */
+  const counting = !!user && user.role !== "user" && !user.mfaSetupRequired && !user.mustChangePassword;
   /*
    * Тревоги — единственное в консоли, что должно догонять само: пока
    * email-канал не настроен, поллинг раз в минуту + бейдж на favicon —
@@ -468,26 +456,67 @@ export default function App() {
    * держит прежнее число, пока следующий такт его не обновит. Ключ — кто
    * вошёл: смена человека за тем же компьютером не покажет ему чужие числа.
    */
+  /*
+   * Числа — маршрутами чисел (/count у очереди, случаев, направлений и дня):
+   * без имён и без строки журнала на каждый такт. Прежде каждый такт брал
+   * первую страницу списка — с расшифрованными именами людей — и писал в
+   * журнал «смотрел очередь / случаи / направления / день» строку, которой
+   * никто не смотрел (волна 27).
+   *
+   * И только тому, кому сервер их отдаст: без права каждый такт был отказом
+   * и строкой access.denied в журнале, а бейдж всё равно стоял нулём.
+   */
   // и в скрытой вкладке: значок с числом тревог на ней ради этого и заведён;
   // прежние числа под новым вошедшим не держим — это были бы его числа только с виду
-  const tally = { enabled: counting, pollMs: COUNTS_POLL_MS, pollHidden: true, keep: false };
-  // счётчик считает случаи, а не сработавшие пункты: в навигации должно
+  const tally = { pollMs: COUNTS_POLL_MS, pollHidden: true, keep: false };
+  /*
+   * Остальные числа рельсы скрытую вкладку не опрашивают (волна 27): на
+   * значке вкладки их нет, а вернувшись, человек видит их перечитанными
+   * сразу (refetchOnWindowFocus у живых загрузок, useResource.ts). Забытая
+   * вкладка иначе сутками опрашивала бы сервер раз в минуту.
+   */
+  const shownTally = { ...tally, pollHidden: false };
+  const allowed = (permission: Permission) => counting && can(permission);
+  // счётчик считает людей, а не сработавшие пункты: в навигации должно
   // стоять число людей, которых надо разобрать, а не число сигналов
-  const alertCount = useResource(() => api.alertCases({ limit: "1" }).then((p) => p.total ?? 0), [user?.id], tally);
+  const alertCount = useResource(() => api.alertCaseCount().then((p) => p.total), [user?.id], {
+    ...tally,
+    enabled: allowed("alerts.review"),
+  });
   // направления в том же такте: незакрытое направление ждёт так же долго
-  // общее число — с первой страницы; длина страницы упёрлась бы в её размер
-  const referralCount = useResource(() => api.referrals().then((r) => r.total ?? r.items.length), [user?.id], tally);
-  const worklistRes = useResource(() => api.worklist().then((w) => w.total), [user?.id], tally);
+  const referralCount = useResource(() => api.referralCount().then((r) => r.total), [user?.id], {
+    ...shownTally,
+    enabled: allowed("referrals.manage"),
+  });
+  const worklistRes = useResource(() => api.worklistCount().then((w) => w.total), [user?.id], {
+    ...shownTally,
+    enabled: allowed("patients.read"),
+  });
   /*
    * В бейдже — сколько ещё не принято, а не сколько записано. Число,
    * которое не убывает по ходу дня, ничего не сообщает: к обеду оно то
    * же самое, что утром, и смотреть на него перестают.
    */
-  const todayRes = useResource(
+  const todayRes = useResource(() => api.todayCount().then((d) => d.waiting), [user?.id], {
+    ...shownTally,
+    enabled: allowed("patients.read"),
+  });
+  /*
+   * Непрочитанные письма пациентов — число у «Листування» на рельсе. Те же
+   * разговоры, что в списке экрана переписки (GET /api/messages открыт
+   * каждому сотруднику и отдаёт только его разговоры), но одним числом
+   * (волна 27): опрос раз в минуту тянул весь список — двести строк с
+   * расшифрованным началом письма ради суммы. Отказ — ноль, а не ошибка на
+   * полосе: число — подсказка, а не экран.
+   */
+  const messagesRes = useResource(
     () =>
-      api.today().then((d) => d.items.filter((a) => a.status === "booked" || a.status === "confirmed").length),
+      api
+        .unreadCount()
+        .then((r) => r.unread)
+        .catch(() => 0),
     [user?.id],
-    tally,
+    { ...shownTally, enabled: counting },
   );
   useLiveReload(
     ["alert.created", "case.changed"],
@@ -499,10 +528,14 @@ export default function App() {
     },
     counting,
   );
-  const openAlerts = alertCount.data ?? 0;
-  const openReferrals = referralCount.data ?? 0;
-  const worklistCount = worklistRes.data ?? 0;
-  const todayLeft = todayRes.data ?? 0;
+  const counts: NavCounts = {
+    today: todayRes.data ?? 0,
+    worklist: worklistRes.data ?? 0,
+    alerts: alertCount.data ?? 0,
+    referrals: referralCount.data ?? 0,
+    messages: messagesRes.data ?? 0,
+  };
+  const openAlerts = counts.alerts ?? 0;
 
   useEffect(() => {
     paintFavicon(openAlerts);
@@ -615,8 +648,13 @@ export default function App() {
    */
   if (user.role === "user") {
     return (
-      /* граница ошибок кабинета: упавший экран не снимает кабинет целиком; переход сбрасывает её */
-      <ErrorBoundary resetKey={pathname}>
+      /*
+        Граница ошибок кабинета: упавший экран не снимает кабинет целиком;
+        переход сбрасывает её. На листе падения — номера помощи: экран упал у
+        человека, которому, возможно, плохо прямо сейчас, и без номера лист
+        «щось пішло не так» был бы тупиком (сетка безопасности кабинета).
+      */
+      <ErrorBoundary resetKey={pathname} extra={<CrashHelp />}>
       <Suspense fallback={<Loading rows={4} />}>
         {banner}
         {/* TrackedRoutes — тот же <Routes>, плюс счёт открытых экранов шаблоном маршрута (telemetry/screens.tsx) */}
@@ -638,12 +676,6 @@ export default function App() {
 
   const isSuper = user.role === "superadmin";
   /*
-   * Кому есть кого назначать: ступень лестницы выше первой. То же число
-   * решает и пункт «Права», и разделы «Лікарі» / «Адміністратори»: списки
-   * коллег — это часть назначения, а не отдельная привилегия.
-   */
-  const canAssign = (user.ladderRank ?? 0) > 1;
-  /*
    * Кому заводить сотрудников: по праву users.manage, а не по классу.
    * Право приходит с карточкой прав вместе с профилем (auth.tsx, can):
    * заведующий, которому его выдали ролью или исключением, заводит людей
@@ -652,24 +684,27 @@ export default function App() {
   const canManageUsers = can("users.manage");
 
   /*
-   * Подвал рельсы переехал в бургер целиком — вместе с именем, ролью,
-   * пометкой «только чтение», связью с Google, «Учётной записью», выходом и
-   * номером сборки.
-   *
-   * Ничего из этого не потерялось и ничего не переехало на отдельный экран.
-   * Причина простая: всё это отвечает на вопрос «кто я здесь и как отсюда
-   * выйти», а такой вопрос задают редко и из любого места. Место для него —
-   * последняя строка общего меню, а не пункт в ряду разделов работы.
-   *
-   * Собирается здесь, а не в полосе: тут живут и пользователь, и отвязка
-   * Google, и выход. Полосе про авторизацию знать незачем — она про
-   * навигацию. Собирается ДАННЫМИ, а не разметкой: как выглядит подвал,
-   * решает бургер (BurgerAccount в Topbar.tsx), и его строки — те же, что у
-   * разделов выше; прежде здесь стояли три разных вида у трёх действий.
+   * Навигация — данными из shell/nav.ts: кто вошёл и где он. Рельса,
+   * колонка подразделов и меню узкого окна читают одно и то же, и двери в
+   * них не расходятся.
    */
-  const account: BurgerAccount = {
+  const access = navAccess(user, can);
+  const hidden = user.workspace?.railHidden ?? [];
+  const entries = railEntries(access, counts, hidden);
+
+  /*
+   * Кто вошёл и что он может сделать со своей записью — карточка за именем
+   * справа на полосе приложения (UserMenu): имя, должность, отделение,
+   * почта, «только чтение», связь с Google, учётная запись, выход и номер
+   * сборки. Собирается здесь, а не в полосе: тут живут и пользователь, и
+   * отвязка Google, и выход. Полосе про авторизацию знать незачем.
+   */
+  const account: AccountCard = {
     name: user.fullName,
-    roleLabel: user.role === "superadmin" ? ut("nav.roleSuper") : ut("nav.roleAdmin"),
+    /* должность человека, если она заведена; иначе — класс записи */
+    roleLabel: isSuper ? ut("nav.roleSuper") : user.position?.trim() || ut("nav.roleAdmin"),
+    email: user.email,
+    unit: user.unit,
     build: { sha: __BUILD_SHA__, date: __BUILD_DATE__ },
     /*
      * Человек должен понимать, почему кнопки не срабатывают, до того как
@@ -678,11 +713,11 @@ export default function App() {
     warning: user.readOnly ? ut("nav.readOnly") : undefined,
     /*
      * Связь с Google — второй ключ от учётной записи, поэтому состояние
-     * видно всегда, а не прячется в настройках: человек должен знать, каких
-     * дверей у его записи две.
+     * видно всегда, а не прячется в настройках.
      */
     note: googleReady && user.googleLinked ? ut("lg.googleLinked") : undefined,
     actions: [
+      { id: "account", label: ut("acct.title"), icon: "circle-user-round", to: "/account" },
       /*
        * Привязка уходит переходом на сервер, а не запросом из кода: Google
        * показывает свой экран выбора учётной записи, и провести через него
@@ -694,27 +729,20 @@ export default function App() {
               ? {
                   id: "google",
                   label: ut("lg.googleUnlink"),
+                  icon: "log-out" as const,
                   onSelect: () => {
                     // отвязка снимает второй ключ от учётной записи —
                     // сервер спрашивает пароль, и спросить его надо здесь
                     const pass = window.prompt(ut("lg.googleUnlinkAsk"));
                     if (!pass) return;
-                    /*
-                      Отказ показывается, а не глотается.
-                      Здесь стоял пустой catch: на неверный пароль не происходило
-                      ровно ничего — ни сообщения, ни изменения на экране. Та же
-                      кнопка в разделе «Учётная запись» ошибку показывает; две
-                      версии одной кнопки, одна из них немая.
-                    */
-                    void run(
-                      () => api.googleUnlink(pass).then(refreshUser),
-                      ut("acct.saved"),
-                    );
+                    /* отказ показывается, а не глотается: та же кнопка в «Учётной записи» его показывает */
+                    void run(() => api.googleUnlink(pass).then(refreshUser), ut("acct.saved"));
                   },
                 }
               : {
                   id: "google",
                   label: ut("lg.googleLink"),
+                  icon: "log-in" as const,
                   onSelect: () =>
                     void api
                       .googleLinkUrl()
@@ -725,54 +753,29 @@ export default function App() {
                 },
           ]
         : []),
-      /*
-       * Учётная запись — рядом с именем и выходом, а не разделом работы. Туда
-       * ходят раз в месяц: сменить пароль, привязать Google, поменять тему.
-       * Пункт в списке разделов стоил бы внимания при каждом открытии консоли.
-       */
-      { id: "account", label: ut("acct.title"), to: "/account" },
-      /*
-       * Выход подписан словом, а не значком.
-       *
-       * В свёрнутой рельсе на его месте стоял нарисованный кружок с чертой —
-       * единственное, что туда помещалось. Свёрнутого состояния больше нет:
-       * меню либо открыто целиком, либо закрыто целиком, — и значок, который
-       * надо угадывать, стал платой ни за что.
-       */
-      { id: "logout", label: ut("nav.logout"), onSelect: logout, ruled: true },
+      /* выход подписан словом и отделён чертой: после него консоли на экране уже нет */
+      { id: "logout", label: ut("nav.logout"), icon: "log-out", onSelect: logout, ruled: true },
     ],
   };
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden">
+    /* права и счётчики — экранам, которым навигация нужна в своём месте (shell/useShellNav.tsx) */
+    <ShellNavProvider value={{ access, counts, hidden }}>
+    <div className="flex h-dvh flex-col overflow-hidden bg-ground">
       {banner}
-      <Topbar
-        counts={{ today: todayLeft, worklist: worklistCount, alerts: openAlerts, referrals: openReferrals }}
-        isSuper={isSuper}
-        canAssign={canAssign}
-        /*
-         * Рабочее место вошедшего — по должности И по разделу экрана (см.
-         * barKind в Topbar.tsx). Состав полосы от раздела с 2026-09-26 не
-         * зависит (решение заказчика, см. barItems), а права нужны ей, чтобы
-         * тому, кто не лечит, не показывать разделов, куда ему нет входа.
-         *
-         * «Лечит ли» — право видеть пациентов. Специалист лечит по классу
-         * записи: справочника прав у него нет вовсе (auth.tsx), и can ему
-         * всегда отвечает «нет» — спрашивать его о patients.read значило бы
-         * отобрать у него полосу целиком.
-         */
-        bar={barKind(user, user.role !== "admin" || can("patients.read"), pathname)}
-        can={can}
-        hidden={user.workspace?.railHidden ?? []}
-        onSearch={() => setPaletteOpen(true)}
-        theme={theme}
-        onToggleTheme={() => chooseTheme(theme === "dark" ? "light" : "dark")}
+      <AppBar
         account={account}
+        onSearch={() => setPaletteOpen(true)}
+        onTheme={chooseTheme}
+        menuOpen={menuOpen}
+        onMenu={() => setMenuOpen((v) => !v)}
+        menuId="shell-more"
       />
       {/*
-        Баннер работ — под верхней полосой, во всю ширину: решение заказчика
-        2026-09-26 (техпанель, пункт 10). Вне колонки экрана и вне Suspense:
-        он обязан стоять и тогда, когда экран ещё догружается или упал.
+        Баннер работ — под полосой приложения, во всю ширину: решение
+        заказчика 2026-09-26 (техпанель, пункт 10). Вне колонки экрана и вне
+        Suspense: он обязан стоять и тогда, когда экран ещё догружается или
+        упал.
       */}
       <MaintenanceBanner place="console" />
       {/*
@@ -782,15 +785,14 @@ export default function App() {
       */}
       <ConnectionLine place="console" />
       {/*
-        Содержимое — колонка в 1200 px по центру, как на макете.
-
-        Поля здесь не ставятся: своими полями распоряжается экран (см. Page).
-        Полоса сверху держит ту же колонку и те же 1200, поэтому знак, пункты
-        меню и заголовок страницы стоят на одних вертикалях — расхождение в
-        несколько пикселей между шапкой и содержимым читается как перекос
-        даже у того, кто не умеет его назвать.
+        Рельса, колонка подразделов раздела и экран — три колонки во всю
+        оставшуюся высоту. Прокручивается экран (см. Page), а не страница:
+        рельса и подразделы стоят на месте.
       */}
-      <main className="main mx-auto w-full max-w-[1200px]">
+      <div className="flex min-h-0 flex-1">
+        <Rail entries={entries} onHelp={() => setHelpOpen((v) => !v)} helpOpen={helpOpen} />
+        <SectionColumn />
+      <main className="main min-w-0">
         {/*
           Пока догружается экран, на его месте стоит скелет — то же, что при
           загрузке данных. Пустой прямоугольник или прыжок содержимого
@@ -874,6 +876,8 @@ export default function App() {
           */}
           <Route path="/surveys/:id/responses/:rid/charts" element={<ResponseCharts />} />
           <Route path="/constructor" element={<Constructor />} />
+          {/* новая, ещё не сохранённая методика: /constructor — её старт (Start.tsx), здесь — правка */}
+          <Route path="/constructor/new" element={<Constructor />} />
           <Route path="/constructor/:id" element={<Constructor />} />
           <Route path="/surveys/:id/access" element={<Access />} />
           {/*
@@ -1073,47 +1077,59 @@ export default function App() {
         </Suspense>
         </ErrorBoundary>
       </main>
+      </div>
 
+      {menuOpen ? <MoreMenu id="shell-more" entries={entries} access={access} counts={counts} onClose={closeMenu} onTheme={chooseTheme} /> : null}
+      <HelpDrawer open={helpOpen} onClose={closeHelp} />
       {/* закрытая палитра не монтируется вовсе: её кусок (cmdk) приезжает по первому ⌘K */}
       {paletteOpen ? (
         <Suspense fallback={null}>
           <CommandPalette
             open
             onClose={() => setPaletteOpen(false)}
-            onToggleTheme={() => chooseTheme(theme === "dark" ? "light" : "dark")}
+            onToggleTheme={() => chooseTheme(resolvedTheme === "dark" ? "light" : "dark")}
             onToggleDensity={() => setDensity(density === "compact" ? "cozy" : "compact")}
           />
         </Suspense>
       ) : null}
     </div>
+    </ShellNavProvider>
   );
 }
 
-/** Favicon с числом открытых тревог: видно из любой вкладки */
+/**
+ * Favicon с числом открытых случаев риска: видно из любой вкладки.
+ *
+ * Цвета — токенами, а не числами: знак рисуется цветом бренда, число —
+ * цветом риска, как на рельсе. Холст CSS-переменных не понимает, поэтому
+ * значения читаются из документа перед рисованием.
+ */
 function paintFavicon(count: number): void {
   const canvas = document.createElement("canvas");
   canvas.width = 32;
   canvas.height = 32;
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
+  const css = getComputedStyle(document.documentElement);
+  const token = (name: string) => css.getPropertyValue(name).trim();
 
-  // базовый знак
-  ctx.fillStyle = "#3b5bfd";
+  // базовый знак: круг бренда с буквой
+  ctx.fillStyle = token("--brand");
   ctx.beginPath();
   ctx.arc(16, 16, 14, 0, Math.PI * 2);
   ctx.fill();
-  ctx.fillStyle = "#fff";
+  ctx.fillStyle = token("--onfill");
   ctx.font = "bold 18px system-ui";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillText("Q", 16, 17);
+  ctx.fillText("P", 16, 17);
 
   if (count > 0) {
-    ctx.fillStyle = "#d03b3b";
+    ctx.fillStyle = token("--risk");
     ctx.beginPath();
     ctx.arc(24, 8, 8, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = "#fff";
+    ctx.fillStyle = token("--onfill");
     ctx.font = "bold 11px system-ui";
     ctx.fillText(count > 9 ? "9+" : String(count), 24, 9);
   }

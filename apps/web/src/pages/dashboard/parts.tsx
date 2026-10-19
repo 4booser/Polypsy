@@ -1,58 +1,19 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import type { ConditionSummary, ConditionsResult, Severity } from "@quizzy/shared";
 import { api } from "../../api";
-import { Figure, ShareBar, Sparkline } from "../../charts/clinical";
+import { ShareBar, SevDot, Sparkline } from "../../charts/clinical";
 import { severityKey } from "../../format";
 import { useLang } from "../../lang";
 import { useLiveReload } from "../../events";
 import { useResource } from "../../useResource";
 import { cx } from "../../ui/cx";
-import { Button, Num } from "../../ui/primitives";
-import { RuleSection } from "../../ui/section";
-import { DOMAIN_KEY, fill, shareState, sparkValues, spreadParts, type BandLabels } from "./model";
-
-/**
- * Переключатель периода в строке раздела: «30 днів / 90 днів».
- *
- * Кнопки с состоянием (aria-pressed), а не вкладки: адрес не меняется, и
- * пересылать коллеге «сводку за 90 дней» незачем — она и так открывается
- * целиком. Нажатая — заливкой #f0ecff, как поле фильтра (`look="fill"`):
- * заливка в консоли и значит «так сейчас отобрано». Одного цвета текста
- * мало: на 15-м кегле primary и primary-dim отличаются едва заметно, а
- * заливка читается и без цвета.
- */
-export function PeriodSwitch<T extends string>({
-  value,
-  options,
-  onChange,
-  label,
-}: {
-  value: T;
-  options: readonly (readonly [T, string])[];
-  onChange: (v: T) => void;
-  label: string;
-}) {
-  return (
-    <div role="group" aria-label={label} className="flex items-center gap-[4px]">
-      {options.map(([v, text]) => (
-        <button
-          key={v}
-          type="button"
-          aria-pressed={value === v}
-          onClick={() => onChange(v)}
-          className={cx(
-            "h-[36px] rounded-[5px] border-0 px-[12px] text-[15px] font-bold leading-none",
-            "outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]",
-            "transition-colors duration-[var(--dur-fast)] ease-[var(--ease)]",
-            value === v ? "bg-primary-soft text-primary" : "bg-transparent text-primary-dim hover:text-primary",
-          )}
-        >
-          {text}
-        </button>
-      ))}
-    </div>
-  );
-}
+import { Ic } from "../../ui/icons";
+import { Loading, Skeleton } from "../../ui";
+import { Panel } from "../../ui/layout";
+import { Segmented } from "../../ui/primitives";
+import { Di } from "../today/icons";
+import { withCount } from "../../ui/plural";
+import { DOMAIN_KEY, fill, meanShift, shareState, sparkValues, spreadParts, type BandLabels } from "./model";
 
 function useBandLabels(): BandLabels {
   const { ut } = useLang();
@@ -68,154 +29,199 @@ function useBandLabels(): BandLabels {
   };
 }
 
-/**
- * Главное число блока — доля в клинических полосах — или слова, почему его нет.
- *
- * Число фиолетовым, а не янтарём: доля — состояние, а не то, что требует
- * действия сейчас (янтарь на этом экране один — у случаев на разбор).
- */
-function ShareHead({ spread, people }: { spread: ConditionSummary["spread"]; people: number | null }) {
+/** Почему доли нет — словами со значком, а не прочерком */
+function ShareNote({ state }: { state: "few" | "noBands" | "hidden" }) {
   const { ut } = useLang();
-  const state = shareState(spread, people);
-  if (state === "few") return <p className="m-0 text-[13px] leading-[18px] text-muted">{ut("dash.tooFew")}</p>;
-  if (state !== "shown") {
-    return (
-      <p className="m-0 text-[13px] leading-[18px] text-muted">
-        {state === "noBands" ? ut("dash.noBands") : ut("dash.shareHidden")}
-      </p>
-    );
-  }
   return (
-    <div className="flex items-center gap-[12px]">
-      <span className="font-mono text-[30px] leading-[34px] text-primary tabular-nums">
-        {spread.clinical.percent}
-        <span className="ml-[2px] text-[17px]">%</span>
-      </span>
-      <span className="text-[13px] leading-[16px] text-muted">
-        {ut("dash.clinical")}
-        <br />
-        {ut("dash.clinicalWhat")}
-      </span>
+    <span className="flex items-start gap-2 text-small leading-[18px] text-text-2">
+      <span className="mt-px inline-flex text-muted">{state === "noBands" ? <Ic.minus size={14} /> : <Di.eyeOff size={14} />}</span>
+      {state === "few" ? ut("dash.tooFew") : state === "noBands" ? ut("dash.noBands") : ut("dash.shareHidden")}
+    </span>
+  );
+}
+
+const COLS = "grid-cols-[minmax(170px,1.15fr)_64px_minmax(200px,1.7fr)_minmax(120px,1fr)_minmax(200px,1.3fr)]";
+
+/** Строка таблицы: напрям, люди, полоса смуг, клиническая доля, средний балл с ходом */
+function Row({
+  name,
+  code,
+  note,
+  people,
+  share,
+  clinical,
+  mean,
+  all,
+}: {
+  name: string;
+  code?: string | null;
+  note?: string;
+  people: number | null;
+  share: ReactNode;
+  clinical: ReactNode;
+  mean: ReactNode;
+  all?: boolean;
+}) {
+  return (
+    <div role="row" className={cx("grid min-h-[62px] items-center gap-x-4 gap-y-0 border-t border-divider px-4 py-2.5", COLS, all && "bg-panel-2")}>
+      <div role="rowheader" className="min-w-0">
+        <b className="block text-[13.5px] font-extrabold leading-[18px] text-text">{name}</b>
+        {code ? (
+          <span className="mt-1 inline-flex h-[22px] max-w-full items-center truncate rounded-[6px] bg-sunk px-2 text-[11.5px] font-bold text-text-2">{code}</span>
+        ) : null}
+        {note ? <small className="mt-0.5 block text-caption leading-4 text-muted">{note}</small> : null}
+      </div>
+      <div role="cell" className="text-right text-[14px] font-bold text-text tabular-nums">
+        {people === null ? <span className="text-muted">—</span> : people}
+      </div>
+      <div role="cell" className="min-w-0">
+        {share}
+      </div>
+      <div role="cell" className="min-w-0">
+        {clinical}
+      </div>
+      <div role="cell" className="min-w-0">
+        {mean}
+      </div>
     </div>
   );
 }
 
-/** Одно направление: доля, полоса ступеней, люди, средний балл основной методики, ход */
-export function DomainCard({ d }: { d: ConditionSummary }) {
+function Clinical({ spread, people }: { spread: ConditionSummary["spread"]; people: number | null }) {
+  const { ut, lang } = useLang();
+  if (shareState(spread, people) !== "shown") return <span className="text-muted">—</span>;
+  return (
+    <span className="flex items-baseline gap-2.5">
+      <b className="text-[18px] font-extrabold tracking-[-0.01em] text-text tabular-nums">{spread.clinical.percent} %</b>
+      {spread.clinical.count !== null ? (
+        <small className="text-caption text-muted">{withCount(ut("dashA.peopleN"), spread.clinical.count, lang)}</small>
+      ) : null}
+    </span>
+  );
+}
+
+/** Одно направление строкой таблицы — отдельно ради проверки без браузера */
+export function DomainRow({ d }: { d: ConditionSummary }) {
   const { ut } = useLang();
   const labels = useBandLabels();
   const name = ut(DOMAIN_KEY[d.domain]);
+  const state = shareState(d.spread, d.people);
   const parts = spreadParts(d.spread, labels);
   const spark = sparkValues(d.weeks);
-  const few = shareState(d.spread, d.people) === "few";
+  const shift = meanShift(d.weeks);
+  const few = state === "few";
+  const better = shift === null ? null : d.higherIsWorse ? shift < 0 : shift > 0;
 
   return (
-    <article className="min-w-0 border-t border-hairline pt-[16px]">
-      <h3 className="m-0 mb-[10px] text-[17px] font-bold leading-[20px] text-primary">{name}</h3>
-      <ShareHead spread={d.spread} people={d.people} />
-      {parts.length ? <ShareBar className="mt-[12px]" parts={parts} label={`${name}: ${ut("dash.clinical")}`} /> : null}
-
-      {!few ? (
-        <dl className="m-0 mt-[14px] grid grid-cols-[auto_minmax(0,1fr)] gap-x-[12px] gap-y-[6px] text-[13px] leading-[18px]">
-          {d.people !== null ? (
-            <>
-              <dt className="text-muted">{ut("dash.people")}</dt>
-              <dd className="m-0">
-                <Num className="text-text">{d.people}</Num>
-              </dd>
-            </>
-          ) : null}
-          {d.primary && d.primary.meanPercent !== null ? (
-            <>
-              <dt className="text-muted">{ut("dash.mean")}</dt>
-              {/*
-                Средний балл — с названием методики и направлением шкалы рядом:
-                «33 % від максимуму» без «вище — гірше» у благополучия читался
-                бы наоборот, а без названия — как среднее по всем методикам,
-                которого здесь нет.
-              */}
-              <dd className="m-0 min-w-0">
-                <span className="font-mono font-bold text-text tabular-nums">
-                  {fill(ut("dash.ofMax"), { p: d.primary.meanPercent })}
+    <Row
+      name={name}
+      code={d.primary?.title ?? d.sources[0]?.title}
+      people={few ? null : d.people}
+      share={
+        state === "shown" && parts.length ? (
+          <ShareBar parts={parts} legend={false} label={`${name}: ${ut("dash.clinical")}`} />
+        ) : (
+          <ShareNote state={state === "shown" ? "hidden" : state} />
+        )
+      }
+      clinical={<Clinical spread={d.spread} people={d.people} />}
+      mean={
+        !few && d.primary && d.primary.meanPercent !== null ? (
+          <div className="min-w-0">
+            <div className="flex items-center gap-2.5">
+              <b className="text-[14px] font-extrabold text-text tabular-nums">{d.primary.meanPercent} %</b>
+              {spark.length > 1 ? <Sparkline values={spark} width={92} /> : null}
+              {shift !== null && shift !== 0 ? (
+                <span className={cx("text-small font-extrabold tabular-nums", better ? "text-good" : "text-warn")}>
+                  {fill(ut("dashA.pp"), { d: shift > 0 ? `+${shift}` : `−${Math.abs(shift)}` })}
                 </span>
-                <span className="text-muted"> · {d.higherIsWorse ? ut("dash.higherWorse") : ut("dash.higherBetter")}</span>
-                <span className="block truncate text-text-2">{d.primary.title}</span>
-              </dd>
-            </>
-          ) : null}
-        </dl>
-      ) : null}
-
-      {!few && spark.length > 1 ? (
-        <figure className="m-0 mt-[10px]">
-          <Sparkline values={spark} />
-          <figcaption className="text-[11px] leading-[14px] text-muted">{ut("dash.meanWeekly")}</figcaption>
-        </figure>
-      ) : null}
-
-      {d.sources.length ? (
-        <p className="m-0 mt-[10px] text-[11px] leading-[15px] text-muted">
-          {ut("dash.sources")}: {d.sources.map((s) => s.title).join(", ")}
-        </p>
-      ) : null}
-    </article>
+              ) : null}
+            </div>
+            <small className="block text-caption text-muted">
+              {ut("dashA.ofMaxShort")}, {d.higherIsWorse ? ut("dash.higherWorse") : ut("dash.higherBetter")}
+            </small>
+          </div>
+        ) : (
+          <span className="text-muted">—</span>
+        )
+      }
+    />
   );
 }
 
-/** Все методики разом: кто где сейчас */
-function Overall({ overall }: { overall: ConditionsResult["overall"] }) {
-  const { ut } = useLang();
-  const labels = useBandLabels();
-  const parts = spreadParts(overall.spread, labels);
-  return (
-    <Figure title={ut("dash.overall")} caption={ut("dash.overallHint")}>
-      <div className="grid grid-cols-1 items-center gap-x-[32px] gap-y-[12px] min-[700px]:grid-cols-[240px_minmax(0,1fr)]">
-        <div className="flex flex-col gap-[4px]">
-          <ShareHead spread={overall.spread} people={overall.people} />
-          {overall.people !== null ? (
-            <span className="text-[13px] text-muted">
-              {ut("dash.people")}: <Num className="text-text">{overall.people}</Num>
-            </span>
-          ) : null}
-        </div>
-        {parts.length ? <ShareBar parts={parts} label={`${ut("dash.overall")}: ${ut("dash.clinical")}`} /> : null}
-      </div>
-    </Figure>
-  );
-}
-
-/** Тело раздела по уже загруженным данным — отдельно, чтобы его можно было нарисовать в проверке */
+/** Тело віджета по уже загруженным данным — отдельно, чтобы его можно было нарисовать в проверке */
 export function ConditionsBody({ data }: { data: ConditionsResult }) {
   const { ut } = useLang();
+  const labels = useBandLabels();
+  if (data.domains.length === 0) {
+    return (
+      <div className="px-4 pb-4">
+        <p className="m-0 text-small text-muted">{ut("dash.nothingMeasured")}</p>
+        {data.empty.length ? (
+          <p className="m-0 mt-2 text-small text-muted">
+            {ut("dash.noMeasures")}: {data.empty.map((k) => ut(DOMAIN_KEY[k])).join(", ")}
+          </p>
+        ) : null}
+      </div>
+    );
+  }
+  const overallState = shareState(data.overall.spread, data.overall.people);
+  const overallParts = spreadParts(data.overall.spread, labels);
   return (
     <>
-      {data.domains.length === 0 ? (
-        <p className="m-0 text-[13px] leading-[18px] text-muted">{ut("dash.nothingMeasured")}</p>
-      ) : (
-        <>
-          <Overall overall={data.overall} />
-          {/*
-            Колонки по минимальной ширине, а не числом: на 1200 встают три
-            по ~380, на ноутбуке с панелью — две, на телефоне — одна. Полоса
-            ступеней уже 320 теряет подписи легенды в перенос, но не в обрез.
-          */}
-          <div className="mt-[28px] grid grid-cols-[repeat(auto-fill,minmax(min(320px,100%),1fr))] gap-x-[32px] gap-y-[28px]">
-            {data.domains.map((d) => (
-              <DomainCard key={d.domain} d={d} />
-            ))}
+      <div className="overflow-x-auto">
+        <div role="table" aria-label={ut("dash.conditions")} className="min-w-[860px]">
+          <div role="row" className={cx("grid h-9 items-center gap-x-4 gap-y-0 bg-panel-2 px-4 text-caption font-bold text-muted", COLS)}>
+            <span role="columnheader">{ut("dashA.colDomain")}</span>
+            <span role="columnheader" className="text-right">
+              {ut("dash.people")}
+            </span>
+            <span role="columnheader">{ut("dashA.colShare")}</span>
+            <span role="columnheader">{ut("dash.bandHigh")}</span>
+            <span role="columnheader">{ut("dashA.colMean")}</span>
           </div>
-        </>
-      )}
-      {/*
-        Направления без замеров — одной строкой, а не пустыми блоками: шесть
-        карточек «немає даних» заняли бы полэкрана и спрятали бы те две, где
-        данные есть.
-      */}
-      {data.empty.length ? (
-        <p className="m-0 mt-[24px] text-[13px] leading-[18px] text-muted">
-          {ut("dash.noMeasures")}: {data.empty.map((k) => ut(DOMAIN_KEY[k])).join(", ")}
-        </p>
-      ) : null}
+          <Row
+            all
+            name={ut("dash.overall")}
+            note={ut("dash.overallHint")}
+            people={data.overall.people}
+            share={
+              overallState === "shown" && overallParts.length ? (
+                <ShareBar parts={overallParts} legend={false} label={`${ut("dash.overall")}: ${ut("dash.clinical")}`} />
+              ) : (
+                <ShareNote state={overallState === "shown" ? "hidden" : overallState} />
+              )
+            }
+            clinical={<Clinical spread={data.overall.spread} people={data.overall.people} />}
+            mean={<span className="text-small text-muted">{ut("dashA.noSum")}</span>}
+          />
+          {data.domains.map((d) => (
+            <DomainRow key={d.domain} d={d} />
+          ))}
+          {data.empty.map((k) => (
+            <Row
+              key={k}
+              name={ut(DOMAIN_KEY[k])}
+              people={null}
+              share={<span className="text-small text-muted">{ut("dash.noMeasures")}</span>}
+              clinical={<span className="text-muted">—</span>}
+              mean={<span className="text-muted">—</span>}
+            />
+          ))}
+        </div>
+      </div>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 border-t border-divider px-4 py-2.5 text-caption text-text-2">
+        {(["none", "mild", "moderate", "severe"] as const).map((s) => (
+          <span key={s} className="inline-flex items-center gap-1.5 font-semibold">
+            <SevDot severity={s} />
+            {ut(severityKey[s])}
+          </span>
+        ))}
+        <span className="ml-auto inline-flex items-center gap-1.5 text-muted">
+          <Ic.info size={13} />
+          {ut("dashA.condFoot")}
+        </span>
+      </div>
     </>
   );
 }
@@ -223,48 +229,45 @@ export function ConditionsBody({ data }: { data: ConditionsResult }) {
 type Days = "30" | "90";
 
 /**
- * Раздел «Стан пацієнтів за напрямами» — со своей загрузкой.
- *
- * Своей, а не в общей загрузке сводки: смена периода не должна перезапрашивать
- * очередь и счётчики, а отказ этого маршрута (нет права analytics.read) — гасить
- * весь экран. Раздел тогда говорит об отказе сам, остальное стоит.
+ * Віджет «Стан пацієнтів за напрямами» — со своей загрузкой: смена периода
+ * не перезапрашивает очередь и счётчики, а отказ этого маршрута (нет права
+ * analytics.read) не гасит весь экран — віджет говорит об отказе сам.
  */
-export function ConditionsSection() {
+export function ConditionsWidget() {
   const { ut } = useLang();
   const [days, setDays] = useState<Days>("90");
   const res = useResource(() => api.dashboardConditions(Number(days)), [days]);
   useLiveReload(["response.submitted"], res.reload);
 
   return (
-    <RuleSection
+    <Panel
       title={ut("dash.conditions")}
-      hint={ut("dash.conditionsHint")}
+      icon={<Di.activity />}
+      sub={fill(ut("dashA.condSub"), { n: days })}
       actions={
-        <PeriodSwitch
+        <Segmented
           label={ut("dash.rangeLabel")}
           value={days}
           onChange={setDays}
-          options={[
-            ["30", ut("dash.range30d")],
-            ["90", ut("dash.range90d")],
+          items={[
+            { key: "30", label: ut("dash.range30d") },
+            { key: "90", label: ut("dash.range90d") },
           ]}
         />
       }
+      flush
     >
       {res.data ? (
         <ConditionsBody data={res.data} />
       ) : res.error ? (
-        <div className="flex flex-wrap items-center gap-[12px]">
-          <p className="m-0 text-[13px] text-danger">{res.error}</p>
-          <Button variant="quiet" onClick={res.reload}>
-            {ut("common.retry")}
-          </Button>
+        <div className="px-4 pb-4">
+          <Loading bare error={res.error} onRetry={res.reload} />
         </div>
       ) : (
-        <p className="m-0 text-[13px] text-muted" role="status" aria-busy="true">
-          {ut("common.loading")}
-        </p>
+        <div className="px-4 pb-4" role="status" aria-busy="true" aria-label={ut("common.loading")}>
+          <Skeleton lines={4} />
+        </div>
       )}
-    </RuleSection>
+    </Panel>
   );
 }

@@ -2,10 +2,12 @@ import { Hono } from "hono";
 import { and, desc, eq, inArray, isNotNull, isNull, ne, or, sql, type SQL } from "drizzle-orm";
 import {
   bandFor,
+  patientGroupRef,
   queryDate,
   queryInt,
   t,
   type AlertCase,
+  type AlertCaseCount,
   type AlertCaseFacets,
   type AlertCasePage,
   type AlertSignal,
@@ -93,7 +95,8 @@ const listQuery = z
     unit: opt(z.string().trim().min(1).max(120)),
     surveyId: opt(z.string().min(1).max(64)),
     patient: opt(z.string().uuid()),
-    patientGroup: opt(z.string().uuid()),
+    /* формой id, а не uuid: у групп посева постоянные id вида «demo-pg-risk» (patientGroupRef) */
+    patientGroup: opt(patientGroupRef),
     from: opt(queryDate),
     to: opt(queryDate),
     search: opt(z.string().trim().max(120)),
@@ -410,6 +413,8 @@ alertCaseRoutes.get("/", async (c) => {
         .select({
           c: alertCases,
           surveyTitle: surveys.title,
+          // норма разбора методики: по ней консоль рисует таймер «2:48 з 4 год»
+          escalateMinutes: surveys.alertEscalateMinutes,
           overdue: overdueSql,
           unit: users.unit,
           // имена полей ровно как ждёт fullNameOf: он же расшифровывает и умеет
@@ -510,6 +515,7 @@ alertCaseRoutes.get("/", async (c) => {
         signalCount: Number(r.signalCount ?? 0),
         signals: signalsByCase.get(r.c.id) ?? [],
         minutesOpen,
+        escalateMinutes: r.escalateMinutes ?? null,
         overdue: !!r.overdue,
         assignedTo: r.c.assignedTo,
         assignedToName: r.c.assignedTo ? (staffNames.get(r.c.assignedTo) ?? null) : null,
@@ -593,6 +599,34 @@ alertCaseRoutes.get("/", async (c) => {
     ...(facets ? { total: facets.total, facets } : {}),
     grouping,
   });
+});
+
+/**
+ * Очередь числами — бейдж навигации и значок вкладки (AlertCaseCount).
+ *
+ * Бейдж опрашивал очередь (`?limit=1`) раз в минуту с каждой открытой
+ * консоли, и в скрытой вкладке тоже — ради значка: строка с именем человека
+ * и сигналами, счётчики фасетов и строка alert.list в журнале на каждый
+ * такт. Здесь — только число строк открытой очереди по людям, ровно `total`
+ * её первой страницы: та же зона методик, неразобранные случаи, люди, а не
+ * случаи. Только число — и потому без строки журнала.
+ */
+alertCaseRoutes.get("/count", async (c) => {
+  const scope = await surveyScopeFilter(c.get("user"));
+  const scoped = await db.select({ id: surveys.id }).from(surveys).where(scope);
+  const surveyIds = scoped.map((s) => s.id);
+  let total = 0;
+  if (surveyIds.length) {
+    const [row] = await db
+      .select({ n: sql<number>`count(distinct ${alertCases.userId})::int` })
+      .from(alertCases)
+      .innerJoin(surveys, eq(surveys.id, alertCases.surveyId))
+      .innerJoin(users, eq(users.id, alertCases.userId))
+      .where(and(inArray(alertCases.surveyId, surveyIds), isNull(alertCases.acknowledgedAt)));
+    total = Number(row?.n ?? 0);
+  }
+  const body: AlertCaseCount = { total };
+  return c.json(body);
 });
 
 /** Подразделения, встречающиеся среди случаев — для фильтра */

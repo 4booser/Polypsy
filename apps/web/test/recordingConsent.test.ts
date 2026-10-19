@@ -113,13 +113,17 @@ describe("приложение пациента", () => {
       .replace(/\{\/\*[\s\S]*?\*\/\}/g, "")
       .replace(/\/\*[\s\S]*?\*\//g, "")
       .replace(/^\s*\/\/.*$/gm, "");
-    const at = src.indexOf("recordingRevocable(state) ?");
+    // строка записи под приёмом (волна 25): ветки — if/else, «согласия нет» стоит раньше и сюда не попадает
+    const at = src.indexOf("} else if (recordingRevocable(state)) {");
     expect(at, "ветка recordingRevocable(state) не найдена — проверка смотрит не туда").toBeGreaterThan(-1);
-    const branch = src.slice(at, src.indexOf("rec.consentAsk", at));
-    const [yes, no] = branch.split(/\)\s*:\s*\(/);
+    const otherwise = src.indexOf("} else {", at);
+    expect(otherwise, "ветки «иначе» за recordingRevocable нет").toBeGreaterThan(at);
+    const yes = src.slice(at, otherwise);
+    const no = src.slice(otherwise, src.indexOf("}", otherwise + "} else {".length));
     expect(yes).toContain('ut("rec.consentRevoke")');
     expect(yes).toContain("api.recordingRevoke(");
     expect(no).toContain('ut("rec.revokeTooLate")');
+    expect(no).not.toContain("api.recordingRevoke(");
     // отзыв больше нигде в файле не вызывается
     expect(src.match(/api\.recordingRevoke\(/g)?.length).toBe(1);
   });

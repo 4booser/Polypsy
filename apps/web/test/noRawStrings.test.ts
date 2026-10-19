@@ -84,10 +84,14 @@ const EXCEPTIONS: Exception[] = [
  * разрешено только в нём.
  */
 const NAMES: LatinName[] = [
-  { word: "Quizzy", why: "название продукта" },
   { word: "PSI", why: "Population Stability Index — сокращение международное, в украинских и русских работах пишется латиницей" },
   { word: "ICC", why: "Intraclass Correlation — то же" },
   { word: "RCI", why: "Reliable Change Index (Jacobson–Truax) — то же" },
+  {
+    word: "Ctrl",
+    file: "apps/web/src/shell/HelpDrawer.tsx",
+    why: "подпись клавиши-модификатора в <kbd> (не на маке): так она напечатана на самой клавиатуре при любой раскладке",
+  },
   {
     word: "NULL",
     file: "apps/web/src/pages/ops/sec/Sql.tsx",

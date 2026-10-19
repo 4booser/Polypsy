@@ -1,95 +1,113 @@
-import { useEffect, useId, useState, type ReactNode } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import type {
+  FilterPresetListItem,
   PatientGroupWithCounts,
   SampleFilters,
+  StatCell,
   StatModelColumn,
   StatRunColumn,
   StatRunResult,
   SurveyFull,
 } from "@quizzy/shared";
 import { api } from "../../api";
+import { timeOfDay } from "../../format";
 import { useLang } from "../../lang";
-import { Loading, useAction, useToast } from "../../ui";
+import {
+  Callout,
+  Drawer,
+  DrawerPane,
+  DrawerSection,
+  Ic,
+  KV,
+  Loading,
+  Modal,
+  Tooltip,
+  useAction,
+  useToast,
+} from "../../ui";
 import { cx } from "../../ui/cx";
-import { IconPlusThick } from "../../ui/glyphs";
-import { Page } from "../../ui/layout";
-import { Button } from "../../ui/primitives";
+import { Page, Panel } from "../../ui/layout";
+import { ActionMenu } from "../../ui/menu";
+import {
+  Button,
+  ButtonLink,
+  Field,
+  Input,
+  SectionLabel,
+  Segmented,
+  Select,
+  SeverityTag,
+  Tag,
+} from "../../ui/primitives";
 import { useResource } from "../../useResource";
-import { useLocalityHints, useSurveyAt } from "./data";
+import { useSurveyAt } from "./data";
 import {
   MAX_SAMPLES,
+  type ReportRow,
   STATS_LIST,
-  addSample,
+  type SampleDraft,
+  type Samples,
+  addKeyed,
+  cellAt,
+  chartHref,
   columnInput,
   columnsChanged,
   diffText,
+  duplicateKeyed,
+  editSampleDraft,
   filterErrors,
+  isFigureRow,
+  keepDrafts,
+  keyedSamples,
+  removeKeyed,
+  reportRows,
+  sampleDraft,
+  sampleDraftChanged,
+  sampleKey,
   statEditHref,
-  withColumnFilters,
+  statHref,
+  withSampleDraft,
 } from "./model";
 import {
-  AgeRow,
-  CellText,
-  DateField,
-  GlyphButton,
+  AgeFields,
+  CriteriaChips,
   GroupSelect,
-  type Look,
+  HiddenCell,
+  LocalityInput,
   PatientField,
-  Readout,
-  SexSelect,
-  StatInput,
+  PeriodFields,
+  SampleBadge,
+  SexField,
+  SourceTag,
+  St,
   VshrToggle,
+  sampleColor,
+  useSampleName,
 } from "./parts";
 
 /*
- * Статистическая модель — кадры f09, f18 и f29, один экран.
+ * Статистична модель — дизайн statistics-model: выборки рядом и
+ * «Порівняти».
  *
- *   f09 — одна выборка, карточка «Фільтри» раскрыта;
- *   f18 — то же, карточка свёрнута в полосу #f0ecff (нажатие на «Фільтри»);
- *   f29 — две выборки рядом и узкая колонка плашек справа: «+» строки
- *         заголовка добавляет выборку, плашки печатают разность долей.
+ * Шапка: «Додати вибірку», «Змінити показники» (редактор), меню (график,
+ * копия модели, удаление) и «Порівняти» — Ctrl/⌘ + Enter. «Зберегти»
+ * появляется, только пока выборки или пометки «ВШР» изменены против
+ * сохранённых: расчёт по правленой модели идёт превью (POST
+ * /api/stat-models/run) и ничего не сохраняет — «сохранил, потому что
+ * хотел посмотреть» случаться не должно.
  *
- * Что на кадре и как это легло на код (замеры в координатах кадра 1600,
- * низ полосы шапки = 100; колонка f09 — 700 по центру, 450…1149):
+ * Полоса состояния под шапкой говорит, когда посчитано и как, и выбирает
+ * опорную выборку разности («Різниця від»). Таблица: строки — показатели
+ * (полосы шкал, варианты ответов, «Решта», «Респонденти з ВШР»), колонки —
+ * выборки. В шапке колонки — номер на цвете ряда, имя, чипы критериев, чем
+ * отобрана, основание и «ВШР». Фильтры выборки — в ящике справа: страница
+ * остаётся на месте, набранное в ящике переживает Esc.
  *
- *   «Статистика» 24/700, «+» справа              → Page `snug tight`: строка
- *                                                   140…170, «+» — действие
- *   «Назва статистичної моделі» 20/700           → <h2> 189…213 (19 от строки)
- *   карточка «Фільтри» 238…498, рамка #666666    → <section>, шапка-кнопка 36
- *   (поля 295, 349, 400, 451: шаг 54, потом 51)     и поля с шагом кадра
- *   полоса «Фільтри» 239…274 (f18)               → та же кнопка, свёрнутая
- *   черта #cccccc 2px на 528 (29 после карточки) → <hr>
- *   «Назва тесту» 559…594, шаг строк 51          → строки отчёта, 29 после черты
- *   «Порівняти» 215×45 на 30 ниже строк          → Button size="md"
- *
- * Все поля на f09/f29 — подпись 16/700 фиолетовым: у фильтров это
- * плейсхолдер (поле просит ввода), у строк отчёта — показ значения
- * (Readout): название теста, подпись полосы, текст ответа, доля.
- *
- * Чего кадры не рисуют, а здесь есть, — и почему:
- *   · строка итога под выборкой после расчёта — основание и доля «ВШР», и
- *     фраза сервера о скрытом (note). Без основания доли не читаются, а
- *     молча нарисованные прочерки читались бы как «данных нет»;
- *   · «Зберегти» слева от «Порівняти» — только пока выборка или пометки
- *     «ВШР» изменены против сохранённых: расчёт по правленой выборке идёт
- *     превью (POST /api/stat-models/run) и ничего не сохраняет — «сохранил,
- *     потому что хотел посмотреть» случаться не должно;
- *   · название модели — ссылка на её правку (/statistics/:id/edit, форма
- *     f17): там тест и строки, описание для перечня f08 и удаление. Своей
- *     двери у правки на кадрах нет, а «+» уже занят выборкой;
- *   · «Порівняти» и на двух выборках: на f29 кнопки нет, но без неё
- *     правленые фильтры двух колонок нечем пересчитать. Отвергнуто:
- *     считать на каждую правку — каждый расчёт пишется в журнал, и поток
- *     соседних запросов — ровно то, что журнал обязан показать разбору, а
- *     не то, что экран обязан порождать сам.
- *
- * Строки «Назва моделі / ВщВМ / ВШР» и «Назва повідомлення / ВщВМ / ВШР»
- * f29 нарисованы, но сервер связи модели с другими моделями и рассылками не
- * знает, а «ВщВМ» из кадра не расшифровывается (docs/REWRITE-PLAN.md, волна
- * 5). Они стоят недоступными с подсказкой о причине — как пункты «Додати
- * Оператор» / «Об’єднати» меню аналитики: пропавшая строка читалась бы
- * как поломка, а молча не работающая — как поломка модели.
+ * Скрытая сервером ячейка — пунктирный прочерк с объяснением по наведению;
+ * числа в ней нет и разности с ней нет (diffText). Результат живёт до первой
+ * правки: доли рядом с изменёнными фильтрами печатали бы ответ на вопрос,
+ * которого на экране уже нет.
  */
 
 export default function StatModelPage() {
@@ -100,8 +118,10 @@ export default function StatModelPage() {
 
 function ModelScreen({ id }: { id: string }) {
   const { ut } = useLang();
+  const navigate = useNavigate();
   const { run, busy } = useAction();
   const toast = useToast();
+  const sampleName = useSampleName();
   /* источник черновика: сам не перечитывается — правку не затрёт (useResource, manual) */
   const model = useResource(() => api.statModel(id), [id], { manual: true });
   const groups = useResource(() => api.patientGroups(), []);
@@ -109,23 +129,41 @@ function ModelScreen({ id }: { id: string }) {
 
   const [saved, setSaved] = useState<StatModelColumn[] | null>(null);
   const [work, setWork] = useState<StatModelColumn[] | null>(null);
+  /* ключ выборки — по одному на колонку work (model.ts, Samples): черновик ящика держится за выборку, а не за номер */
+  const [keys, setKeys] = useState<string[]>([]);
   useEffect(() => {
     if (!model.data) return;
+    const s = keyedSamples(model.data.columns);
     setSaved(model.data.columns);
-    setWork(model.data.columns);
+    setWork(s.columns);
+    setKeys(s.keys);
   }, [model.data]);
 
-  /*
-   * Результат живёт до первой правки выборки: доли рядом с изменёнными
-   * фильтрами печатали бы ответ на вопрос, которого на экране уже нет.
-   */
   const [result, setResult] = useState<StatRunResult | null>(null);
-  const [open, setOpen] = useState(true);
+  const [ref, setRef] = useState(0);
+  /* ящик фильтров: открыт ли и чья выборка; черновики — по ключу выборки */
+  const [drawer, setDrawer] = useState<{ open: boolean; key: string | null }>({ open: false, key: null });
+  const [drafts, setDrafts] = useState<Record<string, SampleDraft>>({});
+  /*
+   * «Повернутися» в сообщении о черновике зовёт обработчик, замкнутый в
+   * момент закрытия ящика; живы ли выборки — спрашивается у текущих ключей.
+   */
+  const keysNow = useRef<string[]>(keys);
+  keysNow.current = keys;
+  const [doomed, setDoomed] = useState(false);
 
-  const edit = (next: StatModelColumn[]) => {
-    setWork(next);
-    setResult(null);
-  };
+  /* Ctrl/⌘ + Enter — «Порівняти» с любого места экрана, и из поля тоже; пока модель грузится — ничего */
+  const [compareRef] = useState<{ current: () => void }>(() => ({ current: () => {} }));
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+        e.preventDefault();
+        compareRef.current();
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [compareRef]);
 
   /*
    * Пресеты — до первого показа: у выборки с пресетом поля показывают его
@@ -135,11 +173,11 @@ function ModelScreen({ id }: { id: string }) {
   const waiting = !presets.data && !presets.error;
   if (model.error || !model.data || !work || !saved || waiting) {
     return (
-      <Page title={ut("top.statistics")} snug tight>
+      <Page title={ut("top.statistics")} back={{ to: STATS_LIST, label: ut("st.backToList") }}>
         {model.error ? (
-          <div className="mt-[19px]">
+          <div className="flex flex-col items-start gap-3">
             <Loading error={model.error} onRetry={model.reload} />
-            <Link to={STATS_LIST} className="mt-[12px] inline-block text-[15px] font-bold text-primary">
+            <Link to={STATS_LIST} className="text-body font-bold text-violet-ink">
               {ut("st.backToList")}
             </Link>
           </div>
@@ -150,13 +188,30 @@ function ModelScreen({ id }: { id: string }) {
     );
   }
 
+  const title = model.data.title;
   const dirty = columnsChanged(saved, work);
   const presetOf = (c: StatModelColumn) => (c.presetId ? presets.data?.find((p) => p.id === c.presetId) : undefined);
+  const criteriaOfPreset = (pid: string) => presets.data?.find((p) => p.id === pid)?.criteria;
   const filtersOf = (c: StatModelColumn): SampleFilters => (c.presetId ? (presetOf(c)?.criteria ?? {}) : (c.filters ?? {}));
+  const nameOf = (c: StatModelColumn, i: number) => sampleName(c.title, presetOf(c)?.title, i);
+  const refAt = Math.min(ref, work.length - 1);
 
   /*
-   * Перевёрнутый диапазон в любой выборке — причина тостом, без запроса:
-   * сервер отказал бы строкой схемы, а поле уже красное и подписано.
+   * Правка колонок сбрасывает расчёт. Черновики ящика держатся за выборку:
+   * добавление, дубль и удаление соседей их не трогают, у убранной выборки
+   * черновик уходит вместе с ней.
+   */
+  const samples: Samples = { columns: work, keys };
+  const edit = (next: Samples) => {
+    setWork(next.columns);
+    setKeys(next.keys);
+    setResult(null);
+    setDrafts((d) => keepDrafts(d, next.keys));
+  };
+
+  /*
+   * Перевёрнутый диапазон в любой выборке — причина сообщением, без
+   * запроса: сервер отказал бы строкой схемы.
    */
   const problem = (): boolean => {
     const key = work.flatMap((c) => filterErrors(filtersOf(c)))[0];
@@ -168,8 +223,9 @@ function ModelScreen({ id }: { id: string }) {
     void run(async () => {
       if (problem()) return false;
       /* правленая выборка — превью; нетронутая — расчёт сохранённой модели, с её id в журнале */
-      setResult(dirty ? await api.previewStatModel(work.map(columnInput), model.data!.title) : await api.runStatModel(id));
+      setResult(dirty ? await api.previewStatModel(work.map(columnInput), title) : await api.runStatModel(id));
     });
+  compareRef.current = compare;
 
   const save = () =>
     void run(async () => {
@@ -177,24 +233,39 @@ function ModelScreen({ id }: { id: string }) {
       const next = await api.updateStatModel(id, { columns: work.map(columnInput) });
       setSaved(next.columns);
       setWork(next.columns);
+      /* сервер возвращает те же колонки тем же порядком; иначе прежние ключи и черновики к ним не относятся */
+      if (next.columns.length !== keys.length) {
+        setKeys(keyedSamples(next.columns).keys);
+        setDrafts({});
+      }
     }, ut("st.saved"));
 
-  /*
-   * Правка фильтров выборки с пресетом превращает её в свои фильтры,
-   * начиная с критериев пресета: колонка на сервере берёт либо пресет, либо
-   * свои (одно из двух), а править пресет отсюда значило бы молча поменять
-   * все модели, которые на него ссылаются.
-   */
-  const setFilters = (i: number, patch: Partial<SampleFilters>) =>
-    edit(withColumnFilters(work, i, patch, (presetId) => presets.data?.find((p) => p.id === presetId)?.criteria));
+  const duplicate = () =>
+    void run(async () => {
+      const copy = await api.createStatModel({
+        title: ut("st.copyTitle").replace("{title}", title).slice(0, 200),
+        description: model.data?.description ?? null,
+        columns: work.map(columnInput),
+      });
+      toast(ut("st.copied"), "ok");
+      navigate(statHref(copy.id));
+    });
+
+  const remove = () =>
+    void run(async () => {
+      await api.deleteStatModel(id);
+      toast(ut("st.deleted"), "ok");
+      navigate(STATS_LIST, { replace: true });
+    });
 
   /* «ВШР» — у одного и того же варианта во всех выборках: показатели модели одни на все колонки */
   const toggleRisk = (questionId: string, optionId: string) => {
-    const now = work[0]?.questions
+    const now = work
+      .flatMap((c) => c.questions)
       .find((q) => q.questionId === questionId)
       ?.options.find((o) => o.optionId === optionId)?.highRisk;
-    edit(
-      work.map((c) => ({
+    edit({
+      columns: work.map((c) => ({
         ...c,
         questions: c.questions.map((q) =>
           q.questionId !== questionId
@@ -202,651 +273,708 @@ function ModelScreen({ id }: { id: string }) {
             : { ...q, options: q.options.map((o) => (o.optionId === optionId ? { ...o, highRisk: !now } : o)) },
         ),
       })),
-    );
+      keys,
+    });
   };
 
-  const two = work.length > 1;
+  const openPane = (i: number) => {
+    const key = keys[i];
+    if (!key) return;
+    setDrafts((d) => (d[key] ? d : { ...d, [key]: sampleDraft(work[i]!, criteriaOfPreset) }));
+    setDrawer({ open: true, key });
+  };
+  const add = () => {
+    const key = sampleKey();
+    const next = addKeyed(samples, key);
+    if (next === samples) return;
+    edit(next);
+    setDrafts((d) => ({ ...d, [key]: sampleDraft(next.columns[next.columns.length - 1]!, criteriaOfPreset) }));
+    setDrawer({ open: true, key });
+  };
+  /* «Застосувати» — к той выборке, чей это ящик: по ключу, а не по номеру, который мог смениться */
+  const applyDraft = (key: string) => {
+    const d = drafts[key];
+    const at = keys.indexOf(key);
+    if (!d || at < 0) return;
+    edit({ columns: work.map((c, j) => (j === at ? withSampleDraft(c, d) : c)), keys });
+    setDrafts(({ [key]: _gone, ...rest }) => rest);
+    setDrawer((s) => ({ ...s, open: false }));
+  };
+  const dropDraft = (key: string) => {
+    setDrafts(({ [key]: _gone, ...rest }) => rest);
+    setDrawer((s) => ({ ...s, open: false }));
+  };
+
+  const ranAt = result ? timeOfDay(result.ranAt) : null;
+  const head = result?.columns[0];
 
   return (
     <Page
-      title={ut("top.statistics")}
-      snug
-      tight
+      title={title}
+      back={{ to: STATS_LIST, label: ut("sn.statModels") }}
       actions={
-        <GlyphButton
-          label={ut("st.addSample")}
-          onClick={() => edit(addSample(work))}
-          disabled={work.length >= MAX_SAMPLES}
-        >
-          <IconPlusThick />
-        </GlyphButton>
+        <>
+          <Tooltip
+            label={ut("st.addSampleTip")
+              .replace("{n}", String(work.length))
+              .replace("{max}", String(MAX_SAMPLES))}
+          >
+            <Button icon={<Ic.plus />} onClick={add} disabled={work.length >= MAX_SAMPLES}>
+              {ut("st.addSampleShort")}
+            </Button>
+          </Tooltip>
+          <ButtonLink to={statEditHref(id)}>
+            <St.pencil />
+            {ut("st.editIndicators")}
+          </ButtonLink>
+          <ActionMenu
+            triggerSize="icon"
+            entries={[
+              { label: ut("sn.chart"), to: chartHref(id), icon: <St.chartColumn size={15} /> },
+              { label: ut("st.duplicateModel"), onSelect: duplicate, icon: <St.copy size={15} />, disabled: busy },
+              {
+                label: ut("st.deleteModel"),
+                onSelect: () => setDoomed(true),
+                danger: true,
+                ruled: true,
+                icon: <St.trash size={15} />,
+              },
+            ]}
+          />
+          {dirty ? (
+            <Button icon={<St.save />} disabled={busy} onClick={save}>
+              {ut("common.save")}
+            </Button>
+          ) : null}
+          <Tooltip label={ut("st.compare")} kbd="Ctrl Enter">
+            <Button variant="primary" icon={<St.play />} disabled={busy} onClick={compare}>
+              {ut("st.compare")}
+            </Button>
+          </Tooltip>
+        </>
       }
     >
-      {/*
-        Название модели 20/700 — ссылка на её правку (форма f17): своей
-        двери у правки на кадре нет, а заголовок модели — первое, куда
-        нажимают, чтобы её переименовать.
-      */}
-      <h2 className="m-0 mt-[19px] text-[20px] font-bold leading-[24px]">
-        <Link to={statEditHref(id)} className="text-primary no-underline hover:underline">
-          {model.data.title}
-        </Link>
-      </h2>
+      {/* полоса состояния: когда и как посчитано, от какой выборки разность */}
+      <section
+        aria-label={ut("st.runState")}
+        className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-panel border border-border bg-panel px-3.5 py-2.5 shadow-panel"
+      >
+        <div role="status" className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2.5 gap-y-1">
+          {result ? (
+            <>
+              <Ic.circleCheck size={17} className="text-good" />
+              <b className="font-extrabold text-text">{ut("st.ranAt").replace("{t}", ranAt ?? "")}</b>
+              <span className="text-small text-text-2">
+                {head ? `${head.surveyTitle}, ${ut("st.versionN").replace("{n}", String(head.versionNumber))}. ` : ""}
+                {result.modelId ? ut("st.ranSaved") : ut("st.ranPreview")}
+              </span>
+            </>
+          ) : (
+            <>
+              <Ic.info size={17} className="text-muted" />
+              <span className="text-small text-text-2">
+                {ut("st.percentPending")}
+                {dirty ? `. ${ut("st.unsaved")}` : ""}
+              </span>
+            </>
+          )}
+        </div>
+        {work.length > 1 ? (
+          <div className="flex items-center gap-2">
+            <span className="whitespace-nowrap text-small text-muted">{ut("st.diffFrom")}</span>
+            <Segmented
+              label={ut("st.diffFrom")}
+              value={String(refAt)}
+              onChange={(k) => setRef(Number(k))}
+              items={work.map((_, i) => ({
+                key: String(i),
+                label: (
+                  <>
+                    <SampleBadge n={i + 1} of={work.length} small />
+                    <span className="sr-only">
+                      {ut("st.sample")} {i + 1}
+                    </span>
+                  </>
+                ),
+              }))}
+            />
+          </div>
+        ) : null}
+        <ButtonLink to={chartHref(id)} size="xs">
+          <St.chartColumn />
+          {ut("sn.chart")}
+        </ButtonLink>
+      </section>
 
-      {two ? (
-        <Samples
+      <Panel flush className="mt-4">
+        <Comparison
           columns={work}
           result={result}
-          open={open}
-          onToggle={() => setOpen((v) => !v)}
+          refAt={refAt}
           filtersOf={filtersOf}
-          onFilters={setFilters}
+          nameOf={nameOf}
+          presetTitleOf={(c) => presetOf(c)?.title ?? null}
+          onOpen={openPane}
+          onDuplicate={(i) => edit(duplicateKeyed(samples, i, sampleKey()))}
+          onRemove={(i) => {
+            edit(removeKeyed(samples, i));
+            setDrawer((s) => ({ ...s, open: false }));
+          }}
           onRisk={toggleRisk}
-          groups={groups.data}
         />
-      ) : (
-        <Single
-          column={work[0]!}
-          result={result?.columns[0]}
-          open={open}
-          onToggle={() => setOpen((v) => !v)}
-          filters={filtersOf(work[0]!)}
-          onFilters={(patch) => setFilters(0, patch)}
-          onRisk={toggleRisk}
-          groups={groups.data}
-        />
-      )}
+      </Panel>
 
-      <div
-        className={cx(
-          "mt-[30px] flex items-start justify-end gap-[15px]",
+      <Panel title={ut("st.readTitle")} icon={<St.book />} className="mt-4">
+        <KV
+          w={150}
+          rows={[
+            [ut("st.readWho"), ut("st.readWhoText")],
+            [ut("st.readPercent"), ut("st.readPercentText")],
+            [ut("st.readDash"), ut("st.readDashText")],
+            [ut("st.vshr"), ut("st.readVshrText")],
+          ]}
+        />
+      </Panel>
+
+      <Drawer
+        open={drawer.open}
+        mode={drawer.key ? `p:${drawer.key}` : undefined}
+        onClose={() => setDrawer((s) => ({ ...s, open: false }))}
+        onReturn={(mode) => {
+          const key = mode?.startsWith("p:") ? mode.slice(2) : null;
           /*
-           * Под парой — правым краем по второй колонке (1224); под одной — по
-           * строкам 698 (1147). Сетка пары резиновая (см. Samples): правый край
-           * второй колонки — 50% + 425 при просветах шире 24 и 100% − 86 при
-           * просветах 24; на 1200 обе формулы дают кадровые 1025.
+           * Выборку убрали, пока висело «Повернутися», — возвращаться некуда:
+           * ящик открыл бы свой первый вид, то есть чужую выборку.
            */
-          two
-            ? "w-[min(1025px,calc(50%+425px),calc(100%-86px))]"
-            : "mx-auto w-[698px] max-w-full -translate-x-px",
-        )}
+          if (key && keysNow.current.includes(key)) setDrawer({ open: true, key });
+        }}
       >
-        {dirty ? (
-          <Button size="md" variant="ghost" className="w-[215px]" disabled={busy} onClick={save}>
-            {ut("common.save")}
-          </Button>
-        ) : null}
-        <Button size="md" className="w-[215px]" disabled={busy} onClick={compare}>
-          {ut("st.compare")}
-        </Button>
-      </div>
+        {work.map((c, i) => {
+          const key = keys[i] ?? `i${i}`;
+          const d = drafts[key] ?? sampleDraft(c, criteriaOfPreset);
+          const changed = sampleDraftChanged(c, d);
+          const bad = filterErrors(d.filters).length > 0;
+          return (
+            <DrawerPane
+              key={key}
+              mode={`p:${key}`}
+              title={ut("st.samplePaneTitle").replace("{n}", String(i + 1))}
+              sub={nameOf(c, i)}
+              icon={<St.sliders />}
+              dirty={changed}
+              draftName={ut("st.samplePaneDraft").replace("{n}", String(i + 1))}
+              note={ut("st.recountNote")}
+              noteIcon={<Ic.refresh />}
+              footer={
+                <>
+                  <Button
+                    variant="primary"
+                    icon={<Ic.check />}
+                    disabled={!changed || bad}
+                    onClick={() => applyDraft(key)}
+                  >
+                    {ut("st.apply")}
+                  </Button>
+                  <Button onClick={() => dropDraft(key)}>{ut("common.cancel")}</Button>
+                </>
+              }
+            >
+              <SamplePane
+                index={i}
+                draft={d}
+                presets={presets.data ?? []}
+                groups={groups.data}
+                onChange={(next) => setDrafts((all) => ({ ...all, [key]: next }))}
+              />
+            </DrawerPane>
+          );
+        })}
+      </Drawer>
+
+      {doomed ? (
+        <Modal
+          title={ut("st.deleteConfirm")}
+          sub={ut("st.cannotUndo")}
+          icon={<St.trash />}
+          tone="warn"
+          onClose={() => setDoomed(false)}
+          footer={
+            <>
+              <Button variant="primary" icon={<St.trash />} disabled={busy} onClick={remove}>
+                {ut("st.deleteModel")}
+              </Button>
+              <Button onClick={() => setDoomed(false)}>{ut("common.cancel")}</Button>
+            </>
+          }
+        >
+          <p className="m-0 pt-3.5 text-body text-text-2">{ut("st.deleteText").replace("{title}", title)}</p>
+        </Modal>
+      ) : null}
     </Page>
   );
 }
 
-/* ─────────── строки отчёта ─────────── */
+/* ─────────── ящик выборки ─────────── */
 
-type Row =
-  | { kind: "test"; key: string; text?: string }
-  | { kind: "band"; key: string; n: number; text?: string; cell?: StatRunColumn["respondents"] }
-  | { kind: "question"; key: string; n: number; text?: string }
-  | {
-      kind: "option";
-      key: string;
-      n: number;
-      questionId: string;
-      optionId: string;
-      text?: string;
-      cell?: StatRunColumn["respondents"];
-      highRisk: boolean;
-    };
-
-/**
- * Строки выборки в порядке кадра: тест, варианты результата, затем каждый
- * вопрос со своими ответами. Подписи — из расчёта, когда он есть (он
- * присылает их на языке запроса), иначе из версии методики.
- */
-function rowsOf(col: StatModelColumn, survey: SurveyFull | null | undefined, res: StatRunColumn | undefined): Row[] {
-  const rows: Row[] = [{ kind: "test", key: "test", text: res?.surveyTitle ?? survey?.title }];
-  col.bands.forEach((b, i) => {
-    const got = res?.scales.flatMap((s) => s.bands).find((x) => x.bandId === b.bandId);
-    const label = got?.label ?? survey?.scales.find((s) => s.id === b.scaleId)?.bands.find((x) => x.id === b.bandId)?.label;
-    rows.push({ kind: "band", key: `b:${b.bandId}`, n: i + 1, text: label, cell: got?.cell });
-  });
-  col.questions.forEach((q, qi) => {
-    const gotQ = res?.questions.find((x) => x.questionId === q.questionId);
-    const question = survey?.questions.find((x) => x.id === q.questionId);
-    rows.push({ kind: "question", key: `q:${q.questionId}`, n: qi + 1, text: gotQ?.title ?? question?.title });
-    q.options.forEach((o, oi) => {
-      const got = gotQ?.options.find((x) => x.optionId === o.optionId);
-      rows.push({
-        kind: "option",
-        key: `o:${q.questionId}:${o.optionId}`,
-        n: oi + 1,
-        questionId: q.questionId,
-        optionId: o.optionId,
-        text: got?.text ?? question?.options.find((x) => x.id === o.optionId)?.text,
-        cell: got?.cell,
-        highRisk: o.highRisk,
-      });
-    });
-  });
-  return rows;
-}
-
-/**
- * Итог выборки после расчёта: основание, «ВШР» и фраза сервера.
- *
- * Основание печатается прочерком, если сервер его спрятал; фраза — дословно
- * та, что прислал сервер (err.statColumnClosed и соседи в errorStrings.ts):
- * причину скрытого знает он, и второй словарь на клиенте её бы переврал.
- */
-function Summary({ res }: { res: StatRunColumn | undefined }) {
-  const { ut } = useLang();
-  if (!res) return null;
-  return (
-    <div role="status" className="text-[13px] leading-[19px] text-muted">
-      <p className="m-0">
-        {ut("st.respondents")}: <CellText cell={res.respondents} />
-        {res.highRisk ? (
-          <>
-            {" · "}
-            {ut("st.vshr")}: <CellText cell={res.highRisk} />
-          </>
-        ) : null}
-      </p>
-      {res.note ? <p className="m-0">{res.note}</p> : null}
-    </div>
-  );
-}
-
-/* ─────────── одна выборка: f09 / f18 ─────────── */
-
-function Single({
-  column,
-  result,
-  open,
-  onToggle,
-  filters,
-  onFilters,
-  onRisk,
+function SamplePane({
+  index,
+  draft,
+  presets,
   groups,
-}: {
-  column: StatModelColumn;
-  result: StatRunColumn | undefined;
-  open: boolean;
-  onToggle: () => void;
-  filters: SampleFilters;
-  onFilters: (patch: Partial<SampleFilters>) => void;
-  onRisk: (questionId: string, optionId: string) => void;
-  groups: PatientGroupWithCounts[] | null;
-}) {
-  const survey = useSurveyAt(column.surveyId, column.versionId);
-  const rows = rowsOf(column, survey, result);
-  const fieldsId = useId();
-  return (
-    <div className="mx-auto w-[700px] max-w-full">
-      {open ? (
-        /*
-          Карточка 238…498: рамка #666666, шапка-кнопка 36 (текст с 10 от
-          рамки), поля — 20 под шапкой, по 9 от рамки слева и справа
-          (460…1139), 11 от нижней рамки.
-        */
-        <section className="mt-[25px] rounded-[5px] border border-field-border">
-          <h3 className="m-0">
-            <FiltersToggle open onToggle={onToggle} controls={fieldsId} />
-          </h3>
-          <div id={fieldsId} className="px-[9px] pb-[11px] pt-[20px]">
-            <FilterFields look="outline" filters={filters} onChange={onFilters} groups={groups} wide />
-          </div>
-        </section>
-      ) : (
-        /* полоса f18 — 239…274, на пиксель ниже рамки раскрытой карточки */
-        <h3 className="m-0 mt-[26px]">
-          <FiltersToggle open={false} onToggle={onToggle} controls={fieldsId} />
-        </h3>
-      )}
-
-      <hr className="m-0 mt-[29px] h-[2px] border-0 bg-hairline" />
-
-      {/*
-        Строки отчёта. «Назва тесту» — во всю колонку 700, остальные — на 2
-        уже (правый край 1147 против 1149): так на f09 и f18, у всех строк
-        ниже теста и у кнопки.
-      */}
-      <div className="mt-[29px] flex flex-col gap-[15px]">
-        {rows.map((r) => (
-          <SingleRow key={r.key} row={r} onRisk={onRisk} />
-        ))}
-      </div>
-      <div className="mt-[15px] w-[698px] max-w-full">
-        {result ? <Summary res={result} /> : <PendingNote />}
-      </div>
-    </div>
-  );
-}
-
-/**
- * Одна строка вместо подписей в пустых плашках долей — что сделать, чтобы
- * они заполнились. См. Readout, `pending`.
- */
-function PendingNote() {
-  const { ut } = useLang();
-  return <p className="m-0 text-[13px] leading-[19px] text-muted">{ut("st.percentPending")}</p>;
-}
-
-/** Строка отчёта одной выборки — ширины f09: 700 у теста, 698 у остальных */
-function SingleRow({ row, onRisk }: { row: Row; onRisk: (questionId: string, optionId: string) => void }) {
-  const { ut } = useLang();
-  const L: Look = "outline";
-  switch (row.kind) {
-    case "test":
-      return <Readout look={L} label={ut("am.testName")} text={row.text} />;
-    case "band":
-      /* 338 | 15 | 345 — замер f09 (459…796 и 812…1156) */
-      return (
-        <div className="flex w-[698px] max-w-full gap-[15px]">
-          <Readout look={L} label={`${ut("st.band")} ${row.n}`} text={row.text} className="w-[338px] shrink-0" />
-          <Readout
-            look={L}
-            label={`${ut("st.percent")} ${row.n}`}
-            text={cellNode(row.cell)}
-            pending={!row.cell}
-            className="min-w-0 flex-1"
-          />
-        </div>
-      );
-    case "question":
-      return <Readout look={L} label={`${ut("st.question")} ${row.n}`} text={row.text} className="w-[698px] max-w-full" />;
-    case "option":
-      /* 255 | 15 | 323 | 15 | 90 — замер f09 (459…713, 729…1051, 1067…1156); «ВШР» с отступом 10 слева */
-      return (
-        <div className="flex w-[698px] max-w-full gap-[15px]">
-          <Readout look={L} label={`${ut("st.answer")} ${row.n}`} text={row.text} className="w-[255px] shrink-0" />
-          <Readout
-            look={L}
-            label={`${ut("st.percent")} ${row.n}`}
-            text={cellNode(row.cell)}
-            pending={!row.cell}
-            className="min-w-0 flex-1"
-          />
-          <VshrToggle
-            look={L}
-            pressed={row.highRisk}
-            align="start"
-            onToggle={() => onRisk(row.questionId, row.optionId)}
-            className="w-[90px] shrink-0"
-          />
-        </div>
-      );
-  }
-}
-
-/** Доля в поле: пусто до расчёта, «42%» или прочерк после */
-function cellNode(cell: StatRunColumn["respondents"] | undefined): ReactNode {
-  return cell ? <CellText cell={cell} /> : undefined;
-}
-
-/**
- * «Фільтри» — заголовок-кнопка, сворачивающая карточку (f09 ↔ f18).
- *
- * Кнопка внутри <h3>, а не заголовок с обработчиком: диктор объявляет
- * «кнопка, развёрнуто» и находит её в списке заголовков. Свёрнутая —
- * полоса #f0ecff 36 высотой (f18: 459…1158 × 250…285), раскрытая — шапка
- * карточки без заливки.
- */
-function FiltersToggle({
-  open,
-  onToggle,
-  controls,
-  bare,
-}: {
-  open: boolean;
-  onToggle: () => void;
-  controls: string;
-  /*
-   * Раскрытый заголовок колонки f29: без рамки и без полей — строка 24,
-   * чернила «Ф» с 201 при левом крае колонки 200 (235…259 по высоте). У
-   * карточки f09 он же стоит в шапке 36 с отступом 10.
-   */
-  bare?: boolean;
-}) {
-  const { ut } = useLang();
-  const flat = bare && open;
-  return (
-    <button
-      type="button"
-      aria-expanded={open}
-      aria-controls={open ? controls : undefined}
-      onClick={onToggle}
-      className={cx(
-        "flex w-full items-center rounded-[5px] border-0 text-left text-[20px] font-bold leading-[24px] text-primary",
-        "outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]",
-        flat ? "h-[24px] px-0" : "h-9 px-[10px]",
-        open ? "bg-transparent" : "bg-primary-soft",
-      )}
-    >
-      {ut("st.filters")}
-    </button>
-  );
-}
-
-/**
- * Поля фильтра выборки в порядке кадра: «Дата», «Пацієнт», «Вік від — Вік
- * до», «Стать» + «Населений пункт». Шаг после «Дата» — 54, дальше 51: так
- * на обоих кадрах с карточкой (f09: 311→365→416→467, f29: 291→345→396→447),
- * то есть это рисунок, а не случайность одного кадра.
- *
- * `wide` — геометрия f09 (колонка 680): тире 25 с просветами 10, «Стать»
- * 140 и 15 до «Населений пункт». Без него — f29 (колонка 456): тире 17 с
- * просветами 6, «Стать» 96 и 20.
- */
-function FilterFields({
-  look,
-  filters,
   onChange,
-  groups,
-  wide,
 }: {
-  look: Look;
-  filters: SampleFilters;
-  onChange: (patch: Partial<SampleFilters>) => void;
+  index: number;
+  draft: SampleDraft;
+  presets: FilterPresetListItem[];
   groups: PatientGroupWithCounts[] | null;
-  wide?: boolean;
+  onChange: (next: SampleDraft) => void;
 }) {
   const { ut } = useLang();
-  const hints = useLocalityHints();
-  const listId = useId();
-  const errs = filterErrors(filters);
-  const badAge = errs.includes("coh.errAge");
-  const badDate = errs.includes("coh.errPeriod");
+  const f = draft.filters;
+  const preset = draft.presetId ? presets.find((p) => p.id === draft.presetId) : undefined;
+  const patch = (p: Partial<SampleFilters>) => onChange(editSampleDraft(draft, p));
   return (
-    <div className="flex flex-col">
-      <div className="mb-[18px] flex">
-        <DateField look={look} from={filters.from} to={filters.to} onChange={(p) => onChange(p)} invalid={badDate} />
-      </div>
-      <div className="mb-[15px] flex">
-        <PatientField look={look} value={filters.patientId} onChange={(patientId) => onChange({ patientId })} />
-      </div>
-      <div className="mb-[15px] flex">
-        <AgeRow
-          look={look}
-          min={filters.ageMin}
-          max={filters.ageMax}
-          onChange={(p) => onChange(p)}
-          dash={wide ? 25 : 17}
-          gap={wide ? 10 : 6}
-          invalid={badAge}
-        />
-      </div>
-      {/*
-        Решение заказчика 2026-09-26: адекватные фильтры. Строка ошибки
-        появляется только при перевёрнутом диапазоне и сдвигает строки
-        карточки на свою высоту — на время, пока набор неверен; красный
-        цвет значения без слов не объяснял бы, что не так.
-      */}
-      {errs.length ? (
-        <p role="alert" className="m-0 -mt-[8px] mb-[12px] text-[13px] leading-[18px] text-danger">
-          {errs.map((k) => ut(k)).join(" · ")}
-        </p>
-      ) : null}
-      {filters.patientGroupId ? (
-        <div className="mb-[15px] flex">
-          <GroupSelect
-            look={look}
-            value={filters.patientGroupId}
-            onChange={(patientGroupId) => onChange({ patientGroupId })}
-            groups={groups}
+    <>
+      <DrawerSection>
+        <Field label={ut("st.sampleName")} hint={ut("st.sampleNameHint")}>
+          <Input
+            data-autofocus
+            value={draft.title}
+            maxLength={120}
+            placeholder={`${ut("st.sample")} ${index + 1}`}
+            onChange={(e) => onChange({ ...draft, title: e.target.value })}
           />
-        </div>
-      ) : null}
-      <div className={cx("flex", wide ? "gap-[15px]" : "gap-[20px]")}>
-        <SexSelect
-          look={look}
-          value={filters.sex}
-          onChange={(sex) => onChange({ sex })}
-          className={wide ? "w-[140px] shrink-0" : "w-[96px] shrink-0"}
-        />
-        <StatInput
-          look={look}
-          label={ut("st.locality")}
-          value={filters.locality ?? ""}
-          maxLength={160}
-          list={hints.length ? listId : undefined}
-          autoComplete="off"
-          onChange={(e) => onChange({ locality: e.target.value })}
-        />
-        {hints.length ? (
-          <datalist id={listId}>
-            {hints.map((h) => (
-              <option key={h} value={h} />
+        </Field>
+        <Field label={ut("st.presetField")}>
+          <Select
+            value={draft.presetId ?? ""}
+            onChange={(e) => {
+              const pid = e.target.value || null;
+              const crit = pid ? presets.find((p) => p.id === pid)?.criteria : undefined;
+              onChange({ ...draft, presetId: pid, filters: pid ? (crit ?? {}) : draft.filters });
+            }}
+          >
+            <option value="">{ut("st.ownFilters")}</option>
+            {/* пресет, которого больше нет в списке, остаётся выбранным строкой, а не исчезает молча */}
+            {draft.presetId && !preset ? <option value={draft.presetId}>{ut("st.presetGone")}</option> : null}
+            {presets.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.title}
+              </option>
             ))}
-          </datalist>
-        ) : null}
-      </div>
-    </div>
+          </Select>
+        </Field>
+        {preset ? (
+          <Callout kind="violet" icon={<St.sliders />}>
+            {ut("st.presetPaneNote").replace("{title}", preset.title)}
+          </Callout>
+        ) : (
+          <Callout kind="line">{ut("st.ownPaneNote")}</Callout>
+        )}
+      </DrawerSection>
+      <DrawerSection title={ut("st.conditions")} sub={ut("st.conditionsSub")}>
+        <div className="flex flex-col gap-3.5">
+          <PeriodFields from={f.from} to={f.to} onChange={(p) => patch(p)} />
+          <div>
+            <SectionLabel className="mb-1.5">
+              {ut("st.patient")}
+              <span className="font-medium"> — {ut("kit.optional")}</span>
+            </SectionLabel>
+            <PatientField label={ut("st.patient")} value={f.patientId} onChange={(patientId) => patch({ patientId })} />
+          </div>
+          <AgeFields min={f.ageMin} max={f.ageMax} onChange={(p) => patch(p)} />
+          <Field label={ut("st.group")} className="mb-0">
+            <GroupSelect value={f.patientGroupId} groups={groups} onChange={(patientGroupId) => patch({ patientGroupId })} />
+          </Field>
+          <div>
+            <SectionLabel className="mb-1.5">{ut("person.sex")}</SectionLabel>
+            <SexField value={f.sex} onChange={(sex) => patch({ sex })} />
+          </div>
+          <Field label={ut("st.locality")} hint={ut("st.localityHint")} className="mb-0">
+            <LocalityInput value={f.locality} onChange={(locality) => patch({ locality })} />
+          </Field>
+        </div>
+      </DrawerSection>
+    </>
   );
 }
 
-/* ─────────── выборки рядом: f29 ─────────── */
+/* ─────────── таблица сравнения ─────────── */
 
-/**
- * Две выборки и колонка плашек — замер f29: колонки по 456 (200…655 и
- * 769…1224), просветы 113, плашки 62 (1338…1399) — ровно 1200. Сеткой, а не
- * тремя стопками: строки обязаны стоять вровень по всей ширине.
- *
- * Плашка печатает разность долей правой и левой выборки (diffText) — только
- * когда обе ячейки показаны. У строки теста плашки нет, у строк вопросов —
- * пустая, как на кадре.
- *
- * Третья и следующие выборки (сервер позволяет восемь) встают тем же шагом
- * вправо с прокруткой; плашек у них нет — разность определена для пары, и
- * сравнивать «третью с кем» кадр не говорит.
- */
-function Samples({
+function Comparison({
   columns,
   result,
-  open,
-  onToggle,
+  refAt,
   filtersOf,
-  onFilters,
+  nameOf,
+  presetTitleOf,
+  onOpen,
+  onDuplicate,
+  onRemove,
   onRisk,
-  groups,
 }: {
   columns: StatModelColumn[];
   result: StatRunResult | null;
-  open: boolean;
-  onToggle: () => void;
+  refAt: number;
   filtersOf: (c: StatModelColumn) => SampleFilters;
-  onFilters: (i: number, patch: Partial<SampleFilters>) => void;
+  nameOf: (c: StatModelColumn, i: number) => string;
+  presetTitleOf: (c: StatModelColumn) => string | null;
+  onOpen: (i: number) => void;
+  onDuplicate: (i: number) => void;
+  onRemove: (i: number) => void;
   onRisk: (questionId: string, optionId: string) => void;
-  groups: PatientGroupWithCounts[] | null;
 }) {
   const { ut } = useLang();
-  const pair = columns.length === 2;
   /*
    * Версии методик — две загрузки на весь экран, а не по одной на колонку:
-   * показатели у колонок модели одни (их задаёт форма f17), и восьмая
-   * колонка той же версии не должна тянуть её восьмой раз. Вторая —
-   * на случай модели, собранной мимо формы, где колонки разошлись.
+   * показатели у колонок модели одни, и восьмая колонка той же версии не
+   * должна тянуть её восьмой раз. Вторая — на случай модели, собранной мимо
+   * редактора, где колонки разошлись.
    */
   const head = columns[0]!;
   const other = columns.find((c) => c.surveyId !== head.surveyId || c.versionId !== head.versionId) ?? null;
   const surveyA = useSurveyAt(head.surveyId, head.versionId);
   const surveyB = useSurveyAt(other?.surveyId ?? null, other?.versionId ?? null);
-  const surveyOf = (c: StatModelColumn) =>
+  const surveyOf = (c: StatModelColumn): SurveyFull | null | undefined =>
     c.surveyId === head.surveyId && c.versionId === head.versionId ? surveyA : surveyB;
-  const rowsBy = columns.map((c, i) => rowsOf(c, surveyOf(c), result?.columns[i]));
-  const depth = Math.max(...rowsBy.map((r) => r.length));
-  const fieldsId = useId();
+  const rows = reportRows(columns, surveyOf, result?.columns);
+  const n = columns.length;
+  const floor = result?.smallCellFloor ?? 5;
 
   return (
-    <div className="mt-[22px] overflow-x-auto">
-      {/*
-        Пара — резиновой сеткой: колонки до 456, плашки 62, просветы от 24 и
-        растягиваются `justify-between` до кадровых 113 ровно на 1200.
-        Прежде сетка была жёсткой (456 + 113 + 456 + 113 + 62 = 1200), а
-        колонка содержимого у́же 1200 уже при рельсе слева — и колонку
-        разностей срезал край прокрутки: от плашек оставалась кромка в 8px
-        (замечание со стенда 2026-09-26). Третья и дальше — прежним шагом с
-        прокруткой: для них кадра нет, а сжимать восемь колонок в 1200
-        значило бы нечитаемые поля.
-      */}
-      <div
-        className={cx(
-          "grid gap-y-[15px]",
-          pair ? "grid-cols-[minmax(0,456px)_minmax(0,456px)_62px] justify-between gap-x-[24px]" : "gap-x-[113px]",
-        )}
-        style={pair ? undefined : { gridTemplateColumns: `repeat(${columns.length}, 456px)` }}
+    <div className="overflow-x-auto">
+      <table
+        className="w-full table-fixed border-separate border-spacing-0 text-[13px] leading-[18px]"
+        style={{ minWidth: 236 + n * 224 }}
       >
-        {columns.map((c, i) => (
-          /*
-            «Фільтри» 20/700 без рамки (строка 235…259), поля 16 ниже, шаг как
-            у f09, черта #cccccc 2px на 29 ниже полей и 29 до первой строки
-            (14 здесь + 15 шага сетки).
-          */
-          <section key={`f${i}`} aria-label={`${ut("st.sample")} ${i + 1}`} className="mb-[14px]">
-            <h3 className="m-0">
-              <FiltersToggle open={open} onToggle={onToggle} controls={`${fieldsId}-${i}`} bare />
-            </h3>
-            {open ? (
-              <div id={`${fieldsId}-${i}`} className="mt-[16px]">
-                <FilterFields look="fill" filters={filtersOf(c)} onChange={(p) => onFilters(i, p)} groups={groups} />
-              </div>
-            ) : null}
-            <hr className="m-0 mt-[29px] h-[2px] border-0 bg-hairline" />
-          </section>
-        ))}
-        {pair ? <div aria-hidden /> : null}
-
-        {Array.from({ length: depth }, (_, r) => (
-          <RowCells key={`r${r}`} rows={rowsBy.map((rows) => rows[r])} pair={pair} onRisk={onRisk} />
-        ))}
-
-        {/* строки связей с моделями и рассылками — недоступны, см. шапку файла */}
-        <LinkRow label={ut("st.linkModel")} count={columns.length} pair={pair} />
-        <LinkRow label={ut("st.linkMailing")} count={columns.length} pair={pair} />
-
-        {result ? columns.map((_, i) => <Summary key={`s${i}`} res={result.columns[i]} />) : null}
-        {result && pair ? <div aria-hidden /> : null}
-        {result ? null : (
-          <div className="col-span-full">
-            <PendingNote />
-          </div>
-        )}
-      </div>
+        <colgroup>
+          <col style={{ width: 236 }} />
+          {columns.map((_, i) => (
+            <col key={i} />
+          ))}
+        </colgroup>
+        <thead>
+          <tr>
+            <th scope="col" className="whitespace-normal border-b border-divider bg-panel-2 px-4 py-3.5 text-left align-top font-medium text-text-2">
+              <b className="block text-h3 font-extrabold text-text">{ut("st.indicator")}</b>
+              <p className="m-0 mt-1 text-small">{ut("st.sameForAll")}</p>
+              {n > 1 ? (
+                <p className="m-0 mt-2 text-small text-muted">{ut("st.diffNote").replace("{n}", String(refAt + 1))}</p>
+              ) : null}
+            </th>
+            {columns.map((c, i) => (
+              <th
+                key={i}
+                scope="col"
+                className="whitespace-normal border-b border-l border-divider bg-panel-2 px-3.5 py-3.5 text-left align-top font-medium text-text-2"
+              >
+                <SampleHead
+                  index={i}
+                  of={n}
+                  name={nameOf(c, i)}
+                  filters={filtersOf(c)}
+                  preset={presetTitleOf(c)}
+                  res={result?.columns[i]}
+                  floor={floor}
+                  onOpen={() => onOpen(i)}
+                  onDuplicate={n < MAX_SAMPLES ? () => onDuplicate(i) : undefined}
+                  onRemove={n > 1 ? () => onRemove(i) : undefined}
+                />
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) =>
+            isFigureRow(row) ? (
+              <tr key={row.key} className={cx("group/r", row.kind === "risk" && "bg-panel-2")}>
+                <th
+                  scope="row"
+                  className="whitespace-normal border-b border-divider px-4 py-2.5 text-left align-middle font-normal group-hover/r:bg-panel-2"
+                >
+                  <RowLabel row={row} onRisk={onRisk} />
+                </th>
+                {columns.map((_, j) => (
+                  <td key={j} className="border-b border-l border-divider px-3.5 py-2.5 align-top group-hover/r:bg-panel-2">
+                    <Share
+                      cell={cellAt(row, result?.columns[j])}
+                      base={result?.columns[j]?.respondents}
+                      against={j === refAt ? undefined : cellAt(row, result?.columns[refAt])}
+                      color={sampleColor(j, n)}
+                      floor={floor}
+                      ran={!!result}
+                    />
+                  </td>
+                ))}
+              </tr>
+            ) : (
+              <tr key={row.key}>
+                <td colSpan={n + 1} className="border-b border-divider bg-panel px-4 py-3">
+                  <GroupLabel row={row} />
+                </td>
+              </tr>
+            ),
+          )}
+          {result ? (
+            <tr>
+              <th scope="row" className="whitespace-normal bg-panel-2 px-4 py-3 text-left align-top text-small font-medium text-muted">
+                {ut("st.serverNotes")}
+              </th>
+              {result.columns.map((c, j) => (
+                <td key={j} className="border-l border-divider bg-panel-2 px-3.5 py-3 align-top text-small text-text-2">
+                  <span className="flex items-start gap-1.5">
+                    {c.note ? (
+                      <St.eyeOff size={14} className="mt-0.5 text-muted" />
+                    ) : (
+                      <Ic.circleCheck size={14} className="mt-0.5 text-good" />
+                    )}
+                    <span>{c.note ?? ut("st.allShown")}</span>
+                  </span>
+                </td>
+              ))}
+            </tr>
+          ) : null}
+        </tbody>
+      </table>
     </div>
   );
 }
 
-/** Плашка колонки разности: 62×36, #f0ecff, число по центру 16/700 */
-function Plate({ text }: { text?: string }) {
+/** Шапка колонки выборки: номер, имя, фильтры в ящике, меню, критерии, основание */
+function SampleHead({
+  index,
+  of,
+  name,
+  filters,
+  preset,
+  res,
+  floor,
+  onOpen,
+  onDuplicate,
+  onRemove,
+}: {
+  index: number;
+  of: number;
+  name: string;
+  filters: SampleFilters;
+  preset: string | null;
+  res: StatRunColumn | undefined;
+  floor: number;
+  onOpen: () => void;
+  onDuplicate?: () => void;
+  onRemove?: () => void;
+}) {
   const { ut } = useLang();
+  const no = String(index + 1);
   return (
-    <div
-      className={cx(
-        "flex h-9 w-[62px] items-center justify-center rounded-[5px]",
-        "bg-primary-soft text-[16px] font-bold text-primary",
-      )}
-    >
-      {text ? (
-        <span title={ut("st.diffHint")}>
-          <span className="sr-only">{ut("st.diffHint")}: </span>
-          {text}
-        </span>
+    <div className="flex min-w-0 flex-col gap-2">
+      <div className="flex items-start gap-2">
+        <SampleBadge n={index + 1} of={of} />
+        <b className="min-w-0 flex-1 break-words text-[13.5px] font-extrabold leading-[19px] text-text">{name}</b>
+        <Button
+          variant="quiet"
+          size="icon-sm"
+          className="-mt-1.5"
+          aria-label={ut("st.samplePaneTitle").replace("{n}", no)}
+          title={ut("st.samplePaneTitle").replace("{n}", no)}
+          onClick={onOpen}
+        >
+          <St.sliders />
+        </Button>
+        <ActionMenu
+          label={ut("st.sampleActions").replace("{n}", no)}
+          triggerSize="icon-sm"
+          triggerClassName="-mt-1.5"
+          entries={[
+            { label: ut("st.samplePaneTitle").replace("{n}", no), onSelect: onOpen, icon: <St.sliders size={15} /> },
+            {
+              label: ut("st.duplicateSample"),
+              onSelect: onDuplicate,
+              disabled: !onDuplicate,
+              hint: ut("st.samplesFull"),
+              icon: <St.copy size={15} />,
+            },
+            {
+              label: ut("st.removeSample"),
+              onSelect: onRemove,
+              disabled: !onRemove,
+              hint: ut("st.lastSample"),
+              ruled: true,
+              icon: <Ic.x size={15} />,
+            },
+          ]}
+        />
+      </div>
+      <CriteriaChips filters={filters} />
+      <div>
+        <SourceTag preset={preset} />
+      </div>
+      {res ? (
+        <div className="mt-0.5 flex gap-[18px]">
+          <div>
+            <small className="block text-[11.5px] font-bold leading-[15px] text-muted">{ut("st.respondents")}</small>
+            {res.respondents.suppressed ? (
+              <HiddenCell floor={floor} />
+            ) : (
+              <b className="text-[20px] font-extrabold leading-6 tabular-nums text-text">{res.respondents.count}</b>
+            )}
+          </div>
+          {res.highRisk ? (
+            <div>
+              <small className="block text-[11.5px] font-bold leading-[15px] text-muted">{ut("st.withVshr")}</small>
+              {res.highRisk.suppressed ? (
+                <HiddenCell floor={floor} />
+              ) : (
+                <b className="text-[20px] font-extrabold leading-6 tabular-nums text-text">
+                  {res.highRisk.count}
+                  <span className="ml-1 text-caption font-bold text-muted">{res.highRisk.percent} %</span>
+                </b>
+              )}
+            </div>
+          ) : null}
+        </div>
       ) : null}
     </div>
   );
 }
 
-/** Одна строка сетки f29: ячейка каждой выборки и плашка разности */
-function RowCells({
-  rows,
-  pair,
-  onRisk,
+/** Доля ячейки: «26% 6 з 23», разность от опорной выборки и полоса; скрытая — прочерк с объяснением */
+function Share({
+  cell,
+  base,
+  against,
+  color,
+  floor,
+  ran,
 }: {
-  rows: (Row | undefined)[];
-  pair: boolean;
-  onRisk: (questionId: string, optionId: string) => void;
+  cell: StatCell | null;
+  base: StatCell | undefined;
+  /** Ячейка опорной выборки; undefined — эта колонка сама опорная */
+  against: StatCell | null | undefined;
+  color: string;
+  floor: number;
+  ran: boolean;
 }) {
   const { ut } = useLang();
-  const L: Look = "fill";
-  const cell = (row: Row | undefined, i: number) => {
-    if (!row) return <div key={i} />;
-    switch (row.kind) {
-      case "test":
-        return <Readout key={i} look={L} label={ut("am.testName")} text={row.text} />;
-      case "band":
-        /* 215 | 15 | 226 — замер f29 (215…429 и 445…669) */
-        return (
-          <div key={i} className="flex gap-[15px]">
-            <Readout look={L} label={`${ut("st.band")} ${row.n}`} text={row.text} className="w-[215px] shrink-0" />
-            <Readout
-              look={L}
-              label={`${ut("st.percent")} ${row.n}`}
-              text={cellNode(row.cell)}
-              pending={!row.cell}
-              className="min-w-0 flex-1"
-            />
-          </div>
-        );
-      case "question":
-        return <Readout key={i} look={L} label={`${ut("st.question")} ${row.n}`} text={row.text} />;
-      case "option":
-        /* 159 | 16 | 204 | 15 | 62 — замер f29 (215…373, 391…593, 609…670) */
-        return (
-          <div key={i} className="flex">
-            <Readout look={L} label={`${ut("st.answer")} ${row.n}`} text={row.text} className="w-[159px] shrink-0" />
-            <Readout
-              look={L}
-              label={`${ut("st.percent")} ${row.n}`}
-              text={cellNode(row.cell)}
-              pending={!row.cell}
-              className="ml-[16px] min-w-0 flex-1"
-            />
-            <VshrToggle
-              look={L}
-              pressed={row.highRisk}
-              onToggle={() => onRisk(row.questionId, row.optionId)}
-              className="ml-[15px] w-[62px] shrink-0"
-            />
-          </div>
-        );
-    }
-  };
-  const [a, b] = rows;
-  const diff =
-    a && b && a.key === b.key && (a.kind === "band" || a.kind === "option") && (b.kind === "band" || b.kind === "option")
-      ? diffText(a.cell, b.cell)
-      : "";
+  if (!cell) {
+    /* до расчёта — пустая дорожка: строка видна, чисел ещё нет */
+    return ran ? null : <div aria-hidden className="mt-[29px] h-1.5 rounded-[3px] bg-track" />;
+  }
+  if (cell.suppressed) {
+    return (
+      <>
+        <div className="flex items-center gap-2">
+          <HiddenCell floor={floor} />
+          <span className="flex items-center gap-1 text-caption text-muted">
+            <Ic.lock size={12} />
+            {ut("st.hiddenWord")}
+          </span>
+        </div>
+        <div aria-hidden className="mt-[7px] h-1.5 rounded-[3px] shadow-[inset_0_0_0_1px_var(--ctl)]" />
+      </>
+    );
+  }
+  const diff = against === undefined ? "" : diffText(against, cell);
   return (
     <>
-      {rows.map(cell)}
-      {pair ? a?.kind === "test" ? <div aria-hidden /> : <Plate text={diff} /> : null}
+      <div className="flex items-baseline gap-2 whitespace-nowrap">
+        <b className="text-[17px] font-extrabold leading-[22px] tracking-[-0.01em] tabular-nums text-text">
+          {cell.percent}
+          <small className="ml-px text-caption font-bold text-muted">%</small>
+        </b>
+        {base && !base.suppressed ? (
+          <span className="text-caption tabular-nums text-muted">
+            {ut("kit.ofTotal").replace("{n}", String(cell.count)).replace("{total}", String(base.count))}
+          </span>
+        ) : null}
+        {diff ? (
+          <Tag className="ml-auto self-center tabular-nums">
+            <span className="sr-only">{ut("st.diffHint")}: </span>
+            {ut("st.pp").replace("{n}", diff)}
+          </Tag>
+        ) : null}
+      </div>
+      <div aria-hidden className="mt-[7px] h-1.5 overflow-hidden rounded-[3px] bg-track">
+        <i className="block h-full rounded-[3px]" style={{ width: `${Math.max(cell.percent, 1)}%`, background: color }} />
+      </div>
     </>
   );
 }
 
-/**
- * «Назва моделі · ВщВМ · ВШР» — 302 | 15 | 62 | 15 | 62 (замер f29,
- * 215…516, 532…593, 609…670). Недоступна: см. шапку файла. Причина — в
- * подсказке и для диктора; поля не принимают фокус, потому что нажимать в
- * них нечего.
- */
-function LinkRow({ label, count, pair }: { label: string; count: number; pair: boolean }) {
+/** Подпись строки с числами: полоса словом тяжести, «Решта», вариант с «ВШР», «Респонденти з ВШР» */
+function RowLabel({ row, onRisk }: { row: ReportRow; onRisk: (questionId: string, optionId: string) => void }) {
   const { ut } = useLang();
-  const hint = ut("st.linksUnavailable");
-  return (
-    <>
-      {Array.from({ length: count }, (_, i) => (
-        <div key={i} aria-disabled title={hint} className="flex gap-[15px]">
-          <Readout look="fill" label={label} className="min-w-0 flex-1" />
-          <Readout look="fill" label={ut("st.vshvm")} align="center" className="w-[62px] shrink-0" />
-          <Readout look="fill" label={ut("st.vshr")} align="center" className="w-[62px] shrink-0" />
-          <span className="sr-only">{hint}</span>
-        </div>
-      ))}
-      {pair ? <Plate /> : null}
-    </>
-  );
+  switch (row.kind) {
+    case "band":
+      return (
+        <span className="flex flex-wrap items-center gap-2">
+          {row.severity ? (
+            <SeverityTag level={row.severity} small>
+              {row.label || ut("st.band")}
+            </SeverityTag>
+          ) : (
+            <span className="font-semibold text-text">{row.label}</span>
+          )}
+          {row.range ? <span className="text-caption text-muted">{ut("st.points").replace("{r}", row.range)}</span> : null}
+        </span>
+      );
+    case "option":
+      return (
+        <span className="flex items-center gap-2">
+          <span className="min-w-0 flex-1 text-text">{row.text}</span>
+          <VshrToggle pressed={row.highRisk} onToggle={() => onRisk(row.questionId, row.optionId)} />
+        </span>
+      );
+    case "rest":
+      return (
+        <span className="block">
+          <b className="block font-bold text-text-2">{ut("st.rest")}</b>
+          {row.others ? <small className="block text-caption text-muted">{row.others}</small> : null}
+        </span>
+      );
+    case "risk":
+      return (
+        <span className="block">
+          <span className="flex items-center gap-2">
+            <St.shieldAlert size={15} className="text-risk-ink" />
+            <b className="font-extrabold text-text">{ut("st.vshrRow")}</b>
+          </span>
+          <small className="block text-caption text-muted">{ut("st.vshrRowSub")}</small>
+        </span>
+      );
+    default:
+      return null;
+  }
+}
+
+/** Заголовок группы строк: шкала с её смугами или вопрос с его вариантами */
+function GroupLabel({ row }: { row: ReportRow }) {
+  const { ut } = useLang();
+  if (row.kind === "scale") {
+    return (
+      <span className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+        {row.code ? <b className="font-extrabold text-text">{row.code}</b> : null}
+        <b className="font-bold text-text">{row.title}</b>
+        <span className="text-small text-muted">{ut("st.scaleGroupSub")}</span>
+      </span>
+    );
+  }
+  if (row.kind === "question") {
+    return (
+      <span className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+        {row.number ? <b className="font-extrabold text-text">{ut("st.itemNo").replace("{n}", String(row.number))}</b> : null}
+        <b className="font-bold text-text">{row.title}</b>
+        {row.type ? (
+          <span className="text-small text-muted">
+            {row.type === "multiple"
+              ? ut("st.typeMultiple")
+              : row.type === "yesno"
+                ? ut("st.typeYesNo")
+                : ut("st.typeSingle")}
+          </span>
+        ) : null}
+      </span>
+    );
+  }
+  return null;
 }

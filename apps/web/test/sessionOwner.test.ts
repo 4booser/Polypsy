@@ -193,6 +193,47 @@ describe("продление не принимает токен другого �
   });
 });
 
+describe("запрос ушедшего в этой же вкладке", () => {
+  /*
+   * Общий ноутбук: A вышел, B вошёл в той же вкладке, а запрос A, ушедший до
+   * выхода, вернулся после входа B с 401 (сессию A сервер погасил выходом).
+   * Продление видело токен B, объявляло сессию «чужой» и выводило B.
+   */
+  test("A вышел, вошёл B, пока запрос A летел: 401 запроса A не выводит B и не трогает его токены", async () => {
+    const ended: string[] = [];
+    (g.window as EventTarget).addEventListener("quizzy:session-ended", () => ended.push("ended"));
+    tokenStore.set(jwt("doctor-a"));
+    tokenStore.setRefresh("ra1");
+    let release: (r: Response) => void = () => {};
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      sent.push({ path: String(input), auth: new Headers(init?.headers).get("Authorization") });
+      return new Promise<Response>((r) => {
+        release = r;
+      });
+    }) as typeof fetch;
+    const pending = api.patientCard("p1").then(
+      () => null,
+      (e: unknown) => e,
+    );
+    await new Promise((r) => setTimeout(r, 0));
+
+    // выход A и вход B в этой вкладке (auth.tsx: logout → tokenStore.clear, adopt → set)
+    tokenStore.clear();
+    tokenStore.set(jwt("doctor-b"));
+    tokenStore.setRefresh("rb1");
+    release(reply(401, { error: "сесію завершено" }));
+
+    const error = await pending;
+    expect((error as ApiError).status).toBe(401);
+    expect(windowEvents, "B выведен из вкладки чужим 401").toEqual([]);
+    expect(ended).toEqual([]);
+    // ни обмена refresh, ни повтора
+    expect(sent.map((s) => s.path)).toEqual(["/api/patients/p1/card"]);
+    expect(g.localStorage!.getItem(TOKEN_KEY)).toBe(jwt("doctor-b"));
+    expect(g.localStorage!.getItem(REFRESH_KEY)).toBe("rb1");
+  });
+});
+
 describe("событие storage из другой вкладки", () => {
   function storageEvent(key: string | null, oldValue: string | null, newValue: string | null): Event {
     return Object.assign(new Event("storage"), { key, oldValue, newValue });
