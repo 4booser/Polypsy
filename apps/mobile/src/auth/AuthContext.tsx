@@ -46,6 +46,13 @@ const AuthContext = createContext<AuthState | null>(null);
  */
 const sendLeftovers = () => void api.flushQueue().catch(() => {});
 
+/*
+ * Вошёл — объяснение «сесію завершено» больше не к месту (auth/sessionEnd.ts):
+ * экран входа мог его не показать (вошли заново прямо со смены пароля), и
+ * тогда оно встретило бы человека после обычного выхода через неделю.
+ */
+const forgetEndedNotice = () => void api.sessionEndedNotice();
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -58,6 +65,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    */
   useEffect(() => {
     const off = api.onWiped(() => setUser(null));
+    /*
+     * Сессия кончилась по слову сервера (auth/sessionEnd.ts) — так же: копии
+     * уже стёрты, токены сняты, и человек больше не «вошёл».
+     */
+    const offEnded = api.onSessionEnded(() => setUser(null));
     // при старте пробуем восстановить сессию по сохранённому токену
     (async () => {
       const restored = await unlessWiped(async () => {
@@ -84,7 +96,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (restored) setUser(restored);
       setLoading(false);
     })();
-    return off;
+    return () => {
+      off();
+      offEnded();
+    };
   }, []);
 
   const login = useCallback(async (email: string, password: string) => {
@@ -93,6 +108,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await tokenStorage.set(payload.token);
     await tokenStorage.setRefresh(payload.refreshToken);
     setUser(payload.user);
+    forgetEndedNotice();
     sendLeftovers();
     return null;
   }, []);
@@ -102,6 +118,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await tokenStorage.set(payload.token);
     await tokenStorage.setRefresh(payload.refreshToken);
     setUser(payload.user);
+    forgetEndedNotice();
     sendLeftovers();
   }, []);
 
@@ -110,6 +127,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await tokenStorage.set(payload.token);
     await tokenStorage.setRefresh(payload.refreshToken);
     setUser(payload.user);
+    forgetEndedNotice();
   }, []);
 
   /** Перечитывает профиль после правки паспортной части; стёртое по пути устройство — не возвращает */

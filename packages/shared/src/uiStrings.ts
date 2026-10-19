@@ -16308,6 +16308,15 @@ export const UI = {
     ru: "Подписать можно, когда видно, что сигнал этого прохождения разобран.",
     en: "You can sign once it’s clear this attempt’s signal has been reviewed.",
   },
+
+  // ── v2-fix-mobile2 ──
+  /* вход после того, как сессия кончилась сама (apps/mobile/app/login.tsx, auth/sessionEnd.ts) */
+  "mlg.sessionEnded": { uk: "Сесію завершено", ru: "Сессия завершена", en: "Your session has ended" },
+  "mlg.sessionEndedText": {
+    uk: "Увійдіть знову, щоб продовжити. Відповіді, які ще не відправлено, збережено на цьому пристрої.",
+    ru: "Войдите снова, чтобы продолжить. Ответы, которые ещё не отправлены, сохранены на этом устройстве.",
+    en: "Sign in again to continue. Answers that have not been sent yet are kept on this device.",
+  },
 } as const satisfies Record<string, UiEntry>;
 
 export type UiKey = keyof typeof UI;

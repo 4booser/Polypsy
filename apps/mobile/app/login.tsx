@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, TextInput, View } from "react-native";
 import { useRouter } from "expo-router";
 import { LANGS, LANG_NAMES } from "@quizzy/shared";
+import { api } from "@/api/client";
 import { useAuth } from "@/auth/AuthContext";
 import { ErrorText } from "@/components/ui";
 import { CrisisStrip } from "@/components/patient/Crisis";
@@ -13,7 +14,7 @@ import { useLang } from "@/lang";
 import { Btn } from "@/ui/Button";
 import { Field } from "@/ui/Field";
 import { BackButton, HelpPill, NavBar } from "@/ui/NavBar";
-import { Panel, Squircle } from "@/ui/Panel";
+import { Callout, Panel, Squircle } from "@/ui/Panel";
 import { Segmented } from "@/ui/Segmented";
 import { T } from "@/ui/Text";
 
@@ -42,6 +43,12 @@ export default function LoginScreen() {
   const [code, setCode] = useState("");
   /** Код восстановления вместо шести цифр: телефона с приложением нет под рукой */
   const [recovery, setRecovery] = useState(false);
+  /*
+   * Сессия кончилась сама — сервер отказал продлению (auth/sessionEnd.ts).
+   * Человек не нажимал «вийти» и должен узнать, почему он снова здесь; один
+   * раз, спокойно: это не ошибка и не его вина.
+   */
+  const [ended] = useState(() => api.sessionEndedNotice());
 
   async function onSubmit() {
     setBusy(true);
@@ -157,6 +164,11 @@ export default function LoginScreen() {
         ) : (
           <>
             <Hero title={ut("mpt.lg.title")} lead={ut("mpt.lg.lead")} />
+            {ended ? (
+              <View style={{ marginTop: 16, marginHorizontal: 16 }} accessibilityLiveRegion="polite">
+                <Callout kind="v" icon="clock" title={ut("mlg.sessionEnded")} text={ut("mlg.sessionEndedText")} />
+              </View>
+            ) : null}
             <Panel style={{ marginTop: 16, marginHorizontal: 16 }}>
               <View style={{ gap: 16 }}>
                 <Field

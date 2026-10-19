@@ -52,7 +52,7 @@ describe("CR-020: отсутствующий refresh не фиксирует о�
     const { box, refresh } = harness(null);
 
     // 401 от старого запроса после выхода: токенов нет, сети не трогаем
-    expect(await refresh()).toEqual({ kind: "invalid" });
+    expect(await refresh()).toEqual({ kind: "invalid", reason: "none" });
     expect(box.calls).toBe(0);
 
     // вошли снова — хранилище получило новый refresh
@@ -96,7 +96,8 @@ describe("CR-020: отсутствующий refresh не фиксирует о�
       box.refresh = null; // выход посреди обмена
       return { ok: true, status: 200, json: async () => ({ token: `t-${raw}`, refreshToken: `r-${raw}` }) };
     };
-    expect(await refresh()).toEqual({ kind: "invalid" });
+    // о сессии того, кто сейчас в приложении, это ничего не говорит (auth/sessionEnd.ts)
+    expect(await refresh()).toEqual({ kind: "invalid", reason: "superseded" });
     expect(box.saved).toEqual([]);
   });
 });
@@ -108,9 +109,14 @@ describe("CR-021: сетевой сбой продления отличаетс�
     const h = harness("r0");
     h.box.exchange = reject(401);
     const outcome = (await h.refresh()) as Exclude<RefreshOutcome, { kind: "refreshed" }>;
-    expect(outcome).toEqual({ kind: "invalid" });
+    // 401 на обмене — слово сервера: сессия кончилась (auth/sessionEnd.ts)
+    expect(outcome).toEqual({ kind: "invalid", reason: "rejected" });
     expect(failureStatusAfterRefresh(outcome, 401)).toBe(401);
     expect(isTransientStatus(failureStatusAfterRefresh(outcome, 401))).toBe(false);
+
+    // прочий 4xx (лимит, прокси) — отказ, но не «сессия кончилась»
+    h.box.exchange = reject(429);
+    expect(await h.refresh()).toEqual({ kind: "invalid", reason: "refused" });
   });
 
   test("обрыв сети на обмене — временный сбой со статусом 0", async () => {
@@ -165,7 +171,7 @@ describe("CR-021: очередь несданных при сбое продле
 
   test("сессия недействительна — отказ по существу, сдача ждёт разбора человеком", async () => {
     enqueue(A, "s1", {});
-    const res = await flush(A, submitAfter({ kind: "invalid" }));
+    const res = await flush(A, submitAfter({ kind: "invalid", reason: "refused" }));
     expect(res).toEqual({ sent: 0, left: 0, rejected: 1 });
     expect(pendingCount(A)).toBe(0);
     expect(rejectedItems(A)).toHaveLength(1);

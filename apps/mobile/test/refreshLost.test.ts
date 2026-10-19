@@ -128,14 +128,21 @@ describe("ответ обмена потерян после фиксации", (
 });
 
 describe("положительный контроль", () => {
-  test("сервер отверг refresh по существу — сессия недействительна, как и было", async () => {
+  test("сервер отверг refresh по существу — сессия кончилась, как при выходе: сдача ждёт владельца", async () => {
     const api = await loadClient();
     const owner = ownerOf();
     signIn(owner);
     enqueue(owner, "s1", { answers: [] });
     sessionServer(owner, { lose: 0, refuseRefresh: true });
 
-    expect(await api.flushQueue()).toEqual({ sent: 0, left: 0, rejected: 1 });
+    /*
+     * Раньше сдача становилась «отклонённой» и ждала ручного повтора. Теперь
+     * сессия заканчивается до того, как отказ дойдёт до очереди
+     * (auth/sessionEnd.ts): запись за вышедшим закрыта, сдача не помечена и
+     * уйдёт сама после его входа — ровно как после выхода.
+     */
+    expect(await api.flushQueue()).toEqual({ sent: 0, left: 1, rejected: 0 });
+    expect(session.token, "сессия снята").toBeNull();
   });
 
   test("без потерь обмен один, сдача уходит с первого раза", async () => {

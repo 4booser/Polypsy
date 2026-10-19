@@ -38,6 +38,7 @@ import { API_URL } from "../config";
 import { revokeStorage, tokenStorage } from "../storage";
 import { dropRevocation, flushRevocations, queueRevocation, refreshOnUnauthorized } from "../auth/session";
 import { createRefresher, failureStatusAfterRefresh } from "../auth/refresh";
+import { createSessionEnder, endsSession } from "../auth/sessionEnd";
 import { isPasswordChangeRequired, isPasswordGate } from "../auth/passwordGate";
 import { uiText } from "@quizzy/shared";
 import { currentLang } from "../currentLang";
@@ -124,6 +125,17 @@ const tryRefresh = createRefresher({
   },
 });
 
+/*
+ * Конец сессии по слову сервера — как выход: офлайн-копии вышедшего уходят,
+ * токены снимаются, интерфейс уходит на вход (auth/sessionEnd.ts).
+ */
+const sessionEnder = createSessionEnder({
+  token: () => tokenStorage.get(),
+  ownerOf: ownerOfToken,
+  leave: (owner) => leaveDevice(owner),
+  clearTokens: () => tokenStorage.clear(),
+});
+
 interface RequestOptions {
   retried?: boolean;
   /**
@@ -183,6 +195,16 @@ async function request<T>(path: string, init: RequestInit = {}, opts: RequestOpt
         status,
       );
     }
+    /*
+     * Сервер отказал продлению 401 или продлевать нечем — сессия кончилась
+     * насовсем: тот же путь, что выход (auth/sessionEnd.ts). Кончается та
+     * сессия, чей токен ушёл в этом запросе; вышли, вошёл другой или тот же
+     * человек вошёл заново, пока шёл обмен, — новую сессию это не трогает.
+     * Заканчивается до того, как отказ уйдёт наружу: очередь сдач видит, что
+     * запись за владельцем уже закрыта, и не помечает его сдачу отклонённой —
+     * она уйдёт после его входа.
+     */
+    if (endsSession(outcome)) await sessionEnder.end(token);
   }
 
   if (res.status === 204) return undefined as T;
@@ -408,6 +430,14 @@ export const api = {
   },
   /** Подписка на «устройство стёрто по команде, сессия закрыта» (offline/wipe.ts); возвращает отписку */
   onWiped: (listener: () => void) => onWiped(listener),
+  /**
+   * Подписка на «сессия кончилась по слову сервера» (auth/sessionEnd.ts):
+   * офлайн-копии уже стёрты, токены сняты — интерфейс снимает пользователя
+   * и уходит на вход. Возвращает отписку.
+   */
+  onSessionEnded: (listener: () => void) => sessionEnder.onEnded(listener),
+  /** Экран входа: сказать ли, что сессия завершилась сама (показывается один раз) */
+  sessionEndedNotice: () => sessionEnder.takeNotice(),
   /**
    * Смена пароля. Сервер при этом обрывает все сессии, включая эту
    * (routes/auth.ts, POST /password), — после неё нужен вход новым паролем.
