@@ -16304,6 +16304,15 @@ export const UI = {
   "opx.vt.verdictTitle": { uk: "p75 {v} — {rating}", ru: "p75 {v} — {rating}", en: "p75 {v} — {rating}" },
   "opx.vt.verdict": { uk: "Добре ≤ {good}, погано > {poor}.", ru: "Хорошо ≤ {good}, плохо > {poor}.", en: "Good ≤ {good}, poor > {poor}." },
   "opx.vt.verdictFew": { uk: "Замірів лише {n} — це випадок, а не міра.", ru: "Замеров всего {n} — это случай, а не мера.", en: "Only {n} samples: an anecdote, not a measure." },
+
+  // ── v2-fix-mobile2 ──
+  /* вход после того, как сессия кончилась сама (apps/mobile/app/login.tsx, auth/sessionEnd.ts) */
+  "mlg.sessionEnded": { uk: "Сесію завершено", ru: "Сессия завершена", en: "Your session has ended" },
+  "mlg.sessionEndedText": {
+    uk: "Увійдіть знову, щоб продовжити. Відповіді, які ще не відправлено, збережено на цьому пристрої.",
+    ru: "Войдите снова, чтобы продолжить. Ответы, которые ещё не отправлены, сохранены на этом устройстве.",
+    en: "Sign in again to continue. Answers that have not been sent yet are kept on this device.",
+  },
 } as const satisfies Record<string, UiEntry>;
 
 export type UiKey = keyof typeof UI;
