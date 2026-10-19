@@ -599,7 +599,8 @@ describe("счётчик непрочитанного (GET /api/messages/unread-
     const countMany = await sqlOf("/api/messages/unread-count", many.token);
     expect(countMany, `счётчик: ${countMany}, список: ${listMany}`).toBeLessThan(listMany);
     expect((await api("/api/messages/unread-count", many.token)).body).toEqual({ unread: 22 });
-  });
+    // свой срок: двадцать четыре разговора заводятся подряд, и в CI это три с лишним секунды из пяти
+  }, 30_000);
 
   test("счётчик в журнал не пишет — как не писал и список, который он заменил", async () => {
     const specialist = await makeUser("admin", `ms-uc-s-${crypto.randomUUID()}@test`);

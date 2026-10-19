@@ -116,7 +116,14 @@ describe("GET /api/referrals?closedSince=", () => {
     expect(paged.map((r) => r.id)).toEqual(whole.map((r) => r.id));
     const at = whole.map((r) => r.createdAt);
     expect([...at].sort().reverse()).toEqual(at);
-  });
+    /*
+     * Свой срок, а не пять секунд по умолчанию: обход по одной строке — это
+     * запрос на каждое закрытое направление зоны, а под ролью приложения в
+     * CI каждый шёл по полсекунды (политика строк считает зону на строке, и
+     * на свежей базе без статистики план хуже). Проверка — о порядке и
+     * полноте страниц, не о скорости.
+     */
+  }, 30_000);
 
   test("зона — та же: чужая группа своих людей в отборе не видит", async () => {
     const items = await walk(`/api/referrals?closedSince=${encodeURIComponent(since())}`, adminB, 100);
