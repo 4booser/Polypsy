@@ -743,14 +743,17 @@ const SCREENS: Array<{
     root: "body",
     open: async (page) => {
       await page.goto("/");
-      await page.getByRole("heading", { level: 1, name: /^(О кампании|Про кампанію)$/ }).waitFor();
+      await page
+        .getByRole("heading", { level: 1, name: /^(Жоден сигнал ризику не загубиться|Ни один сигнал риска не потеряется)$/ })
+        .waitFor();
       /*
        * Ждём кнопку входа, а не один заголовок: она стоит последней в
        * содержимом листа, и пока её нет, снимок поймал бы лист без неё.
+       * Кнопка — первого экрана (#about): «Увійти» есть и в шапке листа.
        * Фоновая картинка — отдельная забота: её ждём загрузкой, иначе в
        * кадр попадает сиреневая заливка без волн и силуэта.
        */
-      await page.getByRole("link", { name: /^(Войти|Увійти)$/ }).waitFor();
+      await page.locator("#about").getByRole("link", { name: /^(Войти|Увійти)$/ }).waitFor();
       await page.evaluate(
         () =>
           new Promise<void>((done) => {
