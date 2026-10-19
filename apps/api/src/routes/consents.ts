@@ -196,12 +196,24 @@ consentRoutes.get("/versions", requireSuperadmin, async (c) => {
       .select({ n: sql<number>`count(*)::int` })
       .from(users)
       .where(and(eq(users.role, "user"), isNull(users.disabledAt)));
+    /*
+     * Сначала люди, потом проверка согласия (волна 27). Прежде согласие
+     * проверялось на каждой строке отказа, а люди сводились в конце
+     * сортировкой по правилам языка: строк отказа больше, чем людей
+     * (отказываются повторно), и почти всё время уходило на эту сортировку.
+     * Идентификаторы сравниваются побайтно (collate "C"): порядок их не
+     * важен, нужно только равенство. Строка без человека — не человек, как и
+     * в прежнем count(distinct …). Индекс под это не нужен: строки отказа
+     * берёт индекс действия, а EXPLAIN на 4 000 отказах — 1,6 мс против 9,6.
+     */
     const declinedRows = current
       ? await db.execute<{ n: number }>(sql`
-          select count(distinct a.subject_user_id)::int as n
-          from audit_log a
-          where a.action = 'consent.decline' and a.resource_id = ${current.id}
-            and not exists (select 1 from consents k where k.user_id = a.subject_user_id and k.consent_text_id = ${current.id})`)
+          select count(*)::int as n
+            from (select distinct a.subject_user_id collate "C" as id
+                    from audit_log a
+                   where a.action = 'consent.decline' and a.resource_id = ${current.id}
+                     and a.subject_user_id is not null) d
+           where not exists (select 1 from consents k where k.user_id = d.id and k.consent_text_id = ${current.id})`)
       : [];
     return {
       accepted: new Map(acceptedRows.map((r) => [r.id, Number(r.n)])),
