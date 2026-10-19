@@ -58,6 +58,21 @@ export function hotkeyNames(e: Pick<KeyboardEvent, "key" | "code" | "shiftKey">)
   return names;
 }
 
+/**
+ * Открыт ли над экраном слой, под которым клавиши экрана молчат: окно
+ * (Modal), палитра команд, меню «Ще розділи» — любой модальный слой, кроме
+ * ящика набора.
+ *
+ * Без этого N на списке моделей заводил новую модель под открытым окном
+ * удаления, цифры 1–6 переключали вкладки за окном выгрузки, а J/K ходили по
+ * строкам под окном пресетов. Ящик (`data-drawer`) решает сам: его клавиши
+ * (1–3 разбора, J/K «Хто це») — его дело, а экран, которому при открытом
+ * ящике надо молчать, выключает свою карту вторым аргументом useHotkeys.
+ */
+export function layerAbove(doc: Pick<Document, "querySelector"> | undefined = typeof document === "undefined" ? undefined : document): boolean {
+  return !!doc?.querySelector('[aria-modal="true"]:not([data-drawer])');
+}
+
 /** Действие карты для нажатия: первое имя из hotkeyNames, у которого оно есть */
 export function hotkeyFor<F>(map: Record<string, F | undefined>, e: Pick<KeyboardEvent, "key" | "code" | "shiftKey">): F | undefined {
   for (const name of hotkeyNames(e)) {
@@ -83,7 +98,8 @@ export function hotkeyFor<F>(map: Record<string, F | undefined>, e: Pick<Keyboar
  * браузеру и палитре, и перехватывать их без крайней нужды — способ
  * разозлить человека. Нажатие, которое уже обработал кто-то ближе к полю
  * (меню, строка таблицы, поповер — preventDefault), и набор с подбором
- * (isComposing) тоже не наши.
+ * (isComposing) тоже не наши. Под открытым окном или палитрой клавиши
+ * молчат (layerAbove); ящик решает сам.
  */
 export function useHotkeys(map: Record<string, (() => void) | undefined>, enabled = true): void {
   const ref = useRef(map);
@@ -93,6 +109,7 @@ export function useHotkeys(map: Record<string, (() => void) | undefined>, enable
     if (!enabled) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey || e.defaultPrevented || e.isComposing) return;
+      if (layerAbove()) return;
       const target = e.target as HTMLElement | null;
       const tag = target?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target?.isContentEditable) {

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { hotkeyFor, hotkeyNames } from "../src/ui/keys";
+import { hotkeyFor, hotkeyNames, layerAbove } from "../src/ui/keys";
 
 /**
  * Клавиши набора (useHotkeys) — по месту клавиши, а не по знаку.
@@ -97,6 +97,34 @@ test("карта, записанная кодами (прежний useCodeKeys 
   expect(fired(map, press("о", "KeyJ"))).toBe("next");
   expect(fired(map, press("1", "Digit1"))).toBe("confirmed");
   expect(fired(map, press("х", "BracketLeft"))).toBe("back");
+});
+
+describe("под окном клавиши экрана молчат, ящик решает сам", () => {
+  /*
+   * N на списке моделей заводил новую модель под открытым окном удаления,
+   * цифры 1–6 переключали вкладки за окном выгрузки. Слой, под которым
+   * клавиши экрана молчат, — любой модальный, кроме ящика набора.
+   */
+  const SELECTOR = '[aria-modal="true"]:not([data-drawer])';
+  const doc = (open: { modal?: boolean; drawer?: boolean }) => ({
+    querySelector: (sel: string) => {
+      expect(sel).toBe(SELECTOR);
+      return open.modal ? ({} as Element) : null;
+    },
+  });
+
+  test("окно, палитра, меню «Ще розділи» — слой есть", () => {
+    expect(layerAbove(doc({ modal: true }))).toBe(true);
+  });
+
+  test("только ящик или ничего — слоя нет", () => {
+    expect(layerAbove(doc({ drawer: true }))).toBe(false);
+    expect(layerAbove(doc({}))).toBe(false);
+  });
+
+  test("вне браузера — слоя нет", () => {
+    expect(layerAbove(undefined)).toBe(false);
+  });
 });
 
 test("порядок имён: место клавиши, её код, потом знак", () => {
