@@ -6,7 +6,7 @@ import { Callout, Ic, useAction, useToast } from "../ui";
 import { IconTile } from "../ui/layout";
 import { ActionMenu } from "../ui/menu";
 import { useLang } from "../lang";
-import { Button, Field, Input, Tag, Textarea } from "../ui/primitives";
+import { Button, Tag, Textarea } from "../ui/primitives";
 import { editorShortcut } from "../pages/constructor/shortcuts";
 import { Rx } from "../pages/response/icons";
 import { TemplateMenus } from "./TemplatePicker";
@@ -46,8 +46,6 @@ export function ConclusionEditor({
   error,
   onState,
   onReload,
-  title,
-  setTitle,
   text,
   setText,
   areaRef,
@@ -65,9 +63,6 @@ export function ConclusionEditor({
   error: string | null;
   onState: (next: ConclusionState) => void;
   onReload: () => void;
-  title: string;
-  /** Название — своё поле экрана; без него поле не рисуется */
-  setTitle?: (next: string) => void;
   text: string;
   setText: (next: string) => void;
   areaRef: React.RefObject<HTMLTextAreaElement | null>;
@@ -103,7 +98,7 @@ export function ConclusionEditor({
   const saveDraft = () =>
     run(async () => {
       if (!state || !draftSavable(text)) return false;
-      onState(await api.saveConclusion(responseId, text, state.current, title));
+      onState(await api.saveConclusion(responseId, text, state.current));
     }, ut("cn.draftSaved"));
 
   /* ⌘S / Ctrl+S — сохранить черновик, не уходя с поля; по клавише, а не по знаку раскладки */
@@ -127,7 +122,7 @@ export function ConclusionEditor({
     );
   }
   const signed = state.versions.find((v) => v.status === "signed");
-  const save = () => api.saveConclusion(responseId, text, state.current, title);
+  const save = () => api.saveConclusion(responseId, text, state.current);
   const plan = signPlan(text, draft);
   const dirty = draft ? text !== draft.text : text.trim().length > 0;
   const status = draft ? (
@@ -261,11 +256,6 @@ export function ConclusionEditor({
       </div>
 
       <div className="flex flex-col gap-4 px-4 pb-4 pt-4">
-        {setTitle ? (
-          <Field label={ut("cnx.name")}>
-            <Input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={200} />
-          </Field>
-        ) : null}
         {summary}
         {signed && !draft ? (
           <div className="rounded-[12px] bg-good-tint px-3.5 py-3">

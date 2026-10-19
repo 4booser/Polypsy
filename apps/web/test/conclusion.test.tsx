@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
 import { UI, type DecisionRule, type ResponseContextSignal, type RuleHit } from "@quizzy/shared";
-import type { ConclusionState, ConclusionVersion } from "../src/api";
+import { api, type ConclusionState, type ConclusionVersion } from "../src/api";
 import { ConclusionEditor } from "../src/components/ConclusionEditor";
 import { LangProvider } from "../src/lang";
 import { applicableModels, resultLines } from "../src/pages/Conclusion";
@@ -74,7 +74,6 @@ describe("подпись после разбора сигнала", () => {
         error={null}
         onState={() => {}}
         onReload={() => {}}
-        title=""
         text={text}
         setText={() => {}}
         areaRef={{ current: null }}
@@ -119,6 +118,50 @@ describe("подпись после разбора сигнала", () => {
     expect(signGate({ signals: null }, false, false)).toBe("open");
   });
 
+  /**
+   * Поле «Назва заключення» было на листе, а сервер название не хранит
+   * (столбца нет) и отбрасывал его молча: набрал, сохранил, открыл — пусто.
+   * Поле, которое не сохраняется, хуже его отсутствия. Мутация: вернуть
+   * поле — в разметке появляется поле ввода; вернуть title в тело — тело
+   * сохранения его несёт.
+   */
+  test("названия заключения нет: ни поля на листе, ни поля в теле сохранения", async () => {
+    const html = draw(false);
+    expect(html).not.toMatch(/<input\b/);
+    expect(html).not.toContain("Назва заключення");
+
+    const sent: unknown[] = [];
+    const g = globalThis as { localStorage?: Storage; sessionStorage?: Storage };
+    const saved = { fetch: globalThis.fetch, localStorage: g.localStorage, sessionStorage: g.sessionStorage };
+    const memory = (): Storage => {
+      const data = new Map<string, string>();
+      return {
+        get length() {
+          return data.size;
+        },
+        clear: () => data.clear(),
+        getItem: (k) => data.get(k) ?? null,
+        key: (i) => [...data.keys()][i] ?? null,
+        removeItem: (k) => void data.delete(k),
+        setItem: (k, val) => void data.set(k, String(val)),
+      };
+    };
+    g.localStorage = memory();
+    g.sessionStorage = memory();
+    globalThis.fetch = (async (_: RequestInfo | URL, init?: RequestInit) => {
+      sent.push(JSON.parse(String(init?.body)));
+      return new Response(JSON.stringify(state(v())), { status: 200, headers: { "Content-Type": "application/json" } });
+    }) as typeof fetch;
+    try {
+      await api.saveConclusion("r1", "Висновок", { version: 1, revision: 3 });
+    } finally {
+      globalThis.fetch = saved.fetch;
+      g.localStorage = saved.localStorage;
+      g.sessionStorage = saved.sessionStorage;
+    }
+    expect(sent).toEqual([{ text: "Висновок", baseVersion: 1, baseRevision: 3 }]);
+  });
+
   test("подпись ждёт обстановку молча, а при отказе называет причину; черновик сохраняется в обоих случаях", () => {
     const base = {
       responseId: "r1",
@@ -126,7 +169,6 @@ describe("подпись после разбора сигнала", () => {
       error: null,
       onState: () => {},
       onReload: () => {},
-      title: "",
       text: "Симптоми зменшуються",
       setText: () => {},
       areaRef: { current: null },

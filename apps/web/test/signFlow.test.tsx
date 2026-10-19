@@ -151,7 +151,6 @@ describe("кнопка «Підписати й сформувати» в раз�
           error={null}
           onState={() => {}}
           onReload={() => {}}
-          title=""
           text={text}
           setText={() => {}}
           areaRef={{ current: null }}
