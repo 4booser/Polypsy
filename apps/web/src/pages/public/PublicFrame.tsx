@@ -8,6 +8,7 @@ import { LogoTile } from "../../shell/Logo";
 import { setThemeChoice } from "../../shell/theme";
 import { ThemeToggle } from "../../shell/ThemeToggle";
 import { cx } from "../../ui/cx";
+import { buttonClass } from "../../ui/primitives";
 import { IconFacebook, IconTelegram, IconYouTube } from "./social";
 
 /*
@@ -16,10 +17,12 @@ import { IconFacebook, IconTelegram, IconYouTube } from "./social";
  *
  * Шапка 80 на колонке 1200: знак и имя слева; справа состояние системы
  * ссылкой на страницу статуса, тема, язык и «Увійти». Подвал — одна строка
- * под чертой: год, раздел «Про кампанію», телефон и почта учреждения и
- * соцсети. Пунктов, которых в системе нет (политика конфиденциальности,
- * условия), здесь нет, хотя набор их рисует: ссылка в никуда хуже
- * отсутствующей.
+ * под чертой: «© 2026 Polypsy» (год — текущий), телефон и почта учреждения
+ * и соцсети. Пунктов, которых в системе нет (политика конфиденциальности,
+ * условия, «Дані зберігаються в Україні»), здесь нет, хотя набор их рисует:
+ * ссылка в никуда хуже отсутствующей, а обещание о данных — дело
+ * учреждения, а не макета. «Про кампанію» прежнего кадра f00 ушло вместе с
+ * кампанией: лендинг Polypsy 2.0 рассказывает о системе.
  *
  * Тема у гостя своя и хранится только в браузере: у гостя нет профиля на
  * сервере. Набор рисует гостевые страницы в обеих темах, и переключатель
@@ -70,16 +73,15 @@ export function PublicFrame({
           <StatusLink />
           <ThemeToggle tone="band" onChoose={(c) => setThemeChoice(c)} className="max-[600px]:hidden" />
           <LangMenu tone="band" />
-          {/* «Увійти» — везде, кроме самого входа: на нём кнопка вела бы туда, где человек уже стоит */}
+          {/*
+            «Увійти» — везде, кроме самого входа: на нём кнопка вела бы туда,
+            где человек уже стоит. Тонированная, как в наборе (.pub-h .btn):
+            основная кнопка страницы — её собственная («Увійти» формы,
+            «Підключити відділення» лендинга), а шапке вторая залитая не нужна.
+          */}
           {!showSignIn ? null : (
-            <Link
-              to="/login"
-              className={cx(
-                "inline-flex h-11 shrink-0 items-center gap-[8px] rounded-control bg-violet px-[16px]",
-                "text-[14px] font-bold text-onfill no-underline shadow-primary hover:bg-violet-hover hover:no-underline",
-              )}
-            >
-              <ShellIcon name="log-in" size={16} />
+            <Link to="/login" className={buttonClass("secondary", "sm")}>
+              <ShellIcon name="log-in" size={15} />
               {ut("lg.signIn")}
             </Link>
           )}
@@ -128,7 +130,7 @@ function StatusLink() {
 }
 
 /*
- * Подвал — одна строка под чертой: год, «Про кампанію», телефон и почта
+ * Подвал — одна строка под чертой: «© 2026 Polypsy», телефон и почта
  * учреждения, соцсети справа.
  *
  * Телефон и почта — настоящие ссылки (tel:, mailto:): на телефоне по
@@ -149,12 +151,7 @@ function Footer() {
           "flex min-h-16 flex-wrap items-center gap-x-6 gap-y-2 py-3 text-[13.5px] leading-5 text-muted",
         )}
       >
-        <span>{ut("pub.copyright")}</span>
-        <nav aria-label={ut("pub.sections")}>
-          <Link to="/#about" className={link}>
-            {ut("pub.about")}
-          </Link>
-        </nav>
+        <span>{ut("pub.copyright").replace("{year}", String(new Date().getFullYear())).replace("{brand}", ut("shell.brand"))}</span>
         <address className="flex flex-wrap items-center gap-x-6 gap-y-1 not-italic">
           <span>
             <a href={tel} className={link}>
