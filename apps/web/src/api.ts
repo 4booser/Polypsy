@@ -260,6 +260,18 @@ export function ownerOfToken(token: string | null | undefined): string | null {
   }
 }
 
+/*
+ * Счёт сессий вкладки: выход (tokenStore.clear) начинает новую.
+ *
+ * Общий ноутбук ординаторской: A вышел, B вошёл в той же вкладке, а запрос
+ * A, ушедший до выхода (счётчики полосы, опрос), вернулся после входа B с
+ * 401 — сессию A сервер погасил выходом. Продление видело в хранилище токен
+ * другого человека, объявляло сессию «чужой» (#166) и выводило из вкладки
+ * уже B. Запрос прежней сессии этой вкладки больше ничего не решает: ни
+ * продления, ни выхода — только его собственный отказ.
+ */
+let sessionEpoch = 0;
+
 export const tokenStore = {
   /*
    * Под входом «от имени» запросы идут его токеном; свой — только для «вийти».
@@ -281,6 +293,7 @@ export const tokenStore = {
   getRefresh: () => localStorage.getItem(REFRESH_KEY),
   setRefresh: (t: string) => localStorage.setItem(REFRESH_KEY, t),
   clear: () => {
+    sessionEpoch += 1;
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(REFRESH_KEY);
     impersonationStore.clear();
@@ -552,6 +565,8 @@ async function request<T>(path: string, init: RequestInit = {}, retried = false)
     throw new ApiError(renderError("err.impersonationEnded", currentLang), 401);
   }
   const token = tokenStore.get();
+  /* сессия, в которой запрос ушёл: вышли из неё, пока он летел, — его 401 уже ничего не решает */
+  const epoch = sessionEpoch;
 
   /*
    * Отсутствие связи — не то же самое, что ошибка сервера, и говорить о нём
@@ -613,9 +628,10 @@ async function request<T>(path: string, init: RequestInit = {}, retried = false)
    * (#167): срок, вышедший, пока запрос летел, уводил 401 в обмен своего
    * refresh, и повтор уходил уже своим токеном.
    */
-  if (res.status === 401 && slot) {
+  const sameSession = epoch === sessionEpoch;
+  if (res.status === 401 && slot && sameSession) {
     leaveImpersonation();
-  } else if (res.status === 401 && !retried && refreshesOn401(path)) {
+  } else if (res.status === 401 && !retried && refreshesOn401(path) && sameSession) {
     const outcome = await tryRefresh(token);
     if (outcome === "renewed") return request<T>(path, init, true);
     // продлить не дала связь: токены целы, вкладка остаётся — ответ как у любого обрыва сети
