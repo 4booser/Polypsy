@@ -1285,10 +1285,33 @@ export const surveyAnalyticsQuery = dateRangeQuery.extend({
  */
 export const AUDIT_OFFSET_MAX = 5_000;
 
+/**
+ * Несколько действий одним отбором — `actions`, коды через запятую (волна 27).
+ *
+ * «Адміністратори» показывают журнал назначений — пять действий сразу, доступ
+ * методики — выдачи и отзывы. По одному действию на запрос это пять и два
+ * чтения журнала на каждое открытие экрана, и у каждого свой счёт и своя
+ * строка audit.read. Одним отбором — одно чтение, и восемь последних строк
+ * по всем действиям вместе те же, что восемь последних из каждого, сведённые
+ * и обрезанные на экране. Пустой список — отбора нет, как и без параметра;
+ * кодов не больше двадцати: это отбор, а не перечень журнала.
+ */
+export const AUDIT_ACTIONS_MAX = 20;
+const auditActions = z
+  .string()
+  .max(AUDIT_ACTIONS_MAX * 65)
+  .optional()
+  .transform((raw) => {
+    const codes = [...new Set((raw ?? "").split(",").map((s) => s.trim()).filter(Boolean))];
+    return codes.length ? codes : undefined;
+  })
+  .pipe(z.array(z.string().max(64)).max(AUDIT_ACTIONS_MAX).optional());
+
 export const auditQuery = dateRangeQuery.extend({
   limit: queryInt(1, 500, 100),
   offset: queryInt(0, AUDIT_OFFSET_MAX, 0),
   action: z.string().max(64).optional(),
+  actions: auditActions,
   actorId: z.string().uuid().optional(),
   subjectUserId: z.string().uuid().optional(),
   actor: z.string().trim().max(200).optional(),

@@ -107,9 +107,11 @@ async function bySubjects(text: string): Promise<SQL> {
 }
 
 async function filtersOf(query: AuditQuery): Promise<SQL[]> {
-  const { action, actorId, subjectUserId, actor, subject, resourceType, outcome, q, from, to } = query;
+  const { action, actions, actorId, subjectUserId, actor, subject, resourceType, outcome, q, from, to } = query;
   const filters: SQL[] = [];
   if (action) filters.push(eq(auditLog.action, action));
+  // несколько действий одним чтением (волна 27): индекс действия берёт их все разом
+  if (actions) filters.push(inArray(auditLog.action, actions));
   if (actorId) filters.push(eq(auditLog.actorId, actorId));
   if (subjectUserId) filters.push(eq(auditLog.subjectUserId, subjectUserId));
   if (actor) filters.push(await byActors(actor));
@@ -173,9 +175,10 @@ function searchScope(query: AuditQuery): { query: AuditQuery; searchPeriod?: { f
 
 /** То, что отбор записывает о себе в журнал: условия без значений, которые могли бы оказаться ПДн */
 function filterNote(query: AuditQuery) {
-  const { action, actorId, subjectUserId, actor, subject, resourceType, outcome, q, from, to } = query;
+  const { action, actions, actorId, subjectUserId, actor, subject, resourceType, outcome, q, from, to } = query;
   return {
     action,
+    actions,
     actorId,
     subjectUserId,
     // почта — не секрет в журнале (она в каждой строке), но поиск по куску — это вопрос, а не адрес

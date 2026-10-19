@@ -696,6 +696,23 @@ const ADMIN_PERMISSIONS: string[] = [
   "export.full",
 ];
 
+/** Действия журнала назначений: роли, личные исключения, смена класса учётки, заведение */
+export const ASSIGN_LOG_ACTIONS = [
+  "user.roles_change",
+  "permission.exception",
+  "permission.exception_revoke",
+  "user.role_change",
+  "user.create",
+] as const;
+
+/**
+ * Журнал назначений — восемь последних строк по всем действиям одним
+ * чтением (`actions`). Источник подменяется в проверке.
+ */
+export function loadAssignLog(src: Pick<typeof api, "auditPage"> = api): Promise<AuditEntry[]> {
+  return src.auditPage({ actions: ASSIGN_LOG_ACTIONS.join(","), limit: "8" }).then((p) => p.entries);
+}
+
 function AdminsView({ admins, all }: { admins: StaffRow[]; all: StaffRow[] }) {
   const { ut, lang } = useLang();
   const { can } = useAuth();
@@ -705,18 +722,13 @@ function AdminsView({ admins, all }: { admins: StaffRow[]; all: StaffRow[] }) {
   const catalogue = useResource(() => api.permissionCatalogue(), []);
   /* журнал назначений — тем, кому открыт журнал доступа; без права запрос не уходит (отказ лёг бы в журнал) */
   const canAudit = can("audit.read");
-  const journal = useResource(
-    async () => {
-      const actions = ["user.roles_change", "permission.exception", "permission.exception_revoke", "user.role_change", "user.create"];
-      const pages = await Promise.all(actions.map((action) => api.auditPage({ action, limit: "8" }).catch(() => null)));
-      return pages
-        .flatMap((p) => p?.entries ?? [])
-        .sort((a, b) => b.at.localeCompare(a.at))
-        .slice(0, 8);
-    },
-    [],
-    { enabled: canAudit },
-  );
+  /*
+   * Одним чтением на все действия назначений (волна 27): прежде — пять чтений
+   * по одному действию, у каждого свой счёт и своя строка audit.read на
+   * каждое открытие экрана. Восемь последних по всем действиям вместе — те
+   * же строки, что сводились из пяти ответов и обрезались здесь.
+   */
+  const journal = useResource(() => loadAssignLog(), [], { enabled: canAudit });
 
   const shown = admins
     .filter((r) => `${r.fullName} ${r.email}`.toLowerCase().includes(q.trim().toLowerCase()))
