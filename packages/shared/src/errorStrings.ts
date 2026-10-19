@@ -1725,6 +1725,14 @@ export const ERRORS = {
     ru: "Новый врач не видит кого-то из этих пациентов, поэтому не сможет ни ответить им, ни открыть карточку. Выберите врача, который с ними работает",
     en: "The new clinician cannot see some of these patients, so they could neither reply to them nor open their records. Choose a clinician who works with them",
   },
+
+  /* ── v2-fix-analytics2 ── */
+  /* правку правила обогнала чужая (routes/decisions.ts, PATCH /rules/:id с версией) */
+  "err.ruleChanged": {
+    uk: "Цю модель щойно змінив хтось інший. Ми показали її теперішній стан — перегляньте зміни й збережіть ще раз",
+    ru: "Эту модель только что изменил кто-то другой. Мы показали её текущее состояние — просмотрите изменения и сохраните ещё раз",
+    en: "Someone else has just changed this model. Its current state is now shown — review the changes and save again",
+  },
 } as const satisfies Record<string, ErrorEntry>;
 
 export type ErrorKey = keyof typeof ERRORS;
