@@ -59,7 +59,6 @@ import type {
   OverviewAnalytics,
   RespondentDynamics,
   RiskAlert,
-  SeverityTrendResult,
   ConditionsResult,
   SurveyAnalytics,
   SurveyFull,
@@ -194,7 +193,7 @@ const IMPERSONATION_KEY = "quizzy.web.impersonation";
  * отказывали бы в записи без видимой причины. Своя пара токенов при этом не
  * трогается: «вийти» возвращает к ней без нового входа.
  */
-export interface ImpersonationSlot {
+interface ImpersonationSlot {
   token: string;
   sessionId: string;
   expiresAt: string;
@@ -815,7 +814,7 @@ export interface OpenApiOperation {
   "x-permission"?: string | null;
   parameters?: { name: string; in: string }[];
 }
-export type OpenApiSpec = {
+type OpenApiSpec = {
   info: { title: string; version: string };
   paths: Record<string, Record<string, OpenApiOperation>>;
 };
@@ -873,7 +872,7 @@ export interface TimelineItem {
  * Разворачивается здесь, чтобы страницы не знали про обёртку там, где им от
  * неё ничего не нужно.
  */
-export interface Items<T> {
+interface Items<T> {
   items: T[];
 }
 
@@ -907,7 +906,7 @@ export interface SurveyPageQuery {
  * groupId здесь нет намеренно: экран моделей область правила не показывает,
  * а PATCH без поля оставляет её как была.
  */
-export interface DecisionRuleInput {
+interface DecisionRuleInput {
   title: string;
   note: string | null;
   enabled: boolean;
@@ -945,17 +944,6 @@ export const api = {
       body: JSON.stringify({ currentPassword, newPassword }),
     }),
   me: () => request<User>("/api/auth/me"),
-  register: (body: {
-    email: string;
-    password: string;
-    firstName: string;
-    lastName: string;
-    phone: string;
-  }) =>
-    request<{ token: string; refreshToken: string; user: User }>("/api/auth/register", {
-      method: "POST",
-      body: JSON.stringify({ ...body, anonymous: false }),
-    }),
   /*
    * Всё, что принимает PATCH /api/auth/me (updateProfileSchema), а не только
    * ФИО: карточка сотрудника правит пол, дату рождения, специальность и
@@ -1060,7 +1048,6 @@ export const api = {
     request<VersionDiffResult>(`/api/surveys/${id}/versions/${a}/diff/${b}`),
 
   overview: () => request<OverviewAnalytics>("/api/analytics/overview"),
-  severityTrend: () => request<SeverityTrendResult>("/api/analytics/severity-trend"),
   /** Состояние пациентов по направлениям за период — стартовый экран «Зведення» */
   dashboardConditions: (days: number) => request<ConditionsResult>(`/api/dashboard/conditions?days=${days}`),
   /**
@@ -1172,29 +1159,6 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify({ status, note: note ?? null }),
     }),
-  conclusionBatch: (unit: string, from: string, to: string) => {
-    const q = new URLSearchParams();
-    if (unit) q.set("unit", unit);
-    if (from) q.set("from", from);
-    if (to) q.set("to", to);
-    return request<{
-      unit: string | null;
-      from: string | null;
-      to: string | null;
-      items: {
-        id: string;
-        responseId: string;
-        version: number;
-        signedAt: string | null;
-        text: string;
-        authorName: string;
-        patientName: string;
-        unit: string | null;
-        surveyTitle: string;
-        submittedAt: string | null;
-      }[];
-    }>(`/api/conclusions/batch?${q}`);
-  },
 
   missed: (since: string) =>
     request<{
@@ -1750,6 +1714,8 @@ export const api = {
     patientGroup?: string;
     view?: string;
     sort?: string;
+    /** Только тех, кого ведёт этот сотрудник (карточка фахівця) */
+    lead?: string;
     limit?: number;
     offset?: number;
   } = {}) => {
@@ -1760,15 +1726,10 @@ export const api = {
   /**
    * Пациенты зоны страницей — с ведущим и последней сдачей (GET /api/patients).
    * Колонка «Мої пацієнти» карточки берёт отсюда «мой» (ведущий — я) и
-   * «нові результати»; чтение списка журналируется сервером.
+   * «нові результати»; чтение списка журналируется сервером. Тот же запрос,
+   * что реестр выше: адрес собирается в одном месте.
    */
-  patientsPage: (params: { q?: string; limit?: number; offset?: number } = {}) => {
-    const qs = new URLSearchParams();
-    if (params.q) qs.set("q", params.q);
-    if (params.limit) qs.set("limit", String(params.limit));
-    if (params.offset) qs.set("offset", String(params.offset));
-    return request<PatientListPage>(`/api/patients?${qs}`);
-  },
+  patientsPage: (params: { q?: string; limit?: number; offset?: number } = {}) => api.patientRegister(params),
   assignSurveyToPatientGroup: (groupId: string, body: AssignSurveyToPatientGroupInput) =>
     request<{ groupId: string; surveyId: string; recipients: number }>(`/api/patient-groups/${groupId}/surveys`, {
       method: "POST",
@@ -1789,9 +1750,6 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ userId }),
     }),
-  /** Выданные человеку назначения при этом остаются — см. routes/patientGroups.ts */
-  removePatientGroupMember: (groupId: string, userId: string) =>
-    request<void>(`/api/patient-groups/${groupId}/members/${userId}`, { method: "DELETE" }),
   /** Убрать вибраних одним запросом: сервер проверяет список целиком, «троих убрал, на четвёртом отказал» не бывает */
   removePatientGroupMembers: (groupId: string, userIds: string[]) =>
     request<{ groupId: string; removed: number }>(`/api/patient-groups/${groupId}/members`, {
@@ -1828,8 +1786,7 @@ export const api = {
   createUser: (input: CreateUserInput) =>
     request<User>("/api/users", { method: "POST", body: JSON.stringify(input) }),
   /* пациенты, которых ведёт сотрудник (карточка фахівця, 2.0): в пределах своей зоны; чтение в журнале */
-  patientsLedBy: (specialistId: string) =>
-    request<PatientListPage>(`/api/patients?${new URLSearchParams({ lead: specialistId, limit: "200" })}`),
+  patientsLedBy: (specialistId: string) => api.patientRegister({ lead: specialistId, limit: 200 }),
   /* передать их другому лікарю: закрепление и переписка переходят, причина — в журнал */
   transferPatients: (fromId: string, input: TransferPatientsInput) =>
     request<{ moved: number }>(`/api/users/${fromId}/patients/transfer`, { method: "POST", body: JSON.stringify(input) }),
