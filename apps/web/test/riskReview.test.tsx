@@ -202,6 +202,19 @@ describe("план безпеки в ящике разбора", () => {
   });
 });
 
+describe("редактор плана безпеки: поля с именем", () => {
+  test("у каждого поля плана — имя для диктора, а не только подсказка-заглушка", () => {
+    /*
+     * Заглушка («Своїми словами», «Хто», «Контакт») исчезает с первой
+     * буквой, и строки разделов становились безымянными полями подряд.
+     */
+    const source = readFileSync(resolve(import.meta.dir, "../src/components/SafetyPlanEditor.tsx"), "utf8");
+    const fields = [...source.matchAll(/<(Input|Textarea)\b[\s\S]*?\/>/g)].map((m) => m[0]);
+    expect(fields.length).toBeGreaterThanOrEqual(4);
+    for (const f of fields) expect(f, f).toContain("aria-label=");
+  });
+});
+
 describe("черновик разбора — у своего случая", () => {
   test("набранное к одному случаю не встаёт на другой", () => {
     let drafts = withDraft({}, "case-a", (d) => ({ ...d, outcome: "confirmed", note: "Подзвонила брату" }));

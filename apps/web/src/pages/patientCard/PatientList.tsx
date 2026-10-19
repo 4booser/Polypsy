@@ -237,7 +237,8 @@ export function PatientList({
           items={VIEWS.map((v) => ({
             key: v.key,
             label: ut(v.label),
-            count: counts[v.key],
+            /* случаи не пришли — у «Ризик» числа нет, а не «0»: ноль значил бы «сигналов нет» */
+            count: v.key === "risk" && cases.error && !cases.data ? null : counts[v.key],
             risk: v.key === "risk" && counts.risk > 0,
           }))}
         />

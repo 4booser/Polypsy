@@ -509,6 +509,8 @@ export default function Alerts() {
             c={shown}
             row={selected!}
             personCases={many ? (personCases.data ?? null) : null}
+            personCasesError={many && !personCases.data ? personCases.error : null}
+            onRetryPersonCases={personCases.reload}
             onPickCase={setPickedId}
             onShowPerson={() => patch({ patient: shown.userId })}
             onTake={(release) => take(shown, release)}
@@ -666,6 +668,8 @@ function CaseRecord({
   c,
   row,
   personCases,
+  personCasesError,
+  onRetryPersonCases,
   onPickCase,
   onShowPerson,
   onTake,
@@ -680,6 +684,9 @@ function CaseRecord({
   row: AlertCase;
   /** Открытые случаи человека, если их больше одного; null — один или ещё грузятся */
   personCases: AlertCase[] | null;
+  /** Случаи человека не пришли — отказ с «Повторити», а не вечный скелет */
+  personCasesError: string | null;
+  onRetryPersonCases: () => void;
   onPickCase: (id: string) => void;
   onShowPerson: () => void;
   onTake: (release: boolean) => Promise<unknown>;
@@ -699,7 +706,15 @@ function CaseRecord({
           <div className="flex min-w-0 flex-col gap-4">
             <ReviewPanel c={c} me={me} now={now} onTake={onTake} onReview={onReview}>
               {many ? (
-                <PersonCases total={row.group!.cases} cases={personCases} pickedId={c.id} onPick={onPickCase} onShowPerson={onShowPerson} />
+                <PersonCases
+                  total={row.group!.cases}
+                  cases={personCases}
+                  error={personCasesError}
+                  onRetry={onRetryPersonCases}
+                  pickedId={c.id}
+                  onPick={onPickCase}
+                  onShowPerson={onShowPerson}
+                />
               ) : null}
             </ReviewPanel>
             <CaseBasisPanel userId={c.userId} c={c} />
@@ -977,12 +992,17 @@ function Fact({
 export function PersonCases({
   total,
   cases,
+  error = null,
+  onRetry,
   pickedId,
   onPick,
   onShowPerson,
 }: {
   total: number;
   cases: AlertCase[] | null;
+  /** Случаи не пришли — отказ с «Повторити», а не скелет навсегда */
+  error?: string | null;
+  onRetry?: () => void;
   pickedId: string;
   onPick: (id: string) => void;
   onShowPerson: () => void;
@@ -1004,7 +1024,7 @@ export function PersonCases({
       className="border-t border-divider pt-[18px]"
     >
       {!cases ? (
-        <Loading rows={2} bare />
+        <Loading rows={2} bare error={error} onRetry={onRetry} />
       ) : (
         <ul className="m-0 flex list-none flex-col gap-1.5 p-0">
           {cases.map((pc) => {
