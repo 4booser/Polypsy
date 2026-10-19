@@ -12,7 +12,7 @@ import { ActionMenu } from "../ui/menu";
 import { Button, ButtonLink, Field, SeverityTag, Tag, Textarea, type Severity } from "../ui/primitives";
 import { useResource, type Resource } from "../useResource";
 import { Glyph } from "./icons";
-import { drafts, type RunnerDraft } from "./drafts";
+import { drafts, liveDrafts, type RunnerDraft } from "./drafts";
 import type { PatientOutlet } from "./PatientApp";
 import { BandCard, Body, CallRows, CodeTile, Hero, MetaLine, Pending, PtPanel, SideGrid, instrumentCode, instrumentName } from "./parts";
 import { scoreNumber } from "./results";
@@ -231,8 +231,10 @@ export function HomeBody({
    * проходить — у МЛО двести пунктов, и «вы уже проходили» пришло бы только
    * при отправке.
    */
-  const draftOf = new Map(local.map((d) => [d.surveyId, d]));
-  const open = (surveys.data ?? []).filter((s) => s.status === "published" && (!s.completedByMe || draftOf.has(s.id)));
+  const published = (surveys.data ?? []).filter((s) => s.status === "published");
+  /* черновик сданной без права повтора методики продолжать нечем (drafts.ts, liveDrafts) */
+  const draftOf = liveDrafts(local, published);
+  const open = published.filter((s) => !s.completedByMe || draftOf.has(s.id));
   const rank = (s: SurveyListItem) => (draftOf.has(s.id) ? 0 : s.assigned ? 1 : 2);
   const todo = [...open]
     .sort((a, b) => rank(a) - rank(b) || (a.dueAt ?? "9999").localeCompare(b.dueAt ?? "9999"))
@@ -254,7 +256,7 @@ export function HomeBody({
       />,
     );
   }
-  for (const d of local.slice(0, 1)) {
+  for (const d of [...draftOf.values()].slice(0, 1)) {
     chips.push(
       <StripChip
         key={`d-${d.surveyId}`}

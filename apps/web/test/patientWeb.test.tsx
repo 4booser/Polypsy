@@ -10,7 +10,9 @@ import { TouchArea } from "../src/ui/primitives";
 import { ChoiceInput, pickChoice } from "../src/patient/answerInputs";
 import { consentSections } from "../src/patient/ConsentGate";
 import { freeCancelUntil } from "../src/patient/Home";
-import { DRAFT_TTL_MS, createDrafts, forgetDrafts, type DeviceStorage, type RunnerDraft } from "../src/patient/drafts";
+import { DRAFT_TTL_MS, createDrafts, forgetDrafts, liveDrafts, type DeviceStorage, type RunnerDraft } from "../src/patient/drafts";
+import { attemptClosed } from "../src/patient/sendAnswers";
+import { ApiError } from "../src/api";
 import type { OutboxItem, OutboxStorage } from "../src/patient/outbox";
 import { CallRows, instrumentCode, instrumentName } from "../src/patient/parts";
 import { mainScore, scoreNumber, scoreValue } from "../src/patient/results";
@@ -129,6 +131,31 @@ describe("черновик прохождения на устройстве", ()
     expect(store.list("u1")).toEqual([]);
     store.save("u1", draft({ surveyId: "new", savedAt: new Date(now).toISOString() }));
     expect(Object.keys(JSON.parse(mem.map.get("quizzy.drafts.u1")!)), "просроченный остался лежать на устройстве").toEqual(["new"]);
+  });
+});
+
+describe("какие черновики ещё можно сдать", () => {
+  const sv = (id: string, completedByMe: boolean, allowRetake = false) => ({ id, completedByMe, allowRetake });
+
+  test("не пройдено или повтор разрешён — да; сдано без права повтора или методики нет в списке — нет", () => {
+    const local = [draft({ surveyId: "a" }), draft({ surveyId: "b" }), draft({ surveyId: "c" }), draft({ surveyId: "gone" })];
+    const live = liveDrafts(local, [sv("a", false), sv("b", true, true), sv("c", true, false)]);
+    expect([...live.keys()]).toEqual(["a", "b"]);
+  });
+});
+
+describe("отказ «вже проходили» стирает черновик", () => {
+  test("попытка закрыта — по коду в теле отказа, а не по тексту", () => {
+    expect(attemptClosed(new ApiError("Ви вже проходили цю методику", 409, { code: "err.alreadyTaken" }))).toBe(true);
+    // другой отказ того же маршрута — черновик остаётся: ответы ещё можно сдать
+    expect(attemptClosed(new ApiError("Методику змінено", 409, { code: "err.draftOtherVersion" }))).toBe(false);
+    expect(attemptClosed(new ApiError("Ви вже проходили цю методику", 409))).toBe(false);
+    expect(attemptClosed(new Error("err.alreadyTaken"))).toBe(false);
+  });
+
+  test("прохождение стирает черновик на этом отказе", () => {
+    const src = readFileSync(resolve(import.meta.dir, "../src/patient/Runner.tsx"), "utf8");
+    expect(src).toMatch(/catch \(error\) \{\s*if \(user && attemptClosed\(error\)\) drafts\.drop\(user\.id, survey\.id\);\s*throw error;/);
   });
 });
 
@@ -418,6 +445,17 @@ describe("«Мої тести»: что пройти и в каком поряд
     expect(withNew).toContain('href="/me/tests/new"');
     expect(withNew).not.toContain('href="/me/tests/rep"');
     expect(withNew).toMatch(/aria-expanded="false"/);
+  });
+
+  test("черновик методики, сданной с телефона без права повтора, «Продовжити» не зовёт", () => {
+    // сервер откажет «вже проходили» лишь после последнего пункта — предлагать продолжение нечестно
+    const html = body([s({ id: "done", completedByMe: true, allowRetake: false }), s({ id: "rep", completedByMe: true, allowRetake: true })], {
+      drafts: [draft({ surveyId: "done" }), draft({ surveyId: "rep" })],
+    });
+    expect(html).not.toContain('href="/me/tests/done"');
+    // повтор, начатый на устройстве, — продолжается
+    expect(html).toContain('href="/me/tests/rep"');
+    expect(has(html, "ptw.continue")).toBe(true);
   });
 
   test("доступное всем — первые несколько, остальное по нажатию", () => {

@@ -128,6 +128,20 @@ export function createDrafts(storage: DraftStorage | (() => DraftStorage), now: 
   };
 }
 
+/**
+ * Черновики, которые ещё можно сдать, — по методике: она в списке человека и
+ * либо не пройдена, либо разрешает повтор. Начатое здесь и сданное с
+ * телефона без права повтора продолжать нечем: сервер откажет «вже
+ * проходили» после последнего пункта. Порядок — порядок `local`.
+ */
+export function liveDrafts(
+  local: readonly RunnerDraft[],
+  surveys: readonly { id: string; completedByMe: boolean; allowRetake?: boolean }[],
+): Map<string, RunnerDraft> {
+  const takeable = new Set(surveys.filter((s) => !s.completedByMe || s.allowRetake).map((s) => s.id));
+  return new Map(local.filter((d) => takeable.has(d.surveyId)).map((d) => [d.surveyId, d]));
+}
+
 /** Память вместо хранилища: закрытое хранилище (приватный режим) не должно ронять кабинет */
 function memoryStorage(): DeviceStorage {
   const map = new Map<string, string>();
