@@ -121,11 +121,16 @@ function MethodCell({ s, flags, codes }: { s: SurveyListItem; flags: ReactNode; 
   );
 }
 
-/** Значок-признак с подписью по наведению и фокусу */
-function Flag({ label, children, warn }: { label: string; children: ReactNode; warn?: boolean }) {
+/**
+ * Значок-признак с подписью по наведению и фокусу. Роль img: имя
+ * (aria-label) у безролевого span диктор вправе не прочесть, а признак
+ * («критичний пункт», «лише за призначенням») — содержание строки.
+ */
+export function Flag({ label, children, warn }: { label: string; children: ReactNode; warn?: boolean }) {
   return (
     <Tooltip label={label}>
       <span
+        role="img"
         tabIndex={0}
         aria-label={label}
         className={cx(
