@@ -6,6 +6,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
 import { type OpsUserRow, UI, type UiKey } from "@quizzy/shared";
 import { LangProvider } from "../src/lang";
+import { SESSIONS_PEEK_DELAY_MS, SESSIONS_PEEK_FRESH_MS } from "../src/pages/ops/users/parts";
 import { RecordBody } from "../src/pages/ops/users/UserDrawer";
 
 /**
@@ -92,6 +93,23 @@ describe("панель записи: «Останні дії» — только 
     const src = readFileSync(resolve(import.meta.dir, "../src/pages/ops/users/UserDrawer.tsx"), "utf8");
     expect(src).toContain('canAudit={can("audit.read")}');
     expect(src).toMatch(/\{canAudit \? <RecentSection row=\{row\} \/> : null\}/);
+  });
+});
+
+describe("подсказка «Сесії» в таблице: чтение — строка журнала, и наведение его не множит", () => {
+  /*
+   * Подсказка открывалась через 120 мс наведения и каждый раз читала сессии
+   * заново (свой кэш у каждого показа): проведённый по таблице указатель
+   * оставлял в журнале session.list о каждом, над чьим числом прошёл.
+   */
+  test("открывается по намеренному наведению, а прочитанное берёт из общего кэша на человека", () => {
+    expect(SESSIONS_PEEK_DELAY_MS).toBeGreaterThanOrEqual(400);
+    expect(SESSIONS_PEEK_FRESH_MS).toBeGreaterThanOrEqual(30_000);
+    const parts = readFileSync(resolve(import.meta.dir, "../src/pages/ops/users/parts.tsx"), "utf8");
+    expect(parts).toContain("delay={SESSIONS_PEEK_DELAY_MS}");
+    expect(parts).toMatch(
+      /api\.opsSessions\(\{ userId, per: "10" \}\), \[userId, count\], \{\s*key: "ops\.users\.sessionsPeek",\s*staleMs: SESSIONS_PEEK_FRESH_MS,/,
+    );
   });
 });
 

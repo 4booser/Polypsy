@@ -135,10 +135,30 @@ export function LastSeenCell({ row }: { row: OpsUserRow }) {
   );
 }
 
-/** Сессии человека в подсказке — загружаются, только когда подсказку открыли */
-function SessionsPeek({ userId }: { userId: string }) {
+/**
+ * Подсказка с чтением — по намеренному наведению, а не по мимолётному: указатель,
+ * проведённый по таблице, задерживается над числом на десятки миллисекунд.
+ */
+export const SESSIONS_PEEK_DELAY_MS = 500;
+/** Сколько прочитанные в подсказке сессии считаются свежими */
+export const SESSIONS_PEEK_FRESH_MS = 60_000;
+
+/**
+ * Сессии человека в подсказке — загружаются, только когда подсказку открыли.
+ *
+ * Чтение сессий — строка журнала (session.list о человеке). Без общего кэша
+ * каждое наведение на число в таблице было бы новым чтением и новой строкой
+ * журнала, и проведённый по таблице указатель оставлял бы в нём след о
+ * каждом, над кем прошёл. Ответ — общим кэшем на человека и число его
+ * сессий: повторное наведение берёт прочитанное, а завершённая сессия
+ * (другое число) читается заново.
+ */
+function SessionsPeek({ userId, count }: { userId: string; count: number }) {
   const { ut } = useLang();
-  const res = useResource(() => api.opsSessions({ userId, per: "10" }), [userId]);
+  const res = useResource(() => api.opsSessions({ userId, per: "10" }), [userId, count], {
+    key: "ops.users.sessionsPeek",
+    staleMs: SESSIONS_PEEK_FRESH_MS,
+  });
   if (res.error) return <Loading error={res.error} onRetry={res.reload} bare />;
   if (!res.data) return <Loading rows={2} bare />;
   if (!res.data.items.length) return <p className="m-0 text-small text-muted">{ut("ops.users.noSessions")}</p>;
@@ -164,7 +184,8 @@ export function SessionsCell({ row, onOpen }: { row: OpsUserRow; onOpen: () => v
     <Popover
       title={ut("ops.tab.sessions")}
       note={row.anonymous ? undefined : row.fullName}
-      content={<SessionsPeek userId={row.id} />}
+      delay={SESSIONS_PEEK_DELAY_MS}
+      content={<SessionsPeek userId={row.id} count={row.sessions} />}
       actions={
         <Button size="xs" icon={<Ix.monitorSmartphone />} onClick={onOpen}>
           {ut("ops.users.sessionsOf")}
