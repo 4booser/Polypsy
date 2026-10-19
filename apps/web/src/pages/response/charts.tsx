@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Navigate, useParams } from "react-router-dom";
 import type { RespondentDynamics, ResponseAttempt, ResponseDetail, SurveyFull } from "@quizzy/shared";
-import { api } from "../../api";
+import { api, type TimelineItem } from "../../api";
 import { HeatTable } from "../../charts/clinical";
 import { CourseChart } from "../../charts/course";
 import { courseEventsFromTimeline, courseFromDynamics, type CourseEvent } from "../../charts/courseModel";
@@ -15,7 +15,7 @@ import { Panel } from "../../ui/layout";
 import { Button, Select } from "../../ui/primitives";
 import { useResource } from "../../useResource";
 import { attemptNav, mainScore, prevAnswers } from "./context";
-import { useResponseExtras } from "./data";
+import { useResponseExtras, type ResponseExtras } from "./data";
 import { ResponseBanner, ResponseFrame } from "./frame";
 import { Rx } from "./icons";
 import { answerGrid, buildContributions, buildTrends, type ScaleContribution } from "./model";
@@ -44,7 +44,8 @@ export default function ResponseCharts() {
   const { id: surveyId, rid } = useParams<{ id: string; rid: string }>();
   const res = useResource(() => api.responseDetail(rid!), [rid], { enabled: !!rid, keep: false });
   const detail = res.data && res.data.id === rid ? res.data : null;
-  const x = useResponseExtras(detail, { prev: true, dynamics: true });
+  const x = useResponseExtras(rid ?? null, detail, { prev: true, dynamics: true });
+  const timeline = useCourseTimeline(detail, x);
 
   if (!detail) return <Loading rows={8} error={res.error} onRetry={res.reload} />;
   if (surveyId && detail.survey.id !== surveyId) {
@@ -67,7 +68,7 @@ export default function ResponseCharts() {
                   <Loading rows={3} bare />
                 </Panel>
               ) : x.dynamics ? (
-                <DynamicsPanel detail={detail} dyn={x.dynamics} />
+                <DynamicsPanel detail={detail} dyn={x.dynamics} timeline={timeline.data?.items ?? []} />
               ) : null
             ) : null}
             {detail.scores.length ? (
@@ -97,14 +98,29 @@ function rungsFor(detail: ResponseDetail, code: string): Rung[] {
  * «сьогодні», сессиями, неявками и сигналами из хронологии человека. Шкал
  * несколько — выбор шкалы в шапке панели; график один, как на карточке.
  */
-export function DynamicsPanel({ detail, dyn }: { detail: ResponseDetail; dyn: RespondentDynamics }) {
-  const series = buildTrends(detail, dyn).kind === "series";
-  const timeline = useResource(
-    () => api.timeline(detail.userId!).then((items) => ({ items }), () => ({ items: [] })),
-    [detail.userId],
-    { enabled: !!detail.userId && series, keep: false },
+export function DynamicsPanel({ detail, dyn, timeline }: { detail: ResponseDetail; dyn: RespondentDynamics; timeline: TimelineItem[] }) {
+  return <DynamicsBody detail={detail} dyn={dyn} events={courseEventsFromTimeline(timeline)} />;
+}
+
+/**
+ * Хронология для графика курса (сессии, неявки, сигналы) — вместе с
+ * динамикой, а не после неё (волна 27).
+ *
+ * График рисуется рядом из двух и больше сдач (buildTrends: «series»), и
+ * прежде хронология ждала динамику, чтобы узнать, будет ли ряд: третий заход
+ * после протокола и динамики. Сдачи этой методики этим человеком уже есть в
+ * обстановке (attempts — те же завершённые прохождения, что считает
+ * динамика), и при двух и больше хронология спрашивается одновременно с
+ * динамикой. Ряд по динамике — тоже повод: обстановка не пришла, а ряд есть.
+ */
+function useCourseTimeline(detail: ResponseDetail | null, x: ResponseExtras) {
+  const attempts = x.ctx.data?.attempts.length ?? 0;
+  const series = !!detail && !!x.dynamics && buildTrends(detail, x.dynamics).kind === "series";
+  return useResource(
+    () => api.timeline(detail!.userId!).then((items) => ({ items }), () => ({ items: [] as TimelineItem[] })),
+    [detail?.userId],
+    { enabled: !!detail?.userId && x.wantsDynamics && (attempts > 1 || series), keep: false },
   );
-  return <DynamicsBody detail={detail} dyn={dyn} events={courseEventsFromTimeline(timeline.data?.items ?? [])} />;
 }
 
 /** Тело «Динаміки» без загрузок: хронология (сессии, неявки, сигналы) приходит готовыми событиями */

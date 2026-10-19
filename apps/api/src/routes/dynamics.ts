@@ -11,7 +11,7 @@ import { fullNameOf } from "../lib/auth";
 import { alphasOf, changeOverSeries, normativeSamples } from "../lib/changeBasis";
 import { decryptField } from "../lib/crypto";
 import { notFound, parseQuery } from "../lib/http";
-import { referencePercentile, referenceSamples, type SampleTarget } from "../lib/referenceSample";
+import { referencePercentile, referenceSampleSets, type SampleTarget } from "../lib/referenceSample";
 import { birthYearOf } from "../lib/privacy";
 import { patientsInScope, surveyScopeFilter, surveyScopeFilterFor } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
@@ -309,20 +309,23 @@ dynamicsRoutes.get("/respondents/:userId", async (c) => {
    * нет. Ненормированная точка — тоже: сырой балл среди T-баллов — то же
    * сравнение в двух единицах, что и прежде.
    */
-  const percentileSamples = new Map<string, (target: SampleTarget) => number[]>();
-  for (const surveyId of new Set(responseRows.map((r) => r.surveyId))) {
-    const targets = responseRows
-      .filter((r) => r.surveyId === surveyId && r.versionId)
-      .flatMap((r) =>
-        (scoresByResponse.get(r.id) ?? []).flatMap((score) => {
-          const code = scaleById.get(score.scaleId)?.code;
-          return score.normalized && code
-            ? [{ versionId: r.versionId!, code, maxScore: score.maxScore, unit: score.normalization }]
-            : [];
-        }),
-      );
-    percentileSamples.set(surveyId, await referenceSamples(surveyId, "value", targets));
-  }
+  /* все методики человека — одним чтением выборок (referenceSampleSets), а не чтением на методику */
+  const percentileSamples: Map<string, (target: SampleTarget) => number[]> = await referenceSampleSets(
+    [...new Set(responseRows.map((r) => r.surveyId))].map((surveyId) => ({
+      surveyId,
+      targets: responseRows
+        .filter((r) => r.surveyId === surveyId && r.versionId)
+        .flatMap((r) =>
+          (scoresByResponse.get(r.id) ?? []).flatMap((score) => {
+            const code = scaleById.get(score.scaleId)?.code;
+            return score.normalized && code
+              ? [{ versionId: r.versionId!, code, maxScore: score.maxScore, unit: score.normalization }]
+              : [];
+          }),
+        ),
+    })),
+    "value",
+  );
 
   /*
    * Номера версий методик, которые человек видел. Одним запросом по уже

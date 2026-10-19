@@ -1746,6 +1746,13 @@ export const api = {
    */
   patientCard: (userId: string) => request<PatientCard>(`/api/patients/${userId}/card`),
   /*
+   * Только имена людей зоны — для подписи поля, где карточка не нужна
+   * (условия выборки статистики). Журнал — как у выбора пациента
+   * (access.patient_list), а не «открывал карточку»; вне зоны — строки нет.
+   */
+  patientNames: (ids: readonly string[]) =>
+    request<{ items: { id: string; fullName: string }[] }>(`/api/patients/names?ids=${encodeURIComponent(ids.join(","))}`),
+  /*
    * Реестр пациентов 2.0: все, кого читатель вправе видеть (не только
    * обследованные), с поводом в строке — открытый случай, главная шкала
    * последнего замера, приём, неявка, учёт, ведущий — и счётчиками подань.

@@ -53,7 +53,7 @@ export default function ResponseView() {
    */
   const res = useResource(() => api.responseDetail(rid!), [rid], { enabled: !!rid, keep: false });
   const detail = res.data && res.data.id === rid ? res.data : null;
-  const x = useResponseExtras(detail, { prev: true, dynamics: true });
+  const x = useResponseExtras(rid ?? null, detail, { prev: true, dynamics: true });
 
   if (!detail) return <Loading rows={8} error={res.error} onRetry={res.reload} />;
   if (surveyId && detail.survey.id !== surveyId) {

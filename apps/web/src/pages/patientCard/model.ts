@@ -1,4 +1,5 @@
 import type { PatientCard, PatientCardConclusion, PatientCardResponse } from "@quizzy/shared";
+import type { ConclusionState } from "../../api";
 import { shownNumber, shownValue } from "../patients/model";
 
 /**
@@ -63,4 +64,54 @@ export function conclusionName(c: Pick<PatientCardConclusion, "surveyTitle" | "s
  */
 export function leadAction(card: Pick<PatientCard, "lead">): "subscribe" | "unsubscribe" {
   return card.lead?.mine ? "unsubscribe" : "subscribe";
+}
+
+/**
+ * Строки «Заключення» карточки после сохранения или подписи — из ответа
+ * самого действия, без нового чтения карточки (волна 27).
+ *
+ * Чтение карточки журналируется (patient.card_read), и каждое действие в
+ * ящике прежде перечитывало её целиком: строка журнала на каждое «Зберегти
+ * чернетку». Журнал отвечает «кто открывал карточку», и открытие одно.
+ *
+ * Правило — то же, что у сервера (routes/patients.ts, GET /:id/card): по
+ * прохождению — последняя подписанная версия любого автора и, если поверх
+ * неё начат, свой черновик. В ответе сохранения черновик — свой: сохранение
+ * пишет автором черновика сохранившего (routes/conclusions.ts); после
+ * подписи черновика нет. Версии в ответе — от новой к старой. Порядок
+ * строк — как у сервера: по времени создания, новые сверху.
+ */
+export function withConclusion(card: PatientCard, responseId: string, state: ConclusionState): PatientCard {
+  const response = card.responses.find((r) => r.responseId === responseId);
+  const known = card.conclusions.find((c) => c.responseId === responseId);
+  const signed = state.versions.find((v) => v.status === "signed") ?? null;
+  const draft =
+    state.current?.status === "draft" && (!signed || state.current.version > signed.version) ? state.current : null;
+  const rows: PatientCardConclusion[] = [signed, draft]
+    .filter((v): v is NonNullable<typeof v> => v !== null)
+    .map((v) => ({
+      id: v.id,
+      responseId,
+      surveyId: response?.surveyId ?? known?.surveyId ?? "",
+      surveyTitle: response?.surveyTitle ?? known?.surveyTitle ?? "—",
+      version: v.version,
+      status: v.status,
+      text: v.text,
+      createdAt: v.createdAt,
+      signedAt: v.signedAt,
+      authorName: v.authorName,
+    }));
+  const conclusions = [...card.conclusions.filter((c) => c.responseId !== responseId), ...rows].sort((a, b) =>
+    a.createdAt < b.createdAt ? 1 : -1,
+  );
+  return { ...card, conclusions };
+}
+
+/**
+ * Ведущий после «Підписатись / Відписатись» — тем же правилом, что пишет
+ * сервер (routes/clinic.ts, POST /patients/:userId/lead): взял — ведущий
+ * читатель, отпустил — никто. Без нового чтения карточки — см. withConclusion.
+ */
+export function withLead(card: PatientCard, take: boolean, me: { id: string; fullName: string }): PatientCard {
+  return { ...card, lead: take ? { specialistId: me.id, name: me.fullName, mine: true } : null };
 }
