@@ -91,6 +91,7 @@ import {
 } from "./patients/model";
 import { useAssignPane, useGroupPane, useMessagePane, type PaneParts, type Who } from "./patients/actions";
 import { useQuickViewPane } from "./patients/QuickView";
+import type { Via } from "../components/settledSelection";
 
 /*
  * Реестр пациентов 2.0 — кадр patients-list набора «Виразна».
@@ -201,10 +202,21 @@ export function PatientList() {
   const focused = drawer.who ? (byId.get(drawer.who) ?? null) : null;
   const at = focused ? rows.indexOf(focused) : -1;
 
-  const openWho = (r: PatientListItem) => setDrawer({ open: true, mode: "who", who: r.id, people: [] });
+  /*
+   * Чем сменили человека «Хто це»: открытие строки — выбор сразу; шаг J/K и
+   * стрелками шапки — по списку, и его сводка, карточка и хронология (чтения
+   * в журнал) грузятся, когда курсор остановился (components/settledSelection).
+   */
+  const whoVia = useRef<Via>("click");
+  const openWho = (r: PatientListItem) => {
+    whoVia.current = "click";
+    setDrawer({ open: true, mode: "who", who: r.id, people: [] });
+  };
   const step = (d: 1 | -1) => {
     const next = rows[at + d];
-    if (next) setDrawer((s) => ({ ...s, who: next.id }));
+    if (!next) return;
+    whoVia.current = "key";
+    setDrawer((s) => ({ ...s, who: next.id }));
   };
   const whoOf = (r: PatientListItem): Who => ({ id: r.id, name: r.name });
 
@@ -217,6 +229,7 @@ export function PatientList() {
   const close = () => setDrawer((s) => ({ ...s, open: false }));
   const who = useQuickViewPane({
     person: focused,
+    via: whoVia.current,
     position: focused ? { at, of: rows.length, sort: ut(SORT_LABEL[sort]) } : null,
     onStep: step,
     onWrite: () => focused && setDrawer({ open: true, mode: "message", who: focused.id, people: [whoOf(focused)] }),

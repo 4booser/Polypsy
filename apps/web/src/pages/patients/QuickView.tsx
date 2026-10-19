@@ -9,6 +9,7 @@ import { Button, ButtonLink, SeverityTag } from "../../ui/primitives";
 import { useResource } from "../../useResource";
 import { DESTINATION_KEY, STATUS_KEY, URGENCY_KEY } from "../referrals/model";
 import type { PaneParts } from "./actions";
+import { useSettledValue, type Via } from "../../components/settledSelection";
 import { eventView } from "./events";
 import { changeOf, instrumentsOf, shownDelta, shownThreshold } from "./instruments";
 import { ageOf, ddmm, hhmm, kitSeverity, shownSeriesText, shownValue, signedShown, whenShort } from "./model";
@@ -25,6 +26,7 @@ import { ageOf, ddmm, hhmm, kitSeverity, shownSeriesText, shownValue, signedShow
 
 export function useQuickViewPane({
   person,
+  via = "click",
   position,
   onStep,
   onWrite,
@@ -32,6 +34,8 @@ export function useQuickViewPane({
   locale,
 }: {
   person: PatientListItem | null;
+  /** Чем сменили человека: шаг J/K и стрелками — его записи ждут, пока курсор остановится */
+  via?: Via;
   /** Место строки в реестре: «Рядок 1 з 20, ризик спершу» */
   position: { at: number; of: number; sort: string } | null;
   onStep: (d: 1 | -1) => void;
@@ -42,7 +46,14 @@ export function useQuickViewPane({
   const { ut } = useLang();
   const navigate = useNavigate();
   const id = person?.id ?? "";
-  const enabled = !!person;
+  /*
+   * Сводка, карточка, динамика и хронология — чтения, которые сервер пишет
+   * в журнал. Шаг клавишами их не грузит, пока курсор не простоит
+   * SETTLE_MS: строка, мимо которой прошли, — не прочитанная. Шапка (имя,
+   * подразделение, строка открытого из реестра) видна сразу.
+   */
+  const settledId = useSettledValue(person?.id ?? null, via);
+  const enabled = !!person && settledId === person.id;
   /* keep: false — данные прежнего человека не стоят под именем следующего (#177) */
   const dyn = useResource(() => api.dynamics(id), [id], { enabled, keep: false });
   const sum = useResource(() => api.caseSummary(id), [id], { enabled, keep: false });
