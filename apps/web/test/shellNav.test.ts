@@ -17,6 +17,7 @@ import {
   isThemeChoice,
   resetThemeForTest,
   resolveTheme,
+  restoreStoredTheme,
   setThemeChoice,
 } from "../src/shell/theme";
 
@@ -178,6 +179,14 @@ describe("тема: светлая, тёмная, как у системы", () 
     /* профиль с сервера на общем компьютере принадлежит вошедшему: умолчание машины он не переписывает */
     setThemeChoice("dark", { remember: false });
     expect(getThemeChoice()).toBe("dark");
+    expect(store.get(THEME_KEY)).toBe("system");
+  });
+
+  test("вошедший ушёл — тема возвращается к выбору браузера, а не остаётся из его профиля", () => {
+    setThemeChoice("system");
+    setThemeChoice("dark", { remember: false });
+    restoreStoredTheme();
+    expect(getThemeChoice()).toBe("system");
     expect(store.get(THEME_KEY)).toBe("system");
   });
 

@@ -94,6 +94,15 @@ export function setThemeChoice(next: ThemeChoice, { remember = true }: { remembe
   emit();
 }
 
+/**
+ * Вернуть выбор этого браузера: вошедший ушёл, а тему из его профиля браузер
+ * не запоминал (`remember: false` при входе). Иначе на общем компьютере
+ * следующий — и экран входа до него — получал тему ушедшего.
+ */
+export function restoreStoredTheme(): void {
+  setThemeChoice(readStored(), { remember: false });
+}
+
 /** Выбор человека — то, что отмечено на переключателе */
 export function useThemeChoice(): ThemeChoice {
   return useSyncExternalStore(subscribe, getThemeChoice, (): ThemeChoice => "light");

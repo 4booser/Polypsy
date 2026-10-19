@@ -10,7 +10,7 @@ import { MoreMenu } from "./shell/MoreMenu";
 import { navAccess, railEntries, type NavCounts } from "./shell/nav";
 import { Rail } from "./shell/Rail";
 import { SectionColumn, ShellNavProvider } from "./shell/useShellNav";
-import { isThemeChoice, setThemeChoice, useResolvedTheme, type ThemeChoice } from "./shell/theme";
+import { isThemeChoice, restoreStoredTheme, setThemeChoice, useResolvedTheme, type ThemeChoice } from "./shell/theme";
 import type { AccountCard } from "./shell/UserMenu";
 import { useLiveReload } from "./events";
 import { useResource } from "./useResource";
@@ -312,23 +312,44 @@ export default function App() {
    * за то, чтобы консоль не мигнула чужим оформлением, пока летит запрос за
    * профилем.
    */
-  const applied = useRef(false);
+  /*
+   * Применяются — для каждого вошедшего, а не раз за жизнь вкладки. На общем
+   * ноутбуке ординаторской один выходит, другой входит без перезагрузки
+   * страницы, и флаг «уже применено» оставлял второму тему, плотность и
+   * движение первого. Ушёл человек — тема возвращается к выбору браузера.
+   */
+  const appliedFor = useRef<string | null>(null);
   useEffect(() => {
-    if (!user?.workspace || applied.current) return;
-    applied.current = true;
+    if (!user) {
+      if (appliedFor.current !== null) {
+        appliedFor.current = null;
+        restoreStoredTheme();
+      }
+      return;
+    }
+    if (appliedFor.current === user.id) return;
+    appliedFor.current = user.id;
+    /*
+     * Профиля настроек ещё нет (никто ничего не сохранял) — применять нечего,
+     * но сохранять уже можно. Прежде пустой профиль запрещал и сохранение:
+     * тема, выбранная на полосе, не доходила до сервера, пока человек не
+     * сохранит что-нибудь в «Обліковому записі».
+     */
+    const ws = user.workspace;
+    if (!ws) return;
     /* выбор с сервера — в хранилище вкладки, но не в браузер: на общем компьютере он принадлежит вошедшему */
-    if (isThemeChoice(user.workspace.theme)) setThemeChoice(user.workspace.theme, { remember: false });
-    if (user.workspace.density) setDensity(user.workspace.density);
-    if (user.workspace.motion) setMotion(user.workspace.motion);
+    if (isThemeChoice(ws.theme)) setThemeChoice(ws.theme, { remember: false });
+    if (ws.density) setDensity(ws.density);
+    if (ws.motion) setMotion(ws.motion);
   }, [user]);
 
   /*
-   * Сохранение — только после того, как серверные настройки применены.
-   * Иначе первый же рендер отправлял бы на сервер локальное значение и
-   * затирал им то, что человек настроил на другой машине.
+   * Сохранение — только после того, как серверные настройки этого человека
+   * применены. Иначе первый же рендер отправлял бы на сервер локальное
+   * значение и затирал им то, что человек настроил на другой машине.
    */
   const persist = (prefs: Parameters<typeof api.saveWorkspace>[0]) => {
-    if (!user || !applied.current) return;
+    if (!user || appliedFor.current !== user.id) return;
     void api.saveWorkspace(prefs).catch(() => {
       /* настройка рабочего места — удобство: её отказ ничего не ломает */
     });
