@@ -10,6 +10,7 @@
 import {
   measurementError,
   polarityOfBands,
+  type AlertCase,
   type DynamicsPoint,
   type RespondentDynamics,
   type ScaleBand,
@@ -67,8 +68,8 @@ export function hours(minutes: number): string {
  * Часы разбора случая: сколько прошло от открытия, сколько до нормы и
  * когда она истекает.
  *
- * Норма — настройка эскалации методики (alertEscalateMinutes); её нет —
- * часы идут без нормы, и тогда ни «до 18:12», ни полоски не рисуется:
+ * Норма — настройка эскалации методики, пришедшая со случаем (normOf); её
+ * нет — часы идут без нормы, и тогда ни «до 18:12», ни полоски не рисуется:
  * срок, которого никто не назначал, выглядел бы обязательством.
  */
 export interface CaseClock {
@@ -80,6 +81,15 @@ export interface CaseClock {
   /** Минут до нормы; отрицательное — просрочено на столько */
   left: number | null;
   over: boolean;
+}
+
+/**
+ * Норма разбора случая в минутах — та, что пришла с самим случаем
+ * (AlertCase.escalateMinutes): по ней же сервер ставит `overdue`. Её нет
+ * (ответ сервера старше поля) — часы идут без нормы.
+ */
+export function normOf(item: Pick<AlertCase, "escalateMinutes">): number | null {
+  return item.escalateMinutes ?? null;
 }
 
 export function caseClock(openedAt: string, norm: number | null, now: number): CaseClock {

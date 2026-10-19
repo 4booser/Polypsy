@@ -77,7 +77,9 @@ import { leaveDevice } from "../offline/logout";
 import { reviewDrafts } from "../staff/reviewDrafts";
 import { evaluateSubmission, isAttemptClosedCode, isTransientStatus } from "@quizzy/shared";
 import { reportLinkPath, reportLinkUrl } from "../report/model";
+import { heads } from "../staff/people";
 import { isAccessDenied } from "./access";
+import { type Abortable, isAborted, RequestAborted } from "./abort";
 
 export class ApiError extends Error {
   constructor(
@@ -156,7 +158,31 @@ async function ownerNow(): Promise<string | null> {
   return ownerOfToken(await tokenStorage.get());
 }
 
+/**
+ * Запрос к API. `init.signal` — отмена чтения (api/abort.ts).
+ *
+ * Отменённый запрос кончается только RequestAborted — что бы ни случилось
+ * внутри: оборванный fetch, разбор тела посреди отмены (он отдал бы null
+ * как данные), ответ, пришедший уже после отмены, сбой продления сессии.
+ * Иначе отмена всплывала бы «нет сети» (status 0), и чтение с кэшем отдало
+ * бы экрану, с которого ушли, копию с прошлого раза. Общее при этом
+ * доделывается: обмен refresh один на все запросы и не отменяется, конец
+ * сессии и «сначала смените пароль» доходят до подписчиков.
+ */
 async function request<T>(path: string, init: RequestInit = {}, opts: RequestOptions = {}): Promise<T> {
+  const signal = init.signal ?? null;
+  if (signal?.aborted) throw new RequestAborted();
+  try {
+    const out = await send<T>(path, init, opts);
+    if (signal?.aborted) throw new RequestAborted();
+    return out;
+  } catch (error) {
+    if (signal?.aborted) throw new RequestAborted();
+    throw error;
+  }
+}
+
+async function send<T>(path: string, init: RequestInit, opts: RequestOptions): Promise<T> {
   const token = await tokenStorage.get();
   if (opts.owner !== undefined && ownerOfToken(token) !== opts.owner) {
     throw new OwnerChanged(uiText("common.error", currentLang));
@@ -268,6 +294,8 @@ interface SubmitResult {
  * и подписью «нет сети».
  */
 function offlineFallback<T>(error: unknown, cached: T | null, forget?: () => void): T {
+  // отмена — не «нет сети»: копию с прошлого раза экрану, с которого ушли, не отдаём и кэш не трогаем
+  if (isAborted(error)) throw error;
   if ((error as ApiError).status === 0 && cached !== null) return cached;
   if (forget && isAccessDenied(error)) forget();
   throw error;
@@ -339,11 +367,13 @@ const unwrap = <T>(p: Promise<Items<T>>): Promise<T[]> => p.then((r) => r.items)
 /*
  * Стирание устройства уносит все черновики, а с ними и попытки: счёт правок
  * следующего прохождения — заново, как после сдачи (offline/draftLane.ts, #129).
- * И черновики разбора сигналов из памяти — как при выходе (staff/reviewDrafts.ts).
+ * И черновики разбора сигналов из памяти — как при выходе (staff/reviewDrafts.ts),
+ * и запомненные шапки людей (staff/people.ts).
  */
 onWiped(() => {
   draftLanes.resetAll();
   reviewDrafts.forgetAll();
+  heads.forgetAll();
 });
 
 const wipeDeps: WipeDeps = {
@@ -489,7 +519,7 @@ export const api = {
       (error) => offlineFallback(error, cache.batteries(owner)),
     );
   },
-  myDynamics: () => request<MyDynamics>("/api/me/dynamics"),
+  myDynamics: ({ signal }: Abortable = {}) => request<MyDynamics>("/api/me/dynamics", { signal }),
 
   /**
    * Раскрыть учётную запись под кодом.
@@ -644,9 +674,9 @@ export const api = {
   declineConsent: () =>
     request<{ ok: true; withdrawn: boolean }>("/api/consents/me/decline", { method: "POST" }),
 
-  listSurveys: async (groupId?: string) => {
+  listSurveys: async (groupId?: string, { signal }: Abortable = {}) => {
     const owner = await ownerNow();
-    return request<Items<SurveyListItem>>(`/api/surveys${groupId ? `?groupId=${groupId}` : ""}`, {}, { owner }).then(
+    return request<Items<SurveyListItem>>(`/api/surveys${groupId ? `?groupId=${groupId}` : ""}`, { signal }, { owner }).then(
       ({ items: rows }) => {
         // кэшируем только полный список: срез по группе не должен затирать общий
         if (!groupId) {
@@ -660,9 +690,9 @@ export const api = {
       (error) => offlineFallback(error, groupId ? null : cache.surveyList(owner)),
     );
   },
-  getSurvey: async (id: string) => {
+  getSurvey: async (id: string, { signal }: Abortable = {}) => {
     const owner = await ownerNow();
-    return request<SurveyFull>(`/api/surveys/${id}`, {}, { owner }).then(
+    return request<SurveyFull>(`/api/surveys/${id}`, { signal }, { owner }).then(
       (survey) => {
         cache.saveSurvey(owner, survey);
         return survey;
@@ -959,10 +989,10 @@ export const api = {
 
   alerts: (all = false) => unwrap(request<Items<RiskAlert>>(`/api/alerts${all ? "?all=1" : ""}`)),
   /** Случаи риска: страница с курсором */
-  alertCases: (params: Record<string, string | undefined> = {}) => {
+  alertCases: (params: Record<string, string | undefined> = {}, { signal }: Abortable = {}) => {
     const qs = new URLSearchParams();
     for (const [k, v] of Object.entries(params)) if (v) qs.set(k, v);
-    return request<Page<AlertCase>>(`/api/alert-cases?${qs}`);
+    return request<Page<AlertCase>>(`/api/alert-cases?${qs}`, { signal });
   },
   /**
    * Разбор случая. Исход обязателен: без него разбор — это «посмотрел и
@@ -979,9 +1009,11 @@ export const api = {
       body: JSON.stringify({ outcome, note, seenLastAlertAt }),
     }),
   /** Основание сигналов случая: пункт, что отмечено, полоса шкалы */
-  caseSignals: (id: string) => request<{ items: AlertSignalBasis[] }>(`/api/alert-cases/${id}/signals`),
+  caseSignals: (id: string, { signal }: Abortable = {}) =>
+    request<{ items: AlertSignalBasis[] }>(`/api/alert-cases/${id}/signals`, { signal }),
   /** План безопасности пациента — версии, свежая первой (сотрудник с правом читать пациентов) */
-  patientSafetyPlan: (userId: string) => request<{ versions: SafetyPlan[] }>(`/api/safety/patients/${userId}`),
+  patientSafetyPlan: (userId: string, { signal }: Abortable = {}) =>
+    request<{ versions: SafetyPlan[] }>(`/api/safety/patients/${userId}`, { signal }),
   assignCase: (id: string, release = false) =>
     request<unknown>(`/api/alert-cases/${id}/assign`, {
       method: "POST",
@@ -993,8 +1025,16 @@ export const api = {
     for (const [k, v] of Object.entries(params)) if (v) qs.set(k, v);
     return request<Page<Respondent>>(`/api/dynamics/respondents?${qs}`);
   },
-  respondentDynamics: (userId: string) =>
-    request<RespondentDynamics>(`/api/dynamics/respondents/${userId}`),
+  /**
+   * Динамика пациента. `survey` сужает ответ до одной методики (routes/dynamics.ts):
+   * сервер не считает остальные, а журнал пишет, какую смотрели. Шапка
+   * человека (имя, пол, возраст) приходит и в суженном ответе.
+   */
+  respondentDynamics: (userId: string, { signal, survey }: Abortable & { survey?: string } = {}) =>
+    request<RespondentDynamics>(
+      `/api/dynamics/respondents/${userId}${survey ? `?survey=${encodeURIComponent(survey)}` : ""}`,
+      { signal },
+    ),
 
   /**
    * Обход: что от специалиста ждут сегодня.
@@ -1072,10 +1112,11 @@ export const api = {
   /** Карта пациента для обхода; тот же приём с кэшем и отметкой */
   roundsCard: async (
     userId: string,
+    { signal }: Abortable = {},
   ): Promise<{ card: RespondentDynamics; cachedAt: string | null }> => {
     const owner = await ownerNow();
     try {
-      const card = await request<RespondentDynamics>(`/api/dynamics/respondents/${userId}`, {}, { owner });
+      const card = await request<RespondentDynamics>(`/api/dynamics/respondents/${userId}`, { signal }, { owner });
       cache.savePatientCard(owner, userId, card);
       return { card, cachedAt: null };
     } catch (error) {
@@ -1104,11 +1145,12 @@ export const api = {
   },
 
   myResponses: () => unwrap(request<Items<SurveyResponse>>("/api/me/responses")),
-  surveyResponses: (surveyId: string) =>
+  surveyResponses: (surveyId: string, { signal }: Abortable = {}) =>
     request<{ rows: SurveyResponse[]; hasMore: boolean; nextBefore: string | null }>(
       `/api/surveys/${surveyId}/responses?limit=50`,
+      { signal },
     ).then((page) => page.rows),
-  responseDetail: (id: string) => request<ResponseDetail>(`/api/responses/${id}`),
+  responseDetail: (id: string, { signal }: Abortable = {}) => request<ResponseDetail>(`/api/responses/${id}`, { signal }),
 
   /*
    * Реестр учётных записей страничный (волна 12): здесь — первая страница,
@@ -1133,9 +1175,10 @@ export const api = {
       deniedCount: number;
     }>("/api/audit/summary"),
 
-  overview: () => request<OverviewAnalytics>("/api/analytics/overview"),
-  surveyAnalytics: (surveyId: string, versionId?: string) =>
+  overview: ({ signal }: Abortable = {}) => request<OverviewAnalytics>("/api/analytics/overview", { signal }),
+  surveyAnalytics: (surveyId: string, versionId?: string, { signal }: Abortable = {}) =>
     request<SurveyAnalytics>(
       `/api/analytics/surveys/${surveyId}${versionId ? `?versionId=${versionId}` : ""}`,
+      { signal },
     ),
 };
