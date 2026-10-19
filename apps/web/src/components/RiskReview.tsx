@@ -24,7 +24,7 @@ import { cx } from "../ui/cx";
 import { Button, ChoiceCard, Field, ErrorText, SeverityTag, Tag, Textarea } from "../ui/primitives";
 import { clockText, normText, riskClock } from "../pages/alerts/model";
 import { instrumentCode, itemHistory, itemMax } from "../pages/patientCard/clinical";
-import { shownNumber } from "../pages/patients/model";
+import { shownNumber, shownValue } from "../pages/patients/model";
 import { Panel } from "../ui/layout";
 
 /*
@@ -1101,9 +1101,11 @@ export function ResponseModal({ id, onClose }: { id: string; onClose: () => void
                     {data.scores.map((sc) => (
                       <tr key={sc.scaleId}>
                         <td className={td}>{sc.scaleTitle}</td>
-                        <td className={cx(td, "tabular-nums")}>{sc.rawScore}</td>
+                        <td className={cx(td, "tabular-nums")}>{shownNumber(sc.rawScore)}</td>
                         <td className={cx(td, "tabular-nums")}>
-                          {sc.value} <span className="text-muted">{ut(`norm.${sc.normalization}` as never)}</span>
+                          {shownValue(sc.value, sc.normalization).text}
+                          {shownValue(sc.value, sc.normalization).unit}{" "}
+                          <span className="text-muted">{ut(`norm.${sc.normalization}` as never)}</span>
                         </td>
                         <td className={td}>
                           {sc.band ? (

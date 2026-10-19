@@ -16,7 +16,7 @@ import { Pi } from "./icons";
 import { nearSlots } from "./Overview";
 import type { CardView } from "./types";
 import { signGate, signalStrip, signalTimer, type SignGate } from "../response/context";
-import { shownNumber } from "../patients/model";
+import { shownNumber, shownValue } from "../patients/model";
 
 /*
  * Виды ящика карточки, кроме разбора сигнала (он общий — components/RiskReview):
@@ -315,7 +315,11 @@ export function useConclusionPane(v: CardView, active: boolean, wantResponse: st
         </Field>
         {main ? (
           <div className="flex items-center gap-3.5 rounded-panel bg-sunk px-3.5 py-3 text-[13px] text-text-2">
-            <span className="text-stat font-extrabold leading-none tracking-[-0.03em] text-text">{main.value}</span>
+            {/* доля — процентом («57%», а не «0.571»), дробь — запятой языка */}
+            <span className="text-stat font-extrabold leading-none tracking-[-0.03em] text-text">
+              {shownValue(main.value, main.normalization).text}
+              {shownValue(main.value, main.normalization).unit}
+            </span>
             <span className="min-w-0">
               <b className="block font-extrabold text-text">{main.title}</b>
               {main.severity && main.bandLabel ? (
