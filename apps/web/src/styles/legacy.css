@@ -62,23 +62,6 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
 
 /* оболочка перенесена в shell/Rail.tsx и App.tsx — правил здесь больше нет */
 
-/* ═══ рабочая область: верхняя панель + контент ═══ */
-.topbar {
-  position: sticky;
-  top: 0;
-  z-index: 30;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 9px 16px;
-  background: color-mix(in srgb, var(--bg) 88%, transparent);
-  backdrop-filter: blur(8px);
-  border-bottom: 1px solid var(--hairline);
-}
-
-.icon-btn { padding: 6px; border-radius: var(--r-sm); }
-.topsearch .grow { text-align: left; }
-
 /* палитра команд оформлена в shell/CommandPalette.tsx — правил здесь больше нет */
 
 /*
@@ -105,20 +88,7 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
  */
 /* поведение рельсы и поиска на узком экране переехало в shell/*.tsx */
 @media (max-width: 900px) {
-  .page-head { align-items: flex-start; }
   table { font-size: var(--fs-caption); }
-}
-
-/* ═══ шапка страницы ═══ */
-.page-head {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 16px 24px;
-  flex-wrap: wrap;
-  padding-bottom: 16px;
-  margin-bottom: 24px;
-  border-bottom: 1px solid var(--hairline);
 }
 
 /*
@@ -195,13 +165,6 @@ h3:not([class]) {
 /* карточка внутри карточки не удваивает рамку — она отступает ступенью фона */
 .card .card { background: var(--surface-2); border-color: transparent; }
 .card.flush { padding: 0; overflow: hidden; }
-.card-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 14px;
-}
 /*
  * `.hint` — самостоятельный класс, а не потомок `.card`.
  *
@@ -220,10 +183,6 @@ h3:not([class]) {
   max-width: 68ch;
 }
 .card.accent { border-color: var(--accent); }
-.card.alarm {
-  border-color: color-mix(in srgb, var(--sev-severe) 55%, transparent);
-  background: linear-gradient(90deg, var(--danger-soft), transparent 40%), var(--card);
-}
 .nested {
   border-top: 1px solid var(--hairline);
   margin-top: 14px;
@@ -287,7 +246,6 @@ h3:not([class]) {
    моноширинным выглядит как код, а не как время */
 .tile .value :is(span, small) { font-family: var(--font-text); }
 .tile .hint { color: var(--muted); font-size: var(--fs-caption); margin: 0; }
-.tile.alarm .value { color: var(--sev-severe-text); }
 
 /* ═══ таблицы ═══ */
 table { width: 100%; border-collapse: collapse; font-size: var(--fs-small); }
@@ -312,8 +270,6 @@ th, td {
   border-bottom: 1px solid var(--hairline);
   vertical-align: middle;
 }
-/* ячейка с переносом текста имеет право быть выше — но это редкий случай */
-td.wrap { height: auto; padding: var(--pad-cell-y) 12px; white-space: normal; }
 /* шапка таблицы набора «Виразна» (.dtbl th): 12/700 приглушённым на panel2, без капители */
 thead th {
   color: var(--muted);
@@ -342,9 +298,6 @@ tbody tr:last-child td { border-bottom: none; }
 th.sortable { cursor: pointer; user-select: none; }
 th.sortable:hover { color: var(--text); }
 th .arrow { margin-left: 4px; color: var(--text); }
-.scroll-y { overflow-y: auto; }
-.muted-row td { opacity: 0.55; }
-.alarm-row { background: var(--danger-soft); }
 
 /* ═══ управление ═══ */
 /*
@@ -460,7 +413,6 @@ input[type="checkbox"], input[type="radio"] { width: auto; accent-color: var(--p
 .field { display: flex; flex-direction: column; gap: 0; }
 .field.grow { flex: 1; }
 .fields { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
-.form-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
 .filters {
   display: flex;
   flex-wrap: wrap;
@@ -469,9 +421,7 @@ input[type="checkbox"], input[type="radio"] { width: auto; accent-color: var(--p
   padding: 10px 12px;
 }
 /* полоса фильтров внутри панели идёт вровень с её содержимым */
-.card > .filters:first-child,
-.card > .table-tools:first-child { padding-left: 20px; padding-right: 20px; }
-.table-tools { display: flex; gap: 8px; align-items: center; padding: 8px 12px; }
+.card > .filters:first-child { padding-left: 20px; padding-right: 20px; }
 .row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .row.tight { gap: 7px; }
 .grow { flex: 1; }
@@ -508,14 +458,6 @@ input[type="checkbox"], input[type="radio"] { width: auto; accent-color: var(--p
 .chip.static { cursor: default; }
 .chip.static:hover { background: transparent; }
 .chip.static.bad { border-color: var(--sev-severe); color: var(--sev-severe-text); }
-.chip-x {
-  border: none;
-  background: transparent;
-  color: var(--muted);
-  padding: 0 2px;
-  font-size: 14px;
-}
-.chip-x:hover { color: var(--danger); background: transparent; }
 
 .badge {
   display: inline-flex;
@@ -552,10 +494,6 @@ kbd, .kbd {
   color: var(--muted);
 }
 
-.sev-bar-row { display: flex; height: 8px; border-radius: 4px; overflow: hidden; }
-.sev-seg { height: 100%; }
-.assign-row { display: flex; align-items: center; gap: 10px; padding: 7px 0; }
-
 /* ═══ всплывающие слои ═══ */
 /* окно и всплывающие сообщения — компоненты набора (ui/index.tsx, ui/toast.tsx); здесь только лист .sheet */
 .sheet {
@@ -573,18 +511,17 @@ kbd, .kbd {
   animation: slide-in var(--dur) var(--ease);
 }
 
-@keyframes rise { from { opacity: 0; transform: translateY(8px) scale(0.99); } }
 @keyframes slide-in { from { transform: translateX(16px); opacity: 0; } }
 
 /* ═══ состояния ═══ */
 /* скелет, пусто и отказ — компоненты набора (ui/states.tsx) */
 
 .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); flex: none; }
-.dot.live, .live-dot { background: var(--sev-none); animation: pulse 2s ease-in-out infinite; }
+.dot.live { background: var(--sev-none); animation: pulse 2s ease-in-out infinite; }
 @keyframes pulse { 50% { opacity: 0.35; } }
 
-/* ═══ вход и приглашение ═══ */
-.login, .join-page {
+/* ═══ вход ═══ */
+.login {
   min-height: 100vh;
   display: grid;
   place-items: center;
@@ -593,30 +530,8 @@ kbd, .kbd {
     radial-gradient(1100px 520px at 50% -10%, color-mix(in srgb, var(--primary) 16%, transparent), transparent 70%),
     var(--bg);
 }
-/* вход собран на утилитах в pages/Login.tsx — здесь осталось приглашение */
-.join-card {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--r-lg);
-  padding: 26px;
-  box-shadow: var(--shadow);
-}
-.join-card { width: min(520px, 100%); }
-.join-card h1 { font-size: var(--fs-section); margin-bottom: 2px; }
 
 /* ═══ конструктор и служебное ═══ */
-.battery-steps { list-style: none; padding: 0; margin: 12px 0 0; display: grid; gap: 7px; }
-.battery-steps li {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 9px 12px;
-  border-radius: var(--r-sm);
-  background: var(--surface-2);
-  font-size: var(--fs-small);
-}
-.battery-steps.editable li { cursor: grab; }
-.step-track { display: flex; gap: 4px; }
 .legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: var(--fs-caption); color: var(--muted); }
 .tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--hairline); margin-bottom: 16px; }
 .tabs button {
@@ -676,58 +591,6 @@ kbd, .kbd {
  * рамкой — два признака, и оба видны. Третий превращал короткое слово в
  * строку из точки и слова разной высоты.
  */
-
-.conclusion-view {
-  border-left: 2px solid var(--border-strong);
-  padding: 10px 14px;
-  background: var(--surface-2);
-  border-radius: 0 var(--r-sm) var(--r-sm) 0;
-}
-.invite-fresh {
-  border: 1px dashed var(--accent);
-  background: var(--accent-soft);
-  border-radius: var(--r-md);
-  padding: 14px;
-  display: grid;
-  gap: 9px;
-}
-.date-range { display: flex; gap: 8px; align-items: center; }
-.danger-card { border-color: color-mix(in srgb, var(--danger) 45%, transparent); }
-
-/* различия версий */
-.diff-block { display: grid; gap: 10px; }
-.diff-field { display: grid; grid-template-columns: 150px 1fr 1fr; gap: 10px; font-size: var(--fs-caption); }
-.diff-field.scoring { border-left: 2px solid var(--accent); padding-left: 9px; }
-.diff-line { padding: 3px 7px; border-radius: 3px; font-family: var(--font-mono); }
-.diff-before { background: color-mix(in srgb, var(--danger) 14%, transparent); }
-.diff-after { background: color-mix(in srgb, var(--sev-none) 14%, transparent); }
-
-/* описание API */
-.api-row { border-bottom: 1px solid var(--hairline); padding: 9px 0; }
-.api-line { display: flex; align-items: center; gap: 11px; }
-.api-method {
-  font-family: var(--font-mono);
-  font-size: var(--fs-micro);
-  font-weight: 600;
-  padding: 2px 7px;
-  border-radius: 3px;
-  min-width: 54px;
-  text-align: center;
-}
-.api-method.m-get { background: color-mix(in srgb, var(--cat-1) 20%, transparent); color: var(--cat-1); }
-.api-method.m-post { background: color-mix(in srgb, var(--sev-none) 20%, transparent); color: var(--sev-none-text); }
-.api-method.m-put { background: color-mix(in srgb, var(--sev-mild) 20%, transparent); color: var(--sev-mild-text); }
-.api-method.m-delete { background: color-mix(in srgb, var(--danger) 20%, transparent); color: var(--sev-severe-text); }
-.api-meta { color: var(--muted); font-size: var(--fs-caption); }
-.api-schema {
-  font-family: var(--font-mono);
-  font-size: var(--fs-caption);
-  background: var(--bg);
-  border: 1px solid var(--hairline);
-  border-radius: var(--r-sm);
-  padding: 10px;
-  overflow-x: auto;
-}
 
 /* ═══ печать ═══
  * Второй интерфейс, а не побочный режим: отчёты подшивают в дело.
@@ -869,7 +732,7 @@ kbd, .kbd {
 @media print {
   /* печатные значения токенов живут в styles/tokens.css — см. пояснение там */
   body { font-size: 11pt; }
-  .sidebar, .toasts, [data-connection], .table-tools, .filters, button, .load-more { display: none !important; }
+  .sidebar, .toasts, [data-connection], .filters, button { display: none !important; }
   /*
    * Рамка консоли высотой в экран со своей прокруткой (App.tsx: h-screen,
    * overflow-hidden; экран — overflow-y-auto) на бумаге обрезала бы всё,
@@ -926,7 +789,6 @@ kbd, .kbd {
   .ps-lines { gap: 6px 16px; }
   .ps-signs { margin-top: 12px; }
   .card { border: none; padding: 0; margin: 0 0 10pt; break-inside: avoid; }
-  .card-head { border-bottom: 1px solid #000; padding-bottom: 3pt; }
   h1 { font-size: 16pt; }
   h2 { font-size: 13pt; break-after: avoid; }
   table { break-inside: auto; }
@@ -952,152 +814,16 @@ kbd, .kbd {
 /* высококонтрастный режим Windows: границы обязаны остаться видимыми */
 @media (forced-colors: active) {
   .card, .modal, .sheet, .tile, button, input, select, textarea { border: 1px solid CanvasText; }
-  .nav-link.active { border-left-color: Highlight; }
 }
-
 
 /* ═══ хронология ═══
  * Ось времени с группировкой по дням: без группировки лента из двухсот
  * событий читается как журнал, а не как история.
  */
 .timeline { display: grid; gap: 18px; }
-.tl-day { display: grid; grid-template-columns: 96px 1fr; gap: 14px; align-items: start; }
-.tl-date {
-  font-family: var(--font-mono);
-  font-size: var(--fs-caption);
-  /* h3 с классом из наследия ничего не получает (см. h3:not([class])) — начертание задано здесь */
-  font-weight: 600;
-  color: var(--muted);
-  margin: 4px 0 0;
-  position: sticky;
-  /* ноль, а не 56: прокручивается теперь содержимое экрана, а не страница,
-     и отступ на высоту верхней панели прибивал даты на полсотни пикселей
-     ниже, чем нужно, — они уезжали под первое событие дня */
-  top: 0;
-}
-.tl-events {
-  display: grid;
-  gap: 2px;
-  border-left: 1px solid var(--hairline);
-  padding-left: 16px;
-}
-.tl-event {
-  display: grid;
-  grid-template-columns: 8px 46px 1fr;
-  gap: 10px;
-  align-items: baseline;
-  padding: 5px 0;
-  position: relative;
-}
-.tl-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--border-strong);
-  margin-left: -20px;
-  align-self: center;
-}
-.tl-event.k-alert .tl-dot { background: var(--sev-severe); }
-.tl-event.k-referral .tl-dot { background: var(--cat-1); }
-.tl-event.k-conclusion .tl-dot { background: var(--cat-3); }
-.tl-time { font-family: var(--font-mono); font-size: var(--fs-micro); color: var(--muted); }
-.tl-body { font-size: var(--fs-small); }
-.tl-kind {
-  display: inline-block;
-  min-width: 92px;
-  font-size: var(--fs-micro);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--muted);
-  margin-right: 8px;
-}
-@media (max-width: 900px) {
-  .tl-day { grid-template-columns: 1fr; gap: 6px; }
-  .tl-date { position: static; }
-}
-
-/* ═══ график с подсказкой ═══ */
-.chart-wrap { position: relative; overflow-x: auto; }
-.chart-tip {
-  position: absolute;
-  top: 6px;
-  transform: translateX(-50%);
-  pointer-events: none;
-  display: grid;
-  gap: 3px;
-  min-width: 96px;
-  padding: 7px 10px;
-  border-radius: var(--r-sm);
-  border: 1px solid var(--border-strong);
-  background: var(--surface);
-  box-shadow: var(--shadow);
-  font-size: var(--fs-caption);
-  z-index: 2;
-}
-.chart-tip-x { color: var(--muted); font-family: var(--font-mono); font-size: var(--fs-micro); }
-.chart-tip-row { display: flex; align-items: center; gap: 7px; }
-.chart-tip-row i { width: 7px; height: 7px; border-radius: 2px; flex: none; }
-.chart-tip-row b { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 
 /* ═══ центр событий ═══ */
 .events { position: relative; }
-.events-dot {
-  position: absolute;
-  top: 1px;
-  right: 1px;
-  min-width: 15px;
-  padding: 0 3px;
-  border-radius: 8px;
-  background: var(--accent);
-  color: var(--accent-text);
-  font-family: var(--font-mono);
-  font-size: 9px;
-  font-weight: 700;
-  line-height: 15px;
-  text-align: center;
-}
-.events-panel {
-  position: absolute;
-  top: calc(100% + 8px);
-  right: 0;
-  width: min(340px, 90vw);
-  background: var(--surface);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--r-md);
-  box-shadow: var(--shadow);
-  overflow: hidden;
-  z-index: 50;
-  animation: rise var(--dur-fast) var(--ease);
-}
-.events-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 11px 13px;
-  border-bottom: 1px solid var(--hairline);
-}
-.events-head .hint { margin: 0; font-size: var(--fs-micro); }
-.events-list { max-height: 320px; overflow-y: auto; }
-.events-row {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  padding: 8px 13px;
-  font-size: var(--fs-small);
-  color: var(--text-2);
-  border-bottom: 1px solid var(--hairline);
-}
-.events-row:last-child { border-bottom: none; }
-.events-row:hover { background: var(--surface-2); color: var(--text); text-decoration: none; }
-.events-mark { width: 6px; height: 6px; border-radius: 50%; flex: none; }
-.events-empty { padding: 22px 13px; text-align: center; color: var(--muted); font-size: var(--fs-small); margin: 0; }
-
-/* ═══ план безопасности ═══ */
-.sp-view, .sp-edit { display: grid; gap: 14px; margin-top: 8px; }
-.sp-view section, .sp-edit section { display: grid; gap: 5px; }
-.sp-list { margin: 0; padding-left: 20px; display: grid; gap: 3px; font-size: var(--fs-small); }
-.sp-edit .row { align-items: center; }
 
 /* ═══ карта пациента: две колонки ═══
  * Карта выросла до двух экранов прокрутки, и «что измерено» перестало
@@ -1110,8 +836,6 @@ kbd, .kbd {
   gap: var(--gap);
   align-items: start;
 }
-.pc-measures, .pc-actions { display: grid; gap: var(--gap); align-content: start; min-width: 0; }
-.pc-measures .card, .pc-actions .card { margin-bottom: 0; }
 
 @media (max-width: 1200px) {
   .patient-card { grid-template-columns: 1fr; }
@@ -1128,124 +852,13 @@ kbd, .kbd {
   gap: var(--gap);
 }
 
-.batch-toc ol {
-  margin: 0;
-  padding-left: 22px;
-  display: grid;
-  gap: 2px;
-  font-size: var(--fs-small);
-}
-
-.batch-item {
-  padding: 16px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--surface);
-}
-
-.batch-item header h2 {
-  margin: 0;
-}
-
-/* текст заключения: перенос строк автора сохраняется — абзацы значимы */
-.batch-text {
-  white-space: pre-wrap;
-  margin: 10px 0;
-}
-
-@media print {
-  /* блок управления в подшивку не попадает */
-  .no-print {
-    display: none;
-  }
-
-  /*
-   * Подшивка: оглавление на первой странице, дальше по заключению на лист.
-   * Разрыв принудительный, а не «как ляжет»: два заключения на одном листе
-   * нельзя подшить в разные дела.
-   */
-  .batch-toc {
-    break-after: page;
-  }
-
-  .batch-item {
-    break-inside: avoid;
-    break-after: page;
-    border: 0;
-    padding: 0;
-    background: none;
-  }
-
-  /* последний лист не должен тянуть за собой пустой */
-  .batch-item:last-child {
-    break-after: auto;
-  }
-}
-
-/* заголовок группы в сводке событий: разделитель, а не кнопка */
-.events-group {
-  padding: 6px 10px 2px;
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--muted);
-}
-
 /* ─────────── карта пунктов ─────────── */
 
-/*
- * Ячейка узкая намеренно: карта на двести столбцов должна помещаться целиком,
- * иначе полоса, ради которой она нужна, окажется за краем экрана.
- */
-.qh-cell {
-  display: inline-block;
-  width: 5px;
-  height: 14px;
-  margin-right: 1px;
-  background: var(--surface-2);
-  vertical-align: middle;
-}
-
-/*
- * Быстрота и серия — разные признаки, поэтому разные цвета, а не оттенки
- * одного: оттенок читался бы как «сильнее/слабее», а это не так.
- */
-.qh-cell.m-fast { background: var(--accent); }
-.qh-cell.m-run { background: var(--sev-moderate); }
-.qh-cell.m-both { background: var(--sev-severe); }
-.qh-cell.m-missing { background: transparent; box-shadow: inset 0 0 0 1px var(--border); }
-
 .qh th { text-align: left; white-space: nowrap; padding-right: 10px; }
-.qh-cells { line-height: 1; }
-.qh-sum { padding-left: 10px; }
-
-.qh-key {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: var(--fs-small);
-  color: var(--muted);
-}
 
 @media print {
   /* на монохромном принтере цвета неразличимы — карта печати не подлежит */
   .qh { display: none; }
-}
-
-/* результаты поиска: отрывок читают, поэтому ему дана нормальная строка */
-.search-hits {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 14px;
-}
-
-.search-excerpt {
-  margin: 4px 0 0;
-  max-width: 68ch;
-  font-size: var(--fs-small);
-  color: var(--text-2, var(--text));
 }
 
 /*
@@ -1277,22 +890,6 @@ kbd, .kbd {
   }
 }
 
-/* список запросов к информантам: строка = роль, форма, состояние */
-.inf-list {
-  list-style: none;
-  margin: 0 0 8px;
-  padding: 0;
-  display: grid;
-  gap: 4px;
-}
-
-.inf-list li {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: var(--fs-small);
-}
-
 /* стартовый экран в подвале рельсы: настройка, а не навигация */
 .start-screen {
   display: grid;
@@ -1308,30 +905,6 @@ kbd, .kbd {
 
 /* ─────────── предпросмотр конструктора ─────────── */
 
-/*
- * Двухпанельно: слева правка, справа то, что увидит человек. Панель липкая —
- * при длинном списке пунктов предпросмотр должен оставаться на виду, иначе он
- * бесполезен ровно там, где нужен больше всего.
- */
-.constructor-split {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 320px;
-  gap: var(--gap);
-  align-items: start;
-}
-
-@media (max-width: 1100px) {
-  .constructor-split {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
-.constructor-main {
-  display: grid;
-  gap: var(--gap);
-  min-width: 0;
-}
-
 .preview {
   position: sticky;
   top: var(--gap);
@@ -1339,124 +912,7 @@ kbd, .kbd {
   gap: 6px;
 }
 
-/*
- * Рамка телефона условная, без «чёлок» и кнопок: она нужна, чтобы задать
- * ширину строки, а не чтобы изобразить устройство.
- */
-.preview-phone {
-  display: flex;
-  flex-direction: column;
-  min-height: 420px;
-  border: 1px solid var(--border-strong, var(--border));
-  border-radius: 18px;
-  background: var(--surface);
-  overflow: hidden;
-}
-
-.preview-progress {
-  height: 3px;
-  background: var(--surface-2);
-}
-
-.preview-progress-fill {
-  height: 100%;
-  background: var(--primary);
-}
-
-.preview-screen {
-  flex: 1;
-  display: grid;
-  align-content: start;
-  gap: 10px;
-  padding: 16px;
-}
-
-.preview-question {
-  margin: 0;
-  font-size: 16px;
-  line-height: 1.35;
-}
-
-.preview-required {
-  color: var(--sev-severe);
-}
-
-.preview-help,
-.preview-info {
-  margin: 0;
-  color: var(--muted);
-  font-size: var(--fs-small);
-}
-
-.preview-options {
-  display: grid;
-  gap: 6px;
-}
-
-.preview-option {
-  padding: 10px 12px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  font-size: 14px;
-}
-
-/*
- * Выбранный вариант в проверке ключа: заливка акцентом, а не рамка. Проверяя
- * ключ, человек смотрит на баллы внизу, и глазами по вариантам не ходит —
- * состояние должно читаться боковым зрением.
- */
-button.preview-option {
-  width: 100%;
-  text-align: left;
-  cursor: pointer;
-}
-
-button.preview-option.on {
-  border-color: var(--accent);
-  background: var(--accent-soft);
-}
-
-.key-check {
-  display: grid;
-  gap: 6px;
-  padding: 10px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--surface);
-  font-size: var(--fs-small);
-}
-
-.key-check table {
-  font-family: var(--font-mono);
-}
-
-/* предупреждения подсчёта: недостоверность, отсутствующие нормы */
-.key-warn {
-  margin: 0;
-  padding-left: 18px;
-  color: var(--accent);
-}
-
-.preview-nav {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 8px 12px;
-  border-top: 1px solid var(--border);
-  font-size: var(--fs-small);
-}
-
 /* ─────────── настройка таблицы ─────────── */
-
-.table-tools {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 8px;
-}
 
 /*
  * Фасеты стоят над таблицей, а не сбоку: боковая панель отнимает ширину у
@@ -1476,81 +932,6 @@ button.preview-option.on {
   flex-wrap: wrap;
   align-items: center;
   gap: 4px;
-}
-
-.facet-label {
-  color: var(--muted);
-  font-size: var(--fs-small);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-/*
- * Счётчик приглушён и моноширинный: он отвечает на вопрос «сколько будет», а
- * не спорит за внимание с самим значением.
- */
-.facet-count {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--muted);
-}
-
-.chip.active .facet-count {
-  color: inherit;
-  opacity: 0.75;
-}
-
-/* приписка о том, по чему считают фасеты: приглушена, но не спрятана */
-.facet-note {
-  color: var(--muted);
-  font-size: var(--fs-small);
-}
-
-.col-picker {
-  position: relative;
-}
-
-.col-picker-veil {
-  position: fixed;
-  inset: 0;
-  z-index: 40;
-}
-
-.col-picker-menu {
-  position: absolute;
-  right: 0;
-  top: calc(100% + 4px);
-  z-index: 41;
-  display: grid;
-  gap: 2px;
-  min-width: 200px;
-  max-height: 60vh;
-  overflow-y: auto;
-  padding: 8px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--surface);
-  box-shadow: 0 12px 32px rgb(0 0 0 / 0.28);
-}
-
-.col-picker-menu label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 4px 6px;
-  border-radius: 4px;
-  font-size: var(--fs-small);
-  cursor: pointer;
-}
-
-.col-picker-menu label:hover {
-  background: var(--surface-2);
-}
-
-@media print {
-  .table-tools {
-    display: none;
-  }
 }
 
 /* ─────────── поддержка решений ─────────── */
@@ -1600,40 +981,12 @@ button.preview-option.on {
   font-size: var(--fs-small);
 }
 
-.here-faces {
-  display: inline-flex;
-}
-
-.here-faces > * + * {
-  margin-left: -8px;
-  box-shadow: 0 0 0 2px var(--surface);
-}
-
-/*
- * Единственное место, где присутствие требует внимания: кто-то уже пишет в ту
- * же запись. Здесь янтарь уместен — правку действительно можно потерять.
- */
-.warn-line {
-  margin: 0 0 8px;
-  padding: 8px 12px;
-  border-left: 2px solid var(--accent);
-  background: var(--accent-soft);
-  color: var(--text);
-  font-size: var(--fs-small);
-}
-
 @media print {
-  .here,
-  .warn-line {
+  .here {
     display: none;
   }
 }
 
-/* выбранная строка: полоса слева, а не заливка — заливка спорит со строкой
-   под курсором, и на списке становится непонятно, что выбрано, а что просто
-   под мышью */
-tbody tr.row-active { background: var(--surface-2); }
-tbody tr.row-active td:first-child { box-shadow: inset 2px 0 0 var(--primary); }
 tbody tr[tabindex] { cursor: pointer; }
 
 /*
