@@ -368,6 +368,14 @@ async function catalogNumbers(
   if (!rows.length) return new Map();
   const ids = textArray(rows.map((r) => r.id));
   const versions = textArray(rows.map((r) => r.currentVersionId));
+  /*
+   * Числа редакции (page_versions ниже) считаются по редакции, а не по
+   * строке страницы: две методики могут смотреть в одну редакцию (порча,
+   * которую ищет проверка целостности техпанели), и соединение со страницей
+   * удвоило бы смуги. Пункты — через методику-хозяйку редакции: индекс у
+   * пунктов по методике, а прежний подзапрос считал пункты редакции, чья бы
+   * она ни была.
+   */
   const found = await db.execute<{
     id: string;
     question_count: number;
@@ -384,13 +392,6 @@ async function catalogNumbers(
     with page as materialized (
       select p.id, p.version_id from unnest(${ids}::text[], ${versions}::text[]) as p(id, version_id)
     ),
-    /*
-     * Числа редакции считаются по редакции, а не по строке страницы: две
-     * методики могут смотреть в одну редакцию (порча, которую ищет проверка
-     * целостности техпанели), и соединение со страницей удвоило бы смуги.
-     * Пункты — через методику-хозяйку редакции: индекс у пунктов по методике,
-     * а прежний подзапрос считал пункты редакции, чья бы она ни была.
-     */
     page_versions as materialized (
       select v.id as version_id, v.survey_id
       from (select distinct p.version_id from page p) p
