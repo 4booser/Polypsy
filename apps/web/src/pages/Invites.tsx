@@ -11,13 +11,14 @@ import { Panel } from "../ui/layout";
 import { Button, Field, Input, Select, Tag } from "../ui/primitives";
 import { useLang } from "../lang";
 import { usePagedResource, useResource } from "../useResource";
-import { listBody } from "../ui/paging";
+import { listBody, shownNote } from "../ui/paging";
 import { StartHead } from "./Start";
 import { fill } from "./dashboard/model";
 import { Di } from "./today/icons";
 import { hhmm } from "./today/model";
 import {
   INVITE_VIEWS,
+  atLeast,
   inviteCounts,
   inviteState,
   isInviteView,
@@ -209,8 +210,8 @@ export default function Invites() {
         meta={
           counts ? (
             <>
-              <b className="font-extrabold text-text">{fill(ut("invA.liveN"), { n: counts.live })}</b>
-              <span>{fill(ut("invA.joined30"), { n: joinedSince(rows ?? [], now) })}</span>
+              <b className="font-extrabold text-text">{fill(ut("invA.liveN"), { n: atLeast(counts.live, list.hasMore) })}</b>
+              <span>{fill(ut("invA.joined30"), { n: atLeast(joinedSince(rows ?? [], now), list.hasMore) })}</span>
             </>
           ) : (
             <span>{ut("common.loading")}</span>
@@ -288,7 +289,11 @@ export default function Invites() {
                 }
               />
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-divider px-4 py-2.5 text-caption text-text-2">
-                <span>{fill(ut("invA.shown"), { n: shown.length, of: list.total ?? rows.length })}</span>
+                <span>
+                  {/* есть ещё страницы — «перші N» (shownNote), а не «N з N» */}
+                  {shownNote(ut, rows.length, list.total, list.hasMore) ??
+                    fill(ut("invA.shown"), { n: shown.length, of: list.total ?? rows.length })}
+                </span>
                 <span className="ml-auto inline-flex items-center gap-1.5 text-muted">
                   <Ic.info size={13} />
                   {ut("invA.linkOnce")}
