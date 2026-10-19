@@ -20,7 +20,8 @@ describe("печатный лист консоли", () => {
   test("на бумагу идёт только лист, рамка консоли не режет его", () => {
     expect(PRINT_SHEET).toBe("data-print-sheet");
     expect(printBlocks).toContain("body:has([data-print-sheet]) *:not([data-print-sheet], [data-print-sheet] *, :has([data-print-sheet]))");
-    expect(printBlocks).toContain("#root :is(.h-screen, .main, .min-h-0.flex-1, .flex-col:has(> .min-h-0.flex-1))");
+    /* рамка консоли — h-dvh (App.tsx), её берёт последняя ветка: колонка с колонкой «остаток высоты» внутри */
+    expect(printBlocks).toContain("#root :is(.main, .min-h-0.flex-1, .flex-col:has(> .min-h-0.flex-1))");
     expect(printBlocks).toContain("#root .overflow-y-auto");
   });
 

@@ -46,7 +46,6 @@ body {
  */
 a { color: inherit; text-decoration: none; }
 a:hover { text-decoration: underline; text-underline-offset: 3px; }
-.link { color: var(--primary); }
 
 /* Фокус — фиолетовое кольцо и всегда видимый. Ни одного `outline: none` в проекте. */
 :where(a, button, input, select, textarea, [tabindex]):focus-visible {
@@ -139,32 +138,7 @@ h3:not([class]) {
   letter-spacing: var(--tracking-label);
   text-transform: uppercase;
 }
-.sub { color: var(--muted); font-size: var(--fs-small); margin: 0; max-width: 68ch; }
-.crumbs {
-  display: flex;
-  gap: 7px;
-  align-items: center;
-  font-size: var(--fs-caption);
-  color: var(--muted);
-  margin-bottom: 6px;
-}
-.crumbs a { color: var(--muted); }
-.crumbs a:hover { color: var(--text-2); }
 
-/* ═══ поверхности ═══
- * Не карточки с тенями, а участки, отделённые волосинкой. Тень остаётся
- * только у всплывающих слоёв — там она сообщает о высоте, а не украшает.
- */
-.card {
-  background: var(--card);
-  border: 1px solid var(--hairline);
-  border-radius: var(--r-md);
-  padding: var(--pad-card);
-  margin-bottom: var(--gap);
-}
-/* карточка внутри карточки не удваивает рамку — она отступает ступенью фона */
-.card .card { background: var(--surface-2); border-color: transparent; }
-.card.flush { padding: 0; overflow: hidden; }
 /*
  * `.hint` — самостоятельный класс, а не потомок `.card`.
  *
@@ -175,77 +149,8 @@ h3:not([class]) {
  * содержимым. Ловится это только глазами, поэтому пусть класс работает сам
  * по себе, где бы ни стоял.
  */
-.hint {
-  color: var(--muted);
-  font-size: var(--fs-caption);
-  margin: 3px 0 12px;
-  line-height: var(--lh-normal);
-  max-width: 68ch;
-}
-.card.accent { border-color: var(--accent); }
-.nested {
-  border-top: 1px solid var(--hairline);
-  margin-top: 14px;
-  padding-top: 14px;
-}
 
 .grid { display: grid; gap: var(--gap); }
-.grid.cols-2 { grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); }
-.grid.cols-3 { grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); }
-.grid.cols-4 { grid-template-columns: repeat(auto-fit, minmax(196px, 1fr)); }
-
-/* ═══ числа ═══
- * Крупная цифра с подписью ПОД ней, а не рядом: так столбец показателей
- * читается сканированием сверху вниз, а не построчно.
- */
-.tiles {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 1px;
-  background: var(--hairline);
-  border: 1px solid var(--hairline);
-  border-radius: var(--r-md);
-  overflow: hidden;
-  margin-bottom: var(--gap);
-}
-/*
- * Порядок внутри плитки задаётся явно, а не переворотом колонки.
- *
- * Переворот ставил наверх пояснение, и «доходимість 99.9%» читалось как
- * заголовок плитки, а само число — как приписка к нему. Теперь сверху вниз:
- * число, его подпись, пояснение. Первым в глаза попадает то, ради чего
- * плитку и смотрят.
- */
-.tile {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 16px;
-  background: var(--card);
-}
-.tile .value { order: 1; }
-.tile .label { order: 2; }
-.tile .hint { order: 3; }
-.tile .label {
-  color: var(--muted);
-  font-size: var(--fs-micro);
-  font-weight: 500;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-.tile .value {
-  font-family: var(--font-mono);
-  font-size: var(--fs-stat);
-  font-weight: 500;
-  letter-spacing: -0.03em;
-  line-height: 1.05;
-  font-variant-numeric: tabular-nums;
-  color: var(--text);
-}
-/* единицы внутри числа набираются текстовым шрифтом: «4 мин 60 с»
-   моноширинным выглядит как код, а не как время */
-.tile .value :is(span, small) { font-family: var(--font-text); }
-.tile .hint { color: var(--muted); font-size: var(--fs-caption); margin: 0; }
 
 /* ═══ таблицы ═══ */
 table { width: 100%; border-collapse: collapse; font-size: var(--fs-small); }
@@ -284,20 +189,12 @@ thead th {
   z-index: 1;
 }
 /* числа — та же гарнитура табличными цифрами; моноширинный — только для кодов */
-th.num, td.num {
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
 tbody tr { transition: background var(--dur-fast) var(--ease); }
 tbody tr:hover { background: var(--panel2); }
 /* строка под курсором и строка под клавиатурой выглядят одинаково: работа со
    списком одинаково часто идёт и мышью, и стрелками */
 tbody tr:focus-within { background: var(--panel2); }
 tbody tr:last-child td { border-bottom: none; }
-th.sortable { cursor: pointer; user-select: none; }
-th.sortable:hover { color: var(--text); }
-th .arrow { margin-left: 4px; color: var(--text); }
 
 /* ═══ управление ═══ */
 /*
@@ -321,7 +218,7 @@ th .arrow { margin-left: 4px; color: var(--text); }
  * класс на месте, разметка верная, а размер чужой. Нулевой вес делает
  * правила именно тем, чем они должны быть, — умолчанием.
  */
-:where(button, .btn) {
+:where(button) {
   font: inherit;
   font-size: var(--fs-small);
   font-weight: 500;
@@ -340,41 +237,15 @@ th .arrow { margin-left: 4px; color: var(--text); }
   transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease),
     filter var(--dur-fast) var(--ease);
 }
-:where(button, .btn):hover {
+:where(button):hover {
   background: var(--surface-3);
   border-color: var(--border-strong);
   text-decoration: none;
 }
-:where(button, .btn):active { filter: brightness(0.94); }
+:where(button):active { filter: brightness(0.94); }
 :where(button):disabled { opacity: 0.45; cursor: not-allowed; }
 
 /* Первичное действие обведено, а не залито — см. primitives.tsx */
-button.primary, .btn.primary {
-  background: transparent;
-  border-color: var(--primary);
-  color: var(--primary);
-  font-weight: 500;
-}
-button.primary:hover, .btn.primary:hover {
-  background: var(--primary-soft);
-  border-color: var(--primary);
-  filter: none;
-}
-
-button.ghost {
-  background: transparent;
-  border-color: transparent;
-  color: var(--muted);
-}
-button.ghost:hover { background: var(--surface-2); border-color: transparent; color: var(--text); }
-
-button.danger {
-  background: transparent;
-  border-color: color-mix(in srgb, var(--danger) 50%, transparent);
-  /* текстовая ступень, а не заливочная: --danger на карточке даёт 4.46 */
-  color: var(--sev-severe-text);
-}
-button.danger:hover { background: var(--danger-soft); }
 
 label { display: block; font-size: var(--fs-caption); color: var(--muted); margin-bottom: 5px; }
 label.check {
@@ -409,82 +280,10 @@ textarea { resize: vertical; min-height: 76px; line-height: var(--lh-normal); }
 /* галочка бирюзовая, а не янтарная: отмеченный флажок — состояние, которое
    человек задал сам, а янтарь означает «требует внимания» */
 input[type="checkbox"], input[type="radio"] { width: auto; accent-color: var(--primary); }
-
-.field { display: flex; flex-direction: column; gap: 0; }
-.field.grow { flex: 1; }
-.fields { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
-.filters {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: center;
-  padding: 10px 12px;
-}
-/* полоса фильтров внутри панели идёт вровень с её содержимым */
-.card > .filters:first-child { padding-left: 20px; padding-right: 20px; }
-.row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-.row.tight { gap: 7px; }
 .grow { flex: 1; }
-.spacer { flex: 1; }
-
-/* ═══ метки ═══ */
-/*
- * Фишка фильтра.
- *
- * Выбранная фишка была янтарной — а янтарь в этой системе означает ровно
- * одно: «требует внимания». Включённый фильтр внимания не требует, это
- * состояние экрана; крася его акцентом, интерфейс каждый раз кричал о том,
- * что человек только что сделал сам. Теперь состояние показывает бирюза —
- * тот же цвет, что у выбранной строки и основного действия.
- */
-.chip {
-  min-height: 26px;
-  font-size: var(--fs-caption);
-  padding: 3px 10px;
-  border-radius: 20px;
-  border: 1px solid var(--border);
-  background: transparent;
-  color: var(--text-2);
-  cursor: pointer;
-  white-space: nowrap;
-}
-.chip:hover { background: var(--surface-2); border-color: var(--border-strong); }
-.chip.active {
-  background: var(--primary-soft);
-  border-color: color-mix(in srgb, var(--primary) 60%, transparent);
-  color: var(--primary);
-  font-weight: 600;
-}
-.chip.static { cursor: default; }
-.chip.static:hover { background: transparent; }
-.chip.static.bad { border-color: var(--sev-severe); color: var(--sev-severe-text); }
-
-.badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  font-size: var(--fs-micro);
-  font-weight: 600;
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
-  padding: 2px 7px;
-  border-radius: 4px;
-  background: var(--surface-3);
-  color: var(--text-2);
-  white-space: nowrap;
-}
-.badge.good { background: color-mix(in srgb, var(--sev-none) 18%, transparent); color: var(--sev-none-text); }
-.badge.warn { background: color-mix(in srgb, var(--sev-mild) 18%, transparent); color: var(--sev-mild-text); }
-.badge.bad { background: color-mix(in srgb, var(--sev-severe) 18%, transparent); color: var(--sev-severe-text); }
-.badge.accent { background: var(--accent-soft); color: var(--accent); }
-
-.good { color: var(--sev-none-text); }
-.bad { color: var(--sev-severe-text); }
-.muted { color: var(--muted); }
-.hint.warn { color: var(--sev-mild-text); }
 
 /* клавиша на виду: подпись рядом с действием, а не в справке */
-kbd, .kbd {
+kbd {
   font-family: var(--font-mono);
   font-size: var(--fs-micro);
   padding: 1px 5px;
@@ -493,104 +292,6 @@ kbd, .kbd {
   background: var(--surface-2);
   color: var(--muted);
 }
-
-/* ═══ всплывающие слои ═══ */
-/* окно и всплывающие сообщения — компоненты набора (ui/index.tsx, ui/toast.tsx); здесь только лист .sheet */
-.sheet {
-  position: fixed;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  width: min(520px, 100%);
-  background: var(--surface);
-  border-left: 1px solid var(--border);
-  box-shadow: var(--shadow);
-  padding: 20px;
-  overflow-y: auto;
-  z-index: 60;
-  animation: slide-in var(--dur) var(--ease);
-}
-
-@keyframes slide-in { from { transform: translateX(16px); opacity: 0; } }
-
-/* ═══ состояния ═══ */
-/* скелет, пусто и отказ — компоненты набора (ui/states.tsx) */
-
-.dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); flex: none; }
-.dot.live { background: var(--sev-none); animation: pulse 2s ease-in-out infinite; }
-@keyframes pulse { 50% { opacity: 0.35; } }
-
-/* ═══ вход ═══ */
-.login {
-  min-height: 100vh;
-  display: grid;
-  place-items: center;
-  padding: 24px;
-  background:
-    radial-gradient(1100px 520px at 50% -10%, color-mix(in srgb, var(--primary) 16%, transparent), transparent 70%),
-    var(--bg);
-}
-
-/* ═══ конструктор и служебное ═══ */
-.legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: var(--fs-caption); color: var(--muted); }
-.tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--hairline); margin-bottom: 16px; }
-.tabs button {
-  border: none;
-  background: transparent;
-  border-bottom: 2px solid transparent;
-  border-radius: 0;
-  color: var(--muted);
-  padding: 0 12px;
-  min-height: 34px;
-  font-weight: 500;
-}
-.tabs button:hover { background: transparent; color: var(--text-2); }
-/* активная вкладка подчёркнута бирюзой, а не янтарём: янтарь означает
-   «требует внимания», а выбранная вкладка — это состояние экрана */
-.tabs button.active { color: var(--text); border-bottom-color: var(--primary); font-weight: 600; }
-
-/* сегментированный переключатель: группа читается как одно целое,
-   а три подряд идущих фильтра не сливаются в кашу из подчёркиваний */
-/*
- * Сегментированный выбор: обводка вокруг группы, вписанная рамка у
- * выбранного.
- *
- * Раньше внутри обведённой группы выбранный сегмент рисовался ещё и
- * заливкой посветлее — коробка внутри коробки, три линии там, где нужна
- * одна. Вписанная рамка занимает те же пиксели, что и граница группы, и
- * читается как «эта доля выбрана», а не как «здесь ещё одна панель».
- */
-.segmented {
-  display: inline-flex;
-  overflow: hidden;
-  border-radius: var(--r-md);
-  border: 1px solid var(--hairline);
-}
-.segmented button {
-  border: none;
-  background: transparent;
-  color: var(--muted);
-  padding: 6px 11px;
-  border-radius: var(--r-md);
-  font-size: var(--fs-caption);
-  font-weight: 500;
-  white-space: nowrap;
-}
-.segmented button + button { border-left: 1px solid var(--hairline); }
-.segmented button:hover { background: color-mix(in srgb, var(--text) 7%, transparent); color: var(--text); }
-.segmented button.active {
-  color: var(--primary);
-  box-shadow: inset 0 0 0 1px var(--primary);
-}
-/*
- * Точки у выбранного сегмента больше нет.
- *
- * Она появилась, когда выбранный сегмент отличался только заливкой чуть
- * светлее: на плохом мониторе разницы не видно, и точка была вторым
- * признаком. Теперь выбранный сегмент назван цветом акцента и вписанной
- * рамкой — два признака, и оба видны. Третий превращал короткое слово в
- * строку из точки и слова разной высоты.
- */
 
 /* ═══ печать ═══
  * Второй интерфейс, а не побочный режим: отчёты подшивают в дело.
@@ -732,9 +433,9 @@ kbd, .kbd {
 @media print {
   /* печатные значения токенов живут в styles/tokens.css — см. пояснение там */
   body { font-size: 11pt; }
-  .sidebar, .toasts, [data-connection], .filters, button { display: none !important; }
+  .toasts, [data-connection], button { display: none !important; }
   /*
-   * Рамка консоли высотой в экран со своей прокруткой (App.tsx: h-screen,
+   * Рамка консоли высотой в экран со своей прокруткой (App.tsx: h-dvh,
    * overflow-hidden; экран — overflow-y-auto) на бумаге обрезала бы всё,
    * что ниже первого экрана. На печати рамка растёт по содержимому.
    */
@@ -746,7 +447,7 @@ kbd, .kbd {
    * хвост содержимого — у карты пациента пропадал последний раздел со
    * штампом «кто распечатал».
    */
-  #root :is(.h-screen, .main, .min-h-0.flex-1, .flex-col:has(> .min-h-0.flex-1)) {
+  #root :is(.main, .min-h-0.flex-1, .flex-col:has(> .min-h-0.flex-1)) {
     display: block !important;
     height: auto !important;
     min-height: 0 !important;
@@ -755,7 +456,6 @@ kbd, .kbd {
   #root textarea { display: none !important; }
   /* вкладки и навигация экрана на бумаге не нужны: лист — то, что открыто */
   #root nav, #root [role="tablist"] { display: none !important; }
-  .app { display: block; }
   .main { padding: 0; max-width: none; }
   .print-only { display: block; }
 
@@ -788,17 +488,11 @@ kbd, .kbd {
   .ps-ask { margin-top: 10px; padding: 6px 12px; }
   .ps-lines { gap: 6px 16px; }
   .ps-signs { margin-top: 12px; }
-  .card { border: none; padding: 0; margin: 0 0 10pt; break-inside: avoid; }
   h1 { font-size: 16pt; }
   h2 { font-size: 13pt; break-after: avoid; }
   table { break-inside: auto; }
   tr { break-inside: avoid; break-after: auto; }
   thead { display: table-header-group; }
-  .chip.static.bad, .badge.bad {
-    border: 1pt solid #000;
-    background: repeating-linear-gradient(45deg, #000, #000 1pt, #fff 1pt, #fff 4pt);
-    color: #000;
-  }
   @page { margin: 16mm 14mm 18mm; }
 
   /*
@@ -813,52 +507,7 @@ kbd, .kbd {
 
 /* высококонтрастный режим Windows: границы обязаны остаться видимыми */
 @media (forced-colors: active) {
-  .card, .modal, .sheet, .tile, button, input, select, textarea { border: 1px solid CanvasText; }
-}
-
-/* ═══ хронология ═══
- * Ось времени с группировкой по дням: без группировки лента из двухсот
- * событий читается как журнал, а не как история.
- */
-.timeline { display: grid; gap: 18px; }
-
-/* ═══ центр событий ═══ */
-.events { position: relative; }
-
-/* ═══ карта пациента: две колонки ═══
- * Карта выросла до двух экранов прокрутки, и «что измерено» перестало
- * помещаться рядом с «что делать». Слева измерения и цели, справа
- * клинические действия.
- */
-.patient-card {
-  display: grid;
-  grid-template-columns: minmax(0, 1.25fr) minmax(340px, 1fr);
-  gap: var(--gap);
-  align-items: start;
-}
-
-@media (max-width: 1200px) {
-  .patient-card { grid-template-columns: 1fr; }
-}
-@media print {
-  /* в печати колонки не нужны: лист один и узкий */
-  .patient-card { display: block; }
-}
-
-/* ─────────── пакет заключений ─────────── */
-
-.batch {
-  display: grid;
-  gap: var(--gap);
-}
-
-/* ─────────── карта пунктов ─────────── */
-
-.qh th { text-align: left; white-space: nowrap; padding-right: 10px; }
-
-@media print {
-  /* на монохромном принтере цвета неразличимы — карта печати не подлежит */
-  .qh { display: none; }
+  .modal, button, input, select, textarea { border: 1px solid CanvasText; }
 }
 
 /*
@@ -886,103 +535,6 @@ kbd, .kbd {
 
 @media print {
   .hint-box {
-    display: none;
-  }
-}
-
-/* стартовый экран в подвале рельсы: настройка, а не навигация */
-.start-screen {
-  display: grid;
-  gap: 3px;
-  padding: 0 10px 8px;
-  font-size: 11px;
-}
-
-.start-screen select {
-  font-size: 12px;
-  padding: 4px 6px;
-}
-
-/* ─────────── предпросмотр конструктора ─────────── */
-
-.preview {
-  position: sticky;
-  top: var(--gap);
-  display: grid;
-  gap: 6px;
-}
-
-/* ─────────── настройка таблицы ─────────── */
-
-/*
- * Фасеты стоят над таблицей, а не сбоку: боковая панель отнимает ширину у
- * данных, а фильтруют здесь редко и коротко — выбрал роту, посмотрел, снял.
- */
-.facets {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 12px;
-  flex: 1;
-  min-width: 0;
-}
-
-.facet {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px;
-}
-
-/* ─────────── поддержка решений ─────────── */
-
-.suggestions {
-  display: grid;
-  gap: var(--gap);
-}
-
-/*
- * Предложение — не тревога: рамка обычная, акцент не используется. Янтарь
- * здесь означал бы «требует внимания сейчас», а подсказка ждёт столько,
- * сколько нужно.
- */
-.suggestion {
-  display: grid;
-  gap: 6px;
-  padding: 12px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--surface);
-}
-
-/* объяснение набрано моноширинным: в нём числа, и они должны читаться */
-.because {
-  margin: 0;
-  padding-left: 18px;
-  display: grid;
-  gap: 2px;
-  font-family: var(--font-mono);
-  font-size: var(--fs-small);
-  color: var(--text);
-}
-
-/* ─────────── присутствие ─────────── */
-
-/*
- * Полоса «кто здесь ещё» появляется только когда есть кто-то ещё, поэтому
- * рисуется тихо: без рамки и без цвета внимания. Янтарь здесь был бы враньём —
- * присутствие коллеги не требует действия.
- */
-.here {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 0 6px;
-  font-size: var(--fs-small);
-}
-
-@media print {
-  .here {
     display: none;
   }
 }
