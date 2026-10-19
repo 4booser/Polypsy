@@ -1017,6 +1017,44 @@ export function permissionCardReadable(
   return row.role !== "superadmin" && row.ladderRank < viewer.ladderRank;
 }
 
+/** О ком спрашивать карточку прав: не о суперадмине (у него всё) и не о том, чью карточку сервер не отдаст */
+export function cardAsks(
+  viewer: { id: string; role: string; ladderRank: number },
+  admins: readonly Pick<StaffRow, "id" | "role" | "account">[],
+): string[] {
+  return admins
+    .filter((a) => a.role !== "superadmin" && permissionCardReadable(viewer, { id: a.id, role: a.role, ladderRank: a.account?.ladderRank ?? 0 }))
+    .map((a) => a.id);
+}
+
+/**
+ * Итог прав каждого администратора по порядку реестра — из ответа пачкой.
+ * Не пришедшая карточка (не спрашивали, сервер не отдал, запрос не удался —
+ * `cards` пуст) — null, то есть «не известно» в матрице (adminMark).
+ */
+export function effectiveByAdmin(
+  admins: readonly Pick<StaffRow, "id">[],
+  cards: readonly { userId: string; effective: string[] }[] | null,
+): (string[] | null)[] {
+  const byId = new Map((cards ?? []).map((c) => [c.userId, c.effective]));
+  return admins.map((a) => byId.get(a.id) ?? null);
+}
+
+/**
+ * Итог прав реестра администраторов — одним запросом карточек пачкой на
+ * всех (волна 27), а не запросом на каждого. Отказ — у всех «не известно»,
+ * как прежде у каждой не пришедшей карточки. Источник подменяется в проверке.
+ */
+export async function loadAdminCards(
+  viewer: { id: string; role: string; ladderRank: number },
+  admins: readonly Pick<StaffRow, "id" | "role" | "account">[],
+  src: Pick<typeof api, "permissionCards"> = api,
+): Promise<(string[] | null)[]> {
+  const asked = cardAsks(viewer, admins);
+  const got = asked.length ? await src.permissionCards(asked).catch(() => null) : [];
+  return effectiveByAdmin(admins, got);
+}
+
 /** Отметка в матрице: даёт роль, у суперадмина — всё, не может; «не известно» — пустая, с подписью */
 function Mark({ kind, label }: { kind: "role" | "super" | "no" | "unknown"; label: string }) {
   if (kind === "unknown") {
@@ -1058,17 +1096,8 @@ function AdminMatrix({
   const { ut, lang } = useLang();
   const { user } = useAuth();
   const viewer = { id: user?.id ?? "", role: user?.role ?? "", ladderRank: user?.ladderRank ?? 0 };
-  const cards = useResource(
-    () =>
-      Promise.all(
-        admins.map((a) =>
-          a.role === "superadmin" || !permissionCardReadable(viewer, { id: a.id, role: a.role, ladderRank: a.account?.ladderRank ?? 0 })
-            ? Promise.resolve(null)
-            : api.userPermissions(a.id).then((c) => c.effective).catch(() => null),
-        ),
-      ),
-    [admins.map((a) => a.id).join(), viewer.id, viewer.ladderRank],
-  );
+  /* карточки — пачкой на всех (loadAdminCards), а не запросом на каждого администратора */
+  const cards = useResource(() => loadAdminCards(viewer, admins), [admins.map((a) => a.id).join(), viewer.id, viewer.ladderRank]);
   const titleOf = (code: string) => {
     for (const g of titles.groups) for (const p of g.permissions) if (p.code === code) return t(p.title, lang);
     return code;
