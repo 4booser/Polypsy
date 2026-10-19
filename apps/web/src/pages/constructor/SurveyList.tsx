@@ -947,7 +947,7 @@ export function SurveyList() {
         everything.data
           ? [
               count(tabCounts.published, "methods") + (tabCounts.groups > 1 ? ` ${ut("mc.inGroups").replace("{n}", String(tabCounts.groups))}` : ""),
-              ut("mc.recentMeta").replace("{n}", num(tabCounts.recent)),
+              ut("mc.recentMeta").replace("{n}", count(tabCounts.recent, "responses")),
             ]
           : undefined
       }

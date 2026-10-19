@@ -12133,7 +12133,7 @@ export const UI = {
   "cnx.unsaved": { uk: "є незбережені зміни", ru: "есть несохранённые изменения", en: "unsaved changes" },
   "cnx.name": { uk: "Назва заключення", ru: "Название заключения", en: "Conclusion title" },
   "cnx.verdict": { uk: "Висновок", ru: "Вывод", en: "Conclusion" },
-  "cnx.chars": { uk: "{n} знаків у висновку", ru: "{n} знаков в выводе", en: "{n} characters" },
+  "cnx.chars": { uk: "знаків у висновку: {n}", ru: "знаков в выводе: {n}", en: "characters: {n}" },
   "cnx.noSignRight": {
     uk: "Підписувати заключення може лише той, кому це дозволено.",
     ru: "Подписывать заключение может только тот, кому это разрешено.",
@@ -12762,9 +12762,10 @@ export const UI = {
   "mc.catTitle": { uk: "Каталог методик", ru: "Каталог методик", en: "Instrument catalogue" },
   "mc.inGroups": { uk: "у {n} групах", ru: "в {n} группах", en: "in {n} groups" },
   "mc.recentMeta": {
-    uk: "{n} проходжень за 30 днів",
-    ru: "{n} прохождений за 30 дней",
-    en: "{n} responses in 30 days",
+    /* {n} — число со словом в нужной форме (useCount): «1 проходження», «3 проходження», «5 проходжень» */
+    uk: "{n} за 30 днів",
+    ru: "{n} за 30 дней",
+    en: "{n} in 30 days",
   },
   "mc.newMethod": { uk: "Нова методика", ru: "Новая методика", en: "New instrument" },
   "mc.importHint": {
@@ -12948,9 +12949,9 @@ export const UI = {
   },
   "mc.assignedN": { uk: "Призначено: {n}", ru: "Назначено: {n}", en: "Assigned: {n}" },
   "mc.assignedGroup": {
-    uk: "Призначено групі: {n} пацієнтів",
-    ru: "Назначено группе: {n} пациентов",
-    en: "Assigned to the group: {n} patients",
+    uk: "Призначено групі, отримали: {n}",
+    ru: "Назначено группе, получили: {n}",
+    en: "Assigned to the group; recipients: {n}",
   },
   "mc.assignGroupBtn": { uk: "Призначити групі", ru: "Назначить группе", en: "Assign to group" },
   "mc.assignN": { uk: "Призначити ({n})", ru: "Назначить ({n})", en: "Assign ({n})" },
@@ -13285,7 +13286,7 @@ export const UI = {
     en: "Median by age, men and women",
   },
   "mc.btActive": { uk: "активних", ru: "активных", en: "active" },
-  "mc.btActiveOf": { uk: "{n} активних з {all}", ru: "{n} активных из {all}", en: "{n} active of {all}" },
+  "mc.btActiveOf": { uk: "активних: {n} з {all}", ru: "активных: {n} из {all}", en: "active: {n} of {all}" },
   "mc.btAddMethod": { uk: "Додати методику", ru: "Добавить методику", en: "Add an instrument" },
   "mc.btAnyOrder": { uk: "будь-який порядок", ru: "любой порядок", en: "any order" },
   "mc.btArchive": { uk: "В архів", ru: "В архив", en: "Move to archive" },
@@ -13448,7 +13449,6 @@ export const UI = {
     ru: "Снять администратора {name}?",
     en: "Remove administrator {name}?",
   },
-  "mc.grResponses": { uk: "{n} проходжень", ru: "{n} прохождений", en: "{n} responses" },
   "mc.grResponsesCol": { uk: "проходжень", ru: "прохождений", en: "responses" },
   "mc.grRetiredGroup": { uk: "Зняті з використання", ru: "Снятые с использования", en: "Retired" },
   "mc.grRetiredView": { uk: "Зняті", ru: "Снятые", en: "Retired" },

@@ -117,7 +117,7 @@ function GroupsScreen({ groups, staff, reload }: { groups: SurveyGroupWithCounts
           <Tag tone="done">{ut("grp.surveyRetired")}</Tag>
         ) : undefined
       }
-      next={ut("mc.grResponses").replace("{n}", num(g.responseCount))}
+      next={count(g.responseCount, "responses")}
       nextIcon={<ShellIcon name="activity" size={13} />}
       when={count(g.patientCount, "people")}
     />
