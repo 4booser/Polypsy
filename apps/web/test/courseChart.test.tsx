@@ -13,6 +13,7 @@ import {
   freeSpot,
   pointTip,
   reliableThreshold,
+  todayLabelAt,
   type CourseEvent,
   type CoursePoint,
 } from "../src/charts/courseModel";
@@ -215,6 +216,36 @@ describe("подписи межі похибки", () => {
   });
 });
 
+describe("подпись «сьогодні»", () => {
+  /*
+   * В строке над полем слева — подпись оси («бали 0–25, краще ↑», до x≈130 на
+   * узком графике), над линией — «сьогодні» шириной ≈53. Сессии,
+   * назначенные вперёд, уводят линию к левому краю, и подписи наезжали.
+   */
+  const span = (at: { x: number; anchor: "middle" | "start" }, w: number) =>
+    at.anchor === "middle" ? [at.x - w / 2, at.x + w / 2] : [at.x, at.x + w];
+
+  test("места хватает — по центру линии, как в наборе", () => {
+    expect(todayLabelAt(300, 53, 130, 460)).toEqual({ x: 300, anchor: "middle" });
+  });
+
+  test("линия у левого края — подпись флажком справа от неё и не заходит на подпись оси", () => {
+    const at = todayLabelAt(140, 53, 130, 460);
+    expect(at.anchor).toBe("start");
+    expect(span(at, 53)[0]).toBeGreaterThanOrEqual(138);
+    expect(at.x).toBeLessThan(160);
+  });
+
+  test("линия под самой подписью оси — сразу за её концом", () => {
+    const at = todayLabelAt(90, 53, 130, 460);
+    expect(span(at, 53)[0]).toBe(138);
+  });
+
+  test("за правый край графика не выходит", () => {
+    expect(span(todayLabelAt(455, 53, 130, 460), 53)[1]).toBeLessThanOrEqual(460);
+  });
+});
+
 describe("отрисовка", () => {
   const c = course();
   const events = courseEventsFromTimeline(
@@ -290,6 +321,44 @@ describe("отрисовка", () => {
     const out = draw(<CourseChart title="WHO-5" {...who} now={at(45)} />);
     expect(says(out, "course.betterUp")).toBe(true);
     expect(out).toMatch(/37[,.]9/);
+  });
+
+  test("подписи над полем и в поле не наезжают друг на друга: «сьогодні», ось, межі похибки, «сигнал»", () => {
+    /*
+     * Как на стенде: благополучие 0–25 (краще ↑), короткий курс у самого
+     * низа, сигнал на последнем замере и сессии вперёд. Подпись межі похибки
+     * искала место у нижней кромки зоны — ровно в строке слова «сигнал» — и
+     * ложилась поверх него («сигналкі похибки від старту»).
+     */
+    const WB = [
+      { min: 0, max: 7, label: "Дуже низьке благополуччя", severity: "severe" as const },
+      { min: 8, max: 12, label: "Знижене благополуччя", severity: "moderate" as const },
+      { min: 13, max: 25, label: "Без ознак зниженого благополуччя", severity: "none" as const },
+    ];
+    const short = courseFromDynamics(
+      { points: [dp(0, 3, { maxScore: 25 }), dp(3, 2, { maxScore: 25 }), dp(6, 0, { maxScore: 25 }), dp(9, 0, { maxScore: 25 })], sem: 1.3, reliableChange: null },
+      WB,
+      fmt,
+    );
+    const ev = courseEventsFromTimeline(
+      [
+        { id: "s", kind: "alert", at: iso(9), title: "сигнал" },
+        { id: "p1", kind: "visit", at: iso(11), title: "", detail: "booked" },
+        { id: "p2", kind: "visit", at: iso(28), title: "", detail: "booked" },
+      ],
+      fmt,
+    );
+    const out = draw(<CourseChart title="WB" {...short} events={ev} now={at(9.2)} />);
+    const boxes = [...out.matchAll(/<text data-label="([\w-]+)" x="([\d.]+)" y="([\d.]+)"(?: text-anchor="(\w+)")?[^>]*>([^<]*)</g)].map((m) => {
+      const w = m[5]!.length * 11 * 0.56 + 4;
+      const x = Number(m[2]);
+      const x0 = m[4] === "end" ? x - w : m[4] === "middle" ? x - w / 2 : x;
+      return { name: m[1]!, x0, x1: x0 + w, y0: Number(m[3]) - 10, y1: Number(m[3]) + 3 };
+    });
+    expect(boxes.map((b) => b.name).sort()).toContain("signal");
+    const hit = (a: (typeof boxes)[number], b: (typeof boxes)[number]) => a.x0 < b.x1 && a.x1 > b.x0 && a.y0 < b.y1 && a.y1 > b.y0;
+    const clashes = boxes.flatMap((a, i) => boxes.slice(i + 1).filter((b) => hit(a, b)).map((b) => `${a.name} × ${b.name}`));
+    expect(clashes).toEqual([]);
   });
 
   test("один замер и пустой курс не роняют график", () => {

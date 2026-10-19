@@ -10,8 +10,9 @@ import type {
 import { Link, NavLink, type LinkProps } from "react-router-dom";
 import { createContext, forwardRef, useContext, useEffect, useId, useImperativeHandle, useRef } from "react";
 import { cx } from "./cx";
+import { grouped } from "./decimal";
 import { Ic } from "./icons";
-import { useLang } from "../lang";
+import { useLang, useScreenLang } from "../lang";
 
 /*
  * Примитивы консоли в наборе «Виразна».
@@ -203,20 +204,6 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
     </button>
   );
 });
-
-/**
- * Значок-ссылка: «+» над перечнем, ведущий на форму новой записи.
- *
- * Элемент <a>, а не кнопка с navigate(): переход — это ссылка, её открывают
- * в новой вкладке и видят адрес. Вид — квадрат 36 без заливки.
- */
-export function GlyphLink({ className, children, ...rest }: LinkProps) {
-  return (
-    <Link className={buttonClass("ghost", "glyph", className)} {...rest}>
-      {children}
-    </Link>
-  );
-}
 
 /** Кнопка, которая на самом деле ссылка. Те же виды и размеры, что у Button. */
 export function ButtonLink({
@@ -541,10 +528,15 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
       style={style}
     >
       {icon ? <span className="inline-flex text-muted [&>svg]:size-[15px]">{icon}</span> : null}
+      {/*
+        Кегль — от коробки (13,5 набора или тот, что ей дал экран), а не от
+        наследия: «Пульт» ставит всякому полю 12,5 (legacy.css), и без явного
+        inherit поле поиска печатало мельче своей подсказки рядом.
+      */}
       <input
         ref={ref}
         className={cx(
-          "h-full min-h-0 w-full min-w-0 flex-1 border-0 bg-transparent p-0 font-medium text-text outline-none",
+          "h-full min-h-0 w-full min-w-0 flex-1 border-0 bg-transparent p-0 font-medium text-text outline-none [font-size:inherit]",
           "placeholder:text-muted placeholder:opacity-100 focus-visible:outline-none disabled:cursor-not-allowed",
         )}
         {...attrs}
@@ -864,6 +856,11 @@ export function Switch({
 /**
  * Карточка выбора (радио-карточка «Рішення»): жирный заголовок и приглушённое
  * пояснение; выбранная — тонированная с фиолетовым кольцом.
+ *
+ * `disabled` — вариант есть, но не для этого человека (профиль выгрузки
+ * «повний» без права): радио выключено по-настоящему — Tab его проходит
+ * мимо, диктор называет «недоступно», нажатие ничего не выбирает; почему —
+ * пишет `sub`.
  */
 export function ChoiceCard({
   name,
@@ -872,6 +869,7 @@ export function ChoiceCard({
   onChange,
   title,
   sub,
+  disabled,
 }: {
   name: string;
   value: string;
@@ -879,16 +877,31 @@ export function ChoiceCard({
   onChange: (value: string) => void;
   title: ReactNode;
   sub?: ReactNode;
+  disabled?: boolean;
 }) {
   return (
     <label
+      aria-disabled={disabled || undefined}
       className={cx(
-        "m-0 flex cursor-pointer items-start gap-3 rounded-[12px] px-3.5 py-2.5",
+        "m-0 flex items-start gap-3 rounded-[12px] px-3.5 py-2.5",
         "transition-[background-color,box-shadow] duration-[var(--dur-fast)] ease-[var(--ease)]",
-        checked ? "bg-violet-tint shadow-[inset_0_0_0_1.5px_var(--vring)]" : "bg-sunk hover:bg-sunk-2",
+        disabled
+          ? "cursor-not-allowed bg-sunk opacity-60"
+          : checked
+            ? "cursor-pointer bg-violet-tint shadow-[inset_0_0_0_1.5px_var(--vring)]"
+            : "cursor-pointer bg-sunk hover:bg-sunk-2",
       )}
     >
-      <Radio name={name} value={value} checked={checked} onChange={() => onChange(value)} className="mt-px" />
+      <Radio
+        name={name}
+        value={value}
+        checked={checked}
+        disabled={disabled}
+        onChange={() => {
+          if (!disabled) onChange(value);
+        }}
+        className="mt-px"
+      />
       <span className="min-w-0">
         <b className={cx("block text-[13px] font-extrabold leading-[18px]", checked ? "text-violet-ink" : "text-text")}>
           {title}
@@ -952,25 +965,12 @@ export function Segmented<K extends string>({
   );
 }
 
-/* ─────────── разделители и раскладка ─────────── */
+/* ─────────── пусто ─────────── */
 
 /** «Даних поки немає» — одна строка на все графики и сводки */
 export function NoData({ className }: { className?: string }) {
   const { ut } = useLang();
   return <p className={cx("m-0 text-small text-muted", className)}>{ut("chart.noData")}</p>;
-}
-
-export function Divider({ className }: { className?: string }) {
-  return <hr className={cx("m-0 border-0 border-t border-divider", className)} />;
-}
-
-/** Строка инструментов над списком: поиск, чипы, действия — переносится, если не помещается */
-export function Toolbar({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={cx("flex min-w-0 flex-wrap items-center gap-2", className)}>{children}</div>;
-}
-
-export function Spacer() {
-  return <span className="flex-1" />;
 }
 
 /* ─────────── вкладки ─────────── */
@@ -1009,11 +1009,13 @@ const tabClass = (isActive: boolean) =>
       : "bg-transparent font-semibold text-text-2 hover:bg-tab-hover hover:text-text",
   );
 
+/** Счётчик вкладки: разрядами языка экрана — «8 123», а не «8123» */
 function TabCount({ n }: { n?: number | null }) {
+  const lang = useScreenLang();
   if (n === undefined || n === null) return null;
   return (
     <span className="inline-grid h-5 min-w-5 place-items-center rounded-[10px] bg-tab-count px-1.5 text-[11.5px] font-bold text-text-2">
-      {n}
+      {grouped(n, lang)}
     </span>
   );
 }

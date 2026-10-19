@@ -2,16 +2,37 @@ import type { ReactNode } from "react";
 import { cx } from "./cx";
 
 /**
- * Клавиша (.kbd набора): 20 px, нижняя грань толще — читается как клавиша, а
- * не как пилюля. `onTip` — на тёмной плашке подсказки или сообщения.
+ * На чём стоит клавиша:
+ *
+ *  - `panel` — лист (умолчание): рамка control, подпись text-2;
+ *  - `tip`   — плашка подсказки и сообщения: её чернила, тёмная плашка в
+ *              светлой теме и светлая в тёмной;
+ *  - `fill`  — залитая кнопка, фиолетовая или красная («Далі Enter»):
+ *              чернила заливки в обеих темах. Клавиша плашки (`tip`) на
+ *              фиолетовом в тёмной теме читалась на 2,8:1 — её тёмные
+ *              чернила рассчитаны на светлую плашку;
+ *  - `appbar` — тёмная полоса приложения (⌘K в поле поиска).
  */
-export function Kbd({ children, onTip, className }: { children: ReactNode; onTip?: boolean; className?: string }) {
+export type KbdTone = "panel" | "tip" | "fill" | "appbar";
+
+const kbdTone: Record<KbdTone, string> = {
+  panel: "border-control bg-panel text-text-2",
+  tip: "border-tip-muted bg-transparent text-tip-ink",
+  fill: "border-onfill-muted bg-transparent text-onfill",
+  appbar: "border-appbar-line bg-transparent text-appbar-muted",
+};
+
+/**
+ * Клавиша (.kbd набора): 20 px, нижняя грань толще — читается как клавиша, а
+ * не как пилюля. `tone` — поверхность под ней.
+ */
+export function Kbd({ children, tone = "panel", className }: { children: ReactNode; tone?: KbdTone; className?: string }) {
   return (
     <kbd
       className={cx(
         "inline-grid h-5 min-w-5 shrink-0 place-items-center rounded-[6px] border border-b-2 px-[5px]",
         "font-sans text-[10.5px] font-bold leading-none not-italic",
-        onTip ? "border-tip-muted bg-transparent text-tip-ink" : "border-control bg-panel text-text-2",
+        kbdTone[tone],
         className,
       )}
     >

@@ -147,7 +147,7 @@ function ToastPlate({ item, onDone, still }: { item: Item; onDone: (id: number) 
           )}
         >
           {item.action.label}
-          {item.action.kbd ? <Kbd onTip>{item.action.kbd}</Kbd> : null}
+          {item.action.kbd ? <Kbd tone="tip">{item.action.kbd}</Kbd> : null}
         </button>
       ) : null}
     </div>

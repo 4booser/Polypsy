@@ -2,7 +2,7 @@ import { useState, type KeyboardEvent, type ReactNode } from "react";
 import type { Severity } from "@quizzy/shared";
 import { useLang } from "../lang";
 import { cx } from "../ui/cx";
-import { num } from "./ladder";
+import { decimal } from "../ui/decimal";
 
 /**
  * Общие детали графиков «Виразної»: цвета рядов, метки, подсказка, легенда,
@@ -89,11 +89,7 @@ export const sevBg = (s: Severity) => `var(--sev-${SEV_LEVEL[s]}-bg)`;
  */
 export function useDecimal(): (v: number, digits?: number) => string {
   const { lang } = useLang();
-  return (v, digits = 2) => {
-    const k = 10 ** digits;
-    const s = digits === 2 ? num(v) : String(Math.round(v * k) / k);
-    return lang === "en" ? s : s.replace(".", ",");
-  };
+  return (v, digits = 2) => decimal(v, lang, digits);
 }
 
 /** Подстановка {name} в строку словаря */

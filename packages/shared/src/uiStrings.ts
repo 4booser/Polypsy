@@ -314,13 +314,11 @@ export const UI = {
   "mail.hidden": { uk: "Повідомлення приховано", ru: "Сообщение скрыто", en: "Message hidden" },
   /* ── wave6:public ── */
   /*
-   * Публичная часть — подвал гостевых страниц. «Про кампанію» ведёт на
-   * первый экран лендинга (#about). Контакты и почта — с кадра заказчика: на
-   * сервере места под реквизиты учреждения нет, и адрес «belivnik@ukr.net» с
-   * телефоном живут здесь до появления настроек (их же показывает лендинг в
-   * разделе «Як підключити відділення»).
+   * Публичная часть — подвал гостевых страниц. Контакты и почта — с кадра
+   * заказчика: на сервере места под реквизиты учреждения нет, и адрес
+   * «belivnik@ukr.net» с телефоном живут здесь до появления настроек (их же
+   * показывает лендинг в разделе «Як підключити відділення»).
    */
-  "pub.about": { uk: "Про кампанію", ru: "О кампании", en: "About the campaign" },
   /*
    * Номер и город — ДВЕ записи, хотя на кадре это одна строка.
    *
@@ -343,11 +341,10 @@ export const UI = {
   "pub.facebook": { uk: "Facebook", ru: "Facebook", en: "Facebook" },
   "pub.youtube": { uk: "YouTube", ru: "YouTube", en: "YouTube" },
   "pub.telegram": { uk: "Telegram", ru: "Telegram", en: "Telegram" },
-  /* подпись знака POLSY как ссылки и ориентира навигации подвала */
+  /* подпись знака Polypsy как ссылки на главную */
   "pub.home": { uk: "На головну", ru: "На главную", en: "Home" },
-  "pub.sections": { uk: "Розділи сайту", ru: "Разделы сайта", en: "Site sections" },
-  /* год с кадра, а не текущий: заказчик просил экраны один в один (см. PublicFrame.tsx) */
-  "pub.copyright": { uk: "©2023", ru: "©2023", en: "©2023" },
+  /* подвал Polypsy 2.0 (public() набора): текущий год и имя системы — не «©2023» прежнего кадра кампании */
+  "pub.copyright": { uk: "© {year} {brand}", ru: "© {year} {brand}", en: "© {year} {brand}" },
   /* ── audit:public ── */
   /*
    * Сверка публичной части с кадрами f00/f01. Своих новых подписей она
@@ -4781,30 +4778,6 @@ export const UI = {
 
   /* графики */
   "chart.noData": { uk: "Даних поки немає", ru: "Данных пока нет", en: "No data yet" },
-  "chart.threshold": { uk: "поріг", ru: "порог", en: "threshold" },
-  "chart.ordinary": { uk: "звичайні", ru: "обычные", en: "regular" },
-  "chart.current": { uk: "Поточний", ru: "Текущий", en: "Current" },
-  "chart.first": { uk: "Перший", ru: "Первый", en: "First" },
-  "chart.radarHint": {
-    uk: "Профіль будується від трьох субшкал",
-    ru: "Профиль строится от трёх субшкал",
-    en: "A profile needs at least three subscales",
-  },
-  "chart.boxHint": {
-    uk: "Ящик — міжквартильний розмах, жирна риска — медіана, вуса — крайні значення",
-    ru: "Ящик — межквартильный размах, жирная черта — медиана, усы — крайние значения",
-    en: "Box — interquartile range, bold line — median, whiskers — extreme values",
-  },
-  "chart.heatHint": {
-    uk: "Насиченість кодує величину; значення продубльовано числом",
-    ru: "Насыщенность кодирует величину; значение продублировано числом",
-    en: "Color intensity encodes magnitude; the value is also shown as a number",
-  },
-  "chart.funnelHint": {
-    uk: "Звуження показує, на якому питанні припиняють проходження",
-    ru: "Сужение показывает, на каком вопросе прекращают прохождение",
-    en: "The narrowing shows at which question people stop the test",
-  },
   /*
    * Подписи к подогнанной оси.
    *
@@ -5237,7 +5210,6 @@ export const UI = {
   "cn.draftSaved": { uk: "Чернетку збережено", ru: "Черновик сохранён", en: "Draft saved" },
   "cn.signed": { uk: "Висновок підписано — тепер він у друкованому звіті", ru: "Заключение подписано — теперь оно в печатном отчёте", en: "Conclusion signed — it is now in the printed report" },
   "cn.hideHistory": { uk: "Сховати історію", ru: "Скрыть историю", en: "Hide history" },
-  "ui.noMoreRecords": { uk: "Більше записів немає", ru: "Больше записей нет", en: "No more records" },
   "ui.loadingMore": { uk: "Завантажую…", ru: "Загружаю…", en: "Loading…" },
   "ui.actionFailed": { uk: "Не вдалося виконати", ru: "Не удалось выполнить", en: "Could not complete the action" },
 
@@ -5700,18 +5672,6 @@ export const UI = {
     uk: "Поріг «занадто швидко» задається окремо: матричне питання потребує помітно більше часу, ніж «так/ні», і загальний поріг або пропускає недбалість, або обмовляє",
     ru: "Порог «слишком быстро» задаётся отдельно: матричный вопрос требует заметно больше времени, чем «да/нет», и общий порог либо пропускает небрежность, либо клевещет",
     en: "The “too fast” threshold is set separately: a matrix question takes noticeably longer than a “yes/no” one, and a shared threshold either lets carelessness through or falsely flags honest answers",
-  },
-  "chart.flaggedCareless": { uk: "позначені як недбалі", ru: "помечены как небрежные", en: "flagged as careless" },
-  "chart.lowCorrPrefix": { uk: "Пункти зі зв’язком нижче", ru: "Пункты со связью ниже", en: "Items with a correlation below" },
-  "chart.lowCorrSuffix": {
-    uk: "виділені — вони погано узгоджуються зі шкалою",
-    ru: "выделены — они плохо согласуются со шкалой",
-    en: "are highlighted — they fit poorly with the scale",
-  },
-  "chart.radarNormNote": {
-    uk: "Осі нормовані до максимуму своєї субшкали — порівнянна форма профілю цілком",
-    ru: "Оси нормированы к максимуму своей субшкалы — сравнима форма профиля целиком",
-    en: "Axes are normalized to the maximum of their subscale — the shape of the profile as a whole is comparable",
   },
   "cl.duplicateAction": { uk: "Копія", ru: "Копия", en: "Copy" },
   "cl.restoreAction": { uk: "Повернути в роботу", ru: "Вернуть в работу", en: "Return to use" },
@@ -6819,9 +6779,6 @@ export const UI = {
   "chart.viewChart": { uk: "Діаграма", ru: "Диаграмма", en: "Chart" },
   "chart.viewTable": { uk: "Таблиця", ru: "Таблица", en: "Table" },
   /* подсказка ящика с усами */
-  "chart.median": { uk: "медіана", ru: "медиана", en: "median" },
-  "chart.iqr": { uk: "середні 50 %", ru: "средние 50 %", en: "middle 50 %" },
-  "chart.range": { uk: "розмах", ru: "размах", en: "range" },
   /* график курса пациента (charts/course.tsx) */
   "course.points": { uk: "бали", ru: "баллы", en: "points" },
   "course.betterDown": { uk: "краще ↓", ru: "лучше ↓", en: "better ↓" },

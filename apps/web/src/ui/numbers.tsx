@@ -1,9 +1,11 @@
 import type { ReactNode } from "react";
+import type { Lang } from "@quizzy/shared";
 import { cx } from "./cx";
+import { decimal, grouped } from "./decimal";
 import { Ic } from "./icons";
 import { Popover } from "./Popover";
 import { SeverityTag, type Severity } from "./primitives";
-import { useLang } from "../lang";
+import { currentLang, useLang } from "../lang";
 
 /*
  * Число со сравнением и смыслом (набор «Виразна»): значение, слово тяжести,
@@ -50,10 +52,17 @@ export function reliabilityOf(delta: number, threshold: number, better: "down" |
   return improved ? "better" : "worse";
 }
 
-/** «−14», «+16 в. п.» — со знаком минус, а не дефисом */
-export function signed(delta: number, unit = ""): string {
+export { decimal, grouped };
+
+/** «−14», «+16 в. п.», «−2,5» — со знаком минус, а не дефисом, и дробью языка экрана */
+export function signed(delta: number, unit = "", lang: Lang = currentLang): string {
   const sign = delta > 0 ? "+" : delta < 0 ? "−" : "";
-  return `${sign}${Math.abs(delta)}${unit}`;
+  return `${sign}${decimal(Math.abs(delta), lang)}${unit}`;
+}
+
+/** Число или подпись как есть: число — дробью языка, строка — без изменений */
+function shown(v: number | string, lang: Lang): string {
+  return typeof v === "number" ? decimal(v, lang) : v;
 }
 
 /**
@@ -75,7 +84,7 @@ export function ChangeCell({
   /** Изменение и слово в одну строку (под большим числом) */
   inline?: boolean;
 }) {
-  const { ut } = useLang();
+  const { ut, lang } = useLang();
   const rel = reliabilityOf(delta, threshold, better);
   const good = rel === "better";
   const word = rel === "better" ? ut("kit.reliablyBetter") : rel === "worse" ? ut("kit.reliablyWorse") : ut("kit.withinError");
@@ -89,13 +98,13 @@ export function ChangeCell({
         )}
       >
         <span className={cx("text-[15px] font-extrabold leading-[18px]", good ? "text-good" : rel === "worse" ? "text-warn" : "text-text")}>
-          {signed(delta, unit)}
+          {signed(delta, unit, lang)}
         </span>
         {word}
       </span>
       <span className="flex items-center gap-1.5 whitespace-nowrap text-[11.5px] leading-none text-muted">
         <RelMeter delta={delta} threshold={threshold} good={good} />
-        {ut("kit.threshold").replace("{n}", `${threshold}${unit ?? ""}`)}
+        {ut("kit.threshold").replace("{n}", `${decimal(threshold, lang)}${unit ?? ""}`)}
       </span>
     </div>
   );
@@ -138,9 +147,9 @@ export function BigValue({
   /** Поповер на числе: дата, тяжесть, изменение */
   pop?: ReactNode;
 }) {
-  const { ut } = useLang();
+  const { ut, lang } = useLang();
   const num = (
-    <span className="rounded-[6px] text-stat font-extrabold text-text">{value === null ? "—" : value}</span>
+    <span className="rounded-[6px] text-stat font-extrabold text-text">{value === null ? "—" : shown(value, lang)}</span>
   );
   return (
     <div className="flex min-w-0 flex-col gap-1.5">
@@ -161,7 +170,7 @@ export function BigValue({
         {severity ? <SeverityTag level={severity.level} className="ml-0.5 self-center">{severity.word}</SeverityTag> : null}
       </div>
       {history && history.length ? (
-        <span className="text-[13px] font-semibold text-muted">{ut("kit.was").replace("{v}", history.join(" → "))}</span>
+        <span className="text-[13px] font-semibold text-muted">{ut("kit.was").replace("{v}", history.map((h) => shown(h, lang)).join(" → "))}</span>
       ) : null}
       {change && better ? (
         <ChangeCell delta={change.delta} threshold={change.threshold} better={better} unit={change.unit} inline />
@@ -202,6 +211,7 @@ export function CourseDigits({
   /** Изменение не больше этого — «без суттєвих змін» */
   flat?: number;
 }) {
+  const { lang } = useLang();
   const v = values.filter((x) => Number.isFinite(x));
   if (!v.length) return null;
   const last = v[v.length - 1]!;
@@ -225,11 +235,11 @@ export function CourseDigits({
       <span className="mr-[3px] text-[11px] font-bold text-muted">{code}</span>
       {v.slice(0, -1).map((x, i) => (
         <span key={i} className="inline-flex items-center gap-0.5">
-          {x}
+          {decimal(x, lang)}
           <span className="text-muted">→</span>
         </span>
       ))}
-      <b className="font-extrabold text-text">{last}</b>
+      <b className="font-extrabold text-text">{decimal(last, lang)}</b>
       {tile}
     </span>
   );

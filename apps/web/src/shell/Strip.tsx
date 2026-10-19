@@ -22,6 +22,7 @@ export function Strip({
   icon,
   title,
   place = "console",
+  tile,
   action,
   children,
   className,
@@ -31,10 +32,16 @@ export function Strip({
   icon: IconName;
   title: ReactNode;
   place?: "console" | "patient" | "public";
+  /**
+   * Значок в квадрате 36 на листе (.conn .aic набора) вместо значка в строке:
+   * у строки «немає зв’язку», которая стоит над экраном дольше остальных.
+   */
+  tile?: boolean;
   action?: ReactNode;
   children?: ReactNode;
   className?: string;
 } & { [k: `data-${string}`]: string }) {
+  const ink = tone === "warn" ? "text-warn" : "text-violet-ink";
   return (
     <div
       role="status"
@@ -54,12 +61,26 @@ export function Strip({
         className={cx(
           "flex flex-wrap items-center gap-x-3 gap-y-1 py-[9px] text-[13px] leading-5 text-text-2",
           place === "console" ? "px-5 max-[900px]:px-4" : "px-[14px] py-3",
+          tile && place === "console" && "min-h-14 py-2",
         )}
       >
-        <ShellIcon name={icon} size={16} className={tone === "warn" ? "text-warn" : "text-violet-ink"} />
-        <b className={cx("font-extrabold", tone === "warn" ? "text-warn" : "text-violet-ink")}>{title}</b>
+        {tile ? (
+          <span
+            aria-hidden
+            className={cx(
+              "grid size-9 shrink-0 place-items-center rounded-[11px] bg-panel",
+              ink,
+              tone === "warn" ? "shadow-[inset_0_0_0_1px_var(--warnline)]" : "shadow-[inset_0_0_0_1px_var(--vline)]",
+            )}
+          >
+            <ShellIcon name={icon} size={17} />
+          </span>
+        ) : (
+          <ShellIcon name={icon} size={16} className={ink} />
+        )}
+        <b className={cx("font-extrabold", ink)}>{title}</b>
         {children}
-        {action ? <span className="ml-auto">{action}</span> : null}
+        {action ? <span className="ml-auto flex flex-wrap items-center gap-x-3 gap-y-1">{action}</span> : null}
       </div>
     </div>
   );

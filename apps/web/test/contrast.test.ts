@@ -246,3 +246,41 @@ describe("рамка поля", () => {
     });
   }
 });
+
+/*
+ * Клавиша-подсказка (Kbd) — 10,5/700: мелкий текст, порог 4,5 на той
+ * поверхности, где клавиша стоит (`tone` в ui/kbd.tsx).
+ *
+ * Клавиша плашки подсказки (`tip`) несёт чернила плашки: в тёмной теме
+ * плашка светлая, и чернила тёмные. Поставленная на фиолетовую кнопку, она
+ * читалась на 2,8:1 — для залитой кнопки у клавиши свой тон (`fill`), и
+ * проверка держит обе стороны: свой тон проходит, чужой — нет.
+ */
+describe("клавиша-подсказка", () => {
+  const KBD: [string, string, string][] = [
+    ["panel", "--text-2", "--panel"],
+    ["tip", "--tipink", "--tipbg"],
+    ["fill", "--onfill", "--v"],
+    ["fill на красной", "--onfill", "--risk"],
+    ["appbar", "--appmute", "--appbar"],
+  ];
+  for (const [themeName, theme] of [
+    ["светлая", LIGHT],
+    ["тёмная", DARK],
+  ] as const) {
+    test(`${themeName} тема: подпись клавиши читается на своей поверхности`, () => {
+      const bad: string[] = [];
+      for (const [tone, ink, surface] of KBD) {
+        const ground = resolve_(surface, theme, [0, 0, 0]);
+        const ratio = contrast(resolve_(ink, theme, ground), ground);
+        if (ratio < 4.5) bad.push(`${tone}: ${ink} на ${surface} — ${ratio.toFixed(2)}:1`);
+      }
+      expect(bad).toEqual([]);
+    });
+  }
+
+  test("тёмная тема: клавиша плашки на фиолетовой кнопке не читается — поэтому у кнопки свой тон", () => {
+    const violet = resolve_("--v", DARK, [0, 0, 0]);
+    expect(contrast(resolve_("--tipink", DARK, violet), violet)).toBeLessThan(4.5);
+  });
+});

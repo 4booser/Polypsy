@@ -1,4 +1,4 @@
-import { useSyncExternalStore, type ReactElement, type ReactNode } from "react";
+import { useMemo, useSyncExternalStore, type ReactElement, type ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { ALWAYS_VISIBLE_RAIL, type UiKey } from "@quizzy/shared";
 import { useLang } from "../lang";
@@ -240,24 +240,6 @@ export function railGroups(
  * подразделах администрирования у суперадміна (nav.ts), рядом с консолью.
  */
 
-/**
- * Какой группе принадлежит текущий адрес.
- *
- * Выигрывает самое длинное совпадение, а не первое: «/» есть начало любого
- * адреса, и по первому совпадению сводка забирала бы себе каждый экран, а
- * раскрывалась бы всегда одна и та же группа.
- */
-export function groupOfPath(groups: Group[], path: string): UiKey | null {
-  let best: { key: UiKey; len: number } | null = null;
-  for (const g of groups) {
-    for (const it of g.items) {
-      const hit = it.end ? path === it.to : path === it.to || path.startsWith(`${it.to}/`);
-      if (hit && (!best || it.to.length > best.len)) best = { key: g.key, len: it.to.length };
-    }
-  }
-  return best?.key ?? null;
-}
-
 /* ─────────── рельса значков ─────────── */
 
 /** Окно уже порога: подписи рельсы ушли, остались значки с подсказкой */
@@ -271,10 +253,18 @@ function subscribeMedia(query: string) {
   };
 }
 
-/** Подходит ли окно под медиазапрос — и перерисовка, когда перестаёт */
+/**
+ * Подходит ли окно под медиазапрос — и перерисовка, когда перестаёт.
+ *
+ * Подписка — одна на запрос, а не новая на каждую отрисовку: новая функция
+ * подписки заставляет useSyncExternalStore отписываться и подписываться
+ * заново при любой перерисовке рельсы и экранов (каждый переход, каждый такт
+ * счётчиков).
+ */
 export function useMedia(query: string): boolean {
+  const subscribe = useMemo(() => subscribeMedia(query), [query]);
   return useSyncExternalStore(
-    subscribeMedia(query),
+    subscribe,
     () => window.matchMedia(query).matches,
     () => false,
   );

@@ -76,7 +76,8 @@ describe("результат: линейка и подпись значения"
 
   test("нормированные единицы подписаны своим словом; у T-балла без полос метра нет", () => {
     const [t] = resultRows(detail({ scores: [score({ normalization: "tscore", value: 64.5, band: null, bands: [] })] }), LABELS);
-    expect(t!.valueText).toBe("T-бал 64.5");
+    // дробь — украинской консоли (num из charts/ladder): запятая, а не точка
+    expect(t!.valueText).toBe("T-бал 64,5");
     expect(t!.meterMax, "у T-балла нет верха — метр 0…64 врал бы о максимуме").toBeNull();
 
     const [s] = resultRows(detail({ scores: [score({ normalization: "sten", value: 7, band: null, bands: [] })] }), LABELS);
