@@ -14,7 +14,7 @@ import { Icon, type IconName } from "../ui/Icon";
 import { NavBar } from "../ui/NavBar";
 import { Count, FilterChip, SevPill } from "../ui/Pill";
 import { T } from "../ui/Text";
-import { caseClock, clock, durationParts, hm, hours, initials, num, type InstrumentRow } from "./model";
+import { caseClock, clock, dm, durationParts, hm, hours, initials, num, type InstrumentRow } from "./model";
 
 /*
  * Детали экранов сотрудника, общие для нескольких экранов: шапки на полосе,
@@ -376,7 +376,8 @@ export function RiskNow({
       </View>
       <T v="note" style={{ marginTop: 4 }}>
         {text ??
-          [item.userName, `${item.surveyTitle}, ${hm(item.lastAlertAt)}`, first ? first.label : null].filter(Boolean).join(": ")}
+          // с датой: сигнал девятидневной давности с одним «01:25» читался как сегодняшний
+          [item.userName, `${item.surveyTitle}, ${dm(item.lastAlertAt)}, ${hm(item.lastAlertAt)}`, first ? first.label : null].filter(Boolean).join(": ")}
       </T>
       <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginTop: 12 }}>
         <View style={{ flex: 1, minWidth: 0, gap: 6 }}>
