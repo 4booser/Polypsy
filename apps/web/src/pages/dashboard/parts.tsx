@@ -12,7 +12,7 @@ import { Loading, Skeleton } from "../../ui";
 import { Panel } from "../../ui/layout";
 import { Segmented } from "../../ui/primitives";
 import { Di } from "../today/icons";
-import { DOMAIN_KEY, fill, meanShift, shareState, sparkValues, spreadParts, type BandLabels } from "./model";
+import { DOMAIN_KEY, fill, meanShift, shareState, sparkValues, spreadParts, withCount, type BandLabels } from "./model";
 
 /**
  * Переключатель периода в строке раздела: «30 днів / 90 днів».
@@ -127,13 +127,13 @@ function Row({
 }
 
 function Clinical({ spread, people }: { spread: ConditionSummary["spread"]; people: number | null }) {
-  const { ut } = useLang();
+  const { ut, lang } = useLang();
   if (shareState(spread, people) !== "shown") return <span className="text-muted">—</span>;
   return (
     <span className="flex items-baseline gap-2.5">
       <b className="text-[18px] font-extrabold tracking-[-0.01em] text-text tabular-nums">{spread.clinical.percent} %</b>
       {spread.clinical.count !== null ? (
-        <small className="text-caption text-muted">{fill(ut("dashA.peopleN"), { n: spread.clinical.count })}</small>
+        <small className="text-caption text-muted">{withCount(ut("dashA.peopleN"), spread.clinical.count, lang)}</small>
       ) : null}
     </span>
   );

@@ -9,7 +9,7 @@ import { Panel } from "../../ui/layout";
 import { Button, Tag } from "../../ui/primitives";
 import { TextAction } from "../../ui/records";
 import { useLang } from "../../lang";
-import { fill } from "../dashboard/model";
+import { fill, withCount } from "../dashboard/model";
 import { moveOf, rowActions, SLOTS, STATUS_KEY, type Move } from "./actions";
 import { Di } from "./icons";
 import { hhmm, nowIndex, readiness, splitDuration, type CellTone, type Clash, type SessionState } from "./model";
@@ -51,7 +51,7 @@ export function Agenda({
   nowNote: ReactNode;
   hints: [string, string][];
 }) {
-  const { ut } = useLang();
+  const { ut, lang } = useLang();
   const alive = items.filter((a) => a.status !== "cancelled");
   const done = alive.filter((a) => a.status === "done").length;
   const ahead = alive.filter((a) => states.get(a.id) === "next" || states.get(a.id) === "later" || states.get(a.id) === "here").length;
@@ -67,7 +67,7 @@ export function Agenda({
       icon={<Di.calendarClock />}
       sub={
         <>
-          {fill(ut("dayA.sessionsN"), { n: alive.length })}
+          {withCount(ut("dayA.sessionsN"), alive.length, lang)}
           {where ? `, ${where}` : ""}
         </>
       }

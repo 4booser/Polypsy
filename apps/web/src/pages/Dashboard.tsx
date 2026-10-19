@@ -15,7 +15,7 @@ import { CustomizeDrawer } from "./dashboard/Customize";
 import { ConditionsWidget } from "./dashboard/parts";
 import { PassesWidget } from "./dashboard/passes";
 import { CasesWidget, CollectWidget, DayWidget, MissedWidget, WorkWidget } from "./dashboard/widgets";
-import { WIDGET_COLUMN, fill, localDay, periodTotals, widgetLayout, type WidgetLayout } from "./dashboard/model";
+import { WIDGET_COLUMN, fill, localDay, periodTotals, widgetLayout, withCount, type WidgetLayout } from "./dashboard/model";
 import { unlessForbidden } from "./today/ActNow";
 import { Di } from "./today/icons";
 
@@ -44,7 +44,7 @@ const NO_WORK: Worklist = {
 };
 
 export default function Dashboard() {
-  const { ut } = useLang();
+  const { ut, lang } = useLang();
   const { user } = useAuth();
   /*
    * Ящик настройки — в адресе (`?customize=1`): смена стартового экрана
@@ -163,7 +163,7 @@ export default function Dashboard() {
               <p className="m-0 flex flex-wrap items-center justify-center gap-x-2 gap-y-1 pb-2 text-small text-text-2">
                 <Di.dashboard size={14} className="text-muted" />
                 {fill(ut("dashA.shownNote"), {
-                  n: visible.length,
+                  widgets: withCount(ut("dashA.nWidgets"), visible.length, lang),
                   of: DASH_WIDGETS.length,
                   start: ut(START_TITLE[user?.workspace?.startScreen ?? "dashboard"] ?? "dash.title"),
                 })}

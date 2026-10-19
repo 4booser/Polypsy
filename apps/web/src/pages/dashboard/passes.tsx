@@ -9,7 +9,7 @@ import { Panel } from "../../ui/layout";
 import { NoData, Segmented } from "../../ui/primitives";
 import { useLang } from "../../lang";
 import { Di } from "../today/icons";
-import { fill, localDay, passColumns, passSummary, type PassColumn, type PassRange } from "./model";
+import { fill, localDay, passColumns, passSummary, withCount, type PassColumn, type PassRange } from "./model";
 
 /**
  * «Проходження за останній час» — завершённые прохождения столбцами.
@@ -131,7 +131,7 @@ function PassBars({ columns, mean, weekly, label }: { columns: PassColumn[]; mea
 }
 
 export function PassesWidget({ overview }: { overview: OverviewAnalytics }) {
-  const { ut } = useLang();
+  const { ut, lang } = useLang();
   const [range, setRange] = useState<PassRange>("30d");
   const today = localDay(new Date());
   const weekly = range === "12w";
@@ -162,7 +162,7 @@ export function PassesWidget({ overview }: { overview: OverviewAnalytics }) {
     >
       <div className="flex flex-wrap gap-x-6 gap-y-1 px-4 pb-1 text-small text-text-2">
         <span>
-          {fill(ut("dashA.sumWindow"), { n: days })} <b className="font-extrabold text-text tabular-nums">{sum.current}</b>
+          {withCount(ut("dashA.sumWindow"), days, lang)} <b className="font-extrabold text-text tabular-nums">{sum.current}</b>
           {", "}
           {fill(ut("dashA.sumPrev"), { n: days, prev: sum.previous })}
           {sum.changePct !== null && sum.changePct !== 0 ? (

@@ -14,7 +14,7 @@ import { useLiveReload } from "../events";
 import { useResource } from "../useResource";
 import { moveAndReload } from "./visitModel";
 import { StartHead } from "./Start";
-import { fill } from "./dashboard/model";
+import { fill, withCount } from "./dashboard/model";
 import { ActNow, reviewHref, unlessForbidden } from "./today/ActNow";
 import { Agenda, useNow, useUntil } from "./today/Agenda";
 import { Between } from "./today/Between";
@@ -299,7 +299,7 @@ function DayHead({
   isToday: boolean;
   onDate: (d: string) => void;
 }) {
-  const { ut } = useLang();
+  const { ut, lang } = useLang();
   const alive = items.filter((a) => a.status !== "cancelled");
   const done = alive.filter((a) => a.status === "done").length;
   const ahead = alive.filter((a) => a.status === "booked" || a.status === "confirmed" || a.status === "arrived" || a.status === "in_progress").length;
@@ -307,7 +307,7 @@ function DayHead({
   const sum = loading
     ? ut("common.loading")
     : alive.length
-      ? fill(ut("dayA.daySum"), { n: alive.length, done, ahead, end: end ?? "" })
+      ? fill(ut("dayA.daySum"), { sessions: withCount(ut("dayA.sessionsN"), alive.length, lang), done, ahead, end: end ?? "" })
       : ut("day.nobody");
   const prev = shiftDate(date, -1);
   const next = shiftDate(date, 1);

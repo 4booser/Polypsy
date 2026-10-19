@@ -255,6 +255,27 @@ export function fill(template: string, values: Record<string, string | number>):
   return template.replace(/\{(\w+)\}/g, (m, k: string) => (k in values ? String(values[k]) : m));
 }
 
+/**
+ * Форма строки словаря по числу: «1 сесія», «3 сесії», «5 сесій».
+ *
+ * Формы — через «|», в порядке категорий Intl.PluralRules: украинский и
+ * русский — one|few|many|other, английский — one|other (тот же порядок, что
+ * у people/parts.tsx, plural). Форма возвращается с подстановками как есть:
+ * число, по которому она выбрана, не обязано быть {n} — у «0 з 1 входу»
+ * форма идёт по {of}. Строка без «|» возвращается целиком.
+ */
+export function byCount(template: string, n: number, lang: string): string {
+  const forms = template.split("|");
+  const order = lang === "en" ? ["one", "other"] : ["one", "few", "many", "other"];
+  const at = order.indexOf(new Intl.PluralRules(lang).select(n));
+  return forms[Math.min(at < 0 ? forms.length - 1 : at, forms.length - 1)] ?? template;
+}
+
+/** Число со словом в нужной форме: byCount и {n} — тем же числом */
+export function withCount(template: string, n: number, lang: string): string {
+  return fill(byCount(template, n, lang), { n });
+}
+
 /* ─────────── віджети: порядок и выключенные ─────────── */
 
 /*

@@ -18,7 +18,7 @@ import { caseTimer, clashes, hhmm, liveCases, sessionStates, urgentCases } from 
 import { DayStrip } from "../today/strip";
 import { useNow, useUntil } from "../today/Agenda";
 import { workWhy } from "../worklist/model";
-import { WORK_KIND, fill, workTiles } from "./model";
+import { WORK_KIND, fill, withCount, workTiles } from "./model";
 
 /**
  * Віджети «Зведення» (кадр day-start Polypsy 2.0). Каждый — панель набора с
@@ -98,7 +98,7 @@ export function CasesWidget({
   /** Когда пришёл ответ — от него идут минуты таймера нормы (liveCases) */
   updatedAt?: number | null;
 }) {
-  const { ut } = useLang();
+  const { ut, lang } = useLang();
   const norm = useNormText();
   const now = useNow();
   if (!alerts && !loading && !error) return null;
@@ -125,8 +125,8 @@ export function CasesWidget({
         !alerts
           ? undefined
           : norms.length === 1
-            ? fill(ut("dashA.casesSubNorm"), { n: total, norm: norm(norms[0]!) })
-            : fill(ut("dashA.casesSub"), { n: total })
+            ? fill(ut("dashA.casesSubNorm"), { open: withCount(ut("dashA.casesSub"), total, lang), norm: norm(norms[0]!) })
+            : withCount(ut("dashA.casesSub"), total, lang)
       }
       actions={<TextAction to="/alerts">{ut("dashA.allCases")}</TextAction>}
       flush
@@ -219,7 +219,7 @@ export function CasesWidget({
 /* ─────────── прийом сьогодні ─────────── */
 
 export function DayWidget({ items }: { items: AppointmentView[] | null }) {
-  const { ut } = useLang();
+  const { ut, lang } = useLang();
   const until = useUntil();
   if (!items) return null;
   const sorted = [...items].sort((a, b) => Date.parse(a.startsAt) - Date.parse(b.startsAt));
@@ -235,7 +235,7 @@ export function DayWidget({ items }: { items: AppointmentView[] | null }) {
     <Panel
       title={ut("dayA.dayTitle")}
       icon={<Di.calendarClock />}
-      sub={alive.length ? fill(ut("dashA.daySub"), { n: alive.length, done, ahead }) : undefined}
+      sub={alive.length ? fill(ut("dashA.daySub"), { sessions: withCount(ut("dayA.sessionsN"), alive.length, lang), done, ahead }) : undefined}
       actions={<TextAction to="/today">{ut("dashA.openDay")}</TextAction>}
       flush
     >

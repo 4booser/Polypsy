@@ -13,7 +13,7 @@ import { useLang } from "../lang";
 import { usePagedResource, useResource } from "../useResource";
 import { listBody, shownNote } from "../ui/paging";
 import { StartHead } from "./Start";
-import { fill } from "./dashboard/model";
+import { byCount, fill } from "./dashboard/model";
 import { Di } from "./today/icons";
 import { hhmm } from "./today/model";
 import {
@@ -576,7 +576,7 @@ function InviteForm({
 
 /** Показ ссылки и QR один раз после создания */
 function FreshInvite({ fresh, onClose }: { fresh: Fresh; onClose: () => void }) {
-  const { ut } = useLang();
+  const { ut, lang } = useLang();
   const url = `${location.origin}/join/${fresh.token}`;
   const { run } = useAction();
 
@@ -609,7 +609,7 @@ function FreshInvite({ fresh, onClose }: { fresh: Fresh; onClose: () => void }) 
               </Tag>
             ) : null}
             {fresh.unit ? <Tag>{fresh.unit}</Tag> : null}
-            <Tag>{fill(ut("invA.entriesOf"), { n: 0, of: fresh.maxUses })}</Tag>
+            <Tag>{fill(byCount(ut("invA.entriesOf"), fresh.maxUses, lang), { n: 0, of: fresh.maxUses })}</Tag>
             <Tag>{fill(ut("invA.validTo"), { d: until })}</Tag>
             {fresh.specialist ? <Tag>{fill(ut("invA.boundTo"), { name: fresh.specialist })}</Tag> : null}
           </div>

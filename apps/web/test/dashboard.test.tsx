@@ -12,8 +12,10 @@ import { CasesWidget, WorkWidget } from "../src/pages/dashboard/widgets";
 import { ActNow, unlessForbidden } from "../src/pages/today/ActNow";
 import {
   addDays,
+  byCount,
   dailyColumns,
   dropWidget,
+  fill,
   mondayOf,
   moveWidget,
   passColumns,
@@ -26,6 +28,7 @@ import {
   weekdayOf,
   weeklyColumns,
   widgetLayout,
+  withCount,
   workTiles,
   type BandLabels,
 } from "../src/pages/dashboard/model";
@@ -438,6 +441,50 @@ describe("очередь и случаи: рисование", () => {
     const html = draw(<CasesWidget alerts={empty} meId={null} error="Сервер не відповідає" />);
     expect(either(html, "dayA.casesFailed")).toBe(true);
     expect(either(html, "dashA.noCases")).toBe(false);
+  });
+});
+
+describe("числа со словами — по правилу языка", () => {
+  /*
+   * «1 сесій», «3 швидких дій», «0 з 1 входів», «За 84 днів» — строки дня
+   * подставляли число в одну форму слова. Форма — по Intl.PluralRules.
+   */
+  const t = (key: keyof typeof UI, lang: "uk" | "ru" | "en") => (UI[key] as Record<string, string>)[lang]!;
+
+  test("сесії, люди, віджети, швидкі дії — одна, кілька, багато", () => {
+    expect([1, 3, 5, 21, 22, 25].map((n) => withCount(t("dayA.sessionsN", "uk"), n, "uk"))).toEqual([
+      "1 сесія",
+      "3 сесії",
+      "5 сесій",
+      "21 сесія",
+      "22 сесії",
+      "25 сесій",
+    ]);
+    expect([1, 3, 5].map((n) => withCount(t("dayA.sessionsN", "ru"), n, "ru"))).toEqual(["1 сессия", "3 сессии", "5 сессий"]);
+    expect([1, 3].map((n) => withCount(t("dayA.sessionsN", "en"), n, "en"))).toEqual(["1 session", "3 sessions"]);
+    expect([1, 2, 7].map((n) => withCount(t("dashA.peopleN", "uk"), n, "uk"))).toEqual(["1 людина", "2 людини", "7 людей"]);
+    expect([1, 2, 7].map((n) => withCount(t("dashA.peopleN", "ru"), n, "ru"))).toEqual(["1 человек", "2 человека", "7 человек"]);
+    expect([1, 4, 7].map((n) => withCount(t("dashA.nWidgets", "uk"), n, "uk"))).toEqual(["1 віджет", "4 віджети", "7 віджетів"]);
+    expect([1, 2, 6].map((n) => withCount(t("dayA.nActions", "uk"), n, "uk"))).toEqual(["1 швидка дія", "2 швидкі дії", "6 швидких дій"]);
+    expect([1, 2, 5].map((n) => withCount(t("dashA.casesSub", "uk"), n, "uk"))).toEqual(["1 відкритий", "2 відкриті", "5 відкритих"]);
+  });
+
+  test("форма — по числу, о котором речь: «0 з 1 входу», «За 84 дні»", () => {
+    expect(fill(byCount(t("invA.entriesOf", "uk"), 1, "uk"), { n: 0, of: 1 })).toBe("0 з 1 входу");
+    expect(fill(byCount(t("invA.entriesOf", "uk"), 5, "uk"), { n: 0, of: 5 })).toBe("0 з 5 входів");
+    expect(fill(byCount(t("invA.entriesOf", "ru"), 1, "ru"), { n: 0, of: 1 })).toBe("0 из 1 входа");
+    expect(withCount(t("dashA.sumWindow", "uk"), 84, "uk")).toBe("За 84 дні");
+    expect(withCount(t("dashA.sumWindow", "uk"), 30, "uk")).toBe("За 30 днів");
+    expect(withCount(t("dashA.sumWindow", "ru"), 84, "ru")).toBe("За 84 дня");
+    // строка без форм — как есть
+    expect(withCount(t("dashA.casesSub", "en"), 2, "en")).toBe("2 open");
+  });
+
+  test("віджет «Прийом сьогодні» и случаи — формой, а не «1 сесій» и «1 відкриті»", () => {
+    const one: Page<AlertCase> = { items: [], nextCursor: null, total: 1 };
+    const html = draw(<CasesWidget alerts={one} meId={null} />);
+    expect(html).toMatch(/1 (відкритий|открытый)/);
+    expect(html).not.toMatch(/1 (відкриті|открыто)\b/);
   });
 });
 

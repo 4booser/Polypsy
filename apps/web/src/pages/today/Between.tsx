@@ -6,7 +6,7 @@ import { Panel } from "../../ui/layout";
 import { Button, ButtonLink, Tag } from "../../ui/primitives";
 import { TextAction } from "../../ui/records";
 import { useLang } from "../../lang";
-import { fill } from "../dashboard/model";
+import { fill, withCount } from "../dashboard/model";
 import { workWhy } from "../worklist/model";
 import { chipLabel, WorkIcon } from "./ActNow";
 import type { DrawerTarget } from "./drawers";
@@ -26,13 +26,13 @@ export function Between({
   total: number;
   onReply: (t: DrawerTarget) => void;
 }) {
-  const { ut } = useLang();
+  const { ut, lang } = useLang();
   if (!items.length) return null;
   return (
     <Panel
       title={ut("dayA.between")}
       icon={<Ic.inbox />}
-      sub={fill(ut("dayA.betweenSub"), { n: items.length })}
+      sub={fill(ut("dayA.betweenSub"), { actions: withCount(ut("dayA.nActions"), items.length, lang) })}
       actions={<TextAction to="/worklist">{fill(ut("dayA.allQueue"), { n: total })}</TextAction>}
       flush
     >
