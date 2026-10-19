@@ -92,6 +92,40 @@ describe("знаки и цифры", () => {
   });
 });
 
+describe("украинская и русская раскладки: J, K, [, ] и /", () => {
+  /*
+   * Что браузер кладёт в событие на кириллице, клавиша за клавишей: знак
+   * раскладки и место. «[» и «]» — свернуть список, прежнее и следующее
+   * прохождение; «/» — поиск: и клавишей, на которой он нарисован (Slash
+   * печатает «.»), и той, что печатает «/» в украинской раскладке
+   * (Shift+\ в Windows «Українська (розширена)»).
+   */
+  const map = { j: "next", k: "prev", "[": "collapse", "]": "forward", "/": "search" };
+  const layouts: Record<"uk" | "ru", [ReturnType<typeof press>, string][]> = {
+    uk: [
+      [press("о", "KeyJ"), "next"],
+      [press("л", "KeyK"), "prev"],
+      [press("х", "BracketLeft"), "collapse"],
+      [press("ї", "BracketRight"), "forward"],
+      [press(".", "Slash"), "search"],
+      [press("/", "Backslash", true), "search"],
+    ],
+    ru: [
+      [press("о", "KeyJ"), "next"],
+      [press("л", "KeyK"), "prev"],
+      [press("х", "BracketLeft"), "collapse"],
+      [press("ъ", "BracketRight"), "forward"],
+      [press(".", "Slash"), "search"],
+      [press("/", "Backslash", true), "search"],
+    ],
+  };
+  for (const [lang, presses] of Object.entries(layouts)) {
+    test(`${lang}: каждая клавиша — своё действие`, () => {
+      for (const [e, action] of presses) expect(fired(map, e), `${lang} ${e.code} «${e.key}»`).toBe(action);
+    });
+  }
+});
+
 test("карта, записанная кодами (прежний useCodeKeys экранов), работает тем же набором", () => {
   const map = { KeyJ: "next", Digit1: "confirmed", BracketLeft: "back" };
   expect(fired(map, press("о", "KeyJ"))).toBe("next");
