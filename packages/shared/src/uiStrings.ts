@@ -188,7 +188,6 @@ export const UI = {
    * сущностям: «Сегодня» — то, с чего начинается смена, «Разбор» — то, что
    * делают, когда приёмы закончились.
    */
-  "pt.byMethod": { uk: "За методиками", ru: "По методикам", en: "By instrument" },
   "pt.openCard": { uk: "Відкрити картку", ru: "Открыть карту", en: "Open card" },
   "pt.whoIsThis": { uk: "Хто це", ru: "Кто это", en: "Who is this" },
   "pt.pickRow": { uk: "Виберіть рядок, щоб побачити коротку довідку", ru: "Выберите строку, чтобы увидеть краткую справку", en: "Select a row to see a brief summary" },
@@ -1728,8 +1727,6 @@ export const UI = {
 
   /* ─────────── консоль: пациенты ─────────── */
   "patients.title": { uk: "Пацієнти", ru: "Пациенты", en: "Patients" },
-  "patients.measurements": { uk: "Замірів", ru: "Замеров", en: "Measurements" },
-  "patients.last": { uk: "Останнє", ru: "Последнее", en: "Latest" },
 
   /* ── audit:patients ── */
   /*
