@@ -144,15 +144,18 @@ describe("нещодавні запити", () => {
     expect(own.getItem(RECENT_KEY)).toBeNull();
 
     // конец сессии (окончательный 401, вход другого в соседней вкладке) — сброс вкладки
-    const g = globalThis as { sessionStorage?: Storage };
-    const saved = g.sessionStorage;
+    // сброс вкладки читает и хранилище браузера (чей токен — для черновиков кабинета, patient/drafts.ts)
+    const g = globalThis as { sessionStorage?: Storage; localStorage?: Storage };
+    const saved = { session: g.sessionStorage, local: g.localStorage };
     g.sessionStorage = memory();
+    g.localStorage = memory();
     g.sessionStorage.setItem(RECENT_KEY, JSON.stringify(["план безпеки"]));
     try {
       auth.dropTabSession({ user: () => {}, perms: () => {}, mfa: () => {} }, { clear: () => {} });
       expect(g.sessionStorage.getItem(RECENT_KEY), "после конца сессии список запросов остался во вкладке").toBeNull();
     } finally {
-      g.sessionStorage = saved;
+      g.sessionStorage = saved.session;
+      g.localStorage = saved.local;
     }
 
     // выход, вход (свой и чужой) и мёртвая сессия при открытии вкладки — тем же dropTabTraces
