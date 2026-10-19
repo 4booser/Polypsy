@@ -102,11 +102,6 @@ export function weeklyColumns(
   return out;
 }
 
-/** Ход по неделям для линии в плитке: только числа */
-export function weeklyCounts(timeline: readonly DayCount[], weeks: number, today: string): number[] {
-  return weeklyColumns(timeline, weeks, today, () => "").map((c) => c.value);
-}
-
 /**
  * Итог окна и такого же окна перед ним.
  *

@@ -14,46 +14,6 @@ import { Segmented } from "../../ui/primitives";
 import { Di } from "../today/icons";
 import { DOMAIN_KEY, fill, meanShift, shareState, sparkValues, spreadParts, withCount, type BandLabels } from "./model";
 
-/**
- * Переключатель периода в строке раздела: «30 днів / 90 днів».
- *
- * Кнопки с состоянием (aria-pressed), а не вкладки: адрес не меняется.
- * Нажатая — заливкой: заливка в консоли и значит «так сейчас отобрано».
- * Им пользуются экраны техпанели (ops/Errors, ops/Requests, Vitals).
- */
-export function PeriodSwitch<T extends string>({
-  value,
-  options,
-  onChange,
-  label,
-}: {
-  value: T;
-  options: readonly (readonly [T, string])[];
-  onChange: (v: T) => void;
-  label: string;
-}) {
-  return (
-    <div role="group" aria-label={label} className="flex items-center gap-[4px]">
-      {options.map(([v, text]) => (
-        <button
-          key={v}
-          type="button"
-          aria-pressed={value === v}
-          onClick={() => onChange(v)}
-          className={cx(
-            "h-[36px] rounded-[5px] border-0 px-[12px] text-[15px] font-bold leading-none",
-            "outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]",
-            "transition-colors duration-[var(--dur-fast)] ease-[var(--ease)]",
-            value === v ? "bg-primary-soft text-primary" : "bg-transparent text-primary-dim hover:text-primary",
-          )}
-        >
-          {text}
-        </button>
-      ))}
-    </div>
-  );
-}
-
 function useBandLabels(): BandLabels {
   const { ut } = useLang();
   return {
