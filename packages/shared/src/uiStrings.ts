@@ -705,13 +705,7 @@ export const UI = {
    * так слово не требует склонения по числу.
    */
   "cn.assignGroup": { uk: "Призначити групі", ru: "Назначить группе", en: "Assign to group" },
-  "cn.assignGroupHint": {
-    uk: "Кожен учасник групи отримає окреме призначення зі своїм строком; склад групи береться на момент призначення",
-    ru: "Каждый участник группы получит отдельное назначение со своим сроком; состав группы берётся на момент назначения",
-    en: "Each group member will receive a separate assignment with its own deadline; group membership is taken as of the moment of assignment",
-  },
   "cn.patientGroup": { uk: "Група пацієнтів", ru: "Группа пациентов", en: "Patient group" },
-  "cn.groupCountHint": { uk: "У дужках — скільки учасників отримають методику", ru: "В скобках — сколько участников получат методику", en: "In parentheses — how many members will receive the instrument" },
   "cn.noPatientGroups": {
     uk: "Груп пацієнтів поки немає — їх збирають у розділі «Групи»",
     ru: "Групп пациентов пока нет — их собирают в разделе «Группы»",
@@ -12130,7 +12124,7 @@ export const UI = {
   "cnx.unsaved": { uk: "є незбережені зміни", ru: "есть несохранённые изменения", en: "unsaved changes" },
   "cnx.name": { uk: "Назва заключення", ru: "Название заключения", en: "Conclusion title" },
   "cnx.verdict": { uk: "Висновок", ru: "Вывод", en: "Conclusion" },
-  "cnx.chars": { uk: "{n} знаків у висновку", ru: "{n} знаков в выводе", en: "{n} characters" },
+  "cnx.chars": { uk: "знаків у висновку: {n}", ru: "знаков в выводе: {n}", en: "characters: {n}" },
   "cnx.noSignRight": {
     uk: "Підписувати заключення може лише той, кому це дозволено.",
     ru: "Подписывать заключение может только тот, кому это разрешено.",
@@ -12759,9 +12753,10 @@ export const UI = {
   "mc.catTitle": { uk: "Каталог методик", ru: "Каталог методик", en: "Instrument catalogue" },
   "mc.inGroups": { uk: "у {n} групах", ru: "в {n} группах", en: "in {n} groups" },
   "mc.recentMeta": {
-    uk: "{n} проходжень за 30 днів",
-    ru: "{n} прохождений за 30 дней",
-    en: "{n} responses in 30 days",
+    /* {n} — число со словом в нужной форме (useCount): «1 проходження», «3 проходження», «5 проходжень» */
+    uk: "{n} за 30 днів",
+    ru: "{n} за 30 дней",
+    en: "{n} in 30 days",
   },
   "mc.newMethod": { uk: "Нова методика", ru: "Новая методика", en: "New instrument" },
   "mc.importHint": {
@@ -12945,9 +12940,9 @@ export const UI = {
   },
   "mc.assignedN": { uk: "Призначено: {n}", ru: "Назначено: {n}", en: "Assigned: {n}" },
   "mc.assignedGroup": {
-    uk: "Призначено групі: {n} пацієнтів",
-    ru: "Назначено группе: {n} пациентов",
-    en: "Assigned to the group: {n} patients",
+    uk: "Призначено групі, отримали: {n}",
+    ru: "Назначено группе, получили: {n}",
+    en: "Assigned to the group; recipients: {n}",
   },
   "mc.assignGroupBtn": { uk: "Призначити групі", ru: "Назначить группе", en: "Assign to group" },
   "mc.assignN": { uk: "Призначити ({n})", ru: "Назначить ({n})", en: "Assign ({n})" },
@@ -13282,7 +13277,7 @@ export const UI = {
     en: "Median by age, men and women",
   },
   "mc.btActive": { uk: "активних", ru: "активных", en: "active" },
-  "mc.btActiveOf": { uk: "{n} активних з {all}", ru: "{n} активных из {all}", en: "{n} active of {all}" },
+  "mc.btActiveOf": { uk: "активних: {n} з {all}", ru: "активных: {n} из {all}", en: "active: {n} of {all}" },
   "mc.btAddMethod": { uk: "Додати методику", ru: "Добавить методику", en: "Add an instrument" },
   "mc.btAnyOrder": { uk: "будь-який порядок", ru: "любой порядок", en: "any order" },
   "mc.btArchive": { uk: "В архів", ru: "В архив", en: "Move to archive" },
@@ -13445,7 +13440,6 @@ export const UI = {
     ru: "Снять администратора {name}?",
     en: "Remove administrator {name}?",
   },
-  "mc.grResponses": { uk: "{n} проходжень", ru: "{n} прохождений", en: "{n} responses" },
   "mc.grResponsesCol": { uk: "проходжень", ru: "прохождений", en: "responses" },
   "mc.grRetiredGroup": { uk: "Зняті з використання", ru: "Снятые с использования", en: "Retired" },
   "mc.grRetiredView": { uk: "Зняті", ru: "Снятые", en: "Retired" },
@@ -16301,6 +16295,19 @@ export const UI = {
   "opx.vt.verdictTitle": { uk: "p75 {v} — {rating}", ru: "p75 {v} — {rating}", en: "p75 {v} — {rating}" },
   "opx.vt.verdict": { uk: "Добре ≤ {good}, погано > {poor}.", ru: "Хорошо ≤ {good}, плохо > {poor}.", en: "Good ≤ {good}, poor > {poor}." },
   "opx.vt.verdictFew": { uk: "Замірів лише {n} — це випадок, а не міра.", ru: "Замеров всего {n} — это случай, а не мера.", en: "Only {n} samples: an anecdote, not a measure." },
+
+  // ── v2-fix-methods ──
+  /* подпись заключения: обстановка прохождения не пришла — разобран ли сигнал, неизвестно */
+  "cnx.lockUnknownTitle": {
+    uk: "Не вдалося перевірити сигнали цього проходження",
+    ru: "Не удалось проверить сигналы этого прохождения",
+    en: "Couldn’t check this attempt’s signals",
+  },
+  "cnx.lockUnknownBody": {
+    uk: "Підписати можна, коли видно, що сигнал цього проходження розібрано.",
+    ru: "Подписать можно, когда видно, что сигнал этого прохождения разобран.",
+    en: "You can sign once it’s clear this attempt’s signal has been reviewed.",
+  },
 } as const satisfies Record<string, UiEntry>;
 
 export type UiKey = keyof typeof UI;

@@ -121,11 +121,16 @@ function MethodCell({ s, flags, codes }: { s: SurveyListItem; flags: ReactNode; 
   );
 }
 
-/** Значок-признак с подписью по наведению и фокусу */
-function Flag({ label, children, warn }: { label: string; children: ReactNode; warn?: boolean }) {
+/**
+ * Значок-признак с подписью по наведению и фокусу. Роль img: имя
+ * (aria-label) у безролевого span диктор вправе не прочесть, а признак
+ * («критичний пункт», «лише за призначенням») — содержание строки.
+ */
+export function Flag({ label, children, warn }: { label: string; children: ReactNode; warn?: boolean }) {
   return (
     <Tooltip label={label}>
       <span
+        role="img"
         tabIndex={0}
         aria-label={label}
         className={cx(
@@ -942,7 +947,7 @@ export function SurveyList() {
         everything.data
           ? [
               count(tabCounts.published, "methods") + (tabCounts.groups > 1 ? ` ${ut("mc.inGroups").replace("{n}", String(tabCounts.groups))}` : ""),
-              ut("mc.recentMeta").replace("{n}", num(tabCounts.recent)),
+              ut("mc.recentMeta").replace("{n}", count(tabCounts.recent, "responses")),
             ]
           : undefined
       }

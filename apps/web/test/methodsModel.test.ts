@@ -1,9 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import type { SurveyListItem } from "@quizzy/shared";
+import { UI, type SurveyListItem, type UiKey } from "@quizzy/shared";
 import {
   attentionOf,
   dayDiff,
   dueIn,
+  fixedIn,
   grantCounts,
   grantState,
   nextExpiring,
@@ -183,5 +184,55 @@ describe("огляд: тижні й втрати", () => {
       { position: 3, lost: 6 },
     ];
     expect(topLosses(rows, 2)).toEqual([rows[2], rows[1]]);
+  });
+});
+
+describe("дробные числа на языке экрана", () => {
+  /*
+   * Обзор методики и нормы ставили запятую руками — и в английском тоже
+   * («alpha 0,82»). Мутация: вернуть `.replace(".", ",")` — en падает.
+   */
+  test("запятая в uk и ru, точка в en; с нулями в конце и без", () => {
+    expect(fixedIn("uk", 0.8167, 2)).toBe("0,82");
+    expect(fixedIn("ru", 0.8167, 2)).toBe("0,82");
+    expect(fixedIn("en", 0.8167, 2)).toBe("0.82");
+    expect(fixedIn("uk", 50, 1)).toBe("50,0");
+    expect(fixedIn("en", 50, 1)).toBe("50.0");
+    expect(fixedIn("uk", 2.34, 1, false)).toBe("2,3");
+    expect(fixedIn("uk", 2, 1, false)).toBe("2");
+    expect(fixedIn("en", 1.5, 1, false)).toBe("1.5");
+  });
+});
+
+describe("числа со словом в строках раздела", () => {
+  /*
+   * «1 проходжень за 30 днів», «3 пацієнтів», «2 знаків у висновку»: слово
+   * после числа стояло в одной форме на все числа. Число со словом — через
+   * формы mc.n.* (useCount); где слово не нужно — подпись с двоеточием.
+   */
+  const counted = (lang: "uk" | "ru", n: number) =>
+    `${n} ${UI[`mc.n.responses.${pluralForm(lang, n)}` as UiKey][lang]}`;
+
+  test("проходження за 30 днів — в форме числа", () => {
+    const line = (lang: "uk" | "ru", n: number) => UI["mc.recentMeta"][lang].replace("{n}", counted(lang, n));
+    expect([1, 3, 5, 21].map((n) => line("uk", n))).toEqual([
+      "1 проходження за 30 днів",
+      "3 проходження за 30 днів",
+      "5 проходжень за 30 днів",
+      "21 проходження за 30 днів",
+    ]);
+    expect([1, 3, 5].map((n) => line("ru", n))).toEqual([
+      "1 прохождение за 30 дней",
+      "3 прохождения за 30 дней",
+      "5 прохождений за 30 дней",
+    ]);
+  });
+
+  test("подписи-счётчики — число после двоеточия, а не перед словом одной формы", () => {
+    for (const key of ["mc.assignedGroup", "mc.btActiveOf", "cnx.chars"] as const) {
+      for (const lang of ["uk", "ru", "en"] as const) {
+        expect(UI[key][lang], `${key} ${lang}`).toMatch(/:\s\{n\}/);
+      }
+    }
   });
 });

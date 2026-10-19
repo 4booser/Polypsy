@@ -16,6 +16,7 @@ import {
   users,
 } from "../db/schema";
 import { env } from "../env";
+import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
 import { assertClinicalRead, CLINICAL_READ } from "../lib/clinicalRead";
 import { decryptField } from "../lib/crypto";
@@ -39,7 +40,7 @@ import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../mi
  * (lib/clinicalRead.ts — право читать данные пациентов, методика в зоне).
  * Сигналы и правила — под своими правами (alerts.review), как их собственные
  * списки: без права здесь null, а не пустой список — «сигналов нет» было бы
- * неправдой.
+ * неправдой. Каждое чтение — строка журнала response.read (вид context).
  */
 export const responseContextRoutes = new Hono<AppEnv>();
 
@@ -69,13 +70,34 @@ responseContextRoutes.get("/:id", requirePermission(CLINICAL_READ), async (c) =>
       }
     : null;
 
+  const reviewer = await hasPermission(user, "alerts.review");
+  const attempts = r.userId ? await attemptsOf(r.userId, r.surveyId) : [];
+  const signals = reviewer ? await signalsOf(user, r, lang) : null;
+  const hits = reviewer ? await hitsOf(r.id, lang) : null;
+
+  /*
+   * Чтение клинических данных — строкой журнала, как у соседних чтений
+   * (прохождение по id, динамика, хронология: response.read с видом).
+   * Обстановка читает больше самого протокола — баллы и полосы всех попыток
+   * методики и открытые сигналы человека по другим замерам, — и без строки
+   * это было бы тихое чтение: экран зовёт её сам, без GET /responses/:id.
+   * Отказ (не сотрудник, нет права, чужая зона) сюда не доходит.
+   */
+  await audit(c, {
+    action: "response.read",
+    resourceType: "response",
+    resourceId: r.id,
+    subjectUserId: r.userId,
+    details: { view: "context", surveyId: r.surveyId, attempts: attempts.length, signals: signals?.length ?? null },
+  });
+
   return c.json({
     source: (r.source as ResponseSource | null) ?? null,
     reliable: r.reliable,
     patient,
-    attempts: r.userId ? await attemptsOf(r.userId, r.surveyId) : [],
-    signals: (await hasPermission(user, "alerts.review")) ? await signalsOf(user, r, lang) : null,
-    hits: (await hasPermission(user, "alerts.review")) ? await hitsOf(r.id, lang) : null,
+    attempts,
+    signals,
+    hits,
   } satisfies ResponseContext);
 });
 

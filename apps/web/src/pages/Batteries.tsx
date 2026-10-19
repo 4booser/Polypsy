@@ -640,7 +640,11 @@ function BatteryRecord({
         existing={existing}
         exclusive
         assignOne={(userId, due, note) => api.assignBattery(b.id, userId, due, note)}
-        onAssigned={asg.reload}
+        /* и список слева: число активных назначений на плитке набора — тоже от назначения */
+        onAssigned={() => {
+          asg.reload();
+          onChanged();
+        }}
       />
 
       {cancelling ? (

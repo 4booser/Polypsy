@@ -137,6 +137,26 @@ export function signLockedBySignal(signals: readonly ResponseContextSignal[] | n
   return (signals ?? []).some((s) => s.here && s.reviewedAt === null);
 }
 
+/**
+ * Что правило экрана говорит о подписи — с тем, что известно сейчас.
+ *
+ *  - locked  — неразобранный сигнал этого прохождения;
+ *  - pending — обстановка ещё едет, а читающий сигналы разбирает: судить пока
+ *              не из чего, и подпись ждёт, а не открывается. Без этого кнопка
+ *              жила, пока шёл запрос, — подписать успевали до замка;
+ *  - unknown — обстановка не пришла: отказ — не «сигналов нет», подпись
+ *              закрыта, пока её не перечитают;
+ *  - open    — сигналов этого прохождения нет или все разобраны, либо у
+ *              читающего нет права их видеть (см. signLockedBySignal).
+ */
+export type SignGate = "open" | "locked" | "pending" | "unknown";
+
+export function signGate(ctx: Pick<ResponseContext, "signals"> | null, failed: boolean, reviewer: boolean): SignGate {
+  if (ctx) return signLockedBySignal(ctx.signals) ? "locked" : "open";
+  if (!reviewer) return "open";
+  return failed ? "unknown" : "pending";
+}
+
 export interface SignalTimer {
   elapsed: string;
   of: string;

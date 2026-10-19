@@ -183,9 +183,8 @@ export function ItemTimes({
 
         {/* порог — пунктир, как пороги полос: это граница, а не данные; подпись — в легенде под графиком */}
         <line x1={P.left} x2={W - P.right} y1={ty} y2={ty} stroke="var(--axis)" strokeOpacity={0.8} strokeDasharray="3 4">
-          <title>
-            {thresholdLabel} {dec(threshold)} {unit}
-          </title>
+          {/* одной строкой: несколько узлов в <title> React не собирает в текст подсказки */}
+          <title>{`${thresholdLabel} ${dec(threshold)} ${unit}`}</title>
         </line>
 
         {columns.map((c, i) =>

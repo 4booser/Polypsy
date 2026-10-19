@@ -1,6 +1,6 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import type { SurveyFull } from "@quizzy/shared";
+import type { Lang, SurveyFull } from "@quizzy/shared";
 import { api } from "../api";
 import { ChartLegend, Marker } from "../charts/kit";
 import { useChartWidth } from "../charts";
@@ -18,7 +18,7 @@ import { Empty, Loading } from "../ui/states";
 import { useResource } from "../useResource";
 import { Mi } from "./methods/icons";
 import { MethodPage } from "./methods/MethodPage";
-import { T_SHIFT_LIMIT, tShift } from "./methods/model";
+import { T_SHIFT_LIMIT, fixedIn, tShift } from "./methods/model";
 import { num } from "./methods/useCount";
 
 /*
@@ -69,8 +69,9 @@ export default function Norms() {
   );
 }
 
-const f1 = (v: number) => v.toFixed(1).replace(".", ",");
-const signed1 = (v: number) => `${v > 0 ? "+" : v < 0 ? "−" : ""}${f1(Math.abs(v))}`;
+/* одна цифра после запятой — на языке экрана (fixedIn), со знаком у сдвига */
+const f1In = (lang: Lang, v: number) => fixedIn(lang, v, 1);
+const signed1In = (lang: Lang, v: number) => `${v > 0 ? "+" : v < 0 ? "−" : ""}${f1In(lang, Math.abs(v))}`;
 
 function NormsBody({ survey, data, onPublished }: { survey: SurveyFull; data: Data; onPublished: () => void }) {
   const { ut } = useLang();
@@ -266,7 +267,9 @@ function NormTable({
   onPick: (code: string, on: boolean) => void;
   publishableSexes: (s: Scale) => ("male" | "female")[];
 }) {
-  const { ut } = useLang();
+  const { ut, lang } = useLang();
+  const f1 = (v: number) => f1In(lang, v);
+  const signed1 = (v: number) => signed1In(lang, v);
   const th = "h-[30px] whitespace-nowrap border-divider bg-panel-2 px-2.5 text-caption font-bold text-muted";
   const pair = (v: { mean: number; sd: number } | undefined) => (v ? `${f1(v.mean)} / ${f1(v.sd)}` : "—");
   return (
@@ -464,7 +467,8 @@ function AgeChart({
 }: {
   lines: { sex: "male" | "female"; points: { age: number; value: number | null; n: number }[] }[];
 }) {
-  const { ut } = useLang();
+  const { ut, lang } = useLang();
+  const f1 = (v: number) => f1In(lang, v);
   const [W, ref] = useChartWidth(640);
   const H = 220;
   const P = { top: 14, right: 64, bottom: 26, left: 40 };

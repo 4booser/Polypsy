@@ -30,6 +30,51 @@ export const askedOf = (survey: SurveyFull) => survey.questions.filter((q) => q.
 /** Сколько ячеек пунктов видно в строке над вопросом: у длинной методики — окно вокруг текущего */
 const CELLS = 14;
 
+/** Что вышло из строки ответов: ответы по пунктам или почему строка не подходит целиком */
+export type PastePlan =
+  | { ok: true; planned: [string, Partial<Answer>][] }
+  | { ok: false; error: { kind: "count"; got: number; need: number } | { kind: "bad"; at: number; value: string } };
+
+/**
+ * Строка ответов целиком — по пунктам, или отказ с причиной.
+ *
+ * Делители — запятая и любой пробельный знак, в том числе табуляция: строка,
+ * скопированная из таблицы, приходит именно с ней, а «так работает тот, у
+ * кого бланки уже сведены в таблицу». Прежде делитель искался только среди
+ * запятой и пробела, и строка из таблицы резалась по знаку — табуляции
+ * считались ответами, и выходило «вставлено 7 из 4». Без делителей вовсе —
+ * по одному знаку на пункт («2130»).
+ *
+ * Номер варианта — с единицы и среди вариантов-ответов (строки матрицы не в
+ * счёт), как цифра быстрого ввода: строка и клавиши читают бланк одинаково.
+ */
+export function planPaste(asked: readonly Question[], raw: string): PastePlan | null {
+  const text = raw.trim();
+  if (!text) return null;
+  const parts = /[,\s]/.test(text) ? text.split(/[,\s]+/).filter(Boolean) : text.split("");
+  if (parts.length !== asked.length) return { ok: false, error: { kind: "count", got: parts.length, need: asked.length } };
+
+  /* сначала проверяем всю строку, потом применяем: частичная запись хуже отказа */
+  const planned: [string, Partial<Answer>][] = [];
+  for (let i = 0; i < asked.length; i += 1) {
+    const question = asked[i]!;
+    const value = parts[i]!;
+    const opts = choicesOf(question);
+    if (opts.length) {
+      const option = /^\d+$/.test(value) ? opts[Number(value) - 1] : undefined;
+      if (!option) return { ok: false, error: { kind: "bad", at: i + 1, value } };
+      planned.push([question.id, { optionIds: [option.id] }]);
+    } else if (["scale", "slider", "number"].includes(question.type)) {
+      const n = Number(value);
+      if (Number.isNaN(n)) return { ok: false, error: { kind: "bad", at: i + 1, value } };
+      planned.push([question.id, { number: n }]);
+    } else {
+      planned.push([question.id, { text: value }]);
+    }
+  }
+  return { ok: true, planned };
+}
+
 export function FastEntry({
   survey,
   answers,
@@ -136,41 +181,18 @@ export function FastEntry({
    */
   const applyPaste = () => {
     setPasteError(null);
-    const raw = pasteText.trim();
-    if (!raw) return;
-    const parts = raw.includes(",") || raw.includes(" ") ? raw.split(/[,\s]+/).filter(Boolean) : raw.split("");
-
-    if (parts.length !== asked.length) {
-      setPasteError(ut("fast.pasteCount").replace("{got}", String(parts.length)).replace("{need}", String(asked.length)));
+    const plan = planPaste(asked, pasteText);
+    if (!plan) return;
+    if (!plan.ok) {
+      const e = plan.error;
+      setPasteError(
+        e.kind === "count"
+          ? ut("fast.pasteCount").replace("{got}", String(e.got)).replace("{need}", String(e.need))
+          : ut("fast.pasteBadAt").replace("{n}", String(e.at)).replace("{value}", e.value),
+      );
       return;
     }
-
-    /* сначала проверяем всю строку, потом применяем: частичная запись хуже отказа */
-    const planned: [string, Partial<Answer>][] = [];
-    for (let i = 0; i < asked.length; i += 1) {
-      const question = asked[i]!;
-      const value = parts[i]!;
-      const opts = choicesOf(question);
-      if (opts.length) {
-        const idx = Number(value) - 1;
-        const option = opts[idx];
-        if (!Number.isInteger(idx) || !option) {
-          setPasteError(ut("fast.pasteBadAt").replace("{n}", String(i + 1)).replace("{value}", value));
-          return;
-        }
-        planned.push([question.id, { optionIds: [option.id] }]);
-      } else if (["scale", "slider", "number"].includes(question.type)) {
-        const n = Number(value);
-        if (Number.isNaN(n)) {
-          setPasteError(ut("fast.pasteBadAt").replace("{n}", String(i + 1)).replace("{value}", value));
-          return;
-        }
-        planned.push([question.id, { number: n }]);
-      } else {
-        planned.push([question.id, { text: value }]);
-      }
-    }
-    for (const [id, patch] of planned) onSet(id, patch);
+    for (const [id, patch] of plan.planned) onSet(id, patch);
     setPasteText("");
   };
 
@@ -319,10 +341,11 @@ export function FastEntry({
             {ut("fast.pasteApply")}
           </Button>
         </div>
+        {/* отказ строки — вслух: фокус остаётся в поле или на кнопке, и молча появившуюся строку диктор не прочтёт */}
         {pasteError ? (
-          <ErrorText id="fast-paste-error" className="mt-2">
-            {pasteError}
-          </ErrorText>
+          <div role="alert" className="mt-2">
+            <ErrorText id="fast-paste-error">{pasteError}</ErrorText>
+          </div>
         ) : null}
       </div>
     </div>
