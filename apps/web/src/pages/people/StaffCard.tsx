@@ -35,7 +35,7 @@ import { cx } from "../../ui/cx";
 import { Panel } from "../../ui/layout";
 import { ActionMenu } from "../../ui/menu";
 import { Button, Field, Input, Select, SeverityTag, Tag, Textarea } from "../../ui/primitives";
-import { kitSeverity, shownSeries, shownValue } from "../patients/model";
+import { kitSeverity, shownSeries, shownSeriesText, shownValue } from "../patients/model";
 import { shortCode } from "../patients/instruments";
 import { useResource } from "../../useResource";
 import { actionLabel } from "../ops/model";
@@ -1087,7 +1087,7 @@ function LedPatients() {
             ) : (
               <span className="text-caption text-text-2">
                 <b className="mr-1 text-[11px] font-bold text-muted">{shortCode(m.code)}</b>
-                {shownSeries(m.values, m.normalization).join(" → ")}
+                {shownSeriesText(m.values, m.normalization).join(" → ")}
               </span>
             )}
           </span>

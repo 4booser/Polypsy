@@ -8,6 +8,7 @@ import {
 import { betterOf, reliableThreshold, type Better } from "../../charts/courseModel";
 import { sortRungs, type Rung } from "../../charts/ladder";
 import { dayKey } from "../../format";
+import { shownLimit } from "./model";
 
 /*
  * Методики человека так, как их читают на экранах пациента 2.0: быстрый
@@ -71,9 +72,15 @@ function scaleOf(scale: ScaleDynamics): InstrumentScale | null {
  * Главная шкала: единственная, иначе та, у которой последний замер тяжелее
  * (методика из десятка шкал одним числом не пересказывается — в строке
  * стоит то, что требует внимания), при равенстве — первая.
+ *
+ * Только из содержательных: шкала достоверности («F» Міні-мульта) говорит о
+ * бланке, а не о человеке. Прежде «Шкала достовірності (F): 67, підвищений»
+ * вставала результатом методики в «Огляді справи» и «Хто це» — там, где
+ * карточка и реестр показывают содержательную шкалу.
  */
 function mainOf(scales: InstrumentScale[]): InstrumentScale {
-  return scales.reduce((best, s) =>
+  const clinical = scales.filter((s) => (s.scale.kind ?? "clinical") === "clinical");
+  return (clinical.length ? clinical : scales).reduce((best, s) =>
     RANK[s.last.severity ?? "none"] > RANK[best.last.severity ?? "none"] ? s : best,
   );
 }
@@ -136,11 +143,7 @@ export function shownDelta(s: InstrumentScale, delta: number): number {
  * «поріг 4» говорит ровно это без десятых, которых у балла не бывает.
  */
 export function shownThreshold(s: InstrumentScale): number | null {
-  const t = s.threshold;
-  if (t === null) return null;
-  if (s.last.normalization === "ratio") return Math.ceil(t * 100 - 1e-9);
-  if (!s.last.normalization || s.last.normalization === "raw") return Math.ceil(t - 1e-9);
-  return Math.round(t * 10) / 10;
+  return s.threshold === null ? null : shownLimit(s.threshold, s.last.normalization);
 }
 
 /** Короткое имя методики для узкой подписи: длинное название обрезается многоточием */

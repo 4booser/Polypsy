@@ -12,7 +12,7 @@ import { ViewPills } from "../ui/filters";
 import { useResource } from "../useResource";
 import { EVENT_KINDS, EVENT_PLURAL, eventView, type EventKind, type EventView } from "./patients/events";
 import { instrumentsOf } from "./patients/instruments";
-import { DYN_KEY, TL_KEY, ddmm, hhmm, kitSeverity, shownValue } from "./patients/model";
+import { DYN_KEY, TL_KEY, ddmm, hhmm, kitSeverity, shownStep, shownValue, signedShown } from "./patients/model";
 
 /**
  * Вкладка «Хронологія» справы — кадр patients-case-timeline.
@@ -327,7 +327,9 @@ function EventRow({
           <span className="mt-1.5 flex flex-wrap gap-1.5">
             {scores.map((s) => {
               const val = shownValue(s.point.rawScore, s.point.normalization);
-              const d = s.prev ? Math.round((s.point.rawScore - s.prev.rawScore) * 10) / 10 : null;
+              /* сдвиг — в единицах числа рядом: у доли («49%») — процентные пункты, а не «+0,2» */
+              const d = s.prev ? shownStep(s.point.rawScore - s.prev.rawScore, s.point.normalization) : null;
+              const pp = s.point.normalization === "ratio" ? ut("dyn.pp") : "";
               return (
                 <span key={s.point.responseId} className="inline-flex h-7 items-center gap-1.5 rounded-pill bg-sunk pl-2.5 pr-2 text-caption text-text-2">
                   <b className="font-bold text-text">{s.code}</b>
@@ -340,9 +342,7 @@ function EventRow({
                       {s.point.bandLabel ?? ut(severityKey[s.point.severity ?? "none"])}
                     </SeverityTag>
                   ) : null}
-                  <span className="tabular-nums text-muted">
-                    {d === null ? ut("tlx.start") : d > 0 ? `+${d}` : d < 0 ? `−${Math.abs(d)}` : "0"}
-                  </span>
+                  <span className="tabular-nums text-muted">{d === null ? ut("tlx.start") : `${signedShown(d)}${d ? pp : ""}`}</span>
                 </span>
               );
             })}

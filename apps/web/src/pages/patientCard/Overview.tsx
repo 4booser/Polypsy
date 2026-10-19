@@ -5,7 +5,7 @@ import { api } from "../../api";
 import { useAuth } from "../../auth";
 import { CourseChart } from "../../charts/course";
 import { courseEventsFromTimeline, courseFromDynamics } from "../../charts/courseModel";
-import { dateTime, day, severityKey, timeOfDay } from "../../format";
+import { dateTime, day, locale, severityKey, timeOfDay } from "../../format";
 import { useLang } from "../../lang";
 import { useResource, useResourceMap } from "../../useResource";
 import { ActivityList, Ic, Loading, Popover, TextAction, type ActivityEvent } from "../../ui";
@@ -17,6 +17,7 @@ import { shortTitle } from "./Banner";
 import { itemsGrid, sinceEvents, type InstrumentRow, type ItemsGrid, type TimelineRow } from "./clinical";
 import { daysBetween, dm, wdm } from "./format";
 import { Pi } from "./icons";
+import { fmtNum, shownNumber, shownStep, shownValue, signedShown } from "../patients/model";
 import type { CardView } from "./types";
 
 /*
@@ -209,7 +210,14 @@ function agoText(days: number, ut: (k: UiKey) => string): string {
 
 /* ─────────── методики ─────────── */
 
-const unitOf = (p: DynamicsPoint) => (p.normalization === "ratio" ? "%" : "");
+/** Значение замера так, как его читают: доля — процентом («49%», а не «0,49»), дробь — с запятой языка */
+const valueOf = (p: DynamicsPoint) => shownValue(p.rawScore, p.normalization);
+
+/** Сдвиг от замера `from` до `p` словом: у доли — процентные пункты */
+function stepOf(p: DynamicsPoint, from: DynamicsPoint, pp: string): string {
+  const d = shownStep(p.rawScore - from.rawScore, p.normalization);
+  return `${signedShown(d)}${d && p.normalization === "ratio" ? ` ${pp}` : ""}`;
+}
 
 function sevOf(p: DynamicsPoint, ut: (k: UiKey) => string) {
   if (!p.severity) return null;
@@ -286,8 +294,8 @@ function InstrumentLine(
   const last = pts[pts.length - 1]!;
   const before = pts.slice(0, -1);
   const sev = sevOf(last, ut);
-  const unit = unitOf(last);
   const xid = `xr-${r.key.replace(/[^a-z0-9]/gi, "")}`;
+  const basis = r.scale.reliableChange?.basis ?? null;
   return (
     <>
       <tr className={cx("group [&>td]:h-[70px] [&>td]:border-b [&>td]:border-divider [&>td]:px-1.5 [&>td]:align-middle", open ? "[&>td]:bg-panel-2 [&>td]:border-b-transparent" : "hover:[&>td]:bg-panel-2")}>
@@ -357,18 +365,25 @@ function InstrumentLine(
               <dt className="font-bold text-muted">{ut("card.xCount")}</dt>
               <dd className="m-0">
                 {r.points.length}
-                {r.points.length > 1 ? `: ${r.points.map((p) => `${p.rawScore}${unit}`).join(" → ")}` : ""}
+                {r.points.length > 1
+                  ? `: ${r.points
+                      .map((p) => {
+                        const s = valueOf(p);
+                        return `${s.text}${s.unit}`;
+                      })
+                      .join(" → ")}`
+                  : ""}
               </dd>
               <dt className="font-bold text-muted">{ut("card.xFirst")}</dt>
               <dd className="m-0">{dateTime(r.points[0]!.submittedAt)}</dd>
-              {r.scale.reliableChange ? (
+              {basis ? (
                 <>
                   <dt className="font-bold text-muted">{ut("card.xBasis")}</dt>
                   <dd className="m-0">
                     {ut("card.xBasisLine")
-                      .replace("{sd}", String(Math.round(r.scale.reliableChange.basis.sd * 10) / 10))
-                      .replace("{a}", String(Math.round(r.scale.reliableChange.basis.alpha * 100) / 100))
-                      .replace("{n}", String(r.scale.reliableChange.basis.sampleN))}
+                      .replace("{sd}", shownNumber(basis.sd))
+                      .replace("{a}", fmtNum(Math.round(basis.alpha * 100) / 100, locale()))
+                      .replace("{n}", String(basis.sampleN))}
                   </dd>
                 </>
               ) : null}
@@ -390,13 +405,16 @@ const INCOMPARABLE = { version: "rch.versions", units: "rch.units", unreliable: 
 
 function ChangeOf({ r }: { r: InstrumentRow }) {
   const { ut } = useLang();
-  const unit = unitOf(r.points[r.points.length - 1]!) ? ` ${ut("card.pp")}` : "";
+  const unit = r.points[r.points.length - 1]!.normalization === "ratio" ? ` ${ut("card.pp")}` : "";
   if (r.points.length < 2) return <span className="text-small text-text-2">{ut("kit.courseStart")}</span>;
   if (r.delta === null) return <span className="text-small text-muted">{r.incomparable ? ut(INCOMPARABLE[r.incomparable]) : "—"}</span>;
   if (r.threshold !== null && r.better) return <ChangeCell delta={r.delta} threshold={r.threshold} better={r.better} unit={unit} />;
   return (
     <span className="flex flex-col gap-px text-small text-text-2">
-      <span className="text-[15px] font-extrabold leading-[18px] text-text">{signed(r.delta, unit)}</span>
+      <span className="text-[15px] font-extrabold leading-[18px] text-text">
+        {signedShown(r.delta)}
+        {r.delta ? unit : ""}
+      </span>
       {r.threshold === null ? ut("course.v.unknown") : ut("course.v.changed")}
     </span>
   );
@@ -408,7 +426,8 @@ function ValuePop({ r, p, small }: { r: InstrumentRow; p: DynamicsPoint; small?:
   const i = r.points.indexOf(p);
   const first = r.points[0]!;
   const prev = i > 0 ? r.points[i - 1] : null;
-  const unit = unitOf(p);
+  const value = valueOf(p);
+  const pp = ut("card.pp");
   const sev = sevOf(p, ut);
   const num = (
     <span
@@ -419,8 +438,8 @@ function ValuePop({ r, p, small }: { r: InstrumentRow; p: DynamicsPoint; small?:
       )}
     >
       <span className={cx("tabular-nums", small ? "text-body font-semibold" : "text-[30px] font-extrabold leading-none tracking-[-0.03em]")}>
-        {p.rawScore}
-        {unit ? <small className="ml-px text-[14px] font-bold tracking-normal text-muted">{unit}</small> : null}
+        {value.text}
+        {value.unit ? <small className="ml-px text-[14px] font-bold tracking-normal text-muted">{value.unit}</small> : null}
       </span>
       <span className="text-[11px] font-semibold leading-4 text-muted">{dm(p.submittedAt)}</span>
     </span>
@@ -433,8 +452,8 @@ function ValuePop({ r, p, small }: { r: InstrumentRow; p: DynamicsPoint; small?:
         <div className="flex flex-col gap-1.5">
           <p className="m-0 flex flex-wrap items-center gap-1.5">
             <b className="font-extrabold text-text">
-              {p.rawScore}
-              {unit}
+              {value.text}
+              {value.unit}
             </b>
             {sev ? (
               <SeverityTag level={sev.level} small>
@@ -444,15 +463,17 @@ function ValuePop({ r, p, small }: { r: InstrumentRow; p: DynamicsPoint; small?:
           </p>
           {i > 0 && r.delta !== null ? (
             <p className="m-0">
-              {ut("course.fromStart")}: <b className="font-extrabold text-text">{signed(Math.round((p.rawScore - first.rawScore) * 10) / 10, unit)}</b>
-              {r.threshold !== null ? `, ${ut("course.threshold").replace("{n}", String(r.threshold))}` : ""}
+              {ut("course.fromStart")}: <b className="font-extrabold text-text">{stepOf(p, first, pp)}</b>
+              {r.threshold !== null
+                ? `, ${ut("course.threshold").replace("{n}", `${shownNumber(r.threshold)}${p.normalization === "ratio" ? ` ${pp}` : ""}`)}`
+                : ""}
             </p>
           ) : (
             <p className="m-0 text-muted">{i === 0 ? ut("course.baseline") : null}</p>
           )}
           {prev ? (
             <p className="m-0 text-muted">
-              {ut("course.fromPrev").replace("{d}", dm(prev.submittedAt))}: {signed(Math.round((p.rawScore - prev.rawScore) * 10) / 10, unit)}
+              {ut("course.fromPrev").replace("{d}", dm(prev.submittedAt))}: {stepOf(p, prev, pp)}
             </p>
           ) : null}
         </div>

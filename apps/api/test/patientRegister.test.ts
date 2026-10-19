@@ -179,6 +179,9 @@ describe("GET /api/dynamics/respondents/:id — полосы шкалы", () => 
     const res = await api(`/api/dynamics/respondents/${p.id}`, adminA.token);
     expect(res.status).toBe(200);
     const sr = res.body.surveys[0].scales.find((s: { code: string }) => s.code === "Sr");
+    /* вид шкалы: экран не ставит шкалу достоверности главной шкалой методики */
+    expect(sr.kind).toBe("clinical");
+    expect(res.body.surveys[0].scales.find((s: { code: string }) => s.code === "L")?.kind).toBe("validity");
     expect(sr.bands.length).toBeGreaterThan(2);
     expect(sr.bands[0]).toMatchObject({ min: 0, severity: "none" });
     expect(typeof sr.bands[0].label).toBe("string");

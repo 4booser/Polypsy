@@ -80,8 +80,10 @@ import {
   REGISTER_PER,
   registerPer,
   registerQuery,
+  shownSeriesText,
   shownSeries,
   shownValue,
+  signedShown,
   sortOf,
   viewOf,
   whenShort,
@@ -716,7 +718,7 @@ function useColumns({
               ) : (
                 <span className="text-caption text-text-2">
                   <b className="mr-1 text-[11px] font-bold text-muted">{shortCode(m.code)}</b>
-                  {shownSeries(m.values, m.normalization).join(" → ")}
+                  {shownSeriesText(m.values, m.normalization).join(" → ")}
                 </span>
               )}
               {narrow ? (
@@ -1127,7 +1129,7 @@ function ReliabilityRow({ i }: { i: Instrument }) {
       <span className={cx("whitespace-nowrap text-right text-small font-bold", good ? "text-good" : worse ? "text-warn" : "text-text")}>
         {delta !== null ? (
           <b className="mr-1.5 text-[14px] font-extrabold">
-            {signedNum(shownDelta(s, delta))}
+            {signedShown(shownDelta(s, delta))}
             {ratio ? ut("dyn.pp") : ""}
           </b>
         ) : null}
@@ -1153,11 +1155,6 @@ function MarkerGlyph({ shape, color }: { shape: string; color: string }) {
   if (shape === "diamond") return <path d="M6 1 11 6 6 11 1 6Z" fill={color} />;
   if (shape === "triangle") return <path d="M6 1.5 11 10.5H1Z" fill={color} />;
   return <circle cx="6" cy="6" r="4.5" fill={color} />;
-}
-
-/** «−14», «+16» — минус знаком минуса */
-function signedNum(v: number): string {
-  return v > 0 ? `+${v}` : v < 0 ? `−${Math.abs(v)}` : "0";
 }
 
 /**
@@ -1319,7 +1316,7 @@ function ScaleProfileTable({ i }: { i: Instrument }) {
                         <ChangeCell delta={shownDelta(s, delta)} threshold={shownThreshold(s)!} better={s.better} />
                       </span>
                     ) : delta !== null ? (
-                      <span className="tabular-nums">{signedNum(shownDelta(s, delta))}</span>
+                      <span className="tabular-nums">{signedShown(shownDelta(s, delta))}</span>
                     ) : (
                       <span className="text-muted">—</span>
                     )}

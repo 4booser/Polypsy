@@ -11,7 +11,7 @@ import { DESTINATION_KEY, STATUS_KEY, URGENCY_KEY } from "../referrals/model";
 import type { PaneParts } from "./actions";
 import { eventView } from "./events";
 import { changeOf, instrumentsOf, shownDelta, shownThreshold } from "./instruments";
-import { ageOf, ddmm, hhmm, kitSeverity, shownSeries, shownValue, whenShort } from "./model";
+import { ageOf, ddmm, hhmm, kitSeverity, shownSeriesText, shownValue, signedShown, whenShort } from "./model";
 
 /*
  * «Хто це» — быстрый просмотр человека из реестра (кадр patients-quick-view):
@@ -230,7 +230,7 @@ export function useQuickViewPane({
                   const thr = shownThreshold(s);
                   const reliable = shown !== null && thr !== null && Math.abs(shown) >= thr && shown !== 0;
                   const good = reliable && !!s.better && (s.better === "down" ? shown! < 0 : shown! > 0);
-                  const was = shownSeries(s.history.slice(-2), s.last.normalization);
+                  const was = shownSeriesText(s.history.slice(-2), s.last.normalization);
                   return (
                     <tr key={i.surveyId}>
                       <td className="border-b border-divider py-2 pl-2.5 pr-2 align-top">
@@ -241,7 +241,9 @@ export function useQuickViewPane({
                           {s.scale.title}
                         </span>
                         {was.length ? (
-                          <span className="block text-caption tabular-nums text-text-2">{ut("kit.was").replace("{v}", was.join(" → "))}</span>
+                          <span className="block text-caption tabular-nums text-text-2">
+                            {ut("kit.was").replace("{v}", was.join(" → "))}
+                          </span>
                         ) : null}
                       </td>
                       <td className="border-b border-divider px-2 py-2 text-right align-top">
@@ -265,7 +267,7 @@ export function useQuickViewPane({
                         ) : (
                           <span className="flex flex-col">
                             <b className={`text-[13.5px] font-extrabold tabular-nums ${good ? "text-good" : reliable ? "text-warn" : "text-text"}`}>
-                              {shown > 0 ? `+${shown}` : shown < 0 ? `−${Math.abs(shown)}` : "0"}
+                              {signedShown(shown)}
                               {ratio ? ut("dyn.pp") : ""}
                             </b>
                             <span className={`text-caption ${good ? "font-bold text-good" : reliable ? "font-bold text-warn" : "text-text-2"}`}>

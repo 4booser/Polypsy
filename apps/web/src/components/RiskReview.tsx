@@ -24,6 +24,7 @@ import { cx } from "../ui/cx";
 import { Button, ChoiceCard, Field, ErrorText, SeverityTag, Tag, Textarea } from "../ui/primitives";
 import { clockText, normText, riskClock } from "../pages/alerts/model";
 import { instrumentCode, itemHistory, itemMax } from "../pages/patientCard/clinical";
+import { shownNumber } from "../pages/patients/model";
 import { Panel } from "../ui/layout";
 
 /*
@@ -537,7 +538,7 @@ function sumLine(
   const sc = sv?.scales.find((s) => s.points.length > 0 && clinical(s.scaleId));
   if (!sc) return null;
   const pts = [...sc.points].sort((a, b) => Date.parse(a.submittedAt) - Date.parse(b.submittedAt)).slice(-3);
-  const fmt = (p: (typeof pts)[number]) => (p.normalization === "ratio" ? `${Math.round(p.percent)} %` : String(p.rawScore));
+  const fmt = (p: (typeof pts)[number]) => (p.normalization === "ratio" ? `${Math.round(p.percent)} %` : shownNumber(p.rawScore));
   return { code: sc.title, values: pts.map(fmt) };
 }
 

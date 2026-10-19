@@ -1,6 +1,7 @@
 import type { DynamicsPoint, Incomparable, RespondentDynamics, ResponseDetail, ScaleDynamics } from "@quizzy/shared";
 import { betterOf, reliableThreshold, type Better } from "../../charts/courseModel";
 import { sortRungs, type Rung } from "../../charts/ladder";
+import { shownLimit, shownStep } from "../patients/model";
 
 /*
  * Клиническая часть карточки пациента — чистые функции без React и сети.
@@ -32,9 +33,9 @@ export interface InstrumentRow {
   title: string;
   /** Замеры по времени, старые первыми */
   points: DynamicsPoint[];
-  /** Сдвиг первый → последний; null — сравнивать нельзя или замер один */
+  /** Сдвиг первый → последний в единицах экрана (у доли — в. п.); null — сравнивать нельзя или замер один */
   delta: number | null;
-  /** Порог надёжной зміни в баллах (MDC95); null — не оценён */
+  /** Порог надёжной зміни (MDC95) в тех же единицах; null — не оценён */
   threshold: number | null;
   /** «Краще ↓ / ↑» — по полярности полос; null — полос нет или немонотонны */
   better: Better | null;
@@ -108,8 +109,14 @@ export function instrumentRows(
         code: single ? code : sc.title,
         title: single ? sc.title : code,
         points,
-        delta: points.length > 1 && !incomparable ? round1(last.rawScore - first.rawScore) : null,
-        threshold: threshold === null ? null : round1(threshold),
+        /*
+         * Сдвиг и порог — в единицах экрана, теми же правилами, что «Огляд
+         * справи» и «Хто це» (patients/model.ts): у доли — процентные пункты.
+         * Прежде доля вычиталась как есть, и 0,29 → 0,49 стояло «+0,2 в. п.»
+         * рядом с «49%».
+         */
+        delta: points.length > 1 && !incomparable ? shownStep(last.rawScore - first.rawScore, last.normalization) : null,
+        threshold: threshold === null ? null : shownLimit(threshold, last.normalization),
         better: betterOf(rungs),
         incomparable,
         rungs,
@@ -120,8 +127,6 @@ export function instrumentRows(
   }
   return rows;
 }
-
-const round1 = (v: number) => Math.round(v * 10) / 10;
 
 /* ─────────── пункты ─────────── */
 

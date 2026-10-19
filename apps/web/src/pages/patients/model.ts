@@ -10,6 +10,7 @@
  */
 
 import type { ScaleNormalization, Severity } from "@quizzy/shared";
+import { locale as consoleLocale } from "../../format";
 import type { Severity as KitSeverity } from "../../ui/primitives";
 
 /* ─────────── реестр 2.0: подання, порядок, страница ─────────── */
@@ -90,17 +91,66 @@ export function kitSeverity(s: Severity | null | undefined): KitSeverity {
 }
 
 /**
+ * Число экрана — с десятичной запятой языка консоли: «64,2», а не «64.2»
+ * (украинский и русский пишут дробь запятой; английский — точкой). Не
+ * больше одного знака после запятой и без разрядных пробелов: баллы шкал
+ * — сотни, а не тысячи.
+ */
+export function shownNumber(v: number, locale: string = consoleLocale()): string {
+  return new Intl.NumberFormat(locale, { maximumFractionDigits: 1, useGrouping: false }).format(v);
+}
+
+/** «+2,5», «−16,8», «0» — со знаком минус, а не дефисом, и с запятой языка */
+export function signedShown(v: number, locale?: string): string {
+  return v > 0 ? `+${shownNumber(v, locale)}` : v < 0 ? `−${shownNumber(Math.abs(v), locale)}` : "0";
+}
+
+/**
  * Значение шкалы так, как его читают: доля — процентом, остальное — числом
  * без лишних знаков («14», «64,2»). Единица отдельно: «%» ставится мельче.
  */
 export function shownValue(v: number, normalization: ScaleNormalization | null | undefined): { text: string; unit: string } {
-  if (normalization === "ratio") return { text: String(Math.round(v * 100)), unit: "%" };
-  return { text: String(Math.round(v * 10) / 10), unit: "" };
+  if (normalization === "ratio") return { text: shownNumber(Math.round(v * 100)), unit: "%" };
+  return { text: shownNumber(Math.round(v * 10) / 10), unit: "" };
 }
 
-/** Ряд значений для «19 → 16 → 14»: в тех же единицах, что и большое число */
+/**
+ * Ряд значений для «19 → 16 → 14»: в тех же единицах, что и большое число.
+ * Числами — для набора (CourseDigits считает по ним ход и сам пишет их
+ * дробью языка); строкой — shownSeriesText.
+ */
 export function shownSeries(values: readonly number[], normalization: ScaleNormalization | null | undefined): number[] {
   return values.map((v) => (normalization === "ratio" ? Math.round(v * 100) : Math.round(v * 10) / 10));
+}
+
+/** Тот же ряд словами экрана — с десятичной запятой языка: «64,2 → 61,8» */
+export function shownSeriesText(
+  values: readonly number[],
+  normalization: ScaleNormalization | null | undefined,
+  locale?: string,
+): string[] {
+  return shownSeries(values, normalization).map((v) => shownNumber(v, locale));
+}
+
+/**
+ * Сдвиг между двумя замерами в единицах экрана: у доли — процентные пункты
+ * (0,29 → 0,49 — это «+20 в. п.», а не «+0,2» рядом с «49%»), у прочих —
+ * с одним знаком после запятой.
+ */
+export function shownStep(diff: number, normalization: ScaleNormalization | null | undefined): number {
+  return normalization === "ratio" ? Math.round(diff * 100) : Math.round(diff * 10) / 10;
+}
+
+/**
+ * Порог надёжной зміни в единицах экрана: у доли — процентные пункты вверх
+ * до целого; у сырого балла (целые суммы) — вверх до целого: сдвиг на 4
+ * при пороге 3,6 надёжен, на 3 — нет, и «поріг 4» говорит ровно это; у
+ * нормированных — с одним знаком после запятой.
+ */
+export function shownLimit(t: number, normalization: ScaleNormalization | null | undefined): number {
+  if (normalization === "ratio") return Math.ceil(t * 100 - 1e-9);
+  if (!normalization || normalization === "raw") return Math.ceil(t - 1e-9);
+  return Math.round(t * 10) / 10;
 }
 
 /**

@@ -9433,7 +9433,7 @@ export const UI = {
   "qv.next": { uk: "Наступний рядок", ru: "Следующая строка", en: "Next row" },
   "qv.draft": { uk: "Чернетка заключення", ru: "Черновик заключения", en: "Draft conclusion" },
   "qv.nothingOpen": { uk: "Відкритого по пацієнту немає.", ru: "Открытого по пациенту нет.", en: "Nothing open for this patient." },
-  "qv.measuresSub": { uk: "{n} замірів, останній {d}", ru: "{n} замеров, последний {d}", en: "{n} measures, latest {d}" },
+  "qv.measuresSub": { uk: "замірів: {n}, останній {d}", ru: "замеров: {n}, последний {d}", en: "measures: {n}, latest {d}" },
   "qv.noThreshold": { uk: "поріг невідомий", ru: "порог неизвестен", en: "threshold unknown" },
   "qv.now": { uk: "Зараз", ru: "Сейчас", en: "Now" },
   "qv.brief": { uk: "Коротко", ru: "Коротко", en: "In brief" },
