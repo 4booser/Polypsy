@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { and, desc, eq, inArray, isNotNull, isNull, ne, or, sql, type SQL } from "drizzle-orm";
 import {
   bandFor,
+  patientGroupRef,
   queryDate,
   queryInt,
   t,
@@ -93,7 +94,8 @@ const listQuery = z
     unit: opt(z.string().trim().min(1).max(120)),
     surveyId: opt(z.string().min(1).max(64)),
     patient: opt(z.string().uuid()),
-    patientGroup: opt(z.string().uuid()),
+    /* формой id, а не uuid: у групп посева постоянные id вида «demo-pg-risk» (patientGroupRef) */
+    patientGroup: opt(patientGroupRef),
     from: opt(queryDate),
     to: opt(queryDate),
     search: opt(z.string().trim().max(120)),

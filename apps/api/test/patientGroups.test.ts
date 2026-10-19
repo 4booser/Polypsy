@@ -12,7 +12,7 @@ import {
   surveyInB,
   type Person,
 } from "./fixtures";
-import { alertCases, patientGroupMembers, patientGroups, surveyAccess } from "../src/db/schema";
+import { alertCases, patientGroupMembers, patientGroups, patientGroupSurveys, surveyAccess } from "../src/db/schema";
 
 /**
  * Группы ПАЦИЕНТОВ.
@@ -514,6 +514,103 @@ describe("строка списка групп и состав карточки"
     expect(again.riskCount, "разобранный случай всё ещё считается ризиком").toBe(0);
     expect(again.favourite).toBe(true);
   });
+
+  /*
+   * Ризик группы — тот же признак, что у очереди случаев: открытый случай по
+   * методике зоны читателя. Очередь берёт только такие (routes/alertCases.ts),
+   * политика строк держит их там же, а список групп спрашивал случаи без зоны
+   * методик: владельцем базы считал ризиком случай чужого отделения, под
+   * ролью приложения — нет, и «1 з ризиком» вёл в очередь, где случая не было.
+   *
+   * Мутация: снять условие по зоне методик в openRiskOf — под владельцем
+   * падает первая проверка.
+   */
+  test("случай по методике чужой зоны — не ризик группы, как и в очереди", async () => {
+    const id = await makeGroup(adminA, `Чужий випадок ${crypto.randomUUID().slice(0, 8)}`);
+    const person = await patientInZoneOfA("foreign-case");
+    await api(`/api/patient-groups/${id}/members`, adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ userIds: [person.id] }),
+    });
+    const foreign = crypto.randomUUID();
+    await db.insert(alertCases).values({ id: foreign, userId: person.id, surveyId: surveyInB, severity: "severe" });
+    cases.push(foreign);
+
+    const rowOf = async () =>
+      ((await api("/api/patient-groups", adminA.token)).body.items as Record<string, unknown>[]).find((g) => g.id === id)!;
+    expect((await rowOf()).riskCount, `случай ${foreign} чужой зоны посчитан ризиком группы`).toBe(0);
+    const card = await api(`/api/patient-groups/${id}`, adminA.token);
+    expect((card.body.members as { openRisk: boolean }[])[0]?.openRisk, "в составе — ризик чужой зоны").toBe(false);
+    const queue = await api(`/api/alert-cases?patientGroup=${id}`, adminA.token);
+    expect(queue.body.total, "очередь группы показала случай чужой зоны").toBe(0);
+
+    // положительный контроль: случай по методике своей зоны — ризик
+    const own = crypto.randomUUID();
+    await db.insert(alertCases).values({ id: own, userId: person.id, surveyId: surveyInA, severity: "severe" });
+    cases.push(own);
+    expect((await rowOf()).riskCount).toBe(1);
+  });
+
+  /*
+   * «Пройшли» и отметки тестов — тоже по методикам зоны читателя, как
+   * «остання здача» в реестре пациентов (ownSurvey в routes/patients.ts).
+   * Методика группы, оказавшаяся в чужой зоне (переехала в другое отделение
+   * после назначения), под ролью приложения из «Тестів групи» уходит совсем;
+   * владельцем базы она остаётся строкой — но кто её прошёл, читателю не
+   * сообщается ни там, ни там: это сведение о прохождении чужой методики.
+   *
+   * Мутация: снять условие по зоне методик в completedPairs — под владельцем
+   * падают «пройшли» и отметка.
+   */
+  test("прохождение методики чужой зоны — не отметка и не «пройшли»", async () => {
+    const id = await makeGroup(adminA, `Чужа методика ${crypto.randomUUID().slice(0, 8)}`);
+    const person = await patientInZoneOfA("foreign-done");
+    await api(`/api/patient-groups/${id}/members`, adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ userIds: [person.id] }),
+    });
+    // методика зоны Б среди «Тестів групи» — как после переезда в другое отделение
+    await db.insert(patientGroupSurveys).values({ groupId: id, surveyId: surveyInB, assignedBy: adminA.id });
+    expect((await submitSurvey(surveyInB, person.token)).status, "прохождение методики зоны Б").toBe(201);
+
+    type Card = { members: { completedSurveyIds: string[] }[]; surveys: { surveyId: string; completedCount: number }[] };
+    const rowOf = async () =>
+      ((await api("/api/patient-groups", adminA.token)).body.items as Record<string, unknown>[]).find((g) => g.id === id)!;
+    const cardOf = async () => (await api(`/api/patient-groups/${id}`, adminA.token)).body as Card;
+    expect((await rowOf()).doneCount, "«пройшли» посчитало прохождение методики чужой зоны").toBe(0);
+    let card = await cardOf();
+    expect(card.members[0]?.completedSurveyIds, "отметка за методику чужой зоны").toEqual([]);
+    expect(card.surveys.find((s) => s.surveyId === surveyInB)?.completedCount ?? 0, "прошедшие методику чужой зоны").toBe(0);
+
+    // положительный контроль: методика своей зоны отмечается
+    await db.insert(patientGroupSurveys).values({ groupId: id, surveyId: surveyInA, assignedBy: adminA.id });
+    expect((await submitSurvey(surveyInA, person.token)).status).toBe(201);
+    card = await cardOf();
+    expect(card.members[0]?.completedSurveyIds).toEqual([surveyInA]);
+    expect(card.surveys.find((s) => s.surveyId === surveyInA)?.completedCount).toBe(1);
+  });
+
+  /*
+   * Числа строки — по видимым участникам: выбывший из зоны не считается ни
+   * участником, ни ризиком (под владельцем — фильтр membersVisibleTo, под
+   * ролью приложения — ещё и политика строк состава).
+   */
+  test("выбывший из зоны не считается ризиком группы", async () => {
+    const id = await makeGroup(adminA, `Вибув ${crypto.randomUUID().slice(0, 8)}`);
+    const person = await patientInZoneOfA("leaves-risk");
+    await api(`/api/patient-groups/${id}/members`, adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ userIds: [person.id] }),
+    });
+    const caseId = crypto.randomUUID();
+    await db.insert(alertCases).values({ id: caseId, userId: person.id, surveyId: surveyInA, severity: "severe" });
+    cases.push(caseId);
+    await db.delete(surveyAccess).where(and(eq(surveyAccess.surveyId, surveyInA), eq(surveyAccess.userId, person.id)));
+
+    const row = ((await api("/api/patient-groups", adminA.token)).body.items as Record<string, unknown>[]).find((g) => g.id === id)!;
+    expect(row.memberCount).toBe(0);
+    expect(row.riskCount, `ризик человека вне зоны ${person.id} посчитан в группе`).toBe(0);
+  });
 });
 
 describe("группа как вкладка списка пациентов", () => {
@@ -537,6 +634,44 @@ describe("группа как вкладка списка пациентов", (
     // чужая вкладка не открывается — иначе фильтр стал бы способом прочитать чужой состав
     const foreign = await api(`/api/access/patients?patientGroup=${id}`, adminB.token);
     expect(foreign.status, `вкладка чужой группы ${id} открылась постороннему`).toBe(404);
+  });
+});
+
+/**
+ * Постоянный текстовый id группы — срез аналитики и очередь случаев.
+ *
+ * patient_groups.id — text: у групп посева и demo-fill постоянные id вида
+ * «demo-pg-risk» (seed/demoGroupsRules.ts), и они уже лежат в живых базах.
+ * Аналитика методики и очередь случаев проверяли параметр как uuid и
+ * отвечали 400: на демо-группе «Стан групи» стоял отказом, а «з ризиком»
+ * вёл в очередь с ошибкой. Форма по-прежнему проверяется, а чужая или
+ * несуществующая группа — «не найдено».
+ *
+ * Мутация: вернуть z.string().uuid() в surveyAnalyticsQuery или в listQuery
+ * очереди — падает своя проверка, называя маршрут.
+ */
+describe("группа с постоянным id посева", () => {
+  test("открывается срезом аналитики и очередью случаев; чужая — 404, кривая — 400", async () => {
+    const id = `demo-pg-test-${crypto.randomUUID().slice(0, 8)}`;
+    await db.insert(patientGroups).values({ id, title: "Група ризику", ownerId: adminA.id });
+    const person = await patientInZoneOfA("seeded");
+    await db.insert(patientGroupMembers).values({ groupId: id, patientId: person.id, addedBy: adminA.id });
+
+    const analytics = await api(`/api/analytics/surveys/${surveyInA}?patientGroup=${id}`, adminA.token);
+    expect(analytics.status, `аналитика со срезом по группе ${id}: ${JSON.stringify(analytics.body)}`).toBe(200);
+    const queue = await api(`/api/alert-cases?patientGroup=${id}`, adminA.token);
+    expect(queue.status, `очередь случаев группы ${id}: ${JSON.stringify(queue.body)}`).toBe(200);
+
+    // своя группа и только своя: у коллеги — «не найдено», как у списка пациентов
+    expect((await api(`/api/analytics/surveys/${surveyInB}?patientGroup=${id}`, adminB.token)).status).toBe(404);
+    expect((await api(`/api/alert-cases?patientGroup=${id}`, adminB.token)).status).toBe(404);
+
+    // форма проверяется по-прежнему: пробел, кириллица и длина за 64 — отказ, а не поиск
+    for (const bad of ["demo pg", "група", "x".repeat(65)]) {
+      const q = encodeURIComponent(bad);
+      expect((await api(`/api/analytics/surveys/${surveyInA}?patientGroup=${q}`, adminA.token)).status, bad).toBe(400);
+      expect((await api(`/api/alert-cases?patientGroup=${q}`, adminA.token)).status, bad).toBe(400);
+    }
   });
 });
 

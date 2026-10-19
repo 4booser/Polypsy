@@ -4,6 +4,7 @@ import type { Permission, User } from "@quizzy/shared";
 import { api, impersonationStore, ownerOfToken, tokenStore, watchSession } from "./api";
 import { dropLegacyDrafts } from "./pages/constructor/draftKey";
 import { forgetDrafts } from "./patient/drafts";
+import { forgetRecent } from "./pages/search/model";
 import { queryClient } from "./query";
 import { useResource } from "./useResource";
 
@@ -94,10 +95,27 @@ export function dropTabSession(
 ): void {
   impersonationStore.clear();
   forgetDrafts(ownerOfToken(tokenStore.own()));
+  dropTabTraces();
   set.user(null);
   set.perms(new Set());
   set.mfa(null);
   setTimeout(() => cache.clear(), 0);
+}
+
+/**
+ * Следы прежнего человека в хранилище вкладки — прочь при выходе, при входе
+ * другого и при конце сессии. Недавние запросы поиска по записям — слова из
+ * клинических текстов («самоушкодження», фамилия), а ноутбук ординаторской
+ * общий: вкладку, из которой вышел один, открывает следующий, и закрытия
+ * вкладки, до которого список живёт (pages/search/model.ts), не бывает.
+ * Хранилище недоступно (приватное окно, запрет сайта) — чистить нечего.
+ */
+function dropTabTraces(): void {
+  try {
+    forgetRecent(sessionStorage);
+  } catch {
+    /* хранилища нет — и следов в нём тоже */
+  }
 }
 
 /**
@@ -177,6 +195,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       tokenStore.clear();
       // сессия не восстановилась — внутри никого, и черновики кабинета на устройстве ничьи
       forgetDrafts(null);
+      dropTabTraces();
       setSettled(true);
     }
   }, [boot.data, boot.error, settled]);
@@ -245,6 +264,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
      */
     queryClient.clear();
     dropLegacyConstructorDrafts();
+    dropTabTraces();
     tokenStore.set(res.token);
     tokenStore.setRefresh(res.refreshToken);
     await accept(await api.me().catch(() => res.user));
@@ -291,6 +311,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     tokenStore.clear();
     /* ответы недосданных прохождений не остаются на общем компьютере (patient/drafts.ts) */
     forgetDrafts(null);
+    dropTabTraces();
     setUser(null);
     setPerms(new Set());
     /* кэш — после того, как экраны сняты: иначе они успели бы перечитать себя уже без токена */

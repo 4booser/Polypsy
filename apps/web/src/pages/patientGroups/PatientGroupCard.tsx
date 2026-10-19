@@ -511,8 +511,8 @@ export default function PatientGroupCard() {
             groups={groups.data.filter((g) => g.id !== groupId)}
             count={selected.size}
             onPick={async (target) => {
-              /* по одному запросу на человека; повтор сервер читает как «уже там» */
-              for (const userId of selected) await api.addPatientGroupMember(target, userId);
+              /* списком, а не запросом на человека: сервер проверяет пачку целиком; повтор — «уже там» */
+              await api.addPatientGroupMembers(target, [...selected]);
               setMoving(false);
               toast(ut("pg.added"), "ok");
             }}

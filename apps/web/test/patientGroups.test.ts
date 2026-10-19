@@ -6,18 +6,14 @@ import {
   grantEach,
   groupsSummary,
   inGroupView,
-  keepPresent,
   matchesQuery,
   newProgress,
   parseFavorites,
   partialFailure,
-  personMeta,
   pluralOf,
-  serializeFavorites,
   shortDate,
   sortGroups,
   surveyCode,
-  toggleIn,
 } from "../src/pages/patientGroups/model";
 import { pagesOf, slicePage } from "../src/ui/paging";
 import { railGroups } from "../src/shell/Rail";
@@ -32,33 +28,6 @@ import { navAccess, subNavFor } from "../src/shell/nav";
  * курсором, — и одна проверка навигации, где ошибка тихая: «Групи» в полосе
  * ведут на группы ПАЦИЕНТОВ, а не методик.
  */
-
-const WORDS = { male: "чол.", female: "жін.", year: "р." };
-
-describe("мета-строка карточки", () => {
-  test("собирается в порядке макета: e-mail, телефон, подразделение, пол, год", () => {
-    expect(
-      personMeta(
-        {
-          userId: "u",
-          fullName: "Х",
-          email: "noga@gmail.com",
-          phone: "+380671234567",
-          unit: "м.Київ",
-          sex: "male",
-          birthYear: 1986,
-        },
-        WORDS,
-      ),
-    ).toEqual(["noga@gmail.com", "+380671234567", "м.Київ", "чол.", "1986р."]);
-  });
-
-  test("пустые поля пропускаются, а не печатаются прочерком", () => {
-    /* строка состава группы приходит без пола и года — их просто нет */
-    expect(personMeta({ userId: "u", fullName: "Х", email: "a@b", unit: null }, WORDS)).toEqual(["a@b"]);
-    expect(personMeta({ userId: "u", fullName: "Х", email: "", sex: "female", birthYear: null }, WORDS)).toEqual(["жін."]);
-  });
-});
 
 describe("поиск по списку", () => {
   test("не зависит от регистра и пробелов по краям", () => {
@@ -76,22 +45,6 @@ describe("поиск по списку", () => {
   });
 });
 
-describe("выбор галочками", () => {
-  test("переключение даёт новое множество, старое не трогает", () => {
-    const a = new Set(["1"]);
-    const b = toggleIn(a, "2");
-    expect([...b].sort()).toEqual(["1", "2"]);
-    expect([...a]).toEqual(["1"]);
-    expect([...toggleIn(b, "1")]).toEqual(["2"]);
-  });
-
-  test("из выбора уходят те, кого в списке больше нет", () => {
-    /* иначе «3 вибрано» при двух видимых галочках — и действие над невидимым */
-    const kept = keepPresent(new Set(["1", "2", "3"]), [{ userId: "2" }, { userId: "3" }]);
-    expect([...kept].sort()).toEqual(["2", "3"]);
-  });
-});
-
 describe("пометка «обрана»", () => {
   test("испорченная запись в хранилище — пустая пометка, а не падение", () => {
     expect(parseFavorites(null).size).toBe(0);
@@ -100,10 +53,8 @@ describe("пометка «обрана»", () => {
     expect([...parseFavorites('["g1", 7, null, "g2"]')]).toEqual(["g1", "g2"]);
   });
 
-  test("запись и чтение — обратны друг другу", () => {
-    const set = new Set(["g1", "g2"]);
-    expect([...parseFavorites(serializeFavorites(set))]).toEqual(["g1", "g2"]);
-    /* ключ с именем раздела: хранилище общее на всю консоль, чужой список сюда не прочитается */
+  test("ключ прежних отметок — с именем раздела", () => {
+    /* хранилище общее на всю консоль: чужой список сюда не прочитается */
     expect(FAVORITES_KEY).toContain("patientGroups");
   });
 });

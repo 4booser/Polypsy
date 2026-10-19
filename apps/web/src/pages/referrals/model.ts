@@ -51,6 +51,24 @@ export function inView(r: Pick<Referral, "status">, view: ReferralView): boolean
   return r.status === view;
 }
 
+/**
+ * Не хватает ли загруженным строкам открытых направлений до числа сервера.
+ *
+ * Реестр приезжает по дате выписки вперемешку с закрытыми, по сотне, а
+ * незакрытое направление — то, ради чего экран существует. Давнее непринятое
+ * оказывалось за первой сотней: в «Чекають дії» его не было, хотя пилюля
+ * «Відкриті» его считала, а «негайних» и «без відповіді» в шапке выходило
+ * меньше, чем есть. Пока открытых загружено меньше, чем насчитал сервер,
+ * экран добирает страницы сам (Referrals.tsx).
+ */
+export function openMissing(
+  rows: readonly Pick<Referral, "status">[] | null,
+  counts: Record<Referral["status"], number> | undefined,
+): boolean {
+  if (!rows || !counts) return false;
+  return rows.filter(isOpen).length < counts.created + counts.accepted;
+}
+
 /** Число в пилюле вида — по числам сервера (ReferralPage.counts), а не по загруженным строкам */
 export function viewCount(counts: Record<Referral["status"], number> | undefined, view: ReferralView): number | null {
   if (!counts) return null;
