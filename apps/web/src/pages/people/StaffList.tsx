@@ -696,6 +696,23 @@ const ADMIN_PERMISSIONS: string[] = [
   "export.full",
 ];
 
+/** Действия журнала назначений: роли, личные исключения, смена класса учётки, заведение */
+export const ASSIGN_LOG_ACTIONS = [
+  "user.roles_change",
+  "permission.exception",
+  "permission.exception_revoke",
+  "user.role_change",
+  "user.create",
+] as const;
+
+/**
+ * Журнал назначений — восемь последних строк по всем действиям одним
+ * чтением (`actions`). Источник подменяется в проверке.
+ */
+export function loadAssignLog(src: Pick<typeof api, "auditPage"> = api): Promise<AuditEntry[]> {
+  return src.auditPage({ actions: ASSIGN_LOG_ACTIONS.join(","), limit: "8" }).then((p) => p.entries);
+}
+
 function AdminsView({ admins, all }: { admins: StaffRow[]; all: StaffRow[] }) {
   const { ut, lang } = useLang();
   const { can } = useAuth();
@@ -705,18 +722,13 @@ function AdminsView({ admins, all }: { admins: StaffRow[]; all: StaffRow[] }) {
   const catalogue = useResource(() => api.permissionCatalogue(), []);
   /* журнал назначений — тем, кому открыт журнал доступа; без права запрос не уходит (отказ лёг бы в журнал) */
   const canAudit = can("audit.read");
-  const journal = useResource(
-    async () => {
-      const actions = ["user.roles_change", "permission.exception", "permission.exception_revoke", "user.role_change", "user.create"];
-      const pages = await Promise.all(actions.map((action) => api.auditPage({ action, limit: "8" }).catch(() => null)));
-      return pages
-        .flatMap((p) => p?.entries ?? [])
-        .sort((a, b) => b.at.localeCompare(a.at))
-        .slice(0, 8);
-    },
-    [],
-    { enabled: canAudit },
-  );
+  /*
+   * Одним чтением на все действия назначений (волна 27): прежде — пять чтений
+   * по одному действию, у каждого свой счёт и своя строка audit.read на
+   * каждое открытие экрана. Восемь последних по всем действиям вместе — те
+   * же строки, что сводились из пяти ответов и обрезались здесь.
+   */
+  const journal = useResource(() => loadAssignLog(), [], { enabled: canAudit });
 
   const shown = admins
     .filter((r) => `${r.fullName} ${r.email}`.toLowerCase().includes(q.trim().toLowerCase()))
@@ -1005,6 +1017,44 @@ export function permissionCardReadable(
   return row.role !== "superadmin" && row.ladderRank < viewer.ladderRank;
 }
 
+/** О ком спрашивать карточку прав: не о суперадмине (у него всё) и не о том, чью карточку сервер не отдаст */
+export function cardAsks(
+  viewer: { id: string; role: string; ladderRank: number },
+  admins: readonly Pick<StaffRow, "id" | "role" | "account">[],
+): string[] {
+  return admins
+    .filter((a) => a.role !== "superadmin" && permissionCardReadable(viewer, { id: a.id, role: a.role, ladderRank: a.account?.ladderRank ?? 0 }))
+    .map((a) => a.id);
+}
+
+/**
+ * Итог прав каждого администратора по порядку реестра — из ответа пачкой.
+ * Не пришедшая карточка (не спрашивали, сервер не отдал, запрос не удался —
+ * `cards` пуст) — null, то есть «не известно» в матрице (adminMark).
+ */
+export function effectiveByAdmin(
+  admins: readonly Pick<StaffRow, "id">[],
+  cards: readonly { userId: string; effective: string[] }[] | null,
+): (string[] | null)[] {
+  const byId = new Map((cards ?? []).map((c) => [c.userId, c.effective]));
+  return admins.map((a) => byId.get(a.id) ?? null);
+}
+
+/**
+ * Итог прав реестра администраторов — одним запросом карточек пачкой на
+ * всех (волна 27), а не запросом на каждого. Отказ — у всех «не известно»,
+ * как прежде у каждой не пришедшей карточки. Источник подменяется в проверке.
+ */
+export async function loadAdminCards(
+  viewer: { id: string; role: string; ladderRank: number },
+  admins: readonly Pick<StaffRow, "id" | "role" | "account">[],
+  src: Pick<typeof api, "permissionCards"> = api,
+): Promise<(string[] | null)[]> {
+  const asked = cardAsks(viewer, admins);
+  const got = asked.length ? await src.permissionCards(asked).catch(() => null) : [];
+  return effectiveByAdmin(admins, got);
+}
+
 /** Отметка в матрице: даёт роль, у суперадмина — всё, не может; «не известно» — пустая, с подписью */
 function Mark({ kind, label }: { kind: "role" | "super" | "no" | "unknown"; label: string }) {
   if (kind === "unknown") {
@@ -1046,17 +1096,8 @@ function AdminMatrix({
   const { ut, lang } = useLang();
   const { user } = useAuth();
   const viewer = { id: user?.id ?? "", role: user?.role ?? "", ladderRank: user?.ladderRank ?? 0 };
-  const cards = useResource(
-    () =>
-      Promise.all(
-        admins.map((a) =>
-          a.role === "superadmin" || !permissionCardReadable(viewer, { id: a.id, role: a.role, ladderRank: a.account?.ladderRank ?? 0 })
-            ? Promise.resolve(null)
-            : api.userPermissions(a.id).then((c) => c.effective).catch(() => null),
-        ),
-      ),
-    [admins.map((a) => a.id).join(), viewer.id, viewer.ladderRank],
-  );
+  /* карточки — пачкой на всех (loadAdminCards), а не запросом на каждого администратора */
+  const cards = useResource(() => loadAdminCards(viewer, admins), [admins.map((a) => a.id).join(), viewer.id, viewer.ladderRank]);
   const titleOf = (code: string) => {
     for (const g of titles.groups) for (const p of g.permissions) if (p.code === code) return t(p.title, lang);
     return code;

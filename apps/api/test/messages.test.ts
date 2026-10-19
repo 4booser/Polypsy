@@ -1,8 +1,9 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
-import { adminA, api, db, makeUser, root } from "./fixtures";
+import { adminA, api, appApi, db, makeUser, root } from "./fixtures";
 import { appointments, auditLog, departments, messages, slots, specialistProfiles, threads, users } from "../src/db/schema";
 import { encryptField } from "../src/lib/crypto";
+import { requestSql } from "../src/lib/opsSql";
 import { underAppRole } from "./appRole";
 
 /**
@@ -485,5 +486,144 @@ describe("строка списка: последнее письмо и ближ
     expect(out.row?.lastMine).toBe(false);
     expect(out.row?.next?.id, "приём не дочитался под ролью").toBe(soon);
     expect(out.row?.next?.room).toBe("7");
+  });
+});
+
+/* ─────────── волна 27: счётчик непрочитанного одним числом ─────────── */
+
+/**
+ * Разговор специалиста с новым пациентом: `unread` непрочитанных писем
+ * пациента, а для шума — прочитанное письмо пациента и своё письмо
+ * специалиста (оба в счёт специалиста не идут). Письма — строками в базе:
+ * право писать и зона проверяются выше, здесь — счёт.
+ */
+async function talk(specialistId: string, tag: string, unread: number, opts: { closed?: boolean } = {}) {
+  const patient = await makeUser("user", `ms-uc-${tag}-${crypto.randomUUID()}@test`, { leadSpecialistId: specialistId });
+  const threadId = crypto.randomUUID();
+  const at = Date.now() - 3_600_000;
+  const iso = (ms: number) => new Date(ms).toISOString();
+  await db.insert(threads).values({
+    id: threadId,
+    patientId: patient.id,
+    specialistId,
+    lastMessageAt: iso(at + 60_000),
+    closedAt: opts.closed ? iso(at) : null,
+  });
+  await db.insert(messages).values([
+    { id: crypto.randomUUID(), threadId, authorId: patient.id, textEnc: encryptField("Прочитане")!, sentAt: iso(at), readAt: iso(at + 500) },
+    { id: crypto.randomUUID(), threadId, authorId: specialistId, textEnc: encryptField("Моє")!, sentAt: iso(at + 1000) },
+    ...Array.from({ length: unread }, (_, i) => ({
+      id: crypto.randomUUID(),
+      threadId,
+      authorId: patient.id,
+      textEnc: encryptField(`Нове ${i}`)!,
+      sentAt: iso(at + 2000 + i * 1000),
+    })),
+  ]);
+  return { patient, threadId };
+}
+
+type CountedRow = { id: string; unread: number };
+
+/** Число запросов к базе за один запрос к приложению (lib/opsSql.ts, по x-request-id) */
+async function sqlOf(path: string, token: string): Promise<number> {
+  const requestId = `ms-uc-${crypto.randomUUID()}`;
+  const res = await api(path, token, { headers: { "x-request-id": requestId } });
+  expect(res.status, JSON.stringify(res.body)).toBe(200);
+  return requestSql(requestId)?.count ?? 0;
+}
+
+describe("счётчик непрочитанного (GET /api/messages/unread-count)", () => {
+  test("одно число — сумма непрочитанного по строкам списка; прочитанное и своё не считаются", async () => {
+    const specialist = await makeUser("admin", `ms-uc-s-${crypto.randomUUID()}@test`);
+    const counts = [0, 1, 3, 2];
+    const made = [];
+    for (const [i, n] of counts.entries()) made.push(await talk(specialist.id, `sum${i}`, n));
+
+    const list = await api<{ items: CountedRow[] }>("/api/messages", specialist.token);
+    const byThread = new Map(list.body.items.map((t) => [t.id, t.unread]));
+    for (const [i, m] of made.entries()) expect(byThread.get(m.threadId), `строка ${i}`).toBe(counts[i]!);
+
+    const count = await api("/api/messages/unread-count", specialist.token);
+    expect(count.status, "маршрут ушёл в /:id").toBe(200);
+    // только число: ни имён, ни текста писем
+    expect(count.body).toEqual({ unread: 6 });
+  });
+
+  test("круг — как у списка: закрытого и чужого разговора нет ни в списке, ни в числе", async () => {
+    const specialist = await makeUser("admin", `ms-uc-s-${crypto.randomUUID()}@test`);
+    const colleague = await makeUser("admin", `ms-uc-c-${crypto.randomUUID()}@test`);
+    const open = await talk(specialist.id, "open", 2);
+    const closed = await talk(specialist.id, "closed", 5, { closed: true });
+    await talk(colleague.id, "foreign", 4);
+
+    const list = await api<{ items: CountedRow[] }>("/api/messages", specialist.token);
+    const ids = list.body.items.map((t) => t.id);
+    expect(ids).toContain(open.threadId);
+    expect(ids).not.toContain(closed.threadId);
+    expect((await api("/api/messages/unread-count", specialist.token)).body).toEqual({ unread: 2 });
+    expect((await api("/api/messages/unread-count", colleague.token)).body).toEqual({ unread: 4 });
+  });
+
+  test("пациент: непрочитанное своего разговора; разговора нет — ноль, и он не заводится", async () => {
+    const specialist = await makeUser("admin", `ms-uc-s-${crypto.randomUUID()}@test`);
+    const lonely = await makeUser("user", `ms-uc-l-${crypto.randomUUID()}@test`, { leadSpecialistId: specialist.id });
+    expect((await api("/api/messages/unread-count", lonely.token)).body).toEqual({ unread: 0 });
+    expect(await db.select().from(threads).where(eq(threads.patientId, lonely.id)), "счётчик завёл разговор").toEqual([]);
+
+    // у пациента непрочитанное — письма специалиста: в разговоре talk() одно такое
+    const { patient } = await talk(specialist.id, "pt", 3);
+    const list = await api<{ items: CountedRow[] }>("/api/messages", patient.token);
+    expect(list.body.items[0]?.unread).toBe(1);
+    expect((await api("/api/messages/unread-count", patient.token)).body).toEqual({ unread: 1 });
+
+    const noLead = await makeUser("user", `ms-uc-n-${crypto.randomUUID()}@test`);
+    expect((await api("/api/messages/unread-count", noLead.token)).body).toEqual({ unread: 0 });
+  });
+
+  test("список считает непрочитанное одним запросом: запросов к базе не больше с ростом числа разговоров", async () => {
+    const few = await makeUser("admin", `ms-uc-f-${crypto.randomUUID()}@test`);
+    const many = await makeUser("admin", `ms-uc-m-${crypto.randomUUID()}@test`);
+    for (let i = 0; i < 2; i++) await talk(few.id, `few${i}`, 1);
+    for (let i = 0; i < 22; i++) await talk(many.id, `many${i}`, 1);
+    // первый запрос учётки может отметить вход — меряем со второго
+    await api("/api/messages", few.token);
+    await api("/api/messages", many.token);
+
+    const listFew = await sqlOf("/api/messages", few.token);
+    const listMany = await sqlOf("/api/messages", many.token);
+    expect(listFew).toBeGreaterThan(0);
+    // прежде — запрос счёта на каждую строку: на двадцать строк больше было бы +20
+    expect(listMany - listFew, `запросов: ${listFew} на 2 разговора, ${listMany} на 22`).toBeLessThan(5);
+
+    const countMany = await sqlOf("/api/messages/unread-count", many.token);
+    expect(countMany, `счётчик: ${countMany}, список: ${listMany}`).toBeLessThan(listMany);
+    expect((await api("/api/messages/unread-count", many.token)).body).toEqual({ unread: 22 });
+  });
+
+  test("счётчик в журнал не пишет — как не писал и список, который он заменил", async () => {
+    const specialist = await makeUser("admin", `ms-uc-s-${crypto.randomUUID()}@test`);
+    await talk(specialist.id, "audit", 2);
+    const rows = async () =>
+      (await db.select({ n: sql<number>`count(*)::int` }).from(auditLog).where(eq(auditLog.actorId, specialist.id)))[0]!.n;
+
+    const start = await rows();
+    await api("/api/messages", specialist.token);
+    const afterList = await rows();
+    for (let i = 0; i < 3; i++) await api("/api/messages/unread-count", specialist.token);
+    const afterCount = await rows();
+    expect(afterList - start, "список писал в журнал").toBe(0);
+    expect(afterCount - afterList, "опрос счётчика пишет в журнал").toBe(0);
+  });
+
+  test("под боевой ролью число то же, что сумма по строкам списка", async () => {
+    const specialist = await makeUser("admin", `ms-uc-r-${crypto.randomUUID()}@test`);
+    for (const [i, n] of [2, 0, 1].entries()) await talk(specialist.id, `rls${i}`, n);
+    const list = await appApi<{ items: CountedRow[] }>("/api/messages", specialist.token);
+    const count = await appApi<{ unread: number }>("/api/messages/unread-count", specialist.token);
+    expect(list.status).toBe(200);
+    expect(count.status).toBe(200);
+    expect(list.body.items.reduce((n, t) => n + t.unread, 0)).toBe(3);
+    expect(count.body).toEqual({ unread: 3 });
   });
 });

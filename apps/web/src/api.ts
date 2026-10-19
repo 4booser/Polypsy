@@ -928,6 +928,28 @@ const unwrap = <T>(p: Promise<Items<T>>): Promise<T[]> => p.then((r) => r.items)
 /** Сколько человек принимает одно «додати до групи» списком — потолок patientGroupMemberSchema */
 export const PATIENT_GROUP_BATCH = 200;
 
+/** Карточка доступа человека: роли, личные исключения и итог (GET /api/permissions/users/:id) */
+export interface PermissionCard {
+  userId: string;
+  fullName: string;
+  role: string;
+  readOnly: boolean;
+  roles: { roleId: string; code: string; title: LocalizedText; isBuiltin: boolean }[];
+  exceptions: {
+    id: string;
+    permission: string;
+    mode: "grant" | "revoke";
+    reason: string;
+    grantedAt: string;
+    expiresAt: string | null;
+    revokedAt: string | null;
+  }[];
+  effective: string[];
+}
+
+/** Сколько карточек доступа сервер отдаёт за один запрос — CARDS_MAX в routes/permissions.ts */
+export const PERMISSION_CARDS_BATCH = 100;
+
 export const api = {
   /** Вход: пара токенов или, если включён второй фактор, просьба о коде (MfaChallenge) */
   login: (email: string, password: string) =>
@@ -1387,24 +1409,22 @@ export const api = {
       method: "PUT",
       body: JSON.stringify({ permissions }),
     }),
-  userPermissions: (id: string) =>
-    request<{
-      userId: string;
-      fullName: string;
-      role: string;
-      readOnly: boolean;
-      roles: { roleId: string; code: string; title: LocalizedText; isBuiltin: boolean }[];
-      exceptions: {
-        id: string;
-        permission: string;
-        mode: "grant" | "revoke";
-        reason: string;
-        grantedAt: string;
-        expiresAt: string | null;
-        revokedAt: string | null;
-      }[];
-      effective: string[];
-    }>(`/api/permissions/users/${id}`),
+  userPermissions: (id: string) => request<PermissionCard>(`/api/permissions/users/${id}`),
+  /*
+   * Те же карточки нескольких людей — одним запросом на сотню (волна 27):
+   * матрица «Що може кожен» спрашивала карточку каждого администратора
+   * отдельно. Невидимых по лестнице сервер в ответ не кладёт.
+   */
+  permissionCards: async (ids: readonly string[]): Promise<PermissionCard[]> => {
+    const parts: string[][] = [];
+    for (let i = 0; i < ids.length; i += PERMISSION_CARDS_BATCH) parts.push(ids.slice(i, i + PERMISSION_CARDS_BATCH));
+    const pages = await Promise.all(
+      parts.map((part) =>
+        request<Items<PermissionCard>>(`/api/permissions/cards?ids=${part.map(encodeURIComponent).join(",")}`),
+      ),
+    );
+    return pages.flatMap((p) => p.items);
+  },
   setUserRoles: (id: string, roleIds: string[]) =>
     request<{ ok: true }>(`/api/permissions/users/${id}/roles`, {
       method: "PUT",
@@ -2012,6 +2032,8 @@ export const api = {
       }[];
       lead: string | null;
     }>("/api/messages"),
+  /* число непрочитанного по тем же разговорам, что в списке: для счётчика рельсы, без текста и имён */
+  unreadCount: () => request<{ unread: number }>("/api/messages/unread-count"),
   /*
    * Последние письма разговора; before — курсор к более ранним (nextBefore).
    * Чтение ничего не помечает: «прочитано» — markRead по показанным.

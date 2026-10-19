@@ -533,6 +533,7 @@ export const api = {
       items: { id: string; withName: string; lastMessageAt: string; unread: number; patientId?: string }[];
       lead: string | null;
     }>("/api/messages"),
+  unreadCount: () => request<{ unread: number }>("/api/messages/unread-count"),
   /* последние письма и курсор назад; чтение ничего не помечает — см. markRead */
   thread: (id: string, before?: string | null) =>
     request<{
