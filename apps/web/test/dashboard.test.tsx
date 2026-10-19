@@ -558,6 +558,15 @@ describe("«Дія зараз»: случаи не загрузились", () =
     expect(either(act(), "dayA.nothingUrgent")).toBe(true);
   });
 
+  test("без героя просроченное встаёт плитками в сетку, а не столбцом во всю ширину", () => {
+    const overdue = work.items.filter((i) => i.overdue && i.kind !== "message");
+    expect(overdue.length).toBeGreaterThan(0);
+    const html = act({ cases: [], work: work.items });
+    // «contents» вместе с «flex» решала очерёдность стилей — побеждал столбец
+    expect(html).toContain('class="contents"');
+    expect(html).not.toMatch(/class="[^"]*\bflex\b[^"]*\bcontents\b[^"]*"/);
+  });
+
   test("отказ в праве (403) — «разбор не положен», прочие отказы идут дальше", async () => {
     expect(await unlessForbidden(Promise.reject(new ApiError("заборонено", 403)))).toBeNull();
     await expect(unlessForbidden(Promise.reject(new ApiError("сервер не відповідає", 503)))).rejects.toThrow("сервер не відповідає");

@@ -199,7 +199,12 @@ export function ActNow({
           {hero ? (
             <HeroTile c={hero} msg={heroMsg} others={heroWork.filter((w) => w.kind !== "message")} session={heroSession} onReply={onReply} />
           ) : null}
-          <div className={cx("flex min-w-0 flex-col gap-2", !hero && "contents")}>
+          {/*
+            Без героя плитки встают в сетку рядом — «contents» без «flex»: оба
+            класса сразу решала очерёдность в таблице стилей, и побеждал
+            столбец — плитки шли одна под другой во всю ширину.
+          */}
+          <div className={hero ? "flex min-w-0 flex-col gap-2" : "contents"}>
             {sideCases.map((c) => (
               <CaseTile key={c.id} c={c} meId={meId} />
             ))}
