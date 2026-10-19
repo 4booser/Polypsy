@@ -168,6 +168,57 @@ test("таблица: заголовок сортирует и говорит н
   await expect(page.getByRole("dialog", { name: "Розбір сигналу № 214" })).toBeVisible();
 });
 
+test("клавиши экрана: «/» — по месту клавиши и на кириллице; под открытым окном молчат", async ({ page }) => {
+  await openKit(page);
+  const search = page.getByRole("searchbox", { name: "ПІБ, картка або телефон" });
+
+  await page.keyboard.press("/");
+  await expect(search).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(search).not.toBeFocused();
+
+  /*
+   * Украинская раскладка: клавиша, на которой нарисован «/», печатает «.».
+   * Playwright раскладок не знает — событие собирается таким, каким его
+   * отдаёт браузер на кириллице: знак «.», место Slash.
+   */
+  await page.evaluate(() =>
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: ".", code: "Slash", bubbles: true, cancelable: true })),
+  );
+  await expect(search).toBeFocused();
+  await page.keyboard.press("Escape");
+
+  // окно поверх экрана: «/» экрана молчит, курсор в поиск не уезжает
+  await page.getByRole("button", { name: "Вікно без Esc", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Коди відновлення" });
+  await expect(dialog).toBeVisible();
+  await page.keyboard.press("/");
+  await expect(search).not.toBeFocused();
+  await dialog.getByRole("button", { name: "Я зберіг коди" }).click();
+  await expect(dialog).toBeHidden();
+});
+
+test("подсказка крестика ящика: не всплывает при открытии мышью, видна с клавиатуры, без обещания черновика", async ({ page }) => {
+  await openKit(page);
+  await page.getByRole("button", { name: /^(Довідка і клавіші|Справка и клавиши)$/ }).click();
+  const drawer = page.getByRole("dialog", { name: /^(Довідка і клавіші|Справка и клавиши)$/ });
+  await expect(drawer).toBeVisible();
+  const close = drawer.getByRole("button", { name: /^(Закрити панель|Закрыть панель)$/ });
+  // фокус на крестике поставил сам ящик — подсказки нет
+  await expect(close).toBeFocused();
+  await page.waitForTimeout(400);
+  await expect(page.getByRole("tooltip")).toHaveCount(0);
+
+  // с клавиатуры — есть, и у ящика без черновика она не обещает черновик
+  await page.keyboard.press("Tab");
+  await page.keyboard.press("Shift+Tab");
+  await expect(close).toBeFocused();
+  const tip = page.getByRole("tooltip");
+  await expect(tip).toBeVisible();
+  await expect(tip).toContainText(/^(Закрити|Закрыть)/);
+  await expect(tip).not.toContainText(/чернетка|черновик/);
+});
+
 test("окно, которое надо закончить: Esc и подложка его не закрывают, кнопка — закрывает", async ({ page }) => {
   await openKit(page);
   await page.getByRole("button", { name: "Вікно без Esc", exact: true }).click();
