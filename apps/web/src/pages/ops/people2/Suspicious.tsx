@@ -320,7 +320,11 @@ function CountLabel({ text, n }: { text: string; n: number }) {
   );
 }
 
-/** «Правило ⌄» — отбор одним правилом; выбранное снимается крестиком */
+/**
+ * «Правило ⌄» — отбор одним правилом; выбранное снимается крестиком. Чип
+ * стоит у левого края области: меню раскрывается вправо, а не влево под
+ * колонку подразделов, где область прокрутки обрезала названия правил.
+ */
 function RuleFilter({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const { ut } = useLang();
   return (
@@ -328,6 +332,7 @@ function RuleFilter({ value, onChange }: { value: string; onChange: (v: string) 
       label={ut("ops.susp.rule")}
       value={RULES.some((r) => r === value) ? value : ""}
       onChange={onChange}
+      align="right-out"
       plateClassName="min-w-[300px]"
       choices={[{ value: "", label: ut("ops.susp.allRules") }, ...RULES.map((r) => ({ value: r, label: ut(ruleKey(r)) }))]}
     />

@@ -6,7 +6,7 @@ import { Avatar, Loading } from "../../../ui";
 import { cx } from "../../../ui/cx";
 import { Ic } from "../../../ui/icons";
 import { FilterChip } from "../../../ui/filters";
-import { MenuButton, menuItemClass } from "../../../ui/menu";
+import { MenuButton, menuItemClass, type MenuAlign } from "../../../ui/menu";
 import { Popover, Tooltip } from "../../../ui/Popover";
 import { Button, Tag } from "../../../ui/primitives";
 import { useResource } from "../../../useResource";
@@ -298,8 +298,12 @@ export function ChoiceChip({
   choices: { value: string; label: string; code?: boolean }[];
   value: string;
   onChange: (v: string) => void;
-  /** Край, к которому прижато меню: у чипа в правом углу панели — правый */
-  align?: "left" | "right";
+  /**
+   * Куда раскрывается меню: по умолчанию — влево от правого края чипа; у
+   * чипа у левого края области — "right-out", вправо: влево его обрезала бы
+   * область прокрутки.
+   */
+  align?: MenuAlign;
   plateClassName?: string;
 }) {
   const current = choices.find((c) => c.value === value && value);

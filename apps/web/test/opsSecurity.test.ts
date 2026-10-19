@@ -326,6 +326,11 @@ describe("общие части экранов безопасности", () => 
     }
   });
 
+  test("меню «Правило» раскрывается вправо: у левого края области его обрезала прокрутка", () => {
+    /* на 1280 чип стоит под поиском у левого края, и меню влево уходило под колонку подразделов на 186 px */
+    expect(src("people2/Suspicious.tsx")).toMatch(/onChange=\{onChange\}\s+align="right-out"\s+plateClassName="min-w-\[300px\]"/);
+  });
+
   test("R не открывает разбор под окном «завершити сесії»", () => {
     expect(src("people2/Suspicious.tsx")).toMatch(/!!openItems\.length && status !== "resolved" && !ending,/);
   });
