@@ -6,7 +6,7 @@ import { normalizePath, type Plugin } from "vite";
 import { ERRORS } from "../../packages/shared/src/errorStrings";
 import { LANGS, isLang, type Lang } from "../../packages/shared/src/types";
 import { UI, detectLang } from "../../packages/shared/src/uiStrings";
-import { buildLanguageTable, entryText, type Entry, type KeySelection } from "./src/dictionary/table";
+import { buildContentPairs, buildLanguageTable, entryText, type Entry, type KeySelection } from "./src/dictionary/table";
 import { LANG_KEY } from "./src/langKey";
 
 /**
@@ -201,6 +201,7 @@ export function languageModule(lang: Lang, only?: KeySelection): string {
 export function sourceModule(): string {
   const cases = LANGS.map((lang) => `    case ${JSON.stringify(lang)}: return import(${JSON.stringify(TABLE + lang)});`);
   return [
+    `export const contentPairs = ${JSON.stringify(buildContentPairs(UI_ENTRIES))};`,
     "export function tableNow() { return null; }",
     "export function tableLater(lang) { return chunk(lang).then((m) => m.default); }",
     "function chunk(lang) {",

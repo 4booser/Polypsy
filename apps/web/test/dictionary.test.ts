@@ -11,7 +11,7 @@ import {
   type UiKey,
 } from "@quizzy/shared";
 import { contentDefault, hasLanguage, loadLanguage, makeUiT, registerStrings, renderError, uiText } from "../src/dictionary";
-import { CONTENT_DEFAULT_KEYS, buildLanguageTable } from "../src/dictionary/table";
+import { CONTENT_DEFAULT_KEYS, buildContentPairs, buildLanguageTable } from "../src/dictionary/table";
 import { LANG_KEY } from "../src/langKey";
 import {
   coreKeys,
@@ -72,12 +72,14 @@ describe("таблица языка совпадает со словарём о�
     }
   });
 
-  test("отбор оставляет только названные записи, а значения по умолчанию — всегда на обоих языках содержимого", () => {
+  test("отбор оставляет только названные записи; значения по умолчанию — отдельно, на обоих языках содержимого", () => {
     const only = { ui: new Set(["common.save"]), errors: new Set(["err.internal"]) };
     const table = buildLanguageTable(UI, ERRORS, "ru", only);
     expect(table.ui).toEqual({ "common.save": UI["common.save"].ru });
     expect(table.errors).toEqual({ "err.internal": ERRORS["err.internal"].ru });
-    for (const key of CONTENT_DEFAULT_KEYS) expect(table.content[key]).toEqual({ uk: UI[key].uk, ru: UI[key].ru });
+    expect(Object.keys(table)).toEqual(["ui", "errors"]);
+    const pairs = buildContentPairs(UI);
+    for (const key of CONTENT_DEFAULT_KEYS) expect(pairs[key]).toEqual({ uk: UI[key].uk, ru: UI[key].ru });
   });
 });
 
@@ -216,6 +218,8 @@ describe("сборка: ядро и фрагменты", () => {
   test("источник словаря в сборке: без ожидания — ничего, с ожиданием — кусок языка", () => {
     const code = sourceModule();
     expect(code).toContain("export function tableNow() { return null; }");
+    // значения по умолчанию конструктора — сразу, без ожидания куска языка
+    expect(code).toContain(`export const contentPairs = ${JSON.stringify(buildContentPairs(UI))};`);
     for (const lang of LANGS) expect(code).toContain(`import("virtual:quizzy-dictionary/${lang}")`);
   });
 });

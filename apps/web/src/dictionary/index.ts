@@ -1,5 +1,5 @@
 import { LANGS, type ContentLang, type ErrorParams, type Lang, type UiKey } from "@quizzy/shared";
-import { tableLater, tableNow } from "./source";
+import { contentPairs, tableLater, tableNow } from "./source";
 import type { ContentDefaultKey, LanguageTable } from "./table";
 
 /**
@@ -126,10 +126,11 @@ export function renderError(key: string, lang: Lang, params?: ErrorParams): stri
 
 /**
  * Значение по умолчанию для содержимого методики — на обоих языках
- * содержимого сразу, каким бы ни был язык интерфейса (CONTENT_DEFAULT_KEYS).
+ * содержимого сразу, каким бы ни был язык интерфейса (CONTENT_DEFAULT_KEYS),
+ * и без ожидания словаря: модель конструктора считает его при загрузке.
  * Каждый вызов — новая запись: черновик правит её на месте.
  */
 export function contentDefault(key: ContentDefaultKey): Record<ContentLang, string> {
-  const pair = (latest ?? tableOf("uk"))?.content[key];
-  return pair ? { uk: pair.uk, ru: pair.ru } : { uk: key, ru: key };
+  const pair = contentPairs[key];
+  return { uk: pair.uk, ru: pair.ru };
 }

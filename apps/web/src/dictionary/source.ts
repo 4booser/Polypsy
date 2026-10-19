@@ -1,5 +1,5 @@
 import { ERRORS, UI, type Lang } from "@quizzy/shared";
-import { buildLanguageTable, type LanguageTable } from "./table";
+import { buildContentPairs, buildLanguageTable, type LanguageTable } from "./table";
 
 /**
  * Откуда консоль берёт словарь языка — вне Vite.
@@ -30,3 +30,6 @@ export function tableNow(lang: Lang): LanguageTable | null {
 export function tableLater(lang: Lang): Promise<LanguageTable> {
   return Promise.resolve(buildLanguageTable(UI, ERRORS, lang));
 }
+
+/** Значения по умолчанию для содержимого методики — сразу, без ожидания словаря (table.ts, CONTENT_DEFAULT_KEYS) */
+export const contentPairs = buildContentPairs(UI);

@@ -22,8 +22,6 @@ export interface LanguageTable {
   ui: Readonly<Record<string, string>>;
   /** Тексты отказов сервера на этом языке — для renderError консоли */
   errors: Readonly<Record<string, string>>;
-  /** Тексты по умолчанию для содержимого методики — на обоих языках содержимого (CONTENT_DEFAULT_KEYS) */
-  content: Readonly<Record<string, Readonly<Record<ContentLang, string>>>>;
 }
 
 /**
@@ -33,10 +31,11 @@ export interface LanguageTable {
  * приходит с ответами «Так / Ні» сразу по-украински и по-русски, итоговая
  * шкала комплексного теста — с названием «Результати / Результаты»
  * (pages/constructor). Язык интерфейса здесь ни при чём, а в памяти лежит
- * только он один — поэтому эти записи едут в куске каждого языка обеими
- * колонками. Список короткий намеренно: запись сюда — по одной на значение
- * по умолчанию, а не «на всякий случай». Ключ, которого нет в словаре, не
- * соберётся (`satisfies`).
+ * только он один — поэтому эти записи едут отдельно от словаря языка, обеими
+ * колонками и сразу, без ожидания куска (contentPairs, source.ts): значение
+ * по умолчанию считается и при загрузке модуля. Список короткий намеренно:
+ * запись сюда — по одной на значение по умолчанию, а не «на всякий случай».
+ * Ключ, которого нет в словаре, не соберётся (`satisfies`).
  */
 export const CONTENT_DEFAULT_KEYS = ["bp.yes", "bp.no", "cn.results"] as const satisfies readonly UiKey[];
 export type ContentDefaultKey = (typeof CONTENT_DEFAULT_KEYS)[number];
@@ -65,10 +64,12 @@ export function buildLanguageTable(
     for (const [key, entry] of Object.entries(dict)) if (!keep || keep.has(key)) out[key] = entryText(entry, lang);
     return out;
   };
-  const content: Record<string, Record<ContentLang, string>> = {};
-  for (const key of CONTENT_DEFAULT_KEYS) {
-    const entry = ui[key];
-    if (entry) content[key] = { uk: entry.uk, ru: entry.ru };
-  }
-  return { ui: column(ui, only?.ui), errors: column(errors, only?.errors), content };
+  return { ui: column(ui, only?.ui), errors: column(errors, only?.errors) };
+}
+
+/** Значения по умолчанию для содержимого методики: обе колонки языков содержимого */
+export function buildContentPairs(ui: Readonly<Record<string, Entry>>): Record<ContentDefaultKey, Record<ContentLang, string>> {
+  const out = {} as Record<ContentDefaultKey, Record<ContentLang, string>>;
+  for (const key of CONTENT_DEFAULT_KEYS) out[key] = { uk: ui[key]!.uk, ru: ui[key]!.ru };
+  return out;
 }
