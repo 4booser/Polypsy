@@ -762,11 +762,26 @@ function ColumnPicker<T>({
 }) {
   const { ut } = useLang();
   const [open, setOpen] = useState(false);
+  const toggle = useRef<HTMLButtonElement>(null);
   const count = columns.filter((c) => !hidden.has(c.key)).length;
 
   return (
-    <div className="relative">
+    <div
+      className="relative"
+      /*
+       * Esc закрывает выбор колонок и возвращает фокус кнопке — как меню
+       * набора. preventDefault: ящик, в котором стоит таблица, Esc этого
+       * нажатия на себя не принимает (Drawer смотрит defaultPrevented).
+       */
+      onKeyDown={(e) => {
+        if (e.key !== "Escape" || !open) return;
+        e.preventDefault();
+        setOpen(false);
+        toggle.current?.focus();
+      }}
+    >
       <Button
+        ref={toggle}
         variant="quiet"
         size="xs"
         icon={<Ic.columns />}

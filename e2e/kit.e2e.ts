@@ -219,6 +219,20 @@ test("подсказка крестика ящика: не всплывает п
   await expect(tip).not.toContainText(/чернетка|черновик/);
 });
 
+test("таблица: выбор колонок закрывается Esc, и фокус возвращается кнопке", async ({ page }) => {
+  await openKit(page);
+  const table = page.getByRole("table", { name: "Пацієнти" });
+  await table.scrollIntoViewIfNeeded();
+  const toggle = page.getByRole("button", { name: /^Колонки/ }).first();
+  await toggle.click();
+  const picker = page.getByRole("group", { name: "Колонки" });
+  await expect(picker).toBeVisible();
+  await picker.getByRole("checkbox").first().focus();
+  await page.keyboard.press("Escape");
+  await expect(picker).toBeHidden();
+  await expect(toggle).toBeFocused();
+});
+
 test("окно, которое надо закончить: Esc и подложка его не закрывают, кнопка — закрывает", async ({ page }) => {
   await openKit(page);
   await page.getByRole("button", { name: "Вікно без Esc", exact: true }).click();
