@@ -8,6 +8,7 @@ import {
   updateReferralSchema,
   type CaseSummary,
   type Referral,
+  type ReferralCount,
   type ReferralPage,
   type ReferralStatus,
   type ScaleNormalization,
@@ -34,7 +35,7 @@ import { decryptField } from "../lib/crypto";
 import { badRequest, conflict, langOf, notFound, parseBody, parseQuery } from "../lib/http";
 import { round } from "../lib/stats";
 import { assertReferralLinks } from "../lib/clinicalRead";
-import { accessiblePatientIds, assertPatientAccess, patientsInScope, surveyScopeFilterFor } from "../lib/scope";
+import { accessiblePatientIds, assertPatientAccess, patientScopeCondition, patientsInScope, surveyScopeFilterFor } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 import { env } from "../env";
 
@@ -173,6 +174,35 @@ referralRoutes.get("/", async (c) => {
     total,
     ...(counts ? { counts } : {}),
   } satisfies ReferralPage);
+});
+
+/**
+ * Реестр числами — бейдж навигации (ReferralCount).
+ *
+ * Бейдж опрашивал первую страницу реестра раз в минуту с каждой открытой
+ * консоли: сотня строк с расшифрованными именами и поводами, строка
+ * referral.list в журнале на каждый такт и зона списком всех людей
+ * (accessiblePatientIds) — у врача на стенде со ста тысячами прохождений
+ * больше полутора сотен миллисекунд базы на такт, и почти всё — построение
+ * зоны (волна 27).
+ *
+ * Здесь зона — условием над строками направлений (patientScopeCondition):
+ * то же правило, их держит вместе test/patientScope.test.ts, но база
+ * проверяет только людей, у которых есть незавершённые направления, а не
+ * строит зону целиком. Только числа — и потому без строки журнала, как и у
+ * остальных чисел навигации.
+ */
+referralRoutes.get("/count", async (c) => {
+  const inZone = await patientScopeCondition(c.get("user"));
+  const [row] = await db
+    .select({
+      total: sql<number>`count(*)::int`,
+      open: sql<number>`count(*) filter (where ${referrals.status} in ('created', 'accepted'))::int`,
+    })
+    .from(referrals)
+    .where(and(ne(referrals.status, "completed"), inZone?.(referrals.userId)));
+  const body: ReferralCount = { total: Number(row?.total ?? 0), open: Number(row?.open ?? 0) };
+  return c.json(body);
 });
 
 referralRoutes.post("/", async (c) => {

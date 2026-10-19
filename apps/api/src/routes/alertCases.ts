@@ -7,6 +7,7 @@ import {
   queryInt,
   t,
   type AlertCase,
+  type AlertCaseCount,
   type AlertCaseFacets,
   type AlertCasePage,
   type AlertSignal,
@@ -598,6 +599,34 @@ alertCaseRoutes.get("/", async (c) => {
     ...(facets ? { total: facets.total, facets } : {}),
     grouping,
   });
+});
+
+/**
+ * Очередь числами — бейдж навигации и значок вкладки (AlertCaseCount).
+ *
+ * Бейдж опрашивал очередь (`?limit=1`) раз в минуту с каждой открытой
+ * консоли, и в скрытой вкладке тоже — ради значка: строка с именем человека
+ * и сигналами, счётчики фасетов и строка alert.list в журнале на каждый
+ * такт. Здесь — только число строк открытой очереди по людям, ровно `total`
+ * её первой страницы: та же зона методик, неразобранные случаи, люди, а не
+ * случаи. Только число — и потому без строки журнала.
+ */
+alertCaseRoutes.get("/count", async (c) => {
+  const scope = await surveyScopeFilter(c.get("user"));
+  const scoped = await db.select({ id: surveys.id }).from(surveys).where(scope);
+  const surveyIds = scoped.map((s) => s.id);
+  let total = 0;
+  if (surveyIds.length) {
+    const [row] = await db
+      .select({ n: sql<number>`count(distinct ${alertCases.userId})::int` })
+      .from(alertCases)
+      .innerJoin(surveys, eq(surveys.id, alertCases.surveyId))
+      .innerJoin(users, eq(users.id, alertCases.userId))
+      .where(and(inArray(alertCases.surveyId, surveyIds), isNull(alertCases.acknowledgedAt)));
+    total = Number(row?.n ?? 0);
+  }
+  const body: AlertCaseCount = { total };
+  return c.json(body);
 });
 
 /** Подразделения, встречающиеся среди случаев — для фильтра */

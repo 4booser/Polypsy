@@ -95,10 +95,12 @@ import type {
   InvitePreview,
   CreateInviteInput,
   Referral,
+  ReferralCount,
   ReferralPage,
   CreateReferralInput,
   CaseSummary,
   VersionDiff,
+  AlertCaseCount,
   AlertCasePage,
   AlertSignalBasis,
   GroupAnalytics,
@@ -107,6 +109,7 @@ import type {
   Page,
   Respondent,
   Worklist,
+  WorklistCount,
   RuleHit,
   DecisionRule,
   RuleAction,
@@ -1162,6 +1165,8 @@ export const api = {
     return request<AlertCasePage>(`/api/alert-cases?${qs}`);
   },
   alertCaseUnits: () => unwrap(request<Items<string>>("/api/alert-cases/units")),
+  /** Очередь случаев числом — для бейджа и значка вкладки: без имён и без строки журнала */
+  alertCaseCount: () => request<AlertCaseCount>("/api/alert-cases/count"),
   /** Основание тревог случая: пункт с отмеченным вариантом либо полоса шкалы */
   alertCaseSignals: (id: string) =>
     unwrap(request<Items<AlertSignalBasis>>(`/api/alert-cases/${id}/signals`)),
@@ -1170,6 +1175,8 @@ export const api = {
   /** Обстановка вокруг протокола: человек, сигналы, попытки, правила — только персоналу */
   responseContext: (id: string) => request<ResponseContext>(`/api/response-context/${id}`),
   worklist: () => request<Worklist>("/api/worklist"),
+  /** Очередь работы числами — для бейджа навигации: без строк и без строки журнала */
+  worklistCount: () => request<WorklistCount>("/api/worklist/count"),
 
   ruleHits: (status: RuleHit["status"] = "suggested") =>
     request<{ items: RuleHit[] }>(`/api/decisions/hits?status=${status}`).then((r) => r.items),
@@ -1341,6 +1348,8 @@ export const api = {
     const tail = qs.toString();
     return request<ReferralPage>(`/api/referrals${tail ? `?${tail}` : ""}`);
   },
+  /** Реестр направлений числами — для бейджа навигации: без людей и без строки журнала */
+  referralCount: () => request<ReferralCount>("/api/referrals/count"),
   createReferral: (input: CreateReferralInput) =>
     request<Referral>("/api/referrals", { method: "POST", body: JSON.stringify(input) }),
   updateReferral: (id: string, status: string, outcomeNote?: string) =>

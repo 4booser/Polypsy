@@ -62,6 +62,30 @@ for (const size of SIZES) {
   });
 }
 
+/*
+ * «Зведення» — тоже (волна 27): его виджет «Поки вас не було» взял ту же
+ * запасную точку отсчёта выражением в теле компонента и спрашивал
+ * /api/missed раз в 70 мс у каждого, кто ни разу не нажал «Прочитано».
+ */
+test("«Зведення» не опрашивает сервер без остановки", async ({ page }) => {
+  await login(page, "psy");
+
+  const counts = new Map<string, number>();
+  page.on("request", (r) => {
+    const url = new URL(r.url());
+    if (!url.pathname.startsWith("/api/")) return;
+    counts.set(url.pathname, (counts.get(url.pathname) ?? 0) + 1);
+  });
+
+  await page.goto("/");
+  await page.getByRole("main").locator("h1").first().waitFor();
+  await page.waitForTimeout(3000);
+
+  const worst = [...counts.entries()].sort((a, b) => b[1] - a[1])[0];
+  expect(worst, "за три секунды не ушло ни одного запроса — тест ничего не проверил").toBeTruthy();
+  expect(worst![1], `чаще всех запрашивался ${worst![0]}`).toBeLessThanOrEqual(5);
+});
+
 test("консоль не опрашивает сервер без остановки", async ({ page }) => {
   /*
    * Панель событий брала запасную точку отсчёта выражением прямо в теле
