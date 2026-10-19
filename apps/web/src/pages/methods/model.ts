@@ -147,12 +147,6 @@ export function nextExpiring<G extends Pick<SurveyGrant, "completed" | "expiresA
   return best;
 }
 
-/** Срок из поля даты (ГГГГ-ММ-ДД) через `days` календарных дней от сегодня */
-export function dueIn(days: number, now: Date = new Date()): string {
-  const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() + days);
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
-
 /* ─────────── каталог: что требует внимания ─────────── */
 
 /** Ключи не сверены: методика считает баллы, а сверки с пособием не было */

@@ -13,7 +13,8 @@ import { Tooltip } from "../../ui/Popover";
 import { Button, ButtonLink, Tag } from "../../ui/primitives";
 import { useUrlState } from "../../ui/urlState";
 import { useResource } from "../../useResource";
-import { AssignDrawer, GroupEditDrawer, useGroupKeys } from "./drawers";
+import { AssignDrawer } from "../../components/AssignDrawer";
+import { GroupEditDrawer, useGroupKeys } from "./drawers";
 import { HeartIcon, Pi } from "./icons";
 import { pluralForm } from "../../ui/plural";
 import {
@@ -433,6 +434,7 @@ export default function PatientGroups() {
         }}
       />
       <AssignDrawer
+        choose="test"
         open={drawer?.kind === "assign"}
         who={assigning ? fill(ut(`pg2.whoGroup.${pluralForm(assigning.memberCount, lang)}`), { name: assigning.title, n: assigning.memberCount }) : ""}
         whoNote={ut("pg2.assignGroupNote")}

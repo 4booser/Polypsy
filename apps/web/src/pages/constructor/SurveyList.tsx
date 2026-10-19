@@ -29,7 +29,7 @@ import { useLang } from "../../lang";
 import { ShellIcon } from "../../shell/icons";
 import { useMedia } from "../../shell/Rail";
 import { ArchiveDialog } from "../methods/ArchiveDialog";
-import { AssignDrawer, type ExistingAssignment } from "../methods/AssignDrawer";
+import { AssignDrawer, type ExistingAssignment } from "../../components/AssignDrawer";
 import { ExportsDrawer } from "../methods/ExportsDrawer";
 import { Mi } from "../methods/icons";
 import { rightsKey } from "../methods/labels";
@@ -1088,6 +1088,7 @@ export function SurveyList() {
       {sideSurvey && sideNames ? (
         <>
           <AssignDrawer
+            choose="recipients"
             key={`assign-${sideSurvey.id}`}
             open={side?.kind === "assign"}
             onClose={() => setSide(null)}

@@ -4,7 +4,6 @@ import { pluralForm } from "../src/ui/plural";
 import {
   attentionOf,
   dayDiff,
-  dueIn,
   fixedIn,
   grantCounts,
   grantState,
@@ -16,6 +15,7 @@ import {
   weekStart,
   weeklyCounts,
 } from "../src/pages/methods/model";
+import { dueIn } from "../src/components/deadline";
 
 /*
  * Чистая часть раздела «Методики» (pages/methods/model.ts): код методики из

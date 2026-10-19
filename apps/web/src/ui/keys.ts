@@ -124,3 +124,15 @@ export function useHotkeys(map: Record<string, (() => void) | undefined>, enable
     return () => document.removeEventListener("keydown", onKey);
   }, [enabled]);
 }
+
+/**
+ * Ctrl/Cmd+Enter в поле формы — то же, что её основная кнопка (ящики
+ * назначения и правки группы). Обычный Enter в многострочном поле — перенос
+ * строки, поэтому сочетание с модификатором.
+ */
+export function submitOnCtrlEnter(e: { key: string; ctrlKey: boolean; metaKey: boolean; preventDefault: () => void }, go: () => void): void {
+  if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+    e.preventDefault();
+    go();
+  }
+}

@@ -14,7 +14,7 @@ import { Button, ButtonLink, ChoiceCard, Tabs, Tag } from "../../ui/primitives";
 import { useResource } from "../../useResource";
 import { testsHref } from "../analytics/tests/model";
 import { ArchiveDialog } from "./ArchiveDialog";
-import { AssignDrawer, type ExistingAssignment } from "./AssignDrawer";
+import { AssignDrawer, type ExistingAssignment } from "../../components/AssignDrawer";
 import { ExportsDrawer } from "./ExportsDrawer";
 import { Mi } from "./icons";
 import { rightsKey } from "./labels";
@@ -256,6 +256,7 @@ export function MethodPage({
     >
       {children}
       <AssignDrawer
+        choose="recipients"
         key={id}
         open={drawer === "assign"}
         onClose={() => setDrawer(null)}

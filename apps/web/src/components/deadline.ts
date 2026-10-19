@@ -23,3 +23,10 @@ export function today(now: number = Date.now()): string {
 export function pastDeadline(value: string, todayKey: string): boolean {
   return value !== "" && value < todayKey;
 }
+
+/** Срок из поля даты (ГГГГ-ММ-ДД) через `days` календарных дней от сегодня — по тем же часам, что today() */
+export function dueIn(days: number, now: Date = new Date()): string {
+  const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() + days);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}

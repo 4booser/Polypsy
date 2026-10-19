@@ -1,21 +1,21 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { t, type PatientGroup, type SurveyListItem } from "@quizzy/shared";
+import { useEffect, useRef, useState } from "react";
+import type { PatientGroup } from "@quizzy/shared";
 import { api, type Patient } from "../../api";
-import { pastDeadline, today } from "../../components/deadline";
 import { useLang } from "../../lang";
 import { Avatar, Drawer, DrawerSection, Loading, useToast } from "../../ui";
 import { cx } from "../../ui/cx";
 import { SearchField } from "../../ui/filters";
 import { Ic } from "../../ui/icons";
-import { useHotkeys } from "../../ui/keys";
-import { Button, Field, Input, Radio, Switch, Tag, Textarea } from "../../ui/primitives";
+import { submitOnCtrlEnter, useHotkeys } from "../../ui/keys";
+import { Button, Field, Input, Switch, Tag, Textarea } from "../../ui/primitives";
 import { useResource } from "../../useResource";
 import { Pi } from "./icons";
-import { fill, surveyCode } from "./model";
+import { fill } from "./model";
 
 /*
- * Ящики раздела «Групи пацієнтів»: правка группы, назначение теста группе
- * (или выбранным людям), добавление людей в группу.
+ * Ящики раздела «Групи пацієнтів»: правка группы и добавление людей в группу.
+ * Назначение теста группе или выбранным людям — общий ящик
+ * (components/AssignDrawer.tsx, choose="test").
  *
  * Действия — в ящике, а не окном и не переходом (KIT.md §2): карточка группы
  * и таблица остаются на месте, Esc закрывает ящик и сохраняет набранное
@@ -31,14 +31,6 @@ import { fill, surveyCode } from "./model";
 /* потолки — из patientGroupInputSchema: длиннее сервер вернёт 400, а не обрежет */
 const TITLE_MAX = 200;
 const DESCRIPTION_MAX = 4000;
-
-/** Сохранение формы: Ctrl/Cmd+Enter в любом поле ящика */
-function submitOnCtrlEnter(e: React.KeyboardEvent, go: () => void) {
-  if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
-    e.preventDefault();
-    go();
-  }
-}
 
 /* ─────────── правка группы ─────────── */
 
@@ -200,186 +192,6 @@ function PreviewTab({ label, count, on }: { label: string; count: number | null;
         </span>
       ) : null}
     </span>
-  );
-}
-
-/* ─────────── назначить тест ─────────── */
-
-/** Быстрые сроки: через неделю, две, месяц — и «без строку» */
-const QUICK_DAYS = [7, 14, 30] as const;
-
-function plusDays(base: string, days: number): string {
-  const [y, m, d] = base.split("-").map(Number);
-  const at = new Date(y!, m! - 1, d! + days);
-  const mm = String(at.getMonth() + 1).padStart(2, "0");
-  const dd = String(at.getDate()).padStart(2, "0");
-  return `${at.getFullYear()}-${mm}-${dd}`;
-}
-
-/**
- * «Призначити тест» — группе целиком или выбранным людям.
- *
- * Ящик не знает, кому назначает: получает `onAssign` и печатает то, что тот
- * вернул. Так один ящик служит и карточке группы (POST …/surveys — сервер
- * разворачивает назначение в поимённые выдачи), и «Добору людей» (выдача
- * каждому выбранному по очереди).
- *
- * Методика выбирается из списка с поиском, а не селектом: у отделения их
- * десятки, и код в начале строки («PHQ-9») ищется глазами быстрее, чем
- * прокручивается выпадающий список. Уже назначенные группе помечены — повтор
- * не запрещён (это новый замер с новым сроком), но о нём надо знать.
- *
- * В списке — только опубликованные и не снятые: черновик назначить нельзя,
- * сервер откажет, и предлагать его значило бы обещать отказ.
- */
-export function AssignDrawer({
-  open,
-  who,
-  whoNote,
-  already,
-  onAssign,
-  onClose,
-  onReturn,
-}: {
-  open: boolean;
-  /** Кому: «Група «Вечірня», 7 учасників» или «Вибрано: 3» */
-  who: string;
-  /** Что получат адресаты — строка над кнопкой */
-  whoNote: string;
-  /** Уже назначенные этим адресатам методики — пометка в списке */
-  already?: ReadonlySet<string>;
-  /** Назначить; возвращает строку итога для сообщения */
-  onAssign: (surveyId: string, expiresAt: string | null) => Promise<string>;
-  onClose: () => void;
-  onReturn: () => void;
-}) {
-  const { ut, lang } = useLang();
-  const toast = useToast();
-  const surveys = useResource(() => api.surveys(), [], { enabled: open });
-  const [q, setQ] = useState("");
-  const [surveyId, setSurveyId] = useState("");
-  const [expires, setExpires] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const usable = useMemo(
-    () =>
-      (surveys.data ?? [])
-        .filter((s: SurveyListItem) => s.status === "published" && !s.archivedAt)
-        .sort((a, b) => t(a.title, lang).localeCompare(t(b.title, lang))),
-    [surveys.data, lang],
-  );
-  const needle = q.trim().toLowerCase();
-  const shown = needle ? usable.filter((s) => t(s.title, lang).toLowerCase().includes(needle)) : usable;
-  const todayKey = today();
-  /* срок в прошлом не отправляется: доступ истёк бы раньше, чем человек о нём узнал (components/deadline.ts) */
-  const expiresInPast = pastDeadline(expires, todayKey);
-  const dirty = surveyId !== "" || expires !== "";
-
-  async function assign() {
-    if (!surveyId || expiresInPast || busy) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const done = await onAssign(surveyId, expires || null);
-      toast(done, "ok");
-      setSurveyId("");
-      setExpires("");
-      setQ("");
-      onClose();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : ut("acc.grantFailed"));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <Drawer
-      open={open}
-      onClose={onClose}
-      onReturn={onReturn}
-      title={ut("pg.assignTest")}
-      sub={who}
-      icon={<Pi.clipboardPlus />}
-      dirty={dirty}
-      draftName={ut("pg2.assignDraft")}
-      note={whoNote}
-      noteIcon={<Pi.usersRound />}
-      footer={
-        <>
-          <Button variant="primary" disabled={!surveyId || busy || expiresInPast} onClick={() => void assign()}>
-            {busy ? ut("co.saving") : ut("acc.grant")}
-          </Button>
-          <Button variant="secondary" onClick={onClose}>
-            {ut("common.cancel")}
-          </Button>
-        </>
-      }
-    >
-      <div onKeyDown={(e) => submitOnCtrlEnter(e, () => void assign())}>
-        <DrawerSection title={ut("pg.test")}>
-          <SearchField value={q} onChange={setQ} placeholder={ut("pg2.testSearch")} width={0} className="w-full" />
-          {surveys.error ? (
-            <Loading error={surveys.error} onRetry={surveys.reload} bare />
-          ) : !surveys.data ? (
-            /* закрытый ящик не размонтируется: скелет — только пока он открыт и список в пути */
-            open ? <Loading rows={3} bare /> : null
-          ) : shown.length === 0 ? (
-            <p className="m-0 mt-3 text-small text-muted">{ut("srch.nothing")}</p>
-          ) : (
-            <div role="radiogroup" aria-label={ut("pg.test")} className="mt-2.5 flex max-h-[min(46vh,420px)] flex-col gap-1 overflow-y-auto">
-              {shown.map((s) => {
-                const title = t(s.title, lang);
-                const code = surveyCode(title);
-                const on = s.id === surveyId;
-                return (
-                  <label
-                    key={s.id}
-                    className={cx(
-                      "m-0 flex cursor-pointer items-center gap-2.5 rounded-[10px] px-3 py-2",
-                      on ? "bg-violet-tint shadow-[inset_0_0_0_1.5px_var(--vring)]" : "hover:bg-sunk",
-                    )}
-                  >
-                    <Radio name="assign-survey" checked={on} onChange={() => setSurveyId(s.id)} />
-                    <span className="min-w-0 flex-1">
-                      <b className={cx("block truncate text-[13px] font-extrabold", on ? "text-violet-ink" : "text-text")}>
-                        {code}
-                      </b>
-                      {code !== title ? <small className="block truncate text-caption text-muted">{title}</small> : null}
-                    </span>
-                    {already?.has(s.id) ? <Tag tone="primary">{ut("pg2.alreadyAssigned")}</Tag> : null}
-                  </label>
-                );
-              })}
-            </div>
-          )}
-        </DrawerSection>
-        <DrawerSection title={ut("pg2.deadline")}>
-          <div className="mb-2.5 flex flex-wrap gap-1.5">
-            {QUICK_DAYS.map((d) => {
-              const v = plusDays(todayKey, d);
-              return (
-                <Button key={d} size="xs" variant={expires === v ? "primary" : "secondary"} onClick={() => setExpires(v)}>
-                  {fill(ut("pg2.inDays"), { n: d })}
-                </Button>
-              );
-            })}
-            <Button size="xs" variant={expires === "" ? "primary" : "secondary"} onClick={() => setExpires("")}>
-              {ut("pg2.noDeadline")}
-            </Button>
-          </div>
-          <Field label={ut("pg2.deadlineDate")} error={expiresInPast ? ut("uit.form.pastDeadline") : undefined}>
-            <Input type="date" value={expires} min={todayKey} onChange={(e) => setExpires(e.target.value)} />
-          </Field>
-          {error ? (
-            <p role="alert" className="m-0 mt-2 text-small font-semibold text-risk-ink">
-              {error}
-            </p>
-          ) : null}
-        </DrawerSection>
-      </div>
-    </Drawer>
   );
 }
 

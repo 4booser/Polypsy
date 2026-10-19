@@ -21,7 +21,7 @@ import { Callout, Empty } from "../ui/states";
 import { useUrlState } from "../ui/urlState";
 import { useResource } from "../useResource";
 import { busyAssignees } from "./batteries/model";
-import { AssignDrawer, type ExistingAssignment } from "./methods/AssignDrawer";
+import { AssignDrawer, type ExistingAssignment } from "../components/AssignDrawer";
 import { useSettledSelection } from "./methods/settle";
 import { Mi } from "./methods/icons";
 import { ListAndRecord, ListColumn, ListEmpty } from "./methods/ListColumn";
@@ -639,6 +639,8 @@ function BatteryRecord({
       </div>
 
       <AssignDrawer
+
+        choose="recipients"
         open={assigning}
         onClose={() => setAssigning(false)}
         onReturn={() => setAssigning(true)}

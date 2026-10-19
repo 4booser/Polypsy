@@ -39,7 +39,7 @@ import {
 } from "./cohorts/model";
 import { Breakdown, Check, FilterSection, FilterTag, Group, MultiPick, Segmented } from "./cohorts/parts";
 import { PickGroupDialog } from "./patientGroups/dialogs";
-import { AssignDrawer } from "./patientGroups/drawers";
+import { AssignDrawer } from "../components/AssignDrawer";
 import { Pi } from "./patientGroups/icons";
 import { pluralForm } from "../ui/plural";
 import { fill, grantEach, newProgress, partialFailure, shortDate } from "./patientGroups/model";
@@ -835,6 +835,8 @@ export default function Cohorts() {
       ) : null}
 
       <AssignDrawer
+
+        choose="test"
         open={assigning}
         who={fill(ut("pg2.whoPicked"), { n: selected.size })}
         whoNote={ut("pg2.assignPickedNote")}
