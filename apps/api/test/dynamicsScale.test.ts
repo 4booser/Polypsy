@@ -50,7 +50,9 @@ async function series(s: MassSurvey, person: Person, values: number[]): Promise<
   }
 }
 
-async function dynamics(person: Person): Promise<{ body: RespondentDynamics; ms: number; sql: number }> {
+async function dynamics(
+  person: Person,
+): Promise<{ body: RespondentDynamics; ms: number; sql: number; slowest: string }> {
   const requestId = crypto.randomUUID();
   const t0 = performance.now();
   const res = await appApi<RespondentDynamics>(`/api/dynamics/respondents/${person.id}`, doctor.token, {
@@ -58,13 +60,21 @@ async function dynamics(person: Person): Promise<{ body: RespondentDynamics; ms:
   });
   const ms = performance.now() - t0;
   expect(res.status).toBe(200);
-  return { body: res.body, ms, sql: requestSql(requestId)?.count ?? 0 };
+  const tally = requestSql(requestId);
+  const slowest = (tally?.top ?? [])
+    .slice(0, 3)
+    .map((q) => `  ${q.totalMs} мс × ${q.calls}: ${q.query.replace(/\s+/g, " ").slice(0, 220)}`)
+    .join("\n");
+  return { body: res.body, ms, sql: tally?.count ?? 0, slowest };
 }
 
-/** Лучшее из трёх — шум машины не должен решать исход */
-async function fastest(person: Person): Promise<number> {
-  let best = Number.POSITIVE_INFINITY;
-  for (let i = 0; i < 3; i++) best = Math.min(best, (await dynamics(person)).ms);
+/** Лучшее из трёх — шум машины не должен решать исход; с ним — самые долгие запросы этого замера */
+async function fastest(person: Person): Promise<{ ms: number; slowest: string }> {
+  let best = { ms: Number.POSITIVE_INFINITY, slowest: "" };
+  for (let i = 0; i < 3; i++) {
+    const run = await dynamics(person);
+    if (run.ms < best.ms) best = { ms: run.ms, slowest: run.slowest };
+  }
   return best;
 }
 
@@ -118,10 +128,20 @@ describe("10 тыс. против 100 тыс. чужих прохождений"
   test("время динамики одного человека не растёт с чужими прохождениями", async () => {
     await series(large, largePatient, [4, 9, 15, 22]);
     await massResponses(large, 1, 10_000, 1_000);
+    /*
+     * Статистика всей базы, а не четырёх залитых таблиц: в бою её держит
+     * autovacuum. В CI под ролью приложения замер на 100 тыс. дважды из
+     * семи прогонов шёл в четыре-пять раз дольше при том же коде (109 →
+     * 570 мс против обычных 120 → 165), то есть планировщик брал другой
+     * план, — а маленькие таблицы зоны (группы, назначения, методики) к
+     * этому моменту могли остаться без статистики вовсе.
+     */
+    await db.execute(sql`analyze`);
     const t10 = await fastest(largePatient);
     const sql10 = (await dynamics(largePatient)).sql;
 
     await massResponses(large, 10_001, 90_000, 1_000);
+    await db.execute(sql`analyze`);
     const t100 = await fastest(largePatient);
     const sql100 = (await dynamics(largePatient)).sql;
 
@@ -133,7 +153,10 @@ describe("10 тыс. против 100 тыс. чужих прохождений"
      */
     expect(Math.abs(sql100 - sql10)).toBeLessThanOrEqual(2);
     // полтора раза — условие задачи; 300 мс — запас на шум, когда весь ответ — десятки миллисекунд
-    expect(t100).toBeLessThan(Math.max(t10 * 1.5, t10 + 300));
+    expect(
+      t100.ms,
+      `самые долгие запросы на 100 тыс.:\n${t100.slowest}\nна 10 тыс.:\n${t10.slowest}`,
+    ).toBeLessThan(Math.max(t10.ms * 1.5, t10.ms + 300));
   }, 240_000);
 });
 
