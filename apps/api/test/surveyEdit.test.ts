@@ -128,6 +128,28 @@ describe("правка опубликованной методики прове�
   });
 });
 
+describe("показ результатов пациенту — правкой конструктора", () => {
+  /*
+   * Переключатель «Показувати пацієнтові його динаміку» (конструктор,
+   * «Налаштування») уходит в том же PATCH, что и содержимое, — с базовой
+   * версией — или один, без содержимого. Мутация: потерять поле в разборе
+   * PATCH — флаг остаётся прежним, проверка падает.
+   */
+  test("с содержимым и базовой версией и без них — сохраняется в обе стороны", async () => {
+    const survey = await newSurvey();
+    expect(survey.showResultsToPatient).toBe(true);
+    const off = await patch(survey.id, { ...content(), showResultsToPatient: false, baseVersionId: survey.versionId });
+    expect(off.status, JSON.stringify(off.body)).toBe(200);
+    expect((await raw(survey.id)).body.showResultsToPatient).toBe(false);
+    const on = await patch(survey.id, { showResultsToPatient: true });
+    expect(on.status, JSON.stringify(on.body)).toBe(200);
+    const after = await raw(survey.id);
+    expect(after.body.showResultsToPatient).toBe(true);
+    // настройка без содержимого версию не создаёт
+    expect(after.body.versionId).toBe(off.body.versionId);
+  });
+});
+
 describe("опубликованной методике нужен хотя бы один пункт (CR-046)", () => {
   /** Методика без шкал и подсчёта: прочим правилам публикации проверять нечего */
   async function plainSurvey(publish: boolean) {
