@@ -64,6 +64,12 @@ function initialGraph() {
     modules.add(file);
     // общий пакет берётся по именам (см. ниже), а не по export * — иначе в граф попал бы весь пакет
     if (file.startsWith(SHARED)) continue;
+    /*
+     * Источник словаря для проверок: в сборке его подменяет плагин
+     * (dictionaryPlugin.ts) куском языка, и его импорты UI и ERRORS в
+     * начальный кусок не попадают.
+     */
+    if (rel(file) === "dictionary/source.ts") continue;
     for (const { spec, names } of staticImports(readFileSync(file, "utf8"))) {
       if (spec.endsWith(".css")) continue;
       if (spec === "@quizzy/shared") {
@@ -104,6 +110,21 @@ describe("начальный кусок консоли", () => {
       "shell/CommandPalette.tsx",
       "ui/virtualRows.tsx",
       "pages/constructor/index.tsx",
+      /*
+       * Точка входа набора и части, которые первому экрану не нужны (волна
+       * 27): оболочка берёт свои части из их модулей напрямую (ui/toast,
+       * ui/states, ui/Drawer, ui/strokeIcons…), иначе `export *` точки
+       * входа тянул в начальный кусок таблицу, фильтры и окна. Части
+       * кабинета пациента и модель записи — тоже: листу падения нужны
+       * только строки-звонки (patient/callRows.tsx), клиенту API — только
+       * имя файла записи (components/recorder/audioFile.ts).
+       */
+      "ui/index.tsx",
+      "ui/DataTable.tsx",
+      "ui/filters.tsx",
+      "ui/records.tsx",
+      "patient/parts.tsx",
+      "components/recorder/model.ts",
     ];
     const inside = [...graph.modules].map(rel).filter((m) => heavy.includes(m));
     expect(inside).toEqual([]);
@@ -127,6 +148,22 @@ describe("начальный кусок консоли", () => {
       .filter(([, m]) => m && /from\s+["']zod["']/.test(readFileSync(m, "utf8")))
       .map(([n, m]) => `${n} ← ${relative(SHARED, m!)}`);
     expect(withZod).toEqual([]);
+  });
+
+  test("из общего пакета — без справочников на трёх языках", () => {
+    /*
+     * Модуль прав держит справочник прав на трёх языках (названия, что
+     * открывает каждое право), а начальному куску из него нужны лишь
+     * ступень роли и пункты рельсы, которые нельзя спрятать: они живут в
+     * ladder.ts и alwaysVisible.ts (волна 27). Словарь интерфейса консоль
+     * берёт у себя (src/dictionary), и из uiStrings.ts в начальном куске —
+     * только выбор языка браузера.
+     */
+    const modules = new Map([...graph.sharedNames].map((n) => [n, sharedModuleOf(n)] as const));
+    const fromPermissions = [...modules].filter(([, m]) => m?.endsWith("/permissions.ts")).map(([n]) => n);
+    expect(fromPermissions).toEqual([]);
+    const fromDictionary = [...modules].filter(([, m]) => m?.endsWith("/uiStrings.ts")).map(([n]) => n);
+    expect(fromDictionary.filter((n) => n !== "detectLang")).toEqual([]);
   });
 
   test("проверка видит то, что проверяет: вход и оболочка в графе есть", () => {

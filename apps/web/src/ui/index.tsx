@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { cx } from "./cx";
+import { backdropPress } from "./backdrop";
 import { isTopLayer, useFocusTrap } from "./focus";
 import { Ic } from "./icons";
 import { IconTile, type PanelTone } from "./layout";
 import { Button, ErrorText, Field, Input } from "./primitives";
 import { Loading } from "./states";
-import { useToast } from "./toast";
 import type { Resource } from "../useResource";
 import { useLang } from "../lang";
 
@@ -31,47 +31,15 @@ export * from "./Popover";
 export * from "./records";
 export * from "./numbers";
 export * from "./filters";
-
-/* ─────────── иконки ─────────── */
-
-const icon = (path: ReactNode) =>
-  function Icon() {
-    return (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
-        {path}
-      </svg>
-    );
-  };
-
-export const IconDashboard = icon(<><rect x="3" y="3" width="7" height="9" rx="1" /><rect x="14" y="3" width="7" height="5" rx="1" /><rect x="14" y="12" width="7" height="9" rx="1" /><rect x="3" y="16" width="7" height="5" rx="1" /></>);
-export const IconSurvey = icon(<><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" /><rect x="9" y="3" width="6" height="4" rx="1" /><path d="M9 12h6M9 16h4" /></>);
-export const IconGroup = icon(<><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" /></>);
-export const IconPatients = icon(<><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M19 8v6M22 11h-6" /></>);
-export const IconAlert = icon(<><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" /><path d="M12 9v4M12 17h.01" /></>);
-export const IconUsers = icon(<><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.87" /></>);
-/* стопка листов: пакет заключений — это подшивка, а не отдельный документ */
-export const IconStack = icon(<><rect x="4" y="3" width="12" height="15" rx="1" /><path d="M8 21h10a2 2 0 0 0 2-2V8" /><path d="M8 8h4M8 12h4" /></>);
-/* Администрирование: человек с шестерёнкой — настройка того, кто что может */
-export const IconUserGear = icon(<><circle cx="9" cy="7" r="4" /><path d="M2 21v-2a4 4 0 0 1 4-4h5" /><circle cx="18" cy="17" r="2.5" /><path d="M18 13v1.2M18 19.8V21M21.5 15l-1 .6M15.5 18.4l-1 .6M21.5 19l-1-.6M15.5 15.6l-1-.6" /></>);
-export const IconBattery = icon(<><rect x="2" y="7" width="16" height="10" rx="2" /><path d="M22 11v2" /><path d="M6 11v2M10 11v2" /></>);
-export const IconClock = icon(<><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>);
-export const IconPulse = icon(<><path d="M2 12h4l2-7 4 14 3-9 2 2h5" /></>);
-export const IconReferral = icon(<><path d="M4 12h11" /><path d="M12 6l6 6-6 6" /><path d="M20 4v16" /></>);
 /*
- * Значки действий и состояний.
- *
- * Заводятся здесь, а не в отдельном наборе и не картинками: обводка у всех
- * одна (24×24, штрих 1.8, скруглённые концы), и покупной растровый набор
- * выбивался бы из строя на первом же экране, где стоит рядом со своими.
- * Заодно значок наследует цвет текста и меняется вместе с темой — картинке
- * пришлось бы держать две версии.
+ * Части, которые нужны и начальному куску (рельса, оболочка, вход), — своими
+ * модулями: оболочка берёт их оттуда напрямую, а не через эту точку входа,
+ * которая потянула бы в начальный кусок таблицу, фильтры и окна (волна 27).
  */
-export const IconSearchGlass = icon(<><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></>);
-export const IconPrint = icon(<><path d="M7 8V3h10v5" /><rect x="4" y="8" width="16" height="8" rx="2" /><path d="M7 14h10v7H7z" /></>);
-export const IconWarn = icon(<><circle cx="12" cy="12" r="9" /><path d="M12 8v5M12 16h.01" /></>);
-export const IconOk = icon(<><circle cx="12" cy="12" r="9" /><path d="m8 12 3 3 5-6" /></>);
-export const IconLock = icon(<><rect x="4" y="10" width="16" height="11" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></>);
-export const IconMessage = icon(<><path d="M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2Z" /></>);
+export * from "./strokeIcons";
+export * from "./backdrop";
+export * from "./loadView";
+export * from "./action";
 
 /* ─────────── люди ─────────── */
 
@@ -170,50 +138,6 @@ export function ConfirmByName({
 }
 
 /* ─────────── окно ─────────── */
-
-/** Где событие нажатия: на самой подложке или внутри окна */
-interface PressEvent {
-  target: unknown;
-  currentTarget: unknown;
-}
-
-/**
- * Нажатие на подложке окна (#179) — закрывает, только если и началось, и
- * кончилось на ней.
- *
- * Подложка закрывала окно по click, не глядя, где началось нажатие. А click
- * приходит общему предку нажатия и отпускания: выделил протяжкой текст в
- * «Причина вимкнення» или «Опис групи», отпустил мышь за краем окна — click
- * на подложке, окно закрыто, набранное потеряно. Обратное тоже: нажал на
- * подложке, отпустил в окне — click опять достаётся подложке.
- *
- * Состояние — на одно окно (Modal держит свой экземпляр), без React:
- * проверяется вызовами (test/modalBackdrop.test.ts).
- */
-export function backdropPress(): {
-  down: (e: PressEvent) => void;
-  up: (e: PressEvent) => void;
-  /** Закрывать ли окно этим click */
-  click: (e: PressEvent) => boolean;
-} {
-  let downOnBackdrop = false;
-  let upOnBackdrop = false;
-  return {
-    down: (e) => {
-      downOnBackdrop = e.target === e.currentTarget;
-      upOnBackdrop = false;
-    },
-    up: (e) => {
-      upOnBackdrop = e.target === e.currentTarget;
-    },
-    click: (e) => {
-      const closes = downOnBackdrop && upOnBackdrop && e.target === e.currentTarget;
-      downOnBackdrop = false;
-      upOnBackdrop = false;
-      return closes;
-    },
-  };
-}
 
 /**
  * Модальное окно (.modal набора) — только когда шаг обязан прервать работу:
@@ -402,37 +326,6 @@ export function Screen<T>({
   );
 }
 
-/**
- * Что стоит на месте данных: четыре состояния, которые нельзя путать.
- *
- *  - wait   — ответа ещё не было: первая загрузка или ждём связи (о связи
- *             говорит строка оболочки, ConnectionLine). Место — скелет.
- *  - failed — сервер отказал, данных нет. Место — отказ с «повторить».
- *  - empty  — сервер ответил, и ответ пуст: пустой список или «ничего»
- *             (null, 204 — например, текст согласия ещё не задан). Только
- *             здесь уместно «нічого немає».
- *  - ready  — данные есть (может быть, устаревающие: обрыв и неудачный
- *             повтор их не стирают).
- *
- * Внешний разбор (w13:uitests): экраны, которые брали `data ?? []`, на
- * отказе и на обрыве говорили «звернень немає», «прийомів немає»,
- * «пропущеного немає» — то есть сообщали о человеке неправду, выглядящую
- * как правда. «Нет данных» — это ответ сервера, а не отсутствие ответа.
- *
- * `updatedAt` отличает «ответ был, и он пуст» от «ответа не было»: у обоих
- * data — null.
- */
-export type LoadView = "wait" | "failed" | "empty" | "ready";
-
-export function loadView<T>(
-  res: Pick<Resource<T>, "data" | "error" | "updatedAt">,
-  isEmpty?: (data: T) => boolean,
-): LoadView {
-  if (res.data !== null) return isEmpty?.(res.data) ? "empty" : "ready";
-  if (res.error) return "failed";
-  return res.updatedAt !== null ? "empty" : "wait";
-}
-
 /** Место данных, пока их нет: скелет или отказ с «повторить» — но никогда не «пусто» */
 export function NotLoaded({
   res,
@@ -442,56 +335,4 @@ export function NotLoaded({
   rows?: number;
 }) {
   return <Loading rows={rows} error={res.error} onRetry={res.reload} busy={res.loading} />;
-}
-
-/** Оборачивает действие: показывает результат и не даёт ошибке уйти в пустоту */
-export function useAction() {
-  const toast = useToast();
-  const { ut } = useLang();
-  const [busy, setBusy] = useState(false);
-  /*
-   * Пока действие в полёте, второе не начинается.
-   *
-   * Иначе «Сохранить черновиком» и сразу «Подписать» уходили на сервер
-   * одновременно с одной и той же базовой версией: второй запрос падал на
-   * проверке параллельных правок, и подпись молча не ставилась. Флаг живёт
-   * в ref, а не только в состоянии, потому что решение принимается в момент
-   * клика, до перерисовки.
-   */
-  const inFlight = useRef(false);
-
-  /*
-   * Действие, вернувшее ложь, считается несделанным.
-   *
-   * Раньше любой штатный возврат означал успех — и подтверждение
-   * показывалось даже тогда, когда действие не состоялось. Так и выходило:
-   * человек нажимал «удалить», отказывался в системном окне, и ему
-   * сообщали «группа удалена». Группа при этом оставалась на месте.
-   *
-   * Вопрос лучше задавать ДО run — тогда обманывать нечему. Но там, где он
-   * должен быть внутри, у действия теперь есть способ сказать «я ничего не
-   * сделал»: вернуть false.
-   */
-  const run = useCallback(
-    async (fn: () => Promise<unknown>, okText?: string) => {
-      if (inFlight.current) return false;
-      inFlight.current = true;
-      setBusy(true);
-      try {
-        const outcome = await fn();
-        if (outcome === false) return false;
-        if (okText) toast(okText, "ok");
-        return true;
-      } catch (e) {
-        toast(e instanceof Error ? e.message : ut("ui.actionFailed"), "err");
-        return false;
-      } finally {
-        inFlight.current = false;
-        setBusy(false);
-      }
-    },
-    [toast, ut],
-  );
-
-  return { run, busy };
 }

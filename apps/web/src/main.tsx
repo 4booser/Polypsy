@@ -6,7 +6,7 @@ import App from "./App";
 import { AuthProvider } from "./auth";
 import { LangProvider, currentLang } from "./lang";
 import { loadLanguage } from "./dictionary";
-import { ToastProvider } from "./ui";
+import { ToastProvider } from "./ui/toast";
 import { installTelemetry } from "./telemetry/client";
 import { ErrorBoundary } from "./telemetry/ErrorBoundary";
 import { queryClient, wireConnection } from "./query";

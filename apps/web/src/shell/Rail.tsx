@@ -17,7 +17,7 @@ import {
   IconSurvey,
   IconUserGear,
   IconUsers,
-} from "../ui";
+} from "../ui/strokeIcons";
 import { ShellIcon } from "./icons";
 import { railKeyOf, type RailEntry } from "./nav";
 import { Tooltip } from "../ui/Popover";

@@ -166,7 +166,7 @@ import { currentLang } from "./lang";
 import { renderError, uiText } from "./dictionary";
 import { noteNetworkFailure } from "./telemetry/bus";
 import { connection, serverAnswered } from "./connection";
-import { audioFileName } from "./components/recorder/model";
+import { audioFileName } from "./components/recorder/audioFile";
 
 /*
  * Текст сетевого отказа.

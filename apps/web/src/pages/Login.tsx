@@ -9,7 +9,7 @@ import { bannerFor, sameLocalDay } from "../service/model";
 import { useServiceStatus } from "../service/status";
 import { ShellIcon } from "../shell/icons";
 import { Logo } from "../shell/Logo";
-import { Callout } from "../ui";
+import { Callout } from "../ui/states";
 import { cx } from "../ui/cx";
 import { IconTile } from "../ui/layout";
 import { Button, ErrorText, Field, Input, Tag, buttonClass } from "../ui/primitives";
