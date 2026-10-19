@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { expect, test } from "@playwright/test";
-import { goCaseCard, login, patientLinks, visibleSkeletons } from "./helpers";
+import { expect, test, type Page } from "@playwright/test";
+import { apiToken, auth, goCaseCard, login, patientLinks, visibleSkeletons } from "./helpers";
 
 /**
  * Скриншотные эталоны витрины.
@@ -54,11 +54,29 @@ const TOKENS = [
   "--focus",
 ];
 
+/**
+ * Тема — и в браузере, и в профиле psy на сервере.
+ *
+ * Вошедшему консоль ставит тему из профиля (настройки рабочего места) поверх
+ * браузерной: сотрудник садится за разные машины. Профиль переживает
+ * сценарии — shell.e2e.ts переключает psy тёмную, — и одной записи в
+ * localStorage хватало, только пока этот файл шёл отдельно: в общем прогоне
+ * CI витрина «светлой» темы снималась тёмной.
+ */
+async function pinTheme(page: Page, theme: "dark" | "light") {
+  await page.addInitScript((value) => {
+    localStorage.setItem("quizzy.theme.v2", value);
+  }, theme);
+  const res = await page.request.put("/api/auth/me/workspace", {
+    headers: auth(await apiToken(page, "psy")),
+    data: { theme },
+  });
+  expect(res.ok(), `тема psy в профиле не встала: ${res.status()}`).toBe(true);
+}
+
 for (const theme of ["dark", "light"] as const) {
   test(`витрина не разъехалась: тема ${theme}`, async ({ page }) => {
-    await page.addInitScript((value) => {
-      localStorage.setItem("quizzy.theme.v2", value);
-    }, theme);
+    await pinTheme(page, theme);
 
     await login(page, "psy");
     await page.goto("/ui");
@@ -75,9 +93,7 @@ for (const theme of ["dark", "light"] as const) {
 
 for (const theme of ["dark", "light"] as const) {
   test(`токены темы не менялись незаметно: ${theme}`, async ({ page }) => {
-    await page.addInitScript((value) => {
-      localStorage.setItem("quizzy.theme.v2", value);
-    }, theme);
+    await pinTheme(page, theme);
 
     await login(page, "psy");
     await page.goto("/ui");
@@ -103,9 +119,7 @@ for (const theme of ["dark", "light"] as const) {
      * Проверяется не картинка, а сами токены: пустой лист на снимке от
      * правильно белого листа не отличить.
      */
-    await page.addInitScript((value) => {
-      localStorage.setItem("quizzy.theme.v2", value);
-    }, theme);
+    await pinTheme(page, theme);
 
     await login(page, "psy");
     await page.emulateMedia({ media: "print" });
