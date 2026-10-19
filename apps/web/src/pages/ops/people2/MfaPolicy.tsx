@@ -434,13 +434,17 @@ function CoverageTable({
       required: true,
       width: 260,
       sort: (r) => r.fullName || r.email,
+      /*
+        Имя переносится, а не обрезается: обрезка держит колонку по всей длине
+        имени, и на 1280 таблица выходила за панель вместе с «Скинути».
+      */
       render: (r) => (
         <span className="flex min-w-0 items-center gap-2.5">
           <Avatar name={r.fullName || r.email} size={28} tone={r.disabled ? "neutral" : "soft"} />
           <span className="flex min-w-0 flex-col">
             <Link
               to={personHref(r)}
-              className="truncate font-bold leading-[18px] text-text no-underline hover:underline hover:decoration-violet-line hover:decoration-2 hover:underline-offset-[3px]"
+              className="font-bold leading-[18px] text-text no-underline [overflow-wrap:anywhere] hover:underline hover:decoration-violet-line hover:decoration-2 hover:underline-offset-[3px]"
             >
               {r.fullName || r.email}
             </Link>
