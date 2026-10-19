@@ -32,9 +32,10 @@ export function useStaffBadges(enabled: boolean): { alerts: number; inbox: numbe
         .alertCases({ limit: "1" })
         .then((p) => live && setAlerts(p.total ?? p.items.length))
         .catch(() => {});
+      // одно число по тем же разговорам, что в «Листуванні», — без списка, текста и имён (волна 27)
       api
-        .threads()
-        .then((t) => live && setInbox(t.items.reduce((s, x) => s + (x.unread ?? 0), 0)))
+        .unreadCount()
+        .then((r) => live && setInbox(r.unread))
         .catch(() => {});
     };
     load();

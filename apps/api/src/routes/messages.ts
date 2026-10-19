@@ -64,6 +64,12 @@ async function threadForPatient(patientId: string, specialistId: string) {
   return raced!;
 }
 
+/** Сколько разговоров в списке сотрудника — и в его счётчике непрочитанного */
+const STAFF_THREADS = 200;
+
+/** Разговоры сотрудника, которые он ведёт: свои и не закрытые */
+const ownOpenThreads = (meId: string) => and(eq(threads.specialistId, meId), isNull(threads.closedAt));
+
 /** Свой разговор: у пациента один, у специалиста — список */
 messageRoutes.get("/", async (c) => {
   const me = c.get("user");
@@ -102,32 +108,74 @@ messageRoutes.get("/", async (c) => {
     .select({ thread: threads, patient: users })
     .from(threads)
     .innerJoin(users, eq(users.id, threads.patientId))
-    .where(and(eq(threads.specialistId, me.id), isNull(threads.closedAt)))
+    .where(ownOpenThreads(me.id))
     .orderBy(desc(threads.lastMessageAt))
-    .limit(200);
+    .limit(STAFF_THREADS);
 
-  const lastOf = await lastMessages(rows.map((r) => r.thread.id));
+  const ids = rows.map((r) => r.thread.id);
+  const lastOf = await lastMessages(ids);
+  const unreadOf = await unreadCounts(ids, me.id);
   const nextOf = await nextVisits(
     me.id,
     rows.map((r) => r.thread.patientId),
   );
 
-  const items = [];
-  for (const r of rows) {
+  const items = rows.map((r) => {
     const last = lastOf.get(r.thread.id) ?? null;
-    items.push({
+    return {
       id: r.thread.id,
       withName: fullNameOf(r.patient),
       patientId: r.thread.patientId,
       lastMessageAt: r.thread.lastMessageAt,
-      unread: await unreadCount(r.thread.id, me.id),
+      unread: unreadOf.get(r.thread.id) ?? 0,
       preview: last ? previewOf(decryptField(last.textEnc) ?? "") : null,
       lastMine: last ? last.authorId === me.id : null,
       lastReadAt: last ? last.readAt : null,
       next: nextOf.get(r.thread.patientId) ?? null,
-    });
-  }
+    };
+  });
   return c.json({ items, lead: null });
+});
+
+/**
+ * Сколько непрочитанного — одно число для счётчиков (волна 27).
+ *
+ * Счётчик «Листування» на рельсе консоли и вкладка мобилки сотрудника
+ * опрашивали раз в минуту весь список разговоров: двести строк, у каждой
+ * своё начало последнего письма (двести расшифровок) и свой запрос счёта —
+ * ради одного числа на значке. Здесь — только число, одним запросом: ни
+ * текста, ни имён, ни расшифровки.
+ *
+ * Круг тот же, что у списка (GET /): у сотрудника — его открытые разговоры,
+ * те же двести самых свежих с той же видимостью человека, у пациента — его
+ * разговор с ведущим. Число на значке обязано совпадать с суммой по строкам
+ * списка, который человек откроет по нажатию. Разговор пациента здесь не
+ * заводится: нет разговора — нет и писем.
+ *
+ * В журнал не пишется, как не писался и список, ради которого его звали.
+ * Объявлен раньше «/:id»: иначе «unread-count» ушёл бы туда номером разговора.
+ */
+messageRoutes.get("/unread-count", async (c) => {
+  const me = c.get("user");
+
+  if (!isStaff(me)) {
+    if (!me.leadSpecialistId) return c.json({ unread: 0 });
+    const thread = await existingThread(me.id, me.leadSpecialistId);
+    return c.json({ unread: thread ? await unreadCount(thread.id, me.id) : 0 });
+  }
+
+  const listed = db
+    .select({ id: threads.id })
+    .from(threads)
+    .innerJoin(users, eq(users.id, threads.patientId))
+    .where(ownOpenThreads(me.id))
+    .orderBy(desc(threads.lastMessageAt))
+    .limit(STAFF_THREADS);
+  const [row] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(messages)
+    .where(and(inArray(messages.threadId, listed), ne(messages.authorId, me.id), isNull(messages.readAt)));
+  return c.json({ unread: Number(row?.n ?? 0) });
 });
 
 /**
@@ -227,6 +275,23 @@ async function unreadCount(threadId: string, meId: string): Promise<number> {
     .from(messages)
     .where(and(eq(messages.threadId, threadId), ne(messages.authorId, meId), isNull(messages.readAt)));
   return Number(row?.n ?? 0);
+}
+
+/**
+ * Непрочитанное по каждому разговору списка — одним запросом (волна 27).
+ *
+ * То же правило, что unreadCount, сгруппированное по разговору: список
+ * специалиста считал его отдельным запросом на каждую из двухсот строк.
+ * Разговора без непрочитанного в ответе нет — у строки ноль.
+ */
+async function unreadCounts(threadIds: string[], meId: string): Promise<Map<string, number>> {
+  if (!threadIds.length) return new Map();
+  const rows = await db
+    .select({ threadId: messages.threadId, n: sql<number>`count(*)::int` })
+    .from(messages)
+    .where(and(inArray(messages.threadId, threadIds), ne(messages.authorId, meId), isNull(messages.readAt)))
+    .groupBy(messages.threadId);
+  return new Map(rows.map((r) => [r.threadId, Number(r.n)]));
 }
 
 /**

@@ -2041,6 +2041,8 @@ export const api = {
       }[];
       lead: string | null;
     }>("/api/messages"),
+  /* число непрочитанного по тем же разговорам, что в списке: для счётчика рельсы, без текста и имён */
+  unreadCount: () => request<{ unread: number }>("/api/messages/unread-count"),
   /*
    * Последние письма разговора; before — курсор к более ранним (nextBefore).
    * Чтение ничего не помечает: «прочитано» — markRead по показанным.
