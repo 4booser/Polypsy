@@ -1383,12 +1383,21 @@ export const cursorPageQuery = (defaultLimit: number, maxLimit: number) =>
     cursor: z.string().max(400).optional(),
   });
 
-/** Реестр направлений: ?all=1 — вместе с завершёнными; страница по 100, не больше 200 */
+/**
+ * Реестр направлений: ?all=1 — вместе с завершёнными; страница по 100, не
+ * больше 200.
+ *
+ * ?closedSince= — только закрытые (завершены или отклонены) с этого момента,
+ * по времени последнего перехода: группа «Закриті за 30 днів». Давнее
+ * направление, закрытое на днях, лежит в реестре по дате выписки далеко за
+ * загруженными страницами, и по ним одним группа его теряла (волна 27).
+ */
 export const referralListQuery = cursorPageQuery(100, 200).extend({
   all: z
     .string()
     .optional()
     .transform((v) => v === "1"),
+  closedSince: z.preprocess((v) => (v === "" ? undefined : v), queryDate.optional()),
 });
 
 /**

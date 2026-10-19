@@ -1329,10 +1329,12 @@ export const api = {
    * Реестр направлений — страницей по сотне. `total` приходит на первой
    * странице: по нему стоит счётчик в навигации. Адрес первой страницы —
    * прежний (`/api/referrals`, `?all=1`): его же спрашивает счётчик.
+   * `closedSince` — только закрытые с этого момента («Закриті за 30 днів»).
    */
-  referrals: (all = false, cursor?: string | null) => {
+  referrals: (all = false, cursor?: string | null, opts: { closedSince?: string } = {}) => {
     const qs = new URLSearchParams();
     if (all) qs.set("all", "1");
+    if (opts.closedSince) qs.set("closedSince", opts.closedSince);
     if (cursor) qs.set("cursor", cursor);
     const tail = qs.toString();
     return request<ReferralPage>(`/api/referrals${tail ? `?${tail}` : ""}`);
