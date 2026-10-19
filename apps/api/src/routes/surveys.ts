@@ -384,20 +384,32 @@ async function catalogNumbers(
     with page as materialized (
       select p.id, p.version_id from unnest(${ids}::text[], ${versions}::text[]) as p(id, version_id)
     ),
+    /*
+     * Числа редакции считаются по редакции, а не по строке страницы: две
+     * методики могут смотреть в одну редакцию (порча, которую ищет проверка
+     * целостности техпанели), и соединение со страницей удвоило бы смуги.
+     * Пункты — через методику-хозяйку редакции: индекс у пунктов по методике,
+     * а прежний подзапрос считал пункты редакции, чья бы она ни была.
+     */
+    page_versions as materialized (
+      select v.id as version_id, v.survey_id
+      from (select distinct p.version_id from page p) p
+      join survey_versions v on v.id = p.version_id
+    ),
     qs as materialized (
       select q.version_id,
              count(*) filter (where q.type <> 'info')::int as question_count,
              ${staff ? sql`bool_or(exists (select 1 from options o where o.question_id = q.id and o.risk_flag))` : sql`null::boolean`} as critical
-      from page p
-      join questions q on q.survey_id = p.id and q.version_id = p.version_id
+      from page_versions v
+      join questions q on q.survey_id = v.survey_id and q.version_id = v.version_id
       group by q.version_id
     )${
       staff
         ? sql`,
     sb as materialized (
       select sc.version_id, count(distinct sc.id)::int as scale_count, count(b.id)::int as band_count
-      from page p
-      join scales sc on sc.version_id = p.version_id
+      from page_versions v
+      join scales sc on sc.version_id = v.version_id
       left join scale_bands b on b.scale_id = sc.id
       group by sc.version_id
     )`

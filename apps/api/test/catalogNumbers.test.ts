@@ -236,10 +236,20 @@ describe("числа строк каталога — те же, что счит�
     }
   });
 
-  /* порядок величин: числа — одним запросом на страницу, сколько бы строк в ней ни было */
+  /*
+   * Порядок величин: числа — одним запросом на страницу, сколько бы строк в
+   * ней ни было. Каждый замер — меньший из двух подряд: сторож запроса
+   * перечитывает политику второго фактора, когда истёк её кэш
+   * (lib/secondFactor.ts), и в полном прогоне это выпадало на первый замер.
+   */
   test("счёт SQL от числа строк не зависит", async () => {
-    const one = await listed("/api/surveys?limit=1", root);
-    const many = await listed("/api/surveys?limit=200", root);
+    const sqlOf = async (path: string) => {
+      const first = await listed(path, root);
+      const again = await listed(path, root);
+      return { items: again.items, sql: Math.min(first.sql, again.sql) };
+    };
+    const one = await sqlOf("/api/surveys?limit=1");
+    const many = await sqlOf("/api/surveys?limit=200");
     expect(many.items.length).toBeGreaterThan(1);
     expect(many.sql).toBe(one.sql);
   });
