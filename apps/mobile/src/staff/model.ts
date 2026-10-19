@@ -45,9 +45,15 @@ export function hm(iso: string | Date): string {
   return `${two(d.getHours())}:${two(d.getMinutes())}`;
 }
 
-/** Минуты часами: 168 → «2:48» */
-export function clock(minutes: number): string {
+/**
+ * Минуты часами: 168 → «2:48». От суток — днями, как в консоли
+ * (pages/alerts/model.ts, clockText): `days` — шаблон «{n} дн.». Случай,
+ * открытый девять дней назад, читался «216:05» — как «два шестнадцать»,
+ * а консоль про тот же случай писала «9 дн.».
+ */
+export function clock(minutes: number, days?: string): string {
   const m = Math.max(0, Math.round(minutes));
+  if (days && m >= 24 * 60) return days.replace("{n}", String(Math.floor(m / (24 * 60))));
   return `${Math.floor(m / 60)}:${two(m % 60)}`;
 }
 

@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from "react";
 import { RefreshControl, ScrollView, View } from "react-native";
-import { useFocusEffect, useRouter } from "expo-router";
+import { Redirect, useFocusEffect, useRouter } from "expo-router";
 import { recordingRevocable, type AppointmentView, type BatteryAssignment, type SafetyPlan, type SurveyListItem } from "@quizzy/shared";
 import { api } from "@/api/client";
 import { codeOf } from "@/catalog/surveysTab";
@@ -35,7 +35,22 @@ type Recording = Awaited<ReturnType<typeof api.recording>>;
  * человек смотрит в спокойную минуту, и живёт она на «Здоровье»; каждый день
  * видеть её на первом экране — это само по себе вмешательство.
  */
-export default function HomeScreen() {
+export default function HomeTab() {
+  /*
+   * У сотрудника первая вкладка — обход: «Головна» пациента ему не
+   * рисуется, и её запросы (приёмы, наборы, свой план) не уходят.
+   *
+   * Переадресация — здесь, на экране, а не в раскладке вкладок: там она
+   * снимала навигатор вкладок целиком, и открытый напрямую /home (ссылка,
+   * перезагрузка веб-сборки) возвращал вкладки с тем же /home внутри —
+   * переадресация по кругу, «Maximum update depth exceeded» и белый экран.
+   */
+  const { isAdmin } = useAuth();
+  if (isAdmin) return <Redirect href="/(app)/rounds" />;
+  return <HomeScreen />;
+}
+
+function HomeScreen() {
   const c = useColors();
   const { ut, locale } = useLang();
   const router = useRouter();

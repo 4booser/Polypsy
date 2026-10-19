@@ -40,6 +40,16 @@ export function routeAfterSignIn(user: { mustChangePassword?: boolean } | null):
   return user.mustChangePassword ? "/password" : "/consent";
 }
 
+/**
+ * Первая вкладка после согласия: у пациента — «Головна», у сотрудника
+ * (админ группы и суперадмин) — обход. Сотрудник не проходит через
+ * «Головну» пациента: её экран увёл бы его дальше сам, но запись в истории
+ * вкладок осталась бы, и «назад» возвращал бы на переадресацию.
+ */
+export function homeOf(user: { role?: string } | null): "/(app)/rounds" | "/(app)/home" {
+  return user?.role === "admin" || user?.role === "superadmin" ? "/(app)/rounds" : "/(app)/home";
+}
+
 /** Граница changePasswordSchema: короче сервер отвергнет уже после нажатия */
 export const MIN_PASSWORD = 10;
 

@@ -14,7 +14,7 @@ import { Icon, type IconName } from "../ui/Icon";
 import { NavBar } from "../ui/NavBar";
 import { Count, FilterChip, SevPill } from "../ui/Pill";
 import { T } from "../ui/Text";
-import { caseClock, clock, durationParts, hm, hours, initials, num, type InstrumentRow } from "./model";
+import { caseClock, clock, dm, durationParts, hm, hours, initials, num, type InstrumentRow } from "./model";
 
 /*
  * Детали экранов сотрудника, общие для нескольких экранов: шапки на полосе,
@@ -322,6 +322,12 @@ export function TimerBar({ pct, width }: { pct: number; width?: number }) {
   );
 }
 
+/** Часы разбора числом: «2:48», от суток — «9 дн.», как в консоли (model.ts, clock) */
+export function useClock() {
+  const { ut } = useLang();
+  return (minutes: number) => clock(minutes, ut("rr.days"));
+}
+
 /** «2:48 з 4 год» — часы разбора словами */
 export function useClockText() {
   const { ut } = useLang();
@@ -352,6 +358,7 @@ export function RiskNow({
   const { ut } = useLang();
   const k = caseClock(item.openedAt, norm, now);
   const of = useClockText();
+  const clockOf = useClock();
   const first = item.signals[0];
   const title = k.due
     ? (k.over ? ut("mst.riskOverdue") : ut("mst.riskDue")).replace("{t}", hm(k.due))
@@ -369,13 +376,14 @@ export function RiskNow({
       </View>
       <T v="note" style={{ marginTop: 4 }}>
         {text ??
-          [item.userName, `${item.surveyTitle}, ${hm(item.lastAlertAt)}`, first ? first.label : null].filter(Boolean).join(": ")}
+          // с датой: сигнал девятидневной давности с одним «01:25» читался как сегодняшний
+          [item.userName, `${item.surveyTitle}, ${dm(item.lastAlertAt)}, ${hm(item.lastAlertAt)}`, first ? first.label : null].filter(Boolean).join(": ")}
       </T>
       <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginTop: 12 }}>
         <View style={{ flex: 1, minWidth: 0, gap: 6 }}>
           <View style={{ flexDirection: "row", alignItems: "baseline", gap: 6 }}>
             <T v="number" size={26} color={c.riskink} num scale={false}>
-              {clock(k.elapsed)}
+              {clockOf(k.elapsed)}
             </T>
             <T v="sub" weight={700} tone="text2" numberOfLines={1}>
               {of(k)}
@@ -385,7 +393,7 @@ export function RiskNow({
         </View>
         {k.left !== null ? (
           <T v="sub" size={13} tone="text2" num>
-            {(k.over ? ut("mst.overBy") : ut("mst.leftFor")).replace("{t}", clock(Math.abs(k.left)))}
+            {(k.over ? ut("mst.overBy") : ut("mst.leftFor")).replace("{t}", clockOf(Math.abs(k.left)))}
           </T>
         ) : null}
         <Btn title={ut("mst.review")} kind="risk" onPress={onReview} accessibilityHint={ut("mst.reviewHint")} />

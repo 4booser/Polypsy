@@ -50,6 +50,15 @@ describe("часы разбора сигнала", () => {
     expect(k.over).toBe(false);
   });
 
+  test("от суток — днями, как в консоли: «9 дн.», а не «216:05»", () => {
+    const days = "{n} дн.";
+    expect(clock(9 * 24 * 60 + 5, days)).toBe("9 дн.");
+    expect(clock(24 * 60, days)).toBe("1 дн.");
+    expect(clock(24 * 60 - 1, days)).toBe("23:59");
+    // без шаблона дней — часами, как было
+    expect(clock(9 * 24 * 60 + 5)).toBe("216:05");
+  });
+
   test("норма вышла — просрочено на столько, полоска не больше полной", () => {
     const k = caseClock(opened, 240, at(260));
     expect(k.over).toBe(true);

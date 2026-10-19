@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { boxStatsOf, dailyBuckets, formatShort, heatStep, lineRuns, niceTicks, xFractions } from "../src/components/viz/math";
-import { bandOf, courseLayout } from "../src/components/viz/course";
+import { boxStatsOf, formatShort, heatStep, localDecimal, niceTicks } from "../src/components/viz/math";
+import { bandOf, courseLayout, labelWidth } from "../src/components/viz/course";
 
 describe("деления оси", () => {
   test("круглые значения вместо дробных", () => {
@@ -35,14 +35,22 @@ describe("деления оси", () => {
 
 describe("короткое число", () => {
   test("тысячи сокращаются", () => {
-    expect(formatShort(1240)).toBe("1.2k");
-    expect(formatShort(9034)).toBe("9k");
+    expect(formatShort(1240, "en")).toBe("1.2k");
+    expect(formatShort(9034, "en")).toBe("9k");
   });
 
   test("малые числа остаются точными", () => {
-    expect(formatShort(0)).toBe("0");
-    expect(formatShort(7.25)).toBe("7.25");
-    expect(formatShort(0.333)).toBe("0.33");
+    expect(formatShort(0, "en")).toBe("0");
+    expect(formatShort(7.25, "en")).toBe("7.25");
+    expect(formatShort(0.333, "en")).toBe("0.33");
+  });
+
+  test("дробная часть — запятой по-украински и по-русски", () => {
+    expect(formatShort(7.25, "uk")).toBe("7,25");
+    expect(formatShort(1240, "ru")).toBe("1,2k");
+    expect(formatShort(12, "uk")).toBe("12");
+    expect(localDecimal("11.3%", "uk")).toBe("11,3%");
+    expect(localDecimal("11.3%", "en")).toBe("11.3%");
   });
 
   test("не-число не попадает на ось как NaN", () => {
@@ -87,80 +95,6 @@ describe("квартили", () => {
   test("пустая выборка — null, а не нули", () => {
     // нулевой ящик нарисовался бы как настоящий результат «все по нулям»
     expect(boxStatsOf("x", [])).toBeNull();
-  });
-});
-
-/*
- * Линия во времени: дни без замеров — разрыв, а не соседние точки.
- *
- * Дефект: сервер отдаёт счёт только за дни, когда что-то было, и график
- * ставил их подряд — три недели тишины выглядели как соседние сутки, а линия
- * шла через пустоту. В веб-наборе (TimeLines) у пустой корзины null и линия
- * рвётся; теперь так же.
- */
-describe("счёт по дням", () => {
-  test("у каждого дня своё место; день без замера — null", () => {
-    expect(
-      dailyBuckets([
-        { date: "2026-03-01", count: 4 },
-        { date: "2026-03-04", count: 2 },
-      ]),
-    ).toEqual([
-      { x: "03-01", y: 4 },
-      { x: "03-02", y: null },
-      { x: "03-03", y: null },
-      { x: "03-04", y: 2 },
-    ]);
-  });
-
-  test("порядок и повторы дня не важны; переход месяца считается честно", () => {
-    expect(
-      dailyBuckets([
-        { date: "2026-03-01", count: 1 },
-        { date: "2026-02-28", count: 2 },
-        { date: "2026-03-01", count: 3 },
-      ]),
-    ).toEqual([
-      { x: "02-28", y: 2 },
-      { x: "03-01", y: 4 },
-    ]);
-  });
-
-  test("пусто — пусто", () => {
-    expect(dailyBuckets([])).toEqual([]);
-  });
-});
-
-describe("отрезки линии", () => {
-  test("null рвёт линию; одиночный замер — свой отрезок из одной точки", () => {
-    expect(lineRuns([1, 2, null, null, 5, null, 7, 8])).toEqual([[0, 1], [4], [6, 7]]);
-  });
-
-  test("без пропусков — одна линия, как было", () => {
-    expect(lineRuns([3, 1, 4])).toEqual([[0, 1, 2]]);
-    expect(lineRuns([null, null])).toEqual([]);
-  });
-});
-
-describe("ось X", () => {
-  test("у всех точек есть момент — ось по времени: месяц между замерами — месяц на графике", () => {
-    const day = 86_400_000;
-    const [xs] = xFractions([{ points: [{ t: 0 }, { t: day }, { t: 31 * day }] }]);
-    expect(xs![0]).toBe(0);
-    expect(xs![1]).toBeCloseTo(1 / 31);
-    expect(xs![2]).toBe(1);
-  });
-
-  test("моментов нет — равные шаги по номеру, общие для рядов", () => {
-    expect(xFractions([{ points: [{}, {}, {}] }, { points: [{}, {}] }])).toEqual([
-      [0, 0.5, 1],
-      [0, 0.5],
-    ]);
-  });
-
-  test("одна точка — посередине", () => {
-    expect(xFractions([{ points: [{ t: 5 }] }])).toEqual([[0.5]]);
-    expect(xFractions([{ points: [{}] }])).toEqual([[0.5]]);
   });
 });
 
@@ -232,6 +166,104 @@ describe("график курса", () => {
     expect(lay({ today: t0 + 45 * day + 3_600_000 }).pts[2]!.isToday).toBe(true);
   });
 
+  test("сегодняшний последний замер — без черты «сьогодні» поверх его точки; «сегодня» говорит жирная дата", () => {
+    const L = lay({ today: t0 + 45 * day + 3_600_000 });
+    expect(L.todayX).toBeNull();
+    expect(L.futureX).toBeNull();
+    expect(L.pts[2]!.isToday).toBe(true);
+    // поле кончается на последнем замере, а не на пустом «будущем»
+    expect(lay({ today: t0 + 45 * day + 3_600_000 }).pts[2]!.x).toBeCloseTo(lay().pts[2]!.x);
+  });
+
+  test("черта «сьогодні» не ложится на точку и тогда, когда до неё сутки на долгом курсе", () => {
+    const long = [
+      { t: t0, label: "24.08", value: 19 },
+      { t: t0 + 150 * day, label: "21.01", value: 16 },
+      { t: t0 + 300 * day, label: "20.06", value: 14 },
+    ];
+    const L = courseLayout({ points: long, max: 27, bands: PHQ_BANDS, width: 326, today: t0 + 301 * day });
+    expect(L.todayX).toBeNull();
+    // а месяц на том же курсе — уже видна, правее точки
+    const month = courseLayout({ points: long, max: 27, bands: PHQ_BANDS, width: 326, today: t0 + 330 * day });
+    expect(month.todayX).not.toBeNull();
+    expect(month.todayX! - month.pts[2]!.x).toBeGreaterThanOrEqual(10);
+  });
+
+  /*
+   * Слово нижней полосы стоит у правого края, на оси — там же, где метка
+   * свежего сигнала. Было: подпись «сигнал» у правого края уходила влево от
+   * метки прямо на слово («Дуже низьке благополуччя» у WHO-5), а сама метка
+   * садилась под его буквы.
+   */
+  describe("сигнал на оси и слово полосы", () => {
+    const PHQ_WORDS = [
+      { from: 0, to: 5, label: "мінімальна" },
+      { from: 5, to: 10, label: "легка" },
+      { from: 10, to: 15, label: "помірна" },
+      { from: 15, to: 20, label: "помірно тяжка" },
+      { from: 20, to: 27, label: "тяжка" },
+    ];
+    const WHO = [
+      { from: 0, to: 8, label: "Дуже низьке благополуччя" },
+      { from: 8, to: 13, label: "Знижене благополуччя" },
+      { from: 13, to: 25, label: "Без ознак зниженого благополуччя" },
+    ];
+    const who = [
+      { t: t0, label: "04.05", value: 5 },
+      { t: t0 + 84 * day, label: "27.07", value: 6 },
+      { t: t0 + 168 * day, label: "19.10", value: 3 },
+    ];
+    const low = [
+      { t: t0, label: "24.08", value: 9 },
+      { t: t0 + 18 * day, label: "11.09", value: 6 },
+      { t: t0 + 45 * day, label: "08.10", value: 3 },
+    ];
+    const boxOf = (x: number, anchor: "start" | "end", y: number, text: string) => {
+      const w = labelWidth(text);
+      const x0 = anchor === "start" ? x : x - w;
+      return { x0, x1: x0 + w, y0: y - 9, y1: y + 3 };
+    };
+    const hit = (a: ReturnType<typeof boxOf>, b: ReturnType<typeof boxOf>) => a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1;
+    const words = (L: ReturnType<typeof courseLayout>) => L.bands.map((b) => boxOf(L.left + L.plotWidth - 6, "end", b.labelY, b.label));
+
+    test("подпись сигнала — у метки, где есть место; на слово полосы не ложится никогда", () => {
+      for (const at of [0, 18, 45]) {
+        const L = courseLayout({ points: low, max: 27, bands: PHQ_WORDS, width: 326, signals: [{ t: t0 + at * day, label: "сигнал" }] });
+        const s = L.signals[0]!;
+        // у правого края, под словом нижней полосы, места нет — подписи нет (последний тест)
+        if (at === 45) {
+          expect(s.label).toBe("");
+          continue;
+        }
+        expect(s.label, `сигнал на ${at}-й день`).toBe("сигнал");
+        const sig = boxOf(s.labelX, s.anchor, s.labelY, s.label);
+        for (const w of words(L)) expect(hit(sig, w), `сигнал на ${at}-й день`).toBe(false);
+        expect(sig.x0).toBeGreaterThanOrEqual(L.left);
+        expect(sig.x1).toBeLessThanOrEqual(L.left + L.plotWidth);
+        // подпись рядом с меткой: не дальше строки над осью
+        expect(L.top + L.plotHeight - s.labelY).toBeLessThanOrEqual(21);
+        expect(Math.abs((s.anchor === "start" ? sig.x0 : sig.x1) - s.x)).toBeLessThanOrEqual(9);
+      }
+    });
+
+    test("слово нижней полосы поднимается над красной меткой, а не садится на неё", () => {
+      const signals = [{ t: t0 + 168 * day, label: "сигнал" }];
+      const L = courseLayout({ points: who, max: 25, bands: WHO, width: 326, signals });
+      const axis = L.top + L.plotHeight;
+      expect(L.bands[0]!.labelY + 3).toBeLessThan(axis - 4.5);
+      // без сигнала слово на прежнем месте
+      expect(courseLayout({ points: who, max: 25, bands: WHO, width: 326 }).bands[0]!.labelY).toBeCloseTo(axis - 6);
+    });
+
+    test("подписи негде встать — её нет, метка остаётся (что она значит, говорит легенда)", () => {
+      // WHO-5: слово нижней полосы — в полграфика, свежий сигнал у правого края
+      const L = courseLayout({ points: who, max: 25, bands: WHO, width: 326, signals: [{ t: t0 + 168 * day, label: "сигнал" }] });
+      expect(L.signals).toHaveLength(1);
+      expect(L.signals[0]!.label).toBe("");
+      expect(L.signals[0]!.x).toBeGreaterThan(L.left);
+    });
+  });
+
   test("тесные даты прячутся, последняя видна всегда", () => {
     const dense = [0, 1, 2, 3, 40].map((d, i) => ({ t: t0 + d * day, label: `d${i}`, value: 10 }));
     const { pts } = courseLayout({ points: dense, max: 27, width: 326 });
@@ -245,6 +277,26 @@ describe("график курса", () => {
     const many = [9, 7, 12, 3, 8, 8, 15, 6, 10].map((v, i) => ({ t: t0 + i * 3 * day, label: `d${i}`, value: v }));
     const { pts } = courseLayout({ points: many, max: 27, width: 326 });
     expect(pts.flatMap((p, i) => (p.labeled ? [i] : []))).toEqual([0, 3, 6, 8]);
+  });
+
+  test("подписи делений оси помещаются слева целиком — и у долей «0,75»", () => {
+    const share = [
+      { from: 0, to: 0.24, label: "низький" },
+      { from: 0.24, to: 0.39, label: "нижче середнього" },
+      { from: 0.39, to: 0.6, label: "середній" },
+      { from: 0.6, to: 0.75, label: "вище середнього" },
+      { from: 0.75, to: 1, label: "високий" },
+    ];
+    const pts = [
+      { t: t0, label: "22.09", value: 0.03 },
+      { t: t0 + 9 * day, label: "01.10", value: 0.06 },
+      { t: t0 + 18 * day, label: "10.10", value: 0.2 },
+    ];
+    const comma = (v: number) => String(v).replace(".", ",");
+    const L = courseLayout({ points: pts, max: 1, bands: share, width: 326, axisLabel: comma });
+    for (const t of L.ticks) expect(L.left - 6 - labelWidth(comma(t.v)), comma(t.v)).toBeGreaterThanOrEqual(0);
+    // у целых баллов поле как было
+    expect(lay().left).toBe(26);
   });
 
   test("деления оси — границы полос и верх шкалы, без слипшихся", () => {

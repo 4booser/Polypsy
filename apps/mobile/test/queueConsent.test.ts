@@ -104,8 +104,9 @@ describe("мобилка: сдача из очереди и 403 «нужно с�
     expect(layout).toContain("api.onConsentRequired(() => {");
     expect(layout).toContain('router.replace("/consent");');
     expect(layout).toContain("useConsentGate();");
+    // после принятия — на первую вкладку своей роли (auth/passwordGate.ts, homeOf)
     expect(strip("consent.tsx")).toMatch(
-      /await api\.acceptConsent\(textId\);\s*void api\.flushQueue\(\)\.catch\(\(\) => \{\}\);\s*router\.replace\("\/\(app\)\/home"\);/,
+      /await api\.acceptConsent\(textId\);\s*void api\.flushQueue\(\)\.catch\(\(\) => \{\}\);\s*router\.replace\(home\);/,
     );
   });
 });

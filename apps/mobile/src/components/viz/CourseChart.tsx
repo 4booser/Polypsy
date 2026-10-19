@@ -70,7 +70,7 @@ export function CourseChart({
 
   if (points.length === 0) return null;
 
-  const L = courseLayout({ points, max, min, bands, rc, today, signals, width, plotHeight: height });
+  const L = courseLayout({ points, max, min, bands, rc, today, signals, width, plotHeight: height, axisLabel: valueLabel });
   const ink = darkTheme ? c.vink : c.v;
   const sel = picked ?? points.length - 1;
   const selPoint = points[sel]!;
@@ -126,6 +126,19 @@ export function CourseChart({
           {L.zone ? <Rect x={L.left} y={L.zone.y0} width={L.plotWidth} height={L.zone.y1 - L.zone.y0} fill={chart.rcz} /> : null}
         </G>
 
+        {/*
+          «Сьогодні» — под словами полос: черта у правого края шла поверх
+          слов, а ореол подписи теперь её прерывает, и слово читается целиком.
+        */}
+        {L.todayX !== null ? (
+          <>
+            <Line x1={L.todayX} x2={L.todayX} y1={L.top - 6} y2={L.top + L.plotHeight} stroke={c.text} strokeWidth={1.2} />
+            <SvgText x={L.todayX} y={L.top - 10} fontSize={11} {...svgFont(800)} fill={c.text} textAnchor={L.todayX > L.left + L.plotWidth - 30 ? "end" : "middle"}>
+              {ut("mui.today")}
+            </SvgText>
+          </>
+        ) : null}
+
         {/* слово полосы — у правого края; текущая — фиолетовым */}
         {L.bands.map((b) =>
           b.label
@@ -154,15 +167,6 @@ export function CourseChart({
           />
         ) : null}
 
-        {L.todayX !== null ? (
-          <>
-            <Line x1={L.todayX} x2={L.todayX} y1={L.top - 6} y2={L.top + L.plotHeight} stroke={c.text} strokeWidth={1.2} />
-            <SvgText x={L.todayX} y={L.top - 10} fontSize={11} {...svgFont(800)} fill={c.text} textAnchor={L.todayX > L.left + L.plotWidth - 30 ? "end" : "middle"}>
-              {ut("mui.today")}
-            </SvgText>
-          </>
-        ) : null}
-
         {L.pts.length > 1 ? (
           <Polyline
             points={L.pts.map((p) => `${p.x},${p.y}`).join(" ")}
@@ -186,11 +190,11 @@ export function CourseChart({
             : null,
         )}
 
-        {/* сигнал риска — красной меткой на оси */}
+        {/* сигнал риска — красной меткой на оси; подпись — там, где она не ложится на слово полосы (course.ts) */}
         {L.signals.map((s, i) => (
           <G key={`r${i}`}>
             <Rect x={s.x - 4.5} y={L.top + L.plotHeight - 4.5} width={9} height={9} rx={2.5} fill={c.risk} />
-            {halo(`rt${i}`, s.x + (s.x > L.left + L.plotWidth - 90 ? -9 : 9), L.top + L.plotHeight - 7, s.label, c.riskink, c.panel, 700, 11, s.x > L.left + L.plotWidth - 90 ? "end" : "start")}
+            {s.label ? halo(`rt${i}`, s.labelX, s.labelY, s.label, c.riskink, c.panel, 700, 11, s.anchor) : null}
           </G>
         ))}
 
