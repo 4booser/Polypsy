@@ -155,6 +155,31 @@ test.describe("экраны с параметром", () => {
     await open(page, { name: "сводка", path: `/patients/${id}/summary` });
   });
 
+  test("записи приёма в узкой колонке карты на 1280: все четыре вида записи видны целиком", async ({ page }) => {
+    /*
+     * Колонка справа на 1280 — 360 px, а ряд «Первинний / Прийом /
+     * Спостереження / Консультація» требует около 390: «Консультація»
+     * уходила за край и обрезалась. Редактор встаёт там сеткой два на два.
+     */
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await login(page, "psy");
+    const first = await openSeededPatient(page);
+    const id = (await first.getAttribute("href"))!.split("/").pop()!;
+    await page.goto(`/patients/${id}/case`);
+    const kinds = page.getByRole("group", { name: /^(Записи прийому|Записи приёма)$/ }).first();
+    await kinds.waitFor();
+    const fit = await kinds.evaluate((g) => {
+      // мерка — сам редактор, а не группа: ряд, шире редактора, вылезал за него целиком вместе с группой
+      const box = g.parentElement!.getBoundingClientRect();
+      return [...g.querySelectorAll("button")].map((b) => {
+        const r = b.getBoundingClientRect();
+        return { text: b.textContent, inside: r.left >= box.left - 0.5 && r.right <= box.right + 0.5, whole: b.scrollWidth <= b.clientWidth + 1 };
+      });
+    });
+    expect(fit).toHaveLength(4);
+    expect(fit.filter((b) => !b.inside || !b.whole)).toEqual([]);
+  });
+
   test("хронология пациента открывается и упорядочена", async ({ page }) => {
     await login(page, "psy");
     await (await openSeededPatient(page)).click();
