@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { LANG_FULL, langToggle, login, openUserMenu, railNav, setLang } from "./helpers";
+import { LANG_FULL, langToggle, login, openUserMenu, railNav, setLang, visibleSkeletons } from "./helpers";
 
 /**
  * Двуязычная оболочка.
@@ -189,7 +189,7 @@ test("в украинском режиме не остаётся русских 
      * держит открытым поток событий, и она не наступает никогда. Ждём, пока
      * исчезнут скелеты: это и есть признак, что данные приехали.
      */
-    await expect.poll(async () => page.locator(".skeleton").count(), { timeout: 10_000 }).toBe(0);
+    await expect.poll(async () => visibleSkeletons(page).count(), { timeout: 10_000 }).toBe(0);
     await page.waitForTimeout(150);
     const text = await page.locator("main").innerText();
     return new Set(text.split(/[\s,.:;()«»…—-]+/).filter((w) => RUSSIAN_ONLY.test(w)));

@@ -73,6 +73,19 @@ export function subNav(page: Page): Locator {
   return page.locator("nav[data-subnav]");
 }
 
+/**
+ * Скелеты, которые видит человек: «данные ещё едут» на экране.
+ *
+ * Закрытый ящик набора не размонтируется (черновик живёт), он только inert и
+ * спрятан от диктора. Ящик, который грузит своё лишь открытым (разбор сигнала
+ * на «Випадках ризику» и «Сьогодні»), держит в себе скелет всё время, пока
+ * закрыт, — и ожидание «скелетов не осталось» по всей странице не дожидалось
+ * никогда. Считается только то, что не внутри inert.
+ */
+export function visibleSkeletons(page: Page): Locator {
+  return page.locator(".skeleton:not([inert] *)");
+}
+
 /** Широкое ли окно у страницы: стоит ли рельса */
 async function wide(page: Page): Promise<boolean> {
   return (page.viewportSize()?.width ?? 1280) >= RAIL_MIN_WIDTH;

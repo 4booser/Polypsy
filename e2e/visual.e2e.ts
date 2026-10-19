@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { expect, test } from "@playwright/test";
-import { goCaseCard, login, patientLinks } from "./helpers";
+import { goCaseCard, login, patientLinks, visibleSkeletons } from "./helpers";
 
 /**
  * Скриншотные эталоны витрины.
@@ -557,7 +557,7 @@ const SCREENS: Array<{
        */
       await page.getByRole("main").getByRole("link", { name: "Хронология" }).waitFor();
       // карта дозагружает динамику и эпизоды отдельными запросами
-      await expect.poll(async () => page.locator(".skeleton").count(), { timeout: 10_000 }).toBe(0);
+      await expect.poll(async () => visibleSkeletons(page).count(), { timeout: 10_000 }).toBe(0);
     },
   },
   /*
@@ -578,7 +578,7 @@ const SCREENS: Array<{
        * постраничности, которым нужны свои ответы.
        */
       await page.locator("table tbody tr").first().waitFor();
-      await expect.poll(async () => page.locator(".skeleton").count(), { timeout: 10_000 }).toBe(0);
+      await expect.poll(async () => visibleSkeletons(page).count(), { timeout: 10_000 }).toBe(0);
     },
     // страница каталога конечна (десять строк) — в кадре она вся, с последней строкой
     fit: true,
@@ -641,7 +641,7 @@ const SCREENS: Array<{
        * — снимок ожидания, а не экрана.
        */
       await expect(page.locator("main.main").getByText("Загрузка…")).toHaveCount(0);
-      await expect.poll(async () => page.locator(".skeleton").count(), { timeout: 10_000 }).toBe(0);
+      await expect.poll(async () => visibleSkeletons(page).count(), { timeout: 10_000 }).toBe(0);
     },
     // редактор с полосой инструментов стоит последним в свитке
     fit: true,
@@ -667,7 +667,7 @@ const SCREENS: Array<{
        * (PersonGrid), а не класс, который сменят на первой же правке.
        */
       await patientLinks(page).first().waitFor();
-      await expect.poll(async () => page.locator(".skeleton").count(), { timeout: 10_000 }).toBe(0);
+      await expect.poll(async () => visibleSkeletons(page).count(), { timeout: 10_000 }).toBe(0);
     },
     // сетка 3×N со строкой над списком и панелью контекста — снимается вся
     fit: true,
@@ -679,7 +679,7 @@ const SCREENS: Array<{
       await page.goto("/staff");
       // строка реестра — ссылка на карточку; появилась — справочник приехал
       await page.locator('a[href^="/staff/"]').first().waitFor();
-      await expect.poll(async () => page.locator(".skeleton").count(), { timeout: 10_000 }).toBe(0);
+      await expect.poll(async () => visibleSkeletons(page).count(), { timeout: 10_000 }).toBe(0);
     },
   },
   {
@@ -699,7 +699,7 @@ const SCREENS: Array<{
        */
       await page.getByText(doctor.fullName.split(" ")[0]!, { exact: true }).first().waitFor();
       // права сотрудника и его пациенты догружаются отдельными запросами
-      await expect.poll(async () => page.locator(".skeleton").count(), { timeout: 10_000 }).toBe(0);
+      await expect.poll(async () => visibleSkeletons(page).count(), { timeout: 10_000 }).toBe(0);
     },
     // профиль с полями, сменой пароля и разделами ниже — свиток
     fit: true,
@@ -711,7 +711,7 @@ const SCREENS: Array<{
       await page.goto("/admins");
       await page.locator('a[href^="/staff/"]').first().waitFor();
       // ступени лестницы догружаются поштучно (withLadder) — без них строки неполные
-      await expect.poll(async () => page.locator(".skeleton").count(), { timeout: 10_000 }).toBe(0);
+      await expect.poll(async () => visibleSkeletons(page).count(), { timeout: 10_000 }).toBe(0);
     },
   },
   {
@@ -725,7 +725,7 @@ const SCREENS: Array<{
        */
       await page.getByText("Название аналитической модели").waitFor();
       await page.getByRole("button", { name: "Сохранить" }).waitFor();
-      await expect.poll(async () => page.locator(".skeleton").count(), { timeout: 10_000 }).toBe(0);
+      await expect.poll(async () => visibleSkeletons(page).count(), { timeout: 10_000 }).toBe(0);
     },
     // название, структура, карточка действий — до кнопки внизу
     fit: true,
@@ -793,7 +793,7 @@ const SCREENS: Array<{
        * (/api/patients/:id/card), так что появился первый — есть и все.
        */
       await page.getByRole("heading", { level: 2, name: /^(Тесты|Тести)$/ }).waitFor();
-      await expect.poll(async () => page.locator(".skeleton").count(), { timeout: 10_000 }).toBe(0);
+      await expect.poll(async () => visibleSkeletons(page).count(), { timeout: 10_000 }).toBe(0);
     },
     // личные данные, «Тесты», «Группы» и «Заключения» — кадры f19_1 и f19_2 подряд
     fit: true,
@@ -807,7 +807,7 @@ const SCREENS: Array<{
        * стоят и над пустым списком, и над списком в загрузке.
        */
       await page.locator('main.main a[href^="/mailings/"]').first().waitFor();
-      await expect.poll(async () => page.locator(".skeleton").count(), { timeout: 10_000 }).toBe(0);
+      await expect.poll(async () => visibleSkeletons(page).count(), { timeout: 10_000 }).toBe(0);
     },
     // страница перечня конечна (десять строк) — в кадре она вся
     fit: true,
@@ -824,7 +824,7 @@ const SCREENS: Array<{
        * тем же экраном.
        */
       await page.getByRole("button", { name: /^(Создать|Створити)$/ }).waitFor();
-      await expect.poll(async () => page.locator(".skeleton").count(), { timeout: 10_000 }).toBe(0);
+      await expect.poll(async () => visibleSkeletons(page).count(), { timeout: 10_000 }).toBe(0);
     },
     fit: true,
   },
@@ -839,7 +839,7 @@ const SCREENS: Array<{
        * и заголовка у экрана нет вовсе (titleHidden).
        */
       await page.getByRole("group", { name: /^(Ответ|Відповідь)$/ }).waitFor();
-      await expect.poll(async () => page.locator(".skeleton").count(), { timeout: 10_000 }).toBe(0);
+      await expect.poll(async () => visibleSkeletons(page).count(), { timeout: 10_000 }).toBe(0);
     },
     fit: true,
   },
