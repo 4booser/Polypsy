@@ -4,6 +4,7 @@ import {
   attentionOf,
   dayDiff,
   dueIn,
+  fixedIn,
   grantCounts,
   grantState,
   nextExpiring,
@@ -183,5 +184,22 @@ describe("огляд: тижні й втрати", () => {
       { position: 3, lost: 6 },
     ];
     expect(topLosses(rows, 2)).toEqual([rows[2], rows[1]]);
+  });
+});
+
+describe("дробные числа на языке экрана", () => {
+  /*
+   * Обзор методики и нормы ставили запятую руками — и в английском тоже
+   * («alpha 0,82»). Мутация: вернуть `.replace(".", ",")` — en падает.
+   */
+  test("запятая в uk и ru, точка в en; с нулями в конце и без", () => {
+    expect(fixedIn("uk", 0.8167, 2)).toBe("0,82");
+    expect(fixedIn("ru", 0.8167, 2)).toBe("0,82");
+    expect(fixedIn("en", 0.8167, 2)).toBe("0.82");
+    expect(fixedIn("uk", 50, 1)).toBe("50,0");
+    expect(fixedIn("en", 50, 1)).toBe("50.0");
+    expect(fixedIn("uk", 2.34, 1, false)).toBe("2,3");
+    expect(fixedIn("uk", 2, 1, false)).toBe("2");
+    expect(fixedIn("en", 1.5, 1, false)).toBe("1.5");
   });
 });

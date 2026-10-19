@@ -18,7 +18,7 @@ import { useResource } from "../useResource";
 import { testsHref } from "./analytics/tests/model";
 import { Mi } from "./methods/icons";
 import { MethodPage } from "./methods/MethodPage";
-import { shortDate, shortDateTime, splitCode, topLosses, weeklyCounts } from "./methods/model";
+import { fixedIn, shortDate, shortDateTime, splitCode, topLosses, weeklyCounts } from "./methods/model";
 import { num, useCount } from "./methods/useCount";
 
 /*
@@ -88,6 +88,7 @@ const BAND_LEVEL: Record<BandSeverity, Severity> = { none: "none", mild: "mild",
 
 function Overview({ survey, data, batteries }: { survey: SurveyFull; data: SurveyAnalytics | null; batteries: Battery[] | null }) {
   const { ut } = useLang();
+  const { fmt1, fmt2 } = useFmt();
   const count = useCount();
   const clinical = useMemo(() => (data?.scales ?? []).filter((s) => s.kind === "clinical"), [data]);
   const [scaleId, setScaleId] = useState<string | null>(null);
@@ -179,7 +180,7 @@ function Overview({ survey, data, batteries }: { survey: SurveyFull; data: Surve
                 rungs={rungs}
                 value={scale.median}
                 max={scale.maxPossible}
-                label={`${scale.code}: ${scale.median}`}
+                label={`${scale.code}: ${fmt1(scale.median)}`}
               />
             </div>
             <KV
@@ -302,8 +303,11 @@ function Overview({ survey, data, batteries }: { survey: SurveyFull; data: Surve
   );
 }
 
-const fmt1 = (v: number) => (Math.round(v * 10) / 10).toString().replace(".", ",");
-const fmt2 = (v: number) => v.toFixed(2).replace(".", ",");
+/* дробные — на языке экрана (fixedIn): одна цифра без хвостовых нулей, альфа — две */
+function useFmt() {
+  const { lang } = useLang();
+  return { fmt1: (v: number) => fixedIn(lang, v, 1, false), fmt2: (v: number) => fixedIn(lang, v, 2) };
+}
 
 /** Полоса, в которую попадает значение */
 function bandOf(scale: SurveyAnalytics["scales"][number], v: number) {
@@ -312,6 +316,7 @@ function bandOf(scale: SurveyAnalytics["scales"][number], v: number) {
 
 function AboutPanel({ survey, data }: { survey: SurveyFull; data: SurveyAnalytics | null }) {
   const { ut } = useLang();
+  const { fmt1 } = useFmt();
   const count = useCount();
   const rows: [string, string][] = [
     [ut("mc.peekWho"), survey.administration === "clinician" ? ut("bt.byClinician") : ut("mc.bySelf")],
