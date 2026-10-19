@@ -35,6 +35,8 @@ export interface ResponseExtras {
 }
 
 export function useResponseExtras(
+  /** Прохождение из адреса — обстановка и заключение спрашиваются по нему, не дожидаясь протокола */
+  rid: string | null,
   detail: ResponseDetail | null,
   opts: {
     prev?: boolean;
@@ -50,8 +52,17 @@ export function useResponseExtras(
   } = {},
 ): ResponseExtras {
   const { can } = useAuth();
-  const id = detail?.id ?? null;
-  const ctx = useResource(() => api.responseContext(id!), [id], { enabled: !!id, keep: false });
+  /*
+   * Обстановка и заключение — вместе с протоколом, а не после него (волна
+   * 27): им нужен только идентификатор прохождения из адреса. Прежде они
+   * ждали протокол, прежняя попытка — обстановку, и экран открывался в три
+   * захода. Право — то же, что у протокола (patients.read): без него ни
+   * протокол, ни они не откроются, и лишний отказ в журнал доступа не
+   * пишется. Право по профилю устарело — спросится, как только протокол
+   * докажет обратное.
+   */
+  const early = !!rid && (can("patients.read") || !!detail);
+  const ctx = useResource(() => api.responseContext(rid!), [rid], { enabled: early, keep: false });
   const version = useResource(
     () =>
       api.survey(detail!.survey.id, detail!.survey.versionNumber).then(
@@ -61,12 +72,20 @@ export function useResponseExtras(
     [detail?.survey.id, detail?.survey.versionNumber],
     { enabled: !!detail, keep: false },
   );
+  /*
+   * По незавершённому заключения не бывает (сервер пишет его только по
+   * сданному) — если протокол уже пришёл и он не сдан, спрашивать незачем;
+   * если ещё не пришёл, ответ сервера по такому прохождению — та же пустая
+   * история.
+   */
+  const unsubmitted = !!detail && detail.status !== "completed";
   const conclusion = useResource(
-    () => (detail!.status === "completed" ? api.conclusion(id!) : Promise.resolve({ current: null, versions: [] })),
-    [id, detail?.status],
-    { enabled: !!id && opts.conclusion !== false, keep: false },
+    () => (unsubmitted ? Promise.resolve({ current: null, versions: [] }) : api.conclusion(rid!)),
+    [rid, unsubmitted],
+    { enabled: early && opts.conclusion !== false, keep: false },
   );
-  const prevId = opts.prev && ctx.data && id ? (previousComparable(ctx.data.attempts, id)?.id ?? null) : null;
+  /* прежняя попытка — как только пришла обстановка с попытками, протокол ей не нужен */
+  const prevId = opts.prev && ctx.data && rid ? (previousComparable(ctx.data.attempts, rid)?.id ?? null) : null;
   const prev = useResource(
     () => api.responseDetail(prevId!).then((d): { d: ResponseDetail | null } => ({ d }), () => ({ d: null })),
     [prevId],

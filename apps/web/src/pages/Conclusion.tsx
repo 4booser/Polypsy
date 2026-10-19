@@ -75,7 +75,7 @@ export default function ConclusionPage() {
    * Прежде рядом с общей читалась ещё и узкая (?survey=) — то же самое
    * вторым запросом и второй строкой журнала (волна 27).
    */
-  const x = useResponseExtras(detail, { dynamics: "all", conclusion: false });
+  const x = useResponseExtras(responseId, detail, { dynamics: "all", conclusion: false });
   const surveyId = detail?.survey.id;
   /* правила поддержки решений — «моделі аналітики»; вердикт — по срабатываниям этого прохождения */
   const models = useResource(() => api.decisionRules(), [responseId, surveyId], {

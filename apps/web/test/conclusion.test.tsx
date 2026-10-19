@@ -202,7 +202,7 @@ describe("динамика человека на листе — одним чт�
 
   test("лист не читает динамику сам: одна общая из useResponseExtras, без узкой рядом", () => {
     expect(page).not.toContain("api.dynamics(");
-    expect(page).toContain('useResponseExtras(detail, { dynamics: "all", conclusion: false })');
+    expect(page).toContain('useResponseExtras(responseId, detail, { dynamics: "all", conclusion: false })');
     // общая — без ?survey=: в узкой не было бы других методик для «Результатів»
     expect(data).toContain('const scope = opts.dynamics === "all" ? null : (detail?.survey.id ?? null);');
   });
