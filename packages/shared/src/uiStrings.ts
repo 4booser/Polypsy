@@ -2073,10 +2073,11 @@ export const UI = {
     en: "All completed tests across versions; the background is the scale’s severity ladder",
   },
   "ant.answersChange": { uk: "Як змінювались відповіді", ru: "Как менялись ответы", en: "How the answers changed" },
+  /* число — после двоеточия: «Останні 3 проходжень» требовало бы формы слова при числе, а у человека их часто два-три */
   "ant.answersCaption": {
-    uk: "Останні {n} проходжень цієї версії; у клітинці — обраний варіант і його бал, тон — бал від максимуму пункту",
-    ru: "Последние {n} прохождений этой версии; в клетке — выбранный вариант и его балл, тон — балл от максимума пункта",
-    en: "The last {n} completions of this version; each cell shows the chosen option and its score, shaded by the item maximum",
+    uk: "Останні проходження цієї версії: {n}; у клітинці — обраний варіант і його бал, тон — бал від максимуму пункту",
+    ru: "Последние прохождения этой версии: {n}; в клетке — выбранный вариант и его балл, тон — балл от максимума пункта",
+    en: "Latest completions of this version: {n}; each cell shows the chosen option and its score, shaded by the item maximum",
   },
   "ant.cellSkipped": { uk: "пропуск", ru: "пропуск", en: "skipped" },
   "ant.cellHidden": { uk: "відповідь є", ru: "ответ есть", en: "answered" },
@@ -9026,7 +9027,8 @@ export const UI = {
     en: "It advises the specialist, notifies the duty specialist or offers the patient another test.",
   },
   "am.coverTitle": { uk: "Під моделями", ru: "Под моделями", en: "Covered by models" },
-  "am.coverSub": { uk: "{n} з {total} тестів", ru: "{n} из {total} тестов", en: "{n} of {total} tests" },
+  /* число — после двоеточия: «з 21 тестів» и «з 1 тестів» — неправильная форма слова при числе */
+  "am.coverSub": { uk: "тестів: {n} з {total}", ru: "тестов: {n} из {total}", en: "tests: {n} of {total}" },
   "am.coverOn": { uk: "увімкнених: {n}", ru: "включённых: {n}", en: "enabled: {n}" },
   "am.coverOffOnly": { uk: "лише вимкнені: {n}", ru: "только выключенные: {n}", en: "disabled only: {n}" },
   "am.coverNone": {
@@ -9294,10 +9296,11 @@ export const UI = {
     ru: "Попадёт в журнал доступа и в манифест",
     en: "Goes into the access log and the manifest",
   },
+  /* что увозят файлы — вся методика: выгрузка среза экрана не принимает (analytics/tests/model.ts, exportCount) */
   "ant.exportScope": {
-    uk: "{title}, версія {v}, проходжень: {n}",
-    ru: "{title}, версия {v}, прохождений: {n}",
-    en: "{title}, version {v}, completions: {n}",
+    uk: "{title}: усі пацієнти й версії, проходжень: {n}",
+    ru: "{title}: все пациенты и версии, прохождений: {n}",
+    en: "{title}: all patients and versions, completions: {n}",
   },
   "ant.profFullSub": {
     uk: "Без знеособлення — лише всередині клініки",

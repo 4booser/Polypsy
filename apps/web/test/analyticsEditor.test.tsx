@@ -138,6 +138,37 @@ describe("смена вида параметра", () => {
     expect(back).toEqual(base);
   });
 
+  /**
+   * Обход через флаг риска или историю не меняет итога: «Будь-який тест» →
+   * «Прапор ризику» → «Результат тесту» — это «Результат тесту» без теста, а
+   * не снова «Будь-який тест»; «Результат тесту» → «Прапор ризику» →
+   * «Будь-який тест» — без кода шкалы прежней методики, как и напрямую.
+   *
+   * Мутация: решать по виду, с которого меняют, а не по записанной
+   * методике, — первая проверка получает «any».
+   */
+  test("обход через другой вид ведёт туда же, куда и напрямую", () => {
+    const any = { ...base, ...paramKindOver(base, "any"), scaleCode: "SUI" };
+    for (const via of ["risk", "history"] as const) {
+      const away = { ...any, ...paramKindOver(any, via) };
+      const back = { ...away, ...paramKindOver(away, "scale") };
+      expect(paramPick(back), `any → ${via} → scale`).toBe("scale");
+      expect(back.surveyId).toBe("");
+      expect(back.scaleCode).toBe("");
+      // а «будь-який» обратно — со своим кодом: код писали для него
+      const anyAgain = { ...away, ...paramKindOver(away, "any") };
+      expect(anyAgain.scaleCode, `any → ${via} → any`).toBe("SUI");
+
+      const fromTest = { ...base, ...paramKindOver(base, via) };
+      const toAny = { ...fromTest, ...paramKindOver(fromTest, "any") };
+      const direct = { ...base, ...paramKindOver(base, "any") };
+      expect(toAny.scaleCode, `scale → ${via} → any`).toBe(direct.scaleCode);
+      expect(toAny.surveyId).toBe(ANY_TEST);
+      // порог, условие и метрика переживают любой обход
+      expect([toAny.op, toAny.value, toAny.metric]).toEqual([base.op, base.value, base.metric]);
+    }
+  });
+
   test("свой же вид ничего не трогает", () => {
     for (const k of PARAM_PICKS) {
       const p = { ...base, ...paramKindOver(base, k) };
@@ -188,6 +219,50 @@ describe("отметка и удаление строк формы", () => {
  * PHQ-9, сторінка 2» пересылают коллеге, а каждая буква поиска шагом в
  * истории браузера не становится.
  */
+/**
+ * Несохранённое и право правок.
+ *
+ * Закрытие вкладки спрашивало браузер только у сохранённой модели: новую
+ * (и копию) набирают с нуля, и закрытая вкладка уносила всю форму молча.
+ * ⌘S сохранял и без decisions.manage, когда обе кнопки погашены, — сервер
+ * отвечал 403.
+ *
+ * Мутация: вернуть `|| isNew` в условие сторожа или убрать canManage из
+ * save — падает своя проверка.
+ */
+describe("форма модели: несохранённое и право правок", () => {
+  test("закрытие вкладки спрашивает и у новой модели", () => {
+    const guard = /useEffect\(\(\) => \{\s*if \(([^)]*)\) return;\s*const onLeave/.exec(EDITOR)?.[1] ?? "";
+    expect(guard, "сторож закрытия вкладки не найден").not.toBe("");
+    expect(guard.replace(/\s+/g, "")).toBe("!dirty");
+  });
+
+  test("сохранение без права правок не уходит на сервер — ни кнопкой, ни ⌘S", () => {
+    const head = /const save = useCallback\(\(\) => \{\s*if \(([^)]*)\) return;/.exec(EDITOR)?.[1] ?? "";
+    expect(head, "начало save не найдено").not.toBe("");
+    expect(head).toContain("!canManage");
+    expect(EDITOR).toContain('e.code === "KeyS"');
+  });
+});
+
+/**
+ * Выключатель модели в перечне: правка модели — право decisions.manage
+ * (PATCH /api/decisions/rules/:id), и без него выключатель только
+ * показывает состояние. Два быстрых нажатия слали два PATCH с разными
+ * enabled, которые приходили на сервер в любом порядке, а подмена строки
+ * висела поверх перечня до ухода с экрана.
+ *
+ * Мутация: убрать проверку inFlight или patch — падает своя строка.
+ */
+describe("выключатель модели в перечне", () => {
+  test("право правок, одно нажатие в полёте, ответ — в перечень", () => {
+    expect(LIST).toContain('nav.access.can("decisions.manage")');
+    expect(LIST).toContain("disabled={!canManage}");
+    expect(LIST).toContain("if (inFlight.current.has(m.id)) return;");
+    expect(LIST).toContain("list.patch(now.map(");
+  });
+});
+
 describe("перечень моделей: состояние в адресе", () => {
   test("поиск, страница, размер, вид, фильтры и порядок читаются из адреса", () => {
     for (const key of ["q", "page", "per", "view", "sort", "test", "act"]) {

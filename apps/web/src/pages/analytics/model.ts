@@ -1,4 +1,5 @@
 import type { DecisionRule, RuleAction, RuleCondition, ScaleCondition, UiKey } from "@quizzy/shared";
+import { numText } from "./tests/model";
 
 /**
  * Чистая часть раздела «Аналітика»: поиск и страницы перечня, черновик
@@ -86,6 +87,20 @@ export const OP_KEY: Record<Op, UiKey> = {
   ">": "am.opGt",
   "<": "am.opLt",
 };
+
+/**
+ * Порог условия — языком страницы: «2,5» по-украински и по-русски, «2.5»
+ * по-английски.
+ *
+ * Сервер хранит число, а поле числа отдаёт набранное с точкой при любом
+ * языке; печатать как есть значило ставить точку в украинском перечне.
+ * Знаков — сколько записано (до шести): порог округлением не подменяется.
+ * Не число (поле ещё набирают, «-») — как набрано.
+ */
+export function thresholdText(v: string | number): string {
+  const n = typeof v === "number" ? v : v.trim() === "" ? Number.NaN : Number(v);
+  return Number.isFinite(n) ? numText(n, 6) : String(v).trim();
+}
 
 /**
  * «Будь-який тест»: условие по коду шкалы в той методике, которую сдали.

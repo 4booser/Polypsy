@@ -5,7 +5,7 @@ import { Ic } from "../../ui/icons";
 import { Popover } from "../../ui/Popover";
 import { Tag } from "../../ui/primitives";
 import { AIc } from "./icons";
-import { type Op } from "./model";
+import { type Op, thresholdText } from "./model";
 
 /*
  * Общие куски перечня и формы моделей: как модель называет свои условия и
@@ -78,7 +78,7 @@ export function CondChip({ c, testTitle }: { c: RuleCondition; testTitle: (id: s
       )}
       <span>{c.scaleCode}</span>
       <b>
-        {OP_SIGN[c.op]} {c.value}
+        {OP_SIGN[c.op]} {thresholdText(c.value)}
       </b>
       {normed}
     </Chip>

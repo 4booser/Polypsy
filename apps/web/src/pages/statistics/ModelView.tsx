@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import type {
   FilterPresetListItem,
@@ -47,20 +47,24 @@ import {
   type ReportRow,
   STATS_LIST,
   type SampleDraft,
-  addSample,
+  type Samples,
+  addKeyed,
   cellAt,
   chartHref,
   columnInput,
   columnsChanged,
   diffText,
-  duplicateSample,
+  duplicateKeyed,
   editSampleDraft,
   filterErrors,
   isFigureRow,
-  removeSample,
+  keepDrafts,
+  keyedSamples,
+  removeKeyed,
   reportRows,
   sampleDraft,
   sampleDraftChanged,
+  sampleKey,
   statEditHref,
   statHref,
   withSampleDraft,
@@ -125,17 +129,27 @@ function ModelScreen({ id }: { id: string }) {
 
   const [saved, setSaved] = useState<StatModelColumn[] | null>(null);
   const [work, setWork] = useState<StatModelColumn[] | null>(null);
+  /* ключ выборки — по одному на колонку work (model.ts, Samples): черновик ящика держится за выборку, а не за номер */
+  const [keys, setKeys] = useState<string[]>([]);
   useEffect(() => {
     if (!model.data) return;
+    const s = keyedSamples(model.data.columns);
     setSaved(model.data.columns);
-    setWork(model.data.columns);
+    setWork(s.columns);
+    setKeys(s.keys);
   }, [model.data]);
 
   const [result, setResult] = useState<StatRunResult | null>(null);
   const [ref, setRef] = useState(0);
-  /* ящик фильтров: открыт ли, чья выборка и черновики — по номеру выборки */
-  const [drawer, setDrawer] = useState<{ open: boolean; at: number }>({ open: false, at: 0 });
-  const [drafts, setDrafts] = useState<Record<number, SampleDraft>>({});
+  /* ящик фильтров: открыт ли и чья выборка; черновики — по ключу выборки */
+  const [drawer, setDrawer] = useState<{ open: boolean; key: string | null }>({ open: false, key: null });
+  const [drafts, setDrafts] = useState<Record<string, SampleDraft>>({});
+  /*
+   * «Повернутися» в сообщении о черновике зовёт обработчик, замкнутый в
+   * момент закрытия ящика; живы ли выборки — спрашивается у текущих ключей.
+   */
+  const keysNow = useRef<string[]>(keys);
+  keysNow.current = keys;
   const [doomed, setDoomed] = useState(false);
 
   /* Ctrl/⌘ + Enter — «Порівняти» с любого места экрана, и из поля тоже; пока модель грузится — ничего */
@@ -182,11 +196,17 @@ function ModelScreen({ id }: { id: string }) {
   const nameOf = (c: StatModelColumn, i: number) => sampleName(c.title, presetOf(c)?.title, i);
   const refAt = Math.min(ref, work.length - 1);
 
-  /* правка колонок сбрасывает расчёт; смена числа колонок — и черновики ящика, они по номеру */
-  const edit = (next: StatModelColumn[], resetDrafts = false) => {
-    setWork(next);
+  /*
+   * Правка колонок сбрасывает расчёт. Черновики ящика держатся за выборку:
+   * добавление, дубль и удаление соседей их не трогают, у убранной выборки
+   * черновик уходит вместе с ней.
+   */
+  const samples: Samples = { columns: work, keys };
+  const edit = (next: Samples) => {
+    setWork(next.columns);
+    setKeys(next.keys);
     setResult(null);
-    if (resetDrafts) setDrafts({});
+    setDrafts((d) => keepDrafts(d, next.keys));
   };
 
   /*
@@ -213,6 +233,11 @@ function ModelScreen({ id }: { id: string }) {
       const next = await api.updateStatModel(id, { columns: work.map(columnInput) });
       setSaved(next.columns);
       setWork(next.columns);
+      /* сервер возвращает те же колонки тем же порядком; иначе прежние ключи и черновики к ним не относятся */
+      if (next.columns.length !== keys.length) {
+        setKeys(keyedSamples(next.columns).keys);
+        setDrafts({});
+      }
     }, ut("st.saved"));
 
   const duplicate = () =>
@@ -239,8 +264,8 @@ function ModelScreen({ id }: { id: string }) {
       .flatMap((c) => c.questions)
       .find((q) => q.questionId === questionId)
       ?.options.find((o) => o.optionId === optionId)?.highRisk;
-    edit(
-      work.map((c) => ({
+    edit({
+      columns: work.map((c) => ({
         ...c,
         questions: c.questions.map((q) =>
           q.questionId !== questionId
@@ -248,29 +273,35 @@ function ModelScreen({ id }: { id: string }) {
             : { ...q, options: q.options.map((o) => (o.optionId === optionId ? { ...o, highRisk: !now } : o)) },
         ),
       })),
-    );
+      keys,
+    });
   };
 
   const openPane = (i: number) => {
-    setDrafts((d) => (d[i] ? d : { ...d, [i]: sampleDraft(work[i]!, criteriaOfPreset) }));
-    setDrawer({ open: true, at: i });
+    const key = keys[i];
+    if (!key) return;
+    setDrafts((d) => (d[key] ? d : { ...d, [key]: sampleDraft(work[i]!, criteriaOfPreset) }));
+    setDrawer({ open: true, key });
   };
   const add = () => {
-    const next = addSample(work);
-    edit(next, true);
-    const i = next.length - 1;
-    setDrafts({ [i]: sampleDraft(next[i]!, criteriaOfPreset) });
-    setDrawer({ open: true, at: i });
+    const key = sampleKey();
+    const next = addKeyed(samples, key);
+    if (next === samples) return;
+    edit(next);
+    setDrafts((d) => ({ ...d, [key]: sampleDraft(next.columns[next.columns.length - 1]!, criteriaOfPreset) }));
+    setDrawer({ open: true, key });
   };
-  const applyDraft = (i: number) => {
-    const d = drafts[i];
-    if (!d) return;
-    edit(work.map((c, j) => (j === i ? withSampleDraft(c, d) : c)));
-    setDrafts(({ [i]: _gone, ...rest }) => rest);
+  /* «Застосувати» — к той выборке, чей это ящик: по ключу, а не по номеру, который мог смениться */
+  const applyDraft = (key: string) => {
+    const d = drafts[key];
+    const at = keys.indexOf(key);
+    if (!d || at < 0) return;
+    edit({ columns: work.map((c, j) => (j === at ? withSampleDraft(c, d) : c)), keys });
+    setDrafts(({ [key]: _gone, ...rest }) => rest);
     setDrawer((s) => ({ ...s, open: false }));
   };
-  const dropDraft = (i: number) => {
-    setDrafts(({ [i]: _gone, ...rest }) => rest);
+  const dropDraft = (key: string) => {
+    setDrafts(({ [key]: _gone, ...rest }) => rest);
     setDrawer((s) => ({ ...s, open: false }));
   };
 
@@ -384,9 +415,9 @@ function ModelScreen({ id }: { id: string }) {
           nameOf={nameOf}
           presetTitleOf={(c) => presetOf(c)?.title ?? null}
           onOpen={openPane}
-          onDuplicate={(i) => edit(duplicateSample(work, i), true)}
+          onDuplicate={(i) => edit(duplicateKeyed(samples, i, sampleKey()))}
           onRemove={(i) => {
-            edit(removeSample(work, i), true);
+            edit(removeKeyed(samples, i));
             setDrawer((s) => ({ ...s, open: false }));
           }}
           onRisk={toggleRisk}
@@ -407,18 +438,26 @@ function ModelScreen({ id }: { id: string }) {
 
       <Drawer
         open={drawer.open}
-        mode={`s${drawer.at}`}
+        mode={drawer.key ? `p:${drawer.key}` : undefined}
         onClose={() => setDrawer((s) => ({ ...s, open: false }))}
-        onReturn={(mode) => setDrawer({ open: true, at: Number((mode ?? "s0").slice(1)) })}
+        onReturn={(mode) => {
+          const key = mode?.startsWith("p:") ? mode.slice(2) : null;
+          /*
+           * Выборку убрали, пока висело «Повернутися», — возвращаться некуда:
+           * ящик открыл бы свой первый вид, то есть чужую выборку.
+           */
+          if (key && keysNow.current.includes(key)) setDrawer({ open: true, key });
+        }}
       >
         {work.map((c, i) => {
-          const d = drafts[i] ?? sampleDraft(c, criteriaOfPreset);
+          const key = keys[i] ?? `i${i}`;
+          const d = drafts[key] ?? sampleDraft(c, criteriaOfPreset);
           const changed = sampleDraftChanged(c, d);
           const bad = filterErrors(d.filters).length > 0;
           return (
             <DrawerPane
-              key={i}
-              mode={`s${i}`}
+              key={key}
+              mode={`p:${key}`}
               title={ut("st.samplePaneTitle").replace("{n}", String(i + 1))}
               sub={nameOf(c, i)}
               icon={<St.sliders />}
@@ -432,11 +471,11 @@ function ModelScreen({ id }: { id: string }) {
                     variant="primary"
                     icon={<Ic.check />}
                     disabled={!changed || bad}
-                    onClick={() => applyDraft(i)}
+                    onClick={() => applyDraft(key)}
                   >
                     {ut("st.apply")}
                   </Button>
-                  <Button onClick={() => dropDraft(i)}>{ut("common.cancel")}</Button>
+                  <Button onClick={() => dropDraft(key)}>{ut("common.cancel")}</Button>
                 </>
               }
             >
@@ -445,7 +484,7 @@ function ModelScreen({ id }: { id: string }) {
                 draft={d}
                 presets={presets.data ?? []}
                 groups={groups.data}
-                onChange={(next) => setDrafts((all) => ({ ...all, [i]: next }))}
+                onChange={(next) => setDrafts((all) => ({ ...all, [key]: next }))}
               />
             </DrawerPane>
           );
