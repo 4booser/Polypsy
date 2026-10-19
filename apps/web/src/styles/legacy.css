@@ -342,7 +342,6 @@ tbody tr:last-child td { border-bottom: none; }
 th.sortable { cursor: pointer; user-select: none; }
 th.sortable:hover { color: var(--text); }
 th .arrow { margin-left: 4px; color: var(--text); }
-.scroll-x { overflow-x: auto; }
 .scroll-y { overflow-y: auto; }
 .muted-row td { opacity: 0.55; }
 .alarm-row { background: var(--danger-soft); }
@@ -957,15 +956,6 @@ kbd, .kbd {
   .nav-link.active { border-left-color: Highlight; }
 }
 
-/* длинная таблица: своя прокрутка, шапка липнет к её верху */
-.virtual-wrap {
-  max-height: min(72vh, 900px);
-  overflow: auto;
-  border-radius: var(--r-sm);
-  contain: strict;
-}
-.virtual-wrap table { table-layout: fixed; }
-.virtual-wrap tbody tr { height: var(--row-h); }
 
 /* ═══ хронология ═══
  * Ось времени с группировкой по дням: без группировки лента из двухсот
