@@ -1,11 +1,12 @@
 import { useRef, type ReactNode } from "react";
 import { cx } from "./cx";
+import { grouped } from "./decimal";
 import { Ic } from "./icons";
 import { Kbd } from "./kbd";
 import { useHotkeys } from "./keys";
 import { MenuButton, menuItemClass } from "./menu";
 import { Input } from "./primitives";
-import { useLang } from "../lang";
+import { useLang, useScreenLang } from "../lang";
 
 /*
  * Полоса фильтров над списком (.fbar набора): поиск с «/», сохранённые
@@ -195,6 +196,7 @@ export function ViewPill({
   icon?: ReactNode;
   title?: string;
 }) {
+  const lang = useScreenLang();
   return (
     <button
       type="button"
@@ -211,7 +213,7 @@ export function ViewPill({
       {icon}
       {label}
       {count !== undefined && count !== null ? (
-        <span className={cx("font-bold tabular-nums", on ? "text-onfill-muted" : risk ? "text-risk-ink" : "text-muted")}>{count}</span>
+        <span className={cx("font-bold tabular-nums", on ? "text-onfill-muted" : risk ? "text-risk-ink" : "text-muted")}>{grouped(count, lang)}</span>
       ) : null}
     </button>
   );
@@ -313,7 +315,7 @@ export function FilterBar({
   right?: ReactNode;
   className?: string;
 }) {
-  const { ut } = useLang();
+  const { ut, lang } = useLang();
   const counted =
     count && typeof count === "object" && "shown" in count && "total" in count ? (
       <span className="whitespace-nowrap text-small text-muted">
@@ -322,10 +324,10 @@ export function FilterBar({
           .map((part, i) =>
             part === "{n}" ? (
               <b key={i} className="font-extrabold text-text">
-                {(count as { shown: number }).shown}
+                {grouped((count as { shown: number }).shown, lang)}
               </b>
             ) : part === "{total}" ? (
-              (count as { total: number }).total
+              grouped((count as { total: number }).total, lang)
             ) : (
               part
             ),
@@ -372,7 +374,7 @@ export function BulkBar({
   children?: ReactNode;
   className?: string;
 }) {
-  const { ut } = useLang();
+  const { ut, lang } = useLang();
   if (count <= 0) return null;
   return (
     <div
@@ -385,7 +387,7 @@ export function BulkBar({
     >
       <Ic.checkCheck size={16} />
       <span aria-live="polite" className="whitespace-nowrap">
-        {ut("kit.selected")}: <span className="tabular-nums">{count}</span>
+        {ut("kit.selected")}: <span className="tabular-nums">{grouped(count, lang)}</span>
       </span>
       {total !== undefined && onSelectAll && count < total ? (
         <button
@@ -393,7 +395,7 @@ export function BulkBar({
           onClick={onSelectAll}
           className="ml-1 min-h-0 cursor-pointer border-0 bg-transparent p-0 text-[13px] font-bold text-violet-ink underline decoration-violet-line decoration-2 underline-offset-[3px] hover:decoration-current"
         >
-          {ut("kit.selectAllN").replace("{n}", String(total))}
+          {ut("kit.selectAllN").replace("{n}", grouped(total, lang))}
         </button>
       ) : null}
       <span className="ml-auto flex flex-wrap items-center gap-1.5">

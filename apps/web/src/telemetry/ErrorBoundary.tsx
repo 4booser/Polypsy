@@ -20,7 +20,19 @@ import { reportReactError } from "./client";
  * Каждое падение уходит в «Помилки клієнта» техпанели (client.ts) — без
  * данных: адрес шаблоном, текст вычищен.
  */
-export class ErrorBoundary extends Component<{ children: ReactNode; resetKey?: string }, { failed: boolean }> {
+export class ErrorBoundary extends Component<
+  {
+    children: ReactNode;
+    resetKey?: string;
+    /**
+     * Что ещё стоит на листе падения. У кабинета пациента — номера помощи:
+     * упал экран опросника у человека, которому, возможно, плохо прямо
+     * сейчас, и лист «щось пішло не так» без номера — тупик.
+     */
+    extra?: ReactNode;
+  },
+  { failed: boolean }
+> {
   state = { failed: false };
 
   static getDerivedStateFromError(): { failed: boolean } {
@@ -36,7 +48,7 @@ export class ErrorBoundary extends Component<{ children: ReactNode; resetKey?: s
   }
 
   render(): ReactNode {
-    if (this.state.failed) return <CrashScreen onRetry={() => this.setState({ failed: false })} />;
+    if (this.state.failed) return <CrashScreen onRetry={() => this.setState({ failed: false })} extra={this.props.extra} />;
     return this.props.children;
   }
 }
@@ -48,7 +60,7 @@ export class ErrorBoundary extends Component<{ children: ReactNode; resetKey?: s
  * упало на данных, которые уже обновились), «оновити сторінку» — полная
  * перезагрузка.
  */
-function CrashScreen({ onRetry }: { onRetry: () => void }) {
+function CrashScreen({ onRetry, extra }: { onRetry: () => void; extra?: ReactNode }) {
   const { ut } = useLang();
   return (
     <div role="alert" className="mx-auto w-full max-w-[640px] px-[16px] py-[48px]">
@@ -60,6 +72,7 @@ function CrashScreen({ onRetry }: { onRetry: () => void }) {
           {ut("o2b.crash.reload")}
         </Button>
       </div>
+      {extra ? <div className="mt-[28px]">{extra}</div> : null}
     </div>
   );
 }

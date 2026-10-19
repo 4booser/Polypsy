@@ -6,14 +6,23 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
 import { LangProvider } from "../src/lang";
 import {
+  BigValue,
+  BulkBar,
+  ChangeCell,
+  CourseDigits,
   DataTable,
+  decimal,
   Drawer,
   DrawerPane,
+  FilterBar,
   Modal,
   Popover,
   ToastProvider,
   activePane,
+  closeTipKey,
   draftToastText,
+  focusFromKeyboard,
+  grouped,
   placePopover,
   reliabilityOf,
   selectAllState,
@@ -22,10 +31,12 @@ import {
   toggleAll,
   toggleKey,
   toastLifetime,
+  ViewPills,
   type Column,
 } from "../src/ui";
-import { pageList, shownRange } from "../src/ui/pager";
-import { Field, Input } from "../src/ui/primitives";
+import { Count, Page } from "../src/ui/layout";
+import { Pager, pageList, shownRange } from "../src/ui/pager";
+import { ChoiceCard, Field, Input, Tabs } from "../src/ui/primitives";
 
 /**
  * Набор «Виразна»: то, что у ящика, поповера и таблицы проверяется без
@@ -43,6 +54,9 @@ const draw = (node: ReactNode) =>
       </LangProvider>
     </MemoryRouter>,
   );
+
+/** Текст разметки без тегов и атрибутов: классы вроде gap-1.5 — не числа на экране */
+const textOf = (html: string) => html.replace(/<[^>]*>/g, " ");
 
 /* ─────────── поповер: место ─────────── */
 
@@ -106,6 +120,20 @@ describe("поповер: разметка", () => {
     );
     expect(html).not.toContain("tabindex");
   });
+
+  test("подсказка и поповер открываются на видимом фокусе (клавиатура), а не на программном", () => {
+    /*
+     * Ящик ставит фокус на крестик сам, и подсказка «Закрити…» висела над
+     * каждым ящиком, открытым мышью. Решает :focus-visible элемента.
+     */
+    const el = (visible: boolean) => ({ matches: (sel: string) => sel === ":focus-visible" && visible }) as unknown as EventTarget;
+    expect(focusFromKeyboard(el(true))).toBe(true);
+    expect(focusFromKeyboard(el(false))).toBe(false);
+    expect(focusFromKeyboard(null)).toBe(false);
+    // браузер без :focus-visible — прежнее правило: любой фокус
+    const old = { matches: () => { throw new SyntaxError("unknown pseudo-class"); } } as unknown as EventTarget;
+    expect(focusFromKeyboard(old)).toBe(true);
+  });
 });
 
 /* ─────────── ящик ─────────── */
@@ -166,6 +194,31 @@ describe("ящик: черновик живёт, пока ящик закрыт"
     expect(toastLifetime("info", true)).toBeGreaterThan(toastLifetime("info", false));
     expect(toastLifetime("err", false)).toBeGreaterThan(toastLifetime("ok", false));
   });
+
+  test("подсказка крестика обещает черновик только там, где он бывает", () => {
+    expect(closeTipKey({ dirty: true })).toBe("kit.closeKeep");
+    expect(closeTipKey({ draftName: "розбору сигналу № 214" })).toBe("kit.closeKeep");
+    expect(closeTipKey({})).toBe("common.close");
+    expect(closeTipKey({ dirty: false })).toBe("common.close");
+  });
+});
+
+describe("карточка выбора", () => {
+  test("недоступный вариант выключен по-настоящему: радио disabled, карточка — «недоступно», не выбирается", () => {
+    const html = draw(
+      <ChoiceCard name="profile" value="full" checked={false} onChange={() => {}} title="Повний" sub="потрібне право exports.full" disabled />,
+    );
+    expect(html).toMatch(/<input[^>]*type="radio"[^>]*disabled=""/);
+    expect(html).toContain('aria-disabled="true"');
+    expect(html).toContain("cursor-not-allowed");
+    expect(html).not.toContain("hover:bg-sunk-2");
+  });
+
+  test("доступный — как прежде", () => {
+    const html = draw(<ChoiceCard name="profile" value="short" checked onChange={() => {}} title="Короткий" />);
+    expect(html).not.toContain("disabled");
+    expect(html).toContain("bg-violet-tint");
+  });
 });
 
 /* ─────────── окно ─────────── */
@@ -200,6 +253,25 @@ describe("поле с отказом", () => {
     expect(html).toContain("text-risk-ink");
     /* никакой красной заливки поля */
     expect(html).not.toMatch(/<input[^>]*bg-risk/);
+  });
+});
+
+describe("поле со значком или хвостом", () => {
+  /*
+   * Коробка (span) несёт кегль, а <input> внутри — нет. Наследие ставит
+   * всякому полю 12,5 (legacy.css, :where(input)), и поле поиска со
+   * значком печатало мельче своей подсказки. Кегль поля — от коробки.
+   */
+  test("поле внутри коробки берёт кегль коробки, а не наследия", () => {
+    for (const node of [<Input key="i" icon={<span />} defaultValue="Мельник" />, <Input key="s" suffix="хв" defaultValue="50" />]) {
+      const html = draw(node);
+      expect(html).toMatch(/<span[^>]*class="[^"]*text-body[^"]*"/);
+      expect(html.match(/<input[^>]*class="([^"]*)"/)?.[1]).toContain("[font-size:inherit]");
+    }
+  });
+
+  test("поле без коробки — свой кегль набора", () => {
+    expect(draw(<Input defaultValue="x" />).match(/<input[^>]*class="([^"]*)"/)?.[1]).toContain("text-body");
   });
 });
 
@@ -331,6 +403,72 @@ describe("пейджер: номера и подпись", () => {
   });
 });
 
+/* ─────────── счёт разрядами языка ─────────── */
+
+describe("счёт — разрядами языка экрана, а не «8123»", () => {
+  /* неразрывный пробел: «8 123» не рвётся переносом */
+  const nb = "\u00a0";
+
+  test("украинский и русский — пробелом, английский — запятой", () => {
+    expect(grouped(8123, "uk")).toBe(`8${nb}123`);
+    expect(grouped(8123, "ru")).toBe(`8${nb}123`);
+    expect(grouped(8123, "en")).toBe("8,123");
+    expect(grouped(812, "uk")).toBe("812");
+    expect(shownRange(2, 1000, 8123, "uk")).toBe(`1${nb}001–2${nb}000`);
+    expect(shownRange(9, 1000, 8123, "en")).toBe("8,001–8,123");
+  });
+
+  test("вкладки, пилюли видов, пилюля-счётчик и число у заголовка", () => {
+    const html = draw(
+      <>
+        <Tabs items={[{ label: "Усі", count: 8123, active: true, onSelect: () => {} }, { label: "Мої", count: 1204, onSelect: () => {} }]} />
+        <Tabs items={[{ label: "Архів", to: "/archive", count: 12045 }]} />
+        <ViewPills items={[{ key: "all", label: "Усі", count: 8123 }]} value="all" onChange={() => {}} />
+        <Count n={1204} />
+        <Count n="3/5" />
+        <Page title="Пацієнти" count={8123}>
+          {null}
+        </Page>
+      </>,
+    );
+    const text = textOf(html);
+    expect(text).toContain(`8${nb}123`);
+    expect(text).toContain(`1${nb}204`);
+    expect(text).toContain(`12${nb}045`);
+    expect(text).toContain("3/5");
+    expect(text).not.toMatch(/\b(8123|1204|12045)\b/);
+  });
+
+  test("счётчик не требует провайдера языка: вне него — язык модуля, а не исключение", () => {
+    const html = renderToStaticMarkup(
+      <MemoryRouter>
+        <Tabs items={[{ label: "Усі", count: 8123, active: true, onSelect: () => {} }]} />
+        <Tabs items={[{ label: "Архів", to: "/archive", count: 8123 }]} />
+        <Count n={8123} />
+        <Page title="Пацієнти" count={8123}>
+          {null}
+        </Page>
+      </MemoryRouter>,
+    );
+    expect(textOf(html).split(grouped(8123)).length - 1).toBe(4);
+  });
+
+  test("пейджер, полоса фильтров и полоса массовых действий", () => {
+    const html = draw(
+      <>
+        <Pager page={2} pages={9} per={1000} onPer={() => {}} onPage={() => {}} total={8123} />
+        <FilterBar count={{ shown: 1204, total: 8123 }} />
+        <BulkBar count={1204} total={8123} onSelectAll={() => {}} />
+      </>,
+    );
+    const text = textOf(html);
+    expect(text).toContain(`1${nb}001–2${nb}000`);
+    expect(text).toContain(`8${nb}123`);
+    expect(text).toContain(`1${nb}204`);
+    expect(text).not.toMatch(/\b(8123|1204|1001)\b/);
+  });
+});
+
 /* ─────────── числа ─────────── */
 
 describe("число со смыслом", () => {
@@ -345,5 +483,34 @@ describe("число со смыслом", () => {
     expect(signed(-14)).toBe("−14");
     expect(signed(16, " в. п.")).toBe("+16 в. п.");
     expect(signed(0)).toBe("0");
+  });
+
+  test("дробь — языка экрана: запятая в украинском и русском, точка в английском", () => {
+    expect(signed(-2.5, "", "uk")).toBe("−2,5");
+    expect(signed(2.5, " в. п.", "ru")).toBe("+2,5 в. п.");
+    expect(signed(-2.5, "", "en")).toBe("−2.5");
+    expect(decimal(5.55, "uk")).toBe("5,55");
+    expect(decimal(0.1 + 0.2, "ru")).toBe("0,3");
+    expect(decimal(1.96 * Math.SQRT2 * 2, "uk", 1)).toBe("5,5");
+    expect(decimal(14, "en")).toBe("14");
+  });
+
+  test("ячейка изменения печатает порог и сдвиг дробью языка, а не точкой", () => {
+    const html = draw(<ChangeCell delta={-2.5} threshold={5.54} better="down" />);
+    expect(html).toContain("−2,5");
+    expect(html).toContain("5,54");
+    expect(textOf(html)).not.toMatch(/\d\.\d/);
+  });
+
+  test("большое значение, «було» и мини-курс — тоже", () => {
+    const html = draw(
+      <>
+        <BigValue code="T" value={44.9} history={[51.5, 47]} better="down" change={{ delta: -6.5, threshold: 5.5 }} />
+        <CourseDigits code="T" values={[51.5, 47, 44.9]} better="down" />
+      </>,
+    );
+    expect(html).toContain("44,9");
+    expect(html).toContain("51,5 → 47");
+    expect(textOf(html)).not.toMatch(/\d\.\d/);
   });
 });

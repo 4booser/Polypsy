@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import type { ReactElement } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { LangProvider } from "../src/lang";
+import { PublicFrame } from "../src/pages/public/PublicFrame";
 import { LangMenu } from "../src/shell/LangMenu";
 import { Button, ButtonLink } from "../src/ui/primitives";
 
@@ -64,5 +65,30 @@ describe("язык на полосе приложения и в шапке ка�
       expect(cls.has(height), `высота мишени не ${height}`).toBe(true);
       expect([...cls].filter((c) => /#[0-9a-f]{3,6}/i.test(c)), "число цвета в классе кнопки языка").toEqual([]);
     }
+  });
+});
+
+describe("рамка гостевых страниц", () => {
+  const frame = () =>
+    render(
+      <PublicFrame>
+        <p>лист</p>
+      </PublicFrame>,
+    );
+
+  test("«Увійти» в шапке — тонированная кнопка набора, а не вторая залитая рядом с основной кнопкой страницы", () => {
+    const tag = frame().match(/<a[^>]*href="\/login"[^>]*>/)?.[0] ?? "";
+    const cls = new Set(/class="([^"]*)"/.exec(tag)?.[1]?.split(/\s+/) ?? []);
+    expect(cls.has("bg-violet-tint")).toBe(true);
+    expect(cls.has("text-violet-ink")).toBe(true);
+    expect(cls.has("bg-violet")).toBe(false);
+    expect(cls.has("h-10")).toBe(true);
+  });
+
+  test("подвал — текущий год и имя системы; «©2023» и «Про кампанію» прежнего кадра кампании ушли", () => {
+    const html = frame();
+    expect(html).toContain(`© ${new Date().getFullYear()} Polypsy`);
+    expect(html).not.toContain("©2023");
+    expect(html).not.toMatch(/Про кампанію|О кампании|About the campaign/);
   });
 });

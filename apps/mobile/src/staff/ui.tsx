@@ -14,7 +14,7 @@ import { Icon, type IconName } from "../ui/Icon";
 import { NavBar } from "../ui/NavBar";
 import { Count, FilterChip, SevPill } from "../ui/Pill";
 import { T } from "../ui/Text";
-import { caseClock, clock, dm, durationParts, hm, hours, initials, num, type InstrumentRow } from "./model";
+import { caseClock, clock, dm, durationParts, hm, hours, initials, normOf, num, type InstrumentRow } from "./model";
 
 /*
  * Детали экранов сотрудника, общие для нескольких экранов: шапки на полосе,
@@ -342,13 +342,11 @@ export function useClockText() {
  */
 export function RiskNow({
   item,
-  norm,
   now,
   text,
   onReview,
 }: {
   item: AlertCase;
-  norm: number | null;
   now: number;
   /** Свой текст вместо «кто и что сработало» — на карте пациента имя уже в шапке */
   text?: string;
@@ -356,7 +354,8 @@ export function RiskNow({
 }) {
   const c = useColors();
   const { ut } = useLang();
-  const k = caseClock(item.openedAt, norm, now);
+  // норма — со случаем, та же, по которой сервер ставит «прострочено» (model.ts, normOf)
+  const k = caseClock(item.openedAt, normOf(item), now);
   const of = useClockText();
   const clockOf = useClock();
   const first = item.signals[0];

@@ -1,5 +1,6 @@
 import { Suspense, lazy, useMemo, useRef, useState, type ReactNode } from "react";
 import { cx } from "./cx";
+import { grouped } from "./decimal";
 import {
   applyFacets,
   facetOptions,
@@ -10,7 +11,7 @@ import {
   type Facet,
   type FacetSelection,
 } from "./facets";
-import { BulkBar, SearchField } from "./filters";
+import { BulkBar } from "./filters";
 import { Ic } from "./icons";
 import { useHotkeys } from "./keys";
 import { Pager } from "./pager";
@@ -529,13 +530,13 @@ export function DataTable<T>({
       </BulkBar>
     ) : null;
 
-  const renderRow = (row: T, key: string, height?: number) => (
+  const renderRow = (row: T, key: string, measure?: { index: number; ref: (el: HTMLTableRowElement | null) => void }) => (
     <Row
       key={key}
       rowKey={key}
       row={row}
       columns={shown}
-      height={height}
+      measure={measure}
       dense={dense}
       onOpen={onRowClick}
       tone={isRowActive?.(row) ? "active" : picked.has(key) ? "picked" : rowTone?.(row)}
@@ -554,8 +555,8 @@ export function DataTable<T>({
 
   /*
    * Короткие и постраничные таблицы рисуются целиком: виртуализация стоит
-   * собственной сложности (фиксированная высота строки, свой контейнер
-   * прокрутки) и на двух десятках строк только мешает.
+   * собственной сложности (свой контейнер прокрутки, замер строк) и на двух
+   * десятках строк только мешает.
    */
   if (per || visible.length <= VIRTUAL_FROM) {
     return (
@@ -563,7 +564,7 @@ export function DataTable<T>({
         {tools}
         {bulk}
         <div className="overflow-x-auto">
-          <table aria-label={label} className="w-full border-separate border-spacing-0 text-body leading-[19px]">
+          <table aria-label={label} className={TABLE}>
             {head}
             <tbody ref={bodyRef}>{keyed.map(([key, row]) => renderRow(row, key))}</tbody>
           </table>
@@ -586,7 +587,12 @@ export function DataTable<T>({
         <VirtualRows
           sorted={visible}
           head={head}
-          renderRow={(row, i, height) => renderRow(row, keyOf(row, i), height)}
+          label={label}
+          tableClassName={TABLE}
+          bodyRef={bodyRef}
+          rowHeight={dense ? 44 : 56}
+          columnCount={shown.length + (selectable ? 1 : 0) + (rowActions ? 1 : 0)}
+          renderRow={(row, i, ref) => renderRow(row, keyOf(row, i), { index: i, ref })}
         />
       </Suspense>
     </>
@@ -605,7 +611,7 @@ function Row<T>({
   row,
   rowKey,
   columns,
-  height,
+  measure,
   dense,
   onOpen,
   tone,
@@ -623,7 +629,8 @@ function Row<T>({
   row: T;
   rowKey: string;
   columns: Column<T>[];
-  height?: number;
+  /** Длинная таблица: номер строки и замер её высоты (VirtualRows) */
+  measure?: { index: number; ref: (el: HTMLTableRowElement | null) => void };
   dense?: boolean;
   onOpen?: (row: T) => void;
   tone?: RowTone;
@@ -652,9 +659,10 @@ function Row<T>({
   );
   return (
     <tr
+      ref={measure?.ref}
+      data-index={measure?.index}
       data-key={rowKey}
       data-row
-      style={height ? { height } : undefined}
       className={cx("group/row outline-offset-[-2px]", clickable && "cursor-pointer")}
       aria-selected={clickable ? active : undefined}
       tabIndex={focusable ? (tabStop ? 0 : -1) : undefined}
@@ -728,27 +736,15 @@ function Row<T>({
 /** С какого числа строк включается виртуализация */
 const VIRTUAL_FROM = 60;
 
+/** Таблица набора — одна разметка у короткой и у длинной (VirtualRows) */
+const TABLE = "w-full border-separate border-spacing-0 text-body leading-[19px]";
+
 /*
  * Длинная таблица (VirtualRows) — в virtualRows.tsx и по требованию: она
  * одна тянет за собой @tanstack/react-virtual, а в начальный кусок консоли
  * ui/index попадает целиком — ради сообщений, загрузки и окон.
  */
 const VirtualRows = lazy(() => import("./virtualRows")) as <T>(props: VirtualRowsProps<T>) => ReactNode;
-
-/** Поле поиска (прежнее имя): то же, что SearchField */
-export function Search({
-  value,
-  onChange,
-  placeholder,
-  width = 260,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  placeholder?: string;
-  width?: number;
-}) {
-  return <SearchField value={value} onChange={onChange} placeholder={placeholder} width={width} />;
-}
 
 /* ─────────── настройка колонок и фасеты ─────────── */
 
@@ -767,11 +763,27 @@ function ColumnPicker<T>({
 }) {
   const { ut } = useLang();
   const [open, setOpen] = useState(false);
+  const toggle = useRef<HTMLButtonElement>(null);
   const count = columns.filter((c) => !hidden.has(c.key)).length;
 
   return (
-    <div className="relative">
+    <div
+      className="relative"
+      /*
+       * Esc закрывает выбор колонок и возвращает фокус кнопке — как меню
+       * набора. Нажатие дальше не идёт, как у поповера: ни ящик, ни окно,
+       * в котором стоит таблица, его на себя не принимают.
+       */
+      onKeyDown={(e) => {
+        if (e.key !== "Escape" || !open) return;
+        e.preventDefault();
+        e.stopPropagation();
+        setOpen(false);
+        toggle.current?.focus();
+      }}
+    >
       <Button
+        ref={toggle}
         variant="quiet"
         size="xs"
         icon={<Ic.columns />}
@@ -829,7 +841,7 @@ function FacetBar<T>({
   totalCount: number;
   note?: string;
 }) {
-  const { ut } = useLang();
+  const { ut, lang } = useLang();
   const active = Object.values(selection).some((v) => v.length);
 
   return (
@@ -851,7 +863,7 @@ function FacetBar<T>({
                   o.selected ? "bg-violet font-bold text-onfill" : "bg-sunk font-semibold text-text-2 hover:bg-sunk-2",
                 )}
               >
-                {o.value} <span className={cx("font-bold tabular-nums", o.selected ? "text-onfill-muted" : "text-muted")}>{o.count}</span>
+                {o.value} <span className={cx("font-bold tabular-nums", o.selected ? "text-onfill-muted" : "text-muted")}>{grouped(o.count, lang)}</span>
               </button>
             ))}
           </div>
@@ -860,7 +872,7 @@ function FacetBar<T>({
       {active ? (
         <Button variant="quiet" size="xs" icon={<Ic.x />} onClick={() => onChange({})}>
           {ut("tbl.resetFacets")}
-          <Count n={`${shownCount}/${totalCount}`} />
+          <Count n={`${grouped(shownCount, lang)}/${grouped(totalCount, lang)}`} />
         </Button>
       ) : null}
       {note ? <span className="text-caption text-muted">{note}</span> : null}

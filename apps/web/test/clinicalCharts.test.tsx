@@ -9,7 +9,6 @@ import {
   Kpi,
   ScaleProfile,
   SeverityMeter,
-  SeverityRuler,
   ShareBar,
   Sparkline,
   TimeColumns,
@@ -44,8 +43,6 @@ test("шкала тяжести: булавка, границы числами, 
   // границы ступеней — числами под шкалой
   for (const n of [">0<", ">5<", ">10<", ">15<", ">27<"]) expect(html).toContain(n);
   expect(html).not.toContain("NaN");
-  // прежнее имя — тот же компонент
-  expect(SeverityRuler).toBe(SeverityMeter);
 });
 
 test("шкала без полос — метр от нуля фиолетовым набора", () => {
@@ -296,4 +293,24 @@ test("столбцы: числа на столбцах, пока их немно
   expect(html).toContain('fill-opacity="0.45"');
   expect(html).toContain('data-col="hidden"');
   expect(html).toContain("fill=\"var(--series)\"");
+});
+
+test("столбцы счёта: ось целыми делениями, а дробь — языка экрана", () => {
+  /* «0 или 1 прохождение за день» — ось шла через 0,2, и подписи печатались с точкой */
+  const counts = draw(
+    <TimeColumns
+      label="x"
+      columns={[
+        { key: "1", label: "1", value: 0 },
+        { key: "2", label: "2", value: 1 },
+        { key: "3", label: "3", value: 0 },
+      ]}
+    />,
+  );
+  const ticks = [...counts.matchAll(/text-anchor="end"[^>]*>([^<]+)<\/text>/g)].map((m) => m[1]);
+  expect(ticks).toEqual(["0", "1"]);
+  /* величина дробная — деления дробные, через запятую украинской консоли */
+  const shares = draw(<TimeColumns label="x" columns={[{ key: "1", label: "1", value: 0.5 }]} />);
+  expect(shares).toContain(">0,1</text>");
+  expect(shares).not.toContain(">0.1</text>");
 });

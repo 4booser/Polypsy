@@ -10,6 +10,7 @@ import { LangMenu } from "./LangMenu";
 import { LogoTile } from "./Logo";
 import { ThemeToggle } from "./ThemeToggle";
 import type { ThemeChoice } from "./theme";
+import { Kbd } from "../ui/kbd";
 import { Tooltip } from "../ui/Popover";
 import { UserMenu, type AccountCard } from "./UserMenu";
 
@@ -117,12 +118,11 @@ export function AppBar({
         <ShellIcon name="search" size={15} />
         <span className="min-w-0 flex-1 truncate max-[899px]:hidden">{hint}</span>
         <span className="max-[899px]:hidden">
-          <kbd className="inline-grid h-5 min-w-5 place-items-center rounded-[6px] border border-b-2 border-appbar-line bg-transparent px-[5px] font-sans text-[10.5px] font-bold not-italic leading-none text-appbar-muted">
-            {/* клавиша на тёмной полосе: у Kbd набора нет тона полосы приложения — рамка и подпись её цветами */}
+          <Kbd tone="appbar">
             <span className="inline-flex items-center gap-[3px]">
               <ModKey />K
             </span>
-          </kbd>
+          </Kbd>
         </span>
       </button>
 

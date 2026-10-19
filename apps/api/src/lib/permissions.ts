@@ -77,62 +77,54 @@ export async function hasPermission(user: User, permission: Permission): Promise
   return (await permissionsOf(user)).has(permission);
 }
 
+/** Кто нужен правилам ниже: идентификатор и класс учётки */
+type Person = Pick<User, "id" | "role">;
+
 /**
- * Права нескольких человек — двумя запросами на весь список, а не двумя на
- * каждого.
+ * Права многих людей — двумя запросами на всех, а не двумя на каждого
+ * (волна 27: «Що може кожен» спрашивал карточку каждого администратора
+ * отдельно).
  *
- * Для списков, где право — свойство строки: реестр учёток техпанели,
- * «Потребує уваги» и покрытие второго фактора спрашивают о каждом
- * сотруднике, держит ли он ops.* (политика второго фактора). permissionsOf
- * на строку — два запроса на человека: на странице в сотню сотрудников
- * двести походов в базу (волна 27, perf-day).
+ * Тем же путём — реестр учёток техпанели, «Потребує уваги» и покрытие
+ * второго фактора (lib/usersAttention.ts, routes/opsPeople.ts): там право
+ * ops.* спрашивалось на каждую строку.
  *
- * Правило то же, что у permissionsOf, и в том же порядке: суперадмин — весь
- * справочник, не сотрудник — ничего, сотрудник — права ролей плюс
- * действующие личные исключения, и отнятое побеждает добавленное
- * независимо от порядка строк. test/permissionsMany.test.ts сверяет оба на
- * одних и тех же людях.
+ * Правило — ровно permissionsOf, и совпадение держат тесты
+ * (permissionCards.test.ts, permissionsMany.test.ts): суперадмин обходит
+ * справочник, кроме администратора у учётки прав нет, у администратора — роли плюс
+ * действующие исключения, и отнятое побеждает выданное. permissionsOf
+ * остаётся отдельной функцией: она стоит в каждой проверке права, и
+ * переписывать горячий путь ради экрана со списком незачем.
  */
-export async function permissionsOfMany(
-  people: readonly { id: string; role: User["role"] }[],
-): Promise<Map<string, Set<Permission>>> {
+export async function permissionsOfMany(people: readonly Person[]): Promise<Map<string, Set<Permission>>> {
   const out = new Map<string, Set<Permission>>();
-  const staff = new Set<string>();
+  const admins: string[] = [];
   for (const p of people) {
-    if (p.role === "superadmin") out.set(p.id, new Set(ALL_PERMISSIONS));
-    else {
-      out.set(p.id, new Set());
-      if (p.role === "admin") staff.add(p.id);
-    }
+    out.set(p.id, p.role === "superadmin" ? new Set(ALL_PERMISSIONS) : new Set());
+    if (p.role === "admin") admins.push(p.id);
   }
-  if (!staff.size) return out;
-  const ids = [...staff];
+  if (!admins.length) return out;
 
   const fromRoles = await db
     .select({ userId: staffRoles.userId, permission: rolePermissions.permission })
     .from(staffRoles)
     .innerJoin(roles, eq(roles.id, staffRoles.roleId))
     .innerJoin(rolePermissions, eq(rolePermissions.roleId, roles.id))
-    .where(inArray(staffRoles.userId, ids));
+    .where(inArray(staffRoles.userId, admins));
   for (const r of fromRoles) out.get(r.userId)?.add(r.permission as Permission);
 
   const exceptions = await db
-    .select({
-      userId: permissionExceptions.userId,
-      permission: permissionExceptions.permission,
-      mode: permissionExceptions.mode,
-    })
+    .select({ userId: permissionExceptions.userId, permission: permissionExceptions.permission, mode: permissionExceptions.mode })
     .from(permissionExceptions)
     .where(
       and(
-        inArray(permissionExceptions.userId, ids),
+        inArray(permissionExceptions.userId, admins),
         isNull(permissionExceptions.revokedAt),
         or(isNull(permissionExceptions.expiresAt), sql`${permissionExceptions.expiresAt} > now()`),
       ),
     );
   for (const e of exceptions) if (e.mode === "grant") out.get(e.userId)?.add(e.permission as Permission);
   for (const e of exceptions) if (e.mode === "revoke") out.get(e.userId)?.delete(e.permission as Permission);
-
   return out;
 }
 
@@ -157,6 +149,24 @@ export async function ladderRankOf(user: User): Promise<number> {
     .where(eq(staffRoles.userId, user.id));
 
   return mine.reduce((top, r) => Math.max(top, roleRank(r.code)), 0);
+}
+
+/** Ступени многих людей — одним запросом; правило — ровно ladderRankOf */
+export async function ladderRanksOf(people: readonly Person[]): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  const asked: string[] = [];
+  for (const p of people) {
+    out.set(p.id, p.role === "superadmin" ? SUPERADMIN_RANK : 0);
+    if (p.role !== "superadmin") asked.push(p.id);
+  }
+  if (!asked.length) return out;
+  const rows = await db
+    .select({ userId: staffRoles.userId, code: roles.code })
+    .from(staffRoles)
+    .innerJoin(roles, eq(roles.id, staffRoles.roleId))
+    .where(inArray(staffRoles.userId, asked));
+  for (const r of rows) out.set(r.userId, Math.max(out.get(r.userId) ?? 0, roleRank(r.code)));
+  return out;
 }
 
 /**

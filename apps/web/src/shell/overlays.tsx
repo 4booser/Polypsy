@@ -55,7 +55,7 @@ export function ShellDrawer({
         onClick={(e) => {
           if (press.click(e)) onClose();
         }}
-        className="fixed inset-0 z-[55] animate-[fade_var(--dur)_var(--ease)] bg-scrim"
+        className="fixed inset-0 z-[55] animate-[kit-fade_var(--dur)_var(--ease)] bg-scrim"
       />
       <div
         ref={ref}
@@ -65,7 +65,7 @@ export function ShellDrawer({
         tabIndex={-1}
         className={cx(
           "fixed bottom-0 left-0 top-[var(--ah,56px)] z-[56] flex w-[min(320px,calc(100vw-48px))] flex-col overflow-hidden",
-          "border-r border-border bg-panel text-text shadow-pop outline-none animate-[fade_var(--dur)_var(--ease)]",
+          "border-r border-border bg-panel text-text shadow-pop outline-none animate-[kit-fade_var(--dur)_var(--ease)]",
           className,
         )}
       >

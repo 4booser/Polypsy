@@ -4,6 +4,7 @@ import { useFocusEffect, useRouter } from "expo-router";
 import type { AlertCase } from "@quizzy/shared";
 import { api } from "@/api/client";
 import { useAuth } from "@/auth/AuthContext";
+import { activeOwner } from "@/offline/owner";
 import { useLang } from "@/lang";
 import { useColors } from "@/theme";
 import { Btn } from "@/ui/Button";
@@ -11,8 +12,9 @@ import { Segmented } from "@/ui/Segmented";
 import { T } from "@/ui/Text";
 import { useToast } from "@/ui/Toast";
 import { refreshStaffBadges } from "@/staff/badges";
-import { useNow, useSurveyIndex } from "@/staff/data";
-import { caseClock, dm, hm, hours } from "@/staff/model";
+import { useNow } from "@/staff/data";
+import { caseClock, dm, hm, hours, normOf } from "@/staff/model";
+import { heads } from "@/staff/people";
 import { ReviewSheet } from "@/staff/ReviewSheet";
 import { StaffOnly } from "@/staff/StaffOnly";
 import { Avatar, Card, Chip, Line, Loading, Section, StaffTop, StateBlock, useClock, useClockText } from "@/staff/ui";
@@ -46,7 +48,6 @@ function Alerts() {
   const toast = useToast();
   const { user } = useAuth();
   const now = useNow();
-  const { norm } = useSurveyIndex();
 
   const [mode, setMode] = useState<Mode>("open");
   const [rows, setRows] = useState<AlertCase[] | null>(null);
@@ -106,7 +107,7 @@ function Alerts() {
   };
 
   // норма одна на всех — говорим её словами; разные у разных методик — не обещаем одной
-  const norms = [...new Set((mode === "open" ? (rows ?? []) : []).map((r) => norm(r.surveyId)).filter((n): n is number => !!n))];
+  const norms = [...new Set((mode === "open" ? (rows ?? []) : []).map(normOf).filter((n): n is number => !!n))];
   const lead = norms.length === 1 ? ut("mst.alertsLeadNorm").replace("{h}", hours(norms[0]!)) : ut("mst.alertsLead");
 
   return (
@@ -142,11 +143,14 @@ function Alerts() {
                       item={r}
                       first={i === 0}
                       now={now}
-                      norm={norm(r.surveyId)}
                       mine={r.assignedTo === user?.id}
                       onReview={() => setReview(r)}
                       onTake={() => void take(r)}
-                      onPerson={() => router.push({ pathname: "/analytics/patients/[userId]", params: { userId: r.userId, back: "alerts" } })}
+                      onPerson={() => {
+                        // карта покажет имя сразу, пока её динамика идёт (staff/people.ts)
+                        heads.noteRow(activeOwner(), r.userId, { name: r.userName, unit: r.unit });
+                        router.push({ pathname: "/analytics/patients/[userId]", params: { userId: r.userId, back: "alerts" } });
+                      }}
                     />
                   ))}
                 </Card>
@@ -178,7 +182,6 @@ function Alerts() {
       )}
       <ReviewSheet
         item={review}
-        norm={review ? norm(review.surveyId) : null}
         onClose={() => setReview(null)}
         onDone={() => {
           setReview(null);
@@ -198,7 +201,6 @@ function OpenRow({
   item,
   first,
   now,
-  norm,
   mine,
   onReview,
   onTake,
@@ -207,7 +209,6 @@ function OpenRow({
   item: AlertCase;
   first: boolean;
   now: number;
-  norm: number | null;
   mine: boolean;
   onReview: () => void;
   onTake: () => void;
@@ -217,7 +218,8 @@ function OpenRow({
   const { ut } = useLang();
   const of = useClockText();
   const clockOf = useClock();
-  const k = caseClock(item.openedAt, norm, now);
+  // норма — со случаем (model.ts, normOf), той же, по которой сервер ставит «прострочено»
+  const k = caseClock(item.openedAt, normOf(item), now);
   const severe = item.severity === "severe";
   const more = (item.group?.cases ?? 1) - 1;
   return (

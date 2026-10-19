@@ -3,7 +3,9 @@ import { Pressable, ScrollView, View } from "react-native";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { pointShare, pointValueText, pointValueTop } from "@quizzy/shared";
 import type { AlertCase, RespondentDynamics, Severity, Worklist } from "@quizzy/shared";
+import { isAborted } from "@/api/abort";
 import { api } from "@/api/client";
+import { useReads } from "@/api/useReads";
 import { PercentileBar } from "@/components/charts-extra";
 import { CourseChart, RadarChart } from "@/components/viz";
 import { localDecimal } from "@/components/viz/math";
@@ -18,9 +20,10 @@ import { Panel } from "@/ui/Panel";
 import { SevPill } from "@/ui/Pill";
 import { Segmented } from "@/ui/Segmented";
 import { T } from "@/ui/Text";
-import { useNow, useOpenCase, useSurveyContents, useSurveyIndex } from "@/staff/data";
+import { useNow, useOpenCase, usePersonHead, useSurveyContents } from "@/staff/data";
 import { bandsOf, changeVerdict, courseInput, dm, hm, instrumentRows, num, reliableThreshold, shortName, STEP_OF } from "@/staff/model";
 import { PatientHead, WorkStrip } from "@/staff/patient";
+import { heads } from "@/staff/people";
 import { ReviewSheet } from "@/staff/ReviewSheet";
 import { InstrumentLine, Line, LinkButton, Loading, PillRow, RiskNow, StaffNav, StateBlock } from "@/staff/ui";
 
@@ -48,10 +51,16 @@ export default function PatientCardScreen() {
   const router = useRouter();
   const now = useNow();
   const { userId, back } = useLocalSearchParams<{ userId: string; back?: string }>();
-  const { norm } = useSurveyIndex();
   const { open, reload: reloadCase } = useOpenCase(userId);
   // заключение по замеру — одноразовой ссылкой в браузере (src/report)
   const report = useOpenReport();
+  /*
+   * Шапка — сразу, из строки, на которую нажали, снимка обхода или карты у
+   * койки (staff/people.ts): динамика идёт секунды, и всё это время полоса
+   * стояла пустой, без имени.
+   */
+  const head = usePersonHead(userId);
+  const reads = useReads();
 
   const [data, setData] = useState<RespondentDynamics | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -61,18 +70,26 @@ export default function PatientCardScreen() {
 
   const load = useCallback(async () => {
     if (!userId) return;
+    const signal = reads.next();
     try {
-      setData(await api.respondentDynamics(userId));
+      const card = await api.respondentDynamics(userId, { signal });
+      setData(card);
       setError(null);
+      // «Заповнити» отсюда знает человека без второго чтения его истории (staff/data.ts, useFillSubject)
+      heads.noteCard(activeOwner(), userId, { fullName: card.fullName, sex: card.sex, age: card.age });
     } catch (e) {
+      // ушли с карты, пока динамика шла (api/abort.ts) — показывать нечего и некому
+      if (isAborted(e)) return;
       setError(e instanceof Error ? e.message : ut("mdy.loadFailed"));
     }
-  }, [userId, ut]);
+  }, [userId, ut, reads]);
 
+  // уход с карты обрывает чтение динамики; вернулись — читаем заново
   useFocusEffect(
     useCallback(() => {
       void load();
-    }, [load]),
+      return reads.cancel;
+    }, [load, reads]),
   );
 
   const contents = useSurveyContents(data?.surveys.map((s) => s.surveyId) ?? []);
@@ -85,9 +102,11 @@ export default function PatientCardScreen() {
   const backLabel = ut(BACK[back as keyof typeof BACK] ?? "common.back");
 
   if (!data) {
+    // ошибка — без имени: карта может быть уже не положена (вывели из зоны), и строке с ним не место рядом с отказом
+    const hint = error ? null : head;
     return (
       <View style={{ flex: 1, backgroundColor: c.ground }}>
-        <StaffNav back={backLabel} />
+        <StaffNav back={backLabel}>{hint ? <PatientHead name={hint.name} age={hint.age} sex={hint.sex} /> : null}</StaffNav>
         {error ? <StateBlock icon="circle-alert" title={error} action={{ label: ut("common.retry"), onPress: () => void load() }} /> : <Loading />}
       </View>
     );
@@ -135,7 +154,6 @@ export default function PatientCardScreen() {
             {open ? (
               <RiskNow
                 item={open}
-                norm={norm(open.surveyId)}
                 now={now}
                 text={[`${open.surveyTitle}, ${dm(open.lastAlertAt)}, ${hm(open.lastAlertAt)}`, open.signals[0]?.label].filter(Boolean).join(": ")}
                 onReview={() => setReview(open)}
@@ -219,7 +237,7 @@ export default function PatientCardScreen() {
 
       <ReviewSheet
         item={review}
-        norm={review ? norm(review.surveyId) : null}
+        dynamics={data}
         onClose={() => setReview(null)}
         onDone={() => {
           setReview(null);

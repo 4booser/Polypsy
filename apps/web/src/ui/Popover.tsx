@@ -107,6 +107,26 @@ export function placePopover({
   };
 }
 
+/**
+ * Фокус пришёл с клавиатуры — элемент в :focus-visible, а не получил фокус
+ * программно после щелчка мышью.
+ *
+ * Ящик ставит фокус на свой крестик сам, при открытии, и подсказка
+ * «Закрити…» всплывала над каждым ящиком, открытым мышью; то же у поповера,
+ * на триггер которого вернулся фокус после закрытия окна. Подсказка и
+ * поповер открываются на наведении и на ВИДИМОМ фокусе — с клавиатуры.
+ * Браузер без :focus-visible — прежнее правило: любой фокус.
+ */
+export function focusFromKeyboard(target: EventTarget | null): boolean {
+  const el = target as Element | null;
+  if (!el || typeof el.matches !== "function") return false;
+  try {
+    return el.matches(":focus-visible");
+  } catch {
+    return true;
+  }
+}
+
 /** Фокусируется ли триггер сам: иначе ему ставится tabIndex=0 */
 function isFocusable(el: ReactElement): boolean {
   const props = el.props as { role?: string; href?: string; tabIndex?: number };
@@ -244,7 +264,7 @@ export function TooltipPlate({ label, kbd, className }: { label: ReactNode; kbd?
   return (
     <span className={cx(tipPlate, kbd ? "pr-2" : "pr-[11px]", className)}>
       {label}
-      {kbd ? <Kbd onTip>{kbd}</Kbd> : null}
+      {kbd ? <Kbd tone="tip">{kbd}</Kbd> : null}
     </span>
   );
 }
@@ -373,13 +393,14 @@ export function Popover({
       call("onMouseLeave", e);
       hide(150);
     },
-    onFocus: (e: unknown) => {
+    onFocus: (e: FocusEvent) => {
       call("onFocus", e);
       if (quiet.current) {
         quiet.current = false;
         return;
       }
-      show(0);
+      /* фокус, поставленный программно (возврат из окна, ящик), поповер не открывает */
+      if (focusFromKeyboard(e.target)) show(0);
     },
     onBlur: (e: FocusEvent) => {
       call("onBlur", e);
@@ -471,10 +492,11 @@ export function Tooltip({
       clear();
       setOpen(false);
     },
-    onFocus: (e: unknown) => {
+    onFocus: (e: FocusEvent) => {
       call("onFocus", e);
       clear();
-      setOpen(true);
+      /* только видимый фокус: крестик ящика получает фокус при открытии, и подсказка висела бы над каждым */
+      if (focusFromKeyboard(e.target)) setOpen(true);
     },
     onBlur: (e: unknown) => {
       call("onBlur", e);
@@ -501,7 +523,7 @@ export function Tooltip({
           className={cx(tipPlate, "pointer-events-none z-[90]", kbd ? "pr-2" : "pr-[11px]")}
         >
           {label}
-          {kbd ? <Kbd onTip>{kbd}</Kbd> : null}
+          {kbd ? <Kbd tone="tip">{kbd}</Kbd> : null}
         </span>
       ) : null}
     </>

@@ -262,7 +262,8 @@ export function courseLayout(points: readonly CoursePoint[], rungs: readonly Run
     ticks = [lo, ...sorted.slice(1).map((r) => r.min), hi].filter((v, i, a) => v >= lo && v <= hi && a.indexOf(v) === i);
   } else {
     const top = Math.max(max ?? 0, ...values);
-    const axis = axisFor({ lo: 0, hi: top });
+    /* баллы без лестницы — чаще целые: деления тогда тоже целые */
+    const axis = axisFor({ lo: 0, hi: top, integer: values.every((v) => Number.isInteger(v)) && (max == null || Number.isInteger(max)) });
     lo = axis.min;
     hi = Math.max(axis.max, top);
     ticks = axis.ticks;
@@ -371,6 +372,29 @@ export function freeSpot<T extends Box>(candidates: readonly T[], obstacles: rea
     if (!obstacles.some((o) => hits(c, o))) return c;
   }
   return null;
+}
+
+/**
+ * Где подписать «сьогодні» над полем.
+ *
+ * По центру своей линии, как в наборе. Но в той же строке слева стоит
+ * подпись оси («бали 0–25, краще ↑»), и на узком графике с сессиями,
+ * назначенными вперёд, линия «сьогодні» уходит к левому краю — подписи
+ * наезжали одна на другую. Тогда подпись встаёт флажком справа от линии, а
+ * если линия проходит под самой подписью оси — сразу за её концом. За
+ * правый край графика не выходит.
+ *
+ * `titleEnd` — правый край подписи оси, `right` — правый край графика.
+ */
+export function todayLabelAt(
+  lineX: number,
+  labelW: number,
+  titleEnd: number,
+  right: number,
+  gap = 8,
+): { x: number; anchor: "middle" | "start" } {
+  if (lineX - labelW / 2 >= titleEnd + gap) return { x: Math.min(lineX, right - labelW / 2), anchor: "middle" };
+  return { x: Math.min(Math.max(lineX + 4, titleEnd + gap), right - labelW), anchor: "start" };
 }
 
 /**

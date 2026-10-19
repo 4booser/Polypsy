@@ -141,7 +141,7 @@ export function CommandPalette({
 
   return (
     <div
-      className="palette-backdrop fixed inset-0 z-[90] grid place-items-start justify-items-center bg-scrim px-4 pt-[88px] animate-[fade_var(--dur-fast)_var(--ease)] max-[600px]:pt-4"
+      className="palette-backdrop fixed inset-0 z-[90] grid place-items-start justify-items-center bg-scrim px-4 pt-[88px] animate-[kit-fade_var(--dur-fast)_var(--ease)] max-[600px]:pt-4"
       onPointerDown={press.down}
       onPointerUp={press.up}
       onClick={(e) => {
@@ -156,7 +156,7 @@ export function CommandPalette({
         куда его увести.
       */}
       <div
-        className="palette flex w-[min(640px,100%)] flex-col overflow-hidden rounded-drawer border border-border bg-panel text-text shadow-pop animate-[rise_var(--dur)_var(--ease)]"
+        className="palette flex w-[min(640px,100%)] flex-col overflow-hidden rounded-drawer border border-border bg-panel text-text shadow-pop animate-[kit-rise_var(--dur)_var(--ease)]"
         role="dialog"
         aria-modal="true"
         aria-label={ut("cmd.title")}
