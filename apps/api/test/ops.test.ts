@@ -581,11 +581,12 @@ describe("база", () => {
     expect(out.migrations).not.toBeNull();
   });
 
-  test("под боевой ролью приложения: чужие сессии скрыты, журнал миграций закрыт — ответ 200", async () => {
+  test("под боевой ролью приложения: журнал миграций читается, проверка миграций зелёная — ответ 200", async () => {
     /*
      * Не подстановка, а настоящая роль без прав владельца, как в бою
-     * (appRole.ts). Ей не выдан pg_read_all_stats и нет USAGE на схему
-     * drizzle — ровно то, что бывает на установке.
+     * (appRole.ts). Права — как у provision.ts: pg_read_all_stats ей не
+     * выдан, а журнал миграций читается. Прежде он был закрыт, и в бою
+     * проверка миграций всегда висела предупреждением «нет доступа».
      */
     const token = await issueToken({ id: root.id, role: "superadmin" });
     const out = await underAppRole<{ dbStatus: number; db: OpsDb; ovStatus: number; ov: OpsOverview }>(`
@@ -600,11 +601,11 @@ describe("база", () => {
     expect(out.error, out.error).toBeUndefined();
     expect(out.rlsActive).toBe(true);
     expect(out.dbStatus).toBe(200);
-    expect(out.db!.notes).toContain("migrationsDenied");
-    expect(out.db!.migrations).toBeNull();
+    expect(out.db!.notes).not.toContain("migrationsDenied");
+    expect(out.db!.migrations).not.toBeNull();
     expect(out.db!.tables!.length).toBeGreaterThan(0);
     expect(out.ovStatus).toBe(200);
-    expect(out.ov!.health.find((h) => h.key === "migrations")).toMatchObject({ status: "warn", reason: "unknown" });
+    expect(out.ov!.health.find((h) => h.key === "migrations")).toMatchObject({ status: "ok", reason: "current" });
     expect(out.ov!.health.find((h) => h.key === "rls")).toMatchObject({ status: "ok", reason: "active" });
   });
 
