@@ -4750,7 +4750,7 @@ export const UI = {
   "nm.noCurves": { uk: "Кривих поки немає", ru: "Кривых пока нет", en: "No curves yet" },
   "nm.menCap": { uk: "Чоловіки", ru: "Мужчины", en: "Men" },
   "nm.womenCap": { uk: "Жінки", ru: "Женщины", en: "Women" },
-  "bp.yes": { uk: "Так", ru: "Так", en: "Yes" },
+  "bp.yes": { uk: "Так", ru: "Да", en: "Yes" },
   "bp.no": { uk: "Ні", ru: "Нет", en: "No" },
   "bp.title": { uk: "Вставка пунктів з тексту", ru: "Вставка пунктов из текста", en: "Paste items from text" },
   "bp.lang": { uk: "Мова тексту, що вставляється", ru: "Язык вставляемого текста", en: "Language of the pasted text" },
