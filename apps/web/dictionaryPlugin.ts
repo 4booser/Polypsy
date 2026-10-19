@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from "node:fs";
-import { dirname, join, relative, resolve } from "node:path";
+import { basename, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { normalizePath, type Plugin } from "vite";
 import { ERRORS } from "../../packages/shared/src/errorStrings";
@@ -302,7 +302,15 @@ export function dictionaryByLanguage(): Plugin {
       if (!isSource(file) || initial.has(file) || DEFINITIONS.has(file) || file === SOURCE) return null;
       const keys = fragmentKeys(code, core);
       if (!keys) return null;
-      const name = createHash("sha1").update(relative(WEB, file)).digest("hex").slice(0, 12);
+      /*
+       * Имя — по модулю-хозяину: кусок, в котором фрагмент окажется первым,
+       * Rollup называет по нему («DataTable-….js», а не «5cfd…-….js»). Путь
+       * целиком сюда не годится: «/packages/shared/src/» в имени сделал бы
+       * фрагмент «без побочных эффектов» (treeshake в vite.config.ts), и
+       * регистрация строк пропала бы из сборки.
+       */
+      const hash = createHash("sha1").update(relative(WEB, file)).digest("hex").slice(0, 12);
+      const name = `${hash}/${basename(file).replace(/\.tsx?$/, "")}.js`;
       fragments.set(name, keys);
       /*
        * Импорт — в конце: объявления импорта всплывают, и фрагмент всё равно
