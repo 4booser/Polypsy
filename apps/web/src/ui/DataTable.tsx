@@ -10,7 +10,7 @@ import {
   type Facet,
   type FacetSelection,
 } from "./facets";
-import { BulkBar, SearchField } from "./filters";
+import { BulkBar } from "./filters";
 import { Ic } from "./icons";
 import { useHotkeys } from "./keys";
 import { Pager } from "./pager";
@@ -734,21 +734,6 @@ const VIRTUAL_FROM = 60;
  * ui/index попадает целиком — ради сообщений, загрузки и окон.
  */
 const VirtualRows = lazy(() => import("./virtualRows")) as <T>(props: VirtualRowsProps<T>) => ReactNode;
-
-/** Поле поиска (прежнее имя): то же, что SearchField */
-export function Search({
-  value,
-  onChange,
-  placeholder,
-  width = 260,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  placeholder?: string;
-  width?: number;
-}) {
-  return <SearchField value={value} onChange={onChange} placeholder={placeholder} width={width} />;
-}
 
 /* ─────────── настройка колонок и фасеты ─────────── */
 

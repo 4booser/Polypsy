@@ -1,16 +1,17 @@
-import { createContext, useContext, useEffect, useId, useState, type ReactNode } from "react";
+import { useId, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { cx } from "./cx";
 import { Ic } from "./icons";
-import { useLang } from "../lang";
 
 /*
  * Рамка экрана в наборе «Виразна» (page_header + .main набора).
  *
  * Шапка: заголовок 28/800, за волосяной линией — мета-строка (жирная строка
  * и обычная), действия у правого края; под шапкой — одна строка пояснения и
- * полоса инструментов (вкладки, фильтры). Ниже — содержимое с полями 20 и,
- * если экран просит, правая панель контекста.
+ * полоса инструментов (вкладки, фильтры). Ниже — содержимое с полями 20.
+ * Подробности выбранной строки — в ящике (Drawer) или в боковой колонке
+ * (SideLayout): правой панели контекста у Page больше нет — ни один экран её
+ * не взял, а на узком окне закрытую панель нечем было открыть снова.
  *
  * Прежние свойства, задававшие замеры старого макета (topGap, listGap,
  * headGap, pagerGap, titleSize, titleAlign), принимаются и ничего не меняют:
@@ -22,16 +23,6 @@ import { useLang } from "../lang";
  * Page); оболочка, которая прокручивает окно под липкой шапкой, ставит
  * --sticky-top: var(--ah).
  */
-
-interface PageCtx {
-  contextOpen: boolean;
-  setContextOpen: (v: boolean) => void;
-}
-
-const Ctx = createContext<PageCtx>({ contextOpen: true, setContextOpen: () => {} });
-
-/** Открыта ли правая панель контекста. Экран, который в неё пишет, может открыть её снова. */
-export const usePageContext = () => useContext(Ctx);
 
 /** Мета-строка шапки: (жирная строка, обычная) или своя разметка */
 export type PageMeta = [ReactNode, ReactNode] | ReactNode;
@@ -47,8 +38,6 @@ export function Page({
   actions,
   toolbar,
   below,
-  context,
-  contextTitle,
   bleed,
   tight,
   snug,
@@ -73,9 +62,6 @@ export function Page({
   toolbar?: ReactNode;
   /** То же место, что toolbar, — имя набора (page_header below) */
   below?: ReactNode;
-  /** Правая панель контекста: выбранная строка, сводка */
-  context?: ReactNode;
-  contextTitle?: ReactNode;
   /** Экран сам раскладывает панели во всю высоту: без полей и без своей прокрутки */
   bleed?: boolean;
   /** Плотнее: шапка без нижнего отступа */
@@ -98,21 +84,6 @@ export function Page({
   /** @deprecated */
   pagerGap?: 74 | 78 | 105;
 }) {
-  const { ut } = useLang();
-  const [contextOpen, setContextOpen] = useState(true);
-
-  /*
-   * На узком экране панель контекста по умолчанию закрыта и открывается
-   * поверх (ящиком справа): в 1280 и уже колонка 340 съела бы таблицу.
-   */
-  useEffect(() => {
-    const mq = window.matchMedia("(max-width: 1180px)");
-    const apply = () => setContextOpen(!mq.matches);
-    apply();
-    mq.addEventListener("change", apply);
-    return () => mq.removeEventListener("change", apply);
-  }, []);
-
   const metaBlock =
     meta === undefined || meta === null ? null : Array.isArray(meta) && meta.length === 2 ? (
       <>
@@ -126,95 +97,70 @@ export function Page({
   const strip = toolbar ?? below;
 
   return (
-    <Ctx.Provider value={{ contextOpen, setContextOpen }}>
-      <div className="flex min-h-0 flex-1 flex-col">
-        <header className={cx("shrink-0 px-5", bleed ? "pb-3 pt-4" : tight || snug ? "pt-4" : "pb-1 pt-4")}>
-          {crumbs ? <div className="mb-1 flex items-center gap-1.5 text-small text-muted">{crumbs}</div> : null}
-          {titleHidden ? (
-            <>
-              <h1 className="sr-only">{title}</h1>
-              {/* заголовок спрятан, а действия — нет: конструктор держит здесь выбор языка текста */}
-              {actions ? <div className="flex flex-wrap items-center justify-end gap-2">{actions}</div> : null}
-            </>
-          ) : (
-            <div className="flex min-h-[52px] flex-wrap items-center gap-x-4 gap-y-2">
-              {back ? (
-                <Link
-                  to={back.to}
-                  aria-label={back.label}
-                  title={back.label}
-                  className={cx(
-                    "-mr-1.5 inline-grid size-9 shrink-0 place-items-center rounded-control text-muted",
-                    "hover:bg-sunk hover:text-text",
-                  )}
-                >
-                  <Ic.chevronLeft size={18} />
-                </Link>
+    <div className="flex min-h-0 flex-1 flex-col">
+      <header className={cx("shrink-0 px-5", bleed ? "pb-3 pt-4" : tight || snug ? "pt-4" : "pb-1 pt-4")}>
+        {crumbs ? <div className="mb-1 flex items-center gap-1.5 text-small text-muted">{crumbs}</div> : null}
+        {titleHidden ? (
+          <>
+            <h1 className="sr-only">{title}</h1>
+            {/* заголовок спрятан, а действия — нет: конструктор держит здесь выбор языка текста */}
+            {actions ? <div className="flex flex-wrap items-center justify-end gap-2">{actions}</div> : null}
+          </>
+        ) : (
+          <div className="flex min-h-[52px] flex-wrap items-center gap-x-4 gap-y-2">
+            {back ? (
+              <Link
+                to={back.to}
+                aria-label={back.label}
+                title={back.label}
+                className={cx(
+                  "-mr-1.5 inline-grid size-9 shrink-0 place-items-center rounded-control text-muted",
+                  "hover:bg-sunk hover:text-text",
+                )}
+              >
+                <Ic.chevronLeft size={18} />
+              </Link>
+            ) : null}
+            <div className="flex min-w-0 items-baseline gap-2">
+              <h1 className="m-0 text-page font-extrabold text-text">{title}</h1>
+              {count !== undefined && count !== null ? (
+                <span className="text-[22px] font-semibold tabular-nums tracking-[-0.02em] text-muted">{count}</span>
               ) : null}
-              <div className="flex min-w-0 items-baseline gap-2">
-                <h1 className="m-0 text-page font-extrabold text-text">{title}</h1>
-                {count !== undefined && count !== null ? (
-                  <span className="text-[22px] font-semibold tabular-nums tracking-[-0.02em] text-muted">{count}</span>
-                ) : null}
+            </div>
+            {metaBlock ? (
+              <div className="flex min-w-0 flex-col gap-px border-l border-border pl-4 text-[13px] leading-[18px] text-text-2">
+                {metaBlock}
               </div>
-              {metaBlock ? (
-                <div className="flex min-w-0 flex-col gap-px border-l border-border pl-4 text-[13px] leading-[18px] text-text-2">
-                  {metaBlock}
-                </div>
-              ) : null}
-              {actions ? <div className="ml-auto flex shrink-0 flex-wrap items-center gap-2">{actions}</div> : null}
-            </div>
-          )}
-          {line ? <p className="m-0 mt-1 max-w-[80ch] text-small text-text-2">{line}</p> : null}
-          {strip ? <div className={cx("min-w-0", titleHidden ? "pt-1" : "mt-3")}>{strip}</div> : null}
-        </header>
-        <div className="flex min-h-0 flex-1">
-          <div className="flex min-w-0 flex-1 flex-col">
-            {/*
-              Область содержимого прокручивается сама — значит должна принимать
-              фокус: иначе её не пролистать стрелками и PageDown.
-            */}
-            <div
-              tabIndex={bleed ? undefined : 0}
-              className={cx(
-                "min-h-0 flex-1 outline-none",
-                bleed ? "overflow-hidden" : "overflow-y-auto overflow-x-hidden pb-8",
-                className,
-              )}
-            >
-              {bleed ? (
-                children
-              ) : (
-                <div className="px-5 pt-3.5 [&>:is(nav,[role=tablist]):first-child]:mb-4">{children}</div>
-              )}
-            </div>
+            ) : null}
+            {actions ? <div className="ml-auto flex shrink-0 flex-wrap items-center gap-2">{actions}</div> : null}
           </div>
-          {context && contextOpen ? (
-            <aside
-              aria-label={typeof contextTitle === "string" ? contextTitle : undefined}
-              className={cx(
-                "flex w-[340px] shrink-0 flex-col overflow-y-auto border-l border-border bg-panel",
-                "max-[1180px]:fixed max-[1180px]:bottom-2.5 max-[1180px]:right-0 max-[1180px]:top-[calc(var(--ah,56px)+10px)]",
-                "max-[1180px]:z-40 max-[1180px]:rounded-l-drawer max-[1180px]:border max-[1180px]:border-r-0 max-[1180px]:shadow-drawer",
-              )}
-            >
-              <div className="flex min-h-[60px] shrink-0 items-center gap-2.5 border-b border-divider py-3 pl-4 pr-3">
-                <h2 className="m-0 min-w-0 flex-1 text-section font-extrabold text-text">{contextTitle}</h2>
-                <button
-                  type="button"
-                  onClick={() => setContextOpen(false)}
-                  aria-label={ut("ui.closePanel")}
-                  className="inline-grid size-9 min-h-0 shrink-0 cursor-pointer place-items-center rounded-control border-0 bg-sunk p-0 text-text-2 hover:bg-sunk-2 hover:text-text"
-                >
-                  <Ic.x size={17} />
-                </button>
-              </div>
-              <div className="flex-1 p-4">{context}</div>
-            </aside>
-          ) : null}
+        )}
+        {line ? <p className="m-0 mt-1 max-w-[80ch] text-small text-text-2">{line}</p> : null}
+        {strip ? <div className={cx("min-w-0", titleHidden ? "pt-1" : "mt-3")}>{strip}</div> : null}
+      </header>
+      <div className="flex min-h-0 flex-1">
+        <div className="flex min-w-0 flex-1 flex-col">
+          {/*
+            Область содержимого прокручивается сама — значит должна принимать
+            фокус: иначе её не пролистать стрелками и PageDown.
+          */}
+          <div
+            tabIndex={bleed ? undefined : 0}
+            className={cx(
+              "min-h-0 flex-1 outline-none",
+              bleed ? "overflow-hidden" : "overflow-y-auto overflow-x-hidden pb-8",
+              className,
+            )}
+          >
+            {bleed ? (
+              children
+            ) : (
+              <div className="px-5 pt-3.5 [&>:is(nav,[role=tablist]):first-child]:mb-4">{children}</div>
+            )}
+          </div>
         </div>
       </div>
-    </Ctx.Provider>
+    </div>
   );
 }
 

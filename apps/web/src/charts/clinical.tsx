@@ -38,7 +38,7 @@ import { axisFor } from "./scale";
  * Одна форма на один вопрос, и один и тот же вопрос на разных экранах
  * выглядит одинаково:
  *
- *   SeverityMeter (SeverityRuler) — где этот балл на лестнице полос;
+ *   SeverityMeter — где этот балл на лестнице полос;
  *   ScaleProfile  — то же по всем шкалам методики сразу;
  *   BandTrend     — как балл двигался по лестнице во времени;
  *   ShareBar      — из чего состоит целое (полосы, варианты ответа);
@@ -71,14 +71,6 @@ const SEV_SHAPE: Record<Severity, string> = {
   mild: "rounded-full",
   moderate: "",
   severe: "rotate-45",
-};
-
-/** Текст подписи ступени: тот же тон, что у отрезка, в текстовой силе */
-export const SEV_TEXT: Record<Severity, string> = {
-  none: "text-sev-0",
-  mild: "text-sev-1",
-  moderate: "text-sev-2",
-  severe: "text-sev-4",
 };
 
 /**
@@ -209,9 +201,6 @@ export function SeverityMeter({ rungs, value, max, size = "lg", valueLabel, labe
     </div>
   );
 }
-
-/** Прежнее имя шкалы тяжести — вызовы экранов остаются как были */
-export const SeverityRuler = SeverityMeter;
 
 /* ─────────── профиль по шкалам ─────────── */
 

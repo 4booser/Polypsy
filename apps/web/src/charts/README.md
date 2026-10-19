@@ -86,7 +86,11 @@ const events = courseEventsFromTimeline(await api.timeline(userId));
   (booked/confirmed), `signal` (тревога). Номера сессий — по порядку
   проведённых и будущих.
 - `now` — «сьогодні»; линия рисуется, только если курс до него дотягивается
-  (`todayFits`). `null` — без линии.
+  (`todayFits`). `null` — без линии. Подпись встаёт над линией, а у левого
+  края, где её задела бы подпись оси, — флажком справа (`todayLabelAt`).
+- Оси без лестницы и счёт (`TimeColumns`, `StackColumns`, `TimeLines`) делятся
+  целыми шагами, когда все значения целые (`axisFor({ integer })`); подписи —
+  дробью языка экрана (`useDecimal`).
 - `legend={false}` — без легенды и строки «наведіть…».
 
 **Прогноза нет**: приложение тренд не считает, а «тренд ≈ 11» из трёх точек без
@@ -97,7 +101,7 @@ const events = courseEventsFromTimeline(await api.timeline(userId));
 
 | Компонент | Вопрос | Заметки |
 |---|---|---|
-| `SeverityMeter` (`SeverityRuler`) | где балл на лестнице полос | булавка, границы числами, слово ступени; `size="sm"` — строка профиля; без полос — метр 0…max |
+| `SeverityMeter` | где балл на лестнице полос | булавка, границы числами, слово ступени; `size="sm"` — строка профиля; без полос — метр 0…max |
 | `ScaleProfile` | то же по всем шкалам | строки, линия между шкалами одной лестницы |
 | `BandTrend` | как балл шёл по лестнице | поле полос как у курса, SEM-полоса, подсказка |
 | `ShareBar` | из чего состоит целое | 16 px, просвет 2 px, легенда «число  доля %», `null` — «n < 5» |
@@ -110,21 +114,15 @@ const events = courseEventsFromTimeline(await api.timeline(userId));
 | `TimeLines` | величины по корзинам с разрывами | `null` — разрыв, одиночная — меткой; `threshold` (выше — янтарный ромб); `marks` — отметки выкаток; подписи у концов |
 | `Kpi`, `Sparkline` | одно число | см. правило 9; спарклайн фиксированного размера |
 | `Figure` | рамка фигуры | заголовок 13,5/800, пояснение, `aside`, `table` |
-| `SevDot`, `SEV_TEXT`, `SeriesLegend` | мелочи | |
+| `SevDot`, `SeriesLegend` | мелочи | |
 
 ### `index.tsx`
 
 `LineChart` (ряды, SEM/межквартильная полоса, `marks`, подписи у концов,
-`AxisNote` у срезанной оси), `StackedArea`, `BarList`, `Donut` (для новых
-экранов — `ShareBar`), `Legend`, `Chart`, `AxisNote`, `AxisBreak`,
-`useChartWidth`.
-
-### `advanced.tsx`
-
-`Radar` (сейчас vs первый — c1 и пунктир c5), `BoxPlot` (подсказка: медиана,
-середні 50 %, розмах), `Scatter` (помеченные — янтарный ромб), `Heatmap` (через
-`HeatTable`), `Funnel` (полосами), `DivergingBar` (отрицательная связь —
-янтарь), `SeverityTag` (плашка `.sev`).
+`AxisNote` у срезанной оси), `AxisNote`, `AxisBreak`, `useChartWidth`. Доли —
+`ShareBar` и `HBars`, а не кольцо и не сложенная область: прежние `Donut`,
+`StackedArea`, `BarList` и весь `advanced.tsx` (радар, ящик с усами, рассеяние,
+воронка) ушли — ни один экран 2.0 их не взял.
 
 ### `kit.tsx`
 

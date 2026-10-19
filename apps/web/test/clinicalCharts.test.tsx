@@ -9,7 +9,6 @@ import {
   Kpi,
   ScaleProfile,
   SeverityMeter,
-  SeverityRuler,
   ShareBar,
   Sparkline,
   TimeColumns,
@@ -44,8 +43,6 @@ test("шкала тяжести: булавка, границы числами, 
   // границы ступеней — числами под шкалой
   for (const n of [">0<", ">5<", ">10<", ">15<", ">27<"]) expect(html).toContain(n);
   expect(html).not.toContain("NaN");
-  // прежнее имя — тот же компонент
-  expect(SeverityRuler).toBe(SeverityMeter);
 });
 
 test("шкала без полос — метр от нуля фиолетовым набора", () => {

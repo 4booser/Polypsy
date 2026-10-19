@@ -204,20 +204,6 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
   );
 });
 
-/**
- * Значок-ссылка: «+» над перечнем, ведущий на форму новой записи.
- *
- * Элемент <a>, а не кнопка с navigate(): переход — это ссылка, её открывают
- * в новой вкладке и видят адрес. Вид — квадрат 36 без заливки.
- */
-export function GlyphLink({ className, children, ...rest }: LinkProps) {
-  return (
-    <Link className={buttonClass("ghost", "glyph", className)} {...rest}>
-      {children}
-    </Link>
-  );
-}
-
 /** Кнопка, которая на самом деле ссылка. Те же виды и размеры, что у Button. */
 export function ButtonLink({
   size = "sm",
@@ -957,25 +943,12 @@ export function Segmented<K extends string>({
   );
 }
 
-/* ─────────── разделители и раскладка ─────────── */
+/* ─────────── пусто ─────────── */
 
 /** «Даних поки немає» — одна строка на все графики и сводки */
 export function NoData({ className }: { className?: string }) {
   const { ut } = useLang();
   return <p className={cx("m-0 text-small text-muted", className)}>{ut("chart.noData")}</p>;
-}
-
-export function Divider({ className }: { className?: string }) {
-  return <hr className={cx("m-0 border-0 border-t border-divider", className)} />;
-}
-
-/** Строка инструментов над списком: поиск, чипы, действия — переносится, если не помещается */
-export function Toolbar({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={cx("flex min-w-0 flex-wrap items-center gap-2", className)}>{children}</div>;
-}
-
-export function Spacer() {
-  return <span className="flex-1" />;
 }
 
 /* ─────────── вкладки ─────────── */

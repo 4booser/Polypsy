@@ -240,24 +240,6 @@ export function railGroups(
  * подразделах администрирования у суперадміна (nav.ts), рядом с консолью.
  */
 
-/**
- * Какой группе принадлежит текущий адрес.
- *
- * Выигрывает самое длинное совпадение, а не первое: «/» есть начало любого
- * адреса, и по первому совпадению сводка забирала бы себе каждый экран, а
- * раскрывалась бы всегда одна и та же группа.
- */
-export function groupOfPath(groups: Group[], path: string): UiKey | null {
-  let best: { key: UiKey; len: number } | null = null;
-  for (const g of groups) {
-    for (const it of g.items) {
-      const hit = it.end ? path === it.to : path === it.to || path.startsWith(`${it.to}/`);
-      if (hit && (!best || it.to.length > best.len)) best = { key: g.key, len: it.to.length };
-    }
-  }
-  return best?.key ?? null;
-}
-
 /* ─────────── рельса значков ─────────── */
 
 /** Окно уже порога: подписи рельсы ушли, остались значки с подсказкой */

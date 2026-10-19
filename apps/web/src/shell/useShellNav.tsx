@@ -1,15 +1,6 @@
 import { createContext, useContext, useMemo, type ReactNode } from "react";
 import { useLocation } from "react-router-dom";
-import {
-  railEntries,
-  sectionOf,
-  subNavFor,
-  type NavAccess,
-  type NavCounts,
-  type RailEntry,
-  type SectionKey,
-  type SubNavData,
-} from "./nav";
+import { sectionOf, subNavFor, type NavAccess, type NavCounts, type SectionKey, type SubNavData } from "./nav";
 import { SubNav } from "./SubNav";
 
 /*
@@ -41,12 +32,6 @@ export function ShellNavProvider({ value, children }: { value: ShellNav; childre
 /** Права вошедшего и счётчики консоли; вне оболочки консоли — null */
 export function useShellNav(): ShellNav | null {
   return useContext(Ctx);
-}
-
-/** Разделы рельсы для вошедшего — те же, что стоят слева */
-export function useRailEntries(): RailEntry[] {
-  const nav = useContext(Ctx);
-  return useMemo(() => (nav ? railEntries(nav.access, nav.counts, nav.hidden) : []), [nav]);
 }
 
 /**
