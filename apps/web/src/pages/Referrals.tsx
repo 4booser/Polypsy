@@ -24,9 +24,11 @@ import {
   REFERRAL_VIEWS,
   STATUS_KEY,
   URGENCY_KEY,
+  closedSinceOf,
   closedWithin,
   isOpen,
   matchesReferral,
+  mergeReferrals,
   openMissing,
   sortReferrals,
   spanText,
@@ -83,7 +85,22 @@ export default function ReferralsPage() {
   const sort: ReferralSort = sortRaw === "newest" || sortRaw === "oldest" ? sortRaw : "urgent";
 
   const page = usePagedResource<Referral, ReferralPage>((cursor) => api.referrals(true, cursor), []);
-  const rows = page.items;
+  /*
+   * «Закриті за 30 днів» — своим отбором на сервере (?closedSince=), а не по
+   * загруженным страницам: давнее направление, закрытое на днях, лежит по
+   * дате выписки за ними, и группа его теряла. Отбор добирается целиком, как
+   * и открытые; строки — вместе с загруженными, без повторов.
+   */
+  const [closedSince] = useState(() => closedSinceOf(Date.now()));
+  const closed = usePagedResource<Referral, ReferralPage>((cursor) => api.referrals(true, cursor, { closedSince }), [closedSince]);
+  const closedMore = closed.hasMore && !closed.loadingMore && !closed.error;
+  const loadMoreClosed = closed.loadMore;
+  useEffect(() => {
+    if (closedMore) loadMoreClosed();
+  }, [closedMore, loadMoreClosed]);
+  const loaded = page.items;
+  const closedItems = closed.items;
+  const rows = useMemo(() => (loaded ? mergeReferrals(loaded, closedItems ?? []) : null), [loaded, closedItems]);
   const counts = page.head?.counts;
   /*
    * Открытые — все, а не те, что попали в первую сотню: пока их загружено
@@ -136,6 +153,7 @@ export default function ReferralsPage() {
         await api.updateReferral(r.id, status, note);
       } finally {
         page.reload();
+        closed.reload();
       }
     }, ut(status === "accepted" ? "ref.accepted" : status === "declined" ? "ref.declined" : "ref.completed"));
 
@@ -187,7 +205,7 @@ export default function ReferralsPage() {
    * скелет до первых строк, отказ на их месте, отказ поверх уже показанных —
    * строкой (listBody в ui/paging.ts).
    */
-  const body = listBody(rows, page.error);
+  const body = listBody(rows, page.error ?? closed.error);
   if (!rows) return <Loading rows={4} error={page.error} onRetry={page.reload} busy={page.loading} />;
 
   const openN = viewCount(counts, "open") ?? rows.filter(isOpen).length;

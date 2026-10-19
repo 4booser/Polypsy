@@ -632,6 +632,7 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   "GET /api/reports/episodes/:id": { summary: "Выписка по обращению: приёмы, подписанные заключения, направления, исход", access: "staff", permission: "patients.read" },
   "GET /api/reports/visits/:id": { summary: "Справка о посещении — печатная страница", access: "user", whyNoPermission: "свою справку берёт сам обследуемый; выдача чужой проверяется правом внутри" },
   "GET /api/clinic/today": { summary: "Приёмы дня: картина целиком, включая уже принятых", access: "staff", permission: "patients.read" },
+  "GET /api/clinic/today/count": { summary: "Свой день числом для навигации: сколько ещё ждёт, без людей и без строки журнала", access: "staff", permission: "patients.read" },
   "POST /api/clinic/patients/:userId/lead": { summary: "Закрепить пациента за собой или отпустить", access: "staff", permission: "patients.read" },
   "GET /api/openapi.json": { summary: "Это описание", access: "staff", whyNoPermission: "описание самого API: что кому доступно, читает любой сотрудник, и скрывать состав маршрутов от своих же смысла нет" },
 

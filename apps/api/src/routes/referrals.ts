@@ -95,7 +95,7 @@ async function serialize(rows: (typeof referrals.$inferSelect)[]): Promise<Refer
  * «100», когда ждут ответа сто сорок.
  */
 referralRoutes.get("/", async (c) => {
-  const { all, limit, cursor: rawCursor } = parseQuery(c, referralListQuery);
+  const { all, closedSince, limit, cursor: rawCursor } = parseQuery(c, referralListQuery);
   const cursor = decodeExactCursor(rawCursor);
   /*
    * Только люди своей зоны (волна 13, проверка под ролью приложения).
@@ -105,8 +105,22 @@ referralRoutes.get("/", async (c) => {
    * и живёт оно в lib/scope.ts; политика — страховка под ним, а не замена.
    */
   const zone = await accessiblePatientIds(c.get("user"));
+  /*
+   * Закрытые с момента (?closedSince=) — завершены или отклонены, по времени
+   * последнего перехода; без него — как было: все или все, кроме
+   * завершённых. Отбор закрытых сам решает, какие статусы брать, и `all`
+   * при нём не участвует. Время перехода — updated_at, а у строки без
+   * переходов — время выписки, как и считает экран (closedWithin).
+   */
   const filter = and(
-    all ? undefined : ne(referrals.status, "completed"),
+    closedSince
+      ? and(
+          inArray(referrals.status, ["completed", "declined"]),
+          sql`coalesce(${referrals.updatedAt}, ${referrals.createdAt}) >= ${closedSince}::timestamptz`,
+        )
+      : all
+        ? undefined
+        : ne(referrals.status, "completed"),
     zone === null ? undefined : zone.size ? inArray(referrals.userId, [...zone]) : sql`false`,
   );
 
@@ -142,7 +156,13 @@ referralRoutes.get("/", async (c) => {
 
   await audit(c, {
     action: "referral.list",
-    details: { count: page.length, all, truncated, ...(cursor ? { page: "next" } : {}) },
+    details: {
+      count: page.length,
+      all,
+      truncated,
+      ...(closedSince ? { closedSince } : {}),
+      ...(cursor ? { page: "next" } : {}),
+    },
   });
 
   const last = page[page.length - 1];

@@ -86,6 +86,26 @@ export function closedWithin(r: Pick<Referral, "status" | "createdAt" | "updated
 }
 
 /**
+ * Граница окна «Закриті за 30 днів» для отбора на сервере (?closedSince=).
+ *
+ * Отбором, а не по загруженным страницам: реестр идёт по дате выписки, и
+ * давнее направление, закрытое на днях, лежало за загруженными сотнями —
+ * группа и число «завершено за 30 днів» в шапке его теряли (волна 27).
+ * Граница — с запасом в сутки: экран ещё раз отбирает строки по своему
+ * «сейчас» (closedWithin), а границу берёт одну на показ — иначе ключ
+ * загрузки менялся бы на каждой отрисовке.
+ */
+export function closedSinceOf(now: number, days = 30): string {
+  return new Date(now - (days + 1) * DAY).toISOString();
+}
+
+/** Строки реестра без повторов: загруженные страницы и закрытые за окно — одним списком, первое вхождение побеждает */
+export function mergeReferrals<T extends Pick<Referral, "id">>(first: readonly T[], second: readonly T[]): T[] {
+  const seen = new Set(first.map((r) => r.id));
+  return [...first, ...second.filter((r) => !seen.has(r.id))];
+}
+
+/**
  * Сколько направление ждёт — строка под статусом.
  *
  *  - выписано и не принято: сколько прошло; больше суток — «без відповіді»

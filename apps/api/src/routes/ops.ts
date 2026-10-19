@@ -243,7 +243,16 @@ const isSet = (name: string) => Boolean(process.env[name]?.trim());
 /** Метка выкатки — короткая и без посторонних знаков: она уходит на экран */
 const deployTag = (name: string) => process.env[name]?.trim().replace(/[^\w.+:-]/g, "").slice(0, 64) || null;
 
+/* пустой параметр адреса — то же, что его отсутствие */
+const overviewQuery = z.object({
+  window: z.preprocess((v) => (v === "" ? undefined : v), z.enum(["1h", "6h", "24h"]).optional()),
+});
+
+/** Новая группа — впервые за последний час: то же правило, что у пилюли «нова група» экрана */
+const FRESH_GROUP_MS = 3_600_000;
+
 opsRoutes.get("/overview", async (c) => {
+  const { window } = parseQuery(c, overviewQuery);
   ensureLagSampler();
   const now = Date.now();
   const database = await dbSummary();
@@ -318,6 +327,28 @@ opsRoutes.get("/overview", async (c) => {
       now,
     }),
   };
+
+  /*
+   * «Огляд» одним запросом на такт (OpsOverviewLive): ряды и группы ошибок —
+   * память процесса, и отдельные опросы /traffic, /traffic?window=24h и
+   * /errors стоили экрану трёх запросов к серверу каждые двадцать секунд
+   * ради того, что лежит здесь же. Сутки — один раз: при окне «24 год» ряд
+   * графика и есть суточный.
+   *
+   * Группы ошибок — чтение журнала ops.errors.read, тем же ключом склейки,
+   * что /errors без периода: экран, ходивший туда, писал ровно эту строку.
+   */
+  if (window) {
+    const errors = errorGroupList()
+      .items.filter((g) => now - Date.parse(g.firstAt) <= FRESH_GROUP_MS)
+      .map((g) => ({ ...g, frames: [] }));
+    await auditRead(c, "ops.errors.read", { filters: null, returned: errors.length });
+    body.live = {
+      traffic: { since: startedAt, window, ...trafficSeries(window, now) },
+      day: window === "24h" ? null : { since: startedAt, window: "24h", ...trafficSeries("24h", now) },
+      errors,
+    };
+  }
   return c.json(body);
 });
 

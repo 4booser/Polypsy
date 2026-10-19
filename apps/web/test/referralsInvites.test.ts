@@ -176,7 +176,8 @@ describe("что стоит на месте списка", () => {
 
   test("направления показывают такой отказ строкой над таблицей", () => {
     const src = readFileSync(resolve(import.meta.dir, "../src/pages/Referrals.tsx"), "utf8");
-    expect(src).toContain("listBody(rows, page.error)");
+    // и отказ отбора «Закриті за 30 днів» (волна 27): группа без него была бы неполной молча
+    expect(src).toContain("listBody(rows, page.error ?? closed.error)");
     expect(src).toContain("{body.stale ? ");
   });
 });

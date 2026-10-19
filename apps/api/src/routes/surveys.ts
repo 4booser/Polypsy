@@ -220,83 +220,15 @@ surveyRoutes.get("/", async (c) => {
   const where = filters.length ? and(...filters) : undefined;
 
   /*
-   * Паспорт строки каталога (UI 3, «Каталог методик»): номер действующей
-   * версии, шкалы и смуги, проходження за 30 днів и критический пункт.
-   *
-   * Только сотруднику. Критический пункт — часть ключа методики, а ключ
-   * обследуемому не отдаётся (#141); остальное обследуемому ни к чему, а
-   * «проходження за 30 днів» по всему учреждению — сведение о других людях
-   * (см. responseCount ниже). Обследуемому — null, и поля в ответ не идут.
+   * Паспорт строки каталога (UI 3, «Каталог методик») — номер действующей
+   * версии, шкалы и смуги, проходження за 30 днів и критический пункт — и
+   * прежние числа строки считаются вторым запросом, по строкам страницы
+   * (catalogNumbers ниже). Только сотруднику: см. там.
    */
   const staffView = isStaff(user);
-  const passport = staffView
-    ? {
-        versionNumber: sql<number | null>`(select v.version from survey_versions v where v.id = "surveys"."current_version_id")`,
-        scaleCount: sql<number>`(select count(*) from scales sc where sc.version_id = "surveys"."current_version_id")`,
-        bandCount: sql<number>`(select count(*) from scale_bands b join scales sc on sc.id = b.scale_id
-          where sc.version_id = "surveys"."current_version_id")`,
-        recentResponseCount: sql<number>`(select count(*) from responses r where r.survey_id = "surveys"."id"
-          and r.status = 'completed' and r.submitted_at > now() - interval '30 days')`,
-        hasCriticalItem: sql<boolean>`exists (select 1 from options o join questions q on q.id = o.question_id
-          where q.version_id = "surveys"."current_version_id" and o.risk_flag)`,
-      }
-    : {
-        versionNumber: sql<null>`null`,
-        scaleCount: sql<null>`null`,
-        bandCount: sql<null>`null`,
-        recentResponseCount: sql<null>`null`,
-        hasCriticalItem: sql<null>`null`,
-      };
 
   const listing = db
-    .select({
-      ...passport,
-      survey: surveys,
-      // подзапросы пишем с алиасами и полной квалификацией внешней колонки:
-      // drizzle рендерит surveys.id как "id", а внутри подзапроса это имя перехватила бы
-      // одноимённая колонка вложенной таблицы
-      /*
-       * Пункты — действующей версии и без информационных экранов, как у
-       * шагов набора (routes/batteries.ts): это «сколько отвечать». Счёт по
-       * survey_id складывал пункты всех редакций — после каждой правки число
-       * в списке росло вдвое (внешний разбор, CR-044).
-       */
-      questionCount: sql<number>`(select count(*) from questions q
-        where q.version_id = "surveys"."current_version_id" and q.type <> 'info')`,
-      /*
-       * Сколько прохождений — сотруднику по всей методике, обследуемому —
-       * только свои. Прежде обследуемому отдавался счёт по всему учреждению:
-       * сколько человек прошли методику, — сведение о других людях, которое
-       * ему ни к чему, а в маленьком подразделении и вовсе указывает на
-       * конкретных. В бою его и так резала политика responses (человек видит
-       * свои прохождения), и одна и та же методика показывала владельцем
-       * базы «6», а ролью приложения «0» — нашёл обход всех GET под ролью
-       * приложения (волна 13). Правило теперь в коде, а не только в базе.
-       */
-      responseCount: isStaff(user)
-        ? sql<number>`(select count(*) from responses r where r.survey_id = "surveys"."id" and r.status = 'completed')`
-        : sql<number>`(select count(*) from responses r where r.survey_id = "surveys"."id" and r.user_id = ${user.id} and r.status = 'completed')`,
-      completedByMe: sql<number>`(select count(*) from responses r where r.survey_id = "surveys"."id" and r.user_id = ${user.id} and r.status = 'completed')`,
-      /*
-       * Назначена лично или доступна всем — это разные вещи для того, кто
-       * смотрит список.
-       *
-       * Общедоступную методику человек проходит, если захочет; назначенную от
-       * него ждут, и у неё есть срок. Показывать их одним списком без
-       * различия значит не показать ни того ни другого: назначенное теряется
-       * среди доступного, а доступное выглядит обязательным.
-       */
-      assignedAt: sql<string | null>`(
-        select sa.granted_at from survey_access sa
-        where sa.survey_id = "surveys"."id" and sa.user_id = ${user.id}
-          and (sa.expires_at is null or sa.expires_at > now())
-        limit 1)`,
-      dueAt: sql<string | null>`(
-        select sa.expires_at from survey_access sa
-        where sa.survey_id = "surveys"."id" and sa.user_id = ${user.id}
-          and (sa.expires_at is null or sa.expires_at > now())
-        limit 1)`,
-    })
+    .select()
     .from(surveys)
     .where(where)
     /*
@@ -321,32 +253,205 @@ surveyRoutes.get("/", async (c) => {
       ? rows.length
       : Number((await db.select({ n: sql<number>`count(*)::int` }).from(surveys).where(where))[0]?.n ?? 0);
 
-  const list: SurveyListItem[] = rows.map((r) => ({
-    ...r.survey,
-    title: t(r.survey.title as never, langOf(c)),
-    description: r.survey.description ? t(r.survey.description as never, langOf(c)) : null,
-    instructions: r.survey.instructions ? t(r.survey.instructions as never, langOf(c)) : null,
-    safetyPlan: r.survey.safetyPlan ? t(r.survey.safetyPlan as never, langOf(c)) : null,
-    rightsStatus: r.survey.rightsStatus,
-    isDemo: r.survey.isDemo,
-    keysVerifiedAt: r.survey.keysVerifiedAt,
-    questionCount: Number(r.questionCount ?? 0),
-    responseCount: Number(r.responseCount ?? 0),
-    completedByMe: Number(r.completedByMe ?? 0) > 0,
-    assigned: r.assignedAt !== null,
-    dueAt: r.dueAt,
-    ...(staffView
-      ? {
-          versionNumber: r.versionNumber === null ? null : Number(r.versionNumber),
-          scaleCount: Number(r.scaleCount ?? 0),
-          bandCount: Number(r.bandCount ?? 0),
-          recentResponseCount: Number(r.recentResponseCount ?? 0),
-          hasCriticalItem: r.hasCriticalItem === true,
-        }
-      : {}),
-  }));
+  const numbers = await catalogNumbers(rows, user.id, staffView);
+  const list: SurveyListItem[] = rows.map((survey) => {
+    const n = numbers.get(survey.id) ?? NO_NUMBERS;
+    return {
+      ...survey,
+      title: t(survey.title as never, langOf(c)),
+      description: survey.description ? t(survey.description as never, langOf(c)) : null,
+      instructions: survey.instructions ? t(survey.instructions as never, langOf(c)) : null,
+      safetyPlan: survey.safetyPlan ? t(survey.safetyPlan as never, langOf(c)) : null,
+      rightsStatus: survey.rightsStatus,
+      isDemo: survey.isDemo,
+      keysVerifiedAt: survey.keysVerifiedAt,
+      questionCount: n.questionCount,
+      responseCount: staffView ? n.responseCount : n.mine,
+      completedByMe: n.mine > 0,
+      assigned: n.assignedAt !== null,
+      dueAt: n.dueAt,
+      ...(staffView
+        ? {
+            versionNumber: n.versionNumber,
+            scaleCount: n.scaleCount,
+            bandCount: n.bandCount,
+            recentResponseCount: n.recentResponseCount,
+            hasCriticalItem: n.hasCriticalItem,
+          }
+        : {}),
+    };
+  });
   return c.json({ items: list, total } satisfies SurveyListPage);
 });
+
+/** Числа строки каталога — то, что catalogNumbers считает по строкам страницы */
+interface CatalogNumbers {
+  questionCount: number;
+  /** Завершённые прохождения методики — по всей методике; отдаётся только сотруднику */
+  responseCount: number;
+  /** Свои завершённые: completedByMe, а обследуемому — и его responseCount */
+  mine: number;
+  assignedAt: string | null;
+  dueAt: string | null;
+  versionNumber: number | null;
+  scaleCount: number;
+  bandCount: number;
+  recentResponseCount: number;
+  hasCriticalItem: boolean;
+}
+
+const NO_NUMBERS: CatalogNumbers = {
+  questionCount: 0,
+  responseCount: 0,
+  mine: 0,
+  assignedAt: null,
+  dueAt: null,
+  versionNumber: null,
+  scaleCount: 0,
+  bandCount: 0,
+  recentResponseCount: 0,
+  hasCriticalItem: false,
+};
+
+/** Список строк массивом text[] одним параметром: `{"a","b",NULL}` */
+function textArray(items: readonly (string | null)[]): string {
+  return `{${items.map((s) => (s === null ? "NULL" : `"${s.replace(/["\\]/g, (m) => `\\${m}`)}"`)).join(",")}}`;
+}
+
+/**
+ * Числа строк каталога одним запросом на страницу — соединениями и
+ * сгруппированными агрегатами, а не подзапросами на строку (волна 27,
+ * perf-day).
+ *
+ * Прежде каждая строка списка несла десять подзапросов, из них пять — паспорт
+ * UI 3. Самые дорогие — по редакциям: число пунктов перебирало ВСЕ пункты
+ * всех методик и всех их редакций на каждую строку (у questions нет индекса
+ * по version_id), то есть росло как «методики × история правок»; критический
+ * пункт — то же через варианты ответов. Теперь пункты, критический пункт,
+ * шкалы и смуги считаются одним проходом по действующим редакциям страницы.
+ * Пункты версии ищутся по своей методике (questions_survey_idx): пункт версии
+ * всегда принадлежит её методике — версии копируются только внутри неё
+ * (lib/surveys.ts, copyVersion).
+ *
+ * Прохождения считаются по-прежнему на методику: подсчёт по индексу
+ * (survey_id, status) — самый короткий путь к числу, а сгруппированный
+ * агрегат по всем прохождениям страницы читал бы их все одним проходом —
+ * на стенде со ста тысячами прохождений это было втрое дольше, под политикой
+ * строк — тем более (замер в отчёте волны).
+ *
+ * Правила — прежние, и каждое с причиной:
+ *  - пункты — действующей версии и без информационных экранов, как у шагов
+ *    набора (routes/batteries.ts): это «сколько отвечать». Счёт по survey_id
+ *    складывал пункты всех редакций — после каждой правки число в списке
+ *    росло вдвое (внешний разбор, CR-044);
+ *  - сколько прохождений — сотруднику по всей методике, обследуемому — только
+ *    свои. Прежде обследуемому отдавался счёт по всему учреждению — сведение
+ *    о других людях, которое ему ни к чему, а в маленьком подразделении и
+ *    вовсе указывает на конкретных (волна 13). Правило в коде, а не только в
+ *    политике responses;
+ *  - назначена лично или доступна всем — разные вещи: назначенную от
+ *    человека ждут, и у неё есть срок; показывать их без различия значит не
+ *    показать ни того ни другого;
+ *  - паспорт — только сотруднику. Критический пункт — часть ключа методики,
+ *    а ключ обследуемому не отдаётся (#141); «проходження за 30 днів» по всему
+ *    учреждению — сведение о других людях. Обследуемому паспорт не
+ *    считается вовсе, и поля в ответ не идут.
+ *
+ * Запрос идёт в контексте запроса, как и прежний: прохождения и назначения
+ * считаются под той же политикой строк, что видел список.
+ */
+async function catalogNumbers(
+  rows: readonly { id: string; currentVersionId: string | null }[],
+  me: string,
+  staff: boolean,
+): Promise<Map<string, CatalogNumbers>> {
+  if (!rows.length) return new Map();
+  const ids = textArray(rows.map((r) => r.id));
+  const versions = textArray(rows.map((r) => r.currentVersionId));
+  const found = await db.execute<{
+    id: string;
+    question_count: number;
+    response_count: number | null;
+    mine: number;
+    assigned_at: string | null;
+    due_at: string | null;
+    version_number: number | null;
+    scale_count: number | null;
+    band_count: number | null;
+    recent_count: number | null;
+    critical: boolean | null;
+  }>(sql`
+    with page as materialized (
+      select p.id, p.version_id from unnest(${ids}::text[], ${versions}::text[]) as p(id, version_id)
+    ),
+    qs as materialized (
+      select q.version_id,
+             count(*) filter (where q.type <> 'info')::int as question_count,
+             ${staff ? sql`bool_or(exists (select 1 from options o where o.question_id = q.id and o.risk_flag))` : sql`null::boolean`} as critical
+      from page p
+      join questions q on q.survey_id = p.id and q.version_id = p.version_id
+      group by q.version_id
+    )${
+      staff
+        ? sql`,
+    sb as materialized (
+      select sc.version_id, count(distinct sc.id)::int as scale_count, count(b.id)::int as band_count
+      from page p
+      join scales sc on sc.version_id = p.version_id
+      left join scale_bands b on b.scale_id = sc.id
+      group by sc.version_id
+    )`
+        : sql``
+    }
+    select p.id,
+           coalesce(qs.question_count, 0) as question_count,
+           ${
+             staff
+               ? sql`(select count(*) from responses r where r.survey_id = p.id and r.status = 'completed')::int`
+               : sql`null::int`
+           } as response_count,
+           (select count(*) from responses r
+             where r.survey_id = p.id and r.user_id = ${me} and r.status = 'completed')::int as mine,
+           a.granted_at as assigned_at,
+           a.expires_at as due_at,
+           ${
+             staff
+               ? sql`v.version as version_number,
+           coalesce(sb.scale_count, 0) as scale_count,
+           coalesce(sb.band_count, 0) as band_count,
+           (select count(*) from responses r where r.survey_id = p.id and r.status = 'completed'
+             and r.submitted_at > now() - interval '30 days')::int as recent_count,
+           coalesce(qs.critical, false) as critical`
+               : sql`null::int as version_number, null::int as scale_count, null::int as band_count,
+           null::int as recent_count, null::boolean as critical`
+           }
+    from page p
+    left join qs on qs.version_id = p.version_id
+    ${staff ? sql`left join survey_versions v on v.id = p.version_id left join sb on sb.version_id = p.version_id` : sql``}
+    left join lateral (
+      select sa.granted_at, sa.expires_at from survey_access sa
+      where sa.survey_id = p.id and sa.user_id = ${me} and (sa.expires_at is null or sa.expires_at > now())
+      limit 1
+    ) a on true
+  `);
+  const out = new Map<string, CatalogNumbers>();
+  for (const r of found) {
+    out.set(r.id, {
+      questionCount: Number(r.question_count ?? 0),
+      responseCount: Number(r.response_count ?? 0),
+      mine: Number(r.mine ?? 0),
+      /* время — строкой базы, как и прежде отдавал подзапрос: тот же клиент, те же разборщики типов */
+      assignedAt: r.assigned_at ?? null,
+      dueAt: r.due_at ?? null,
+      versionNumber: r.version_number === null ? null : Number(r.version_number),
+      scaleCount: Number(r.scale_count ?? 0),
+      bandCount: Number(r.band_count ?? 0),
+      recentResponseCount: Number(r.recent_count ?? 0),
+      hasCriticalItem: r.critical === true,
+    });
+  }
+  return out;
+}
 
 /**
  * Методика с содержимым. ?version=N — содержимое конкретной версии.

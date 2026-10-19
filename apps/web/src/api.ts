@@ -1,5 +1,6 @@
 import type {
   AppointmentView,
+  TodayCount,
   ScheduleExceptionView,
   ScheduleTemplateView,
   LocalizedText,
@@ -1330,10 +1331,12 @@ export const api = {
    * Реестр направлений — страницей по сотне. `total` приходит на первой
    * странице: по нему стоит счётчик в навигации. Адрес первой страницы —
    * прежний (`/api/referrals`, `?all=1`): его же спрашивает счётчик.
+   * `closedSince` — только закрытые с этого момента («Закриті за 30 днів»).
    */
-  referrals: (all = false, cursor?: string | null) => {
+  referrals: (all = false, cursor?: string | null, opts: { closedSince?: string } = {}) => {
     const qs = new URLSearchParams();
     if (all) qs.set("all", "1");
+    if (opts.closedSince) qs.set("closedSince", opts.closedSince);
     if (cursor) qs.set("cursor", cursor);
     const tail = qs.toString();
     return request<ReferralPage>(`/api/referrals${tail ? `?${tail}` : ""}`);
@@ -1563,7 +1566,8 @@ export const api = {
    * Техпанель: наблюдаемость (/api/ops, право ops.read). Всё — память
    * процесса API до его перезапуска; `since` в каждом ответе.
    */
-  opsOverview: () => request<OpsOverview>("/api/ops/overview"),
+  /** С окном — «Огляд» целиком одним запросом: сводка, ряды нагрузки и новые группы ошибок (OpsOverviewLive) */
+  opsOverview: (window?: OpsWindow) => request<OpsOverview>(`/api/ops/overview${window ? `?window=${window}` : ""}`),
   opsTraffic: (window: OpsWindow) => request<OpsTraffic>(`/api/ops/traffic?window=${window}`),
   opsRoutes: () => request<OpsRoutes>("/api/ops/routes"),
   opsSlow: () => request<OpsSlow>("/api/ops/slow"),
@@ -2315,6 +2319,8 @@ export const api = {
     if (params.specialistId) q.set("specialistId", params.specialistId);
     return request<{ date: string; items: AppointmentView[] }>(`/api/clinic/today?${q}`);
   },
+  /** Свой день числом — для бейджа навигации: без людей и без строки журнала, в отличие от today() */
+  todayCount: () => request<TodayCount>("/api/clinic/today/count"),
   /** «booked» и «arrived» из более позднего состояния — шаг назад, снимающий ошибочную отметку (#38) */
   appointmentStatus: (id: string, status: "booked" | "arrived" | "in_progress" | "done" | "no_show") =>
     request<{ ok: true }>(`/api/clinic/appointments/${id}/status`, {
