@@ -13,9 +13,9 @@ import { BottomSheet } from "../ui/Sheet";
 import { T } from "../ui/Text";
 import { useToast } from "../ui/Toast";
 import { refreshStaffBadges } from "./badges";
-import { caseClock, clock, dm, hm, num, shortName } from "./model";
+import { caseClock, dm, hm, num, shortName } from "./model";
 import { reviewDrafts, type ReviewOutcome } from "./reviewDrafts";
-import { Chip, History, TimerBar, useClockText } from "./ui";
+import { Chip, History, TimerBar, useClock, useClockText } from "./ui";
 
 /*
  * Разбор сигнала — лист снизу, телефонная форма ящика разбора консоли.
@@ -57,6 +57,7 @@ export function ReviewSheet({
   const { user } = useAuth();
   const toast = useToast();
   const of = useClockText();
+  const clockOf = useClock();
 
   const [shown, setShown] = useState<AlertCase | null>(item);
   const [basis, setBasis] = useState<AlertSignalBasis[] | null>(null);
@@ -217,7 +218,7 @@ export function ReviewSheet({
             <Icon name="timer" size={16} color={c.riskink} />
             <View style={{ flexDirection: "row", alignItems: "baseline", gap: 5 }}>
               <T v="number" size={26} color={c.riskink} num scale={false}>
-                {clock(k.elapsed)}
+                {clockOf(k.elapsed)}
               </T>
               <T v="sub" size={13.5} weight={700} tone="text2" scale={false}>
                 {of(k)}
@@ -226,7 +227,7 @@ export function ReviewSheet({
             {k.norm ? <TimerBar pct={k.pct} width={48} /> : null}
             {k.due && k.left !== null ? (
               <T v="sub" size={13.5} tone="text2" style={{ flex: 1, textAlign: "right" }} num>
-                {(k.over ? ut("mst.dueOver") : ut("mst.dueLeft")).replace("{t}", hm(k.due)).replace("{l}", clock(Math.abs(k.left)))}
+                {(k.over ? ut("mst.dueOver") : ut("mst.dueLeft")).replace("{t}", hm(k.due)).replace("{l}", clockOf(Math.abs(k.left)))}
               </T>
             ) : null}
           </View>

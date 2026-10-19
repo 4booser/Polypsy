@@ -322,6 +322,12 @@ export function TimerBar({ pct, width }: { pct: number; width?: number }) {
   );
 }
 
+/** Часы разбора числом: «2:48», от суток — «9 дн.», как в консоли (model.ts, clock) */
+export function useClock() {
+  const { ut } = useLang();
+  return (minutes: number) => clock(minutes, ut("rr.days"));
+}
+
 /** «2:48 з 4 год» — часы разбора словами */
 export function useClockText() {
   const { ut } = useLang();
@@ -352,6 +358,7 @@ export function RiskNow({
   const { ut } = useLang();
   const k = caseClock(item.openedAt, norm, now);
   const of = useClockText();
+  const clockOf = useClock();
   const first = item.signals[0];
   const title = k.due
     ? (k.over ? ut("mst.riskOverdue") : ut("mst.riskDue")).replace("{t}", hm(k.due))
@@ -375,7 +382,7 @@ export function RiskNow({
         <View style={{ flex: 1, minWidth: 0, gap: 6 }}>
           <View style={{ flexDirection: "row", alignItems: "baseline", gap: 6 }}>
             <T v="number" size={26} color={c.riskink} num scale={false}>
-              {clock(k.elapsed)}
+              {clockOf(k.elapsed)}
             </T>
             <T v="sub" weight={700} tone="text2" numberOfLines={1}>
               {of(k)}
@@ -385,7 +392,7 @@ export function RiskNow({
         </View>
         {k.left !== null ? (
           <T v="sub" size={13} tone="text2" num>
-            {(k.over ? ut("mst.overBy") : ut("mst.leftFor")).replace("{t}", clock(Math.abs(k.left)))}
+            {(k.over ? ut("mst.overBy") : ut("mst.leftFor")).replace("{t}", clockOf(Math.abs(k.left)))}
           </T>
         ) : null}
         <Btn title={ut("mst.review")} kind="risk" onPress={onReview} accessibilityHint={ut("mst.reviewHint")} />

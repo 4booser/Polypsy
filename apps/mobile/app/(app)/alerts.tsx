@@ -12,10 +12,10 @@ import { T } from "@/ui/Text";
 import { useToast } from "@/ui/Toast";
 import { refreshStaffBadges } from "@/staff/badges";
 import { useNow, useSurveyIndex } from "@/staff/data";
-import { caseClock, clock, dm, hm, hours } from "@/staff/model";
+import { caseClock, dm, hm, hours } from "@/staff/model";
 import { ReviewSheet } from "@/staff/ReviewSheet";
 import { StaffOnly } from "@/staff/StaffOnly";
-import { Avatar, Card, Chip, Line, Loading, Section, StaffTop, StateBlock, useClockText } from "@/staff/ui";
+import { Avatar, Card, Chip, Line, Loading, Section, StaffTop, StateBlock, useClock, useClockText } from "@/staff/ui";
 
 type Mode = "open" | "done";
 
@@ -216,6 +216,7 @@ function OpenRow({
   const c = useColors();
   const { ut } = useLang();
   const of = useClockText();
+  const clockOf = useClock();
   const k = caseClock(item.openedAt, norm, now);
   const severe = item.severity === "severe";
   const more = (item.group?.cases ?? 1) - 1;
@@ -255,7 +256,7 @@ function OpenRow({
           {more > 0 ? <T v="sub">{ut("mst.moreCases").replace("{n}", String(more))}</T> : null}
         </View>
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
-          <Chip kind="risk" icon="timer" label={clock(k.elapsed)} detail={of(k)} />
+          <Chip kind="risk" icon="timer" label={clockOf(k.elapsed)} detail={of(k)} />
           {k.due ? <Chip label={ut("mst.until").replace("{t}", hm(k.due))} /> : null}
           {item.overdue || k.over ? <Chip kind="warn" icon="clock" label={ut("mal.overdue")} /> : null}
           {item.assignedToName ? <Chip kind={mine ? "v" : "n"} icon="user-round" label={mine ? ut("mst.takenByMe") : item.assignedToName} /> : null}

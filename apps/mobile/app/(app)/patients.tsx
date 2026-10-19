@@ -11,9 +11,9 @@ import { Btn } from "@/ui/Button";
 import { Icon } from "@/ui/Icon";
 import { T } from "@/ui/Text";
 import { useNow, useSurveyIndex } from "@/staff/data";
-import { caseClock, clock, dm } from "@/staff/model";
+import { caseClock, dm } from "@/staff/model";
 import { StaffOnly } from "@/staff/StaffOnly";
-import { Avatar, Card, Chip, Loading, PillRow, SearchField, Section, StaffTop, StateBlock, useClockText } from "@/staff/ui";
+import { Avatar, Card, Chip, Loading, PillRow, SearchField, Section, StaffTop, StateBlock, useClock, useClockText } from "@/staff/ui";
 
 type View_ = "all" | "risk" | "watch";
 
@@ -239,6 +239,7 @@ function Row({ r, first, now, norm, onPress }: { r: PersonRow; first: boolean; n
   const c = useColors();
   const { ut } = useLang();
   const of = useClockText();
+  const clockOf = useClock();
   const age = r.birthYear ? new Date(now).getFullYear() - r.birthYear : null;
   const k = r.open ? caseClock(r.open.openedAt, norm, now) : null;
   const sub = [age !== null ? ut("mst.age").replace("{n}", String(age)) : null, r.unit].filter(Boolean).join(", ");
@@ -271,7 +272,7 @@ function Row({ r, first, now, norm, onPress }: { r: PersonRow; first: boolean; n
             {r.open || r.work.length ? (
               <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 4 }}>
                 {r.open && k ? (
-                  <Chip kind={r.open.severity === "severe" ? "risk" : "warn"} icon="triangle-alert" label={clock(k.elapsed)} detail={of(k)} />
+                  <Chip kind={r.open.severity === "severe" ? "risk" : "warn"} icon="triangle-alert" label={clockOf(k.elapsed)} detail={of(k)} />
                 ) : null}
                 {overdue.length ? (
                   <Chip kind="warn" icon="clock" label={ut(`mst.kind.${overdue[0]!.kind}`)} detail={ut("mst.overdueDays").replace("{n}", String(overdue[0]!.days ?? 0))} />
