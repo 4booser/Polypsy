@@ -1,8 +1,18 @@
 import type { ScoreResult, UiKey } from "@quizzy/shared";
+import { locale } from "../format";
 import { useLang } from "../lang";
 import { SeverityTag } from "../ui/primitives";
 import { cx } from "../ui/cx";
 import { dm } from "./when";
+
+/**
+ * Число результата: до десятой и знаком языка страницы — «52,3» на
+ * украинском и русском, «52.3» на английском. `signed` — изменение со
+ * знаком: «+2,5», «−1», а ноль — без знака.
+ */
+export function scoreNumber(v: number, signed = false): string {
+  return new Intl.NumberFormat(locale(), { maximumFractionDigits: 1, ...(signed ? { signDisplay: "exceptZero" as const } : {}) }).format(v);
+}
 
 /**
  * Результат шкалы глазами человека: «14 з 27», «40 %», полоса словом.
@@ -14,13 +24,13 @@ import { dm } from "./when";
 export function scoreValue(s: ScoreResult, ut: (key: UiKey) => string): { big: string; of: string | null } {
   if (s.normalization === "ratio") return { big: `${Math.round(s.percent)} %`, of: null };
   if (s.normalization === "raw") {
-    const [big = String(s.rawScore), rest = ""] = ut("qi.pointOf")
-      .replace("{n}", String(s.rawScore))
-      .replace("{max}", String(s.maxScore))
+    const [big = scoreNumber(s.rawScore), rest = ""] = ut("qi.pointOf")
+      .replace("{n}", scoreNumber(s.rawScore))
+      .replace("{max}", scoreNumber(s.maxScore))
       .split(/ (.*)/s);
     return { big, of: rest || null };
   }
-  return { big: String(Math.round(s.value * 10) / 10), of: null };
+  return { big: scoreNumber(s.value), of: null };
 }
 
 /** Шкала, которую показывают первой: содержательная (не шкала лжи) */

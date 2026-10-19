@@ -12505,9 +12505,9 @@ export const UI = {
   "ptw.factOneScreen": { uk: "Одна відповідь на екран, великими плитками.", ru: "Один ответ на экран, крупными плитками.", en: "One answer per screen, in large tiles." },
   "ptw.factPause": { uk: "Можна зупинитися будь-коли", ru: "Можно остановиться в любой момент", en: "You can stop at any time" },
   "ptw.factPauseText": {
-    uk: "Кожна відповідь зберігається на цьому пристрої одразу. Продовжите з того ж питання.",
-    ru: "Каждый ответ сразу сохраняется на этом устройстве. Продолжите с того же вопроса.",
-    en: "Every answer is saved on this device right away. You continue from the same question.",
+    uk: "Кожна відповідь зберігається на цьому пристрої одразу, доки ви не вийдете з кабінету. Продовжите з того ж питання.",
+    ru: "Каждый ответ сразу сохраняется на этом устройстве, пока вы не выйдете из кабинета. Продолжите с того же вопроса.",
+    en: "Every answer is saved on this device right away, until you sign out. You continue from the same question.",
   },
   "ptw.factBack": { uk: "Передумали — поверніться", ru: "Передумали — вернитесь", en: "Changed your mind? Go back" },
   "ptw.factBackText": { uk: "Кнопка «Назад» є на кожному питанні.", ru: "Кнопка «Назад» есть на каждом вопросе.", en: "Every question has a “Back” button." },
@@ -12743,9 +12743,9 @@ export const UI = {
   "ptw.withdrawn": { uk: "Згоду відкликано", ru: "Согласие отозвано", en: "Consent withdrawn" },
   "ptw.exit": { uk: "Вихід", ru: "Выход", en: "Sign out" },
   "ptw.exitText": {
-    uk: "Відповіді, що чекають відправлення, залишаться на цьому пристрої й підуть після вашого наступного входу.",
-    ru: "Ответы, которые ждут отправки, останутся на этом устройстве и уйдут после вашего следующего входа.",
-    en: "Answers waiting to be sent stay on this device and go out after your next sign-in.",
+    uk: "Відповіді, що чекають відправлення, залишаться на цьому пристрої й підуть після вашого наступного входу. Незавершені тести зітруться з пристрою.",
+    ru: "Ответы, которые ждут отправки, останутся на этом устройстве и уйдут после вашего следующего входа. Незавершённые тесты сотрутся с устройства.",
+    en: "Answers waiting to be sent stay on this device and go out after your next sign-in. Unfinished tests are erased from the device.",
   },
 
   /* согласие (patient/ConsentGate.tsx) */

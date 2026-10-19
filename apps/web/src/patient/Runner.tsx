@@ -36,11 +36,12 @@ import {
 } from "./answerInputs";
 import { ConsentAside, ConsentScreen } from "./ConsentGate";
 import { Glyph } from "./icons";
-import { drafts, offlineSafetyPlan, outbox, type RunnerDraft } from "./outbox";
+import { drafts, type RunnerDraft } from "./drafts";
+import { offlineSafetyPlan, outbox } from "./outbox";
 import { PatientFrame } from "./PatientApp";
 import { scoreValue } from "./results";
 import { Body, COLUMN, CallRows, FactList, HelpLink, PtPanel, instrumentCode, instrumentName } from "./parts";
-import { acceptAndResend, cabinetIo, sendAnswers, type ConsentHold, type SendOutcome, type SubmitBody } from "./sendAnswers";
+import { acceptAndResend, attemptClosed, cabinetIo, sendAnswers, type ConsentHold, type SendOutcome, type SubmitBody } from "./sendAnswers";
 import { dm, hm, visitWhen, whenSaid } from "./when";
 
 /**
@@ -396,9 +397,15 @@ function RunnerFlow({ survey }: { survey: SurveyFull }) {
        * Временный отказ (работы, перезапуск, нет сети) кладёт ответы в
        * очередь кабинета, отказ без новой редакции согласия держит их
        * здесь до принятия (sendAnswers.ts). Отказ по существу — тостом,
-       * ответы остаются на экране.
+       * ответы остаются на экране; «вже проходили» ещё и стирает черновик:
+       * сдать его больше нельзя.
        */
-      return settle(await sendAnswers(io, survey.id, body), body);
+      try {
+        return settle(await sendAnswers(io, survey.id, body), body);
+      } catch (error) {
+        if (user && attemptClosed(error)) drafts.drop(user.id, survey.id);
+        throw error;
+      }
     }, ut("pw.sent"));
 
   const goNext = () => {

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
+import { isGoogleReturnCode, renderError, type Lang } from "@quizzy/shared";
 import { ApiError, api, tokenStore } from "../api";
 import { useAuth } from "../auth";
 import { useLang } from "../lang";
@@ -28,10 +29,20 @@ import { GoogleMark } from "./public/social";
  * причиной словами сервера и путями дальше: войти паролем или попробовать
  * Google ещё раз; справа — какие ещё бывают причины и что с каждой делать.
  */
+/**
+ * Причина отказа, с которой сервер вернул сюда (routes/auth.ts, GET
+ * /google/callback): ключ словами на языке страницы. Ключ не из списка
+ * отказов возврата — null: адрес может набрать кто угодно.
+ */
+export function googleRefusal(search: string, lang: Lang): string | null {
+  const key = new URLSearchParams(search).get("error");
+  return isGoogleReturnCode(key) ? renderError(key, lang) : null;
+}
+
 export default function GoogleReturn() {
   const navigate = useNavigate();
   const { refreshUser, beginMfa } = useAuth();
-  const { ut } = useLang();
+  const { ut, lang } = useLang();
   const [error, setError] = useState<string | null>(null);
   /*
    * Строгий режим React вызывает эффект дважды. Без этой отметки второй
@@ -46,10 +57,12 @@ export default function GoogleReturn() {
 
     const params = new URLSearchParams(window.location.search);
     const code = params.get("code");
+    const refused = googleRefusal(window.location.search, lang);
     window.history.replaceState(null, "", window.location.pathname);
 
     if (!code) {
-      setError(ut("lg.googleFailed"));
+      /* сервер вернул с отказом — его причиной («не прив’язано», «сеанс застарів»); иначе общей строкой */
+      setError(refused ?? ut("lg.googleFailed"));
       return;
     }
 
@@ -97,7 +110,7 @@ export default function GoogleReturn() {
         /* отказ сервера — его словами («сеанс входу застарів…»); обрыв и прочее — общей строкой */
         setError(err instanceof ApiError && err.status >= 400 && err.status < 500 ? err.message : ut("lg.googleFailed"));
       });
-  }, [navigate, refreshUser, beginMfa, ut]);
+  }, [navigate, refreshUser, beginMfa, ut, lang]);
 
   if (!error) {
     return (

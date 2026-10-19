@@ -20,6 +20,7 @@ import {
   buttonClass,
 } from "../ui/primitives";
 import { useResource } from "../useResource";
+import { CallRows } from "../patient/parts";
 import { AccessIcon, type AccessIconName } from "./public/accessIcons";
 import { AuthCard, CrisisNote, PasswordField, fill, patientField, rich } from "./public/authParts";
 import { PublicFrame } from "./public/PublicFrame";
@@ -111,7 +112,7 @@ function Register({
   onDone: () => void;
   onHelp: () => void;
 }) {
-  const { ut } = useLang();
+  const { ut, lang } = useLang();
   const [error, setError] = useState<string | null>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -130,7 +131,8 @@ function Register({
     try {
       const res = await fetch("/api/auth/register", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        /* отказ сервера — на языке страницы, как у остальных запросов (api.ts); без заголовка он был украинским всегда */
+        headers: { "Content-Type": "application/json", "Accept-Language": lang },
         body: JSON.stringify({
           email,
           password,
@@ -515,15 +517,11 @@ function Invalid({ reason, onHelp }: { reason: string; onHelp: () => void }) {
 
 /**
  * «Потрібна допомога зараз» — кому звонить, одним нажатием (help_pane
- * набора), как в кабинете пациента. Красным — только 103: это единственная
- * строка про угрозу жизни. Номера — ссылками tel:, без подтверждения.
+ * набора), теми же строками, что в кабинете пациента (patient/parts.tsx,
+ * CallRows): красным только 103, номера — ссылками tel:, без подтверждения.
  */
 function HelpCalls({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { ut } = useLang();
-  const rows = [
-    { key: "hotline", name: ut("home.hotline"), sub: ut("pt.helpHotlineSub"), num: ut("home.hotlineNumber"), risk: false },
-    { key: "emergency", name: ut("pt.emergency"), sub: ut("pt.emergencySub"), num: ut("pt.emergencyNumber"), risk: true },
-  ];
   return (
     <Drawer
       open={open}
@@ -533,33 +531,7 @@ function HelpCalls({ open, onClose }: { open: boolean; onClose: () => void }) {
       icon={<ShellIcon name="life-buoy" size={18} />}
     >
       <div className="pb-[18px] pt-[14px]">
-        <div className="overflow-hidden rounded-[16px] border border-border">
-          {rows.map((r) => (
-            <a
-              key={r.key}
-              href={`tel:${r.num}`}
-              aria-label={`${ut("pt.helpCall")}: ${r.name}, ${r.num}`}
-              className="group grid min-h-[66px] grid-cols-[minmax(0,1fr)_auto_44px] items-center gap-3 border-t border-divider py-[9px] pl-4 pr-[14px] text-text no-underline first:border-t-0 hover:bg-panel-2 hover:no-underline"
-            >
-              <span className="min-w-0">
-                <b className={cx("block text-[16px] font-extrabold leading-[22px]", r.risk && "text-risk-ink")}>{r.name}</b>
-                <small className="block truncate text-[14px] font-semibold leading-[19px] text-muted">{r.sub}</small>
-              </span>
-              <span className={cx("text-[20px] font-extrabold leading-none tabular-nums", r.risk ? "text-risk-ink" : "text-violet-ink")}>
-                {r.num}
-              </span>
-              <span
-                aria-hidden
-                className={cx(
-                  "grid size-11 place-items-center rounded-[14px]",
-                  r.risk ? "bg-risk text-onfill group-hover:bg-risk-hover" : "bg-violet-tint text-violet-ink group-hover:bg-violet-tint-2",
-                )}
-              >
-                <ShellIcon name="phone" size={19} />
-              </span>
-            </a>
-          ))}
-        </div>
+        <CallRows autoFocus />
         <p className="m-0 mt-3 text-[14px] leading-5 text-muted">{ut("ax.jn.helpNote")}</p>
       </div>
     </Drawer>
