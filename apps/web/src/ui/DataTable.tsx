@@ -770,12 +770,13 @@ function ColumnPicker<T>({
       className="relative"
       /*
        * Esc закрывает выбор колонок и возвращает фокус кнопке — как меню
-       * набора. preventDefault: ящик, в котором стоит таблица, Esc этого
-       * нажатия на себя не принимает (Drawer смотрит defaultPrevented).
+       * набора. Нажатие дальше не идёт, как у поповера: ни ящик, ни окно,
+       * в котором стоит таблица, его на себя не принимают.
        */
       onKeyDown={(e) => {
         if (e.key !== "Escape" || !open) return;
         e.preventDefault();
+        e.stopPropagation();
         setOpen(false);
         toggle.current?.focus();
       }}
