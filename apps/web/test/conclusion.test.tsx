@@ -6,7 +6,7 @@ import type { ConclusionState, ConclusionVersion } from "../src/api";
 import { ConclusionEditor } from "../src/components/ConclusionEditor";
 import { LangProvider } from "../src/lang";
 import { applicableModels, resultLines } from "../src/pages/Conclusion";
-import { signLockedBySignal } from "../src/pages/response/context";
+import { signGate, signLockedBySignal } from "../src/pages/response/context";
 import { dynamics, series } from "./responseFixtures";
 
 /**
@@ -101,6 +101,52 @@ describe("подпись после разбора сигнала", () => {
     const html = draw(false);
     expect(button(html, "cn3.form").disabled).toBe(false);
     expect(button(draw(false, "  "), "cn3.form").disabled).toBe(true);
+  });
+
+  /**
+   * Замок считался только по пришедшей обстановке: пока шёл запрос — и
+   * навсегда при его отказе — кнопка подписи была живой при неразобранном
+   * сигнале. Мутация: вернуть «нет обстановки — открыто» для того, кто
+   * разбирает сигналы, — проверки pending и unknown падают.
+   */
+  test("обстановка ещё едет или не пришла — подпись закрыта для того, кто разбирает сигналы", () => {
+    expect(signGate(null, false, true)).toBe("pending");
+    expect(signGate(null, true, true)).toBe("unknown");
+    expect(signGate({ signals: [signal()] }, false, true)).toBe("locked");
+    expect(signGate({ signals: [signal({ reviewedAt: "2026-10-08T13:00:00.000Z" })] }, false, true)).toBe("open");
+    // без права разбирать сигналы сервер их не отдаёт — правило экрана не действует ни до, ни после ответа
+    expect(signGate(null, false, false)).toBe("open");
+    expect(signGate({ signals: null }, false, false)).toBe("open");
+  });
+
+  test("подпись ждёт обстановку молча, а при отказе называет причину; черновик сохраняется в обоих случаях", () => {
+    const base = {
+      responseId: "r1",
+      state: state(v()),
+      error: null,
+      onState: () => {},
+      onReload: () => {},
+      title: "",
+      text: "Симптоми зменшуються",
+      setText: () => {},
+      areaRef: { current: null },
+    };
+    const pending = render(<ConclusionEditor {...base} signPending />);
+    expect(button(pending, "cn3.form").disabled).toBe(true);
+    expect(button(pending, "cnc.saveDraft").disabled).toBe(false);
+    expect(pending).not.toContain(UI["cnx.lockTitle"].uk);
+
+    const unknown = render(
+      <ConclusionEditor
+        {...base}
+        lock={{ title: UI["cnx.lockUnknownTitle"].uk, body: UI["cnx.lockUnknownBody"].uk, action: null, tone: "warn", note: UI["cnx.lockUnknownBody"].uk }}
+      />,
+    );
+    expect(button(unknown, "cn3.form").disabled).toBe(true);
+    expect(button(unknown, "cnc.saveDraft").disabled).toBe(false);
+    expect(unknown).toContain(UI["cnx.lockUnknownTitle"].uk);
+    // это не сигнал, а отказ загрузки: строка у кнопки — не «після розбору сигналу»
+    expect(unknown).not.toContain(UI["rp.signLocked"].uk);
   });
 });
 

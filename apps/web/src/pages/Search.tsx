@@ -128,12 +128,18 @@ export default function Search() {
     setOpenId(h.id);
     setDrawerOpen(true);
   };
+  /*
+   * Следующая находка — в открытом ящике (J/K, «Наступна знахідка»). Список
+   * под ящиком только докручивается до неё, а фокус остаётся в ящике: ящик
+   * модальный, и фокус, уведённый на кнопку под подложкой, выводил диктор и
+   * клавиатуру из окна, которое человек читает.
+   */
   const nextHit = (dir: 1 | -1) => {
     if (!order.length) return;
     const at = order.findIndex((h) => h.id === openId);
     const next = order[at < 0 ? 0 : (at + dir + order.length) % order.length]!;
     setOpenId(next.id);
-    document.querySelector<HTMLElement>(`[data-hit="${next.id}"] button`)?.focus({ preventScroll: false });
+    document.querySelector<HTMLElement>(`[data-hit="${next.id}"]`)?.scrollIntoView({ block: "nearest" });
   };
   const stepFocus = (dir: 1 | -1) => {
     const list = Array.from(document.querySelectorAll<HTMLElement>("[data-hit] [data-open-hit]"));

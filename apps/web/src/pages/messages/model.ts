@@ -108,6 +108,34 @@ export async function saveThenSend(d: MailingDraft, io: SendIo): Promise<void> {
   await io.send(saved.revision);
 }
 
+/**
+ * «Відправити» нового повідомлення, ещё не заведённого: завести и отправить
+ * ровно заведённое (saveThenSend). Возвращает id заведённого.
+ *
+ * Отказ после заведения не должен оставлять экран «новым»: повтор завёл бы
+ * второе такое же повідомлення, а следующий отказ — третье. Поэтому
+ * заведённое называется экрану и при отказе — `onFailedAfterCreate` до того,
+ * как отказ уйдёт выше: экран переходит к черновику, и повтор отправляет его.
+ */
+export async function createThenSend(
+  d: MailingDraft,
+  io: {
+    create: (input: MailingInput) => Promise<Mailing>;
+    /** Правка и отправка заведённого — по его id */
+    sendIo: (id: string) => SendIo;
+    onFailedAfterCreate: (id: string) => void;
+  },
+): Promise<string> {
+  const created = await io.create(draftToInput(d));
+  try {
+    await saveThenSend(draftFromMailing(created), io.sendIo(created.id));
+  } catch (e) {
+    io.onFailedAfterCreate(created.id);
+    throw e;
+  }
+  return created.id;
+}
+
 /* ═══════════ листування: список разговоров (консоль 2.0) ═══════════ */
 
 /** Ближайший свой приём человека — его и переносят из переписки */

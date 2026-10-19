@@ -3,7 +3,7 @@ import { Pressable, ScrollView, View } from "react-native";
 import { useRouter } from "expo-router";
 import { api } from "@/api/client";
 import { useAuth } from "@/auth/AuthContext";
-import { isPasswordGate } from "@/auth/passwordGate";
+import { homeOf, isPasswordGate } from "@/auth/passwordGate";
 import { ErrorText, Loader } from "@/components/ui";
 import { CrisisStrip } from "@/components/patient/Crisis";
 import { Hero, HeroMeta } from "@/components/patient/Hero";
@@ -37,7 +37,9 @@ export default function ConsentScreen() {
   const c = useColors();
   const router = useRouter();
   const { ut } = useLang();
-  const { logout } = useAuth();
+  const { user, logout } = useAuth();
+  // первая вкладка: у пациента «Головна», у сотрудника обход (auth/passwordGate.ts, homeOf)
+  const home = homeOf(user);
   const [view, setView] = useState<ConsentView | null>(null);
   /** Текст держится и после отказа: «повернутися до тексту» возвращает его, а не грузит заново */
   const [text, setText] = useState<string | null>(null);
@@ -76,8 +78,8 @@ export default function ConsentScreen() {
   useEffect(load, [load]);
 
   useEffect(() => {
-    if (view?.kind === "pass") router.replace("/(app)/home");
-  }, [view, router]);
+    if (view?.kind === "pass") router.replace(home);
+  }, [view, router, home]);
 
   if (!view || view.kind === "pass") return <Loader />;
 
@@ -89,7 +91,7 @@ export default function ConsentScreen() {
         await api.acceptConsent(textId);
         // сдачи, вставшие на новой редакции (#201), уходят сразу — те же записи, тот же clientRequestId
         void api.flushQueue().catch(() => {});
-        router.replace("/(app)/home");
+        router.replace(home);
       } catch (e) {
         setError(e instanceof Error ? e.message : ut("common.error"));
         // текст обновился, пока человек читал (409): показываем новую редакцию — принимать её

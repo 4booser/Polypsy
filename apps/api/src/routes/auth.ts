@@ -1,12 +1,15 @@
 import { Hono } from "hono";
+import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import { and, eq, sql } from "drizzle-orm";
 import {
   changePasswordSchema,
+  isGoogleReturnCode,
   loginSchema,
   registerSchema,
   updateProfileSchema,
   workspacePrefsSchema,
+  type GoogleReturnCode,
   type MfaChallenge,
 } from "@quizzy/shared";
 import { factorEnabled } from "../lib/secondFactor";
@@ -931,16 +934,46 @@ authRoutes.post("/google/unlink", requireAuth, async (c) => {
  * Возврат от Google — тоже вход, и тоже до всякого контекста: кто именно
  * вернулся, выясняется здесь. Системный контекст по той же причине, что и у
  * входа паролем (см. выше).
+ *
+ * Отказ — переходом в консоль (/auth/google?error=<ключ>), а не телом ответа
+ * (ревью волны 26). Сюда браузер приходит переходом от Google, а не запросом
+ * консоли: отказ JSON-ом человек видел сырым текстом на странице API — без
+ * языка страницы, без «увійти паролем» и без пути назад. Экран возврата
+ * (web GoogleReturn.tsx) знает ключи из того же списка (GOOGLE_RETURN_CODES)
+ * и говорит причину словами.
+ *
+ * Транзакция при этом та же, что была: брошенный изнутри отказ уже откатил
+ * её (до таких отказов ничего не записано), а возвращённый — после записи в
+ * журнал — её сохранил. Прочие сбои (база, ошибки кода) уходят как раньше.
  */
 authRoutes.get("/google/callback", async (c) => {
-  const outcome = await systemContext(baseDb, () => googleCallback(c));
-  if (typeof outcome === "string") unauthorized(outcome);
+  let outcome: Response | GoogleRefusal;
+  try {
+    outcome = await systemContext(baseDb, () => googleCallback(c));
+  } catch (error) {
+    const key = error instanceof HTTPException ? (error.cause as { key?: unknown } | undefined)?.key : undefined;
+    if (!isGoogleReturnCode(key)) throw error;
+    return backToConsole(c, { error: key });
+  }
+  if (typeof outcome === "string") return backToConsole(c, { error: outcome });
   return outcome;
 });
 
-async function googleCallback(
-  c: Context<AppEnv>,
-): Promise<Response | "err.googleNotLinked" | "err.accountDisabled" | "err.sessionExpired"> {
+/** Отказы, которые возврат от Google записывает в журнал и потому возвращает, а не бросает */
+type GoogleRefusal = Extract<GoogleReturnCode, "err.googleNotLinked" | "err.accountDisabled" | "err.sessionExpired">;
+
+/**
+ * Переход на экран возврата консоли (/auth/google) с тем, что ему нужно:
+ * одноразовым кодом обмена или ключом отказа. Адрес консоли — из настроек;
+ * без него — путь на том же сервере.
+ */
+function backToConsole(c: Context, params: Record<string, string>): Response {
+  const back = new URL(`${env.consoleUrl || ""}/auth/google`, "http://localhost");
+  for (const [name, value] of Object.entries(params)) back.searchParams.set(name, value);
+  return c.redirect(env.consoleUrl ? back.toString() : `${back.pathname}${back.search}`);
+}
+
+async function googleCallback(c: Context<AppEnv>): Promise<Response | GoogleRefusal> {
   if (!googleEnabled()) notFound("err.googleDisabled");
 
   const code = c.req.query("code");
@@ -1080,8 +1113,5 @@ async function googleCallback(
    * Код живёт тридцать секунд и обменивается один раз. Даже попав в журнал,
    * он бесполезен: к моменту, когда журнал прочтут, его уже нет.
    */
-  const handoffCode = handoff(pair);
-  const back = new URL(`${env.consoleUrl || ""}/auth/google`, "http://localhost");
-  back.searchParams.set("code", handoffCode);
-  return c.redirect(env.consoleUrl ? back.toString() : `${back.pathname}${back.search}`);
+  return backToConsole(c, { code: handoff(pair) });
 }

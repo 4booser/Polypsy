@@ -4,13 +4,16 @@ import { db } from "../src/db";
 import {
   auditLog,
   consents,
+  groupAdmins,
   permissionExceptions,
   roles,
   staffRoles,
+  surveyAccess,
   userSecondFactor,
   users,
 } from "../src/db/schema";
-import { api, makeUser, root, type Person } from "./fixtures";
+import { renderError } from "@quizzy/shared";
+import { api, groupA, groupB, makeUser, root, surveyInA, surveyInB, type Person } from "./fixtures";
 
 /**
  * Раздел «Адміністрування» Polypsy 2.0 (участок v2-admin): что сервер
@@ -23,7 +26,8 @@ import { api, makeUser, root, type Person } from "./fixtures";
  *     не выходя из зоны смотрящего;
  *   — передача пациентов другому лікарю: переходит закрепление, причина —
  *     в журнал по каждому, чужое закрепление не перетирается, передать можно
- *     только действующему лікарю;
+ *     только действующему лікарю, только пациентов своей зоны, только тому,
+ *     кто их видит, и не через голову старшего;
  *   — версии согласия — только числа, только суперадмину;
  *   — описание API говорит машинно, кому маршрут открыт.
  *
@@ -51,6 +55,9 @@ beforeAll(async () => {
   for (let i = 0; i < 3; i++) {
     led.push(await makeUser("user", `adm-pt${i}-${tag}@test`, { leadSpecialistId: from.id }));
   }
+  /* «to» видит этих людей (методики группы Б): передать можно только лікарю, который ответит пациенту */
+  await db.insert(groupAdmins).values({ groupId: groupB, userId: to.id, addedBy: root.id });
+  await db.insert(surveyAccess).values(led.map((p) => ({ surveyId: surveyInB, userId: p.id, grantedBy: root.id })));
   /* второй фактор и личное исключение у «from» — реестр обязан их показать */
   await db.insert(userSecondFactor).values({ userId: from.id, secretEnc: "x", confirmedAt: new Date().toISOString() });
   await db.insert(permissionExceptions).values({
@@ -150,6 +157,8 @@ describe("передача пациентов другому лікарю", () =
 
   test("чужого пациента не перетирает: отказ целиком", async () => {
     const foreign = await makeUser("user", `adm-foreign-${tag}@test`, { leadSpecialistId: other.id });
+    /* и его «to» видит: отказ — именно «ведёт другой», а не «новый лікар его не видит» */
+    await db.insert(surveyAccess).values({ surveyId: surveyInB, userId: foreign.id, grantedBy: root.id });
     const res = await api(url(), root.token, {
       method: "POST",
       body: JSON.stringify({ patientIds: [led[0]!.id, foreign.id], to: to.id, reason }),
@@ -181,6 +190,12 @@ describe("передача пациентов другому лікарю", () =
         .limit(1);
       expect(entry?.actorId).toBe(root.id);
       expect(entry?.details).toMatchObject({ from: from.id, to: to.id, reason });
+      /* одна строка журнала на человека — не на пачку и не по две */
+      const rows = await db
+        .select({ id: auditLog.id })
+        .from(auditLog)
+        .where(and(eq(auditLog.action, "clinic.lead_transfer"), eq(auditLog.subjectUserId, id), eq(auditLog.outcome, "success")));
+      expect(rows).toHaveLength(1);
     }
     /* оставшийся — у прежнего лікаря, и реестр считает заново */
     const dir = await api("/api/users?directory=1", root.token);
@@ -188,6 +203,167 @@ describe("передача пациентов другому лікарю", () =
       (dir.body.items as { id: string; account?: { patients: number } }[]).find((u) => u.id === id)?.account?.patients;
     expect(count(from.id)).toBe(1);
     expect(count(to.id)).toBe(2);
+  });
+
+  /*
+   * users.manage выдаётся и заведующему, а его зона — не всё учреждение.
+   * Свои лікарі — отдельные от тех, что выше: числа реестра в тесте выше
+   * считаются по ним.
+   */
+  describe("заведующий с правом на реестр", () => {
+    let mgr: Person;
+    let leadZ: Person;
+    let nextZ: Person;
+    const leadOf = async (id: string) =>
+      (await db.select({ lead: users.leadSpecialistId }).from(users).where(eq(users.id, id)))[0]?.lead;
+    const move = (who: Person, patientIds: string[]) =>
+      api(`/api/users/${leadZ.id}/patients/transfer`, who.token, {
+        method: "POST",
+        body: JSON.stringify({ patientIds, to: nextZ.id, reason }),
+      });
+
+    beforeAll(async () => {
+      mgr = await staffOn("head", "mgr");
+      leadZ = await staffOn("specialist", "leadz");
+      nextZ = await staffOn("specialist", "nextz");
+      await db.insert(permissionExceptions).values({
+        id: crypto.randomUUID(),
+        userId: mgr.id,
+        permission: "users.manage",
+        mode: "grant",
+        reason: "веде облікові записи відділення",
+        grantedBy: root.id,
+      });
+      /* зона заведующего и нового лікаря — методики группы Б: их пациент — тот, кому методика выдана */
+      await db.insert(groupAdmins).values([
+        { groupId: groupB, userId: mgr.id, addedBy: root.id },
+        { groupId: groupB, userId: nextZ.id, addedBy: root.id },
+      ]);
+    });
+
+    test("пациент вне зоны — «не найдено», и не переходит никто из списка", async () => {
+      const inside = await makeUser("user", `adm-in-${tag}@test`, { leadSpecialistId: leadZ.id });
+      const outside = await makeUser("user", `adm-out-${tag}@test`, { leadSpecialistId: leadZ.id });
+      await db.insert(surveyAccess).values({ surveyId: surveyInB, userId: inside.id, grantedBy: root.id });
+
+      const res = await move(mgr, [inside.id, outside.id]);
+      expect(res.status).toBe(404);
+      expect(await leadOf(inside.id)).toBe(leadZ.id);
+      expect(await leadOf(outside.id)).toBe(leadZ.id);
+      const logged = await db
+        .select({ id: auditLog.id })
+        .from(auditLog)
+        .where(and(eq(auditLog.action, "clinic.lead_transfer"), sql`${auditLog.subjectUserId} in ${[inside.id, outside.id]}`));
+      expect(logged).toHaveLength(0);
+    });
+
+    test("кто ведёт человека вне зоны, ответ не выдаёт: тот же отказ, что у несуществующего", async () => {
+      /* ведёт не leadZ — без проверки зоны ответ был бы 409 «ведущий сменился» */
+      const foreign = await makeUser("user", `adm-out2-${tag}@test`, { leadSpecialistId: other.id });
+      const res = await move(mgr, [foreign.id]);
+      expect(res.status).toBe(404);
+      const nobody = await move(mgr, [crypto.randomUUID()]);
+      expect(nobody.status).toBe(404);
+      expect(nobody.body.error).toBe(res.body.error);
+      expect(await leadOf(foreign.id)).toBe(other.id);
+    });
+
+    test("пациент своей зоны переходит, причина — в журнал", async () => {
+      const mine = await makeUser("user", `adm-mine-${tag}@test`, { leadSpecialistId: leadZ.id });
+      await db.insert(surveyAccess).values({ surveyId: surveyInB, userId: mine.id, grantedBy: root.id });
+      const res = await move(mgr, [mine.id]);
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      expect(res.body.moved).toBe(1);
+      expect(await leadOf(mine.id)).toBe(nextZ.id);
+      const [entry] = await db
+        .select()
+        .from(auditLog)
+        .where(and(eq(auditLog.action, "clinic.lead_transfer"), eq(auditLog.subjectUserId, mine.id)));
+      expect(entry?.actorId).toBe(mgr.id);
+      expect(entry?.details).toMatchObject({ from: leadZ.id, to: nextZ.id, reason });
+    });
+
+    /*
+     * Переписка пациента уходит ведущему. Ведущий, который человека не видит,
+     * не может ему ответить (отказ «не найдено») и не открывает карточку —
+     * пациенту не ответил бы никто. Суперадмину это так же нельзя.
+     */
+    test("новый лікар, который пациента не видит, — отказ словами, и у суперадмина тоже", async () => {
+      const stranger = await staffOn("specialist", "stranger");
+      const seen = await makeUser("user", `adm-seen-${tag}@test`, { leadSpecialistId: leadZ.id });
+      await db.insert(surveyAccess).values({ surveyId: surveyInB, userId: seen.id, grantedBy: root.id });
+      for (const who of [mgr, root]) {
+        const res = await api(`/api/users/${leadZ.id}/patients/transfer`, who.token, {
+          method: "POST",
+          body: JSON.stringify({ patientIds: [seen.id], to: stranger.id, reason }),
+        });
+        expect(res.status).toBe(400);
+        expect(res.body.error).toBe(renderError("err.transferTargetZone", "uk"));
+      }
+      expect(await leadOf(seen.id)).toBe(leadZ.id);
+    });
+
+    /*
+     * Зона нового лікаря — его, а не смотрящего: под ролью приложения строки
+     * назначений чужих групп смотрящему не видны, и без системной роли лікар
+     * группы А «не видел» бы человека, которого видит.
+     */
+    test("зона нового лікаря считается по его группам, а не по группам смотрящего", async () => {
+      const docA = await staffOn("specialist", "doca");
+      await db.insert(groupAdmins).values({ groupId: groupA, userId: docA.id, addedBy: root.id });
+      const both = await makeUser("user", `adm-both-${tag}@test`, { leadSpecialistId: leadZ.id });
+      await db.insert(surveyAccess).values([
+        { surveyId: surveyInB, userId: both.id, grantedBy: root.id },
+        { surveyId: surveyInA, userId: both.id, grantedBy: root.id },
+      ]);
+      const res = await api(`/api/users/${leadZ.id}/patients/transfer`, mgr.token, {
+        method: "POST",
+        body: JSON.stringify({ patientIds: [both.id], to: docA.id, reason }),
+      });
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      expect(await leadOf(both.id)).toBe(docA.id);
+    });
+
+    test("лестница: у старшего и равного не забирают и им не отдают", async () => {
+      const chief = await staffOn("chief", "chief");
+      const peer = await staffOn("head", "peer");
+      await db.insert(groupAdmins).values([
+        { groupId: groupB, userId: chief.id, addedBy: root.id },
+        { groupId: groupB, userId: peer.id, addedBy: root.id },
+      ]);
+      const chiefs = await makeUser("user", `adm-chiefs-${tag}@test`, { leadSpecialistId: chief.id });
+      const plain = await makeUser("user", `adm-plain-${tag}@test`, { leadSpecialistId: leadZ.id });
+      await db.insert(surveyAccess).values([
+        { surveyId: surveyInB, userId: chiefs.id, grantedBy: root.id },
+        { surveyId: surveyInB, userId: plain.id, grantedBy: root.id },
+      ]);
+      const takeFromChief = await api(`/api/users/${chief.id}/patients/transfer`, mgr.token, {
+        method: "POST",
+        body: JSON.stringify({ patientIds: [chiefs.id], to: nextZ.id, reason }),
+      });
+      expect(takeFromChief.status).toBe(403);
+      expect(takeFromChief.body.error).toBe(renderError("err.accountAtOrAboveYours", "uk"));
+      const giveToPeer = await api(`/api/users/${leadZ.id}/patients/transfer`, mgr.token, {
+        method: "POST",
+        body: JSON.stringify({ patientIds: [plain.id], to: peer.id, reason }),
+      });
+      expect(giveToPeer.status).toBe(403);
+      expect(await leadOf(chiefs.id)).toBe(chief.id);
+      expect(await leadOf(plain.id)).toBe(leadZ.id);
+      /* попытка видна в журнале — отказом над той учёткой, у которой забирали */
+      const denied = await db
+        .select({ id: auditLog.id })
+        .from(auditLog)
+        .where(and(eq(auditLog.action, "clinic.lead_transfer"), eq(auditLog.subjectUserId, chief.id), eq(auditLog.outcome, "denied")));
+      expect(denied.length).toBeGreaterThan(0);
+      /* суперадмину лестница не мешает: тот же пациент главного лікаря переходит */
+      const bySuper = await api(`/api/users/${chief.id}/patients/transfer`, root.token, {
+        method: "POST",
+        body: JSON.stringify({ patientIds: [chiefs.id], to: nextZ.id, reason }),
+      });
+      expect(bySuper.status, JSON.stringify(bySuper.body)).toBe(200);
+      expect(await leadOf(chiefs.id)).toBe(nextZ.id);
+    });
   });
 });
 

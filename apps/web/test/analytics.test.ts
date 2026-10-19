@@ -23,10 +23,47 @@ import {
   sortFrom,
   sortModels,
   surveysToLoad,
+  thresholdText,
   uncovered,
   validateDraft,
   viewFrom,
 } from "../src/pages/analytics/model";
+
+/**
+ * Порог условия — языком страницы, а не как его хранит сервер.
+ *
+ * Пилюля перечня, «Як читається модель» и «було …» печатали число как
+ * есть, то есть с точкой: «≥ 2.5» на украинском экране. Мутация: вернуть
+ * String(value) — падает первая проверка (вне браузера страница русская).
+ */
+describe("порог условия словами экрана", () => {
+  test("дробный порог — с запятой, целый — без хвоста, знаки не теряются", () => {
+    expect(thresholdText(2.5)).toBe("2,5");
+    expect(thresholdText("2.5")).toBe("2,5");
+    expect(thresholdText(19)).toBe("19");
+    expect(thresholdText("0.125")).toBe("0,125");
+    expect(thresholdText(-1.5)).toBe("-1,5");
+  });
+
+  test("недонабранное поле печатается как набрано, а не NaN", () => {
+    expect(thresholdText("")).toBe("");
+    expect(thresholdText("-")).toBe("-");
+    expect(thresholdText(" 7 ")).toBe("7");
+  });
+});
+
+/**
+ * Число при слове: «Останні 3 проходжень» и «з 21 тестів» — неверные формы.
+ * Число стоит после двоеточия, где форма слова от него не зависит.
+ */
+describe("строки с числом без формы слова при числе", () => {
+  test("подпись матрицы ответов и покрытие тестов", () => {
+    for (const lang of ["uk", "ru"] as const) {
+      expect(UI["ant.answersCaption"][lang], lang).not.toMatch(/\{n\} прох/);
+      expect(UI["am.coverSub"][lang], lang).not.toMatch(/\{total\} тест/);
+    }
+  });
+});
 
 /**
  * Чистая часть раздела «Аналітика»: поиск и страницы перечня, черновик ↔

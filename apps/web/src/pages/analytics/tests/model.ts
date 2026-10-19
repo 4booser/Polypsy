@@ -1,4 +1,5 @@
 import type { QuestionAnalytics, SurveyAnalytics } from "@quizzy/shared";
+import { locale } from "../../../format";
 
 /**
  * Чистая часть вкладки «Тести» раздела «Аналітика»: состояние экрана в
@@ -181,6 +182,22 @@ export function findSurveys<T extends SurveyChoice>(list: readonly T[], q: strin
  */
 export const SMALL_CELL = 5;
 
+/* ─────────── выгрузки ─────────── */
+
+/**
+ * Сколько завершённых прохождений увозят файлы окна «Вивантаження».
+ *
+ * Маршруты выгрузки среза экрана не принимают: в каждом файле — вся
+ * методика, все её версии и все люди, а не то, что сейчас на экране.
+ * Плашка рядом с целью говорила «версія 3, проходжень: 37» по срезу (в
+ * «Один пацієнт» — по одному человеку), и выгрузку всей методики можно было
+ * принять за выгрузку одного человека. Число — завершённые всех версий:
+ * столько строк в матрице SPSS и в манифесте.
+ */
+export function exportCount(versions: readonly { responseCount: number }[]): number {
+  return versions.reduce((n, v) => n + v.responseCount, 0);
+}
+
 /* ─────────── подстановка в строку словаря ─────────── */
 
 /**
@@ -202,11 +219,17 @@ export function dayText(iso: string): string {
   return y && m && d ? `${d}.${m}.${y}` : iso;
 }
 
-/** Число для подписи: целое без хвоста, дробное — до двух знаков, запятая по-украински */
+/**
+ * Число для подписи: целое без хвоста, дробное — до `digits` знаков,
+ * разделитель — языка страницы: запятая по-украински и по-русски, точка
+ * по-английски. Прежде запятая стояла при любом языке, и английский экран
+ * печатал «10,8» — по-английски это читается как тысячи. Разрядов нет, как
+ * и раньше: счётчики печатает nf (views.tsx).
+ */
 export function numText(v: number | null | undefined, digits = 2): string {
   if (v === null || v === undefined || !Number.isFinite(v)) return "—";
   const f = 10 ** digits;
-  return String(Math.round(v * f) / f).replace(".", ",");
+  return new Intl.NumberFormat(locale(), { maximumFractionDigits: digits, useGrouping: false }).format(Math.round(v * f) / f);
 }
 
 /* ─────────── ряд прохождений по времени ─────────── */

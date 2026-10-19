@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { adminA, adminB, api, db, makeUser, submitSurvey, surveyInA } from "./fixtures";
 import { baseDb } from "../src/db";
 import { systemContext } from "../src/db/context";
-import { securityJobs } from "../src/db/schema";
+import { auditLog, securityJobs } from "../src/db/schema";
 import { env } from "../src/env";
 import { ensureSearchIndexCurrent } from "../src/lib/noteReindex";
 import { fingerprint, indexOf, searchSecretMark, stems } from "../src/lib/searchIndex";
@@ -124,6 +124,36 @@ describe("поиск", () => {
     expect(mine, "запись не нашлась").toBeTruthy();
     expect(mine.authorName, `у записи ${mine.id} нет автора`).not.toBe("—");
     expect(typeof mine.authorName).toBe("string");
+  });
+
+  /*
+   * Запись целиком из найденного открывается чтением записей пациента
+   * (GET /api/notes/patients/:id — ящик «Пошуку по записах»), и это чтение —
+   * в журнале доступа поимённо, с пометкой, что читались записи. Сам поиск
+   * пишет только «искали, нашли столько-то» (search.notes): уривок — ещё не
+   * прочтение записи, а ящик с текстом — уже оно.
+   *
+   * Мутация: снять audit с GET /api/notes/patients/:id — падает проверка журнала.
+   */
+  test("запись целиком из найденного — чтение в журнале доступа", async () => {
+    const person = await noteFor("Перечитана пометка снегирёнок");
+    const found = await api("/api/search/notes?q=снегирёнок", adminA.token);
+    const hit = found.body.items.find((i: { userId: string }) => i.userId === person.id);
+    expect(hit, "запись не нашлась").toBeTruthy();
+
+    const opened = await api(`/api/notes/patients/${person.id}`, adminA.token);
+    expect(opened.status).toBe(200);
+    expect(opened.body.versions.some((v: { id: string }) => v.id === hit.id), "найденной версии нет в записях").toBe(true);
+
+    const [entry] = await db
+      .select()
+      .from(auditLog)
+      .where(and(eq(auditLog.subjectUserId, person.id), eq(auditLog.action, "response.read")))
+      .orderBy(desc(auditLog.at))
+      .limit(1);
+    expect(entry, `чтение записей ${person.id} не попало в журнал`).toBeTruthy();
+    expect(entry!.actorId).toBe(adminA.id);
+    expect((entry!.details as { view?: string }).view).toBe("notes");
   });
 
   test("чужой админ чужих записей не находит", async () => {

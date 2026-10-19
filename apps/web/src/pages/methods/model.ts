@@ -1,4 +1,4 @@
-import type { Lang, SurveyGrant, SurveyListItem } from "@quizzy/shared";
+import { LOCALE_OF, type Lang, type SurveyGrant, type SurveyListItem } from "@quizzy/shared";
 
 /*
  * Чистая часть раздела «Методики» (UI 3, «Виразна»): код методики из
@@ -61,6 +61,18 @@ export function pluralForm(lang: Lang, n: number): PluralForm {
   if (cat === "one") return "one";
   if (cat === "few") return "few";
   return "many";
+}
+
+/**
+ * Дробное число на языке экрана: «0,82» в uk и ru, «0.82» в en; `pad` — с
+ * нулями в конце («50,0»), без него — сколько есть («2,3», «2»). Запятая,
+ * поставленная руками (`.replace(".", ",")`), шла и в английский.
+ */
+export function fixedIn(lang: Lang, v: number, digits: number, pad = true): string {
+  return new Intl.NumberFormat(LOCALE_OF[lang], {
+    minimumFractionDigits: pad ? digits : 0,
+    maximumFractionDigits: digits,
+  }).format(v);
 }
 
 /* ─────────── даты ─────────── */

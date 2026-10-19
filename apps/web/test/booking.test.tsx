@@ -4,7 +4,7 @@ import { MemoryRouter } from "react-router-dom";
 import { UI } from "@quizzy/shared";
 import { LangProvider } from "../src/lang";
 import PatientBooking from "../src/patient/Booking";
-import { SLOT_LIMIT, chosenSlot, slotsView } from "../src/patient/slots";
+import { SLOT_LIMIT, chosenSlot, moveTarget, slotsView } from "../src/patient/slots";
 
 /**
  * Запись на приём в кабинете как состояние формы (w13:uitests).
@@ -60,6 +60,25 @@ describe("выбранное время", () => {
     const shown = Array.from({ length: SLOT_LIMIT }, (_, i) => slot(`s${i}`));
     expect(chosenSlot("s55", shown)).toBeNull();
     expect(chosenSlot(null, shown)).toBeNull();
+  });
+});
+
+describe("перенос своего приёма (?move=)", () => {
+  const visit = (id: string, status = "booked") => ({ id, status });
+
+  test("пока свои приёмы не пришли — неизвестно, перенос это или запись: подтверждать рано", () => {
+    // прежде экран считался записью, и «Записатися» заводила второй приём рядом с переносимым
+    expect(moveTarget("v1", null)).toEqual({ moving: null, pending: true });
+  });
+
+  test("приём в списке — переносим его", () => {
+    expect(moveTarget("v1", [visit("v0"), visit("v1", "confirmed")])).toEqual({ moving: visit("v1", "confirmed"), pending: false });
+  });
+
+  test("приёма нет или он отменён — обычная запись, без ожидания", () => {
+    expect(moveTarget("v1", [visit("v0")])).toEqual({ moving: null, pending: false });
+    expect(moveTarget("v1", [visit("v1", "cancelled")])).toEqual({ moving: null, pending: false });
+    expect(moveTarget(null, null), "без ?move= ждать нечего").toEqual({ moving: null, pending: false });
   });
 });
 

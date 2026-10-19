@@ -6,6 +6,7 @@ import {
   barRows,
   breakdownCells,
   breakdownCsv,
+  breakdownFileName,
   breakdownLabel,
   cleanSpec,
   describeSpec,
@@ -157,6 +158,14 @@ describe("выгрузка разбивок", () => {
 
   test("разбивки идут в порядке экрана", () => {
     expect(breakdownCells(preview, "sex").map((c) => c.key)).toEqual(["male", "female"]);
+  });
+});
+
+describe("имя файла выгрузки", () => {
+  /* мутация: вернуть срез toISOString().slice(0, 10) — падает ночной день */
+  test("день — по часам учреждения: выгрузка в 01:30 по Киеву — сегодняшним числом, а не вчерашним", () => {
+    expect(breakdownFileName(Date.parse("2026-10-19T22:30:00.000Z"), "Europe/Kyiv")).toBe("cohort-2026-10-20.csv");
+    expect(breakdownFileName(Date.parse("2026-10-19T12:00:00.000Z"), "Europe/Kyiv")).toBe("cohort-2026-10-19.csv");
   });
 });
 

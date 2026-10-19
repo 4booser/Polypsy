@@ -38,6 +38,7 @@ const saved = { fetch: globalThis.fetch, localStorage: g.localStorage, sessionSt
 
 /* имя события — контракт между api.ts и AuthProvider; на коде до правки файл грузится и падает по существу */
 const SESSION_ENDED_EVENT = "quizzy:session-ended";
+const DRAFTS_KEY = "quizzy.drafts.patient-a";
 
 /** Состояние вкладки, как его держит AuthProvider */
 interface Tab {
@@ -84,6 +85,8 @@ beforeEach(async () => {
 
   tokenStore.set("access-old");
   tokenStore.setRefresh("refresh-1");
+  // недосданное прохождение кабинета на этом устройстве (patient/drafts.ts)
+  localStorage.setItem(DRAFTS_KEY, JSON.stringify({ s1: { surveyId: "s1", savedAt: new Date().toISOString() } }));
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const path = String(input);
     calls.push(path);
@@ -123,11 +126,14 @@ describe("окончательный 401", () => {
     expect(tab.cache.getQueryCache().getAll(), "в кэше остались данные пациента").toHaveLength(0);
     expect(tokenStore.own()).toBeNull();
     expect(tokenStore.getRefresh()).toBeNull();
+    // ответы недосданного прохождения не остаются на общем компьютере после конца сессии (ревью волны 26)
+    expect(localStorage.getItem(DRAFTS_KEY), "черновик кабинета пережил конец сессии").toBeNull();
   });
 
   test("положительный контроль: продление удалось — ничего не сброшено", async () => {
     expect(await api.patientCard("p1")).toEqual({ fullName: "Коваль Ірина" } as never);
     await afterScreensGone();
+    expect(localStorage.getItem(DRAFTS_KEY), "живая сессия потеряла черновик").not.toBeNull();
 
     expect(calls).toEqual(["/api/patients/p1/card", "/api/auth/refresh", "/api/patients/p1/card"]);
     expect(tab.ended).toBe(0);

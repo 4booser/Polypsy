@@ -1,4 +1,4 @@
-import { consentViewOf, isTransientStatus, type ConsentStatus, type ScoreResult } from "@quizzy/shared";
+import { consentViewOf, isAttemptClosedCode, isTransientStatus, type ConsentStatus, type ScoreResult } from "@quizzy/shared";
 import { api, ApiError } from "../api";
 import { acceptFailure } from "./ConsentGate";
 import { isConsentRefusal } from "./outbox";
@@ -107,6 +107,16 @@ export async function acceptAndResend(io: SendIo, hold: ConsentHold, fallbackErr
     return { ...hold, status, error: failure.error };
   }
   return sendAnswers(io, hold.surveyId, hold.body);
+}
+
+/**
+ * Отказ «попытка закрыта» (err.alreadyTaken — код в теле, как у мобилки):
+ * методика уже сдана, здесь или с телефона, и повтор не разрешён. Черновику
+ * на устройстве продолжать нечего — его стирают, а не предлагают «Продовжити»
+ * снова до конца срока.
+ */
+export function attemptClosed(error: unknown): boolean {
+  return error instanceof ApiError && isAttemptClosedCode((error.body as { code?: unknown } | null | undefined)?.code);
 }
 
 /** Сдача кабинета через клиент API; очередь — того, кто вошёл */

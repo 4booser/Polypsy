@@ -271,8 +271,13 @@ export function FactList({ items }: { items: { icon: ReactNode; title: ReactNode
  * tel: без подтверждения: в кризис лишний шаг между человеком и звонком
  * стоит дороже всего остального на экране. Строк, номеров которых у
  * кабинета нет (семья, дежурный отделения), здесь нет: выдумывать их нельзя.
+ *
+ * `autoFocus` — в ящике «Допомога»: фокус при открытии встаёт на первый
+ * звонок, а не на крестик (Drawer, data-autofocus). На крестике набор
+ * сразу показывает подсказку «Закрити…», и на телефоне она ложилась поверх
+ * строки 103 (ревью волны 26); а звонок — то, ради чего ящик открыли.
  */
-export function CallRows({ framed = true }: { framed?: boolean }) {
+export function CallRows({ framed = true, autoFocus }: { framed?: boolean; autoFocus?: boolean }) {
   const { ut } = useLang();
   const rows = [
     { key: "hotline", name: ut("home.hotline"), sub: ut("pt.helpHotlineSub"), num: ut("home.hotlineNumber"), risk: false },
@@ -280,10 +285,11 @@ export function CallRows({ framed = true }: { framed?: boolean }) {
   ];
   return (
     <div className={cx(framed ? "overflow-hidden rounded-[16px] border border-border" : "border-t border-divider")}>
-      {rows.map((r) => (
+      {rows.map((r, i) => (
         <a
           key={r.key}
           href={`tel:${r.num}`}
+          data-autofocus={autoFocus && i === 0 ? true : undefined}
           aria-label={`${ut("pt.helpCall")}: ${r.name}, ${r.num}`}
           className="group grid min-h-[66px] grid-cols-[minmax(0,1fr)_auto_44px] items-center gap-3 border-t border-divider py-[9px] pl-4 pr-[14px] text-text no-underline first:border-t-0 hover:bg-panel-2 hover:no-underline"
         >

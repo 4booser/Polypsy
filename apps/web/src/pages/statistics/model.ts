@@ -401,6 +401,58 @@ export function removeSample(columns: readonly StatModelColumn[], index: number)
   return columns.filter((_, i) => i !== index);
 }
 
+/* ─────────── выборки экрана модели: ключи рядом с колонками ─────────── */
+
+/**
+ * Колонки экрана модели вместе с ключами выборок — по ключу на колонку.
+ *
+ * Черновик ящика фильтров и «Повернутися» в сообщении о нём держатся за
+ * выборку, а не за её номер. Прежде черновики лежали по номеру, и любая
+ * перестановка сбрасывала их все: Esc сохранял набранное в ящике выборки 1,
+ * «Додати вибірку» стирал его молча, а «Повернутися» после «Прибрати
+ * вибірку» открывал ящик другой выборки — тот, что встал на её номер.
+ */
+export interface Samples {
+  columns: StatModelColumn[];
+  keys: string[];
+}
+
+let sampleSeq = 0;
+/** Ключ новой выборки: уникален в пределах вкладки, большего не нужно */
+export const sampleKey = (): string => `smp${++sampleSeq}`;
+
+/** Колонки с сервера — каждой свой ключ */
+export function keyedSamples(columns: readonly StatModelColumn[]): Samples {
+  return { columns: [...columns], keys: columns.map(() => sampleKey()) };
+}
+
+/** «Додати вибірку» с ключом новой; места нет — те же выборки, тем же объектом */
+export function addKeyed(s: Samples, key: string): Samples {
+  const columns = addSample(s.columns);
+  return columns.length === s.columns.length ? s : { columns, keys: [...s.keys, key] };
+}
+
+/** «Дублювати вибірку»: копия встаёт следом за образцом со своим ключом */
+export function duplicateKeyed(s: Samples, index: number, key: string): Samples {
+  const columns = duplicateSample(s.columns, index);
+  if (columns.length === s.columns.length) return s;
+  const keys = [...s.keys];
+  keys.splice(index + 1, 0, key);
+  return { columns, keys };
+}
+
+/** «Прибрати вибірку» — вместе с её ключом; последнюю не убрать */
+export function removeKeyed(s: Samples, index: number): Samples {
+  const columns = removeSample(s.columns, index);
+  return columns.length === s.columns.length ? s : { columns, keys: s.keys.filter((_, i) => i !== index) };
+}
+
+/** Черновики только живых выборок: у убранной черновик уходит вместе с ней */
+export function keepDrafts<T>(drafts: Readonly<Record<string, T>>, keys: readonly string[]): Record<string, T> {
+  const live = new Set(keys);
+  return Object.fromEntries(Object.entries(drafts).filter(([k]) => live.has(k)));
+}
+
 /**
  * Пресет к выбранным выборкам — окно графика «До яких вибірок застосувати
  * пресет». `extra` — ещё одна выборка с этим пресетом (та же структура,

@@ -15,6 +15,8 @@ import { Mi } from "./icons";
 import {
   MAX_OPTIONS,
   type MailingDraft,
+  type SendIo,
+  createThenSend,
   draftFromMailing,
   draftToInput,
   draftToUpdate,
@@ -127,29 +129,34 @@ function MailingEditor({ id }: { id: string | null }) {
   /*
    * «Відправити»: сохранить то, что видно, и отправить ровно сохранённую
    * редакцию (saveThenSend). Новое повідомлення сначала заводится — тем же
-   * действием, человек не обязан помнить про «Зберегти».
+   * действием, человек не обязан помнить про «Зберегти»; не ушло — экран
+   * переходит к заведённому черновику (createThenSend), и повтор не заводит
+   * второй.
    */
   const send = () => {
     if (!draft) return;
+    const sendIo = (mailingId: string): SendIo => ({
+      save: (input) => api.updateMailing(mailingId, input),
+      send: (revision) => api.sendMailing(mailingId, revision),
+      apply: (saved) => setDraft(draftFromMailing(saved)),
+    });
     void run(async () => {
       try {
-        let target = id;
-        let base = draft;
-        if (target === null) {
-          const created = await api.createMailing(draftToInput(draft));
-          target = created.id;
-          base = draftFromMailing(created);
+        if (id === null) {
+          const created = await createThenSend(draft, {
+            create: (input) => api.createMailing(input),
+            sendIo,
+            onFailedAfterCreate: (createdId) => navigate(mailingHref(createdId), { replace: true }),
+          });
+          setConfirming(null);
+          setStale(null);
+          navigate(mailingHref(created), { replace: true });
+          return;
         }
-        const mailingId = target;
-        await saveThenSend(base, {
-          save: (input) => api.updateMailing(mailingId, input),
-          send: (revision) => api.sendMailing(mailingId, revision),
-          apply: (saved) => setDraft(draftFromMailing(saved)),
-        });
+        await saveThenSend(draft, sendIo(id));
         setConfirming(null);
         setStale(null);
-        if (id === null) navigate(mailingHref(mailingId), { replace: true });
-        else card.reload();
+        card.reload();
       } catch (e) {
         return onStale(e);
       }

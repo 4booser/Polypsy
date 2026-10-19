@@ -201,6 +201,18 @@ function useWipeSignOut(): void {
   useEffect(() => api.onWiped(() => router.replace("/login")), [router]);
 }
 
+/**
+ * Сессия кончилась по слову сервера — на вход (auth/sessionEnd.ts).
+ *
+ * Пользователя снимает AuthContext, но прохождение и карты лежат вне
+ * вкладок и сами на вход не уводят. Офлайн-копии к этому моменту уже
+ * стёрты; экран входа скажет, почему человек снова на нём.
+ */
+function useSessionEndSignOut(): void {
+  const router = useRouter();
+  useEffect(() => api.onSessionEnded(() => router.replace("/login")), [router]);
+}
+
 function RootStack() {
   const { ut } = useLang();
   const c = useColors();
@@ -211,6 +223,7 @@ function RootStack() {
   usePasswordGate();
   useConsentGate();
   useWipeSignOut();
+  useSessionEndSignOut();
   /*
    * Экран, открытый первым (по ссылке, после замены), остаётся без
    * системной стрелки — слева тогда встаёт «Закрити» на запасное место. Есть

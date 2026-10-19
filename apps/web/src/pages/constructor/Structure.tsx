@@ -129,7 +129,14 @@ export function Structure({
           <ol className="kit-scroll m-0 min-h-0 flex-1 list-none overflow-y-auto p-0" aria-labelledby="cn-items-h">
             {draft.questions.map((q, i) => {
               const on = open === q.uid && section === "questions";
-              const label = q.help?.[lang] || q.title[lang] || q.title.uk || q.title.ru || ut("co.previewNoText");
+              /*
+               * Строка пункта — его текст, как у свёрнутого пункта и в
+               * перегляді. Пояснение под вопросом (help) — то, что человек
+               * читает под текстом, а не короткое имя: у ASSIST оно —
+               * абзац указаний психологу, и строка ими и подписывалась.
+               */
+              const label = q.title[lang] || q.title.uk || q.title.ru || ut("co.previewNoText");
+              const critical = isCritical(q);
               const over = drag && drag.over === i && drag.from !== i;
               return (
                 <li key={q.uid}>
@@ -138,7 +145,10 @@ export function Structure({
                     data-item
                     draggable
                     aria-current={on ? "true" : undefined}
-                    aria-label={`${i + 1}. ${label}`}
+                    /* пометки строки — словами для диктора: значок сирены и точка янтаря немы */
+                    aria-label={[`${i + 1}. ${label}`, critical ? ut("ce.critical") : null, warnItems.has(i + 1) ? ut("ce.hasIssues") : null]
+                      .filter(Boolean)
+                      .join(", ")}
                     aria-description={ut("ce.dragKeys")}
                     onClick={() => onOpen(i)}
                     onKeyDown={(e) => onRowKey(e, i)}
@@ -169,7 +179,7 @@ export function Structure({
                       {i + 1}
                     </span>
                     <span className="min-w-0 flex-1 truncate">{label}</span>
-                    {isCritical(q) ? <CnIc.siren size={13} className="shrink-0 text-risk-ink" /> : null}
+                    {critical ? <CnIc.siren size={13} className="shrink-0 text-risk-ink" /> : null}
                     {warnItems.has(i + 1) ? <i aria-hidden className="size-[7px] shrink-0 rounded-full bg-warn" /> : null}
                   </button>
                 </li>

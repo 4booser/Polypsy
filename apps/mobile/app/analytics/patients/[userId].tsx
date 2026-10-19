@@ -6,6 +6,7 @@ import type { AlertCase, RespondentDynamics, Severity, Worklist } from "@quizzy/
 import { api } from "@/api/client";
 import { PercentileBar } from "@/components/charts-extra";
 import { CourseChart, RadarChart } from "@/components/viz";
+import { localDecimal } from "@/components/viz/math";
 import { cache } from "@/offline/cache";
 import { activeOwner } from "@/offline/owner";
 import { useLang } from "@/lang";
@@ -272,15 +273,17 @@ function findScale(data: RespondentDynamics, rowKey: string) {
 
 /** График курса одной шкалы: полосы методики, межі похибки, сигнал на оси */
 function Course({ data, rowKey, contents, open, now }: { data: RespondentDynamics; rowKey: string; contents: Contents; open: AlertCase | null; now: number }) {
+  const { ut } = useLang();
   const { sv, sc } = findScale(data, rowKey);
   if (!sv || !sc) return null;
   const last = [...sc.points].sort((a, b) => Date.parse(a.submittedAt) - Date.parse(b.submittedAt)).at(-1);
   const input = courseInput(sc, bandsOf(contents.get(sv.surveyId), sc), last ? pointValueTop(last) : null);
   /*
-   * Сигнал — красной меткой на оси, без подписи: подпись у правого края
-   * налезала бы на слово нижней полосы; что это сигнал, говорит легенда.
+   * Сигнал — красной меткой на оси с подписью. Подпись сама уходит со слова
+   * нижней полосы (viz/course.ts): влево от метки, строкой выше, а если
+   * места нет нигде — остаётся одна метка, и что это сигнал, говорит легенда.
    */
-  const signals = open && open.surveyId === sv.surveyId ? [{ t: Date.parse(open.lastAlertAt), label: "" }] : [];
+  const signals = open && open.surveyId === sv.surveyId ? [{ t: Date.parse(open.lastAlertAt), label: ut("mui.signal") }] : [];
   return (
     <CourseChart
       points={input.points.map((p) => ({ ...p, step: p.severity ? STEP_OF[p.severity as Severity] : undefined }))}
@@ -326,6 +329,8 @@ function LastMeasure({ data, rowKey, contents, opening, onReport }: { data: Resp
             norm: { raw: ut("norm.raw"), ratio: ut("norm.ratio"), tscore: ut("norm.tscore"), sten: ut("norm.sten") },
           })
             .split(" ")
+            // числа общая подпись пишет с точкой — на экране дробь в формате языка: «частка 0,2» (viz/math.ts)
+            .map((part) => (/^[\d.,−-]+%?$/.test(part) ? localDecimal(part) : part))
             .map((part, i, all) =>
               // крупно — само значение: первое число; «з 27» после него — подписью
               /^[\d.,−-]+%?$/.test(part) && all.findIndex((x) => /^[\d.,−-]+%?$/.test(x)) === i ? (

@@ -56,9 +56,11 @@ const grouped = (secret: string) => secret.replace(/(.{4})/g, "$1 ").trim();
  *
  * `onEnabled` — для экрана обязательной настройки: как только фактор
  * подтверждён и коды сохранены, консоль перечитывает профиль и открывает
- * рабочее место.
+ * рабочее место. `onDisabled` — фактор выключен: у профиля пациента строка
+ * «Двоетапна перевірка» читает своё состояние и без этого показывала бы
+ * «увімкнено» до перезагрузки.
  */
-export function SecondFactorSettings({ onEnabled }: { onEnabled?: () => void }) {
+export function SecondFactorSettings({ onEnabled, onDisabled }: { onEnabled?: () => void; onDisabled?: () => void }) {
   const { ut } = useLang();
   const { user } = useAuth();
   const { run, busy } = useAction();
@@ -168,6 +170,7 @@ export function SecondFactorSettings({ onEnabled }: { onEnabled?: () => void }) 
                   await api.mfaDisable(off.password, off.code.trim());
                   setOff({ password: "", code: "" });
                   status.reload();
+                  onDisabled?.();
                 }, ut("acct.mfa.disabledDone"));
               }}
             >

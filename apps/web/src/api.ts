@@ -917,6 +917,9 @@ export interface DecisionRuleInput {
 
 const unwrap = <T>(p: Promise<Items<T>>): Promise<T[]> => p.then((r) => r.items);
 
+/** Сколько человек принимает одно «додати до групи» списком — потолок patientGroupMemberSchema */
+export const PATIENT_GROUP_BATCH = 200;
+
 export const api = {
   /** Вход: пара токенов или, если включён второй фактор, просьба о коде (MfaChallenge) */
   login: (email: string, password: string) =>
@@ -1161,8 +1164,12 @@ export const api = {
   /** Завести модель; сервер отвечает идентификатором новой строки */
   createDecisionRule: (input: DecisionRuleInput) =>
     request<{ id: string }>("/api/decisions/rules", { method: "POST", body: JSON.stringify(input) }),
-  /** Правка поднимает версию правила — срабатывания помнят, при какой версии сработали */
-  updateDecisionRule: (id: string, input: Partial<DecisionRuleInput>) =>
+  /**
+   * Правка поднимает версию правила — срабатывания помнят, при какой версии
+   * сработали. `version` — та, что видел правящий: правило, изменённое с тех
+   * пор кем-то другим, отвечает 409 (err.ruleChanged), и экран его перечитывает.
+   */
+  updateDecisionRule: (id: string, input: Partial<DecisionRuleInput> & { version?: number }) =>
     request<{ ok: true; version: number }>(`/api/decisions/rules/${id}`, {
       method: "PATCH",
       body: JSON.stringify(input),
@@ -1791,6 +1798,20 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ userId }),
     }),
+  /**
+   * Выборку — списком (`userIds`), а не запросом на человека: сервер проверяет
+   * пачку целиком до первой записи, и «троих добавил, на четвёртом отказал»
+   * внутри неё не бывает. Пачка — не больше PATIENT_GROUP_BATCH (потолок
+   * patientGroupMemberSchema); повтор — «уже там», как и у одного.
+   */
+  addPatientGroupMembers: async (groupId: string, userIds: readonly string[]) => {
+    for (let at = 0; at < userIds.length; at += PATIENT_GROUP_BATCH) {
+      await request<{ groupId: string; userIds: string[] }>(`/api/patient-groups/${groupId}/members`, {
+        method: "POST",
+        body: JSON.stringify({ userIds: userIds.slice(at, at + PATIENT_GROUP_BATCH) }),
+      });
+    }
+  },
   /** Выданные человеку назначения при этом остаются — см. routes/patientGroups.ts */
   removePatientGroupMember: (groupId: string, userId: string) =>
     request<void>(`/api/patient-groups/${groupId}/members/${userId}`, { method: "DELETE" }),

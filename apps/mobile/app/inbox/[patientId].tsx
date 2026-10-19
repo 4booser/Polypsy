@@ -11,6 +11,7 @@ import { Icon } from "@/ui/Icon";
 import { T } from "@/ui/Text";
 import { refreshStaffBadges } from "@/staff/badges";
 import { byDay, hm, shortName } from "@/staff/model";
+import { StaffOnly } from "@/staff/StaffOnly";
 import { BandIcon, Line, LinkButton, Loading, StaffNav, StateBlock } from "@/staff/ui";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -23,7 +24,16 @@ type Message = { id: string; mine: boolean; text: string; sentAt: string; readAt
  * письма пациента становятся только показанные (markRead), а не все
  * сразу. Переписки ещё нет (пишут из карты) — первый лист её заведёт.
  */
-export default function ThreadScreen() {
+export default function Thread() {
+  // пациенту — его собственная переписка с вкладок, а не разговор специалиста (staff/StaffOnly.tsx)
+  return (
+    <StaffOnly>
+      <ThreadScreen />
+    </StaffOnly>
+  );
+}
+
+function ThreadScreen() {
   const { ut, locale } = useLang();
   const c = useColors();
   const router = useRouter();

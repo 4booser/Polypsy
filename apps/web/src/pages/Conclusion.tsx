@@ -12,7 +12,7 @@ import { cx } from "../ui/cx";
 import { Panel } from "../ui/layout";
 import { Button, ButtonLink, SeverityTag } from "../ui/primitives";
 import { useResource } from "../useResource";
-import { mainScore, reviewHref, signalStrip, signalTimer } from "./response/context";
+import { mainScore, reviewHref, signGate, signalStrip, signalTimer } from "./response/context";
 import { useResponseExtras } from "./response/data";
 import { ResponseBanner, ResponseFrame } from "./response/frame";
 import { Rx } from "./response/icons";
@@ -92,7 +92,29 @@ export default function ConclusionPage() {
 
   if (!detail) return <Loading rows={8} error={res.error} onRetry={res.reload} />;
   const ctx = x.ctx.data;
-  const lock = signLock(ctx, detail, ut, dec);
+  /*
+   * Замок подписи — по тому, что известно сейчас (signGate): пока обстановка
+   * едет, подпись ждёт; не пришла — закрыта с «Повторити». Прежде замок
+   * считался только по пришедшей обстановке, и до её ответа (или при отказе)
+   * кнопка подписи была живой при неразобранном сигнале.
+   */
+  const gate = signGate(ctx, !!x.ctx.error, can("alerts.review"));
+  const lock =
+    gate === "locked"
+      ? signLock(ctx, detail, ut, dec)
+      : gate === "unknown"
+        ? {
+            title: ut("cnx.lockUnknownTitle"),
+            body: `${ut("cnx.lockUnknownBody")} ${ut("cnx.lockDraftOk")}`,
+            action: (
+              <Button size="xs" variant="secondary" onClick={() => x.ctx.reload()}>
+                {ut("common.retry")}
+              </Button>
+            ),
+            tone: "warn" as const,
+            note: ut("cnx.lockUnknownBody"),
+          }
+        : null;
   const main = mainScore(detail.scores);
 
   return (
@@ -122,6 +144,7 @@ export default function ConclusionPage() {
             summary={main ? <Summary detail={detail} dynamics={x.dynamics} /> : null}
             signals={<SignalsSection ctx={ctx} detail={detail} />}
             lock={lock}
+            signPending={gate === "pending"}
             canWrite={can("conclusions.write")}
             canSign={can("conclusions.sign")}
             onHistory={() => {

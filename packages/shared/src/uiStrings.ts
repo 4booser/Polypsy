@@ -390,8 +390,6 @@ export const UI = {
   "pg.assignTest": { uk: "Призначити тест", ru: "Назначить тест", en: "Assign test" },
   "pg.assigned": { uk: "Тест призначено", ru: "Тест назначен", en: "Test assigned" },
   /* выбор галочками: «18 вибрано» — нижний рядок кадра f05 */
-  "pg.selected": { uk: "вибрано", ru: "выбрано", en: "selected" },
-  "pg.select": { uk: "Вибрати", ru: "Выбрать", en: "Select" },
   "pg.addToGroup": { uk: "Додати до групи", ru: "Добавить в группу", en: "Add to group" },
   "pg.added": { uk: "Додано до групи", ru: "Добавлены в группу", en: "Added to the group" },
   "pg.removeFromGroup": { uk: "Прибрати з групи", ru: "Убрать из группы", en: "Remove from group" },
@@ -706,13 +704,7 @@ export const UI = {
    * так слово не требует склонения по числу.
    */
   "cn.assignGroup": { uk: "Призначити групі", ru: "Назначить группе", en: "Assign to group" },
-  "cn.assignGroupHint": {
-    uk: "Кожен учасник групи отримає окреме призначення зі своїм строком; склад групи береться на момент призначення",
-    ru: "Каждый участник группы получит отдельное назначение со своим сроком; состав группы берётся на момент назначения",
-    en: "Each group member will receive a separate assignment with its own deadline; group membership is taken as of the moment of assignment",
-  },
   "cn.patientGroup": { uk: "Група пацієнтів", ru: "Группа пациентов", en: "Patient group" },
-  "cn.groupCountHint": { uk: "У дужках — скільки учасників отримають методику", ru: "В скобках — сколько участников получат методику", en: "In parentheses — how many members will receive the instrument" },
   "cn.noPatientGroups": {
     uk: "Груп пацієнтів поки немає — їх збирають у розділі «Групи»",
     ru: "Групп пациентов пока нет — их собирают в разделе «Группы»",
@@ -1734,7 +1726,6 @@ export const UI = {
    * Подписи того, что кадр не рисует на виду: меню шестерёнки списка и меню
    * «⋯» над выборкой. Сами действия с экрана не ушли — ушли с глаз.
    */
-  "pt.selectionActions": { uk: "Дії з вибраними", ru: "Действия с выбранными", en: "Actions on selected" },
   /*
    * Раздел бургера с дверями, которых кадр не рисует на самом экране.
    * Два адреса — /responses/:id/conclusion/draft и /patient-groups/:id/edit —
@@ -2070,10 +2061,11 @@ export const UI = {
     en: "All completed tests across versions; the background is the scale’s severity ladder",
   },
   "ant.answersChange": { uk: "Як змінювались відповіді", ru: "Как менялись ответы", en: "How the answers changed" },
+  /* число — после двоеточия: «Останні 3 проходжень» требовало бы формы слова при числе, а у человека их часто два-три */
   "ant.answersCaption": {
-    uk: "Останні {n} проходжень цієї версії; у клітинці — обраний варіант і його бал, тон — бал від максимуму пункту",
-    ru: "Последние {n} прохождений этой версии; в клетке — выбранный вариант и его балл, тон — балл от максимума пункта",
-    en: "The last {n} completions of this version; each cell shows the chosen option and its score, shaded by the item maximum",
+    uk: "Останні проходження цієї версії: {n}; у клітинці — обраний варіант і його бал, тон — бал від максимуму пункту",
+    ru: "Последние прохождения этой версии: {n}; в клетке — выбранный вариант и его балл, тон — балл от максимума пункта",
+    en: "Latest completions of this version: {n}; each cell shows the chosen option and its score, shaded by the item maximum",
   },
   "ant.cellSkipped": { uk: "пропуск", ru: "пропуск", en: "skipped" },
   "ant.cellHidden": { uk: "відповідь є", ru: "ответ есть", en: "answered" },
@@ -5065,7 +5057,6 @@ export const UI = {
   "cl.editAction": { uk: "Правити", ru: "Править", en: "Edit" },
   "cq.score": { uk: "Бал", ru: "Балл", en: "Score" },
   "mv.aboveShare": { uk: "вище, ніж у {n}% обстежених", ru: "выше, чем у {n}% обследованных", en: "higher than {n}% of those assessed" },
-  "mv.peakPerDay": { uk: "пік: {n} на день", ru: "пик: {n} в день", en: "peak: {n} per day" },
   "mv.radarNeedsThree": {
     uk: "Профіль будується від трьох субшкал — зараз їх {n}",
     ru: "Профиль строится от трёх субшкал — сейчас их {n}",
@@ -5074,11 +5065,6 @@ export const UI = {
   "mv.threshold": { uk: "поріг", ru: "порог", en: "threshold" },
   "mv.ordinary": { uk: "звичайні", ru: "обычные", en: "regular" },
   "mv.markedCareless": { uk: "позначено як недбалі ({n})", ru: "помечены как небрежные ({n})", en: "flagged as careless ({n})" },
-  "mv.lowItemLink": {
-    uk: "Пункти зі зв’язком нижче {n} виділено — вони погано узгоджуються зі своєю шкалою",
-    ru: "Пункты со связью ниже {n} выделены — они плохо согласуются со своей шкалой",
-    en: "Items correlating below {n} with the rest of their scale are highlighted — they fit their scale poorly",
-  },
   /* люди, а не случаи: очередь сложена по человеку (см. dash.casesOpen) */
   "ma.completion": { uk: "доходимість {n}%", ru: "доходимость {n}%", en: "completion rate {n}%" },
   "ma.published": { uk: "опубліковано", ru: "опубликовано", en: "published" },
@@ -5465,13 +5451,10 @@ export const UI = {
   "msv.changesAvg": { uk: "Змін відповіді в середньому", ru: "Смен ответа в среднем", en: "Answer changes on average" },
   "msv.changedAnswer": { uk: "Змінювали відповідь", ru: "Меняли ответ", en: "Changed their answer" },
   "msv.tooFast": { uk: "Відповіли занадто швидко", ru: "Отвечено слишком быстро", en: "Answered too fast" },
-  "mch.noDistribution": { uk: "Немає даних для розподілу", ru: "Нет данных для распределения", en: "No data for a distribution" },
   "mch.noNumeric": { uk: "Немає числових відповідей", ru: "Нет числовых ответов", en: "No numeric answers" },
-  "mch.noResponses": { uk: "Проходжень поки немає", ru: "Прохождений пока нет", en: "No completions yet" },
   "mqi.rankHint": { uk: "Натискайте в порядку важливості — від найважливішого до найменш важливого", ru: "Нажимайте в порядке важности — от самого важного к наименее важному", en: "Tap in order of importance — from most to least important" },
   "mqi.yourAnswer": { uk: "Ваша відповідь", ru: "Ваш ответ", en: "Your answer" },
   "mviz.noData": { uk: "Даних поки немає", ru: "Данных пока нет", en: "No data yet" },
-  "mviz.funnelHint": { uk: "Звуження показує, на якому питанні респонденти припиняють проходження", ru: "Сужение показывает, на каком вопросе респонденты прекращают прохождение", en: "The narrowing shows at which question respondents stop the test" },
   "mviz.boxHint": { uk: "Ящик — міжквартильний розмах, жирна риска — медіана, вуса — крайні значення", ru: "Ящик — межквартильный размах, жирная черта — медиана, усы — крайние значения", en: "Box — interquartile range, bold line — median, whiskers — extreme values" },
   "mviz.heatHint": { uk: "Насиченість кодує величину; значення продубльовано числом", ru: "Насыщенность кодирует величину; значение продублировано числом", en: "Saturation encodes magnitude; the value is also shown as a number" },
   "mviz.current": { uk: "Поточний", ru: "Текущий", en: "Current" },
@@ -9019,7 +9002,8 @@ export const UI = {
     en: "It advises the specialist, notifies the duty specialist or offers the patient another test.",
   },
   "am.coverTitle": { uk: "Під моделями", ru: "Под моделями", en: "Covered by models" },
-  "am.coverSub": { uk: "{n} з {total} тестів", ru: "{n} из {total} тестов", en: "{n} of {total} tests" },
+  /* число — после двоеточия: «з 21 тестів» и «з 1 тестів» — неправильная форма слова при числе */
+  "am.coverSub": { uk: "тестів: {n} з {total}", ru: "тестов: {n} из {total}", en: "tests: {n} of {total}" },
   "am.coverOn": { uk: "увімкнених: {n}", ru: "включённых: {n}", en: "enabled: {n}" },
   "am.coverOffOnly": { uk: "лише вимкнені: {n}", ru: "только выключенные: {n}", en: "disabled only: {n}" },
   "am.coverNone": {
@@ -9287,10 +9271,11 @@ export const UI = {
     ru: "Попадёт в журнал доступа и в манифест",
     en: "Goes into the access log and the manifest",
   },
+  /* что увозят файлы — вся методика: выгрузка среза экрана не принимает (analytics/tests/model.ts, exportCount) */
   "ant.exportScope": {
-    uk: "{title}, версія {v}, проходжень: {n}",
-    ru: "{title}, версия {v}, прохождений: {n}",
-    en: "{title}, version {v}, completions: {n}",
+    uk: "{title}: усі пацієнти й версії, проходжень: {n}",
+    ru: "{title}: все пациенты и версии, прохождений: {n}",
+    en: "{title}: all patients and versions, completions: {n}",
   },
   "ant.profFullSub": {
     uk: "Без знеособлення — лише всередині клініки",
@@ -12131,7 +12116,7 @@ export const UI = {
   "cnx.unsaved": { uk: "є незбережені зміни", ru: "есть несохранённые изменения", en: "unsaved changes" },
   "cnx.name": { uk: "Назва заключення", ru: "Название заключения", en: "Conclusion title" },
   "cnx.verdict": { uk: "Висновок", ru: "Вывод", en: "Conclusion" },
-  "cnx.chars": { uk: "{n} знаків у висновку", ru: "{n} знаков в выводе", en: "{n} characters" },
+  "cnx.chars": { uk: "знаків у висновку: {n}", ru: "знаков в выводе: {n}", en: "characters: {n}" },
   "cnx.noSignRight": {
     uk: "Підписувати заключення може лише той, кому це дозволено.",
     ru: "Подписывать заключение может только тот, кому это разрешено.",
@@ -12497,9 +12482,9 @@ export const UI = {
   "ptw.factOneScreen": { uk: "Одна відповідь на екран, великими плитками.", ru: "Один ответ на экран, крупными плитками.", en: "One answer per screen, in large tiles." },
   "ptw.factPause": { uk: "Можна зупинитися будь-коли", ru: "Можно остановиться в любой момент", en: "You can stop at any time" },
   "ptw.factPauseText": {
-    uk: "Кожна відповідь зберігається на цьому пристрої одразу. Продовжите з того ж питання.",
-    ru: "Каждый ответ сразу сохраняется на этом устройстве. Продолжите с того же вопроса.",
-    en: "Every answer is saved on this device right away. You continue from the same question.",
+    uk: "Кожна відповідь зберігається на цьому пристрої одразу, доки ви не вийдете з кабінету. Продовжите з того ж питання.",
+    ru: "Каждый ответ сразу сохраняется на этом устройстве, пока вы не выйдете из кабинета. Продолжите с того же вопроса.",
+    en: "Every answer is saved on this device right away, until you sign out. You continue from the same question.",
   },
   "ptw.factBack": { uk: "Передумали — поверніться", ru: "Передумали — вернитесь", en: "Changed your mind? Go back" },
   "ptw.factBackText": { uk: "Кнопка «Назад» є на кожному питанні.", ru: "Кнопка «Назад» есть на каждом вопросе.", en: "Every question has a “Back” button." },
@@ -12735,9 +12720,9 @@ export const UI = {
   "ptw.withdrawn": { uk: "Згоду відкликано", ru: "Согласие отозвано", en: "Consent withdrawn" },
   "ptw.exit": { uk: "Вихід", ru: "Выход", en: "Sign out" },
   "ptw.exitText": {
-    uk: "Відповіді, що чекають відправлення, залишаться на цьому пристрої й підуть після вашого наступного входу.",
-    ru: "Ответы, которые ждут отправки, останутся на этом устройстве и уйдут после вашего следующего входа.",
-    en: "Answers waiting to be sent stay on this device and go out after your next sign-in.",
+    uk: "Відповіді, що чекають відправлення, залишаться на цьому пристрої й підуть після вашого наступного входу. Незавершені тести зітруться з пристрою.",
+    ru: "Ответы, которые ждут отправки, останутся на этом устройстве и уйдут после вашего следующего входа. Незавершённые тесты сотрутся с устройства.",
+    en: "Answers waiting to be sent stay on this device and go out after your next sign-in. Unfinished tests are erased from the device.",
   },
 
   /* согласие (patient/ConsentGate.tsx) */
@@ -12760,9 +12745,10 @@ export const UI = {
   "mc.catTitle": { uk: "Каталог методик", ru: "Каталог методик", en: "Instrument catalogue" },
   "mc.inGroups": { uk: "у {n} групах", ru: "в {n} группах", en: "in {n} groups" },
   "mc.recentMeta": {
-    uk: "{n} проходжень за 30 днів",
-    ru: "{n} прохождений за 30 дней",
-    en: "{n} responses in 30 days",
+    /* {n} — число со словом в нужной форме (useCount): «1 проходження», «3 проходження», «5 проходжень» */
+    uk: "{n} за 30 днів",
+    ru: "{n} за 30 дней",
+    en: "{n} in 30 days",
   },
   "mc.newMethod": { uk: "Нова методика", ru: "Новая методика", en: "New instrument" },
   "mc.importHint": {
@@ -12946,9 +12932,9 @@ export const UI = {
   },
   "mc.assignedN": { uk: "Призначено: {n}", ru: "Назначено: {n}", en: "Assigned: {n}" },
   "mc.assignedGroup": {
-    uk: "Призначено групі: {n} пацієнтів",
-    ru: "Назначено группе: {n} пациентов",
-    en: "Assigned to the group: {n} patients",
+    uk: "Призначено групі, отримали: {n}",
+    ru: "Назначено группе, получили: {n}",
+    en: "Assigned to the group; recipients: {n}",
   },
   "mc.assignGroupBtn": { uk: "Призначити групі", ru: "Назначить группе", en: "Assign to group" },
   "mc.assignN": { uk: "Призначити ({n})", ru: "Назначить ({n})", en: "Assign ({n})" },
@@ -13283,7 +13269,7 @@ export const UI = {
     en: "Median by age, men and women",
   },
   "mc.btActive": { uk: "активних", ru: "активных", en: "active" },
-  "mc.btActiveOf": { uk: "{n} активних з {all}", ru: "{n} активных из {all}", en: "{n} active of {all}" },
+  "mc.btActiveOf": { uk: "активних: {n} з {all}", ru: "активных: {n} из {all}", en: "active: {n} of {all}" },
   "mc.btAddMethod": { uk: "Додати методику", ru: "Добавить методику", en: "Add an instrument" },
   "mc.btAnyOrder": { uk: "будь-який порядок", ru: "любой порядок", en: "any order" },
   "mc.btArchive": { uk: "В архів", ru: "В архив", en: "Move to archive" },
@@ -13446,7 +13432,6 @@ export const UI = {
     ru: "Снять администратора {name}?",
     en: "Remove administrator {name}?",
   },
-  "mc.grResponses": { uk: "{n} проходжень", ru: "{n} прохождений", en: "{n} responses" },
   "mc.grResponsesCol": { uk: "проходжень", ru: "прохождений", en: "responses" },
   "mc.grRetiredGroup": { uk: "Зняті з використання", ru: "Снятые с использования", en: "Retired" },
   "mc.grRetiredView": { uk: "Зняті", ru: "Снятые", en: "Retired" },
@@ -16302,6 +16287,28 @@ export const UI = {
   "opx.vt.verdictTitle": { uk: "p75 {v} — {rating}", ru: "p75 {v} — {rating}", en: "p75 {v} — {rating}" },
   "opx.vt.verdict": { uk: "Добре ≤ {good}, погано > {poor}.", ru: "Хорошо ≤ {good}, плохо > {poor}.", en: "Good ≤ {good}, poor > {poor}." },
   "opx.vt.verdictFew": { uk: "Замірів лише {n} — це випадок, а не міра.", ru: "Замеров всего {n} — это случай, а не мера.", en: "Only {n} samples: an anecdote, not a measure." },
+
+  // ── v2-fix-methods ──
+  /* подпись заключения: обстановка прохождения не пришла — разобран ли сигнал, неизвестно */
+  "cnx.lockUnknownTitle": {
+    uk: "Не вдалося перевірити сигнали цього проходження",
+    ru: "Не удалось проверить сигналы этого прохождения",
+    en: "Couldn’t check this attempt’s signals",
+  },
+  "cnx.lockUnknownBody": {
+    uk: "Підписати можна, коли видно, що сигнал цього проходження розібрано.",
+    ru: "Подписать можно, когда видно, что сигнал этого прохождения разобран.",
+    en: "You can sign once it’s clear this attempt’s signal has been reviewed.",
+  },
+
+  // ── v2-fix-mobile2 ──
+  /* вход после того, как сессия кончилась сама (apps/mobile/app/login.tsx, auth/sessionEnd.ts) */
+  "mlg.sessionEnded": { uk: "Сесію завершено", ru: "Сессия завершена", en: "Your session has ended" },
+  "mlg.sessionEndedText": {
+    uk: "Увійдіть знову, щоб продовжити. Відповіді, які ще не відправлено, збережено на цьому пристрої.",
+    ru: "Войдите снова, чтобы продолжить. Ответы, которые ещё не отправлены, сохранены на этом устройстве.",
+    en: "Sign in again to continue. Answers that have not been sent yet are kept on this device.",
+  },
 
   // ── v2-fix-clinical ──
   "rr.casesFailed": {
