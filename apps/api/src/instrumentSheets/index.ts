@@ -121,6 +121,13 @@ const MODULE_OF: Record<string, string> = {
   gad2: "gad2.ts",
   core10: "core10.ts",
   // ── /k-distress ──
+  // ── k-personality ──
+  tipi: "tipi.ts",
+  scs_sf: "scsSf.ts",
+  maas: "maas.ts",
+  aaq2: "aaq2.ts",
+  aq10: "aq10.ts",
+  // ── /k-personality ──
 };
 
 /**

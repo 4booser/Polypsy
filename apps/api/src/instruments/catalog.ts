@@ -60,6 +60,13 @@ import { k6 } from "./k6";
 import { phq15 } from "./phq15";
 import { phq2 } from "./phq2";
 // ── /k-distress ──
+// ── k-personality ──
+import { aaq2 } from "./aaq2";
+import { aq10 } from "./aq10";
+import { maas } from "./maas";
+import { scsSf } from "./scsSf";
+import { tipi } from "./tipi";
+// ── /k-personality ──
 
 /**
  * Общий каталог общедоступных методик.
@@ -548,4 +555,56 @@ export const CATALOG: CatalogEntry[] = [
       "CORE-10, Barkham та ін., Counselling and Psychotherapy Research 2013; © CORE System Trust, CC BY-NC-ND 4.0 — лише некомерційне використання, текст не змінювати. Український і російський тексти — затверджені переклади CST (2024); смуги — Connell, Barkham, CORE-10 User Manual, 2007",
   },
   // ── /k-distress ──
+  // ── k-personality ──
+  /*
+   * Группа «personality»: черты, регуляция эмоций, осознанность,
+   * самосострадание, привязанность, импульсивность —
+   * docs/instruments/dossiers/personality.json.
+   *
+   * Отбор строже прежних групп: заводится только то, что правообладатель
+   * своими словами разрешает в клинике (или «for any purpose»); разрешение
+   * «для исследований» здесь не засчитано. Полосы — только опубликованные
+   * правообладателем: у TIPI и MAAS их нет вовсе, у SCS-SF — «ad hoc rubric»
+   * автора без тяжести, у AAQ-II — предварительный диапазон авторов без
+   * тревоги, у AQ-10 — порог направления с бланка ARC.
+   *
+   * Не заведены, причины — в карточках досье: Mini-IPIP (все 20 пунктов уже
+   * стоят в big-five), PID-5-BF (APA требует письменного разрешения на
+   * перевод), DERS-16 (заявления правообладателя нет), ERQ (только «academic
+   * research», лицензируется Stanford OTL), ECR-RS (о применении автор пишет
+   * только для исследований), BIS-11 и BIS-15 («All Rights Reserved» без
+   * разрешения), BIS/BAS (только «research and teaching»). Для
+   * импульсивности свободной методики с разрешением на клинику не нашлось.
+   */
+  {
+    key: "tipi",
+    draft: tipi,
+    source:
+      "TIPI, Gosling, Rentfrow, Swann, J Res Pers 2003 («Anyone can use it for any purpose», S. D. Gosling). Український текст — TIPI-UKR, Кліманська, Галецька, Psychological Journal 2019 (CC BY-NC-SA 4.0); російський — TIPI-RU, Сергеєва, Кириллов, Джумагулова, Experimental Psychology (Russia) 2016; обидві адаптації перелічено на сторінці автора. Без смуг: порогів у автора немає",
+  },
+  {
+    key: "scs_sf",
+    draft: scsSf,
+    source:
+      "SCS-SF, Raes, Pommier, Neff, Van Gucht, Clin Psychol Psychother 2011 (дозвіл K. Neff: «for any purpose whatsoever, including research, clinical work, teaching»); смуги — «ad hoc rubric» авторки. Переклад робочий",
+  },
+  {
+    key: "maas",
+    draft: maas,
+    source:
+      "MAAS (trait), Brown, Ryan, J Pers Soc Psychol 2003 (public domain за листом K. W. Brown: «special permission is not required to use it for research or clinical purposes»). Без смуг: порогів у автора немає. Переклад робочий",
+  },
+  {
+    key: "aaq2",
+    draft: aaq2,
+    source:
+      "AAQ-II, Bond, Hayes, Baer та ін., Behavior Therapy 2011 (дозвіл F. Bond: «for research and with clients»); смуги — попередній діапазон 24–28 авторів. Український текст пунктів — Широка, Миколайчук, Науковий вісник ХДУ 2021 (УКУ); російський — робочий переклад",
+  },
+  {
+    key: "aq10",
+    draft: aq10,
+    source:
+      "AQ-10 (Adult), Allison, Auyeung, Baron-Cohen, JAACAP 2012; Autism Research Centre, University of Cambridge — безкоштовно для некомерційного використання, переклад для некомерційних цілей без запиту (комерційне — ліцензія через ePROVIDE). Поріг ≥ 6 — з бланка ARC. Переклад робочий",
+  },
+  // ── /k-personality ──
 ];
