@@ -14,7 +14,7 @@ import { Loading, useAction, useToast } from "../../ui";
 import { AlertChip, AlertStrip, KV } from "../../ui/records";
 import { DataTable, type Column } from "../../ui/DataTable";
 import { Drawer, DrawerSection } from "../../ui/Drawer";
-import { FilterBar } from "../../ui/filters";
+import { FilterBar, ViewPills, type ViewItem } from "../../ui/filters";
 import { Ic } from "../../ui/icons";
 import { KbdHints } from "../../ui/kbd";
 import { useHotkeys } from "../../ui/keys";
@@ -32,13 +32,15 @@ import { ArchiveDialog } from "../methods/ArchiveDialog";
 import { AssignDrawer, type ExistingAssignment } from "../../components/AssignDrawer";
 import { ExportsDrawer } from "../methods/ExportsDrawer";
 import { Mi } from "../methods/icons";
-import { rightsKey } from "../methods/labels";
+import { DOMAIN_KEY, domainKey, rightsKey } from "../methods/labels";
 import { attentionOf, grantState, keysPending, rightsPending, shortDate, splitCode } from "../methods/model";
 import { num, useCount } from "../methods/useCount";
 import { FolderForm, MoveForm } from "./CatalogueDialogs";
 import {
   DEFAULT_PER,
   catalogueHref,
+  domainCounts,
+  domainFrom,
   folderChildren,
   folderPath,
   listQuery,
@@ -61,7 +63,8 @@ import {
  * поповером и дверью к делу.
  *
  * В листе: папки текущего уровня («Мої тести» и крошки), поиск, группа,
- * таблица и страницы. Строка: код и имя, признаки (лише за призначенням,
+ * чипы «Напрям» с числами (что измеряет методика: shared/domains.ts), таблица
+ * и страницы. Строка: код и имя, признаки (лише за призначенням,
  * критичний пункт, заповнює фахівець, права, демо), група і папка, шкали й
  * смуги, проходження за 30 днів, версія і ключі. Действия строки всплывают
  * на наведении и фокусе (DataTable): «Призначити» (A) и «Коротко» — в
@@ -78,12 +81,18 @@ import {
 
 const CODE_W = 72;
 
-/** Ячейка «Методика»: пилюля кода, имя, признаки и строка состава */
-function MethodCell({ s, flags, codes }: { s: SurveyListItem; flags: ReactNode; codes: boolean }) {
+/**
+ * Ячейка «Методика»: пилюля кода, имя, признаки и строка состава.
+ * `domain` — подпись направления в начале строки состава («что измеряет», как
+ * на макете); пусто, когда каталог и так отобран по направлению.
+ */
+function MethodCell({ s, flags, codes, domain }: { s: SurveyListItem; flags: ReactNode; codes: boolean; domain?: string | null }) {
   const { ut } = useLang();
   const count = useCount();
   const { code, name } = splitCode(s.title);
-  const line = [count(s.questionCount, "items"), s.description].filter(Boolean).join(", ");
+  const parts = [count(s.questionCount, "items"), s.description].filter(Boolean).join(", ");
+  // подпись направления сама с запятыми («Настрій, тривога, дистрес») — отделяется точкой
+  const line = [domain, parts].filter(Boolean).join(" · ");
   return (
     <span className="flex min-w-0 items-center gap-3">
       {/* место под код — только если на странице коды есть: пустой столбец без кодов был бы дырой */}
@@ -330,6 +339,7 @@ function PeekBody({ s, groupTitle, folderTitle }: { s: SurveyListItem; groupTitl
           w={120}
           rows={[
             ...(s.description ? ([[ut("f.description"), s.description]] as [string, string][]) : []),
+            [ut("dom.label"), ut(domainKey(s.domain) ?? "dom.none")],
             [
               ut("mc.peekVolume"),
               [count(s.questionCount, "items"), s.scaleCount ? count(s.scaleCount, "scales") : null].filter(Boolean).join(", "),
@@ -415,6 +425,7 @@ export function SurveyList() {
   const folderParam = params.get("folder");
   const q = params.get("q") ?? "";
   const group = params.get("group") ?? "";
+  const domain = domainFrom(params.get("domain"));
   const page = pageFrom(params.get("page"));
   const per = perFrom(params.get("per"));
 
@@ -470,17 +481,21 @@ export function SurveyList() {
   );
   const groupNames = useMemo(() => (groups.length > 1 ? new Map(groups.map((g) => [g.id, g.title] as const)) : null), [groups]);
 
-  /* адрес вкладки или папки — с фильтром группы, если он стоит: catalogueHref о группе не знает */
+  /*
+   * Адрес вкладки или папки — с чипом направления и фильтром группы, если они
+   * стоят: направление переживает смену вкладки и папки, как и группа;
+   * catalogueHref о группе не знает.
+   */
   const hrefOf = useCallback(
     (t: CatalogueTab, state: Parameters<typeof catalogueHref>[1]) => {
-      const href = catalogueHref(t, state);
+      const href = catalogueHref(t, { domain, ...state });
       if (!group) return href;
       const [pathPart, qs = ""] = href.split("?");
       const sp = new URLSearchParams(qs);
       sp.set("group", group);
       return `${pathPart}?${sp.toString()}`;
     },
-    [group],
+    [group, domain],
   );
 
   /*
@@ -504,6 +519,8 @@ export function SurveyList() {
     };
   }, [scoped]);
   const attention = useMemo(() => attentionOf(scoped), [scoped]);
+  /* числа чипов «Напрям» — по вкладке и группе, как числа вкладок (catalogue.ts, domainCounts) */
+  const domains = useMemo(() => domainCounts(everything.data ?? [], tab, group || null), [everything.data, tab, group]);
 
   /*
    * Список ждёт папки: неизвестная папка в адресе превращается в корень,
@@ -512,9 +529,9 @@ export function SurveyList() {
    * ждут увидеть все её методики.
    */
   const query = useMemo(() => {
-    const base = listQuery({ tab, folder: folderId, q: dq, page, per });
+    const base = listQuery({ tab, folder: folderId, q: dq, page, per, domain });
     return group ? { ...base, groupId: group, folder: folderId ?? undefined } : base;
-  }, [tab, folderId, dq, page, per, group]);
+  }, [tab, folderId, dq, page, per, group, domain]);
   const list = useResource(() => api.surveyPage(query), [JSON.stringify(query)], { enabled: shelves.data !== null });
   const shown = useMemo(
     () => (list.data ? (tab === "retired" ? retiredPage(list.data.items, page, per) : list.data) : null),
@@ -688,12 +705,18 @@ export function SurveyList() {
    */
   const narrow = useMedia("(max-width: 1366px)");
   const pageHasCodes = !!shown?.items.some((s) => splitCode(s.title).code);
+  /* подпись направления в строке; отобрано по направлению — у всех строк она одна, и строка её не повторяет */
+  const rowDomain = (s: SurveyListItem): string | null => {
+    if (domain && domain !== "none") return null;
+    const key = domainKey(s.domain);
+    return key ? ut(key) : null;
+  };
   const columns: Column<SurveyListItem>[] = [
     {
       key: "method",
       header: ut("mc.colMethod"),
       required: true,
-      render: (s) => <MethodCell s={s} flags={flagsOf(s)} codes={pageHasCodes} />,
+      render: (s) => <MethodCell s={s} flags={flagsOf(s)} codes={pageHasCodes} domain={rowDomain(s)} />,
     },
     {
       key: "group",
@@ -926,8 +949,26 @@ export function SurveyList() {
       </MenuButton>
     ) : null;
 
+  /*
+   * Чипы «Напрям» — пилюли видов набора (ViewPills), как полка направлений
+   * на макете бібліотеки (methods-new): «Усі» и направления, у которых на
+   * вкладке есть методики, в порядке перечня; «Без напряму» — когда такие
+   * есть. Выбранный чип с нулём не пропадает: иначе его нечем было бы снять.
+   * Полки нет, пока на вкладке нет ни одного направления: один чип «Усі»
+   * ничего не отбирает.
+   */
+  const presentDomains = domains.domains.filter((d) => d.count > 0 || d.domain === domain);
+  const domainPills: ViewItem[] | null =
+    everything.data && (presentDomains.length || domain)
+      ? [
+          { key: "all", label: ut("dom.all"), count: domains.all },
+          ...presentDomains.map((d) => ({ key: d.domain, label: ut(DOMAIN_KEY[d.domain]), count: d.count })),
+          ...(domains.none > 0 || domain === "none" ? [{ key: "none", label: ut("dom.none"), count: domains.none }] : []),
+        ]
+      : null;
+
   const emptyNode =
-    dq.trim() || group ? (
+    dq.trim() || group || domain ? (
       <Empty compact title={ut("cat.emptySearch")} hint={ut("mc.emptySearchHint")} />
     ) : tab === "retired" ? (
       <Empty compact title={ut("mc.emptyRetired")} />
@@ -1031,6 +1072,15 @@ export function SurveyList() {
             chips={groupChip}
             count={shown ? { shown: shown.items.length, total: shown.total } : undefined}
           />
+          {domainPills ? (
+            <ViewPills
+              className="mt-2.5"
+              label={ut("dom.filterLabel")}
+              items={domainPills}
+              value={domain ?? "all"}
+              onChange={(key) => update({ domain: key === "all" ? null : key, page: null })}
+            />
+          ) : null}
         </div>
         {shelves.error ? (
           <Loading error={shelves.error} onRetry={shelves.reload} bare />
