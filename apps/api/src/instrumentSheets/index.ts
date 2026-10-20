@@ -108,6 +108,10 @@ const MODULE_OF: Record<string, string> = {
   proqol5: "proqol5.ts",
   mios: "mios.ts",
   // ── /k-staff ──
+  // ── k-cognitive ──
+  "4at": "fourAt.ts",
+  adexi: "adexi.ts",
+  // ── /k-cognitive ──
 };
 
 /**
