@@ -33,6 +33,7 @@ import { cbi } from "./cbi";
 import { fas } from "./fas";
 import { ris } from "./ris";
 import { sci } from "./sci";
+import { sci02 } from "./sci02";
 // ── /k-sleep ──
 
 /**
@@ -298,9 +299,9 @@ export const CATALOG: CatalogEntry[] = [
   /*
    * Группа «сон и утомление» — docs/instruments/dossiers/sleep.json.
    *
-   * Заведены только три методики, у которых свободное использование в клинике
-   * подтверждено словами правообладателя: SCI (Sleepio, CC BY-NC 4.0 —
-   * некоммерчески), FAS (ild care foundation: «usage in clinical settings is
+   * Заведены только методики, у которых свободное использование в клинике
+   * подтверждено словами правообладателя: SCI и её двухпунктовая версия SCI-02
+   * (Sleepio, CC BY-NC 4.0 — некоммерчески), FAS (ild care foundation: «usage in clinical settings is
    * permitted without restrictions», официальные украинский и русский тексты) и
    * RIS (авторы, статья под CC BY 2.0). Остальные карточки досье не заведены:
    * PROMIS Sleep Disturbance 8a, Sleep-Related Impairment 8a и Fatigue 7a для
@@ -317,6 +318,12 @@ export const CATALOG: CatalogEntry[] = [
     draft: sci,
     source:
       "Sleep Condition Indicator, Espie, Kyle, Hames, Gardani, Fleming, Cape, BMJ Open 2014;4:e004183 — © Sleepio Limited, безкоштовно лише для некомерційного використання (CC BY-NC 4.0). Переклад робочий",
+  },
+  {
+    key: "sci02",
+    draft: sci02,
+    source:
+      "SCI-02: пункти 7 і 3 Sleep Condition Indicator; поріг ≤2 — Luik, Machado, Siriwardena, Espie, Br J Gen Pract 2019;69(679):79-80 — © Sleepio Limited, безкоштовно лише для некомерційного використання (CC BY-NC 4.0). Переклад робочий (той самий, що в SCI)",
   },
   {
     key: "fas",

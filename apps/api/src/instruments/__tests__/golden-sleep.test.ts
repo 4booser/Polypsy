@@ -12,10 +12,11 @@ import { WORKING_TRANSLATION } from "../common";
 import { fas } from "../fas";
 import { ris } from "../ris";
 import { sci } from "../sci";
+import { sci02 } from "../sci02";
 
 /**
  * Золотые протоколы группы «сон и утомление» (docs/instruments/dossiers/sleep.json):
- * SCI, FAS, RIS.
+ * SCI, SCI-02, FAS, RIS.
  *
  * Ожидаемые баллы посчитаны руками по ключу из досье — расчёт в комментарии у
  * каждого случая. Опубликованных разобранных примеров у всех трёх нет, поэтому
@@ -170,22 +171,22 @@ function ukrainianTexts(draft: CreateSurveyDraft): string[] {
 }
 
 describe("каталог сна: общее", () => {
-  test("все три проходят схему и проверку структуры без ошибок", () => {
-    for (const draft of [sci, fas, ris]) {
+  test("все четыре проходят схему и проверку структуры без ошибок", () => {
+    for (const draft of [sci, sci02, fas, ris]) {
       const parsed = createSurveySchema.parse(draft);
       expect(validateSurvey(parsed).filter((i) => i.level === "error")).toEqual([]);
     }
   });
 
   test("в украинском тексте нет русских букв ы э ъ ё", () => {
-    for (const draft of [sci, fas, ris]) {
+    for (const draft of [sci, sci02, fas, ris]) {
       const bad = ukrainianTexts(draft).filter((t) => /[ыэъё]/i.test(t));
       expect(bad, uk(draft.title)).toEqual([]);
     }
   });
 
   test("пунктов риска нет ни у одной — в первоисточниках нет вопросов о самоповреждении", () => {
-    for (const draft of [sci, fas, ris]) {
+    for (const draft of [sci, sci02, fas, ris]) {
       expect(qs(draft).some((q) => q.options?.some((o) => o.riskFlag))).toBe(false);
     }
   });
@@ -233,6 +234,32 @@ describe("золотой протокол: SCI", () => {
 
   test("перевод рабочий — оговорка в описании есть", () => {
     expect(uk(sci.description)).toContain(WORKING_TRANSLATION.uk);
+  });
+});
+
+describe("золотой протокол: SCI-02", () => {
+  test("пример досье: «Сильно» + 4 ночи → 2 — порог «≤2» достигнут", () => {
+    // 1 + 1 = 2 ≤ 2 → первая полоса: grade 1, mild
+    const s = scoreOf(sci02, [1, 1], "SCI02");
+    expect(s.rawScore).toBe(2);
+    expect(s.maxScore).toBe(8);
+    expect(s.band?.grade).toBe(1);
+    expect(s.band?.severity).toBe("mild");
+  });
+
+  test("граница: «Певною мірою» + 4 ночи → 3 — выше порога", () => {
+    // 2 + 1 = 3 > 2 → вторая полоса: grade 2, none
+    const s = scoreOf(sci02, [2, 1], "SCI02");
+    expect(s.rawScore).toBe(3);
+    expect(s.band?.grade).toBe(2);
+    expect(s.band?.severity).toBe("none");
+  });
+
+  test("пункты — пункты 7 и 3 полной SCI в порядке Table 1 письма, ни словом больше", () => {
+    const full = qs(sci);
+    expect(qs(sci02).map((q) => q.title)).toEqual([full[6]!.title, full[2]!.title]);
+    expect(qs(sci02).map((q) => q.options)).toEqual([full[6]!.options, full[2]!.options]);
+    expect(reversed(sci02)).toEqual([]);
   });
 });
 
