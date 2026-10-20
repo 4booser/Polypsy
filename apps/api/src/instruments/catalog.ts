@@ -29,6 +29,15 @@ import { ASSIST_NOT_SCORED, assist } from "./assist";
 import { auditc } from "./auditc";
 import { cage } from "./cage";
 import { cbi } from "./cbi";
+// ── k-distress ──
+import { core10 } from "./core10";
+import { dass21 } from "./dass21";
+import { gad2 } from "./gad2";
+import { k10 } from "./k10";
+import { k6 } from "./k6";
+import { phq15 } from "./phq15";
+import { phq2 } from "./phq2";
+// ── /k-distress ──
 
 /**
  * Общий каталог общедоступных методик.
@@ -288,4 +297,60 @@ export const CATALOG: CatalogEntry[] = [
     source:
       "Copenhagen Burnout Inventory, Kristensen, Borritz, Villadsen, Christensen, Work & Stress 2005 (NFA, Данія); смуги — датська форма самоперевірки NFA (Borritz, Kristensen). Переклад робочий",
   },
+
+  // ── k-distress ──
+  /*
+   * Группа «distress»: дистресс, тревога, депрессия (каталог 2.1) —
+   * docs/instruments/dossiers/distress.json. Каждая полоса, ключ и пункт
+   * риска сведены к карточке досье; чужая норма и статус перевода названы в
+   * описании методики. PHQ-2 и GAD-2 берут пункты из phq9.ts и gad7.ts, K6 — из
+   * k10.ts: своего текста у них нет. Не заведены (в досье — почему): OASIS,
+   * ODSIS, CAPE-P15, QIDS-SR16 — лицензия не подтверждена правообладателем
+   * (у QIDS к тому же подсчёт по максимуму групп, которого нет в движке),
+   * WSAS — копирайт I. M. Marks без свободного разрешения; MDQ — платная
+   * лицензия (карточка в behaviour.json).
+   */
+  {
+    key: "dass21",
+    draft: dass21,
+    source:
+      "DASS-21, Lovibond, Lovibond, 1995 (public domain; без смуг — пороги лише в платному посібнику; бали × 2 за правилом розробників). Український текст — переклад Галецької, Кліманської, Перун (ЛНУ ім. І. Франка) із сайту розробників, п. 18 — робочий переклад; російський — переклад Фаттахова, Горобець, 2024, із сайту розробників",
+  },
+  {
+    key: "k10",
+    draft: k10,
+    source:
+      "K10, Kessler та ін., Psychol Med 2002; Kessler та ін., Arch Gen Psychiatry 2003;60:184–189 — вільне використання за заявою розробника, Copyright © Ronald C. Kessler, PhD. Смуги — групування австралійських служб, ABS 4817.0.55.001 (2012), табл. F–G. Переклад робочий",
+  },
+  {
+    key: "k6",
+    draft: k6,
+    source:
+      "K6, Kessler та ін., Arch Gen Psychiatry 2003;60:184–189 — вільне використання за заявою розробника, Copyright © Ronald C. Kessler, PhD; поріг 19+ у шкалі 1–5 — розробник (13+ у шкалі 0–24). Пункти 2, 4, 5, 8, 9, 10 K10; переклад робочий",
+  },
+  {
+    key: "phq15",
+    draft: phq15,
+    source:
+      "PHQ-15, Kroenke, Spitzer, Williams, 2002 (public domain); пороги 5/10/15 — посібник видавця. Російський текст — офіційний переклад видавця (MAPI, «Russian for Russia»), український — робочий",
+  },
+  {
+    key: "phq2",
+    draft: phq2,
+    source:
+      "PHQ-2, Kroenke, Spitzer, Williams, 2003 (public domain); текст — пункти 1–2 PHQ-9 з наказу МОЗ України №1003 від 25.12.2014",
+  },
+  {
+    key: "gad2",
+    draft: gad2,
+    source:
+      "GAD-2, Kroenke, Spitzer, Williams, Monahan, Löwe, 2007 (public domain); текст — пункти 1–2 GAD-7 каталогу, переклад робочий",
+  },
+  {
+    key: "core10",
+    draft: core10,
+    source:
+      "CORE-10, Barkham та ін., Counselling and Psychotherapy Research 2013; © CORE System Trust, CC BY-NC-ND 4.0 — лише некомерційне використання, текст не змінювати. Український і російський тексти — затверджені переклади CST (2024); смуги — Connell, Barkham, CORE-10 User Manual, 2007",
+  },
+  // ── /k-distress ──
 ];
