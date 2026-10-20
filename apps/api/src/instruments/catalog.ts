@@ -35,6 +35,13 @@ import { ris } from "./ris";
 import { sci } from "./sci";
 import { sci02 } from "./sci02";
 // ── /k-sleep ──
+// ── k-wellbeing ──
+import { flourishing } from "./flourishing";
+import { mlq } from "./mlq";
+import { pss4 } from "./pss4";
+import { spane } from "./spane";
+import { swls } from "./swls";
+// ── /k-wellbeing ──
 
 /**
  * Общий каталог общедоступных методик.
@@ -340,4 +347,52 @@ export const CATALOG: CatalogEntry[] = [
       "Regensburg Insomnia Scale, Crönlein, Langguth, Popp, Lukesch, Pieh, Hajak, Geisler, Health Qual Life Outcomes 2013;11:65 (CC BY 2.0). Переклад робочий — з німецького оригіналу зі звіркою за англійською версією авторів",
   },
   // ── /k-sleep ──
+  // ── k-wellbeing ──
+  /*
+   * Группа «wellbeing»: благополучие, смысл, стресс —
+   * docs/instruments/dossiers/wellbeing.json. Ключ каталога равен ключу досье.
+   *
+   * Полосы есть только у SWLS — описательные категории автора с его бланка,
+   * «mild» без тревоги у двух нижних (решение каталога). Шкала процветания,
+   * SPANE, MLQ и PSS-4 отдают сырые баллы: порогов у них нет в первоисточнике.
+   *
+   * Не заведены из той же группы досье: GSE (правообладатель разрешает только
+   * некоммерческие исследования и запрещает публиковать шкалу в интернете, а
+   * тексты пунктов каталога лежат в публичном репозитории), LOT-R (автор:
+   * «not intended for clinical applications»), MHC-SF (заявления
+   * правообладателя нет), EUROHIS-QOL 8 (пункты WHOQOL-BREF, нужна письменная
+   * лицензия ВОЗ). BRS и WHODAS 2.0 перепроверены — основания по-прежнему нет
+   * (карточки в function.json).
+   */
+  {
+    key: "swls",
+    draft: swls,
+    source:
+      "SWLS, Diener, Emmons, Larsen, Griffin, 1985 (вільне використання з посиланням); смуги — бланк правовласника; український текст — адаптація Олефіра, Боснюка, 2024 (CC BY 4.0), російський — робочий переклад з неї",
+  },
+  {
+    key: "flourishing",
+    draft: flourishing,
+    source:
+      "Flourishing Scale, Diener та ін., 2009/2010 (вільне використання з посиланням); пункти 1, 3–8 — версії Юхименко-Лескроарт, Воєділової, 2024 (CC BY-NC 4.0) і Didino та ін., 2019 (CC BY 4.0), пункт 2 — робочий переклад",
+  },
+  {
+    key: "spane",
+    draft: spane,
+    source:
+      "SPANE, Diener та ін., 2009/2010 (вільне використання з посиланням); український текст — адаптація Олефіра, Боснюка, Малофейкіної, 2021 (CC BY 4.0), російський — робочий переклад з неї",
+  },
+  {
+    key: "mlq",
+    draft: mlq,
+    source:
+      "Meaning in Life Questionnaire, Steger, Frazier, Oishi, Kaler, 2006 (безкоштовно для терапевтичного використання без плати для клієнта); переклад робочий",
+  },
+  {
+    key: "pss4",
+    draft: pss4,
+    source:
+      "PSS-4, Cohen, Kamarck, Mermelstein, 1983 (без смуг: у розробника порогів немає); пункти — ті самі, що в PSS-10 каталогу",
+  },
+  // ── /k-wellbeing ──
 ];

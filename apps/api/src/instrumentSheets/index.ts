@@ -95,6 +95,13 @@ const MODULE_OF: Record<string, string> = {
   fas: "fas.ts",
   ris: "ris.ts",
   // ── /k-sleep ──
+  // ── k-wellbeing ──
+  swls: "swls.ts",
+  flourishing: "flourishing.ts",
+  spane: "spane.ts",
+  mlq: "mlq.ts",
+  pss4: "pss4.ts",
+  // ── /k-wellbeing ──
 };
 
 /**

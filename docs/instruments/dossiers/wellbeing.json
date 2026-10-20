@@ -1,0 +1,506 @@
+[
+  {
+    "key": "swls",
+    "title_en": "Satisfaction With Life Scale (SWLS)",
+    "title_uk": "Шкала задоволеності життям (SWLS)",
+    "title_ru": "Шкала удовлетворённости жизнью (SWLS)",
+    "authors": "Ed Diener, Robert A. Emmons, Randy J. Larsen, Sharon Griffin",
+    "year": 1985,
+    "citation": "Diener E, Emmons RA, Larsen RJ, Griffin S. The Satisfaction With Life Scale. Journal of Personality Assessment. 1985;49(1):71–75. DOI 10.1207/s15327752jpa4901_13. Бланк с полосами — официальная страница лаборатории Э. Динера, файл SWLS_English.doc: https://labs.psychology.illinois.edu/~ediener/Documents/SWLS_English.doc",
+    "license": {
+      "verdict": "свободна",
+      "quote": "The scale is copyrighted but you are free to use it without permission or charge by all professionals (researchers and practitioners) as long as you give credit to the authors of the scale: Ed Diener, Robert A. Emmons, Randy J. Larsen and Sharon Griffin as noted in the 1985 article in the Journal of Personality Assessment. // Со страницы обзора шкал той же лаборатории (https://labs.psychology.illinois.edu/~ediener/scales.html): «The Satisfaction With Life Scale (SWLS) is in public domain, and may be used if proper citation is given. […] Permission is not needed to employ the scales and requests to use the scales will not be answered on an individual basis because permission is granted here.» // О переводах, со страницы SWLS: «Feel free to translate the SWLS into other languages. However, we would appreciate it if you could send us a copy of the translation so we can update this list.»",
+      "url": "https://labs.psychology.illinois.edu/~ediener/SWLS.html",
+      "conditions": "Единственное условие — ссылка на Diener, Emmons, Larsen, Griffin (1985). Разрешение прямо распространено на практиков («researchers and practitioners»), то есть клиническое применение покрыто; плата и запрет коммерческого использования не упоминаются. Две страницы одной лаборатории по-разному называют статус («copyrighted but you are free to use it» и «in public domain»); для каталога это неважно — обе разрешают использование без запроса. Перевод правообладатель разрешает прямо."
+    },
+    "items": [
+      "In most ways my life is close to my ideal.",
+      "The conditions of my life are excellent.",
+      "I am satisfied with my life.",
+      "So far I have gotten the important things I want in life.",
+      "If I could live my life over, I would change almost nothing."
+    ],
+    "items_note": "Дословно с официального бланка правообладателя SWLS_English.doc. Инструкция дословно: «Below are five statements that you may agree or disagree with. Using the 1 - 7 scale below, indicate your agreement with each item by placing the appropriate number on the line preceding that item. Please be open and honest in your responding.» Временной рамки у шкалы нет.",
+    "anchors": [
+      { "label": "Strongly disagree", "value": 1 },
+      { "label": "Disagree", "value": 2 },
+      { "label": "Slightly disagree", "value": 3 },
+      { "label": "Neither agree nor disagree", "value": 4 },
+      { "label": "Slightly agree", "value": 5 },
+      { "label": "Agree", "value": 6 },
+      { "label": "Strongly agree", "value": 7 }
+    ],
+    "anchors_note": "На бланке перечислены сверху вниз от 7 к 1: «7 - Strongly agree / 6 - Agree / 5 - Slightly agree / 4 - Neither agree nor disagree / 3 - Slightly disagree / 2 - Disagree / 1 - Strongly disagree».",
+    "reverse": [],
+    "scoring": "Сумма пяти пунктов, 5–35; обратных пунктов нет. Именно сумма, а не среднее: полосы на бланке записаны в суммах 5–35, и документ автора «Understanding Scores on the Satisfaction with Life Scale» (Diener, 2006, https://labs.psychology.illinois.edu/~ediener/Documents/Understanding%20SWLS%20Scores.pdf) говорит об этом дословно: «If we divide by the number of questions, rather than use the summed aggregate score, then the cutoffs below instead should be: 6-7, 5-6, 4-5, 3-4, 2-3, 1-2».",
+    "bands": [
+      { "from": 5, "to": 9, "label": "Extremely dissatisfied" },
+      { "from": 10, "to": 14, "label": "Dissatisfied" },
+      { "from": 15, "to": 19, "label": "Slightly dissatisfied" },
+      { "from": 20, "to": 20, "label": "Neutral" },
+      { "from": 21, "to": 25, "label": "Slightly satisfied" },
+      { "from": 26, "to": 30, "label": "Satisfied" },
+      { "from": 31, "to": 35, "label": "Extremely satisfied" }
+    ],
+    "bands_note": "Полосы дословно с официального бланка правообладателя (SWLS_English.doc): «31 - 35 Extremely satisfied / 26 - 30 Satisfied / 21 - 25 Slightly satisfied / 20 Neutral / 15 - 19 Slightly dissatisfied / 10 - 14 Dissatisfied / 5 - 9 Extremely dissatisfied». Это описательные категории автора, а не клинические пороги: шкала не диагностическая. У того же автора есть поздняя разбивка в «Understanding Scores…» (2006): «30 – 35 Very high score; highly satisfied / 25- 29 High score / 20 – 24 Average score / 15 – 19 Slightly below average in life satisfaction / 10 – 14 Dissatisfied / 5 – 9 Extremely Dissatisfied». Она расходится с бланком в верхней половине (границы 30 и 25 вместо 31 и 26; вместо «20 — нейтрально» — «20–24 — средний уровень», привязанный к словам «The average of life satisfaction in economically developed nations is in this range»). Заводятся полосы бланка: они идут вместе с самим инструментом и выражены через шкалу ответов (20 = все пять ответов «Neither agree nor disagree»), а не через средние чужой популяции. Тяжесть первоисточник не задаёт: «mild» у 5–9 и 10–14 — решение каталога, без тревоги, как «низкая поддержка» MSPSS. Для 5–9 автор пишет: «it may be that the help of others are needed – a friend or family member, counseling with a member of the clergy, or help from a psychologist or other counselor».",
+    "risk_items": [],
+    "risk_items_note": "Пунктов о суициде, самоповреждении или насилии нет. Низкая удовлетворённость жизнью — повод для разговора, но не тревога: правило риска живёт в PHQ-9 и СР-45.",
+    "translation": {
+      "uk": {
+        "exists": true,
+        "by": "Олефір В., Боснюк В. Адаптація україномовної версії шкали задоволеності життям Е. Дінера. Наука і освіта. 2024;(2):64–72. DOI 10.24195/2414-4665-2024-2-9",
+        "free": true,
+        "url": "https://scienceandeducation.pdpu.edu.ua/doc/2024/2_2024/11.pdf",
+        "note": "Валидизированная адаптация (N = 1227, КФА, инвариантность по полу и возрасту). Полный бланк — в «Додатку» статьи, дословно: инструкция «Нижче представлено твердження щодо Вашого життя. Висловіть ступінь своєї згоди з кожним із них, використовуючи таку шкалу оцінки:»; варианты «1 Повністю не згоден / 2 Не згоден / 3 Швидше не згоден / 4 Щось середнє / 5 Швидше згоден / 6 Згоден / 7 Повністю згоден»; пункты «1. Переважно моє життя близьке до мого ідеалу / 2. Обставини мого життя виключно сприятливі / 3. Я задоволений(-на) своїм життям / 4. У мене в житті є те, що мені дійсно необхідне / 5. Якби я міг прожити своє життя заново, я б залишив(-ла) все без змін»; подсчёт «Рівень задоволеності життям визначається як сума значень за всіма твердженнями шкали». Лицензия журнала дословно (https://scienceandeducation.pdpu.edu.ua/en/publication/open-access): «Users are allowed to read, download, copy, distribute, print, search, or link to the full texts of the articles, or use them for any other lawful purpose, without asking prior permission from the publisher or the author as long as they cite the source. The journal is licensed by Creative Commons Attribution International CC-BY.» Это НЕ перевод правообладателя, а адаптация украинских авторов; правообладатель переводы разрешает. Расхождение внутри самой статьи: в бланке «Додатку» пункт 2 — «виключно сприятливі», во введении и в примечании к табл. 1 — «винятково сприятливі». «Виключно» значит «лише, тільки», оригинальному «excellent» соответствует «винятково» — поэтому в каталоге форма введения и таблицы. Пункты 4 и 5 адаптации пересказывают оригинал («I have gotten the important things I want» → «є те, що мені дійсно необхідне»; «would change almost nothing» → «залишив(-ла) все без змін») — так в валидизированной версии, оставлено как есть."
+      },
+      "ru": {
+        "exists": true,
+        "by": "Galina Martemyanova — перевод, выложенный на странице правообладателя (SWLS_Russian.pdf); перевод не валидизирован",
+        "free": true,
+        "url": "https://labs.psychology.illinois.edu/~ediener/Documents/SWLS_Russian.pdf",
+        "note": "Машинописный бланк без психометрии, дословно: инструкция «Ниже приведены пять высказываний, с которыми Вы можете согласиться или не согласиться. Используя 7-балльную шкалу, поставьте каждому высказыванию подходящий, по Вашему мнению, балл. Пожалуйста, будьте откровенны и честны в своих ответах.»; варианты «1 – совершенно несогласен / 2 – несогласен / 3 – немного не согласен / 4 – неопределенно /и согласен и не согласен/ / 5 – немного согласен / 6 – согласен / 7 – совершенно согласен»; пункты «Почти во всем моя жизнь соответствует моему идеалу. / Условия моей жизни превосходные. / Я удовлетворен своей жизнью. / Пока я достигал в главном всего, чего хотел в жизни. / Если бы я смог прожить свою жизнь еще раз, я бы почти ничего в ней не изменил.» В каталог НЕ взят: пункт 4 — калька «So far» с несовершенным видом, читается как незаконченное придаточное времени («пока я достигал…»), а «несогласен» в вариантах — орфографическая ошибка. Валидизированная русская версия существует (Осин Е.Н., Леонтьев Д.А. Краткие русскоязычные шкалы диагностики субъективного благополучия: психометрические характеристики и сравнительный анализ. Мониторинг общественного мнения. 2020;(1):117–142. DOI 10.14515/monitoring.2020.1.06; перевод Д.А. Леонтьева, 2004), но ни в PDF статьи, ни на странице журнала лицензии на воспроизведение нет — не взята."
+      }
+    },
+    "translation_note": "В каталоге: украинский текст — адаптация Олефіра і Боснюка (2024, CC BY 4.0) без изменений, кроме «винятково» в п. 2 (см. выше) и инструкции без хвоста «використовуючи таку шкалу оцінки:» (варианты ответа на экране — кнопки); русский — рабочий перевод каталога, сделанный с этой украинской адаптации пункт в пункт, чтобы обе языковые версии задавали одни и те же вопросы. Описание методики называет статус каждого языка отдельно.",
+    "example": {
+      "answers": [6, 5, 6, 4, 3],
+      "total": 24,
+      "band": "Slightly satisfied (21–25)",
+      "note": "Арифметический пример (не опубликованный кейс). 6 + 5 + 6 + 4 + 3 = 24 → полоса бланка 21–25 «Slightly satisfied». Контроль: все пять «Neither agree nor disagree» (4) → 20 → «Neutral»; все «Strongly disagree» → 5 «Extremely dissatisfied»; все «Strongly agree» → 35 «Extremely satisfied»."
+    },
+    "verdict": "завести — правообладатель разрешает использование практиками без запроса и прямо разрешает переводы; полосы — с его официального бланка; украинский текст — валидизированная адаптация под CC BY 4.0, русский — рабочий перевод с неё."
+  },
+  {
+    "key": "flourishing",
+    "title_en": "Flourishing Scale (FS)",
+    "title_uk": "Шкала процвітання (Flourishing Scale)",
+    "title_ru": "Шкала процветания (Flourishing Scale)",
+    "authors": "Ed Diener, Derrick Wirtz, William Tov, Chu Kim-Prieto, Dong-won Choi, Shigehiro Oishi, Robert Biswas-Diener",
+    "year": 2009,
+    "citation": "Diener E, Wirtz D, Tov W, Kim-Prieto C, Choi D, Oishi S, Biswas-Diener R. New well-being measures: Short scales to assess flourishing and positive and negative feelings. Social Indicators Research. 2010;97(2):143–156. DOI 10.1007/s11205-009-9493-y. На странице правообладателя та же работа процитирована как глава 2009 г. («Social Indicators Research, 39, 247-266» — том 39 серии Social Indicators Research Series). Бланк: «FLOURISHING SCALE ©Copyright by Ed Diener and Robert Biswas-Diener, January 2009», https://labs.psychology.illinois.edu/~ediener/Documents/FS.pdf",
+    "license": {
+      "verdict": "свободна",
+      "quote": "The scale is copyrighted but you are free to use it without permission or charge by all professionals (researchers and practitioners) as long as you give credit to the authors of the scale: Diener, E., Wirtz, D., Tov, W., Kim-Prieto, C., Choi, D., Oishi, S., & Biswas-Diener, R. (2009). New measures of well-being: Flourishing and positive and negative feelings. Social Indicators Research, 39, 247-266. // Со страницы обзора шкал (https://labs.psychology.illinois.edu/~ediener/scales.html): «Although copyrighted, the Scale of Positive and Negative Experience (SPANE) and Flourishing Scale (FS) may be used as long as proper credit is given. Permission is not needed to employ the scales and requests to use the scales will not be answered on an individual basis because permission is granted here.» // О переводах, со страницы FS: «Feel free to translate the FS into other languages. However, we would appreciate it if you could send us a copy of the translation so we can update this list.»",
+      "url": "https://labs.psychology.illinois.edu/~ediener/FS.html",
+      "conditions": "Единственное условие — ссылка на авторов. Разрешение распространено на практиков, переводы разрешены прямо. В списке переводов правообладателя украинского и русского нет."
+    },
+    "items": [
+      "I lead a purposeful and meaningful life",
+      "My social relationships are supportive and rewarding",
+      "I am engaged and interested in my daily activities",
+      "I actively contribute to the happiness and well-being of others",
+      "I am competent and capable in the activities that are important to me",
+      "I am a good person and live a good life",
+      "I am optimistic about my future",
+      "People respect me"
+    ],
+    "items_note": "Дословно с бланка правообладателя FS.pdf (пункты на бланке без точки). Инструкция дословно: «Below are 8 statements with which you may agree or disagree. Using the 1–7 scale below, indicate your agreement with each item by indicating that response for each statement.» Временной рамки нет.",
+    "anchors": [
+      { "label": "Strongly disagree", "value": 1 },
+      { "label": "Disagree", "value": 2 },
+      { "label": "Slightly disagree", "value": 3 },
+      { "label": "Neither agree nor disagree", "value": 4 },
+      { "label": "Slightly agree", "value": 5 },
+      { "label": "Agree", "value": 6 },
+      { "label": "Strongly agree", "value": 7 }
+    ],
+    "anchors_note": "На бланке сверху вниз от 7 к 1, те же семь, что у SWLS.",
+    "reverse": [],
+    "scoring": "Дословно с бланка: «Add the responses, varying from 1 to 7, for all eight items. The possible range of scores is from 8 (lowest possible) to 56 (highest PWB possible). A high score represents a person with many psychological resources and strengths.» Сумма 8–56, обратных пунктов нет.",
+    "bands": null,
+    "bands_note": "Полос НЕТ: на бланке и на странице правообладателя есть только направление шкалы («A high score represents a person with many psychological resources and strengths»), порогов нет. Есть описательные нормы отдельных выборок (например, пожилые жители Сибири у Didino et al., 2019: «The total flourishing score ranged from 17 to 56 (mean = 40.9, SD = 7.1)») — это не пороги, и в каталог они не идут.",
+    "risk_items": [],
+    "risk_items_note": "Пунктов о суициде, самоповреждении или насилии нет.",
+    "translation": {
+      "uk": {
+        "exists": true,
+        "by": "Yukhymenko-Lescroart M.A., Voiedilova O. Can we assess whether Ukrainians flourish? The Ukrainian translation of the flourishing scale. MethodsX. 2024;12:102702. DOI 10.1016/j.mex.2024.102702",
+        "free": true,
+        "url": "https://doi.org/10.1016/j.mex.2024.102702",
+        "note": "Лицензия статьи дословно: «This is an open access article under the CC BY-NC license (http://creativecommons.org/licenses/by-nc/4.0/)». Украинская версия сделана с русской (Didino et al., 2019) комитетным методом и проверена КФА на двух выборках студентов (159 и 107 человек). Табл. 1 дословно: «1. Я веду цілеспрямоване, повне сенсу життя. / 2. Я вдячний людям за підтримку. / 3. Я поглинений своїми повсякденними справами і відчуваю до них інтерес. / 4. Я всіма силами сприяю щастю і благополуччю інших людей. / 5. Я Компетентний у тих видах діяльності, які для мене важливі, і здатний їх виконувати. / 6. Я хороша людина і у мене хороше життя. / 7. Я з оптимізмом дивлюся в майбутнє. / 8. Люди поважають мене.»; варианты «Абсолютно не згоден (1) / Не згоден (2) / Скоріше не згоден (3) / Невизначено (і згоден і не згоден) (4) / Скоріше згоден (5) / Згоден (6) / Абсолютно згоден (7)». Заголовок таблицы набран с опечаткой «Школа процвітання». ПУНКТ 2 МЕНЯЕТ СМЫСЛ: «вдячний людям за підтримку» — благодарность, а не «My social relationships are supportive and rewarding» (качество отношений); унаследовано от русской версии."
+      },
+      "ru": {
+        "exists": true,
+        "by": "Didino D., Taran E.A., Barysheva G.A., Casati F. Psychometric evaluation of the Russian version of the flourishing scale in a sample of older adults living in Siberia. Health and Quality of Life Outcomes. 2019;17:34. DOI 10.1186/s12955-019-1100-6",
+        "free": true,
+        "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC6371512/",
+        "note": "Лицензия статьи дословно: «Open Access This article is distributed under the terms of the Creative Commons Attribution 4.0 International License (http://creativecommons.org/licenses/by/4.0/), which permits unrestricted use, distribution, and reproduction in any medium, provided you give appropriate credit to the original author(s) and the source, provide a link to the Creative Commons license, and indicate if changes were made.» Выборка — 851 человек 65–93 лет. Русский текст напечатан в Appendix I статьи; в HTML-версии PMC его содержимое не отображается, поэтому текст сверен по табл. 1 статьи MethodsX (2024), которая воспроизводит его рядом с украинским: «1. Я веду целенаправленную, полную смысла жизнь. / 2. Я благодарен людям за поддержку. / 3. Я поглощен своими повседневными делами и испытываю к ним интерес. / 4. Я всеми силами способствую счастью и благополучию других людей. / 5. Я компетентен в тех видах деятельности, которые для меня важны, и способен их выполнять. / 6. Я хороший человек и у меня хорошая жизнь. / 7. Я с оптимизмом смотрю в будущее. / 8. Люди уважают меня.»; варианты «Абсолютно не согласен (1) / Не согласен (2) / Скорее не согласен (3) / Неопределенно (и согласен и не согласен) (4) / Скорее согласен (5) / Согласен (6) / Абсолютно согласен (7)». О пункте 2 сами авторы пишут дословно: «the standardized factor loadings of some items (e.g., item 2: “My social relationships are supportive and rewarding”, loading = 0.39) were lower than expected… It is possible that for Siberian population a single-factor structure does not perfectly fit the data, or that the translation needs further adaptation.»"
+      }
+    },
+    "translation_note": "В каталоге пункты 1 и 3–8 и варианты ответа — дословно из валидизированных версий (украинской 2024 и русской 2019; в украинском п. 5 исправлена опечатка «Компетентний» → «компетентний»). Пункт 2 — рабочий перевод каталога ближе к оригиналу («Мої стосунки з людьми підтримують мене й приносять мені задоволення» / «Мои отношения с людьми поддерживают меня и приносят мне удовлетворение»): «вдячний людям за підтримку» меряет благодарность, а не качество отношений, и сами авторы русской версии видят в этом пункте проблему перевода. Поэтому методика целиком помечена рабочим переводом. Если психолог предпочтёт валидизированную формулировку п. 2 ради сравнимости с украинскими и русскими данными, это одна строка в apps/api/src/instruments/flourishing.ts. Инструкция — своя (в статьях она не напечатана).",
+    "example": {
+      "answers": [6, 5, 6, 5, 6, 6, 5, 6],
+      "total": 45,
+      "band": null,
+      "note": "Арифметический пример: 6 + 5 + 6 + 5 + 6 + 6 + 5 + 6 = 45 из 56. Полосы нет. Края: все «Strongly disagree» → 8, все «Strongly agree» → 56."
+    },
+    "verdict": "завести без полос — правообладатель разрешает использование практиками и переводы; порогов у шкалы нет; текст — валидизированные украинская и русская версии, кроме пункта 2 (рабочий перевод ближе к оригиналу), поэтому методика помечена рабочим переводом."
+  },
+  {
+    "key": "spane",
+    "title_en": "Scale of Positive and Negative Experience (SPANE)",
+    "title_uk": "Шкала позитивних і негативних переживань (SPANE)",
+    "title_ru": "Шкала позитивных и негативных переживаний (SPANE)",
+    "authors": "Ed Diener, Derrick Wirtz, William Tov, Chu Kim-Prieto, Dong-won Choi, Shigehiro Oishi, Robert Biswas-Diener",
+    "year": 2009,
+    "citation": "Diener E, Wirtz D, Tov W, Kim-Prieto C, Choi D, Oishi S, Biswas-Diener R. New well-being measures: Short scales to assess flourishing and positive and negative feelings. Social Indicators Research. 2010;97(2):143–156. DOI 10.1007/s11205-009-9493-y. Бланк с ключом: «Scale of Positive and Negative Experience (SPANE) © Copyright by Ed Diener and Robert Biswas-Diener, January 2009», https://labs.psychology.illinois.edu/~ediener/Documents/Scale%20of%20Positive%20and%20Negative%20Experience.pdf",
+    "license": {
+      "verdict": "свободна",
+      "quote": "The scale is copyrighted but you are free to use it without permission or charge by all professionals (researchers and practitioners) as long as you give credit to the authors of the scale: Diener, E., Wirtz, D., Tov, W., Kim-Prieto, C., Choi. D., Oishi, S., & Biswas-Diener, R. (2009). New measures of well-being: Flourishing and positive and negative feelings. Social Indicators Research, 39, 247-266. // Со страницы обзора шкал (https://labs.psychology.illinois.edu/~ediener/scales.html): «Although copyrighted, the Scale of Positive and Negative Experience (SPANE) and Flourishing Scale (FS) may be used as long as proper credit is given. Permission is not needed to employ the scales and requests to use the scales will not be answered on an individual basis because permission is granted here.»",
+      "url": "https://labs.psychology.illinois.edu/~ediener/SPANE.html",
+      "conditions": "Единственное условие — ссылка на авторов; практики покрыты. Фразы «Feel free to translate», как у SWLS и FS, на странице SPANE НЕТ — но сама страница выкладывает десять сторонних переводов (украинского и русского среди них нет). Украинский текст каталога — опубликованная под CC BY 4.0 адаптация, русский — рабочий перевод с неё; если учреждению нужна формальная ясность по переводу SPANE, это вопрос к правообладателю."
+    },
+    "items": [
+      "Positive",
+      "Negative",
+      "Good",
+      "Bad",
+      "Pleasant",
+      "Unpleasant",
+      "Happy",
+      "Sad",
+      "Afraid",
+      "Joyful",
+      "Angry",
+      "Contented"
+    ],
+    "items_note": "Дословно с бланка правообладателя, в его порядке. Инструкция дословно: «Please think about what you have been doing and experiencing during the past four weeks. Then report how much you experienced each of the following feelings, using the scale below. For each item, select a number from 1 to 5, and indicate that number on your response sheet.» Рамка — последние четыре недели.",
+    "anchors": [
+      { "label": "Very Rarely or Never", "value": 1 },
+      { "label": "Rarely", "value": 2 },
+      { "label": "Sometimes", "value": 3 },
+      { "label": "Often", "value": 4 },
+      { "label": "Very Often or Always", "value": 5 }
+    ],
+    "reverse": [],
+    "scoring": "Дословно с бланка: «Positive Feelings (SPANE-P): Add the scores, varying from 1 to 5, for the six items: positive, good, pleasant, happy, joyful, and contented. The score can vary from 6 (lowest possible) to 30 (highest positive feelings score). Negative Feelings (SPANE-N): Add the scores, varying from 1 to 5, for the six items: negative, bad, unpleasant, sad, afraid, and angry. The score can vary from 6 (lowest possible) to 30 (highest negative feelings score). Affect Balance (SPANE-B): The negative feelings score is subtracted from the positive feelings score, and the resultant difference score can vary from -24 (unhappiest possible) to 24 (highest affect balance possible).» То есть SPANE-P — пункты 1, 3, 5, 7, 10, 12; SPANE-N — пункты 2, 4, 6, 8, 9, 11; SPANE-B = P − N. Обратных пунктов нет: негативные чувства идут в отдельную шкалу, а не переворачиваются.",
+    "bands": null,
+    "bands_note": "Полос НЕТ. Правообладатель описывает только край баланса: «A respondent with a very high score of 24 reports that she or he rarely or never experiences any of the negative feelings, and very often or always has all of the positive feelings.» Порогов «низкий / высокий баланс» в первоисточнике нет.",
+    "risk_items": [],
+    "risk_items_note": "Пунктов о суициде, самоповреждении или насилии нет: «Afraid», «Sad», «Angry» — частота чувств за четыре недели, а не вопрос о намерении.",
+    "translation": {
+      "uk": {
+        "exists": true,
+        "by": "Олефір В.О., Боснюк В.Ф., Малофейкіна К.О. Валідизація і вимірювальна інваріантність української версії шкали позитивних і негативних переживань (SPANE). Вісник Харківського національного університету імені В.Н. Каразіна. Серія «Психологія». 2021;(71):34–42. DOI 10.26565/2225-7756-2021-71-04",
+        "free": true,
+        "url": "https://periodicals.karazin.ua/psychology/article/view/18188",
+        "note": "Валидизированная адаптация (N = 458, КФА, инвариантность по полу и возрасту). Лицензия журнала дословно (https://periodicals.karazin.ua/psychology/cpr): «Authors retain copyright and grant the journal right of first publication with the work simultaneously licensed under a Creative Commons Attribution License that allows others to share the work with an acknowledgement of the work's authorship and initial publication in this journal.» (ссылка ведёт на CC BY 4.0). «Додаток» статьи дословно: инструкция «Цей опитувальник складається з переліку прикметників, які описують різні почуття і емоції. Прочитайте кожен прикметник і відзначте поруч з ним, в якій мірі Ви відчували себе так протягом останніх 4 тижнів. Використовуйте наступні варіанти відповідей:»; варианты «1 Дуже рідко або ніколи / 2 Рідко / 3 Іноді / 4 Часто / 5 Дуже часто або завжди»; пункты «1. позитивно / 2. негативно / 3. добре / 4. погано / 5. приємно / 6. неприємно / 7. щасливим(ою) / 8. засмученим(ою) / 9. наляканим(ою) / 10. радісним(ою) / 11. роздратованим(ою) / 12. задоволеним(ою)»; ключ «Позитивні переживання (SPANE-P): сума балів за пунктами 1, 3, 5, 7, 10, 12. Негативні переживання (SPANE-N): сума балів за пунктами 2, 4, 6, 8, 9, 11. Баланс афектів (SPANE-B): різниця позитивних переживань від негативних.» Адаптация передаёт «Angry» как «роздратованим» (раздражение), «Sad» — как «засмученим»."
+      },
+      "ru": {
+        "exists": true,
+        "by": "Рассказова Е.И., Лебедева А.А. Скрининговая шкала позитивных и негативных переживаний Э. Динера: апробация русскоязычной версии. Психология. Журнал Высшей школы экономики. 2020;17(2):250–263. DOI 10.17323/1813-8918-2020-2-250-263",
+        "free": null,
+        "url": "https://psy-journal.hse.ru/en/2020-17-2/375263202.html",
+        "note": "Валидизированная русская версия существует, но её текст и лицензию проверить не удалось: сервер журнала был недоступен из нашей сети 2026-10-20 (тайм-аут соединения). Поэтому русский текст каталога — рабочий перевод, сделанный с украинской адаптации пункт в пункт (в том числе «раздражённым» и «расстроенным»); когда версия Рассказовой и Лебедевой будет сверена, сравнить."
+      }
+    },
+    "translation_note": "В каталоге: украинский текст — адаптация Олефіра, Боснюка і Малофейкіної (2021, CC BY 4.0) дословно, с заглавной буквой в начале каждого пункта и инструкцией без хвоста «Використовуйте наступні варіанти відповідей:» (варианты — кнопки); русский — рабочий перевод с неё. В каталоге заведены две шкалы автора, SPANE-P и SPANE-N; баланс SPANE-B = P − N назван в описании, но отдельной шкалой не заведён: график динамики консоли строит ось шкалы без полос от нуля, и отрицательный баланс ушёл бы за край графика (подробно — в комментарии apps/api/src/instruments/spane.ts). Автор прямо допускает работу с двумя шкалами: «The measure can be used to derive an overall affect balance score, but can also be divided into positive and negative feelings scales.»",
+    "example": {
+      "answers": [4, 2, 4, 2, 3, 3, 4, 2, 1, 3, 3, 4],
+      "total": { "SPANE-P": 22, "SPANE-N": 13, "SPANE-B": 9 },
+      "band": null,
+      "note": "Арифметический пример, ответы по пунктам 1–12. SPANE-P = пп. 1, 3, 5, 7, 10, 12 = 4 + 4 + 3 + 4 + 3 + 4 = 22. SPANE-N = пп. 2, 4, 6, 8, 9, 11 = 2 + 2 + 3 + 2 + 1 + 3 = 13. SPANE-B = 22 − 13 = 9. Края: все «Very Rarely or Never» → P 6, N 6, B 0; все положительные «Very Often or Always» при всех отрицательных «Very Rarely or Never» → B = 30 − 6 = 24; зеркально → −24."
+    },
+    "verdict": "завести без полос — правообладатель разрешает использование практиками; порогов у шкалы нет; украинский текст — валидизированная адаптация под CC BY 4.0, русский — рабочий перевод с неё."
+  },
+  {
+    "key": "mlq",
+    "title_en": "Meaning in Life Questionnaire (MLQ)",
+    "title_uk": "Опитувальник сенсу життя (MLQ)",
+    "title_ru": "Опросник смысла жизни (MLQ)",
+    "authors": "Michael F. Steger, Patricia Frazier, Shigehiro Oishi, Matthew Kaler",
+    "year": 2006,
+    "citation": "Steger MF, Frazier P, Oishi S, Kaler M. The Meaning in Life Questionnaire: Assessing the presence of and search for meaning in life. Journal of Counseling Psychology. 2006;53(1):80–93. DOI 10.1037/0022-0167.53.1.80. Бланк и ключ — «THE MEANING IN LIFE QUESTIONNAIRE (MLQ)», ©Michael F. Steger, 2026: бесплатный набор инструментов автора (https://michaelfsteger.com, раздел Programs & Tools; файл в папке автора https://drive.google.com/drive/folders/1HW-8XsVpM__MAaVq9VKy6LvPGmXwtuO1).",
+    "license": {
+      "verdict": "свободна с условиями",
+      "quote": "The Meaning in Life Questionnaire (MLQ) is free to use for educational, therapeutic, and research purposes. Commercial use is prohibited without permission. Commercial use involves activities that generate revenue from the MLQ directly. Coaches, trainers, and therapists may use the MLQ in their work as long as they do not charge clients a fee for accessing it. Any selling of the MLQ, or selling services with the MLQ declared as a value add, is prohibited without advance permission. // Со страницы автора: «The MLQ, WAMI, and 3DM are provided free of charge for educational, therapeutic, and academic research purposes. Commercial use requires prior written permission. Commercial use includes any activity in which revenue is generated directly from the use, distribution, or promotion of these instruments. Coaches, trainers, consultants, and therapists may incorporate these tools into their professional work, provided that clients are not charged specifically for accessing the instruments. The tools may not be sold, redistributed, or marketed as part of a paid product, service, or value-added offering without advance authorization.»",
+      "url": "https://michaelfsteger.com/#programsandtools",
+      "conditions": "Терапевтическое применение разрешено прямо. Запрещена коммерция: продажа, плата за доступ к инструменту, продажа услуг с MLQ как «добавленной ценностью». Для государственного госпиталя без платы за прохождение условие выполнено; если Polypsy станет платным продуктом, понадобится письменное разрешение автора (mike@michaelfsteger.com). О переводах в текущем наборе автора ничего не сказано."
+    },
+    "items": [
+      "I understand my life´s meaning.",
+      "I am looking for something that makes my life feel meaningful.",
+      "I am always looking to find my life's purpose.",
+      "My life has a clear sense of purpose.",
+      "I have a good sense of what makes my life meaningful.",
+      "I have discovered a satisfying life purpose.",
+      "I am always searching for something that makes my life feel significant.",
+      "I am seeking a purpose or mission for my life.",
+      "My life has no clear purpose.",
+      "I am searching for meaning in my life."
+    ],
+    "items_note": "Дословно с бланка автора (в п. 1 апостроф набран знаком «´», как в оригинале). Инструкция дословно: «Please take a moment to think about what makes your life and existence feel important and significant to you. Please respond to the following statements as truthfully and accurately as you can, and also please remember that these are very subjective questions and that there are no right or wrong answers.» Временной рамки нет.",
+    "anchors": [
+      { "label": "Absolutely Untrue", "value": 1 },
+      { "label": "Mostly Untrue", "value": 2 },
+      { "label": "Somewhat Untrue", "value": 3 },
+      { "label": "Can't Say True or False", "value": 4 },
+      { "label": "Somewhat True", "value": 5 },
+      { "label": "Mostly True", "value": 6 },
+      { "label": "Absolutely True", "value": 7 }
+    ],
+    "reverse": [9],
+    "scoring": "Таблица «MLQ SCORING» бланка дословно: «Presence of Meaning — Items Used 1, 4, 5, 6, 9 — How to Calculate (8 - item 9) + items 1, 4, 5, 6 — Score Range 5–35. Search for Meaning — Items Used 2, 3, 7, 8, 10 — Add items 2, 3, 7, 8, 10 — 5–35.» И ниже: «Item 9 is reverse-scored. […] So, if they input 2, then you can see that 8 - 2 = 6, so you would use a rating of 6 for Item 9. All other item ratings are added directly.» Две отдельные шкалы, общего балла нет.",
+    "bands": null,
+    "bands_note": "Полос НЕТ — дословно у автора: «The MLQ does not have cut scores like measures of psychological disorders might have. It is intended to measure meaning in life across the complete range of human functioning.» На бланке есть четыре описания по сочетанию шкал («If you scored above 24 on Presence and also above 24 on Search…» и т.д.), но автор сам пишет: «Please keep in mind that these are really only guesses and should not in any way be considered diagnostic. These interpretations are more likely to be accurate for individuals from cultures similar to the United States.» К тому же «above 24» и «below 24» не покрывают ровно 24. В полосы это не превращается.",
+    "risk_items": [],
+    "risk_items_note": "Пунктов о суициде, самоповреждении или насилии нет. П. 9 «My life has no clear purpose» — обратный пункт шкалы наличия смысла, а не вопрос о намерении; правила тревоги автор не даёт.",
+    "translation": {
+      "uk": {
+        "exists": false,
+        "by": null,
+        "free": null,
+        "url": null,
+        "note": "У правообладателя в текущем наборе только английский бланк. Украинской валидизации MLQ поиск 2026-10-20 не нашёл (нашлись только другие инструменты о смысле жизни)."
+      },
+      "ru": {
+        "exists": null,
+        "by": null,
+        "free": null,
+        "url": null,
+        "note": "Официального русского текста у правообладателя нет. Русские адаптации в этой проверке до конца не искали — лимит веб-поиска сессии был исчерпан; при появлении валидизированной версии сверить с ней рабочий перевод."
+      }
+    },
+    "translation_note": "Оба языка — рабочий перевод каталога с бланка автора, помечен WORKING_TRANSLATION.",
+    "example": {
+      "answers": [6, 3, 2, 6, 5, 5, 3, 2, 2, 3],
+      "total": { "Presence": 28, "Search": 13 },
+      "band": null,
+      "note": "Арифметический пример, ответы по пунктам 1–10. Presence = п. 1 (6) + п. 4 (6) + п. 5 (5) + п. 6 (5) + (8 − п. 9 = 8 − 2 = 6) = 28. Search = п. 2 (3) + п. 3 (2) + п. 7 (3) + п. 8 (2) + п. 10 (3) = 13. Края: все «Absolutely Untrue» → Presence 4 + (8 − 1) = 11, Search 5; все «Absolutely True» → Presence 28 + 1 = 29, Search 35."
+    },
+    "verdict": "завести без полос — автор разрешает терапевтическое использование без платы для клиента; порогов нет по позиции автора; оба языка — рабочий перевод."
+  },
+  {
+    "key": "pss4",
+    "title_en": "Perceived Stress Scale, 4-item version (PSS-4)",
+    "title_uk": "Шкала сприйнятого стресу, 4 пункти (PSS-4)",
+    "title_ru": "Шкала воспринимаемого стресса, 4 пункта (PSS-4)",
+    "authors": "Sheldon Cohen, Tom Kamarck, Robin Mermelstein",
+    "year": 1983,
+    "citation": "Cohen S, Kamarck T, Mermelstein R. A global measure of perceived stress. Journal of Health and Social Behavior. 1983;24(4):385–396 — четырёхпунктовая версия на с. 392, пункты в Appendix A на с. 394–395. PDF статьи на странице разработчика: https://www.cmu.edu/dietrich/psychology/stress-immunity-disease-lab/scales/pdf/globalmeas83.pdf",
+    "license": {
+      "verdict": "свободна с условиями",
+      "quote": "PERMISSION FOR USE OF THE PERCEIVED STRESS SCALE. Please submit permission requests to use the Perceived Stress Scale (PSS) through the ePROVIDE™ platform of MAPI RESEARCH TRUST: https://eprovide.mapi-trust.org … Submitting a request for permission to use the PSS is completely free of charge and will ensure an optimized service. It does not commit you to purchasing a questionnaire.",
+      "url": "https://www.cmu.edu/dietrich/psychology/stress-immunity-disease-lab/scales/index.html",
+      "conditions": "То же основание, что у PSS-10 (mood.json): бесплатное разрешение через ePROVIDE на «Perceived Stress Scale (PSS)» — запрос подаётся на шкалу, а не на её длину. Заказчик заявил, что разрешения у учреждения есть; что заявление покрывает и четырёхпунктовую версию — подтвердить. На той же странице: «The 4-item version was validated. See the JHSB article (at right)»."
+    },
+    "items": [
+      "In the last month, how often have you felt that you were unable to control the important things in your life?",
+      "In the last month, how often have you felt confident about your ability to handle your personal problems?",
+      "In the last month, how often have you felt that things were going your way?",
+      "In the last month, how often have you felt difficulties were piling up so high that you could not overcome them?"
+    ],
+    "items_note": "Дословно из Appendix A статьи 1983 г. — пункты 2, 6, 7 и 14 четырнадцатипунктовой PSS. Состав короткой версии там же, с. 392, дословно: «a short version of the scale, consisting of the four items (numbers 2, 6, 7, and 14) that correlated most highly with the 14-item scale, was employed». Те же четыре вопроса — пункты 2, 4, 5 и 10 PSS-10 на странице разработчика (https://www.cmu.edu/dietrich/psychology/stress-immunity-disease-lab/scales/html/pss.html), поэтому текст в каталоге берётся из PSS-10 каталога, а не набирается второй раз. Инструкция — та же, что у PSS-10.",
+    "anchors": [
+      { "label": "never", "value": 0 },
+      { "label": "almost never", "value": 1 },
+      { "label": "sometimes", "value": 2 },
+      { "label": "fairly often", "value": 3 },
+      { "label": "very often", "value": 4 }
+    ],
+    "reverse": [2, 3],
+    "scoring": "Дословно со страницы подсчёта разработчика (https://www.cmu.edu/dietrich/psychology/stress-immunity-disease-lab/scales/html/pssscoring.html): «PSS-4 scores are obtained by reverse coding items # 2 and 3.» Обратный перевод — как у PSS-10 на той же странице: «0=4, 1=3, 2=2, etc.», затем сумма четырёх пунктов, 0–16. В статье 1983 г. для этой версии: «The mean score on the four-item scale was 5.6 at one month and 5.9 at three months. Standard deviations were 3.6 and 4.0».",
+    "bands": null,
+    "bands_note": "Полос НЕТ — позиция разработчика, общая для всех длин PSS: «PLEASE NOTE: The Perceived Stress Scale is not a diagnostic instrument; there are no score cut-offs. There are only comparisons within your own sample.»",
+    "risk_items": [],
+    "risk_items_note": "Пунктов риска нет.",
+    "translation": {
+      "uk": {
+        "exists": false,
+        "by": null,
+        "free": null,
+        "url": null,
+        "note": "Официального украинского текста PSS нет; украинская научная адаптация PSS-10 (Вельдбрехт, Тавровецька, 2022) по правилу разработчика — собственность переводчиков (см. карточку pss10 в mood.json). В каталоге — тот же рабочий перевод, что у PSS-10."
+      },
+      "ru": {
+        "exists": false,
+        "by": null,
+        "free": null,
+        "url": null,
+        "note": "Русской четырёхпунктовой версии на странице разработчика нет (есть только чужой русский PSS-14 без психометрии). В каталоге — тот же рабочий перевод, что у PSS-10."
+      }
+    },
+    "example": {
+      "answers": [3, 1, 1, 3],
+      "total": 12,
+      "band": null,
+      "note": "Арифметический пример. П. 1 прямой: 3. П. 2 обратный: 1 → 4 − 1 = 3. П. 3 обратный: 1 → 3. П. 4 прямой: 3. Итого 12 из 16. Контроль обратного ключа: все «never» → 0 + 4 + 4 + 0 = 8."
+    },
+    "verdict": "завести без полос — тот же правообладатель и то же основание, что у PSS-10; порогов нет по позиции разработчика; текст — рабочий перевод PSS-10 каталога."
+  },
+  {
+    "key": "gse",
+    "title_en": "General Self-Efficacy Scale (GSE)",
+    "title_uk": "Шкала загальної самоефективності (GSE)",
+    "title_ru": "Шкала общей самоэффективности (GSE)",
+    "authors": "Ralf Schwarzer, Matthias Jerusalem",
+    "year": 1995,
+    "citation": "Schwarzer R, Jerusalem M. Generalized Self-Efficacy scale. In: Weinman J, Wright S, Johnston M (eds). Measures in health psychology: A user's portfolio. Causal and control beliefs. Windsor, UK: NFER-NELSON; 1995. p. 35–37. Русская версия: Schwarzer R, Jerusalem M, Romek V. Russian version of the General Self-Efficacy Scale. Foreign Psychology (Moscow). 1996;7:71–77.",
+    "license": {
+      "verdict": "запрещает публикацию в интернете",
+      "quote": "Permission granted to use the General Self-Efficacy Scale for non-commercial reseach and development purposes. The scale may be shortened and/or modified to meet the particular requirements of the research context. […] You may print an unlimited number of copies on paper for distribution to research participants. Or the scale may be used in online survey research if the user group is limited to certified users who enter the website with a password. There is no permission to publish the scale in the Internet, or to print it in publications (except 1 sample item). // Там же, с. 1: «You do not need our explicit permission to utilize the scale in your research studies.» и с. 7: «No individual letters will be provided due to university resource limitations. We don’t respond to eMails.»",
+      "url": "https://userpage.fu-berlin.de/health/faq_gse.pdf",
+      "conditions": "Разрешение — только на некоммерческие исследования и разработку; онлайн — только для закрытого паролем круга; публикация шкалы в интернете прямо запрещена (кроме одного пункта-примера). Репозиторий Polypsy (github.com/4booser/Polypsy) публичный: тексты пунктов каталога лежат в apps/api/src/instruments/*.ts и в пакете сверки docs/instruments/{uk,ru} — это и есть публикация в интернете. Клиническое применение формулой «research and development» не покрыто, а уточнить нельзя: автор писем не выдаёт и на почту не отвечает. Опечатка «reseach» — в оригинале."
+    },
+    "items": null,
+    "items_note": "Английский текст 10 пунктов (https://userpage.fu-berlin.de/health/engscal.htm) и официальная русская версия Ромека, Шварцера и Ерусалема (1996; бланк-изображение russi96.jpg на https://userpage.fu-berlin.de/health/russian.htm) сверены по первоисточнику, но здесь НЕ воспроизводятся: досье лежит в публичном репозитории, а правообладатель запрещает публиковать шкалу в интернете.",
+    "anchors": [
+      { "label": "Not at all true", "value": 1 },
+      { "label": "Hardly true", "value": 2 },
+      { "label": "Moderately true", "value": 3 },
+      { "label": "Exactly true", "value": 4 }
+    ],
+    "anchors_note": "Дословно с engscal.htm: «1 = Not at all true 2 = Hardly true 3 = Moderately true 4 = Exactly true». Русская версия: «абсолютно неверно / едва ли это верно / скорее всего - верно / совершенно верно».",
+    "reverse": [],
+    "scoring": "Дословно с engscal.htm: «Responses are made on a 4-point scale. Sum up the responses to all 10 items to yield the final composite score with a range from 10 to 40. No recoding.» FAQ допускает и среднее, а пропуски — не больше трёх пунктов.",
+    "bands": null,
+    "bands_note": "Полос нет — FAQ дословно: «We do not endorse the view that people should be categorized this way. There is no cut-off score.» Т-нормы (немецкие и американская выборки) в FAQ есть, это не пороги.",
+    "risk_items": [],
+    "risk_items_note": "Пунктов риска нет.",
+    "translation": {
+      "uk": {
+        "exists": false,
+        "by": null,
+        "free": null,
+        "url": "https://userpage.fu-berlin.de/health/selfscal.htm",
+        "note": "На странице языковых версий автора (32 ссылки) украинской НЕТ. Украинские исследования (например, Львів, 2021) пользуются переводами без указания источника. Утверждение «официальная украинская версия авторов существует» не подтвердилось."
+      },
+      "ru": {
+        "exists": true,
+        "by": "Romek V., Schwarzer R., Jerusalem M., 1996 — официальная версия на сайте автора",
+        "free": false,
+        "url": "https://userpage.fu-berlin.de/health/russian.htm",
+        "note": "На русскую версию распространяется тот же запрет публикации в интернете."
+      }
+    },
+    "example": {
+      "answers": [3, 3, 3, 3, 3, 3, 3, 3, 3, 3],
+      "total": 30,
+      "band": null,
+      "note": "Арифметика ключа: десять ответов «Moderately true» (3) → 30 из 40, без перекодирования."
+    },
+    "verdict": "не заводить — правообладатель разрешает только некоммерческие исследования и прямо запрещает публиковать шкалу в интернете, а тексты пунктов каталога лежат в публичном репозитории; официальной украинской версии у авторов нет (есть русская 1996 г.)."
+  },
+  {
+    "key": "lotr",
+    "title_en": "Life Orientation Test – Revised (LOT-R)",
+    "title_uk": "Тест життєвої орієнтації, переглянутий (LOT-R)",
+    "title_ru": "Тест жизненной ориентации, пересмотренный (LOT-R)",
+    "authors": "Michael F. Scheier, Charles S. Carver, Michael W. Bridges",
+    "year": 1994,
+    "citation": "Scheier MF, Carver CS, Bridges MW. Distinguishing optimism from neuroticism (and trait anxiety, self-mastery, and self-esteem): A re-evaluation of the Life Orientation Test. Journal of Personality and Social Psychology. 1994;67(6):1063–1078.",
+    "license": {
+      "verdict": "только исследования и обучение",
+      "quote": "All of these scales are being made available here for use in research and teaching applications. All are available without charge and without any need for permission. Please do not write to me requesting a letter of permission, because this is all you will get. // Со страницы LOT-R (https://www.psy.miami.edu/faculty/ccarver/lot-r.html): «Please note that this is a research instrument, not intended for clinical applications. There are no \"cut-offs\" for optimism or pessimism; we use it as a continuous dimension of variability.»",
+      "url": "https://www.psy.miami.edu/faculty/ccarver/index.html",
+      "conditions": "Разрешение — на исследования и обучение; клиническое применение автор исключает прямо. Каталог — клинический (отделение психологии госпиталя), основания нет."
+    },
+    "items": null,
+    "items_note": "10 пунктов (6 считаемых и 4 наполнителя) сверены по бланку CMU (https://www.cmu.edu/dietrich/psychology/pdf/scales/LOTR_Scale.pdf) и странице Карвера; не воспроизводятся, раз методика не заводится.",
+    "anchors": [
+      { "label": "strongly disagree", "value": 0 },
+      { "label": "disagree", "value": 1 },
+      { "label": "neutral", "value": 2 },
+      { "label": "agree", "value": 3 },
+      { "label": "strongly agree", "value": 4 }
+    ],
+    "anchors_note": "Кодировка 0–4 — с бланка CMU; на странице Карвера ответы обозначены буквами A–E.",
+    "reverse": [3, 7, 9],
+    "scoring": "Дословно с бланка CMU: «1. Reverse code items 3, 7, and 9 prior to scoring (0=4) (1=3) (2=2) (3=1) (4=0). 2. Sum items 1, 3, 4, 7, 9, and 10 to obtain an overall score. Note Items 2, 5, 6, and 8 are filler items only. They are not scored as part of the revised scale.»",
+    "bands": null,
+    "bands_note": "Полос нет — у автора дословно: «There are no \"cut-offs\" for optimism or pessimism».",
+    "risk_items": [],
+    "risk_items_note": "Пунктов риска нет.",
+    "translation": {
+      "uk": {
+        "exists": true,
+        "by": "Лукова С.В. Валідизація української версії методики диспозиційного оптимізму (Life orientation test-revised – LOT-R). Науковий вісник Херсонського державного університету. Серія «Психологічні науки». 2023;(1):47–54. DOI 10.32999/ksu2312-3206/2023-1-6",
+        "free": null,
+        "url": "https://doi.org/10.32999/ksu2312-3206/2023-1-6",
+        "note": "Найдена по ссылке в статье Олефіра і Боснюка (2024). Текст и лицензию не проверяли — методика не заводится по основанию правообладателя."
+      },
+      "ru": null
+    },
+    "example": {
+      "answers": [3, 2, 1, 3, 2, 2, 1, 2, 1, 3],
+      "total": 18,
+      "band": null,
+      "note": "Арифметика ключа: считаемые пп. 1 (3), 3 (обратный: 4 − 1 = 3), 4 (3), 7 (обратный: 3), 9 (обратный: 3), 10 (3) = 18 из 24; наполнители 2, 5, 6, 8 не считаются."
+    },
+    "verdict": "не заводить — автор (C. S. Carver) прямо называет LOT-R исследовательским инструментом, «not intended for clinical applications», и даёт разрешение на исследования и обучение."
+  },
+  {
+    "key": "mhcsf",
+    "title_en": "Mental Health Continuum – Short Form (MHC-SF)",
+    "title_uk": "Континуум психічного здоров’я, коротка форма (MHC-SF)",
+    "title_ru": "Континуум психического здоровья, краткая форма (MHC-SF)",
+    "authors": "Corey L. M. Keyes",
+    "year": 2009,
+    "citation": "Keyes CLM. Brief description of the Mental Health Continuum Short Form (MHC-SF). Atlanta: Emory University; 2009. Психометрика: Lamers SMA, Westerhof GJ, Bohlmeijer ET, ten Klooster PM, Keyes CLM. Evaluating the psychometric properties of the Mental Health Continuum-Short Form (MHC-SF). Journal of Clinical Psychology. 2011;67(1):99–110. DOI 10.1002/jclp.20741.",
+    "license": {
+      "verdict": "неясно",
+      "quote": "©2009 Corey L. M. Keyes, All Rights Reserved",
+      "url": "https://test.goodmedicine.org.uk/media/files/assessment,%20flourishing,%20short%20form.doc",
+      "conditions": "Заявления правообладателя о свободном использовании НЕ НАЙДЕНО. Строка копирайта взята из «Brief Description…» на стороннем хостинге; открыть файл напрямую не удалось (у сервера неверный TLS-сертификат), строка видна в выдаче поисковика — то есть дословность не сверена по самому файлу. Сторонние каталоги пишут разное («Fee for use: Free» у UConn M3EWB; «copyrighted, but can be used for research when proper credit is given» у PsyToolkit) — это не слова правообладателя. Официальной страницы Кейса с условиями использования найти не удалось."
+    },
+    "items": null,
+    "items_note": "Не воспроизводятся: разрешения нет.",
+    "anchors": null,
+    "anchors_note": "По странице Johns Hopkins CIH (https://cih.jhu.edu/measurement/mental-health-continuum/): частота за последний месяц, 0 = Never … 5 = Every day. По первоисточнику Кейса не сверено.",
+    "reverse": [],
+    "scoring": "Не сверено по первоисточнику. Важно для решения: кроме суммы, у методики есть категориальная «диагностика» (процветание / умеренное психическое здоровье / угасание) по правилу на отдельных пунктах (сколько гедонических и сколько пунктов позитивного функционирования отмечены «каждый день или почти каждый день») — это не порог суммы, и движком каталога как полоса не выражается.",
+    "bands": null,
+    "bands_note": "Полос на сумме нет; категории — правило по пунктам (см. scoring).",
+    "risk_items": [],
+    "risk_items_note": "Пунктов риска нет.",
+    "translation": {
+      "uk": null,
+      "ru": null
+    },
+    "translation_note": "Переводы не искали: основания для заведения нет.",
+    "example": null,
+    "verdict": "не заводить до письменного разрешения — заявления правообладателя (C. L. M. Keyes) о свободном использовании не найдено, копирайт «All Rights Reserved»; категориальная классификация требует правила по отдельным пунктам."
+  },
+  {
+    "key": "eurohis8",
+    "title_en": "EUROHIS-QOL 8-item index",
+    "title_uk": "Індекс якості життя EUROHIS-QOL (8 пунктів)",
+    "title_ru": "Индекс качества жизни EUROHIS-QOL (8 пунктов)",
+    "authors": "Silke Schmidt, Holger Mühlan, Mick Power; пункты — WHOQOL Group, Всемирная организация здравоохранения",
+    "year": 2006,
+    "citation": "Schmidt S, Mühlan H, Power M. The EUROHIS-QOL 8-item index: psychometric results of a cross-cultural field study. European Journal of Public Health. 2006;16(4):420–428 (PubMed 16141303). Пункты — из WHOQOL-BREF: WHOQOL-BREF: introduction, administration, scoring and generic version of the assessment. Field trial version, December 1996. Geneva: WHO, Programme on Mental Health.",
+    "license": {
+      "verdict": "лицензируется",
+      "quote": "This document is not issued to the general public, and all rights are reserved by the World Health Organization (WHO). This document may not be reviewed, abstracted, quoted, reproduced, translated, referred to in bibliographical matter or cited, in part or in whole, without the prior written permission of WHO. No part of this document may be stored in a retrieval system or transmitted in any form by any means - electronic, mechanical or other -without the prior written permission of WHO.",
+      "url": "https://iris.who.int/server/api/core/bitstreams/4c40696d-8415-4141-a65f-c32041ffe6c7/content",
+      "conditions": "Восемь пунктов EUROHIS-QOL — пункты WHOQOL-BREF; права на их текст у ВОЗ, и ВОЗ требует письменного разрешения на воспроизведение и на хранение в электронной системе (цитата — оборот титула руководства WHOQOL-BREF, 1996). ВОЗ выкладывает переводы WHOQOL-BREF, в том числе украинский и русский (https://www.who.int/tools/whoqol/whoqol-bref), с оговоркой «Please note that these translations were not created by the World Health Organization (WHO)», но разрешения на воспроизведение страница не даёт. Украинский перевод в архиве ВОЗ к тому же с ошибками («Ваше життя наповнена змістом», «своєю сексуальним життям», «Наскільки здорової є фізичне середовище»)."
+    },
+    "items": null,
+    "items_note": "Не воспроизводятся: права ВОЗ.",
+    "anchors": null,
+    "reverse": [],
+    "scoring": "Правило подсчёта по статье Schmidt et al. (2006) не сверялось (статья платная, а методика не заводится по лицензии).",
+    "bands": null,
+    "bands_note": "Не проверялись.",
+    "risk_items": [],
+    "risk_items_note": "Пунктов риска нет.",
+    "translation": {
+      "uk": {
+        "exists": true,
+        "by": "Украинский WHOQOL-BREF на странице ВОЗ (архив ukrainian-whoqol-bref.zip); автор перевода не указан, ВОЗ отказывается отвечать за переводы",
+        "free": false,
+        "url": "https://www.who.int/tools/whoqol/whoqol-bref",
+        "note": "Рамка в украинском бланке — «протягом останніх чотирьох тижнів», в английском WHOQOL-BREF — две недели."
+      },
+      "ru": {
+        "exists": true,
+        "by": "Русский WHOQOL-BREF на странице ВОЗ (архив russian-whoqol-bref.zip)",
+        "free": false,
+        "url": "https://www.who.int/tools/whoqol/whoqol-bref",
+        "note": "Не открывался: методика не заводится."
+      }
+    },
+    "example": null,
+    "verdict": "завести без текста (лицензия) — пункты принадлежат ВОЗ (WHOQOL-BREF), и ВОЗ требует письменного разрешения на любое воспроизведение и хранение в электронной системе; до разрешения ВОЗ в каталог не идёт."
+  }
+]
