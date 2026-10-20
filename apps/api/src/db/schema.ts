@@ -17,6 +17,7 @@ import {
 import { sql } from "drizzle-orm";
 import {
   LANGS,
+  SURVEY_DOMAINS,
   type LocalizedText,
   type OpsAlertChannel,
   type OpsAlertDelivery,
@@ -600,6 +601,16 @@ export const surveys = pgTable(
    * снимков.
    */
   catalogFields: jsonb("catalog_fields").$type<Record<string, unknown>>(),
+  /**
+   * Направление — «что измеряет» (packages/shared/src/domains.ts): чипы и
+   * подпись каталога. Не папка: папка принадлежит группе, а методики общего
+   * каталога стоят без группы. У методики каталога его ставит установщик по
+   * карте instruments/catalogDomains.ts как настройку каталога (снимок
+   * catalog_fields, правка учреждения сохраняется); у заведённой в
+   * учреждении — конструктор. null — не выбрано. Перечень держит и база
+   * (surveys_domain_check, 0133).
+   */
+  domain: text("domain", { enum: SURVEY_DOMAINS }),
   /*
    * Демонстрационная методика: показывается в обучении и на показах, но не
    * выдаётся пациентам. Флаг был объявлен давно и ничего не значил — списки
@@ -1559,9 +1570,22 @@ export const batteries = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
     createdAt: timestampCol("created_at").notNull().default(sql`now()`),
+    /**
+     * Ключ заготовки общего каталога (instruments/catalogBatteries.ts), из
+     * которой установщик завёл этот набор; null — набор собран в учреждении.
+     *
+     * По ключу установщик узнаёт уже заведённую заготовку и больше её не
+     * трогает: с первой установки набором распоряжается отделение — правит
+     * состав, переименовывает, отправляет в архив. Уникален среди непустых
+     * (batteries_catalog_key_idx, 0133): вторая копия заготовки — это два
+     * одинаковых набора в списке и назначения, разошедшиеся по ним.
+     */
+    catalogKey: text("catalog_key"),
   },
   (t) => ({
     groupIdx: index("batteries_group_idx").on(t.groupId),
+    // пустые ключи друг другу не мешают: NULL в уникальном индексе Postgres не равен NULL
+    catalogKeyIdx: uniqueIndex("batteries_catalog_key_idx").on(t.catalogKey),
   }),
 );
 

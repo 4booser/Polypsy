@@ -84,5 +84,20 @@ if (report.keptLocal.length) {
 for (const [key, fields] of Object.entries(report.keptSettings)) {
   console.log(`  · ${key}: настройки учреждения сохранены (${fields.join(", ")}) — --force ${key} вернёт каталоговые`);
 }
+// направление (instruments/catalogDomains.ts) у стоявших методик — без новой версии
+if (report.domainSet.length) console.log(`  ✓ направление проставлено: ${report.domainSet.join(", ")}`);
+
+/*
+ * Наборы-заготовки (instruments/catalogBatteries.ts): заводятся один раз, дальше
+ * принадлежат отделению. Пропущенная методика — не отказ: набор заведён без неё.
+ */
+const b = report.batteries;
+if (b.installed.length) console.log(`  ✓ заведено наборов: ${b.installed.join(", ")}`);
+for (const [key, missing] of Object.entries(b.missingItems)) {
+  console.log(`  ! ${key}: заведён без методик, которых нет в базе или они сняты: ${missing.join(", ")}`);
+}
+if (b.kept.length) console.log(`  · наборы уже заведены, ими распоряжается отделение: ${b.kept.join(", ")}`);
+if (b.removed.length) console.log(`  · наборы удалены отделением, заново не заводятся: ${b.removed.join(", ")}`);
+if (b.pending.length) console.log(`  ! наборы не заведены — ни одной их методики нет в базе: ${b.pending.join(", ")}`);
 
 await client.end();

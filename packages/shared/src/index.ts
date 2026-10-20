@@ -1,4 +1,6 @@
 export * from "./types";
+/* направление методики в каталоге: перечень и фильтр «без направления» */
+export * from "./domains";
 export * from "./schemas";
 /* дата снаружи: строгий ISO, который база прочтёт так же (волна 12, integrity) */
 export * from "./dates";

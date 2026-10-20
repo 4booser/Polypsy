@@ -219,7 +219,7 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   /* ── методики ── */
   "GET /api/surveys": {
     summary:
-      "Каталог методик. ?limit=&offset= — страница с total; ?folder= (id или root) — папка, вместе с ?q= — поиск по её поддереву; ?status= — вкладка, несколько через запятую; ?archived=1 — снятые вместе с остальными, ?archived=only — только снятые",
+      "Каталог методик. ?limit=&offset= — страница с total; ?folder= (id или root) — папка, вместе с ?q= — поиск по её поддереву; ?status= — вкладка, несколько через запятую; ?archived=1 — снятые вместе с остальными, ?archived=only — только снятые; ?domain= — направление (distress, trauma, suicide, sleep, addiction, wellbeing, cognitive, personality, staff, other) или none — без направления, из папки — по её поддереву; в строке — поле domain",
     access: "user",
   },
   "POST /api/surveys": { summary: "Создание методики", access: "staff", permission: "surveys.edit", body: createSurveySchema },
