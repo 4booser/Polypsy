@@ -102,6 +102,12 @@ const MODULE_OF: Record<string, string> = {
   mlq: "mlq.ts",
   pss4: "pss4.ts",
   // ── /k-wellbeing ──
+  // ── k-staff ──
+  bat: "bat.ts",
+  bat12: "bat.ts",
+  proqol5: "proqol5.ts",
+  mios: "mios.ts",
+  // ── /k-staff ──
 };
 
 /**
