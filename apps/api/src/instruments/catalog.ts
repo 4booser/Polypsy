@@ -300,10 +300,11 @@ export const CATALOG: CatalogEntry[] = [
    * Группа «сон и утомление» — docs/instruments/dossiers/sleep.json.
    *
    * Заведены только методики, у которых свободное использование в клинике
-   * подтверждено словами правообладателя: SCI и её двухпунктовая версия SCI-02
-   * (Sleepio, CC BY-NC 4.0 — некоммерчески), FAS (ild care foundation: «usage in clinical settings is
-   * permitted without restrictions», официальные украинский и русский тексты) и
-   * RIS (авторы, статья под CC BY 2.0). Остальные карточки досье не заведены:
+   * подтверждено словами правообладателя: SCI и её двухпунктовая версия
+   * SCI-02 (Sleepio, CC BY-NC 4.0 — некоммерчески), FAS (ild care foundation:
+   * «usage in clinical settings is permitted without restrictions»,
+   * официальные украинский и русский тексты) и RIS (авторы, статья под
+   * CC BY 2.0). Остальные карточки досье не заведены:
    * PROMIS Sleep Disturbance 8a, Sleep-Related Impairment 8a и Fatigue 7a для
    * рутинной оценки в своей цифровой платформе требуют разрешения HEAP и платы
    * (а таблицу T-баллов PROMIS движок не воспроизводит); STOP-Bang — разрешения
