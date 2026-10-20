@@ -24,3 +24,4 @@
 | `trauma.json` | травма и военный контекст | pcptsd5, ces, sbqr |
 | `function.json` | функционирование, ресурсы, поддержка | mspss, rses, brief_cope, ucla3, osss3 |
 | `behaviour.json` | зависимости, внимание, выгорание | cage, auditc, assist, asrs6, cbi |
+| `distress.json` | дистресс, тревога, депрессия (каталог 2.1, октябрь 2026) | dass21 (без полос), k10, k6, phq15, phq2, gad2, core10; не заводятся: oasis, odsis, wsas, cape_p15, qids_sr16 (MDQ — в `behaviour.json`) |
