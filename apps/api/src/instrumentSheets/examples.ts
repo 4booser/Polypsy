@@ -9,6 +9,7 @@ import {
   type Option,
   type Question,
   type RespondentContext,
+  type RiskSeverity,
   type Scale,
   type ScaleBand,
   type ScaleItem,
@@ -63,6 +64,8 @@ export interface Example {
   answers: Answer[];
   /** Ожидание досье: код шкалы → значение */
   expect?: { code: string; value: number }[];
+  /** Ожидание досье: итоговая тяжесть риска (null — сигналов нет); не задано — не сверяется */
+  expectRisk?: RiskSeverity | null;
   result: Record<SheetLang, SubmissionEvaluation>;
 }
 
@@ -389,6 +392,15 @@ export interface DossierExampleSpec {
   answers: Record<number, DossierPick>;
   rest?: DossierPick;
   expect: Record<string, number>;
+  /**
+   * Итоговая тяжесть риска по досье; null — сигналов нет. Не задана — риск не сверяется.
+   *
+   * Нужна методикам, у которых первоисточник даёт не сумму, а правило маршрутизации:
+   * у C-SSRS Screener суммы нет вовсе (уровень риска — по самому тяжёлому «да»), у ASQ
+   * «гострий позитивний скринінг» решает вопрос 5, а не балл. Без этого поля пример досье
+   * такой методики сверял бы пустое множество чисел и показывал «✓» ни о чём.
+   */
+  risk?: RiskSeverity | null;
 }
 
 function pickOption(q: Question, p: DossierPick): Option | undefined {
@@ -812,6 +824,7 @@ export function buildExamples(pair: SurveyPair, dossier: DossierExampleSpec[] = 
     });
     push("dossier", spec.title, null, deflt, materialize(survey, picks), {
       expect: Object.entries(spec.expect).map(([code, value]) => ({ code, value })),
+      ...(spec.risk !== undefined ? { expectRisk: spec.risk } : {}),
     });
   }
 
