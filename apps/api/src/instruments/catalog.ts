@@ -29,6 +29,11 @@ import { ASSIST_NOT_SCORED, assist } from "./assist";
 import { auditc } from "./auditc";
 import { cage } from "./cage";
 import { cbi } from "./cbi";
+// ── k-staff ──
+import { bat, bat12 } from "./bat";
+import { MIOS_NOT_SCORED, mios } from "./mios";
+import { proqol5 } from "./proqol5";
+// ── /k-staff ──
 
 /**
  * Общий каталог общедоступных методик.
@@ -288,4 +293,51 @@ export const CATALOG: CatalogEntry[] = [
     source:
       "Copenhagen Burnout Inventory, Kristensen, Borritz, Villadsen, Christensen, Work & Stress 2005 (NFA, Данія); смуги — датська форма самоперевірки NFA (Borritz, Kristensen). Переклад робочий",
   },
+
+  // ── k-staff ──
+  /*
+   * Группа «персонал»: выгорание, усталость от сострадания, вторичный
+   * травматический стресс и моральная травма у сотрудников самого госпиталя —
+   * психологов, медиков, командиров. Досье — docs/instruments/dossiers/staff.json;
+   * ключи каталога равны ключам досье.
+   *
+   * Лицензии здесь не заявление учреждения, а слова правообладателей: BAT —
+   * «non-proprietary and may be used free of charge without requesting permission»,
+   * ProQOL — «may be freely copied» при указании автора и без продажи, MIOS —
+   * «a public domain scale». У BAT украинский и русский тексты официальные (сайт
+   * правообладателя), у ProQOL 5 и MIOS перевод рабочий — сказано в описании.
+   *
+   * Не заведены — с причиной в досье: UWES-9 (только научное использование), OLBI,
+   * STSS, MMD-HP, MISS-HP, термометр морального дистресса (свободной лицензии нет),
+   * Mini Z (разрешение не покрывает индивидуальный скрининг), ProQOL Health (сам
+   * правообладатель: «still under development»), MIDS (лицензия и порог есть, но
+   * её правило «часть 2 — если хоть один пункт части 1 больше нуля» движок без
+   * условий «ИЛИ» выразить не может). Maslach — платный, по заданию не заводился.
+   */
+  {
+    key: "bat",
+    draft: bat,
+    source:
+      "Burnout Assessment Tool (BAT-23), Schaufeli, De Witte, Desart, KU Leuven, 2020 — non-proprietary, вільне використання без запиту дозволу (без змін, з посиланням на Schaufeli, Desart, De Witte, IJERPH 2020;17:9495). Український і російський тексти — офіційні переклади з сайту правовласника; пороги — клінічні фламандські (Test Manual v2.0, табл. 66)",
+  },
+  {
+    key: "bat12",
+    draft: bat12,
+    source:
+      "Burnout Assessment Tool, коротка версія (BAT-12), Schaufeli, De Witte, Desart, KU Leuven, 2020 — non-proprietary, вільне використання без запиту дозволу (без змін, з посиланням на IJERPH 2020;17:9495). Офіційні український і російський тексти правовласника; пороги — клінічні фламандські (Test Manual v2.0, табл. 73)",
+  },
+  {
+    key: "proqol5",
+    draft: proqol5,
+    source:
+      "ProQOL 5, B. H. Stamm, 2009; правовласник — Center for Victims of Torture, www.ProQOL.org: «may be freely copied as long as (i) the author is credited, (ii) no changes are made, and (iii) that it is not sold». Смуги — офіційна форма самооцінки. Переклад робочий: українського ProQOL 5 немає, російський 2012 р. містить змістові помилки й не взятий",
+  },
+  {
+    key: "mios",
+    draft: mios,
+    source:
+      "Moral Injury Outcome Scale, коротка клінічна версія: Litz та ін., MIOS Consortium, Frontiers in Psychiatry 2022;13:923928 (CC BY; «the MIOS is a public domain scale»). Без смуг: правовласник — «There are currently no proposed scoring categories or cut offs». Переклад робочий",
+    notScored: MIOS_NOT_SCORED,
+  },
+  // ── /k-staff ──
 ];
