@@ -1603,5 +1603,140 @@
    "note": "Арифметическая проверка ключа (не опубликованный кейс). Ответы даны по порядку пунктов 1-42. Депрессия = пункты 3,5,10,13,16,17,21,24,26,31,34,37,38,42 = 2+2+2+3+2+2+2+3+3+2+2+2+2+3 = 32 из 42. Тревога = пункты 2,4,7,9,15,19,20,23,25,28,30,36,40,41 = 0+0+0+1+0+0+1+0+0+1+0+0+0+0 = 3 из 42. Стресс = пункты 1,6,8,11,12,14,18,22,27,29,32,33,35,39 = 1+1+2+1+1+1+1+2+1+2+1+2+1+1 = 18 из 42. Суммы пересчитаны скриптом по ключу, а не вручную. Полосы НЕ присвоены: таблица порогов есть только в платном руководстве."
   },
   "verdict": "завести — текст, ключ и лицензия проверяемы у разработчиков; но полосы без покупки руководства не подписывать, и если DASS-21 уже стоит в системе, вторую версию той же методики ставить незачем"
+ },
+ {
+  "key": "who5",
+  "title_en": "The World Health Organization-Five Well-Being Index (WHO-5)",
+  "title_uk": null,
+  "title_ru": "Индекс общего (хорошего) самочувствия/ВОЗ (вариант 1999 г.)",
+  "authors": "Per Bech, Psychiatric Centre North Zealand (WHO Collaborating Centre for Mental Health); WHO Regional Office for Europe",
+  "year": 1998,
+  "citation": "World Health Organization. The World Health Organization-Five Well-Being Index (WHO-5). Geneva: World Health Organization; 2024 (WHO/UCN/MSD/MHE/2024.1). License: CC BY-NC-SA 3.0 IGO. Пороги: Topp CW, Østergaard SD, Søndergaard S, Bech P. The WHO-5 Well-Being Index: a systematic review of the literature. Psychother Psychosom. 2015;84(3):167-176. doi:10.1159/000376585.",
+  "license": {
+   "verdict": "свободна с условиями",
+   "quote": "Some rights reserved. This work is available under the Creative Commons Attribution-NonCommercial-ShareAlike 3.0 IGO licence (CC BY-NC-SA 3.0 IGO; https://creativecommons.org/licenses/by-nc-sa/3.0/igo). Under the terms of this licence, you may copy, redistribute and adapt the work for non-commercial purposes, provided the work is appropriately cited, as indicated below.",
+   "quote_2": "If you create a translation of this work, you should add the following disclaimer along with the suggested citation: “This translation was not created by the World Health Organization (WHO). WHO is not responsible for the content or accuracy of this translation. The original English edition shall be the binding and authentic edition”.",
+   "url": "https://www.who.int/publications/m/item/WHO-UCN-MSD-MHE-2024.01",
+   "url_pdf": "https://cdn.who.int/media/docs/default-source/mental-health/who-5_english-original4da539d6ed4b49389e3afe47cda2326a.pdf",
+   "conditions": "Только некоммерческое использование, со ссылкой «World Health Organization. The World Health Organization-Five Well-Being Index (WHO-5). Geneva: World Health Organization; 2024»; свой перевод — с оговоркой из quote_2; логотип ВОЗ не использовать; адаптация — под той же лицензией. С 2024 г. правообладатель — ВОЗ: «In 2024 the Psychiatric Centre North Zealand and WHO agreed to assign copyright in the WHO-5 to WHO»."
+  },
+  "items": [
+   "I have felt cheerful and in good spirits",
+   "I have felt calm and relaxed",
+   "I have felt active and vigorous",
+   "I woke up feeling fresh and rested",
+   "My daily life has been filled with things that interest me"
+  ],
+  "items_note": "Дословно с бланка ВОЗ 2024 (WHO/UCN/MSD/MHE/2024.1, с. 1). Инструкция дословно: «Please indicate for each of the five statements which is closest to how you have been feeling over the last two weeks. Notice that higher numbers mean better well-being.» Варианты на бланке идут слева направо от «All of the time» (5) к «At no time» (0) — в каталоге этот же порядок.",
+  "anchors": [
+   {
+    "label": "All of the time",
+    "score": 5
+   },
+   {
+    "label": "Most of the time",
+    "score": 4
+   },
+   {
+    "label": "More than half of the time",
+    "score": 3
+   },
+   {
+    "label": "Less than half of the time",
+    "score": 2
+   },
+   {
+    "label": "Some of the time",
+    "score": 1
+   },
+   {
+    "label": "At no time",
+    "score": 0
+   }
+  ],
+  "reverse": [],
+  "scoring": "Дословно с бланка ВОЗ 2024 (с. 2): «The raw score is calculated by totalling the scores on each of the five questions. The raw score ranges from zero to 25, zero representing worst possible mental well-being and 25 representing best possible mental well-being. To get a percentage score ranging from zero to 100, the raw score is multiplied by four.» Высокий балл — хорошее самочувствие, обратных пунктов нет.",
+  "bands": [
+   {
+    "min": 0,
+    "max": 7,
+    "label_en": "percentage ≤28 — the level of well-being of patients with DSM-IV major depression (Topp et al., 2015, citing Löwe et al.)"
+   },
+   {
+    "min": 8,
+    "max": 12,
+    "label_en": "raw score below 13 (percentage below 50) — poor mental well-being, indication for further assessment"
+   },
+   {
+    "min": 13,
+    "max": 25,
+    "label_en": "13 and above — not below the cut-off for poor mental well-being"
+   }
+  ],
+  "bands_source": "Бланк ВОЗ 2024, с. 2, дословно: «A percentage score below 50 (or a raw score below 13) has been suggested as a cut-off for poor mental well-being and as an indication for further assessment for the possible presence of a mental health condition (e.g., depressive disorder) [Topp et al., 2015]». Topp et al., 2015 (Results): «the WHO-5 cut-off score was ≤28, which more restrictively equals the level of well-being» among patients with DSM-IV major depression (исследование Löwe et al.); 28 % = сырой балл 7. Других ступеней (выше 13) у источника нет. Тяжесть полос и тревога по ним — решение системы.",
+  "risk_items": [],
+  "translation": {
+   "uk": {
+    "exists": false,
+    "by": null,
+    "free": null,
+    "url": "https://www.who.int/publications/m/item/WHO-UCN-MSD-MHE-2024.01",
+    "note": "На странице ВОЗ 25 переводов, украинского среди них нет; на старом сайте Psychiatric Research Unit (psykiatri-regionh.dk/who-5, архив) его тоже нет. В каталоге — рабочий перевод английского оригинала с оговоркой ВОЗ для переводов (quote_2), в описании методики."
+   },
+   "ru": {
+    "exists": true,
+    "by": "Psychiatric Research Unit, WHO Collaborating Centre in Mental Health (правообладатель до 2024 г.); переиздан ВОЗ в 2024 г.",
+    "free": true,
+    "url": "https://cdn.who.int/media/docs/default-source/mental-health/who-5_russian.pdf",
+    "instruction": "Обведите одну из цифр против каждого из пяти нижеприведенных утверждений, ближе/лучше всего отражающую ваше самочувствие в последние две недели. Учтите, что более высокие баллы означают более хорошее самочувствие.",
+    "items": [
+     "Я чувствую себя бодрой(-ым) и в хорошем настроении",
+     "Я чувствую себя спокойной(-ым) и раскованной(-ым).",
+     "Я чувствую себя активной(-ым) и энергичной(-ым).",
+     "Я просыпаюсь и чувствую себя свежей(-им) и отдохнувшей(-им).",
+     "Каждый день со мной происходят вещи, представляющие для меня интерес."
+    ],
+    "anchors": [
+     {
+      "label": "Все время",
+      "score": 5
+     },
+     {
+      "label": "Большую часть времени",
+      "score": 4
+     },
+     {
+      "label": "Более половины времени",
+      "score": 3
+     },
+     {
+      "label": "Менее половины времени",
+      "score": 2
+     },
+     {
+      "label": "Некоторое время",
+      "score": 1
+     },
+     {
+      "label": "Никогда",
+      "score": 0
+     }
+    ],
+    "note": "Примечание ВОЗ на файле дословно: «The translation displayed on the next page was completed before WHO accepted copyright of the English version in 2024. The translation was published on the website of the Psychiatric Centre North Zealand (Copenhagen, Denmark). WHO is not responsible for the content or accuracy of this translation. In the event of any inconsistency between the English and the translated version, the English version shall be the binding and authentic version.» На бланке — «© Psychiatric Research Unit, WHO Collaborating Center for Mental Health, Frederiksborg General Hospital». Отступление перевода от оригинала: настоящее время («Я чувствую себя…») вместо «I have felt». В каталоге пункты и варианты — дословно (без точек в конце), инструкция переложена на экран («выберите вариант» вместо «обведите цифру»; фраза о баллах снята — баллов на экране нет)."
+   }
+  },
+  "example": {
+   "answers": [
+    3,
+    2,
+    2,
+    3,
+    2
+   ],
+   "total": 12,
+   "band": "raw score below 13 — poor mental well-being (8–12)",
+   "note": "Арифметически однозначный пример у самой границы источника: баллы вариантов 3+2+2+3+2 = 12 < 13, индекс 48 %. Ответы записаны баллами варианта, а не его местом: на бланке варианты идут от 5 к 0. Опубликованного пошагового примера подсчёта у ВОЗ нет (на бланке — только пример отметки: «If you have felt cheerful and in good spirits more than half of the time during the last two weeks, select number three»)."
+  },
+  "verdict": "завести — лицензия ВОЗ CC BY-NC-SA 3.0 IGO (некоммерческое использование со ссылкой); пороги — бланк ВОЗ 2024 и Topp et al., 2015; русский текст — перевод правообладателя 1999 г., украинский — рабочий с оговоркой ВОЗ"
  }
 ]

@@ -80,7 +80,8 @@ export const CATALOG: CatalogEntry[] = [
   {
     key: "who5",
     draft: who5,
-    source: "WHO-5 Well-Being Index, ВООЗ (Європейське регіональне бюро), 1998",
+    source:
+      "WHO-5 Well-Being Index, ВООЗ (Європейське регіональне бюро), 1998; з 2024 — ВООЗ, WHO/UCN/MSD/MHE/2024.1, CC BY-NC-SA 3.0 IGO; російський текст — переклад Psychiatric Research Unit (варіант 1999 р.), український — робочий",
   },
   {
     key: "gad7",
