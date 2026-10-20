@@ -26,6 +26,10 @@
 | `behaviour.json` | зависимости, внимание, выгорание | cage, auditc, assist, asrs6, cbi |
 | `sleep.json` | сон и утомление | sci, sci02, fas, ris (не заведены по лицензии: PROMIS Sleep Disturbance 8a, Sleep-Related Impairment 8a, Fatigue 7a, STOP-Bang, ISI, FSS, PSQI; AIS — карточка в `behaviour.json`) |
 | `wellbeing.json` | благополучие, смысл, стресс | swls, flourishing (без полос), spane (без полос), mlq (без полос), pss4 (без полос) |
+| `staff.json` | персонал: выгорание, усталость от сострадания, вторичный травматический стресс, моральная травма (октябрь 2026) | bat, bat12, proqol5, mios (без полос) |
+| `cognitive.json` | когнитивные функции, внимание, СДВГ, последствия ЧМТ | 4at (заполняет специалист), adexi (без полос); отклонены с причиной: asrs18, ad8, 6cit, slums, nsi, promis_cf, cfq, rpq, mpai4, diva5, mars |
+| `distress.json` | дистресс, тревога, депрессия (каталог 2.1, октябрь 2026) | dass21 (без полос), k10, k6, phq15, phq2, gad2, core10; не заводятся: oasis, odsis, wsas, cape_p15, qids_sr16 (MDQ — в `behaviour.json`) |
+| `personality.json` | черты, регуляция эмоций, осознанность, самосострадание, привязанность, импульсивность (октябрь 2026) | tipi (без полос), scs_sf, maas (без полос), aaq2, aq10; не заводятся: mini_ipip (дубликат big-five), pid5bf, ders16, erq, ecr_rs, bis11, bis_bas |
 
 `wellbeing.json` (октябрь 2026) не заводит GSE (правообладатель запрещает публикацию в
 интернете, а репозиторий публичный), LOT-R (автор: «not intended for clinical
@@ -33,7 +37,3 @@ applications»), MHC-SF (заявления правообладателя не�
 WHOQOL-BREF, нужна письменная лицензия ВОЗ). Карточки BRS и WHODAS 2.0 остаются в
 `function.json`; 2026-10-20 обе перепроверены: заявления правообладателя BRS по-прежнему
 нет, ВОЗ по-прежнему требует лицензию на включение WHODAS 2.0 в электронную систему.
-| `staff.json` | персонал: выгорание, усталость от сострадания, вторичный травматический стресс, моральная травма (октябрь 2026) | bat, bat12, proqol5, mios (без полос) |
-| `cognitive.json` | когнитивные функции, внимание, СДВГ, последствия ЧМТ | 4at (заполняет специалист), adexi (без полос); отклонены с причиной: asrs18, ad8, 6cit, slums, nsi, promis_cf, cfq, rpq, mpai4, diva5, mars |
-| `distress.json` | дистресс, тревога, депрессия (каталог 2.1, октябрь 2026) | dass21 (без полос), k10, k6, phq15, phq2, gad2, core10; не заводятся: oasis, odsis, wsas, cape_p15, qids_sr16 (MDQ — в `behaviour.json`) |
-| `personality.json` | черты, регуляция эмоций, осознанность, самосострадание, привязанность, импульсивность (октябрь 2026) | tipi (без полос), scs_sf, maas (без полос), aaq2, aq10; не заводятся: mini_ipip (дубликат big-five), pid5bf, ders16, erq, ecr_rs, bis11, bis_bas |
