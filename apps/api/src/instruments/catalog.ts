@@ -29,6 +29,10 @@ import { ASSIST_NOT_SCORED, assist } from "./assist";
 import { auditc } from "./auditc";
 import { cage } from "./cage";
 import { cbi } from "./cbi";
+// ── k-cognitive ──
+import { adexi } from "./adexi";
+import { fourAt } from "./fourAt";
+// ── /k-cognitive ──
 
 /**
  * Общий каталог общедоступных методик.
@@ -288,4 +292,39 @@ export const CATALOG: CatalogEntry[] = [
     source:
       "Copenhagen Burnout Inventory, Kristensen, Borritz, Villadsen, Christensen, Work & Stress 2005 (NFA, Данія); смуги — датська форма самоперевірки NFA (Borritz, Kristensen). Переклад робочий",
   },
+
+  // ── k-cognitive ──
+  /*
+   * Группа «когнитивные функции, внимание, последствия ЧМТ» —
+   * docs/instruments/dossiers/cognitive.json.
+   *
+   * Заведены две методики, у которых право на перевод и электронную форму
+   * следует из слов самого правообладателя, а не из заявления учреждения:
+   * 4AT — CC BY 4.0 (атрибуция с перечнем изменений стоит в описании),
+   * ADEXI — «freely available for both researchers and clinicians». 4AT
+   * заполняет специалист у постели больного (administration: "clinician"), и в
+   * список, доступный человеку без назначения, она не попадает. У ADEXI полос
+   * нет — норм нет у самого разработчика.
+   *
+   * Из того же досье не заведены, каждая с причиной в карточке: ASRS-18
+   * (электронные версии запрещены правообладателем), AD8 (переводы и встраивание
+   * в электронные системы исключены), 6CIT (права не подтверждены, центр закрыт),
+   * SLUMS (рисунок, стимул, отсчёт времени, пороги по образованию), NSI, RPQ,
+   * CFQ, MARS/O-Log (нет разрешения правообладателя), PROMIS (перевод только с
+   * разрешения PHO), MPAI-4 (подсчёт движок не воспроизводит), DIVA-5 (плата за
+   * каждое проведение).
+   */
+  {
+    key: "4at",
+    draft: fourAt,
+    source:
+      "4AT, версія 1.2: MacLullich, Ryan, Cash, 2011–2014 (the4at.com), ліцензія CC BY 4.0; валідація — Bellelli та ін., Age Ageing 2014; метааналіз — Tieges та ін., Age Ageing 2021. Український текст — робочий переклад, російський — переклад із сайту правовласника (версія 1.1), виправлений за англійським оригіналом",
+  },
+  {
+    key: "adexi",
+    draft: adexi,
+    source:
+      "ADEXI (Adult Executive Functioning Inventory), Holst, Thorell, Int J Methods Psychiatr Res 2018 (Karolinska Institutet, www.chexi.se) — вільне використання для клініцистів і дослідників за заявою правовласника; без смуг — норм у розробника немає. Український текст — робочий переклад, російський — переклад із сайту правовласника (Zarina, Stanevich, Korman)",
+  },
+  // ── /k-cognitive ──
 ];
