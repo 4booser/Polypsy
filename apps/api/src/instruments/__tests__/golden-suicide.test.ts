@@ -324,11 +324,13 @@ describe("золотой протокол: C-SSRS Screener", () => {
   const survey = toSurveyFull(cssrs);
   const P = CSSRS_POS;
 
-  test("суммы нет: шкал нет, подсчёт выключен, профиль пуст", () => {
+  test("суммы нет: шкал нет, профиль пуст, а риск всё равно поднимается", () => {
     expect(cssrs.scales).toEqual([]);
-    expect(cssrs.scoringEnabled).toBe(false);
+    // подсчёт включён, как у всего каталога (test/catalog.test.ts), — профиль просто пуст
+    expect(cssrs.scoringEnabled).toBe(true);
     const ev = evaluateSubmission(survey, yn(survey, { [P.q1]: "yes", [P.q2]: "yes", [P.q3]: "yes" }));
     expect(ev.profile.scores).toEqual([]);
+    expect(ev.risk.severity).toBe("moderate");
   });
 
   test("разметка бланка: Low и Moderate Risk — умеренная, High Risk — тяжёлая", () => {
