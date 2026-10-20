@@ -24,3 +24,4 @@
 | `trauma.json` | травма и военный контекст | pcptsd5, ces, sbqr |
 | `function.json` | функционирование, ресурсы, поддержка | mspss, rses, brief_cope, ucla3, osss3 |
 | `behaviour.json` | зависимости, внимание, выгорание | cage, auditc, assist, asrs6, cbi |
+| `sleep.json` | сон и утомление | sci, fas, ris (не заведены по лицензии: PROMIS Sleep Disturbance 8a, Sleep-Related Impairment 8a, Fatigue 7a, STOP-Bang, ISI, FSS, PSQI; AIS — карточка в `behaviour.json`) |
