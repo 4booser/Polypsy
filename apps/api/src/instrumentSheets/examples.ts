@@ -283,33 +283,66 @@ function reachableSums(
   const member = membership(survey);
   const allowed = allowedOptions(survey, U);
 
-  let layer = new Map<number, State>([[0, { sum: 0, penalty: 0, prev: null, qid: null, oid: null }]]);
-  for (const q of U) {
-    if (!isChoice(q)) continue;
-    const next = new Map<number, State>();
-    const opts = choices(q).filter((o) => !allowed.has(q.id) || allowed.get(q.id)!.has(o.id));
-    for (const o of opts) {
-      let eff = 0;
-      let penalty = o.riskFlag ? 1000 : 0;
-      for (const { scale: s, item } of member.get(q.id) ?? []) {
-        const c = contribution(q, item, o);
-        for (const p of parts) {
-          if (p.scale.code !== s.code) continue;
-          if (scale.aggregation === "count" && p.scale.code === scale.code) eff += c > 0 ? 1 : 0;
-          else eff += c * p.coef;
+  const enumerate = (items: Question[], allow: Map<string, Set<string>>): Map<number, State> => {
+    let layer = new Map<number, State>([[0, { sum: 0, penalty: 0, prev: null, qid: null, oid: null }]]);
+    for (const q of items) {
+      if (!isChoice(q)) continue;
+      const next = new Map<number, State>();
+      const opts = choices(q).filter((o) => !allow.has(q.id) || allow.get(q.id)!.has(o.id));
+      for (const o of opts) {
+        let eff = 0;
+        let penalty = o.riskFlag ? 1000 : 0;
+        for (const { scale: s, item } of member.get(q.id) ?? []) {
+          const c = contribution(q, item, o);
+          for (const p of parts) {
+            if (p.scale.code !== s.code) continue;
+            if (scale.aggregation === "count" && p.scale.code === scale.code) eff += c > 0 ? 1 : 0;
+            else eff += c * p.coef;
+          }
+          if (!involved.has(s.code) && s.kind === "validity") penalty += Math.abs(c);
         }
-        if (!involved.has(s.code) && s.kind === "validity") penalty += Math.abs(c);
+        for (const st of layer.values()) {
+          const sum = round6(st.sum + eff);
+          const pen = st.penalty + penalty;
+          const have = next.get(sum);
+          if (!have || pen < have.penalty) next.set(sum, { sum, penalty: pen, prev: st, qid: q.id, oid: o.id });
+        }
       }
-      for (const st of layer.values()) {
-        const sum = round6(st.sum + eff);
-        const pen = st.penalty + penalty;
-        const have = next.get(sum);
-        if (!have || pen < have.penalty) next.set(sum, { sum, penalty: pen, prev: st, qid: q.id, oid: o.id });
+      layer = next;
+    }
+    return layer;
+  };
+
+  const sums = enumerate(U, allowed);
+  /*
+   * Вариант источника, закрывающий зависимые пункты той же шкалы, перебор выше исключает
+   * (allowedOptions) — но сумму с ним человек набрать может: без закрытых пунктов. SIDAS:
+   * «0 — ніколи» на первом пункте закрывает остальные четыре, и сумма 0 достижима; без
+   * этой ветки лист называл полосу «думок немає» недостижимой. Перебор с таким вариантом —
+   * отдельный, по пунктам, которые при нём остаются заданы; суммы сливаются с основными.
+   */
+  for (const [srcId, ok] of allowed) {
+    const src = U.find((q) => q.id === srcId)!;
+    for (const o of choices(src)) {
+      if (ok.has(o.id)) continue;
+      const with_ = new Map([[srcId, o.id]]);
+      const closed = new Set(
+        U.filter((q) => q.logic?.some((r, i) => r.sourceQuestionId === srcId && !ruleHolds(survey, q, i, with_))).map(
+          (q) => q.id,
+        ),
+      );
+      const restricted = new Map(allowed);
+      restricted.set(srcId, new Set([o.id]));
+      for (const [sum, st] of enumerate(
+        U.filter((q) => !closed.has(q.id)),
+        restricted,
+      )) {
+        const have = sums.get(sum);
+        if (!have || st.penalty < have.penalty) sums.set(sum, st);
       }
     }
-    layer = next;
   }
-  return { sums: layer, U, unsupported };
+  return { sums, U, unsupported };
 }
 
 function pathOf(state: State): Map<string, string> {
