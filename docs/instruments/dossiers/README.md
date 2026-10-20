@@ -24,3 +24,4 @@
 | `trauma.json` | травма и военный контекст | pcptsd5, ces, sbqr |
 | `function.json` | функционирование, ресурсы, поддержка | mspss, rses, brief_cope, ucla3, osss3 |
 | `behaviour.json` | зависимости, внимание, выгорание | cage, auditc, assist, asrs6, cbi |
+| `staff.json` | персонал: выгорание, усталость от сострадания, вторичный травматический стресс, моральная травма (октябрь 2026) | bat, bat12, proqol5, mios (без полос) |

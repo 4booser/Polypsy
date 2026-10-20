@@ -1,0 +1,972 @@
+[
+  {
+    "key": "bat",
+    "title_en": "Burnout Assessment Tool (BAT-23), work-related version, with secondary symptoms",
+    "title_uk": "Опитувальник для вимірювання вигорання (BAT); версія, пов’язана з роботою",
+    "title_ru": "Тест оценки выгорания BAT: версия для работающих",
+    "authors": "Wilmar B. Schaufeli, Hans De Witte, Steffie Desart (KU Leuven, Бельгия)",
+    "year": 2020,
+    "citation": "Schaufeli WB, Desart S, De Witte H. Burnout Assessment Tool (BAT) — Development, validity, and reliability. Int J Environ Res Public Health. 2020;17(24):9495. doi:10.3390/ijerph17249495. Руководства правообладателя: Schaufeli WB, De Witte H, Desart S. Manual Burnout Assessment Tool (BAT) — Version 2.0 (Test Manual, English version), KU Leuven, 2020; User Manual — Burnout Assessment Tool (BAT) — Version 2.0, July 2020. Бланки: https://burnoutassessmenttool.be/wp-content/uploads/2020/08/BAT-English.pdf (англ.), https://burnoutassessmenttool.be/wp-content/uploads/2020/08/BAT-Ukrainian.pdf (укр.), https://burnoutassessmenttool.be/wp-content/uploads/2020/11/BAT_Russian.pdf (рус.); список переводов — https://burnoutassessmenttool.be/handleiding_vragenlijst_eng/",
+    "license": {
+      "verdict": "свободна с условиями",
+      "quote": "The BAT is non-proprietary and may be used free of charge without requesting permission from the authors. Please note, however, that the instrument should not be modified, and the following publication should be cited: Schaufeli, W. B., Desart, S., & De Witte, H. (2020). Burnout Assessment Tool (BAT) – Development, validity and reliability. International Journal of Environmental Research and Public Health, 17, 9495",
+      "url": "https://burnoutassessmenttool.be/start_eng/",
+      "conditions": "Два условия правообладателя: инструмент не изменять и ссылаться на статью 2020 г. Ссылка стоит в `source` записи каталога и в описании методики. Исправление явных опечаток официального украинского и русского текста (см. translation) — не изменение инструмента: смысл и порядок пунктов, ответы и ключ те же. Заголовки подшкал бланка в системе не показываются — это вёрстка, а не содержание. Руководства (User Manual, Test Manual v2.0) помечены «All rights reserved»: из них берутся только ключ, пороги и чувствительность/специфичность (факты), текст руководств не воспроизводится.",
+      "owner": "W. B. Schaufeli, H. De Witte, S. Desart (KU Leuven, Бельгия)"
+    },
+    "items": [
+      "[Exhaustion] 1. At work, I feel mentally exhausted*",
+      "[Exhaustion] 2. Everything I do at work requires a great deal of effort",
+      "[Exhaustion] 3. After a day at work, I find it hard to recover my energy*",
+      "[Exhaustion] 4. At work, I feel physically exhausted*",
+      "[Exhaustion] 5. When I get up in the morning, I lack the energy to start a new day at work",
+      "[Exhaustion] 6. I want to be active at work, but somehow I am unable to manage",
+      "[Exhaustion] 7. When I exert myself at work, I quickly get tired",
+      "[Exhaustion] 8. At the end of my working day, I feel mentally exhausted and drained",
+      "[Mental distance] 9. I struggle to find any enthusiasm for my work*",
+      "[Mental distance] 10. At work, I do not think much about what I am doing and I function on autopilot",
+      "[Mental distance] 11. I feel a strong aversion towards my job*",
+      "[Mental distance] 12. I feel indifferent about my job",
+      "[Mental distance] 13. I’m cynical about what my work means to others*",
+      "[Cognitive impairment] 14. At work, I have trouble staying focused*",
+      "[Cognitive impairment] 15. At work I struggle to think clearly",
+      "[Cognitive impairment] 16. I’m forgetful and distracted at work",
+      "[Cognitive impairment] 17. When I’m working, I have trouble concentrating*",
+      "[Cognitive impairment] 18. I make mistakes in my work because I have my mind on other things*",
+      "[Emotional impairment] 19. At work, I feel unable to control my emotions*",
+      "[Emotional impairment] 20. I do not recognize myself in the way I react emotionally at work*",
+      "[Emotional impairment] 21. During my work I become irritable when things don’t go my way",
+      "[Emotional impairment] 22. I get upset or sad at work without knowing why",
+      "[Emotional impairment] 23. At work I may overreact unintentionally*",
+      "[Secondary — psychological complaints] 1. I have trouble falling or staying asleep",
+      "[Secondary — psychological complaints] 2. I tend to worry",
+      "[Secondary — psychological complaints] 3. I feel tense and stressed",
+      "[Secondary — psychological complaints] 4. I feel anxious and/or suffer from panic attacks",
+      "[Secondary — psychological complaints] 5. Noise and crowds disturb me",
+      "[Secondary — psychosomatic complaints] 6. I suffer from palpitations or chest pain",
+      "[Secondary — psychosomatic complaints] 7. I suffer from stomach and/or intestinal complaints",
+      "[Secondary — psychosomatic complaints] 8. I suffer from headaches",
+      "[Secondary — psychosomatic complaints] 9. I suffer from muscle pain, for example in the neck, shoulder or back",
+      "[Secondary — psychosomatic complaints] 10. I often get sick"
+    ],
+    "items_note": "Дословно с официального бланка правообладателя (BAT-English.pdf, «Work-related version of the BAT»). Инструкция: «The following statements are related to your work situation and how you experience this situation. Please state how often each statement applies to you.» Звёздочкой отмечены 12 пунктов краткой версии («Note: * = Short version») — они же карточка bat12. В системе пункты идут в порядке бланка: 1–23 — основные симптомы, 24–33 — вторичные (1–10 бланка). Подшкалы: Exhaustion 1–8, Mental distance 9–13, Cognitive impairment 14–18, Emotional impairment 19–23, Secondary symptoms 24–33. Руководство советует не пугать респондента словом в названии анкеты: «Because the term \"burnout\" might have a negative connotation, it is not mentioned in the title of the questionnaire. Instead, the neutral \"work experience survey\" (or \"well-being survey\" for the general version) is used.» (Test Manual v2.0, p. 102); официальный украинский бланк при этом озаглавлен «Опитувальник для вимірювання вигорання (BAT)». Почему полная версия, а не только BAT-12: «it is better to use the full version for individual assessment and for screening purposes with the aim of identifying those wo are at risk for burnout» (User Manual v2.0, §1.2).",
+    "anchors": [
+      {
+        "label": "Never",
+        "score": 1
+      },
+      {
+        "label": "Rarely",
+        "score": 2
+      },
+      {
+        "label": "Sometimes",
+        "score": 3
+      },
+      {
+        "label": "Often",
+        "score": 4
+      },
+      {
+        "label": "Always",
+        "score": 5
+      }
+    ],
+    "reverse": [],
+    "scoring": "Дословно, Test Manual v2.0, p. 102: «The average scores on the BAT scales are calculated by adding the scores on all items of a particular subscale and then divide this sum by the number of items of that scale. The following scoring categories are used: 1 \"never\", 2 \"rarely\", 3 \"sometimes\", 4 \"often\", and 5 \"always\". This means that the value of the average scale scores varies from 1 to 5. By adding the scores on all BAT items and dividing the sum by 23 (or by 12 for the short version), the total score is obtained, which also ranges between 1 and 5. The same procedure is followed for calculating the total score of the 10 secondary symptoms.» User Manual v2.0, §2.1: «…divide this sum score by the number of items - in this case 23 - and round to 2 decimals. The short version includes 12 items and therefore the sum scores should be divided by 12.» Обратных пунктов нет. Общий балл — среднее 23 основных пунктов; подшкалы — средние своих пунктов; вторичные симптомы — среднее 10 пунктов, в общий балл не входят. Пункты обязательны, поэтому среднее всегда по полной шкале.",
+    "bands": [
+      {
+        "from": 1.0,
+        "to": 2.58,
+        "label_en": "Green — no risk of burnout (Total core)"
+      },
+      {
+        "from": 2.59,
+        "to": 3.01,
+        "label_en": "Orange — at risk for burnout (Total core)"
+      },
+      {
+        "from": 3.02,
+        "to": 5.0,
+        "label_en": "Red — very high risk of burnout (Total core)"
+      }
+    ],
+    "bands_subscales": [
+      {
+        "scale": "Exhaustion",
+        "green": "1.00–3.05",
+        "orange": "3.06–3.30 (Se .89, Sp .88)",
+        "red": "3.31–5.00 (Se .80, Sp .92)",
+        "auc": 0.94
+      },
+      {
+        "scale": "Mental distance",
+        "green": "1.00–2.49",
+        "orange": "2.50–3.09 (Se .75, Sp .77)",
+        "red": "3.10–5.00 (Se .51, Sp .90)",
+        "auc": 0.83
+      },
+      {
+        "scale": "Cognitive impairment",
+        "green": "1.00–2.69",
+        "orange": "2.70–3.09 (Se .83, Sp .82)",
+        "red": "3.10–5.00 (Se .68, Sp .94)",
+        "auc": 0.93
+      },
+      {
+        "scale": "Emotional impairment",
+        "green": "1.00–2.09",
+        "orange": "2.10–2.89 (Se .89, Sp .72)",
+        "red": "2.90–5.00 (Se .61, Sp .92)",
+        "auc": 0.9
+      },
+      {
+        "scale": "Secondary symptoms",
+        "green": "1.00–2.84",
+        "orange": "2.85–3.34 (Se .89, Sp .79)",
+        "red": "3.35–5.00 (Se .55, Sp .92)",
+        "auc": 0.9
+      }
+    ],
+    "bands_source": "Клинические пороги для работающих во Фландрии (Бельгия): Test Manual v2.0, Table 66 «Cut-off scores, sensitivity, specificity and AUC for Flanders» (p. 113) и User Manual v2.0, Table 5 «Cut-off values for Flemish employees (BAT-23)». Метод (Test Manual, pp. 106–107): ROC-анализ, 158 фламандских работников с тяжёлым выгоранием против 1 403 работников репрезентативной выборки без лечения выгорания за 5 лет; «orange» — максимум суммы чувствительности и специфичности, «red» — специфичность выше 0,90. Общий балл: orange ≥ 2,59 (Se .94, Sp .83), red ≥ 3,02 (Se .73, Sp .92), AUC .94. Дословно: «If a person scores below the orange cut-off score, he or she is in the \"green\", safe zone. If a person scores between the orange and red cutoffs, he or she is in the \"orange\", at-risk zone. And finally, if a person scores above the red cut-off, he or she is in the \"red\", danger zone.» Распределение в репрезентативной фламандской выборке: «83.1% are in the safe zone (green score), 9.3% are at-risk of burnout (orange score), and 7.6% most likely suffer from severe burnout (red score)». Пороги только фламандские: «For the time being, only clinical cut-offs for Flanders are available»; «clinical cut-off scores should also be based on local samples» (User Manual, сноска 3). Украинских норм и порогов нет.",
+    "bands_note": "Основная шкала здесь — общий балл (bands); пороги подшкал — bands_subscales, из той же Table 66. Границы заданы с двумя знаками, движок читает соседние полосы полуинтервалом. Среднее 23 пунктов — S/23 при целом S, и ни одно достижимое значение не лежит между 2,58 и 2,59 или между 3,01 и 3,02 (59/23 = 2,565; 60/23 = 2,609; 69/23 = 3,000; 70/23 = 3,043), у подшкал из 5, 8 и 10 пунктов — тем более, поэтому округление руководства до сотых и движка до тысячных классифицируют одинаково. Статистические нормы (low / average / high / very high по Фландрии и Нидерландам, User Manual Tables 1–4) не заводятся: они говорят о месте среди работников другой страны, а не о том, проблемен ли балл. Severity — решение системы: зелёная — none, оранжевая — mild, красная общего балла — moderate (открывает случай в очереди риска; во фламандской выборке это 7,6 % работников), красная подшкал и вторичных симптомов — mild (у подшкал низкая чувствительность красного порога, а случай по общей картине уже открывает общий балл).",
+    "risk_items": [],
+    "risk_items_note": "Пунктов о суициде, самоповреждении или вреде другим в BAT нет. Вторичные симптомы (сердцебиение или боль в груди, панические атаки) — жалобы, а не пункты риска; тревоги по ним нет. Случай в очереди риска открывает только красная зона общего балла (решение системы).",
+    "translation": {
+      "uk": {
+        "exists": true,
+        "by": "официальный перевод на сайте правообладателя (BAT-Ukrainian.pdf, автор PDF — W. Schaufeli, август 2020)",
+        "free": true,
+        "url": "https://burnoutassessmenttool.be/wp-content/uploads/2020/08/BAT-Ukrainian.pdf",
+        "note": "Взят дословно, кроме явных опечаток: п. 6 «на робот,» → «на роботі,»; п. 14 «зосережденим(ною)» → «зосередженим(ною)»; в инструкции вопросительный знак в конце просьбы «Будь ласка, оцініть, як часто кожне твердження може бути застосоване до Вас?» заменён точкой. Лексика не тронута, в том числе русизм п. 23 «надто бурно реагувати» (норма — «бурхливо»): правообладатель запрещает изменения, замену решает клиницист. Отличия официального текста от английского: п. 7 «втомлююсь швидше, ніж зазвичай» (EN «I quickly get tired»), п. 17 «Мені важко зосереджуватись» без «When I’m working», п. 15 «безуспішно намагаюсь мислити ясно» (EN «struggle to think clearly») — так у правообладателя. Ответы: Ніколи / Рідко / Іноді / Часто / Завжди."
+      },
+      "ru": {
+        "exists": true,
+        "by": "официальный перевод на сайте правообладателя (BAT_Russian.pdf, автор PDF — W. Schaufeli, октябрь 2020)",
+        "free": true,
+        "url": "https://burnoutassessmenttool.be/wp-content/uploads/2020/11/BAT_Russian.pdf",
+        "note": "Взят дословно, кроме пунктуации: п. 10 «не задумываюсь, о том, что делаю» → «не задумываюсь о том, что делаю»; вторичный п. 9 «шеи, плеч, или спины» → «шеи, плеч или спины». Отличия официального текста от английского: п. 13 «Я сомневаюсь, что моя работа имеет для кого-то значение» (EN «I’m cynical about what my work means to others»), п. 14 «сложно оставаться собранным(ой)» (EN «trouble staying focused»), ответ 5 — «Постоянно» (EN «Always») — так у правообладателя. Ответы: Никогда / Редко / Иногда / Часто / Постоянно."
+      }
+    },
+    "example": {
+      "answers": [
+        "Респондент X из User Manual v2.0 (§2.1–2.2.2): сумма 23 основных пунктов = 55, сумма пунктов истощения = 20",
+        "Набор в системе: пп. 1–4 «Sometimes» (3), пп. 5–8 «Rarely» (2), пп. 9–13 «Sometimes» (3), пп. 14–23 «Rarely» (2), вторичные — «Never» (1)"
+      ],
+      "total": 2.391,
+      "band": "Total core 2.391 → Green (1.00–2.58); Exhaustion 20/8 = 2.500 → Green (1.00–3.05)",
+      "note": "Опубликованный пример руководства: «Respondent X Y Z — Total score (Total – core) 55 60 75 — Average score (Total – core) 2.39 2.61 3.26 — Classification Green Orange Red» и «Average score (Exhaustion) 2.50 3.13 3.50 — Classification Green Orange Red». Руководство округляет до сотых (2.39), движок — до тысячных: 55/23 = 2,391. Набор ответов собран так, чтобы суммы совпали с примером (бланковые ответы X в руководстве не приведены)."
+    },
+    "example2": {
+      "answers": [
+        "Респондент Y: пп. 1–7 «Sometimes» (3), п. 8 «Often» (4) — истощение 25; пп. 9–13 «Sometimes» (3), пп. 14–23 «Rarely» (2) — всего 60",
+        "Респондент Z: пп. 1–4 «Often» (4), пп. 5–8 «Sometimes» (3) — истощение 28; пп. 9–10 «Often» (4), пп. 11–23 «Sometimes» (3) — всего 75",
+        "Все 33 пункта «Sometimes» (3)"
+      ],
+      "total": 2.609,
+      "band": "Y: 60/23 = 2.609 → Orange, истощение 25/8 = 3.125 → Orange. Z: 75/23 = 3.261 → Red, истощение 28/8 = 3.500 → Red. Все «Sometimes»: общий 3.000 → Orange; истощение 3.000 → Green; дистанцирование 3.000 → Orange; когнитивные 3.000 → Orange; эмоциональные 3.000 → Red (≥ 2.90); вторичные 3.000 → Orange.",
+      "note": "Y и Z — продолжение опубликованного примера руководства (суммы 60 и 75, истощение 25 и 28). Набор «все Sometimes» — арифметическая проверка того, что у подшкал свои пороги: одно и то же среднее 3,0 даёт три разные зоны."
+    },
+    "verdict": "завести — правообладатель прямо разрешает бесплатное использование без запроса (без изменений, со ссылкой на статью 2020 г.); украинский и русский тексты — официальные переводы с его сайта; пороги — клинические фламандские из его руководства (зелёная / оранжевая / красная зона), украинских норм нет."
+  },
+  {
+    "key": "bat12",
+    "title_en": "Burnout Assessment Tool, short version (BAT-12), work-related",
+    "title_uk": "Опитувальник для вимірювання вигорання (BAT), коротка версія",
+    "title_ru": "Тест оценки выгорания BAT, краткая версия",
+    "authors": "Wilmar B. Schaufeli, Hans De Witte, Steffie Desart (KU Leuven, Бельгия)",
+    "year": 2020,
+    "citation": "Schaufeli WB, Desart S, De Witte H. Burnout Assessment Tool (BAT) — Development, validity, and reliability. Int J Environ Res Public Health. 2020;17(24):9495. doi:10.3390/ijerph17249495. Руководства правообладателя: Schaufeli WB, De Witte H, Desart S. Manual Burnout Assessment Tool (BAT) — Version 2.0 (Test Manual, English version), KU Leuven, 2020; User Manual — Burnout Assessment Tool (BAT) — Version 2.0, July 2020. Бланки: https://burnoutassessmenttool.be/wp-content/uploads/2020/08/BAT-English.pdf (англ.), https://burnoutassessmenttool.be/wp-content/uploads/2020/08/BAT-Ukrainian.pdf (укр.), https://burnoutassessmenttool.be/wp-content/uploads/2020/11/BAT_Russian.pdf (рус.); список переводов — https://burnoutassessmenttool.be/handleiding_vragenlijst_eng/",
+    "license": {
+      "verdict": "свободна с условиями",
+      "quote": "The BAT is non-proprietary and may be used free of charge without requesting permission from the authors. Please note, however, that the instrument should not be modified, and the following publication should be cited: Schaufeli, W. B., Desart, S., & De Witte, H. (2020). Burnout Assessment Tool (BAT) – Development, validity and reliability. International Journal of Environmental Research and Public Health, 17, 9495",
+      "url": "https://burnoutassessmenttool.be/start_eng/",
+      "conditions": "Два условия правообладателя: инструмент не изменять и ссылаться на статью 2020 г. Ссылка стоит в `source` записи каталога и в описании методики. Исправление явных опечаток официального украинского и русского текста (см. translation) — не изменение инструмента: смысл и порядок пунктов, ответы и ключ те же. Заголовки подшкал бланка в системе не показываются — это вёрстка, а не содержание. Руководства (User Manual, Test Manual v2.0) помечены «All rights reserved»: из них берутся только ключ, пороги и чувствительность/специфичность (факты), текст руководств не воспроизводится.",
+      "owner": "W. B. Schaufeli, H. De Witte, S. Desart (KU Leuven, Бельгия)"
+    },
+    "items": [
+      "[Exhaustion] 1. At work, I feel mentally exhausted*",
+      "[Exhaustion] 3. After a day at work, I find it hard to recover my energy*",
+      "[Exhaustion] 4. At work, I feel physically exhausted*",
+      "[Mental distance] 9. I struggle to find any enthusiasm for my work*",
+      "[Mental distance] 11. I feel a strong aversion towards my job*",
+      "[Mental distance] 13. I’m cynical about what my work means to others*",
+      "[Cognitive impairment] 14. At work, I have trouble staying focused*",
+      "[Cognitive impairment] 17. When I’m working, I have trouble concentrating*",
+      "[Cognitive impairment] 18. I make mistakes in my work because I have my mind on other things*",
+      "[Emotional impairment] 19. At work, I feel unable to control my emotions*",
+      "[Emotional impairment] 20. I do not recognize myself in the way I react emotionally at work*",
+      "[Emotional impairment] 23. At work I may overreact unintentionally*"
+    ],
+    "items_note": "Краткая версия — 12 пунктов BAT-23, отмеченных звёздочкой на официальном бланке («Note: * = Short version»): пункты 1, 3, 4, 9, 11, 13, 14, 17, 18, 19, 20, 23 полной версии, по три на каждый основной симптом. Текст, ответы и инструкция — те же, что в карточке bat; в системе пункты идут в том же порядке и нумеруются 1–12. Вторичных симптомов в краткой версии нет: «no short version of this scale exists» (User Manual, примечание к Table 2).",
+    "anchors": [
+      {
+        "label": "Never",
+        "score": 1
+      },
+      {
+        "label": "Rarely",
+        "score": 2
+      },
+      {
+        "label": "Sometimes",
+        "score": 3
+      },
+      {
+        "label": "Often",
+        "score": 4
+      },
+      {
+        "label": "Always",
+        "score": 5
+      }
+    ],
+    "reverse": [],
+    "scoring": "Дословно, Test Manual v2.0, p. 102: «The average scores on the BAT scales are calculated by adding the scores on all items of a particular subscale and then divide this sum by the number of items of that scale. The following scoring categories are used: 1 \"never\", 2 \"rarely\", 3 \"sometimes\", 4 \"often\", and 5 \"always\". This means that the value of the average scale scores varies from 1 to 5. By adding the scores on all BAT items and dividing the sum by 23 (or by 12 for the short version), the total score is obtained, which also ranges between 1 and 5. The same procedure is followed for calculating the total score of the 10 secondary symptoms.» User Manual v2.0, §2.1: «…divide this sum score by the number of items - in this case 23 - and round to 2 decimals. The short version includes 12 items and therefore the sum scores should be divided by 12.» Обратных пунктов нет. Общий балл BAT-12 — среднее 12 пунктов (1–5). Подшкалы краткой версии в систему не заводятся: «For individual diagnostics it is recommended to use only the total score of the BAT-12 because particularly the sensitivity of the \"red\" cut-off values in is too low (see table 73 in the BAT Manual 2.0). Optionally, the \"orange\" cut-off values of the subscales of the BAT-12 can be used.» (User Manual v2.0, §2.2.2.1).",
+    "bands": [
+      {
+        "from": 1.0,
+        "to": 2.53,
+        "label_en": "Green — no risk of burnout"
+      },
+      {
+        "from": 2.54,
+        "to": 2.95,
+        "label_en": "Orange — at risk for burnout"
+      },
+      {
+        "from": 2.96,
+        "to": 5.0,
+        "label_en": "Red — very high risk of burnout"
+      }
+    ],
+    "bands_source": "Test Manual v2.0, Table 73 «Cut-off values, sensitivity, specificity, and AUC for Flanders»: Total BAT-12 — orange ≥ 2,54 (Se .90, Sp .83), red ≥ 2,96 (Se .72, Sp .91), AUC .93; User Manual v2.0, Table 6 «Cut-off values for Flemish employees (BAT-12)»: Green 1.00 – 2.53, Orange 2.54 – 2.95, Red 2.96 – 5.00. Тот же метод и та же клиническая группа, что у BAT-23. В репрезентативной фламандской выборке: «7.3% has a risk of burnout (orange score) and 9.3% suffers from serious burnt out complaints (red score), while 83.4% are in the safe zone (green score)». Дословно о применимости: «the BAT-12 can be used just as well as the longer version to screen employees for the occurrence of serious burn-out complaints» (Test Manual, p. 119). Украинских норм и порогов нет.",
+    "bands_note": "Среднее 12 пунктов — S/12 при целом S: 30/12 = 2,500 (зелёная), 31/12 = 2,583 (оранжевая), 35/12 = 2,917 (оранжевая), 36/12 = 3,000 (красная); ни одно значение не попадает в зазор между соседними границами. Severity — как у общего балла BAT-23: none / mild / moderate (красная зона открывает случай). Пороги BAT-12 ниже порогов BAT-23 (2,54 и 2,96 против 2,59 и 3,02): одинаковые ответы «Sometimes» на всё дают 3,0 — красную зону в BAT-12 и оранжевую в BAT-23. Это свойство опубликованных порогов, а не ошибка; повторные замеры одного человека сравнивать только внутри одной версии.",
+    "risk_items": [],
+    "risk_items_note": "Пунктов о суициде, самоповреждении или вреде другим нет.",
+    "translation": {
+      "uk": {
+        "exists": true,
+        "by": "официальный перевод на сайте правообладателя (BAT-Ukrainian.pdf, автор PDF — W. Schaufeli, август 2020)",
+        "free": true,
+        "url": "https://burnoutassessmenttool.be/wp-content/uploads/2020/08/BAT-Ukrainian.pdf",
+        "note": "Взят дословно, кроме явных опечаток: п. 6 «на робот,» → «на роботі,»; п. 14 «зосережденим(ною)» → «зосередженим(ною)»; в инструкции вопросительный знак в конце просьбы «Будь ласка, оцініть, як часто кожне твердження може бути застосоване до Вас?» заменён точкой. Лексика не тронута, в том числе русизм п. 23 «надто бурно реагувати» (норма — «бурхливо»): правообладатель запрещает изменения, замену решает клиницист. Отличия официального текста от английского: п. 7 «втомлююсь швидше, ніж зазвичай» (EN «I quickly get tired»), п. 17 «Мені важко зосереджуватись» без «When I’m working», п. 15 «безуспішно намагаюсь мислити ясно» (EN «struggle to think clearly») — так у правообладателя. Ответы: Ніколи / Рідко / Іноді / Часто / Завжди."
+      },
+      "ru": {
+        "exists": true,
+        "by": "официальный перевод на сайте правообладателя (BAT_Russian.pdf, автор PDF — W. Schaufeli, октябрь 2020)",
+        "free": true,
+        "url": "https://burnoutassessmenttool.be/wp-content/uploads/2020/11/BAT_Russian.pdf",
+        "note": "Взят дословно, кроме пунктуации: п. 10 «не задумываюсь, о том, что делаю» → «не задумываюсь о том, что делаю»; вторичный п. 9 «шеи, плеч, или спины» → «шеи, плеч или спины». Отличия официального текста от английского: п. 13 «Я сомневаюсь, что моя работа имеет для кого-то значение» (EN «I’m cynical about what my work means to others»), п. 14 «сложно оставаться собранным(ой)» (EN «trouble staying focused»), ответ 5 — «Постоянно» (EN «Always») — так у правообладателя. Ответы: Никогда / Редко / Иногда / Часто / Постоянно."
+      }
+    },
+    "example": {
+      "answers": [
+        "Все 12 пунктов «Sometimes» (3)"
+      ],
+      "total": 3.0,
+      "band": "Red (2.96–5.00)",
+      "note": "Арифметический пример: (3×12)/12 = 3,00 ≥ 2,96. Та же картина в BAT-23 даёт оранжевую зону (3,00 < 3,02) — разница порогов версий."
+    },
+    "example2": {
+      "answers": [
+        "Шесть пунктов «Rarely» (2) и шесть «Sometimes» (3): сумма 30",
+        "Пять «Rarely» (2) и семь «Sometimes» (3): сумма 31"
+      ],
+      "total": 2.5,
+      "band": "30/12 = 2.500 → Green; 31/12 = 2.583 → Orange",
+      "note": "Проверка нижней границы: соседние достижимые суммы по разные стороны порога 2,54."
+    },
+    "verdict": "завести — та же лицензия, тексты и метод порогов, что у BAT-23; краткая версия для повторного мониторинга и группового скрининга (руководство: для индивидуальной оценки лучше полная версия, у краткой — только общий балл)."
+  },
+  {
+    "key": "proqol5",
+    "title_en": "Professional Quality of Life Scale, version 5 (ProQOL 5): Compassion Satisfaction and Fatigue",
+    "title_uk": null,
+    "title_ru": "Шкала профессиональных жизненных качеств (PROQOL) — название перевода 2012 г. на сайте правообладателя; в систему этот перевод не взят (см. translation.ru)",
+    "authors": "Beth Hudnall Stamm; с 2016 г. права у Center for Victims of Torture (CVT, США)",
+    "year": 2009,
+    "citation": "Stamm BH. Professional Quality of Life: Compassion Satisfaction and Fatigue Version 5 (ProQOL). 2009. www.ProQOL.org. Руководство: Stamm BH. The Concise ProQOL Manual, 2nd Ed. Pocatello, ID: ProQOL.org, 2010. Бланк: https://img1.wsimg.com/blobby/go/dfc1e1a0-a1db-4456-9391-18746725179b/downloads/16e97b07-8840-44cd-9228-f1fb6e2af452/ProQOL_5_English.pdf; форма самооценки: https://img1.wsimg.com/blobby/go/dfc1e1a0-a1db-4456-9391-18746725179b/downloads/d166bd95-9656-4316-aed4-1e638bd194c8/ProQOL_5_English_Self-Score.pdf",
+    "license": {
+      "verdict": "свободна с условиями",
+      "quote": "Beth Hudnall Stamm (2009). Professional Quality of Life: Compassion Satisfaction and Fatigue Version 5 (ProQOL). www.ProQOL.org. This measure may be freely copied as long as (i) the author is credited, (ii) no changes are made, and (iii) that it is not sold. If changes are made beyond substituting more specific terms for [help] or [helper]. please refer to the measure as adapted. Visit ProQOL.org for the most current version. Ownership of the ProQOL measures transferred to the Center for Victims of Torture (CVT) in 2016.",
+      "url": "https://img1.wsimg.com/blobby/go/dfc1e1a0-a1db-4456-9391-18746725179b/downloads/16e97b07-8840-44cd-9228-f1fb6e2af452/ProQOL_5_English.pdf",
+      "quote_2": "The ProQOL measures (the ProQOL 5 and Health) may be freely copied and used, without individualized permission from the ProQOL office, as long as: You credit The Center for Victims of Torture and provide a link to www.ProQOL.org; It is not sold; and If you make any changes made from the original measure, beyond replacing \"[helper]\" with a more specific term such as \"nurse,\" please refer to the measure as adapted from the ProQOL. Note that the following situations are acceptable: You can reformat the ProQOL, including putting it in a virtual format; You can use the ProQOL as part of work you are paid to do, such as at a training: you just cannot sell the measure itself; You can use a selection of the subscales rather than the full measure",
+      "url_2": "https://survey.alchemer.com/s3/5005054/Permission-to-Use-the-ProQOL",
+      "conditions": "Указывать автора и CVT со ссылкой на www.ProQOL.org — стоит в `source` и в описании методики; не продавать; электронный формат прямо разрешён. Подстановка вместо [help]/[helper] («допомагати людям» / «помогать людям») — разрешённая правообладателем замена. Перевод — не изменение содержания: правообладатель публикует переводы и принимает новые языки («If you wish to use a language not listed here, please select \"Other\" and specify which language/s.»). Форма уведомления об использовании необязательна («ProQOL Use Notification (optional)»); учреждению рекомендуется её заполнить.",
+      "owner": "Center for Victims of Torture (CVT), www.cvt.org; www.ProQOL.org"
+    },
+    "items": [
+      "I am happy.",
+      "I am preoccupied with more than one person I [help].",
+      "I get satisfaction from being able to [help] people.",
+      "I feel connected to others.",
+      "I jump or am startled by unexpected sounds.",
+      "I feel invigorated after working with those I [help].",
+      "I find it difficult to separate my personal life from my life as a [helper].",
+      "I am not as productive at work because I am losing sleep over traumatic experiences of a person I [help].",
+      "I think that I might have been affected by the traumatic stress of those I [help].",
+      "I feel trapped by my job as a [helper].",
+      "Because of my [helping], I have felt \"on edge\" about various things.",
+      "I like my work as a [helper].",
+      "I feel depressed because of the traumatic experiences of the people I [help].",
+      "I feel as though I am experiencing the trauma of someone I have [helped].",
+      "I have beliefs that sustain me.",
+      "I am pleased with how I am able to keep up with [helping] techniques and protocols.",
+      "I am the person I always wanted to be.",
+      "My work makes me feel satisfied.",
+      "I feel worn out because of my work as a [helper].",
+      "I have happy thoughts and feelings about those I [help] and how I could help them.",
+      "I feel overwhelmed because my case [work] load seems endless.",
+      "I believe I can make a difference through my work.",
+      "I avoid certain activities or situations because they remind me of frightening experiences of the people I [help].",
+      "I am proud of what I can do to [help].",
+      "As a result of my [helping], I have intrusive, frightening thoughts.",
+      "I feel \"bogged down\" by the system.",
+      "I have thoughts that I am a \"success\" as a [helper].",
+      "I can't recall important parts of my work with trauma victims.",
+      "I am a very caring person.",
+      "I am happy that I chose to do this work."
+    ],
+    "items_note": "Дословно с официального PDF (ProQOL_5_English.pdf, страница https://proqol.org/proqol-measure). Шапка: «When you [help] people, you have direct contact with their lives. As you may have found, your compassion for those you [help] can affect you in positive and negative ways. Below are some questions about your experiences, both positive and negative, as a [helper]; note that the words [help] and [helper] can be replaced with more specific terms, such as [teach] and [teacher] or [nurse]. Consider each of the following questions about you and your current work situation. Select the number that honestly reflects how frequently you experienced these things in the last 30 days.» В системе [help]/[helper] заменены общими «допомагати людям» / «помогать людям»: персонал госпиталя — психологи, медики, командиры, одно слово вроде «медсестра» не подходит всем.",
+    "anchors": [
+      {
+        "label": "Never",
+        "score": 1
+      },
+      {
+        "label": "Rarely",
+        "score": 2
+      },
+      {
+        "label": "Sometimes",
+        "score": 3
+      },
+      {
+        "label": "Often",
+        "score": 4
+      },
+      {
+        "label": "Very Often",
+        "score": 5
+      }
+    ],
+    "reverse": [
+      1,
+      4,
+      15,
+      17,
+      29
+    ],
+    "scoring": "Форма самооценки (ProQOL_5_English_Self-Score.pdf), дословно: Compassion Satisfaction — «Copy your rating on each of these questions on to this table and add them up»: 3, 6, 12, 16, 18, 20, 22, 24, 27, 30. Burnout — «Starred items are \"reverse scored,\" meaning you should write in your rating, and then refer to the table below for how to score that question. For example, if you responded a 4 to question 1 \"I am happy\", that would be converted to a 2 for scoring»: *1, *4, 8, 10, *15, *17, 19, 21, 26, *29; таблица «Your rating 1 2 3 4 5 — For scoring, change to 5 4 3 2 1». Secondary Traumatic Stress: 2, 5, 7, 9, 11, 13, 14, 23, 25, 28. Руководство (2010, p. 15): «Step 1: Reverse items 1, 4, 15, 17, and 29 into 1r, 4r, 15r, 17r and 29r (1=5) (2=4) (3=3) (4=2) (5=1). Step 2: Sum the items for each subscale.» Step 3 (перевод в t-баллы) — «if this is something you wish to do within your own sample» — в систему не заводится. Каждая шкала 10–50; общего балла нет. Обратные пункты входят только в шкалу Burnout.",
+    "bands": [
+      {
+        "from": 10,
+        "to": 22,
+        "label_en": "Low"
+      },
+      {
+        "from": 23,
+        "to": 41,
+        "label_en": "Moderate"
+      },
+      {
+        "from": 42,
+        "to": 50,
+        "label_en": "High"
+      }
+    ],
+    "bands_source": "Форма самооценки правообладателя, таблица каждой из трёх шкал: «22 or less — Low; Between 23 and 41 — Moderate; 42 or more — High» — полосы одинаковы для CS, BO и STS. Обоснование — Concise ProQOL Manual (2010, p. 18): «The ProQOL measure is best used in its continuous form. However, many people prefer to have cut scores to indicate relative risks or protective factors. To address these needs, cut scores are provided. The cuts are set around the 25th and 75th percentiles based on the databank. They are potentially overly inclusive—that is they tend to Type 1 error… we do not recommend that the measure be used for anything other than screening, and we prefer from a statistical perspective, to use the continuous numbers.» И там же: «it is not a diagnostic test». FAQ правообладателя: «Please note that the measure is not to be used for diagnostic purposes, and thus, cut scores are typically not used.» (https://proqol.org/faq).",
+    "bands_note": "Расхождения внутри материалов правообладателя: руководство 2010 г. описывает пороги в t-баллах (43 и 57, «If your score is above 43…» у STS), русский перевод 2012 г. — устаревшую таблицу «43 или меньше / около 50 / 57 и больше». Сайт сам предупреждает: «Some translations contain outdated scoring language, mainly the \"so your score equals\" column… rely on the scoring in the English Self-Score version» (https://proqol.org/proqol-measure). Взяты сырые суммы актуальной английской формы самооценки. Severity — решение системы: «High» по Burnout и STS — mild, «Low» по Compassion Satisfaction — mild, остальное — none; случаев в очереди риска ProQOL не открывает: при пороге около 75-го перцентиля в верхнюю полосу по построению попадает каждый четвёртый, и правообладатель называет пороги «potentially overly inclusive».",
+    "risk_items": [],
+    "risk_items_note": "Пунктов о суициде, самоповреждении или вреде другим нет. Руководство (p. 18): «A high score on either burnout or secondary traumatic stress, or a high score on both with a low score on compassion satisfaction, can be an augury of clinical depression that deserves treatment» — повод для клинической оценки, а не автоматическая тревога.",
+    "translation": {
+      "uk": {
+        "exists": false,
+        "by": null,
+        "free": null,
+        "url": "https://proqol.org/proqol-measure",
+        "note": "Украинского перевода ProQOL 5 у правообладателя нет (список переводов на странице измерения, октябрь 2026). Украинский текст есть у другого инструмента — ProQOL Health (см. карточку proqol_health). Перевод рабочий."
+      },
+      "ru": {
+        "exists": true,
+        "by": "перевод 2012 г. на сайте правообладателя (Russian.pdf; в метаданных PDF — «ProQOL5_RussianTranslation», автор «BHS»)",
+        "free": true,
+        "url": "https://img1.wsimg.com/blobby/go/dfc1e1a0-a1db-4456-9391-18746725179b/downloads/Russian.pdf",
+        "note": "НЕ взят — смысловые ошибки, меняющие шкалы: п. 2 «Я помогаю двум или более людям» вместо «I am preoccupied with more than one person I [help]» (пункт STS превращён в вопрос о числе подопечных — почти любой медик ответит «очень часто»); п. 19 «Меня тревожит моя работа помощника» вместо «I feel worn out because of my work as a [helper]» (пункт выгорания стал пунктом тревоги); пп. 8, 9, 13 потеряли слово «травматический» («трудностей, которые проходит человек», «стресс тех людей», «из-за переживаний людей»); шкала STS названа «средний травматический стресс»; таблица подсчёта — устаревшие t-баллы. Один пункт на двух языках интерфейса обязан мерить одно и то же, а украинского официального текста нет; поэтому и украинский, и русский — рабочие переводы английского оригинала. Официальный русский PDF сохранён здесь ссылкой для сверки клиницистом."
+      }
+    },
+    "example": {
+      "answers": [
+        "Все 30 пунктов «Sometimes» (3)"
+      ],
+      "total": 30,
+      "band": "CS 30 → Moderate; BO 30 → Moderate (обратные 3 → 3); STS 30 → Moderate",
+      "note": "Арифметический пример: 10 × 3 = 30 по каждой шкале; у обратных пунктов «Sometimes» остаётся 3."
+    },
+    "example2": {
+      "answers": [
+        "Пункты CS (3, 6, 12, 16, 18, 20, 22, 24, 27, 30) — «Very Often» (5)",
+        "Прямые пункты BO (8, 10, 19, 21, 26) — «Never» (1); обратные пункты BO (1, 4, 15, 17, 29) — «Very Often» (5)",
+        "Пункты STS — «Never» (1)"
+      ],
+      "total": 10,
+      "band": "BO = 5×1 + 5×(6−5) = 10 → Low; CS = 50 → High; STS = 10 → Low",
+      "note": "Проверка обратного ключа: «Very Often» на «I am happy» и других обратных пунктах снижает выгорание. Без реверса тот же набор дал бы BO = 5×1 + 5×5 = 30 («Moderate») — на это и рассчитан пример."
+    },
+    "verdict": "завести — правообладатель (CVT) разрешает свободное копирование и электронный формат при указании автора, ссылке на www.ProQOL.org и без продажи; полосы — с актуальной английской формы самооценки (скрининг, не диагноз); перевод рабочий: украинского ProQOL 5 нет, русский 2012 г. с сайта правообладателя не взят из-за смысловых ошибок."
+  },
+  {
+    "key": "mios",
+    "title_en": "Moral Injury Outcome Scale (MIOS), brief clinical version",
+    "title_uk": null,
+    "title_ru": null,
+    "authors": "Brett T. Litz, Rachel A. Plouffe, Anthony Nazarov, Dominic Murphy, Andrea Phelps, Alanna Coady, Stephanie A. Houle, Lisa Dell, Sheila Frankfurt, Gadi Zerach, Yossi Levi-Belz и Moral Injury Outcome Scale Consortium (США, Канада, Великобритания, Австралия, Израиль)",
+    "year": 2022,
+    "citation": "Litz BT, Plouffe RA, Nazarov A, Murphy D, Phelps A, Coady A, Houle SA, Dell L, Frankfurt S, Zerach G, Levi-Belz Y; Moral Injury Outcome Scale Consortium. Defining and Assessing the Syndrome of Moral Injury: Initial Findings of the Moral Injury Outcome Scale Consortium. Front Psychiatry. 2022;13:923928. doi:10.3389/fpsyt.2022.923928. Бланк: «The Moral Injury Outcome Scale (2021). Litz, B.T., Phelps, A., Frankfurt, S., Murphy, D. Nazarov, A. Houle, S., Levi-Belz, Y., Zerach, G., Dell, L., Hosseiny, F., and the members of the Moral Injury Outcome Scale (MIOS) Consortium» — краткая клиническая версия https://sites.bu.edu/litzlab/files/2023/05/Brief-MIOS.pdf, исследовательская https://sites.bu.edu/litzlab/files/2023/05/Moral-Injury-Outcome-Scale-_Research-form.pdf. Валидация на медсёстрах: Validation of the Moral Injury Outcome Scale in acute care nurses (2023), https://www.ncbi.nlm.nih.gov/pmc/articles/PMC10716276/.",
+    "license": {
+      "verdict": "свободна",
+      "quote": "The final research version and the brief clinical versions of the MIOS are presented in the Supplementary Material (the MIOS is a public domain scale), along with scoring instructions.",
+      "url": "https://www.frontiersin.org/journals/psychiatry/articles/10.3389/fpsyt.2022.923928/full",
+      "quote_2": "Copyright © 2022 Litz, Plouffe, Nazarov, Murphy, Phelps, Coady, Houle, Dell, Frankfurt, Zerach, Levi-Belz and the Moral Injury Outcome Scale Consortium. This is an open-access article distributed under the terms of the Creative Commons Attribution License (CC BY). The use, distribution or reproduction in other forums is permitted, provided the original author(s) and the copyright owner(s) are credited and that the original publication in this journal is cited, in accordance with accepted academic practice.",
+      "conditions": "Шкала объявлена авторами общественным достоянием; статья с бланками — CC BY 4.0 (условие — указать авторов и публикацию; стоит в `source` и в описании методики).",
+      "owner": "MIOS Consortium (B. T. Litz, Boston University / VA Boston Healthcare System)"
+    },
+    "items": [
+      "[Gate] This questionnaire asks about experiences you may have had after a very stressful experience in which you: (A) did something (or failed to do something) that went against your moral code or values; or (B) you saw someone (or people) do something or fail to do something that went against your moral code or values; or (C) you were directly affected by someone doing something or failing to do something that went against your moral code or values (e.g., being betrayed by someone you trusted). Have you had at least one experience like this that troubles you currently? ___Yes ___No",
+      "[Type, not scored] If yes, please check the type of experience that is most currently distressing: ___A ___B ___C If more than one, check all that apply.",
+      "1. I blame myself.",
+      "2. I have lost faith in humanity.",
+      "3. People would hate me if they really knew me.",
+      "4. I have trouble seeing goodness in others.",
+      "5. People don’t deserve second chances.",
+      "6. I am disgusted by what happened.",
+      "7. I feel like I don’t deserve a good life.",
+      "8. I keep myself from having success.",
+      "9. I no longer believe there is a higher power.",
+      "10. I lost trust in others.",
+      "11. I am angry all the time.",
+      "12. I am not the good person I thought I was.",
+      "13. I have lost pride in myself.",
+      "14. I cannot be honest with other people."
+    ],
+    "items_note": "Дословно с краткой клинической версии правообладателя (Brief-MIOS.pdf, Litz Lab, Boston University). Первые два элемента — отсеивающий вопрос и тип события; правообладатель: «The first question is a dichotomous yes/no to determine whether an individual should complete the MIOS. Persons who answer no should not complete the MIOS. The next question determines which type of moral injury experience(s) is most currently distressing. These initial questions are not scored.» Стем пунктов 1–14: «Keeping this experience in mind, please indicate how much you agree with the following statements in terms of the impact of this experience in the last month». В системе пункты 1–14 — позиции 3–16. Восемь пунктов функционирования, которые на бланке идут после MIOS («The Brief Inventory of Psychosocial Functioning (Kleiman et al., 2020)», 0–6 и N/A), в систему НЕ заведены: это отдельная методика, а её формула на бланке противоречит сама себе («Sum responses for all answered items. Divide by the total number of items answered. Multiply by 100. [range 0-60]» — такая формула даёт 0–600); категорий у неё правообладатель тоже не даёт. Пункт 9 в исследовательской версии из приложения к статье записан как «There is no higher power.»; на актуальных бланках Litz Lab (краткая и исследовательская, 2023) — «I no longer believe there is a higher power.»; взят актуальный. Исследовательская версия дополнительно содержит год события, критерий A и пункты PC-PTSD-5 — они не входят в балл, PC-PTSD-5 есть в каталоге отдельной методикой.",
+    "anchors": [
+      {
+        "label": "Strongly Disagree",
+        "score": 0
+      },
+      {
+        "label": "Disagree",
+        "score": 1
+      },
+      {
+        "label": "Neither Agree or Disagree",
+        "score": 2
+      },
+      {
+        "label": "Agree",
+        "score": 3
+      },
+      {
+        "label": "Strongly Agree",
+        "score": 4
+      }
+    ],
+    "reverse": [],
+    "scoring": "Дословно, бланк краткой версии («Scoring for the Moral Injury Outcome Scale (MIOS)»): «The 14-item MIOS is comprised of two subscales, and scale scores are indexed by the sum of item scores as follows: 1. Subscale 1: Shame-related Outcomes – items 1, 3, 7, 8, 12, 13, 14 [range 0-28] 2. Subscale 2: Trust Violation-related Outcomes – items 2, 4, 5, 6, 9, 10, 11 [range 0-28] 3. Total Score: all items [range 0-56] Higher scores indicate greater levels of current moral injury.» Разбиение подтверждено статьёй (Table 2, факторные нагрузки). При ответе «No» на отсеивающий вопрос пункты не задаются, и система показывает 0 по всем трём шкалам (пункт, скрытый условием, в знаменатель доли не идёт) — решение системы; правообладатель пишет лишь «Persons who answer no should not complete the MIOS».",
+    "bands": null,
+    "bands_source": "ПОЛОС НЕТ. Бланк краткой версии (Litz Lab, 2023), дословно: «Higher scores indicate greater levels of current moral injury. There are currently no proposed scoring categories or cut offs.» Отдельный документ той же лаборатории («Moral Injury Outcome Scale (MIOS): Scoring Instructions and Preliminary Recommendations for Determining Extent of Moral Injury (March 2022)», https://sites.bu.edu/litzlab/files/2023/05/Moral-Injury-Outcome-Scale-MIOS-Scoring-Instructions-and-Preliminary-Recommendations-for-Determining-Extent-of-Moral-Injury-June-2022.pdf) предлагает «With respect to symptom severity, the following categorization is offered as a guide: 14-28 = mild; 29-42 = moderate; 43-56 = severe» и «In the Australian sample used in the MIOS validation study, a score of 37 or above on the MIOS (1 standard deviation above the mean) was associated with functional impairment and so this score can be considered to indicate probable MI in this sample. However, the score associated with MI \"caseness\" may differ across different study populations and further research is required to establish the optimal severity score across populations.»",
+    "bands_note": "Правообладатель противоречит сам себе (категории «as a guide» в одном документе, «no proposed scoring categories or cut offs» на более позднем бланке), а единственная отсечка относится к одной выборке австралийских ветеранов — полосы не заводятся, как у PSS-10. Показываются сырые баллы: общий 0–56 и подшкалы 0–28. Ориентиры для сравнения (Litz et al. 2022, Table 3): средний общий балл в выборках военных и ветеранов 25,1–32,9 (SD 9,1–11,4).",
+    "risk_items": [],
+    "risk_items_note": "Пунктов о суициде, самоповреждении или вреде другим нет. Ближе всего — п. 7 «I feel like I don’t deserve a good life» и п. 8 «I keep myself from having success» (домен «Self-harming / Self-sabotaging», Table S2 консорциума), п. 11 «I am angry all the time». Правила тревоги по ним у правообладателя нет, поэтому флага риска нет; лишний флаг без правила первоисточника приучает не читать тревоги. Клиницисту — подтвердить это решение для п. 7.",
+    "translation": {
+      "uk": {
+        "exists": false,
+        "by": null,
+        "free": null,
+        "url": null,
+        "note": "Официального украинского перевода у правообладателя нет (Litz Lab, MIOS Consortium; поиск октябрь 2026). Перевод рабочий."
+      },
+      "ru": {
+        "exists": false,
+        "by": null,
+        "free": null,
+        "url": null,
+        "note": "Официального русского перевода нет. Перевод рабочий."
+      }
+    },
+    "example": {
+      "answers": [
+        "Отсеивающий вопрос — «Yes», тип — A",
+        "Все 14 пунктов «Neither Agree or Disagree» (2)"
+      ],
+      "total": 28,
+      "band": null,
+      "note": "Арифметический пример: 14 × 2 = 28; подшкалы по 7 × 2 = 14. Полосу не присваивать — у методики её нет."
+    },
+    "example2": {
+      "answers": [
+        "«Yes»; пункты стыда (1, 3, 7, 8, 12, 13, 14) — «Strongly Agree» (4); пункты подорванного доверия (2, 4, 5, 6, 9, 10, 11) — «Strongly Disagree» (0)",
+        "«No» на отсеивающий вопрос — пункты не задаются"
+      ],
+      "total": 28,
+      "band": null,
+      "note": "Проверка разбиения на подшкалы: стыд 28, доверие 0, общий 28. Если ключ подшкал перепутан, стыд и доверие поменяются местами или разойдутся с 28/0. При «No» все три балла — 0 (пункты не задавались)."
+    },
+    "verdict": "завести без полос — авторы объявили шкалу общественным достоянием, статья с бланком под CC BY; категорий и порогов правообладатель на бланке не предлагает, а в отдельном руководстве противоречит этому — поэтому только сырые баллы; перевод рабочий; результат человеку не показывается."
+  },
+  {
+    "key": "proqol_health",
+    "title_en": "Professional Quality of Life Scale for Health Workers (ProQOL Health), Version 1",
+    "title_uk": "Шкала (опитувальник) оцінки якості життя для професійних медичних працівників",
+    "title_ru": "Шкала профессионального качества жизни для медработников («ProQOL – Здравоохранение»)",
+    "authors": "Center for Victims of Torture (CVT)",
+    "year": 2021,
+    "citation": "Center for Victims of Torture (CVT) (2021). Professional Quality of Life: Health Worker, Version 1. Бланк: https://img1.wsimg.com/blobby/go/dfc1e1a0-a1db-4456-9391-18746725179b/downloads/ProQOL%20Health%20-%20Ver%201_branded.pdf; руководство: Manual — ProQOL Health (26.11.2021), https://img1.wsimg.com/blobby/go/dfc1e1a0-a1db-4456-9391-18746725179b/downloads/Manual%20-%20ProQOL%20Health_11.26.21.pdf",
+    "license": {
+      "verdict": "свободна с условиями",
+      "quote": "Center for Victims of Torture (CVT) (2021). Professional Quality of Life: Health Worker, Version 1. This test may be freely copied as long as (a) the author is credited, (b) no changes are made, and (c) it is not sold.",
+      "url": "https://img1.wsimg.com/blobby/go/dfc1e1a0-a1db-4456-9391-18746725179b/downloads/ProQOL%20Health%20-%20Ver%201_branded.pdf",
+      "conditions": "Лицензия та же, что у ProQOL 5, — препятствием не является. Препятствие — валидация (см. verdict).",
+      "owner": "Center for Victims of Torture (CVT)"
+    },
+    "items": null,
+    "items_note": "Устройство (бланк и руководство правообладателя): 30 пунктов, ответы 1–5 (Never … Very Often), пять шкал по 6 пунктов — Compassion Satisfaction 1, 6, 21, 24, 27, 30; Perceived Support 5, 11, 13, 18, 23, 25; Burnout 8, 15, 19, 20, 22, 29; Secondary Traumatic Stress 3, 7, 10, 12, 16, 26; Moral Distress 2, 4, 9, 14, 17, 28; полосы «12 or less — Low; From 13 to 23 — Average; 24 or more — High». Текст пунктов здесь не приводится: методика не заводится. В руководстве — ошибка копирования: у Perceived Support шаг подсчёта перечисляет пункты Compassion Satisfaction («Add together the points associated with responses to items 1, 6, 21, 24, 27, and 30»), хотя абзацем выше и на бланке — 5, 11, 13, 18, 23, 25; в таблицах руководства верхняя полоса — «More than 24», в тексте и на бланке — «24 or more».",
+    "anchors": null,
+    "reverse": null,
+    "scoring": null,
+    "bands": null,
+    "bands_source": "Дословно с бланка правообладателя: «The ProQOL-Health is still under development. We are still collecting data so that you can compare your scores to those of other health workers doing similar work. The indicators or low, medium and high levels should be used only as a rough guide.» Психометрических данных (надёжность, факторная структура) в руководстве нет; опубликованной валидации не найдено (поиск октябрь 2026). В Украине инструмент применялся описательно — у медперсонала военных лечебно-реабилитационных учреждений (Eastern Ukrainian Medical Journal, СумДУ, https://eumj.med.sumdu.edu.ua/index.php/journal/article/view/624), без психометрической проверки.",
+    "risk_items": null,
+    "risk_items_note": null,
+    "translation": {
+      "uk": {
+        "exists": true,
+        "by": "официальный перевод на сайте правообладателя (ProQOL Health - UKR updated version v2.pdf, май 2023)",
+        "free": true,
+        "url": "https://img1.wsimg.com/blobby/go/dfc1e1a0-a1db-4456-9391-18746725179b/downloads/ProQOL%20Health%20-%20UKR%20updated%20version%20v2.pdf",
+        "note": "Есть — это главный довод вернуться к методике, когда появится валидация."
+      },
+      "ru": {
+        "exists": true,
+        "by": "официальный перевод на сайте правообладателя (ProQOL Health Measure-RUS.pdf, 2023)",
+        "free": true,
+        "url": "https://img1.wsimg.com/blobby/go/dfc1e1a0-a1db-4456-9391-18746725179b/downloads/ProQOL%20Health%20Measure-RUS.pdf",
+        "note": "Есть."
+      }
+    },
+    "example": null,
+    "example_note": "Проверочный пример не нужен: методика не заводится.",
+    "verdict": "не заводить — правообладатель сам называет инструмент находящимся в разработке, а полосы — «rough guide»; психометрической валидации не опубликовано, в руководстве ошибка в ключе одной шкалы. Вернуться, когда CVT опубликует валидацию: у ProQOL Health есть официальные украинский и русский тексты и шкала морального дистресса для медиков. Пока вместо него — ProQOL 5 (валидирован) и MIOS."
+  },
+  {
+    "key": "mids",
+    "title_en": "Moral Injury and Distress Scale (MIDS)",
+    "title_uk": null,
+    "title_ru": null,
+    "authors": "Sonya B. Norman, Brandon J. Griffin, Robert H. Pietrzak, Carmen P. McLean, Jessica L. Hamblen, Shira Maguen (VA National Center for PTSD)",
+    "year": 2023,
+    "citation": "Norman SB, Griffin BJ, Pietrzak RH, McLean C, Hamblen JL, Maguen S. The Moral Injury and Distress Scale: Psychometric evaluation and initial validation in three high-risk populations. Psychol Trauma. 2024;16(2):280-291. doi:10.1037/tra0001533. Порог: Maguen S, Griffin BJ, Pietrzak RH, McLean CP, Hamblen JL, Norman SB. Using the Moral Injury and Distress Scale to identify clinically meaningful moral injury. J Trauma Stress. 2024;37(4):685-696. doi:10.1002/jts.23050. Бланк: «Moral Injury and Distress Scale (MIDS). Version date: 2023», https://www.ptsd.va.gov/professional/assessment/documents/NCPTSD_MIDS.pdf",
+    "license": {
+      "verdict": "свободна",
+      "quote": "This measure was created by staff at VA's National Center for PTSD. / Pursuant to federal law, government-produced materials appearing on this and other VA websites are not copyright protected.",
+      "url": "https://www.ptsd.va.gov/professional/assessment/te-measures/mids.asp ; https://department.va.gov/copyright-policy/",
+      "conditions": "Создана сотрудниками Национального центра ПТСР (VA), прямая загрузка с сайта VA; материалы правительства США копирайтом не защищены. Сайт: «These measures are intended for use by qualified mental health professionals and researchers.»",
+      "owner": "U.S. Department of Veterans Affairs, National Center for PTSD"
+    },
+    "items": [
+      "[Part One, exposure, 0–4] 1. I acted in ways that violated my own morals or values.",
+      "[Part One] 1a. I am bothered by what I did.",
+      "[Part One] 2. I violated my own morals or values by failing to do something I should have done.",
+      "[Part One] 2a. I am bothered by what I did not do.",
+      "[Part One] 3. I saw things that violated my own morals or values.",
+      "[Part One] 3a. I am bothered by what I saw.",
+      "[Part Two, «Because of what I did, failed to do, or witnessed that went against my morals and values…», 0–4] 1. I think about how I should have been able to do more.",
+      "[Part Two] 2. I have withdrawn from others more often.",
+      "[Part Two] 3. I feel guilty.",
+      "[Part Two] 4. I doubt my own judgement.",
+      "[Part Two] 5. I do not feel like I deserve to be happy.",
+      "[Part Two] 6. I self-sabotage things in my life more often (relationships, things at work).",
+      "[Part Two] 7. I feel helpless.",
+      "[Part Two] 8. My life feels like it has less purpose.",
+      "[Part Two] 9. I am worried that bad things will happen to me or my loved ones.",
+      "[Part Two] 10. I have punished myself.",
+      "[Part Two] 11. I feel disgusted.",
+      "[Part Two] 12. I do not seek support because I feel like I do not deserve it.",
+      "[Part Two] 13. I do not seek support because I worry others would not understand.",
+      "[Part Two] 14. I feel betrayed by leaders or institutions.",
+      "[Part Two] 15. I feel powerless.",
+      "[Part Two] 16. I should not be forgiven.",
+      "[Part Two] 17. My spirituality/faith is no longer a source of comfort.",
+      "[Part Two] 18. I do not take good care of myself."
+    ],
+    "items_note": "Дословно с бланка VA (NCPTSD_MIDS.pdf). Между частями — открытые вопросы о событии ((a) описание, (b) что больше всего расстраивает, (c) что хотелось бы сделать иначе), частота и давность события — в балл не входят. Ответы: Not at all 0, A little 1, Moderately 2, Quite a bit 3, Extremely 4. Бланк: «If all answers equaled 0, skip the rest of this questionnaire.»",
+    "anchors": [
+      {
+        "label": "Not at all",
+        "score": 0
+      },
+      {
+        "label": "A little",
+        "score": 1
+      },
+      {
+        "label": "Moderately",
+        "score": 2
+      },
+      {
+        "label": "Quite a bit",
+        "score": 3
+      },
+      {
+        "label": "Extremely",
+        "score": 4
+      }
+    ],
+    "reverse": [],
+    "scoring": "Дословно со страницы VA: «If respondents endorsed one or more of the PMIE items (i.e., greater than not at all for any item), they are prompted to complete Part Two of the MIDS, which includes 18 questions… Item responses are aggregated into a sum score, such that higher scores indicate greater severity of moral distress. Respondents who did not endorse any of the Part One items are scored zero on Part Two of the MIDS.» Диапазон 0–72 (Maguen et al. 2024).",
+    "bands": [
+      {
+        "from": 0,
+        "to": 26,
+        "label_en": "Below cut score"
+      },
+      {
+        "from": 27,
+        "to": 72,
+        "label_en": "Clinically meaningful and impairing moral injury (cut score 27)"
+      }
+    ],
+    "bands_source": "Maguen et al. 2024 (J Trauma Stress), дословно из аннотации: «The most efficient cut scores across outcomes converged between 24 and 27. We recommend a cut score of 27 given that roughly 70% of participants who screened positive on the MIDS at this threshold reported clinically significant mental health symptoms, and approximately 50% reported severe trauma-related guilt and/or functional impairment.» Выборка — 645 человек с PMIE: 34 % ветераны, 36 % медработники, 30 % первые реагирующие (VA CTU-Online, июнь 2024: «The investigators recommended 27 as a cutoff score… it is important to remember that optimal cutoff scores may vary across populations»). Страница VA (обновлена 25.03.2025) при этом всё ещё пишет «At this point, there is not yet a cut score for the MIDS», хотя ссылается на эту же статью.",
+    "risk_items": [],
+    "risk_items_note": "Пунктов о суициде нет; п. 10 «I have punished myself» и п. 18 «I do not take good care of myself» — клиницисту решить, нужен ли флаг риска, если методику заведут.",
+    "translation": {
+      "uk": {
+        "exists": null,
+        "by": null,
+        "free": null,
+        "url": null,
+        "note": "Не проверялся: методика не заводится."
+      },
+      "ru": {
+        "exists": null,
+        "by": null,
+        "free": null,
+        "url": null,
+        "note": "Не проверялся: методика не заводится."
+      }
+    },
+    "example": null,
+    "example_note": "Проверочный пример не нужен: методика не заводится.",
+    "verdict": "не заводить пока — лицензия (VA, общественное достояние) и порог 27 проверяемы, и это лучший кандидат для медиков (36 % валидационной выборки — медработники). Препятствие — движок: часть 2 по правилу правообладателя задаётся, только если ХОТЯ БЫ ОДИН из шести пунктов части 1 больше нуля, иначе балл 0; условия показа в системе соединяются только через «И» (packages/shared/src/scoring.ts, isQuestionVisible: «все правила должны выполняться»), а матричный вопрос как источник условия не умеет генератор листов сверки (apps/api/src/instrumentSheets/examples.ts строит ответы только для single/yesno). Без этого правила либо люди без морально травмирующего события заполняют 18 пунктов и могут получить ложный сигнал ≥ 27, либо пришлось бы выдумать отсеивающий вопрос, которого на бланке нет. Завести после поддержки условий «ИЛИ» (или матрицы в генераторе листов)."
+  },
+  {
+    "key": "uwes9",
+    "title_en": "Utrecht Work Engagement Scale, 9-item version (UWES-9)",
+    "title_uk": null,
+    "title_ru": null,
+    "authors": "Wilmar B. Schaufeli, Arnold B. Bakker",
+    "year": 2003,
+    "citation": "Schaufeli WB, Bakker AB. Utrecht Work Engagement Scale: Preliminary Manual, Version 1.1. Occupational Health Psychology Unit, Utrecht University, 2004; Schaufeli WB, Bakker AB, Salanova M. The measurement of work engagement with a short questionnaire: A cross-national study. Educ Psychol Meas. 2006;66(4):701-716. doi:10.1177/0013164405282471.",
+    "license": {
+      "verdict": "лицензируется",
+      "quote": "© Schaufeli & Bakker (2003). The Utrecht Work Engagement Scale is free for use for non-commercial scientific research. Commercial and/or non-scientific use is prohibited, unless previous written permission is granted by the authors.",
+      "url": "https://www.wilmarschaufeli.nl/publications/Schaufeli/Test%20Manuals/Test_manual_UWES_English.pdf",
+      "conditions": "Свободно только для некоммерческих научных исследований. Скрининг персонала в клинической системе — ненаучное использование; без письменного разрешения авторов запрещено.",
+      "owner": "W. B. Schaufeli, A. B. Bakker"
+    },
+    "items": null,
+    "items_note": "Текст пунктов не приводится: без письменного разрешения авторов воспроизводить его в системе нельзя.",
+    "anchors": null,
+    "reverse": null,
+    "scoring": null,
+    "bands": null,
+    "bands_source": null,
+    "risk_items": null,
+    "risk_items_note": null,
+    "translation": {
+      "uk": {
+        "exists": null,
+        "by": null,
+        "free": null,
+        "url": null,
+        "note": "Не проверялся: методика не заводится."
+      },
+      "ru": {
+        "exists": null,
+        "by": null,
+        "free": null,
+        "url": null,
+        "note": "Не проверялся: методика не заводится."
+      }
+    },
+    "example": null,
+    "example_note": "Проверочный пример не нужен: методика не заводится.",
+    "verdict": "не заводить — правообладатель разрешает только некоммерческое научное использование, «non-scientific use is prohibited» без письменного разрешения. Свободной валидированной шкалы вовлечённости с явным разрешением не найдено; положительную сторону работы помогающих профессий частично покрывает шкала Compassion Satisfaction в ProQOL 5."
+  },
+  {
+    "key": "olbi",
+    "title_en": "Oldenburg Burnout Inventory (OLBI)",
+    "title_uk": null,
+    "title_ru": null,
+    "authors": "Evangelia Demerouti, Arnold B. Bakker (и соавт.)",
+    "year": 2003,
+    "citation": "Demerouti E, Bakker AB, Vardakou I, Kantas A. The convergent validity of two burnout instruments: A multitrait-multimethod analysis. Eur J Psychol Assess. 2003;19(1):12-23. doi:10.1027//1015-5759.19.1.12; Demerouti E, Bakker AB, Nachreiner F, Schaufeli WB. The job demands-resources model of burnout. J Appl Psychol. 2001;86(3):499-512. doi:10.1037/0021-9010.86.3.499.",
+    "license": {
+      "verdict": "неясно",
+      "quote": "Заявления правообладателя о свободном использовании не найдено: ни в статьях, ни на страницах авторов. Формулировка «free alternative to the commercially licensed Maslach Burnout Inventory» встречается только на сторонних сайтах; авторы китайской валидации пишут, что получали разрешение: «after obtaining the copyright by contacting with the author». Сайт A. B. Bakker с опросниками отдаёт 403 и, по данным поиска, требует входа для «copyright-protected questionnaires».",
+      "url": "https://www.arnoldbakker.com/questionnaires-details",
+      "conditions": "Нужен письменный ответ E. Demerouti (TU Eindhoven).",
+      "owner": "E. Demerouti, A. B. Bakker"
+    },
+    "items": null,
+    "items_note": "Текст пунктов не приводится: разрешение правообладателя не подтверждено. Вторичные источники к тому же расходятся в порядке пунктов и в перечне обратных.",
+    "anchors": null,
+    "reverse": null,
+    "scoring": null,
+    "bands": null,
+    "bands_source": null,
+    "risk_items": null,
+    "risk_items_note": null,
+    "translation": {
+      "uk": {
+        "exists": null,
+        "by": null,
+        "free": null,
+        "url": null,
+        "note": "Не проверялся: методика не заводится."
+      },
+      "ru": {
+        "exists": null,
+        "by": null,
+        "free": null,
+        "url": null,
+        "note": "Не проверялся: методика не заводится."
+      }
+    },
+    "example": null,
+    "example_note": "Проверочный пример не нужен: методика не заводится.",
+    "verdict": "не заводить — заявления правообладателя о свободном использовании нет, переводчики получали разрешение у автора; без письменного разрешения текст выдумывать нельзя. Выгорание покрывают BAT (явная свободная лицензия, официальные украинский и русский тексты) и CBI."
+  },
+  {
+    "key": "miniz",
+    "title_en": "Mini Z burnout survey (Mini Z 2.0)",
+    "title_uk": null,
+    "title_ru": null,
+    "authors": "Mark Linzer и группа Hennepin Healthcare Institute for Professional Worklife (Миннеаполис, США)",
+    "year": 2015,
+    "citation": "Mini Z (Hennepin Healthcare Institute for Professional Worklife, www.professionalworklife.com). Происхождение пунктов — по колонтитулу бланка: «Questions drawn mainly from the Physician Worklife Study, MEMO study, and Healthy Workplace study.»",
+    "license": {
+      "verdict": "свободна с условиями",
+      "quote": "The Mini Z was developed by Dr. Mark Linzer and team at Hennepin Healthcare, Minneapolis MN. The mini Z survey tools can be used for research, program evaluation and education capacities without restriction. Permission for commercial or revenue-generating applications of the mini Z must be obtained from Mark Linzer, MD or the Hennepin Healthcare Institute for Professional Worklife prior to use: www.professionalworklife.com.",
+      "url": "https://nachc.org/wp-content/uploads/2023/10/Mini-Z_general_with-scoring-inclusive.docx (колонтитул бланка — текст правообладателя; страница https://www.professionalworklife.com/mini-z-survey собирается скриптом и без браузера пуста)",
+      "conditions": "Без ограничений — только исследования, оценка программ и обучение. Индивидуальный скрининг сотрудника в клинической системе в этот перечень не входит; нужен письменный ответ IPW.",
+      "owner": "Hennepin Healthcare Institute for Professional Worklife"
+    },
+    "items": null,
+    "items_note": "Текст пунктов не приводится. По существу: это анкета организационного климата для анонимной групповой обратной связи (10 пунктов: удовлетворённость, стресс, один пункт о выгорании 1–5, контроль нагрузки, время на документацию, хаос, ценности руководства, команда, работа дома или ЭМК, раздражение), в обращении несколько вариантов (с пунктами об электронной медкарте и «inclusive»), индивидуальной интерпретации, кроме пункта о выгорании («responses 3-5 = burnout»), нет.",
+    "anchors": null,
+    "reverse": null,
+    "scoring": null,
+    "bands": null,
+    "bands_source": null,
+    "risk_items": null,
+    "risk_items_note": null,
+    "translation": {
+      "uk": {
+        "exists": null,
+        "by": null,
+        "free": null,
+        "url": null,
+        "note": "Не проверялся: методика не заводится."
+      },
+      "ru": {
+        "exists": null,
+        "by": null,
+        "free": null,
+        "url": null,
+        "note": "Не проверялся: методика не заводится."
+      }
+    },
+    "example": null,
+    "example_note": "Проверочный пример не нужен: методика не заводится.",
+    "verdict": "не заводить — разрешение правообладателя покрывает исследования, оценку программ и обучение, а не индивидуальный скрининг в клинической системе; это организационная анкета под американское здравоохранение с несколькими вариантами текста. Если учреждению нужна оценка климата отделений — запросить IPW письменно."
+  },
+  {
+    "key": "stss",
+    "title_en": "Secondary Traumatic Stress Scale (STSS)",
+    "title_uk": null,
+    "title_ru": null,
+    "authors": "Brian E. Bride, Margaret M. Robinson, Bonnie Yegidis, Charles R. Figley",
+    "year": 2004,
+    "citation": "Bride BE, Robinson MM, Yegidis B, Figley CR. Development and validation of the Secondary Traumatic Stress Scale. Res Soc Work Pract. 2004;14(1):27-35. doi:10.1177/1049731503254106.",
+    "license": {
+      "verdict": "лицензируется",
+      "quote": "Заявления правообладателя о свободном использовании не найдено. Распространяемые копии бланка несут строку «Used with permission from Brian E. Bride 1999©» — то есть шкала под авторским правом Б. Брайда и используется по его разрешению.",
+      "url": "https://na.eventscloud.com/file_uploads/4c870d4159209949c276a1d4d07a0551_3013.2-McCall-Handout1.pdf",
+      "conditions": "Нужно письменное разрешение B. E. Bride. Каталоги мер (NDACAN, NCTSN) условий доступа не указывают.",
+      "owner": "Brian E. Bride"
+    },
+    "items": null,
+    "items_note": "Текст пунктов не приводится: разрешения нет.",
+    "anchors": null,
+    "reverse": null,
+    "scoring": null,
+    "bands": null,
+    "bands_source": null,
+    "risk_items": null,
+    "risk_items_note": null,
+    "translation": {
+      "uk": {
+        "exists": null,
+        "by": null,
+        "free": null,
+        "url": null,
+        "note": "Не проверялся: методика не заводится."
+      },
+      "ru": {
+        "exists": null,
+        "by": null,
+        "free": null,
+        "url": null,
+        "note": "Не проверялся: методика не заводится."
+      }
+    },
+    "example": null,
+    "example_note": "Проверочный пример не нужен: методика не заводится.",
+    "verdict": "не заводить — шкала под копирайтом автора, копии распространяются «with permission»; свободного разрешения нет. Вторичный травматический стресс покрывает шкала STS в ProQOL 5."
+  },
+  {
+    "key": "mmdhp",
+    "title_en": "Measure of Moral Distress for Healthcare Professionals (MMD-HP)",
+    "title_uk": null,
+    "title_ru": null,
+    "authors": "Elizabeth G. Epstein, Phyllis B. Whitehead, Chuleeporn Prompahakul, Leroy R. Thacker, Ann B. Hamric",
+    "year": 2019,
+    "citation": "Epstein EG, Whitehead PB, Prompahakul C, Thacker LR, Hamric AB. Enhancing understanding of moral distress: the Measure of Moral Distress for Health Care Professionals. AJOB Empir Bioeth. 2019;10(2):113-124. doi:10.1080/23294515.2019.1586008.",
+    "license": {
+      "verdict": "неясно",
+      "quote": "Заявления правообладателя о свободном использовании не найдено: статья в AJOB Empirical Bioethics (Taylor & Francis) закрыта, отдельной страницы с условиями нет; шведская валидация (BMC Med Ethics, CC BY) касается только своей статьи.",
+      "url": "https://doi.org/10.1080/23294515.2019.1586008",
+      "conditions": "Нужен письменный ответ E. G. Epstein (University of Virginia).",
+      "owner": "E. G. Epstein и соавт."
+    },
+    "items": null,
+    "items_note": "Текст пунктов не приводится: разрешение не подтверждено.",
+    "anchors": null,
+    "reverse": null,
+    "scoring": null,
+    "bands": null,
+    "bands_source": null,
+    "risk_items": null,
+    "risk_items_note": null,
+    "translation": {
+      "uk": {
+        "exists": null,
+        "by": null,
+        "free": null,
+        "url": null,
+        "note": "Не проверялся: методика не заводится."
+      },
+      "ru": {
+        "exists": null,
+        "by": null,
+        "free": null,
+        "url": null,
+        "note": "Не проверялся: методика не заводится."
+      }
+    },
+    "example": null,
+    "example_note": "Проверочный пример не нужен: методика не заводится.",
+    "verdict": "не заводить — свободной лицензии не найдено. Моральную травму у персонала покрывает MIOS (общественное достояние); лучший кандидат на будущее — MIDS (см. карточку mids)."
+  },
+  {
+    "key": "misshp",
+    "title_en": "Moral Injury Symptom Scale — Health Professional (MISS-HP)",
+    "title_uk": null,
+    "title_ru": null,
+    "authors": "Sneha Mantri, Jennifer M. Lawson, ZhiZhong Wang, Harold G. Koenig (Duke University)",
+    "year": 2020,
+    "citation": "Mantri S, Lawson JM, Wang Z, Koenig HG. Identifying Moral Injury in Healthcare Professionals: The Moral Injury Symptom Scale-HP. J Relig Health. 2020;59(5):2323-2340. doi:10.1007/s10943-020-01065-w.",
+    "license": {
+      "verdict": "неясно",
+      "quote": "© Springer Science+Business Media, LLC, part of Springer Nature 2020. This article is made available via the PMC Open Access Subset for unrestricted research re-use and secondary analysis in any form or by any means with acknowledgement of the original source. These permissions are granted for the duration of the World Health Organization (WHO) declaration of COVID-19 as a global pandemic.",
+      "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC7366883/",
+      "conditions": "Разрешение статьи — временное, на срок пандемического статуса COVID-19 (в мае 2023 г. ВОЗ объявила об окончании чрезвычайной ситуации международного значения), и только для исследований. Фраза статьи «This measure may be used in clinical settings to identify significant levels of MI» — о клинической пригодности, а не о лицензии. Страницы с условиями у Duke Center for Spirituality, Theology and Health не найдено.",
+      "owner": "Авторы / Springer Nature"
+    },
+    "items": null,
+    "items_note": "Текст пунктов не приводится: разрешения нет.",
+    "anchors": null,
+    "reverse": null,
+    "scoring": null,
+    "bands": null,
+    "bands_source": null,
+    "risk_items": null,
+    "risk_items_note": null,
+    "translation": {
+      "uk": {
+        "exists": null,
+        "by": null,
+        "free": null,
+        "url": null,
+        "note": "Не проверялся: методика не заводится."
+      },
+      "ru": {
+        "exists": null,
+        "by": null,
+        "free": null,
+        "url": null,
+        "note": "Не проверялся: методика не заводится."
+      }
+    },
+    "example": null,
+    "example_note": "Проверочный пример не нужен: методика не заводится.",
+    "verdict": "не заводить — открытый доступ к статье был временным (COVID-19) и исследовательским, свободной лицензии на шкалу нет."
+  },
+  {
+    "key": "mdt",
+    "title_en": "Moral Distress Thermometer (MDT)",
+    "title_uk": null,
+    "title_ru": null,
+    "authors": "Lucia D. Wocial, Michael T. Weaver",
+    "year": 2013,
+    "citation": "Wocial LD, Weaver MT. Development and psychometric testing of a new tool for detecting moral distress: the Moral Distress Thermometer. J Adv Nurs. 2013;69(1):167-174. doi:10.1111/j.1365-2648.2012.06036.x.",
+    "license": {
+      "verdict": "лицензируется",
+      "quote": "Даже профессиональная ассоциация медсестёр печатает термометр по разрешению: «The moral distress thermometer is adapted with permission. See last page for full attribution.» (AACN, Recognizing & Addressing Moral Distress — quick reference guide).",
+      "url": "https://www.aacn.org/-/media/aacn-website/clincial-resources/moral-distress/recognizing-addressing-moral-distress-quick-reference-guide.pdf",
+      "conditions": "Нужно разрешение авторов или издателя (Wiley).",
+      "owner": "L. D. Wocial, M. T. Weaver / Wiley"
+    },
+    "items": null,
+    "items_note": "Текст не приводится: разрешения нет.",
+    "anchors": null,
+    "reverse": null,
+    "scoring": null,
+    "bands": null,
+    "bands_source": null,
+    "risk_items": null,
+    "risk_items_note": null,
+    "translation": {
+      "uk": {
+        "exists": null,
+        "by": null,
+        "free": null,
+        "url": null,
+        "note": "Не проверялся: методика не заводится."
+      },
+      "ru": {
+        "exists": null,
+        "by": null,
+        "free": null,
+        "url": null,
+        "note": "Не проверялся: методика не заводится."
+      }
+    },
+    "example": null,
+    "example_note": "Проверочный пример не нужен: методика не заводится.",
+    "verdict": "не заводить — инструмент воспроизводится только по разрешению."
+  }
+]
