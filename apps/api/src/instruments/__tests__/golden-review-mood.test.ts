@@ -207,19 +207,32 @@ const AREA: [string, CreateSurveyDraft][] = [
   ["pq16", pq16],
 ];
 
-describe("рецензия 2.1: буквы языка в том, что читает обследуемый", () => {
+describe("рецензия 2.1: буквы языка во всех строках методики", () => {
   /*
-   * Пункты, варианты ответа и инструкция — то, что видит человек. В украинском
-   * тексте не должно быть русских букв (ы э ъ ё), в русском — украинских
-   * (і ї є ґ). Описание методики не проверяется: оно законно цитирует текст
-   * другого языка («відчуття безпорадності» в русском описании PHQ-9).
+   * Всё, что читают обследуемый и специалист: название, описание, инструкция,
+   * план безопасности, пункты, варианты, подписи тревог, шкалы и полосы. В
+   * украинском тексте не должно быть русских букв (ы э ъ ё), в русском —
+   * украинских (і ї є ґ). Расхождение языковых версий (п. 2 PHQ-9) описывается
+   * словами своего языка, а не цитатой чужого.
    */
+  type Lv = { uk?: string; ru?: string } | undefined;
   for (const [key, draft] of AREA) {
     test(`${key}: украинский без ы э ъ ё, русский без і ї є ґ`, () => {
-      const texts: { uk?: string; ru?: string }[] = [
-        draft.instructions as { uk?: string; ru?: string },
-        ...(draft.questions ?? []).flatMap((q) => [q.title as { uk?: string; ru?: string }, ...(q.options ?? []).map((o) => o.text as { uk?: string; ru?: string })]),
-      ].filter(Boolean);
+      const texts = [
+        draft.title as Lv,
+        draft.description as Lv,
+        draft.instructions as Lv,
+        draft.safetyPlan as Lv,
+        ...(draft.questions ?? []).flatMap((q) => [
+          q.title as Lv,
+          ...(q.options ?? []).flatMap((o) => [o.text as Lv, o.riskLabel as Lv]),
+        ]),
+        ...(draft.scales ?? []).flatMap((s) => [
+          s.title as Lv,
+          s.description as Lv,
+          ...(s.bands ?? []).flatMap((b) => [b.label as Lv, b.recommendation as Lv]),
+        ]),
+      ].filter((t): t is { uk?: string; ru?: string } => !!t && typeof t === "object");
       const badUk = texts.map((t) => t.uk ?? "").filter((t) => /[ыэъёЫЭЪЁ]/.test(t));
       const badRu = texts.map((t) => t.ru ?? "").filter((t) => /[іїєґІЇЄҐ]/.test(t));
       expect(badUk).toEqual([]);
