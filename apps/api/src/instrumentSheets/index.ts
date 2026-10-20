@@ -112,6 +112,15 @@ const MODULE_OF: Record<string, string> = {
   "4at": "fourAt.ts",
   adexi: "adexi.ts",
   // ── /k-cognitive ──
+  // ── k-distress ──
+  dass21: "dass21.ts",
+  k10: "k10.ts",
+  k6: "k6.ts",
+  phq15: "phq15.ts",
+  phq2: "phq2.ts",
+  gad2: "gad2.ts",
+  core10: "core10.ts",
+  // ── /k-distress ──
 };
 
 /**
