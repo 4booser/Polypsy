@@ -157,6 +157,36 @@ describe("золотой протокол: PCL-5", () => {
   });
 });
 
+describe("золотой протокол: PQ-16", () => {
+  /** «Так» на пунктах из списка, «Ні» на остальных: балл варианта «Так» — 1 */
+  const yes = (items: number[]) => Array.from({ length: 16 }, (_, i) => (items.includes(i + 1) ? 1 : 0));
+
+  test("пример досье: шесть «так» (пп. 1, 2, 4, 7, 9, 12) → 6, рекомендованный порог достигнут", () => {
+    const s = scoreOf(pq16, yes([1, 2, 4, 7, 9, 12]), "PQ");
+    expect(s.rawScore).toBe(6);
+    expect(s.band?.grade).toBe(2);
+    expect(s.band?.severity).toBe("moderate");
+  });
+
+  test("границы: 5 — порог не достигнут, 10 — строка «≥10» таблицы 2 Ising et al.", () => {
+    expect(scoreOf(pq16, yes([1, 2, 3, 4, 5]), "PQ").band?.severity).toBe("none");
+    const ten = scoreOf(pq16, yes([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]), "PQ");
+    expect(ten.rawScore).toBe(10);
+    expect(ten.band?.grade).toBe(3);
+  });
+
+  test("пункты 4 и 15 — полные: «clapping» и «some person or force»; срока в инструкции нет", () => {
+    const qs = pq16.questions ?? [];
+    expect((qs[3]!.title as { uk: string }).uk).toContain("плескання");
+    expect((qs[14]!.title as { uk: string; ru: string }).uk).toContain("людина чи сила");
+    expect((qs[14]!.title as { uk: string; ru: string }).ru).toContain("человек или сила");
+    // в исследовании, давшем порог 6, — «assessed over participants' lifetimes»
+    const i = pq16.instructions as { uk: string; ru: string };
+    expect(i.uk).not.toContain("МІСЯЦ");
+    expect(i.ru).not.toContain("МЕСЯЦ");
+  });
+});
+
 /* ─── сторож текста: буквы чужого языка в пунктах и ответах ─── */
 
 const AREA: [string, CreateSurveyDraft][] = [
