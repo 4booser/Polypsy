@@ -86,6 +86,8 @@ function toSurveyFull(draft: unknown): SurveyFull {
     validityThreshold: s.validityThreshold ?? null,
     validityDirection: s.validityDirection ?? null,
     validityMessage: null,
+    // правило полноты бланка — свойство методики (у FAS — все десять), его надо донести до движка
+    minAnsweredShare: s.minAnsweredShare ?? null,
     bands: (s.bands ?? []).map((b, bi) => ({
       id: `b${si}-${bi}`,
       scaleId: `sc${si}`,
@@ -268,6 +270,19 @@ describe("золотой протокол: FAS", () => {
     expect(s35.rawScore).toBe(35);
     expect(s35.band?.grade).toBe(3);
     expect(detectBandRisks(p35.scores).map((r) => r.severity)).toEqual(["moderate"]);
+  });
+
+  test("неполный бланк не считается: без ответа на один пункт балла нет", () => {
+    /*
+     * Правообладатель требует ответа на каждый пункт, его онлайн-форма без
+     * этого не считает. По общему правилу движка (4/5) девять ответов дали бы
+     * сумму, сравнённую с границами для десяти, — заниженную усталость.
+     */
+    const survey = toSurveyFull(fas);
+    const nine = answer(survey, [4, 4, 4, 1, 4, 4, 4, 4, 4, 1]).slice(0, 9);
+    const { scores, warnings } = computeProfile(survey, nine);
+    expect(scores.find((s) => s.scaleCode === "FAS")).toBeUndefined();
+    expect(warnings.map((w) => w.code)).toContain("score.tooFewAnswers");
   });
 
   test("текст — официальный правообладателя: оговорки о рабочем переводе нет, описки бланка исправлены", () => {

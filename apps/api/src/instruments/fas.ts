@@ -96,6 +96,17 @@ export const fas: CreateSurveyDraft = {
       kind: "clinical",
       normalization: "raw",
       key: sumKey(allItems(ITEMS.length)),
+      /*
+       * Балл — только по полному бланку. Правообладатель: «An answer must be
+       * provided for every question, even if the respondent has no current
+       * complaints», и его онлайн-форма не считает, пока не отвечены все
+       * десять. Общее правило движка (4/5 ответов) посчитало бы
+       * сумму по восьми пунктам и сравнило её с границами для десяти — то есть
+       * занизило бы усталость. Пункты каталога обязательны, так что правило
+       * срабатывает только на частичных ответах (предпросмотр, черновик,
+       * правка учреждения в конструкторе).
+       */
+      minAnsweredShare: 1,
       bands: bands([
         {
           min: 10,
