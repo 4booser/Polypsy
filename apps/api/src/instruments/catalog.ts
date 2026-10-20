@@ -29,6 +29,12 @@ import { ASSIST_NOT_SCORED, assist } from "./assist";
 import { auditc } from "./auditc";
 import { cage } from "./cage";
 import { cbi } from "./cbi";
+// ── k-sleep ──
+import { fas } from "./fas";
+import { ris } from "./ris";
+import { sci } from "./sci";
+import { sci02 } from "./sci02";
+// ── /k-sleep ──
 
 /**
  * Общий каталог общедоступных методик.
@@ -289,4 +295,49 @@ export const CATALOG: CatalogEntry[] = [
     source:
       "Copenhagen Burnout Inventory, Kristensen, Borritz, Villadsen, Christensen, Work & Stress 2005 (NFA, Данія); смуги — датська форма самоперевірки NFA (Borritz, Kristensen). Переклад робочий",
   },
+
+  // ── k-sleep ──
+  /*
+   * Группа «сон и утомление» — docs/instruments/dossiers/sleep.json.
+   *
+   * Заведены только методики, у которых свободное использование в клинике
+   * подтверждено словами правообладателя: SCI и её двухпунктовая версия
+   * SCI-02 (Sleepio, CC BY-NC 4.0 — некоммерчески), FAS (ild care foundation:
+   * «usage in clinical settings is permitted without restrictions»,
+   * официальные украинский и русский тексты) и RIS (авторы, статья под
+   * CC BY 2.0). Остальные карточки досье не заведены:
+   * PROMIS Sleep Disturbance 8a, Sleep-Related Impairment 8a и Fatigue 7a для
+   * рутинной оценки в своей цифровой платформе требуют разрешения HEAP и платы
+   * (а таблицу T-баллов PROMIS движок не воспроизводит); STOP-Bang — разрешения
+   * University Health Network для скрининга пациентов; ISI — договора с Mapi;
+   * PSQI — платы за клиническое использование, и его компонентный подсчёт
+   * моделью каталога не выражается; FSS — заявления правообладателя нет; AIS
+   * не заведена ещё в группе behaviour по той же причине. Epworth исключена
+   * брифом (платная).
+   */
+  {
+    key: "sci",
+    draft: sci,
+    source:
+      "Sleep Condition Indicator, Espie, Kyle, Hames, Gardani, Fleming, Cape, BMJ Open 2014;4:e004183 — © Sleepio Limited, безкоштовно лише для некомерційного використання (CC BY-NC 4.0). Переклад робочий",
+  },
+  {
+    key: "sci02",
+    draft: sci02,
+    source:
+      "SCI-02: пункти 7 і 3 Sleep Condition Indicator; поріг ≤2 — Luik, Machado, Siriwardena, Espie, Br J Gen Pract 2019;69(679):79-80 — © Sleepio Limited, безкоштовно лише для некомерційного використання (CC BY-NC 4.0). Переклад робочий (той самий, що в SCI)",
+  },
+  {
+    key: "fas",
+    draft: fas,
+    source:
+      "Fatigue Assessment Scale, Michielsen, De Vries, Van Heck, J Psychosom Res 2003 — © ild care foundation: використання в клінічних умовах дозволене без обмежень. Український і російський тексти — офіційні переклади правовласника (ildcare.nl; в українському виправлено дві орфографічні описки); смуги — настанови правовласника",
+  },
+  {
+    key: "ris",
+    draft: ris,
+    source:
+      "Regensburg Insomnia Scale, Crönlein, Langguth, Popp, Lukesch, Pieh, Hajak, Geisler, Health Qual Life Outcomes 2013;11:65 (CC BY 2.0). Переклад робочий — з німецького оригіналу зі звіркою за англійською версією авторів",
+  },
+  // ── /k-sleep ──
 ];
