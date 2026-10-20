@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { and, inArray, sql } from "drizzle-orm";
 import { t } from "@quizzy/shared";
-import { adminA, api, appApi, batteries, batteryItems, db, eq, root, surveys } from "./fixtures";
+import { adminA, api, appApi, batteries, batteryAssignments, batteryItems, db, eq, makeUser, root, surveys } from "./fixtures";
 import { auditLog, users } from "../src/db/schema";
 import { CATALOG_BATTERIES, CATALOG_BATTERY_LANG, type CatalogBattery } from "../src/instruments/catalogBatteries";
 import { installCatalog } from "../src/lib/catalogInstall";
@@ -212,6 +212,46 @@ describe("наборы-заготовки каталога", () => {
       // администратор группы видит общий набор в своём списке
       const admin = await api("/api/batteries", adminA.token);
       expect(admin.body.items.some((b: { id: string }) => b.id === row!.id)).toBe(true);
+    },
+    SLOW,
+  );
+
+  /**
+   * Методики каталога стоят без группы, и администратору группы их не видно
+   * (surveyScopeFilter, политика surveys_read). Шаги заготовки он поэтому не
+   * видит — одинаково владельцем базы и ролью приложения, — а выдать её не
+   * может: выдача открыла бы пациенту методики вне его зоны. Под ролью
+   * приложения это прежде было пятисоткой на записи доступа.
+   * Мутация: убрать проверку шагов в POST /:id/assign — администратор
+   * получает 201 владельцем базы и 500 ролью приложения.
+   */
+  test(
+    "администратор группы: шаги заготовки вне его зоны не видны, выдать её нельзя; суперадминистратор выдаёт",
+    async () => {
+      const [row] = await templateRow("trauma-deep");
+      for (const call of [api, appApi]) {
+        const list = await call("/api/batteries", adminA.token);
+        const seen = list.body.items.find((b: { id: string }) => b.id === row!.id);
+        expect(seen, "общий набор пропал из списка сотрудника").toBeDefined();
+        expect(seen.items, "администратору видны методики вне его зоны").toEqual([]);
+      }
+
+      const person = await makeUser("user", `catalog-battery-${crypto.randomUUID().slice(0, 8)}@test`);
+      const refused = await api(`/api/batteries/${row!.id}/assign`, adminA.token, {
+        method: "POST",
+        body: JSON.stringify({ userId: person.id }),
+      });
+      expect(refused.status, JSON.stringify(refused.body)).toBe(403);
+      expect(await db.select().from(batteryAssignments).where(eq(batteryAssignments.userId, person.id))).toEqual([]);
+
+      const given = await api(`/api/batteries/${row!.id}/assign`, root.token, {
+        method: "POST",
+        body: JSON.stringify({ userId: person.id }),
+      });
+      expect(given.status, JSON.stringify(given.body)).toBe(201);
+      // назначение не оставляется открытым: очередь общая на процесс
+      const cancel = await api(`/api/batteries/assignments/${given.body.id}/cancel`, root.token, { method: "POST" });
+      expect(cancel.status).toBe(200);
     },
     SLOW,
   );
