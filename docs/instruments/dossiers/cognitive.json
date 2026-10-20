@@ -1,0 +1,540 @@
+[
+  {
+    "key": "4at",
+    "title_en": "4AT — Assessment test for delirium & cognitive impairment (version 1.2)",
+    "title_uk": null,
+    "title_ru": "Четырехфакторный оценочный тест на когнитивные нарушения и делирий (4-А тест, 4-АТ) — перевод на сайте правообладателя, версия 1.1",
+    "authors": "Alasdair MacLullich (Edinburgh Delirium Research Group, University of Edinburgh) при участии Tracy Ryan и Helen Cash (NHS Lothian)",
+    "year": 2011,
+    "citation": "Бланк: 4AT version 1.2 (октябрь 2014), «© 2011-2014 MacLullich, Ryan, Cash», https://www.the4at.com/4at-download (PDF: https://www.the4at.com/wp-content/uploads/2026/07/4AT-English.pdf); руководство по подсчёту — https://www.the4at.com/userguide. Валидация: Bellelli G, Morandi A, Davis DH, Mazzola P, Turco R, Gentile S, Ryan T, Cash H, Guerini F, Torpilliesi T, Del Santo F, Trabucchi M, Annoni G, MacLullich AM. Validation of the 4AT, a new instrument for rapid delirium detection: a study in 234 hospitalised older people. Age Ageing. 2014;43:496-502. Shenkin SD et al. Delirium detection in older acute medical inpatients: a multicentre prospective comparative diagnostic test accuracy study of the 4AT and the Confusion Assessment Method. BMC Med. 2019;17(1):138. Метаанализ: Tieges Z et al. Diagnostic accuracy of the 4AT for delirium detection in older adults: systematic review and meta-analysis. Age Ageing. 2021;50(3):733-743. После ЧМТ: Lai YH et al. Clinical Utility and Performance of the Traditional Chinese Version of the 4-As Test for Delirium due to Traumatic Brain Injury. J Acad Consult Liaison Psychiatry. 2025. На русском: Kutlubaev MA, Bikbulatova LF, Akhmadeeva LR. [Early diagnosing of delirium in the elderly with acute stroke]. Uspekhi gerontologii. 2015;28(3):493-9. Перечень исследований — https://www.the4at.com/4at-diagnostic-test-accuracy-studies.",
+    "license": {
+      "verdict": "свободна (CC BY 4.0)",
+      "quote": "The 4AT is free to use. It may be copied, shared and adapted under the Creative Commons Attribution 4.0 International licence (CC BY 4.0). No permission, payment or registration is required. […] If you change the wording, item content, instructions, response options, scoring thresholds or interpretation, the result is a modified version. Make this clear wherever the material is displayed or distributed, describe the changes, and do not imply that the modified version is the official 4AT or that the published validation evidence automatically applies to it. A translation is also an adaptation for licensing purposes. Name the translator or translation team, link to the source version and describe any further changes.",
+      "url": "https://www.the4at.com/attribution",
+      "conditions": "1) Атрибуция там, где методику показывают, — по шаблону правообладателя для адаптации и перевода, дословно: «Adapted from the 4AT © 2011–2014 Alasdair MacLullich, Tracy Ryan and Helen Cash. Licensed under CC BY 4.0: https://creativecommons.org/licenses/by/4.0/. Official and current version: https://www.the4at.com/. This version has been modified. Changes: [briefly describe the changes, including translation where relevant]. The published validation evidence for the official 4AT should not be assumed to apply to this modified version. No warranty is given as to accuracy or fitness for purpose.» 2) Перевод — адаптация: назвать переводчика, дать ссылку на источник, описать изменения. 3) Нельзя выдавать изменённую версию за официальный 4AT и намекать на одобрение разработчиков. 4) CC BY 4.0 разрешает и коммерческое использование при соблюдении условий. 5) Правообладатель просит по возможности сохранять официальные формулировки, пункты, инструкции, подсчёт и интерпретацию.",
+      "owner": "Alasdair MacLullich, Tracy Ryan, Helen Cash",
+      "note": "Страница «Using and adapting the 4AT», проверено 20.10.2026 («Last reviewed 26 July 2026»). Нижний колонтитул сайта: «Except where otherwise stated, content licensed under CC BY 4.0» — то же относится к руководству по подсчёту и к опубликованным клиническим случаям, из которых взяты проверочные примеры."
+    },
+    "items": [
+      "[1] ALERTNESS — This includes patients who may be markedly drowsy (eg. difficult to rouse and/or obviously sleepy during assessment) or agitated/hyperactive. Observe the patient. If asleep, attempt to wake with speech or gentle touch on shoulder. Ask the patient to state their name and address to assist rating.",
+      "[2] AMT4 — Age, date of birth, place (name of the hospital or building), current year.",
+      "[3] ATTENTION — Ask the patient: “Please tell me the months of the year in backwards order, starting at December.” To assist initial understanding one prompt of “what is the month before December?” is permitted.",
+      "[4] ACUTE CHANGE OR FLUCTUATING COURSE — Evidence of significant change or fluctuation in: alertness, cognition, other mental function (eg. paranoia, hallucinations) arising over the last 2 weeks and still evident in last 24hrs"
+    ],
+    "items_note": "Дословно с официального бланка версии 1.2 (PDF 4AT-English.pdf). Версия 1.1 (май 2014) совпадает по пунктам и подсчёту; v1.2 изменила только подзаголовок («Assessment test for delirium & cognitive impairment» вместо «The 4 ‘A’s Test: screening instrument…») и добавила строку копирайта — https://www.the4at.com/notes-on-revisions. Методику проводит специалист у постели больного: пункты 1–3 — по наблюдению за пациентом во время осмотра, пункт 4 — по сведениям из других источников. Руководство (userguide): «For place, accept a reasonable identification of the setting, such as “the hospital”, “the infirmary” or “A&E”. The full formal name is not required.»; «If the patient cannot provide meaningful answers because of altered arousal, inability to produce speech, etc., then the patient is given a score of 2»; по пункту 3: «If the patient verbally declines to start the test or is not able to correctly recite to June, score 1.»",
+    "anchors": [
+      {
+        "question": 1,
+        "options": [
+          { "label": "Normal (fully alert, but not agitated, throughout assessment)", "score": 0 },
+          { "label": "Mild sleepiness for <10 seconds after waking, then normal", "score": 0 },
+          { "label": "Clearly abnormal", "score": 4 }
+        ]
+      },
+      {
+        "question": 2,
+        "options": [
+          { "label": "No mistakes", "score": 0 },
+          { "label": "1 mistake", "score": 1 },
+          { "label": "2 or more mistakes/untestable", "score": 2 }
+        ]
+      },
+      {
+        "question": 3,
+        "options": [
+          { "label": "Achieves 7 months or more correctly", "score": 0 },
+          { "label": "Starts but scores <7 months / refuses to start", "score": 1 },
+          { "label": "Untestable (cannot start because unwell, drowsy, inattentive)", "score": 2 }
+        ]
+      },
+      {
+        "question": 4,
+        "options": [
+          { "label": "No", "score": 0 },
+          { "label": "Yes", "score": 4 }
+        ]
+      }
+    ],
+    "anchors_note": "У пункта 1 два варианта с баллом 0 — так на бланке: короткая сонливость сразу после пробуждения нормой не считается нарушением. Варианты «untestable» в пунктах 2 и 3 — намеренная особенность: руководство «No patients with delirium are ‘Unable to Assess’ (UTA) with the 4AT. You can always generate a score.»",
+    "reverse": [],
+    "scoring": "Сумма баллов четырёх пунктов, 0–12. Руководство: «The 4AT is scored from 0-12.» Бланк: «4AT SCORE».",
+    "bands": [
+      {
+        "from": 0,
+        "to": 0,
+        "label": "delirium or severe cognitive impairment unlikely (but delirium still possible if [4] information incomplete)",
+        "source": "Официальный бланк 4AT v1.2: «0: delirium or severe cognitive impairment unlikely (but delirium still possible if [4] information incomplete)»; пояснение бланка: «A score of 0 does not definitively exclude delirium or cognitive impairment: more detailed testing may be required depending on the clinical context.»"
+      },
+      {
+        "from": 1,
+        "to": 3,
+        "label": "possible cognitive impairment",
+        "source": "Официальный бланк 4AT v1.2: «1-3: possible cognitive impairment»; пояснение: «A score of 1-3 suggests cognitive impairment and more detailed cognitive testing and informant history-taking are required.»"
+      },
+      {
+        "from": 4,
+        "to": 12,
+        "label": "possible delirium +/- cognitive impairment",
+        "source": "Официальный бланк 4AT v1.2: «4 or above: possible delirium +/- cognitive impairment»; пояснение: «A score of 4 or more suggests delirium but is not diagnostic: more detailed assessment of mental status may be required to reach a diagnosis.» Психометрика порога: Bellelli et al., Age Ageing 2014 (чувствительность 89,7 %, специфичность 84,1 %, 234 пациента 70+); метаанализ Tieges et al., Age Ageing 2021."
+      }
+    ],
+    "bands_source": "Пороги — с официального бланка правообладателя; установлены и проверены на госпитализированных пожилых людях (Великобритания, Италия; метаанализ — 17 исследований). Валидация после ЧМТ — одно исследование китайской версии (Lai et al., 2025); украинских норм нет.",
+    "risk_items": [],
+    "risk_items_note": "Пунктов о суициде, самоповреждении или вреде другим нет. Острый сигнал методики — полоса 4–12 («possible delirium»): руководство называет делирий неотложным состоянием («delirium is a medical emergency»). Что делать с полосой (тяжесть, случай в очереди риска), — решение системы, а не правообладателя, и оно записано в коде методики.",
+    "translation": {
+      "uk": {
+        "exists": false,
+        "by": null,
+        "free": null,
+        "url": "https://www.the4at.com/4at-translations",
+        "note": "Среди 23 переводов на сайте правообладателя украинского нет (проверено 20.10.2026). Свой перевод разрешён лицензией CC BY 4.0 как адаптация — с указанием переводчика, ссылкой на источник и описанием изменений; помечается WORKING_TRANSLATION."
+      },
+      "ru": {
+        "exists": true,
+        "by": "Перевод, опубликованный правообладателем на https://www.the4at.com/4at-russian (файлы 4AT-Russian.pdf и 4AT-Russian-1.docx); на бланке «Версия 1.1». Переводчик на бланке не назван; русскоязычное исследование 4AT — Kutlubaev et al., 2015.",
+        "free": true,
+        "url": "https://www.the4at.com/4at-russian",
+        "note": "Сверен с английским оригиналом той же версии 1.1 (https://the4at.com/wp-content/uploads/2026/07/4AT-v1_1-May-2014.pdf). Расхождения русского бланка с оригиналом: 1) пункт 2 — вариант «2 ошибки» вместо «2 or more mistakes/untestable» (пропущены «и более» и «невозможно оценить», а это тот самый вариант для пациента, который не может отвечать); 2) пункт 3 — пропущена разрешённая подсказка «what is the month before December?»; 3) полоса 4+ — «вероятный делирий» при «possible delirium» (возможный, а не вероятный); 4) орфография («мало вероятны», «не полная», «ставиться», «может понадобится»). Заводить русский текст бланка, исправив эти четыре места по английскому оригиналу, и назвать это изменением в атрибуции (CC BY 4.0)."
+      }
+    },
+    "example": {
+      "answers": [
+        "1. ALERTNESS: Normal = 0",
+        "2. AMT4: 1 mistake (unable to say the name of the place) = 1",
+        "3. ATTENTION: Starts but scores <7 months = 1",
+        "4. ACUTE CHANGE: Yes = 4"
+      ],
+      "total": 6,
+      "band": "4 or above: possible delirium +/- cognitive impairment",
+      "note": "ОПУБЛИКОВАННЫЙ правообладателем пример: https://www.the4at.com/4atcases, Case 2 (Mr AY, 70 лет, медицинское отделение, ночью беспокойный и спутанный): «ITEM 1 – Level of alertness: score 0 (normal); ITEM 2 – AMT4: score 1 (unable to say the name of the place (hospital)); ITEM 3 – Months Backwards: score 1 (started but incomplete); ITEM 4 – Acute change or fluctuation: score 4 (clear evidence of change from informant); 4AT total score: 6/12». Страница разрешает использование: «You are welcome to use these cases as part of general delirium training…»."
+    },
+    "example2": {
+      "answers": [
+        "1. ALERTNESS: Normal = 0",
+        "2. AMT4: did not know age, year, name of the place = 2",
+        "3. ATTENTION: incomplete = 1",
+        "4. ACUTE CHANGE: No = 0"
+      ],
+      "total": 3,
+      "band": "1-3: possible cognitive impairment",
+      "note": "Опубликованный пример, Case 3 (Mr JB, 88 лет): «4AT total score: 3/12 … This score indicates cognitive impairment. There is no clear evidence of delirium.» Там же Case 5: все когнитивные пункты 0 и пункт 4 = 4 — «4AT total score: 4/12 … The score of 4 indicates possible delirium. In the present case this is based on the evidence of change alone.» Case 4 для проверки не брать: в тексте случая у пункта 4 стоит «score 0 (clear evidence of change from informant)» — описание противоречит баллу."
+    },
+    "verdict": "завести — лицензия CC BY 4.0 правообладателя прямо разрешает копирование, адаптацию и перевод; пункты, подсчёт, пороги и опубликованные проверочные примеры взяты с сайта правообладателя. Заполняет специалист (administration: clinician). Русский текст — перевод правообладателя (v1.1) с четырьмя исправлениями по оригиналу, украинский — рабочий перевод; атрибуция по шаблону CC BY обязательна."
+  },
+  {
+    "key": "adexi",
+    "title_en": "Adult Executive Functioning Inventory (ADEXI) — Self-report",
+    "title_uk": null,
+    "title_ru": "Шкала исполнительной функции у взрослых (ADEXI). Версия для самостоятельного заполнения — перевод на сайте правообладателя",
+    "authors": "Ylva Holst, Lisa B. Thorell (Karolinska Institutet, Department of Clinical Neuroscience, Stockholm)",
+    "year": 2018,
+    "citation": "Holst Y, Thorell LB. Adult executive functioning inventory (ADEXI): Validity, reliability, and relations to ADHD. Int J Methods Psychiatr Res. 2018;27(1):e1567. doi:10.1002/mpr.1567 (PMC6877129). Бланк: «Adult Executive Functioning Inventory (ADEXI) Self-report», www.chexi.se (PDF https://www.chexi.se/onewebmedia/English%20ADEXI%20self-report.pdf); подшкалы — https://www.chexi.se/onewebmedia/ADEXI%20subscales.pdf.",
+    "license": {
+      "verdict": "свободна для клиницистов и исследователей",
+      "quote": "All three instruments are freely available for both researchers and clinicians. However, please note that normative data for these instruments are not yet available. […] You do not need the permission of the authors to use the different language versions already available on this website. […] Please contact Lisa Thorell (lisa.thorell@ki.se) if you wish to use the CHEXI, ADEXI, or TEXI and the questionnaire is unavailable in your language. […] If you want to translate the questionnaires into a language which is not yet available, you are welcome to use the blank templates for the questionnaires.",
+      "url": "https://www.chexi.se/translations",
+      "conditions": "1) Бесплатно для клиницистов и исследователей; для языковых версий с сайта разрешение не требуется. 2) Для языка, которого на сайте нет (украинский), разработчик просит связаться с Lisa Thorell и приглашает переводить по шаблонам сайта — учреждению написать ей и передать украинский перевод. 3) Разработчик просит присылать публикации с использованием методики. 4) Первая цитата — с главной страницы https://www.chexi.se/, остальные — со страницы переводов.",
+      "owner": "Lisa B. Thorell, Karolinska Institutet (www.chexi.se)",
+      "note": "Проверено 20.10.2026. Правообладатель сам предупреждает о качестве переводов: «as the creators of the questionnaire do not speak all languages to which translations have been done, it is impossible for us to guarantee that all translations are 100% correct.»"
+    },
+    "items": [
+      "1. I have difficulty remembering lengthy instructions",
+      "2. I have difficulty remembering what I am doing in the middle of an activity",
+      "3. I have a tendency to do things without first thinking about what could happen",
+      "4. I have difficulty stopping myself from doing something that I like even though someone tells me that it is not allowed.",
+      "5. When someone asks me to do several things, I remember only the first or last",
+      "6. I have difficulty refraining for smiling or laughing in situations where it is inappropriate",
+      "7. I have difficulty coming up with a different way of solving a problem when I get stuck",
+      "8. When someone asks me to fetch something, I forget what I am supposed to fetch",
+      "9. I have difficulty planning for an activity (e.g., remembering to bring everything necessary when going on a trip/to work/to school)",
+      "10. I have difficulty stopping an activity that I like (e.g., I watch TV or sit in front of the computer in the evening even though it is time to go to bed)",
+      "11. I have difficulty understanding verbal instructions unless I am also shown how to do something",
+      "12. I have difficulties with tasks or activities that involve several steps",
+      "13. I have difficulty thinking ahead or learning from experience",
+      "14. People that I meet seem to think that I am more lively/wilder compared to other people my age"
+    ],
+    "items_note": "Дословно с официального бланка самоотчёта (www.chexi.se), включая опечатку правообладателя в пункте 6 («refraining for smiling» — в статье 2018 г. «refraining from smiling»). Инструкция дословно: «Below you will find a number of statements. Please circle a number to the right of each statement to indicate how well that statement describes how you are as a person. People that you know might feel differently about you – we want to know what you think about yourself. Try to answer as honestly as possible.» В статье 2018 г. часть пунктов сформулирована с «sometimes» («I sometimes have difficulty…»); заводить текст бланка, а не статьи. Есть и версия для близкого (other-report) — отдельный бланк.",
+    "anchors": [
+      { "label": "Definitely not true", "score": 1 },
+      { "label": "Not true", "score": 2 },
+      { "label": "Partially true", "score": 3 },
+      { "label": "True", "score": 4 },
+      { "label": "Definitely true", "score": 5 }
+    ],
+    "reverse": [],
+    "scoring": "Документ правообладателя «Subscales for ADEXI (Self-report and other-report)» дословно: «Subscale 1: Working Memory — Mean score for items: 1, 2, 5, 7, 8, 9, 11, 12, 13»; «Subscale 2: Inhibition — Mean score for items: 3, 4, 6, 10, and 14»; «Total score». Holst & Thorell (2018, Table 4) приводят все три показателя как средние по пунктам на шкале 1–5 (например, «ADEXI full scale 3.41 (.71)» у группы с СДВГ), поэтому общий балл — тоже среднее 14 пунктов. Обратных пунктов нет: все утверждения сформулированы как трудности, больше — хуже.",
+    "bands": null,
+    "bands_source": "Полос нет у правообладателя: «normative data are unfortunately not yet available for any of the questionnaires. This means that at the moment, these instruments are most useful as research tools as it is not possible to determine exact cut-offs for different ages without normative data. […] Until norms are available, the only indication of where to draw cut-offs is to use the means and standard deviations that are presented in the studies that have used the instruments.» Средние (SD) из Holst & Thorell 2018, Table 4, шведские взрослые, средний возраст около 26–27 лет: общий — СДВГ (n = 51) 3.41 (.71), клинический контроль без СДВГ (n = 46) 2.50 (.80), неклиническая группа (n = 44) 2.03 (.61); торможение — 3.46 (.84), 2.72 (.92), 2.14 (.71); рабочая память — 3.39 (.78), 2.39 (.90), 1.97 (.68). Это ориентир для специалиста, а не порог: в системе полос не заводить.",
+    "risk_items": [],
+    "risk_items_note": "Пунктов о суициде, самоповреждении или вреде другим нет.",
+    "translation": {
+      "uk": {
+        "exists": false,
+        "by": null,
+        "free": null,
+        "url": "https://www.chexi.se/translations",
+        "note": "Украинской версии ADEXI на сайте правообладателя нет (проверено 20.10.2026). Перевод на новый язык разработчик приглашает делать по шаблону сайта и просит с ней связаться; до этого — рабочий перевод каталога с пометкой WORKING_TRANSLATION, сверенный с английским бланком и с русским переводом правообладателя."
+      },
+      "ru": {
+        "exists": true,
+        "by": "Daria Zarina, Oksana Stanevich, Prof. Maria Korman (Ariel University, Faculty of Health Sciences, Occupational therapy dept., TO-Be lab, Israel) — указаны на бланке «Adult Self Report Executive Functioning Inventory_Russian.pdf», www.chexi.se",
+        "free": true,
+        "url": "https://www.chexi.se/onewebmedia/Adult%20Self%20Report%20Executive%20Functioning%20Inventory_Russian.pdf",
+        "note": "Только самоотчёт (русского other-report на сайте нет). Валидационного исследования русской версии правообладатель не приводит. Особенности русского бланка: пункт 5 — «запоминаю только первое и последнее» при «first or last» в оригинале; глаголы и причастия в мужском роде («занят», «склонен», «застрял»); инструкция «выберите утверждение, наилучшим образом описывающее вас» вместо оценки каждого утверждения. Пункты и варианты ответа заводить дословно, инструкцию привести к электронной форме (выбор ответа у каждого утверждения) и назвать это в описании."
+      }
+    },
+    "example": {
+      "answers": [
+        "Пункты рабочей памяти 1, 2, 5, 7, 8, 9, 11, 12, 13 — «True» = 4",
+        "Пункты торможения 3, 4, 6, 10, 14 — «Not true» = 2"
+      ],
+      "total": 3.286,
+      "band": "полос нет; рабочая память 4, торможение 2",
+      "note": "Опубликованного пошагового примера у правообладателя нет; пример арифметический и проверяет раскладку пунктов по подшкалам. Рабочая память: 9 × 4 / 9 = 4; торможение: 5 × 2 / 5 = 2; общий балл: (9 × 4 + 5 × 2) / 14 = 46 / 14 = 3.2857… (система округляет до 3.286). Пункт, ошибочно отнесённый не к той подшкале, сдвинет обе подшкалы."
+    },
+    "example2": {
+      "answers": ["Все 14 пунктов — «Partially true» = 3"],
+      "total": 3,
+      "band": "полос нет; рабочая память 3, торможение 3",
+      "note": "Среднее при одинаковых ответах равно ответу на всех трёх шкалах; проверяет, что баллы вариантов идут 1–5, а не 0–4."
+    },
+    "verdict": "завести без полос — правообладатель разрешает бесплатное использование клиницистами, текст, ключ подшкал и способ подсчёта (средние) есть в его документах; норм и порогов нет у самого разработчика. Русский текст — перевод с сайта правообладателя, украинский — рабочий перевод (и письмо Lisa Thorell)."
+  },
+  {
+    "key": "asrs18",
+    "title_en": "Adult ADHD Self-Report Scale (ASRS-v1.1) Symptom Checklist — 18 questions",
+    "title_uk": null,
+    "title_ru": null,
+    "authors": "Lenard Adler (NYU), Ronald C. Kessler (Harvard Medical School), Thomas Spencer; Workgroup on Adult ADHD совместно с ВОЗ",
+    "year": 2005,
+    "citation": "Kessler RC, Adler L, Ames M, et al. The World Health Organization Adult ADHD Self-Report Scale (ASRS): a short screening scale for use in the general population. Psychol Med. 2005;35(2):245-256.",
+    "license": {
+      "verdict": "лицензируется (электронные версии запрещены без договора)",
+      "quote": "The ASRS v1.1 screener has been translated into several languages as below, and are provided on this website strictly for individual and provider clinical use. For research or academic purposes, or for commercial use, please visit the website https://license.tov.med.nyu.edu/product/asrs-v11-18-question-symptom-checklist […] The screeners below may be downloaded and displayed, or printed for use with patients in clinical settings. The right to modify, make changes, or make derivatives of any kind, including electronic versions, is strictly prohibited. […] The ASRS v1.1 and all of its translations are owned by New York University and President and Fellows of Harvard College.",
+      "url": "https://adhdinadults.com/asrs-v1-1-translations/",
+      "conditions": "Страница продукта NYU TOV (https://license.tov.med.nyu.edu/product/asrs-v11-18-question-symptom-checklist): клиническое использование — «those permissions are granted via the ADHD in Adults website»; исследования — соглашение с подписью уполномоченного лица учреждения, «For educational and research use only», срок 1 год; встраивание в веб-платформы — отдельная коммерческая лицензия «For integration into website platforms/ applications», «Price on application». Шесть пунктов части A уже стоят в каталоге как ASRS-6: у скринера другие условия — «freely available … other than creating electronic versions».",
+      "owner": "New York University и President and Fellows of Harvard College (NYU Langone Technology Opportunities & Ventures)"
+    },
+    "items": null,
+    "items_note": "Текст 12 пунктов части B не приводится: электронная версия чек-листа без договора с NYU запрещена правообладателем.",
+    "anchors": null,
+    "reverse": null,
+    "scoring": null,
+    "scoring_note": "На бланке для части B порога нет («The frequency scores on Part B provide additional cues») — даже при лицензии полос части B не было бы.",
+    "bands": null,
+    "risk_items": null,
+    "translation": {
+      "uk": { "exists": false, "by": null, "free": false, "url": "https://adhdinadults.com/asrs-v1-1-translations/", "note": "Украинского и русского среди 20 языков 18-пунктового чек-листа нет (проверено 20.10.2026)." },
+      "ru": { "exists": false, "by": null, "free": false, "url": "https://adhdinadults.com/asrs-v1-1-translations/", "note": "См. выше." }
+    },
+    "example": null,
+    "example_note": "Без текста и лицензии пример не нужен.",
+    "verdict": "не заводить — правообладатель прямо запрещает электронные версии 18-пунктового чек-листа («including electronic versions, is strictly prohibited»), встраивание в веб-платформу — платная лицензия NYU по запросу. Скрининговая часть A уже есть в каталоге (asrs6) по более свободной лицензии скринера."
+  },
+  {
+    "key": "ad8",
+    "title_en": "AD8 Dementia Screening Interview (Eight-item Informant Interview to Differentiate Aging and Dementia)",
+    "title_uk": null,
+    "title_ru": null,
+    "authors": "James E. Galvin, John C. Morris и соавт., Knight Alzheimer’s Disease Research Center, Washington University in St. Louis",
+    "year": 2005,
+    "citation": "Galvin JE, Roe CM, Powlishta KK, et al. The AD8: a brief informant interview to detect dementia. Neurology. 2005;65(4):559-564.",
+    "license": {
+      "verdict": "лицензируется (переводы и встраивание в электронные системы исключены)",
+      "quote": "Washington University grants permission to use and reproduce The AD8: The Washington University Dementia Screening Test, also referred to as the “Eight-item Interview to Differentiate Aging and Dementia” (the “AD8”),without modification or editing of any kind solely for (1) clinical care purposes, defined as a physician’s use of the AD8 for non-research patient care services, and (2) non-commercial research […]. The Purpose specifically excludes any use, reproduction, publication, and/or distribution of the AD8 for any other reason or purpose, including without limitation […] (b) the creation of any derivative works of the AD8, including translations thereof; […] (d) incorporation of the AD8 in an electronic medical record application software […]. Individuals or corporations intending to use the AD8 for any use other than the Purpose stated above, including clinical trial or commercial purposes, must obtain WU’s prior written permission, granted by an authorized representative of WU.",
+      "url": "https://www.dementiaresearch.org.au/wp-content/uploads/2016/03/09_AD8_Manual.pdf",
+      "conditions": "Тот же текст разрешения — на бланке и в руководстве по проведению. Другая редакция разрешения (бланк, распространяемый Alzheimer’s Association, https://alz.org/getmedia/6e7291bf-4ac8-40ed-a148-824d4591ed7e/ad8-dementia-screening.pdf) тоже исключает «(ii) the creation of any derivative works, including translations». Контакт для иного использования — Ronald Hawley (hawleyr@wustl.edu).",
+      "owner": "Washington University in St. Louis"
+    },
+    "items": null,
+    "items_note": "Текст восьми пунктов не приводится: перевод и включение в электронную систему без письменного разрешения WU запрещены.",
+    "anchors": null,
+    "reverse": null,
+    "scoring": null,
+    "scoring_note": "Для справки: правообладатель считает число ответов «Yes, a change»; «0 – 1: Normal cognition», «2 or greater: Cognitive impairment is likely to be present» (руководство WU).",
+    "bands": null,
+    "risk_items": null,
+    "translation": {
+      "uk": { "exists": null, "by": null, "free": false, "url": null, "note": "Собственный перевод прямо запрещён разрешением WU." },
+      "ru": { "exists": null, "by": null, "free": false, "url": null, "note": "То же." }
+    },
+    "example": null,
+    "example_note": "Без текста и лицензии пример не нужен.",
+    "verdict": "не заводить — Washington University прямо исключает переводы и встраивание в электронные медицинские системы. Вдобавок форма информанта сейчас ни к кому не привязывается: запросы информанта сняты миграцией 0077, и прохождение с administration = informant записывается без пациента (lib/submission.ts)."
+  },
+  {
+    "key": "6cit",
+    "title_en": "Six-item Cognitive Impairment Test (6CIT) — Kingshill Version 2000",
+    "title_uk": null,
+    "title_ru": null,
+    "authors": "Patrick Brooke, Roger Bullock (Kingshill Research Centre, Victoria Hospital, Swindon); пункты — сокращение Blessed Information-Memory-Concentration Test (Katzman et al., 1983)",
+    "year": 1999,
+    "citation": "Brooke P, Bullock R. Validation of a 6 item cognitive impairment test with a view to primary care usage. Int J Geriatr Psychiatry. 1999;14(11):936-940.",
+    "license": {
+      "verdict": "не подтверждена правообладателем",
+      "quote": "The Kingshill Research Centre, Swindon, UK owns the copyright to The Kingshill Version 2000 of the 6CIT but allows free usage to healthcare professionals.",
+      "url": "https://www.rightdecisions.scot.nhs.uk/media/2265/6-cit.pdf",
+      "conditions": "Цитата — не со страницы правообладателя, а из статьи Patient.info (EMIS), перепечатанной NHS Scotland; статья благодарит Dr Patrick Brooke за помощь. Страницы самого Kingshill Research Centre нет: по выдаче поиска страница AWP NHS Trust сообщает, что центр закрыт в марте 2024 года (саму страницу https://awp.nhs.uk/about-us/research-and-development/kingshill-research-centre-swindon открыть не удалось — 403). Кто теперь держит права и разрешает ли перевод и встраивание в электронную систему — не установлено.",
+      "owner": "Kingshill Research Centre, Swindon (закрыт; вероятно, Avon and Wiltshire Mental Health Partnership NHS Trust)"
+    },
+    "items": null,
+    "items_note": "Текст не заводится до подтверждения прав. Для справки: шесть заданий (год, месяц, запоминание адреса из 5 элементов, время с точностью до часа, счёт от 20 до 1, месяцы в обратном порядке, воспроизведение адреса), взвешенные баллы 0–28; проводит специалист.",
+    "anchors": null,
+    "reverse": null,
+    "scoring": null,
+    "scoring_note": "Для справки: в статье 1999 г. проверен только порог 7/8 (чувствительность 78,6 % при лёгкой деменции, специфичность 100 %). Трёхступенчатая шкала «0-7 normal / 8-9 mild cognitive impairment / 10-28 significant» встречается только на вторичных бланках NHS — первоисточник этих полос не найден.",
+    "bands": null,
+    "risk_items": null,
+    "translation": {
+      "uk": { "exists": false, "by": null, "free": null, "url": null, "note": "Официального украинского текста не найдено." },
+      "ru": { "exists": false, "by": null, "free": null, "url": null, "note": "Официального русского текста не найдено." }
+    },
+    "example": null,
+    "example_note": "Не заводится — пример не нужен.",
+    "verdict": "не заводить — слова о свободном использовании есть только в перепечатке третьей стороны, правообладатель закрыт в 2024 году, разрешения на перевод и электронную форму никто не давал. Клинически методика — скрининг деменции у пожилых в первичном звене (контрольная группа 68 лет в среднем), а не после ЧМТ; задачу быстрой оценки у постели больного в этом каталоге закрывает 4AT. Вернуться, если AWP NHS Trust письменно подтвердит права."
+  },
+  {
+    "key": "slums",
+    "title_en": "Saint Louis University Mental Status Examination (SLUMS)",
+    "title_uk": null,
+    "title_ru": null,
+    "authors": "Syed H. Tariq, Nina Tumosa, John T. Chibnall, Mitchell H. Perry III, John E. Morley (Saint Louis University; St. Louis VA GRECC)",
+    "year": 2006,
+    "citation": "Tariq SH, Tumosa N, Chibnall JT, Perry MH 3rd, Morley JE. Comparison of the Saint Louis University mental status examination and the mini-mental state examination for detecting dementia and mild neurocognitive disorder — a pilot study. Am J Geriatr Psychiatry. 2006;14(11):900-910.",
+    "license": {
+      "verdict": "бесплатно для специалистов, без разрешения на перевод и электронную форму",
+      "quote": "The free exam was developed in partnership with the Geriatrics Research, Education and Clinical Center at the St. Louis Veterans Administration Medical Center. Health care and social service professionals can administer it annually after watching the available training video.",
+      "url": "https://www.slu.edu/medicine/internal-medicine/geriatric-medicine/aging-successfully/assessment-tools/mental-status-exam.php",
+      "conditions": "Отдельного разрешения на перевод и встраивание в электронные системы на странице нет. «The GEC has 23 professional language and regional translations» — украинского и русского среди них нет.",
+      "owner": "Saint Louis University"
+    },
+    "items": null,
+    "items_note": "Текст не заводится. Препятствия не только лицензионные (бланк https://www.slu.edu/medicine/internal-medicine/geriatric-medicine/aging-successfully/-pdf/slums-form.pdf): пункт 9 требует рисунка («This is a clock face. Please put in the hour markers and the time at ten minutes to eleven o’clock»), пункт 10 — печатного стимула («Please place an X in the triangle. […] Which of the above figures is largest?»), пункт 6 — отсчёта времени («Please name as many animals as you can in one minute»). Платформа не показывает стимул и не хранит рисунок; балл за рисунок пришлось бы вносить с бумаги.",
+    "anchors": null,
+    "reverse": null,
+    "scoring": null,
+    "scoring_note": "Пороги на бланке различаются по образованию (окончена средняя школа или нет); система стратифицирует нормы по полу и возрасту, но не по образованию.",
+    "bands": null,
+    "risk_items": null,
+    "translation": {
+      "uk": { "exists": false, "by": null, "free": null, "url": null, "note": "Нет среди 23 переводов правообладателя." },
+      "ru": { "exists": false, "by": null, "free": null, "url": null, "note": "Нет среди 23 переводов правообладателя." }
+    },
+    "example": null,
+    "example_note": "Не заводится — пример не нужен.",
+    "verdict": "не заводить — рисунок часов, печатный стимул и задание на время платформа честно представить не может, пороги зависят от образования, которого система не учитывает, а разрешения на перевод и электронную форму нет."
+  },
+  {
+    "key": "nsi",
+    "title_en": "Neurobehavioral Symptom Inventory (NSI)",
+    "title_uk": null,
+    "title_ru": null,
+    "authors": "Keith D. Cicerone, Kathleen Kalmar (JFK Johnson Rehabilitation Institute)",
+    "year": 1995,
+    "citation": "Cicerone KD, Kalmar K. Persistent postconcussion syndrome: the structure of subjective complaints after mild traumatic brain injury. J Head Trauma Rehabil. 1995;10(3):1-17.",
+    "license": {
+      "verdict": "защищена авторским правом; свободного разрешения нет",
+      "quote": "Form is copyrighted, but is openly available. More information can be found at the provided link(s)",
+      "url": "https://cde.nlm.nih.gov/api/form/mJFiEkBHtx",
+      "conditions": "Цитата — запись NIH CDE Repository (NINDS F0368), а не правообладателя. Бланк Министерства обороны США (health.mil, Reference Center, Forms, 30.04.2015; копия Wayback Machine от 10.01.2025: https://web.archive.org/web/20250110064910/https://health.mil/Reference-Center/Forms/2015/04/30/Neurobehavioral-Symptom-Inventory-Form) несёт строку «Used with permission: Cicerone,KD: J Head Tr Rehabil 1995;10(3):1-17» — разрешение выдано Минобороны, а не всем. Заявления автора или издателя о свободном использовании, переводе и электронной форме не найдено; health.mil из этой сети недоступен (WAF).",
+      "owner": "Keith D. Cicerone / издатель J Head Trauma Rehabil"
+    },
+    "items": null,
+    "items_note": "Текст 22 пунктов не заводится до письменного разрешения. Для справки: 22 симптома, оценка 0–4 «за последние 2 недели», сумма 0–88; используется Минобороны и VA США в оценке ЧМТ (VHA Directive 2010-012: «the 22-question Neurobehavioral Symptom Inventory»).",
+    "anchors": null,
+    "reverse": null,
+    "scoring": null,
+    "scoring_note": "Клинических порогов общего балла в первоисточнике нет; в литературе — факторные подшкалы (Vanderploeg 2015, Meterko 2012) и индекс завышения Validity-10.",
+    "bands": null,
+    "risk_items": null,
+    "translation": {
+      "uk": { "exists": false, "by": null, "free": null, "url": null, "note": "Официального украинского текста не найдено." },
+      "ru": { "exists": false, "by": null, "free": null, "url": null, "note": "Официального русского текста не найдено." }
+    },
+    "example": null,
+    "example_note": "Не заводится — пример не нужен.",
+    "verdict": "не заводить до письменного разрешения — методика защищена авторским правом, Минобороны США печатает её «Used with permission», общего разрешения нет. Клинически это лучший кандидат группы для ЧМТ: стоит запросить разрешение у K. Cicerone (JFK Johnson Rehabilitation Institute) на перевод и электронную форму."
+  },
+  {
+    "key": "promis_cf",
+    "title_en": "PROMIS Cognitive Function / Applied Cognition short forms",
+    "title_uk": null,
+    "title_ru": null,
+    "authors": "PROMIS Health Organization (PHO), PROMIS Cooperative Group",
+    "year": 2014,
+    "citation": "PROMIS Terms and Conditions (PTAC), version March 28, 2014, https://assessmentcenter.net/documents/PROMIS%20Terms%20and%20Conditions%20v8.1.pdf",
+    "license": {
+      "verdict": "лицензируется (перевод и распространение — только с разрешения PHO)",
+      "quote": "PERMISSION TO USE PROMIS INSTRUMENTS DOES NOT GRANT PERMISSION TO MODIFY THE WORDING OR LAYOUT OF ITEMS, TO DISTRIBUTE TO OTHERS, OR TO TRANSLATE ITEMS INTO ANY OTHER LANGUAGE. SUCH PERMISSION TO MODIFY, DISTRIBUTE, OR TRANSLATE MUST BE REQUESTED FROM THE PROMIS HEALTH ORGANIZATION OR THE OWNER OF THE COPYRIGHTED MATERIALS FROM WHICH PROMIS HAS BEEN DERIVED.",
+      "url": "https://assessmentcenter.net/documents/PROMIS%20Terms%20and%20Conditions%20v8.1.pdf",
+      "conditions": "По вторичным источникам, для электронного администрирования нужно отдельное разрешение HealthMeasures (HEAP) с проверкой снимков экрана; официальную страницу HEAP открыть не удалось. Баллы PROMIS — T-баллы по таблицам пересчёта, которых движок не воспроизводит (только линейный T по среднему и SD).",
+      "owner": "PROMIS Health Organization"
+    },
+    "items": null,
+    "items_note": "Текст не заводится: собственный перевод прямо запрещён PTAC.",
+    "anchors": null,
+    "reverse": null,
+    "scoring": null,
+    "bands": null,
+    "risk_items": null,
+    "translation": {
+      "uk": { "exists": null, "by": "PHO (через HealthMeasures)", "free": false, "url": null, "note": "Наличие официального украинского перевода коротких форм Cognitive Function не проверено; при наличии — только по разрешению PHO." },
+      "ru": { "exists": null, "by": "PHO (через HealthMeasures)", "free": false, "url": null, "note": "То же." }
+    },
+    "example": null,
+    "example_note": "Не заводится — пример не нужен.",
+    "verdict": "не заводить — условия PHO запрещают переводить и распространять пункты без разрешения, электронная форма требует отдельного разрешения HealthMeasures, а подсчёт — нелинейных таблиц T-баллов."
+  },
+  {
+    "key": "cfq",
+    "title_en": "Cognitive Failures Questionnaire (CFQ)",
+    "title_uk": null,
+    "title_ru": null,
+    "authors": "Donald E. Broadbent, Peter F. Cooper, Peter FitzGerald, Katharine R. Parkes",
+    "year": 1982,
+    "citation": "Broadbent DE, Cooper PF, FitzGerald P, Parkes KR. The Cognitive Failures Questionnaire (CFQ) and its correlates. Br J Clin Psychol. 1982;21(1):1-16.",
+    "license": {
+      "verdict": "не подтверждена",
+      "quote": null,
+      "url": "https://hub.salford.ac.uk/psytech/equipment-resources/questionnaire-battery/the-cognitive-failures-questionnaire/",
+      "conditions": "Заявления правообладателя (авторов или издателя — British Psychological Society / Wiley) о свободном использовании не найдено. Университетский каталог Salford пишет в поле copyright «No restrictions» — это мнение третьей стороны, не разрешение. Коммерческая библиотека Inquisit включает CFQ в свою лицензию — тоже не основание для нас.",
+      "owner": "Авторы / British Psychological Society (издатель журнала)"
+    },
+    "items": null,
+    "items_note": "Текст 25 пунктов не заводится без разрешения.",
+    "anchors": null,
+    "reverse": null,
+    "scoring": null,
+    "scoring_note": "Клинических порогов у разработчиков нет (сумма 0–100 используется как непрерывная мера).",
+    "bands": null,
+    "risk_items": null,
+    "translation": {
+      "uk": { "exists": null, "by": null, "free": null, "url": null, "note": "Не проверялось — методика не заводится по лицензии." },
+      "ru": { "exists": null, "by": null, "free": null, "url": null, "note": "Не проверялось — методика не заводится по лицензии." }
+    },
+    "example": null,
+    "example_note": "Не заводится — пример не нужен.",
+    "verdict": "не заводить — нет слов правообладателя о свободном использовании; «No restrictions» в чужом каталоге разрешением не является."
+  },
+  {
+    "key": "rpq",
+    "title_en": "Rivermead Post Concussion Symptoms Questionnaire (RPQ)",
+    "title_uk": null,
+    "title_ru": null,
+    "authors": "Nigel S. King, Simon Crawford, Frances J. Wenden, Nicholas E. G. Moss, Derick T. Wade (Rivermead Rehabilitation Centre, Oxford)",
+    "year": 1995,
+    "citation": "King NS, Crawford S, Wenden FJ, Moss NE, Wade DT. The Rivermead Post Concussion Symptoms Questionnaire: a measure of symptoms commonly experienced after head injury and its reliability. J Neurol. 1995;242(9):587-592.",
+    "license": {
+      "verdict": "не подтверждена правообладателем",
+      "quote": "This instrument is available in the public domain and is a widely used measure.",
+      "url": "https://www.commondataelements.ninds.nih.gov/sites/nindscde/files/Doc/TBI/F0366_Summary_of_Recommendations_for_Post-concussive_TBI-Related_Symptoms.docx",
+      "conditions": "Цитата — рекомендация NINDS CDE, а не правообладателя. Бразильская адаптация (Arq Neuropsiquiatr 2022, https://pmc.ncbi.nlm.nih.gov/articles/PMC9394559/) пишет: «Firstly, the author of the original scale was approached and granted permission for the transcultural adaptation and scale validation» — переводчики разрешение у автора спрашивают. Собственного заявления авторов или издателя (Springer) о свободном использовании не найдено.",
+      "owner": "Авторы / Springer (J Neurol)"
+    },
+    "items": null,
+    "items_note": "Текст 16 пунктов не заводится без разрешения.",
+    "anchors": null,
+    "reverse": null,
+    "scoring": null,
+    "bands": null,
+    "risk_items": null,
+    "translation": {
+      "uk": { "exists": null, "by": null, "free": null, "url": null, "note": "Переводы CENTER-TBI (11 языков) — без украинского в проверенных источниках." },
+      "ru": { "exists": null, "by": null, "free": null, "url": null, "note": "Не подтверждён." }
+    },
+    "example": null,
+    "example_note": "Не заводится — пример не нужен.",
+    "verdict": "не заводить — «public domain» утверждает NINDS, а не правообладатель, и переводчики запрашивают разрешение у автора. Вернуться при письменном разрешении."
+  },
+  {
+    "key": "mpai4",
+    "title_en": "Mayo-Portland Adaptability Inventory-4 (MPAI-4)",
+    "title_uk": null,
+    "title_ru": null,
+    "authors": "Muriel D. Lezak, James F. Malec",
+    "year": 2003,
+    "citation": "Malec J, Lezak MD. Manual for the Mayo-Portland Adaptability Inventory (MPAI-4) for Adults, Children and Adolescents. 2003 (rev. 2008), https://www.tbims.org/combi/mpai/manual.pdf",
+    "license": {
+      "verdict": "свободна (некоммерческое использование)",
+      "quote": "Drs. Malec and Lezak retain copyright to the MPAI-4 and previous versions. The MPAI-4 may be downloaded from the COMBI web site, copied, and used without fee or other charge. However, distribution or sale of the MPAI-4, related materials developed by Drs. Malec and Lezak, and previous versions for profit, fee, barter, or trade is expressly forbidden.",
+      "url": "https://www.tbims.org/combi/mpai/manual.pdf",
+      "conditions": "Использование бесплатно; продажа и распространение за плату запрещены. О переводе руководство не говорит; переводы на сайте COMBI сделаны разными группами.",
+      "owner": "James F. Malec, Muriel D. Lezak"
+    },
+    "items": null,
+    "items_note": "Текст не заводится по причине представимости, а не лицензии. Руководство: «For the Ability Index, item 4 (Audition) must be rescored»; «Use only the highest score from either 7A or 7B»; пункт 28 — «Rate either item 28A or 28B to reflect the primary desired social role. Do not rate both»; пункты 22–24 входят и в Adjustment, и в Participation, а в Full Scale — один раз; интерпретация — по T-баллам из таблиц пересчёта («Raw score to T-score conversion tables»), только для оценок персонала у взрослых.",
+    "anchors": null,
+    "reverse": null,
+    "scoring": null,
+    "scoring_note": "Движок не умеет брать большее из двух пунктов (7A/7B) и пересчитывать сырой балл в T по нелинейной таблице (есть только линейный T по среднему и SD и таблица стенов 1–10). Без T-баллов у индексов нет интерпретации.",
+    "bands": null,
+    "risk_items": null,
+    "translation": {
+      "uk": { "exists": false, "by": null, "free": null, "url": "https://www.tbims.org/combi/mpai/index.html", "note": "Переводы на COMBI: французский, франко-канадский, датский, испанский, немецкий, итальянский, португальский, шведский, нидерландский, японский, корейский; украинского и русского нет." },
+      "ru": { "exists": false, "by": null, "free": null, "url": "https://www.tbims.org/combi/mpai/index.html", "note": "См. выше." }
+    },
+    "example": null,
+    "example_note": "Не заводится — пример не нужен.",
+    "verdict": "не заводить пока — лицензия позволяет, но подсчёт (большее из 7A/7B, взаимоисключающие 28A/28B, нелинейные таблицы T-баллов) движок честно не воспроизводит, а сырой балл без T-баллов не интерпретируется. Вернуться, если движок научится таблицам пересчёта."
+  },
+  {
+    "key": "diva5",
+    "title_en": "Diagnostic Interview for ADHD in Adults (DIVA-5)",
+    "title_uk": null,
+    "title_ru": null,
+    "authors": "J.J.S. Kooij, M.H. Francken (DIVA Foundation, The Hague)",
+    "year": 2019,
+    "citation": "Kooij JJS, Francken MH. DIVA-5: Diagnostic Interview for ADHD in Adults. DIVA Foundation, https://www.divacenter.eu/",
+    "license": {
+      "verdict": "лицензируется для цифровых платформ (плата за каждое проведение)",
+      "quote": "The DIVA can only be implemented as a structured, fillable digital version of the official document. […] The wording must also remain exactly faithful to the current official DIVA version, word for word. […] You then pay us € 4,95 Euro per download once it is in your platform and approved by us.",
+      "url": "https://www.divacenter.eu/faq/",
+      "conditions": "Встраивание в платформу — по договору с DIVA Foundation и с оплатой за каждое проведение; бумажный PDF для клинициста — отдельно.",
+      "owner": "DIVA Foundation"
+    },
+    "items": null,
+    "items_note": "Текст не заводится без договора.",
+    "anchors": null,
+    "reverse": null,
+    "scoring": null,
+    "bands": null,
+    "risk_items": null,
+    "translation": {
+      "uk": { "exists": null, "by": "DIVA Foundation", "free": false, "url": "https://www.divacenter.eu/", "note": "В выпадающем списке языков сайта есть «Ukranian»; перевод ли это DIVA-5 или язык самого сайта — не проверено. Для платформы в любом случае — по договору." },
+      "ru": { "exists": null, "by": null, "free": null, "url": null, "note": "В том же списке русского не видно." }
+    },
+    "example": null,
+    "example_note": "Не заводится — пример не нужен.",
+    "verdict": "не заводить — для цифровой платформы нужен договор с DIVA Foundation и оплата €4,95 за каждое проведение."
+  },
+  {
+    "key": "mars",
+    "title_en": "Moss Attention Rating Scale (MARS); также Orientation Log (O-Log) и Cognitive Log (Cog-Log)",
+    "title_uk": null,
+    "title_ru": null,
+    "authors": "MARS — John Whyte, Tessa Hart (Moss TBI Model System); O-Log и Cog-Log — Thomas Novack (UAB TBI Care System)",
+    "year": 2003,
+    "citation": "Whyte J, Hart T, Bode RK, Malec JF. The Moss Attention Rating Scale for traumatic brain injury: initial psychometric assessment. Arch Phys Med Rehabil. 2003;84(2):268-276. Jackson WT, Novack TA, Dowler RN. Effective serial measurement of cognitive orientation in rehabilitation: the Orientation Log. Arch Phys Med Rehabil. 1998;79(6):718-720.",
+    "license": {
+      "verdict": "не подтверждена",
+      "quote": "Please note that the Rehabilitation Research Center maintains the website, however the Center does not hold any copyrights to the scales. Please contact the scale developer directly for requests pertaining to scale reproduction, use, or presentation (including scale use for teaching purposes).",
+      "url": "https://www.tbims.org/combi/list.html",
+      "conditions": "Цитата — COMBI (Center for Outcome Measurement in Brain Injury), а не разработчиков. На страницах MARS, O-Log и Cog-Log заявления разработчиков о свободном использовании, переводе и электронной форме нет — только контакт.",
+      "owner": "Разработчики шкал (Moss Rehabilitation Research Institute; University of Alabama at Birmingham)"
+    },
+    "items": null,
+    "items_note": "Текст не заводится без разрешения. Все три — наблюдательные шкалы для стационарной реабилитации после ЧМТ (внимание, ориентировка, общая когнитивная оценка у постели), клинически подходят отделению.",
+    "anchors": null,
+    "reverse": null,
+    "scoring": null,
+    "bands": null,
+    "risk_items": null,
+    "translation": {
+      "uk": { "exists": null, "by": null, "free": null, "url": null, "note": "Не проверялось — не заводится по лицензии." },
+      "ru": { "exists": null, "by": null, "free": null, "url": null, "note": "Не проверялось — не заводится по лицензии." }
+    },
+    "example": null,
+    "example_note": "Не заводится — пример не нужен.",
+    "verdict": "не заводить до письменного разрешения разработчиков — COMBI прямо пишет, что прав не держит; кандидаты для запроса: T. Hart (MARS), T. Novack (O-Log, Cog-Log)."
+  }
+]

@@ -24,3 +24,4 @@
 | `trauma.json` | травма и военный контекст | pcptsd5, ces, sbqr |
 | `function.json` | функционирование, ресурсы, поддержка | mspss, rses, brief_cope, ucla3, osss3 |
 | `behaviour.json` | зависимости, внимание, выгорание | cage, auditc, assist, asrs6, cbi |
+| `cognitive.json` | когнитивные функции, внимание, СДВГ, последствия ЧМТ | 4at (заполняет специалист), adexi (без полос); отклонены с причиной: asrs18, ad8, 6cit, slums, nsi, promis_cf, cfq, rpq, mpai4, diva5, mars |
