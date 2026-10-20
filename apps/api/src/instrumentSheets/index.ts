@@ -89,6 +89,13 @@ const MODULE_OF: Record<string, string> = {
   assist: "assist.ts",
   asrs6: "asrs6.ts",
   cbi: "cbi.ts",
+  // ── k-personality ──
+  tipi: "tipi.ts",
+  scs_sf: "scsSf.ts",
+  maas: "maas.ts",
+  aaq2: "aaq2.ts",
+  aq10: "aq10.ts",
+  // ── /k-personality ──
 };
 
 /**
