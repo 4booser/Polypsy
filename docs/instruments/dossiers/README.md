@@ -24,3 +24,4 @@
 | `trauma.json` | травма и военный контекст | pcptsd5, ces, sbqr |
 | `function.json` | функционирование, ресурсы, поддержка | mspss, rses, brief_cope, ucla3, osss3 |
 | `behaviour.json` | зависимости, внимание, выгорание | cage, auditc, assist, asrs6, cbi |
+| `suicide.json` | суицидальный риск (k-suicide, октябрь 2026) | asq, cssrs, sidas; не заведены — dsi_ss, p4, pss3, sibs. Карточка `cssrs` заменяет `cssrs_screener` из `trauma.json` (см. поле `supersedes`) |
