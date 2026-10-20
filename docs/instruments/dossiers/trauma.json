@@ -884,5 +884,127 @@
   "example": null,
   "example_note": "Проверочного примера «ответы → сумма → полоса» не существует и выдумывать его нельзя: C-SSRS Screen Version не даёт числового итога. Единственный проверяемый золотой тест — маршрутизация, дословно с официального бланка: набор «нет, нет» на вопросы 1-2 и «нет» на вопрос 6 → никаких действий; «да» на вопрос 2 при «нет» на 4-6 → «seek behavioral healthcare for further evaluation»; «да» на любой из вопросов 4, 5, 6 → «get immediate help... STAY WITH THEM until they can be evaluated» (High Risk).",
   "verdict": "завести без текста (лицензия) — правообладатель RFMH передал эксклюзивную лицензию на электронные реализации компании Clario, и развернуть C-SSRS в нашем ПО без сублицензии (старт 40 000 USD плюс 4 USD за проведение) нельзя; до заключения договора храним только название, правообладателя и способ лицензирования."
+ },
+ {
+  "key": "pcl5",
+  "title_en": "PTSD Checklist for DSM-5 (PCL-5)",
+  "title_uk": null,
+  "title_ru": null,
+  "authors": "Weathers, F. W.; Litz, B. T.; Keane, T. M.; Palmieri, P. A.; Marx, B. P.; Schnurr, P. P. (National Center for PTSD, U.S. Department of Veterans Affairs)",
+  "year": 2013,
+  "citation": "Weathers, F. W., Litz, B. T., Keane, T. M., Palmieri, P. A., Marx, B. P., & Schnurr, P. P. (2013). The PTSD Checklist for DSM-5 (PCL-5) – Standard [Measurement instrument]. Available from https://www.ptsd.va.gov/. Использованный бланк: «PCL-5 (18 August 2023)», version date 29 August 2023, официальный PDF National Center for PTSD.",
+  "license": {
+   "verdict": "свободна",
+   "quote": "This measure was developed by staff at VA's National Center for PTSD and is in the public domain and not copyrighted.",
+   "url": "https://www.ptsd.va.gov/professional/assessment/adult-sr/ptsd-checklist.asp",
+   "url_pdf": "https://www.ptsd.va.gov/professional/assessment/documents/PCL5_Standard_form.PDF",
+   "conditions": null
+  },
+  "items": [
+   "Repeated, disturbing, and unwanted memories of the stressful experience?",
+   "Repeated, disturbing dreams of the stressful experience?",
+   "Suddenly feeling or acting as if the stressful experience were actually happening again (as if you were actually back there reliving it)?",
+   "Feeling very upset when something reminded you of the stressful experience?",
+   "Having strong physical reactions when something reminded you of the stressful experience (for example, heart pounding, trouble breathing, sweating)?",
+   "Avoiding memories, thoughts, or feelings related to the stressful experience?",
+   "Avoiding external reminders of the stressful experience (for example, people, places, conversations, activities, objects, or situations)?",
+   "Trouble remembering important parts of the stressful experience?",
+   "Having strong negative beliefs about yourself, other people, or the world (for example, having thoughts such as: I am bad, there is something seriously wrong with me, no one can be trusted, the world is completely dangerous)?",
+   "Blaming yourself or someone else for the stressful experience or what happened after it?",
+   "Having strong negative feelings such as fear, horror, anger, guilt, or shame?",
+   "Loss of interest in activities that you used to enjoy?",
+   "Feeling distant or cut off from other people?",
+   "Trouble experiencing positive feelings (for example, being unable to feel happiness or have loving feelings for people close to you)?",
+   "Irritable behavior, angry outbursts, or acting aggressively?",
+   "Taking too many risks or doing things that could cause you harm?",
+   "Being “superalert” or watchful or on guard?",
+   "Feeling jumpy or easily startled?",
+   "Having difficulty concentrating?",
+   "Trouble falling or staying asleep?"
+  ],
+  "items_note": "Дословно с официального бланка 2023 г. (стр. 3). Инструкция дословно: «Below is a list of problems that people sometimes have in response to a very stressful experience. Keeping your worst event in mind, please read each problem carefully and then select one of the numbers to the right to indicate how much you have been bothered by that problem in the past month.» Шапка столбца: «In the past month, how much were you bothered by:».",
+  "anchors": [
+   {
+    "label": "Not at all",
+    "score": 0
+   },
+   {
+    "label": "A little bit",
+    "score": 1
+   },
+   {
+    "label": "Moderately",
+    "score": 2
+   },
+   {
+    "label": "Quite a bit",
+    "score": 3
+   },
+   {
+    "label": "Extremely",
+    "score": 4
+   }
+  ],
+  "reverse": [],
+  "scoring": "Дословно со страницы правообладателя: «A total symptom severity score (range - 0-80) can be obtained by summing the scores for each of the 20 items.» Там же — правило предварительного диагноза по DSM-5 (пункт с оценкой 2 и выше считается симптомом; нужны 1 пункт B (1–5), 1 пункт C (6–7), 2 пункта D (8–14), 2 пункта E (15–20)) — в системе не реализовано, система считает только сумму.",
+  "bands": [
+   {
+    "min": 0,
+    "max": 32,
+    "label_en": "below the cutoff for probable PTSD"
+   },
+   {
+    "min": 33,
+    "max": 80,
+    "label_en": "probable PTSD (cutoff 31–33; the catalogue uses 33)"
+   }
+  ],
+  "bands_note": "Дословно со страницы правообладателя: «Initial research suggests that a PCL-5 cutoff score between 31-33 is indicative of probable PTSD across samples. However, because the population and the purpose of the screening may warrant different cutoff scores, users are encouraged to consider both of these factors when choosing a cutoff score.» «A lower cut-point score should be considered when screening or when it is desirable to maximize detection of possible cases.» «A higher cut-point score should be considered when attempting to make a provisional diagnosis». Ступеней тяжести (мягкий / умеренный / тяжёлый) и границ 18 или 50 у правообладателя нет. Изменение: «a 10 point decrease is suggested as an indicator of response»; «PCL-5 < 28 can be used as an indicator of clinically significant change (Marx et al., 2022)» — для динамики, не для полос.",
+  "risk_items": [],
+  "risk_items_note": "Пункта о суицидальных мыслях в PCL-5 нет. Пункты 15 («acting aggressively») и 16 («doing things that could cause you harm») — симптомы E1–E2 по DSM-5 (агрессия, рискованное или саморазрушительное поведение), а не вопросы о суициде или намерении навредить; размечать ли их тревогой — решение клинического ревью рисков, в досье правила для них нет.",
+  "translation": {
+   "uk": {
+    "exists": false,
+    "by": null,
+    "free": null,
+    "url": null,
+    "note": "Правообладатель подтверждает только испанский перевод: «This Spanish translation has been edited and confirmed by National Center staff.» Украинские версии сторонних авторов (Oxford Health NHS, 2018; ТОВ «ЮЕЙ-ТЕСТ», текст закрыт «Всі права застережено») — не перевод правообладателя. В каталоге — рабочий перевод бланка 2023 г. с оговоркой WORKING_TRANSLATION."
+   },
+   "ru": {
+    "exists": false,
+    "by": null,
+    "free": null,
+    "url": null,
+    "note": "Официального русского перевода у правообладателя нет."
+   }
+  },
+  "example": {
+   "answers": [
+    2,
+    2,
+    2,
+    2,
+    2,
+    2,
+    2,
+    2,
+    2,
+    2,
+    2,
+    2,
+    2,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1
+   ],
+   "total": 33,
+   "band": "probable PTSD (≥33)",
+   "note": "Арифметически однозначный пример ровно на пороге: пункты 1–13 по 2 балла (26), пункты 14–20 по 1 (7), 26 + 7 = 33. Опубликованного пошагового примера у правообладателя нет."
+  },
+  "verdict": "завести — public domain по заявлению правообладателя; одна граница 33 (диапазон 31–33 правообладателя), ступеней тяжести нет; украинский и русский — рабочий перевод бланка 2023 г."
  }
 ]
