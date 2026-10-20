@@ -106,7 +106,8 @@ export const CATALOG: CatalogEntry[] = [
   {
     key: "audit",
     draft: audit10,
-    source: "AUDIT, Saunders та ін. для ВООЗ, 1993",
+    source:
+      "AUDIT, Saunders та ін. для ВООЗ, 1993; посібник Babor та ін., ВООЗ, 2001. Пункти 1–3 — офіційний текст AUDIT-C: клінічна настанова МОЗ України КН 2025-1897, рисунок 4.1; пункти 4–10 — робочий переклад",
   },
   {
     key: "pq16",
@@ -267,7 +268,7 @@ export const CATALOG: CatalogEntry[] = [
     key: "auditc",
     draft: auditc,
     source:
-      "AUDIT-C: пункти 1–3 AUDIT (Babor та ін., ВООЗ, 2001); поріг — Bush та ін., Arch Intern Med 1998 (чоловіки); жінки — Bradley та ін., Arch Intern Med 2003. Переклад пунктів — той самий робочий, що в AUDIT каталогу",
+      "AUDIT-C: пункти 1–3 AUDIT (Babor та ін., ВООЗ, 2001); поріг — Bush та ін., Arch Intern Med 1998 (чоловіки); жінки — Bradley та ін., Arch Intern Med 2003. Український текст — офіційний: клінічна настанова МОЗ України КН 2025-1897, рисунок 4.1 «AUDIT-C»; російський — робочий переклад",
   },
   {
     key: "assist",
