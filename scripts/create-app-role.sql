@@ -16,3 +16,18 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public
 
 -- журнал дополнительно закрыт и на уровне привилегий: только чтение и вставка
 REVOKE UPDATE, DELETE ON audit_log FROM quizzy_app;
+
+-- Журнал миграций — на чтение, как и в provision.ts: техпанель («Перевірки»,
+-- «База даних») сверяет применённые миграции с журналом в образе, и без этого
+-- права её проверка «Міграції» навсегда висит предупреждением «немає доступу».
+-- Скрипт идёт после установки, когда миграции уже прошли; запущенный раньше —
+-- не падает, а выдаёт право при следующем прогоне (скрипт повторяем: роль и
+-- права заводятся, только если их нет).
+DO $$ BEGIN
+  IF EXISTS (SELECT FROM pg_namespace WHERE nspname = 'drizzle') THEN
+    EXECUTE 'GRANT USAGE ON SCHEMA drizzle TO quizzy_app';
+    IF to_regclass('drizzle.__drizzle_migrations') IS NOT NULL THEN
+      EXECUTE 'GRANT SELECT ON drizzle.__drizzle_migrations TO quizzy_app';
+    END IF;
+  END IF;
+END $$;
