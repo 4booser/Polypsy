@@ -4,7 +4,7 @@ import { t } from "@quizzy/shared";
 import { adminA, api, appApi, batteries, batteryAssignments, batteryItems, db, eq, makeUser, root, surveys } from "./fixtures";
 import { auditLog, users } from "../src/db/schema";
 import { CATALOG_BATTERIES, CATALOG_BATTERY_LANG, type CatalogBattery } from "../src/instruments/catalogBatteries";
-import { installCatalog } from "../src/lib/catalogInstall";
+import { CATALOG_GROUP_ID, installCatalog } from "../src/lib/catalogInstall";
 
 /**
  * Наборы-заготовки каталога (instruments/catalogBatteries.ts).
@@ -185,10 +185,9 @@ describe("наборы-заготовки каталога", () => {
   /**
    * Общий набор (groupId null) виден всему персоналу (routes/batteries.ts).
    * Под ролью приложения суперадминистратор видит заготовку с составом, как
-   * и владелец базы. Шаги — методики каталога, а их, как и всякую методику
-   * без группы, политика строк показывает суперадминистратору и автору;
-   * администратор группы увидит шаги, если методики каталога лежат в его
-   * группе.
+   * и владелец базы. Шаги — методики каталога, а они стоят в группе каталога
+   * (CATALOG_GROUP_ID): администратор группы видит шаги, если он назначен и
+   * на неё.
    */
   test(
     "заготовка — в списке наборов сотрудника, и под ролью приложения тоже",
@@ -217,11 +216,11 @@ describe("наборы-заготовки каталога", () => {
   );
 
   /**
-   * Методики каталога стоят без группы, и администратору группы их не видно
-   * (surveyScopeFilter, политика surveys_read). Шаги заготовки он поэтому не
-   * видит — одинаково владельцем базы и ролью приложения, — а выдать её не
-   * может: выдача открыла бы пациенту методики вне его зоны. Под ролью
-   * приложения это прежде было пятисоткой на записи доступа.
+   * Методики каталога стоят в группе каталога, и администратору другой группы
+   * их не видно (surveyScopeFilter, политика surveys_read). Шаги заготовки он
+   * поэтому не видит — одинаково владельцем базы и ролью приложения, — а
+   * выдать её не может: выдача открыла бы пациенту методики вне его зоны. Под
+   * ролью приложения это прежде было пятисоткой на записи доступа.
    * Мутация: убрать проверку шагов в POST /:id/assign — администратор
    * получает 201 владельцем базы и 500 ролью приложения.
    */
@@ -252,6 +251,42 @@ describe("наборы-заготовки каталога", () => {
       // назначение не оставляется открытым: очередь общая на процесс
       const cancel = await api(`/api/batteries/assignments/${given.body.id}/cancel`, root.token, { method: "POST" });
       expect(cancel.status).toBe(200);
+    },
+    SLOW,
+  );
+
+  /**
+   * Тот же набор у врача, назначенного на группу каталога: шаги видны, выдать
+   * можно — и ролью приложения, как в бою.
+   * Мутация: ставить методики каталога без группы (installOne) — шагов не видно, выдача 403.
+   */
+  test(
+    "администратор группы каталога видит шаги заготовки и выдаёт её",
+    async () => {
+      const [row] = await templateRow("trauma-deep");
+      const tpl = CATALOG_BATTERIES.find((b) => b.key === "trauma-deep")!;
+      const assign = await api(`/api/groups/${CATALOG_GROUP_ID}/admins`, root.token, {
+        method: "POST",
+        body: JSON.stringify({ userId: adminA.id }),
+      });
+      expect(assign.status, JSON.stringify(assign.body)).toBe(201);
+      try {
+        for (const call of [api, appApi]) {
+          const list = await call("/api/batteries", adminA.token);
+          const seen = list.body.items.find((b: { id: string }) => b.id === row!.id);
+          expect(seen?.items.length, "врачу группы каталога не видны шаги заготовки").toBe(tpl.items.length);
+        }
+        const person = await makeUser("user", `catalog-group-battery-${crypto.randomUUID().slice(0, 8)}@test`);
+        const given = await appApi(`/api/batteries/${row!.id}/assign`, adminA.token, {
+          method: "POST",
+          body: JSON.stringify({ userId: person.id }),
+        });
+        expect(given.status, JSON.stringify(given.body)).toBe(201);
+        const cancel = await api(`/api/batteries/assignments/${given.body.id}/cancel`, root.token, { method: "POST" });
+        expect(cancel.status).toBe(200);
+      } finally {
+        await api(`/api/groups/${CATALOG_GROUP_ID}/admins/${adminA.id}`, root.token, { method: "DELETE" });
+      }
     },
     SLOW,
   );

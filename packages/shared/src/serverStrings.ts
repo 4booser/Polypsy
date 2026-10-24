@@ -740,6 +740,11 @@ export const SERVER_TEXTS = {
   "cmd.audit.checked": { uk: "перевірено: {n}", ru: "проверено: {n}", en: "checked: {n}" },
   "cmd.catalog.deptCreated": { uk: "відділення заведено", ru: "отделение заведено", en: "department created" },
   "cmd.catalog.deptExisted": { uk: "відділення вже було", ru: "отделение уже было", en: "department already existed" },
+  "cmd.catalog.groupCreated": {
+    uk: "групу «Каталог методик» заведено: призначте лікарів її адміністраторами",
+    ru: "группа «Каталог методик» заведена: назначьте врачей её администраторами",
+    en: "group “Assessment catalogue” created: make clinicians its administrators",
+  },
   "cmd.catalog.installed": { uk: "встановлено: {list}", ru: "поставлено: {list}", en: "installed: {list}" },
   "cmd.catalog.nothingNew": { uk: "нових методик немає", ru: "новых методик нет", en: "no new assessments" },
   "cmd.catalog.skipped": { uk: "уже стояли: {list}", ru: "уже стояли: {list}", en: "already installed: {list}" },
@@ -892,6 +897,13 @@ export const SERVER_TEXTS = {
   "content.copySuffix": { uk: "(копія)", ru: "(копия)", en: "(copy)" },
   /* отделение по умолчанию (lib/catalogInstall.ts); ищется по украинскому названию — не переименовывать молча */
   "content.defaultDepartment": { uk: "Психологічне відділення", ru: "Психологическое отделение", en: "Psychology department" },
+  /* группа методик каталога (lib/catalogInstall.ts, CATALOG_GROUP_ID); заводится один раз, дальше название — учреждения */
+  "content.catalogGroup": { uk: "Каталог методик", ru: "Каталог методик", en: "Assessment catalogue" },
+  "content.catalogGroupNote": {
+    uk: "Методики спільного каталогу. Лікар бачить і призначає їх, коли він адміністратор цієї групи.",
+    ru: "Методики общего каталога. Врач видит и назначает их, если он администратор этой группы.",
+    en: "Shared catalogue assessments. A clinician sees and assigns them once made an administrator of this group.",
+  },
 
   /*
    * ─── без запроса: письма и события, которые уходят не тому, кто спросил ───
