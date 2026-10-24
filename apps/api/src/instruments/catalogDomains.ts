@@ -23,7 +23,9 @@ import type { SurveyDomain } from "@quizzy/shared";
  * Отнесение спорных — решение, которое должен подтвердить клинический
  * психолог: PQ-16 (риск психоза) — в «Інше», а не в дистресс; ASRS-v1.1
  * (СДУГ) — в когнитивные функции как внимание; WHO-5, Розенберг, UCLA-3 и
- * Brief COPE — в ресурсы, а не в настроение.
+ * Brief COPE — в ресурсы, а не в настроение. Из каталога 2.1: AAQ-II и PSS-4 —
+ * в дистресс, MIOS (моральная травма) — в травму, FAS (утомление) — в сон,
+ * самосострадание (SCS-SF) и осознанность (MAAS) — в ресурсы, AQ-10 — в «Інше».
  */
 export const CATALOG_DOMAINS: Readonly<Record<string, SurveyDomain>> = {
   /* ── distress: настроение, тревога, дистресс ── */
@@ -36,11 +38,21 @@ export const CATALOG_DOMAINS: Readonly<Record<string, SurveyDomain>> = {
   srq20: "distress",
   gds15: "distress",
   dass42: "distress",
+  dass21: "distress",
+  k10: "distress",
+  k6: "distress",
+  phq15: "distress",
+  phq2: "distress",
+  gad2: "distress",
+  core10: "distress",
+  pss4: "distress",
+  aaq2: "distress",
 
   /* ── trauma ── */
   pcl5: "trauma",
   pcptsd5: "trauma",
   ces: "trauma",
+  mios: "trauma",
 
   /* ── suicide ── */
   sbqr: "suicide",
@@ -48,12 +60,19 @@ export const CATALOG_DOMAINS: Readonly<Record<string, SurveyDomain>> = {
   "sad-persons": "suicide",
 
   /* ── sleep ── */
+  sci: "sleep",
+  sci02: "sleep",
+  ris: "sleep",
+  fas: "sleep",
 
   /* ── addiction ── */
   audit: "addiction",
   auditc: "addiction",
   cage: "addiction",
   assist: "addiction",
+  cuditr: "addiction",
+  ciwaar: "addiction",
+  cows: "addiction",
 
   /* ── wellbeing: ресурсы и качество жизни ── */
   who5: "wellbeing",
@@ -62,20 +81,33 @@ export const CATALOG_DOMAINS: Readonly<Record<string, SurveyDomain>> = {
   rses: "wellbeing",
   ucla3: "wellbeing",
   brief_cope: "wellbeing",
+  swls: "wellbeing",
+  flourishing: "wellbeing",
+  spane: "wellbeing",
+  mlq: "wellbeing",
+  scs_sf: "wellbeing",
+  maas: "wellbeing",
 
   /* ── cognitive ── */
   asrs6: "cognitive",
+  "4at": "cognitive",
+  adexi: "cognitive",
 
   /* ── personality ── */
   "big-five": "personality",
   minimult: "personality",
   mlo: "personality",
+  tipi: "personality",
 
   /* ── staff: персонал ── */
   cbi: "staff",
+  bat: "staff",
+  bat12: "staff",
+  proqol5: "staff",
 
   /* ── other ── */
   pq16: "other",
+  aq10: "other",
 };
 
 /**

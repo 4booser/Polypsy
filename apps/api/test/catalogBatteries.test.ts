@@ -199,7 +199,7 @@ describe("наборы-заготовки каталога", () => {
       const mine = owner.body.items.find((b: { id: string }) => b.id === row!.id);
       const tpl = CATALOG_BATTERIES.find((b) => b.key === "primary-screening")!;
       expect(mine?.title).toBe(t(tpl.title, CATALOG_BATTERY_LANG));
-      expect(mine?.items.length).toBe(5);
+      expect(mine?.items.length).toBe(tpl.items.length);
 
       const asApp = await appApi("/api/batteries", root.token);
       expect(asApp.status, JSON.stringify(asApp.body)).toBe(200);
