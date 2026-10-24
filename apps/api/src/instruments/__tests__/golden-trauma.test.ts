@@ -14,6 +14,7 @@ import { WORKING_TRANSLATION } from "../common";
 import { pcptsd5 } from "../pcptsd5";
 import { sbqr } from "../sbqr";
 // ── k-trauma ──
+import { ctsrUa } from "../ctsrUa";
 import { ITQ_NOT_SCORED, itq } from "../itq";
 import { tgiSrPlus } from "../tgiSrPlus";
 // ── /k-trauma ──
@@ -410,6 +411,7 @@ describe("золотой протокол: SBQ-R", () => {
 const K21 = [
   ["itq", itq],
   ["tgi_sr_plus", tgiSrPlus],
+  ["ctsr_ua", ctsrUa],
 ] as const;
 
 type LocText = { uk: string; ru: string };
@@ -631,5 +633,52 @@ describe("золотой протокол: TGI-SR+", () => {
   test("перевод сделан с разработчиком — оговорки о рабочем переводе нет ни в одном языке", () => {
     expect(descriptionOf(tgiSrPlus).uk).not.toContain(WORKING_TRANSLATION.uk);
     expect(descriptionOf(tgiSrPlus).ru).not.toContain(WORKING_TRANSLATION.ru);
+  });
+});
+
+describe("золотой протокол: CTSR", () => {
+  const survey = toSurveyFull(ctsrUa);
+  const four = (s: Record<string, Got>, key: "value" | "grade") => ["CTSR", "EXH", "ALI", "HEL"].map((c) => s[c]![key]);
+
+  test("пример досье: 1,2,0,2,1,0,1,3,2 → сумма 12, истощение 4, отчуждённость 6, беспомощность 2", () => {
+    const answers = byScore(survey, { 1: 1, 2: 2, 3: 0, 4: 2, 5: 1, 6: 0, 7: 1, 8: 3, 9: 2 });
+    const s = scoresOf(survey, answers);
+    // EXH = п.1+4+7 = 1+2+1; ALI = п.2+5+8 = 2+1+3; HEL = п.3+6+9 = 0+0+2
+    expect(four(s, "value")).toEqual([12, 4, 6, 2]);
+    // ориентиры авторов: 12 ≥ 10, 4 ≥ 4, 6 ≥ 3 — верхний квартиль; 2 < 4 — нет
+    expect(four(s, "grade")).toEqual([2, 2, 2, 1]);
+    // п. 7 = 1 — умеренная тревога по правилу отделения
+    expect(detectRisks(survey, answers).map((r) => [r.questionId, r.severity])).toEqual([["q7", "moderate"]]);
+  });
+
+  test("края: всё 0 → 0, всё «Сильно» → 27 и подшкалы по 9", () => {
+    const min = scoresOf(survey, fill(survey, 0));
+    expect(four(min, "value")).toEqual([0, 0, 0, 0]);
+    expect(four(min, "grade")).toEqual([1, 1, 1, 1]);
+    const max = scoresOf(survey, fill(survey, 3));
+    expect(four(max, "value")).toEqual([27, 9, 9, 9]);
+  });
+
+  test("границы ориентиров: сумма 9 → ниже, 10 → верхний квартиль; отчуждённость 2 → ниже, 3 → квартиль", () => {
+    // 9 = пп. 2, 5, 8 по 3 (отчуждённость 9): сумма ниже 10, подшкала в квартиле
+    const nine = scoresOf(survey, byScore(survey, { 1: 0, 2: 3, 3: 0, 4: 0, 5: 3, 6: 0, 7: 0, 8: 3, 9: 0 }));
+    expect([nine.CTSR!.value, nine.CTSR!.grade, nine.ALI!.grade]).toEqual([9, 1, 2]);
+    const ten = scoresOf(survey, byScore(survey, { 1: 0, 2: 3, 3: 1, 4: 0, 5: 3, 6: 0, 7: 0, 8: 3, 9: 0 }));
+    expect([ten.CTSR!.value, ten.CTSR!.grade]).toEqual([10, 2]);
+    const ali2 = scoresOf(survey, byScore(survey, { 1: 0, 2: 1, 3: 0, 4: 0, 5: 1, 6: 0, 7: 0, 8: 0, 9: 0 }));
+    const ali3 = scoresOf(survey, byScore(survey, { 1: 0, 2: 1, 3: 0, 4: 0, 5: 1, 6: 0, 7: 0, 8: 1, 9: 0 }));
+    expect([ali2.ALI!.value, ali2.ALI!.grade, ali3.ALI!.value, ali3.ALI!.grade]).toEqual([2, 1, 3, 2]);
+  });
+
+  test("полосы — ориентиры, а не пороги: ни одна не поднимает тревогу; пункт риска один — п. 7", () => {
+    expect(survey.scales.flatMap((sc) => sc.bands).every((b) => b.severity === "none" || b.severity === "mild")).toBe(true);
+    const flagged = survey.questions.flatMap((q, i) => (q.options.some((o) => o.riskFlag) ? [i + 1] : []));
+    expect(flagged).toEqual([7]);
+    expect(survey.questions[6]!.options.map((o) => o.riskFlag)).toEqual([false, true, true, true]);
+  });
+
+  test("украинский текст — авторский; рабочий перевод назван только в русской половине", () => {
+    expect(descriptionOf(ctsrUa).uk).not.toContain("робочий переклад");
+    expect(descriptionOf(ctsrUa).ru).toContain("рабочий перевод");
   });
 });

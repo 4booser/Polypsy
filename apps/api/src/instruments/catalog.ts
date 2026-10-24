@@ -30,6 +30,7 @@ import { auditc } from "./auditc";
 import { cage } from "./cage";
 import { cbi } from "./cbi";
 // ── k-trauma ──
+import { ctsrUa } from "./ctsrUa";
 import { ITQ_NOT_SCORED, itq } from "./itq";
 import { tgiSrPlus } from "./tgiSrPlus";
 // ── /k-trauma ──
@@ -323,6 +324,12 @@ export const CATALOG: CatalogEntry[] = [
     draft: tgiSrPlus,
     source:
       "TGI-SR+, Lenferink, Eisma, Smid, de Keijser, Boelen, Compr Psychiatry 2022 — CC BY 4.0 (https://osf.io/rqn5k/); український і російський тексти — переклад Boelen та ін., 2022, виправлено друкарські помилки бланків; український поріг — Rispa Hoyos та ін., Clin Psychol Eur 2026",
+  },
+  {
+    key: "ctsr_ua",
+    draft: ctsrUa,
+    source:
+      "CTSR, оновлена українська версія: Frankova, Senyk, Avramchuk, Leshchuk, Rudys, Kurapov, Goral, Eur J Psychotraumatol 2025 — CC BY-NC 4.0, лише некомерційне використання; оригінал — Goral та ін., PLoS One 2021. Російський текст — робочий переклад",
   },
   // ── /k-trauma ──
 ];
