@@ -128,6 +128,11 @@ const MODULE_OF: Record<string, string> = {
   aaq2: "aaq2.ts",
   aq10: "aq10.ts",
   // ── /k-personality ──
+  // ── k-addiction ──
+  cuditr: "cuditr.ts",
+  ciwaar: "ciwaar.ts",
+  cows: "cows.ts",
+  // ── /k-addiction ──
 };
 
 /**

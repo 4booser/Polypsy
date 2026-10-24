@@ -67,6 +67,11 @@ import { maas } from "./maas";
 import { scsSf } from "./scsSf";
 import { tipi } from "./tipi";
 // ── /k-personality ──
+// ── k-addiction ──
+import { ciwaar } from "./ciwaar";
+import { cows } from "./cows";
+import { cuditr } from "./cuditr";
+// ── /k-addiction ──
 
 /**
  * Общий каталог общедоступных методик.
@@ -607,4 +612,46 @@ export const CATALOG: CatalogEntry[] = [
       "AQ-10 (Adult), Allison, Auyeung, Baron-Cohen, JAACAP 2012; Autism Research Centre, University of Cambridge — безкоштовно для некомерційного використання, переклад для некомерційних цілей без запиту (комерційне — ліцензія через ePROVIDE). Поріг ≥ 6 — з бланка ARC. Переклад робочий",
   },
   // ── /k-personality ──
+  // ── k-addiction ──
+  /*
+   * Группа «addiction»: вещества и поведенческие зависимости, каталог 2.1 —
+   * docs/instruments/dossiers/addiction.json. Ключ каталога равен ключу досье.
+   *
+   * Заведены три методики, у каждой — слова правообладателя о свободном
+   * воспроизведении: CUDIT-R (public domain на авторском бланке), CIWA-Ar («not
+   * copyrighted and may be reproduced freely») и COWS («may be copied and used
+   * clinically»). У двух последних украинский текст официальный — из стандартов
+   * медицинской помощи МЗ Украины 2025 г., и полосы тяжести тоже оттуда.
+   *
+   * Не заведены — каждая с цитатой и причиной в досье: DAST-10 (CAMH лицензирует
+   * по запросу с расценкой), FTND и HSI (свободу воспроизведения утверждает NIDA,
+   * не правообладатель), SDS, PGSI (CCSA требует письменного разрешения),
+   * IGDS9-SF (CC BY-NC-ND, перевод — только с автором), BSMAS, CAGE-AID, DUDIT
+   * (пороги по полу), SADQ-C и LDQ (официальный украинский текст есть, лицензии
+   * оригинала нет), BBGS. Поведенческих зависимостей поэтому в группе нет: ни у
+   * одного проверенного скринера гемблинга, игр или соцсетей нет свободного
+   * разрешения правообладателя.
+   *
+   * CIWA-Ar и COWS заполняет специалист (administration: "clinician"), CUDIT-R —
+   * самоотчёт.
+   */
+  {
+    key: "cuditr",
+    draft: cuditr,
+    source:
+      "CUDIT-R, Adamson, Kay-Lambkin, Baker, Lewin, Thornton, Kelly, Sellman, Drug Alcohol Depend 2010;110:137–143 — «This scale is in the public domain and is free to use with appropriate citation» (бланк авторів); пороги 8 і 12 — з бланка. Переклад робочий",
+  },
+  {
+    key: "ciwaar",
+    draft: ciwaar,
+    source:
+      "CIWA-Ar, Sullivan, Sykora, Schneiderman, Naranjo, Sellers, Br J Addict 1989;84:1353–1357 — «The CIWA-Ar is not copyrighted and may be reproduced freely». Український текст і межі тяжкості — офіційні: додаток 9, розділ II і додаток 13 Стандарту медичної допомоги «Психічні та поведінкові розлади внаслідок вживання алкоголю», ГС 2025-1897, наказ МОЗ України від 16.12.2025 № 1897; російський — робочий переклад",
+  },
+  {
+    key: "cows",
+    draft: cows,
+    source:
+      "COWS, Wesson, Ling, J Psychoactive Drugs 2003;35(2):253–259 — «This version may be copied and used clinically» (Appendix 1). Український текст — офіційний: додаток 6 до Стандарту медичної допомоги «Психічні та поведінкові розлади внаслідок вживання опіоїдів», ГС 2025-1102, наказ МОЗ України від 11.07.2025 № 1102 (виправлено чотири друкарські помилки); російський — робочий переклад",
+  },
+  // ── /k-addiction ──
 ];
