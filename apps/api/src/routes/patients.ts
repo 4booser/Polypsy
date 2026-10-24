@@ -32,6 +32,7 @@ import {
   users,
 } from "../db/schema";
 import { audit } from "../lib/audit";
+import { bandLabelsIn } from "../lib/bandLabels";
 import { fullNameOf } from "../lib/auth";
 import { decryptField } from "../lib/crypto";
 import { namesOf } from "../lib/names";
@@ -437,6 +438,8 @@ async function measuresOf(
     betterOf.set(id, higherWorse === null ? null : higherWorse ? "down" : "up");
   }
 
+  // слово полосы — на языке читателя, а не на языке прохождения (lib/bandLabels.ts)
+  const bandIn = await bandLabelsIn(lang, scaleIds);
   for (const [userId, { main, values }] of picks) {
     const title = t(main.survey_title as never, lang);
     out.set(userId, {
@@ -447,7 +450,7 @@ async function measuresOf(
       values,
       at: iso(String(main.submitted_at)),
       severity: (main.severity as PatientListMeasure["severity"]) ?? null,
-      bandLabel: main.band_label,
+      bandLabel: bandIn(main.scale_id, main.band_label),
       normalization: main.normalization as ScaleNormalization,
       better: betterOf.get(main.scale_id) ?? null,
     });
@@ -569,6 +572,7 @@ patientRoutes.get("/:id/card", async (c) => {
         .orderBy(asc(scales.position))
     : [];
   const scoresByResponse = new Map<string, PatientCardResponse["scales"]>();
+  const bandIn = await bandLabelsIn(lang, scoreRows.map((r) => r.score.scaleId));
   for (const { score, scale } of scoreRows) {
     /*
      * Только содержательные шкалы: вердикт шкал достоверности уже сложен в
@@ -583,7 +587,7 @@ patientRoutes.get("/:id/card", async (c) => {
       value: score.value,
       normalization: score.normalization as ScaleNormalization,
       percent: score.percent,
-      bandLabel: score.bandLabel,
+      bandLabel: bandIn(score.scaleId, score.bandLabel),
       severity: (score.severity as Severity | null) ?? null,
     });
     scoresByResponse.set(score.responseId, list);

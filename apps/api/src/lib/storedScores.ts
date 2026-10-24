@@ -53,15 +53,19 @@ export function storedScoreResult(row: StoredScoreRow, scale: Scale | undefined)
   const ladder = ladderOf(scale);
   const hit = hitBand(ladder, row);
   /*
-   * Полоса: подпись и тяжесть — сохранённые (они и были показаны при
-   * сдаче); описание, оценка и рекомендация — у ступени той же версии, в
+   * Полоса: тяжесть — сохранённая (она и была показана при сдаче);
+   * подпись, описание, оценка и рекомендация — у ступени той же версии, в
    * которую балл попал. id полосы — её же: ступень найдена в лестнице
    * версии, которую проходили, тем же сравнением, что при подсчёте.
+   *
+   * Подпись — ступени, а не снимка: снимок записан на языке прохождения
+   * (lib/bandLabels.ts), а лестница прочитана на языке читателя. Снимок —
+   * только когда ступень не нашлась.
    */
   const band: ScoreResult["band"] = row.bandLabel
     ? {
         id: hit?.id ?? null,
-        label: row.bandLabel,
+        label: hit?.label ?? row.bandLabel,
         severity: row.severity ?? hit?.severity ?? "none",
         description: hit?.description ?? null,
         grade: hit?.grade ?? null,
