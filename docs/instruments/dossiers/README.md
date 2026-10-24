@@ -22,7 +22,7 @@ WHO-5, PCL-5 и PQ-16 добавила рецензия каталога 2.1):
 | Файл | Группа | Заводятся с текстом |
 |---|---|---|
 | `mood.json` | настроение, тревога, дистресс, благополучие | phq9, gad7, phq4, phq8, cesdr, srq20, gds15, pss10 (без полос), dass42 (без полос), who5 |
-| `trauma.json` | травма и военный контекст | pcptsd5, ces, sbqr, pcl5 |
+| `trauma.json` | травма, горе и военный контекст | pcptsd5, ces, sbqr, pcl5; каталог 2.1 (октябрь 2026): itq (без полос), tgi_sr_plus, ctsr_ua, lec5 (без шкал) |
 | `psychosis.json` | необычные переживания, риск психоза | pq16 (лицензия не подтверждена — см. карточку) |
 | `function.json` | функционирование, ресурсы, поддержка | mspss, rses, brief_cope, ucla3, osss3 |
 | `behaviour.json` | зависимости, внимание, выгорание | cage, auditc, assist, asrs6, cbi |

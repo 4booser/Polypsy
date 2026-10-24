@@ -502,6 +502,8 @@ function itemsSection(lang: SheetLang, input: SheetInput, survey: SurveyFull, mo
     if (q.help) text += ` _${s("Підказка", "Подсказка")}: ${q.help}_`;
     if (!q.required) text += ` _(${s("необов’язковий", "необязательный")})_`;
     if (q.type === "text" || q.type === "longtext") text += ` _(${s("вільний текст, у підрахунок не йде", "свободный текст, в подсчёт не идёт")})_`;
+    // множественный выбор (LEC-5): несколько вариантов у одного пункта — сказать прямо, иначе лист читается как «один ответ»
+    if (q.type === "multiple") text += ` _(${s("можна позначити кілька варіантів", "можно отметить несколько вариантов")})_`;
     const risk = choices(q)
       .filter((o) => o.riskFlag)
       .map((o) => `«${o.text}» — ${severityWord(lang, o.riskSeverity ?? "severe")}`)
@@ -515,7 +517,7 @@ function itemsSection(lang: SheetLang, input: SheetInput, survey: SurveyFull, mo
     return [
       String(n),
       cell(text),
-      ...(common ? [] : [cell(q.type === "single" || q.type === "yesno" ? optionsText(q, mode) : "")]),
+      ...(common ? [] : [cell(q.type === "single" || q.type === "yesno" || q.type === "multiple" ? optionsText(q, mode) : "")]),
       q.reverseScored ? s("так", "да") : "",
       cell(scales),
       cell([risk, thr].filter(Boolean).join("; ")),

@@ -77,6 +77,12 @@ import { ASQ_NOT_SCORED, asq } from "./asq";
 import { CSSRS_NOT_SCORED, cssrs } from "./cssrs";
 import { sidas } from "./sidas";
 // ── /k-suicide ──
+// ── k-trauma ──
+import { ctsrUa } from "./ctsrUa";
+import { ITQ_NOT_SCORED, itq } from "./itq";
+import { LEC5_NOT_SCORED, lec5 } from "./lec5";
+import { tgiSrPlus } from "./tgiSrPlus";
+// ── /k-trauma ──
 
 /**
  * Общий каталог общедоступных методик.
@@ -698,4 +704,49 @@ export const CATALOG: CatalogEntry[] = [
       "SIDAS, van Spijker, Batterham, Calear, Farrer, Christensen, Reynolds, Kerkhof, Suicide and Life-Threatening Behavior 2014 (Centre for Mental Health Research, ANU): «No permission required – please cite reference». Переклад робочий",
   },
   // ── /k-suicide ──
+  // ── k-trauma ──
+  /*
+   * Травма, горе и война — каталог 2.1 (docs/instruments/dossiers/trauma.json; ключ каталога
+   * равен ключу карточки).
+   *
+   * В отличие от первых трёх методик группы, лицензия здесь не держится на заявлении
+   * учреждения: у каждой — слова правообладателя в карточке досье. Чей текст — бланк
+   * правообладателя или наш рабочий перевод — сказано в описании самой методики. Там же
+   * сказано, что методика считает меньше, чем на бумаге, если так: диагностические алгоритмы с
+   * порогом по пункту и «И» по кластерам движку не выразить — его шкала линейна.
+   *
+   * Не заведены (причины — в карточках досье): PG-13-R (воспроизведение только с разрешения
+   * авторов по запросу), DAR-5 и TSQ (нет заявления правообладателя о свободном
+   * воспроизведении), PTGI-SF (выдаётся по запросу), IES-R (правообладатель отказал), MISS-M-SF
+   * (нет порога и разрешения), IPGDS (ключ подсчёта «у розробці»), MIDS (правило «все ответы
+   * части 1 — ноль, дальше не заполнять» требует «ИЛИ» по шести пунктам, а условия показа
+   * движка соединяются только через «И»).
+   */
+  {
+    key: "itq",
+    draft: itq,
+    source:
+      "ITQ, Cloitre, Shevlin, Brewin, Bisson, Roberts, Maercker, Karatzias, Hyland, International Trauma Consortium, Acta Psychiatr Scand 2018 — public domain за заявою правовласника; український і російський тексти — бланки ITC (українську версію досліджено: Ho та ін., J Trauma Stress 2023). Рахуються розмірні бали; діагностичний алгоритм система не обчислює",
+    notScored: ITQ_NOT_SCORED,
+  },
+  {
+    key: "tgi_sr_plus",
+    draft: tgiSrPlus,
+    source:
+      "TGI-SR+, Lenferink, Eisma, Smid, de Keijser, Boelen, Compr Psychiatry 2022 — CC BY 4.0 (https://osf.io/rqn5k/); український і російський тексти — переклад Boelen та ін., 2022, виправлено друкарські помилки бланків; український поріг — Rispa Hoyos та ін., Clin Psychol Eur 2026",
+  },
+  {
+    key: "ctsr_ua",
+    draft: ctsrUa,
+    source:
+      "CTSR, оновлена українська версія: Frankova, Senyk, Avramchuk, Leshchuk, Rudys, Kurapov, Goral, Eur J Psychotraumatol 2025 — CC BY-NC 4.0, лише некомерційне використання; оригінал — Goral та ін., PLoS One 2021. Російський текст — робочий переклад",
+  },
+  {
+    key: "lec5",
+    draft: lec5,
+    source:
+      "LEC-5 (стандартна версія), Weathers, Blake, Schnurr, Kaloupek, Marx, Keane, National Center for PTSD, 2013 (бланк 2018) — public domain за заявою правовласника; балу немає за визначенням правовласника; переклад робочий",
+    notScored: LEC5_NOT_SCORED,
+  },
+  // ── /k-trauma ──
 ];
