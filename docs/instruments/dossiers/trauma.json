@@ -884,5 +884,925 @@
   "example": null,
   "example_note": "Проверочного примера «ответы → сумма → полоса» не существует и выдумывать его нельзя: C-SSRS Screen Version не даёт числового итога. Единственный проверяемый золотой тест — маршрутизация, дословно с официального бланка: набор «нет, нет» на вопросы 1-2 и «нет» на вопрос 6 → никаких действий; «да» на вопрос 2 при «нет» на 4-6 → «seek behavioral healthcare for further evaluation»; «да» на любой из вопросов 4, 5, 6 → «get immediate help... STAY WITH THEM until they can be evaluated» (High Risk).",
   "verdict": "завести без текста (лицензия) — правообладатель RFMH передал эксклюзивную лицензию на электронные реализации компании Clario, и развернуть C-SSRS в нашем ПО без сублицензии (старт 40 000 USD плюс 4 USD за проведение) нельзя; до заключения договора храним только название, правообладателя и способ лицензирования."
+ },
+ {
+  "key": "itq",
+  "title_en": "International Trauma Questionnaire (ITQ)",
+  "title_uk": "Міжнародний Опитувальник Травми (ITQ). МКХ-11 ПТСР та Комплексний ПТСР",
+  "title_ru": "Международный опросник о травмах (ITQ)",
+  "authors": "Cloitre, M.; Shevlin, M.; Brewin, C. R.; Bisson, J. I.; Roberts, N. P.; Maercker, A.; Karatzias, T.; Hyland, P. (International Trauma Consortium)",
+  "year": 2018,
+  "citation": "Cloitre M, Shevlin M, Brewin CR, Bisson JI, Roberts NP, Maercker A, Karatzias T, Hyland P. The International Trauma Questionnaire: development of a self-report measure of ICD-11 PTSD and complex PTSD. Acta Psychiatr Scand. 2018;138(6):536-546. doi:10.1111/acps.12956 — бланк: Appendix B принятой рукописи (UCL Discovery, https://discovery.ucl.ac.uk/id/eprint/10055935/). Украинская версия: Ho GWK, Vang ML, Martsenkovskyi D, Karatzias T, Ben-Ezra M, McElroy E, Redican E, Cloitre M, Lorberg B, Hyland P, Shevlin M. Investigating the latent structure of the International Trauma Questionnaire to assess ICD-11 posttraumatic stress disorder (PTSD) and complex PTSD in an adult civilian sample during the Ukraine war. J Trauma Stress. 2023;36(4):820-829. doi:10.1002/jts.22943. Использованные бланки правообладателя — со страницы Ukraine сайта ITC (https://www.traumameasuresglobal.com/ukraine): «ITQ_CPTSD_Ukrainian.docx» (пункты, диагностический алгоритм и размерная оценка по-украински) и «ITQ_plus Scoring Instructions_Rus.docx».",
+  "license": {
+   "verdict": "свободна с условиями",
+   "quote": "«The ITQ is freely available in the public domain to all interested parties.» (страница ITQ сайта International Trauma Consortium) / «The ITQ is freely available in the public domain for all interested parties without any change.» (Cloitre et al., 2018, раздел Summations)",
+   "url": "https://www.traumameasuresglobal.com/ptsd ; https://discovery.ucl.ac.uk/id/eprint/10055935/",
+   "conditions": "Public domain по заявлению правообладателя: ITC — это сами авторы методики. Условие из статьи — «without any change»: пункты, варианты ответа и алгоритм не меняются. Единственное отступление в системе — инструкция части 1 для экрана: «обведіть одне з чисел навпроти» → «оберіть одну з відповідей» (у русской — «обведите одну из цифр справа» → «выберите один из вариантов ответа»); пункты и подписи ответов — дословно. Оговорка с той же страницы ITC: «Cut-off scores should not be used for interpreting ITQ responses.» и «Caseness should only be assessed using the ITQ diagnostic algorithm.» Украинский бланк: https://cdn.prod.website-files.com/686e835a5683f56bbfc4c3a4/68a5dcf25da2b2888e4751c1_199b88cd9fafab83294ae5959b0afd71_ITQ_CPTSD_Ukrainian.docx ; русский: https://cdn.prod.website-files.com/686e835a5683f56bbfc4c3a4/68a5dcff19f1aac8663b3905_ITQ_plus%20Scoring%20Instructions_Rus.docx"
+  },
+  "items": [
+   "[ТЕКСТ, не считается] Brief description of experience ________ (укр. бланк: «Короткий опис зазначеного досвіду»)",
+   "[ВЫБОР, не считается] When did the experience occur? — в оригинале: less than 6 months ago / 6 to 12 months ago / 1 to 5 years ago / 5 to 10 years ago / 10 to 20 years ago / more than 20 years ago; в украинском бланке ITC: «Як давно це сталося?» — менше місяця тому / 1 - 6 місяців тому / 6 - 12 місяців тому / 1 - 5 років тому / 5 - 10 років тому / Більше 10 років тому",
+   "[ИНСТРУКЦИЯ ЧАСТИ 1, не пункт] Below are a number of problems that people sometimes report in response to traumatic or stressful life events. Please read each item carefully, then circle one of the numbers to the right to indicate how much you have been bothered by that problem in the past month.",
+   "P1. Having upsetting dreams that replay part of the experience or are clearly related to the experience?",
+   "P2. Having powerful images or memories that sometimes come into your mind in which you feel the experience is happening again in the here and now?",
+   "P3. Avoiding internal reminders of the experience (for example, thoughts, feelings, or physical sensations)?",
+   "P4. Avoiding external reminders of the experience (for example, people, places, conversations, objects, activities, or situations)?",
+   "P5. Being “super-alert”, watchful, or on guard?",
+   "P6. Feeling jumpy or easily startled?",
+   "P7. [In the past month have the above symptoms:] Affected your relationships or social life?",
+   "P8. [In the past month have the above symptoms:] Affected your work or ability to work?",
+   "P9. [In the past month have the above symptoms:] Affected any other important part of your life such as parenting, or school or college work, or other important activities?",
+   "[ИНСТРУКЦИЯ ЧАСТИ 2, не пункт] Below are problems or symptoms that people who have had stressful or traumatic events sometimes experience. The questions refer to ways you typically feel, ways you typically think about yourself and ways you typically relate to others. Answer the following thinking about how true each statement is of you.",
+   "C1. When I am upset, it takes me a long time to calm down.",
+   "C2. I feel numb or emotionally shut down.",
+   "C3. I feel like a failure.",
+   "C4. I feel worthless.",
+   "C5. I feel distant or cut off from people.",
+   "C6. I find it hard to stay emotionally close to people.",
+   "C7. [In the past month, have the above problems in emotions, in beliefs about yourself and in relationships:] Created concern or distress about your relationships or social life?",
+   "C8. [In the past month, have the above problems in emotions, in beliefs about yourself and in relationships:] Affected your work or ability to work?",
+   "C9. [In the past month, have the above problems in emotions, in beliefs about yourself and in relationships:] Affected any other important parts of your life such as parenting, or school or college work, or other important activities?"
+  ],
+  "items_note": "Порядок элементов массива — порядок вопросов в системе (22): описание события, давность, карточка инструкции части 1, P1–P9, карточка инструкции части 2, C1–C9. Английский текст — Appendix B (Cloitre et al., 2018). В системе — украинский и русский тексты бланков ITC дословно; заголовки-основы таблиц бланка («Протягом минулого місяця, як часто вас турбували…», «Протягом попереднього місяця, зазначені проблеми:», «Наскільки це правдиво, по відношенню до Вас?», «В минулому місяці згадані вище проблеми з емоціями, самовідчуттям та стосунками:») стоят подсказкой у каждого пункта, потому что на экране пункт показывается один, без таблицы. Варианты давности события в украинском бланке отличаются от оригинала и от русского бланка ITC (там — как в оригинале); в системе один набор на оба языка — украинский: на нём построено правило украинского бланка «подія понад місяць тому», а русские подписи шести вариантов — наш рабочий перевод украинских. Заголовки частей («Частина 1 — Симптоми ПТСР», «Частина 2 — Симптоми порушень самоорганізації») взяты из украинского бланка (там опечатка «Частина 2 2»); в русском бланке заголовков нет, русские — наш перевод. Русская орфография: «выше названные» → «вышеназванные».",
+  "anchors": [
+   {
+    "label": "Not at all",
+    "score": 0
+   },
+   {
+    "label": "A little bit",
+    "score": 1
+   },
+   {
+    "label": "Moderately",
+    "score": 2
+   },
+   {
+    "label": "Quite a bit",
+    "score": 3
+   },
+   {
+    "label": "Extremely",
+    "score": 4
+   }
+  ],
+  "anchors_note": "Украинский бланк: 0 Ніскільки / 1 Трохи / 2 Помірно / 3 Сильно / 4 Надзвичайно. Русский бланк: Нисколько / Немного / Умеренно / Довольно сильно / Чрезвычайно. Шкала одна для обеих частей и для пунктов функционального нарушения.",
+  "reverse": [],
+  "scoring": "Дословно с украинского бланка ITC, раздел «Діагностичний алгоритм»: «Для встановлення діагнозу ПТСР або КПТСР необхідний досвід пережитої травматичної події, що сталася понад місяць тому. ПТСР: Для встановлення діагнозу ПТСР необхідна наявність (оцінка ≥ 2) принаймні одного симптому з кожного з трьох кластерів симптомів ПТСР, а також принаймні одного показника функціонального порушення: Повторне переживання «тут і зараз»: P1 або P2 ≥ 2 (Re_dx); Уникання: P3 або P4 ≥ 2 (Av_dx); Відчуття безпосередньої загрози: P5 або P6 ≥ 2 (Th_dx); Функціональне порушення при ПТСР: Принаймні один з P7, P8, або P9 ≥ 2 (PTSDFI). Діагноз ПТСР виставляється, якщо Re_dx та Av_dx та Th_dx та PTSDFI виконуються, але критерії Симптомів Порушення Самоорганізації (DSO) не виконуються. … Дизрегуляція афекту: C1 або C2 ≥ 2 (AD_dx); Негативні уявлення про себе: C3 або C4 ≥ 2 (NSC_dx); Порушення стосунків: C5 або C6 ≥ 2 (DR_dx); DSO функціональні порушення: Принаймні один з C7, C8, або C9 ≥ 2 (DSOFI). Діагноз КПТС виставляється, коли виконуються критерії ПТСР та AD_dx та NSC_dx та DR_dx та DSOFI виконуються. Якщо критерії КПТСР виконуються, діагноз ПТСР додатково не виставляється. Якщо критерії ПТСР не виконуються або виконуються лише критерії DSO, діагноз не встановлюється.» Раздел «Просторова оцінка»: «Повторне переживання (Re): Сума P1 + P2 (Діапазон 0–8); Уникання (Av): Сума P3 + P4 (0–8); Відчуття безпосередньої загрози (Th): Сума P5 + P6 (0–8); Загальна оцінка ПТСР: Сума Re + Av + Th (0–24); Дизрегуляція афекту (AD): Сума C1 + C2 (0–8); Негативне уявлення про себе (NSC): Сума C3 + C4 (0–8); Порушення стосунків (DR): Сума C5 + C6 (0–8); Загальна оцінка DSO: Сума AD + NSC + DR (0–24).» То же в статье: «Under this algorithm, diagnosis of PTSD requires the endorsement of one of two symptoms from each PTSD cluster, plus endorsement of functional impairment associated with these symptoms. Diagnosis of CPTSD requires the endorsement of one of two symptoms from each of the six PTSD and DSO clusters, plus endorsement of functional impairment associated with these symptoms. The ICD-11 taxonomic structure dictates that a person may only receive a diagnosis of PTSD or CPTSD, but not both.» и «scores ≥ 2 (‘Moderately’) were used to indicate the presence of a symptom». Пункты функционального нарушения (P7–P9, C7–C9) в размерные баллы не входят — только в алгоритм. ЧТО СЧИТАЕТ СИСТЕМА: восемь размерных баллов (ПТСР, Re, Av, Th, DSO, AD, NSC, DR). Диагностический алгоритм движок НЕ вычисляет: ему нужен порог по каждому пункту («один из двух ≥ 2») и «И» по кластерам, а шкала движка — линейная сумма (sum/average/count): «count» считает пункты с ненулевым вкладом, а ключ по коду варианта («matchKey») совпадает ровно с одним вариантом пункта, и пункт не может стоять в ключе одной шкалы дважды. Правило дословно стоит в описании шкал, его применяет специалист по ответам.",
+  "bands": null,
+  "bands_note": "Полос нет по прямому указанию правообладателя: «Cut-off scores should not be used for interpreting ITQ responses.» и «Caseness should only be assessed using the ITQ diagnostic algorithm.» (https://www.traumameasuresglobal.com/ptsd). Отвергнуто: полосы по сумме кластера. Логически из правила «P1 или P2 ≥ 2» следует только, что сумма 0–1 — критерий не выполнен, а 3–8 — выполнен; сумма 2 неоднозначна (1 + 1 — нет, 2 + 0 — да), а «И» по кластерам сумма не выражает вовсе. Такая полоса выдавала бы приближение за алгоритм.",
+  "risk_items": [],
+  "risk_items_note": "Пунктов о суициде, самоповреждении или вреде другим в ITQ нет. C3–C4 («невдаха», «жалюгідний») — негативное самопредставление, не вопрос о риске.",
+  "translation": {
+   "uk": {
+    "exists": true,
+    "by": "International Trauma Consortium (бланк правообладателя; переводчик в файле не указан)",
+    "free": true,
+    "url": "https://cdn.prod.website-files.com/686e835a5683f56bbfc4c3a4/68a5dcf25da2b2888e4751c1_199b88cd9fafab83294ae5959b0afd71_ITQ_CPTSD_Ukrainian.docx",
+    "note": "Бланк лежит на странице Ukraine сайта ITC вместе с алгоритмом подсчёта по-украински и ссылкой «Посилання на валідизацію україномовної версії: Ho et al. (2023)». Ho et al., 2023: загальнонаціональна вибірка 2004 дорослих приблизно через 6 місяців після повномасштабного вторгнення; «Internal reliability was good for all six ITQ subscales, Cronbach's αs = .73–.88, and the correlated six-factor model was found to provide the best representation of the latent structure of the ITQ» (реферат). Полный текст статьи за закрытым доступом — язык администрирования по нему не сверен. Отдельная адаптация: Зливков В. Л., Лукомська С. О., Котух О. В., Мельник О. В. (2019). Актуальні проблеми психології, 2(14), 145–161 — чей текст там, не установлено."
+   },
+   "ru": {
+    "exists": true,
+    "by": "International Trauma Consortium (бланк правообладателя)",
+    "free": true,
+    "url": "https://cdn.prod.website-files.com/686e835a5683f56bbfc4c3a4/68a5dcff19f1aac8663b3905_ITQ_plus%20Scoring%20Instructions_Rus.docx",
+    "note": "Пункты и подписи ответов — с бланка ITC. Раздел подсчёта в русском файле переведён с ошибками («Человеку может быть поставлен диагноз посттравматического стрессового расстройства или посттравматического стрессового расстройства…», «хронического посттравматического…» вместо комплексного, «C7, C8 или C9> 2») — алгоритм взят из оригинала и украинского бланка. Валидизации русской версии не найдено."
+   }
+  },
+  "example": {
+   "answers": {
+    "P1-P6": [
+     3,
+     1,
+     2,
+     0,
+     4,
+     2
+    ],
+    "P7-P9": [
+     2,
+     0,
+     1
+    ],
+    "C1-C6": [
+     2,
+     2,
+     1,
+     0,
+     3,
+     1
+    ],
+    "C7-C9": [
+     0,
+     1,
+     0
+    ]
+   },
+   "scores": {
+    "RE": 4,
+    "AV": 2,
+    "TH": 6,
+    "PTSD": 12,
+    "AD": 4,
+    "NSC": 1,
+    "DR": 4,
+    "DSO": 9
+   },
+   "total": null,
+   "band": null,
+   "note": "Арифметика: Re = 3 + 1 = 4; Av = 2 + 0 = 2; Th = 4 + 2 = 6; ПТСР = 4 + 2 + 6 = 12; AD = 2 + 2 = 4; NSC = 1 + 0 = 1; DR = 3 + 1 = 4; DSO = 4 + 1 + 4 = 9. Пункты функционального нарушения ни в один балл не входят. Алгоритм (вручную, при событии больше месяца назад): Re_dx (P1 = 3), Av_dx (P3 = 2), Th_dx (P5 = 4), PTSDFI (P7 = 2) — критерии ПТСР выполнены; NSC_dx не выполнен (C3 = 1, C4 = 0) — критерии DSO нет, значит вероятный ПТСР, а не КПТСР. Контрольные случаи: все пункты 4 → каждый кластер 8, ПТСР 24, DSO 24; все 0 → все баллы 0."
+  },
+  "verdict": "завести без полос — public domain по заявлению правообладателя (ITC), украинский и русский тексты — бланки правообладателя, украинская версия исследована на выборке военного времени; система считает восемь размерных баллов ITC, диагностический алгоритм (порог пункта и «И» по кластерам) движок вычислить не может — правило дословно в описании шкал, пункты функционального нарушения не считаются."
+ },
+ {
+  "key": "tgi_sr_plus",
+  "title_en": "Traumatic Grief Inventory – Self Report Plus (TGI-SR+)",
+  "title_uk": "Самоопитувальник з Травматичного Горя Плюс (TGI-SR+)",
+  "title_ru": "Самоопросник по Травматическому Горю Плюс (TGI-SR+)",
+  "authors": "Lenferink, L. I. M.; Eisma, M. C.; Smid, G. E.; de Keijser, J.; Boelen, P. A.",
+  "year": 2022,
+  "citation": "Lenferink LIM, Eisma MC, Smid GE, de Keijser J, Boelen PA. Valid measurement of DSM-5 persistent complex bereavement disorder and DSM-5-TR and ICD-11 prolonged grief disorder: The Traumatic Grief Inventory-Self Report Plus (TGI-SR+). Compr Psychiatry. 2022;112:152281. doi:10.1016/j.comppsych.2021.152281. Украинская версия: Rispa Hoyos MLF, Nijborg LCJ, Norkina I, Boelen PA, Lenferink LIM. Preliminary Evaluation of the Psychometric Properties of the Ukrainian Traumatic Grief Inventory-Self Report Plus (TGI-SR+). Clin Psychol Eur. 2026;8(2):e17367. doi:10.32872/cpe.17367. Бланки — проект разработчиков на OSF (https://osf.io/rqn5k/): «TGI-SR+ English_incl. Manual.pdf», «TGI-SR+_Ukrainian_2022.pdf», «TGI-SR+_Russian_2022.pdf»; те же переводы с разделом интерпретации — страница Ukraine сайта ITC.",
+  "license": {
+   "verdict": "свободна с условиями",
+   "quote": "«This measure is available in multiple languages downloadable for free.» (описание проекта TGI-SR+ на OSF; лицензия проекта — «CC-By Attribution 4.0 International») / «The TGI-SR+ can be downloaded for free in different languages, for instance Dutch, English, French, German, Greek, Norwegian, Swedish, and Turkish, from (https://osf.io/rqn5k/)» и «© 2021 The Authors. Published by Elsevier Inc. This is an open access article under the CC BY license» (Lenferink et al., 2022)",
+   "url": "https://osf.io/rqn5k/ ; https://doi.org/10.1016/j.comppsych.2021.152281",
+   "conditions": "CC BY 4.0: указать авторство (Lenferink et al., 2022; переводчики), дать ссылку на лицензию, пометить изменения. Изменения в системе — только опечатки бланков, все перечислены в items_note. Пункты в самой статье не напечатаны (они в Supplemental Table 1), поэтому основание — именно файлы проекта OSF под CC BY 4.0, а не текст статьи."
+  },
+  "items": [
+   "I had intrusive thoughts or images related to the person who died",
+   "I experienced intense emotional pain, sadness, or pangs of grief",
+   "I found myself longing or yearning for the person who died",
+   "I experienced confusion about my role in life or a diminished sense of self",
+   "I had trouble accepting the loss",
+   "I avoided places, objects, or thoughts that reminded me that the person I lost has died",
+   "It was hard for me to trust others",
+   "I felt bitterness or anger related to his/her death",
+   "I felt that that moving on (e.g., making new friends, pursuing new interests) was difficult for me",
+   "I felt emotionally numb",
+   "I felt that life is unfulfilling or meaningless without him/her.",
+   "I felt stunned, shocked, or dazed by his/her death.",
+   "I noticed significant reduction in social, occupational, or other important areas of functioning (e.g., domestic responsibilities) as a result of his/her death",
+   "I had intrusive thoughts and images associated with the circumstances of his/her death",
+   "I experienced difficulty with positive reminiscing about the lost person",
+   "I had negative thoughts about myself in relation to the loss (e.g., thoughts about self-blame)",
+   "I had a desire to die in order to be with the deceased",
+   "I felt alone or detached from other individuals.",
+   "It felt unreal that he/she is dead",
+   "I put an intense blame on others because of his/her death",
+   "It felt as if a part of me has died along with the deceased",
+   "I had difficulties experiencing positive feelings"
+  ],
+  "items_note": "Инструкция английского бланка: «Below several grief reactions are listed. Please indicate how often you have experienced each reaction in the past month in response to the death of your loved one.» В системе — украинский и русский бланки разработчиков 2022 года (OSF), дословно, кроме опечаток, которые ломали бы текст. Украинский: п. 1 и 14 — апостроф «пов’язані», п. 1 — запятая «образи, пов’язані»; п. 3 «тужив (ла)» → «тужив(ла)»; п. 6 «про те що» → «про те, що»; п. 9 «Я відчував» → «Я відчував(ла)»; п. 11 «що життя втратило сенс безглузде або порожнє» — незавершённая правка — → «що життя безглузде або порожнє без нього/неї» (как в русском бланке тех же переводчиков: «жизнь бессмысленна или пуста»); п. 19 «Його/ її» → «Його/її». Русский: инструкция «Затем сфокусируйтесь» → «Тогда сфокусируйтесь» (англ. «Then assume…»); п. 1 запятая «образы, связанные»; п. 3 «тосковал (а)» → «тосковал(а)»; п. 6 «напоминающих мне о что» → «напоминающих мне о том, что»; п. 8, 9, 17 — «чувствовал(а)», «испытывал(а)» (в бланке только мужской род); п. 19 «Его/ёё» → «Его/её».",
+  "anchors": [
+   {
+    "label": "never",
+    "score": 1
+   },
+   {
+    "label": "rarely",
+    "score": 2
+   },
+   {
+    "label": "sometimes",
+    "score": 3
+   },
+   {
+    "label": "frequently",
+    "score": 4
+   },
+   {
+    "label": "always",
+    "score": 5
+   }
+  ],
+  "anchors_note": "Украинский бланк: Ніколи / Рідко / Іноді / Часто / Завжди (1–5). Русский: Никогда / Редко / Иногда / Часто / Всегда.",
+  "reverse": [],
+  "scoring": "Дословно из руководства разработчиков (OSF, «TGI-SR+ English_incl. Manual.pdf»): «Summing up the scores on the 22 items results in a total score for disturbed grief.» Диапазон 22–110. Там же — диагностические правила: «A score of 4 or 5 on an item is indicative of presence of that particular grief symptom.» … «For DSM-5 prolonged grief criteria, the following scoring rule is used: at least one symptom of the B Criterion and at least 3 out of the 8 symptoms of the C Criterion, and the D Criterion symptom should be endorsed.» … «To fulfill ICD-11 criteria for prolonged grief disorder the following two scoring rules could be applied; the liberal scoring rule … at least 1 symptom of the B criterion, at least 1 symptom of the C criterion, and the E criterion … or the conservative scoring rule … at least 1 symptom of the B criterion, at least 5 symptoms of the C criterion, and the symptom of the E criterion». Эти правила движок не вычисляет по той же причине, что алгоритм ITQ (порог пункта и «И» по критериям); система считает сумму и полосы по ней. Подшкал нет.",
+  "bands": [
+   {
+    "min": 22,
+    "max": 70,
+    "label": "Below the published cut-offs (<71)",
+    "source": "Lenferink et al., 2022; Rispa Hoyos et al., 2026"
+   },
+   {
+    "min": 71,
+    "max": 74,
+    "label": "Probable DSM-5-TR PGD in the Dutch validation (≥71); below the ICD-11 cut-off on the distributed form (≥75) and below the Ukrainian provisional cut-off (≥75)",
+    "source": "Lenferink et al., 2022, Compr Psychiatry 112:152281 («For DSM-5-TR PGD the optimal cut-off score was ≥71 when using TGI-SR+ total score (AUC = 0.925)… 89% correctly identified DSM-5-TR PGD cases and 17% incorrectly identified cases (J = 0.71; this is fair)»); бланк ITC: «Загальний бал 71 або вище вказує на ймовірну відповідність критеріям пролонгованого розладу горя, як визначено в DSM-5-TR.»"
+   },
+   {
+    "min": 75,
+    "max": 110,
+    "label": "Probable PGD: ICD-11 cut-off on the distributed form (≥75) and the Ukrainian provisional cut-off for both DSM-5-TR and ICD-11 (≥75)",
+    "source": "Rispa Hoyos et al., 2026, Clin Psychol Eur 8(2):e17367 («The provisional cut-off score for detecting both probable DSM-5-TR and ICD-11 PGD caseness, when summing all TGI-SR+ items, was ≥ 75»); Lenferink et al., 2022 («A total score on the TGI-SR+ of ≥75 was the optimal score to identify ICD-11 PGD cases, when applying the conservative diagnostic scoring rule … (AUC = 0.956)… 92% … correctly identified and 10% incorrectly identified»); бланк ITC: «Загальний бал 75 або вище вказує на ймовірну відповідність критеріям пролонгованого розладу горя, як визначено в МКХ-11.»"
+   }
+  ],
+  "bands_note": "Пороги расходятся по источникам, и полосы построены так, чтобы ни один из них не потерять. (1) Руководство на OSF: «A first validation study indicated that a cut-off score of ≥71 can be used to distinguish disturbed from non-disturbed grief». (2) Статья (две голландские выборки, N = 548): ≥75 — DSM-5 PCBD (J = 0.82) и ICD-11 PGD по консервативному правилу (J = 0.82); ≥71 — DSM-5-TR PGD (J = 0.71) и ICD-11 PGD по либеральному правилу (J = 0.65, poor); итог авторов: «Pending replication of our findings, we advise to use the diagnostic scoring rules to determine probable caseness, instead of the cut-off scores. When cut-off scores are used, we advise to use a cut-off score of ≥71 when determining probable caseness of DSM-5TR PGD and ICD-11 PGD and ≥ 75 for DSM-5 PCBD.» (3) Бланки ITC (en/uk/ru): ≥71 — DSM-5-TR, ≥75 — МКХ-11. (4) Украинская выборка (N = 198, утрата не менее 6 месяцев назад, 81 % женщин): ≥75 и для DSM-5-TR (AUC 0.921, J = 0.65 — «poor diagnostic accuracy»), и для МКХ-11 (AUC 0.905, J = 0.71 — fair); авторы называют порог предварительным, эталоном служили правила по самоотчёту, а не интервью. Отсюда три полосы: 22–70 ниже всех порогов; 71–74 — голландский порог DSM-5-TR достигнут, украинский и порог МКХ-11 с бланка — нет; 75–110 — достигнуты все. Тяжесть полос — решение системы: тревогу поднимает только 75 и выше (порог, полученный на украинском тексте). Время после утраты бланк не спрашивает, а критерии требуют не меньше 6 месяцев (МКХ-11) и 12 месяцев (DSM-5-TR) — это проверяет специалист.",
+  "risk_items": [
+   17
+  ],
+  "risk_items_note": "П. 17 «I had a desire to die in order to be with the deceased» — пассивное желание смерти. У разработчика правила тревоги нет; разметка — правило отделения по аналогии с п. 9 PHQ-9: «Рідко» и «Іноді» — умеренная тревога, «Часто» и «Завжди» — тяжёлая. П. 11 («life is … meaningless without him/her») — критерий ПРГ (DSM-5-TR C7), а не вопрос о суициде, тревогу не поднимает.",
+  "translation": {
+   "uk": {
+    "exists": true,
+    "by": "Paul Boelen, Kseniia Cheliuskina, Julia Fomina, Iryna Frankova, Larysa Rybyk, Viktoria Sliusarenko (2022) — с участием разработчика",
+    "free": true,
+    "url": "https://osf.io/download/xz9ye/",
+    "note": "Файл проекта OSF разработчиков (CC BY 4.0). Процедура по Rispa Hoyos et al., 2026, Supplementary Material B: «two native Ukrainian social scientists independently translated the English TGI-SR+ into Ukrainian; … back-translated into English by two other scientists … Then, a group discussion between the translators and PB (one of the developers of the TGI-SR+) was held … yielding a final version.» Психометрика украинской версии: N = 198; одна факторная модель приемлема для DSM-5-TR, но не для МКХ-11; у п. 1 самая низкая нагрузка — авторы советуют его перевести заново («These items should be re-translated and reassessed in future research»)."
+   },
+   "ru": {
+    "exists": true,
+    "by": "Paul Boelen, Kseniia Cheliuskina, Julia Fomina, Iryna Frankova, Larysa Rybyk, Viktoria Sliusarenko (2022)",
+    "free": true,
+    "url": "https://osf.io/download/5jk9b/",
+    "note": "Файл проекта OSF (CC BY 4.0). Валидизации русской версии не найдено; пороги — те же, что для оригинала и украинской версии."
+   }
+  },
+  "example": {
+   "answers": [
+    {
+     "items": "1-9",
+     "raw": 4
+    },
+    {
+     "items": "10-16, 18-22",
+     "raw": 3
+    },
+    {
+     "items": "17",
+     "raw": 1
+    }
+   ],
+   "total": 73,
+   "band": "71–74: Dutch DSM-5-TR cut-off reached, ICD-11 / Ukrainian cut-off (75) not reached",
+   "note": "Арифметика: 9 × 4 + 12 × 3 + 1 = 36 + 36 + 1 = 73. Второй случай: пункты 1–13 по 4, п. 17 = 1, остальные по 3 → 13 × 4 + 8 × 3 + 1 = 52 + 24 + 1 = 77 → 75–110. Края: все 1 → 22; все 5 → 110 (и тяжёлая тревога по п. 17). Проверка тревоги: п. 17 = 2 («Рідко») → умеренная тревога при любой сумме."
+  },
+  "verdict": "завести — бланки и переводы разработчиков свободны (CC BY 4.0, OSF), украинская версия переведена с участием разработчика и проверена на украинской выборке; сумма 22–110 и три полосы по опубликованным порогам (71 и 75); диагностические правила движок не вычисляет — они в описании шкалы."
+ },
+ {
+  "key": "ctsr_ua",
+  "title_en": "Continuous Traumatic Stress Response Scale (CTSR) — Ukrainian revised version",
+  "title_uk": "Шкала Реакції на Тривалий Травматичний Стрес – Оновлена Українська Версія (CTSR)",
+  "title_ru": null,
+  "authors": "Frankova, I.; Senyk, O.; Avramchuk, O.; Leshchuk, I.; Rudys, A.; Kurapov, A.; Goral, A. (украинская пересмотренная версия); оригинал — Goral, A.; Feder-Bubis, P.; Lahad, M.; Galea, S.; O'Rourke, N.; Aharonson-Daniel, L.",
+  "year": 2025,
+  "citation": "Frankova I, Senyk O, Avramchuk O, Leshchuk I, Rudys A, Kurapov A, Goral A. Psychometric properties of the revised Ukrainian version of the Continuous Traumatic Stress Response scale (CTSR) in the context of the Russo-Ukrainian war. Eur J Psychotraumatol. 2025;16(1):2463186. doi:10.1080/20008066.2025.2463186 (PMC11852225; пункты по-украински — Appendix A). Оригинал: Goral A, Feder-Bubis P, Lahad M, Galea S, O'Rourke N, Aharonson-Daniel L. Development and validation of the Continuous Traumatic Stress Response scale (CTSR) among adults exposed to ongoing security threats. PLoS One. 2021;16(5):e0251724. Бланк с ключом: «CTSR Ukrainian Revised Version_UKR_2025.docx» на странице Ukraine сайта ITC.",
+  "license": {
+   "verdict": "свободна с условиями",
+   "quote": "«This is an Open Access article distributed under the terms of the Creative Commons Attribution-NonCommercial License (http://creativecommons.org/licenses/by-nc/4.0/), which permits unrestricted non-commercial use, distribution, and reproduction in any medium, provided the original work is properly cited.» (Frankova et al., 2025)",
+   "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC11852225/",
+   "conditions": "CC BY-NC 4.0: только некоммерческое использование и ссылка на статью. Пункты, подписи ответов и ключ подшкал напечатаны в самой статье (Appendix A) — воспроизведение разрешено этой лицензией (как SRQ-20 в каталоге — «лише некомерційне використання»). Перевод проверен автором оригинала: «The translation's accuracy was verified by the author of the original instrument.» Бланк того же текста с ключом: https://cdn.prod.website-files.com/686e835a5683f56bbfc4c3a4/68a5dffa637b012ddf123449_CTSR%20Ukrainian%20Revised%20Version_UKR_2025.docx"
+  },
+  "items": [
+   "I feel unmotivated.",
+   "I find it hard to trust the people around me.",
+   "I feel that I cannot protect those who depend on me.",
+   "I feel mentally exhausted.",
+   "I feel that no one understands me.",
+   "I feel helpless.",
+   "I feel that my life has no meaning.",
+   "I feel betrayed.",
+   "I feel that I have no control over the future."
+  ],
+  "items_note": "Английский текст — курсив Appendix A статьи. В системе украинский текст Appendix A дословно; гендерные окончания «невмотивованим_ою» записаны как «невмотивованим(-ою)» (так же «виснаженим», «безпорадним», «зрадженим»). Инструкция дословно: «Наступні твердження описують симптоми, які можуть з’являтися після важких чи стресових переживань. Будь ласка, уважно прочитайте кожне твердження і позначте відповіді, які найкраще описують ваші переживання за останній місяць.» Русского текста у разработчиков нет — рабочий перевод с украинского.",
+  "anchors": [
+   {
+    "label": "Not at all",
+    "score": 0
+   },
+   {
+    "label": "A little",
+    "score": 1
+   },
+   {
+    "label": "Very much",
+    "score": 2
+   },
+   {
+    "label": "Severe",
+    "score": 3
+   }
+  ],
+  "anchors_note": "Украинские подписи Appendix A: Зовсім ні (0) / Трохи (1) / Доволі сильно (2) / Сильно (3). В Methods: «0-Not at all to 3-Severe».",
+  "reverse": [],
+  "scoring": "Дословно с бланка ITC: «Exhaustion. The summed scores of items 1, 4, 7 give an index of the exhaustion (Cronbach’s α = 0.71). Alienation. The summed scores of items 2, 5, 8 give an index of the alienation (Cronbach’s α = 0.68). Helplessness. The summed scores of items 3, 6, 9 give an index of the helplessness (Cronbach’s α = 0.75). Total score: sum up all items. (Cronbach’s α = 0.84). The total score range is 0 - 27.» Украинский текст того же раздела: «Виснаження. Сума балів за пунктами 1, 4, 7 … Відчуженість … 2, 5, 8 … Безпорадність … 3, 6, 9 … Загальний бал: додайте усі твердження. … Загальний бал від 0 до 27.» Подшкалы 0–9.",
+  "bands": [
+   {
+    "min": 0,
+    "max": 9,
+    "label": "Below the provisional cut-off (lower 75% of the validation sample)",
+    "source": "Frankova et al., 2025, Eur J Psychotraumatol 16(1):2463186"
+   },
+   {
+    "min": 10,
+    "max": 27,
+    "label": "At or above the provisional cut-off of 10 (upper 25% of the validation sample)",
+    "source": "Frankova et al., 2025 («These cut-off scores were determined based on the upper 25% of the score distribution: 10 for the CTSR total score…»)"
+   }
+  ],
+  "bands_note": "Дословно из Discussion: «we proposed prospective cut-off values for identifying warning symptoms that could precede more severe mental health conditions such as depression or anxiety disorders. These cut-off scores were determined based on the upper 25% of the score distribution: 10 for the CTSR total score, 4 for the exhaustion and helplessness subscales, and 3 for the alienation subscale.» Results: «The mean score was 7.69 (SD = 4.88), with the 75th percentile corresponding to a score of 10.» Оговорка авторов: «Future studies with more balanced samples are recommended for redefining cut-off scores». Это распределительные ориентиры (верхний квартиль удобной выборки: N = 584, 79 % женщин, 17 % за границей), а не клинические пороги — поэтому в системе они «легкие», без тревоги. Подшкалы: Виснаження 0–3 / 4–9, Безпорадність 0–3 / 4–9, Відчуженість 0–2 / 3–9. Бланк ITC даёт только «Higher scores point at more intense continuous traumatic stress response».",
+  "risk_items": [
+   7
+  ],
+  "risk_items_note": "П. 7 «I feel that my life has no meaning» — не прямой вопрос о суициде; по той же практике, что у DASS-42 (п. 21 и 38 «життя не має сенсу»), любой ненулевой ответ — умеренная тревога с пометкой «правило відділення, а не розробника». У разработчиков правила тревоги нет.",
+  "translation": {
+   "uk": {
+    "exists": true,
+    "by": "Frankova I. et al. (2025): два психолога перевели, согласовали, выполнили обратный перевод; точность проверил автор оригинала",
+    "free": true,
+    "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC11852225/",
+    "note": "Текст — Appendix A статьи (CC BY-NC 4.0) и бланк ITC (https://cdn.prod.website-files.com/686e835a5683f56bbfc4c3a4/68a5dffa637b012ddf123449_CTSR%20Ukrainian%20Revised%20Version_UKR_2025.docx). Структура подшкал — украинская: пересмотренная версия отличается от 11-пунктного оригинала (ED, RB, FH) и построена заново на 584 украинцах."
+   },
+   "ru": {
+    "exists": false,
+    "by": null,
+    "free": null,
+    "url": null,
+    "note": "Русской версии пересмотренной украинской шкалы нет. В системе — рабочий перевод с украинского (WORKING_TRANSLATION)."
+   }
+  },
+  "example": {
+   "answers": [
+    1,
+    2,
+    0,
+    2,
+    1,
+    0,
+    1,
+    3,
+    2
+   ],
+   "scores": {
+    "EXH": 4,
+    "ALI": 6,
+    "HEL": 2,
+    "CTSR": 12
+   },
+   "total": 12,
+   "band": "Total 12 ≥ 10 — upper quartile; Exhaustion 4 ≥ 4; Alienation 6 ≥ 3; Helplessness 2 < 4",
+   "note": "Арифметика: Виснаження п. 1, 4, 7 = 1 + 2 + 1 = 4; Відчуженість п. 2, 5, 8 = 2 + 1 + 3 = 6; Безпорадність п. 3, 6, 9 = 0 + 0 + 2 = 2; сумма 4 + 6 + 2 = 12. П. 7 = 1 — умеренная тревога (правило отделения). Края: все 0 → 0; все 3 → 27, подшкалы по 9."
+  },
+  "verdict": "завести — украинская пересмотренная версия разработана и проверена в Украине во время войны, текст и ключ напечатаны в статье под CC BY-NC 4.0; полосы — только предварительные распределительные ориентиры авторов (верхний квартиль), без тревоги; русский текст — рабочий перевод."
+ },
+ {
+  "key": "lec5",
+  "title_en": "Life Events Checklist for DSM-5 (LEC-5) — Standard self-report",
+  "title_uk": null,
+  "title_ru": null,
+  "authors": "Weathers, F. W.; Blake, D. D.; Schnurr, P. P.; Kaloupek, D. G.; Marx, B. P.; Keane, T. M. (National Center for PTSD, U.S. Department of Veterans Affairs)",
+  "year": 2013,
+  "citation": "Weathers, F. W., Blake, D. D., Schnurr, P. P., Kaloupek, D. G., Marx, B. P., & Keane, T. M. (2013). The Life Events Checklist for DSM-5 (LEC-5) – Standard. [Measurement instrument]. Available from https://www.ptsd.va.gov/ — бланк: официальный PDF National Center for PTSD «LEC-5 Standard», version date 12 April 2018 (https://www.ptsd.va.gov/PTSD/professional/assessment/documents/LEC5_Standard_Self-report.PDF).",
+  "license": {
+   "verdict": "свободна",
+   "quote": "«This measure was created by staff at VA's National Center for PTSD and is in the public domain and not copyrighted.» / «this instrument is intended for use by qualified health professionals and researchers.»",
+   "url": "https://www.ptsd.va.gov/professional/assessment/te-measures/life_events_checklist.asp",
+   "conditions": "Public domain, копирайта нет. Условие правообладателя — применение квалифицированными специалистами. Официальный перевод правообладатель выпускает только испанский («The translation has not been validated in published research and use requires acknowledgement of this limitation»)."
+  },
+  "items": [
+   "Natural disaster (for example, flood, hurricane, tornado, earthquake)",
+   "Fire or explosion",
+   "Transportation accident (for example, car accident, boat accident, train wreck, plane crash)",
+   "Serious accident at work, home, or during recreational activity",
+   "Exposure to toxic substance (for example, dangerous chemicals, radiation)",
+   "Physical assault (for example, being attacked, hit, slapped, kicked, beaten up)",
+   "Assault with a weapon (for example, being shot, stabbed, threatened with a knife, gun, bomb)",
+   "Sexual assault (rape, attempted rape, made to perform any type of sexual act through force or threat of harm)",
+   "Other unwanted or uncomfortable sexual experience",
+   "Combat or exposure to a war-zone (in the military or as a civilian)",
+   "Captivity (for example, being kidnapped, abducted, held hostage, prisoner of war)",
+   "Life-threatening illness or injury",
+   "Severe human suffering",
+   "Sudden violent death (for example, homicide, suicide)",
+   "Sudden accidental death",
+   "Serious injury, harm, or death you caused to someone else",
+   "Any other very stressful event or experience"
+  ],
+  "items_note": "Инструкция дословно: «Listed below are a number of difficult or stressful things that sometimes happen to people. For each event check one or more of the boxes to the right to indicate that: (a) it happened to you personally; (b) you witnessed it happen to someone else; (c) you learned about it happening to a close family member or close friend; (d) you were exposed to it as part of your job (for example, paramedic, police, military, or other first responder); (e) you’re not sure if it fits; or (f) it doesn’t apply to you. Be sure to consider your entire life (growing up as well as adulthood) as you go through the list of events.» У каждого события шесть флажков — в официальном заполняемом PDF 103 поля-флажка, то есть у пп. 14–16 столбцы не исключены (в копии ITC часть клеток пустая — это её отличие). В системе каждое событие — вопрос с множественным выбором из шести вариантов.",
+  "anchors": [
+   {
+    "code": "a",
+    "label": "Happened to me",
+    "score": 0
+   },
+   {
+    "code": "b",
+    "label": "Witnessed it",
+    "score": 0
+   },
+   {
+    "code": "c",
+    "label": "Learned about it",
+    "score": 0
+   },
+   {
+    "code": "d",
+    "label": "Part of my job",
+    "score": 0
+   },
+   {
+    "code": "e",
+    "label": "Not sure",
+    "score": 0
+   },
+   {
+    "code": "f",
+    "label": "Doesn’t apply",
+    "score": 0
+   }
+  ],
+  "anchors_note": "Номинальная шкала, баллов у вариантов нет (в системе — 0, ни в одной шкале). «respondents may endorse multiple levels of exposure to the same trauma type» — поэтому множественный выбор.",
+  "reverse": [],
+  "scoring": "Дословно со страницы правообладателя: «The LEC-5 is intended to gather information about the potentially traumatic events a person has experienced. There is no formal scoring protocol or interpretation per se, other than identifying whether a person has experienced one or more of the events listed. Respondents indicate varying levels of exposure to each type of potentially traumatic event included on a 6-point nominal scale, and respondents may endorse multiple levels of exposure to the same trauma type. The LEC-5 does not yield a total score or composite score.» Поэтому шкал в системе нет, а все 17 пунктов объявлены непосчитанными (notScored) с этой цитатой. Отвергнуто: «число событий, случившихся лично» — правообладатель такого балла не определяет, это был бы выдуманный показатель.",
+  "bands": null,
+  "bands_note": "Полос нет и быть не может: методика не даёт ни суммы, ни составного балла.",
+  "risk_items": [],
+  "risk_items_note": "Пунктов о текущем риске нет — перечень прошлых событий. П. 16 («Serious injury, harm, or death you caused to someone else») — событие прошлого, не вопрос о намерении причинить вред; тревогу не поднимает. Результат обследуемому не показывается.",
+  "translation": {
+   "uk": {
+    "exists": true,
+    "by": "неизвестно — копия на странице Ukraine сайта ITC («2. Trauma Exposure LEC5_Ukrainian.docx»), переводчик и условия не указаны",
+    "free": null,
+    "url": "https://www.traumameasuresglobal.com/ukraine",
+    "note": "Это не перевод правообладателя (National Center for PTSD официально выпускает только испанский) и без указания автора и лицензии; в копии ITC у пп. 14–16 части столбцов нет, в отличие от официального бланка. Не используем: в системе — рабочий перевод с английского оригинала (public domain), WORKING_TRANSLATION."
+   },
+   "ru": {
+    "exists": true,
+    "by": "неизвестно — копия на странице Ukraine сайта ITC («3. Trauma Exposure LEC5_Russian.docx»)",
+    "free": null,
+    "url": "https://www.traumameasuresglobal.com/ukraine",
+    "note": "То же, что для украинской копии. В системе — рабочий перевод."
+   }
+  },
+  "example": {
+   "answers": [
+    {
+     "item": 2,
+     "options": [
+      "Witnessed it"
+     ]
+    },
+    {
+     "item": 10,
+     "options": [
+      "Happened to me",
+      "Part of my job"
+     ]
+    },
+    {
+     "item": 14,
+     "options": [
+      "Witnessed it",
+      "Part of my job"
+     ]
+    },
+    {
+     "items": "остальные",
+     "options": [
+      "Doesn’t apply"
+     ]
+    }
+   ],
+   "total": null,
+   "band": null,
+   "note": "Проверяется не балл (его нет), а то, что ответы сохраняются и ни во что не складываются: профиль пуст, тревог нет; множественный выбор принимает несколько уровней экспозиции у одного события."
+  },
+  "verdict": "завести без шкал — public domain; балла у методики нет по определению правообладателя, поэтому все пункты в notScored с цитатой, и методика служит записью экспозиции перед PCL-5; перевод рабочий."
+ },
+ {
+  "key": "pg13r",
+  "title_en": "Prolonged Grief Disorder-13-Revised (PG-13-R)",
+  "title_uk": "Prolonged Grief Disorder (PG-13-Revised) — українська версія Аврамчук О. (УКУ, 2022)",
+  "title_ru": null,
+  "authors": "Prigerson, H. G.; Boelen, P. A.; Xu, J.; Smith, K. V.; Maciejewski, P. K. (Weill Cornell Center for Research on End-of-Life Care)",
+  "year": 2021,
+  "citation": "Prigerson HG, Boelen PA, Xu J, Smith KV, Maciejewski PK. Validation of the new DSM-5-TR criteria for prolonged grief disorder and the PG-13-Revised (PG-13-R) scale. World Psychiatry. 2021;20(1):96-106. doi:10.1002/wps.20823 (PMC7801836).",
+  "license": {
+   "verdict": "лицензируется",
+   "quote": "«It is free of charge to use PG-13 in clinical diagnosis and bereavement-related studies.» / «… protected by copyright and should not be reproduced without the permission of the authors.» (страница запроса PG-13-R правообладателя). Украинский бланк правообладателя: «Методика Prolonged Grief Disorder (PG-13-Revised, 2021) надана не для комерційного використання, усі авторські права належать авторам методики й надані для адаптації та перекладу в межах партнерської підтримки».",
+   "url": "https://endoflife.weill.cornell.edu/pg-13 ; https://endoflife.weill.cornell.edu/sites/default/files/file_uploads/prolonged_grief_disorder_pg-13-revised_ukrainska_versiya_2022_0.pdf",
+   "conditions": "Бесплатно, но воспроизведение — только с разрешения авторов, которое выдаётся через форму запроса (имя, почта, организация). Разрешения на наш электронный бланк нет. PhenX Toolkit пишет «This protocol is freely available; permission not required for use», но это не правообладатель, и его страница противоречит странице самих авторов."
+  },
+  "items": null,
+  "items_note": "Не приводим (лицензия). 13 пунктов: Q1 утрата (да/нет), Q2 сколько месяцев прошло, Q3–Q12 симптомы по шкале 1–5 («Not at all … Overwhelmingly»; укр.: «Зовсім ні / Ледь помітно / Певною мірою так / Радше так / Переважно так»), Q13 нарушение функционирования (да/нет). Английский и украинский бланки выложены правообладателем, но воспроизводить их без разрешения нельзя.",
+  "anchors": null,
+  "reverse": [],
+  "scoring": "PhenX (по первоисточнику): сумма Q3–Q12, 10–50; «A total of 30 or higher indicates syndromal-level prolonged grief disorder». Комментарий украинского переводчика на бланке: «загальний бал понад 30 дає підстави підозрювати … Пролонгований розлад горювання» — «понад 30» против «30 or higher» в оригинале; при заведении сверять с World Psychiatry 2021.",
+  "bands": null,
+  "bands_note": "Порог 30 опубликован (Prigerson et al., 2021), но методика не заводится — полос в системе нет.",
+  "risk_items": [],
+  "risk_items_note": "Пунктов о суициде нет; Q11 «life is meaningless without the person who died» — критерий ПРГ.",
+  "translation": {
+   "uk": {
+    "exists": true,
+    "by": "Аврамчук О., кафедра клінічної психології УКУ, 2022 (бланк размещён правообладателем)",
+    "free": false,
+    "url": "https://endoflife.weill.cornell.edu/research/assessments_and_tools",
+    "note": "Перевод размещён на странице правообладателя, но на тех же условиях: «не для комерційного використання», права — у авторов."
+   },
+   "ru": {
+    "exists": false,
+    "by": null,
+    "free": null,
+    "url": null,
+    "note": "Русской версии на странице правообладателя нет."
+   }
+  },
+  "example": null,
+  "example_note": "Не заводится — проверочного примера нет.",
+  "verdict": "не заводить — правообладатель разрешает бесплатное клиническое использование, но запрещает воспроизведение без разрешения авторов и выдаёт его через форму запроса; разрешения у учреждения нет. Учреждение может запросить его бесплатно (https://endoflife.weill.cornell.edu/pg-13) — тогда завести с украинским текстом Аврамчук (2022). Горе в каталоге закрывает TGI-SR+."
+ },
+ {
+  "key": "dar5",
+  "title_en": "Dimensions of Anger Reactions-5 (DAR-5)",
+  "title_uk": null,
+  "title_ru": null,
+  "authors": "Forbes, D.; Alkemade, N.; Mitchell, D.; Elhai, J. D.; McHugh, T.; Bates, G.; Novaco, R. W.; Bryant, R.; Lewis, V. (Phoenix Australia — Centre for Posttraumatic Mental Health)",
+  "year": 2014,
+  "citation": "Forbes D, Alkemade N, Mitchell D, Elhai JD, McHugh T, Bates G, Novaco RW, Bryant R, Lewis V. Utility of the Dimensions of Anger Reactions-5 (DAR-5) scale as a brief anger measure. Depress Anxiety. 2014;31(2):166-173. doi:10.1002/da.22148. Бланк: PDF Phoenix Australia «Questionnaire-DAR-5-Dimensions-of-Anger-Reactions.pdf».",
+  "license": {
+   "verdict": "неясно",
+   "quote": "На бланке правообладателя нет ни копирайта, ни разрешения; единственное — «GPs can use the form to screen for problem anger.» Условия сайта Phoenix Australia (раздел Intellectual Property and Licence, написан для онлайн-курсов) относят к запрещённому «Copy, reproduce, distribute, publish, communicate, record, modify, adapt, or create derivative works from the content.» и «… to access, copy, download, or extract content from the website without prior written permission.» Об анкетах отдельного условия нет.",
+   "url": "https://www.phoenixaustralia.org/wp-content/uploads/2022/08/Questionnaire-DAR-5-Dimensions-of-Anger-Reactions.pdf ; https://www.phoenixaustralia.org/terms-and-conditions/",
+   "conditions": "Запись VA (VIVIAN, файл 601.71, DAR-5): «IS COPYRIGHTED: No», «REQUIRES LICENSE: No» — это реестр Министерства по делам ветеранов США, а не правообладатель, и по правилу каталога основанием служить не может. Нужен письменный ответ Phoenix Australia."
+  },
+  "items": null,
+  "items_note": "Не приводим (лицензия не подтверждена). Пять пунктов за последние 4 недели, ответы 1–5 («None or almost none of the time» … «All or almost all of the time»); п. 4 — «When I got angry at someone I wanted to hit them».",
+  "anchors": null,
+  "reverse": [],
+  "scoring": "С бланка правообладателя: «Items are summed to provide a total severity score (range 5-25). Higher scores indicate worse symptomatology. A score equal to or greater than 12 indicates problem anger.»",
+  "bands": null,
+  "bands_note": "Порог ≥ 12 опубликован (бланк Phoenix Australia; Forbes et al., 2014 — 75-й перцентиль относительно STAXI-2, по Cowlishaw et al., 2021), но методика не заводится.",
+  "risk_items": [
+   4
+  ],
+  "risk_items_note": "Если методику заведут: п. 4 («wanted to hit them») — пункт о вреде другим, обязательна пометка риска.",
+  "translation": {
+   "uk": {
+    "exists": false,
+    "by": null,
+    "free": null,
+    "url": null,
+    "note": "Официального украинского перевода не найдено."
+   },
+   "ru": {
+    "exists": false,
+    "by": null,
+    "free": null,
+    "url": null,
+    "note": "Официального русского перевода не найдено."
+   }
+  },
+  "example": null,
+  "example_note": "Не заводится.",
+  "verdict": "не заводить — правообладатель выкладывает бланк бесплатно для врачей, но разрешения на воспроизведение нет ни на бланке, ни на сайте, а условия сайта запрещают копировать материалы без письменного разрешения; «not copyrighted» — запись реестра VA, не правообладателя. Запросить письменное разрешение у Phoenix Australia: шкала гнева с порогом каталогу нужна."
+ },
+ {
+  "key": "tsq",
+  "title_en": "Trauma Screening Questionnaire (TSQ)",
+  "title_uk": null,
+  "title_ru": null,
+  "authors": "Brewin, C. R.; Rose, S.; Andrews, B.; Green, J.; Tata, P.; McEvedy, C.; Turner, S.; Foa, E. B.",
+  "year": 2002,
+  "citation": "Brewin CR, Rose S, Andrews B, Green J, Tata P, McEvedy C, Turner S, Foa EB. Brief screening instrument for post-traumatic stress disorder. Br J Psychiatry. 2002;181:158-162. doi:10.1192/bjp.181.2.158 (новый DOI 10.1017/s0007125000161896).",
+  "license": {
+   "verdict": "неясно",
+   "quote": "Заявления правообладателя о свободном воспроизведении не найдено. Статья — «Copyright © Royal College of Psychiatrists, 2002»; перепечатки TSQ в руководствах помечены «Reproduced with permission».",
+   "url": "https://doi.org/10.1192/bjp.181.2.158 ; https://www.phc.ox.ac.uk/files/resources/tsq-manual",
+   "conditions": "Руководство на сайте Оксфорда (Nuffield Department of Primary Care Health Sciences) закрыто проверкой WAF и не прочитано; по пересказу в поисковой выдаче — «used with permission from the authors». Без текста разрешения правообладателя заводить нельзя."
+  },
+  "items": null,
+  "items_note": "Не приводим. Десять пунктов «да/нет» (5 — повторное переживание, 5 — возбуждение по DSM-IV).",
+  "anchors": null,
+  "reverse": [],
+  "scoring": "По первоисточнику: положительный скрининг — не меньше шести ответов «да»; применять не раньше 3–4 недель после события.",
+  "bands": null,
+  "bands_note": "Порог ≥ 6 опубликован, но методика не заводится.",
+  "risk_items": [],
+  "risk_items_note": "Пунктов о риске нет.",
+  "translation": {
+   "uk": {
+    "exists": false,
+    "by": null,
+    "free": null,
+    "url": null,
+    "note": "Официального украинского перевода не найдено."
+   },
+   "ru": {
+    "exists": false,
+    "by": null,
+    "free": null,
+    "url": null,
+    "note": "Официального русского перевода не найдено."
+   }
+  },
+  "example": null,
+  "example_note": "Не заводится.",
+  "verdict": "не заводить — заявления правообладателя о свободном воспроизведении нет (копирайт Royal College of Psychiatrists, перепечатки — «with permission»); кроме того, TSQ построен на критериях DSM-IV и рассчитан на 3–4 недели после события — эту нишу закрывают PC-PTSD-5 и PCL-5 (DSM-5) и ITQ (МКБ-11)."
+ },
+ {
+  "key": "ptgi_sf",
+  "title_en": "Posttraumatic Growth Inventory — Short Form (PTGI-SF)",
+  "title_uk": null,
+  "title_ru": null,
+  "authors": "Cann, A.; Calhoun, L. G.; Tedeschi, R. G.; Taku, K.; Vishnevsky, T.; Triplett, K. N.; Danhauer, S. C.",
+  "year": 2010,
+  "citation": "Cann A, Calhoun LG, Tedeschi RG, Taku K, Vishnevsky T, Triplett KN, Danhauer SC. A short form of the Posttraumatic Growth Inventory. Anxiety Stress Coping. 2010;23(2):127-137. doi:10.1080/10615800903094273.",
+  "license": {
+   "verdict": "лицензируется",
+   "quote": "«If you are interested in using one of the PTG-related measurement tools in a study you are conducting, please email institute@bouldercrest.org to request the full survey or measurement tool and corresponding instructions.» (PTG Resource Center, Boulder Crest — сюда теперь перенаправляет сайт исследовательской группы PTGI, ptgi.charlotte.edu)",
+   "url": "https://bouldercrest.org/ptg-resource-center/",
+   "conditions": "Методика выдаётся по запросу; в каталоге Mapi Research Trust (ePROVIDE) PTGI-SF числится как распространяемый инструмент. Заявления о свободном воспроизведении нет."
+  },
+  "items": null,
+  "items_note": "Не приводим. 10 пунктов (по два из пяти факторов PTGI), ответы 0–5.",
+  "anchors": null,
+  "reverse": [],
+  "scoring": "Сумма 0–50 и пять подшкал по два пункта; клинических порогов нет — это мера роста, а не симптомов.",
+  "bands": null,
+  "bands_note": "Порогов нет в первоисточнике.",
+  "risk_items": [],
+  "risk_items_note": "Пунктов о риске нет.",
+  "translation": {
+   "uk": {
+    "exists": false,
+    "by": null,
+    "free": null,
+    "url": null,
+    "note": "Официального украинского перевода от правообладателя не найдено."
+   },
+   "ru": {
+    "exists": false,
+    "by": null,
+    "free": null,
+    "url": null,
+    "note": "Официального русского перевода от правообладателя не найдено."
+   }
+  },
+  "example": null,
+  "example_note": "Не заводится.",
+  "verdict": "не заводить — правообладатель выдаёт методику только по запросу (institute@bouldercrest.org), заявления о свободном воспроизведении нет; порогов у шкалы нет."
+ },
+ {
+  "key": "iesr",
+  "title_en": "Impact of Event Scale – Revised (IES-R)",
+  "title_uk": null,
+  "title_ru": null,
+  "authors": "Weiss, D. S.; Marmar, C. R.",
+  "year": 1997,
+  "citation": "Weiss DS, Marmar CR. The Impact of Event Scale-Revised. In: Wilson JP, Keane TM (eds). Assessing Psychological Trauma and PTSD. New York: Guilford Press; 1997:399-411. Украинская валидизация: Krupelnytska L, Yatsenko N, Keller V, Morozova-Larina O. The impact of events scale-revised (IES-R): Validation of the Ukrainian version. Compr Psychiatry. 2025;139:152593.",
+  "license": {
+   "verdict": "лицензируется",
+   "quote": "«Permission sought from Daniel S. Weiss, who declined 2015-07-28.» (CamCOPS, документация IES-R) / «the IES-R scale has been retired by the developer due to revisions in PTSD criteria, limiting its use to investigators with ongoing research or prior permission (personal communication with Dr. Weiss, August 12, 2019)» (PMC6744634)",
+   "url": "https://camcops.readthedocs.io/en/latest/tasks/iesr.html ; https://pmc.ncbi.nlm.nih.gov/articles/PMC6744634/",
+   "conditions": "Подробно — в карточке ies6 этого же досье. Повторный поиск (октябрь 2026) новых заявлений правообладателя не дал: все источники считают IES-R защищённым копирайтом и выдаваемым автором."
+  },
+  "items": null,
+  "items_note": "Не приводим (лицензия).",
+  "anchors": null,
+  "reverse": [],
+  "scoring": "22 пункта 0–4; подсчёт — в карточке ies6.",
+  "bands": null,
+  "bands_note": "Не заводится.",
+  "risk_items": [],
+  "risk_items_note": "Пунктов о суициде нет.",
+  "translation": {
+   "uk": {
+    "exists": true,
+    "by": "Krupelnytska L. et al., 2025",
+    "free": false,
+    "url": "https://doi.org/10.1016/j.comppsych.2025.152593",
+    "note": "Статья за платным доступом; разрешение правообладателя на распространение не задокументировано."
+   },
+   "ru": {
+    "exists": false,
+    "by": null,
+    "free": null,
+    "url": null,
+    "note": "Официального русского перевода не найдено."
+   }
+  },
+  "example": null,
+  "example_note": "Не заводится.",
+  "verdict": "не заводить — правообладатель отказал в разрешении на воспроизведение (2015) и вывел шкалу из свободного обращения (2019); новых заявлений нет. ПТСР в каталоге закрывают PCL-5, PC-PTSD-5 и ITQ."
+ },
+ {
+  "key": "miss_m_sf",
+  "title_en": "Moral Injury Symptom Scale – Military Version – Short Form (MISS-M-SF)",
+  "title_uk": "Шкала симптомів моральної травми (адаптація Засєкіної Л., Козігори М., 2022 — для цивільного населення)",
+  "title_ru": null,
+  "authors": "Koenig, H. G.; Ames, D.; Youssef, N. A.; Oliver, J. P.; Volk, F.; Teng, E. J.; Haynes, K.; Erickson, Z. D.; Arnold, I.; O'Garo, K.; Pearce, M.",
+  "year": 2018,
+  "citation": "Koenig HG, Ames D, Youssef NA, Oliver JP, Volk F, Teng EJ, Haynes K, Erickson ZD, Arnold I, O'Garo K, Pearce M. Screening for Moral Injury: The Moral Injury Symptom Scale - Military Version Short Form. Mil Med. 2018;183(11-12):e659-e665. doi:10.1093/milmed/usy017. Украинская адаптация: Zasiekina L, Kozihora M. Cross-Cultural Adaptation and Psychometric Properties of Moral Injury Symptoms Scale. Psychological Prospects Journal. 2022;39:139-152. doi:10.29038/2227-1376-2022-39-zas (CC BY-NC 4.0).",
+  "license": {
+   "verdict": "неясно",
+   "quote": "Заявления правообладателя о свободном воспроизведении не найдено: статья в Military Medicine (журнал с копирайтом) недоступна в открытом доступе, на страницах Duke Center for Spirituality, Theology and Health условий использования MISS-M-SF нет. Пункты перепечатаны в обзоре Koenig HG, Al Zaben F. J Relig Health. 2021;60(5):2989–3011, Table 1 — с пометкой открытого доступа «for the duration of the World Health Organization (WHO) declaration of COVID-19 as a global pandemic», то есть временной.",
+   "url": "https://doi.org/10.1093/milmed/usy017 ; https://pmc.ncbi.nlm.nih.gov/articles/PMC8270769/",
+   "conditions": "Нужен письменный ответ H. G. Koenig (Duke University). Лицензия украинской статьи (CC BY-NC) покрывает статью, но не разрешение автора методики."
+  },
+  "items": null,
+  "items_note": "Не приводим. 10 пунктов по шкале 1–10 (у части пунктов свои подписи и обратная формулировка), отдельный пункт о функциональном нарушении; возможный диапазон 10–100.",
+  "anchors": null,
+  "reverse": [],
+  "scoring": "Реферат: «The 10-item MISS-M-SF had a median of 50 and a range of 12-91 (possible range 10-100). Over 70% scored a 9 or 10 (highest possible) on at least one item.»",
+  "bands": null,
+  "bands_note": "Опубликованного клинического порога нет: ни в реферате первоисточника, ни в обзоре авторов 2021 года, ни в последующих публикациях порога не найдено; «9 или 10 по пункту» — описательная статистика выборки, а не точка отсечения.",
+  "risk_items": [],
+  "risk_items_note": "Пунктов о суициде нет.",
+  "translation": {
+   "uk": {
+    "exists": true,
+    "by": "Засєкіна Л., Козігора М. (2022)",
+    "free": false,
+    "url": "https://psychoprospects.vnu.edu.ua/index.php/psychoprospects/en/article/view/800",
+    "note": "Адаптация для цивильного населения (выборка — педагоги и студенты, n = 111; α = 0.7; ретест r = 0.67); разрешение Koenig не задокументировано."
+   },
+   "ru": {
+    "exists": false,
+    "by": null,
+    "free": null,
+    "url": null,
+    "note": "Не найдено."
+   }
+  },
+  "example": null,
+  "example_note": "Не заводится.",
+  "verdict": "не заводить — опубликованного порога нет, разрешение правообладателя не задокументировано. Мера моральной травмы с опубликованным порогом и свободной лицензией — MIDS (National Center for PTSD), см. её карточку."
+ },
+ {
+  "key": "ipgds",
+  "title_en": "International Prolonged Grief Disorder Scale (IPGDS)",
+  "title_uk": "Міжнародна шкала пролонгованого розладу горя (ПРГ)",
+  "title_ru": null,
+  "authors": "Killikelly, C.; Zhou, N.; Merzhvynska, M.; Stelzer, E. M.; Dotschung, T.; Rohner, S.; Sun, L. H.; Maercker, A.",
+  "year": 2020,
+  "citation": "Killikelly C, Zhou N, Merzhvynska M, Stelzer EM, Dotschung T, Rohner S, Sun LH, Maercker A. Development of the international prolonged grief disorder scale for the ICD-11: Measurement of core symptoms and culture items adapted for Chinese and German-speaking samples. J Affect Disord. 2020;277:568-576. doi:10.1016/j.jad.2020.08.057. Украинский бланк: «IPDGS_ukr.docx», страница Ukraine сайта ITC.",
+  "license": {
+   "verdict": "свободна",
+   "quote": "«The IPGDS is freely available in the public domain to all interested parties.»",
+   "url": "https://www.traumameasuresglobal.com/prolonged-grief",
+   "conditions": null
+  },
+  "items": null,
+  "items_note": "Не приводим (методика не заводится). 13 пунктов стандартной шкалы + пункт о культурной норме + давность утраты + культурное дополнение из 20 пунктов, ответы 1–5. В украинском файле опечатки в половине пунктов («покійномую», «смертію», «втратую», «себею»).",
+  "anchors": null,
+  "reverse": [],
+  "scoring": "С украинского бланка: «Ключ підрахунку балів (у розробці)» … «Щоб отримати загальну оцінку тяжкості горя: Створіть підсумкову оцінку за пунктами 1–13.» … «Поріг для клінічної діагностики ПГЗ наразі досліджується.» Диагностическое правило помечено «Попереднє положення».",
+  "bands": null,
+  "bands_note": "Порога нет: правообладатель прямо пишет, что он «наразі досліджується».",
+  "risk_items": [],
+  "risk_items_note": "В культурном дополнении п. 11 «Я хочу померти, щоб бути з покійним» — при заведении был бы пунктом риска.",
+  "translation": {
+   "uk": {
+    "exists": true,
+    "by": "не указан",
+    "free": true,
+    "url": "https://www.traumameasuresglobal.com/ukraine",
+    "note": "Файл с опечатками; валидизации украинской версии не найдено."
+   },
+   "ru": {
+    "exists": false,
+    "by": null,
+    "free": null,
+    "url": null,
+    "note": "Не найдено."
+   }
+  },
+  "example": null,
+  "example_note": "Не заводится.",
+  "verdict": "не заводить — лицензия свободна, но ключ подсчёта на бланке правообладателя помечен «у розробці», порога нет, украинский файл с опечатками; горе в каталоге закрывает TGI-SR+ с украинской проверкой и опубликованными порогами."
+ },
+ {
+  "key": "mids",
+  "title_en": "Moral Injury and Distress Scale (MIDS)",
+  "title_uk": null,
+  "title_ru": null,
+  "authors": "Norman, S. B.; Griffin, B. J.; Pietrzak, R. H.; McLean, C.; Hamblen, J. L.; Maguen, S. (National Center for PTSD, U.S. Department of Veterans Affairs)",
+  "year": 2023,
+  "citation": "Norman, S. B., Griffin, B. J., Pietrzak, R. H., McLean, C., Hamblen, J. L., & Maguen, S. (2023). Moral Injury and Distress Scale (MIDS). [Assessment]. Available from: https://www.ptsd.va.gov (бланк, version date 2023). Валидизация: Norman SB, Griffin BJ, Pietrzak RH, McLean C, Hamblen JL, Maguen S. The Moral Injury and Distress Scale: Psychometric evaluation and initial validation in three high-risk populations. Psychol Trauma. 2024;16(2):280-291. doi:10.1037/tra0001533. Порог: Maguen S, Griffin BJ, Pietrzak RH, McLean CP, Hamblen JL, Norman SB. Using the Moral Injury and Distress Scale to identify clinically meaningful moral injury. J Trauma Stress. 2024;37(4):685-696. doi:10.1002/jts.23050.",
+  "license": {
+   "verdict": "свободна с условиями",
+   "quote": "«This measure was created by staff at VA's National Center for PTSD.» / «These measures are intended for use by qualified mental health professionals and researchers.»",
+   "url": "https://www.ptsd.va.gov/professional/assessment/te-measures/mids.asp ; https://www.ptsd.va.gov/PTSD/professional/assessment/documents/NCPTSD_MIDS.pdf",
+   "conditions": "Основание то же, что у CES в этом досье: мера создана штатом National Center for PTSD и выложена правообладателем прямым PDF без платы и регистрации; дословной строки «is in the public domain» на странице MIDS нет. Условие — применение квалифицированными специалистами."
+  },
+  "items": [
+   "[ЧАСТЬ 1, экспозиция, 0–4] 1. I acted in ways that violated my own morals or values.",
+   "1a. I am bothered by what I did.",
+   "2. I violated my own morals or values by failing to do something I should have done.",
+   "2a. I am bothered by what I did not do.",
+   "3. I saw things that violated my own morals or values.",
+   "3a. I am bothered by what I saw.",
+   "[ТЕКСТ] (a) Please write a few sentences to briefly describe the event(s):",
+   "[ТЕКСТ] (b) What is most upsetting about it to you?",
+   "[ТЕКСТ] (c) What do you wish you would have done differently?",
+   "[ВЫБОР] How often did this event or series of events occur? a) 1 time b) A few times c) Often d) Very often",
+   "[ЧИСЛО] How long ago did the event(s) occur? _____ Years _____ Months",
+   "[ЧАСТЬ 2, 0–4; основа: «Because of what I did, failed to do, or witnessed that went against my morals and values…»] 1. I think about how I should have been able to do more.",
+   "2. I have withdrawn from others more often.",
+   "3. I feel guilty.",
+   "4. I doubt my own judgement.",
+   "5. I do not feel like I deserve to be happy.",
+   "6. I self-sabotage things in my life more often (relationships, things at work).",
+   "7. I feel helpless.",
+   "8. My life feels like it has less purpose.",
+   "9. I am worried that bad things will happen to me or my loved ones.",
+   "10. I have punished myself.",
+   "11. I feel disgusted.",
+   "12. I do not seek support because I feel like I do not deserve it.",
+   "13. I do not seek support because I worry others would not understand.",
+   "14. I feel betrayed by leaders or institutions.",
+   "15. I feel powerless.",
+   "16. I should not be forgiven.",
+   "17. My spirituality/faith is no longer a source of comfort.",
+   "18. I do not take good care of myself."
+  ],
+  "items_note": "Текст — официальный PDF National Center for PTSD (MIDS, 2023). Между частями бланк требует: «If all answers equaled 0, skip the rest of this questionnaire.» Часть 2 — «Keeping the most distressing event(s) and their impact on your life in mind, indicate how true each of the following statements was for you over the last month». Официального украинского или русского перевода нет.",
+  "anchors": [
+   {
+    "label": "Not at all",
+    "score": 0
+   },
+   {
+    "label": "A little",
+    "score": 1
+   },
+   {
+    "label": "Moderately",
+    "score": 2
+   },
+   {
+    "label": "Quite a bit",
+    "score": 3
+   },
+   {
+    "label": "Extremely",
+    "score": 4
+   }
+  ],
+  "reverse": [],
+  "scoring": "Со страницы правообладателя: часть 1 — «Continuous scores can be obtained by calculating the sum score for items that assess commission» (так же omission и witnessing: пары 1 + 1a, 2 + 2a, 3 + 3a) или «Binary variables can be obtained by collapsing responses into 2 categories»; открытые вопросы служат проверке события. Часть 2: «Item responses are aggregated into a sum score, such that higher scores indicate greater severity of moral distress.» и «Respondents who did not endorse any of the Part One items are scored zero on Part Two of the MIDS.» Диапазон части 2 — 0–72 (18 × 4; на странице не назван).",
+  "bands": [
+   {
+    "min": 0,
+    "max": 26,
+    "label": "Below the recommended cut score",
+    "source": "Maguen et al., 2024, J Trauma Stress 37(4):685-696"
+   },
+   {
+    "min": 27,
+    "max": 72,
+    "label": "Clinically meaningful and impairing moral injury (cut score 27)",
+    "source": "Maguen et al., 2024 («The most efficient cut scores across outcomes converged between 24 and 27. We recommend a cut score of 27 given that roughly 70% of participants who screened positive on the MIDS at this threshold reported clinically significant mental health symptoms, and approximately 50% reported severe trauma-related guilt and/or functional impairment.»)"
+   }
+  ],
+  "bands_note": "Порог опубликован авторами меры, но страница правообладателя (на момент проверки, октябрь 2026) всё ещё пишет «At this point, there is not yet a cut score for the MIDS» — при том что в её же списке литературы уже стоит Maguen et al., 2024. Выборка — 645 ветеранов, медработников и спасателей США, переживших PMIE; эталоном служили самоотчёты (симптомы ПТСР и депрессии, вина, функционирование), а не интервью. При заведении — назвать это в описании.",
+  "risk_items": [],
+  "risk_items_note": "Пунктов о суициде нет. При заведении: п. 10 части 2 («I have punished myself») — возможное самоповреждение, пометить тревогой как правило отделения.",
+  "translation": {
+   "uk": {
+    "exists": false,
+    "by": null,
+    "free": null,
+    "url": null,
+    "note": "Официального украинского перевода нет — понадобится рабочий."
+   },
+   "ru": {
+    "exists": false,
+    "by": null,
+    "free": null,
+    "url": null,
+    "note": "Официального русского перевода нет — понадобится рабочий."
+   }
+  },
+  "example": {
+   "answers": [
+    {
+     "part": 1,
+     "items": "1, 1a",
+     "raw": 2
+    },
+    {
+     "part": 1,
+     "items": "2, 2a, 3, 3a",
+     "raw": 0
+    },
+    {
+     "part": 2,
+     "items": "1-9",
+     "raw": 2
+    },
+    {
+     "part": 2,
+     "items": "10-18",
+     "raw": 1
+    }
+   ],
+   "total": 27,
+   "band": "≥ 27 — clinically meaningful moral injury",
+   "note": "Часть 2: 9 × 2 + 9 × 1 = 27 — ровно порог. Контроль правила пропуска: все шесть ответов части 1 = 0 → часть 2 не задаётся и равна 0 при любых других ответах."
+  },
+  "verdict": "не заводить пока — лицензия и порог в порядке, но правило бланка «If all answers equaled 0, skip the rest of this questionnaire» (и «scored zero on Part Two») требует показать часть 2 при «хотя бы один из шести пунктов части 1 > 0». Условия показа движка соединяются только через «И». Точная запись есть одна — часть 1 матрицей из шести строк (балл матрицы — сумма строк, условие «> 0»), но генератор пакета сверки матриц не умеет: не печатает строки в листе и не открывает по матрице пункты в примерах, так что лист показал бы ложные «недостижимые полосы». Без условия человек без морально травмирующего события отвечал бы на 18 вопросов «из-за того, что я сделал…», и его сумма могла бы перейти 27. Нужна поддержка матриц в генераторе (examples.ts, render.ts) или условие «любое из» в движке; после этого методика заводится по этой карточке — единственная мера моральной травмы со свободной лицензией и порогом."
  }
 ]
