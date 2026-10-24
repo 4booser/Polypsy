@@ -1,0 +1,566 @@
+[
+  {
+    "key": "tipi",
+    "title_en": "Ten-Item Personality Inventory (TIPI)",
+    "title_uk": "Короткий п’ятифакторний опитувальник особистості TIPI (TIPI-UKR)",
+    "title_ru": "Краткий пятифакторный опросник личности (TIPI-RU)",
+    "authors": "Samuel D. Gosling, Peter J. Rentfrow, William B. Swann Jr.",
+    "year": 2003,
+    "citation": "Gosling SD, Rentfrow PJ, Swann WB Jr. A very brief measure of the Big-Five personality domains. Journal of Research in Personality. 2003;37:504–528.",
+    "license": {
+      "verdict": "свободна",
+      "quote": "WANT TO USE THE TIPI? GO AHEAD. ANYONE CAN USE IT FOR ANY PURPOSE. NO NEED TO ASK ME FOR PERMISSION.",
+      "url": "https://gosling.psy.utexas.edu/scales-weve-developed/ten-item-personality-measure-tipi/",
+      "conditions": "Ссылаться на Gosling, Rentfrow, Swann (2003) — так просит автор на той же странице. Украинский текст взят из статьи под CC BY-NC-SA 4.0: только некоммерческое использование, с указанием авторства адаптации; изменённый текст распространяется под той же лицензией. Русский текст — из статьи с копирайтом издателя (© 2016 ФГБОУ ВО МГППУ), основание — автор TIPI сам выкладывает её PDF у себя как русскую версию.",
+      "note": "Это единственная методика группы, у которой и украинский, и русский текст — валидизированные адаптации, перечисленные правообладателем на своей странице («UKRAINIAN ... A Ukrainian version the TIPI along with the paper describing its development and psychometrics information is available ... Marina Klimanska»; «RUSSIAN (2) Two Russian versions of the TIPI are available ... Anastasia Sergeeva»)."
+    },
+    "items": [
+      "Extraverted, enthusiastic.",
+      "Critical, quarrelsome.",
+      "Dependable, self-disciplined.",
+      "Anxious, easily upset.",
+      "Open to new experiences, complex.",
+      "Reserved, quiet.",
+      "Sympathetic, warm.",
+      "Disorganized, careless.",
+      "Calm, emotionally stable.",
+      "Conventional, uncreative."
+    ],
+    "items_note": "Дословно с бланка автора http://gosling.psy.utexas.edu/wp-content/uploads/2014/09/tipi.pdf. Общая основа пунктов: «I see myself as:». Инструкция дословно: «Here are a number of personality traits that may or may not apply to you. Please write a number next to each statement to indicate the extent to which you agree or disagree with that statement. You should rate the extent to which the pair of traits applies to you, even if one characteristic applies more strongly than the other.» В системе общая основа пунктов — заголовок раздела над каждым пунктом (так она стоит и на бланке: одна строка над списком пар).",
+    "anchors": [
+      { "label": "Disagree strongly", "score": 1 },
+      { "label": "Disagree moderately", "score": 2 },
+      { "label": "Disagree a little", "score": 3 },
+      { "label": "Neither agree nor disagree", "score": 4 },
+      { "label": "Agree a little", "score": 5 },
+      { "label": "Agree moderately", "score": 6 },
+      { "label": "Agree strongly", "score": 7 }
+    ],
+    "anchors_note": "Украинские подписи — дословно из Додатку 1 TIPI-UKR: 1 «абсолютно не погоджуюсь», 2 «не погоджуюся», 3 «швидше не погоджуюся», 4 «важко сказати», 5 «швидше погоджуюся», 6 «погоджуюся», 7 «абсолютно погоджуюся». В TIPI-RU подписаны только три точки: «1 - полное несогласие с утверждением, 7- полное согласие с утверждением, 4–нечто среднее»; 2, 3, 5, 6 — без подписей, и в бланке шкала идёт справа налево (7 … 1). В системе русские варианты подписаны так же (только 1, 4, 7), порядок — 1 → 7, как в оригинале и в TIPI-UKR.",
+    "reverse": [2, 4, 6, 8, 10],
+    "scoring": "Дословно со страницы автора: «1. Recode the reverse-scored items (i.e., recode a 7 with a 1, a 6 with a 2, a 5 with a 3, etc.). The reverse scored items are 2, 4, 6, 8, & 10. 2. Take the AVERAGE of the two items (the standard item and the recoded reverse-scored item) that make up each scale.» Ключ с бланка дословно: «Extraversion: 1, 6R; Agreeableness: 2R, 7; Conscientiousness; 3, 8R; Emotional Stability: 4R, 9; Openness to Experiences: 5, 10R.» Ключи TIPI-UKR и TIPI-RU совпадают с оригиналом («Екстраверсія: 1, 6* ... Відкритість новому досвіду: 5, 10*»; «Экстравертность: 1, 6 перевернутый ... Открытость новому опыту: 5, 10 перевернутый»). Пять шкал по два пункта, каждая — среднее 1–7; общего балла нет. Пятая шкала — эмоциональная СТАБИЛЬНОСТЬ, а не нейротизм: высокий балл означает бо́льшую устойчивость.",
+    "bands": null,
+    "bands_source": "ПОЛОС НЕТ. У автора есть только нормы (средние и SD по полу; «The norms should be cited as, Gosling, S. D., Rentfrow, P. J., & Potter, J. (2014). Norms for the Ten Item Personality Inventory. Unpublished Data.», данные онлайн-исследования outofservice.com) — ни порогов, ни категорий «высокий / низкий». Американская онлайн-выборка к украинским военнослужащим не относится, а украинские адаптаторы (405 студентов 18–21 года) норм не публиковали. Поэтому — сырые средние 1–7 по пяти шкалам без полос, как «велика п’ятірка» без стенов.",
+    "risk_items": [],
+    "risk_items_note": "Пунктов о суициде, самоповреждении или вреде другим нет.",
+    "translation": {
+      "uk": {
+        "exists": true,
+        "by": "Кліманська М. Б., Галецька І. І. (Львівський національний університет імені Івана Франка). Українська адаптація короткого п’ятифакторного опитувальника особистості TIPI (TIPI-UKR). Psychological Journal. 2019;5(9):57–74. DOI 10.31108/1.2019.5.9.4",
+        "free": true,
+        "url": "https://apsijournal.com/index.php/psyjournal/article/view/674",
+        "note": "Адаптация сделана «після отримання згоди від одного з авторів методики (Семюела Гослінга)», и страница автора называет её украинской версией TIPI. Статья открыта под CC BY-NC-SA 4.0 (колонтитул первой страницы: «This is an Open Access journal, all articles are distributed under the terms of the Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International (CC BY-NC-SA 4.0) License ... allowing third parties to copy and redistribute the material in any medium or format»). Инструкция, основа «Бачу себе як людину, яка є», десять пунктов, подписи 1–7 и ключ — дословно из Додатку 1. ВАЖНО: это адаптация, а не подстрочник — по итогам психометрики дескрипторы большинства пунктов заменены (Таблиця 2 статьи), например п. 10 «Conventional, uncreative» → «Не любить змін і пошуку нових рішень», п. 1 «Extraverted, enthusiastic» → «Товариська, активна». Прилагательные согласованы с «людину, яка є», то есть текст не зависит от пола отвечающего."
+      },
+      "ru": {
+        "exists": true,
+        "by": "Сергеева А. С., Кириллов Б. А., Джумагулова А. Ф. Перевод и адаптация краткого пятифакторного опросника личности (TIPI-RU): оценка конвергентной валидности, внутренней согласованности и тест-ретестовой надежности. Экспериментальная психология. 2016;9(3):138–154. doi:10.17759/exppsy.2016090311",
+        "free": true,
+        "url": "http://gosling.psy.utexas.edu/wp-content/uploads/2022/07/TIPI-Russian2016.pdf",
+        "note": "PDF статьи выложен на странице самого автора TIPI; адаптаторы пишут, что «запросили и получили письменное разрешение от одного из авторов оригинального TIPI профессора С. Гослинга на перевод и адаптацию TIPI для русскоязычного использования». Основа «Я воспринимаю себя как», десять пунктов и ключ — дословно из Приложения 1. Пункты даны в мужском роде («открытого, полного энтузиазма») — это свойство опубликованной версии, в системе не исправлено: правка рода меняла бы валидизированный текст. Вступительные фразы бланка («Здравствуйте! Заполните, пожалуйста, наш опросник...») — обращение исследования, а не часть методики; в инструкцию системы не взяты. Вторая русская версия (Корнилова, Чумакова, 2016) не взята: ссылки на её текст у автора нет."
+      }
+    },
+    "example": {
+      "answers": [5, 4, 4, 4, 4, 2, 4, 4, 4, 4],
+      "total": null,
+      "band": null,
+      "scales": { "E": 5.5, "A": 4, "C": 4, "ES": 4, "O": 4 },
+      "note": "Опубликованный пример автора дословно: «A participant has scores of 5 on item 1 (Extraverted, enthusiastic) and and 2 on item 6 (Reserved, quiet). First, recode the reverse-scored item (i.e., item 6), replacing the 2 with a 6. Second, take the average of the score for item 1 and the (recoded) score for item 6. So the TIPI Extraversion scale score would be: (5 + 6)/2 = 5.5». Остальные восемь пунктов здесь — «4» (середина; обратная 4 тоже 4), поэтому остальные шкалы 4,0. Проверки обратного ключа (арифметика по ключу): все прямые пункты 1, 3, 5, 7, 9 = 7 и все обратные 2, 4, 6, 8, 10 = 1 → все пять шкал 7,0; все десять ответов = 7 → все пять шкал (7 + 1)/2 = 4,0."
+    },
+    "verdict": "завести без полос — правообладатель разрешает любое использование; украинский (TIPI-UKR) и русский (TIPI-RU) тексты — валидизированные адаптации, которые автор перечисляет у себя; порогов нет, только средние 1–7 по пяти шкалам"
+  },
+  {
+    "key": "scs_sf",
+    "title_en": "Self-Compassion Scale – Short Form (SCS-SF)",
+    "title_uk": null,
+    "title_ru": null,
+    "authors": "Filip Raes, Elizabeth Pommier, Kristin D. Neff, Dinska Van Gucht",
+    "year": 2011,
+    "citation": "Raes F, Pommier E, Neff KD, Van Gucht D. Construction and factorial validation of a short form of the Self-Compassion Scale. Clinical Psychology & Psychotherapy. 2011;18:250–255.",
+    "license": {
+      "verdict": "свободна",
+      "quote": "Dr. Kristin Neff grants permission to use the Self-Compassion Scale Short Form (Raes et al., 2011) for any purpose whatsoever, including research, clinical work, teaching, etc. Please cite: Raes, F., Pommier, E., Neff, K. D., & Van Gucht, D. (2011). ... Permission is also given to translate the Self-Compassion Scale Short Form using the analytic approach to validate the factor structure that was established in: Neff, K. D., Tóth-Király, I., Yarnell, L., Arimitsu, K., Castilho, P., Ghorbani, N.,… Mantios, M. (2019).",
+      "url": "https://self-compassion.org/wp-content/uploads/2021/03/SCS-SF-information.pdf",
+      "conditions": "Ссылаться на Raes et al. (2011). Перевод разрешён; для его валидизации автор «strongly recommend[s] the use of bifactor ESEM». Перевод, сделанный при сборке каталога, такой проверки не проходил и остаётся рабочим."
+    },
+    "items": [
+      "When I fail at something important to me I become consumed by feelings of inadequacy.",
+      "I try to be understanding and patient towards those aspects of my personality I don’t like.",
+      "When something painful happens I try to take a balanced view of the situation.",
+      "When I’m feeling down, I tend to feel like most other people are probably happier than I am.",
+      "I try to see my failings as part of the human condition.",
+      "When I’m going through a very hard time, I give myself the caring and tenderness I need.",
+      "When something upsets me I try to keep my emotions in balance.",
+      "When I fail at something that’s important to me, I tend to feel alone in my failure",
+      "When I’m feeling down I tend to obsess and fixate on everything that’s wrong.",
+      "When I feel inadequate in some way, I try to remind myself that feelings of inadequacy are shared by most people.",
+      "I’m disapproving and judgmental about my own flaws and inadequacies.",
+      "I’m intolerant and impatient towards those aspects of my personality I don’t like."
+    ],
+    "items_note": "Дословно с бланка автора https://self-compassion.org/wp-content/uploads/2021/03/ShortSCS.pdf. Заголовок бланка: «HOW I TYPICALLY ACT TOWARDS MYSELF IN DIFFICULT TIMES». Инструкция дословно: «Please read each statement carefully before answering. Indicate how often you behave in the stated manner, using the following scale:».",
+    "anchors": [
+      { "label": "Almost never", "score": 1 },
+      { "label": "(без подписи)", "score": 2 },
+      { "label": "(без подписи)", "score": 3 },
+      { "label": "(без подписи)", "score": 4 },
+      { "label": "Almost always", "score": 5 }
+    ],
+    "anchors_note": "На бланке подписаны только края шкалы: «Almost never» над 1 и «Almost always» над 5; точки 2, 3, 4 без подписей. В системе так же: подписаны только 1 и 5.",
+    "reverse": [1, 4, 8, 9, 11, 12],
+    "scoring": "Дословно с листа автора (SCS-SF information): «SCORING KEY Self-Kindness Items: 2, 6 Self-Judgment Items (Reverse Scored): 11, 12 Common Humanity Items: 5, 10 Isolation Items (Reverse Scored): 4, 8 Mindfulness Items: 3, 7 Over-identification Items (Reverse Scored): 1, 9 To reverse score items (1=5, 2=4, 3=3, 4=2, 5=1). To compute a total self-compassion score, first reverse score the negative subscale items - self-judgment, isolation, and over-identification. Then take the mean of each subscale, and compute a total mean (the average of the six subscale means).» В каждой подшкале ровно два пункта, поэтому среднее шести средних равно среднему двенадцати пунктов после обращения; диапазон 1–5. Подшкалы НЕ заводить, дословно там же: «Because subscale scores are unreliable in the SCS short form, we recommend using the original SCS rather than the short form when examining subscale scores.» Там же: «Note that these scoring procedures are slightly different than that used in the original scale article (Raes et al., 2011), in which items were totaled rather than averaged.» — взято среднее, как в текущем ключе автора.",
+    "bands": [
+      { "min": 1.0, "max": 2.49, "label_en": "low" },
+      { "min": 2.5, "max": 3.5, "label_en": "moderate" },
+      { "min": 3.51, "max": 5.0, "label_en": "high" }
+    ],
+    "bands_source": "Дословно (тот же лист автора, раздел «NORMS AND SCORE SIGNIFICANCE»): «There are no clinical norms or scores which indicate that an individual is high or low in self-compassion. Rather, scores are mainly used in a comparative manner to examine outcomes for people scoring higher or lower in self-compassion. As an ad hoc rubric, however, you can consider scores 1.0-2.49 to be low, between 2.5-3.5 to be moderate, and 3.51-5.0 to be high.» Это ориентир автора, а не клиническая норма: в системе — три полосы без тяжести (severity none, без тревоги) с подписью «орієнтир авторки». Промежутки 2,49–2,5 и 3,5–3,51 ответами недостижимы: среднее двенадцати пунктов кратно 1/12 (29/12 = 2,417 → 30/12 = 2,5; 42/12 = 3,5 → 43/12 = 3,583).",
+    "risk_items": [],
+    "risk_items_note": "Пунктов о суициде, самоповреждении или вреде другим нет. Пункты 1, 4, 8, 9 (поглощённость неудачей, изоляция, зацикленность на плохом) — о самоотношении, не о риске; правила тревоги по ним у автора нет.",
+    "translation": {
+      "uk": {
+        "exists": false,
+        "by": null,
+        "free": null,
+        "url": "https://self-compassion.org/self-compassion-scales-for-researchers/",
+        "note": "В списке переводов на странице автора украинского нет (есть, например, чешский, словацкий, словенский, нидерландский). Автор советует брать пункты короткой формы из переведённой полной SCS: «If you would like to use a translation of the SCS-SF, you might try just taking the 12 short form items from a previously translated version of the long form» — украинской полной версии в списке тоже нет. Рабочий перевод при сборке каталога, без привязки к роду отвечающего."
+      },
+      "ru": {
+        "exists": false,
+        "by": null,
+        "free": null,
+        "url": "https://self-compassion.org/self-compassion-scales-for-researchers/",
+        "note": "Русского перевода в списке автора нет. Рабочий перевод."
+      }
+    },
+    "example": {
+      "answers": [4, 2, 3, 4, 2, 2, 3, 4, 4, 2, 4, 4],
+      "total": 2.167,
+      "band": "low (1.0–2.49)",
+      "note": "Арифметика по ключу автора (опубликованного пошагового примера нет). Обратные 1, 4, 8, 9, 11, 12 ответом 4 → 6 − 4 = 2 каждый, сумма 12; прямые 2, 3, 5, 6, 7, 10: 2 + 3 + 2 + 2 + 3 + 2 = 14. Итого 26 / 12 = 2,1667 → 2,167, полоса «low». Края: все ответы 3 → 3,0 «moderate»; прямые 5 и обратные 1 → 5,0 «high»; сумма после обращения 30 → 2,5 «moderate», 29 → 2,417 «low»; 42 → 3,5 «moderate», 43 → 3,583 «high»."
+    },
+    "verdict": "завести — правообладатель разрешает любое использование, включая клиническое, и перевод; только общий балл (подшкалы короткой формы автор считать не советует); полосы — «ad hoc rubric» автора без тяжести и без тревоги; перевод рабочий"
+  },
+  {
+    "key": "maas",
+    "title_en": "Mindful Attention Awareness Scale (MAAS), trait version",
+    "title_uk": null,
+    "title_ru": null,
+    "authors": "Kirk Warren Brown, Richard M. Ryan",
+    "year": 2003,
+    "citation": "Brown KW, Ryan RM. The benefits of being present: Mindfulness and its role in psychological well-being. Journal of Personality and Social Psychology. 2003;84(4):822–848.",
+    "license": {
+      "verdict": "свободна",
+      "quote": "The trait Mindful Attention Awareness Scale (MAAS) is in the public domain and special permission is not required to use it for research or clinical purposes.",
+      "url": "https://competencycultivation.uta.edu/files/2021/06/Mindful-Attention-Awareness-Scale-MAAS-trait-version-intro.pdf",
+      "conditions": "Письмо первого автора («Dear Colleague», подпись «Kirk Warren Brown, PhD, Department of Psychology, Virginia Commonwealth University») с описанием, нормами, бланком и ключом; файл лежит на сайте University of Texas at Arlington (ссылка перенаправляет на bpb-us-e1.wpmucdn.com). Автор просит: «I would appreciate hearing about any clinical or research results you obtain using the scale.»",
+      "note": "Расхождение, которое надо знать: Center for Self-Determination Theory (соавтор R. M. Ryan) пишет на странице MAAS: «To download the copyrighted questionnaires on the CSDT web site, you must agree to our terms and conditions. All academic use is permitted, but you must obtain permission from the Center for Self-Determination Theory for commercial use.» (https://selfdeterminationtheory.org/mindfulness-attention-awareness/). Некоммерческое клиническое применение в государственном госпитале под «commercial use» не попадает, и два заявления здесь совместимы; при коммерческом распространении платформы — запрос в CSDT."
+    },
+    "items": [
+      "I could be experiencing some emotion and not be conscious of it until some time later.",
+      "I break or spill things because of carelessness, not paying attention, or thinking of something else.",
+      "I find it difficult to stay focused on what’s happening in the present.",
+      "I tend to walk quickly to get where I’m going without paying attention to what I experience along the way.",
+      "I tend not to notice feelings of physical tension or discomfort until they really grab my attention.",
+      "I forget a person’s name almost as soon as I’ve been told it for the first time.",
+      "It seems I am “running on automatic,” without much awareness of what I’m doing.",
+      "I rush through activities without being really attentive to them.",
+      "I get so focused on the goal I want to achieve that I lose touch with what I’m doing right now to get there.",
+      "I do jobs or tasks automatically, without being aware of what I'm doing.",
+      "I find myself listening to someone with one ear, doing something else at the same time.",
+      "I drive places on ‘automatic pilot’ and then wonder why I went there.",
+      "I find myself preoccupied with the future or the past.",
+      "I find myself doing things without paying attention.",
+      "I snack without being aware that I’m eating."
+    ],
+    "items_note": "Дословно из бланка в письме автора (раздел «Day-to-Day Experiences»). Инструкция дословно: «Below is a collection of statements about your everyday experience. Using the 1-6 scale below, please indicate how frequently or infrequently you currently have each experience. Please answer according to what really reflects your experience rather than what you think your experience should be. Please treat each item separately from every other item.»",
+    "anchors": [
+      { "label": "Almost Always", "score": 1 },
+      { "label": "Very Frequently", "score": 2 },
+      { "label": "Somewhat Frequently", "score": 3 },
+      { "label": "Somewhat Infrequently", "score": 4 },
+      { "label": "Very Infrequently", "score": 5 },
+      { "label": "Almost Never", "score": 6 }
+    ],
+    "reverse": [],
+    "scoring": "Дословно: «To score the scale, simply compute a mean (average) of the 15 items. Higher scores reflect higher levels of dispositional mindfulness.» Все пятнадцать пунктов описывают неосознанность, и шкала ответов уже повёрнута (1 = «Almost Always» … 6 = «Almost Never»), поэтому обратных пунктов нет. Диапазон 1–6, один фактор, подшкал нет.",
+    "bands": null,
+    "bands_source": "ПОЛОС НЕТ: порогов автор не даёт, только нормативные средние, дословно: «Community adults (4 independent samples): N = 436; MAAS M = 4.20, SD = .69. College students (14 independent samples): N = 2277; MAAS M = 3.83, SD = .70.» Нормы американские; в системе — сырое среднее 1–6 и его динамика, нормы названы в описании шкалы как ориентир, а не как граница.",
+    "risk_items": [],
+    "risk_items_note": "Пунктов о суициде, самоповреждении или вреде другим нет.",
+    "translation": {
+      "uk": {
+        "exists": false,
+        "by": null,
+        "free": null,
+        "url": null,
+        "note": "Украинского текста от правообладателя нет. Рабочий перевод при сборке каталога, без привязки к роду отвечающего (п. 12 и 13 переформулированы безлично: «навіщо мені було туди їхати», «мої думки зайняті»)."
+      },
+      "ru": {
+        "exists": false,
+        "by": null,
+        "free": null,
+        "url": null,
+        "note": "Русского текста от правообладателя нет; известные русские адаптации в досье не сверены. Рабочий перевод."
+      }
+    },
+    "example": {
+      "answers": [1, 2, 3, 4, 5, 6, 1, 2, 3, 4, 5, 6, 1, 2, 3],
+      "total": 3.2,
+      "band": null,
+      "note": "Арифметика по ключу автора: (1+2+3+4+5+6) × 2 + (1+2+3) = 48; 48 / 15 = 3,2. Края: все «Almost Always» → 1,0; все «Almost Never» → 6,0; все «Somewhat Infrequently» → 4,0. Полосу не присваивать — её нет."
+    },
+    "verdict": "завести без полос — автор объявил шкалу общественным достоянием для исследовательского и клинического применения; сырое среднее 1–6, нормы американские и только как ориентир; перевод рабочий"
+  },
+  {
+    "key": "aaq2",
+    "title_en": "Acceptance and Action Questionnaire – II (AAQ-II), 7 items",
+    "title_uk": "Опитувальник прийняття та дії (AAQ-II), україномовна версія",
+    "title_ru": null,
+    "authors": "Frank W. Bond, Steven C. Hayes, Ruth A. Baer, Kenneth M. Carpenter, Nigel Guenole, Holly K. Orcutt, Tom Waltz, Robert D. Zettle",
+    "year": 2011,
+    "citation": "Bond FW, Hayes SC, Baer RA, Carpenter KM, Guenole N, Orcutt HK, Waltz T, Zettle RD. Preliminary psychometric properties of the Acceptance and Action Questionnaire – II: A revised measure of psychological inflexibility and experiential avoidance. Behavior Therapy. 2011;42(4):676–688.",
+    "license": {
+      "verdict": "свободна с условиями",
+      "quote": "Permission is given to use the AAQ-II for research and with clients, and does not require additional author permission.  If, however, the AAQ-II was to be used in any type of money making enterprise (e.g., consultancy to organizations), seeking permission is requested by the authors. - Frank Bond, University of Sussex",
+      "url": "https://contextualscience.org/acceptance_action_questionnaire_aaq_aaqii",
+      "conditions": "Клиническое применение («with clients») разрешено первым автором без отдельного разрешения; разрешение нужно только для «money making enterprise». Государственный госпиталь — не коммерческое предприятие.",
+      "note": "Английский бланк на сайте ACBS доступен только членам ассоциации; текст семи пунктов сверен по принятой рукописи статьи в репозитории Goldsmiths (https://eprints-gro.gold.ac.uk/5531/2/AAQ-II_psychometrics_paper_%28accepted_version%29.pdf, Table 1, однофакторное решение)."
+    },
+    "items": [
+      "My painful experiences and memories make it difficult for me to live a life that I would value.",
+      "I’m afraid of my feelings.",
+      "I worry about not being able to control my worries and feelings.",
+      "My painful memories prevent me from having a fulfilling life.",
+      "Emotions cause problems in my life.",
+      "It seems like most people are handling their lives better than I am.",
+      "Worries get in the way of my success."
+    ],
+    "items_note": "Семь пунктов, вошедших в итоговую AAQ-II, дословно из Table 1 принятой рукописи (там они пункты 2, 3, 4, 5, 7, 8, 9 десятипунктовой пробной версии; три обратных пункта 1, 6, 10 в итоговую версию не вошли). Порядок — как в итоговом бланке и в украинской адаптации. Инструкция английского бланка в открытом доступе не опубликована; русский файл на сайте ACBS переводит её так: «Ниже вы найдёте список утверждений. Пожалуйста, оцените насколько они являются правдой для вас, отметив цифру по принципу возрастания: чем правдивей тем выше цифра.»",
+    "anchors": [
+      { "label": "never true", "score": 1 },
+      { "label": "(без подписи в первоисточнике)", "score": 2 },
+      { "label": "(без подписи в первоисточнике)", "score": 3 },
+      { "label": "(без подписи в первоисточнике)", "score": 4 },
+      { "label": "(без подписи в первоисточнике)", "score": 5 },
+      { "label": "(без подписи в первоисточнике)", "score": 6 },
+      { "label": "always true", "score": 7 }
+    ],
+    "anchors_note": "Рукопись Bond et al. дословно: «a Likert-type scale that ran from 1 (never true) to 7 (always true), with higher scores indicating greater levels of psychological inflexibility»; украинская адаптация дословно: «Кожне з тверджень потрібно оцінити за шкалою від 1 – ніколи до 7 – завжди». Подписи промежуточных точек ни в одном доступном первоисточнике не напечатаны (полный английский бланк — за входом ACBS), поэтому в системе подписаны только края, как в источниках.",
+    "reverse": [],
+    "scoring": "Сумма семи пунктов, 7–49; обратных пунктов нет. Украинская адаптация дословно: «Всі твердження опитувальника є прямими. Вищий показник за шкалою вказує на вищий рівень психологічної негнучкості, а тому і на схильність до уникання досвіду.» Русский файл ACBS: «Суммируйте очки: чем выше результат, тем выше уровень психологической ригидности.» Рукопись: средний балл семи пунктов в шести выборках — 17,34–28,34 (Table 3, «Scale mean»).",
+    "bands": [
+      { "min": 7, "max": 23, "label_en": "below the range associated with distress" },
+      { "min": 24, "max": 28, "label_en": "within the range (24–28) associated with clinically relevant distress — preliminary" },
+      { "min": 29, "max": 49, "label_en": "above the range associated with distress — preliminary" }
+    ],
+    "bands_source": "Рукопись Bond et al. (2011) дословно: «The AAQ-II was not designed as a tool for diagnosing mental disorders. ... Accordingly, this measure was not devised to establish a cut-off point at which people are likely to meet the criteria for a diagnosable psychiatric disorder. Nevertheless, we were able to identify a range of AAQ-II scores that is associated with the cut-off points of three measures of psychopathology. ... these cut-off values predicted AAQ-II scores that ranged from 24 to 28. Thus, scores in this range or above are associated with GHQ-12, BDI-II, and GSI values that indicate psychological distress. ... Taken together, these findings present a consistent, albeit limited and preliminary, indication of which scores on the AAQ-II may indicate a clinically relevant level of distress.» Table 6: BDI-II ≥ 14 → 28; GHQ ≥ 4 → 24 (выборка 1), 25 (выборки 4 и 5); GSI ≥ 0,6 → 28. Отсюда три полосы: 7–23 — ниже диапазона; 24–28 — внутри диапазона, предсказанного порогами трёх шкал дистресса; 29–49 — выше него. Тяжесть «mild» у обеих верхних (сигнал без тревоги): авторы прямо пишут, что это не диагностический порог. Украинские нормы адаптации (Таблиця 2, дословно): чоловіки N = 191, середнє 19, SD 9, «Вищими за середні можна вважати значення: ≥29»; жінки N = 626, середнє 24, SD 11, «≥36» — в описании как ориентир, полосами не заведены (полосы по полу движок не задаёт).",
+    "risk_items": [],
+    "risk_items_note": "Пунктов о суициде, самоповреждении или вреде другим нет. Пункты 1 и 4 говорят о болезненных воспоминаниях — для военнослужащих это повод для PCL-5, но правила тревоги у методики нет.",
+    "translation": {
+      "uk": {
+        "exists": true,
+        "by": "Широка А. О., Миколайчук М. І. (Український католицький університет). Адаптація україномовної версії опитувальника прийняття та дії (AAQ-II) на нормативній та субклінічній групах досліджуваних. Науковий вісник Херсонського державного університету. Серія «Психологічні науки». 2021;(3):101–112. DOI 10.32999/ksu2312-3206/2021-3-14",
+        "free": true,
+        "url": "https://pj.journal.kspu.edu/index.php/pj/uk/article/view/1226",
+        "note": "Валидизация на 6 нормативных (N = 817) и 3 субклинических (N = 142) группах; α = 0,89–0,95; однофакторная модель подтверждена КФА; тест-ретест за 3 недели r = 0,85. Семь пунктов — дословно из Таблиці 4 статьи; шкала ответов — «від 1 – ніколи до 7 – завжди». Основание для использования текста: (1) правообладатель указывает эту статью на своей странице переводов как украинскую AAQ-II: «The AAQ-II Items Ukraianian translation is in Table 4.» (https://contextualscience.org/aaqii_30_languages); (2) авторы адаптации прямо рекомендуют её для практики: «Опитувальник може бути рекомендований для використання у вітчизняних дослідженнях та психотерапевтичній практиці». Лицензия CC у статьи на сайте журнала не указана — письменного разрешения авторов адаптации на перепечатку текста нет; это зафиксировать и при возможности запросить (shyroka@ucu.edu.ua). Инструкция в статье не напечатана — в системе своя, по смыслу русского файла ACBS."
+      },
+      "ru": {
+        "exists": false,
+        "by": null,
+        "free": null,
+        "url": "https://contextualscience.org/files/AAQ-II%20(7-item%20with%20scoring)%20russian_validation_needed.pdf",
+        "note": "На сайте ACBS есть русский файл с пометкой в имени «validation_needed», и его формулировки расходятся с оригиналом (п. 1 добавлено «мысли», п. 3 «мысли» вместо «worries»). Статья, на которую ACBS ссылается для русской версии (Ясин М. И., Современная зарубежная психология, 2022, 11(2):113–121), адаптирует 9- и 7-пунктовые укорочения ПЕРВОЙ AAQ (пункты 3, 8, 16, 19, 24, 28, 31 из 32), а не AAQ-II. Валидизированного русского текста AAQ-II нет — рабочий перевод с английского."
+      }
+    },
+    "example": {
+      "answers": [4, 4, 4, 4, 4, 4, 4],
+      "total": 28,
+      "band": "24–28 (within the range associated with distress)",
+      "note": "Арифметика по ключу (все пункты прямые; опубликованного пошагового примера нет): 7 × 4 = 28 — верхний край диапазона 24–28. Границы полос: 3 + 3 + 3 + 3 + 3 + 3 + 5 = 23 — ниже диапазона; 3 + 3 + 3 + 3 + 3 + 4 + 5 = 24 — нижний край диапазона; 4 × 6 + 5 = 29 — выше диапазона. Края шкалы: все ответы 1 → 7, все ответы 7 → 49."
+    },
+    "verdict": "завести — первый автор разрешает применение «for research and with clients»; украинский текст — валидизированная адаптация УКУ, которую правообладатель указывает у себя (письменного разрешения авторов адаптации нет — отмечено); русский — рабочий перевод; полосы — предварительный диапазон 24–28 авторов, без тревоги"
+  },
+  {
+    "key": "aq10",
+    "title_en": "Autism Spectrum Quotient – 10 items (AQ-10), Adult",
+    "title_uk": null,
+    "title_ru": null,
+    "authors": "Carrie Allison, Bonnie Auyeung, Simon Baron-Cohen (Autism Research Centre, University of Cambridge)",
+    "year": 2012,
+    "citation": "Allison C, Auyeung B, Baron-Cohen S. Toward brief “Red Flags” for autism screening: The Short Autism Spectrum Quotient and the Short Quantitative Checklist in 1,000 cases and 3,000 controls. Journal of the American Academy of Child & Adolescent Psychiatry. 2012;51(2):202–212.",
+    "license": {
+      "verdict": "свободна с условиями",
+      "quote": "The AQ-10 is available free of charge for non-profit use, including research and education. For-profit healthcare organisations, commercial users, and IT companies: Fees may apply to your project. Please submit your request here: Official AQ-10 (Adult) | Autism Spectrum Quotient – 10 items – Adult distributed by Mapi Research Trust | ePROVIDE. The PROVIDE team will respond with further information and the licence agreement.",
+      "url": "https://www.autismresearchcentre.com/tests/autism-spectrum-quotient-10-items-aq-10-adult/",
+      "conditions": "Только некоммерческое применение, со ссылкой на ARC: «You can download them below provided that they are used for research purposes and not for commercial use, and that due acknowledgement of ARC as the source is given.» (https://www.autismresearchcentre.com/tests/). Перевод для некоммерческих целей — без запроса, дословно: «You do not need to request permission to translate these materials for research or non-profit purposes. For use of the tests in a commercial context, please contact Cambridge Enterprise to arrange permission.» (https://www.autismresearchcentre.com/research/tests/terms-and-conditions-for-translations/). Если платформа когда-либо будет распространяться коммерчески или как продукт IT-компании — лицензия через ePROVIDE (Mapi Research Trust).",
+      "note": "Там же ARC дословно: «Translations of tests produced by the ARC are posted up on the ARC website on the understanding that the translation is based closely on the original version published in the English language.» и «Permission to translate a test is granted by the ARC as author-permission, and it is up to the translator to seek permission from the journal where the test was first published in English if they also wish to obtain the publisher-permission.» Разрешения издателя журнала (JAACAP) учреждение не запрашивало; ARC делает его делом переводчика по желанию."
+    },
+    "items": [
+      "I often notice small sounds when others do not",
+      "I usually concentrate more on the whole picture, rather than the small details",
+      "I find it easy to do more than one thing at once",
+      "If there is an interruption, I can switch back to what I was doing very quickly",
+      "I find it easy to ‘read between the lines’ when someone is talking to me",
+      "I know how to tell if someone listening to me is getting bored",
+      "When I’m reading a story I find it difficult to work out the characters’ intentions",
+      "I like to collect information about categories of things (e.g. types of car, types of bird, types of train, types of plant etc)",
+      "I find it easy to work out what someone is thinking or feeling just by looking at their face",
+      "I find it difficult to work out people’s intentions"
+    ],
+    "items_note": "Дословно с официального бланка ARC https://www.autismresearchcentre.com/content/uploads/2024/11/AQ10.pdf («© SBC/CA/BA/ARC/Cambridge University 1/5/12»). Заголовок бланка: «A quick referral guide for adults with suspected autism who do not have a learning disability.» Инструкция: «Please tick one option per question only:».",
+    "anchors": [
+      { "label": "Definitely Agree", "score": null },
+      { "label": "Slightly Agree", "score": null },
+      { "label": "Slightly Disagree", "score": null },
+      { "label": "Definitely Disagree", "score": null }
+    ],
+    "anchors_note": "Балл зависит от пункта, см. scoring: у пунктов 1, 7, 8, 10 «Definitely / Slightly Agree» = 1, «Disagree» = 0; у пунктов 2, 3, 4, 5, 6, 9 — наоборот. В системе это выражено баллами вариантов 1, 1, 0, 0 и обратным ключом у пунктов 2, 3, 4, 5, 6, 9 (движок обращает как min + max − балл = 1 − балл).",
+    "reverse": [2, 3, 4, 5, 6, 9],
+    "scoring": "Дословно с бланка: «SCORING: Only 1 point can be scored for each question. Score 1 point for Definitely or Slightly Agree on each of items 1, 7, 8, and 10. Score 1 point for Definitely or Slightly Disagree on each of items 2, 3, 4, 5, 6, and 9. If the individual scores 6 or above, consider referring them for a specialist diagnostic assessment.» Сумма 0–10.",
+    "bands": [
+      { "min": 0, "max": 5, "label_en": "below referral threshold" },
+      { "min": 6, "max": 10, "label_en": "consider referring for a specialist diagnostic assessment" }
+    ],
+    "bands_source": "Порог ≥ 6 — дословно с бланка правообладателя: «If the individual scores 6 or above, consider referring them for a specialist diagnostic assessment.» Бланк ссылается на рекомендацию NICE: «This test is recommended in ‘Autism: recognition, referral, diagnosis and management of adults on the autism spectrum’ (NICE clinical guideline CG142).» Это порог направления на диагностику, а не диагноз; ARC дословно: «No single score on any of our tests or questionnaires indicates that an individual is autistic. Diagnosis is made on the basis of a clinical assessment including using clinical judgement.» Порог установлен на английской версии; бланк — для взрослых без интеллектуальной недостаточности. Тяжесть полосы ≥ 6 — «mild» (сигнал к плановому обследованию, без тревоги и без случая), как у положительного скрининга ASRS-6.",
+    "risk_items": [],
+    "risk_items_note": "Пунктов о суициде, самоповреждении или вреде другим нет.",
+    "translation": {
+      "uk": {
+        "exists": false,
+        "by": null,
+        "free": null,
+        "url": "https://www.autismresearchcentre.com/tests/autism-spectrum-quotient-10-items-aq-10-adult/",
+        "note": "На странице AQ-10 (Adult) переводы: африкаанс, арабский, сингапурский китайский, датский, немецкий, испанский, французский, португальский (Португалия и Бразилия), словацкий, финский, шведский, болгарский, турецкий — украинского нет. Рабочий перевод «based closely on the original», как требует ARC; варианты ответа и пункты без привязки к роду."
+      },
+      "ru": {
+        "exists": false,
+        "by": null,
+        "free": null,
+        "url": "https://www.autismresearchcentre.com/tests/autism-spectrum-quotient-10-items-aq-10-adult/",
+        "note": "Русского перевода на странице AQ-10 (Adult) нет. Рабочий перевод."
+      }
+    },
+    "example": {
+      "answers": [
+        "Definitely Disagree",
+        "Definitely Disagree",
+        "Definitely Disagree",
+        "Definitely Disagree",
+        "Definitely Disagree",
+        "Definitely Disagree",
+        "Definitely Disagree",
+        "Definitely Disagree",
+        "Definitely Disagree",
+        "Definitely Disagree"
+      ],
+      "total": 6,
+      "band": "consider referring (≥ 6)",
+      "note": "Арифметика по ключу бланка (опубликованного примера нет): «Definitely Disagree» на всех десяти пунктах даёт по баллу на каждом из 2, 3, 4, 5, 6, 9 → 6, порог направления достигнут. Зеркально: «Definitely Agree» на всех десяти — по баллу на 1, 7, 8, 10 → 4, ниже порога. Это и проверка ключа: если бы обратный ключ стоял не на тех пунктах, оба числа сместились бы."
+    },
+    "verdict": "завести — ARC разрешает некоммерческое применение и перевод для некоммерческих целей без запроса; порог ≥ 6 «рассмотреть направление» — с бланка правообладателя, без тревоги; результат человеку не показывать; перевод рабочий"
+  },
+  {
+    "key": "mini_ipip",
+    "title_en": "Mini-IPIP (20-item short form of the IPIP Big-Five markers)",
+    "title_uk": null,
+    "title_ru": null,
+    "authors": "M. Brent Donnellan, Frederick L. Oswald, Brendan M. Baird, Richard E. Lucas",
+    "year": 2006,
+    "citation": "Donnellan MB, Oswald FL, Baird BM, Lucas RE. The Mini-IPIP scales: Tiny-yet-effective measures of the Big Five factors of personality. Psychological Assessment. 2006;18(2):192–203.",
+    "license": {
+      "verdict": "свободна",
+      "quote": "Because the IPIP has been placed in the public domain, permission has already been automatically granted for any person to use IPIP items, scales, and inventories for any purpose, commercial or non-commercial.",
+      "url": "https://ipip.ori.org/newPermission.htm",
+      "conditions": null
+    },
+    "items": null,
+    "items_note": "Текст не переносится в каталог не из-за лицензии, а потому что все двадцать пунктов уже стоят в каталоге: страница ключа IPIP дословно — «the Mini-IPIP is based on the 50-item IPIP representation of the Big-Five lexical markers» (https://ipip.ori.org/MiniIPIPKey.htm), а это ровно набор IPIP Big-Five Factor Markers (Goldberg, 1992) методики big-five. Там же дословно об особенности ключа: «The authors of the Mini-IPIP chose to score the Emotional Stability scale from the lexical Big Five in reverse and to use the label Neuroticism from the Five-Factor Model for this scale» — так же, как в big-five каталога.",
+    "anchors": null,
+    "reverse": null,
+    "scoring": null,
+    "bands": null,
+    "bands_source": "Не применимо — методика не заводится.",
+    "risk_items": null,
+    "translation": null,
+    "example": null,
+    "example_note": "Пример не приводится: методика не заводится.",
+    "verdict": "не заводить — дубликат: все 20 пунктов Mini-IPIP входят в 50 пунктов IPIP Big-Five Factor Markers, уже стоящих в каталоге как big-five; вторая методика из тех же пунктов дала бы вторую, несравнимую по диапазону историю тех же черт. Если короткая форма понадобится — заводить её вариантом big-five с тем же переводом пунктов, а не отдельной методикой"
+  },
+  {
+    "key": "pid5bf",
+    "title_en": "The Personality Inventory for DSM-5—Brief Form (PID-5-BF)—Adult",
+    "title_uk": null,
+    "title_ru": null,
+    "authors": "Robert F. Krueger, Jaime Derringer, Kristian E. Markon, David Watson, Andrew E. Skodol; правообладатель — American Psychiatric Association",
+    "year": 2013,
+    "citation": "Krueger RF, Derringer J, Markon KE, Watson D, Skodol AE. The Personality Inventory for DSM-5 Brief Form (PID-5-BF). American Psychiatric Association, 2013 («Manuscript in preparation» на бланке APA).",
+    "license": {
+      "verdict": "лицензируется",
+      "quote": "Rights granted: This measure may not be modified absent written permission from APA. This measure can be reproduced, either electronically or in print formats, without permission by researchers and by clinicians solely for use with their patients in private-practice, research, or hospital settings. For the avoidance of doubt, this includes that Clinicians may upload this instrument into their own pre-existing electronic health software systems for patient assessment and records when done solely for their own use with their patients. Rights holder: American Psychiatric Association. To request permission to include this measure in a commercial electronic health record system (EHR) or application, to translate the measure, or for any other use beyond what is stipulated above, please contact: https://webapps.psychiatry.org/RequestForm/",
+      "url": "https://www.psychiatry.org/File%20Library/Psychiatrists/Practice/DSM/DSM-5-TR/APA-DSM5TR-ThePersonalityInventoryForDSM5BriefFormAdult.pdf",
+      "conditions": "Бесплатно, но только в английском оригинале и без изменений. Перевод — отдельное разрешение APA («to translate the measure ... please contact»). Система работает на украинском и русском, официального перевода APA на эти языки в досье нет; свой перевод был бы изменением, которое APA запрещает без письменного разрешения. Старая редакция бланка (DSM-5, 2013) даёт ещё более узкое право: «This measure can be reproduced without permission by researchers and by clinicians for use with their patients» (https://www.psychiatry.org/File%20Library/Psychiatrists/Practice/DSM/APA_DSM5_The-Personality-Inventory-For-DSM-5-Brief-Form-Adult.pdf)."
+    },
+    "items": null,
+    "items_note": "Текст пунктов в досье не переносится: перепечатка вне клинического применения у своих пациентов — «use beyond what is stipulated». Бланк — по ссылке выше (25 пунктов, шкала 0–3, пять доменов по пять пунктов: Negative Affect 8, 9, 10, 11, 15; Detachment 4, 13, 14, 16, 18; Antagonism 17, 19, 20, 22, 25; Disinhibition 1, 2, 3, 5, 6; Psychoticism 7, 12, 21, 23, 24). Порогов APA не даёт — только средние баллы доменов и общий 0–3; пункт 17 («It’s no big deal if I hurt other peoples’ feelings») при заведении надо будет оценить на пометку риска.",
+    "anchors": null,
+    "reverse": null,
+    "scoring": null,
+    "scoring_note": "Ключ и правила пропусков — на бланке APA; при заведении брать оттуда дословно.",
+    "bands": null,
+    "bands_source": "Порогов нет: APA предлагает средние баллы доменов «relative to observed norms», без отсечек.",
+    "risk_items": null,
+    "translation": {
+      "uk": {
+        "exists": false,
+        "by": null,
+        "free": false,
+        "url": "https://webapps.psychiatry.org/RequestForm/",
+        "note": "Официального украинского перевода от APA в досье нет; перевод — по письменному разрешению APA."
+      },
+      "ru": {
+        "exists": false,
+        "by": null,
+        "free": false,
+        "url": "https://webapps.psychiatry.org/RequestForm/",
+        "note": "То же для русского."
+      }
+    },
+    "example": null,
+    "example_note": "Пример не приводится: методика не заводится.",
+    "verdict": "не заводить — APA бесплатно разрешает только английский бланк без изменений у своих пациентов; перевод на украинский и русский прямо требует письменного разрешения APA. Вернуться, если учреждение получит разрешение через https://webapps.psychiatry.org/RequestForm/ (или APA выпустит официальный перевод)"
+  },
+  {
+    "key": "ders16",
+    "title_en": "Difficulties in Emotion Regulation Scale – 16 items (DERS-16)",
+    "title_uk": null,
+    "title_ru": null,
+    "authors": "Johan Bjureberg, Brjánn Ljótsson, Matthew T. Tull, Erik Hedman, Hanna Sahlin, Lars-Gunnar Lundh, Jonas Bjärehed, David M. DiLillo, Terri Messman-Moore, Clara Hellner Gumpert, Kim L. Gratz; пункты — из DERS (Gratz, Roemer, 2004)",
+    "year": 2016,
+    "citation": "Bjureberg J, Ljótsson B, Tull MT, et al. Development and validation of a brief version of the Difficulties in Emotion Regulation Scale: The DERS-16. Journal of Psychopathology and Behavioral Assessment. 2016;38(2):284–296. Оригинал: Gratz KL, Roemer L. Multidimensional assessment of emotion regulation and dysregulation. Journal of Psychopathology and Behavioral Assessment. 2004;26(1):41–54.",
+    "license": {
+      "verdict": "неясно",
+      "quote": null,
+      "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC4882111/",
+      "conditions": "Заявления правообладателей (Gratz, Roemer) о разрешении воспроизводить DERS или DERS-16 найти не удалось — ни на страницах авторов, ни в статьях. Статья DERS-16 — подписочная (Springer; в метаданных Crossref только лицензия Springer TDM, без Creative Commons); в PMC лежит рукопись автора по требованию NIH («Author manuscript; available in PMC: 2017 Jun 1»), а не открытая лицензия. Встречающиеся «Cost: Free» и «Copyrighted: No» — пересказы каталогов, а не слова правообладателя."
+    },
+    "items": null,
+    "items_note": "Текст не переносится: разрешения нет. В приложении рукописи (PMC) — 16 пунктов, шкала «from 1 (almost never) to 5 (almost always)», сумма 16–80; подшкалы: non-acceptance (3), goals (3), impulse (3), strategies (5), clarity (2). Порогов нет.",
+    "anchors": null,
+    "reverse": null,
+    "scoring": null,
+    "bands": null,
+    "bands_source": "Порогов в первоисточнике нет (Table 3 — только средние и SD выборок).",
+    "risk_items": null,
+    "translation": null,
+    "example": null,
+    "example_note": "Пример не приводится: методика не заводится.",
+    "verdict": "не заводить до письменного разрешения — DERS-16 нужна отделению (эмоциональная дисрегуляция при ПТСР), но слов правообладателя о свободном использовании нет. Запросить у K. L. Gratz разрешение на клиническое использование DERS-16 и перевод; с письмом — завести"
+  },
+  {
+    "key": "erq",
+    "title_en": "Emotion Regulation Questionnaire (ERQ)",
+    "title_uk": null,
+    "title_ru": null,
+    "authors": "James J. Gross, Oliver P. John",
+    "year": 2003,
+    "citation": "Gross JJ, John OP. Individual differences in two emotion regulation processes: Implications for affect, relationships, and well-being. Journal of Personality and Social Psychology. 2003;85(2):348–362.",
+    "license": {
+      "verdict": "лицензируется",
+      "quote": "The measures provided here may be used for academic research purposes with appropriate citation.",
+      "url": "https://spl.stanford.edu/resources",
+      "conditions": "Разрешение лаборатории правообладателя (Stanford Psychophysiology Laboratory) — только академические исследования. Кроме того, ERQ стоит в каталоге технологий Stanford Office of Technology Licensing как лицензируемый объект (docket S14-020, инноватор James Gross, есть контакт менеджера по лицензированию) — то есть всё, что сверх академического исследования, идёт через лицензию университета. Клиническое применение в госпитале — не академическое исследование. Ходовое «public domain» (например, у Common Cold Project, CMU) — сторонний пересказ, не слова правообладателя."
+    },
+    "items": null,
+    "items_note": "Текст не переносится: клиническое применение не разрешено. На странице лаборатории есть русский перевод (без автора), украинского нет.",
+    "anchors": null,
+    "reverse": null,
+    "scoring": null,
+    "bands": null,
+    "bands_source": "Порогов нет (средние двух шкал 1–7).",
+    "risk_items": null,
+    "translation": null,
+    "example": null,
+    "example_note": "Пример не приводится: методика не заводится.",
+    "verdict": "не заводить — правообладатель разрешает ERQ только «for academic research purposes», а Stanford OTL лицензирует её как технологию; для клинического каталога нужна лицензия Stanford (через OTL) или письменное разрешение J. J. Gross"
+  },
+  {
+    "key": "ecr_rs",
+    "title_en": "Experiences in Close Relationships – Relationship Structures (ECR-RS)",
+    "title_uk": null,
+    "title_ru": null,
+    "authors": "R. Chris Fraley, Marie E. Heffernan, Amanda M. Vicary, Claudia Chloe Brumbaugh",
+    "year": 2011,
+    "citation": "Fraley RC, Heffernan ME, Vicary AM, Brumbaugh CC. The Experiences in Close Relationships—Relationship Structures questionnaire: A method for assessing attachment orientations across relationships. Psychological Assessment. 2011;23(3):615–625.",
+    "license": {
+      "verdict": "неясно",
+      "quote": "If you are interested in translating the ECR-RS from English to another language, please feel free to do so.",
+      "url": "https://labs.psychology.illinois.edu/~rcfraley/measures/relstructures.htm",
+      "conditions": "На странице ECR-RS — только разрешение переводить; о применении ничего. На странице родственной ECR-R тот же автор отвечает на вопрос «Do I need permission to use these scales in my research?» дословно: «No. The scales were published in a scientific journal for use in the public domain. You do not need to contact any of the authors for permission to use these scales in non-commercial research. You may not use the scales for commercial purposes without permission.» (https://labs.psychology.illinois.edu/~rcfraley/measures/ecrr.htm). Это про ECR-R и про исследования; о клиническом применении ECR-RS слов правообладателя нет, а статья — в журнале APA."
+    },
+    "items": null,
+    "items_note": "Текст не переносится, пока применение не подтверждено. На странице автора: 9 пунктов (1–6 — избегание, 1–4 обратные; 7–9 — тревожность), шкала 1–7 (в 2011 г.; позже автор перешёл на 5 точек), отдельные баллы для каждой цели (мать, отец, партнёр, друг) и общая версия 2014 г.; порогов нет.",
+    "anchors": null,
+    "reverse": null,
+    "scoring": null,
+    "bands": null,
+    "bands_source": "Порогов нет: автор приводит только надёжность и ссылки на средние больших выборок.",
+    "risk_items": null,
+    "translation": null,
+    "example": null,
+    "example_note": "Пример не приводится: методика не заводится.",
+    "verdict": "не заводить, пока не подтверждено клиническое применение — автор разрешает переводить ECR-RS, а о применении пишет только для ECR-R и только для некоммерческих исследований. Одного письма R. C. Fraley (rcfraley@illinois.edu) о клиническом использовании в некоммерческом госпитале достаточно, чтобы завести; правило «если не уверен — не заводить» здесь решающее"
+  },
+  {
+    "key": "bis11",
+    "title_en": "Barratt Impulsiveness Scale, version 11 (BIS-11); также BIS-15 (Spinella, 2007)",
+    "title_uk": null,
+    "title_ru": null,
+    "authors": "Jim H. Patton, Matthew S. Stanford, Ernest S. Barratt; BIS-15 — Marcello Spinella",
+    "year": 1995,
+    "citation": "Patton JH, Stanford MS, Barratt ES. Factor structure of the Barratt Impulsiveness Scale. Journal of Clinical Psychology. 1995;51(6):768–774. BIS-15: Spinella M. Normative data and a short form of the Barratt Impulsiveness Scale. International Journal of Neuroscience. 2007;117(3):359–368.",
+    "license": {
+      "verdict": "неясно",
+      "quote": "Copyright International Society for Research on Impulsivity and it's licensor's. All Rights Reserved.",
+      "url": "https://www.impulsivity.org/measurement/bis11/",
+      "conditions": "Официальный распорядитель (International Society for Research on Impulsivity) никакого разрешения на воспроизведение не даёт; страница отсылает с вопросами о клиническом и исследовательском применении к M. S. Stanford: «For questions and guidance for clinical and research use of this instrument and it's interpretation». На бланке (https://www.impulsivity.org/files/wp-content/uploads/2021/09/bis11english.pdf) — только ссылка на статью. Утверждения «freely available for research and clinical use» — у сторонних каталогов (Testable, SRA Lab), не у правообладателя. BIS-15 состоит из пунктов BIS-11 — права те же. На странице переводов IS-RI русского и украинского нет."
+    },
+    "items": null,
+    "items_note": "Текст не переносится: разрешения правообладателя нет.",
+    "anchors": null,
+    "reverse": null,
+    "scoring": null,
+    "bands": null,
+    "bands_source": "Не применимо — методика не заводится.",
+    "risk_items": null,
+    "translation": null,
+    "example": null,
+    "example_note": "Пример не приводится: методика не заводится.",
+    "verdict": "не заводить — у правообладателя «All Rights Reserved» и ни слова о свободном использовании; запросить разрешение у M. S. Stanford (Hope and Healing Center & Institute) через страницу IS-RI. Свободной замены для импульсивности с разрешением на клиническое применение в этом досье не найдено: короткая UPPS-P (SUPPS-P) не подтверждена правообладателем (страница D. Lynam недоступна, CamCOPS прямо пишет «Reproduction of this task/scale is not permitted (or such permission is not clear)»), шкалы BIS/BAS Карвера разрешены только для исследований и обучения (см. карточку bis_bas)"
+  },
+  {
+    "key": "bis_bas",
+    "title_en": "BIS/BAS scales (Behavioral Inhibition / Behavioral Activation)",
+    "title_uk": null,
+    "title_ru": null,
+    "authors": "Charles S. Carver, Teri L. White",
+    "year": 1994,
+    "citation": "Carver CS, White TL. Behavioral inhibition, behavioral activation, and affective responses to impending reward and punishment: The BIS/BAS scales. Journal of Personality and Social Psychology. 1994;67(2):319–333.",
+    "license": {
+      "verdict": "лицензируется",
+      "quote": "All of these scales are being made available here for use in research and teaching applications.  All are available without charge and without any need for permission.  Please do not write to me requesting a letter of permission, because this is all you will get.",
+      "url": "https://psy.miami.edu/faculty/ccarver/",
+      "conditions": "Проверялась как замена BIS-11 (шкала BAS Fun Seeking, по словам автора, «is known to have elements of impulsiveness»). Разрешение автора — на исследования и обучение; клиническое применение не названо. На странице самих шкал (https://psy.miami.edu/faculty/ccarver/bisbas.html) своего разрешения нет — в отличие от Brief COPE, где автор пишет «You are welcome to use all scales of the Brief COPE». Тем же общим заявлением покрыта и LOT-R, но о ней автор пишет прямо: «Please note that this is a research instrument, not intended for clinical applications.»"
+    },
+    "items": null,
+    "items_note": "Текст не переносится: клиническое применение не разрешено явно.",
+    "anchors": null,
+    "reverse": null,
+    "scoring": null,
+    "bands": null,
+    "bands_source": "Порогов нет.",
+    "risk_items": null,
+    "translation": null,
+    "example": null,
+    "example_note": "Пример не приводится: методика не заводится.",
+    "verdict": "не заводить — автор разрешает шкалы для «research and teaching applications»; для клинического каталога этого мало (правило «если не уверен — не заводить»). Вернуться, если C. S. Carver подтвердит клиническое применение"
+  }
+]

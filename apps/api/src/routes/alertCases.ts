@@ -818,7 +818,14 @@ alertCaseRoutes.get("/:id/signals", async (c) => {
       scaleValue: score?.value ?? null,
       scaleRawScore: score?.rawScore ?? null,
       normalization: score?.normalization ?? null,
-      bandLabel: score?.bandLabel ?? null,
+      /*
+       * Слово полосы — у той же найденной по значению полосы и на языке
+       * читателя, как её описание ниже; снимок из response_scores записан на
+       * языке прохождения (lib/bandLabels.ts) — он лишь запасной. Нет
+       * снимка — нет и слова: полоса при подсчёте не нашлась (балл не
+       * нормирован), и по значению её подставлять нельзя.
+       */
+      bandLabel: score?.bandLabel ? (band ? t(band.label as never, lang) || score.bandLabel : score.bandLabel) : null,
       bandMin: band?.minScore ?? null,
       bandMax: band?.maxScore ?? null,
       bandDescription: band ? t(band.description as never, lang) || null : null,

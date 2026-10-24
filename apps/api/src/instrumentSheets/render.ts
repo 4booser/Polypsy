@@ -265,6 +265,13 @@ function renderExample(lang: SheetLang, survey: SurveyFull, mode: Notation, ex: 
       const ok = got && Math.abs(got.value - value) < 1e-6;
       return `${code} = ${num(value)} → ${s("система", "система")}: ${got ? num(got.value) : s("не обчислено", "не вычислено")} ${ok ? "✓" : "✗"}`;
     });
+    // тяжесть риска — у методик, где первоисточник даёт правило маршрутизации, а не сумму (C-SSRS, ASQ)
+    if (ex.expectRisk !== undefined) {
+      const got = ev.risk.severity;
+      checks.push(
+        `${s("тривога", "тревога")} — ${severityWord(lang, ex.expectRisk)} → ${s("система", "система")}: ${severityWord(lang, got)} ${got === ex.expectRisk ? "✓" : "✗"}`,
+      );
+    }
     out.push(`- ${s("Очікується за досьє", "Ожидается по досье")}: ${checks.join("; ")}`);
   }
   return out.join("\n");
@@ -495,6 +502,8 @@ function itemsSection(lang: SheetLang, input: SheetInput, survey: SurveyFull, mo
     if (q.help) text += ` _${s("Підказка", "Подсказка")}: ${q.help}_`;
     if (!q.required) text += ` _(${s("необов’язковий", "необязательный")})_`;
     if (q.type === "text" || q.type === "longtext") text += ` _(${s("вільний текст, у підрахунок не йде", "свободный текст, в подсчёт не идёт")})_`;
+    // множественный выбор (LEC-5): несколько вариантов у одного пункта — сказать прямо, иначе лист читается как «один ответ»
+    if (q.type === "multiple") text += ` _(${s("можна позначити кілька варіантів", "можно отметить несколько вариантов")})_`;
     const risk = choices(q)
       .filter((o) => o.riskFlag)
       .map((o) => `«${o.text}» — ${severityWord(lang, o.riskSeverity ?? "severe")}`)
@@ -508,7 +517,7 @@ function itemsSection(lang: SheetLang, input: SheetInput, survey: SurveyFull, mo
     return [
       String(n),
       cell(text),
-      ...(common ? [] : [cell(q.type === "single" || q.type === "yesno" ? optionsText(q, mode) : "")]),
+      ...(common ? [] : [cell(q.type === "single" || q.type === "yesno" || q.type === "multiple" ? optionsText(q, mode) : "")]),
       q.reverseScored ? s("так", "да") : "",
       cell(scales),
       cell([risk, thr].filter(Boolean).join("; ")),

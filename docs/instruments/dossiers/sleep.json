@@ -1,0 +1,1020 @@
+[
+ {
+  "key": "sci",
+  "title_en": "Sleep Condition Indicator (SCI)",
+  "title_uk": null,
+  "title_ru": null,
+  "authors": "Colin A. Espie, Simon D. Kyle, Peter Hames, Maria Gardani, Leanne Fleming, John Cape (University of Oxford; Sleepio Ltd; University of Manchester; University of Glasgow; Camden & Islington NHS Trust)",
+  "year": 2014,
+  "citation": "Espie CA, Kyle SD, Hames P, Gardani M, Fleming L, Cape J. The Sleep Condition Indicator: a clinical screening tool to evaluate insomnia disorder. BMJ Open. 2014;4(3):e004183. doi:10.1136/bmjopen-2013-004183 (PMC3964344). Обзор порогов: Meng R, Huang M, Miller CB, et al. Global perspectives on the Sleep Condition Indicator for DSM-5 insomnia disorder: a COSMIN and STARD systematic review. BMC Med. 2025;23:542. doi:10.1186/s12916-025-04285-7 (PMC12505784).",
+  "license": {
+   "verdict": "свободна с условиями",
+   "quote": "The copyright associated with the SCI is reserved by Sleepio Limited, and is licensed free for non-commercial use on condition under a Creative Commons Attribution Non Commercial 4.0 international license.",
+   "quote_2": "Open Access This is an Open Access article distributed in accordance with the Creative Commons Attribution Non Commercial (CC BY-NC 3.0) license, which permits others to distribute, remix, adapt, build upon this work non-commercially, and license their derivative works on different terms, provided the original work is properly cited and the use is non-commercial.",
+   "url": "https://bmjopen.bmj.com/content/4/3/e004183 (раздел Acknowledgements, стр. 4 PDF; тот же PDF: https://strathprints.strath.ac.uk/59473/1/Espie_etal_BMJO_2014_The_Sleep_Condition_Indicator.pdf)",
+   "conditions": "Заявление правообладателя (Sleepio Ltd, ныне Big Health Ltd) напечатано в самой статье его сотрудниками (Espie — клинический и научный директор Sleepio, Hames — сооснователь): шкала лицензирована бесплатно для НЕКОММЕРЧЕСКОГО использования по CC BY-NC 4.0. Условия: указать авторство (Espie et al., 2014) и лицензию, отметить изменения (перевод), не использовать в коммерческих целях. CC BY-NC 4.0 разрешает адаптацию, то есть перевод, на тех же некоммерческих условиях. Применение в государственном госпитале — некоммерческое; если платформу когда-нибудь будут продавать или лицензировать за плату, SCI понадобится отдельное разрешение Big Health.",
+   "owner": "Sleepio Limited (Big Health Ltd)"
+  },
+  "items": [
+   "Thinking about a typical night in the last month … how long does it take you to fall asleep?",
+   "Thinking about a typical night in the last month … if you then wake up during the night … how long are you awake for in total? (add all the wakenings up)",
+   "Thinking about a typical night in the last month … how many nights a week do you have a problem with your sleep?",
+   "Thinking about a typical night in the last month … how would you rate your sleep quality?",
+   "Thinking about the past month, to what extent has poor sleep … affected your mood, energy, or relationships?",
+   "Thinking about the past month, to what extent has poor sleep … affected your concentration, productivity, or ability to stay awake",
+   "Thinking about the past month, to what extent has poor sleep … troubled you in general",
+   "Finally … how long have you had a problem with your sleep?"
+  ],
+  "items_note": "Дословно из Appendix «The sleep condition indicator» статьи BMJ Open 2014 (стр. 5). На бланке пункты — продолжения трёх общих начал: «Thinking about a typical night in the last month …» (пп. 1–4), «Thinking about the past month, to what extent has poor sleep …» (пп. 5–7), «Finally …» (п. 8); здесь начало повторено у каждого пункта. У пп. 6 и 7 на бланке нет вопросительного знака — так и оставлено.",
+  "anchors": [
+   {
+    "item": 1,
+    "options": [
+     {
+      "label": "0–15 min",
+      "score": 4
+     },
+     {
+      "label": "16–30 min",
+      "score": 3
+     },
+     {
+      "label": "31–45 min",
+      "score": 2
+     },
+     {
+      "label": "46–60 min",
+      "score": 1
+     },
+     {
+      "label": "≥61 min",
+      "score": 0
+     }
+    ]
+   },
+   {
+    "item": 2,
+    "options": [
+     {
+      "label": "0–15 min",
+      "score": 4
+     },
+     {
+      "label": "16–30 min",
+      "score": 3
+     },
+     {
+      "label": "31–45 min",
+      "score": 2
+     },
+     {
+      "label": "46–60 min",
+      "score": 1
+     },
+     {
+      "label": "≥61 min",
+      "score": 0
+     }
+    ]
+   },
+   {
+    "item": 3,
+    "options": [
+     {
+      "label": "0–1",
+      "score": 4
+     },
+     {
+      "label": "2",
+      "score": 3
+     },
+     {
+      "label": "3",
+      "score": 2
+     },
+     {
+      "label": "4",
+      "score": 1
+     },
+     {
+      "label": "5–7",
+      "score": 0
+     }
+    ]
+   },
+   {
+    "item": 4,
+    "options": [
+     {
+      "label": "Very good",
+      "score": 4
+     },
+     {
+      "label": "Good",
+      "score": 3
+     },
+     {
+      "label": "Average",
+      "score": 2
+     },
+     {
+      "label": "Poor",
+      "score": 1
+     },
+     {
+      "label": "Very poor",
+      "score": 0
+     }
+    ]
+   },
+   {
+    "item": 5,
+    "options": [
+     {
+      "label": "Not at all",
+      "score": 4
+     },
+     {
+      "label": "A little",
+      "score": 3
+     },
+     {
+      "label": "Somewhat",
+      "score": 2
+     },
+     {
+      "label": "Much",
+      "score": 1
+     },
+     {
+      "label": "Very much",
+      "score": 0
+     }
+    ]
+   },
+   {
+    "item": 6,
+    "options": [
+     {
+      "label": "Not at all",
+      "score": 4
+     },
+     {
+      "label": "A little",
+      "score": 3
+     },
+     {
+      "label": "Somewhat",
+      "score": 2
+     },
+     {
+      "label": "Much",
+      "score": 1
+     },
+     {
+      "label": "Very much",
+      "score": 0
+     }
+    ]
+   },
+   {
+    "item": 7,
+    "options": [
+     {
+      "label": "Not at all",
+      "score": 4
+     },
+     {
+      "label": "A little",
+      "score": 3
+     },
+     {
+      "label": "Somewhat",
+      "score": 2
+     },
+     {
+      "label": "Much",
+      "score": 1
+     },
+     {
+      "label": "Very much",
+      "score": 0
+     }
+    ]
+   },
+   {
+    "item": 8,
+    "options": [
+     {
+      "label": "I don’t have a problem/<1 mo",
+      "score": 4
+     },
+     {
+      "label": "1–2 mo",
+      "score": 3
+     },
+     {
+      "label": "3–6 mo",
+      "score": 2
+     },
+     {
+      "label": "7–12 mo",
+      "score": 1
+     },
+     {
+      "label": ">1 yr",
+      "score": 0
+     }
+    ]
+   }
+  ],
+  "anchors_note": "Столбцы бланка подписаны «Score 4 3 2 1 0» слева направо: первый (лучший) вариант каждого пункта даёт 4, последний — 0. Направление у всех восьми пунктов одинаковое, поэтому обратных пунктов нет — «обратность» уже заложена в баллах вариантов. Варианты у каждого пункта свои.",
+  "reverse": [],
+  "scoring": "Дословно с бланка (Appendix): «Scoring instructions: Add the item scores to obtain the SCI total (minimum 0, maximum 32). A higher score means better sleep. Scores can be converted to 0–10 format (minimum 0, maximum 10) by dividing total by 3.2. Item scores in grey area represent threshold criteria for Insomnia Disorder.» Из текста статьи: «Each item was scored on a 5-point scale (0–4), with lower scores, in the 0–2 range, reflecting putative threshold criteria for insomnia disorder». ВНИМАНИЕ: в отличие от ISI и PSQI здесь БОЛЬШЕ — ЛУЧШЕ.",
+  "bands": [
+   {
+    "min": 0,
+    "max": 16,
+    "label_en": "Probable insomnia disorder (SCI ≤16)"
+   },
+   {
+    "min": 17,
+    "max": 32,
+    "label_en": "Above the cut-off (SCI >16)"
+   }
+  ],
+  "bands_source": "Espie et al. 2014, раздел Concurrent validity: «Applying an SCI cut-off ≤16, 89% of the sample was correctly identified as having ‘probable insomnia disorder’ (ISI scores of ≥15), while an SCI score of >16 correctly identified 82% of those with ‘no insomnia disorder’. These findings provide further evidence of concurrent validity for the SCI and help to confirm that a score of ≤16 on the SCI seems reasonable to detect possible insomnia disorder.» Систематический обзор 2025 г. (BMC Med 23:542): «a cut-off value of 16 was recommended for screening insomnia».",
+  "bands_note": "Оговорки первоисточников, которые нельзя терять: (1) порог 16 «was not empirically derived but based on DSM-5 quantitative recommendations set by the development team» (обзор 2025); (2) в работах с эталоном DSM-5 оптимальные пороги выше — 21 (традиционный китайский, Гонконг), 20 (персидский), 23 (индонезийский), у перенёсших инсульт — 13/14 (обзор 2025); (3) авторы: «the SCI should be viewed as an insomnia screening tool … requiring careful follow-up in clinical practice», низкий балл дают и другие расстройства сна (циркадные, дыхательные). Украинских и военных норм нет. Перевод 0–32 в 0–10 (÷3,2) — необязательная форма записи того же балла; порог сформулирован в шкале 0–32.",
+  "risk_items": [],
+  "risk_items_note": "Пунктов о суициде, самоповреждении или вреде другим нет.",
+  "translation": {
+   "uk": {
+    "exists": false,
+    "by": null,
+    "free": null,
+    "url": null,
+    "note": "Официального украинского SCI не найдено: систематический обзор 2025 г. насчитывает 13 языковых версий, украинской и русской среди них нет. Лицензия CC BY-NC 4.0 разрешает некоммерческую адаптацию — рабочий перевод с пометкой WORKING_TRANSLATION."
+   },
+   "ru": {
+    "exists": false,
+    "by": null,
+    "free": null,
+    "url": null,
+    "note": "Официального русского SCI не найдено (см. выше)."
+   }
+  },
+  "example": {
+   "answers": [
+    2,
+    2,
+    2,
+    2,
+    2,
+    2,
+    2,
+    2
+   ],
+   "total": 16,
+   "band": "Probable insomnia disorder (≤16)",
+   "note": "Опубликованного разобранного примера в статье нет — пример посчитан по правилу бланка. Все пункты — средний вариант (31–45 min; 31–45 min; 3 ночи; Average; Somewhat ×3; 3–6 mo), каждый по 2 балла: 8 × 2 = 16 ≤ 16 → «probable insomnia disorder». Граница: тот же набор, но п. 4 «Good» (3) → 17 > 16 → выше порога."
+  },
+  "verdict": "завести — правообладатель (Sleepio Ltd) лицензирует SCI бесплатно для некоммерческого использования по CC BY-NC 4.0; пункты, баллы и порог ≤16 — в статье BMJ Open 2014; перевод рабочий, официальных украинского и русского текстов нет."
+ },
+ {
+  "key": "sci02",
+  "title_en": "Sleep Condition Indicator, two-item version (SCI-02)",
+  "title_uk": null,
+  "title_ru": null,
+  "authors": "Annemarie I. Luik, Pedro Farias Machado, Niroshan Siriwardena, Colin A. Espie (University of Oxford; Erasmus MC; Big Health Ltd; University of Lincoln)",
+  "year": 2019,
+  "citation": "Luik AI, Machado PF, Siriwardena N, Espie CA. Screening for insomnia in primary care: using a two-item version of the Sleep Condition Indicator. Br J Gen Pract. 2019;69(679):79-80. doi:10.3399/bjgp19X701045 (PMC6355290). Пункты выделены в Espie CA, Kyle SD, Hames P, et al. BMJ Open. 2014;4(3):e004183: «A two-item (SCI-02), comprising item 3 ‘how many nights’ (standardised β=0.515) and item 7 ‘troubled you in general’ (β=0.491), together predicted 82% of variance (adjusted R2=0.820) in the full scale SCI».",
+  "license": {
+   "verdict": "свободна с условиями",
+   "quote": "The copyright associated with the SCI is reserved by Sleepio Limited, and is licensed free for non-commercial use on condition under a Creative Commons Attribution Non Commercial 4.0 international license.",
+   "url": "https://bmjopen.bmj.com/content/4/3/e004183 (Acknowledgements); письмо: https://bjgp.org/content/69/679/79",
+   "conditions": "SCI-02 — два пункта SCI без изменений, права на них те же (Sleepio Ltd / Big Health Ltd): бесплатно для некоммерческого использования по CC BY-NC 4.0 с указанием авторства и отметкой изменений (перевод). Текст самого письма в BJGP — «© British Journal of General Practice 2019»; из него берутся только порог и правило подсчёта (факты), а не текст статьи.",
+   "owner": "Sleepio Limited (Big Health Ltd)"
+  },
+  "items": [
+   "Thinking about the past month, to what extent has poor sleep … troubled you in general",
+   "Thinking about a typical night in the last month … how many nights a week do you have a problem with your sleep?"
+  ],
+  "items_note": "Дословно из Table 1 письма (https://bjgp.org/highwire/markup/35857/expansion): пункт 1 — «troubled» (пункт 7 полной SCI), пункт 2 — «nights» (пункт 3 полной SCI). Порядок — как в Table 1.",
+  "anchors": [
+   {
+    "item": 1,
+    "options": [
+     {
+      "label": "Not at all",
+      "score": 4
+     },
+     {
+      "label": "A little",
+      "score": 3
+     },
+     {
+      "label": "Somewhat",
+      "score": 2
+     },
+     {
+      "label": "Much",
+      "score": 1
+     },
+     {
+      "label": "Very much",
+      "score": 0
+     }
+    ]
+   },
+   {
+    "item": 2,
+    "options": [
+     {
+      "label": "0–1",
+      "score": 4
+     },
+     {
+      "label": "2",
+      "score": 3
+     },
+     {
+      "label": "3",
+      "score": 2
+     },
+     {
+      "label": "4",
+      "score": 1
+     },
+     {
+      "label": "5–7",
+      "score": 0
+     }
+    ]
+   }
+  ],
+  "anchors_note": "Столбцы Table 1 подписаны «Score 4 3 2 1 0». Текст: «Each item is scored on a 5-point scale (0–4), with lower scores, in the 0–2 range, reflecting DSM-5 threshold criteria for insomnia disorder.»",
+  "reverse": [],
+  "scoring": "Дословно (сноска Table 1): «Scoring instructions: Add the item scores to obtain the SCI total (minimum 0, maximum 8). A higher score means better sleep.» Текст письма: «Possible total scores range from 0–8, with higher values indicative of better sleep.»",
+  "bands": [
+   {
+    "min": 0,
+    "max": 2,
+    "label_en": "Insomnia indicated (SCI-02 ≤2)"
+   },
+   {
+    "min": 3,
+    "max": 8,
+    "label_en": "Above the cut-off"
+   }
+  ],
+  "bands_source": "Luik et al. 2019: «A cut-off of ≤2 for the SCI-02 predicted those identified with probable insomnia according to the full SCI, with a specificity of 81% and sensitivity of 80%.» и «with a SCI-02 score of 2 or less indicating insomnia (Table 1). The GP could then assess the insomnia complaint further by administering the remaining six items of the SCI».",
+  "bands_note": "Эталон порога — классификация по полной SCI (≤16), а не клиническое интервью. Выборка — 190 000 пользователей Sleepio онлайн; авторы: «Some caution is needed as the sample was self-selected, thus likely to be in favour of those who had an interest in sleep, and a bias towards those with a sleep problem.» Надёжность: α = 0,74; ретест r = 0,68; корреляция с полной SCI r = 0,80. Украинских и военных норм нет.",
+  "risk_items": [],
+  "risk_items_note": "Пунктов о суициде, самоповреждении или вреде другим нет.",
+  "translation": {
+   "uk": {
+    "exists": false,
+    "by": null,
+    "free": null,
+    "url": null,
+    "note": "Официального украинского текста нет; в каталоге — те же рабочие переводы пунктов 3 и 7, что и в полной SCI."
+   },
+   "ru": {
+    "exists": false,
+    "by": null,
+    "free": null,
+    "url": null,
+    "note": "Официального русского текста нет."
+   }
+  },
+  "example": {
+   "answers": [
+    1,
+    1
+   ],
+   "total": 2,
+   "band": "Insomnia indicated (≤2)",
+   "note": "Опубликованного разобранного примера нет — посчитано по правилу Table 1. «Much» (1) + «4» ночи (1) = 2 ≤ 2 → порог достигнут. Граница: «Somewhat» (2) + «4» ночи (1) = 3 → выше порога."
+  },
+  "verdict": "завести — два пункта SCI без изменений, лицензия правообладателя та же (CC BY-NC 4.0, некоммерчески); порог ≤2 — дословно из письма BJGP 2019; положительный результат ведёт к полной SCI."
+ },
+ {
+  "key": "fas",
+  "title_en": "Fatigue Assessment Scale (FAS)",
+  "title_uk": "Шкала оцінки рівня втоми (Fatigue Assessment Scale, FAS)",
+  "title_ru": "Шкала оценки усталости (Fatigue Assessment Scale, FAS)",
+  "authors": "Helen J. Michielsen, Jolanda De Vries, Guus L. Van Heck (Tilburg University); Marjolein Drent (ild care foundation, Нидерланды)",
+  "year": 2003,
+  "citation": "Michielsen HJ, De Vries J, Van Heck GL. Psychometric qualities of a brief self-rated fatigue measure: The Fatigue Assessment Scale. J Psychosom Res. 2003;54(4):345-352. doi:10.1016/s0022-3999(02)00392-6. — De Vries J, Michielsen H, Van Heck GL, Drent M. Measuring fatigue in sarcoidosis: the Fatigue Assessment Scale (FAS). Br J Health Psychol. 2004;9:279-291. doi:10.1348/1359107041557048. — Hendriks C, Drent M, Elfferich M, De Vries J. The Fatigue Assessment Scale: quality and availability in sarcoidosis and other diseases. Curr Opin Pulm Med. 2018;24(5):495-503. doi:10.1097/mcp.0000000000000496",
+  "license": {
+   "verdict": "свободна с условиями",
+   "quote": "The Fatigue Assessment Scale (FAS) is © copyright of the ild care foundation in all languages. The use of the Fatigue Assessment Scale (FAS) is permitted by the ild care foundation under the following conditions: Usage in clinical settings is permitted without restrictions. Translations can only be undertaken by the ild care foundation, or with their permission, and must be performed under strict conditions.",
+   "quote_2": "For any company or healthcare setting that wants to use the FAS (or adaptations) for commercial purposes, the ild care foundation requires a one-off fee of €500 per questionnaire/translation to compensate for development costs.",
+   "url": "https://www.ildcare.nl/en/condition-use-the-fas-fatigue-assessment-scale/ ; бланки и языковые версии: https://www.ildcare.nl/en/questionnaires-3/",
+   "conditions": "Клиническое использование разрешено правообладателем без ограничений; коммерческое (компания или медучреждение, использующие FAS в коммерческих целях) — разовый взнос 500 € за опросник или перевод. Свой перевод делать нельзя — только переводы фонда или с его разрешения; поэтому берутся ОФИЦИАЛЬНЫЕ украинский и русский тексты с сайта фонда. На самих бланках стоит общая оговорка «© ild care foundation; www.ildcare.nl; usage is only allowed with the permission of the ild care foundation» — разрешение для клиники дано страницей условий выше. Применение в государственном госпитале — клиническое некоммерческое.",
+   "owner": "ild care foundation (Нидерланды)"
+  },
+  "items": [
+   "I am bothered by fatigue",
+   "I get tired very quickly",
+   "I don’t do much during the day",
+   "I have enough energy for everyday life",
+   "Physically, I feel exhausted",
+   "I have problems to start things",
+   "I have problems to think clearly",
+   "I feel no desire to do anything",
+   "Mentally, I feel exhausted",
+   "When I am doing something, I can concentrate quite well"
+  ],
+  "items_uk_official": [
+   "Мене турбує втома",
+   "Я втомлююсь дуже швидко",
+   "Я не можу зробити багато протягом дня",
+   "У мене достатньо енегрії для повсякденного життя",
+   "Фізично я почуваюсь виснаженим",
+   "У мене проблеми з тим, щоб щось почати",
+   "У мене проблеми з ясністю мислення",
+   "У мене немає бажання будь-що робити",
+   "Розумово я почуваюсь виснаженим",
+   "Коли я щось роблю, я можу добре сконцетруватись"
+  ],
+  "items_ru_official": [
+   "Меня беспокоит усталость",
+   "Я устаю очень быстро",
+   "Я не могу сделать многое в течение дня",
+   "У меня достаточно энергии для повседневной жизни",
+   "Физически я чувствую себя изнурённым",
+   "У меня есть проблемы с тем, чтобы что-то начать делать",
+   "У меня проблемы с ясностью мышления",
+   "У меня нет никакого желания делать что-нибудь",
+   "Я чувствую себя умственно истощённым",
+   "Когда я что-то делаю, я могу достаточно хорошо сконцентрироваться"
+  ],
+  "items_note": "Английский — дословно с бланка фонда (https://www.ildcare.nl/wp-content/uploads/2022/02/679743_FAS_English.pdf). Украинский и русский — дословно с официальных бланков фонда: https://www.ildcare.nl/wp-content/uploads/2022/02/679743_FAS_Ukranian.pdf и …/679743_FAS_Russian.pdf; те же тексты в онлайн-формах фонда (fas_ukr_anon.html, fas_rus_anon.html). В украинском бланке две опечатки, одинаковые в PDF и онлайн-форме: п. 4 «енегрії» (надо «енергії») и п. 10 «сконцетруватись» (надо «сконцентруватись»). В каталоге они исправлены — это орфография, а не перевод; формулировки не тронуты. Русская инструкция в PDF содержит «если вы не имеют» — в онлайн-форме фонда «не имеете», взята она. Пункт 3 в украинском и русском («не можу зробити багато» / «не могу сделать многое») передаёт английское «I don’t do much» как «не можу» — это перевод правообладателя, оставлен как есть.",
+  "anchors": [
+   {
+    "label": "Never",
+    "score": 1
+   },
+   {
+    "label": "Sometimes (about monthly or less)",
+    "score": 2
+   },
+   {
+    "label": "Regularly (about a few times a month)",
+    "score": 3
+   },
+   {
+    "label": "Often (about weekly)",
+    "score": 4
+   },
+   {
+    "label": "Always (about every day)",
+    "score": 5
+   }
+  ],
+  "anchors_uk_official": [
+   "Ніколи",
+   "Інколи (не частіше одного разу на місяць)",
+   "Регулярно (приблизно декілька разів на місяць)",
+   "Часто (приблизно щотижня)",
+   "Завжди (майже щоденно)"
+  ],
+  "anchors_ru_official": [
+   "Никогда",
+   "Иногда (примерно раз в месяц или реже)",
+   "Регулярно (примерно несколько раз в месяц)",
+   "Часто (примерно еженедельно)",
+   "Всегда (примерно каждый день)"
+  ],
+  "anchors_note": "На бланке частота в скобках стоит в легенде над таблицей, а в столбцах — только «Never / Sometimes / Regularly / Often / Always» (так и в украинском, и в русском бланке). Баллы 1–5 — из правил подсчёта фонда («1=5, 2=4, …» для обратных пунктов) и из кода онлайн-формы фонда (FAS[i] = 1…5).",
+  "reverse": [
+   4,
+   10
+  ],
+  "scoring": "Дословно со страницы правообладателя «How to use the FAS»: «An answer must be provided for every question, even if the respondent has no current complaints. Scores for questions 4 and 10 are reversed (1=5, 2=4, 3=3, 4=2, 5=1). The total FAS score is calculated by summing the scores of all items, including the recoded values for questions 4 and 10. The total score ranges from 10 to 50, with a score <22 indicating no fatigue and ≥22 indicating fatigue. Online versions of the FAS automatically calculate total, mental, and physical fatigue scores.» Там же: «The FAS is a 10-item questionnaire designed to assess general fatigue. Five questions measure physical fatigue, while five (items 3 and 6–9) assess mental fatigue.» Код онлайн-формы фонда: FAS_MENT=FAS[3]+FAS[6]+FAS[7]+FAS[8]+FAS[9]; FAS_LICH=FAS[1]+FAS[2]+6-FAS[4]+FAS[5]+6-FAS[10]; FAS_TOT=FAS_MENT+FAS_LICH. Валидация (Michielsen 2003; De Vries 2004) показала ОДНОФАКТОРНУЮ структуру: «The FAS appeared to be a unidimensional scale» — поэтому основной балл — общий; порогов для «физической» и «психической» сумм нет. Неполный бланк онлайн-форма фонда не считает («Question i has not yet been answered…») — в каталоге минимальная доля ответов 1.",
+  "bands": [
+   {
+    "min": 10,
+    "max": 21,
+    "label_en": "No fatigue (normal)"
+   },
+   {
+    "min": 22,
+    "max": 34,
+    "label_en": "Fatigue"
+   },
+   {
+    "min": 35,
+    "max": 50,
+    "label_en": "Extreme fatigue"
+   }
+  ],
+  "bands_source": "Страница правообладателя https://www.ildcare.nl/en/how-to-use-the-fas-fatigue-assessment-scale/ , раздел Summary, дословно: «FAS score 10–21: no fatigue (normal) / FAS score 22–50: substantial fatigue / Fatigue: score 22–34 / Extreme fatigue: score ≥35». То же на странице «Fatigue Assessment Scale: Interpretation of the results» (https://www.ildcare.nl/en/fatigue-assessment-scale-interpretation-the-results/). Минимальная клинически значимая разница там же: «The Minimal Clinically Important Difference (MCID) is defined as a change of ≥4 points or ≥10% from baseline.» (Kleijn et al., Respir Med 2011;105:1388-95).",
+  "bands_note": "Пороги сняты на нидерландских выборках (работающие взрослые; больные саркоидозом) — это не украинская и не военная норма.",
+  "risk_items": [],
+  "risk_items_note": "Пунктов о суициде, самоповреждении или вреде другим нет.",
+  "translation": {
+   "uk": {
+    "exists": true,
+    "by": "ild care foundation (правообладатель)",
+    "free": true,
+    "url": "https://www.ildcare.nl/wp-content/uploads/2022/02/679743_FAS_Ukranian.pdf",
+    "note": "Официальный украинский бланк правообладателя; онлайн-форма — https://www.ildcare.nl/wp-content/uploads/2022/02/fas_ukr_anon.html. Две орфографические опечатки исправлены (см. items_note). Отдельной украинской психометрической валидации не найдено."
+   },
+   "ru": {
+    "exists": true,
+    "by": "ild care foundation (правообладатель)",
+    "free": true,
+    "url": "https://www.ildcare.nl/wp-content/uploads/2022/02/679743_FAS_Russian.pdf",
+    "note": "Официальный русский бланк правообладателя; онлайн-форма — https://www.ildcare.nl/wp-content/uploads/2022/02/fas_rus_anon.html."
+   }
+  },
+  "example": {
+   "answers": [
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3
+   ],
+   "total": 30,
+   "band": "Fatigue (22–34)",
+   "note": "Опубликованного разобранного примера у правообладателя нет — пример посчитан по его правилу. Все пункты «Regularly» (3); пп. 4 и 10 обратные: 6 − 3 = 3; сумма 10 × 3 = 30 → 22–34 «fatigue». Проверка обратного ключа: пп. 1–3, 5–9 «Never» (1) и пп. 4, 10 «Always» (5 → 1) → 10 «no fatigue»; та же раскладка, но пп. 4, 10 «Never» (1 → 5) → 18."
+  },
+  "verdict": "завести — правообладатель (ild care foundation) прямо разрешает клиническое использование без ограничений и сам публикует официальные украинский и русский тексты; ключ, обратные пункты и полосы — со страниц правообладателя."
+ },
+ {
+  "key": "ris",
+  "title_en": "Regensburg Insomnia Scale (RIS)",
+  "title_uk": null,
+  "title_ru": null,
+  "authors": "Tatjana Crönlein, Berthold Langguth, Roland Popp, Helmut Lukesch, Christoph Pieh, Göran Hajak, Peter Geisler (University of Regensburg)",
+  "year": 2013,
+  "citation": "Crönlein T, Langguth B, Popp R, Lukesch H, Pieh C, Hajak G, Geisler P. Regensburg Insomnia Scale (RIS): a new short rating scale for the assessment of psychological symptoms and sleep in insomnia; study design: development and validation of a new short self-rating scale in a sample of 218 patients suffering from insomnia and 94 healthy controls. Health Qual Life Outcomes. 2013;11:65. doi:10.1186/1477-7525-11-65 (PMC3645970)",
+  "license": {
+   "verdict": "свободна",
+   "quote": "Copyright © 2013 Crönlein et al.; licensee BioMed Central Ltd. This is an Open Access article distributed under the terms of the Creative Commons Attribution License (http://creativecommons.org/licenses/by/2.0), which permits unrestricted use, distribution, and reproduction in any medium, provided the original work is properly cited.",
+   "url": "https://hqlo.biomedcentral.com/articles/10.1186/1477-7525-11-65 ; полный текст: https://europepmc.org/article/PMC/PMC3645970",
+   "conditions": "Шкала (Table 1, английская и немецкая версии с баллами вариантов) напечатана самими авторами в статье под CC BY 2.0 — воспроизведение, перевод и адаптация разрешены при указании авторства (Crönlein et al., 2013) и отметке изменений. Коммерческих ограничений лицензия не ставит. Платные онлайн-платформы (testbox.de) берут плату за свою платформу, а не за шкалу.",
+   "owner": "авторы (Crönlein et al.), лицензия BioMed Central CC BY 2.0"
+  },
+  "items": [
+   "How many minutes do you need to fall asleep?",
+   "How many hours do you sleep during the night?",
+   "My sleep is disturbed",
+   "I wake up too early",
+   "I wake up from the slightest sound",
+   "I feel that I have not slept all night",
+   "I think a lot about my sleep",
+   "I am afraid to go to bed because of my disturbed sleep",
+   "I feel fit during the day",
+   "I take sleeping pills in order to get to sleep"
+  ],
+  "items_de": [
+   "Wie viele Minuten brauchen Sie zum Einschlafen?",
+   "Wie viele Stunden schlafen Sie in der Nacht?",
+   "Ich kann nicht durchschlafen",
+   "Ich wache zu früh auf",
+   "Ich wache schon bei leichten Geräuschen auf",
+   "Ich habe das Gefühl, die ganze Nacht kein Auge zugetan zu haben",
+   "Ich denke viel über meinen Schlaf nach",
+   "Ich habe Angst ins Bett zu gehen, da ich befürchte nicht schlafen zu können.",
+   "Ich fühle mich voll leistungsfähig",
+   "Ich nehme Schlafmittel, um einschlafen zu können"
+  ],
+  "items_note": "Дословно из Table 1 статьи (английская и немецкая версии). Шапка: «PLEASE RATE THE FOLLOWING QUESTIONS FOR THE LAST FOUR WEEKS» / «DIE FRAGEN BEZIEHEN SICH AUF DIE LETZTEN VIER WOCHEN»; перед пп. 3–10: «How often do the following occurrences happen?» / «Wie oft treffen folgende Ereignisse zu?». Валидирован НЕМЕЦКИЙ оригинал; английский — перевод авторов («back-and-forth translation»), норм для него авторы не публиковали («For the English version normative studies are necessary»). Рабочий перевод сделан с немецкого оригинала со сверкой по английскому: п. 3 немецкий «Ich kann nicht durchschlafen» (не могу проспать ночь без пробуждений) точнее английского «My sleep is disturbed»; п. 9 «Ich fühle mich voll leistungsfähig». Вводный пункт 0 бланка («AT WHAT TIME DO YOU USUALLY GO TO BED? WHEN DO YOU USUALLY GET UP?») в каталог НЕ заведён: авторы — «The introductory question regarding bedtime hours is not included in the score. It serves as a plausibility check»; номера пунктов 1–10 здесь совпадают с бланком.",
+  "anchors": [
+   {
+    "item": 1,
+    "options": [
+     {
+      "label": "1–20 min.",
+      "score": 0
+     },
+     {
+      "label": "21–40 min.",
+      "score": 1
+     },
+     {
+      "label": "41–60 min.",
+      "score": 2
+     },
+     {
+      "label": "61–90 min.",
+      "score": 3
+     },
+     {
+      "label": "91 min. and more",
+      "score": 4
+     }
+    ]
+   },
+   {
+    "item": 2,
+    "options": [
+     {
+      "label": "7 h and more",
+      "score": 0
+     },
+     {
+      "label": "5–6 h",
+      "score": 1
+     },
+     {
+      "label": "4 h",
+      "score": 2
+     },
+     {
+      "label": "2–3 h",
+      "score": 3
+     },
+     {
+      "label": "0–1 h",
+      "score": 4
+     }
+    ]
+   },
+   {
+    "items": [
+     3,
+     4,
+     5,
+     6,
+     7,
+     8,
+     10
+    ],
+    "options": [
+     {
+      "label": "Always",
+      "score": 4
+     },
+     {
+      "label": "Mostly",
+      "score": 3
+     },
+     {
+      "label": "Sometimes",
+      "score": 2
+     },
+     {
+      "label": "Seldom",
+      "score": 1
+     },
+     {
+      "label": "Never",
+      "score": 0
+     }
+    ]
+   },
+   {
+    "item": 9,
+    "options": [
+     {
+      "label": "Always",
+      "score": 0
+     },
+     {
+      "label": "Mostly",
+      "score": 1
+     },
+     {
+      "label": "Sometimes",
+      "score": 2
+     },
+     {
+      "label": "Seldom",
+      "score": 3
+     },
+     {
+      "label": "Never",
+      "score": 4
+     }
+    ]
+   }
+  ],
+  "anchors_note": "Баллы вариантов напечатаны в Table 1 под каждым пунктом. Немецкие подписи: «Immer / Meistens / Manchmal / Selten / Nie». У п. 2 последний вариант в Table 1 — «0–1 h», а в Table 2 (распределение ответов) — «0–2 h»: расхождение первоисточника; взят бланк (Table 1). Промежуток между «5–6 h» и «7 h and more» (например, 6,5 ч) на бланке не описан — так у авторов.",
+  "reverse": [
+   9
+  ],
+  "scoring": "Дословно: «The total score ranges from 0 to 40 points. The introductory question regarding bedtime hours is not included in the score.» Баллы — по Table 1; п. 9 («I feel fit during the day») ключуется обратно: Always = 0 … Never = 4. Подшкалы: компонентный анализ дал четыре компонента (sleep depth — пп. 3–5; sleep quantity — пп. 1, 2, 6; fearfully focussing on insomnia — пп. 7–8; hypnotics and daytime functioning — пп. 9–10), но авторы прямо пишут: «it should be noted that the RIS has been developed and validated as a single scale and should also be primarily used so» — поэтому в каталоге одна шкала.",
+  "bands": [
+   {
+    "min": 0,
+    "max": 12,
+    "label_en": "Normal"
+   },
+   {
+    "min": 13,
+    "max": 40,
+    "label_en": "Indicative of psychophysiological insomnia (PI) symptoms"
+   }
+  ],
+  "bands_source": "Crönlein et al. 2013, Discussion: «We propose to consider a score from 0–12 points as normal and a higher score as indicative of PI symptoms.» Results: «With a cut-off score of 12 points, sensitivity was 97.7% for insomnia patients and specificity was 97.9% for the normal control sample.»",
+  "bands_note": "Оговорки авторов: «The relatively high sensitivity and specificity values of our scale may be explained by the fact that patients were recruited from a tertiary referral center … Final conclusions about the sensitivity and specificity of the RIS would therefore require additional studies in independent samples. However, it should be noted that the RIS has neither been designed nor validated as a tool for the diagnosis of PI or for differentiating between subtypes of insomnia.» Выборка — немецкий третичный центр сна (218 пациентов, 94 здоровых); украинских и военных норм нет.",
+  "risk_items": [],
+  "risk_items_note": "Пунктов о суициде, самоповреждении или вреде другим нет. П. 10 (снотворные) — сведения о лекарствах, а не пункт риска.",
+  "translation": {
+   "uk": {
+    "exists": false,
+    "by": null,
+    "free": null,
+    "url": null,
+    "note": "Официального украинского RIS не найдено. CC BY 2.0 разрешает перевод — рабочий перевод с пометкой WORKING_TRANSLATION."
+   },
+   "ru": {
+    "exists": false,
+    "by": null,
+    "free": null,
+    "url": null,
+    "note": "Официального русского RIS не найдено."
+   }
+  },
+  "example": {
+   "answers": [
+    2,
+    2,
+    2,
+    2,
+    2,
+    2,
+    2,
+    2,
+    2,
+    2
+   ],
+   "total": 20,
+   "band": "Indicative of PI symptoms (13–40)",
+   "note": "Опубликованного разобранного примера нет — посчитано по Table 1. Ответы: п. 1 «41–60 min.» (2), п. 2 «4 h» (2), пп. 3–10 «Sometimes» (2; у обратного п. 9 «Sometimes» тоже 2) → 20 > 12. Проверка обратного ключа: п. 1 «1–20 min.», п. 2 «7 h and more», пп. 3–8 и 10 «Never», п. 9 «Always» → 0 (normal); тот же набор, но п. 9 «Never» → 4."
+  },
+  "verdict": "завести — шкала напечатана авторами в статье открытого доступа под CC BY 2.0; ключ, обратный п. 9 и граница 0–12 «норма» — дословно из статьи; перевод рабочий (с немецкого оригинала со сверкой по английскому)."
+ },
+ {
+  "key": "promis_sd8a",
+  "title_en": "PROMIS Short Form v1.0 – Sleep Disturbance 8a",
+  "title_uk": null,
+  "title_ru": null,
+  "authors": "PROMIS Health Organization / HealthMeasures (Northwestern University)",
+  "year": 2010,
+  "citation": "Buysse DJ, Yu L, Moul DE, Germain A, Stover A, Dodds NE, Johnston KL, Shablesky-Cade MA, Pilkonis PA. Development and validation of patient-reported outcome measures for sleep disturbance and sleep-related impairments. Sleep. 2010;33(6):781-792. doi:10.1093/sleep/33.6.781. — Yu L, Buysse DJ, Germain A, et al. Development of short forms from the PROMIS sleep disturbance and Sleep-Related Impairment item banks. Behav Sleep Med. 2011;10(1):6-24. doi:10.1080/15402002.2012.636266",
+  "license": {
+   "verdict": "лицензируется",
+   "quote": "Non-commercial users can program a PROMIS measure into a digital administration platform for research without permission or fees as long as the text is not changed. Programming PROMIS measures into digital administration platforms for other purposes (e.g., registries, routine outcome assessment, quality measurement) and any use by commercial users requires a permission letter and screenshot review (HealthMeasures Electronic Administration Permission or HEAP).",
+   "quote_2": "HealthMeasures Fees for Services (last updated October 1, 2026): «Static Forms – Digital Administration … Standard English Measure, Non-Commercial Non-Research — $600 per measure for 3-year term»; «Existing Translated Measures — $1,100 per measure per language for study duration or 3-year term»; «Permission to Translate — By Quote»; «Static Forms – Paper Administration: English Measure — Free; Existing Translated Measures — $1,100 per measure per language». Сноска: «Non-Research — Registries, routine outcome measurement, quality measurement, other purposes».",
+   "url": "PROMIS Fatigue User Manual and Scoring Instructions (21.11.2025), раздел Obtaining Measures: https://healthmeasures.net/wp-content/uploads/2026/05/PROMIS-Fatigue-User-Manual-and-Scoring-Instructions_21Nov2025.pdf ; тарифы: https://healthmeasures.net/services/fees/",
+   "conditions": "Наш случай — рутинная клиническая оценка в собственной цифровой платформе на украинском и русском: это не «research», значит нужен HEAP (письмо-разрешение и проверка скриншотов) и плата — $600 за меру на 3 года за английскую форму плюс $1 100 за меру за каждый язык. Свой перевод запрещён («Permission to Translate — By Quote»). Бесплатно только бумажная английская форма. Методика платная для нашего применения — правило 1 брифа её исключает.",
+   "owner": "PROMIS Health Organization; распространение — HealthMeasures (Northwestern University)"
+  },
+  "items": null,
+  "items_note": "Не приводим: текст 8 пунктов доступен на HealthMeasures, но встраивать его в нашу платформу без HEAP и оплаты нельзя (см. license). Официальные переводы существуют: в списке переводов HealthMeasures (PROMIS-HealthMeasures_10Sep2026.csv) для этой формы есть строки «Russian» и «Ukrainian» — но они платные ($1 100 за меру за язык).",
+  "anchors": null,
+  "reverse": null,
+  "scoring": "Сырая сумма 8–40 (варианты 1–5) переводится в T-балл ТОЛЬКО по таблице из руководства; при пропусках таблицей пользоваться нельзя («Conversion table applies only when ALL items on the short form have been answered»). Таблица (сырой балл → T-балл, SE) дословно из PROMIS Sleep Scoring Manual (12/05/2023), Appendix «Adult v1.0», https://healthmeasures.net/wp-content/uploads/2026/05/PROMIS-Sleep-Scoring-Manual_05Dec2023.pdf: 8→30.5 (SE 4.9); 9→35.3 (3.7); 10→38.1 (3.3); 11→40.4 (3.1); 12→42.2 (3); 13→43.9 (2.9); 14→45.3 (2.8); 15→46.7 (2.7); 16→47.9 (2.7); 17→49.1 (2.6); 18→50.2 (2.6); 19→51.3 (2.6); 20→52.4 (2.6); 21→53.4 (2.6); 22→54.3 (2.5); 23→55.3 (2.5); 24→56.2 (2.5); 25→57.2 (2.5); 26→58.1 (2.5); 27→59.1 (2.5); 28→60 (2.5); 29→61 (2.5); 30→62 (2.6); 31→63 (2.6); 32→64 (2.6); 33→65.1 (2.6); 34→66.2 (2.7); 35→67.4 (2.8); 36→68.7 (2.9); 37→70.2 (3); 38→72 (3.2); 39→74.1 (3.5); 40→77.5 (4.2). Примечание таблицы: «The Sleep Disturbance 8a table was revised on 5/22/2014. Instruments scored prior to this date should be re-scored using this table.» Внимание: текст того же руководства приводит пример «For the adult PROMIS Sleep Disturbance 8a short form v1.0, a raw score of 10 converts to a T-score of 35.9 … (see scoring table for the 4a v1.0 short form)» — он противоречит таблице 8a (сырой 10 → 38.1): пример в руководстве ошибочен, верна таблица.",
+  "representability": "Движок каталога T-балл PROMIS не воспроизводит: нормирование «tscore» — линейное 50 + 10·(сырой − среднее)/SD, а таблица PROMIS нелинейна (IRT); «sten» принимает только целые 1–10. Приблизить линейной нормой — значит выдумать числа. Если лицензию купят, честный путь — полосы по сырой сумме, пересчитанные из таблицы (она монотонна), с подписью T-диапазона, но само значение T на экране не появится, и баллы на ровно T = 60,0 и подобных границах придётся отнести к полосе решением клинициста (HealthMeasures: «for a score at an identified cut point (e.g., T=60), you should consider the consequences of assigning it to the less severe … or more severe … category»).",
+  "bands": null,
+  "bands_source": "Score cut points HealthMeasures (рисунки «PROMIS® Sleep Disturbance T-Score Cut Points» и «PROMIS® Sleep-Related Impairment T-Score Cut Points», Feb 2025, https://healthmeasures.net/interpret-scores/score-cut-points/adult/): «Within Normal Limits» до 55, «Mild» 55–60, «Moderate» 60–70, «Severe» от 70; «General population + Clinical sample mean = 50 (SD = 10)». Пояснение страницы: «scores less than or equal to 55 T-score points are described as “within normal limits.” Scores between 55 and 60 are described as “mild” whereas scores 60–70 are labeled “moderate” and scores above 70 are labeled “severe.”» и «These recommended cut points serve as general guidelines».",
+  "risk_items": [],
+  "translation": {
+   "uk": {
+    "exists": true,
+    "by": "HealthMeasures / FACIT translation methodology",
+    "free": false,
+    "url": "https://healthmeasures.net/wp-content/uploads/2026/09/PROMIS-HealthMeasures_10Sep2026.csv",
+    "note": "Перевод есть, но лицензируется: $1 100 за меру за язык."
+   },
+   "ru": {
+    "exists": true,
+    "by": "HealthMeasures / FACIT translation methodology",
+    "free": false,
+    "url": "https://healthmeasures.net/wp-content/uploads/2026/09/PROMIS-HealthMeasures_10Sep2026.csv",
+    "note": "Перевод есть, но лицензируется: $1 100 за меру за язык."
+   }
+  },
+  "example": null,
+  "example_note": "Не приводится: методика не заводится.",
+  "verdict": "завести без текста (лицензия) — для рутинной клинической оценки в собственной цифровой платформе HealthMeasures требует HEAP и плату ($600 за меру на 3 года + $1 100 за меру за каждый перевод); T-балл к тому же не представим в модели каталога (см. representability)."
+ },
+ {
+  "key": "promis_sri8a",
+  "title_en": "PROMIS Short Form v1.0 – Sleep-Related Impairment 8a",
+  "title_uk": null,
+  "title_ru": null,
+  "authors": "PROMIS Health Organization / HealthMeasures (Northwestern University)",
+  "year": 2010,
+  "citation": "Buysse DJ, Yu L, Moul DE, et al. Sleep. 2010;33(6):781-792. doi:10.1093/sleep/33.6.781. — Yu L, Buysse DJ, Germain A, et al. Behav Sleep Med. 2011;10(1):6-24. doi:10.1080/15402002.2012.636266",
+  "license": {
+   "verdict": "лицензируется",
+   "quote": "Non-commercial users can program a PROMIS measure into a digital administration platform for research without permission or fees as long as the text is not changed. Programming PROMIS measures into digital administration platforms for other purposes (e.g., registries, routine outcome assessment, quality measurement) and any use by commercial users requires a permission letter and screenshot review (HealthMeasures Electronic Administration Permission or HEAP).",
+   "quote_2": "HealthMeasures Fees for Services (last updated October 1, 2026): «Static Forms – Digital Administration … Standard English Measure, Non-Commercial Non-Research — $600 per measure for 3-year term»; «Existing Translated Measures — $1,100 per measure per language for study duration or 3-year term»; «Permission to Translate — By Quote»; «Static Forms – Paper Administration: English Measure — Free; Existing Translated Measures — $1,100 per measure per language». Сноска: «Non-Research — Registries, routine outcome measurement, quality measurement, other purposes».",
+   "url": "PROMIS Fatigue User Manual and Scoring Instructions (21.11.2025), раздел Obtaining Measures: https://healthmeasures.net/wp-content/uploads/2026/05/PROMIS-Fatigue-User-Manual-and-Scoring-Instructions_21Nov2025.pdf ; тарифы: https://healthmeasures.net/services/fees/",
+   "conditions": "Наш случай — рутинная клиническая оценка в собственной цифровой платформе на украинском и русском: это не «research», значит нужен HEAP (письмо-разрешение и проверка скриншотов) и плата — $600 за меру на 3 года за английскую форму плюс $1 100 за меру за каждый язык. Свой перевод запрещён («Permission to Translate — By Quote»). Бесплатно только бумажная английская форма. Методика платная для нашего применения — правило 1 брифа её исключает.",
+   "owner": "PROMIS Health Organization; распространение — HealthMeasures (Northwestern University)"
+  },
+  "items": null,
+  "items_note": "Не приводим: текст 8 пунктов доступен на HealthMeasures, но встраивать его в нашу платформу без HEAP и оплаты нельзя (см. license). Официальные переводы существуют: в списке переводов HealthMeasures (PROMIS-HealthMeasures_10Sep2026.csv) для этой формы есть строки «Russian» и «Ukrainian» — но они платные ($1 100 за меру за язык).",
+  "anchors": null,
+  "reverse": null,
+  "scoring": "Сырая сумма 8–40 (варианты 1–5) переводится в T-балл ТОЛЬКО по таблице из руководства; при пропусках таблицей пользоваться нельзя («Conversion table applies only when ALL items on the short form have been answered»). Таблица (сырой балл → T-балл, SE) дословно из PROMIS Sleep Scoring Manual (12/05/2023), Appendix «Adult v1.0», https://healthmeasures.net/wp-content/uploads/2026/05/PROMIS-Sleep-Scoring-Manual_05Dec2023.pdf: 8→30.0 (SE 5.4); 9→35.2 (4.6); 10→38.7 (4.2); 11→41.4 (3.8); 12→43.6 (3.6); 13→45.5 (3.4); 14→47.3 (3.1); 15→48.9 (2.9); 16→50.3 (2.7); 17→51.6 (2.6); 18→52.9 (2.6); 19→54.0 (2.5); 20→55.1 (2.5); 21→56.1 (2.5); 22→57.2 (2.5); 23→58.2 (2.4); 24→59.3 (2.4); 25→60.3 (2.4); 26→61.3 (2.4); 27→62.3 (2.3); 28→63.3 (2.3); 29→64.3 (2.3); 30→65.3 (2.3); 31→66.3 (2.3); 32→67.3 (2.3); 33→68.4 (2.3); 34→69.5 (2.3); 35→70.7 (2.4); 36→71.9 (2.5); 37→73.4 (2.6); 38→75.0 (2.8); 39→76.9 (3.1); 40→80.1 (3.9). Примечание: «The Sleep-Related Impairment 8a table was revised on 5/22/2014.» (таблица в PDF — изображение на стр. 12, переписана с него).",
+  "representability": "Движок каталога T-балл PROMIS не воспроизводит: нормирование «tscore» — линейное 50 + 10·(сырой − среднее)/SD, а таблица PROMIS нелинейна (IRT); «sten» принимает только целые 1–10. Приблизить линейной нормой — значит выдумать числа. Если лицензию купят, честный путь — полосы по сырой сумме, пересчитанные из таблицы (она монотонна), с подписью T-диапазона, но само значение T на экране не появится, и баллы на ровно T = 60,0 и подобных границах придётся отнести к полосе решением клинициста (HealthMeasures: «for a score at an identified cut point (e.g., T=60), you should consider the consequences of assigning it to the less severe … or more severe … category»).",
+  "bands": null,
+  "bands_source": "Score cut points HealthMeasures (рисунки «PROMIS® Sleep Disturbance T-Score Cut Points» и «PROMIS® Sleep-Related Impairment T-Score Cut Points», Feb 2025, https://healthmeasures.net/interpret-scores/score-cut-points/adult/): «Within Normal Limits» до 55, «Mild» 55–60, «Moderate» 60–70, «Severe» от 70; «General population + Clinical sample mean = 50 (SD = 10)». Пояснение страницы: «scores less than or equal to 55 T-score points are described as “within normal limits.” Scores between 55 and 60 are described as “mild” whereas scores 60–70 are labeled “moderate” and scores above 70 are labeled “severe.”» и «These recommended cut points serve as general guidelines».",
+  "risk_items": [],
+  "translation": {
+   "uk": {
+    "exists": true,
+    "by": "HealthMeasures / FACIT translation methodology",
+    "free": false,
+    "url": "https://healthmeasures.net/wp-content/uploads/2026/09/PROMIS-HealthMeasures_10Sep2026.csv",
+    "note": "Перевод есть, но лицензируется: $1 100 за меру за язык."
+   },
+   "ru": {
+    "exists": true,
+    "by": "HealthMeasures / FACIT translation methodology",
+    "free": false,
+    "url": "https://healthmeasures.net/wp-content/uploads/2026/09/PROMIS-HealthMeasures_10Sep2026.csv",
+    "note": "Перевод есть, но лицензируется: $1 100 за меру за язык."
+   }
+  },
+  "example": null,
+  "example_note": "Не приводится: методика не заводится.",
+  "verdict": "завести без текста (лицензия) — для рутинной клинической оценки в собственной цифровой платформе HealthMeasures требует HEAP и плату ($600 за меру на 3 года + $1 100 за меру за каждый перевод); T-балл к тому же не представим в модели каталога (см. representability)."
+ },
+ {
+  "key": "promis_fat7a",
+  "title_en": "PROMIS Short Form v1.0 – Fatigue 7a",
+  "title_uk": null,
+  "title_ru": null,
+  "authors": "PROMIS Health Organization / HealthMeasures (Northwestern University)",
+  "year": 2011,
+  "citation": "Lai JS, Cella D, Choi SW, Junghaenel DU, Christodoulou C, Gershon R, Stone A. How item banks and their application can influence measurement practice in rehabilitation medicine: a PROMIS fatigue item bank example. Arch Phys Med Rehabil. 2011;92(10 Suppl):S20-S27 (Primary Citation в руководстве PROMIS Fatigue)",
+  "license": {
+   "verdict": "лицензируется",
+   "quote": "Non-commercial users can program a PROMIS measure into a digital administration platform for research without permission or fees as long as the text is not changed. Programming PROMIS measures into digital administration platforms for other purposes (e.g., registries, routine outcome assessment, quality measurement) and any use by commercial users requires a permission letter and screenshot review (HealthMeasures Electronic Administration Permission or HEAP).",
+   "quote_2": "HealthMeasures Fees for Services (last updated October 1, 2026): «Static Forms – Digital Administration … Standard English Measure, Non-Commercial Non-Research — $600 per measure for 3-year term»; «Existing Translated Measures — $1,100 per measure per language for study duration or 3-year term»; «Permission to Translate — By Quote»; «Static Forms – Paper Administration: English Measure — Free; Existing Translated Measures — $1,100 per measure per language». Сноска: «Non-Research — Registries, routine outcome measurement, quality measurement, other purposes».",
+   "url": "PROMIS Fatigue User Manual and Scoring Instructions (21.11.2025), раздел Obtaining Measures: https://healthmeasures.net/wp-content/uploads/2026/05/PROMIS-Fatigue-User-Manual-and-Scoring-Instructions_21Nov2025.pdf ; тарифы: https://healthmeasures.net/services/fees/",
+   "conditions": "Наш случай — рутинная клиническая оценка в собственной цифровой платформе на украинском и русском: это не «research», значит нужен HEAP (письмо-разрешение и проверка скриншотов) и плата — $600 за меру на 3 года за английскую форму плюс $1 100 за меру за каждый язык. Свой перевод запрещён («Permission to Translate — By Quote»). Бесплатно только бумажная английская форма. Методика платная для нашего применения — правило 1 брифа её исключает.",
+   "owner": "PROMIS Health Organization; распространение — HealthMeasures (Northwestern University)"
+  },
+  "items": null,
+  "items_note": "Не приводим: текст 7 пунктов доступен на HealthMeasures, но встраивать его в нашу платформу без HEAP и оплаты нельзя (см. license). Официальные переводы существуют: в списке переводов HealthMeasures (PROMIS-HealthMeasures_10Sep2026.csv) для этой формы есть строки «Russian» и «Ukrainian» — но они платные ($1 100 за меру за язык).",
+  "anchors": null,
+  "reverse": null,
+  "scoring": "Сырая сумма 7–35 (варианты 1–5) переводится в T-балл ТОЛЬКО по таблице из руководства; при пропусках таблицей пользоваться нельзя («Conversion table applies only when ALL items on the short form have been answered»). Таблица (сырой балл → T-балл, SE) дословно из PROMIS Fatigue User Manual and Scoring Instructions (November 21, 2025), Appendix 1, https://healthmeasures.net/wp-content/uploads/2026/05/PROMIS-Fatigue-User-Manual-and-Scoring-Instructions_21Nov2025.pdf: 7→29.4 (SE 5.3); 8→33.4 (4.8); 9→36.9 (4.3); 10→39.6 (4.0); 11→41.9 (3.8); 12→43.9 (3.5); 13→45.8 (3.3); 14→47.6 (3.2); 15→49.2 (3.1); 16→50.8 (3.0); 17→52.2 (3.0); 18→53.7 (3.0); 19→55.1 (3.0); 20→56.4 (2.9); 21→57.8 (2.9); 22→59.2 (2.9); 23→60.6 (2.9); 24→62.0 (2.9); 25→63.4 (2.9); 26→64.8 (2.9); 27→66.3 (2.9); 28→67.8 (2.9); 29→69.4 (2.9); 30→71.1 (3.0); 31→72.9 (3.0); 32→74.8 (3.1); 33→77.1 (3.3); 34→79.8 (3.6); 35→83.2 (4.1). (Appendix 1, стр. 19, таблица «Fatigue 7a - Adult v1.0» — изображение, переписана с него; пример руководства «raw score of 10 converts to a T-score of 39.6 with a standard error (SE) of 4» с таблицей совпадает.)",
+  "representability": "Движок каталога T-балл PROMIS не воспроизводит: нормирование «tscore» — линейное 50 + 10·(сырой − среднее)/SD, а таблица PROMIS нелинейна (IRT); «sten» принимает только целые 1–10. Приблизить линейной нормой — значит выдумать числа. Если лицензию купят, честный путь — полосы по сырой сумме, пересчитанные из таблицы (она монотонна), с подписью T-диапазона, но само значение T на экране не появится, и баллы на ровно T = 60,0 и подобных границах придётся отнести к полосе решением клинициста (HealthMeasures: «for a score at an identified cut point (e.g., T=60), you should consider the consequences of assigning it to the less severe … or more severe … category»).",
+  "bands": null,
+  "bands_source": "Score cut points HealthMeasures (рисунок «PROMIS® Fatigue T-Score Cut Points», Feb 2025, https://healthmeasures.net/interpret-scores/score-cut-points/adult/): «Within Normal Limits» до 55, «Mild» 55–60, «Moderate» 60–70, «Severe» от 70; «General population mean = 50 (SD = 10)».",
+  "risk_items": [],
+  "translation": {
+   "uk": {
+    "exists": true,
+    "by": "HealthMeasures / FACIT translation methodology",
+    "free": false,
+    "url": "https://healthmeasures.net/wp-content/uploads/2026/09/PROMIS-HealthMeasures_10Sep2026.csv",
+    "note": "Перевод есть, но лицензируется: $1 100 за меру за язык."
+   },
+   "ru": {
+    "exists": true,
+    "by": "HealthMeasures / FACIT translation methodology",
+    "free": false,
+    "url": "https://healthmeasures.net/wp-content/uploads/2026/09/PROMIS-HealthMeasures_10Sep2026.csv",
+    "note": "Перевод есть, но лицензируется: $1 100 за меру за язык."
+   }
+  },
+  "example": null,
+  "example_note": "Не приводится: методика не заводится.",
+  "verdict": "завести без текста (лицензия) — для рутинной клинической оценки в собственной цифровой платформе HealthMeasures требует HEAP и плату ($600 за меру на 3 года + $1 100 за меру за каждый перевод); T-балл к тому же не представим в модели каталога (см. representability)."
+ },
+ {
+  "key": "stopbang",
+  "title_en": "STOP-Bang Questionnaire (obstructive sleep apnea screening)",
+  "title_uk": null,
+  "title_ru": null,
+  "authors": "Frances Chung и соавт. (Toronto Western Hospital, University Health Network)",
+  "year": 2008,
+  "citation": "Chung F, Yegneswaran B, Liao P, Chung SA, Vairavanathan S, Islam S, Khajehdehi A, Shapiro CM. STOP questionnaire: a tool to screen patients for obstructive sleep apnea. Anesthesiology. 2008;108(5):812-821. doi:10.1097/aln.0b013e31816d83e4",
+  "license": {
+   "verdict": "лицензируется",
+   "quote": "STOP-BANG Questionnaire – Academic: Please use this form for Academic Research Projects and Publications ONLY. … STOP-BANG Questionnaire – All other inquiries: If you wish to use STOPBang for non-academic purposes, including use in a clinical trial, industry-sponsored research or for use in routine patient intake/screening, please contact laura.farran@uhn.ca for further information",
+   "quote_2": "На официальном сайте: «Email laura.farran@uhn.ca if you would like to have permission to use the survey or complete the forms available here.»; под бланком: «Property of University Health Network.»; «Copyright © 2012 | www.stopbang.ca | All Rights Reserved».",
+   "url": "https://www.uhncommercialization.ca/licencing/express-licenses ; http://www.stopbang.ca/osa/screening.php ; http://www.stopbang.ca/about/contactus.php",
+   "conditions": "Рутинный скрининг пациентов — отдельный (не «экспресс») лицензионный путь через UHN Commercialization; бесплатного разрешения для клиники правообладатель не публикует. Украинского и русского среди официальных переводов на stopbang.ca нет.",
+   "owner": "University Health Network (Торонто)"
+  },
+  "items": null,
+  "items_note": "Не приводим (лицензия).",
+  "anchors": null,
+  "reverse": null,
+  "scoring": null,
+  "scoring_note": "Восемь пунктов «да/нет», сумма 0–8. Представимость в модели каталога неполная: кроме полос по сумме (0–2 / 3–4 / 5–8 на stopbang.ca) правообладатель относит к высокому риску и «Yes to 2 or more of 4 STOP questions + male gender / + BMI > 35 kg/m2 / + neck circumference 16 inches / 40cm» — правило «≥2 из первых четырёх И пол/ИМТ/шея» полосой по одной сумме не выражается (нужна вторая шкала с условной логикой). Пункты ИМТ и окружности шеи — объективные измерения, а не самоотчёт.",
+  "bands": null,
+  "risk_items": [],
+  "translation": {
+   "uk": null,
+   "ru": null
+  },
+  "translation_note": "На http://www.stopbang.ca/translation/translation.php украинского и русского переводов нет.",
+  "example": null,
+  "verdict": "завести без текста (лицензия) — University Health Network требует обращения за разрешением для рутинного скрининга пациентов; правило высокого риска к тому же не выражается полосами по сумме."
+ },
+ {
+  "key": "isi",
+  "title_en": "Insomnia Severity Index (ISI)",
+  "title_uk": null,
+  "title_ru": null,
+  "authors": "Charles M. Morin (Université Laval)",
+  "year": 1993,
+  "citation": "Bastien CH, Vallières A, Morin CM. Validation of the Insomnia Severity Index as an outcome measure for insomnia research. Sleep Med. 2001;2(4):297-307. doi:10.1016/s1389-9457(00)00065-4",
+  "license": {
+   "verdict": "лицензируется",
+   "quote": "The Insomnia Severity Index (ISI) is distributed by Mapi Research Trust on behalf of its copyright holder, Prof Charles Morin. … Any questions on the ISI, on its conditions of use, its available translations shall be directed to Mapi Research Trust.",
+   "quote_2": "Схема выдачи для «an academic user, clinician, student with no specific funding» (изображение workflow-academic-no-funding.jpg на той же странице): «Visit ePROVIDE for information! Registration is needed.» → при наличии языковой версии «Read and accept the terms & conditions of use», затем бланк присылается по почте; при отсутствии версии — «Signature of: 1) a User Agreement 2) a Translation Agreement» и перевод по правилам Mapi с передачей в Mapi.",
+   "url": "https://eprovide.mapi-trust.org/isi-insomnia-severity-index/",
+   "conditions": "Даже бесплатное для клинициста использование идёт через регистрацию в ePROVIDE и принятие условий Mapi; свой перевод — только по договору о переводе с Mapi. Свободного воспроизведения правообладатель не допускает.",
+   "owner": "Charles M. Morin; распространение — Mapi Research Trust"
+  },
+  "items": null,
+  "items_note": "Не приводим (лицензия).",
+  "anchors": null,
+  "reverse": null,
+  "scoring": null,
+  "scoring_note": "Семь пунктов 0–4, сумма 0–28 — в модели каталога представима; препятствие только лицензионное.",
+  "bands": null,
+  "risk_items": [],
+  "translation": {
+   "uk": null,
+   "ru": null
+  },
+  "translation_note": "Перечень переводов — в ePROVIDE, доступ после регистрации; самостоятельный перевод запрещён схемой Mapi.",
+  "example": null,
+  "verdict": "завести без текста (лицензия) — ISI выдаётся только через Mapi Research Trust после регистрации и принятия условий (перевод — по договору с Mapi); если учреждение получит разрешение и бланки, методику можно завести."
+ },
+ {
+  "key": "fss",
+  "title_en": "Fatigue Severity Scale (FSS)",
+  "title_uk": null,
+  "title_ru": null,
+  "authors": "Lauren B. Krupp, Nicholas G. LaRocca, Joanne Muir-Nash, Alfred D. Steinberg",
+  "year": 1989,
+  "citation": "Krupp LB, LaRocca NG, Muir-Nash J, Steinberg AD. The fatigue severity scale. Application to patients with multiple sclerosis and systemic lupus erythematosus. Arch Neurol. 1989;46(10):1121-1123. doi:10.1001/archneur.1989.00520460115022",
+  "license": {
+   "verdict": "неясно",
+   "quote": "Dr Krupp has the copyright. Commerical entities are charged for use of the FSS, otherwise clinicians and researcher supported by federal or non  for profit organizations can use it at no charge. — Scoring available: with permission or free: Please contact developer",
+   "quote_2": "Под воспроизведением шкалы в справочнике Springer (Shahid A et al., STOP, THAT and One Hundred Other Sleep Scales, 2012, гл. 35): «Krupp et al.[4]. Copyright © 1989 American Medical Association. All rights reserved.»",
+   "url": "https://www.thoracic.org/members/assemblies/assemblies/srn/questionaires/fss.php ; https://www.med.upenn.edu/cbti/assets/user-content/documents/Fatigue%20Severity%20Scale%20(FSS).pdf",
+   "conditions": "Обе цитаты — не слова правообладателя: первая — карточка Американского торакального общества (вторичный источник, где сказано и «Please contact developer»), вторая — копирайт AMA на опубликованную форму. Собственного заявления д-ра Krupp о свободном использовании найти не удалось; по правилу 1 брифа при сомнении не заводим.",
+   "owner": "Lauren B. Krupp; публикация — American Medical Association"
+  },
+  "items": null,
+  "items_note": "Не приводим (лицензия неясна).",
+  "anchors": null,
+  "reverse": null,
+  "scoring": null,
+  "bands": null,
+  "risk_items": [],
+  "translation": {
+   "uk": null,
+   "ru": null
+  },
+  "translation_note": "Официальных украинского и русского текстов не найдено (ATS перечисляет немецкий, турецкий, норвежский).",
+  "example": null,
+  "verdict": "не заводить — заявления правообладателя о свободном использовании нет (только вторичное «please contact developer» и копирайт AMA на форму); вместо неё заведена FAS с прямым разрешением правообладателя для клиники."
+ },
+ {
+  "key": "psqi",
+  "title_en": "Pittsburgh Sleep Quality Index (PSQI)",
+  "title_uk": null,
+  "title_ru": null,
+  "authors": "Daniel J. Buysse, Charles F. Reynolds III, Timothy H. Monk, Susan R. Berman, David J. Kupfer (University of Pittsburgh)",
+  "year": 1989,
+  "citation": "Buysse DJ, Reynolds CF 3rd, Monk TH, Berman SR, Kupfer DJ. The Pittsburgh Sleep Quality Index: a new instrument for psychiatric practice and research. Psychiatry Res. 1989;28(2):193-213. doi:10.1016/0165-1781(89)90047-4",
+  "license": {
+   "verdict": "лицензируется",
+   "quote": "The PSQI instrument is owned by the University of Pittsburgh and may be reprinted without charge only for non-commercial research and educational purposes. You may not make changes or modifications of this form without prior written permission from the University of Pittsburgh.",
+   "quote_2": "PSQI Use Pricing — «Clinical Use: Use of the PSQI for clinical/ patient use — Per use fee*»; «*Per Use Fee Structure (Annual): <250 uses $1,000; 251 – 500 uses $2,500; 501-1,000 uses $5,000; 1,001 – 2,500 uses $9,000; 2,501 – 5,000 uses $12,000; 5,001 – 10,000 uses $15,000; > 10,000 uses $20,000». Перечень случаев, требующих заявки: «Use in clinic», «Use in Electronic Medical Record».",
+   "url": "https://www.sleep.pitt.edu/psqi",
+   "conditions": "Клиническое использование платное (ежегодная плата по числу применений); переводы — через Mapi (ePROVIDE). Свободного воспроизведения для клиники нет.",
+   "owner": "University of Pittsburgh"
+  },
+  "items": null,
+  "items_note": "Не приводим (лицензия).",
+  "anchors": null,
+  "reverse": null,
+  "scoring": null,
+  "scoring_note": "Подсчёт по компонентам (документ правообладателя «Exhibit A – PSQI Form Administration Instructions, References, and Scoring», https://www.sleep.pitt.edu/sites/default/files/assets/Instrument%20Materials/Exhibit%20A-PSQI%20scoring.pdf): семь компонент 0–3, сумма 0–21. Модель каталога его НЕ представляет: (1) PSQIHSE — «tmphse = (Q4 / newtib) * 100», где newtib — часы между временем отхода ко сну (Q1) и подъёма (Q3), то есть арифметика над временем суток и деление двух ответов; движок умеет только суммировать, усреднять и считать баллы вариантов; (2) PSQILATEN, PSQIDISTB, PSQIDAYDYS — нелинейная перекодировка СУММЫ пунктов в 0–3 (например, Q5a + Q2new: 0 → 0, 1–2 → 1, 3–4 → 2, 5–6 → 3); «поправки» движка линейны и берут сырые баллы, а таблица «sten» допускает только целые 1–10 и не может дать 0; общий балл пришлось бы складывать из перекодированных компонент, а этого движок не умеет; (3) Q2 (минуты) и Q4 (часы) — свободный числовой ввод, перевод их в варианты изменил бы методику. Приближение запрещено брифом.",
+  "bands": null,
+  "risk_items": [],
+  "translation": {
+   "uk": null,
+   "ru": null
+  },
+  "translation_note": "Переводы (в т. ч. русский) — через Mapi Research Trust (ePROVIDE) по условиям правообладателя.",
+  "example": null,
+  "verdict": "не заводить — клиническое использование платное (University of Pittsburgh, ежегодная плата по числу применений), а компонентный подсчёт (эффективность сна по времени суток, перекодировка сумм компонент) в модели каталога не представим."
+ }
+]

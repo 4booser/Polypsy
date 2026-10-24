@@ -29,6 +29,60 @@ import { ASSIST_NOT_SCORED, assist } from "./assist";
 import { auditc } from "./auditc";
 import { cage } from "./cage";
 import { cbi } from "./cbi";
+// ── k-sleep ──
+import { fas } from "./fas";
+import { ris } from "./ris";
+import { sci } from "./sci";
+import { sci02 } from "./sci02";
+// ── /k-sleep ──
+// ── k-wellbeing ──
+import { flourishing } from "./flourishing";
+import { mlq } from "./mlq";
+import { pss4 } from "./pss4";
+import { spane } from "./spane";
+import { swls } from "./swls";
+// ── /k-wellbeing ──
+// ── k-staff ──
+import { bat, bat12 } from "./bat";
+import { MIOS_NOT_SCORED, mios } from "./mios";
+import { proqol5 } from "./proqol5";
+// ── /k-staff ──
+// ── k-cognitive ──
+import { adexi } from "./adexi";
+import { fourAt } from "./fourAt";
+// ── /k-cognitive ──
+// ── k-distress ──
+import { core10 } from "./core10";
+import { dass21 } from "./dass21";
+import { gad2 } from "./gad2";
+import { k10 } from "./k10";
+import { k6 } from "./k6";
+import { phq15 } from "./phq15";
+import { phq2 } from "./phq2";
+// ── /k-distress ──
+// ── k-personality ──
+import { aaq2 } from "./aaq2";
+import { aq10 } from "./aq10";
+import { maas } from "./maas";
+import { scsSf } from "./scsSf";
+import { tipi } from "./tipi";
+// ── /k-personality ──
+// ── k-addiction ──
+import { ciwaar } from "./ciwaar";
+import { cows } from "./cows";
+import { cuditr } from "./cuditr";
+// ── /k-addiction ──
+// ── k-suicide ──
+import { ASQ_NOT_SCORED, asq } from "./asq";
+import { CSSRS_NOT_SCORED, cssrs } from "./cssrs";
+import { sidas } from "./sidas";
+// ── /k-suicide ──
+// ── k-trauma ──
+import { ctsrUa } from "./ctsrUa";
+import { ITQ_NOT_SCORED, itq } from "./itq";
+import { LEC5_NOT_SCORED, lec5 } from "./lec5";
+import { tgiSrPlus } from "./tgiSrPlus";
+// ── /k-trauma ──
 
 /**
  * Общий каталог общедоступных методик.
@@ -80,18 +134,20 @@ export const CATALOG: CatalogEntry[] = [
   {
     key: "who5",
     draft: who5,
-    source: "WHO-5 Well-Being Index, ВООЗ (Європейське регіональне бюро), 1998",
+    source:
+      "WHO-5 Well-Being Index, ВООЗ (Європейське регіональне бюро), 1998; з 2024 — ВООЗ, WHO/UCN/MSD/MHE/2024.1, CC BY-NC-SA 3.0 IGO; російський текст — переклад Psychiatric Research Unit (варіант 1999 р.), український — робочий",
   },
   {
     key: "gad7",
     draft: gad7,
-    source: "GAD-7, Spitzer, Kroenke, Williams, Löwe, 2006",
+    source:
+      "GAD-7, Spitzer, Kroenke, Williams, Löwe, 2006; тексти пунктів — офіційні переклади правовласника «Ukrainian for Ukraine» і «Russian for Ukraine» (phqscreeners.com), українські відповіді — з PHQ-9 наказу МОЗ України №1003",
   },
   {
     key: "phq9",
     draft: phq9,
     source:
-      "PHQ-9, Kroenke, Spitzer, Williams, 2001; український текст — додаток 1 до УКПМД «Депресія», наказ МОЗ України №1003 від 25.12.2014",
+      "PHQ-9, Kroenke, Spitzer, Williams, 2001; український текст — додаток 1 до УКПМД «Депресія», наказ МОЗ України №1003 від 25.12.2014; російський — офіційний переклад правовласника «Russian for Ukraine» (phqscreeners.com)",
   },
   {
     key: "pss10",
@@ -106,7 +162,8 @@ export const CATALOG: CatalogEntry[] = [
   {
     key: "audit",
     draft: audit10,
-    source: "AUDIT, Saunders та ін. для ВООЗ, 1993",
+    source:
+      "AUDIT, Saunders та ін. для ВООЗ, 1993; посібник Babor та ін., ВООЗ, 2001. Пункти 1–3 — офіційний текст AUDIT-C: клінічна настанова МОЗ України КН 2025-1897, рисунок 4.1; пункти 4–10 — робочий переклад",
   },
   {
     key: "pq16",
@@ -132,13 +189,13 @@ export const CATALOG: CatalogEntry[] = [
     key: "phq4",
     draft: phq4,
     source:
-      "PHQ-4, Kroenke, Spitzer, Williams, Löwe, 2009 (public domain); PHQ-2 — текст з наказу МОЗ України №1003 від 25.12.2014",
+      "PHQ-4, Kroenke, Spitzer, Williams, Löwe, 2009 (public domain); PHQ-2 — текст з наказу МОЗ України №1003 від 25.12.2014, GAD-2 — український GAD-7 правовласника; російський — «Russian for Ukraine» (phqscreeners.com)",
   },
   {
     key: "phq8",
     draft: phq8,
     source:
-      "PHQ-8, Kroenke, Strine та ін., 2009 (public domain); текст — пункти 1–8 PHQ-9 з наказу МОЗ України №1003 від 25.12.2014",
+      "PHQ-8, Kroenke, Strine та ін., 2009 (public domain); текст — пункти 1–8 PHQ-9 з наказу МОЗ України №1003 від 25.12.2014 і з російського перекладу правовласника «Russian for Ukraine» (phqscreeners.com)",
   },
   {
     key: "cesdr",
@@ -267,7 +324,7 @@ export const CATALOG: CatalogEntry[] = [
     key: "auditc",
     draft: auditc,
     source:
-      "AUDIT-C: пункти 1–3 AUDIT (Babor та ін., ВООЗ, 2001); поріг — Bush та ін., Arch Intern Med 1998 (чоловіки); жінки — Bradley та ін., Arch Intern Med 2003. Переклад пунктів — той самий робочий, що в AUDIT каталогу",
+      "AUDIT-C: пункти 1–3 AUDIT (Babor та ін., ВООЗ, 2001); поріг — Bush та ін., Arch Intern Med 1998 (чоловіки); жінки — Bradley та ін., Arch Intern Med 2003. Український текст — офіційний: клінічна настанова МОЗ України КН 2025-1897, рисунок 4.1 «AUDIT-C»; російський — робочий переклад",
   },
   {
     key: "assist",
@@ -288,4 +345,408 @@ export const CATALOG: CatalogEntry[] = [
     source:
       "Copenhagen Burnout Inventory, Kristensen, Borritz, Villadsen, Christensen, Work & Stress 2005 (NFA, Данія); смуги — датська форма самоперевірки NFA (Borritz, Kristensen). Переклад робочий",
   },
+
+  // ── k-sleep ──
+  /*
+   * Группа «сон и утомление» — docs/instruments/dossiers/sleep.json.
+   *
+   * Заведены только методики, у которых свободное использование в клинике
+   * подтверждено словами правообладателя: SCI и её двухпунктовая версия
+   * SCI-02 (Sleepio, CC BY-NC 4.0 — некоммерчески), FAS (ild care foundation:
+   * «usage in clinical settings is permitted without restrictions»,
+   * официальные украинский и русский тексты) и RIS (авторы, статья под
+   * CC BY 2.0). Остальные карточки досье не заведены:
+   * PROMIS Sleep Disturbance 8a, Sleep-Related Impairment 8a и Fatigue 7a для
+   * рутинной оценки в своей цифровой платформе требуют разрешения HEAP и платы
+   * (а таблицу T-баллов PROMIS движок не воспроизводит); STOP-Bang — разрешения
+   * University Health Network для скрининга пациентов; ISI — договора с Mapi;
+   * PSQI — платы за клиническое использование, и его компонентный подсчёт
+   * моделью каталога не выражается; FSS — заявления правообладателя нет; AIS
+   * не заведена ещё в группе behaviour по той же причине. Epworth исключена
+   * брифом (платная).
+   */
+  {
+    key: "sci",
+    draft: sci,
+    source:
+      "Sleep Condition Indicator, Espie, Kyle, Hames, Gardani, Fleming, Cape, BMJ Open 2014;4:e004183 — © Sleepio Limited, безкоштовно лише для некомерційного використання (CC BY-NC 4.0). Переклад робочий",
+  },
+  {
+    key: "sci02",
+    draft: sci02,
+    source:
+      "SCI-02: пункти 7 і 3 Sleep Condition Indicator; поріг ≤2 — Luik, Machado, Siriwardena, Espie, Br J Gen Pract 2019;69(679):79-80 — © Sleepio Limited, безкоштовно лише для некомерційного використання (CC BY-NC 4.0). Переклад робочий (той самий, що в SCI)",
+  },
+  {
+    key: "fas",
+    draft: fas,
+    source:
+      "Fatigue Assessment Scale, Michielsen, De Vries, Van Heck, J Psychosom Res 2003 — © ild care foundation: використання в клінічних умовах дозволене без обмежень. Український і російський тексти — офіційні переклади правовласника (ildcare.nl; в українському виправлено дві орфографічні описки); смуги — настанови правовласника",
+  },
+  {
+    key: "ris",
+    draft: ris,
+    source:
+      "Regensburg Insomnia Scale, Crönlein, Langguth, Popp, Lukesch, Pieh, Hajak, Geisler, Health Qual Life Outcomes 2013;11:65 (CC BY 2.0). Переклад робочий — з німецького оригіналу зі звіркою за англійською версією авторів",
+  },
+  // ── /k-sleep ──
+  // ── k-wellbeing ──
+  /*
+   * Группа «wellbeing»: благополучие, смысл, стресс —
+   * docs/instruments/dossiers/wellbeing.json. Ключ каталога равен ключу досье.
+   *
+   * Полосы есть только у SWLS — описательные категории автора с его бланка,
+   * «mild» без тревоги у двух нижних (решение каталога). Шкала процветания,
+   * SPANE, MLQ и PSS-4 отдают сырые баллы: порогов у них нет в первоисточнике.
+   *
+   * Не заведены из той же группы досье: GSE (правообладатель разрешает только
+   * некоммерческие исследования и запрещает публиковать шкалу в интернете, а
+   * тексты пунктов каталога лежат в публичном репозитории), LOT-R (автор:
+   * «not intended for clinical applications»), MHC-SF (заявления
+   * правообладателя нет), EUROHIS-QOL 8 (пункты WHOQOL-BREF, нужна письменная
+   * лицензия ВОЗ). BRS и WHODAS 2.0 перепроверены — основания по-прежнему нет
+   * (карточки в function.json).
+   */
+  {
+    key: "swls",
+    draft: swls,
+    source:
+      "SWLS, Diener, Emmons, Larsen, Griffin, 1985 (вільне використання з посиланням); смуги — бланк правовласника; український текст — адаптація Олефіра, Боснюка, 2024 (CC BY 4.0), російський — робочий переклад з неї",
+  },
+  {
+    key: "flourishing",
+    draft: flourishing,
+    source:
+      "Flourishing Scale, Diener та ін., 2009/2010 (вільне використання з посиланням); пункти 1, 3–8 — версії Юхименко-Лескроарт, Воєділової, 2024 (CC BY-NC 4.0) і Didino та ін., 2019 (CC BY 4.0), пункт 2 — робочий переклад",
+  },
+  {
+    key: "spane",
+    draft: spane,
+    source:
+      "SPANE, Diener та ін., 2009/2010 (вільне використання з посиланням); український текст — адаптація Олефіра, Боснюка, Малофейкіної, 2021 (CC BY 4.0), російський — робочий переклад з неї",
+  },
+  {
+    key: "mlq",
+    draft: mlq,
+    source:
+      "Meaning in Life Questionnaire, Steger, Frazier, Oishi, Kaler, 2006 (безкоштовно для терапевтичного використання без плати для клієнта); переклад робочий",
+  },
+  {
+    key: "pss4",
+    draft: pss4,
+    source:
+      "PSS-4, Cohen, Kamarck, Mermelstein, 1983 (без смуг: у розробника порогів немає); пункти — ті самі, що в PSS-10 каталогу",
+  },
+  // ── /k-wellbeing ──
+  // ── k-staff ──
+  /*
+   * Группа «персонал»: выгорание, усталость от сострадания, вторичный
+   * травматический стресс и моральная травма у сотрудников самого госпиталя —
+   * психологов, медиков, командиров. Досье — docs/instruments/dossiers/staff.json;
+   * ключи каталога равны ключам досье.
+   *
+   * Лицензии здесь не заявление учреждения, а слова правообладателей: BAT —
+   * «non-proprietary and may be used free of charge without requesting permission»,
+   * ProQOL — «may be freely copied» при указании автора и без продажи, MIOS —
+   * «a public domain scale». У BAT украинский и русский тексты официальные (сайт
+   * правообладателя), у ProQOL 5 и MIOS перевод рабочий — сказано в описании.
+   *
+   * Не заведены — с причиной в досье: UWES-9 (только научное использование), OLBI,
+   * STSS, MMD-HP, MISS-HP, термометр морального дистресса (свободной лицензии нет),
+   * Mini Z (разрешение не покрывает индивидуальный скрининг), ProQOL Health (сам
+   * правообладатель: «still under development»), MIDS (лицензия и порог есть, но
+   * её правило «часть 2 — если хоть один пункт части 1 больше нуля» движок без
+   * условий «ИЛИ» выразить не может). Maslach — платный, по заданию не заводился.
+   */
+  {
+    key: "bat",
+    draft: bat,
+    source:
+      "Burnout Assessment Tool (BAT-23), Schaufeli, De Witte, Desart, KU Leuven, 2020 — non-proprietary, вільне використання без запиту дозволу (без змін, з посиланням на Schaufeli, Desart, De Witte, IJERPH 2020;17:9495). Український і російський тексти — офіційні переклади з сайту правовласника; пороги — клінічні фламандські (Test Manual v2.0, табл. 66)",
+  },
+  {
+    key: "bat12",
+    draft: bat12,
+    source:
+      "Burnout Assessment Tool, коротка версія (BAT-12), Schaufeli, De Witte, Desart, KU Leuven, 2020 — non-proprietary, вільне використання без запиту дозволу (без змін, з посиланням на IJERPH 2020;17:9495). Офіційні український і російський тексти правовласника; пороги — клінічні фламандські (Test Manual v2.0, табл. 73)",
+  },
+  {
+    key: "proqol5",
+    draft: proqol5,
+    source:
+      "ProQOL 5, B. H. Stamm, 2009; правовласник — Center for Victims of Torture, www.ProQOL.org: «may be freely copied as long as (i) the author is credited, (ii) no changes are made, and (iii) that it is not sold». Смуги — офіційна форма самооцінки. Переклад робочий: українського ProQOL 5 немає, російський 2012 р. містить змістові помилки й не взятий",
+  },
+  {
+    key: "mios",
+    draft: mios,
+    source:
+      "Moral Injury Outcome Scale, коротка клінічна версія: Litz та ін., MIOS Consortium, Frontiers in Psychiatry 2022;13:923928 (CC BY; «the MIOS is a public domain scale»). Без смуг: правовласник — «There are currently no proposed scoring categories or cut offs». Переклад робочий",
+    notScored: MIOS_NOT_SCORED,
+  },
+  // ── /k-staff ──
+  // ── k-cognitive ──
+  /*
+   * Группа «когнитивные функции, внимание, последствия ЧМТ» —
+   * docs/instruments/dossiers/cognitive.json.
+   *
+   * Заведены две методики, у которых право на перевод и электронную форму
+   * следует из слов самого правообладателя, а не из заявления учреждения:
+   * 4AT — CC BY 4.0 (атрибуция с перечнем изменений стоит в описании),
+   * ADEXI — «freely available for both researchers and clinicians». 4AT
+   * заполняет специалист у постели больного (administration: "clinician"), и в
+   * список, доступный человеку без назначения, она не попадает. У ADEXI полос
+   * нет — норм нет у самого разработчика.
+   *
+   * Из того же досье не заведены, каждая с причиной в карточке: ASRS-18
+   * (электронные версии запрещены правообладателем), AD8 (переводы и встраивание
+   * в электронные системы исключены), 6CIT (права не подтверждены, центр закрыт),
+   * SLUMS (рисунок, стимул, отсчёт времени, пороги по образованию), NSI, RPQ,
+   * CFQ, MARS/O-Log (нет разрешения правообладателя), PROMIS (перевод только с
+   * разрешения PHO), MPAI-4 (подсчёт движок не воспроизводит), DIVA-5 (плата за
+   * каждое проведение).
+   */
+  {
+    key: "4at",
+    draft: fourAt,
+    source:
+      "4AT, версія 1.2: MacLullich, Ryan, Cash, 2011–2014 (the4at.com), ліцензія CC BY 4.0; валідація — Bellelli та ін., Age Ageing 2014; метааналіз — Tieges та ін., Age Ageing 2021. Український текст — робочий переклад, російський — переклад із сайту правовласника (версія 1.1), виправлений за англійським оригіналом",
+  },
+  {
+    key: "adexi",
+    draft: adexi,
+    source:
+      "ADEXI (Adult Executive Functioning Inventory), Holst, Thorell, Int J Methods Psychiatr Res 2018 (Karolinska Institutet, www.chexi.se) — вільне використання для клініцистів і дослідників за заявою правовласника; без смуг — норм у розробника немає. Український текст — робочий переклад, російський — переклад із сайту правовласника (Zarina, Stanevich, Korman)",
+  },
+  // ── /k-cognitive ──
+  // ── k-distress ──
+  /*
+   * Группа «distress»: дистресс, тревога, депрессия (каталог 2.1) —
+   * docs/instruments/dossiers/distress.json. Каждая полоса, ключ и пункт
+   * риска сведены к карточке досье; чужая норма и статус перевода названы в
+   * описании методики. PHQ-2 и GAD-2 берут пункты из phq9.ts и gad7.ts, K6 — из
+   * k10.ts: своего текста у них нет. Не заведены (в досье — почему): OASIS,
+   * ODSIS, CAPE-P15, QIDS-SR16 — лицензия не подтверждена правообладателем
+   * (у QIDS к тому же подсчёт по максимуму групп, которого нет в движке),
+   * WSAS — копирайт I. M. Marks без свободного разрешения; MDQ — платная
+   * лицензия (карточка в behaviour.json).
+   */
+  {
+    key: "dass21",
+    draft: dass21,
+    source:
+      "DASS-21, Lovibond, Lovibond, 1995 (public domain; без смуг — пороги лише в платному посібнику; бали × 2 за правилом розробників). Український текст — переклад Галецької, Кліманської, Перун (ЛНУ ім. І. Франка) із сайту розробників, п. 18 — робочий переклад; російський — переклад Фаттахова, Горобець, 2024, із сайту розробників",
+  },
+  {
+    key: "k10",
+    draft: k10,
+    source:
+      "K10, Kessler та ін., Psychol Med 2002; Kessler та ін., Arch Gen Psychiatry 2003;60:184–189 — вільне використання за заявою розробника, Copyright © Ronald C. Kessler, PhD. Смуги — групування австралійських служб, ABS 4817.0.55.001 (2012), табл. F–G. Переклад робочий",
+  },
+  {
+    key: "k6",
+    draft: k6,
+    source:
+      "K6, Kessler та ін., Arch Gen Psychiatry 2003;60:184–189 — вільне використання за заявою розробника, Copyright © Ronald C. Kessler, PhD; поріг 19+ у шкалі 1–5 — розробник (13+ у шкалі 0–24). Пункти 2, 4, 5, 8, 9, 10 K10; переклад робочий",
+  },
+  {
+    key: "phq15",
+    draft: phq15,
+    source:
+      "PHQ-15, Kroenke, Spitzer, Williams, 2002 (public domain); пороги 5/10/15 — посібник видавця. Російський текст — офіційний переклад видавця (MAPI, «Russian for Russia»), український — робочий",
+  },
+  {
+    key: "phq2",
+    draft: phq2,
+    source:
+      "PHQ-2, Kroenke, Spitzer, Williams, 2003 (public domain); текст — пункти 1–2 PHQ-9 з наказу МОЗ України №1003 від 25.12.2014",
+  },
+  {
+    key: "gad2",
+    draft: gad2,
+    source:
+      "GAD-2, Kroenke, Spitzer, Williams, Monahan, Löwe, 2007 (public domain); текст — пункти 1–2 GAD-7 каталогу, переклад робочий",
+  },
+  {
+    key: "core10",
+    draft: core10,
+    source:
+      "CORE-10, Barkham та ін., Counselling and Psychotherapy Research 2013; © CORE System Trust, CC BY-NC-ND 4.0 — лише некомерційне використання, текст не змінювати. Український і російський тексти — затверджені переклади CST (2024); смуги — Connell, Barkham, CORE-10 User Manual, 2007",
+  },
+  // ── /k-distress ──
+  // ── k-personality ──
+  /*
+   * Группа «personality»: черты, регуляция эмоций, осознанность,
+   * самосострадание, привязанность, импульсивность —
+   * docs/instruments/dossiers/personality.json.
+   *
+   * Отбор строже прежних групп: заводится только то, что правообладатель
+   * своими словами разрешает в клинике (или «for any purpose»); разрешение
+   * «для исследований» здесь не засчитано. Полосы — только опубликованные
+   * правообладателем: у TIPI и MAAS их нет вовсе, у SCS-SF — «ad hoc rubric»
+   * автора без тяжести, у AAQ-II — предварительный диапазон авторов без
+   * тревоги, у AQ-10 — порог направления с бланка ARC.
+   *
+   * Не заведены, причины — в карточках досье: Mini-IPIP (все 20 пунктов уже
+   * стоят в big-five), PID-5-BF (APA требует письменного разрешения на
+   * перевод), DERS-16 (заявления правообладателя нет), ERQ (только «academic
+   * research», лицензируется Stanford OTL), ECR-RS (о применении автор пишет
+   * только для исследований), BIS-11 и BIS-15 («All Rights Reserved» без
+   * разрешения), BIS/BAS (только «research and teaching»). Для
+   * импульсивности свободной методики с разрешением на клинику не нашлось.
+   */
+  {
+    key: "tipi",
+    draft: tipi,
+    source:
+      "TIPI, Gosling, Rentfrow, Swann, J Res Pers 2003 («Anyone can use it for any purpose», S. D. Gosling). Український текст — TIPI-UKR, Кліманська, Галецька, Psychological Journal 2019 (CC BY-NC-SA 4.0); російський — TIPI-RU, Сергеєва, Кириллов, Джумагулова, Experimental Psychology (Russia) 2016; обидві адаптації перелічено на сторінці автора. Без смуг: порогів у автора немає",
+  },
+  {
+    key: "scs_sf",
+    draft: scsSf,
+    source:
+      "SCS-SF, Raes, Pommier, Neff, Van Gucht, Clin Psychol Psychother 2011 (дозвіл K. Neff: «for any purpose whatsoever, including research, clinical work, teaching»); смуги — «ad hoc rubric» авторки. Переклад робочий",
+  },
+  {
+    key: "maas",
+    draft: maas,
+    source:
+      "MAAS (trait), Brown, Ryan, J Pers Soc Psychol 2003 (public domain за листом K. W. Brown: «special permission is not required to use it for research or clinical purposes»). Без смуг: порогів у автора немає. Переклад робочий",
+  },
+  {
+    key: "aaq2",
+    draft: aaq2,
+    source:
+      "AAQ-II, Bond, Hayes, Baer та ін., Behavior Therapy 2011 (дозвіл F. Bond: «for research and with clients»); смуги — попередній діапазон 24–28 авторів. Український текст пунктів — Широка, Миколайчук, Науковий вісник ХДУ 2021 (УКУ); російський — робочий переклад",
+  },
+  {
+    key: "aq10",
+    draft: aq10,
+    source:
+      "AQ-10 (Adult), Allison, Auyeung, Baron-Cohen, JAACAP 2012; Autism Research Centre, University of Cambridge — безкоштовно для некомерційного використання, переклад для некомерційних цілей без запиту (комерційне — ліцензія через ePROVIDE). Поріг ≥ 6 — з бланка ARC. Переклад робочий",
+  },
+  // ── /k-personality ──
+  // ── k-addiction ──
+  /*
+   * Группа «addiction»: вещества и поведенческие зависимости, каталог 2.1 —
+   * docs/instruments/dossiers/addiction.json. Ключ каталога равен ключу досье.
+   *
+   * Заведены три методики, у каждой — слова правообладателя о свободном
+   * воспроизведении: CUDIT-R (public domain на авторском бланке), CIWA-Ar («not
+   * copyrighted and may be reproduced freely») и COWS («may be copied and used
+   * clinically»). У двух последних украинский текст официальный — из стандартов
+   * медицинской помощи МЗ Украины 2025 г., и полосы тяжести тоже оттуда.
+   *
+   * Не заведены — каждая с цитатой и причиной в досье: DAST-10 (CAMH лицензирует
+   * по запросу с расценкой), FTND и HSI (свободу воспроизведения утверждает NIDA,
+   * не правообладатель), SDS, PGSI (CCSA требует письменного разрешения),
+   * IGDS9-SF (CC BY-NC-ND, перевод — только с автором), BSMAS, CAGE-AID, DUDIT
+   * (пороги по полу), SADQ-C и LDQ (официальный украинский текст есть, лицензии
+   * оригинала нет), BBGS. Поведенческих зависимостей поэтому в группе нет: ни у
+   * одного проверенного скринера гемблинга, игр или соцсетей нет свободного
+   * разрешения правообладателя.
+   *
+   * CIWA-Ar и COWS заполняет специалист (administration: "clinician"), CUDIT-R —
+   * самоотчёт.
+   */
+  {
+    key: "cuditr",
+    draft: cuditr,
+    source:
+      "CUDIT-R, Adamson, Kay-Lambkin, Baker, Lewin, Thornton, Kelly, Sellman, Drug Alcohol Depend 2010;110:137–143 — «This scale is in the public domain and is free to use with appropriate citation» (бланк авторів); пороги 8 і 12 — з бланка. Переклад робочий",
+  },
+  {
+    key: "ciwaar",
+    draft: ciwaar,
+    source:
+      "CIWA-Ar, Sullivan, Sykora, Schneiderman, Naranjo, Sellers, Br J Addict 1989;84:1353–1357 — «The CIWA-Ar is not copyrighted and may be reproduced freely». Український текст і межі тяжкості — офіційні: додаток 9, розділ II і додаток 13 Стандарту медичної допомоги «Психічні та поведінкові розлади внаслідок вживання алкоголю», ГС 2025-1897, наказ МОЗ України від 16.12.2025 № 1897; російський — робочий переклад",
+  },
+  {
+    key: "cows",
+    draft: cows,
+    source:
+      "COWS, Wesson, Ling, J Psychoactive Drugs 2003;35(2):253–259 — «This version may be copied and used clinically» (Appendix 1). Український текст — офіційний: додаток 6 до Стандарту медичної допомоги «Психічні та поведінкові розлади внаслідок вживання опіоїдів», ГС 2025-1102, наказ МОЗ України від 11.07.2025 № 1102 (виправлено чотири друкарські помилки); російський — робочий переклад",
+  },
+  // ── /k-addiction ──
+  // ── k-suicide ──
+  /*
+   * Группа «суицидальный риск» — docs/instruments/dossiers/suicide.json. Каждый пункт,
+   * ключ, порог и пункт риска сводятся к карточке досье с цитатой правообладателя.
+   *
+   * ASQ и C-SSRS Screener проводит специалист (administration: "clinician"): у ASQ бланк
+   * начинается с «Ask the patient» и валидирован опросом персоналом; у C-SSRS разрешение
+   * правообладателя покрывает встраивание в систему учреждения, а самозаполнение на
+   * устройстве — это eC-SSRS под лицензией Clario. SIDAS — самоотчёт, как в валидации.
+   *
+   * Суммы нет у C-SSRS вовсе (уровень риска — по самому тяжёлому «да»), у ASQ шкала — лишь
+   * правило «да хотя бы на один из вопросов 1–4», записанное числом; острота у обеих — в
+   * сигналах риска по пунктам. Не заведены (карточки досье с причиной): DSI-SS, P4, PSS-3 —
+   * нет заявления правообладателя о свободном воспроизведении; SIBS — украинская и русская
+   * версии не валидированы и выдаются только после регистрации.
+   */
+  {
+    key: "asq",
+    draft: asq,
+    source:
+      "ASQ (Ask Suicide-Screening Questions), NIMH: Horowitz та ін., Arch Pediatr Adolesc Med 2012; дорослі — Horowitz та ін., Psychosomatics 2020. Бланк NIMH Toolkit 9/29/25, public domain. Російський текст запитань — офіційний переклад NIMH (2017); український — робочий переклад",
+    notScored: ASQ_NOT_SCORED,
+  },
+  {
+    key: "cssrs",
+    draft: cssrs,
+    source:
+      "C-SSRS Screener (Screen Version — Recent, з точками сортування ризику), Posner та ін., The Research Foundation for Mental Hygiene, 2008; валідизація — Posner та ін., Am J Psychiatry 2011. Український і російський тексти — офіційні переклади правовласника (The Columbia Lighthouse Project). Вільне використання й вбудовування в електронну систему закладу охорони здоров’я — за заявою правовласника",
+    notScored: CSSRS_NOT_SCORED,
+  },
+  {
+    key: "sidas",
+    draft: sidas,
+    source:
+      "SIDAS, van Spijker, Batterham, Calear, Farrer, Christensen, Reynolds, Kerkhof, Suicide and Life-Threatening Behavior 2014 (Centre for Mental Health Research, ANU): «No permission required – please cite reference». Переклад робочий",
+  },
+  // ── /k-suicide ──
+  // ── k-trauma ──
+  /*
+   * Травма, горе и война — каталог 2.1 (docs/instruments/dossiers/trauma.json; ключ каталога
+   * равен ключу карточки).
+   *
+   * В отличие от первых трёх методик группы, лицензия здесь не держится на заявлении
+   * учреждения: у каждой — слова правообладателя в карточке досье. Чей текст — бланк
+   * правообладателя или наш рабочий перевод — сказано в описании самой методики. Там же
+   * сказано, что методика считает меньше, чем на бумаге, если так: диагностические алгоритмы с
+   * порогом по пункту и «И» по кластерам движку не выразить — его шкала линейна.
+   *
+   * Не заведены (причины — в карточках досье): PG-13-R (воспроизведение только с разрешения
+   * авторов по запросу), DAR-5 и TSQ (нет заявления правообладателя о свободном
+   * воспроизведении), PTGI-SF (выдаётся по запросу), IES-R (правообладатель отказал), MISS-M-SF
+   * (нет порога и разрешения), IPGDS (ключ подсчёта «у розробці»), MIDS (правило «все ответы
+   * части 1 — ноль, дальше не заполнять» требует «ИЛИ» по шести пунктам, а условия показа
+   * движка соединяются только через «И»).
+   */
+  {
+    key: "itq",
+    draft: itq,
+    source:
+      "ITQ, Cloitre, Shevlin, Brewin, Bisson, Roberts, Maercker, Karatzias, Hyland, International Trauma Consortium, Acta Psychiatr Scand 2018 — public domain за заявою правовласника; український і російський тексти — бланки ITC (українську версію досліджено: Ho та ін., J Trauma Stress 2023). Рахуються розмірні бали; діагностичний алгоритм система не обчислює",
+    notScored: ITQ_NOT_SCORED,
+  },
+  {
+    key: "tgi_sr_plus",
+    draft: tgiSrPlus,
+    source:
+      "TGI-SR+, Lenferink, Eisma, Smid, de Keijser, Boelen, Compr Psychiatry 2022 — CC BY 4.0 (https://osf.io/rqn5k/); український і російський тексти — переклад Boelen та ін., 2022, виправлено друкарські помилки бланків; український поріг — Rispa Hoyos та ін., Clin Psychol Eur 2026",
+  },
+  {
+    key: "ctsr_ua",
+    draft: ctsrUa,
+    source:
+      "CTSR, оновлена українська версія: Frankova, Senyk, Avramchuk, Leshchuk, Rudys, Kurapov, Goral, Eur J Psychotraumatol 2025 — CC BY-NC 4.0, лише некомерційне використання; оригінал — Goral та ін., PLoS One 2021. Російський текст — робочий переклад",
+  },
+  {
+    key: "lec5",
+    draft: lec5,
+    source:
+      "LEC-5 (стандартна версія), Weathers, Blake, Schnurr, Kaloupek, Marx, Keane, National Center for PTSD, 2013 (бланк 2018) — public domain за заявою правовласника; балу немає за визначенням правовласника; переклад робочий",
+    notScored: LEC5_NOT_SCORED,
+  },
+  // ── /k-trauma ──
 ];

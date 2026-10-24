@@ -519,7 +519,7 @@ function BatteryRecord({
               return (
                 <li
                   key={i.surveyId}
-                  className="grid grid-cols-[28px_auto_minmax(0,1fr)_auto_96px] items-center gap-2.5 border-t border-divider py-2 first:border-t-0 first:pt-0.5 max-[1180px]:grid-cols-[28px_auto_minmax(0,1fr)_auto]"
+                  className="grid grid-cols-[28px_auto_minmax(0,1fr)_auto_minmax(96px,auto)] items-center gap-2.5 border-t border-divider py-2 first:border-t-0 first:pt-0.5 max-[1180px]:grid-cols-[28px_auto_minmax(0,1fr)_auto]"
                 >
                   <span className="grid size-6 place-items-center rounded-full bg-sunk text-[11.5px] font-extrabold text-text-2">{k + 1}</span>
                   {code ? (

@@ -1,4 +1,4 @@
-import type { Administration, Lang, SurveyFull, SurveyGroupWithCounts, UiKey } from "@quizzy/shared";
+import type { Administration, Lang, SurveyDomain, SurveyFull, SurveyGroupWithCounts, UiKey } from "@quizzy/shared";
 import { contentDefault } from "../../dictionary";
 
 /*
@@ -40,6 +40,12 @@ export interface Draft {
   alertEscalateMinutes?: number | null;
   safetyPlan?: Record<string, string> | null;
   showResultsToPatient?: boolean;
+  /**
+   * Направление — «что измеряет» (shared/domains.ts); null — не выбрано. У
+   * методики общего каталога его задаёт каталог (см. catalogKey), и на
+   * сервер оно из конструктора не уходит.
+   */
+  domain?: SurveyDomain | null;
   /**
    * Секции версии — переносятся как есть: своего редактора у них в
    * конструкторе нет, но вопросы ссылаются на них (DraftQuestion.sectionKey),
@@ -91,6 +97,14 @@ export interface Draft {
    * участвует и из черновика вырезается вместе с остальными полями редактора.
    */
   folderId?: string | null;
+  /**
+   * Ключ общего каталога, если методика оттуда. Поле редактора: на сервер не
+   * уходит, а говорит конструктору, что направление методики задаёт каталог
+   * (установщик, catalogDomains.ts). Пустое направление в черновике,
+   * открытом до выката каталога, иначе стёрло бы проставленное выкатом —
+   * и установщик счёл бы пустоту правкой учреждения.
+   */
+  catalogKey?: string | null;
 }
 
 export interface DraftOption {
@@ -401,6 +415,8 @@ export function toDraft(s: SurveyFull, groups: SurveyGroupWithCounts[]): Draft {
     alertEscalateMinutes: s.alertEscalateMinutes,
     safetyPlan: locOrNull(s.safetyPlan),
     showResultsToPatient: s.showResultsToPatient,
+    domain: s.domain ?? null,
+    catalogKey: s.catalogKey ?? null,
     sections: (s.sections ?? []).map((sec) => ({ key: sec.id, title: loc(sec.title), description: locOrNull(sec.description) })),
     questions,
     scales,
@@ -853,6 +869,8 @@ export function toPayload(draft: Draft) {
     answers: _a,
     folderId: _f,
     totalKeyManaged: _t,
+    catalogKey,
+    domain,
     sections,
     ...rest
   } = withTotalKey(draft);
@@ -860,6 +878,8 @@ export function toPayload(draft: Draft) {
 
   return {
     ...rest,
+    // направление методики каталога ведёт каталог — из конструктора оно не уходит (см. Draft.catalogKey)
+    ...(catalogKey ? {} : { domain }),
     sections: (sections ?? []).map((sec) => ({ key: sec.key, title: sec.title, description: sec.description ?? null })),
     questions: questions.map(({ uid: _q, options, logic, ...q }) => ({
       ...q,
@@ -928,8 +948,18 @@ export function withUids(draft: Draft): Draft {
  * ложится на версию, перечитанную с сервера; правку, сохранённую уже после
  * неё, сервер по-прежнему не даст затереть.
  */
-export function applyJsonDraft(current: Pick<Draft, "baseVersionId">, parsed: Draft): Draft {
-  return normalizeDraft({ ...EMPTY, ...parsed, baseVersionId: current.baseVersionId ?? null });
+export function applyJsonDraft(current: Pick<Draft, "baseVersionId" | "catalogKey">, parsed: Draft): Draft {
+  /*
+   * Ключ каталога — тоже поле открытой методики, а не текста: вставленный JSON
+   * без него сделал бы направление методики каталога правимым, с чужим — снял
+   * бы направление методики учреждения с отправки (toPayload).
+   */
+  return normalizeDraft({
+    ...EMPTY,
+    ...parsed,
+    baseVersionId: current.baseVersionId ?? null,
+    catalogKey: current.catalogKey ?? null,
+  });
 }
 
 /**

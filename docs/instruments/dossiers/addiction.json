@@ -1,0 +1,662 @@
+[
+ {
+  "key": "cuditr",
+  "title_en": "Cannabis Use Disorders Identification Test – Revised (CUDIT-R)",
+  "title_uk": null,
+  "title_ru": null,
+  "authors": "Simon J. Adamson, Frances J. Kay-Lambkin, Amanda L. Baker, Terry J. Lewin, Louise Thornton, Brian J. Kelly, J. Douglas Sellman. Первый автор — заместитель директора National Addiction Centre, University of Otago (Новая Зеландия)",
+  "year": 2010,
+  "citation": "Adamson SJ, Kay-Lambkin FJ, Baker AL, Lewin TJ, Thornton L, Kelly BJ, Sellman JD. An improved brief measure of cannabis misuse: the Cannabis Use Disorders Identification Test-Revised (CUDIT-R). Drug Alcohol Depend. 2010;110(1-2):137-143. doi:10.1016/j.drugalcdep.2010.02.017. PMID 20347232. Использованный бланк — авторская форма с заявлением о public domain и правилом подсчёта: копия Canadian Public Health Association (https://www.cpha.ca/sites/default/files/uploads/resources/cannabis/cudit-r(1).pdf) и копия DePaul University 2010 г. с тем же заявлением и интерпретацией баллов (https://offices.depaul.edu/student-affairs/support-services/health-wellness/substance-abuse/Documents/2010%20CUDIT-R%20with%20scoring.pdf)",
+  "license": {
+   "verdict": "свободна (public domain по заявлению на авторском бланке)",
+   "quote": "This scale is in the public domain and is free to use with appropriate citation: Adamson SJ, Kay-Lambkin FJ, Baker AL, Lewin TJ, Thornton L, Kelly BJ, and Sellman JD. (2010). An Improved Brief Measure of Cannabis Misuse: The Cannabis Use Disorders Identification Test – Revised (CUDIT-R). Drug and Alcohol Dependence 110:137-143.",
+   "url": "https://www.cpha.ca/sites/default/files/uploads/resources/cannabis/cudit-r(1).pdf",
+   "conditions": "Единственное условие — ссылка на Adamson et al. 2010: она стоит в описании методики и в журнале установки. Подтверждение второго источника — NIH PhenX Toolkit, протокол «Assessment of Cannabis Use Disorder» (CUDIT-R): «This protocol is freely available; permission not required for use.» (https://www.phenxtoolkit.org/protocols/view/510310). Оговорка: заявление напечатано на бланке, который распространяют авторы и учреждения (CPHA, DePaul University, Caltech, PhenX); отдельной страницы University of Otago с этим текстом найти не удалось. Сама статья в Drug and Alcohol Dependence — «(c) 2010 Elsevier Ireland Ltd. All rights reserved.», но статья не воспроизводится: воспроизводится шкала, объявленная авторами общественным достоянием."
+  },
+  "items": [
+   "Have you used any cannabis over the past six months? YES / NO [GATE — «If YES, please answer the following questions about your cannabis use.»]",
+   "1. How often do you use cannabis?",
+   "2. How many hours were you “stoned” on a typical day when you had been using cannabis?",
+   "3. How often during the past 6 months did you find that you were not able to stop using cannabis once you had started?",
+   "4. How often during the past 6 months did you fail to do what was normally expected from you because of using cannabis?",
+   "5. How often in the past 6 months have you devoted a great deal of your time to getting, using, or recovering from cannabis?",
+   "6. How often in the past 6 months have you had a problem with your memory or concentration after using cannabis?",
+   "7. How often do you use cannabis in situations that could be physically hazardous, such as driving, operating machinery, or caring for children:",
+   "8. Have you ever thought about cutting down, or stopping, your use of cannabis?"
+  ],
+  "items_note": "Первый элемент массива — отсеивающий вопрос бланка, в сумму он не входит (как gate у PC-PTSD-5 в trauma.json); пункты бланка 1–8 — пункты системы 2–9. Текст дословно с авторского бланка (копии CPHA и DePaul совпадают слово в слово). Инструкция бланка: «If YES, please answer the following questions about your cannabis use. Circle the response that is most correct for you in relation to your cannabis use over the past six months». Период — последние 6 месяцев.",
+  "anchors": [
+   {
+    "item": 1,
+    "options": [
+     {"label": "Never", "score": 0},
+     {"label": "Monthly or less", "score": 1},
+     {"label": "2-4 times a month", "score": 2},
+     {"label": "2-3 times a week", "score": 3},
+     {"label": "4 or more times a week", "score": 4}
+    ]
+   },
+   {
+    "item": 2,
+    "options": [
+     {"label": "Less than 1", "score": 0},
+     {"label": "1 or 2", "score": 1},
+     {"label": "3 or 4", "score": 2},
+     {"label": "5 or 6", "score": 3},
+     {"label": "7 or more", "score": 4}
+    ]
+   },
+   {
+    "items": [3, 4, 5, 6, 7],
+    "options": [
+     {"label": "Never", "score": 0},
+     {"label": "Less than monthly", "score": 1},
+     {"label": "Monthly", "score": 2},
+     {"label": "Weekly", "score": 3},
+     {"label": "Daily or almost daily", "score": 4}
+    ]
+   },
+   {
+    "item": 8,
+    "options": [
+     {"label": "Never", "score": 0},
+     {"label": "Yes, but not in the past 6 months", "score": 2},
+     {"label": "Yes, during the past 6 months", "score": 4}
+    ]
+   }
+  ],
+  "anchors_note": "Номера в anchors — пункты бланка (1–8), а не системы.",
+  "reverse": [],
+  "scoring": "Дословно с авторского бланка (копия DePaul): «This questionnaire was designed for self administration and is scored by adding each of the 8 items: - Question 1-7 are scored on a 0-4 scale - Question 8 is scored 0, 2 or 4.» Сумма 0–32. Подшкал нет. Отсеивающий вопрос в сумму не входит; при «NO» бланк остальные вопросы не задаёт.",
+  "bands": [
+   {
+    "from": 0,
+    "to": 7,
+    "label": "Below the hazardous-use cut-off",
+    "label_uk": "Нижче порогу небезпечного вживання",
+    "source": "Дополнение до порога бланка «Scores of 8 or more indicate hazardous cannabis use»: 0–7 — ниже порога. Собственного названия у этого диапазона в первоисточнике нет."
+   },
+   {
+    "from": 8,
+    "to": 11,
+    "label": "Hazardous cannabis use",
+    "label_uk": "Небезпечне вживання канабісу",
+    "source": "Авторский бланк (DePaul, Caltech): «Scores of 8 or more indicate hazardous cannabis use, while scores of 12 or more indicate a possible cannabis use disorder for which further intervention may be required.» То же — NIH PhenX, протокол 510310."
+   },
+   {
+    "from": 12,
+    "to": 32,
+    "label": "Possible cannabis use disorder — further intervention may be required",
+    "label_uk": "Можливий розлад вживання канабісу — може знадобитися подальше втручання",
+    "source": "Тот же бланк и PhenX (см. выше)."
+   }
+  ],
+  "bands_note": "РАСХОЖДЕНИЕ ПОРОГОВ, ПРОВЕРЕНО. В самой статье Adamson 2010 оптимальный порог для текущего расстройства по DSM-IV — 13, а не 12. Дословно у Bonn-Miller MO, Heinz AJ, Smith EV, Bruno R, Adamson S. Cannabis Cannabinoid Res. 2016;1(1):252–261 (PMC5531365; соавтор — первый автор CUDIT-R): «Adamson et al. were able to detect 91.3% of individuals with a CUD by using a cut point 13 or above on the CUDIT-R, whereas 90.0% of those without a CUD could be detected by using a cut point below 13.» Там же для DSM-5: «a cut-off of 10 yielded the highest combined values of a sensitivity of 80.43 and a specificity of 74.76» (выборка 1) и «a cut-off of 9 yielded the highest combined values of a sensitivity of 80.72 and a specificity of 72.00» (выборка 2). Аннотация Adamson 2010: «144 patients enrolled in a clinical trial for concurrent depression and substance misuse … High sensitivity (91%) and specificity (90%) were achieved.» Система берёт пороги авторского бланка (8 и 12): их правообладатель печатает вместе со шкалой. Порог 13 (DSM-IV) и 9–10 (DSM-5) названы в описании шкалы, полосами не реализованы. Украинских норм нет.",
+  "risk_items": [
+   {
+    "n": 8,
+    "why": "Номер системы (пункт 7 бланка): «How often do you use cannabis in situations that could be physically hazardous, such as driving, operating machinery, or caring for children». Пункт о вреде другим и себе — за рулём, с механизмами (для военнослужащего — и с оружием), рядом с детьми; по правилу каталога такой пункт обязан нести пометку риска."
+   }
+  ],
+  "risk_items_note": "Правила тревоги по отдельному пункту первоисточник НЕ даёт. Порог «любая частота, кроме Never» и тяжесть moderate — решение системы, по аналогии с девятым пунктом PHQ-9 (тревога с первого ненулевого ответа): сам факт употребления в опасной ситуации — повод разобрать случай. «severe» отвергнута: неотложности пункт не устанавливает.",
+  "translation": {
+   "uk": {
+    "exists": null,
+    "by": null,
+    "free": null,
+    "url": null,
+    "note": "Официального украинского текста CUDIT-R ни у авторов, ни у МОЗ Украины не найдено: клинические настановы и стандарты МОЗ 2025 г. по ПАВ (ГС 2025-84, КН 2025-84) упоминают инструменты скрининга каннабиса (CAST, CPQ-A-S, SDS), но текста CUDIT-R не приводят. Перевод — рабочий (WORKING_TRANSLATION)."
+   },
+   "ru": {
+    "exists": null,
+    "by": null,
+    "free": null,
+    "url": null,
+    "note": "Официального русского текста от авторов не найдено. Перевод — рабочий."
+   }
+  },
+  "example": {
+   "answers": ["gate: YES", "1: 2-3 times a week = 3", "2: 3 or 4 = 2", "3: Less than monthly = 1", "4: Less than monthly = 1", "5: Never = 0", "6: Monthly = 2", "7: Never = 0", "8: Yes, but not in the past 6 months = 2"],
+   "total": 11,
+   "band": "Hazardous cannabis use (8–11)",
+   "note": "Опубликованного пошагового примера подсчёта в первоисточнике нет; пример арифметический по ключу бланка: 3+2+1+1+0+2+0+2 = 11 — выше 8, ниже 12."
+  },
+  "example2": {
+   "answers": ["gate: YES", "1: 4 or more times a week = 4", "2: 5 or 6 = 3", "3: Monthly = 2", "4: Monthly = 2", "5: Less than monthly = 1", "6: Weekly = 3", "7: Less than monthly = 1", "8: Yes, during the past 6 months = 4"],
+   "total": 20,
+   "band": "Possible cannabis use disorder (12–32); пункт 7 бланка ≥ 1 — пометка риска",
+   "note": "4+3+2+2+1+3+1+4 = 20. Третий контрольный случай: gate = NO → остальные пункты не задаются, балл 0."
+  },
+  "verdict": "завести — текст, ключ, пороги и заявление о public domain взяты с авторского бланка; перевод рабочий на оба языка; порог статьи (13, DSM-IV) и DSM-5 (9–10) назвать в описании шкалы, полосами не реализовывать."
+ },
+ {
+  "key": "ciwaar",
+  "title_en": "Clinical Institute Withdrawal Assessment of Alcohol Scale, Revised (CIWA-Ar)",
+  "title_uk": "Шкала оцінки СВ алкоголю (CIWA-Ar)",
+  "title_ru": null,
+  "authors": "John T. Sullivan, Karen Sykora, Jacob Schneiderman, Claudio A. Naranjo, Edward M. Sellers (Addiction Research Foundation, Toronto)",
+  "year": 1989,
+  "citation": "Sullivan JT, Sykora K, Schneiderman J, Naranjo CA, Sellers EM. Assessment of alcohol withdrawal: the revised Clinical Institute Withdrawal Assessment for Alcohol scale (CIWA-Ar). Br J Addict. 1989;84(11):1353-1357. Использованный английский бланк — NHS Scotland, Right Decisions (https://rightdecisions.scot.nhs.uk/media/1854/ciwa-ar.pdf). Официальный украинский текст — додаток 9 до Стандарту медичної допомоги «Психічні та поведінкові розлади внаслідок вживання алкоголю», ГС 2025-1897, наказ МОЗ України від 16.12.2025 № 1897 (https://www.dec.gov.ua/files/nGL5eRiycR/dn_1897_16122025_dod.pdf)",
+  "license": {
+   "verdict": "свободна (не защищена авторским правом по заявлению авторов)",
+   "quote": "The CIWA-Ar is not copyrighted and may be reproduced freely. This assessment for monitoring withdrawal symptoms requires approximately 5 minutes to administer. The maximum score is 67 (see instrument). Patients scoring less than 10 do not usually need additional medication for withdrawal.",
+   "url": "https://rightdecisions.scot.nhs.uk/media/1854/ciwa-ar.pdf",
+   "conditions": "Условий нет. То же заявление в официальном украинском тексте МОЗ: «Опитувальник CIWA-Ar не захищений авторським правом і може вільно відтворюватися.» (ГС 2025-1897, додаток 9). Условие сайта ДЕЦ МОЗ для самого документа: «При повному або частковому використанні інформації, розміщеної на веб-сайті, посилання на джерело інформації обов'язкове.» — ссылка стоит в описании и в журнале установки."
+  },
+  "items": [
+   "NAUSEA AND VOMITING -- Ask \"Do you feel sick to your stomach? Have you vomited?\" Observation.",
+   "TACTILE DISTURBANCES -- Ask \"Have you any itching, pins and needles sensations, any burning, any numbness, or do you feel bugs crawling on or under your skin?\" Observation.",
+   "TREMOR -- Arms extended and fingers spread apart. Observation.",
+   "AUDITORY DISTURBANCES -- Ask \"Are you more aware of sounds around you? Are they harsh? Do they frighten you? Are you hearing anything that is disturbing to you? Are you hearing things you know are not there?\" Observation.",
+   "PAROXYSMAL SWEATS -- Observation.",
+   "VISUAL DISTURBANCES -- Ask \"Does the light appear to be too bright? Is its color different? Does it hurt your eyes? Are you seeing anything that is disturbing to you? Are you seeing things you know are not there?\" Observation.",
+   "ANXIETY -- Ask \"Do you feel nervous?\" Observation.",
+   "HEADACHE, FULLNESS IN HEAD -- Ask \"Does your head feel different? Does it feel like there is a band around your head?\" Do not rate for dizziness or lightheadedness. Otherwise, rate severity.",
+   "AGITATION -- Observation.",
+   "ORIENTATION AND CLOUDING OF SENSORIUM -- Ask \"What day is this? Where are you? Who am I?\""
+  ],
+  "items_note": "Порядок — как в официальном украинском тексте (додаток 9 ГС 2025-1897): он читает двухколоночный английский бланк построчно (тошнота, тактильные, тремор, слуховые, пот, зрительные, тревога, головная боль, возбуждение, ориентировка). На сумму порядок не влияет. Строки бланка «Pulse or heart rate, taken for one minute» и «Blood pressure» в балл не входят и пунктами не заведены — инструкция просит записать их в медкарту. Заполняет специалист: часть пунктов — вопрос пациенту, часть — наблюдение.",
+  "anchors": [
+   {"item": 1, "options": [{"label": "0 no nausea and no vomiting", "score": 0}, {"label": "1 mild nausea with no vomiting", "score": 1}, {"label": "2", "score": 2}, {"label": "3", "score": 3}, {"label": "4 intermittent nausea with dry heaves", "score": 4}, {"label": "5", "score": 5}, {"label": "6", "score": 6}, {"label": "7 constant nausea, frequent dry heaves and vomiting", "score": 7}]},
+   {"item": 2, "options": [{"label": "0 none", "score": 0}, {"label": "1 very mild itching, pins and needles, burning or numbness", "score": 1}, {"label": "2 mild itching, pins and needles, burning or numbness", "score": 2}, {"label": "3 moderate itching, pins and needles, burning or numbness", "score": 3}, {"label": "4 moderately severe hallucinations", "score": 4}, {"label": "5 severe hallucinations", "score": 5}, {"label": "6 extremely severe hallucinations", "score": 6}, {"label": "7 continuous hallucinations", "score": 7}]},
+   {"item": 3, "options": [{"label": "0 no tremor", "score": 0}, {"label": "1 not visible, but can be felt fingertip to fingertip", "score": 1}, {"label": "2", "score": 2}, {"label": "3", "score": 3}, {"label": "4 moderate, with patient's arms extended", "score": 4}, {"label": "5", "score": 5}, {"label": "6", "score": 6}, {"label": "7 severe, even with arms not extended", "score": 7}]},
+   {"item": 4, "options": [{"label": "0 not present", "score": 0}, {"label": "1 very mild harshness or ability to frighten", "score": 1}, {"label": "2 mild harshness or ability to frighten", "score": 2}, {"label": "3 moderate harshness or ability to frighten", "score": 3}, {"label": "4 moderately severe hallucinations", "score": 4}, {"label": "5 severe hallucinations", "score": 5}, {"label": "6 extremely severe hallucinations", "score": 6}, {"label": "7 continuous hallucinations", "score": 7}]},
+   {"item": 5, "options": [{"label": "0 no sweat visible", "score": 0}, {"label": "1 barely perceptible sweating, palms moist", "score": 1}, {"label": "2", "score": 2}, {"label": "3", "score": 3}, {"label": "4 beads of sweat obvious on forehead", "score": 4}, {"label": "5", "score": 5}, {"label": "6", "score": 6}, {"label": "7 drenching sweats", "score": 7}]},
+   {"item": 6, "options": [{"label": "0 not present", "score": 0}, {"label": "1 very mild sensitivity", "score": 1}, {"label": "2 mild sensitivity", "score": 2}, {"label": "3 moderate sensitivity", "score": 3}, {"label": "4 moderately severe hallucinations", "score": 4}, {"label": "5 severe hallucinations", "score": 5}, {"label": "6 extremely severe hallucinations", "score": 6}, {"label": "7 continuous hallucinations", "score": 7}]},
+   {"item": 7, "options": [{"label": "0 no anxiety, at ease", "score": 0}, {"label": "1 mild anxious", "score": 1}, {"label": "2", "score": 2}, {"label": "3", "score": 3}, {"label": "4 moderately anxious, or guarded, so anxiety is inferred", "score": 4}, {"label": "5", "score": 5}, {"label": "6", "score": 6}, {"label": "7 equivalent to acute panic states as seen in severe delirium or acute schizophrenic reactions", "score": 7}]},
+   {"item": 8, "options": [{"label": "0 not present", "score": 0}, {"label": "1 very mild", "score": 1}, {"label": "2 mild", "score": 2}, {"label": "3 moderate", "score": 3}, {"label": "4 moderately severe", "score": 4}, {"label": "5 severe", "score": 5}, {"label": "6 very severe", "score": 6}, {"label": "7 extremely severe", "score": 7}]},
+   {"item": 9, "options": [{"label": "0 normal activity", "score": 0}, {"label": "1 somewhat more than normal activity", "score": 1}, {"label": "2", "score": 2}, {"label": "3", "score": 3}, {"label": "4 moderately fidgety and restless", "score": 4}, {"label": "5", "score": 5}, {"label": "6", "score": 6}, {"label": "7 paces back and forth during most of the interview, or constantly thrashes about", "score": 7}]},
+   {"item": 10, "options": [{"label": "0 oriented and can do serial additions", "score": 0}, {"label": "1 cannot do serial additions or is uncertain about date", "score": 1}, {"label": "2 disoriented for date by no more than 2 calendar days", "score": 2}, {"label": "3 disoriented for date by more than 2 calendar days", "score": 3}, {"label": "4 disoriented for place/or person", "score": 4}]}
+  ],
+  "anchors_note": "Номера без подписи (2, 3, 5, 6 у части пунктов) — так на бланке: промежуточные значения между описанными. Пункт ориентировки — 0–4, остальные девять — 0–7.",
+  "reverse": [],
+  "scoring": "Сумма десяти пунктов: «Total CIWA-Ar Score … Maximum Possible Score 67» (бланк). 9 × 7 + 4 = 67. Подшкал нет.",
+  "bands": [
+   {
+    "from": 0,
+    "to": 9,
+    "label": "Mild withdrawal (< 10): additional medication usually not needed",
+    "label_uk": "Легкий синдром відміни (менше 10 балів)",
+    "source": "ГС 2025-1897, розділ II, п. 3, підпункт 3: «бали за шкалою CIWA-Ar нижче 10 свідчать про легку форму СВ; від 10 до 20 – помірною формою СВ, а вище 20 – тяжкою формою СВ»; додаток 13: «Легкий < 10 Кожні 6 годин Застосування діазепаму не показане». Бланк: «Patients scoring less than 10 do not usually need additional medication for withdrawal.»"
+   },
+   {
+    "from": 10,
+    "to": 20,
+    "label": "Moderate withdrawal (10–20)",
+    "label_uk": "Помірний синдром відміни (10–20 балів)",
+    "source": "ГС 2025-1897, розділ II, п. 3, підпункт 3 (см. выше); додаток 13: «Помірний 10 - 20 Кожні 4 години 5 - 10 мг»; розділ II, п. 3, підпункт 5: «пацієнтам з показниками CIWA-Ar більше 10 балів моніторинг проводиться щонайменше кожні 4 години»"
+   },
+   {
+    "from": 21,
+    "to": 67,
+    "label": "Severe withdrawal (> 20)",
+    "label_uk": "Тяжкий синдром відміни (понад 20 балів)",
+    "source": "ГС 2025-1897, розділ II, п. 3, підпункт 3 (см. выше); додаток 13: «Тяжкий > 20 Кожні 1 - 2 години 20 мг»; підпункт 5: «пацієнтам з тяжким СВ та показниками CIWA-Ar більше 20 балів моніторинг проводиться кожні 1-2 години»"
+   }
+  ],
+  "bands_source": "Границы — из Стандарта МОЗ Украины ГС 2025-1897 (украинский нормативный документ, а не из статьи 1989 г.). Бланк авторов даёт один ориентир — «less than 10» без лечения; верхний порог 20 — только у МОЗ. Тот же стандарт: «Пацієнти з показниками CIWA-Ar понад 10 балів мають високий ризик розвитку ускладнень СВ, якщо вони не отримують медикаментозного лікування.» Целые баллы: «вище 20» = 21 и больше.",
+  "bands_warning": "ГС 2025-1897, розділ II, п. 3, підпункт 6: «шкали для визначення тяжкості СВ не використовуються для осіб, які одночасно припиняють вживання інших психоактивних речовин, які потенційно можуть викликати або посилити СВ, та/або для пацієнтів, які мають значну медичну чи психіатричну коморбідність» — оговорка стоит в описании методики.",
+  "risk_items": [],
+  "risk_items_note": "Пунктов о суициде, самоповреждении или вреде другим нет. Галлюцинации и дезориентация входят в сумму и поднимают полосу; отдельного правила тревоги по пункту первоисточник не даёт — не выдумываем. Тяжесть полос: < 10 — mild (не открывает случай), 10–20 — moderate, > 20 — severe: тяжёлый синдром отмены алкоголя — неотложное состояние (судороги, делирий), МОЗ требует наблюдения каждые 1–2 часа.",
+  "translation": {
+   "uk": {
+    "exists": true,
+    "by": "МОЗ України — додаток 9 «Шкала оцінки СВ алкоголю (CIWA-Ar)» до Стандарту медичної допомоги «Психічні та поведінкові розлади внаслідок вживання алкоголю», ГС 2025-1897, затверджено наказом МОЗ України від 16.12.2025 № 1897, статус «Чинний»",
+    "free": true,
+    "url": "https://www.dec.gov.ua/files/nGL5eRiycR/dn_1897_16122025_dod.pdf",
+    "items_uk": [
+     "НУДОТА ТА БЛЮВАННЯ: Запитайте: «У вас є нудота? Чи було блювання?» Спостереження: 0. Немає нудоти та блювання; 1. Легка нудота без блювоти; 2.; 3.; 4. Періодична нудота з позивами на блювоту; 5.; 6.; 7. Постійна нудота, часті позиви на блювоту та блювання",
+     "ТАКТИЛЬНІ ПОРУШЕННЯ: Запитайте: «Чи відчуваєте ви свербіж, поколювання, печіння, оніміння, чи відчуваєте ви, що ніби мурашки повзають по вашій шкірі або під нею?» Спостереження: 0. Відсутнє; 1. Дуже легкий свербіж, поколювання, печіння або оніміння; 2. Легкий свербіж, поколювання, печіння або оніміння; 3. Помірний свербіж, поколювання, печіння або оніміння; 4. Помірно тяжкі галюцинації; 5. Тяжкі галюцинації; 6. Надзвичайно тяжкі галюцинації; 7. Тривалі галюцинації",
+     "ТРЕМОР: Руки витягнуті та пальці розведені в сторони. Спостереження: 0. Відсутність тремору; 1. Не видно, але можна відчути від кінчика пальця до кінчика пальця; 2.; 3.; 4. Помірний, при витягнутих руках пацієнта; 5.; 6.; 7. Тяжкий, навіть якщо руки не витягнуті",
+     "СЛУХОВІ ПОРУШЕННЯ: Запитайте: «Чи стали ви краще розрізняти звуки навколо себе? Чи вони різкі? Чи лякають вони вас? Чи чуєте ви щось, що вас турбує? Чи чуєте ви речі, яких, як ви знаєте, там немає?» Спостереження: 0. Не спостерігаються; 1. Дуже легка різкість або здатність налякати; 2. Легка різкість або здатність налякати; 3. Помірна різкість або здатність налякати; 4. Помірно тяжкі галюцинації; 5. Тяжкі галюцинації; 6. Надзвичайно тяжкі галюцинації; 7. Тривалі галюцинації",
+     "ПАРОКСИЗМАЛЬНЕ ПОТОВИДІЛЕННЯ: Спостереження: 0. Поту не спостерігається; 1. Ледь помітне потовиділення, долоні вологі; 2.; 3.; 4. На лобі помітні крапельки поту; 5.; 6.; 7. Проливний піт",
+     "ЗОРОВІ ПОРУШЕННЯ: Запитайте: «Чи не здається світло занадто яскравим? Чи відрізняється його колір? Чи не ріже воно очі? Чи бачите ви щось, що вас турбує? Чи бачите ви речі, яких, як ви знаєте, там немає?» Спостереження: 0. Не спостерігаються; 1. Дуже легка чутливість; 2. Легка чутливість; 3. Помірна чутливість; 4. Помірно тяжкі галюцинації; 5. Тяжкі галюцинації; 6. Надзвичайно тяжкі галюцинації; 7. Тривалі галюцинації",
+     "ТРИВОЖНІСТЬ: Запитайте: «Чи відчуваєте ви нервозність?» Спостереження: 0. Відсутність тривожності, відчуття спокою; 1. Легка тривожність; 2.; 3.; 4. Помірна тривожність, або настороженість, так що можна припустити наявність тривожності; 5.; 6.; 7. Еквівалентно гострому панічному стану, що спостерігається при тяжкому делірії або гострих шизофренічних реакціях",
+     "ГОЛОВНИЙ БІЛЬ, ВАЖКІСТЬ У ГОЛОВІ: Запитайте: «Чи відчуваєте ви щось інакше в голові? Чи не здається, що навколо голови є пов’язка?» Не оцінюйте наявність запаморочення або легкого головокружіння. В іншому випадку оцініть ступінь тяжкості. Спостереження: 0. Не спостерігається; 1. Дуже легкий; 2. Легкий; 3. Помірний; 4. Помірно тяжкий; 5. Тяжкий; 6. Дуже тяжкий; 7. Вкрай тяжкий",
+     "ЗБУДЖЕННЯ: Спостереження: 0. Нормальна активність; 1. Дещо більше, ніж нормальна активність; 2.; 3.; 4. Помірно непосидючий і неспокійний; 5.; 6.; 7. Протягом більшої частини інтерв’ю ходить туди-сюди або постійно кидається в різні сторони",
+     "ОРІЄНТАЦІЯ ТА ЗМІНА СВІДОМОСТІ: Запитайте: «Який сьогодні день? Де ви знаходитесь? Хто я?» Спостереження: 0. Орієнтується і може робити послідовні додавання; 1. Не може робити послідовні додавання або не впевнений щодо дати; 2. Дезорієнтований щодо дати не більше ніж на 2 календарні дні; 3. Дезорієнтований щодо дати більш ніж на 2 календарні дні; 4. Дезорієнтований щодо місця/людини"
+    ],
+    "note": "Текст пунктов и вариантов в системе — дословно из додатка 9; изменено только оформление (заголовок пункта строчными, вопрос к пациенту — в подсказке, номер варианта перед текстом). Государственный нормативный документ — свободен. Отличие от английского бланка одно: в официальном тексте нет строки «Rater's Initials» и пульса/давления в балле — их нет и в системе."
+   },
+   "ru": {
+    "exists": null,
+    "by": null,
+    "free": null,
+    "url": null,
+    "note": "Официального русского текста от авторов или украинского органа здравоохранения не найдено. Перевод — рабочий, с английского бланка, сверен по смыслу с официальным украинским."
+   }
+  },
+  "example": {
+   "answers": ["1 nausea: 1", "2 tactile: 0", "3 tremor: 4", "4 auditory: 0", "5 sweats: 1", "6 visual: 0", "7 anxiety: 4", "8 headache: 1", "9 agitation: 1", "10 orientation: 0"],
+   "total": 12,
+   "band": "Помірний синдром відміни (10–20)",
+   "note": "Опубликованного примера подсчёта в первоисточнике нет; пример арифметический: 1+0+4+0+1+0+4+1+1+0 = 12."
+  },
+  "example2": {
+   "answers": ["1 nausea: 4", "2 tactile: 3", "3 tremor: 4", "4 auditory: 2", "5 sweats: 4", "6 visual: 2", "7 anxiety: 4", "8 headache: 2", "9 agitation: 4", "10 orientation: 2"],
+   "total": 31,
+   "band": "Тяжкий синдром відміни (> 20)",
+   "note": "4+3+4+2+4+2+4+2+4+2 = 31. Границы: 9 → легкий, 10 → помірний; 20 → помірний, 21 → тяжкий."
+  },
+  "verdict": "завести — авторы прямо объявили шкалу свободной; официальный украинский текст и границы тяжести — из Стандарта МОЗ ГС 2025-1897; заполняет специалист; русский — рабочий перевод."
+ },
+ {
+  "key": "cows",
+  "title_en": "Clinical Opiate Withdrawal Scale (COWS)",
+  "title_uk": "Клінічна шкала тяжкості синдрому відміни опіоїдів (COWS)",
+  "title_ru": null,
+  "authors": "Donald R. Wesson, Walter Ling",
+  "year": 2003,
+  "citation": "Wesson DR, Ling W. The Clinical Opiate Withdrawal Scale (COWS). J Psychoactive Drugs. 2003;35(2):253-259. Бланк — Appendix 1 статьи, копия NIDA (https://nida.nih.gov/sites/default/files/ClinicalOpiateWithdrawalScale.pdf). Официальный украинский текст — додаток 6 до Стандарту медичної допомоги «Психічні та поведінкові розлади внаслідок вживання опіоїдів», ГС 2025-1102, наказ МОЗ України від 11.07.2025 № 1102 (https://www.dec.gov.ua/files/ZKAK908DUo/2025_1102_st_opioidy.pdf)",
+  "license": {
+   "verdict": "свободна для клинического применения (заявление на бланке авторов)",
+   "quote": "This version may be copied and used clinically.",
+   "url": "https://nida.nih.gov/sites/default/files/ClinicalOpiateWithdrawalScale.pdf",
+   "conditions": "Разрешено копирование и клиническое применение — ровно то, что делает система (заполняет специалист отделения). Заявление напечатано на бланке Appendix 1 самой статьи Wesson & Ling (J Psychoactive Drugs 35(2), 2003), копию распространяет NIDA. Публикация и коммерческое распространение этим не покрыты. Условие ДЕЦ МОЗ для официального украинского текста: «При повному або частковому використанні інформації, розміщеної на веб-сайті, посилання на джерело інформації обов'язкове.»"
+  },
+  "items": [
+   "Resting Pulse Rate: beats/minute. Measured after patient is sitting or lying for one minute",
+   "Sweating: over past 1/2 hour not accounted for by room temperature or patient activity.",
+   "Restlessness Observation during assessment",
+   "Pupil size",
+   "Bone or Joint aches if patient was having pain previously, only the additional component attributed to opiates withdrawal is scored",
+   "Runny nose or tearing Not accounted for by cold symptoms or allergies",
+   "GI Upset: over last 1/2 hour",
+   "Tremor observation of outstretched hands",
+   "Yawning Observation during assessment",
+   "Anxiety or Irritability",
+   "Gooseflesh skin"
+  ],
+  "items_note": "Дословно с бланка Appendix 1 (копия NIDA); порядок — по колонкам бланка, он же в официальном украинском тексте. Инструкция бланка: «For each item, circle the number that best describes the patient's signs or symptom. Rate on just the apparent relationship to opiate withdrawal. For example, if heart rate is increased because the patient was jogging just prior to assessment, the increase pulse rate would not add to the score.» Поля «Patient's Name», «Date and Time», «Reason for this assessment», «Initials of person completing assessment» система ведёт сама — пунктами не заведены.",
+  "anchors": [
+   {"item": 1, "options": [{"label": "0 pulse rate 80 or below", "score": 0}, {"label": "1 pulse rate 81-100", "score": 1}, {"label": "2 pulse rate 101-120", "score": 2}, {"label": "4 pulse rate greater than 120", "score": 4}]},
+   {"item": 2, "options": [{"label": "0 no report of chills or flushing", "score": 0}, {"label": "1 subjective report of chills or flushing", "score": 1}, {"label": "2 flushed or observable moistness on face", "score": 2}, {"label": "3 beads of sweat on brow or face", "score": 3}, {"label": "4 sweat streaming off face", "score": 4}]},
+   {"item": 3, "options": [{"label": "0 able to sit still", "score": 0}, {"label": "1 reports difficulty sitting still, but is able to do so", "score": 1}, {"label": "3 frequent shifting or extraneous movements of legs/arms", "score": 3}, {"label": "5 unable to sit still for more than a few seconds", "score": 5}]},
+   {"item": 4, "options": [{"label": "0 pupils pinned or normal size for room light", "score": 0}, {"label": "1 pupils possibly larger than normal for room light", "score": 1}, {"label": "2 pupils moderately dilated", "score": 2}, {"label": "5 pupils so dilated that only the rim of the iris is visible", "score": 5}]},
+   {"item": 5, "options": [{"label": "0 not present", "score": 0}, {"label": "1 mild diffuse discomfort", "score": 1}, {"label": "2 patient reports severe diffuse aching of joints/muscles", "score": 2}, {"label": "4 patient is rubbing joints or muscles and is unable to sit still because of discomfort", "score": 4}]},
+   {"item": 6, "options": [{"label": "0 not present", "score": 0}, {"label": "1 nasal stuffiness or unusually moist eyes", "score": 1}, {"label": "2 nose running or tearing", "score": 2}, {"label": "4 nose constantly running or tears streaming down cheeks", "score": 4}]},
+   {"item": 7, "options": [{"label": "0 no GI symptoms", "score": 0}, {"label": "1 stomach cramps", "score": 1}, {"label": "2 nausea or loose stool", "score": 2}, {"label": "3 vomiting or diarrhea", "score": 3}, {"label": "5 multiple episodes of diarrhea or vomiting", "score": 5}]},
+   {"item": 8, "options": [{"label": "0 no tremor", "score": 0}, {"label": "1 tremor can be felt, but not observed", "score": 1}, {"label": "2 slight tremor observable", "score": 2}, {"label": "4 gross tremor or muscle twitching", "score": 4}]},
+   {"item": 9, "options": [{"label": "0 no yawning", "score": 0}, {"label": "1 yawning once or twice during assessment", "score": 1}, {"label": "2 yawning three or more times during assessment", "score": 2}, {"label": "4 yawning several times/minute", "score": 4}]},
+   {"item": 10, "options": [{"label": "0 none", "score": 0}, {"label": "1 patient reports increasing irritability or anxiousness", "score": 1}, {"label": "2 patient obviously irritable or anxious", "score": 2}, {"label": "4 patient so irritable or anxious that participation in the assessment is difficult", "score": 4}]},
+   {"item": 11, "options": [{"label": "0 skin is smooth", "score": 0}, {"label": "3 piloerrection of skin can be felt or hairs standing up on arms", "score": 3}, {"label": "5 prominent piloerrection", "score": 5}]}
+  ],
+  "anchors_note": "Баллы вариантов идут с пропусками (0/1/2/4, 0/1/3/5, 0/3/5) — так на бланке; «выравнивать» нельзя.",
+  "reverse": [],
+  "scoring": "Дословно с бланка: «The total score is the sum of all 11 items». Максимум — сумма верхних баллов: 4+4+5+5+4+4+5+4+4+4+5 = 48. Подшкал нет.",
+  "bands": [
+   {
+    "from": 0,
+    "to": 4,
+    "label": "Below the mild-withdrawal range (score under 5)",
+    "label_uk": "Нижче порогу легкого синдрому відміни (менше 5 балів)",
+    "source": "Дополнение до шкалы бланка: «Score: 5-12 = mild …» начинается с 5; значения 0–4 бланк не описывает. Собственного названия у диапазона в первоисточнике нет."
+   },
+   {
+    "from": 5,
+    "to": 12,
+    "label": "Mild withdrawal",
+    "label_uk": "Легкий синдром відміни опіоїдів",
+    "source": "Бланк: «Score: 5-12 = mild; 13-24 = moderate; 25-36 = moderately severe; more than 36 = severe withdrawal». ГС 2025-1102, додаток 6: «5-12 – легкий синдром відміни опіоїдів; 13-24 – помірний; 25-36 – помірно тяжкий; більше за 36 балів – тяжкий синдром відміни.»"
+   },
+   {
+    "from": 13,
+    "to": 24,
+    "label": "Moderate withdrawal",
+    "label_uk": "Помірний синдром відміни опіоїдів",
+    "source": "Тот же бланк и додаток 6 ГС 2025-1102 (см. выше)."
+   },
+   {
+    "from": 25,
+    "to": 36,
+    "label": "Moderately severe withdrawal",
+    "label_uk": "Помірно тяжкий синдром відміни опіоїдів",
+    "source": "Тот же бланк и додаток 6 ГС 2025-1102 (см. выше)."
+   },
+   {
+    "from": 37,
+    "to": 48,
+    "label": "Severe withdrawal (more than 36)",
+    "label_uk": "Тяжкий синдром відміни опіоїдів (понад 36 балів)",
+    "source": "Тот же бланк и додаток 6 ГС 2025-1102 (см. выше). «More than 36» при целых баллах — 37 и больше; верх 48 — максимум шкалы."
+   }
+  ],
+  "bands_source": "Границы — с бланка авторов (Appendix 1) и совпадают с официальным украинским текстом МОЗ. Тот же стандарт применяет их к лечению: додаток 13 — «спостерігається СВО у легкій чи помірній формі (5-24 бали за шкалою COWS)» и «у стані помірно або тяжко вираженого СВО (COWS ≥ 13)».",
+  "risk_items": [],
+  "risk_items_note": "Пунктов о суициде, самоповреждении или вреде другим нет; отдельного правила тревоги по пункту первоисточник не даёт. Тяжесть полос — решение системы: 0–4 — none, 5–12 — mild (случай не открывает), 13–24 и 25–36 — moderate (случай на разбор: стандарт МОЗ связывает ≥ 13 с началом медикаментозного лечения), > 36 — severe.",
+  "translation": {
+   "uk": {
+    "exists": true,
+    "by": "МОЗ України — додаток 6 «Клінічна шкала тяжкості синдрому відміни опіоїдів (COWS)» до Стандарту медичної допомоги «Психічні та поведінкові розлади внаслідок вживання опіоїдів», ГС 2025-1102, затверджено наказом МОЗ України від 11.07.2025 № 1102, статус «Чинний»",
+    "free": true,
+    "url": "https://www.dec.gov.ua/files/ZKAK908DUo/2025_1102_st_opioidy.pdf",
+    "items_uk": [
+     "Частота пульсу в спокійному стані (рахуйте кількість ударів на хвилину): Пульс потрібно міряти після того, як пацієнт протягом хвилини спокійно сидів або лежав. 0 – частота пульсу складає 80 ударів або менше; 1 – частота пульсу від 81 до 100; 2 – частота пульсу від 101 до 120; 4 – частота пульсу вище за 120",
+     "Потовиділення: Протягом останніх півгодини, не через температуру у приміщенні або фізичну активність пацієнта. 0 – пацієнт не повідомляє про припливи ознобу або жару; 1 – суб’єктивне повідомлення про припливи ознобу або жару; 2 – почервоніння (приплив крові) або помітне вологість обличчя; 3 – крапельки поту на лобі або на обличчі; 4 – піт стікає з обличчя",
+     "Неспокійний стан: Спостереження під час оцінки температури або діяльності пацієнта. 0 – пацієнт може сидіти спокійно; 1 – пацієнт повідомляє, що йому тяжко сидіти спокійно, але він може; 3 – часті або недоречні рухи ногами/руками; 5 – пацієнт не може сидіти спокійно більше за декілька секунд",
+     "Розмір зіниць: 0 – зіниці звужені або нормальних розмірів для кімнатного освітлення; 1 – зіниці, можливо, ширше, ніж зазвичай при кімнатному освітленні; 2 – зіниці помірно розширені; 5 – зіниці розширені настільки, що можна бачити лише край райдужної оболонки",
+     "Біль у кістках і суглобах: Якщо у пацієнта були такі болі раніше, бали потрібно ставити лише за додаткові болі, що пов’язані з відміною опіоїдів. 0 – немає; 1 – м’який генералізований дискомфорт; 2 – пацієнт повідомляє про сильний генералізований біль у суглобах/м’язах; 4 – пацієнт потирає суглобу або м’язи та не може спокійно сидіти через дискомфорт",
+     "Нежить або сльозотеча: Що не викликані симптомами застуди або алергічними реакціями. 0 – немає; 1 – у пацієнта закладено ніс або незвичайно вологі очі; 2 – виділення з носа або сльозотеча; 4 – постійне виділення з носа або сльози течуть по щоках",
+     "Розлади шлунково-кишкового тракту: За останні півгодини. 0 – немає симптомів розладів ЖКТ; 1 – спазми у шлунку; 2 – нудота або рідкий стілець; 3 – блювота або пронос; 5 – багаторазові епізоди проносу або блювоти",
+     "Тремор: Спостереження за витягнутими руками. 0 – тремтіння немає; 1 – тремтіння можна відчути, але воно непомітне; 2 – помітне легке тремтіння; 4 – сильне тремтіння або посмикування м’язів",
+     "Позіхання: Спостереження протягом оцінки. 0 – позіхання немає; 1 – пацієнт позіхає один-два рази протягом спостереження; 2 – пацієнт позіхає три або більше разів протягом спостереження; 4 – пацієнт позіхає декілька разів на хвилину",
+     "Тривога або дратівливість: 0 – немає; 1 – пацієнт повідомляє про наростання дратівливості або страху; 2 – пацієнт явно роздратований або знаходиться у стані патологічного страху; 4 – пацієнт настільки роздратований або знаходиться у такому стані патологічного страху, що йому тяжко брати участь в оцінці",
+     "«Гусяча шкіра»: 0 – шкіра гладенька; 3 – пілоерекцію шкіри можна відчути на дотик або на руках піднімається волосся; 5 – пілоерекція є дуже помітною"
+    ],
+    "note": "В системе — текст додатка 6 с четырьмя правками опечаток, каждая сверена с английским бланком: (1) «помітне вологість» → «помітна вологість»; (2) в заголовке «Неспокійний стан» убраны слова «температури або діяльності пацієнта» — в оригинале «Restlessness Observation during assessment», а слова о температуре относятся к пункту о потовиділенні и там уже есть; (3) «потирає суглобу» → «потирає суглоби»; (4) русская аббревиатура «ЖКТ» → «шлунково-кишкового тракту». Инструкция «обведіть кружечком число» → «оберіть число» (электронная форма). Остальное — дословно. Оговорка о переводе: «anxious» МОЗ передаёт как «патологічний страх» — оставлено как в официальном тексте."
+   },
+   "ru": {
+    "exists": null,
+    "by": null,
+    "free": null,
+    "url": null,
+    "note": "Официального русского текста от авторов или украинского органа здравоохранения не найдено. Перевод — рабочий, с английского бланка."
+   }
+  },
+  "example": {
+   "answers": ["1 pulse 81-100: 1", "2 sweating subjective: 1", "3 restlessness reports difficulty: 1", "4 pupils possibly larger: 1", "5 aches mild: 1", "6 stuffiness: 1", "7 stomach cramps: 1", "8 tremor felt: 1", "9 yawning once or twice: 1", "10 reports irritability: 1", "11 skin smooth: 0"],
+   "total": 10,
+   "band": "Mild withdrawal (5–12)",
+   "note": "Опубликованного примера подсчёта нет; пример арифметический: десять пунктов по 1 и «гусиная кожа» 0 = 10."
+  },
+  "example2": {
+   "answers": ["1 pulse 101-120: 2", "2 flushed: 2", "3 frequent shifting: 3", "4 moderately dilated: 2", "5 severe aching: 2", "6 nose running: 2", "7 nausea or loose stool: 2", "8 slight tremor: 2", "9 yawning 3+: 2", "10 obviously irritable: 2", "11 piloerection felt: 3"],
+   "total": 24,
+   "band": "Moderate withdrawal (13–24)",
+   "note": "2+2+3+2+2+2+2+2+2+2+3 = 24 — верх полосы «moderate»; на балл больше (25) — «moderately severe». Все верхние варианты — 48, «severe»."
+  },
+  "verdict": "завести — бланк авторов разрешает копирование и клиническое применение; границы с бланка совпадают с официальным украинским текстом МОЗ (ГС 2025-1102, додаток 6); заполняет специалист; русский — рабочий перевод."
+ },
+ {
+  "key": "dast10",
+  "title_en": "Drug Abuse Screening Test, 10-item version (DAST-10)",
+  "title_uk": null,
+  "title_ru": null,
+  "authors": "Harvey A. Skinner (Addiction Research Foundation, теперь Centre for Addiction and Mental Health, Toronto)",
+  "year": 1982,
+  "citation": "Skinner HA. The Drug Abuse Screening Test. Addict Behav. 1982;7(4):363-371. Бланк DAST-10 с ключом и интерпретацией — SAMHSA TIP 63 (копия UW AIMS Center: https://aims.uw.edu/cmt/resources/DAST-10.pdf), с пометкой «Adapted with permission».",
+  "license": {
+   "verdict": "платная/по запросу — лицензирует правообладатель",
+   "quote": "McMaster University offers a variety of copyrighted works available for licensing. […] For all purposes such as academic research, clinical trials, evaluation or observation use, please fill-out the following form completely and we will respond with a quote. […] Other Copyrighted Works: DAST 10 (CAMH)",
+   "url": "https://research.mcmaster.ca/industry-investors/tech/request-for-license/",
+   "conditions": "Карточка правообладателя «CAMH DAST-10» (https://research.mcmaster.ca/industry-investors/tech/camh-dast-10/): «Inventor: Dr. Harvey Skinner … Business Opportunity: Licensing … Request Copyright License Or Permission», контакт — CAMH, Industry Partnerships & Technology Transfer. Старое заявление на бланке DAST-28 (AHRQ: https://integrationacademy.ahrq.gov/resources/10771): «You may reproduce this instrument for noncommercial use (clinical, research, training purposes) as long as you credit the author, Dr. Harvey A. Skinner, York University, Toronto, Canada.» — относится к DAST, а нынешний правообладатель выдаёт лицензию по запросу с расценкой. McGill MAPPRO: «To use this tool, please contact Dr. Harvey Skinner at hskinner [at] yorku.ca». Бланк SAMHSA печатается «Adapted with permission», то есть с отдельным разрешением."
+  },
+  "items": null,
+  "items_note": "Текст пунктов, ключ (п. 3 «No» = 1) и полосы (0 / 1–2 / 3–5 / 6–8 / 9–10) проверены по бланку SAMHSA TIP 63, но без лицензии в каталог не переносятся.",
+  "bands": null,
+  "risk_items": [],
+  "translation": {
+   "uk": {"exists": null, "note": "Официального украинского текста не найдено; клиническая настанова МОЗ КН 2025-84 лишь перечисляет «2-, 10- та 28-DAST» среди инструментов USPSTF."},
+   "ru": {"exists": null, "note": "Не найдено."}
+  },
+  "verdict": "не заводить — правообладатель (CAMH через McMaster University) лицензирует DAST-10 для любых целей, включая клиническую оценку, по запросу и с расценкой; старое разрешение «noncommercial use» на бланке DAST нынешнему порядку противоречит. Вернуться, если учреждение получит лицензию CAMH; замена в каталоге уже есть — ASSIST (ВОЗ) и CUDIT-R."
+ },
+ {
+  "key": "ftnd",
+  "title_en": "Fagerström Test for Nicotine Dependence (FTND; с 2012 г. — Fagerström Test for Cigarette Dependence, FTCD)",
+  "title_uk": "Тест Фагерстрема на нікотинову залежність (FTND)",
+  "title_ru": null,
+  "authors": "Todd F. Heatherton, Lynn T. Kozlowski, Richard C. Frecker, Karl-Olov Fagerström",
+  "year": 1991,
+  "citation": "Heatherton TF, Kozlowski LT, Frecker RC, Fagerström KO. The Fagerström Test for Nicotine Dependence: a revision of the Fagerström Tolerance Questionnaire. Br J Addict. 1991;86(9):1119-1127. Переименование: Fagerström K. Determinants of tobacco use and renaming the FTND to the Fagerström Test for Cigarette Dependence. Nicotine Tob Res. 2012;14(1):75-78.",
+  "license": {
+   "verdict": "не подтверждена словами правообладателя",
+   "quote": "The FTND is copyrighted by Taylor and Francis Ltd., but may be reproduced without permission, as available from the source reference (Heatherton, et al., 1991).",
+   "url": "https://cde.nida.nih.gov/node/342",
+   "conditions": "Это слова NIDA (каталог Common Data Elements), а не правообладателя: заявления Taylor & Francis или авторов найти не удалось. Политика Taylor & Francis в целом требует письменного согласия на воспроизведение. PhenX Toolkit (NIH) печатает пункты «with permission of K.O. Fagerström» (https://test.phenxtoolkit.org/toolkit_content/supplemental_info/atos/additional_info/The_Fagerstr%C3%B6m_Test_for_Nicotine_Dependence.pdf) — то есть получил отдельное разрешение."
+  },
+  "items": null,
+  "items_note": "Шесть пунктов, 0–10 (NIDA CDE: «yes/no items are scored from 0 to 1 and multiple-choice items are scored from 0 to 3. The items are summed to yield a total score of 0-10»). Полосы 0–2 / 3–4 / 5 / 6–7 / 8–10 («Very Low … Very High Dependence») даёт каталог NIDA CTN (https://ctnlibrary.org/cde/2195870/) без ссылки на первоисточник — в статье Heatherton 1991 таких полос нет.",
+  "bands": null,
+  "risk_items": [],
+  "translation": {
+   "uk": {"exists": null, "url": "https://emed.library.gov.ua/wp-content/uploads/tainacan-items/17188/193442/Efektyvni-metody-dopomohy-patsiientam-u-prypynenni-vzhyvannia-tiutiunovykh-ta-nikotynovykh-vyrobiv.pdf", "note": "Нормативного украинского текста (стандарт или протокол МОЗ) не найдено. Украинский текст есть в вебинаре Центра громадського здоров'я МОЗ «Ефективні методи допомоги пацієнтам у припиненні вживання тютюнових та нікотинових виробів» (Київ, 2025) — это учебная презентация, а не официальный перевод."},
+   "ru": {"exists": null, "note": "Не проверялся."}
+  },
+  "verdict": "не заводить — правообладатель (Taylor & Francis / К.-О. Фагерстрём) своего разрешения не опубликовал; свободу воспроизведения утверждает только NIDA, а PhenX получал разрешение Фагерстрёма отдельно. Полосы тяжести не имеют первоисточника. Вернуться при письменном разрешении — тогда пункты, ключ и украинский текст ЦГЗ готовы к сверке."
+ },
+ {
+  "key": "hsi",
+  "title_en": "Heaviness of Smoking Index (HSI)",
+  "title_uk": "Коротка версія тесту Фагерстрема",
+  "title_ru": null,
+  "authors": "Todd F. Heatherton, Lynn T. Kozlowski, Richard C. Frecker, William Rickert, Jack Robinson",
+  "year": 1989,
+  "citation": "Heatherton TF, Kozlowski LT, Frecker RC, Rickert W, Robinson J. Measuring the heaviness of smoking: using self-reported time to the first cigarette of the day and number of cigarettes smoked per day. Br J Addict. 1989;84(7):791-799.",
+  "license": {
+   "verdict": "не подтверждена словами правообладателя",
+   "quote": null,
+   "url": null,
+   "conditions": "Пункты HSI — пункты 1 и 4 FTND (время до первой сигареты, число сигарет в день) с теми же баллами; правовое положение то же, что у FTND (см. карточку ftnd). Заявления правообладателя не найдено."
+  },
+  "items": null,
+  "bands": null,
+  "bands_note": "Полосы HSI по первоисточнику не проверены (поиск исчерпан); без источника полос методика не заводится и без полос не имеет смысла — у неё нет другого результата, кроме уровня курения.",
+  "risk_items": [],
+  "translation": {
+   "uk": {"exists": null, "note": "Тот же вебинар ЦГЗ МОЗ 2025 («Коротка версія тесту Фагерстрома») — учебный материал, не официальный перевод."},
+   "ru": {"exists": null, "note": "Не проверялся."}
+  },
+  "verdict": "не заводить — та же лицензия, что у FTND, и нет проверенного источника полос. Если FTND будет заведён по разрешению, HSI — это шкала из пунктов 1 и 4 внутри него, а не отдельная методика."
+ },
+ {
+  "key": "sds",
+  "title_en": "Severity of Dependence Scale (SDS)",
+  "title_uk": "Шкала рівня тяжкості залежності",
+  "title_ru": null,
+  "authors": "Michael Gossop, Shane Darke, Paul Griffiths, Julie Hando, Beverly Powis, Wayne Hall, John Strang",
+  "year": 1995,
+  "citation": "Gossop M, Darke S, Griffiths P, Hando J, Powis B, Hall W, Strang J. The Severity of Dependence Scale (SDS): psychometric properties of the SDS in English and Australian samples of heroin, cocaine and amphetamine users. Addiction. 1995;90(5):607-614.",
+  "license": {
+   "verdict": "не подтверждена словами правообладателя",
+   "quote": null,
+   "url": "https://integrationacademy.ahrq.gov/resources/7596",
+   "conditions": "AHRQ описывает условия как «Copyrighted, freely available» — это слова каталога AHRQ, не правообладателя. Страница NDARC (UNSW) с ресурсом SDS больше не существует (перенаправляет на главную NDARC). Копия ADAI (University of Washington) помечена «Adapted from Gossop et al. (1995)» без заявления о правах."
+  },
+  "items": null,
+  "items_note": "Пять пунктов 0–3, сумма 0–15. Формулировки различаются между распространяемыми версиями (ADAI: «Do you think your use of (drug) was out of control?»; набор для врачей общей практики: «Did you ever think your use of … (drug) was out of control?», третий пункт с другими вариантами ответа) — канонического бланка правообладателя нет.",
+  "bands": null,
+  "bands_note": "Пороги зависят от вещества и взяты из разных исследований (героин, амфетамины, каннабис, кокаин, бензодиазепины — свои точки отсечения); у одной шкалы системы полосы от вещества не зависят. Клиническая настанова МОЗ КН 2025-84 называет SDS только как инструмент для подростков в обзоре USPSTF.",
+  "risk_items": [],
+  "translation": {
+   "uk": {"exists": false, "note": "Официального текста нет; КН 2025-84 даёт только название «SDS (Severity Dependency Scale - Шкала рівня тяжкості залежності)»."},
+   "ru": {"exists": null, "note": "Не проверялся."}
+  },
+  "verdict": "не заводить — нет заявления правообладателя, нет канонического текста, а пороги разные для разных веществ: одна полоса на всех была бы выдуманной."
+ },
+ {
+  "key": "pgsi",
+  "title_en": "Problem Gambling Severity Index (PGSI) — оцениваемая часть Canadian Problem Gambling Index (CPGI)",
+  "title_uk": null,
+  "title_ru": null,
+  "authors": "Jackie Ferris, Harold Wynne (Canadian Consortium for Gambling Research), для Canadian Centre on Substance Abuse (теперь Canadian Centre on Substance Use and Addiction, CCSA)",
+  "year": 2001,
+  "citation": "Ferris J, Wynne H. The Canadian Problem Gambling Index: Final Report. Ottawa: Canadian Centre on Substance Abuse; February 19, 2001 (копия GREO: https://www.greo.ca/Modules/EvidenceCentre/files/Ferris%20et%20al(2001)The_Canadian_Problem_Gambling_Index.pdf)",
+  "license": {
+   "verdict": "требует письменного разрешения правообладателя",
+   "quote": "CCSA authorizes you to view and download the materials at this Site only for your personal, non-commercial use […] You may not modify the materials at this site in any way or reproduce, copy, publicly display or distribute the materials in any form […] without the prior express written permission of CCSA. […] To request copyright permission, please complete the form",
+   "url": "https://devops.ccsa.ca/node/1",
+   "conditions": "Это условия CCSA для её сайта о гемблинге (gamblingguidelines.ca, «Copyright 2020 by Canadian Centre on Substance Use and Addiction. All rights reserved.»); заявления о свободном воспроизведении PGSI у CCSA не найдено, в самом отчёте 2001 г. заявления о правах нет. Шведский Socialstyrelsen пишет: «Det finns ingen utbildning, behörighets- eller licenskrav för att få använda instrumentet» (https://socialstyrelsen.se/kunskapsstod-och-regler/omraden/evidensbaserad-praktik/metodguiden/pgsi-problem-gambling-severity-index/) — это слова государственного органа Швеции, не правообладателя."
+  },
+  "items": null,
+  "items_note": "Девять пунктов, «Never / Sometimes / Most of the time / Almost always» = 0–3, сумма 0–27; категории отчёта 2001 г.: non-problem, low risk, moderate risk, problem gambling (по Socialstyrelsen: 0 / 1–2 / 3–7 / 8–27). Пересмотренные границы 0 / 1–4 / 5–7 / 8+ встречаются во вторичных источниках — первоисточник пересмотра не проверен.",
+  "bands": null,
+  "risk_items": [],
+  "translation": {
+   "uk": {"exists": false, "note": "Официального украинского текста не найдено (ни МОЗ, ни регулятор азартных игр); исследование KANTAR для ассоциации операторов использовало PGSI, текст не опубликован."},
+   "ru": {"exists": null, "note": "Не проверялся."}
+  },
+  "verdict": "не заводить — правообладатель (CCSA) требует предварительного письменного разрешения на воспроизведение своих материалов и не объявлял PGSI свободным; вернуться, если учреждение получит разрешение через форму CCSA."
+ },
+ {
+  "key": "igds9sf",
+  "title_en": "Internet Gaming Disorder Scale–Short-Form (IGDS9-SF)",
+  "title_uk": null,
+  "title_ru": null,
+  "authors": "Halley M. Pontes, Mark D. Griffiths",
+  "year": 2015,
+  "citation": "Pontes HM, Griffiths MD. Measuring DSM-5 Internet Gaming Disorder: Development and validation of a short psychometric scale. Comput Human Behav. 2015;45:137-143. doi:10.1016/j.chb.2014.12.006. Английский бланк автора: https://osf.io/download/cz4vu/",
+  "license": {
+   "verdict": "не свободна для перевода",
+   "quote": "© 2026 Dr. Halley Pontes. This work is licensed under CC BY NC ND 4.0 […] If you know of any other existing validation study and/or if you wish to further develop and validate the IGDS9-SF in another language, please do get in touch with me via email.",
+   "url": "https://www.halleypontes.com/tests/internet-gaming-disorder-scale-short-form/",
+   "conditions": "Лицензия сайта автора — CC BY-NC-ND 4.0: «ND» запрещает производные, а перевод на украинский — производное произведение; новые языковые версии автор просит согласовывать с ним. Проект OSF «Psychometric Tests» с бланками лицензии не имеет (node_license: null, https://api.osf.io/v2/nodes/8c5b6/). На самом бланке заявления о свободном использовании нет."
+  },
+  "items": null,
+  "items_note": "Девять пунктов «Never … Very Often» (1–5), сумма 9–45. Правило бланка: «researchers should check if participants have endorsed at least five criteria out of the nine by taking into account answers as ‘5: Very Often’» — классификация по числу ответов «Very Often», а не по сумме; порог суммы 32 автор называет по одному исследованию в Frontiers in Psychiatry.",
+  "bands": null,
+  "risk_items": [],
+  "translation": {
+   "uk": {"exists": false, "note": "В списке языков автора украинского нет."},
+   "ru": {"exists": true, "url": "https://osf.io/xm23z", "note": "Русская версия есть в списке автора (валидация сторонними исследователями); без украинской каталог её завести не может — у каждой методики оба языка."}
+  },
+  "verdict": "не заводить — свободного разрешения правообладателя нет, лицензия сайта запрещает производные (перевод), украинской версии нет; вернуться, если автор согласует украинскую адаптацию."
+ },
+ {
+  "key": "bsmas",
+  "title_en": "Bergen Social Media Addiction Scale (BSMAS)",
+  "title_uk": null,
+  "title_ru": null,
+  "authors": "Cecilie Schou Andreassen, Joël Billieux, Mark D. Griffiths, Daria J. Kuss, Zsolt Demetrovics, Elvis Mazzoni, Ståle Pallesen",
+  "year": 2016,
+  "citation": "Andreassen CS, Billieux J, Griffiths MD, Kuss DJ, Demetrovics Z, Mazzoni E, Pallesen S. The relationship between addictive use of social media and video games and symptoms of psychiatric disorders: A large-scale cross-sectional study. Psychol Addict Behav. 2016;30(2):252-262. Порог: Bányai F, Zsila Á, Király O, et al. Problematic Social Media Use: Results from a Large-Scale Nationally Representative Adolescent Sample. PLoS One. 2017;12(1):e0169839.",
+  "license": {
+   "verdict": "не подтверждена",
+   "quote": null,
+   "url": null,
+   "conditions": "Заявления правообладателей (авторы, University of Bergen, APA) о свободном воспроизведении не найдено; каталоги (Salford PsyTech, PsyToolkit) требуют лишь ссылки — это не слова правообладателя. Статья Bányai 2017 — CC BY 4.0, но пунктов шкалы не печатает: «The items are answered on a 5-point scale (“never” to “always”)»."
+  },
+  "items": null,
+  "bands": null,
+  "bands_note": "Bányai 2017 (венгерские подростки): «The suggested cut-off value with the most adequate sensitivity and specificity values was 19 points.» Другие пороги во вторичных источниках не проверены.",
+  "risk_items": [],
+  "translation": {
+   "uk": {"exists": null, "note": "Не найден."},
+   "ru": {"exists": null, "note": "Не проверялся."}
+  },
+  "verdict": "не заводить — нет разрешения правообладателя, а единственный проверенный порог (19) установлен на подростках."
+ },
+ {
+  "key": "cageaid",
+  "title_en": "CAGE Questions Adapted to Include Drugs (CAGE-AID)",
+  "title_uk": null,
+  "title_ru": null,
+  "authors": "Richard L. Brown, Laura A. Rounds",
+  "year": 1995,
+  "citation": "Brown RL, Rounds LA. Conjoint screening questionnaires for alcohol and other drug abuse: criterion validity in a primary care practice. Wis Med J. 1995;94(3):135-140.",
+  "license": {
+   "verdict": "не подтверждена словами правообладателя",
+   "quote": null,
+   "url": "https://concussionsontario.org/sites/default/files/2023-03/appendix-8-5.pdf",
+   "conditions": "Все найденные копии печатают CAGE-AID с отдельным разрешением: «Used / reprinted with permission from Brown, R.L., and Rounds, L.A. … Wisconsin Medical Journal 94:135-140, 1995» (Ontario Neurotrauma Foundation, приложение 8.5); там же сноска «May be printed without permission, unless it is used in any profit-making endeavour» — это слова составителей руководства, повторяющие условие Bowles Center для CAGE, а не правообладателя CAGE-AID. NHS Scotland печатает таблицу Brown et al. 1998 «reproduced with permission from the publisher» (https://rightdecisions.scot.nhs.uk/media/1853/cage-and-cage-aid-questionnaires.pdf)."
+  },
+  "items": null,
+  "items_note": "Версии расходятся: «ever» (Brown & Rounds) и «In the last three months …» с другим четвёртым вопросом («have you been waking up wanting to have an alcoholic drink or use drugs?», материалы SAEFP). Правила подсчёта тоже: «One point indicates a possible problem. Two points indicate a probable problem.» против «A total score of 2 or greater is considered clinically significant.» Оригинал статьи (Wis Med J) недоступен для сверки.",
+  "bands": null,
+  "risk_items": [],
+  "translation": {
+   "uk": {"exists": false, "note": "Официального текста нет; официальный украинский CAGE (КН 2025-1897) — только об алкоголе."},
+   "ru": {"exists": null, "note": "Не проверялся."}
+  },
+  "verdict": "не заводить — нет разрешения правообладателя, нет канонической версии и единого порога; алкогольная часть уже покрыта CAGE с официальным украинским текстом, наркотики — ASSIST и CUDIT-R."
+ },
+ {
+  "key": "dudit",
+  "title_en": "Drug Use Disorders Identification Test (DUDIT)",
+  "title_uk": null,
+  "title_ru": null,
+  "authors": "Anne H. Berman, Hans Bergman, Tom Palmstierna, Frans Schlyter (Karolinska Institutet)",
+  "year": 2005,
+  "citation": "Berman AH, Bergman H, Palmstierna T, Schlyter F. Evaluation of the Drug Use Disorders Identification Test (DUDIT) in criminal justice and detoxification settings and in a Swedish population sample. Eur Addict Res. 2005;11(1):22-31. Руководство: Berman AH, Bergman H, Palmstierna T, Schlyter F. DUDIT Manual. Stockholm: Karolinska Institutet; 2003.",
+  "license": {
+   "verdict": "не подтверждена словами правообладателя",
+   "quote": "DUDIT is in the public domain but the layout is copyrighted and users are asked to retain the layout to facilitate future valid comparisons of results.",
+   "url": "https://www.euda.europa.eu/drugs-library/drug-use-disorders-identification-test-dudit_en",
+   "conditions": "Это слова каталога EUDA (агентство ЕС), а не авторов; руководство, где могло бы стоять заявление авторов, EUDA предлагает запрашивать у Anne H. Berman, копия paihdelinkki.fi удалена. Украинская версия ТОВ «ЮЕЙ-ТЕСТ» (2024) закрыта: «Всі права застережено»."
+  },
+  "items": null,
+  "items_note": "Одиннадцать пунктов: 1–9 — 0–4, 10–11 — 0/2/4, сумма 0–44 (Socialstyrelsen/Gothia, «DUDIT-E och Alcohol-E», 2025, Bilaga 3).",
+  "bands": null,
+  "bands_note": "Пороги зависят от пола и возраста: «Har en manlig klient 6 poäng eller fler har han sannolikt drogrelaterade problem … En kvinnlig klient med 2 poäng eller fler … För yngre mellan 16 och 25 år är det 7 poäng för män och 3 poäng för kvinnor … Har klienten 25 poäng eller mer är han eller hon sannolikt beroende av droger» (https://www.socialstyrelsen.se/globalassets/sharepoint-dokument/dokument-webb/ovrigt/dudit-e--alcohol-e-manualen-2025.pdf). Полосы системы от пола не зависят — та же беда, что у AUDIT-C.",
+  "risk_items": [],
+  "translation": {
+   "uk": {"exists": false, "note": "Официального текста нет; версия ЮЕЙ-ТЕСТ закрыта правами."},
+   "ru": {"exists": null, "note": "Не проверялся."}
+  },
+  "verdict": "не заводить — заявление о public domain только у EUDA, а не у авторов; основные пороги разные для мужчин и женщин и полосой не выражаются. Вернуться при письменном подтверждении авторов — тогда завести с мужским порогом, названным в подписи, как AUDIT-C."
+ },
+ {
+  "key": "sadqc",
+  "title_en": "Severity of Alcohol Dependence Questionnaire, Community version (SADQ-C)",
+  "title_uk": "Опитувальник для визначення ступеня тяжкості алкогольної залежності ФОРМА-C (SADQ-C)",
+  "title_ru": null,
+  "authors": "Tim Stockwell, Thiagarajan Sitharthan, Dawn McGrath, Ed Lang",
+  "year": 1994,
+  "citation": "Stockwell T, Sitharthan T, McGrath D, Lang E. The measurement of alcohol dependence and impaired control in community samples. Addiction. 1994;89(2):167-174. Официальный украинский текст — додаток 20 до Стандарту ГС 2025-1897 (наказ МОЗ України від 16.12.2025 № 1897).",
+  "license": {
+   "verdict": "не подтверждена словами правообладателя",
+   "quote": null,
+   "url": "https://www.dec.gov.ua/files/nGL5eRiycR/dn_1897_16122025_dod.pdf",
+   "conditions": "Украинский текст опубликован МОЗ в нормативном документе (официальный документ, свободен), но заявления авторов оригинала о свободном воспроизведении не найдено."
+  },
+  "items": null,
+  "items_note": "В додатку 20: разделы A (шкала нарушенного контроля, 5 пунктов, в сумму зависимости не входит), B (16 пунктов) и C (4 пункта), 0–3 каждый; сумма B+C — 0–60.",
+  "bands": null,
+  "bands_note": "Границы в официальном тексте противоречат сами себе: додаток 20 — «сума балів для залежності вважається низькою (0-20), помірною (20-30) або високою (30-60)» (20 и 30 входят в две полосы), а додаток 12 — «понад 30 балів за опитувальником SADQ». Без однозначного источника полос заводить нельзя.",
+  "risk_items": [],
+  "translation": {
+   "uk": {"exists": true, "url": "https://www.dec.gov.ua/files/nGL5eRiycR/dn_1897_16122025_dod.pdf", "note": "Додаток 20 ГС 2025-1897."},
+   "ru": {"exists": null, "note": "Не проверялся."}
+  },
+  "verdict": "не заводить — лицензия оригинала не подтверждена, а границы в официальном тексте пересекаются; кандидат на следующую волну, если авторы подтвердят свободное использование и МОЗ — границы."
+ },
+ {
+  "key": "ldq",
+  "title_en": "Leeds Dependence Questionnaire (LDQ)",
+  "title_uk": "Опитувальник залежності LEEDS (LDQ)",
+  "title_ru": null,
+  "authors": "Duncan Raistrick, Jenny Bradshaw, Gillian Tober, Judith Weiner, Jayne Allison, Christine Healey (Leeds Addiction Unit)",
+  "year": 1994,
+  "citation": "Raistrick D, Bradshaw J, Tober G, Weiner J, Allison J, Healey C. Development of the Leeds Dependence Questionnaire (LDQ): a questionnaire to measure alcohol and opiate dependence in the context of a treatment evaluation package. Addiction. 1994;89(5):563-572. Официальный украинский текст — додаток 21 до Стандарту ГС 2025-1897.",
+  "license": {
+   "verdict": "не подтверждена словами правообладателя",
+   "quote": null,
+   "url": "https://www.dec.gov.ua/files/nGL5eRiycR/dn_1897_16122025_dod.pdf",
+   "conditions": "Украинский текст опубликован МОЗ; сайт Leeds Addiction Unit недоступен, заявления авторов о свободном воспроизведении не найдено."
+  },
+  "items": null,
+  "items_note": "Десять пунктов 0–3 о последней неделе, алкоголь и/или другие вещества, сумма 0–30.",
+  "bands": null,
+  "bands_note": "Додаток 21: «Не існує конкретних точок завершення збору даних для низького, помірного або тяжкого ступенів залежності. Замість цього, користувачам шкали рекомендується розглядати її як безперервний процес. Однак, оцінка 20 або більше балів наближається до оцінки тяжкої залежності.» — то есть заводить можно было бы только без полос (как PSS-10).",
+  "risk_items": [],
+  "translation": {
+   "uk": {"exists": true, "url": "https://www.dec.gov.ua/files/nGL5eRiycR/dn_1897_16122025_dod.pdf", "note": "Додаток 21 ГС 2025-1897."},
+   "ru": {"exists": null, "note": "Не проверялся."}
+  },
+  "verdict": "не заводить — лицензия оригинала не подтверждена; при подтверждении — завести без полос по официальному украинскому тексту."
+ },
+ {
+  "key": "bbgs",
+  "title_en": "Brief Biosocial Gambling Screen (BBGS)",
+  "title_uk": null,
+  "title_ru": null,
+  "authors": "Laura Gebauer, Richard LaBrie, Howard J. Shaffer (Division on Addiction, Cambridge Health Alliance, Harvard Medical School)",
+  "year": 2010,
+  "citation": "Gebauer L, LaBrie R, Shaffer HJ. Optimizing DSM-IV classification accuracy: a brief biosocial screen for detecting current gambling disorders among gamblers in the general household population. Can J Psychiatry. 2010;55(2):82-90.",
+  "license": {
+   "verdict": "не подтверждена",
+   "quote": null,
+   "url": "https://www.divisiononaddiction.org/outreach-resources/gdsd/toolkit/bbgs/",
+   "conditions": "Правообладатель бесплатно раздаёт печатный бланк и электронный скринер, но разрешения на воспроизведение и перевод не формулирует; на бланке (https://www.divisiononaddiction.org/wp-content/uploads/2024/03/Printable-BBGS-English.pdf) заявления о правах нет."
+  },
+  "items": null,
+  "items_note": "Три вопроса «да/нет» за 12 месяцев; правило бланка: «A “yes” answer to any of the questions means the person is at risk for developing a gambling problem.»",
+  "bands": null,
+  "risk_items": [],
+  "translation": {
+   "uk": {"exists": null, "note": "Не найден."},
+   "ru": {"exists": null, "note": "Не найден."}
+  },
+  "verdict": "не заводить — нет явного разрешения на воспроизведение и перевод; это самый простой кандидат для гемблинга, если Division on Addiction (info@divisiononaddiction.org) подтвердит письменно."
+ }
+]

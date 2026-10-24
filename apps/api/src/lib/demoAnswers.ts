@@ -95,7 +95,15 @@ export function demoAnswers(
   const out: DemoAnswer[] = [];
   for (const q of survey.questions) {
     if (q.type === "info") continue;
-    const options = q.options.filter((o) => o.kind === "option");
+    /*
+     * Уровень раскладывается по баллу варианта, а не по месту на экране:
+     * порядок вариантов — порядок бланка, и он не обязан идти от меньшего
+     * балла к большему (WHO-5: «Увесь час» = 5 стоит первым, «Так» = 1 у
+     * вопросов «да/нет» — тоже). По месту высокий уровень благополучия давал
+     * бы «Ніколи». Сортировка устойчивая: равные баллы (CESD-R) сохраняют
+     * порядок бланка.
+     */
+    const options = q.options.filter((o) => o.kind === "option").sort((a, b) => a.score - b.score);
     if (!options.length) continue;
 
     let itemLevel = level;

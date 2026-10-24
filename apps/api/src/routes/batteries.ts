@@ -38,6 +38,7 @@ import {
   assertGroupAccess,
   assertSurveyAccess,
   isStaff,
+  surveyScopeFilter,
 } from "../lib/scope";
 import { assertNotInOtherCare } from "../lib/otherCare";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
@@ -112,6 +113,8 @@ async function loadItemsFrom(
     | { table: typeof batteryAssignmentItems; key: typeof batteryAssignmentItems.assignmentId },
   ids: string[],
   lang: Lang,
+  /** Зона видимости методик читающего (surveyScopeFilter); без неё — все шаги */
+  visible?: SQL,
 ): Promise<Map<string, LoadedItem[]>> {
   const result = new Map<string, LoadedItem[]>();
   if (!ids.length) return result;
@@ -135,7 +138,7 @@ async function loadItemsFrom(
     })
     .from(source.table)
     .innerJoin(surveys, eq(surveys.id, source.table.surveyId))
-    .where(inArray(source.key, ids))
+    .where(visible ? and(inArray(source.key, ids), visible) : inArray(source.key, ids))
     .orderBy(source.key, source.table.position);
 
   for (const r of rows) {
@@ -155,9 +158,9 @@ async function loadItemsFrom(
   return result;
 }
 
-/** Состав наборов (шаблон) по id набора */
-function loadItems(batteryIds: string[], lang: Lang) {
-  return loadItemsFrom({ table: batteryItems, key: batteryItems.batteryId }, batteryIds, lang);
+/** Состав наборов (шаблон) по id набора; `visible` — зона видимости методик читающего */
+function loadItems(batteryIds: string[], lang: Lang, visible?: SQL) {
+  return loadItemsFrom({ table: batteryItems, key: batteryItems.batteryId }, batteryIds, lang, visible);
 }
 
 /** Состав назначений (снимок на момент выдачи) по id назначения */
@@ -209,7 +212,16 @@ batteryRoutes.get("/", requireStaff, requirePermission("batteries.manage"), asyn
     )
     .orderBy(desc(batteries.createdAt));
 
-  const items = await loadItems(rows.map((r) => r.battery.id), lang);
+  /*
+   * Шаги — в зоне видимости методик сотрудника, тем же условием, что у
+   * политики surveys_read. Общий набор (groupId null) видят все сотрудники, а
+   * его методики — нет: заготовки каталога состоят из методик без группы,
+   * которые видят суперадминистратор и автор. Под ролью приложения чужие шаги
+   * и так прятала политика, а владелец базы (сюита) видел их — и список
+   * расходился с боем (appRoleFlows, обход GET). Теперь прикладной рубеж
+   * говорит то же, что политика.
+   */
+  const items = await loadItems(rows.map((r) => r.battery.id), lang, await surveyScopeFilter(user));
   const result: Battery[] = rows.map((r) => ({
     id: r.battery.id,
     title: r.battery.title,
@@ -485,6 +497,15 @@ batteryRoutes.post("/:id/assign", requireStaff, requirePermission("assignments.m
 
   const items = await db.select().from(batteryItems).where(eq(batteryItems.batteryId, batteryId));
   if (!items.length) badRequest("err.batteryEmpty");
+  /*
+   * Каждый шаг — в зоне сотрудника, как при сборке набора (POST и PUT выше).
+   * Общий набор видят все сотрудники, но выдача открывает пациенту его
+   * методики: без проверки администратор группы выдавал бы методики вне своей
+   * зоны (заготовки каталога — из методик без группы). Под ролью приложения
+   * такую выдачу останавливала политика survey_access — пятисоткой; теперь
+   * это внятный отказ до всякой записи.
+   */
+  for (const item of items) await assertSurveyAccess(user, item.surveyId);
 
   // срок из поля даты — «до конца этого дня» по поясу учреждения, а не полночь по Гринвичу (lib/day.ts)
   const dueAt = deadlineOf(input.dueAt);

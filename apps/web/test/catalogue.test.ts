@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test";
 import type { SurveyFolder, SurveyListItem } from "@quizzy/shared";
 import {
   catalogueHref,
+  domainCounts,
+  domainFrom,
   folderChildren,
   folderOptions,
   folderPath,
@@ -108,6 +110,64 @@ describe("запрос к серверу", () => {
     const rows = [item("a", null), item("b", "2024-01-01"), item("c", "2024-01-02"), item("d", "2024-01-03")];
     expect(retiredPage(rows, 1, 2)).toEqual({ items: [rows[1]!, rows[2]!], total: 3 });
     expect(retiredPage(rows, 2, 2)).toEqual({ items: [rows[3]!], total: 3 });
+  });
+});
+
+describe("чипы «Напрям»", () => {
+  const row = (domain: string | null, over: Partial<SurveyListItem> = {}) =>
+    ({ id: crypto.randomUUID(), title: "x", domain, status: "published", archivedAt: null, groupId: "g1", ...over }) as unknown as SurveyListItem;
+
+  test("направление ищет как поиск: в корне — весь каталог, в папке — по ней", () => {
+    expect(listQuery({ tab: "published", folder: null, q: "", page: 1, per: 10, domain: "trauma" })).toEqual({
+      folder: undefined,
+      q: "",
+      status: "published",
+      limit: 10,
+      offset: 0,
+      domain: "trauma",
+    });
+    expect(listQuery({ tab: "published", folder: "f1", q: "", page: 1, per: 10, domain: "none" })).toMatchObject({
+      folder: "f1",
+      domain: "none",
+    });
+    expect(listQuery({ tab: "retired", folder: null, q: "", page: 1, per: 10, domain: "sleep" })).toEqual({
+      folder: undefined,
+      q: "",
+      archived: true,
+      domain: "sleep",
+    });
+    // без чипа запрос прежний — в адрес сервера не уходит пустой параметр
+    expect("domain" in listQuery({ tab: "published", folder: null, q: "", page: 1, per: 10, domain: null })).toBe(false);
+  });
+
+  test("чип живёт в адресе, незнакомое слово из адреса — без фильтра", () => {
+    expect(catalogueHref("drafts", { domain: "addiction", per: 20 })).toBe("/surveys/drafts?domain=addiction&per=20");
+    expect(domainFrom("trauma")).toBe("trauma");
+    expect(domainFrom("none")).toBe("none");
+    expect(domainFrom("depression")).toBeNull();
+    expect(domainFrom(null)).toBeNull();
+  });
+
+  test("числа — по вкладке и группе, направления в порядке перечня", () => {
+    const rows = [
+      row("trauma"),
+      row("trauma"),
+      row("distress"),
+      row(null),
+      row("trauma", { status: "draft" }),
+      row("sleep", { archivedAt: "2026-01-01" }),
+      row("distress", { groupId: "g2" }),
+    ];
+    const published = domainCounts(rows, "published", null);
+    expect(published.all).toBe(5);
+    expect(published.none).toBe(1);
+    expect(published.domains.slice(0, 2)).toEqual([
+      { domain: "distress", count: 2 },
+      { domain: "trauma", count: 2 },
+    ]);
+    expect(domainCounts(rows, "published", "g1").domains[0]).toEqual({ domain: "distress", count: 1 });
+    expect(domainCounts(rows, "drafts", null).all).toBe(1);
+    expect(domainCounts(rows, "retired", null).domains.find((d) => d.domain === "sleep")?.count).toBe(1);
   });
 });
 

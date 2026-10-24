@@ -17,6 +17,7 @@ import {
 } from "../db/schema";
 import { env } from "../env";
 import { audit } from "../lib/audit";
+import { bandLabelsIn } from "../lib/bandLabels";
 import { fullNameOf } from "../lib/auth";
 import { assertClinicalRead, CLINICAL_READ } from "../lib/clinicalRead";
 import { decryptField } from "../lib/crypto";
@@ -71,7 +72,7 @@ responseContextRoutes.get("/:id", requirePermission(CLINICAL_READ), async (c) =>
     : null;
 
   const reviewer = await hasPermission(user, "alerts.review");
-  const attempts = r.userId ? await attemptsOf(r.userId, r.surveyId) : [];
+  const attempts = r.userId ? await attemptsOf(r.userId, r.surveyId, lang) : [];
   const signals = reviewer ? await signalsOf(user, r, lang) : null;
   const hits = reviewer ? await hitsOf(r.id, lang) : null;
 
@@ -108,7 +109,7 @@ responseContextRoutes.get("/:id", requirePermission(CLINICAL_READ), async (c) =>
  * (тот же договор, что у динамики). Номер версии — рядом: ответы по пунктам
  * экран сравнивает только внутри одной версии.
  */
-async function attemptsOf(userId: string, surveyId: string): Promise<ResponseAttempt[]> {
+async function attemptsOf(userId: string, surveyId: string, lang: ReturnType<typeof langOf>): Promise<ResponseAttempt[]> {
   const rows = await db
     .select({ id: responses.id, submittedAt: responses.submittedAt, version: surveyVersions.version })
     .from(responses)
@@ -121,6 +122,7 @@ async function attemptsOf(userId: string, surveyId: string): Promise<ResponseAtt
       responseId: responseScores.responseId,
       code: scales.code,
       value: responseScores.rawScore,
+      scaleId: responseScores.scaleId,
       band: responseScores.bandLabel,
       severity: responseScores.severity,
       position: scales.position,
@@ -129,10 +131,12 @@ async function attemptsOf(userId: string, surveyId: string): Promise<ResponseAtt
     .innerJoin(scales, eq(scales.id, responseScores.scaleId))
     .where(inArray(responseScores.responseId, rows.map((x) => x.id)))
     .orderBy(asc(scales.position));
+  // слово полосы — на языке читателя, а не на языке прохождения (lib/bandLabels.ts)
+  const bandIn = await bandLabelsIn(lang, scoreRows.map((s) => s.scaleId));
   const byResponse = new Map<string, ResponseAttempt["scores"]>();
   for (const s of scoreRows) {
     const list = byResponse.get(s.responseId) ?? [];
-    list.push({ code: s.code, value: s.value, band: s.band ?? null, severity: s.severity ?? null });
+    list.push({ code: s.code, value: s.value, band: bandIn(s.scaleId, s.band ?? null), severity: s.severity ?? null });
     byResponse.set(s.responseId, list);
   }
   return rows

@@ -1,4 +1,4 @@
-import type { SurveyFolder, SurveyListItem } from "@quizzy/shared";
+import { isSurveyDomain, NO_DOMAIN, SURVEY_DOMAINS, type SurveyDomain, type SurveyFolder, type SurveyListItem } from "@quizzy/shared";
 import type { SurveyPageQuery } from "../../api";
 import { DEFAULT_PER, pageOffset } from "../../ui/paging";
 
@@ -56,6 +56,8 @@ export interface CatalogueView {
   q: string;
   page: number;
   per: number;
+  /** Чип «Напрям»: направление или `none` — без направления; null — все */
+  domain?: DomainFilter | null;
 }
 
 /**
@@ -82,18 +84,73 @@ export interface CatalogueView {
  * Смещение — не дальше предела сервера (pageOffset, #205): страница из
  * закладки за пределом приходит пустой с общим числом, и экран возвращает
  * на последнюю, а не показывает отказ на весь каталог.
+ *
+ * 4. Направление (чип «Напрям») ведёт себя как поиск: в корне — по всему
+ *    каталогу, а не по методикам вне папок, в папке — по её поддереву (это
+ *    делает сервер). Чип «Травма 3» обещает три методики, где бы они ни
+ *    лежали, а методики общего каталога и вовсе стоят вне папок.
  */
 export function listQuery(view: CatalogueView): SurveyPageQuery {
   const q = view.q.trim();
-  const folder = view.folder ?? (q ? undefined : "root");
-  if (view.tab === "retired") return { folder, q, archived: true };
+  const domain = view.domain ?? undefined;
+  const folder = view.folder ?? (q || domain ? undefined : "root");
+  const byDomain = domain ? { domain } : {};
+  if (view.tab === "retired") return { folder, q, archived: true, ...byDomain };
   return {
     folder,
     q,
     status: view.tab === "drafts" ? "draft" : "published",
     limit: view.per,
     offset: pageOffset(view.page, view.per),
+    ...byDomain,
   };
+}
+
+/* ─────────── направления ─────────── */
+
+/** Значение чипа «Напрям»: направление или `none` — методики без направления */
+export type DomainFilter = SurveyDomain | typeof NO_DOMAIN;
+
+/** Чип из адреса: незнакомое слово (старая закладка, опечатка) — без фильтра, а не пустой каталог */
+export function domainFrom(raw: string | null): DomainFilter | null {
+  if (raw === NO_DOMAIN) return NO_DOMAIN;
+  return isSurveyDomain(raw) ? raw : null;
+}
+
+/** Методика на вкладке — то же правило, что у чисел вкладок экрана */
+function onTab(s: Pick<SurveyListItem, "status" | "archivedAt">, tab: CatalogueTab): boolean {
+  if (tab === "retired") return !!s.archivedAt;
+  return !s.archivedAt && s.status === (tab === "drafts" ? "draft" : "published");
+}
+
+/**
+ * Числа чипов «Напрям»: сколько методик вкладки у каждого направления и без
+ * него, и сколько всего.
+ *
+ * Основа — та же, что у чисел вкладок: весь видимый каталог (список экрана
+ * целиком), отобранный по вкладке и группе. Папка и поиск сюда не входят —
+ * числа вкладок их не учитывают тоже, и чип с одним числом в корне и другим в
+ * папке читался бы как разный каталог. В корне без поиска число чипа и есть
+ * то, что покажет таблица.
+ *
+ * Направления — в порядке перечня (SURVEY_DOMAINS), а не по убыванию чисел:
+ * чип не должен переезжать с места, когда в каталог добавили методику.
+ */
+export function domainCounts(
+  items: readonly Pick<SurveyListItem, "domain" | "status" | "archivedAt" | "groupId">[],
+  tab: CatalogueTab,
+  group: string | null,
+): { all: number; none: number; domains: { domain: SurveyDomain; count: number }[] } {
+  const counts = new Map<SurveyDomain, number>();
+  let all = 0;
+  let none = 0;
+  for (const s of items) {
+    if (!onTab(s, tab) || (group && s.groupId !== group)) continue;
+    all += 1;
+    if (s.domain) counts.set(s.domain, (counts.get(s.domain) ?? 0) + 1);
+    else none += 1;
+  }
+  return { all, none, domains: SURVEY_DOMAINS.map((domain) => ({ domain, count: counts.get(domain) ?? 0 })) };
 }
 
 /** Страница снятых из полного списка: сервер отдаёт снятые вместе с остальными */
@@ -112,11 +169,12 @@ export function retiredPage(items: SurveyListItem[], page: number, per: number):
  */
 export function catalogueHref(
   tab: CatalogueTab,
-  state: { folder?: string | null; q?: string; page?: number; per?: number } = {},
+  state: { folder?: string | null; q?: string; page?: number; per?: number; domain?: DomainFilter | null } = {},
 ): string {
   const qs = new URLSearchParams();
   if (state.folder) qs.set("folder", state.folder);
   if (state.q?.trim()) qs.set("q", state.q.trim());
+  if (state.domain) qs.set("domain", state.domain);
   if (state.page && state.page > 1) qs.set("page", String(state.page));
   if (state.per && state.per !== DEFAULT_PER) qs.set("per", String(state.per));
   const tail = qs.toString();

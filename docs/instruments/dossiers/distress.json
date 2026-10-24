@@ -1,0 +1,938 @@
+[
+  {
+    "key": "dass21",
+    "title_en": "Depression Anxiety Stress Scales, short form (DASS-21)",
+    "title_uk": "Шкала депресії, тривожності та стресу (DASS 21)",
+    "title_ru": "Шкала депрессии, тревоги и стресса (DASS-21)",
+    "authors": "Peter F. Lovibond, Sydney H. Lovibond (University of New South Wales)",
+    "year": 1995,
+    "citation": "Lovibond SH, Lovibond PF. Manual for the Depression Anxiety Stress Scales. 2nd ed. Sydney: Psychology Foundation of Australia, 1995. Бланк DASS21 — с сайта разработчиков: http://www2.psy.unsw.edu.au/dass/Download%20files/Dass21.pdf",
+    "license": {
+      "verdict": "свободна",
+      "quote": "The DASS questionnaire is public domain, and so permission is not needed to use it. The DASS questionnaires and scoring key may be downloaded from the DASS website and copied without restriction",
+      "quote_2": "The only restriction on carrying out a translation is that the translated version, like the original English DASS, must be public domain. This means that you will not be able to copyright or sell the translation, and that you agree to make it available for download from the DASS website.",
+      "url": "https://www2.psy.unsw.edu.au/dass/DASSFAQ.htm (FAQ 3 и FAQ 25)",
+      "conditions": null
+    },
+    "items": [
+      "I found it hard to wind down",
+      "I was aware of dryness of my mouth",
+      "I couldn't seem to experience any positive feeling at all",
+      "I experienced breathing difficulty (eg, excessively rapid breathing, breathlessness in the absence of physical exertion)",
+      "I found it difficult to work up the initiative to do things",
+      "I tended to over-react to situations",
+      "I experienced trembling (eg, in the hands)",
+      "I felt that I was using a lot of nervous energy",
+      "I was worried about situations in which I might panic and make a fool of myself",
+      "I felt that I had nothing to look forward to",
+      "I found myself getting agitated",
+      "I found it difficult to relax",
+      "I felt down-hearted and blue",
+      "I was intolerant of anything that kept me from getting on with what I was doing",
+      "I felt I was close to panic",
+      "I was unable to become enthusiastic about anything",
+      "I felt I wasn't worth much as a person",
+      "I felt that I was rather touchy",
+      "I was aware of the action of my heart in the absence of physical exertion (eg, sense of heart rate increase, heart missing a beat)",
+      "I felt scared without any good reason",
+      "I felt that life was meaningless"
+    ],
+    "items_note": "Дословно с официального бланка разработчиков Dass21.pdf. Инструкция: «Please read each statement and circle a number 0, 1, 2 or 3 which indicates how much the statement applied to you over the past week. There are no right or wrong answers. Do not spend too much time on any statement.» Переносы строк в пунктах 4, 9, 14, 19 склеены без изменения слов.",
+    "anchors": [
+      {
+        "label": "Did not apply to me at all",
+        "score": 0
+      },
+      {
+        "label": "Applied to me to some degree, or some of the time",
+        "score": 1
+      },
+      {
+        "label": "Applied to me to a considerable degree, or a good part of time",
+        "score": 2
+      },
+      {
+        "label": "Applied to me very much, or most of the time",
+        "score": 3
+      }
+    ],
+    "reverse": [],
+    "scoring": "Три подшкалы по 7 пунктов, сумма каждой умножается на 2. FAQ 30 дословно: «If you are using the short DASS (21 items) there will only be 7 items per scale so you will only apply the scoring template to the single sheet; however you will then need to multiply the score you obtain for each scale by 2 in order to make it comparable to the corresponding full DASS score (and the DASS norms and published studies)». FAQ 8: «Remember when using the DASS21 to multiply the obtained scale scores by 2, so that they can be compared to the DASS normative data and to other published DASS data.» Ключ — позиции шаблона на одном листе (FAQ 28: «there are 7 items from each scale on the first page of the full DASS») и дословно в описании украинского перевода (DASS-21_ua_about.pdf): «Шкала D (депресія) 3, 5, 10, 13, 16, 17, 21. Шкала А (тривожність) 2, 4, 7, 9, 15, 19, 20. Шкала S (стрес) 1, 6, 8, 11, 12, 14, 18.» Обратных пунктов нет. Пропуски — FAQ 27: «allow ... 1 missing item per 7-item scale for the short version (DASS21)»; это совпадает с умолчанием движка (доля 0,8: 6 из 7).",
+    "bands": null,
+    "bands_source": "Та же ловушка, что у DASS-42: таблица порогов — только в платном руководстве. FAQ 5 дословно: «we have developed a set of cut-off scores for defining mild/moderate/severe/extremely severe scores for each DASS scale. To avoid misinterpretation and reification of these (arbitrary) labels, they are only provided in the DASS manual». Пороги из статей и калькуляторов — пересказ, досье их не берёт. Украинская адаптация порогов не даёт (только описательные M, SD, квартили на 235 респондентах, в сырых суммах).",
+    "risk_items": [
+      {
+        "n": 21,
+        "why": "«I felt that life was meaningless» — тот же английский пункт, что п. 38 DASS-42, который каталог размечает тревогой moderate с любого ненулевого ответа как правило отделения, а не разработчика. Прямого вопроса о суициде в DASS-21 нет."
+      }
+    ],
+    "translation": {
+      "uk": {
+        "exists": true,
+        "by": "Інна Галецька, Марина Кліманська, Марія Перун (кафедра психології ЛНУ ім. І. Франка); на сайте разработчиков: «This translation of the DASS21 was carried out by Inna Haletska and her colleagues Marina Klimanska and Mariia Perun.»",
+        "free": true,
+        "url": "http://www2.psy.unsw.edu.au/dass/Ukranian/Ukrainian.htm (DASS-21_ua.pdf, DASS-21_ua_about.pdf, 26.10.2023)",
+        "note": "В бланке DASS-21_ua.pdf НЕТ пункта 18 («I felt that I was rather touchy»): нумерация идёт 17 → 19 (проверено по текстовому слою и по изображению страницы). В системе п. 18 — рабочий перевод «Я відчував/ла, що мене доволі легко зачепити» (по смыслу — как рабочий перевод того же пункта в DASS-42 каталога). Исправлены опечатки бланка: вариант 2 «часто бо значну частину часу» → «часто або значну частину часу»; инструкция «вкажіть на скільки» → «вкажіть, наскільки»; в п. 17 добавлена запятая перед «що». Описание перевода: 235 респондентов, α Кронбаха D 0,849, A 0,839, S 0,875; M (SD): D 6,95 (4,75), A 5,99 (4,97), S 9,89 (5,37) — в СЫРЫХ суммах 0-21, без умножения на 2."
+      },
+      "ru": {
+        "exists": true,
+        "by": "Фаттахов И. М., Горобец Е. А., 2024 (Казанский федеральный университет); на сайте разработчиков: «This translation of the DASS and DASS21 was carried out by Professor Ilyas M. Fattakhov and colleagues at Kazan Federal University.»",
+        "free": true,
+        "url": "http://www2.psy.unsw.edu.au/dass/Russian/Fattakhov/Fattakhov%20Russian.htm (Fattakhov_DASS-21_rus.pdf)",
+        "note": "Выбран из двух русских переводов на сайте разработчиков; второй — NCHECR (исследование ALTAIR, DASS21Russian.pdf): там п. 18 «touchy» передан как «раздражителен(льна)», п. 16 — в настоящем времени. Исправлена опечатка п. 16 «Я был в не состоянии» → «Я был не в состоянии». Инструкция бумажного бланка («обведите напротив него цифру 0, 1, 2, 3») заменена экранной («выберите вариант ответа»); у вариантов ответа убраны точки в конце."
+      }
+    },
+    "example": {
+      "answers": [
+        1,
+        0,
+        2,
+        0,
+        2,
+        1,
+        0,
+        2,
+        1,
+        2,
+        1,
+        1,
+        3,
+        1,
+        0,
+        2,
+        2,
+        1,
+        0,
+        1,
+        2
+      ],
+      "total": {
+        "depression": 30,
+        "anxiety": 4,
+        "stress": 16
+      },
+      "band": null,
+      "note": "Арифметическая проверка ключа (не опубликованный кейс). Депрессия = пп. 3, 5, 10, 13, 16, 17, 21 = 2+2+2+3+2+2+2 = 15, ×2 = 30. Тревога = пп. 2, 4, 7, 9, 15, 19, 20 = 0+0+0+1+0+0+1 = 2, ×2 = 4. Стресс = пп. 1, 6, 8, 11, 12, 14, 18 = 1+1+2+1+1+1+1 = 8, ×2 = 16. Второй пример: каждому пункту балл его шкалы (D = 3, A = 1, S = 2) → D 42, A 14, S 28. Суммы пересчитаны скриптом."
+    },
+    "verdict": "завести без полос — public domain; украинский текст — перевод с сайта разработчиков (п. 18 в бланке пропущен, он — рабочий перевод), русский — перевод Фаттахова и Горобец (2024) с сайта разработчиков; баллы ×2 по правилу разработчиков"
+  },
+  {
+    "key": "k10",
+    "title_en": "Kessler Psychological Distress Scale (K10)",
+    "title_uk": null,
+    "title_ru": null,
+    "authors": "Ronald C. Kessler и соавт. (Harvard Medical School)",
+    "year": 2002,
+    "citation": "Kessler RC, Andrews G, Colpe LJ, Hiripi E, Mroczek DK, Normand S-LT, Walters EE, Zaslavsky AM. Short screening scales to monitor population prevalences and trends in non-specific psychological distress. Psychological Medicine. 2002;32(6):959-976. Ссылка, которую требует разработчик: Kessler RC, Barker PR, Colpe LJ, Epstein JF, Gfroerer JC, Hiripi E, Howes MJ, Normand S-LT, Manderscheid RW, Walters EE, Zaslavsky AM. Screening for serious mental illness in the general population. Archives of General Psychiatry. 2003;60(2):184-189.",
+    "license": {
+      "verdict": "свободна (с копирайтом и ссылкой)",
+      "quote": "Use of the K6 and K10 is free and does not require any formal permission or approval. We do ask that you please cite the below article and include the copyright when using these scales.",
+      "quote_2": "The translations of the K6 and K10 are posted for unrestricted use, with the same requirement to acknowledge the copyright and cite the above article. If you wish to translate K6 and or K10 into a language not listed below (please also check the additional translations posted on the Australian websites), you have permission to do so.",
+      "url": "https://www.hcp.med.harvard.edu/ncs/k6_scales.php",
+      "url_2": "https://web.archive.org/web/20251226080045/https://www.hcp.med.harvard.edu/ncs/k6_scales.php (живая страница закрыта проверкой на робота; цитаты сняты с копии Wayback Machine от 26.12.2025)",
+      "conditions": "Назвать копирайт «Copyright © Ronald C. Kessler, PhD. All rights reserved.» и сослаться на Kessler et al., 2003 (Arch Gen Psychiatry 60:184-189) — оба стоят в описании методики и в источнике каталога."
+    },
+    "items": [
+      "tired out for no good reason?",
+      "nervous?",
+      "so nervous that nothing could calm you down?",
+      "hopeless?",
+      "restless or fidgety?",
+      "so restless that you could not sit still?",
+      "depressed?",
+      "so depressed that nothing could cheer you up?",
+      "that everything was an effort?",
+      "worthless?"
+    ],
+    "items_note": "Дословно с бланка самозаполнения разработчика (ftpdir/k6/Self admin_K10.pdf, версия 2001 г.). Шапка: «The following questions ask about how you have been feeling during the past 30 days. For each question, please circle the number that best describes how often you had this feeling.»; стем «During that month, how often did you feel …». Порядок совпадает с «2001 version» в ABS 4817.0.55.001, Table A (https://www.abs.gov.au/ausstats/abs@.nsf/Lookup/4817.0.55.001Chapter32007-08). В бланке самозаполнения все 10 пунктов задаются всем; пропуск пп. 3, 6, 8 после «none of the time» — правило интервьюерской версии. Подвал бланка: «© Ronald C. Kessler, PhD. 2003 All rights reserved.»",
+    "anchors": [
+      {
+        "label": "None of the time",
+        "score": 1
+      },
+      {
+        "label": "A little of the time",
+        "score": 2
+      },
+      {
+        "label": "Some of the time",
+        "score": 3
+      },
+      {
+        "label": "Most of the time",
+        "score": 4
+      },
+      {
+        "label": "All of the time",
+        "score": 5
+      }
+    ],
+    "anchors_note": "На бланке Harvard варианты идут от «All of the time» к «None of the time» и при подсчёте перекодируются. Разработчик (Scoring_K6_K10.pdf) описывает две системы: 0-4 (США, 0-40) и австралийскую 1-5: «The K10 and the K6 scales are administered in Australia using an alternate scoring system based on responses of “1-5” (where 5= ”all of the time” and 1= ”none of the time”) versus the “0-4\" system presented here. This alternate system results in a score range of 6-30 for the K6 and 10-50 for the K10.» Система берёт 1-5, потому что все опубликованные группировки K10 заданы в шкале 10-50; варианты показываются от «Ніколи» к «Весь час», как в австралийских формах.",
+    "reverse": [],
+    "scoring": "ABS 4817.0.55.001 (2012), раздел «K10 Scoring», дословно: «The K10 is scored using a five-level response scale based on the frequency of symptoms reported for each question. In most ABS and other Australian surveys, 1 is the minimum score for each item (none of the time) and 5 is the maximum score (all of the time). The sum of these scores yields a minimum possible score of 10 (all answers were ‘none of the time’) and a maximum possible score of 50 (all answers were ‘all of the time’)». Обратных пунктов нет. Пропуски: разработчик (Scoring_K6_K10.pdf) — «We never made recommendations on how to handle missing values in our publications on K6 scoring»; действует умолчание движка.",
+    "bands": [
+      {
+        "min": 10,
+        "max": 19,
+        "label_en": "likely to be well"
+      },
+      {
+        "min": 20,
+        "max": 24,
+        "label_en": "likely to have a mild mental disorder"
+      },
+      {
+        "min": 25,
+        "max": 29,
+        "label_en": "likely to have a moderate mental disorder"
+      },
+      {
+        "min": 30,
+        "max": 50,
+        "label_en": "likely to have a severe mental disorder"
+      }
+    ],
+    "bands_source": "ABS 4817.0.55.001 (2012), «K10 Scoring» (https://www.abs.gov.au/ausstats/abs@.nsf/Lookup/4817.0.55.001Chapter92007-08), дословно: «While no universally agreed categories or groupings exist for K10 scores, a number of different methods are used in Australia, depending on the purpose of administration and the setting in which it is delivered.» Table F (CRUfAD & GPcare, Coombs 2011): «10-19 are likely to be well; 20-24 are likely to have a mild mental disorder; 25-29 are likely to have a moderate mental disorder; 30-50 are likely to have a severe mental disorder». Table G — те же границы, «used by specialist mental health services for people who are already in specialist care»: «20-24 The client or patient may be experiencing mild levels of distress consistent with a diagnosis of a mild depression and/or anxiety disorder» (25-29 — moderate, 30-50 — severe). Выбраны F/G: учреждение — специализированная служба. Популяционная группировка ABS (Table E: «10-15 Low, 16-21 Moderate, 22-29 High, 30-50 Very high», «developed drawing on an amalgam of the work of the Clinical Research Unit for Anxiety and Depression (CRUfAD), Andrews and Slade (2001), and Korten») — для популяционных обследований, не взята. Первоисточник Andrews & Slade 2001 (Aust N Z J Public Health 25:494-497) получить не удалось: ScienceDirect и Wiley закрыты проверкой на робота. Все границы — австралийские, не украинские.",
+    "risk_items": [],
+    "risk_items_note": "Вопросов о суициде, самоповреждении или вреде другим в K10 нет; «hopeless» и «worthless» — симптомы дистресса. Низкий балл не означает отсутствия суицидального риска — это сказано в описании методики.",
+    "translation": {
+      "uk": {
+        "exists": false,
+        "by": null,
+        "free": null,
+        "url": "https://web.archive.org/web/20251226080045/https://www.hcp.med.harvard.edu/ncs/k6_scales.php",
+        "note": "В списке переводов разработчика (арабский … валлийский, 27 языков) нет ни украинского, ни русского; в австралийских переводах, на которые ссылается разработчик (NSW Transcultural Mental Health Centre, Health Translations Victoria, 35 языков), украинского тоже нет. Разработчик разрешает переводить без согласования («you have permission to do so») и советует протоколы ITC 2017 или Michigan 2020. Украинский текст в системе — рабочий перевод (WORKING_TRANSLATION)."
+      },
+      "ru": {
+        "exists": true,
+        "by": "NSW Transcultural Mental Health Centre — форма NSW Health SMR060.983 «K10 + LM - RUSSIAN/РУССКИЙ» (2014); кроме неё — валидированная русскоязычная версия: Кислицын Д. В. и соавт. «Психиатрия». 2025;23(2):65-77, doi:10.30629/2618-6667-2025-23-2-65-77 (по аннотации — 1667 участников онлайн-опросов)",
+        "free": null,
+        "url": "https://www.nsw.gov.au/sites/default/files/noindex/resources/RUSSIAN.pdf",
+        "note": "Форма NSW: период «за последние 4 недели», варианты «Никогда / Редко / Иногда / Часто / Всегда» (упрощают «None / A little / Some / Most / All of the time»), п. 4 «ощущали свою безнадежность», п. 7 «ощущали, что у вас депрессия» — вольный перевод; условий переиспользования на странице NSW нет (только «Copyright © 2026»). Полный текст статьи Кислицына и соавт. получить не удалось: сайт журнала не отвечал. Поэтому русский текст в системе — рабочий перевод; перед клиническим использованием сверить с версией 2025 г."
+      }
+    },
+    "example": {
+      "answers": [
+        2,
+        3,
+        2,
+        2,
+        3,
+        2,
+        2,
+        2,
+        3,
+        2
+      ],
+      "total": 23,
+      "band": "20-24 (likely mild mental disorder)",
+      "note": "Арифметический пример (не опубликованный кейс), баллы вариантов 1-5: 2+3+2+2+3+2+2+2+3+2 = 23. Второй: все «Some of the time» (3) → 30 → полоса 30-50. Посчитано скриптом."
+    },
+    "verdict": "завести — свободна по заявлению разработчика (с копирайтом и ссылкой); перевод рабочий; полосы — группировка австралийских служб (ABS 2012, табл. F-G), универсальных полос у K10 нет"
+  },
+  {
+    "key": "k6",
+    "title_en": "Kessler Psychological Distress Scale (K6)",
+    "title_uk": null,
+    "title_ru": null,
+    "authors": "Ronald C. Kessler и соавт. (Harvard Medical School)",
+    "year": 2002,
+    "citation": "Kessler RC, Barker PR, Colpe LJ, Epstein JF, Gfroerer JC, Hiripi E, Howes MJ, Normand S-LT, Manderscheid RW, Walters EE, Zaslavsky AM. Screening for serious mental illness in the general population. Archives of General Psychiatry. 2003;60(2):184-189. Международная проверка порога: Kessler RC и соавт. Int J Methods Psychiatr Res. 2010;19(S1):4-22.",
+    "license": {
+      "verdict": "свободна (с копирайтом и ссылкой)",
+      "quote": "Use of the K6 and K10 is free and does not require any formal permission or approval. We do ask that you please cite the below article and include the copyright when using these scales.",
+      "quote_2": "The translations of the K6 and K10 are posted for unrestricted use, with the same requirement to acknowledge the copyright and cite the above article. If you wish to translate K6 and or K10 into a language not listed below (please also check the additional translations posted on the Australian websites), you have permission to do so.",
+      "url": "https://www.hcp.med.harvard.edu/ncs/k6_scales.php",
+      "url_2": "https://web.archive.org/web/20251226080045/https://www.hcp.med.harvard.edu/ncs/k6_scales.php (живая страница закрыта проверкой на робота; цитаты сняты с копии Wayback Machine от 26.12.2025)",
+      "conditions": "Назвать копирайт «Copyright © Ronald C. Kessler, PhD. All rights reserved.» и сослаться на Kessler et al., 2003 (Arch Gen Psychiatry 60:184-189) — оба стоят в описании методики и в источнике каталога."
+    },
+    "items": [
+      "nervous?",
+      "hopeless?",
+      "restless or fidgety?",
+      "so depressed that nothing could cheer you up?",
+      "that everything was an effort?",
+      "worthless?"
+    ],
+    "items_note": "Дословно с бланка самозаполнения разработчика (ftpdir/k6/Self admin_K6.pdf); стем «During the past 30 days, about how often did you feel …». Разработчик: «Note that the K6 is merely a truncated form of the K10 in which four questions are deleted.» Соответствие пунктам K10 — ABS 4817.0.55.001, Table B (https://www.abs.gov.au/ausstats/abs@.nsf/Lookup/4817.0.55.001Chapter42007-08): K6 1-6 = K10 2, 4, 5, 8, 9, 10. В системе пункты импортируются из K10, а не копируются.",
+    "anchors": [
+      {
+        "label": "None of the time",
+        "score": 1
+      },
+      {
+        "label": "A little of the time",
+        "score": 2
+      },
+      {
+        "label": "Some of the time",
+        "score": 3
+      },
+      {
+        "label": "Most of the time",
+        "score": 4
+      },
+      {
+        "label": "All of the time",
+        "score": 5
+      }
+    ],
+    "anchors_note": "Как у K10: австралийская система 1-5, сумма 6-30.",
+    "reverse": [],
+    "scoring": "Сумма шести пунктов. Разработчик (Scoring_K6_K10.pdf): «This alternate system results in a score range of 6-30 for the K6 and 10-50 for the K10.» В системе США (0-4) диапазон 0-24.",
+    "bands": [
+      {
+        "min": 6,
+        "max": 18,
+        "label_en": "No probable serious mental illness"
+      },
+      {
+        "min": 19,
+        "max": 30,
+        "label_en": "Probable serious mental illness"
+      }
+    ],
+    "bands_source": "Разработчик, Scoring_K6_K10.pdf (https://www.hcp.med.harvard.edu/ncs/ftpdir/k6/Scoring_K6_K10.pdf), дословно: «The calibration study that was published in Archives of General Psychiatry shows that a cut point on 13+ on the K6 is the optimal cut point for assessing the prevalence of SMI in the national population, where \"optimal\" means equalizing false positives and false negatives. However, as you might know, this cut point is optimal only in a population that has the same prevalence as the total US population.» и для шкалы 1-5: «The optimal cut point on the K6 for this system is 6-18 versus 19+.» То же — ABS 4817.0.55.001, Table I: «6-18 No probable serious mental illness; 19-30 Probable serious mental illness» (Kessler et al., 2010). Порог получен в США; оговорка разработчика о распространённости — в описании методики.",
+    "risk_items": [],
+    "risk_items_note": "Как у K10: вопросов о суициде и самоповреждении нет.",
+    "translation": {
+      "uk": {
+        "exists": false,
+        "by": null,
+        "free": null,
+        "url": "https://web.archive.org/web/20251226080045/https://www.hcp.med.harvard.edu/ncs/k6_scales.php",
+        "note": "В списке переводов разработчика (арабский … валлийский, 27 языков) нет ни украинского, ни русского; в австралийских переводах, на которые ссылается разработчик (NSW Transcultural Mental Health Centre, Health Translations Victoria, 35 языков), украинского тоже нет. Разработчик разрешает переводить без согласования («you have permission to do so») и советует протоколы ITC 2017 или Michigan 2020. Украинский текст в системе — рабочий перевод (WORKING_TRANSLATION)."
+      },
+      "ru": {
+        "exists": true,
+        "by": "NSW Transcultural Mental Health Centre — форма NSW Health SMR060.983 «K10 + LM - RUSSIAN/РУССКИЙ» (2014); кроме неё — валидированная русскоязычная версия: Кислицын Д. В. и соавт. «Психиатрия». 2025;23(2):65-77, doi:10.30629/2618-6667-2025-23-2-65-77 (по аннотации — 1667 участников онлайн-опросов)",
+        "free": null,
+        "url": "https://www.nsw.gov.au/sites/default/files/noindex/resources/RUSSIAN.pdf",
+        "note": "Форма NSW: период «за последние 4 недели», варианты «Никогда / Редко / Иногда / Часто / Всегда» (упрощают «None / A little / Some / Most / All of the time»), п. 4 «ощущали свою безнадежность», п. 7 «ощущали, что у вас депрессия» — вольный перевод; условий переиспользования на странице NSW нет (только «Copyright © 2026»). Полный текст статьи Кислицына и соавт. получить не удалось: сайт журнала не отвечал. Поэтому русский текст в системе — рабочий перевод; перед клиническим использованием сверить с версией 2025 г."
+      }
+    },
+    "example": {
+      "answers": [
+        3,
+        3,
+        3,
+        3,
+        3,
+        3
+      ],
+      "total": 18,
+      "band": "6-18 (below cut point)",
+      "note": "Арифметический пример: все «Some of the time» (3) → 18 — на балл ниже порога; тот же набор с одним «Most of the time» (4) → 19 → «probable serious mental illness». Посчитано скриптом."
+    },
+    "verdict": "завести — подмножество K10 (пункты 2, 4, 5, 8, 9, 10) с порогом разработчика 19+ в шкале 1-5 (13+ в шкале 0-24); перевод рабочий, общий с K10"
+  },
+  {
+    "key": "phq15",
+    "title_en": "Patient Health Questionnaire-15 (PHQ-15), «Physical Symptoms»",
+    "title_uk": null,
+    "title_ru": "Физические симптомы (PHQ-15)",
+    "authors": "Kurt Kroenke, Robert L. Spitzer, Janet B. W. Williams",
+    "year": 2002,
+    "citation": "Kroenke K, Spitzer RL, Williams JBW. The PHQ-15: validity of a new measure for evaluating the severity of somatic symptoms. Psychosomatic Medicine. 2002;64(2):258-266.",
+    "license": {
+      "verdict": "свободна",
+      "quote": "All of the measures included in Table 1 are in the public domain. No permission is required to reproduce, translate, display or distribute.",
+      "quote_2": "Developed by Drs. Robert L. Spitzer, Janet B.W. Williams, Kurt Kroenke and colleagues, with an educational grant from Pfizer Inc. No permission required to reproduce, translate, display or distribute.",
+      "url": "https://archive.thepcc.org/sites/default/files/resources/instructions.pdf (INSTRUCTION MANUAL, стр. 8; PHQ-15 — в Table 1)",
+      "url_2": "https://www.phqscreeners.com/images/sites/g/files/g10060481/f/201412/English_0%20(1).pdf (подвал бланка PHQ-15)",
+      "conditions": null
+    },
+    "items": [
+      "Stomach pain",
+      "Back pain",
+      "Pain in your arms, legs, or joints (knees, hips, etc.)",
+      "Menstrual cramps or other problems with your periods",
+      "Headaches",
+      "Chest pain",
+      "Dizziness",
+      "Fainting spells",
+      "Feeling your heart pound or race",
+      "Shortness of breath",
+      "Pain or problems during sexual intercourse",
+      "Constipation, loose bowels, or diarrhea",
+      "Nausea, gas, or indigestion",
+      "Feeling tired or having low energy",
+      "Trouble sleeping"
+    ],
+    "items_note": "Дословно с бланка «PHYSICAL SYMPTOMS (PHQ-15)» на сайте издателя (https://www.phqscreeners.com/select-screener → PHQ-15 → English). Шапка: «During the past 4 weeks, how much have you been bothered by any of the following problems?». Пункт d помечен «WOMEN ONLY».",
+    "anchors": [
+      {
+        "label": "Not bothered at all",
+        "score": 0
+      },
+      {
+        "label": "Bothered a little",
+        "score": 1
+      },
+      {
+        "label": "Bothered a lot",
+        "score": 2
+      }
+    ],
+    "reverse": [],
+    "scoring": "INSTRUCTION MANUAL, стр. 6, дословно: «PHQ-15 Somatic Symptom Severity. This is calculated by assigning scores of 0, 1, and 2 to the response categories of “not at all”, “bothered a little”, and “bothered a lot”, for the 13 somatic symptoms of the PHQ (items 1a-1m). Also, 2 items from the depression module (sleep and tired) are scored 0 (“not at all”), 1 (“several days”) or 2 (“more than half the days” or “nearly every day”). Thus, a PHQ-15 score can be derived from page 1 of the PHQ, or from separate administration of the PHQ-15 scale or the PHQ-SADS.» Table 1: «Fifteen items, each of which is scored 0 to 2, providing a 0 to 30 severity score.» Система — отдельный бланк PHQ-15: все 15 пунктов с вариантами «Not bothered at all / Bothered a little / Bothered a lot». Пункт d (только женщины): руководство не описывает пересчёт для мужчин; в системе пункт необязательный, сумма берётся по данным ответам без пересчёта (общее правило движка) — у мужчин это сумма 14 пунктов, пороги те же.",
+    "bands": [
+      {
+        "min": 0,
+        "max": 4,
+        "label_en": "Minimal"
+      },
+      {
+        "min": 5,
+        "max": 9,
+        "label_en": "Low"
+      },
+      {
+        "min": 10,
+        "max": 14,
+        "label_en": "Medium"
+      },
+      {
+        "min": 15,
+        "max": 30,
+        "label_en": "High"
+      }
+    ],
+    "bands_source": "INSTRUCTION MANUAL, стр. 6: «PHQ-15 scores of 5, 10, and 15 represent cutpoints for low, medium, and high somatic symptom severity, respectively.» Стр. 2: «cutpoints of 5, 10, and 15 represent mild, moderate, and severe levels of depressive, anxiety, and somatic symptoms, on the PHQ-9, GAD-7, and PHQ-15 respectively. Also, a cutpoint of 10 or greater is considered a “yellow flag” on all 3 measures (i.e., drawing attention to a possible clinically significant condition), while a cutpoint of 15 is a “red flag” on all 3 measures (i.e., targeting individuals in whom active treatment is probably warranted).» Полоса 0-4 — всё, что ниже первого порога (руководство её не называет; «minimal» — подпись системы). Пороги установлены на пациентах первичного звена США.",
+    "risk_items": [],
+    "translation": {
+      "uk": {
+        "exists": false,
+        "by": null,
+        "free": null,
+        "url": "https://www.phqscreeners.com/select-screener",
+        "note": "Украинского PHQ-15 у издателя нет: для PHQ-15 перечислены English, English for Canada, English for South Africa, Russian for Russia, Spanish for Chile, Spanish for the USA, Swedish for Finland и «OTHER TRANSLATIONS»; полного PHQ на украинском тоже нет (только Russian for Russia). Издатель разрешает переводить без согласования. Украинский текст в системе — рабочий перевод."
+      },
+      "ru": {
+        "exists": true,
+        "by": "MAPI Research Institute по заказу Pfizer — «Russian for Russia» на сайте издателя",
+        "free": true,
+        "url": "https://www.phqscreeners.com/images/sites/g/files/g10060481/f/201412/PHQ15_Russian%20for%20Russia.pdf",
+        "note": "Пункты, шапка («Насколько сильно вас беспокоили какие-либо из перечисленных ниже проблем на протяжении последних 4 недель?») и варианты («Вообще не беспокоили / Немного беспокоили / Сильно беспокоили») взяты дословно; подвал: «Воспроизведение, перевод, показ и распространение разрешены.»"
+      }
+    },
+    "example": {
+      "answers": [
+        1,
+        1,
+        2,
+        1,
+        2,
+        0,
+        1,
+        0,
+        1,
+        1,
+        0,
+        1,
+        1,
+        2,
+        2
+      ],
+      "total": 16,
+      "band": "15-30 (high)",
+      "note": "Арифметический пример (женщина, все 15 пунктов): 1+1+2+1+2+0+1+0+1+1+0+1+1+2+2 = 16. Второй (мужчина, п. 4 пропущен): 1, 0, 1, —, 1, 0, 1, 0, 0, 1, 0, 1, 1, 2, 1 → 10 → полоса 10-14. Посчитано скриптом."
+    },
+    "verdict": "завести — public domain; русский текст — официальный перевод издателя (MAPI), украинский — рабочий; пороги 5/10/15 из руководства издателя"
+  },
+  {
+    "key": "phq2",
+    "title_en": "Patient Health Questionnaire-2 (PHQ-2)",
+    "title_uk": null,
+    "title_ru": null,
+    "authors": "Kurt Kroenke, Robert L. Spitzer, Janet B. W. Williams",
+    "year": 2003,
+    "citation": "Kroenke K, Spitzer RL, Williams JBW. The Patient Health Questionnaire-2: validity of a two-item depression screener. Medical Care. 2003;41(11):1284-1292.",
+    "license": {
+      "verdict": "свободна",
+      "quote": "All of the measures included in Table 1 are in the public domain. No permission is required to reproduce, translate, display or distribute.",
+      "url": "https://archive.thepcc.org/sites/default/files/resources/instructions.pdf",
+      "conditions": null,
+      "note": "PHQ-2 назван в Table 1 руководства: «PHQ-2 — First 2 items of PHQ-9. Ultra-brief depression screener. Two items scored 0 to 3 (total score of 0-6)»."
+    },
+    "items": [
+      "Little interest or pleasure in doing things",
+      "Feeling down, depressed, or hopeless"
+    ],
+    "items_note": "Пункты 1-2 бланка PHQ-9 издателя (https://www.phqscreeners.com/images/sites/g/files/g10060481/f/201412/PHQ-9_English.pdf). Собственного текста у PHQ-2 нет; в системе пункты импортируются из phq9.ts (официальный украинский текст МОЗ, наказ №1003), а не копируются.",
+    "anchors": [
+      {
+        "label": "Not at all",
+        "score": 0
+      },
+      {
+        "label": "Several days",
+        "score": 1
+      },
+      {
+        "label": "More than half the days",
+        "score": 2
+      },
+      {
+        "label": "Nearly every day",
+        "score": 3
+      }
+    ],
+    "reverse": [],
+    "scoring": "INSTRUCTION MANUAL, стр. 6: «PHQ-2 and GAD-2 Severity. These consist of the first two items of the PHQ-9 and GAD-7 respectively, and constitute the two core DSM-IV items for major depressive disorder and generalized anxiety disorder, respectively. Each ranges from a score of 0 to 6.» Обратных пунктов нет.",
+    "bands": [
+      {
+        "min": 0,
+        "max": 2,
+        "label_en": "Below screening cutpoint"
+      },
+      {
+        "min": 3,
+        "max": 6,
+        "label_en": "Positive screen"
+      }
+    ],
+    "bands_source": "INSTRUCTION MANUAL, стр. 6: «The operating characteristics of these ultra-brief measures are quite good; the recommended cutpoints for each when used as screeners is a score of 3 or greater.» Стр. 2: «For the ultra-brief measures (PHQ-2 and GAD-2), a score of 3 or greater should prompt administration of the full PHQ-9 and/or GAD-7, as well as a clinical interview to determine whether a mental disorder is present.» Порог установлен на пациентах первичного звена США.",
+    "risk_items": [],
+    "risk_items_note": "Вопроса о мыслях о смерти и самоповреждении нет (п. 9 PHQ-9 в PHQ-2 не входит): отрицательный PHQ-2 не исключает суицидального риска — это сказано в описании методики.",
+    "translation": {
+      "uk": {
+        "exists": true,
+        "by": "МОЗ України: додаток 1 до УКПМД «Депресія», наказ №1003 від 25.12.2014 (PHQ-9, пункти 1-2)",
+        "free": true,
+        "url": "см. карточку phq9 в mood.json",
+        "note": "Есть и перевод издателя «Ukrainian for Ukraine» (MAPI, https://www.phqscreeners.com/images/sites/g/files/g10060481/f/201412/PHQ9_Ukrainian%20for%20Ukraine.pdf) с другой формулировкой («Вам було не дуже цікаво або подобалось чимось займатись»). Каталог держит текст МОЗ (решение phq9.ts); PHQ-2 его не меняет."
+      },
+      "ru": {
+        "exists": true,
+        "by": "MAPI: «Russian for Ukraine» и «Russian for Russia» PHQ-9 на сайте издателя",
+        "free": true,
+        "url": "https://www.phqscreeners.com/images/sites/g/files/g10060481/f/201412/PHQ9_Russian%20for%20Ukraine.pdf",
+        "note": "С рецензии каталога 2.1 русский текст PHQ-9 в системе — «Russian for Ukraine» издателя дословно; PHQ-2 берёт его пункты 1–2, оговорки о рабочем переводе нет."
+      }
+    },
+    "example": {
+      "answers": [
+        2,
+        1
+      ],
+      "total": 3,
+      "band": "3-6 (positive screen)",
+      "note": "Арифметически однозначно: 2+1 = 3 — ровно порог. Набор 1, 1 → 2 — ниже порога."
+    },
+    "verdict": "завести — public domain; пункты и шкала ответов импортируются из phq9.ts; порог ≥3 из руководства"
+  },
+  {
+    "key": "gad2",
+    "title_en": "Generalized Anxiety Disorder 2-item (GAD-2)",
+    "title_uk": null,
+    "title_ru": null,
+    "authors": "Kurt Kroenke, Robert L. Spitzer, Janet B. W. Williams, Patrick O. Monahan, Bernd Löwe",
+    "year": 2007,
+    "citation": "Kroenke K, Spitzer RL, Williams JBW, Monahan PO, Löwe B. Anxiety disorders in primary care: prevalence, impairment, comorbidity, and detection. Annals of Internal Medicine. 2007;146(5):317-325.",
+    "license": {
+      "verdict": "свободна",
+      "quote": "All of the measures included in Table 1 are in the public domain. No permission is required to reproduce, translate, display or distribute.",
+      "quote_2": "All PHQ, GAD-7 screeners and translations are downloadable from this website and no permission is required to reproduce, translate, display or distribute them.",
+      "url": "https://archive.thepcc.org/sites/default/files/resources/instructions.pdf",
+      "url_2": "https://www.phqscreeners.com/select-screener",
+      "conditions": null,
+      "note": "GAD-2 назван в Table 1 руководства: «GAD-2 — First 2 items of GAD-7. Ultra-brief anxiety screener. Two items scored 0 to 3 (total score of 0-6)»."
+    },
+    "items": [
+      "Feeling nervous, anxious or on edge",
+      "Not being able to stop or control worrying"
+    ],
+    "items_note": "Пункты 1-2 бланка GAD-7 издателя (https://www.phqscreeners.com/images/sites/g/files/g10060481/f/201412/GAD-7_English.pdf). В системе пункты импортируются из gad7.ts (GAD_ITEMS), шкала ответов — PHQ_ANCHORS, как у GAD-7.",
+    "anchors": [
+      {
+        "label": "Not at all",
+        "score": 0
+      },
+      {
+        "label": "Several days",
+        "score": 1
+      },
+      {
+        "label": "More than half the days",
+        "score": 2
+      },
+      {
+        "label": "Nearly every day",
+        "score": 3
+      }
+    ],
+    "reverse": [],
+    "scoring": "INSTRUCTION MANUAL, стр. 6: «PHQ-2 and GAD-2 Severity. These consist of the first two items of the PHQ-9 and GAD-7 respectively, and constitute the two core DSM-IV items for major depressive disorder and generalized anxiety disorder, respectively. Each ranges from a score of 0 to 6.» Обратных пунктов нет.",
+    "bands": [
+      {
+        "min": 0,
+        "max": 2,
+        "label_en": "Below screening cutpoint"
+      },
+      {
+        "min": 3,
+        "max": 6,
+        "label_en": "Positive screen"
+      }
+    ],
+    "bands_source": "INSTRUCTION MANUAL, стр. 6: «The operating characteristics of these ultra-brief measures are quite good; the recommended cutpoints for each when used as screeners is a score of 3 or greater.» Стр. 2: «For the ultra-brief measures (PHQ-2 and GAD-2), a score of 3 or greater should prompt administration of the full PHQ-9 and/or GAD-7, as well as a clinical interview to determine whether a mental disorder is present.» Порог установлен на пациентах первичного звена США.",
+    "risk_items": [],
+    "translation": {
+      "uk": {
+        "exists": true,
+        "by": "MAPI Research Institute по заказу Pfizer — GAD-7 «Ukrainian for Ukraine» на сайте издателя",
+        "free": true,
+        "url": "https://www.phqscreeners.com/images/sites/g/files/g10060481/f/201412/GAD7_Ukrainian%20for%20Ukraine.pdf",
+        "note": "НАХОДКА: официальный украинский GAD-7 у издателя ЕСТЬ (карточка gad7 в mood.json его не нашла — не удалось получить статические ссылки). Пункты 1-2 дословно: «Ви нервували, відчували тривогу або були дуже напружені», «Ви не могли зупинити або контролювати своє хвилювання»; варианты: «Зовсім не турбували / Декілька днів / Більше половини усіх днів / Майже щоденно»; подвал: «Відтворення, переклад, демонстрація і розповсюдження дозволяються без попередньої згоди власників авторського права.» В системе GAD-2 берёт пункты из gad7.ts, чтобы у GAD-2, PHQ-4 и GAD-7 был один текст; рецензия каталога 2.1 перевела GAD-7 на этот текст издателя (подписи ответов — из PHQ-9 МОЗ, см. карточку gad7 в mood.json), и GAD-2 последовал сам (золотой тест держит статус перевода GAD-2 равным статусу GAD-7)."
+      },
+      "ru": {
+        "exists": true,
+        "by": "MAPI: GAD-7 «Russian for Ukraine» и «Russian for Russia» на сайте издателя",
+        "free": true,
+        "url": "https://www.phqscreeners.com/images/sites/g/files/g10060481/f/201412/GAD7_Russian%20for%20Ukraine.pdf",
+        "note": "Пункты 1-2 «Russian for Ukraine» дословно: «Вы нервничали, тревожились или были очень напряжены», «Вы были неспособны успокоить или контролировать свои волнения». В системе — этот текст: с рецензии каталога 2.1 gad7.ts держит «Russian for Ukraine» дословно."
+      }
+    },
+    "example": {
+      "answers": [
+        1,
+        2
+      ],
+      "total": 3,
+      "band": "3-6 (positive screen)",
+      "note": "Арифметически однозначно: 1+2 = 3 — ровно порог. Набор 1, 1 → 2 — ниже порога."
+    },
+    "verdict": "завести — public domain; пункты и шкала ответов импортируются из gad7.ts; порог ≥3 из руководства; официальный украинский GAD-7 издателя — в gad7.ts с рецензии каталога 2.1"
+  },
+  {
+    "key": "core10",
+    "title_en": "CORE-10 (Clinical Outcomes in Routine Evaluation, 10 items)",
+    "title_uk": "CORE-10",
+    "title_ru": "CORE-10",
+    "authors": "Michael Barkham, Bridgette Bewick, Tracy Mullin, Simon Gilbody, Janice Connell, Jane Cahill, John Mellor-Clark, David Richards, Gisela Unsworth, Chris Evans (по Crossref); правообладатель — CORE System Trust (CST)",
+    "year": 2013,
+    "citation": "Barkham M, Bewick B, Mullin T, Gilbody S, Connell J, Cahill J, Mellor-Clark J, Richards D, Unsworth G, Evans C. The CORE-10: a short measure of psychological distress for routine use in the psychological therapies. Counselling and Psychotherapy Research. 2013;13(1):3-13. doi:10.1080/14733145.2012.729069. Руководство: Connell J, Barkham M. CORE-10 User Manual, Version 1.1. CORE System Trust & CORE Information Management Systems Ltd, 2007.",
+    "license": {
+      "verdict": "свободна для некоммерческого использования без изменений (CC BY-NC-ND 4.0)",
+      "quote": "In line with this we placed all the measures into the Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International (CC BY-NC-ND 4.0) licence. This ensures, in perpetuity that, subject to certain conditions, any CORE instrument can be reproduced in software without payment of any fees, as has always been the case for reproduction on paper.",
+      "quote_2": "The conditions are that the use is non-commercial that the content of the measures may not be changed in any way, that attribution to the ownership and creation of the instruments by CST be given (ensured by retaining the copyright line at the bottom of each page of all instruments)",
+      "url": "https://www.coresystemtrust.org.uk/home/copyright-licensing/",
+      "url_2": "https://www.coresystemtrust.org.uk/faq-formatting-text-in-core-instruments-for-online-or-app-delivery/",
+      "conditions": "Некоммерческое использование; текст пунктов, вариантов и инструкции, порядок пунктов не менять, пункты не убирать и не добавлять; переводить самим нельзя — только утверждённые переводы CST («It would be a breach of the licence to change any wording of items or response categories and to translate a measure without following our protocol and with our permission»); строка «© CORE System Trust: https://www.coresystemtrust.org.uk/copyright.pdf» видна отвечающему. Поэлементный показ на экране разрешён (FAQ formatting, 15.10.2026: «we had accepted that the layout would change in only and particularly online responsive versions to be read on smartphones or wherever item-by-item presentation is adopted»); демографический блок бланка можно опустить, если эти данные система собирает иначе (страница copyright-licensing)."
+    },
+    "items": [
+      "I have felt tense, anxious or nervous",
+      "I have felt I have someone to turn to for support when needed",
+      "I have felt able to cope when things go wrong",
+      "Talking to people has felt too much for me",
+      "I have felt panic or terror",
+      "I made plans to end my life",
+      "I have had difficulty getting to sleep or staying asleep",
+      "I have felt despairing or hopeless",
+      "I have felt unhappy",
+      "Unwanted images or memories have been distressing me"
+    ],
+    "items_note": "Дословно с бланка CORE-10 v1.1 (https://www.coresystemtrust.org.uk/wp-content/uploads/2020/07/CORE-10-English.pdf). Шапка: «This form has 10 statements about how you have been OVER THE LAST WEEK. Please read each statement and think how often you felt that way last week. Then tick the box which is closest to this.»; стем «Over the last week...». CST (https://www.coresystemtrust.org.uk/home/instruments/core-10-information/): «The CORE-10 has no wellbeing items, six problem domain items, three functioning domain items and one risk item; given the small numbers of items, no domain scores are used from the CORE-10.»",
+    "anchors": [
+      {
+        "label": "Not at all",
+        "score": 0
+      },
+      {
+        "label": "Only occasionally",
+        "score": 1
+      },
+      {
+        "label": "Sometimes",
+        "score": 2
+      },
+      {
+        "label": "Often",
+        "score": 3
+      },
+      {
+        "label": "Most or all of the time",
+        "score": 4
+      }
+    ],
+    "reverse": [
+      2,
+      3
+    ],
+    "scoring": "С бланка v1.1 дословно: «Quick scoring if all items completed: add together the item scores to get the Clinical Score. It is not recommended to compute a score if more than one item was omitted but if nine were completed: add together the item scores, divide by nine to get the mean score, then multiply by 10 to get the Clinical Score.» Обратные пункты 2 и 3: на бланке их варианты напечатаны баллами 4-3-2-1-0. Диапазон 0-40. В системе: среднее по отвеченным пунктам с весом 10 (= сумма при 10 ответах, среднее × 10 при 9) и минимальная доля ответов 0,9 — ровно правило бланка.",
+    "bands": [
+      {
+        "min": 0,
+        "max": 10,
+        "label_en": "non-clinical range"
+      },
+      {
+        "min": 11,
+        "max": 14,
+        "label_en": "mild"
+      },
+      {
+        "min": 15,
+        "max": 19,
+        "label_en": "moderate"
+      },
+      {
+        "min": 20,
+        "max": 24,
+        "label_en": "moderate-to-severe"
+      },
+      {
+        "min": 25,
+        "max": 40,
+        "label_en": "severe"
+      }
+    ],
+    "bands_source": "Connell & Barkham, 2007, CORE-10 User Manual v1.1, p. 10 — дословно в цитате доверенного лица CST C. Evans (https://www.psyctc.org/psyctc/2021/10/19/against-score-levels/): «A score of 10 or below denotes a score within the non-clinical range and of 11 or above within the clinical range. Within the non-clinical range we have identified two bands called ‘healthy’ and ‘low’ level distress. ... Within the clinical range we have identified the score of 11 as the lower boundary of the ‘mild’ level, 15 for the ‘moderate’ level, and 20 for the ‘moderate-to-severe’ level. A score of 25 or over marks the ‘severe’ level.» Граница healthy/low в цитате не названа — в системе одна полоса 0-10. Оговорки правообладателя: Evans — «I can find nothing in the manual to say how those cutting points were identified»; CST о переводах — «don’t assume that scores from one language transfer to another ... get local referential data». Пороги британские; для украинского и русского переводов референтных данных нет.",
+    "risk_items": [
+      {
+        "n": 6,
+        "why": "«I made plans to end my life» — единственный пункт риска CORE-10 (CST: «one risk item»). План тяжелее мыслей: любая ненулевая частота — тяжёлая тревога (решение системы)."
+      }
+    ],
+    "translation": {
+      "uk": {
+        "exists": true,
+        "by": "Утверждённый перевод CST (2024): Olha Myshakivska, Anton Fedorets, Hal Kutelmakh, Nataliia Pimenova, Oksana Shmygliuk и др. (страница https://www.coresystemtrust.org.uk/?page_id=40528)",
+        "free": true,
+        "url": "https://www.coresystemtrust.org.uk/wp-content/uploads/2024/08/CORE-10_Ukrainian_FM.pdf",
+        "note": "Текст воспроизведён без изменений, включая «(-ла)», «(-лася)», «(-ою)» и ударение «о̀брази» (U+0300) в п. 10. Варианты: «Зовсім ні / Зрідка / Іноді / Часто / Майже весь час»; стем «Протягом останнього тижня»."
+      },
+      "ru": {
+        "exists": true,
+        "by": "Утверждённый перевод CST (2024), руководитель перевода Marina Zeldovich (страница https://www.coresystemtrust.org.uk/?page_id=1171)",
+        "free": true,
+        "url": "https://www.coresystemtrust.org.uk/wp-content/uploads/2024/08/CORE-10_Russian_FM.pdf",
+        "note": "В утверждённом тексте есть ошибки: п. 2 «Я чувстовал(а)», инструкция «ПЕРЕД ВАМИ 10 УТВЕРЖДЕНИЯ» и «ВЫБЕРЕТЕ», вариант 2 «Иногда редко». Лицензия запрещает править текст, поэтому он воспроизведён как есть (заглавные буквы инструкции переведены в строчные — это допустимая типографика). Исправить можно только с разрешения CST: CE просит сообщать о проблемах."
+      }
+    },
+    "example": {
+      "answers": [
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2
+      ],
+      "total": 20,
+      "band": "20-24 (moderate-to-severe)",
+      "note": "Арифметическая проверка ключа: все «Sometimes» (2) — обратные пункты 2 и 3 дают те же 2 → 20. Второй пример: все «Not at all» (0) → обратные пп. 2 и 3 дают по 4 → 8, неклинический диапазон. Третий: 3, 1, 0, 2, 2, 0, 3, 2, 3, 2 → пп. 2 и 3 обращаются в 3 и 4 → 24; без п. 10 (девять ответов) — 22 / 9 × 10 = 24,444. Посчитано скриптом."
+    },
+    "verdict": "завести — CC BY-NC-ND 4.0: утверждённые CST украинский и русский переводы (2024) без правок, некоммерческое использование, копирайт CST на экране; полосы — из руководства разработчиков (британские)"
+  },
+  {
+    "key": "oasis",
+    "title_en": "Overall Anxiety Severity and Impairment Scale (OASIS)",
+    "title_uk": null,
+    "title_ru": null,
+    "authors": "S. B. Norman, S. H. Cissell, A. J. Means-Christensen, M. B. Stein (UC San Diego)",
+    "year": 2006,
+    "citation": "Norman SB, Cissell SH, Means-Christensen AJ, Stein MB. Development and validation of an Overall Anxiety Severity and Impairment Scale (OASIS). Depression and Anxiety. 2006;23(4):245-249. Порог: Norman SB и соавт. J Psychiatr Res. 2011;45(2):262-268 (PMC2970755).",
+    "license": {
+      "verdict": "неясно",
+      "quote": null,
+      "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC2970755",
+      "conditions": "Заявления правообладателя о свободном воспроизведении не найдено ни у авторов, ни у издателя; копия статьи в PMC несёт только оговорку хранилища «This file is available for text mining. It may also be used consistent with the principles of fair use under the copyright law.» — это не лицензия на методику."
+    },
+    "items": null,
+    "items_note": "Текст пунктов не приводится: нет разрешения правообладателя.",
+    "anchors": null,
+    "reverse": null,
+    "scoring": null,
+    "bands": null,
+    "bands_source": "Порог существует и опубликован: «A cut-score of 8 best discriminated those with anxiety disorders from those without, successfully classifying 78% of the sample with 69% sensitivity and 74% specificity» (Norman et al., 2011). Без лицензии не применяется.",
+    "risk_items": null,
+    "translation": {
+      "uk": {
+        "exists": null,
+        "by": null,
+        "free": null,
+        "url": null,
+        "note": "Перевод не искали дальше: методика не заводится по лицензии."
+      },
+      "ru": {
+        "exists": null,
+        "by": null,
+        "free": null,
+        "url": null,
+        "note": "Перевод не искали дальше: методика не заводится по лицензии."
+      }
+    },
+    "example": null,
+    "verdict": "не заводить — лицензия не подтверждена правообладателем; официальных украинского и русского переводов нет"
+  },
+  {
+    "key": "odsis",
+    "title_en": "Overall Depression Severity and Impairment Scale (ODSIS)",
+    "title_uk": null,
+    "title_ru": null,
+    "authors": "K. H. Bentley, M. W. Gallagher, J. R. Carl, D. H. Barlow (Boston University)",
+    "year": 2014,
+    "citation": "Bentley KH, Gallagher MW, Carl JR, Barlow DH. Development and validation of the Overall Depression Severity and Impairment Scale. Psychological Assessment. 2014;26(3):815-830.",
+    "license": {
+      "verdict": "неясно",
+      "quote": null,
+      "url": "https://eprovide.mapi-trust.org/instruments/overall-depression-severity-and-impairment-scale",
+      "conditions": "В реестре Mapi ePROVIDE поле «Copyright» — «No information». Японская валидация с участием разработчиков (Ito et al., PLoS One 2015, CC BY) текста пунктов не приводит, так что её открытая лицензия на методику не распространяется."
+    },
+    "items": null,
+    "items_note": "Текст пунктов не приводится: нет разрешения правообладателя.",
+    "anchors": null,
+    "reverse": null,
+    "scoring": null,
+    "bands": null,
+    "bands_source": "Ito et al. 2015: «the previous validation study using a U.S. sample suggested a cut-score of 8 or higher for determining a clinical depressive disorder diagnosis» (в Японии оптимальным оказался 11). Без лицензии не применяется.",
+    "risk_items": null,
+    "translation": {
+      "uk": {
+        "exists": null,
+        "by": null,
+        "free": null,
+        "url": null,
+        "note": "Перевод не искали дальше: методика не заводится по лицензии."
+      },
+      "ru": {
+        "exists": null,
+        "by": null,
+        "free": null,
+        "url": null,
+        "note": "Перевод не искали дальше: методика не заводится по лицензии."
+      }
+    },
+    "example": null,
+    "verdict": "не заводить — лицензия не подтверждена правообладателем; официальных украинского и русского переводов нет"
+  },
+  {
+    "key": "wsas",
+    "title_en": "Work and Social Adjustment Scale (WSAS)",
+    "title_uk": null,
+    "title_ru": null,
+    "authors": "J. C. Mundt, I. M. Marks, M. K. Shear, J. H. Greist",
+    "year": 2002,
+    "citation": "Mundt JC, Marks IM, Shear MK, Greist JH. The Work and Social Adjustment Scale: a simple measure of impairment in functioning. British Journal of Psychiatry. 2002;180:461-464.",
+    "license": {
+      "verdict": "не свободна",
+      "quote": "Reproduction of this task/scale is not permitted (or such permission is not clear). ... Use it only in conjunction with a licensed copy of the original task. ... Copyright © Isaac M. Marks (see Mundt 2002).",
+      "url": "https://camcops.readthedocs.io/en/latest/tasks/wsas.html",
+      "conditions": "Цитата — из документации CamCOPS (Кембриджский университет), который держит WSAS без текста; сервисы, показывающие текст, ссылаются на личное разрешение проф. Маркса. Открытой лицензии нет."
+    },
+    "items": null,
+    "items_note": "Текст пунктов не приводится: воспроизведение без разрешения правообладателя не допускается.",
+    "anchors": null,
+    "reverse": null,
+    "scoring": null,
+    "bands": null,
+    "bands_source": "Полосы (Mundt et al., 2002) не применяются: методика не заводится.",
+    "risk_items": null,
+    "translation": {
+      "uk": {
+        "exists": null,
+        "by": null,
+        "free": null,
+        "url": null,
+        "note": "Перевод не искали дальше: методика не заводится по лицензии."
+      },
+      "ru": {
+        "exists": null,
+        "by": null,
+        "free": null,
+        "url": null,
+        "note": "Перевод не искали дальше: методика не заводится по лицензии."
+      }
+    },
+    "example": null,
+    "verdict": "не заводить — копирайт I. M. Marks, свободного разрешения на воспроизведение нет"
+  },
+  {
+    "key": "cape_p15",
+    "title_en": "Community Assessment of Psychic Experiences — Positive 15-item (CAPE-P15)",
+    "title_uk": null,
+    "title_ru": null,
+    "authors": "C. Capra, D. J. Kavanagh, L. Hides, J. Scott; исходная CAPE-42 — Jim van Os, Hélène Verdoux, Manon Hanssen (по архиву сайта CAPE)",
+    "year": 2013,
+    "citation": "Capra C, Kavanagh DJ, Hides L, Scott J. Brief screening for psychosis-like experiences. Schizophrenia Research. 2013;149(1-3):104-107.",
+    "license": {
+      "verdict": "неясно",
+      "quote": null,
+      "url": "https://web.archive.org/web/20210121064009/http://cape42.homestead.com/",
+      "conditions": "Официальный сайт CAPE (cape42.homestead.com) отключён («Website Disabled»); архивная копия раздаёт бланки (английский, французский, испанский, греческий, голландский, немецкий, итальянский, шведский) без какого-либо заявления о лицензии. Отдельного заявления авторов CAPE-P15 не найдено."
+    },
+    "items": null,
+    "items_note": "Текст пунктов не приводится: нет заявления правообладателя.",
+    "anchors": null,
+    "reverse": null,
+    "scoring": null,
+    "bands": null,
+    "bands_source": "Порогов из первоисточника досье не получило. Скрининг психотического риска в каталоге уже закрывает PQ-16.",
+    "risk_items": null,
+    "translation": {
+      "uk": {
+        "exists": null,
+        "by": null,
+        "free": null,
+        "url": null,
+        "note": "Перевод не искали дальше: методика не заводится по лицензии."
+      },
+      "ru": {
+        "exists": null,
+        "by": null,
+        "free": null,
+        "url": null,
+        "note": "Перевод не искали дальше: методика не заводится по лицензии."
+      }
+    },
+    "example": null,
+    "verdict": "не заводить — нет заявления правообладателя о свободном использовании, нет украинского и русского переводов; домен закрыт PQ-16"
+  },
+  {
+    "key": "qids_sr16",
+    "title_en": "Quick Inventory of Depressive Symptomatology, Self-Report (QIDS-SR16)",
+    "title_uk": null,
+    "title_ru": null,
+    "authors": "A. J. Rush, M. H. Trivedi и соавт.",
+    "year": 2003,
+    "citation": "Rush AJ, Trivedi MH, Ibrahim HM, Carmody TJ, Arnow B и соавт. The 16-Item Quick Inventory of Depressive Symptomatology (QIDS), clinician rating (QIDS-C), and self-report (QIDS-SR): a psychometric evaluation in patients with chronic major depression. Biological Psychiatry. 2003;54(5):573-583 (PubMed 12946886).",
+    "license": {
+      "verdict": "неясно",
+      "quote": null,
+      "url": "https://ids-qids.org/",
+      "conditions": "На сайте ids-qids.org нет никаких условий использования, только «IDS-QIDS ©». Список переводов там включает украинский, но и латынь, арагонский, северофризский — похоже на машинные переводы, их авторство и утверждение не указаны."
+    },
+    "items": null,
+    "items_note": "Текст пунктов не приводится: условия использования не подтверждены.",
+    "anchors": null,
+    "reverse": null,
+    "scoring": "Девять доменов DSM: для сна, аппетита/веса и психомоторики берётся наибольший балл группы пунктов; сумма доменов 0-27 (ids-qids.org, «About»). Движок (packages/shared/src/scoring.ts) поддерживает агрегаты sum, average и count — максимума внутри группы нет.",
+    "bands": null,
+    "bands_source": "Пороги не проверялись: методика не заводится.",
+    "risk_items": null,
+    "translation": {
+      "uk": {
+        "exists": null,
+        "by": null,
+        "free": null,
+        "url": null,
+        "note": "Перевод не искали дальше: методика не заводится по лицензии."
+      },
+      "ru": {
+        "exists": null,
+        "by": null,
+        "free": null,
+        "url": null,
+        "note": "Перевод не искали дальше: методика не заводится по лицензии."
+      }
+    },
+    "example": null,
+    "verdict": "не заводить — условия использования не подтверждены; кроме того, подсчёт QIDS берёт максимум внутри групп пунктов (сон 1-4, аппетит и вес 6-9, психомоторика 15-16), а движок умеет только сумму, среднее и счёт — честно посчитать методику система не может"
+  }
+]

@@ -1,5 +1,6 @@
-import type { SurveyGroupWithCounts } from "@quizzy/shared";
+import { SURVEY_DOMAINS, type SurveyGroupWithCounts } from "@quizzy/shared";
 import { ShellIcon } from "../../shell/icons";
+import { DOMAIN_KEY } from "../methods/labels";
 import { Panel } from "../../ui/layout";
 import { Field, Input, Segmented, Select } from "../../ui/primitives";
 import { EditLangSwitch, Labeled, Loc, Toggle } from "./fields";
@@ -56,7 +57,7 @@ export function MainSection({
 
 /**
  * «Налаштування» — то, чего на макете конструктора нет развёрнутым, а у
- * методики есть: группа, кто заполняет, видимость, переключатели
+ * методики есть: группа, направление, кто заполняет, видимость, переключатели
  * прохождения, пороги, эскалация и план безопасности. Убрать нельзя — у СР-45
  * заполняет клиницист, у шкал риска есть эскалация.
  */
@@ -84,7 +85,8 @@ export function Settings({
   return (
     <div className="flex flex-col gap-4">
       <Panel title={ut("ce.passing")} icon={<CnIc.settings />}>
-        <div className="grid grid-cols-3 gap-x-3.5 max-[1100px]:grid-cols-1">
+        {/* две колонки, а не три: четыре поля — группа и направление, кто заполняет и кому видно */}
+        <div className="grid grid-cols-2 gap-x-3.5 max-[1100px]:grid-cols-1">
           {/*
             Смена группы выводит тест из папки, унаследованной из адреса
             («+ → Новий тест» в папке каталога): папка принадлежит группе, и
@@ -118,6 +120,26 @@ export function Settings({
                     {g.title}
                   </option>
                 ))}
+            </Select>
+          </Field>
+          {/*
+            Направление — «что измеряет»: чипы «Напрям» каталога. У методики
+            общего каталога его задаёт каталог (установщик по карте
+            catalogDomains.ts): поле видно, но не правится, и на сервер оно
+            отсюда не уходит (toPayload).
+          */}
+          <Field label={ut("dom.label")} hint={draft.catalogKey ? ut("dom.fromCatalog") : undefined}>
+            <Select
+              value={draft.domain ?? ""}
+              disabled={!!draft.catalogKey}
+              onChange={(e) => patch({ domain: (e.target.value || null) as Draft["domain"] })}
+            >
+              <option value="">{ut("dom.none")}</option>
+              {SURVEY_DOMAINS.map((d) => (
+                <option key={d} value={d}>
+                  {ut(DOMAIN_KEY[d])}
+                </option>
+              ))}
             </Select>
           </Field>
           <Field label={ut("cb.whoFills")}>

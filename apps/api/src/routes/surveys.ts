@@ -3,6 +3,7 @@ import { and, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import {
   CONTENT_LANGS,
   diffVersions,
+  NO_DOMAIN,
   normalizeLocalized,
   noteCode,
   renderNote,
@@ -150,6 +151,10 @@ surveyRoutes.patch("/:id/rights", async (c) => {
  * ?archived=1 — снятые с использования вместе с остальными, ?archived=only —
  * только они: вкладка «Зняті» иначе просила бы весь список и отсеивала
  * сама, и её страница с total считались бы не по тому, что на экране.
+ *
+ * ?domain= — направление методики (shared/domains.ts) или `none` — без
+ * направления: чипы «Напрям» каталога. В строке списка направление — поле
+ * `domain`, как и остальные поля методики.
  */
 surveyRoutes.get("/", async (c) => {
   const user = c.get("user");
@@ -179,14 +184,15 @@ surveyRoutes.get("/", async (c) => {
 
   if (query.folder === "root") {
     filters.push(isNull(surveys.folderId));
-  } else if (query.folder && query.q) {
+  } else if (query.folder && (query.q || query.domain)) {
     /*
      * Поиск из папки — по её поддереву, а не по одному уровню. Каталог
      * разложен по годам и месяцам, и человек, стоя в «Тести за 2023», ищет
      * методику, которая лежит в «Лютий 2023» внутри; уровень нашёл бы
      * пустоту. Без ?q= папка по-прежнему показывает только свой уровень:
      * вложенные папки экран рисует отдельно, и методики из них здесь были
-     * бы дублями.
+     * бы дублями. Направление (?domain=) — тот же поиск, только по полке
+     * «что измеряет»: из папки — по поддереву.
      *
      * Поддерево собирает рекурсивный CTE по parent_id: глубина раскладки
      * заранее не ограничена, и заготовленное число JOIN однажды промолчало
@@ -205,6 +211,14 @@ surveyRoutes.get("/", async (c) => {
     filters.push(eq(surveys.folderId, query.folder));
   }
   if (query.status) filters.push(inArray(surveys.status, query.status));
+  /*
+   * Направление (shared/domains.ts) — поверх зоны видимости, как и остальные
+   * фильтры: чужая методика нужного направления в выдачу не попадёт. `none` —
+   * методики, у которых направление не выбрано: их видно отдельным чипом, а
+   * не только во «всех».
+   */
+  if (query.domain === NO_DOMAIN) filters.push(isNull(surveys.domain));
+  else if (query.domain) filters.push(eq(surveys.domain, query.domain));
   if (query.q) {
     /*
      * Поиск — ILIKE по названию на обоих языках, а не слепой индекс из
@@ -564,6 +578,8 @@ surveyRoutes.post("/", requireStaff, requirePermission("surveys.edit"), async (c
       alertEscalateMinutes: input.alertEscalateMinutes ?? null,
       safetyPlan: normalizeLocalized(input.safetyPlan),
       showResultsToPatient: input.showResultsToPatient ?? false,
+      // направление методики учреждения выбирает конструктор; у каталога его ставит установщик
+      domain: input.domain ?? null,
       createdBy: c.get("user").id,
     })
     .returning();
@@ -734,6 +750,12 @@ surveyRoutes.patch("/:id", requireStaff, requirePermission("surveys.edit"), asyn
       ...(input.alertEscalateMinutes !== undefined && { alertEscalateMinutes: input.alertEscalateMinutes ?? null }),
       ...(input.safetyPlan !== undefined && { safetyPlan: normalizeLocalized(input.safetyPlan) }),
       ...(input.showResultsToPatient !== undefined && { showResultsToPatient: input.showResultsToPatient ?? false }),
+      /*
+       * Направление — настройка строки, как visibility: версии не создаёт. У
+       * методики каталога правка учреждения сохраняется и на следующем выкате
+       * (lib/catalogInstall.ts, localFields), --force вернёт каталоговое.
+       */
+      ...(input.domain !== undefined && { domain: input.domain ?? null }),
       ...(goingLive && { publishedAt: new Date().toISOString() }),
       updatedAt: new Date().toISOString(),
     })
@@ -821,6 +843,12 @@ surveyRoutes.post("/:id/duplicate", requireStaff, requirePermission("surveys.edi
       tooFastMs: source.tooFastMs,
       alertEscalateMinutes: source.alertEscalateMinutes,
       showResultsToPatient: source.showResultsToPatient,
+      /*
+       * Копия меряет то же, что исходник, и стоит на той же полке. Ключ
+       * каталога она не наследует — это методика учреждения, — поэтому её
+       * направление дальше правит конструктор, а не установщик.
+       */
+      domain: source.domain ?? null,
       createdBy: c.get("user").id,
     })
     .returning();
@@ -1136,6 +1164,8 @@ surveyRoutes.post("/import", requireStaff, requirePermission("surveys.edit"), as
     alertEscalateMinutes: input.alertEscalateMinutes ?? null,
     safetyPlan: normalizeLocalized(input.safetyPlan),
     showResultsToPatient: input.showResultsToPatient ?? false,
+    // выгрузка направления не несёт (surveyToDraft), но файл, где оно указано, его сохраняет
+    domain: input.domain ?? null,
     createdBy: user.id,
   } as never);
   await createVersion(id, input, user.id, noteCode("note.importFile"));
