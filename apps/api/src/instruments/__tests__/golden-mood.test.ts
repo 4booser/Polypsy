@@ -173,21 +173,35 @@ describe("золотой протокол: PHQ-9", () => {
     expect(options.every((o) => !o.riskFlag || o.riskLabel)).toBe(true);
   });
 
-  test("украинский текст — официальный МОЗ, оговорка о рабочем переводе только у русского", () => {
+  test("оба текста официальные: украинский — МОЗ, русский — «Russian for Ukraine»; оговорки о рабочем переводе нет", () => {
     /*
-     * Первый пункт сверяется дословно с додатком 1 наказу МОЗ №1003: если его
-     * «улучшат», текст перестанет быть официальным, а оговорки в описании
-     * так и не появится.
+     * Первый и девятый пункты и шапка сверяются дословно с додатком 1 наказу
+     * МОЗ №1003 и с PHQ9_Russian for Ukraine.pdf правообладателя: если их
+     * «улучшат», текст перестанет быть официальным, а оговорки в описании так и
+     * не появится.
      */
-    expect(qs(phq9)[0]!.title).toEqual(
-      expect.objectContaining({
-        uk: "Дуже низька зацікавленість або задоволення від звичайних справ (відсутність бажання щось робити)",
-      }),
-    );
+    expect(qs(phq9)[0]!.title).toEqual({
+      uk: "Дуже низька зацікавленість або задоволення від звичайних справ (відсутність бажання щось робити)",
+      ru: "Вам было не очень интересно или не очень нравилось что-либо делать",
+    });
+    expect(qs(phq9)[8]!.title).toEqual({
+      uk: "Думки про те, що Вам краще було б померти або про те, щоб заподіяти собі шкоду будь-яким чином",
+      ru: "Вас посещали мысли о том, что Вам лучше было бы умереть, или о том, чтобы причинить себе какой-нибудь вред",
+    });
+    expect(qs(phq9)[0]!.options!.map((o) => o.text)).toEqual([
+      { uk: "Не турбували взагалі", ru: "Ни разу" },
+      { uk: "Протягом декількох днів", ru: "Несколько дней" },
+      { uk: "Більше половини цього часу", ru: "Более половины всех дней" },
+      { uk: "Майже кожного дня", ru: "Почти каждый день" },
+    ]);
+    const i = phq9.instructions as { uk: string; ru: string };
+    expect(i.uk.startsWith("Як часто за останні 2 тижні Вас турбували наступні прояви?")).toBe(true);
+    expect(i.ru.startsWith("Как часто за последние 2 недели Вас беспокоили следующие проблемы?")).toBe(true);
     const d = phq9.description as { uk: string; ru: string };
     expect(d.uk).not.toContain(WORKING_TRANSLATION.uk);
+    expect(d.ru).not.toContain(WORKING_TRANSLATION.ru);
     expect(d.uk).toContain("№1003");
-    expect(d.ru).toContain("рабочий перевод");
+    expect(d.ru).toContain("Russian for Ukraine");
   });
 });
 
@@ -240,6 +254,28 @@ describe("золотой протокол: GAD-7", () => {
     expect(s.rawScore).toBe(14);
     expect(s.band?.grade).toBe(3);
     expect(s.band?.severity).toBe("moderate");
+  });
+
+  test("пункты — официальные переводы правообладателя, ответы — общие с PHQ-9", () => {
+    /*
+     * Пункты 1 и 7 дословно с GAD7_Ukrainian for Ukraine.pdf и GAD7_Russian for
+     * Ukraine.pdf (phqscreeners.com). Варианты ответа — тот же массив, что у
+     * PHQ-9: по-русски он совпадает с бланком GAD-7 дословно, по-украински —
+     * подписи МОЗ вместо подписей украинского GAD-7 (см. gad7.ts).
+     */
+    expect(qs(gad7)[0]!.title).toEqual({
+      uk: "Ви нервували, відчували тривогу або були дуже напружені",
+      ru: "Вы нервничали, тревожились или были очень напряжены",
+    });
+    expect(qs(gad7)[6]!.title).toEqual({
+      uk: "Ви відчували страх, неначе щось жахливе може статися",
+      ru: "Вы испытывали страх, словно должно произойти нечто ужасное",
+    });
+    for (const q of qs(gad7)) expect(q.options).toEqual(qs(phq9)[0]!.options);
+    const d = gad7.description as { uk: string; ru: string };
+    expect(d.uk).not.toContain(WORKING_TRANSLATION.uk);
+    expect(d.ru).not.toContain(WORKING_TRANSLATION.ru);
+    expect(d.uk).toContain("Ukrainian for Ukraine");
   });
 });
 

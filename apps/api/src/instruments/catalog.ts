@@ -123,18 +123,20 @@ export const CATALOG: CatalogEntry[] = [
   {
     key: "who5",
     draft: who5,
-    source: "WHO-5 Well-Being Index, ВООЗ (Європейське регіональне бюро), 1998",
+    source:
+      "WHO-5 Well-Being Index, ВООЗ (Європейське регіональне бюро), 1998; з 2024 — ВООЗ, WHO/UCN/MSD/MHE/2024.1, CC BY-NC-SA 3.0 IGO; російський текст — переклад Psychiatric Research Unit (варіант 1999 р.), український — робочий",
   },
   {
     key: "gad7",
     draft: gad7,
-    source: "GAD-7, Spitzer, Kroenke, Williams, Löwe, 2006",
+    source:
+      "GAD-7, Spitzer, Kroenke, Williams, Löwe, 2006; тексти пунктів — офіційні переклади правовласника «Ukrainian for Ukraine» і «Russian for Ukraine» (phqscreeners.com), українські відповіді — з PHQ-9 наказу МОЗ України №1003",
   },
   {
     key: "phq9",
     draft: phq9,
     source:
-      "PHQ-9, Kroenke, Spitzer, Williams, 2001; український текст — додаток 1 до УКПМД «Депресія», наказ МОЗ України №1003 від 25.12.2014",
+      "PHQ-9, Kroenke, Spitzer, Williams, 2001; український текст — додаток 1 до УКПМД «Депресія», наказ МОЗ України №1003 від 25.12.2014; російський — офіційний переклад правовласника «Russian for Ukraine» (phqscreeners.com)",
   },
   {
     key: "pss10",
@@ -176,13 +178,13 @@ export const CATALOG: CatalogEntry[] = [
     key: "phq4",
     draft: phq4,
     source:
-      "PHQ-4, Kroenke, Spitzer, Williams, Löwe, 2009 (public domain); PHQ-2 — текст з наказу МОЗ України №1003 від 25.12.2014",
+      "PHQ-4, Kroenke, Spitzer, Williams, Löwe, 2009 (public domain); PHQ-2 — текст з наказу МОЗ України №1003 від 25.12.2014, GAD-2 — український GAD-7 правовласника; російський — «Russian for Ukraine» (phqscreeners.com)",
   },
   {
     key: "phq8",
     draft: phq8,
     source:
-      "PHQ-8, Kroenke, Strine та ін., 2009 (public domain); текст — пункти 1–8 PHQ-9 з наказу МОЗ України №1003 від 25.12.2014",
+      "PHQ-8, Kroenke, Strine та ін., 2009 (public domain); текст — пункти 1–8 PHQ-9 з наказу МОЗ України №1003 від 25.12.2014 і з російського перекладу правовласника «Russian for Ukraine» (phqscreeners.com)",
   },
   {
     key: "cesdr",

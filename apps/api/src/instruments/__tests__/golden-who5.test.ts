@@ -82,6 +82,32 @@ function answersFor(total: number): Answer[] {
   });
 }
 
+describe("бланк WHO-5: порядок вариантов и официальный русский текст", () => {
+  test("варианты идут как на бланке ВОЗ — от 5 к 0, баллы в вариантах", () => {
+    for (const q of who5.questions ?? []) expect((q.options ?? []).map((o) => o.score)).toEqual([5, 4, 3, 2, 1, 0]);
+    expect((who5.questions ?? [])[0]!.options!.map((o) => (o.text as { ru: string }).ru)).toEqual([
+      "Все время",
+      "Большую часть времени",
+      "Более половины времени",
+      "Менее половины времени",
+      "Некоторое время",
+      "Никогда",
+    ]);
+  });
+
+  test("русские пункты — дословно с бланка 1999 г., украинские — рабочий перевод с оговоркой ВОЗ", () => {
+    // бланк ВОЗ (who-5_russian.pdf): «Я чувствую себя бодрой(-ым) и в хорошем настроении»
+    expect(((who5.questions ?? [])[0]!.title as { ru: string }).ru).toBe("Я чувствую себя бодрой(-ым) и в хорошем настроении");
+    expect(((who5.questions ?? [])[4]!.title as { ru: string }).ru).toBe(
+      "Каждый день со мной происходят вещи, представляющие для меня интерес",
+    );
+    const d = who5.description as { uk: string; ru: string };
+    // лицензия ВОЗ требует оговорку к собственному переводу
+    expect(d.uk).toContain("створений не ВООЗ");
+    expect(d.ru).toContain("вариант 1999 г.");
+  });
+});
+
 describe("золотой протокол: WHO-5", () => {
   const cases: [number, string, "none" | "moderate" | "severe", "moderate" | "severe" | null][] = [
     [0, "Дуже низьке благополуччя", "severe", "severe"],
