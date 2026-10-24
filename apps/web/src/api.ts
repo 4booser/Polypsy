@@ -79,6 +79,7 @@ import type {
   SurveyResponse,
   ScoreResult,
   SurveyStatus,
+  SurveyDomain,
   SurveyVersion,
   User,
   StaffDirectoryUser,
@@ -912,6 +913,8 @@ export interface SurveyPageQuery {
   archived?: boolean;
   /** Только методики одной группы — «Методики групи» с экрана групп методик */
   groupId?: string;
+  /** Направление (shared/domains.ts) или `none` — без направления; чипы «Напрям» каталога */
+  domain?: SurveyDomain | "none";
 }
 
 /**
@@ -1022,6 +1025,7 @@ export const api = {
     if (query.q) qs.set("q", query.q);
     if (query.archived) qs.set("archived", "1");
     if (query.groupId) qs.set("groupId", query.groupId);
+    if (query.domain) qs.set("domain", query.domain);
     const tail = qs.toString();
     return request<SurveyListPage>(`/api/surveys${tail ? `?${tail}` : ""}`);
   },

@@ -17,7 +17,7 @@ import { ArchiveDialog } from "./ArchiveDialog";
 import { AssignDrawer, type ExistingAssignment } from "../../components/AssignDrawer";
 import { ExportsDrawer } from "./ExportsDrawer";
 import { Mi } from "./icons";
-import { rightsKey } from "./labels";
+import { domainKey, rightsKey } from "./labels";
 import { grantState, shortDate, splitCode } from "./model";
 import { useCount } from "./useCount";
 
@@ -25,7 +25,7 @@ import { useCount } from "./useCount";
  * Рамка экрана методики (methods-method, methods-access, methods-norms):
  * код крупно, имя и строка состава за линией, «Правити» (E), «Призначити»
  * (A) и меню; ниже — паспорт строкой (состояние, группа и папка,
- * видимость, права, ключи) и вкладки методики.
+ * направление, видимость, права, ключи) и вкладки методики.
  *
  * Вкладки «Шкали … Проходження» ведут во вкладку «Тести» аналитики — там
  * эти виды живут (pages/analytics/tests); «Огляд», «Доступ» и «Норми» —
@@ -109,6 +109,7 @@ export function MethodPage({
   const sub = [count(asked, "items"), survey.scales.length ? count(survey.scales.length, "scales") : null].filter(Boolean).join(", ");
 
   const rights = rightsKey(survey.rightsStatus);
+  const domain = domainKey(survey.domain);
   const facts: ReactNode[] = [
     survey.status === "published" && !retired ? (
       <Tag key="st" tone="good" icon={<Ic.check />}>
@@ -131,6 +132,12 @@ export function MethodPage({
     group ? (
       <Fact key="grp" icon={<Mi.folder size={15} />}>
         {folder ? `${group.title}, «${folder.title}»` : group.title}
+      </Fact>
+    ) : null,
+    /* направление — «что измеряет»: та же полка, что чипы «Напрям» каталога */
+    domain ? (
+      <Fact key="dom" icon={<ShellIcon name="list-tree" size={15} />}>
+        {ut(domain)}
       </Fact>
     ) : null,
     <Fact key="vis" icon={survey.visibility === "restricted" ? <Ic.lock size={15} /> : <Mi.globe size={15} />}>

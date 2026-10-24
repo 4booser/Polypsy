@@ -1,4 +1,4 @@
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import {
   CONTENT_LANGS,
   createSurveySchema,
@@ -11,8 +11,10 @@ import {
   type LocalizedText,
 } from "@quizzy/shared";
 import { db } from "../db";
-import { departments, surveyVersions, surveys, users } from "../db/schema";
+import { auditLog, batteries, batteryItems, departments, surveyVersions, surveys, users } from "../db/schema";
+import { CATALOG_BATTERIES, CATALOG_BATTERY_LANG, type CatalogBattery } from "../instruments/catalogBatteries";
 import { CATALOG, type CatalogEntry } from "../instruments/catalog";
+import { catalogDomain } from "../instruments/catalogDomains";
 import { auditSystem } from "./audit";
 import { log } from "./log";
 import { createVersion } from "./surveys";
@@ -39,6 +41,9 @@ import { createVersion } from "./surveys";
  *   отвечает;
  * • не отключает и не удаляет ничего. Методика, выпавшая из каталога,
  *   остаётся у тех, кто её ставил.
+ *
+ * Кроме методик, установщик заводит наборы-заготовки каталога
+ * (instruments/catalogBatteries.ts) — каждую один раз, см. installBatteries.
  */
 
 export interface InstallReport {
@@ -56,6 +61,15 @@ export interface InstallReport {
    * обновление не переписало (см. localFields / mergeFields).
    */
   keptSettings: Record<string, string[]>;
+  /**
+   * Методики, которым этот прогон проставил или сменил направление (карта
+   * instruments/catalogDomains.ts) — у уже стоявших это делается без новой
+   * версии (syncDomain). Поставленные этим прогоном сюда не входят: у них
+   * направление с первой строки.
+   */
+  domainSet: string[];
+  /** Наборы-заготовки каталога (installBatteries) */
+  batteries: BatteryInstallReport;
   /**
    * Почему установка не состоялась вовсе.
    *
@@ -177,10 +191,60 @@ export function surveyFields(input: ReturnType<typeof createSurveySchema.parse>)
   };
 }
 
-type SurveyFields = ReturnType<typeof surveyFields>;
 type SurveyRow = typeof surveys.$inferSelect;
 
-const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+/**
+ * Настройки строки, которые ведёт каталог: поля черновика (surveyFields) и
+ * направление из карты instruments/catalogDomains.ts.
+ *
+ * Направление — не в surveyFields: оно не из черновика, от него не считается
+ * отпечаток редакции (fingerprint), и листы сверки, которым surveyFields
+ * открыт, его не описывают. Но правится и сохраняется оно как любая
+ * настройка каталога: снимок catalog_fields, правка учреждения не
+ * перетирается (localFields / mergeFields), --force возвращает каталоговое.
+ */
+export function catalogSettings(key: string, input: ReturnType<typeof createSurveySchema.parse>) {
+  return { ...surveyFields(input), domain: catalogDomain(key) };
+}
+
+type CatalogSettings = ReturnType<typeof catalogSettings>;
+
+/**
+ * Значение в JSON с ключами по порядку на всех уровнях — для сравнения.
+ *
+ * jsonb хранит ключи объекта в своём порядке, а не в порядке записи:
+ * название {uk, ru} из каталога возвращается из базы как {ru, uk}. Строка
+ * через простой JSON.stringify тогда «отличалась» бы у одинаковых значений —
+ * снимок настроек считался бы устаревшим на каждом выкате, а у строки без
+ * снимка (до 0118) название и описание — правленными в учреждении. Круг
+ * через JSON — затем же, зачем у базы: undefined jsonb не хранит.
+ */
+function stable(value: unknown): string {
+  const walk = (v: unknown): string => {
+    if (Array.isArray(v)) return `[${v.map(walk).join(",")}]`;
+    if (v !== null && typeof v === "object") {
+      const obj = v as Record<string, unknown>;
+      return `{${Object.keys(obj)
+        .sort()
+        .map((k) => `${JSON.stringify(k)}:${walk(obj[k])}`)
+        .join(",")}}`;
+    }
+    return JSON.stringify(v);
+  };
+  return walk(JSON.parse(JSON.stringify(value ?? null)));
+}
+
+const same = (a: unknown, b: unknown) => stable(a) === stable(b);
+
+/**
+ * Настройки моложе снимков: их нет в catalog_fields строк, сверенных до их
+ * появления, и сравнивать такое поле не с чем, кроме умолчания колонки.
+ * Направление (0133) у методики, поставленной раньше, пусто не потому, что
+ * учреждение его стёрло, а потому, что его ещё не было: пустое — не правка, и
+ * первый же выкат его заполнит. Заполненное до установщика (правкой между
+ * миграцией и выкатом каталога) — правка, и она сохраняется.
+ */
+const NEWER_THAN_SNAPSHOT: Partial<Record<keyof CatalogSettings, unknown>> = { domain: null };
 
 /**
  * Поля строки, которые учреждение правило после установки: отличные от
@@ -200,21 +264,34 @@ const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stri
  * сторона выбрана намеренно: лишнее «не тронул» исправляется одним --force,
  * лишнее «переписал» снимает ограничение доступа у методики пациентов.
  */
-export function localFields(row: SurveyRow, catalog: SurveyFields): string[] {
-  const snapshot = (row.catalogFields ?? null) as Partial<SurveyFields> | null;
-  return (Object.keys(catalog) as (keyof SurveyFields)[]).filter((key) =>
-    snapshot ? !same(row[key], snapshot[key]) : !same(row[key], catalog[key]),
-  );
+export function localFields(row: SurveyRow, catalog: CatalogSettings): string[] {
+  const snapshot = (row.catalogFields ?? null) as Partial<CatalogSettings> | null;
+  return (Object.keys(catalog) as (keyof CatalogSettings)[]).filter((key) => {
+    /*
+     * С чем сравнивать: со снимком, если поле в нём есть; поле моложе снимка —
+     * с умолчанием колонки (NEWER_THAN_SNAPSHOT); снимка нет вовсе или он
+     * частичный (направление, записанное методике с правленным содержимым,
+     * см. syncDomain) — с текущей редакцией, как до 0118. Остальные поля
+     * снимок установщика несёт всегда: surveyFields не отдаёт undefined.
+     */
+    const base =
+      snapshot && key in snapshot
+        ? snapshot[key]
+        : key in NEWER_THAN_SNAPSHOT
+          ? NEWER_THAN_SNAPSHOT[key]
+          : catalog[key];
+    return !same(row[key], base);
+  });
 }
 
 /**
  * Что записать в строку при обычном обновлении: поля каталога, кроме
  * правленных в учреждении, — те остаются как есть.
  */
-function mergeFields(row: SurveyRow, catalog: SurveyFields, kept: readonly string[]): SurveyFields {
+function mergeFields(row: SurveyRow, catalog: CatalogSettings, kept: readonly string[]): CatalogSettings {
   const out = { ...catalog } as Record<string, unknown>;
   for (const key of kept) out[key] = row[key as keyof SurveyRow];
-  return out as SurveyFields;
+  return out as CatalogSettings;
 }
 
 type Outcome = "installed" | "updated" | "skipped" | "keptLocal";
@@ -223,12 +300,63 @@ interface OneResult {
   outcome: Outcome;
   /** Настройки, оставленные учреждению при обновлении */
   keptSettings: string[];
+  /** Направление строки проставлено или сменено этим прогоном (у уже стоявшей методики) */
+  domainChanged: boolean;
+}
+
+/**
+ * Направление уже стоящей методики — без новой версии и без updatedAt.
+ *
+ * Направление — классификация каталога, а не содержимое: от него не
+ * считается редакция (fingerprint), и смена карты catalogDomains.ts версию не
+ * выпускает. Поэтому оно сверяется и там, где содержимое трогать нечего, —
+ * у той же редакции (skipped), — и там, где трогать его нельзя: у методики,
+ * последнюю версию которой выпустило учреждение (keptLocal). Правка пунктов в
+ * конструкторе не делает направление учреждения: PHQ-9 с переписанным
+ * пунктом — по-прежнему методика настроения, и без этого правленные методики
+ * выпали бы из чипов каталога навсегда.
+ *
+ * Правило — то же, что у любой настройки каталога (localFields): направление,
+ * выбранное учреждением (отличное от снимка), остаётся; не тронутое — следует
+ * за картой. Снимок обновляется только в поле направления: остальные поля
+ * установщик здесь не сверял, и переписать их снимок значило бы объявить
+ * чужие значения «своими» (у keptLocal) или наоборот.
+ *
+ * updatedAt не трогается намеренно: каталог печатает «версія N від <дата>»
+ * по нему, и первый выкат после 0133 датировал бы сегодняшним днём все
+ * методики разом, хотя ни одна не менялась.
+ */
+async function syncDomain(existing: SurveyRow, catalog: CatalogSettings, key: string): Promise<boolean> {
+  const snapshot = (existing.catalogFields ?? null) as Partial<CatalogSettings> | null;
+  const institutions = localFields(existing, catalog).includes("domain");
+  const target = institutions ? existing.domain : catalog.domain;
+  const snapshotCurrent = !!snapshot && "domain" in snapshot && same(snapshot.domain, catalog.domain);
+  const changed = !same(existing.domain, target);
+  if (!changed && snapshotCurrent) return false;
+
+  await db
+    .update(surveys)
+    .set({ domain: target, catalogFields: { ...(snapshot ?? {}), domain: catalog.domain } } as never)
+    .where(eq(surveys.id, existing.id));
+  // журнал — когда сменилось то, что видно в каталоге; одна сверка снимка — служебная запись, не событие
+  if (changed) {
+    await auditSystem({
+      action: "survey.catalog_update",
+      resourceType: "survey",
+      resourceId: existing.id,
+      details: { catalogKey: key, settingsOnly: true, domain: { from: existing.domain, to: target } },
+    });
+  }
+  return changed;
 }
 
 async function installOne(entry: CatalogEntry, createdBy: string, force = false): Promise<OneResult> {
   const [existing] = await db.select().from(surveys).where(eq(surveys.catalogKey, entry.key));
   const edition = await fingerprint(entry);
   const note = noteCode("note.catalog", { edition });
+  // через ту же схему, что и API: методика каталога обязана быть валидной
+  const input = createSurveySchema.parse(entry.draft);
+  const catalog = catalogSettings(entry.key, input);
   if (existing) {
     const [head] = await db
       .select({ note: surveyVersions.note })
@@ -244,21 +372,27 @@ async function installOne(entry: CatalogEntry, createdBy: string, force = false)
      * прежней версией, и прохождения по ней считаются по ней же, — но
      * действующей становится редакция каталога. В журнал — с пометкой.
      *
-     * Правки настроек строки (visibility, инструкция, лимит…) — тоже правки
-     * учреждения, но не версии: обычное обновление их сохраняет и обновляет
-     * остальное; --force возвращает и их к каталогу.
+     * Правки настроек строки (visibility, инструкция, лимит, направление…) —
+     * тоже правки учреждения, но не версии: обычное обновление их сохраняет и
+     * обновляет остальное; --force возвращает и их к каталогу.
      */
     const headEdition = catalogEdition(head?.note);
     const local = headEdition === null;
-    if (local && !force) return { outcome: "keptLocal", keptSettings: [] };
+    if (local && !force) {
+      return { outcome: "keptLocal", keptSettings: [], domainChanged: await syncDomain(existing, catalog, entry.key) };
+    }
 
-    const input = createSurveySchema.parse(entry.draft);
-    const catalog = surveyFields(input);
     const localNow = localFields(existing, catalog);
     const kept = force ? [] : localNow;
     const sameEdition = headEdition === edition;
-    // та же редакция и настройки каталога на месте (или учреждения, без --force) — нечего делать
-    if (sameEdition && (!force || localNow.length === 0)) return { outcome: "skipped", keptSettings: [] };
+    /*
+     * Та же редакция и настройки каталога на месте (или учреждения, без
+     * --force) — содержимое трогать нечего. Остаётся то, что от редакции не
+     * зависит, — направление (syncDomain).
+     */
+    if (sameEdition && (!force || localNow.length === 0)) {
+      return { outcome: "skipped", keptSettings: [], domainChanged: await syncDomain(existing, catalog, entry.key) };
+    }
 
     const fields = mergeFields(existing, catalog, kept);
     await db
@@ -285,20 +419,16 @@ async function installOne(entry: CatalogEntry, createdBy: string, force = false)
         keptSettings: kept,
       },
     });
-    return { outcome: "updated", keptSettings: kept };
+    return { outcome: "updated", keptSettings: kept, domainChanged: !same(existing.domain, fields.domain) };
   }
 
-  // через ту же схему, что и API: методика каталога обязана быть валидной
-  const input = createSurveySchema.parse(entry.draft);
   const id = crypto.randomUUID();
-  const fields = surveyFields(input);
-
   await db.insert(surveys).values({
     id,
     catalogKey: entry.key,
     groupId: null,
-    ...fields,
-    catalogFields: fields,
+    ...catalog,
+    catalogFields: catalog,
     status: "published",
     publishedAt: new Date().toISOString(),
     createdBy,
@@ -315,9 +445,146 @@ async function installOne(entry: CatalogEntry, createdBy: string, force = false)
     action: "survey.create",
     resourceType: "survey",
     resourceId: id,
-    details: { catalogKey: entry.key, title: t(input.title as never, "uk"), source: entry.source },
+    details: { catalogKey: entry.key, title: t(input.title as never, "uk"), source: entry.source, domain: catalog.domain },
   });
-  return { outcome: "installed", keptSettings: [] };
+  return { outcome: "installed", keptSettings: [], domainChanged: false };
+}
+
+/* ─────────── наборы-заготовки ─────────── */
+
+/** Что установщик сделал с наборами-заготовками каталога */
+export interface BatteryInstallReport {
+  /** Заведены этим прогоном */
+  installed: string[];
+  /** Заведены раньше и стоят: ими распоряжается отделение, установщик их не трогает */
+  kept: string[];
+  /** Заведены раньше и удалены отделением — заново не заводятся */
+  removed: string[];
+  /**
+   * Не заведены: ни одной методики набора в базе нет (или все сняты).
+   * Пустой набор назначить нельзя, а заведённый — уже не дополнится;
+   * следующий выкат попробует снова.
+   */
+  pending: string[];
+  /** Ключ заведённого набора → методики, пропущенные при заведении: нет в базе или сняты */
+  missingItems: Record<string, string[]>;
+}
+
+function emptyBatteryReport(): BatteryInstallReport {
+  return { installed: [], kept: [], removed: [], pending: [], missingItems: {} };
+}
+
+/**
+ * Была ли заготовка уже заведена — по журналу, а не только по строке.
+ *
+ * Строку набора отделение вправе удалить (без назначений — routes/batteries.ts,
+ * DELETE), и вместе с ней уходит catalog_key: по одной таблице такая
+ * заготовка неотличима от ещё не заведённой, и следующий выкат вернул бы
+ * набор, от которого отказались. Журнал неизменяем и не чистится (хэш-цепочка),
+ * а заведение заготовки пишется в него с её ключом — ниже, в installBattery.
+ */
+async function installedBefore(key: string): Promise<boolean> {
+  const [seen] = await db
+    .select({ id: auditLog.id })
+    .from(auditLog)
+    .where(and(eq(auditLog.action, "battery.create"), sql`${auditLog.details}->>'catalogKey' = ${key}`))
+    .limit(1);
+  return !!seen;
+}
+
+type BatteryOutcome = "installed" | "kept" | "removed" | "pending";
+
+async function installBattery(
+  template: CatalogBattery,
+  createdBy: string,
+): Promise<{ outcome: BatteryOutcome; missing: string[] }> {
+  const [existing] = await db.select({ id: batteries.id }).from(batteries).where(eq(batteries.catalogKey, template.key));
+  // заведён — дальше набор отделения: ни состав, ни название, ни архив установщик не трогает
+  if (existing) return { outcome: "kept", missing: [] };
+  if (await installedBefore(template.key)) return { outcome: "removed", missing: [] };
+
+  /*
+   * Методика берётся, только если её можно пройти сейчас: опубликована и не
+   * снята. Снятая в наборе — шаг «знято з використання» с первого дня, а
+   * назначение такого набора отказало бы (assertBatteryInUse).
+   */
+  const keys = template.items.map((i) => i.key);
+  const found = await db
+    .select({ id: surveys.id, key: surveys.catalogKey, status: surveys.status, archivedAt: surveys.archivedAt })
+    .from(surveys)
+    .where(inArray(surveys.catalogKey, keys));
+  const usable = new Map(
+    found.flatMap((r) => (r.key && r.status === "published" && !r.archivedAt ? [[r.key, r.id] as const] : [])),
+  );
+  const items = template.items.flatMap((i) => {
+    const surveyId = usable.get(i.key);
+    return surveyId ? [{ surveyId, required: i.required ?? true }] : [];
+  });
+  const missing = keys.filter((k) => !usable.has(k));
+  if (missing.length) log.warn("catalog.battery_items_skipped", { battery: template.key, missing: missing.join(",") });
+  if (!items.length) return { outcome: "pending", missing };
+
+  const id = crypto.randomUUID();
+  const title = t(template.title, CATALOG_BATTERY_LANG);
+  const description = t(template.description, CATALOG_BATTERY_LANG);
+  const inserted = await db.transaction(async (tx) => {
+    /*
+     * Второй установщик, запущенный разом (выкат и ручная задача техпанели),
+     * упрётся в уникальный ключ: его строка не ляжет, и состав не пишется.
+     */
+    const rows = await tx
+      .insert(batteries)
+      .values({
+        id,
+        catalogKey: template.key,
+        title,
+        description,
+        groupId: null,
+        strictOrder: template.strictOrder,
+        archived: false,
+        createdBy,
+      })
+      .onConflictDoNothing()
+      .returning({ id: batteries.id });
+    if (!rows.length) return false;
+    await tx
+      .insert(batteryItems)
+      .values(items.map((item, position) => ({ batteryId: id, surveyId: item.surveyId, position, required: item.required })));
+    return true;
+  });
+  if (!inserted) return { outcome: "kept", missing: [] };
+
+  // журнал — с ключом заготовки: по нему установщик узнаёт её и после удаления (installedBefore)
+  await auditSystem({
+    action: "battery.create",
+    resourceType: "battery",
+    resourceId: id,
+    details: {
+      catalogKey: template.key,
+      title,
+      items: items.length,
+      strictOrder: template.strictOrder,
+      ...(missing.length ? { skipped: missing } : {}),
+      by: "catalog-install",
+    },
+  });
+  return { outcome: "installed", missing };
+}
+
+/**
+ * Наборы-заготовки каталога (instruments/catalogBatteries.ts): каждая
+ * заводится один раз — общим набором, на того же сотрудника, на которого
+ * записаны методики каталога (installerId), — и дальше принадлежит отделению.
+ * Идёт после методик: состав набора — методики, поставленные тем же прогоном.
+ */
+export async function installBatteries(createdBy: string): Promise<BatteryInstallReport> {
+  const report = emptyBatteryReport();
+  for (const template of CATALOG_BATTERIES) {
+    const one = await installBattery(template, createdBy);
+    report[one.outcome].push(template.key);
+    if (one.outcome === "installed" && one.missing.length) report.missingItems[template.key] = one.missing;
+  }
+  return report;
 }
 
 /** Состояние методики каталога в базе — для обзора перед решением (catalog-status) */
@@ -352,7 +619,7 @@ export async function catalogStatus(): Promise<CatalogStatusRow[]> {
       key: entry.key,
       state,
       versions: versions.map((v) => ({ ...v, note: renderNote(v.note, "ru"), createdAt: String(v.createdAt) })),
-      localFields: localFields(existing, surveyFields(createSurveySchema.parse(entry.draft))),
+      localFields: localFields(existing, catalogSettings(entry.key, createSurveySchema.parse(entry.draft))),
     });
   }
   return rows;
@@ -370,6 +637,8 @@ export async function installCatalog(opts: { force?: readonly string[] } = {}): 
       skipped: [],
       keptLocal: [],
       keptSettings: {},
+      domainSet: [],
+      batteries: emptyBatteryReport(),
       notReady: "в базе нет ни одного сотрудника — методику не на кого записать",
     };
   }
@@ -378,12 +647,16 @@ export async function installCatalog(opts: { force?: readonly string[] } = {}): 
 
   const out: Record<Outcome, string[]> = { installed: [], updated: [], skipped: [], keptLocal: [] };
   const keptSettings: Record<string, string[]> = {};
+  const domainSet: string[] = [];
   for (const entry of CATALOG) {
     const one = await installOne(entry, createdBy, force.has(entry.key));
     out[one.outcome].push(entry.key);
     if (one.keptSettings.length) keptSettings[entry.key] = one.keptSettings;
+    if (one.domainChanged) domainSet.push(entry.key);
   }
   const { installed, updated, skipped, keptLocal } = out;
+  // после методик: состав заготовки — методики, которые этот же прогон поставил
+  const batteryReport = await installBatteries(createdBy);
 
   log.info("catalog.installed", {
     department: department.id,
@@ -391,6 +664,8 @@ export async function installCatalog(opts: { force?: readonly string[] } = {}): 
     updated: updated.length,
     skipped: skipped.length,
     keptLocal: keptLocal.length,
+    domainSet: domainSet.length,
+    batteriesInstalled: batteryReport.installed.length,
   });
 
   return {
@@ -401,6 +676,8 @@ export async function installCatalog(opts: { force?: readonly string[] } = {}): 
     skipped,
     keptLocal,
     keptSettings,
+    domainSet,
+    batteries: batteryReport,
     notReady: null,
   };
 }
