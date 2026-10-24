@@ -55,6 +55,7 @@ import {
 } from "../lib/stats";
 import { TOO_FAST_MS, floorCeiling, qualityFlagged, qualityFlags, reliabilityOf, scaleShape } from "../lib/psychometrics";
 import { answerStats, answersOf, scoresOfSlice } from "../lib/answerStats";
+import { bandLabelsIn } from "../lib/bandLabels";
 import { getSurvey } from "../lib/surveys";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
@@ -930,6 +931,13 @@ analyticsRoutes.get("/surveys/:id", async (c) => {
     list.push(s);
     scoresByScale.set(s.scaleId, list);
   }
+  /*
+   * Слово полосы прохождения — на языке, на котором прочитана методика
+   * (getSurvey выше, по умолчанию украинский): снимок в response_scores
+   * записан на языке прохождения (lib/bandLabels.ts), и прохождение на
+   * русском не попадало ни в одну полосу распределения.
+   */
+  const bandIn = await bandLabelsIn("uk", survey.scales.map((sc) => sc.id));
 
   /*
    * Балл каждого пункта по каждому прохождению выборки — основа психометрики.
@@ -1042,8 +1050,9 @@ analyticsRoutes.get("/surveys/:id", async (c) => {
     // нормы должны идти по возрастанию тяжести, и пустые тоже видны
     const counts = new Map<string, number>();
     for (const s of kept) {
-      if (!s.bandLabel) continue;
-      counts.set(s.bandLabel, (counts.get(s.bandLabel) ?? 0) + 1);
+      const label = bandIn(s.scaleId, s.bandLabel);
+      if (!label) continue;
+      counts.set(label, (counts.get(label) ?? 0) + 1);
     }
 
     timelines.push({

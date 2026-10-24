@@ -1,4 +1,4 @@
-import { renderCoded, t } from "@quizzy/shared";
+import { renderCoded, t, type Lang } from "@quizzy/shared";
 import { Hono, type Context } from "hono";
 import { and, asc, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import {
@@ -31,6 +31,7 @@ import { publish } from "../lib/events";
 import { badRequest, conflict, forbidden, langOf, notFound, parseBody, parseQuery } from "../lib/http";
 import { getSurvey, getSurveyForResponse, respondentView } from "../lib/surveys";
 import { hitBand, ladderOf, storedScoreResult, storedScoreResults } from "../lib/storedScores";
+import { bandLabelsIn } from "../lib/bandLabels";
 import { detectRisks } from "../lib/risk";
 import { assertAnswersInVersion, persistSubmission } from "../lib/submission";
 import { decryptField, encryptField } from "../lib/crypto";
@@ -1080,7 +1081,7 @@ responseRoutes.get("/me/responses", async (c) => {
     .from(responses)
     .where(eq(responses.userId, user.id))
     .orderBy(desc(responses.submittedAt));
-  const items = await withScores(rows, user.fullName);
+  const items = await withScores(rows, user.fullName, langOf(c));
   // свои прохождения — со своими баллами только там, где методика их показывает (resultsShownTo)
   const shownSurveys = new Set(
     rows.length
@@ -1174,6 +1175,7 @@ responseRoutes.get("/surveys/:id/responses", requireStaff, requirePermission(CLI
   const enriched = await withScores(
     page.map((r) => r.response),
     null,
+    langOf(c),
     new Map(
       page.map((r) => [
         r.response.id,
@@ -1247,6 +1249,8 @@ responseRoutes.get("/me/dynamics", async (c) => {
     .where(inArray(responseScores.responseId, own.map((r) => r.id)));
 
   const lang = langOf(c);
+  // слово полосы — на языке читателя, а не на языке прохождения (lib/bandLabels.ts)
+  const bandIn = await bandLabelsIn(lang, scoreRows.map((x) => x.score.scaleId));
   const result = surveyRows
     .map((survey) => {
       const mine = own.filter((r) => r.surveyId === survey.id);
@@ -1259,7 +1263,7 @@ responseRoutes.get("/me/dynamics", async (c) => {
           entry.points.push({
             submittedAt: r.submittedAt ?? r.startedAt,
             value: score.value,
-            bandLabel: score.bandLabel,
+            bandLabel: bandIn(score.scaleId, score.bandLabel),
             severity: score.severity,
           });
           byCode.set(scale.code, entry);
@@ -1444,6 +1448,7 @@ responseRoutes.get("/responses/:id", async (c) => {
 async function withScores(
   rows: (typeof responses.$inferSelect)[],
   fallbackName: string | null,
+  lang: Lang,
   namesById?: Map<string, string | null>,
 ): Promise<SurveyResponse[]> {
   if (!rows.length) return [];
@@ -1456,6 +1461,12 @@ async function withScores(
     ? await db.select().from(scales).where(inArray(scales.id, scoreRows.map((s) => s.scaleId)))
     : [];
   const scaleById = new Map(scaleRows.map((s) => [s.id, s]));
+  /*
+   * Название шкалы и слово полосы — на языке читателя. Раньше оба шли
+   * по-украински при любом языке консоли: название — t() без языка, полоса —
+   * снимком на языке прохождения (lib/bandLabels.ts).
+   */
+  const bandIn = await bandLabelsIn(lang, scoreRows.map((s) => s.scaleId));
 
   const byResponse = new Map<string, ScoreResult[]>();
   for (const s of scoreRows) {
@@ -1463,7 +1474,7 @@ async function withScores(
     list.push({
       scaleId: s.scaleId,
       scaleCode: scaleById.get(s.scaleId)?.code ?? "",
-      scaleTitle: t(scaleById.get(s.scaleId)?.title as never),
+      scaleTitle: t(scaleById.get(s.scaleId)?.title as never, lang),
       kind: "clinical",
       // из сохранённого, а не выведенное задним числом: пол и нормы могли
       // измениться с момента подсчёта
@@ -1475,7 +1486,7 @@ async function withScores(
       maxScore: s.maxScore,
       percent: s.percent,
       band: s.bandLabel
-        ? { id: null, label: s.bandLabel, severity: s.severity!, description: null, grade: null, recommendation: null }
+        ? { id: null, label: bandIn(s.scaleId, s.bandLabel)!, severity: s.severity!, description: null, grade: null, recommendation: null }
         : null,
     });
     byResponse.set(s.responseId, list);

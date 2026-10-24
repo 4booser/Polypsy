@@ -7,6 +7,7 @@ import { decodeCursor, encodeCursor } from "../lib/cursor";
 import { langOf } from "../lib/http";
 import { responseScores, responses, scaleBands, scales, surveys, surveyVersions, users } from "../db/schema";
 import { audit } from "../lib/audit";
+import { bandLabelsIn } from "../lib/bandLabels";
 import { fullNameOf } from "../lib/auth";
 import { alphasOf, changeOverSeries, normativeSamples } from "../lib/changeBasis";
 import { decryptField } from "../lib/crypto";
@@ -389,6 +390,8 @@ dynamicsRoutes.get("/respondents/:userId", async (c) => {
   }
   const versionIdOf = new Map(responseRows.map((r) => [r.id, r.versionId ?? null]));
   const reliableOf = new Map(responseRows.map((r) => [r.id, r.reliable]));
+  // слово полосы точки — на языке читателя, как и полосы графика выше (lib/bandLabels.ts)
+  const bandIn = await bandLabelsIn(lang, scaleById.keys());
 
   const result: RespondentDynamics = {
     userId,
@@ -437,7 +440,7 @@ dynamicsRoutes.get("/respondents/:userId", async (c) => {
             rawScore: score.value,
             maxScore: score.maxScore,
             percent: score.percent,
-            bandLabel: score.bandLabel,
+            bandLabel: bandIn(score.scaleId, score.bandLabel),
             severity: score.severity,
             /*
              * Сравниваем однородное с однородным.

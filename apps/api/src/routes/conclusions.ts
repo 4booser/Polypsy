@@ -5,6 +5,7 @@ import { ageAt, comparability, queryDate, t } from "@quizzy/shared";
 import { db } from "../db";
 import { conclusions, responseScores, responses, scales, surveys, users } from "../db/schema";
 import { audit } from "../lib/audit";
+import { bandLabelsIn } from "../lib/bandLabels";
 import { fullNameOf } from "../lib/auth";
 import { decryptField, encryptField } from "../lib/crypto";
 import { badRequest, conflict, isUniqueViolation, langOf, notFound, parseBody, parseQuery } from "../lib/http";
@@ -221,6 +222,8 @@ conclusionRoutes.get(
           .where(eq(responseScores.responseId, previous.id))
       : [];
     const before = new Map(previousScores.map((p) => [p.scaleId, p]));
+    // слово полосы — на языке консоли, а не на языке прохождения (lib/bandLabels.ts)
+    const bandIn = await bandLabelsIn(lang, scoreRows.map((r) => r.score.scaleId));
 
     /*
      * «Було» — только то, с чем сравнивать можно (#137), по тому же правилу,
@@ -277,7 +280,7 @@ conclusionRoutes.get(
         value: r.score.value,
         normalization: r.score.normalization,
         percent: r.score.percent,
-        band: r.score.bandLabel,
+        band: bandIn(r.score.scaleId, r.score.bandLabel),
         severity: r.score.severity,
         ...previousOf(r.score),
       })),
