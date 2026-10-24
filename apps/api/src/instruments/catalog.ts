@@ -31,6 +31,7 @@ import { cage } from "./cage";
 import { cbi } from "./cbi";
 // ── k-trauma ──
 import { ITQ_NOT_SCORED, itq } from "./itq";
+import { tgiSrPlus } from "./tgiSrPlus";
 // ── /k-trauma ──
 
 /**
@@ -316,6 +317,12 @@ export const CATALOG: CatalogEntry[] = [
     source:
       "ITQ, Cloitre, Shevlin, Brewin, Bisson, Roberts, Maercker, Karatzias, Hyland, International Trauma Consortium, Acta Psychiatr Scand 2018 — public domain за заявою правовласника; український і російський тексти — бланки ITC (українську версію досліджено: Ho та ін., J Trauma Stress 2023). Рахуються розмірні бали; діагностичний алгоритм система не обчислює",
     notScored: ITQ_NOT_SCORED,
+  },
+  {
+    key: "tgi_sr_plus",
+    draft: tgiSrPlus,
+    source:
+      "TGI-SR+, Lenferink, Eisma, Smid, de Keijser, Boelen, Compr Psychiatry 2022 — CC BY 4.0 (https://osf.io/rqn5k/); український і російський тексти — переклад Boelen та ін., 2022, виправлено друкарські помилки бланків; український поріг — Rispa Hoyos та ін., Clin Psychol Eur 2026",
   },
   // ── /k-trauma ──
 ];

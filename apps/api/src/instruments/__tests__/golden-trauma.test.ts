@@ -15,6 +15,7 @@ import { pcptsd5 } from "../pcptsd5";
 import { sbqr } from "../sbqr";
 // ── k-trauma ──
 import { ITQ_NOT_SCORED, itq } from "../itq";
+import { tgiSrPlus } from "../tgiSrPlus";
 // ── /k-trauma ──
 
 /**
@@ -408,6 +409,7 @@ describe("золотой протокол: SBQ-R", () => {
 
 const K21 = [
   ["itq", itq],
+  ["tgi_sr_plus", tgiSrPlus],
 ] as const;
 
 type LocText = { uk: string; ru: string };
@@ -570,5 +572,64 @@ describe("золотой протокол: ITQ", () => {
     // наш в русском только перевод вариантов давности и заголовков частей
     expect(descriptionOf(itq).uk).not.toContain(WORKING_TRANSLATION.uk);
     expect(descriptionOf(itq).ru).toContain("рабочий перевод");
+  });
+});
+
+describe("золотой протокол: TGI-SR+", () => {
+  const survey = toSurveyFull(tgiSrPlus);
+  const DEATH_WISH = 17;
+  const upTo = (n: number) => Object.fromEntries(Array.from({ length: n }, (_, i) => [i + 1, 4]));
+
+  test("пример досье: пп. 1–9 «Часто», п. 17 «Ніколи», остальные «Іноді» → 73, полоса 71–74", () => {
+    // 9 × 4 + 12 × 3 + 1 = 73
+    const answers = fill(survey, 3, { ...upTo(9), [DEATH_WISH]: 1 });
+    const s = scoresOf(survey, answers).TGI!;
+    expect([s.value, s.grade, s.severity]).toEqual([73, 2, "mild"]);
+    expect(detectRisks(survey, answers)).toEqual([]);
+  });
+
+  test("второй пример досье: пп. 1–13 «Часто» → 77, порог 75 достигнут, умеренная тревога полосы", () => {
+    // 13 × 4 + 8 × 3 + 1 = 77
+    const s = scoresOf(survey, fill(survey, 3, { ...upTo(13), [DEATH_WISH]: 1 })).TGI!;
+    expect([s.value, s.grade, s.severity]).toEqual([77, 3, "moderate"]);
+  });
+
+  test("границы порогов: 70 / 71 / 74 / 75", () => {
+    // 22 пункта по 3 = 66; каждый пункт «Часто» вместо «Іноді» добавляет 1 (п. 17 остаётся 3)
+    const at = (n: number) => {
+      const s = scoresOf(survey, fill(survey, 3, upTo(n))).TGI!;
+      return [s.value, s.grade];
+    };
+    expect(at(4)).toEqual([70, 1]);
+    expect(at(5)).toEqual([71, 2]);
+    expect(at(8)).toEqual([74, 2]);
+    expect(at(9)).toEqual([75, 3]);
+  });
+
+  test("края: всё «Ніколи» → 22, всё «Завжди» → 110 и тяжёлая тревога по п. 17", () => {
+    const min = scoresOf(survey, fill(survey, 1)).TGI!;
+    expect([min.value, min.grade]).toEqual([22, 1]);
+    const answers = fill(survey, 5);
+    const max = scoresOf(survey, answers).TGI!;
+    expect([max.value, max.grade]).toEqual([110, 3]);
+    expect(detectRisks(survey, answers).map((r) => r.severity)).toEqual(["severe"]);
+  });
+
+  test("п. 17 — тревога при любой сумме: «Рідко», «Іноді» — умеренная, «Часто», «Завжди» — тяжёлая", () => {
+    const q = survey.questions[DEATH_WISH - 1]!;
+    expect(q.options.map((o) => (o.riskFlag ? o.riskSeverity : null))).toEqual([null, "moderate", "moderate", "severe", "severe"]);
+    // «Рідко» при сумме 23 — ниже всех порогов, но тревога есть
+    const answers = fill(survey, 1, { [DEATH_WISH]: 2 });
+    expect(scoresOf(survey, answers).TGI!.grade).toBe(1);
+    expect(detectRisks(survey, answers).map((r) => [r.questionId, r.severity])).toEqual([[`q${DEATH_WISH}`, "moderate"]]);
+    // другого пункта риска нет
+    const flagged = survey.questions.flatMap((x, i) => (x.options.some((o) => o.riskFlag) ? [i + 1] : []));
+    expect(flagged).toEqual([DEATH_WISH]);
+    expect(tgiSrPlus.alertEscalateMinutes).toBe(60);
+  });
+
+  test("перевод сделан с разработчиком — оговорки о рабочем переводе нет ни в одном языке", () => {
+    expect(descriptionOf(tgiSrPlus).uk).not.toContain(WORKING_TRANSLATION.uk);
+    expect(descriptionOf(tgiSrPlus).ru).not.toContain(WORKING_TRANSLATION.ru);
   });
 });

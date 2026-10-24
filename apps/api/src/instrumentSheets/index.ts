@@ -91,6 +91,7 @@ const MODULE_OF: Record<string, string> = {
   cbi: "cbi.ts",
   // ── k-trauma ──
   itq: "itq.ts",
+  tgi_sr_plus: "tgiSrPlus.ts",
   // ── /k-trauma ──
 };
 
