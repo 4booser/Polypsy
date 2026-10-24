@@ -13,9 +13,13 @@ import { ces } from "../ces";
 import { WORKING_TRANSLATION } from "../common";
 import { pcptsd5 } from "../pcptsd5";
 import { sbqr } from "../sbqr";
+// ── k-trauma ──
+import { ITQ_NOT_SCORED, itq } from "../itq";
+// ── /k-trauma ──
 
 /**
- * Золотые протоколы группы «травма и военный контекст»: PC-PTSD-5, CES, SBQ-R.
+ * Золотые протоколы группы «травма и военный контекст»: PC-PTSD-5, CES, SBQ-R; методики
+ * каталога 2.1 — в блоке k-trauma в конце файла.
  *
  * Каждый пример взят из поля `example` досье docs/instruments/dossiers/trauma.json и
  * посчитан руками — расчёт стоит в комментарии рядом с ожиданием. У всех трёх методик
@@ -388,5 +392,183 @@ describe("золотой протокол: SBQ-R", () => {
             if (score.rawScore < 8) continue;
             expect(detectRisks(survey, answers).some((r) => r.severity === "severe")).toBe(true);
           }
+  });
+});
+
+/* ───────────────────────────── k-trauma: каталог 2.1 ───────────────────────────── */
+
+/**
+ * Методики каталога 2.1 (карточки того же досье с теми же ключами).
+ *
+ * Текст у них чаще правообладателя, чем наш перевод, поэтому групповая проверка первых трёх
+ * («рабочий перевод назван», «США в описании») к ним не подходит: здесь своя — украинский
+ * текст без русских букв, а в протоколе каждой методики — что рабочий перевод назван ровно
+ * там, где он есть. Примеры — из поля `example` карточек, расчёт рядом с ожиданием.
+ */
+
+const K21 = [
+  ["itq", itq],
+] as const;
+
+type LocText = { uk: string; ru: string };
+
+/** Все локализованные строки черновика — для проверки букв украинской половины */
+function locStrings(draft: unknown): LocText[] {
+  const out: LocText[] = [];
+  const walk = (v: unknown): void => {
+    if (!v || typeof v !== "object") return;
+    if (Array.isArray(v)) {
+      v.forEach(walk);
+      return;
+    }
+    const o = v as Record<string, unknown>;
+    if (typeof o.uk === "string" && typeof o.ru === "string") out.push(o as unknown as LocText);
+    else Object.values(o).forEach(walk);
+  };
+  walk(draft);
+  return out;
+}
+
+/** Ответы по баллу варианта: номер вопроса (с единицы) → балл */
+function byScore(survey: SurveyFull, picks: Record<number, number>): Answer[] {
+  return Object.entries(picks).map(([n, score]) => {
+    const q = survey.questions[Number(n) - 1]!;
+    const o = q.options.find((x) => x.kind === "option" && x.score === score);
+    if (!o) throw new Error(`п. ${n}: нет варианта с баллом ${score}`);
+    return { questionId: q.id, optionIds: [o.id] };
+  });
+}
+
+/** Один и тот же балл всем вопросам с одиночным выбором, кроме перечисленных в `except` */
+function fill(survey: SurveyFull, score: number, except: Record<number, number> = {}): Answer[] {
+  const picks: Record<number, number> = {};
+  survey.questions.forEach((q, i) => {
+    if (q.type === "single") picks[i + 1] = except[i + 1] ?? score;
+  });
+  return byScore(survey, picks);
+}
+
+type Got = { value: number; grade: number | null; severity: string | null };
+
+function scoresOf(survey: SurveyFull, answers: Answer[]): Record<string, Got> {
+  const { scores } = computeProfile(survey, answers);
+  return Object.fromEntries(
+    scores.map((s) => [s.scaleCode, { value: s.rawScore, grade: s.band?.grade ?? null, severity: s.band?.severity ?? null }]),
+  );
+}
+
+describe("группа trauma, каталог 2.1: структура", () => {
+  for (const [key, draft] of K21) {
+    test(`${key}: схема и проверка структуры без ошибок, в каталоге`, () => {
+      const parsed = createSurveySchema.parse(draft);
+      const errors = validateSurvey(parsed).filter((i) => i.level === "error");
+      expect(errors.map((e) => `${e.where}: ${e.message}`)).toEqual([]);
+      expect(CATALOG.find((e) => e.key === key)?.draft).toBe(draft);
+    });
+
+    test(`${key}: результат человеку не показывается, план безопасности есть`, () => {
+      expect(draft.showResultsToPatient).toBe(false);
+      expect(draft.safetyPlan).toBeTruthy();
+    });
+
+    test(`${key}: в украинской половине нет русских букв (ы, э, ъ, ё)`, () => {
+      const bad = locStrings(draft).filter((t) => /[ыэъёЫЭЪЁ]/.test(t.uk));
+      expect(bad.map((t) => t.uk)).toEqual([]);
+    });
+
+    test(`${key}: полосы каждой шкалы покрывают весь её диапазон без дыр`, () => {
+      // диапазон — от баллов самих вариантов, а не переписан из досье: ловит и опечатку в балле
+      const parsed = createSurveySchema.parse(draft);
+      for (const scale of parsed.scales ?? []) {
+        if (!scale.bands?.length) continue;
+        let min = 0;
+        let max = 0;
+        for (const k of scale.key ?? []) {
+          const scores = (parsed.questions[k.item - 1]!.options ?? []).map((o) => o.score ?? 0);
+          min += Math.min(...scores);
+          max += Math.max(...scores);
+        }
+        const sorted = [...scale.bands].sort((a, b) => a.minScore - b.minScore);
+        expect(sorted[0]!.minScore).toBe(min);
+        expect(sorted.at(-1)!.maxScore).toBe(max);
+        for (let i = 1; i < sorted.length; i++) expect(sorted[i]!.minScore).toBe(sorted[i - 1]!.maxScore + 1);
+      }
+    });
+  }
+});
+
+/** Описание методики — там рабочий перевод либо назван, либо его нет */
+const descriptionOf = (draft: { description?: unknown }) => draft.description as LocText;
+
+describe("золотой протокол: ITQ", () => {
+  const survey = toSurveyFull(itq);
+  // номера вопросов: 4–9 — P1–P6, 10–12 — P7–P9, 14–19 — C1–C6, 20–22 — C7–C9
+  const P = [4, 5, 6, 7, 8, 9];
+  const PFI = [10, 11, 12];
+  const C = [14, 15, 16, 17, 18, 19];
+  const CFI = [20, 21, 22];
+  const set = (items: number[], values: number[]) => Object.fromEntries(items.map((n, i) => [n, values[i]!]));
+  const values = (s: Record<string, Got>) => Object.fromEntries(Object.entries(s).map(([k, v]) => [k, v.value]));
+
+  test("пример досье: P1–P6 = 3,1,2,0,4,2; C1–C6 = 2,2,1,0,3,1 → ПТСР 12, DSO 9 и кластеры", () => {
+    const answers = byScore(survey, {
+      2: 0,
+      ...set(P, [3, 1, 2, 0, 4, 2]),
+      ...set(PFI, [2, 0, 1]),
+      ...set(C, [2, 2, 1, 0, 3, 1]),
+      ...set(CFI, [0, 1, 0]),
+    });
+    // Re 3+1, Av 2+0, Th 4+2, ПТСР 4+2+6; AD 2+2, NSC 1+0, DR 3+1, DSO 4+1+4
+    expect(values(scoresOf(survey, answers))).toEqual({ PTSD: 12, RE: 4, AV: 2, TH: 6, DSO: 9, AD: 4, NSC: 1, DR: 4 });
+  });
+
+  test("края: всё «Надзвичайно» → 24/24 и кластеры по 8; всё «Ніскільки» → нули", () => {
+    const max = scoresOf(survey, fill(survey, 4, { 2: 0 }));
+    expect(values(max)).toEqual({ PTSD: 24, RE: 8, AV: 8, TH: 8, DSO: 24, AD: 8, NSC: 8, DR: 8 });
+    const min = scoresOf(survey, fill(survey, 0));
+    expect(Object.values(min).every((v) => v.value === 0)).toBe(true);
+  });
+
+  test("функциональное нарушение, давность и описание события в баллы не входят", () => {
+    // ловушка ключа: P7–P9 и C7–C9 в сумме дали бы ПТСР до 36 и DSO до 36
+    const base = { 2: 0, ...set(P, [1, 1, 1, 1, 1, 1]), ...set(C, [1, 1, 1, 1, 1, 1]) };
+    const low = scoresOf(survey, byScore(survey, { ...base, ...set(PFI, [0, 0, 0]), ...set(CFI, [0, 0, 0]) }));
+    const high = scoresOf(survey, byScore(survey, { ...base, ...set(PFI, [4, 4, 4]), ...set(CFI, [4, 4, 4]) }));
+    expect(high).toEqual(low);
+    expect(low.PTSD!.value).toBe(6);
+    const used = new Set(survey.scales.flatMap((sc) => sc.items.map((it) => Number(it.questionId.slice(1)))));
+    expect(ITQ_NOT_SCORED.items.filter((n) => used.has(n))).toEqual([]);
+    expect([...used].sort((a, b) => a - b)).toEqual([...P, ...C]);
+  });
+
+  test("полос нет ни у одной шкалы, тревог нет (правообладатель: «Cut-off scores should not be used»)", () => {
+    expect(survey.scales.every((sc) => sc.bands.length === 0)).toBe(true);
+    expect(survey.questions.flatMap((q) => q.options).some((o) => o.riskFlag)).toBe(false);
+    const s = scoresOf(survey, fill(survey, 4, { 2: 0 }));
+    expect(Object.values(s).every((v) => v.grade === null && v.severity === null)).toBe(true);
+  });
+
+  test("диагностическое правило стоит в описании шкал ПТСР и DSO по бланку", () => {
+    const desc = (code: string) => (itq.scales!.find((sc) => sc.code === code)!.description as LocText).uk;
+    for (const rule of ["P1 або P2 ≥ 2", "P3 або P4 ≥ 2", "P5 або P6 ≥ 2", "P7, P8, P9 ≥ 2", "понад місяць"]) {
+      expect(desc("PTSD")).toContain(rule);
+    }
+    for (const rule of ["C1 або C2 ≥ 2", "C3 або C4 ≥ 2", "C5 або C6 ≥ 2", "C7, C8, C9 ≥ 2"]) {
+      expect(desc("DSO")).toContain(rule);
+    }
+  });
+
+  test("обе части — одна шкала ответов 0–4; давность — шесть вариантов украинского бланка", () => {
+    for (const n of [...P, ...PFI, ...C, ...CFI]) {
+      expect(survey.questions[n - 1]!.options.map((o) => o.score)).toEqual([0, 1, 2, 3, 4]);
+    }
+    expect(survey.questions[1]!.options.length).toBe(6);
+    expect((itq.questions![1]!.options![0]!.text as LocText).uk).toBe("менше місяця тому");
+  });
+
+  test("тексты — бланки правообладателя: рабочий перевод назван только в русской половине", () => {
+    // наш в русском только перевод вариантов давности и заголовков частей
+    expect(descriptionOf(itq).uk).not.toContain(WORKING_TRANSLATION.uk);
+    expect(descriptionOf(itq).ru).toContain("рабочий перевод");
   });
 });
