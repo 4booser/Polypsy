@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import {
   CONTENT_LANGS,
   createSurveySchema,
@@ -11,7 +11,7 @@ import {
   type LocalizedText,
 } from "@quizzy/shared";
 import { db } from "../db";
-import { auditLog, batteries, batteryItems, departments, surveyVersions, surveys, users } from "../db/schema";
+import { auditLog, batteries, batteryItems, departments, surveyGroups, surveyVersions, surveys, users } from "../db/schema";
 import { CATALOG_BATTERIES, CATALOG_BATTERY_LANG, type CatalogBattery } from "../instruments/catalogBatteries";
 import { CATALOG, type CatalogEntry } from "../instruments/catalog";
 import { catalogDomain } from "../instruments/catalogDomains";
@@ -44,11 +44,17 @@ import { createVersion } from "./surveys";
  *
  * Кроме методик, установщик заводит наборы-заготовки каталога
  * (instruments/catalogBatteries.ts) — каждую один раз, см. installBatteries.
+ *
+ * Методики каталога стоят в своей группе — см. CATALOG_GROUP_ID.
  */
 
 export interface InstallReport {
   departmentId: string | null;
   departmentCreated: boolean;
+  /** Группа каталога заведена этим прогоном (ensureCatalogGroup) */
+  groupCreated: boolean;
+  /** Методики каталога без группы, перенесённые в группу каталога при её заведении */
+  grouped: string[];
   installed: string[];
   /** Стояли и обновлены до текущей редакции каталога новой версией */
   updated: string[];
@@ -123,6 +129,71 @@ async function ensureDepartment(): Promise<{ id: string; created: boolean }> {
     details: { title: DEPARTMENT_TITLE.uk, by: "catalog-install" },
   });
   return { id, created: true };
+}
+
+/**
+ * Группа каталога: в ней стоят методики каталога.
+ *
+ * Раньше они стояли без группы, а методика без группы — личный черновик
+ * автора (lib/scope.ts): её видят суперадмин и тот, кто её завёл, а заводит
+ * их установщик. Врач, назначенный на группу, методик каталога не видел и
+ * назначить не мог, наборы-заготовки видел без шагов, а тревоги по этим
+ * методикам доставались одному суперадмину.
+ *
+ * Открыть методики без группы всем сотрудникам — отвергнуто. Через группу
+ * методики считается и круг пациентов врача (accessiblePatientIds): каждый,
+ * кто проходил методику каталога, стал бы виден каждому сотруднику. Поэтому
+ * каталог живёт в обычной группе, и кто его видит, решает суперадмин,
+ * назначая администраторов группы, как у любой другой.
+ *
+ * Постоянный id, а не поиск по названию: группу учреждение вправе
+ * переименовать, и следующий выкат завёл бы вторую.
+ */
+export const CATALOG_GROUP_ID = "catalog";
+
+/**
+ * Завести группу каталога, если её нет. При заведении в неё переносятся
+ * методики каталога без группы — те, что стояли до неё.
+ *
+ * Перенос — один раз, при заведении, а не на каждом выкате: методику,
+ * которую учреждение потом унесёт из группы (в свою группу или в черновики),
+ * установщик назад не возвращает. Новые методики каталога ставятся сразу в
+ * группу (installOne).
+ */
+async function ensureCatalogGroup(createdBy: string): Promise<{ created: boolean; grouped: string[] }> {
+  const title = serverText("content.catalogGroup", CATALOG_BATTERY_LANG);
+  const rows = await db
+    .insert(surveyGroups)
+    .values({
+      id: CATALOG_GROUP_ID,
+      title,
+      description: serverText("content.catalogGroupNote", CATALOG_BATTERY_LANG),
+      createdBy,
+    })
+    .onConflictDoNothing()
+    .returning({ id: surveyGroups.id });
+  if (!rows.length) return { created: false, grouped: [] };
+  await auditSystem({
+    action: "group.create",
+    resourceType: "group",
+    resourceId: CATALOG_GROUP_ID,
+    details: { title, by: "catalog-install" },
+  });
+
+  const moved = await db
+    .update(surveys)
+    .set({ groupId: CATALOG_GROUP_ID, updatedAt: new Date().toISOString() })
+    .where(and(isNotNull(surveys.catalogKey), isNull(surveys.groupId)))
+    .returning({ id: surveys.id, key: surveys.catalogKey });
+  for (const m of moved) {
+    await auditSystem({
+      action: "survey.update",
+      resourceType: "survey",
+      resourceId: m.id,
+      details: { catalogKey: m.key, groupId: CATALOG_GROUP_ID, from: null, by: "catalog-install" },
+    });
+  }
+  return { created: true, grouped: moved.map((m) => m.key!).sort() };
 }
 
 /*
@@ -426,7 +497,7 @@ async function installOne(entry: CatalogEntry, createdBy: string, force = false)
   await db.insert(surveys).values({
     id,
     catalogKey: entry.key,
-    groupId: null,
+    groupId: CATALOG_GROUP_ID,
     ...catalog,
     catalogFields: catalog,
     status: "published",
@@ -632,6 +703,8 @@ export async function installCatalog(opts: { force?: readonly string[] } = {}): 
     return {
       departmentId: null,
       departmentCreated: false,
+      groupCreated: false,
+      grouped: [],
       installed: [],
       updated: [],
       skipped: [],
@@ -644,6 +717,8 @@ export async function installCatalog(opts: { force?: readonly string[] } = {}): 
   }
 
   const department = await ensureDepartment();
+  // до методик: новые ставятся сразу в группу, а перенос стоявших — до их обновления
+  const group = await ensureCatalogGroup(createdBy);
 
   const out: Record<Outcome, string[]> = { installed: [], updated: [], skipped: [], keptLocal: [] };
   const keptSettings: Record<string, string[]> = {};
@@ -660,6 +735,8 @@ export async function installCatalog(opts: { force?: readonly string[] } = {}): 
 
   log.info("catalog.installed", {
     department: department.id,
+    groupCreated: group.created,
+    grouped: group.grouped.length,
     installed: installed.length,
     updated: updated.length,
     skipped: skipped.length,
@@ -671,6 +748,8 @@ export async function installCatalog(opts: { force?: readonly string[] } = {}): 
   return {
     departmentId: department.id,
     departmentCreated: department.created,
+    groupCreated: group.created,
+    grouped: group.grouped,
     installed,
     updated,
     skipped,
