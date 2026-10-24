@@ -58,6 +58,9 @@ export const CATALOG_DOMAINS: Readonly<Record<string, SurveyDomain>> = {
   sbqr: "suicide",
   sr45: "suicide",
   "sad-persons": "suicide",
+  asq: "suicide",
+  cssrs: "suicide",
+  sidas: "suicide",
 
   /* ── sleep ── */
   sci: "sleep",
