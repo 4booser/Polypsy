@@ -1150,7 +1150,17 @@ analyticsRoutes.get("/surveys/:id", async (c) => {
       ),
     )
     .filter((q) => q.flagged)
-    .sort((a, b) => b.reasons.length - a.reasons.length);
+    /*
+     * При равном числе причин — по времени сдачи, затем по id. Прохождения приходят
+     * в порядке обхода таблицы (responseRows без ORDER BY), а он плывёт после правки
+     * строк: список у врача и эталон теста менялись от прогона к прогону.
+     */
+    .sort(
+      (a, b) =>
+        b.reasons.length - a.reasons.length ||
+        (a.submittedAt ?? "").localeCompare(b.submittedAt ?? "") ||
+        a.responseId.localeCompare(b.responseId),
+    );
 
   /*
    * Матрица «пункт × прохождение» — только для одного человека: по отделению
