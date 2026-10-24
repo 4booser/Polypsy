@@ -150,6 +150,7 @@ async function ensureDepartment(): Promise<{ id: string; created: boolean }> {
  * переименовать, и следующий выкат завёл бы вторую.
  */
 export const CATALOG_GROUP_ID = "catalog";
+const CATALOG_GROUP_POSITION = 1000;
 
 /**
  * Завести группу каталога, если её нет. При заведении в неё переносятся
@@ -168,6 +169,12 @@ async function ensureCatalogGroup(createdBy: string): Promise<{ created: boolean
       id: CATALOG_GROUP_ID,
       title,
       description: serverText("content.catalogGroupNote", CATALOG_BATTERY_LANG),
+      /*
+       * В конце списка групп. Конструктор ставит новой методике первую группу
+       * из списка (constructor/model.ts), и своя методика врача не должна по
+       * умолчанию ложиться в каталог.
+       */
+      position: CATALOG_GROUP_POSITION,
       createdBy,
     })
     .onConflictDoNothing()

@@ -51,6 +51,9 @@ describe("группа каталога", () => {
 
         const first = await asAppRole(() => systemContext(baseDb, () => installCatalog()));
         expect(first.groupCreated).toBe(true);
+        // в конце списка групп: конструктор берёт новой методике первую группу списка
+        const groups = await api<{ items: { id: string; archivedAt: string | null }[] }>("/api/groups", root.token);
+        expect(groups.body.items.filter((g) => !g.archivedAt).at(-1)?.id).toBe(CATALOG_GROUP_ID);
         expect(first.grouped).toEqual(expect.arrayContaining(CATALOG.map((e) => e.key)));
         const rows = await db
           .select({ key: surveys.catalogKey, groupId: surveys.groupId })
