@@ -89,6 +89,61 @@ const MODULE_OF: Record<string, string> = {
   assist: "assist.ts",
   asrs6: "asrs6.ts",
   cbi: "cbi.ts",
+  // ── k-sleep ──
+  sci: "sci.ts",
+  sci02: "sci02.ts",
+  fas: "fas.ts",
+  ris: "ris.ts",
+  // ── /k-sleep ──
+  // ── k-wellbeing ──
+  swls: "swls.ts",
+  flourishing: "flourishing.ts",
+  spane: "spane.ts",
+  mlq: "mlq.ts",
+  pss4: "pss4.ts",
+  // ── /k-wellbeing ──
+  // ── k-staff ──
+  bat: "bat.ts",
+  bat12: "bat.ts",
+  proqol5: "proqol5.ts",
+  mios: "mios.ts",
+  // ── /k-staff ──
+  // ── k-cognitive ──
+  "4at": "fourAt.ts",
+  adexi: "adexi.ts",
+  // ── /k-cognitive ──
+  // ── k-distress ──
+  dass21: "dass21.ts",
+  k10: "k10.ts",
+  k6: "k6.ts",
+  phq15: "phq15.ts",
+  phq2: "phq2.ts",
+  gad2: "gad2.ts",
+  core10: "core10.ts",
+  // ── /k-distress ──
+  // ── k-personality ──
+  tipi: "tipi.ts",
+  scs_sf: "scsSf.ts",
+  maas: "maas.ts",
+  aaq2: "aaq2.ts",
+  aq10: "aq10.ts",
+  // ── /k-personality ──
+  // ── k-addiction ──
+  cuditr: "cuditr.ts",
+  ciwaar: "ciwaar.ts",
+  cows: "cows.ts",
+  // ── /k-addiction ──
+  // ── k-suicide ──
+  asq: "asq.ts",
+  cssrs: "cssrs.ts",
+  sidas: "sidas.ts",
+  // ── /k-suicide ──
+  // ── k-trauma ──
+  itq: "itq.ts",
+  tgi_sr_plus: "tgiSrPlus.ts",
+  ctsr_ua: "ctsrUa.ts",
+  lec5: "lec5.ts",
+  // ── /k-trauma ──
 };
 
 /**

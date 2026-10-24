@@ -96,10 +96,41 @@
    },
    "ru": {
     "exists": true,
-    "by": "MAPI Research Institute по заказу Pfizer — версия «PHQ-9 Russian for Russia», размещена на phqscreeners.com в разделе переводов",
+    "by": "правообладатель (Pfizer, программа переводов phqscreeners.com) — «PHQ9_Russian for Ukraine»; есть и «PHQ9_Russian for Russia»",
     "free": true,
-    "url": "https://www.phqscreeners.com/select-screener",
-    "note": "Наличие русской версии на сайте правообладателя подтверждается разделом переводов; прямая ссылка на PDF выдаётся через JS-селектор, статический URL получить не удалось. Перед заведением русского текста скачать PDF вручную с сайта — свой перевод не сочинять."
+    "url": "https://www.phqscreeners.com/images/sites/g/files/g10060481/f/201412/PHQ9_Russian%20for%20Ukraine.pdf",
+    "license_line": "Разработано: Д-рами Робертом Л. Шпитцером, Джанет Б. Вильямс, Куртом Кренке (Drs. Robert L. Spitzer, Janet B Williams, Kurt Kroenke) и коллегами при поддержке образовательного гранта компании “Пфайзер Инк.” (Pfizer Inc.). Воспроизведение, перевод, демонстрация и распространение разрешаются без предварительного согласия владельцев авторского права.",
+    "instruction": "Как часто за последние 2 недели Вас беспокоили следующие проблемы? (Выбранный ответ отметьте значком “✔”)",
+    "items": [
+     "Вам было не очень интересно или не очень нравилось что-либо делать",
+     "Вы грустили, были подавлены или испытывали чувство безысходности",
+     "Вам было трудно заснуть, у Вас был прерывистый сон, или Вы слишком много спали",
+     "Вы были утомлены, или у Вас было мало сил",
+     "У Вас был плохой аппетит, или Вы переедали",
+     "Вы плохо о себе думали – Вы считали себя неудачником (неудачницей) или были в себе разочарованы, или считали, что подвели свою семью",
+     "Вам было трудно сосредоточиться, например, на чтении газеты или на просмотре телепередач",
+     "Вы двигались или говорили настолько медленно, что окружающие могли бы это заметить? Или наоборот, Вы были настолько суетливы или взбудоражены, что передвигались гораздо больше обычного",
+     "Вас посещали мысли о том, что Вам лучше было бы умереть, или о том, чтобы причинить себе какой-нибудь вред"
+    ],
+    "anchors": [
+     {
+      "label": "Ни разу",
+      "score": 0
+     },
+     {
+      "label": "Несколько дней",
+      "score": 1
+     },
+     {
+      "label": "Более половины всех дней",
+      "score": 2
+     },
+     {
+      "label": "Почти каждый день",
+      "score": 3
+     }
+    ],
+    "note": "Рецензия каталога 2.1: файл скачан с сайта правообладателя 2026-10-20 по статическому адресу выше (раньше адрес получить не удалось — JS-селектор). Взята версия «for Ukraine». В каталоге русский текст пунктов, шапки и ответов — дословно отсюда; рабочий перевод украинского текста МОЗ снят. В п. 2 русский идёт за оригиналом («безысходности» — «hopeless»), украинский МОЗ — нет («безпорадності»): языковые версии по п. 2 расходятся, это названо в описании методики. Подписей полос на бланке нет — русские подписи полос в каталоге остаются переводом подписей МОЗ."
    }
   },
   "example": {
@@ -118,7 +149,7 @@
    "band": "Moderately severe (15–19) / Середньої тяжкості депресія",
    "note": "Опубликованный пример из INSTRUCTION MANUAL, Table 3 (стр. 5): «the PHQ-9 depression severity score is 16 (3 items scored 1, 2 items scored 2, and 3 items scored 3)». Состав баллов взят дословно; распределение по конкретным пунктам в тексте не указано (в таблице отмечено галочками), поэтому раскладка выше — арифметически эквивалентная, сумма и полоса совпадают с опубликованными."
   },
-  "verdict": "завести — public domain по заявлению правообладателя, есть официальный украинский текст в приказе МОЗ"
+  "verdict": "завести — public domain по заявлению правообладателя; украинский текст — приказ МОЗ №1003, русский — официальный перевод правообладателя «Russian for Ukraine» (рецензия 2.1)"
  },
  {
   "key": "gad7",
@@ -193,17 +224,75 @@
   "translation": {
    "uk": {
     "exists": true,
-    "by": "Украинская адаптация опубликована украинскими авторами (2024, «Українська адаптація шкали для оцінки генералізованого тривожного розладу GAD-7: досвід діагностики в умовах воєнного стану»); официального перевода от правообладателя или МОЗ України в нормативном документе найти не удалось",
-    "free": null,
-    "url": "https://www.researchgate.net/publication/380274979",
-    "note": "НЕ проверен по первоисточнику: доступ к полному тексту статьи не получен, дословный украинский текст 7 пунктов не подтверждён. До проверки украинский вариант НЕ заводить — правообладатель разрешает переводы, но свой перевод сочинять нельзя."
+    "by": "правовласник (Pfizer, програма перекладів phqscreeners.com) — «GAD7_Ukrainian for Ukraine»",
+    "free": true,
+    "url": "https://www.phqscreeners.com/images/sites/g/files/g10060481/f/201412/GAD7_Ukrainian%20for%20Ukraine.pdf",
+    "license_line": "Розроблено: Д-рами Робертом Л. Шпітцером, Джанет Б. Вільямс, Куртом Кренке (Drs. Robert L. Spitzer, Janet B Williams, Kurt Kroenke) та колегами при підтримці освітнього гранту компанії \"Пфайзер Інк.\" (Pfizer Inc.). Відтворення, переклад, демонстрація і розповсюдження дозволяються без попередньої згоди власників авторського права.",
+    "instruction": "Як часто за останні 2 тижні Вас турбували наступні проблеми? (Обрану відповідь відмітьте позначкою “✔”)",
+    "items": [
+     "Ви нервували, відчували тривогу або були дуже напружені",
+     "Ви не могли зупинити або контролювати своє хвилювання",
+     "Ви занадто хвилювались через різні речі",
+     "Вам було важко розслабитись",
+     "Ви були настільки неспокійні, що Вам було важко всидіти на одному місці",
+     "Вам було легко дошкулити або роздратувати",
+     "Ви відчували страх, неначе щось жахливе може статися"
+    ],
+    "anchors": [
+     {
+      "label": "Зовсім не турбували",
+      "score": 0
+     },
+     {
+      "label": "Декілька днів",
+      "score": 1
+     },
+     {
+      "label": "Більше половини усіх днів",
+      "score": 2
+     },
+     {
+      "label": "Майже щоденно",
+      "score": 3
+     }
+    ],
+    "note": "Рецензия каталога 2.1: официальный перевод правообладателя нашёлся на его же сайте (раздел переводов phqscreeners.com; файл скачан 2026-10-20, текст выше снят с него дословно). Прежняя запись искала украинский GAD-7 у МОЗ и в статьях и не нашла. Отдельно существует научная адаптация 2024 г. (researchgate 380274979) — это не перевод правообладателя. В каталоге пункты и шапка взяты дословно, а подписи ответов — из PHQ-9 МОЗ (наказ №1003): у GAD-7 и PHQ-9 одна английская шкала, и PHQ-4 иначе показывал бы две разные; смысл подписей тот же. Это решение названо в описании методики."
    },
    "ru": {
     "exists": true,
-    "by": "MAPI Research Institute по заказу Pfizer — раздел переводов на phqscreeners.com",
+    "by": "правообладатель (Pfizer, программа переводов phqscreeners.com) — «GAD7_Russian for Ukraine»; есть и «GAD7_Russian for Russia»",
     "free": true,
-    "url": "https://www.phqscreeners.com/select-screener",
-    "note": "Статический URL PDF получить не удалось (JS-селектор). Скачать вручную перед заведением."
+    "url": "https://www.phqscreeners.com/images/sites/g/files/g10060481/f/201412/GAD7_Russian%20for%20Ukraine.pdf",
+    "license_line": "Разработано: Д-рами Робертом Л. Шпитцером, Джанет Б. Вильямс, Куртом Кренке (Drs. Robert L. Spitzer, Janet B Williams, Kurt Kroenke) и коллегами при поддержке образовательного гранта компании “Пфайзер Инк.” (Pfizer Inc.). Воспроизведение, перевод, демонстрация и распространение разрешаются без предварительного согласия владельцев авторского права.",
+    "instruction": "За последние 2 недели как часто Вас беспокоили следующие проблемы? (Выбранный ответ отметьте значком “✔”)",
+    "items": [
+     "Вы нервничали, тревожились или были очень напряжены",
+     "Вы были неспособны успокоить или контролировать свои волнения",
+     "Вы слишком сильно волновались по различным поводам",
+     "Вам было трудно расслабиться",
+     "Вы были настолько взбудоражены, что Вам было тяжело сидеть спокойно",
+     "Вы легко сердились или раздражались",
+     "Вы испытывали страх, словно должно произойти нечто ужасное"
+    ],
+    "anchors": [
+     {
+      "label": "Ни разу",
+      "score": 0
+     },
+     {
+      "label": "Несколько дней",
+      "score": 1
+     },
+     {
+      "label": "Более половины всех дней",
+      "score": 2
+     },
+     {
+      "label": "Почти каждый день",
+      "score": 3
+     }
+    ],
+    "note": "Взята версия «for Ukraine» — сделанная правообладателем для русскоязычных жителей Украины. Подписи ответов совпадают с «PHQ9_Russian for Ukraine» дословно. Файл скачан 2026-10-20 (рецензия 2.1)."
    }
   },
   "example": {
@@ -220,7 +309,7 @@
    "band": "Moderate anxiety (10–14)",
    "note": "Арифметически однозначный пример: все семь пунктов по 2 балла, 7×2=14, полоса 10–14 «Moderate». Опубликованного пошагового примера подсчёта в первоисточнике нет."
   },
-  "verdict": "завести — public domain по заявлению правообладателя; украинский текст пока не заводить, официальный перевод не подтверждён"
+  "verdict": "завести — public domain по заявлению правообладателя; украинский и русский тексты — официальные переводы правообладателя с phqscreeners.com (рецензия 2.1), украинские подписи ответов — из PHQ-9 МОЗ"
  },
  {
   "key": "phq4",
@@ -290,17 +379,18 @@
   "risk_items": [],
   "translation": {
    "uk": {
-    "exists": null,
-    "by": null,
-    "free": null,
-    "url": null,
-    "note": "Отдельного официального украинского PHQ-4 не искали как самостоятельный документ: он выводится из украинских PHQ-9 (МОЗ, наказ №1003) и украинского GAD-7 (не подтверждён). Заводить украинскую версию только после подтверждения украинского GAD-7."
+    "exists": true,
+    "by": "складається з офіційних текстів: PHQ-2 — пункти 1–2 PHQ-9 наказу МОЗ №1003, GAD-2 — пункти 1–2 «GAD7_Ukrainian for Ukraine» правовласника",
+    "free": true,
+    "url": "https://www.phqscreeners.com/images/sites/g/files/g10060481/f/201412/GAD7_Ukrainian%20for%20Ukraine.pdf",
+    "note": "Рецензия 2.1: украинский GAD-7 правообладателя найден (см. карточку gad7), поэтому GAD-2 в PHQ-4 — его пункты 1–2 дословно, а не рабочий перевод. Подписи ответов всех четырёх пунктов — МОЗ (одна шкала в одной форме); производство PHQ-4 из переводов разрешено руководством издателя: «The abbreviated versions of these measures — PHQ-8, PHQ-2, GAD-2, and PHQ-4 — can simply be derived from the translations by selecting the relevant items»."
    },
    "ru": {
     "exists": true,
     "by": "выводится из русских переводов PHQ-9 и GAD-7 на phqscreeners.com (INSTRUCTION MANUAL, стр. 7: «The abbreviated versions of these measures — PHQ-8, PHQ-2, GAD-2, and PHQ-4 — can simply be derived from the translations by selecting the relevant items»)",
     "free": true,
-    "url": "https://www.phqscreeners.com/select-screener"
+    "url": "https://www.phqscreeners.com/images/sites/g/files/g10060481/f/201412/PHQ9_Russian%20for%20Ukraine.pdf",
+    "note": "Рецензия 2.1: в каталоге — пункты 1–2 «GAD7_Russian for Ukraine» и пункты 1–2 «PHQ9_Russian for Ukraine» дословно, подписи ответов — общие у обоих бланков."
    }
   },
   "example": {
@@ -658,7 +748,7 @@
     "by": "Litvinov V.B. и соавт., Український НДІ соціальної, судової психіатрії та наркології — размещено на официальном сайте разработчика шкалы",
     "free": true,
     "url": "https://web.stanford.edu/~yesavage/Ukrain.htm",
-    "note": "ДВЕ ЛОВУШКИ. (1) Порядок пунктов в этой русской версии НЕ совпадает с английским: русский п.3 «В основном, считаете ли Вы себя счастливым?» = английский п.7, русский п.4 «предпочтительнее оставаться дома» = английский п.9, русский п.5 «жизнь стала опустошённой» = английский п.3, русский п.6 «испытываете скуку» = английский п.4. Ключ обратных пунктов НЕЛЬЗЯ переносить по номерам — только по смыслу пункта. (2) В тексте есть опечатка («опустащенной»). Есть и вторая русская версия в .gif: https://web.stanford.edu/~yesavage/Russian.html."
+    "note": "ДВЕ ЛОВУШКИ. (1) Порядок пунктов в этой русской версии НЕ совпадает с английским: русский п.3 «В основном, считаете ли Вы себя счастливым?» = английский п.7, русский п.4 «предпочтительнее оставаться дома» = английский п.9, русский п.5 «жизнь стала опустошённой» = английский п.3, русский п.6 «испытываете скуку» = английский п.4. Ключ обратных пунктов НЕЛЬЗЯ переносить по номерам — только по смыслу пункта. (2) В тексте есть опечатка («опустащенной»). Есть и вторая русская версия в .gif: https://web.stanford.edu/~yesavage/Russian.html. Рецензия 2.1: страница разработчика о переводах дословно: «Neither the ACRC or Dr. Yesavage can vouch for the accuracy of any of the following translations.» — перевод сторонний, а не правообладателя. В каталог не взят: кроме перестановки пунктов и опечатки, его п. 4 («Для Вас предпочтительнее оставаться дома, или заниматься чем-то вне дома?») — двойной вопрос, на который «Да/Нет» не отвечает однозначно. В каталоге — рабочий перевод английского оригинала в его порядке пунктов."
    }
   },
   "example": {
@@ -866,10 +956,10 @@
    },
    "ru": {
     "exists": true,
-    "by": "производная от русской версии PHQ-9 с phqscreeners.com (перевод по заказу Pfizer)",
+    "by": "производная от «PHQ9_Russian for Ukraine» правообладателя (phqscreeners.com)",
     "free": true,
-    "url": "https://www.phqscreeners.com/select-screener",
-    "note": "Так же: только пункты 1-8 официального русского PHQ-9, скачанного с сайта правообладателя. Свой перевод не сочинять."
+    "url": "https://www.phqscreeners.com/images/sites/g/files/g10060481/f/201412/PHQ9_Russian%20for%20Ukraine.pdf",
+    "note": "Так же: только пункты 1–8 официального русского PHQ-9, скачанного с сайта правообладателя. Рецензия 2.1: в каталоге — пункты 1–8 «PHQ9_Russian for Ukraine» дословно (см. карточку phq9)."
    }
   },
   "example": {
@@ -1449,14 +1539,32 @@
     "by": null,
     "free": null,
     "url": "http://www2.psy.unsw.edu.au/dass/Ukranian/Ukrainian.htm",
-    "note": "Украинского перевода ПОЛНОЙ 42-пунктовой версии на сайте разработчиков НЕТ. Есть официальная украинская DASS-21 (см. поле note ниже и общий отчёт): «This translation of the DASS21 was carried out by Inna Haletska and her colleagues Marina Klimanska and Mariia Perun», Ivan Franko National University of Lviv, размещена на сайте разработчиков, файлы DASS-21_ua.pdf и DASS-21_ua_about.pdf, дата документа 2023-10-26. По правилу сайта такой перевод обязан быть public domain. Резать украинскую DASS-21 до 42 пунктов невозможно — там их 21."
+    "note": "Украинского перевода ПОЛНОЙ 42-пунктовой версии на сайте разработчиков НЕТ. Есть официальная украинская DASS-21 (см. поле note ниже и общий отчёт): «This translation of the DASS21 was carried out by Inna Haletska and her colleagues Marina Klimanska and Mariia Perun», Ivan Franko National University of Lviv, размещена на сайте разработчиков, файлы DASS-21_ua.pdf и DASS-21_ua_about.pdf, дата документа 2023-10-26. По правилу сайта такой перевод обязан быть public domain. Резать украинскую DASS-21 до 42 пунктов невозможно — там их 21. Рецензия 2.1: переводы на сайте разработчиков — сторонние, не перевод правообладателя; DASSFAQ (вопрос 25) дословно: «Often we receive multiple translations in the same language, and our policy is generally to post all of them on the website so that users can choose which one best meets their needs. … Please note that we do not have the resources to undertake translations ourselves. This means we rely on the goodwill of others to carry out these translations and send them to us. It also means we cant guarantee the quality of the translations.» Украинский файл DASS-21_ua.pdf к тому же неполон: после пункта 17 идёт 19 (пункт 18 «I felt that I was rather touchy» пропущен), во втором варианте ответа опечатка «часто бо значну частину часу». В каталоге — рабочий перевод всех 42 пунктов."
    },
    "ru": {
     "exists": true,
-    "by": "переводчик указан на странице русского перевода сайта разработчиков",
+    "by": "И. М. Фаттахов, Е. А. Горобец (Казанский федеральный университет), 2024 — DASS (42 пункта) и DASS-21; сторонний перевод, размещён на сайте разработчиков",
     "free": true,
-    "url": "http://www2.psy.unsw.edu.au/dass/Russian/Russian.htm",
-    "note": "На официальной странице переводов DASS русский язык присутствует. Перед использованием скачать файл с сайта разработчиков и сверить, какая версия переведена (42 или 21) — на момент проверки состав файлов не снимался."
+    "url": "http://www2.psy.unsw.edu.au/dass/Russian/Fattakhov/Fattakhov%20Russian.htm",
+    "anchors": [
+     {
+      "label": "Вообще не относилось ко мне.",
+      "score": 0
+     },
+     {
+      "label": "Относилось ко мне в какой-то степени или некоторое время.",
+      "score": 1
+     },
+     {
+      "label": "Относилось ко мне в значительной степени или большую часть времени.",
+      "score": 2
+     },
+     {
+      "label": "Относилось ко мне в крайней степени или практически всё время.",
+      "score": 3
+     }
+    ],
+    "note": "Рецензия 2.1: полная 42-пунктовая версия на сайте разработчиков есть (Fattakhov_DASS_rus.pdf; есть и NCHECR-перевод DASS-21). Это не перевод правообладателя — см. цитату FAQ в поле uk.note. В каталог не взят: его подписи ответов 2 и 3 сдвинуты против оригинала («a good part of time» — «большую часть времени», «most of the time» — «практически всё время»), что делает верхний вариант строже английского и расходится с украинским текстом каталога; в п. 31 опечатка «в не состоянии». В каталоге — рабочий перевод, ближе к английским подписям. Решение — за психологом."
    }
   },
   "example": {
@@ -1513,5 +1621,140 @@
    "note": "Арифметическая проверка ключа (не опубликованный кейс). Ответы даны по порядку пунктов 1-42. Депрессия = пункты 3,5,10,13,16,17,21,24,26,31,34,37,38,42 = 2+2+2+3+2+2+2+3+3+2+2+2+2+3 = 32 из 42. Тревога = пункты 2,4,7,9,15,19,20,23,25,28,30,36,40,41 = 0+0+0+1+0+0+1+0+0+1+0+0+0+0 = 3 из 42. Стресс = пункты 1,6,8,11,12,14,18,22,27,29,32,33,35,39 = 1+1+2+1+1+1+1+2+1+2+1+2+1+1 = 18 из 42. Суммы пересчитаны скриптом по ключу, а не вручную. Полосы НЕ присвоены: таблица порогов есть только в платном руководстве."
   },
   "verdict": "завести — текст, ключ и лицензия проверяемы у разработчиков; но полосы без покупки руководства не подписывать, и если DASS-21 уже стоит в системе, вторую версию той же методики ставить незачем"
+ },
+ {
+  "key": "who5",
+  "title_en": "The World Health Organization-Five Well-Being Index (WHO-5)",
+  "title_uk": null,
+  "title_ru": "Индекс общего (хорошего) самочувствия/ВОЗ (вариант 1999 г.)",
+  "authors": "Per Bech, Psychiatric Centre North Zealand (WHO Collaborating Centre for Mental Health); WHO Regional Office for Europe",
+  "year": 1998,
+  "citation": "World Health Organization. The World Health Organization-Five Well-Being Index (WHO-5). Geneva: World Health Organization; 2024 (WHO/UCN/MSD/MHE/2024.1). License: CC BY-NC-SA 3.0 IGO. Пороги: Topp CW, Østergaard SD, Søndergaard S, Bech P. The WHO-5 Well-Being Index: a systematic review of the literature. Psychother Psychosom. 2015;84(3):167-176. doi:10.1159/000376585.",
+  "license": {
+   "verdict": "свободна с условиями",
+   "quote": "Some rights reserved. This work is available under the Creative Commons Attribution-NonCommercial-ShareAlike 3.0 IGO licence (CC BY-NC-SA 3.0 IGO; https://creativecommons.org/licenses/by-nc-sa/3.0/igo). Under the terms of this licence, you may copy, redistribute and adapt the work for non-commercial purposes, provided the work is appropriately cited, as indicated below.",
+   "quote_2": "If you create a translation of this work, you should add the following disclaimer along with the suggested citation: “This translation was not created by the World Health Organization (WHO). WHO is not responsible for the content or accuracy of this translation. The original English edition shall be the binding and authentic edition”.",
+   "url": "https://www.who.int/publications/m/item/WHO-UCN-MSD-MHE-2024.01",
+   "url_pdf": "https://cdn.who.int/media/docs/default-source/mental-health/who-5_english-original4da539d6ed4b49389e3afe47cda2326a.pdf",
+   "conditions": "Только некоммерческое использование, со ссылкой «World Health Organization. The World Health Organization-Five Well-Being Index (WHO-5). Geneva: World Health Organization; 2024»; свой перевод — с оговоркой из quote_2; логотип ВОЗ не использовать; адаптация — под той же лицензией. С 2024 г. правообладатель — ВОЗ: «In 2024 the Psychiatric Centre North Zealand and WHO agreed to assign copyright in the WHO-5 to WHO»."
+  },
+  "items": [
+   "I have felt cheerful and in good spirits",
+   "I have felt calm and relaxed",
+   "I have felt active and vigorous",
+   "I woke up feeling fresh and rested",
+   "My daily life has been filled with things that interest me"
+  ],
+  "items_note": "Дословно с бланка ВОЗ 2024 (WHO/UCN/MSD/MHE/2024.1, с. 1). Инструкция дословно: «Please indicate for each of the five statements which is closest to how you have been feeling over the last two weeks. Notice that higher numbers mean better well-being.» Варианты на бланке идут слева направо от «All of the time» (5) к «At no time» (0) — в каталоге этот же порядок.",
+  "anchors": [
+   {
+    "label": "All of the time",
+    "score": 5
+   },
+   {
+    "label": "Most of the time",
+    "score": 4
+   },
+   {
+    "label": "More than half of the time",
+    "score": 3
+   },
+   {
+    "label": "Less than half of the time",
+    "score": 2
+   },
+   {
+    "label": "Some of the time",
+    "score": 1
+   },
+   {
+    "label": "At no time",
+    "score": 0
+   }
+  ],
+  "reverse": [],
+  "scoring": "Дословно с бланка ВОЗ 2024 (с. 2): «The raw score is calculated by totalling the scores on each of the five questions. The raw score ranges from zero to 25, zero representing worst possible mental well-being and 25 representing best possible mental well-being. To get a percentage score ranging from zero to 100, the raw score is multiplied by four.» Высокий балл — хорошее самочувствие, обратных пунктов нет.",
+  "bands": [
+   {
+    "min": 0,
+    "max": 7,
+    "label_en": "percentage ≤28 — the level of well-being of patients with DSM-IV major depression (Topp et al., 2015, citing Löwe et al.)"
+   },
+   {
+    "min": 8,
+    "max": 12,
+    "label_en": "raw score below 13 (percentage below 50) — poor mental well-being, indication for further assessment"
+   },
+   {
+    "min": 13,
+    "max": 25,
+    "label_en": "13 and above — not below the cut-off for poor mental well-being"
+   }
+  ],
+  "bands_source": "Бланк ВОЗ 2024, с. 2, дословно: «A percentage score below 50 (or a raw score below 13) has been suggested as a cut-off for poor mental well-being and as an indication for further assessment for the possible presence of a mental health condition (e.g., depressive disorder) [Topp et al., 2015]». Topp et al., 2015 (Results): «the WHO-5 cut-off score was ≤28, which more restrictively equals the level of well-being» among patients with DSM-IV major depression (исследование Löwe et al.); 28 % = сырой балл 7. Других ступеней (выше 13) у источника нет. Тяжесть полос и тревога по ним — решение системы.",
+  "risk_items": [],
+  "translation": {
+   "uk": {
+    "exists": false,
+    "by": null,
+    "free": null,
+    "url": "https://www.who.int/publications/m/item/WHO-UCN-MSD-MHE-2024.01",
+    "note": "На странице ВОЗ 25 переводов, украинского среди них нет; на старом сайте Psychiatric Research Unit (psykiatri-regionh.dk/who-5, архив) его тоже нет. В каталоге — рабочий перевод английского оригинала с оговоркой ВОЗ для переводов (quote_2), в описании методики."
+   },
+   "ru": {
+    "exists": true,
+    "by": "Psychiatric Research Unit, WHO Collaborating Centre in Mental Health (правообладатель до 2024 г.); переиздан ВОЗ в 2024 г.",
+    "free": true,
+    "url": "https://cdn.who.int/media/docs/default-source/mental-health/who-5_russian.pdf",
+    "instruction": "Обведите одну из цифр против каждого из пяти нижеприведенных утверждений, ближе/лучше всего отражающую ваше самочувствие в последние две недели. Учтите, что более высокие баллы означают более хорошее самочувствие.",
+    "items": [
+     "Я чувствую себя бодрой(-ым) и в хорошем настроении",
+     "Я чувствую себя спокойной(-ым) и раскованной(-ым).",
+     "Я чувствую себя активной(-ым) и энергичной(-ым).",
+     "Я просыпаюсь и чувствую себя свежей(-им) и отдохнувшей(-им).",
+     "Каждый день со мной происходят вещи, представляющие для меня интерес."
+    ],
+    "anchors": [
+     {
+      "label": "Все время",
+      "score": 5
+     },
+     {
+      "label": "Большую часть времени",
+      "score": 4
+     },
+     {
+      "label": "Более половины времени",
+      "score": 3
+     },
+     {
+      "label": "Менее половины времени",
+      "score": 2
+     },
+     {
+      "label": "Некоторое время",
+      "score": 1
+     },
+     {
+      "label": "Никогда",
+      "score": 0
+     }
+    ],
+    "note": "Примечание ВОЗ на файле дословно: «The translation displayed on the next page was completed before WHO accepted copyright of the English version in 2024. The translation was published on the website of the Psychiatric Centre North Zealand (Copenhagen, Denmark). WHO is not responsible for the content or accuracy of this translation. In the event of any inconsistency between the English and the translated version, the English version shall be the binding and authentic version.» На бланке — «© Psychiatric Research Unit, WHO Collaborating Center for Mental Health, Frederiksborg General Hospital». Отступление перевода от оригинала: настоящее время («Я чувствую себя…») вместо «I have felt». В каталоге пункты и варианты — дословно (без точек в конце), инструкция переложена на экран («выберите вариант» вместо «обведите цифру»; фраза о баллах снята — баллов на экране нет)."
+   }
+  },
+  "example": {
+   "answers": [
+    3,
+    2,
+    2,
+    3,
+    2
+   ],
+   "total": 12,
+   "band": "raw score below 13 — poor mental well-being (8–12)",
+   "note": "Арифметически однозначный пример у самой границы источника: баллы вариантов 3+2+2+3+2 = 12 < 13, индекс 48 %. Ответы записаны баллами варианта, а не его местом: на бланке варианты идут от 5 к 0. Опубликованного пошагового примера подсчёта у ВОЗ нет (на бланке — только пример отметки: «If you have felt cheerful and in good spirits more than half of the time during the last two weeks, select number three»)."
+  },
+  "verdict": "завести — лицензия ВОЗ CC BY-NC-SA 3.0 IGO (некоммерческое использование со ссылкой); пороги — бланк ВОЗ 2024 и Topp et al., 2015; русский текст — перевод правообладателя 1999 г., украинский — рабочий с оговоркой ВОЗ"
  }
 ]

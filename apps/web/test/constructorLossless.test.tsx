@@ -144,6 +144,22 @@ describe("правка черновика не теряет и не сдвига
     expect(p.scales[0]!.minAnsweredShare).toBe(0.8);
     expect("totalKeyManaged" in p).toBe(false);
   });
+
+  /*
+   * Направление методики учреждения правит конструктор; методики каталога —
+   * каталог (установщик). Черновик, открытый до выката каталога, нёс бы
+   * пустое направление и стёр бы проставленное выкатом. Мутация: отправлять
+   * domain всегда — второе ожидание падает.
+   */
+  test("направление уходит на сервер у методики учреждения и не уходит у методики каталога", () => {
+    const own = toPayload(toDraft({ ...survey, domain: "sleep" } as SurveyFull, []));
+    expect(own.domain).toBe("sleep");
+    expect("catalogKey" in own, "поле редактора ушло на сервер").toBe(false);
+
+    const fromCatalog = toPayload(toDraft({ ...survey, domain: null, catalogKey: "phq9" } as SurveyFull, []));
+    expect("domain" in fromCatalog, "конструктор переписал направление методики каталога").toBe(false);
+    expect("catalogKey" in fromCatalog).toBe(false);
+  });
 });
 
 describe("экран отказа 409", () => {

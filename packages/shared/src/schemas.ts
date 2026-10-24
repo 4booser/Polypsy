@@ -2,6 +2,7 @@ import { z } from "zod";
 import { ALWAYS_VISIBLE_RAIL, ALWAYS_VISIBLE_WIDGETS, DASH_WIDGETS } from "./alwaysVisible";
 import { CONTENT_LANGS, LANGS, type ContentLang } from "./types";
 import { calendarDay, dateInput } from "./dates";
+import { NO_DOMAIN, SURVEY_DOMAINS } from "./domains";
 
 /*
  * Сообщения проверок в этом файле — ключи словаря отказов («err.v.color»),
@@ -973,6 +974,12 @@ export const surveySettingsSchema = z.object({
   showResultsToPatient: z.boolean().nullish(),
   allowRetake: z.boolean().default(false),
   scoringEnabled: z.boolean().default(false),
+  /**
+   * Направление каталога (domains.ts); null — снять. У методики общего
+   * каталога его задаёт установщик по карте catalogDomains.ts, а не черновик:
+   * в черновиках каталога поля нет (instruments/__tests__/catalogDomains.test.ts).
+   */
+  domain: z.enum(SURVEY_DOMAINS).nullish(),
 });
 
 export const createSurveySchema = z
@@ -1618,6 +1625,16 @@ export const surveyListQuery = z.object({
     .pipe(z.array(surveyStatusSchema).optional()),
   /** Подстрока названия без учёта регистра, на любом из языков */
   q: z.string().max(200).optional().transform((v) => (v ?? "").trim()),
+  /**
+   * Направление (domains.ts) или `none` — методики без направления. Действует
+   * как поиск: из папки — по её поддереву. Неизвестное слово — четырёхсотка,
+   * а не пустая выдача, как и у status.
+   */
+  domain: z
+    .string()
+    .optional()
+    .transform((v) => v || undefined)
+    .pipe(z.enum([...SURVEY_DOMAINS, NO_DOMAIN]).optional()),
 });
 
 /**

@@ -28,6 +28,7 @@ import {
   users,
 } from "../db/schema";
 import { audit } from "../lib/audit";
+import { bandLabelsIn } from "../lib/bandLabels";
 import { afterCursor, decodeExactCursor, encodeCursor, exactAt } from "../lib/cursor";
 import { fullNameOf } from "../lib/auth";
 import { alphasOf, changeOverSeries, normativeSamples } from "../lib/changeBasis";
@@ -397,6 +398,8 @@ referralRoutes.get("/summary/:userId", async (c) => {
     list.push(r);
     bySurvey.set(r.surveyId, list);
   }
+  // слово полосы — на языке читателя, а не на языке прохождения (lib/bandLabels.ts)
+  const bandIn = await bandLabelsIn(lang, scoreRows.map((s) => s.score.scaleId));
 
   const summarySurveys: CaseSummary["surveys"] = [...bySurvey.entries()].map(([surveyId, list]) => {
     const survey = scoped.find((s) => s.id === surveyId)!;
@@ -447,7 +450,7 @@ referralRoutes.get("/summary/:userId", async (c) => {
           title: t(last.title as never, lang),
           lastValue: round(last.score.value, 2),
           normalization: last.score.normalization as ScaleNormalization,
-          bandLabel: last.score.bandLabel,
+          bandLabel: bandIn(last.score.scaleId, last.score.bandLabel),
           severity: last.score.severity as Severity | null,
           reliableChange: rc ? { rci: rc.rci, significant: rc.significant, direction: rc.direction } : null,
           incomparable: change.incomparable,

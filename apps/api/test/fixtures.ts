@@ -232,9 +232,14 @@ await createVersion(surveyInB, input, adminB.id, "Тестовая версия"
 /**
  * Сдача методики «безопасными» ответами.
  *
- * Берётся второй вариант каждого пункта — в СР-45 это «Нет»: прохождение
- * заведомо не должно поднимать тревогу, и тест, которому нужна тревога,
- * ставит её явно, а не надеется на случай.
+ * Берётся второй вариант каждого пункта — в СР-45 это «Нет», — если он не
+ * критический, а иначе первый некритический: прохождение заведомо не должно
+ * поднимать тревогу, и тест, которому нужна тревога, ставит её явно, а не
+ * надеется на случай. «Нет» безопасно не везде: в СР-45 «Ні» на пункт 30
+ * («Ніколи нікому не писав передсмертної записки») значит, что записку писал,
+ * и поднимает тяжёлую тревогу (аудит пометок риска, k-suicide). Критические
+ * варианты видны только сотруднику — человеку ключ не отдаётся (#141), — поэтому
+ * их список берётся из копии методики глазами суперадмина; варианты и их id те же.
  */
 export async function submitSurvey(
   surveyId: string,
@@ -244,15 +249,27 @@ export async function submitSurvey(
   const surveyRes = await api(`/api/surveys/${surveyId}`, token);
   if (surveyRes.status !== 200) return surveyRes;
   const survey = surveyRes.body;
+  const keyed = await api(`/api/surveys/${surveyId}`, root.token);
+  const critical = new Set<string>(
+    keyed.status === 200
+      ? keyed.body.questions.flatMap((q: { options: { id: string; riskFlag?: boolean }[] }) =>
+          q.options.filter((o) => o.riskFlag).map((o) => o.id),
+        )
+      : [],
+  );
   const answers = survey.questions
     .filter((q: { type: string; options: unknown[] }) => q.type !== "info" && (q.options as unknown[]).length)
-    .map((q: { id: string; options: { id: string }[] }) => ({
-      questionId: q.id,
-      optionIds: [q.options[1]?.id ?? q.options[0]!.id],
-      durationMs: 2000,
-      changeCount: 0,
-      visitCount: 1,
-    }));
+    .map((q: { id: string; options: { id: string }[] }) => {
+      const second = q.options[1] ?? q.options[0]!;
+      const safe = critical.has(second.id) ? (q.options.find((o) => !critical.has(o.id)) ?? second) : second;
+      return {
+        questionId: q.id,
+        optionIds: [safe.id],
+        durationMs: 2000,
+        changeCount: 0,
+        visitCount: 1,
+      };
+    });
   return api(`/api/surveys/${surveyId}/responses`, token, {
     method: "POST",
     body: JSON.stringify({

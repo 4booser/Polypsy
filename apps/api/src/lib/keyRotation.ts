@@ -136,16 +136,24 @@ async function runReencrypt(jobId: string, target: string): Promise<void> {
       );
     });
     const finishedAt = new Date().toISOString();
-    await mark({ status: "done", finishedAt, heartbeatAt: finishedAt });
-    await systemContext(baseDb, () =>
-      auditSystem({
+    /*
+     * Итог и его строка журнала — одной транзакцией. Прежде статус «done» писался
+     * отдельно от аудита: тот, кто видел задачу законченной, мог ещё не найти в
+     * журнале её итога, а падение процесса между двумя записями теряло бы его совсем.
+     */
+    await systemContext(baseDb, async () => {
+      await db
+        .update(securityJobs)
+        .set({ status: "done", finishedAt, heartbeatAt: finishedAt })
+        .where(eq(securityJobs.id, jobId));
+      await auditSystem({
         action: "sec.reencrypt_done",
         resourceType: "security_job",
         resourceId: jobId,
         outcome: totals.skipped || totals.filesUnreadable ? "error" : "success",
         details: { targetKey: target, ...totals },
-      }),
-    );
+      });
+    });
   } catch (error) {
     log.error("sec.reencrypt_failed", { jobId, error: String(error) });
     const finishedAt = new Date().toISOString();

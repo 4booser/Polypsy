@@ -62,6 +62,7 @@ import { sr45 } from "./instruments/sr45";
 import { sadPersons } from "./instruments/sadPersons";
 import { minimult } from "./instruments/minimult";
 import { mlo } from "./instruments/mlo";
+import { catalogDomain } from "./instruments/catalogDomains";
 import { env } from "./env";
 
 /** Пациенты генерируются пачкой: без объёма аналитику не на чем смотреть */
@@ -588,6 +589,22 @@ const sr45Row = await upsertSurvey({ ...sr45, groupId: intake.id }, "published")
 const sadPersonsRow = await upsertSurvey({ ...sadPersons, groupId: intake.id }, "published");
 const minimultRow = await upsertSurvey({ ...minimult, groupId: intake.id }, "published");
 const mloRow = await upsertSurvey({ ...mlo, groupId: intake.id }, "published");
+/*
+ * Направление встроенных — по той же карте, что у каталога
+ * (instruments/catalogDomains.ts). Только пустое: выбранное руками в
+ * конструкторе повторный посев не перетирает.
+ */
+for (const [row, key] of [
+  [sr45Row, "sr45"],
+  [sadPersonsRow, "sad-persons"],
+  [minimultRow, "minimult"],
+  [mloRow, "mlo"],
+] as const) {
+  await db
+    .update(surveys)
+    .set({ domain: catalogDomain(key) })
+    .where(and(eq(surveys.id, row.id), sql`${surveys.domain} is null`));
+}
 
 /* ─────────────── Синтетические прохождения ─────────────── */
 

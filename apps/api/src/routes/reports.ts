@@ -20,6 +20,7 @@ import {
 } from "../db/schema";
 import { env } from "../env";
 import { audit } from "../lib/audit";
+import { bandLabelsIn } from "../lib/bandLabels";
 import { badRequest, forbidden, langOf, notFound, type ErrorInfo } from "../lib/http";
 import { referencePercentile, reportReferenceSamples } from "../lib/referenceSample";
 import { chartHistory } from "../lib/chartHistory";
@@ -278,6 +279,13 @@ async function responseReport(
   const sample = await reportReferenceSamples(response, survey, scoreRows);
 
   const scaleById = new Map(survey.scales.map((s) => [s.id, s]));
+  /*
+   * Слово полосы — на языке листа: снимок в response_scores записан на языке
+   * прохождения (lib/bandLabels.ts). По тому же слову ищется и своя ступень
+   * шкалы листа — на другом языке она не находилась, и лист падал на ступень
+   * по выраженности.
+   */
+  const bandIn = await bandLabelsIn(lang, scoreRows.map((s) => s.scaleId));
   const answerByQuestion = new Map(answerRows.map((a) => [a.questionId, a]));
   const optionText = new Map(survey.questions.flatMap((q) => q.options.map((o) => [o.id, o.text])));
   /*
@@ -363,7 +371,8 @@ async function responseReport(
        */
       const bandRows = staffView && scale?.normalization === "raw" ? [...scale.bands].sort((a, b) => a.minScore - b.minScore) : [];
       const bandSteps = stepsOfBands(bandRows);
-      const own = bandRows.findIndex((b) => b.label === s.bandLabel);
+      const bandLabel = bandIn(s.scaleId, s.bandLabel);
+      const own = bandRows.findIndex((b) => b.label === bandLabel);
       const earlier = scale
         ? history
             .filter((h) => h.code === scale.code && h.max === s.maxScore)
@@ -385,7 +394,7 @@ async function responseReport(
         score,
         maxScore: s.maxScore,
         percent: s.percent,
-        band: s.bandLabel,
+        band: bandLabel,
         /* ступень своей полосы — с учётом соседних тяжёлых (s3/s4), иначе по выраженности */
         step: own >= 0 ? (bandSteps[own] ?? null) : stepOf(s.severity),
         bands: bandRows.map((b, i) => ({ min: b.minScore, max: b.maxScore, step: bandSteps[i] ?? null })),

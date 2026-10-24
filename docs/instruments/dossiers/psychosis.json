@@ -1,0 +1,108 @@
+[
+ {
+  "key": "pq16",
+  "title_en": "Prodromal Questionnaire, 16-item version (PQ-16)",
+  "title_uk": null,
+  "title_ru": null,
+  "authors": "Ising HK, Veling W, Loewy RL, Rietveld MW, Rietdijk J, Dragt S, Klaassen RM, Nieman DH, Wunderink L, Linszen DH, van der Gaag M (исходный PQ-92 — Loewy et al., 2005)",
+  "year": 2012,
+  "citation": "Ising HK, Veling W, Loewy RL, et al. The validity of the 16-item version of the Prodromal Questionnaire (PQ-16) to screen for ultra high risk of developing psychosis in the general help-seeking population. Schizophr Bull. 2012;38(6):1288-1296. doi:10.1093/schbul/sbs068. PMCID: PMC3713086. Исходная форма: Loewy RL, Bearden CE, Johnson JK, Raine A, Cannon TD. The prodromal questionnaire (PQ). Schizophr Res. 2005;77(2-3):141-149.",
+  "license": {
+   "verdict": "не подтверждена",
+   "quote": "The following versions are free to use for research, clinical purposes, and EHR platforms as long as users are not charged per use. … Dr. Loewy cannot give permission to use the PQ-16, instead please contact the first author Dr. Helga Ising",
+   "url": "https://loewylab.ucsf.edu/node/21",
+   "conditions": "Заявление о свободном использовании на странице лаборатории Loewy (UCSF) относится к версиям PQ, за которые она отвечает; разрешение на PQ-16 страница прямо отсылает к первому автору — H. K. Ising. Письменного разрешения или заявления Ising о свободном использовании рецензия 2.1 не нашла. Текст пунктов опубликован в приложении статьи (PMC, бесплатный полный текст); лицензия статьи в PMC не указана. Методика стоит в каталоге с первой редакции (исходная восьмёрка) — вопрос лицензии передан учреждению."
+  },
+  "items": [
+   "I feel uninterested in the things I used to enjoy.",
+   "I often seem to live through events exactly as they happened before (déjà vu).",
+   "I sometimes smell or taste things that other people can't smell or taste.",
+   "I often hear unusual sounds like banging, clicking, hissing, clapping or ringing in my ears.",
+   "I have been confused at times whether something I experienced was real or imaginary.",
+   "When I look at a person, or look at myself in a mirror, I have seen the face change right before my eyes.",
+   "I get extremely anxious when meeting people for the first time.",
+   "I have seen things that other people apparently can't see.",
+   "My thoughts are sometimes so strong that I can almost hear them.",
+   "I sometimes see special meanings in advertisements, shop windows, or in the way things are arranged around me.",
+   "Sometimes I have felt that I'm not in control of my own ideas or thoughts.",
+   "Sometimes I feel suddenly distracted by distant sounds that I am not normally aware of.",
+   "I have heard things other people can't hear like voices of people whispering or talking.",
+   "I often feel that others have it in for me.",
+   "I have had the sense that some person or force is around me, even though I could not see anyone.",
+   "I feel that parts of my body have changed in some way, or that parts of my body are working differently than before."
+  ],
+  "items_note": "Дословно из «Appendix. The 16-item Version of the Prodromal Questionnaire (PQ-16)» статьи Ising et al., 2012. Ответ на каждый пункт — True / False; при True: «If TRUE: how much distress did you experience?» — No / Mild / Moderate / Severe (0–3), в балл скрининга не входит. Срок в бланке не задан; в исследовании, давшем порог, опросник «assessed over participants' lifetimes for the purposes of this study». Инструкция опубликованного бланка (франкоязычная форма CHUV, Лозанна, перевод PQ-16): «Ce questionnaire pose un certain nombre de questions sur vos pensées, vos sentiments et vos expériences. Veuillez, s'il vous plaît, lire chaque question attentivement et indiquer si vous êtes d'accord ou non avec l'item en cochant vrai ou faux…» — тоже без срока (https://www.chuv.ch/fileadmin/sites/dp/documents/Prodromal_questionnaire_inscrutions_V2_2025.pdf).",
+  "anchors": [
+   {
+    "label": "True",
+    "score": 1
+   },
+   {
+    "label": "False",
+    "score": 0
+   }
+  ],
+  "reverse": [],
+  "scoring": "Число ответов True, 0–16 (сумма баллов дистресса 0–48 — отдельный показатель, в системе не собирается). Аннотация статьи: «a cutoff score of 6 or more positively answered items on the 16-item version of the PQ produced correct classification of Comprehensive Assessment of At-Risk Mental State (Yung et al., 2005) psychosis risk/clinical psychosis in 44% of the cases, distinguishing … CAARMS diagnosis from no CAARMS diagnosis with high sensitivity (87%) and specificity (87%)».",
+  "bands": [
+   {
+    "min": 0,
+    "max": 5,
+    "label_en": "below the recommended cutoff of 6"
+   },
+   {
+    "min": 6,
+    "max": 9,
+    "label_en": "≥6 — recommended cutoff for interviewing for psychosis risk (sensitivity 87%, specificity 87%)"
+   },
+   {
+    "min": 10,
+    "max": 16,
+    "label_en": "≥10 — Table 2 row: sensitivity 31%, specificity 99%, PPV 72% (not recommended by the authors as a cutoff)"
+   }
+  ],
+  "bands_source": "Ising et al., 2012. Discussion: «A cutoff of 6 or more symptoms on the PQ-16 has a high true positive rate (87%) and high specificity (87%)». Table 2, строки: «≥6 (highest average of sensitivity and specificity)» — sensitivity 87, specificity 87, PPV 44, NPV 98; «≥10» — sensitivity 31, specificity 99, PPV 72, NPV 92. Порог дистресса в статье не установлен. Выборка: «a consecutive patient sample of 3533 young adults who were help-seeking for nonpsychotic disorders at the secondary mental health services in The Hague» (Нидерланды). Тяжесть полос и тревога по ним — решение системы.",
+  "risk_items": [],
+  "risk_items_note": "Пунктов о суициде или намерении навредить нет; тревогу поднимает полоса, а не пункт.",
+  "translation": {
+   "uk": {
+    "exists": false,
+    "by": null,
+    "free": null,
+    "url": null,
+    "note": "Официального украинского перевода не найдено. В каталоге — рабочий перевод с оговоркой WORKING_TRANSLATION."
+   },
+   "ru": {
+    "exists": false,
+    "by": null,
+    "free": null,
+    "url": null,
+    "note": "Официального русского перевода не найдено; перевод PQ согласует R. Loewy, PQ-16 — H. Ising."
+   }
+  },
+  "example": {
+   "answers": [
+    "yes",
+    "yes",
+    "no",
+    "yes",
+    "no",
+    "no",
+    "yes",
+    "no",
+    "yes",
+    "no",
+    "no",
+    "yes",
+    "no",
+    "no",
+    "no",
+    "no"
+   ],
+   "total": 6,
+   "band": "≥6 — recommended cutoff reached",
+   "note": "Арифметически однозначный пример ровно на пороге: шесть True (пп. 1, 2, 4, 7, 9, 12) → 6. Опубликованного пошагового примера нет."
+  },
+  "verdict": "в каталоге с первой редакции; текст, ключ и порог 6 сверены с Ising et al., 2012 (рецензия 2.1); лицензия НЕ подтверждена — страница Loewy отсылает за разрешением на PQ-16 к H. Ising, письменного разрешения в досье нет"
+ }
+]

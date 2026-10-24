@@ -163,6 +163,17 @@ export function checkInstrument(
         );
       }
     }
+    // ожидаемая тяжесть риска — у методик, где первоисточник даёт правило маршрутизации, а не сумму
+    if (ex.expectRisk !== undefined && ex.result.uk.risk.severity !== ex.expectRisk) {
+      const word = (sev: string | null, lang: "uk" | "ru") =>
+        sev === "severe" ? (lang === "uk" ? "тяжка" : "тяжёлая") : sev === "moderate" ? (lang === "uk" ? "помірна" : "умеренная") : lang === "uk" ? "немає" : "нет";
+      out.push(
+        auto(
+          `Приклад досьє «${ex.title.uk}»: за досьє тривога — ${word(ex.expectRisk, "uk")}, система — ${word(ex.result.uk.risk.severity, "uk")}.`,
+          `Пример досье «${ex.title.ru}»: по досье тревога — ${word(ex.expectRisk, "ru")}, система — ${word(ex.result.uk.risk.severity, "ru")}.`,
+        ),
+      );
+    }
   }
 
   if (!dossier) {

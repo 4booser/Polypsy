@@ -1,0 +1,427 @@
+[
+ {
+  "key": "asq",
+  "title_en": "Ask Suicide-Screening Questions (ASQ) — NIMH Toolkit: Screening Tool for Youth and Adults",
+  "title_uk": null,
+  "title_ru": "Методика для скрининга на риск самоубийства (ASQ)",
+  "authors": "Lisa M. Horowitz, Jeffrey A. Bridge, Stephen J. Teach, Elizabeth Ballard, Jennifer Klima, Donald L. Rosenstein, Elizabeth A. Wharff, Kathleen Ginnis, Erin Cannon, Paramjit Joshi, Maryland Pao (National Institute of Mental Health, Intramural Research Program, США)",
+  "year": 2012,
+  "citation": "Horowitz LM, Bridge JA, Teach SJ, Ballard E, Klima J, Rosenstein DL, Wharff EA, Ginnis K, Cannon E, Joshi P, Pao M. Ask Suicide-Screening Questions (ASQ): A Brief Instrument for the Pediatric Emergency Department. Arch Pediatr Adolesc Med. 2012;166(12):1170-1176. Взрослые: Horowitz LM, Snyder DJ, Boudreaux ED, He J-P, Harrington CJ, Cai J, Claassen CA, Salhany JE, Dao T, Chaves JF, Jobes DA, Merikangas KR, Bridge JA, Pao M. Validation of the Ask Suicide-Screening Questions (ASQ) for Adult Medical Inpatients: A Brief Tool for All Ages. Psychosomatics. 2020;61(6):713-722. doi:10.1016/j.psym.2020.04.008. Бланк, по которому заведена методика: «NIMH TOOLKIT: SCREENING TOOL FOR YOUTH AND ADULTS — Suicide Risk Screening Tool», редакция 9/29/25 (https://www.nimh.nih.gov/sites/default/files/documents/research/research-conducted-at-nimh/asq-toolkit-materials/asq-tool/screening-tool-asq-nimh-toolkit.pdf).",
+  "license": {
+   "verdict": "свободна (public domain)",
+   "quote": "Public domain tool, free of charge",
+   "url": "https://www.nimh.nih.gov/sites/default/files/documents/research/research-conducted-at-nimh/asq-toolkit-materials/asq-tool/information_sheet_asq_nimh_toolkit.pdf",
+   "quote_2": "Yes, unless otherwise indicated, text on the NIMH website and in NIMH materials may be copied and reused. Permission to copy: The information on our website and in our materials is in the public domain. You may copy and reuse it without permission. Modifications: You can edit or reformat the copied text, but you cannot change it in a way that is misleading or inaccurate. Attribution: If you use our information or publications, please cite the National Institute of Mental Health as the source.",
+   "url_2": "https://www.nimh.nih.gov/site-info/policies#part_2718",
+   "conditions": "Первая цитата — с официального «ASQ Information Sheet» NIMH (7/1/2020), вторая — общая политика NIMH о копировании. Условия: ссылаться на NIMH как на источник; не менять текст так, чтобы он стал вводящим в заблуждение или неточным; изображения NIMH не воспроизводить (в системе их нет — только текст). Страница набора: «The ASQ is free of charge and available in multiple languages» (https://www.nimh.nih.gov/research/research-conducted-at-nimh/asq-toolkit-materials)."
+  },
+  "items": [
+   "In the past few weeks, have you wished you were dead?",
+   "In the past few weeks, have you felt that you or your family would be better off if you were dead?",
+   "In the past week, have you been having thoughts about killing yourself?",
+   "Have you ever tried to kill yourself?",
+   "If yes, when was the most recent attempt? ____ [Within last 12 months / Over 1 year ago]",
+   "Are you having thoughts of killing yourself right now?",
+   "If yes, describe briefly: ____"
+  ],
+  "items_note": "Дословно с бланка 9/29/25. Шапка: «Ask the patient:». Перед пятым вопросом: «If patient answers Yes to any of Questions #1 through #4, ask the following acuity question:». Пункты 5 и 7 в списке — уточнения бланка к вопросам 4 и 5 (давность последней попытки и свободное описание), в системе это отдельные пункты, поэтому их семь. Отличие от русского перевода NIMH (бланк 5/18/2017): там уточнение к вопросу 4 — «Если да, то каким образом? / Когда?» свободным текстом, а не выбор «Within last 12 months / Over 1 year ago»; вопросы 1–5 в обеих редакциях совпадают слово в слово.",
+  "anchors": [
+   {
+    "label": "Yes",
+    "score": 1
+   },
+   {
+    "label": "No",
+    "score": 0
+   }
+  ],
+  "anchors_note": "Баллов на бланке нет — только «Yes / No». 1 и 0 — кодировка системы, чтобы правило «Yes to any of Questions #1–#4» записать порогом «сумма ≥ 1». Это не балл тяжести.",
+  "reverse": [],
+  "scoring": "Суммы баллов нет; результат категориальный, дословно с бланка 9/29/25: «No to all Questions #1–#4 — Negative screen. No intervention is necessary at this time. NOTE: Clinical judgment can always override a negative screen.» «Yes to any of Questions #1–#4 and… Yes to Question #5 — Acute positive screen (imminent/acute risk identified). Patient requires a STAT/urgent safety/full mental health evaluation. Patient cannot leave until evaluated for safety. Keep patient in sight. Remove dangerous objects from room (if possible). Alert clinician responsible for patient’s care.» «…No to Question #5 — Non-acute positive screen (potential risk identified). Patient needs a brief suicide safety assessment to determine if a full mental health evaluation is needed (and when). EXCEPTIONS: When positive screen is solely due to Yes on Question #4 (i.e., lifetime suicide attempt), then a brief suicide safety assessment may not be necessary if: For adults: most recent attempt is >1 year ago […] Non-acute positive status does NOT require 1-to-1 observation while patient is awaiting further assessment (unless there are other safety concerns).» Отказ отвечать: «For youth, refusal is considered a non-acute positive screen. For adults, refusal is NOT considered a positive screen. No intervention is necessary at this time unless there are other safety concerns. Document the refusal.»",
+  "bands": [
+   {
+    "min": 0,
+    "max": 0,
+    "label_en": "Negative screen (No to all Questions #1–#4)"
+   },
+   {
+    "min": 1,
+    "max": 4,
+    "label_en": "Positive screen (Yes to any of Questions #1–#4)"
+   }
+  ],
+  "bands_source": "Бланк ASQ 9/29/25 (NIMH): правило «No to all Questions #1–#4 / Yes to any of Questions #1–#4». Полосы — та же граница, записанная числом «да» на вопросы 1–4; ASQ Information Sheet: «Positive screen: “yes” to any of the 4 items».",
+  "bands_note": "Острота (acute / non-acute) полосой не выражается: её решает вопрос 5, и «Yes» на нём — отдельный тяжёлый сигнал. Число «да» больше единицы ничего не прибавляет по первоисточнику — 2 и 4 одинаково «positive screen».",
+  "risk_items": [
+   {
+    "n": 1,
+    "why": "Positive screen по бланку («Yes to any of Questions #1–#4»): пассивное желание смерти за последние недели."
+   },
+   {
+    "n": 2,
+    "why": "Positive screen: мысль, что без тебя тебе или семье было бы лучше."
+   },
+   {
+    "n": 3,
+    "why": "Positive screen: мысли о самоубийстве за последнюю неделю."
+   },
+   {
+    "n": 4,
+    "why": "Positive screen: попытка самоубийства в анамнезе. Давность (пункт 5 системы) решает только исключение бланка для взрослых: «most recent attempt is >1 year ago» — краткая оценка безопасности может не понадобиться; решение за клиницистом."
+   },
+   {
+    "n": 6,
+    "why": "Acuity question: «Yes to Question #5 = Acute positive screen (imminent/acute risk identified)» — STAT-оценка, пациент не уходит до оценки, не оставлять без присмотра."
+   }
+  ],
+  "risk_items_note": "Тяжесть в системе (у первоисточника её градаций две, у системы — moderate/severe): «Yes» на вопросы 1–4 — moderate (non-acute positive: «potential risk identified», нужна краткая оценка безопасности, наблюдение 1-на-1 не требуется); «Yes» на вопрос 5 — severe (acute positive: «imminent/acute risk identified»). Номера — позиции пунктов в системе (вопрос 5 бланка — шестой пункт).",
+  "translation": {
+   "uk": {
+    "exists": false,
+    "by": null,
+    "free": null,
+    "url": "https://www.nimh.nih.gov/research/research-conducted-at-nimh/asq-toolkit-materials",
+    "note": "В разделе «ASQ Translations» набора NIMH 23 языка, украинского среди них нет (проверено 2026-10-20). Украинский текст — рабочий перевод с английского бланка, сверенный с официальным русским переводом NIMH, чтобы два языка интерфейса задавали один и тот же вопрос (как у PHQ-9 с переводом от официального украинского)."
+   },
+   "ru": {
+    "exists": true,
+    "by": "NIMH — «Аналитический инструментарий Национального института психического здоровья», asq-russian.pdf (бланк 5/18/2017, файл изменён 2025-08-19)",
+    "free": true,
+    "url": "https://www.nimh.nih.gov/sites/default/files/documents/research/research-conducted-at-nimh/asq-toolkit-materials/asqtranslations/asq-russian.pdf",
+    "note": "Официальный перевод из раздела «ASQ Translations» набора NIMH. Вопросы 1–5 дословно: «За последние несколько недель было ли у Вас желание, чтобы Вас не было в живых?»; «За последние несколько недель было ли у Вас чувство, что Вам или Вашей семье было бы лучше, если бы Вас не было бы в живых?»; «На прошлой неделе не было ли у Вас мыслей о том, чтобы покончить с собой?»; «Вы когда-нибудь пытались покончить с собой?»; «Думаете ли Вы о том, чтобы покончить с собой, прямо сейчас?»; уточнение к вопросу 5: «Если да, то опишите эти мысли:»; ответы «Да» / «Нет». Перевод сделан с редакции 2017 г.: уточнения о давности попытки (редакция 2025 г.) в нём нет — в системе оно рабочим переводом. «На прошлой неделе» у NIMH — неточность перевода «In the past week» (последние семь дней), сохранена как официальный текст. В строке «задайте ему(ей) cледующий вопрос» первая буква «c» — латинская (омоглиф); в систему эта строка не переносится."
+   }
+  },
+  "example": {
+   "answers": [
+    {
+     "item": 1,
+     "answer": "Yes"
+    },
+    {
+     "item": 2,
+     "answer": "No"
+    },
+    {
+     "item": 3,
+     "answer": "No"
+    },
+    {
+     "item": 4,
+     "answer": "No"
+    },
+    {
+     "item": 6,
+     "answer": "No"
+    }
+   ],
+   "total": 1,
+   "band": "Positive screen — non-acute (potential risk identified)",
+   "note": "Проверочные случаи — правила бланка, числа в них — кодировка системы: (1) «Yes» только на вопрос 1 и «No» на вопрос 5 → «да» на 1–4 = 1, non-acute positive (moderate); (2) «Yes» на вопросы 3 и 5 → 1, acute positive (severe), хотя число «да» на 1–4 то же самое; (3) «No» на все четыре → 0, negative screen, сигналов нет; (4) «Yes» только на вопрос 4, попытка «Over 1 year ago», «No» на 5 → positive screen (moderate): исключение бланка для взрослых разрешает не проводить краткую оценку, но решает это клиницист — сигнал остаётся."
+  },
+  "verdict": "завести — public domain (NIMH), валидирован у взрослых пациентов медицинских стационаров (чувствительность 100 %, специфичность 89 %, n=727); проводит специалист (бланк «Ask the patient», валидация — опрос персоналом); вопросы на русском — официальный перевод NIMH, на украинском — рабочий перевод."
+ },
+ {
+  "key": "cssrs",
+  "supersedes": "docs/instruments/dossiers/trauma.json, карточка cssrs_screener (вердикт «завести без текста (лицензия)»). Та карточка опиралась на эксклюзивную лицензию Clario на электронные реализации и не нашла официальных украинского и русского текстов. Обе причины сняты ниже: правообладатель прямо разрешает учреждениям здравоохранения встраивать Columbia Protocol в свою электронную систему без отдельного разрешения (лицензия Clario — на eC-SSRS для клинических исследований), а официальные украинский и русский скринеры лежат в папке переводов правообладателя.",
+  "title_en": "Columbia-Suicide Severity Rating Scale (C-SSRS) — Screen Version, Recent (with triage points)",
+  "title_uk": null,
+  "title_ru": "Колумбийская шкала оценки тяжести суицида (Screen Version - Recent)",
+  "authors": "Kelly Posner, David Brent, Christopher Lucas, Madelyn Gould, Barbara Stanley, Gregory Brown, Prudence Fisher, Jamie Zelazny, Ainsley Burke, Maria Oquendo, J. John Mann (The Columbia Lighthouse Project; правообладатель — The Research Foundation for Mental Hygiene, Inc.)",
+  "year": 2008,
+  "citation": "Posner K, Brent D, Lucas C, Gould M, Stanley B, Brown G, Fisher P, Zelazny J, Burke A, Oquendo M, Mann J. Columbia-Suicide Severity Rating Scale (C-SSRS). The Research Foundation for Mental Hygiene, Inc., 2008. Валидизация: Posner K, Brown GK, Stanley B, et al. The Columbia-Suicide Severity Rating Scale: initial validity and internal consistency findings from three multisite studies with adolescents and adults. Am J Psychiatry. 2011;168(12):1266-1277. doi:10.1176/appi.ajp.2011.10111704. Бланки: «C-SSRS Screener - English - USA.pdf» (Screen Version - Recent), «C-SSRS Screener - Ukrainian.pdf» (Screen with Triage Points – Recent), «C-SSRS Screener - Russian.pdf» (Screen Version - Recent) — папка переводов скринера правообладателя, файлы 2026-04-29/30.",
+  "license": {
+   "verdict": "свободна для учреждений здравоохранения, включая встраивание в электронную систему учреждения",
+   "quote": "You do not need special permission from us to take the Columbia Protocol tools and use them in your setting, create your own unique triage next steps, or embed the Columbia Protocol in your electronic health record keeping systems (EHR). We are happy to look at any materials you develop, policies you write or screenshots of your EHR to confirm their accuracy.",
+   "url": "https://cssrs.columbia.edu/the-columbia-scale-c-ssrs/cssrs-for-communities-and-healthcare/",
+   "quote_2": "The protocol and the training on how to use it are available free of charge for use in community and healthcare settings, as well as in federally funded or nonprofit research.",
+   "url_2": "https://cssrs.columbia.edu/the-columbia-scale-c-ssrs/about-the-scale/",
+   "quote_3": "A licensing agreement is required to use the C-SSRS in clinical trials. […] The eC-SSRS — a computer-automated, patient-reported C-SSRS — provides numerous benefits for clinical researchers. Requests to use the eC-SSRS should be submitted to CLARIO",
+   "url_3": "https://cssrs.columbia.edu/pharmaceutical-funded-research/",
+   "conditions": "(1) Лицензия нужна для клинических исследований, а eC-SSRS — компьютерная версия, которую заполняет сам пациент, — лицензируется через Clario (https://clario.com/about/legal-and-privacy/c-ssrs-licensing-application/; стартовый взнос 40 000 USD). Поэтому в системе C-SSRS заполняет специалист (administration: clinician): клиницист задаёт вопросы и записывает ответы в систему учреждения — ровно то, что правообладатель разрешил без отдельного разрешения. Самоотчёт пациента на устройстве не заводится: он ближе к eC-SSRS, и официального украинского и русского текста самоотчётной версии нет. (2) «The core Columbia Protocol questions do not vary» — формулировки вопросов не менять. (3) Правообладатель предлагает прислать скриншоты для сверки — рекомендовано отделению. (4) Если система поставляется другим организациям как продукт, а не работает в учреждении, вопрос сублицензии Clario нужно решить отдельно."
+  },
+  "items": [
+   "Have you wished you were dead or wished you could go to sleep and not wake up?",
+   "Have you actually had any thoughts of killing yourself?",
+   "Have you been thinking about how you might do this?",
+   "Have you had these thoughts and had some intention of acting on them?",
+   "Have you started to work out or worked out the details of how to kill yourself? Did you intend to carry out this plan?",
+   "Have you ever done anything, started to do anything, or prepared to do anything to end your life?",
+   "Was this within the past three months?"
+  ],
+  "items_note": "Английский бланк «Screen Version - Recent» (столбец «Past month» для вопросов 1–5). Порядок: «Ask Questions 1 and 2»; «If YES to 2, ask questions 3, 4, 5, and 6. If NO to 2, go directly to question 6.»; к вопросу 6: «If YES, ask: Was this within the past three months?» — в системе это седьмой пункт. Пояснения для специалиста (примеры к вопросам 3, 4, 6) — на бланке под вопросами, в системе — подсказки (help). Украинский бланк — «Screen with Triage Points – Recent – Ukranian», русский — «Screen Version - Recent»; набор вопросов и цветовая разметка риска у всех трёх одинаковы.",
+  "anchors": [
+   {
+    "label": "YES",
+    "score": 1
+   },
+   {
+    "label": "NO",
+    "score": 0
+   }
+  ],
+  "anchors_note": "Баллов на бланке нет. 1/0 — кодировка системы для условий показа (вопросы 3–5 открываются при «Так» на вопрос 2, уточнение к вопросу 6 — при «Так» на него).",
+  "reverse": [],
+  "scoring": "Суммы баллов нет: уровень риска — по самой тяжёлой отметке «YES». Цветовая разметка бланка (легенда «Low Risk / Moderate Risk / High Risk»): вопросы 1 и 2 — Low Risk (жёлтый); вопрос 3 — Moderate Risk (оранжевый); вопросы 4 и 5 — High Risk (красный); вопрос 6 «за всё время» — Moderate Risk, «за последние 3 месяца» — High Risk. Разметка одинакова на английском, украинском и русском бланках.",
+  "bands": null,
+  "bands_note": "Числовых полос нет и быть не может: результат категориальный. Любой «суммарный балл C-SSRS» был бы выдумкой (как и записано в карточке cssrs_screener из trauma.json).",
+  "risk_items": [
+   {
+    "n": 1,
+    "why": "Low Risk: желание смерти / заснуть и не проснуться за последний месяц."
+   },
+   {
+    "n": 2,
+    "why": "Low Risk: неспецифические активные мысли о самоубийстве."
+   },
+   {
+    "n": 3,
+    "why": "Moderate Risk: мысли о способе без плана."
+   },
+   {
+    "n": 4,
+    "why": "High Risk: мысли с намерением действовать."
+   },
+   {
+    "n": 5,
+    "why": "High Risk: проработанный план с намерением."
+   },
+   {
+    "n": 6,
+    "why": "Moderate Risk: суицидальное поведение за всё время (действия, подготовка, попытка)."
+   },
+   {
+    "n": 7,
+    "why": "High Risk: суицидальное поведение за последние 3 месяца."
+   }
+  ],
+  "risk_items_note": "Перевод трёх уровней бланка в две тяжести системы: Low и Moderate Risk — moderate (нужна оценка специалиста; на карточке Columbia: «If YES to 2 or 3, seek behavioral healthcare for further evaluation»), High Risk — severe (немедленная помощь: «If the answer to 4, 5 or 6 is YES, get immediate help»). Различие Low/Moderate сохранено в подписи тревоги. Вопрос 6 «за всё время» — moderate, «за последние 3 месяца» — severe, как в разметке бланка.",
+  "translation": {
+   "uk": {
+    "exists": true,
+    "by": "The Columbia Lighthouse Project / The Research Foundation for Mental Hygiene — «C-SSRS Screener - Ukrainian.pdf» из папки переводов скринера (страница переводов: «To obtain translations of the SCREENER check the Dropbox folder here»); в перечне валидированных переводов шкалы — «Ukraine/Ukrainian»",
+    "free": true,
+    "url": "https://www.dropbox.com/scl/fo/pkg1gwxxn1266rke8oite/AC2UFfOKCtefU-o9EEXP-yk?rlkey=4grouuqbchfa8obxlcb3msnpz&dl=0",
+    "note": "Официальный текст правообладателя. Вопросы: «Чи хотіли Ви бути мертвим або хотіли б Ви заснути і не прокидатися?»; «Чи думали Ви насправді про те, щоб убити себе?»; «Чи думали Ви про те, як Ви могли б це зробити?»; «Чи були у Вас такі думки, і чи був у Вас який-небудь намір діяти відповідно до них?»; «Чи почали Ви розробляти або вже розробили детальний план самогубства?» + «Чи Ви маєте намір здійснити цей план?»; «Чи Ви вже щось зробили, почали щось робити або підготувалися щось зробити, щоб накаласти на себе руки?»; «Чи було це протягом останніх 3-ох місяців?»; ответы «Так» / «Hi». Две правки при переносе, обе — не формулировки: «накаласти» — опечатка бланка, в системе «накласти»; «Hi» на бланке набрано латинскими H и i — в системе кириллическое «Ні». Инструкция о порядке вопросов («If YES to 2, ask questions 3, 4, 5, and 6…») на украинском бланке оставлена по-английски — в системе её заменяют условия показа и инструкция специалисту (наш текст)."
+   },
+   "ru": {
+    "exists": true,
+    "by": "The Columbia Lighthouse Project / The Research Foundation for Mental Hygiene — «C-SSRS Screener - Russian.pdf» из той же папки",
+    "free": true,
+    "url": "https://www.dropbox.com/scl/fo/pkg1gwxxn1266rke8oite/AC2UFfOKCtefU-o9EEXP-yk?rlkey=4grouuqbchfa8obxlcb3msnpz&dl=0",
+    "note": "Официальный текст правообладателя, перенесён дословно, включая повтор «запаслись таблетками» и «пытался повеситься» в примерах к вопросу 6. Вопрос 7 системы — «было ли это в последние 3 месяца?» из строки бланка «ЕСЛИ ДА, то было ли это в последние 3 месяца?» (инструкция «ЕСЛИ ДА, то» отделена — вопрос показывается только при «Да»). Пояснения к вопросам 3 и 4 на русском бланке длиннее украинских (определение из полной шкалы) — перенесены как есть."
+   }
+  },
+  "example": null,
+  "example_note": "Числового примера нет — суммы нет. Проверочные случаи — разметка бланка: (1) «Так» только на вопрос 1, «Ні» на 2 и 6 → Low Risk → moderate; (2) «Так» на 2 и 4 → High Risk → severe; (3) «Ні» на 1 и 2, «Так» на 6, «Ні» на «за останні 3 місяці» → Moderate Risk → moderate; (4) то же, но «Так» на «за останні 3 місяці» → High Risk → severe; (5) «Ні» на всё → сигналов нет. Ответ на скрытый вопрос (3–5 при «Ні» на 2) риска не поднимает — его по бланку не задавали.",
+  "verdict": "завести — официальные украинский и русский тексты скринера есть у правообладателя; правообладатель разрешает использовать и встраивать Columbia Protocol в электронную систему учреждения без отдельного разрешения; проводит специалист (самоотчёт на устройстве — это eC-SSRS, лицензия Clario)."
+ },
+ {
+  "key": "sidas",
+  "title_en": "Suicidal Ideation Attributes Scale (SIDAS)",
+  "title_uk": null,
+  "title_ru": null,
+  "authors": "Bregje A. J. van Spijker, Philip J. Batterham, Alison L. Calear, Louise Farrer, Helen Christensen, Julia Reynolds, Ad J. F. M. Kerkhof (Centre for Mental Health Research, The Australian National University)",
+  "year": 2014,
+  "citation": "Van Spijker BAJ, Batterham PJ, Calear AL, Farrer L, Christensen H, Reynolds J, Kerkhof AJFM. The Suicidal Ideation Attributes Scale (SIDAS): Community-based validation study of a new scale for the measurement of suicidal ideation. Suicide and Life-Threatening Behavior. 2014;44(4):408-419. doi:10.1111/sltb.12084.",
+  "license": {
+   "verdict": "свободна (без разрешения, со ссылкой)",
+   "quote": "No permission required – please cite reference.",
+   "url": "https://nceph.anu.edu.au/research/tools-resources/suicidal-ideation-attributes-scale-sidas",
+   "conditions": "Ссылка на Van Spijker et al., 2014 — она стоит в источнике каталога и в описании методики. Страница правообладателя (ANU, Centre for Mental Health Research) публикует пункты, правило пропуска, ключ и пороги."
+  },
+  "items": [
+   "In the past month, how often have you had thoughts about suicide? (0 = Never, 10 = Always)",
+   "In the past month, how much control have you had over these thoughts? (0 = No control, 10 = Full control)",
+   "In the past month, how close have you come to making a suicide attempt? (0 = Not close at all, 10 = Made an attempt)",
+   "In the past month, to what extent have you felt tormented by thoughts about suicide? (0 = Not at all, 10 = Extremely)",
+   "In the past month, how much have thoughts about suicide interfered with your ability to carry out daily activities, such as work, household tasks or social activities? (0 = Not at all, 10 = Extremely)"
+  ],
+  "items_note": "Пункты дословно со страницы правообладателя (https://nceph.anu.edu.au/research/tools-resources/suicidal-ideation-attributes-scale-sidas): шкала ответов у каждого — 0…10 с подписями только у краёв. Инструкция — с бланка Primary Mental Health Care Minimum Data Set (Министерство здравоохранения Австралии; https://strategic-data-pty-ltd-docspmhc-mdscom.readthedocs-hosted.com/projects/data-specification-wayback/en/v3/_downloads/7d0698447ff0de565a7effb72170bbb7/PMHC%20MDS%20-%20Scoring%20SIDAS%20v2.pdf): «The following five questions ask about how you have been feeling in the past month. For each question, circle the number under the option that best describes the amount of time you felt that way.» Правило пропуска (страница правообладателя): «Respondents who respond “0 – Never” to the first item skip all remaining items and score a total of zero.»",
+  "anchors": [
+   {
+    "item": 1,
+    "min_label": "0 = Never",
+    "max_label": "10 = Always"
+   },
+   {
+    "item": 2,
+    "min_label": "0 = No control",
+    "max_label": "10 = Full control"
+   },
+   {
+    "item": 3,
+    "min_label": "0 = Not close at all",
+    "max_label": "10 = Made an attempt"
+   },
+   {
+    "item": 4,
+    "min_label": "0 = Not at all",
+    "max_label": "10 = Extremely"
+   },
+   {
+    "item": 5,
+    "min_label": "0 = Not at all",
+    "max_label": "10 = Extremely"
+   }
+  ],
+  "reverse": [
+   2
+  ],
+  "scoring": "Дословно со страницы правообладателя: «Total SIDAS scores are calculated as the sum of the five items, with controllability reverse scored (10=0, 9=1, …, 0=10). Total scores range from 0 to 50.» Пропуск: «Respondents who respond “0 – Never” to the first item skip all remaining items and score a total of zero.» Пропуски ответов (бланк PMHC MDS): «If any item has not been completed, other than those who respond “0 – Never” to the first item (that is, has not been coded 0-10), it is excluded from the calculation and not counted as a valid item. If any item is missing, the Total Score is set as missing.»",
+  "bands": [
+   {
+    "min": 0,
+    "max": 0,
+    "label_en": "No suicidal ideation in the past month (item 1 = 0 — remaining items skipped)"
+   },
+   {
+    "min": 1,
+    "max": 20,
+    "label_en": "Suicidal ideation present: «any ideation would be indicative of risk for suicidal behaviour»"
+   },
+   {
+    "min": 21,
+    "max": 50,
+    "label_en": "High risk of suicidal behaviour (cut-off 21)"
+   }
+  ],
+  "bands_source": "Страница правообладателя (Van Spijker et al., 2014): «a cut-off of 1 had sensitivity of 85.5% for suicide plans and 84.0% for suicide attempts (with 67.1% and 63.6% specificity, respectively) […] Scores ≥21 had 95.8% specificity for presence of a suicide plan in the past year and 94.9% specificity for presence of preparation/attempt in the past year (with 39.6% and 50.0% sensitivity, respectively). Based on these results, any ideation would be indicative of risk for suicidal behaviour, while a cut-off of 21 on the SIDAS may be used to indicate high risk of suicidal behaviour.»",
+  "bands_note": "Порог установлен в Австралии на онлайн-выборке взрослых из общей популяции (n = 1352). Военной и украинской валидации нет. Сумма 0 возможна только при «0» на первом пункте: при любой мысли о самоубийстве первый пункт даёт не меньше 1.",
+  "risk_items": [
+   1,
+   2,
+   3,
+   4,
+   5
+  ],
+  "risk_items_note": "Весь опросник — о суицидальных мыслях. Опубликованных правил по отдельному пункту нет; размечено так же, как у SBQ-R: тревогу поднимает каждый вариант, кроме отрицающего («0» на пунктах 1, 3, 4, 5; «10 — полный контроль» на пункте 2), тяжесть moderate — по правилу авторов «any ideation would be indicative of risk for suicidal behaviour». Severe — «10 = Made an attempt» на пункте 3 (попытка за последний месяц) и полоса 21+ («high risk of suicidal behaviour»). Пункты 2–5 видны только при ненулевом первом пункте, поэтому сигнал о самих мыслях поднимает пункт 1, а остальные добавляют к нему, что именно с мыслями (контроль, близость к попытке, мучительность, помехи), со значением в подписи.",
+  "translation": {
+   "uk": {
+    "exists": false,
+    "by": null,
+    "free": null,
+    "url": null,
+    "note": "Официального украинского перевода нет: на странице правообладателя переводов не названо, поиск публикаций (2026-10) украинской версии не нашёл. Рабочий перевод с английского."
+   },
+   "ru": {
+    "exists": false,
+    "by": null,
+    "free": null,
+    "url": null,
+    "note": "Официального русского перевода не найдено. Рабочий перевод с английского."
+   }
+  },
+  "example": {
+   "answers": [
+    5,
+    3,
+    2,
+    6,
+    4
+   ],
+   "total": 24,
+   "band": "High risk of suicidal behaviour (21+)",
+   "note": "Пример посчитан по опубликованному ключу, не взят из статьи: 5 + (10 − 3) + 2 + 6 + 4 = 24 ≥ 21. Контрольные случаи: первый пункт «0» → остальные пропущены, сумма 0; 1, 10, 0, 0, 0 → 1 + 0 + 0 + 0 + 0 = 1 — мысли есть (порог 1), но контроль полный; 10, 0, 10, 10, 10 → 50 (максимум, контроль «0» даёт 10). Ловушка, которую ловит пример: пункт 2 без обратного ключа дал бы 5 + 3 + 2 + 6 + 4 = 20 — ниже порога 21 при том же человеке."
+  },
+  "verdict": "завести — без разрешения по заявлению правообладателя, со ссылкой; пункты, ключ, правило пропуска и порог 21 — со страницы правообладателя; перевод рабочий; порог австралийский."
+ },
+ {
+  "key": "dsi_ss",
+  "title_en": "Depressive Symptom Inventory – Suicidality Subscale (DSI-SS)",
+  "title_uk": null,
+  "title_ru": null,
+  "authors": "Metalsky G. I., Joiner T. E. (DSI, 1997); Joiner T. E., Pfaff J. J., Acres J. G. (DSI-SS, 2002)",
+  "year": 2002,
+  "citation": "Joiner TE, Pfaff JJ, Acres JG. A brief screening tool for suicidal symptoms in adolescents and young adults in general health settings: reliability and validity data from the Australian National General Practice Youth Suicide Prevention Project. 2002 (журнал и страницы при поиске не подтверждены — для отвергнутой карточки не нужны).",
+  "license": {
+   "verdict": "неясно",
+   "quote": null,
+   "url": "https://eprovide.mapi-trust.org/instruments/depressive-symptom-index-suicidality-subscale",
+   "conditions": null,
+   "note": "Заявления правообладателя о свободном использовании найти не удалось: карточка Mapi ePROVIDE (распространитель) без входа не открывается, у авторов страницы с разрешением нет. Широкое использование в исследованиях Military Suicide Research Consortium — не лицензия."
+  },
+  "items": null,
+  "items_note": "Не приводим: нет основания воспроизводить текст.",
+  "risk_items": null,
+  "translation": null,
+  "verdict": "не заводить — нет заявления правообладателя о свободном воспроизведении (правило 1 брифа: при сомнении не заводить)."
+ },
+ {
+  "key": "p4",
+  "title_en": "P4 Suicidality Screener (Past, Plan, Probability, Preventive factors)",
+  "title_uk": null,
+  "title_ru": null,
+  "authors": "Dube P., Kroenke K., Bair M. J., Theobald D., Williams L. S.",
+  "year": 2010,
+  "citation": "Dube P, Kroenke K, Bair MJ, Theobald D, Williams LS. The P4 Screener: Evaluation of a Brief Measure for Assessing Potential Suicide Risk in 2 Randomized Effectiveness Trials of Primary Care and Oncology Patients. Prim Care Companion J Clin Psychiatry. 2010;12(6):PCC.10m00978.",
+  "license": {
+   "verdict": "неясно",
+   "quote": null,
+   "url": "https://www.psychiatrist.com/pcc/p-screener-evaluation-brief-measure-assessing-potential/",
+   "conditions": null,
+   "note": "Заявления о public domain нет; копия статьи у издателя несёт запрет копирования и распространения. У PHQ (тот же автор) разрешение издателя есть, у P4 — нет."
+  },
+  "items": null,
+  "items_note": "Не приводим: нет основания воспроизводить текст.",
+  "risk_items": null,
+  "translation": null,
+  "verdict": "не заводить — нет разрешения правообладателя; к тому же P4 — второй шаг после положительного PHQ-9 п. 9, а эту роль в каталоге закрывают ASQ и C-SSRS Screener."
+ },
+ {
+  "key": "pss3",
+  "title_en": "Patient Safety Screener (PSS-3), ED-SAFE",
+  "title_uk": null,
+  "title_ru": null,
+  "authors": "Boudreaux E. D. и соавт. (University of Massachusetts Medical School; исследование ED-SAFE, NIMH)",
+  "year": 2015,
+  "citation": "Boudreaux ED, Jaques ML, Brady KM, Matson A, Allen MH. The Patient Safety Screener: validation of a brief suicide risk screener for emergency department settings. Archives of Suicide Research (источники дают 2015;19(2):151-160 и 2017;21(1):52-61).",
+  "license": {
+   "verdict": "неясно",
+   "quote": null,
+   "url": "https://sprc.org/?p=4350",
+   "conditions": null,
+   "note": "Материалы раздаются бесплатно (SPRC, UMass Medical), но заявления о разрешении воспроизводить и переводить нет; страница SPRC несёт только общий копирайт сайта. Официальных украинского и русского текстов нет."
+  },
+  "items": null,
+  "items_note": "Не приводим: нет основания воспроизводить текст.",
+  "risk_items": null,
+  "translation": null,
+  "verdict": "не заводить — нет заявления правообладателя; первый пункт к тому же скринирует депрессию, а не суицидальный риск."
+ },
+ {
+  "key": "sibs",
+  "title_en": "Suicide Ideation and Behavior Scale (SIBS; нем. Skala Suizidales Erleben und Verhalten, SSEV)",
+  "title_uk": null,
+  "title_ru": null,
+  "authors": "Teismann T., Forkmann T., Glaesmer H., Juckel G., Cwik J. C.",
+  "year": 2021,
+  "citation": "Teismann T, Forkmann T, Glaesmer H, Juckel G, Cwik JC. Skala Suizidales Erleben und Verhalten (SSEV): Faktorstruktur und psychometrische Eigenschaften. Diagnostica. 2021;67:115-125.",
+  "license": {
+   "verdict": "неясно",
+   "quote": "Der Test ist frei und kostenlos verfügbar auf www.psychometrikon.de.",
+   "url": "https://www.q-cultural.de/testverfahren/test/?id=14",
+   "conditions": null,
+   "note": "«Свободно и бесплатно доступен» — не то же самое, что разрешение воспроизводить в электронной системе; украинская и русская версии (портал Q-cultural, Лейпцигский университет) выдаются только зарегистрированным пользователям, и авторы пишут, что их психометрическая проверка ещё не проведена: «Psychometric evaluation studies on the different language versions of the SIBS are pending» (Mehrabi et al., Front Psychiatry 2023;14:1201193)."
+  },
+  "items": null,
+  "items_note": "Не приводим: текст украинской и русской версий не получен (нужна регистрация на портале), разрешения на воспроизведение нет.",
+  "risk_items": null,
+  "translation": {
+   "uk": {
+    "exists": true,
+    "by": "Q-cultural (Universität Leipzig), I-REACH",
+    "free": null,
+    "url": "https://www.q-cultural.de/",
+    "note": "Только для зарегистрированных; не валидирована."
+   },
+   "ru": {
+    "exists": true,
+    "by": "Q-cultural (Universität Leipzig), I-REACH",
+    "free": null,
+    "url": "https://www.q-cultural.de/",
+    "note": "Только для зарегистрированных; не валидирована."
+   }
+  },
+  "verdict": "не заводить сейчас — перспективный кандидат: есть украинская и русская версии авторов, но нет явного разрешения на воспроизведение в системе и нет их валидации; вернуться после письма авторам (Tobias Teismann, Ruhr-Universität Bochum)."
+ }
+]

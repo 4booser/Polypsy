@@ -16324,6 +16324,29 @@ export const UI = {
     ru: "Станет доступно, когда загрузятся данные пациента",
     en: "Available once the patient’s details have loaded",
   },
+
+  // ── k-catalog-infra ──
+  /* направление методики (packages/shared/src/domains.ts): чипы каталога, строка, паспорт, конструктор */
+  "dom.distress": { uk: "Настрій, тривога, дистрес", ru: "Настроение, тревога, дистресс", en: "Mood, anxiety, distress" },
+  "dom.trauma": { uk: "Травма", ru: "Травма", en: "Trauma" },
+  "dom.suicide": { uk: "Суїцидальний ризик", ru: "Суицидальный риск", en: "Suicide risk" },
+  "dom.sleep": { uk: "Сон", ru: "Сон", en: "Sleep" },
+  "dom.addiction": { uk: "Залежності", ru: "Зависимости", en: "Addictions" },
+  "dom.wellbeing": { uk: "Ресурси і якість життя", ru: "Ресурсы и качество жизни", en: "Resources and quality of life" },
+  "dom.cognitive": { uk: "Когнітивні функції", ru: "Когнитивные функции", en: "Cognitive functions" },
+  "dom.personality": { uk: "Особистість", ru: "Личность", en: "Personality" },
+  "dom.staff": { uk: "Персонал", ru: "Персонал", en: "Staff" },
+  "dom.other": { uk: "Інше", ru: "Другое", en: "Other" },
+  "dom.label": { uk: "Напрям", ru: "Направление", en: "Area" },
+  "dom.filterLabel": { uk: "Напрям методики", ru: "Направление методики", en: "Instrument area" },
+  "dom.all": { uk: "Усі", ru: "Все", en: "All" },
+  "dom.none": { uk: "Без напряму", ru: "Без направления", en: "No area" },
+  /* конструктор: у методики каталога направление задаёт каталог */
+  "dom.fromCatalog": {
+    uk: "Напрям задає загальний каталог методик",
+    ru: "Направление задаёт общий каталог методик",
+    en: "Set by the shared instrument catalogue",
+  },
 } as const satisfies Record<string, UiEntry>;
 
 export type UiKey = keyof typeof UI;
