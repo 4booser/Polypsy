@@ -265,6 +265,13 @@ function renderExample(lang: SheetLang, survey: SurveyFull, mode: Notation, ex: 
       const ok = got && Math.abs(got.value - value) < 1e-6;
       return `${code} = ${num(value)} → ${s("система", "система")}: ${got ? num(got.value) : s("не обчислено", "не вычислено")} ${ok ? "✓" : "✗"}`;
     });
+    // тяжесть риска — у методик, где первоисточник даёт правило маршрутизации, а не сумму (C-SSRS, ASQ)
+    if (ex.expectRisk !== undefined) {
+      const got = ev.risk.severity;
+      checks.push(
+        `${s("тривога", "тревога")} — ${severityWord(lang, ex.expectRisk)} → ${s("система", "система")}: ${severityWord(lang, got)} ${got === ex.expectRisk ? "✓" : "✗"}`,
+      );
+    }
     out.push(`- ${s("Очікується за досьє", "Ожидается по досье")}: ${checks.join("; ")}`);
   }
   return out.join("\n");

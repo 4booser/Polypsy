@@ -72,6 +72,11 @@ import { ciwaar } from "./ciwaar";
 import { cows } from "./cows";
 import { cuditr } from "./cuditr";
 // ── /k-addiction ──
+// ── k-suicide ──
+import { ASQ_NOT_SCORED, asq } from "./asq";
+import { CSSRS_NOT_SCORED, cssrs } from "./cssrs";
+import { sidas } from "./sidas";
+// ── /k-suicide ──
 
 /**
  * Общий каталог общедоступных методик.
@@ -656,4 +661,41 @@ export const CATALOG: CatalogEntry[] = [
       "COWS, Wesson, Ling, J Psychoactive Drugs 2003;35(2):253–259 — «This version may be copied and used clinically» (Appendix 1). Український текст — офіційний: додаток 6 до Стандарту медичної допомоги «Психічні та поведінкові розлади внаслідок вживання опіоїдів», ГС 2025-1102, наказ МОЗ України від 11.07.2025 № 1102 (виправлено чотири друкарські помилки); російський — робочий переклад",
   },
   // ── /k-addiction ──
+  // ── k-suicide ──
+  /*
+   * Группа «суицидальный риск» — docs/instruments/dossiers/suicide.json. Каждый пункт,
+   * ключ, порог и пункт риска сводятся к карточке досье с цитатой правообладателя.
+   *
+   * ASQ и C-SSRS Screener проводит специалист (administration: "clinician"): у ASQ бланк
+   * начинается с «Ask the patient» и валидирован опросом персоналом; у C-SSRS разрешение
+   * правообладателя покрывает встраивание в систему учреждения, а самозаполнение на
+   * устройстве — это eC-SSRS под лицензией Clario. SIDAS — самоотчёт, как в валидации.
+   *
+   * Суммы нет у C-SSRS вовсе (уровень риска — по самому тяжёлому «да»), у ASQ шкала — лишь
+   * правило «да хотя бы на один из вопросов 1–4», записанное числом; острота у обеих — в
+   * сигналах риска по пунктам. Не заведены (карточки досье с причиной): DSI-SS, P4, PSS-3 —
+   * нет заявления правообладателя о свободном воспроизведении; SIBS — украинская и русская
+   * версии не валидированы и выдаются только после регистрации.
+   */
+  {
+    key: "asq",
+    draft: asq,
+    source:
+      "ASQ (Ask Suicide-Screening Questions), NIMH: Horowitz та ін., Arch Pediatr Adolesc Med 2012; дорослі — Horowitz та ін., Psychosomatics 2020. Бланк NIMH Toolkit 9/29/25, public domain. Російський текст запитань — офіційний переклад NIMH (2017); український — робочий переклад",
+    notScored: ASQ_NOT_SCORED,
+  },
+  {
+    key: "cssrs",
+    draft: cssrs,
+    source:
+      "C-SSRS Screener (Screen Version — Recent, з точками сортування ризику), Posner та ін., The Research Foundation for Mental Hygiene, 2008; валідизація — Posner та ін., Am J Psychiatry 2011. Український і російський тексти — офіційні переклади правовласника (The Columbia Lighthouse Project). Вільне використання й вбудовування в електронну систему закладу охорони здоров’я — за заявою правовласника",
+    notScored: CSSRS_NOT_SCORED,
+  },
+  {
+    key: "sidas",
+    draft: sidas,
+    source:
+      "SIDAS, van Spijker, Batterham, Calear, Farrer, Christensen, Reynolds, Kerkhof, Suicide and Life-Threatening Behavior 2014 (Centre for Mental Health Research, ANU): «No permission required – please cite reference». Переклад робочий",
+  },
+  // ── /k-suicide ──
 ];

@@ -127,19 +127,40 @@ async function overdueAssignment(batteryId: string, stepId: string, userId: stri
   return id;
 }
 
-/** Сдача «безопасными» ответами — под ролью приложения */
+/**
+ * Сдача «безопасными» ответами — под ролью приложения.
+ *
+ * Второй вариант пункта, если он не критический, иначе первый некритический. Тревога
+ * здесь не просто лишняя: сдача с тревогой открывает случай риска человека, а с ним —
+ * ещё одну строку под замком, и две сдачи одного пациента вставали друг за другом
+ * поверх замка набора, который держит тест (тайм-аут вместо гонки). В СР-45 «Нет» на
+ * пункт 30 — критический ответ (аудит пометок риска, k-suicide). Критические варианты
+ * видит только сотрудник: пациенту ключ не отдаётся (#141).
+ */
 async function submit(surveyId: string, token: string) {
   const survey = await appApi(`/api/surveys/${surveyId}`, token);
   if (survey.status !== 200) return survey;
+  const keyed = await appApi(`/api/surveys/${surveyId}`, adminA.token);
+  const critical = new Set<string>(
+    keyed.status === 200
+      ? keyed.body.questions.flatMap((q: { options: { id: string; riskFlag?: boolean }[] }) =>
+          q.options.filter((o) => o.riskFlag).map((o) => o.id),
+        )
+      : [],
+  );
   const answers = survey.body.questions
     .filter((q: { type: string; options: unknown[] }) => q.type !== "info" && q.options.length)
-    .map((q: { id: string; options: { id: string }[] }) => ({
-      questionId: q.id,
-      optionIds: [q.options[1]?.id ?? q.options[0]!.id],
-      durationMs: 2000,
-      changeCount: 0,
-      visitCount: 1,
-    }));
+    .map((q: { id: string; options: { id: string }[] }) => {
+      const second = q.options[1] ?? q.options[0]!;
+      const safe = critical.has(second.id) ? (q.options.find((o) => !critical.has(o.id)) ?? second) : second;
+      return {
+        questionId: q.id,
+        optionIds: [safe.id],
+        durationMs: 2000,
+        changeCount: 0,
+        visitCount: 1,
+      };
+    });
   return appApi(`/api/surveys/${surveyId}/responses`, token, {
     method: "POST",
     body: JSON.stringify({

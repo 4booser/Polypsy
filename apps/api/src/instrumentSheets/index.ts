@@ -133,6 +133,11 @@ const MODULE_OF: Record<string, string> = {
   ciwaar: "ciwaar.ts",
   cows: "cows.ts",
   // ── /k-addiction ──
+  // ── k-suicide ──
+  asq: "asq.ts",
+  cssrs: "cssrs.ts",
+  sidas: "sidas.ts",
+  // ── /k-suicide ──
 };
 
 /**
