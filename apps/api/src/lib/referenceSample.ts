@@ -2,7 +2,7 @@ import { and, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import type { SurveyFull } from "@quizzy/shared";
 import { db } from "../db";
 import { asSystem } from "../db/context";
-import { systemInIndexOrder } from "../db/latest";
+import { recordset, systemInIndexOrder } from "../db/latest";
 import { responseScores, responses, scales } from "../db/schema";
 import { rawSignature, valueSignature } from "./comparable";
 import { percentileOf } from "./norms";
@@ -459,7 +459,7 @@ async function readObservations(
            rs.max_score as "maxScore",
            ${measure === "raw" ? sql`'raw'` : sql`rs.normalization`} as unit,
            rs.scale_id as "scaleId"
-    from jsonb_to_recordset(${JSON.stringify(asks)}::jsonb) as p(survey_id text, scale_ids text[])
+    from ${recordset(asks, "survey_id text, scale_ids text[]")} as p
     cross join lateral (
       select x.id, x.survey_id, x.user_id, x.version_id, x.reliable, x.submitted_at
       from responses x
