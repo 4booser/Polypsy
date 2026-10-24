@@ -324,13 +324,14 @@ describe("золотой протокол: PHQ-2", () => {
     expect(scoreOf(phq2, [1, 1], "PHQ2").band?.grade).toBe(1);
   });
 
-  test("пункты — ровно первые два пункта PHQ-9; украинский — официальный текст МОЗ", () => {
+  test("пункты — ровно первые два пункта PHQ-9; украинский — МОЗ, русский — «Russian for Ukraine»", () => {
     expect(qs(phq2).map((q) => q.title)).toEqual(qs(phq9).slice(0, 2).map((q) => q.title));
     expect(qs(phq2).map((q) => q.options)).toEqual(qs(phq9).slice(0, 2).map((q) => q.options));
     const d = loc(phq2.description);
     expect(d.uk).not.toContain(WORKING_TRANSLATION.uk);
+    expect(d.ru).not.toContain(WORKING_TRANSLATION.ru);
     expect(d.uk).toContain("№1003");
-    expect(d.ru).toContain("рабочий перевод");
+    expect(d.ru).toContain("Russian for Ukraine");
   });
 });
 
