@@ -32,6 +32,7 @@ import { cbi } from "./cbi";
 // ── k-trauma ──
 import { ctsrUa } from "./ctsrUa";
 import { ITQ_NOT_SCORED, itq } from "./itq";
+import { LEC5_NOT_SCORED, lec5 } from "./lec5";
 import { tgiSrPlus } from "./tgiSrPlus";
 // ── /k-trauma ──
 
@@ -330,6 +331,13 @@ export const CATALOG: CatalogEntry[] = [
     draft: ctsrUa,
     source:
       "CTSR, оновлена українська версія: Frankova, Senyk, Avramchuk, Leshchuk, Rudys, Kurapov, Goral, Eur J Psychotraumatol 2025 — CC BY-NC 4.0, лише некомерційне використання; оригінал — Goral та ін., PLoS One 2021. Російський текст — робочий переклад",
+  },
+  {
+    key: "lec5",
+    draft: lec5,
+    source:
+      "LEC-5 (стандартна версія), Weathers, Blake, Schnurr, Kaloupek, Marx, Keane, National Center for PTSD, 2013 (бланк 2018) — public domain за заявою правовласника; балу немає за визначенням правовласника; переклад робочий",
+    notScored: LEC5_NOT_SCORED,
   },
   // ── /k-trauma ──
 ];

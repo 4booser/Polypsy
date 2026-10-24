@@ -16,6 +16,7 @@ import { sbqr } from "../sbqr";
 // ── k-trauma ──
 import { ctsrUa } from "../ctsrUa";
 import { ITQ_NOT_SCORED, itq } from "../itq";
+import { LEC5_NOT_SCORED, lec5 } from "../lec5";
 import { tgiSrPlus } from "../tgiSrPlus";
 // ── /k-trauma ──
 
@@ -412,6 +413,7 @@ const K21 = [
   ["itq", itq],
   ["tgi_sr_plus", tgiSrPlus],
   ["ctsr_ua", ctsrUa],
+  ["lec5", lec5],
 ] as const;
 
 type LocText = { uk: string; ru: string };
@@ -680,5 +682,40 @@ describe("золотой протокол: CTSR", () => {
   test("украинский текст — авторский; рабочий перевод назван только в русской половине", () => {
     expect(descriptionOf(ctsrUa).uk).not.toContain("робочий переклад");
     expect(descriptionOf(ctsrUa).ru).toContain("рабочий перевод");
+  });
+});
+
+describe("золотой протокол: LEC-5", () => {
+  const survey = toSurveyFull(lec5);
+
+  test("17 событий, у каждого шесть вариантов множественного выбора без баллов", () => {
+    expect(survey.questions.length).toBe(17);
+    for (const q of survey.questions) {
+      expect(q.type).toBe("multiple");
+      expect(q.options.length).toBe(6);
+      expect(q.options.every((o) => o.score === 0 && !o.riskFlag)).toBe(true);
+    }
+  });
+
+  test("шкал нет, все пункты объявлены непосчитанными (правообладатель: «does not yield a total score»)", () => {
+    expect(survey.scales).toEqual([]);
+    expect(LEC5_NOT_SCORED.items).toEqual(Array.from({ length: 17 }, (_, i) => i + 1));
+    expect(CATALOG.find((e) => e.key === "lec5")?.notScored).toBe(LEC5_NOT_SCORED);
+  });
+
+  test("пример досье: несколько уровней экспозиции у одного события принимаются и ни во что не складываются", () => {
+    // п. 2 — «свідок»; п. 10 — «сталося зі мною» и «на службі»; п. 14 — «свідок» и «на службі»; остальное — «не стосується»
+    const answers: Answer[] = survey.questions.map((q, i) => {
+      const n = i + 1;
+      const pos = n === 2 ? [1] : n === 10 ? [0, 3] : n === 14 ? [1, 3] : [5];
+      return { questionId: q.id, optionIds: pos.map((p) => q.options[p]!.id) };
+    });
+    expect(computeProfile(survey, answers).scores).toEqual([]);
+    expect(detectRisks(survey, answers)).toEqual([]);
+  });
+
+  test("перевод рабочий — оговорка стоит в обоих языках", () => {
+    expect(descriptionOf(lec5).uk).toContain(WORKING_TRANSLATION.uk);
+    expect(descriptionOf(lec5).ru).toContain(WORKING_TRANSLATION.ru);
   });
 });
