@@ -291,6 +291,14 @@ describe("назначение отмеченных методик", () => {
     expect(asked, "повтор выдал заново прошедшие").toEqual(["gad7"]);
     expect(retry.failed).toEqual([]);
 
+    /*
+     * Мутация: не забывать пары законченной операции — следующее назначение
+     * тому же человеку (ещё одна попытка после прохождения) молча пропускается.
+     */
+    asked.length = 0;
+    await assignPending(surveys, "u:p1", done, act);
+    expect(asked, "законченная операция мешает следующей").toEqual(["phq9", "gad7", "who5"]);
+
     // другой адресат — пары свои
     asked.length = 0;
     await assignPending(surveys, "u:p2", done, act);

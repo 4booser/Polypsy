@@ -267,12 +267,17 @@ export function movePlan(
 
 /**
  * Выдать отмеченные методики одному адресату, пропуская пары «адресат ×
- * методика», прошедшие в прошлой попытке; `done` пополняется прошедшими.
+ * методика», прошедшие в прошлой попытке той же операции.
  *
  * Повторная выдача не безобидна: grantAccess заново начинает выдачу и
  * обнуляет счёт попыток, и методика, которую человек успел пройти между
  * попытками, получила бы ещё одну. Отказ по одной методике не обрывает
  * остальные (как eachOf в ui/action.ts).
+ *
+ * `done` помнит прошедшие пары, только пока у адресата есть не прошедшие:
+ * дошло всё — операция для него закончена, и его пары забываются. Иначе
+ * следующее назначение тому же человеку (ещё одна попытка после
+ * прохождения) молча пропускалось бы.
  */
 export async function assignPending<S extends { id: string }>(
   surveys: readonly S[],
@@ -291,6 +296,7 @@ export async function assignPending<S extends { id: string }>(
       failed.push({ item: s, reason: e instanceof Error && e.message ? e.message : null });
     }
   }
+  if (!failed.length) for (const s of surveys) done.delete(`${target}|${s.id}`);
   return { failed };
 }
 

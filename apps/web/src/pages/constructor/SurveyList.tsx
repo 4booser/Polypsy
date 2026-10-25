@@ -690,18 +690,26 @@ export function SurveyList() {
    * оставляет адресата к повтору.
    *
    * Повтор выдаёт только не прошедшие пары (assignPending в catalogue.ts).
-   * Пары помнятся для текущего набора отмеченных методик; в адресат входят
-   * срок и комментарий — назначение с другим сроком новое.
+   * Пары помнятся только для незаконченной операции: адресат, которому
+   * дошло всё, забывается сразу, а «Призначити» над отмеченными начинает
+   * операцию заново. Иначе следующее назначение тому же человеку — скажем,
+   * ещё одна попытка после прохождения — молча не выдавалось бы, а ящик
+   * рапортовал бы успех. В адресат входят срок и комментарий.
    */
   const assigned = useRef<{ of: string; pairs: Set<string>; recipients: Map<string, number> }>({
     of: "",
     pairs: new Set(),
     recipients: new Map(),
   });
-  const assignEachSurvey = async (target: string, act: (s: SurveyListItem) => Promise<unknown>) => {
+  /* память операции — для текущего набора методик: другой набор начинает с чистого листа */
+  const operation = () => {
     const of = assignable.map((s) => s.id).join(",");
     if (assigned.current.of !== of) assigned.current = { of, pairs: new Set(), recipients: new Map() };
-    const { failed } = await assignPending(assignable, target, assigned.current.pairs, act);
+    return assigned.current;
+  };
+  const assignEachSurvey = async (target: string, act: (s: SurveyListItem) => Promise<unknown>) => {
+    const { pairs } = operation();
+    const { failed } = await assignPending(assignable, target, pairs, act);
     if (!failed.length) return;
     const list = failed.map((f) => `${splitCode(f.item.title).code ?? f.item.title}${f.reason ? `: ${f.reason}` : ""}`).join("; ");
     throw new Error(ut(failed.length < assignable.length ? "mc.assignManyPartly" : "mc.assignManyNone").replace("{list}", list));
@@ -1182,7 +1190,17 @@ export function SurveyList() {
             onClear={() => setPicked(NOTHING_PICKED)}
           >
             {tab === "published" && assignable.length ? (
-              <Button variant="panel" size="xs" icon={<Mi.clipboardPlus />} disabled={busy} onClick={() => setAssignMany(true)}>
+              <Button
+                variant="panel"
+                size="xs"
+                icon={<Mi.clipboardPlus />}
+                disabled={busy}
+                onClick={() => {
+                  /* новая операция: пары прошлой, брошенной на полпути, к ней не относятся */
+                  assigned.current = { of: "", pairs: new Set(), recipients: new Map() };
+                  setAssignMany(true);
+                }}
+              >
                 {ut("acc.grant")}
               </Button>
             ) : null}
@@ -1370,12 +1388,15 @@ export function SurveyList() {
           assignGroup={async (groupId, due, note) => {
             const target = `g:${groupId}|${due ?? ""}|${note ?? ""}`;
             /* сколько людей получило — и от прошлой попытки: повтор выдаёт только оставшиеся методики */
-            const seen = () => assigned.current.recipients.get(target) ?? 0;
+            const { recipients } = operation();
             await assignEachSurvey(target, async (s) => {
               const res = await api.assignSurveyToPatientGroup(groupId, { surveyId: s.id, expiresAt: due, note });
-              assigned.current.recipients.set(target, Math.max(seen(), res.recipients));
+              recipients.set(target, Math.max(recipients.get(target) ?? 0, res.recipients));
             });
-            return { recipients: seen() };
+            // дошло всё — операция для группы закончена: число отдаётся и забывается
+            const n = recipients.get(target) ?? 0;
+            recipients.delete(target);
+            return { recipients: n };
           }}
           onAssigned={() => undefined}
         />
