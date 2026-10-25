@@ -208,8 +208,13 @@ function PreviewTab({ label, count, on }: { label: string; count: number | null;
  *
  * Добавление — кнопкой у строки: специалист ищет конкретного человека по
  * фамилии, добавляет и ищет следующего. Накопить выборку негде — поиск её
- * сбросит.
+ * сбросит. Когда в группу кладут всех найденных разом (подразделение,
+ * набор одного дня), — «Додати всіх» над списком: одним запросом всех
+ * показанных, кого в группе ещё нет.
  */
+/** Метка «добавляются все показанные» вместо id строки в busyId */
+const ALL = "*";
+
 export function AddMembersDrawer({
   open,
   groupId,
@@ -240,6 +245,23 @@ export function AddMembersDrawer({
   }, [q]);
 
   const found = useResource(() => api.patients({ search: dq || undefined }), [dq], { enabled: open });
+  const outside = (found.data?.items ?? []).filter((p) => !members.has(p.id) && !added.has(p.id));
+
+  /* всех показанных, кого в группе нет, — одним запросом (сервер проверяет пачку целиком) */
+  async function addAll() {
+    const ids = outside.map((p) => p.id);
+    setBusyId(ALL);
+    setError(null);
+    try {
+      await api.addPatientGroupMembers(groupId, ids);
+      setAdded((prev) => new Set([...prev, ...ids]));
+      for (const id of ids) onAdded(id);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : ut("ui.actionFailed"));
+    } finally {
+      setBusyId(null);
+    }
+  }
 
   async function add(p: Patient) {
     setBusyId(p.id);
@@ -279,29 +301,41 @@ export function AddMembersDrawer({
         ) : found.data.items.length === 0 ? (
           <p className="m-0 mt-3 text-small text-muted">{ut("pt.nobodyFound")}</p>
         ) : (
-          <ul className="m-0 mt-2.5 flex list-none flex-col p-0">
-            {found.data.items.map((p) => {
-              const inGroup = members.has(p.id) || added.has(p.id);
-              return (
-                <li key={p.id} className="flex min-h-[52px] items-center gap-2.5 border-b border-divider py-1.5 last:border-b-0">
-                  <Avatar name={p.fullName} size={34} />
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-body font-bold text-text">{p.fullName}</div>
-                    <div className="truncate text-caption text-muted">{p.unit ?? p.email}</div>
-                  </div>
-                  {inGroup ? (
-                    <Tag tone="good" icon={<Ic.check />}>
-                      {ut("pg.alreadyIn")}
-                    </Tag>
-                  ) : (
-                    <Button size="xs" disabled={busyId !== null} onClick={() => void add(p)} icon={<Ic.plus />}>
-                      {busyId === p.id ? ut("co.saving") : ut("pg.addOne")}
-                    </Button>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
+          <>
+            {outside.length > 1 ? (
+              <div className="mt-2.5 flex items-center gap-2 border-b border-divider pb-2.5">
+                <span className="min-w-0 flex-1 text-small text-muted">
+                  {fill(ut("pg2.foundOutside"), { n: outside.length })}
+                </span>
+                <Button size="xs" variant="secondary" disabled={busyId !== null} onClick={() => void addAll()} icon={<Pi.userPlus />}>
+                  {busyId === ALL ? ut("co.saving") : fill(ut(found.data.truncated ? "pg2.addShownN" : "pg2.addAllN"), { n: outside.length })}
+                </Button>
+              </div>
+            ) : null}
+            <ul className="m-0 mt-2.5 flex list-none flex-col p-0">
+              {found.data.items.map((p) => {
+                const inGroup = members.has(p.id) || added.has(p.id);
+                return (
+                  <li key={p.id} className="flex min-h-[52px] items-center gap-2.5 border-b border-divider py-1.5 last:border-b-0">
+                    <Avatar name={p.fullName} size={34} />
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-body font-bold text-text">{p.fullName}</div>
+                      <div className="truncate text-caption text-muted">{p.unit ?? p.email}</div>
+                    </div>
+                    {inGroup ? (
+                      <Tag tone="good" icon={<Ic.check />}>
+                        {ut("pg.alreadyIn")}
+                      </Tag>
+                    ) : (
+                      <Button size="xs" disabled={busyId !== null} onClick={() => void add(p)} icon={<Ic.plus />}>
+                        {busyId === p.id ? ut("co.saving") : ut("pg.addOne")}
+                      </Button>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          </>
         )}
         {found.data?.truncated ? <p className="m-0 mt-2 text-small text-muted">{ut("pg.truncated")}</p> : null}
         {error ? (

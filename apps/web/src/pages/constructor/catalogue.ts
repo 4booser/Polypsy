@@ -235,6 +235,36 @@ export function folderOptions<F extends SurveyFolder>(
   return out;
 }
 
+/* ─────────── отмеченные ─────────── */
+
+/**
+ * Значение, общее для всех отмеченных, — умолчание окна переноса: все в
+ * одной группе — она и стоит в выборе. Разные или пусто — undefined.
+ */
+export function sameValue<V>(values: readonly V[]): V | undefined {
+  const [first] = values;
+  return values.length && values.every((v) => v === first) ? first : undefined;
+}
+
+/**
+ * Что сделать с методикой, чтобы она оказалась в группе и папке.
+ *
+ * Смена группы — правка методики (PATCH, groupId), и сервер при ней сам
+ * снимает методику с полки: папка живёт в группе. Поэтому после смены
+ * группы методика в корне новой группы, и папку ставит уже второй шаг —
+ * перенос (PUT /folder). Методику, которая и так там, не трогает ни один:
+ * лишний перенос писал бы в журнал перемещение, которого не было.
+ */
+export function movePlan(
+  s: Pick<SurveyListItem, "groupId" | "folderId">,
+  groupId: string,
+  folderId: string | null,
+): { group: boolean; folder: boolean } {
+  const group = (s.groupId ?? null) !== groupId;
+  const folderNow = group ? null : (s.folderId ?? null);
+  return { group, folder: folderNow !== folderId };
+}
+
 /* ─────────── даты ─────────── */
 
 /**

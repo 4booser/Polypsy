@@ -160,6 +160,28 @@ export default function Search() {
     return next;
   };
 
+  /*
+   * «Усі» над значениями фасета: показаны все — скрыть все, иначе показать
+   * все. Записи одного автора из десяти иначе отбирались девятью снятыми
+   * галочками; теперь — снять «Усі» и отметить нужного.
+   */
+  const allOf = (values: string[], hidden: Set<string>, setHidden: (next: Set<string>) => void) => {
+    if (values.length < 3) return null;
+    const shownN = values.filter((v) => !hidden.has(v)).length;
+    return (
+      <CheckLabel
+        control={
+          <Checkbox
+            checked={shownN === values.length}
+            indeterminate={shownN > 0 && shownN < values.length}
+            onChange={() => setHidden(shownN === values.length ? new Set(values) : new Set())}
+          />
+        }
+        label={<b className="font-bold text-text">{ut("srch2.all")}</b>}
+      />
+    );
+  };
+
   const chipMenu = (label: string, value: string | null, options: { key: string; label: string }[], pick: (k: string) => void, current: string, clear?: () => void) => (
     <MenuButton
       label={label}
@@ -373,6 +395,7 @@ export default function Search() {
             <Panel title={ut("srch2.narrow")} icon={<Pi.listFilter />} sub={fill(ut(`srch2.recordsN.${pluralForm(shown.length, lang)}`), { n: shown.length })}>
               <span className="mb-1.5 block text-caption font-bold text-muted">{ut("srch2.kind")}</span>
               <div className="flex flex-col gap-1.5">
+                {allOf(facetCounts(hits, "kind").map((f) => f.value), hiddenKinds, setHiddenKinds)}
                 {facetCounts(hits, "kind").map((f) => (
                   <CheckLabel
                     key={f.value}
@@ -387,6 +410,7 @@ export default function Search() {
               </div>
               <span className="mb-1.5 mt-4 block text-caption font-bold text-muted">{ut("srch2.author")}</span>
               <div className="flex flex-col gap-1.5">
+                {allOf(facetCounts(hits, "authorName").map((f) => f.value), hiddenAuthors, setHiddenAuthors)}
                 {facetCounts(hits, "authorName").map((f) => (
                   <CheckLabel
                     key={f.value}

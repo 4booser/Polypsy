@@ -590,6 +590,37 @@ export function addRowItem(scale: DraftScale, matchKey: string | null, item: num
   return { ...scale, key: [...scale.key, { item, matchKey, weight }] };
 }
 
+/**
+ * Номера пунктов, набранные в ряд ключа: «5», «1-10», «1-10, 15, 20».
+ *
+ * Ключ шкалы в пособии печатается диапазонами и перечнями — «1–35 и 41»,
+ * — и набирать его по одному номеру значило бы три десятка нажатий на
+ * шкалу. Разделители — запятая, точка с запятой, пробел; диапазон — любым
+ * тире. Номера вне методики (больше `max`) и мусор отбрасываются: ряд
+ * ключа на несуществующий пункт проверка структуры всё равно не пропустит.
+ * Пока пунктов нет (`max` = 0), верхней границы нет, но диапазон не длиннее
+ * тысячи — опечатка «1-100000» не должна вешать экран.
+ */
+export function parseItemList(raw: string, max: number): number[] {
+  const top = max > 0 ? max : Number.POSITIVE_INFINITY;
+  const out = new Set<number>();
+  for (const part of raw.split(/[\s,;]+/)) {
+    const m = /^(\d+)(?:[-–—](\d+))?$/.exec(part);
+    if (!m) continue;
+    const a = Number(m[1]);
+    const b = m[2] === undefined ? a : Number(m[2]);
+    const from = Math.max(1, Math.min(a, b));
+    const to = Math.min(top, Math.max(a, b), from + 999);
+    for (let n = from; n <= to; n++) out.add(n);
+  }
+  return [...out].sort((x, y) => x - y);
+}
+
+/** Несколько номеров в ряд ключа разом — каждый по правилам одного (addRowItem) */
+export function addRowItems(scale: DraftScale, matchKey: string | null, items: readonly number[]): DraftScale {
+  return items.reduce((cur, n) => addRowItem(cur, matchKey, n), scale);
+}
+
 export function removeRowItem(scale: DraftScale, matchKey: string | null, item: number): DraftScale {
   return { ...scale, key: scale.key.filter((k) => !((k.matchKey ?? null) === matchKey && k.item === item)) };
 }

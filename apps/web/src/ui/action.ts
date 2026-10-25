@@ -53,3 +53,25 @@ export function useAction() {
 
   return { run, busy };
 }
+
+/**
+ * Одно действие над отмеченными — по очереди: отказ одному не отменяет
+ * остальных. Не прошедшие возвращаются с текстом отказа сервера: их
+ * оставляют отмеченными и показывают поимённо, а не одним «не вдалося».
+ */
+export async function eachOf<T>(
+  items: readonly T[],
+  act: (item: T) => Promise<unknown>,
+): Promise<{ done: T[]; failed: { item: T; reason: string | null }[] }> {
+  const done: T[] = [];
+  const failed: { item: T; reason: string | null }[] = [];
+  for (const item of items) {
+    try {
+      await act(item);
+      done.push(item);
+    } catch (e) {
+      failed.push({ item, reason: e instanceof Error && e.message ? e.message : null });
+    }
+  }
+  return { done, failed };
+}

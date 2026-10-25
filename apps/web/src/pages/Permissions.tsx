@@ -21,6 +21,8 @@ import {
   TextAction,
   Tooltip,
   loadView,
+  selectAllState,
+  toggleAll,
   useAction,
 } from "../ui";
 import { cx } from "../ui/cx";
@@ -479,6 +481,13 @@ function RoleMatrix({
     const next = cur.includes(code) ? cur.filter((c) => c !== code) : [...cur, code];
     setDrafts((d) => ({ ...d, [r.id]: next }));
   };
+  /*
+   * Все права группы у роли разом — отметка в строке группы. Действует на
+   * показанные строки, как «выбрать все» таблицы: поиск или вид сузили
+   * группу — меняется то, что на экране, а не скрытое за фильтром.
+   */
+  const toggleGroup = (r: RoleItem, codes: string[]) =>
+    setDrafts((d) => ({ ...d, [r.id]: [...toggleAll(codes, new Set(d[r.id] ?? r.permissions))] }));
 
   const kinds: { key: KindView; label: string }[] = [
     { key: "all", label: ut("adm2.viewAll") },
@@ -576,11 +585,30 @@ function RoleMatrix({
                   <th scope="rowgroup" className="border-b border-divider bg-panel-2 px-4 py-2 text-left text-small font-extrabold text-text">
                     {t(g.title, lang)}
                   </th>
-                  {roles.map((r) => (
-                    <td key={r.id} className={cx("border-b border-divider px-2 py-2 text-center text-caption tabular-nums text-muted", editing.has(r.id) ? "bg-violet-tint" : "bg-panel-2")}>
-                      {fill(ut("adm2.nOf"), { n: g.permissions.filter((p) => setOf(r).includes(p.code)).length, total: g.permissions.length })}
-                    </td>
-                  ))}
+                  {roles.map((r) => {
+                    const own = setOf(r);
+                    const tally = fill(ut("adm2.nOf"), { n: g.permissions.filter((p) => own.includes(p.code)).length, total: g.permissions.length });
+                    const codes = rows.map((p) => p.code);
+                    const state = selectAllState(codes, new Set(own));
+                    return (
+                      <td key={r.id} className={cx("border-b border-divider px-2 py-2 text-center text-caption tabular-nums text-muted", editing.has(r.id) ? "bg-violet-tint" : "bg-panel-2")}>
+                        {editable && !r.isBuiltin ? (
+                          <label className="m-0 inline-flex cursor-pointer items-center gap-1.5">
+                            <Checkbox
+                              checked={state === "all"}
+                              indeterminate={state === "some"}
+                              disabled={busy}
+                              aria-label={fill(ut("adm2.groupAll"), { role: t(r.title, lang), group: t(g.title, lang) })}
+                              onChange={() => toggleGroup(r, codes)}
+                            />
+                            {tally}
+                          </label>
+                        ) : (
+                          tally
+                        )}
+                      </td>
+                    );
+                  })}
                   <td className="border-b border-divider bg-panel-2" />
                 </tr>,
                 ...rows.map((p) => (

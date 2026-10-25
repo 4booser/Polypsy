@@ -302,6 +302,7 @@ function AssignRecipients(p: ToRecipients) {
   );
   const conflicts = exclusive ? [] : picked.filter((x) => existing?.get(x.id) && !existing.get(x.id)!.done);
   const busyOne = (id: string) => !!exclusive && !!existing?.get(id) && !existing.get(id)!.done;
+  const addable = choices.filter((x) => !busyOne(x.id));
   const dirty = picked.length > 0 || comment.trim() !== "" || groupId !== "";
   const ready = !pastDeadline(due, today()) && (mode === "people" ? picked.length > 0 : groupId !== "");
 
@@ -437,6 +438,23 @@ function AssignRecipients(p: ToRecipients) {
                 <p className="m-0 mt-2 text-caption text-muted">{ut("common.loading")}</p>
               ) : choices.length ? (
                 <ul className="m-0 mt-1.5 list-none rounded-control border border-border bg-panel p-1 shadow-pop">
+                  {/* всех показанных разом: поиск по подразделу или фамилии иначе разбирался по одному */}
+                  {addable.length > 1 ? (
+                    <li className="border-b border-divider pb-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPicked((prev) => [...prev, ...addable]);
+                          setQuery("");
+                          searchRef.current?.focus();
+                        }}
+                        className="flex w-full min-h-0 cursor-pointer items-center justify-start gap-2.5 rounded-[8px] border-0 bg-transparent px-2.5 py-1.5 text-left text-body font-bold text-violet-ink hover:bg-sunk"
+                      >
+                        <Ic.users size={16} />
+                        {ut("mc.addAllFound").replace("{n}", String(addable.length))}
+                      </button>
+                    </li>
+                  ) : null}
                   {choices.map((x) => {
                     const had = existing?.get(x.id);
                     return (

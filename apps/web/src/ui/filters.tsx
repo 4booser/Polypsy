@@ -361,6 +361,7 @@ export function BulkBar({
   count,
   total,
   onSelectAll,
+  things,
   onClear,
   children,
   className,
@@ -369,6 +370,8 @@ export function BulkBar({
   /** Сколько всего: показывает «Вибрати всіх N», если выбраны не все */
   total?: number;
   onSelectAll?: () => void;
+  /** Отмечают не людей, а вещи (методики, наборы): «Вибрати всі 27», а не «всіх» */
+  things?: boolean;
   onClear?: () => void;
   /** Действия: <Button size="xs" variant="panel"> — лист на тонированной полосе */
   children?: ReactNode;
@@ -395,7 +398,7 @@ export function BulkBar({
           onClick={onSelectAll}
           className="ml-1 min-h-0 cursor-pointer border-0 bg-transparent p-0 text-[13px] font-bold text-violet-ink underline decoration-violet-line decoration-2 underline-offset-[3px] hover:decoration-current"
         >
-          {ut("kit.selectAllN").replace("{n}", grouped(total, lang))}
+          {ut(things ? "kit.selectAllThingsN" : "kit.selectAllN").replace("{n}", grouped(total, lang))}
         </button>
       ) : null}
       <span className="ml-auto flex flex-wrap items-center gap-1.5">

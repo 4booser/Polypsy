@@ -7,13 +7,14 @@ import { EditLangSwitch, Loc, Toggle, useEditLang } from "./fields";
 import { CnIc } from "./icons";
 import type { Section } from "./Questions";
 import {
-  addRowItem,
+  addRowItems,
   applyAnswers,
   keyRows,
   newScale,
   newUid,
   nextKeyCode,
   optionKey,
+  parseItemList,
   questionsWithOwnAnswers,
   removeRowItem,
   setRowWeight,
@@ -298,9 +299,10 @@ function ScaleCard({
   const others = draft.scales.filter((x) => x.uid !== s.uid && x.code);
   const title = s.title[lang] || s.title.uk || s.title.ru || `${ut("cn.scale")} ${index + 1}`;
 
+  /* номер, перечень или диапазон: «5», «1-10, 15» — ключ из пособия набирается одной строкой */
   const commitItem = (matchKey: string | null, raw: string) => {
-    const n = Number(raw);
-    if (raw.trim() && Number.isInteger(n)) onChange((cur) => addRowItem(cur, matchKey, n));
+    const items = parseItemList(raw, draft.questions.length);
+    if (items.length) onChange((cur) => addRowItems(cur, matchKey, items));
     setAdding(null);
   };
 
@@ -383,14 +385,14 @@ function ScaleCard({
                   );
                 })}
                 {adding === rowKey ? (
-                  <span className="inline-block w-16">
+                  <span className="inline-block w-28">
                     <Input
-                      type="number"
-                      min={1}
-                      max={draft.questions.length || undefined}
+                      inputMode="numeric"
                       autoFocus
-                      aria-label={ut("cn.addItem")}
-                      className="h-7 px-1 text-center"
+                      aria-label={ut("cn.addItems")}
+                      title={ut("cn.addItems")}
+                      placeholder={ut("cn.addItemsPh")}
+                      className="h-7 px-1.5"
                       onKeyDown={(e) => {
                         if (e.key === "Enter") commitItem(row.matchKey, e.currentTarget.value);
                         if (e.key === "Escape") setAdding(null);

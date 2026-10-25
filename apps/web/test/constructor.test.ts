@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { numberingProblems, parseBulk } from "../src/pages/constructor/BulkPaste";
 import {
   addRowItem,
+  addRowItems,
   applyAnswers,
   applyJsonDraft,
   createTarget,
@@ -10,6 +11,7 @@ import {
   keyRows,
   nextKeyCode,
   normalizeDraft,
+  parseItemList,
   parseItems,
   questionsWithOwnAnswers,
   removeRowItem,
@@ -372,6 +374,28 @@ describe("конструктор по макету", () => {
     expect(s.key.map((k) => k.weight)).toEqual([7, 6, 7]);
     s = removeRowItem(s, "yes", 1);
     expect(s.key.map((k) => k.item)).toEqual([4, 3]);
+  });
+
+  /*
+   * Мутация: брать только первое число строки — «1-35» добавляет один пункт,
+   * и ключ СР-45 снова набирается тридцатью пятью нажатиями.
+   */
+  test("ряд ключа набирается перечнем и диапазоном, как в пособии", () => {
+    expect(parseItemList("5", 40)).toEqual([5]);
+    expect(parseItemList("1-5, 9; 12 3", 40)).toEqual([1, 2, 3, 4, 5, 9, 12]);
+    // любое тире, обратный диапазон, повторы
+    expect(parseItemList("8–6, 7, 7", 40)).toEqual([6, 7, 8]);
+    // за концом методики и мусор — мимо
+    expect(parseItemList("38-45, abc, 0, -2", 40)).toEqual([38, 39, 40]);
+    // пунктов ещё нет: границы нет, но диапазон не длиннее тысячи
+    expect(parseItemList("1-100000", 0)).toHaveLength(1000);
+    expect(parseItemList("", 40)).toEqual([]);
+
+    let s = scale({ key: [{ item: 2, matchKey: "yes", weight: 4 }] });
+    s = addRowItems(s, "yes", parseItemList("1-3", 10));
+    expect(s.key.filter((k) => k.matchKey === "yes").map((k) => k.item)).toEqual([2, 1, 3]);
+    // пункты ряда получают вес ряда
+    expect(s.key.every((k) => k.weight === 4)).toBe(true);
   });
 
   test("комплексный тест: итоговая шкала получает ключ на все вопросы при отправке", () => {

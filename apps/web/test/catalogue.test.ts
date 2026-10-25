@@ -9,13 +9,16 @@ import {
   folderPath,
   listQuery,
   localToday,
+  movePlan,
   numericDate,
   pageCount,
   pageFrom,
   perFrom,
   retiredPage,
+  sameValue,
   tabFromPath,
 } from "../src/pages/constructor/catalogue";
+import { eachOf } from "../src/ui/action";
 
 /**
  * Чистая часть каталога тестов: адрес, запрос, страницы, папки.
@@ -219,5 +222,44 @@ describe("даты", () => {
   test("сегодня — по местному календарю, а не по Гринвичу", () => {
     // 23:30 местного 5 февраля: по UTC это может быть уже 6-е, но папка заводится «сегодня»
     expect(localToday(new Date(2023, 1, 5, 23, 30))).toBe("2023-02-05");
+  });
+});
+
+describe("отмеченные методики", () => {
+  test("умолчание окна переноса — общее значение всех отмеченных, иначе пусто", () => {
+    expect(sameValue(["g1", "g1", "g1"])).toBe("g1");
+    expect(sameValue(["g1", "g2"])).toBeUndefined();
+    expect(sameValue([null, null])).toBeNull();
+    expect(sameValue([])).toBeUndefined();
+  });
+
+  /*
+   * Мутация: считать папку после смены группы по старому folderId — методика
+   * из папки другой группы «уже в корне», и второй шаг не ставит её в папку.
+   */
+  test("перенос: смена группы — правкой, папка после неё — переносом, лишних шагов нет", () => {
+    // вне групп → в корень группы: только группа (сервер сам кладёт в корень)
+    expect(movePlan({ groupId: null, folderId: null }, "g1", null)).toEqual({ group: true, folder: false });
+    // вне групп → в папку группы: группа, затем папка
+    expect(movePlan({ groupId: null, folderId: null }, "g1", "f1")).toEqual({ group: true, folder: true });
+    // из папки другой группы в папку этой: оба шага
+    expect(movePlan({ groupId: "g2", folderId: "x" }, "g1", "f1")).toEqual({ group: true, folder: true });
+    // из папки другой группы в корень этой: смена группы и так снимает с полки
+    expect(movePlan({ groupId: "g2", folderId: "x" }, "g1", null)).toEqual({ group: true, folder: false });
+    // своя группа: только папка — или ничего, если методика уже там
+    expect(movePlan({ groupId: "g1", folderId: null }, "g1", "f1")).toEqual({ group: false, folder: true });
+    expect(movePlan({ groupId: "g1", folderId: "f1" }, "g1", null)).toEqual({ group: false, folder: true });
+    expect(movePlan({ groupId: "g1", folderId: "f1" }, "g1", "f1")).toEqual({ group: false, folder: false });
+  });
+
+  test("действие над отмеченными идёт по всем: отказ одной не обрывает остальные", async () => {
+    const asked: string[] = [];
+    const result = await eachOf(["a", "b", "c"], async (id) => {
+      asked.push(id);
+      if (id === "b") throw new Error("Немає доступу до групи");
+    });
+    expect(asked).toEqual(["a", "b", "c"]);
+    expect(result.done).toEqual(["a", "c"]);
+    expect(result.failed).toEqual([{ item: "b", reason: "Немає доступу до групи" }]);
   });
 });

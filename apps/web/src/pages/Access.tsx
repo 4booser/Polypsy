@@ -5,7 +5,7 @@ import { api } from "../api";
 import { useAuth } from "../auth";
 import { useLang } from "../lang";
 import { ShellIcon } from "../shell/icons";
-import { Avatar, Modal, Screen, useAction } from "../ui";
+import { Avatar, eachOf, Modal, Screen, useAction, useToast } from "../ui";
 import { DataTable, type Column } from "../ui/DataTable";
 import { FilterBar } from "../ui/filters";
 import { Ic } from "../ui/icons";
@@ -101,9 +101,12 @@ function AccessBody({
 }) {
   const { ut } = useLang();
   const { run, busy } = useAction();
+  const toast = useToast();
   const [view, setView] = useState<View>("all");
   const [q, setQ] = useState("");
   const [revoking, setRevoking] = useState<SurveyGrant | null>(null);
+  /* отмеченные строки к отзыву и как снять с них отметку, когда отзыв прошёл */
+  const [revokingMany, setRevokingMany] = useState<{ rows: SurveyGrant[]; clear: () => void } | null>(null);
   const now = useMemo(() => new Date(), []);
   const counts = grantCounts(grants, now);
   const first = nextExpiring(grants, now);
@@ -310,6 +313,12 @@ function AccessBody({
             label={ut("acc.granted")}
             initialSort={{ key: "passed" }}
             pageSize={10}
+            selectable
+            bulkActions={(picked, clear) => (
+              <Button variant="panel" size="xs" icon={<Mi.userX />} disabled={busy} onClick={() => setRevokingMany({ rows: picked, clear })}>
+                {ut("mc.accRevoke")}
+              </Button>
+            )}
             rowActions={(g) => (
               <Button size="xs" variant="ghost" icon={<Mi.userX />} disabled={busy} onClick={() => setRevoking(g)}>
                 {ut("mc.accRevoke")}
@@ -320,6 +329,7 @@ function AccessBody({
         <KbdHints
           bar
           keys={[
+            ["X", ut("mc.keyPick")],
             ["A", ut("mc.keyAssign")],
             ["/", ut("mc.keySearch")],
             ["E", ut("mc.keyEdit")],
@@ -358,6 +368,51 @@ function AccessBody({
           }
         >
           <p className="m-0 text-body text-text-2">{ut("mc.accRevokeText")}</p>
+        </Modal>
+      ) : null}
+      {revokingMany ? (
+        <Modal
+          title={ut("mc.accRevokeManyTitle").replace("{code}", code ?? name).replace("{n}", String(revokingMany.rows.length))}
+          icon={<Mi.userX />}
+          tone="warn"
+          onClose={() => setRevokingMany(null)}
+          footer={
+            <>
+              <Button
+                variant="secondary"
+                icon={<Mi.userX />}
+                disabled={busy}
+                onClick={() =>
+                  void run(async () => {
+                    /* каждому по очереди: отказ одному не отменяет остальных */
+                    const { done, failed } = await eachOf(revokingMany.rows, (g) => api.revoke(surveyId, g.userId));
+                    if (done.length) toast(ut("mc.accRevokedN").replace("{n}", String(done.length)), "ok");
+                    if (failed.length) {
+                      const names = failed.map((f) => f.item.fullName).join(", ");
+                      toast(`${ut("mc.bulkFailed").replace("{n}", String(failed.length))}: ${names}`, "err");
+                    }
+                    revokingMany.clear();
+                    setRevokingMany(null);
+                    onChanged();
+                  })
+                }
+              >
+                {ut("mc.accRevoke")}
+              </Button>
+              <Button variant="quiet" onClick={() => setRevokingMany(null)}>
+                {ut("ui.cancel")}
+              </Button>
+            </>
+          }
+        >
+          <p className="m-0 text-body text-text-2">{ut("mc.accRevokeText")}</p>
+          <ul className="m-0 mt-3 flex max-h-48 list-none flex-col gap-1 overflow-y-auto p-0">
+            {revokingMany.rows.map((g) => (
+              <li key={g.userId} className="truncate text-small text-text">
+                {g.fullName}
+              </li>
+            ))}
+          </ul>
         </Modal>
       ) : null}
     </>
