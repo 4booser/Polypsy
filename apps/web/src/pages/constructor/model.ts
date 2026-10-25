@@ -602,8 +602,12 @@ export function addRowItem(scale: DraftScale, matchKey: string | null, item: num
  * ключ, в который молча легли концы диапазона без середины, считает баллы
  * неверно и при этом проходит проверку структуры. Номер за концом методики
  * не отбрасывается: ряд покажет его янтарём, как и набранный по одному, а
- * проверка структуры назовёт. Диапазон длиннее тысячи — опечатка.
+ * проверка структуры назовёт. Диапазон длиннее тысячи и номер больше
+ * ITEM_NUMBER_MAX — опечатка; за пределом точных целых `n++` и вовсе стоял
+ * бы на месте, и разбор повесил бы вкладку.
  */
+export const ITEM_NUMBER_MAX = 99_999;
+
 export function parseItemList(raw: string): { items: number[]; bad: string[] } {
   const out = new Set<number>();
   const bad: string[] = [];
@@ -617,7 +621,7 @@ export function parseItemList(raw: string): { items: number[]; bad: string[] } {
     const b = m?.[2] === undefined ? a : Number(m[2]);
     const from = Math.min(a, b);
     const to = Math.max(a, b);
-    if (!m || from < 1 || to - from >= 1000) {
+    if (!m || from < 1 || to > ITEM_NUMBER_MAX || to - from >= 1000) {
       bad.push(token);
       continue;
     }
