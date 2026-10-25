@@ -370,6 +370,7 @@ export const COMMANDS: Command[] = [
         return ok(
           [
             serverText(report.departmentCreated ? "cmd.catalog.deptCreated" : "cmd.catalog.deptExisted", lang),
+            report.groupCreated ? serverText("cmd.catalog.groupCreated", lang) : "",
             report.installed.length
               ? serverText("cmd.catalog.installed", lang, { list: report.installed.join(", ") })
               : serverText("cmd.catalog.nothingNew", lang),
