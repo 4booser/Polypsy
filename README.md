@@ -32,7 +32,7 @@ cp apps/api/.env.example apps/api/.env   # set DATABASE_URL
 
 bun install
 bun run db:migrate
-bun run db:seed        # demo institution, methods, patients and history
+bun run db:seed        # demo institution, methods, patients and history; prints the demo sign-ins
 bun run api            # API on :3001
 bun run web            # web on :5199
 bun run mobile         # Expo on :8081, separate terminal
@@ -42,16 +42,10 @@ bun run mobile         # Expo on :8081, separate terminal
 - To point the mobile app at production, run `bun run --cwd apps/mobile start:prod`, or set `EXPO_PUBLIC_API_URL`.
 - To set up a clean instance for a new institution, use `bun run install:instance` instead of the seed. It migrates the database, creates the institution and installs the method catalog.
 
-### Demo accounts (seed only)
+### Demo sign-ins
 
-| Role | Email | Password |
-|---|---|---|
-| Superadmin | `root@quizzy.dev` | `root12345` |
-| Staff | `psy@quizzy.dev` | `psy12345` |
-| Staff | `psy2@quizzy.dev` | `psy212345` |
-| Staff, read-only | `demo@quizzy.dev` | `demo12345` |
-| Patient | `user@quizzy.dev`, `user2@quizzy.dev` | `user12345`, `user212345` |
-| Patients 1–12 | `patient1@quizzy.dev` … `patient12@quizzy.dev` | `patient12345` |
+- The seed creates demo staff and patient accounts and prints their sign-ins when it finishes. They exist only on local and test databases; the e2e stand uses the same set (`e2e/helpers.ts`).
+- A real instance gets its first superadmin from `install:instance`: the email comes from `ADMIN_EMAIL`, and a random password is printed once. Further superadmins are added with `apps/api/src/addSuperadmin.ts`.
 
 ### Languages
 
@@ -83,6 +77,7 @@ Rules that hold everywhere:
 **Assessment**
 - A method constructor with a JSON view for large instruments. Edits create versions, so every result is scored by the version the patient actually saw.
 - Assignment: individually, by patient group, by battery with step order, by schedule, or by cascade (a result band assigns follow-up methods).
+- Lists act on selected rows, with "select all" across pages. In the catalog, selected methods can be assigned, moved to a group and folder, retired or restored. Access, battery assignments and invitations can be revoked in bulk.
 - Patients take methods on the phone (with an offline queue) or in the browser. A clinician can fill in a method on the patient's behalf.
 - Critical answers raise risk alerts on autosave, not at the end. Alerts become cases with an owner and a history.
 
@@ -132,10 +127,27 @@ When several norms or sten rows fit a person, the most specific one wins: sex fi
 
 ### Methods
 
-- **Shared catalog, 27 methods**: WHO-5, GAD-7, PHQ-9/8/4, PSS-10, PCL-5, AUDIT, AUDIT-C, PQ-16, Big Five, CESD-R, SRQ-20, GDS-15, DASS-42, PC-PTSD-5, CES, SBQ-R, MSPSS, OSSS-3, RSES, UCLA-3, Brief COPE, CAGE, ASSIST, ASRS-6 and CBI.
-  - Installed and updated on every deploy by content fingerprint.
-  - If an institution edited a method locally, its edit is kept: a locally published version blocks the content update, and local settings (visibility, instructions, time limit and the like) survive a regular update while the rest of the method is refreshed. The `catalog-status` and `catalog-force` maintenance actions show the situation and let you override it.
-- **Seed-only methods, 4**: SR-45, SAD PERSONS, Mini-mult and MLO "Adaptivnist-200".
+**Shared catalog, 64 methods in ten areas.** The catalog is code (`apps/api/src/instruments/catalog.ts`; areas in `catalogDomains.ts`), and the catalog screen filters by area.
+
+| Area | Methods |
+|---|---|
+| Mood, anxiety, distress (18) | PHQ-9, PHQ-8, PHQ-4, PHQ-2, PHQ-15, GAD-7, GAD-2, PSS-10, PSS-4, CESD-R, SRQ-20, GDS-15, DASS-42, DASS-21, K10, K6, CORE-10, AAQ-II |
+| Trauma (8) | PCL-5, PC-PTSD-5, ITQ, CES, MIOS, TGI-SR+, CTSR, LEC-5 |
+| Suicide risk (4) | C-SSRS screener, ASQ, SBQ-R, SIDAS |
+| Sleep (4) | SCI, SCI-02, RIS, FAS |
+| Addictions (7) | AUDIT, AUDIT-C, CAGE, ASSIST, CUDIT-R, CIWA-Ar, COWS |
+| Resources and quality of life (12) | WHO-5, SWLS, Flourishing Scale, SPANE, MLQ, MSPSS, OSSS-3, RSES, UCLA-3, Brief COPE, SCS-SF, MAAS |
+| Cognitive functions (3) | ASRS-v1.1 (6 items), 4AT, ADEXI |
+| Personality (2) | IPIP-50 (Big Five), TIPI |
+| Staff (4) | CBI, BAT-23, BAT-12, ProQOL 5 |
+| Other (2) | PQ-16, AQ-10 |
+
+- **Install and update.** Every deploy installs the catalog and updates it by content fingerprint.
+- **Local edits survive.** If an institution edited a method locally, its edit is kept: a locally published version blocks the content update, and local settings (visibility, instructions, time limit, area and the like) survive a regular update while the rest of the method is refreshed. The `catalog-status` and `catalog-force` maintenance actions show the situation and let you override it.
+- **Who sees the catalog.** Catalog methods live in the survey group «Каталог методик». Staff see and assign them once a superadmin makes them administrators of that group. The group also decides which patients a doctor sees, so the catalog is not opened to all staff at once.
+- **Battery templates.** There are seven: initial screening, trauma in depth, suicide risk in depth, addictions, sleep and fatigue, resources and recovery, and staff burnout and stress. Each is created once and then belongs to the institution: later deploys do not overwrite edits or bring back a deleted template.
+
+**Seed-only methods, 4**: SR-45, SAD PERSONS, Mini-mult and MLO "Adaptivnist-200". Only the seed installs them; production does not have them.
 
 **The methods have not been clinically validated yet.** `docs/instruments/` holds the validation package for a clinical psychologist:
 - one sheet per method in Ukrainian and Russian;
@@ -162,12 +174,14 @@ The architecture, invariants and threat model are in `docs/ARCHITECTURE.md`.
 ```bash
 bun run typecheck
 bun run lint
-bun test                                   # all unit and API tests (API tests need DATABASE_URL)
+bun run test                               # all unit and API tests (API tests need DATABASE_URL)
 bun run --cwd apps/api test:app-role       # patient and staff flows under the application role
 bun run e2e                                # Playwright on its own stand: DB quizzy_e2e, ports 3199/4199
 ```
 
 - API tests recreate `<database>_test` on every run, so use your own database when running in parallel.
+- A test may take up to 30 s (`--timeout 30000` in the scripts and in CI). Where speed matters, dedicated tests check it with explicit thresholds (`dynamicsScale`, `rlsScale`).
+- CI checks every pull-request commit once and cancels the run of a superseded commit; pushes are checked on `main` only, and release tags by the deploy workflow.
 - CI runs test files in a different order than macOS does. Tests use unique data and never rely on "only my rows in the table".
 - `migrationJournal.test.ts` walks the history since the last release and fails if a migration was added before one that already existed.
 
@@ -234,21 +248,12 @@ Most documents are in Russian; the validation package is in Ukrainian and Russia
 
 ## Project status
 
-**Stage: pilot, late beta.** As of October 2026 (v1.17.0, 16 development waves since
-August 2026) the product is functionally complete for a single institution and runs in
-production, but it is not yet in clinical use.
+**Stage: pilot, late beta.** Production has run v2.0.0 since 19 October 2026. Version 2.0 brought the console, the patient cabinet and the mobile app to the new «Виразна» design. The main branch also carries catalog 2.1 (64 shared methods by area, battery templates, the «Каталог методик» group), which ships with the next release tag.
 
-- **Done:** clinical console, patient cabinet, mobile app, tech panel, 31 methods, CI with
-  app-role and browser tests, automated deploys with pre-checks, encrypted and verified
-  backups, audit chain, second factor, three interface languages.
-- **Hardening:** four external code reviews (about 90 findings, including privilege
-  escalation, races and data leaks) are fixed and covered by tests. New features are
-  frozen until the next review pass comes back clean.
-- **Not done:** clinical validation of the methods by a psychologist (the package is
-  ready and waiting), off-site backups configured on the server, SSH hardening on the
-  host, mobile store publication, real users and a second institution.
-- **Scale:** one VPS (4 cores, 8 GB) serves one institution with a 76 MB database at
-  near-zero load; capacity is not the constraint, process is.
+- **Done:** clinical console, patient cabinet, mobile app, tech panel, 68 methods (64 in the shared catalog, 4 seed-only), CI with app-role and browser tests, automated deploys with pre-checks, encrypted and verified backups, audit chain, second factor, three interface languages.
+- **Hardening:** four external code reviews (about 90 findings, including privilege escalation, races and data leaks) are fixed and covered by tests. Every pull request also gets an automated code review.
+- **Not done:** clinical validation of the methods by a psychologist (the package is ready and waiting), off-site backups configured on the server, SSH hardening on the host, mobile store publication, real users and a second institution.
+- **Scale:** one VPS (4 cores, 8 GB) serves one institution at near-zero load; capacity is not the constraint, process is.
 
 ## Known limitations
 
