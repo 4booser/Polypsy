@@ -11,7 +11,7 @@ import {
   type ScaleDynamics,
 } from "@quizzy/shared";
 import { db } from "../db";
-import { systemInIndexOrder } from "../db/latest";
+import { recordset, systemInIndexOrder } from "../db/latest";
 import { scales } from "../db/schema";
 import { log } from "./log";
 import { alphaOf } from "./psychometrics";
@@ -82,11 +82,15 @@ function distinctPairs<P extends { surveyId: string; versionId: string | null }>
  *
  * Одним запросом на все пары, а не запросом на пару: у человека с семью
  * методиками прежде это было по семь списков на выборку и на альфу, каждый
- * в своём переключении роли и сортировки.
+ * в своём переключении роли и сортировки. Пары — через recordset: с честной
+ * оценкой их числа (db/latest.ts), иначе баллы и ответы соединялись хэшем по
+ * всей таблице.
  */
 const latestOfPairs = (pairs: readonly { surveyId: string; versionId: string | null }[], limit: number) => sql`
-  jsonb_to_recordset(${JSON.stringify(pairs.map((p, k) => ({ k, survey_id: p.surveyId, version_id: p.versionId })))}::jsonb)
-    as p(k int, survey_id text, version_id text)
+  ${recordset(
+    pairs.map((p, k) => ({ k, survey_id: p.surveyId, version_id: p.versionId })),
+    "k int, survey_id text, version_id text",
+  )} as p
   cross join lateral (
     select x.id from responses x
     where x.survey_id = p.survey_id

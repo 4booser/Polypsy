@@ -75,6 +75,14 @@ console.log(
     ? `  ✓ отделение заведено: ${report.departmentId}`
     : `  · отделение уже было: ${report.departmentId}`,
 );
+/*
+ * Группа каталога (CATALOG_GROUP_ID в lib/catalogInstall.ts): методики каталога
+ * видит тот, кого суперадмин назначит её администратором.
+ */
+if (report.groupCreated) {
+  console.log("  ✓ группа «Каталог методик» заведена: назначьте врачей её администраторами, и они увидят каталог");
+}
+if (report.grouped.length) console.log(`  ✓ перенесены в группу каталога: ${report.grouped.join(", ")}`);
 if (report.installed.length) console.log(`  ✓ поставлено методик: ${report.installed.join(", ")}`);
 if (report.skipped.length) console.log(`  · уже стояли: ${report.skipped.join(", ")}`);
 if (report.updated.length) console.log(`  ✓ обновлено до редакции каталога: ${report.updated.join(", ")}`);

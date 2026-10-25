@@ -40,6 +40,8 @@ export async function rlsRoleUrl(): Promise<string> {
   await admin.unsafe(`grant select, insert, update, delete on all tables in schema public to ${RLS_ROLE}`);
   await admin.unsafe(`grant usage, select on all sequences in schema public to ${RLS_ROLE}`);
   await admin.unsafe(`revoke update, delete on audit_log from ${RLS_ROLE}`);
+  await admin.unsafe(`grant usage on schema drizzle to ${RLS_ROLE}`);
+  await admin.unsafe(`grant select on drizzle.__drizzle_migrations to ${RLS_ROLE}`);
   await admin.end();
 
   const url = new URL(process.env.DATABASE_URL!);
