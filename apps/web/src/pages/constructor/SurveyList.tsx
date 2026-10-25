@@ -690,26 +690,20 @@ export function SurveyList() {
    * оставляет адресата к повтору.
    *
    * Повтор выдаёт только не прошедшие пары (assignPending в catalogue.ts).
-   * Пары помнятся только для незаконченной операции: адресат, которому
-   * дошло всё, забывается сразу, а «Призначити» над отмеченными начинает
-   * операцию заново. Иначе следующее назначение тому же человеку — скажем,
-   * ещё одна попытка после прохождения — молча не выдавалось бы, а ящик
-   * рапортовал бы успех. В адресат входят срок и комментарий.
+   * Пары помнятся, пока операция не закончена: адресат, которому дошло всё,
+   * забывается сразу. Закрытый ящик операцию не заканчивает — он держит
+   * черновик (адресатов, срок, комментарий), и открытый снова продолжает её,
+   * в том числе с другим набором отмеченных. Заканчивается она вместе с
+   * черновиком — когда ящик снят со страницы (отметка снята, другая
+   * вкладка). В адресат входят срок и комментарий.
    */
-  const assigned = useRef<{ of: string; pairs: Set<string>; recipients: Map<string, number> }>({
-    of: "",
-    pairs: new Set(),
-    recipients: new Map(),
-  });
-  /* память операции — для текущего набора методик: другой набор начинает с чистого листа */
-  const operation = () => {
-    const of = assignable.map((s) => s.id).join(",");
-    if (assigned.current.of !== of) assigned.current = { of, pairs: new Set(), recipients: new Map() };
-    return assigned.current;
-  };
+  const assigned = useRef({ pairs: new Set<string>(), recipients: new Map<string, number>() });
+  const assignOpen = tab === "published" && assignable.length > 0;
+  useEffect(() => {
+    if (!assignOpen) assigned.current = { pairs: new Set(), recipients: new Map() };
+  }, [assignOpen]);
   const assignEachSurvey = async (target: string, act: (s: SurveyListItem) => Promise<unknown>) => {
-    const { pairs } = operation();
-    const { failed } = await assignPending(assignable, target, pairs, act);
+    const { failed } = await assignPending(assignable, target, assigned.current.pairs, act);
     if (!failed.length) return;
     const list = failed.map((f) => `${splitCode(f.item.title).code ?? f.item.title}${f.reason ? `: ${f.reason}` : ""}`).join("; ");
     throw new Error(ut(failed.length < assignable.length ? "mc.assignManyPartly" : "mc.assignManyNone").replace("{list}", list));
@@ -1190,17 +1184,7 @@ export function SurveyList() {
             onClear={() => setPicked(NOTHING_PICKED)}
           >
             {tab === "published" && assignable.length ? (
-              <Button
-                variant="panel"
-                size="xs"
-                icon={<Mi.clipboardPlus />}
-                disabled={busy}
-                onClick={() => {
-                  /* новая операция: пары прошлой, брошенной на полпути, к ней не относятся */
-                  assigned.current = { of: "", pairs: new Set(), recipients: new Map() };
-                  setAssignMany(true);
-                }}
-              >
+              <Button variant="panel" size="xs" icon={<Mi.clipboardPlus />} disabled={busy} onClick={() => setAssignMany(true)}>
                 {ut("acc.grant")}
               </Button>
             ) : null}
@@ -1364,7 +1348,7 @@ export function SurveyList() {
         же по одной методике. Смонтирован, пока есть что назначать: закрытый с
         набранными людьми ящик остаётся черновиком и открывается снова.
       */}
-      {tab === "published" && assignable.length ? (
+      {assignOpen ? (
         <AssignDrawer
           choose="recipients"
           open={assignMany}
@@ -1388,7 +1372,7 @@ export function SurveyList() {
           assignGroup={async (groupId, due, note) => {
             const target = `g:${groupId}|${due ?? ""}|${note ?? ""}`;
             /* сколько людей получило — и от прошлой попытки: повтор выдаёт только оставшиеся методики */
-            const { recipients } = operation();
+            const { recipients } = assigned.current;
             await assignEachSurvey(target, async (s) => {
               const res = await api.assignSurveyToPatientGroup(groupId, { surveyId: s.id, expiresAt: due, note });
               recipients.set(target, Math.max(recipients.get(target) ?? 0, res.recipients));

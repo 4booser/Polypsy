@@ -304,4 +304,22 @@ describe("назначение отмеченных методик", () => {
     await assignPending(surveys, "u:p2", done, act);
     expect(asked).toEqual(["phq9", "gad7", "who5"]);
   });
+
+  test("набор отмеченных сменился посреди операции: прошедшие пары не выдаются, законченная — забывается целиком", async () => {
+    const done = new Set<string>();
+    const asked: string[] = [];
+    let fail = true;
+    const act = async (s: { id: string }) => {
+      asked.push(s.id);
+      if (s.id === "gad7" && fail) throw new Error("ні");
+    };
+    await assignPending([{ id: "phq9" }, { id: "gad7" }], "u:p1", done, act);
+    // сняли отметку с PHQ-9 и добавили WHO-5, повтор тому же человеку
+    asked.length = 0;
+    fail = false;
+    await assignPending([{ id: "gad7" }, { id: "who5" }], "u:p1", done, act);
+    expect(asked).toEqual(["gad7", "who5"]);
+    // операция закончена — от неё не осталось и пары PHQ-9
+    expect([...done]).toEqual([]);
+  });
 });

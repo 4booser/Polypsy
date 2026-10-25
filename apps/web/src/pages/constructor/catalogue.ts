@@ -296,7 +296,10 @@ export async function assignPending<S extends { id: string }>(
       failed.push({ item: s, reason: e instanceof Error && e.message ? e.message : null });
     }
   }
-  if (!failed.length) for (const s of surveys) done.delete(`${target}|${s.id}`);
+  if (!failed.length) {
+    // все пары адресата, и прошлых наборов отмеченных тоже: операция для него закончена
+    for (const key of [...done]) if (key.startsWith(`${target}|`)) done.delete(key);
+  }
   return { failed };
 }
 
