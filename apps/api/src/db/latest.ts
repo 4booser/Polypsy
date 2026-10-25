@@ -1,4 +1,4 @@
-import { sql } from "drizzle-orm";
+import { sql, type SQL } from "drizzle-orm";
 import { dbContext } from "./context";
 
 /**
@@ -61,4 +61,27 @@ export async function systemInIndexOrder<T>(fn: () => Promise<T>): Promise<T> {
   }
   await restore();
   return result;
+}
+
+/**
+ * Строки из JSON для выборок «последние N» — jsonb_to_recordset с честной
+ * оценкой их числа. `columns` — список колонок из кода, не ввод.
+ *
+ * Сам jsonb_to_recordset планировщик считает в сто строк, сколько бы их ни
+ * было: статистики у функции нет. Под ним идёт LATERAL «последние N
+ * прохождений», и одна методика с пятью тысячами строк выборки превращалась
+ * в полмиллиона ожидаемых. С такой оценкой соединение с баллами (ответами)
+ * шло хэшем, и в хэш шла не выборка, а ВСЯ таблица баллов. Хэш не влезал в
+ * память, уходил на диск, и время росло с каждым чужим прохождением: в CI
+ * выборка перцентиля шла 58 мс на 10 тыс. и 340 мс на 100 тыс.
+ * (dynamicsScale.test.ts падал через раз).
+ *
+ * Предел подзапроса — число самих строк, литералом в тексте запроса, чтобы
+ * планировщик его видел. Тогда в хэш идёт выборка, а таблица баллов
+ * проходится один раз без диска. Локально на 100 тыс. 19 мс вместо 32, на
+ * 300 тыс. 52 вместо 120; на малой базе — как прежде.
+ */
+export function recordset(rows: readonly object[], columns: string): SQL {
+  return sql`(select * from jsonb_to_recordset(${JSON.stringify(rows)}::jsonb) as q(${sql.raw(columns)})
+    limit ${sql.raw(String(rows.length))})`;
 }
