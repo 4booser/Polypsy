@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { SurveyFolder, SurveyListItem } from "@quizzy/shared";
 import {
+  assignPending,
   catalogueHref,
   domainCounts,
   domainFrom,
@@ -9,13 +10,16 @@ import {
   folderPath,
   listQuery,
   localToday,
+  movePlan,
   numericDate,
   pageCount,
   pageFrom,
   perFrom,
   retiredPage,
+  sameValue,
   tabFromPath,
 } from "../src/pages/constructor/catalogue";
+import { eachOf } from "../src/ui/action";
 
 /**
  * Чистая часть каталога тестов: адрес, запрос, страницы, папки.
@@ -219,5 +223,103 @@ describe("даты", () => {
   test("сегодня — по местному календарю, а не по Гринвичу", () => {
     // 23:30 местного 5 февраля: по UTC это может быть уже 6-е, но папка заводится «сегодня»
     expect(localToday(new Date(2023, 1, 5, 23, 30))).toBe("2023-02-05");
+  });
+});
+
+describe("отмеченные методики", () => {
+  test("умолчание окна переноса — общее значение всех отмеченных, иначе пусто", () => {
+    expect(sameValue(["g1", "g1", "g1"])).toBe("g1");
+    expect(sameValue(["g1", "g2"])).toBeUndefined();
+    expect(sameValue([null, null])).toBeNull();
+    expect(sameValue([])).toBeUndefined();
+  });
+
+  /*
+   * Мутация: считать папку после смены группы по старому folderId — методика
+   * из папки другой группы «уже в корне», и второй шаг не ставит её в папку.
+   */
+  test("перенос: смена группы — правкой, папка после неё — переносом, лишних шагов нет", () => {
+    // вне групп → в корень группы: только группа (сервер сам кладёт в корень)
+    expect(movePlan({ groupId: null, folderId: null }, "g1", null)).toEqual({ group: true, folder: false });
+    // вне групп → в папку группы: группа, затем папка
+    expect(movePlan({ groupId: null, folderId: null }, "g1", "f1")).toEqual({ group: true, folder: true });
+    // из папки другой группы в папку этой: оба шага
+    expect(movePlan({ groupId: "g2", folderId: "x" }, "g1", "f1")).toEqual({ group: true, folder: true });
+    // из папки другой группы в корень этой: смена группы и так снимает с полки
+    expect(movePlan({ groupId: "g2", folderId: "x" }, "g1", null)).toEqual({ group: true, folder: false });
+    // своя группа: только папка — или ничего, если методика уже там
+    expect(movePlan({ groupId: "g1", folderId: null }, "g1", "f1")).toEqual({ group: false, folder: true });
+    expect(movePlan({ groupId: "g1", folderId: "f1" }, "g1", null)).toEqual({ group: false, folder: true });
+    expect(movePlan({ groupId: "g1", folderId: "f1" }, "g1", "f1")).toEqual({ group: false, folder: false });
+  });
+
+  test("действие над отмеченными идёт по всем: отказ одной не обрывает остальные", async () => {
+    const asked: string[] = [];
+    const result = await eachOf(["a", "b", "c"], async (id) => {
+      asked.push(id);
+      if (id === "b") throw new Error("Немає доступу до групи");
+    });
+    expect(asked).toEqual(["a", "b", "c"]);
+    expect(result.done).toEqual(["a", "c"]);
+    expect(result.failed).toEqual([{ item: "b", reason: "Немає доступу до групи" }]);
+  });
+});
+
+describe("назначение отмеченных методик", () => {
+  /*
+   * Мутация: при повторе выдавать все методики заново — методика, которую
+   * человек прошёл между попытками, получает ещё одну попытку (grantAccess
+   * обнуляет счёт), а журнал — вторую выдачу.
+   */
+  test("повтор выдаёт только не прошедшие пары, отказ одной не обрывает остальные", async () => {
+    const surveys = [{ id: "phq9" }, { id: "gad7" }, { id: "who5" }];
+    const done = new Set<string>();
+    const asked: string[] = [];
+    let gadFails = true;
+    const act = async (s: { id: string }) => {
+      asked.push(s.id);
+      if (s.id === "gad7" && gadFails) throw new Error("Методику знято з використання");
+    };
+
+    const first = await assignPending(surveys, "u:p1", done, act);
+    expect(asked).toEqual(["phq9", "gad7", "who5"]);
+    expect(first.failed).toEqual([{ item: { id: "gad7" }, reason: "Методику знято з використання" }]);
+
+    asked.length = 0;
+    gadFails = false;
+    const retry = await assignPending(surveys, "u:p1", done, act);
+    expect(asked, "повтор выдал заново прошедшие").toEqual(["gad7"]);
+    expect(retry.failed).toEqual([]);
+
+    /*
+     * Мутация: не забывать пары законченной операции — следующее назначение
+     * тому же человеку (ещё одна попытка после прохождения) молча пропускается.
+     */
+    asked.length = 0;
+    await assignPending(surveys, "u:p1", done, act);
+    expect(asked, "законченная операция мешает следующей").toEqual(["phq9", "gad7", "who5"]);
+
+    // другой адресат — пары свои
+    asked.length = 0;
+    await assignPending(surveys, "u:p2", done, act);
+    expect(asked).toEqual(["phq9", "gad7", "who5"]);
+  });
+
+  test("набор отмеченных сменился посреди операции: прошедшие пары не выдаются, законченная — забывается целиком", async () => {
+    const done = new Set<string>();
+    const asked: string[] = [];
+    let fail = true;
+    const act = async (s: { id: string }) => {
+      asked.push(s.id);
+      if (s.id === "gad7" && fail) throw new Error("ні");
+    };
+    await assignPending([{ id: "phq9" }, { id: "gad7" }], "u:p1", done, act);
+    // сняли отметку с PHQ-9 и добавили WHO-5, повтор тому же человеку
+    asked.length = 0;
+    fail = false;
+    await assignPending([{ id: "gad7" }, { id: "who5" }], "u:p1", done, act);
+    expect(asked).toEqual(["gad7", "who5"]);
+    // операция закончена — от неё не осталось и пары PHQ-9
+    expect([...done]).toEqual([]);
   });
 });

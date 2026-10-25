@@ -7,7 +7,7 @@ import { useChartWidth } from "../charts";
 import { axisFor } from "../charts/scale";
 import { useLang } from "../lang";
 import { ShellIcon } from "../shell/icons";
-import { Screen, useAction } from "../ui";
+import { Screen, selectAllState, toggleAll, useAction } from "../ui";
 import { cx } from "../ui/cx";
 import { Ic } from "../ui/icons";
 import { Panel } from "../ui/layout";
@@ -95,6 +95,9 @@ function NormsBody({ survey, data, onPublished }: { survey: SurveyFull; data: Da
 
   const pickedScales = data.scales.filter((s) => picked.has(s.code));
   const pickedSexes = [...new Set(pickedScales.flatMap(publishableSexes))];
+  /* «вибрати всі» — только шкалы, которым хватает выборки: у остальных в таблице и перемикача нет */
+  const pickable = data.scales.filter((s) => publishableSexes(s).length > 0).map((s) => s.code);
+  const allState = selectAllState(pickable, picked);
 
   const publish = () =>
     void run(async () => {
@@ -149,14 +152,23 @@ function NormsBody({ survey, data, onPublished }: { survey: SurveyFull; data: Da
           <p className="m-0 text-small text-text-2">{ut("mc.nmPublishText").replace("{v}", String(survey.versionNumber + 1))}</p>
           <div className="mt-3 flex flex-col gap-2">
             <CheckLabel
-              control={<Checkbox checked={picked.size > 0} disabled={picked.size === 0} onChange={() => setPicked(new Set())} />}
+              control={
+                <Checkbox
+                  checked={allState === "all"}
+                  indeterminate={allState === "some"}
+                  disabled={!pickable.length}
+                  onChange={() => setPicked(toggleAll(pickable, picked))}
+                />
+              }
               label={
                 picked.size
                   ? ut("mc.nmPicked")
                       .replace("{n}", String(picked.size))
                       .replace("{sexes}", pickedSexes.map((x) => ut(SEX_KEY[x])).join(", "))
                       .replace("{codes}", pickedScales.map((s) => s.code).join(", "))
-                  : ut("mc.nmPickHint")
+                  : pickable.length > 1
+                    ? ut("mc.nmPickAll").replace("{n}", String(pickable.length))
+                    : ut("mc.nmPickHint")
               }
             />
             <CheckLabel control={<Checkbox checked={checkKeys} onChange={(e) => setCheckKeys(e.target.checked)} />} label={ut("nm.checkKeys")} />

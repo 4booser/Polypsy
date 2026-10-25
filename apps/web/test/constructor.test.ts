@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { numberingProblems, parseBulk } from "../src/pages/constructor/BulkPaste";
 import {
   addRowItem,
+  addRowItems,
   applyAnswers,
   applyJsonDraft,
   createTarget,
@@ -10,6 +11,7 @@ import {
   keyRows,
   nextKeyCode,
   normalizeDraft,
+  parseItemList,
   parseItems,
   questionsWithOwnAnswers,
   removeRowItem,
@@ -372,6 +374,40 @@ describe("конструктор по макету", () => {
     expect(s.key.map((k) => k.weight)).toEqual([7, 6, 7]);
     s = removeRowItem(s, "yes", 1);
     expect(s.key.map((k) => k.item)).toEqual([4, 3]);
+  });
+
+  /*
+   * Мутация: брать только первое число строки — «1-35» добавляет один пункт,
+   * и ключ СР-45 снова набирается тридцатью пятью нажатиями. Вторая: делить
+   * по пробелам до тире — «1 – 10» ложится в ключ концами без середины.
+   */
+  test("ряд ключа набирается перечнем и диапазоном, как в пособии", () => {
+    expect(parseItemList("5")).toEqual({ items: [5], bad: [] });
+    expect(parseItemList("1-5, 9; 12 3").items).toEqual([1, 2, 3, 4, 5, 9, 12]);
+    // любое тире, пробелы вокруг него, обратный диапазон, повторы
+    expect(parseItemList("1 – 4, 8—6, 7, 7").items).toEqual([1, 2, 3, 4, 6, 7, 8]);
+    // номер за концом методики остаётся: ряд покажет его янтарём
+    expect(parseItemList("38-41").items).toEqual([38, 39, 40, 41]);
+    expect(parseItemList("")).toEqual({ items: [], bad: [] });
+  });
+
+  test("неразобранное называется, и ряд не меняется вовсе", () => {
+    expect(parseItemList("1-5, abc, 0, -2, 7-").bad).toEqual(["abc", "0", "-2", "7-"]);
+    // диапазон длиннее тысячи — опечатка, а не тысяча пунктов
+    expect(parseItemList("1-100000").bad).toEqual(["1-100000"]);
+    /*
+     * Мутация: снять предел номера — за точными целыми `n++` стоит на месте,
+     * и разбор висит вечно вместо ответа.
+     */
+    expect(parseItemList("9007199254740992, 9007199254740993-9007199254740995").bad).toHaveLength(2);
+    expect(parseItemList("100000").bad).toEqual(["100000"]);
+  });
+
+  test("номера ряда разом получают вес ряда", () => {
+    let s = scale({ key: [{ item: 2, matchKey: "yes", weight: 4 }] });
+    s = addRowItems(s, "yes", parseItemList("1-3").items);
+    expect(s.key.filter((k) => k.matchKey === "yes").map((k) => k.item)).toEqual([2, 1, 3]);
+    expect(s.key.every((k) => k.weight === 4)).toBe(true);
   });
 
   test("комплексный тест: итоговая шкала получает ключ на все вопросы при отправке", () => {

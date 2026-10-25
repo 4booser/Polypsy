@@ -35,6 +35,7 @@ import {
   newQuestionBlock,
   removeSample,
   reportRows,
+  setAllOptions,
   setOptionRisk,
   setScaleBands,
   statHref,
@@ -595,18 +596,31 @@ function QuestionCard({
       </div>
       {question ? (
         <>
-          <p className="m-0 mb-2 mt-2 text-small text-muted">
-            {ut("st.optionsOf")
-              .replace(
-                "{type}",
-                question.type === "multiple"
-                  ? ut("st.typeMultiple")
-                  : question.type === "yesno"
-                    ? ut("st.typeYesNo")
-                    : ut("st.typeSingle"),
-              )
-              .replace("{n}", String(options.length))}
-          </p>
+          <div className="mb-2 mt-2 flex flex-wrap items-center gap-x-2 gap-y-1">
+            <p className="m-0 text-small text-muted">
+              {ut("st.optionsOf")
+                .replace(
+                  "{type}",
+                  question.type === "multiple"
+                    ? ut("st.typeMultiple")
+                    : question.type === "yesno"
+                      ? ut("st.typeYesNo")
+                      : ut("st.typeSingle"),
+                )
+                .replace("{n}", String(options.length))}
+            </p>
+            {/* «Усі» / «Жодної», как у полос шкалы выше: у вопроса бывает и десяток вариантов */}
+            {options.length > 2 ? (
+              <span className="ml-auto flex gap-1">
+                <Button variant="ghost" size="xs" onClick={() => onChange(setAllOptions(block, options.map((o) => o.id), true, order))}>
+                  {ut("st.all")}
+                </Button>
+                <Button variant="ghost" size="xs" onClick={() => onChange(setAllOptions(block, options.map((o) => o.id), false, order))}>
+                  {ut("st.none")}
+                </Button>
+              </span>
+            ) : null}
+          </div>
           <div className="flex flex-col gap-0.5">
             {options.map((o, oi) => {
               const row = block.options.find((x) => x.optionId === o.id);

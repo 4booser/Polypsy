@@ -4,7 +4,7 @@ import type { Battery, BatteryAssignment, BatteryStep, SurveyGroupWithCounts, Su
 import { api } from "../api";
 import { useLang } from "../lang";
 import { ShellIcon } from "../shell/icons";
-import { Avatar, Modal, Screen, useAction } from "../ui";
+import { Avatar, eachOf, Modal, Screen, useAction, useToast } from "../ui";
 import { choiceLabel, keepChosen } from "../ui/choices";
 import { cx } from "../ui/cx";
 import { DataTable, type Column } from "../ui/DataTable";
@@ -357,6 +357,9 @@ function BatteryRecord({
   const [assigning, setAssigning] = useState(false);
   const [view, setView] = useState<AsgView>("all");
   const [cancelling, setCancelling] = useState<BatteryAssignment | null>(null);
+  /* отмеченные назначения к отзыву и как снять с них отметку, когда отзыв прошёл */
+  const [cancellingMany, setCancellingMany] = useState<{ rows: BatteryAssignment[]; clear: () => void } | null>(null);
+  const toast = useToast();
   const [deleting, setDeleting] = useState(false);
   const asg = useResource(() => api.batteryAssignments(b.id), [b.id], { enabled: load });
   const rows = asg.data ?? [];
@@ -613,6 +616,16 @@ function BatteryRecord({
               rowKey={(a) => a.id}
               label={ut("bt.assignments")}
               pageSize={10}
+              selectable
+              bulkActions={(picked, clear) => {
+                /* пройденное не отзывается — как и у строки, где этой кнопки нет */
+                const open = picked.filter((a) => state(a) !== "done");
+                return open.length ? (
+                  <Button variant="panel" size="xs" icon={<Mi.userX />} disabled={busy} onClick={() => setCancellingMany({ rows: open, clear })}>
+                    {open.length < picked.length ? `${ut("mc.accRevoke")} (${open.length})` : ut("mc.accRevoke")}
+                  </Button>
+                ) : null;
+              }}
               empty={
                 <div className="border-t border-divider px-4">
                   <Empty compact title={ut("cat.emptySearch")} />
@@ -688,6 +701,52 @@ function BatteryRecord({
           }
         >
           <p className="m-0 text-body text-text-2">{ut("mc.btCancelText")}</p>
+        </Modal>
+      ) : null}
+      {cancellingMany ? (
+        <Modal
+          title={ut("mc.btCancelManyTitle").replace("{n}", String(cancellingMany.rows.length))}
+          icon={<Mi.userX />}
+          tone="warn"
+          onClose={() => setCancellingMany(null)}
+          footer={
+            <>
+              <Button
+                variant="secondary"
+                icon={<Mi.userX />}
+                disabled={busy}
+                onClick={() =>
+                  void run(async () => {
+                    /* каждому по очереди: отказ одному не отменяет остальных */
+                    const { done, failed } = await eachOf(cancellingMany.rows, (a) => api.cancelAssignment(a.id));
+                    if (done.length) toast(ut("mc.btCancelledN").replace("{n}", String(done.length)), "ok");
+                    if (failed.length) {
+                      const names = failed.map((f) => f.item.userName).join(", ");
+                      toast(`${ut("mc.bulkFailed").replace("{n}", String(failed.length))}: ${names}`, "err");
+                    }
+                    cancellingMany.clear();
+                    setCancellingMany(null);
+                    asg.reload();
+                    onChanged();
+                  })
+                }
+              >
+                {ut("mc.accRevoke")}
+              </Button>
+              <Button variant="quiet" onClick={() => setCancellingMany(null)}>
+                {ut("ui.cancel")}
+              </Button>
+            </>
+          }
+        >
+          <p className="m-0 text-body text-text-2">{ut("mc.btCancelText")}</p>
+          <ul className="m-0 mt-3 flex max-h-48 list-none flex-col gap-1 overflow-y-auto p-0">
+            {cancellingMany.rows.map((a) => (
+              <li key={a.id} className="truncate text-small text-text">
+                {a.userName}
+              </li>
+            ))}
+          </ul>
         </Modal>
       ) : null}
       {deleting ? (

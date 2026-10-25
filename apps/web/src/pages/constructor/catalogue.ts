@@ -235,6 +235,74 @@ export function folderOptions<F extends SurveyFolder>(
   return out;
 }
 
+/* ─────────── отмеченные ─────────── */
+
+/**
+ * Значение, общее для всех отмеченных, — умолчание окна переноса: все в
+ * одной группе — она и стоит в выборе. Разные или пусто — undefined.
+ */
+export function sameValue<V>(values: readonly V[]): V | undefined {
+  const [first] = values;
+  return values.length && values.every((v) => v === first) ? first : undefined;
+}
+
+/**
+ * Что сделать с методикой, чтобы она оказалась в группе и папке.
+ *
+ * Смена группы — правка методики (PATCH, groupId), и сервер при ней сам
+ * снимает методику с полки: папка живёт в группе. Поэтому после смены
+ * группы методика в корне новой группы, и папку ставит уже второй шаг —
+ * перенос (PUT /folder). Методику, которая и так там, не трогает ни один:
+ * лишний перенос писал бы в журнал перемещение, которого не было.
+ */
+export function movePlan(
+  s: Pick<SurveyListItem, "groupId" | "folderId">,
+  groupId: string,
+  folderId: string | null,
+): { group: boolean; folder: boolean } {
+  const group = (s.groupId ?? null) !== groupId;
+  const folderNow = group ? null : (s.folderId ?? null);
+  return { group, folder: folderNow !== folderId };
+}
+
+/**
+ * Выдать отмеченные методики одному адресату, пропуская пары «адресат ×
+ * методика», прошедшие в прошлой попытке той же операции.
+ *
+ * Повторная выдача не безобидна: grantAccess заново начинает выдачу и
+ * обнуляет счёт попыток, и методика, которую человек успел пройти между
+ * попытками, получила бы ещё одну. Отказ по одной методике не обрывает
+ * остальные (как eachOf в ui/action.ts).
+ *
+ * `done` помнит прошедшие пары, только пока у адресата есть не прошедшие:
+ * дошло всё — операция для него закончена, и его пары забываются. Иначе
+ * следующее назначение тому же человеку (ещё одна попытка после
+ * прохождения) молча пропускалось бы.
+ */
+export async function assignPending<S extends { id: string }>(
+  surveys: readonly S[],
+  target: string,
+  done: Set<string>,
+  act: (s: S) => Promise<unknown>,
+): Promise<{ failed: { item: S; reason: string | null }[] }> {
+  const failed: { item: S; reason: string | null }[] = [];
+  for (const s of surveys) {
+    const key = `${target}|${s.id}`;
+    if (done.has(key)) continue;
+    try {
+      await act(s);
+      done.add(key);
+    } catch (e) {
+      failed.push({ item: s, reason: e instanceof Error && e.message ? e.message : null });
+    }
+  }
+  if (!failed.length) {
+    // все пары адресата, и прошлых наборов отмеченных тоже: операция для него закончена
+    for (const key of [...done]) if (key.startsWith(`${target}|`)) done.delete(key);
+  }
+  return { failed };
+}
+
 /* ─────────── даты ─────────── */
 
 /**

@@ -590,6 +590,51 @@ export function addRowItem(scale: DraftScale, matchKey: string | null, item: num
   return { ...scale, key: [...scale.key, { item, matchKey, weight }] };
 }
 
+/**
+ * Номера пунктов, набранные в ряд ключа: «5», «1-10», «1-10, 15, 20».
+ *
+ * Ключ шкалы в пособии печатается диапазонами и перечнями — «1–35 и 41»,
+ * — и набирать его по одному номеру значило бы три десятка нажатий на
+ * шкалу. Разделители — запятая, точка с запятой, пробел; диапазон — любым
+ * тире, и пробелы вокруг тире не делят его на два номера («1 – 10»).
+ *
+ * Чего не разобрать, то возвращается в `bad`, и ряд не меняется вовсе:
+ * ключ, в который молча легли концы диапазона без середины, считает баллы
+ * неверно и при этом проходит проверку структуры. Номер за концом методики
+ * не отбрасывается: ряд покажет его янтарём, как и набранный по одному, а
+ * проверка структуры назовёт. Диапазон длиннее тысячи и номер больше
+ * ITEM_NUMBER_MAX — опечатка; за пределом точных целых `n++` и вовсе стоял
+ * бы на месте, и разбор повесил бы вкладку.
+ */
+export const ITEM_NUMBER_MAX = 99_999;
+
+export function parseItemList(raw: string): { items: number[]; bad: string[] } {
+  const out = new Set<number>();
+  const bad: string[] = [];
+  const tokens = raw
+    .replace(/\s*[-–—]\s*/g, "-")
+    .split(/[\s,;]+/)
+    .filter(Boolean);
+  for (const token of tokens) {
+    const m = /^(\d+)(?:-(\d+))?$/.exec(token);
+    const a = m ? Number(m[1]) : 0;
+    const b = m?.[2] === undefined ? a : Number(m[2]);
+    const from = Math.min(a, b);
+    const to = Math.max(a, b);
+    if (!m || from < 1 || to > ITEM_NUMBER_MAX || to - from >= 1000) {
+      bad.push(token);
+      continue;
+    }
+    for (let n = from; n <= to; n++) out.add(n);
+  }
+  return { items: [...out].sort((x, y) => x - y), bad };
+}
+
+/** Несколько номеров в ряд ключа разом — каждый по правилам одного (addRowItem) */
+export function addRowItems(scale: DraftScale, matchKey: string | null, items: readonly number[]): DraftScale {
+  return items.reduce((cur, n) => addRowItem(cur, matchKey, n), scale);
+}
+
 export function removeRowItem(scale: DraftScale, matchKey: string | null, item: number): DraftScale {
   return { ...scale, key: scale.key.filter((k) => !((k.matchKey ?? null) === matchKey && k.item === item)) };
 }

@@ -60,22 +60,26 @@ export interface ExistingAssignment {
  * Не прошедшие возвращаются людьми, а не именами. Прежде ящик оставлял в
  * выборе тех, чьё ФИО совпало с ФИО не прошедшего, — и тёзка, которому уже
  * назначили, оставался в выборе и получал назначение второй раз при повторе.
+ * Причина отказа (текст сервера) — рядом, по id: ящик печатает её при имени,
+ * а при назначении отмеченных методик она называет, какие не прошли.
  */
 export async function assignEach<P extends { id: string }>(
   people: readonly P[],
   assignOne: (userId: string) => Promise<unknown>,
-): Promise<{ done: number; failed: P[] }> {
+): Promise<{ done: number; failed: P[]; reasons: Map<string, string> }> {
   const failed: P[] = [];
+  const reasons = new Map<string, string>();
   let done = 0;
   for (const p of people) {
     try {
       await assignOne(p.id);
       done += 1;
-    } catch {
+    } catch (e) {
       failed.push(p);
+      if (e instanceof Error && e.message) reasons.set(p.id, e.message);
     }
   }
-  return { done, failed };
+  return { done, failed, reasons };
 }
 
 /* ─────────── срок ─────────── */
@@ -302,6 +306,7 @@ function AssignRecipients(p: ToRecipients) {
   );
   const conflicts = exclusive ? [] : picked.filter((x) => existing?.get(x.id) && !existing.get(x.id)!.done);
   const busyOne = (id: string) => !!exclusive && !!existing?.get(id) && !existing.get(id)!.done;
+  const addable = choices.filter((x) => !busyOne(x.id));
   const dirty = picked.length > 0 || comment.trim() !== "" || groupId !== "";
   const ready = !pastDeadline(due, today()) && (mode === "people" ? picked.length > 0 : groupId !== "");
 
@@ -331,12 +336,12 @@ function AssignRecipients(p: ToRecipients) {
       return;
     }
     /* поимённо — по одному (assignEach): отказ одному не отменяет остальных */
-    let outcome: { done: number; failed: Patient[] } = { done: 0, failed: [] };
+    let outcome: { done: number; failed: Patient[]; reasons: Map<string, string> } = { done: 0, failed: [], reasons: new Map() };
     await run(async () => {
       outcome = await assignEach(picked, (userId) => assignOne(userId, dueOrNull, noteValue));
       if (!outcome.done && outcome.failed.length) throw new Error(ut("mc.assignFailedAll"));
     });
-    const { done, failed: missed } = outcome;
+    const { done, failed: missed, reasons } = outcome;
     if (done) {
       toast(ut("mc.assignedN").replace("{n}", String(done)), "ok");
       onAssigned();
@@ -344,7 +349,7 @@ function AssignRecipients(p: ToRecipients) {
     if (missed.length) {
       const left = new Set(missed.map((x) => x.id));
       setPicked((prev) => prev.filter((x) => left.has(x.id)));
-      setFailed(missed.map((x) => x.fullName));
+      setFailed(missed.map((x) => (reasons.has(x.id) ? `${x.fullName} (${reasons.get(x.id)})` : x.fullName)));
     } else if (done) {
       reset();
       onClose();
@@ -437,6 +442,23 @@ function AssignRecipients(p: ToRecipients) {
                 <p className="m-0 mt-2 text-caption text-muted">{ut("common.loading")}</p>
               ) : choices.length ? (
                 <ul className="m-0 mt-1.5 list-none rounded-control border border-border bg-panel p-1 shadow-pop">
+                  {/* всех показанных разом: поиск по подразделу или фамилии иначе разбирался по одному */}
+                  {addable.length > 1 ? (
+                    <li className="border-b border-divider pb-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPicked((prev) => [...prev, ...addable]);
+                          setQuery("");
+                          searchRef.current?.focus();
+                        }}
+                        className="flex w-full min-h-0 cursor-pointer items-center justify-start gap-2.5 rounded-[8px] border-0 bg-transparent px-2.5 py-1.5 text-left text-body font-bold text-violet-ink hover:bg-sunk"
+                      >
+                        <Ic.users size={16} />
+                        {ut("mc.addAllFound").replace("{n}", String(addable.length))}
+                      </button>
+                    </li>
+                  ) : null}
                   {choices.map((x) => {
                     const had = existing?.get(x.id);
                     return (

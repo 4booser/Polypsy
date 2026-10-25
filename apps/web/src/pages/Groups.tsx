@@ -5,16 +5,17 @@ import { HBars, ShareBar, TimeColumns } from "../charts/clinical";
 import { duration, severityKey } from "../format";
 import { useLang } from "../lang";
 import { ShellIcon } from "../shell/icons";
-import { Avatar, Modal, Screen, useAction } from "../ui";
+import { Avatar, eachOf, Modal, Screen, selectAllState, toggleAll, toggleKey, useAction, useToast } from "../ui";
 import { cx } from "../ui/cx";
 import { Drawer, DrawerSection } from "../ui/Drawer";
+import { SearchField } from "../ui/filters";
 import { Ic } from "../ui/icons";
 import { useHotkeys } from "../ui/keys";
 import { Count, Page, Panel } from "../ui/layout";
 import { ActionMenu, type MenuEntry } from "../ui/menu";
 import { Tooltip } from "../ui/Popover";
 import { ListGroup, ListTile, TextAction } from "../ui/records";
-import { Button, ButtonLink, Field, Input, Select, Tag } from "../ui/primitives";
+import { Button, ButtonLink, CheckLabel, Checkbox, Field, Input, Tag } from "../ui/primitives";
 import { Callout, Empty, Loading } from "../ui/states";
 import { useUrlState } from "../ui/urlState";
 import { useResource } from "../useResource";
@@ -217,6 +218,126 @@ function GroupsScreen({ groups, staff, reload }: { groups: SurveyGroupWithCounts
   );
 }
 
+/* ─────────── администраторы ─────────── */
+
+/**
+ * «Додати адміністраторів» — сотрудники галочками.
+ *
+ * Прежде здесь был селект на одного и «Додати»: группу, которую должны видеть
+ * все врачи отделения (каталог методик), раздавали двадцать раз подряд.
+ * Теперь — поиск, «Вибрати всіх» и одна кнопка. Маршрут назначает одного
+ * (POST /api/groups/:id/admins), поэтому — по запросу на человека, и отказ
+ * одному не отменяет остальных: не прошедшие остаются отмеченными.
+ */
+function AddAdminsDrawer({
+  open,
+  groupId,
+  groupTitle,
+  candidates,
+  onClose,
+  onAdded,
+}: {
+  open: boolean;
+  groupId: string;
+  groupTitle: string;
+  /** Сотрудники, которые ещё не администраторы группы */
+  candidates: User[];
+  onClose: () => void;
+  onAdded: () => void;
+}) {
+  const { ut } = useLang();
+  const toast = useToast();
+  const { run, busy } = useAction();
+  const [q, setQ] = useState("");
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const needle = q.trim().toLowerCase();
+  const shown = candidates.filter((u) => !needle || `${u.fullName} ${u.email}`.toLowerCase().includes(needle));
+  const shownKeys = shown.map((u) => u.id);
+  const all = selectAllState(shownKeys, picked);
+  /* назначаются только те, кто ещё в списке: уже назначенного список не держит */
+  const chosen = candidates.filter((u) => picked.has(u.id));
+
+  const submit = () =>
+    void run(async () => {
+      const { done, failed } = await eachOf(chosen, (u) => api.assignGroupAdmin(groupId, u.id));
+      if (done.length) {
+        toast(ut("mc.grAdminsAddedN").replace("{n}", String(done.length)), "ok");
+        onAdded();
+      }
+      if (failed.length) {
+        toast(`${ut("mc.bulkFailed").replace("{n}", String(failed.length))}: ${failed.map((f) => f.item.fullName).join(", ")}`, "err");
+        setPicked(new Set(failed.map((f) => f.item.id)));
+        return;
+      }
+      setPicked(new Set());
+      setQ("");
+      onClose();
+    });
+
+  return (
+    <Drawer
+      open={open}
+      onClose={onClose}
+      title={ut("mc.grAddAdmins")}
+      sub={groupTitle}
+      icon={<ShellIcon name="user-plus" />}
+      note={ut("mc.grAdminsHint")}
+      noteIcon={<ShellIcon name="user-cog" />}
+      footer={
+        <>
+          <Button variant="primary" icon={<ShellIcon name="user-plus" size={15} />} disabled={!chosen.length || busy} onClick={submit}>
+            {chosen.length ? ut("mc.grAddN").replace("{n}", String(chosen.length)) : ut("mc.grAdd")}
+          </Button>
+          <Button variant="secondary" onClick={onClose}>
+            {ut("ui.cancel")}
+          </Button>
+        </>
+      }
+    >
+      <DrawerSection>
+        {candidates.length > 8 ? (
+          <SearchField value={q} onChange={setQ} placeholder={ut("mc.grStaffSearch")} width={0} className="mb-2.5 w-full" />
+        ) : null}
+        {shown.length ? (
+          <div className="flex flex-col">
+            {shown.length > 1 ? (
+              <CheckLabel
+                className="border-b border-divider pb-2.5"
+                control={
+                  <Checkbox
+                    checked={all === "all"}
+                    indeterminate={all === "some"}
+                    onChange={() => setPicked(toggleAll(shownKeys, picked))}
+                  />
+                }
+                label={<b className="font-bold text-text">{ut("mc.grPickAll").replace("{n}", String(shown.length))}</b>}
+              />
+            ) : null}
+            {shown.map((u) => (
+              <CheckLabel
+                key={u.id}
+                className="border-b border-divider py-2 last:border-b-0"
+                control={<Checkbox checked={picked.has(u.id)} onChange={() => setPicked(toggleKey(picked, u.id))} />}
+                label={
+                  <span className="flex min-w-0 items-center gap-2.5">
+                    <Avatar name={u.fullName} size={28} tone="neutral" />
+                    <span className="flex min-w-0 flex-col">
+                      <span className="truncate text-body font-semibold text-text">{u.fullName}</span>
+                      <small className="truncate text-caption text-muted">{u.email}</small>
+                    </span>
+                  </span>
+                }
+              />
+            ))}
+          </div>
+        ) : (
+          <p className="m-0 text-small text-muted">{ut("pt.nobodyFound")}</p>
+        )}
+      </DrawerSection>
+    </Drawer>
+  );
+}
+
 /* ─────────── запись ─────────── */
 
 function GroupRecord({
@@ -240,7 +361,7 @@ function GroupRecord({
   const { run, busy } = useAction();
   const [deleting, setDeleting] = useState(false);
   const [removing, setRemoving] = useState<GroupAdmin | null>(null);
-  const [adding, setAdding] = useState("");
+  const [adding, setAdding] = useState(false);
   const archived = !!g.archivedAt;
   const analytics = useResource(() => api.groupAnalytics(g.id), [g.id], { enabled: load });
 
@@ -348,33 +469,10 @@ function GroupRecord({
             ) : (
               <p className="m-0 text-small text-muted">{ut("adm.noAdmins")}</p>
             )}
-            {g.manageable ? (
-              <div className="mt-3 flex items-end gap-2">
-                <Field label={ut("adm.addAdmin")} className="mb-0 min-w-0 flex-1">
-                  <Select value={adding} onChange={(e) => setAdding(e.target.value)}>
-                    <option value="">{ut("sel.pickStaff")}</option>
-                    {candidates.map((u) => (
-                      <option key={u.id} value={u.id}>
-                        {`${u.fullName}, ${u.email}`}
-                      </option>
-                    ))}
-                  </Select>
-                </Field>
-                <Button
-                  variant="secondary"
-                  icon={<ShellIcon name="user-plus" size={15} />}
-                  disabled={!adding || busy}
-                  onClick={() =>
-                    void run(async () => {
-                      await api.assignGroupAdmin(g.id, adding);
-                      setAdding("");
-                      onChanged();
-                    }, ut("mc.grAdminAdded"))
-                  }
-                >
-                  {ut("mc.grAdd")}
-                </Button>
-              </div>
+            {g.manageable && candidates.length ? (
+              <Button className="mt-3" variant="secondary" icon={<ShellIcon name="user-plus" size={15} />} onClick={() => setAdding(true)}>
+                {ut("mc.grAddAdmins")}
+              </Button>
             ) : null}
           </Panel>
           <Panel
@@ -409,6 +507,15 @@ function GroupRecord({
         </div>
       </div>
 
+      <AddAdminsDrawer
+        key={g.id}
+        open={adding}
+        groupId={g.id}
+        groupTitle={g.title}
+        candidates={candidates}
+        onClose={() => setAdding(false)}
+        onAdded={onChanged}
+      />
       {removing ? (
         <Modal
           title={ut("mc.grRemoveTitle").replace("{name}", removing.fullName)}

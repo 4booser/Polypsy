@@ -33,6 +33,8 @@ import {
   sameFilters,
   sampleDraft,
   sampleDraftChanged,
+  setAllOptions,
+  setOptionRisk,
   setScaleBands,
   structureFromModel,
   toggleBand,
@@ -256,6 +258,15 @@ describe("структура модели (редактор)", () => {
     const a = toggleOption(toggleOption(newQuestionBlock("q1"), "o3", order), "o1", order);
     expect(a.options.map((o) => o.optionId)).toEqual(["o1", "o3"]);
     expect(toggleOption(a, "o3", order).options.map((o) => o.optionId)).toEqual(["o1"]);
+  });
+
+  test("«Усі / Жодної» у вопроса: все варианты в порядке вопроса, пометка «ВШР» отмеченного остаётся", () => {
+    const order = ["o1", "o2", "o3"];
+    const risky = setOptionRisk(toggleOption(newQuestionBlock("q1"), "o2", order), "o2", true);
+    const all = setAllOptions(risky, order, true, order);
+    expect(all.options.map((o) => o.optionId)).toEqual(["o1", "o2", "o3"]);
+    expect(all.options.find((o) => o.optionId === "o2")!.highRisk, "«Усі» стёрли пометку «ВШР»").toBe(true);
+    expect(setAllOptions(all, order, false, order).options).toEqual([]);
   });
 
   /*

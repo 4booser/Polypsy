@@ -815,6 +815,13 @@ export function toggleOption(block: QuestionBlock, optionId: string, order: read
   return { ...block, options: sortBy([...block.options, newOptionRow(optionId)], (o) => o.optionId, order) };
 }
 
+/** «Усі» / «Жодної» по вопросу — как у полос шкалы: пометки «ВШР» отмеченных остаются */
+export function setAllOptions(block: QuestionBlock, optionIds: readonly string[], on: boolean, order: readonly string[]): QuestionBlock {
+  if (!on) return { ...block, options: [] };
+  const kept = optionIds.map((id) => block.options.find((o) => o.optionId === id) ?? newOptionRow(id));
+  return { ...block, options: sortBy(kept, (o) => o.optionId, order) };
+}
+
 /** Пометка «ВШР» у отмеченного варианта */
 export function setOptionRisk(block: QuestionBlock, optionId: string, highRisk: boolean): QuestionBlock {
   return { ...block, options: block.options.map((o) => (o.optionId === optionId ? { ...o, highRisk } : o)) };

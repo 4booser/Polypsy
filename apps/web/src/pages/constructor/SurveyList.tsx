@@ -10,11 +10,11 @@ import type {
 } from "@quizzy/shared";
 import { api, download } from "../../api";
 import { useResource } from "../../useResource";
-import { Loading, useAction, useToast } from "../../ui";
+import { eachOf, Loading, useAction, useToast } from "../../ui";
 import { AlertChip, AlertStrip, KV } from "../../ui/records";
 import { DataTable, type Column } from "../../ui/DataTable";
 import { Drawer, DrawerSection } from "../../ui/Drawer";
-import { FilterBar, ViewPills, type ViewItem } from "../../ui/filters";
+import { BulkBar, FilterBar, ViewPills, type ViewItem } from "../../ui/filters";
 import { Ic } from "../../ui/icons";
 import { KbdHints } from "../../ui/kbd";
 import { useHotkeys } from "../../ui/keys";
@@ -35,9 +35,10 @@ import { Mi } from "../methods/icons";
 import { DOMAIN_KEY, domainKey, rightsKey } from "../methods/labels";
 import { attentionOf, grantState, keysPending, rightsPending, shortDate, splitCode } from "../methods/model";
 import { num, useCount } from "../methods/useCount";
-import { FolderForm, MoveForm } from "./CatalogueDialogs";
+import { ArchiveManyDialog, codesLine, FolderForm, MoveForm, MoveManyForm } from "./CatalogueDialogs";
 import {
   DEFAULT_PER,
+  assignPending,
   catalogueHref,
   domainCounts,
   domainFrom,
@@ -402,7 +403,19 @@ function PeekBody({ s, groupTitle, folderTitle }: { s: SurveyListItem; groupTitl
 type Dialog =
   | { kind: "folder"; folder: SurveyFolder | null }
   | { kind: "move"; survey: SurveyListItem }
-  | { kind: "archive"; survey: SurveyListItem };
+  | { kind: "archive"; survey: SurveyListItem }
+  /* отмеченные строки: перенос в группу и папку, снятие с использования */
+  | { kind: "moveMany" }
+  | { kind: "archiveMany" };
+
+const NOTHING_PICKED: ReadonlyMap<string, SurveyListItem> = new Map();
+
+/** Отметка без ушедших: перенесённых, снятых, возвращённых */
+function without(rows: ReadonlyMap<string, SurveyListItem>, gone: readonly SurveyListItem[]): Map<string, SurveyListItem> {
+  const next = new Map(rows);
+  for (const s of gone) next.delete(s.id);
+  return next;
+}
 
 type Side = { kind: "assign" | "exports" | "peek"; survey: SurveyListItem };
 
@@ -555,6 +568,30 @@ export function SurveyList() {
   const [side, setSide] = useState<Side | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [importIssues, setImportIssues] = useState<Issue[] | null>(null);
+  /* «Призначити» отмеченным — свой ящик: у строки он про одну методику */
+  const [assignMany, setAssignMany] = useState(false);
+
+  /*
+   * Отметка строк живёт поверх страниц: «Вибрати всі 27» отмечает и те, что
+   * на других страницах, а листание её не сбрасывает. Привязана к вкладке:
+   * у опубликованных, черновиков и снятых свои действия, и отмеченное на
+   * одной вкладке на другой не действует.
+   */
+  const [pick, setPick] = useState<{ tab: CatalogueTab; rows: ReadonlyMap<string, SurveyListItem> }>(() => ({
+    tab,
+    rows: NOTHING_PICKED,
+  }));
+  const picked = pick.tab === tab ? pick.rows : NOTHING_PICKED;
+  const pickedKeys = useMemo(() => new Set(picked.keys()), [picked]);
+  /*
+   * Строки отмеченных — свежие из всего каталога, когда он перечитан: после
+   * переноса, где группа сменилась, а папка нет, следующий шаг считается от
+   * того, где методика лежит сейчас, а не где её отметили.
+   */
+  const freshById = useMemo(() => new Map((everything.data ?? []).map((s) => [s.id, s] as const)), [everything.data]);
+  const pickedRows = useMemo(() => [...picked.values()].map((s) => freshById.get(s.id) ?? s), [picked, freshById]);
+  const setPicked = (rows: ReadonlyMap<string, SurveyListItem>) => setPick({ tab, rows });
+  const unpick = (gone: readonly SurveyListItem[]) => setPick((prev) => ({ tab: prev.tab, rows: without(prev.rows, gone) }));
 
   /* назначения строки — только когда открыт её ящик: сказать, у кого методика уже есть */
   const grants = useResource(() => api.grants(side!.survey.id).catch(() => [] as SurveyGrant[]), [side?.survey.id], {
@@ -603,6 +640,36 @@ export function SurveyList() {
   const restore = async (s: SurveyListItem) => {
     if (await run(() => api.restoreSurvey(s.id), ut("cl.restored"))) reloadAll();
   };
+  /* вернуть отмеченные — без окна, как и одну: шаг ничего не обрывает */
+  const restoreMany = async () => {
+    let outcome: Awaited<ReturnType<typeof eachOf<SurveyListItem>>> = { done: [], failed: [] };
+    await run(async () => {
+      outcome = await eachOf(pickedRows, (s) => api.restoreSurvey(s.id));
+    });
+    const { done, failed } = outcome;
+    if (done.length) {
+      toast(ut("mc.restoredN").replace("{n}", String(done.length)), "ok");
+      unpick(done);
+      reloadAll();
+    }
+    if (failed.length) {
+      const first = failed[0]!;
+      toast(`${ut("mc.bulkFailed").replace("{n}", String(failed.length))}: ${first.item.title}${first.reason ? ` (${first.reason})` : ""}`, "err");
+    }
+  };
+  /*
+   * «Вибрати всі N» — весь вид экрана без страниц: та же вкладка, папка,
+   * поиск, группа и направление. Снятые и так пришли целиком (listQuery).
+   */
+  const selectAll = () =>
+    void run(async () => {
+      const all =
+        tab === "retired"
+          ? (list.data?.items ?? []).filter((s) => !!s.archivedAt)
+          : (await api.surveyPage({ ...query, limit: undefined, offset: undefined })).items;
+      setPicked(new Map(all.map((s) => [s.id, s] as const)));
+    });
+
   const deleteFolder = async (f: SurveyFolder) => {
     /* пустую папку удалять не страшно, непустую сервер не даст; окно — от случайного нажатия в меню */
     if (!window.confirm(ut("cat.deleteFolderConfirm"))) return;
@@ -614,6 +681,33 @@ export function SurveyList() {
 
   const newHref = current ? `/constructor?folder=${current.id}&group=${current.groupId}` : group ? `/constructor?group=${group}` : "/constructor";
   const canAssign = (s: SurveyListItem) => !s.archivedAt && s.status === "published" && s.administration !== "clinician";
+  /* отмеченные, которые можно назначить: заполняемые фахівцем назначаются не так — у них «Провести» */
+  const assignable = pickedRows.filter(canAssign);
+  /*
+   * Назначение отмеченных одному адресату (человеку или группе) — каждой
+   * методикой по очереди. Отказ по одной (её сняли, пока ящик был открыт)
+   * не обрывает остальные; не прошедшие называются кодом и причиной, и ящик
+   * оставляет адресата к повтору.
+   *
+   * Повтор выдаёт только не прошедшие пары (assignPending в catalogue.ts).
+   * Пары помнятся, пока операция не закончена: адресат, которому дошло всё,
+   * забывается сразу. Закрытый ящик операцию не заканчивает — он держит
+   * черновик (адресатов, срок, комментарий), и открытый снова продолжает её,
+   * в том числе с другим набором отмеченных. Заканчивается она вместе с
+   * черновиком — когда ящик снят со страницы (отметка снята, другая
+   * вкладка). В адресат входят срок и комментарий.
+   */
+  const assigned = useRef({ pairs: new Set<string>(), recipients: new Map<string, number>() });
+  const assignOpen = tab === "published" && assignable.length > 0;
+  useEffect(() => {
+    if (!assignOpen) assigned.current = { pairs: new Set(), recipients: new Map() };
+  }, [assignOpen]);
+  const assignEachSurvey = async (target: string, act: (s: SurveyListItem) => Promise<unknown>) => {
+    const { failed } = await assignPending(assignable, target, assigned.current.pairs, act);
+    if (!failed.length) return;
+    const list = failed.map((f) => `${splitCode(f.item.title).code ?? f.item.title}${f.reason ? `: ${f.reason}` : ""}`).join("; ");
+    throw new Error(ut(failed.length < assignable.length ? "mc.assignManyPartly" : "mc.assignManyNone").replace("{list}", list));
+  };
 
   /* строка в фокусе клавиатуры — для A, M, E */
   const focused = (): SurveyListItem | null => {
@@ -1081,6 +1175,41 @@ export function SurveyList() {
               onChange={(key) => update({ domain: key === "all" ? null : key, page: null })}
             />
           ) : null}
+          <BulkBar
+            className="mt-2.5"
+            count={picked.size}
+            total={shown?.total}
+            things
+            onSelectAll={selectAll}
+            onClear={() => setPicked(NOTHING_PICKED)}
+          >
+            {tab === "published" && assignable.length ? (
+              <Button variant="panel" size="xs" icon={<Mi.clipboardPlus />} disabled={busy} onClick={() => setAssignMany(true)}>
+                {ut("acc.grant")}
+              </Button>
+            ) : null}
+            <Button variant="panel" size="xs" icon={<Mi.folderInput />} disabled={busy} onClick={() => setDialog({ kind: "moveMany" })}>
+              {ut("mc.bulkMove")}
+            </Button>
+            {tab === "retired" ? (
+              <Button variant="panel" size="xs" icon={<Mi.archiveRestore />} disabled={busy} onClick={() => void restoreMany()}>
+                {ut("cl.restoreAction")}
+              </Button>
+            ) : (
+              <Button
+                variant="panel"
+                size="xs"
+                icon={<Ic.archive />}
+                disabled={busy}
+                onClick={() =>
+                  /* одну снимают прежним окном — с подтверждением кодом */
+                  setDialog(pickedRows.length === 1 ? { kind: "archive", survey: pickedRows[0]! } : { kind: "archiveMany" })
+                }
+              >
+                {ut("cl.archive")}
+              </Button>
+            )}
+          </BulkBar>
         </div>
         {shelves.error ? (
           <Loading error={shelves.error} onRetry={shelves.reload} bare />
@@ -1094,14 +1223,27 @@ export function SurveyList() {
           /*
            * Колонка «Методика» забирает остаток ширины и режет длинное по
            * многоточию: max-width 0 при ширине 100 % у её ячеек — иначе
-           * таблица растягивается по самому длинному описанию.
+           * таблица растягивается по самому длинному описанию. Она вторая:
+           * первая — отметка строки.
            */
-          <div className="[&_td:first-child]:w-full [&_td:first-child]:max-w-0 [&_th:first-child]:w-full">
+          <div className="[&_td:nth-child(2)]:w-full [&_td:nth-child(2)]:max-w-0 [&_th:nth-child(2)]:w-full">
           <DataTable
             rows={shown.items}
             columns={shownColumns}
             rowKey={(s) => s.id}
             label={ut("mc.catTitle")}
+            selectable
+            selected={pickedKeys}
+            onSelectedChange={(keys) => {
+              /* отмеченные с других страниц — из прежней отметки, с этой — из строк страницы */
+              const onPage = new Map(shown.items.map((s) => [s.id, s] as const));
+              const next = new Map<string, SurveyListItem>();
+              for (const k of keys) {
+                const row = picked.get(k) ?? onPage.get(k);
+                if (row) next.set(k, row);
+              }
+              setPicked(next);
+            }}
             onRowClick={(s) => navigate(s.status === "draft" ? `/constructor/${s.id}` : `/surveys/${s.id}`)}
             isRowActive={(s) => side?.survey.id === s.id}
             rowActions={rowActions}
@@ -1125,6 +1267,7 @@ export function SurveyList() {
           bar
           keys={[
             ["J K", ut("mc.keyRows")],
+            ["X", ut("mc.keyPick")],
             ["Enter", ut("mc.keyOpen")],
             ["A", ut("mc.keyAssign")],
             ["M", ut("mc.keyMove")],
@@ -1199,6 +1342,50 @@ export function SurveyList() {
         </>
       ) : null}
 
+      {/*
+        «Призначити» отмеченным: каждому выбранному человеку — каждая методика
+        (повтор выдачи только переставляет срок, routes/access.ts), группе — так
+        же по одной методике. Смонтирован, пока есть что назначать: закрытый с
+        набранными людьми ящик остаётся черновиком и открывается снова.
+      */}
+      {assignOpen ? (
+        <AssignDrawer
+          choose="recipients"
+          open={assignMany}
+          onClose={() => setAssignMany(false)}
+          onReturn={() => setAssignMany(true)}
+          title={
+            assignable.length === 1
+              ? ut("mc.assignTitle").replace("{code}", splitCode(assignable[0]!.title).code ?? splitCode(assignable[0]!.title).name)
+              : ut("mc.assignManyTitle").replace("{what}", count(assignable.length, "methods"))
+          }
+          sub={codesLine(assignable, ut("mc.andMore"))}
+          note={
+            assignable.length < pickedRows.length
+              ? ut("mc.assignManySkipped").replace("{n}", String(pickedRows.length - assignable.length))
+              : undefined
+          }
+          draftName={ut("mc.assignManyDraft")}
+          assignOne={(userId, due, note) =>
+            assignEachSurvey(`u:${userId}|${due ?? ""}|${note ?? ""}`, (s) => api.grant(s.id, userId, note ?? undefined, due))
+          }
+          assignGroup={async (groupId, due, note) => {
+            const target = `g:${groupId}|${due ?? ""}|${note ?? ""}`;
+            /* сколько людей получило — и от прошлой попытки: повтор выдаёт только оставшиеся методики */
+            const { recipients } = assigned.current;
+            await assignEachSurvey(target, async (s) => {
+              const res = await api.assignSurveyToPatientGroup(groupId, { surveyId: s.id, expiresAt: due, note });
+              recipients.set(target, Math.max(recipients.get(target) ?? 0, res.recipients));
+            });
+            // дошло всё — операция для группы закончена: число отдаётся и забывается
+            const n = recipients.get(target) ?? 0;
+            recipients.delete(target);
+            return { recipients: n };
+          }}
+          onAssigned={() => undefined}
+        />
+      ) : null}
+
       {dialog?.kind === "folder" ? (
         <FolderForm
           folder={dialog.folder}
@@ -1227,7 +1414,31 @@ export function SurveyList() {
           survey={dialog.survey}
           onClose={() => setDialog(null)}
           onDone={() => {
+            unpick([dialog.survey]);
             setDialog(null);
+            setSide(null);
+            reloadAll();
+          }}
+        />
+      ) : null}
+      {dialog?.kind === "moveMany" && pickedRows.length ? (
+        <MoveManyForm
+          surveys={pickedRows}
+          folders={folders}
+          groups={groups}
+          onClose={() => setDialog(null)}
+          onMoved={(moved) => {
+            unpick(moved);
+            reloadAll();
+          }}
+        />
+      ) : null}
+      {dialog?.kind === "archiveMany" && pickedRows.length ? (
+        <ArchiveManyDialog
+          surveys={pickedRows}
+          onClose={() => setDialog(null)}
+          onDone={(archived) => {
+            unpick(archived);
             setSide(null);
             reloadAll();
           }}

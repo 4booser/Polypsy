@@ -4,7 +4,22 @@ import type { Battery, Invite, SurveyListItem } from "@quizzy/shared";
 import { api } from "../api";
 import { useAuth } from "../auth";
 import { day } from "../format";
-import { Avatar, Callout, DataTable, Empty, FilterBar, Loading, Modal, Screen, Tooltip, useAction, useUrlState, type Column } from "../ui";
+import {
+  Avatar,
+  Callout,
+  DataTable,
+  eachOf,
+  Empty,
+  FilterBar,
+  Loading,
+  Modal,
+  Screen,
+  Tooltip,
+  useAction,
+  useToast,
+  useUrlState,
+  type Column,
+} from "../ui";
 import { cx } from "../ui/cx";
 import { Ic } from "../ui/icons";
 import { Panel } from "../ui/layout";
@@ -73,7 +88,10 @@ export default function Invites() {
   const [q, setQ] = useUrlState("q");
   const [wantsNew, setWantsNew] = useUrlState("new");
   const [revoking, setRevoking] = useState<Invite | null>(null);
+  /* отмеченные действующие ссылки к отзыву и как снять с них отметку, когда отзыв прошёл */
+  const [revokingMany, setRevokingMany] = useState<{ rows: Invite[]; clear: () => void } | null>(null);
   const { run, busy } = useAction();
+  const toast = useToast();
   const formRef = useRef<HTMLDivElement>(null);
 
   /*
@@ -266,6 +284,16 @@ export default function Invites() {
                 label={ut("inv.title")}
                 initialSort={{ key: "expires" }}
                 isRowActive={(r) => fresh?.code === r.code}
+                selectable
+                bulkActions={(picked, clear) => {
+                  /* отзывается только действующая ссылка — как и у строки */
+                  const live = picked.filter((r) => inviteState(r, now) === "live");
+                  return live.length ? (
+                    <Button variant="panel" size="xs" icon={<Ic.ban />} disabled={busy} onClick={() => setRevokingMany({ rows: live, clear })}>
+                      {live.length < picked.length ? `${ut("inv.revoke")} (${live.length})` : ut("inv.revoke")}
+                    </Button>
+                  ) : null;
+                }}
                 empty={<Empty compact title={ut("invA.noneInView")} />}
                 rowActions={(r) =>
                   inviteState(r, now) === "live" ? (
@@ -360,6 +388,50 @@ export default function Invites() {
           <p className="m-0 text-body text-text-2">
             {fill(ut("invA.revokeText"), { used: revoking.usedCount, max: revoking.maxUses })}
           </p>
+        </Modal>
+      ) : null}
+      {revokingMany ? (
+        <Modal
+          title={fill(ut("invA.revokeManyTitle"), { n: revokingMany.rows.length })}
+          icon={<Ic.ban />}
+          onClose={() => setRevokingMany(null)}
+          footer={
+            <>
+              <Button
+                variant="danger"
+                disabled={busy}
+                onClick={() =>
+                  run(async () => {
+                    /* каждую по очереди: отказ одной не отменяет остальных */
+                    const { done, failed } = await eachOf(revokingMany.rows, (r) => api.revokeInvite(r.id));
+                    if (done.length) toast(fill(ut("invA.revokedN"), { n: done.length }), "ok");
+                    if (failed.length) {
+                      const codes = failed.map((f) => f.item.code).join(", ");
+                      toast(`${fill(ut("mc.bulkFailed"), { n: failed.length })}: ${codes}`, "err");
+                    }
+                    revokingMany.clear();
+                    setRevokingMany(null);
+                    await reload();
+                  })
+                }
+              >
+                {ut("inv.revoke")}
+              </Button>
+              <Button variant="quiet" onClick={() => setRevokingMany(null)}>
+                {ut("invA.keep")}
+              </Button>
+            </>
+          }
+        >
+          <p className="m-0 text-body text-text-2">{ut("invA.revokeManyText")}</p>
+          <ul className="m-0 mt-3 flex max-h-48 list-none flex-col gap-1 overflow-y-auto p-0">
+            {revokingMany.rows.map((r) => (
+              <li key={r.id} className="truncate text-small text-text">
+                <b className="font-extrabold">{r.code}</b>
+                <span className="text-muted">{` · ${r.batteryTitle ?? r.surveyTitle ?? ut("inv.noBattery")}`}</span>
+              </li>
+            ))}
+          </ul>
         </Modal>
       ) : null}
     </>

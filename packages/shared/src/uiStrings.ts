@@ -658,6 +658,17 @@ export const UI = {
   "cn.itemNumbers": { uk: "№Питання", ru: "№Вопроса", en: "Question No." },
   "cn.points": { uk: "Бали", ru: "Баллы", en: "Points" },
   "cn.addItem": { uk: "Додати номер питання", ru: "Добавить номер вопроса", en: "Add question number" },
+  "cn.addItems": {
+    uk: "Номери питань: один, перелік або діапазон (5; 1, 3, 7; 1-35)",
+    ru: "Номера вопросов: один, перечень или диапазон (5; 1, 3, 7; 1-35)",
+    en: "Question numbers: one, a list or a range (5; 1, 3, 7; 1-35)",
+  },
+  "cn.addItemsPh": { uk: "1-10, 15", ru: "1-10, 15", en: "1-10, 15" },
+  "cn.addItemsBad": {
+    uk: "Не розібрано: {bad}. Номер, перелік або діапазон: 5; 1, 3, 7; 1-35",
+    ru: "Не разобрано: {bad}. Номер, перечень или диапазон: 5; 1, 3, 7; 1-35",
+    en: "Could not read: {bad}. A number, a list or a range: 5; 1, 3, 7; 1-35",
+  },
   "cn.removeItem": { uk: "Прибрати питання", ru: "Убрать вопрос", en: "Remove question" },
   "cn.scoreByOption": { uk: "бал відповіді", ru: "балл ответа", en: "answer score" },
   "cn.danglingItem": { uk: "такого питання в тесті немає", ru: "такого вопроса в тесте нет", en: "there is no such question in the test" },
@@ -4796,7 +4807,6 @@ export const UI = {
 
   /* пустые выборы */
   "sel.pickPatient": { uk: "виберіть пацієнта", ru: "выберите пациента", en: "select a patient" },
-  "sel.pickStaff": { uk: "— виберіть співробітника —", ru: "— выберите сотрудника —", en: "— select a staff member —" },
   "sel.pick": { uk: "— виберіть —", ru: "— выберите —", en: "— select —" },
   "sel.noName": { uk: "· без імені", ru: "· без имени", en: "· no name" },
 
@@ -6835,6 +6845,8 @@ export const UI = {
   "kit.selected": { uk: "Вибрано", ru: "Выбрано", en: "Selected" },
   "kit.selectAll": { uk: "Вибрати всі рядки", ru: "Выбрать все строки", en: "Select all rows" },
   "kit.selectAllN": { uk: "Вибрати всіх {n}", ru: "Выбрать всех {n}", en: "Select all {n}" },
+  /* не люди, а вещи — методики, наборы: «всі», а не «всіх» */
+  "kit.selectAllThingsN": { uk: "Вибрати всі {n}", ru: "Выбрать все {n}", en: "Select all {n}" },
   "kit.selectRow": { uk: "Вибрати рядок", ru: "Выбрать строку", en: "Select row" },
   "kit.clearSelection": { uk: "Зняти вибір", ru: "Снять выбор", en: "Clear selection" },
   "kit.rowActions": { uk: "Дії з рядком", ru: "Действия со строкой", en: "Row actions" },
@@ -7204,6 +7216,11 @@ export const UI = {
   },
   "adm2.rightsOf": { uk: "прав із {total} діють зараз", ru: "прав из {total} действуют сейчас", en: "of {total} rights in effect now" },
   "adm2.nOf": { uk: "{n} з {total}", ru: "{n} из {total}", en: "{n} of {total}" },
+  "adm2.groupAll": {
+    uk: "{role}: усі права «{group}»",
+    ru: "{role}: все права «{group}»",
+    en: "{role}: all permissions in «{group}»",
+  },
   "adm2.nPersonalExceptions": {
     uk: "{n} особистий виняток|{n} особисті винятки|{n} особистих винятків|{n} особистого винятку",
     ru: "{n} личное исключение|{n} личных исключения|{n} личных исключений|{n} личного исключения",
@@ -8178,6 +8195,9 @@ export const UI = {
   "pg2.noDeadline": { uk: "без строку", ru: "без срока", en: "no deadline" },
   "pg2.addNote": { uk: "Додаються лише люди вашої зони", ru: "Добавляются только люди вашей зоны", en: "Only people in your scope can be added" },
   "pg2.addedN": { uk: "Додано до групи: {n}", ru: "Добавлено в группу: {n}", en: "Added to the group: {n}" },
+  "pg2.foundOutside": { uk: "Ще не в групі: {n}", ru: "Ещё не в группе: {n}", en: "Not in the group yet: {n}" },
+  "pg2.addAllN": { uk: "Додати всіх ({n})", ru: "Добавить всех ({n})", en: "Add all ({n})" },
+  "pg2.addShownN": { uk: "Додати всіх показаних ({n})", ru: "Добавить всех показанных ({n})", en: "Add all shown ({n})" },
   /* карточка группы (pages/patientGroups/PatientGroupCard.tsx, GroupState.tsx) */
   "pg2.edit": { uk: "Редагувати", ru: "Редактировать", en: "Edit" },
   "pg2.testsN.one": { uk: "{n} тест", ru: "{n} тест", en: "{n} test" },
@@ -8350,6 +8370,7 @@ export const UI = {
   "srch2.ruleExcerpt": { uk: "Показується уривок, а не весь запис", ru: "Показывается отрывок, а не вся запись", en: "An excerpt is shown, not the whole note" },
   "srch2.ruleZone": { uk: "Лише записи пацієнтів вашої зони", ru: "Только записи пациентов вашей зоны", en: "Only notes of patients in your scope" },
   "srch2.narrow": { uk: "Звузити знайдене", ru: "Сузить найденное", en: "Narrow results" },
+  "srch2.all": { uk: "Усі", ru: "Все", en: "All" },
   "srch2.kind": { uk: "Вид запису", ru: "Вид записи", en: "Note type" },
   "srch2.author": { uk: "Автор", ru: "Автор", en: "Author" },
   "srch2.recent": { uk: "Нещодавні запити", ru: "Недавние запросы", en: "Recent searches" },
@@ -12892,6 +12913,7 @@ export const UI = {
   },
   "mc.assignGroupBtn": { uk: "Призначити групі", ru: "Назначить группе", en: "Assign to group" },
   "mc.assignN": { uk: "Призначити ({n})", ru: "Назначить ({n})", en: "Assign ({n})" },
+  "mc.addAllFound": { uk: "Додати всіх знайдених ({n})", ru: "Добавить всех найденных ({n})", en: "Add everyone found ({n})" },
   "mc.noPatientGroups": {
     uk: "Груп пацієнтів поки немає — їх збирають на екрані «Групи пацієнтів».",
     ru: "Групп пациентов пока нет — их собирают на экране «Группы пациентов».",
@@ -13020,6 +13042,61 @@ export const UI = {
     ru: "Совпадает — можно снимать.",
     en: "It matches — you can retire it.",
   },
+  /* отмеченные методики каталога: массовые действия */
+  "mc.keyPick": { uk: "вибрати", ru: "выбрать", en: "select" },
+  "mc.bulkFailed": { uk: "Не вдалося: {n}", ru: "Не удалось: {n}", en: "Failed: {n}" },
+  "mc.bulkMove": { uk: "Перемістити", ru: "Переместить", en: "Move" },
+  "mc.bulkMoveN": { uk: "Перемістити ({n})", ru: "Переместить ({n})", en: "Move ({n})" },
+  "mc.bulkMoveTitle": { uk: "Перемістити методики", ru: "Переместить методики", en: "Move instruments" },
+  "mc.bulkMoveGroupHint": {
+    uk: "Група визначає, хто бачить методику: її адміністратори бачать і людей, які методику проходили.",
+    ru: "Группа определяет, кто видит методику: её администраторы видят и людей, которые методику проходили.",
+    en: "The group decides who sees an instrument: its administrators also see the people who took it.",
+  },
+  "mc.bulkMovePickGroup": { uk: "Оберіть групу", ru: "Выберите группу", en: "Choose a group" },
+  "mc.bulkMoveRoot": { uk: "Без папки, у корені групи", ru: "Без папки, в корне группы", en: "No folder, at the group root" },
+  "mc.bulkMoveNothing": {
+    uk: "Усі вибрані методики вже тут.",
+    ru: "Все выбранные методики уже здесь.",
+    en: "All selected instruments are already here.",
+  },
+  "mc.bulkMoveNoGroups": {
+    uk: "Методики переносять у групу методик, а вам не видно жодної.",
+    ru: "Методики переносят в группу методик, а вам не видна ни одна.",
+    en: "Instruments are moved into an instrument group, but none are visible to you.",
+  },
+  "mc.movedN": { uk: "Перенесено: {n}", ru: "Перенесено: {n}", en: "Moved: {n}" },
+  "mc.arManyTitle": { uk: "Зняти з використання {what}?", ru: "Снять с использования {what}?", en: "Retire {what}?" },
+  "mc.arManyLead": {
+    uk: "Ці методики перестануть видавати й проходити: вони зникнуть зі списків, наборів, кіоска й кабінетів пацієнтів.",
+    ru: "Эти методики перестанут выдавать и проходить: они исчезнут из списков, наборов, киоска и кабинетов пациентов.",
+    en: "These instruments will no longer be assigned or taken: they disappear from lists, batteries, the kiosk and patient portals.",
+  },
+  "mc.arManyConfirm": {
+    uk: "Щоб підтвердити, введіть кількість методик: {n}",
+    ru: "Чтобы подтвердить, введите количество методик: {n}",
+    en: "To confirm, type the number of instruments: {n}",
+  },
+  "mc.arManyConfirmHint": {
+    uk: "Кнопка стане доступною, коли число збігатиметься зі списком.",
+    ru: "Кнопка станет доступной, когда число совпадёт со списком.",
+    en: "The button becomes available when the number matches the list.",
+  },
+  "mc.archivedN": { uk: "Знято з використання: {n}", ru: "Снято с использования: {n}", en: "Retired: {n}" },
+  "mc.restoredN": { uk: "Повернуто в роботу: {n}", ru: "Возвращено в работу: {n}", en: "Returned to use: {n}" },
+  "mc.assignManyTitle": { uk: "Призначити {what}", ru: "Назначить {what}", en: "Assign {what}" },
+  "mc.assignManyDraft": { uk: "призначення вибраних методик", ru: "назначения выбранных методик", en: "assignment of the selected instruments" },
+  "mc.assignManyPartly": {
+    uk: "Не призначено: {list}. Решту методик призначено.",
+    ru: "Не назначено: {list}. Остальные методики назначены.",
+    en: "Not assigned: {list}. The other instruments were assigned.",
+  },
+  "mc.assignManyNone": { uk: "Не призначено: {list}", ru: "Не назначено: {list}", en: "Not assigned: {list}" },
+  "mc.assignManySkipped": {
+    uk: "Не призначаються: {n}, їх заповнює фахівець",
+    ru: "Не назначаются: {n}, их заполняет специалист",
+    en: "Not assigned: {n}, a clinician fills them in",
+  },
   "mc.n.items.one": { uk: "пункт", ru: "пункт", en: "item" },
   "mc.n.items.few": { uk: "пункти", ru: "пункта", en: "items" },
   "mc.n.items.many": { uk: "пунктів", ru: "пунктов", en: "items" },
@@ -13104,6 +13181,12 @@ export const UI = {
   "mc.accNow": { uk: "Призначення зараз", ru: "Назначения сейчас", en: "Assignments now" },
   "mc.accRevoke": { uk: "Відкликати", ru: "Отозвать", en: "Revoke" },
   "mc.accRevoked": { uk: "Призначення відкликано", ru: "Назначение отозвано", en: "Assignment revoked" },
+  "mc.accRevokedN": { uk: "Відкликано призначень: {n}", ru: "Отозвано назначений: {n}", en: "Assignments revoked: {n}" },
+  "mc.accRevokeManyTitle": {
+    uk: "Відкликати {code} у вибраних ({n})?",
+    ru: "Отозвать {code} у выбранных ({n})?",
+    en: "Revoke {code} from the selected ({n})?",
+  },
   "mc.accRevokeText": {
     uk: "Пацієнт перестане бачити методику, якщо вона лише за призначенням. Зібрані проходження лишаються.",
     ru: "Пациент перестанет видеть методику, если она только по назначению. Собранные прохождения остаются.",
@@ -13178,6 +13261,11 @@ export const UI = {
     ru: "Отметьте шкалы в таблице переключателем «Перевести»",
     en: "Mark scales in the table with the Convert switch",
   },
+  "mc.nmPickAll": {
+    uk: "Усі шкали, яким вистачає вибірки ({n}), або позначте в таблиці перемикачем «Перевести»",
+    ru: "Все шкалы, которым хватает выборки ({n}), или отметьте в таблице переключателем «Перевести»",
+    en: "All scales with a large enough sample ({n}), or mark them in the table with the Convert switch",
+  },
   "mc.nmPublishN": {
     uk: "Опублікувати для шкал: {n}",
     ru: "Опубликовать для шкал: {n}",
@@ -13251,6 +13339,12 @@ export const UI = {
     ru: "Отозвать набор у {name}?",
     en: "Revoke the battery from {name}?",
   },
+  "mc.btCancelManyTitle": {
+    uk: "Відкликати набір у вибраних ({n})?",
+    ru: "Отозвать набор у выбранных ({n})?",
+    en: "Revoke the battery from the selected ({n})?",
+  },
+  "mc.btCancelledN": { uk: "Відкликано призначень: {n}", ru: "Отозвано назначений: {n}", en: "Assignments revoked: {n}" },
   "mc.btCreated": { uk: "зібрано {date}", ru: "собран {date}", en: "assembled {date}" },
   "mc.btDaysLate": { uk: "−{n} дн.", ru: "−{n} дн.", en: "−{n} d" },
   "mc.btDelete": { uk: "Видалити набір", ru: "Удалить набор", en: "Delete the battery" },
@@ -13325,7 +13419,11 @@ export const UI = {
   "mc.btWaitsClinician": { uk: "чекає фахівця", ru: "ждёт специалиста", en: "waiting for a clinician" },
   "mc.btWithLate": { uk: "З простроченими", ru: "С просроченными", en: "With overdue" },
   "mc.grAdd": { uk: "Додати", ru: "Добавить", en: "Add" },
-  "mc.grAdminAdded": { uk: "Адміністратора додано", ru: "Администратор добавлен", en: "Administrator added" },
+  "mc.grAddAdmins": { uk: "Додати адміністраторів", ru: "Добавить администраторов", en: "Add administrators" },
+  "mc.grAddN": { uk: "Додати ({n})", ru: "Добавить ({n})", en: "Add ({n})" },
+  "mc.grPickAll": { uk: "Вибрати всіх ({n})", ru: "Выбрать всех ({n})", en: "Select all ({n})" },
+  "mc.grAdminsAddedN": { uk: "Додано адміністраторів: {n}", ru: "Добавлено администраторов: {n}", en: "Administrators added: {n}" },
+  "mc.grStaffSearch": { uk: "Ім’я або пошта", ru: "Имя или почта", en: "Name or email" },
   "mc.grAdminRemoved": { uk: "Адміністратора знято", ru: "Администратор снят", en: "Administrator removed" },
   "mc.grAdminsHint": {
     uk: "Бачать і ведуть усі методики групи, призначають їхній доступ.",
@@ -15260,6 +15358,17 @@ export const UI = {
     ru: "Ссылка и код перестанут действовать сразу. Вошли уже {used} из {max}: их учётные записи остаются.",
     en: "The link and code stop working at once. {used} of {max} have signed in: their accounts stay.",
   },
+  "invA.revokeManyTitle": {
+    uk: "Відкликати вибрані запрошення ({n})?",
+    ru: "Отозвать выбранные приглашения ({n})?",
+    en: "Revoke the selected invitations ({n})?",
+  },
+  "invA.revokeManyText": {
+    uk: "Посилання й коди перестануть діяти одразу. Облікові записи тих, хто вже увійшов, лишаються.",
+    ru: "Ссылки и коды перестанут действовать сразу. Учётные записи тех, кто уже вошёл, остаются.",
+    en: "The links and codes stop working at once. Accounts of those who already signed in stay.",
+  },
+  "invA.revokedN": { uk: "Відкликано запрошень: {n}", ru: "Отозвано приглашений: {n}", en: "Invitations revoked: {n}" },
   "invA.revokeTitle": {
     uk: "Відкликати запрошення {code}?",
     ru: "Отозвать приглашение {code}?",

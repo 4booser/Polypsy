@@ -23,6 +23,8 @@ describe("назначение каждому по очереди", () => {
     expect(asked, "отказ одному оборвал остальных").toEqual(["p1", "p2", "p3"]);
     expect(result.done).toBe(2);
     expect(result.failed.map((p) => p.id)).toEqual(["p2"]);
+    // причина — у не прошедшего, по id: ящик печатает её рядом с именем
+    expect([...result.reasons]).toEqual([["p2", "вже призначено"]]);
   });
 
   test("все прошли — не прошедших нет; никто — все в списке", async () => {
