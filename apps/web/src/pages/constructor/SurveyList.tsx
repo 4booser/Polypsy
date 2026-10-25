@@ -38,6 +38,7 @@ import { num, useCount } from "../methods/useCount";
 import { ArchiveManyDialog, codesLine, FolderForm, MoveForm, MoveManyForm } from "./CatalogueDialogs";
 import {
   DEFAULT_PER,
+  assignPending,
   catalogueHref,
   domainCounts,
   domainFrom,
@@ -686,11 +687,21 @@ export function SurveyList() {
    * Назначение отмеченных одному адресату (человеку или группе) — каждой
    * методикой по очереди. Отказ по одной (её сняли, пока ящик был открыт)
    * не обрывает остальные; не прошедшие называются кодом и причиной, и ящик
-   * оставляет адресата к повтору. Повтор выдаёт и прошедшие заново, но выдача
-   * с тем же сроком ничего не меняет (routes/access.ts, term: "set").
+   * оставляет адресата к повтору.
+   *
+   * Повтор выдаёт только не прошедшие пары (assignPending в catalogue.ts).
+   * Пары помнятся для текущего набора отмеченных методик; в адресат входят
+   * срок и комментарий — назначение с другим сроком новое.
    */
-  const assignEachSurvey = async (act: (s: SurveyListItem) => Promise<unknown>) => {
-    const { failed } = await eachOf(assignable, act);
+  const assigned = useRef<{ of: string; pairs: Set<string>; recipients: Map<string, number> }>({
+    of: "",
+    pairs: new Set(),
+    recipients: new Map(),
+  });
+  const assignEachSurvey = async (target: string, act: (s: SurveyListItem) => Promise<unknown>) => {
+    const of = assignable.map((s) => s.id).join(",");
+    if (assigned.current.of !== of) assigned.current = { of, pairs: new Set(), recipients: new Map() };
+    const { failed } = await assignPending(assignable, target, assigned.current.pairs, act);
     if (!failed.length) return;
     const list = failed.map((f) => `${splitCode(f.item.title).code ?? f.item.title}${f.reason ? `: ${f.reason}` : ""}`).join("; ");
     throw new Error(ut(failed.length < assignable.length ? "mc.assignManyPartly" : "mc.assignManyNone").replace("{list}", list));
@@ -1353,14 +1364,18 @@ export function SurveyList() {
               : undefined
           }
           draftName={ut("mc.assignManyDraft")}
-          assignOne={(userId, due, note) => assignEachSurvey((s) => api.grant(s.id, userId, note ?? undefined, due))}
+          assignOne={(userId, due, note) =>
+            assignEachSurvey(`u:${userId}|${due ?? ""}|${note ?? ""}`, (s) => api.grant(s.id, userId, note ?? undefined, due))
+          }
           assignGroup={async (groupId, due, note) => {
-            let recipients = 0;
-            await assignEachSurvey(async (s) => {
+            const target = `g:${groupId}|${due ?? ""}|${note ?? ""}`;
+            /* сколько людей получило — и от прошлой попытки: повтор выдаёт только оставшиеся методики */
+            const seen = () => assigned.current.recipients.get(target) ?? 0;
+            await assignEachSurvey(target, async (s) => {
               const res = await api.assignSurveyToPatientGroup(groupId, { surveyId: s.id, expiresAt: due, note });
-              recipients = Math.max(recipients, res.recipients);
+              assigned.current.recipients.set(target, Math.max(seen(), res.recipients));
             });
-            return { recipients };
+            return { recipients: seen() };
           }}
           onAssigned={() => undefined}
         />

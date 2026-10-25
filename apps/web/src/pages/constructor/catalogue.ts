@@ -265,6 +265,35 @@ export function movePlan(
   return { group, folder: folderNow !== folderId };
 }
 
+/**
+ * Выдать отмеченные методики одному адресату, пропуская пары «адресат ×
+ * методика», прошедшие в прошлой попытке; `done` пополняется прошедшими.
+ *
+ * Повторная выдача не безобидна: grantAccess заново начинает выдачу и
+ * обнуляет счёт попыток, и методика, которую человек успел пройти между
+ * попытками, получила бы ещё одну. Отказ по одной методике не обрывает
+ * остальные (как eachOf в ui/action.ts).
+ */
+export async function assignPending<S extends { id: string }>(
+  surveys: readonly S[],
+  target: string,
+  done: Set<string>,
+  act: (s: S) => Promise<unknown>,
+): Promise<{ failed: { item: S; reason: string | null }[] }> {
+  const failed: { item: S; reason: string | null }[] = [];
+  for (const s of surveys) {
+    const key = `${target}|${s.id}`;
+    if (done.has(key)) continue;
+    try {
+      await act(s);
+      done.add(key);
+    } catch (e) {
+      failed.push({ item: s, reason: e instanceof Error && e.message ? e.message : null });
+    }
+  }
+  return { failed };
+}
+
 /* ─────────── даты ─────────── */
 
 /**

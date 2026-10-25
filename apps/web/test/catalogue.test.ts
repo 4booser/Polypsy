@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { SurveyFolder, SurveyListItem } from "@quizzy/shared";
 import {
+  assignPending,
   catalogueHref,
   domainCounts,
   domainFrom,
@@ -261,5 +262,38 @@ describe("отмеченные методики", () => {
     expect(asked).toEqual(["a", "b", "c"]);
     expect(result.done).toEqual(["a", "c"]);
     expect(result.failed).toEqual([{ item: "b", reason: "Немає доступу до групи" }]);
+  });
+});
+
+describe("назначение отмеченных методик", () => {
+  /*
+   * Мутация: при повторе выдавать все методики заново — методика, которую
+   * человек прошёл между попытками, получает ещё одну попытку (grantAccess
+   * обнуляет счёт), а журнал — вторую выдачу.
+   */
+  test("повтор выдаёт только не прошедшие пары, отказ одной не обрывает остальные", async () => {
+    const surveys = [{ id: "phq9" }, { id: "gad7" }, { id: "who5" }];
+    const done = new Set<string>();
+    const asked: string[] = [];
+    let gadFails = true;
+    const act = async (s: { id: string }) => {
+      asked.push(s.id);
+      if (s.id === "gad7" && gadFails) throw new Error("Методику знято з використання");
+    };
+
+    const first = await assignPending(surveys, "u:p1", done, act);
+    expect(asked).toEqual(["phq9", "gad7", "who5"]);
+    expect(first.failed).toEqual([{ item: { id: "gad7" }, reason: "Методику знято з використання" }]);
+
+    asked.length = 0;
+    gadFails = false;
+    const retry = await assignPending(surveys, "u:p1", done, act);
+    expect(asked, "повтор выдал заново прошедшие").toEqual(["gad7"]);
+    expect(retry.failed).toEqual([]);
+
+    // другой адресат — пары свои
+    asked.length = 0;
+    await assignPending(surveys, "u:p2", done, act);
+    expect(asked).toEqual(["phq9", "gad7", "who5"]);
   });
 });
