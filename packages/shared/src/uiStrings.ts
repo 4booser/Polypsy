@@ -664,6 +664,11 @@ export const UI = {
     en: "Question numbers: one, a list or a range (5; 1, 3, 7; 1-35)",
   },
   "cn.addItemsPh": { uk: "1-10, 15", ru: "1-10, 15", en: "1-10, 15" },
+  "cn.addItemsBad": {
+    uk: "Не розібрано: {bad}. Номер, перелік або діапазон: 5; 1, 3, 7; 1-35",
+    ru: "Не разобрано: {bad}. Номер, перечень или диапазон: 5; 1, 3, 7; 1-35",
+    en: "Could not read: {bad}. A number, a list or a range: 5; 1, 3, 7; 1-35",
+  },
   "cn.removeItem": { uk: "Прибрати питання", ru: "Убрать вопрос", en: "Remove question" },
   "cn.scoreByOption": { uk: "бал відповіді", ru: "балл ответа", en: "answer score" },
   "cn.danglingItem": { uk: "такого питання в тесті немає", ru: "такого вопроса в тесте нет", en: "there is no such question in the test" },
@@ -13081,6 +13086,12 @@ export const UI = {
   "mc.restoredN": { uk: "Повернуто в роботу: {n}", ru: "Возвращено в работу: {n}", en: "Returned to use: {n}" },
   "mc.assignManyTitle": { uk: "Призначити {what}", ru: "Назначить {what}", en: "Assign {what}" },
   "mc.assignManyDraft": { uk: "призначення вибраних методик", ru: "назначения выбранных методик", en: "assignment of the selected instruments" },
+  "mc.assignManyPartly": {
+    uk: "Не призначено: {list}. Решту методик призначено.",
+    ru: "Не назначено: {list}. Остальные методики назначены.",
+    en: "Not assigned: {list}. The other instruments were assigned.",
+  },
+  "mc.assignManyNone": { uk: "Не призначено: {list}", ru: "Не назначено: {list}", en: "Not assigned: {list}" },
   "mc.assignManySkipped": {
     uk: "Не призначаються: {n}, їх заповнює фахівець",
     ru: "Не назначаются: {n}, их заполняет специалист",

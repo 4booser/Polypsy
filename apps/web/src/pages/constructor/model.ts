@@ -596,24 +596,34 @@ export function addRowItem(scale: DraftScale, matchKey: string | null, item: num
  * Ключ шкалы в пособии печатается диапазонами и перечнями — «1–35 и 41»,
  * — и набирать его по одному номеру значило бы три десятка нажатий на
  * шкалу. Разделители — запятая, точка с запятой, пробел; диапазон — любым
- * тире. Номера вне методики (больше `max`) и мусор отбрасываются: ряд
- * ключа на несуществующий пункт проверка структуры всё равно не пропустит.
- * Пока пунктов нет (`max` = 0), верхней границы нет, но диапазон не длиннее
- * тысячи — опечатка «1-100000» не должна вешать экран.
+ * тире, и пробелы вокруг тире не делят его на два номера («1 – 10»).
+ *
+ * Чего не разобрать, то возвращается в `bad`, и ряд не меняется вовсе:
+ * ключ, в который молча легли концы диапазона без середины, считает баллы
+ * неверно и при этом проходит проверку структуры. Номер за концом методики
+ * не отбрасывается: ряд покажет его янтарём, как и набранный по одному, а
+ * проверка структуры назовёт. Диапазон длиннее тысячи — опечатка.
  */
-export function parseItemList(raw: string, max: number): number[] {
-  const top = max > 0 ? max : Number.POSITIVE_INFINITY;
+export function parseItemList(raw: string): { items: number[]; bad: string[] } {
   const out = new Set<number>();
-  for (const part of raw.split(/[\s,;]+/)) {
-    const m = /^(\d+)(?:[-–—](\d+))?$/.exec(part);
-    if (!m) continue;
-    const a = Number(m[1]);
-    const b = m[2] === undefined ? a : Number(m[2]);
-    const from = Math.max(1, Math.min(a, b));
-    const to = Math.min(top, Math.max(a, b), from + 999);
+  const bad: string[] = [];
+  const tokens = raw
+    .replace(/\s*[-–—]\s*/g, "-")
+    .split(/[\s,;]+/)
+    .filter(Boolean);
+  for (const token of tokens) {
+    const m = /^(\d+)(?:-(\d+))?$/.exec(token);
+    const a = m ? Number(m[1]) : 0;
+    const b = m?.[2] === undefined ? a : Number(m[2]);
+    const from = Math.min(a, b);
+    const to = Math.max(a, b);
+    if (!m || from < 1 || to - from >= 1000) {
+      bad.push(token);
+      continue;
+    }
     for (let n = from; n <= to; n++) out.add(n);
   }
-  return [...out].sort((x, y) => x - y);
+  return { items: [...out].sort((x, y) => x - y), bad };
 }
 
 /** Несколько номеров в ряд ключа разом — каждый по правилам одного (addRowItem) */

@@ -582,7 +582,13 @@ export function SurveyList() {
   }));
   const picked = pick.tab === tab ? pick.rows : NOTHING_PICKED;
   const pickedKeys = useMemo(() => new Set(picked.keys()), [picked]);
-  const pickedRows = useMemo(() => [...picked.values()], [picked]);
+  /*
+   * Строки отмеченных — свежие из всего каталога, когда он перечитан: после
+   * переноса, где группа сменилась, а папка нет, следующий шаг считается от
+   * того, где методика лежит сейчас, а не где её отметили.
+   */
+  const freshById = useMemo(() => new Map((everything.data ?? []).map((s) => [s.id, s] as const)), [everything.data]);
+  const pickedRows = useMemo(() => [...picked.values()].map((s) => freshById.get(s.id) ?? s), [picked, freshById]);
   const setPicked = (rows: ReadonlyMap<string, SurveyListItem>) => setPick({ tab, rows });
   const unpick = (gone: readonly SurveyListItem[]) => setPick((prev) => ({ tab: prev.tab, rows: without(prev.rows, gone) }));
 
@@ -676,6 +682,19 @@ export function SurveyList() {
   const canAssign = (s: SurveyListItem) => !s.archivedAt && s.status === "published" && s.administration !== "clinician";
   /* отмеченные, которые можно назначить: заполняемые фахівцем назначаются не так — у них «Провести» */
   const assignable = pickedRows.filter(canAssign);
+  /*
+   * Назначение отмеченных одному адресату (человеку или группе) — каждой
+   * методикой по очереди. Отказ по одной (её сняли, пока ящик был открыт)
+   * не обрывает остальные; не прошедшие называются кодом и причиной, и ящик
+   * оставляет адресата к повтору. Повтор выдаёт и прошедшие заново, но выдача
+   * с тем же сроком ничего не меняет (routes/access.ts, term: "set").
+   */
+  const assignEachSurvey = async (act: (s: SurveyListItem) => Promise<unknown>) => {
+    const { failed } = await eachOf(assignable, act);
+    if (!failed.length) return;
+    const list = failed.map((f) => `${splitCode(f.item.title).code ?? f.item.title}${f.reason ? `: ${f.reason}` : ""}`).join("; ");
+    throw new Error(ut(failed.length < assignable.length ? "mc.assignManyPartly" : "mc.assignManyNone").replace("{list}", list));
+  };
 
   /* строка в фокусе клавиатуры — для A, M, E */
   const focused = (): SurveyListItem | null => {
@@ -1334,15 +1353,13 @@ export function SurveyList() {
               : undefined
           }
           draftName={ut("mc.assignManyDraft")}
-          assignOne={async (userId, due, note) => {
-            for (const s of assignable) await api.grant(s.id, userId, note ?? undefined, due);
-          }}
+          assignOne={(userId, due, note) => assignEachSurvey((s) => api.grant(s.id, userId, note ?? undefined, due))}
           assignGroup={async (groupId, due, note) => {
             let recipients = 0;
-            for (const s of assignable) {
+            await assignEachSurvey(async (s) => {
               const res = await api.assignSurveyToPatientGroup(groupId, { surveyId: s.id, expiresAt: due, note });
               recipients = Math.max(recipients, res.recipients);
-            }
+            });
             return { recipients };
           }}
           onAssigned={() => undefined}

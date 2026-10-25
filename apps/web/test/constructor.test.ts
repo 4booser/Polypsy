@@ -378,23 +378,29 @@ describe("конструктор по макету", () => {
 
   /*
    * Мутация: брать только первое число строки — «1-35» добавляет один пункт,
-   * и ключ СР-45 снова набирается тридцатью пятью нажатиями.
+   * и ключ СР-45 снова набирается тридцатью пятью нажатиями. Вторая: делить
+   * по пробелам до тире — «1 – 10» ложится в ключ концами без середины.
    */
   test("ряд ключа набирается перечнем и диапазоном, как в пособии", () => {
-    expect(parseItemList("5", 40)).toEqual([5]);
-    expect(parseItemList("1-5, 9; 12 3", 40)).toEqual([1, 2, 3, 4, 5, 9, 12]);
-    // любое тире, обратный диапазон, повторы
-    expect(parseItemList("8–6, 7, 7", 40)).toEqual([6, 7, 8]);
-    // за концом методики и мусор — мимо
-    expect(parseItemList("38-45, abc, 0, -2", 40)).toEqual([38, 39, 40]);
-    // пунктов ещё нет: границы нет, но диапазон не длиннее тысячи
-    expect(parseItemList("1-100000", 0)).toHaveLength(1000);
-    expect(parseItemList("", 40)).toEqual([]);
+    expect(parseItemList("5")).toEqual({ items: [5], bad: [] });
+    expect(parseItemList("1-5, 9; 12 3").items).toEqual([1, 2, 3, 4, 5, 9, 12]);
+    // любое тире, пробелы вокруг него, обратный диапазон, повторы
+    expect(parseItemList("1 – 4, 8—6, 7, 7").items).toEqual([1, 2, 3, 4, 6, 7, 8]);
+    // номер за концом методики остаётся: ряд покажет его янтарём
+    expect(parseItemList("38-41").items).toEqual([38, 39, 40, 41]);
+    expect(parseItemList("")).toEqual({ items: [], bad: [] });
+  });
 
+  test("неразобранное называется, и ряд не меняется вовсе", () => {
+    expect(parseItemList("1-5, abc, 0, -2, 7-").bad).toEqual(["abc", "0", "-2", "7-"]);
+    // диапазон длиннее тысячи — опечатка, а не тысяча пунктов
+    expect(parseItemList("1-100000").bad).toEqual(["1-100000"]);
+  });
+
+  test("номера ряда разом получают вес ряда", () => {
     let s = scale({ key: [{ item: 2, matchKey: "yes", weight: 4 }] });
-    s = addRowItems(s, "yes", parseItemList("1-3", 10));
+    s = addRowItems(s, "yes", parseItemList("1-3").items);
     expect(s.key.filter((k) => k.matchKey === "yes").map((k) => k.item)).toEqual([2, 1, 3]);
-    // пункты ряда получают вес ряда
     expect(s.key.every((k) => k.weight === 4)).toBe(true);
   });
 

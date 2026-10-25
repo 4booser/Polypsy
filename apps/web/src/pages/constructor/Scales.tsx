@@ -299,11 +299,24 @@ function ScaleCard({
   const others = draft.scales.filter((x) => x.uid !== s.uid && x.code);
   const title = s.title[lang] || s.title.uk || s.title.ru || `${ut("cn.scale")} ${index + 1}`;
 
-  /* номер, перечень или диапазон: «5», «1-10, 15» — ключ из пособия набирается одной строкой */
+  /*
+   * Номер, перечень или диапазон: «5», «1-10, 15» — ключ из пособия
+   * набирается одной строкой. Неразобранное не добавляется вовсе: поле
+   * остаётся открытым, красным и называет, что не так.
+   */
+  const [badItems, setBadItems] = useState<string | null>(null);
+  const startAdding = (rowKey: string | null) => {
+    setAdding(rowKey);
+    setBadItems(null);
+  };
   const commitItem = (matchKey: string | null, raw: string) => {
-    const items = parseItemList(raw, draft.questions.length);
+    const { items, bad } = parseItemList(raw);
+    if (bad.length) {
+      setBadItems(bad.join(", "));
+      return;
+    }
     if (items.length) onChange((cur) => addRowItems(cur, matchKey, items));
-    setAdding(null);
+    startAdding(null);
   };
 
   const termKeys = occurrenceKeys(s.corrections, (c) => c.from);
@@ -385,21 +398,31 @@ function ScaleCard({
                   );
                 })}
                 {adding === rowKey ? (
-                  <span className="inline-block w-28">
-                    <Input
-                      inputMode="numeric"
-                      autoFocus
-                      aria-label={ut("cn.addItems")}
-                      title={ut("cn.addItems")}
-                      placeholder={ut("cn.addItemsPh")}
-                      className="h-7 px-1.5"
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") commitItem(row.matchKey, e.currentTarget.value);
-                        if (e.key === "Escape") setAdding(null);
-                      }}
-                      onBlur={(e) => commitItem(row.matchKey, e.currentTarget.value)}
-                    />
-                  </span>
+                  <>
+                    <span className="inline-block w-28">
+                      <Input
+                        inputMode="numeric"
+                        autoFocus
+                        aria-label={ut("cn.addItems")}
+                        aria-invalid={badItems ? true : undefined}
+                        aria-describedby={badItems ? `${labelId}-bad` : undefined}
+                        title={ut("cn.addItems")}
+                        placeholder={ut("cn.addItemsPh")}
+                        className="h-7 px-1.5"
+                        onChange={() => setBadItems(null)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") commitItem(row.matchKey, e.currentTarget.value);
+                          if (e.key === "Escape") startAdding(null);
+                        }}
+                        onBlur={(e) => commitItem(row.matchKey, e.currentTarget.value)}
+                      />
+                    </span>
+                    {badItems ? (
+                      <span id={`${labelId}-bad`} role="alert" className="basis-full text-caption font-semibold text-risk-ink">
+                        {ut("cn.addItemsBad").replace("{bad}", badItems)}
+                      </span>
+                    ) : null}
+                  </>
                 ) : null}
                 <Tooltip label={ut("cn.addItem")}>
                   <Button
@@ -407,7 +430,7 @@ function ScaleCard({
                     size="icon-sm"
                     className="size-7"
                     aria-label={`${ut("cn.addItem")}: ${answerLabel(row.matchKey)}`}
-                    onClick={() => setAdding(rowKey)}
+                    onClick={() => startAdding(rowKey)}
                   >
                     <Ic.plus size={14} />
                   </Button>

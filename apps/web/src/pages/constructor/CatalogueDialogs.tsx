@@ -247,7 +247,10 @@ export function MoveManyForm({
   folders: SurveyFolder[];
   groups: SurveyGroupWithCounts[];
   onClose: () => void;
-  /** Перенесённые: экран снимает с них отметку и перечитывает каталог */
+  /**
+   * Что-то перенесено: экран снимает отметку с перенесённых до конца и
+   * перечитывает каталог (в том числе ради тех, у кого сменилась одна группа)
+   */
   onMoved: (moved: SurveyListItem[]) => void;
 }) {
   const { ut } = useLang();
@@ -275,24 +278,28 @@ export function MoveManyForm({
 
   async function submit() {
     let outcome: { done: SurveyListItem[]; failed: Missed[] } = { done: [], failed: [] };
+    /* сменившие группу: откажет перенос в папку — методика уже в корне новой группы, и повтор считается отсюда */
+    const regrouped = new Map<string, SurveyListItem>();
     await run(async () => {
       outcome = await eachOf(todo, async (s) => {
         const plan = movePlan(s, groupId, folderId || null);
-        if (plan.group) await api.updateSurvey(s.id, { groupId });
+        if (plan.group) {
+          await api.updateSurvey(s.id, { groupId });
+          regrouped.set(s.id, { ...s, groupId, folderId: null });
+        }
         if (plan.folder) await api.moveSurvey(s.id, folderId || null);
       });
     });
     const { done, failed } = outcome;
-    if (done.length) {
-      toast(ut("mc.movedN").replace("{n}", String(done.length)), "ok");
-      onMoved(done);
-    }
+    if (done.length) toast(ut("mc.movedN").replace("{n}", String(done.length)), "ok");
+    // перечитать каталог и тогда, когда до конца не дошла ни одна, но группу сменили
+    if (done.length || regrouped.size) onMoved(done);
     if (!failed.length) {
       if (done.length) onClose();
       return;
     }
     const failedIds = new Set(failed.map((f) => f.item.id));
-    setLeft((prev) => prev.filter((s) => failedIds.has(s.id)));
+    setLeft((prev) => prev.filter((s) => failedIds.has(s.id)).map((s) => regrouped.get(s.id) ?? s));
     setMissed(failed);
   }
 
