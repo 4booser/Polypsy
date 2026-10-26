@@ -188,7 +188,7 @@ export const UI = {
    * сущностям: «Сегодня» — то, с чего начинается смена, «Разбор» — то, что
    * делают, когда приёмы закончились.
    */
-  "pt.openCard": { uk: "Відкрити картку", ru: "Открыть карту", en: "Open card" },
+  "pt.openCard": { uk: "Відкрити картку пацієнта", ru: "Открыть карточку пациента", en: "Open the patient card" },
   "pt.whoIsThis": { uk: "Хто це", ru: "Кто это", en: "Who is this" },
   "pt.pickRow": { uk: "Виберіть рядок, щоб побачити коротку довідку", ru: "Выберите строку, чтобы увидеть краткую справку", en: "Select a row to see a brief summary" },
   "nav.group.overview": { uk: "Огляд", ru: "Обзор", en: "Summary" },
@@ -9334,8 +9334,8 @@ export const UI = {
     ru: "закреплены за вами: {mine}, с открытым сигналом: {risk}",
     en: "assigned to you: {mine}, with an open signal: {risk}",
   },
-  "plist.views": { uk: "Подання", ru: "Представления", en: "Views" },
-  "plist.view": { uk: "Подання", ru: "Представление", en: "View" },
+  "plist.views": { uk: "Відбори", ru: "Отборы", en: "Saved filters" },
+  "plist.view": { uk: "Відбір", ru: "Отбор", en: "Filter" },
   "plist.export": { uk: "Вивантажити список у CSV", ru: "Выгрузить список в CSV", en: "Export the list to CSV" },
   "plist.exportPicked": { uk: "Вивантажити", ru: "Выгрузить", en: "Export" },
   "plist.moreGroups": { uk: "Інші групи", ru: "Другие группы", en: "Other groups" },
@@ -9354,10 +9354,9 @@ export const UI = {
   "plist.measuredAt": { uk: "Дата заміру", ru: "Дата замера", en: "Measured" },
   "plist.lead": { uk: "Фахівець", ru: "Специалист", en: "Clinician" },
   "plist.nextVisit": { uk: "Наступний прийом", ru: "Следующий приём", en: "Next appointment" },
-  "plist.notBooked": { uk: "не записано", ru: "не записан", en: "not booked" },
+  "plist.notBooked": { uk: "не записано", ru: "нет записи", en: "not booked" },
   "plist.noLead": { uk: "не закріплено", ru: "не закреплён", en: "unassigned" },
   "plist.noMeasure": { uk: "замірів немає", ru: "замеров нет", en: "no measures" },
-  "plist.never": { uk: "ще не проходив", ru: "ещё не проходил", en: "never measured" },
   "plist.daysAgo": { uk: "{n} дн. тому", ru: "{n} дн. назад", en: "{n} d ago" },
   "plist.today": { uk: "сьогодні", ru: "сегодня", en: "today" },
   "plist.tomorrow": { uk: "завтра", ru: "завтра", en: "tomorrow" },

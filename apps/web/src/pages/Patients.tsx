@@ -772,13 +772,12 @@ function useColumns({
       header: ut("plist.nextVisit"),
       width: 160,
       render: (r) => {
-        if (!r.nextVisit)
-          return (
-            <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-small font-semibold text-warn">
-              <Ic.calendar size={13} />
-              {ut("plist.notBooked")}
-            </span>
-          );
+        /*
+         * «Не записано» — обычное состояние почти каждого в стационаре, а не
+         * тревога: приглушённым словом, без янтаря. Внимания требует неявка
+         * без новой записи и просроченный осмотр — их говорит «Стан».
+         */
+        if (!r.nextVisit) return <span className="whitespace-nowrap text-small text-muted">{ut("plist.notBooked")}</span>;
         const w = whenShort(r.nextVisit.at, now, locale, words);
         return (
           <span className={cx("whitespace-nowrap text-small", w.soon ? "font-extrabold text-violet-ink" : "text-text")}>
@@ -795,7 +794,8 @@ function useColumns({
 /** Когда мерили: дата, сегодня — словом; 30+ дней — янтарём с числом дней */
 function MeasuredAt({ r, now, locale, today }: { r: PatientListItem; now: number; locale: string; today: string }) {
   const { ut } = useLang();
-  if (!r.lastResponseAt) return <span className="text-small text-muted">{ut("plist.never")}</span>;
+  /* замеров не было — прочерк: «замірів немає» уже сказано в колонке замера рядом */
+  if (!r.lastResponseAt) return <span className="text-small text-muted">—</span>;
   const d = daysAgo(r.lastResponseAt, now);
   const stale = d >= 30;
   return (
