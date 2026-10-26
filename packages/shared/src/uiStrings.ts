@@ -14907,8 +14907,8 @@ export const UI = {
     en: "Settings live in your profile, not the browser: the same on any computer in the department.",
   },
   "dashA.kvAvgSub": { uk: "на одне проходження", ru: "на одно прохождение", en: "per completion" },
-  "dashA.kvCompletion": { uk: "Доходимість", ru: "Доходимость", en: "Completion rate" },
-  "dashA.kvCompletionSub": { uk: "почали й завершили", ru: "начали и завершили", en: "started and finished" },
+  "dashA.kvCompletion": { uk: "Завершеність", ru: "Завершённость", en: "Completion rate" },
+  "dashA.kvCompletionSub": { uk: "завершили з тих, хто почав", ru: "завершили из начавших", en: "finished of those who started" },
   "dashA.kvPasses": { uk: "Проходжень за 30 днів", ru: "Прохождений за 30 дней", en: "Completions in 30 days" },
   "dashA.kvPassesSub": { uk: "усього {all}", ru: "всего {all}", en: "{all} in total" },
   "dashA.kvPublished": { uk: "опубліковано {n}", ru: "опубликовано {n}", en: "{n} published" },
@@ -16461,6 +16461,9 @@ export const UI = {
    * подписывался каждый психолог, хотя группу он не администрирует.
    */
   "home.roleStaff": { uk: "Співробітник відділення", ru: "Сотрудник отделения", en: "Department staff" },
+  /* «Проходження за останній час»: изменение от малой базы — числом, а не «на 1900 %» */
+  "home.moreN": { uk: "на {n} більше", ru: "на {n} больше", en: "{n} more" },
+  "home.lessN": { uk: "на {n} менше", ru: "на {n} меньше", en: "{n} fewer" },
 
   // ── ux-card ──
 

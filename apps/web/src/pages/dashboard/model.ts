@@ -1,5 +1,5 @@
 import { ALWAYS_VISIBLE_WIDGETS, DASH_WIDGETS, type DashWidget } from "@quizzy/shared";
-import type { BandSpread, ConditionDomain, ConditionSummary, Severity, UiKey, WorkKind } from "@quizzy/shared";
+import type { BandSpread, ConditionDomain, ConditionSummary, Permission, Severity, UiKey, WorkKind } from "@quizzy/shared";
 import type { Column, SharePart } from "../../charts/clinical";
 
 /**
@@ -274,22 +274,72 @@ export interface WidgetLayout {
 
 const isWidget = (k: string): k is DashWidget => (DASH_WIDGETS as readonly string[]).includes(k);
 
+/*
+ * Віджети аналитики отделения: их данные отдают маршруты под правом
+ * analytics.read (/api/analytics/overview, /api/dashboard/conditions). Без
+ * права их нет на зведенні вовсе: віджет, который всегда отвечает отказом,
+ * — не настройка, а сломанный экран (и строка access.denied в журнале).
+ */
+const ANALYTICS_WIDGETS: ReadonlySet<DashWidget> = new Set<DashWidget>(["passes", "collect", "conditions"]);
+
+/*
+ * Счёт отделения — проходження за останній час, методики та збір: работа
+ * заведующего, а не день специалиста. У того, кто зведення не настраивал,
+ * они выключены, пока он не смотрит на отделение целиком (BoardScope).
+ */
+const DEPARTMENT_WIDGETS: readonly DashWidget[] = ["passes", "collect"];
+
+/**
+ * Что из віджетів человеку доступно и что стоит по умолчанию.
+ *
+ *   analytics  — есть право analytics.read: без него віджетов аналитики нет;
+ *   department — смотрит на отделение целиком: заведующий и выше по лестнице
+ *                (ступень 2+, та же, что открывает «Права») или суперадмин.
+ *
+ * Одного права analytics.read мало: встроенная роль «психолог» несёт его
+ * вместе со всей клиникой, и счёт отделения стоял бы по умолчанию у каждого
+ * специалиста.
+ */
+export interface BoardScope {
+  analytics: boolean;
+  department: boolean;
+}
+
+export const FULL_SCOPE: BoardScope = { analytics: true, department: true };
+
+export function boardScope(
+  user: { role?: string | null; ladderRank?: number | null } | null | undefined,
+  can: (p: Permission) => boolean,
+): BoardScope {
+  const analytics = can("analytics.read");
+  return { analytics, department: analytics && (user?.role === "superadmin" || (user?.ladderRank ?? 0) > 1) };
+}
+
 /**
  * Порядок и выключенные из профиля. Незнакомые ключи (профиль новее консоли)
  * молча пропускаются, новые віджети встают в конец своим порядком по
  * умолчанию, а случаи риска не выключаются, что бы ни пришло.
+ *
+ * Сохранённое в профиле главнее умолчаний всегда; умолчание по роли
+ * (`scope`) действует только у того, кто зведення ещё не настраивал.
+ * Недоступные віджети (нет права) в раскладку не попадают вовсе — ни на
+ * экран, ни в «Налаштувати зведення».
  */
-export function widgetLayout(prefs: { order?: string[]; hidden?: string[] } | null | undefined): WidgetLayout {
+export function widgetLayout(
+  prefs: { order?: string[]; hidden?: string[] } | null | undefined,
+  scope: BoardScope = FULL_SCOPE,
+): WidgetLayout {
   const seen = new Set<DashWidget>();
   const order: DashWidget[] = [];
   for (const k of [...(prefs?.order ?? []), ...DASH_WIDGETS]) {
-    if (isWidget(k) && !seen.has(k)) {
+    if (isWidget(k) && !seen.has(k) && (scope.analytics || !ANALYTICS_WIDGETS.has(k))) {
       seen.add(k);
       order.push(k);
     }
   }
+  const off: readonly string[] = prefs ? (prefs.hidden ?? []) : scope.department ? [] : DEPARTMENT_WIDGETS;
   const hidden = new Set<DashWidget>(
-    (prefs?.hidden ?? []).filter(isWidget).filter((k) => !(ALWAYS_VISIBLE_WIDGETS as readonly string[]).includes(k)),
+    off.filter(isWidget).filter((k) => order.includes(k) && !(ALWAYS_VISIBLE_WIDGETS as readonly string[]).includes(k)),
   );
   return { order, hidden };
 }
@@ -409,11 +459,20 @@ export function passColumns(
   };
 }
 
+/**
+ * База, от которой изменение читается процентом. Меньше неё — числом:
+ * «на 1900 % більше» при 8 → 160 пугает, но ничего не сообщает, а «на 152
+ * більше» — сообщает.
+ */
+export const SMALL_BASE = 20;
+
 export interface PassSummary {
   current: number;
   previous: number;
-  /** Изменение к предыдущему окну, проценты; null — сравнивать не с чем */
+  /** Изменение к предыдущему окну, проценты; null — сравнивать не с чем или база мала (SMALL_BASE) */
   changePct: number | null;
+  /** Изменение к предыдущему окну числом — им и говорят о малой базе */
+  delta: number;
   /** Средний будний день окна; null — будних дней нет */
   weekdayMean: number | null;
   today: number;
@@ -436,7 +495,8 @@ export function passSummary(timeline: readonly DayCount[], days: number, today: 
   return {
     current,
     previous,
-    changePct: previous > 0 ? Math.round(((current - previous) / previous) * 100) : null,
+    changePct: previous >= SMALL_BASE ? Math.round(((current - previous) / previous) * 100) : null,
+    delta: current - previous,
     weekdayMean: weekdays ? Math.round((weekdaySum / weekdays) * 10) / 10 : null,
     today: byDay.get(today) ?? 0,
     weekAgo: byDay.get(addDays(today, -7)) ?? 0,
