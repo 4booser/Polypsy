@@ -4,6 +4,7 @@ import { queryInt, t } from "@quizzy/shared";
 import type { RiskAlert } from "@quizzy/shared";
 import { db } from "../db";
 import { questions, riskAlerts, scales, surveys, users } from "../db/schema";
+import { alertLabelsIn } from "../lib/alertLabels";
 import { audit } from "../lib/audit";
 import { badRequest, langOf, parseQuery } from "../lib/http";
 import { fullNameOf } from "../lib/auth";
@@ -105,6 +106,8 @@ alertRoutes.get("/", async (c) => {
     for (const u of ackRows) ackNames.set(u.id, fullNameOf(u));
   }
 
+  // подпись — на языке читателя: снимок записан на языке прохождения (lib/alertLabels.ts)
+  const labelOf = await alertLabelsIn(lang, page.map((r) => r.alert));
   const now = Date.now();
   const result: RiskAlert[] = page.map((r) => {
     /*
@@ -132,7 +135,7 @@ alertRoutes.get("/", async (c) => {
     questionTitle: t((r.questionTitle ?? r.scaleTitle) as never, lang),
     userId: r.alert.userId,
     respondent: r.respondentLast ? fullNameOf({ firstName: r.respondentFirst!, lastName: r.respondentLast, middleName: r.respondentMiddle }) : null,
-    label: r.alert.label,
+    label: labelOf(r.alert),
     severity: r.alert.severity,
     at: r.alert.at,
     acknowledgedBy: r.alert.acknowledgedBy,

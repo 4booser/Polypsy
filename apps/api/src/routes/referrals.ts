@@ -27,6 +27,7 @@ import {
   surveys,
   users,
 } from "../db/schema";
+import { alertLabelsIn } from "../lib/alertLabels";
 import { audit } from "../lib/audit";
 import { bandLabelsIn } from "../lib/bandLabels";
 import { afterCursor, decodeExactCursor, encodeCursor, exactAt } from "../lib/cursor";
@@ -488,6 +489,11 @@ referralRoutes.get("/summary/:userId", async (c) => {
     .where(eq(referrals.userId, userId))
     .orderBy(desc(referrals.createdAt));
 
+  // подписи открытых сигналов — на языке читателя (lib/alertLabels.ts)
+  const alertLabelOf = await alertLabelsIn(
+    lang,
+    alertRows.filter((a) => !a.alert.acknowledgedAt).map((a) => a.alert),
+  );
   const summary: CaseSummary = {
     userId,
     fullName: fullNameOf(patient),
@@ -499,7 +505,7 @@ referralRoutes.get("/summary/:userId", async (c) => {
       .filter((a) => !a.alert.acknowledgedAt)
       .map((a) => ({
         id: a.alert.id,
-        label: a.alert.label,
+        label: alertLabelOf(a.alert),
         severity: a.alert.severity,
         at: a.alert.at,
         surveyTitle: t(a.surveyTitle as never, lang),
