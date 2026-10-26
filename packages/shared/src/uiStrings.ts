@@ -16407,12 +16407,12 @@ export const UI = {
   "home.tallyNoshow": {
     uk: "{n} неявка|{n} неявки|{n} неявок|{n} неявки",
     ru: "{n} неявка|{n} неявки|{n} неявок|{n} неявки",
-    en: "{n} no-show|{n} no-shows",
+    en: "{n} no-show|{n} no-shows|{n} no-shows|{n} no-shows",
   },
   "home.tallyHere": {
     uk: "{n} триває|{n} тривають|{n} тривають|{n} тривають",
     ru: "{n} идёт|{n} идут|{n} идут|{n} идут",
-    en: "{n} in progress",
+    en: "{n} in progress|{n} in progress|{n} in progress|{n} in progress",
   },
   "home.tallyAhead": { uk: "{n} попереду", ru: "{n} впереди", en: "{n} ahead" },
   "home.daySum": { uk: "{tally}, прийом до {end}", ru: "{tally}, приём до {end}", en: "{tally}, until {end}" },
@@ -16421,7 +16421,7 @@ export const UI = {
   "home.nTasks": {
     uk: "{n} справа|{n} справи|{n} справ|{n} справи",
     ru: "{n} дело|{n} дела|{n} дел|{n} дела",
-    en: "{n} task|{n} tasks",
+    en: "{n} task|{n} tasks|{n} tasks|{n} tasks",
   },
   /*
    * Подвал віджета «Випадки ризику». Открытая очередь сложена по человеку

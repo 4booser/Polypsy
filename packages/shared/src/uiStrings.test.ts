@@ -43,7 +43,7 @@ describe("словарь оболочки", () => {
      * «вставка|вставки|вставок»): переводить в них нечего. Список тоже именной,
      * а не правило: новое совпадение сначала проверяет человек.
      */
-    const SAME_WORDS = new Set<string>(["adm2.nRights", "adm2.nInserts"]);
+    const SAME_WORDS = new Set<string>(["adm2.nRights", "adm2.nInserts", "home.tallyNoshow"]);
     // длина — по словам, без подстановок: «{roles}, {rights}, {exceptions}» переводить нечего
     const words = (text: string) => text.replace(/\{\w+\}/g, "");
     const suspicious = entries

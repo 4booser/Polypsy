@@ -322,8 +322,9 @@ describe("сводка: случаи на разбор", () => {
     };
     const html = draw(<CasesWidget alerts={alerts} meId={null} />);
     expect(html).toContain("420");
-    expect(html).toMatch(/: 140/);
-    expect(html).not.toMatch(/: 6\b/);
+    // «Відкрито 420, термінових 140.» — подвал словами (home.casesOpen), числа — из счётчиков
+    expect(html).toMatch(/(термінових|срочных) 140/);
+    expect(html).not.toMatch(/(термінових|срочных) 6\b/);
     expect(html).toMatch(/\b7\b/);
   });
 });
