@@ -379,6 +379,7 @@ describe("заметка каталога: код с отпечатком, пр�
     // вернуть код и посмотреть, как заметку читают на английском экране
     await db.update(surveyVersions).set({ note: before.note }).where(eq(surveyVersions.id, before.id));
     const res = await ask(`/api/surveys/${pss!.id}/versions`, root.token, "en");
-    expect((res.body.items as { note: string }[])[0]!.note).toBe(`Catalogue · ${edition}`);
+    // отпечаток — для установщика, в фразе его нет: машинный код специалисту ничего не говорит
+    expect((res.body.items as { note: string }[])[0]!.note).toBe("Catalogue edition");
   }, 60_000);
 });

@@ -298,7 +298,8 @@ function AccessBody({
           />
         </div>
         {grants.length === 0 ? (
-          <div className="border-t border-divider">
+          /* отступ — как у соседнего «нічого не знайдено»: без него строка липла к краю панели */
+          <div className="border-t border-divider px-4">
             <Empty compact title={ut("acc.nobody")} hint={ut("mc.accNobodyHint").replace("{code}", code ?? name)} />
           </div>
         ) : rows.length === 0 ? (

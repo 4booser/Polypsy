@@ -562,8 +562,9 @@ function BatteryRecord({
                     </Link>
                     {i.administration === "clinician" || retired ? (
                       <span className="flex flex-wrap items-center gap-1.5">
+                        {/* кто заполняет — сведение, а не сигнал: янтарь — у «чекає фахівця» в назначениях ниже */}
                         {i.administration === "clinician" ? (
-                          <Tag tone="attention" icon={<ShellIcon name="stethoscope" size={12} />}>
+                          <Tag tone="plain" icon={<ShellIcon name="stethoscope" size={12} />}>
                             {ut("bt.byClinician")}
                           </Tag>
                         ) : null}

@@ -784,8 +784,13 @@ export const SERVER_TEXTS = {
   "note.importFile": { uk: "Імпорт з файлу", ru: "Импорт из файла", en: "Imported from a file" },
   "note.copyOf": { uk: "Копія «{title}»", ru: "Копия «{title}»", en: "Copy of “{title}”" },
   "note.localNorms": { uk: "Локальні норми: {scales}", ru: "Локальные нормы: {scales}", en: "Local norms: {scales}" },
-  /* {edition} — отпечаток редакции каталога: по нему установщик узнаёт, что методику надо обновить */
-  "note.catalog": { uk: "Каталог · {edition}", ru: "Каталог · {edition}", en: "Catalogue · {edition}" },
+  /*
+   * Параметр edition — отпечаток редакции каталога: по нему установщик узнаёт,
+   * что методику надо обновить (lib/catalogInstall.ts читает его из кода, а не
+   * из фразы). В фразе его нет: «Каталог · 02b6f9e7e4ef» в истории версий —
+   * машинный код, специалисту он ничего не говорит.
+   */
+  "note.catalog": { uk: "Редакція каталогу", ru: "Редакция каталога", en: "Catalogue edition" },
   /* примечания доступа и назначений: routes/batteries.ts, lib/cascade.ts, lib/scheduler.ts, lib/invites.ts, lib/followup.ts */
   "note.battery": { uk: "Набір «{title}»", ru: "Набор «{title}»", en: "Battery “{title}”" },
   "note.cascade": {
