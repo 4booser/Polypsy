@@ -177,7 +177,7 @@ test.describe("меню консоли на телефоне", () => {
   test("спрятанные пункты меню не забирают первые нажатия Tab", async ({ page }) => {
     await login(page, "psy");
     await page.goto("/today");
-    await page.getByRole("main").getByRole("link", { name: "Сегодня" }).waitFor();
+    await page.getByRole("main").getByRole("link", { name: /^Приём/ }).waitFor();
 
     // предпосылка: на этой ширине пункты действительно спрятаны — иначе проверять нечего
     await expect(railNav(page), "на телефоне рельса разделов должна быть спрятана").toBeHidden();
@@ -211,7 +211,7 @@ test.describe("меню консоли на телефоне", () => {
   test("открытый бургер держит фокус, закрывается Esc и возвращает фокус кнопке", async ({ page }) => {
     await login(page, "psy");
     await page.goto("/today");
-    await page.getByRole("main").getByRole("link", { name: "Сегодня" }).waitFor();
+    await page.getByRole("main").getByRole("link", { name: /^Приём/ }).waitFor();
 
     const menu = await openMenu(page);
     /* фокус переехал внутрь: иначе Tab продолжает под слоем, где ничего не видно */
@@ -244,7 +244,7 @@ test.describe("меню консоли на телефоне", () => {
   test("переход по разделу закрывает бургер, а не оставляет его поверх", async ({ page }) => {
     await login(page, "psy");
     await page.goto("/today");
-    await page.getByRole("main").getByRole("link", { name: "Сегодня" }).waitFor();
+    await page.getByRole("main").getByRole("link", { name: /^Приём/ }).waitFor();
 
     await goMenu(page, "Пациенты");
 
