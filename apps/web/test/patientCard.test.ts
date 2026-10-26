@@ -124,12 +124,19 @@ describe("карточка пациента: после действия — т�
   });
 
   test("выдача методики и закрепление ничего не перечитывают", () => {
-    const assign = card.slice(card.indexOf("onAssign="), card.indexOf("onClose={() => setAssigning(false)}"));
+    const assign = card.slice(card.indexOf("onAssign={async (surveyId"), card.indexOf("sets={{"));
     expect(assign).toContain("api.grant(");
     expect(assign).not.toMatch(/reload|refresh/);
     const lead = card.slice(card.indexOf("const toggleLead"), card.indexOf("const [assigning"));
     expect(lead).toContain("withLead(");
     expect(lead).not.toMatch(/reload|refresh/);
+  });
+
+  test("назначение набора перечитывает только хронологию: назначение — её событие и пилюля шапки", () => {
+    const sets = card.slice(card.indexOf("sets={{"), card.indexOf("function ButtonLike"));
+    expect(sets).toContain("api.assignBattery(");
+    expect(sets).toContain("refresh.timeline()");
+    expect(sets).not.toMatch(/\.reload\(|refresh\.(messages|notes|conclusion)/);
   });
 
   const base = (over: Partial<PatientCard> = {}): PatientCard =>

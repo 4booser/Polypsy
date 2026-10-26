@@ -383,9 +383,9 @@ export const UI = {
   "pg.noMembers": { uk: "У групі ще немає пацієнтів — додайте знаком «+»", ru: "В группе ещё нет пациентов — добавьте знаком «+»", en: "The group has no patients yet — add them with “+”" },
   /* строка теста группы: «призначено 05.02.2023 · до 01.03.2023 · пройшли 5 з 12» */
   "pg.completed": { uk: "пройшли", ru: "прошли", en: "completed" },
-  "pg.test": { uk: "Тест", ru: "Тест", en: "Test" },
+  "pg.test": { uk: "Методика", ru: "Методика", en: "Instrument" },
   "pg.assignTest": { uk: "Призначити методику", ru: "Назначить методику", en: "Assign instrument" },
-  "pg.assigned": { uk: "Тест призначено", ru: "Тест назначен", en: "Test assigned" },
+  "pg.assigned": { uk: "Методику призначено", ru: "Методика назначена", en: "Instrument assigned" },
   /* выбор галочками: «18 вибрано» — нижний рядок кадра f05 */
   "pg.addToGroup": { uk: "Додати до групи", ru: "Добавить в группу", en: "Add to group" },
   "pg.added": { uk: "Додано до групи", ru: "Добавлены в группу", en: "Added to the group" },
@@ -8178,7 +8178,7 @@ export const UI = {
   "pg2.other": { uk: "Інше", ru: "Другое", en: "Other" },
   "pg2.favouriteSub": { uk: "показувати першою в реєстрі", ru: "показывать первой в реестре", en: "show it first in the register" },
   "pg2.savedToast": { uk: "Групу «{name}» збережено", ru: "Группа «{name}» сохранена", en: "Group “{name}” saved" },
-  "pg2.assignDraft": { uk: "призначення тесту", ru: "назначения теста", en: "test assignment" },
+  "pg2.assignDraft": { uk: "призначення", ru: "назначения", en: "the assignment" },
   "pg2.assignGroupNote": {
     uk: "Отримає кожен учасник групи, якого ви бачите",
     ru: "Получит каждый участник группы, которого вы видите",
@@ -16463,6 +16463,13 @@ export const UI = {
   /* карточка пациента: группа действий в шапке и подпись «Заключення» на кнопке */
   "card.actionsLabel": { uk: "Дії з пацієнтом", ru: "Действия с пациентом", en: "Patient actions" },
   "card.concl": { uk: "Заключення", ru: "Заключение", en: "Conclusion" },
+  /* «Призначити методику» из карточки — ящик назначения (components/AssignDrawer.tsx): методика или набор */
+  "card.assignNote": { uk: "Пацієнт побачить призначення в застосунку", ru: "Пациент увидит назначение в приложении", en: "The patient will see it in the app" },
+  "card.setAssigned": { uk: "Набір призначено", ru: "Набор назначен", en: "Set assigned" },
+  "asgd.what": { uk: "Що призначити", ru: "Что назначить", en: "What to assign" },
+  "asgd.set": { uk: "Набір", ru: "Набор", en: "Set" },
+  "asgd.setSearch": { uk: "Пошук набору за назвою", ru: "Поиск набора по названию", en: "Find a set by name" },
+  "asgd.noSets": { uk: "Наборів для призначення немає", ru: "Наборов для назначения нет", en: "No sets to assign" },
 
   // ── ux-results ──
 
