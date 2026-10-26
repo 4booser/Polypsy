@@ -97,7 +97,8 @@ export default function Account() {
     { key: "rail", label: ut("adm2.sidebar") },
   ];
 
-  const roleTitle = user?.role === "superadmin" ? ut("nav.roleSuper") : (user?.position?.trim() || ut("nav.roleAdmin"));
+  /* та же подпись, что под именем на полосе приложения (App.tsx, roleLabel) */
+  const roleTitle = user?.role === "superadmin" ? ut("nav.roleSuper") : (user?.position?.trim() || ut("home.roleStaff"));
 
   return (
     <Page

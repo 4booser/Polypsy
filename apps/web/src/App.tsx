@@ -701,8 +701,12 @@ export default function App() {
    */
   const account: AccountCard = {
     name: user.fullName,
-    /* должность человека, если она заведена; иначе — класс записи */
-    roleLabel: isSuper ? ut("nav.roleSuper") : user.position?.trim() || ut("nav.roleAdmin"),
+    /*
+     * Должность человека, если она заведена; иначе — нейтральное «співробітник
+     * відділення», а не класс записи: «Адміністратор групи» под именем
+     * психолога обещал права, которых у него нет.
+     */
+    roleLabel: isSuper ? ut("nav.roleSuper") : user.position?.trim() || ut("home.roleStaff"),
     email: user.email,
     unit: user.unit,
     build: { sha: __BUILD_SHA__, date: __BUILD_DATE__ },
