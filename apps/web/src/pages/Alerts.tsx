@@ -438,9 +438,12 @@ export default function Alerts() {
               </div>
             </div>
           ) : null}
-          <div className="mt-1.5 flex h-9 items-center gap-[7px] text-small text-muted">
-            <Ic.sortDesc size={14} />
-            {ut("al.sortLine")} <b className="font-bold text-text-2">{ut("al.sortLineB")}</b>
+          {/* одной фразой, а не двумя столбиками: по-русски строка длиннее колонки и переносилась по частям */}
+          <div className="mt-1.5 flex min-h-9 items-center gap-[7px] text-small leading-4 text-muted">
+            <Ic.sortDesc size={14} className="shrink-0" />
+            <span className="min-w-0">
+              {ut("al.sortLine")} <b className="font-bold text-text-2">{ut("al.sortLineB")}</b>
+            </span>
           </div>
         </div>
         <div
@@ -496,7 +499,7 @@ export default function Alerts() {
           ) : null}
         </div>
         <div className="flex h-[42px] shrink-0 items-center gap-3 border-t border-divider px-4 text-caption text-muted">
-          <div className="min-w-0 [&>div]:flex-nowrap [&>div]:gap-x-3">
+          <div className="min-w-0 overflow-hidden [&>div]:flex-nowrap [&>div]:gap-x-2.5">
             <KbdHints
               className="hotkeys"
               keys={[

@@ -700,7 +700,9 @@ function OtherSignals({ list }: { list: readonly AlertSignalBasis[] }) {
 /**
  * Панель «Підстава» экрана случаев (макет day-alerts): пункт, вся шкала
  * ответов с отмеченным вариантом, история пункта за курс и сумма шкалы.
- * Те же данные, что в ящике разбора, — тем же хуком.
+ * Те же данные, что в ящике разбора, — тем же хуком. Пояснения «на чому
+ * ґрунтується висновок» внизу больше нет: вид основания называет пилюля
+ * («За позначеною відповіддю», «За смугою шкали»).
  */
 export function CaseBasisPanel({ userId, c }: { userId: string; c: AlertCase }) {
   const { ut } = useLang();
@@ -726,12 +728,6 @@ export function CaseBasisPanel({ userId, c }: { userId: string; c: AlertCase }) 
             {ut("cases.openResponse")}
           </Button>
         ) : undefined
-      }
-      footer={
-        <span className="flex items-start gap-1.5 text-caption text-muted">
-          <Ic.info size={13} className="mt-px shrink-0" />
-          {ut("cases.basisHint")}
-        </span>
       }
     >
       {!cb.signals ? (
