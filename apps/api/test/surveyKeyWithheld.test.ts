@@ -179,6 +179,31 @@ describe("ключ методики и пациент (#141)", () => {
   );
 
   test(
+    "источник для персонала («Джерело») — не обследуемому: ни в методике, ни в списке; сотруднику — как есть",
+    async () => {
+      const survey = await publishedSurvey(CONTENT);
+      const note = `Переклад відділення, пороги — за вибіркою ${tag()}`;
+      const set = await appApi(`/api/surveys/${survey.id}/rights`, root.token, { method: "PATCH", body: JSON.stringify({ sourceNote: note }) });
+      expect(set.status).toBe(200);
+      const person = await patient();
+
+      const mine = await appApi<SurveyFull>(`/api/surveys/${survey.id}`, person.token);
+      expect(mine.status).toBe(200);
+      expect(Object.hasOwn(mine.body, "sourceNote"), "источник в методике пациенту").toBe(false);
+      const list = await appApi<{ items: Record<string, unknown>[] }>("/api/surveys", person.token);
+      expect(list.status).toBe(200);
+      expect(JSON.stringify(list.body).includes(note), "источник в списке пациенту").toBe(false);
+
+      // положительный контроль: сотрудник читает источник и в методике, и в списке
+      const staff = await appApi<SurveyFull>(`/api/surveys/${survey.id}`, root.token);
+      expect(staff.body.sourceNote).toBe(note);
+      const staffList = await appApi<{ items: { id: string; sourceNote?: string | null }[] }>("/api/surveys", root.token);
+      expect(staffList.body.items.find((x) => x.id === survey.id)?.sourceNote).toBe(note);
+    },
+    20_000,
+  );
+
+  test(
     "развилка по баллу: у пункта-источника вес остаётся, видимость на устройстве — как на сервере; ?version= — тоже без ключа",
     async () => {
       const survey = await publishedSurvey(CONTENT);

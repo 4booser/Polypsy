@@ -358,8 +358,14 @@ export function respondentView(survey: SurveyFull): SurveyFull {
       ),
     };
   });
+  /*
+   * Источник для персонала («Джерело» паспорта методики: чей перевод, откуда
+   * пороги) — тоже не обследуемому: его и вынесли из описания, которое тот
+   * читает перед началом.
+   */
+  const { sourceNote: _source, ...row } = survey;
   // тип клиента — SurveyFull; поля ключа у этой копии отсутствуют, и кабинеты их не читают (keyWithheld)
-  return { ...survey, keyWithheld: true, scales: [], questions: questions as unknown as Question[] };
+  return { ...row, keyWithheld: true, scales: [], questions: questions as unknown as Question[] };
 }
 
 export async function getSurvey(
