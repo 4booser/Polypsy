@@ -9,6 +9,7 @@ import type {
   SurveyListItem,
 } from "@quizzy/shared";
 import { api, download } from "../../api";
+import { useAuth } from "../../auth";
 import { useResource } from "../../useResource";
 import { eachOf, Loading, useAction, useToast } from "../../ui";
 import { AlertChip, AlertStrip, KV } from "../../ui/records";
@@ -59,15 +60,16 @@ import {
  *
  * Шапка: имя экрана, сколько методик и проходжень за 30 днів, «Нова папка»,
  * «Імпорт з файлу», «Нова методика» (N). Под ней — вкладки «Опубліковані /
- * Чернетки / Зняті з використання» с числами и строка внимания: ключи не
- * сверены, права на текст не выяснены, черновики — каждая пилюля с
- * поповером и дверью к делу.
+ * Чернетки / Зняті з використання» с числами и строка внимания: черновики,
+ * а суперадмину ещё несверенные ключи и невыясненные права на текст —
+ * каждая пилюля с поповером и дверью к делу.
  *
  * В листе: папки текущего уровня («Мої тести» и крошки), поиск, группа,
  * чипы «Напрям» с числами (что измеряет методика: shared/domains.ts), таблица
  * и страницы. Строка: код и имя, признаки (лише за призначенням,
- * критичний пункт, заповнює фахівець, права, демо), група і папка, шкали й
- * смуги, проходження за 30 днів, версія і ключі. Действия строки всплывают
+ * критичний пункт, заповнює фахівець, демо; права — суперадмину), група і
+ * папка, шкали й смуги, проходження за 30 днів, версія (и ключи — суперадмину).
+ * Действия строки всплывают
  * на наведении и фокусе (DataTable): «Призначити» (A) и «Коротко» — в
  * ящике, остальное в меню; «Зняти з використання» — окно (необратимо для
  * выдачи), «Перемістити в папку» (M) и папка — прежние окна.
@@ -164,18 +166,26 @@ function Two({ top, sub, warn }: { top: ReactNode; sub?: ReactNode; warn?: boole
   );
 }
 
-/** «ключі звірено 12.09» / «ключі не звірено» / «без підрахунку балів» */
+/** «знято 12.09» у снятой методики */
+function RetiredLine({ at }: { at: string }) {
+  const { ut } = useLang();
+  return (
+    <span className="inline-flex items-center gap-[5px] text-muted">
+      <Ic.archive size={13} />
+      {ut("mc.retiredOn").replace("{date}", shortDate(at))}
+    </span>
+  );
+}
+
+/**
+ * «ключі звірено 12.09» / «ключі не звірено» / «без підрахунку балів» —
+ * строка суперадмина: сверку ключей и права решает он (PATCH /rights), и
+ * янтарь — его дело. Остальным это факт паспорта методики, не строка списка.
+ */
 function KeysLine({ s }: { s: Pick<SurveyListItem, "scoringEnabled" | "keysVerifiedAt" | "archivedAt"> }) {
   const { ut } = useLang();
   /* снятой методике ключи уже не долг — строка говорит, когда её сняли */
-  if (s.archivedAt) {
-    return (
-      <span className="inline-flex items-center gap-[5px] text-muted">
-        <Ic.archive size={13} />
-        {ut("mc.retiredOn").replace("{date}", shortDate(s.archivedAt))}
-      </span>
-    );
-  }
+  if (s.archivedAt) return <RetiredLine at={s.archivedAt} />;
   if (!s.scoringEnabled) return <span className="text-muted">{ut("cat.scoringOff")}</span>;
   if (s.keysVerifiedAt) {
     return (
@@ -311,15 +321,27 @@ const SEVERITY: Record<string, Severity> = { none: "none", mild: "mild", moderat
 /**
  * «Коротко про методику» (mpeek): паспорт, ключи и смуги без перехода.
  * Смуги — из самой методики (api.survey), паспорт — из строки каталога.
+ * Несверенные ключи — плашкой только суперадмину (`qa`): остальным это
+ * строка паспорта, как в «Про методику».
  */
-function PeekBody({ s, groupTitle, folderTitle }: { s: SurveyListItem; groupTitle: string | null; folderTitle: string | null }) {
+function PeekBody({
+  s,
+  groupTitle,
+  folderTitle,
+  qa,
+}: {
+  s: SurveyListItem;
+  groupTitle: string | null;
+  folderTitle: string | null;
+  qa: boolean;
+}) {
   const { ut } = useLang();
   const count = useCount();
   const full = useResource(() => api.survey(s.id), [s.id]);
   const rights = rightsKey(s.rightsStatus);
   return (
     <>
-      {keysPending(s) && !s.archivedAt ? (
+      {qa && keysPending(s) && !s.archivedAt ? (
         <DrawerSection>
           <Callout
             kind="warn"
@@ -337,7 +359,7 @@ function PeekBody({ s, groupTitle, folderTitle }: { s: SurveyListItem; groupTitl
       ) : null}
       <DrawerSection title={ut("mc.peekPassport")}>
         <KV
-          w={120}
+          w={168}
           rows={[
             ...(s.description ? ([[ut("f.description"), s.description]] as [string, string][]) : []),
             [ut("dom.label"), ut(domainKey(s.domain) ?? "dom.none")],
@@ -350,7 +372,15 @@ function PeekBody({ s, groupTitle, folderTitle }: { s: SurveyListItem; groupTitl
               : []),
             [ut("mc.peekVisibility"), s.visibility === "restricted" ? ut("mc.visRestricted") : ut("mc.visPublic")],
             [ut("mc.peekWho"), s.administration === "clinician" ? ut("bt.byClinician") : ut("mc.bySelf")],
-            [ut("mc.peekRights"), rights ? ut(rights) : ut("cl.rightsUnclear")],
+            [ut("mc.peekRights"), rights ? ut(rights) : ut("mc.rightsUnclearValue")],
+            ...(s.scoringEnabled
+              ? ([
+                  [
+                    ut("mc.ovKeysChecked"),
+                    s.keysVerifiedAt ? ut("mc.ovKeysCheckedOn").replace("{date}", shortDate(s.keysVerifiedAt)) : ut("mc.ovNo"),
+                  ],
+                ] as [string, string][])
+              : []),
             ...(s.versionNumber
               ? ([[ut("mc.peekVersion"), `${s.versionNumber}, ${ut("mc.since").replace("{date}", shortDate(s.updatedAt))}`]] as [string, string][])
               : []),
@@ -428,6 +458,14 @@ export function SurveyList() {
   const { run, busy } = useAction();
   const [params, setParams] = useSearchParams();
   const fileRef = useRef<HTMLInputElement>(null);
+  /*
+   * Несверенные ключи и невыясненные права — дела учреждения, и решает их
+   * суперадмин (PATCH /api/surveys/:id/rights — только ему). Ему они —
+   * янтарём в строке внимания и в строках; врачу янтарь на каждой из
+   * семидесяти строк ничего не говорит, и ему это факт паспорта методики.
+   */
+  const { user } = useAuth();
+  const qa = user?.role === "superadmin";
 
   /*
    * Всё состояние экрана — в адресе: вкладка сегментом, папка, поиск,
@@ -779,7 +817,7 @@ export function SurveyList() {
           <ShellIcon name="stethoscope" size={13} />
         </Flag>
       ) : null}
-      {rightsPending(s) ? (
+      {qa && rightsPending(s) ? (
         <Flag label={ut("mc.flagRights")} warn>
           <Mi.scale size={13} />
         </Flag>
@@ -852,7 +890,8 @@ export function SurveyList() {
     },
     {
       key: "version",
-      header: ut("mc.colVersion"),
+      /* ключи в колонке — у суперадмина; у остальных она о версии и о снятии */
+      header: ut(qa ? "mc.colVersion" : "mc.peekVersion"),
       required: true,
       width: narrow ? 176 : 188,
       render: (s) => (
@@ -867,7 +906,7 @@ export function SurveyList() {
               <span className="text-muted">{ut("mc.noVersion")}</span>
             )
           }
-          sub={<KeysLine s={s} />}
+          sub={qa ? <KeysLine s={s} /> : s.archivedAt ? <RetiredLine at={s.archivedAt} /> : null}
         />
       ),
     },
@@ -937,36 +976,39 @@ export function SurveyList() {
     return codes.join(", ") + (items.length > 2 ? ` +${items.length - 2}` : "");
   };
 
+  /* ключи и права — пилюлями только суперадмину (см. qa); черновики — всем */
+  const keysDue = qa ? attention.keys : [];
+  const rightsDue = qa ? attention.rights : [];
   const strip =
-    attention.keys.length || attention.rights.length || (attention.drafts.length && tab !== "drafts") ? (
+    keysDue.length || rightsDue.length || (attention.drafts.length && tab !== "drafts") ? (
       <AlertStrip label={ut("mc.attentionLabel")} className="ml-auto max-w-full">
-        {attention.keys.length ? (
+        {keysDue.length ? (
           <AlertChip
             kind="warn"
             icon={<ShellIcon name="key-round" />}
             label={ut("mc.attKeys")}
-            detail={firstCodes(attention.keys)}
+            detail={firstCodes(keysDue)}
             popTitle={ut("mc.attKeysTitle")}
-            popNote={String(attention.keys.length)}
+            popNote={String(keysDue.length)}
             pop={
               <>
-                {pop(attention.keys, (s) => `/surveys/${s.id}/key`)}
+                {pop(keysDue, (s) => `/surveys/${s.id}/key`)}
                 <p className="m-0 mt-2 text-caption text-muted">{ut("mc.attKeysNote")}</p>
               </>
             }
           />
         ) : null}
-        {attention.rights.length ? (
+        {rightsDue.length ? (
           <AlertChip
             kind="warn"
             icon={<Mi.scale />}
             label={ut("mc.attRights")}
-            detail={firstCodes(attention.rights)}
+            detail={firstCodes(rightsDue)}
             popTitle={ut("mc.attRightsTitle")}
-            popNote={String(attention.rights.length)}
+            popNote={String(rightsDue.length)}
             pop={
               <>
-                {pop(attention.rights, (s) => `/surveys/${s.id}`)}
+                {pop(rightsDue, (s) => `/surveys/${s.id}`)}
                 <p className="m-0 mt-2 text-caption text-muted">{ut("cl.rightsHint")}</p>
               </>
             }
@@ -1337,6 +1379,7 @@ export function SurveyList() {
               s={sideSurvey}
               groupTitle={sideSurvey.groupId ? (groupById.get(sideSurvey.groupId)?.title ?? null) : null}
               folderTitle={sideSurvey.folderId ? (folderById.get(sideSurvey.folderId)?.title ?? null) : null}
+              qa={qa}
             />
           </Drawer>
         </>

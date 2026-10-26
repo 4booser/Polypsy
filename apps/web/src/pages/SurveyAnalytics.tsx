@@ -17,6 +17,7 @@ import { Callout, Empty } from "../ui/states";
 import { useResource } from "../useResource";
 import { testsHref } from "./analytics/tests/model";
 import { Mi } from "./methods/icons";
+import { rightsKey } from "./methods/labels";
 import { MethodPage } from "./methods/MethodPage";
 import { fixedIn, shortDate, shortDateTime, splitCode, topLosses, weeklyCounts } from "./methods/model";
 import { num, useCount } from "./methods/useCount";
@@ -314,14 +315,28 @@ function bandOf(scale: SurveyAnalytics["scales"][number], v: number) {
   return scale.bands.find((b) => v >= b.min && v <= b.max) ?? null;
 }
 
-function AboutPanel({ survey, data }: { survey: SurveyFull; data: SurveyAnalytics | null }) {
+function AboutPanel({ survey, data }: { survey: SurveyFull & { keysVerifiedAt?: string | null }; data: SurveyAnalytics | null }) {
   const { ut } = useLang();
   const { fmt1 } = useFmt();
   const count = useCount();
+  const rights = rightsKey(survey.rightsStatus);
   const rows: [string, string][] = [
     [ut("mc.peekWho"), survey.administration === "clinician" ? ut("bt.byClinician") : ut("mc.bySelf")],
     [ut("mc.peekVisibility"), survey.visibility === "restricted" ? ut("mc.visRestricted") : ut("mc.visPublic")],
     [ut("mc.ovScoring"), survey.scoringEnabled ? count(survey.scales.length, "scales") : ut("cat.scoringOff")],
+    /*
+     * Права на текст и сверка ключей — фактом, без янтаря: сигналом они стоят
+     * только у суперадмина, который их решает (шапка методики, каталог).
+     */
+    [ut("mc.peekRights"), rights ? ut(rights) : ut("mc.rightsUnclearValue")],
+    ...(survey.scoringEnabled
+      ? ([
+          [
+            ut("mc.ovKeysChecked"),
+            survey.keysVerifiedAt ? ut("mc.ovKeysCheckedOn").replace("{date}", shortDate(survey.keysVerifiedAt)) : ut("mc.ovNo"),
+          ],
+        ] as [string, string][])
+      : []),
     [ut("mc.ovTimeLimit"), survey.timeLimitSec ? duration(survey.timeLimitSec * 1000) : ut("mc.ovNone")],
   ];
   if (data && data.medianDurationMs > 0) rows.push([ut("an.medianTime"), duration(data.medianDurationMs)]);
@@ -340,7 +355,8 @@ function AboutPanel({ survey, data }: { survey: SurveyFull; data: SurveyAnalytic
     >
       {survey.description ? <p className="m-0 mb-3 text-body text-text-2">{survey.description}</p> : null}
       <div className={cx(survey.description && "border-t border-divider pt-3")}>
-        <KV w={128} rows={rows} />
+        {/* подпись «Ключ звірено з оригіналом» — в одну строку на 1280 */}
+        <KV w={172} rows={rows} />
       </div>
     </Panel>
   );

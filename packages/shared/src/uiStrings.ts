@@ -16466,6 +16466,10 @@ export const UI = {
   // ── ux-risk ──
 
   // ── ux-methods ──
+  /* паспорт методики: права и сверка ключей — факт, а не сигнал (сигнал — у суперадмина) */
+  "mc.rightsUnclearValue": { uk: "не з’ясовано", ru: "не выяснены", en: "unclear" },
+  "mc.ovKeysChecked": { uk: "Ключ звірено з оригіналом", ru: "Ключ сверен с оригиналом", en: "Key checked against the original" },
+  "mc.ovKeysCheckedOn": { uk: "так, {date}", ru: "да, {date}", en: "yes, {date}" },
 
   // ── ux-copy ──
 } as const satisfies Record<string, UiEntry>;
