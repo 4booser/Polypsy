@@ -6575,9 +6575,9 @@ export const UI = {
    * поле, а у повідомлення и плана безпеки полей много.
    */
   "mail.rereadHint": {
-    uk: "Після перечитування у формі буде чернетка, яка зараз на сервері, — набране тут зникне. Якщо воно потрібне, спершу скопіюйте текст.",
-    ru: "После перечитывания в форме будет черновик, который сейчас на сервере, — набранное здесь пропадёт. Если оно нужно, сначала скопируйте текст.",
-    en: "After reloading, the form will show the draft as it is on the server now — what you typed here will be gone. If you need it, copy the text first.",
+    uk: "Після перечитування у формі буде збережена чернетка — набране тут зникне. Якщо воно потрібне, спершу скопіюйте текст.",
+    ru: "После перечитывания в форме будет сохранённый черновик — набранное здесь пропадёт. Если оно нужно, сначала скопируйте текст.",
+    en: "After reloading, the form will show the saved draft — what you typed here will be gone. If you need it, copy the text first.",
   },
   "sp.rereadHint": {
     uk: "Після перечитування в редакторі буде чинна версія плану — набране тут зникне. Якщо воно потрібне, спершу скопіюйте його.",
@@ -8653,7 +8653,6 @@ export const UI = {
   "msx.waits": { uk: "чекає відповіді", ru: "ждёт ответа", en: "awaiting reply" },
   "msx.notRead": { uk: "не прочитано", ru: "не прочитано", en: "not read" },
   "msx.noReply": { uk: "без відповіді", ru: "без ответа", en: "no reply yet" },
-  "msx.noVisit": { uk: "без запису", ru: "без записи", en: "no appointment" },
   "msx.signal": { uk: "Сигнал ризику", ru: "Сигнал риска", en: "Risk signal" },
   "msx.signals": { uk: "Сигнали ризику: {n}", ru: "Сигналы риска: {n}", en: "Risk signals: {n}" },
   "msx.overdue": { uk: "прострочено", ru: "просрочено", en: "overdue" },
@@ -8697,7 +8696,7 @@ export const UI = {
   "msx.measures": { uk: "Заміри", ru: "Замеры", en: "Measures" },
   "msx.allMeasures": { uk: "Картка пацієнта", ru: "Карта пациента", en: "Patient card" },
   "msx.noMeasures": { uk: "Замірів ще немає", ru: "Замеров ещё нет", en: "No measures yet" },
-  "msx.safetyPlan": { uk: "План безпеки v{n}", ru: "План безопасности v{n}", en: "Safety plan v{n}" },
+  "msx.safetyPlan": { uk: "План безпеки, версія {n}", ru: "План безопасности, версия {n}", en: "Safety plan, version {n}" },
   "msx.safetyUpdated": { uk: "оновлено {d}", ru: "обновлён {d}", en: "updated {d}" },
   "msx.patientSees": { uk: "Що бачить пацієнт", ru: "Что видит пациент", en: "What the patient sees" },
   /* листування: ящик переноса */
@@ -8853,9 +8852,9 @@ export const UI = {
   "mlx.after": { uk: "Після відправлення", ru: "После отправки", en: "After sending" },
   "mlx.afterSub": { uk: "попередній вигляд відповідей", ru: "предварительный вид ответов", en: "answers preview" },
   "mlx.afterHint": {
-    uk: "Так виглядатимуть відповіді: хто що обрав і хто ще мовчить.",
-    ru: "Так будут выглядеть ответы: кто что выбрал и кто ещё молчит.",
-    en: "This is how answers will look: who chose what and who is still silent.",
+    uk: "Так виглядатимуть відповіді: хто що обрав і хто ще не відповів.",
+    ru: "Так будут выглядеть ответы: кто что выбрал и кто ещё не ответил.",
+    en: "This is how answers will look: who chose what and who hasn’t answered yet.",
   },
   "mlx.afterNoOptions": {
     uk: "Без варіантів відповіді ви побачите, хто прочитав повідомлення.",

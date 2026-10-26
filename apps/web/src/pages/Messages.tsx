@@ -269,6 +269,19 @@ export default function MessagesPage() {
     setDrawer((d) => (d === "move" ? null : d));
   }, [id]);
 
+  /*
+   * Разговор открыт по ссылке (карточка, «Відкрити листування» после письма)
+   * — его строка должна быть видна в колонке, а не где-то ниже сотой.
+   * Только по смене разговора и первой загрузке списка: J/K и щелчок и так
+   * держат строку на экране, а перечитывание списка прокрутку не трогает.
+   */
+  const listRef = useRef<HTMLDivElement>(null);
+  const listReady = !!list.data;
+  useEffect(() => {
+    if (!id || !listReady) return;
+    listRef.current?.querySelector<HTMLElement>(`[data-thread="${CSS.escape(id)}"]`)?.scrollIntoView({ block: "nearest" });
+  }, [id, listReady]);
+
   const go = (delta: 1 | -1) => {
     const target = stepThread(
       visible.map((t) => t.id),
@@ -359,7 +372,7 @@ export default function MessagesPage() {
             {ut("msx.sortWait")}
           </p>
         </div>
-        <div role="list" aria-label={title} className="kit-scroll min-h-0 flex-1 overflow-y-auto border-t border-divider pb-2.5 pt-1">
+        <div ref={listRef} role="list" aria-label={title} className="kit-scroll min-h-0 flex-1 overflow-y-auto border-t border-divider pb-2.5 pt-1">
           {listView === "wait" || listView === "failed" ? (
             <div className="px-4 pt-2">
               <NotLoaded res={list} rows={4} />
@@ -388,6 +401,7 @@ export default function MessagesPage() {
                     to={`/messages/${t.id}`}
                     aria-current={selected ? "page" : undefined}
                     data-row
+                    data-thread={t.id}
                     className={cx(
                       "relative mx-1.5 my-0.5 block rounded-[12px] pb-[11px] pl-5 pr-2.5 pt-2.5 no-underline outline-offset-[-2px] hover:no-underline",
                       "transition-colors duration-[var(--dur-fast)] ease-[var(--ease)]",
@@ -445,9 +459,18 @@ export default function MessagesPage() {
                           )
                         ) : null}
                       </span>
-                      <span className="ml-auto whitespace-nowrap text-muted">
-                        {t.next ? visitShort(t.next.startsAt) : ut("msx.noVisit")}
-                      </span>
+                      {/*
+                        Ближайший приём — датой со значком календаря; приёма нет
+                        — пусто. Прежнее «без запису» читалось как «без записи
+                        разговора» и повторяло то, что и так видно в записи справа.
+                      */}
+                      {t.next ? (
+                        <span className="ml-auto inline-flex items-center gap-1 whitespace-nowrap text-muted" title={ut("msx.nextVisit")}>
+                          <Ic.calendar size={12} />
+                          <span className="sr-only">{ut("msx.nextVisit")}: </span>
+                          {visitShort(t.next.startsAt)}
+                        </span>
+                      ) : null}
                     </span>
                   </Link>
                 </div>
