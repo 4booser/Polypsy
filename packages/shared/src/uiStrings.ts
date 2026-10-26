@@ -14738,12 +14738,17 @@ export const UI = {
   "card.sortUrgent": { uk: "спочатку термінове", ru: "сначала срочное", en: "urgent first" },
   "card.sum": { uk: "Сума", ru: "Сумма", en: "Total" },
   "card.tConclusions": { uk: "Заключення", ru: "Заключения", en: "Conclusions" },
-  "card.tDynamics": { uk: "Динаміка", ru: "Динамика", en: "Progress" },
+  /*
+   * Вкладки карточки называют то, что показывают, — и не повторяют вкладки
+   * клинической карты, где «Динаміка» и «Хронологія» — другие, полные экраны:
+   * здесь — графики курса по шкалам и лента событий.
+   */
+  "card.tDynamics": { uk: "Графіки", ru: "Графики", en: "Charts" },
   "card.tMeasures": { uk: "Заміри", ru: "Замеры", en: "Measurements" },
   "card.tMessages": { uk: "Листування", ru: "Переписка", en: "Messages" },
   "card.tNotes": { uk: "Нотатки", ru: "Заметки", en: "Notes" },
   "card.tOverview": { uk: "Огляд", ru: "Обзор", en: "Overview" },
-  "card.tTimeline": { uk: "Хронологія", ru: "Хронология", en: "Timeline" },
+  "card.tTimeline": { uk: "Події", ru: "События", en: "Events" },
   "card.tVisits": { uk: "Прийоми", ru: "Приёмы", en: "Appointments" },
   "card.tabsLabel": { uk: "Розділи картки", ru: "Разделы карточки", en: "Card sections" },
   "card.takenBy": { uk: "Розбирає {n}.", ru: "Разбирает {n}.", en: "Being reviewed by {n}." },
