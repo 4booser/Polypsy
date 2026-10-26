@@ -361,7 +361,7 @@ export function fieldByLabel(page: Page, label: string): Locator {
  * переключатель решает лишь, какой из двух ключей показывает каждое поле.
  *
  * С макета methods-constructor это сегменты «Украинский | Русский» (группа с
- * именем «Язык текста теста», ключ cn.editLang). Переключателей на экране
+ * именем «Язык текста методики», ключ cn.editLang). Переключателей на экране
  * бывает несколько — в «Основном», в раскрытом пункте, у шкал, — и все они
  * правят одно состояние, поэтому берётся первый. Ожидание aria-pressed —
  * признак, что выбор дошёл до формы: следующий fill обязан попасть в поле
@@ -371,7 +371,7 @@ const EDIT_LANG_NAME = { uk: "Украинский", ru: "Русский" } as c
 
 export async function setEditLang(page: Page, lang: "uk" | "ru"): Promise<void> {
   const button = page
-    .getByRole("group", { name: "Язык текста теста" })
+    .getByRole("group", { name: "Язык текста методики" })
     .first()
     .getByRole("button", { name: EDIT_LANG_NAME[lang], exact: true });
   await button.click();

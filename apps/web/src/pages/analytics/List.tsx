@@ -314,8 +314,9 @@ export default function AnalyticsList() {
         <>
           <Panel flush>
             <div className="px-4 pb-3 pt-3.5">
+              {/* поиск 200, а не 260: с фильтром «Методика» вместо «Тест» русская строка иначе переносит порядок на 1280 */}
               <FilterBar
-                search={{ value: q, onChange: (v) => update({ q: v, page: null }), placeholder: ut("am.search"), width: 260 }}
+                search={{ value: q, onChange: (v) => update({ q: v, page: null }), placeholder: ut("am.search"), width: 200 }}
                 views={{
                   items: (["all", "on", "off"] as const).map((k) => ({ key: k, label: ut(VIEW_KEY[k]), count: counts[k] })),
                   value: view,
