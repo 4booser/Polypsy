@@ -16469,7 +16469,7 @@ export const UI = {
   "mc.rightsUnclearValue": { uk: "не з’ясовано", ru: "не выяснены", en: "unclear" },
   "mc.ovKeysChecked": { uk: "Ключ звірено з оригіналом", ru: "Ключ сверен с оригиналом", en: "Key checked against the original" },
   "mc.ovKeysCheckedOn": { uk: "так, {date}", ru: "да, {date}", en: "yes, {date}" },
-  /* паспорт методики: происхождение текста й порогів — для персоналу, згорнуте */
+  /* паспорт методики: происхождение текста и порогов — для персонала, свёрнуто (methods/SourceNote.tsx) */
   "mc.ovSource": { uk: "Джерело", ru: "Источник", en: "Source" },
   /* огляд методики: пустое — строкой, а не графиком нулей */
   "mc.ovNoResponses": { uk: "Проходжень ще немає", ru: "Прохождений ещё нет", en: "No responses yet" },
