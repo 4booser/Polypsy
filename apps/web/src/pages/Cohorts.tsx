@@ -353,7 +353,6 @@ export default function Cohorts() {
             ]
           : [ut("coh2.metaHidden"), ut("coh2.metaNames")]
       }
-      sub={ut("coh.lede")}
       actions={
         <>
           <MenuButton

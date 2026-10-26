@@ -2134,11 +2134,6 @@ export const UI = {
 
   /* ── wave9:cohorts ── */
   /* «Добір людей» — решение заказчика 2026-09-26: стиль проекта, адекватные фильтры, понятный результат */
-  "coh.lede": {
-    uk: "Звужуйте вибірку умовами — число й розподіли оновлюються одразу. Імена показуються окремою дією і фіксуються в журналі.",
-    ru: "Сужайте выборку условиями — число и распределения обновляются сразу. Имена показываются отдельным действием и фиксируются в журнале.",
-    en: "Narrow the sample with conditions — the count and distributions update at once. Names are a separate action and are logged.",
-  },
   "coh.who": { uk: "Кого шукаємо", ru: "Кого ищем", en: "Who we are looking for" },
   "coh.result": { uk: "Що вийшло", ru: "Что получилось", en: "What we found" },
   "coh.actions": { uk: "Що з ними зробити", ru: "Что с ними сделать", en: "What to do with them" },
@@ -2153,8 +2148,8 @@ export const UI = {
   "coh.pickSearch": { uk: "Пошук у списку", ru: "Поиск в списке", en: "Search the list" },
   "coh.pickClear": { uk: "Зняти всі", ru: "Снять все", en: "Clear all" },
   "coh.noOptions": {
-    uk: "Серед людей вашої зони це поле ніхто не заповнив",
-    ru: "Среди людей вашей зоны это поле никто не заполнил",
+    uk: "У людей вашої зони це поле не заповнено",
+    ru: "У людей вашей зоны это поле не заполнено",
     en: "No one in your scope has this field filled in",
   },
   "coh.survey": { uk: "Методика", ru: "Методика", en: "Assessment" },
@@ -2207,9 +2202,9 @@ export const UI = {
   "coh.more": { uk: "ще", ru: "ещё", en: "more" },
   "coh.less": { uk: "згорнути", ru: "свернуть", en: "collapse" },
   "coh.sharesNote": {
-    uk: "Частка — від усієї вибірки; довжина смуги — від найбільшого рядка розбивки. «n < 5» — приховано порогом: у малій групі число вказує на конкретних людей.",
-    ru: "Доля — от всей выборки; длина полосы — от самой большой строки разбивки. «n < 5» — скрыто порогом: в малой группе число указывает на конкретных людей.",
-    en: "Share is of the whole sample; bar length is relative to the largest row. “n < 5” means hidden by the threshold: in a small group the number points to specific people.",
+    uk: "Частка — від усієї вибірки. «n < 5» — приховано: у малій групі число вказує на конкретних людей.",
+    ru: "Доля — от всей выборки. «n < 5» — скрыто: в малой группе число указывает на конкретных людей.",
+    en: "Share is of the whole sample. “n < 5” is hidden: in a small group the number points to specific people.",
   },
   "coh.csvSection": { uk: "Розбивка", ru: "Разбивка", en: "Breakdown" },
   "coh.csvValue": { uk: "Значення", ru: "Значение", en: "Value" },
@@ -5809,12 +5804,12 @@ export const UI = {
   "grp.archive": { uk: "Зняти з використання", ru: "Снять с использования", en: "Retire from use" },
   "grp.restore": { uk: "Повернути в роботу", ru: "Вернуть в работу", en: "Return to use" },
   "grp.archived": { uk: "знято з використання", ru: "снята с использования", en: "retired from use" },
-  "grp.archivedToast": { uk: "Групу знято з використання", ru: "Группа снята с использования", en: "Group retired from use" },
+  "grp.archivedToast": { uk: "Групу знято з використання: для нових методик і наборів її не пропонуватимуть", ru: "Группа снята с использования: для новых методик и наборов её не будут предлагать", en: "Group retired from use: it won’t be offered for new instruments or sets" },
   "grp.restoredToast": { uk: "Групу повернуто в роботу", ru: "Группа возвращена в работу", en: "Group returned to use" },
   "grp.archiveHint": {
-    uk: "Зняття нічого не забирає: адміністратори й далі бачать методики групи, аналітика рахується, проходження відкриваються. Знята група лише не пропонується під час вибору групи для нової методики чи набору.",
-    ru: "Снятие ничего не отбирает: администраторы по-прежнему видят методики группы, аналитика считается, прохождения открываются. Снятая группа лишь не предлагается при выборе группы для новой методики или набора.",
-    en: "Retiring takes nothing away: administrators still see the group's instruments, analytics is still calculated, completions still open. A retired group is simply not offered when choosing a group for a new instrument or battery.",
+    uk: "Знята група не пропонується для нових методик і наборів; решта працює як раніше.",
+    ru: "Снятая группа не предлагается для новых методик и наборов; остальное работает как прежде.",
+    en: "A retired group is not offered for new instruments or sets; everything else works as before.",
   },
   "grp.emptyAll": { uk: "Груп немає", ru: "Групп нет", en: "No groups" },
   "grp.emptyHint": {
@@ -6535,8 +6530,8 @@ export const UI = {
     en: "The new password is the same as the current one — choose another",
   },
   "uit.coh.fixToCount": {
-    uk: "Виправте умови відбору — тоді порахуємо",
-    ru: "Исправьте условия отбора — тогда посчитаем",
+    uk: "Виправте умови відбору, щоб порахувати",
+    ru: "Исправьте условия отбора, чтобы посчитать",
     en: "Fix the selection conditions to get a count",
   },
 
@@ -8091,9 +8086,9 @@ export const UI = {
   // ── v2-patients-b ──
   /* группы пациентов: таблица групп и ящики (pages/patientGroups) */
   "pg2.lead": {
-    uk: "Склад, призначені методики й те, хто їх вже пройшов. Група відкривається вкладкою в реєстрі пацієнтів.",
-    ru: "Состав, назначенные методики и то, кто их уже прошёл. Группа открывается вкладкой в реестре пациентов.",
-    en: "Members, assigned instruments and who has completed them. A group opens as a tab in the patient register.",
+    uk: "Склад, призначені методики й хід їх проходження.",
+    ru: "Состав, назначенные методики и ход их прохождения.",
+    en: "Members, assigned instruments and their progress.",
   },
   "pg2.groupsN.one": { uk: "{n} група", ru: "{n} группа", en: "{n} group" },
   "pg2.groupsN.few": { uk: "{n} групи", ru: "{n} группы", en: "{n} groups" },
@@ -8110,7 +8105,7 @@ export const UI = {
     ru: "{n} из {of} ещё не прошли назначенное",
     en: "{n} of {of} have not completed what was assigned",
   },
-  "pg2.searchPh": { uk: "Назва або опис групи", ru: "Название или описание группы", en: "Group name or description" },
+  "pg2.searchPh": { uk: "Назва або опис групи", ru: "Название или описание", en: "Group name or description" },
   "pg2.views": { uk: "Відбір груп", ru: "Отбор групп", en: "Group filter" },
   "pg2.viewFav": { uk: "Обрані", ru: "Избранные", en: "Favourites" },
   "pg2.viewMine": { uk: "Веду я", ru: "Веду я", en: "Mine" },
@@ -8218,9 +8213,9 @@ export const UI = {
   "pg2.stateBands": { uk: "Проходження групи за смугами, усього {n}", ru: "Прохождения группы по полосам, всего {n}", en: "Group responses by band, {n} in total" },
   "pg2.stateBandsLabel": { uk: "Проходження за смугами", ru: "Прохождения по полосам", en: "Responses by band" },
   "pg2.stateEmpty": {
-    uk: "Проходжень групи ще замало, щоб показати стан: тиждень із кількома замірами не показується, щоб не вказувати на конкретних людей",
-    ru: "Прохождений группы ещё мало, чтобы показать состояние: неделя с несколькими замерами не показывается, чтобы не указывать на конкретных людей",
-    en: "Too few group responses to show a state yet: weeks with only a few responses are hidden so they don’t point to specific people",
+    uk: "Проходжень групи ще замало, щоб показати стан.",
+    ru: "Прохождений группы ещё мало, чтобы показать состояние.",
+    en: "Too few group responses to show a state yet.",
   },
   "pg2.chipRisk": { uk: "Ризик", ru: "Риск", en: "Risk" },
   "pg2.chipNotDone": { uk: "Не пройшли призначене", ru: "Не прошли назначенное", en: "Test not completed" },
@@ -13426,11 +13421,6 @@ export const UI = {
   },
   "mc.grAllCases": { uk: "Усі випадки", ru: "Все случаи", en: "All cases" },
   "mc.grAllTime": { uk: "за весь час", ru: "за всё время", en: "all time" },
-  "mc.grArchiveNote": {
-    uk: "Зняття групи нічого не забирає: методики видно адміністраторам, аналітика рахується. Знята група лише не пропонується для нових методик і наборів.",
-    ru: "Снятие группы ничего не забирает: методики видны администраторам, аналитика считается. Снятая группа лишь не предлагается для новых методик и наборов.",
-    en: "Retiring a group takes nothing away: administrators still see its instruments and analytics still counts. A retired group is just not offered for new instruments and batteries.",
-  },
   "mc.grColor": { uk: "Колір групи", ru: "Цвет группы", en: "Group colour" },
   "mc.grColorHint": {
     uk: "Видно поруч із назвою групи в консолі й у застосунку.",
@@ -13487,9 +13477,9 @@ export const UI = {
   "mc.grSince": { uk: "з {date}", ru: "с {date}", en: "since {date}" },
   "mc.grSortNote": { uk: "за кількістю проходжень", ru: "по числу прохождений", en: "by number of responses" },
   "mc.grSummary": {
-    uk: "{responses} проходжень за весь час; {people} людей пройшли хоч одну методику. Завершеність {rate} %, перервано {lost}. Середній час {avg} на методику.",
-    ru: "{responses} прохождений за всё время; {people} человек прошли хотя бы одну методику. Завершённость {rate} %, прервано {lost}. Среднее время {avg} на методику.",
-    en: "{responses} responses in total; {people} people completed at least one instrument. Completion {rate} %, abandoned {lost}. Average time {avg} per instrument.",
+    uk: "Проходжень: {responses}, людей із проходженнями: {people}. Завершеність {rate} %, перервано {lost}. Середній час на методику — {avg}.",
+    ru: "Прохождений: {responses}, людей с прохождениями: {people}. Завершённость {rate} %, прервано {lost}. Среднее время на методику — {avg}.",
+    en: "Responses: {responses}; people with responses: {people}. Completion {rate} %, interrupted {lost}. Average time per instrument: {avg}.",
   },
   "mc.grSurveys": { uk: "{all}, опубліковано {pub}", ru: "{all}, опубликовано {pub}", en: "{all}, {pub} published" },
   "mc.backMethod": { uk: "До методики", ru: "К методике", en: "Back to the instrument" },
