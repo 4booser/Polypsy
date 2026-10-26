@@ -14599,7 +14599,7 @@ export const UI = {
   "card.draftConcl": { uk: "заключення", ru: "заключения", en: "the conclusion" },
   "card.draftNote": { uk: "нотатки", ru: "заметки", en: "the note" },
   "card.draftOf": { uk: "Чернетка: {s}", ru: "Черновик: {s}", en: "Draft: {s}" },
-  "card.draftReply": { uk: "відповіді", ru: "ответа", en: "the reply" },
+  "card.draftReply": { uk: "повідомлення", ru: "сообщения", en: "the message" },
   "card.drawerLabel": { uk: "Дія без переходу", ru: "Действие без перехода", en: "Action panel" },
   "card.dueOn": { uk: "до {d}", ru: "до {d}", en: "by {d}" },
   "card.dueShort": { uk: "до", ru: "до", en: "by" },
@@ -14667,7 +14667,6 @@ export const UI = {
   "card.noShow": { uk: "Неявка {d}", ru: "Неявка {d}", en: "No-show {d}" },
   "card.noShowTitle": { uk: "Неявка на прийом", ru: "Неявка на приём", en: "Missed appointment" },
   "card.noShowWith": { uk: "Прийом у фахівця {n} не відбувся.", ru: "Приём у специалиста {n} не состоялся.", en: "The appointment with {n} did not take place." },
-  "card.noThread": { uk: "Листування ще не почато. Перше повідомлення його відкриє.", ru: "Переписка ещё не начата. Первое сообщение её откроет.", en: "No conversation yet. The first message starts it." },
   "card.noVisits": { uk: "Прийомів ще не було.", ru: "Приёмов ещё не было.", en: "No appointments yet." },
   "card.nobodyFound": { uk: "Нікого не знайдено. Спробуйте прізвище, телефон або підрозділ.", ru: "Никого не найдено. Попробуйте фамилию, телефон или подразделение.", en: "Nobody found. Try a surname, phone or unit." },
   "card.nobodyInView": { uk: "У цьому перегляді нікого немає.", ru: "В этом виде никого нет.", en: "Nobody in this view." },
@@ -14716,8 +14715,7 @@ export const UI = {
   "card.rsVisit": { uk: "прийом {t}", ru: "приём {t}", en: "appointment {t}" },
   "card.searchPh": { uk: "Прізвище, телефон або підрозділ", ru: "Фамилия, телефон или подразделение", en: "Surname, phone or unit" },
   "card.send": { uk: "Відправити", ru: "Отправить", en: "Send" },
-  "card.sent": { uk: "Відповідь відправлено"
-, ru: "Ответ отправлен", en: "Reply sent" },
+  "card.sent": { uk: "Повідомлення відправлено", ru: "Сообщение отправлено", en: "Message sent" },
   "card.sessionN": { uk: "сесія {n}", ru: "сессия {n}", en: "session {n}" },
   "card.sessions": { uk: "Прийомів", ru: "Приёмов", en: "Appointments" },
   "card.show": { uk: "показати", ru: "показать", en: "show" },
@@ -14767,7 +14765,7 @@ export const UI = {
   "card.viewRisk": { uk: "Ризик", ru: "Риск", en: "Risk" },
   "card.viewToday": { uk: "Сьогодні", ru: "Сегодня", en: "Today" },
   "card.views": { uk: "Перегляди списку", ru: "Виды списка", en: "List views" },
-  "card.willSee": { uk: "{n} побачить відповідь у застосунку", ru: "{n} увидит ответ в приложении", en: "{n} will see the reply in the app" },
+  "card.willSee": { uk: "Пацієнт побачить повідомлення в застосунку", ru: "Пациент увидит сообщение в приложении", en: "The patient will see the message in the app" },
   "card.write": { uk: "Написати", ru: "Написать", en: "Write" },
   "card.writeTip": { uk: "Написати пацієнту", ru: "Написать пациенту", en: "Message the patient" },
   "card.xBasis": { uk: "Основа RCI", ru: "Основа RCI", en: "RCI basis" },
@@ -16457,6 +16455,8 @@ export const UI = {
   "asgd.noSets": { uk: "Наборів для призначення немає", ru: "Наборов для назначения нет", en: "No sets to assign" },
   /* таблица «Методики» карточки: свёрнутая методика из многих шкал — остальные шкалы в раскрытии строки */
   "card.xScales": { uk: "Інші шкали", ru: "Другие шкалы", en: "Other scales" },
+  /* переписка в ящике карточки: поле первого письма — «Повідомлення», ответа — «Відповідь» */
+  "card.messageLabel": { uk: "Повідомлення", ru: "Сообщение", en: "Message" },
   /* «Достовірність зсуву» динамики: основа оценки RCI — в подсказке строки, а не в ней самой */
   "dyn.rciBasis": {
     uk: "Узгодженість (альфа Кронбаха) {alpha}, вибірка {n}",

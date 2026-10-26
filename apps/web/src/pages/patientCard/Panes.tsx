@@ -17,7 +17,7 @@ import { Pi } from "./icons";
 import { nearSlots } from "./Overview";
 import type { CardView } from "./types";
 import { signGate, signalStrip, signalTimer, type SignGate } from "../response/context";
-import { shownNumber, shownValue } from "../patients/model";
+import { initialsName, shownNumber, shownValue } from "../patients/model";
 
 /*
  * Виды ящика карточки, кроме разбора сигнала (он общий — components/RiskReview):
@@ -51,7 +51,14 @@ export function useThreadPane(v: CardView, active: boolean): DrawerPaneProps {
   const { ut } = useLang();
   const { run, busy } = useAction();
   const [text, setText] = useState("");
-  const firstName = v.card.firstName || v.card.fullName;
+  /*
+   * Пациент в переписке — фамилией с инициалами («Петров Д. А.»), как в
+   * пилюлях «Кому» реестра: по одному имени («Листування: Дмитрий») в
+   * отделении, где Дмитриев десяток, не понять, с кем разговор.
+   */
+  const who = initialsName(v.card.fullName);
+  /* поле — «Відповідь», когда есть на что отвечать; первое письмо — «Повідомлення» */
+  const replying = !!v.messages?.some((m) => !m.mine);
   const canMove = !!v.next && v.nextIsMine && v.can("appointments.manage");
   const slots = useMySlots(active && canMove);
   /* шесть окон ближе всего ко времени приёма — сначала тот же день, по порядку времени */
@@ -97,7 +104,7 @@ export function useThreadPane(v: CardView, active: boolean): DrawerPaneProps {
           v.thread ? (
             <Loading rows={3} bare />
           ) : (
-            <p className="m-0 text-small text-muted">{ut("card.noThread")}</p>
+            <p className="m-0 text-small text-muted">{ut("card.noMessages")}</p>
           )
         ) : v.messages.length ? (
           <div className="flex flex-col gap-2">
@@ -112,7 +119,7 @@ export function useThreadPane(v: CardView, active: boolean): DrawerPaneProps {
               >
                 <span className="whitespace-pre-wrap">{m.text}</span>
                 <small className={cx("mt-[3px] block text-[11.5px] leading-[15px] text-muted", m.mine && "text-right")}>
-                  {m.mine ? ut("card.me") : firstName}, {relDay(m.sentAt, v.now, ut)}, {timeOfDay(m.sentAt)}
+                  {m.mine ? ut("card.me") : who}, {relDay(m.sentAt, v.now, ut)}, {timeOfDay(m.sentAt)}
                   {!m.mine && !m.readAt ? `, ${ut("card.noReply")}` : ""}
                 </small>
               </div>
@@ -170,7 +177,7 @@ export function useThreadPane(v: CardView, active: boolean): DrawerPaneProps {
         </DrawerSection>
       ) : null}
       <DrawerSection>
-        <Field label={ut("card.replyLabel")}>
+        <Field label={ut(replying ? "card.replyLabel" : "card.messageLabel")}>
           <Textarea data-autofocus rows={4} value={text} onChange={(e) => setText(e.target.value)} />
         </Field>
         <div className="flex flex-wrap gap-1.5">
@@ -191,14 +198,14 @@ export function useThreadPane(v: CardView, active: boolean): DrawerPaneProps {
 
   return {
     mode: "thread",
-    title: ut("card.threadWith").replace("{n}", firstName),
+    title: ut("card.threadWith").replace("{n}", who),
     sub: v.card.phone ? `${ut("card.inApp")}, ${v.card.phone}` : ut("card.inApp"),
     icon: <Pi.messageSquare />,
     tone: "info",
     kbd: "M",
     dirty: text.trim() !== "",
     draftName: ut("card.draftReply"),
-    note: ut("card.willSee").replace("{n}", firstName),
+    note: ut("card.willSee"),
     noteIcon: <Ic.bell />,
     footer: picked ? (
       <>
