@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api, type NoteVersion } from "../api";
 import { day } from "../format";
-import { Loading, useAction } from "../ui";
+import { Ic, Loading, useAction } from "../ui";
 import { usePresence } from "../events";
 import { useLang } from "../lang";
 import { useResource } from "../useResource";
@@ -27,6 +27,25 @@ const KIND_KEY = {
   observation: "note.observation",
   consult: "note.consult",
 } as const satisfies Record<NoteVersion["kind"], UiKey>;
+
+/**
+ * Виды записи — в одном порядке везде, где их выбирают (здесь, нотатка
+ * карточки, протокол приёма): первичный, прием, наблюдение, консультация.
+ * Прежде у карточки «Первинний» стоял последним, а здесь — первым, и рука,
+ * привыкшая к одному месту, попадала в другой вид.
+ */
+export const NOTE_KINDS: readonly NoteVersion["kind"][] = ["intake", "session", "observation", "consult"];
+
+/**
+ * Заготовка текста по виду записи — та же, что «Підставити шаблон» протокола
+ * приёма (Visit.tsx): первичный — жалобы, анамнез, состояние, вывод, план;
+ * прием — состояние, что изменилось, работа, договорённости. У наблюдения и
+ * консультации заготовки нет.
+ */
+export const NOTE_TEMPLATE: Partial<Record<NoteVersion["kind"], UiKey>> = {
+  intake: "visit.tplIntake",
+  session: "visit.tplSession",
+};
 
 export function NotesEditor({ userId }: { userId: string }) {
   const { ut } = useLang();
@@ -124,8 +143,24 @@ export function NotesEditor({ userId }: { userId: string }) {
         label={ut("note.title")}
         value={kind}
         onChange={setKind}
-        items={(Object.keys(KIND_KEY) as NoteVersion["kind"][]).map((k) => ({ key: k, label: ut(KIND_KEY[k]) }))}
+        items={NOTE_KINDS.map((k) => ({ key: k, label: ut(KIND_KEY[k]) }))}
       />
+      {NOTE_TEMPLATE[kind] ? (
+        /* заготовка — по нажатию и только в пустое поле: набранное своими словами она не затирает */
+        <Button
+          size="xs"
+          variant="ghost"
+          className="-my-1 self-start"
+          icon={<Ic.file />}
+          disabled={!!text.trim()}
+          onClick={() => {
+            touched.current = true;
+            setText(ut(NOTE_TEMPLATE[kind]!));
+          }}
+        >
+          {ut("visit.template")}
+        </Button>
+      ) : null}
 
       {alsoHere.length ? (
         /*

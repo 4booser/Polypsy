@@ -10,6 +10,7 @@ import { Callout, DrawerSection, Ic, Loading, useAction, type DrawerPaneProps } 
 import { cx } from "../../ui/cx";
 import { Button, ErrorText, Field, Segmented, Select, SeverityTag, Textarea } from "../../ui/primitives";
 import { draftOf, draftSavable, saveThenSign, signPlan, staleMessage } from "../../components/versioned";
+import { NOTE_KINDS, NOTE_TEMPLATE } from "../../components/NotesEditor";
 import { relDay, shortTitle } from "./Banner";
 import { dm, wdm } from "./format";
 import { Pi } from "./icons";
@@ -500,7 +501,6 @@ export function useConclusionPane(v: CardView, active: boolean, wantResponse: st
 
 /* ─────────── нотатка ─────────── */
 
-const KINDS: NoteVersion["kind"][] = ["session", "observation", "consult", "intake"];
 const KIND_KEY = { intake: "note.intake", session: "note.session", observation: "note.observation", consult: "note.consult" } as const;
 
 export function useNotePane(v: CardView, active: boolean): DrawerPaneProps {
@@ -542,13 +542,29 @@ export function useNotePane(v: CardView, active: boolean): DrawerPaneProps {
   ) : (
     <>
       <DrawerSection>
+        {/* виды — в том же порядке, что «Записи прийому» клинической карты и протокол приёма (NOTE_KINDS) */}
         <Segmented
           wide
           label={ut("card.noteKind")}
           value={kind}
           onChange={setKind}
-          items={KINDS.map((k) => ({ key: k, label: ut(KIND_KEY[k]) }))}
+          items={NOTE_KINDS.map((k) => ({ key: k, label: ut(KIND_KEY[k]) }))}
         />
+        {NOTE_TEMPLATE[kind] ? (
+          <Button
+            size="xs"
+            variant="ghost"
+            className="mt-2"
+            icon={<Ic.file />}
+            disabled={!!text.trim()}
+            onClick={() => {
+              touched.current = true;
+              setText(ut(NOTE_TEMPLATE[kind]!));
+            }}
+          >
+            {ut("visit.template")}
+          </Button>
+        ) : null}
         <Field label={ut("card.noteText")} className="mt-3.5">
           <Textarea
             data-autofocus
