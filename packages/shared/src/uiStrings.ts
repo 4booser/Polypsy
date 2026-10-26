@@ -4519,7 +4519,7 @@ export const UI = {
   "bat.notAssigned": { uk: "Набір поки нікому не призначено", ru: "Набор пока никому не назначен", en: "The battery has not been assigned to anyone yet" },
   "bat.emptyAddBelow": { uk: "Поки порожньо — додайте методики нижче", ru: "Пока пусто — добавьте методики ниже", en: "Empty for now — add instruments below" },
   "inv.ready": { uk: "Запрошення готове", ru: "Приглашение готово", en: "Invitation ready" },
-  "inv.batteryOnRegister": { uk: "Набор (призначиться при реєстрації)", ru: "Набор (назначится при регистрации)", en: "Battery (assigned on registration)" },
+  "inv.batteryOnRegister": { uk: "Набір (призначиться при реєстрації)", ru: "Набор (назначится при регистрации)", en: "Set (assigned on sign-up)" },
   "inv.surveyOnRegister": { uk: "Методика (призначиться при реєстрації)", ru: "Методика (назначится при регистрации)", en: "Instrument (assigned on registration)" },
   "inv.noSurveyHint": { uk: "Без методики", ru: "Без методики", en: "No instrument" },
   "inv.specialist": { uk: "Закріпити за лікарем", ru: "Закрепить за врачом", en: "Attach to clinician" },
@@ -4810,7 +4810,11 @@ export const UI = {
     ru: "без набора — только доступ в систему",
     en: "no battery — system access only",
   },
-  "inv.unitToAccount": { uk: "проставиться обліковому запису", ru: "проставится аккаунту", en: "will be set on the account" },
+  "inv.unitToAccount": {
+    uk: "проставиться в обліковий запис замість уведеного пацієнтом",
+    ru: "проставится в учётную запись вместо введённого пациентом",
+    en: "set on the account instead of what the patient enters",
+  },
   "inv.reasonExample": {
     uk: "наприклад, «надходження 3-ї роти»",
     ru: "например, «поступление 3-й роты»",
@@ -5729,11 +5733,6 @@ export const UI = {
   "inv.copyCode": { uk: "Копіювати код", ru: "Копировать код", en: "Copy code" },
   "inv.copyLink": { uk: "Копіювати посилання", ru: "Копировать ссылку", en: "Copy link" },
   "inv.createSubmit": { uk: "Створити", ru: "Создать", en: "Create" },
-  "inv.groupHint": {
-    uk: "Для групового обстеження виставте кількість використань за числом людей — усі увійдуть за одним посиланням. Підрозділ із запрошення має пріоритет над уведеним пацієнтом.",
-    ru: "Для группового обследования поставьте использований по числу людей — все войдут по одной ссылке. Подразделение из приглашения главнее введённого пациентом.",
-    en: "For a group assessment, set the number of uses to the number of people — everyone will join via the same link. The unit from the invitation takes priority over the one entered by the patient.",
-  },
   "inv.linkWarning": {
     uk: "Посилання показується один раз — у системі зберігається лише його відбиток. Скопіюйте або роздрукуйте зараз. Код залишиться видимим у списку.",
     ru: "Ссылка показывается один раз — в системе хранится только её отпечаток. Скопируйте или распечатайте сейчас. Код останется виден в списке.",
@@ -9414,9 +9413,9 @@ export const UI = {
   "msg.draftName": { uk: "повідомлення", ru: "сообщения", en: "of the message" },
   /* «Запросити пацієнта» з реєстру (pages/patients/InviteDialog.tsx) */
   "inv2.sub": {
-    uk: "Формою пацієнта не заводять: він реєструється за посиланням сам і одразу отримує призначення.",
-    ru: "Формой пациента не заводят: он регистрируется по ссылке сам и сразу получает назначение.",
-    en: "Patients aren’t created by hand: they sign up via the link and get the assignment right away.",
+    uk: "Пацієнт реєструється за посиланням сам і одразу отримує призначення.",
+    ru: "Пациент регистрируется по ссылке сам и сразу получает назначение.",
+    en: "The patient signs up via the link and gets the assignment right away.",
   },
   "inv2.onRegister": { uk: "Що призначити при реєстрації", ru: "Что назначить при регистрации", en: "Assign on sign-up" },
   "inv2.battery": { uk: "Набір", ru: "Набор", en: "Battery" },
@@ -9429,7 +9428,11 @@ export const UI = {
   },
   "inv2.itemsN": { uk: "методик: {n}", ru: "методик: {n}", en: "{n} instruments" },
   "inv2.me": { uk: "За мною", ru: "За мной", en: "Me" },
-  "inv2.onePerson": { uk: "Для однієї людини", ru: "Для одного человека", en: "For one person" },
+  "inv2.onePerson": {
+    uk: "Для однієї людини; для групи — збільште",
+    ru: "Для одного человека; для группы — увеличьте",
+    en: "For one person; increase for a group",
+  },
   "inv2.manyPeople": { uk: "Усі увійдуть за одним посиланням", ru: "Все войдут по одной ссылке", en: "Everyone joins via one link" },
   "inv2.validUntil": { uk: "Діє до {d}", ru: "Действует до {d}", en: "Valid until {d}" },
   "inv2.note": { uk: "Замітка", ru: "Заметка", en: "Note" },
@@ -9453,11 +9456,6 @@ export const UI = {
     uk: "Одразу після входу — доступ до застосунку, без призначень",
     ru: "Сразу после входа — доступ к приложению, без назначений",
     en: "Right after sign-in — app access, nothing assigned",
-  },
-  "inv2.step4": {
-    uk: "З’являється у вашому реєстрі, закріплений: {who}",
-    ru: "Появляется в вашем реестре, закреплён: {who}",
-    en: "Appears in your register, assigned to: {who}",
   },
   "inv2.accessOnly": { uk: "лише доступ до застосунку", ru: "только доступ к приложению", en: "app access only" },
   "inv2.createdAt": { uk: "створено о {t}", ru: "создано в {t}", en: "created at {t}" },
@@ -15307,7 +15305,6 @@ export const UI = {
   },
   "invA.note": { uk: "Замітка", ru: "Заметка", en: "Note" },
   "invA.noteHint": { uk: "видно лише персоналу", ru: "видно только персоналу", en: "visible to staff only" },
-  "invA.people": { uk: "людей", ru: "человек", en: "people" },
   "invA.placesLeft": { uk: "лишилось місць: {n}", ru: "осталось мест: {n}", en: "places left: {n}" },
   "invA.revokeText": {
     uk: "Посилання й код перестануть діяти одразу. Увійшли вже {used} з {max}: їхні облікові записи лишаються.",
@@ -16464,6 +16461,22 @@ export const UI = {
   /* «Проходження за останній час»: изменение от малой базы — числом, а не «на 1900 %» */
   "home.moreN": { uk: "на {n} більше", ru: "на {n} больше", en: "{n} more" },
   "home.lessN": { uk: "на {n} менше", ru: "на {n} меньше", en: "{n} fewer" },
+  /*
+   * Запрошення. Подпись при числе входов — формой по числу («1 людина»,
+   * «5 людей»), а не «1 людей». Последний шаг «що отримає пацієнт» — без
+   * «закріплений»: пациент бывает и женщиной.
+   */
+  "home.personForms": { uk: "людина|людини|людей|людини", ru: "человек|человека|человек|человека", en: "person|people" },
+  "home.inviteMine": {
+    uk: "З’являється у вашому реєстрі пацієнтів",
+    ru: "Появляется в вашем реестре пациентов",
+    en: "Appears in your patient register",
+  },
+  "home.inviteOther": {
+    uk: "З’являється в реєстрі пацієнтів, лікар — {who}",
+    ru: "Появляется в реестре пациентов, врач — {who}",
+    en: "Appears in the patient register, clinician: {who}",
+  },
 
   // ── ux-card ──
 
