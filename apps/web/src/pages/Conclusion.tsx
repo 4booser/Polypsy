@@ -30,9 +30,9 @@ import { RulesPanel } from "./response/panels";
  * методикам (для вывода), предложения правил, аналитические модели и
  * история версий.
  *
- * /responses/:id/conclusion/draft — тот же экран: инструменты черновика
- * («Зібрати з результатів», шаблоны, формулировки, «Зберегти чернетку»)
- * теперь стоят на самом листе, а не прячутся за отдельным адресом.
+ * Инструменты черновика («Зібрати з результатів», шаблоны, формулировки,
+ * «Зберегти чернетку») стоят на самом листе; прежний адрес
+ * /responses/:id/conclusion/draft ведёт сюда же (App.tsx).
  */
 export default function ConclusionPage() {
   const { ut } = useLang();
@@ -130,9 +130,7 @@ export default function ConclusionPage() {
             text={text}
             setText={setText}
             areaRef={areaRef}
-            heading={ut("cnx.heading")
-              .replace("{survey}", detail.survey.title)
-              .replace("{at}", detail.submittedAt ? `${day(detail.submittedAt)}, ${timeOfDay(detail.submittedAt)}` : "—")}
+            heading={<Heading detail={detail} />}
             summary={main ? <Summary detail={detail} dynamics={x.dynamics} /> : null}
             signals={<SignalsSection ctx={ctx} detail={detail} />}
             lock={lock}
@@ -154,6 +152,26 @@ export default function ConclusionPage() {
         </div>
       </div>
     </ResponseFrame>
+  );
+}
+
+/**
+ * «СР-45 від 17 жовт., 12:21» в шапке листа. Название методики — ссылка на
+ * неё: экран живёт в разделе «Пацієнти», и к методике (описание, ключ,
+ * нормы) ведёт её имя на самом листе.
+ */
+function Heading({ detail }: { detail: ResponseDetail }) {
+  const { ut } = useLang();
+  const at = detail.submittedAt ? `${day(detail.submittedAt)}, ${timeOfDay(detail.submittedAt)}` : "—";
+  const [before, after = ""] = ut("cnx.heading").replace("{at}", at).split("{survey}");
+  return (
+    <>
+      {before}
+      <Link to={`/surveys/${detail.survey.id}`} className="font-semibold text-text-2 hover:text-violet-ink">
+        {detail.survey.title}
+      </Link>
+      {after}
+    </>
   );
 }
 

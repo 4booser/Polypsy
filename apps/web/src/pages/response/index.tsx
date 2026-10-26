@@ -471,7 +471,16 @@ function AttemptPanel({
     .filter((c) => c.hit)
     .map((c) => ut("rch.itemN").replace("{n}", String(c.n)));
   const rows: [ReactNode, ReactNode][] = [
-    [ut("rp.kv.method"), `${detail.survey.title}, ${ut("rp.versionN").replace("{n}", String(detail.survey.versionNumber))}`],
+    /* экран — в разделе «Пацієнти»; к методике (описание, ключ, нормы) ведёт её название */
+    [
+      ut("rp.kv.method"),
+      <>
+        <Link to={`/surveys/${detail.survey.id}`} className="font-bold text-violet-ink">
+          {detail.survey.title}
+        </Link>
+        , {ut("rp.versionN").replace("{n}", String(detail.survey.versionNumber))}
+      </>,
+    ],
     detail.submittedAt
       ? [ut("rp.kv.submitted"), <b className="font-extrabold">{dateTime(detail.submittedAt)}</b>]
       : [ut("rp.kv.started"), dateTime(detail.startedAt)],

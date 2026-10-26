@@ -50,7 +50,12 @@ describe("раздел по адресу", () => {
       ["/my-schedule", "schedule"],
       ["/messages/t1", "messages"],
       ["/surveys/drafts", "methods"],
-      ["/responses/r1/conclusion", "methods"],
+      ["/surveys/s1", "methods"],
+      ["/surveys/s1/administer", "methods"],
+      /* прохождение и заключение — записи о человеке, хотя адрес прохождения лежит под методикой */
+      ["/surveys/s1/responses/r1", "patients"],
+      ["/surveys/s1/responses/r1/charts", "patients"],
+      ["/responses/r1/conclusion", "patients"],
       ["/statistics/chart", "analytics"],
       ["/ops/logs", "admin"],
       ["/account", "admin"],
@@ -68,6 +73,20 @@ describe("раздел по адресу", () => {
     expect(sectionOf("/staff/u1")).toBe("admin");
     expect(sectionOf("/today")).toBeNull();
   });
+
+  /*
+   * Прежде протокол и заключение открывали колонку «Методики» с текущим
+   * «Каталогом» и пунктом «Інструменти екрана: Чернетка заключення», который
+   * вёл на тот же лист. Экран — о человеке: шапка пациента во всю ширину, как
+   * у клинической карты, без колонки подразделов.
+   */
+  test("протокол, графики и заключение — без колонки подразделов; методика своя колонка остаётся", () => {
+    expect(sectionOf("/surveys/s1/responses/r1")).toBeNull();
+    expect(sectionOf("/surveys/s1/responses/r1/charts")).toBeNull();
+    expect(sectionOf("/responses/r1/conclusion")).toBeNull();
+    expect(sectionOf("/surveys/s1")).toBe("methods");
+    expect(sectionOf("/surveys/s1/administer")).toBe("methods");
+  });
 });
 
 describe("текущий пункт подразделов — ровно один", () => {
@@ -81,8 +100,8 @@ describe("текущий пункт подразделов — ровно оди
     expect(current("methods", "/surveys")).toEqual(["/surveys"]);
     expect(current("methods", "/surveys/drafts")).toEqual(["/surveys/drafts"]);
     expect(current("methods", "/surveys/retired")).toEqual(["/surveys/retired"]);
-    /* заключение — экран прохождения методики: каталог */
-    expect(current("methods", "/responses/r1/conclusion")).toEqual(["/surveys"]);
+    /* обзор методики — каталог */
+    expect(current("methods", "/surveys/0b8a3c2e-1111-4222-8333-944455556666")).toEqual(["/surveys"]);
   });
 
   test("модели аналитики не текущие на «Аналітиці тестів»", () => {
@@ -110,13 +129,12 @@ describe("двери открытого человека и экрана", () =>
     expect(groups.some((g) => g.label === "pcard.clinical")).toBe(true);
   });
 
-  test("правка группы и черновик заключения — на своих экранах и нигде больше", () => {
+  test("правка группы — на своём экране и нигде больше; у заключения двери на самого себя нет", () => {
     expect(screenTools("/patient-groups/g1")?.[0]?.to).toBe("/patient-groups/g1/edit");
     expect(screenTools("/patient-groups/g1/edit")).toBeNull();
-    expect(screenTools("/responses/r1/conclusion")?.[0]?.to).toBe("/responses/r1/conclusion/draft");
-    expect(subNavFor("methods", "/responses/r1/conclusion", ALL)!.groups.some((g) => g.label === "tools.screen")).toBe(
-      true,
-    );
+    /* инструменты черновика — на самом листе заключения: пункт вёл на тот же экран вторым адресом */
+    expect(screenTools("/responses/r1/conclusion")).toBeNull();
+    expect(subNavFor("methods", "/surveys", ALL)!.groups.some((g) => g.label === "tools.screen")).toBe(false);
   });
 
   test("«Норми» — только при открытой методике: без неё адресу не на что вести", () => {
