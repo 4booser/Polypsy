@@ -101,18 +101,6 @@ const ANALYTICS_ROOTS = ["/analytics", "/statistics"];
 const ADMIN_ROOTS = ["/staff", "/admins", "/permissions", "/ops", "/console", "/consent-text", "/api-docs", "/account"];
 
 /**
- * Прохождение (ответы, графики) и заключение по нему — записи о человеке.
- *
- * Адрес прохождения лежит под методикой (/surveys/:id/responses/:rid), но
- * экран — о пациенте: шапка с именем, «Картка пацієнта», сигналы, заключение.
- * Раздел у него поэтому «Пацієнти», а не «Методики» с текущим «Каталогом»;
- * к методике ведёт её название на самом экране (панель «Проходження»).
- */
-export function isPatientRecord(path: string): boolean {
-  return under(path, "/responses") || /^\/surveys\/[^/]+\/responses\/[^/]+/.test(path);
-}
-
-/**
  * Раздел рельсы, к которому принадлежит адрес.
  *
  * «Сьогодні» — это и сводка, и день приёма, и приглашения (вкладки одного
@@ -130,6 +118,18 @@ export function railKeyOf(path: string): RailKey | null {
   if (ANALYTICS_ROOTS.some((r) => under(path, r))) return "analytics";
   if (ADMIN_ROOTS.some((r) => under(path, r))) return "admin";
   return null;
+}
+
+/**
+ * Прохождение (ответы, графики) и заключение по нему — записи о человеке.
+ *
+ * Адрес прохождения лежит под методикой (/surveys/:id/responses/:rid), но
+ * экран — о пациенте: шапка с именем, «Картка пацієнта», сигналы, заключение.
+ * Раздел у него поэтому «Пацієнти», а не «Методики» с текущим «Каталогом»;
+ * к методике ведёт её название на самом экране (панель «Проходження»).
+ */
+export function isPatientRecord(path: string): boolean {
+  return under(path, "/responses") || /^\/surveys\/[^/]+\/responses\/[^/]+/.test(path);
 }
 
 /**
