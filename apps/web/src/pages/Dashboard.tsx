@@ -5,7 +5,7 @@ import { api } from "../api";
 import { useAuth } from "../auth";
 import { dayFull } from "../format";
 import { Screen, useUrlState } from "../ui";
-import { Button, ButtonLink } from "../ui/primitives";
+import { Button } from "../ui/primitives";
 import { useLang } from "../lang";
 import { useResource } from "../useResource";
 import { useLiveReload } from "../events";
@@ -113,17 +113,15 @@ export default function Dashboard() {
           </>
         }
         actions={
-          <>
-            <Button icon={<Di.dashboard />} aria-expanded={customize} onClick={() => setCustomize(true)}>
-              {ut("dashA.customize")}
-            </Button>
-            {user?.canInvite ? (
-              <ButtonLink to="/invites?new=1" variant="primary">
-                <Di.link />
-                {ut("inv.create")}
-              </ButtonLink>
-            ) : null}
-          </>
+          /*
+           * Главного действия у зведення нет: это обзор, а не форма.
+           * «Створити запрошення» стояло здесь фиолетовой кнопкой и читалось
+           * главным делом смены; оно — главное на своей вкладке «Запрошення»,
+           * в один щелчок отсюда, и в палитре команд.
+           */
+          <Button icon={<Di.dashboard />} aria-expanded={customize} onClick={() => setCustomize(true)}>
+            {ut("dashA.customize")}
+          </Button>
         }
       />
       <Screen res={res} rows={5}>

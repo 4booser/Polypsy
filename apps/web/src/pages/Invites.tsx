@@ -120,7 +120,7 @@ export default function Invites() {
     return { batteries, surveys, specialists };
   }, []);
 
-  /* «Створити запрошення» со зведення ведёт сюда с ?new=1 — сразу к форме */
+  /* «Створити запрошення» из палитры команд ведёт сюда с ?new=1 — сразу к форме */
   const focusForm = () => {
     formRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
     formRef.current?.querySelector<HTMLElement>("select, input")?.focus({ preventScroll: true });

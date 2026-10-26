@@ -146,6 +146,13 @@ export function CommandPalette({
     navigate(to);
     onClose();
   };
+  /*
+   * Куда ведёт команда. Зведення — по своей ссылке: при другом стартовом
+   * экране «/» занят им (overviewHref). «Створити запрошення» — сразу к
+   * форме нового запрошення (?new=1 ставит в неё фокус), а не к списку.
+   */
+  const target = (i: Item) =>
+    i.key === "nav.dashboard" ? overviewHref(user?.workspace?.startScreen) : i.key === "cmd.newInvite" ? `${i.to}?new=1` : i.to;
 
   return (
     <div
@@ -220,8 +227,7 @@ export function CommandPalette({
                     key={i.key + i.to}
                     value={ut(i.key)}
                     keywords={i.also ? [ut(i.also)] : undefined}
-                    /* зведення — по своей ссылке: при другом стартовом экране «/» занят им (overviewHref) */
-                    onSelect={() => go(i.key === "nav.dashboard" ? overviewHref(user?.workspace?.startScreen) : i.to)}
+                    onSelect={() => go(target(i))}
                     className={ROW}
                   >
                     <ShellIcon name={i.icon} size={16} />
