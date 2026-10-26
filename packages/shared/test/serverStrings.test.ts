@@ -205,7 +205,7 @@ describe("пометка сервера в текстовой колонке: к
 
     const battery = noteCode("note.battery", { title: "Скринінг ПТСР" });
     expect(renderNote(battery, "uk")).toBe("Набір «Скринінг ПТСР»");
-    expect(renderNote(battery, "ru")).toBe("Батарея «Скринінг ПТСР»");
+    expect(renderNote(battery, "ru")).toBe("Набор «Скринінг ПТСР»");
     expect(renderNote(battery, "en")).toBe("Battery “Скринінг ПТСР”");
     expect(readNotes(battery)).toEqual([{ code: "note.battery", params: { title: "Скринінг ПТСР" } }]);
   });

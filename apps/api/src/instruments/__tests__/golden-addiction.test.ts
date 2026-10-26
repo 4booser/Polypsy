@@ -311,13 +311,19 @@ describe("группа addiction: структура, язык, риск", () =>
 
     test(`${name}: рабочий перевод назван там, где он есть, и только там`, () => {
       /*
-       * Официальный украинский текст (стандарты МОЗ 2025) — без оговорки, русский
-       * при нём — рабочий, с оговоркой; без официального текста оговорка на обоих.
+       * Оговорка — в примечании для персонала («Джерело» паспорта методики), а
+       * не в описании, которое читает обследуемый. Официальный украинский текст
+       * (стандарты МОЗ 2025) — без общей оговорки, и примечание называет
+       * рабочим русский; без официального текста — общая оговорка.
        */
-      const desc = draft.description as { uk: string; ru: string };
-      if (m.officialUk) expect(desc.uk).not.toContain(WORKING_TRANSLATION.uk);
-      else expect(desc.uk).toContain(WORKING_TRANSLATION.uk);
-      expect(desc.ru).toContain(WORKING_TRANSLATION.ru);
+      const note = CATALOG.find((e) => e.draft === draft)!.note;
+      if (m.officialUk) {
+        expect(note).not.toContain(WORKING_TRANSLATION.uk);
+        expect(note).toContain("російський — робочий переклад");
+      } else {
+        expect(note).toContain(WORKING_TRANSLATION.uk);
+      }
+      expect((draft.description as { uk: string }).uk).not.toContain(WORKING_TRANSLATION.uk);
     });
 
     test(`${name}: пункты риска — ровно по досье`, () => {

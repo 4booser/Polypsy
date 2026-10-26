@@ -8,11 +8,11 @@ import {
   type Answer,
   type SurveyFull,
 } from "@quizzy/shared";
-import { BAT12_FROM_BAT23, BAT_ITEMS, bat, bat12 } from "../bat";
+import { BAT12_FROM_BAT23, BAT_ITEMS, bat, bat12, bat12Note, batNote } from "../bat";
 import { CATALOG } from "../catalog";
 import { WORKING_TRANSLATION } from "../common";
-import { MIOS_NOT_SCORED, mios, miosPosition } from "../mios";
-import { PROQOL_REVERSED, proqol5 } from "../proqol5";
+import { MIOS_NOT_SCORED, mios, miosNote, miosPosition } from "../mios";
+import { PROQOL_REVERSED, proqol5, proqol5Note } from "../proqol5";
 
 /**
  * Золотые протоколы группы «персонал» (docs/instruments/dossiers/staff.json):
@@ -218,14 +218,14 @@ describe("группа staff: структура, язык, риск", () => {
      * BAT — официальные украинский и русский тексты правообладателя: без оговорки.
      * ProQOL 5 и MIOS — рабочий перевод на обоих языках.
      */
-    const desc = (d: typeof bat) => d.description as { uk: string; ru: string };
-    for (const d of [bat, bat12]) {
-      expect(desc(d).uk).not.toContain(WORKING_TRANSLATION.uk);
-      expect(desc(d).ru).not.toContain(WORKING_TRANSLATION.ru);
+    // в примечании для персонала («Джерело» паспорта); описание читает обследуемый — там этого нет
+    for (const note of [batNote, bat12Note]) {
+      expect(note).not.toContain(WORKING_TRANSLATION.uk);
+      expect(note).toContain("офіційні переклади правовласника");
     }
-    for (const d of [proqol5, mios]) {
-      expect(desc(d).uk).toContain(WORKING_TRANSLATION.uk);
-      expect(desc(d).ru).toContain(WORKING_TRANSLATION.ru);
+    for (const note of [proqol5Note, miosNote]) expect(note).toContain(WORKING_TRANSLATION.uk);
+    for (const d of [bat, bat12, proqol5, mios]) {
+      expect((d.description as { uk: string }).uk).not.toContain(WORKING_TRANSLATION.uk);
     }
   });
 
@@ -247,12 +247,18 @@ describe("группа staff: структура, язык, риск", () => {
     expect((mios.safetyPlan as { uk: string }).uk.length).toBeGreaterThan(0);
   });
 
-  test("ссылка, которой требуют правообладатели, — в описании", () => {
+  test("ссылка, которой требуют правообладатели, — у специалиста, а у ProQOL — и у отвечающего", () => {
     // BAT: «the following publication should be cited»; ProQOL: «credit The Center for Victims of Torture and provide a link to www.ProQOL.org»
-    for (const d of [bat, bat12]) expect((d.description as { uk: string }).uk).toContain("17, 9495");
-    expect((proqol5.description as { uk: string }).uk).toContain("www.ProQOL.org");
-    expect((proqol5.description as { uk: string }).uk).toContain("Center for Victims of Torture");
-    expect((mios.description as { uk: string }).uk).toContain("Frontiers in Psychiatry");
+    for (const note of [batNote, bat12Note]) expect(note).toContain("17, 9495");
+    expect(proqol5Note).toContain("www.ProQOL.org");
+    expect(proqol5Note).toContain("Center for Victims of Torture");
+    expect(miosNote).toContain("Frontiers in Psychiatry");
+    // ProQOL копируют «as long as the author is credited»: строка правообладателя внизу инструкции, как на форме
+    const ins = proqol5.instructions as { uk: string; ru: string };
+    for (const text of [ins.uk, ins.ru]) {
+      expect(text).toContain("© B. Hudnall Stamm, 2009");
+      expect(text).toContain("Center for Victims of Torture, www.ProQOL.org");
+    }
   });
 });
 

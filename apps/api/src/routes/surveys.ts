@@ -3,6 +3,7 @@ import { and, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import {
   CONTENT_LANGS,
   diffVersions,
+  LANG_FALLBACK,
   NO_DOMAIN,
   normalizeLocalized,
   noteCode,
@@ -11,6 +12,7 @@ import {
   t,
   validateSurvey,
   type Issue,
+  type Lang,
   renderError,
 } from "@quizzy/shared";
 import {
@@ -81,6 +83,26 @@ async function assertCascadeTargets(
     const visible = !!row && (groups === null || row.groupId === null || groups.includes(row.groupId));
     if (!visible) badRequest("err.cascadeBatteryNotFound", { title: w.code });
   }
+}
+
+/*
+ * Порядок по названию (?sort=title) — тот же выбор языка, что у t():
+ * запрошенный, затем запасные (LANG_FALLBACK); название без языков
+ * (заведённое до двуязычия) — само по себе.
+ *
+ * Сравнение — по правилам языка (ICU), а не по байтам: в байтовом порядке
+ * «Інсомнія» и «Єдність» встают после «Я» — і, ї, є, ґ лежат в Юникоде за
+ * основным рядом кириллицы. Колляции «uk-x-icu» и «ru-x-icu» есть в любом
+ * Postgres с ICU (официальный образ, Homebrew). Английского текста у методик
+ * нет (CONTENT_LANGS): на английском экране названия украинские — и правила
+ * им украинские. Ключи языка — литералом из закрытого перечня: у параметра
+ * оператор ->> не выбрал бы между текстом и номером.
+ */
+const TITLE_COLLATION: Record<Lang, string> = { uk: "uk-x-icu", ru: "ru-x-icu", en: "uk-x-icu" };
+
+function titleOrder(lang: Lang) {
+  const byLang = LANG_FALLBACK[lang].map((l) => sql`${surveys.title}->>${sql.raw(`'${l}'`)}`);
+  return sql`coalesce(${sql.join(byLang, sql`, `)}, ${surveys.title}#>>'{}') collate ${sql.raw(`"${TITLE_COLLATION[lang]}"`)}`;
 }
 
 export const surveyRoutes = new Hono<AppEnv>();
@@ -155,6 +177,9 @@ surveyRoutes.patch("/:id/rights", async (c) => {
  * ?domain= — направление методики (shared/domains.ts) или `none` — без
  * направления: чипы «Напрям» каталога. В строке списка направление — поле
  * `domain`, как и остальные поля методики.
+ *
+ * ?sort=title — по названию на языке запроса (titleOrder выше): так каталог
+ * листает врач. Без параметра — новые сверху, как и было.
  */
 surveyRoutes.get("/", async (c) => {
   const user = c.get("user");
@@ -250,8 +275,10 @@ surveyRoutes.get("/", async (c) => {
      * порядка среди равных created_at, и посев кладёт десятки методик одной
      * секундой: без второго ключа одна и та же методика могла бы попасть на
      * две страницы, а другая — ни на одну, и по списку этого не видно.
+     * У порядка по названию — тот же второй ключ: одноимённые методики
+     * (копия и оригинал) бывают.
      */
-    .orderBy(desc(surveys.createdAt), desc(surveys.id))
+    .orderBy(...(query.sort === "title" ? [titleOrder(langOf(c)), surveys.id] : [desc(surveys.createdAt), desc(surveys.id)]))
     .$dynamic();
   const rows = await (query.limit === undefined
     ? listing

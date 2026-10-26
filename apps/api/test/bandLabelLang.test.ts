@@ -75,6 +75,24 @@ describe("слово полосы на языке читателя", () => {
     expect(sr?.bands.some((b: { label: string; hit?: boolean }) => b.label === RU)).toBe(true);
   });
 
+  /*
+   * Мутация: вернуть getSurvey без языка или bandLabelsIn("uk") — русская
+   * сводка методики называет полосу «Нижче середнього», а прохождение не
+   * попадает ни в одну полосу распределения.
+   */
+  test("сводка методики (огляд): название шкалы, полосы и распределение — по-русски", async () => {
+    const res = await api(`/api/analytics/surveys/${surveyInA}?lang=ru`, adminA.token);
+    expect(res.status).toBe(200);
+    const sr = res.body.scales.find((s: { code: string }) => s.code === "Sr");
+    expect(sr?.title, "сводка, название шкалы").toBe("Склонность к суицидальным реакциям");
+    const band = sr?.bands.find((b: { label: string }) => b.label === RU);
+    expect(band, "сводка, полоса").toBeTruthy();
+    expect(band.count, "прохождение на украинском не попало в русскую полосу").toBeGreaterThanOrEqual(1);
+    const uk = await api(`/api/analytics/surveys/${surveyInA}?lang=uk`, adminA.token);
+    const ukBand = uk.body.scales.find((s: { code: string }) => s.code === "Sr")?.bands.find((b: { label: string }) => b.label === UK);
+    expect(ukBand?.count, "сводка, uk").toBe(band.count);
+  });
+
   test("список прохождений методики: название шкалы и полоса — по-русски", async () => {
     const res = await api(`/api/surveys/${surveyInA}/responses?lang=ru`, adminA.token);
     expect(res.status).toBe(200);

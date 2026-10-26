@@ -9,9 +9,9 @@ import {
   type SurveyFull,
 } from "@quizzy/shared";
 import { WORKING_TRANSLATION } from "../common";
-import { fas } from "../fas";
-import { ris } from "../ris";
-import { sci } from "../sci";
+import { fas, fasNote } from "../fas";
+import { ris, risNote } from "../ris";
+import { sci, sciNote } from "../sci";
 import { sci02 } from "../sci02";
 
 /**
@@ -232,8 +232,9 @@ describe("золотой протокол: SCI", () => {
     expect(detectBandRisks(scores)).toEqual([]);
   });
 
-  test("перевод рабочий — оговорка в описании есть", () => {
-    expect(uk(sci.description)).toContain(WORKING_TRANSLATION.uk);
+  test("перевод рабочий — оговорка в примечании для персонала есть, в описании — нет", () => {
+    expect(sciNote).toContain(WORKING_TRANSLATION.uk);
+    expect(uk(sci.description)).not.toContain(WORKING_TRANSLATION.uk);
   });
 });
 
@@ -316,8 +317,8 @@ describe("золотой протокол: FAS", () => {
     expect(uk(qs(fas)[0]!.title)).toBe("Мене турбує втома");
     expect(uk(qs(fas)[3]!.title)).toBe("У мене достатньо енергії для повсякденного життя");
     expect(uk(qs(fas)[9]!.title)).toBe("Коли я щось роблю, я можу добре сконцентруватись");
-    expect(uk(fas.description)).not.toContain(WORKING_TRANSLATION.uk);
-    expect(uk(fas.description)).toContain("офіційний");
+    expect(fasNote).not.toContain(WORKING_TRANSLATION.uk);
+    expect(fasNote).toContain("офіційні переклади правовласника");
   });
 });
 
@@ -352,8 +353,8 @@ describe("золотой протокол: RIS", () => {
     expect(s13.band?.grade).toBe(2);
   });
 
-  test("перевод рабочий — оговорка в описании есть, результат человеку не показывается", () => {
-    expect(uk(ris.description)).toContain(WORKING_TRANSLATION.uk);
+  test("перевод рабочий — оговорка в примечании для персонала есть, результат человеку не показывается", () => {
+    expect(risNote).toContain(WORKING_TRANSLATION.uk);
     expect(ris.showResultsToPatient).toBe(false);
   });
 });

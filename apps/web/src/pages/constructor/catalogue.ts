@@ -1,6 +1,6 @@
 import { isSurveyDomain, NO_DOMAIN, SURVEY_DOMAINS, type SurveyDomain, type SurveyFolder, type SurveyListItem } from "@quizzy/shared";
 import type { SurveyPageQuery } from "../../api";
-import { DEFAULT_PER, pageOffset } from "../../ui/paging";
+import { PER_PAGE, pageOffset } from "../../ui/paging";
 
 /**
  * Чистая часть каталога тестов: адрес ↔ состояние, запрос к серверу, дерево
@@ -47,6 +47,28 @@ export function tabFromPath(pathname: string): CatalogueTab {
  */
 export { DEFAULT_PER, offsetPageCount, pageCount, pageFrom, perFrom } from "../../ui/paging";
 
+/**
+ * Строк на странице каталога, пока врач не выбрал своё: 50.
+ *
+ * Общее DEFAULT_PER (10) — с макета, и для каталога его мало: семьдесят
+ * методик отделения листались семью страницами, и нужную искали перелистыванием.
+ * Пятьдесят — каталог отделения почти целиком на одной странице, а на две
+ * его делит только общий каталог с методиками учреждения.
+ */
+export const CATALOGUE_PER = 50;
+
+/**
+ * Строк на странице: из адреса (ссылка, закладка), иначе выбор врача из
+ * профиля (workspace.catalogPer), иначе CATALOGUE_PER. Чужое число — как
+ * отсутствующее: ступени селекта — единственный источник допустимых.
+ */
+export function cataloguePer(raw: string | null, chosen?: number | null): number {
+  const ok = (n: number) => (PER_PAGE as readonly number[]).includes(n);
+  const fromUrl = Number(raw);
+  if (raw !== null && ok(fromUrl)) return fromUrl;
+  return chosen && ok(chosen) ? chosen : CATALOGUE_PER;
+}
+
 /* ─────────── запрос ─────────── */
 
 export interface CatalogueView {
@@ -89,19 +111,26 @@ export interface CatalogueView {
  *    каталогу, а не по методикам вне папок, в папке — по её поддереву (это
  *    делает сервер). Чип «Травма 3» обещает три методики, где бы они ни
  *    лежали, а методики общего каталога и вовсе стоят вне папок.
+ *
+ * 5. Порядок — по названию на языке экрана (sort=title), на всех вкладках.
+ *    Сервер по умолчанию отдаёт новые сверху, и семьдесят методик, которые
+ *    установщик поставил одной секундой, стояли в случайном для врача
+ *    порядке. Порядок считает сервер: страницы режет он, и сортировка одной
+ *    страницы на клиенте переставляла бы страницу, а не каталог.
  */
 export function listQuery(view: CatalogueView): SurveyPageQuery {
   const q = view.q.trim();
   const domain = view.domain ?? undefined;
   const folder = view.folder ?? (q || domain ? undefined : "root");
   const byDomain = domain ? { domain } : {};
-  if (view.tab === "retired") return { folder, q, archived: true, ...byDomain };
+  if (view.tab === "retired") return { folder, q, archived: true, sort: "title", ...byDomain };
   return {
     folder,
     q,
     status: view.tab === "drafts" ? "draft" : "published",
     limit: view.per,
     offset: pageOffset(view.page, view.per),
+    sort: "title",
     ...byDomain,
   };
 }
@@ -164,8 +193,9 @@ export function retiredPage(items: SurveyListItem[], page: number, per: number):
 
 /**
  * Адрес экрана из его состояния. Умолчания в адрес не пишутся: «/surveys»
- * и «/surveys?page=1&per=10» — одна и та же страница, и закладок на неё
- * не должно быть двух.
+ * и «/surveys?page=1&per=50» — одна и та же страница, и закладок на неё
+ * не должно быть двух. Строк на странице экран передаёт, только если их
+ * число стояло в адресе: выбор врача живёт в профиле, а не в ссылке.
  */
 export function catalogueHref(
   tab: CatalogueTab,
@@ -176,7 +206,7 @@ export function catalogueHref(
   if (state.q?.trim()) qs.set("q", state.q.trim());
   if (state.domain) qs.set("domain", state.domain);
   if (state.page && state.page > 1) qs.set("page", String(state.page));
-  if (state.per && state.per !== DEFAULT_PER) qs.set("per", String(state.per));
+  if (state.per && state.per !== CATALOGUE_PER) qs.set("per", String(state.per));
   const tail = qs.toString();
   return `${TAB_PATH[tab]}${tail ? `?${tail}` : ""}`;
 }

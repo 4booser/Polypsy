@@ -8,14 +8,14 @@ import {
   type CreateSurveyDraft,
   type SurveyFull,
 } from "@quizzy/shared";
-import { ASQ_POS, asq } from "../asq";
+import { ASQ_POS, asq, asqNote } from "../asq";
 import { CATALOG } from "../catalog";
 import { WORKING_TRANSLATION } from "../common";
-import { CSSRS_POS, cssrs } from "../cssrs";
+import { CSSRS_POS, cssrs, cssrsNote } from "../cssrs";
 import { minimult } from "../minimult";
 import { mlo } from "../mlo";
 import { sadPersons } from "../sadPersons";
-import { sidas } from "../sidas";
+import { sidas, sidasNote } from "../sidas";
 import { sr45 } from "../sr45";
 
 /**
@@ -221,17 +221,15 @@ describe("группа suicide: структура", () => {
   });
 
   test("рабочий перевод назван там, где он есть", () => {
+    // в примечании для персонала («Джерело» паспорта); описание читает обследуемый — там этого нет
     // ASQ: украинский — рабочий, русский вопросов — официальный NIMH; SIDAS — рабочий на обоих
-    const asqDesc = asq.description as { uk: string; ru: string };
-    expect(asqDesc.uk).toContain(WORKING_TRANSLATION.uk);
-    expect(asqDesc.ru).toContain("официальный перевод NIMH");
-    const sidasDesc = sidas.description as { uk: string; ru: string };
-    expect(sidasDesc.uk).toContain(WORKING_TRANSLATION.uk);
-    expect(sidasDesc.ru).toContain(WORKING_TRANSLATION.ru);
+    expect(asqNote).toContain(WORKING_TRANSLATION.uk);
+    expect(asqNote).toContain("офіційний переклад NIMH");
+    expect(sidasNote).toContain(WORKING_TRANSLATION.uk);
     // C-SSRS: оба языка — официальные переводы правообладателя
-    const cssrsDesc = cssrs.description as { uk: string; ru: string };
-    expect(cssrsDesc.uk).not.toContain(WORKING_TRANSLATION.uk);
-    expect(cssrsDesc.uk).toContain("офіційні переклади правовласника");
+    expect(cssrsNote).not.toContain(WORKING_TRANSLATION.uk);
+    expect(cssrsNote).toContain("офіційні переклади правовласника");
+    for (const d of [asq, sidas, cssrs]) expect((d.description as { uk: string }).uk).not.toContain(WORKING_TRANSLATION.uk);
   });
 });
 

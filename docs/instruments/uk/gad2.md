@@ -40,13 +40,14 @@
 
 ## 1. Призначення
 
-Два запитання за останні два тижні — пункти 1–2 GAD-7 без змін. Це фільтр, а не вимірювання тяжкості: бал 3 і вище (поріг посібника видавця; пацієнти первинної ланки США) означає «провести GAD-7 і клінічне інтерв’ю», а не «є розлад». Тексти пунктів — офіційні переклади правовласника (Pfizer, phqscreeners.com: «Ukrainian for Ukraine», «Russian for Ukraine»); українські варіанти відповіді — з офіційного PHQ-9 МОЗ (наказ №1003), як у GAD-7.
+Два запитання про тривогу за останні два тижні.
 
 **Інструкція обстежуваному:** Як часто за останні 2 тижні Вас турбували наступні проблеми? Запитань лише два — відповідайте про те, як було насправді.
 
 ## 2. Джерело
 
 - **Записано в системі** (журнал установки каталогу, мовою запису): GAD-2, Kroenke, Spitzer, Williams, Monahan, Löwe, 2007 (public domain); текст — пункти 1–2 GAD-7 каталогу, переклад робочий
+- **Примітка для персоналу** («Джерело» в паспорті методики, мовою запису): Пункти 1–2 GAD-7 без змін. Це фільтр, а не вимірювання тяжкості: бал 3 і вище (поріг посібника видавця; пацієнти первинної ланки США) означає «провести GAD-7 і клінічне інтерв’ю», а не «є розлад». Тексти пунктів — офіційні переклади правовласника (Pfizer, phqscreeners.com: «Ukrainian for Ukraine», «Russian for Ukraine»); українські варіанти відповіді — з офіційного PHQ-9 МОЗ (наказ №1003), як у GAD-7.
 - **Публікація за досьє**: Kroenke K, Spitzer RL, Williams JBW, Monahan PO, Löwe B. Anxiety disorders in primary care: prevalence, impairment, comorbidity, and detection. Annals of Internal Medicine. 2007;146(5):317-325.
 - **Смуги за досьє** (мовою досьє): INSTRUCTION MANUAL, стр. 6: «The operating characteristics of these ultra-brief measures are quite good; the recommended cutpoints for each when used as screeners is a score of 3 or greater.» Стр. 2: «For the ultra-brief measures (PHQ-2 and GAD-2), a score of 3 or greater should prompt administration of the full PHQ-9 and/or GAD-7, as well as a clinical interview to determine whether a mental disorder is present.» Порог установлен на пациентах первичного звена США.
 - **Ліцензія за досьє**: свободна

@@ -8,12 +8,12 @@ import {
   type SurveyFull,
 } from "@quizzy/shared";
 import { detectRisks } from "../../lib/risk";
-import { asrs6 } from "../asrs6";
-import { assist } from "../assist";
+import { asrs6, asrs6Note } from "../asrs6";
+import { assist, assistNote } from "../assist";
 import { AUDIT_CONSUMPTION, audit10 } from "../audit10";
-import { auditc } from "../auditc";
-import { cage } from "../cage";
-import { CBI_ORDER, cbi } from "../cbi";
+import { auditc, auditcNote } from "../auditc";
+import { cage, cageNote } from "../cage";
+import { CBI_ORDER, cbi, cbiNote } from "../cbi";
 import { WORKING_TRANSLATION } from "../common";
 
 /**
@@ -211,17 +211,17 @@ describe("группа behaviour: структура, язык, риск", () =>
   test("рабочий перевод назван там, где он есть, и только там", () => {
     /*
      * CAGE и AUDIT-C: украинский текст официальный (настанова МЗ КН 2025-1897:
-     * приложение «CAGE» и рисунок 4.1) — без оговорки, русский — рабочий, с
-     * оговоркой. Остальные три — рабочий перевод на обоих языках.
+     * приложение «CAGE» и рисунок 4.1) — без общей оговорки, русский назван
+     * рабочим. Остальные три — рабочий перевод на обоих языках. Всё это — в
+     * примечании для персонала («Джерело» паспорта); описание читает обследуемый.
      */
-    const desc = (d: typeof cage) => d.description as { uk: string; ru: string };
-    for (const d of [cage, auditc]) {
-      expect(desc(d).uk).not.toContain(WORKING_TRANSLATION.uk);
-      expect(desc(d).ru).toContain(WORKING_TRANSLATION.ru);
+    for (const note of [cageNote, auditcNote]) {
+      expect(note).not.toContain(WORKING_TRANSLATION.uk);
+      expect(note).toContain("російський — робочий переклад");
     }
-    for (const d of [assist, asrs6, cbi]) {
-      expect(desc(d).uk).toContain(WORKING_TRANSLATION.uk);
-      expect(desc(d).ru).toContain(WORKING_TRANSLATION.ru);
+    for (const note of [assistNote, asrs6Note, cbiNote]) expect(note).toContain(WORKING_TRANSLATION.uk);
+    for (const d of [cage, auditc, assist, asrs6, cbi]) {
+      expect((d.description as { uk: string }).uk).not.toContain(WORKING_TRANSLATION.uk);
     }
   });
 

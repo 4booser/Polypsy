@@ -11,7 +11,7 @@
    "verdict": "свободна (public domain по заявлению на авторском бланке)",
    "quote": "This scale is in the public domain and is free to use with appropriate citation: Adamson SJ, Kay-Lambkin FJ, Baker AL, Lewin TJ, Thornton L, Kelly BJ, and Sellman JD. (2010). An Improved Brief Measure of Cannabis Misuse: The Cannabis Use Disorders Identification Test – Revised (CUDIT-R). Drug and Alcohol Dependence 110:137-143.",
    "url": "https://www.cpha.ca/sites/default/files/uploads/resources/cannabis/cudit-r(1).pdf",
-   "conditions": "Единственное условие — ссылка на Adamson et al. 2010: она стоит в описании методики и в журнале установки. Подтверждение второго источника — NIH PhenX Toolkit, протокол «Assessment of Cannabis Use Disorder» (CUDIT-R): «This protocol is freely available; permission not required for use.» (https://www.phenxtoolkit.org/protocols/view/510310). Оговорка: заявление напечатано на бланке, который распространяют авторы и учреждения (CPHA, DePaul University, Caltech, PhenX); отдельной страницы University of Otago с этим текстом найти не удалось. Сама статья в Drug and Alcohol Dependence — «(c) 2010 Elsevier Ireland Ltd. All rights reserved.», но статья не воспроизводится: воспроизводится шкала, объявленная авторами общественным достоянием."
+   "conditions": "Единственное условие — ссылка на Adamson et al. 2010: она стоит в примечании для персонала («Джерело» паспорта методики) и в журнале установки. Подтверждение второго источника — NIH PhenX Toolkit, протокол «Assessment of Cannabis Use Disorder» (CUDIT-R): «This protocol is freely available; permission not required for use.» (https://www.phenxtoolkit.org/protocols/view/510310). Оговорка: заявление напечатано на бланке, который распространяют авторы и учреждения (CPHA, DePaul University, Caltech, PhenX); отдельной страницы University of Otago с этим текстом найти не удалось. Сама статья в Drug and Alcohol Dependence — «(c) 2010 Elsevier Ireland Ltd. All rights reserved.», но статья не воспроизводится: воспроизводится шкала, объявленная авторами общественным достоянием."
   },
   "items": [
    "Have you used any cannabis over the past six months? YES / NO [GATE — «If YES, please answer the following questions about your cannabis use.»]",
@@ -141,7 +141,7 @@
    "verdict": "свободна (не защищена авторским правом по заявлению авторов)",
    "quote": "The CIWA-Ar is not copyrighted and may be reproduced freely. This assessment for monitoring withdrawal symptoms requires approximately 5 minutes to administer. The maximum score is 67 (see instrument). Patients scoring less than 10 do not usually need additional medication for withdrawal.",
    "url": "https://rightdecisions.scot.nhs.uk/media/1854/ciwa-ar.pdf",
-   "conditions": "Условий нет. То же заявление в официальном украинском тексте МОЗ: «Опитувальник CIWA-Ar не захищений авторським правом і може вільно відтворюватися.» (ГС 2025-1897, додаток 9). Условие сайта ДЕЦ МОЗ для самого документа: «При повному або частковому використанні інформації, розміщеної на веб-сайті, посилання на джерело інформації обов'язкове.» — ссылка стоит в описании и в журнале установки."
+   "conditions": "Условий нет. То же заявление в официальном украинском тексте МОЗ: «Опитувальник CIWA-Ar не захищений авторським правом і може вільно відтворюватися.» (ГС 2025-1897, додаток 9). Условие сайта ДЕЦ МОЗ для самого документа: «При повному або частковому використанні інформації, розміщеної на веб-сайті, посилання на джерело інформації обов'язкове.» — ссылка стоит в примечании для персонала и в журнале установки."
   },
   "items": [
    "NAUSEA AND VOMITING -- Ask \"Do you feel sick to your stomach? Have you vomited?\" Observation.",
@@ -195,7 +195,7 @@
    }
   ],
   "bands_source": "Границы — из Стандарта МОЗ Украины ГС 2025-1897 (украинский нормативный документ, а не из статьи 1989 г.). Бланк авторов даёт один ориентир — «less than 10» без лечения; верхний порог 20 — только у МОЗ. Тот же стандарт: «Пацієнти з показниками CIWA-Ar понад 10 балів мають високий ризик розвитку ускладнень СВ, якщо вони не отримують медикаментозного лікування.» Целые баллы: «вище 20» = 21 и больше.",
-  "bands_warning": "ГС 2025-1897, розділ II, п. 3, підпункт 6: «шкали для визначення тяжкості СВ не використовуються для осіб, які одночасно припиняють вживання інших психоактивних речовин, які потенційно можуть викликати або посилити СВ, та/або для пацієнтів, які мають значну медичну чи психіатричну коморбідність» — оговорка стоит в описании методики.",
+  "bands_warning": "ГС 2025-1897, розділ II, п. 3, підпункт 6: «шкали для визначення тяжкості СВ не використовуються для осіб, які одночасно припиняють вживання інших психоактивних речовин, які потенційно можуть викликати або посилити СВ, та/або для пацієнтів, які мають значну медичну чи психіатричну коморбідність» — оговорка стоит в примечании для персонала («Джерело» паспорта методики).",
   "risk_items": [],
   "risk_items_note": "Пунктов о суициде, самоповреждении или вреде другим нет. Галлюцинации и дезориентация входят в сумму и поднимают полосу; отдельного правила тревоги по пункту первоисточник не даёт — не выдумываем. Тяжесть полос: < 10 — mild (не открывает случай), 10–20 — moderate, > 20 — severe: тяжёлый синдром отмены алкоголя — неотложное состояние (судороги, делирий), МОЗ требует наблюдения каждые 1–2 часа.",
   "translation": {

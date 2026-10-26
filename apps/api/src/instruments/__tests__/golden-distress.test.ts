@@ -10,13 +10,13 @@ import {
 import { CATALOG } from "../catalog";
 import { WORKING_TRANSLATION } from "../common";
 import { CORE10_REVERSE, CORE10_RISK_ITEM, CST_COPYRIGHT, core10 } from "../core10";
-import { DASS21_KEY, DASS21_UK_WORKING_ITEM, dass21 } from "../dass21";
-import { gad2 } from "../gad2";
-import { gad7 } from "../gad7";
-import { KESSLER_COPYRIGHT, k10 } from "../k10";
+import { DASS21_KEY, DASS21_UK_WORKING_ITEM, dass21, dass21Note } from "../dass21";
+import { gad2, gad2Note } from "../gad2";
+import { gad7, gad7Note } from "../gad7";
+import { KESSLER_COPYRIGHT, k10, k10Note } from "../k10";
 import { K6_FROM_K10, k6 } from "../k6";
 import { PHQ15_WOMEN_ONLY, phq15 } from "../phq15";
-import { phq2 } from "../phq2";
+import { phq2, phq2Note } from "../phq2";
 import { phq9 } from "../phq9";
 
 /**
@@ -202,12 +202,10 @@ describe("золотой протокол: DASS-21", () => {
     });
   });
 
-  test("перевод: пункт 18 — рабочий, и описание об этом говорит; опечатка варианта исправлена", () => {
+  test("перевод: пункт 18 — рабочий, и примечание для персонала об этом говорит; опечатка варианта исправлена", () => {
     expect(DASS21_UK_WORKING_ITEM).toBe(18);
-    const d = loc(dass21.description);
-    expect(d.uk).toContain("пункту 18");
-    expect(d.uk).toContain("робочий переклад");
-    expect(d.ru).toContain("рабочий перевод");
+    expect(dass21Note).toContain("пункту 18");
+    expect(dass21Note).toContain("робочий переклад");
     // вариант 2 бланка: «часто бо значну» — опечатка, в системе «часто або»
     const second = loc(qs(dass21)[0]!.options![2]!.text);
     expect(second.uk).toBe("Стосувалося мене часто або значну частину часу");
@@ -240,11 +238,11 @@ describe("золотой протокол: K10", () => {
     expect(scoreOf(k10, [3, 3, 3, 3, 3, 2, 2, 2, 2, 2], "K10").band?.grade).toBe(3);
   });
 
-  test("копирайт разработчика виден отвечающему (инструкция) и стоит в описании", () => {
+  test("копирайт разработчика виден отвечающему (инструкция) и стоит в примечании для персонала", () => {
     const ins = loc(k10.instructions);
     expect(ins.uk).toContain(KESSLER_COPYRIGHT);
     expect(ins.ru).toContain(KESSLER_COPYRIGHT);
-    expect(loc(k10.description).uk).toContain(KESSLER_COPYRIGHT);
+    expect(k10Note).toContain(KESSLER_COPYRIGHT);
   });
 });
 
@@ -327,11 +325,9 @@ describe("золотой протокол: PHQ-2", () => {
   test("пункты — ровно первые два пункта PHQ-9; украинский — МОЗ, русский — «Russian for Ukraine»", () => {
     expect(qs(phq2).map((q) => q.title)).toEqual(qs(phq9).slice(0, 2).map((q) => q.title));
     expect(qs(phq2).map((q) => q.options)).toEqual(qs(phq9).slice(0, 2).map((q) => q.options));
-    const d = loc(phq2.description);
-    expect(d.uk).not.toContain(WORKING_TRANSLATION.uk);
-    expect(d.ru).not.toContain(WORKING_TRANSLATION.ru);
-    expect(d.uk).toContain("№1003");
-    expect(d.ru).toContain("Russian for Ukraine");
+    expect(phq2Note).not.toContain(WORKING_TRANSLATION.uk);
+    expect(phq2Note).toContain("№1003");
+    expect(phq2Note).toContain("Russian for Ukraine");
   });
 });
 
@@ -354,8 +350,8 @@ describe("золотой протокол: GAD-2", () => {
      * официальный украинский текст издателя и снимет оговорку, GAD-2 должен
      * снять её тоже — иначе описание соврёт о тексте, который на экране.
      */
-    const working = (draft: CreateSurveyDraft) => loc(draft.description).uk.includes(WORKING_TRANSLATION.uk);
-    expect(working(gad2)).toBe(working(gad7));
+    const working = (note: string) => note.includes(WORKING_TRANSLATION.uk);
+    expect(working(gad2Note)).toBe(working(gad7Note));
   });
 });
 

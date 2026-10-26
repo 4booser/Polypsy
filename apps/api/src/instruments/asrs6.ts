@@ -1,5 +1,5 @@
 import type { CreateSurveyDraft } from "@quizzy/shared";
-import { L, PUBLIC_DEFAULTS, allItems, bands, describe, item, sumKey, type Anchor, type Loc } from "./common";
+import { L, PUBLIC_DEFAULTS, allItems, bands, item, sumKey, type Anchor, type Loc, WORKING_TRANSLATION } from "./common";
 
 /**
  * ASRS-v1.1, скринер из шести вопросов — признаки СДВГ у взрослых
@@ -29,11 +29,12 @@ import { L, PUBLIC_DEFAULTS, allItems, bands, describe, item, sumKey, type Ancho
  *
  * Перевод. Официального украинского перевода у правообладателя нет, русский
  * есть (NYU TOV), но в досье не сверен — поэтому оба языка здесь рабочий
- * перевод, и это сказано через describe(). Правообладатель запрещает любые
+ * перевод, и это сказано через WORKING_TRANSLATION. Правообладатель запрещает любые
  * изменения, кроме электронной формы; учреждение заявило, что разрешения у него
  * есть, но формулировки, порядок пунктов и шкала ответов всё равно не тронуты.
  *
- * Атрибуция обязательна дословно — она в описании (там, где методику видят) и в
+ * Атрибуция обязательна дословно — она в примечании для персонала (там, где методику
+ * выбирают), строка копирайта — в конце инструкции (её видит заполняющий), и в
  * `source` каталога (там, где её спросят через год).
  *
  * severity положительного скрининга — "mild", а не "moderate". "moderate" в этой
@@ -97,15 +98,19 @@ export const asrs6: CreateSurveyDraft = {
     "Ознаки СДУГ у дорослих (ASRS-v1.1, 6 запитань)",
     "Признаки СДВГ у взрослых (ASRS-v1.1, 6 вопросов)",
   ),
-  description: describe(
-    L(
-      "Скринер ASRS-v1.1 із шести запитань про ознаки синдрому дефіциту уваги та гіперактивності в дорослих за останні 6 місяців. Для людей від 18 років. Поріг «4 і більше відповіді в зоні ознак» встановлений на вибірці США (Kessler та ін., 2005); українських норм немає. Скринер не є діагностичним інструментом: діагноз за самим балом не ставиться. The 6-question Adult Self-Report Scale-Version1.1 (ASRS-V1.1) Screener is a subset of the 18-question Adult ADHD Self-Report Scale-Version1.1 (Adult ASRSV1.1) Symptom Checklist. © New York University and the President and Fellows of Harvard College. The ASRS v1.1 Screener was created by Dr. Lenard Adler of NYU and Dr. Ronald Kessler of Harvard.",
-      "Скринер ASRS-v1.1 из шести вопросов о признаках синдрома дефицита внимания и гиперактивности у взрослых за последние 6 месяцев. Для людей от 18 лет. Порог «4 и более ответа в зоне признаков» установлен на выборке США (Kessler и соавт., 2005); украинских норм нет. Скринер не является диагностическим инструментом: диагноз по одному баллу не ставится. The 6-question Adult Self-Report Scale-Version1.1 (ASRS-V1.1) Screener is a subset of the 18-question Adult ADHD Self-Report Scale-Version1.1 (Adult ASRSV1.1) Symptom Checklist. © New York University and the President and Fellows of Harvard College. The ASRS v1.1 Screener was created by Dr. Lenard Adler of NYU and Dr. Ronald Kessler of Harvard.",
-    ),
+  description: L(
+    "Шість запитань про увагу, організованість і непосидючість за останні 6 місяців.",
+    "Шесть вопросов о внимании, организованности и непоседливости за последние 6 месяцев.",
   ),
+  /*
+   * Копирайт правообладателя — в конце инструкции, как внизу бланка:
+   * атрибуция обязательна («does require attribution»), и видеть её должен
+   * тот, кто заполняет. Полная формулировка атрибуции — в примечании для
+   * персонала (asrs6Note); раньше она стояла в описании.
+   */
   instructions: L(
-    "Оберіть відповідь, яка найкраще описує, як ви почувалися й поводилися протягом ОСТАННІХ 6 МІСЯЦІВ. Опитувальник призначений для людей від 18 років. Результат варто обговорити з фахівцем під час наступної зустрічі.",
-    "Выберите ответ, который лучше всего описывает, как вы себя чувствовали и вели в течение ПОСЛЕДНИХ 6 МЕСЯЦЕВ. Опросник предназначен для людей от 18 лет. Результат стоит обсудить со специалистом на следующей встрече.",
+    "Оберіть відповідь, яка найкраще описує, як ви почувалися й поводилися протягом ОСТАННІХ 6 МІСЯЦІВ. Опитувальник призначений для людей від 18 років. Результат варто обговорити з фахівцем під час наступної зустрічі.\n\n© New York University and the President and Fellows of Harvard College.",
+    "Выберите ответ, который лучше всего описывает, как вы себя чувствовали и вели в течение ПОСЛЕДНИХ 6 МЕСЯЦЕВ. Опросник предназначен для людей от 18 лет. Результат стоит обсудить со специалистом на следующей встрече.\n\n© New York University and the President and Fellows of Harvard College.",
   ),
   showResultsToPatient: true,
   sections: [],
@@ -149,3 +154,10 @@ export const asrs6: CreateSurveyDraft = {
     },
   ],
 };
+
+/**
+ * Для персонала — «Джерело» в паспорте методики (surveys.source_note, ставит
+ * установщик каталога): откуда текст и пороги, чего система не считает.
+ * Описание выше читает обследуемый на первом экране — в нём этого нет.
+ */
+export const asrs6Note = `Скринер ASRS-v1.1 — ознаки синдрому дефіциту уваги та гіперактивності в дорослих. Для людей від 18 років. Поріг «4 і більше відповіді в зоні ознак» встановлений на вибірці США (Kessler та ін., 2005); українських норм немає. Скринер не є діагностичним інструментом: діагноз за самим балом не ставиться. The 6-question Adult Self-Report Scale-Version1.1 (ASRS-V1.1) Screener is a subset of the 18-question Adult ADHD Self-Report Scale-Version1.1 (Adult ASRSV1.1) Symptom Checklist. © New York University and the President and Fellows of Harvard College. The ASRS v1.1 Screener was created by Dr. Lenard Adler of NYU and Dr. Ronald Kessler of Harvard. ${WORKING_TRANSLATION.uk}`;

@@ -94,6 +94,8 @@ for (const [key, fields] of Object.entries(report.keptSettings)) {
 }
 // направление (instruments/catalogDomains.ts) у стоявших методик — без новой версии
 if (report.domainSet.length) console.log(`  ✓ направление проставлено: ${report.domainSet.join(", ")}`);
+// источник для персонала («Джерело» в паспорте методики) — тоже без версии; правку суперадмина выкат не трогает
+if (report.sourceNoteSet.length) console.log(`  ✓ источник для персонала обновлён: ${report.sourceNoteSet.join(", ")}`);
 
 /*
  * Наборы-заготовки (instruments/catalogBatteries.ts): заводятся один раз, дальше

@@ -185,17 +185,18 @@ describe("группа trauma: структура", () => {
       }
     });
 
-    test(`${key}: в каталоге, рабочий перевод и чужая норма названы в описании`, () => {
+    test(`${key}: в каталоге, рабочий перевод и чужая норма названы в примечании для персонала`, () => {
       /*
        * Правила каталога: рабочий перевод назван (WORKING_TRANSLATION), страна
-       * валидации порогов названа прямым текстом — там, где методику выбирают.
+       * валидации порогов названа прямым текстом — там, где методику выбирают
+       * и читают: в примечании («Джерело» паспорта методики). Описание читает
+       * обследуемый на первом экране — там этого нет.
        */
-      expect(CATALOG.find((e) => e.key === key)?.draft).toBe(draft);
-      const description = draft.description as { uk: string; ru: string };
-      expect(description.uk).toContain(WORKING_TRANSLATION.uk);
-      expect(description.ru).toContain(WORKING_TRANSLATION.ru);
-      expect(description.uk).toContain("США");
-      expect(description.ru).toContain("США");
+      const entry = CATALOG.find((e) => e.key === key);
+      expect(entry?.draft).toBe(draft);
+      expect(entry!.note).toContain(WORKING_TRANSLATION.uk);
+      expect(entry!.note).toContain("США");
+      expect((draft.description as { uk: string }).uk).not.toContain("США");
     });
 
     test(`${key}: результат человеку не показывается, план безопасности есть`, () => {
@@ -506,6 +507,8 @@ describe("группа trauma, каталог 2.1: структура", () => {
 
 /** Описание методики — там рабочий перевод либо назван, либо его нет */
 const descriptionOf = (draft: { description?: unknown }) => draft.description as LocText;
+/** Примечание для персонала («Джерело» паспорта методики) по ключу каталога */
+const noteOf = (key: string) => CATALOG.find((e) => e.key === key)!.note;
 
 describe("золотой протокол: ITQ", () => {
   const survey = toSurveyFull(itq);
@@ -573,10 +576,11 @@ describe("золотой протокол: ITQ", () => {
     expect((itq.questions![1]!.options![0]!.text as LocText).uk).toBe("менше місяця тому");
   });
 
-  test("тексты — бланки правообладателя: рабочий перевод назван только в русской половине", () => {
-    // наш в русском только перевод вариантов давности и заголовков частей
-    expect(descriptionOf(itq).uk).not.toContain(WORKING_TRANSLATION.uk);
-    expect(descriptionOf(itq).ru).toContain("рабочий перевод");
+  test("тексты — бланки правообладателя: рабочий перевод назван только у русской версии", () => {
+    // наш в русском только перевод вариантов давности и заголовков частей; сказано в примечании для персонала
+    expect(noteOf("itq")).not.toContain(WORKING_TRANSLATION.uk);
+    expect(noteOf("itq")).toContain("у російській версії узгоджено з українським бланком — це робочий переклад");
+    expect(descriptionOf(itq).uk).not.toContain("переклад");
   });
 });
 
@@ -633,9 +637,9 @@ describe("золотой протокол: TGI-SR+", () => {
     expect(tgiSrPlus.alertEscalateMinutes).toBe(60);
   });
 
-  test("перевод сделан с разработчиком — оговорки о рабочем переводе нет ни в одном языке", () => {
-    expect(descriptionOf(tgiSrPlus).uk).not.toContain(WORKING_TRANSLATION.uk);
-    expect(descriptionOf(tgiSrPlus).ru).not.toContain(WORKING_TRANSLATION.ru);
+  test("перевод сделан с разработчиком — оговорки о рабочем переводе нет", () => {
+    expect(noteOf("tgi_sr_plus")).not.toContain(WORKING_TRANSLATION.uk);
+    expect(noteOf("tgi_sr_plus")).not.toContain("робочий переклад");
   });
 });
 
@@ -680,9 +684,9 @@ describe("золотой протокол: CTSR", () => {
     expect(survey.questions[6]!.options.map((o) => o.riskFlag)).toEqual([false, true, true, true]);
   });
 
-  test("украинский текст — авторский; рабочий перевод назван только в русской половине", () => {
-    expect(descriptionOf(ctsrUa).uk).not.toContain("робочий переклад");
-    expect(descriptionOf(ctsrUa).ru).toContain("рабочий перевод");
+  test("украинский текст — авторский; рабочий перевод назван только у русского", () => {
+    expect(noteOf("ctsr_ua")).toContain("Український текст — авторський; російський — робочий переклад");
+    expect(noteOf("ctsr_ua")).not.toContain(WORKING_TRANSLATION.uk);
   });
 });
 
@@ -715,8 +719,8 @@ describe("золотой протокол: LEC-5", () => {
     expect(detectRisks(survey, answers)).toEqual([]);
   });
 
-  test("перевод рабочий — оговорка стоит в обоих языках", () => {
-    expect(descriptionOf(lec5).uk).toContain(WORKING_TRANSLATION.uk);
-    expect(descriptionOf(lec5).ru).toContain(WORKING_TRANSLATION.ru);
+  test("перевод рабочий — оговорка стоит в примечании для персонала", () => {
+    expect(noteOf("lec5")).toContain(WORKING_TRANSLATION.uk);
+    expect(descriptionOf(lec5).uk).not.toContain(WORKING_TRANSLATION.uk);
   });
 });

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createSurveySchema, evaluateSubmission, type Answer, type SurveyFull } from "@quizzy/shared";
-import { who5 } from "../who5";
+import { who5, who5Note } from "../who5";
 
 /**
  * Золотой протокол WHO-5 (волна 12, клиническое ревью).
@@ -101,10 +101,13 @@ describe("бланк WHO-5: порядок вариантов и официал�
     expect(((who5.questions ?? [])[4]!.title as { ru: string }).ru).toBe(
       "Каждый день со мной происходят вещи, представляющие для меня интерес",
     );
-    const d = who5.description as { uk: string; ru: string };
-    // лицензия ВОЗ требует оговорку к собственному переводу
-    expect(d.uk).toContain("створений не ВООЗ");
-    expect(d.ru).toContain("вариант 1999 г.");
+    // лицензия ВОЗ требует оговорку к собственному переводу — её видит тот, кто читает перевод: в инструкции
+    const i = who5.instructions as { uk: string; ru: string };
+    expect(i.uk).toContain("Переклад створений не ВООЗ");
+    expect(i.ru).toContain("Перевод создан не ВОЗ");
+    // откуда русский текст — в примечании для персонала («Джерело» паспорта)
+    expect(who5Note).toContain("варіант 1999 р.");
+    expect(who5Note).toContain("створений не ВООЗ");
   });
 });
 

@@ -9,6 +9,7 @@ import type {
   SurveyListItem,
 } from "@quizzy/shared";
 import { api, download } from "../../api";
+import { useAuth } from "../../auth";
 import { useResource } from "../../useResource";
 import { eachOf, Loading, useAction, useToast } from "../../ui";
 import { AlertChip, AlertStrip, KV } from "../../ui/records";
@@ -33,13 +34,15 @@ import { AssignDrawer, type ExistingAssignment } from "../../components/AssignDr
 import { ExportsDrawer } from "../methods/ExportsDrawer";
 import { Mi } from "../methods/icons";
 import { DOMAIN_KEY, domainKey, rightsKey } from "../methods/labels";
-import { attentionOf, grantState, keysPending, rightsPending, shortDate, splitCode } from "../methods/model";
+import { SourceNote } from "../methods/SourceNote";
+import { attentionOf, fixedIn, grantState, keysPending, rightsPending, shortDate, splitCode } from "../methods/model";
 import { num, useCount } from "../methods/useCount";
 import { ArchiveManyDialog, codesLine, FolderForm, MoveForm, MoveManyForm } from "./CatalogueDialogs";
 import {
-  DEFAULT_PER,
+  CATALOGUE_PER,
   assignPending,
   catalogueHref,
+  cataloguePer,
   domainCounts,
   domainFrom,
   folderChildren,
@@ -48,7 +51,6 @@ import {
   offsetPageCount,
   pageCount,
   pageFrom,
-  perFrom,
   retiredPage,
   tabFromPath,
   type CatalogueTab,
@@ -59,15 +61,16 @@ import {
  *
  * Шапка: имя экрана, сколько методик и проходжень за 30 днів, «Нова папка»,
  * «Імпорт з файлу», «Нова методика» (N). Под ней — вкладки «Опубліковані /
- * Чернетки / Зняті з використання» с числами и строка внимания: ключи не
- * сверены, права на текст не выяснены, черновики — каждая пилюля с
- * поповером и дверью к делу.
+ * Чернетки / Зняті з використання» с числами и строка внимания: черновики,
+ * а суперадмину ещё несверенные ключи и невыясненные права на текст —
+ * каждая пилюля с поповером и дверью к делу.
  *
  * В листе: папки текущего уровня («Мої тести» и крошки), поиск, группа,
  * чипы «Напрям» с числами (что измеряет методика: shared/domains.ts), таблица
  * и страницы. Строка: код и имя, признаки (лише за призначенням,
- * критичний пункт, заповнює фахівець, права, демо), група і папка, шкали й
- * смуги, проходження за 30 днів, версія і ключі. Действия строки всплывают
+ * критичний пункт, заповнює фахівець, демо; права — суперадмину), група і
+ * папка, шкали й смуги, проходження за 30 днів, версія (и ключи — суперадмину).
+ * Действия строки всплывают
  * на наведении и фокусе (DataTable): «Призначити» (A) и «Коротко» — в
  * ящике, остальное в меню; «Зняти з використання» — окно (необратимо для
  * выдачи), «Перемістити в папку» (M) и папка — прежние окна.
@@ -164,18 +167,26 @@ function Two({ top, sub, warn }: { top: ReactNode; sub?: ReactNode; warn?: boole
   );
 }
 
-/** «ключі звірено 12.09» / «ключі не звірено» / «без підрахунку балів» */
+/** «знято 12.09» у снятой методики */
+function RetiredLine({ at }: { at: string }) {
+  const { ut } = useLang();
+  return (
+    <span className="inline-flex items-center gap-[5px] text-muted">
+      <Ic.archive size={13} />
+      {ut("mc.retiredOn").replace("{date}", shortDate(at))}
+    </span>
+  );
+}
+
+/**
+ * «ключі звірено 12.09» / «ключі не звірено» / «без підрахунку балів» —
+ * строка суперадмина: сверку ключей и права решает он (PATCH /rights), и
+ * янтарь — его дело. Остальным это факт паспорта методики, не строка списка.
+ */
 function KeysLine({ s }: { s: Pick<SurveyListItem, "scoringEnabled" | "keysVerifiedAt" | "archivedAt"> }) {
   const { ut } = useLang();
   /* снятой методике ключи уже не долг — строка говорит, когда её сняли */
-  if (s.archivedAt) {
-    return (
-      <span className="inline-flex items-center gap-[5px] text-muted">
-        <Ic.archive size={13} />
-        {ut("mc.retiredOn").replace("{date}", shortDate(s.archivedAt))}
-      </span>
-    );
-  }
+  if (s.archivedAt) return <RetiredLine at={s.archivedAt} />;
   if (!s.scoringEnabled) return <span className="text-muted">{ut("cat.scoringOff")}</span>;
   if (s.keysVerifiedAt) {
     return (
@@ -311,15 +322,29 @@ const SEVERITY: Record<string, Severity> = { none: "none", mild: "mild", moderat
 /**
  * «Коротко про методику» (mpeek): паспорт, ключи и смуги без перехода.
  * Смуги — из самой методики (api.survey), паспорт — из строки каталога.
+ * Несверенные ключи — плашкой только суперадмину (`qa`): остальным это
+ * строка паспорта, как в «Про методику».
  */
-function PeekBody({ s, groupTitle, folderTitle }: { s: SurveyListItem; groupTitle: string | null; folderTitle: string | null }) {
-  const { ut } = useLang();
+function PeekBody({
+  s,
+  groupTitle,
+  folderTitle,
+  qa,
+}: {
+  s: SurveyListItem;
+  groupTitle: string | null;
+  folderTitle: string | null;
+  qa: boolean;
+}) {
+  const { ut, lang } = useLang();
   const count = useCount();
   const full = useResource(() => api.survey(s.id), [s.id]);
   const rights = rightsKey(s.rightsStatus);
+  /* границы полос — с запятой в uk/ru, как везде */
+  const bound = (v: number) => fixedIn(lang, v, 2, false);
   return (
     <>
-      {keysPending(s) && !s.archivedAt ? (
+      {qa && keysPending(s) && !s.archivedAt ? (
         <DrawerSection>
           <Callout
             kind="warn"
@@ -337,7 +362,7 @@ function PeekBody({ s, groupTitle, folderTitle }: { s: SurveyListItem; groupTitl
       ) : null}
       <DrawerSection title={ut("mc.peekPassport")}>
         <KV
-          w={120}
+          w={168}
           rows={[
             ...(s.description ? ([[ut("f.description"), s.description]] as [string, string][]) : []),
             [ut("dom.label"), ut(domainKey(s.domain) ?? "dom.none")],
@@ -350,7 +375,15 @@ function PeekBody({ s, groupTitle, folderTitle }: { s: SurveyListItem; groupTitl
               : []),
             [ut("mc.peekVisibility"), s.visibility === "restricted" ? ut("mc.visRestricted") : ut("mc.visPublic")],
             [ut("mc.peekWho"), s.administration === "clinician" ? ut("bt.byClinician") : ut("mc.bySelf")],
-            [ut("mc.peekRights"), rights ? ut(rights) : ut("cl.rightsUnclear")],
+            [ut("mc.peekRights"), rights ? ut(rights) : ut("mc.rightsUnclearValue")],
+            ...(s.scoringEnabled
+              ? ([
+                  [
+                    ut("mc.ovKeysChecked"),
+                    s.keysVerifiedAt ? ut("mc.ovKeysCheckedOn").replace("{date}", shortDate(s.keysVerifiedAt)) : ut("mc.ovNo"),
+                  ],
+                ] as [string, string][])
+              : []),
             ...(s.versionNumber
               ? ([[ut("mc.peekVersion"), `${s.versionNumber}, ${ut("mc.since").replace("{date}", shortDate(s.updatedAt))}`]] as [string, string][])
               : []),
@@ -362,6 +395,8 @@ function PeekBody({ s, groupTitle, folderTitle }: { s: SurveyListItem; groupTitl
             ],
           ]}
         />
+        {/* откуда текст и пороги — там, где методику выбирают; описание выше читает и обследуемый */}
+        <SourceNote text={s.sourceNote} className="mt-3 border-t border-divider pt-3" />
       </DrawerSection>
       <DrawerSection title={ut("mc.peekBands")}>
         {full.data ? (
@@ -377,7 +412,7 @@ function PeekBody({ s, groupTitle, folderTitle }: { s: SurveyListItem; groupTitl
                         .sort((a, b) => a.minScore - b.minScore)
                         .map((b) => (
                           <div key={b.id} className="flex items-center gap-2.5 text-small">
-                            <span className="w-14 shrink-0 font-bold tabular-nums text-text-2">{`${b.minScore}–${b.maxScore}`}</span>
+                            <span className="min-w-14 shrink-0 whitespace-nowrap font-bold tabular-nums text-text-2">{`${bound(b.minScore)}–${bound(b.maxScore)}`}</span>
                             <SeverityTag small level={SEVERITY[b.severity] ?? "none"}>
                               {b.label}
                             </SeverityTag>
@@ -428,11 +463,26 @@ export function SurveyList() {
   const { run, busy } = useAction();
   const [params, setParams] = useSearchParams();
   const fileRef = useRef<HTMLInputElement>(null);
+  /*
+   * Несверенные ключи и невыясненные права — дела учреждения, и решает их
+   * суперадмин (PATCH /api/surveys/:id/rights — только ему). Ему они —
+   * янтарём в строке внимания и в строках; врачу янтарь на каждой из
+   * семидесяти строк ничего не говорит, и ему это факт паспорта методики.
+   */
+  const { user, refreshUser } = useAuth();
+  const qa = user?.role === "superadmin";
 
   /*
    * Всё состояние экрана — в адресе: вкладка сегментом, папка, поиск,
-   * группа, страница и её размер — параметрами. Адрес каталога пересылают
-   * коллеге, и открыться он обязан на том же, что видел отправитель.
+   * группа, страница — параметрами. Адрес каталога пересылают коллеге, и
+   * открыться он обязан на том же, что видел отправитель.
+   *
+   * Строк на странице — исключение: это выбор врача, а не вид каталога, и
+   * живёт он в профиле (workspace.catalogPer), как тема и плотность, —
+   * сотрудник садится за разные машины. В адресе число остаётся, только
+   * если пришло с ним (старая закладка): тогда оно и действует, и уходит в
+   * ссылки вкладок и папок (linkPer). `chosen` — выбранное только что: профиль
+   * перечитывается после сохранения, и до ответа экран не прыгает назад.
    */
   const tab = tabFromPath(pathname);
   const folderParam = params.get("folder");
@@ -440,7 +490,9 @@ export function SurveyList() {
   const group = params.get("group") ?? "";
   const domain = domainFrom(params.get("domain"));
   const page = pageFrom(params.get("page"));
-  const per = perFrom(params.get("per"));
+  const [chosenPer, setChosenPer] = useState<number | null>(null);
+  const per = cataloguePer(params.get("per"), chosenPer ?? user?.workspace?.catalogPer);
+  const linkPer = params.get("per") !== null ? per : undefined;
 
   const update = useCallback(
     (patch: Record<string, string | null>) => {
@@ -675,7 +727,7 @@ export function SurveyList() {
     if (!window.confirm(ut("cat.deleteFolderConfirm"))) return;
     if (await run(() => api.deleteSurveyFolder(f.id), ut("cat.folderDeleted"))) {
       shelves.reload();
-      navigate(hrefOf(tab, { folder: f.parentId, per }), { replace: true });
+      navigate(hrefOf(tab, { folder: f.parentId, per: linkPer }), { replace: true });
     }
   };
 
@@ -779,7 +831,7 @@ export function SurveyList() {
           <ShellIcon name="stethoscope" size={13} />
         </Flag>
       ) : null}
-      {rightsPending(s) ? (
+      {qa && rightsPending(s) ? (
         <Flag label={ut("mc.flagRights")} warn>
           <Mi.scale size={13} />
         </Flag>
@@ -799,6 +851,17 @@ export function SurveyList() {
    */
   const narrow = useMedia("(max-width: 1366px)");
   const pageHasCodes = !!shown?.items.some((s) => splitCode(s.title).code);
+  /*
+   * «Група і папка» — только то, что различает строки. Группа — когда видно
+   * несколько групп и фильтра группы нет; папка — у строки, лежащей не в
+   * открытой папке (поиск и направление идут по поддереву). В корне без
+   * поиска строки и так вне папок, и «Каталог методик / у корені групи» на
+   * каждой из семидесяти строк ничего не говорило: место отдано названию.
+   * Нечего различать — колонки нет вовсе.
+   */
+  const showGroups = groups.length > 1 && !group;
+  const folderOf = (s: SurveyListItem) => (s.folderId && s.folderId !== folderId ? (folderById.get(s.folderId) ?? null) : null);
+  const pageHasFolders = !!shown?.items.some((s) => folderOf(s));
   /* подпись направления в строке; отобрано по направлению — у всех строк она одна, и строка её не повторяет */
   const rowDomain = (s: SurveyListItem): string | null => {
     if (domain && domain !== "none") return null;
@@ -814,13 +877,14 @@ export function SurveyList() {
     },
     {
       key: "group",
-      header: ut("mc.colGroup"),
+      header: ut(showGroups ? (pageHasFolders ? "mc.colGroup" : "f.group") : "cst.folder"),
       required: true,
-      width: narrow ? 168 : 188,
+      width: narrow ? 150 : 176,
       render: (s) => {
+        const f = folderOf(s);
+        if (!showGroups) return f ? <Two top={f.title} /> : null;
         const g = s.groupId ? groupById.get(s.groupId) : null;
-        const f = s.folderId ? folderById.get(s.folderId) : null;
-        return <Two top={g?.title ?? ut("mark.outsideGroups")} sub={g ? (f?.title ?? ut("mc.inGroupRoot")) : null} />;
+        return <Two top={g?.title ?? ut("mark.outsideGroups")} sub={f?.title ?? null} />;
       },
     },
     {
@@ -852,7 +916,8 @@ export function SurveyList() {
     },
     {
       key: "version",
-      header: ut("mc.colVersion"),
+      /* ключи в колонке — у суперадмина; у остальных она о версии и о снятии */
+      header: ut(qa ? "mc.colVersion" : "mc.peekVersion"),
       required: true,
       width: narrow ? 176 : 188,
       render: (s) => (
@@ -867,13 +932,15 @@ export function SurveyList() {
               <span className="text-muted">{ut("mc.noVersion")}</span>
             )
           }
-          sub={<KeysLine s={s} />}
+          sub={qa ? <KeysLine s={s} /> : s.archivedAt ? <RetiredLine at={s.archivedAt} /> : null}
         />
       ),
     },
   ];
 
-  const shownColumns = narrow ? columns.filter((c) => c.key !== "scales") : columns;
+  const shownColumns = columns.filter(
+    (c) => !(narrow && c.key === "scales") && !(c.key === "group" && !showGroups && !pageHasFolders),
+  );
 
   const rowActions = (s: SurveyListItem) => (
     <>
@@ -906,7 +973,7 @@ export function SurveyList() {
   );
 
   const tabs = (["published", "drafts", "retired"] as const).map((t) => ({
-    to: hrefOf(t, { folder: folderId, q, per }),
+    to: hrefOf(t, { folder: folderId, q, per: linkPer }),
     label: ut(t === "published" ? "mc.tabPublished" : t === "drafts" ? "sn.drafts" : "cat.tabRetired"),
     end: t === "published",
     count: everything.data ? tabCounts[t] : null,
@@ -937,36 +1004,39 @@ export function SurveyList() {
     return codes.join(", ") + (items.length > 2 ? ` +${items.length - 2}` : "");
   };
 
+  /* ключи и права — пилюлями только суперадмину (см. qa); черновики — всем */
+  const keysDue = qa ? attention.keys : [];
+  const rightsDue = qa ? attention.rights : [];
   const strip =
-    attention.keys.length || attention.rights.length || (attention.drafts.length && tab !== "drafts") ? (
+    keysDue.length || rightsDue.length || (attention.drafts.length && tab !== "drafts") ? (
       <AlertStrip label={ut("mc.attentionLabel")} className="ml-auto max-w-full">
-        {attention.keys.length ? (
+        {keysDue.length ? (
           <AlertChip
             kind="warn"
             icon={<ShellIcon name="key-round" />}
             label={ut("mc.attKeys")}
-            detail={firstCodes(attention.keys)}
+            detail={firstCodes(keysDue)}
             popTitle={ut("mc.attKeysTitle")}
-            popNote={String(attention.keys.length)}
+            popNote={String(keysDue.length)}
             pop={
               <>
-                {pop(attention.keys, (s) => `/surveys/${s.id}/key`)}
+                {pop(keysDue, (s) => `/surveys/${s.id}/key`)}
                 <p className="m-0 mt-2 text-caption text-muted">{ut("mc.attKeysNote")}</p>
               </>
             }
           />
         ) : null}
-        {attention.rights.length ? (
+        {rightsDue.length ? (
           <AlertChip
             kind="warn"
             icon={<Mi.scale />}
             label={ut("mc.attRights")}
-            detail={firstCodes(attention.rights)}
+            detail={firstCodes(rightsDue)}
             popTitle={ut("mc.attRightsTitle")}
-            popNote={String(attention.rights.length)}
+            popNote={String(rightsDue.length)}
             pop={
               <>
-                {pop(attention.rights, (s) => `/surveys/${s.id}`)}
+                {pop(rightsDue, (s) => `/surveys/${s.id}`)}
                 <p className="m-0 mt-2 text-caption text-muted">{ut("cl.rightsHint")}</p>
               </>
             }
@@ -977,7 +1047,7 @@ export function SurveyList() {
             icon={<ShellIcon name="file-pen-line" />}
             label={`${ut("sn.drafts")} ${attention.drafts.length}`}
             detail={shortName(attention.drafts[0]!)}
-            to={hrefOf("drafts", { per })}
+            to={hrefOf("drafts", { per: linkPer })}
             popTitle={ut("sn.drafts")}
             popNote={String(attention.drafts.length)}
             pop={pop(attention.drafts, (s) => `/constructor/${s.id}`)}
@@ -1145,7 +1215,7 @@ export function SurveyList() {
       <Panel flush>
         {path.length || childFolders.length ? (
         <Shelf
-          href={(folder) => hrefOf(tab, { folder, per })}
+          href={(folder) => hrefOf(tab, { folder, per: linkPer })}
           path={path}
           childFolders={childFolders}
           siblings={siblings}
@@ -1251,14 +1321,22 @@ export function SurveyList() {
           />
           </div>
         )}
-        {shown && (pages > 1 || per !== DEFAULT_PER) ? (
+        {shown && (pages > 1 || per !== CATALOGUE_PER) ? (
           <div className="border-t border-divider py-2.5 pl-4 pr-3">
             <Pager
               page={page}
               pages={pages}
               per={per}
               total={shown.total}
-              onPer={(n) => update({ per: n === DEFAULT_PER ? null : String(n), page: null })}
+              onPer={(n) => {
+                /* выбор — в профиль, а не в адрес: на другой машине каталог откроется так же */
+                setChosenPer(n);
+                update({ per: null, page: null });
+                void api
+                  .saveWorkspace({ catalogPer: n as 10 | 20 | 50 | 100 })
+                  .then(refreshUser)
+                  .catch(() => {});
+              }}
               onPage={(n) => update({ page: n > 1 ? String(n) : null })}
             />
           </div>
@@ -1337,6 +1415,7 @@ export function SurveyList() {
               s={sideSurvey}
               groupTitle={sideSurvey.groupId ? (groupById.get(sideSurvey.groupId)?.title ?? null) : null}
               folderTitle={sideSurvey.folderId ? (folderById.get(sideSurvey.folderId)?.title ?? null) : null}
+              qa={qa}
             />
           </Drawer>
         </>
