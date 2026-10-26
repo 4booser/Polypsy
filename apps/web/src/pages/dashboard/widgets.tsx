@@ -203,14 +203,8 @@ export function CasesWidget({
       )}
       {total > 0 ? (
         <Foot>
-          <span>
-            {fill(ut("dashA.openTotal"), { n: total })} {fill(ut("dash.casesUrgent"), { n: urgent })}
-          </span>
-          <span className="ml-auto">
-            {fill(ut("dashA.overdueN"), { n: overdue })}
-            {", "}
-            {fill(ut("dash.casesOldest"), { n: oldest })}
-          </span>
+          <span>{fill(ut("home.casesOpen"), { open: total, urgent })}</span>
+          <span className="ml-auto">{fill(ut("home.casesLate"), { overdue, days: oldest })}</span>
         </Foot>
       ) : null}
     </Panel>

@@ -1,6 +1,5 @@
 import { useCallback, useState, type ReactNode } from "react";
 import type { AlertCase, AppointmentView, DashWidget, Page as CursorPage, Worklist } from "@quizzy/shared";
-import { DASH_WIDGETS } from "@quizzy/shared";
 import { api } from "../api";
 import { useAuth } from "../auth";
 import { Screen, useUrlState } from "../ui";
@@ -14,7 +13,6 @@ import { CustomizeDrawer } from "./dashboard/Customize";
 import { ConditionsWidget } from "./dashboard/parts";
 import { PassesWidget } from "./dashboard/passes";
 import { CasesWidget, CollectWidget, DayWidget, MissedWidget, WorkWidget } from "./dashboard/widgets";
-import { withCount } from "../ui/plural";
 import { WIDGET_COLUMN, fill, localDay, periodTotals, widgetLayout, type WidgetLayout } from "./dashboard/model";
 import { unlessForbidden } from "./today/ActNow";
 import { Di } from "./today/icons";
@@ -44,7 +42,7 @@ const NO_WORK: Worklist = {
 };
 
 export default function Dashboard() {
-  const { ut, lang } = useLang();
+  const { ut } = useLang();
   const { user } = useAuth();
   /*
    * Ящик настройки — в адресе (`?customize=1`): смена стартового экрана
@@ -159,21 +157,11 @@ export default function Dashboard() {
                 <div className="flex min-w-0 flex-col gap-4">{col("side")}</div>
               </div>
               {col("full")}
-              <p className="m-0 flex flex-wrap items-center justify-center gap-x-2 gap-y-1 pb-2 text-small text-text-2">
-                <Di.dashboard size={14} className="text-muted" />
-                {fill(ut("dashA.shownNote"), {
-                  widgets: withCount(ut("dashA.nWidgets"), visible.length, lang),
-                  of: DASH_WIDGETS.length,
-                  start: ut(START_TITLE[user?.workspace?.startScreen ?? "dashboard"] ?? "dash.title"),
-                })}
-                <button
-                  type="button"
-                  onClick={() => setCustomize(true)}
-                  className="cursor-pointer border-0 bg-transparent p-0 text-small font-bold text-violet-ink hover:underline"
-                >
-                  {ut("dashA.change")}
-                </button>
-              </p>
+              {/*
+                Строки «Показано 7 віджетів з 7. Стартовий екран — …. Змінити»
+                под віджетами больше нет: она повторяла «Налаштувати зведення»
+                из шапки.
+              */}
             </div>
           );
         }}
@@ -182,10 +170,3 @@ export default function Dashboard() {
     </>
   );
 }
-
-const START_TITLE: Record<string, "dash.title" | "work.title" | "nav.cases" | "nav.patients"> = {
-  dashboard: "dash.title",
-  worklist: "work.title",
-  alerts: "nav.cases",
-  patients: "nav.patients",
-};

@@ -50,6 +50,13 @@ describe("черга роботи", () => {
     expect(isWorkView("нет такого")).toBe(false);
   });
 
+  test("название методики — один раз: оно в пилюле строки, «чому тут» его не повторяет", () => {
+    const a = item({ kind: "assignment", id: "a1", title: "Входное обследование", days: 3, overdue: true });
+    expect(workWhy(a, ut)).toBe("Строк вийшов 3 дн. тому");
+    expect(workWhy({ ...a, kind: "followup" }, ut)).toBe("Не зроблено, строк вийшов 3 дн. тому");
+    expect(workWhy({ ...a, kind: "followup" }, ut)).not.toContain("Входное");
+  });
+
   test("«чому тут» — фразой через кому, без « · » и без кодов сервера", () => {
     for (const i of items) {
       const text = workWhy(i, ut);

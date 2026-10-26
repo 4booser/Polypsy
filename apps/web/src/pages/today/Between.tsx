@@ -33,7 +33,7 @@ export function Between({
     <Panel
       title={ut("dayA.between")}
       icon={<Ic.inbox />}
-      sub={fill(ut("dayA.betweenSub"), { actions: withCount(ut("dayA.nActions"), items.length, lang) })}
+      sub={withCount(ut("home.nTasks"), items.length, lang)}
       actions={<TextAction to="/worklist">{fill(ut("dayA.allQueue"), { n: total })}</TextAction>}
       flush
     >

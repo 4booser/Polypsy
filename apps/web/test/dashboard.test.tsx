@@ -450,7 +450,7 @@ describe("числа со словами — по правилу языка", ()
    */
   const t = (key: keyof typeof UI, lang: "uk" | "ru" | "en") => (UI[key] as Record<string, string>)[lang]!;
 
-  test("сесії, люди, віджети, швидкі дії — одна, кілька, багато", () => {
+  test("сесії, люди, справи — одна, кілька, багато", () => {
     expect([1, 3, 5, 21, 22, 25].map((n) => withCount(t("dayA.sessionsN", "uk"), n, "uk"))).toEqual([
       "1 сесія",
       "3 сесії",
@@ -463,8 +463,8 @@ describe("числа со словами — по правилу языка", ()
     expect([1, 3].map((n) => withCount(t("dayA.sessionsN", "en"), n, "en"))).toEqual(["1 session", "3 sessions"]);
     expect([1, 2, 7].map((n) => withCount(t("dashA.peopleN", "uk"), n, "uk"))).toEqual(["1 людина", "2 людини", "7 людей"]);
     expect([1, 2, 7].map((n) => withCount(t("dashA.peopleN", "ru"), n, "ru"))).toEqual(["1 человек", "2 человека", "7 человек"]);
-    expect([1, 4, 7].map((n) => withCount(t("dashA.nWidgets", "uk"), n, "uk"))).toEqual(["1 віджет", "4 віджети", "7 віджетів"]);
-    expect([1, 2, 6].map((n) => withCount(t("dayA.nActions", "uk"), n, "uk"))).toEqual(["1 швидка дія", "2 швидкі дії", "6 швидких дій"]);
+    expect([1, 2, 6].map((n) => withCount(t("home.nTasks", "uk"), n, "uk"))).toEqual(["1 справа", "2 справи", "6 справ"]);
+    expect([1, 2, 6].map((n) => withCount(t("home.nTasks", "ru"), n, "ru"))).toEqual(["1 дело", "2 дела", "6 дел"]);
     expect([1, 2, 5].map((n) => withCount(t("dashA.casesSub", "uk"), n, "uk"))).toEqual(["1 відкритий", "2 відкриті", "5 відкритих"]);
   });
 

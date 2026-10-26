@@ -1045,17 +1045,6 @@ export const UI = {
 
   /* ─────────── консоль: сводка ─────────── */
   "dash.title": { uk: "Зведення", ru: "Сводка", en: "Overview" },
-  /*
-   * Число — ЛЮДИ, а не случаи: открытая очередь с волны 12 сложена по
-   * человеку (routes/alertCases.ts, group=person), и `total` считает людей.
-   * Подпись «Випадків на розбір» при этом осталась прежней: число людей
-   * читалось как число случаев, и человек с тремя открытыми случаями
-   * выглядел одним случаем. Ключи прежние — их зовут сводка
-   * (pages/Dashboard.tsx) и мобильный обзор (ma.casesToReview), а экраны
-   * другого участка ради переименования ключа трогать незачем.
-   */
-  "dash.casesOldest": { uk: "довше за всіх чекає {n} дн.", ru: "дольше всех ждёт {n} дн.", en: "longest waiting {n} days" },
-  "dash.casesUrgent": { uk: "з них термінових: {n}", ru: "из них срочных: {n}", en: "of which urgent: {n}" },
   "dash.respondents": { uk: "Респондентів", ru: "Респондентов", en: "Respondents" },
   "dash.avgTime": { uk: "Середній час", ru: "Среднее время", en: "Average time" },
   "dash.inProgress": { uk: "Проходять зараз", ru: "Проходят сейчас", en: "In progress now" },
@@ -1421,7 +1410,7 @@ export const UI = {
   "day.unconfirmed": { uk: "не підтвердив", ru: "не подтвердил", en: "not confirmed" },
   "day.offSchedule": { uk: "поза розкладом", ru: "вне расписания", en: "off schedule" },
   "day.noLead": { uk: "без ведучого", ru: "без ведущего", en: "no lead clinician" },
-  "day.pending": { uk: "не здав методик:", ru: "не сдал методик:", en: "instruments not completed:" },
+  "day.pending": { uk: "не заповнено методик:", ru: "не заполнено методик:", en: "instruments not completed:" },
 
   /* экран приёма */
   "visit.history": { uk: "Що було", ru: "Что было", en: "History" },
@@ -4570,12 +4559,9 @@ export const UI = {
 
   /* очередь работы: подробности строит клиент, сервер отдаёт факты */
   "work.daysAgo": { uk: "дн. тому", ru: "дн. назад", en: "d ago" },
-  "work.daysOverdue": { uk: "дн. прострочення", ru: "дн. просрочки", en: "d overdue" },
   "work.daysNoMove": { uk: "дн. без руху", ru: "дн. без движения", en: "d without progress" },
-  "work.dueExpired": { uk: "Строк вийшов", ru: "Срок вышел", en: "Deadline passed" },
   "work.refNotAccepted": { uk: "Направлення не прийнято", ru: "Направление не принято", en: "Referral not accepted" },
   "work.refNotDone": { uk: "Направлення не завершено", ru: "Направление не завершено", en: "Referral not completed" },
-  "work.followupMissed": { uk: "Повтор за протоколом не зроблено", ru: "Повтор по протоколу не сделан", en: "Protocol follow-up not done" },
 
   "inv.title": { uk: "Запрошення", ru: "Приглашения", en: "Invitations" },
   "inv.none": { uk: "Запрошень немає", ru: "Приглашений нет", en: "No invitations" },
@@ -14889,7 +14875,6 @@ export const UI = {
     ru: "{open}, норма разбора {norm}",
     en: "{open}, review standard {norm}",
   },
-  "dashA.change": { uk: "Змінити", ru: "Изменить", en: "Change" },
   "dashA.colDomain": { uk: "Напрям і методика", ru: "Направление и методика", en: "Domain and instrument" },
   "dashA.colMean": { uk: "Середній бал за тижнями", ru: "Средний балл по неделям", en: "Mean score by week" },
   "dashA.colShare": { uk: "Частка за смугами", ru: "Доля по полосам", en: "Share by band" },
@@ -14972,8 +14957,6 @@ export const UI = {
   "dashA.nobodyNow": { uk: "зараз ніхто не проходить", ru: "сейчас никто не проходит", en: "nobody right now" },
   "dashA.ofMaxShort": { uk: "від максимуму", ru: "от максимума", en: "of maximum" },
   "dashA.openDay": { uk: "Відкрити день", ru: "Открыть день", en: "Open the day" },
-  "dashA.openTotal": { uk: "Відкрито {n},", ru: "Открыто {n},", en: "Open {n}," },
-  "dashA.overdueN": { uk: "прострочено {n}", ru: "просрочено {n}", en: "{n} overdue" },
   "dashA.passesDaily": { uk: "завершені за днями", ru: "завершённые по дням", en: "completed, by day" },
   "dashA.passesWeekly": { uk: "завершені за тижнями", ru: "завершённые по неделям", en: "completed, by week" },
   "dashA.passesWord": { uk: "проходжень", ru: "прохождений", en: "completions" },
@@ -14985,11 +14968,6 @@ export const UI = {
   "dashA.pp": { uk: "{d} в. п.", ru: "{d} п. п.", en: "{d} pp" },
   "dashA.prep": { uk: "Підготовка", ru: "Подготовка", en: "Prep" },
   "dashA.reset": { uk: "Повернути як було", ru: "Вернуть как было", en: "Restore defaults" },
-  "dashA.shownNote": {
-    uk: "Показано {widgets} з {of}. Стартовий екран — «{start}».",
-    ru: "Показано {widgets} из {of}. Стартовый экран — «{start}».",
-    en: "Showing {widgets} of {of}. Start screen: “{start}”.",
-  },
   "dashA.signalDay": { uk: "сигнал {d}", ru: "сигнал {d}", en: "signal {d}" },
   "dashA.startCases": {
     uk: "для чергового фахівця",
@@ -15059,11 +15037,6 @@ export const UI = {
     en: "Write a reply to the patient",
   },
   "dayA.between": { uk: "Між сесіями", ru: "Между сессиями", en: "Between sessions" },
-  "dayA.betweenSub": {
-    uk: "{actions}, кожна відкривається тут же",
-    ru: "{actions}, каждое открывается здесь же",
-    en: "{actions}, each opens right here",
-  },
   "dayA.blkDone": { uk: "{t}, проведено", ru: "{t}, проведено", en: "{t}, done" },
   "dayA.card": { uk: "Картка", ru: "Карта", en: "Record" },
   "dayA.casesN": { uk: "Випадки ризику {n}", ru: "Случаи риска {n}", en: "Risk cases {n}" },
@@ -15194,13 +15167,13 @@ export const UI = {
   "dayA.overdueDays": { uk: "прострочено {n} дн.", ru: "просрочено {n} дн.", en: "{n} d overdue" },
   "dayA.overdueWord": { uk: "прострочено", ru: "просрочено", en: "overdue" },
   "dayA.pendingText": {
-    uk: "Нагадайте на початку сесії або дайте пройти до неї: результат буде видно тут.",
-    ru: "Напомните в начале сессии или дайте пройти до неё: результат будет виден здесь.",
-    en: "Remind them at the start or let them complete it before: the result will show here.",
+    uk: "Нагадайте на початку сесії — результат з’явиться тут.",
+    ru: "Напомните в начале сессии — результат появится здесь.",
+    en: "Remind the patient at the start — the result will show here.",
   },
   "dayA.pendingTitle": {
-    uk: "Не здано призначених: {n}",
-    ru: "Не сдано назначенных: {n}",
+    uk: "Не заповнено призначених методик: {n}",
+    ru: "Не заполнено назначенных методик: {n}",
     en: "Assigned instruments not completed: {n}",
   },
   "dayA.prep": { uk: "Підготовка до сесії", ru: "Подготовка к сессии", en: "Session prep" },
@@ -15390,13 +15363,13 @@ export const UI = {
   "wlA.hintSearch": { uk: "пошук", ru: "поиск", en: "search" },
   "wlA.hintWrite": { uk: "написати", ru: "написать", en: "write" },
   "wlA.measuresSub": { uk: "з {a} по {b}", ru: "с {a} по {b}", en: "{a} to {b}" },
-  "wlA.nextAssignment": { uk: "Нагадати про {title}", ru: "Напомнить о {title}", en: "Remind about {title}" },
+  "wlA.nextAssignment": { uk: "Нагадати пацієнтові", ru: "Напомнить пациенту", en: "Remind the patient" },
   "wlA.nextDispensary": {
     uk: "Провести огляд на обліку",
     ru: "Провести осмотр на учёте",
     en: "Do the follow-up check",
   },
-  "wlA.nextFollowup": { uk: "Повторити {title}", ru: "Повторить {title}", en: "Repeat {title}" },
+  "wlA.nextFollowup": { uk: "Повторити замір", ru: "Повторить замер", en: "Repeat the measure" },
   "wlA.nextMessage": { uk: "Відповісти", ru: "Ответить", en: "Reply" },
   "wlA.nextNoshow": { uk: "Зв’язатися й перезаписати", ru: "Связаться и перезаписать", en: "Get in touch and rebook" },
   "wlA.nextReferral": {
@@ -16383,16 +16356,6 @@ export const UI = {
     ru: "Случаи риска не загрузились: открытые сигналы здесь могут быть не показаны",
     en: "Risk cases did not load: open signals may be missing here",
   },
-  "dayA.nActions": {
-    uk: "{n} швидка дія|{n} швидкі дії|{n} швидких дій|{n} швидкої дії",
-    ru: "{n} быстрое действие|{n} быстрых действия|{n} быстрых действий|{n} быстрого действия",
-    en: "{n} quick action|{n} quick actions|{n} quick actions|{n} quick actions",
-  },
-  "dashA.nWidgets": {
-    uk: "{n} віджет|{n} віджети|{n} віджетів|{n} віджета",
-    ru: "{n} виджет|{n} виджета|{n} виджетов|{n} виджета",
-    en: "{n} widget|{n} widgets|{n} widgets|{n} widgets",
-  },
 
   // ── v2-fix-clinical ──
   "rr.casesFailed": {
@@ -16467,6 +16430,32 @@ export const UI = {
   "home.tallyAhead": { uk: "{n} попереду", ru: "{n} впереди", en: "{n} ahead" },
   "home.daySum": { uk: "{tally}, прийом до {end}", ru: "{tally}, приём до {end}", en: "{tally}, until {end}" },
   "home.endOfDay": { uk: "Кінець прийому: {parts}.", ru: "Конец приёма: {parts}.", en: "End of appointments: {parts}." },
+  /* «Між сесіями» на дні приёма: сколько дел из очереди стоит ниже */
+  "home.nTasks": {
+    uk: "{n} справа|{n} справи|{n} справ|{n} справи",
+    ru: "{n} дело|{n} дела|{n} дел|{n} дела",
+    en: "{n} task|{n} tasks",
+  },
+  /*
+   * Подвал віджета «Випадки ризику». Открытая очередь сложена по человеку
+   * (routes/alertCases.ts, group=person): «Відкрито» считает людей.
+   */
+  "home.casesOpen": { uk: "Відкрито {open}, термінових {urgent}.", ru: "Открыто {open}, срочных {urgent}.", en: "Open {open}, urgent {urgent}." },
+  "home.casesLate": {
+    uk: "Прострочено {overdue}. Найдовше очікування — {days} дн.",
+    ru: "Просрочено {overdue}. Самое долгое ожидание — {days} дн.",
+    en: "Overdue {overdue}. Longest wait: {days} d.",
+  },
+  /*
+   * «Чому тут» у просроченного назначения и повтора: название методики уже
+   * стоит пилюлей строки (и заголовком записи), третий раз его не повторяем.
+   */
+  "home.whyAssignment": { uk: "Строк вийшов {n} дн. тому", ru: "Срок вышел {n} дн. назад", en: "Due {n} d ago" },
+  "home.whyFollowup": {
+    uk: "Не зроблено, строк вийшов {n} дн. тому",
+    ru: "Не сделан, срок вышел {n} дн. назад",
+    en: "Not done, due {n} d ago",
+  },
 
   // ── ux-card ──
 
