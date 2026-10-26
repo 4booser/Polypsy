@@ -11966,7 +11966,6 @@ export const UI = {
   "rp.item": { uk: "Пункт", ru: "Пункт", en: "Item" },
   "rp.score": { uk: "Бал", ru: "Балл", en: "Score" },
   "rp.fromDate": { uk: "Від {d}", ru: "От {d}", en: "Since {d}" },
-  "rp.fromStart": { uk: "Від старту, {d}", ru: "От старта, {d}", en: "Since start, {d}" },
   "rp.before": { uk: "{d} було", ru: "{d} было", en: "on {d}" },
   "rp.notInSum": { uk: "не входить у суму", ru: "не входит в сумму", en: "not in the total" },
   "rp.firstThen": {
@@ -16459,6 +16458,8 @@ export const UI = {
   // ── ux-card ──
 
   // ── ux-results ──
+  /* протокол: длинная лестница полос свёрнута до попавшей, кнопка раскрывает все */
+  "rp.bandsAll": { uk: "Усі смуги: {n}", ru: "Все полосы: {n}", en: "All bands: {n}" },
 
   // ── ux-risk ──
 

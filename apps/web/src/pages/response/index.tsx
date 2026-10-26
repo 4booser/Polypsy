@@ -23,7 +23,7 @@ import {
 import { useResponseExtras } from "./data";
 import { ResponseBanner, ResponseFrame } from "./frame";
 import { Rx } from "./icons";
-import { answerGrid, answerList, scaleChange, type AnswerGrid, type QuestionView, type ShiftLine } from "./model";
+import { answerGrid, answerList, type AnswerGrid, type QuestionView } from "./model";
 import { AnsweringPanel, ResultPanel, RulesPanel } from "./panels";
 import { ResponseTabs } from "./tabs";
 
@@ -70,11 +70,12 @@ export default function ResponseView() {
       <ResponseTabs surveyId={detail.survey.id} responseId={detail.id} nav={nav} charts={false} />
       <div className="grid items-start gap-4 grid-cols-[minmax(0,1fr)_360px] max-[1360px]:grid-cols-[minmax(0,1fr)_320px] max-[1100px]:grid-cols-1">
         <div className="flex min-w-0 flex-col gap-4">
-          <AnswersPanel detail={detail} survey={x.survey} ctx={ctx} prev={x.prev} />
+          {/* протокол открывают ради результата: он первым, ответы — под ним */}
           <ResultPanel detail={detail} dynamics={x.dynamics} ctx={ctx} variant="protocol" chartsHref={chartsHref} />
+          <AnswersPanel detail={detail} survey={x.survey} ctx={ctx} prev={x.prev} />
         </div>
         <div className="flex min-w-0 flex-col gap-4">
-          <AttemptPanel detail={detail} ctx={ctx} dynamics={x.dynamics} />
+          <AttemptPanel detail={detail} ctx={ctx} />
           <AnsweringPanel detail={detail} survey={x.survey} surveyLoading={x.surveyLoading} variant="protocol" chartsHref={chartsHref} />
           <ConclusionSide detail={detail} state={x.conclusion.data} error={x.conclusion.error} ctx={ctx} />
           {ctx?.hits ? <RulesPanel hits={ctx.hits} reload={x.ctx.reload} /> : null}
@@ -425,46 +426,17 @@ const SOURCE_KEY = {
   intake: "rp.src.intake",
 } as const;
 
-const VERDICT_KEY = {
-  better: "kit.reliablyBetter",
-  worse: "kit.reliablyWorse",
-  within: "kit.withinError",
-  changed: "course.v.changed",
-  unknown: "course.v.unknown",
-  version: "rp.cmp.version",
-  units: "rp.cmp.units",
-  unreliable: "rp.cmp.unreliable",
-} as const;
-
-function AttemptPanel({
-  detail,
-  ctx,
-  dynamics,
-}: {
-  detail: ResponseDetail;
-  ctx: ResponseContext | null;
-  dynamics: Parameters<typeof scaleChange>[1];
-}) {
+/**
+ * «Проходження»: факты о самом заполнении — методика, когда, откуда, сколько
+ * длилось, критические пункты, достоверность, кто ведёт.
+ *
+ * Сдвиг от прежнего замера и от старта здесь больше не повторяется: его
+ * показывает «Результат», который теперь стоит первым. У методики с
+ * несколькими шкалами строка «Від 8 жовт. +1,7» к тому же не называла
+ * шкалу, о которой говорит.
+ */
+function AttemptPanel({ detail, ctx }: { detail: ResponseDetail; ctx: ResponseContext | null }) {
   const { ut } = useLang();
-  const dec = useDecimal();
-  const main = mainScore(detail.scores);
-  const change = main
-    ? scaleChange(
-        detail,
-        dynamics,
-        main.scaleCode,
-        main.bands.map((b) => ({ min: b.minScore, max: b.maxScore, label: b.label, severity: b.severity })),
-      )
-    : null;
-  const shift = (l: ShiftLine) => (
-    <>
-      <b className="font-extrabold">
-        {l.delta > 0 ? "+" : l.delta < 0 ? "−" : "±"}
-        {dec(Math.abs(l.delta))}
-      </b>
-      , {ut(VERDICT_KEY[l.verdict])}
-    </>
-  );
   const ordered = [...detail.answers].sort((a, b) => a.position - b.position);
   const critical = ordered
     .map((a, i) => ({ n: i + 1, hit: a.options.some((o) => o.riskFlag && (a.optionIds ?? []).includes(o.id)) }))
@@ -487,8 +459,6 @@ function AttemptPanel({
   ];
   if (ctx?.source) rows.push([ut("rp.kv.source"), ut(SOURCE_KEY[ctx.source])]);
   if (detail.durationMs > 0) rows.push([ut("rp.kv.duration"), duration(detail.durationMs)]);
-  if (change?.fromPrev) rows.push([ut("rp.fromDate").replace("{d}", day(change.fromPrev.at)), shift(change.fromPrev)]);
-  if (change?.fromStart) rows.push([ut("rp.fromStart").replace("{d}", day(change.fromStart.at)), shift(change.fromStart)]);
   if (critical.length) rows.push([ut("rp.kv.critical"), <b className="font-extrabold text-risk-ink">{critical.join(", ")}</b>]);
   if (ctx && !ctx.reliable) rows.push([ut("rp.kv.reliability"), <span className="font-bold text-warn">{ut("rp.unreliable")}</span>]);
   if (ctx?.patient?.lead) rows.push([ut("rp.kv.lead"), ctx.patient.lead.name]);

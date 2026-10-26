@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import type { RespondentDynamics, ResponseContext, ResponseDetail, RuleHit, SurveyFull } from "@quizzy/shared";
+import type { RespondentDynamics, ResponseContext, ResponseDetail, ResponseDetailScore, RuleHit, SurveyFull } from "@quizzy/shared";
 import { api } from "../../api";
 import { decideHit } from "../../components/Suggestions";
 import { ScaleProfile, SeverityMeter } from "../../charts/clinical";
@@ -17,9 +17,9 @@ import { Rx } from "./icons";
 
 /*
  * Общие панели протокола и графиков: «Результат» и «Як відповідав». На
- * протоколе — короче (лестница полос с рекомендациями, малый график времени),
- * на графиках — полнее (сведения о шкале, смысл результата, время с порогом
- * и перечнями).
+ * протоколе — короче (результат над ответами, лестница полос свёрнута до
+ * попавшей, малый график времени), на графиках — полнее (сведения о шкале,
+ * смысл результата, время с порогом и перечнями).
  */
 
 const VERDICT_KEY = {
@@ -208,41 +208,7 @@ export function ResultPanel({
     return (
       <Panel title={ut("rch.result")} icon={<Ic.gauge />} sub={sub} actions={action}>
         {head}
-        {bands.length ? (
-          <ol className="m-0 mt-4 list-none p-0">
-            {[...bands]
-              .sort((a, b) => a.minScore - b.minScore)
-              .map((b) => (
-                <li
-                  key={b.id}
-                  className={cx(
-                    "grid grid-cols-[64px_minmax(0,1fr)] gap-x-3 border-t border-divider px-2 py-3 first:border-t-0",
-                    b.hit && "rounded-[12px] border-t-transparent bg-violet-tint [&+li]:border-t-transparent",
-                  )}
-                >
-                  <span className="pt-0.5 text-small font-extrabold text-text tabular-nums">
-                    {dec(b.minScore)}–{dec(b.maxScore)}
-                  </span>
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <SeverityTag level={b.severity} small>
-                        {b.label}
-                      </SeverityTag>
-                      {b.hit ? (
-                        <Tag tone="primary">
-                          {ut("kit.thisOne")}
-                          <span className="sr-only"> — {ut("rsp.hitBand")}</span>
-                        </Tag>
-                      ) : null}
-                    </div>
-                    {b.recommendation || b.description ? (
-                      <p className="m-0 mt-1.5 whitespace-pre-line text-small text-text-2">{b.recommendation ?? b.description}</p>
-                    ) : null}
-                  </div>
-                </li>
-              ))}
-          </ol>
-        ) : null}
+        {bands.length ? <BandLadder bands={bands} /> : null}
       </Panel>
     );
   }
@@ -301,6 +267,87 @@ export function ResultPanel({
         </div>
       </div>
     </Panel>
+  );
+}
+
+/** Лестница не длиннее этого видна целиком; длиннее — сворачивается до попавшей полосы */
+const SHORT_LADDER = 3;
+
+/**
+ * Лестница полос на протоколе.
+ *
+ * Результат на протоколе стоит первым, над ответами, — и лестница из пяти
+ * полос с рекомендациями отодвигала ответы на полэкрана. Где стоит значение,
+ * уже показывает шкала тяжести над ней, а тексты соседних полос нужны редко.
+ * Поэтому длинная лестница свёрнута до смысла и рекомендации попавшей
+ * полосы, остальное — под «Усі смуги»; короткая видна целиком.
+ */
+function BandLadder({ bands }: { bands: ResponseDetailScore["bands"] }) {
+  const { ut } = useLang();
+  const dec = useDecimal();
+  const [open, setOpen] = useState(false);
+  const sorted = [...bands].sort((a, b) => a.minScore - b.minScore);
+  const long = sorted.length > SHORT_LADDER;
+  const hit = sorted.find((b) => b.hit) ?? null;
+  const toggle = long ? (
+    <Button variant="quiet" size="xs" className="mt-2" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+      {open ? ut("rch.less") : ut("rp.bandsAll").replace("{n}", String(sorted.length))}
+    </Button>
+  ) : null;
+
+  if (long && !open) {
+    return (
+      <>
+        {hit && (hit.description || hit.recommendation) ? (
+          <div className="mt-4 flex flex-col gap-1.5 rounded-[12px] bg-panel-2 px-4 py-3 text-small text-text-2">
+            {hit.description ? <p className="m-0 whitespace-pre-line text-text">{hit.description}</p> : null}
+            {hit.recommendation ? (
+              <p className="m-0 whitespace-pre-line">
+                <b className="font-bold text-text">{ut("rch.recommendation")}:</b> {hit.recommendation}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+        {toggle}
+      </>
+    );
+  }
+
+  return (
+    <>
+      <ol className="m-0 mt-4 list-none p-0">
+        {sorted.map((b) => (
+          <li
+            key={b.id}
+            className={cx(
+              "grid grid-cols-[64px_minmax(0,1fr)] gap-x-3 border-t border-divider px-2 py-3 first:border-t-0",
+              b.hit && "rounded-[12px] border-t-transparent bg-violet-tint [&+li]:border-t-transparent",
+            )}
+          >
+            <span className="pt-0.5 text-small font-extrabold text-text tabular-nums">
+              {dec(b.minScore)}–{dec(b.maxScore)}
+            </span>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <SeverityTag level={b.severity} small>
+                  {b.label}
+                </SeverityTag>
+                {b.hit ? (
+                  <Tag tone="primary">
+                    {ut("kit.thisOne")}
+                    <span className="sr-only"> — {ut("rsp.hitBand")}</span>
+                  </Tag>
+                ) : null}
+              </div>
+              {b.recommendation || b.description ? (
+                <p className="m-0 mt-1.5 whitespace-pre-line text-small text-text-2">{b.recommendation ?? b.description}</p>
+              ) : null}
+            </div>
+          </li>
+        ))}
+      </ol>
+      {toggle}
+    </>
   );
 }
 
