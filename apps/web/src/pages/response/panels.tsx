@@ -567,6 +567,9 @@ const ACTION_KEY = {
  * «Що далі за правилами»: что по этому прохождению предложили правила
  * поддержки решений, и решение — тут же. Отклонение требует причины (сервер:
  * err.declineNeedsNote), поэтому «Відхилити» сперва просит строку.
+ *
+ * Без срабатываний панель не рисуют (протокол, лист заключения): строка
+ * «правила нічого не запропонували» на каждом протоколе была шумом.
  */
 export function RulesPanel({ hits, reload, title, hint }: { hits: RuleHit[]; reload: () => void; title?: string; hint?: string }) {
   const { ut } = useLang();
@@ -596,70 +599,66 @@ export function RulesPanel({ hits, reload, title, hint }: { hits: RuleHit[]; rel
           {meanwhile}
         </p>
       ) : null}
-      {hits.length === 0 ? (
-        <p className="m-0 text-small text-muted">{ut("rp.rulesNone")}</p>
-      ) : (
-        <ul className="m-0 list-none p-0">
-          {hits.map((h) => (
-            <li key={h.id} className="grid grid-cols-[28px_minmax(0,1fr)] gap-x-2.5 border-t border-divider py-2.5 first:border-t-0 first:pt-0.5">
-              <IconTile icon={hitIcon(h)} size={28} tone={h.explanation.actions.some((a) => a.kind === "notify_duty") ? "risk" : "neutral"} />
-              <div className="min-w-0">
-                <Popover
-                  title={h.ruleTitle}
-                  note={dateTime(h.createdAt)}
-                  content={
-                    <ul className="m-0 list-disc pl-4">
-                      {h.explanation.because.map((b, i) => (
-                        <li key={i}>{b.text}</li>
-                      ))}
-                    </ul>
-                  }
-                >
-                  <b className="block cursor-default text-[13px] font-extrabold text-text">{h.ruleTitle}</b>
-                </Popover>
-                <span className="block text-small text-text-2">
-                  {actionText(h)}
-                  {h.status !== "suggested" ? (
-                    <span className="text-muted">
-                      {"; "}
-                      {h.status === "accepted" ? ut("rp.hitAccepted") : ut("rp.hitDeclined")}
-                    </span>
-                  ) : null}
-                </span>
-                {h.status === "suggested" ? (
-                  declining === h.id ? (
-                    <div className="mt-2 flex flex-wrap items-center gap-2">
-                      <Input
-                        autoFocus
-                        value={note}
-                        onChange={(e) => setNote(e.target.value)}
-                        placeholder={ut("ds.whyDecline")}
-                        aria-label={ut("ds.whyDecline")}
-                        className="min-w-[160px] flex-1"
-                      />
-                      <Button size="xs" disabled={busy || !note.trim()} onClick={() => decide(h, "declined", ut("ds.declined"), note.trim())}>
-                        {ut("ds.decline")}
-                      </Button>
-                      <Button size="xs" variant="quiet" onClick={() => setDeclining(null)}>
-                        {ut("common.cancel")}
-                      </Button>
-                    </div>
-                  ) : (
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      <Button size="xs" disabled={busy} icon={<Ic.check />} onClick={() => decide(h, "accepted", ut("ds.accepted"))}>
-                        {ut("ds.accept")}
-                      </Button>
-                      <Button size="xs" variant="ghost" disabled={busy} onClick={() => setDeclining(h.id)}>
-                        {ut("ds.decline")}
-                      </Button>
-                    </div>
-                  )
+      <ul className="m-0 list-none p-0">
+        {hits.map((h) => (
+          <li key={h.id} className="grid grid-cols-[28px_minmax(0,1fr)] gap-x-2.5 border-t border-divider py-2.5 first:border-t-0 first:pt-0.5">
+            <IconTile icon={hitIcon(h)} size={28} tone={h.explanation.actions.some((a) => a.kind === "notify_duty") ? "risk" : "neutral"} />
+            <div className="min-w-0">
+              <Popover
+                title={h.ruleTitle}
+                note={dateTime(h.createdAt)}
+                content={
+                  <ul className="m-0 list-disc pl-4">
+                    {h.explanation.because.map((b, i) => (
+                      <li key={i}>{b.text}</li>
+                    ))}
+                  </ul>
+                }
+              >
+                <b className="block cursor-default text-[13px] font-extrabold text-text">{h.ruleTitle}</b>
+              </Popover>
+              <span className="block text-small text-text-2">
+                {actionText(h)}
+                {h.status !== "suggested" ? (
+                  <span className="text-muted">
+                    {"; "}
+                    {h.status === "accepted" ? ut("rp.hitAccepted") : ut("rp.hitDeclined")}
+                  </span>
                 ) : null}
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
+              </span>
+              {h.status === "suggested" ? (
+                declining === h.id ? (
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <Input
+                      autoFocus
+                      value={note}
+                      onChange={(e) => setNote(e.target.value)}
+                      placeholder={ut("ds.whyDecline")}
+                      aria-label={ut("ds.whyDecline")}
+                      className="min-w-[160px] flex-1"
+                    />
+                    <Button size="xs" disabled={busy || !note.trim()} onClick={() => decide(h, "declined", ut("ds.declined"), note.trim())}>
+                      {ut("ds.decline")}
+                    </Button>
+                    <Button size="xs" variant="quiet" onClick={() => setDeclining(null)}>
+                      {ut("common.cancel")}
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <Button size="xs" disabled={busy} icon={<Ic.check />} onClick={() => decide(h, "accepted", ut("ds.accepted"))}>
+                      {ut("ds.accept")}
+                    </Button>
+                    <Button size="xs" variant="ghost" disabled={busy} onClick={() => setDeclining(h.id)}>
+                      {ut("ds.decline")}
+                    </Button>
+                  </div>
+                )
+              ) : null}
+            </div>
+          </li>
+        ))}
+      </ul>
     </Panel>
   );
 }

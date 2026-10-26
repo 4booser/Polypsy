@@ -5,7 +5,7 @@ import { UI, type DecisionRule, type ResponseContextSignal, type RuleHit } from 
 import { api, type ConclusionState, type ConclusionVersion } from "../src/api";
 import { ConclusionEditor } from "../src/components/ConclusionEditor";
 import { LangProvider } from "../src/lang";
-import { applicableModels, resultLines } from "../src/pages/Conclusion";
+import { applicableModels, resultLines, signLock } from "../src/pages/Conclusion";
 import { signGate, signLockedBySignal } from "../src/pages/response/context";
 import { scaleChange } from "../src/pages/response/model";
 import { readFileSync } from "node:fs";
@@ -80,7 +80,7 @@ describe("подпись после разбора сигнала", () => {
         text={text}
         setText={() => {}}
         areaRef={{ current: null }}
-        lock={lock ? { title: "Підписати можна після розбору сигналу", body: "Пункт 9", action: null } : null}
+        lock={lock ? { title: UI["cnx.lockOne"].uk, action: null } : null}
       />,
     );
   const button = (html: string, key: "cn3.form" | "cnc.saveDraft") => {
@@ -92,11 +92,32 @@ describe("подпись после разбора сигнала", () => {
     return { disabled: /\sdisabled=""/.test(found![1]!) };
   };
 
+  /*
+   * Заметка о замке повторяла все сигналы сплошным абзацем — и ниже те же
+   * сигналы шли списком «Сигнали цього проходження». Теперь одна строка с
+   * числом. Мутация: вернуть перечень в заголовок — в нём появятся пункты.
+   */
+  test("замок подписи — одна строка с числом сигналов, без их перечня", () => {
+    const uk = ((k: keyof typeof UI) => UI[k].uk) as unknown as Parameters<typeof signLock>[2];
+    const detail = { id: "r1", userId: "u1" } as Parameters<typeof signLock>[1];
+    const ctx = (signals: ResponseContextSignal[]) => ({ signals, patient: null }) as unknown as Parameters<typeof signLock>[0];
+    const five = [9, 19, 40, 3, 43].map((n) => signal({ id: `a${n}`, label: `СР-45, пункт ${n}: ствердна відповідь` }));
+    const many = signLock(ctx(five), detail, uk)!;
+    expect(many.title).toBe(UI["cnx.lockMany"].uk.replace("{n}", "5"));
+    expect(String(many.title)).not.toContain("пункт");
+    // строка у кнопки подписи — в числе сигналов; у одного — общая «після розбору сигналу»
+    expect(many.note).toBe(UI["cnx.lockNoteMany"].uk);
+    expect(signLock(ctx([signal()]), detail, uk)!.title).toBe(UI["cnx.lockOne"].uk);
+    expect(signLock(ctx([signal()]), detail, uk)!.note).toBeUndefined();
+    // сигнал другого замера и разобранный подпись этого листа не держат
+    expect(signLock(ctx([signal({ here: false }), signal({ reviewedAt: "2026-10-08T13:00:00.000Z" })]), detail, uk)).toBeNull();
+  });
+
   test("сигнал не разобран — подпись выключена, черновик сохраняется, причина названа", () => {
     const html = draw(true);
     expect(button(html, "cn3.form").disabled).toBe(true);
     expect(button(html, "cnc.saveDraft").disabled).toBe(false);
-    expect(html).toContain("Підписати можна після розбору сигналу");
+    expect(html).toContain(UI["cnx.lockOne"].uk);
   });
 
   test("сигнала нет — подпись по правилам сервера: текст есть, кнопка живая", () => {
@@ -179,12 +200,12 @@ describe("подпись после разбора сигнала", () => {
     const pending = render(<ConclusionEditor {...base} signPending />);
     expect(button(pending, "cn3.form").disabled).toBe(true);
     expect(button(pending, "cnc.saveDraft").disabled).toBe(false);
-    expect(pending).not.toContain(UI["cnx.lockTitle"].uk);
+    expect(pending).not.toContain(UI["cnx.lockOne"].uk);
 
     const unknown = render(
       <ConclusionEditor
         {...base}
-        lock={{ title: UI["cnx.lockUnknownTitle"].uk, body: UI["cnx.lockUnknownBody"].uk, action: null, tone: "warn", note: UI["cnx.lockUnknownBody"].uk }}
+        lock={{ title: UI["cnx.lockUnknownTitle"].uk, action: null, tone: "warn", note: UI["cnx.lockUnknownBody"].uk }}
       />,
     );
     expect(button(unknown, "cn3.form").disabled).toBe(true);

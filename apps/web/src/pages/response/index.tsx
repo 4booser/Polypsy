@@ -78,7 +78,7 @@ export default function ResponseView() {
           <AttemptPanel detail={detail} ctx={ctx} />
           <AnsweringPanel detail={detail} survey={x.survey} surveyLoading={x.surveyLoading} variant="protocol" chartsHref={chartsHref} />
           <ConclusionSide detail={detail} state={x.conclusion.data} error={x.conclusion.error} ctx={ctx} />
-          {ctx?.hits ? <RulesPanel hits={ctx.hits} reload={x.ctx.reload} /> : null}
+          {ctx?.hits?.length ? <RulesPanel hits={ctx.hits} reload={x.ctx.reload} /> : null}
         </div>
       </div>
     </ResponseFrame>

@@ -791,14 +791,7 @@ export const UI = {
    * написание. Свести всё к одному слову — решение заказчика, и стоит оно
    * правки словаря, а не экрана.
    */
-  "cn3.modelsNone": {
-    uk: "Для цього тесту аналітичних моделей немає",
-    ru: "Для этого теста аналитических моделей нет",
-    en: "There are no analytics models for this test",
-  },
-  /* перед текстом отказа сервера: тот говорит о правах и номере запроса, а не о том, чего не стало на экране */
-  "cn3.modelsUnavailable": { uk: "Список моделей недоступний", ru: "Список моделей недоступен", en: "Model list unavailable" },
-  "cn3.addTest": { uk: "Додати тест: призначити батарею", ru: "Добавить тест: назначить батарею", en: "Add test: assign a battery" },
+  "cn3.addTest": { uk: "Призначити набір методик", ru: "Назначить набор методик", en: "Assign an instrument set" },
   /* скрытые пометки для диктора: заливка и начертание ему не видны */
   "cn3.form": { uk: "Підписати й сформувати", ru: "Подписать и сформировать", en: "Sign and generate" },
   "cn3.actions": { uk: "Дії із заключенням", ru: "Действия с заключением", en: "Conclusion actions" },
@@ -850,9 +843,9 @@ export const UI = {
    * Подписи нужны диктору: на кадре кнопки набраны глифами «B», «I», «U».
    */
   "fmt.unavailable": {
-    uk: "Форматування буде доступне, коли сервер оголосить формат зберігання тексту",
-    ru: "Форматирование будет доступно, когда сервер объявит формат хранения текста",
-    en: "Formatting will be available once the server declares the text storage format",
+    uk: "Форматування недоступне: заключення зберігається простим текстом",
+    ru: "Форматирование недоступно: заключение хранится простым текстом",
+    en: "Formatting is unavailable: the conclusion is stored as plain text",
   },
   "fmt.bold": { uk: "Напівжирний", ru: "Полужирный", en: "Bold" },
   "fmt.italic": { uk: "Курсив", ru: "Курсив", en: "Italic" },
@@ -12051,11 +12044,6 @@ export const UI = {
   "rp.concl.open": { uk: "Відкрити", ru: "Открыть", en: "Open" },
   "rp.concl.sign": { uk: "Підписати", ru: "Подписать", en: "Sign" },
   "rp.rules": { uk: "Що далі за правилами", ru: "Что дальше по правилам", en: "What the rules suggest" },
-  "rp.rulesNone": {
-    uk: "Правила по цьому проходженню нічого не запропонували.",
-    ru: "Правила по этому прохождению ничего не предложили.",
-    en: "The rules suggested nothing for this attempt.",
-  },
   "rp.hitAccepted": { uk: "погоджено", ru: "согласовано", en: "accepted" },
   "rp.hitDeclined": { uk: "відхилено", ru: "отклонено", en: "declined" },
   "rp.dynSub": { uk: "замірів: {n}", ru: "замеров: {n}", en: "{n} measurements" },
@@ -12111,7 +12099,6 @@ export const UI = {
     ru: "Сигналы этого прохождения",
     en: "This attempt’s signals",
   },
-  "cnx.signalsSub": { uk: "з розбору сигналу", ru: "из разбора сигнала", en: "from the signal review" },
   "cnx.report": { uk: "Друкований звіт", ru: "Печатный отчёт", en: "Printed report" },
   "cnx.reportSub": {
     uk: "PDF із протоколом і заключенням",
@@ -12132,11 +12119,6 @@ export const UI = {
   "cnx.matched": { uk: "відповідає", ru: "соответствует", en: "matches" },
   "cnx.notMatched": { uk: "не відповідає", ru: "не соответствует", en: "doesn’t match" },
   "cnx.noSigned": { uk: "підписаних версій ще немає", ru: "подписанных версий ещё нет", en: "no signed version yet" },
-  "cnx.historyNone": {
-    uk: "Версій ще немає: збережіть чернетку.",
-    ru: "Версий ещё нет: сохраните черновик.",
-    en: "No versions yet: save a draft.",
-  },
   "adx.title": { uk: "Заповнення за пацієнта", ru: "Заполнение за пациента", en: "Entering for a patient" },
   "adx.itemsCount": { uk: "пунктів: {n}", ru: "пунктов: {n}", en: "{n} items" },
   "adx.paper": { uk: "Паперовий бланк", ru: "Бумажный бланк", en: "Paper form" },
@@ -16461,6 +16443,22 @@ export const UI = {
   "rp.bandsAll": { uk: "Усі смуги: {n}", ru: "Все полосы: {n}", en: "All bands: {n}" },
   /* подсказка пилюли попытки: голое число рядом с «частка 0,34» результата читалось загадкой */
   "rp.attemptScore": { uk: "{scale}: сирий бал {v}", ru: "{scale}: сырой балл {v}", en: "{scale}: raw score {v}" },
+  /* лист заключения: замок подписи — одной строкой, сами сигналы перечислены ниже списком */
+  "cnx.lockOne": {
+    uk: "Підписати можна після розбору сигналу ризику цього проходження",
+    ru: "Подписать можно после разбора сигнала риска этого прохождения",
+    en: "You can sign once this attempt’s risk signal is reviewed",
+  },
+  "cnx.lockMany": {
+    uk: "Підписати можна після розбору сигналів ризику цього проходження: {n}",
+    ru: "Подписать можно после разбора сигналов риска этого прохождения: {n}",
+    en: "You can sign once this attempt’s risk signals are reviewed: {n}",
+  },
+  "cnx.lockNoteMany": {
+    uk: "Підпис відкриється після розбору сигналів ризику цього проходження.",
+    ru: "Подпись откроется после разбора сигналов риска этого прохождения.",
+    en: "Signing opens once this attempt’s risk signals are reviewed.",
+  },
 
   // ── ux-risk ──
 

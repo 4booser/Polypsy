@@ -25,11 +25,13 @@ import { draftOf, draftSavable, saveThenSign, signPlan, staleMessage } from "./v
  * можно.
  */
 export interface SignLock {
-  /** Заголовок заметки над текстом: «Підписати можна після розбору сигналу» */
+  /**
+   * Одна строка над текстом: «Підписати можна після розбору сигналів ризику
+   * цього проходження: 5». Сами сигналы перечислены ниже, в «Сигналах цього
+   * проходження», — повторять их здесь сплошным абзацем незачем.
+   */
   title: ReactNode;
-  /** Что за сигнал и сколько он висит */
-  body: ReactNode;
-  /** «Розібрати сигнал» — переход к разбору */
+  /** «Розібрати» — переход к разбору; стоит в той же строке */
   action: ReactNode;
   /**
    * risk — сигнал не разобран (по умолчанию); warn — разобран ли он,
@@ -185,14 +187,20 @@ export function ConclusionEditor({
 
       {lock && !signed ? (
         <div className="px-4 pb-3.5">
-          <Callout
-            kind={lock.tone ?? "risk"}
-            icon={lock.tone === "warn" ? <Ic.circleAlert /> : <Ic.lock />}
-            title={lock.title}
-            actions={lock.action}
+          {/* заметка набора (Callout) в одну строку: значок, причина тоном вида и действие справа */}
+          <div
+            role="note"
+            className={cx(
+              "flex flex-wrap items-center gap-x-2.5 gap-y-2 rounded-panel py-2.5 pl-3.5 pr-2.5 text-small",
+              lock.tone === "warn" ? "bg-warn-tint" : "bg-risk-tint",
+            )}
           >
-            {lock.body}
-          </Callout>
+            <span aria-hidden className={cx("inline-flex shrink-0 [&>svg]:size-4", lock.tone === "warn" ? "text-warn" : "text-risk-ink")}>
+              {lock.tone === "warn" ? <Ic.circleAlert /> : <Ic.lock />}
+            </span>
+            <b className={cx("min-w-0 flex-1 text-body font-extrabold", lock.tone === "warn" ? "text-warn" : "text-risk-ink")}>{lock.title}</b>
+            {lock.action}
+          </div>
         </div>
       ) : null}
 
@@ -284,7 +292,8 @@ export function ConclusionEditor({
 
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-divider px-4 py-2.5 text-caption text-muted">
         <span>{ut("cnx.chars").replace("{n}", String(text.trim().length))}</span>
-        <span>{ut("cnc.editCreatesVersion")}</span>
+        {/* о подписанном тексте — только когда он есть и не виден выше (над полем — черновик поверх него) */}
+        {signed && draft ? <span>{ut("cnc.editCreatesVersion")}</span> : null}
         {onHistory && state.versions.length ? (
           <Button size="xs" variant="ghost" icon={<Ic.history />} className="ml-auto" onClick={onHistory}>
             {ut("cnc.showHistory")}

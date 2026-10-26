@@ -12,7 +12,7 @@ import { cx } from "../ui/cx";
 import { Panel } from "../ui/layout";
 import { Button, ButtonLink, SeverityTag } from "../ui/primitives";
 import { useResource } from "../useResource";
-import { mainScore, reviewHref, signGate, signalStrip, signalTimer } from "./response/context";
+import { mainScore, reviewHref, signGate, signalStrip } from "./response/context";
 import { useResponseExtras } from "./response/data";
 import { ResponseBanner, ResponseFrame } from "./response/frame";
 import { Rx } from "./response/icons";
@@ -37,7 +37,6 @@ import { RulesPanel } from "./response/panels";
 export default function ConclusionPage() {
   const { ut } = useLang();
   const { can } = useAuth();
-  const dec = useDecimal();
   const { id } = useParams<{ id: string }>();
   const responseId = id!;
   /*
@@ -95,11 +94,10 @@ export default function ConclusionPage() {
   const gate = signGate(ctx, !!x.ctx.error, can("alerts.review"));
   const lock =
     gate === "locked"
-      ? signLock(ctx, detail, ut, dec)
+      ? signLock(ctx, detail, ut)
       : gate === "unknown"
         ? {
             title: ut("cnx.lockUnknownTitle"),
-            body: `${ut("cnx.lockUnknownBody")} ${ut("cnx.lockDraftOk")}`,
             action: (
               <Button size="xs" variant="secondary" onClick={() => x.ctx.reload()}>
                 {ut("common.retry")}
@@ -146,8 +144,9 @@ export default function ConclusionPage() {
         </div>
         <div className="flex min-w-0 flex-col gap-4">
           <ResultsSide detail={detail} dyn={x.dynamics} loading={x.dynamicsLoading} enabled={x.wantsDynamics} />
-          {ctx?.hits ? <RulesPanel hits={ctx.hits} reload={x.ctx.reload} title={ut("ds.title")} hint={ut("ds.sub")} /> : null}
-          <ModelsPanel rules={models.data} error={models.error} hits={ctx?.hits ?? []} responseId={responseId} surveyId={detail.survey.id} />
+          {/* пустые панели справа — шум рядом с листом: предложения, модели и история — только когда им есть что показать */}
+          {ctx?.hits?.length ? <RulesPanel hits={ctx.hits} reload={x.ctx.reload} title={ut("ds.title")} hint={ut("ds.sub")} /> : null}
+          <ModelsPanel rules={models.data} hits={ctx?.hits ?? []} responseId={responseId} surveyId={detail.survey.id} />
           <HistoryPanel state={conclusion.data} anchor={historyRef} />
         </div>
       </div>
@@ -177,31 +176,25 @@ function Heading({ detail }: { detail: ResponseDetail }) {
 
 /* ─────────── подпись после разбора сигнала ─────────── */
 
-function signLock(
-  ctx: ResponseContext | null,
-  detail: ResponseDetail,
-  ut: ReturnType<typeof useLang>["ut"],
-  dec: (v: number) => string,
-): SignLock | null {
+/**
+ * Замок подписи — одной строкой с числом и «Розібрати».
+ *
+ * Прежде заметка перечисляла все сигналы сплошным абзацем, с таймером и
+ * оговоркой про черновик, а ниже те же сигналы шли списком «Сигнали цього
+ * проходження». Сигналы — в списке, таймер — в шапке пациента, а что
+ * черновик сохраняется, видно по живой кнопке «Зберегти чернетку».
+ */
+export function signLock(ctx: ResponseContext | null, detail: ResponseDetail, ut: ReturnType<typeof useLang>["ut"]): SignLock | null {
   const open = signalStrip(ctx?.signals ?? null).openHere;
   if (!open.length) return null;
-  const oldest = [...open].sort((a, b) => b.minutesOpen - a.minutesOpen)[0]!;
-  const timer = signalTimer(oldest, ut("rp.hours"), dec);
   return {
-    title: ut("cnx.lockTitle"),
-    body: (
-      <>
-        {open.map((s) => s.label).join("; ")}.{" "}
-        {timer
-          ? ut("cnx.lockTimer").replace("{t}", ut("kit.timerOf").replace("{elapsed}", timer.elapsed).replace("{of}", timer.of))
-          : ut("cnx.lockSince").replace("{t}", timeOfDay(oldest.at))}
-        . {ut("cnx.lockDraftOk")}
-      </>
-    ),
+    title: open.length === 1 ? ut("cnx.lockOne") : ut("cnx.lockMany").replace("{n}", String(open.length)),
+    /* строка у кнопки подписи — в числе сигналов: «сигналу» при пяти читалось бы опиской */
+    note: open.length === 1 ? undefined : ut("cnx.lockNoteMany"),
     action: (
-      <ButtonLink to={reviewHref(ctx?.patient?.id ?? detail.userId)} variant="risk" size="xs">
+      <ButtonLink to={reviewHref(ctx?.patient?.id ?? detail.userId)} variant="risk" size="xs" title={ut("rp.reviewHint")}>
         <Ic.alert />
-        {ut("rp.reviewSignal")}
+        {ut("rp.review")}
       </ButtonLink>
     ),
   };
@@ -266,9 +259,8 @@ function SignalsSection({ ctx, detail }: { ctx: ResponseContext | null; detail: 
   if (!here.length) return null;
   return (
     <section className="border-t border-divider pt-4" aria-labelledby="cn-signals">
-      <h3 id="cn-signals" className="m-0 flex items-baseline gap-2 text-h3 font-extrabold text-text">
+      <h3 id="cn-signals" className="m-0 text-h3 font-extrabold text-text">
         {ut("cnx.signalsTitle")}
-        <span className="text-small font-medium text-muted">{ut("cnx.signalsSub")}</span>
       </h3>
       <ul className="m-0 mt-2.5 flex list-none flex-col gap-2 p-0">
         {here.map((s) => (
@@ -314,10 +306,8 @@ function ReportPanel({ responseId }: { responseId: string }) {
         </Button>
       }
     >
+      {/* что почта не подключена, говорит пункт «Відправити поштою» в меню листа — постоянная заметка здесь была шумом */}
       <p className="m-0 text-small text-text-2">{ut("cnc.onlySignedInReport")}</p>
-      <Callout kind="info" icon={<Ic.message />} className="mt-3">
-        {ut("cn3.mailUnavailable")}
-      </Callout>
     </Panel>
   );
 }
@@ -388,13 +378,17 @@ function ResultsSide({
         <ul className="m-0 list-none p-0">
           {lines.map((l) => (
             <li key={l.key} className="border-t border-divider py-2.5 first:border-t-0 first:pt-0.5">
+              {/* название — в две строки, а не обрезком: «СР-45. Схильність до суїцидальних р…» на 1280 не читалось */}
               <div className="flex min-w-0 items-baseline justify-between gap-2.5">
                 {l.here ? (
-                  <b className="min-w-0 truncate text-small font-bold text-text">{l.survey}</b>
+                  <b title={l.survey} className="line-clamp-2 min-w-0 text-small font-bold text-text">
+                    {l.survey}
+                  </b>
                 ) : (
                   <Link
                     to={`/surveys/${l.surveyId}/responses/${l.responseId}`}
-                    className="min-w-0 truncate text-small font-bold text-text no-underline hover:underline hover:decoration-violet-line"
+                    title={l.survey}
+                    className="line-clamp-2 min-w-0 text-small font-bold text-text no-underline hover:underline hover:decoration-violet-line"
                   >
                     {l.survey}
                   </Link>
@@ -467,26 +461,34 @@ export function applicableModels(
     });
 }
 
+/**
+ * «Моделі аналітики» — только когда к этой методике хоть одна применима.
+ *
+ * К написанию вывода панель отношения не имеет: прежде она стояла на каждом
+ * листе и чаще всего говорила «для цього тесту моделей немає» — или, у
+ * специалиста без права alerts.review, «список недоступний». Модели нет или
+ * список закрыт — панели нет; утверждать «моделей нет» при закрытом списке
+ * она при этом не начинает.
+ */
 function ModelsPanel({
   rules,
-  error,
   hits,
   responseId,
   surveyId,
 }: {
   rules: (DecisionRule & { note: string | null })[] | null;
-  error: string | null;
   hits: RuleHit[];
   responseId: string;
   surveyId: string;
 }) {
   const { ut } = useLang();
-  const models = rules ? applicableModels(rules, hits, responseId, surveyId) : null;
+  const models = rules ? applicableModels(rules, hits, responseId, surveyId) : [];
+  if (!models.length) return null;
   return (
     <Panel
       title={ut("cnx.models")}
       icon={<Ic.chart />}
-      sub={models?.length ? ut("cnx.modelsCount").replace("{n}", String(models.length)) : undefined}
+      sub={ut("cnx.modelsCount").replace("{n}", String(models.length))}
       actions={
         /* завести модель — экран аналитики (/analytics/new) */
         <ButtonLink to="/analytics/new" variant="ghost" size="icon-sm" aria-label={ut("cnx.newModel")} title={ut("cnx.newModel")}>
@@ -494,46 +496,34 @@ function ModelsPanel({
         </ButtonLink>
       }
     >
-      {/*
-        Отказ — словами, а не пустотой: у специалиста без права alerts.review
-        список правил закрыт, и «моделей нет» было бы неправдой.
-      */}
-      {error ? (
-        <p className="m-0 text-small text-muted">
-          {ut("cn3.modelsUnavailable")}: {error}
-        </p>
-      ) : models === null ? (
-        <Loading rows={2} bare />
-      ) : models.length === 0 ? (
-        <p className="m-0 text-small text-muted">{ut("cn3.modelsNone")}</p>
-      ) : (
-        <ul className="m-0 list-none p-0">
-          {models.map((m) => (
-            <li
-              key={m.id}
-              data-verdict={m.matched ? "matched" : "not-matched"}
-              className="grid grid-cols-[18px_minmax(0,1fr)_auto] items-start gap-x-2 border-t border-divider py-2 text-small first:border-t-0 first:pt-0.5"
-            >
-              {m.matched ? <Ic.circleCheck size={15} className="mt-0.5 text-good" /> : <Rx.circleMinus size={15} className="mt-0.5 text-muted" />}
-              <Popover title={m.title} content={m.description ? <p className="m-0">{m.description}</p> : undefined}>
-                <span className="min-w-0 cursor-default text-text-2">{m.title}</span>
-              </Popover>
-              <span className={cx("whitespace-nowrap", m.matched ? "font-bold text-good" : "text-muted")}>
-                {m.matched ? ut("cnx.matched") : ut("cnx.notMatched")}
-              </span>
-            </li>
-          ))}
-        </ul>
-      )}
+      <ul className="m-0 list-none p-0">
+        {models.map((m) => (
+          <li
+            key={m.id}
+            data-verdict={m.matched ? "matched" : "not-matched"}
+            className="grid grid-cols-[18px_minmax(0,1fr)_auto] items-start gap-x-2 border-t border-divider py-2 text-small first:border-t-0 first:pt-0.5"
+          >
+            {m.matched ? <Ic.circleCheck size={15} className="mt-0.5 text-good" /> : <Rx.circleMinus size={15} className="mt-0.5 text-muted" />}
+            <Popover title={m.title} content={m.description ? <p className="m-0">{m.description}</p> : undefined}>
+              <span className="min-w-0 cursor-default text-text-2">{m.title}</span>
+            </Popover>
+            <span className={cx("whitespace-nowrap", m.matched ? "font-bold text-good" : "text-muted")}>
+              {m.matched ? ut("cnx.matched") : ut("cnx.notMatched")}
+            </span>
+          </li>
+        ))}
+      </ul>
     </Panel>
   );
 }
 
 /* ─────────── история версий ─────────── */
 
+/** История версий — когда есть хоть одна: у нового заключения панель говорила бы только «версій ще немає» */
 function HistoryPanel({ state, anchor }: { state: ConclusionState | null; anchor: React.RefObject<HTMLElement | null> }) {
   const { ut } = useLang();
   const versions = state?.versions ?? [];
+  if (!versions.length) return null;
   return (
     <section ref={anchor} tabIndex={-1} className="outline-none" aria-label={ut("cnc.showHistory")}>
       <Panel
@@ -542,25 +532,21 @@ function HistoryPanel({ state, anchor }: { state: ConclusionState | null; anchor
         sub={versions.some((v) => v.status === "signed") ? undefined : ut("cnx.noSigned")}
         flush
       >
-        {versions.length ? (
-          <ActivityList
-            events={versions.map((v) => ({
-              date: day(v.status === "signed" && v.signedAt ? v.signedAt : v.createdAt),
-              time: timeOfDay(v.status === "signed" && v.signedAt ? v.signedAt : v.createdAt),
-              icon: v.status === "signed" ? <Rx.signature /> : <Rx.filePen />,
-              tone: v.status === "signed" ? "good" : "neutral",
-              text: (
-                <Popover title={versionTitle(v, ut)} content={<p className="m-0 whitespace-pre-wrap">{v.text}</p>} width={380}>
-                  <span className="cursor-default">
-                    <b>{versionTitle(v, ut)}</b> <span className="text-muted">{v.authorName}</span>
-                  </span>
-                </Popover>
-              ),
-            }))}
-          />
-        ) : (
-          <p className="m-0 px-4 pb-4 text-small text-muted">{ut("cnx.historyNone")}</p>
-        )}
+        <ActivityList
+          events={versions.map((v) => ({
+            date: day(v.status === "signed" && v.signedAt ? v.signedAt : v.createdAt),
+            time: timeOfDay(v.status === "signed" && v.signedAt ? v.signedAt : v.createdAt),
+            icon: v.status === "signed" ? <Rx.signature /> : <Rx.filePen />,
+            tone: v.status === "signed" ? "good" : "neutral",
+            text: (
+              <Popover title={versionTitle(v, ut)} content={<p className="m-0 whitespace-pre-wrap">{v.text}</p>} width={380}>
+                <span className="cursor-default">
+                  <b>{versionTitle(v, ut)}</b> <span className="text-muted">{v.authorName}</span>
+                </span>
+              </Popover>
+            ),
+          }))}
+        />
       </Panel>
     </section>
   );
