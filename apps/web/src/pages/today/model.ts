@@ -1,4 +1,5 @@
 import type { AlertCase, AppointmentView, WorkItem } from "@quizzy/shared";
+import { withCount } from "../../ui/plural";
 
 /**
  * «Сьогодні» (Polypsy 2.0) без React: шкала дня, состояние сессии, перетини,
@@ -197,6 +198,63 @@ export function sessionStates(items: readonly AppointmentView[], now: number | n
     } else out.set(a.id, "later");
   }
   return out;
+}
+
+/* ─────────── счёт дня ─────────── */
+
+export interface DayTally {
+  /** Сессии дня, кроме отменённых */
+  total: number;
+  done: number;
+  noshow: number;
+  /** Человек пришёл или приём идёт */
+  here: number;
+  /** Записанные и подтверждённые — и те, чьё время прошло без отметки явки */
+  ahead: number;
+}
+
+/**
+ * Счёт дня — одно правило для шапки дня, віджета зведення и конца таймлайна.
+ *
+ * Считалось в трёх местах по-разному: шапка относила к «попереду» и
+ * идущий приём, и неотмеченный, віджет и конец дня — только идущий, и над
+ * «1 проведено, 2 попереду» стояло «4 сесії: 1 проведено, 3 попереду».
+ * Теперь — по состоянию записи, а не по часам: идущий приём — «триває»;
+ * время прошло без отметки — всё ещё «попереду» (решение о явке за
+ * специалистом, строка дня его показывает); неявка — своей частью. Части
+ * всегда складываются в число сессий.
+ */
+export function dayTally(items: readonly Pick<AppointmentView, "status">[]): DayTally {
+  const t: DayTally = { total: 0, done: 0, noshow: 0, here: 0, ahead: 0 };
+  for (const a of items) {
+    if (a.status === "cancelled") continue;
+    t.total++;
+    if (a.status === "done") t.done++;
+    else if (a.status === "no_show") t.noshow++;
+    else if (a.status === "arrived" || a.status === "in_progress") t.here++;
+    else t.ahead++;
+  }
+  return t;
+}
+
+/* части — в порядке дня: прошедшее, сейчас, будущее */
+const TALLY_PARTS = [
+  ["done", "home.tallyDone"],
+  ["noshow", "home.tallyNoshow"],
+  ["here", "home.tallyHere"],
+  ["ahead", "home.tallyAhead"],
+] as const;
+
+/** «1 проведено, 1 триває, 2 попереду»: нулевые части не называются, слова — формой по числу */
+export function tallyParts(t: DayTally, ut: (k: never) => string, lang: string): string {
+  return TALLY_PARTS.filter(([part]) => t[part] > 0)
+    .map(([part, key]) => withCount(ut(key as never), t[part], lang))
+    .join(", ");
+}
+
+/** «4 сесії: 1 проведено, 1 триває, 2 попереду» */
+export function tallyText(t: DayTally, ut: (k: never) => string, lang: string): string {
+  return `${withCount(ut("dayA.sessionsN" as never), t.total, lang)}: ${tallyParts(t, ut, lang)}`;
 }
 
 /**

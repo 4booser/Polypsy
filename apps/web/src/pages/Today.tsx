@@ -14,7 +14,6 @@ import { useLiveReload } from "../events";
 import { useResource } from "../useResource";
 import { moveAndReload } from "./visitModel";
 import { StartHead } from "./Start";
-import { withCount } from "../ui/plural";
 import { fill } from "./dashboard/model";
 import { ActNow, reviewHref, unlessForbidden } from "./today/ActNow";
 import { Agenda, useNow, useUntil } from "./today/Agenda";
@@ -25,6 +24,7 @@ import {
   betweenSessions,
   caseTimer,
   clashes,
+  dayTally,
   focusSession,
   hhmm,
   liveCases,
@@ -33,6 +33,7 @@ import {
   prepAfterSelect,
   sessionStates,
   shiftDate,
+  tallyText,
   urgentCases,
 } from "./today/model";
 import { useHotkeys } from "../ui/keys";
@@ -303,13 +304,13 @@ function DayHead({
 }) {
   const { ut, lang } = useLang();
   const alive = items.filter((a) => a.status !== "cancelled");
-  const done = alive.filter((a) => a.status === "done").length;
-  const ahead = alive.filter((a) => a.status === "booked" || a.status === "confirmed" || a.status === "arrived" || a.status === "in_progress").length;
+  /* тот же счёт, что у віджета зведення и в конце таймлайна (dayTally) */
+  const tally = dayTally(items);
   const end = alive.length ? hhmm([...alive.map((a) => a.endsAt)].sort().pop()!) : null;
   const sum = loading
     ? ut("common.loading")
     : alive.length
-      ? fill(ut("dayA.daySum"), { sessions: withCount(ut("dayA.sessionsN"), alive.length, lang), done, ahead, end: end ?? "" })
+      ? fill(ut("home.daySum"), { tally: tallyText(tally, ut, lang), end: end ?? "" })
       : ut("day.nobody");
   const prev = shiftDate(date, -1);
   const next = shiftDate(date, 1);

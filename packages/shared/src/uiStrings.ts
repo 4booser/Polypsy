@@ -14911,11 +14911,6 @@ export const UI = {
     ru: "стартовый экран, виджеты, вид",
     en: "start screen, widgets, look",
   },
-  "dashA.daySub": {
-    uk: "{sessions}: {done} проведено, {ahead} попереду",
-    ru: "{sessions}: {done} проведено, {ahead} впереди",
-    en: "{sessions}: {done} done, {ahead} ahead",
-  },
   "dashA.done": { uk: "Готово", ru: "Готово", en: "Done" },
   "dashA.dragHint": {
     uk: "Перетягніть рядок, щоб змінити порядок; клавішами — Alt ↑ і Alt ↓.",
@@ -15102,17 +15097,7 @@ export const UI = {
     ru: "Приём на сегодня окончен.",
     en: "Appointments are over for today.",
   },
-  "dayA.daySum": {
-    uk: "{sessions}: {done} проведено, {ahead} попереду, прийом до {end}",
-    ru: "{sessions}: {done} проведено, {ahead} впереди, приём до {end}",
-    en: "{sessions}: {done} done, {ahead} ahead, until {end}",
-  },
   "dayA.dayTitle": { uk: "Прийом сьогодні", ru: "Приём сегодня", en: "Today’s appointments" },
-  "dayA.endOfDay": {
-    uk: "Кінець прийому: проведено {done}, попереду {ahead}.",
-    ru: "Конец приёма: проведено {done}, впереди {ahead}.",
-    en: "End of appointments: {done} done, {ahead} ahead.",
-  },
   "dayA.endOfDayPlain": { uk: "Кінець прийому.", ru: "Конец приёма.", en: "End of appointments." },
   "dayA.firstHere": { uk: "Перша сесія тут", ru: "Первая сессия здесь", en: "First session here" },
   "dayA.firstHereText": {
@@ -16463,6 +16448,25 @@ export const UI = {
    * говорила бы неправду, а экран и пункт рельсы уже называются «Сьогодні».
    */
   "home.agenda": { uk: "Прийом", ru: "Приём", en: "Appointments" },
+  /*
+   * Счёт дня — одно правило в шапке дня, віджеті зведення и конце таймлайна
+   * (pages/today/model.ts, dayTally): части в порядке дня, нулевые не
+   * называются, формы — по числу.
+   */
+  "home.tallyDone": { uk: "{n} проведено", ru: "{n} проведено", en: "{n} done" },
+  "home.tallyNoshow": {
+    uk: "{n} неявка|{n} неявки|{n} неявок|{n} неявки",
+    ru: "{n} неявка|{n} неявки|{n} неявок|{n} неявки",
+    en: "{n} no-show|{n} no-shows",
+  },
+  "home.tallyHere": {
+    uk: "{n} триває|{n} тривають|{n} тривають|{n} тривають",
+    ru: "{n} идёт|{n} идут|{n} идут|{n} идут",
+    en: "{n} in progress",
+  },
+  "home.tallyAhead": { uk: "{n} попереду", ru: "{n} впереди", en: "{n} ahead" },
+  "home.daySum": { uk: "{tally}, прийом до {end}", ru: "{tally}, приём до {end}", en: "{tally}, until {end}" },
+  "home.endOfDay": { uk: "Кінець прийому: {parts}.", ru: "Конец приёма: {parts}.", en: "End of appointments: {parts}." },
 
   // ── ux-card ──
 

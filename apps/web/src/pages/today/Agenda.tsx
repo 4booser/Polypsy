@@ -13,7 +13,7 @@ import { withCount } from "../../ui/plural";
 import { fill } from "../dashboard/model";
 import { moveOf, rowActions, SLOTS, STATUS_KEY, type Move } from "./actions";
 import { Di } from "./icons";
-import { hhmm, nowIndex, readiness, splitDuration, type CellTone, type Clash, type SessionState } from "./model";
+import { dayTally, hhmm, nowIndex, readiness, splitDuration, tallyParts, type CellTone, type Clash, type SessionState } from "./model";
 import { DayStrip } from "./strip";
 
 /**
@@ -54,8 +54,8 @@ export function Agenda({
 }) {
   const { ut, lang } = useLang();
   const alive = items.filter((a) => a.status !== "cancelled");
-  const done = alive.filter((a) => a.status === "done").length;
-  const ahead = alive.filter((a) => states.get(a.id) === "next" || states.get(a.id) === "later" || states.get(a.id) === "here").length;
+  /* тот же счёт, что в шапке дня и у віджета зведення (dayTally) */
+  const tally = dayTally(items);
   const rooms = [...new Set(alive.filter((a) => a.mode !== "remote" && a.room).map((a) => `${ut("day.room")} ${a.room}`))];
   const remote = alive.some((a) => a.mode === "remote");
   const where = [...rooms, ...(remote ? [ut("dayA.online")] : [])].join(", ");
@@ -104,7 +104,7 @@ export function Agenda({
                 <span className="text-[15px] font-extrabold leading-5 text-muted tabular-nums">{hhmm(last.endsAt)}</span>
                 <Node kind="end" last />
                 <span className="text-small font-semibold text-muted">
-                  {done || ahead ? fill(ut("dayA.endOfDay"), { done, ahead }) : ut("dayA.endOfDayPlain")}
+                  {tally.total ? fill(ut("home.endOfDay"), { parts: tallyParts(tally, ut, lang) }) : ut("dayA.endOfDayPlain")}
                 </span>
               </div>
             ) : null}
