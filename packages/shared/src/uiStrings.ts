@@ -762,9 +762,9 @@ export const UI = {
     en: "Scores are not calculated for this completion",
   },
   "rsp.notSubmitted": {
-    uk: "Проходження не здано: бали рахуються після здачі",
-    ru: "Прохождение не сдано: баллы считаются после сдачи",
-    en: "Completion not submitted: scores are calculated after submission",
+    uk: "Проходження не завершено: бали рахуються після завершення",
+    ru: "Прохождение не завершено: баллы считаются после завершения",
+    en: "Attempt not completed: scores are calculated on completion",
   },
   /*
    * Баллы вариантов и границы диапазонов берутся из действующей версии
@@ -1819,17 +1819,17 @@ export const UI = {
    * «достовірно» читается как «значит, лечение подействовало», чего RCI не
    * утверждает.
    */
-  "rch.tabsLabel": { uk: "Проходження тесту", ru: "Прохождение теста", en: "Test completion" },
+  "rch.tabsLabel": { uk: "Проходження методики", ru: "Прохождение методики", en: "Instrument attempt" },
   "rch.tabAnswers": { uk: "Відповіді", ru: "Ответы", en: "Answers" },
   "rch.tabCharts": { uk: "Графіки", ru: "Графики", en: "Charts" },
   "rch.result": { uk: "Результат", ru: "Результат", en: "Result" },
   "rch.dynamics": { uk: "Динаміка", ru: "Динамика", en: "Progress" },
   "rch.contribution": { uk: "Внесок пунктів", ru: "Вклад пунктов", en: "Item contributions" },
-  "rch.answering": { uk: "Як відповідав", ru: "Как отвечал", en: "How it was answered" },
+  "rch.answering": { uk: "Хід заповнення", ru: "Ход заполнения", en: "Completion pattern" },
   "rch.interpretation": { uk: "Що означає результат", ru: "Что означает результат", en: "What the result means" },
   "rch.recommendation": { uk: "Рекомендація", ru: "Рекомендация", en: "Recommendation" },
   "rch.noBands": {
-    uk: "без інтерпретаційних меж: методика не задає для цієї шкали полос",
+    uk: "без інтерпретаційних меж: методика не задає для цієї шкали смуг",
     ru: "без интерпретационных границ: методика не задаёт для этой шкалы полос",
     en: "no interpretation bands: the instrument defines none for this scale",
   },
@@ -1879,9 +1879,9 @@ export const UI = {
     en: "The version of the instrument that was taken is unavailable — item contributions are not computed",
   },
   "rch.answeringHint": {
-    uk: "Це підказка тому, хто розбирає протокол, а не вирок: швидку відповідь дає і людина, яка знає її заздалегідь, а змінена відповідь буває просто уважністю.",
-    ru: "Это подсказка тому, кто разбирает протокол, а не приговор: быстрый ответ даёт и человек, который знает его заранее, а изменённый ответ бывает просто внимательностью.",
-    en: "A hint for the reviewer, not a verdict: a quick answer can come from someone who knew it in advance, and a changed answer can simply be care.",
+    uk: "Підказка для розбору протоколу, а не висновок.",
+    ru: "Подсказка для разбора протокола, а не вывод.",
+    en: "A hint for reviewing the record, not a verdict.",
   },
   "rch.timeChart": { uk: "Час на кожен пункт", ru: "Время на каждый пункт", en: "Time per item" },
   "rch.timeCaption": {
@@ -1892,7 +1892,7 @@ export const UI = {
   "rch.threshold": { uk: "поріг", ru: "порог", en: "threshold" },
   "rch.aboveAxis": { uk: "вище за край осі", ru: "выше края оси", en: "above the axis" },
   "rch.fastList": { uk: "Швидше за поріг", ru: "Быстрее порога", en: "Faster than the threshold" },
-  "rch.changedList": { uk: "Змінював відповідь", ru: "Менял ответ", en: "Changed the answer" },
+  "rch.changedList": { uk: "Відповідь змінено", ru: "Ответ изменён", en: "Answer changed" },
   "rch.noneWord": { uk: "немає", ru: "нет", en: "none" },
   "rch.noTimes": {
     uk: "Час на пунктах не записано — проходження вводили без замірів",
@@ -11932,7 +11932,7 @@ export const UI = {
     ru: "Открыть разбор сигналов этого человека (R)",
     en: "Open this person’s signal review (R)",
   },
-  "rp.reviewedBy": { uk: "розібрав {name}", ru: "разобрал {name}", en: "reviewed by {name}" },
+  "rp.reviewedBy": { uk: "розібрано ({name})", ru: "разобрано ({name})", en: "reviewed by {name}" },
   "rp.overdue": { uk: "норму розбору перевищено", ru: "норма разбора превышена", en: "review deadline passed" },
   "rp.outcome.confirmed": { uk: "ризик підтвердився", ru: "риск подтвердился", en: "risk confirmed" },
   "rp.outcome.not_confirmed": { uk: "ризик не підтвердився", ru: "риск не подтвердился", en: "risk not confirmed" },
@@ -12023,9 +12023,8 @@ export const UI = {
     en: "from “{from}” to “{to}” after {s} s",
   },
   "rp.attempt": { uk: "Проходження", ru: "Прохождение", en: "Attempt" },
-  "rp.submitted": { uk: "Здано", ru: "Сдано", en: "Submitted" },
   "rp.kv.method": { uk: "Методика", ru: "Методика", en: "Method" },
-  "rp.kv.submitted": { uk: "Здано", ru: "Сдано", en: "Submitted" },
+  "rp.kv.submitted": { uk: "Завершено", ru: "Завершено", en: "Completed" },
   "rp.kv.started": { uk: "Почато", ru: "Начато", en: "Started" },
   "rp.kv.source": { uk: "Джерело", ru: "Источник", en: "Source" },
   "rp.kv.duration": { uk: "Тривалість", ru: "Длительность", en: "Duration" },
@@ -12033,21 +12032,21 @@ export const UI = {
   "rp.kv.reliability": { uk: "Достовірність", ru: "Достоверность", en: "Validity" },
   "rp.kv.lead": { uk: "Веде", ru: "Ведёт", en: "Lead" },
   "rp.src.assigned": { uk: "за призначенням", ru: "по назначению", en: "assigned" },
-  "rp.src.self": { uk: "сам, без призначення", ru: "сам, без назначения", en: "self-initiated" },
+  "rp.src.self": { uk: "самостійно, без призначення", ru: "самостоятельно, без назначения", en: "self-initiated" },
   "rp.src.kiosk": { uk: "кіоск", ru: "киоск", en: "kiosk" },
-  "rp.src.clinician": { uk: "заповнив фахівець", ru: "заполнил специалист", en: "entered by a clinician" },
+  "rp.src.clinician": { uk: "заповнено фахівцем", ru: "заполнено специалистом", en: "entered by a clinician" },
   "rp.src.informant": { uk: "зі слів іншої людини", ru: "со слов другого человека", en: "from an informant" },
   "rp.src.intake": { uk: "скринінг при записі", ru: "скрининг при записи", en: "intake screening" },
   "rp.concl.afterSubmit": {
-    uk: "Заключення пишеться після здачі проходження.",
-    ru: "Заключение пишется после сдачи прохождения.",
-    en: "A conclusion is written once the attempt is submitted.",
+    uk: "Заключення пишеться після завершення проходження.",
+    ru: "Заключение пишется после завершения прохождения.",
+    en: "A conclusion is written once the attempt is completed.",
   },
-  "rp.concl.none": { uk: "Заключення ще не писали.", ru: "Заключение ещё не писали.", en: "No conclusion yet." },
+  "rp.concl.none": { uk: "Заключення ще немає.", ru: "Заключения ещё нет.", en: "No conclusion yet." },
   "rp.concl.draft": { uk: "Чернетка", ru: "Черновик", en: "Draft" },
   "rp.concl.signed": { uk: "Підписано", ru: "Подписано", en: "Signed" },
   "rp.concl.editedBy": { uk: "{name}, змінено {at}", ru: "{name}, изменено {at}", en: "{name}, edited {at}" },
-  "rp.concl.signedBy": { uk: "Підписав {name}, {at}", ru: "Подписал {name}, {at}", en: "Signed by {name}, {at}" },
+  "rp.concl.signedBy": { uk: "Підписано: {name}, {at}", ru: "Подписано: {name}, {at}", en: "Signed by {name}, {at}" },
   "rp.concl.continue": { uk: "Продовжити", ru: "Продолжить", en: "Continue" },
   "rp.concl.open": { uk: "Відкрити", ru: "Открыть", en: "Open" },
   "rp.concl.sign": { uk: "Підписати", ru: "Подписать", en: "Sign" },
@@ -16460,6 +16459,8 @@ export const UI = {
   // ── ux-results ──
   /* протокол: длинная лестница полос свёрнута до попавшей, кнопка раскрывает все */
   "rp.bandsAll": { uk: "Усі смуги: {n}", ru: "Все полосы: {n}", en: "All bands: {n}" },
+  /* подсказка пилюли попытки: голое число рядом с «частка 0,34» результата читалось загадкой */
+  "rp.attemptScore": { uk: "{scale}: сирий бал {v}", ru: "{scale}: сырой балл {v}", en: "{scale}: raw score {v}" },
 
   // ── ux-risk ──
 

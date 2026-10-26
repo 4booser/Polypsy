@@ -34,7 +34,7 @@ import { ResponseTabs } from "./tabs";
  *   Форма симптомів  → ответы по пунктам за последние попытки той же версии
  *                      тепловой таблицей;
  *   Внесок пунктів   → что дал каждый пункт и что он мог дать, отметка «було»;
- *   Як відповідав    → время по пунктам с порогом «слишком быстро», смены.
+ *   Хід заповнення   → время по пунктам с порогом «слишком быстро», смены.
  *
  * Каждый раздел — только когда ему есть что показать, и каждый ждёт своё:
  * методику той версии (ключ, порог), динамику, хронологию.
@@ -57,7 +57,7 @@ export default function ResponseCharts() {
 
   return (
     <ResponseFrame banner={<ResponseBanner detail={detail} ctx={ctx} conclusion={x.conclusion.data} place="charts" pending={!x.ctx.data && !x.ctx.error} />}>
-      <ResponseTabs surveyId={detail.survey.id} responseId={detail.id} nav={nav} charts />
+      <ResponseTabs surveyId={detail.survey.id} responseId={detail.id} nav={nav} charts scale={main?.scaleTitle ?? null} />
       <div className="flex flex-col gap-4">
         <ResultPanel detail={detail} dynamics={x.dynamics} ctx={ctx} variant="charts" />
         <div className="grid items-start gap-4 grid-cols-2 max-[1200px]:grid-cols-1">

@@ -67,7 +67,7 @@ export default function ResponseView() {
 
   return (
     <ResponseFrame banner={<ResponseBanner detail={detail} ctx={ctx} conclusion={x.conclusion.data} place="protocol" pending={!x.ctx.data && !x.ctx.error} />}>
-      <ResponseTabs surveyId={detail.survey.id} responseId={detail.id} nav={nav} charts={false} />
+      <ResponseTabs surveyId={detail.survey.id} responseId={detail.id} nav={nav} charts={false} scale={main?.scaleTitle ?? null} />
       <div className="grid items-start gap-4 grid-cols-[minmax(0,1fr)_360px] max-[1360px]:grid-cols-[minmax(0,1fr)_320px] max-[1100px]:grid-cols-1">
         <div className="flex min-w-0 flex-col gap-4">
           {/* протокол открывают ради результата: он первым, ответы — под ним */}
@@ -465,7 +465,7 @@ function AttemptPanel({ detail, ctx }: { detail: ResponseDetail; ctx: ResponseCo
   const status =
     detail.status === "completed" ? (
       <Tag tone="good" icon={<Ic.check />}>
-        {ut("rp.submitted")}
+        {ut("rstatus.completed")}
       </Tag>
     ) : (
       <Tag tone={detail.status === "in_progress" ? "attention" : "plain"}>{ut(`rstatus.${detail.status}`, detail.status)}</Tag>
