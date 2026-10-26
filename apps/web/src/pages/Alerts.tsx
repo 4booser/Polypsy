@@ -8,7 +8,6 @@ import { useLang } from "../lang";
 import { onAppEvent } from "../events";
 import { usePagedResource, useResource } from "../useResource";
 import {
-  ActivityList,
   AlertStrip,
   Avatar,
   Empty,
@@ -23,7 +22,6 @@ import {
   useAction,
   useHotkeys,
   useUrlState,
-  type ActivityEvent,
 } from "../ui";
 import { cx } from "../ui/cx";
 import { Panel } from "../ui/layout";
@@ -37,6 +35,7 @@ import { useSettledSelection } from "../components/settledSelection";
 import { useCodeKeys } from "./patientCard/keys";
 import { Pi } from "./patientCard/icons";
 import { dm } from "./patientCard/format";
+import { shownValue } from "./patients/model";
 import {
   CLEAR_NARROWING,
   clockText,
@@ -62,17 +61,18 @@ import {
 const PAGE = 30;
 
 /**
- * Сколько минут в человекочитаемом виде.
+ * Сколько минут в человекочитаемом виде: «12 хв», «5 год», «27 дн.» — для
+ * подписей «… тому» и «за …» в строке очереди.
  *
  * Отрицательное или нечисло — часы клиента разошлись с сервером: «-5 хв
  * тому» читалось бы как время из будущего, а не как сбой. Прочерк честнее.
  */
 function duration(minutes: number, ut: (k: UiKey) => string): string {
   if (!Number.isFinite(minutes) || minutes < 0) return "—";
-  if (minutes < 60) return `${Math.round(minutes)} ${ut("dur.min")}`;
+  if (minutes < 60) return `${Math.max(1, Math.round(minutes))} ${ut("dur.min")}`;
   const hours = Math.round(minutes / 60);
-  if (hours < 48) return `${hours} ${ut("dur.hour")}`;
-  return `${Math.round(hours / 24)} ${ut("dur.day")}`;
+  if (hours < 48) return `${hours} ${ut("rr.hours")}`;
+  return ut("rr.days").replace("{n}", String(Math.round(hours / 24)));
 }
 
 /** Виды очереди пилюлями: открытые, на мне, разобранные, все — состояние и «хто розбирає» в адресе */
@@ -438,9 +438,12 @@ export default function Alerts() {
               </div>
             </div>
           ) : null}
-          <div className="mt-1.5 flex h-9 items-center gap-[7px] text-small text-muted">
-            <Ic.sortDesc size={14} />
-            {ut("al.sortLine")} <b className="font-bold text-text-2">{ut("al.sortLineB")}</b>
+          {/* одной фразой, а не двумя столбиками: по-русски строка длиннее колонки и переносилась по частям */}
+          <div className="mt-1.5 flex min-h-9 items-center gap-[7px] text-small leading-4 text-muted">
+            <Ic.sortDesc size={14} className="shrink-0" />
+            <span className="min-w-0">
+              {ut("al.sortLine")} <b className="font-bold text-text-2">{ut("al.sortLineB")}</b>
+            </span>
           </div>
         </div>
         <div
@@ -496,7 +499,7 @@ export default function Alerts() {
           ) : null}
         </div>
         <div className="flex h-[42px] shrink-0 items-center gap-3 border-t border-divider px-4 text-caption text-muted">
-          <div className="min-w-0 [&>div]:flex-nowrap [&>div]:gap-x-3">
+          <div className="min-w-0 overflow-hidden [&>div]:flex-nowrap [&>div]:gap-x-2.5">
             <KbdHints
               className="hotkeys"
               keys={[
@@ -548,7 +551,7 @@ export default function Alerts() {
           /* «ничего не выбрано» — не то же, что «ничего нет» */
           <div className="p-5">
             <Empty
-              title={ut(rows.length ? "cases.pickOne" : "cases.emptyOpen")}
+              title={ut(rows.length ? "cases.pickOne" : emptyQueueKey(filters))}
               hint={ut(rows.length ? "cases.pickOneHint" : "cases.emptyHint")}
               icon={<Ic.shieldCheck />}
             />
@@ -606,12 +609,9 @@ export function QueueRow({
   const level = SEVERITY_LEVEL[c.severity] ?? "moderate";
   const outcome = c.outcome ? OUTCOME_KEY[c.outcome] : null;
   const clock = riskClock(c, now);
-  const timer =
-    clock.norm !== null
-      ? ut("kit.timerOf")
-          .replace("{elapsed}", clockText(clock.elapsed, ut("rr.days")))
-          .replace("{of}", normText(clock.norm, { h: ut("rr.hours"), min: ut("dur.min") }))
-      : clockText(clock.elapsed, ut("rr.days"));
+  /* у каждого числа в строке — своё слово: «останній сигнал 9 дн. тому», «відкрито 27 дн. тому» */
+  const sinceSignal = duration((now - Date.parse(c.lastAlertAt)) / 60_000, ut);
+  const waited = duration(waitingMinutes(c, now), ut);
   const overdue = !done && rowOverdue(c);
   const mine = !!c.assignedTo && c.assignedTo === me;
 
@@ -625,7 +625,7 @@ export function QueueRow({
     </Tag>
   ) : (
     <Tag tone="danger" icon={<Ic.timer />}>
-      {ut("card.rsSignal").replace("{t}", timer)}
+      {ut("al.lastSignalAgo").replace("{t}", sinceSignal)}
     </Tag>
   );
   const next = done
@@ -679,7 +679,10 @@ export function QueueRow({
             {ut("cases.overdue")}
           </Tag>
         ) : (
-          <span className="ml-auto whitespace-nowrap text-muted">{duration(waitingMinutes(c, now), ut)}</span>
+          /* разобранный — сколько он был открыт; открытый — с какого времени человек ждёт (с самого раннего случая) */
+          <span className="ml-auto whitespace-nowrap text-muted">
+            {ut(done ? "al.reviewedIn" : "al.openedAgo").replace("{t}", waited)}
+          </span>
         )}
       </span>
     </button>
@@ -871,10 +874,10 @@ function ReviewPanel({
   const { ut } = useLang();
   const done = !!c.acknowledgedAt;
   const clock = riskClock(c, now);
-  const takenByOther = !!c.assignedTo && c.assignedTo !== me;
   const level = SEVERITY_LEVEL[c.severity] ?? "moderate";
   const outcome = c.outcome ? OUTCOME_KEY[c.outcome] : null;
-  const who = c.assignedTo ? (c.assignedTo === me ? ut("cases.mine") : `${ut("cases.taken")}: ${c.assignedToName ?? "—"}`) : ut("card.notTaken");
+  /* кто отвечает — одной строкой «Відповідальний» ниже, а не ещё раз в шапке панели */
+  const who = c.assignedTo ? (c.assignedTo === me ? ut("al.assigneeYou") : (c.assignedToName ?? "—")) : ut("al.assigneeNone");
 
   return (
     <Panel
@@ -883,7 +886,7 @@ function ReviewPanel({
       tone="risk"
       sub={
         <span className="inline-flex items-center gap-2">
-          {done ? (outcome ? ut(outcome) : ut("work.done")) : who}
+          {done ? (outcome ? ut(outcome) : ut("work.done")) : null}
           <SeverityTag level={level} small>
             {ut(severityKey[level])}
           </SeverityTag>
@@ -910,13 +913,13 @@ function ReviewPanel({
             }
           />
         ) : (
+          /* нормы у методики нет — просто сколько прошло; «норму не задано» читать незачем */
           <div className="flex h-[52px] items-center gap-2.5 rounded-panel bg-risk-tint px-3.5 text-small font-semibold text-text-2">
             <Ic.timer size={15} className="text-risk-ink" />
             <span>
               <b className="mr-1 text-[22px] font-extrabold leading-none tracking-[-0.03em] text-risk-ink">{clockText(clock.elapsed, ut("rr.days"))}</b>
               {ut("rr.sinceOpened")}
             </span>
-            <span className="ml-auto text-muted">{ut("rr.noNorm")}</span>
           </div>
         )
       ) : null}
@@ -926,10 +929,11 @@ function ReviewPanel({
           {c.signals[0]?.label ?? c.surveyTitle}
         </Fact>
         <Fact icon={<Ic.history />} title={ut("al.opened")} note={dateTime(c.openedAt)}>
-          {clock.norm !== null ? ut("al.normIs").replace("{n}", normText(clock.norm, { h: ut("rr.hours"), min: ut("dur.min") })) : ut("rr.noNorm")}
+          {clock.norm !== null ? ut("al.normIs").replace("{n}", normText(clock.norm, { h: ut("rr.hours"), min: ut("dur.min") })) : null}
         </Fact>
         <Fact icon={<Ic.user />} title={ut("cases.assignedLabel")} note={null}>
-          {who}
+          {/* data-assignee — опора проверки (e2e/triage.e2e.ts): кто держит случай */}
+          <span data-assignee="">{who}</span>
         </Fact>
         {done ? (
           <Fact icon={<Ic.circleCheck />} title={outcome ? ut(outcome) : ut("work.done")} note={dateTime(c.acknowledgedAt)} tone="good">
@@ -940,8 +944,6 @@ function ReviewPanel({
         ) : null}
       </ul>
 
-      {takenByOther && !done ? <p className="m-0 mt-2 text-small text-text-2">{ut("cases.takenByOther")}</p> : null}
-
       {children ? <div className="mt-4">{children}</div> : null}
 
       <div className="mt-4 flex flex-wrap items-center gap-2">
@@ -951,7 +953,9 @@ function ReviewPanel({
           </Button>
         </Tooltip>
         {done ? null : !c.assignedTo ? (
-          <Button onClick={() => void onTake(false)}>{ut("cases.take")}</Button>
+          <Tooltip label={ut("cases.take")} kbd="T">
+            <Button onClick={() => void onTake(false)}>{ut("cases.take")}</Button>
+          </Tooltip>
         ) : c.assignedTo === me ? (
           <Button onClick={() => void onTake(true)}>{ut("cases.release")}</Button>
         ) : null}
@@ -1089,58 +1093,108 @@ const ACTION_KEY: Record<string, UiKey> = {
   "alert.acknowledge": "al.hResolved",
 };
 
+/** Строка хронологии случая: время, значок, жирное начало и текст в две строки */
+interface HistoryRow {
+  t: number;
+  at: string;
+  tone: "risk" | "good" | "neutral";
+  icon: ReactNode;
+  head: ReactNode;
+  text: ReactNode;
+}
+
+const HISTORY_TONE: Record<HistoryRow["tone"], string> = {
+  risk: "bg-risk-tint text-risk-ink",
+  good: "bg-good-tint text-good",
+  neutral: "bg-sunk text-muted",
+};
+
 /**
  * Хронология случая: сигналы и действия по нему из журнала (кто брал, кто
  * отпускал, кто и с каким исходом разобрал). Заступивший видит, почему
  * случай ещё открыт, не расспрашивая предыдущую смену.
+ *
+ * Строки короткие (колонка в 300 px): время, номер пункта и сам пункт — не
+ * больше двух строк; дата — заголовком над строками своего дня. Номера и
+ * тексты пунктов — из основания случая: панель «Підстава» читает его под тем
+ * же именем, второго запроса (и второй записи в журнал) нет. Пока основание
+ * не пришло — готовые подписи сигналов из строки очереди.
  */
 function HistoryPanel({ c }: { c: AlertCase }) {
   const { ut } = useLang();
   const res = useResource(() => api.alertCaseHistory(c.id).catch(() => []), [c.id, c.lastAlertAt, c.assignedTo, c.acknowledgedAt], {
     keep: false,
   });
-  const events: (ActivityEvent & { t: number })[] = [];
-  for (const s of c.signals) {
-    events.push({
-      t: Date.parse(s.at),
-      date: dm(s.at),
-      time: timeOfDay(s.at),
-      icon: <Ic.alert />,
-      tone: "risk",
-      text: (
-        <>
-          <b>{ut("card.evSignal")}</b>: {s.label}
-        </>
-      ),
-    });
+  const basis = useResource(() => api.alertCaseSignals(c.id), [c.id, c.lastAlertAt], { key: "riskReview:signals" });
+  const rows: HistoryRow[] = [];
+  if (basis.data) {
+    for (const s of basis.data) {
+      rows.push({
+        t: Date.parse(s.at),
+        at: s.at,
+        tone: "risk",
+        icon: <Ic.alert />,
+        head:
+          s.kind === "option" && s.questionNumber !== null
+            ? ut("al.itemN").replace("{n}", String(s.questionNumber))
+            : (s.scaleTitle ?? ut("card.evSignal")),
+        text: s.kind === "option" ? (s.questionTitle ?? s.label) : (s.bandLabel ?? s.label),
+      });
+    }
+  } else {
+    for (const s of c.signals) {
+      rows.push({ t: Date.parse(s.at), at: s.at, tone: "risk", icon: <Ic.alert />, head: ut("card.evSignal"), text: s.label });
+    }
   }
   for (const h of res.data ?? []) {
     const key = ACTION_KEY[h.action];
     if (!key) continue;
     const outcome = typeof h.details?.outcome === "string" ? OUTCOME_KEY[h.details.outcome as keyof typeof OUTCOME_KEY] : null;
-    events.push({
+    rows.push({
       t: Date.parse(h.at),
-      date: dm(h.at),
-      time: timeOfDay(h.at),
-      icon: h.action === "alert.acknowledge" ? <Ic.circleCheck /> : <Ic.user />,
+      at: h.at,
       tone: h.action === "alert.acknowledge" ? "good" : "neutral",
+      icon: h.action === "alert.acknowledge" ? <Ic.circleCheck /> : <Ic.user />,
+      head: ut(key),
       text: (
         <>
-          {ut(key)} <b>{h.actorName}</b>
+          {h.actorName}
           {outcome ? <span className="text-muted">, {ut(outcome)}</span> : null}
         </>
       ),
     });
   }
-  events.sort((a, b) => a.t - b.t);
+  rows.sort((a, b) => a.t - b.t);
   return (
-    <Panel title={ut("al.history")} icon={<Ic.history />} sub={dm(c.openedAt)} flush>
+    <Panel title={ut("al.history")} icon={<Ic.history />} flush>
       {!res.data && res.loading ? (
         <div className="px-4 pb-4">
           <Loading rows={3} bare />
         </div>
-      ) : events.length ? (
-        <ActivityList events={events.map(({ t: _t, ...e }) => e)} />
+      ) : rows.length ? (
+        <ol className="m-0 list-none border-t border-divider p-0 pb-1.5">
+          {rows.map((r, i) => {
+            const date = dm(r.at);
+            const newDay = i === 0 || dm(rows[i - 1]!.at) !== date;
+            return (
+              <li key={i}>
+                {newDay ? <p className="m-0 px-4 pb-0.5 pt-2.5 text-caption font-bold text-muted">{date}</p> : null}
+                <div className="grid grid-cols-[38px_22px_minmax(0,1fr)] items-start gap-x-2 px-4 py-1.5 text-[13px] leading-[18px]">
+                  <span className="pt-0.5 font-bold tabular-nums text-text-2">{timeOfDay(r.at)}</span>
+                  <span
+                    aria-hidden
+                    className={cx("mt-px inline-grid size-[20px] place-items-center rounded-full [&>svg]:size-3", HISTORY_TONE[r.tone])}
+                  >
+                    {r.icon}
+                  </span>
+                  <span className="line-clamp-2 min-w-0 text-text">
+                    <b className={cx("font-extrabold", r.tone === "risk" && "text-risk-ink")}>{r.head}</b> {r.text}
+                  </span>
+                </div>
+              </li>
+            );
+          })}
+        </ol>
       ) : (
         <p className="m-0 border-t border-divider px-4 py-3.5 text-small text-muted">{ut("tl.empty")}</p>
       )}
@@ -1170,21 +1224,29 @@ function PatientContext({ userId }: { userId: string }) {
         <div className="border-t border-divider">
           {data.surveys.slice(0, 4).map((sv) => (
             <div key={sv.surveyId} className="border-b border-divider px-4 py-2.5 last:border-b-0">
+              {/* названия — в две строки, а не обрезком: «Поведінкова регуля…» в колонке 300 не читается */}
               <div className="flex items-baseline gap-2">
-                <b className="min-w-0 truncate text-[13px] font-extrabold text-text">{sv.title}</b>
+                <b className="line-clamp-2 min-w-0 text-[13px] font-extrabold text-text">{sv.title}</b>
                 {sv.lastAt ? <span className="ml-auto shrink-0 text-caption text-muted">{dm(sv.lastAt)}</span> : null}
               </div>
-              {sv.scales.slice(0, 3).map((sc) => (
-                <div key={sc.code} className="mt-1 flex items-center gap-2 text-small">
-                  <span className="min-w-0 flex-1 truncate text-text-2">{sc.title}</span>
-                  <b className="font-extrabold tabular-nums text-text">{sc.lastValue}</b>
-                  {sc.severity ? (
-                    <SeverityTag level={sc.severity} small>
-                      {sc.bandLabel ?? ut(severityKey[sc.severity])}
-                    </SeverityTag>
-                  ) : null}
-                </div>
-              ))}
+              {sv.scales.slice(0, 3).map((sc) => {
+                /* то же число, что в карточке: доля — процентом, остальное — с десятичной запятой языка */
+                const shown = shownValue(sc.lastValue, sc.normalization);
+                return (
+                  <div key={sc.code} className="mt-1 flex items-center gap-2 text-small">
+                    <span className="line-clamp-2 min-w-0 flex-1 text-text-2">{sc.title}</span>
+                    <b className="whitespace-nowrap font-extrabold tabular-nums text-text">
+                      {shown.text}
+                      {shown.unit ? <span className="text-caption font-bold text-muted"> {shown.unit}</span> : null}
+                    </b>
+                    {sc.severity ? (
+                      <SeverityTag level={sc.severity} small>
+                        {sc.bandLabel ?? ut(severityKey[sc.severity])}
+                      </SeverityTag>
+                    ) : null}
+                  </div>
+                );
+              })}
             </div>
           ))}
           {data.referrals.length ? (

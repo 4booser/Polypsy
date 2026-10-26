@@ -16,6 +16,7 @@ import {
   users,
 } from "../db/schema";
 import { env } from "../env";
+import { alertLabelsIn } from "../lib/alertLabels";
 import { audit } from "../lib/audit";
 import { bandLabelsIn } from "../lib/bandLabels";
 import { fullNameOf } from "../lib/auth";
@@ -187,6 +188,8 @@ async function signalsOf(
   if (reviewerIds.length) {
     for (const u of await db.select().from(reviewer).where(inArray(reviewer.id, reviewerIds))) names.set(u.id, fullNameOf(u));
   }
+  // подпись — на языке читателя: снимок записан на языке прохождения (lib/alertLabels.ts)
+  const labelOf = await alertLabelsIn(lang, rows.map((x) => x.alert));
   const now = Date.now();
   return rows
     .map(({ alert: a, surveyTitle, escalateMinutes }) => {
@@ -194,7 +197,7 @@ async function signalsOf(
       const minutesOpen = Math.max(0, Math.round((until - Date.parse(a.at)) / 60_000));
       return {
         id: a.id,
-        label: a.label,
+        label: labelOf(a),
         severity: a.severity,
         at: a.at,
         here: a.responseId === r.id,

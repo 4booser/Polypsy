@@ -198,9 +198,10 @@ describe("шаг назад на экране дня", () => {
     expect(moveOf(rowActions("arrived").offPath!, no)).toBeNull();
     expect(moveOf(rowActions("in_progress").offPath!, no)).toBeNull();
     expect(asked).toEqual(["day.undoArrived", "day.undoStarted"]);
-    // вопрос называет снимаемую отметку и то, куда вернётся приём
-    expect(UI["day.undoArrived"].uk).toContain("прийшов");
-    expect(UI["day.undoStarted"].uk).toContain("на прийомі");
+    // вопрос называет снимаемую отметку и то, что останется, — без рода: «явка», а не «прийшов»
+    expect(UI["day.undoArrived"].uk).toContain("відмітку явки");
+    expect(UI["day.undoStarted"].uk).toContain("початок прийому");
+    expect(UI["day.undoStarted"].uk).toContain("явки");
   });
 
   test("«да» — уходит шаг назад; ход вперёд вопросов не задаёт", () => {

@@ -9,6 +9,7 @@ import { Ic } from "../../ui/icons";
 import { Button, ButtonLink, Tag } from "../../ui/primitives";
 import { useLang } from "../../lang";
 import { STATUS_KEY } from "../visitModel";
+import type { BookSlot } from "./Booking";
 import { G } from "./glyphs";
 import {
   type ApptLook,
@@ -30,6 +31,18 @@ export type WeekData = Awaited<ReturnType<typeof api.scheduleWeek>>;
 const PH = 42;
 /** Столбец часов слева */
 const AXIS = 52;
+
+/**
+ * «Гончаренко Т.І.» — фамилия и инициалы для блока приёма: в колонке дня на
+ * 1280 полное имя обрезалось до «Гончаренко …». Инициалы — без пробела между
+ * ними, как в табличной записи: с пробелами десятибуквенная фамилия в блок
+ * не входит. Полное имя — в поповере и в подписи для диктора.
+ */
+export function calendarName(full: string): string {
+  const [last = "", ...rest] = full.trim().split(/\s+/);
+  const initials = rest.map((w) => `${w[0]}.`).join("");
+  return initials ? `${last} ${initials}` : last;
+}
 
 /** «12.10» — день и месяц двумя цифрами */
 export function dayMonth(date: string): string {
@@ -55,7 +68,9 @@ const LOOK: Record<ApptLook, string> = {
 
 /**
  * Неделя календарём: часы приёма полосами, исключения — фоном, приёмы —
- * блоками; на наведении — подробности, нажатие открывает приём.
+ * блоками; на наведении — подробности, нажатие открывает приём. Свободные
+ * окна впереди — пунктиром: нажатие записывает в окно пациента (с правом
+ * вести приёмы; без него окон не видно).
  *
  * Исключения стоят под приёмами, а не поверх: «не приймаю» с 14 до 16 —
  * это фон дня, а приём, оставшийся в этих часах, — то, что надо решить, и он
@@ -67,6 +82,7 @@ export function WeekCalendar({
   now,
   focusId,
   onMove,
+  onBook,
 }: {
   week: WeekData;
   plans: DayPlan[];
@@ -75,10 +91,22 @@ export function WeekCalendar({
   focusId: string | null;
   /** Перенести приём; null — переносить нельзя (нет права вести приёмы) */
   onMove: ((a: AppointmentView) => void) | null;
+  /** Записать пациента в свободное окно; null — записывать нельзя */
+  onBook: ((slot: BookSlot) => void) | null;
 }) {
   const { ut } = useLang();
   const tz = week.tz;
   const next = nextToday(week.appointments, tz, week.today, now);
+  /* свободные окна впереди — те же, что «вільно до кінця тижня» (weekStats) */
+  const taken = new Set(week.appointments.map((a) => a.slotId));
+  const free = onBook
+    ? week.slots
+        .filter((s) => !s.offSchedule && !taken.has(s.id) && Date.parse(s.startsAt) > now)
+        .map((s) => {
+          const w = wallOf(s.startsAt, tz);
+          return { slot: s, date: w.date, start: w.minutes, end: w.minutes + Math.round((Date.parse(s.endsAt) - Date.parse(s.startsAt)) / 60_000) };
+        })
+    : [];
 
   const spans = week.appointments.map((a) => {
     const w = wallOf(a.startsAt, tz);
@@ -181,6 +209,31 @@ export function WeekCalendar({
                   </span>
                 ) : null}
 
+                {free
+                  .filter((f) => f.date === p.date)
+                  .map((f) => {
+                    const label = ut("v2s.bookAt").replace("{when}", `${ut(SHORT_KEY[p.weekday]!)} ${dayMonth(p.date)}, ${clock(f.start)}`);
+                    return (
+                      <button
+                        key={f.slot.id}
+                        type="button"
+                        data-free-slot={f.slot.id}
+                        aria-label={label}
+                        title={label}
+                        onClick={() => onBook?.(f.slot)}
+                        className={cx(
+                          "absolute z-[1] flex cursor-pointer items-start justify-start gap-[3px] overflow-hidden rounded-[7px] border border-dashed border-violet-line bg-transparent px-1 py-1 text-left text-[11px] font-bold leading-[13px] tabular-nums text-muted",
+                          "transition-colors duration-[var(--dur-fast)] hover:border-solid hover:bg-violet-tint hover:text-violet-ink",
+                          "focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus",
+                        )}
+                        style={{ top: y(f.start) + 1.5, height: Math.max(16, y(f.end) - y(f.start) - 3), left: 2, width: "calc(100% - 4px)" }}
+                      >
+                        <Ic.plus size={11} />
+                        {clock(f.start)}
+                      </button>
+                    );
+                  })}
+
                 {placed.map(({ item: a, start, end, col, cols: n }) => (
                   <Appointment
                     key={a.id}
@@ -191,8 +244,8 @@ export function WeekCalendar({
                     style={{
                       top: y(start) + 1.5,
                       height: Math.max(16, y(end) - y(start) - 3),
-                      left: `calc(${(col / n) * 100}% + ${n > 1 ? 3 : 4}px)`,
-                      width: `calc(${100 / n}% - ${n > 1 ? 5 : 8}px)`,
+                      left: `calc(${(col / n) * 100}% + 2px)`,
+                      width: `calc(${100 / n}% - 4px)`,
                     }}
                     compact={y(end) - y(start) < 30}
                     onMove={onMove}
@@ -288,7 +341,7 @@ function Appointment({
         data-appointment={a.id}
         aria-label={`${a.patientName}, ${when}, ${status}`}
         className={cx(
-          "absolute z-[1] block overflow-hidden rounded-[7px] px-1.5 py-1 text-left text-[11px] font-semibold leading-[13px] no-underline",
+          "absolute z-[1] block overflow-hidden rounded-[7px] px-1 py-1 text-left text-[11px] font-semibold leading-[13px] no-underline",
           "transition-shadow duration-[var(--dur-fast)] hover:no-underline hover:shadow-[inset_0_0_0_1.5px_var(--vring)]",
           "focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus",
           LOOK[look],
@@ -300,7 +353,10 @@ function Appointment({
           {clock(s.minutes)}
           {mark}
         </b>
-        <span className={cx("min-w-0 truncate", compact ? "" : "block")}>{a.patientName}</span>
+        {/* фамилия с инициалами (calendarName): полное имя — в поповере */}
+        <span className={cx("min-w-0 truncate text-[10.5px] font-medium tracking-[-0.02em]", compact ? "" : "block")}>
+          {calendarName(a.patientName)}
+        </span>
       </Link>
     </Popover>
   );

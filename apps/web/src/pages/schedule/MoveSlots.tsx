@@ -29,7 +29,8 @@ export function MoveSlots({
 }: {
   specialistId: string;
   tz: string;
-  picked: FreeSlot | null;
+  /** Выбранное окно — по идентификатору: оно могло прийти и из календаря недели */
+  picked: Pick<FreeSlot, "id"> | null;
   onPick: (slot: FreeSlot) => void;
 }) {
   const { ut } = useLang();

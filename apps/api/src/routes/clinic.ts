@@ -34,6 +34,7 @@ import {
   surveys,
   users,
 } from "../db/schema";
+import { alertLabelsIn } from "../lib/alertLabels";
 import { audit } from "../lib/audit";
 import { guardAccountAction } from "../lib/accountClass";
 import { fullNameOf } from "../lib/auth";
@@ -1746,7 +1747,7 @@ clinicRoutes.get(
      * а не заполнена всей историей.
      */
     const since = previous ? previous.slot.startsAt : null;
-    const changes = since ? await changesSince(row.patientId, since) : [];
+    const changes = since ? await changesSince(row.patientId, since, langOf(c)) : [];
 
     /*
      * Черновик протокола этого приёма, если он уже начат.
@@ -1840,7 +1841,7 @@ interface VisitChange {
  * клиенту, у которого есть язык интерфейса. Сервер отвечает на вопрос «что
  * случилось», а не «как это назвать».
  */
-async function changesSince(patientId: string, since: string): Promise<VisitChange[]> {
+async function changesSince(patientId: string, since: string, lang: ReturnType<typeof langOf>): Promise<VisitChange[]> {
   const out: VisitChange[] = [];
 
   const newResponses = await db
@@ -1860,7 +1861,8 @@ async function changesSince(patientId: string, since: string): Promise<VisitChan
     out.push({
       kind: "response",
       at: r.r.submittedAt ?? since,
-      title: t(r.title as never, "uk"),
+      // на языке читателя, как и всё на экране приёма; украинский здесь был зашит
+      title: t(r.title as never, lang),
       // источник важнее подробностей: «пришёл сам» — само по себе сведение
       detail: r.r.source,
     });
@@ -1872,8 +1874,10 @@ async function changesSince(patientId: string, since: string): Promise<VisitChan
     .where(and(eq(riskAlerts.userId, patientId), gt(riskAlerts.at, since)))
     .orderBy(desc(riskAlerts.at))
     .limit(50);
+  // подпись — на языке читателя: снимок записан на языке прохождения (lib/alertLabels.ts)
+  const labelOf = await alertLabelsIn(lang, newAlerts);
   for (const a of newAlerts) {
-    out.push({ kind: "alert", at: a.at, title: a.label, detail: a.severity });
+    out.push({ kind: "alert", at: a.at, title: labelOf(a), detail: a.severity });
   }
 
   const missed = await db

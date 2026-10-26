@@ -15,6 +15,7 @@ import {
   surveys,
   users,
 } from "../db/schema";
+import { alertLabelsIn } from "../lib/alertLabels";
 import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
 import { decryptField } from "../lib/crypto";
@@ -168,12 +169,14 @@ timelineRoutes.get("/:userId", async (c) => {
     .orderBy(desc(riskAlerts.at))
     .limit(200);
 
+  // подпись — на языке читателя: снимок записан на языке прохождения (lib/alertLabels.ts)
+  const alertLabelOf = await alertLabelsIn(lang, alerts);
   for (const a of alerts) {
     items.push({
       id: `alert:${a.id}`,
       kind: "alert",
       at: a.at,
-      title: a.label,
+      title: alertLabelOf(a),
       severity: (a.severity as Severity) ?? null,
       detail: titleOf.get(a.surveyId) ?? null,
       href: "/alerts",

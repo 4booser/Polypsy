@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { createOwnAppointment, dayRow, login, SEED_SURVEY } from "./helpers";
+import { createOwnAppointment, createVisiblePatient, dayRow, login, SEED_SURVEY } from "./helpers";
 
 /**
  * Приём: экран дня и обычная неделя.
@@ -14,7 +14,7 @@ test("день виден целиком и явка отмечается одн
    * Явка отмечается на СВОЁМ приёме, а не на первом ждущем.
    *
    * Ждущих в посеве два, а отметить явку хотят и этот сценарий, и проверка
-   * доступности (a11y.e2e.ts), и проверка пометки «не подтвердил» ниже. Кто
+   * доступности (a11y.e2e.ts), и проверка пометки «запись не подтверждена» ниже. Кто
    * из них останется без ждущего приёма, решал порядок файлов — то есть
    * сортировка имён, а не автор.
    */
@@ -36,11 +36,12 @@ test("день виден целиком и явка отмечается одн
 
   // ждущий приём предлагает ровно одно следующее действие
   const row = dayRow(page, own.id);
-  const came = row.getByRole("button", { name: "Пришёл", exact: true });
+  // «Явка», а не «Пришёл»: кнопка не знает пола человека (exact — рядом стоит «Неявка»)
+  const came = row.getByRole("button", { name: "Явка", exact: true });
   await expect(came).toBeVisible();
   await came.click();
 
-  // после отметки следующая кнопка — «Начать», а не снова «Пришёл»
+  // после отметки следующая кнопка — «Начать», а не снова «Явка»
   await expect(row.getByRole("button", { name: "Начать" })).toBeVisible();
 });
 
@@ -51,7 +52,7 @@ test("неподтверждённый приём помечен, а закре�
   await login(page, "psy");
   await page.goto("/today");
 
-  await expect(dayRow(page, own.id).getByText("не подтвердил")).toBeVisible();
+  await expect(dayRow(page, own.id).getByText("запись не подтверждена")).toBeVisible();
 
   /*
    * Один человек в посеве уже закреплён за специалистом. Кнопок «Закрепить
@@ -75,7 +76,7 @@ test("неявку, поставленную фоном, можно исправ
    * Фоновый проход ставит её приёмам, время которых прошло, — то есть только
    * во второй половине дня и только тем, кого до этого не тронул соседний
    * сценарий. Проверка о неявке не имеет права зависеть ни от часа прогона,
-   * ни от того, кто успел нажать «Пришёл» раньше.
+   * ни от того, кто успел нажать «Явка» раньше.
    */
   const own = await createOwnAppointment(page, "reception-missed", "no_show");
 
@@ -83,8 +84,8 @@ test("неявку, поставленную фоном, можно исправ
   await page.goto("/today");
 
   const row = dayRow(page, own.id);
-  await expect(row).toContainText("не пришёл");
-  await expect(row.getByRole("button", { name: "Пришёл", exact: true })).toBeVisible();
+  await expect(row).toContainText("неявка");
+  await expect(row.getByRole("button", { name: "Явка", exact: true })).toBeVisible();
 });
 
 test("сохранение недели отвечает числами, а не словом «сохранено»", async ({ page }) => {
@@ -108,6 +109,32 @@ test("сохранение недели отвечает числами, а не
   await expect(page.getByText("Занятое время вне расписания не исчезает")).toBeVisible();
   await page.getByRole("button", { name: "Сохранить неделю" }).click();
   await expect(page.getByText(/Добавлено \d+, снято \d+/)).toBeVisible();
+});
+
+test("пациента записывают с экрана расписания: поиск, окно, «Записать»", async ({ page }) => {
+  /*
+   * Запись — главное действие экрана расписания. Прежде записать можно было
+   * только из карточки человека: с недели, где видно свободное окно,
+   * приходилось уходить искать карточку.
+   *
+   * Человек — свой (виден психологу после сдачи методики группы), окно —
+   * последнее свободное ближайшего дня: первое свободное сегодня забирает
+   * подготовка соседних сценариев (createOwnAppointment).
+   */
+  const patient = await createVisiblePatient(page, "schedule-book");
+
+  await login(page, "psy");
+  await page.goto("/my-schedule");
+  await page.getByRole("button", { name: "Записать пациента", exact: true }).click();
+
+  const drawer = page.locator('[data-drawer][data-open="true"]');
+  await drawer.getByPlaceholder("Поиск пациента").fill(patient.lastName);
+  await drawer.getByRole("button", { name: new RegExp(patient.lastName) }).click();
+  await drawer.getByRole("group", { name: "Время" }).getByRole("button").last().click();
+  await drawer.getByRole("button", { name: "Записать", exact: true }).click();
+
+  await expect(page.getByText(new RegExp(`Записано: ${patient.lastName}`))).toBeVisible();
+  await expect(drawer).toHaveCount(0);
 });
 
 test("экран приёма собирается одним запросом и держит набранный текст", async ({ page }) => {
@@ -159,7 +186,7 @@ test("на первом приёме видно, что человек здес�
   await page.goto("/today");
   await dayRow(page, own.id).locator('a[href^="/visit/"]').click();
 
-  const marker = page.getByText(/Был у|Первый приём здесь/).first();
+  const marker = page.getByText(/Предыдущий приём|Первый приём здесь/).first();
   await expect(marker).toBeVisible();
 });
 
