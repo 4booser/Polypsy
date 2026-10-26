@@ -1937,9 +1937,9 @@ export const UI = {
   "ant.byDay": { uk: "Проходження за днями", ru: "Прохождения по дням", en: "Completions by day" },
   "ant.byWeek": { uk: "Проходження за тижнями", ru: "Прохождения по неделям", en: "Completions by week" },
   "ant.dropOffCaption": {
-    uk: "Пункти, після яких люди кидали тест: скільки не дійшло до наступного пункту",
-    ru: "Пункты, после которых люди бросали тест: сколько не дошло до следующего пункта",
-    en: "Items after which people abandoned the test: how many did not reach the next item",
+    uk: "Пункти, після яких переривали заповнення: скільки людей не дійшло до наступного",
+    ru: "Пункты, после которых прерывали заполнение: сколько человек не дошло до следующего",
+    en: "Items after which people stopped: how many did not reach the next one",
   },
   "ant.dropOffMore": {
     uk: "Показано {n} пунктів з найбільшими втратами",
@@ -1947,9 +1947,9 @@ export const UI = {
     en: "Showing the {n} items with the largest losses",
   },
   "ant.noDropOff": {
-    uk: "Ніхто не кинув тест на півдорозі",
-    ru: "Никто не бросил тест на полпути",
-    en: "Nobody abandoned the test halfway",
+    uk: "Перерваних проходжень немає",
+    ru: "Прерванных прохождений нет",
+    en: "No interrupted responses",
   },
   "ant.lostN": { uk: "−{n}", ru: "−{n}", en: "−{n}" },
   "ant.scalesHint": {
@@ -1964,9 +1964,9 @@ export const UI = {
   },
   "ant.weekly": { uk: "Середнє за тижнями", ru: "Среднее по неделям", en: "Weekly mean" },
   "ant.weeklyHint": {
-    uk: "Тижні, де проходжень менше {n}, не показано: середнє трьох людей — це три людини, а не стан",
-    ru: "Недели, где прохождений меньше {n}, не показаны: среднее трёх человек — это три человека, а не состояние",
-    en: "Weeks with fewer than {n} completions are hidden: the mean of three people is three people, not a state",
+    uk: "Тижні, де менше {n} проходжень, не показано",
+    ru: "Недели, где меньше {n} прохождений, не показаны",
+    en: "Weeks with fewer than {n} completions are not shown",
   },
   "ant.weeklyTooFew": {
     uk: "Замало даних для ходу за тижнями: потрібно хоча б два тижні по {n} проходжень",
@@ -2035,9 +2035,9 @@ export const UI = {
   "ant.noFast": { uk: "Надто швидких відповідей немає", ru: "Слишком быстрых ответов нет", en: "No too-fast answers" },
   "ant.durationTitle": { uk: "Тривалість проходження", ru: "Длительность прохождения", en: "Completion time" },
   "ant.durationCaption": {
-    uk: "Скільки триває тест від початку до здачі; найдовші 5% — в останньому рядку",
-    ru: "Сколько длится тест от начала до сдачи; самые долгие 5% — в последней строке",
-    en: "Time from start to submission; the slowest 5% are in the last row",
+    uk: "Від початку до завершення; найдовші 5 % — в останньому рядку",
+    ru: "От начала до завершения; самые долгие 5 % — в последней строке",
+    en: "From start to completion; the slowest 5 % are in the last row",
   },
   "ant.andLonger": { uk: "{n} і довше", ru: "{n} и дольше", en: "{n} and longer" },
   "ant.flaggedLine": {
@@ -4463,7 +4463,7 @@ export const UI = {
   "an.tabScales": { uk: "Шкали", ru: "Шкалы", en: "Scales" },
   "an.tabQuality": { uk: "Якість", ru: "Качество", en: "Quality" },
   "an.tabResponses": { uk: "Проходження", ru: "Прохождения", en: "Completions" },
-  "an.dropOff": { uk: "Де губляться респонденти", ru: "Где теряются респонденты", en: "Where respondents drop off" },
+  "an.dropOff": { uk: "Де переривають заповнення", ru: "Где прерывают заполнение", en: "Where people stop filling it in" },
   "an.exportsHint": {
     uk: "Вивантаження вивозить персональні дані за межі системи і записується в журнал доступу",
     ru: "Выгрузка увозит персональные данные за пределы системы и записывается в журнал доступа",
@@ -4672,12 +4672,12 @@ export const UI = {
     ru: "Эта группа недопредставлена в нормах — их баллы посчитаны по тем, кто дошёл.",
     en: "This group is underrepresented in the norms — their scores are calculated from those who finished.",
   },
-  "dq.completionTitle": { uk: "Доходимість за групами", ru: "Доходимость по группам", en: "Completion rate by group" },
+  "dq.completionTitle": { uk: "Завершеність за групами", ru: "Завершённость по группам", en: "Completion rate by group" },
   "dq.sex": { uk: "Стать", ru: "Пол", en: "Sex" },
   "dq.age": { uk: "Вік", ru: "Возраст", en: "Age" },
   "dq.started": { uk: "Почали", ru: "Начали", en: "Started" },
   "dq.finished": { uk: "Завершили", ru: "Завершили", en: "Finished" },
-  "dq.completion": { uk: "Доходимість", ru: "Доходимость", en: "Completion rate" },
+  "dq.completion": { uk: "Завершеність", ru: "Завершённость", en: "Completion rate" },
   "dq.skippedItems": { uk: "Пропущено пунктів", ru: "Пропущено пунктов", en: "Items skipped" },
   "dq.driftTitle": { uk: "Дрейф вибірки", ru: "Дрейф выборки", en: "Sample drift" },
   "dq.scale": { uk: "Шкала", ru: "Шкала", en: "Scale" },
@@ -9158,8 +9158,8 @@ export const UI = {
   "am.copyOf": { uk: "{title} — копія", ru: "{title} — копия", en: "{title} — copy" },
   "ant.metaAll": { uk: "Завершено: {n}, осіб: {p}", ru: "Завершено: {n}, людей: {p}", en: "Completed: {n}, people: {p}" },
   "ant.metaAll2": {
-    uk: "почато {s}, доходимість {r}, медіана часу {t}",
-    ru: "начато {s}, доходимость {r}, медиана времени {t}",
+    uk: "почато {s}, завершеність {r}, медіана часу {t}",
+    ru: "начато {s}, завершённость {r}, медиана времени {t}",
     en: "started {s}, completion {r}, median time {t}",
   },
   "ant.metaPatient": { uk: "Завершено: {n}", ru: "Завершено: {n}", en: "Completed: {n}" },
@@ -9213,9 +9213,9 @@ export const UI = {
   "ant.heavyShare": { uk: "{band} й важче — {p}: {k} з {n}.", ru: "{band} и тяжелее — {p}: {k} из {n}.", en: "{band} or worse — {p}: {k} of {n}." },
   "ant.medianLadder": { uk: "Медіана на сходах тяжкості", ru: "Медиана на лестнице тяжести", en: "Median on the severity ladder" },
   "ant.dropOffTotal": {
-    uk: "Усього покинуто {a} з {s} почато, доходимість {r}.",
-    ru: "Всего брошено {a} из {s} начатых, доходимость {r}.",
-    en: "Abandoned {a} of {s} started in total, completion {r}.",
+    uk: "Перервано {a} з {s} початих, завершеність {r}.",
+    ru: "Прервано {a} из {s} начатых, завершённость {r}.",
+    en: "{a} of {s} started were interrupted, completion {r}.",
   },
   "ant.qualityTitle": { uk: "Якість даних", ru: "Качество данных", en: "Data quality" },
   "ant.fastThreshold": {
@@ -9238,7 +9238,7 @@ export const UI = {
   "ant.statusPick": { uk: "Стан проходження", ru: "Состояние прохождения", en: "Response state" },
   "ant.stAll": { uk: "Усі", ru: "Все", en: "All" },
   "ant.stDone": { uk: "Завершені", ru: "Завершённые", en: "Completed" },
-  "ant.stAbandoned": { uk: "Покинуті", ru: "Брошенные", en: "Abandoned" },
+  "ant.stAbandoned": { uk: "Перервані", ru: "Прерванные", en: "Interrupted" },
   "ant.allResponses": { uk: "Усі проходження", ru: "Все прохождения", en: "All completions" },
   "ant.verShort": { uk: "в. {n}", ru: "в. {n}", en: "v. {n}" },
   "ant.exportBy": { uk: "Вивантажує {name}, {date}", ru: "Выгружает {name}, {date}", en: "Exported by {name}, {date}" },
@@ -13582,11 +13582,11 @@ export const UI = {
     ru: "На краях шкалы: {floor} % и {ceiling} %.",
     en: "At the scale ends: {floor} % and {ceiling} %.",
   },
-  "mc.ovLostSub": { uk: "покинуті проходження", ru: "брошенные прохождения", en: "abandoned responses" },
+  "mc.ovLostSub": { uk: "перервані проходження", ru: "прерванные прохождения", en: "interrupted responses" },
   "mc.ovLostText": {
-    uk: "Пункти, після яких кидали проходження: скільки людей не дійшло до наступного. Доходимість {rate} %, покинуто {lost} з {started}.",
-    ru: "Пункты, после которых бросали прохождение: сколько людей не дошло до следующего. Доходимость {rate} %, брошено {lost} из {started}.",
-    en: "Items after which people abandoned: how many did not reach the next one. Completion {rate} %, {lost} of {started} abandoned.",
+    uk: "Завершеність {rate} %, перервано {lost} з {started}.",
+    ru: "Завершённость {rate} %, прервано {lost} из {started}.",
+    en: "Completion {rate} %, {lost} of {started} interrupted.",
   },
   "mc.ovMean": { uk: "Середнє", ru: "Среднее", en: "Mean" },
   "mc.ovMeanWeekly": { uk: "Середній бал", ru: "Средний балл", en: "Mean score" },
@@ -13636,9 +13636,9 @@ export const UI = {
     en: "Responses and mean score by week",
   },
   "mc.ovWeeksNote": {
-    uk: "Тижні, де проходжень менше 5, середнього не мають: середнє трьох людей — це три людини, а не стан.",
-    ru: "Недели, где прохождений меньше 5, среднего не имеют: среднее трёх человек — это три человека, а не состояние.",
-    en: "Weeks with fewer than 5 responses have no mean: the mean of three people is three people, not a state.",
+    uk: "Середнє не показується для тижнів, де менше 5 проходжень.",
+    ru: "Среднее не показывается для недель, где меньше 5 прохождений.",
+    en: "No mean is shown for weeks with fewer than 5 responses.",
   },
   "mc.ovWeeksSub": { uk: "14 тижнів", ru: "14 недель", en: "14 weeks" },
   "mc.ovWeeksText": {
@@ -16469,6 +16469,9 @@ export const UI = {
   "mc.rightsUnclearValue": { uk: "не з’ясовано", ru: "не выяснены", en: "unclear" },
   "mc.ovKeysChecked": { uk: "Ключ звірено з оригіналом", ru: "Ключ сверен с оригиналом", en: "Key checked against the original" },
   "mc.ovKeysCheckedOn": { uk: "так, {date}", ru: "да, {date}", en: "yes, {date}" },
+  /* огляд методики: пустое — строкой, а не графиком нулей */
+  "mc.ovNoResponses": { uk: "Проходжень ще немає", ru: "Прохождений ещё нет", en: "No responses yet" },
+  "mc.ovWeeksEmpty": { uk: "За 14 тижнів проходжень немає", ru: "За 14 недель прохождений нет", en: "No responses in the last 14 weeks" },
 
   // ── ux-copy ──
 } as const satisfies Record<string, UiEntry>;

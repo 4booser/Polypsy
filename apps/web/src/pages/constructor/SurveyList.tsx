@@ -34,7 +34,7 @@ import { AssignDrawer, type ExistingAssignment } from "../../components/AssignDr
 import { ExportsDrawer } from "../methods/ExportsDrawer";
 import { Mi } from "../methods/icons";
 import { DOMAIN_KEY, domainKey, rightsKey } from "../methods/labels";
-import { attentionOf, grantState, keysPending, rightsPending, shortDate, splitCode } from "../methods/model";
+import { attentionOf, fixedIn, grantState, keysPending, rightsPending, shortDate, splitCode } from "../methods/model";
 import { num, useCount } from "../methods/useCount";
 import { ArchiveManyDialog, codesLine, FolderForm, MoveForm, MoveManyForm } from "./CatalogueDialogs";
 import {
@@ -335,10 +335,12 @@ function PeekBody({
   folderTitle: string | null;
   qa: boolean;
 }) {
-  const { ut } = useLang();
+  const { ut, lang } = useLang();
   const count = useCount();
   const full = useResource(() => api.survey(s.id), [s.id]);
   const rights = rightsKey(s.rightsStatus);
+  /* границы полос — с запятой в uk/ru, как везде */
+  const bound = (v: number) => fixedIn(lang, v, 2, false);
   return (
     <>
       {qa && keysPending(s) && !s.archivedAt ? (
@@ -407,7 +409,7 @@ function PeekBody({
                         .sort((a, b) => a.minScore - b.minScore)
                         .map((b) => (
                           <div key={b.id} className="flex items-center gap-2.5 text-small">
-                            <span className="w-14 shrink-0 font-bold tabular-nums text-text-2">{`${b.minScore}–${b.maxScore}`}</span>
+                            <span className="min-w-14 shrink-0 whitespace-nowrap font-bold tabular-nums text-text-2">{`${bound(b.minScore)}–${bound(b.maxScore)}`}</span>
                             <SeverityTag small level={SEVERITY[b.severity] ?? "none"}>
                               {b.label}
                             </SeverityTag>

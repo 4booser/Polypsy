@@ -12,7 +12,7 @@ import { Ic } from "../ui/icons";
 import { Panel, SideLayout } from "../ui/layout";
 import { Popover } from "../ui/Popover";
 import { KV, TextAction } from "../ui/records";
-import { ButtonLink, Segmented, SeverityTag, Tag, type Severity } from "../ui/primitives";
+import { ButtonLink, Segmented, Select, SeverityTag, Tag, type Severity } from "../ui/primitives";
 import { Callout, Empty } from "../ui/states";
 import { useResource } from "../useResource";
 import { testsHref } from "./analytics/tests/model";
@@ -125,17 +125,44 @@ function Overview({ survey, data, batteries }: { survey: SurveyFull; data: Surve
   const rungs = scale ? scale.bands.map((b) => ({ min: b.min, max: b.max, label: b.label, severity: b.severity })) : [];
   const losses = topLosses(data.dropOff, 5);
   const lostTotal = Math.max(0, data.started - data.completed);
+  /*
+   * Пустое — строкой, а не графиком нулей. Четырнадцать столбцов «0»,
+   * медиана «0» на полосе «Мінімальна тривога» и «Завершеність 0 %,
+   * перервано 0 з 0» читаются как данные, хотя данных нет.
+   */
+  const anyStarted = data.started > 0;
+  const weeksEmpty = weeks.every((w) => w.count === 0);
+  const scaleHasData = !!scale && scale.shape.n > 0;
 
   return (
     <SideLayout side={side}>
       <div className="flex flex-wrap items-center gap-2">
-        {clinical.length > 1 ? (
+        {/*
+          Шкала — названием, а не кодом: «DENIAL», «EMOSUP», «anxiety» — коды
+          ключа, врачу они ничего не говорят. Три шкалы — сегментами, больше —
+          списком: в сегменты влезало шесть кодов, а у Brief COPE шкал
+          четырнадцать.
+        */}
+        {clinical.length > 1 && clinical.length <= 3 ? (
           <Segmented
             label={ut("mc.nmScale")}
             value={scale?.scaleId ?? ""}
             onChange={(k) => setScaleId(k)}
-            items={clinical.slice(0, 6).map((s) => ({ key: s.scaleId, label: s.code }))}
+            items={clinical.map((s) => ({ key: s.scaleId, label: s.title }))}
           />
+        ) : clinical.length > 3 ? (
+          <Select
+            aria-label={ut("mc.nmScale")}
+            value={scale?.scaleId ?? ""}
+            onChange={(e) => setScaleId(e.target.value)}
+            className="h-9 w-auto max-w-[320px] text-small"
+          >
+            {clinical.map((s) => (
+              <option key={s.scaleId} value={s.scaleId}>
+                {s.title}
+              </option>
+            ))}
+          </Select>
         ) : null}
         <span className="text-small text-muted">{ut("mc.ovAllTime")}</span>
         <span className="ml-auto flex items-center gap-3">
@@ -174,38 +201,41 @@ function Overview({ survey, data, batteries }: { survey: SurveyFull; data: Surve
           ) : (
             <p className="m-0 text-small text-muted">{ut("ant.bandsEmpty")}</p>
           )}
-          <div className="mt-4 grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] items-start gap-6 border-t border-divider pt-4 max-[1180px]:grid-cols-1">
-            <div className="min-w-0">
-              <b className="mb-2 block text-small font-extrabold text-text">{ut("mc.ovMedianOn")}</b>
-              <SeverityMeter
-                rungs={rungs}
-                value={scale.median}
-                max={scale.maxPossible}
-                label={`${scale.code}: ${fmt1(scale.median)}`}
+          {scaleHasData ? (
+            <div className="mt-4 grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] items-start gap-6 border-t border-divider pt-4 max-[1180px]:grid-cols-1">
+              <div className="min-w-0">
+                <b className="mb-2 block text-small font-extrabold text-text">{ut("mc.ovMedianOn")}</b>
+                <SeverityMeter
+                  rungs={rungs}
+                  value={scale.median}
+                  max={scale.maxPossible}
+                  label={`${scale.code}: ${fmt1(scale.median)}`}
+                />
+              </div>
+              {/* подписи короткие — место значению: полоса медианы на 1280 не вылезает за панель */}
+              <KV
+                w={90}
+                rows={[
+                  [ut("mc.ovMean"), <b key="m">{fmt1(scale.average)}</b>],
+                  [
+                    ut("mc.ovMedian"),
+                    <span key="md" className="inline-flex flex-wrap items-center gap-x-2 gap-y-1">
+                      <b>{fmt1(scale.median)}</b>
+                      {bandOf(scale, scale.median) ? (
+                        <SeverityTag small level={BAND_LEVEL[bandOf(scale, scale.median)!.severity]}>
+                          {bandOf(scale, scale.median)!.label}
+                        </SeverityTag>
+                      ) : null}
+                    </span>,
+                  ],
+                  [ut("mc.ovQuartiles"), <b key="q">{`${fmt1(scale.p25)}–${fmt1(scale.p75)}`}</b>],
+                  ...(scale.measurement
+                    ? ([[ut("mc.ovError"), ut("mc.ovErrorText").replace("{n}", fmt1(scale.measurement.mdc95))]] as [string, string][])
+                    : []),
+                ]}
               />
             </div>
-            <KV
-              w={110}
-              rows={[
-                [ut("mc.ovMean"), <b key="m">{fmt1(scale.average)}</b>],
-                [
-                  ut("mc.ovMedian"),
-                  <span key="md" className="inline-flex items-center gap-2">
-                    <b>{fmt1(scale.median)}</b>
-                    {bandOf(scale, scale.median) ? (
-                      <SeverityTag small level={BAND_LEVEL[bandOf(scale, scale.median)!.severity]}>
-                        {bandOf(scale, scale.median)!.label}
-                      </SeverityTag>
-                    ) : null}
-                  </span>,
-                ],
-                [ut("mc.ovQuartiles"), <b key="q">{`${fmt1(scale.p25)}–${fmt1(scale.p75)}`}</b>],
-                ...(scale.measurement
-                  ? ([[ut("mc.ovError"), ut("mc.ovErrorText").replace("{n}", fmt1(scale.measurement.mdc95))]] as [string, string][])
-                  : []),
-              ]}
-            />
-          </div>
+          ) : null}
           {scale.reliability ? (
             <div className="mt-4">
               <Callout
@@ -228,29 +258,41 @@ function Overview({ survey, data, batteries }: { survey: SurveyFull; data: Surve
       ) : null}
 
       <Panel title={ut("mc.ovWeeks")} icon={<Ic.chart />} sub={ut("mc.ovWeeksSub")}>
-        <p className="m-0 text-small text-text-2">
-          {ut("mc.ovWeeksText")
-            .replace("{completed}", num(data.completed))
-            .replace("{started}", num(data.started))
-            .replace("{people}", count(data.respondentCount, "people"))}
-        </p>
-        <div className={cx("mt-3 grid gap-5", trendPoints.length > 1 && scale ? "grid-cols-2 max-[1180px]:grid-cols-1" : "grid-cols-1")}>
-          <div className="min-w-0">
-            <b className="mb-1 block text-small font-extrabold text-text">{ut("mc.ovPerWeek")}</b>
-            <TimeColumns
-              label={ut("mc.ovPerWeek")}
-              height={200}
-              columns={weeks.map((w) => ({ key: w.week, label: shortDate(w.week), value: w.count, partial: w.partial, tip: ut("mc.ovWeekOf").replace("{date}", shortDate(w.week)) }))}
-            />
-          </div>
-          {trendPoints.length > 1 && scale ? (
-            <div className="min-w-0">
-              <b className="mb-1 block text-small font-extrabold text-text">{ut("mc.ovMeanWeekly")}</b>
-              <BandTrend points={trendPoints} rungs={rungs} max={scale.maxPossible} sem={scale.measurement?.sem ?? null} height={200} label={ut("mc.ovMeanWeekly")} />
-            </div>
-          ) : null}
-        </div>
-        <p className="m-0 mt-2 text-small text-muted">{ut("mc.ovWeeksNote")}</p>
+        {!anyStarted ? (
+          <p className="m-0 text-small text-muted">{ut("mc.ovNoResponses")}</p>
+        ) : (
+          <>
+            <p className="m-0 text-small text-text-2">
+              {ut("mc.ovWeeksText")
+                .replace("{completed}", num(data.completed))
+                .replace("{started}", num(data.started))
+                .replace("{people}", count(data.respondentCount, "people"))}
+            </p>
+            {weeksEmpty ? (
+              <p className="m-0 mt-2 text-small text-muted">{ut("mc.ovWeeksEmpty")}</p>
+            ) : (
+              <>
+                <div className={cx("mt-3 grid gap-5", trendPoints.length > 1 && scale ? "grid-cols-2 max-[1180px]:grid-cols-1" : "grid-cols-1")}>
+                  <div className="min-w-0">
+                    <b className="mb-1 block text-small font-extrabold text-text">{ut("mc.ovPerWeek")}</b>
+                    <TimeColumns
+                      label={ut("mc.ovPerWeek")}
+                      height={200}
+                      columns={weeks.map((w) => ({ key: w.week, label: shortDate(w.week), value: w.count, partial: w.partial, tip: ut("mc.ovWeekOf").replace("{date}", shortDate(w.week)) }))}
+                    />
+                  </div>
+                  {trendPoints.length > 1 && scale ? (
+                    <div className="min-w-0">
+                      <b className="mb-1 block text-small font-extrabold text-text">{ut("mc.ovMeanWeekly")}</b>
+                      <BandTrend points={trendPoints} rungs={rungs} max={scale.maxPossible} sem={scale.measurement?.sem ?? null} height={200} label={ut("mc.ovMeanWeekly")} />
+                    </div>
+                  ) : null}
+                </div>
+                <p className="m-0 mt-2 text-small text-muted">{ut("mc.ovWeeksNote")}</p>
+              </>
+            )}
+          </>
+        )}
       </Panel>
 
       <Panel
@@ -259,12 +301,14 @@ function Overview({ survey, data, batteries }: { survey: SurveyFull; data: Surve
         sub={ut("mc.ovLostSub")}
         actions={<TextAction to={testsHref(survey.id, { view: "questions" })}>{ut("mc.tabItems")}</TextAction>}
       >
-        <p className="m-0 mb-3 text-small text-text-2">
-          {ut("mc.ovLostText")
-            .replace("{rate}", fmt1(data.completionRate))
-            .replace("{lost}", num(lostTotal))
-            .replace("{started}", num(data.started))}
-        </p>
+        {anyStarted ? (
+          <p className="m-0 mb-3 text-small text-text-2">
+            {ut("mc.ovLostText")
+              .replace("{rate}", fmt1(data.completionRate))
+              .replace("{lost}", num(lostTotal))
+              .replace("{started}", num(data.started))}
+          </p>
+        ) : null}
         {losses.length ? (
           <HBars
             items={losses.map((r, i) => ({
@@ -371,13 +415,15 @@ function BandsPanel({
   scale: SurveyFull["scales"][number];
   current: { label: string } | null;
 }) {
-  const { ut } = useLang();
+  const { ut, lang } = useLang();
   const bands = [...scale.bands].sort((a, b) => a.minScore - b.minScore);
+  /* границы — с запятой в uk/ru («0,24–0,38»), одной строкой: дробные у СР-45 и долей */
+  const bound = (v: number) => fixedIn(lang, v, 2, false);
   return (
     <Panel
       title={ut("mc.ovBands")}
       icon={<ShellIcon name="ruler" />}
-      sub={survey.scales.length > 1 ? scale.code : undefined}
+      sub={survey.scales.length > 1 ? scale.title : undefined}
       actions={<TextAction to={`/constructor/${survey.id}`}>{ut("cl.editAction")}</TextAction>}
     >
       <ul className="m-0 list-none p-0">
@@ -387,11 +433,11 @@ function BandsPanel({
             <li
               key={b.id}
               className={cx(
-                "grid grid-cols-[52px_minmax(0,1fr)] items-start gap-x-2.5 border-t border-divider py-2.5 first:border-t-0 first:pt-0.5",
+                "grid grid-cols-[72px_minmax(0,1fr)] items-start gap-x-2.5 border-t border-divider py-2.5 first:border-t-0 first:pt-0.5",
                 on && "-mx-2.5 rounded-[12px] border-transparent bg-violet-tint px-2.5 first:pt-2.5",
               )}
             >
-              <span className="text-small font-extrabold leading-6 tabular-nums text-text-2">{`${b.minScore}–${b.maxScore}`}</span>
+              <span className="whitespace-nowrap text-small font-extrabold leading-6 tabular-nums text-text-2">{`${bound(b.minScore)}–${bound(b.maxScore)}`}</span>
               <span className="min-w-0">
                 <SeverityTag small level={BAND_LEVEL[b.severity]}>
                   {b.label}

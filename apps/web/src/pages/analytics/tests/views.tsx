@@ -309,7 +309,7 @@ function ReliabilityLine({ scale: s }: { scale: ScaleAnalytics }) {
   );
 }
 
-/** «Де губляться респонденти»: пункты, после которых бросали, — с итогом словами */
+/** «Де переривають заповнення»: пункты, после которых прерывали, — с итогом словами */
 function DropoffPanel({ data, onView }: { data: SurveyAnalytics; onView: () => void }) {
   const { ut } = useLang();
   const losses = useMemo(() => lossRows(data.dropOff), [data.dropOff]);

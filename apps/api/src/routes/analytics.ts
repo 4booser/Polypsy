@@ -620,7 +620,12 @@ analyticsRoutes.get("/surveys/:id", async (c) => {
     (requested ? versions.find((v) => v.id === requested) : undefined) ??
     [...versions].sort((a, b) => weight(b) - weight(a) || b.version - a.version)[0] ??
     null;
-  const survey = await getSurvey(surveyId, chosen?.id ?? null);
+  /*
+   * Тексты методики — на языке читателя, как у карточки и динамики: названия
+   * шкал, полосы и пункты этой сводки консоль печатает как есть, и русская
+   * консоль показывала «Нижче середнього» рядом с русской лестницей полос.
+   */
+  const survey = await getSurvey(surveyId, chosen?.id ?? null, readerLang);
   if (!survey) notFound("err.surveyNotFound");
 
   /*
@@ -933,11 +938,11 @@ analyticsRoutes.get("/surveys/:id", async (c) => {
   }
   /*
    * Слово полосы прохождения — на языке, на котором прочитана методика
-   * (getSurvey выше, по умолчанию украинский): снимок в response_scores
-   * записан на языке прохождения (lib/bandLabels.ts), и прохождение на
-   * русском не попадало ни в одну полосу распределения.
+   * (getSurvey выше, язык читателя): снимок в response_scores записан на
+   * языке прохождения (lib/bandLabels.ts), и прохождение на другом языке не
+   * попадало бы ни в одну полосу распределения.
    */
-  const bandIn = await bandLabelsIn("uk", survey.scales.map((sc) => sc.id));
+  const bandIn = await bandLabelsIn(readerLang, survey.scales.map((sc) => sc.id));
 
   /*
    * Балл каждого пункта по каждому прохождению выборки — основа психометрики.
