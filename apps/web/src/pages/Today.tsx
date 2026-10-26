@@ -247,7 +247,8 @@ export default function TodayPage() {
                     ["N", ut("dayA.hintNote")],
                   ["P", ut("dayA.hintPrep")],
                     ...(hero ? ([["R", ut("dayA.hintReview")]] as [string, string][]) : []),
-                    ...(heroMsg && hero ? ([["M", fill(ut("dayA.hintReply"), { name: hero.userName.split(" ")[1] ?? hero.userName })]] as [string, string][]) : []),
+                    /* без имени: одно имя без фамилии — фамильярность, а лист один — у человека в «Дія зараз» */
+                    ...(heroMsg && hero ? ([["M", ut("dayA.hintReply")]] as [string, string][]) : []),
                     ["Enter", ut("dayA.hintCard")],
                     ["Esc", ut("dayA.hintEsc")],
                   ]}
