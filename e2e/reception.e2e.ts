@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { createOwnAppointment, dayRow, login, SEED_SURVEY } from "./helpers";
+import { createOwnAppointment, createVisiblePatient, dayRow, login, SEED_SURVEY } from "./helpers";
 
 /**
  * Приём: экран дня и обычная неделя.
@@ -107,6 +107,32 @@ test("сохранение недели отвечает числами, а не
   await expect(page.getByText("Занятое время вне расписания не исчезает")).toBeVisible();
   await page.getByRole("button", { name: "Сохранить неделю" }).click();
   await expect(page.getByText(/Добавлено \d+, снято \d+/)).toBeVisible();
+});
+
+test("пациента записывают с экрана расписания: поиск, окно, «Записать»", async ({ page }) => {
+  /*
+   * Запись — главное действие экрана расписания. Прежде записать можно было
+   * только из карточки человека: с недели, где видно свободное окно,
+   * приходилось уходить искать карточку.
+   *
+   * Человек — свой (виден психологу после сдачи методики группы), окно —
+   * последнее свободное ближайшего дня: первое свободное сегодня забирает
+   * подготовка соседних сценариев (createOwnAppointment).
+   */
+  const patient = await createVisiblePatient(page, "schedule-book");
+
+  await login(page, "psy");
+  await page.goto("/my-schedule");
+  await page.getByRole("button", { name: "Записать пациента", exact: true }).click();
+
+  const drawer = page.locator('[data-drawer][data-open="true"]');
+  await drawer.getByPlaceholder("Поиск пациента").fill(patient.lastName);
+  await drawer.getByRole("button", { name: new RegExp(patient.lastName) }).click();
+  await drawer.getByRole("group", { name: "Время" }).getByRole("button").last().click();
+  await drawer.getByRole("button", { name: "Записать", exact: true }).click();
+
+  await expect(page.getByText(new RegExp(`Записано: ${patient.lastName}`))).toBeVisible();
+  await expect(drawer).toHaveCount(0);
 });
 
 test("экран приёма собирается одним запросом и держит набранный текст", async ({ page }) => {

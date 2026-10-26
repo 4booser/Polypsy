@@ -1632,11 +1632,10 @@ export const UI = {
   "sched.simple": { uk: "Скласти тиждень одним рядком", ru: "Составить неделю одной строкой", en: "Build the week in one line" },
   "sched.apply": { uk: "Скласти тиждень", ru: "Составить неделю", en: "Build week" },
   "sched.applyWarn": {
-    uk: "Замінить усі години, що стоять зараз",
-    ru: "Заменит все часы, которые стоят сейчас",
-    en: "Replaces all hours currently set",
+    uk: "Замінить години в усіх днях нижче",
+    ru: "Заменит часы во всех днях ниже",
+    en: "Replaces the hours of every day below",
   },
-  "sched.byDay": { uk: "По днях окремо", ru: "По дням отдельно", en: "Day by day" },
   "sched.edit": { uk: "Змінити тиждень", ru: "Изменить неделю", en: "Edit week" },
   "sched.cancelEdit": { uk: "Скасувати зміни", ru: "Отменить изменения", en: "Discard changes" },
   "sched.dayOff": { uk: "не приймаю", ru: "не принимаю", en: "not seeing patients" },
@@ -8430,9 +8429,9 @@ export const UI = {
   "v2s.weekOf": { uk: "Тиждень {range}", ru: "Неделя {range}", en: "Week of {range}" },
   "v2s.week": { uk: "Тиждень", ru: "Неделя", en: "Week" },
   "v2s.weekHint": {
-    uk: "наведіть на прийом, щоб побачити деталі",
-    ru: "наведите на приём, чтобы увидеть подробности",
-    en: "hover an appointment to see details",
+    uk: "натисніть вільне вікно, щоб записати пацієнта",
+    ru: "нажмите свободное окно, чтобы записать пациента",
+    en: "click a free slot to book a patient",
   },
   "v2s.prevWeek": { uk: "Попередній тиждень", ru: "Предыдущая неделя", en: "Previous week" },
   "v2s.nextWeek": { uk: "Наступний тиждень", ru: "Следующая неделя", en: "Next week" },
@@ -8467,12 +8466,6 @@ export const UI = {
   },
   "v2s.change": { uk: "Змінити", ru: "Изменить", en: "Edit" },
   "v2s.days": { uk: "Дні прийому", ru: "Дни приёма", en: "Working days" },
-  "v2s.rebuildAsk": { uk: "Скласти тиждень заново?", ru: "Составить неделю заново?", en: "Rebuild the week?" },
-  "v2s.rebuildBody": {
-    uk: "Ці години замінять усі, що стоять зараз. Записи на години, що зникнуть, не скасуються: вони стануть «поза розкладом», і перенести чи лишити їх вирішуєте ви.",
-    ru: "Эти часы заменят все, что стоят сейчас. Записи на часы, которые исчезнут, не отменятся: они станут «вне расписания», и перенести или оставить их решаете вы.",
-    en: "These hours replace all current ones. Bookings in hours that disappear are not cancelled: they become off schedule, and you decide whether to move or keep them.",
-  },
   "v2s.draftWeek": { uk: "звичайного тижня", ru: "обычной недели", en: "of the regular week" },
   "v2s.weekSaveNote": { uk: "Пацієнти побачать нові вікна одразу", ru: "Пациенты увидят новые окна сразу", en: "Patients see the new slots right away" },
   "v2s.add": { uk: "Додати", ru: "Добавить", en: "Add" },
@@ -16465,6 +16458,13 @@ export const UI = {
   "al.reviewedIn": { uk: "розібрано за {t}", ru: "разобран за {t}", en: "reviewed in {t}" },
   /* хронология случая: номер пункта перед его текстом (pages/Alerts.tsx, HistoryPanel) */
   "al.itemN": { uk: "п. {n}", ru: "п. {n}", en: "item {n}" },
+  /* запись пациента с экрана расписания (pages/Schedule.tsx, schedule/Booking.tsx) */
+  "v2s.book": { uk: "Записати пацієнта", ru: "Записать пациента", en: "Book a patient" },
+  "v2s.bookAt": { uk: "Записати пацієнта на {when}", ru: "Записать пациента на {when}", en: "Book a patient at {when}" },
+  "v2s.bookReason": { uk: "Привід звернення", ru: "Повод обращения", en: "Reason for the visit" },
+  "v2s.bookedToast": { uk: "Записано: {name}, {when}", ru: "Записано: {name}, {when}", en: "Booked: {name}, {when}" },
+  "v2s.draftBook": { uk: "запису на прийом", ru: "записи на приём", en: "of the booking" },
+  "v2s.lgFree": { uk: "вільне вікно", ru: "свободное окно", en: "free slot" },
 
   // ── ux-methods ──
 
