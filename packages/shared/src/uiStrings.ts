@@ -16374,6 +16374,7 @@ export const UI = {
     ru: "{n} идёт|{n} идут|{n} идут|{n} идут",
     en: "{n} in progress|{n} in progress|{n} in progress|{n} in progress",
   },
+  "home.tallyLate": { uk: "{n} без відмітки явки", ru: "{n} без отметки явки", en: "{n} attendance not marked" },
   "home.tallyAhead": { uk: "{n} попереду", ru: "{n} впереди", en: "{n} ahead" },
   "home.daySum": { uk: "{tally}, прийом до {end}", ru: "{tally}, приём до {end}", en: "{tally}, until {end}" },
   "home.endOfDay": { uk: "Кінець прийому: {parts}.", ru: "Конец приёма: {parts}.", en: "End of appointments: {parts}." },

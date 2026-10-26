@@ -55,7 +55,7 @@ export function Agenda({
   const { ut, lang } = useLang();
   const alive = items.filter((a) => a.status !== "cancelled");
   /* тот же счёт, что в шапке дня и у віджета зведення (dayTally) */
-  const tally = dayTally(items);
+  const tally = dayTally(items, states);
   const rooms = [...new Set(alive.filter((a) => a.mode !== "remote" && a.room).map((a) => `${ut("day.room")} ${a.room}`))];
   const remote = alive.some((a) => a.mode === "remote");
   const where = [...rooms, ...(remote ? [ut("dayA.online")] : [])].join(", ");

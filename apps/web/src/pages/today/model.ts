@@ -207,9 +207,11 @@ export interface DayTally {
   total: number;
   done: number;
   noshow: number;
+  /** Время прошло, а явка не отмечена (состояние «late» дня) */
+  late: number;
   /** Человек пришёл или приём идёт */
   here: number;
-  /** Записанные и подтверждённые — и те, чьё время прошло без отметки явки */
+  /** Записанные и подтверждённые, чьё время ещё не прошло */
   ahead: number;
 }
 
@@ -219,19 +221,25 @@ export interface DayTally {
  * Считалось в трёх местах по-разному: шапка относила к «попереду» и
  * идущий приём, и неотмеченный, віджет и конец дня — только идущий, и над
  * «1 проведено, 2 попереду» стояло «4 сесії: 1 проведено, 3 попереду».
- * Теперь — по состоянию записи, а не по часам: идущий приём — «триває»;
- * время прошло без отметки — всё ещё «попереду» (решение о явке за
- * специалистом, строка дня его показывает); неявка — своей частью. Части
- * всегда складываются в число сессий.
+ * Теперь — по состоянию записи: идущий приём — «триває», неявка — своей
+ * частью. Время прошло без отметки — «без відмітки явки», как и пометка в
+ * строке дня, а не «попереду»: в три часа дня утренний приём впереди не
+ * стоит, и специалист видит, что забыл нажать. Без `states` (другой день,
+ * часов нет) такие записи остаются «попереду». Части всегда складываются в
+ * число сессий.
  */
-export function dayTally(items: readonly Pick<AppointmentView, "status">[]): DayTally {
-  const t: DayTally = { total: 0, done: 0, noshow: 0, here: 0, ahead: 0 };
+export function dayTally(
+  items: readonly Pick<AppointmentView, "id" | "status">[],
+  states?: ReadonlyMap<string, SessionState>,
+): DayTally {
+  const t: DayTally = { total: 0, done: 0, noshow: 0, late: 0, here: 0, ahead: 0 };
   for (const a of items) {
     if (a.status === "cancelled") continue;
     t.total++;
     if (a.status === "done") t.done++;
     else if (a.status === "no_show") t.noshow++;
     else if (a.status === "arrived" || a.status === "in_progress") t.here++;
+    else if (states?.get(a.id) === "late") t.late++;
     else t.ahead++;
   }
   return t;
@@ -241,6 +249,7 @@ export function dayTally(items: readonly Pick<AppointmentView, "status">[]): Day
 const TALLY_PARTS = [
   ["done", "home.tallyDone"],
   ["noshow", "home.tallyNoshow"],
+  ["late", "home.tallyLate"],
   ["here", "home.tallyHere"],
   ["ahead", "home.tallyAhead"],
 ] as const;

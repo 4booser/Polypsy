@@ -140,14 +140,14 @@ describe("сессии дня", () => {
     const day = [
       appt("a", "09:00", "09:50", { status: "done" }),
       appt("b", "09:50", "10:40", { status: "arrived" }),
-      // время прошло, явка не отмечена — всё ещё «попереду», и по часам счёт не меняется
+      // время прошло, явка не отмечена — без часов (states) это ещё «попереду»
       appt("c", "10:40", "11:30", { status: "confirmed" }),
       appt("d", "14:00", "14:50", { status: "booked" }),
       appt("e", "15:00", "15:50", { status: "cancelled" }),
     ];
     const t = dayTally(day);
-    expect(t).toEqual({ total: 4, done: 1, noshow: 0, here: 1, ahead: 2 });
-    expect(t.done + t.noshow + t.here + t.ahead).toBe(t.total);
+    expect(t).toEqual({ total: 4, done: 1, noshow: 0, late: 0, here: 1, ahead: 2 });
+    expect(t.done + t.noshow + t.late + t.here + t.ahead).toBe(t.total);
     expect(tallyText(t, tr("uk"), "uk")).toBe("4 сесії: 1 проведено, 1 триває, 2 попереду");
     expect(tallyText(t, tr("ru"), "ru")).toBe("4 сессии: 1 проведено, 1 идёт, 2 впереди");
     // конец таймлайна — те же части без числа сессий
@@ -155,11 +155,26 @@ describe("сессии дня", () => {
 
     // неявка — своей частью, нулевые части не называются, формы — по числу
     const later = dayTally([...day.slice(0, 1), appt("f", "11:00", "11:50", { status: "no_show" }), appt("g", "12:00", "12:50", { status: "no_show" })]);
-    expect(later).toEqual({ total: 3, done: 1, noshow: 2, here: 0, ahead: 0 });
+    expect(later).toEqual({ total: 3, done: 1, noshow: 2, late: 0, here: 0, ahead: 0 });
     expect(tallyText(later, tr("uk"), "uk")).toBe("3 сесії: 1 проведено, 2 неявки");
     expect(tallyText(dayTally([appt("h", "09:00", "09:50", { status: "in_progress" }), appt("i", "09:00", "09:50", { status: "arrived" })]), tr("uk"), "uk")).toBe(
       "2 сесії: 2 тривають",
     );
+  });
+
+  test("счёт дня по часам: прошедшая без отметки — «без відмітки явки», как пометка в строке дня", () => {
+    const day = [
+      appt("a", "09:00", "09:50", { status: "done" }),
+      appt("b", "09:50", "10:40", { status: "arrived" }),
+      appt("c", "10:40", "11:30", { status: "confirmed" }),
+      appt("d", "14:00", "14:50", { status: "booked" }),
+    ];
+    const t = dayTally(day, sessionStates(day, Date.parse(at("12:00"))));
+    expect(t).toEqual({ total: 4, done: 1, noshow: 0, late: 1, here: 1, ahead: 1 });
+    expect(tallyText(t, tr("uk"), "uk")).toBe("4 сесії: 1 проведено, 1 без відмітки явки, 1 триває, 1 попереду");
+    expect(tallyText(t, tr("ru"), "ru")).toBe("4 сессии: 1 проведено, 1 без отметки явки, 1 идёт, 1 впереди");
+    // другой день (часов нет) — неотмеченных не бывает
+    expect(dayTally(day, sessionStates(day, null))).toEqual({ total: 4, done: 1, noshow: 0, late: 0, here: 1, ahead: 2 });
   });
 
   test("перетин — только между живыми приёмами: неявка его не создаёт", () => {

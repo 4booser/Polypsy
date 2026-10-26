@@ -35,6 +35,7 @@ import {
   shiftDate,
   tallyText,
   urgentCases,
+  type SessionState,
 } from "./today/model";
 import { useHotkeys } from "../ui/keys";
 import { Prep } from "./today/Prep";
@@ -195,6 +196,7 @@ export default function TodayPage() {
       <DayHead
         date={data?.date ?? (dateParam || localDate(new Date(wall)))}
         items={items}
+        states={states}
         loading={!data}
         isToday={data ? isToday : !dateParam}
         onDate={(d) => {
@@ -293,12 +295,14 @@ function NowNote({ items, now, hero }: { items: AppointmentView[]; now: number |
 function DayHead({
   date,
   items,
+  states,
   loading,
   isToday,
   onDate,
 }: {
   date: string;
   items: AppointmentView[];
+  states: ReadonlyMap<string, SessionState>;
   loading: boolean;
   isToday: boolean;
   onDate: (d: string) => void;
@@ -306,7 +310,7 @@ function DayHead({
   const { ut, lang } = useLang();
   const alive = items.filter((a) => a.status !== "cancelled");
   /* тот же счёт, что у віджета зведення и в конце таймлайна (dayTally) */
-  const tally = dayTally(items);
+  const tally = dayTally(items, states);
   const end = alive.length ? hhmm([...alive.map((a) => a.endsAt)].sort().pop()!) : null;
   const sum = loading
     ? ut("common.loading")

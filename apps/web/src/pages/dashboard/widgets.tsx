@@ -229,7 +229,7 @@ export function DayWidget({ items }: { items: AppointmentView[] | null }) {
       title={ut("dayA.dayTitle")}
       icon={<Di.calendarClock />}
       /* тот же счёт, что в шапке дня и в конце его таймлайна (dayTally) */
-      sub={alive.length ? tallyText(dayTally(sorted), ut, lang) : undefined}
+      sub={alive.length ? tallyText(dayTally(sorted, states), ut, lang) : undefined}
       actions={<TextAction to="/today">{ut("dashA.openDay")}</TextAction>}
       flush
     >
