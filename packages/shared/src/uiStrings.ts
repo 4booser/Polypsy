@@ -245,8 +245,14 @@ export const UI = {
    * Здесь только то, чего в словаре ещё не было. Регистр и написание
    * подписей кадра («телефон», «email», «Населенний») выровнены по словарю.
    */
-  "pcard.unsubscribe": { uk: "Відписатись", ru: "Отписаться", en: "Unsubscribe" },
-  "pcard.subscribe": { uk: "Підписатись", ru: "Подписаться", en: "Subscribe" },
+  /*
+   * Закрепление ведущего специалиста (POST /api/clinic/patients/:id/lead) —
+   * тем же словом, что «Закріпити за собою» на экране приёма. «Підписатись»
+   * стояло рядом с «Підписати» (подпись нотатки и заключения) — опасная
+   * пара почти одинаковых слов с разным смыслом.
+   */
+  "pcard.unsubscribe": { uk: "Зняти закріплення", ru: "Снять закрепление", en: "Stop being lead clinician" },
+  "pcard.subscribe": { uk: "Закріпити за собою", ru: "Закрепить за собой", en: "Become lead clinician" },
   "pcard.subscribed": { uk: "Пацієнта закріплено за вами", ru: "Пациент закреплён за вами", en: "The patient is now linked to you" },
   "pcard.unsubscribed": { uk: "Закріплення знято", ru: "Закрепление снято", en: "Link removed" },
   "pcard.conclusions": { uk: "Заключення", ru: "Заключения", en: "Conclusions" },
