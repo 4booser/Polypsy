@@ -701,7 +701,8 @@ function ItemsTable({ v, code, grid, loading, surveyId }: { v: CardView; code: s
           {grid.columns.map((c) => (
             <col key={c.responseId} className="w-[52px]" />
           ))}
-          {cat ? null : <col className="w-[58px]" />}
+          {/* «Изменение» по-русски в 58 px не помещалось и резалось краем панели */}
+          {cat ? null : <col className="w-[80px]" />}
         </colgroup>
         <thead>
           <tr className="[&>th]:h-[34px] [&>th]:border-y [&>th]:border-divider [&>th]:bg-panel-2 [&>th]:px-1 [&>th]:text-center [&>th]:text-[11.5px] [&>th]:font-bold [&>th]:text-muted">

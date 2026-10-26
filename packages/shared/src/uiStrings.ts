@@ -1403,7 +1403,7 @@ export const UI = {
   "visit.protocol": { uk: "Протокол прийому", ru: "Протокол приёма", en: "Appointment notes" },
   "visit.actions": { uk: "Дії", ru: "Действия", en: "Actions" },
   "visit.wasWith": { uk: "Попередній прийом", ru: "Предыдущий приём", en: "Previous appointment" },
-  "visit.firstVisit": { uk: "Перший прийом тут", ru: "Первый приём здесь", en: "First appointment here" },
+  "visit.firstVisit": { uk: "Перший прийом у відділенні", ru: "Первый приём в отделении", en: "First appointment here" },
   "visit.followedSince": { uk: "Спостерігається", ru: "Наблюдается", en: "Under care" },
   "visit.lead": { uk: "Веде", ru: "Ведёт", en: "Lead clinician:" },
   "visit.noLead": { uk: "Ведучого немає", ru: "Ведущего нет", en: "No lead clinician" },
@@ -9296,9 +9296,12 @@ export const UI = {
   "plist.tomorrow": { uk: "завтра", ru: "завтра", en: "tomorrow" },
   "plist.signal": { uk: "сигнал", ru: "сигнал", en: "signal" },
   "plist.signals": { uk: "сигналів: {n}", ru: "сигналов: {n}", en: "signals: {n}" },
-  /* «Стан» реестра считает открытые случаи человека (r.risk.cases), а не сигналы */
-  "plist.case": { uk: "випадок ризику", ru: "случай риска", en: "risk case" },
-  "plist.cases": { uk: "випадків ризику: {n}", ru: "случаев риска: {n}", en: "risk cases: {n}" },
+  /* «Стан» реестра считает открытые случаи человека (r.risk.cases), а не сигналы; коротко — колонка узкая */
+  "plist.cases": {
+    uk: "{n} випадок|{n} випадки|{n} випадків|{n} випадку",
+    ru: "{n} случай|{n} случая|{n} случаев|{n} случая",
+    en: "{n} case|{n} cases|{n} cases|{n} cases",
+  },
   "plist.caseSince": { uk: "з {when}", ru: "с {when}", en: "since {when}" },
   "plist.caseWith": { uk: "розбирає {name}", ru: "разбирает {name}", en: "with {name}" },
   "plist.noShow": { uk: "неявка {d}", ru: "неявка {d}", en: "no-show {d}" },

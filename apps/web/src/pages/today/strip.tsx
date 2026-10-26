@@ -35,6 +35,15 @@ export function DayStrip({
   const nowMin = now === null ? null : minuteOfDay(now);
   const axis = dayAxis(spans, nowMin);
   if (!axis) return null;
+  const nowPct = nowMin === null ? null : axis.at(nowMin);
+  /* у края шкалы плашка «зараз» прижимается внутрь, а не уходит за обрез панели */
+  const nowSide = nowPct === null ? null : nowPct > 92 ? "end" : nowPct < 8 ? "start" : "mid";
+  /* подпись часа, которую закрыла бы плашка «зараз», — с запасом на узкую шкалу */
+  const underNow = (pct: number) => {
+    if (nowPct === null) return false;
+    const d = pct - nowPct;
+    return nowSide === "end" ? d > -18 && d < 3 : nowSide === "start" ? d > -3 && d < 18 : Math.abs(d) <= 11;
+  };
   const lane = lanes(spans);
   const label = (m: number) => `${String(Math.floor(m / 60) % 24).padStart(2, "0")}:00`;
 
@@ -50,8 +59,10 @@ export function DayStrip({
       {/*
         Час под «зараз» не печатается: плашка «сейчас 13:35» шире «зараз 13:35», и
         на шкале в 700 px при 1280 соседний «14:00» в 6 % от неё уходил под плашку.
+        У края шкалы плашка прижата внутрь и целиком лежит по одну сторону от
+        линии — там она закрывает вдвое дальше (в 15:45 под ней пряталось «15:00»).
       */}
-      {axis.ticks.filter((t) => nowMin === null || Math.abs(t.pct - axis.at(nowMin)) > 9).map((t) => (
+      {axis.ticks.filter((t) => !underNow(t.pct)).map((t) => (
         <span
           key={`t${t.minute}`}
           aria-hidden
@@ -146,7 +157,7 @@ export function DayStrip({
             className={cx(
               "absolute top-[60px] h-5 whitespace-nowrap rounded-[10px] bg-text px-2 text-micro font-extrabold leading-5 text-panel tabular-nums",
               /* у края шкалы подпись прижимается внутрь, а не уходит за обрез панели */
-              axis.at(nowMin) > 92 ? "-translate-x-full" : axis.at(nowMin) < 8 ? "" : "-translate-x-1/2",
+              nowSide === "end" ? "-translate-x-full" : nowSide === "start" ? "" : "-translate-x-1/2",
             )}
             style={{ left: `${axis.at(nowMin)}%` }}
           >

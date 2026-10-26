@@ -323,14 +323,17 @@ export function ConclusionEditor({
       ) : null}
 
       <div className="flex flex-wrap items-center gap-2.5 border-t border-divider px-4 pb-4 pt-3">
-        <span className={cx("inline-flex min-w-0 items-center gap-1.5 text-small", lock && !signed ? "text-text-2" : "text-muted")}>
-          {lock && !signed ? (
-            <Ic.lock size={14} className={cx("shrink-0", lock.tone === "warn" ? "text-warn" : "text-risk-ink")} />
-          ) : (
-            <Ic.info size={14} className="shrink-0" />
-          )}
-          {lock && !signed ? (lock.note ?? ut("rp.signLocked")) : !canSign ? ut("cnx.noSignRight") : ut("cnc.onlySignedInReport")}
-        </span>
+        {/* что в отчёт попадает только подписанное, говорит панель «Печатный отчёт» под листом — здесь только то, что мешает подписать */}
+        {(lock && !signed) || !canSign ? (
+          <span className={cx("inline-flex min-w-0 items-center gap-1.5 text-small", lock && !signed ? "text-text-2" : "text-muted")}>
+            {lock && !signed ? (
+              <Ic.lock size={14} className={cx("shrink-0", lock.tone === "warn" ? "text-warn" : "text-risk-ink")} />
+            ) : (
+              <Ic.info size={14} className="shrink-0" />
+            )}
+            {lock && !signed ? (lock.note ?? ut("rp.signLocked")) : ut("cnx.noSignRight")}
+          </span>
+        ) : null}
         <div className="ml-auto flex flex-wrap gap-2">
           <Button
             variant="primary"

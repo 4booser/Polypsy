@@ -809,7 +809,7 @@ function MeasuredAt({ r, now, locale, today }: { r: PatientListItem; now: number
 
 /** Почему человек в списке сейчас: случай, неявка, учёт — красным только риск */
 function StateCell({ r, locale, now }: { r: PatientListItem; locale: string; now: number }) {
-  const { ut } = useLang();
+  const { ut, lang } = useLang();
   if (r.risk) {
     const sub = r.risk.assigneeName
       ? ut("plist.caseWith").replace("{name}", shortName(r.risk.assigneeName))
@@ -817,7 +817,8 @@ function StateCell({ r, locale, now }: { r: PatientListItem; locale: string; now
     return (
       <span className="flex flex-col items-start gap-0.5">
         <Tag tone={r.risk.assigneeName ? "handover" : "danger"} icon={<Ic.alert />}>
-          {r.risk.cases > 1 ? ut("plist.cases").replace("{n}", String(r.risk.cases)) : ut("plist.case")}
+          {/* число открытых случаев, а не сигналов: у случая их бывает несколько */}
+          {withCount(ut("plist.cases"), r.risk.cases, lang)}
         </Tag>
         <small className="text-caption text-text-2">{sub}</small>
       </span>
