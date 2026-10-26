@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { dayKey } from "../src/format";
-import { groupByDay } from "../src/pages/Timeline";
+import { groupByDay, weekly } from "../src/pages/Timeline";
 
 /**
  * Хронология пациента: день — по часам учреждения, а не по Гринвичу
@@ -66,5 +66,27 @@ describe("лента по дням", () => {
     const screen = readFileSync(resolve(import.meta.dir, "../src/pages/Timeline.tsx"), "utf8");
     expect(screen).not.toMatch(/\.at\.slice\(0, 10\)/);
     expect(screen).not.toMatch(/dateTime\([^)]*\)\.slice\(/);
+  });
+});
+
+describe("события по неделям", () => {
+  test("недели до перевода часов не обнуляются: начало недели — календарём, а не минус 7×24 ч", () => {
+    /*
+     * 26 жовтня 2026 — понедельник после перевода часов (25-го). Начала
+     * прежних недель вычитались из полуночи этого понедельника по 7×24 ч и
+     * сдвигались на час: события с ними не совпадали, и столбцы до перевода
+     * стояли нулями, хотя замеры в эти недели были.
+     *
+     * Пояс — отдельному процессу (как в format.test.ts): у тестового
+     * процесса свой пояс, и менять его посреди прогона значит сдвинуть
+     * время всем следующим проверкам.
+     */
+    const probe = `const { weekly } = require(${JSON.stringify(new URL("../src/pages/Timeline.tsx", import.meta.url).pathname)});
+      const at = (iso) => ({ id: iso, kind: "response", at: iso, title: "x" });
+      const items = ["2026-10-26T07:00:00Z", "2026-10-21T07:00:00Z", "2026-10-15T07:00:00Z", "2026-10-14T07:00:00Z", "2026-09-29T07:00:00Z"].map(at);
+      const weeks = weekly(items, Date.parse("2026-10-26T10:00:00Z"), "uk-UA");
+      console.log(JSON.stringify({ values: weeks.map((w) => w.value), partial: weeks.at(-1).partial }));`;
+    const out = Bun.spawnSync(["bun", "-e", probe], { env: { ...process.env, TZ: KYIV } });
+    expect(JSON.parse(out.stdout.toString().trim())).toEqual({ values: [0, 0, 0, 1, 0, 2, 1, 1], partial: true });
   });
 });
