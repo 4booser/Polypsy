@@ -13345,7 +13345,8 @@ export const UI = {
   },
   "mc.btCancelledN": { uk: "Відкликано призначень: {n}", ru: "Отозвано назначений: {n}", en: "Assignments revoked: {n}" },
   "mc.btCreated": { uk: "зібрано {date}", ru: "собран {date}", en: "assembled {date}" },
-  "mc.btDaysLate": { uk: "−{n} дн.", ru: "−{n} дн.", en: "−{n} d" },
+  /* под датой в узкой колонке «Строк»: неразрывный пробел — «3 дн.» не рвётся переносом */
+  "mc.btDaysLate": { uk: "прострочено {n} дн.", ru: "просрочено {n} дн.", en: "{n} d overdue" },
   "mc.btDelete": { uk: "Видалити набір", ru: "Удалить набор", en: "Delete the battery" },
   "mc.btDeleteText": {
     uk: "Видалити можна лише набір, який ще нікому не призначали. Набір з історією призначень — в архів.",
