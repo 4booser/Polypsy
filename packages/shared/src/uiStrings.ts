@@ -16456,6 +16456,18 @@ export const UI = {
     ru: "Направление задаёт общий каталог методик",
     en: "Set by the shared instrument catalogue",
   },
+
+  // ── ux-home ──
+
+  // ── ux-card ──
+
+  // ── ux-results ──
+
+  // ── ux-risk ──
+
+  // ── ux-methods ──
+
+  // ── ux-copy ──
 } as const satisfies Record<string, UiEntry>;
 
 export type UiKey = keyof typeof UI;
