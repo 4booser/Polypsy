@@ -2,16 +2,17 @@ import { expect, test } from "@playwright/test";
 import { SEED_SURVEY, login } from "./helpers";
 
 /**
- * Заполнение методики за пациента: прежние замеры человека грузятся по
- * выбору, на котором остановились, а не по каждому шагу выбора.
+ * Заполнение методики за пациента: человек выбирается одним полем с поиском,
+ * и прежние замеры грузятся по выбранному, а не по каждому шагу стрелкой.
  *
- * Выбор пациента — родной <select>. В Windows и Linux стрелки на нём меняют
- * значение и шлют change на каждом шаге, и динамика (чтение клинических
- * данных со строкой журнала response.read) уходила по каждому, мимо кого
- * прошли стрелкой. Шаги здесь — подряд идущие selectOption: так их видит
- * экран, на какой бы системе ни шёл смоук.
+ * Прежде выбор был родным <select> рядом с полем поиска: в Windows и Linux
+ * стрелки на нём меняют значение на каждом шаге, и динамика (чтение
+ * клинических данных со строкой журнала response.read) уходила по каждому,
+ * мимо кого прошли стрелкой. Теперь это комбобокс: стрелки ходят по
+ * найденным, выбор — Enter, а фокус после выбора уходит в быстрый ввод —
+ * следующий шаг.
  */
-test("прежние замеры — по устоявшемуся выбору пациента, а не по каждому шагу", async ({ page }) => {
+test("пациент выбирается полем с поиском; замеры — по выбранному, а не по каждому шагу стрелкой", async ({ page }) => {
   await login(page, "psy");
   await page.goto("/surveys");
   await page.locator('table tbody a[href^="/surveys/"]').filter({ hasText: SEED_SURVEY }).first().click();
@@ -27,15 +28,32 @@ test("прежние замеры — по устоявшемуся выбору
   await page.goto(`/surveys/${surveyId}/administer`);
   const pick = page.getByRole("combobox", { name: "Кого обследуем" });
   await expect(pick).toBeVisible();
-  // ждём найденных: без поиска сервер отдаёт первую сотню по алфавиту
-  await expect(pick.locator("option")).not.toHaveCount(1);
-  const values = (await pick.locator("option").evaluateAll((os) => os.map((o) => (o as HTMLOptionElement).value))).filter(Boolean);
-  expect(values.length, "в зоне психолога меньше двух пациентов — проверять нечего").toBeGreaterThanOrEqual(2);
-  const steps = values.slice(0, 3);
+  // без выбранного пациента первым набирают его: фокус — в поле поиска, а не в быстром вводе
+  await expect(pick).toBeFocused();
 
-  for (const v of steps) await pick.selectOption(v);
+  await pick.press("ArrowDown");
+  const options = page.getByRole("listbox", { name: "Кого обследуем" }).getByRole("option");
+  // ждём найденных: без набранного сервер отдаёт первую сотню по алфавиту
+  await expect(options.first()).toBeVisible();
+  expect(await options.count(), "в зоне психолога меньше трёх пациентов — проверять нечего").toBeGreaterThanOrEqual(3);
+
+  await pick.press("ArrowDown");
+  await pick.press("ArrowDown");
+  await expect(options.nth(2)).toHaveAttribute("aria-selected", "true");
   await page.waitForTimeout(1500);
+  expect(dynamics, "шаг стрелкой — ещё не выбор, а замеры уже читались").toEqual([]);
 
-  const last = steps.at(-1)!;
-  expect(dynamics, "динамика ушла по промежуточным шагам выбора").toEqual([expect.stringContaining(`/api/dynamics/respondents/${last}`)]);
+  const chosen = (await options.nth(2).getAttribute("data-patient"))!;
+  await pick.press("Enter");
+  const change = page.getByRole("button", { name: "Изменить пациента" });
+  await expect(change).toBeVisible();
+  // следующий шаг — ответы: фокус в быстром вводе
+  await expect(page.getByLabel("Быстрый ввод")).toBeFocused();
+  await page.waitForTimeout(1500);
+  expect(dynamics).toEqual([expect.stringContaining(`/api/dynamics/respondents/${chosen}`)]);
+
+  // «Изменить» снимает выбор целиком: сохранить, пока новый человек не выбран, нельзя
+  await change.click();
+  await expect(pick).toBeFocused();
+  await expect(page.getByRole("button", { name: "Сохранить обследование" })).toBeDisabled();
 });

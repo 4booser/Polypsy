@@ -4555,7 +4555,6 @@ export const UI = {
   },
 
   "adn.whoIsTested": { uk: "Кого обстежуємо", ru: "Кого обследуем", en: "Who is being assessed" },
-  "adn.pickPatient": { uk: "— оберіть пацієнта —", ru: "— выберите пациента —", en: "— select a patient —" },
   "adn.saved": { uk: "Обстеження збережено", ru: "Обследование сохранено", en: "Assessment saved" },
   "adn.byClinician": { uk: "Заповнення фахівцем", ru: "Заполнение специалистом", en: "Completed by specialist" },
 
@@ -16459,6 +16458,10 @@ export const UI = {
     ru: "Подпись откроется после разбора сигналов риска этого прохождения.",
     en: "Signing opens once this attempt’s risk signals are reviewed.",
   },
+  /* заполнение за пациента: одно поле с поиском вместо поиска и списка рядом; выбранный — плашкой */
+  "pp.placeholder": { uk: "Прізвище, ім’я або пошта", ru: "Фамилия, имя или почта", en: "Surname, name or email" },
+  "pp.change": { uk: "Змінити", ru: "Изменить", en: "Change" },
+  "pp.changeWho": { uk: "Змінити пацієнта", ru: "Изменить пациента", en: "Change patient" },
 
   // ── ux-risk ──
 

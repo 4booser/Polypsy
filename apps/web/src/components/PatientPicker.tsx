@@ -1,7 +1,10 @@
-import { useState } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type Ref } from "react";
 import { api, type Patient } from "../api";
 import { useLang } from "../lang";
-import { Field, Input, Select } from "../ui/primitives";
+import { Avatar, Ic } from "../ui";
+import { placePopover } from "../ui/Popover";
+import { cx } from "../ui/cx";
+import { Button, Input } from "../ui/primitives";
 import { useDebounced, useResource, type Resource } from "../useResource";
 
 /**
@@ -38,110 +41,303 @@ export function usePatientSearch(query: string, options: { onlyTyped?: boolean }
   return useResource(() => searchPatients(settled), [settled], { enabled: !options.onlyTyped || settled !== "" });
 }
 
-/**
- * Пункты списка: найденные без исключённых, а выбранный — впереди, даже если
- * новый поиск его не вернул. Управляемый <select> без совпадающего пункта
- * показал бы «— виберіть —», а отправил бы выбранного раньше.
- */
-export function pickerOptions(
-  found: readonly Patient[],
-  chosen: Patient | null,
-  exclude: ReadonlySet<string> = new Set(),
-): Patient[] {
-  const rest = found.filter((p) => !exclude.has(p.id) && p.id !== chosen?.id);
-  return chosen ? [chosen, ...rest] : rest;
+/** Вторая строка о человеке: подразделение, а без него — почта (она же вход) */
+export function patientSub(p: Patient): string {
+  return p.unit ?? p.email;
 }
 
-/** Разметка выбора — отдельно от загрузки, чтобы её можно было нарисовать в тесте */
+/**
+ * Плашка списка — как у меню набора и полей с поиском «Аналітики тестів».
+ * На экране она стоит position: fixed по расчёту placePopover (как поповеры
+ * набора): панель «Кого обстежуємо» обрезает выступающее (overflow: clip), и
+ * список под полем срезался по её нижнему краю. absolute — запасное место до
+ * первого замера и в разметке без браузера.
+ */
+const PLATE =
+  "kit-scroll absolute left-0 top-[calc(100%+4px)] z-50 max-h-[340px] w-full min-w-[300px] overflow-y-auto rounded-[12px] border border-border bg-panel p-1 shadow-pop";
+
+/**
+ * Разметка выбора — отдельно от состояния, чтобы её можно было нарисовать в
+ * тесте.
+ *
+ * Одно поле, а не два: прежде человека искали в поле «Пошук пацієнта» и
+ * выбирали рядом в родном списке «Кого обстежуємо». Теперь это комбобокс:
+ * набрал — список найденных под полем, стрелки ходят по нему, Enter
+ * выбирает, Esc закрывает; фокус остаётся в поле (aria-activedescendant).
+ * Шаг стрелкой — ещё не выбор: прежние замеры человека (чтение со строкой
+ * журнала) грузятся только по Enter или щелчку. Выбранный стоит плашкой с
+ * «Змінити»: смена снимает выбор целиком, и сохранить обследование, пока
+ * новый человек не выбран, нельзя — ни за прежнего, ни «за кого-нибудь».
+ */
 export function PatientPickerView({
+  label,
   query,
   onQuery,
   found,
-  value,
   chosen,
   onPick,
-  exclude,
-  label,
-  emptyLabel,
+  onChange,
+  open,
+  onOpen,
+  active,
+  onActive,
+  inputRef,
+  changeRef,
+  anchorRef,
+  plateRef,
+  plateStyle,
+  autoFocus,
   className,
 }: {
+  /** Имя поля для диктора и подпись списка: «Кого обстежуємо» */
+  label: string;
   query: string;
   onQuery: (q: string) => void;
   found: Pick<Resource<PatientsFound>, "data" | "error">;
-  /** id выбранного или "" */
-  value: string;
-  /** Выбранный целиком — чтобы пункт пережил смену поиска */
+  /** Выбранный; null — выбора нет, на месте плашки поле поиска */
   chosen: Patient | null;
-  onPick: (p: Patient | null) => void;
-  exclude?: ReadonlySet<string>;
-  label: string;
-  emptyLabel: string;
+  onPick: (p: Patient) => void;
+  /** «Змінити»: снять выбор и вернуться к полю */
+  onChange: () => void;
+  open: boolean;
+  onOpen: (open: boolean) => void;
+  /** Подсвеченный стрелками пункт */
+  active: number;
+  onActive: (i: number) => void;
+  inputRef?: Ref<HTMLInputElement>;
+  changeRef?: Ref<HTMLButtonElement>;
+  /** Коробка поля — от неё считается место списка */
+  anchorRef?: Ref<HTMLDivElement>;
+  plateRef?: Ref<HTMLDivElement>;
+  /** Место списка на экране (fixed); без него — под полем в потоке панели */
+  plateStyle?: CSSProperties;
+  autoFocus?: boolean;
   className?: string;
 }) {
   const { ut } = useLang();
-  const options = pickerOptions(found.data?.items ?? [], value ? chosen : null, exclude);
+  const id = useId();
+  const items = found.data?.items ?? [];
+  const listed = open && items.length > 0;
+  const at = Math.min(active, Math.max(0, items.length - 1));
+
+  /* подсвеченный пункт — в поле зрения списка: длинная выдача листается стрелками */
+  useEffect(() => {
+    if (listed) document.getElementById(`${id}-${at}`)?.scrollIntoView?.({ block: "nearest" });
+  }, [listed, at, id]);
+
+  if (chosen) {
+    return (
+      <div className={cx("flex min-h-[52px] min-w-0 items-center gap-3 rounded-control bg-violet-tint py-2 pl-2.5 pr-2", className)}>
+        <Avatar name={chosen.fullName} size={32} />
+        <span className="flex min-w-0 flex-1 flex-col">
+          <b className="truncate text-body font-extrabold leading-[18px] text-text">{chosen.fullName}</b>
+          <small className="truncate text-caption text-text-2">{patientSub(chosen)}</small>
+        </span>
+        <Button ref={changeRef} size="xs" variant="secondary" aria-label={ut("pp.changeWho")} onClick={onChange}>
+          {ut("pp.change")}
+        </Button>
+      </div>
+    );
+  }
+
+  const onKey = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Escape") {
+      if (open) {
+        e.preventDefault();
+        e.stopPropagation();
+        onOpen(false);
+      } else if (query) {
+        onQuery("");
+      }
+      return;
+    }
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      if (!open) {
+        onOpen(true);
+        onActive(0);
+        return;
+      }
+      if (!items.length) return;
+      const step = e.key === "ArrowDown" ? 1 : -1;
+      onActive((at + step + items.length) % items.length);
+      return;
+    }
+    if (e.key === "Enter" && listed) {
+      e.preventDefault();
+      const p = items[at];
+      if (p) onPick(p);
+    }
+  };
+
   return (
-    <div className={className}>
-      <Field label={ut("pg.patientSearch")}>
-        <Input value={query} onChange={(e) => onQuery(e.target.value)} autoComplete="off" maxLength={120} />
-      </Field>
-      <Field label={label}>
-        <Select
-          value={value}
-          onChange={(e) => onPick(options.find((p) => p.id === e.target.value) ?? null)}
-        >
-          <option value="">{emptyLabel}</option>
-          {options.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.fullName} · {p.email}
-            </option>
-          ))}
-        </Select>
-      </Field>
-      {found.error ? (
-        <p className="m-0 text-caption text-danger">{found.error}</p>
-      ) : found.data?.truncated ? (
-        <p className="m-0 text-caption text-muted">{ut("pg.truncated")}</p>
-      ) : found.data && options.length === 0 ? (
-        <p className="m-0 text-caption text-muted">{ut("pt.nobodyFound")}</p>
+    <div className={cx("relative min-w-0", className)}>
+      <div ref={anchorRef}>
+        <Input
+          ref={inputRef}
+          role="combobox"
+          aria-label={label}
+          aria-expanded={listed}
+          aria-controls={listed ? id : undefined}
+          aria-autocomplete="list"
+          aria-activedescendant={listed ? `${id}-${at}` : undefined}
+          placeholder={ut("pp.placeholder")}
+          icon={<Ic.search />}
+          value={query}
+          autoFocus={autoFocus}
+          autoComplete="off"
+          maxLength={120}
+          onChange={(e) => {
+            onQuery(e.target.value);
+            onOpen(true);
+            onActive(0);
+          }}
+          onMouseDown={() => onOpen(true)}
+          onKeyDown={onKey}
+          onBlur={() => onOpen(false)}
+          className="w-full"
+        />
+      </div>
+      {open ? (
+        <div ref={plateRef} className={PLATE} style={plateStyle}>
+          {listed ? (
+            <ul id={id} role="listbox" aria-label={label} className="m-0 list-none p-0">
+              {items.map((p, i) => (
+                <li
+                  key={p.id}
+                  id={`${id}-${i}`}
+                  role="option"
+                  aria-selected={i === at}
+                  data-patient={p.id}
+                  /* фокус остаётся в поле: иначе blur закрыл бы список раньше щелчка */
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => onPick(p)}
+                  onMouseEnter={() => onActive(i)}
+                  className={cx(
+                    "flex min-h-11 cursor-pointer items-center gap-2.5 rounded-[8px] px-2.5 py-1.5",
+                    i === at ? "bg-violet-tint" : "bg-transparent",
+                  )}
+                >
+                  <Avatar name={p.fullName} size={28} />
+                  <span className="flex min-w-0 flex-col">
+                    <span className="truncate text-body font-bold text-text">{p.fullName}</span>
+                    <small className="truncate text-caption text-muted">{patientSub(p)}</small>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="m-0 px-2.5 py-2 text-body text-muted">{found.data ? ut("pt.nobodyFound") : ut("common.loading")}</p>
+          )}
+          {found.data?.truncated ? <p className="m-0 border-t border-divider px-2.5 pb-1 pt-2 text-caption text-muted">{ut("pg.truncated")}</p> : null}
+        </div>
       ) : null}
+      {found.error ? <p className="m-0 mt-1.5 text-caption text-danger">{found.error}</p> : null}
     </div>
   );
 }
 
-/** Поле поиска, список найденных и пометка об усечении; выбранное — id в `value` */
+/**
+ * Выбор пациента одним полем с поиском. Выбранный — целиком, а не id: экран
+ * рисует его плашкой и после возврата со страницы «Обстеження збережено»,
+ * когда поиск уже ничего о нём не помнит.
+ */
 export function PatientPicker({
   value,
   onChange,
-  exclude,
   label,
-  emptyLabel,
+  onPicked,
   className,
 }: {
-  value: string;
-  onChange: (id: string) => void;
-  exclude?: ReadonlySet<string>;
+  value: Patient | null;
+  onChange: (p: Patient | null) => void;
   label: string;
-  emptyLabel: string;
+  /**
+   * Куда деть фокус после выбора (поле быстрого ввода — следующий шаг). Без
+   * него фокус встаёт на «Змінити»: поле поиска с выбором исчезает, и фокус
+   * не должен уходить в никуда.
+   */
+  onPicked?: () => void;
   className?: string;
 }) {
   const [query, setQuery] = useState("");
-  const [chosen, setChosen] = useState<Patient | null>(null);
+  const [open, setOpen] = useState(false);
+  const [active, setActive] = useState(0);
   const found = usePatientSearch(query);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const changeRef = useRef<HTMLButtonElement>(null);
+  const anchorRef = useRef<HTMLDivElement>(null);
+  const plateRef = useRef<HTMLDivElement>(null);
+  const [plateStyle, setPlateStyle] = useState<CSSProperties | undefined>(undefined);
+  /*
+   * Список — над панелью, а не внутри неё: position: fixed под полем (или
+   * над ним, если снизу тесно), заново на прокрутке и смене размера окна.
+   * До отрисовки — useLayoutEffect, чтобы срезанный кадр не мелькнул.
+   */
+  useLayoutEffect(() => {
+    if (!open) {
+      setPlateStyle(undefined);
+      return;
+    }
+    const place = () => {
+      const anchor = anchorRef.current?.getBoundingClientRect();
+      const plate = plateRef.current;
+      if (!anchor || !plate) return;
+      const at = placePopover({
+        trigger: { top: anchor.top, left: anchor.left, width: anchor.width, height: anchor.height },
+        pop: { width: anchor.width, height: plate.offsetHeight },
+        viewport: { width: window.innerWidth, height: window.innerHeight },
+        side: "bottom",
+        align: "start",
+        gap: 4,
+      });
+      setPlateStyle({ position: "fixed", top: at.top, left: at.left, width: anchor.width });
+    };
+    place();
+    window.addEventListener("scroll", place, true);
+    window.addEventListener("resize", place);
+    return () => {
+      window.removeEventListener("scroll", place, true);
+      window.removeEventListener("resize", place);
+    };
+  }, [open, found.data]);
+  /* куда вернуть фокус после смены плашки на поле и обратно — до отрисовки нового узла его нет */
+  const [focusTo, setFocusTo] = useState<"input" | "change" | null>(null);
+  useEffect(() => {
+    if (focusTo === "input") inputRef.current?.focus();
+    if (focusTo === "change") changeRef.current?.focus();
+    if (focusTo) setFocusTo(null);
+  }, [focusTo]);
+
   return (
     <PatientPickerView
+      label={label}
       query={query}
       onQuery={setQuery}
       found={found}
-      value={value}
-      chosen={chosen?.id === value ? chosen : null}
+      chosen={value}
       onPick={(p) => {
-        setChosen(p);
-        onChange(p?.id ?? "");
+        setOpen(false);
+        setQuery("");
+        onChange(p);
+        if (onPicked) onPicked();
+        else setFocusTo("change");
       }}
-      exclude={exclude}
-      label={label}
-      emptyLabel={emptyLabel}
+      onChange={() => {
+        onChange(null);
+        setActive(0);
+        setFocusTo("input");
+      }}
+      open={open}
+      onOpen={setOpen}
+      active={active}
+      onActive={setActive}
+      inputRef={inputRef}
+      changeRef={changeRef}
+      anchorRef={anchorRef}
+      plateRef={plateRef}
+      plateStyle={plateStyle}
+      autoFocus={!value}
       className={className}
     />
   );

@@ -2,12 +2,12 @@ import { useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import type { Answer, RespondentDynamics, Severity, SurveyFull } from "@quizzy/shared";
 import { isAnswered, isQuestionVisible } from "@quizzy/shared";
-import { api } from "../api";
+import { api, type Patient } from "../api";
 import { useAuth } from "../auth";
 import { betterOf } from "../charts/courseModel";
 import { useDecimal } from "../charts/kit";
 import { administerPayload, blankVersion, loadAdminister, preliminary } from "./administerModel";
-import { useDebounced, useResource } from "../useResource";
+import { useResource } from "../useResource";
 import { Callout, CourseDigits, Ic, Loading } from "../ui";
 import { cx } from "../ui/cx";
 import { Page, Panel } from "../ui/layout";
@@ -30,9 +30,6 @@ import { Rx } from "./response/icons";
  */
 type Mode = "fast" | "mouse";
 
-/** Сколько выбор пациента должен простоять, прежде чем грузить его прежние замеры */
-const SUBJECT_SETTLE_MS = 600;
-
 export default function Administer() {
   const { ut } = useLang();
   const { can } = useAuth();
@@ -40,7 +37,9 @@ export default function Administer() {
   // код бумажного бланка ведёт сюда с версией: вводится и сдаётся она, а не действующая (#169)
   const [params] = useSearchParams();
   const version = blankVersion(params.get("v"));
-  const [subject, setSubject] = useState("");
+  /* выбранный человек целиком: плашка «Кого обстежуємо» рисует его и после «Заповнити ще раз» */
+  const [patient, setPatient] = useState<Patient | null>(null);
+  const subject = patient?.id ?? "";
   const [answers, setAnswers] = useState<Map<string, Answer>>(new Map());
   const [result, setResult] = useState<Awaited<ReturnType<typeof api.submitFor>> | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -59,20 +58,20 @@ export default function Administer() {
   const res = useResource(() => loadAdminister(id!, version), [id, version], { enabled: !!id });
   const survey: SurveyFull | null = res.data?.survey ?? null;
   /*
-   * Прежние замеры — по человеку, на котором выбор ОСТАНОВИЛСЯ. Выбор —
-   * родной <select>: в Windows и Linux стрелки на нём меняют значение и шлют
-   * change на каждом шаге, и динамика — чтение клинических данных со строкой
-   * журнала — уходила по каждому, мимо кого прошли стрелкой. Пока выбор не
-   * устоялся, прежних замеров не видно вовсе: показать замеры прошлого
-   * человека под новым — чужие данные.
+   * Прежние замеры — по человеку, которого ВЫБРАЛИ. Прежде выбор был родным
+   * <select>: в Windows и Linux стрелки на нём меняют значение на каждом
+   * шаге, и динамика — чтение клинических данных со строкой журнала —
+   * уходила по каждому, мимо кого прошли стрелкой; выбор ждал, пока
+   * устоится. В комбобоксе (components/PatientPicker) шаг стрелкой — не
+   * выбор: человек выбирается Enter или щелчком, и замеры грузятся по нему
+   * одному. keep: false — замеры прошлого человека под новым были бы чужими.
    */
-  const settledSubject = useDebounced(subject, SUBJECT_SETTLE_MS);
   const history = useResource(
-    () => api.dynamics(settledSubject, id!).then((d): { d: RespondentDynamics | null } => ({ d }), () => ({ d: null })),
-    [settledSubject, id],
-    { enabled: !!settledSubject && settledSubject === subject && !!id && can("patients.read"), keep: false },
+    () => api.dynamics(subject, id!).then((d): { d: RespondentDynamics | null } => ({ d }), () => ({ d: null })),
+    [subject, id],
+    { enabled: !!subject && !!id && can("patients.read"), keep: false },
   );
-  const historyShown = settledSubject === subject ? (history.data?.d ?? null) : null;
+  const historyShown = subject ? (history.data?.d ?? null) : null;
 
   // ошибка ниже — про сдачу, а не про загрузку: у них разные состояния
   if (!survey) return <Loading error={res.error} onRetry={res.reload} busy={res.loading} />;
@@ -156,13 +155,17 @@ export default function Administer() {
       <div className="grid items-start gap-4 grid-cols-[minmax(0,1fr)_360px] max-[1360px]:grid-cols-[minmax(0,1fr)_320px] max-[1100px]:grid-cols-1">
         <div className="flex min-w-0 flex-col gap-4">
           <Panel title={ut("adn.whoIsTested")} icon={<Rx.userRound />}>
-            {/* поиск на сервере: первая сотня без поиска прятала остальных (#174) */}
+            {/*
+              Одно поле с поиском на сервере (первая сотня без поиска прятала
+              остальных, #174): набрал — выбрал — плашка с «Змінити». После
+              выбора фокус уходит в быстрый ввод: следующий шаг — ответы.
+            */}
             <PatientPicker
-              value={subject}
-              onChange={setSubject}
+              value={patient}
+              onChange={setPatient}
               label={ut("adn.whoIsTested")}
-              emptyLabel={ut("adn.pickPatient")}
-              className="grid grid-cols-2 gap-3 max-[900px]:grid-cols-1"
+              onPicked={mode === "fast" ? () => setFocusTick((t) => t + 1) : undefined}
+              className="max-w-[560px]"
             />
             {survey.instructions ? (
               <Callout kind="neutral" icon={<Rx.quote />} title={ut("adx.instruction")} className="mt-4">
@@ -191,7 +194,16 @@ export default function Administer() {
             }
           >
             {mode === "fast" ? (
-              <FastEntry survey={survey} answers={answers} onSet={set} at={at} setAt={setAt} focusTick={focusTick} />
+              <FastEntry
+                survey={survey}
+                answers={answers}
+                onSet={set}
+                at={at}
+                setAt={setAt}
+                focusTick={focusTick}
+                /* без пациента первым набирают его: фокус в «Кого обстежуємо», после выбора — сюда */
+                focusOnMount={!!patient}
+              />
             ) : (
               <MouseEntry survey={survey} visible={visible} answers={answers} onSet={set} />
             )}
