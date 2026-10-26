@@ -331,7 +331,8 @@ export function useMessagePane(person: Who | null, onDone: () => void): PanePart
     dirty: draft !== "",
     draftName: ut("msg.draftName"),
     kbd: "W",
-    note: ut("pt.helpNote"),
+    /* специалист пишет пациенту: строка — о том, где письмо увидят (прежде стояла памятка пациента «не екстрений зв’язок») */
+    note: ut("card.willSee"),
     noteIcon: <Ic.info />,
     footer: (
       <>

@@ -183,9 +183,8 @@ export default function Timeline() {
               <p className="m-0 px-4 pb-4 text-small text-muted">{ut("tlx.nothingAhead")}</p>
             )}
           </Panel>
-          <Callout kind="info">
-            {ut("tl.sub")}. {ut("tlx.note")}
-          </Callout>
+          {/* одна строка, чего на оси нет: отсутствие записи приёма здесь не значит, что приёма не было */}
+          <Callout kind="info">{ut("tlx.note")}</Callout>
         </>
       }
     >

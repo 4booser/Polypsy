@@ -188,7 +188,7 @@ export const UI = {
    * сущностям: «Сегодня» — то, с чего начинается смена, «Разбор» — то, что
    * делают, когда приёмы закончились.
    */
-  "pt.openCard": { uk: "Відкрити картку пацієнта", ru: "Открыть карточку пациента", en: "Open the patient card" },
+  "pt.openCard": { uk: "Відкрити картку", ru: "Открыть карточку", en: "Open card" },
   "pt.whoIsThis": { uk: "Хто це", ru: "Кто это", en: "Who is this" },
   "pt.pickRow": { uk: "Виберіть рядок, щоб побачити коротку довідку", ru: "Выберите строку, чтобы увидеть краткую справку", en: "Select a row to see a brief summary" },
   "nav.group.overview": { uk: "Огляд", ru: "Обзор", en: "Summary" },
@@ -1152,7 +1152,7 @@ export const UI = {
   "rep.manifestDone": { uk: "Маніфест вивантажено", ru: "Манифест выгружен", en: "Manifest exported" },
   "rep.scriptDone": { uk: "Скрипт завантаження вивантажено", ru: "Скрипт загрузки выгружен", en: "Loading script exported" },
   "eq.title": { uk: "Звести версії", ru: "Свести версии", en: "Equate versions" },
-  "eq.hint": { uk: "Бали різних версій формально незрівнянні. Зведення переводить старі в шкалу останньої за середнім і розкидом вибірок — і припускає, що вибірки версій зіставні. Якщо разом із версією змінився контингент, різниця між групами піде в коефіцієнти.", ru: "Баллы разных версий формально несравнимы. Сведение переводит старые в шкалу последней по среднему и разбросу выборок — и предполагает, что выборки версий сопоставимы. Если вместе с версией сменился контингент, разница между группами уйдёт в коэффициенты.", en: "Scores from different versions are formally not comparable. Equating converts older versions to the scale of the latest one using the sample means and spreads — and assumes that the version samples are comparable. If the population changed along with the version, the difference between the groups will end up in the coefficients." },
+  "eq.hint": { uk: "Зведення припускає, що вибірки версій зіставні: якщо разом із версією змінився контингент, різниця між групами піде в коефіцієнти.", ru: "Сведение предполагает, что выборки версий сопоставимы: если вместе с версией сменился контингент, разница между группами уйдёт в коэффициенты.", en: "Equating assumes the version samples are comparable: if the population changed with the version, the group difference ends up in the coefficients." },
   "srch.title": { uk: "Пошук по записах", ru: "Поиск по записям", en: "Search records" },
   "srch.placeholder": { uk: "Слово або кілька: усі мають зустрітися", ru: "Слово или несколько: все должны встретиться", en: "One or more words: all must be present" },
   "srch.go": { uk: "Знайти", ru: "Найти", en: "Find" },
@@ -1179,7 +1179,7 @@ export const UI = {
   "coh.name": { uk: "Назва вибірки", ru: "Название выборки", en: "Sample name" },
   "coh.addCond": { uk: "Додати умову", ru: "Добавить условие", en: "Add condition" },
   "hint.gotIt": { uk: "Зрозуміло", ru: "Понятно", en: "Got it" },
-  "hint.stens": { uk: "Стен — це бал за десятибальною шкалою з середнім 5,5. «Високий стен» означає «вище, ніж у більшості вибірки», а не «погано»: що саме означає високий бал, залежить від шкали.", ru: "Стен — это балл по десятибалльной шкале со средним 5,5. «Высокий стен» означает «выше, чем у большинства выборки», а не «плохо»: что именно значит высокий балл, зависит от шкалы.", en: "A sten is a score on a ten-point scale with a mean of 5.5. A “high sten” means “higher than most of the sample”, not “bad”: what a high score actually means depends on the scale." },
+  "hint.stens": { uk: "Стен — бал за десятибальною шкалою із середнім 5,5: високий стен означає «вище, ніж у більшості вибірки», а не «погано».", ru: "Стен — балл по десятибалльной шкале со средним 5,5: высокий стен означает «выше, чем у большинства выборки», а не «плохо».", en: "A sten is a score on a ten-point scale with a mean of 5.5: a high sten means “higher than most of the sample”, not “bad”." },
   "hint.rci": { uk: "Різниця в кілька балів між замірами може бути шумом вимірювання — зміна достовірна, лише коли перевищує похибку методики.", ru: "Разница в несколько баллов между замерами может быть шумом измерения — изменение достоверно, только когда превышает погрешность методики.", en: "A difference of a few points between measurements may be measurement noise — a change is reliable only when it exceeds the instrument’s error." },
   "dev.title": { uk: "Пристрої", ru: "Устройства", en: "Devices" },
   "dev.none": { uk: "Пристроїв не зареєстровано", ru: "Устройств не зарегистрировано", en: "No devices registered" },
@@ -1805,7 +1805,7 @@ export const UI = {
   "sum.scale": { uk: "Шкала", ru: "Шкала", en: "Scale" },
   "sum.interpretation": { uk: "Інтерпретація", ru: "Интерпретация", en: "Interpretation" },
   "sum.oneMeasure": { uk: "один замір", ru: "один замер", en: "one measurement" },
-  "sum.withinError": { uk: "у межах похибки", ru: "в пределах ошибки", en: "within measurement error" },
+  "sum.withinError": { uk: "у межах похибки", ru: "в пределах погрешности", en: "within the error margin" },
 
   /* ─────────── состояние подразделения ─────────── */
 
@@ -5480,7 +5480,6 @@ export const UI = {
 
   /* хронология пациента */
   "tl.title": { uk: "Хронологія", ru: "Хронология", en: "Timeline" },
-  "tl.sub": { uk: "Проходження, тривоги, направлення та висновки на одній осі", ru: "Прохождения, тревоги, направления и заключения на одной оси", en: "Completions, alerts, referrals and conclusions on one axis" },
   "tl.empty": { uk: "Подій немає", ru: "Событий нет", en: "No events" },
   "tl.emptyHint": { uk: "У зоні вашої відповідальності за цією людиною ще нічого не відбувалося", ru: "В зоне вашей ответственности по этому человеку ещё ничего не происходило", en: "Nothing has happened with this person within your area of responsibility yet" },
   "tl.response": { uk: "проходження", ru: "прохождение", en: "completion" },
@@ -5545,11 +5544,7 @@ export const UI = {
 
   /* план безопасности */
   "sp.title": { uk: "План безпеки", ru: "План безопасности", en: "Safety plan" },
-  "sp.hint": {
-    uk: "Особистий план людини, а не інструкція методики: що робити самому, коли поруч нікого немає. Порядок розділів відтворює порядок дій у кризі.",
-    ru: "Личный план человека, а не инструкция методики: что делать самому, когда рядом никого нет. Порядок разделов воспроизводит порядок действий в кризисе.",
-    en: "The person's own plan, not an instrument's instructions: what to do on their own when no one is around. The order of sections follows the order of actions in a crisis.",
-  },
+  "sp.hint": { uk: "Особистий план людини на випадок кризи; розділи — у порядку дій.", ru: "Личный план человека на случай кризиса; разделы — в порядке действий.", en: "The person’s own crisis plan; the sections follow the order of steps." },
   "sp.none": { uk: "плану немає", ru: "плана нет", en: "no plan" },
   "sp.create": { uk: "Скласти план", ru: "Составить план", en: "Create plan" },
   "sp.revise": { uk: "Переглянути", ru: "Пересмотреть", en: "Revise" },
@@ -5558,7 +5553,7 @@ export const UI = {
   "sp.saved": { uk: "План збережено новою версією", ru: "План сохранён новой версией", en: "Plan saved as a new version" },
   "sp.saveVersion": { uk: "Зберегти новою версією", ru: "Сохранить новой версией", en: "Save as new version" },
   "sp.warningSigns": { uk: "Ознаки, за якими впізнаю кризу", ru: "Признаки, по которым узнаю кризис", en: "Signs by which I recognize a crisis" },
-  "sp.coping": { uk: "Що можу зробити сам", ru: "Что могу сделать сам", en: "What I can do myself" },
+  "sp.coping": { uk: "Що можу зробити самостійно", ru: "Что могу сделать самостоятельно", en: "What I can do on my own" },
   "sp.distractions": { uk: "Що відволікає: заняття та місця", ru: "Что отвлекает: занятия и места", en: "What distracts me: activities and places" },
   "sp.people": { uk: "До кого можу звернутися", ru: "К кому могу обратиться", en: "Who I can turn to" },
   "sp.professionals": { uk: "Фахівці та чергові служби", ru: "Специалисты и дежурные службы", en: "Professionals and crisis services" },
@@ -9375,11 +9370,7 @@ export const UI = {
   "plist.keyRows": { uk: "рядки", ru: "строки", en: "rows" },
   "plist.keyPick": { uk: "вибрати", ru: "выбрать", en: "select" },
   "plist.emptyTitle": { uk: "Пацієнтів поки немає", ru: "Пациентов пока нет", en: "No patients yet" },
-  "plist.emptyFilterHint": {
-    uk: "Змініть пошук або подання — або зніміть відбір цілком.",
-    ru: "Измените поиск или представление — или снимите отбор целиком.",
-    en: "Change the search or view, or clear the filters.",
-  },
+  "plist.emptyFilterHint": { uk: "Змініть пошук або зніміть відбір.", ru: "Измените поиск или снимите отбор.", en: "Change the search or clear the filters." },
   "plist.resetFilters": { uk: "Зняти відбір", ru: "Снять отбор", en: "Clear filters" },
   "plist.email": { uk: "Пошта", ru: "Почта", en: "Email" },
   "plist.phone": { uk: "Телефон", ru: "Телефон", en: "Phone" },
@@ -9423,11 +9414,7 @@ export const UI = {
   "asg.noDue": { uk: "без строку", ru: "без срока", en: "no due date" },
   "asg.members": { uk: "учасників: {n}", ru: "участников: {n}", en: "{n} members" },
   "msg.text": { uk: "Повідомлення", ru: "Сообщение", en: "Message" },
-  "msg.placeholder": {
-    uk: "Що написати пацієнтові — він побачить це в застосунку",
-    ru: "Что написать пациенту — он увидит это в приложении",
-    en: "What to tell the patient — they see it in the app",
-  },
+  "msg.placeholder": { uk: "Текст для пацієнта — його буде видно в застосунку", ru: "Текст для пациента — он будет виден в приложении", en: "Text for the patient — it will be shown in the app" },
   "msg.send": { uk: "Відправити", ru: "Отправить", en: "Send" },
   "msg.sentTo": { uk: "Повідомлення відправлено: {name}", ru: "Сообщение отправлено: {name}", en: "Message sent: {name}" },
   "msg.openThread": { uk: "Відкрити листування", ru: "Открыть переписку", en: "Open the thread" },
@@ -9537,7 +9524,7 @@ export const UI = {
   },
   /* події хронології (pages/patients/events.tsx) */
   "evt.responses": { uk: "Проходження", ru: "Прохождения", en: "Responses" },
-  "evt.alerts": { uk: "Тривоги", ru: "Тревоги", en: "Alerts" },
+  "evt.alerts": { uk: "Сигнали", ru: "Сигналы", en: "Signals" },
   "evt.referrals": { uk: "Направлення", ru: "Направления", en: "Referrals" },
   "evt.conclusions": { uk: "Заключення", ru: "Заключения", en: "Conclusions" },
   "evt.assignments": { uk: "Призначення", ru: "Назначения", en: "Assignments" },
@@ -9611,11 +9598,7 @@ export const UI = {
   "tlx.all": { uk: "Усе", ru: "Всё", en: "All" },
   "tlx.kind": { uk: "Які події показати", ru: "Какие события показать", en: "Which events to show" },
   "tlx.noneInPeriod": { uk: "За цей період подій немає", ru: "За этот период событий нет", en: "No events in this period" },
-  "tlx.shown": {
-    uk: "Показано подій: {n} з {d}; заміри одного часу зібрано в рядок.",
-    ru: "Показано событий: {n} с {d}; замеры одного часа собраны в строку.",
-    en: "{n} events since {d}; measures taken together are one row.",
-  },
+  "tlx.shown": { uk: "Показано подій: {n}, з {d}", ru: "Показано событий: {n}, с {d}", en: "Events shown: {n}, since {d}" },
   "tlx.between": { uk: "між подіями", ru: "между событиями", en: "between events" },
   "tlx.measuresN": { uk: "Заміри: {n}", ru: "Замеры: {n}", en: "Measures: {n}" },
   "tlx.start": { uk: "старт", ru: "старт", en: "start" },
@@ -9627,11 +9610,7 @@ export const UI = {
   "tlx.ahead": { uk: "Попереду", ru: "Впереди", en: "Ahead" },
   "tlx.aheadSub": { uk: "прийоми й неначаті призначення", ru: "приёмы и неначатые назначения", en: "appointments and unstarted assignments" },
   "tlx.nothingAhead": { uk: "Нічого не заплановано.", ru: "Ничего не запланировано.", en: "Nothing scheduled." },
-  "tlx.note": {
-    uk: "Записи прийому сюди не потрапляють — вони в огляді справи. Відсутність подій не означає, що нічого не було.",
-    ru: "Записи приёма сюда не попадают — они в обзоре дела. Отсутствие событий не значит, что ничего не было.",
-    en: "Appointment notes are not on this axis — they are in the case overview. No events does not mean nothing happened.",
-  },
+  "tlx.note": { uk: "Записи прийому сюди не потрапляють — вони в огляді справи.", ru: "Записи приёма сюда не попадают — они в обзоре дела.", en: "Appointment notes are not shown here — they are in the case overview." },
 
   // ── v2-mobile-patient ──
   /* мобилка пациента «Виразна»: строка помощи внизу экранов (components/patient/Crisis.tsx) */
@@ -14571,7 +14550,7 @@ export const UI = {
   // ── v2-card ──
   "card.afterSession": { uk: "Після сесії {n}", ru: "После сессии {n}", en: "Since session {n}" },
   "card.allN": { uk: "Усі {n}", ru: "Все {n}", en: "All {n}" },
-  "card.alreadyBooked": { uk: "Вже записано на {d}", ru: "Уже записан на {d}", en: "Already booked for {d}" },
+  "card.alreadyBooked": { uk: "Вже записано на {d}", ru: "Уже есть запись на {d}", en: "Already booked for {d}" },
   "card.alreadyBookedHint": { uk: "Ще один запис — окремий прийом. Перенести наявний можна з листування.", ru: "Ещё одна запись — отдельный приём. Перенести имеющийся можно из переписки.", en: "Another booking is a separate appointment. Move the existing one from the messages panel." },
   "card.assigned": { uk: "Призначено", ru: "Назначено", en: "Assigned" },
   "card.assignedDue": { uk: "{s} до {d}", ru: "{s} до {d}", en: "{s} by {d}" },
@@ -14580,7 +14559,7 @@ export const UI = {
   "card.book": { uk: "Записати", ru: "Записать", en: "Book" },
   "card.bookAgain": { uk: "Записати знову", ru: "Записать снова", en: "Book again" },
   "card.bookTip": { uk: "Записати на прийом", ru: "Записать на приём", en: "Book an appointment" },
-  "card.booked": { uk: "Записано на прийом", ru: "Записан на приём", en: "Appointment booked" },
+  "card.booked": { uk: "Записано на прийом", ru: "Запись на приём создана", en: "Appointment booked" },
   "card.born": { uk: "{y} р. н.", ru: "{y} г. р.", en: "born {y}" },
   "card.byResponse": { uk: "За проходженням", ru: "По прохождению", en: "For the completion" },
   "card.colBefore": { uk: "Було", ru: "Было", en: "Before" },
@@ -14605,7 +14584,7 @@ export const UI = {
   "card.draftNote": { uk: "нотатки", ru: "заметки", en: "the note" },
   "card.draftOf": { uk: "Чернетка: {s}", ru: "Черновик: {s}", en: "Draft: {s}" },
   "card.draftReply": { uk: "повідомлення", ru: "сообщения", en: "the message" },
-  "card.drawerLabel": { uk: "Дія без переходу", ru: "Действие без перехода", en: "Action panel" },
+  "card.drawerLabel": { uk: "Панель дій", ru: "Панель действий", en: "Action panel" },
   "card.dueOn": { uk: "до {d}", ru: "до {d}", en: "by {d}" },
   "card.dueShort": { uk: "до", ru: "до", en: "by" },
   "card.emptyDraft": { uk: "Чернетка порожня", ru: "Черновик пуст", en: "The draft is empty" },
@@ -14614,7 +14593,7 @@ export const UI = {
   "card.evConclSigned": { uk: "Заключення підписано:", ru: "Заключение подписано:", en: "Conclusion signed:" },
   "card.evNoShow": { uk: "Неявка", ru: "Неявка", en: "No-show" },
   "card.evReferral": { uk: "Направлення", ru: "Направление", en: "Referral" },
-  "card.evResponse": { uk: "Заміри:", ru: "Замеры:", en: "Measured:" },
+  "card.evResponse": { uk: "Пройдено:", ru: "Пройдено:", en: "Completed:" },
   "card.evSignal": { uk: "Сигнал", ru: "Сигнал", en: "Signal" },
   "card.evVisit": { uk: "Прийом", ru: "Приём", en: "Appointment" },
   "card.evVisitDone": { uk: "Прийом проведено", ru: "Приём проведён", en: "Appointment held" },
@@ -14675,8 +14654,8 @@ export const UI = {
   "card.noVisits": { uk: "Прийомів ще не було.", ru: "Приёмов ещё не было.", en: "No appointments yet." },
   "card.nobodyFound": { uk: "Нікого не знайдено. Спробуйте прізвище, телефон або підрозділ.", ru: "Никого не найдено. Попробуйте фамилию, телефон или подразделение.", en: "Nobody found. Try a surname, phone or unit." },
   "card.nobodyInView": { uk: "У цьому перегляді нікого немає.", ru: "В этом виде никого нет.", en: "Nobody in this view." },
-  "card.normLine": { uk: "Минуло {e}; норма розбору спливає о {t}.", ru: "Прошло {e}; норма разбора истекает в {t}.", en: "{e} elapsed; the review norm runs out at {t}." },
-  "card.notTaken": { uk: "Ніхто ще не взяв.", ru: "Никто ещё не взял.", en: "Nobody has taken it yet." },
+  "card.normLine": { uk: "Минуло {e}; розібрати до {t}.", ru: "Прошло {e}; разобрать до {t}.", en: "{e} elapsed; review by {t}." },
+  "card.notTaken": { uk: "Відповідального не призначено.", ru: "Ответственный не назначен.", en: "No one is responsible yet." },
   "card.note": { uk: "Нотатка", ru: "Заметка", en: "Note" },
   "card.noteKind": { uk: "Вид нотатки", ru: "Вид заметки", en: "Note type" },
   "card.notePanel": { uk: "Нотатка", ru: "Заметка", en: "Note" },
