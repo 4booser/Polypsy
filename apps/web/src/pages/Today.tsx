@@ -315,9 +315,14 @@ function DayHead({
   const next = shiftDate(date, 1);
   return (
     <StartHead
+      /*
+       * Дата — только у другого дня. Сегодняшняя уже стоит на полосе
+       * приложения, а «сегодня» здесь говорит выбранная «Сьогодні» в листании;
+       * у вчера и завтра число — главное, что о дне надо знать.
+       */
       meta={
         <>
-          <b className="font-extrabold text-text">{dayFull(date)}</b>
+          {isToday ? null : <b className="font-extrabold text-text">{dayFull(date)}</b>}
           <span>{sum}</span>
         </>
       }

@@ -3,7 +3,6 @@ import type { AlertCase, AppointmentView, DashWidget, Page as CursorPage, Workli
 import { DASH_WIDGETS } from "@quizzy/shared";
 import { api } from "../api";
 import { useAuth } from "../auth";
-import { dayFull } from "../format";
 import { Screen, useUrlState } from "../ui";
 import { Button } from "../ui/primitives";
 import { useLang } from "../lang";
@@ -91,26 +90,27 @@ export default function Dashboard() {
   const alerts: CursorPage<AlertCase> | null = cases.data;
   const casesPending = alerts === null && (cases.loading || cases.offline);
 
-  const today = localDay(new Date());
   const visible = layout.order.filter((k) => !layout.hidden.has(k));
 
   return (
     <>
       <StartHead
+        /*
+         * Без даты: сегодняшнее число и время уже стоят на полосе приложения,
+         * а зведення всегда про сегодня — второй раз в шапке оно ничего не
+         * сообщало.
+         */
         meta={
-          <>
-            <b className="font-extrabold text-text">{dayFull(today)}</b>
-            <span>
-              {res.data
-                ? fill(ut("dashA.metaLine"), {
-                    /* не пришли или не положены — прочерк, а не «0»: ноль здесь звучал бы как «рисков нет» */
-                    cases: alerts ? (alerts.total ?? alerts.items.length) : "—",
-                    work: res.data.work.total,
-                    sessions: res.data.day?.filter((a) => a.status !== "cancelled").length ?? 0,
-                  })
-                : ut("common.loading")}
-            </span>
-          </>
+          <span>
+            {res.data
+              ? fill(ut("dashA.metaLine"), {
+                  /* не пришли или не положены — прочерк, а не «0»: ноль здесь звучал бы как «рисков нет» */
+                  cases: alerts ? (alerts.total ?? alerts.items.length) : "—",
+                  work: res.data.work.total,
+                  sessions: res.data.day?.filter((a) => a.status !== "cancelled").length ?? 0,
+                })
+              : ut("common.loading")}
+          </span>
         }
         actions={
           /*
