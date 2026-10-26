@@ -145,7 +145,7 @@ export default function ConclusionPage() {
         <div className="flex min-w-0 flex-col gap-4">
           <ResultsSide detail={detail} dyn={x.dynamics} loading={x.dynamicsLoading} enabled={x.wantsDynamics} />
           {/* пустые панели справа — шум рядом с листом: предложения, модели и история — только когда им есть что показать */}
-          {ctx?.hits?.length ? <RulesPanel hits={ctx.hits} reload={x.ctx.reload} title={ut("ds.title")} hint={ut("ds.sub")} /> : null}
+          {ctx?.hits?.length ? <RulesPanel hits={ctx.hits} reload={x.ctx.reload} hint={ut("ds.sub")} /> : null}
           <ModelsPanel rules={models.data} hits={ctx?.hits ?? []} responseId={responseId} surveyId={detail.survey.id} />
           <HistoryPanel state={conclusion.data} anchor={historyRef} />
         </div>

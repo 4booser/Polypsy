@@ -232,7 +232,7 @@ test("срез экрана сохраняется под именем и вос
 
   const name = `Тяжёлые ${Date.now()}`;
 
-  await page.getByRole("button", { name: /Сохранить вид/ }).click();
+  await page.getByRole("button", { name: /Сохранить отбор/ }).click();
   await page.getByPlaceholder("Например: мои просроченные").fill(name);
   await page.getByRole("button", { name: "Сохранить", exact: true }).click();
 
@@ -246,7 +246,7 @@ test("срез экрана сохраняется под именем и вос
   await view.click();
   await expect.poll(() => page.url()).toContain("severity=severe");
 
-  // и убираем за собой: вид принадлежит учётной записи, а не прогону теста
-  await page.getByRole("button", { name: "Удалить вид" }).click();
+  // и убираем за собой: отбор принадлежит учётной записи, а не прогону теста
+  await page.getByRole("button", { name: "Удалить отбор" }).click();
   await expect(view).toHaveCount(0);
 });

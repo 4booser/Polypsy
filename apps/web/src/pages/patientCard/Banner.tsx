@@ -275,7 +275,7 @@ export function Strip({ v, drafts }: { v: CardView; drafts: { thread: boolean; c
     items.push(
       <RiskChip
         key="risk"
-        title={cases.length > 1 ? ut("card.signals").replace("{n}", String(cases.length)) : ut("card.signal")}
+        title={cases.length > 1 ? ut("card.cases").replace("{n}", String(cases.length)) : ut("card.case")}
         timer={
           clock.norm !== null ? (
             <RiskTimer elapsed={elapsed} of={normText(clock.norm, { h: ut("rr.hours"), min: ut("dur.min") })} pct={clock.pct} />

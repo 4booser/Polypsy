@@ -1172,7 +1172,6 @@ export const UI = {
   "inf.revoked": { uk: "відкликано", ru: "отозвано", en: "revoked" },
   "tbl.columns": { uk: "Колонки", ru: "Колонки", en: "Columns" },
   "tbl.resetFacets": { uk: "Скинути фільтри", ru: "Сбросить фильтры", en: "Reset filters" },
-  "ds.title": { uk: "Пропозиції правил", ru: "Предложения правил", en: "Rule suggestions" },
   "ds.sub": { uk: "система пропонує, рішення — за людиною", ru: "система предлагает, решение — за человеком", en: "the system suggests, a person decides" },
   "ds.version": { uk: "версія", ru: "версия", en: "version" },
   "ds.accept": { uk: "Погодитись", ru: "Согласиться", en: "Accept" },
@@ -2872,7 +2871,7 @@ export const UI = {
     ru: "Новая версия считает балл по пункту старой, которого человек не видел и на который не отвечал: сумма тихо занижена.",
     en: "The new version scores an item of the old one that the person never saw or answered: the sum is quietly too low.",
   },
-  "opsd.chk.noScores": { uk: "Здано без балів при ввімкненому підрахунку", ru: "Сдано без баллов при включённом подсчёте", en: "Submitted without scores while scoring is on" },
+  "opsd.chk.noScores": { uk: "Завершено без балів при ввімкненому підрахунку", ru: "Завершено без баллов при включённом подсчёте", en: "Completed without scores while scoring is on" },
   "opsd.chk.noScoresWhy": {
     uk: "Проходження є в списку, але його немає в динаміці, аналітиці, когортах і статистиці — вони читають збережені бали.",
     ru: "Прохождение есть в списке, но его нет в динамике, аналитике, когортах и статистике — они читают сохранённые баллы.",
@@ -2904,8 +2903,8 @@ export const UI = {
   },
   "opsd.chk.stale": { uk: "Незавершені проходження", ru: "Незавершённые прохождения", en: "Unfinished responses" },
   "opsd.chk.staleWhy": {
-    uk: "Зданого не спотворюють, але накопичуються: тримають відкритими призначення, занижують частку завершених, а чернетку, що висить тижнями, вже не здадуть.",
-    ru: "Сданного не искажают, но копятся: держат открытыми назначения, занижают долю завершённых, а черновик, висящий неделями, уже не сдадут.",
+    uk: "Завершених даних не спотворюють, але накопичуються: тримають відкритими призначення, занижують частку завершених, а чернетку, що висить тижнями, вже не завершать.",
+    ru: "Завершённых данных не искажают, но копятся: держат открытыми назначения, занижают долю завершённых, а черновик, висящий неделями, уже не завершат.",
     en: "They do not distort submitted data but pile up: keep assignments open, lower completion, and a draft hanging for weeks will never be submitted.",
   },
   "opsd.x.inProgress": { uk: "у процесі", ru: "в процессе", en: "in progress" },
@@ -5461,21 +5460,21 @@ export const UI = {
   "ev.alert": { uk: "нова тривога", ru: "новая тревога", en: "new alert" },
   "ev.case": { uk: "випадок змінився", ru: "случай изменился", en: "case changed" },
 
-  /* сохранённые виды */
-  "views.save": { uk: "Зберегти вигляд", ru: "Сохранить вид", en: "Save view" },
+  /* сохранённые отборы («Відбір» — тем же словом, что в реестре пациентов и направлениях) */
+  "views.save": { uk: "Зберегти відбір", ru: "Сохранить отбор", en: "Save filter" },
   "views.saveHint": {
     uk: "Назвати поточний зріз, щоб не збирати його щоразу",
     ru: "Назвать текущий срез, чтобы не собирать его каждый раз",
     en: "Name the current slice so you do not have to rebuild it each time",
   },
   "views.namePlaceholder": { uk: "Наприклад: мої прострочені", ru: "Например: мои просроченные", en: "For example: my overdue" },
-  "views.saved": { uk: "Вигляд збережено", ru: "Вид сохранён", en: "View saved" },
-  "views.remove": { uk: "Видалити вигляд", ru: "Удалить вид", en: "Delete view" },
-  "views.removed": { uk: "Вигляд видалено", ru: "Вид удалён", en: "View deleted" },
+  "views.saved": { uk: "Відбір збережено", ru: "Отбор сохранён", en: "Filter saved" },
+  "views.remove": { uk: "Видалити відбір", ru: "Удалить отбор", en: "Delete filter" },
+  "views.removed": { uk: "Відбір видалено", ru: "Отбор удалён", en: "Filter deleted" },
   "views.makeShared": { uk: "Відкрити колегам", ru: "Открыть коллегам", en: "Share with colleagues" },
   "views.makePersonal": { uk: "Зробити особистим", ru: "Сделать личным", en: "Make personal" },
-  "views.madeShared": { uk: "Вигляд відкрито колегам", ru: "Вид открыт коллегам", en: "View shared with colleagues" },
-  "views.madePersonal": { uk: "Вигляд знову особистий", ru: "Вид снова личный", en: "View is personal again" },
+  "views.madeShared": { uk: "Відбір відкрито колегам", ru: "Отбор открыт коллегам", en: "Filter shared with colleagues" },
+  "views.madePersonal": { uk: "Відбір знову особистий", ru: "Отбор снова личный", en: "Filter is personal again" },
 
   /* маршруты помощи */
 
@@ -6063,7 +6062,7 @@ export const UI = {
     en: "Patients and their groups are shown only with the right to view patients, which you do not have",
   },
   /* сохранённые виды списка пациентов — пункты шестерёнки (pages/patientGroups/views.tsx) */
-  "views.current": { uk: "Цей вигляд вже відкрито", ru: "Этот вид уже открыт", en: "This view is already open" },
+  "views.current": { uk: "Цей відбір вже відкрито", ru: "Этот отбор уже открыт", en: "This filter is already open" },
   "views.saveCurrent": { uk: "Зберегти відбір…", ru: "Сохранить отбор…", en: "Save selection…" },
   "views.nothingToSave": {
     uk: "Спершу оберіть групу або введіть пошук — зберігати поки нічого",
@@ -8216,8 +8215,8 @@ export const UI = {
   "ref2.metaImmediate": { uk: "негайних: {n}", ru: "немедленных: {n}", en: "immediate: {n}" },
   "ref2.metaLate": { uk: "без відповіді понад добу: {n}", ru: "без ответа больше суток: {n}", en: "no response for over a day: {n}" },
   "ref2.metaDone": { uk: "завершено за 30 днів: {n}", ru: "завершено за 30 дней: {n}", en: "completed in 30 days: {n}" },
-  "ref2.views2": { uk: "Подання", ru: "Представления", en: "Views" },
-  "ref2.viewsActive": { uk: "Подання: {name}", ru: "Представление: {name}", en: "View: {name}" },
+  "ref2.views2": { uk: "Відбори", ru: "Отборы", en: "Saved filters" },
+  "ref2.viewsActive": { uk: "Відбір: {name}", ru: "Отбор: {name}", en: "Filter: {name}" },
   "ref2.noViews": { uk: "Збережених подань ще немає", ru: "Сохранённых представлений ещё нет", en: "No saved views yet" },
   "ref2.csv": { uk: "Вивантажити", ru: "Выгрузить", en: "Export" },
   "ref2.searchPh": { uk: "Пацієнт або підстава", ru: "Пациент или основание", en: "Patient or grounds" },
@@ -9297,6 +9296,9 @@ export const UI = {
   "plist.tomorrow": { uk: "завтра", ru: "завтра", en: "tomorrow" },
   "plist.signal": { uk: "сигнал", ru: "сигнал", en: "signal" },
   "plist.signals": { uk: "сигналів: {n}", ru: "сигналов: {n}", en: "signals: {n}" },
+  /* «Стан» реестра считает открытые случаи человека (r.risk.cases), а не сигналы */
+  "plist.case": { uk: "випадок ризику", ru: "случай риска", en: "risk case" },
+  "plist.cases": { uk: "випадків ризику: {n}", ru: "случаев риска: {n}", en: "risk cases: {n}" },
   "plist.caseSince": { uk: "з {when}", ru: "с {when}", en: "since {when}" },
   "plist.caseWith": { uk: "розбирає {name}", ru: "разбирает {name}", en: "with {name}" },
   "plist.noShow": { uk: "неявка {d}", ru: "неявка {d}", en: "no-show {d}" },
@@ -14434,7 +14436,7 @@ export const UI = {
     ru: "Приложение считает баллы офлайн тем же движком, что и сервер: исправление в движке доходит до человека только с новой сборкой.",
     en: "The app scores offline with the same engine as the server: an engine fix reaches a person only with a new build.",
   },
-  "oppd.m.submitted": { uk: "Здач за вікно", ru: "Сдач за окно", en: "Submissions in the window" },
+  "oppd.m.submitted": { uk: "Відправлень за вікно", ru: "Отправок за окно", en: "Submissions in the window" },
   "oppd.m.crashes": {
     uk: "Падіння й помилки застосунку збирає розділ «Помилки клієнта»: свого лічильника тут немає, щоб два не розходилися.",
     ru: "Падения и ошибки приложения собирает раздел «Ошибки клиента»: своего счётчика здесь нет, чтобы два не расходились.",
@@ -14628,7 +14630,9 @@ export const UI = {
   "card.signal": { uk: "Сигнал ризику", ru: "Сигнал риска", en: "Risk signal" },
   "card.signalOf": { uk: "Сигнал: {s}", ru: "Сигнал: {s}", en: "Signal: {s}" },
   "card.signalOpenNote": { uk: "Сигнал ризику ще не розібрано: висновок про безпеку краще писати після розбору.", ru: "Сигнал риска ещё не разобран: вывод о безопасности лучше писать после разбора.", en: "The risk signal is not reviewed yet: write the safety conclusion after the review." },
-  "card.signals": { uk: "Сигнали ризику: {n}", ru: "Сигналы риска: {n}", en: "Risk signals: {n}" },
+  /* шапка карточки считает открытые случаи, а не сигналы: у случая их бывает несколько */
+  "card.case": { uk: "Випадок ризику", ru: "Случай риска", en: "Risk case" },
+  "card.cases": { uk: "Випадки ризику: {n}", ru: "Случаи риска: {n}", en: "Risk cases: {n}" },
   "card.signed": { uk: "Підписано", ru: "Подписано", en: "Signed" },
   "card.signedVersion": { uk: "Версію {v} підписано {d}; правка відкриє нову версію.", ru: "Версия {v} подписана {d}; правка откроет новую версию.", en: "Version {v} was signed on {d}; editing starts a new version." },
   "card.signsAs": { uk: "Підпис зафіксує текст назавжди", ru: "Подпись зафиксирует текст навсегда", en: "Signing fixes the text for good" },
@@ -14732,7 +14736,7 @@ export const UI = {
   "card.female": { uk: "жінка", ru: "женщина", en: "female" },
   "card.criticalAnswer": { uk: "критична відповідь", ru: "критический ответ", en: "critical answer" },
   "card.itemsQuiet": { uk: "Змін і критичних відповідей між двома останніми замірами немає.", ru: "Изменений и критических ответов между двумя последними замерами нет.", en: "No changes or critical answers between the last two measurements." },
-  "card.overdueDays": { uk: "−{n} дн.", ru: "−{n} дн.", en: "−{n} d" },
+  "card.overdueDays": { uk: "прострочено {n} дн.", ru: "просрочено {n} дн.", en: "{n} d overdue" },
   "al.context": { uk: "Останні заміри", ru: "Последние замеры", en: "Latest measurements" },
   "al.continue": { uk: "Продовжити розбір", ru: "Продолжить разбор", en: "Continue the review" },
   "al.openReview": { uk: "Відкрити розбір", ru: "Открыть разбор", en: "Open the review" },

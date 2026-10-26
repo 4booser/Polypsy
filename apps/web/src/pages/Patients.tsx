@@ -817,7 +817,7 @@ function StateCell({ r, locale, now }: { r: PatientListItem; locale: string; now
     return (
       <span className="flex flex-col items-start gap-0.5">
         <Tag tone={r.risk.assigneeName ? "handover" : "danger"} icon={<Ic.alert />}>
-          {r.risk.cases > 1 ? ut("plist.signals").replace("{n}", String(r.risk.cases)) : ut("plist.signal")}
+          {r.risk.cases > 1 ? ut("plist.cases").replace("{n}", String(r.risk.cases)) : ut("plist.case")}
         </Tag>
         <small className="text-caption text-text-2">{sub}</small>
       </span>

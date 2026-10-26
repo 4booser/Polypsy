@@ -389,7 +389,7 @@ describe("центр событий: «пока вас не было»", () => {
 describe("предложения правил", () => {
   test("отказ — панель с отказом; пусто — панели нет", () => {
     const html = draw(<SuggestionsBody res={failed<RuleHit[]>()} />);
-    expect(has(html, "ds.title")).toBe(true);
+    expect(has(html, "rp.rules")).toBe(true);
     expect(refusal(html)).toBe(true);
     expect(draw(<SuggestionsBody res={answered<RuleHit[]>([])} />)).toBe("");
     expect(draw(<SuggestionsBody res={waiting<RuleHit[]>()} />)).toBe("");
