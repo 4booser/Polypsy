@@ -175,7 +175,7 @@ function VisitScreen({ id }: { id: string }) {
         const e = wallOf(a.endsAt, a.tz);
         const todayLocal = wallOf(new Date(now).toISOString(), a.tz).date;
         /*
-         * «Почати» и «Не прийшов» — только в день приёма и позже. Сервер
+         * «Почати» и «Неявка» — только в день приёма и позже. Сервер
          * переход разрешает в любой день, но приём следующей недели,
          * открытый из календаря, начатым или неявкой быть не может: такое
          * нажатие — промах, и исправлять его пришлось бы шагом назад.
@@ -187,12 +187,22 @@ function VisitScreen({ id }: { id: string }) {
         );
         const place = a.mode === "remote" ? ut("day.remote") : a.room ? `${ut("day.room")} ${a.room}` : ut("v2v.onsite");
         const details = [ut(a.kind === "primary" ? "day.primary" : "day.repeat"), place, ut(STATUS_KEY[a.status])].join(", ");
-        /* меню: справка (если человек пришёл), снятие ошибочной отметки, отмена приёма */
+        /*
+         * Меню: печать (справка, если человек пришёл, и карта целиком),
+         * снятие ошибочной отметки, отмена приёма. «Друк картки повністю»
+         * переехал сюда из панели «Звернення»: печать карты — действие над
+         * человеком, а не над обращением.
+         */
         const menu: MenuEntry[] = [
           ...(certificateAvailable(a.status)
             ? [{ label: ut("visit.certificate"), icon: <V.fileBadge />, onSelect: () => openInTab(`/api/reports/visits/${a.id}`) }]
             : []),
-          ...(undo ? [{ label: ut("v2v.undoDo"), icon: <Ic.undo />, onSelect: () => setAsking("undo") }] : []),
+          {
+            label: ut("ep.chart"),
+            icon: <Ic.file />,
+            onSelect: () => openInTab(`/api/reports/patients/${data.patient.id}/chart`),
+          },
+          ...(undo ? [{ label: ut(undo.label), icon: <Ic.undo />, ruled: true, onSelect: () => setAsking("undo") }] : []),
           ...(cancellable(a.status)
             ? [{ label: ut("v2v.cancelVisit"), icon: <V.calendarX />, danger: true, ruled: true, onSelect: () => setAsking("cancel") }]
             : []),
@@ -211,7 +221,7 @@ function VisitScreen({ id }: { id: string }) {
                   </Button>
                 ) : null}
                 {a.status === "no_show" ? (
-                  /* неявку ставит и фоновый проход — исправляется тем же «Прийшов», что на «Сьогодні» */
+                  /* неявку ставит и фоновый проход — исправляется той же «Явка», что на «Сьогодні» */
                   <Button icon={<V.userCheck />} disabled={busy} onClick={() => void move("arrived")}>
                     {ut("day.came")}
                   </Button>
@@ -224,7 +234,7 @@ function VisitScreen({ id }: { id: string }) {
                 >
                   <Ic.external />
                 </ButtonLink>
-                {menu.length ? <ActionMenu entries={menu} /> : null}
+                <ActionMenu entries={menu} />
                 {steps.length ? (
                   <Button
                     variant="primary"
@@ -475,7 +485,7 @@ function VisitScreen({ id }: { id: string }) {
 
             {asking === "undo" && undo ? (
               <Modal
-                title={ut("v2v.undoAsk")}
+                title={`${ut(undo.label)}?`}
                 icon={<Ic.undo />}
                 width={460}
                 onClose={() => setAsking(null)}
@@ -489,7 +499,7 @@ function VisitScreen({ id }: { id: string }) {
                         void move(undo.to);
                       }}
                     >
-                      {ut("v2v.undoDo")}
+                      {ut(undo.label)}
                     </Button>
                     <Button onClick={() => setAsking(null)}>{ut("v2v.keep")}</Button>
                   </>

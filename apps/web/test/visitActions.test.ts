@@ -51,7 +51,7 @@ describe("ход приёма с экрана", () => {
     for (const closed of ["in_progress", "done", "no_show", "cancelled"]) expect(startPath(closed)).toEqual([]);
   });
 
-  test("«Не прийшов» и шаг назад — только там, где сервер их примет", () => {
+  test("«Неявка» и шаг назад — только там, где сервер их примет", () => {
     for (const status of ALL) {
       if (canMarkNoShow(status)) expect(NEXT[status], status).toContain("no_show");
       const undo = undoStep(status);
@@ -60,6 +60,9 @@ describe("ход приёма с экрана", () => {
     expect(undoStep("arrived")?.to).toBe("booked");
     expect(undoStep("in_progress")?.to).toBe("arrived");
     expect(undoStep("booked")).toBeNull();
+    /* пришедшему «Неявка» в шапке не предлагается: ошибочную явку снимают шагом назад в меню */
+    expect(ALL.filter(canMarkNoShow)).toEqual(["booked", "confirmed"]);
+    expect(undoStep("arrived")?.label).toBe("v2v.undoArrived");
   });
 
   test("справка — о состоявшемся приёме; отмена — всего, что не закрыто", () => {
