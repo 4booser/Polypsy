@@ -34,6 +34,7 @@ import { AssignDrawer, type ExistingAssignment } from "../../components/AssignDr
 import { ExportsDrawer } from "../methods/ExportsDrawer";
 import { Mi } from "../methods/icons";
 import { DOMAIN_KEY, domainKey, rightsKey } from "../methods/labels";
+import { SourceNote } from "../methods/SourceNote";
 import { attentionOf, fixedIn, grantState, keysPending, rightsPending, shortDate, splitCode } from "../methods/model";
 import { num, useCount } from "../methods/useCount";
 import { ArchiveManyDialog, codesLine, FolderForm, MoveForm, MoveManyForm } from "./CatalogueDialogs";
@@ -394,6 +395,8 @@ function PeekBody({
             ],
           ]}
         />
+        {/* откуда текст и пороги — там, где методику выбирают; описание выше читает и обследуемый */}
+        <SourceNote text={s.sourceNote} className="mt-3 border-t border-divider pt-3" />
       </DrawerSection>
       <DrawerSection title={ut("mc.peekBands")}>
         {full.data ? (

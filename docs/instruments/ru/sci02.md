@@ -40,13 +40,14 @@
 
 ## 1. Назначение
 
-Два вопроса о сне за последний месяц — пункты 7 и 3 полной SCI без изменений. Больший балл — лучший сон (0–8). Балл ≤2 — вероятная бессонница по полной SCI (Luik и соавт., 2019: онлайн-выборка 190 000, чувствительность 80 %, специфичность 81 %). Это фильтр: положительный результат означает «пройти полную SCI», а не диагноз; украинских норм нет. Рабочий перевод. Если у методики есть пороги, они установлены для оригинала; когда появится официальный украиноязычный вариант, сверить с ним.
+Два вопроса о сне за последний месяц.
 
 **Инструкция обследуемому:** Два вопроса о вашем сне за ПОСЛЕДНИЙ МЕСЯЦ. Выберите вариант, который точнее всего описывает ваше состояние.
 
 ## 2. Источник
 
 - **Записано в системе** (журнал установки каталога, на языке записи): SCI-02: пункти 7 і 3 Sleep Condition Indicator; поріг ≤2 — Luik, Machado, Siriwardena, Espie, Br J Gen Pract 2019;69(679):79-80 — © Sleepio Limited, безкоштовно лише для некомерційного використання (CC BY-NC 4.0). Переклад робочий (той самий, що в SCI)
+- **Примечание для персонала** («Джерело» в паспорте методики, на языке записи): Пункти 7 і 3 повної SCI без змін. Більший бал — кращий сон (0–8). Бал ≤2 — ймовірне безсоння за повною SCI (Luik та ін., 2019: онлайн-вибірка 190 000, чутливість 80 %, специфічність 81 %). Це фільтр: позитивний результат означає «пройти повну SCI», а не діагноз; українських норм немає. Робочий переклад. Якщо в методики є пороги, їх встановлено для оригіналу; коли з’явиться офіційний україномовний варіант, звірити з ним.
 - **Публикация по досье**: Luik AI, Machado PF, Siriwardena N, Espie CA. Screening for insomnia in primary care: using a two-item version of the Sleep Condition Indicator. Br J Gen Pract. 2019;69(679):79-80. doi:10.3399/bjgp19X701045 (PMC6355290). Пункты выделены в Espie CA, Kyle SD, Hames P, et al. BMJ Open. 2014;4(3):e004183: «A two-item (SCI-02), comprising item 3 ‘how many nights’ (standardised β=0.515) and item 7 ‘troubled you in general’ (β=0.491), together predicted 82% of variance (adjusted R2=0.820) in the full scale SCI».
 - **Полосы по досье** (на языке досье): Luik et al. 2019: «A cut-off of ≤2 for the SCI-02 predicted those identified with probable insomnia according to the full SCI, with a specificity of 81% and sensitivity of 80%.» и «with a SCI-02 score of 2 or less indicating insomnia (Table 1). The GP could then assess the insomnia complaint further by administering the remaining six items of the SCI».
 - **Лицензия по досье**: свободна с условиями — SCI-02 — два пункта SCI без изменений, права на них те же (Sleepio Ltd / Big Health Ltd): бесплатно для некоммерческого использования по CC BY-NC 4.0 с указанием авторства и отметкой изменений (перевод). Текст самого письма в BJGP — «© British Journal of General Practice 2019»; из него берутся только порог и правило подсчёта (факты), а не текст статьи.

@@ -40,7 +40,7 @@
 
 ## 1. Призначення
 
-Двадцять запитань про реакції на важку подію за останній місяць. Поріг 33 — верхня межа діапазону 31–33, який Національний центр ПТСР США за початковими дослідженнями (вибірки США) називає ознакою ймовірного ПТСР; для скринінгу центр радить нижчий поріг, для попереднього діагнозу — вищий. Інших меж, зокрема ступенів тяжкості, у джерела немає. Робочий переклад. Якщо в методики є пороги, їх встановлено для оригіналу; коли з’явиться офіційний україномовний варіант, звірити з ним.
+Двадцять запитань про реакції на важку подію за останній місяць.
 
 **Інструкція обстежуваному:** Нижче наведено проблеми, які іноді виникають у людей у відповідь на дуже стресову подію. Маючи на увазі найважчу з пережитих вами подій, уважно прочитайте кожен пункт і позначте, наскільки ця проблема турбувала вас ПРОТЯГОМ ОСТАННЬОГО МІСЯЦЯ. Якщо стане важко — зупиніться: опитувальник можна відкласти й повернутися пізніше, а внизу є телефон, за яким відповідають цілодобово.
 
@@ -49,6 +49,7 @@
 ## 2. Джерело
 
 - **Записано в системі** (журнал установки каталогу, мовою запису): PCL-5, Weathers та ін., National Center for PTSD, 2013 (public domain)
+- **Примітка для персоналу** («Джерело» в паспорті методики, мовою запису): Поріг 33 — верхня межа діапазону 31–33, який Національний центр ПТСР США за початковими дослідженнями (вибірки США) називає ознакою ймовірного ПТСР; для скринінгу центр радить нижчий поріг, для попереднього діагнозу — вищий. Інших меж, зокрема ступенів тяжкості, у джерела немає. Робочий переклад. Якщо в методики є пороги, їх встановлено для оригіналу; коли з’явиться офіційний україномовний варіант, звірити з ним.
 - **Публікація за досьє**: Weathers, F. W., Litz, B. T., Keane, T. M., Palmieri, P. A., Marx, B. P., & Schnurr, P. P. (2013). The PTSD Checklist for DSM-5 (PCL-5) – Standard [Measurement instrument]. Available from https://www.ptsd.va.gov/. Использованный бланк: «PCL-5 (18 August 2023)», version date 29 August 2023, официальный PDF National Center for PTSD.
 - **Смуги за досьє** (мовою досьє): Дословно со страницы правообладателя: «Initial research suggests that a PCL-5 cutoff score between 31-33 is indicative of probable PTSD across samples. However, because the population and the purpose of the screening may warrant different cutoff scores, users are encouraged to consider both of these factors when choosing a cutoff score.» «A lower cut-point score should be considered when screening or when it is desirable to maximize detection of possible cases.» «A higher cut-point score should be considered when attempting to make a provisional diagnosis». Ступеней тяжести (мягкий / умеренный / тяжёлый) и границ 18 или 50 у правообладателя нет. Изменение: «a 10 point decrease is suggested as an indicator of response»; «PCL-5 < 28 can be used as an indicator of clinically significant change (Marx et al., 2022)» — для динамики, не для полос.
 - **Ліцензія за досьє**: свободна

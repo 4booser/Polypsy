@@ -1966,6 +1966,13 @@ export interface Survey {
    * мешает выдать методику пациенту.
    */
   rightsStatus?: "own" | "licensed" | "public_domain" | "unclear";
+  /**
+   * Источник для персонала — «Джерело» в паспорте методики: чей текст и
+   * перевод, откуда пороги. У методики каталога его ставит установщик
+   * (примечание каталога), правит суперадмин (PATCH /rights). Описание
+   * (`description`) читает обследуемый, и происхождения в нём нет.
+   */
+  sourceNote?: string | null;
   status: SurveyStatus;
 
   timeLimitSec: number | null;

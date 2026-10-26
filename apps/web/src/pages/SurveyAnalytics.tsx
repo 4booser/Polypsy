@@ -19,6 +19,7 @@ import { testsHref } from "./analytics/tests/model";
 import { Mi } from "./methods/icons";
 import { rightsKey } from "./methods/labels";
 import { MethodPage } from "./methods/MethodPage";
+import { SourceNote } from "./methods/SourceNote";
 import { fixedIn, shortDate, shortDateTime, splitCode, topLosses, weeklyCounts } from "./methods/model";
 import { num, useCount } from "./methods/useCount";
 
@@ -402,6 +403,7 @@ function AboutPanel({ survey, data }: { survey: SurveyFull & { keysVerifiedAt?: 
         {/* подпись «Ключ звірено з оригіналом» — в одну строку на 1280 */}
         <KV w={172} rows={rows} />
       </div>
+      <SourceNote text={survey.sourceNote} className="mt-3 border-t border-divider pt-3" />
     </Panel>
   );
 }

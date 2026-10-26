@@ -53,6 +53,12 @@ export interface SheetEntry {
   catalog: boolean;
   /** Источник, как его записывает журнал установки; у встроенных его в системе нет */
   source: string | null;
+  /**
+   * Примечание для персонала (CatalogEntry.note → surveys.source_note,
+   * «Джерело» в паспорте методики): чей текст, откуда пороги. Раньше стояло в
+   * описании, и лист печатал его в «Призначення»; у встроенных его нет.
+   */
+  note: string | null;
   notScored: { items: number[]; reason: string } | null;
 }
 
@@ -153,16 +159,16 @@ const MODULE_OF: Record<string, string> = {
  */
 export function sheetEntries(): SheetEntry[] {
   const builtin: SheetEntry[] = [
-    { key: "sr45", module: "sr45.ts", draft: sr45, catalog: false, source: null, notScored: null },
-    { key: "sad-persons", module: "sadPersons.ts", draft: sadPersons, catalog: false, source: null, notScored: null },
-    { key: "minimult", module: "minimult.ts", draft: minimult, catalog: false, source: null, notScored: null },
-    { key: "mlo", module: "mlo.ts", draft: mlo, catalog: false, source: null, notScored: null },
+    { key: "sr45", module: "sr45.ts", draft: sr45, catalog: false, source: null, note: null, notScored: null },
+    { key: "sad-persons", module: "sadPersons.ts", draft: sadPersons, catalog: false, source: null, note: null, notScored: null },
+    { key: "minimult", module: "minimult.ts", draft: minimult, catalog: false, source: null, note: null, notScored: null },
+    { key: "mlo", module: "mlo.ts", draft: mlo, catalog: false, source: null, note: null, notScored: null },
   ];
   const catalog = CATALOG.map((e): SheetEntry => {
     const module = MODULE_OF[e.key];
     if (!module) throw new Error(`instrumentSheets: для методики каталога «${e.key}» не указан файл определения (MODULE_OF)`);
     if (!NOTES[e.key]) throw new Error(`instrumentSheets: для методики каталога «${e.key}» нет записи в notes.ts`);
-    return { key: e.key, module, draft: e.draft, catalog: true, source: e.source, notScored: e.notScored ?? null };
+    return { key: e.key, module, draft: e.draft, catalog: true, source: e.source, note: e.note, notScored: e.notScored ?? null };
   });
   return [...builtin, ...catalog];
 }

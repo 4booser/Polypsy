@@ -300,22 +300,20 @@ describe("группа wellbeing: структура и сверка с дось
 
   test("оговорка о рабочем переводе стоит ровно там, где текст рабочий", () => {
     /*
-     * У SWLS и SPANE украинский текст — валидизированная адаптация под CC BY,
-     * русский — рабочий перевод с неё: оговорка только в русском описании. Без
-     * неё рабочий перевод выглядел бы валидизированным, с ней в украинском —
-     * валидизированный текст выглядел бы рабочим.
+     * Оговорка — в примечании для персонала (`note` записи каталога, «Джерело»
+     * паспорта методики); описание читает обследуемый, и её там нет. У SWLS и
+     * SPANE украинский текст — валидизированная адаптация под CC BY, русский —
+     * рабочий перевод с неё: общая оговорка («Робочий переклад…») назвала бы
+     * рабочим и украинский, поэтому примечание говорит о русском отдельно.
      */
-    const has = (draft: CreateSurveyDraft, lang: "uk" | "ru") => {
-      const d = draft.description as { uk: string; ru: string };
-      return d[lang].includes(WORKING_TRANSLATION[lang]);
-    };
+    const note = (draft: CreateSurveyDraft) => CATALOG.find((e) => e.draft === draft)!.note;
     for (const draft of [swls, spane]) {
-      expect(has(draft, "uk")).toBe(false);
-      expect(has(draft, "ru")).toBe(true);
+      expect(note(draft)).not.toContain(WORKING_TRANSLATION.uk);
+      expect(note(draft)).toContain("Російський текст — робочий переклад");
     }
-    for (const draft of [flourishing, mlq, pss4]) {
-      expect(has(draft, "uk")).toBe(true);
-      expect(has(draft, "ru")).toBe(true);
+    for (const draft of [flourishing, mlq, pss4]) expect(note(draft)).toContain(WORKING_TRANSLATION.uk);
+    for (const draft of [swls, spane, flourishing, mlq, pss4]) {
+      expect((draft.description as { uk: string }).uk).not.toContain(WORKING_TRANSLATION.uk);
     }
   });
 });

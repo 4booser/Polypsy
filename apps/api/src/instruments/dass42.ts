@@ -1,5 +1,5 @@
 import type { CreateSurveyDraft, ScaleDraft } from "@quizzy/shared";
-import { L, PUBLIC_DEFAULTS, describe, item, sumKey, type Anchor, type Loc, type RiskMark } from "./common";
+import { L, PUBLIC_DEFAULTS, item, sumKey, type Anchor, type Loc, type RiskMark, WORKING_TRANSLATION } from "./common";
 
 /**
  * DASS-42 — шкалы депрессии, тревоги и стресса, полная форма
@@ -9,7 +9,7 @@ import { L, PUBLIC_DEFAULTS, describe, item, sumKey, type Anchor, type Loc, type
  * questionnaire is public domain, and so permission is not needed to use
  * it»). Украинского перевода ПОЛНОЙ формы на сайте разработчиков нет (есть
  * только DASS-21), поэтому текст здесь — рабочий перевод, и это сказано в
- * описании через `describe()`.
+ * примечании для персонала через `WORKING_TRANSLATION`.
  *
  * ПОЛОС НЕТ, и это главная ловушка DASS. Разработчики дословно: «we have
  * developed a set of cut-off scores for defining mild/moderate/severe/
@@ -229,11 +229,9 @@ const subscale = (code: DassCode, title: Loc): ScaleDraft => ({
 export const dass42: CreateSurveyDraft = {
   ...PUBLIC_DEFAULTS,
   title: L("Депресія, тривога, стрес (DASS-42)", "Депрессия, тревога, стресс (DASS-42)"),
-  description: describe(
-    L(
-      "Сорок два твердження про останній тиждень; три окремі бали — депресія, тривога, стрес, по 0–42. Смуг немає: пороги розробники дають лише в платному посібнику, тому показуються сирі бали.",
-      "Сорок два утверждения о последней неделе; три отдельных балла — депрессия, тревога, стресс, по 0–42. Полос нет: пороги разработчики дают только в платном руководстве, поэтому показываются сырые баллы.",
-    ),
+  description: L(
+    "Сорок два твердження про самопочуття за останній тиждень.",
+    "Сорок два утверждения о самочувствии за последнюю неделю.",
   ),
   instructions: L(
     "Прочитайте кожне твердження й оберіть варіант, який показує, наскільки воно стосувалося вас ПРОТЯГОМ ОСТАННЬОГО ТИЖНЯ. Правильних чи неправильних відповідей немає. Не затримуйтеся довго на жодному твердженні.",
@@ -255,3 +253,10 @@ export const dass42: CreateSurveyDraft = {
     subscale("S", L("Стрес", "Стресс")),
   ],
 };
+
+/**
+ * Для персонала — «Джерело» в паспорте методики (surveys.source_note, ставит
+ * установщик каталога): откуда текст и пороги, чего система не считает.
+ * Описание выше читает обследуемый на первом экране — в нём этого нет.
+ */
+export const dass42Note = `Три окремі бали — депресія, тривога, стрес, по 0–42. Смуг немає: пороги розробники дають лише в платному посібнику, тому показуються сирі бали. ${WORKING_TRANSLATION.uk}`;

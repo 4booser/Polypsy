@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { api, createSurveySchema, db, root } from "./fixtures";
 import { auditLog, surveyVersions, surveys } from "../src/db/schema";
 import { CATALOG } from "../src/instruments/catalog";
@@ -233,6 +233,71 @@ describe("установка", () => {
     const back = await installCatalog();
     expect(back.updated).toContain("who5");
     expect(back.keptSettings.who5).toBeUndefined();
+  });
+
+  test("источник для персонала: ставит установщик без новой версии, правку суперадмина выкат не трогает", async () => {
+    /*
+     * Происхождение текста и порогов переехало из описания (его читает
+     * обследуемый) в surveys.source_note — «Джерело» в паспорте методики.
+     * Мутация: не класть sourceNote в catalogSettings — первое ожидание падает;
+     * сверять его без localFields — правка суперадмина перетирается, падает
+     * третья группа; выпускать версию на смену примечания — вторая.
+     */
+    await installCatalog();
+    const row = async (key: string) => (await db.select().from(surveys).where(eq(surveys.catalogKey, key)))[0]!;
+    const versionsOf = async (id: string) =>
+      (await db.select({ id: surveyVersions.id }).from(surveyVersions).where(eq(surveyVersions.surveyId, id))).length;
+    const gad = CATALOG.find((e) => e.key === "gad7")!;
+    const who = CATALOG.find((e) => e.key === "who5")!;
+
+    // поставлено — с примечанием каталога и им же в снимке
+    const fresh = await row("gad7");
+    expect(fresh.sourceNote).toBe(gad.note);
+    expect((fresh.catalogFields as { sourceNote?: string }).sourceNote).toBe(gad.note);
+
+    // стоявшая до примечаний: колонка пуста, в снимке поля нет — выкат заполняет без новой версии
+    await db
+      .update(surveys)
+      .set({ sourceNote: null, catalogFields: sql`${surveys.catalogFields} - 'sourceNote'` } as never)
+      .where(eq(surveys.id, fresh.id));
+    const versions = await versionsOf(fresh.id);
+    const filled = await installCatalog();
+    expect(filled.sourceNoteSet).toContain("gad7");
+    expect(filled.skipped).toContain("gad7");
+    expect((await row("gad7")).sourceNote).toBe(gad.note);
+    expect(await versionsOf(fresh.id), "примечание выпустило версию").toBe(versions);
+    expect((await installCatalog()).sourceNoteSet).not.toContain("gad7");
+
+    // суперадмин записал своё — выкат и новая редакция примечания его не трогают
+    const own = "Посібник відділення, с. 12; ключі звірено з оригіналом.";
+    const saved = await api(`/api/surveys/${fresh.id}/rights`, root.token, {
+      method: "PATCH",
+      body: JSON.stringify({ sourceNote: own }),
+    });
+    expect(saved.status, JSON.stringify(saved.body)).toBe(200);
+    expect((await catalogStatus()).find((r) => r.key === "gad7")!.localFields).toEqual(["sourceNote"]);
+    const gadNote = gad.note;
+    const whoNote = who.note;
+    gad.note = `${gadNote} Нова редакція.`;
+    who.note = `${whoNote} Нова редакція.`;
+    try {
+      const report = await installCatalog();
+      expect((await row("gad7")).sourceNote, "выкат перетёр источник суперадмина").toBe(own);
+      expect(report.sourceNoteSet).not.toContain("gad7");
+      // не тронутое учреждением — следует за каталогом
+      expect(report.sourceNoteSet).toContain("who5");
+      expect((await row("who5")).sourceNote).toBe(who.note);
+
+      // --force — явное решение вернуть каталоговое
+      await installCatalog({ force: ["gad7"] });
+      expect((await row("gad7")).sourceNote).toBe(gad.note);
+    } finally {
+      gad.note = gadNote;
+      who.note = whoNote;
+    }
+    await installCatalog();
+    expect((await row("gad7")).sourceNote).toBe(gadNote);
+    expect((await row("who5")).sourceNote).toBe(whoNote);
   });
 
   test("общедоступные методики опубликованы и доступны без назначения", async () => {

@@ -10,11 +10,11 @@ import {
 import { cesdr } from "../cesdr";
 import { WORKING_TRANSLATION } from "../common";
 import { DASS_KEY, dass42 } from "../dass42";
-import { gad7 } from "../gad7";
+import { gad7, gad7Note } from "../gad7";
 import { gds15 } from "../gds15";
 import { phq4 } from "../phq4";
 import { phq8 } from "../phq8";
-import { phq9 } from "../phq9";
+import { phq9, phq9Note } from "../phq9";
 import { pss10 } from "../pss10";
 import { srq20 } from "../srq20";
 
@@ -197,11 +197,10 @@ describe("золотой протокол: PHQ-9", () => {
     const i = phq9.instructions as { uk: string; ru: string };
     expect(i.uk.startsWith("Як часто за останні 2 тижні Вас турбували наступні прояви?")).toBe(true);
     expect(i.ru.startsWith("Как часто за последние 2 недели Вас беспокоили следующие проблемы?")).toBe(true);
-    const d = phq9.description as { uk: string; ru: string };
-    expect(d.uk).not.toContain(WORKING_TRANSLATION.uk);
-    expect(d.ru).not.toContain(WORKING_TRANSLATION.ru);
-    expect(d.uk).toContain("№1003");
-    expect(d.ru).toContain("Russian for Ukraine");
+    // чей текст — в примечании для персонала, описание для обследуемого о нём молчит
+    expect(phq9Note).not.toContain(WORKING_TRANSLATION.uk);
+    expect(phq9Note).toContain("№1003");
+    expect(phq9Note).toContain("Russian for Ukraine");
   });
 });
 
@@ -272,10 +271,8 @@ describe("золотой протокол: GAD-7", () => {
       ru: "Вы испытывали страх, словно должно произойти нечто ужасное",
     });
     for (const q of qs(gad7)) expect(q.options).toEqual(qs(phq9)[0]!.options);
-    const d = gad7.description as { uk: string; ru: string };
-    expect(d.uk).not.toContain(WORKING_TRANSLATION.uk);
-    expect(d.ru).not.toContain(WORKING_TRANSLATION.ru);
-    expect(d.uk).toContain("Ukrainian for Ukraine");
+    expect(gad7Note).not.toContain(WORKING_TRANSLATION.uk);
+    expect(gad7Note).toContain("Ukrainian for Ukraine");
   });
 });
 

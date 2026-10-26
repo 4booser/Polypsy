@@ -40,13 +40,14 @@
 
 ## 1. Назначение
 
-Два вопроса за последние две недели — пункты 1–2 GAD-7 без изменений. Это фильтр, а не измерение тяжести: балл 3 и выше (порог руководства издателя; пациенты первичного звена США) означает «провести GAD-7 и клиническое интервью», а не «есть расстройство». Тексты пунктов и русские варианты ответа — официальные переводы правообладателя (Pfizer, phqscreeners.com: «Ukrainian for Ukraine», «Russian for Ukraine»); украинские варианты ответа — из официального PHQ-9 МЗ (приказ №1003), как у GAD-7.
+Два вопроса о тревоге за последние две недели.
 
 **Инструкция обследуемому:** За последние 2 недели как часто Вас беспокоили следующие проблемы? Вопросов всего два — отвечайте о том, как было на самом деле.
 
 ## 2. Источник
 
 - **Записано в системе** (журнал установки каталога, на языке записи): GAD-2, Kroenke, Spitzer, Williams, Monahan, Löwe, 2007 (public domain); текст — пункти 1–2 GAD-7 каталогу, переклад робочий
+- **Примечание для персонала** («Джерело» в паспорте методики, на языке записи): Пункти 1–2 GAD-7 без змін. Це фільтр, а не вимірювання тяжкості: бал 3 і вище (поріг посібника видавця; пацієнти первинної ланки США) означає «провести GAD-7 і клінічне інтерв’ю», а не «є розлад». Тексти пунктів — офіційні переклади правовласника (Pfizer, phqscreeners.com: «Ukrainian for Ukraine», «Russian for Ukraine»); українські варіанти відповіді — з офіційного PHQ-9 МОЗ (наказ №1003), як у GAD-7.
 - **Публикация по досье**: Kroenke K, Spitzer RL, Williams JBW, Monahan PO, Löwe B. Anxiety disorders in primary care: prevalence, impairment, comorbidity, and detection. Annals of Internal Medicine. 2007;146(5):317-325.
 - **Полосы по досье** (на языке досье): INSTRUCTION MANUAL, стр. 6: «The operating characteristics of these ultra-brief measures are quite good; the recommended cutpoints for each when used as screeners is a score of 3 or greater.» Стр. 2: «For the ultra-brief measures (PHQ-2 and GAD-2), a score of 3 or greater should prompt administration of the full PHQ-9 and/or GAD-7, as well as a clinical interview to determine whether a mental disorder is present.» Порог установлен на пациентах первичного звена США.
 - **Лицензия по досье**: свободна

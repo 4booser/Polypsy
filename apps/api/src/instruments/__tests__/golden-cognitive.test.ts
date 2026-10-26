@@ -9,9 +9,9 @@ import {
   type SurveyFull,
 } from "@quizzy/shared";
 import { detectRisks } from "../../lib/risk";
-import { ADEXI_INHIBITION, ADEXI_WORKING_MEMORY, adexi } from "../adexi";
+import { ADEXI_INHIBITION, ADEXI_WORKING_MEMORY, adexi, adexiNote } from "../adexi";
 import { WORKING_TRANSLATION } from "../common";
-import { fourAt } from "../fourAt";
+import { fourAt, fourAtNote } from "../fourAt";
 
 /**
  * Золотые протоколы группы «когнитивные функции, внимание, ЧМТ»
@@ -230,14 +230,15 @@ describe("группа cognitive: структура, язык, риск", () =>
   test("рабочий перевод назван только у украинского текста", () => {
     /*
      * У обеих методик украинского текста у правообладателя нет — рабочий перевод
-     * с оговоркой. Русский — перевод с сайта правообладателя: оговорка «рабочий
-     * перевод» назвала бы его чужим текстом каталога, то есть соврала бы в
-     * обратную сторону (как у CAGE).
+     * с оговоркой. Русский — перевод с сайта правообладателя: примечание так и
+     * говорит, а не называет его рабочим (как у CAGE). Всё это — в примечании
+     * для персонала («Джерело» паспорта); описание читает обследуемый.
      */
-    for (const d of [fourAt, adexi]) {
-      expect(desc(d).uk).toContain(WORKING_TRANSLATION.uk);
-      expect(desc(d).ru).not.toContain(WORKING_TRANSLATION.ru);
+    for (const note of [fourAtNote, adexiNote]) {
+      expect(note).toContain(WORKING_TRANSLATION.uk);
+      expect(note).toMatch(/Російський текст — переклад із сайту/);
     }
+    for (const d of [fourAt, adexi]) expect(desc(d).uk).not.toContain(WORKING_TRANSLATION.uk);
   });
 });
 
@@ -323,8 +324,11 @@ describe("золотой протокол: 4AT", () => {
     expect(detectRisks(survey, answersOf(survey, inOrder([2, 2, 2, 1])))).toEqual([]);
   });
 
-  test("атрибуция CC BY 4.0 — на обоих языках, с перечнем изменений", () => {
-    for (const text of [desc(fourAt).uk, desc(fourAt).ru]) {
+  test("атрибуция CC BY 4.0 — на обоих языках, с перечнем изменений, там, где методику проводят", () => {
+    // инструкция стоит на экране «Провести» и на бумажном бланке; полная атрибуция — и в примечании для персонала
+    const ins = fourAt.instructions as { uk: string; ru: string };
+    expect(fourAtNote).toContain("Adapted from the 4AT © 2011–2014 Alasdair MacLullich, Tracy Ryan and Helen Cash.");
+    for (const text of [ins.uk, ins.ru]) {
       expect(text).toContain("Adapted from the 4AT © 2011–2014 Alasdair MacLullich, Tracy Ryan and Helen Cash.");
       expect(text).toContain("Licensed under CC BY 4.0: https://creativecommons.org/licenses/by/4.0/.");
       expect(text).toContain("This version has been modified. Changes:");
