@@ -131,9 +131,12 @@ export function waitOf(r: Pick<Referral, "status" | "createdAt" | "updatedAt">, 
   return { kind: "none" };
 }
 
-/** Длительность словами-числами: «40 хв», «3 год», «2 дн.» — единицы приходят из словаря */
+/**
+ * Длительность словами-числами: «40 хв», «3 год», «2 дн.» — единицы приходят
+ * из словаря. Меньше минуты — «1 хв»: «виписано 0 хв тому» читалось как сбой.
+ */
 export function spanText(minutes: number, unit: { min: string; hour: string; day: string }): string {
-  if (minutes < 60) return `${minutes} ${unit.min}`;
+  if (minutes < 60) return `${Math.max(1, minutes)} ${unit.min}`;
   if (minutes < 24 * 60) return `${Math.round(minutes / 60)} ${unit.hour}`;
   return `${Math.round(minutes / (24 * 60))} ${unit.day}`;
 }

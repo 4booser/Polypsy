@@ -209,6 +209,9 @@ export default function ReferralsPage() {
   if (!rows) return <Loading rows={4} error={page.error} onRetry={page.reload} busy={page.loading} />;
 
   const openN = viewCount(counts, "open") ?? rows.filter(isOpen).length;
+  /* реестр пуст целиком — одна строка «Направлень немає», а не три пустые группы и «Показано 0 з 0» */
+  const total = page.total ?? rows.length;
+  const none = total === 0 && !page.hasMore;
   const immediate = rows.filter((r) => isOpen(r) && r.urgency === "immediate").length;
   const late = rows.filter((r) => waitOf(r, now).kind === "late").length;
   const done30 = rows.filter((r) => r.status === "completed" && closedWithin(r, now)).length;
@@ -335,7 +338,16 @@ export default function ReferralsPage() {
                 <th className={cx(th, "w-0")} aria-label={ut("kit.rowActions")} />
               </tr>
             </thead>
-            {groups.map((g) => (
+            {none ? (
+              <tbody>
+                <tr>
+                  <td colSpan={6} className="border-b border-divider px-4 py-4 text-small text-muted">
+                    {ut("ref.none")}
+                  </td>
+                </tr>
+              </tbody>
+            ) : null}
+            {(none ? [] : groups).map((g) => (
               <tbody key={g.key}>
                 {g.title ? (
                   <tr>
@@ -371,20 +383,21 @@ export default function ReferralsPage() {
           </table>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 border-t border-divider px-4 py-3">
-          <span className="text-small text-muted">
-            {fill(ut("ref2.shown"), { n: shown.length, loaded: rows.length, total: page.total ?? rows.length })}
-          </span>
-          {page.hasMore ? (
-            <Button variant="ghost" size="xs" className="ml-auto" disabled={page.loadingMore} onClick={page.loadMore}>
-              {page.loadingMore ? ut("ui.loadingMore") : ut("ui.loadMore")}
-            </Button>
-          ) : view === "open" ? (
-            <Button variant="ghost" size="xs" className="ml-auto" onClick={() => setViewRaw("completed")}>
-              {ut("ref2.allCompleted")}
-            </Button>
-          ) : null}
-        </div>
+        {none ? null : (
+          <div className="flex flex-wrap items-center gap-2 border-t border-divider px-4 py-3">
+            {/* сколько в виде из скольких в реестре; что успело загрузиться — дело кнопки «Завантажити ще» */}
+            <span className="text-small text-muted">{fill(ut("ref2.shown"), { n: shown.length, total })}</span>
+            {page.hasMore ? (
+              <Button variant="ghost" size="xs" className="ml-auto" disabled={page.loadingMore} onClick={page.loadMore}>
+                {page.loadingMore ? ut("ui.loadingMore") : ut("ui.loadMore")}
+              </Button>
+            ) : view === "open" && (viewCount(counts, "completed") ?? 1) > 0 ? (
+              <Button variant="ghost" size="xs" className="ml-auto" onClick={() => setViewRaw("completed")}>
+                {ut("ref2.allCompleted")}
+              </Button>
+            ) : null}
+          </div>
+        )}
         <KbdHints
           bar
           keys={[
