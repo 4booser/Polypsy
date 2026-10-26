@@ -14643,7 +14643,7 @@ export const UI = {
   "card.newNote": { uk: "Нова", ru: "Новая", en: "New" },
   "card.nextVisit": { uk: "Наступний прийом", ru: "Следующий приём", en: "Next appointment" },
   "card.noFree": { uk: "Вільних вікон найближчим часом немає.", ru: "Свободных окон в ближайшее время нет.", en: "No free slots coming up." },
-  "card.noLead": { uk: "ніхто", ru: "никто", en: "nobody" },
+  "card.noLead": { uk: "не закріплено", ru: "не закреплено", en: "not assigned" },
   "card.noMessages": { uk: "Листування ще немає.", ru: "Переписки ещё нет.", en: "No messages yet." },
   "card.noNextVisit": { uk: "Прийом не заплановано.", ru: "Приём не запланирован.", en: "No appointment planned." },
   "card.noNotes": { uk: "Нотаток ще немає.", ru: "Заметок ещё нет.", en: "No notes yet." },
