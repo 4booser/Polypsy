@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { Patient } from "../src/api";
-import { PatientPickerView, searchPatients } from "../src/components/PatientPicker";
+import { enterPick, PatientPickerView, searchPatients } from "../src/components/PatientPicker";
 import { LangProvider } from "../src/lang";
 import { loadAdminister } from "../src/pages/administerModel";
 import { assignChoices } from "../src/pages/batteries/model";
@@ -147,6 +147,20 @@ describe("выбор: что на экране", () => {
     expect(new RegExp(`id="${active}"[^>]*aria-selected="true"`).test(html)).toBe(true);
     // вторая строка пункта — подразделение, а без него почта
     expect(html).toContain("p002@clinic.ua");
+  });
+
+  test("выдача по прежнему запросу: видна приглушённой, Enter по ней никого не выбирает", () => {
+    /*
+     * Набрали новое и нажали Enter раньше ответа: поиск ждёт 300 мс, а
+     * useResource держит прежнюю выдачу. Подсвеченный в ней — человек из
+     * чужого поиска, и обследование ушло бы не тому пациенту.
+     */
+    const html = view({ found: { data: { items: zone.slice(0, 3), truncated: false }, error: null, stale: true } });
+    expect(html).toContain('aria-busy="true"');
+    expect(enterPick(zone.slice(0, 3), 1, true)).toBeNull();
+    // положительный контроль: выдача по набранному — Enter берёт подсвеченного
+    expect(enterPick(zone.slice(0, 3), 1, false)?.id).toBe("p002");
+    expect(view()).not.toContain("aria-busy");
   });
 
   test("закрытое поле списка не рисует и о нём не объявляет", () => {

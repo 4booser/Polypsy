@@ -103,7 +103,11 @@ export function latestResponseOf(survey: RespondentDynamics["surveys"][number]):
 export function instrumentRows(
   dynamics: RespondentDynamics | null | undefined,
   details: Record<string, ResponseDetail | null | undefined>,
-  limit = 8,
+  /*
+   * fold: false — каждая шкала своей строкой и без потолка строк: так их
+   * берут «Графіки», где у каждой шкалы свой график, а не таблица о человеке.
+   */
+  { limit = 8, fold: folding = true }: { limit?: number; fold?: boolean } = {},
 ): InstrumentRow[] {
   if (!dynamics) return [];
   const surveys = [...dynamics.surveys].sort((a, b) => Date.parse(b.lastAt ?? "") - Date.parse(a.lastAt ?? ""));
@@ -117,7 +121,7 @@ export function instrumentRows(
       return sc.points.length > 0 && (!kind || kind === "clinical");
     });
     if (!clinical.length) continue;
-    const fold = clinical.length > FOLD;
+    const fold = folding && clinical.length > FOLD;
     const scales = fold ? [heaviest(clinical)] : clinical;
     const single = scales.length === 1;
     const code = instrumentCode(sv.title);

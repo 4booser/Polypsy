@@ -93,6 +93,7 @@ function view(over: Partial<CardView> = {}): CardView {
     reloadPlan: () => {},
     details: {},
     rows: [],
+    chartRows: [],
     nextIsMine: false,
     slotId: null,
     setSlotId: () => {},

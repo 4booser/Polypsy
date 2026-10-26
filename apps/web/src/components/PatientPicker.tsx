@@ -36,9 +36,25 @@ export function searchPatients(query: string): Promise<PatientsFound> {
  * спрашивать, пока ничего не набрано (наборам первая сотня по алфавиту ни к
  * чему: предложения там появляются только под набранным).
  */
-export function usePatientSearch(query: string, options: { onlyTyped?: boolean } = {}): Resource<PatientsFound> {
-  const settled = useDebounced(query.trim(), 300);
-  return useResource(() => searchPatients(settled), [settled], { enabled: !options.onlyTyped || settled !== "" });
+export function usePatientSearch(
+  query: string,
+  options: { onlyTyped?: boolean } = {},
+): Resource<PatientsFound> & { stale: boolean } {
+  const typed = query.trim();
+  const settled = useDebounced(typed, 300);
+  const res = useResource(() => searchPatients(settled), [settled], { enabled: !options.onlyTyped || settled !== "" });
+  /*
+   * Выдача по прежнему запросу: набранное ещё не устоялось или ответ на него
+   * не пришёл, а useResource держит прежние данные на время загрузки. Enter по
+   * такой выдаче выбрал бы человека из чужого поиска — и обследование ушло бы
+   * не тому пациенту.
+   */
+  return { ...res, stale: typed !== settled || res.loading || res.refreshing };
+}
+
+/** Кого выбирает Enter: подсвеченного — и только из выдачи по тому, что набрано сейчас */
+export function enterPick(items: readonly Patient[], at: number, stale: boolean | undefined): Patient | null {
+  return stale ? null : (items[at] ?? null);
 }
 
 /** Вторая строка о человеке: подразделение, а без него — почта (она же вход) */
@@ -93,7 +109,8 @@ export function PatientPickerView({
   label: string;
   query: string;
   onQuery: (q: string) => void;
-  found: Pick<Resource<PatientsFound>, "data" | "error">;
+  /** stale — выдача по прежнему запросу: её видно, но Enter по ней не выбирает */
+  found: Pick<Resource<PatientsFound>, "data" | "error"> & { stale?: boolean };
   /** Выбранный; null — выбора нет, на месте плашки поле поиска */
   chosen: Patient | null;
   onPick: (p: Patient) => void;
@@ -165,7 +182,8 @@ export function PatientPickerView({
     }
     if (e.key === "Enter" && listed) {
       e.preventDefault();
-      const p = items[at];
+      // подсвеченный пункт прежней выдачи — не выбор: ждём выдачу по набранному
+      const p = enterPick(items, at, found.stale);
       if (p) onPick(p);
     }
   };
@@ -201,7 +219,7 @@ export function PatientPickerView({
       {open ? (
         <div ref={plateRef} className={PLATE} style={plateStyle}>
           {listed ? (
-            <ul id={id} role="listbox" aria-label={label} className="m-0 list-none p-0">
+            <ul id={id} role="listbox" aria-label={label} aria-busy={found.stale || undefined} className={cx("m-0 list-none p-0", found.stale && "opacity-60")}>
               {items.map((p, i) => (
                 <li
                   key={p.id}

@@ -215,6 +215,12 @@ describe("методики: строки таблицы", () => {
     expect(folded.title).toBe("Шкала 6");
     expect(folded.folded.map((s) => s.scaleId)).toEqual(["a0", "a1", "a2", "a3", "a4", "a6", "a7"]);
     expect(rows[1]!.folded).toEqual([]);
+
+    // «Графіки» — без свёртки и без потолка: у каждой шкалы свой график, СР-45 не вытесняется
+    const charts = instrumentRows(many, {}, { fold: false, limit: Number.POSITIVE_INFINITY });
+    expect(charts.filter((r) => r.surveyId === "s1").map((r) => r.scaleId)).toEqual(["a0", "a1", "a2", "a3", "a4", "a5", "a6", "a7"]);
+    expect(charts.filter((r) => r.surveyId === "s2")).toHaveLength(2);
+    expect(charts.every((r) => r.folded.length === 0)).toBe(true);
   });
 
   test("до трёх шкал — по строке на шкалу, подпись строки — шкала, методика — над группой", () => {

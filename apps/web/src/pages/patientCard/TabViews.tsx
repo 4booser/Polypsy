@@ -93,7 +93,7 @@ export function MeasuresTab({ v }: { v: CardView }) {
 export function DynamicsTab({ v }: { v: CardView }) {
   const { ut } = useLang();
   if (!v.dynamics) return <Loading rows={4} error={v.dynamicsError} onRetry={v.reloadDynamics} />;
-  const rows = v.rows.filter((r) => r.points.length > 0);
+  const rows = v.chartRows.filter((r) => r.points.length > 0);
   const events = courseEventsFromTimeline(v.timeline ?? []);
   if (!rows.length) return <Empty title={ut("pcard.noTests")} />;
   return (

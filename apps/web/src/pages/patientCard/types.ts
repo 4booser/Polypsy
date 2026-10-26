@@ -52,6 +52,8 @@ export interface CardView {
   reloadPlan: () => void;
   details: Record<string, ResponseDetail | null>;
   rows: InstrumentRow[];
+  /** Те же строки без свёртки и без потолка — по графику на каждую шкалу («Графіки») */
+  chartRows: InstrumentRow[];
   /** Я ли веду ближайший приём: перенос — только в свои окна */
   nextIsMine: boolean;
   /** Выбранный слот переноса — общий у панели «Наступний прийом» и ящика */

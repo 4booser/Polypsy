@@ -151,6 +151,11 @@ function CardRecord({
   );
   const details = useResourceMap("rd", latestIds, api.responseDetail);
   const rows = useMemo(() => instrumentRows(dynamics.data, details), [dynamics.data, details]);
+  /* «Графіки» — все шкалы каждой методики: свёртка многошкальной методики нужна таблице «Методики», а не графикам */
+  const chartRows = useMemo(
+    () => instrumentRows(dynamics.data, details, { fold: false, limit: Number.POSITIVE_INFINITY }),
+    [dynamics.data, details],
+  );
 
   const tl = (timeline.data ?? null) as TimelineRow[] | null;
   const visits = useMemo(() => visitsOf(tl ?? []), [tl]);
@@ -229,6 +234,7 @@ function CardRecord({
     reloadPlan: plans.reload,
     details,
     rows,
+    chartRows,
     nextIsMine: !!next && !!me && next.specialist.trim() === me,
     slotId,
     setSlotId,

@@ -219,8 +219,8 @@ export function PatientChooser({ value, onChange }: { value: Patient | null; onC
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "ArrowDown") step(e, -1);
-            /* один найденный — Enter берёт его сразу */
-            if (e.key === "Enter" && items.length === 1) {
+            /* один найденный — Enter берёт его сразу; но не из выдачи по прежнему запросу (stale) */
+            if (e.key === "Enter" && items.length === 1 && !found.stale) {
               e.preventDefault();
               onChange(items[0]!);
             }
