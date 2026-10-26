@@ -279,75 +279,74 @@ const SHORT_LADDER = 3;
  * Результат на протоколе стоит первым, над ответами, — и лестница из пяти
  * полос с рекомендациями отодвигала ответы на полэкрана. Где стоит значение,
  * уже показывает шкала тяжести над ней, а тексты соседних полос нужны редко.
- * Поэтому длинная лестница свёрнута до смысла и рекомендации попавшей
- * полосы, остальное — под «Усі смуги»; короткая видна целиком.
+ * Поэтому длинная лестница свёрнута до попавшей полосы — той же строкой, что
+ * в раскрытой, — остальные под «Усі смуги»; короткая видна целиком.
  */
 function BandLadder({ bands }: { bands: ResponseDetailScore["bands"] }) {
   const { ut } = useLang();
-  const dec = useDecimal();
   const [open, setOpen] = useState(false);
   const sorted = [...bands].sort((a, b) => a.minScore - b.minScore);
   const long = sorted.length > SHORT_LADDER;
-  const hit = sorted.find((b) => b.hit) ?? null;
-  const toggle = long ? (
-    <Button variant="quiet" size="xs" className="mt-2" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
-      {open ? ut("rch.less") : ut("rp.bandsAll").replace("{n}", String(sorted.length))}
-    </Button>
-  ) : null;
-
-  if (long && !open) {
-    return (
-      <>
-        {hit && (hit.description || hit.recommendation) ? (
-          <div className="mt-4 flex flex-col gap-1.5 rounded-[12px] bg-panel-2 px-4 py-3 text-small text-text-2">
-            {hit.description ? <p className="m-0 whitespace-pre-line text-text">{hit.description}</p> : null}
-            {hit.recommendation ? (
-              <p className="m-0 whitespace-pre-line">
-                <b className="font-bold text-text">{ut("rch.recommendation")}:</b> {hit.recommendation}
-              </p>
-            ) : null}
-          </div>
-        ) : null}
-        {toggle}
-      </>
-    );
-  }
-
+  const shown = long && !open ? sorted.filter((b) => b.hit) : sorted;
   return (
     <>
-      <ol className="m-0 mt-4 list-none p-0">
-        {sorted.map((b) => (
-          <li
-            key={b.id}
-            className={cx(
-              "grid grid-cols-[64px_minmax(0,1fr)] gap-x-3 border-t border-divider px-2 py-3 first:border-t-0",
-              b.hit && "rounded-[12px] border-t-transparent bg-violet-tint [&+li]:border-t-transparent",
-            )}
-          >
-            <span className="pt-0.5 text-small font-extrabold text-text tabular-nums">
-              {dec(b.minScore)}–{dec(b.maxScore)}
-            </span>
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <SeverityTag level={b.severity} small>
-                  {b.label}
-                </SeverityTag>
-                {b.hit ? (
-                  <Tag tone="primary">
-                    {ut("kit.thisOne")}
-                    <span className="sr-only"> — {ut("rsp.hitBand")}</span>
-                  </Tag>
-                ) : null}
-              </div>
-              {b.recommendation || b.description ? (
-                <p className="m-0 mt-1.5 whitespace-pre-line text-small text-text-2">{b.recommendation ?? b.description}</p>
-              ) : null}
-            </div>
-          </li>
-        ))}
-      </ol>
-      {toggle}
+      {shown.length ? (
+        <ol className="m-0 mt-4 list-none p-0">
+          {shown.map((b) => (
+            <BandRow key={b.id} band={b} />
+          ))}
+        </ol>
+      ) : null}
+      {long ? (
+        <Button variant="quiet" size="xs" className="mt-2" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+          {open ? ut("rch.less") : ut("rp.bandsAll").replace("{n}", String(sorted.length))}
+        </Button>
+      ) : null}
     </>
+  );
+}
+
+/**
+ * Строка лестницы: границы, ступень словом и текст полосы. У попавшей —
+ * подсветка, пометка словом и оба текста, смысл и рекомендация: это и есть
+ * толкование результата. У соседних — один текст, рекомендация, а без неё смысл.
+ */
+function BandRow({ band: b }: { band: ResponseDetailScore["bands"][number] }) {
+  const { ut } = useLang();
+  const dec = useDecimal();
+  const texts = b.hit ? [b.description, b.recommendation] : [b.recommendation ?? b.description];
+  return (
+    <li
+      className={cx(
+        "grid grid-cols-[64px_minmax(0,1fr)] gap-x-3 border-t border-divider px-2 py-3 first:border-t-0",
+        b.hit && "rounded-[12px] border-t-transparent bg-violet-tint [&+li]:border-t-transparent",
+      )}
+    >
+      <span className="pt-0.5 text-small font-extrabold text-text tabular-nums">
+        {dec(b.minScore)}–{dec(b.maxScore)}
+      </span>
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <SeverityTag level={b.severity} small>
+            {b.label}
+          </SeverityTag>
+          {b.hit ? (
+            <Tag tone="primary">
+              {ut("kit.thisOne")}
+              <span className="sr-only"> — {ut("rsp.hitBand")}</span>
+            </Tag>
+          ) : null}
+        </div>
+        {texts.map((t, i) =>
+          t ? (
+            <p key={i} className={cx("m-0 mt-1.5 whitespace-pre-line text-small", b.hit ? "text-text" : "text-text-2")}>
+              {b.hit && i === 1 ? <b className="font-bold">{ut("rch.recommendation")}: </b> : null}
+              {t}
+            </p>
+          ) : null,
+        )}
+      </div>
+    </li>
   );
 }
 
