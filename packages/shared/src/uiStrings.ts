@@ -762,9 +762,9 @@ export const UI = {
     en: "Scores are not calculated for this completion",
   },
   "rsp.notSubmitted": {
-    uk: "Проходження не здано: бали рахуються після здачі",
-    ru: "Прохождение не сдано: баллы считаются после сдачи",
-    en: "Completion not submitted: scores are calculated after submission",
+    uk: "Проходження не завершено: бали рахуються після завершення",
+    ru: "Прохождение не завершено: баллы считаются после завершения",
+    en: "Attempt not completed: scores are calculated on completion",
   },
   /*
    * Баллы вариантов и границы диапазонов берутся из действующей версии
@@ -791,14 +791,7 @@ export const UI = {
    * написание. Свести всё к одному слову — решение заказчика, и стоит оно
    * правки словаря, а не экрана.
    */
-  "cn3.modelsNone": {
-    uk: "Для цього тесту аналітичних моделей немає",
-    ru: "Для этого теста аналитических моделей нет",
-    en: "There are no analytics models for this test",
-  },
-  /* перед текстом отказа сервера: тот говорит о правах и номере запроса, а не о том, чего не стало на экране */
-  "cn3.modelsUnavailable": { uk: "Список моделей недоступний", ru: "Список моделей недоступен", en: "Model list unavailable" },
-  "cn3.addTest": { uk: "Додати тест: призначити батарею", ru: "Добавить тест: назначить батарею", en: "Add test: assign a battery" },
+  "cn3.addTest": { uk: "Призначити набір методик", ru: "Назначить набор методик", en: "Assign an instrument set" },
   /* скрытые пометки для диктора: заливка и начертание ему не видны */
   "cn3.form": { uk: "Підписати й сформувати", ru: "Подписать и сформировать", en: "Sign and generate" },
   "cn3.actions": { uk: "Дії із заключенням", ru: "Действия с заключением", en: "Conclusion actions" },
@@ -850,9 +843,9 @@ export const UI = {
    * Подписи нужны диктору: на кадре кнопки набраны глифами «B», «I», «U».
    */
   "fmt.unavailable": {
-    uk: "Форматування буде доступне, коли сервер оголосить формат зберігання тексту",
-    ru: "Форматирование будет доступно, когда сервер объявит формат хранения текста",
-    en: "Formatting will be available once the server declares the text storage format",
+    uk: "Форматування недоступне: заключення зберігається простим текстом",
+    ru: "Форматирование недоступно: заключение хранится простым текстом",
+    en: "Formatting is unavailable: the conclusion is stored as plain text",
   },
   "fmt.bold": { uk: "Напівжирний", ru: "Полужирный", en: "Bold" },
   "fmt.italic": { uk: "Курсив", ru: "Курсив", en: "Italic" },
@@ -1301,9 +1294,9 @@ export const UI = {
   },
   "fast.pasteApply": { uk: "Заповнити", ru: "Заполнить", en: "Fill in" },
   "fast.pasteCount": {
-    uk: "У рядку {got} відповідей, а пунктів {need}. Заповнювати частково не будемо",
-    ru: "В строке {got} ответов, а пунктов {need}. Заполнять частично не будем",
-    en: "The row has {got} answers, but there are {need} items. It will not be filled in partially",
+    uk: "Відповідей у рядку: {got}, пунктів: {need} — рядок не застосовано",
+    ru: "Ответов в строке: {got}, пунктов: {need} — строка не применена",
+    en: "Answers in the row: {got}, items: {need} — the row was not applied",
   },
   "fast.pasteBadAt": {
     uk: "Пункт {n}: «{value}» — такого варіанта немає",
@@ -1443,8 +1436,14 @@ export const UI = {
 
   /* черновик заключения из результатов */
   "cn.fromResults": { uk: "Зібрати з результатів", ru: "Собрать из результатов", en: "Build from results" },
-  "cn.draftHeader": { uk: "Обстежений", ru: "Обследованный", en: "Examinee" },
-  "cn.draftAge": { uk: "років", ru: "лет", en: "years old" },
+  /* «ПІБ», а не «Обстежений»: причастие мужского рода стояло и над обследованной */
+  "cn.draftHeader": { uk: "ПІБ", ru: "ФИО", en: "Name" },
+  /* формы по числу через «|» (ui/plural.ts, withCount): «21 рік», «22 роки», «37 років» */
+  "cn.draftAge": {
+    uk: "{n} рік|{n} роки|{n} років|{n} року",
+    ru: "{n} год|{n} года|{n} лет|{n} года",
+    en: "{n} year old|{n} years old|{n} years old|{n} years old",
+  },
   "cn.draftMethod": { uk: "Методика", ru: "Методика", en: "Instrument" },
   "cn.draftDate": { uk: "Дата обстеження", ru: "Дата обследования", en: "Assessment date" },
   "cn.draftScales": { uk: "Показники", ru: "Показатели", en: "Scores" },
@@ -1718,15 +1717,12 @@ export const UI = {
    * «⋯» над выборкой. Сами действия с экрана не ушли — ушли с глаз.
    */
   /*
-   * Раздел бургера с дверями, которых кадр не рисует на самом экране.
-   * Два адреса — /responses/:id/conclusion/draft и /patient-groups/:id/edit —
-   * были заведены и остались без единой ссылки: попасть можно было только
-   * набрав адрес руками. Кадр (f14, f36) в обоих местах рисует строку
-   * заголовка чистой, поэтому дверь встала туда же, куда уже встали входы
-   * клинической карты, — в бургер.
+   * Раздел колонки с дверями, которых кадр не рисует на самом экране: правка
+   * названия группы (/patient-groups/:id/edit). Кадр f14 рисует строку
+   * заголовка чистой, поэтому дверь встала в колонку подразделов. Черновик
+   * заключения отсюда ушёл: его инструменты стоят на самом листе.
    */
   "tools.screen": { uk: "Інструменти екрана", ru: "Инструменты экрана", en: "Screen tools" },
-  "tools.conclusionDraft": { uk: "Чернетка заключення", ru: "Черновик заключения", en: "Conclusion draft" },
 
   /* ─────────── направления ─────────── */
   "ref.title": { uk: "Направлення", ru: "Направления", en: "Referrals" },
@@ -1805,17 +1801,17 @@ export const UI = {
    * «достовірно» читается как «значит, лечение подействовало», чего RCI не
    * утверждает.
    */
-  "rch.tabsLabel": { uk: "Проходження тесту", ru: "Прохождение теста", en: "Test completion" },
+  "rch.tabsLabel": { uk: "Проходження методики", ru: "Прохождение методики", en: "Instrument attempt" },
   "rch.tabAnswers": { uk: "Відповіді", ru: "Ответы", en: "Answers" },
   "rch.tabCharts": { uk: "Графіки", ru: "Графики", en: "Charts" },
   "rch.result": { uk: "Результат", ru: "Результат", en: "Result" },
   "rch.dynamics": { uk: "Динаміка", ru: "Динамика", en: "Progress" },
   "rch.contribution": { uk: "Внесок пунктів", ru: "Вклад пунктов", en: "Item contributions" },
-  "rch.answering": { uk: "Як відповідав", ru: "Как отвечал", en: "How it was answered" },
+  "rch.answering": { uk: "Хід заповнення", ru: "Ход заполнения", en: "Completion pattern" },
   "rch.interpretation": { uk: "Що означає результат", ru: "Что означает результат", en: "What the result means" },
   "rch.recommendation": { uk: "Рекомендація", ru: "Рекомендация", en: "Recommendation" },
   "rch.noBands": {
-    uk: "без інтерпретаційних меж: методика не задає для цієї шкали полос",
+    uk: "без інтерпретаційних меж: методика не задає для цієї шкали смуг",
     ru: "без интерпретационных границ: методика не задаёт для этой шкалы полос",
     en: "no interpretation bands: the instrument defines none for this scale",
   },
@@ -1845,7 +1841,7 @@ export const UI = {
     en: "the instrument changed between measurements — scores are not directly comparable",
   },
   "rch.mixedVersions": {
-    uk: "Методику змінювали між замірами: межі полос показано за версією цього проходження",
+    uk: "Методику змінювали між замірами: межі смуг показано за версією цього проходження",
     ru: "Методику меняли между замерами: границы полос показаны по версии этого прохождения",
     en: "The instrument changed between measurements: bands follow the version of this completion",
   },
@@ -1865,9 +1861,9 @@ export const UI = {
     en: "The version of the instrument that was taken is unavailable — item contributions are not computed",
   },
   "rch.answeringHint": {
-    uk: "Це підказка тому, хто розбирає протокол, а не вирок: швидку відповідь дає і людина, яка знає її заздалегідь, а змінена відповідь буває просто уважністю.",
-    ru: "Это подсказка тому, кто разбирает протокол, а не приговор: быстрый ответ даёт и человек, который знает его заранее, а изменённый ответ бывает просто внимательностью.",
-    en: "A hint for the reviewer, not a verdict: a quick answer can come from someone who knew it in advance, and a changed answer can simply be care.",
+    uk: "Підказка для розбору протоколу, а не висновок.",
+    ru: "Подсказка для разбора протокола, а не вывод.",
+    en: "A hint for reviewing the record, not a verdict.",
   },
   "rch.timeChart": { uk: "Час на кожен пункт", ru: "Время на каждый пункт", en: "Time per item" },
   "rch.timeCaption": {
@@ -1878,7 +1874,7 @@ export const UI = {
   "rch.threshold": { uk: "поріг", ru: "порог", en: "threshold" },
   "rch.aboveAxis": { uk: "вище за край осі", ru: "выше края оси", en: "above the axis" },
   "rch.fastList": { uk: "Швидше за поріг", ru: "Быстрее порога", en: "Faster than the threshold" },
-  "rch.changedList": { uk: "Змінював відповідь", ru: "Менял ответ", en: "Changed the answer" },
+  "rch.changedList": { uk: "Відповідь змінено", ru: "Ответ изменён", en: "Answer changed" },
   "rch.noneWord": { uk: "немає", ru: "нет", en: "none" },
   "rch.noTimes": {
     uk: "Час на пунктах не записано — проходження вводили без замірів",
@@ -4547,7 +4543,6 @@ export const UI = {
   },
 
   "adn.whoIsTested": { uk: "Кого обстежуємо", ru: "Кого обследуем", en: "Who is being assessed" },
-  "adn.pickPatient": { uk: "— оберіть пацієнта —", ru: "— выберите пациента —", en: "— select a patient —" },
   "adn.saved": { uk: "Обстеження збережено", ru: "Обследование сохранено", en: "Assessment saved" },
   "adn.byClinician": { uk: "Заповнення фахівцем", ru: "Заполнение специалистом", en: "Completed by specialist" },
 
@@ -11912,7 +11907,7 @@ export const UI = {
     ru: "Открыть разбор сигналов этого человека (R)",
     en: "Open this person’s signal review (R)",
   },
-  "rp.reviewedBy": { uk: "розібрав {name}", ru: "разобрал {name}", en: "reviewed by {name}" },
+  "rp.reviewedBy": { uk: "розібрано ({name})", ru: "разобрано ({name})", en: "reviewed by {name}" },
   "rp.overdue": { uk: "норму розбору перевищено", ru: "норма разбора превышена", en: "review deadline passed" },
   "rp.outcome.confirmed": { uk: "ризик підтвердився", ru: "риск подтвердился", en: "risk confirmed" },
   "rp.outcome.not_confirmed": { uk: "ризик не підтвердився", ru: "риск не подтвердился", en: "risk not confirmed" },
@@ -11946,7 +11941,6 @@ export const UI = {
   "rp.item": { uk: "Пункт", ru: "Пункт", en: "Item" },
   "rp.score": { uk: "Бал", ru: "Балл", en: "Score" },
   "rp.fromDate": { uk: "Від {d}", ru: "От {d}", en: "Since {d}" },
-  "rp.fromStart": { uk: "Від старту, {d}", ru: "От старта, {d}", en: "Since start, {d}" },
   "rp.before": { uk: "{d} було", ru: "{d} было", en: "on {d}" },
   "rp.notInSum": { uk: "не входить у суму", ru: "не входит в сумму", en: "not in the total" },
   "rp.firstThen": {
@@ -11994,7 +11988,7 @@ export const UI = {
   "rp.ans.changed": { uk: "змінено відповідей: {n}", ru: "изменено ответов: {n}", en: "answers changed: {n}" },
   "rp.ans.skipped": { uk: "пропущено: {n}", ru: "пропущено: {n}", en: "skipped: {n}" },
   "rp.ans.fast": { uk: "швидше за поріг: {n}", ru: "быстрее порога: {n}", en: "faster than the threshold: {n}" },
-  "rp.ans.clean": { uk: "пропусків і поспіхів немає", ru: "пропусков и спешки нет", en: "nothing skipped or rushed" },
+  "rp.ans.clean": { uk: "пропусків і поспішних відповідей немає", ru: "пропусков и поспешных ответов нет", en: "nothing skipped or rushed" },
   "rp.ans.details": { uk: "Детально", ru: "Подробно", en: "Details" },
   "rp.ans.lgChanged": { uk: "відповідь змінювали", ru: "ответ меняли", en: "answer changed" },
   "rp.ans.lgOther": { uk: "інші пункти", ru: "остальные пункты", en: "other items" },
@@ -12004,9 +11998,8 @@ export const UI = {
     en: "from “{from}” to “{to}” after {s} s",
   },
   "rp.attempt": { uk: "Проходження", ru: "Прохождение", en: "Attempt" },
-  "rp.submitted": { uk: "Здано", ru: "Сдано", en: "Submitted" },
   "rp.kv.method": { uk: "Методика", ru: "Методика", en: "Method" },
-  "rp.kv.submitted": { uk: "Здано", ru: "Сдано", en: "Submitted" },
+  "rp.kv.submitted": { uk: "Завершено", ru: "Завершено", en: "Completed" },
   "rp.kv.started": { uk: "Почато", ru: "Начато", en: "Started" },
   "rp.kv.source": { uk: "Джерело", ru: "Источник", en: "Source" },
   "rp.kv.duration": { uk: "Тривалість", ru: "Длительность", en: "Duration" },
@@ -12014,30 +12007,25 @@ export const UI = {
   "rp.kv.reliability": { uk: "Достовірність", ru: "Достоверность", en: "Validity" },
   "rp.kv.lead": { uk: "Веде", ru: "Ведёт", en: "Lead" },
   "rp.src.assigned": { uk: "за призначенням", ru: "по назначению", en: "assigned" },
-  "rp.src.self": { uk: "сам, без призначення", ru: "сам, без назначения", en: "self-initiated" },
+  "rp.src.self": { uk: "самостійно, без призначення", ru: "самостоятельно, без назначения", en: "self-initiated" },
   "rp.src.kiosk": { uk: "кіоск", ru: "киоск", en: "kiosk" },
-  "rp.src.clinician": { uk: "заповнив фахівець", ru: "заполнил специалист", en: "entered by a clinician" },
+  "rp.src.clinician": { uk: "заповнено фахівцем", ru: "заполнено специалистом", en: "entered by a clinician" },
   "rp.src.informant": { uk: "зі слів іншої людини", ru: "со слов другого человека", en: "from an informant" },
   "rp.src.intake": { uk: "скринінг при записі", ru: "скрининг при записи", en: "intake screening" },
   "rp.concl.afterSubmit": {
-    uk: "Заключення пишеться після здачі проходження.",
-    ru: "Заключение пишется после сдачи прохождения.",
-    en: "A conclusion is written once the attempt is submitted.",
+    uk: "Заключення пишеться після завершення проходження.",
+    ru: "Заключение пишется после завершения прохождения.",
+    en: "A conclusion is written once the attempt is completed.",
   },
-  "rp.concl.none": { uk: "Заключення ще не писали.", ru: "Заключение ещё не писали.", en: "No conclusion yet." },
+  "rp.concl.none": { uk: "Заключення ще немає.", ru: "Заключения ещё нет.", en: "No conclusion yet." },
   "rp.concl.draft": { uk: "Чернетка", ru: "Черновик", en: "Draft" },
   "rp.concl.signed": { uk: "Підписано", ru: "Подписано", en: "Signed" },
   "rp.concl.editedBy": { uk: "{name}, змінено {at}", ru: "{name}, изменено {at}", en: "{name}, edited {at}" },
-  "rp.concl.signedBy": { uk: "Підписав {name}, {at}", ru: "Подписал {name}, {at}", en: "Signed by {name}, {at}" },
+  "rp.concl.signedBy": { uk: "Підписано: {name}, {at}", ru: "Подписано: {name}, {at}", en: "Signed by {name}, {at}" },
   "rp.concl.continue": { uk: "Продовжити", ru: "Продолжить", en: "Continue" },
   "rp.concl.open": { uk: "Відкрити", ru: "Открыть", en: "Open" },
   "rp.concl.sign": { uk: "Підписати", ru: "Подписать", en: "Sign" },
   "rp.rules": { uk: "Що далі за правилами", ru: "Что дальше по правилам", en: "What the rules suggest" },
-  "rp.rulesNone": {
-    uk: "Правила по цьому проходженню нічого не запропонували.",
-    ru: "Правила по этому прохождению ничего не предложили.",
-    en: "The rules suggested nothing for this attempt.",
-  },
   "rp.hitAccepted": { uk: "погоджено", ru: "согласовано", en: "accepted" },
   "rp.hitDeclined": { uk: "відхилено", ru: "отклонено", en: "declined" },
   "rp.dynSub": { uk: "замірів: {n}", ru: "замеров: {n}", en: "{n} measurements" },
@@ -12093,7 +12081,6 @@ export const UI = {
     ru: "Сигналы этого прохождения",
     en: "This attempt’s signals",
   },
-  "cnx.signalsSub": { uk: "з розбору сигналу", ru: "из разбора сигнала", en: "from the signal review" },
   "cnx.report": { uk: "Друкований звіт", ru: "Печатный отчёт", en: "Printed report" },
   "cnx.reportSub": {
     uk: "PDF із протоколом і заключенням",
@@ -12114,11 +12101,6 @@ export const UI = {
   "cnx.matched": { uk: "відповідає", ru: "соответствует", en: "matches" },
   "cnx.notMatched": { uk: "не відповідає", ru: "не соответствует", en: "doesn’t match" },
   "cnx.noSigned": { uk: "підписаних версій ще немає", ru: "подписанных версий ещё нет", en: "no signed version yet" },
-  "cnx.historyNone": {
-    uk: "Версій ще немає: збережіть чернетку.",
-    ru: "Версий ещё нет: сохраните черновик.",
-    en: "No versions yet: save a draft.",
-  },
   "adx.title": { uk: "Заповнення за пацієнта", ru: "Заполнение за пациента", en: "Entering for a patient" },
   "adx.itemsCount": { uk: "пунктів: {n}", ru: "пунктов: {n}", en: "{n} items" },
   "adx.paper": { uk: "Паперовий бланк", ru: "Бумажный бланк", en: "Paper form" },
@@ -12153,9 +12135,9 @@ export const UI = {
   "adx.preliminary": { uk: "Попередній підсумок", ru: "Предварительный итог", en: "Preliminary total" },
   "adx.soFar": { uk: "поки що", ru: "пока что", en: "so far" },
   "adx.serverCounts": {
-    uk: "Остаточну суму, смугу й рекомендацію рахує сервер після збереження.",
-    ru: "Окончательную сумму, полосу и рекомендацию считает сервер после сохранения.",
-    en: "The server computes the final total, band and recommendation after saving.",
+    uk: "Остаточна сума, смуга й рекомендація — після збереження.",
+    ru: "Окончательная сумма, полоса и рекомендация — после сохранения.",
+    en: "The final total, band and recommendation appear after saving.",
   },
   "adx.range": {
     uk: "За пунктами, що лишились, сума буде від {min} до {max}.",
@@ -16478,6 +16460,30 @@ export const UI = {
   // ── ux-card ──
 
   // ── ux-results ──
+  /* протокол: длинная лестница полос свёрнута до попавшей, кнопка раскрывает все */
+  "rp.bandsAll": { uk: "Усі смуги: {n}", ru: "Все полосы: {n}", en: "All bands: {n}" },
+  /* подсказка пилюли попытки: голое число рядом с «частка 0,34» результата читалось загадкой */
+  "rp.attemptScore": { uk: "{scale}: сирий бал {v}", ru: "{scale}: сырой балл {v}", en: "{scale}: raw score {v}" },
+  /* лист заключения: замок подписи — одной строкой, сами сигналы перечислены ниже списком */
+  "cnx.lockOne": {
+    uk: "Підписати можна після розбору сигналу ризику цього проходження",
+    ru: "Подписать можно после разбора сигнала риска этого прохождения",
+    en: "You can sign once this attempt’s risk signal is reviewed",
+  },
+  "cnx.lockMany": {
+    uk: "Підписати можна після розбору сигналів ризику цього проходження: {n}",
+    ru: "Подписать можно после разбора сигналов риска этого прохождения: {n}",
+    en: "You can sign once this attempt’s risk signals are reviewed: {n}",
+  },
+  "cnx.lockNoteMany": {
+    uk: "Підпис відкриється після розбору сигналів ризику цього проходження.",
+    ru: "Подпись откроется после разбора сигналов риска этого прохождения.",
+    en: "Signing opens once this attempt’s risk signals are reviewed.",
+  },
+  /* заполнение за пациента: одно поле с поиском вместо поиска и списка рядом; выбранный — плашкой */
+  "pp.placeholder": { uk: "Прізвище, ім’я або пошта", ru: "Фамилия, имя или почта", en: "Surname, name or email" },
+  "pp.change": { uk: "Змінити", ru: "Изменить", en: "Change" },
+  "pp.changeWho": { uk: "Змінити пацієнта", ru: "Изменить пациента", en: "Change patient" },
 
   // ── ux-risk ──
 

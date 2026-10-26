@@ -282,6 +282,23 @@ describe("пройденный тест: разметка сетки", () => {
 
 const SRC = resolve(import.meta.dir, "../src");
 
+describe("пройденный тест: порядок", () => {
+  /*
+   * Протокол открывают ради результата, а он стоял под всеми пунктами — у
+   * СР-45 это 2500 px прокрутки на 1280. Сторож по исходнику: панель
+   * результата в колонке протокола идёт раньше панели ответов.
+   */
+  test("результат — над ответами", () => {
+    const src = readFileSync(join(SRC, "pages/response/index.tsx"), "utf8");
+    const view = src.slice(src.indexOf("export default function ResponseView"), src.indexOf("export function AnswersPanel"));
+    const result = view.indexOf("<ResultPanel");
+    const answers = view.indexOf("<AnswersPanel");
+    expect(result).toBeGreaterThan(0);
+    expect(answers).toBeGreaterThan(0);
+    expect(result, "панель результата стоит под ответами").toBeLessThan(answers);
+  });
+});
+
 function codeFiles(dir: string): string[] {
   const out: string[] = [];
   for (const name of readdirSync(dir)) {
@@ -329,10 +346,9 @@ describe("пройденный тест: адрес", () => {
         const conclusionDeclared = /path="\/responses\/:id\/conclusion"/.test(APP);
         if (conclusionDeclared && /^\/responses\/\$\{[^}]+\}\/conclusion$/.test(m[1]!)) continue;
         /*
-         * Тот же экран с инструментами черновика — «/responses/:id/conclusion/draft».
-         * Пропуск ровно на тех же условиях: пока маршрут объявлен. Дверь в него
-         * ведёт из бургера (Topbar.tsx), и без этой строки сторож принимал бы
-         * её за зов в пустоту.
+         * Прежний адрес черновика — «/responses/:id/conclusion/draft», теперь
+         * перенаправление на лист заключения (App.tsx). Пропуск ровно на тех
+         * же условиях: пока маршрут объявлен.
          */
         const draftDeclared = /path="\/responses\/:id\/conclusion\/draft"/.test(APP);
         if (draftDeclared && /^\/responses\/\$\{[^}]+\}\/conclusion\/draft$/.test(m[1]!)) continue;

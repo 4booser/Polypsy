@@ -21,18 +21,26 @@ import { attemptHref } from "./frame";
  * Попытка в переключателе ведёт на ту же вкладку другой попытки: смотревший
  * графики хочет графики соседнего замера, а не его протокол. «[» и «]» —
  * предыдущая и следующая попытка.
+ *
+ * Число в пилюле — сырой балл главной шкалы, и голое «12» рядом с «частка
+ * 0,34» результата читалось загадкой. Шире переключатель не стал: что это
+ * за число, говорит подсказка («Схильність…: сирий бал 12») и скрытая
+ * подпись для диктора.
  */
 export function ResponseTabs({
   surveyId,
   responseId,
   nav,
   charts,
+  scale,
 }: {
   surveyId: string;
   responseId: string;
   /** null — попыток не знаем (прохождение без человека, обстановка не пришла) */
   nav: AttemptNav | null;
   charts: boolean;
+  /** Название главной шкалы — чьё число стоит в пилюлях */
+  scale: string | null;
 }) {
   const { ut } = useLang();
   const navigate = useNavigate();
@@ -64,9 +72,16 @@ export function ResponseTabs({
           </span>
           <span className="inline-flex items-center gap-0.5 rounded-[12px] bg-sunk p-[3px]">
             {nav.chips.map((c) => {
+              const score =
+                c.value !== null ? ut("rp.attemptScore").replace("{scale}", scale ?? "").replace("{v}", fmt(c.value)) : null;
               const body = (
                 <>
-                  {c.value !== null ? <b className="font-extrabold tabular-nums">{fmt(c.value)}</b> : null}
+                  {score !== null ? (
+                    <b className="font-extrabold tabular-nums">
+                      <span className="sr-only">{ut("norm.raw")} </span>
+                      {fmt(c.value!)}
+                    </b>
+                  ) : null}
                   <small className="text-[11.5px] font-semibold text-muted">{day(c.at)}</small>
                 </>
               );
@@ -74,28 +89,24 @@ export function ResponseTabs({
                 "inline-flex h-[30px] items-baseline gap-[5px] whitespace-nowrap rounded-[9px] px-2.5 pt-[7px] text-[13px] leading-none no-underline",
                 c.current ? "bg-panel text-violet-ink shadow-tile" : "text-text-2 hover:bg-sunk-2 hover:text-text hover:no-underline",
               );
-              if (c.current) {
-                return (
-                  <span key={c.id} aria-current="page" className={cls}>
-                    {body}
-                  </span>
-                );
-              }
-              const link = (
+              const step = c.id === nav.prev ? ut("rp.prevAttempt") : c.id === nav.next ? ut("rp.nextAttempt") : null;
+              const tip = [step, score].filter((s): s is string => !!s).join(" · ");
+              const kbd = c.id === nav.prev ? "[" : c.id === nav.next ? "]" : undefined;
+              const chip = c.current ? (
+                <span key={c.id} aria-current="page" className={cls}>
+                  {body}
+                </span>
+              ) : (
                 <Link key={c.id} to={attemptHref(surveyId, c.id, charts)} className={cls}>
                   {body}
                 </Link>
               );
-              return c.id === nav.prev ? (
-                <Tooltip key={c.id} label={ut("rp.prevAttempt")} kbd="[">
-                  {link}
-                </Tooltip>
-              ) : c.id === nav.next ? (
-                <Tooltip key={c.id} label={ut("rp.nextAttempt")} kbd="]">
-                  {link}
+              return tip ? (
+                <Tooltip key={c.id} label={tip} kbd={kbd}>
+                  {chip}
                 </Tooltip>
               ) : (
-                link
+                chip
               );
             })}
           </span>
