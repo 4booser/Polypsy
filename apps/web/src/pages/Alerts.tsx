@@ -62,17 +62,18 @@ import {
 const PAGE = 30;
 
 /**
- * Сколько минут в человекочитаемом виде.
+ * Сколько минут в человекочитаемом виде: «12 хв», «5 год», «27 дн.» — для
+ * подписей «… тому» и «за …» в строке очереди.
  *
  * Отрицательное или нечисло — часы клиента разошлись с сервером: «-5 хв
  * тому» читалось бы как время из будущего, а не как сбой. Прочерк честнее.
  */
 function duration(minutes: number, ut: (k: UiKey) => string): string {
   if (!Number.isFinite(minutes) || minutes < 0) return "—";
-  if (minutes < 60) return `${Math.round(minutes)} ${ut("dur.min")}`;
+  if (minutes < 60) return `${Math.max(1, Math.round(minutes))} ${ut("dur.min")}`;
   const hours = Math.round(minutes / 60);
-  if (hours < 48) return `${hours} ${ut("dur.hour")}`;
-  return `${Math.round(hours / 24)} ${ut("dur.day")}`;
+  if (hours < 48) return `${hours} ${ut("rr.hours")}`;
+  return ut("rr.days").replace("{n}", String(Math.round(hours / 24)));
 }
 
 /** Виды очереди пилюлями: открытые, на мне, разобранные, все — состояние и «хто розбирає» в адресе */
@@ -606,12 +607,9 @@ export function QueueRow({
   const level = SEVERITY_LEVEL[c.severity] ?? "moderate";
   const outcome = c.outcome ? OUTCOME_KEY[c.outcome] : null;
   const clock = riskClock(c, now);
-  const timer =
-    clock.norm !== null
-      ? ut("kit.timerOf")
-          .replace("{elapsed}", clockText(clock.elapsed, ut("rr.days")))
-          .replace("{of}", normText(clock.norm, { h: ut("rr.hours"), min: ut("dur.min") }))
-      : clockText(clock.elapsed, ut("rr.days"));
+  /* у каждого числа в строке — своё слово: «останній сигнал 9 дн. тому», «відкрито 27 дн. тому» */
+  const sinceSignal = duration((now - Date.parse(c.lastAlertAt)) / 60_000, ut);
+  const waited = duration(waitingMinutes(c, now), ut);
   const overdue = !done && rowOverdue(c);
   const mine = !!c.assignedTo && c.assignedTo === me;
 
@@ -625,7 +623,7 @@ export function QueueRow({
     </Tag>
   ) : (
     <Tag tone="danger" icon={<Ic.timer />}>
-      {ut("card.rsSignal").replace("{t}", timer)}
+      {ut("al.lastSignalAgo").replace("{t}", sinceSignal)}
     </Tag>
   );
   const next = done
@@ -679,7 +677,10 @@ export function QueueRow({
             {ut("cases.overdue")}
           </Tag>
         ) : (
-          <span className="ml-auto whitespace-nowrap text-muted">{duration(waitingMinutes(c, now), ut)}</span>
+          /* разобранный — сколько он был открыт; открытый — с какого времени человек ждёт (с самого раннего случая) */
+          <span className="ml-auto whitespace-nowrap text-muted">
+            {ut(done ? "al.reviewedIn" : "al.openedAgo").replace("{t}", waited)}
+          </span>
         )}
       </span>
     </button>

@@ -5734,8 +5734,6 @@ export const UI = {
   "dq.needAtLeast": { uk: "потрібно ≥", ru: "нужно ≥", en: "need ≥" },
   "dq.notShownDash": { uk: "— не показується", ru: "— не показывается", en: "— not shown" },
   "dq.pairsLower": { uk: "пар", ru: "пар", en: "pairs" },
-  "dur.day": { uk: "дн", ru: "дн", en: "d" },
-  "dur.hour": { uk: "год", ru: "ч", en: "h" },
   "dur.min": { uk: "хв", ru: "мин", en: "min" },
   "inv.copyCode": { uk: "Копіювати код", ru: "Копировать код", en: "Copy code" },
   "inv.copyLink": { uk: "Копіювати посилання", ru: "Копировать ссылку", en: "Copy link" },
@@ -16461,6 +16459,10 @@ export const UI = {
   /* случай риска: кто отвечает за разбор (pages/Alerts.tsx, строка «Відповідальний») */
   "al.assigneeNone": { uk: "не призначено", ru: "не назначен", en: "not assigned" },
   "al.assigneeYou": { uk: "Ви", ru: "Вы", en: "You" },
+  /* строка очереди случаев: каждое число со своим словом (pages/Alerts.tsx, QueueRow) */
+  "al.lastSignalAgo": { uk: "останній сигнал {t} тому", ru: "последний сигнал {t} назад", en: "last signal {t} ago" },
+  "al.openedAgo": { uk: "відкрито {t} тому", ru: "открыт {t} назад", en: "opened {t} ago" },
+  "al.reviewedIn": { uk: "розібрано за {t}", ru: "разобран за {t}", en: "reviewed in {t}" },
 
   // ── ux-methods ──
 
