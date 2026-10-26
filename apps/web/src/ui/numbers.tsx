@@ -92,19 +92,21 @@ export function ChangeCell({
     <div className="flex flex-col gap-1.5">
       <span
         className={cx(
-          "flex whitespace-nowrap text-small",
-          inline ? "flex-row items-baseline gap-1.5" : "flex-col items-start gap-px",
+          "flex text-small",
+          inline ? "flex-row items-baseline gap-1.5 whitespace-nowrap" : "flex-col items-start gap-px",
           good ? "font-bold text-good" : rel === "worse" ? "font-bold text-warn" : "text-text-2",
         )}
       >
-        <span className={cx("text-[15px] font-extrabold leading-[18px]", good ? "text-good" : rel === "worse" ? "text-warn" : "text-text")}>
+        <span className={cx("whitespace-nowrap text-[15px] font-extrabold leading-[18px]", good ? "text-good" : rel === "worse" ? "text-warn" : "text-text")}>
           {signed(delta, unit, lang)}
         </span>
-        {word}
+        {/* в узкой колонке таблицы слово переносится, а не уходит за край («в пределах / погрешности») */}
+        {inline ? word : <span className="leading-[15px]">{word}</span>}
       </span>
-      <span className="flex items-center gap-1.5 whitespace-nowrap text-[11.5px] leading-none text-muted">
+      {/* «поріг 19 в. п.» не влезает рядом с полоской в узкой колонке — встаёт под неё, а не за край */}
+      <span className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[11.5px] leading-none text-muted">
         <RelMeter delta={delta} threshold={threshold} good={good} />
-        {ut("kit.threshold").replace("{n}", `${decimal(threshold, lang)}${unit ?? ""}`)}
+        <span className="whitespace-nowrap">{ut("kit.threshold").replace("{n}", `${decimal(threshold, lang)}${unit ?? ""}`)}</span>
       </span>
     </div>
   );

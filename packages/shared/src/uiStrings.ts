@@ -14643,7 +14643,7 @@ export const UI = {
   "card.grpWork": { uk: "Інші справи", ru: "Другие дела", en: "Other tasks" },
   "card.hide": { uk: "сховати", ru: "скрыть", en: "hide" },
   "card.inApp": { uk: "у застосунку", ru: "в приложении", en: "in the app" },
-  "card.instrFoot": { uk: "Зміна надійна, коли перевищує поріг RCI (95 %): риска на смужці. Наведіть на число — дата, тяжкість і зміна; стрілка розгортає подробиці.", ru: "Изменение надёжно, когда превышает порог RCI (95 %): риска на полоске. Наведите на число — дата, тяжесть и изменение; стрелка раскрывает подробности.", en: "A change is reliable when it exceeds the RCI threshold (95%), the tick on the bar. Hover a number for the date, severity and change; the arrow expands the details." },
+  "card.instrFoot": { uk: "Зміна надійна, коли перевищує поріг RCI (95 %) — риску на смужці.", ru: "Изменение надёжно, когда превышает порог RCI (95 %) — риску на полоске.", en: "A change is reliable when it exceeds the RCI threshold (95%), the tick on the bar." },
   "card.instrSub": { uk: "замірів: {n}", ru: "замеров: {n}", en: "measurements: {n}" },
   "card.instruments": { uk: "Методики", ru: "Методики", en: "Instruments" },
   "card.itemN": { uk: "Пункт {n}", ru: "Пункт {n}", en: "Item {n}" },
@@ -16470,6 +16470,8 @@ export const UI = {
   "asgd.set": { uk: "Набір", ru: "Набор", en: "Set" },
   "asgd.setSearch": { uk: "Пошук набору за назвою", ru: "Поиск набора по названию", en: "Find a set by name" },
   "asgd.noSets": { uk: "Наборів для призначення немає", ru: "Наборов для назначения нет", en: "No sets to assign" },
+  /* таблица «Методики» карточки: свёрнутая методика из многих шкал — остальные шкалы в раскрытии строки */
+  "card.xScales": { uk: "Інші шкали", ru: "Другие шкалы", en: "Other scales" },
 
   // ── ux-results ──
 

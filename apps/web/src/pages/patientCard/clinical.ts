@@ -43,6 +43,27 @@ export interface InstrumentRow {
   /** Лестница полос шкалы — из последнего прохождения (та версия, что человек видел) */
   rungs: Rung[];
   scale: ScaleDynamics;
+  /**
+   * Остальные содержательные шкалы методики, свёрнутые в эту строку: у
+   * методики больше FOLD шкал строкой стоит самая тяжёлая, прочие — в
+   * раскрытии строки. Пусто — методика не свёрнута.
+   */
+  folded: ScaleDynamics[];
+}
+
+/**
+ * Больше стольких содержательных шкал — методика встаёт одной строкой.
+ * Прежде восемь шкал «Адаптивності-200» занимали все шесть строк таблицы, и
+ * СР-45 с сигналом того же дня в неё не попадал вовсе.
+ */
+export const FOLD = 3;
+
+const RANK: Record<string, number> = { none: 0, mild: 1, moderate: 2, severe: 3 };
+
+/** Шкала, которой свёрнутая методика говорит одним числом: последний замер тяжелее, при равенстве — первая */
+function heaviest(scales: ScaleDynamics[]): ScaleDynamics {
+  const lastOf = (sc: ScaleDynamics) => [...sc.points].sort((a, b) => Date.parse(a.submittedAt) - Date.parse(b.submittedAt)).at(-1);
+  return scales.reduce((best, sc) => ((RANK[lastOf(sc)?.severity ?? "none"] ?? 0) > (RANK[lastOf(best)?.severity ?? "none"] ?? 0) ? sc : best));
 }
 
 /** Лестница полос шкалы из прохождения: полосы той версии, по которой человек отвечал */
@@ -73,13 +94,16 @@ export function latestResponseOf(survey: RespondentDynamics["surveys"][number]):
 
 /**
  * Строки таблицы методик: по шкале на строку, свежие методики первыми,
- * не больше `limit`. Сдвиг — только у сравнимых концов (incomparable —
- * то же правило, что в динамике и сводке), порог — MDC95 из основы RCI.
+ * не больше `limit`. Методика больше чем из FOLD шкал — одной строкой (самая
+ * тяжёлая шкала, прочие в раскрытии): таблица — о человеке по всем
+ * методикам, а не о восьми шкалах одной. Сдвиг — только у сравнимых концов
+ * (incomparable — то же правило, что в динамике и сводке), порог — MDC95 из
+ * основы RCI.
  */
 export function instrumentRows(
   dynamics: RespondentDynamics | null | undefined,
   details: Record<string, ResponseDetail | null | undefined>,
-  limit = 6,
+  limit = 8,
 ): InstrumentRow[] {
   if (!dynamics) return [];
   const surveys = [...dynamics.surveys].sort((a, b) => Date.parse(b.lastAt ?? "") - Date.parse(a.lastAt ?? ""));
@@ -88,10 +112,13 @@ export function instrumentRows(
     const latest = latestResponseOf(sv);
     const detail = latest ? details[latest] : null;
     /* шкалы достоверности («L», «F») говорят о бланке, а не о человеке — в таблицу методик не идут */
-    const scales = sv.scales.filter((sc) => {
+    const clinical = sv.scales.filter((sc) => {
       const kind = detail?.scores.find((x) => x.scaleId === sc.scaleId)?.kind;
       return sc.points.length > 0 && (!kind || kind === "clinical");
     });
+    if (!clinical.length) continue;
+    const fold = clinical.length > FOLD;
+    const scales = fold ? [heaviest(clinical)] : clinical;
     const single = scales.length === 1;
     const code = instrumentCode(sv.title);
     for (const sc of scales) {
@@ -121,6 +148,7 @@ export function instrumentRows(
         incomparable,
         rungs,
         scale: sc,
+        folded: fold ? clinical.filter((x) => x !== sc) : [],
       });
       if (rows.length >= limit) return rows;
     }
