@@ -336,7 +336,8 @@ function Referrals() {
   if (!data.referrals.length) {
     return (
       <div className="px-4 pb-1">
-        <Empty compact title={ut("ref.none")} hint={ut("case.refNoneHint")} />
+        {/* как выписать — видно и так: кнопка «Виписати направлення» стоит в шапке этой же панели */}
+        <Empty compact title={ut("ref.none")} />
       </div>
     );
   }

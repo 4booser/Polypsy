@@ -4,7 +4,7 @@ import { dateTime, day, timeOfDay } from "../../format";
 import { useLang } from "../../lang";
 import { AlertChip, AlertStrip, Avatar, Ic, Kbd, Popover, RiskChip, RiskTimer, Tooltip } from "../../ui";
 import { ActionMenu } from "../../ui/menu";
-import { Button, Tabs } from "../../ui/primitives";
+import { Button, ButtonLink, Tabs } from "../../ui/primitives";
 import { clockText, normText, riskClock } from "../alerts/model";
 import { ageOf, instrumentCode } from "./clinical";
 import { dm } from "./format";
@@ -115,7 +115,14 @@ export const Banner = forwardRef<
               </div>
             </div>
           </Popover>
-          <div className="ml-auto flex shrink-0 items-center gap-2 self-start">{here}</div>
+          <div className="ml-auto flex shrink-0 items-center gap-2 self-start">
+            {here}
+            {/* вторая запись того же человека — словом на виду, как «Картка пацієнта» в шапке клинической карты */}
+            <ButtonLink to={`/patients/${card.id}/case`} variant="ghost" size="xs">
+              <Ic.layers size={14} className="mr-1.5" />
+              {ut("pcard.clinical")}
+            </ButtonLink>
+          </div>
         </div>
         <div className="mt-2.5 flex min-w-0 justify-end">
           <div role="group" aria-label={ut("card.actionsLabel")} className="flex shrink-0 items-center gap-1.5">
@@ -163,7 +170,6 @@ export const Banner = forwardRef<
                   disabled: leadBusy,
                   onSelect: onToggleLead,
                 },
-                { key: "case", label: ut("pcard.clinical"), icon: <Ic.layers size={15} />, to: `/patients/${card.id}/case` },
               ]}
             />
           </div>
@@ -172,7 +178,7 @@ export const Banner = forwardRef<
       </div>
       {/* полоса вкладок узкая (1280 со списком) — счётчики уходят, подписи остаются */}
       <div className="@container flex min-w-0 items-center gap-2 py-2">
-        <div className="min-w-0 overflow-x-auto [scrollbar-width:none] [&>[role=tablist]]:flex-nowrap @max-[960px]:[&_[role=tab]>span]:hidden">
+        <div className="min-w-0 overflow-x-auto [scrollbar-width:none] [&>[role=tablist]]:flex-nowrap @max-[880px]:[&_[role=tab]>span]:hidden">
           <Tabs
             label={ut("card.tabsLabel")}
             items={CARD_TABS.map((t) => ({
@@ -185,15 +191,6 @@ export const Banner = forwardRef<
             }))}
           />
         </div>
-        <Link
-          to={`/patients/${card.id}/case`}
-          className="ml-auto inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-control px-3 text-body font-bold text-violet-ink no-underline hover:bg-tab-hover hover:no-underline @max-[1080px]:px-2.5"
-          title={ut("pcard.clinical")}
-        >
-          <Ic.layers size={15} />
-          <span className="@max-[1080px]:sr-only">{ut("pcard.clinical")}</span>
-
-        </Link>
       </div>
     </section>
   );
