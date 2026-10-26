@@ -185,7 +185,7 @@ test("на первом приёме видно, что человек здес�
   await page.goto("/today");
   await dayRow(page, own.id).locator('a[href^="/visit/"]').click();
 
-  const marker = page.getByText(/Был у|Первый приём здесь/).first();
+  const marker = page.getByText(/Предыдущий приём|Первый приём здесь/).first();
   await expect(marker).toBeVisible();
 });
 

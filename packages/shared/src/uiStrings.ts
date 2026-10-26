@@ -1084,9 +1084,9 @@ export const UI = {
   "cases.emptyOpen": { uk: "Відкритих випадків немає", ru: "Открытых случаев нет", en: "No open cases" },
   "cases.emptyAll": { uk: "Випадків немає", ru: "Случаев нет", en: "No cases" },
   "cases.emptyHint": {
-    uk: "Випадок заводиться, коли обстежуваний позначає критичний пункт",
-    ru: "Случай заводится, когда обследуемый отмечает критический пункт",
-    en: "A case is opened when a respondent marks a critical item",
+    uk: "Випадок відкривається за критичною відповіддю або смугою шкали",
+    ru: "Случай открывается по критическому ответу или полосе шкалы",
+    en: "A case opens on a critical answer or a scale band",
   },
   "cases.mergedNote": {
     uk: "випадок зібрано автоматично під час переходу на нову модель",
@@ -6057,9 +6057,9 @@ export const UI = {
   "cases.sectionSevere": { uk: "Важкі", ru: "Тяжёлые", en: "Severe" },
   "cases.peopleSub": { uk: "Людей на розбір {n}", ru: "Людей на разбор {n}", en: "People to review {n}" },
   "cases.resolvedSub": {
-    uk: "Розібрані випадки: рішення, хто і коли його ухвалив",
-    ru: "Разобранные случаи: решение, кто и когда его принял",
-    en: "Reviewed cases: the decision, who made it and when",
+    uk: "Рішення, хто і коли його ухвалив",
+    ru: "Решение, кто и когда его принял",
+    en: "The decision, who made it and when",
   },
   "cases.casesN": { uk: "випадків: {n}", ru: "случаев: {n}", en: "cases: {n}" },
   "cases.queueLabel": { uk: "Черга випадків", ru: "Очередь случаев", en: "Case queue" },

@@ -551,7 +551,7 @@ export default function Alerts() {
           /* «ничего не выбрано» — не то же, что «ничего нет» */
           <div className="p-5">
             <Empty
-              title={ut(rows.length ? "cases.pickOne" : "cases.emptyOpen")}
+              title={ut(rows.length ? "cases.pickOne" : emptyQueueKey(filters))}
               hint={ut(rows.length ? "cases.pickOneHint" : "cases.emptyHint")}
               icon={<Ic.shieldCheck />}
             />
