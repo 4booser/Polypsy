@@ -8,7 +8,6 @@ import { useLang } from "../lang";
 import { onAppEvent } from "../events";
 import { usePagedResource, useResource } from "../useResource";
 import {
-  ActivityList,
   AlertStrip,
   Avatar,
   Empty,
@@ -23,7 +22,6 @@ import {
   useAction,
   useHotkeys,
   useUrlState,
-  type ActivityEvent,
 } from "../ui";
 import { cx } from "../ui/cx";
 import { Panel } from "../ui/layout";
@@ -1092,58 +1090,108 @@ const ACTION_KEY: Record<string, UiKey> = {
   "alert.acknowledge": "al.hResolved",
 };
 
+/** Строка хронологии случая: время, значок, жирное начало и текст в две строки */
+interface HistoryRow {
+  t: number;
+  at: string;
+  tone: "risk" | "good" | "neutral";
+  icon: ReactNode;
+  head: ReactNode;
+  text: ReactNode;
+}
+
+const HISTORY_TONE: Record<HistoryRow["tone"], string> = {
+  risk: "bg-risk-tint text-risk-ink",
+  good: "bg-good-tint text-good",
+  neutral: "bg-sunk text-muted",
+};
+
 /**
  * Хронология случая: сигналы и действия по нему из журнала (кто брал, кто
  * отпускал, кто и с каким исходом разобрал). Заступивший видит, почему
  * случай ещё открыт, не расспрашивая предыдущую смену.
+ *
+ * Строки короткие (колонка в 300 px): время, номер пункта и сам пункт — не
+ * больше двух строк; дата — заголовком над строками своего дня. Номера и
+ * тексты пунктов — из основания случая: панель «Підстава» читает его под тем
+ * же именем, второго запроса (и второй записи в журнал) нет. Пока основание
+ * не пришло — готовые подписи сигналов из строки очереди.
  */
 function HistoryPanel({ c }: { c: AlertCase }) {
   const { ut } = useLang();
   const res = useResource(() => api.alertCaseHistory(c.id).catch(() => []), [c.id, c.lastAlertAt, c.assignedTo, c.acknowledgedAt], {
     keep: false,
   });
-  const events: (ActivityEvent & { t: number })[] = [];
-  for (const s of c.signals) {
-    events.push({
-      t: Date.parse(s.at),
-      date: dm(s.at),
-      time: timeOfDay(s.at),
-      icon: <Ic.alert />,
-      tone: "risk",
-      text: (
-        <>
-          <b>{ut("card.evSignal")}</b>: {s.label}
-        </>
-      ),
-    });
+  const basis = useResource(() => api.alertCaseSignals(c.id), [c.id, c.lastAlertAt], { key: "riskReview:signals" });
+  const rows: HistoryRow[] = [];
+  if (basis.data) {
+    for (const s of basis.data) {
+      rows.push({
+        t: Date.parse(s.at),
+        at: s.at,
+        tone: "risk",
+        icon: <Ic.alert />,
+        head:
+          s.kind === "option" && s.questionNumber !== null
+            ? ut("al.itemN").replace("{n}", String(s.questionNumber))
+            : (s.scaleTitle ?? ut("card.evSignal")),
+        text: s.kind === "option" ? (s.questionTitle ?? s.label) : (s.bandLabel ?? s.label),
+      });
+    }
+  } else {
+    for (const s of c.signals) {
+      rows.push({ t: Date.parse(s.at), at: s.at, tone: "risk", icon: <Ic.alert />, head: ut("card.evSignal"), text: s.label });
+    }
   }
   for (const h of res.data ?? []) {
     const key = ACTION_KEY[h.action];
     if (!key) continue;
     const outcome = typeof h.details?.outcome === "string" ? OUTCOME_KEY[h.details.outcome as keyof typeof OUTCOME_KEY] : null;
-    events.push({
+    rows.push({
       t: Date.parse(h.at),
-      date: dm(h.at),
-      time: timeOfDay(h.at),
-      icon: h.action === "alert.acknowledge" ? <Ic.circleCheck /> : <Ic.user />,
+      at: h.at,
       tone: h.action === "alert.acknowledge" ? "good" : "neutral",
+      icon: h.action === "alert.acknowledge" ? <Ic.circleCheck /> : <Ic.user />,
+      head: ut(key),
       text: (
         <>
-          {ut(key)} <b>{h.actorName}</b>
+          {h.actorName}
           {outcome ? <span className="text-muted">, {ut(outcome)}</span> : null}
         </>
       ),
     });
   }
-  events.sort((a, b) => a.t - b.t);
+  rows.sort((a, b) => a.t - b.t);
   return (
-    <Panel title={ut("al.history")} icon={<Ic.history />} sub={dm(c.openedAt)} flush>
+    <Panel title={ut("al.history")} icon={<Ic.history />} flush>
       {!res.data && res.loading ? (
         <div className="px-4 pb-4">
           <Loading rows={3} bare />
         </div>
-      ) : events.length ? (
-        <ActivityList events={events.map(({ t: _t, ...e }) => e)} />
+      ) : rows.length ? (
+        <ol className="m-0 list-none border-t border-divider p-0 pb-1.5">
+          {rows.map((r, i) => {
+            const date = dm(r.at);
+            const newDay = i === 0 || dm(rows[i - 1]!.at) !== date;
+            return (
+              <li key={i}>
+                {newDay ? <p className="m-0 px-4 pb-0.5 pt-2.5 text-caption font-bold text-muted">{date}</p> : null}
+                <div className="grid grid-cols-[38px_22px_minmax(0,1fr)] items-start gap-x-2 px-4 py-1.5 text-[13px] leading-[18px]">
+                  <span className="pt-0.5 font-bold tabular-nums text-text-2">{timeOfDay(r.at)}</span>
+                  <span
+                    aria-hidden
+                    className={cx("mt-px inline-grid size-[20px] place-items-center rounded-full [&>svg]:size-3", HISTORY_TONE[r.tone])}
+                  >
+                    {r.icon}
+                  </span>
+                  <span className="line-clamp-2 min-w-0 text-text">
+                    <b className={cx("font-extrabold", r.tone === "risk" && "text-risk-ink")}>{r.head}</b> {r.text}
+                  </span>
+                </div>
+              </li>
+            );
+          })}
+        </ol>
       ) : (
         <p className="m-0 border-t border-divider px-4 py-3.5 text-small text-muted">{ut("tl.empty")}</p>
       )}

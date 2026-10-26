@@ -16463,6 +16463,8 @@ export const UI = {
   "al.lastSignalAgo": { uk: "останній сигнал {t} тому", ru: "последний сигнал {t} назад", en: "last signal {t} ago" },
   "al.openedAgo": { uk: "відкрито {t} тому", ru: "открыт {t} назад", en: "opened {t} ago" },
   "al.reviewedIn": { uk: "розібрано за {t}", ru: "разобран за {t}", en: "reviewed in {t}" },
+  /* хронология случая: номер пункта перед его текстом (pages/Alerts.tsx, HistoryPanel) */
+  "al.itemN": { uk: "п. {n}", ru: "п. {n}", en: "item {n}" },
 
   // ── ux-methods ──
 
