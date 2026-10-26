@@ -212,7 +212,6 @@ export const UI = {
    */
   "top.patients": { uk: "Пацієнти", ru: "Пациенты", en: "Patients" },
   "top.groups": { uk: "Групи", ru: "Группы", en: "Groups" },
-  "top.tests": { uk: "Тести", ru: "Тесты", en: "Tests" },
   "top.analytics": { uk: "Аналітика", ru: "Аналитика", en: "Analytics" },
   "top.statistics": { uk: "Статистика", ru: "Статистика", en: "Statistics" },
   /*
@@ -251,12 +250,12 @@ export const UI = {
   "pcard.subscribed": { uk: "Пацієнта закріплено за вами", ru: "Пациент закреплён за вами", en: "The patient is now linked to you" },
   "pcard.unsubscribed": { uk: "Закріплення знято", ru: "Закрепление снято", en: "Link removed" },
   "pcard.conclusions": { uk: "Заключення", ru: "Заключения", en: "Conclusions" },
-  "pcard.result": { uk: "Результат тесту", ru: "Результат теста", en: "Test result" },
+  "pcard.result": { uk: "Результат", ru: "Результат", en: "Result" },
   /* имя меню за знаком «+» раздела «Заключення»: пункты — сданные тесты, по которым его можно написать */
   "pcard.newConclusion": { uk: "Нове заключення", ru: "Новое заключение", en: "New conclusion" },
   /* имя меню за шестерёнкой: дверь к прежней карте — огляд, динаміка, хронологія */
   "pcard.clinical": { uk: "Клінічна карта", ru: "Клиническая карта", en: "Clinical record" },
-  "pcard.noTests": { uk: "Пройдених тестів ще немає", ru: "Пройденных тестов ещё нет", en: "No completed tests yet" },
+  "pcard.noTests": { uk: "Пройдених методик ще немає", ru: "Пройденных методик ещё нет", en: "No completed instruments yet" },
   "pcard.noConclusions": { uk: "Заключень ще немає", ru: "Заключений ещё нет", en: "No conclusions yet" },
   "pcard.noScores": { uk: "Балів немає", ru: "Баллов нет", en: "No scores" },
   "pcard.unreliable": { uk: "Протокол недостовірний", ru: "Протокол недостоверный", en: "Invalid protocol" },

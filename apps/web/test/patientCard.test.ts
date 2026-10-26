@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import type { PatientCard } from "@quizzy/shared";
 import type { ConclusionVersion } from "../src/api";
-import { conclusionName, leadAction, resultText, statsText, withConclusion, withLead } from "../src/pages/patientCard/model";
+import { conclusionName, leadAction, resultRows, withConclusion, withLead } from "../src/pages/patientCard/model";
 
 /**
  * Карточка пациента (Polypsy 2.0, «Дія без переходу»): то, что на живом
@@ -26,28 +26,29 @@ describe("карточка пациента: вкладка «Заміри»", (
     { code: "D", title: "Депресія", value: 3, normalization: "raw" as const, percent: 15, bandLabel: null, severity: null },
   ];
 
-  test("«Результат» — балл и полоса каждой шкалы одной строкой", () => {
-    expect(resultText(scales, { none: "Балів немає" })).toBe("Тривожність: 14 — підвищена; Депресія: 3");
-    expect(resultText([], { none: "Балів немає" })).toBe("Балів немає");
+  test("«Результат» — каждая шкала своей строкой: название, балл и полоса", () => {
+    expect(resultRows(scales)).toEqual([
+      { title: "Тривожність", value: "14", band: "підвищена" },
+      { title: "Депресія", value: "3", band: null },
+    ]);
+    expect(resultRows([])).toEqual([]);
   });
 
-  test("«Статистика» — дата, доля от максимума по шкалам, недостоверность словом; без « · »", () => {
-    expect(statsText({ submittedAt: "2026-03-01T10:00:00Z", reliable: true, scales }, { unreliable: "Протокол недостовірний" }, iso)).toBe(
-      "d:2026-03-01T10:00:00Z, A 70%, D 15%",
-    );
-    expect(statsText({ submittedAt: null, reliable: false, scales: [] }, { unreliable: "Протокол недостовірний" }, iso)).toBe(
-      "Протокол недостовірний",
-    );
-  });
-
-  test("доля — процентом, дробь — запятой языка: «57%», а не «0.571»; «18,8%», а не «18.8%»", () => {
+  test("доля — процентом, дробь — запятой языка: «57%», а не «0.571»; «64,2», а не «64.24»", () => {
     const ratio = [
       { code: "Sr", title: "Схильність", value: 0.571, normalization: "ratio" as const, percent: 57.1, bandLabel: "середній", severity: "moderate" as const },
       { code: "Pa", title: "Параноя", value: 64.24, normalization: "tscore" as const, percent: 18.8, bandLabel: null, severity: null },
     ];
     // вне браузера язык консоли — русский: дробь пишется запятой
-    expect(resultText(ratio, { none: "—" })).toBe("Схильність: 57% — середній; Параноя: 64,2");
-    expect(statsText({ submittedAt: null, reliable: true, scales: ratio }, { unreliable: "—" }, iso)).toBe("Sr 57,1%, Pa 18,8%");
+    expect(resultRows(ratio).map((r) => r.value)).toEqual(["57%", "64,2"]);
+  });
+
+  test("колонки «Статистика» нет: служебные коды шкал и доля от максимума на экран не идут", () => {
+    const tabs = readFileSync(join(SRC, "pages/patientCard/TabViews.tsx"), "utf8");
+    const measures = tabs.slice(tabs.indexOf("export function MeasuresTab"), tabs.indexOf("export function DynamicsTab"));
+    expect(measures).not.toContain("top.statistics");
+    expect(measures).not.toMatch(/\.code\b|\.percent\b/);
+    expect(measures).toContain('ut("card.tMeasures")');
   });
 
   test("имя заключения — методика; черновик помечен словом", () => {
