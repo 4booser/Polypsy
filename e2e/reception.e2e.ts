@@ -247,5 +247,5 @@ test("бланк вводится с клавиатуры и строкой це
   // строка не той длины не применяется вовсе, и сказано почему
   await page.getByLabel("Вставить строку ответов").fill("1,2");
   await page.getByRole("button", { name: "Заполнить" }).click();
-  await expect(page.getByText(/Заполнять частично не будем/)).toBeVisible();
+  await expect(page.getByText(/строка не применена/)).toBeVisible();
 });

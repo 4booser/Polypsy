@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
 import { UI, type DecisionRule, type ResponseContextSignal, type RuleHit } from "@quizzy/shared";
 import { api, type ConclusionState, type ConclusionVersion } from "../src/api";
-import { ConclusionEditor } from "../src/components/ConclusionEditor";
+import { ConclusionEditor, buildDraft } from "../src/components/ConclusionEditor";
 import { LangProvider } from "../src/lang";
 import { applicableModels, resultLines, signLock } from "../src/pages/Conclusion";
 import { signGate, signLockedBySignal } from "../src/pages/response/context";
@@ -213,6 +213,57 @@ describe("подпись после разбора сигнала", () => {
     expect(unknown).toContain(UI["cnx.lockUnknownTitle"].uk);
     // это не сигнал, а отказ загрузки: строка у кнопки — не «після розбору сигналу»
     expect(unknown).not.toContain(UI["rp.signLocked"].uk);
+  });
+});
+
+/*
+ * «Зібрати з результатів» пишет абзац, который уходит в подписанный текст:
+ * «Обстежений» (мужской род) стоял и над обследованной, «21 років» — одной
+ * формой на любое число, дробное — точкой. Мутация: вернуть String(value)
+ * или одно «років» — строка черновика расходится с ожидаемой.
+ */
+describe("черновик из результатов — словами листа", () => {
+  test("ПІБ без рода, возраст формой по числу, дробное — запятой", async () => {
+    const g = globalThis as { localStorage?: Storage; sessionStorage?: Storage };
+    const saved = { fetch: globalThis.fetch, localStorage: g.localStorage, sessionStorage: g.sessionStorage };
+    const memory = (): Storage => {
+      const data = new Map<string, string>();
+      return {
+        get length() {
+          return data.size;
+        },
+        clear: () => data.clear(),
+        getItem: (k) => data.get(k) ?? null,
+        key: (i) => [...data.keys()][i] ?? null,
+        removeItem: (k) => void data.delete(k),
+        setItem: (k, val) => void data.set(k, String(val)),
+      };
+    };
+    g.localStorage = memory();
+    g.sessionStorage = memory();
+    const draft = {
+      patient: { fullName: "Петренко Ірина Олегівна", age: 21, unit: "1-й батальйон" },
+      surveyTitle: "PHQ-9",
+      submittedAt: "2026-10-08T11:12:00.000Z",
+      scales: [
+        { scaleId: "s1", title: "Депресія", value: 12.5, normalization: "raw", percent: 46, band: "Помірна", severity: "moderate", previousValue: 10.25, previousIncomparable: null },
+      ],
+      previousAt: null,
+    };
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify(draft), { status: 200, headers: { "Content-Type": "application/json" } })) as unknown as typeof fetch;
+    const uk = ((k: keyof typeof UI) => UI[k].uk) as unknown as (k: never) => string;
+    let text = "";
+    try {
+      text = await buildDraft("r1", uk);
+    } finally {
+      globalThis.fetch = saved.fetch;
+      g.localStorage = saved.localStorage;
+      g.sessionStorage = saved.sessionStorage;
+    }
+    expect(text).toContain("ПІБ: Петренко Ірина Олегівна, 21 рік, 1-й батальйон");
+    expect(text).toContain("Депресія: 12,5 — Помірна (було 10,3)");
+    expect(text).not.toMatch(/\d\.\d/);
   });
 });
 

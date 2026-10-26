@@ -5,7 +5,9 @@ import { day, timeOfDay } from "../format";
 import { Callout, Ic, useAction, useToast } from "../ui";
 import { IconTile } from "../ui/layout";
 import { ActionMenu } from "../ui/menu";
-import { useLang } from "../lang";
+import { currentLang, useLang } from "../lang";
+import { decimal } from "../ui/decimal";
+import { withCount } from "../ui/plural";
 import { Button, Tag, Textarea } from "../ui/primitives";
 import { editorShortcut } from "../pages/constructor/shortcuts";
 import { Rx } from "../pages/response/icons";
@@ -360,7 +362,8 @@ export async function buildDraft(responseId: string, ut: (k: never) => string): 
   const d = await api.conclusionDraft(responseId);
   const lines: string[] = [];
   if (d.patient) {
-    const age = d.patient.age !== null ? `, ${d.patient.age} ${t("cn.draftAge")}` : "";
+    /* «21 рік», «22 роки», «37 років» — формой по числу, а не одним «років» */
+    const age = d.patient.age !== null ? `, ${withCount(t("cn.draftAge"), d.patient.age, currentLang)}` : "";
     const unit = d.patient.unit ? `, ${d.patient.unit}` : "";
     lines.push(`${t("cn.draftHeader")}: ${d.patient.fullName}${age}${unit}`);
   }
@@ -369,12 +372,13 @@ export async function buildDraft(responseId: string, ut: (k: never) => string): 
   if (d.scales.length) {
     lines.push("", `${t("cn.draftScales")}:`);
     for (const s of d.scales) {
-      const shown = s.normalization === "ratio" ? `${Math.round(s.percent)} %` : String(Math.round(s.value * 10) / 10);
+      /* дробное — запятой в украинском и русском: черновик уходит в подписанный текст */
+      const shown = s.normalization === "ratio" ? `${Math.round(s.percent)} %` : decimal(s.value, currentLang, 1);
       const band = s.band ? ` — ${s.band}` : "";
       const before =
         s.previousValue !== null
           ? ` (${t("cn.draftWas")} ${
-              s.normalization === "ratio" ? `${Math.round(s.previousValue * 100)} %` : Math.round(s.previousValue * 10) / 10
+              s.normalization === "ratio" ? `${Math.round(s.previousValue * 100)} %` : decimal(s.previousValue, currentLang, 1)
             }${d.previousAt ? `, ${day(d.previousAt)}` : ""})`
           : "";
       lines.push(`· ${s.title}: ${shown}${band}${before}`);

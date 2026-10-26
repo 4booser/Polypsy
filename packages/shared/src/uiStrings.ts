@@ -1311,9 +1311,9 @@ export const UI = {
   },
   "fast.pasteApply": { uk: "Заповнити", ru: "Заполнить", en: "Fill in" },
   "fast.pasteCount": {
-    uk: "У рядку {got} відповідей, а пунктів {need}. Заповнювати частково не будемо",
-    ru: "В строке {got} ответов, а пунктов {need}. Заполнять частично не будем",
-    en: "The row has {got} answers, but there are {need} items. It will not be filled in partially",
+    uk: "Відповідей у рядку: {got}, пунктів: {need} — рядок не застосовано",
+    ru: "Ответов в строке: {got}, пунктов: {need} — строка не применена",
+    en: "Answers in the row: {got}, items: {need} — the row was not applied",
   },
   "fast.pasteBadAt": {
     uk: "Пункт {n}: «{value}» — такого варіанта немає",
@@ -1453,8 +1453,14 @@ export const UI = {
 
   /* черновик заключения из результатов */
   "cn.fromResults": { uk: "Зібрати з результатів", ru: "Собрать из результатов", en: "Build from results" },
-  "cn.draftHeader": { uk: "Обстежений", ru: "Обследованный", en: "Examinee" },
-  "cn.draftAge": { uk: "років", ru: "лет", en: "years old" },
+  /* «ПІБ», а не «Обстежений»: причастие мужского рода стояло и над обследованной */
+  "cn.draftHeader": { uk: "ПІБ", ru: "ФИО", en: "Name" },
+  /* формы по числу через «|» (ui/plural.ts, withCount): «21 рік», «22 роки», «37 років» */
+  "cn.draftAge": {
+    uk: "{n} рік|{n} роки|{n} років|{n} року",
+    ru: "{n} год|{n} года|{n} лет|{n} года",
+    en: "{n} year old|{n} years old|{n} years old|{n} years old",
+  },
   "cn.draftMethod": { uk: "Методика", ru: "Методика", en: "Instrument" },
   "cn.draftDate": { uk: "Дата обстеження", ru: "Дата обследования", en: "Assessment date" },
   "cn.draftScales": { uk: "Показники", ru: "Показатели", en: "Scores" },
@@ -1852,7 +1858,7 @@ export const UI = {
     en: "the instrument changed between measurements — scores are not directly comparable",
   },
   "rch.mixedVersions": {
-    uk: "Методику змінювали між замірами: межі полос показано за версією цього проходження",
+    uk: "Методику змінювали між замірами: межі смуг показано за версією цього проходження",
     ru: "Методику меняли между замерами: границы полос показаны по версии этого прохождения",
     en: "The instrument changed between measurements: bands follow the version of this completion",
   },
@@ -12005,7 +12011,7 @@ export const UI = {
   "rp.ans.changed": { uk: "змінено відповідей: {n}", ru: "изменено ответов: {n}", en: "answers changed: {n}" },
   "rp.ans.skipped": { uk: "пропущено: {n}", ru: "пропущено: {n}", en: "skipped: {n}" },
   "rp.ans.fast": { uk: "швидше за поріг: {n}", ru: "быстрее порога: {n}", en: "faster than the threshold: {n}" },
-  "rp.ans.clean": { uk: "пропусків і поспіхів немає", ru: "пропусков и спешки нет", en: "nothing skipped or rushed" },
+  "rp.ans.clean": { uk: "пропусків і поспішних відповідей немає", ru: "пропусков и поспешных ответов нет", en: "nothing skipped or rushed" },
   "rp.ans.details": { uk: "Детально", ru: "Подробно", en: "Details" },
   "rp.ans.lgChanged": { uk: "відповідь змінювали", ru: "ответ меняли", en: "answer changed" },
   "rp.ans.lgOther": { uk: "інші пункти", ru: "остальные пункты", en: "other items" },
@@ -12152,9 +12158,9 @@ export const UI = {
   "adx.preliminary": { uk: "Попередній підсумок", ru: "Предварительный итог", en: "Preliminary total" },
   "adx.soFar": { uk: "поки що", ru: "пока что", en: "so far" },
   "adx.serverCounts": {
-    uk: "Остаточну суму, смугу й рекомендацію рахує сервер після збереження.",
-    ru: "Окончательную сумму, полосу и рекомендацию считает сервер после сохранения.",
-    en: "The server computes the final total, band and recommendation after saving.",
+    uk: "Остаточна сума, смуга й рекомендація — після збереження.",
+    ru: "Окончательная сумма, полоса и рекомендация — после сохранения.",
+    en: "The final total, band and recommendation appear after saving.",
   },
   "adx.range": {
     uk: "За пунктами, що лишились, сума буде від {min} до {max}.",
