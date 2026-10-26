@@ -787,7 +787,7 @@ export const SERVER_TEXTS = {
   /* {edition} — отпечаток редакции каталога: по нему установщик узнаёт, что методику надо обновить */
   "note.catalog": { uk: "Каталог · {edition}", ru: "Каталог · {edition}", en: "Catalogue · {edition}" },
   /* примечания доступа и назначений: routes/batteries.ts, lib/cascade.ts, lib/scheduler.ts, lib/invites.ts, lib/followup.ts */
-  "note.battery": { uk: "Набір «{title}»", ru: "Батарея «{title}»", en: "Battery “{title}”" },
+  "note.battery": { uk: "Набір «{title}»", ru: "Набор «{title}»", en: "Battery “{title}”" },
   "note.cascade": {
     uk: "Каскад за результатом скринінгу",
     ru: "Каскад по результату скрининга",

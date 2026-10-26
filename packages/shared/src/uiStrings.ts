@@ -5200,9 +5200,9 @@ export const UI = {
   "bt.byClinician": { uk: "заповнює фахівець", ru: "заполняет специалист", en: "filled in by the specialist" },
   "bt.noDeadline": { uk: "без строку", ru: "без срока", en: "no deadline" },
   "bt.mixedModes": {
-    uk: "У наборі змішані режими. Кроки, які заповнює фахівець, обстежуваний побачить, але відкрити не зможе — за суворого порядку вони затримають решту, доки їх не внесуть через «Провести».",
-    ru: "В наборе смешаны режимы. Шаги, которые заполняет специалист, обследуемый увидит, но открыть не сможет — при строгом порядке они задержат остальные, пока их не внесут через «Провести».",
-    en: "This battery mixes modes. The respondent will see steps filled in by the specialist but will not be able to open them — with strict order they will hold up the rest until they are entered via “Administer”.",
+    uk: "Кроки, які заповнює фахівець, обстежуваний побачить, але відкрити не зможе — за суворого порядку вони затримають решту, доки їх не внесуть через «Провести».",
+    ru: "Шаги, которые заполняет специалист, обследуемый увидит, но открыть не сможет — при строгом порядке они задержат остальные, пока их не внесут через «Провести».",
+    en: "The respondent will see steps filled in by the specialist but will not be able to open them — with strict order they will hold up the rest until they are entered via “Administer”.",
   },
   "bt.title": { uk: "Набори методик", ru: "Наборы методик", en: "Batteries" },
   "bt.none": { uk: "Наборів поки немає", ru: "Наборов пока нет", en: "No batteries yet" },
@@ -5664,9 +5664,9 @@ export const UI = {
   },
   "bp.recognizedCount": { uk: "Розпізнано пунктів", ru: "Распознано пунктов", en: "Items recognized" },
   "bt.assignHint": {
-    uk: "Призначення відкриває доступ до всіх методик набору. Строк призначення стає строком доступу: після нього методики знову приховані.",
-    ru: "Назначение открывает доступ ко всем методикам набора. Срок назначения становится сроком доступа: после него методики снова скрыты.",
-    en: "An assignment opens access to all instruments in the battery. The assignment deadline becomes the access deadline: after it, the instruments are hidden again.",
+    uk: "Призначте набір пацієнтові — кнопка «Призначити» вгорі, клавіша A.",
+    ru: "Назначьте набор пациенту — кнопка «Назначить» вверху, клавиша A.",
+    en: "Assign the battery to a patient — the Assign button at the top, key A.",
   },
   "bt.required": { uk: "обов’язкова", ru: "обязательная", en: "required" },
   "bt.stepAvailable": { uk: "доступна", ru: "доступна", en: "available" },
@@ -5674,9 +5674,9 @@ export const UI = {
   "bt.stepDone": { uk: "пройдена", ru: "пройдена", en: "completed" },
   "bt.stepLocked": { uk: "відкриється пізніше", ru: "откроется позже", en: "opens later" },
   "bt.strictOrderHint": {
-    uk: "При суворому порядку наступна методика відкривається лише після попередньої. Це важливо там, де втома від довгого опитувальника спотворює результат короткого.",
-    ru: "При строгом порядке следующая методика открывается только после предыдущей. Это важно там, где утомление от длинного опросника искажает результат короткого.",
-    en: "With strict order, the next instrument opens only after the previous one. This matters where fatigue from a long questionnaire distorts the result of a short one.",
+    uk: "Наступна методика відкривається лише після попередньої.",
+    ru: "Следующая методика открывается только после предыдущей.",
+    en: "The next instrument opens only after the previous one.",
   },
   "cb.thresholdsHint": {
     uk: "Поріг «занадто швидко» задається окремо: матричне питання потребує помітно більше часу, ніж «так/ні», і загальний поріг або пропускає недбалість, або обмовляє",
