@@ -12,7 +12,9 @@ import { CasesWidget, WorkWidget } from "../src/pages/dashboard/widgets";
 import { ActNow, unlessForbidden } from "../src/pages/today/ActNow";
 import { byCount, withCount } from "../src/ui/plural";
 import {
+  SMALL_BASE,
   addDays,
+  boardScope,
   dailyColumns,
   dropWidget,
   fill,
@@ -192,6 +194,38 @@ describe("віджети: порядок и выключенные", () => {
     expect(dropWidget(order, "passes", "cases").slice(0, 2)).toEqual(["passes", "cases"]);
     expect(dropWidget(order, "cases", "day").slice(0, 2)).toEqual(["day", "cases"]);
   });
+
+  /*
+   * «Проходження за останній час» и «Методики та збір» — счёт отделения, а
+   * не день специалиста: у того, кто зведення не настраивал, они выключены,
+   * пока он не смотрит на отделение целиком (заведующий и выше).
+   */
+  test("умолчания по роли: специалисту — без счёта отделения, заведующему — с ним; сохранённое главнее", () => {
+    const can = (perms: string[]) => (p: string) => perms.includes(p);
+    const clinician = boardScope({ role: "admin", ladderRank: 0 }, can(["patients.read", "analytics.read"]));
+    const specialist = boardScope({ role: "admin", ladderRank: 1 }, can(["patients.read"]));
+    const head = boardScope({ role: "admin", ladderRank: 2 }, can(["patients.read", "analytics.read"]));
+    const superadmin = boardScope({ role: "superadmin", ladderRank: 4 }, () => true);
+    expect(clinician).toEqual({ analytics: true, department: false });
+    expect(specialist).toEqual({ analytics: false, department: false });
+    expect(head).toEqual({ analytics: true, department: true });
+    expect(superadmin).toEqual({ analytics: true, department: true });
+
+    // не настраивал: специалисту счёт отделения выключен, заведующему — нет
+    expect([...widgetLayout(null, clinician).hidden].sort()).toEqual(["collect", "passes"]);
+    expect([...widgetLayout(undefined, head).hidden]).toEqual([]);
+    // настраивал: сохранённое главнее умолчаний, и включённый счёт остаётся включённым
+    expect([...widgetLayout({ order: [], hidden: [] }, clinician).hidden]).toEqual([]);
+    expect([...widgetLayout({ hidden: ["missed"] }, head).hidden]).toEqual(["missed"]);
+    // без права analytics.read віджетов аналитики нет вовсе — ни на экране, ни в настройке
+    expect(widgetLayout(null, specialist).order).toEqual(["cases", "day", "missed", "work"]);
+    expect(widgetLayout({ order: ["passes", "work"], hidden: ["collect"] }, specialist)).toEqual({
+      order: ["work", "cases", "day", "missed"],
+      hidden: new Set(),
+    });
+    // случаи риска не выключаются ни умолчанием, ни профилем
+    expect(widgetLayout({ hidden: ["cases"] }, clinician).hidden.has("cases")).toBe(false);
+  });
 });
 
 describe("проходження: окна и сводка", () => {
@@ -221,10 +255,18 @@ describe("проходження: окна и сводка", () => {
 
   test("сводка: итог рядом с прошлым окном, средний будний, сегодня и неделю назад", () => {
     const s = passSummary(tl, 30, "2026-10-08");
-    expect(s).toMatchObject({ current: 14, previous: 6, changePct: 133, today: 5, weekAgo: 3 });
+    // база прошлого окна мала (6 < 20): изменение — числом, а не «на 133 %»
+    expect(s).toMatchObject({ current: 14, previous: 6, changePct: null, delta: 8, today: 5, weekAgo: 3 });
     // будних дней в окне 22, сдано в трёх из них: 3 + 4 + 5
     expect(s.weekdayMean).toBeCloseTo(12 / 22, 1);
     expect(passSummary([], 30, "2026-10-08").changePct).toBeNull();
+  });
+
+  test("процент — от настоящей базы, от малой — число: «на 1900 %» при 8 → 160 не печатается", () => {
+    const small = passSummary([{ date: "2026-09-07", count: 8 }, { date: "2026-10-05", count: 160 }], 30, "2026-10-08");
+    expect(small).toMatchObject({ previous: 8, current: 160, changePct: null, delta: 152 });
+    const big = passSummary([{ date: "2026-09-07", count: SMALL_BASE }, { date: "2026-10-05", count: 30 }], 30, "2026-10-08");
+    expect(big).toMatchObject({ previous: SMALL_BASE, changePct: 50, delta: 10 });
   });
 });
 
@@ -450,7 +492,7 @@ describe("числа со словами — по правилу языка", ()
    */
   const t = (key: keyof typeof UI, lang: "uk" | "ru" | "en") => (UI[key] as Record<string, string>)[lang]!;
 
-  test("сесії, люди, віджети, швидкі дії — одна, кілька, багато", () => {
+  test("сесії, люди, справи — одна, кілька, багато", () => {
     expect([1, 3, 5, 21, 22, 25].map((n) => withCount(t("dayA.sessionsN", "uk"), n, "uk"))).toEqual([
       "1 сесія",
       "3 сесії",
@@ -463,8 +505,8 @@ describe("числа со словами — по правилу языка", ()
     expect([1, 3].map((n) => withCount(t("dayA.sessionsN", "en"), n, "en"))).toEqual(["1 session", "3 sessions"]);
     expect([1, 2, 7].map((n) => withCount(t("dashA.peopleN", "uk"), n, "uk"))).toEqual(["1 людина", "2 людини", "7 людей"]);
     expect([1, 2, 7].map((n) => withCount(t("dashA.peopleN", "ru"), n, "ru"))).toEqual(["1 человек", "2 человека", "7 человек"]);
-    expect([1, 4, 7].map((n) => withCount(t("dashA.nWidgets", "uk"), n, "uk"))).toEqual(["1 віджет", "4 віджети", "7 віджетів"]);
-    expect([1, 2, 6].map((n) => withCount(t("dayA.nActions", "uk"), n, "uk"))).toEqual(["1 швидка дія", "2 швидкі дії", "6 швидких дій"]);
+    expect([1, 2, 6].map((n) => withCount(t("home.nTasks", "uk"), n, "uk"))).toEqual(["1 справа", "2 справи", "6 справ"]);
+    expect([1, 2, 6].map((n) => withCount(t("home.nTasks", "ru"), n, "ru"))).toEqual(["1 дело", "2 дела", "6 дел"]);
     expect([1, 2, 5].map((n) => withCount(t("dashA.casesSub", "uk"), n, "uk"))).toEqual(["1 відкритий", "2 відкриті", "5 відкритих"]);
   });
 

@@ -141,6 +141,15 @@ export function PassesWidget({ overview }: { overview: OverviewAnalytics }) {
   const sum = passSummary(overview.timeline, days, today);
   const now = new Date();
   const hhmm = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+  /* процентом — от настоящей базы; от малой (8 → 160 — «на 1900 %») — числом */
+  const change =
+    sum.changePct !== null
+      ? sum.changePct !== 0
+        ? { up: sum.changePct > 0, text: fill(ut(sum.changePct > 0 ? "dashA.more" : "dashA.less"), { p: Math.abs(sum.changePct) }) }
+        : null
+      : sum.previous > 0 && sum.delta !== 0
+        ? { up: sum.delta > 0, text: fill(ut(sum.delta > 0 ? "home.moreN" : "home.lessN"), { n: Math.abs(sum.delta) }) }
+        : null;
 
   return (
     <Panel
@@ -166,12 +175,11 @@ export function PassesWidget({ overview }: { overview: OverviewAnalytics }) {
           {withCount(ut("dashA.sumWindow"), days, lang)} <b className="font-extrabold text-text tabular-nums">{sum.current}</b>
           {", "}
           {fill(ut("dashA.sumPrev"), { n: days, prev: sum.previous })}
-          {sum.changePct !== null && sum.changePct !== 0 ? (
+          {change ? (
             <>
-              {": "}
-              <span className={cx("font-bold", sum.changePct > 0 ? "text-good" : "text-text")}>
-                {fill(ut(sum.changePct > 0 ? "dashA.more" : "dashA.less"), { p: Math.abs(sum.changePct) })}
-              </span>
+              {" ("}
+              <span className={cx("font-bold", change.up ? "text-good" : "text-text")}>{change.text}</span>
+              {")"}
             </>
           ) : null}
         </span>

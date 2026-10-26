@@ -2,12 +2,14 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Command } from "cmdk";
 import { api } from "../api";
+import { useAuth } from "../auth";
 import { useDebounced, useResource } from "../useResource";
 import { useLang } from "../lang";
 import { backdropPress, useFocusTrap } from "../ui";
 import type { UiKey } from "@quizzy/shared";
 import { ModKey } from "./HelpDrawer";
 import { ShellIcon, type IconName } from "./icons";
+import { overviewHref } from "./nav";
 import { initials } from "./UserMenu";
 import { Kbd } from "../ui/kbd";
 
@@ -34,6 +36,8 @@ interface Item {
   to: string;
   group: UiKey;
   icon: IconName;
+  /** Ещё одно слово, по которому команда находится: вкладки «Сьогодні» — и по имени раздела */
+  also?: UiKey;
 }
 
 /*
@@ -41,10 +45,13 @@ interface Item {
  * приложении нет, и общий перехват молча уводил на сводку. Проверка
  * test/commandPalette.test.ts следит, чтобы каждая команда вела на
  * объявленный маршрут.
+ *
+ * Вкладки «Сьогодні» названы так же, как на экране («Зведення», «Прийом»), и
+ * находятся ещё и по слову «Сьогодні» — так называется сам раздел.
  */
 const ITEMS: Item[] = [
-  { key: "nav.dashboard", to: "/", group: "cmd.navigate", icon: "layout-dashboard" },
-  { key: "day.title", to: "/today", group: "cmd.navigate", icon: "house" },
+  { key: "nav.dashboard", to: "/", group: "cmd.navigate", icon: "layout-dashboard", also: "day.title" },
+  { key: "home.agenda", to: "/today", group: "cmd.navigate", icon: "house", also: "day.title" },
   { key: "nav.worklist", to: "/worklist", group: "cmd.navigate", icon: "list-checks" },
   { key: "nav.cases", to: "/alerts", group: "cmd.navigate", icon: "triangle-alert" },
   { key: "nav.patients", to: "/patients", group: "cmd.navigate", icon: "users" },
@@ -87,6 +94,7 @@ export function CommandPalette({
   onToggleDensity: () => void;
 }) {
   const { ut } = useLang();
+  const { user } = useAuth();
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
 
@@ -138,6 +146,13 @@ export function CommandPalette({
     navigate(to);
     onClose();
   };
+  /*
+   * Куда ведёт команда. Зведення — по своей ссылке: при другом стартовом
+   * экране «/» занят им (overviewHref). «Створити запрошення» — сразу к
+   * форме нового запрошення (?new=1 ставит в неё фокус), а не к списку.
+   */
+  const target = (i: Item) =>
+    i.key === "nav.dashboard" ? overviewHref(user?.workspace?.startScreen) : i.key === "cmd.newInvite" ? `${i.to}?new=1` : i.to;
 
   return (
     <div
@@ -208,7 +223,13 @@ export function CommandPalette({
             {groups.map(([group, items]) => (
               <Command.Group key={group} heading={ut(group)}>
                 {items.map((i) => (
-                  <Command.Item key={i.key + i.to} value={ut(i.key)} onSelect={() => go(i.to)} className={ROW}>
+                  <Command.Item
+                    key={i.key + i.to}
+                    value={ut(i.key)}
+                    keywords={i.also ? [ut(i.also)] : undefined}
+                    onSelect={() => go(target(i))}
+                    className={ROW}
+                  >
                     <ShellIcon name={i.icon} size={16} />
                     <span className="truncate">{ut(i.key)}</span>
                   </Command.Item>

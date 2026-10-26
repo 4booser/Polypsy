@@ -1,11 +1,11 @@
 import { useCallback, useState, type ReactNode } from "react";
 import type { AlertCase, AppointmentView, DashWidget, Page as CursorPage, Worklist } from "@quizzy/shared";
-import { DASH_WIDGETS } from "@quizzy/shared";
 import { api } from "../api";
 import { useAuth } from "../auth";
-import { dayFull } from "../format";
-import { Screen, useUrlState } from "../ui";
-import { Button, ButtonLink } from "../ui/primitives";
+import { Loading, Screen, Skeleton, useUrlState } from "../ui";
+import { Ic } from "../ui/icons";
+import { Panel } from "../ui/layout";
+import { Button } from "../ui/primitives";
 import { useLang } from "../lang";
 import { useResource } from "../useResource";
 import { useLiveReload } from "../events";
@@ -15,8 +15,7 @@ import { CustomizeDrawer } from "./dashboard/Customize";
 import { ConditionsWidget } from "./dashboard/parts";
 import { PassesWidget } from "./dashboard/passes";
 import { CasesWidget, CollectWidget, DayWidget, MissedWidget, WorkWidget } from "./dashboard/widgets";
-import { withCount } from "../ui/plural";
-import { WIDGET_COLUMN, fill, localDay, periodTotals, widgetLayout, type WidgetLayout } from "./dashboard/model";
+import { WIDGET_COLUMN, boardScope, fill, localDay, periodTotals, widgetLayout, type WidgetLayout } from "./dashboard/model";
 import { unlessForbidden } from "./today/ActNow";
 import { Di } from "./today/icons";
 
@@ -45,8 +44,8 @@ const NO_WORK: Worklist = {
 };
 
 export default function Dashboard() {
-  const { ut, lang } = useLang();
-  const { user } = useAuth();
+  const { ut } = useLang();
+  const { user, can } = useAuth();
   /*
    * Ящик настройки — в адресе (`?customize=1`): смена стартового экрана
    * перестраивает «/», и ящик должен пережить это, а не закрыться посреди
@@ -55,80 +54,93 @@ export default function Dashboard() {
   const [customizeParam, setCustomizeParam] = useUrlState("customize");
   const customize = customizeParam === "1";
   const setCustomize = (open: boolean) => setCustomizeParam(open ? "1" : "");
+  /*
+   * Что доступно и что стоит по умолчанию — по роли (boardScope): счёт
+   * отделения у специалиста выключен, пока он сам его не включит.
+   */
+  const scope = boardScope(user, can);
   /* правка из ящика видна сразу, до ответа сервера */
   const [local, setLocal] = useState<WidgetLayout | null>(null);
-  const layout = local ?? widgetLayout(user?.workspace?.dashboard);
+  const layout = local ?? widgetLayout(user?.workspace?.dashboard, scope);
+  const visible = layout.order.filter((k) => !layout.hidden.has(k));
 
   /*
-   * Одна загрузка на сводку, очередь и день: экран без сводки неполон,
-   * остальное — дополнение, и отказ любого из них не повод прятать всё.
+   * Очередь и день — одной загрузкой: отказ любого из них не повод прятать
+   * всё, они приходят пустыми полной формы.
    */
   const res = useResource(async () => {
-    const [overview, work, day] = await Promise.all([
-      api.overview(),
+    const [work, day] = await Promise.all([
       api.worklist().catch((): Worklist => NO_WORK),
       api
         .today()
         .then((d) => d.items)
         .catch((): AppointmentView[] | null => null),
     ]);
-    return { overview, work, day };
+    return { work, day };
   }, []);
+  /*
+   * Сводка аналитики — своей загрузкой и только когда она на экране: её
+   * читают два віджета счёта отделения, и у специалиста они выключены. Без
+   * права analytics.read маршрут ответил бы отказом — тогда не спрашиваем
+   * вовсе (віджетов нет в раскладке, widgetLayout).
+   */
+  const wantOverview = visible.includes("passes") || visible.includes("collect");
+  const overview = useResource(() => (wantOverview ? api.overview() : Promise.resolve(null)), [wantOverview]);
   /*
    * Случаи — своей загрузкой: «разбор не положен» (403, null) прячет
    * віджет, а сбой загрузки — нет. Віджет случаев риска не выключается и
    * настройкой, и пропасть из-за обрыва связи ему тоже нельзя (unlessForbidden).
    */
   const cases = useResource(() => unlessForbidden(api.alertCases({ status: "open", limit: "6" })), []);
-  const reloadOverview = res.reload;
+  const reloadDay = res.reload;
+  const reloadOverview = overview.reload;
   const reloadCases = cases.reload;
   const reload = useCallback(() => {
+    reloadDay();
     reloadOverview();
     reloadCases();
-  }, [reloadOverview, reloadCases]);
+  }, [reloadDay, reloadOverview, reloadCases]);
   // сводка дежурного стареет от чужих действий: сдача, тревога, тик расписания
   useLiveReload(["alert.created", "case.changed", "response.submitted", "schedule.run"], reload);
   const alerts: CursorPage<AlertCase> | null = cases.data;
   const casesPending = alerts === null && (cases.loading || cases.offline);
 
-  const today = localDay(new Date());
-  const visible = layout.order.filter((k) => !layout.hidden.has(k));
-
   return (
     <>
       <StartHead
+        /*
+         * Без даты: сегодняшнее число и время уже стоят на полосе приложения,
+         * а зведення всегда про сегодня — второй раз в шапке оно ничего не
+         * сообщало.
+         */
         meta={
-          <>
-            <b className="font-extrabold text-text">{dayFull(today)}</b>
-            <span>
-              {res.data
-                ? fill(ut("dashA.metaLine"), {
-                    /* не пришли или не положены — прочерк, а не «0»: ноль здесь звучал бы как «рисков нет» */
-                    cases: alerts ? (alerts.total ?? alerts.items.length) : "—",
-                    work: res.data.work.total,
-                    sessions: res.data.day?.filter((a) => a.status !== "cancelled").length ?? 0,
-                  })
-                : ut("common.loading")}
-            </span>
-          </>
+          <span>
+            {res.data
+              ? fill(ut("dashA.metaLine"), {
+                  /* не пришли или не положены — прочерк, а не «0»: ноль здесь звучал бы как «рисков нет» */
+                  cases: alerts ? (alerts.total ?? alerts.items.length) : "—",
+                  work: res.data.work.total,
+                  sessions: res.data.day?.filter((a) => a.status !== "cancelled").length ?? 0,
+                })
+              : ut("common.loading")}
+          </span>
         }
         actions={
-          <>
-            <Button icon={<Di.dashboard />} aria-expanded={customize} onClick={() => setCustomize(true)}>
-              {ut("dashA.customize")}
-            </Button>
-            {user?.canInvite ? (
-              <ButtonLink to="/invites?new=1" variant="primary">
-                <Di.link />
-                {ut("inv.create")}
-              </ButtonLink>
-            ) : null}
-          </>
+          /*
+           * Главного действия у зведення нет: это обзор, а не форма.
+           * «Створити запрошення» стояло здесь фиолетовой кнопкой и читалось
+           * главным делом смены; оно — главное на своей вкладке «Запрошення»,
+           * в один щелчок отсюда, и в палитре команд.
+           */
+          <Button icon={<Di.dashboard />} aria-expanded={customize} onClick={() => setCustomize(true)}>
+            {ut("dashA.customize")}
+          </Button>
         }
       />
       <Screen res={res} rows={5}>
-        {({ overview, work, day }) => {
-          const { current, previous } = periodTotals(overview.timeline, 30, localDay(new Date()));
+        {({ work, day }) => {
+          const ov = overview.data;
+          const totals = ov ? periodTotals(ov.timeline, 30, localDay(new Date())) : null;
           const node: Record<DashWidget, ReactNode> = {
             cases: (
               <CasesWidget
@@ -143,8 +155,17 @@ export default function Dashboard() {
             day: <DayWidget items={day} />,
             missed: <MissedWidget />,
             work: <WorkWidget work={work} />,
-            passes: <PassesWidget overview={overview} />,
-            collect: <CollectWidget overview={overview} cur={current} delta={current - previous} />,
+            passes: ov ? (
+              <PassesWidget overview={ov} />
+            ) : (
+              <PendingWidget title={ut("dash.passes")} icon={<Di.columns />} error={overview.error} onRetry={reloadOverview} />
+            ),
+            collect:
+              ov && totals ? (
+                <CollectWidget overview={ov} cur={totals.current} delta={totals.current - totals.previous} />
+              ) : (
+                <PendingWidget title={ut("dashA.collect")} icon={<Ic.clipboard />} error={overview.error} onRetry={reloadOverview} />
+              ),
             conditions: <ConditionsWidget />,
           };
           const col = (c: "main" | "side" | "full") =>
@@ -161,33 +182,32 @@ export default function Dashboard() {
                 <div className="flex min-w-0 flex-col gap-4">{col("side")}</div>
               </div>
               {col("full")}
-              <p className="m-0 flex flex-wrap items-center justify-center gap-x-2 gap-y-1 pb-2 text-small text-text-2">
-                <Di.dashboard size={14} className="text-muted" />
-                {fill(ut("dashA.shownNote"), {
-                  widgets: withCount(ut("dashA.nWidgets"), visible.length, lang),
-                  of: DASH_WIDGETS.length,
-                  start: ut(START_TITLE[user?.workspace?.startScreen ?? "dashboard"] ?? "dash.title"),
-                })}
-                <button
-                  type="button"
-                  onClick={() => setCustomize(true)}
-                  className="cursor-pointer border-0 bg-transparent p-0 text-small font-bold text-violet-ink hover:underline"
-                >
-                  {ut("dashA.change")}
-                </button>
-              </p>
+              {/*
+                Строки «Показано 7 віджетів з 7. Стартовий екран — …. Змінити»
+                под віджетами больше нет: она повторяла «Налаштувати зведення»
+                из шапки.
+              */}
             </div>
           );
         }}
       </Screen>
-      <CustomizeDrawer open={customize} onClose={() => setCustomize(false)} layout={layout} onLayout={setLocal} />
+      <CustomizeDrawer open={customize} onClose={() => setCustomize(false)} layout={layout} scope={scope} onLayout={setLocal} />
     </>
   );
 }
 
-const START_TITLE: Record<string, "dash.title" | "work.title" | "nav.cases" | "nav.patients"> = {
-  dashboard: "dash.title",
-  worklist: "work.title",
-  alerts: "nav.cases",
-  patients: "nav.patients",
-};
+/** Віджет счёта отделения, пока сводка в пути или не пришла: на своём месте, с «повторити» */
+function PendingWidget({ title, icon, error, onRetry }: { title: string; icon: ReactNode; error: string | null; onRetry: () => void }) {
+  const { ut } = useLang();
+  return (
+    <Panel title={title} icon={icon}>
+      {error ? (
+        <Loading bare error={error} onRetry={onRetry} />
+      ) : (
+        <div role="status" aria-label={ut("common.loading")}>
+          <Skeleton lines={3} />
+        </div>
+      )}
+    </Panel>
+  );
+}

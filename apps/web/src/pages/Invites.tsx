@@ -120,7 +120,7 @@ export default function Invites() {
     return { batteries, surveys, specialists };
   }, []);
 
-  /* «Створити запрошення» со зведення ведёт сюда с ?new=1 — сразу к форме */
+  /* «Створити запрошення» из палитры команд ведёт сюда с ?new=1 — сразу к форме */
   const focusForm = () => {
     formRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
     formRef.current?.querySelector<HTMLElement>("select, input")?.focus({ preventScroll: true });
@@ -492,7 +492,7 @@ function InviteForm({
   me: string;
   onCreated: (t: Fresh) => void;
 }) {
-  const { ut } = useLang();
+  const { ut, lang } = useLang();
   /*
    * Набор ИЛИ методика, и это видно по форме: выбор одного гасит другой.
    * «Набор и ещё одна методика» дало бы назначение, состав которого не виден
@@ -613,17 +613,18 @@ function InviteForm({
             ))}
           </Select>
         </Field>
-        <Field label={ut("ui.unit")} optional>
-          <Input value={unit} onChange={(e) => setUnit(e.target.value)} placeholder={ut("inv.unitToAccount")} />
+        <Field label={ut("ui.unit")} optional hint={ut("inv.unitToAccount")}>
+          <Input value={unit} onChange={(e) => setUnit(e.target.value)} />
         </Field>
         <div className="grid grid-cols-2 gap-3">
+          {/* «1 людина», «5 людей» — формой по числу: группу задаёт то же поле, отдельной выноски не нужно */}
           <Field label={ut("inv.uses")}>
             <Input
               type="number"
               min={1}
               max={500}
               value={maxUses}
-              suffix={ut("invA.people")}
+              suffix={byCount(ut("home.personForms"), maxUses, lang)}
               onChange={(e) => setMaxUses(Math.max(1, Number(e.target.value) || 1))}
             />
           </Field>
@@ -641,7 +642,6 @@ function InviteForm({
         <Field label={ut("invA.note")} optional hint={ut("invA.noteHint")}>
           <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder={ut("inv.reasonExample")} />
         </Field>
-        <Callout kind="info">{ut("inv.groupHint")}</Callout>
       </div>
     </Panel>
   );

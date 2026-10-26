@@ -419,10 +419,10 @@ test("день отмечается с клавиатуры, без мыши", a
   await login(page, "psy");
   await page.goto("/today");
   /*
-   * Заголовком экрана стоит дата, а «Сегодня» — вкладка: сводка и приём
-   * слиты в один экран.
+   * Экран называется «Сегодня», а день приёма — его вкладка «Приём»: сводка
+   * и приём слиты в один экран.
    */
-  await page.getByRole("main").getByRole("link", { name: "Сегодня" }).waitFor();
+  await page.getByRole("main").getByRole("link", { name: /^Приём/ }).waitFor();
 
   const row = dayRow(page, own.id);
   const came = row.getByRole("button", { name: "Пришёл", exact: true });

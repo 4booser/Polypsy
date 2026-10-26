@@ -47,7 +47,11 @@ export function DayStrip({
       {axis.ticks.map((t) => (
         <span key={`l${t.minute}`} aria-hidden className="absolute top-0 h-14 w-px bg-divider" style={{ left: `${t.pct}%` }} />
       ))}
-      {axis.ticks.filter((t) => nowMin === null || Math.abs(t.pct - axis.at(nowMin)) > 6).map((t) => (
+      {/*
+        Час под «зараз» не печатается: плашка «сейчас 13:35» шире «зараз 13:35», и
+        на шкале в 700 px при 1280 соседний «14:00» в 6 % от неё уходил под плашку.
+      */}
+      {axis.ticks.filter((t) => nowMin === null || Math.abs(t.pct - axis.at(nowMin)) > 9).map((t) => (
         <span
           key={`t${t.minute}`}
           aria-hidden

@@ -263,12 +263,13 @@ function FormDialog({
               <Stepper value={ttlDays} onChange={setTtlDays} min={1} max={365} label={ut("inv.days")} />
             </Field>
           </div>
+          {/*
+            Выноски «Для групового обстеження…» больше нет: о группе говорит
+            подсказка у числа входов, о подразделении — у подразделения.
+          */}
           <Field label={ut("inv2.note")} hint={ut("inv2.noteHint")} optional>
             <Input value={note} maxLength={500} onChange={(e) => setNote(e.target.value)} placeholder={ut("inv.reasonExample")} />
           </Field>
-          <Callout kind="info" icon={<Ic.users />}>
-            {ut("inv.groupHint")}
-          </Callout>
         </div>
 
         <aside className="self-start rounded-panel bg-sunk p-4">
@@ -300,7 +301,7 @@ function FormDialog({
                 ut("inv2.step3none")
               )}
             </Step>
-            <Step n={4}>{ut("inv2.step4").replace("{who}", specialistName)}</Step>
+            <Step n={4}>{specialistId ? ut("home.inviteOther").replace("{who}", specialistName) : ut("home.inviteMine")}</Step>
           </ol>
         </aside>
       </div>

@@ -6,21 +6,30 @@ import { Page } from "../ui/layout";
 import { Tabs } from "../ui/primitives";
 import { useAuth } from "../auth";
 import { useLang } from "../lang";
+import { overviewHref } from "../shell/nav";
 import { useShellNav } from "../shell/useShellNav";
 
+export { overviewHref };
+
 /**
- * «Зведення» — рамка начала смены: огляд, приём дня и приглашения вкладками
- * одного экрана (решение заказчика 2026-09-26, кадры day-start, day-today,
- * day-invites Polypsy 2.0).
+ * «Сьогодні» — рамка начала смены: зведення, приём дня и приглашения
+ * вкладками одного экрана (решение заказчика 2026-09-26, кадры day-start,
+ * day-today, day-invites Polypsy 2.0).
  *
- * Заголовок называет экран и стоит один на три вкладки, вкладки — строкой
- * под ним. Мета-строка и действия справа у каждой вкладки свои: у огляду —
- * дата и «Налаштувати зведення», у дня — дата, сколько сессий и листание
+ * Заголовок — то же слово, что у пункта рельсы: нажал «Сьогодні» — видишь
+ * «Сьогодні». Вкладки названы по тому, что на них: «Зведення» (віджети; то
+ * же слово, что у «Налаштувати зведення» и у стартового экрана в
+ * настройках), «Прийом» (день приёма: у него листание дней, и вкладка
+ * «Сьогодні» на завтрашнем дне говорила бы неправду) и «Запрошення».
+ * Заголовок не повторяет вкладку, и двух разных «Сьогодні» на экране нет.
+ *
+ * Мета-строка и действия справа у каждой вкладки свои: у зведення — счёт
+ * открытого и «Налаштувати зведення», у дня — сколько сессий и листание
  * дней, у приглашений — сколько их действует и «Створити запрошення». Их
  * рисует сама вкладка через `StartHead`: данные для этих строк есть только у
  * неё, а прокидывать их наверх значило бы грузить их дважды.
  *
- * Стартовым экраном может быть и не огляд (настройка рабочего места:
+ * Стартовым экраном может быть и не зведення (настройка рабочего места:
  * черга, випадки ризику, пацієнти). Тогда на «/» стоит тот экран со своей
  * шапкой, и рамка отступает: два заголовка друг над другом читались бы как
  * сбой, а у списка-и-записи своя раскладка во всю высоту.
@@ -48,22 +57,10 @@ export function StartHead({ meta, actions }: { meta?: ReactNode; actions?: React
   );
 }
 
-/** Стоит ли на этом адресе рамка: на «/» — только когда стартовый экран — огляд */
+/** Стоит ли на этом адресе рамка: на «/» — только когда стартовый экран — зведення */
 export function framed(pathname: string, startScreen: string | undefined, view?: string | null): boolean {
   if (pathname !== "/" || view === "overview") return true;
   return !startScreen || startScreen === "dashboard";
-}
-
-/**
- * Куда ведёт вкладка «Огляд».
- *
- * Если стартовый экран — не огляд, на «/» стоит выбранный экран (черга,
- * випадки, пацієнти), и огляд со своим «Налаштувати зведення» был бы
- * недостижим вовсе: вкладка вела бы на тот же «/». Поэтому тогда огляд
- * открывается с `?view=overview` — тем же экраном, не трогая маршруты.
- */
-export function overviewHref(startScreen: string | undefined): string {
-  return !startScreen || startScreen === "dashboard" ? "/" : "/?view=overview";
 }
 
 const Overview = lazy(() => import("./Dashboard"));
@@ -77,7 +74,7 @@ export default function Start() {
   const [meta, setMeta] = useState<HTMLElement | null>(null);
   const [actions, setActions] = useState<HTMLElement | null>(null);
   const start = user?.workspace?.startScreen;
-  /* огляд по ссылке вкладки, когда на «/» стоит другой стартовый экран */
+  /* зведення по ссылке вкладки, когда на «/» стоит другой стартовый экран */
   const overview = pathname === "/" && params.get("view") === "overview" && !!start && start !== "dashboard";
 
   if (!framed(pathname, start, params.get("view"))) return <Outlet />;
@@ -87,24 +84,24 @@ export default function Start() {
    * Спрятать её от того, кому сервер откажет, честнее, чем дать нажать и
    * показать отказ, — а сам отказ проверяется на маршруте, а не здесь.
    *
-   * Число у «Сьогодні» — сколько людей ещё ждут (тот же счётчик, что у
+   * Число у «Прийом» — сколько людей ещё ждут (тот же счётчик, что у
    * оболочки): число записанных к обеду не меняется и перестаёт что-то
    * сообщать.
    */
   const waiting = nav?.counts.today;
   const items = [
-    { to: overviewHref(start), label: ut("dash.tabOverview"), end: true },
-    { to: "/today", label: ut("day.title"), count: waiting ? waiting : null },
+    { to: overviewHref(start), label: ut("dash.title"), end: true },
+    { to: "/today", label: ut("home.agenda"), count: waiting ? waiting : null },
     ...(user?.canInvite ? [{ to: "/invites", label: ut("inv.title") }] : []),
   ];
 
   return (
     <SlotsCtx.Provider value={{ meta, actions }}>
       <Page
-        title={ut("dash.title")}
+        title={ut("day.title")}
         meta={<span ref={setMeta} className="contents" />}
         actions={<span ref={setActions} className="contents" />}
-        toolbar={<Tabs label={ut("dash.title")} items={items} />}
+        toolbar={<Tabs label={ut("day.title")} items={items} />}
       >
         {overview ? (
           <Suspense fallback={<Loading rows={5} />}>

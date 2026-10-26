@@ -14,7 +14,6 @@ import { useLiveReload } from "../events";
 import { useResource } from "../useResource";
 import { moveAndReload } from "./visitModel";
 import { StartHead } from "./Start";
-import { withCount } from "../ui/plural";
 import { fill } from "./dashboard/model";
 import { ActNow, reviewHref, unlessForbidden } from "./today/ActNow";
 import { Agenda, useNow, useUntil } from "./today/Agenda";
@@ -25,6 +24,7 @@ import {
   betweenSessions,
   caseTimer,
   clashes,
+  dayTally,
   focusSession,
   hhmm,
   liveCases,
@@ -33,6 +33,7 @@ import {
   prepAfterSelect,
   sessionStates,
   shiftDate,
+  tallyText,
   urgentCases,
 } from "./today/model";
 import { useHotkeys } from "../ui/keys";
@@ -246,7 +247,8 @@ export default function TodayPage() {
                     ["N", ut("dayA.hintNote")],
                   ["P", ut("dayA.hintPrep")],
                     ...(hero ? ([["R", ut("dayA.hintReview")]] as [string, string][]) : []),
-                    ...(heroMsg && hero ? ([["M", fill(ut("dayA.hintReply"), { name: hero.userName.split(" ")[1] ?? hero.userName })]] as [string, string][]) : []),
+                    /* без имени: одно имя без фамилии — фамильярность, а лист один — у человека в «Дія зараз» */
+                    ...(heroMsg && hero ? ([["M", ut("dayA.hintReply")]] as [string, string][]) : []),
                     ["Enter", ut("dayA.hintCard")],
                     ["Esc", ut("dayA.hintEsc")],
                   ]}
@@ -303,21 +305,26 @@ function DayHead({
 }) {
   const { ut, lang } = useLang();
   const alive = items.filter((a) => a.status !== "cancelled");
-  const done = alive.filter((a) => a.status === "done").length;
-  const ahead = alive.filter((a) => a.status === "booked" || a.status === "confirmed" || a.status === "arrived" || a.status === "in_progress").length;
+  /* тот же счёт, что у віджета зведення и в конце таймлайна (dayTally) */
+  const tally = dayTally(items);
   const end = alive.length ? hhmm([...alive.map((a) => a.endsAt)].sort().pop()!) : null;
   const sum = loading
     ? ut("common.loading")
     : alive.length
-      ? fill(ut("dayA.daySum"), { sessions: withCount(ut("dayA.sessionsN"), alive.length, lang), done, ahead, end: end ?? "" })
+      ? fill(ut("home.daySum"), { tally: tallyText(tally, ut, lang), end: end ?? "" })
       : ut("day.nobody");
   const prev = shiftDate(date, -1);
   const next = shiftDate(date, 1);
   return (
     <StartHead
+      /*
+       * Дата — только у другого дня. Сегодняшняя уже стоит на полосе
+       * приложения, а «сегодня» здесь говорит выбранная «Сьогодні» в листании;
+       * у вчера и завтра число — главное, что о дне надо знать.
+       */
       meta={
         <>
-          <b className="font-extrabold text-text">{dayFull(date)}</b>
+          {isToday ? null : <b className="font-extrabold text-text">{dayFull(date)}</b>}
           <span>{sum}</span>
         </>
       }

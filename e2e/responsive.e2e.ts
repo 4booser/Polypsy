@@ -111,7 +111,8 @@ test("консоль не опрашивает сервер без остано�
   });
 
   await page.goto("/today");
-  await page.getByRole("main").getByRole("link", { name: "Сегодня" }).waitFor();
+  /* «Приём» — вкладка дня на экране «Сегодня» */
+  await page.getByRole("main").getByRole("link", { name: /^Приём/ }).waitFor();
   await page.waitForTimeout(3000);
 
   const worst = [...counts.entries()].sort((a, b) => b[1] - a[1])[0];
