@@ -147,7 +147,7 @@ function GroupsScreen({ groups, staff, reload }: { groups: SurveyGroupWithCounts
         ],
       }}
       sortNote={ut("mc.grSortNote")}
-      footCount={count(groups.length, "groups")}
+      /* число групп — в шапке и на вкладках отбора; в подвале оно не помещалось рядом с подсказками клавиш на 1280 */
       actions={
         canManage ? (
           <Tooltip label={ut("adm.newGroup")} side="bottom">
@@ -499,10 +499,6 @@ function GroupRecord({
                 {ut("mc.grNoCases")}
               </Callout>
             )}
-            <p className="m-0 mt-3 flex items-start gap-2 text-small text-muted">
-              <Ic.info size={14} className="mt-0.5" />
-              <span>{ut("mc.grArchiveNote")}</span>
-            </p>
           </Panel>
         </div>
       </div>
@@ -633,41 +629,48 @@ function GroupInsight({ data }: { data: GroupAnalytics }) {
         />
         <p className="m-0 mt-2 text-small text-muted">{ut("grp.severityHint")}</p>
       </div>
-      <div className="mt-4 grid grid-cols-2 gap-6 border-t border-divider pt-4 max-[1180px]:grid-cols-1">
-        <div className="min-w-0">
-          <div className="mb-2 flex items-baseline justify-between gap-2">
-            <b className="text-small font-extrabold text-text">{ut("grp.bySurvey")}</b>
-            <span className="text-caption text-muted">{ut("mc.grResponsesCol")}</span>
+      {/*
+        Две колонки — только когда в панели есть место: рядом со списком групп
+        на 1280 полосе «За методиками» доставалось 80 px на название, и
+        методики читались как «Скринінг е…», «СР-45. Схи…».
+      */}
+      <div className="@container mt-4 border-t border-divider pt-4">
+        <div className="grid grid-cols-1 gap-6 @[820px]:grid-cols-2">
+          <div className="min-w-0">
+            <div className="mb-2 flex items-baseline justify-between gap-2">
+              <b className="text-small font-extrabold text-text">{ut("grp.bySurvey")}</b>
+              <span className="text-caption text-muted">{ut("mc.grResponsesCol")}</span>
+            </div>
+            <HBars
+              items={[
+                ...top.map((s, i) => ({
+                  key: s.surveyId,
+                  label: s.archived ? `${s.title} (${ut("grp.surveyRetired")})` : s.title,
+                  value: s.responseCount,
+                  strong: i === 0,
+                })),
+                ...(rest.length
+                  ? [
+                      {
+                        key: "rest",
+                        label: ut("mc.grMoreMethods").replace("{n}", String(rest.length)),
+                        value: rest.reduce((sum, s) => sum + s.responseCount, 0),
+                      },
+                    ]
+                  : []),
+              ]}
+            />
           </div>
-          <HBars
-            items={[
-              ...top.map((s, i) => ({
-                key: s.surveyId,
-                label: s.archived ? `${s.title} (${ut("grp.surveyRetired")})` : s.title,
-                value: s.responseCount,
-                strong: i === 0,
-              })),
-              ...(rest.length
-                ? [
-                    {
-                      key: "rest",
-                      label: ut("mc.grMoreMethods").replace("{n}", String(rest.length)),
-                      value: rest.reduce((sum, s) => sum + s.responseCount, 0),
-                    },
-                  ]
-                : []),
-            ]}
-          />
-        </div>
-        <div className="min-w-0">
-          <div className="mb-2 flex items-baseline justify-between gap-2">
-            <b className="text-small font-extrabold text-text">{ut("grp.byDay")}</b>
-            <span className="text-caption text-muted">
-              {ut("mc.grLast30").replace("{n}", num(last30))}
-              {lastActive && dayDiff(new Date(`${lastActive}T00:00:00`), now) > 30 ? `, ${ut("mc.grLastActive").replace("{date}", shortDate(lastActive))}` : ""}
-            </span>
+          <div className="min-w-0">
+            <div className="mb-2 flex items-baseline justify-between gap-2">
+              <b className="text-small font-extrabold text-text">{ut("grp.byDay")}</b>
+              <span className="text-caption text-muted">
+                {ut("mc.grLast30").replace("{n}", num(last30))}
+                {lastActive && dayDiff(new Date(`${lastActive}T00:00:00`), now) > 30 ? `, ${ut("mc.grLastActive").replace("{date}", shortDate(lastActive))}` : ""}
+              </span>
+            </div>
+            <TimeColumns columns={days} label={ut("grp.byDay")} height={180} />
           </div>
-          <TimeColumns columns={days} label={ut("grp.byDay")} height={180} />
         </div>
       </div>
     </Panel>

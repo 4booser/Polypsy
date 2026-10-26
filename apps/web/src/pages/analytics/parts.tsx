@@ -1,9 +1,11 @@
 import type { ReactNode } from "react";
-import type { RuleAction, RuleCondition, UiKey } from "@quizzy/shared";
+import type { RuleAction, RuleCondition, Scale, UiKey } from "@quizzy/shared";
+import { api } from "../../api";
 import { useLang } from "../../lang";
 import { Ic } from "../../ui/icons";
 import { Popover } from "../../ui/Popover";
 import { Tag } from "../../ui/primitives";
+import { useResourceMap } from "../../useResource";
 import { AIc } from "./icons";
 import { type Op, thresholdText } from "./model";
 
@@ -12,6 +14,24 @@ import { type Op, thresholdText } from "./model";
  * действия. Перечень печатает их пилюлями (читается без открытия модели),
  * форма — значками тех же видов в шапках блоков и в «Як читається модель».
  */
+
+/**
+ * Методика, дочитанная целиком ради шкал и названия; null — сервер её не
+ * отдал: она вне групп сотрудника или её уже нет.
+ */
+export type LoadedSurvey = { title: string; archivedAt: string | null; scales: Scale[] } | null;
+
+/**
+ * Методики целиком — по требованию и один раз на сеанс: перечень и форма
+ * берут их под одним ключом, и открытая из перечня модель шкал не ждёт.
+ * Отказ запоминается как null: чужую или удалённую методику сервер не отдаст
+ * и со второго раза.
+ */
+export function useLoadedSurveys(ids: readonly string[]): Record<string, LoadedSurvey> {
+  return useResourceMap("analytics.surveyMeta", ids, (surveyId) =>
+    api.survey(surveyId).then((s) => ({ title: s.title, archivedAt: s.archivedAt ?? null, scales: s.scales })),
+  );
+}
 
 /** Знак сравнения: в пилюле перечня место узкое, слово «не менше» — в форме и подсказке */
 export const OP_SIGN: Record<Op, string> = { ">=": "≥", "<=": "≤", ">": ">", "<": "<" };
@@ -42,14 +62,26 @@ function Chip({ icon, children }: { icon?: ReactNode; children: ReactNode }) {
 }
 
 /**
- * Условие пилюлей: «PHQ-9 TOT ≥ 20», «Будь-який тест, шкала SUI ≥ 2»,
- * «Прапор ризику: виражений», «Проходжень цього тесту ≥ 2».
+ * Условие пилюлей: «PHQ-9 Вираженість депресії ≥ 20», «Будь-яка методика,
+ * шкала SUI ≥ 2», «Прапор ризику: виражений», «Проходжень цієї методики ≥ 2».
  *
- * У условия по шкале на сервере — только код шкалы, без её названия; ради
- * названий пришлось бы читать каждую методику перечня целиком. Код в
- * условии — то, что человек и вписывал.
+ * У условия по шкале на сервере — только код шкалы. Название приходит из
+ * дочитанной методики (scaleTitle); пока её нет или шкалы в ней уже нет —
+ * код. У «будь-якої методики» названия нет вовсе: код там и есть то, что
+ * человек вписывал. Методику, названную над пилюлями (lead), пилюля не
+ * повторяет.
  */
-export function CondChip({ c, testTitle }: { c: RuleCondition; testTitle: (id: string) => string }) {
+export function CondChip({
+  c,
+  testTitle,
+  scaleTitle,
+  lead = null,
+}: {
+  c: RuleCondition;
+  testTitle: (id: string) => string;
+  scaleTitle?: (surveyId: string, code: string) => string | null;
+  lead?: string | null;
+}) {
   const { ut } = useLang();
   if (c.kind === "risk") {
     return (
@@ -69,14 +101,15 @@ export function CondChip({ c, testTitle }: { c: RuleCondition; testTitle: (id: s
     );
   }
   const normed = c.metric === "normed" ? <span className="font-semibold text-muted">{ut("am.chipNormed")}</span> : null;
+  const named = c.surveyId === null ? null : (scaleTitle?.(c.surveyId, c.scaleCode) ?? null);
   return (
     <Chip>
       {c.surveyId === null ? (
         <span>{ut("am.chipAnyTest")}</span>
-      ) : (
+      ) : c.surveyId === lead ? null : (
         <b className="min-w-0 max-w-[180px] truncate">{testTitle(c.surveyId)}</b>
       )}
-      <span>{c.scaleCode}</span>
+      {named ? <span className="min-w-0 truncate">{named}</span> : <span>{c.scaleCode}</span>}
       <b>
         {OP_SIGN[c.op]} {thresholdText(c.value)}
       </b>
