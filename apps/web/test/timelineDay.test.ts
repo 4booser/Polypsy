@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { dayKey } from "../src/format";
-import { groupByDay, weekly } from "../src/pages/Timeline";
+import { groupByDay } from "../src/pages/Timeline";
 
 /**
  * Хронология пациента: день — по часам учреждения, а не по Гринвичу

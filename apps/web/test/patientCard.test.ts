@@ -18,7 +18,6 @@ import { conclusionName, leadAction, resultRows, withConclusion, withLead } from
  */
 
 const SRC = resolve(import.meta.dir, "../src");
-const iso = (s: string) => `d:${s}`;
 
 describe("карточка пациента: вкладка «Заміри»", () => {
   const scales = [
