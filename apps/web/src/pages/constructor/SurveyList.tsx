@@ -38,9 +38,10 @@ import { attentionOf, grantState, keysPending, rightsPending, shortDate, splitCo
 import { num, useCount } from "../methods/useCount";
 import { ArchiveManyDialog, codesLine, FolderForm, MoveForm, MoveManyForm } from "./CatalogueDialogs";
 import {
-  DEFAULT_PER,
+  CATALOGUE_PER,
   assignPending,
   catalogueHref,
+  cataloguePer,
   domainCounts,
   domainFrom,
   folderChildren,
@@ -49,7 +50,6 @@ import {
   offsetPageCount,
   pageCount,
   pageFrom,
-  perFrom,
   retiredPage,
   tabFromPath,
   type CatalogueTab,
@@ -464,13 +464,20 @@ export function SurveyList() {
    * янтарём в строке внимания и в строках; врачу янтарь на каждой из
    * семидесяти строк ничего не говорит, и ему это факт паспорта методики.
    */
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
   const qa = user?.role === "superadmin";
 
   /*
    * Всё состояние экрана — в адресе: вкладка сегментом, папка, поиск,
-   * группа, страница и её размер — параметрами. Адрес каталога пересылают
-   * коллеге, и открыться он обязан на том же, что видел отправитель.
+   * группа, страница — параметрами. Адрес каталога пересылают коллеге, и
+   * открыться он обязан на том же, что видел отправитель.
+   *
+   * Строк на странице — исключение: это выбор врача, а не вид каталога, и
+   * живёт он в профиле (workspace.catalogPer), как тема и плотность, —
+   * сотрудник садится за разные машины. В адресе число остаётся, только
+   * если пришло с ним (старая закладка): тогда оно и действует, и уходит в
+   * ссылки вкладок и папок (linkPer). `chosen` — выбранное только что: профиль
+   * перечитывается после сохранения, и до ответа экран не прыгает назад.
    */
   const tab = tabFromPath(pathname);
   const folderParam = params.get("folder");
@@ -478,7 +485,9 @@ export function SurveyList() {
   const group = params.get("group") ?? "";
   const domain = domainFrom(params.get("domain"));
   const page = pageFrom(params.get("page"));
-  const per = perFrom(params.get("per"));
+  const [chosenPer, setChosenPer] = useState<number | null>(null);
+  const per = cataloguePer(params.get("per"), chosenPer ?? user?.workspace?.catalogPer);
+  const linkPer = params.get("per") !== null ? per : undefined;
 
   const update = useCallback(
     (patch: Record<string, string | null>) => {
@@ -713,7 +722,7 @@ export function SurveyList() {
     if (!window.confirm(ut("cat.deleteFolderConfirm"))) return;
     if (await run(() => api.deleteSurveyFolder(f.id), ut("cat.folderDeleted"))) {
       shelves.reload();
-      navigate(hrefOf(tab, { folder: f.parentId, per }), { replace: true });
+      navigate(hrefOf(tab, { folder: f.parentId, per: linkPer }), { replace: true });
     }
   };
 
@@ -837,6 +846,17 @@ export function SurveyList() {
    */
   const narrow = useMedia("(max-width: 1366px)");
   const pageHasCodes = !!shown?.items.some((s) => splitCode(s.title).code);
+  /*
+   * «Група і папка» — только то, что различает строки. Группа — когда видно
+   * несколько групп и фильтра группы нет; папка — у строки, лежащей не в
+   * открытой папке (поиск и направление идут по поддереву). В корне без
+   * поиска строки и так вне папок, и «Каталог методик / у корені групи» на
+   * каждой из семидесяти строк ничего не говорило: место отдано названию.
+   * Нечего различать — колонки нет вовсе.
+   */
+  const showGroups = groups.length > 1 && !group;
+  const folderOf = (s: SurveyListItem) => (s.folderId && s.folderId !== folderId ? (folderById.get(s.folderId) ?? null) : null);
+  const pageHasFolders = !!shown?.items.some((s) => folderOf(s));
   /* подпись направления в строке; отобрано по направлению — у всех строк она одна, и строка её не повторяет */
   const rowDomain = (s: SurveyListItem): string | null => {
     if (domain && domain !== "none") return null;
@@ -852,13 +872,14 @@ export function SurveyList() {
     },
     {
       key: "group",
-      header: ut("mc.colGroup"),
+      header: ut(showGroups ? (pageHasFolders ? "mc.colGroup" : "f.group") : "cst.folder"),
       required: true,
-      width: narrow ? 168 : 188,
+      width: narrow ? 150 : 176,
       render: (s) => {
+        const f = folderOf(s);
+        if (!showGroups) return f ? <Two top={f.title} /> : null;
         const g = s.groupId ? groupById.get(s.groupId) : null;
-        const f = s.folderId ? folderById.get(s.folderId) : null;
-        return <Two top={g?.title ?? ut("mark.outsideGroups")} sub={g ? (f?.title ?? ut("mc.inGroupRoot")) : null} />;
+        return <Two top={g?.title ?? ut("mark.outsideGroups")} sub={f?.title ?? null} />;
       },
     },
     {
@@ -912,7 +933,9 @@ export function SurveyList() {
     },
   ];
 
-  const shownColumns = narrow ? columns.filter((c) => c.key !== "scales") : columns;
+  const shownColumns = columns.filter(
+    (c) => !(narrow && c.key === "scales") && !(c.key === "group" && !showGroups && !pageHasFolders),
+  );
 
   const rowActions = (s: SurveyListItem) => (
     <>
@@ -945,7 +968,7 @@ export function SurveyList() {
   );
 
   const tabs = (["published", "drafts", "retired"] as const).map((t) => ({
-    to: hrefOf(t, { folder: folderId, q, per }),
+    to: hrefOf(t, { folder: folderId, q, per: linkPer }),
     label: ut(t === "published" ? "mc.tabPublished" : t === "drafts" ? "sn.drafts" : "cat.tabRetired"),
     end: t === "published",
     count: everything.data ? tabCounts[t] : null,
@@ -1019,7 +1042,7 @@ export function SurveyList() {
             icon={<ShellIcon name="file-pen-line" />}
             label={`${ut("sn.drafts")} ${attention.drafts.length}`}
             detail={shortName(attention.drafts[0]!)}
-            to={hrefOf("drafts", { per })}
+            to={hrefOf("drafts", { per: linkPer })}
             popTitle={ut("sn.drafts")}
             popNote={String(attention.drafts.length)}
             pop={pop(attention.drafts, (s) => `/constructor/${s.id}`)}
@@ -1187,7 +1210,7 @@ export function SurveyList() {
       <Panel flush>
         {path.length || childFolders.length ? (
         <Shelf
-          href={(folder) => hrefOf(tab, { folder, per })}
+          href={(folder) => hrefOf(tab, { folder, per: linkPer })}
           path={path}
           childFolders={childFolders}
           siblings={siblings}
@@ -1293,14 +1316,22 @@ export function SurveyList() {
           />
           </div>
         )}
-        {shown && (pages > 1 || per !== DEFAULT_PER) ? (
+        {shown && (pages > 1 || per !== CATALOGUE_PER) ? (
           <div className="border-t border-divider py-2.5 pl-4 pr-3">
             <Pager
               page={page}
               pages={pages}
               per={per}
               total={shown.total}
-              onPer={(n) => update({ per: n === DEFAULT_PER ? null : String(n), page: null })}
+              onPer={(n) => {
+                /* выбор — в профиль, а не в адрес: на другой машине каталог откроется так же */
+                setChosenPer(n);
+                update({ per: null, page: null });
+                void api
+                  .saveWorkspace({ catalogPer: n as 10 | 20 | 50 | 100 })
+                  .then(refreshUser)
+                  .catch(() => {});
+              }}
               onPage={(n) => update({ page: n > 1 ? String(n) : null })}
             />
           </div>

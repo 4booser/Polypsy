@@ -167,3 +167,70 @@ describe("каталог: снятые, несколько вкладок, по�
     expect(idsOf(foreign.body), "поиск по поддереву открыл чужому сотруднику методики").toEqual([]);
   });
 });
+
+/**
+ * Каталог по названию (?sort=title) — на языке запроса и по правилам языка.
+ *
+ * Мутация: сортировать по `title->>'uk'` на любом языке — русский порядок
+ * выходит украинским, проверка называет его. Мутация: убрать collate — в
+ * байтовом порядке «Інсомнія» встаёт первой (І лежит в Юникоде перед А), а
+ * «Ґендерна роль» — последней. Мутация: убрать запасной разбор строки без
+ * языков — методика, заведённая до двуязычия, уезжает в конец.
+ */
+describe("каталог: порядок по названию", () => {
+  let catalog: string;
+  const ids: Record<string, string> = {};
+
+  beforeAll(async () => {
+    catalog = crypto.randomUUID();
+    await db.insert(surveyGroups).values({ id: catalog, title: "Каталог порядку", createdBy: root.id });
+    await db.insert(groupAdmins).values({ groupId: catalog, userId: adminA.id, addedBy: root.id });
+    const rows: [string, unknown][] = [
+      ["sleep", { uk: "Якість сну", ru: "Качество сна" }],
+      ["insomnia", { uk: "Інсомнія", ru: "Бессонница" }],
+      ["pain", { uk: "Біль", ru: "Боль" }],
+      ["gender", { uk: "Ґендерна роль", ru: "Гендерная роль" }],
+      // название, заведённое до двуязычия: строка без языков
+      ["legacy", "Абетка"],
+    ];
+    for (const [key, title] of rows) {
+      const id = crypto.randomUUID();
+      await db.insert(surveys).values({
+        id,
+        groupId: catalog,
+        title,
+        administration: "self",
+        status: "published",
+        publishedAt: new Date().toISOString(),
+        visibility: "public",
+        createdBy: adminA.id,
+      } as never);
+      ids[key] = id;
+    }
+  });
+
+  const order = async (lang: string, extra = "") => {
+    const res = await api(`/api/surveys?groupId=${catalog}&sort=title${extra}`, adminA.token, {
+      headers: { "Accept-Language": lang },
+    });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    const keyOf = new Map(Object.entries(ids).map(([k, v]) => [v, k]));
+    return idsOf(res.body).map((id) => keyOf.get(id));
+  };
+
+  test("украинский экран — украинский алфавит, русский — русский", async () => {
+    expect(await order("uk")).toEqual(["legacy", "pain", "gender", "insomnia", "sleep"]);
+    expect(await order("ru")).toEqual(["legacy", "insomnia", "pain", "gender", "sleep"]);
+  });
+
+  test("страницы режутся по тому же порядку", async () => {
+    expect(await order("uk", "&limit=2&offset=2")).toEqual(["gender", "insomnia"]);
+  });
+
+  test("без параметра — прежний порядок, мусор — отказ", async () => {
+    const plain = await api(`/api/surveys?groupId=${catalog}`, adminA.token);
+    // новые сверху: заведённая последней — первой
+    expect(idsOf(plain.body)[0]).toBe(ids.legacy!);
+    expect((await api("/api/surveys?sort=created", adminA.token)).status).toBe(400);
+  });
+});

@@ -12759,7 +12759,6 @@ export const UI = {
   "mc.colScales": { uk: "Шкали", ru: "Шкалы", en: "Scales" },
   "mc.colUses": { uk: "Проходжень, 30 днів", ru: "Прохождений, 30 дней", en: "Responses, 30 days" },
   "mc.colVersion": { uk: "Версія і ключі", ru: "Версия и ключи", en: "Version and keys" },
-  "mc.inGroupRoot": { uk: "у корені групи", ru: "в корне группы", en: "at the group root" },
   "mc.usesAll": { uk: "{n} усього", ru: "{n} всего", en: "{n} in total" },
   "mc.since": { uk: "від {date}", ru: "от {date}", en: "of {date}" },
   "mc.noVersion": { uk: "версії ще немає", ru: "версии ещё нет", en: "no version yet" },

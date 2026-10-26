@@ -1635,6 +1635,17 @@ export const surveyListQuery = z.object({
     .optional()
     .transform((v) => v || undefined)
     .pipe(z.enum([...SURVEY_DOMAINS, NO_DOMAIN]).optional()),
+  /**
+   * Порядок: без параметра — новые сверху, как и было (так список зовут
+   * выборы методики и мобилка); `title` — по названию на языке запроса.
+   * Второе нужно каталогу: врач ищет методику глазами по алфавиту, а не по
+   * дате, когда её поставил установщик.
+   */
+  sort: z
+    .string()
+    .optional()
+    .transform((v) => v || undefined)
+    .pipe(z.enum(["title"]).optional()),
 });
 
 /**
@@ -1709,6 +1720,8 @@ export const workspacePrefsSchema = z.object({
     .optional(),
   /* метка «прочитано до» сравнивается с временем событий — кривая строка в ней ломала бы ленту */
   eventsSeenAt: dateInput.nullable().optional(),
+  /* строк на странице каталога методик — только ступени селекта (ui/perPage.ts) */
+  catalogPer: z.union([z.literal(10), z.literal(20), z.literal(50), z.literal(100)]).optional(),
   /*
    * Віджети «Зведення»: порядок и выключенные. Ключи — только известные
    * (DASH_WIDGETS), а случаи риска выключить нельзя и запросом мимо экрана.

@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import type { SurveyFolder, SurveyListItem } from "@quizzy/shared";
 import {
+  CATALOGUE_PER,
   assignPending,
   catalogueHref,
+  cataloguePer,
   domainCounts,
   domainFrom,
   folderChildren,
@@ -54,9 +56,9 @@ describe("вкладки в адресе", () => {
 
   test("умолчания в адрес не пишутся: у одной страницы один адрес", () => {
     expect(catalogueHref("published")).toBe("/surveys");
-    expect(catalogueHref("published", { page: 1, per: 10, q: "  " })).toBe("/surveys");
-    expect(catalogueHref("drafts", { folder: "f1", page: 3, per: 50, q: "мло" })).toBe(
-      "/surveys/drafts?folder=f1&q=%D0%BC%D0%BB%D0%BE&page=3&per=50",
+    expect(catalogueHref("published", { page: 1, per: CATALOGUE_PER, q: "  " })).toBe("/surveys");
+    expect(catalogueHref("drafts", { folder: "f1", page: 3, per: 20, q: "мло" })).toBe(
+      "/surveys/drafts?folder=f1&q=%D0%BC%D0%BB%D0%BE&page=3&per=20",
     );
   });
 });
@@ -66,6 +68,21 @@ describe("страницы", () => {
     expect(perFrom("20")).toBe(20);
     expect(perFrom("7")).toBe(10);
     expect(perFrom(null)).toBe(10);
+  });
+
+  test("строк каталога: адрес, потом выбор врача из профиля, потом 50", () => {
+    // семьдесят методик отделения — не семь страниц по десять
+    expect(CATALOGUE_PER).toBe(50);
+    expect(cataloguePer(null)).toBe(50);
+    expect(cataloguePer(null, null)).toBe(50);
+    expect(cataloguePer(null, 20)).toBe(20);
+    // адрес главнее профиля: ссылка коллеги открывается тем же видом
+    expect(cataloguePer("100", 20)).toBe(100);
+    // чужое число в адресе — как отсутствующее, а не как отказ
+    expect(cataloguePer("7", 20)).toBe(20);
+    expect(cataloguePer("7")).toBe(50);
+    // испорченный профиль не даёт странице в семь строк
+    expect(cataloguePer(null, 7)).toBe(50);
   });
 
   test("номер страницы не бывает меньше первой", () => {
@@ -90,6 +107,7 @@ describe("запрос к серверу", () => {
       status: "published",
       limit: 20,
       offset: 20,
+      sort: "title",
     });
   });
 
@@ -107,7 +125,15 @@ describe("запрос к серверу", () => {
       folder: "root",
       q: "",
       archived: true,
+      sort: "title",
     });
+  });
+
+  test("порядок — по названию на языке экрана, на каждой вкладке", () => {
+    // сервер по умолчанию отдаёт новые сверху: поставленные установщиком одной секундой стояли бы как попало
+    for (const tab of ["published", "drafts", "retired"] as const) {
+      expect(listQuery({ tab, folder: null, q: "", page: 1, per: 50 }).sort).toBe("title");
+    }
   });
 
   test("страница снятых отбирает и режет сама", () => {
@@ -128,6 +154,7 @@ describe("чипы «Напрям»", () => {
       status: "published",
       limit: 10,
       offset: 0,
+      sort: "title",
       domain: "trauma",
     });
     expect(listQuery({ tab: "published", folder: "f1", q: "", page: 1, per: 10, domain: "none" })).toMatchObject({
@@ -138,6 +165,7 @@ describe("чипы «Напрям»", () => {
       folder: undefined,
       q: "",
       archived: true,
+      sort: "title",
       domain: "sleep",
     });
     // без чипа запрос прежний — в адрес сервера не уходит пустой параметр
