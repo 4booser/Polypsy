@@ -577,31 +577,31 @@ export const UI = {
    * своими волнами, а старые ключи cl.* остаются у действий строки, пока их
    * не перепишет конструктор.
    */
-  "cat.tabsLabel": { uk: "Стан методик", ru: "Состояние методик", en: "Test status" },
+  "cat.tabsLabel": { uk: "Стан методик", ru: "Состояние методик", en: "Instrument status" },
   "cat.tabRetired": { uk: "Зняті з використання", ru: "Снятые с использования", en: "Retired" },
   /* подпись набирается в два рядка узкой колонкой, как на макете, — перенос делает ширина, а не ключ */
   "cat.perPage": { uk: "елементів на сторінці", ru: "элементов на странице", en: "items per page" },
   "cat.prevPage": { uk: "Попередня сторінка", ru: "Предыдущая страница", en: "Previous page" },
   "cat.nextPage": { uk: "Наступна сторінка", ru: "Следующая страница", en: "Next page" },
-  "cat.search": { uk: "Пошук методик", ru: "Поиск методик", en: "Search tests" },
+  "cat.search": { uk: "Пошук методик", ru: "Поиск методик", en: "Search instruments" },
   "cat.newFolder": { uk: "Нова папка", ru: "Новая папка", en: "New folder" },
-  "cat.root": { uk: "Мої методики", ru: "Мои методики", en: "My tests" },
+  "cat.root": { uk: "Каталог", ru: "Каталог", en: "Catalogue" },
   "cat.crumbsLabel": { uk: "Шлях у каталозі", ru: "Путь в каталоге", en: "Catalog path" },
   "cat.folderMenu": { uk: "Інші папки цього рівня та дії з папкою", ru: "Другие папки этого уровня и действия с папкой", en: "Other folders at this level and folder actions" },
   "cat.noDescription": { uk: "Опис не задано", ru: "Описание не задано", en: "No description provided" },
   "cat.keysVerified": { uk: "ключі звірено", ru: "ключи сверены", en: "scoring keys verified" },
   "cat.keysUnverified": { uk: "ключі не звірено", ru: "ключи не сверены", en: "scoring keys not verified" },
   "cat.scoringOff": { uk: "без підрахунку балів", ru: "без подсчёта баллов", en: "no scoring" },
-  "cat.empty": { uk: "У цій папці методик немає", ru: "В этой папке методик нет", en: "There are no tests in this folder" },
+  "cat.empty": { uk: "У цій папці методик немає", ru: "В этой папке методик нет", en: "There are no instruments in this folder" },
   "cat.emptySearch": { uk: "За запитом нічого не знайдено", ru: "По запросу ничего не найдено", en: "Nothing matches your search" },
-  "cat.rowActions": { uk: "Дії з методикою", ru: "Действия с методикой", en: "Test actions" },
+  "cat.rowActions": { uk: "Дії з методикою", ru: "Действия с методикой", en: "Instrument actions" },
   "cat.move": { uk: "Перемістити в папку", ru: "Переместить в папку", en: "Move to folder" },
   "cat.rootOption": { uk: "Корінь каталогу", ru: "Корень каталога", en: "Catalog root" },
-  "cat.moved": { uk: "Методику перенесено", ru: "Методика перенесена", en: "Test moved" },
+  "cat.moved": { uk: "Методику перенесено", ru: "Методика перенесена", en: "Instrument moved" },
   "cat.noGroupForFolder": {
-    uk: "Методику без групи методик не можна покласти в папку: спочатку задайте групу в конструкторі",
-    ru: "Методику без группы методик нельзя положить в папку: сначала задайте группу в конструкторе",
-    en: "A test outside an instrument group cannot be placed in a folder: first set its group in the builder",
+    uk: "Методику поза групою методик у папку не покласти: спочатку задайте групу в конструкторі",
+    ru: "Методику вне группы методик в папку не положить: сначала задайте группу в конструкторе",
+    en: "An instrument outside an instrument group cannot be placed in a folder: first set its group in the builder",
   },
   "cat.folderTitle": { uk: "Назва папки", ru: "Название папки", en: "Folder name" },
   "cat.folderDate": { uk: "Дата папки", ru: "Дата папки", en: "Folder date" },
@@ -1959,8 +1959,8 @@ export const UI = {
   },
   "ant.weekly": { uk: "Середнє за тижнями", ru: "Среднее по неделям", en: "Weekly mean" },
   "ant.weeklyHint": {
-    uk: "Тижні, де проходжень менше {n}, не показано",
-    ru: "Недели, где прохождений меньше {n}, не показаны",
+    uk: "Тижні, де менше {n} проходжень, не показано",
+    ru: "Недели, где меньше {n} прохождений, не показаны",
     en: "Weeks with fewer than {n} completions are not shown",
   },
   "ant.weeklyTooFew": {
@@ -2030,9 +2030,9 @@ export const UI = {
   "ant.noFast": { uk: "Надто швидких відповідей немає", ru: "Слишком быстрых ответов нет", en: "No too-fast answers" },
   "ant.durationTitle": { uk: "Тривалість проходження", ru: "Длительность прохождения", en: "Completion time" },
   "ant.durationCaption": {
-    uk: "Тривалість заповнення від початку до завершення; найдовші 5 % — в останньому рядку",
-    ru: "Длительность заполнения от начала до завершения; самые долгие 5 % — в последней строке",
-    en: "Time from start to submission; the slowest 5% are in the last row",
+    uk: "Від початку до завершення; найдовші 5 % — в останньому рядку",
+    ru: "От начала до завершения; самые долгие 5 % — в последней строке",
+    en: "From start to completion; the slowest 5 % are in the last row",
   },
   "ant.andLonger": { uk: "{n} і довше", ru: "{n} и дольше", en: "{n} and longer" },
   "ant.flaggedLine": {
@@ -2075,8 +2075,8 @@ export const UI = {
   "ant.cellChanged": { uk: "відповідь змінено", ru: "ответ изменён", en: "answer changed" },
   "ant.timeByResponse": { uk: "Час за проходженнями", ru: "Время по прохождениям", en: "Time per completion" },
   "ant.noPatientResponses": {
-    uk: "Пацієнт не проходив цю методику за вибраними фільтрами",
-    ru: "Пациент не проходил эту методику по выбранным фильтрам",
+    uk: "Проходжень цього пацієнта за вибраними фільтрами немає",
+    ru: "Прохождений этого пациента по выбранным фильтрам нет",
     en: "This patient has no completions matching the filters",
   },
   "ant.bandsEmpty": { uk: "Завершених проходжень зі смугою ще немає", ru: "Завершённых прохождений с полосой ещё нет", en: "No completed tests with a band yet" },
@@ -4453,7 +4453,7 @@ export const UI = {
   "an.tabScales": { uk: "Шкали", ru: "Шкалы", en: "Scales" },
   "an.tabQuality": { uk: "Якість", ru: "Качество", en: "Quality" },
   "an.tabResponses": { uk: "Проходження", ru: "Прохождения", en: "Completions" },
-  "an.dropOff": { uk: "Де переривають заповнення", ru: "Где прерывают заполнение", en: "Where people stop" },
+  "an.dropOff": { uk: "Де переривають заповнення", ru: "Где прерывают заполнение", en: "Where people stop filling it in" },
   "an.exportsHint": {
     uk: "Вивантаження вивозить персональні дані за межі системи і записується в журнал доступу",
     ru: "Выгрузка увозит персональные данные за пределы системы и записывается в журнал доступа",
@@ -8168,7 +8168,7 @@ export const UI = {
   "pg2.other": { uk: "Інше", ru: "Другое", en: "Other" },
   "pg2.favouriteSub": { uk: "показувати першою в реєстрі", ru: "показывать первой в реестре", en: "show it first in the register" },
   "pg2.savedToast": { uk: "Групу «{name}» збережено", ru: "Группа «{name}» сохранена", en: "Group “{name}” saved" },
-  "pg2.assignDraft": { uk: "призначення методики", ru: "назначения методики", en: "test assignment" },
+  "pg2.assignDraft": { uk: "призначення", ru: "назначения", en: "the assignment" },
   "pg2.assignGroupNote": {
     uk: "Отримає кожен учасник групи, якого ви бачите",
     ru: "Получит каждый участник группы, которого вы видите",
@@ -9147,7 +9147,7 @@ export const UI = {
   "am.copyOf": { uk: "{title} — копія", ru: "{title} — копия", en: "{title} — copy" },
   "ant.metaAll": { uk: "Завершено: {n}, осіб: {p}", ru: "Завершено: {n}, людей: {p}", en: "Completed: {n}, people: {p}" },
   "ant.metaAll2": {
-    uk: "розпочато {s}, завершеність {r}, медіана часу {t}",
+    uk: "почато {s}, завершеність {r}, медіана часу {t}",
     ru: "начато {s}, завершённость {r}, медиана времени {t}",
     en: "started {s}, completion {r}, median time {t}",
   },
@@ -9201,9 +9201,9 @@ export const UI = {
   "ant.heavyShare": { uk: "{band} й важче — {p}: {k} з {n}.", ru: "{band} и тяжелее — {p}: {k} из {n}.", en: "{band} or worse — {p}: {k} of {n}." },
   "ant.medianLadder": { uk: "Медіана на сходах тяжкості", ru: "Медиана на лестнице тяжести", en: "Median on the severity ladder" },
   "ant.dropOffTotal": {
-    uk: "Перервано {a} з {s} розпочатих, завершеність {r}.",
+    uk: "Перервано {a} з {s} початих, завершеність {r}.",
     ru: "Прервано {a} из {s} начатых, завершённость {r}.",
-    en: "Abandoned {a} of {s} started in total, completion {r}.",
+    en: "{a} of {s} started were interrupted, completion {r}.",
   },
   "ant.qualityTitle": { uk: "Якість даних", ru: "Качество данных", en: "Data quality" },
   "ant.fastThreshold": {
@@ -9226,7 +9226,7 @@ export const UI = {
   "ant.statusPick": { uk: "Стан проходження", ru: "Состояние прохождения", en: "Response state" },
   "ant.stAll": { uk: "Усі", ru: "Все", en: "All" },
   "ant.stDone": { uk: "Завершені", ru: "Завершённые", en: "Completed" },
-  "ant.stAbandoned": { uk: "Перервані", ru: "Прерванные", en: "Abandoned" },
+  "ant.stAbandoned": { uk: "Перервані", ru: "Прерванные", en: "Interrupted" },
   "ant.allResponses": { uk: "Усі проходження", ru: "Все прохождения", en: "All completions" },
   "ant.verShort": { uk: "в. {n}", ru: "в. {n}", en: "v. {n}" },
   "ant.exportBy": { uk: "Вивантажує {name}, {date}", ru: "Выгружает {name}, {date}", en: "Exported by {name}, {date}" },
