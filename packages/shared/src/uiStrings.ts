@@ -384,7 +384,7 @@ export const UI = {
   /* строка теста группы: «призначено 05.02.2023 · до 01.03.2023 · пройшли 5 з 12» */
   "pg.completed": { uk: "пройшли", ru: "прошли", en: "completed" },
   "pg.test": { uk: "Тест", ru: "Тест", en: "Test" },
-  "pg.assignTest": { uk: "Призначити тест", ru: "Назначить тест", en: "Assign test" },
+  "pg.assignTest": { uk: "Призначити методику", ru: "Назначить методику", en: "Assign instrument" },
   "pg.assigned": { uk: "Тест призначено", ru: "Тест назначен", en: "Test assigned" },
   /* выбор галочками: «18 вибрано» — нижний рядок кадра f05 */
   "pg.addToGroup": { uk: "Додати до групи", ru: "Добавить в группу", en: "Add to group" },
@@ -14601,7 +14601,7 @@ export const UI = {
   "card.colSeverity": { uk: "Тяжкість", ru: "Тяжесть", en: "Severity" },
   "card.collapseList": { uk: "Згорнути список", ru: "Свернуть список", en: "Collapse the list" },
   "card.conclText": { uk: "Висновок", ru: "Вывод", en: "Conclusion text" },
-  "card.conclTip": { uk: "Заключення", ru: "Заключение", en: "Conclusion" },
+  "card.conclTip": { uk: "Написати заключення", ru: "Написать заключение", en: "Write a conclusion" },
   "card.conclusionOf": { uk: "Заключення: {s}", ru: "Заключение: {s}", en: "Conclusion: {s}" },
   "card.continue": { uk: "Продовжити", ru: "Продолжить", en: "Continue" },
   "card.course": { uk: "Курс", ru: "Курс", en: "Course" },
@@ -16460,6 +16460,9 @@ export const UI = {
   // ── ux-home ──
 
   // ── ux-card ──
+  /* карточка пациента: группа действий в шапке и подпись «Заключення» на кнопке */
+  "card.actionsLabel": { uk: "Дії з пацієнтом", ru: "Действия с пациентом", en: "Patient actions" },
+  "card.concl": { uk: "Заключення", ru: "Заключение", en: "Conclusion" },
 
   // ── ux-results ──
 

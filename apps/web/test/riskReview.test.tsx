@@ -147,9 +147,10 @@ describe("строка открытого карточки", () => {
     expect(has(html, "rr.casesFailed")).toBe(false);
   });
 
-  test("случаев нет — «нічого відкритого»", () => {
+  test("открытого нет — строки нет: ни пилюль, ни «нічого відкритого»", () => {
     const html = draw(<Strip v={view({ cases: [] })} drafts={NO_DRAFTS} />);
-    expect(has(html, "card.nothingOpen")).toBe(true);
+    expect(html).toBe("");
+    expect(has(html, "card.nothingOpen")).toBe(false);
   });
 
   test("открытый случай — красная пилюля сигнала с «Розібрати»", () => {
