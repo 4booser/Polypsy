@@ -202,6 +202,20 @@ describe("раскладка", () => {
     expect(lay.events.some((e) => e.key === "old")).toBe(false);
     expect(lay.ticks).toEqual([0, 5, 10, 15, 20, 27]);
   });
+
+  test("верх шкалы выше края лестницы — ось до верха шкалы: «15 з 22» под графиком и «0–22» у оси сходятся", () => {
+    /* демо-скрининг: полосы до 21, а максимум шкалы — 22 (пункт 0–10 поверх четырёх 0–3) */
+    const ladder = [
+      { min: 0, max: 4, label: "норма", severity: "none" as const },
+      { min: 15, max: 21, label: "виражена", severity: "severe" as const },
+    ];
+    expect(courseLayout(pts, ladder, [], null).hi).toBe(21);
+    const lay = courseLayout(pts, ladder, [], null, 22);
+    expect(lay.hi).toBe(22);
+    expect(lay.ticks.at(-1)).toBe(22);
+    // ниже края лестницы верх ничего не сужает
+    expect(courseLayout(pts, PHQ, [], null, 20).hi).toBe(27);
+  });
 });
 
 describe("подписи межі похибки", () => {
@@ -296,12 +310,16 @@ describe("отрисовка", () => {
     expect(html.match(/data-point=/g)?.length).toBe(3);
   });
 
-  test("подпись для диктора — все замеры с датами; легенда и подсказка как пользоваться", () => {
+  test("подпись для диктора — все замеры с датами; легенда; как пользоваться — описанием, а не абзацем на экране", () => {
     expect(html).toContain('aria-label="PHQ-9: 19 (24.08), 16 (11.09), 14 (08.10)"');
     expect(says(html, "course.lg.measures")).toBe(true);
     expect(says(html, "course.lg.rc")).toBe(true);
     expect(says(html, "course.lg.noshow")).toBe(true);
+    /* подсказка «наведіть на графік…» повторялась под каждым графиком — теперь она у диктора */
     expect(says(html, "course.hint")).toBe(true);
+    const id = /aria-describedby="([^"]+)"/.exec(html)?.[1];
+    expect(id).toBeTruthy();
+    expect(html).toContain(`<p id="${id}" class="sr-only">`);
   });
 
   test("без оценки похибки — без зоны, и это сказано словами", () => {

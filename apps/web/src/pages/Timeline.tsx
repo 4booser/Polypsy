@@ -183,9 +183,8 @@ export default function Timeline() {
               <p className="m-0 px-4 pb-4 text-small text-muted">{ut("tlx.nothingAhead")}</p>
             )}
           </Panel>
-          <Callout kind="info">
-            {ut("tl.sub")}. {ut("tlx.note")}
-          </Callout>
+          {/* одна строка, чего на оси нет: отсутствие записи приёма здесь не значит, что приёма не было */}
+          <Callout kind="info">{ut("tlx.note")}</Callout>
         </>
       }
     >
@@ -275,16 +274,23 @@ function dayTitle(day: string, now: number, locale: string, ut: (k: UiKey) => st
   return `${long[0]!.toUpperCase()}${long.slice(1)}`;
 }
 
-/** Корзины по неделям с понедельника — последние восемь, текущая неполная */
-function weekly(items: readonly TimelineItem[], now: number, locale: string) {
+/**
+ * Корзины по неделям с понедельника — последние восемь, текущая неполная.
+ *
+ * Начала недель — календарём (полночь понедельника по часам консоли), а не
+ * вычитанием 7×24 часов: через перевод часов (последнее воскресенье
+ * октября) вычтенная полночь сдвигалась на час, ни одно событие с ней не
+ * совпадало, и все недели до перевода стояли нулями.
+ */
+export function weekly(items: readonly TimelineItem[], now: number, locale: string) {
   const monday = (t: number) => {
     const d = new Date(t);
     const shift = (d.getDay() + 6) % 7;
     return new Date(d.getFullYear(), d.getMonth(), d.getDate() - shift).getTime();
   };
-  const thisWeek = monday(now);
+  const base = new Date(monday(now));
   const out = Array.from({ length: 8 }, (_, i) => {
-    const start = thisWeek - (7 - i) * 7 * 86_400_000;
+    const start = new Date(base.getFullYear(), base.getMonth(), base.getDate() - (7 - i) * 7).getTime();
     return { key: String(start), label: ddmm(new Date(start).toISOString(), locale), value: 0 as number | null, partial: i === 7 };
   });
   for (const e of items) {

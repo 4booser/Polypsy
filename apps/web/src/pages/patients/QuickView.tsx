@@ -313,7 +313,8 @@ export function useQuickViewPane({
                   person.nextVisit ? (
                     <b className="font-bold">{whenShort(person.nextVisit.at, now, locale, words).text}</b>
                   ) : (
-                    <span className="font-semibold text-warn">{ut("plist.notBooked")}</span>
+                    /* как в реестре: «не записано» — состояние, а не тревога */
+                    <span className="text-muted">{ut("plist.notBooked")}</span>
                   ),
                 ],
                 [ut("plist.phone"), card.data?.phone ?? person.phone ?? "—"],

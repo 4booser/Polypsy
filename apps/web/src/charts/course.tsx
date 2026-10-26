@@ -63,7 +63,7 @@ export interface CourseChartProps {
   /** «Сейчас», мс; null — без линии «сьогодні». По умолчанию — текущий момент */
   now?: number | null;
   normalization?: ScaleNormalization | null;
-  /** Легенда и строка «наведіть на графік» под графиком */
+  /** Легенда под графиком (и строка «межі похибки не показано», когда похибку не оценить) */
   legend?: boolean;
 }
 
@@ -107,6 +107,7 @@ export function CourseChart({
   const [W0, boxRef] = useChartWidth(560);
   const svgRef = useRef<SVGSVGElement>(null);
   const clip = useId().replace(/:/g, "");
+  const hintId = `ch-${clip}`;
   const points = [...raw].sort((a, b) => a.t - b.t);
   const pointHover = useIndexHover(points.length);
   const [evAt, setEvAt] = useState<number | null>(null);
@@ -270,6 +271,7 @@ export function CourseChart({
         height={H}
         role="img"
         aria-label={`${title}: ${points.map((p) => `${dec(p.value)} (${p.label})`).join(", ")}`}
+        aria-describedby={hintId}
         className={cx("block overflow-visible", FOCUSABLE)}
         onMouseMove={onMove}
         {...pointHover.focusProps}
@@ -537,9 +539,16 @@ export function CourseChart({
         <>
           <ChartLegend items={legendItems} always />
           {zone ? null : <p className="m-0 mt-[6px] text-caption leading-[16px] text-muted">{ut("course.noRc")}</p>}
-          <p className="m-0 mt-[6px] text-caption leading-[16px] text-muted">{ut("course.hint")}</p>
         </>
       ) : null}
+      {/*
+        Как пользоваться графиком — для диктора (aria-describedby), а не
+        абзацем под каждым графиком: на экране динамики их пять, и одна и та
+        же строка повторялась под каждым.
+      */}
+      <p id={hintId} className="sr-only">
+        {ut("course.hint")}
+      </p>
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { api, type Patient } from "../api";
 import { useLang } from "../lang";
 import { Mi } from "../pages/methods/icons";
 import { shortDate } from "../pages/methods/model";
+import { useCount } from "../pages/methods/useCount";
 import { Pi } from "../pages/patientGroups/icons";
 import { surveyCode } from "../pages/patientGroups/model";
 import { Avatar, Loading, useAction, useToast } from "../ui";
@@ -207,8 +208,23 @@ export interface TestToKnown extends Frame {
   whoNote: string;
   /** Уже назначенные этим адресатам методики — пометка в списке */
   already?: ReadonlySet<string>;
+  /**
+   * Адресат один, и всех его назначений экран заранее не знает (карточка
+   * пациента): прежнее назначение выбранной методики спрашивается, когда её
+   * выбрали, и ящик говорит «вже призначено до …» до того, как нажали
+   * «Призначити». Пройденное прежнее — не помеха: новое — это новый замер.
+   */
+  existingFor?: (surveyId: string) => Promise<ExistingAssignment | null>;
+  /** Поле «Коментар для пацієнта»; без него поля нет, и комментарий — null */
+  comment?: boolean;
   /** Назначить; возвращает строку итога для сообщения */
-  onAssign: (surveyId: string, expiresAt: string | null) => Promise<string>;
+  onAssign: (surveyId: string, expiresAt: string | null, note: string | null) => Promise<string>;
+  /**
+   * Можно назначить и набор: над списком — «Методика / Набір». Срок у набора
+   * свой — к какому дню пройти, по умолчанию неделя (как у ящика набора), —
+   * а не «діє до» доступа. Назначает экран (routes/batteries.ts).
+   */
+  sets?: { onAssign: (batteryId: string, dueAt: string | null, note: string | null) => Promise<string> };
 }
 
 export function AssignDrawer(props: ToRecipients | TestToKnown) {
@@ -559,13 +575,21 @@ function AssignRecipients(p: ToRecipients) {
  * сервер откажет, и предлагать его значило бы обещать отказ.
  */
 function AssignTest(p: TestToKnown) {
-  const { open, already, onAssign, onClose } = p;
+  const { open, already, onAssign, onClose, sets, existingFor } = p;
   const { ut, lang } = useLang();
   const toast = useToast();
-  const surveys = useResource(() => api.surveys(), [], { enabled: open });
+  const count = useCount();
+  /* «Методика / Набір» — только когда экран умеет назначить набор */
+  const [what, setWhat] = useState<"survey" | "set">("survey");
+  const setMode = !!sets && what === "set";
+  const due = setMode ? DUE_RECIPIENTS : DUE_TEST;
+  const surveys = useResource(() => api.surveys(), [], { enabled: open && !setMode });
+  const batteries = useResource(() => api.batteries(), [], { enabled: open && setMode });
   const [q, setQ] = useState("");
   const [surveyId, setSurveyId] = useState("");
+  const [batteryId, setBatteryId] = useState("");
   const [expires, setExpires] = useState(() => dueValue(DUE_TEST.initial));
+  const [comment, setComment] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -576,18 +600,42 @@ function AssignTest(p: TestToKnown) {
         .sort((a, b) => t(a.title, lang).localeCompare(t(b.title, lang))),
     [surveys.data, lang],
   );
+  /* набор без методик сервер не назначит (err.batteryEmpty), снятый — тоже: их не предлагаем */
+  const usableSets = useMemo(
+    () => (batteries.data ?? []).filter((b) => !b.archived && b.items.length > 0).sort((a, b) => a.title.localeCompare(b.title)),
+    [batteries.data],
+  );
   const needle = q.trim().toLowerCase();
   const shown = needle ? usable.filter((s) => t(s.title, lang).toLowerCase().includes(needle)) : usable;
-  const dirty = surveyId !== "" || expires !== dueValue(DUE_TEST.initial);
+  const shownSets = needle ? usableSets.filter((b) => b.title.toLowerCase().includes(needle)) : usableSets;
+  const picked = setMode ? batteryId : surveyId;
+  const existing = useResource(() => (existingFor && surveyId ? existingFor(surveyId) : Promise.resolve(null)), [surveyId], {
+    enabled: !!existingFor && !!surveyId && !setMode,
+    keep: false,
+  });
+  const prior = !setMode && existing.data && !existing.data.done ? existing.data : null;
+  const dirty = surveyId !== "" || batteryId !== "" || comment.trim() !== "" || expires !== dueValue(due.initial);
+
+  /* срок у методики и у набора значит разное: при смене вида — умолчание вида, а не прежнее число */
+  const switchTo = (next: "survey" | "set") => {
+    setWhat(next);
+    setQ("");
+    setError(null);
+    setExpires(dueValue((next === "set" ? DUE_RECIPIENTS : DUE_TEST).initial));
+  };
 
   async function assign() {
-    if (!surveyId || pastDeadline(expires, today()) || busy) return;
+    if (!picked || pastDeadline(expires, today()) || busy) return;
     setBusy(true);
     setError(null);
     try {
-      const done = await onAssign(surveyId, expires || null);
+      const note = p.comment ? comment.trim() || null : null;
+      const done = setMode ? await sets!.onAssign(batteryId, expires || null, note) : await onAssign(surveyId, expires || null, note);
       toast(done, "ok");
       setSurveyId("");
+      setBatteryId("");
+      setComment("");
+      setWhat("survey");
       setExpires(dueValue(DUE_TEST.initial));
       setQ("");
       onClose();
@@ -598,10 +646,20 @@ function AssignTest(p: TestToKnown) {
     }
   }
 
+  const list = setMode ? batteries : surveys;
+  const items = setMode
+    ? shownSets.map((b) => ({ id: b.id, head: b.title, sub: count(b.items.length, "methods"), already: false }))
+    : shown.map((s) => {
+        const title = t(s.title, lang);
+        const code = surveyCode(title);
+        return { id: s.id, head: code, sub: code !== title ? title : null, already: !!already?.has(s.id) || (!!prior && s.id === surveyId) };
+      });
+  const label = setMode ? ut("asgd.set") : ut("pg.test");
+
   return (
     <AssignFrame
       frame={p}
-      title={ut("pg.assignTest")}
+      title={setMode ? ut("mc.btAssignTitle") : ut("pg.assignTest")}
       sub={p.who}
       icon={<Pi.clipboardPlus />}
       note={p.whoNote}
@@ -610,45 +668,75 @@ function AssignTest(p: TestToKnown) {
       draftName={ut("pg2.assignDraft")}
       submit={() => void assign()}
       submitLabel={busy ? ut("co.saving") : ut("acc.grant")}
-      canSubmit={!!surveyId && !pastDeadline(expires, today())}
+      canSubmit={!!picked && !pastDeadline(expires, today())}
       busy={busy}
     >
-      <DrawerSection title={ut("pg.test")}>
-        <SearchField value={q} onChange={setQ} placeholder={ut("pg2.testSearch")} width={0} className="w-full" />
-        {surveys.error ? (
-          <Loading error={surveys.error} onRetry={surveys.reload} bare />
-        ) : !surveys.data ? (
+      <DrawerSection title={sets ? undefined : label}>
+        {sets ? (
+          <Segmented
+            wide
+            className="mb-3"
+            label={ut("asgd.what")}
+            value={what}
+            onChange={switchTo}
+            items={[
+              { key: "survey", label: ut("pg.test") },
+              { key: "set", label: ut("asgd.set") },
+            ]}
+          />
+        ) : null}
+        <SearchField
+          value={q}
+          onChange={setQ}
+          placeholder={setMode ? ut("asgd.setSearch") : ut("pg2.testSearch")}
+          width={0}
+          className="w-full"
+        />
+        {list.error ? (
+          <Loading error={list.error} onRetry={list.reload} bare />
+        ) : !list.data ? (
           /* закрытый ящик не размонтируется: скелет — только пока он открыт и список в пути */
           open ? <Loading rows={3} bare /> : null
-        ) : shown.length === 0 ? (
-          <p className="m-0 mt-3 text-small text-muted">{ut("srch.nothing")}</p>
+        ) : items.length === 0 ? (
+          <p className="m-0 mt-3 text-small text-muted">{setMode && !needle ? ut("asgd.noSets") : ut("srch.nothing")}</p>
         ) : (
-          <div role="radiogroup" aria-label={ut("pg.test")} className="mt-2.5 flex max-h-[min(46vh,420px)] flex-col gap-1 overflow-y-auto">
-            {shown.map((s) => {
-              const title = t(s.title, lang);
-              const code = surveyCode(title);
-              const on = s.id === surveyId;
+          <div role="radiogroup" aria-label={label} className="mt-2.5 flex max-h-[min(46vh,420px)] flex-col gap-1 overflow-y-auto">
+            {items.map((it) => {
+              const on = it.id === picked;
               return (
                 <label
-                  key={s.id}
+                  key={it.id}
                   className={cx(
                     "m-0 flex cursor-pointer items-center gap-2.5 rounded-[10px] px-3 py-2",
                     on ? "bg-violet-tint shadow-[inset_0_0_0_1.5px_var(--vring)]" : "hover:bg-sunk",
                   )}
                 >
-                  <Radio name="assign-survey" checked={on} onChange={() => setSurveyId(s.id)} />
+                  <Radio name="assign-survey" checked={on} onChange={() => (setMode ? setBatteryId(it.id) : setSurveyId(it.id))} />
                   <span className="min-w-0 flex-1">
-                    <b className={cx("block truncate text-[13px] font-extrabold", on ? "text-violet-ink" : "text-text")}>{code}</b>
-                    {code !== title ? <small className="block truncate text-caption text-muted">{title}</small> : null}
+                    <b className={cx("block truncate text-[13px] font-extrabold", on ? "text-violet-ink" : "text-text")}>{it.head}</b>
+                    {it.sub ? <small className="block truncate text-caption text-muted">{it.sub}</small> : null}
                   </span>
-                  {already?.has(s.id) ? <Tag tone="primary">{ut("pg2.alreadyAssigned")}</Tag> : null}
+                  {it.already ? <Tag tone="primary">{ut("pg2.alreadyAssigned")}</Tag> : null}
                 </label>
               );
             })}
           </div>
         )}
+        {prior ? (
+          <div className="mt-3">
+            <Callout kind="warn" icon={<Mi.repeat />}>
+              {prior.until ? ut("asgd.priorUntil").replace("{date}", shortDate(prior.until)) : ut("asgd.priorForever")}{" "}
+              {ut("mc.conflictTail")}
+            </Callout>
+          </div>
+        ) : null}
       </DrawerSection>
-      <DueSection setup={DUE_TEST} value={expires} onChange={setExpires}>
+      <DueSection setup={due} value={expires} onChange={setExpires}>
+        {p.comment ? (
+          <Field label={ut("mc.commentForPatient")} optional>
+            <Input value={comment} onChange={(e) => setComment(e.target.value)} placeholder={ut("acc.commentExample")} maxLength={500} />
+          </Field>
+        ) : null}
         {error ? (
           <p role="alert" className="m-0 mt-2 text-small font-semibold text-risk-ink">
             {error}

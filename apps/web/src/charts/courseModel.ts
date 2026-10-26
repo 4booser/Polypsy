@@ -258,7 +258,12 @@ export function courseLayout(points: readonly CoursePoint[], rungs: readonly Run
   if (sorted.length) {
     const d = ladderDomain(sorted, values, max);
     lo = d.lo;
-    hi = d.hi;
+    /*
+     * Верх шкалы выше края лестницы (полосы демо-скрининга — до 21, а
+     * максимум шкалы — 22) — ось до верха шкалы: иначе под графиком «15 з 22»,
+     * а у оси «бали 0–21», и замер в 22 ушёл бы за край поля.
+     */
+    hi = max != null && max > d.hi ? max : d.hi;
     ticks = [lo, ...sorted.slice(1).map((r) => r.min), hi].filter((v, i, a) => v >= lo && v <= hi && a.indexOf(v) === i);
   } else {
     const top = Math.max(max ?? 0, ...values);
