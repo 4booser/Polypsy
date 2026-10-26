@@ -871,10 +871,10 @@ function ReviewPanel({
   const { ut } = useLang();
   const done = !!c.acknowledgedAt;
   const clock = riskClock(c, now);
-  const takenByOther = !!c.assignedTo && c.assignedTo !== me;
   const level = SEVERITY_LEVEL[c.severity] ?? "moderate";
   const outcome = c.outcome ? OUTCOME_KEY[c.outcome] : null;
-  const who = c.assignedTo ? (c.assignedTo === me ? ut("cases.mine") : `${ut("cases.taken")}: ${c.assignedToName ?? "—"}`) : ut("card.notTaken");
+  /* кто отвечает — одной строкой «Відповідальний» ниже, а не ещё раз в шапке панели */
+  const who = c.assignedTo ? (c.assignedTo === me ? ut("al.assigneeYou") : (c.assignedToName ?? "—")) : ut("al.assigneeNone");
 
   return (
     <Panel
@@ -883,7 +883,7 @@ function ReviewPanel({
       tone="risk"
       sub={
         <span className="inline-flex items-center gap-2">
-          {done ? (outcome ? ut(outcome) : ut("work.done")) : who}
+          {done ? (outcome ? ut(outcome) : ut("work.done")) : null}
           <SeverityTag level={level} small>
             {ut(severityKey[level])}
           </SeverityTag>
@@ -910,13 +910,13 @@ function ReviewPanel({
             }
           />
         ) : (
+          /* нормы у методики нет — просто сколько прошло; «норму не задано» читать незачем */
           <div className="flex h-[52px] items-center gap-2.5 rounded-panel bg-risk-tint px-3.5 text-small font-semibold text-text-2">
             <Ic.timer size={15} className="text-risk-ink" />
             <span>
               <b className="mr-1 text-[22px] font-extrabold leading-none tracking-[-0.03em] text-risk-ink">{clockText(clock.elapsed, ut("rr.days"))}</b>
               {ut("rr.sinceOpened")}
             </span>
-            <span className="ml-auto text-muted">{ut("rr.noNorm")}</span>
           </div>
         )
       ) : null}
@@ -926,10 +926,11 @@ function ReviewPanel({
           {c.signals[0]?.label ?? c.surveyTitle}
         </Fact>
         <Fact icon={<Ic.history />} title={ut("al.opened")} note={dateTime(c.openedAt)}>
-          {clock.norm !== null ? ut("al.normIs").replace("{n}", normText(clock.norm, { h: ut("rr.hours"), min: ut("dur.min") })) : ut("rr.noNorm")}
+          {clock.norm !== null ? ut("al.normIs").replace("{n}", normText(clock.norm, { h: ut("rr.hours"), min: ut("dur.min") })) : null}
         </Fact>
         <Fact icon={<Ic.user />} title={ut("cases.assignedLabel")} note={null}>
-          {who}
+          {/* data-assignee — опора проверки (e2e/triage.e2e.ts): кто держит случай */}
+          <span data-assignee="">{who}</span>
         </Fact>
         {done ? (
           <Fact icon={<Ic.circleCheck />} title={outcome ? ut(outcome) : ut("work.done")} note={dateTime(c.acknowledgedAt)} tone="good">
@@ -940,8 +941,6 @@ function ReviewPanel({
         ) : null}
       </ul>
 
-      {takenByOther && !done ? <p className="m-0 mt-2 text-small text-text-2">{ut("cases.takenByOther")}</p> : null}
-
       {children ? <div className="mt-4">{children}</div> : null}
 
       <div className="mt-4 flex flex-wrap items-center gap-2">
@@ -951,7 +950,9 @@ function ReviewPanel({
           </Button>
         </Tooltip>
         {done ? null : !c.assignedTo ? (
-          <Button onClick={() => void onTake(false)}>{ut("cases.take")}</Button>
+          <Tooltip label={ut("cases.take")} kbd="T">
+            <Button onClick={() => void onTake(false)}>{ut("cases.take")}</Button>
+          </Tooltip>
         ) : c.assignedTo === me ? (
           <Button onClick={() => void onTake(true)}>{ut("cases.release")}</Button>
         ) : null}

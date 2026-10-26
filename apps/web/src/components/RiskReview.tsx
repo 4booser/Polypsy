@@ -44,7 +44,7 @@ import { Panel } from "../ui/layout";
  *
  * Сохранение — PATCH /api/alert-cases/:id с временем последнего сигнала,
  * который человек видел: пришёл новый, пока читал, — 409, и случай
- * перечитывается, а набранное остаётся. «Взяти на себе / Відпустити» —
+ * перечитывается, а набранное остаётся. «Взяти в роботу / Відпустити» —
  * POST …/assign: двое не разбирают одного человека дважды.
  *
  * Чего в макете больше, чем в приложении, и потому здесь нет: C-SSRS (в
@@ -319,6 +319,7 @@ export function useRiskReview({ userId, caseId, known, enabled = true, onChanged
           }
         />
       ) : (
+        /* нормы у методики нет — сколько прошло с открытия, и только */
         <div className="flex h-[52px] items-center gap-2.5 rounded-panel bg-risk-tint px-3.5 text-small font-semibold text-text-2">
           <Ic.timer size={15} className="text-risk-ink" />
           <span>
@@ -327,7 +328,6 @@ export function useRiskReview({ userId, caseId, known, enabled = true, onChanged
             </b>
             {ut("rr.sinceOpened")}
           </span>
-          <span className="ml-auto text-muted">{ut("rr.noNorm")}</span>
         </div>
       )
     ) : null;
@@ -401,7 +401,7 @@ export function useRiskReview({ userId, caseId, known, enabled = true, onChanged
         <DrawerSection title={ut("rr.decision")} sub={ut("rr.decisionSub")}>
           {takenByOther ? (
             <p className="m-0 mb-2.5 text-small text-text-2">
-              <b className="font-extrabold text-text">{current.assignedToName}</b> {ut("rr.tookIt")}. {ut("cases.takenByOther")}
+              <b className="font-extrabold text-text">{current.assignedToName}</b> {ut("rr.tookIt")}.
             </p>
           ) : null}
           <div role="radiogroup" aria-label={ut("rr.decision")} className="flex flex-col gap-1.5">

@@ -1073,10 +1073,10 @@ export const UI = {
   "cases.moderate": { uk: "Помірні", ru: "Умеренные", en: "Moderate" },
   "cases.assignedAny": { uk: "Усі", ru: "Все", en: "All" },
   "cases.assignedMe": { uk: "На мені", ru: "На мне", en: "Mine" },
-  "cases.assignedNone": { uk: "Ніким не взяті", ru: "Никем не взяты", en: "Unassigned" },
-  "cases.take": { uk: "Взяти на себе", ru: "Взять на себя", en: "Take on" },
+  "cases.assignedNone": { uk: "Без відповідального", ru: "Без ответственного", en: "Unassigned" },
+  "cases.take": { uk: "Взяти в роботу", ru: "Взять в работу", en: "Take the case" },
   "cases.release": { uk: "Відпустити", ru: "Отпустить", en: "Release" },
-  "cases.taken": { uk: "взяв", ru: "взял", en: "taken by" },
+  "cases.taken": { uk: "відповідальний", ru: "ответственный", en: "assigned to" },
   "cases.whatDone": { uk: "Що вжито", ru: "Что предпринято", en: "Action taken" },
   "cases.confirmed": { uk: "Ризик підтверджено", ru: "Риск подтверждён", en: "Risk confirmed" },
   "cases.needsFollowup": { uk: "Потребує спостереження", ru: "Требует наблюдения", en: "Needs monitoring" },
@@ -1087,11 +1087,6 @@ export const UI = {
     uk: "Випадок заводиться, коли обстежуваний позначає критичний пункт",
     ru: "Случай заводится, когда обследуемый отмечает критический пункт",
     en: "A case is opened when a respondent marks a critical item",
-  },
-  "cases.takenByOther": {
-    uk: "Випадок узяв інший фахівець. Розбирати одну людину вдвох не потрібно.",
-    ru: "Случай взял другой специалист. Разбирать одного человека вдвоём не нужно.",
-    en: "Another specialist has taken this case. There is no need for two people to review the same person.",
   },
   "cases.mergedNote": {
     uk: "випадок зібрано автоматично під час переходу на нову модель",
@@ -5225,7 +5220,7 @@ export const UI = {
 
   /* остатки: приглашение, разбор, отчёт */
   "join.invited": { uk: "Вас запросили пройти обстеження", ru: "Вас пригласили пройти обследование", en: "You have been invited to take an assessment" },
-  "cases.tookToast": { uk: "Випадок узято", ru: "Случай взят", en: "Case taken" },
+  "cases.tookToast": { uk: "Випадок узято в роботу", ru: "Случай взят в работу", en: "Case taken" },
   "cases.released": { uk: "Випадок відпущено", ru: "Случай отпущен", en: "Case released" },
   "cases.resolved": { uk: "Випадок розібрано", ru: "Случай разобран", en: "Case resolved" },
 
@@ -6061,8 +6056,8 @@ export const UI = {
   "cases.statusLabel": { uk: "Стан випадків", ru: "Состояние случаев", en: "Case status" },
   "cases.filterResolved": { uk: "Розібрані", ru: "Разобранные", en: "Reviewed" },
   "cases.severityLabel": { uk: "Терміновість", ru: "Срочность", en: "Urgency" },
-  "cases.assignedLabel": { uk: "Хто розбирає", ru: "Кто разбирает", en: "Who is reviewing" },
-  "cases.assignedOthers": { uk: "Взяті іншими", ru: "Взяты другими", en: "Taken by others" },
+  "cases.assignedLabel": { uk: "Відповідальний", ru: "Ответственный", en: "Assignee" },
+  "cases.assignedOthers": { uk: "У колег", ru: "У коллег", en: "With colleagues" },
   "cases.groupLabel": { uk: "Група пацієнтів", ru: "Группа пациентов", en: "Patient group" },
   "cases.groupAll": { uk: "Усі групи пацієнтів", ru: "Все группы пациентов", en: "All patient groups" },
   "cases.periodFrom": { uk: "Відкрито від", ru: "Открыт с", en: "Opened from" },
@@ -14687,7 +14682,7 @@ export const UI = {
   "card.nobodyFound": { uk: "Нікого не знайдено. Спробуйте прізвище, телефон або підрозділ.", ru: "Никого не найдено. Попробуйте фамилию, телефон или подразделение.", en: "Nobody found. Try a surname, phone or unit." },
   "card.nobodyInView": { uk: "У цьому перегляді нікого немає.", ru: "В этом виде никого нет.", en: "Nobody in this view." },
   "card.normLine": { uk: "Минуло {e}; норма розбору спливає о {t}.", ru: "Прошло {e}; норма разбора истекает в {t}.", en: "{e} elapsed; the review norm runs out at {t}." },
-  "card.notTaken": { uk: "Ніхто ще не взяв.", ru: "Никто ещё не взял.", en: "Nobody has taken it yet." },
+  "card.notTaken": { uk: "Відповідального не призначено.", ru: "Ответственный не назначен.", en: "No one is assigned." },
   "card.note": { uk: "Нотатка", ru: "Заметка", en: "Note" },
   "card.noteKind": { uk: "Вид нотатки", ru: "Вид заметки", en: "Note type" },
   "card.notePanel": { uk: "Нотатка", ru: "Заметка", en: "Note" },
@@ -14812,7 +14807,6 @@ export const UI = {
   "rr.makePlan": { uk: "Скласти план", ru: "Составить план", en: "Write a plan" },
   "rr.means": { uk: "Доступ до засобів", ru: "Доступ к средствам", en: "Access to means" },
   "rr.noContacts": { uk: "У плані немає контактів.", ru: "В плане нет контактов.", en: "The plan has no contacts." },
-  "rr.noNorm": { uk: "норму розбору не задано", ru: "норма разбора не задана", en: "no review norm set" },
   "rr.noPlan": { uk: "Плану безпеки немає", ru: "Плана безопасности нет", en: "No safety plan" },
   "rr.noPlanHint": { uk: "Складіть план разом із людиною: кому дзвонити й що робити в кризі.", ru: "Составьте план вместе с человеком: кому звонить и что делать в кризисе.", en: "Write the plan together with the person: who to call and what to do in a crisis." },
   "rr.noneOpen": { uk: "Відкритих сигналів немає", ru: "Открытых сигналов нет", en: "No open signals" },
@@ -14855,7 +14849,7 @@ export const UI = {
   "al.opened": { uk: "Відкрито", ru: "Открыт", en: "Opened" },
   "al.otherAlerts": { uk: "Ще сигналів: {n}", ru: "Ещё сигналов: {n}", en: "More signals: {n}" },
   "al.rMine": { uk: "На мені", ru: "На мне", en: "Mine" },
-  "al.rMineSub": { uk: "ніким не взяті: {n}", ru: "никем не взяты: {n}", en: "unassigned: {n}" },
+  "al.rMineSub": { uk: "без відповідального: {n}", ru: "без ответственного: {n}", en: "unassigned: {n}" },
   "al.rOldest": { uk: "Найдовше чекає", ru: "Дольше всех ждёт", en: "Waiting longest" },
   "al.rOverdue": { uk: "Норму перевищено", ru: "Норма превышена", en: "Over the norm" },
   "al.rOverdueSub": { uk: "за нормою розбору методики", ru: "по норме разбора методики", en: "by the instrument's review norm" },
@@ -16464,6 +16458,9 @@ export const UI = {
   // ── ux-results ──
 
   // ── ux-risk ──
+  /* случай риска: кто отвечает за разбор (pages/Alerts.tsx, строка «Відповідальний») */
+  "al.assigneeNone": { uk: "не призначено", ru: "не назначен", en: "not assigned" },
+  "al.assigneeYou": { uk: "Ви", ru: "Вы", en: "You" },
 
   // ── ux-methods ──
 
