@@ -16436,12 +16436,14 @@ export const UI = {
   "card.actionsLabel": { uk: "Дії з пацієнтом", ru: "Действия с пациентом", en: "Patient actions" },
   "card.concl": { uk: "Заключення", ru: "Заключение", en: "Conclusion" },
   /* «Призначити методику» из карточки — ящик назначения (components/AssignDrawer.tsx): методика или набор */
-  "card.assignNote": { uk: "Пацієнт побачить призначення в застосунку", ru: "Пациент увидит назначение в приложении", en: "The patient will see it in the app" },
+  "card.assignNote": { uk: "Пацієнт побачить у застосунку", ru: "Пациент увидит в приложении", en: "The patient will see it in the app" },
   "card.setAssigned": { uk: "Набір призначено", ru: "Набор назначен", en: "Set assigned" },
   "asgd.what": { uk: "Що призначити", ru: "Что назначить", en: "What to assign" },
   "asgd.set": { uk: "Набір", ru: "Набор", en: "Set" },
   "asgd.setSearch": { uk: "Пошук набору за назвою", ru: "Поиск набора по названию", en: "Find a set by name" },
   "asgd.noSets": { uk: "Наборів для призначення немає", ru: "Наборов для назначения нет", en: "No sets to assign" },
+  "asgd.priorUntil": { uk: "Вже призначено до {date}.", ru: "Уже назначено до {date}.", en: "Already assigned until {date}." },
+  "asgd.priorForever": { uk: "Вже призначено безстроково.", ru: "Уже назначено бессрочно.", en: "Already assigned with no due date." },
   /* таблица «Методики» карточки: свёрнутая методика из многих шкал — остальные шкалы в раскрытии строки */
   "card.xScales": { uk: "Інші шкали", ru: "Другие шкалы", en: "Other scales" },
   /* переписка в ящике карточки: поле первого письма — «Повідомлення», ответа — «Відповідь» */

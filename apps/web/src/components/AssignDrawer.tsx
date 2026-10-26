@@ -208,6 +208,13 @@ export interface TestToKnown extends Frame {
   whoNote: string;
   /** Уже назначенные этим адресатам методики — пометка в списке */
   already?: ReadonlySet<string>;
+  /**
+   * Адресат один, и всех его назначений экран заранее не знает (карточка
+   * пациента): прежнее назначение выбранной методики спрашивается, когда её
+   * выбрали, и ящик говорит «вже призначено до …» до того, как нажали
+   * «Призначити». Пройденное прежнее — не помеха: новое — это новый замер.
+   */
+  existingFor?: (surveyId: string) => Promise<ExistingAssignment | null>;
   /** Поле «Коментар для пацієнта»; без него поля нет, и комментарий — null */
   comment?: boolean;
   /** Назначить; возвращает строку итога для сообщения */
@@ -568,7 +575,7 @@ function AssignRecipients(p: ToRecipients) {
  * сервер откажет, и предлагать его значило бы обещать отказ.
  */
 function AssignTest(p: TestToKnown) {
-  const { open, already, onAssign, onClose, sets } = p;
+  const { open, already, onAssign, onClose, sets, existingFor } = p;
   const { ut, lang } = useLang();
   const toast = useToast();
   const count = useCount();
@@ -602,6 +609,11 @@ function AssignTest(p: TestToKnown) {
   const shown = needle ? usable.filter((s) => t(s.title, lang).toLowerCase().includes(needle)) : usable;
   const shownSets = needle ? usableSets.filter((b) => b.title.toLowerCase().includes(needle)) : usableSets;
   const picked = setMode ? batteryId : surveyId;
+  const existing = useResource(() => (existingFor && surveyId ? existingFor(surveyId) : Promise.resolve(null)), [surveyId], {
+    enabled: !!existingFor && !!surveyId && !setMode,
+    keep: false,
+  });
+  const prior = !setMode && existing.data && !existing.data.done ? existing.data : null;
   const dirty = surveyId !== "" || batteryId !== "" || comment.trim() !== "" || expires !== dueValue(due.initial);
 
   /* срок у методики и у набора значит разное: при смене вида — умолчание вида, а не прежнее число */
@@ -640,7 +652,7 @@ function AssignTest(p: TestToKnown) {
     : shown.map((s) => {
         const title = t(s.title, lang);
         const code = surveyCode(title);
-        return { id: s.id, head: code, sub: code !== title ? title : null, already: !!already?.has(s.id) };
+        return { id: s.id, head: code, sub: code !== title ? title : null, already: !!already?.has(s.id) || (!!prior && s.id === surveyId) };
       });
   const label = setMode ? ut("asgd.set") : ut("pg.test");
 
@@ -710,6 +722,14 @@ function AssignTest(p: TestToKnown) {
             })}
           </div>
         )}
+        {prior ? (
+          <div className="mt-3">
+            <Callout kind="warn" icon={<Mi.repeat />}>
+              {prior.until ? ut("asgd.priorUntil").replace("{date}", shortDate(prior.until)) : ut("asgd.priorForever")}{" "}
+              {ut("mc.conflictTail")}
+            </Callout>
+          </div>
+        ) : null}
       </DrawerSection>
       <DueSection setup={due} value={expires} onChange={setExpires}>
         {p.comment ? (

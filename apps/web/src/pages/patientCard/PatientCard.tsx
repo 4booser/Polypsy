@@ -391,6 +391,11 @@ function CardRecord({
           who={card.fullName}
           whoNote={ut("card.assignNote")}
           comment
+          existingFor={async (surveyId) => {
+            /* прежняя выдача этой методики этому человеку — чтобы ящик сказал «вже призначено до …» */
+            const mine = (await api.grants(surveyId)).find((g) => g.userId === card.id);
+            return mine ? { until: mine.expiresAt, done: mine.completed } : null;
+          }}
           onAssign={async (surveyId, expiresAt, note) => {
             /* выдача методики — строка доступа: ни карточка, ни хронология от неё не меняются */
             await api.grant(surveyId, card.id, note ?? undefined, expiresAt);
