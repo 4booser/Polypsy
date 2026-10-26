@@ -176,7 +176,7 @@ export default function AnalyticsList() {
   const loaded = useLoadedSurveys(scaleSurveys);
   const scaleTitle = (surveyId: string, code: string) => loaded[surveyId]?.scales.find((s) => s.code === code)?.title ?? null;
 
-  /* методики, которые встречаются в условиях, — для фильтра «Тест»; «будь-який» — последним */
+  /* методики, которые встречаются в условиях, — для фильтра «Методика»; «будь-яка» — последней */
   const testsInUse = useMemo(() => {
     const ids = [...new Set((rows ?? []).flatMap((m) => ruleTests(m)))];
     return ids.sort((a, b) => Number(a === ANY_TEST) - Number(b === ANY_TEST) || testTitle(a).localeCompare(testTitle(b)));

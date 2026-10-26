@@ -147,7 +147,7 @@ function GroupsScreen({ groups, staff, reload }: { groups: SurveyGroupWithCounts
         ],
       }}
       sortNote={ut("mc.grSortNote")}
-      footCount={count(groups.length, "groups")}
+      /* число групп — в шапке и на вкладках отбора; в подвале оно не помещалось рядом с подсказками клавиш на 1280 */
       actions={
         canManage ? (
           <Tooltip label={ut("adm.newGroup")} side="bottom">
