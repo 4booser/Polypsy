@@ -104,7 +104,8 @@ export function DynamicsTab({ v }: { v: CardView }) {
             key={r.key}
             title={r.code}
             icon={<Pi.chartSpline />}
-            sub={shortTitle(r.surveyTitle)}
+            /* подпись — то, чего нет в заголовке: у шкалы — методика, у методики — что она меряет */
+            sub={r.code === shortTitle(r.surveyTitle) ? r.title : shortTitle(r.surveyTitle)}
             actions={<TextAction to={`/patients/${v.id}/case/dynamics`}>{ut("card.fullDynamics")}</TextAction>}
           >
             <CourseChart title={r.code} {...courseFromDynamics(r.scale, r.rungs)} events={events} legend={false} />
