@@ -5,7 +5,7 @@ import { useResource } from "../useResource";
 import { useLang } from "../lang";
 import { cx } from "../ui/cx";
 import { Panel, Stack } from "../ui/layout";
-import { SeverityTag, Tag } from "../ui/primitives";
+import { SeverityTag } from "../ui/primitives";
 import { Rx } from "../pages/response/icons";
 
 /**
@@ -115,10 +115,7 @@ export function DataQualityPanel({ surveyId }: { surveyId: string }) {
           >
             {data.drift.map((d) => (
               <tr key={d.code}>
-                <td className={TD}>
-                  <Tag className="mr-2">{d.code}</Tag>
-                  {d.title}
-                </td>
+                <td className={cx(TD, "text-text")}>{d.title || d.code}</td>
                 <td className={cx(TD, "text-muted")}>{d.month}</td>
                 <td className={cx(TD, NUM)}>{d.n}</td>
                 <td className={cx(TD, NUM, "font-extrabold text-text")}>{d.psi}</td>
@@ -160,10 +157,7 @@ export function DataQualityPanel({ surveyId }: { surveyId: string }) {
         >
           {data.retest.map((r) => (
             <tr key={r.code}>
-              <td className={TD}>
-                <Tag className="mr-2">{r.code}</Tag>
-                {r.title}
-              </td>
+              <td className={cx(TD, "text-text")}>{r.title || r.code}</td>
               <td className={cx(TD, NUM)}>{r.pairs}</td>
               <td className={cx(TD, NUM, r.icc === null ? "text-muted" : "font-extrabold text-text")}>
                 {r.icc === null ? (

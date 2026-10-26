@@ -108,7 +108,6 @@ export function PatientView({
                   <section key={sc.code} className={cx(i > 0 && "border-t border-divider pt-5")} aria-label={sc.title}>
                     <p className="m-0 mb-2 flex items-baseline gap-2">
                       <b className="text-h3 font-extrabold text-text">{sc.title}</b>
-                      <span className="text-caption text-muted">{sc.code}</span>
                     </p>
                     <CourseChart
                       title={sc.title}

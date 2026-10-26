@@ -226,7 +226,6 @@ function BandsPanel({ scale: s, onView }: { scale: ScaleAnalytics; onView: () =>
     <Panel
       title={fill(ut("ant.bandsOf"), { title: s.title })}
       icon={<AIc.chartBar />}
-      sub={fill(ut("ant.scaleCode"), { code: s.code })}
       actions={<ToView label={ut("an.tabScales")} onClick={onView} />}
     >
       <HBars
@@ -400,7 +399,7 @@ function QualitySummary({ data, onView }: { data: SurveyAnalytics; onView: () =>
             </QualityRow>
             {drift ? (
               <QualityRow icon={<AIc.waves />} tone={drift.psi > 0.2 ? "warn" : "neutral"} title={ut("dq.driftTitle")} value={`PSI ${numText(drift.psi)}`}>
-                {drift.code}: {drift.verdict}
+                {drift.title || drift.code}: {drift.verdict}
               </QualityRow>
             ) : null}
             <QualityRow icon={<AIc.repeat />} tone="neutral" title={ut("dq.repeatTitle")} value={retest ? `ICC ${numText(retest.icc)}` : "—"}>
@@ -524,7 +523,6 @@ function ScaleBlock({ scale: s, weeks }: { scale: ScaleAnalytics; weeks: SurveyA
       title={s.title}
       icon={<AIc.chartBar />}
       tone={s.kind === "validity" ? "neutral" : "violet"}
-      sub={fill(ut("ant.scaleCode"), { code: s.code })}
       hint={s.kind === "validity" ? ut("ant.validity") : undefined}
     >
       <div className="grid grid-cols-2 gap-x-10 gap-y-6 max-[1180px]:grid-cols-1">
@@ -987,7 +985,7 @@ export function ScoresCell({ r }: { r: SurveyResponse }) {
     <span className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
       {scores.map((s) => (
         <span key={s.scaleId} className="inline-flex items-center gap-1.5" title={s.scaleTitle}>
-          {many ? <span className="text-caption font-semibold text-muted">{s.scaleCode}</span> : null}
+          {many ? <span className="max-w-[140px] truncate text-caption font-semibold text-muted">{s.scaleTitle || s.scaleCode}</span> : null}
           <b className="text-body font-extrabold tabular-nums text-text">{numText(s.value)}</b>
           {s.normalization === "raw" ? <span className="text-caption text-muted">/{numText(s.maxScore)}</span> : null}
           {s.band ? (

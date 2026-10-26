@@ -301,7 +301,7 @@ function VersionDiff({ surveyId, versions }: { surveyId: string; versions: { id:
           {diff.scales.map((sc) => (
             <div key={sc.code} className="border-t border-divider pt-2">
               <p className="m-0 mb-1 text-body font-extrabold text-text">
-                {ut("an.scaleWord")} {sc.code} <span className="font-semibold text-muted">{ut(KIND[sc.kind])}</span>
+                {ut("an.scaleWord")} «{sc.title || sc.code}» <span className="font-semibold text-muted">{ut(KIND[sc.kind])}</span>
               </p>
               {sc.changes.map(change)}
             </div>

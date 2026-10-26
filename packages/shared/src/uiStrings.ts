@@ -9064,9 +9064,9 @@ export const UI = {
   "am.pickScale": { uk: "Оберіть шкалу", ru: "Выберите шкалу", en: "Choose a scale" },
   "am.numberPh": { uk: "Число", ru: "Число", en: "Number" },
   "am.rulerTitle": {
-    uk: "Де спрацює умова на шкалі {test}",
-    ru: "Где сработает условие на шкале {test}",
-    en: "Where the condition fires on the {test} scale",
+    uk: "Де спрацює умова на шкалі «{scale}»",
+    ru: "Где сработает условие на шкале «{scale}»",
+    en: "Where the condition fires on the “{scale}” scale",
   },
   "am.rulerBand": { uk: "поріг у смузі «{band}»", ru: "порог в полосе «{band}»", en: "the threshold falls in “{band}”" },
   "am.rulerPick": {
@@ -9209,7 +9209,6 @@ export const UI = {
     en: "The lighter column is today: the day is still running.",
   },
   "ant.bandsOf": { uk: "{title} за смугами", ru: "{title} по полосам", en: "{title} by band" },
-  "ant.scaleCode": { uk: "шкала {code}", ru: "шкала {code}", en: "scale {code}" },
   "ant.heavyShare": { uk: "{band} й важче — {p}: {k} з {n}.", ru: "{band} и тяжелее — {p}: {k} из {n}.", en: "{band} or worse — {p}: {k} of {n}." },
   "ant.medianLadder": { uk: "Медіана на сходах тяжкості", ru: "Медиана на лестнице тяжести", en: "Median on the severity ladder" },
   "ant.dropOffTotal": {

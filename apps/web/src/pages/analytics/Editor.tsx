@@ -13,7 +13,7 @@ import { Ic } from "../../ui/icons";
 import { IconTile, Page, Panel, SideLayout } from "../../ui/layout";
 import { MenuButton, MenuSeparator, menuItemClass } from "../../ui/menu";
 import { Button, ButtonLink, Checkbox, ErrorText, Field, Input, Segmented, Select, Switch, Tag, Textarea } from "../../ui/primitives";
-import { useResource, useResourceMap } from "../../useResource";
+import { useResource } from "../../useResource";
 import { AIc } from "./icons";
 import {
   ANY_TEST,
@@ -41,7 +41,7 @@ import {
   surveysToLoad,
   thresholdText,
 } from "./model";
-import { ACT_ICON, ACT_KEY } from "./parts";
+import { ACT_ICON, ACT_KEY, type LoadedSurvey, useLoadedSurveys } from "./parts";
 import { testsHref } from "./tests/model";
 
 /*
@@ -76,12 +76,6 @@ export default function AnalyticsModelPage() {
   const copy = id ? null : params.get("copy");
   return <ModelEditor key={`${id ?? "new"}:${copy ?? ""}`} id={id ?? null} copyFrom={copy} />;
 }
-
-/**
- * Методика, дочитанная целиком ради шкал и названия; null — сервер её не
- * отдал: она вне групп сотрудника или её уже нет.
- */
-type LoadedSurvey = { title: string; archivedAt: string | null; scales: Scale[] } | null;
 
 /** Сначала буква заглавная, потом строчная — значит, это слово, а не код («SI»): его можно начать со строчной */
 function lowerFirst(s: string): string {
@@ -149,15 +143,11 @@ function ModelEditor({ id, copyFrom }: { id: string | null; copyFrom: string | n
   }, [id, copyFrom, rules.data]);
 
   /*
-   * Методики целиком — по требованию и один раз: выбранные в условиях (ради
-   * шкал) и стоящие в действиях, но отсутствующие в коротком списке (ради
-   * названия). Отказ запоминается как null: чужую или удалённую методику
-   * сервер не отдаст и со второго раза.
+   * Методики целиком: выбранные в условиях (ради шкал) и стоящие в
+   * действиях, но отсутствующие в коротком списке (ради названия).
    */
   const wanted = draft && surveys.data ? surveysToLoad(draft, new Set(surveys.data.map((s) => s.id))) : [];
-  const loaded: Record<string, LoadedSurvey> = useResourceMap("analytics.surveyMeta", wanted, (surveyId) =>
-    api.survey(surveyId).then((s) => ({ title: s.title, archivedAt: s.archivedAt ?? null, scales: s.scales })),
-  );
+  const loaded = useLoadedSurveys(wanted);
 
   /* отказы видны после первой попытки сохранить и дальше сходят по мере правки */
   const [tried, setTried] = useState(false);
@@ -954,8 +944,6 @@ function ScaleCond({
   const rungs = rungsOfScale(scale);
   const value = p.value.trim() === "" ? null : Number(p.value);
   const changed = was && was.kind === "scale" && was.scaleCode === p.scaleCode && was.value !== p.value && was.value !== "";
-  const testName = !any && p.surveyId ? (surveys.find((s) => s.id === p.surveyId)?.title ?? surveyLabel(ut, loaded, p.surveyId)) : "";
-
   return (
     <>
       <div className="grid grid-cols-1 gap-x-4 @[420px]:grid-cols-2">
@@ -984,9 +972,10 @@ function ScaleCond({
                   {ut("am.pickScale")}
                 </option>
                 {orphan ? <option value={orphan}>{orphan}</option> : null}
+                {/* шкала — названием; код только там, где два названия совпали и иначе их не различить */}
                 {list.map((s) => (
                   <option key={s.code} value={s.code}>
-                    {s.code} — {s.title}
+                    {list.some((o) => o !== s && o.title === s.title) ? `${s.title} (${s.code})` : s.title}
                   </option>
                 ))}
               </Select>
@@ -1039,7 +1028,7 @@ function ScaleCond({
           {scale && rungs.length && p.metric === "raw" ? (
             <>
               <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-                <span className="text-caption font-bold text-muted">{ut("am.rulerTitle").replace("{test}", testName)}</span>
+                <span className="text-caption font-bold text-muted">{ut("am.rulerTitle").replace("{scale}", scale.title)}</span>
                 {value !== null && Number.isFinite(value) && rungOf(rungs, value) ? (
                   <span className="text-small text-text-2">
                     {ut("am.rulerBand").replace("{band}", rungOf(rungs, value)!.label)}
