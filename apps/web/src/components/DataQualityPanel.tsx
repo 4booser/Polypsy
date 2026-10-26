@@ -1,10 +1,12 @@
 import type { ReactNode } from "react";
+import { LOCALE_OF } from "@quizzy/shared";
 import { api } from "../api";
 import { Ic, Loading } from "../ui";
 import { useResource } from "../useResource";
 import { useLang } from "../lang";
 import { cx } from "../ui/cx";
 import { Panel, Stack } from "../ui/layout";
+import { decimal } from "../ui/decimal";
 import { SeverityTag } from "../ui/primitives";
 import { Rx } from "../pages/response/icons";
 
@@ -37,8 +39,15 @@ function Table({ head, children, min = 560 }: { head: ReactNode; children: React
 }
 
 export function DataQualityPanel({ surveyId }: { surveyId: string }) {
-  const { ut } = useLang();
+  const { ut, lang } = useLang();
   const sexLabel = (sex: string) => (sex in SEX_KEY ? ut(SEX_KEY[sex as keyof typeof SEX_KEY]) : sex);
+  /* доля — с запятой по-украински и по-русски и с пробелом перед знаком, как на остальных видах аналитики */
+  const pct = (v: number | undefined) => (v === undefined ? "—" : `${decimal(v, lang, 1)} %`);
+  /* месяц дрейфа приходит как «2026-10» — человеку его называют словами */
+  const monthOf = (ym: string) =>
+    /^\d{4}-\d{2}$/.test(ym)
+      ? new Intl.DateTimeFormat(LOCALE_OF[lang], { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${ym}-01T00:00:00Z`))
+      : ym;
   const res = useResource(() => api.dataQuality(surveyId), [surveyId]);
   const { data, error } = res;
 
@@ -59,7 +68,7 @@ export function DataQualityPanel({ surveyId }: { surveyId: string }) {
         hint={
           worst && (worst.completionRate ?? 100) < 80 ? (
             <span className="font-bold text-warn">
-              {sexLabel(worst.sex)} {worst.band}: {ut("dq.reaches")} {worst.completionRate}%. {ut("dq.underrepresented")}
+              {sexLabel(worst.sex)} {worst.band}: {ut("dq.reaches")} {pct(worst.completionRate)}. {ut("dq.underrepresented")}
             </span>
           ) : undefined
         }
@@ -90,9 +99,9 @@ export function DataQualityPanel({ surveyId }: { surveyId: string }) {
                   <td className={cx(TD, NUM)}>{s.started}</td>
                   <td className={cx(TD, NUM)}>{s.completed}</td>
                   <td className={cx(TD, NUM, "font-extrabold", (s.completionRate ?? 100) < 80 ? "text-warn" : "text-text")}>
-                    {s.completionRate}%
+                    {pct(s.completionRate)}
                   </td>
-                  <td className={cx(TD, NUM, "text-muted")}>{s.avgSkipped}</td>
+                  <td className={cx(TD, NUM, "text-muted")}>{s.avgSkipped === undefined ? "—" : decimal(s.avgSkipped, lang, 1)}</td>
                 </>
               )}
             </tr>
@@ -116,9 +125,9 @@ export function DataQualityPanel({ surveyId }: { surveyId: string }) {
             {data.drift.map((d) => (
               <tr key={d.code}>
                 <td className={cx(TD, "text-text")}>{d.title || d.code}</td>
-                <td className={cx(TD, "text-muted")}>{d.month}</td>
+                <td className={cx(TD, "text-muted")}>{monthOf(d.month)}</td>
                 <td className={cx(TD, NUM)}>{d.n}</td>
-                <td className={cx(TD, NUM, "font-extrabold text-text")}>{d.psi}</td>
+                <td className={cx(TD, NUM, "font-extrabold text-text")}>{decimal(d.psi, lang)}</td>
                 <td className={TD}>
                   {/*
                     Вердикт дрейфа — степень («заметно изменилась» vs «в
@@ -166,7 +175,7 @@ export function DataQualityPanel({ surveyId }: { surveyId: string }) {
                     {data.retestWindow.minPairs} {ut("dq.pairsLower")}
                   </span>
                 ) : (
-                  r.icc
+                  decimal(r.icc, lang)
                 )}
               </td>
             </tr>
