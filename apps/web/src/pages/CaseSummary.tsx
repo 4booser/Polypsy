@@ -171,7 +171,8 @@ function ResultsTable({ instruments, dates, index }: { instruments: Instrument[]
                         <span className="inline-block w-8" />
                       )}
                       <span className="min-w-0">
-                        <span className="flex items-center gap-1.5">
+                        {/* длинное имя переносится, а «краще ↓» встаёт под ним, а не висит справа от трёх строк */}
+                        <span className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
                           <b className="text-[14px] font-extrabold text-text">{i.code}</b>
                           {s.better ? <BetterTag direction={s.better} /> : null}
                         </span>
