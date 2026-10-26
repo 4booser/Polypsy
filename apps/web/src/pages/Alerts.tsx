@@ -37,6 +37,7 @@ import { useSettledSelection } from "../components/settledSelection";
 import { useCodeKeys } from "./patientCard/keys";
 import { Pi } from "./patientCard/icons";
 import { dm } from "./patientCard/format";
+import { shownValue } from "./patients/model";
 import {
   CLEAR_NARROWING,
   clockText,
@@ -1172,21 +1173,29 @@ function PatientContext({ userId }: { userId: string }) {
         <div className="border-t border-divider">
           {data.surveys.slice(0, 4).map((sv) => (
             <div key={sv.surveyId} className="border-b border-divider px-4 py-2.5 last:border-b-0">
+              {/* названия — в две строки, а не обрезком: «Поведінкова регуля…» в колонке 300 не читается */}
               <div className="flex items-baseline gap-2">
-                <b className="min-w-0 truncate text-[13px] font-extrabold text-text">{sv.title}</b>
+                <b className="line-clamp-2 min-w-0 text-[13px] font-extrabold text-text">{sv.title}</b>
                 {sv.lastAt ? <span className="ml-auto shrink-0 text-caption text-muted">{dm(sv.lastAt)}</span> : null}
               </div>
-              {sv.scales.slice(0, 3).map((sc) => (
-                <div key={sc.code} className="mt-1 flex items-center gap-2 text-small">
-                  <span className="min-w-0 flex-1 truncate text-text-2">{sc.title}</span>
-                  <b className="font-extrabold tabular-nums text-text">{sc.lastValue}</b>
-                  {sc.severity ? (
-                    <SeverityTag level={sc.severity} small>
-                      {sc.bandLabel ?? ut(severityKey[sc.severity])}
-                    </SeverityTag>
-                  ) : null}
-                </div>
-              ))}
+              {sv.scales.slice(0, 3).map((sc) => {
+                /* то же число, что в карточке: доля — процентом, остальное — с десятичной запятой языка */
+                const shown = shownValue(sc.lastValue, sc.normalization);
+                return (
+                  <div key={sc.code} className="mt-1 flex items-center gap-2 text-small">
+                    <span className="line-clamp-2 min-w-0 flex-1 text-text-2">{sc.title}</span>
+                    <b className="whitespace-nowrap font-extrabold tabular-nums text-text">
+                      {shown.text}
+                      {shown.unit ? <span className="text-caption font-bold text-muted"> {shown.unit}</span> : null}
+                    </b>
+                    {sc.severity ? (
+                      <SeverityTag level={sc.severity} small>
+                        {sc.bandLabel ?? ut(severityKey[sc.severity])}
+                      </SeverityTag>
+                    ) : null}
+                  </div>
+                );
+              })}
             </div>
           ))}
           {data.referrals.length ? (
