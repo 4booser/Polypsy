@@ -664,7 +664,6 @@ function ItemsTable({ v, code, grid, loading, surveyId }: { v: CardView; code: s
     <Panel
       title={ut("card.itemsOf").replace("{s}", code)}
       icon={<Pi.listOrdered />}
-      sub={ut("card.itemsSub")}
       flush
       footer={
         <div className="flex w-full flex-wrap items-center gap-x-3.5 gap-y-1.5 text-caption font-semibold text-text-2">

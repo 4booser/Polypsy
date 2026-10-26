@@ -6793,7 +6793,7 @@ export const UI = {
   "course.betterDown": { uk: "краще ↓", ru: "лучше ↓", en: "better ↓" },
   "course.betterUp": { uk: "краще ↑", ru: "лучше ↑", en: "better ↑" },
   "course.today": { uk: "сьогодні", ru: "сегодня", en: "today" },
-  "course.rcZone": { uk: "межі похибки від старту: {base} ± {rc}", ru: "пределы ошибки от старта: {base} ± {rc}", en: "error margin from start: {base} ± {rc}" },
+  "course.rcZone": { uk: "межі похибки від старту: {base} ± {rc}", ru: "пределы погрешности от старта: {base} ± {rc}", en: "error margin from start: {base} ± {rc}" },
   "course.rcBelow": { uk: "надійне покращення: нижче {v}", ru: "надёжное улучшение: ниже {v}", en: "reliable improvement: below {v}" },
   "course.rcAbove": { uk: "надійне покращення: вище {v}", ru: "надёжное улучшение: выше {v}", en: "reliable improvement: above {v}" },
   "course.sessions": { uk: "Сесії", ru: "Сессии", en: "Sessions" },
@@ -6804,7 +6804,7 @@ export const UI = {
   "course.baseline": { uk: "Базовий замір.", ru: "Базовый замер.", en: "Baseline measurement." },
   "course.baselineRc": {
     uk: "Базовий замір. Межі похибки {base} ± {rc}.",
-    ru: "Базовый замер. Пределы ошибки {base} ± {rc}.",
+    ru: "Базовый замер. Пределы погрешности {base} ± {rc}.",
     en: "Baseline measurement. Error margin {base} ± {rc}.",
   },
   "course.fromStart": { uk: "Від старту", ru: "От старта", en: "From start" },
@@ -6813,17 +6813,17 @@ export const UI = {
   "course.v.better": { uk: "надійно краще", ru: "надёжно лучше", en: "reliably better" },
   "course.v.worse": { uk: "надійно гірше", ru: "надёжно хуже", en: "reliably worse" },
   "course.v.changed": { uk: "надійна зміна", ru: "надёжное изменение", en: "reliable change" },
-  "course.v.unknown": { uk: "похибку не оцінено", ru: "ошибка не оценена", en: "error not estimated" },
+  "course.v.unknown": { uk: "похибку не оцінено", ru: "погрешность не оценена", en: "error not estimated" },
   "course.ev.session": { uk: "Сесія {n}", ru: "Сессия {n}", en: "Session {n}" },
   "course.ev.planned": { uk: "Запланована сесія", ru: "Запланированная сессия", en: "Planned session" },
   "course.ev.signal": { uk: "Сигнал ризику", ru: "Сигнал риска", en: "Risk signal" },
   "course.lg.measures": { uk: "заміри", ru: "замеры", en: "measurements" },
-  "course.lg.rc": { uk: "межі похибки", ru: "пределы ошибки", en: "error margin" },
+  "course.lg.rc": { uk: "межі похибки", ru: "пределы погрешности", en: "error margin" },
   "course.lg.noshow": { uk: "неявка", ru: "неявка", en: "no-show" },
   "course.noRc": {
-    uk: "Межі похибки не показано: похибку вимірювання ще не оцінено — замала вибірка або не порахована узгодженість.",
-    ru: "Пределы ошибки не показаны: ошибка измерения ещё не оценена — мала выборка или не посчитана согласованность.",
-    en: "No error margin shown: measurement error is not estimated yet — the sample is too small or consistency is not computed.",
+    uk: "Межі похибки не показано: похибку ще не оцінено.",
+    ru: "Пределы погрешности не показаны: погрешность ещё не оценена.",
+    en: "No error margin shown: the measurement error is not estimated yet.",
   },
   "course.hint": {
     uk: "Наведіть на графік або перейдіть до нього клавішею Tab: точне значення, дата, тяжкість і зміна від старту й попереднього заміру.",
@@ -9509,21 +9509,13 @@ export const UI = {
     ru: "перевести баллы старых версий в шкалу последней",
     en: "convert scores of older versions to the latest scale",
   },
-  "dyn.rciLine": {
-    uk: "RCI {rci}, поріг {thr}, альфа {alpha}",
-    ru: "RCI {rci}, порог {thr}, альфа {alpha}",
-    en: "RCI {rci}, threshold {thr}, alpha {alpha}",
-  },
+  "dyn.rciLine": { uk: "RCI {rci}, поріг {thr}", ru: "RCI {rci}, порог {thr}", en: "RCI {rci}, threshold {thr}" },
   "dyn.rciFoot": {
-    uk: "Зміна достовірна, коли перевищує похибку вимірювання (RCI за модулем ≥ 1,96). Перцентиль — серед людей вашої зони з тією самою методикою.",
-    ru: "Изменение достоверно, когда превышает погрешность измерения (RCI по модулю ≥ 1,96). Перцентиль — среди людей вашей зоны с той же методикой.",
-    en: "A change is reliable when it exceeds the measurement error (|RCI| ≥ 1.96). The percentile is among people in your scope with the same instrument.",
+    uk: "Зміна достовірна, коли RCI за модулем ≥ 1,96; перцентиль — серед пацієнтів вашої зони.",
+    ru: "Изменение достоверно, когда RCI по модулю ≥ 1,96; перцентиль — среди пациентов вашей зоны.",
+    en: "A change is reliable when |RCI| ≥ 1.96; the percentile is among patients in your scope.",
   },
-  "dyn.noBasis": {
-    uk: "основи для RCI немає: мала вибірка або одна точка",
-    ru: "основы для RCI нет: мала выборка или одна точка",
-    en: "no basis for RCI: small sample or a single point",
-  },
+  "dyn.noBasis": { uk: "основи для RCI ще немає", ru: "основы для RCI пока нет", en: "no RCI basis yet" },
   "dyn.pp": { uk: " в. п.", ru: " п. п.", en: " pp" },
   "dyn.together": { uk: "Методики разом", ru: "Методики вместе", en: "Instruments together" },
   "dyn.togetherSub": { uk: "бали й % від максимуму шкали", ru: "баллы и % от максимума шкалы", en: "scores and % of the scale maximum" },
@@ -14649,7 +14641,6 @@ export const UI = {
   "card.itemsAll": { uk: "Усі пункти ({n})", ru: "Все пункты ({n})", en: "All items ({n})" },
   "card.itemsChanged": { uk: "Лише змінені й критичні", ru: "Только изменившиеся и критические", en: "Changed and critical only" },
   "card.itemsOf": { uk: "{s} по пунктах", ru: "{s} по пунктам", en: "{s} by item" },
-  "card.itemsSub": { uk: "наведіть на пункт або бал", ru: "наведите на пункт или балл", en: "hover an item or a score" },
   "card.kCollapse": { uk: "згорнути", ru: "свернуть", en: "collapse" },
   "card.kRows": { uk: "рядки", ru: "строки", en: "rows" },
   "card.kSearch": { uk: "пошук", ru: "поиск", en: "search" },
@@ -16471,6 +16462,12 @@ export const UI = {
   "asgd.noSets": { uk: "Наборів для призначення немає", ru: "Наборов для назначения нет", en: "No sets to assign" },
   /* таблица «Методики» карточки: свёрнутая методика из многих шкал — остальные шкалы в раскрытии строки */
   "card.xScales": { uk: "Інші шкали", ru: "Другие шкалы", en: "Other scales" },
+  /* «Достовірність зсуву» динамики: основа оценки RCI — в подсказке строки, а не в ней самой */
+  "dyn.rciBasis": {
+    uk: "Узгодженість (альфа Кронбаха) {alpha}, вибірка {n}",
+    ru: "Согласованность (альфа Кронбаха) {alpha}, выборка {n}",
+    en: "Consistency (Cronbach’s alpha) {alpha}, sample {n}",
+  },
 
   // ── ux-results ──
 

@@ -1051,7 +1051,7 @@ export function PatientDynamics() {
                   label={ut("dyn.byScales")}
                   value={profile.surveyId}
                   onChange={setProfile}
-                  items={multi.slice(0, 4).map((i) => ({ key: i.surveyId, label: i.code }))}
+                  items={multi.slice(0, 4).map((i) => ({ key: i.surveyId, label: shortCode(i.code, 14) }))}
                 />
               ) : undefined
             }
@@ -1149,12 +1149,23 @@ function ReliabilityRow({ i }: { i: Instrument }) {
         <span className={good || worse ? "" : "font-medium text-text-2"}>{word}</span>
       </span>
       <span className="text-caption text-muted">
-        {rc
-          ? ut("dyn.rciLine")
-              .replace("{rci}", fmtNum(rc.rci, locale))
-              .replace("{thr}", thr !== null ? fmtNum(thr, locale) : "—")
-              .replace("{alpha}", fmtNum(rc.basis.alpha, locale))
-          : ut("dyn.noBasis")}
+        {rc ? (
+          /* в строке — то, что нужно для решения (RCI и порог); основа оценки — альфа и выборка — в подсказке */
+          <Tooltip
+            label={ut("dyn.rciBasis")
+              .replace("{alpha}", fmtNum(Math.round(rc.basis.alpha * 100) / 100, locale))
+              .replace("{n}", String(rc.basis.sampleN))}
+          >
+            <span tabIndex={0} className="cursor-default border-b border-dotted border-ctl outline-none focus-visible:shadow-[0_0_0_2px_var(--vring)]">
+              {ut("dyn.rciLine")
+                .replace("{rci}", fmtNum(rc.rci, locale))
+                .replace("{thr}", thr !== null ? `${fmtNum(thr, locale)}${ratio ? ut("dyn.pp") : ""}` : "—")}
+            </span>
+          </Tooltip>
+        ) : delta === null ? null : (
+          /* один замер — «потрібен другий замір» уже сказано справа: про основу RCI молчим, а не повторяем в каждой строке */
+          ut("dyn.noBasis")
+        )}
       </span>
       <span className="text-right text-caption text-text-2">
         {pct === null ? ut("mark.smallSample") : `${ut("pt.higherThanPct")} ${fmtNum(pct, locale)} %`}
@@ -1197,7 +1208,8 @@ function Together({ instruments }: { instruments: Instrument[] }) {
   return (
     <Panel title={ut("dyn.together")} icon={<Ic.chart />} sub={ut("dyn.togetherSub")} flush>
       <div className="px-4 pb-2">
-        <TimeLines x={x} series={lines} label={ut("dyn.together")} format={(v) => `${v} %`} height={220} />
+        {/* ряд — замеры одной методики: дни, когда мерили другие, его не рвут (connect) */}
+        <TimeLines x={x} series={lines} label={ut("dyn.together")} format={(v) => `${v} %`} height={220} connect />
 
       </div>
       <div className="overflow-x-auto border-t border-divider">
@@ -1317,9 +1329,9 @@ function ScaleProfileTable({ i }: { i: Instrument }) {
               const delta = changeOf(s);
               return (
                 <tr key={s.scale.code}>
+                  {/* служебный код шкалы («anxiety», «PR») — не для человека: только название */}
                   <td className="border-b border-divider py-2 pl-4 pr-3">
                     <b className="block font-bold text-text">{s.scale.title}</b>
-                    <span className="text-caption text-muted">{s.scale.code}</span>
                   </td>
                   <td className="border-b border-divider px-3 py-2 text-right tabular-nums">{shownValue(s.first.rawScore, s.first.normalization).text}</td>
                   <td className="border-b border-divider px-3 py-2 text-right font-bold tabular-nums">{shownValue(s.last.rawScore, s.last.normalization).text}</td>
