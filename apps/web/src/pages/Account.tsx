@@ -10,7 +10,8 @@ import { cx } from "../ui/cx";
 import { Count, Page, Panel } from "../ui/layout";
 import { Button, Checkbox, Field, Input, Segmented, Select, Switch, Tag } from "../ui/primitives";
 import { useResource } from "../useResource";
-import { railGroups } from "../shell/Rail";
+import { ShellIcon } from "../shell/icons";
+import { navAccess, railEntries } from "../shell/nav";
 import { setThemeChoice, useThemeChoice } from "../shell/theme";
 import { changePassword, passwordProblems, passwordReady } from "./passwordModel";
 import { AIc, dmy, fill, saveFile, whenShort } from "./people/parts";
@@ -45,7 +46,7 @@ type SectionKey = "data" | "password" | "devices" | "appearance" | "google" | "r
 
 export default function Account() {
   const { ut, lang, setLang } = useLang();
-  const { user, refreshUser, login } = useAuth();
+  const { user, refreshUser, login, can } = useAuth();
   const { run, busy } = useAction();
   const mfa = useResource(() => api.mfaStatus(), []);
   const devices = useResource(() => api.devices().catch(() => []), []);
@@ -57,18 +58,25 @@ export default function Account() {
   const hidden = user?.workspace?.railHidden ?? [];
 
   /*
-   * Список разделов берётся из самой рельсы, а не набирается здесь руками:
-   * второй список разошёлся бы с первым. Считается от полного набора, чтобы
-   * человек видел и те разделы, которых у него сейчас нет: скрытие живёт в
-   * профиле и переживает выдачу права.
+   * Разделы — ровно те, что стоят на рельсе у этого человека: тот же доступ
+   * (navAccess) и тот же состав (railEntries), что у оболочки (App.tsx), без
+   * скрытия. Прежде список считался от полного набора суперадмина, и
+   * психологу предлагали убрать «Консоль», «Техпанель», «Права» — разделы,
+   * которых у него нет и которые он открыть не может.
+   *
+   * Строка — раздел рельсы, а не пункт старого меню: раздел уходит с рельсы,
+   * когда убраны все его пункты (railEntries), поэтому выключатель убирает
+   * их разом. «Аналітика» и «Адмін» скрытия не знают — их здесь нет.
    */
-  const railItems = useMemo(
-    () =>
-      railGroups({ today: 0, worklist: 0, alerts: 0, referrals: 0 }, true, true, [], true)
-        .flatMap((g) => g.items)
-        .map((i) => ({ key: i.key, icon: i.icon, pinned: (ALWAYS_VISIBLE_RAIL as readonly string[]).includes(i.key) })),
-    [],
-  );
+  const railItems = railEntries(navAccess(user, can))
+    .filter((e) => e.navKeys.length > 0)
+    .map((e) => ({
+      key: e.key,
+      label: e.full,
+      icon: e.icon,
+      keys: e.navKeys,
+      pinned: e.navKeys.every((k) => (ALWAYS_VISIBLE_RAIL as readonly string[]).includes(k)),
+    }));
 
   /**
    * Настройка сохраняется НА СЕРВЕР, а не только в этот браузер: оболочка,
@@ -218,14 +226,15 @@ export default function Account() {
               смыслу, и перестановка уничтожила бы ту разметку, которая
               помогает искать.
             */}
-            <Panel id="acct-rail" title={ut("acct.rail")} icon={<AIc.panel />} sub={ut("adm2.railSub")} hint={ut("acct.railHint")}>
+            {/* подзаголовок уже говорит, что убранное открывается из Ctrl K: второй абзац о том же не нужен */}
+            <Panel id="acct-rail" title={ut("acct.rail")} icon={<AIc.panel />} sub={ut("adm2.railSub")}>
               <ul className="m-0 list-none p-0">
-                {railItems.map(({ key, icon, pinned }) => (
+                {railItems.map(({ key, label, icon, keys, pinned }) => (
                   <li key={key} className="flex min-h-[44px] items-center gap-3 border-b border-divider last:border-0">
-                    <span className={cx("inline-grid size-5 place-items-center [&>svg]:size-[17px]", pinned ? "text-muted" : "text-text-2")} aria-hidden>
-                      {icon}
+                    <span className={cx("inline-grid size-5 place-items-center", pinned ? "text-muted" : "text-text-2")} aria-hidden>
+                      <ShellIcon name={icon} size={17} />
                     </span>
-                    <span className={cx("min-w-0 flex-1 text-body", pinned ? "text-text-2" : "text-text")}>{ut(key)}</span>
+                    <span className={cx("min-w-0 flex-1 text-body", pinned ? "text-text-2" : "text-text")}>{ut(label)}</span>
                     {pinned ? (
                       <span className="inline-flex items-center gap-1 text-caption text-muted" title={ut("acct.railPinned")}>
                         <AIc.pin size={13} />
@@ -233,10 +242,14 @@ export default function Account() {
                       </span>
                     ) : (
                       <Switch
-                        checked={!hidden.includes(key)}
+                        checked={keys.some((k) => !hidden.includes(k))}
                         disabled={busy}
-                        onChange={(on) => void applyPref({ railHidden: on ? hidden.filter((k) => k !== key) : [...hidden, key] })}
-                        label={<span className="sr-only">{ut(key)}</span>}
+                        onChange={(on) =>
+                          void applyPref({
+                            railHidden: on ? hidden.filter((k) => !keys.includes(k)) : [...new Set([...hidden, ...keys])],
+                          })
+                        }
+                        label={<span className="sr-only">{ut(label)}</span>}
                       />
                     )}
                   </li>

@@ -961,11 +961,6 @@ export const UI = {
   "acct.startScreen": { uk: "Стартовий екран", ru: "Стартовый экран", en: "Start screen" },
   "acct.saved": { uk: "Збережено", ru: "Сохранено", en: "Saved" },
   "acct.rail": { uk: "Розділи в бічному меню", ru: "Разделы в боковом меню", en: "Sidebar sections" },
-  "acct.railHint": {
-    uk: "Прибрані розділи не зникають: вони відкриваються з пошуку команд (Ctrl+K) і за посиланням.",
-    ru: "Убранные разделы не исчезают: они открываются из поиска команд (Ctrl+K) и по ссылке.",
-    en: "Hidden sections do not disappear: they open from the command search (Ctrl+K) and via a link.",
-  },
   "acct.railPinned": {
     uk: "Поруч стоїть число нерозібраного — цей розділ прибрати не можна",
     ru: "Рядом стоит число неразобранного — этот раздел убрать нельзя",
@@ -7371,7 +7366,7 @@ export const UI = {
   "adm2.defaultRoom": { uk: "Кабінет за замовчуванням", ru: "Кабинет по умолчанию", en: "Default room" },
   "adm2.signIn": { uk: "Вхід", ru: "Вход", en: "Sign-in" },
   "adm2.signInSub": { uk: "логін — це email, його змінює лише адміністратор", ru: "логин — это email, его меняет только администратор", en: "the login is the email; only an administrator changes it" },
-  "adm2.emailLogin": { uk: "Email, він же логін", ru: "Email, он же логин", en: "Email (login)" },
+  "adm2.emailLogin": { uk: "Email (логін)", ru: "Email (логин)", en: "Email (login)" },
   "adm2.emailInvalid": { uk: "Вкажіть робочу пошту у вигляді name@domain", ru: "Укажите рабочую почту в виде name@domain", en: "Enter a work email like name@domain" },
   "adm2.password": { uk: "Пароль", ru: "Пароль", en: "Password" },
   "adm2.passwordHint": {
