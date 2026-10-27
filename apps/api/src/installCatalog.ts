@@ -110,4 +110,16 @@ if (b.kept.length) console.log(`  · наборы уже заведены, им�
 if (b.removed.length) console.log(`  · наборы удалены отделением, заново не заводятся: ${b.removed.join(", ")}`);
 if (b.pending.length) console.log(`  ! наборы не заведены — ни одной их методики нет в базе: ${b.pending.join(", ")}`);
 
+/*
+ * Правила ступенчатого скрининга (instruments/catalogPassport.ts): заводятся один
+ * раз, дальше их порог и включение — решение отделения.
+ */
+const r = report.rules;
+if (r.installed.length) console.log(`  ✓ заведено правил ступенчатого скрининга: ${r.installed.join(", ")}`);
+if (r.kept.length) console.log(`  · правила шагов уже заведены, ими распоряжается отделение: ${r.kept.join(", ")}`);
+if (r.removed.length) console.log(`  · правила шагов удалены, заново не заводятся: ${r.removed.join(", ")}`);
+if (r.pending.length) {
+  console.log(`  ! правила шагов не заведены — короткой формы или полной методики нет в базе или она снята: ${r.pending.join(", ")}`);
+}
+
 await client.end();

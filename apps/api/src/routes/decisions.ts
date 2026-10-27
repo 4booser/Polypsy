@@ -1,12 +1,11 @@
 import { Hono } from "hono";
 import { and, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { z } from "zod";
-import { explanationFor, type StoredExplanation } from "@quizzy/shared";
 import { db } from "../db";
 import { decisionRules, ruleHits, surveys, users } from "../db/schema";
 import { audit } from "../lib/audit";
-import { fullNameOf } from "../lib/auth";
 import { badRequest, conflict, langOf, notFound, parseBody } from "../lib/http";
+import { hitViews } from "../lib/ruleHits";
 import { accessibleGroupIds, assertGroupAccess, canAccessGroup, canAccessSurvey, surveyScopeFilter } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
@@ -179,35 +178,34 @@ decisionRoutes.get("/hits", requirePermission("alerts.review"), async (c) => {
   if (!surveyIds.length) return c.json({ items: [] });
 
   const status = c.req.query("status") ?? "suggested";
+  /*
+   * ?userId= — предложения по одному человеку: ящик назначения в его карточке
+   * показывает «Рекомендовано: PHQ-9 — PHQ-2 = 4 від 12.10» и назначает одним
+   * нажатием. Зона — та же (методики читающего): параметр только сужает.
+   */
+  const userId = c.req.query("userId")?.trim() || null;
   const rows = await db
     .select({ hit: ruleHits, rule: decisionRules, patient: users })
     .from(ruleHits)
     .innerJoin(decisionRules, eq(decisionRules.id, ruleHits.ruleId))
     .leftJoin(users, eq(users.id, ruleHits.userId))
-    .where(and(inArray(ruleHits.surveyId, surveyIds), eq(ruleHits.status, status)))
+    .where(
+      and(
+        inArray(ruleHits.surveyId, surveyIds),
+        eq(ruleHits.status, status),
+        userId ? eq(ruleHits.userId, userId) : undefined,
+      ),
+    )
     .orderBy(desc(ruleHits.createdAt))
     .limit(100);
 
   /*
    * Объяснение хранится кодами и становится текстом здесь — на языке того,
    * кто читает предложение (волна 13). Записи, сделанные до кодов, несут
-   * готовый русский текст и показываются как есть: см. explanationFor.
+   * готовый русский текст и показываются как есть: см. explanationFor. Что
+   * предложено и что с ним уже сделано — lib/ruleHits.ts.
    */
-  const lang = langOf(c);
-  return c.json({
-    items: rows.map((r) => ({
-      id: r.hit.id,
-      ruleTitle: r.rule.title,
-      ruleVersion: r.hit.ruleVersion,
-      userId: r.hit.userId,
-      userName: r.patient ? fullNameOf(r.patient) : "—",
-      surveyId: r.hit.surveyId,
-      responseId: r.hit.responseId,
-      status: r.hit.status,
-      explanation: explanationFor(r.hit.explanation as StoredExplanation, lang),
-      createdAt: r.hit.createdAt,
-    })),
-  });
+  return c.json({ items: await hitViews(rows, langOf(c)) });
 });
 
 const decisionSchema = z.object({

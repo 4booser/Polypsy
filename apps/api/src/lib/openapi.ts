@@ -394,7 +394,7 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   "GET /api/decisions/rules": { summary: "Правила поддержки решений", access: "staff", permission: "alerts.review" },
   "POST /api/decisions/rules": { summary: "Завести правило", access: "superadmin", permission: "decisions.manage" },
   "PATCH /api/decisions/rules/:id": { summary: "Правка правила: поднимает версию", access: "superadmin", permission: "decisions.manage" },
-  "GET /api/decisions/hits": { summary: "Предложения правил, ждущие решения человека", access: "staff", permission: "alerts.review" },
+  "GET /api/decisions/hits": { summary: "Предложения правил, ждущие решения человека; ?status= — состояние, ?userId= — по одному человеку; в строке — методика названием, баллы условий (basis) и предложенные методики с тем, назначены ли и пройдены ли они (suggested)", access: "staff", permission: "alerts.review" },
   "PATCH /api/decisions/hits/:id": { summary: "Принять или отклонить предложение (отклонение — с объяснением)", access: "staff", permission: "alerts.review" },
   "POST /api/presence": { summary: "Пульс присутствия: я на этом экране", access: "staff", whyNoPermission: "пульс присутствия шлёт сам клиент за того, кто уже вошёл" },
   "GET /api/presence": { summary: "Кто ещё держит открытым этот экран", access: "staff", whyNoPermission: "кто ещё держит открытым этот экран — видно тем, кто на этом же экране; скрывать нечего" },

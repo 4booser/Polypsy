@@ -316,9 +316,10 @@ surveyRoutes.get("/", async (c) => {
    * сотруднику, как и прочий паспорт строки: пороги — часть ключа (#141).
    * Ссылки шага ведут к строкам, видимым в той же зоне.
    */
-  const visible = staffView
-    ? await visibleCatalogRows(relatedKeys(rows.map((r) => r.catalogKey)), scope)
-    : new Map<string, VisibleCatalogRow>();
+  const visible =
+    staffView && rows.length
+      ? await visibleCatalogRows(relatedKeys(rows.map((r) => r.catalogKey)), scope)
+      : new Map<string, VisibleCatalogRow>();
   const list: SurveyListItem[] = rows.map(({ sourceNote, ...survey }) => {
     const n = numbers.get(survey.id) ?? NO_NUMBERS;
     return {
@@ -356,16 +357,18 @@ surveyRoutes.get("/", async (c) => {
  * Строки методик каталога по ключам — те, что видит читающий (`scope` — его
  * зона; под ролью приложения то же сделает и политика строк): к ним ведут
  * ссылки паспорта на полную методику, короткие формы и шаг скрининга.
+ *
+ * Запрос идёт и без ключей (страница без методик каталога): число запросов
+ * списка не зависит от того, что на странице (test/catalogNumbers.test.ts).
  */
 async function visibleCatalogRows(
   keys: readonly string[],
   scope: Awaited<ReturnType<typeof surveyScopeFilter>>,
 ): Promise<Map<string, VisibleCatalogRow>> {
-  if (!keys.length) return new Map();
   const found = await db
     .select({ id: surveys.id, key: surveys.catalogKey, title: surveys.title })
     .from(surveys)
-    .where(and(inArray(surveys.catalogKey, [...keys]), scope));
+    .where(and(keys.length ? inArray(surveys.catalogKey, [...keys]) : sql`false`, scope));
   return new Map(found.flatMap((r) => (r.key ? [[r.key, { id: r.id, title: r.title }] as const] : [])));
 }
 
