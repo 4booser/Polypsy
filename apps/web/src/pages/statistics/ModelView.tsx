@@ -953,8 +953,7 @@ function GroupLabel({ row }: { row: ReportRow }) {
   if (row.kind === "scale") {
     return (
       <span className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-        {row.code ? <b className="font-extrabold text-text">{row.code}</b> : null}
-        <b className="font-bold text-text">{row.title}</b>
+        <b className="font-bold text-text">{row.title || row.code}</b>
         <span className="text-small text-muted">{ut("st.scaleGroupSub")}</span>
       </span>
     );

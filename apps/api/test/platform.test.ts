@@ -1058,6 +1058,22 @@ describe("настройки рабочего места", () => {
     expect(unknown.status).toBe(400);
   });
 
+  test("строк на странице каталога — выбор врача в профиле, только ступени селекта", async () => {
+    const saved = await api("/api/auth/me/workspace", adminB.token, {
+      method: "PUT",
+      body: JSON.stringify({ catalogPer: 100 }),
+    });
+    expect(saved.status).toBe(200);
+    expect((await api("/api/auth/me", adminB.token)).body.workspace.catalogPer).toBe(100);
+
+    // семь строк селект не предлагает — и запросом мимо экрана их не поставить
+    const odd = await api("/api/auth/me/workspace", adminB.token, {
+      method: "PUT",
+      body: JSON.stringify({ catalogPer: 7 }),
+    });
+    expect(odd.status).toBe(400);
+  });
+
   test("неизвестное значение не принимается", async () => {
     const bad = await api("/api/auth/me/workspace", adminA.token, {
       method: "PUT",

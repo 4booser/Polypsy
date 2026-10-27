@@ -62,7 +62,7 @@ describe("опции селекта методик", () => {
   test("методика, которую сервер не отдал, названа недоступной, а не пропала", () => {
     const html = render(<SurveyOptions surveys={listed} current="sv9" loaded={{ sv9: null }} />);
     expect(options(html)[0]![0]).toBe("sv9");
-    expect(options(html)[0]![1]).toContain("Недоступний тест");
+    expect(options(html)[0]![1]).toContain("Недоступна методика");
   });
 });
 
@@ -88,13 +88,13 @@ describe("поле выбора теста", () => {
     expect(html).not.toContain("aria-controls");
   });
 
-  test("пустое поле подписано изнутри, выбранное показывает название теста", () => {
-    expect(pick("")).toContain("Назва тесту");
+  test("пустое поле подписано изнутри, выбранное показывает название методики", () => {
+    expect(pick("")).toContain("Назва методики");
     expect(pick("sv1")).toContain("Шкала Бека");
   });
 
-  test("«будь-який тест» остаётся видимым значением, хотя в списке его нет", () => {
-    expect(pick(ANY_TEST)).toContain("Будь-який тест");
+  test("«будь-яка методика» остаётся видимым значением, хотя в списке его нет", () => {
+    expect(pick(ANY_TEST)).toContain("Будь-яка методика");
   });
 });
 

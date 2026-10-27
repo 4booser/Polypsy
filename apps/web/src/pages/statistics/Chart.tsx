@@ -736,7 +736,7 @@ function groupsOf(rows: ReportRow[]): { head: ReportRow | null; rows: ReportRow[
 
 function groupTitle(head: ReportRow | null, ut: ReturnType<typeof useLang>["ut"]): string {
   if (!head) return ut("st.vshrLong");
-  if (head.kind === "scale") return [head.code, head.title].filter(Boolean).join(" ");
+  if (head.kind === "scale") return head.title || head.code;
   if (head.kind === "question") return head.title;
   return "";
 }
@@ -746,8 +746,7 @@ function GroupHead({ row }: { row: ReportRow }) {
   if (row.kind === "scale") {
     return (
       <>
-        {row.code ? <span>{row.code}</span> : null}
-        <span className="truncate font-bold">{row.title}</span>
+        <span className="truncate font-bold">{row.title || row.code}</span>
       </>
     );
   }

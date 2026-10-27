@@ -364,7 +364,7 @@ function AllPatients({
     scales: data.scales.length,
     questions: data.questions.length,
     quality: data.quality.length,
-    responses: data.completed,
+    responses: data.started,
   };
   const go = (v: View) => update({ view: v });
   useHotkeys(Object.fromEntries(VIEWS.map((v, i) => [String(i + 1), () => go(v)])));

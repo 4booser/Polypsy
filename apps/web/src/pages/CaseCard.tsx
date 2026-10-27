@@ -33,7 +33,8 @@ import { DESTINATION_KEY, URGENCY_KEY } from "./referrals/model";
  *
  * Адрес — /patients/:id/case. Сам /patients/:id — карточка пациента
  * (pages/patientCard, участок v2-card); сюда из неё ведёт «Клінічна
- * справа», а отсюда туда — «Картка» в шапке. Прежние адреса (/summary,
+ * карта», а отсюда туда — «Картка пацієнта» в шапке: у двух записей одного
+ * человека имена одни и те же с обеих сторон. Прежние адреса (/summary,
  * /dynamics, /timeline) перенаправляются (App.tsx).
  *
  * Шапка — карточка на полосе, как у карточки пациента: имя, кто это, кто
@@ -110,6 +111,7 @@ export default function CaseCard() {
   const firstAt = (dynamics.data?.surveys ?? []).map((s) => s.firstAt ?? "").filter(Boolean).sort()[0];
   const lead = card.data?.lead ?? null;
   const thread = threads.data?.items.find((t) => t.patientId === data.userId && t.unread > 0) ?? null;
+  const anyOpen = !!(data.openAlerts.length || thread || noShow || nextVisit || drafts.length || openAssignments.length || openRefs.length);
 
   const facts = [
     {
@@ -189,95 +191,99 @@ export default function CaseCard() {
                 </Tooltip>
               </div>
             </div>
-            <AlertStrip className="mt-3 print:hidden">
-              {data.openAlerts.length ? (
-                <RiskChip
-                  title={
-                    data.openAlerts.length > 1
-                      ? ut("plist.signals").replace("{n}", String(data.openAlerts.length))
-                      : `${ut("evt.signal")}: ${data.openAlerts[0]!.surveyTitle}`
-                  }
-                  pop={
-                    <span className="flex flex-col gap-1">
-                      {data.openAlerts.map((a) => (
-                        <span key={a.id}>
-                          {a.surveyTitle}: {a.label}, {ddmm(a.at, locale)} {hhmm(a.at, locale)}
-                        </span>
-                      ))}
-                    </span>
-                  }
-                  action={
-                    <Button variant="risk" size="xs" className="rounded-2xl" onClick={() => navigate(`/alerts?patient=${data.userId}`)}>
-                      {ut("plist.review")}
-                    </Button>
-                  }
-                />
-              ) : null}
-              {thread ? (
-                <AlertChip
-                  kind="message"
-                  icon={<Ic.message />}
-                  label={ut("case.message")}
-                  detail={ut("case.unreadN").replace("{n}", String(thread.unread))}
-                  to={`/messages/${thread.id}`}
-                />
-              ) : null}
-              {noShow ? (
-                <AlertChip
-                  kind="warn"
-                  icon={<Ic.calendar />}
-                  label={ut("plist.noShow").replace("{d}", ddmm(noShow.at, locale))}
-                  pop={noShow.title || undefined}
-                  to={`/patients/${data.userId}/case/timeline`}
-                />
-              ) : null}
-              {nextVisit ? (
-                <AlertChip
-                  icon={<Ic.calendar />}
-                  label={ut("case.visit")}
-                  detail={whenShort(nextVisit.at, now, locale, words).text}
-                  to={nextVisit.href ?? undefined}
-                />
-              ) : null}
-              {drafts.map((c) => (
-                <AlertChip
-                  key={c.responseId}
-                  icon={<Ic.pen />}
-                  label={ut("qv.draft")}
-                  detail={c.surveyTitle}
-                  draft
-                  to={`/responses/${c.responseId}/conclusion`}
-                />
-              ))}
-              {openAssignments.slice(0, 2).map((a) => (
-                <AlertChip
-                  key={a.id}
-                  icon={<Ic.clipboard />}
-                  label={a.title}
-                  detail={ut("evt.open")}
-                  pop={ut("case.assignedOn").replace("{d}", ddmm(a.at, locale))}
-                />
-              ))}
-              {openRefs.length ? (
-                <AlertChip
-                  icon={<ShellIcon name="arrow-right-left" />}
-                  label={ut("ref.title")}
-                  detail={String(openRefs.length)}
-                  pop={
-                    <span className="flex flex-col gap-1">
-                      {openRefs.map((r) => (
-                        <span key={r.id}>
-                          {ut(DESTINATION_KEY[r.destination])}, {ut(URGENCY_KEY[r.urgency]).toLowerCase()}
-                        </span>
-                      ))}
-                    </span>
-                  }
-                />
-              ) : null}
-              {!data.openAlerts.length && !thread && !noShow && !nextVisit && !drafts.length && !openAssignments.length && !openRefs.length ? (
-                <AlertChip kind="good" icon={<Ic.circleCheck />} label={ut("qv.nothingOpen")} />
-              ) : null}
-            </AlertStrip>
+            {/*
+              Открытого нет — строки нет: прежде на её месте стоял зелёный
+              значок без подписи («відкритого немає» — только для диктора),
+              и его принимали за кнопку или за «всё проверено».
+            */}
+            {anyOpen ? (
+              <AlertStrip className="mt-3 print:hidden">
+                {data.openAlerts.length ? (
+                  <RiskChip
+                    title={
+                      data.openAlerts.length > 1
+                        ? ut("plist.signals").replace("{n}", String(data.openAlerts.length))
+                        : `${ut("evt.signal")}: ${data.openAlerts[0]!.surveyTitle}`
+                    }
+                    pop={
+                      <span className="flex flex-col gap-1">
+                        {data.openAlerts.map((a) => (
+                          <span key={a.id}>
+                            {a.surveyTitle}: {a.label}, {ddmm(a.at, locale)} {hhmm(a.at, locale)}
+                          </span>
+                        ))}
+                      </span>
+                    }
+                    action={
+                      <Button variant="risk" size="xs" className="rounded-2xl" onClick={() => navigate(`/alerts?patient=${data.userId}`)}>
+                        {ut("plist.review")}
+                      </Button>
+                    }
+                  />
+                ) : null}
+                {thread ? (
+                  <AlertChip
+                    kind="message"
+                    icon={<Ic.message />}
+                    label={ut("case.message")}
+                    detail={ut("case.unreadN").replace("{n}", String(thread.unread))}
+                    to={`/messages/${thread.id}`}
+                  />
+                ) : null}
+                {noShow ? (
+                  <AlertChip
+                    kind="warn"
+                    icon={<Ic.calendar />}
+                    label={ut("plist.noShow").replace("{d}", ddmm(noShow.at, locale))}
+                    pop={noShow.title || undefined}
+                    to={`/patients/${data.userId}/case/timeline`}
+                  />
+                ) : null}
+                {nextVisit ? (
+                  <AlertChip
+                    icon={<Ic.calendar />}
+                    label={ut("case.visit")}
+                    detail={whenShort(nextVisit.at, now, locale, words).text}
+                    to={nextVisit.href ?? undefined}
+                  />
+                ) : null}
+                {drafts.map((c) => (
+                  <AlertChip
+                    key={c.responseId}
+                    icon={<Ic.pen />}
+                    label={ut("qv.draft")}
+                    detail={c.surveyTitle}
+                    draft
+                    to={`/responses/${c.responseId}/conclusion`}
+                  />
+                ))}
+                {openAssignments.slice(0, 2).map((a) => (
+                  <AlertChip
+                    key={a.id}
+                    icon={<Ic.clipboard />}
+                    label={a.title}
+                    detail={ut("evt.open")}
+                    pop={ut("case.assignedOn").replace("{d}", ddmm(a.at, locale))}
+                  />
+                ))}
+                {openRefs.length ? (
+                  <AlertChip
+                    icon={<ShellIcon name="arrow-right-left" />}
+                    label={ut("ref.title")}
+                    detail={String(openRefs.length)}
+                    pop={
+                      <span className="flex flex-col gap-1">
+                        {openRefs.map((r) => (
+                          <span key={r.id}>
+                            {ut(DESTINATION_KEY[r.destination])}, {ut(URGENCY_KEY[r.urgency]).toLowerCase()}
+                          </span>
+                        ))}
+                      </span>
+                    }
+                  />
+                ) : null}
+              </AlertStrip>
+            ) : null}
           </section>
           <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 pb-2 print:hidden">
             <Tabs

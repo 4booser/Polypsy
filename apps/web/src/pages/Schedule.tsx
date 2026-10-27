@@ -3,12 +3,13 @@ import type { AppointmentView } from "@quizzy/shared";
 import { api } from "../api";
 import { useAuth } from "../auth";
 import { dayKey, locale } from "../format";
-import { Callout, Drawer, DrawerPane, DrawerSection, Loading, Modal, Screen, useAction, useToast } from "../ui";
+import { Callout, Drawer, DrawerPane, DrawerSection, Loading, Screen, useAction, useToast } from "../ui";
 import { Ic } from "../ui/icons";
 import { Page, Panel } from "../ui/layout";
 import { Button } from "../ui/primitives";
 import { useLang } from "../lang";
 import { useResource } from "../useResource";
+import { useBookingPane } from "./schedule/Booking";
 import { ExceptionFields, ExceptionsPanel, useDayLabel } from "./schedule/Exceptions";
 import { G } from "./schedule/glyphs";
 import { GoogleSync } from "./schedule/GoogleSync";
@@ -27,12 +28,13 @@ import {
   weekStats,
 } from "./schedule/model";
 import { type FreeSlot, MoveSlots } from "./schedule/MoveSlots";
-import { RegularWeek, dayHours } from "./schedule/RegularWeek";
+import { QuickWeek, RegularWeek } from "./schedule/RegularWeek";
 import { WeekCalendar, type WeekData, weekRange } from "./schedule/WeekCalendar";
+import type { BookSlot } from "./schedule/Booking";
 import { moveAndReload } from "./visitModel";
-import { type Row, SHORT_KEY, WEEK, WeekEdit } from "./schedule/WeekEdit";
+import { type Row, WeekEdit } from "./schedule/WeekEdit";
 
-type Pane = "week" | "exception" | "move";
+type Pane = "week" | "exception" | "move" | "book";
 
 /** Итог сохранения недели или исключения: числа, а не слово «збережено» */
 interface Saved {
@@ -49,22 +51,28 @@ const sameRows = (a: readonly Row[], b: readonly Row[]) => JSON.stringify(a) ===
  *
  * Неделю читают картиной — «во вторник у меня трое, в пятницу один поза
  * розкладом», — поэтому главное место у календаря: часы приёма полосами,
- * исключения фоном, приёмы блоками с подробностями на наведении. Правят
- * расписание в панели справа: обычную неделю — целиком и одним
- * сохранением (сервер принимает её только так: PUT стирает все шаблоны
- * специалиста и кладёт присланные заново, а сетка на восемь недель вперёд
- * пересобирается одним проходом), исключение — одной формой.
+ * исключения фоном, приёмы блоками с подробностями на наведении, свободные
+ * окна — пунктиром. Главное действие экрана — записать пациента: нажатием на
+ * свободное окно или кнопкой в шапке (ящик «Записати пацієнта»,
+ * schedule/Booking.tsx; без права вести приёмы ни кнопки, ни окон).
+ *
+ * Правят расписание в ящике: обычную неделю — целиком и одним сохранением
+ * (сервер принимает её только так: PUT стирает все шаблоны специалиста и
+ * кладёт присланные заново, а сетка на восемь недель вперёд пересобирается
+ * одним проходом) — по дням или одним рядком; исключение — одной формой.
  *
  * Правило, которое экран обязан донести до нажатия: занятое время, выпавшее
  * из часов, не исчезает — приём становится «поза розкладом», и перенести его
- * или оставить решает человек. Об этом сказано в панели правки, в окне
- * «Скласти тиждень» и в итоге сохранения — с переходом к таким приёмам.
+ * или оставить решает человек. Об этом сказано в ящике правки и в итоге
+ * сохранения — с переходом к таким приёмам.
  */
 export default function SchedulePage() {
   const { ut } = useLang();
   const { run, busy } = useAction();
   const toast = useToast();
-  const canMove = useAuth().can("appointments.manage");
+  const { can, user } = useAuth();
+  /* одно право на всё, что делается с чужой записью: перенести и записать */
+  const canMove = can("appointments.manage");
   /* источник черновика: сам не перечитывается — правку не затрёт (useResource, manual) */
   const res = useResource(() => api.schedule(), [], { manual: true });
   const server = res.data?.templates.map(({ id: _id, ...rest }) => rest) ?? null;
@@ -93,7 +101,8 @@ export default function SchedulePage() {
   };
 
   const [saved, setSaved] = useState<Saved | null>(null);
-  const [rebuild, setRebuild] = useState<Row[] | null>(null);
+  /* «Скласти тиждень одним рядком» — раскрывается в ящике правки, нужен он редко */
+  const [quick, setQuick] = useState(false);
   const [form, setForm] = useState<ExceptionForm>(EMPTY_EXCEPTION);
   const [moving, setMoving] = useState<AppointmentView | null>(null);
   const [slot, setSlot] = useState<FreeSlot | null>(null);
@@ -108,6 +117,17 @@ export default function SchedulePage() {
     week.reload();
   };
 
+  const booking = useBookingPane({
+    specialistId: week.data?.specialistId ?? user?.id ?? "",
+    tz: week.data?.tz ?? "Europe/Kyiv",
+    onBooked: week.reload,
+    onDone: () => setOpen(false),
+  });
+  const book = (slot: BookSlot | null) => {
+    booking.start(slot);
+    show("book");
+  };
+
   /*
    * Итог показывается числами, а не словом «сохранено»: правка тихо
    * переписывает сетку на два месяца вперёд, и человеку важно ровно одно —
@@ -119,7 +139,6 @@ export default function SchedulePage() {
       const r = await api.saveSchedule(next);
       setSaved({ ...r, at: Date.now() });
       setOpen(false);
-      setRebuild(null);
       reloadAll();
       return r;
     }, ut("sched.saved"));
@@ -156,14 +175,25 @@ export default function SchedulePage() {
             ut("v2s.weekOf").replace("{range}", weekRange(from, addDays(from, 6), false)),
             ut("sched.horizon").replace("{weeks}", String(data.horizonWeeks)),
           ]}
+          /*
+            В шапке — запись и правка недели; исключение заводится из своей
+            панели («Додати»): третья кнопка не помещалась в строку на 1280.
+          */
           actions={
             <>
-              <Button icon={<G.calendarX />} onClick={() => show("exception")} aria-expanded={open && pane === "exception"}>
-                {ut("sched.addException")}
-              </Button>
-              <Button variant="primary" icon={<Ic.pen />} onClick={() => show("week")} aria-expanded={open && pane === "week"}>
+              <Button
+                variant={canMove ? "secondary" : "primary"}
+                icon={<Ic.pen />}
+                onClick={() => show("week")}
+                aria-expanded={open && pane === "week"}
+              >
                 {ut("sched.edit")}
               </Button>
+              {canMove ? (
+                <Button variant="primary" icon={<G.calendarPlus />} onClick={() => book(null)} aria-expanded={open && pane === "book"}>
+                  {ut("v2s.book")}
+                </Button>
+              ) : null}
             </>
           }
         >
@@ -195,7 +225,7 @@ export default function SchedulePage() {
 
           <div className="grid items-start gap-4 grid-cols-[minmax(0,1fr)_360px] max-[1360px]:grid-cols-[minmax(0,1fr)_330px] max-[1100px]:grid-cols-1">
             <div className="flex min-w-0 flex-col gap-4" ref={calendarRef}>
-              <Panel title={ut("v2s.week")} icon={<Ic.calendar />} sub={ut("v2s.weekHint")} flush>
+              <Panel title={ut("v2s.week")} icon={<Ic.calendar />} sub={canMove ? ut("v2s.weekHint") : undefined} flush>
                 <WeekNav
                   from={from}
                   current={from === thisWeek}
@@ -221,6 +251,7 @@ export default function SchedulePage() {
                       setSlot(null);
                       show("move");
                     }}
+                    onBook={book}
                   />
                 ) : (
                   <div className="px-4 pb-4">
@@ -232,7 +263,7 @@ export default function SchedulePage() {
             </div>
 
             <div className="flex min-w-0 flex-col gap-4">
-              <RegularWeek rows={server ?? []} onEdit={() => show("week")} onBuild={setRebuild} />
+              <RegularWeek rows={server ?? []} onEdit={() => show("week")} />
               <ExceptionsPanel
                 items={data.exceptions}
                 busy={busy}
@@ -257,7 +288,6 @@ export default function SchedulePage() {
             <DrawerPane
               mode="week"
               title={ut("sched.week")}
-              sub={ut("sched.byDay")}
               icon={<G.calendarRange />}
               dirty={rowsDirty}
               draftName={ut("v2s.draftWeek")}
@@ -294,6 +324,28 @@ export default function SchedulePage() {
                 <Callout kind="info" className="mb-4">
                   {ut("sched.offNote")}
                 </Callout>
+                <div className="mb-4">
+                  <Button
+                    size="xs"
+                    variant="ghost"
+                    aria-expanded={quick}
+                    iconEnd={<Ic.chevronDown className={quick ? "rotate-180" : undefined} />}
+                    onClick={() => setQuick((v) => !v)}
+                  >
+                    {ut("sched.simple")}
+                  </Button>
+                  {quick ? (
+                    <div className="mt-2">
+                      {/* рядок заполняет правку ниже, а не сохраняет: сохраняет «Зберегти тиждень» */}
+                      <QuickWeek
+                        onBuild={(next) => {
+                          setRows(next);
+                          setQuick(false);
+                        }}
+                      />
+                    </div>
+                  ) : null}
+                </div>
                 {rows ? <WeekEdit rows={rows} onChange={setRows} /> : null}
               </DrawerSection>
             </DrawerPane>
@@ -399,28 +451,10 @@ export default function SchedulePage() {
                 </>
               ) : null}
             </DrawerPane>
+
+            <DrawerPane {...booking.pane} />
           </Drawer>
 
-          {rebuild ? (
-            <Modal
-              title={ut("v2s.rebuildAsk")}
-              sub={rebuildSummary(rebuild, ut)}
-              icon={<G.calendarRange />}
-              tone="warn"
-              width={500}
-              onClose={() => setRebuild(null)}
-              footer={
-                <>
-                  <Button variant="primary" disabled={busy} onClick={() => void saveWeek(rebuild)}>
-                    {ut("sched.apply")}
-                  </Button>
-                  <Button onClick={() => setRebuild(null)}>{ut("visit.cancel")}</Button>
-                </>
-              }
-            >
-              <p className="m-0 text-body text-text-2">{ut("v2s.rebuildBody")}</p>
-            </Modal>
-          ) : null}
         </Page>
       )}
     </Screen>
@@ -428,14 +462,6 @@ export default function SchedulePage() {
 }
 
 type Ut = ReturnType<typeof useLang>["ut"];
-
-/** «пн, вт, ср, чт, пт 09:00–17:00, по 50 хв» — что заменит неделю */
-function rebuildSummary(rows: Row[], ut: Ut): string {
-  const first = rows[0];
-  if (!first) return "";
-  const days = WEEK.filter((d) => dayHours(rows, d)).map((d) => ut(SHORT_KEY[d]!));
-  return `${days.join(", ")} ${first.startsAt}–${first.endsAt}, ${ut("sched.perSlot").replace("{n}", String(first.slotMinutes))}`;
-}
 
 function moveSub(a: AppointmentView, tz: string, ut: Ut, dayLabel: (d: string) => string): string {
   const w = wallOf(a.startsAt, tz);
@@ -478,6 +504,7 @@ function WeekBody({
   focusId,
   canMove,
   onMove,
+  onBook,
 }: {
   week: WeekData;
   templates: Row[];
@@ -485,6 +512,8 @@ function WeekBody({
   focusId: string | null;
   canMove: boolean;
   onMove: (a: AppointmentView) => void;
+  /** Записать пациента в свободное окно — нажатием в календаре */
+  onBook: (slot: BookSlot) => void;
 }) {
   const { ut } = useLang();
   const plans = weekDates(week.from).map((d) => planDay(d, templates, week.exceptions));
@@ -528,17 +557,18 @@ function WeekBody({
           </button>
         ) : null}
       </div>
-      <WeekCalendar week={week} plans={plans} now={now} focusId={focusId} onMove={canMove ? onMove : null} />
-      <Legend />
+      <WeekCalendar week={week} plans={plans} now={now} focusId={focusId} onMove={canMove ? onMove : null} onBook={canMove ? onBook : null} />
+      <Legend free={canMove} />
     </>
   );
 }
 
 /** Легенда: каждый вид блока словом — цвет не единственный признак */
-function Legend() {
+function Legend({ free }: { free: boolean }) {
   const { ut } = useLang();
   const items: [string, string][] = [
     ["bg-sunk shadow-[inset_0_0_0_1px_var(--border)]", ut("v2s.lgHours")],
+    ...(free ? ([["border border-dashed border-violet-line", ut("v2s.lgFree")]] as [string, string][]) : []),
     ["bg-violet-tint shadow-[inset_0_0_0_1px_var(--vline)]", ut("v2s.lgBooked")],
     ["bg-panel shadow-[inset_0_0_0_1px_var(--border)]", ut("v2s.lgDone")],
     ["bg-warn-tint", ut("v2s.lgNoShow")],

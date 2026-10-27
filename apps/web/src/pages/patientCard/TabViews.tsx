@@ -10,58 +10,79 @@ import { Button, Tag } from "../../ui/primitives";
 import { shortTitle } from "./Banner";
 import { dm } from "./format";
 import { Pi } from "./icons";
-import { conclusionName, resultText, statsText } from "./model";
+import { conclusionName, resultRows } from "./model";
 import { eventOf } from "./Overview";
 import type { CardView } from "./types";
 
 /*
  * Остальные вкладки карточки. Каждая — то, что приложение уже знает о
  * человеке, в одном месте и тем же языком, что «Огляд»: замеры с
- * результатом, курс по каждой шкале, заключения целиком, приёмы, переписка,
- * нотатки и вся хронология. Глубже — клиническая карта (/patients/:id/case),
- * ссылка на неё стоит в шапке и в каждой вкладке, где карта знает больше.
+ * результатом, курс по каждой шкале («Графіки»), заключения целиком, приёмы,
+ * переписка, нотатки и все события («Події»). Глубже — клиническая карта
+ * (/patients/:id/case): её «Динаміка» (числа, достоверность, методики
+ * вместе) и «Хронологія» (по дням, с отбором) — другие экраны, поэтому
+ * вкладки карточки названы иначе; ссылка на карту стоит в шапке и в каждой
+ * вкладке, где карта знает больше.
  */
 
+/**
+ * «Заміри»: дата, методика, результат — по шкале в строке. Колонки
+ * «Статистика» нет: она повторяла дату и печатала служебные коды шкал с
+ * долей от максимума («anxiety 68,2%»), не говоря, что это за процент.
+ */
 export function MeasuresTab({ v }: { v: CardView }) {
   const { ut } = useLang();
   const list = v.card.responses;
   return (
-    <Panel title={ut("top.tests")} icon={<Ic.clipboard />} count={list.length} flush>
+    <Panel title={ut("card.tMeasures")} icon={<Ic.clipboard />} count={list.length} flush>
       {!list.length ? (
         <Empty compact title={ut("pcard.noTests")} />
       ) : (
         <table className="w-full border-collapse text-body">
           <thead>
             <tr className="[&>th]:h-[34px] [&>th]:border-y [&>th]:border-divider [&>th]:bg-panel-2 [&>th]:px-3 [&>th]:text-left [&>th]:text-caption [&>th]:font-bold [&>th]:text-muted">
-              <th className="w-[110px] !pl-4">{ut("card.colDate")}</th>
-              <th>{ut("card.colInstrument")}</th>
-              <th>{ut("pcard.result")}</th>
-              <th className="w-[220px] !pr-4">{ut("top.statistics")}</th>
+              <th className="w-[90px] !pl-4">{ut("card.colDate")}</th>
+              <th className="w-[32%]">{ut("card.colInstrument")}</th>
+              <th className="!pr-4">{ut("pcard.result")}</th>
             </tr>
           </thead>
           <tbody>
-            {list.map((r) => (
-              <tr key={r.responseId} className="[&>td]:border-b [&>td]:border-divider [&>td]:px-3 [&>td]:py-2.5 [&>td]:align-top hover:[&>td]:bg-panel-2">
-                <td className="!pl-4 whitespace-nowrap text-text-2">{r.submittedAt ? dm(r.submittedAt) : "—"}</td>
-                <td>
-                  <Link
-                    to={
-                      r.scales.length
-                        ? `/surveys/${r.surveyId}/responses/${r.responseId}/charts`
-                        : `/surveys/${r.surveyId}/responses/${r.responseId}`
-                    }
-                    className="font-bold text-violet-ink"
-                  >
-                    {r.surveyTitle}
-                  </Link>
-                </td>
-                <td className="text-small text-text-2">{resultText(r.scales, { none: ut("pcard.noScores") })}</td>
-                <td className={r.reliable ? "!pr-4 text-small text-muted" : "!pr-4 text-small font-bold text-warn"}>
-                  {statsText(r, { unreliable: ut("pcard.unreliable") }, day)}
-                </td>
-
-              </tr>
-            ))}
+            {list.map((r) => {
+              const rows = resultRows(r.scales);
+              return (
+                <tr key={r.responseId} className="[&>td]:border-b [&>td]:border-divider [&>td]:px-3 [&>td]:py-2.5 [&>td]:align-top hover:[&>td]:bg-panel-2">
+                  <td className="!pl-4 whitespace-nowrap text-text-2">{r.submittedAt ? dm(r.submittedAt) : "—"}</td>
+                  <td>
+                    <Link
+                      to={
+                        r.scales.length
+                          ? `/surveys/${r.surveyId}/responses/${r.responseId}/charts`
+                          : `/surveys/${r.surveyId}/responses/${r.responseId}`
+                      }
+                      className="font-bold text-violet-ink"
+                    >
+                      {r.surveyTitle}
+                    </Link>
+                  </td>
+                  <td className="!pr-4 text-small text-text-2">
+                    {rows.length ? (
+                      <ul className="m-0 list-none p-0">
+                        {rows.map((s) => (
+                          <li key={s.title} className="py-px">
+                            <span className="text-muted">{s.title}:</span> <b className="font-extrabold text-text">{s.value}</b>
+                            {s.band ? ` — ${s.band}` : null}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <span className="text-muted">{ut("pcard.noScores")}</span>
+                    )}
+                    {/* недостоверный протокол — словом при результате: читать его балл как обычный нельзя */}
+                    {r.reliable ? null : <span className="mt-1 block font-bold text-warn">{ut("pcard.unreliable")}</span>}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       )}
@@ -72,7 +93,7 @@ export function MeasuresTab({ v }: { v: CardView }) {
 export function DynamicsTab({ v }: { v: CardView }) {
   const { ut } = useLang();
   if (!v.dynamics) return <Loading rows={4} error={v.dynamicsError} onRetry={v.reloadDynamics} />;
-  const rows = v.rows.filter((r) => r.points.length > 0);
+  const rows = v.chartRows.filter((r) => r.points.length > 0);
   const events = courseEventsFromTimeline(v.timeline ?? []);
   if (!rows.length) return <Empty title={ut("pcard.noTests")} />;
   return (
@@ -83,7 +104,8 @@ export function DynamicsTab({ v }: { v: CardView }) {
             key={r.key}
             title={r.code}
             icon={<Pi.chartSpline />}
-            sub={shortTitle(r.surveyTitle)}
+            /* подпись — то, чего нет в заголовке: у шкалы — методика, у методики — что она меряет */
+            sub={r.code === shortTitle(r.surveyTitle) ? r.title : shortTitle(r.surveyTitle)}
             actions={<TextAction to={`/patients/${v.id}/case/dynamics`}>{ut("card.fullDynamics")}</TextAction>}
           >
             <CourseChart title={r.code} {...courseFromDynamics(r.scale, r.rungs)} events={events} legend={false} />
@@ -298,7 +320,7 @@ export function TimelineTab({ v }: { v: CardView }) {
       icon={<Ic.history />}
       count={items.length}
       flush
-      actions={<TextAction to={`/patients/${v.id}/case/timeline`}>{ut("pcard.clinical")}</TextAction>}
+      actions={<TextAction to={`/patients/${v.id}/case/timeline`}>{ut("qv.allTimeline")}</TextAction>}
     >
       {!items.length ? (
         <p className="m-0 border-t border-divider px-4 py-3.5 text-small text-muted">{ut("tl.empty")}</p>

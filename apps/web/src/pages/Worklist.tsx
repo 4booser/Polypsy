@@ -60,7 +60,11 @@ export default function WorklistPage() {
   const view: WorkView = isWorkView(kindRaw) ? kindRaw : "";
   const data = res.data;
   const why = (i: WorkItem) => workWhy(i, ut);
-  const shown = useMemo(() => (data ? shownWork(data.items, view, q, (i) => workWhy(i, ut)) : []), [data, view, q, ut]);
+  /* поиск — и по пилюле строки: название методики стоит в ней, а не в «чому тут» */
+  const shown = useMemo(
+    () => (data ? shownWork(data.items, view, q, (i) => `${chipLabel(i, ut)} ${workWhy(i, ut)}`) : []),
+    [data, view, q, ut],
+  );
   const groups = workGroups(shown);
   const ordered = groups.flatMap((g) => g.items);
   const keys = ordered.map(workKey);

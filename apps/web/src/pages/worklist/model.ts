@@ -23,11 +23,15 @@ export function workWhy(i: WorkItem, ut: (k: never) => string): string {
       ]
         .filter(Boolean)
         .join(", ");
+    /*
+     * Без названия методики: оно уже стоит пилюлей строки (chipLabel) и
+     * заголовком записи, и строка очереди повторяла его трижды. Единица
+     * обязательна: «Строк вийшов 3 тому» — это число ни о чём.
+     */
     case "assignment":
-      /* единица обязательна: «Строк вийшов 3 тому» — это число ни о чём */
-      return `${i.title}: ${t("work.dueExpired").toLowerCase()}, ${i.days ?? 0} ${t("work.daysOverdue")}`;
+      return t("home.whyAssignment").replace("{n}", String(i.days ?? 0));
     case "followup":
-      return `${i.title}: ${t("work.followupMissed").toLowerCase()}, ${i.days ?? 0} ${t("work.daysOverdue")}`;
+      return t("home.whyFollowup").replace("{n}", String(i.days ?? 0));
     case "message":
       /* число непрочитанных важнее давности: три письма подряд без ответа — уже другая история */
       return [

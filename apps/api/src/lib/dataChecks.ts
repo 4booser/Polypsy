@@ -454,7 +454,12 @@ async function titled(raw: readonly RawCheck[], lang: Lang): Promise<DataCheck[]
       )})
     `);
     for (const r of rows) {
-      const title = parsed(r.title as never);
+      /*
+       * jsonb драйвер отдаёт разобранным. Строка без «{» — название без языков
+       * (заведённое до двуязычия, «Абетка»), а не JSON: parsed() ронял на нём
+       * всю «Якість даних» пятисоткой.
+       */
+      const title = typeof r.title === "string" && r.title.startsWith("{") ? parsed(r.title as never) : r.title;
       titles.set(String(r.id), t(title as never, lang));
     }
   }

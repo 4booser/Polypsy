@@ -4,6 +4,7 @@ import { api } from "../../api";
 import { BandTrend, ShareBar } from "../../charts/clinical";
 import { useLang } from "../../lang";
 import { Loading } from "../../ui";
+import { decimal, signed } from "../../ui/numbers";
 import { Panel } from "../../ui/layout";
 import { Segmented, SeverityTag } from "../../ui/primitives";
 import { useResource } from "../../useResource";
@@ -91,7 +92,7 @@ export function GroupState({ groupId, surveys }: { groupId: string; surveys: Pat
       ) : (
         <>
           <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-            <span className="text-stat font-extrabold leading-none tracking-[-0.03em] tabular-nums text-text">{last!.value}</span>
+            <span className="text-stat font-extrabold leading-none tracking-[-0.03em] tabular-nums text-text">{decimal(last!.value, lang, 1)}</span>
             <span className="text-small text-muted">
               {fill(ut("pg2.stateOf"), { max: scale.maxPossible })}
             </span>
@@ -103,7 +104,7 @@ export function GroupState({ groupId, surveys }: { groupId: string; surveys: Pat
             {delta !== null ? (
               <span className="ml-auto flex items-baseline gap-1.5 text-small text-muted">
                 <b className="text-[14px] font-extrabold tabular-nums text-text">
-                  {delta > 0 ? `+${delta}` : String(delta).replace("-", "−")}
+                  {signed(delta, "", lang)}
                 </b>
                 {fill(ut("pg2.stateSince"), { date: first!.label })}
               </span>

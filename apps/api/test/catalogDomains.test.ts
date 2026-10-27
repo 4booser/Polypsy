@@ -56,7 +56,9 @@ async function asBeforeDomains(surveyId: string, opts: { noSnapshot?: boolean } 
     .update(surveys)
     .set({
       domain: null,
-      catalogFields: opts.noSnapshot ? null : sql`${surveys.catalogFields} - 'domain'`,
+      // источник для персонала моложе направления: строка «до 0133» не знала и его
+      sourceNote: null,
+      catalogFields: opts.noSnapshot ? null : sql`${surveys.catalogFields} - 'domain' - 'sourceNote'`,
     } as never)
     .where(eq(surveys.id, surveyId));
 }

@@ -491,8 +491,6 @@ const SCREENS: Array<{
    * заказчик нарисовал.
    */
   root?: string;
-  /** Заголовок экрана — сегодняшняя дата, и в снимке его надо закрыть */
-  maskTitle?: true;
   /**
    * Снимается весь свиток, а не одна верхняя треть.
    *
@@ -510,16 +508,9 @@ const SCREENS: Array<{
     name: "today",
     open: async (page) => {
       await page.goto("/today");
-      await page.getByRole("main").getByRole("link", { name: "Сегодня" }).waitFor();
+      // «Приём» — вкладка дня на экране «Сегодня» (так же называется пункт рельсы)
+      await page.getByRole("main").getByRole("link", { name: /^Приём/ }).waitFor();
     },
-    /*
-     * Заголовком этого экрана стоит сегодняшняя дата — и это сознательно:
-     * название экрана ничего не сообщает тому, кто уже здесь, а дата
-     * отвечает на вопрос, который тут задают. Расплата — снимок, который
-     * менялся бы каждое утро; закрываем заголовок маской по тем же
-     * основаниям, что и поля даты.
-     */
-    maskTitle: true,
   },
   {
     name: "schedule",
@@ -945,10 +936,7 @@ for (const screen of SCREENS) {
      */
     await expect(page.locator(screen.root ?? "main.main")).toHaveScreenshot(`screen-${screen.name}.png`, {
       ...TOLERANCE,
-      mask: [
-        page.locator('input[type="date"]'),
-        ...(screen.maskTitle ? [page.locator("main.main h1")] : []),
-      ],
+      mask: [page.locator('input[type="date"]')],
     });
 
     await save();

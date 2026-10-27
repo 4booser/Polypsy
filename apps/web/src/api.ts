@@ -915,6 +915,8 @@ export interface SurveyPageQuery {
   groupId?: string;
   /** Направление (shared/domains.ts) или `none` — без направления; чипы «Напрям» каталога */
   domain?: SurveyDomain | "none";
+  /** По названию на языке запроса; без него — новые сверху */
+  sort?: "title";
 }
 
 /**
@@ -1026,6 +1028,7 @@ export const api = {
     if (query.archived) qs.set("archived", "1");
     if (query.groupId) qs.set("groupId", query.groupId);
     if (query.domain) qs.set("domain", query.domain);
+    if (query.sort) qs.set("sort", query.sort);
     const tail = qs.toString();
     return request<SurveyListPage>(`/api/surveys${tail ? `?${tail}` : ""}`);
   },

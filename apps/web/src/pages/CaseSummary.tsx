@@ -171,7 +171,8 @@ function ResultsTable({ instruments, dates, index }: { instruments: Instrument[]
                         <span className="inline-block w-8" />
                       )}
                       <span className="min-w-0">
-                        <span className="flex items-center gap-1.5">
+                        {/* длинное имя переносится, а «краще ↓» встаёт под ним, а не висит справа от трёх строк */}
+                        <span className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
                           <b className="text-[14px] font-extrabold text-text">{i.code}</b>
                           {s.better ? <BetterTag direction={s.better} /> : null}
                         </span>
@@ -336,7 +337,8 @@ function Referrals() {
   if (!data.referrals.length) {
     return (
       <div className="px-4 pb-1">
-        <Empty compact title={ut("ref.none")} hint={ut("case.refNoneHint")} />
+        {/* как выписать — видно и так: кнопка «Виписати направлення» стоит в шапке этой же панели */}
+        <Empty compact title={ut("ref.none")} />
       </div>
     );
   }

@@ -409,7 +409,7 @@ test("день отмечается с клавиатуры, без мыши", a
    * Приём свой, и проверка идёт по СВОЕЙ строке.
    *
    * Ждущих приёмов в посеве два, и на них же рассчитывают сценарии приёма
-   * (reception.e2e.ts). Кто останется без кнопки «Пришёл», решал порядок
+   * (reception.e2e.ts). Кто останется без кнопки «Явка», решал порядок
    * файлов. Хуже того, «Начать» проверялось по всему экрану — а такая кнопка
    * стоит и у соседней строки, принятой посевом: проверка зеленела бы, даже
    * если бы пробел до кнопки не дошёл.
@@ -419,13 +419,13 @@ test("день отмечается с клавиатуры, без мыши", a
   await login(page, "psy");
   await page.goto("/today");
   /*
-   * Заголовком экрана стоит дата, а «Сегодня» — вкладка: сводка и приём
-   * слиты в один экран.
+   * Экран называется «Сегодня», а день приёма — его вкладка «Приём»: сводка
+   * и приём слиты в один экран.
    */
-  await page.getByRole("main").getByRole("link", { name: "Сегодня" }).waitFor();
+  await page.getByRole("main").getByRole("link", { name: /^Приём/ }).waitFor();
 
   const row = dayRow(page, own.id);
-  const came = row.getByRole("button", { name: "Пришёл", exact: true });
+  const came = row.getByRole("button", { name: "Явка", exact: true });
   await expect(came).toBeVisible();
 
   // до кнопки добираемся табуляцией, а не фокусируем её напрямую:
@@ -436,7 +436,7 @@ test("день отмечается с клавиатуры, без мыши", a
     await page.keyboard.press("Tab");
     reached = await came.evaluate((el) => el === document.activeElement);
   }
-  expect(reached, "до кнопки «Пришёл» нельзя добраться табуляцией").toBe(true);
+  expect(reached, "до кнопки «Явка» нельзя добраться табуляцией").toBe(true);
 
   await page.keyboard.press("Space");
   await expect(row.getByRole("button", { name: "Начать" })).toBeVisible();

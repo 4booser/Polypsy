@@ -1,11 +1,11 @@
 import type { PatientCard, PatientCardConclusion, PatientCardResponse } from "@quizzy/shared";
 import type { ConclusionState } from "../../api";
-import { shownNumber, shownValue } from "../patients/model";
+import { shownValue } from "../patients/model";
 
 /**
  * Чистая часть карточки пациента: что печатается в столбцах вкладки
  * «Заміри», как зовётся заключение и какое из двух действий закрепления
- * («Підписатись / Відписатись») стоит в меню шапки.
+ * («Закріпити за собою / Зняти закріплення») стоит в меню шапки.
  *
  * Вынесено ради проверки без React и сервера (apps/web/test/patientCard.test.ts):
  * подпись закрепления — это право, и разъехаться с ответом сервера она не
@@ -15,37 +15,20 @@ import { shownNumber, shownValue } from "../patients/model";
 
 /**
  * «Результат»: по каждой содержательной шкале — название, балл и полоса
- * интерпретации: «Тривожність: 14 — підвищена; Депресія: 3 — норма». Балл —
- * как его читают: доля — процентом («57%», а не «0.571»), дробь — запятой
- * языка («64,2»).
+ * интерпретации, каждая шкала своей строкой: «Тривожність: 14 — підвищена»,
+ * «Депресія: 3». Балл — как его читают: доля — процентом («57%», а не
+ * «0.571»), дробь — запятой языка («64,2»).
+ *
+ * Прежде рядом стояла «Статистика»: ещё раз дата и служебные коды шкал с
+ * долей от максимума («anxiety 68,2%») — без подписи, что это за процент,
+ * и английскими кодами. Дата есть в первой колонке, балл и полоса — здесь;
+ * недостоверный протокол строка называет сама (вкладка «Заміри»).
  */
-export function resultText(scales: PatientCardResponse["scales"], t: { none: string }): string {
-  if (!scales.length) return t.none;
-  return scales
-    .map((s) => {
-      const v = shownValue(s.value, s.normalization);
-      return `${s.title}: ${v.text}${v.unit}${s.bandLabel ? ` — ${s.bandLabel}` : ""}`;
-    })
-    .join("; ");
-}
-
-/**
- * «Статистика»: когда сдан и где балл стоит относительно максимума шкалы
- * (percent — доля от максимума, lib/submission.ts). Первым — дата: у одной
- * методики, сданной трижды, три одинаковых названия. Недостоверный протокол
- * называется словом, а не прячется. Части — через запятую: точку-разделитель
- * между словами набор не пускает (KIT.md § 2).
- */
-export function statsText(
-  r: Pick<PatientCardResponse, "submittedAt" | "reliable" | "scales">,
-  t: { unreliable: string },
-  formatDay: (iso: string) => string,
-): string {
-  const parts: string[] = [];
-  if (r.submittedAt) parts.push(formatDay(r.submittedAt));
-  if (r.scales.length) parts.push(r.scales.map((s) => `${s.code} ${shownNumber(s.percent)}%`).join(", "));
-  if (!r.reliable) parts.push(t.unreliable);
-  return parts.join(", ");
+export function resultRows(scales: PatientCardResponse["scales"]): { title: string; value: string; band: string | null }[] {
+  return scales.map((s) => {
+    const v = shownValue(s.value, s.normalization);
+    return { title: s.title, value: `${v.text}${v.unit}`, band: s.bandLabel ?? null };
+  });
 }
 
 /**
@@ -58,9 +41,10 @@ export function conclusionName(c: Pick<PatientCardConclusion, "surveyTitle" | "s
 }
 
 /**
- * Какое действие закрепления предложить. «Відписатись» — только когда
+ * Какое действие закрепления предложить. «Зняти закріплення» — только когда
  * пациент закреплён за читателем: закрепление другого специалиста отпустить
- * нельзя (сервер ответит отказом), а взять на себя — можно, и это «Підписатись».
+ * нельзя (сервер ответит отказом), а взять на себя — можно, и это «Закріпити
+ * за собою».
  */
 export function leadAction(card: Pick<PatientCard, "lead">): "subscribe" | "unsubscribe" {
   return card.lead?.mine ? "unsubscribe" : "subscribe";
@@ -108,7 +92,7 @@ export function withConclusion(card: PatientCard, responseId: string, state: Con
 }
 
 /**
- * Ведущий после «Підписатись / Відписатись» — тем же правилом, что пишет
+ * Ведущий после «Закріпити за собою / Зняти закріплення» — тем же правилом, что пишет
  * сервер (routes/clinic.ts, POST /patients/:userId/lead): взял — ведущий
  * читатель, отпустил — никто. Без нового чтения карточки — см. withConclusion.
  */

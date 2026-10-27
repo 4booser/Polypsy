@@ -173,6 +173,16 @@ function RedirectToCase({ tab = "" }: { tab?: string }) {
   const { userId } = useParams<{ userId: string }>();
   return <Navigate to={`/patients/${userId}/case${tab}`} replace />;
 }
+
+/**
+ * Прежний адрес черновика заключения — /responses/:id/conclusion/draft.
+ * Инструменты черновика стоят на самом листе заключения, и этот адрес был
+ * тем же экраном под вторым именем; старые ссылки ведут на лист.
+ */
+function RedirectToConclusion() {
+  const { id } = useParams<{ id: string }>();
+  return <Navigate to={`/responses/${id}/conclusion`} replace />;
+}
 const ReferralsPage = lazy(() => import("./pages/Referrals"));
 const ApiDocs = lazy(() => import("./pages/ApiDocs"));
 const Console = lazy(() => import("./pages/Console"));
@@ -701,8 +711,12 @@ export default function App() {
    */
   const account: AccountCard = {
     name: user.fullName,
-    /* должность человека, если она заведена; иначе — класс записи */
-    roleLabel: isSuper ? ut("nav.roleSuper") : user.position?.trim() || ut("nav.roleAdmin"),
+    /*
+     * Должность человека, если она заведена; иначе — нейтральное «співробітник
+     * відділення», а не класс записи: «Адміністратор групи» под именем
+     * психолога обещал права, которых у него нет.
+     */
+    roleLabel: isSuper ? ut("nav.roleSuper") : user.position?.trim() || ut("home.roleStaff"),
     email: user.email,
     unit: user.unit,
     build: { sha: __BUILD_SHA__, date: __BUILD_DATE__ },
@@ -849,24 +863,17 @@ export default function App() {
           <Route path="/surveys/:id" element={<SurveyAnalyticsPage />} />
           <Route path="/surveys/:id/administer" element={<Administer />} />
           <Route path="/responses/:id/conclusion" element={<ConclusionPage />} />
-          {/*
-            Тот же экран заключения, но с инструментами черновика в меню
-            шестерёнки: «Зібрати з результатів», библиотека формулировок,
-            история версий, «Зберегти чернетку». На кадре f36 в раскрытом
-            меню ровно два пункта — «Зберегти як PDF» и «Надіслати поштою»,
-            — и четырём инструментам редактора там места нет. Отдельный
-            адрес, а не вложенный пункт: пункт «Чернетка ▸» был бы третьим
-            на кадре, которого кадр не рисует.
-          */}
-          <Route path="/responses/:id/conclusion/draft" element={<ConclusionPage />} />
+          {/* прежний адрес черновика: инструменты черновика — на самом листе, адрес ведёт туда же */}
+          <Route path="/responses/:id/conclusion/draft" element={<RedirectToConclusion />} />
           <Route path="/surveys/:id/key" element={<KeyPrint />} />
           <Route path="/surveys/:id/norms" element={<Norms />} />
           <Route path="/surveys/:id/blank" element={<BlankForm />} />
           {/*
             Прохождение — под методикой, а не отдельным корнем /responses:
-            ключ, бланк, доступ уже лежат здесь, и «Тести» в верхней полосе
-            остаётся подсвеченным, как на кадре. Ссылки на этот адрес собирают
-            три экрана; их форму сторожит apps/web/test/responseView.test.ts.
+            ключ, бланк, доступ уже лежат здесь. Раздел рельсы у него всё же
+            «Пацієнти» — экран о человеке (shell/nav.ts, isPatientRecord).
+            Ссылки на этот адрес собирают три экрана; их форму сторожит
+            apps/web/test/responseView.test.ts.
           */}
           <Route path="/surveys/:id/responses/:rid" element={<ResponseView />} />
           {/*

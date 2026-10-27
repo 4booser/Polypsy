@@ -13,6 +13,7 @@ import {
   weekDates,
   weekStats,
 } from "../src/pages/schedule/model";
+import { calendarName } from "../src/pages/schedule/WeekCalendar";
 
 /**
  * Неделя календарём (pages/schedule/model.ts) — без браузера.
@@ -190,5 +191,15 @@ describe("приёмы в календаре", () => {
     expect(hourRange(plans, [])).toEqual([9, 17]);
     expect(hourRange(plans, [{ start: 18 * 60 + 30, end: 19 * 60 + 20 }])).toEqual([9, 20]);
     expect(hourRange([], [])).toEqual([9, 18]);
+  });
+});
+
+describe("имя в блоке приёма", () => {
+  test("фамилия и инициалы, а не полное имя: в колонке дня на 1280 оно обрезалось до «Гончаренко …»", () => {
+    expect(calendarName("Гончаренко Тарас Ігорович")).toBe("Гончаренко Т.І.");
+    expect(calendarName("  Мельник   Оксана Василівна ")).toBe("Мельник О.В.");
+    // без отчества — один инициал; одно слово — как есть
+    expect(calendarName("Ким Елена")).toBe("Ким Е.");
+    expect(calendarName("Псевдонім")).toBe("Псевдонім");
   });
 });

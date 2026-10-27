@@ -187,6 +187,54 @@ describe("методики: строки таблицы", () => {
   test("без полос (прохождение ещё не пришло) — направления «краще» нет, а не догадка", () => {
     expect(instrumentRows(dyn, {})[0]!.better).toBeNull();
   });
+
+  test("методика из многих шкал — одной строкой самой тяжёлой; остальные методики не вытесняются", () => {
+    /*
+     * «Адаптивність-200» — восемь шкал. Прежде они занимали все шесть строк,
+     * и СР-45 того же дня в таблицу не попадал. Теперь — одна строка (самая
+     * тяжёлая шкала, прочие — в раскрытии), и СР-45 рядом.
+     */
+    const many = dynamics([[at(0), 5]]);
+    const sv = many.surveys[0]!;
+    const template = sv.scales[0]!;
+    sv.title = "БОО «Адаптивність-200»";
+    sv.scales = Array.from({ length: 8 }, (_, i) => ({
+      ...template,
+      scaleId: `a${i}`,
+      code: `A${i}`,
+      title: `Шкала ${i + 1}`,
+      points: template.points.map((p) => ({ ...p, severity: i === 5 ? ("severe" as const) : ("none" as const) })),
+    }));
+    const sr = dynamics([[at(-1), 9]]).surveys[0]!;
+    many.surveys.push({ ...sr, surveyId: "s2", title: "СР-45. Схильність до суїцидальних реакцій", lastAt: at(-1) });
+    const rows = instrumentRows(many, {});
+    expect(rows.map((r) => r.surveyId)).toEqual(["s1", "s2", "s2"]);
+    const folded = rows[0]!;
+    expect(folded.scaleId).toBe("a5");
+    expect(folded.code).toBe("БОО «Адаптивність-200»");
+    expect(folded.title).toBe("Шкала 6");
+    expect(folded.folded.map((s) => s.scaleId)).toEqual(["a0", "a1", "a2", "a3", "a4", "a6", "a7"]);
+    expect(rows[1]!.folded).toEqual([]);
+
+    // «Графіки» — без свёртки и без потолка: у каждой шкалы свой график, СР-45 не вытесняется
+    const charts = instrumentRows(many, {}, { fold: false, limit: Number.POSITIVE_INFINITY });
+    expect(charts.filter((r) => r.surveyId === "s1").map((r) => r.scaleId)).toEqual(["a0", "a1", "a2", "a3", "a4", "a5", "a6", "a7"]);
+    expect(charts.filter((r) => r.surveyId === "s2")).toHaveLength(2);
+    expect(charts.every((r) => r.folded.length === 0)).toBe(true);
+  });
+
+  test("до трёх шкал — по строке на шкалу, подпись строки — шкала, методика — над группой", () => {
+    const two = dynamics([[at(0), 5]]);
+    const sv = two.surveys[0]!;
+    sv.title = "Скринінг емоційного стану";
+    sv.scales = [
+      { ...sv.scales[0]!, scaleId: "anx", code: "anxiety", title: "Тривога" },
+      { ...sv.scales[0]!, scaleId: "mood", code: "mood", title: "Знижений настрій" },
+    ];
+    const rows = instrumentRows(two, {});
+    expect(rows.map((r) => r.code)).toEqual(["Тривога", "Знижений настрій"]);
+    expect(rows.every((r) => r.folded.length === 0)).toBe(true);
+  });
 });
 
 describe("код методики из названия", () => {

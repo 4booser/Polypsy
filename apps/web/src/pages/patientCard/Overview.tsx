@@ -254,41 +254,77 @@ function InstrumentsPanel({ v }: { v: CardView }) {
         <p className="m-0 border-t border-divider px-4 py-3.5 text-small text-muted">{ut("pcard.noTests")}</p>
       ) : (
         <div className="@container">
-        <table className="w-full table-fixed border-collapse text-body">
-          {/* узкая левая колонка (1280 со списком): имя и тяжесть уже, изменение — с запасом на «надійно краще» */}
-          <colgroup>
-            <col className="w-[164px] @max-[530px]:w-[132px]" />
-            <col className="w-[44px] @max-[530px]:w-[40px]" />
-            <col className="w-[44px] @max-[530px]:w-[40px]" />
-            <col className="w-[70px] @max-[530px]:w-[64px]" />
-            <col className="w-[100px] @max-[530px]:w-[92px]" />
-            <col />
-          </colgroup>
-          <thead>
-            <tr className="[&>th]:h-[34px] [&>th]:border-y [&>th]:border-divider [&>th]:bg-panel-2 [&>th]:px-1.5 [&>th]:text-left [&>th]:text-caption [&>th]:font-bold [&>th]:text-muted">
-              <th className="!pl-2.5">{ut("card.colInstrument")}</th>
-              <th className="!text-right" colSpan={2}>
-                {ut("card.colBefore")}
-              </th>
-              <th className="!text-right !text-text">{ut("card.colNow")}</th>
-              <th className="!pl-2">{ut("card.colSeverity")}</th>
-              <th className="!pr-3.5">{ut("card.colChange")}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r) => (
-              <InstrumentLine key={r.key} r={r} open={open === r.key} onToggle={() => setOpen(open === r.key ? null : r.key)} />
+          <table className="w-full table-fixed border-collapse text-body">
+            {/*
+              Числа — узкими колонками постоянной ширины, имя — всем, что
+              осталось, и в две строки: на 1280 со списком (500 px) шесть
+              колонок по-старому оставляли имени 110 px, и «Поведінкова
+              регуляція» читалась как «Поведінк…».
+            */}
+            <colgroup>
+              <col />
+              <col className="w-[38px]" />
+              <col className="w-[38px]" />
+              <col className="w-[60px]" />
+              <col className="w-[88px]" />
+              <col className="w-[104px] @max-[530px]:w-[96px]" />
+            </colgroup>
+            <thead>
+              <tr className="[&>th]:h-[34px] [&>th]:border-y [&>th]:border-divider [&>th]:bg-panel-2 [&>th]:px-1 [&>th]:text-left [&>th]:text-caption [&>th]:font-bold [&>th]:leading-[14px] [&>th]:text-muted">
+                <th className="!pl-3">{ut("card.colInstrument")}</th>
+                <th className="!text-right" colSpan={2}>
+                  {ut("card.colBefore")}
+                </th>
+                <th className="!pr-1.5 !text-right !text-text">{ut("card.colNow")}</th>
+                <th className="!pl-2">{ut("card.colSeverity")}</th>
+                <th className="!pl-2 !pr-2.5 !whitespace-normal">{ut("card.colChange")}</th>
+              </tr>
+            </thead>
+            {/* шкалы одной методики — группой строк под её названием, а не обрезком названия под каждой */}
+            {groupsOf(rows).map((g) => (
+              <tbody key={g[0]!.key}>
+                {g.length > 1 ? (
+                  <tr>
+                    <th colSpan={6} scope="rowgroup" className="border-b border-divider px-3 pb-1 pt-2.5 text-left text-caption font-bold text-text-2">
+                      {g[0]!.surveyTitle}
+                    </th>
+                  </tr>
+                ) : null}
+                {g.map((r) => (
+                  <InstrumentLine key={r.key} r={r} grouped={g.length > 1} open={open === r.key} onToggle={() => setOpen(open === r.key ? null : r.key)} />
+                ))}
+              </tbody>
             ))}
-          </tbody>
-        </table>
+          </table>
         </div>
       )}
     </Panel>
   );
 }
 
-function InstrumentLine(
-{ r, open, onToggle }: { r: InstrumentRow; open: boolean; onToggle: () => void }) {
+/** Строки таблицы методик по методикам подряд: шкалы одной методики идут вместе (clinical.ts, instrumentRows) */
+function groupsOf(rows: readonly InstrumentRow[]): InstrumentRow[][] {
+  const out: InstrumentRow[][] = [];
+  for (const r of rows) {
+    const last = out.at(-1);
+    if (last && last[0]!.surveyId === r.surveyId) last.push(r);
+    else out.push([r]);
+  }
+  return out;
+}
+
+function InstrumentLine({
+  r,
+  grouped,
+  open,
+  onToggle,
+}: {
+  r: InstrumentRow;
+  /** Методика названа строкой над группой — под именем шкалы её не повторять */
+  grouped: boolean;
+  open: boolean;
+  onToggle: () => void;
+}) {
   const { ut } = useLang();
   const pts = r.points.slice(-3);
   const last = pts[pts.length - 1]!;
@@ -298,9 +334,9 @@ function InstrumentLine(
   const basis = r.scale.reliableChange?.basis ?? null;
   return (
     <>
-      <tr className={cx("group [&>td]:h-[70px] [&>td]:border-b [&>td]:border-divider [&>td]:px-1.5 [&>td]:align-middle", open ? "[&>td]:bg-panel-2 [&>td]:border-b-transparent" : "hover:[&>td]:bg-panel-2")}>
-        <td className="!pl-2.5">
-          <div className="flex items-center gap-1.5">
+      <tr className={cx("group [&>td]:h-[66px] [&>td]:border-b [&>td]:border-divider [&>td]:px-1 [&>td]:py-2 [&>td]:align-middle", open ? "[&>td]:bg-panel-2 [&>td]:border-b-transparent" : "hover:[&>td]:bg-panel-2")}>
+        <td className="!pl-1.5">
+          <div className="flex items-start gap-1">
             <button
               type="button"
               aria-expanded={open}
@@ -308,28 +344,30 @@ function InstrumentLine(
               aria-label={ut("card.expandRow").replace("{s}", r.code)}
               onClick={onToggle}
               className={cx(
-                "inline-grid size-8 shrink-0 cursor-pointer place-items-center rounded-control border-0 text-muted",
+                "inline-grid size-6 shrink-0 cursor-pointer place-items-center rounded-[7px] border-0 text-muted",
                 open ? "bg-violet-tint text-violet-ink" : "bg-transparent hover:bg-sunk hover:text-text",
               )}
             >
               <Ic.chevronRight size={14} className={cx("transition-transform", open && "rotate-90")} />
             </button>
-            <span className="min-w-0">
-              <b className="block truncate font-extrabold text-text" title={r.code}>
+            <span className="min-w-0 pt-px">
+              {/* имя — в две строки; что не влезло — в подсказке и в раскрытии строки */}
+              <b className="line-clamp-2 break-words font-extrabold leading-[17px] text-text" title={r.code}>
                 {r.code}
               </b>
-              <span className="flex min-w-0 items-baseline gap-x-1.5 text-caption text-muted">
+              <span className="mt-0.5 flex min-w-0 items-baseline gap-x-1.5 text-caption text-muted">
                 {r.better ? (
                   <span className="shrink-0 whitespace-nowrap text-[11.5px] font-bold">
                     {ut(r.better === "down" ? "kit.betterDown" : "kit.betterUp")}
                   </span>
                 ) : null}
-                <span className="min-w-0 truncate" title={r.title}>
-                  {r.title}
-                </span>
+                {grouped ? null : (
+                  <span className="min-w-0 truncate" title={r.title}>
+                    {r.title}
+                  </span>
+                )}
               </span>
             </span>
-
           </div>
         </td>
         {[0, 1].map((i) => {
@@ -340,7 +378,7 @@ function InstrumentLine(
             </td>
           );
         })}
-        <td className="text-right">
+        <td className="!pr-1.5 text-right">
           <ValuePop r={r} p={last} />
         </td>
         <td className="!pl-2">
@@ -352,16 +390,39 @@ function InstrumentLine(
             <span className="text-muted">—</span>
           )}
         </td>
-        <td className="!pr-3.5">
+        <td className="!pl-2 !pr-2.5">
           <ChangeOf r={r} />
         </td>
       </tr>
       {open ? (
         <tr id={xid}>
-          <td colSpan={6} className="border-b border-divider bg-panel-2 px-3.5 pb-3.5 pl-12 text-small text-text-2">
+          <td colSpan={6} className="border-b border-divider bg-panel-2 px-3.5 pb-3.5 pl-9 text-small text-text-2">
             <dl className="m-0 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1">
-              <dt className="font-bold text-muted">{ut("card.xSurvey")}</dt>
-              <dd className="m-0">{r.surveyTitle}</dd>
+              {r.code !== r.surveyTitle && r.title !== r.surveyTitle ? (
+                <>
+                  <dt className="font-bold text-muted">{ut("card.xSurvey")}</dt>
+                  <dd className="m-0">{r.surveyTitle}</dd>
+                </>
+              ) : null}
+              {r.folded.length ? (
+                <>
+                  <dt className="font-bold text-muted">{ut("card.xScales")}</dt>
+                  <dd className="m-0">
+                    <ul className="m-0 list-none p-0">
+                      {r.folded.map((sc) => {
+                        const p = [...sc.points].sort((a, b) => Date.parse(a.submittedAt) - Date.parse(b.submittedAt)).at(-1)!;
+                        const s = valueOf(p);
+                        return (
+                          <li key={sc.scaleId} className="py-px">
+                            {sc.title}: <b className="font-extrabold text-text">{`${s.text}${s.unit}`}</b>
+                            {p.bandLabel ? <span className="text-muted">, {p.bandLabel}</span> : null}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </dd>
+                </>
+              ) : null}
               <dt className="font-bold text-muted">{ut("card.xCount")}</dt>
               <dd className="m-0">
                 {r.points.length}
@@ -429,15 +490,22 @@ function ValuePop({ r, p, small }: { r: InstrumentRow; p: DynamicsPoint; small?:
   const value = valueOf(p);
   const pp = ut("card.pp");
   const sev = sevOf(p, ut);
+  /* «39,8» (Т-бал) в колонку «Зараз» крупным не встаёт — длинное число на ступень мельче */
+  const long = value.text.length + value.unit.length > 3;
   const num = (
     <span
       tabIndex={0}
       className={cx(
-        "inline-flex cursor-default flex-col items-end rounded-[6px] px-1 py-0.5 outline-none hover:bg-violet-tint hover:text-violet-ink focus-visible:shadow-[0_0_0_2px_var(--vring)]",
-        small ? "text-text-2" : "text-text",
+        "inline-flex cursor-default flex-col items-end rounded-[6px] py-0.5 outline-none hover:bg-violet-tint hover:text-violet-ink focus-visible:shadow-[0_0_0_2px_var(--vring)]",
+        small ? "px-0.5 text-text-2" : "px-1 text-text",
       )}
     >
-      <span className={cx("tabular-nums", small ? "text-body font-semibold" : "text-[30px] font-extrabold leading-none tracking-[-0.03em]")}>
+      <span
+        className={cx(
+          "tabular-nums",
+          small ? "text-body font-semibold" : cx("font-extrabold leading-none tracking-[-0.03em]", long ? "text-[24px]" : "text-[30px]"),
+        )}
+      >
         {value.text}
         {value.unit ? <small className="ml-px text-[14px] font-bold tracking-normal text-muted">{value.unit}</small> : null}
       </span>
@@ -596,7 +664,6 @@ function ItemsTable({ v, code, grid, loading, surveyId }: { v: CardView; code: s
     <Panel
       title={ut("card.itemsOf").replace("{s}", code)}
       icon={<Pi.listOrdered />}
-      sub={ut("card.itemsSub")}
       flush
       footer={
         <div className="flex w-full flex-wrap items-center gap-x-3.5 gap-y-1.5 text-caption font-semibold text-text-2">
@@ -634,7 +701,8 @@ function ItemsTable({ v, code, grid, loading, surveyId }: { v: CardView; code: s
           {grid.columns.map((c) => (
             <col key={c.responseId} className="w-[52px]" />
           ))}
-          {cat ? null : <col className="w-[58px]" />}
+          {/* «Изменение» по-русски в 58 px не помещалось и резалось краем панели */}
+          {cat ? null : <col className="w-[80px]" />}
         </colgroup>
         <thead>
           <tr className="[&>th]:h-[34px] [&>th]:border-y [&>th]:border-divider [&>th]:bg-panel-2 [&>th]:px-1 [&>th]:text-center [&>th]:text-[11.5px] [&>th]:font-bold [&>th]:text-muted">

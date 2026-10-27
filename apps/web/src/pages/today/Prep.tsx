@@ -236,8 +236,9 @@ export function Prep({
             <h3 className="m-0 mb-2 text-h3 font-extrabold text-text">{ut("dayA.readiness")}</h3>
             <ReadinessCells a={a} stacked />
           </section>
+          {/* что откроется — подсказкой на кнопке; под ней одна строка: открытие пишется в журнал */}
           <section data-prep-closed className="border-t border-divider px-4 pb-4 pt-3.5">
-            <Tooltip label={ut("dayA.prepShow")} kbd="P">
+            <Tooltip label={ut("home.prepWhat")} kbd="P">
               <Button icon={<Ic.eye />} onClick={onOpen} aria-keyshortcuts="P">
                 {ut("dayA.prepShow")}
               </Button>

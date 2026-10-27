@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { ALWAYS_VISIBLE_WIDGETS, DASH_WIDGETS, type DashWidget, type UiKey, type WorkspacePrefs } from "@quizzy/shared";
+import { ALWAYS_VISIBLE_WIDGETS, type DashWidget, type UiKey, type WorkspacePrefs } from "@quizzy/shared";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../../api";
 import { useAuth } from "../../auth";
@@ -9,7 +9,7 @@ import { Ic } from "../../ui/icons";
 import { Button, ChoiceCard, Segmented, Switch } from "../../ui/primitives";
 import { useLang } from "../../lang";
 import { Di } from "../today/icons";
-import { dropWidget, fill, moveWidget, saveQueue, widgetLayout, type WidgetLayout } from "./model";
+import { dropWidget, fill, moveWidget, saveQueue, widgetLayout, type BoardScope, type WidgetLayout } from "./model";
 
 /**
  * «Налаштувати зведення» — ящик справа (кадр day-start-customize).
@@ -52,11 +52,14 @@ export function CustomizeDrawer({
   open,
   onClose,
   layout,
+  scope,
   onLayout,
 }: {
   open: boolean;
   onClose: () => void;
   layout: WidgetLayout;
+  /** Доступное и умолчания по роли: «Повернути як було» возвращает их, а не зведення заведующего */
+  scope: BoardScope;
   onLayout: (next: WidgetLayout) => void;
 }) {
   const { ut } = useLang();
@@ -131,7 +134,7 @@ export function CustomizeDrawer({
           >
             {ut("dashA.cancel")}
           </Button>
-          <Button variant="quiet" onClick={() => setLayout(widgetLayout(null))}>
+          <Button variant="quiet" onClick={() => setLayout(widgetLayout(null, scope))}>
             {ut("dashA.reset")}
           </Button>
         </>
@@ -168,7 +171,7 @@ export function CustomizeDrawer({
         </div>
       </DrawerSection>
 
-      <DrawerSection title={ut("dashA.widgets")} sub={fill(ut("dashA.widgetsShown"), { n: shown, of: DASH_WIDGETS.length })}>
+      <DrawerSection title={ut("dashA.widgets")} sub={fill(ut("dashA.widgetsShown"), { n: shown, of: layout.order.length })}>
         <ul className="m-0 list-none p-0" aria-label={ut("dashA.widgets")}>
           {layout.order.map((k, i) => {
             const locked = LOCKED.has(k);

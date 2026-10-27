@@ -278,6 +278,29 @@ test("линии по корзинам: отметка выкатки пункт
   expect(html).not.toContain("NaN");
 });
 
+test("ряд замеров (connect): пустые корзины его не рвут; длинное имя у конца — с многоточием, целиком в легенде", () => {
+  const html = draw(
+    <TimeLines
+      label="Методики разом"
+      connect
+      x={["a", "b", "c", "d"].map((k) => ({ key: k, label: k }))}
+      series={[
+        { key: "s1", label: "Скринінг емоційного стану (демо)", color: "var(--c1)", values: [36, null, 50, 68] },
+        { key: "s2", label: "Якість сну (демо)", color: "var(--c3)", values: [null, 69, null, 46] },
+      ]}
+      format={(v) => `${v} %`}
+    />,
+  );
+  // каждый ряд — одной линией через свои замеры, без одиночных обрывков
+  expect(html.match(/data-run=/g)?.length).toBe(2);
+  expect(html).not.toContain("data-single");
+  expect(html).toContain('data-run="3"');
+  // у конца — обрезок имени, в легенде — имя целиком
+  expect(html).toMatch(/> Скрин[^<]*…<\/text>/);
+  expect(html).toContain(">Скринінг емоційного стану (демо)<");
+  expect(html).not.toContain("NaN");
+});
+
 test("столбцы: числа на столбцах, пока их немного; неделя, что ещё идёт, светлее; скрытая — контуром", () => {
   const html = draw(
     <TimeColumns

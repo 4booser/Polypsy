@@ -25,7 +25,7 @@ import { useCount } from "./useCount";
  * Рамка экрана методики (methods-method, methods-access, methods-norms):
  * код крупно, имя и строка состава за линией, «Правити» (E), «Призначити»
  * (A) и меню; ниже — паспорт строкой (состояние, группа и папка,
- * направление, видимость, права, ключи) и вкладки методики.
+ * направление, видимость; права и ключи — суперадмину) и вкладки методики.
  *
  * Вкладки «Шкали … Проходження» ведут во вкладку «Тести» аналитики — там
  * эти виды живут (pages/analytics/tests); «Огляд», «Доступ» и «Норми» —
@@ -110,6 +110,12 @@ export function MethodPage({
 
   const rights = rightsKey(survey.rightsStatus);
   const domain = domainKey(survey.domain);
+  /*
+   * Права на текст и сверка ключей в шапке — суперадмину: решает их он
+   * (окно «Права на текст» ниже, PATCH /rights), и янтарь «не з’ясовано» —
+   * его задача. Врачу это факты паспорта («Про методику»), а не сигнал.
+   */
+  const qa = user?.role === "superadmin";
   const facts: ReactNode[] = [
     survey.status === "published" && !retired ? (
       <Tag key="st" tone="good" icon={<Ic.check />}>
@@ -148,7 +154,7 @@ export function MethodPage({
         {ut("bt.byClinician")}
       </Fact>
     ) : null,
-    rights ? (
+    !qa ? null : rights ? (
       <Fact key="rights" icon={<Mi.scale size={15} />}>
         {ut(rights)}
       </Fact>
@@ -157,7 +163,7 @@ export function MethodPage({
         {ut("cl.rightsUnclear")}
       </Fact>
     ),
-    !survey.scoringEnabled ? (
+    !qa ? null : !survey.scoringEnabled ? (
       <Fact key="keys" icon={<ShellIcon name="key-round" size={15} />}>
         {ut("cat.scoringOff")}
       </Fact>

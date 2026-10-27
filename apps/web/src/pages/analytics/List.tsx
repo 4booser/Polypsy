@@ -34,7 +34,7 @@ import {
   uncovered,
   viewFrom,
 } from "./model";
-import { ACT_ICON, ACT_KEY, ActTag, CondChip } from "./parts";
+import { ACT_ICON, ACT_KEY, ActTag, CondChip, useLoadedSurveys } from "./parts";
 
 /*
  * «Моделі аналітики» — перечень правил поддержки решений (analytics-models).
@@ -164,7 +164,19 @@ export default function AnalyticsList() {
   const VIEW_KEY = { all: "am.viewAll", on: "am.viewOn", off: "am.viewOff" } as const;
   const SORT_KEY = { new: "am.sortNew", changed: "am.sortChanged", title: "am.sortTitle" } as const;
 
-  /* методики, которые встречаются в условиях, — для фильтра «Тест»; «будь-який» — последним */
+  /*
+   * Названия шкал в условиях: у сервера в условии только код. Методик под
+   * моделями единицы, и дочитываются они под тем же ключом, что в форме
+   * модели, — открытая из перечня модель шкал уже не ждёт.
+   */
+  const scaleSurveys = useMemo(
+    () => [...new Set((rows ?? []).flatMap((m) => m.conditions.flatMap((c) => (c.kind === "scale" && c.surveyId ? [c.surveyId] : []))))],
+    [rows],
+  );
+  const loaded = useLoadedSurveys(scaleSurveys);
+  const scaleTitle = (surveyId: string, code: string) => loaded[surveyId]?.scales.find((s) => s.code === code)?.title ?? null;
+
+  /* методики, которые встречаются в условиях, — для фильтра «Методика»; «будь-яка» — последней */
   const testsInUse = useMemo(() => {
     const ids = [...new Set((rows ?? []).flatMap((m) => ruleTests(m)))];
     return ids.sort((a, b) => Number(a === ANY_TEST) - Number(b === ANY_TEST) || testTitle(a).localeCompare(testTitle(b)));
@@ -223,16 +235,33 @@ export default function AnalyticsList() {
       header: ut("am.colWhen"),
       required: true,
       width: 330,
-      render: (m) => (
-        <ul className="m-0 flex list-none flex-col items-start gap-1.5 p-0 py-1.5">
-          {m.conditions.map((c, i) => (
-            <li key={i} className="flex max-w-full items-center gap-1.5">
-              <span className="w-3.5 shrink-0 text-center text-caption font-bold text-muted">{i ? ut("am.and") : ""}</span>
-              <CondChip c={c} testTitle={testTitle} />
-            </li>
-          ))}
-        </ul>
-      ),
+      /*
+       * Методика — одной строкой над условиями, а в пилюлях — шкала и порог:
+       * «Скринінг емоційного стану … Знижений настрій ≥ 10» одной пилюлей не
+       * помещался в колонку на 1280 и выталкивал «Що робить» за край. Условие
+       * по другой методике называет её в своей пилюле, как и раньше.
+       */
+      render: (m) => {
+        const lead = m.conditions.find((c) => c.kind === "scale" && c.surveyId !== null);
+        const leadId = lead?.kind === "scale" ? lead.surveyId : null;
+        return (
+          <div className="min-w-0 py-1.5">
+            {leadId ? (
+              <p className="m-0 mb-1 max-w-[240px] truncate pl-5 text-caption font-bold text-text-2" title={testTitle(leadId)}>
+                {testTitle(leadId)}
+              </p>
+            ) : null}
+            <ul className="m-0 flex list-none flex-col items-start gap-1.5 p-0">
+              {m.conditions.map((c, i) => (
+                <li key={i} className="flex max-w-full items-center gap-1.5">
+                  <span className="w-3.5 shrink-0 text-center text-caption font-bold text-muted">{i ? ut("am.and") : ""}</span>
+                  <CondChip c={c} testTitle={testTitle} scaleTitle={scaleTitle} lead={leadId} />
+                </li>
+              ))}
+            </ul>
+          </div>
+        );
+      },
     },
     {
       key: "does",
@@ -314,8 +343,9 @@ export default function AnalyticsList() {
         <>
           <Panel flush>
             <div className="px-4 pb-3 pt-3.5">
+              {/* поиск 200, а не 260: с фильтром «Методика» вместо «Тест» русская строка иначе переносит порядок на 1280 */}
               <FilterBar
-                search={{ value: q, onChange: (v) => update({ q: v, page: null }), placeholder: ut("am.search"), width: 260 }}
+                search={{ value: q, onChange: (v) => update({ q: v, page: null }), placeholder: ut("am.search"), width: 200 }}
                 views={{
                   items: (["all", "on", "off"] as const).map((k) => ({ key: k, label: ut(VIEW_KEY[k]), count: counts[k] })),
                   value: view,

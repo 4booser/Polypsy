@@ -490,8 +490,7 @@ function BandsPanel({
             return (
               <div key={s.id}>
                 <div className="mb-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
-                  {s.code ? <b className="font-extrabold text-text">{s.code}</b> : null}
-                  <b className="font-bold text-text">{s.title}</b>
+                  <b className="font-bold text-text">{s.title || s.code}</b>
                   <span className="text-small text-muted">
                     {ut("st.scaleRange")
                       .replace("{r}", `${min}–${max}`)
@@ -673,8 +672,7 @@ function Tree({ rows }: { rows: ReportRow[] }) {
           case "scale":
             return (
               <div key={r.key} className={cx("mb-1 flex items-center gap-2 text-[13px] font-bold text-text", i > 0 && "mt-3")}>
-                {r.code ? <b className="font-extrabold">{r.code}</b> : null}
-                <span className="truncate">{r.title}</span>
+                <span className="truncate">{r.title || r.code}</span>
               </div>
             );
           case "question":

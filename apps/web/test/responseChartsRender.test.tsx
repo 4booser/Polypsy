@@ -29,15 +29,35 @@ const clean = (html: string) => {
 };
 
 describe("результат", () => {
-  test("одна шкала: шкала тяжести, ступень словом, лестница с рекомендацией и пометкой «це проходження»", () => {
+  /*
+   * Результат на протоколе стоит над ответами, и длинная лестница свёрнута:
+   * видна строка попавшей полосы — подсвеченная, со смыслом и рекомендацией,
+   * — остальные под «Усі смуги». Мутация: рисовать лестницу целиком — в
+   * разметке появляются строки и тексты соседних полос.
+   */
+  test("одна шкала, длинная лестница: шкала тяжести, попавшая полоса со смыслом и рекомендацией; прочие — под кнопкой", () => {
     const html = draw(<ResultPanel detail={detail()} dynamics={null} ctx={null} variant="protocol" />);
     clean(html);
     expect(html).toContain('role="img"');
-    expect(html).toContain("Помірна");
+    expect(html).toContain("Помірна: опис");
     expect(html).toContain("Повторний замір за місяць");
     // попавшая ступень помечена словом, а не одной заливкой
     expect(html).toContain("це проходження");
-    expect(html.match(/<li/g)?.length ?? 0).toBe(4);
+    expect(html).not.toContain("Тяжка: опис");
+    expect(html.match(/<li/g)?.length ?? 0).toBe(1);
+    expect(html).toMatch(/aria-expanded="false"[^>]*>Усі смуги: 4</);
+  });
+
+  test("короткая лестница видна целиком, попавшая ступень помечена словом «це проходження»", () => {
+    const short = score({
+      bands: [band("b1", 0, 9, "Норма", "none"), band("b2", 10, 19, "Помірна", "moderate", true), band("b3", 20, 27, "Тяжка", "severe")],
+    });
+    const html = draw(<ResultPanel detail={detail({ scores: [short] })} dynamics={null} ctx={null} variant="protocol" />);
+    clean(html);
+    expect(html.match(/<li/g)?.length ?? 0).toBe(3);
+    // попавшая ступень помечена словом, а не одной заливкой
+    expect(html).toContain("це проходження");
+    expect(html).not.toContain("Усі смуги");
   });
 
   test("шкала без полос — лестницы нет; на графиках — смысл и рекомендация словами", () => {

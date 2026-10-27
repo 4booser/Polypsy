@@ -96,20 +96,35 @@ export function under(path: string, root: string): boolean {
 }
 
 const PATIENT_ROOTS = ["/patients", "/patient-groups", "/referrals", "/cohorts", "/search", "/mailings"];
-const METHOD_ROOTS = ["/surveys", "/batteries", "/groups", "/constructor", "/responses"];
+const METHOD_ROOTS = ["/surveys", "/batteries", "/groups", "/constructor"];
 const ANALYTICS_ROOTS = ["/analytics", "/statistics"];
 const ADMIN_ROOTS = ["/staff", "/admins", "/permissions", "/ops", "/console", "/consent-text", "/api-docs", "/account"];
 
 /**
+ * Куда ведёт «Зведення» — вкладка «Сьогодні» и команда палитры.
+ *
+ * Если стартовый экран — не зведення, на «/» стоит выбранный экран (черга,
+ * випадки, пацієнти), и зведення со своим «Налаштувати зведення» было бы
+ * недостижимо вовсе: вкладка вела бы на тот же «/». Поэтому тогда зведення
+ * открывается с `?view=overview` — тем же экраном, не трогая маршруты.
+ * Здесь, а не на экране: палитра команд стоит в оболочке и экран за собой не
+ * тянет.
+ */
+export function overviewHref(startScreen: string | undefined): string {
+  return !startScreen || startScreen === "dashboard" ? "/" : "/?view=overview";
+}
+
+/**
  * Раздел рельсы, к которому принадлежит адрес.
  *
- * «Сьогодні» — это и сводка, и день приёма, и приглашения (вкладки одного
+ * «Сьогодні» — это и зведення, и день приёма, и приглашения (вкладки одного
  * экрана), и сам приём (/visit — кадр набора рисует его под «Сьогодні»).
  */
 export function railKeyOf(path: string): RailKey | null {
   if (path === "/" || under(path, "/today") || under(path, "/invites") || under(path, "/visit")) return "today";
   if (under(path, "/worklist")) return "worklist";
   if (under(path, "/alerts")) return "cases";
+  if (isPatientRecord(path)) return "patients";
   if (PATIENT_ROOTS.some((r) => under(path, r))) return "patients";
   if (under(path, "/my-schedule")) return "schedule";
   if (under(path, "/messages")) return "messages";
@@ -117,6 +132,18 @@ export function railKeyOf(path: string): RailKey | null {
   if (ANALYTICS_ROOTS.some((r) => under(path, r))) return "analytics";
   if (ADMIN_ROOTS.some((r) => under(path, r))) return "admin";
   return null;
+}
+
+/**
+ * Прохождение (ответы, графики) и заключение по нему — записи о человеке.
+ *
+ * Адрес прохождения лежит под методикой (/surveys/:id/responses/:rid), но
+ * экран — о пациенте: шапка с именем, «Картка пацієнта», сигналы, заключение.
+ * Раздел у него поэтому «Пацієнти», а не «Методики» с текущим «Каталогом»;
+ * к методике ведёт её название на самом экране (панель «Проходження»).
+ */
+export function isPatientRecord(path: string): boolean {
+  return under(path, "/responses") || /^\/surveys\/[^/]+\/responses\/[^/]+/.test(path);
 }
 
 /**
@@ -131,6 +158,12 @@ export function sectionOf(path: string): SectionKey | null {
   if (path.startsWith("/constructor/")) return null;
   if (/^\/patients\/[^/]+\/case(\/|$)/.test(path)) return null; // справа: шапка пациента во всю ширину (кадр patients-case)
   if (/^\/patients\/[^/]+\/?$/.test(path)) return null; // карточка пациента: своя колонка «Мої пацієнти» (макет patient-card)
+  /*
+   * Прохождение и заключение — как клиническая карта: шапка пациента во всю
+   * ширину. Колонка списков пациентов здесь ни к чему, а на 1280 она отняла
+   * бы у протокола и листа заключения 232 px.
+   */
+  if (isPatientRecord(path)) return null;
   switch (railKeyOf(path)) {
     case "patients":
       return "patients";
@@ -337,16 +370,15 @@ export function clinicalLinks(path: string): SubNavItem[] | null {
 
 /**
  * Двери текущего экрана, которых кадр на самом экране не рисует: правка
- * названия группы (f14) и черновик заключения (f36). На самом адресе двери
- * её в списке нет — ссылка «туда, где мы уже стоим» только мешает.
+ * названия группы (f14). На самом адресе двери её в списке нет — ссылка
+ * «туда, где мы уже стоим» только мешает.
+ *
+ * «Чернетка заключення» отсюда ушла: инструменты черновика стоят на самом
+ * листе заключения, и пункт вёл на тот же экран другим адресом.
  */
 export function screenTools(path: string): SubNavItem[] | null {
   const group = /^\/patient-groups\/([^/]+)$/.exec(path);
   if (group) return [{ to: `/patient-groups/${group[1]}/edit`, label: "pg.edit", icon: "pencil" }];
-  const conclusion = /^\/responses\/([^/]+)\/conclusion$/.exec(path);
-  if (conclusion) {
-    return [{ to: `/responses/${conclusion[1]}/conclusion/draft`, label: "tools.conclusionDraft", icon: "file-pen-line" }];
-  }
   return null;
 }
 
@@ -434,7 +466,6 @@ export function subNavFor(
               to: "/surveys",
               label: "sn.catalog",
               icon: "library",
-              also: ["/responses"],
               except: ["/surveys/drafts", "/surveys/retired"],
             },
             { to: "/surveys/drafts", label: "sn.drafts", icon: "file-pen-line" },
@@ -451,8 +482,6 @@ export function subNavFor(
           ],
         },
       ];
-      const tools = screenTools(path);
-      if (tools) groups.push({ label: "tools.screen", items: tools });
       return { section, title: "nav.surveys", groups };
     }
     case "analytics": {

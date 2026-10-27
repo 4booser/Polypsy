@@ -82,6 +82,7 @@ export function FastEntry({
   at,
   setAt,
   focusTick = 0,
+  focusOnMount = true,
 }: {
   survey: SurveyFull;
   answers: Map<string, Answer>;
@@ -91,6 +92,12 @@ export function FastEntry({
   setAt: (next: number | ((prev: number) => number)) => void;
   /** Растёт, когда человек снова выбрал быстрый ввод: фокус возвращается в поле, а не остаётся на кнопке */
   focusTick?: number;
+  /**
+   * Взять фокус сразу при появлении. false — пока не выбран пациент: первым
+   * набирают его (поле «Кого обстежуємо»), а после выбора экран сам вернёт
+   * фокус сюда через focusTick.
+   */
+  focusOnMount?: boolean;
 }) {
   const { ut } = useLang();
   const asked = askedOf(survey);
@@ -103,9 +110,15 @@ export function FastEntry({
   const choices = q ? choicesOf(q) : [];
   const isChoice = choices.length > 0;
 
-  /* фокус держится на поле: рука не уходит с клавиатуры */
+  /*
+   * Фокус держится на поле: рука не уходит с клавиатуры. При появлении — по
+   * focusOnMount; сравнение с прежним пунктом, а не флаг «уже было»: в
+   * StrictMode эффект при появлении зовётся дважды.
+   */
+  const shownAt = useRef(at);
   useEffect(() => {
-    fieldRef.current?.focus();
+    if (shownAt.current !== at || focusOnMount) fieldRef.current?.focus();
+    shownAt.current = at;
     setTyped("");
   }, [at]);
   useEffect(() => {

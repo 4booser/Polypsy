@@ -3,9 +3,9 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
 import { UI, type DecisionRule, type ResponseContextSignal, type RuleHit } from "@quizzy/shared";
 import { api, type ConclusionState, type ConclusionVersion } from "../src/api";
-import { ConclusionEditor } from "../src/components/ConclusionEditor";
+import { ConclusionEditor, buildDraft } from "../src/components/ConclusionEditor";
 import { LangProvider } from "../src/lang";
-import { applicableModels, resultLines } from "../src/pages/Conclusion";
+import { applicableModels, resultLines, signLock } from "../src/pages/Conclusion";
 import { signGate, signLockedBySignal } from "../src/pages/response/context";
 import { scaleChange } from "../src/pages/response/model";
 import { readFileSync } from "node:fs";
@@ -80,7 +80,7 @@ describe("подпись после разбора сигнала", () => {
         text={text}
         setText={() => {}}
         areaRef={{ current: null }}
-        lock={lock ? { title: "Підписати можна після розбору сигналу", body: "Пункт 9", action: null } : null}
+        lock={lock ? { title: UI["cnx.lockOne"].uk, action: null } : null}
       />,
     );
   const button = (html: string, key: "cn3.form" | "cnc.saveDraft") => {
@@ -92,11 +92,32 @@ describe("подпись после разбора сигнала", () => {
     return { disabled: /\sdisabled=""/.test(found![1]!) };
   };
 
+  /*
+   * Заметка о замке повторяла все сигналы сплошным абзацем — и ниже те же
+   * сигналы шли списком «Сигнали цього проходження». Теперь одна строка с
+   * числом. Мутация: вернуть перечень в заголовок — в нём появятся пункты.
+   */
+  test("замок подписи — одна строка с числом сигналов, без их перечня", () => {
+    const uk = ((k: keyof typeof UI) => UI[k].uk) as unknown as Parameters<typeof signLock>[2];
+    const detail = { id: "r1", userId: "u1" } as Parameters<typeof signLock>[1];
+    const ctx = (signals: ResponseContextSignal[]) => ({ signals, patient: null }) as unknown as Parameters<typeof signLock>[0];
+    const five = [9, 19, 40, 3, 43].map((n) => signal({ id: `a${n}`, label: `СР-45, пункт ${n}: ствердна відповідь` }));
+    const many = signLock(ctx(five), detail, uk)!;
+    expect(many.title).toBe(UI["cnx.lockMany"].uk.replace("{n}", "5"));
+    expect(String(many.title)).not.toContain("пункт");
+    // строка у кнопки подписи — в числе сигналов; у одного — общая «після розбору сигналу»
+    expect(many.note).toBe(UI["cnx.lockNoteMany"].uk);
+    expect(signLock(ctx([signal()]), detail, uk)!.title).toBe(UI["cnx.lockOne"].uk);
+    expect(signLock(ctx([signal()]), detail, uk)!.note).toBeUndefined();
+    // сигнал другого замера и разобранный подпись этого листа не держат
+    expect(signLock(ctx([signal({ here: false }), signal({ reviewedAt: "2026-10-08T13:00:00.000Z" })]), detail, uk)).toBeNull();
+  });
+
   test("сигнал не разобран — подпись выключена, черновик сохраняется, причина названа", () => {
     const html = draw(true);
     expect(button(html, "cn3.form").disabled).toBe(true);
     expect(button(html, "cnc.saveDraft").disabled).toBe(false);
-    expect(html).toContain("Підписати можна після розбору сигналу");
+    expect(html).toContain(UI["cnx.lockOne"].uk);
   });
 
   test("сигнала нет — подпись по правилам сервера: текст есть, кнопка живая", () => {
@@ -179,12 +200,12 @@ describe("подпись после разбора сигнала", () => {
     const pending = render(<ConclusionEditor {...base} signPending />);
     expect(button(pending, "cn3.form").disabled).toBe(true);
     expect(button(pending, "cnc.saveDraft").disabled).toBe(false);
-    expect(pending).not.toContain(UI["cnx.lockTitle"].uk);
+    expect(pending).not.toContain(UI["cnx.lockOne"].uk);
 
     const unknown = render(
       <ConclusionEditor
         {...base}
-        lock={{ title: UI["cnx.lockUnknownTitle"].uk, body: UI["cnx.lockUnknownBody"].uk, action: null, tone: "warn", note: UI["cnx.lockUnknownBody"].uk }}
+        lock={{ title: UI["cnx.lockUnknownTitle"].uk, action: null, tone: "warn", note: UI["cnx.lockUnknownBody"].uk }}
       />,
     );
     expect(button(unknown, "cn3.form").disabled).toBe(true);
@@ -192,6 +213,57 @@ describe("подпись после разбора сигнала", () => {
     expect(unknown).toContain(UI["cnx.lockUnknownTitle"].uk);
     // это не сигнал, а отказ загрузки: строка у кнопки — не «після розбору сигналу»
     expect(unknown).not.toContain(UI["rp.signLocked"].uk);
+  });
+});
+
+/*
+ * «Зібрати з результатів» пишет абзац, который уходит в подписанный текст:
+ * «Обстежений» (мужской род) стоял и над обследованной, «21 років» — одной
+ * формой на любое число, дробное — точкой. Мутация: вернуть String(value)
+ * или одно «років» — строка черновика расходится с ожидаемой.
+ */
+describe("черновик из результатов — словами листа", () => {
+  test("ПІБ без рода, возраст формой по числу, дробное — запятой", async () => {
+    const g = globalThis as { localStorage?: Storage; sessionStorage?: Storage };
+    const saved = { fetch: globalThis.fetch, localStorage: g.localStorage, sessionStorage: g.sessionStorage };
+    const memory = (): Storage => {
+      const data = new Map<string, string>();
+      return {
+        get length() {
+          return data.size;
+        },
+        clear: () => data.clear(),
+        getItem: (k) => data.get(k) ?? null,
+        key: (i) => [...data.keys()][i] ?? null,
+        removeItem: (k) => void data.delete(k),
+        setItem: (k, val) => void data.set(k, String(val)),
+      };
+    };
+    g.localStorage = memory();
+    g.sessionStorage = memory();
+    const draft = {
+      patient: { fullName: "Петренко Ірина Олегівна", age: 21, unit: "1-й батальйон" },
+      surveyTitle: "PHQ-9",
+      submittedAt: "2026-10-08T11:12:00.000Z",
+      scales: [
+        { scaleId: "s1", title: "Депресія", value: 12.5, normalization: "raw", percent: 46, band: "Помірна", severity: "moderate", previousValue: 10.25, previousIncomparable: null },
+      ],
+      previousAt: null,
+    };
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify(draft), { status: 200, headers: { "Content-Type": "application/json" } })) as unknown as typeof fetch;
+    const uk = ((k: keyof typeof UI) => UI[k].uk) as unknown as (k: never) => string;
+    let text = "";
+    try {
+      text = await buildDraft("r1", uk);
+    } finally {
+      globalThis.fetch = saved.fetch;
+      g.localStorage = saved.localStorage;
+      g.sessionStorage = saved.sessionStorage;
+    }
+    expect(text).toContain("ПІБ: Петренко Ірина Олегівна, 21 рік, 1-й батальйон");
+    expect(text).toContain("Депресія: 12,5 — Помірна (було 10,3)");
+    expect(text).not.toMatch(/\d\.\d/);
   });
 });
 

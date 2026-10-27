@@ -242,7 +242,7 @@ export default function PatientGroups() {
             })}
           </span>
         ) : (
-          <span className="inline-flex items-center gap-1.5 text-small font-semibold text-warn">
+          <span className="inline-flex items-center gap-1.5 text-small font-semibold text-muted">
             <Pi.clipboardList size={14} />
             {ut("pg2.notAssigned")}
           </span>

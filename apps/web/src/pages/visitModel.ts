@@ -28,7 +28,7 @@ export type VisitMove = "booked" | "arrived" | "in_progress" | "done" | "no_show
  * «Почати», когда человек уже сидит перед ним, — то есть пришёл: это два
  * шага сервера одним нажатием, по очереди и каждый со своей проверкой.
  * Пустой список — начинать нечего (идёт, закончен, отменён или неявка:
- * неявку сперва исправляют «Прийшов»).
+ * неявку сперва исправляют «Явка»).
  */
 export function startPath(status: string): VisitMove[] {
   if (status === "booked" || status === "confirmed") return ["arrived", "in_progress"];
@@ -36,15 +36,21 @@ export function startPath(status: string): VisitMove[] {
   return [];
 }
 
-/** «Не прийшов» — пока приём не начат; неявку снимает «Прийшов» */
+/**
+ * «Неявка» в шапке — пока человек не отмечен пришедшим; неявку снимает
+ * «Явка». Пришедшему кнопка «Неявка» первой в шапке не нужна: ошибочную
+ * отметку явки снимают в меню «…» («Скасувати відмітку явки», undoStep), и
+ * после этого неявка ставится как обычно. Сервер переход «пришёл → неявка»
+ * принимает, экран просто не предлагает его вторым путём.
+ */
 export function canMarkNoShow(status: string): boolean {
-  return status === "booked" || status === "confirmed" || status === "arrived";
+  return status === "booked" || status === "confirmed";
 }
 
-/** Шаг назад — снять ошибочно нажатое «прийшов» или «почали» (#38): куда и с каким вопросом */
-export function undoStep(status: string): { to: VisitMove; confirm: UiKey } | null {
-  if (status === "arrived") return { to: "booked", confirm: "day.undoArrived" };
-  if (status === "in_progress") return { to: "arrived", confirm: "day.undoStarted" };
+/** Шаг назад — снять ошибочную отметку явки или начала приёма (#38): куда, как назвать и с каким вопросом */
+export function undoStep(status: string): { to: VisitMove; label: UiKey; confirm: UiKey } | null {
+  if (status === "arrived") return { to: "booked", label: "v2v.undoArrived", confirm: "day.undoArrived" };
+  if (status === "in_progress") return { to: "arrived", label: "v2v.undoStarted", confirm: "day.undoStarted" };
   return null;
 }
 
@@ -154,9 +160,9 @@ export function protocolSavable(p: Protocol): boolean {
 /**
  * Форма назначения на экране приёма — как набрано в полях (w14:webtails).
  *
- * Та же выдача методики человеку, что окно «Призначити тест» в карте
- * (patientGroups/dialogs.tsx, AssignSurveyDialog), но своей формой — и
- * правила того окна до неё не дошли:
+ * Та же выдача методики человеку, что ящик «Призначити методику» в
+ * карточке (components/AssignDrawer.tsx), но своей формой — и правила того
+ * окна до неё не дошли:
  *  - срок в прошлом уходил на сервер, и он его принимал: доступ истекал
  *    раньше, чем человек о нём узнавал (components/deadline.ts);
  *  - стёртое поле «Спроб» становилось нулём, и сервер отвечал отказом схемы

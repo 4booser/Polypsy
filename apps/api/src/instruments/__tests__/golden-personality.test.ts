@@ -290,15 +290,18 @@ describe("группа personality: структура", () => {
   });
 
   test("оговорка о рабочем переводе — ровно там, где текст наш", () => {
-    const has = (d: CreateSurveyDraft) => (d.description as { uk: string }).uk.includes(WORKING_TRANSLATION.uk);
+    // оговорка — в примечании для персонала («Джерело» паспорта), описание для обследуемого о ней молчит
+    const note = (d: CreateSurveyDraft) => CATALOG.find((e) => e.draft === d)!.note;
+    const has = (d: CreateSurveyDraft) => note(d).includes(WORKING_TRANSLATION.uk);
     // TIPI — обе адаптации валидизированы и перечислены автором: оговорка была бы неправдой
     expect(has(tipi)).toBe(false);
     for (const d of [scsSf, maas, aq10]) expect(has(d)).toBe(true);
     // AAQ-II: украинские пункты — адаптация УКУ, инструкция и русский — рабочий перевод
-    const a = aaq2.description as { uk: string; ru: string };
     expect(has(aaq2)).toBe(false);
-    expect(a.uk).toContain("робочий переклад");
-    expect(a.ru).toContain("рабочий перевод");
+    expect(note(aaq2)).toContain("інструкція й російський текст — робочий переклад");
+    for (const d of [tipi, scsSf, maas, aq10, aaq2]) {
+      expect((d.description as { uk: string }).uk).not.toContain(WORKING_TRANSLATION.uk);
+    }
   });
 
   test("результат человеку: черты и самосострадание — да, остальное — нет", () => {

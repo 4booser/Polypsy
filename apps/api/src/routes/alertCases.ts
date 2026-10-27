@@ -28,6 +28,7 @@ import {
   surveys,
   users,
 } from "../db/schema";
+import { alertLabelsIn } from "../lib/alertLabels";
 import { audit } from "../lib/audit";
 import { publish } from "../lib/events";
 import { fullNameOf } from "../lib/auth";
@@ -451,6 +452,8 @@ alertCaseRoutes.get("/", async (c) => {
       .leftJoin(scales, eq(scales.id, riskAlerts.scaleId))
       .where(and(inArray(riskAlerts.caseId, pageIds), inArray(riskAlerts.surveyId, surveyIds)))
       .orderBy(desc(riskAlerts.at));
+    // подпись — на языке читателя: снимок записан на языке прохождения (lib/alertLabels.ts)
+    const labelOf = await alertLabelsIn(lang, sig.map((s) => s.a));
     for (const s of sig) {
       const list = signalsByCase.get(s.a.caseId!) ?? [];
       if (list.length < SIGNALS_PREVIEW) {
@@ -462,7 +465,7 @@ alertCaseRoutes.get("/", async (c) => {
           // у сигнала по шкале в этом поле стоит название шкалы: место одно,
           // и подписывать его «пункт» было бы неправдой ровно в половине строк
           questionTitle: t((s.questionTitle ?? s.scaleTitle) as never, lang),
-          label: s.a.label,
+          label: labelOf(s.a),
           severity: s.a.severity,
           at: s.a.at,
         });
@@ -765,6 +768,8 @@ alertCaseRoutes.get("/:id/signals", async (c) => {
         .where(inArray(scaleBands.scaleId, [...new Set(bandSignals.map((s) => s.a.scaleId!))]))
     : [];
   const scoreBy = new Map(scoreRows.map((s) => [`${s.responseId}|${s.scaleId}`, s]));
+  // подпись — на языке читателя, как и всё остальное в основании (lib/alertLabels.ts)
+  const labelOf = await alertLabelsIn(lang, signals.map((s) => s.a));
 
   const items: AlertSignalBasis[] = signals.map((s) => {
     const answer = s.a.questionId ? answerBy.get(`${s.a.responseId}|${s.a.questionId}`) : undefined;
@@ -790,7 +795,7 @@ alertCaseRoutes.get("/:id/signals", async (c) => {
       responseId: s.a.responseId,
       surveyId: s.a.surveyId,
       surveyTitle: t(s.surveyTitle as never, lang),
-      label: s.a.label,
+      label: labelOf(s.a),
       severity: s.a.severity,
       at: s.a.at,
       responseSubmittedAt: s.submittedAt,

@@ -85,21 +85,16 @@ export function EpisodesBody({
   const open = items.find((e) => !e.closedAt) ?? null;
 
   return (
+    /*
+      «Друк картки повністю» стоял в шапке этой панели — теперь он в меню «…»
+      экрана приёма (печать карты — действие над человеком, а не над
+      обращением); выписка обращения — у самого обращения.
+    */
     <Panel
       title={ut("ep.title")}
       icon={<ShellIcon name="folder-tree" />}
       count={known && items.length ? items.length : null}
       className={className}
-      actions={
-        /*
-          Карта целиком — здесь же, рядом с обращениями: человека собирают в
-          один документ ровно тогда, когда смотрят его обращения, а не ищут
-          отдельную кнопку на четвёртом экране.
-        */
-        <Button variant="quiet" size="xs" icon={<Ic.file />} onClick={() => openInTab(`/api/reports/patients/${patientId}/chart`)}>
-          {ut("ep.chart")}
-        </Button>
-      }
     >
       <div className="flex flex-col gap-3">
         {/*
@@ -320,11 +315,16 @@ export function DispensaryBody({
           {ut("disp.title")}
         </h3>
         <p className="m-0 text-caption text-text-2">{ut("disp.notOn")}</p>
-        <div className="grid grid-cols-[minmax(0,1fr)_140px] gap-2 max-[520px]:grid-cols-1">
+        {/*
+          Поля — одно под другим: панель стоит в колонке шириной 300, и в два
+          столбца «Група обліку» сжималась до ста пикселей с подсказкой в пять
+          строк.
+        */}
+        <div className="flex flex-col">
           <Field label={ut("disp.group")} hint={ut("disp.groupHint")}>
             <Input value={group} onChange={(e) => setGroup(e.target.value)} />
           </Field>
-          <Field label={ut("disp.every")}>
+          <Field label={ut("disp.every")} className="max-w-[220px]">
             <Input type="number" min={1} max={36} value={months} onChange={(e) => setMonths(Number(e.target.value))} />
           </Field>
         </div>

@@ -19,25 +19,15 @@ export function dayHours(rows: readonly Row[], weekday: number): { hours: string
 }
 
 /**
- * Обычная неделя: чтение по дням и складывание одним рядком.
+ * Обычная неделя — на чтение.
  *
  * Неделю по умолчанию читают, а не правят: настраивают расписание раз в год,
  * а смотрят на него постоянно — «во сколько я во вторник», «принимаю ли в
- * пятницу». Правка по дням — в панели справа («Змінити»), а здесь — то, что
- * знает о своём приёме любой человек: в какие дни, с которого по который час
- * и сколько длится приём. Обеденный перерыв и короткая пятница иначе не
- * задаются — для них правка по дням.
+ * пятницу». Правка — в ящике («Змінити»): там и по дням, и одним рядком
+ * (QuickWeek). Прежде «Скласти тиждень одним рядком» стоял здесь раскрытым
+ * всегда — форма, нужная раз в год, под чтением, нужным каждый день.
  */
-export function RegularWeek({
-  rows,
-  onEdit,
-  onBuild,
-}: {
-  rows: Row[];
-  onEdit: () => void;
-  /** Неделя, собранная одним рядком: экран спросит подтверждения и сохранит */
-  onBuild: (rows: Row[]) => void;
-}) {
+export function RegularWeek({ rows, onEdit }: { rows: Row[]; onEdit: () => void }) {
   const { ut } = useLang();
   return (
     <Panel
@@ -69,7 +59,6 @@ export function RegularWeek({
           );
         })}
       </dl>
-      <QuickWeek onBuild={onBuild} />
     </Panel>
   );
 }
@@ -78,10 +67,11 @@ export function RegularWeek({
  * Неделя одним рядком: дни, часы, длительность — и «Скласти тиждень».
  *
  * Построчная неделя спрашивала то же самое пять раз подряд, и заполнить её
- * без ошибки труднее, чем сказать вслух. Сохраняет экран — после окна
- * подтверждения: рядок заменяет все часы, что стоят сейчас.
+ * без ошибки труднее, чем сказать вслух. Стоит в ящике правки недели и
+ * заполняет правку ниже — все часы разом; сохраняет «Зберегти тиждень», как
+ * и правку по дням, а «Скасувати зміни» возвращает то, что на сервере.
  */
-function QuickWeek({ onBuild }: { onBuild: (rows: Row[]) => void }) {
+export function QuickWeek({ onBuild }: { onBuild: (rows: Row[]) => void }) {
   const { ut } = useLang();
   const [days, setDays] = useState<number[]>([1, 2, 3, 4, 5]);
   const [from, setFrom] = useState("09:00");
@@ -93,9 +83,8 @@ function QuickWeek({ onBuild }: { onBuild: (rows: Row[]) => void }) {
   const problem = hoursProblem({ startsAt: from, endsAt: to, slotMinutes: minutes });
 
   return (
-    <div className="mt-3 rounded-[12px] bg-panel-2 p-3 shadow-[inset_0_0_0_1px_var(--border)]">
-      <b className="block text-h3 font-extrabold text-text">{ut("sched.simple")}</b>
-      <div role="group" aria-label={ut("v2s.days")} className="mb-2.5 mt-2 flex flex-wrap gap-1">
+    <div className="rounded-[12px] bg-panel-2 p-3 shadow-[inset_0_0_0_1px_var(--border)]">
+      <div role="group" aria-label={ut("v2s.days")} className="mb-2.5 flex flex-wrap gap-1">
         {WEEK.map((d) => {
           const on = days.includes(d);
           return (
@@ -118,10 +107,9 @@ function QuickWeek({ onBuild }: { onBuild: (rows: Row[]) => void }) {
       </div>
       {/*
         Каждое поле в своей ячейке: отступ под Field снимается только у
-        последнего в родителе. Время — парой во всю ширину: в колонке 330 у
-        поля времени с выбором часов иначе срезаются минуты.
+        последнего в родителе. В ящике шириной 520 все четыре — одним рядом.
       */}
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_92px_auto] items-end gap-2">
         <div>
           <Field label={ut("sched.from")}>
             <Input type="time" value={from} onChange={(e) => setFrom(e.target.value)} />
@@ -144,9 +132,8 @@ function QuickWeek({ onBuild }: { onBuild: (rows: Row[]) => void }) {
             />
           </Field>
         </div>
-        <div className="self-end">
+        <div>
           <Button
-            className="w-full"
             disabled={!days.length || problem !== null}
             onClick={() => onBuild(days.map((weekday) => ({ weekday, startsAt: from, endsAt: to, slotMinutes: minutes })))}
           >
@@ -155,7 +142,7 @@ function QuickWeek({ onBuild }: { onBuild: (rows: Row[]) => void }) {
         </div>
       </div>
       {problem ? <ErrorText className="mt-2">{ut(PROBLEM_KEY[problem])}</ErrorText> : null}
-      <p className="m-0 mt-2 text-caption font-bold text-warn">{ut("sched.applyWarn")}</p>
+      <p className="m-0 mt-2 text-caption text-muted">{ut("sched.applyWarn")}</p>
     </div>
   );
 }

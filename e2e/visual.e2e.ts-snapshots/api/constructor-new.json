@@ -1,7 +1,7 @@
 {
   "@clock": {
     "status": 0,
-    "body": "2026-10-19T04:50:00.000Z"
+    "body": "2026-10-26T13:46:00.000Z"
   },
   "/api/alert-cases/count": {
     "status": 200,
@@ -13,11 +13,11 @@
   },
   "/api/auth/me": {
     "status": 200,
-    "body": "{\"id\":\"716e7e68-8038-4122-bfe7-f9473e513b45\",\"email\":\"psy@quizzy.dev\",\"firstName\":\"Анна\",\"lastName\":\"Иванова\",\"middleName\":\"Петровна\",\"fullName\":\"Иванова Анна Петровна\",\"anonymous\":false,\"pseudonym\":null,\"leadSpecialistId\":null,\"googleLinked\":false,\"sex\":null,\"birthDate\":null,\"unit\":null,\"position\":null,\"specialty\":null,\"rank\":null,\"locality\":null,\"role\":\"admin\",\"readOnly\":false,\"mustChangePassword\":false,\"workspace\":{\"dismissedHints\":[\"rci\"]},\"createdAt\":\"2026-10-19T04:49:42.429Z\",\"ladderRank\":0,\"canInvite\":true}"
+    "body": "{\"id\":\"8958abf4-ebd3-46ac-9b27-fb0851f7b452\",\"email\":\"psy@quizzy.dev\",\"firstName\":\"Анна\",\"lastName\":\"Иванова\",\"middleName\":\"Петровна\",\"fullName\":\"Иванова Анна Петровна\",\"anonymous\":false,\"pseudonym\":null,\"leadSpecialistId\":null,\"googleLinked\":false,\"sex\":null,\"birthDate\":null,\"unit\":null,\"position\":null,\"specialty\":null,\"rank\":null,\"locality\":null,\"role\":\"admin\",\"readOnly\":false,\"mustChangePassword\":false,\"workspace\":{\"theme\":\"light\",\"dismissedHints\":[\"rci\"]},\"createdAt\":\"2026-10-26T13:45:22.502Z\",\"ladderRank\":0,\"canInvite\":true}"
   },
   "/api/clinic/today/count": {
     "status": 200,
-    "body": "{\"date\":\"2026-10-19\",\"waiting\":2}"
+    "body": "{\"date\":\"2026-10-26\",\"waiting\":2}"
   },
   "/api/flags": {
     "status": 200,
@@ -25,7 +25,7 @@
   },
   "/api/groups": {
     "status": 200,
-    "body": "{\"items\":[{\"id\":\"5aaebd6f-1baf-4582-9f40-1f2bd09f6893\",\"title\":\"Приёмное отделение\",\"description\":\"Первичный скрининг при поступлении\",\"color\":\"#3b5bfd\",\"position\":0,\"createdBy\":\"7c8ff166-b696-47c7-b185-ace012a37643\",\"createdAt\":\"2026-10-19T04:49:43.438Z\",\"archivedAt\":null,\"surveyCount\":6,\"publishedCount\":6,\"responseCount\":168,\"patientCount\":14,\"openCaseCount\":31,\"admins\":[{\"userId\":\"fa816d09-aa4c-426d-8993-18aec823474d\",\"fullName\":\"Просмотр Демонстрация\",\"email\":\"demo@quizzy.dev\",\"addedAt\":\"2026-10-19T04:49:43.444Z\",\"addedBy\":\"7c8ff166-b696-47c7-b185-ace012a37643\"},{\"userId\":\"716e7e68-8038-4122-bfe7-f9473e513b45\",\"fullName\":\"Иванова Анна Петровна\",\"email\":\"psy@quizzy.dev\",\"addedAt\":\"2026-10-19T04:49:43.441Z\",\"addedBy\":\"7c8ff166-b696-47c7-b185-ace012a37643\"}],\"manageable\":false}]}"
+    "body": "{\"items\":[{\"id\":\"12006392-021d-45d9-825a-d3241a985c89\",\"title\":\"Приёмное отделение\",\"description\":\"Первичный скрининг при поступлении\",\"color\":\"#3b5bfd\",\"position\":0,\"createdBy\":\"bb672436-91d6-4c03-b13b-7b8ede7c9400\",\"createdAt\":\"2026-10-26T13:45:23.872Z\",\"archivedAt\":null,\"surveyCount\":6,\"publishedCount\":6,\"responseCount\":168,\"patientCount\":14,\"openCaseCount\":33,\"admins\":[{\"userId\":\"f8da2ebe-149c-4938-9b4c-b52f9b0488db\",\"fullName\":\"Просмотр Демонстрация\",\"email\":\"demo@quizzy.dev\",\"addedAt\":\"2026-10-26T13:45:23.879Z\",\"addedBy\":\"bb672436-91d6-4c03-b13b-7b8ede7c9400\"},{\"userId\":\"8958abf4-ebd3-46ac-9b27-fb0851f7b452\",\"fullName\":\"Иванова Анна Петровна\",\"email\":\"psy@quizzy.dev\",\"addedAt\":\"2026-10-26T13:45:23.875Z\",\"addedBy\":\"bb672436-91d6-4c03-b13b-7b8ede7c9400\"}],\"manageable\":false}]}"
   },
   "/api/messages/unread-count": {
     "status": 200,
@@ -33,11 +33,11 @@
   },
   "/api/missed?since=<time>": {
     "status": 200,
-    "body": "{\"since\":\"2026-10-18T04:50:00.000Z\",\"groups\":[]}"
+    "body": "{\"since\":\"2026-10-25T13:46:00.000Z\",\"groups\":[]}"
   },
-  "/api/permissions/users/716e7e68-8038-4122-bfe7-f9473e513b45": {
+  "/api/permissions/users/8958abf4-ebd3-46ac-9b27-fb0851f7b452": {
     "status": 200,
-    "body": "{\"userId\":\"716e7e68-8038-4122-bfe7-f9473e513b45\",\"fullName\":\"Иванова Анна Петровна\",\"role\":\"admin\",\"readOnly\":false,\"roles\":[{\"roleId\":\"role-psychologist\",\"code\":\"psychologist\",\"title\":{\"ru\":\"Психолог\",\"uk\":\"Психолог\"},\"isBuiltin\":true}],\"exceptions\":[],\"effective\":[\"administer\",\"alerts.review\",\"analytics.read\",\"appointments.manage\",\"assignments.manage\",\"batteries.manage\",\"cohorts.read\",\"conclusions.sign\",\"conclusions.write\",\"console.use\",\"episodes.manage\",\"export.deidentified\",\"export.full\",\"invites.manage\",\"mailings.manage\",\"messages.write\",\"norms.manage\",\"notes.write\",\"patients.read\",\"referrals.manage\",\"safety.manage\",\"schedule.own\",\"statistics.read\",\"surveys.edit\",\"surveys.publish\",\"surveys.read\"]}"
+    "body": "{\"userId\":\"8958abf4-ebd3-46ac-9b27-fb0851f7b452\",\"fullName\":\"Иванова Анна Петровна\",\"role\":\"admin\",\"readOnly\":false,\"roles\":[{\"roleId\":\"role-psychologist\",\"code\":\"psychologist\",\"title\":{\"ru\":\"Психолог\",\"uk\":\"Психолог\"},\"isBuiltin\":true}],\"exceptions\":[],\"effective\":[\"patients.read\",\"notes.write\",\"conclusions.write\",\"conclusions.sign\",\"referrals.manage\",\"episodes.manage\",\"safety.manage\",\"schedule.own\",\"appointments.manage\",\"messages.write\",\"mailings.manage\",\"alerts.review\",\"surveys.read\",\"surveys.edit\",\"surveys.publish\",\"batteries.manage\",\"assignments.manage\",\"invites.manage\",\"administer\",\"norms.manage\",\"analytics.read\",\"statistics.read\",\"cohorts.read\",\"export.deidentified\",\"export.full\",\"console.use\"]}"
   },
   "/api/referrals/count": {
     "status": 200,
@@ -45,7 +45,7 @@
   },
   "/api/status": {
     "status": 200,
-    "body": "{\"status\":\"ok\",\"message\":null,\"expectedEnd\":null,\"since\":null,\"writable\":true,\"auto\":null,\"checkedAt\":\"2026-10-19T04:50:00.270Z\",\"history\":[]}"
+    "body": "{\"status\":\"ok\",\"message\":null,\"expectedEnd\":null,\"since\":null,\"writable\":true,\"auto\":null,\"checkedAt\":\"2026-10-26T13:46:17.350Z\",\"history\":[]}"
   },
   "/api/survey-folders": {
     "status": 200,

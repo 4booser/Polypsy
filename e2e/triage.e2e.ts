@@ -83,11 +83,11 @@ test("подгрузка дописывает страницу, а не заме
 
 test("взятый случай помечен и отпускается обратно", async ({ page }) => {
   /*
-   * Фильтр «никем не взяты» здесь не годится: взятый случай перестаёт ему
+   * Фильтр «без ответственного» здесь не годится: взятый случай перестаёт ему
    * соответствовать и исчезает из очереди — это правильное поведение, но
    * проверять на нём пометку нельзя. Ищем свободный случай перебором.
    */
-  const take = () => detail(page).getByRole("button", { name: "Взять на себя" });
+  const take = () => detail(page).getByRole("button", { name: "Взять в работу" });
   const count = Math.min(await rows(page).count(), 8);
   for (let i = 0; i < count; i++) {
     await rows(page).nth(i).click();
@@ -97,7 +97,8 @@ test("взятый случай помечен и отпускается обр�
 
   await take().click();
   await expect(detail(page).getByRole("button", { name: "Отпустить" })).toBeVisible();
-  await expect(detail(page)).toContainText("на мне");
+  // строка «Ответственный» называет взявшего: себя — «Вы»
+  await expect(detail(page).locator("[data-assignee]")).toHaveText("Вы");
 
   await detail(page).getByRole("button", { name: "Отпустить" }).click();
   await expect(take()).toBeVisible();
@@ -231,7 +232,7 @@ test("срез экрана сохраняется под именем и вос
 
   const name = `Тяжёлые ${Date.now()}`;
 
-  await page.getByRole("button", { name: /Сохранить вид/ }).click();
+  await page.getByRole("button", { name: /Сохранить отбор/ }).click();
   await page.getByPlaceholder("Например: мои просроченные").fill(name);
   await page.getByRole("button", { name: "Сохранить", exact: true }).click();
 
@@ -245,7 +246,7 @@ test("срез экрана сохраняется под именем и вос
   await view.click();
   await expect.poll(() => page.url()).toContain("severity=severe");
 
-  // и убираем за собой: вид принадлежит учётной записи, а не прогону теста
-  await page.getByRole("button", { name: "Удалить вид" }).click();
+  // и убираем за собой: отбор принадлежит учётной записи, а не прогону теста
+  await page.getByRole("button", { name: "Удалить отбор" }).click();
   await expect(view).toHaveCount(0);
 });

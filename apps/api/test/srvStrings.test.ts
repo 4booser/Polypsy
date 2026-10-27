@@ -14,7 +14,7 @@ import { adminA, api, db, eq, groupA, makeUser, root, surveyInA } from "./fixtur
  * оставила хвост: заметки версий «Первая версия» и «Импорт из файла»,
  * название копии «(копия)», подписи норм, перечень содержимого в отказе
  * удалить папку или группу, русские подробности отказов (курсор, номер
- * запроса трассы), примечания доступа «Батарея «…»», причина обхода
+ * запроса трассы), примечания доступа «Набор «…»», причина обхода
  * политик строк, признаки небрежного заполнения. Здесь — сквозной путь:
  * маршрут берёт язык запроса, а пометка, которую сервер пишет в базу,
  * хранится кодом и становится фразой при показе. Литералы в модулях
@@ -289,7 +289,7 @@ describe("примечание к доступу: пометка сервера 
       return (res.body.items as { userId: string; note: string | null }[]).find((g) => g.userId === personId)!.note;
     };
     expect(await noteIn("uk")).toBe(`Набір «Набір мови ${tag}»`);
-    expect(await noteIn("ru")).toBe(`Батарея «Набір мови ${tag}»`);
+    expect(await noteIn("ru")).toBe(`Набор «Набір мови ${tag}»`);
     expect(await noteIn("en")).toBe(`Battery “Набір мови ${tag}”`);
   });
 });
@@ -379,6 +379,7 @@ describe("заметка каталога: код с отпечатком, пр�
     // вернуть код и посмотреть, как заметку читают на английском экране
     await db.update(surveyVersions).set({ note: before.note }).where(eq(surveyVersions.id, before.id));
     const res = await ask(`/api/surveys/${pss!.id}/versions`, root.token, "en");
-    expect((res.body.items as { note: string }[])[0]!.note).toBe(`Catalogue · ${edition}`);
+    // отпечаток — для установщика, в фразе его нет: машинный код специалисту ничего не говорит
+    expect((res.body.items as { note: string }[])[0]!.note).toBe("Catalogue edition");
   }, 60_000);
 });

@@ -3,9 +3,8 @@ import { Link } from "react-router-dom";
 import { dateTime, day, timeOfDay } from "../../format";
 import { useLang } from "../../lang";
 import { AlertChip, AlertStrip, Avatar, Ic, Kbd, Popover, RiskChip, RiskTimer, Tooltip } from "../../ui";
-import { cx } from "../../ui/cx";
 import { ActionMenu } from "../../ui/menu";
-import { Button, Tabs } from "../../ui/primitives";
+import { Button, ButtonLink, Tabs } from "../../ui/primitives";
 import { clockText, normText, riskClock } from "../alerts/model";
 import { ageOf, instrumentCode } from "./clinical";
 import { dm } from "./format";
@@ -15,9 +14,16 @@ import type { CardView } from "./types";
 
 /*
  * Карточка пациента на фиолетово-тонированной полосе (.banner макета):
- * кто это, что открыто по человеку одной строкой пилюль — у каждой своё
- * действие и свой поповер — и вкладки. Липнет к верху колонки: ящик
- * действий встаёт под ней, и человек, о котором действие, всегда виден.
+ * кто это, что открыто по человеку строкой пилюль — у каждой своё
+ * действие и свой поповер, — действия дня и вкладки. Липнет к верху
+ * колонки: ящик действий встаёт под ней, и человек, о котором действие,
+ * всегда виден.
+ *
+ * Действия — своей строкой под именем, справа, и с подписями: на
+ * 13-дюймовом ноутбуке (1280 со списком) пять значков без слов приходилось
+ * угадывать по подсказкам, а в строке имени подписям места нет — длинное ФИО
+ * обрезалось бы. Строка действий стоит на одном месте у любого человека:
+ * пилюли открытого — под ней, сколько бы их ни было.
  */
 
 export type CardTab = "overview" | "measures" | "dynamics" | "conclusions" | "visits" | "messages" | "notes" | "timeline";
@@ -64,7 +70,7 @@ export const Banner = forwardRef<
       aria-label={ut("card.bannerLabel")}
       className="sticky top-0 z-20 flex shrink-0 flex-col border-b border-band-card-line bg-band px-4 pt-3.5"
     >
-      <div className="rounded-drawer border border-band-card-line bg-band-card py-3 pl-3.5 pr-3 shadow-banner">
+      <div className="@container rounded-drawer border border-band-card-line bg-band-card py-3 pl-3.5 pr-3 shadow-banner">
         <div className="flex min-w-0 items-center gap-3">
           {collapsed ? (
             <Tooltip label={ut("card.expandList")} kbd="[">
@@ -77,7 +83,8 @@ export const Banner = forwardRef<
             <div tabIndex={0} className="group flex min-w-0 items-center gap-3.5 rounded-[16px] pr-1.5 outline-none focus-visible:shadow-[0_0_0_2px_var(--vring)]">
               <Avatar name={card.fullName} size={56} />
               <div className="flex min-w-0 flex-col gap-[5px]">
-                <h1 className="m-0 truncate text-title font-extrabold leading-[30px] tracking-[-0.03em] text-text group-hover:underline group-hover:decoration-violet-line group-hover:decoration-2 group-hover:underline-offset-[5px]">
+                {/* ФИО не обрезается: длинное встаёт в две строки, а не теряет отчество */}
+                <h1 className="m-0 text-title font-extrabold leading-[30px] tracking-[-0.03em] text-text group-hover:underline group-hover:decoration-violet-line group-hover:decoration-2 group-hover:underline-offset-[5px]">
                   {card.fullName}
                 </h1>
                 <span className="flex min-w-0 flex-wrap gap-x-4 gap-y-1 text-[13px] font-semibold text-text-2">
@@ -108,43 +115,53 @@ export const Banner = forwardRef<
               </div>
             </div>
           </Popover>
-          <div className="ml-auto flex shrink-0 items-center gap-2 max-[1279px]:gap-1.5">
+          <div className="ml-auto flex shrink-0 items-center gap-2 self-start">
             {here}
+            {/* вторая запись того же человека — словом на виду, как «Картка пацієнта» в шапке клинической карты */}
+            <ButtonLink to={`/patients/${card.id}/case`} variant="ghost" size="xs">
+              <Ic.layers size={14} className="mr-1.5" />
+              {ut("pcard.clinical")}
+            </ButtonLink>
+          </div>
+        </div>
+        <div className="mt-2.5 flex min-w-0 justify-end">
+          <div role="group" aria-label={ut("card.actionsLabel")} className="flex shrink-0 items-center gap-1.5">
             {v.can("messages.write") ? (
               <Tooltip label={ut("card.writeTip")} kbd="M">
-                <Button icon={<Pi.messageSquare />} aria-expanded={v.pane === "thread"} onClick={() => v.open("thread")}>
-                  <span className="max-[1365px]:sr-only">{ut("card.write")}</span>
+                <Button size="xs" icon={<Pi.messageSquare />} aria-expanded={v.pane === "thread"} onClick={() => v.open("thread")}>
+                  <span className={NARROW_SR}>{ut("card.write")}</span>
+                  <DraftDot on={drafts.thread && v.pane !== "thread"} />
                 </Button>
               </Tooltip>
             ) : null}
             {v.can("notes.write") ? (
               <Tooltip label={ut("card.noteTip")} kbd="N">
-                <Button icon={<Pi.notebookPen />} aria-expanded={v.pane === "note"} onClick={() => v.open("note")}>
-                  <span className="max-[1365px]:sr-only">{ut("card.note")}</span>
+                <Button size="xs" icon={<Pi.notebookPen />} aria-expanded={v.pane === "note"} onClick={() => v.open("note")}>
+                  <span className={NARROW_SR}>{ut("card.note")}</span>
+                  <DraftDot on={drafts.note && v.pane !== "note"} />
+                </Button>
+              </Tooltip>
+            ) : null}
+            {v.can("conclusions.write") && card.responses.length ? (
+              <Tooltip label={ut("card.conclTip")}>
+                <Button size="xs" icon={<Pi.filePlus />} aria-expanded={v.pane === "concl"} onClick={() => v.open("concl")}>
+                  <span className={NARROW_SR}>{ut("card.concl")}</span>
+                  <DraftDot on={drafts.concl && v.pane !== "concl"} />
                 </Button>
               </Tooltip>
             ) : null}
             {v.can("appointments.manage") ? (
-              <Tooltip label={ut("card.bookTip")}>
-                <Button size="icon" aria-label={ut("card.bookTip")} aria-expanded={v.pane === "book"} onClick={() => v.open("book")}>
-                  <Pi.calendarPlus />
-                </Button>
-              </Tooltip>
-            ) : null}
-            <Tooltip label={ut("pg.assignTest")}>
-              <Button size="icon" aria-label={ut("pg.assignTest")} onClick={onAssign}>
-                <Pi.clipboardPlus />
+              <Button size="xs" icon={<Pi.calendarPlus />} aria-expanded={v.pane === "book"} onClick={() => v.open("book")}>
+                {ut("card.bookTip")}
               </Button>
-            </Tooltip>
-            {v.can("conclusions.write") && card.responses.length ? (
-              <Tooltip label={ut("card.conclTip")}>
-                <Button size="icon" aria-label={ut("card.conclTip")} aria-expanded={v.pane === "concl"} onClick={() => v.open("concl")}>
-                  <Pi.filePlus />
-                </Button>
-              </Tooltip>
+            ) : null}
+            {v.can("assignments.manage") ? (
+              <Button size="xs" icon={<Pi.clipboardPlus />} onClick={onAssign}>
+                {ut("pg.assignTest")}
+              </Button>
             ) : null}
             <ActionMenu
-              triggerSize="icon"
+              triggerSize="icon-sm"
               entries={[
                 {
                   key: "lead",
@@ -153,7 +170,6 @@ export const Banner = forwardRef<
                   disabled: leadBusy,
                   onSelect: onToggleLead,
                 },
-                { key: "case", label: ut("pcard.clinical"), icon: <Ic.layers size={15} />, to: `/patients/${card.id}/case` },
               ]}
             />
           </div>
@@ -162,7 +178,7 @@ export const Banner = forwardRef<
       </div>
       {/* полоса вкладок узкая (1280 со списком) — счётчики уходят, подписи остаются */}
       <div className="@container flex min-w-0 items-center gap-2 py-2">
-        <div className="min-w-0 overflow-x-auto [scrollbar-width:none] [&>[role=tablist]]:flex-nowrap @max-[960px]:[&_[role=tab]>span]:hidden">
+        <div className="min-w-0 overflow-x-auto [scrollbar-width:none] [&>[role=tablist]]:flex-nowrap @max-[880px]:[&_[role=tab]>span]:hidden">
           <Tabs
             label={ut("card.tabsLabel")}
             items={CARD_TABS.map((t) => ({
@@ -175,19 +191,22 @@ export const Banner = forwardRef<
             }))}
           />
         </div>
-        <Link
-          to={`/patients/${card.id}/case`}
-          className="ml-auto inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-control px-3 text-body font-bold text-violet-ink no-underline hover:bg-tab-hover hover:no-underline @max-[1080px]:px-2.5"
-          title={ut("pcard.clinical")}
-        >
-          <Ic.layers size={15} />
-          <span className="@max-[1080px]:sr-only">{ut("pcard.clinical")}</span>
-
-        </Link>
       </div>
     </section>
   );
 });
+
+/*
+ * Подписи «Написати», «Нотатка», «Заключення» видны, пока полоса не уже 750:
+ * на 1280 со списком (800) они на месте, уже — значок с подсказкой и
+ * клавишей. «Записати на прийом» и «Призначити методику» подписаны всегда.
+ */
+const NARROW_SR = "@max-[750px]:sr-only";
+
+/** Точка «есть черновик» на кнопке действия — как у «Розібрати» и пилюль строки */
+function DraftDot({ on }: { on: boolean }) {
+  return on ? <i aria-hidden className="absolute -right-[3px] -top-[3px] size-[11px] rounded-full border-2 border-panel bg-primary" /> : null;
+}
 
 function Fact({ icon, children }: { icon: ReactNode; children: ReactNode }) {
   return (
@@ -256,7 +275,7 @@ export function Strip({ v, drafts }: { v: CardView; drafts: { thread: boolean; c
     items.push(
       <RiskChip
         key="risk"
-        title={cases.length > 1 ? ut("card.signals").replace("{n}", String(cases.length)) : ut("card.signal")}
+        title={cases.length > 1 ? ut("card.cases").replace("{n}", String(cases.length)) : ut("card.case")}
         timer={
           clock.norm !== null ? (
             <RiskTimer elapsed={elapsed} of={normText(clock.norm, { h: ut("rr.hours"), min: ut("dur.min") })} pct={clock.pct} />
@@ -405,7 +424,7 @@ export function Strip({ v, drafts }: { v: CardView; drafts: { thread: boolean; c
         key="assigned"
         kind={overdue ? "warn" : "neutral"}
         icon={<Pi.clipboardClock />}
-        label={a.dueAt ? ut("card.assignedDue").replace("{s}", clip(a.title, 22)).replace("{d}", dm(a.dueAt)) : clip(a.title, 28)}
+        label={a.dueAt ? ut("card.assignedDue").replace("{s}", clip(a.title, 34)).replace("{d}", dm(a.dueAt)) : clip(a.title, 40)}
         detail={v.assignments.length > 1 ? `+${v.assignments.length - 1}` : undefined}
         popTitle={a.title}
         popNote={a.dueAt ? ut("card.dueOn").replace("{d}", dm(a.dueAt)) : undefined}
@@ -446,15 +465,16 @@ export function Strip({ v, drafts }: { v: CardView; drafts: { thread: boolean; c
     );
   }
 
-  /* «Нічого відкритого» — когда случаи известны; пока они в пути, строка молчит */
-  return (
-    <AlertStrip className={cx("mt-3 min-h-10")}>
-      {items.length ? items : v.cases !== null ? <span className="text-small text-muted">{ut("card.nothingOpen")}</span> : null}
-    </AlertStrip>
-  );
+  /*
+   * Открытого нет — строки нет: «Нічого відкритого» на каждом спокойном
+   * человеке было строкой ни о чём. Пилюль много — они переносятся, а не
+   * уезжают за край: обрезанный сигнал хуже лишней строки.
+   */
+  if (!items.length) return null;
+  return <AlertStrip className="mt-2 flex-wrap">{items}</AlertStrip>;
 }
 
-/** Длинное название в пилюле строки — с многоточием: строка одна, и пилюли не должны выталкивать соседей */
+/** Очень длинное название в пилюле — с многоточием (целиком — в поповере): пилюли переносятся, но одна не должна занимать строку */
 function clip(s: string, n: number): string {
   return s.length > n ? `${s.slice(0, n - 1).trimEnd()}…` : s;
 }

@@ -5,7 +5,9 @@ import { day, timeOfDay } from "../format";
 import { Callout, Ic, useAction, useToast } from "../ui";
 import { IconTile } from "../ui/layout";
 import { ActionMenu } from "../ui/menu";
-import { useLang } from "../lang";
+import { currentLang, useLang } from "../lang";
+import { decimal } from "../ui/decimal";
+import { withCount } from "../ui/plural";
 import { Button, Tag, Textarea } from "../ui/primitives";
 import { editorShortcut } from "../pages/constructor/shortcuts";
 import { Rx } from "../pages/response/icons";
@@ -25,11 +27,13 @@ import { draftOf, draftSavable, saveThenSign, signPlan, staleMessage } from "./v
  * можно.
  */
 export interface SignLock {
-  /** Заголовок заметки над текстом: «Підписати можна після розбору сигналу» */
+  /**
+   * Одна строка над текстом: «Підписати можна після розбору сигналів ризику
+   * цього проходження: 5». Сами сигналы перечислены ниже, в «Сигналах цього
+   * проходження», — повторять их здесь сплошным абзацем незачем.
+   */
   title: ReactNode;
-  /** Что за сигнал и сколько он висит */
-  body: ReactNode;
-  /** «Розібрати сигнал» — переход к разбору */
+  /** «Розібрати» — переход к разбору; стоит в той же строке */
   action: ReactNode;
   /**
    * risk — сигнал не разобран (по умолчанию); warn — разобран ли он,
@@ -185,14 +189,20 @@ export function ConclusionEditor({
 
       {lock && !signed ? (
         <div className="px-4 pb-3.5">
-          <Callout
-            kind={lock.tone ?? "risk"}
-            icon={lock.tone === "warn" ? <Ic.circleAlert /> : <Ic.lock />}
-            title={lock.title}
-            actions={lock.action}
+          {/* заметка набора (Callout) в одну строку: значок, причина тоном вида и действие справа */}
+          <div
+            role="note"
+            className={cx(
+              "flex flex-wrap items-center gap-x-2.5 gap-y-2 rounded-panel py-2.5 pl-3.5 pr-2.5 text-small",
+              lock.tone === "warn" ? "bg-warn-tint" : "bg-risk-tint",
+            )}
           >
-            {lock.body}
-          </Callout>
+            <span aria-hidden className={cx("inline-flex shrink-0 [&>svg]:size-4", lock.tone === "warn" ? "text-warn" : "text-risk-ink")}>
+              {lock.tone === "warn" ? <Ic.circleAlert /> : <Ic.lock />}
+            </span>
+            <b className={cx("min-w-0 flex-1 text-body font-extrabold", lock.tone === "warn" ? "text-warn" : "text-risk-ink")}>{lock.title}</b>
+            {lock.action}
+          </div>
         </div>
       ) : null}
 
@@ -284,7 +294,8 @@ export function ConclusionEditor({
 
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-divider px-4 py-2.5 text-caption text-muted">
         <span>{ut("cnx.chars").replace("{n}", String(text.trim().length))}</span>
-        <span>{ut("cnc.editCreatesVersion")}</span>
+        {/* о подписанном тексте — только когда он есть и не виден выше (над полем — черновик поверх него) */}
+        {signed && draft ? <span>{ut("cnc.editCreatesVersion")}</span> : null}
         {onHistory && state.versions.length ? (
           <Button size="xs" variant="ghost" icon={<Ic.history />} className="ml-auto" onClick={onHistory}>
             {ut("cnc.showHistory")}
@@ -312,14 +323,17 @@ export function ConclusionEditor({
       ) : null}
 
       <div className="flex flex-wrap items-center gap-2.5 border-t border-divider px-4 pb-4 pt-3">
-        <span className={cx("inline-flex min-w-0 items-center gap-1.5 text-small", lock && !signed ? "text-text-2" : "text-muted")}>
-          {lock && !signed ? (
-            <Ic.lock size={14} className={cx("shrink-0", lock.tone === "warn" ? "text-warn" : "text-risk-ink")} />
-          ) : (
-            <Ic.info size={14} className="shrink-0" />
-          )}
-          {lock && !signed ? (lock.note ?? ut("rp.signLocked")) : !canSign ? ut("cnx.noSignRight") : ut("cnc.onlySignedInReport")}
-        </span>
+        {/* что в отчёт попадает только подписанное, говорит панель «Печатный отчёт» под листом — здесь только то, что мешает подписать */}
+        {(lock && !signed) || !canSign ? (
+          <span className={cx("inline-flex min-w-0 items-center gap-1.5 text-small", lock && !signed ? "text-text-2" : "text-muted")}>
+            {lock && !signed ? (
+              <Ic.lock size={14} className={cx("shrink-0", lock.tone === "warn" ? "text-warn" : "text-risk-ink")} />
+            ) : (
+              <Ic.info size={14} className="shrink-0" />
+            )}
+            {lock && !signed ? (lock.note ?? ut("rp.signLocked")) : ut("cnx.noSignRight")}
+          </span>
+        ) : null}
         <div className="ml-auto flex flex-wrap gap-2">
           <Button
             variant="primary"
@@ -351,7 +365,8 @@ export async function buildDraft(responseId: string, ut: (k: never) => string): 
   const d = await api.conclusionDraft(responseId);
   const lines: string[] = [];
   if (d.patient) {
-    const age = d.patient.age !== null ? `, ${d.patient.age} ${t("cn.draftAge")}` : "";
+    /* «21 рік», «22 роки», «37 років» — формой по числу, а не одним «років» */
+    const age = d.patient.age !== null ? `, ${withCount(t("cn.draftAge"), d.patient.age, currentLang)}` : "";
     const unit = d.patient.unit ? `, ${d.patient.unit}` : "";
     lines.push(`${t("cn.draftHeader")}: ${d.patient.fullName}${age}${unit}`);
   }
@@ -360,12 +375,13 @@ export async function buildDraft(responseId: string, ut: (k: never) => string): 
   if (d.scales.length) {
     lines.push("", `${t("cn.draftScales")}:`);
     for (const s of d.scales) {
-      const shown = s.normalization === "ratio" ? `${Math.round(s.percent)} %` : String(Math.round(s.value * 10) / 10);
+      /* дробное — запятой в украинском и русском: черновик уходит в подписанный текст */
+      const shown = s.normalization === "ratio" ? `${Math.round(s.percent)} %` : decimal(s.value, currentLang, 1);
       const band = s.band ? ` — ${s.band}` : "";
       const before =
         s.previousValue !== null
           ? ` (${t("cn.draftWas")} ${
-              s.normalization === "ratio" ? `${Math.round(s.previousValue * 100)} %` : Math.round(s.previousValue * 10) / 10
+              s.normalization === "ratio" ? `${Math.round(s.previousValue * 100)} %` : decimal(s.previousValue, currentLang, 1)
             }${d.previousAt ? `, ${day(d.previousAt)}` : ""})`
           : "";
       lines.push(`· ${s.title}: ${shown}${band}${before}`);

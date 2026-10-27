@@ -266,6 +266,8 @@ describe("реестр направлений «Виразної»", () => {
     expect(waitOf(ref({ status: "completed" }), NOW).kind).toBe("none");
     const unit = { min: "хв", hour: "год", day: "дн." };
     expect([spanText(40, unit), spanText(180, unit), spanText(3 * 1440, unit)]).toEqual(["40 хв", "3 год", "3 дн."]);
+    // только что выписанное — «1 хв», а не «0 хв тому»
+    expect(spanText(0, unit)).toBe("1 хв");
   });
 
   test("«закриті за 30 днів» — по дню закрытия, открытые туда не входят", () => {

@@ -47,7 +47,7 @@ test("методика создаётся из вставленного текс
    */
   await expect(page).toHaveURL(/\/constructor\/new$/);
   const title = `Смоук ${Date.now()}`;
-  const titleField = () => fieldByLabel(page, "Название теста");
+  const titleField = () => fieldByLabel(page, "Название методики");
   await titleField().fill(title);
   await setEditLang(page, "uk");
   await expect(titleField()).toHaveValue("");

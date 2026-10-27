@@ -8,7 +8,7 @@ import { useResource, useResourceMap } from "../../useResource";
 import { Drawer, DrawerPane, Loading, useAction, useUrlState } from "../../ui";
 import { Here } from "../../components/Here";
 import { usePersonCases, useRiskReview, useSafetyPlans } from "../../components/RiskReview";
-import { AssignSurveyDialog } from "../patientGroups/dialogs";
+import { AssignDrawer } from "../../components/AssignDrawer";
 import { Banner, CARD_TABS, type CardTab } from "./Banner";
 import {
   heldCount,
@@ -151,6 +151,11 @@ function CardRecord({
   );
   const details = useResourceMap("rd", latestIds, api.responseDetail);
   const rows = useMemo(() => instrumentRows(dynamics.data, details), [dynamics.data, details]);
+  /* «Графіки» — все шкалы каждой методики: свёртка многошкальной методики нужна таблице «Методики», а не графикам */
+  const chartRows = useMemo(
+    () => instrumentRows(dynamics.data, details, { fold: false, limit: Number.POSITIVE_INFINITY }),
+    [dynamics.data, details],
+  );
 
   const tl = (timeline.data ?? null) as TimelineRow[] | null;
   const visits = useMemo(() => visitsOf(tl ?? []), [tl]);
@@ -229,6 +234,7 @@ function CardRecord({
     reloadPlan: plans.reload,
     details,
     rows,
+    chartRows,
     nextIsMine: !!next && !!me && next.specialist.trim() === me,
     slotId,
     setSlotId,
@@ -376,17 +382,41 @@ function CardRecord({
         </Drawer>
       </div>
 
-      {assigning ? (
-        <AssignSurveyDialog
-          title={ut("pg.assignTest")}
-          onAssign={async (surveyId, expiresAt) => {
+      {/*
+        «Призначити методику» — общий ящик назначения (как у групп и выбранных):
+        поиск по названию и коду, срок кнопками, комментарий для пациента и
+        набор вместо методики. Адресат — этот человек; ящик встаёт под полосу
+        с ним, как остальные действия карточки.
+      */}
+      <div style={top !== null ? ({ "--ah": `${top}px` } as CSSProperties) : undefined}>
+        <AssignDrawer
+          choose="test"
+          open={assigning}
+          onClose={() => setAssigning(false)}
+          onReturn={() => setAssigning(true)}
+          who={card.fullName}
+          whoNote={ut("card.assignNote")}
+          comment
+          existingFor={async (surveyId) => {
+            /* прежняя выдача этой методики этому человеку — чтобы ящик сказал «вже призначено до …» */
+            const mine = (await api.grants(surveyId)).find((g) => g.userId === card.id);
+            return mine ? { until: mine.expiresAt, done: mine.completed } : null;
+          }}
+          onAssign={async (surveyId, expiresAt, note) => {
             /* выдача методики — строка доступа: ни карточка, ни хронология от неё не меняются */
-            await api.grant(surveyId, card.id, undefined, expiresAt);
+            await api.grant(surveyId, card.id, note ?? undefined, expiresAt);
             return ut("pg.assigned");
           }}
-          onClose={() => setAssigning(false)}
+          sets={{
+            onAssign: async (batteryId, dueAt, note) => {
+              await api.assignBattery(batteryId, card.id, dueAt, note);
+              /* назначение набора — событие хронологии и пилюля «Призначено» в шапке */
+              refresh.timeline();
+              return ut("card.setAssigned");
+            },
+          }}
         />
-      ) : null}
+      </div>
     </>
   );
 }

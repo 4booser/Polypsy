@@ -70,10 +70,16 @@ export interface InstallReport {
   /**
    * Методики, которым этот прогон проставил или сменил направление (карта
    * instruments/catalogDomains.ts) — у уже стоявших это делается без новой
-   * версии (syncDomain). Поставленные этим прогоном сюда не входят: у них
+   * версии (syncRowSettings). Поставленные этим прогоном сюда не входят: у них
    * направление с первой строки.
    */
   domainSet: string[];
+  /**
+   * Методики, которым этот прогон проставил или сменил источник для персонала
+   * (CatalogEntry.note → surveys.source_note, «Джерело» в паспорте). Правленный
+   * суперадмином источник сюда не попадает — выкат его не трогает.
+   */
+  sourceNoteSet: string[];
   /** Наборы-заготовки каталога (installBatteries) */
   batteries: BatteryInstallReport;
   /**
@@ -272,17 +278,22 @@ export function surveyFields(input: ReturnType<typeof createSurveySchema.parse>)
 type SurveyRow = typeof surveys.$inferSelect;
 
 /**
- * Настройки строки, которые ведёт каталог: поля черновика (surveyFields) и
- * направление из карты instruments/catalogDomains.ts.
+ * Настройки строки, которые ведёт каталог: поля черновика (surveyFields),
+ * направление из карты instruments/catalogDomains.ts и источник для персонала
+ * (примечание записи каталога, CatalogEntry.note → surveys.source_note,
+ * «Джерело» в паспорте методики).
  *
- * Направление — не в surveyFields: оно не из черновика, от него не считается
- * отпечаток редакции (fingerprint), и листы сверки, которым surveyFields
- * открыт, его не описывают. Но правится и сохраняется оно как любая
- * настройка каталога: снимок catalog_fields, правка учреждения не
+ * Направление и источник — не в surveyFields: они не из черновика, от них не
+ * считается отпечаток редакции (fingerprint), и листы сверки, которым
+ * surveyFields открыт, их не описывают. Но правятся и сохраняются они как
+ * любая настройка каталога: снимок catalog_fields, правка учреждения не
  * перетирается (localFields / mergeFields), --force возвращает каталоговое.
+ * Источник правит суперадмин (PATCH /api/surveys/:id/rights): его запись —
+ * правка учреждения, и выкат её не трогает; пустой или равный прежнему
+ * каталоговому источник следует за каталогом.
  */
-export function catalogSettings(key: string, input: ReturnType<typeof createSurveySchema.parse>) {
-  return { ...surveyFields(input), domain: catalogDomain(key) };
+export function catalogSettings(entry: Pick<CatalogEntry, "key" | "note">, input: ReturnType<typeof createSurveySchema.parse>) {
+  return { ...surveyFields(input), domain: catalogDomain(entry.key), sourceNote: entry.note };
 }
 
 type CatalogSettings = ReturnType<typeof catalogSettings>;
@@ -321,8 +332,19 @@ const same = (a: unknown, b: unknown) => stable(a) === stable(b);
  * учреждение его стёрло, а потому, что его ещё не было: пустое — не правка, и
  * первый же выкат его заполнит. Заполненное до установщика (правкой между
  * миграцией и выкатом каталога) — правка, и она сохраняется.
+ *
+ * Источник для персонала (sourceNote) — так же: до него установщик колонку
+ * source_note не заполнял, и пустая — не правка, а «ещё не было»; заполненная
+ * суперадмином до выката — правка учреждения.
  */
-const NEWER_THAN_SNAPSHOT: Partial<Record<keyof CatalogSettings, unknown>> = { domain: null };
+const NEWER_THAN_SNAPSHOT: Partial<Record<keyof CatalogSettings, unknown>> = { domain: null, sourceNote: null };
+
+/**
+ * Настройки строки, которые от редакции не зависят: классификация каталога и
+ * его источник для персонала. Сверяются на каждом выкате, в том числе у
+ * методики той же редакции и у правленной в учреждении (syncRowSettings).
+ */
+const ROW_ONLY = ["domain", "sourceNote"] as const;
 
 /**
  * Поля строки, которые учреждение правило после установки: отличные от
@@ -349,7 +371,7 @@ export function localFields(row: SurveyRow, catalog: CatalogSettings): string[] 
      * С чем сравнивать: со снимком, если поле в нём есть; поле моложе снимка —
      * с умолчанием колонки (NEWER_THAN_SNAPSHOT); снимка нет вовсе или он
      * частичный (направление, записанное методике с правленным содержимым,
-     * см. syncDomain) — с текущей редакцией, как до 0118. Остальные поля
+     * см. syncRowSettings) — с текущей редакцией, как до 0118. Остальные поля
      * снимок установщика несёт всегда: surveyFields не отдаёт undefined.
      */
     const base =
@@ -380,23 +402,27 @@ interface OneResult {
   keptSettings: string[];
   /** Направление строки проставлено или сменено этим прогоном (у уже стоявшей методики) */
   domainChanged: boolean;
+  /** Источник для персонала проставлен или сменён этим прогоном (у уже стоявшей методики) */
+  noteChanged: boolean;
 }
 
 /**
- * Направление уже стоящей методики — без новой версии и без updatedAt.
+ * Направление и источник для персонала уже стоящей методики — без новой
+ * версии и без updatedAt.
  *
- * Направление — классификация каталога, а не содержимое: от него не
- * считается редакция (fingerprint), и смена карты catalogDomains.ts версию не
- * выпускает. Поэтому оно сверяется и там, где содержимое трогать нечего, —
- * у той же редакции (skipped), — и там, где трогать его нельзя: у методики,
- * последнюю версию которой выпустило учреждение (keptLocal). Правка пунктов в
- * конструкторе не делает направление учреждения: PHQ-9 с переписанным
- * пунктом — по-прежнему методика настроения, и без этого правленные методики
- * выпали бы из чипов каталога навсегда.
+ * Оба — не содержимое: направление — классификация каталога, источник —
+ * примечание для специалиста; от них не считается редакция (fingerprint), и
+ * смена карты catalogDomains.ts или примечания версию не выпускает. Поэтому
+ * они сверяются и там, где содержимое трогать нечего, — у той же редакции
+ * (skipped), — и там, где трогать его нельзя: у методики, последнюю версию
+ * которой выпустило учреждение (keptLocal). Правка пунктов в конструкторе не
+ * делает их учреждения: PHQ-9 с переписанным пунктом — по-прежнему методика
+ * настроения из того же источника, и без этого правленные методики выпали бы
+ * из чипов каталога и остались бы без «Джерела» навсегда.
  *
- * Правило — то же, что у любой настройки каталога (localFields): направление,
+ * Правило — то же, что у любой настройки каталога (localFields): значение,
  * выбранное учреждением (отличное от снимка), остаётся; не тронутое — следует
- * за картой. Снимок обновляется только в поле направления: остальные поля
+ * за каталогом. Снимок обновляется только в этих полях: остальные поля
  * установщик здесь не сверял, и переписать их снимок значило бы объявить
  * чужие значения «своими» (у keptLocal) или наоборот.
  *
@@ -404,28 +430,46 @@ interface OneResult {
  * по нему, и первый выкат после 0133 датировал бы сегодняшним днём все
  * методики разом, хотя ни одна не менялась.
  */
-async function syncDomain(existing: SurveyRow, catalog: CatalogSettings, key: string): Promise<boolean> {
+async function syncRowSettings(
+  existing: SurveyRow,
+  catalog: CatalogSettings,
+  key: string,
+): Promise<{ domainChanged: boolean; noteChanged: boolean }> {
   const snapshot = (existing.catalogFields ?? null) as Partial<CatalogSettings> | null;
-  const institutions = localFields(existing, catalog).includes("domain");
-  const target = institutions ? existing.domain : catalog.domain;
-  const snapshotCurrent = !!snapshot && "domain" in snapshot && same(snapshot.domain, catalog.domain);
-  const changed = !same(existing.domain, target);
-  if (!changed && snapshotCurrent) return false;
+  const local = localFields(existing, catalog);
+  const row: Partial<Record<(typeof ROW_ONLY)[number], unknown>> = {};
+  const snap: Partial<CatalogSettings> = {};
+  const changed = new Set<(typeof ROW_ONLY)[number]>();
+  for (const field of ROW_ONLY) {
+    const target = local.includes(field) ? existing[field] : catalog[field];
+    const snapshotCurrent = !!snapshot && field in snapshot && same(snapshot[field], catalog[field]);
+    if (!same(existing[field], target)) changed.add(field);
+    else if (snapshotCurrent) continue;
+    row[field] = target;
+    (snap as Record<string, unknown>)[field] = catalog[field];
+  }
+  if (!Object.keys(row).length) return { domainChanged: false, noteChanged: false };
 
   await db
     .update(surveys)
-    .set({ domain: target, catalogFields: { ...(snapshot ?? {}), domain: catalog.domain } } as never)
+    .set({ ...row, catalogFields: { ...(snapshot ?? {}), ...snap } } as never)
     .where(eq(surveys.id, existing.id));
-  // журнал — когда сменилось то, что видно в каталоге; одна сверка снимка — служебная запись, не событие
-  if (changed) {
+  // журнал — когда сменилось то, что видно в каталоге и паспорте; одна сверка снимка — служебная запись, не событие
+  if (changed.size) {
     await auditSystem({
       action: "survey.catalog_update",
       resourceType: "survey",
       resourceId: existing.id,
-      details: { catalogKey: key, settingsOnly: true, domain: { from: existing.domain, to: target } },
+      details: {
+        catalogKey: key,
+        settingsOnly: true,
+        ...(changed.has("domain") ? { domain: { from: existing.domain, to: row.domain } } : {}),
+        // сам текст примечания длинный и лежит в строке — в журнале только факт
+        ...(changed.has("sourceNote") ? { sourceNote: true } : {}),
+      },
     });
   }
-  return changed;
+  return { domainChanged: changed.has("domain"), noteChanged: changed.has("sourceNote") };
 }
 
 async function installOne(entry: CatalogEntry, createdBy: string, force = false): Promise<OneResult> {
@@ -434,7 +478,7 @@ async function installOne(entry: CatalogEntry, createdBy: string, force = false)
   const note = noteCode("note.catalog", { edition });
   // через ту же схему, что и API: методика каталога обязана быть валидной
   const input = createSurveySchema.parse(entry.draft);
-  const catalog = catalogSettings(entry.key, input);
+  const catalog = catalogSettings(entry, input);
   if (existing) {
     const [head] = await db
       .select({ note: surveyVersions.note })
@@ -450,14 +494,15 @@ async function installOne(entry: CatalogEntry, createdBy: string, force = false)
      * прежней версией, и прохождения по ней считаются по ней же, — но
      * действующей становится редакция каталога. В журнал — с пометкой.
      *
-     * Правки настроек строки (visibility, инструкция, лимит, направление…) —
+     * Правки настроек строки (visibility, инструкция, лимит, направление,
+     * источник для персонала…) —
      * тоже правки учреждения, но не версии: обычное обновление их сохраняет и
      * обновляет остальное; --force возвращает и их к каталогу.
      */
     const headEdition = catalogEdition(head?.note);
     const local = headEdition === null;
     if (local && !force) {
-      return { outcome: "keptLocal", keptSettings: [], domainChanged: await syncDomain(existing, catalog, entry.key) };
+      return { outcome: "keptLocal", keptSettings: [], ...(await syncRowSettings(existing, catalog, entry.key)) };
     }
 
     const localNow = localFields(existing, catalog);
@@ -466,10 +511,10 @@ async function installOne(entry: CatalogEntry, createdBy: string, force = false)
     /*
      * Та же редакция и настройки каталога на месте (или учреждения, без
      * --force) — содержимое трогать нечего. Остаётся то, что от редакции не
-     * зависит, — направление (syncDomain).
+     * зависит, — направление и источник для персонала (syncRowSettings).
      */
     if (sameEdition && (!force || localNow.length === 0)) {
-      return { outcome: "skipped", keptSettings: [], domainChanged: await syncDomain(existing, catalog, entry.key) };
+      return { outcome: "skipped", keptSettings: [], ...(await syncRowSettings(existing, catalog, entry.key)) };
     }
 
     const fields = mergeFields(existing, catalog, kept);
@@ -497,7 +542,12 @@ async function installOne(entry: CatalogEntry, createdBy: string, force = false)
         keptSettings: kept,
       },
     });
-    return { outcome: "updated", keptSettings: kept, domainChanged: !same(existing.domain, fields.domain) };
+    return {
+      outcome: "updated",
+      keptSettings: kept,
+      domainChanged: !same(existing.domain, fields.domain),
+      noteChanged: !same(existing.sourceNote, fields.sourceNote),
+    };
   }
 
   const id = crypto.randomUUID();
@@ -525,7 +575,7 @@ async function installOne(entry: CatalogEntry, createdBy: string, force = false)
     resourceId: id,
     details: { catalogKey: entry.key, title: t(input.title as never, "uk"), source: entry.source, domain: catalog.domain },
   });
-  return { outcome: "installed", keptSettings: [], domainChanged: false };
+  return { outcome: "installed", keptSettings: [], domainChanged: false, noteChanged: false };
 }
 
 /* ─────────── наборы-заготовки ─────────── */
@@ -697,7 +747,7 @@ export async function catalogStatus(): Promise<CatalogStatusRow[]> {
       key: entry.key,
       state,
       versions: versions.map((v) => ({ ...v, note: renderNote(v.note, "ru"), createdAt: String(v.createdAt) })),
-      localFields: localFields(existing, catalogSettings(entry.key, createSurveySchema.parse(entry.draft))),
+      localFields: localFields(existing, catalogSettings(entry, createSurveySchema.parse(entry.draft))),
     });
   }
   return rows;
@@ -718,6 +768,7 @@ export async function installCatalog(opts: { force?: readonly string[] } = {}): 
       keptLocal: [],
       keptSettings: {},
       domainSet: [],
+      sourceNoteSet: [],
       batteries: emptyBatteryReport(),
       notReady: "в базе нет ни одного сотрудника — методику не на кого записать",
     };
@@ -730,11 +781,13 @@ export async function installCatalog(opts: { force?: readonly string[] } = {}): 
   const out: Record<Outcome, string[]> = { installed: [], updated: [], skipped: [], keptLocal: [] };
   const keptSettings: Record<string, string[]> = {};
   const domainSet: string[] = [];
+  const sourceNoteSet: string[] = [];
   for (const entry of CATALOG) {
     const one = await installOne(entry, createdBy, force.has(entry.key));
     out[one.outcome].push(entry.key);
     if (one.keptSettings.length) keptSettings[entry.key] = one.keptSettings;
     if (one.domainChanged) domainSet.push(entry.key);
+    if (one.noteChanged) sourceNoteSet.push(entry.key);
   }
   const { installed, updated, skipped, keptLocal } = out;
   // после методик: состав заготовки — методики, которые этот же прогон поставил
@@ -749,6 +802,7 @@ export async function installCatalog(opts: { force?: readonly string[] } = {}): 
     skipped: skipped.length,
     keptLocal: keptLocal.length,
     domainSet: domainSet.length,
+    sourceNoteSet: sourceNoteSet.length,
     batteriesInstalled: batteryReport.installed.length,
   });
 
@@ -763,6 +817,7 @@ export async function installCatalog(opts: { force?: readonly string[] } = {}): 
     keptLocal,
     keptSettings,
     domainSet,
+    sourceNoteSet,
     batteries: batteryReport,
     notReady: null,
   };

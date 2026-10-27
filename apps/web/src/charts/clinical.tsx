@@ -1413,8 +1413,13 @@ const LP = { top: 16, right: 12, bottom: 26, left: 48 };
  *
  * `threshold` — порог пунктиром с подписью; корзины выше порога отмечены
  * янтарным ромбом — ровно те, что требуют внимания. `marks` — отметки
- * событий (выкатки). У двух–четырёх рядов значения подписаны у концов линий,
- * легенда есть всегда.
+ * событий (выкатки). У двух–четырёх рядов значения подписаны у концов линий
+ * (имя, которое в колонку подписей не влезает, — с многоточием: целиком оно
+ * в легенде и подсказке), легенда есть всегда.
+ *
+ * `connect` — ряд замеров, а не корзин: пустая корзина значит «этот ряд в
+ * тот день не мерили» (мерили другие), и соседние замеры ряда соединены
+ * линией, а не стоят обрывками.
  */
 export function TimeLines({
   x,
@@ -1425,11 +1430,14 @@ export function TimeLines({
   tick,
   threshold,
   marks,
+  connect = false,
 }: {
   x: readonly TimeTick[];
   series: readonly LineSeries[];
   height?: number;
   label: string;
+  /** Соединять известные значения ряда через пустые корзины (ряд замеров, см. выше) */
+  connect?: boolean;
   /** Число в подсказке: «240 мс», «1,2 %»; по умолчанию — числом с дробью языка */
   format?: (v: number) => string;
   /** Число у оси; по умолчанию — как в подсказке */
@@ -1447,7 +1455,16 @@ export function TimeLines({
 
   const single = series.length === 1;
   const ends = series.length <= 4;
-  const right = ends ? 84 : LP.right;
+  /*
+   * Колонка подписей у концов — по самой длинной подписи «68 % Скринінг…»,
+   * от 84 до 140 px: шире — поле графика стало бы слишком узким, и длинное
+   * имя всё равно подрезается многоточием (fitEnd ниже).
+   */
+  const lastKnown = (s: LineSeries) => s.values.reduce<number>((m, v, k) => (v === null ? m : k), -1);
+  const longest = single
+    ? 0
+    : Math.max(0, ...series.map((s) => (lastKnown(s) < 0 ? 0 : `${format(s.values[lastKnown(s)]!)} ${s.label}`.length)));
+  const right = ends ? Math.min(140, Math.max(84, Math.ceil(longest * 6.2) + 11)) : LP.right;
   const axis = axisFor({ lo: 0, hi: Math.max(0, ...known, threshold?.value ?? 0), integer: known.every((v) => Number.isInteger(v)) });
   const pw = Math.max(40, W - LP.left - right);
   const ph = height - LP.top - LP.bottom;
@@ -1459,8 +1476,12 @@ export function TimeLines({
   const tickFmt = tick ?? format;
   const f1 = (v: number) => v.toFixed(1);
 
-  /* отрезки подряд идущих известных корзин: линия идёт только внутри отрезка */
+  /* отрезки подряд идущих известных корзин: линия идёт только внутри отрезка; у ряда замеров — один отрезок */
   const runsOf = (values: readonly (number | null)[]): number[][] => {
+    if (connect) {
+      const all = values.flatMap((v, i) => (v === null ? [] : [i]));
+      return all.length ? [all] : [];
+    }
     const runs: number[][] = [];
     let run: number[] = [];
     values.forEach((v, i) => {
@@ -1499,6 +1520,12 @@ export function TimeLines({
       ].sort((a, b) => a.y - b.y)
     : [];
   for (let k = 1; k < endRows.length; k++) if (endRows[k]!.y - endRows[k - 1]!.y < 13) endRows[k]!.y = endRows[k - 1]!.y + 13;
+  /* имя ряда у конца — в ширину колонки подписей (11 px шрифта ≈ 6,2 px на знак), а не за край поля */
+  const fitEnd = (value: string, name: string) => {
+    const room = Math.floor((right - 9 - 2) / 6.2) - value.length - 1;
+    if (room < 3) return "";
+    return name.length <= room ? name : `${name.slice(0, room - 1).trimEnd()}…`;
+  };
 
   return (
     <div className="relative min-w-0" ref={boxRef}>
@@ -1628,7 +1655,7 @@ export function TimeLines({
               <tspan fontWeight={800} fill="var(--text)">
                 {format(r.v)}
               </tspan>
-              {single ? "" : ` ${r.label}`}
+              {single ? "" : ` ${fitEnd(format(r.v), r.label)}`}
             </text>
           ),
         )}

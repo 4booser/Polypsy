@@ -40,13 +40,14 @@
 
 ## 1. Призначення
 
-Сорок два твердження про останній тиждень; три окремі бали — депресія, тривога, стрес, по 0–42. Смуг немає: пороги розробники дають лише в платному посібнику, тому показуються сирі бали. Робочий переклад. Якщо в методики є пороги, їх встановлено для оригіналу; коли з’явиться офіційний україномовний варіант, звірити з ним.
+Сорок два твердження про самопочуття за останній тиждень.
 
 **Інструкція обстежуваному:** Прочитайте кожне твердження й оберіть варіант, який показує, наскільки воно стосувалося вас ПРОТЯГОМ ОСТАННЬОГО ТИЖНЯ. Правильних чи неправильних відповідей немає. Не затримуйтеся довго на жодному твердженні.
 
 ## 2. Джерело
 
 - **Записано в системі** (журнал установки каталогу, мовою запису): DASS-42, Lovibond, Lovibond, 1995 (public domain; без смуг — пороги лише в платному посібнику)
+- **Примітка для персоналу** («Джерело» в паспорті методики, мовою запису): Три окремі бали — депресія, тривога, стрес, по 0–42. Смуг немає: пороги розробники дають лише в платному посібнику, тому показуються сирі бали. Робочий переклад. Якщо в методики є пороги, їх встановлено для оригіналу; коли з’явиться офіційний україномовний варіант, звірити з ним.
 - **Публікація за досьє**: Lovibond SH, Lovibond PF. Manual for the Depression Anxiety Stress Scales. 2nd ed. Sydney: Psychology Foundation of Australia, 1995. Также: Lovibond PF, Lovibond SH. The structure of negative emotional states: comparison of the Depression Anxiety Stress Scales (DASS) with the Beck Depression and Anxiety Inventories. Behaviour Research and Therapy. 1995;33(3):335-343.
 - **Смуги за досьє** (мовою досьє): ОСТОРОЖНО, это главная ловушка DASS. Разработчики дословно: «Therefore we have developed a set of cut-off scores for defining mild/moderate/severe/extremely severe scores for each DASS scale. To avoid misinterpretation and reification of these (arbitrary) labels, they are only provided in the DASS manual» (FAQ5, https://www2.psy.unsw.edu.au/dass/DASSFAQ.htm). То есть сам опросник public domain, а таблица полос — только в платном руководстве (AUS$55, FAQ6). Значит: полосы брать ИЗ КУПЛЕННОГО РУКОВОДСТВА, а не из статей и калькуляторов. Там же предупреждение разработчиков о смысле ярлыков: «"mild" for example means that the person is above the population mean but still well below the typical severity of people seeking help ie it does not mean a mild level of a disorder.»
 - **Ліцензія за досьє**: свободна

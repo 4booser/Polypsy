@@ -105,7 +105,7 @@ export function SuggestionsBody({
 
   if (res.data === null) {
     return res.error ? (
-      <Panel title={ut("ds.title")}>
+      <Panel title={ut("rp.rules")}>
         <NotLoaded res={res} />
       </Panel>
     ) : null;
@@ -114,7 +114,7 @@ export function SuggestionsBody({
   if (!suggestionsShown(items.length, meanwhile)) return null;
 
   return (
-    <Panel title={ut("ds.title")} icon={<Ic.sparkle />} sub={ut("ds.sub")} flush>
+    <Panel title={ut("rp.rules")} icon={<Ic.sparkle />} sub={ut("ds.sub")} flush>
       <div className="flex flex-col border-t border-divider">
         {/*
           Не цвет внимания: предложение — не тревога, и сообщение о нём тоже.

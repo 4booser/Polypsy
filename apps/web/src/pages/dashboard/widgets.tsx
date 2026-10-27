@@ -14,7 +14,7 @@ import { useLang } from "../../lang";
 import { useResource } from "../../useResource";
 import { CasesFailed, reviewHref, signalText, useNormText, WorkIcon } from "../today/ActNow";
 import { Di } from "../today/icons";
-import { caseTimer, clashes, hhmm, liveCases, sessionStates, urgentCases } from "../today/model";
+import { caseTimer, clashes, dayTally, hhmm, liveCases, sessionStates, tallyText, urgentCases } from "../today/model";
 import { DayStrip } from "../today/strip";
 import { useNow, useUntil } from "../today/Agenda";
 import { workWhy } from "../worklist/model";
@@ -203,14 +203,8 @@ export function CasesWidget({
       )}
       {total > 0 ? (
         <Foot>
-          <span>
-            {fill(ut("dashA.openTotal"), { n: total })} {fill(ut("dash.casesUrgent"), { n: urgent })}
-          </span>
-          <span className="ml-auto">
-            {fill(ut("dashA.overdueN"), { n: overdue })}
-            {", "}
-            {fill(ut("dash.casesOldest"), { n: oldest })}
-          </span>
+          <span>{fill(ut("home.casesOpen"), { open: total, urgent })}</span>
+          <span className="ml-auto">{fill(ut("home.casesLate"), { overdue, days: oldest })}</span>
         </Foot>
       ) : null}
     </Panel>
@@ -228,15 +222,14 @@ export function DayWidget({ items }: { items: AppointmentView[] | null }) {
   const states = sessionStates(sorted, now);
   const clash = clashes(sorted);
   const alive = sorted.filter((a) => a.status !== "cancelled");
-  const done = alive.filter((a) => a.status === "done").length;
-  const ahead = alive.filter((a) => ["next", "later", "here"].includes(states.get(a.id) ?? "")).length;
   const upcoming = alive.filter((a) => ["here", "next", "later", "late"].includes(states.get(a.id) ?? "")).slice(0, 3);
 
   return (
     <Panel
       title={ut("dayA.dayTitle")}
       icon={<Di.calendarClock />}
-      sub={alive.length ? fill(ut("dashA.daySub"), { sessions: withCount(ut("dayA.sessionsN"), alive.length, lang), done, ahead }) : undefined}
+      /* тот же счёт, что в шапке дня и в конце его таймлайна (dayTally) */
+      sub={alive.length ? tallyText(dayTally(sorted, states), ut, lang) : undefined}
       actions={<TextAction to="/today">{ut("dashA.openDay")}</TextAction>}
       flush
     >

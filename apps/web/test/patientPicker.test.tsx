@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { Patient } from "../src/api";
-import { PatientPickerView, pickerOptions, searchPatients } from "../src/components/PatientPicker";
+import { enterPick, PatientPickerView, searchPatients } from "../src/components/PatientPicker";
 import { LangProvider } from "../src/lang";
 import { loadAdminister } from "../src/pages/administerModel";
 import { assignChoices } from "../src/pages/batteries/model";
@@ -112,23 +112,62 @@ describe("поиск — на сервере", () => {
   });
 });
 
+/*
+ * Выбор — одно поле-комбобокс: набрал, стрелками по найденным, Enter. Прежде
+ * человека искали в одном поле и выбирали в родном списке рядом.
+ */
 describe("выбор: что на экране", () => {
   const view = (over: Partial<Parameters<typeof PatientPickerView>[0]> = {}) =>
     renderToStaticMarkup(
       <LangProvider>
         <PatientPickerView
-        query=""
-        onQuery={() => {}}
-        found={{ data: { items: zone.slice(0, 3), truncated: false }, error: null }}
-        value=""
-        chosen={null}
-        onPick={() => {}}
-        label="Пацієнт"
-        emptyLabel="— виберіть —"
+          label="Кого обстежуємо"
+          query="пацієнт"
+          onQuery={() => {}}
+          found={{ data: { items: zone.slice(0, 3), truncated: false }, error: null }}
+          chosen={null}
+          onPick={() => {}}
+          onChange={() => {}}
+          open
+          onOpen={() => {}}
+          active={1}
+          onActive={() => {}}
           {...over}
         />
       </LangProvider>,
     );
+
+  test("одно поле-комбобокс и список найденных под ним; подсвеченный пункт назван полю", () => {
+    const html = view();
+    expect(html.match(/role="combobox"/g)).toHaveLength(1);
+    expect(html).not.toContain("<select");
+    expect(html.match(/role="option"/g)).toHaveLength(3);
+    const active = /aria-activedescendant="([^"]+)"/.exec(html)?.[1];
+    expect(active, "подсвеченный пункт не назван полю").toBeDefined();
+    expect(new RegExp(`id="${active}"[^>]*aria-selected="true"`).test(html)).toBe(true);
+    // вторая строка пункта — подразделение, а без него почта
+    expect(html).toContain("p002@clinic.ua");
+  });
+
+  test("выдача по прежнему запросу: видна приглушённой, Enter по ней никого не выбирает", () => {
+    /*
+     * Набрали новое и нажали Enter раньше ответа: поиск ждёт 300 мс, а
+     * useResource держит прежнюю выдачу. Подсвеченный в ней — человек из
+     * чужого поиска, и обследование ушло бы не тому пациенту.
+     */
+    const html = view({ found: { data: { items: zone.slice(0, 3), truncated: false }, error: null, stale: true } });
+    expect(html).toContain('aria-busy="true"');
+    expect(enterPick(zone.slice(0, 3), 1, true)).toBeNull();
+    // положительный контроль: выдача по набранному — Enter берёт подсвеченного
+    expect(enterPick(zone.slice(0, 3), 1, false)?.id).toBe("p002");
+    expect(view()).not.toContain("aria-busy");
+  });
+
+  test("закрытое поле списка не рисует и о нём не объявляет", () => {
+    const html = view({ open: false });
+    expect(html).not.toContain('role="listbox"');
+    expect(html).toContain('aria-expanded="false"');
+  });
 
   test("усечённая выдача говорит о себе — «звузьте пошук»", () => {
     expect(view({ found: { data: { items: zone.slice(0, 100), truncated: true }, error: null } })).toContain(
@@ -142,13 +181,16 @@ describe("выбор: что на экране", () => {
     const html = view({ found: { data: null, error: "Недостатньо прав" } });
     expect(html).toContain("Недостатньо прав");
     expect(html).not.toContain("Нікого не знайдено");
+    // а пустая выдача — словом
+    expect(view({ found: { data: { items: [], truncated: false }, error: null } })).toContain("Нікого не знайдено");
   });
 
-  test("выбранный остаётся пунктом, хотя новый поиск его не вернул; исключённых нет", () => {
-    const html = view({ value: last.id, chosen: last, exclude: new Set(["p002"]) });
-    expect(/<option[^>]*selected=""[^>]*>([^<]*)</.exec(html)?.[1]).toBe(`${last.fullName} · ${last.email}`);
-    expect(html).not.toContain("p002@clinic.ua");
-    expect(pickerOptions(zone.slice(0, 3), null, new Set(["p001"])).map((p) => p.id)).toEqual(["p002", "p003"]);
+  test("выбранный — плашкой с «Змінити», поля поиска рядом нет", () => {
+    const html = view({ chosen: last });
+    expect(html).toContain(last.fullName);
+    expect(html).toContain(">Змінити<");
+    expect(html).toContain('aria-label="Змінити пацієнта"');
+    expect(html).not.toContain('role="combobox"');
   });
 });
 
@@ -166,7 +208,7 @@ describe("экраны ищут на сервере", () => {
    * (components/AssignDrawer.tsx, с волны 27 — общий и для групп): поиск там — по набранному, на сервере.
    * Сторож идёт за ящиком и следит, что оба экрана назначают через него.
    */
-  test("«Доступ до методики» и «Набори» — ящик с поиском по набранному, «Провести методику» — выбор с поиском", () => {
+  test("«Доступ до методики» и «Набори» — ящик с поиском по набранному, «Провести методику» — поле с поиском", () => {
     expect(src("../components/AssignDrawer.tsx")).toContain("usePatientSearch(query, { onlyTyped: true })");
     expect(src("methods/MethodPage.tsx")).toContain("<AssignDrawer");
     expect(src("Access.tsx")).toContain("<MethodPage");

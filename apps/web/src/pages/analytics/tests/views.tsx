@@ -226,7 +226,6 @@ function BandsPanel({ scale: s, onView }: { scale: ScaleAnalytics; onView: () =>
     <Panel
       title={fill(ut("ant.bandsOf"), { title: s.title })}
       icon={<AIc.chartBar />}
-      sub={fill(ut("ant.scaleCode"), { code: s.code })}
       actions={<ToView label={ut("an.tabScales")} onClick={onView} />}
     >
       <HBars
@@ -309,7 +308,7 @@ function ReliabilityLine({ scale: s }: { scale: ScaleAnalytics }) {
   );
 }
 
-/** «Де губляться респонденти»: пункты, после которых бросали, — с итогом словами */
+/** «Де переривають заповнення»: пункты, после которых прерывали, — с итогом словами */
 function DropoffPanel({ data, onView }: { data: SurveyAnalytics; onView: () => void }) {
   const { ut } = useLang();
   const losses = useMemo(() => lossRows(data.dropOff), [data.dropOff]);
@@ -400,7 +399,7 @@ function QualitySummary({ data, onView }: { data: SurveyAnalytics; onView: () =>
             </QualityRow>
             {drift ? (
               <QualityRow icon={<AIc.waves />} tone={drift.psi > 0.2 ? "warn" : "neutral"} title={ut("dq.driftTitle")} value={`PSI ${numText(drift.psi)}`}>
-                {drift.code}: {drift.verdict}
+                {drift.title || drift.code}: {drift.verdict}
               </QualityRow>
             ) : null}
             <QualityRow icon={<AIc.repeat />} tone="neutral" title={ut("dq.repeatTitle")} value={retest ? `ICC ${numText(retest.icc)}` : "—"}>
@@ -430,7 +429,7 @@ function RecentPanel({ data, slice, onView }: { data: SurveyAnalytics; slice: An
     <Panel
       title={ut("ant.recentTitle")}
       icon={<Ic.list />}
-      count={data.completed}
+      count={data.started}
       flush
       actions={
         <>
@@ -473,15 +472,12 @@ export function ScalesView({ data }: { data: SurveyAnalytics }) {
 
   return (
     <div className="flex flex-col gap-4">
-      <p className="m-0 max-w-[80ch] text-small text-text-2">
-        {ut("ant.scalesHint")}
-        {data.unreliableCount ? (
-          <>
-            {" "}
-            {ut("stats.unreliableScales")} <b className="font-extrabold text-text">{data.unreliableCount}</b>. {ut("stats.unreliableScalesTail")}
-          </>
-        ) : null}
-      </p>
+      {/* что на виде, говорят заголовки панелей; строка над ними — только о том, что из счёта выпало */}
+      {data.unreliableCount ? (
+        <p className="m-0 max-w-[80ch] text-small text-text-2">
+          {ut("stats.unreliableScales")} <b className="font-extrabold text-text">{data.unreliableCount}</b>. {ut("stats.unreliableScalesTail")}
+        </p>
+      ) : null}
       {clinical.length > 1 ? (
         <Panel title={ut("ant.profileTitle")} icon={<AIc.chartBar />} hint={ut("ant.profileCaption")}>
           <ScaleProfile
@@ -524,7 +520,6 @@ function ScaleBlock({ scale: s, weeks }: { scale: ScaleAnalytics; weeks: SurveyA
       title={s.title}
       icon={<AIc.chartBar />}
       tone={s.kind === "validity" ? "neutral" : "violet"}
-      sub={fill(ut("ant.scaleCode"), { code: s.code })}
       hint={s.kind === "validity" ? ut("ant.validity") : undefined}
     >
       <div className="grid grid-cols-2 gap-x-10 gap-y-6 max-[1180px]:grid-cols-1">
@@ -976,7 +971,7 @@ export function ScoresCell({ r }: { r: SurveyResponse }) {
   const { ut } = useLang();
   if (r.status !== "completed") {
     return (
-      <Tag tone={r.status === "abandoned" ? "attention" : "info"} icon={r.status === "abandoned" ? <AIc.circleDot /> : <Ic.timer />}>
+      <Tag tone={r.status === "abandoned" ? "plain" : "info"} icon={r.status === "abandoned" ? <AIc.circleDot /> : <Ic.timer />}>
         {ut(`rstatus.${r.status}`, r.status)}
       </Tag>
     );
@@ -987,7 +982,7 @@ export function ScoresCell({ r }: { r: SurveyResponse }) {
     <span className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
       {scores.map((s) => (
         <span key={s.scaleId} className="inline-flex items-center gap-1.5" title={s.scaleTitle}>
-          {many ? <span className="text-caption font-semibold text-muted">{s.scaleCode}</span> : null}
+          {many ? <span className="max-w-[140px] truncate text-caption font-semibold text-muted">{s.scaleTitle || s.scaleCode}</span> : null}
           <b className="text-body font-extrabold tabular-nums text-text">{numText(s.value)}</b>
           {s.normalization === "raw" ? <span className="text-caption text-muted">/{numText(s.maxScore)}</span> : null}
           {s.band ? (

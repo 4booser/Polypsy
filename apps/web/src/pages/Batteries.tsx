@@ -145,18 +145,34 @@ function BatteriesScreen({
     const retiredStep = b.items.find((i) => retiredIds.has(i.surveyId));
     const late = b.overdueAssignments ?? 0;
     const minutes = totalMinutes(b);
-    /* с пилюлей справа места на три кода нет — два и «+N» */
-    const room = retiredStep || late ? 2 : 3;
+    /*
+     * Сколько кодов влезает в строку плитки — по длине, а не штуками: «SAD
+     * PERSONS» и «СР-45» рядом с пилюлей «прострочено: 1» на 300 px уже не
+     * помещались. С пилюлей справа места меньше; один код показывается всегда.
+     */
+    const budget = retiredStep || late ? 14 : 24;
+    let room = 0;
+    for (let used = 0; room < Math.min(codes.length, 3); room += 1) {
+      used += Math.min(codes[room]!.length, 12);
+      if (room > 0 && used > budget) break;
+    }
     return (
       <ListTile
         key={b.id}
         to={`/batteries?id=${b.id}`}
         selected={current?.id === b.id}
         title={b.title}
+        /*
+         * «0 активних» у семи наборов из восьми — шум, и он отнимал у названия
+         * сотню пикселей на 1280 («Суїцидальний ризик: пог…»). Число — только
+         * когда назначения есть.
+         */
         meta={
-          <>
-            <b className="font-extrabold text-text">{num(b.activeAssignments)}</b> {ut("mc.btActive")}
-          </>
+          b.activeAssignments > 0 ? (
+            <>
+              <b className="font-extrabold text-text">{num(b.activeAssignments)}</b> {ut("mc.btActive")}
+            </>
+          ) : undefined
         }
         reason={
           <span className="flex min-w-0 items-center gap-[3px] overflow-hidden">
@@ -168,7 +184,8 @@ function BatteriesScreen({
                   current?.id === b.id ? "bg-panel" : "bg-sunk",
                 )}
               >
-                {c.length > 10 ? `${c.slice(0, 9)}…` : c}
+                {/* «SAD PERSONS» — одиннадцать знаков: код целиком, режется только длиннее */}
+                {c.length > 12 ? `${c.slice(0, 11)}…` : c}
               </span>
             ))}
             {codes.length > room ? <span className="text-[11.5px] font-bold text-muted">{`+${codes.length - room}`}</span> : null}
@@ -526,20 +543,34 @@ function BatteryRecord({
                 >
                   <span className="grid size-6 place-items-center rounded-full bg-sunk text-[11.5px] font-extrabold text-text-2">{k + 1}</span>
                   {code ? (
-                    <span className="inline-grid h-6 place-items-center rounded-[7px] bg-sunk px-2 text-caption font-extrabold text-text">{code}</span>
+                    <span className="inline-grid h-6 place-items-center whitespace-nowrap rounded-[7px] bg-sunk px-2 text-caption font-extrabold text-text">{code}</span>
                   ) : (
                     <span />
                   )}
-                  <span className="flex min-w-0 items-center gap-2">
-                    <Link to={`/surveys/${i.surveyId}`} className={cx("truncate text-text no-underline hover:underline", retired && "text-muted line-through")}>
+                  {/*
+                    Имя — целиком, в две строки, а пометки — под ним: на 1280 рядом с
+                    колонкой наборов и подразделами «заповнює фахівець» в строке имени
+                    оставляла от «Шкала оцінки ризику суїциду» одно «Шкала оцінки…».
+                  */}
+                  <span className="flex min-w-0 flex-col items-start gap-1">
+                    <Link
+                      to={`/surveys/${i.surveyId}`}
+                      title={name}
+                      className={cx("line-clamp-2 text-text no-underline hover:underline", retired && "text-muted line-through")}
+                    >
                       {name}
                     </Link>
-                    {i.administration === "clinician" ? (
-                      <Tag tone="attention" icon={<ShellIcon name="stethoscope" size={12} />}>
-                        {ut("bt.byClinician")}
-                      </Tag>
+                    {i.administration === "clinician" || retired ? (
+                      <span className="flex flex-wrap items-center gap-1.5">
+                        {/* кто заполняет — сведение, а не сигнал: янтарь — у «чекає фахівця» в назначениях ниже */}
+                        {i.administration === "clinician" ? (
+                          <Tag tone="plain" icon={<ShellIcon name="stethoscope" size={12} />}>
+                            {ut("bt.byClinician")}
+                          </Tag>
+                        ) : null}
+                        {retired ? <Tag tone="attention">{ut("mark.retired")}</Tag> : null}
+                      </span>
                     ) : null}
-                    {retired ? <Tag tone="attention">{ut("mark.retired")}</Tag> : null}
                   </span>
                   <span className={cx("whitespace-nowrap text-small", i.required ? "text-muted" : "font-bold text-text-2")}>
                     {i.required ? ut("bt.required") : ut("bt.optional")}

@@ -130,7 +130,7 @@
       "quote_2": "The translations of the K6 and K10 are posted for unrestricted use, with the same requirement to acknowledge the copyright and cite the above article. If you wish to translate K6 and or K10 into a language not listed below (please also check the additional translations posted on the Australian websites), you have permission to do so.",
       "url": "https://www.hcp.med.harvard.edu/ncs/k6_scales.php",
       "url_2": "https://web.archive.org/web/20251226080045/https://www.hcp.med.harvard.edu/ncs/k6_scales.php (живая страница закрыта проверкой на робота; цитаты сняты с копии Wayback Machine от 26.12.2025)",
-      "conditions": "Назвать копирайт «Copyright © Ronald C. Kessler, PhD. All rights reserved.» и сослаться на Kessler et al., 2003 (Arch Gen Psychiatry 60:184-189) — оба стоят в описании методики и в источнике каталога."
+      "conditions": "Назвать копирайт «Copyright © Ronald C. Kessler, PhD. All rights reserved.» и сослаться на Kessler et al., 2003 (Arch Gen Psychiatry 60:184-189) — оба стоят в примечании для персонала («Джерело» паспорта методики) и в источнике каталога."
     },
     "items": [
       "tired out for no good reason?",
@@ -194,7 +194,7 @@
     ],
     "bands_source": "ABS 4817.0.55.001 (2012), «K10 Scoring» (https://www.abs.gov.au/ausstats/abs@.nsf/Lookup/4817.0.55.001Chapter92007-08), дословно: «While no universally agreed categories or groupings exist for K10 scores, a number of different methods are used in Australia, depending on the purpose of administration and the setting in which it is delivered.» Table F (CRUfAD & GPcare, Coombs 2011): «10-19 are likely to be well; 20-24 are likely to have a mild mental disorder; 25-29 are likely to have a moderate mental disorder; 30-50 are likely to have a severe mental disorder». Table G — те же границы, «used by specialist mental health services for people who are already in specialist care»: «20-24 The client or patient may be experiencing mild levels of distress consistent with a diagnosis of a mild depression and/or anxiety disorder» (25-29 — moderate, 30-50 — severe). Выбраны F/G: учреждение — специализированная служба. Популяционная группировка ABS (Table E: «10-15 Low, 16-21 Moderate, 22-29 High, 30-50 Very high», «developed drawing on an amalgam of the work of the Clinical Research Unit for Anxiety and Depression (CRUfAD), Andrews and Slade (2001), and Korten») — для популяционных обследований, не взята. Первоисточник Andrews & Slade 2001 (Aust N Z J Public Health 25:494-497) получить не удалось: ScienceDirect и Wiley закрыты проверкой на робота. Все границы — австралийские, не украинские.",
     "risk_items": [],
-    "risk_items_note": "Вопросов о суициде, самоповреждении или вреде другим в K10 нет; «hopeless» и «worthless» — симптомы дистресса. Низкий балл не означает отсутствия суицидального риска — это сказано в описании методики.",
+    "risk_items_note": "Вопросов о суициде, самоповреждении или вреде другим в K10 нет; «hopeless» и «worthless» — симптомы дистресса. Низкий балл не означает отсутствия суицидального риска — это сказано в примечании для персонала («Джерело» паспорта методики).",
     "translation": {
       "uk": {
         "exists": false,
@@ -244,7 +244,7 @@
       "quote_2": "The translations of the K6 and K10 are posted for unrestricted use, with the same requirement to acknowledge the copyright and cite the above article. If you wish to translate K6 and or K10 into a language not listed below (please also check the additional translations posted on the Australian websites), you have permission to do so.",
       "url": "https://www.hcp.med.harvard.edu/ncs/k6_scales.php",
       "url_2": "https://web.archive.org/web/20251226080045/https://www.hcp.med.harvard.edu/ncs/k6_scales.php (живая страница закрыта проверкой на робота; цитаты сняты с копии Wayback Machine от 26.12.2025)",
-      "conditions": "Назвать копирайт «Copyright © Ronald C. Kessler, PhD. All rights reserved.» и сослаться на Kessler et al., 2003 (Arch Gen Psychiatry 60:184-189) — оба стоят в описании методики и в источнике каталога."
+      "conditions": "Назвать копирайт «Copyright © Ronald C. Kessler, PhD. All rights reserved.» и сослаться на Kessler et al., 2003 (Arch Gen Psychiatry 60:184-189) — оба стоят в примечании для персонала («Джерело» паспорта методики) и в источнике каталога."
     },
     "items": [
       "nervous?",
@@ -292,7 +292,7 @@
         "label_en": "Probable serious mental illness"
       }
     ],
-    "bands_source": "Разработчик, Scoring_K6_K10.pdf (https://www.hcp.med.harvard.edu/ncs/ftpdir/k6/Scoring_K6_K10.pdf), дословно: «The calibration study that was published in Archives of General Psychiatry shows that a cut point on 13+ on the K6 is the optimal cut point for assessing the prevalence of SMI in the national population, where \"optimal\" means equalizing false positives and false negatives. However, as you might know, this cut point is optimal only in a population that has the same prevalence as the total US population.» и для шкалы 1-5: «The optimal cut point on the K6 for this system is 6-18 versus 19+.» То же — ABS 4817.0.55.001, Table I: «6-18 No probable serious mental illness; 19-30 Probable serious mental illness» (Kessler et al., 2010). Порог получен в США; оговорка разработчика о распространённости — в описании методики.",
+    "bands_source": "Разработчик, Scoring_K6_K10.pdf (https://www.hcp.med.harvard.edu/ncs/ftpdir/k6/Scoring_K6_K10.pdf), дословно: «The calibration study that was published in Archives of General Psychiatry shows that a cut point on 13+ on the K6 is the optimal cut point for assessing the prevalence of SMI in the national population, where \"optimal\" means equalizing false positives and false negatives. However, as you might know, this cut point is optimal only in a population that has the same prevalence as the total US population.» и для шкалы 1-5: «The optimal cut point on the K6 for this system is 6-18 versus 19+.» То же — ABS 4817.0.55.001, Table I: «6-18 No probable serious mental illness; 19-30 Probable serious mental illness» (Kessler et al., 2010). Порог получен в США; оговорка разработчика о распространённости — в примечании для персонала («Джерело» паспорта методики).",
     "risk_items": [],
     "risk_items_note": "Как у K10: вопросов о суициде и самоповреждении нет.",
     "translation": {
@@ -494,7 +494,7 @@
     ],
     "bands_source": "INSTRUCTION MANUAL, стр. 6: «The operating characteristics of these ultra-brief measures are quite good; the recommended cutpoints for each when used as screeners is a score of 3 or greater.» Стр. 2: «For the ultra-brief measures (PHQ-2 and GAD-2), a score of 3 or greater should prompt administration of the full PHQ-9 and/or GAD-7, as well as a clinical interview to determine whether a mental disorder is present.» Порог установлен на пациентах первичного звена США.",
     "risk_items": [],
-    "risk_items_note": "Вопроса о мыслях о смерти и самоповреждении нет (п. 9 PHQ-9 в PHQ-2 не входит): отрицательный PHQ-2 не исключает суицидального риска — это сказано в описании методики.",
+    "risk_items_note": "Вопроса о мыслях о смерти и самоповреждении нет (п. 9 PHQ-9 в PHQ-2 не входит): отрицательный PHQ-2 не исключает суицидального риска — это сказано в примечании для персонала («Джерело» паспорта методики).",
     "translation": {
       "uk": {
         "exists": true,

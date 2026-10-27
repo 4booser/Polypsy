@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import type { RespondentDynamics, ResponseContext, ResponseDetail, RuleHit, SurveyFull } from "@quizzy/shared";
+import type { RespondentDynamics, ResponseContext, ResponseDetail, ResponseDetailScore, RuleHit, SurveyFull } from "@quizzy/shared";
 import { api } from "../../api";
 import { decideHit } from "../../components/Suggestions";
 import { ScaleProfile, SeverityMeter } from "../../charts/clinical";
@@ -16,10 +16,10 @@ import { buildAnswering, resultRows, scaleChange, type ResultRow, type ScaleChan
 import { Rx } from "./icons";
 
 /*
- * Общие панели протокола и графиков: «Результат» и «Як відповідав». На
- * протоколе — короче (лестница полос с рекомендациями, малый график времени),
- * на графиках — полнее (сведения о шкале, смысл результата, время с порогом
- * и перечнями).
+ * Общие панели протокола и графиков: «Результат» и «Хід заповнення». На
+ * протоколе — короче (результат над ответами, лестница полос свёрнута до
+ * попавшей, малый график времени), на графиках — полнее (сведения о шкале,
+ * смысл результата, время с порогом и перечнями).
  */
 
 const VERDICT_KEY = {
@@ -208,41 +208,7 @@ export function ResultPanel({
     return (
       <Panel title={ut("rch.result")} icon={<Ic.gauge />} sub={sub} actions={action}>
         {head}
-        {bands.length ? (
-          <ol className="m-0 mt-4 list-none p-0">
-            {[...bands]
-              .sort((a, b) => a.minScore - b.minScore)
-              .map((b) => (
-                <li
-                  key={b.id}
-                  className={cx(
-                    "grid grid-cols-[64px_minmax(0,1fr)] gap-x-3 border-t border-divider px-2 py-3 first:border-t-0",
-                    b.hit && "rounded-[12px] border-t-transparent bg-violet-tint [&+li]:border-t-transparent",
-                  )}
-                >
-                  <span className="pt-0.5 text-small font-extrabold text-text tabular-nums">
-                    {dec(b.minScore)}–{dec(b.maxScore)}
-                  </span>
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <SeverityTag level={b.severity} small>
-                        {b.label}
-                      </SeverityTag>
-                      {b.hit ? (
-                        <Tag tone="primary">
-                          {ut("kit.thisOne")}
-                          <span className="sr-only"> — {ut("rsp.hitBand")}</span>
-                        </Tag>
-                      ) : null}
-                    </div>
-                    {b.recommendation || b.description ? (
-                      <p className="m-0 mt-1.5 whitespace-pre-line text-small text-text-2">{b.recommendation ?? b.description}</p>
-                    ) : null}
-                  </div>
-                </li>
-              ))}
-          </ol>
-        ) : null}
+        {bands.length ? <BandLadder bands={bands} /> : null}
       </Panel>
     );
   }
@@ -304,6 +270,86 @@ export function ResultPanel({
   );
 }
 
+/** Лестница не длиннее этого видна целиком; длиннее — сворачивается до попавшей полосы */
+const SHORT_LADDER = 3;
+
+/**
+ * Лестница полос на протоколе.
+ *
+ * Результат на протоколе стоит первым, над ответами, — и лестница из пяти
+ * полос с рекомендациями отодвигала ответы на полэкрана. Где стоит значение,
+ * уже показывает шкала тяжести над ней, а тексты соседних полос нужны редко.
+ * Поэтому длинная лестница свёрнута до попавшей полосы — той же строкой, что
+ * в раскрытой, — остальные под «Усі смуги»; короткая видна целиком.
+ */
+function BandLadder({ bands }: { bands: ResponseDetailScore["bands"] }) {
+  const { ut } = useLang();
+  const [open, setOpen] = useState(false);
+  const sorted = [...bands].sort((a, b) => a.minScore - b.minScore);
+  const long = sorted.length > SHORT_LADDER;
+  const shown = long && !open ? sorted.filter((b) => b.hit) : sorted;
+  return (
+    <>
+      {shown.length ? (
+        <ol className="m-0 mt-4 list-none p-0">
+          {shown.map((b) => (
+            <BandRow key={b.id} band={b} />
+          ))}
+        </ol>
+      ) : null}
+      {long ? (
+        <Button variant="quiet" size="xs" className="mt-2" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+          {open ? ut("rch.less") : ut("rp.bandsAll").replace("{n}", String(sorted.length))}
+        </Button>
+      ) : null}
+    </>
+  );
+}
+
+/**
+ * Строка лестницы: границы, ступень словом и текст полосы. У попавшей —
+ * подсветка, пометка словом и оба текста, смысл и рекомендация: это и есть
+ * толкование результата. У соседних — один текст, рекомендация, а без неё смысл.
+ */
+function BandRow({ band: b }: { band: ResponseDetailScore["bands"][number] }) {
+  const { ut } = useLang();
+  const dec = useDecimal();
+  const texts = b.hit ? [b.description, b.recommendation] : [b.recommendation ?? b.description];
+  return (
+    <li
+      className={cx(
+        "grid grid-cols-[64px_minmax(0,1fr)] gap-x-3 border-t border-divider px-2 py-3 first:border-t-0",
+        b.hit && "rounded-[12px] border-t-transparent bg-violet-tint [&+li]:border-t-transparent",
+      )}
+    >
+      <span className="pt-0.5 text-small font-extrabold text-text tabular-nums">
+        {dec(b.minScore)}–{dec(b.maxScore)}
+      </span>
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <SeverityTag level={b.severity} small>
+            {b.label}
+          </SeverityTag>
+          {b.hit ? (
+            <Tag tone="primary">
+              {ut("kit.thisOne")}
+              <span className="sr-only"> — {ut("rsp.hitBand")}</span>
+            </Tag>
+          ) : null}
+        </div>
+        {texts.map((t, i) =>
+          t ? (
+            <p key={i} className={cx("m-0 mt-1.5 whitespace-pre-line text-small", b.hit ? "text-text" : "text-text-2")}>
+              {b.hit && i === 1 ? <b className="font-bold">{ut("rch.recommendation")}: </b> : null}
+              {t}
+            </p>
+          ) : null,
+        )}
+      </div>
+    </li>
+  );
+}
+
 function ProfilePanel({ rows, action }: { rows: ResultRow[]; action: ReactNode }) {
   const { ut } = useLang();
   const valueText = useValueText();
@@ -354,9 +400,10 @@ function ProfilePanel({ rows, action }: { rows: ResultRow[]; action: ReactNode }
 }
 
 /**
- * «Як відповідав»: сколько заняло, медиана на пункт, смены и пропуски — и
+ * «Хід заповнення»: сколько заняло, медиана на пункт, смены и пропуски — и
  * время по пунктам столбцами. Подсказка разбирающему, а не вердикт: об этом
- * говорит строка под графиком.
+ * говорит строка под графиком. Название — без глагола в прошедшем времени:
+ * «Як відповідав» стояло и над протоколом женщины.
  */
 export function AnsweringPanel({
   detail,
@@ -519,6 +566,9 @@ const ACTION_KEY = {
  * «Що далі за правилами»: что по этому прохождению предложили правила
  * поддержки решений, и решение — тут же. Отклонение требует причины (сервер:
  * err.declineNeedsNote), поэтому «Відхилити» сперва просит строку.
+ *
+ * Без срабатываний панель не рисуют (протокол, лист заключения): строка
+ * «правила нічого не запропонували» на каждом протоколе была шумом.
  */
 export function RulesPanel({ hits, reload, title, hint }: { hits: RuleHit[]; reload: () => void; title?: string; hint?: string }) {
   const { ut } = useLang();
@@ -548,70 +598,66 @@ export function RulesPanel({ hits, reload, title, hint }: { hits: RuleHit[]; rel
           {meanwhile}
         </p>
       ) : null}
-      {hits.length === 0 ? (
-        <p className="m-0 text-small text-muted">{ut("rp.rulesNone")}</p>
-      ) : (
-        <ul className="m-0 list-none p-0">
-          {hits.map((h) => (
-            <li key={h.id} className="grid grid-cols-[28px_minmax(0,1fr)] gap-x-2.5 border-t border-divider py-2.5 first:border-t-0 first:pt-0.5">
-              <IconTile icon={hitIcon(h)} size={28} tone={h.explanation.actions.some((a) => a.kind === "notify_duty") ? "risk" : "neutral"} />
-              <div className="min-w-0">
-                <Popover
-                  title={h.ruleTitle}
-                  note={dateTime(h.createdAt)}
-                  content={
-                    <ul className="m-0 list-disc pl-4">
-                      {h.explanation.because.map((b, i) => (
-                        <li key={i}>{b.text}</li>
-                      ))}
-                    </ul>
-                  }
-                >
-                  <b className="block cursor-default text-[13px] font-extrabold text-text">{h.ruleTitle}</b>
-                </Popover>
-                <span className="block text-small text-text-2">
-                  {actionText(h)}
-                  {h.status !== "suggested" ? (
-                    <span className="text-muted">
-                      {"; "}
-                      {h.status === "accepted" ? ut("rp.hitAccepted") : ut("rp.hitDeclined")}
-                    </span>
-                  ) : null}
-                </span>
-                {h.status === "suggested" ? (
-                  declining === h.id ? (
-                    <div className="mt-2 flex flex-wrap items-center gap-2">
-                      <Input
-                        autoFocus
-                        value={note}
-                        onChange={(e) => setNote(e.target.value)}
-                        placeholder={ut("ds.whyDecline")}
-                        aria-label={ut("ds.whyDecline")}
-                        className="min-w-[160px] flex-1"
-                      />
-                      <Button size="xs" disabled={busy || !note.trim()} onClick={() => decide(h, "declined", ut("ds.declined"), note.trim())}>
-                        {ut("ds.decline")}
-                      </Button>
-                      <Button size="xs" variant="quiet" onClick={() => setDeclining(null)}>
-                        {ut("common.cancel")}
-                      </Button>
-                    </div>
-                  ) : (
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      <Button size="xs" disabled={busy} icon={<Ic.check />} onClick={() => decide(h, "accepted", ut("ds.accepted"))}>
-                        {ut("ds.accept")}
-                      </Button>
-                      <Button size="xs" variant="ghost" disabled={busy} onClick={() => setDeclining(h.id)}>
-                        {ut("ds.decline")}
-                      </Button>
-                    </div>
-                  )
+      <ul className="m-0 list-none p-0">
+        {hits.map((h) => (
+          <li key={h.id} className="grid grid-cols-[28px_minmax(0,1fr)] gap-x-2.5 border-t border-divider py-2.5 first:border-t-0 first:pt-0.5">
+            <IconTile icon={hitIcon(h)} size={28} tone={h.explanation.actions.some((a) => a.kind === "notify_duty") ? "risk" : "neutral"} />
+            <div className="min-w-0">
+              <Popover
+                title={h.ruleTitle}
+                note={dateTime(h.createdAt)}
+                content={
+                  <ul className="m-0 list-disc pl-4">
+                    {h.explanation.because.map((b, i) => (
+                      <li key={i}>{b.text}</li>
+                    ))}
+                  </ul>
+                }
+              >
+                <b className="block cursor-default text-[13px] font-extrabold text-text">{h.ruleTitle}</b>
+              </Popover>
+              <span className="block text-small text-text-2">
+                {actionText(h)}
+                {h.status !== "suggested" ? (
+                  <span className="text-muted">
+                    {"; "}
+                    {h.status === "accepted" ? ut("rp.hitAccepted") : ut("rp.hitDeclined")}
+                  </span>
                 ) : null}
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
+              </span>
+              {h.status === "suggested" ? (
+                declining === h.id ? (
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <Input
+                      autoFocus
+                      value={note}
+                      onChange={(e) => setNote(e.target.value)}
+                      placeholder={ut("ds.whyDecline")}
+                      aria-label={ut("ds.whyDecline")}
+                      className="min-w-[160px] flex-1"
+                    />
+                    <Button size="xs" disabled={busy || !note.trim()} onClick={() => decide(h, "declined", ut("ds.declined"), note.trim())}>
+                      {ut("ds.decline")}
+                    </Button>
+                    <Button size="xs" variant="quiet" onClick={() => setDeclining(null)}>
+                      {ut("common.cancel")}
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <Button size="xs" disabled={busy} icon={<Ic.check />} onClick={() => decide(h, "accepted", ut("ds.accepted"))}>
+                      {ut("ds.accept")}
+                    </Button>
+                    <Button size="xs" variant="ghost" disabled={busy} onClick={() => setDeclining(h.id)}>
+                      {ut("ds.decline")}
+                    </Button>
+                  </div>
+                )
+              ) : null}
+            </div>
+          </li>
+        ))}
+      </ul>
     </Panel>
   );
 }
