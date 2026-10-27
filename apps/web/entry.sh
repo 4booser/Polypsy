@@ -26,6 +26,30 @@ export SITE_ALIASES="${SITE_ALIASES:-}"
 # `email` без аргумента Caddy отвергает целиком («wrong argument count»), и
 # конфиг не разбирается вовсе — тот же класс ошибки, что с пустым
 # SITE_ADDRESS выше, и проверять его надо так же, запуском образа.
+# Адрес сайта для страниц, которые читают поисковики и AI-ассистенты:
+# og:url, og:image и разметка schema.org в index.html, строка Sitemap в
+# robots.txt и сама карта сайта. Ссылки там обязаны быть полными, а домен у
+# каждого учреждения свой — поэтому он подставляется здесь, при старте, а не
+# зашивается в образ. Без домена (адрес «:80», запуск по IP) ссылки остаются
+# относительными, и карты сайта нет: давать в ней чужой или пустой адрес
+# хуже, чем не давать её вовсе. Подстановка повторному запуску не мешает:
+# второй раз заменять уже нечего.
+first="${SITE_ADDRESS%% *}"
+first="${first%%,*}"
+case "$first" in
+  http://*|https://*) SITE_URL="${first%/}" ;;
+  :*|localhost|localhost:*) SITE_URL="" ;;
+  *.*) SITE_URL="https://$first" ;;
+  *) SITE_URL="" ;;
+esac
+for page in /srv/index.html /srv/app.html; do
+  if [ -f "$page" ]; then sed -i "s|%SITE_URL%|$SITE_URL|g" "$page"; fi
+done
+if [ -n "$SITE_URL" ]; then
+  grep -q '^Sitemap:' /srv/robots.txt || printf '\nSitemap: %s/sitemap.xml\n' "$SITE_URL" >> /srv/robots.txt
+  printf '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n  <url><loc>%s/</loc></url>\n  <url><loc>%s/llms.txt</loc></url>\n</urlset>\n' "$SITE_URL" "$SITE_URL" > /srv/sitemap.xml
+fi
+
 CONFIG=/etc/caddy/Caddyfile
 if [ -n "$ACME_EMAIL" ]; then
   CONFIG=/tmp/Caddyfile

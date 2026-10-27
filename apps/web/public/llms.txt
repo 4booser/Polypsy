@@ -1,0 +1,38 @@
+# Polypsy
+
+> Polypsy is a psychodiagnostics and clinical-record platform for a psychology department. Specialists assign standard questionnaires, patients complete them on a phone or in a browser, and the system scores them, raises risk alerts and keeps the clinical record around the results: appointments, visit notes, conclusions, safety plans, referrals and follow-up. Interface in Ukrainian, Russian and English.
+
+Українською: Polypsy веде пацієнта від запрошення до виписки — методики в застосунку, динаміка курсу, сигнали ризику, прийоми й листування в одній системі для психологічного відділення.
+
+The working sections of the console require an account; this page and the home page describe the product for people and language models.
+
+## Who uses it
+
+- **Specialists** (psychologists, psychiatrists): patient workspace with results, course of treatment, appointments, visit notes, conclusions with signatures, safety plans, referrals and messages; a day screen with today's appointments, risk cases and the work queue.
+- **Heads of department**: team workload, open risk cases, overdue follow-ups, department analytics.
+- **Patients**: a mobile app and a web cabinet to take assigned questionnaires (with reminders and an offline queue), book or move appointments, write to their specialist, and see their safety plan; crisis contacts are on every screen.
+
+## Assessment
+
+- A shared catalog of more than 60 questionnaires grouped by clinical area: mood, anxiety and distress (PHQ-9, GAD-7, DASS-21/42, K10, CORE-10, CESD-R), trauma (PCL-5, ITQ, PC-PTSD-5, LEC-5, MIOS), suicide risk (C-SSRS screener, ASQ, SBQ-R, SIDAS), sleep (SCI), addictions (AUDIT, AUDIT-C, ASSIST, CUDIT-R, CIWA-Ar, COWS), resources and quality of life (WHO-5, SWLS, MSPSS, Brief COPE), cognitive functions (ASRS, 4AT), personality (IPIP-50, TIPI) and staff burnout (BAT, CBI, ProQOL).
+- A method constructor for the department's own instruments: items, keys, norms, T-scores by sex and age, validity scales, interpretations. Every edit creates a version, and each result is scored by the version the patient saw.
+- Assignment individually, by patient group, as a step-by-step set, on a schedule, or by cascade (a result band assigns follow-up methods). A clinician can fill a method in on the patient's behalf, including from a paper form.
+- Scores, bands and interpretations are computed automatically; change over time is reported against the reliable change index, and severity is named in words, not only colour.
+
+## Risk
+
+- Critical answers raise a risk alert while the patient is still answering. The alert becomes a case with a responsible clinician, a review deadline and a recorded decision; it appears in the risk queue, on the patient record and in notifications.
+
+## Security and privacy
+
+- Names, phone numbers, free-text answers and clinical texts are encrypted at field level.
+- Row-level security in PostgreSQL under a dedicated application role; a specialist sees their own patients, and emergency access requires a reason and expires.
+- An append-only, hash-chained audit log records every view of a patient record, not only changes.
+- Second factor (TOTP), one-time links for printed result sheets, consent tied to the text version, brute-force protection.
+- One server per institution; no shared multi-tenant database.
+
+## Links
+
+- [Home page](/): product overview (Ukrainian, with an English summary).
+- [System status](/status): current availability.
+- [Source code](https://github.com/4booser/Polypsy): repository (Bun, Hono, Drizzle, PostgreSQL 16; React 19 web; Expo mobile app). The README describes architecture, roles, the scoring engine, the method catalog and operations.

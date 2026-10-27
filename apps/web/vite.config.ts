@@ -4,6 +4,7 @@ import tailwind from "@tailwindcss/vite";
 import { execSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dictionaryByLanguage, languageChunk } from "./dictionaryPlugin";
+import { appShell } from "./seoHtml";
 
 /** Короткий sha сборки: при разборе инцидента сверяем «что задеплоено» */
 function gitSha(): string {
@@ -20,7 +21,7 @@ export default defineConfig({
     __BUILD_DATE__: JSON.stringify(new Date().toISOString().slice(0, 10)),
   },
   /* словарь — ядро куском на язык, строки экранов — с экранами (dictionaryPlugin.ts) */
-  plugins: [dictionaryByLanguage(), react(), tailwind()],
+  plugins: [dictionaryByLanguage(), react(), tailwind(), appShell()],
   build: {
     /* карта исходников — по запросу: по ней разбирается состав кусков (см. bundle.test.ts) */
     sourcemap: !!process.env.BUILD_SOURCEMAP,

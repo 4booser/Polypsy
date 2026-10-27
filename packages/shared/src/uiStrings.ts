@@ -5081,7 +5081,7 @@ export const UI = {
   "inv.code": { uk: "Код", ru: "Код", en: "Code" },
   "inv.days": { uk: "Строк, днів", ru: "Срок, дней", en: "Duration, days" },
   "bf.title": { uk: "Бланк для заповнення", ru: "Бланк для заполнения", en: "Answer sheet to fill in" },
-  "app.title": { uk: "Quizzy — консоль аналітики", ru: "Quizzy — консоль аналитики", en: "Quizzy — analytics console" },
+  "app.title": { uk: "Polypsy — система психологічного відділення", ru: "Polypsy — система психологического отделения", en: "Polypsy — psychology department system" },
   "lg.password": { uk: "Пароль", ru: "Пароль", en: "Password" },
   "ad.unreliable": { uk: "Профіль визнано ненадійним", ru: "Профиль признан ненадёжным", en: "Profile deemed unreliable" },
   "ad.scale": { uk: "Шкала", ru: "Шкала", en: "Scale" },
