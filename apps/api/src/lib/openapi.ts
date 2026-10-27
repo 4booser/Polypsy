@@ -219,13 +219,13 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   /* ── методики ── */
   "GET /api/surveys": {
     summary:
-      "Каталог методик. ?limit=&offset= — страница с total; ?folder= (id или root) — папка, вместе с ?q= — поиск по её поддереву; ?status= — вкладка, несколько через запятую; ?archived=1 — снятые вместе с остальными, ?archived=only — только снятые; ?domain= — направление (distress, trauma, suicide, sleep, addiction, wellbeing, cognitive, personality, staff, other) или none — без направления, из папки — по её поддереву; в строке — поле domain",
+      "Каталог методик. ?limit=&offset= — страница с total; ?folder= (id или root) — папка, вместе с ?q= — поиск по её поддереву; ?status= — вкладка, несколько через запятую; ?archived=1 — снятые вместе с остальными, ?archived=only — только снятые; ?domain= — направление (distress, trauma, suicide, sleep, addiction, wellbeing, cognitive, personality, staff, other) или none — без направления, из папки — по её поддереву; в строке — поле domain; ?sort=title — по названию, ?sort=catalog — порядок каталога (направление, полные методики первыми, короткие формы под своей полной); сотруднику в строке — клинический паспорт catalog (роль, время, что измеряет, пороги, шаг скрининга)",
     access: "user",
   },
   "POST /api/surveys": { summary: "Создание методики", access: "staff", permission: "surveys.edit", body: createSurveySchema },
   "POST /api/surveys/validate": { summary: "Структурная проверка черновика без сохранения", access: "staff", permission: "surveys.edit" },
   "POST /api/surveys/import": { summary: "Импорт методики из файла экспорта", access: "staff", permission: "surveys.edit" },
-  "GET /api/surveys/:id": { summary: "Методика с содержимым; ?raw=1 — для конструктора; ?version=N — содержимое конкретной версии; обследуемому — без ключа (веса, критические пункты, пороги, шкалы срезаны, keyWithheld)", access: "user" },
+  "GET /api/surveys/:id": { summary: "Методика с содержимым; ?raw=1 — для конструктора; ?version=N — содержимое конкретной версии; обследуемому — без ключа (веса, критические пункты, пороги, шкалы срезаны, keyWithheld); сотруднику — клинический паспорт catalog (роль, время, пороги, полная и короткие формы, шаг скрининга)", access: "user" },
   "PATCH /api/surveys/:id": { summary: "Правка методики — создаёт новую версию", access: "staff", permission: "surveys.edit", body: updateSurveySchema },
   "DELETE /api/surveys/:id": { summary: "Снятие методики с использования (данные сохраняются)", access: "staff", permission: "surveys.publish" },
   "POST /api/surveys/:id/restore": { summary: "Возврат методики в работу", access: "staff", permission: "surveys.publish" },

@@ -2034,6 +2034,13 @@ export interface SurveyFull extends Survey {
    * предосторожности (web patient/outbox.ts, mobile api/client.ts).
    */
   keyWithheld?: boolean;
+  /**
+   * Клинический паспорт — только сотруднику и не в сырой выдаче конструктора:
+   * роль, время, что измеряет, пороги, полная и короткие формы, шаг
+   * скрининга (shared/catalogPassport.ts). Обследуемому не отдаётся: пороги —
+   * часть ключа (#141).
+   */
+  catalog?: import("./catalogPassport").CatalogPassport;
 }
 
 /**
@@ -2228,6 +2235,13 @@ export interface SurveyListItem extends Survey {
   recentResponseCount?: number;
   /** Есть вариант, который сразу открывает случай риска */
   hasCriticalItem?: boolean;
+  /**
+   * Клинический паспорт строки — только сотруднику: роль, время, что
+   * измеряет, пороги, шаг скрининга и полная методика, под которой строка
+   * стоит в каталоге (shared/catalogPassport.ts). У методики учреждения —
+   * роль по тому, кто заполняет, и время по числу пунктов.
+   */
+  catalog?: import("./catalogPassport").CatalogRowPassport;
 }
 
 /** Ответ на один вопрос вместе с телеметрией */
