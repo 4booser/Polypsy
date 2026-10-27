@@ -60,3 +60,42 @@ export function isSurveyDomain(value: unknown): value is SurveyDomain {
  * пустой параметр значит «фильтра нет».
  */
 export const NO_DOMAIN = "none";
+
+/**
+ * Клинический домен шкалы — строка «Клінічної картини» пациента и «стан» в
+ * реестре: что именно у человека меряли, словом врача («депресія», «тривога»),
+ * а не полкой каталога.
+ *
+ * Полка каталога (SURVEY_DOMAINS) — про методику целиком: PHQ-9, GAD-7 и
+ * DASS-42 стоят на одной полке «дистрес». Врачу на карточке нужно другое:
+ * депрессия отдельно от тревоги, а у DASS-42 — три разные строки. Поэтому
+ * домен — свойство шкалы, и решает его сервер по ключу каталога и коду шкалы
+ * (apps/api/src/lib/clinicalDomains.ts); у методики вне каталога — по её
+ * полке, у методики без полки — «інше». Угадывать домен по названию шкалы
+ * нельзя: самодельная «Настрій» не обязана мерить депрессию.
+ *
+ * Порядок — клинический приоритет при равной тяжести: риск для жизни
+ * первым, ресурсы и личность — последними.
+ */
+export const CLINICAL_DOMAINS = [
+  "suicide",
+  "depression",
+  "trauma",
+  "anxiety",
+  "addiction",
+  "stress",
+  "distress",
+  "sleep",
+  "cognitive",
+  "burnout",
+  "wellbeing",
+  "personality",
+  "other",
+] as const;
+
+export type ClinicalDomain = (typeof CLINICAL_DOMAINS)[number];
+
+/** Пришедшее снаружи — один из клинических доменов? */
+export function isClinicalDomain(value: unknown): value is ClinicalDomain {
+  return typeof value === "string" && (CLINICAL_DOMAINS as readonly string[]).includes(value);
+}

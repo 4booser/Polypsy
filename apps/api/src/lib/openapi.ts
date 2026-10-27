@@ -317,7 +317,7 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
    * GET /api/clinic/patients/:userId/phone.
    */
   "GET /api/patients": { summary: "Пациенты зоны видимости: поиск, вкладка группы, подання `?view=risk|stale|unbooked|mine`, порядок `?sort=name|risk|last|next`, страницы {items,total,counts}; в строке — открытый случай, главная шкала последнего замера, ближайший приём, неявка, учёт, ведущий", access: "staff", permission: "patients.read" },
-  "GET /api/patients/:id/card": { summary: "Карточка пациента: персональные данные, «Тести», «Групи», «Заключення», ведущий", access: "staff", permission: "patients.read" },
+  "GET /api/patients/:id/card": { summary: "Карточка пациента: персональные данные, «Тести», «Групи», «Заключення», ведущий; домены шкал, открытое обращение, ближайшие приёмы, учёт и незакрытые направления — для шапки и «Огляду» рабочего места", access: "staff", permission: "patients.read" },
   "GET /api/patients/names": { summary: "Имена людей зоны по `?ids=` (через запятую, до ста) — без карточки, для подписей полей; вне зоны и не пациенты — без строки; журнал — access.patient_list, как у выбора пациента", access: "staff", permission: "patients.read" },
 
   /* ── рассылки (кадры f09, f16, f22) ──
@@ -411,7 +411,7 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   "GET /api/alert-cases/:id/history": { summary: "Кто и что делал со случаем — выборка из журнала доступа", access: "staff", permission: "alerts.review" },
   "POST /api/alert-cases/:id/assign": { summary: "Взять случай на себя или отпустить", access: "staff", permission: "alerts.review" },
   "PATCH /api/alert-cases/:id": { summary: "Разбор случая: одно решение о человеке; seenLastAlertAt — отказ 409, если после просмотра пришёл новый сигнал", access: "staff", permission: "alerts.review" },
-  "GET /api/referrals": { summary: "Направления, свежие сверху; ?all=1 — вместе с завершёнными. Страница `{items, nextCursor, truncated, total}`: `?limit=` (100, не больше 200), `?cursor=`; total — на первой странице", access: "staff", permission: "referrals.manage" },
+  "GET /api/referrals": { summary: "Направления, свежие сверху; ?all=1 — вместе с завершёнными; ?patient= — одного человека (вне зоны — 404). Страница `{items, nextCursor, truncated, total}`: `?limit=` (100, не больше 200), `?cursor=`; total — на первой странице", access: "staff", permission: "referrals.manage" },
   "GET /api/referrals/count": { summary: "Реестр направлений числами для навигации: всё, кроме завершённых, и открытые — та же зона условием, без людей и без строки журнала", access: "staff", permission: "referrals.manage" },
   "POST /api/referrals": { summary: "Выписать направление", access: "staff", permission: "referrals.manage", body: createReferralSchema },
   "PATCH /api/referrals/:id": { summary: "Движение статуса направления (только вперёд)", access: "staff", permission: "referrals.manage", body: updateReferralSchema },
