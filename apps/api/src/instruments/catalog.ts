@@ -627,7 +627,7 @@ export const CATALOG: CatalogEntry[] = [
     draft: gad2,
     note: gad2Note,
     source:
-      "GAD-2, Kroenke, Spitzer, Williams, Monahan, Löwe, 2007 (public domain); текст — пункти 1–2 GAD-7 каталогу, переклад робочий",
+      "GAD-2, Kroenke, Spitzer, Williams, Monahan, Löwe, 2007 (public domain); текст — пункти 1–2 GAD-7 каталогу: офіційні переклади правовласника «Ukrainian for Ukraine» і «Russian for Ukraine» (phqscreeners.com), українські відповіді — з PHQ-9 наказу МОЗ України №1003",
   },
   {
     key: "core10",
