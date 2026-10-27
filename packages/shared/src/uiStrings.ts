@@ -16481,6 +16481,20 @@ export const UI = {
   "mc.ovWeeksEmpty": { uk: "За 14 тижнів проходжень немає", ru: "За 14 недель прохождений нет", en: "No responses in the last 14 weeks" },
 
   // ── ux-copy ──
+
+  // ── dp-access ──
+
+  // ── dp-patient ──
+
+  // ── dp-charts ──
+
+  // ── dp-content ──
+
+  // ── dp-demo ──
+
+  // ── dp-catalog ──
+
+  // ── dp-scales ──
 } as const satisfies Record<string, UiEntry>;
 
 export type UiKey = keyof typeof UI;
