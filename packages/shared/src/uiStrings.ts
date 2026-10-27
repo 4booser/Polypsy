@@ -16495,6 +16495,8 @@ export const UI = {
   // ── dp-catalog ──
 
   // ── dp-scales ──
+
+  // ── dp-inst ──
 } as const satisfies Record<string, UiEntry>;
 
 export type UiKey = keyof typeof UI;
