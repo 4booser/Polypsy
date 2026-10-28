@@ -427,10 +427,9 @@ responseRoutes.post("/surveys/:id/responses", async (c) => {
         .from(responseScores)
         .where(eq(responseScores.responseId, existing.id));
       const risks = await db
-        .select({ id: riskAlerts.id })
+        .select({ id: riskAlerts.id, severity: riskAlerts.severity })
         .from(riskAlerts)
-        .where(eq(riskAlerts.responseId, existing.id))
-        .limit(1);
+        .where(eq(riskAlerts.responseId, existing.id));
       /*
        * Методика — той версии, которую человек проходил, а не действующей:
        * из неё названия шкал и ступени полос для сборки результата
@@ -463,6 +462,11 @@ responseRoutes.post("/surveys/:id/responses", async (c) => {
           warnings: [],
           safetyPlan:
             risks.length > 0 && existing.userId === user.id ? (survey?.safetyPlan ?? null) : null,
+          // то же, что у первой сдачи: по сохранённым тревогам, как и план безопасности выше
+          riskRaised:
+            isStaff(user) && risks.length > 0
+              ? { severity: risks.some((r) => r.severity === "severe") ? "severe" : "moderate", signals: risks.length }
+              : null,
           duplicate: true,
         },
         200,
@@ -670,6 +674,16 @@ responseRoutes.post("/surveys/:id/responses", async (c) => {
       // что назначила автоматика — специалист должен видеть это сразу,
       // а не обнаруживать в списке назначений через неделю
       cascade,
+      /*
+       * Сдача подняла сигнал риска — сотруднику, который вносил ответы, это
+       * говорится сразу. Врач, заполнивший HAM-D с суицидальным пунктом,
+       * видел «Обстеження збережено» и таблицу баллов, а случай молча уходил
+       * в очередь дежурного. Обследуемому — нет: ему план безопасности выше.
+       */
+      riskRaised:
+        isStaff(user) && risk.severity !== null
+          ? { severity: risk.severity, signals: risk.answers.length + risk.bands.length }
+          : null,
     },
     201,
   );

@@ -16543,6 +16543,19 @@ export const UI = {
   // ── dp-scales ──
 
   // ── dp-inst ──
+
+  // ── dp-coord ──
+  "adn.riskRaised": {
+    uk: "Піднято {n} сигнал ризику|Піднято {n} сигнали ризику|Піднято {n} сигналів ризику|Піднято {n} сигналу ризику",
+    ru: "Поднят {n} сигнал риска|Подняты {n} сигнала риска|Поднято {n} сигналов риска|Поднято {n} сигнала риска",
+    en: "{n} risk signal raised|{n} risk signals raised|{n} risk signals raised|{n} risk signals raised",
+  },
+  "adn.riskRaisedText": {
+    uk: "Випадок вже в черзі ризику, черговий отримав сповіщення.",
+    ru: "Случай уже в очереди риска, дежурный получил уведомление.",
+    en: "The case is already in the risk queue and the duty clinician has been notified.",
+  },
+  "adn.riskOpenQueue": { uk: "Відкрити чергу ризику", ru: "Открыть очередь риска", en: "Open the risk queue" },
 } as const satisfies Record<string, UiEntry>;
 
 export type UiKey = keyof typeof UI;

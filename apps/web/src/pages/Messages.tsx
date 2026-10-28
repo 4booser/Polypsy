@@ -315,6 +315,7 @@ export default function MessagesPage() {
   };
 
   const listView = loadView(list);
+  const hasRows = listView !== "wait" && listView !== "failed" && visible.length > 0;
   /* имя экрана — одно на экран: заголовок колонки и подпись её областей */
   const title = ut("ms.title");
 
@@ -372,7 +373,19 @@ export default function MessagesPage() {
             {ut("msx.sortWait")}
           </p>
         </div>
-        <div ref={listRef} role="list" aria-label={title} className="kit-scroll min-h-0 flex-1 overflow-y-auto border-t border-divider pb-2.5 pt-1">
+        {/*
+          Роль списка — только когда в нём строки. Пока переписки грузятся или
+          их нет, внутри заглушка, а не элементы списка, и пустой role="list"
+          ловила проверка доступности (aria-required-children) — через раз,
+          смотря чей ответ приходил первым.
+        */}
+        <div
+          ref={listRef}
+          role={hasRows ? "list" : undefined}
+          aria-label={hasRows ? title : undefined}
+          aria-busy={listView === "wait" || undefined}
+          className="kit-scroll min-h-0 flex-1 overflow-y-auto border-t border-divider pb-2.5 pt-1"
+        >
           {listView === "wait" || listView === "failed" ? (
             <div className="px-4 pt-2">
               <NotLoaded res={list} rows={4} />

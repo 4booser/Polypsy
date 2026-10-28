@@ -585,19 +585,10 @@ await db
   .where(inArray(surveys.id, [emotionalRow.id, sleepRow.id, followUpRow.id]));
 
 // методики из пособий НДЦ ГП ЗСУ — на них проверяется движок подсчёта
-/*
- * Видимость посеву — прежняя, общедоступная. В каталоге СР-45, БОО и
- * Міні-мульт стоят «по назначению» (обследование у психолога, а не тест из
- * списка кабинета), но посев — демонстрационный стенд: по ним проходит
- * сквозной сценарий «человек заводит учётную запись и проходит методику»
- * (e2e/patient.e2e.ts), а других самоотчётов, доступных новому человеку без
- * назначения, в посеве нет. Установщик каталога копию посева считает правкой
- * учреждения и видимость её не трогает.
- */
-const sr45Row = await upsertSurvey({ ...sr45, groupId: intake.id, visibility: "public" }, "published");
+const sr45Row = await upsertSurvey({ ...sr45, groupId: intake.id }, "published");
 const sadPersonsRow = await upsertSurvey({ ...sadPersons, groupId: intake.id }, "published");
-const minimultRow = await upsertSurvey({ ...minimult, groupId: intake.id, visibility: "public" }, "published");
-const mloRow = await upsertSurvey({ ...mlo, groupId: intake.id, visibility: "public" }, "published");
+const minimultRow = await upsertSurvey({ ...minimult, groupId: intake.id }, "published");
+const mloRow = await upsertSurvey({ ...mlo, groupId: intake.id }, "published");
 /*
  * С 2026-10-28 эти четыре — ещё и записи общего каталога (блок dp-inst
  * instruments/catalog.ts). Посев держит свои копии — на них стоят
@@ -1125,6 +1116,32 @@ async function seedBattery() {
 }
 
 const demoBattery = await seedBattery();
+
+/*
+ * Персональное назначение БОО «Адаптивність-200» первым трём пациентам пула.
+ *
+ * С 2026-10 СР-45, БОО и Мини-мульт выдаются только по назначению, а у первого
+ * пациента пула набор «Входное обследование» просрочен нарочно (просрочка на
+ * экранах персонала) — и кабинет его оставался пустым: проверять в нём было
+ * нечего ни глазами, ни сквозными тестами доступности. Психолог назначает БОО
+ * на две недели, как перед углублённым обследованием; набор с его просрочкой
+ * не тронут (у БОО своя строка выдачи).
+ */
+{
+  const dueAt = new Date(Date.now() + 14 * 86_400_000).toISOString();
+  await db
+    .insert(surveyAccess)
+    .values(
+      pool.slice(0, 3).map((patient) => ({
+        surveyId: mloRow.id,
+        userId: patient.id,
+        grantedBy: psy!.id,
+        expiresAt: dueAt,
+        note: "Углублённое обследование",
+      })),
+    )
+    .onConflictDoNothing();
+}
 
 /**
  * Демонстрационное расписание: плановый повтор по подразделению.

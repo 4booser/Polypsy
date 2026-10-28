@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useParams, useSearchParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import type { Answer, RespondentDynamics, Severity, SurveyFull } from "@quizzy/shared";
 import { isAnswered, isQuestionVisible } from "@quizzy/shared";
 import { api, type Patient } from "../api";
@@ -16,6 +16,7 @@ import { FastEntry, askedOf, choicesOf } from "../components/FastEntry";
 import { PatientPicker } from "../components/PatientPicker";
 import { day } from "../format";
 import { useLang } from "../lang";
+import { withCount } from "../ui/plural";
 import { Rx } from "./response/icons";
 
 /**
@@ -532,7 +533,7 @@ function Saved({
   result: Awaited<ReturnType<typeof api.submitFor>>;
   onAgain: () => void;
 }) {
-  const { ut } = useLang();
+  const { ut, lang } = useLang();
   const dec = useDecimal();
   const scores = result.scores as {
     scaleCode: string;
@@ -560,6 +561,16 @@ function Saved({
       }
     >
       <div className="flex max-w-[1080px] flex-col gap-4">
+        {result.riskRaised ? (
+          <Callout kind="risk" title={withCount(ut("adn.riskRaised"), result.riskRaised.signals, lang)}>
+            <p className="m-0">
+              {ut("adn.riskRaisedText")}{" "}
+              <Link to="/alerts" className="font-bold text-risk-ink underline underline-offset-2">
+                {ut("adn.riskOpenQueue")}
+              </Link>
+            </p>
+          </Callout>
+        ) : null}
         {!result.reliable ? (
           <Callout kind="warn" title={ut("ad.unreliable")}>
             {result.warnings.map((w, i) => (
