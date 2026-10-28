@@ -92,6 +92,8 @@ export interface CourseChartProps {
   header?: boolean;
   /** compact — малый формат для сетки на узкой колонке: поле ниже, шапка мельче */
   size?: "full" | "compact";
+  /** Код шкалы: сигнал по полосе другой шкалы того же прохождения сюда не встаёт (courseFromDynamics даёт его сам) */
+  scaleCode?: string | null;
 }
 
 const R = 4;
@@ -142,7 +144,8 @@ export function useCourseFormat(normalization: ScaleNormalization | null | undef
   const { ut } = useLang();
   const dec = useDecimal();
   const ratio = normalization === "ratio";
-  const num = (v: number) => (ratio ? dec(Math.round(v * 100)) : dec(v));
+  /* минус — знаком минуса, а не дефисом: «−14–44,9» с дефисом читалось как диапазон из трёх чисел */
+  const num = (v: number) => (ratio ? dec(Math.round(v * 100)) : dec(v)).replace(/^-/, "−");
   return {
     ratio,
     /** Число без единицы: у оси, у замера */
@@ -158,7 +161,10 @@ export function useCourseFormat(normalization: ScaleNormalization | null | undef
     /** Порог значущої зміни: «6,1», «8 в. п.» */
     amount: (d: number) => (ratio ? `${dec(Math.round(d * 100))} ${ut("course.pp")}` : dec(d, 1)),
     /** Границы полосы: «15–19», «24–38 %» — неразрывно, подпись полосы переносится по словам */
-    range: (r: { min: number; max: number }) => (ratio ? `${num(r.min)}–${num(r.max)} %` : `${dec(r.min)}–${dec(r.max)}`),
+    range: (r: { min: number; max: number }) => {
+      const span = r.min === r.max ? num(r.min) : `${num(r.min)}–${num(r.max)}`;
+      return ratio ? `${span} %` : span;
+    },
   };
 }
 
@@ -218,6 +224,7 @@ export function CourseChart({
   legend = true,
   header = true,
   size = "full",
+  scaleCode,
 }: CourseChartProps) {
   const { ut } = useLang();
   const fmt = useCourseFormat(normalization);
@@ -238,16 +245,13 @@ export function CourseChart({
   const W = Math.max(320, W0);
   /* уже 320 px картинка ужимается целиком — подсказка идёт за ней */
   const k = W0 / W;
-  const PH = compact ? 116 : 188;
-  const PB = T + PH;
   const ladder = sortRungs(rungs);
-  const lay = courseLayout(points, ladder, events, max);
+  const lay = courseLayout(points, ladder, events, max, scaleCode);
   const spans = bandSpans(ladder, lay.lo, lay.hi);
   const cutoff = cutoffOf(ladder);
   const lastI = points.length - 1;
   const head = pointTip(points, lastI, ladder, rc, better, lay.signals.get(lastI));
   const current = head?.band ? (spans.find((s) => points[lastI]!.value >= s.from && points[lastI]!.value <= s.to)?.rung ?? null) : null;
-  const Y = (v: number) => T + PH * (1 - (v - lay.lo) / (lay.hi - lay.lo));
   const f1 = (v: number) => v.toFixed(1);
 
   /* ── ось значений: подписи делений определяют левое поле ── */
@@ -268,14 +272,36 @@ export function CourseChart({
   const x1 = plotR - INSET;
   const X = (t: number) => x0 + ((t - lay.t0) / Math.max(1, lay.t1 - lay.t0)) * (x1 - x0);
 
+  /*
+   * Высота поля. Один замер — поле ниже: ему нечего показывать, кроме
+   * полосы, в которую он лёг. Подписи полос встают каждая в свою полосу, а
+   * полоса — доля шкалы: у узкого графика с длинными подписями («5–9 Лёгкая
+   * („субклиническая“) депрессия» в три строки) поле растёт, пока самая
+   * тесная полоса не вместит свою подпись, — но не выше 264 px. Малый формат
+   * не растёт: там лишние подписи уходят (см. shown ниже).
+   */
+  const base = compact || raw.length === 1 ? 116 : 188;
+  const wrapped = new Map(spans.map((s) => [s.rung, withCol ? wrapWords(bandText(s.rung), colW, labelWidth) : []] as const));
+  const needs =
+    withCol && !compact
+      ? spans.map((s) => {
+          const share = (s.to - s.from) / (lay.hi - lay.lo);
+          /* порог у границы полосы занимает пол-строки её места */
+          const tag = cutoff && (Math.abs(s.from - cutoff.at) < 1e-9 || Math.abs(s.to - cutoff.at) < 1e-9) ? LH / 2 + 2 : 0;
+          return share > 0 ? (wrapped.get(s.rung)!.length * LH + 6 + tag) / share : base;
+        })
+      : [];
+  const PH = Math.round(Math.min(base === 116 ? 168 : 264, Math.max(base, ...needs)));
+  const PB = T + PH;
+  const Y = (v: number) => T + PH * (1 - (v - lay.lo) / (lay.hi - lay.lo));
+
   const fillOf = (rung: Rung | null, i: number) => (rung && rung === current ? "var(--plotc)" : i % 2 ? "var(--plot2)" : "var(--plot)");
 
   const blocks: LabelBlock[] = [];
   if (withCol) {
     const desc = spans.map((s, i) => ({ s, i })).reverse();
     for (const { s } of desc) {
-      const text = bandText(s.rung);
-      const lines = wrapWords(text, colW, labelWidth);
+      const lines = wrapped.get(s.rung)!;
       blocks.push({
         key: `b-${s.rung.min}-${s.rung.max}`,
         kind: "band",

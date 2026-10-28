@@ -83,6 +83,8 @@ export interface CourseEvent {
   detail?: string | null;
   /** Прохождение, к которому событие относится: сигнал рисуется на его замере */
   responseId?: string | null;
+  /** Шкала сигнала по полосе — он встаёт только на её график; null — сигнал по ответу, на все шкалы замера */
+  scaleCode?: string | null;
   /** Заключение подписано; ложь — черновик */
   signed?: boolean;
 }
@@ -191,6 +193,8 @@ export interface CourseData {
   normalization: DynamicsPoint["normalization"] | null;
   /** Верх шкалы в единицах значения: «19 з 27» у сырого балла и край оси; у T-балла — null */
   max: number | null;
+  /** Код шкалы: сигнал по полосе другой шкалы того же прохождения на этот график не встаёт */
+  scaleCode: string | null;
 }
 
 /**
@@ -203,7 +207,7 @@ export interface CourseData {
  * методики адреса прохождения нет (App.tsx, /surveys/:id/responses/:rid).
  */
 export function courseFromDynamics(
-  scale: Pick<ScaleDynamics, "points" | "sem" | "reliableChange">,
+  scale: Pick<ScaleDynamics, "points" | "sem" | "reliableChange"> & { code?: string | null },
   rungs: readonly Rung[],
   formatDay: (iso: string) => string = day,
   { surveyId }: { surveyId?: string | null } = {},
@@ -234,6 +238,7 @@ export function courseFromDynamics(
     normalization: last ? (last.normalized === false ? "raw" : (last.normalization ?? null)) : null,
     /* верх шкалы в единицах значения (#199): сырой балл — максимум, доля — 1, стен — 10, у T-балла верха нет */
     max: last ? pointValueTop(last) : null,
+    scaleCode: scale.code ?? null,
   };
 }
 
@@ -246,6 +251,8 @@ export interface TimelineLike {
   detail?: string | null;
   /** Прохождение, которое подняло сигнал или по которому написано заключение */
   responseId?: string | null;
+  /** Шкала, полоса которой подняла сигнал */
+  scaleCode?: string | null;
 }
 
 /**
@@ -263,7 +270,7 @@ export function courseEventsFromTimeline(items: readonly TimelineLike[], formatD
     const t = Date.parse(it.at);
     if (!Number.isFinite(t)) continue;
     const base = { key: it.id, t, label: formatDay(it.at), responseId: it.responseId ?? null };
-    if (it.kind === "alert") out.push({ ...base, kind: "signal", detail: it.title || null });
+    if (it.kind === "alert") out.push({ ...base, kind: "signal", detail: it.title || null, scaleCode: it.scaleCode ?? null });
     else if (it.kind === "conclusion") out.push({ ...base, kind: "conclusion", detail: it.title || null, signed: it.detail === "signed" });
     else if (it.kind === "visit") {
       const s = it.detail ?? "";
@@ -334,16 +341,17 @@ export function courseDomain(
     const unit = median(cuts.slice(1).map((c, i) => c - cuts[i]!));
     const vmin = Math.min(...values);
     const vmax = Math.max(...values);
-    const whole = sorted.every((r) => Number.isInteger(r.min) && Number.isInteger(r.max));
+    /* край среза — круглым числом: «105», а не «101,95» у оси */
+    const grain = unit >= 5 ? 5 : unit >= 1 ? 1 : 0;
+    const up = (v: number) => (grain ? Math.ceil(v / grain) * grain : v);
+    const down = (v: number) => (grain ? Math.floor(v / grain) * grain : v);
     if (unit > 0 && hi - cuts.at(-1)! > 4 * unit) {
-      const edge = Math.max(vmax, cuts.at(-1)! + 2 * unit);
-      hi = whole ? Math.ceil(edge) : edge;
-      cut.hi = true;
+      hi = Math.min(hi, up(Math.max(vmax, cuts.at(-1)! + 2 * unit)));
+      cut.hi = hi < d.hi || (max != null && hi < max);
     }
     if (unit > 0 && cuts[0]! - lo > 4 * unit) {
-      const edge = Math.min(vmin, cuts[0]! - 2 * unit);
-      lo = whole ? Math.floor(edge) : edge;
-      cut.lo = true;
+      lo = Math.max(lo, down(Math.min(vmin, cuts[0]! - 2 * unit)));
+      cut.lo = lo > d.lo;
     }
   }
   return { lo, hi: hi > lo ? hi : lo + 1, cut };
@@ -372,7 +380,37 @@ export function laneEvents(points: readonly Pick<CoursePoint, "t">[], events: re
   return events.filter((e) => e.kind !== "signal" && e.t >= first - 7 * DAY_MS && e.t <= last + 60 * DAY_MS);
 }
 
-export function courseLayout(points: readonly CoursePoint[], rungs: readonly Rung[], events: readonly CourseEvent[], max?: number | null): CourseLayout {
+/**
+ * Сигналы на замерах курса: сигнал встаёт на замер, который его поднял
+ * (`responseId`), и только на график своей шкалы — у сигнала по полосе есть
+ * её код, у сигнала по ответу на пункт нет (тот встаёт на все шкалы
+ * замера). Без прохождения или с чужим — не на этом графике: сигнал PHQ-9
+ * того же дня на оси GAD-7 читался бы как сигнал GAD-7.
+ */
+export function signalsOn(
+  points: readonly Pick<CoursePoint, "key">[],
+  events: readonly CourseEvent[],
+  scaleCode?: string | null,
+): Map<number, CourseEvent[]> {
+  const index = new Map(points.map((p, i) => [p.key, i] as const));
+  const out = new Map<number, CourseEvent[]>();
+  for (const e of events) {
+    if (e.kind !== "signal" || !e.responseId) continue;
+    if (e.scaleCode && scaleCode && e.scaleCode !== scaleCode) continue;
+    const i = index.get(e.responseId);
+    if (i === undefined) continue;
+    out.set(i, [...(out.get(i) ?? []), e]);
+  }
+  return out;
+}
+
+export function courseLayout(
+  points: readonly CoursePoint[],
+  rungs: readonly Rung[],
+  events: readonly CourseEvent[],
+  max?: number | null,
+  scaleCode?: string | null,
+): CourseLayout {
   const ts = points.map((p) => p.t);
   const first = Math.min(...ts);
   const last = Math.max(...ts);
@@ -383,15 +421,7 @@ export function courseLayout(points: readonly CoursePoint[], rungs: readonly Run
   /* одна точка без событий — неделя в обе стороны, иначе делить не на что */
   const pad = span > 0 ? span * 0.04 : 7 * DAY_MS;
 
-  /* сигнал — на замере, который его поднял; без прохождения или с чужим — не на этом графике */
-  const index = new Map(points.map((p, i) => [p.key, i] as const));
-  const signals = new Map<number, CourseEvent[]>();
-  for (const e of events) {
-    if (e.kind !== "signal" || !e.responseId) continue;
-    const i = index.get(e.responseId);
-    if (i === undefined) continue;
-    signals.set(i, [...(signals.get(i) ?? []), e]);
-  }
+  const signals = signalsOn(points, events, scaleCode);
 
   const sorted = sortRungs(rungs);
   const values = points.map((p) => p.value);

@@ -27,9 +27,10 @@ export function CourseGrid({ children, min = 420, className }: { children: React
   const cols = courseColumns(W, items.length, min);
   const spans = gridSpans(items.length, cols);
   return (
-    <div ref={ref} data-course-grid={cols} className={cx("grid items-start gap-4", className)} style={{ gridTemplateColumns: "repeat(6, minmax(0, 1fr))" }}>
+    <div ref={ref} data-course-grid={cols} className={cx("grid gap-4", className)} style={{ gridTemplateColumns: "repeat(6, minmax(0, 1fr))" }}>
+      {/* карточки ряда — одной высоты: у графика с длинными подписями полос поле выше, и рамки соседей не должны обрываться раньше */}
       {items.map((child, i) => (
-        <div key={child.key ?? i} className="min-w-0" style={{ gridColumn: `span ${spans[i]} / span ${spans[i]}` }}>
+        <div key={child.key ?? i} className="min-w-0 [&>*]:h-full" style={{ gridColumn: `span ${spans[i]} / span ${spans[i]}` }}>
           {child}
         </div>
       ))}

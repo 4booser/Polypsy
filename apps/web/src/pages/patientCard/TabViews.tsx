@@ -2,7 +2,7 @@ import { Link } from "react-router-dom";
 import type { UiKey } from "@quizzy/shared";
 import { CourseChart, CourseLegend } from "../../charts/course";
 import { CourseGrid } from "../../charts/courseGrid";
-import { courseEventsFromTimeline, courseFromDynamics, courseNames, cutoffOf, laneEvents } from "../../charts/courseModel";
+import { courseEventsFromTimeline, courseFromDynamics, courseNames, cutoffOf, laneEvents, signalsOn } from "../../charts/courseModel";
 import { dateTime, day, timeOfDay } from "../../format";
 import { useLang } from "../../lang";
 import { ActivityList, Empty, Ic, Loading, TextAction } from "../../ui";
@@ -106,14 +106,13 @@ export function DynamicsTab({ v }: { v: CardView }) {
     data: courseFromDynamics(r.scale, r.rungs, undefined, { surveyId: r.surveyId }),
     names: courseNames(r.surveyTitle, r.scale.title, rows.filter((x) => x.surveyId === r.surveyId).length === 1),
   }));
-  const signals = new Set(events.filter((e) => e.kind === "signal").map((e) => e.responseId));
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+      <div className="flex items-start gap-x-4">
         <CourseLegend
-          className="!mt-0"
+          className="!mt-0 min-w-0 flex-1 pt-[6px]"
           cutoff={charts.some((c) => cutoffOf(c.data.rungs)) || null}
-          signal={charts.some((c) => c.data.points.some((p) => signals.has(p.key)))}
+          signal={charts.some((c) => signalsOn(c.data.points, events, c.data.scaleCode).size > 0)}
           lane={charts.flatMap((c) => laneEvents(c.data.points, events)).filter((e, i, all) => all.indexOf(e) === i)}
         />
         <TextAction to={`/patients/${v.id}/case/dynamics`}>{ut("card.fullDynamics")}</TextAction>

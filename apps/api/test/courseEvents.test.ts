@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import type { RespondentDynamics } from "@quizzy/shared";
 import { adminA, appApi, db, makeUser, submitSurvey, surveyInA } from "./fixtures";
-import { conclusions, riskAlerts, surveyAccess } from "../src/db/schema";
+import { conclusions, responseScores, riskAlerts, scales, surveyAccess } from "../src/db/schema";
 import { encryptField } from "../src/lib/crypto";
 
 /**
@@ -11,11 +11,11 @@ import { encryptField } from "../src/lib/crypto";
  *   — точка динамики говорит, кто заполнял (source): сам человек по
  *     назначению или специалист с его слов — подсказка замера называет это
  *     словом, а балл со слов читается иначе, чем самоотчёт;
- *   — строка сигнала в хронологии несёт прохождение, которое его подняло,
- *     а строка заключения — прохождение, по которому оно написано: сигнал
- *     ставится кольцом на свой замер, а не на ось дня (в один день человек
- *     проходит три методики, и сигнал PHQ-9 на оси GAD-7 читался бы как
- *     сигнал GAD-7).
+ *   — строка сигнала в хронологии несёт прохождение, которое его подняло
+ *     (и код шкалы, если его подняла полоса), а строка заключения —
+ *     прохождение, по которому оно написано: сигнал ставится кольцом на свой
+ *     замер своей шкалы, а не на ось дня (в один день человек проходит три
+ *     методики, и сигнал PHQ-9 на оси GAD-7 читался бы как сигнал GAD-7).
  *
  * Запросы — под ролью приложения, как в бою: поле, которое политика строк
  * не пропускает, здесь пропало бы.
@@ -25,6 +25,7 @@ interface TimelineRow {
   id: string;
   kind: string;
   responseId?: string | null;
+  scaleCode?: string | null;
 }
 
 describe("курс: кто заполнял и к какому замеру относится событие", () => {
@@ -54,6 +55,18 @@ describe("курс: кто заполнял и к какому замеру от
 
     const alertId = crypto.randomUUID();
     await db.insert(riskAlerts).values({ id: alertId, responseId, surveyId: surveyInA, userId: person.id, label: "тест", severity: "severe" });
+    /* сигнал по полосе — со шкалой: на график он встаёт только своей шкалы */
+    const [scored] = await db
+      .select({ scaleId: responseScores.scaleId, code: scales.code })
+      .from(responseScores)
+      .innerJoin(scales, eq(scales.id, responseScores.scaleId))
+      .where(eq(responseScores.responseId, responseId))
+      .limit(1);
+    expect(scored).toBeTruthy();
+    const bandAlertId = crypto.randomUUID();
+    await db
+      .insert(riskAlerts)
+      .values({ id: bandAlertId, responseId, surveyId: surveyInA, scaleId: scored!.scaleId, userId: person.id, label: "смуга", severity: "moderate" });
     const conclusionId = crypto.randomUUID();
     await db.insert(conclusions).values({
       id: conclusionId,
@@ -71,11 +84,17 @@ describe("курс: кто заполнял и к какому замеру от
     const alert = res.body.items.find((i) => i.id === `alert:${alertId}`);
     const conclusion = res.body.items.find((i) => i.id === `conclusion:${conclusionId}`);
     expect(alert?.responseId).toBe(responseId);
+    expect(alert?.scaleCode).toBeNull();
+    const band = res.body.items.find((i) => i.id === `alert:${bandAlertId}`);
+    expect(band?.responseId).toBe(responseId);
+    expect(band?.scaleCode).toBe(scored!.code);
     expect(conclusion?.responseId).toBe(responseId);
     // у прочих строк поля нет — ни приёму, ни прохождению оно не нужно
     expect(res.body.items.find((i) => i.kind === "response")?.responseId).toBeUndefined();
 
     /* разобранная тревога — в конечном состоянии, общие очереди не копят «висящих» тестовых строк */
-    await db.update(riskAlerts).set({ acknowledgedBy: adminA.id, acknowledgedAt: new Date().toISOString() }).where(eq(riskAlerts.id, alertId));
+    for (const id of [alertId, bandAlertId]) {
+      await db.update(riskAlerts).set({ acknowledgedBy: adminA.id, acknowledgedAt: new Date().toISOString() }).where(eq(riskAlerts.id, id));
+    }
   });
 });

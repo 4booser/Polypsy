@@ -23,6 +23,7 @@ import {
   methodNames,
   pointTip,
   reliableThreshold,
+  signalsOn,
   stackBlocks,
   valueOrder,
   wrapWords,
@@ -231,6 +232,18 @@ describe("раскладка", () => {
     expect(lay.signals.get(1)!.map((e) => e.key)).toEqual(["sig"]);
     expect(lay.ticks).toEqual([0, 5, 10, 15, 20, 27]);
     expect(lay.cut).toEqual({ lo: false, hi: false });
+  });
+
+  test("сигнал по полосе — только на графике своей шкалы; сигнал по ответу — на всех шкалах замера", () => {
+    const ev: CourseEvent[] = [
+      { key: "band", t: at(45), kind: "signal", label: "08.10", responseId: "b", scaleCode: "SR" },
+      { key: "item", t: at(45), kind: "signal", label: "08.10", responseId: "b", scaleCode: null },
+    ];
+    expect([...(signalsOn(pts, ev, "SR").get(1) ?? [])].map((e) => e.key)).toEqual(["band", "item"]);
+    expect([...(signalsOn(pts, ev, "KP").get(1) ?? [])].map((e) => e.key)).toEqual(["item"]);
+    // код шкалы неизвестен (пример на лендинге) — не отсекаем
+    expect(signalsOn(pts, ev).get(1)?.length).toBe(2);
+    expect(courseLayout(pts, PHQ, ev, null, "KP").signals.get(1)?.map((e) => e.key)).toEqual(["item"]);
   });
 
   test("верх шкалы выше края лестницы — ось до верха шкалы: «15 з 22» в шапке и «22» у оси сходятся", () => {

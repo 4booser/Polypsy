@@ -11,7 +11,7 @@ import { api } from "../api";
 import { useAuth } from "../auth";
 import { CourseChart, CourseLegend } from "../charts/course";
 import { CourseGrid } from "../charts/courseGrid";
-import { courseEventsFromTimeline, courseFromDynamics, courseNames, cutoffOf, laneEvents } from "../charts/courseModel";
+import { courseEventsFromTimeline, courseFromDynamics, courseNames, cutoffOf, laneEvents, signalsOn } from "../charts/courseModel";
 import { instrumentMark } from "../charts/kit";
 import { Hint } from "../components/Hint";
 import { locale as consoleLocale, severityKey } from "../format";
@@ -929,7 +929,6 @@ export function PatientDynamics() {
     data: courseFromDynamics(series(i.main), i.main.rungs, undefined, { surveyId: i.surveyId }),
     names: courseNames(i.title, i.main.scale.title, i.scales.length === 1),
   }));
-  const signalled = new Set(events.filter((e) => e.kind === "signal").map((e) => e.responseId));
 
   return (
     <div className="flex flex-col gap-4">
@@ -974,7 +973,7 @@ export function PatientDynamics() {
         <CourseLegend
           className="!mt-0 mb-3"
           cutoff={courses.some((c) => cutoffOf(c.data.rungs)) || null}
-          signal={courses.some((c) => c.data.points.some((p) => signalled.has(p.key)))}
+          signal={courses.some((c) => signalsOn(c.data.points, events, c.data.scaleCode).size > 0)}
           lane={courses.flatMap((c) => laneEvents(c.data.points, events)).filter((e, n, all) => all.indexOf(e) === n)}
         />
         <CourseGrid>

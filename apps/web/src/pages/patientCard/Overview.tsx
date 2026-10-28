@@ -4,7 +4,7 @@ import type { DynamicsPoint, UiKey } from "@quizzy/shared";
 import { api } from "../../api";
 import { useAuth } from "../../auth";
 import { CourseChart, CourseLegend } from "../../charts/course";
-import { courseEventsFromTimeline, courseFromDynamics, courseNames, cutoffOf, laneEvents } from "../../charts/courseModel";
+import { courseEventsFromTimeline, courseFromDynamics, courseNames, cutoffOf, laneEvents, signalsOn } from "../../charts/courseModel";
 import { dateTime, day, locale, severityKey, timeOfDay } from "../../format";
 import { useLang } from "../../lang";
 import { useResource, useResourceMap } from "../../useResource";
@@ -575,7 +575,6 @@ function CoursePanel({ v }: { v: CardView }) {
     /* у свёрнутой методики график — её самой тяжёлой шкалы, и шапка называет шкалу */
     names: courseNames(r.surveyTitle, r.scale.title, !r.folded.length && v.rows.filter((x) => x.surveyId === r.surveyId).length === 1),
   }));
-  const signals = new Set(events.filter((e) => e.kind === "signal").map((e) => e.responseId));
   return (
     <Panel
       title={ut("card.course")}
@@ -591,7 +590,7 @@ function CoursePanel({ v }: { v: CardView }) {
       </div>
       <CourseLegend
         cutoff={charts.some((c) => cutoffOf(c.data.rungs)) || null}
-        signal={charts.some((c) => c.data.points.some((p) => signals.has(p.key)))}
+        signal={charts.some((c) => signalsOn(c.data.points, events, c.data.scaleCode).size > 0)}
         lane={charts.flatMap((c) => laneEvents(c.data.points, events)).filter((e, i, all) => all.indexOf(e) === i)}
       />
     </Panel>
