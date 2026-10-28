@@ -1,57 +1,66 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useSearchParams } from "react-router-dom";
 import type { PatientCard as PatientCardData } from "@quizzy/shared";
-import { api, type TimelineItem } from "../../api";
+import { api, openInTab } from "../../api";
 import { useAuth } from "../../auth";
 import { useLang } from "../../lang";
-import { useResource, useResourceMap } from "../../useResource";
-import { Drawer, DrawerPane, Loading, useAction, useUrlState } from "../../ui";
+import { useResource } from "../../useResource";
+import { Drawer, DrawerPane, Ic, IconPrint, Loading, useAction, useToast } from "../../ui";
+import type { MenuEntry } from "../../ui/menu";
 import { Here } from "../../components/Here";
 import { usePersonCases, useRiskReview, useSafetyPlans } from "../../components/RiskReview";
 import { AssignDrawer } from "../../components/AssignDrawer";
-import { Banner, CARD_TABS, type CardTab } from "./Banner";
-import {
-  heldCount,
-  instrumentRows,
-  lastSession,
-  latestResponseOf,
-  nextVisit,
-  openAssignments,
-  openNoShow,
-  visitsOf,
-  type TimelineRow,
-} from "./clinical";
+import { ShellIcon } from "../../shell/icons";
+import { fill, PageRules, SheetFoot, SheetHead, sheetDate, sheetTime, usePrintedBy } from "../printSheet";
+import { Banner } from "./Banner";
+import { clinicalPicture, lastSession, nextVisit, openAssignments, openNoShow, visitsOf, type TimelineRow } from "./clinical";
+import { DynamicsTab } from "./Dynamics";
 import { useCodeKeys } from "./keys";
 import { Overview } from "./Overview";
-import { useBookPane, useConclusionPane, useNotePane, useThreadPane } from "./Panes";
+import { useBookPane, useConclusionPane, useEpisodePane, useNotePane, usePlanPane, useThreadPane } from "./Panes";
 import { PatientList } from "./PatientList";
-import { ConclusionsTab, DynamicsTab, MeasuresTab, MessagesTab, NotesTab, TimelineTab, VisitsTab } from "./TabViews";
-import { withConclusion, withLead } from "./model";
-import type { CardRefresh, CardView, OpenOpts, PaneMode, ThreadMessage } from "./types";
+import { RecordsTab } from "./Records";
+import { ReferralsTab, useReferralPane } from "./ReferralsTab";
+import { MeasuresTab, MessagesTab } from "./TabViews";
+import { TimelineTab } from "./Timeline";
+import { CARD_TABS, tabRoute } from "./tabs";
+import { leadAction, withConclusion, withEpisode, withLead, withReferral } from "./model";
+import type { CardRefresh, CardTab, CardView, OpenOpts, PaneMode, ThreadMessage } from "./types";
 import type { ThreadLike } from "./listModel";
+import { Pi } from "./icons";
 
 /*
- * Карточка пациента — эталонный экран «Виразної», мир «Дія без переходу»
- * (.superdesign/ui3/screens/style_drawer_vivid.py, утверждён 2026-10-17).
+ * Рабочее место пациента — одна страница о человеке (участок dp-patient).
  *
- *   слева   — колонка «Мої пацієнти», сгруппированная по причине (PatientList);
- *   сверху  — человек на фиолетовой полосе: кто он, строка открытого (сигнал
- *             с таймером, письмо, неявка, черновик, назначенное, план безпеки)
- *             и вкладки (Banner);
- *   ниже    — вкладка: «Огляд» в две колонки (Overview) или остальные (TabViews);
- *   справа  — ящик действий поверх правой колонки: разбор сигнала (общий
- *             components/RiskReview), переписка с переносом, заключение,
- *             нотатка, запись на приём (Panes). Esc закрывает и оставляет
- *             черновик; R / M / N открывают нужный вид.
+ * Прежде страниц было две: «Картка пацієнта» (/patients/:id: Огляд, Заміри,
+ * Графіки, Заключення, Прийоми, Листування, Нотатки, Події) и «Клінічна
+ * карта» (/patients/:id/case: Огляд справи, Динаміка, Хронологія) — с
+ * таблицами результатов, графиками, лентами событий и заметками на обеих,
+ * под разными именами. Теперь страница одна:
  *
- * Данные — только из приложения. Открытие карточки по-прежнему читает
- * GET /api/patients/:id/card — это чтение журналируется сервером
- * (patient.card_read), и карточка без него не открывается. Остальное —
- * динамика, хронология, случаи, переписка, нотатки, план безпеки — теми же
- * маршрутами, что и клиническая карта (/patients/:id/case), ссылка на неё —
- * в шапке и в меню. Права проверяет сервер; кнопки, ведущие в отказ
- * (нет messages.write, notes.write, appointments.manage, conclusions.*,
- * alerts.review), не рисуются.
+ *   слева   — колонка «Мої пацієнти» (PatientList), J/K и «[»;
+ *   сверху  — шапка: кто это, кто ведёт, обращение и его повод, ближайший
+ *             приём, открытый случай риска и план безпеки, действия дня
+ *             (Banner);
+ *   вкладки — Огляд (клиническая картина по доменам, риск, план, последние
+ *             записи), Динаміка (методика целиком), Заміри, Записи (записи
+ *             прийому и заключения), Направлення, Листування, Хронологія;
+ *   справа  — ящик действий: разбор (R), переписка (M), запись прийому (N),
+ *             заключение, запись на приём, план безпеки, обращение,
+ *             направление. Esc закрывает и оставляет черновик.
+ *
+ * Прежние адреса — /case, /case/dynamics, /case/timeline, /summary, старые
+ * ?tab= — ведут сюда же (App.tsx, tabs.ts); ?pane=plan открывает вид ящика
+ * (так ведёт сюда «Весь план» из ящика разбора на экране случаев).
+ *
+ * Журнал. Открытие пациента читает GET /api/patients/:id/card
+ * (patient.card_read), динамику, хронологию, нотатки и план (response.read)
+ * и случаи (alert.list) — как прежде карточка. Сводка консилиума
+ * (/referrals/summary) больше не читается вовсе: её «Огляд справи» стал
+ * «Оглядом», а направления — своей вкладкой (GET /api/referrals?patient=,
+ * referral.list с именем человека). Карточка приёма (clinic.visit_open) для
+ * «Наступного прийому» больше не открывается: вид и формат приёма приходят
+ * с карточкой. Права проверяет сервер; кнопки, ведущие в отказ, не рисуются.
  *
  * keep: false у всего, что про одного человека (#177): ответ о прежнем
  * пациенте не встаёт под имя следующего, пока идёт загрузка.
@@ -66,6 +75,8 @@ function readCollapsed(): boolean {
     return false;
   }
 }
+
+const PANES: readonly PaneMode[] = ["signal", "thread", "concl", "note", "book", "plan", "episode", "referral"];
 
 export default function PatientCard() {
   const { userId } = useParams<{ userId: string }>();
@@ -115,15 +126,58 @@ function CardRecord({
   const { ut } = useLang();
   const { user, can } = useAuth();
   const { run, busy } = useAction();
+  const toast = useToast();
+  const printedBy = usePrintedBy();
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 30_000);
     return () => clearInterval(t);
   }, []);
 
+  /* ── вкладка в адресе: рабочее место пересылают коллеге и кладут в закладку ── */
+  const [params, setParams] = useSearchParams();
+  const route = tabRoute(params.get("tab"));
+  const tab = route.tab;
+  const rewrite = route.rewrite ? JSON.stringify(route.rewrite) : null;
+  useEffect(() => {
+    if (!rewrite) return;
+    /* прежнее значение ?tab= — на нынешнее: «Заключення» — это «Записи» с видом заключений */
+    setParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        for (const [k, val] of Object.entries(JSON.parse(rewrite) as Record<string, string>)) {
+          if (val) next.set(k, val);
+          else next.delete(k);
+        }
+        return next;
+      },
+      { replace: true },
+    );
+  }, [rewrite, setParams]);
+  const goTab = useCallback(
+    (t: CardTab, extra?: Record<string, string | null>) =>
+      setParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          /* отбор прежней вкладки новой не принадлежит */
+          next.delete("kind");
+          next.delete("m");
+          if (t === "overview") next.delete("tab");
+          else next.set("tab", t);
+          for (const [k, val] of Object.entries(extra ?? {})) {
+            if (val) next.set(k, val);
+            else next.delete(k);
+          }
+          return next;
+        },
+        { replace: true },
+      ),
+    [setParams],
+  );
+
   /* ── данные человека ── */
   const dynamics = useResource(() => api.dynamics(id), [id], { keep: false });
-  const timeline = useResource(() => api.timeline(id).catch(() => [] as TimelineItem[]), [id], { keep: false });
+  const timeline = useResource(() => api.timeline(id), [id], { keep: false });
   const cases = usePersonCases(id);
   const threads = useResource(
     () =>
@@ -141,43 +195,55 @@ function CardRecord({
     [thread?.id, thread?.lastMessageAt, thread?.unread],
     { enabled: !!thread },
   );
-  const notes = useResource(() => api.notes(id).catch(() => null), [id], { keep: false });
-  /* тот же запрос, что у ящика разбора (общее имя): план читается раз на карточку */
+  const notes = useResource(() => api.notes(id), [id], { keep: false });
+  /* тот же запрос, что у ящика разбора и вида плана (общее имя): план читается раз на страницу */
   const plans = useSafetyPlans(id);
+  /* направления человека — только когда вкладка открыта: это чтение его поводов (журнал) */
+  const referrals = useResource(() => api.referrals(true, null, { patient: id }), [id], {
+    enabled: tab === "referrals" && can("referrals.manage"),
+    keep: false,
+  });
 
-  const latestIds = useMemo(
-    () => (dynamics.data?.surveys ?? []).map(latestResponseOf).filter((x): x is string => !!x),
-    [dynamics.data],
+  const signalResponses = useMemo(
+    () => new Set((cases.data ?? []).flatMap((c) => c.signals.map((s) => s.responseId))),
+    [cases.data],
   );
-  const details = useResourceMap("rd", latestIds, api.responseDetail);
-  const rows = useMemo(() => instrumentRows(dynamics.data, details), [dynamics.data, details]);
-  /* «Графіки» — все шкалы каждой методики: свёртка многошкальной методики нужна таблице «Методики», а не графикам */
-  const chartRows = useMemo(
-    () => instrumentRows(dynamics.data, details, { fold: false, limit: Number.POSITIVE_INFINITY }),
-    [dynamics.data, details],
-  );
+  const picture = useMemo(() => clinicalPicture(dynamics.data, card.domains, signalResponses), [dynamics.data, card.domains, signalResponses]);
 
   const tl = (timeline.data ?? null) as TimelineRow[] | null;
   const visits = useMemo(() => visitsOf(tl ?? []), [tl]);
   const next = nextVisit(visits, now);
-  /* хронология называет специалиста приёма ФИО — так же, как профиль вошедшего */
+  /* хронология называет специалиста приёма ФИО — так же, как профиль вошедшего; карточка знает точно */
   const me = user?.fullName?.trim() ?? "";
+  const known = next ? card.upcoming?.find((u) => u.id === next.id) : undefined;
+  const nextIsMine = !!next && (known ? known.mine : !!me && next.specialist.trim() === me);
 
   /* ── ящик ── */
   const [drawer, setDrawer] = useState<{ open: boolean; mode: PaneMode }>({ open: false, mode: "signal" });
+  const [assigning, setAssigning] = useState(false);
   const [conclFor, setConclFor] = useState<string | null>(null);
   const [slotId, setSlotId] = useState<string | null>(null);
-  const [tabRaw, setTab] = useUrlState("tab", "overview");
-  const tab: CardTab = (CARD_TABS as string[]).includes(tabRaw) ? (tabRaw as CardTab) : "overview";
 
-  const open = useCallback(
-    (mode: PaneMode, opts?: OpenOpts) => {
-      if (opts?.responseId) setConclFor(opts.responseId);
-      if (opts?.slotId) setSlotId(opts.slotId);
-      setDrawer({ open: true, mode });
-    },
-    [],
-  );
+  const open = useCallback((mode: PaneMode, opts?: OpenOpts) => {
+    if (opts?.responseId) setConclFor(opts.responseId);
+    if (opts?.slotId) setSlotId(opts.slotId);
+    setDrawer({ open: true, mode });
+  }, []);
+
+  /* ?pane=plan — открыть вид ящика по ссылке (из ящика разбора на экране случаев) и снять параметр */
+  const paneParam = params.get("pane");
+  useEffect(() => {
+    if (!paneParam) return;
+    if ((PANES as readonly string[]).includes(paneParam)) open(paneParam as PaneMode);
+    setParams(
+      (prev) => {
+        const nextParams = new URLSearchParams(prev);
+        nextParams.delete("pane");
+        return nextParams;
+      },
+      { replace: true },
+    );
+  }, [paneParam, open, setParams]);
 
   /*
    * После действия в ящике — только то, что оно меняет (CardRefresh): ни
@@ -205,6 +271,8 @@ function CardRecord({
       timeline: timeline.reload,
       notes: (state) => (state ? notes.patch(state) : notes.reload()),
       conclusion: (responseId, state) => patch((c) => withConclusion(c, responseId, state)),
+      episode: (episode) => patch((c) => withEpisode(c, episode)),
+      referral: (r) => patch((c) => withReferral(c, r)),
     }),
     [threads.reload, timeline.reload, notes.patch, notes.reload, patch],
   );
@@ -216,7 +284,10 @@ function CardRecord({
     dynamics: dynamics.data ?? null,
     dynamicsError: dynamics.error,
     reloadDynamics: dynamics.reload,
+    picture,
     timeline: tl,
+    timelineError: timeline.data ? null : timeline.error,
+    reloadTimeline: timeline.reload,
     visits,
     next,
     last: lastSession(visits, now),
@@ -228,18 +299,18 @@ function CardRecord({
     thread,
     messages: messages.data ?? null,
     notes: notes.data ?? null,
+    notesError: notes.data ? null : notes.error,
+    reloadNotes: notes.reload,
     plan: plans.data?.versions.find((p) => p.active) ?? null,
     planKnown: !!plans.data,
     planError: plans.data ? null : plans.error,
     reloadPlan: plans.reload,
-    details,
-    rows,
-    chartRows,
-    nextIsMine: !!next && !!me && next.specialist.trim() === me,
+    nextIsMine,
     slotId,
     setSlotId,
     open,
-    goTab: (t) => setTab(t),
+    onAssign: can("assignments.manage") ? () => setAssigning(true) : null,
+    goTab,
     pane: drawer.open ? drawer.mode : null,
     can,
     refresh,
@@ -261,12 +332,25 @@ function CardRecord({
         <ButtonLike onClick={() => open("concl", { responseId: firstDraft.responseId })}>{ut("card.toConclusion")}</ButtonLike>
       ) : undefined,
   });
+  const close = () => setDrawer((d) => ({ ...d, open: false }));
   const threadPane = useThreadPane(v, drawer.open && drawer.mode === "thread");
   const conclPane = useConclusionPane(v, drawer.open && drawer.mode === "concl", conclFor);
   const notePane = useNotePane(v, drawer.open && drawer.mode === "note");
   const bookPane = useBookPane(v, drawer.open && drawer.mode === "book");
+  const planPane = usePlanPane(v, drawer.open && drawer.mode === "plan");
+  const episodePane = useEpisodePane(v, drawer.open && drawer.mode === "episode");
+  const referralPane = useReferralPane(
+    v,
+    (r) => {
+      close();
+      refresh.referral(r);
+      refresh.timeline();
+      referrals.reload();
+    },
+    close,
+  );
 
-  /* ── клавиши: R — разбор, M — письмо, N — нотатка; 1–3 — исход в открытом разборе ── */
+  /* ── клавиши: R — разбор, M — письмо, N — запись прийому; 1–3 — исход в открытом разборе ── */
   useCodeKeys({
     KeyR: () => {
       /* и при отказе: ящик скажет «не вдалося перевірити» и даст повторить */
@@ -295,7 +379,6 @@ function CardRecord({
       await api.takeLead(card.id, take);
       if (user) patch((c) => withLead(c, take, user));
     }, ut(card.lead?.mine ? "pcard.unsubscribed" : "pcard.subscribed"));
-  const [assigning, setAssigning] = useState(false);
 
   /* ── ящик встаёт под полосу с человеком: она липнет, и человек остаётся на виду ── */
   const bannerRef = useRef<HTMLElement>(null);
@@ -314,28 +397,63 @@ function CardRecord({
     };
   }, []);
 
+  const tabs = CARD_TABS.filter((t) => (t === "referrals" ? can("referrals.manage") : t === "messages" ? can("messages.write") : true));
+  const shownTab: CardTab = tabs.includes(tab) ? tab : "overview";
   const counts: Partial<Record<CardTab, number>> = {
     measures: card.responses.length,
-    conclusions: card.conclusions.length,
-    visits: heldCount(visits) || undefined,
-    messages: messages.data?.length || undefined,
-    notes: notes.data?.versions.length || undefined,
+    records: (notes.data?.versions.length ?? 0) + card.conclusions.length || undefined,
+    referrals: card.openReferrals?.length || undefined,
+    messages: thread?.unread || undefined,
   };
+
+  const copyLink = () =>
+    void navigator.clipboard.writeText(location.href).then(
+      () => toast(ut("case.linkCopied"), "ok"),
+      () => toast(ut("ui.actionFailed"), "err"),
+    );
+  const menu: MenuEntry[] = [
+    {
+      key: "lead",
+      label: ut(leadAction(card) === "unsubscribe" ? "pcard.unsubscribe" : "pcard.subscribe"),
+      icon: <Pi.userPlus size={15} />,
+      disabled: busy,
+      onSelect: toggleLead,
+    },
+    { key: "episode", label: ut("ws.menuEpisode"), icon: <ShellIcon name="folder-tree" size={15} />, onSelect: () => open("episode") },
+    { key: "plan", label: ut("ws.menuPlan"), icon: <Ic.shieldCheck size={15} />, onSelect: () => open("plan") },
+    ...(can("referrals.manage")
+      ? [{ key: "referral", label: ut("ref.new"), icon: <ShellIcon name="arrow-right-left" size={15} />, onSelect: () => open("referral") }]
+      : []),
+    { key: "print", label: ut("ws.printTab"), icon: <IconPrint />, ruled: true, onSelect: () => window.print() },
+    { key: "chart", label: ut("ep.chart"), icon: <Ic.file size={15} />, onSelect: () => openInTab(`/api/reports/patients/${id}/chart`) },
+    { key: "link", label: ut("case.copyLink"), icon: <Ic.external size={15} />, onSelect: copyLink },
+  ];
 
   return (
     <>
       <div className="kit-scroll flex min-h-0 flex-1 flex-col overflow-y-auto" data-card-scroll="">
+        {/*
+          Шапка листа на бумаге (UI 3, print-dynamics): знак, дата и «станом
+          на» — как у листов сервера; на экране её нет. Поля страницы —
+          «Сторінка N з M» и имя человека внизу каждого листа.
+        */}
+        <div className="print-only case-print">
+          <PageRules running={card.fullName} />
+          <SheetHead primary={sheetDate()} secondary={fill(ut("ps.asOf"), { time: sheetTime() })} />
+        </div>
         <Banner
           ref={bannerRef}
           v={v}
-          tab={tab}
-          onTab={setTab}
+          tab={shownTab}
+          onTab={(t) => goTab(t)}
+          tabs={tabs}
           counts={counts}
           collapsed={collapsed}
           onExpand={onExpand}
           onAssign={() => setAssigning(true)}
           onToggleLead={toggleLead}
           leadBusy={busy}
+          menu={menu}
           here={<Here resource={`patient:${id}`} />}
           drafts={{
             signal: !!review.pane.dirty,
@@ -344,33 +462,36 @@ function CardRecord({
             note: !!notePane.dirty,
           }}
         />
-        <div id="card-tabpanel" role="tabpanel" aria-labelledby={`card-tab-${tab}`} className="px-5 pb-8 pt-5">
-          {tab === "overview" ? (
+        <div id="card-tabpanel" role="tabpanel" aria-labelledby={`card-tab-${shownTab}`} className="px-5 pb-8 pt-4">
+          {shownTab === "overview" ? (
             <Overview v={v} />
-          ) : tab === "measures" ? (
-            <MeasuresTab v={v} />
-          ) : tab === "dynamics" ? (
+          ) : shownTab === "dynamics" ? (
             <DynamicsTab v={v} />
-          ) : tab === "conclusions" ? (
-            <ConclusionsTab v={v} />
-          ) : tab === "visits" ? (
-            <VisitsTab v={v} />
-          ) : tab === "messages" ? (
+          ) : shownTab === "measures" ? (
+            <MeasuresTab v={v} />
+          ) : shownTab === "records" ? (
+            <RecordsTab v={v} />
+          ) : shownTab === "referrals" ? (
+            <ReferralsTab v={v} res={referrals} />
+          ) : shownTab === "messages" ? (
             <MessagesTab v={v} />
-          ) : tab === "notes" ? (
-            <NotesTab v={v} />
           ) : (
             <TimelineTab v={v} />
           )}
+          {/* штамп для подшивки: без «кто и когда распечатал» лист в деле безымянный */}
+          <div className="print-only case-print">
+            <SheetFoot lines={[printedBy, ut("ps.secrecy")]} right={card.fullName} />
+          </div>
         </div>
       </div>
 
-      <div style={top !== null ? ({ "--ah": `${top}px` } as CSSProperties) : undefined}>
+      <div className="print:hidden" style={top !== null ? ({ "--ah": `${top}px` } as CSSProperties) : undefined}>
         <Drawer
           open={drawer.open}
           mode={drawer.mode}
           modal={false}
-          onClose={() => setDrawer((d) => ({ ...d, open: false }))}
+          wide={drawer.mode === "plan" || drawer.mode === "episode"}
+          onClose={close}
           onReturn={(m) => setDrawer({ open: true, mode: (m as PaneMode) ?? "signal" })}
           label={ut("card.drawerLabel")}
         >
@@ -379,6 +500,9 @@ function CardRecord({
           <DrawerPane {...conclPane} />
           <DrawerPane {...notePane} />
           <DrawerPane {...bookPane} />
+          <DrawerPane {...planPane} />
+          <DrawerPane {...episodePane} />
+          <DrawerPane {...referralPane} />
         </Drawer>
       </div>
 
@@ -388,7 +512,7 @@ function CardRecord({
         набор вместо методики. Адресат — этот человек; ящик встаёт под полосу
         с ним, как остальные действия карточки.
       */}
-      <div style={top !== null ? ({ "--ah": `${top}px` } as CSSProperties) : undefined}>
+      <div className="print:hidden" style={top !== null ? ({ "--ah": `${top}px` } as CSSProperties) : undefined}>
         <AssignDrawer
           choose="test"
           open={assigning}
@@ -397,6 +521,8 @@ function CardRecord({
           who={card.fullName}
           whoNote={ut("card.assignNote")}
           comment
+          /* что предложили правила этому человеку — «Рекомендовано: PHQ-9» над списком (ступенчатый скрининг) */
+          recommendFor={card.id}
           existingFor={async (surveyId) => {
             /* прежняя выдача этой методики этому человеку — чтобы ящик сказал «вже призначено до …» */
             const mine = (await api.grants(surveyId)).find((g) => g.userId === card.id);
@@ -410,7 +536,7 @@ function CardRecord({
           sets={{
             onAssign: async (batteryId, dueAt, note) => {
               await api.assignBattery(batteryId, card.id, dueAt, note);
-              /* назначение набора — событие хронологии и пилюля «Призначено» в шапке */
+              /* назначение набора — событие хронологии и строка «Плану» огляда */
               refresh.timeline();
               return ut("card.setAssigned");
             },
@@ -433,3 +559,4 @@ function ButtonLike({ onClick, children }: { onClick: () => void; children: stri
     </button>
   );
 }
+

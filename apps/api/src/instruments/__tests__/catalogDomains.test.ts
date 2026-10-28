@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { SURVEY_DOMAINS } from "@quizzy/shared";
 import { CATALOG } from "../catalog";
-import { BUILTIN_KEYS, CATALOG_DOMAINS, catalogDomain } from "../catalogDomains";
+import { CATALOG_DOMAINS, catalogDomain } from "../catalogDomains";
 
 /**
  * Карта направлений каталога (catalogDomains.ts).
@@ -19,13 +19,15 @@ describe("направления каталога", () => {
     expect(missing, "впишите ключи в блок своего направления в apps/api/src/instruments/catalogDomains.ts").toEqual([]);
   });
 
-  test("в карте нет ключей, которых нет ни в каталоге, ни среди встроенных", () => {
+  test("в карте нет ключей, которых нет в каталоге", () => {
     /*
      * Лишний ключ ничего не ломает, но почти всегда означает опечатку: ключ
      * каталога переименовали, а карта осталась на старом — и у методики нет
-     * направления, хотя строка «для неё» в карте стоит.
+     * направления, хотя строка «для неё» в карте стоит. Четыре прежде
+     * встроенные методики учреждения (sr45, sad-persons, minimult, mlo) с
+     * 2026-10-28 — записи каталога, и исключений у проверки больше нет.
      */
-    const known = new Set<string>([...CATALOG.map((e) => e.key), ...BUILTIN_KEYS]);
+    const known = new Set<string>(CATALOG.map((e) => e.key));
     expect(Object.keys(CATALOG_DOMAINS).filter((k) => !known.has(k))).toEqual([]);
   });
 

@@ -1,19 +1,19 @@
 import { useEffect, useRef, useState } from "react";
 import type { SafetyPlanContent } from "@quizzy/shared";
 import { api } from "../api";
-import { day } from "../format";
 import { Callout, Ic, NotLoaded, useAction } from "../ui";
 import { useLang } from "../lang";
-import { useResource, type Resource } from "../useResource";
-import { Panel } from "../ui/layout";
-import { Button, Input, Tag, Textarea } from "../ui/primitives";
+import type { Resource } from "../useResource";
+import { Button, Input, Textarea } from "../ui/primitives";
 
 import { freshKey, withKeys, withoutKeys, type Keyed } from "../ui/rowKeys";
 import { staleMessage } from "./versioned";
 import { printOnly } from "../print";
 
 /**
- * Личный план безопасности (Стэнли–Браун).
+ * Личный план безопасности (Стэнли–Браун) — тело вида «План безпеки» в ящике
+ * рабочего места пациента (patientCard/Panes.tsx, usePlanPane). Заголовок,
+ * версию и дату говорит шапка ящика; здесь — план, правка и печать.
  *
  * Не путать с `safetyPlan` методики: там инструкция инструмента, одинаковая
  * для всех, кто попал в полосу риска, — что делать персоналу. Здесь план
@@ -78,20 +78,13 @@ export function rowsToPlan(d: PlanRows): SafetyPlanContent {
   };
 }
 
-export function SafetyPlanEditor({ userId }: { userId: string }) {
-  /* источник черновика: сам не перечитывается — правку не затрёт (useResource, manual) */
-  const res = useResource(() => api.safetyPlans(userId), [userId], { manual: true });
-  return <SafetyPlanBody userId={userId} res={res} />;
-}
-
 /**
- * Блок плана по загрузке — без запроса внутри (test/loadStates.test.tsx).
+ * План по загрузке — без запроса внутри (test/loadStates.test.tsx): ящик
+ * берёт тот же запрос, что шапка рабочего места и ящик разбора.
  *
- * До ответа блока нет, как и было (он стоит в карте среди прочих, и скелет
- * на его месте только двигал бы соседей). Отказ — есть: раньше на отказе
- * блок исчезал целиком, вместе с янтарной меткой «плану немає», и у
- * человека из группы риска карта молча выглядела так, будто плана и не
- * должно быть.
+ * До ответа плана нет. Отказ — есть: раньше на отказе блок исчезал целиком,
+ * вместе с янтарной меткой «плану немає», и у человека из группы риска карта
+ * молча выглядела так, будто плана и не должно быть.
  */
 export function SafetyPlanBody({
   userId,
@@ -103,7 +96,7 @@ export function SafetyPlanBody({
   const { ut } = useLang();
   const { run, busy } = useAction();
   const [draft, setDraft] = useState<PlanRows>(() => planToRows(EMPTY));
-  const [open, setOpen] = useState(false);
+  const [opened, setOpen] = useState(false);
   /*
    * Отказ 409 — план сохранил кто-то другой, пока редактор был открыт
    * (волна 15): фраза сервера. Набранное не трогается, пока человек сам не
@@ -114,6 +107,8 @@ export function SafetyPlanBody({
   const planRef = useRef<HTMLDivElement>(null);
 
   const active = res.data?.versions.find((v) => v.active) ?? null;
+  /* плана нет — сразу правка: ящик открыли ради того, чтобы составить */
+  const open = opened || (!!res.data && !active);
 
   useEffect(() => {
     if (active) setDraft(planToRows(active.content));
@@ -158,39 +153,20 @@ export function SafetyPlanBody({
 
   if (!res.data) return res.error ? <NotLoaded res={res} /> : null;
 
-  return (
-    /*
-     * Внимания требует ровно одно: плана нет у того, кому он нужен. Это и
-     * отмечено — янтарной пилюлей «плану немає» рядом с заголовком. Красный
-     * в наборе занят риском для человека, и рамка вокруг блока читалась бы
-     * так, будто сам план — тревожный факт.
-     */
-    <div ref={planRef}>
-      <Panel
-        title={ut("sp.title")}
-        icon={<Ic.shieldCheck />}
-        tone={active ? "good" : "warn"}
-        hint={ut("sp.hint")}
-        sub={
-          active ? (
-            `${ut("sp.version")} ${active.version}, ${day(active.reviewedAt ?? active.createdAt)}`
-          ) : (
-            <Tag tone="attention">{ut("sp.none")}</Tag>
-          )
-        }
-        actions={
-          <>
-            <Button size="xs" variant={open ? "quiet" : "secondary"} onClick={() => setOpen((v) => !v)}>
-              {open ? ut("common.close") : active ? ut("sp.revise") : ut("sp.create")}
-            </Button>
-            {active ? (
-              <Button size="xs" variant="ghost" icon={<Ic.download />} onClick={() => printOnly(planRef.current)}>
-                {ut("sp.print")}
-              </Button>
-            ) : null}
-          </>
-        }
-      >
+  const actions = (
+    <>
+      <Button size="xs" variant={open ? "quiet" : "secondary"} onClick={() => setOpen((v) => !v)}>
+        {open ? ut("common.close") : active ? ut("sp.revise") : ut("sp.create")}
+      </Button>
+      {active ? (
+        <Button size="xs" variant="ghost" icon={<Ic.download />} onClick={() => printOnly(planRef.current)}>
+          {ut("sp.print")}
+        </Button>
+      ) : null}
+    </>
+  );
+  const content = (
+    <>
         {!open && active ? <PlanView content={active.content} /> : null}
 
         {open ? (
@@ -306,7 +282,14 @@ export function SafetyPlanBody({
             </div>
           </div>
         ) : null}
-      </Panel>
+    </>
+  );
+
+  return (
+    <div ref={planRef} className="flex flex-col gap-3 py-4">
+      <p className="m-0 text-small text-text-2">{ut("sp.hint")}</p>
+      {active ? <div className="flex flex-wrap gap-1.5">{actions}</div> : null}
+      {content}
     </div>
   );
 }

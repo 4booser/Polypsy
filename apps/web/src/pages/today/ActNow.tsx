@@ -108,8 +108,16 @@ export function BigTimer({ t }: { t: Timer }) {
 export function signalText(c: AlertCase, ut: (k: never) => string): string {
   const s = c.signals[0];
   const t = (k: string) => ut(k as never);
-  const head = fill(t("dayA.surveyFrom"), { survey: c.surveyTitle, d: day(c.openedAt) });
-  return s ? `${head}: ${s.questionTitle} — «${s.label}»` : head;
+  /* методика — того сигнала, что в строке, а не той, что открыла случай: в случае бывают сигналы разных методик */
+  const head = fill(t("dayA.surveyFrom"), { survey: s?.surveyTitle ?? c.surveyTitle, d: day(s?.at ?? c.openedAt) });
+  if (!s) return head;
+  /*
+   * Подпись сигнала по шкале уже начинается названием шкалы («Вираженість
+   * депресії: Помірно тяжка депресія») — повторять его перед ней значило
+   * писать «Вираженість депресії — «Вираженість депресії: …»».
+   */
+  if (s.kind === "band" || s.label.startsWith(`${s.questionTitle}:`)) return `${head}: ${s.label}`;
+  return `${head}: ${s.questionTitle} — «${s.label}»`;
 }
 
 const KIND_ICON: Record<WorkItem["kind"], ComponentType<IconProps>> = {

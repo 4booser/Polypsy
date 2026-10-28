@@ -44,10 +44,11 @@ import { hasPermission } from "../lib/permissions";
 import {
   assertPatientAccess,
   assertPatientGroupAccess,
-  assertSurveyAccess,
+  assertSurveyUse,
   hasGrant,
   isStaff,
   patientsInScope,
+  surveyResultScope,
 } from "../lib/scope";
 import { log } from "../lib/log";
 import { hasCurrentConsent } from "../lib/consent";
@@ -131,12 +132,12 @@ async function pinnedVersion(
  * призначення минув» он поймёт, а «не знайдено» — нет. Отказ — в журнал:
  * сдача после отзыва — ровно то, что стоит найти потом.
  *
- * Сотрудник сдаёт то, с чем вправе работать (assertSurveyAccess) — как и
- * открывает.
+ * Сотрудник сдаёт то, чем вправе пользоваться (assertSurveyUse: свои
+ * методики и библиотека) — как и открывает.
  */
 async function assertMayTake(c: Context<AppEnv>, user: User, survey: SurveyFull): Promise<void> {
   if (isStaff(user)) {
-    await assertSurveyAccess(user, survey.id);
+    await assertSurveyUse(user, survey.id);
     return;
   }
   if (survey.visibility === "restricted" && !(await hasGrant(user.id, survey.id))) {
@@ -426,10 +427,9 @@ responseRoutes.post("/surveys/:id/responses", async (c) => {
         .from(responseScores)
         .where(eq(responseScores.responseId, existing.id));
       const risks = await db
-        .select({ id: riskAlerts.id })
+        .select({ id: riskAlerts.id, severity: riskAlerts.severity })
         .from(riskAlerts)
-        .where(eq(riskAlerts.responseId, existing.id))
-        .limit(1);
+        .where(eq(riskAlerts.responseId, existing.id));
       /*
        * Методика — той версии, которую человек проходил, а не действующей:
        * из неё названия шкал и ступени полос для сборки результата
@@ -462,6 +462,11 @@ responseRoutes.post("/surveys/:id/responses", async (c) => {
           warnings: [],
           safetyPlan:
             risks.length > 0 && existing.userId === user.id ? (survey?.safetyPlan ?? null) : null,
+          // то же, что у первой сдачи: по сохранённым тревогам, как и план безопасности выше
+          riskRaised:
+            isStaff(user) && risks.length > 0
+              ? { severity: risks.some((r) => r.severity === "severe") ? "severe" : "moderate", signals: risks.length }
+              : null,
           duplicate: true,
         },
         200,
@@ -511,7 +516,7 @@ responseRoutes.post("/surveys/:id/responses", async (c) => {
       });
       forbidden("err.permissionRequired", { permission: "administer" });
     }
-    await assertSurveyAccess(user, surveyId);
+    await assertSurveyUse(user, surveyId);
     await assertMayFillFor(c, user, input.onBehalfOf, surveyId);
     const subject = await db.query.users.findFirst({ where: eq(users.id, input.onBehalfOf) });
     if (!subject) notFound("err.patientNotFound");
@@ -669,6 +674,16 @@ responseRoutes.post("/surveys/:id/responses", async (c) => {
       // что назначила автоматика — специалист должен видеть это сразу,
       // а не обнаруживать в списке назначений через неделю
       cascade,
+      /*
+       * Сдача подняла сигнал риска — сотруднику, который вносил ответы, это
+       * говорится сразу. Врач, заполнивший HAM-D с суицидальным пунктом,
+       * видел «Обстеження збережено» и таблицу баллов, а случай молча уходил
+       * в очередь дежурного. Обследуемому — нет: ему план безопасности выше.
+       */
+      riskRaised:
+        isStaff(user) && risk.severity !== null
+          ? { severity: risk.severity, signals: risk.answers.length + risk.bands.length }
+          : null,
     },
     201,
   );
@@ -1108,7 +1123,8 @@ responseRoutes.get("/me/responses", async (c) => {
  */
 responseRoutes.get("/surveys/:id/responses", requireStaff, requirePermission(CLINICAL_READ), async (c) => {
   const staff = c.get("user");
-  await assertSurveyAccess(staff, c.req.param("id"));
+  // методика библиотеки — только прохождения людей зоны читателя (lib/scope.ts)
+  const zone = await surveyResultScope(staff, c.req.param("id"));
 
   // курсорная пагинация по времени сдачи: limit+1, чтобы узнать «есть ещё».
   // offset-вариант на живой таблице съезжает при вставках между страницами
@@ -1143,6 +1159,7 @@ responseRoutes.get("/surveys/:id/responses", requireStaff, requirePermission(CLI
     .where(
       and(
         eq(responses.surveyId, c.req.param("id")),
+        zone?.(responses.userId),
         versionId ? eq(responses.versionId, versionId) : undefined,
         userId ? eq(responses.userId, userId) : undefined,
         patientGroup

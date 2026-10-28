@@ -1,163 +1,264 @@
-import type { DynamicsPoint, Incomparable, RespondentDynamics, ResponseDetail, ScaleDynamics } from "@quizzy/shared";
-import { betterOf, reliableThreshold, type Better } from "../../charts/courseModel";
+import {
+  CLINICAL_DOMAINS,
+  instrumentCode,
+  instrumentMeasure,
+  type AlertCase,
+  type ClinicalDomain,
+  type DynamicsPoint,
+  type Incomparable,
+  type PatientCardDomain,
+  type RespondentDynamics,
+  type ResponseDetail,
+  type RiskSeverity,
+  type ScaleDynamics,
+  type Severity,
+} from "@quizzy/shared";
+import { betterOf, changeVerdict, reliableThreshold, type Better, type ChangeVerdict } from "../../charts/courseModel";
 import { sortRungs, type Rung } from "../../charts/ladder";
 import { shownLimit, shownStep } from "../patients/model";
 
 /*
- * Клиническая часть карточки пациента — чистые функции без React и сети.
+ * Клиническая часть рабочего места пациента — чистые функции без React и
+ * сети.
  *
- * Здесь решается, что встанет в таблицу методик, на график курса и в
- * таблицу пунктов, какой приём «следующий», какая неявка «свежая» и что
- * случилось «после сессии». Всё — из ответов приложения: динамика
- * (GET /api/dynamics/respondents/:id), прохождения с полосами той версии,
- * что человек видел (GET /api/responses/:id), и хронология
- * (GET /api/timeline/:id). Проверяется без отрисовки:
- * apps/web/test/patientCardClinical.test.ts.
+ * Здесь решается, что встанет в «Клінічну картину» (строки по доменам,
+ * сдвиг словом), что подняло открытый случай (сигналы, сложенные по пункту),
+ * что в таблице пунктов, какой приём «следующий» и какая неявка «свежая».
+ * Всё — из ответов приложения: динамика (GET /api/dynamics/respondents/:id),
+ * домены шкал карточки (GET /api/patients/:id/card), прохождения
+ * (GET /api/responses/:id), случаи и хронология (GET /api/timeline/:id).
+ * Проверяется без отрисовки: apps/web/test/patientCardClinical.test.ts.
  */
 
-/* ─────────── методики ─────────── */
+/* ─────────── клиническая картина ─────────── */
 
-export interface InstrumentRow {
+/**
+ * Строка «Клінічної картини»: одна методика в одном домене — последний балл,
+ * полоса словом и сдвиг от первого замера, сказанный словом.
+ *
+ * Сдвиг судится тем же правилом, что курс на графике и «Динаміка»
+ * (changeVerdict: |Δ| против MDC95 = 1,96·√2·SEM, то есть |RCI| > 1,96), но
+ * на экран идёт не «RCI 2,28», а «значуще погіршення».
+ */
+export interface PictureRow {
+  /** surveyId:домен — у DASS-42 одна методика даёт три строки в трёх доменах */
   key: string;
+  domain: ClinicalDomain;
   surveyId: string;
   surveyTitle: string;
-  scaleId: string;
-  /**
-   * Подпись строки: у методики с одной шкалой — код методики («PHQ-9» из
-   * «Депресія (PHQ-9)»), у многошкальной — название шкалы («Тривога»).
-   * Код шкалы («PHQ», «anxiety») — служебный идентификатор, человеку его
-   * не показываем.
-   */
+  /** Короткое имя методики: «PHQ-9» */
   code: string;
-  /** Что меряет: название шкалы у одношкальной, код методики у многошкальной */
-  title: string;
+  /** Что меряет шкала строки: «Вираженість депресії» */
+  scaleTitle: string;
+  /** Сколько ещё шкал этой методики в этом домене свёрнуто в строку (самая тяжёлая — на виду) */
+  folded: number;
+  scale: ScaleDynamics;
+  /** Лестница полос шкалы снизу вверх — для графика курса и малого курса строки */
+  rungs: Rung[];
   /** Замеры по времени, старые первыми */
   points: DynamicsPoint[];
-  /** Сдвиг первый → последний в единицах экрана (у доли — в. п.); null — сравнивать нельзя или замер один */
+  first: DynamicsPoint;
+  last: DynamicsPoint;
+  /**
+   * Слово сдвига: «single» — замер один; «incomparable» — концы сравнивать
+   * нельзя (другая версия, единицы, недостоверный протокол); прочее — как в
+   * changeVerdict.
+   */
+  verdict: ChangeVerdict | "single" | "incomparable";
+  /** Сдвиг первый → последний в единицах экрана (у доли — в. п.); null — не считается */
   delta: number | null;
-  /** Порог надёжной зміни (MDC95) в тех же единицах; null — не оценён */
+  /** Порог значущої зміни в единицах экрана; null — похибку не из чего оценить */
   threshold: number | null;
-  /** «Краще ↓ / ↑» — по полярности полос; null — полос нет или немонотонны */
   better: Better | null;
   incomparable: Incomparable | null;
-  /** Лестница полос шкалы — из последнего прохождения (та версия, что человек видел) */
-  rungs: Rung[];
-  scale: ScaleDynamics;
-  /**
-   * Остальные содержательные шкалы методики, свёрнутые в эту строку: у
-   * методики больше FOLD шкал строкой стоит самая тяжёлая, прочие — в
-   * раскрытии строки. Пусто — методика не свёрнута.
-   */
-  folded: ScaleDynamics[];
+  /** По этой методике поднят открытый сигнал риска */
+  signal: boolean;
+  /** Последний протокол недостоверен по шкалам достоверности */
+  unreliable: boolean;
+}
+
+export interface PictureGroup {
+  domain: ClinicalDomain;
+  rows: PictureRow[];
+  /** Есть открытый сигнал по методике этого домена */
+  signal: boolean;
 }
 
 /**
- * Больше стольких содержательных шкал — методика встаёт одной строкой.
- * Прежде восемь шкал «Адаптивності-200» занимали все шесть строк таблицы, и
- * СР-45 с сигналом того же дня в неё не попадал вовсе.
+ * Строка картины по одной шкале: последний замер, полоса и сдвиг от первого
+ * замера словом. Её же берёт «Динаміка» — для таблицы шкал методики.
  */
-export const FOLD = 3;
-
-const RANK: Record<string, number> = { none: 0, mild: 1, moderate: 2, severe: 3 };
-
-/** Шкала, которой свёрнутая методика говорит одним числом: последний замер тяжелее, при равенстве — первая */
-function heaviest(scales: ScaleDynamics[]): ScaleDynamics {
-  const lastOf = (sc: ScaleDynamics) => [...sc.points].sort((a, b) => Date.parse(a.submittedAt) - Date.parse(b.submittedAt)).at(-1);
-  return scales.reduce((best, sc) => ((RANK[lastOf(sc)?.severity ?? "none"] ?? 0) > (RANK[lastOf(best)?.severity ?? "none"] ?? 0) ? sc : best));
-}
-
-/** Лестница полос шкалы из прохождения: полосы той версии, по которой человек отвечал */
-export function rungsOf(detail: ResponseDetail | null | undefined, scaleId: string): Rung[] {
-  const score = detail?.scores.find((s) => s.scaleId === scaleId);
-  if (!score) return [];
-  return sortRungs(
-    score.bands.map((b) => ({ min: b.minScore, max: b.maxScore, label: b.label, severity: b.severity })),
-  );
-}
-
-/** Код методики из названия: «PHQ-9» из «Депресія (PHQ-9)», «СР-45» из «СР-45. Схильність…» */
-export function instrumentCode(surveyTitle: string): string {
-  /* в скобках — код, а не пометка: с цифрой («PHQ-9») или прописными («ISI»); «(демо)» — не код */
-  const paren = /\(([^()]{2,16})\)\s*$/.exec(surveyTitle)?.[1]?.trim();
-  if (paren && (/\d/.test(paren) || paren === paren.toUpperCase())) return paren;
-  return surveyTitle.split(/[.:]/)[0]!.trim();
-}
-
-/** Последнее прохождение методики в динамике — по нему берутся полосы */
-export function latestResponseOf(survey: RespondentDynamics["surveys"][number]): string | null {
-  let best: DynamicsPoint | null = null;
-  for (const sc of survey.scales) {
-    for (const p of sc.points) if (!best || Date.parse(p.submittedAt) > Date.parse(best.submittedAt)) best = p;
-  }
-  return best?.responseId ?? null;
-}
-
-/**
- * Строки таблицы методик: по шкале на строку, свежие методики первыми,
- * не больше `limit`. Методика больше чем из FOLD шкал — одной строкой (самая
- * тяжёлая шкала, прочие в раскрытии): таблица — о человеке по всем
- * методикам, а не о восьми шкалах одной. Сдвиг — только у сравнимых концов
- * (incomparable — то же правило, что в динамике и сводке), порог — MDC95 из
- * основы RCI.
- */
-export function instrumentRows(
-  dynamics: RespondentDynamics | null | undefined,
-  details: Record<string, ResponseDetail | null | undefined>,
+export function scaleRow(
+  sv: Pick<RespondentDynamics["surveys"][number], "surveyId" | "title" | "shortName">,
+  scale: ScaleDynamics,
+  domain: ClinicalDomain,
+  signalResponses: ReadonlySet<string> = new Set(),
+): PictureRow {
+  const points = [...scale.points].sort(byTime);
+  const first = points[0]!;
+  const last = points[points.length - 1]!;
+  const rungs = sortRungs((scale.bands ?? []).map((b) => ({ min: b.min, max: b.max, label: b.label, severity: b.severity })));
+  const better = rungs.length ? betterOf(rungs) : null;
+  const incomparable = scale.incomparable ?? null;
+  const rc = reliableThreshold(scale);
   /*
-   * fold: false — каждая шкала своей строкой и без потолка строк: так их
-   * берут «Графіки», где у каждой шкалы свой график, а не таблица о человеке.
+   * Сдвиг — серверный: при разных версиях с коэффициентами приведения сервер
+   * пересчитывает первый замер в единицы последнего (changeOverSeries), и
+   * простая разность объявила бы «значуще погіршення» там, где сменилась
+   * только версия методики. Разность сами — лишь у старого сервера без поля.
    */
-  { limit = 8, fold: folding = true }: { limit?: number; fold?: boolean } = {},
-): InstrumentRow[] {
+  const raw = scale.delta ?? last.rawScore - first.rawScore;
+  const single = points.length < 2;
+  return {
+    key: `${sv.surveyId}:${domain}`,
+    domain,
+    surveyId: sv.surveyId,
+    surveyTitle: sv.title,
+    /* короткое имя — от сервера (по ключу каталога), у старого ответа — из названия */
+    code: sv.shortName ?? instrumentCode(sv.title),
+    scaleTitle: scale.title,
+    folded: 0,
+    scale,
+    rungs,
+    points,
+    first,
+    last,
+    verdict: single ? "single" : incomparable ? "incomparable" : changeVerdict(raw, rc, better),
+    delta: single || incomparable ? null : shownStep(raw, last.normalization),
+    threshold: rc === null ? null : shownLimit(rc, last.normalization),
+    better,
+    incomparable,
+    signal: points.some((p) => signalResponses.has(p.responseId)),
+    unreliable: last.reliable === false,
+  };
+}
+
+/**
+ * Шапка графика курса словами: у методики с одной шкалой — что она меряет и
+ * её код («Депресія · PHQ-9»), у многошкальной — шкала и код методики
+ * («Тривога · DASS-42»). Код, который уже стоит в названии («Опитувальник
+ * Міні-мульт»), второй раз не повторяется. То же правило, что courseNames
+ * графиков, но код — общий (instrumentCode): «CIWA-Ar», «Brief COPE».
+ */
+export function chartNames(r: Pick<PictureRow, "surveyTitle" | "code" | "scaleTitle">, single: boolean): { measure: string; method: string | null } {
+  const measure = single ? instrumentMeasure(r.surveyTitle) : r.scaleTitle;
+  return { measure, method: measure.toLocaleLowerCase().includes(r.code.toLocaleLowerCase()) ? null : r.code };
+}
+
+const SEV_RANK: Record<Severity, number> = { none: 0, mild: 1, moderate: 2, severe: 3 };
+
+/** Ступень тяжести числом; без полосы — ниже «норми» */
+export function sevRank(s: Severity | null | undefined): number {
+  return s ? SEV_RANK[s] : -1;
+}
+
+const byTime = (a: DynamicsPoint, b: DynamicsPoint) => Date.parse(a.submittedAt) - Date.parse(b.submittedAt);
+
+/**
+ * Клиническая картина человека: строки по доменам, тяжёлое и рисковое —
+ * первым.
+ *
+ * Домен шкалы приходит с сервера (карточка, `domains`): решает его ключ
+ * каталога и код шкалы, а не название. Шкалы достоверности («L», «F») в
+ * картину не идут — они о бланке. Несколько шкал одной методики в одном
+ * домене (профиль Міні-мульта, «Адаптивність-200») — одна строка: самая
+ * тяжёлая шкала на виду, остальные — в «Динаміці».
+ *
+ * Порядок: строки с открытым сигналом, потом по тяжести последнего замера,
+ * потом свежие; домены — так же по своей худшей строке, при равенстве — в
+ * клиническом порядке CLINICAL_DOMAINS (суицидальный риск первым).
+ */
+export function clinicalPicture(
+  dynamics: RespondentDynamics | null | undefined,
+  domains: readonly PatientCardDomain[] | null | undefined,
+  /** Прохождения, поднявшие открытый сигнал риска (сигналы открытых случаев) */
+  signalResponses: ReadonlySet<string> = new Set(),
+): PictureGroup[] {
   if (!dynamics) return [];
-  const surveys = [...dynamics.surveys].sort((a, b) => Date.parse(b.lastAt ?? "") - Date.parse(a.lastAt ?? ""));
-  const rows: InstrumentRow[] = [];
-  for (const sv of surveys) {
-    const latest = latestResponseOf(sv);
-    const detail = latest ? details[latest] : null;
-    /* шкалы достоверности («L», «F») говорят о бланке, а не о человеке — в таблицу методик не идут */
-    const clinical = sv.scales.filter((sc) => {
-      const kind = detail?.scores.find((x) => x.scaleId === sc.scaleId)?.kind;
-      return sc.points.length > 0 && (!kind || kind === "clinical");
-    });
-    if (!clinical.length) continue;
-    const fold = folding && clinical.length > FOLD;
-    const scales = fold ? [heaviest(clinical)] : clinical;
-    const single = scales.length === 1;
-    const code = instrumentCode(sv.title);
-    for (const sc of scales) {
-      const points = [...sc.points].sort((a, b) => Date.parse(a.submittedAt) - Date.parse(b.submittedAt));
-      const rungs = rungsOf(detail, sc.scaleId);
-      const incomparable = sc.incomparable ?? null;
-      const first = points[0]!;
-      const last = points[points.length - 1]!;
-      const threshold = first.reliable === false ? null : reliableThreshold(sc);
-      rows.push({
-        key: `${sv.surveyId}:${sc.scaleId}`,
-        surveyId: sv.surveyId,
-        surveyTitle: sv.title,
-        scaleId: sc.scaleId,
-        code: single ? code : sc.title,
-        title: single ? sc.title : code,
-        points,
-        /*
-         * Сдвиг и порог — в единицах экрана, теми же правилами, что «Огляд
-         * справи» и «Хто це» (patients/model.ts): у доли — процентные пункты.
-         * Прежде доля вычиталась как есть, и 0,29 → 0,49 стояло «+0,2 в. п.»
-         * рядом с «49%».
-         */
-        delta: points.length > 1 && !incomparable ? shownStep(last.rawScore - first.rawScore, last.normalization) : null,
-        threshold: threshold === null ? null : shownLimit(threshold, last.normalization),
-        better: betterOf(rungs),
-        incomparable,
-        rungs,
-        scale: sc,
-        folded: fold ? clinical.filter((x) => x !== sc) : [],
-      });
-      if (rows.length >= limit) return rows;
+  const domainOf = new Map((domains ?? []).map((d) => [`${d.surveyId}|${d.code}`, d.domain]));
+  const rows: PictureRow[] = [];
+  for (const sv of dynamics.surveys) {
+    const clinical = sv.scales.filter((sc) => sc.points.length > 0 && (sc.kind ?? "clinical") === "clinical");
+    const byDomain = new Map<ClinicalDomain, ScaleDynamics[]>();
+    for (const sc of clinical) {
+      const d = domainOf.get(`${sv.surveyId}|${sc.code}`) ?? "other";
+      byDomain.set(d, [...(byDomain.get(d) ?? []), sc]);
+    }
+    for (const [domain, scales] of byDomain) {
+      const lastOf = (sc: ScaleDynamics) => [...sc.points].sort(byTime).at(-1)!;
+      const scale = scales.reduce((best, sc) => (sevRank(lastOf(sc).severity) > sevRank(lastOf(best).severity) ? sc : best));
+      rows.push({ ...scaleRow(sv, scale, domain, signalResponses), folded: scales.length - 1 });
     }
   }
-  return rows;
+  const rowOrder = (a: PictureRow, b: PictureRow) =>
+    Number(b.signal) - Number(a.signal) ||
+    sevRank(b.last.severity) - sevRank(a.last.severity) ||
+    Date.parse(b.last.submittedAt) - Date.parse(a.last.submittedAt);
+  const groups = new Map<ClinicalDomain, PictureRow[]>();
+  for (const r of rows) groups.set(r.domain, [...(groups.get(r.domain) ?? []), r]);
+  return [...groups.entries()]
+    .map(([domain, list]) => {
+      const sorted = list.sort(rowOrder);
+      return { domain, rows: sorted, signal: sorted.some((r) => r.signal) };
+    })
+    .sort(
+      (a, b) =>
+        Number(b.signal) - Number(a.signal) ||
+        sevRank(b.rows[0]!.last.severity) - sevRank(a.rows[0]!.last.severity) ||
+        CLINICAL_DOMAINS.indexOf(a.domain) - CLINICAL_DOMAINS.indexOf(b.domain),
+    );
+}
+
+/* ─────────── сигналы случая ─────────── */
+
+/** Сигналы случая, сложенные по пункту или шкале: «PHQ-9: думки про смерть — 5 разів» */
+export interface SignalGroup {
+  key: string;
+  /** Подпись самого тяжёлого (при равенстве — свежего) сигнала группы */
+  label: string;
+  count: number;
+  severity: RiskSeverity;
+  /** Сигнал по ответу на пункт, а не по полосе шкалы */
+  item: boolean;
+  lastAt: string;
+}
+
+const RISK_RANK: Record<string, number> = { moderate: 1, severe: 2 };
+
+/**
+ * Что подняло открытые случаи — по пункту или шкале, а не строкой на сигнал.
+ *
+ * Прежде «Огляд» открывался восемью строками «Сигнал: …» — один и тот же
+ * пункт PHQ-9 в каждом из повторных замеров, все в одну минуту. Здесь пункт
+ * (или шкала) — одна строка со счётом; первыми — тяжёлые, при равенстве —
+ * ответ на пункт (он конкретнее полосы), потом частые.
+ */
+export function signalGroups(cases: readonly AlertCase[]): SignalGroup[] {
+  const groups = new Map<string, SignalGroup>();
+  for (const c of cases) {
+    for (const s of c.signals) {
+      const key = `${s.kind}|${s.questionId ?? s.questionTitle}`;
+      const g = groups.get(key);
+      if (!g) {
+        groups.set(key, { key, label: s.label, count: 1, severity: s.severity, item: s.kind === "option", lastAt: s.at });
+        continue;
+      }
+      g.count += 1;
+      const heavier = (RISK_RANK[s.severity] ?? 0) - (RISK_RANK[g.severity] ?? 0);
+      if (heavier > 0 || (heavier === 0 && Date.parse(s.at) > Date.parse(g.lastAt))) {
+        g.label = s.label;
+        g.severity = s.severity;
+      }
+      if (Date.parse(s.at) > Date.parse(g.lastAt)) g.lastAt = s.at;
+    }
+  }
+  return [...groups.values()].sort(
+    (a, b) =>
+      (RISK_RANK[b.severity] ?? 0) - (RISK_RANK[a.severity] ?? 0) ||
+      Number(b.item) - Number(a.item) ||
+      b.count - a.count ||
+      Date.parse(b.lastAt) - Date.parse(a.lastAt),
+  );
 }
 
 /* ─────────── пункты ─────────── */
@@ -223,12 +324,22 @@ export function itemsGrid(details: readonly ResponseDetail[]): ItemsGrid | null 
     .filter((a) => a.options.length && (a.options.some((o) => o.score !== null) || a.options.some((o) => o.riskFlag)))
     .sort((a, b) => a.position - b.position);
   if (!scored.length) return null;
+  /*
+   * Ответ на этот пункт в замере. У каждой версии методики свои id вопросов —
+   * и у неизменённых тоже (createVersion, copyVersion), — так что по id
+   * находится только версия последнего замера, а старые замеры выходили
+   * пустыми столбцами. Тот же пункт другой версии — та же позиция и дословно
+   * тот же текст; изменённый пункт честно остаётся пустым.
+   */
+  const answerFor = (d: ResponseDetail, q: (typeof scored)[number]) =>
+    d.answers.find((a) => a.questionId === q.questionId) ??
+    d.answers.find((a) => a.position === q.position && a.title === q.title);
   const rows: ItemRow[] = scored.map((q, i) => {
     const cells: (number | null)[] = [];
     const words: (string | null)[] = [];
     const flags: boolean[] = [];
     for (const d of sorted) {
-      const got = picked(d.answers.find((a) => a.questionId === q.questionId));
+      const got = picked(answerFor(d, q));
       cells.push(got.score);
       words.push(got.text);
       flags.push(got.flag);
@@ -345,11 +456,6 @@ export function lastSession(visits: readonly Visit[], now: number): { visit: Vis
   return visit ? { visit, n: held.length } : null;
 }
 
-/** Проведённых приёмов всего — счётчик вкладки «Прийоми» считает все, кроме отменённых */
-export function heldCount(visits: readonly Visit[]): number {
-  return visits.filter((v) => HELD.has(v.status)).length;
-}
-
 /**
  * Свежая неявка: после последнего проведённого приёма и не старше `days`.
  * Неявка, за которой человек уже пришёл, — история, а не открытое дело.
@@ -376,23 +482,6 @@ export function openAssignments(items: readonly TimelineRow[]): Assignment[] {
     .filter((i) => i.kind === "assignment" && i.detail === "open")
     .map((i) => ({ id: i.id.replace(/^assignment:/, ""), title: i.title, at: i.at, dueAt: i.dueAt ?? null }))
     .sort((a, b) => Date.parse(a.dueAt ?? a.at) - Date.parse(b.dueAt ?? b.at));
-}
-
-/**
- * События «после сессии»: всё, что случилось после последнего проведённого
- * приёма (или за последние `days`, если приёмов не было), свежие последними.
- * Сам приём и запланированные после «сейчас» сюда не входят.
- */
-export function sinceEvents(items: readonly TimelineRow[], since: number | null, now: number, days = 30): TimelineRow[] {
-  const from = since ?? now - days * 86_400_000;
-  return items
-    .filter((i) => {
-      const t = Date.parse(i.at);
-      if (!Number.isFinite(t) || t <= from || t > now) return false;
-      if (i.kind === "visit" && PLANNED.has(i.detail ?? "")) return false;
-      return true;
-    })
-    .sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
 }
 
 /* ─────────── человек ─────────── */

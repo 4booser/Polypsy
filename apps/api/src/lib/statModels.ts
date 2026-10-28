@@ -28,7 +28,9 @@ import {
   assertFilterPresetAccess,
   assertPatientAccess,
   assertPatientGroupAccess,
-  assertSurveyAccess,
+  assertSurveyUse,
+  surveyResultScope,
+  type PatientCondition,
 } from "./scope";
 import { getSurvey } from "./surveys";
 import { env } from "../env";
@@ -44,8 +46,9 @@ import { env } from "../env";
  * ═══ Два обязательства ═══
  *
  * 1. Выборка не выходит за зону ответственности. Фильтры её только сужают:
- *    методика — через assertSurveyAccess, группа пациентов и конкретный
- *    человек — через те же проверки, что у карты пациента. Иначе колонка
+ *    методика — через surveyResultScope (у методики библиотеки — только
+ *    люди зоны сотрудника), группа пациентов и конкретный человек — через
+ *    те же проверки, что у карты пациента. Иначе колонка
  *    «пацієнт: <идентификатор>» была бы способом узнать распределение
  *    ответов человека, которого сотруднику видеть не положено.
  *
@@ -154,7 +157,7 @@ export async function resolveColumns(user: User, input: StatModelColumnInput[]):
     const filters = col.presetId ? null : (col.filters ?? {});
     if (filters) await assertFilterRefs(user, filters);
 
-    await assertSurveyAccess(user, col.surveyId);
+    await assertSurveyUse(user, col.surveyId);
     const versionId = await resolveVersion(col.surveyId, col.versionId ?? null);
     const survey = await getSurvey(col.surveyId, versionId, "uk");
     if (!survey) notFound("err.surveyNotFound");
@@ -223,7 +226,11 @@ interface Respondent {
  * (lib/population.ts): макет просит «Дата», а не момент, и «по 30 вересня»
  * означает весь день по Киеву, а не по часам сервера базы.
  */
-async function sampleOf(column: StatModelColumn, filters: SampleFilters): Promise<Respondent[]> {
+async function sampleOf(
+  column: StatModelColumn,
+  filters: SampleFilters,
+  whose: PatientCondition | undefined,
+): Promise<Respondent[]> {
   const rows = await db
     .select({
       id: responses.id,
@@ -241,6 +248,8 @@ async function sampleOf(column: StatModelColumn, filters: SampleFilters): Promis
         eq(responses.reliable, true),
         isNotNull(responses.submittedAt),
         eq(users.role, "user"),
+        // методика библиотеки — только люди зоны сотрудника (lib/scope.ts, surveyResultScope)
+        whose?.(responses.userId),
         filters.sex ? eq(responses.respondentSex, filters.sex) : undefined,
         // без учёта регистра: «київ» и «Київ» — один город, а поле свободное
         filters.locality ? sql`lower(${users.locality}) = lower(${filters.locality})` : undefined,
@@ -815,7 +824,7 @@ export async function runColumns(
 ): Promise<{ columns: StatRunColumn[]; sizes: number[] }> {
   const prepared: Prepared[] = [];
   for (const column of columns) {
-    await assertSurveyAccess(user, column.surveyId);
+    const whose = await surveyResultScope(user, column.surveyId);
     let filters: SampleFilters = column.filters ?? {};
     let presetTitle: string | null = null;
     if (column.presetId) {
@@ -828,7 +837,7 @@ export async function runColumns(
     const survey = await getSurvey(column.surveyId, column.versionId, lang);
     if (!survey) notFound("err.surveyNotFound");
 
-    prepared.push({ column, filters, survey, presetTitle, sample: await sampleOf(column, filters) });
+    prepared.push({ column, filters, survey, presetTitle, sample: await sampleOf(column, filters, whose) });
   }
 
   const sheets: Sheet[] = [];

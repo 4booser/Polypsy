@@ -239,10 +239,11 @@ describe("GET /api/timeline/:id — назначение набора", () => {
 });
 
 describe("instrumentCode", () => {
-  test("код в скобках, код в начале, пометка в скобках — не код", () => {
-    expect(instrumentCode("Депресія (PHQ-9)", "PHQ")).toBe("PHQ-9");
-    expect(instrumentCode("СР-45. Схильність до суїцидальних реакцій", "Sr")).toBe("СР-45");
-    expect(instrumentCode("Скринінг емоційного стану (демо)", "EMO")).toBe("EMO");
-    expect(instrumentCode("Опитувальник Міні-мульт", "Hs")).toBe("Hs");
+  test("код в скобках, код в начале, по ключу каталога; пометка в скобках — не код", () => {
+    expect(instrumentCode("Депресія (PHQ-9)")).toBe("PHQ-9");
+    expect(instrumentCode("СР-45. Схильність до суїцидальних реакцій")).toBe("СР-45");
+    // нет кода — название, а не код шкалы: «EMO» о методике не говорит
+    expect(instrumentCode("Скринінг емоційного стану (демо)")).toBe("Скринінг емоційного…");
+    expect(instrumentCode("Опитувальник Міні-мульт", { catalogKey: "minimult", lang: "uk" })).toBe("Міні-мульт");
   });
 });

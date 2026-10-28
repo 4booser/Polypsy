@@ -11,11 +11,11 @@ import { LOCALE_OF, type Lang, type SurveyGrant, type SurveyListItem } from "@qu
 
 /*
  * Код — то, чем методику называют вслух: PHQ-9, GAD-7, AUDIT-C, SAD
- * PERSONS. Латиница или кириллица прописными, цифры, точка, дефис; одно
- * слово или два прописных. Строчные допускаются только после прописной
- * («ASRS-v1.1»), иначе «демо» и «шкала Розенберга» читались бы кодом.
+ * PERSONS, TGI-SR+. Латиница или кириллица прописными, цифры, точка, дефис,
+ * плюс; одно слово или два прописных. Строчные допускаются только после
+ * прописной («ASRS-v1.1»), иначе «демо» и «шкала Розенберга» читались бы кодом.
  */
-const CODE_RE = /^(?=.*[A-ZА-ЯІЇЄҐ])[A-ZА-ЯІЇЄҐ0-9][A-ZА-ЯІЇЄҐa-z0-9.-]*(?: [A-ZА-ЯІЇЄҐ0-9-]+)?$/u;
+const CODE_RE = /^(?=.*[A-ZА-ЯІЇЄҐ])[A-ZА-ЯІЇЄҐ0-9][A-ZА-ЯІЇЄҐa-z0-9.+-]*(?: [A-ZА-ЯІЇЄҐ0-9-]+)?$/u;
 const LEADING_RE = /^([A-ZА-ЯІЇЄҐ][A-ZА-ЯІЇЄҐ0-9-]{1,10})\.\s+(.+)$/u;
 const MAX_CODE = 14;
 
@@ -167,7 +167,9 @@ export interface Attention {
  *
  * Только методики в работе: снятая с использования уже никому не выдаётся,
  * и её непроверенный ключ не долг. Ключи и права — у опубликованных (их
- * выдают пациентам сейчас); черновики — свежие сверху.
+ * выдают пациентам сейчас); черновики — свежие сверху и только те, что
+ * читающий правит (editable): черновик общего каталога дописывают его
+ * администраторы, а не каждый, кто каталогом пользуется.
  */
 export function attentionOf(items: readonly SurveyListItem[]): Attention {
   const live = items.filter((s) => !s.archivedAt);
@@ -176,7 +178,7 @@ export function attentionOf(items: readonly SurveyListItem[]): Attention {
     keys: published.filter(keysPending),
     rights: published.filter(rightsPending),
     drafts: live
-      .filter((s) => s.status === "draft")
+      .filter((s) => s.status === "draft" && s.editable !== false)
       .sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : a.updatedAt > b.updatedAt ? -1 : 0)),
   };
 }

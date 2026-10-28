@@ -138,7 +138,7 @@ function VisitScreen({ id }: { id: string }) {
   useEffect(() => {
     if (notes.data) dispatch({ type: "loaded", state: notes.data });
   }, [notes.data]);
-  /* отказ 409 — запись переписали, пока протокол был открыт: строкой у кнопок, с «перечитати» (как в NotesEditor) */
+  /* отказ 409 — запись переписали, пока протокол был открыт: строкой у кнопок, с «перечитати» (как в записи прийому рабочего места) */
   const [stale, setStale] = useState<string | null>(null);
 
   const [open, setOpen] = useState(false);

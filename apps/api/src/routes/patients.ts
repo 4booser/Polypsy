@@ -1,13 +1,16 @@
 import { Hono } from "hono";
-import { and, asc, desc, eq, inArray, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull, or, sql, type SQL } from "drizzle-orm";
 import {
+  CLINICAL_DOMAINS,
   instrumentCode,
   patientListQuery,
   patientNamesQuery,
   polarityOfBands,
   t,
+  type ClinicalDomain,
   type PatientCard,
   type PatientCardConclusion,
+  type PatientCardDomain,
   type PatientCardGroup,
   type PatientCardResponse,
   type PatientListCounts,
@@ -21,31 +24,37 @@ import {
 } from "@quizzy/shared";
 import { db } from "../db";
 import {
+  appointments,
   conclusions,
+  dispensary,
+  episodes,
   patientGroupMembers,
   patientGroups,
+  referrals,
   responses,
   responseScores,
   scaleBands,
   scales,
+  slots,
   surveys,
   users,
 } from "../db/schema";
 import { audit } from "../lib/audit";
 import { bandLabelsIn } from "../lib/bandLabels";
+import { clinicalDomainOf, isKeyDomain, severityRank } from "../lib/clinicalDomains";
 import { fullNameOf } from "../lib/auth";
 import { decryptField } from "../lib/crypto";
 import { namesOf } from "../lib/names";
 import { langOf, notFound, parseQuery } from "../lib/http";
 import { birthYearOf } from "../lib/privacy";
 import {
-  accessibleGroupIds,
   accessiblePatientIds,
   assertPatientAccess,
   assertPatientGroupAccess,
   isSuperadmin,
   patientsInScope,
   surveyScopeFilterFor,
+  surveyUseSql,
 } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
@@ -113,14 +122,12 @@ patientRoutes.get("/", async (c) => {
    * показывают больше нигде. В бою дату резала политика responses, и один
    * и тот же человек в списке был «сдавал вчера» владельцем базы и «не
    * сдавал» ролью приложения (волна 13, обход всех GET под ролью).
+   *
+   * Методики — те, которыми читатель пользуется: свои и библиотека (общий
+   * каталог). Люди списка — уже из его зоны, а у них прохождения библиотеки
+   * видны (lib/scope.ts); без неё врач видел у каждого «замеров нет».
    */
-  const groupIds = await accessibleGroupIds(user);
-  const ownSurvey =
-    groupIds === null
-      ? undefined
-      : groupIds.length
-        ? sql`(s.group_id in ${groupIds} or (s.group_id is null and s.created_by = ${user.id}))`
-        : sql`(s.group_id is null and s.created_by = ${user.id})`;
+  const ownSurvey = await surveyUseSql(user, "s");
   const lastResponse = ownSurvey
     ? sql<string | null>`(select max(r.submitted_at) from responses r join surveys s on s.id = r.survey_id
         where r.user_id = "users"."id" and r.status = 'completed' and ${ownSurvey})`
@@ -338,15 +345,24 @@ const ORDER: Record<"risk" | "last" | "next", (a: PatientListItem, b: PatientLis
 };
 
 /**
- * Главная шкала последнего замера по каждому человеку страницы и её ход.
+ * Клинический стан каждого человека страницы — одной шкалой с ходом.
  *
- * «Последний замер» — свежайшее из двенадцати последних прохождений по
- * методикам зоны читателя, у которого ровно одна клиническая шкала с
- * полосой тяжести (скрининг); нет такого — свежайшее с любой полосой; нет и
- * его — свежайшее вообще (личностный опросник без полос о состоянии не
- * говорит, но лучше он, чем пустая ячейка). Главная шкала — первая по
- * порядку методики среди клинических с полосой. Ход — до трёх последних
- * значений этой шкалы той же методики.
+ * Прежде в строке стояла «главная шкала последнего замера»: свежайший
+ * скрининг, какой бы он ни был. Человек с тяжёлой депрессией по PHQ-9,
+ * сдавший вчера WHO-5, стоял в реестре «WHO-5 1» — о состоянии строка
+ * молчала. Теперь (участок dp-patient) строка — самая тяжёлая полоса среди
+ * последних замеров по ключевым доменам (lib/clinicalDomains.ts): у каждой
+ * шкалы берётся её последний замер, из них — самый тяжёлый; при равной
+ * тяжести — домен поважнее (суицидальный риск, депрессия, травма…), потом
+ * свежее. Личностные опросники и «інше» — только если других полос нет; нет
+ * полос вовсе — свежайшая клиническая шкала, как и было.
+ *
+ * Рядом — куда сдвинулась ступень от предыдущего замера той же шкалы
+ * (`trend`) и какие ещё домены в клиническом диапазоне (`also`): «PHQ-9 19,
+ * помірно тяжка ↑; також алкоголь». Ход — до трёх последних значений шкалы.
+ * Смотрятся последние двадцать четыре прохождения человека по методикам зоны
+ * читателя: давний замер методики, которую больше не повторяли, тоже
+ * «последний».
  */
 async function measuresOf(
   userIds: string[],
@@ -360,6 +376,8 @@ async function measuresOf(
     response_id: string;
     survey_id: string;
     survey_title: unknown;
+    catalog_key: string | null;
+    survey_domain: string | null;
     submitted_at: string;
     scale_id: string;
     code: string;
@@ -377,14 +395,15 @@ async function measuresOf(
       where r.user_id in ${userIds} and r.status = 'completed' and r.submitted_at is not null
         ${ownSurvey ? sql`and ${ownSurvey}` : sql``}
     )
-    select rc.user_id, rc.id as response_id, rc.survey_id, sv.title as survey_title, rc.submitted_at,
+    select rc.user_id, rc.id as response_id, rc.survey_id, sv.title as survey_title,
+      sv.catalog_key, sv.domain as survey_domain, rc.submitted_at,
       sc.id as scale_id, sc.code, sc.position, sc.kind, rs.value, rs.severity, rs.band_label,
       rs.normalization
     from recent rc
       join surveys sv on sv.id = rc.survey_id
       join response_scores rs on rs.response_id = rc.id
       join scales sc on sc.id = rs.scale_id
-    where rc.rn <= 12
+    where rc.rn <= 24
     order by rc.user_id, rc.submitted_at asc, sc.position asc`);
 
   type Row = (typeof rows)[number];
@@ -395,32 +414,47 @@ async function measuresOf(
     byUser.set(r.user_id, list);
   }
 
-  const picks = new Map<string, { main: Row; values: number[] }>();
+  const rank = (s: string | null) => severityRank(s as Severity | null);
+  const order = (d: ClinicalDomain) => CLINICAL_DOMAIN_ORDER.indexOf(d);
+  type Scale = { last: Row; prev: Row | null; series: Row[]; domain: ClinicalDomain };
+
+  const picks = new Map<string, Scale & { also: ClinicalDomain[] }>();
   for (const [userId, list] of byUser) {
-    const newest = [...new Set(list.map((r) => r.response_id))].reverse();
-    const clinical = (responseId: string) => list.filter((r) => r.response_id === responseId && r.kind === "clinical");
-    const banded = (responseId: string) => clinical(responseId).filter((r) => r.severity !== null);
-    /*
-     * Скрининг с одним итогом (PHQ-9, GAD-7, PCL-5) говорит о состоянии
-     * одним числом — он и стоит в строке. Профиль из десятка шкал (Міні-мульт)
-     * одним числом не пересказать: первая его шкала в строке выдала бы
-     * случайное за главное. Он — только если скрининга не было.
-     */
-    const chosen =
-      newest.map((id) => banded(id)).find((b) => b.length === 1)?.[0] ??
-      newest.map((id) => banded(id)[0]).find((m) => m !== undefined) ??
-      (newest[0] ? clinical(newest[0])[0] : undefined);
-    if (!chosen) continue;
-    const series = list.filter(
-      (r) => r.survey_id === chosen.survey_id && r.code === chosen.code && String(r.submitted_at) <= String(chosen.submitted_at),
-    );
-    picks.set(userId, {
-      main: chosen,
-      values: series.slice(-3).map((r) => Math.round(Number(r.value) * 10) / 10),
+    /* ряды по шкалам: ключ — методика и код шкалы (id меняется от версии к версии), строки — от старых к новым */
+    const series = new Map<string, Row[]>();
+    for (const r of list) {
+      if (r.kind !== "clinical") continue;
+      const key = `${r.survey_id}|${r.code}`;
+      series.set(key, [...(series.get(key) ?? []), r]);
+    }
+    const scales: Scale[] = [...series.values()].map((s) => {
+      const last = s.at(-1)!;
+      return {
+        last,
+        prev: s.at(-2) ?? null,
+        series: s,
+        domain: clinicalDomainOf({ catalogKey: last.catalog_key, surveyDomain: last.survey_domain, code: last.code }),
+      };
     });
+    if (!scales.length) continue;
+    const heavier = (a: Scale, b: Scale) =>
+      rank(b.last.severity) - rank(a.last.severity) ||
+      order(a.domain) - order(b.domain) ||
+      String(b.last.submitted_at).localeCompare(String(a.last.submitted_at));
+    const banded = scales.filter((s) => s.last.severity !== null);
+    const key = banded.filter((s) => isKeyDomain(s.domain));
+    const newest = [...scales].sort((a, b) => String(b.last.submitted_at).localeCompare(String(a.last.submitted_at)))[0]!;
+    const chosen = [...key].sort(heavier)[0] ?? [...banded].sort(heavier)[0] ?? newest;
+    /* другие домены в клиническом диапазоне — по самому тяжёлому замеру каждого */
+    const also: ClinicalDomain[] = [];
+    for (const s of [...key].sort(heavier)) {
+      if (s.domain === chosen.domain || also.includes(s.domain) || rank(s.last.severity) < rank("moderate")) continue;
+      also.push(s.domain);
+    }
+    picks.set(userId, { ...chosen, also });
   }
 
-  const scaleIds = [...new Set([...picks.values()].map((p) => p.main.scale_id))];
+  const scaleIds = [...new Set([...picks.values()].map((p) => p.last.scale_id))];
   const bandRows = scaleIds.length
     ? await db
         .select({
@@ -440,23 +474,31 @@ async function measuresOf(
 
   // слово полосы — на языке читателя, а не на языке прохождения (lib/bandLabels.ts)
   const bandIn = await bandLabelsIn(lang, scaleIds);
-  for (const [userId, { main, values }] of picks) {
-    const title = t(main.survey_title as never, lang);
+  for (const [userId, { last, prev, series, domain, also }] of picks) {
+    const title = t(last.survey_title as never, lang);
+    const now = rank(last.severity);
+    const before = prev ? rank(prev.severity) : -1;
     out.set(userId, {
-      surveyId: main.survey_id,
-      /* нет кода в названии — само название: код шкалы («F», «sleep») о методике не говорит */
-      code: instrumentCode(title, title),
+      surveyId: last.survey_id,
+      /* по ключу каталога, иначе из названия; код шкалы («F», «sleep») о методике не говорит */
+      code: instrumentCode(title, { catalogKey: last.catalog_key, lang }),
       title,
-      values,
-      at: iso(String(main.submitted_at)),
-      severity: (main.severity as PatientListMeasure["severity"]) ?? null,
-      bandLabel: bandIn(main.scale_id, main.band_label),
-      normalization: main.normalization as ScaleNormalization,
-      better: betterOf.get(main.scale_id) ?? null,
+      values: series.slice(-3).map((r) => Math.round(Number(r.value) * 10) / 10),
+      at: iso(String(last.submitted_at)),
+      severity: (last.severity as PatientListMeasure["severity"]) ?? null,
+      bandLabel: bandIn(last.scale_id, last.band_label),
+      normalization: last.normalization as ScaleNormalization,
+      better: betterOf.get(last.scale_id) ?? null,
+      domain,
+      trend: now < 0 || before < 0 ? null : now > before ? "worse" : now < before ? "better" : "same",
+      also,
     });
   }
   return out;
 }
+
+/** Порядок доменов при равной тяжести — клинический приоритет (shared/domains.ts) */
+const CLINICAL_DOMAIN_ORDER: readonly ClinicalDomain[] = CLINICAL_DOMAINS;
 
 /**
  * Имена людей зоны по идентификаторам — без карточки (волна 27).
@@ -545,8 +587,12 @@ patientRoutes.get("/:id/card", async (c) => {
 
   /* ── Тести ── */
   const scope = await surveyScopeFilterFor(user, patientId);
-  const scoped = await db.select({ id: surveys.id, title: surveys.title }).from(surveys).where(scope);
+  const scoped = await db
+    .select({ id: surveys.id, title: surveys.title, catalogKey: surveys.catalogKey, domain: surveys.domain })
+    .from(surveys)
+    .where(scope);
   const titleOf = new Map(scoped.map((s) => [s.id, t(s.title as never, lang)]));
+  const surveyOf = new Map(scoped.map((s) => [s.id, s]));
 
   const responseRows = titleOf.size
     ? await db
@@ -573,6 +619,13 @@ patientRoutes.get("/:id/card", async (c) => {
     : [];
   const scoresByResponse = new Map<string, PatientCardResponse["scales"]>();
   const bandIn = await bandLabelsIn(lang, scoreRows.map((r) => r.score.scaleId));
+  const surveyOfResponse = new Map(responseRows.map((r) => [r.id, r.surveyId]));
+  /*
+   * Домен каждой шкалы — для «Клінічної картини»: строки по доменам, а не по
+   * дате сдачи (lib/clinicalDomains.ts). Ключ — методика и код шкалы, как у
+   * динамики: id шкалы меняется от версии к версии.
+   */
+  const domainOf = new Map<string, PatientCardDomain>();
   for (const { score, scale } of scoreRows) {
     /*
      * Только содержательные шкалы: вердикт шкал достоверности уже сложен в
@@ -580,6 +633,15 @@ patientRoutes.get("/:id/card", async (c) => {
      * результат.
      */
     if (scale.kind !== "clinical") continue;
+    const surveyId = surveyOfResponse.get(score.responseId);
+    const survey = surveyId ? surveyOf.get(surveyId) : undefined;
+    if (survey && !domainOf.has(`${survey.id}|${scale.code}`)) {
+      domainOf.set(`${survey.id}|${scale.code}`, {
+        surveyId: survey.id,
+        code: scale.code,
+        domain: clinicalDomainOf({ catalogKey: survey.catalogKey, surveyDomain: survey.domain, code: scale.code }),
+      });
+    }
     const list = scoresByResponse.get(score.responseId) ?? [];
     list.push({
       code: scale.code,
@@ -696,6 +758,46 @@ patientRoutes.get("/:id/card", async (c) => {
     ? await db.query.users.findFirst({ where: eq(users.id, person.leadSpecialistId) })
     : null;
 
+  /*
+   * ── шапка и «План» рабочего места ──
+   *
+   * Обращение, ближайшие приёмы, учёт и незакрытые направления — тем же
+   * чтением, что и карточка: шапка говорит, зачем человек здесь и что
+   * дальше. Ближайший приём прежде брался из карточки приёма
+   * (/api/clinic/appointments/:id/context), и открытие пациента писало в
+   * журнал «открыл приём» (clinic.visit_open) о приёме, которого никто не
+   * открывал. Повод направления сюда не идёт: он — во вкладке «Направлення».
+   */
+  const [episodeRow] = await db
+    .select({ e: episodes, lead: users })
+    .from(episodes)
+    .leftJoin(users, eq(users.id, episodes.leadSpecialistId))
+    .where(and(eq(episodes.patientId, patientId), isNull(episodes.closedAt)))
+    .orderBy(desc(episodes.openedAt))
+    .limit(1);
+  const upcomingRows = await db
+    .select({ a: appointments, slot: slots, specialist: users })
+    .from(appointments)
+    .innerJoin(slots, eq(slots.id, appointments.slotId))
+    .innerJoin(users, eq(users.id, appointments.specialistId))
+    .where(
+      and(
+        eq(appointments.patientId, patientId),
+        inArray(appointments.status, ["booked", "confirmed"]),
+        gte(slots.startsAt, new Date().toISOString()),
+      ),
+    )
+    .orderBy(asc(slots.startsAt))
+    .limit(3);
+  const dispensaryRow = await db.query.dispensary.findFirst({
+    where: and(eq(dispensary.patientId, patientId), isNull(dispensary.removedAt)),
+  });
+  const referralRows = await db
+    .select()
+    .from(referrals)
+    .where(and(eq(referrals.userId, patientId), inArray(referrals.status, ["created", "accepted"])))
+    .orderBy(desc(referrals.createdAt));
+
   // открытие карточки — чтение персональных данных, как открытие карты
   await audit(c, {
     action: "patient.card_read",
@@ -707,6 +809,9 @@ patientRoutes.get("/:id/card", async (c) => {
       groups: groups.length,
       conclusions: cardConclusions.length,
       phone: person.phoneEnc !== null,
+      /* повод обращения — клинический текст: журнал помнит, что он был показан */
+      episode: episodeRow !== undefined,
+      referrals: referralRows.length,
     },
   });
 
@@ -733,6 +838,39 @@ patientRoutes.get("/:id/card", async (c) => {
     responses: cardResponses,
     groups,
     conclusions: cardConclusions,
+    domains: [...domainOf.values()],
+    episode: episodeRow
+      ? {
+          id: episodeRow.e.id,
+          openedAt: iso(episodeRow.e.openedAt),
+          reason: decryptField(episodeRow.e.reasonEnc),
+          leadName: episodeRow.lead ? fullNameOf(episodeRow.lead) : null,
+        }
+      : null,
+    upcoming: upcomingRows.map((r) => ({
+      id: r.a.id,
+      at: iso(r.slot.startsAt),
+      endsAt: iso(r.slot.endsAt),
+      kind: r.a.kind === "repeat" ? "repeat" : "primary",
+      mode: r.a.mode === "remote" ? "remote" : "onsite",
+      status: r.a.status === "confirmed" ? "confirmed" : "booked",
+      specialistName: fullNameOf(r.specialist),
+      mine: r.a.specialistId === user.id,
+    })),
+    dispensary: dispensaryRow
+      ? {
+          groupLabel: dispensaryRow.groupLabel,
+          nextDueAt: iso(dispensaryRow.nextDueAt),
+          overdue: Date.parse(dispensaryRow.nextDueAt) < Date.now(),
+        }
+      : null,
+    openReferrals: referralRows.map((r) => ({
+      id: r.id,
+      destination: r.destination,
+      urgency: r.urgency,
+      status: r.status === "accepted" ? "accepted" : "created",
+      createdAt: iso(r.createdAt),
+    })),
   };
   return c.json(card);
 });

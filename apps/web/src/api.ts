@@ -874,6 +874,10 @@ export interface TimelineItem {
   href?: string | null;
   /** Срок назначения — только у назначений */
   dueAt?: string | null;
+  /** Прохождение строки: у сигнала — поднявшее его, у заключения — то, по которому оно написано */
+  responseId?: string | null;
+  /** Код шкалы, полоса которой подняла сигнал; null — сигнал по ответу на пункт */
+  scaleCode?: string | null;
 }
 
 /**
@@ -915,8 +919,12 @@ export interface SurveyPageQuery {
   groupId?: string;
   /** Направление (shared/domains.ts) или `none` — без направления; чипы «Напрям» каталога */
   domain?: SurveyDomain | "none";
-  /** По названию на языке запроса; без него — новые сверху */
-  sort?: "title";
+  /**
+   * title — по названию на языке запроса; catalog — порядок каталога
+   * (направление, полные первыми, короткие формы под своей полной); без
+   * него — новые сверху
+   */
+  sort?: "title" | "catalog";
 }
 
 /**
@@ -1085,7 +1093,14 @@ export const api = {
   surveyRights: (id: string, body: { rightsStatus?: "own" | "licensed" | "public_domain" | "unclear"; keysVerified?: boolean }) =>
     request<{ ok: true }>(`/api/surveys/${id}/rights`, { method: "PATCH", body: JSON.stringify(body) }),
   submitFor: (surveyId: string, payload: unknown) =>
-    request<{ id: string; scores: unknown[]; reliable: boolean; warnings: string[] }>(
+    request<{
+      id: string;
+      scores: unknown[];
+      reliable: boolean;
+      warnings: string[];
+      /** сдача подняла сигнал риска — только сотруднику, который вносил ответы */
+      riskRaised?: { severity: string; signals: number } | null;
+    }>(
       `/api/surveys/${surveyId}/responses`,
       { method: "POST", body: JSON.stringify(payload) },
     ),
@@ -1186,8 +1201,11 @@ export const api = {
   /** Очередь работы числами — для бейджа навигации: без строк и без строки журнала */
   worklistCount: () => request<WorklistCount>("/api/worklist/count"),
 
-  ruleHits: (status: RuleHit["status"] = "suggested") =>
-    request<{ items: RuleHit[] }>(`/api/decisions/hits?status=${status}`).then((r) => r.items),
+  /** Предложения правил; с `userId` — только по этому человеку (ящик назначения в его карточке) */
+  ruleHits: (status: RuleHit["status"] = "suggested", userId?: string) =>
+    request<{ items: RuleHit[] }>(
+      `/api/decisions/hits?status=${status}${userId ? `&userId=${encodeURIComponent(userId)}` : ""}`,
+    ).then((r) => r.items),
   /**
    * Правила поддержки решений — «аналитические модели» экрана заключения.
    * Сервер отдаёт строки таблицы целиком; здесь объявлено то, что читает
@@ -1348,10 +1366,12 @@ export const api = {
    * прежний (`/api/referrals`, `?all=1`): его же спрашивает счётчик.
    * `closedSince` — только закрытые с этого момента («Закриті за 30 днів»).
    */
-  referrals: (all = false, cursor?: string | null, opts: { closedSince?: string } = {}) => {
+  referrals: (all = false, cursor?: string | null, opts: { closedSince?: string; patient?: string } = {}) => {
     const qs = new URLSearchParams();
     if (all) qs.set("all", "1");
     if (opts.closedSince) qs.set("closedSince", opts.closedSince);
+    /* направления одного человека — вкладка «Направлення» его рабочего места */
+    if (opts.patient) qs.set("patient", opts.patient);
     if (cursor) qs.set("cursor", cursor);
     const tail = qs.toString();
     return request<ReferralPage>(`/api/referrals${tail ? `?${tail}` : ""}`);

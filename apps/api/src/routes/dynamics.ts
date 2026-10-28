@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { and, asc, eq, inArray, isNotNull, sql } from "drizzle-orm";
-import { ageAt, respondentDynamicsQuery, respondentQuery, t } from "@quizzy/shared";
-import type { RespondentDynamics, ScaleDynamics, ScaleKind, ScaleNormalization, Sex } from "@quizzy/shared";
+import { ageAt, instrumentCode, respondentDynamicsQuery, respondentQuery, t } from "@quizzy/shared";
+import type { RespondentDynamics, ResponseSource, ScaleDynamics, ScaleKind, ScaleNormalization, Sex } from "@quizzy/shared";
 import { db } from "../db";
 import { decodeCursor, encodeCursor } from "../lib/cursor";
 import { langOf } from "../lib/http";
@@ -14,7 +14,7 @@ import { decryptField } from "../lib/crypto";
 import { notFound, parseQuery } from "../lib/http";
 import { referencePercentile, referenceSampleSets, type SampleTarget } from "../lib/referenceSample";
 import { birthYearOf } from "../lib/privacy";
-import { patientsInScope, surveyScopeFilter, surveyScopeFilterFor } from "../lib/scope";
+import { patientsInScope, resultScopeCondition, surveyScopeFilterFor } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 import { env } from "../env";
 
@@ -41,17 +41,15 @@ dynamicsRoutes.use("*", requireAuth, requireStaff, requirePermission("patients.r
  */
 
 dynamicsRoutes.get("/respondents", async (c) => {
-  const scope = await surveyScopeFilter(c.get("user"));
-  const scoped = await db.select({ id: surveys.id }).from(surveys).where(scope);
-  const surveyIds = scoped.map((s) => s.id);
-  if (!surveyIds.length) return c.json({ items: [], nextCursor: null, total: 0 });
+  // прохождения, видимые сотруднику: свои методики целиком, библиотека — люди его зоны (lib/scope.ts)
+  const visible = await resultScopeCondition(c.get("user"));
 
   // ?limit=abc давал NaN, который уезжал в .limit() и ронял запрос пятисоткой
   const { limit, cursor: rawCursor, search } = parseQuery(c, respondentQuery);
   const cursor = decodeCursor(rawCursor);
 
   const base = and(
-    inArray(responses.surveyId, surveyIds),
+    visible?.(responses.surveyId, responses.userId),
     eq(responses.status, "completed"),
     isNotNull(responses.userId),
   );
@@ -479,6 +477,12 @@ dynamicsRoutes.get("/respondents/:userId", async (c) => {
             normalized: score.normalized,
             normalization: score.normalization as ScaleNormalization,
             reliable: response.reliable,
+            /*
+             * Кто заполнял: сам человек или специалист с его слов. Подсказка
+             * замера на графике курса говорит это словом — балл, внесённый
+             * со слов, читается иначе, чем самоотчёт.
+             */
+            source: (response.source as ResponseSource | null) ?? null,
           });
           byCode.set(scale.code, entry);
         }
@@ -534,6 +538,8 @@ dynamicsRoutes.get("/respondents/:userId", async (c) => {
       return {
         surveyId,
         title: t(survey.title as never, lang),
+        /* короткое имя — по ключу каталога: у методик учреждения кода в скобках нет */
+        shortName: instrumentCode(t(survey.title as never, lang), { catalogKey: survey.catalogKey, lang }),
         responseCount: list.length,
         firstAt: list[0]?.submittedAt ?? null,
         lastAt: list[list.length - 1]?.submittedAt ?? null,

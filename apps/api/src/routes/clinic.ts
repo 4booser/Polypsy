@@ -17,6 +17,7 @@ import {
   type ScheduleExceptionView,
   type ScheduleTemplateView,
   type TodayCount,
+  type User,
 } from "@quizzy/shared";
 import { baseDb, db } from "../db";
 import { afterCommit, asSystem, systemContext } from "../db/context";
@@ -46,7 +47,7 @@ import { bookingLease, createBookedMeeting, syncMeeting } from "../lib/meetSync"
 import { transferRecording } from "../lib/recordingTransfer";
 import { pendingWorkByUser } from "../lib/pendingWork";
 import { HORIZON_WEEKS, lockSchedule, syncSlots } from "../lib/schedule";
-import { assertPatientAccess, isStaff, patientScopeCondition, patientsInScope } from "../lib/scope";
+import { assertPatientAccess, isStaff, patientScopeCondition, patientsInScope, surveyScopeFilterFor } from "../lib/scope";
 import { assertNotInOtherCare } from "../lib/otherCare";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
@@ -1747,7 +1748,7 @@ clinicRoutes.get(
      * а не заполнена всей историей.
      */
     const since = previous ? previous.slot.startsAt : null;
-    const changes = since ? await changesSince(row.patientId, since, langOf(c)) : [];
+    const changes = since ? await changesSince(c.get("user"), row.patientId, since, langOf(c)) : [];
 
     /*
      * Черновик протокола этого приёма, если он уже начат.
@@ -1840,9 +1841,20 @@ interface VisitChange {
  * Отдаются факты, а не собранная фраза: подписи и порядок слов принадлежат
  * клиенту, у которого есть язык интерфейса. Сервер отвечает на вопрос «что
  * случилось», а не «как это назвать».
+ *
+ * Прохождения и тревоги — по методикам, результаты которых о человеке видны
+ * принимающему (lib/scope.ts, surveyScopeFilterFor): свои и библиотека. Под
+ * ролью приложения то же режет политика строк; владельцем базы здесь
+ * прежде шли тревоги и замеры по методикам чужих групп.
  */
-async function changesSince(patientId: string, since: string, lang: ReturnType<typeof langOf>): Promise<VisitChange[]> {
+async function changesSince(
+  user: User,
+  patientId: string,
+  since: string,
+  lang: ReturnType<typeof langOf>,
+): Promise<VisitChange[]> {
   const out: VisitChange[] = [];
+  const scope = await surveyScopeFilterFor(user, patientId);
 
   const newResponses = await db
     .select({ r: responses, title: surveys.title })
@@ -1853,6 +1865,7 @@ async function changesSince(patientId: string, since: string, lang: ReturnType<t
         eq(responses.userId, patientId),
         eq(responses.status, "completed"),
         gt(responses.submittedAt, since),
+        scope,
       ),
     )
     .orderBy(desc(responses.submittedAt))
@@ -1868,12 +1881,15 @@ async function changesSince(patientId: string, since: string, lang: ReturnType<t
     });
   }
 
-  const newAlerts = await db
-    .select()
-    .from(riskAlerts)
-    .where(and(eq(riskAlerts.userId, patientId), gt(riskAlerts.at, since)))
-    .orderBy(desc(riskAlerts.at))
-    .limit(50);
+  const newAlerts = (
+    await db
+      .select({ a: riskAlerts })
+      .from(riskAlerts)
+      .innerJoin(surveys, eq(surveys.id, riskAlerts.surveyId))
+      .where(and(eq(riskAlerts.userId, patientId), gt(riskAlerts.at, since), scope))
+      .orderBy(desc(riskAlerts.at))
+      .limit(50)
+  ).map((r) => r.a);
   // подпись — на языке читателя: снимок записан на языке прохождения (lib/alertLabels.ts)
   const labelOf = await alertLabelsIn(lang, newAlerts);
   for (const a of newAlerts) {

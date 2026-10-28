@@ -11,8 +11,10 @@ import { DESTINATION_KEY, STATUS_KEY, URGENCY_KEY } from "../referrals/model";
 import type { PaneParts } from "./actions";
 import { useSettledValue, type Via } from "../../components/settledSelection";
 import { eventView } from "./events";
-import { changeOf, instrumentsOf, shownDelta, shownThreshold } from "./instruments";
-import { ageOf, ddmm, hhmm, kitSeverity, shownSeriesText, shownValue, signedShown, whenShort } from "./model";
+import { instrumentsOf } from "./instruments";
+import { ageOf, CLINICAL_DOMAIN_KEY, ddmm, hhmm, kitSeverity, whenShort } from "./model";
+import { clinicalPicture } from "../patientCard/clinical";
+import { ChangeWords, ScoreText } from "../patientCard/words";
 
 /*
  * «Хто це» — быстрый просмотр человека из реестра (кадр patients-quick-view):
@@ -60,6 +62,10 @@ export function useQuickViewPane({
   const card = useResource(() => api.patientCard(id), [id], { enabled, keep: false });
   const tl = useResource(() => api.timeline(id), [id], { enabled, keep: false });
   const instruments = useMemo(() => instrumentsOf(dyn.data), [dyn.data]);
+  const picture = useMemo(
+    () => clinicalPicture(dyn.data, card.data?.domains).flatMap((g) => g.rows),
+    [dyn.data, card.data?.domains],
+  );
   const now = Date.now();
   const words = { today: ut("plist.today"), tomorrow: ut("plist.tomorrow") };
 
@@ -87,7 +93,7 @@ export function useQuickViewPane({
           kind="warn"
           icon={<Ic.calendar />}
           label={ut("plist.noShow").replace("{d}", ddmm(person.lastNoShowAt, locale))}
-          to={`/patients/${id}/case/timeline`}
+          to={`/patients/${id}?tab=timeline&kind=visit`}
         />
       ) : null}
       {drafts.map((c) => (
@@ -113,7 +119,7 @@ export function useQuickViewPane({
           icon={<Ic.arrowRight />}
           label={ut("ref.title")}
           detail={String(openRefs.length)}
-          to={`/patients/${id}/case`}
+          to={`/patients/${id}?tab=referrals`}
         />
       ) : null}
     </AlertStrip>
@@ -159,7 +165,6 @@ export function useQuickViewPane({
           <Ic.external size={16} className="mr-2" />
           {ut("pt.openCard")}
         </ButtonLink>
-        <ButtonLink to={`/patients/${id}/case`}>{ut("pcard.clinical")}</ButtonLink>
         <Tooltip label={ut("plist.write")}>
           <Button size="icon" aria-label={ut("plist.write")} onClick={onWrite}>
             <Ic.message />
@@ -213,93 +218,34 @@ export function useQuickViewPane({
           ) : !instruments.length ? (
             <p className="m-0 text-small text-muted">{ut("pt.noCompleted")}</p>
           ) : (
-            <table className="w-full table-fixed border-separate border-spacing-0 text-small">
-              <colgroup>
-                <col />
-                <col className="w-[140px]" />
-                <col className="w-[112px]" />
-              </colgroup>
-              <thead>
-                <tr>
-                  {[ut("plist.instrument"), ut("qv.now"), ut("dyn.fromStart")].map((h, n) => (
-                    <th
-                      key={h}
-                      className={`h-8 border-b border-divider bg-panel-2 px-2 text-caption font-bold text-muted first:pl-2.5 ${n === 1 ? "text-right" : "text-left"}`}
-                    >
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {instruments.slice(0, 6).map((i) => {
-                  const s = i.main;
-                  const v = shownValue(s.last.rawScore, s.last.normalization);
-                  const delta = changeOf(s);
-                  const ratio = s.last.normalization === "ratio";
-                  const shown = delta === null ? null : shownDelta(s, delta);
-                  const thr = shownThreshold(s);
-                  const reliable = shown !== null && thr !== null && Math.abs(shown) >= thr && shown !== 0;
-                  const good = reliable && !!s.better && (s.better === "down" ? shown! < 0 : shown! > 0);
-                  const was = shownSeriesText(s.history.slice(-2), s.last.normalization);
-                  return (
-                    <tr key={i.surveyId}>
-                      <td className="border-b border-divider py-2 pl-2.5 pr-2 align-top">
-                        <b className="block truncate font-extrabold text-text" title={i.title}>
-                          {i.code}
-                        </b>
-                        <span className="block truncate text-caption text-muted" title={s.scale.title}>
-                          {s.scale.title}
-                        </span>
-                        {was.length ? (
-                          <span className="block text-caption tabular-nums text-text-2">
-                            {ut("kit.was").replace("{v}", was.join(" → "))}
-                          </span>
-                        ) : null}
-                      </td>
-                      <td className="border-b border-divider px-2 py-2 text-right align-top">
-                        <b className="text-[16px] font-extrabold tabular-nums text-text">
-                          {v.text}
-                          {v.unit ? <small className="text-caption text-muted">{v.unit}</small> : null}
-                        </b>
-                        {s.last.severity || s.last.bandLabel ? (
-                          <span className="mt-1 flex justify-end">
-                            <SeverityTag level={kitSeverity(s.last.severity)} small className="max-w-full">
-                              <span className="min-w-0 truncate" title={s.last.bandLabel ?? undefined}>
-                                {s.last.bandLabel ?? ut(severityKey[s.last.severity ?? "none"])}
-                              </span>
-                            </SeverityTag>
-                          </span>
-                        ) : null}
-                      </td>
-                      <td className="border-b border-divider px-2 py-2 align-top">
-                        {shown === null ? (
-                          <span className="text-caption text-muted">{i.responseCount > 1 ? "—" : ut("kit.courseStart")}</span>
-                        ) : (
-                          <span className="flex flex-col">
-                            <b className={`text-[13.5px] font-extrabold tabular-nums ${good ? "text-good" : reliable ? "text-warn" : "text-text"}`}>
-                              {signedShown(shown)}
-                              {ratio ? ut("dyn.pp") : ""}
-                            </b>
-                            <span className={`text-caption ${good ? "font-bold text-good" : reliable ? "font-bold text-warn" : "text-text-2"}`}>
-                              {thr === null
-                                ? ut("qv.noThreshold")
-                                : reliable
-                                  ? good
-                                    ? ut("kit.reliablyBetter")
-                                    : s.better
-                                      ? ut("kit.reliablyWorse")
-                                      : ut("pt.reliable")
-                                  : ut("kit.withinError")}
-                            </span>
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+            /*
+             * Те же строки и те же слова, что «Клінічна картина» рабочего
+             * места: домен, балл, полоса и сдвиг словом («значуще
+             * погіршення»), тяжёлое первым (patientCard/clinical.ts).
+             */
+            <ul className="m-0 list-none p-0">
+              {picture.slice(0, 6).map((r) => (
+                <li key={r.key} className="border-t border-divider py-2 first:border-t-0 first:pt-0">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <b className="min-w-0 truncate text-[13.5px] font-extrabold text-text" title={r.surveyTitle}>
+                      {r.code}
+                    </b>
+                    <span className="truncate text-caption text-muted">{ut(CLINICAL_DOMAIN_KEY[r.domain])}</span>
+                    <span className="ml-auto shrink-0">
+                      <ScoreText p={r.last} />
+                    </span>
+                  </div>
+                  <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                    {r.last.severity || r.last.bandLabel ? (
+                      <SeverityTag level={kitSeverity(r.last.severity)} small className="!h-auto min-h-[22px] max-w-full !whitespace-normal py-[3px] leading-[14px]">
+                        {r.last.bandLabel ?? ut(severityKey[r.last.severity ?? "none"])}
+                      </SeverityTag>
+                    ) : null}
+                    <ChangeWords r={r} />
+                  </div>
+                </li>
+              ))}
+            </ul>
           )}
         </DrawerSection>
 
@@ -350,7 +296,7 @@ export function useQuickViewPane({
 
         <DrawerSection
           title={ut("qv.recent")}
-          right={<TextAction to={`/patients/${id}/case/timeline`}>{ut("qv.allTimeline")}</TextAction>}
+          right={<TextAction to={`/patients/${id}?tab=timeline`}>{ut("qv.allTimeline")}</TextAction>}
         >
           {tl.error ? (
             <p className="m-0 text-small text-risk-ink">{tl.error}</p>

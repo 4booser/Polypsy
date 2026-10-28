@@ -328,7 +328,7 @@ export default function Search() {
                       <Avatar name={g.userName} size={34} />
                       <b className="min-w-0 flex-1 truncate text-body font-bold">{g.userName}</b>
                       <span className="text-small text-muted">{fill(ut(`srch2.recordsN.${pluralForm(g.hits.length, lang)}`), { n: g.hits.length })}</span>
-                      <ButtonLink to={`/patients/${g.userId}/case`} size="xs">
+                      <ButtonLink to={`/patients/${g.userId}?tab=records&kind=notes`} size="xs">
                         <Pi.folderOpen size={14} />
                         {ut("ref2.case")}
                       </ButtonLink>
@@ -525,7 +525,7 @@ function NoteDrawer({
       noteIcon={<Ic.shieldCheck />}
       footer={
         <>
-          <ButtonLink to={`/patients/${hit.userId}/case`} variant="primary">
+          <ButtonLink to={`/patients/${hit.userId}?tab=records&kind=notes`} variant="primary">
             <Pi.folderOpen size={15} />
             {ut("pg2.openCase")}
           </ButtonLink>

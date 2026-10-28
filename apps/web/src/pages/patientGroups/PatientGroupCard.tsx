@@ -410,7 +410,7 @@ export default function PatientGroupCard() {
           rowActions={(m) => (
             <>
               <Tooltip label={ut("pg2.openCase")}>
-                <ButtonLink to={`/patients/${m.userId}/case`} variant="quiet" size="icon-sm" aria-label={`${ut("pg2.openCase")}: ${m.fullName}`}>
+                <ButtonLink to={`/patients/${m.userId}`} variant="quiet" size="icon-sm" aria-label={`${ut("pg2.openCase")}: ${m.fullName}`}>
                   <Pi.folderOpen />
                 </ButtonLink>
               </Tooltip>

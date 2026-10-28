@@ -118,8 +118,11 @@ describe("на подставном сервере", () => {
     const src = readFileSync(resolve(import.meta.dir, "../src/components/Suggestions.tsx"), "utf8")
       .replace(/\{\/\*[\s\S]*?\*\/\}/g, "")
       .replace(/\/\*[\s\S]*?\*\//g, "");
-    expect(src.match(/api\.decideHit\(/g)?.length).toBe(1);
+    // два вызова: решение кнопкой — через decideHit; «Призначити PHQ-9» — через
+    // assignSuggested, который принимает предложение тем же decideHit
+    expect(src.match(/api\.decideHit\(/g)?.length).toBe(2);
     expect(src).toMatch(/decideHit\(\(\) => api\.decideHit\(/);
+    expect(src).toMatch(/assignSuggested\([\s\S]*?\(\) => api\.decideHit\(hit\.id, "accepted"\)/);
     expect(src).toContain('decide(hit, "accepted"');
     expect(src).toContain('decide(hit, "declined"');
   });

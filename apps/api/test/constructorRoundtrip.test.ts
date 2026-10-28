@@ -4,10 +4,6 @@ import { api, createVersion, db, root, surveys } from "./fixtures";
 import { surveyGroups } from "../src/db/schema";
 import { getSurvey, versionContent } from "../src/lib/surveys";
 import { CATALOG } from "../src/instruments/catalog";
-import { minimult } from "../src/instruments/minimult";
-import { mlo } from "../src/instruments/mlo";
-import { sadPersons } from "../src/instruments/sadPersons";
-import { sr45 } from "../src/instruments/sr45";
 import { toDraft, toPayload } from "../../web/src/pages/constructor/model";
 
 /**
@@ -36,13 +32,8 @@ import { toDraft, toPayload } from "../../web/src/pages/constructor/model";
 const tag = crypto.randomUUID().slice(0, 8);
 const group = crypto.randomUUID();
 
-const INSTRUMENTS: [string, CreateSurveyDraft][] = [
-  ["sr45", sr45],
-  ["sad-persons", sadPersons],
-  ["minimult", minimult],
-  ["mlo", mlo],
-  ...CATALOG.map((e): [string, CreateSurveyDraft] => [e.key, e.draft]),
-];
+// весь каталог; четыре методики учреждения (прежде встроенные) с 2026-10-28 — его записи
+const INSTRUMENTS: [string, CreateSurveyDraft][] = CATALOG.map((e): [string, CreateSurveyDraft] => [e.key, e.draft]);
 
 const installed = new Map<string, SurveyFull>();
 

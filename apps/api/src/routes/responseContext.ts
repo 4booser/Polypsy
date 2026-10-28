@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { and, asc, desc, eq, inArray, isNull, or } from "drizzle-orm";
-import { ageAt, explanationFor, t, type StoredExplanation } from "@quizzy/shared";
-import type { ResponseAttempt, ResponseContext, ResponseContextSignal, ResponseSource, RuleHit } from "@quizzy/shared";
+import { ageAt, t } from "@quizzy/shared";
+import type { ResponseAttempt, ResponseContext, ResponseContextSignal, ResponseSource, RuleHit, User } from "@quizzy/shared";
 import { db } from "../db";
 import {
   decisionRules,
@@ -24,7 +24,8 @@ import { assertClinicalRead, CLINICAL_READ } from "../lib/clinicalRead";
 import { decryptField } from "../lib/crypto";
 import { langOf, notFound } from "../lib/http";
 import { hasPermission } from "../lib/permissions";
-import { surveyScopeFilter } from "../lib/scope";
+import { hitViews } from "../lib/ruleHits";
+import { resultScope } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
 /**
@@ -153,15 +154,16 @@ async function attemptsOf(userId: string, surveyId: string, lang: ReturnType<typ
 /**
  * Сигналы для строки открытого: все сигналы этого прохождения (и
  * разобранные — экран говорит «розібрано», а не молчит) и открытые сигналы
- * того же человека по другим замерам. Зона — та же, что у списка сигналов:
- * методики, которые читающему доступны.
+ * того же человека по другим замерам. Зона — та же, что у списка сигналов
+ * (lib/scope.ts, resultScopeCondition): свои методики целиком, методики
+ * библиотеки — о человеке зоны читающего.
  */
 async function signalsOf(
-  user: Parameters<typeof surveyScopeFilter>[0],
+  user: User,
   r: { id: string; userId: string | null },
   lang: ReturnType<typeof langOf>,
 ): Promise<ResponseContextSignal[]> {
-  const scope = await surveyScopeFilter(user);
+  const seen = await resultScope(user);
   const reviewer = users;
   const rows = await db
     .select({
@@ -175,7 +177,7 @@ async function signalsOf(
     .leftJoin(questions, eq(questions.id, riskAlerts.questionId))
     .where(
       and(
-        scope,
+        seen(riskAlerts.surveyId, riskAlerts.userId),
         r.userId
           ? or(eq(riskAlerts.responseId, r.id), and(eq(riskAlerts.userId, r.userId), isNull(riskAlerts.acknowledgedAt)))
           : eq(riskAlerts.responseId, r.id),
@@ -214,7 +216,11 @@ async function signalsOf(
     .sort((x, y) => Number(x.reviewedAt !== null) - Number(y.reviewedAt !== null));
 }
 
-/** Срабатывания правил по этому прохождению — во всех состояниях, свежие первыми */
+/**
+ * Срабатывания правил по этому прохождению — во всех состояниях, свежие
+ * первыми; с тем, что предложено и что с ним уже сделано (lib/ruleHits.ts):
+ * протокол короткой формы показывает «Рекомендовано: PHQ-9» с одним нажатием.
+ */
 async function hitsOf(responseId: string, lang: ReturnType<typeof langOf>): Promise<RuleHit[]> {
   const rows = await db
     .select({ hit: ruleHits, rule: decisionRules, patient: users })
@@ -224,16 +230,5 @@ async function hitsOf(responseId: string, lang: ReturnType<typeof langOf>): Prom
     .where(eq(ruleHits.responseId, responseId))
     .orderBy(desc(ruleHits.createdAt))
     .limit(50);
-  return rows.map((x) => ({
-    id: x.hit.id,
-    ruleTitle: x.rule.title,
-    ruleVersion: x.hit.ruleVersion,
-    userId: x.hit.userId,
-    userName: x.patient ? fullNameOf(x.patient) : "—",
-    surveyId: x.hit.surveyId,
-    responseId: x.hit.responseId,
-    status: x.hit.status as RuleHit["status"],
-    explanation: explanationFor(x.hit.explanation as StoredExplanation, lang),
-    createdAt: x.hit.createdAt,
-  }));
+  return hitViews(rows, lang);
 }

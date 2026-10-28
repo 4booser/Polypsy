@@ -1,10 +1,14 @@
 import {
   comparability,
+  instrumentCode,
+  instrumentMeasure,
   measurementError,
+  pointValueTop,
   polarityOfBands,
   type ComparableMark,
   type DynamicsPoint,
   type Incomparable,
+  type ResponseSource,
   type ScaleDynamics,
   type Severity,
 } from "@quizzy/shared";
@@ -16,22 +20,27 @@ import { axisFor } from "./scale";
  * Модель графика курса (CourseChart): чистые функции без React.
  *
  * Здесь решается всё, что можно проверить без отрисовки: куда ляжет точка,
- * где кончается «межа похибки», какое слово стоит у сдвига, какие события
- * попадают на ось. Компонент (course.tsx) только рисует то, что вернули эти
- * функции, — и тест (apps/web/test/courseChart.test.tsx) проверяет и то и
- * другое.
+ * какое слово стоит у сдвига, где клинический порог, как встанут подписи
+ * полос, какие события попадают на дорожку и к какому замеру привязан
+ * сигнал. Компонент (course.tsx) только рисует то, что вернули эти функции,
+ * — и тест (apps/web/test/courseChart.test.tsx) проверяет и то и другое.
  *
  * Откуда числа — только из приложения:
  *
  *   — замеры: динамика пациента (GET /api/dynamics/respondents/:id), по
- *     точке на завершённое прохождение;
+ *     точке на завершённое прохождение, с тем, кто заполнял (source);
  *   — полосы: лестница шкалы методики (bands), та же, что у линейки;
- *   — «краще ↓ / ↑»: полярность по самим полосам (polarityOfBands) — флага
- *     в справочнике нет, и он разошёлся бы с полосами;
- *   — порог надёжной зміни: MDC95 = 1,96·√2·SEM (measurementError в
+ *   — «менше — краще / більше — краще»: полярность по самим полосам
+ *     (polarityOfBands) — флага в справочнике нет, и он разошёлся бы с
+ *     полосами;
+ *   — клинический порог: граница, с которой полосы методики помірні або
+ *     виражені (cutoffOf) — то же «у клінічних смугах», что на зведенні;
+ *   — порог значущої зміни: MDC95 = 1,96·√2·SEM (measurementError в
  *     shared/rci.ts) — тот же порог, что |RCI| > 1,96, только в баллах шкалы;
+ *     на графике он не рисуется, а говорится словом в шапке и в подсказке;
  *   — события: хронология пациента (GET /api/timeline/:id) — приёмы со
- *     статусом и сигналы риска.
+ *     статусом, заключения и сигналы риска (сигнал — с прохождением, которое
+ *     его подняло).
  *
  * Прогноза нет: приложение тренд не считает, и рисовать «тренд ≈ 11» из
  * трёх точек без модели значило бы выдать догадку за оценку.
@@ -53,9 +62,18 @@ export interface CoursePoint {
    * недостоверный протокол); null — сравним.
    */
   incomparable?: Incomparable | null;
+  /** Адрес протокола прохождения; null — открыть нечего (пример на лендинге) */
+  href?: string | null;
+  /** Кто и как заполнял (responses.source); null — сервер не знает */
+  source?: ResponseSource | null;
 }
 
-export type CourseEventKind = "session" | "noshow" | "planned" | "signal";
+/**
+ * Событие курса. Приём, неявка, запланированный приём и заключение стоят на
+ * дорожке под полем; сигнал риска — на самом замере, который его поднял
+ * (`responseId`), а не на оси: сигнал говорит о замере, а не о дне.
+ */
+export type CourseEventKind = "session" | "noshow" | "planned" | "conclusion" | "signal";
 
 export interface CourseEvent {
   key: string;
@@ -63,8 +81,14 @@ export interface CourseEvent {
   kind: CourseEventKind;
   /** Подпись даты */
   label: string;
-  /** Что за событие словами: подпись сигнала, специалист приёма */
+  /** Что за событие словами: подпись сигнала, специалист приёма, первая строка заключения */
   detail?: string | null;
+  /** Прохождение, к которому событие относится: сигнал рисуется на его замере */
+  responseId?: string | null;
+  /** Шкала сигнала по полосе — он встаёт только на её график; null — сигнал по ответу, на все шкалы замера */
+  scaleCode?: string | null;
+  /** Заключение подписано; ложь — черновик */
+  signed?: boolean;
 }
 
 export type Better = "down" | "up";
@@ -76,11 +100,11 @@ export type ChangeVerdict = "better" | "worse" | "changed" | "within" | "unknown
 /**
  * Слово для сдвига от старта.
  *
- * Правило Jacobson–Truax в баллах: сдвиг надёжен, когда по модулю больше
+ * Правило Jacobson–Truax в баллах: сдвиг значущий, когда по модулю больше
  * порога (|RCI| > 1,96 ⇔ |Δ| > MDC95), ровно на пороге — ещё «у межах
  * похибки», как и в classifyChange. Без порога — «unknown»: похибку не из
  * чего оценить, и слово «у межах» было бы неправдой. Без полярности —
- * «changed»: сдвиг надёжный, но назвать его улучшением нельзя.
+ * «changed»: сдвиг значущий, но назвать его покращенням нельзя.
  */
 export function changeVerdict(delta: number, rc: number | null, better: Better | null): ChangeVerdict {
   if (rc === null || !Number.isFinite(rc) || rc <= 0) return "unknown";
@@ -90,19 +114,19 @@ export function changeVerdict(delta: number, rc: number | null, better: Better |
   return improved ? "better" : "worse";
 }
 
-/** «Краще ↓ / ↑» по лестнице: тяжесть растёт с баллом — лучше вниз; немонотонная — неизвестно */
+/** «Менше — краще / більше — краще» по лестнице: тяжесть растёт с баллом — лучше вниз; немонотонная — неизвестно */
 export function betterOf(rungs: readonly Rung[]): Better | null {
   const higherIsWorse = polarityOfBands(rungs.map((r) => ({ minScore: r.min, maxScore: r.max, severity: r.severity })));
   return higherIsWorse === null ? null : higherIsWorse ? "down" : "up";
 }
 
 /**
- * Порог надёжной зміни в баллах шкалы.
+ * Порог значущої зміни в баллах шкалы.
  *
  * Из основы RCI (SD и α выборки), если сервер её отдал, — тем же расчётом,
  * что и всюду (measurementError); иначе из SEM: MDC95 = 1,96·√2·SEM. Нет ни
- * того ни другого — null, и зона похибки не рисуется: придуманная полоса
- * выглядит как знание.
+ * того ни другого — null, и слово сдвига — «значущість не оцінено»:
+ * придуманный порог выглядит как знание.
  */
 export function reliableThreshold(scale: Pick<ScaleDynamics, "sem" | "reliableChange">): number | null {
   const basis = scale.reliableChange?.basis;
@@ -111,6 +135,45 @@ export function reliableThreshold(scale: Pick<ScaleDynamics, "sem" | "reliableCh
     if (me) return me.mdc95;
   }
   if (scale.sem != null && scale.sem > 0) return Math.round(1.96 * Math.SQRT2 * scale.sem * 100) / 100;
+  return null;
+}
+
+/* ─────────── клинический порог ─────────── */
+
+const CLINICAL: ReadonlySet<Severity> = new Set(["moderate", "severe"]);
+
+export interface Cutoff {
+  /** Где линия на оси: граница между полосами (посередине разрыва) */
+  at: number;
+  /** Первый балл клинической стороны: «≥ 10» у PHQ-9, «≤ 12» у WHO-5 */
+  value: number;
+  /** С какой стороны клинические полосы: above — с балла и выше, below — с балла и ниже */
+  side: "above" | "below";
+}
+
+/**
+ * Клинический порог шкалы — одна граница, с которой полосы методики
+ * помірні або виражені.
+ *
+ * Тем же правилом считает зведення («у клінічних смугах» — помірна і
+ * виражена), и порог на графике с ним не расходится. У PHQ-9 и GAD-7 это
+ * 10, у PCL-5 — 33, у WHO-5 — 12 и ниже: ровно пороги ймовірного розладу и
+ * поганого благополуччя из документации методик. Клинические полосы должны
+ * стоять одним куском у одного края лестницы: лестница, где «помірна»
+ * посередине, а по краям — норма, одной границы не имеет, и линии нет.
+ * Полос без клинических (только норма и легка) — тоже нет: порог не придумывается.
+ */
+export function cutoffOf(rungs: readonly Rung[]): Cutoff | null {
+  const sorted = sortRungs(rungs);
+  if (sorted.length < 2) return null;
+  const clin = sorted.map((r) => CLINICAL.has(r.severity));
+  const first = clin.indexOf(true);
+  const last = clin.lastIndexOf(true);
+  if (first < 0 || (first === 0 && last === sorted.length - 1)) return null;
+  for (let i = first; i <= last; i++) if (!clin[i]) return null;
+  const cuts = boundaries(sorted);
+  if (last === sorted.length - 1) return { at: cuts[first - 1]!, value: sorted[first]!.min, side: "above" };
+  if (first === 0) return { at: cuts[last]!, value: sorted[last]!.max, side: "below" };
   return null;
 }
 
@@ -128,8 +191,12 @@ export interface CourseData {
   rungs: Rung[];
   rc: number | null;
   better: Better | null;
-  /** Нормировка последнего замера: подпись единиц у оси */
+  /** Нормировка последнего замера: единицы у оси и в шапке */
   normalization: DynamicsPoint["normalization"] | null;
+  /** Верх шкалы в единицах значения: «19 з 27» у сырого балла и край оси; у T-балла — null */
+  max: number | null;
+  /** Код шкалы: сигнал по полосе другой шкалы того же прохождения на этот график не встаёт */
+  scaleCode: string | null;
 }
 
 /**
@@ -137,18 +204,20 @@ export interface CourseData {
  *
  * `rungs` — лестница шкалы методики (bands из описания методики или из
  * аналитики: у динамики её нет). Порог из старта, сделанного недостоверным
- * протоколом, не рисуется: межа похибки от числа, которому нельзя верить, —
- * та же выдумка.
+ * протоколом, не считается: межа похибки от числа, которому нельзя верить, —
+ * та же выдумка. `surveyId` — у точки появляется адрес протокола: без
+ * методики адреса прохождения нет (App.tsx, /surveys/:id/responses/:rid).
  */
 export function courseFromDynamics(
-  scale: Pick<ScaleDynamics, "points" | "sem" | "reliableChange">,
+  scale: Pick<ScaleDynamics, "points" | "sem" | "reliableChange"> & { code?: string | null },
   rungs: readonly Rung[],
   formatDay: (iso: string) => string = day,
+  { surveyId }: { surveyId?: string | null } = {},
 ): CourseData {
   const sorted = [...scale.points].sort((a, b) => Date.parse(a.submittedAt) - Date.parse(b.submittedAt));
   const ladder = sortRungs(rungs);
   const first = sorted[0];
-  const points = sorted.map((p, i) => {
+  const points = sorted.map((p, i): CoursePoint => {
     const hit = rungOf(ladder, p.rawScore);
     return {
       key: p.responseId,
@@ -157,14 +226,21 @@ export function courseFromDynamics(
       value: p.rawScore,
       band: p.severity && p.bandLabel ? { label: p.bandLabel, severity: p.severity } : hit ? { label: hit.label, severity: hit.severity } : null,
       incomparable: i && first ? comparability(markOf(first), markOf(p)) : null,
+      href: surveyId ? `/surveys/${surveyId}/responses/${p.responseId}` : null,
+      source: p.source ?? null,
     };
   });
+  const last = sorted.at(-1);
   return {
     points,
     rungs: ladder,
     rc: first && first.reliable === false ? null : reliableThreshold(scale),
     better: betterOf(ladder),
-    normalization: sorted.at(-1)?.normalization ?? null,
+    /* ненормированная точка нормированной шкалы (норм для пола нет) — в сырых баллах, как и её значение */
+    normalization: last ? (last.normalized === false ? "raw" : (last.normalization ?? null)) : null,
+    /* верх шкалы в единицах значения (#199): сырой балл — максимум, доля — 1, стен — 10, у T-балла верха нет */
+    max: last ? pointValueTop(last) : null,
+    scaleCode: scale.code ?? null,
   };
 }
 
@@ -175,23 +251,29 @@ export interface TimelineLike {
   at: string;
   title: string;
   detail?: string | null;
+  /** Прохождение, которое подняло сигнал или по которому написано заключение */
+  responseId?: string | null;
+  /** Шкала, полоса которой подняла сигнал */
+  scaleCode?: string | null;
 }
 
 /**
- * Хронология → события оси курса.
+ * Хронология → события курса.
  *
- * Приём со статусом «done», «arrived», «in_progress» — проведённая сесія;
- * «no_show» — неявка; «booked» и «confirmed» — запланированная (в прошлом —
- * неотмеченная: её не считают ни проведённой, ни сорванной). Сигнал — строка
- * тревоги. Отменённые приёмы сервер в хронологию не отдаёт.
+ * Приём со статусом «done», «arrived», «in_progress» — проведённый;
+ * «no_show» — неявка; «booked» и «confirmed» — запланированный (в прошлом —
+ * без отметки: его не считают ни проведённым, ни сорванным). Заключение —
+ * подписанное или черновик. Сигнал — строка тревоги со своим прохождением.
+ * Отменённые приёмы сервер в хронологию не отдаёт.
  */
 export function courseEventsFromTimeline(items: readonly TimelineLike[], formatDay: (iso: string) => string = day): CourseEvent[] {
   const out: CourseEvent[] = [];
   for (const it of items) {
     const t = Date.parse(it.at);
     if (!Number.isFinite(t)) continue;
-    const base = { key: it.id, t, label: formatDay(it.at) };
-    if (it.kind === "alert") out.push({ ...base, kind: "signal", detail: it.title || null });
+    const base = { key: it.id, t, label: formatDay(it.at), responseId: it.responseId ?? null };
+    if (it.kind === "alert") out.push({ ...base, kind: "signal", detail: it.title || null, scaleCode: it.scaleCode ?? null });
+    else if (it.kind === "conclusion") out.push({ ...base, kind: "conclusion", detail: it.title || null, signed: it.detail === "signed" });
     else if (it.kind === "visit") {
       const s = it.detail ?? "";
       if (s === "done" || s === "arrived" || s === "in_progress") out.push({ ...base, kind: "session", detail: it.title || null });
@@ -212,59 +294,170 @@ export interface CourseLayout {
   lo: number;
   hi: number;
   ticks: number[];
-  /** Сегодня на оси — только если курс до него дотягивается */
-  today: number | null;
-  events: CourseEvent[];
-  /** Номер сессии у проведённых и будущих запланированных */
-  sessionNo: Map<string, number>;
+  /**
+   * Край лестницы срезан: у Т-баллов Міні-мульта крайние полосы — 59 и 120
+   * баллов шириной, и поле во всю лестницу сжало бы средние полосы в нитку.
+   * Срезанный край обязан быть виден на графике (излом у оси).
+   */
+  cut: { lo: boolean; hi: boolean };
+  /** События дорожки: приёмы, неявки, запланированные, заключения — около курса */
+  lane: CourseEvent[];
+  /** Сигналы риска по номеру замера, который их поднял */
+  signals: Map<number, CourseEvent[]>;
+}
+
+const median = (xs: readonly number[]) => {
+  const s = [...xs].sort((a, b) => a - b);
+  const m = Math.floor(s.length / 2);
+  return s.length % 2 ? s[m]! : (s[m - 1]! + s[m]!) / 2;
+};
+
+/**
+ * Область по значению для лестницы полос.
+ *
+ * Вся лестница — вопрос графика «в какую полосу пришло», и срезать её по
+ * данным значило бы убрать с глаз полосу, куда человек, возможно, вернулся.
+ * Но открытая крайняя полоса (Т-бал 80–200, −14–44,9) шире средних в
+ * десяток раз: поле во всю её ширину оставляет средним полосам по десять
+ * пикселей. Такой край срезается до двух средних полос за границей (и не
+ * ближе данных), и срез отмечается. Обычные лестницы (PHQ-9, AUDIT, WHO-5)
+ * этим правилом не задеты: их крайние полосы не больше четырёх средних.
+ */
+/**
+ * Лестница из полос-точек: каждая полоса — одно значение (ступени CGI-S и
+ * CGI-I, 1–7). Граница между ними — посередине, и крайние полосы от края
+ * оси до границы вышли бы вдвое уже средних; поэтому у такой лестницы ось
+ * шире на полшага с каждой стороны, а деления — сами значения.
+ */
+export function pointLadder(rungs: readonly Rung[]): boolean {
+  return rungs.length > 1 && rungs.every((r) => r.min === r.max);
+}
+
+/** Деления оси для лестницы: края области и начала полос; у полос-точек — сами значения */
+export function ladderTicks(rungs: readonly Rung[], lo: number, hi: number): number[] {
+  const sorted = sortRungs(rungs);
+  const raw = pointLadder(sorted) ? sorted.map((r) => r.min) : [lo, ...sorted.slice(1).map((r) => r.min), hi];
+  return raw.filter((v, i, a) => v >= lo && v <= hi && a.indexOf(v) === i);
+}
+
+export function courseDomain(
+  rungs: readonly Rung[],
+  values: readonly number[],
+  max?: number | null,
+): { lo: number; hi: number; cut: { lo: boolean; hi: boolean } } {
+  const sorted = sortRungs(rungs);
+  if (pointLadder(sorted)) {
+    const step = Math.min(...boundaries(sorted).map((c, i) => c - sorted[i]!.min));
+    const lo = Math.min(sorted[0]!.min - step, ...values);
+    const hi = Math.max(sorted.at(-1)!.max + step, ...values);
+    return { lo, hi, cut: { lo: false, hi: false } };
+  }
+  const d = ladderDomain(sorted, values, max);
+  let lo = d.lo;
+  /*
+   * Верх шкалы выше края лестницы (полосы демо-скрининга — до 21, а
+   * максимум шкалы — 22) — ось до верха шкалы: иначе в шапке «15 з 22», а у
+   * оси «0–21», и замер в 22 ушёл бы за край поля.
+   */
+  let hi = max != null && max > d.hi ? max : d.hi;
+  const cut = { lo: false, hi: false };
+  const cuts = boundaries(sorted);
+  if (cuts.length >= 2 && values.length) {
+    const unit = median(cuts.slice(1).map((c, i) => c - cuts[i]!));
+    const vmin = Math.min(...values);
+    const vmax = Math.max(...values);
+    /* край среза — круглым числом: «105», а не «101,95» у оси */
+    const grain = unit >= 5 ? 5 : unit >= 1 ? 1 : 0;
+    const up = (v: number) => (grain ? Math.ceil(v / grain) * grain : v);
+    const down = (v: number) => (grain ? Math.floor(v / grain) * grain : v);
+    if (unit > 0 && hi - cuts.at(-1)! > 4 * unit) {
+      hi = Math.min(hi, up(Math.max(vmax, cuts.at(-1)! + 2 * unit)));
+      cut.hi = hi < d.hi || (max != null && hi < max);
+    }
+    if (unit > 0 && cuts[0]! - lo > 4 * unit) {
+      lo = Math.max(lo, down(Math.min(vmin, cuts[0]! - 2 * unit)));
+      cut.lo = lo > d.lo;
+    }
+  }
+  return { lo, hi: hi > lo ? hi : lo + 1, cut };
 }
 
 /**
- * Где «сьогодні» уместно на оси: курс не старше месяца от последнего
- * замера или трети своей длины. Пациент, которого не мерили полгода,
- * получил бы пустое поле шириной в полгода, а сам курс сжался бы в левый
- * край — сколько прошло с последнего замера, скажет подсказка.
+ * Раскладка курса: области по времени и значению, деления, события дорожки
+ * и сигналы на замерах.
+ *
+ * «Сьогодні» на оси нет: линия «сьогодні» почти всегда совпадала с
+ * последним замером (меряют в день приёма) и читалась как ещё одна
+ * граница. Сколько прошло с замера, говорит дата под ним и подсказка;
+ * будущие приёмы — пустые круги дорожки.
  */
-export function todayFits(points: readonly CoursePoint[], now: number): boolean {
-  if (!points.length) return false;
-  const first = points[0]!.t;
-  const last = points.at(-1)!.t;
-  return now >= first && now - last <= Math.max(30 * DAY_MS, 0.35 * (last - first));
-}
-
-export function courseLayout(points: readonly CoursePoint[], rungs: readonly Rung[], events: readonly CourseEvent[], now: number | null, max?: number | null): CourseLayout {
+/**
+ * События дорожки — только около курса: за неделю до первого замера и до
+ * двух месяцев после последнего (следующие приёмы). Приём трёхлетней
+ * давности растянул бы ось так, что курс стал бы точкой. Сигналы на дорожку
+ * не идут — они стоят на своих замерах.
+ */
+export function laneEvents(points: readonly Pick<CoursePoint, "t">[], events: readonly CourseEvent[]): CourseEvent[] {
+  if (!points.length) return [];
   const ts = points.map((p) => p.t);
   const first = Math.min(...ts);
   const last = Math.max(...ts);
-  const today = now !== null && todayFits(points, now) ? now : null;
-  const right = Math.max(last, today ?? last);
-  /*
-   * События — только около курса: за неделю до первого замера и до двух
-   * месяцев после правого края (следующие сессии). Приём трёхлетней
-   * давности растянул бы ось так, что курс стал бы точкой.
-   */
-  const near = events.filter((e) => e.t >= first - 7 * DAY_MS && e.t <= right + 60 * DAY_MS);
-  const t0 = Math.min(first, ...near.map((e) => e.t));
-  const t1raw = Math.max(right, ...near.map((e) => e.t));
+  return events.filter((e) => e.kind !== "signal" && e.t >= first - 7 * DAY_MS && e.t <= last + 60 * DAY_MS);
+}
+
+/**
+ * Сигналы на замерах курса: сигнал встаёт на замер, который его поднял
+ * (`responseId`), и только на график своей шкалы — у сигнала по полосе есть
+ * её код, у сигнала по ответу на пункт нет (тот встаёт на все шкалы
+ * замера). Без прохождения или с чужим — не на этом графике: сигнал PHQ-9
+ * того же дня на оси GAD-7 читался бы как сигнал GAD-7.
+ */
+export function signalsOn(
+  points: readonly Pick<CoursePoint, "key">[],
+  events: readonly CourseEvent[],
+  scaleCode?: string | null,
+): Map<number, CourseEvent[]> {
+  const index = new Map(points.map((p, i) => [p.key, i] as const));
+  const out = new Map<number, CourseEvent[]>();
+  for (const e of events) {
+    if (e.kind !== "signal" || !e.responseId) continue;
+    if (e.scaleCode && scaleCode && e.scaleCode !== scaleCode) continue;
+    const i = index.get(e.responseId);
+    if (i === undefined) continue;
+    out.set(i, [...(out.get(i) ?? []), e]);
+  }
+  return out;
+}
+
+export function courseLayout(
+  points: readonly CoursePoint[],
+  rungs: readonly Rung[],
+  events: readonly CourseEvent[],
+  max?: number | null,
+  scaleCode?: string | null,
+): CourseLayout {
+  const ts = points.map((p) => p.t);
+  const first = Math.min(...ts);
+  const last = Math.max(...ts);
+  const lane = laneEvents(points, events);
+  const t0 = Math.min(first, ...lane.map((e) => e.t));
+  const t1raw = Math.max(last, ...lane.map((e) => e.t));
   const span = t1raw - t0;
   /* одна точка без событий — неделя в обе стороны, иначе делить не на что */
   const pad = span > 0 ? span * 0.04 : 7 * DAY_MS;
+
+  const signals = signalsOn(points, events, scaleCode);
 
   const sorted = sortRungs(rungs);
   const values = points.map((p) => p.value);
   let lo: number;
   let hi: number;
   let ticks: number[];
+  let cut = { lo: false, hi: false };
   if (sorted.length) {
-    const d = ladderDomain(sorted, values, max);
-    lo = d.lo;
-    /*
-     * Верх шкалы выше края лестницы (полосы демо-скрининга — до 21, а
-     * максимум шкалы — 22) — ось до верха шкалы: иначе под графиком «15 з 22»,
-     * а у оси «бали 0–21», и замер в 22 ушёл бы за край поля.
-     */
-    hi = max != null && max > d.hi ? max : d.hi;
-    ticks = [lo, ...sorted.slice(1).map((r) => r.min), hi].filter((v, i, a) => v >= lo && v <= hi && a.indexOf(v) === i);
+    const d = courseDomain(sorted, values, max);
+    ({ lo, hi, cut } = d);
+    ticks = ladderTicks(sorted, lo, hi);
   } else {
     const top = Math.max(max ?? 0, ...values);
     /* баллы без лестницы — чаще целые: деления тогда тоже целые */
@@ -272,18 +465,22 @@ export function courseLayout(points: readonly CoursePoint[], rungs: readonly Run
     lo = axis.min;
     hi = Math.max(axis.max, top);
     ticks = axis.ticks;
+    /*
+     * Верх шкалы известен (BPRS — 126, полос у неё нет) — ось кончается им,
+     * а не круглым делением выше: «47 з 126» в шапке и «150» у оси читались
+     * как две разные шкалы. Деление у самого верха, налезающее на него, уходит.
+     */
+    if (max != null && max >= top && max < axis.max) {
+      const step = axis.ticks.length > 1 ? axis.ticks[1]! - axis.ticks[0]! : max;
+      ticks = [...axis.ticks.filter((t) => t <= max - step * 0.4), max];
+      hi = max;
+    }
   }
 
-  const sessionNo = new Map<string, number>();
-  let n = 0;
-  for (const e of near) {
-    if (e.kind === "session" || (e.kind === "planned" && (now === null || e.t > now))) sessionNo.set(e.key, ++n);
-  }
-
-  return { t0: t0 - pad, t1: t1raw + pad, lo, hi: hi > lo ? hi : lo + 1, ticks, today, events: near, sessionNo };
+  return { t0: t0 - pad, t1: t1raw + pad, lo, hi: hi > lo ? hi : lo + 1, ticks, cut, lane, signals };
 }
 
-/* ─────────── подсказка замера ─────────── */
+/* ─────────── подсказка замера и шапка ─────────── */
 
 export interface PointTip {
   point: CoursePoint;
@@ -295,19 +492,28 @@ export interface PointTip {
   baseline: boolean;
   last: boolean;
   /** Сдвиг от старта и его слово; null — у старта или несравнимо */
-  fromStart: { delta: number; verdict: ChangeVerdict } | null;
+  fromStart: { delta: number; verdict: ChangeVerdict; since: string } | null;
   /** Почему со стартом не сравнивается */
   incomparable: Incomparable | null;
-  /** Сдвиг от предыдущего замера */
+  /** Сдвиг от предыдущего замера; у второго замера его нет — он совпал бы со сдвигом от старта */
   fromPrev: { delta: number; label: string } | null;
+  /** Сигналы риска, которые поднял этот замер */
+  signals: CourseEvent[];
 }
 
 /**
- * Что сказать о замере под курсором: значение, полоса словом, сдвиг от
- * старта с его надёжностью и сдвиг от предыдущего. «Каждое число — со
+ * Что сказать о замере: значение, полоса словом, сдвиг от старта с его
+ * значущістю, сдвиг от предыдущего, сигналы этого замера. «Каждое число — со
  * сравнением и смыслом» (KIT.md § 2).
  */
-export function pointTip(points: readonly CoursePoint[], i: number, rungs: readonly Rung[], rc: number | null, better: Better | null): PointTip | null {
+export function pointTip(
+  points: readonly CoursePoint[],
+  i: number,
+  rungs: readonly Rung[],
+  rc: number | null,
+  better: Better | null,
+  signals: readonly CourseEvent[] = [],
+): PointTip | null {
   const p = points[i];
   if (!p) return null;
   const hit = rungOf(sortRungs(rungs), p.value);
@@ -321,9 +527,12 @@ export function pointTip(points: readonly CoursePoint[], i: number, rungs: reado
     range: hit && band && hit.label === band.label ? { min: hit.min, max: hit.max } : null,
     baseline: i === 0,
     last: i === points.length - 1,
-    fromStart: i > 0 && !incomparable ? { delta: p.value - base.value, verdict: changeVerdict(p.value - base.value, rc, better) } : null,
+    fromStart:
+      i > 0 && !incomparable ? { delta: p.value - base.value, verdict: changeVerdict(p.value - base.value, rc, better), since: base.label } : null,
     incomparable,
-    fromPrev: prev ? { delta: p.value - prev.value, label: prev.label } : null,
+    /* от предыдущего — со второго сдвига: первый сдвиг от предыдущего и есть сдвиг от старта */
+    fromPrev: prev && i > 1 ? { delta: p.value - prev.value, label: prev.label } : null,
+    signals: [...signals],
   };
 }
 
@@ -331,27 +540,78 @@ export function pointTip(points: readonly CoursePoint[], i: number, rungs: reado
 export function bandSpans(rungs: readonly Rung[], lo: number, hi: number): { rung: Rung; from: number; to: number }[] {
   const sorted = sortRungs(rungs);
   const cuts = boundaries(sorted);
-  return sorted.map((rung, i) => ({
-    rung,
-    from: i === 0 ? lo : cuts[i - 1]!,
-    to: i === sorted.length - 1 ? hi : cuts[i]!,
-  }));
+  return sorted
+    .map((rung, i) => ({
+      rung,
+      from: Math.max(lo, i === 0 ? lo : cuts[i - 1]!),
+      to: Math.min(hi, i === sorted.length - 1 ? hi : cuts[i]!),
+    }))
+    .filter((s) => s.to > s.from);
 }
 
-/** Какие замеры подписать числом: все, пока их немного; иначе края и крайние значения */
-export function labelledPoints(values: readonly number[]): Set<number> {
-  if (values.length <= 8) return new Set(values.map((_, i) => i));
-  const out = new Set([0, values.length - 1]);
-  let mn = 0;
-  let mx = 0;
-  values.forEach((v, i) => {
-    if (v < values[mn]!) mn = i;
-    if (v > values[mx]!) mx = i;
-  });
-  out.add(mn);
-  out.add(mx);
-  return out;
+/**
+ * Положение значения на оси лестницы, в пикселях.
+ *
+ * Линейно — пока у каждой полосы есть высота. Полоса из одного значения
+ * среди обычных (SWLS «Нейтральна оцінка» — ровно 20 между 15–19 и 21–25)
+ * получает по линейной оси одну единицу шкалы — на шкале 5–35 это шесть
+ * пикселей, и ни полосы, ни её подписи не видно. Такой полосе даётся не
+ * меньше `minPx` (высота её подписи), остальные полосы сжимаются в одной
+ * пропорции; внутри каждой полосы ось линейна, порядок значений сохранён.
+ * Лестница целиком из полос-точек (CGI-S) этого не требует — у неё все
+ * полосы одной высоты (courseDomain); места на сжатие не хватает — ось
+ * остаётся линейной.
+ */
+export function bandY(
+  spans: readonly { rung: Rung; from: number; to: number }[],
+  lo: number,
+  hi: number,
+  top: number,
+  height: number,
+  minPx: (rung: Rung) => number,
+): (v: number) => number {
+  const span = Math.max(hi - lo, Number.EPSILON);
+  const linear = (v: number) => top + height * (1 - (v - lo) / span);
+  if (!spans.length || spans.every((s) => s.rung.min === s.rung.max)) return linear;
+  const prop = spans.map((s) => (height * (s.to - s.from)) / span);
+  const raised = spans.map((s, i) => s.rung.min === s.rung.max && minPx(s.rung) > prop[i]!);
+  if (!raised.some(Boolean)) return linear;
+  const extra = spans.reduce((acc, s, i) => acc + (raised[i] ? minPx(s.rung) - prop[i]! : 0), 0);
+  const rest = prop.reduce((acc, p, i) => acc + (raised[i] ? 0 : p), 0);
+  if (rest - extra < rest * 0.5) return linear;
+  const k = (rest - extra) / rest;
+  const h = spans.map((s, i) => (raised[i] ? minPx(s.rung) : prop[i]! * k));
+  const bottoms: number[] = [];
+  let y = top + height;
+  for (const hh of h) {
+    bottoms.push(y);
+    y -= hh;
+  }
+  return (v: number) => {
+    const i = Math.max(
+      0,
+      spans.findIndex((s, n) => v <= s.to || n === spans.length - 1),
+    );
+    const s = spans[i]!;
+    const f = s.to > s.from ? (Math.min(Math.max(v, s.from), s.to) - s.from) / (s.to - s.from) : 0.5;
+    return bottoms[i]! - h[i]! * f;
+  };
 }
+
+/**
+ * Какие деления оси подписать: подписи не ближе `gap` пикселей друг к другу.
+ * Края — первыми: ось без своих краёв не читается; деление, налезающее на
+ * уже подписанное, уходит.
+ */
+export function spacedTicks(ticks: readonly number[], Y: (v: number) => number, gap = 12): number[] {
+  if (ticks.length < 3) return [...ticks];
+  const order = [ticks[0]!, ticks.at(-1)!, ...ticks.slice(1, -1)];
+  const placed: number[] = [];
+  for (const t of order) if (placed.every((p) => Math.abs(Y(p) - Y(t)) >= gap)) placed.push(t);
+  return ticks.filter((t) => placed.includes(t));
+}
+
+/* ─────────── подписи ─────────── */
 
 /** Прямоугольник на поле графика: x0, y0 — левый верхний угол */
 export interface Box {
@@ -366,10 +626,8 @@ const hits = (a: Box, b: Box) => a.x0 < b.x1 && a.x1 > b.x0 && a.y0 < b.y1 && a.
 /**
  * Первое место для подписи, где она ничего не закрывает: ни замер, ни
  * линию, ни число у замера, ни другую подпись, — и не вылезает за поле.
- * Места перебираются в порядке предпочтения (как у набора: сначала у
- * левого края в своей полосе, потом у её другой кромки, потом дальше).
- * Ни одного свободного — null: подпись не рисуется, её смысл остаётся в
- * легенде и в подсказке.
+ * Места перебираются в порядке предпочтения. Ни одного свободного — null:
+ * подпись не рисуется, число остаётся в подсказке и в таблице.
  */
 export function freeSpot<T extends Box>(candidates: readonly T[], obstacles: readonly Box[], field: Box): T | null {
   for (const c of candidates) {
@@ -380,26 +638,28 @@ export function freeSpot<T extends Box>(candidates: readonly T[], obstacles: rea
 }
 
 /**
- * Где подписать «сьогодні» над полем.
- *
- * По центру своей линии, как в наборе. Но в той же строке слева стоит
- * подпись оси («бали 0–25, краще ↑»), и на узком графике с сессиями,
- * назначенными вперёд, линия «сьогодні» уходит к левому краю — подписи
- * наезжали одна на другую. Тогда подпись встаёт флажком справа от линии, а
- * если линия проходит под самой подписью оси — сразу за её концом. За
- * правый край графика не выходит.
- *
- * `titleEnd` — правый край подписи оси, `right` — правый край графика.
+ * Порядок, в котором замеры получают число: последний (где человек сейчас),
+ * первый (откуда начали), наибольший и наименьший, дальше — переломы хода
+ * (замер выше или ниже обоих соседей), потом остальные с конца. Число
+ * ставится, только если ни на что не налезает (placeValues в course.tsx):
+ * на коротком курсе подписаны все, на длинном — края, крайние и переломы.
  */
-export function todayLabelAt(
-  lineX: number,
-  labelW: number,
-  titleEnd: number,
-  right: number,
-  gap = 8,
-): { x: number; anchor: "middle" | "start" } {
-  if (lineX - labelW / 2 >= titleEnd + gap) return { x: Math.min(lineX, right - labelW / 2), anchor: "middle" };
-  return { x: Math.min(Math.max(lineX + 4, titleEnd + gap), right - labelW), anchor: "start" };
+export function valueOrder(values: readonly number[]): number[] {
+  const n = values.length;
+  if (!n) return [];
+  let mn = 0;
+  let mx = 0;
+  values.forEach((v, i) => {
+    if (v < values[mn]!) mn = i;
+    if (v > values[mx]!) mx = i;
+  });
+  const turns = values
+    .map((v, i) => ({ i, d: i > 0 && i < n - 1 ? Math.min(Math.abs(v - values[i - 1]!), Math.abs(v - values[i + 1]!)) : 0, v }))
+    .filter(({ i, v }) => i > 0 && i < n - 1 && (v - values[i - 1]!) * (v - values[i + 1]!) > 0)
+    .sort((a, b) => b.d - a.d)
+    .map(({ i }) => i);
+  const rest = values.map((_, i) => n - 1 - i);
+  return [...new Set([n - 1, 0, mx, mn, ...turns, ...rest])];
 }
 
 /**
@@ -421,4 +681,155 @@ export function placeLabels(xs: readonly number[], widths: readonly number[], ga
     out.add(i);
   }
   return out;
+}
+
+/* ─────────── подписи полос ─────────── */
+
+/**
+ * Перенос подписи по словам в заданную ширину. Слово длиннее строки
+ * остаётся целым на своей строке: ширина колонки выбирается не меньше
+ * самого длинного слова (labelColumn), и резать слово не приходится.
+ */
+/* слова делит обычный пробел: неразрывный («24–38 %») держит своё вместе */
+const SPACE = /[ \t\n\r]+/;
+
+export function wrapWords(text: string, width: number, measure: (s: string) => number): string[] {
+  const words = text.split(SPACE).filter(Boolean);
+  const lines: string[] = [];
+  let line = "";
+  for (const w of words) {
+    const next = line ? `${line} ${w}` : w;
+    if (line && measure(next) > width) {
+      lines.push(line);
+      line = w;
+    } else line = next;
+  }
+  if (line) lines.push(line);
+  return lines;
+}
+
+/**
+ * Ширина колонки подписей полос: столько строк, сколько даёт самая широкая
+ * допустимая колонка (`max`), — и самая узкая ширина с тем же числом строк.
+ * Не уже самого длинного слова и не уже `min`. Подпись в одну строку
+ * читается быстрее двух, но колонка не шире, чем это нужно; не уложились в
+ * `lines` строк и при `max` — `max`: подпись встанет в три строки, но
+ * целиком (многоточие «Депресія умеренной тяжес…» прятало ровно то, ради
+ * чего полосы подписаны).
+ */
+export function labelColumn(texts: readonly string[], measure: (s: string) => number, min: number, max: number, lines = 2): number {
+  const top = Math.max(min, max);
+  const longestWord = Math.max(0, ...texts.flatMap((t) => t.split(SPACE).map(measure)));
+  const count = (w: number) => texts.reduce((n, t) => n + wrapWords(t, w, measure).length, 0);
+  if (!texts.length || texts.some((t) => wrapWords(t, top, measure).length > lines)) return top;
+  const best = count(top);
+  let a = Math.min(top, Math.max(min, Math.ceil(longestWord)));
+  if (count(a) === best) return a;
+  let b = top;
+  /* строк с шириной не прибавляется — ширина ищется делением пополам, в целых пикселях */
+  while (b - a > 1) {
+    const m = Math.floor((a + b) / 2);
+    if (count(m) === best) b = m;
+    else a = m;
+  }
+  return b;
+}
+
+/**
+ * Блоки подписей в колонке без наложения.
+ *
+ * Каждый блок хочет стоять серединой на своей полосе (`want`); блоки идут
+ * сверху вниз в том же порядке, что полосы. Проход сверху раздвигает
+ * налезающие, проход снизу возвращает то, что вылезло за нижний край;
+ * не помещаются вовсе — колонка выходит за верх, а не наезжает сама на себя.
+ * Возвращает верхний край каждого блока.
+ */
+export function stackBlocks(blocks: readonly { want: number; h: number }[], top: number, bottom: number, gap = 2): number[] {
+  const ys = blocks.map((b) => b.want - b.h / 2);
+  for (let i = 0; i < ys.length; i++) {
+    const floor = i ? ys[i - 1]! + blocks[i - 1]!.h + gap : top;
+    ys[i] = Math.max(ys[i]!, floor);
+  }
+  for (let i = ys.length - 1; i >= 0; i--) {
+    const ceil = i === ys.length - 1 ? bottom : ys[i + 1]! - gap;
+    ys[i] = Math.min(ys[i]!, ceil - blocks[i]!.h);
+  }
+  return ys;
+}
+
+/* ─────────── дорожка событий ─────────── */
+
+/**
+ * Значки дорожки без наложения: событие одного дня (приём и заключение после
+ * него) раздвигается на `gap` вправо, а у правого края — влево. Порядок
+ * событий сохраняется: значок не перепрыгивает соседа.
+ */
+export function dodge(xs: readonly number[], gap: number, lo: number, hi: number): number[] {
+  const out = xs.map((x) => Math.min(hi, Math.max(lo, x)));
+  for (let i = 1; i < out.length; i++) if (out[i]! - out[i - 1]! < gap) out[i] = out[i - 1]! + gap;
+  for (let i = out.length - 1; i >= 0; i--) {
+    const ceil = i === out.length - 1 ? hi : out[i + 1]! - gap;
+    if (out[i]! > ceil) out[i] = ceil;
+  }
+  return out;
+}
+
+/* ─────────── сетка графиков ─────────── */
+
+/**
+ * Сколько графиков курса встаёт в ряд: не уже `min` пикселей на график (у
+ * графика уже этого поле курса сжимается колонкой подписей полос), не больше
+ * `max` в ряд и не больше, чем графиков.
+ */
+export function courseColumns(width: number, count: number, min = 420, max = 3, gap = 16): number {
+  const fit = Math.max(1, Math.floor((width + gap) / (min + gap)));
+  return Math.max(1, Math.min(fit, max, count));
+}
+
+/**
+ * Ширина каждого графика в сетке из шести долей — так, чтобы последний ряд
+ * не оставался пустым наполовину: одинокий последний график — на всю
+ * ширину, два последних в ряду на три — по половине. Возвращает число долей
+ * из шести на каждый график.
+ */
+export function gridSpans(count: number, cols: number): number[] {
+  const c = Math.max(1, Math.min(cols, 3));
+  const each = 6 / c;
+  const spans = Array.from({ length: count }, () => each);
+  const tail = count % c;
+  if (tail) for (let i = count - tail; i < count; i++) spans[i] = 6 / tail;
+  return spans;
+}
+
+/* ─────────── имена ─────────── */
+
+/**
+ * Что меряет методика и как она называется коротко — из названия:
+ * «Депресія (PHQ-9)» → «Депресія» и «PHQ-9»; «СР-45. Схильність до
+ * суїцидальних реакцій» → «Схильність до суїцидальних реакцій» и «СР-45»;
+ * без кода — название целиком и кода нет. Шапка графика курса — «Депресія ·
+ * PHQ-9»: и что меряли, и чем.
+ *
+ * Правило одно с консолью и сервером (instrumentCode / instrumentMeasure в
+ * @quizzy/shared): своё, «скобка до 16 знаков и прописными», не выделяло код
+ * у «ASRS-v1.1», «CIWA-Ar», «Brief COPE», и шапка графика расходилась с
+ * клинической картиной той же карточки.
+ */
+export function methodNames(surveyTitle: string): { measure: string; code: string | null } {
+  const title = surveyTitle.trim().replace(/\s+/g, " ");
+  const measure = instrumentMeasure(title);
+  /* кода нет — instrumentCode отдаёт само название (или его начало): тогда и кода нет */
+  return measure === title ? { measure: title, code: null } : { measure, code: instrumentCode(title) };
+}
+
+/**
+ * Шапка графика курса для шкалы методики: у методики с одной шкалой —
+ * «Депресія · PHQ-9» (что меряет методика и её код), у многошкальной —
+ * «Тривога · Скринінг емоційного стану»: шкала и методика, которой она
+ * принадлежит. Служебный код шкалы («PHQ», «anxiety») человеку не
+ * показывается.
+ */
+export function courseNames(surveyTitle: string, scaleTitle: string, single: boolean): { measure: string; method: string | null } {
+  const m = methodNames(surveyTitle);
+  return single ? { measure: m.measure, method: m.code } : { measure: scaleTitle, method: m.code ?? surveyTitle };
 }

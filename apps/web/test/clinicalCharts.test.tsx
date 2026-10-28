@@ -84,6 +84,76 @@ test("динамика из одной точки не делит на ноль 
   expect(html).not.toContain("NaN");
 });
 
+test("ступень из одного значения подписана одним числом — в подсказке линейки и в колонке динамики", () => {
+  const cgi = [1, 2, 3, 4, 5, 6, 7].map((v) => ({ min: v, max: v, label: `Ступінь ${v}`, severity: (v < 4 ? "none" : "severe") as "none" | "severe" }));
+  const meter = draw(<SeverityMeter rungs={cgi} value={3} label="CGI-S: 3" />);
+  expect(meter).not.toMatch(/>(\d)–\1</);
+  const trend = draw(
+    <BandTrend
+      label="CGI-S"
+      rungs={cgi}
+      points={[
+        { key: "1", t: Date.parse("2026-08-01"), label: "1 серп", value: 5 },
+        { key: "2", t: Date.parse("2026-09-01"), label: "1 вер", value: 3 },
+      ]}
+    />,
+  );
+  const plain = trend.replace(/<!-- -->/g, "").replace(/<[^>]+>/g, " ").replace(/[ \t\n]+/g, " ");
+  expect(plain).not.toMatch(/(\d)–\1(?!\d)/);
+  expect(plain).toContain("3 Ступінь 3");
+});
+
+test("динамика по лестнице: полоса из одного значения среди обычных (SWLS «20») видна и подписана «20»", () => {
+  const swls = [
+    { min: 5, max: 14, label: "Незадоволеність", severity: "mild" as const },
+    { min: 15, max: 19, label: "Незначна незадоволеність", severity: "none" as const },
+    { min: 20, max: 20, label: "Нейтральна оцінка", severity: "none" as const },
+    { min: 21, max: 35, label: "Задоволеність", severity: "none" as const },
+  ];
+  const html = draw(
+    <BandTrend
+      label="SWLS"
+      rungs={swls}
+      points={[
+        { key: "1", t: Date.parse("2026-08-01"), label: "1 серп", value: 18 },
+        { key: "2", t: Date.parse("2026-09-01"), label: "1 вер", value: 22 },
+      ]}
+    />,
+  );
+  const band = /data-band="Нейтральна оцінка"[^>]*height="([\d.]+)"/.exec(html);
+  expect(Number(band?.[1])).toBeGreaterThanOrEqual(14);
+  const plain = html.replace(/<!-- -->/g, "").replace(/<[^>]+>/g, " ").replace(/[ \t\n]+/g, " ");
+  expect(plain).toContain("20 Нейтральна оцінка");
+  expect(plain).not.toContain("20–20");
+});
+
+test("динамика по лестнице: подписи полос целиком, клинический порог, «менше — краще» у оси", () => {
+  const long = [
+    { min: 0, max: 4, label: "Депресія відсутня", severity: "none" as const },
+    { min: 5, max: 9, label: "Легка («субклінічна») депресія", severity: "mild" as const },
+    { min: 10, max: 14, label: "Помірної тяжкості депресія", severity: "moderate" as const },
+    { min: 15, max: 27, label: "Тяжка депресія", severity: "severe" as const },
+  ];
+  const html = draw(
+    <BandTrend
+      label="PHQ-9"
+      rungs={long}
+      points={[
+        { key: "1", t: Date.parse("2026-08-01"), label: "1 серп", value: 6.4 },
+        { key: "2", t: Date.parse("2026-09-01"), label: "1 вер", value: 4.99 },
+      ]}
+    />,
+  );
+  const plain = html.replace(/<!-- -->/g, "").replace(/<[^>]+>/g, " ").replace(/[ \t\n]+/g, " ");
+  // многоточия больше нет: подпись переносится по словам, но целиком
+  expect(html).not.toContain("…");
+  for (const word of ["Депресія відсутня", "(«субклінічна»)", "Помірної тяжкості", "Тяжка депресія"]) expect(plain).toContain(word);
+  expect(html).toContain('data-cutoff="10"');
+  expect(plain).toMatch(/(клінічний поріг|клинический порог|clinical cut-off) ≥ 10/);
+  expect(plain).toMatch(/менше — краще|меньше — лучше|lower is better/);
+  expect(html).not.toContain("NaN");
+});
+
 test("динамика без лестницы подгоняет ось и рисует полосу ошибки", () => {
   const html = draw(
     <BandTrend

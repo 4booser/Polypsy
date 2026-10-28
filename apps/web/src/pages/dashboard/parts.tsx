@@ -137,8 +137,10 @@ export function DomainRow({ d }: { d: ConditionSummary }) {
                 </span>
               ) : null}
             </div>
+            {/* «% від максимуму» — в заголовке колонки; здесь — ход за неделями и куда лучше */}
             <small className="block text-caption text-muted">
-              {ut("dashA.ofMaxShort")}, {d.higherIsWorse ? ut("dash.higherWorse") : ut("dash.higherBetter")}
+              {spark.length > 1 ? `${ut("dashA.weeksShort")}, ` : ""}
+              {d.higherIsWorse ? ut("dash.higherWorse") : ut("dash.higherBetter")}
             </small>
           </div>
         ) : (

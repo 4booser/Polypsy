@@ -31,9 +31,9 @@ import { birthYearOf } from "../lib/privacy";
 import {
   accessiblePatientIds,
   assertPatientGroupAccess,
-  assertSurveyAccess,
+  assertSurveyUse,
   assertSurveysInUse,
-  surveyScopeFilter,
+  surveyUseFilter,
 } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
@@ -90,7 +90,7 @@ function membersVisibleTo(visible: Set<string> | null) {
 patientGroupRoutes.get("/", async (c) => {
   const user = c.get("user");
   const visible = await accessiblePatientIds(user);
-  const ownSurvey = await surveyScopeFilter(user);
+  const ownSurvey = await surveyUseFilter(user);
 
   const rows = await db
     .select({
@@ -201,12 +201,15 @@ patientGroupRoutes.get("/", async (c) => {
 });
 
 /*
- * Прохождения и случаи — только по методикам зоны читателя (`ownSurvey`,
- * surveyScopeFilter: группы под его управлением и его личные методики без
- * группы). То же условие ставит реестр пациентов «последней сдаче» и
- * открытому случаю (ownSurvey в routes/patients.ts), и тем же ограничена
- * очередь случаев (routes/alertCases.ts): прохождение или случай по чужой
- * методике — сведение, которого читателю не показывают больше нигде.
+ * Прохождения и случаи — только по методикам, которыми читатель пользуется
+ * (`ownSurvey`, surveyUseFilter: группы под его управлением, его личные
+ * методики без группы и библиотека — общий каталог). Люди здесь — уже только
+ * из его зоны (membersVisibleTo), поэтому у методики библиотеки это ровно
+ * правило результатов (lib/scope.ts): её прохождения видны о людях зоны. То
+ * же условие ставит реестр пациентов «последней сдаче» и открытому случаю
+ * (ownSurvey в routes/patients.ts), и тем же ограничена очередь случаев
+ * (routes/alertCases.ts): прохождение или случай по чужой методике —
+ * сведение, которого читателю не показывают больше нигде.
  *
  * Политика строк режет то же самое под ролью приложения, но она — страховка
  * под правилом, а не замена ему: без условия здесь владелец базы считал
@@ -306,7 +309,7 @@ patientGroupRoutes.get("/:id", async (c) => {
   if (!group) notFound("err.patientGroupNotFound");
 
   const visible = await accessiblePatientIds(user);
-  const ownSurvey = await surveyScopeFilter(user);
+  const ownSurvey = await surveyUseFilter(user);
   const memberRows = await db
     .select({
       userId: patientGroupMembers.patientId,
@@ -667,8 +670,8 @@ patientGroupRoutes.delete("/:id/favourite", async (c) => {
  *    (`patient_group.assign`) — плюс поимённые. Без сводной записи массовая
  *    выдача растворилась бы среди обычных назначений и перестала бы
  *    отличаться от повседневной работы.
- * 4. Группа не становится каналом обхода доступа: методика обязана быть в
- *    зоне ответственности назначающего (`assertSurveyAccess`), а получают её
+ * 4. Группа не становится каналом обхода доступа: методикой назначающий
+ *    обязан мочь пользоваться (`assertSurveyUse`), а получают её
  *    только те участники, которые сейчас в его зоне видимости. Человек,
  *    выбывший из зоны, назначения не получает — иначе группа позволяла бы
  *    дотянуться до тех, кого сотруднику больше видеть не положено.
@@ -689,7 +692,7 @@ patientGroupRoutes.post(
     const input = await parseBody(c.req.raw, assignSurveyToPatientGroupSchema);
     // срок из поля даты — до конца этого дня по поясу учреждения (lib/day.ts, endOfDay)
     input.expiresAt = deadlineOf(input.expiresAt);
-    await assertSurveyAccess(user, input.surveyId);
+    await assertSurveyUse(user, input.surveyId);
     await assertSurveysInUse([input.surveyId]);
 
     /*

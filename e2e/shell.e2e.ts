@@ -43,3 +43,39 @@ test("тема второго вошедшего — из его профиля,
   await signInHere(page, "psy2");
   await expect(theme(page)).toHaveAttribute("data-theme", "light");
 });
+
+/**
+ * Консоль прокручивает только область содержимого, а не весь документ.
+ *
+ * Подписи sr-only у строк списка — абсолютные; без позиционированного предка
+ * они отсчитывались от окна, и их «место» уходило в прокрутку документа: на
+ * каталоге документ вырастал до трёх тысяч пикселей, и колесо, дойдя до конца
+ * списка, уводило вверх всю консоль вместе с рельсой, открывая под ней
+ * пустоту. Проверка не зависит от данных стенда: в область содержимого
+ * кладётся высокий блок с такой же подписью в самом низу — ровно то, что
+ * делает длинный список, — и документ обязан остаться высотой в окно.
+ */
+test("абсолютная подпись внизу длинного списка не растит документ", async ({ page }) => {
+  await login(page, "psy");
+  await page.goto("/surveys");
+  await expect(page.locator("main [tabindex='0']").first()).toBeVisible();
+  const sizes = await page.evaluate(() => {
+    const area = document.querySelector<HTMLElement>("main [tabindex='0']")!;
+    const tall = document.createElement("div");
+    tall.style.height = "3000px";
+    const label = document.createElement("span");
+    label.className = "sr-only";
+    label.textContent = "PHQ-9";
+    tall.append(document.createElement("div"), label);
+    (tall.firstElementChild as HTMLElement).style.height = "2990px";
+    area.append(tall);
+    area.scrollTop = area.scrollHeight;
+    window.scrollTo(0, document.scrollingElement!.scrollHeight);
+    const doc = document.scrollingElement!;
+    const out = { doc: doc.scrollHeight, view: doc.clientHeight, top: doc.scrollTop };
+    tall.remove();
+    return out;
+  });
+  expect(sizes.doc, "документ вырос выше окна").toBe(sizes.view);
+  expect(sizes.top, "документ прокрутился").toBe(0);
+});

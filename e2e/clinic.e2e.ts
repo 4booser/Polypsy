@@ -1,11 +1,12 @@
 import { expect, test } from "@playwright/test";
 import {
-  goCaseCard,
   goMenu,
+  goPatientTab,
   goRail,
   goSection,
   login,
   logout,
+  openDrawer,
   openSeededPatient,
   rowTexts,
 } from "./helpers";
@@ -36,18 +37,17 @@ test("от тревоги до закрытого направления", async
   await (await openSeededPatient(page)).click();
 
   /*
-   * По щелчку открывается карточка пациента (кадр f19), а направления живут
-   * в клинической карте за шестерёнкой — см. goCaseCard. Дожидаемся, что
-   * вкладки карты отрисовались: это и есть признак, что карта на месте.
+   * По щелчку открывается рабочее место пациента, и направления — его
+   * вкладка (см. goPatientTab). Выбранная вкладка — признак, что место на
+   * месте; панель направлений — что вкладка отрисовалась.
    */
-  await goCaseCard(page);
-  await page.getByRole("main").getByRole("link", { name: "Хронология" }).waitFor();
+  await goPatientTab(page, "Направления");
 
   // имя берём с самой страницы: в ссылке рядом с ним стоят инициалы-аватарка,
   // и textContent вернул бы «ПДПетров Дмитрий»
   const patientName = (await page.locator("h1").textContent())!.trim();
   expect(patientName.length).toBeGreaterThan(0);
-  await expect(page.getByRole("heading", { name: "Направления" })).toBeVisible();
+  await expect(page.getByRole("main").getByRole("heading", { name: "Направления", exact: true })).toBeVisible();
 
   /*
    * Проверяется СВОЁ направление, а не пустота реестра.
@@ -62,10 +62,10 @@ test("от тревоги до закрытого направления", async
   const reason = `Смоук ${Date.now()}`;
   await expect(page.getByText(reason)).toHaveCount(0);
 
-  /* «Виписати направлення» стоит в шапке справы и в панели направлений — оба открывают один ящик */
-  await page.getByRole("button", { name: "Выписать направление" }).first().click();
-  await page.getByPlaceholder("что послужило поводом").fill(reason);
-  await page.getByRole("button", { name: "Выписать", exact: true }).click();
+  /* «Виписати направлення» стоит в меню шапки и на панели направлений — оба открывают один ящик */
+  await page.getByRole("main").getByRole("button", { name: "Выписать направление" }).first().click();
+  await openDrawer(page).getByPlaceholder("что послужило поводом").fill(reason);
+  await openDrawer(page).getByRole("button", { name: "Выписать", exact: true }).click();
 
   const row = page.locator("table tbody tr").filter({ hasText: reason });
   await expect(row).toBeVisible();
@@ -115,15 +115,19 @@ test("запись приёма сохраняется, подписываетс
   // человек из посева, а не первый в списке: список стоит по свежести замера,
   // и наверх поднимается тот, кого завёл соседний сценарий
   await (await openSeededPatient(page)).click();
-  // записи приёма остались в клинической карте, а не на карточке f19
-  await goCaseCard(page);
-
-  const notes = page.locator("[data-panel], .card").filter({ hasText: "Записи приёма" }).first();
+  /*
+   * Записи приёма и заключения — одна вкладка «Записи» рабочего места;
+   * пишут в ящике «Запис прийому» (он же — кнопка шапки и клавиша N).
+   */
+  await goPatientTab(page, "Записи");
+  const records = page.getByRole("main").getByRole("region", { name: "Записи", exact: true });
+  await records.getByRole("button", { name: "Новая запись приёма" }).click();
+  const notes = openDrawer(page);
   await expect(notes).toBeVisible();
 
   const text = `Беседа ${Date.now()}`;
   await notes.getByRole("button", { name: "Первичный" }).click();
-  await notes.getByPlaceholder(/Жалобы|Новая запись/).fill(text);
+  await notes.getByPlaceholder(/Жалобы/).fill(text);
   await notes.getByRole("button", { name: "Сохранить черновиком" }).click();
 
   /*
@@ -134,9 +138,10 @@ test("запись приёма сохраняется, подписываетс
   await expect(page.getByText("Черновик сохранён")).toBeVisible();
 
   await notes.getByRole("button", { name: "Подписать" }).click();
-  // подписанная запись показывается отдельно, а поле освобождается под новую
+  // подписанная запись встаёт в ленту «Записей» и в «Предыдущие» ящика, а поле освобождается под новую
+  await expect(records).toContainText(text);
   await expect(notes).toContainText(text);
-  await expect(notes.getByPlaceholder("Новая запись поверх подписанной")).toHaveValue("");
+  await expect(notes.getByPlaceholder(/Жалобы/)).toHaveValue("");
 });
 
 test("план безопасности составляется и сохраняется версией", async ({ page }) => {
@@ -148,17 +153,23 @@ test("план безопасности составляется и сохран
   await login(page, "psy");
   // человек из посева, а не первый в списке — по той же причине, что выше
   await (await openSeededPatient(page)).click();
-  // план безопасности остался в клинической карте, а не на карточке f19
-  await goCaseCard(page);
+  /*
+   * План — строкой панели «Риск и безопасность» обзора, а сам он — в ящике:
+   * «Составить план», когда плана нет, «Открыть» — когда есть.
+   */
+  const risk = page.getByRole("main").getByRole("region", { name: "Риск и безопасность" });
+  await risk.getByRole("button", { name: /^(Составить план|Открыть)$/ }).click();
+  const card = openDrawer(page);
 
-  const card = page.locator("[data-panel], .card").filter({ hasText: "План безопасности" }).first();
-  await expect(card).toBeVisible();
-
-  await card.getByRole("button", { name: /Составить план|Пересмотреть/ }).click();
+  /* плана нет — правка открыта сразу (ради неё ящик и открыли); есть — «Пересмотреть» */
+  const add = card.getByRole("button", { name: "+ Добавить строку" }).first();
+  const revise = card.getByRole("button", { name: "Пересмотреть" });
+  await expect(add.or(revise)).toBeVisible();
+  if (await revise.isVisible()) await revise.click();
 
   // порядок разделов воспроизводит порядок действий в кризисе
   const sign = `Не сплю ${Date.now()}`;
-  await card.getByRole("button", { name: "+ Добавить строку" }).first().click();
+  await add.click();
   await card.getByPlaceholder("Своими словами").first().fill(sign);
 
   await card.getByRole("button", { name: "Сохранить новой версией" }).click();

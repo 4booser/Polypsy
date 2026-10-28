@@ -172,15 +172,18 @@ export default function Dashboard() {
             visible.filter((k) => WIDGET_COLUMN[k] === c).map((k) => <div key={k}>{node[k]}</div>);
           return (
             <div className="flex flex-col gap-4">
-              {/*
-                Предложения правил стоят выше всего, но это подсказка, а не
-                сигнал: нет предложений — блока нет вовсе.
-              */}
-              <Suggestions />
               <div className="grid grid-cols-[minmax(0,1fr)_440px] items-start gap-4 max-[1360px]:grid-cols-[minmax(0,1fr)_400px] max-[1080px]:grid-cols-1">
                 <div className="flex min-w-0 flex-col gap-4">{col("main")}</div>
                 <div className="flex min-w-0 flex-col gap-4">{col("side")}</div>
               </div>
+              {/*
+                Предложения правил — под случаями риска и приёмом дня, а не над
+                ними: это подсказка, а не сигнал. Стояли выше всего, и с шагами
+                скрининга каталога (десять правил на отделение) экран дня
+                открывался стеной «що далі», а риск уезжал за край. Нет
+                предложений — блока нет вовсе.
+              */}
+              <Suggestions />
               {col("full")}
               {/*
                 Строки «Показано 7 віджетів з 7. Стартовий екран — …. Змінити»

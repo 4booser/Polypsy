@@ -219,13 +219,13 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   /* ── методики ── */
   "GET /api/surveys": {
     summary:
-      "Каталог методик. ?limit=&offset= — страница с total; ?folder= (id или root) — папка, вместе с ?q= — поиск по её поддереву; ?status= — вкладка, несколько через запятую; ?archived=1 — снятые вместе с остальными, ?archived=only — только снятые; ?domain= — направление (distress, trauma, suicide, sleep, addiction, wellbeing, cognitive, personality, staff, other) или none — без направления, из папки — по её поддереву; в строке — поле domain",
+      "Каталог методик. ?limit=&offset= — страница с total; ?folder= (id или root) — папка, вместе с ?q= — поиск по её поддереву; ?status= — вкладка, несколько через запятую; ?archived=1 — снятые вместе с остальными, ?archived=only — только снятые; ?domain= — направление (distress, trauma, suicide, sleep, addiction, wellbeing, cognitive, personality, staff, other) или none — без направления, из папки — по её поддереву; в строке — поле domain; ?sort=title — по названию, ?sort=catalog — порядок каталога (направление, полные методики первыми, короткие формы под своей полной); сотруднику в строке — клинический паспорт catalog (роль, время, что измеряет, пороги, шаг скрининга)",
     access: "user",
   },
   "POST /api/surveys": { summary: "Создание методики", access: "staff", permission: "surveys.edit", body: createSurveySchema },
   "POST /api/surveys/validate": { summary: "Структурная проверка черновика без сохранения", access: "staff", permission: "surveys.edit" },
   "POST /api/surveys/import": { summary: "Импорт методики из файла экспорта", access: "staff", permission: "surveys.edit" },
-  "GET /api/surveys/:id": { summary: "Методика с содержимым; ?raw=1 — для конструктора; ?version=N — содержимое конкретной версии; обследуемому — без ключа (веса, критические пункты, пороги, шкалы срезаны, keyWithheld)", access: "user" },
+  "GET /api/surveys/:id": { summary: "Методика с содержимым; ?raw=1 — для конструктора; ?version=N — содержимое конкретной версии; обследуемому — без ключа (веса, критические пункты, пороги, шкалы срезаны, keyWithheld); сотруднику — клинический паспорт catalog (роль, время, пороги, полная и короткие формы, шаг скрининга)", access: "user" },
   "PATCH /api/surveys/:id": { summary: "Правка методики — создаёт новую версию", access: "staff", permission: "surveys.edit", body: updateSurveySchema },
   "DELETE /api/surveys/:id": { summary: "Снятие методики с использования (данные сохраняются)", access: "staff", permission: "surveys.publish" },
   "POST /api/surveys/:id/restore": { summary: "Возврат методики в работу", access: "staff", permission: "surveys.publish" },
@@ -317,7 +317,7 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
    * GET /api/clinic/patients/:userId/phone.
    */
   "GET /api/patients": { summary: "Пациенты зоны видимости: поиск, вкладка группы, подання `?view=risk|stale|unbooked|mine`, порядок `?sort=name|risk|last|next`, страницы {items,total,counts}; в строке — открытый случай, главная шкала последнего замера, ближайший приём, неявка, учёт, ведущий", access: "staff", permission: "patients.read" },
-  "GET /api/patients/:id/card": { summary: "Карточка пациента: персональные данные, «Тести», «Групи», «Заключення», ведущий", access: "staff", permission: "patients.read" },
+  "GET /api/patients/:id/card": { summary: "Карточка пациента: персональные данные, «Тести», «Групи», «Заключення», ведущий; домены шкал, открытое обращение, ближайшие приёмы, учёт и незакрытые направления — для шапки и «Огляду» рабочего места", access: "staff", permission: "patients.read" },
   "GET /api/patients/names": { summary: "Имена людей зоны по `?ids=` (через запятую, до ста) — без карточки, для подписей полей; вне зоны и не пациенты — без строки; журнал — access.patient_list, как у выбора пациента", access: "staff", permission: "patients.read" },
 
   /* ── рассылки (кадры f09, f16, f22) ──
@@ -394,7 +394,7 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   "GET /api/decisions/rules": { summary: "Правила поддержки решений", access: "staff", permission: "alerts.review" },
   "POST /api/decisions/rules": { summary: "Завести правило", access: "superadmin", permission: "decisions.manage" },
   "PATCH /api/decisions/rules/:id": { summary: "Правка правила: поднимает версию", access: "superadmin", permission: "decisions.manage" },
-  "GET /api/decisions/hits": { summary: "Предложения правил, ждущие решения человека", access: "staff", permission: "alerts.review" },
+  "GET /api/decisions/hits": { summary: "Предложения правил, ждущие решения человека; ?status= — состояние, ?userId= — по одному человеку; в строке — методика названием, баллы условий (basis) и предложенные методики с тем, назначены ли и пройдены ли они (suggested)", access: "staff", permission: "alerts.review" },
   "PATCH /api/decisions/hits/:id": { summary: "Принять или отклонить предложение (отклонение — с объяснением)", access: "staff", permission: "alerts.review" },
   "POST /api/presence": { summary: "Пульс присутствия: я на этом экране", access: "staff", whyNoPermission: "пульс присутствия шлёт сам клиент за того, кто уже вошёл" },
   "GET /api/presence": { summary: "Кто ещё держит открытым этот экран", access: "staff", whyNoPermission: "кто ещё держит открытым этот экран — видно тем, кто на этом же экране; скрывать нечего" },
@@ -411,7 +411,7 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   "GET /api/alert-cases/:id/history": { summary: "Кто и что делал со случаем — выборка из журнала доступа", access: "staff", permission: "alerts.review" },
   "POST /api/alert-cases/:id/assign": { summary: "Взять случай на себя или отпустить", access: "staff", permission: "alerts.review" },
   "PATCH /api/alert-cases/:id": { summary: "Разбор случая: одно решение о человеке; seenLastAlertAt — отказ 409, если после просмотра пришёл новый сигнал", access: "staff", permission: "alerts.review" },
-  "GET /api/referrals": { summary: "Направления, свежие сверху; ?all=1 — вместе с завершёнными. Страница `{items, nextCursor, truncated, total}`: `?limit=` (100, не больше 200), `?cursor=`; total — на первой странице", access: "staff", permission: "referrals.manage" },
+  "GET /api/referrals": { summary: "Направления, свежие сверху; ?all=1 — вместе с завершёнными; ?patient= — одного человека (вне зоны — 404). Страница `{items, nextCursor, truncated, total}`: `?limit=` (100, не больше 200), `?cursor=`; total — на первой странице", access: "staff", permission: "referrals.manage" },
   "GET /api/referrals/count": { summary: "Реестр направлений числами для навигации: всё, кроме завершённых, и открытые — та же зона условием, без людей и без строки журнала", access: "staff", permission: "referrals.manage" },
   "POST /api/referrals": { summary: "Выписать направление", access: "staff", permission: "referrals.manage", body: createReferralSchema },
   "PATCH /api/referrals/:id": { summary: "Движение статуса направления (только вперёд)", access: "staff", permission: "referrals.manage", body: updateReferralSchema },

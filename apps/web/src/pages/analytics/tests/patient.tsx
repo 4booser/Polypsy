@@ -4,7 +4,7 @@ import type { AnswerMatrix, RespondentDynamics, SurveyAnalytics, SurveyResponse 
 import { api, type AnalyticsSlice } from "../../../api";
 import { HBars } from "../../../charts/clinical";
 import { CourseChart } from "../../../charts/course";
-import { betterOf, changeVerdict, courseEventsFromTimeline, courseFromDynamics, reliableThreshold, type ChangeVerdict } from "../../../charts/courseModel";
+import { betterOf, changeVerdict, courseEventsFromTimeline, courseFromDynamics, courseNames, reliableThreshold, type ChangeVerdict } from "../../../charts/courseModel";
 import { RowTip, TipHead, TipRow } from "../../../charts/kit";
 import { day, duration, locale } from "../../../format";
 import { useLang } from "../../../lang";
@@ -103,14 +103,14 @@ export function PatientView({
                 /* лестница — по коду шкалы: id у версий разные, код один */
                 const scale = data.scales.find((s) => s.code === sc.code);
                 const rungs = scale ? rungsOf(scale) : [];
-                const course = courseFromDynamics(sc, rungs);
+                const course = courseFromDynamics(sc, rungs, undefined, { surveyId: sid });
+                const names = courseNames(data.title, sc.title, mine.scales.length === 1);
                 return (
                   <section key={sc.code} className={cx(i > 0 && "border-t border-divider pt-5")} aria-label={sc.title}>
-                    <p className="m-0 mb-2 flex items-baseline gap-2">
-                      <b className="text-h3 font-extrabold text-text">{sc.title}</b>
-                    </p>
                     <CourseChart
                       title={sc.title}
+                      measure={names.measure}
+                      method={names.method}
                       points={course.points}
                       rungs={course.rungs}
                       max={rungs.length ? null : (scale?.maxPossible ?? sc.points[0]?.maxScore ?? null)}

@@ -1,4 +1,5 @@
 import type { Lang } from "./types";
+import { SHORT_BY_KEY } from "./instrumentShortNames";
 
 /**
  * Форматирование, общее для консоли и мобильного приложения.
@@ -101,18 +102,86 @@ export function formatDateTime(iso: string | null | undefined): string {
   return iso ? iso.slice(0, 16).replace("T", " ") : "—";
 }
 
+
+/** Длина короткого имени, взятого из названия без кода: дальше — по границе слова */
+const SHORT_MAX = 24;
+
 /**
- * Короткое имя методики для строк и подписей: «PHQ-9» из «Депресія
- * (PHQ-9)», «СР-45» из «СР-45. Схильність до суїцидальних реакцій».
- *
- * Скобки в конце названия — только если в них код (есть заглавная буква
- * или цифра): «(демо)» — пометка, а не имя. Нет кода — `fallback`
- * (обычно код шкалы).
+ * Текст не длиннее `max` знаков, обрезанный по границе слова, с многоточием.
+ * Середину слова не режет: первое слово длиннее `max` остаётся целым.
  */
-export function instrumentCode(title: string, fallback: string): string {
-  const clean = title.trim();
-  const tail = /\(([^()]{1,16})\)\s*$/.exec(clean)?.[1]?.trim();
-  if (tail && /[A-ZА-ЯІЇЄҐ0-9]/.test(tail)) return tail;
-  const head = /^([A-ZА-ЯІЇЄҐ][A-ZА-ЯІЇЄҐ0-9-]{1,11})\.\s/.exec(clean)?.[1];
-  return head ?? fallback;
+export function clipAtWord(text: string, max: number): string {
+  const clean = text.trim().replace(/\s+/g, " ");
+  if (clean.length <= max) return clean;
+  const words = clean.split(" ");
+  let out = words[0]!;
+  let kept = 1;
+  for (const w of words.slice(1)) {
+    if (out.length + 1 + w.length > max - 1) break;
+    out += ` ${w}`;
+    kept += 1;
+  }
+  /* одно длинное слово — целым и без многоточия: ничего не отброшено */
+  return kept === words.length ? out : `${out.replace(/[\s,.:;«(–—-]+$/, "")}…`;
+}
+
+/**
+ * Короткое имя методики для строк, подписей и графиков: «PHQ-9» из
+ * «Депресія (PHQ-9)».
+ *
+ * По порядку:
+ *  1. Ключ каталога — из таблицы коротких имён (методики учреждения).
+ *  2. Последняя скобка в конце названия, если в ней код или имя, — есть
+ *     заглавная буква или цифра, регистр и длина кода не важны: «PHQ-9»,
+ *     «CIWA-Ar», «Brief COPE», «Flourishing Scale», «СР-45», «шкала
+ *     Розенберга» (с заглавной). Из «SRQ-20, ВООЗ» — первая часть. «(демо)» —
+ *     пометка, а не имя.
+ *  3. Код в начале названия перед точкой или двоеточием: «СР-45.
+ *     Схильність до суїцидальних реакцій».
+ *  4. Сокращение перед названием в кавычках: «БОО «Адаптивність-200»».
+ *  5. Само название, а длинное — по границе слова с многоточием.
+ *
+ * Прежняя разборка брала скобку не длиннее 16 знаков и только прописными, а
+ * иначе — название до первой точки: над графиком стояло «Ознаки СДУГ у
+ * дорослих (ASRS-v1», а у CIWA-Ar, Brief COPE, RSES и Flourishing кодом
+ * становилось название целиком.
+ */
+export function instrumentCode(title: string, opts: { catalogKey?: string | null; lang?: Lang } = {}): string {
+  const key = opts.catalogKey;
+  const byKey = key && Object.hasOwn(SHORT_BY_KEY, key) ? SHORT_BY_KEY[key] : undefined;
+  if (byKey) return byKey[opts.lang === "ru" ? "ru" : "uk"];
+  const clean = title.trim().replace(/\s+/g, " ");
+  const paren = codeInParens(clean);
+  if (paren) return paren.charAt(0).toLocaleUpperCase() + paren.slice(1);
+  const head = /^([A-ZА-ЯІЇЄҐ0-9][A-ZА-ЯІЇЄҐ0-9-]{1,11})[.:]\s/.exec(clean)?.[1];
+  if (head) return head;
+  const abbr = /^([A-ZА-ЯІЇЄҐ]{2,6})\s+[«"„]/.exec(clean)?.[1];
+  if (abbr) return abbr;
+  return clipAtWord(clean, SHORT_MAX);
+}
+
+/** Код из последней скобки названия: первая часть, если в ней заглавная буква или цифра; иначе null */
+function codeInParens(clean: string): string | null {
+  const paren = /\(([^()]+)\)$/.exec(clean)?.[1]?.split(",")[0]?.trim();
+  return paren && paren.length <= SHORT_MAX && /[A-ZА-ЯІЇЄҐ0-9]/.test(paren) ? paren : null;
+}
+
+/**
+ * Что меряет методика — название без кода: «Депресія» из «Депресія
+ * (PHQ-9)», «Схильність до суїцидальних реакцій» из «СР-45. Схильність…»,
+ * «Адаптивність-200» из «БОО «Адаптивність-200»». Пометка в скобках
+ * («(демо)») остаётся: это не код. Шапка графика курса — «Депресія · PHQ-9»:
+ * и что меряли, и чем (instrumentCode).
+ */
+export function instrumentMeasure(title: string): string {
+  const clean = title.trim().replace(/\s+/g, " ");
+  if (codeInParens(clean)) {
+    const rest = clean.slice(0, clean.lastIndexOf("(")).trim();
+    if (rest) return rest;
+  }
+  const head = /^[A-ZА-ЯІЇЄҐ0-9][A-ZА-ЯІЇЄҐ0-9-]{1,11}[.:]\s+(.+)$/.exec(clean)?.[1];
+  if (head) return head.trim();
+  const quoted = /^[A-ZА-ЯІЇЄҐ]{2,6}\s+[«"„](.+?)[»"“]?$/.exec(clean)?.[1];
+  if (quoted) return quoted.trim();
+  return clean;
 }

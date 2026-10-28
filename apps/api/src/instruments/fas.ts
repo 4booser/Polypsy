@@ -111,7 +111,7 @@ export const fas: CreateSurveyDraft = {
         {
           min: 10,
           max: 21,
-          label: L("Втоми немає (норма)", "Усталости нет (норма)"),
+          label: L("Втоми немає", "Усталости нет"),
           severity: "none",
           grade: 1,
         },

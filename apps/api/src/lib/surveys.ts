@@ -361,9 +361,13 @@ export function respondentView(survey: SurveyFull): SurveyFull {
   /*
    * Источник для персонала («Джерело» паспорта методики: чей перевод, откуда
    * пороги) — тоже не обследуемому: его и вынесли из описания, которое тот
-   * читает перед началом.
+   * читает перед началом. Вместе с ним — снимок настроек каталога
+   * (surveys.catalog_fields, lib/catalogInstall.ts): он несёт тот же источник
+   * копией, и до dp-inst (2026-10) пациент получал «Методика … для виявлення
+   * схильності до суїцидальних реакцій» в ответе на СР-45 с нейтральным
+   * названием — не на экране, но в ответе сервера.
    */
-  const { sourceNote: _source, ...row } = survey;
+  const { sourceNote: _source, catalogFields: _snapshot, ...row } = survey as SurveyFull & { catalogFields?: unknown };
   // тип клиента — SurveyFull; поля ключа у этой копии отсутствуют, и кабинеты их не читают (keyWithheld)
   return { ...row, keyWithheld: true, scales: [], questions: questions as unknown as Question[] };
 }

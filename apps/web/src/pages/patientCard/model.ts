@@ -1,4 +1,4 @@
-import type { PatientCard, PatientCardConclusion, PatientCardResponse } from "@quizzy/shared";
+import type { PatientCard, PatientCardConclusion, PatientCardResponse, Referral } from "@quizzy/shared";
 import type { ConclusionState } from "../../api";
 import { shownValue } from "../patients/model";
 
@@ -29,15 +29,6 @@ export function resultRows(scales: PatientCardResponse["scales"]): { title: stri
     const v = shownValue(s.value, s.normalization);
     return { title: s.title, value: `${v.text}${v.unit}`, band: s.bandLabel ?? null };
   });
-}
-
-/**
- * Имя заключения — методика, по которой оно написано: своего названия у
- * заключения нет (conclusions привязаны к прохождению). Черновик помечен
- * словом: рядом с подписанными его «Висновки» читались бы как документ.
- */
-export function conclusionName(c: Pick<PatientCardConclusion, "surveyTitle" | "status">, t: { draft: string }): string {
-  return c.status === "draft" ? `${c.surveyTitle} (${t.draft})` : c.surveyTitle;
 }
 
 /**
@@ -98,4 +89,29 @@ export function withConclusion(card: PatientCard, responseId: string, state: Con
  */
 export function withLead(card: PatientCard, take: boolean, me: { id: string; fullName: string }): PatientCard {
   return { ...card, lead: take ? { specialistId: me.id, name: me.fullName, mine: true } : null };
+}
+
+/**
+ * Обращение после «Відкрити / Закрити звернення» в ящике — из перечитанного
+ * ящиком списка обращений, без нового чтения карточки (см. withConclusion).
+ */
+export function withEpisode(card: PatientCard, episode: PatientCard["episode"]): PatientCard {
+  return { ...card, episode: episode ?? null };
+}
+
+/**
+ * Незакрытые направления после выписки или шага состояния — из ответа самого
+ * действия: выписано и принято — в «Плані» огляда, завершено и отклонено —
+ * уходят оттуда. Порядок — как у сервера: свежие сверху.
+ */
+export function withReferral(card: PatientCard, r: Referral): PatientCard {
+  const rest = (card.openReferrals ?? []).filter((x) => x.id !== r.id);
+  const open =
+    r.status === "created" || r.status === "accepted"
+      ? [{ id: r.id, destination: r.destination, urgency: r.urgency, status: r.status, createdAt: r.createdAt }]
+      : [];
+  return {
+    ...card,
+    openReferrals: [...open, ...rest].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)),
+  };
 }

@@ -20,7 +20,7 @@ import { FOLLOWUP_NOTE_PREFIXES } from "../lib/followup";
 import { fullNameOf } from "../lib/auth";
 import { recentAlertPatients } from "../lib/noShow";
 import { langOf } from "../lib/http";
-import { patientScopeCondition, surveyScopeFilter } from "../lib/scope";
+import { patientScopeCondition, resultScope } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
 /**
@@ -370,7 +370,8 @@ async function collectWork(user: User, lang: Lang): Promise<Item[]> {
       overdue: days >= 7 || r.r.urgency === "immediate",
       assignedTo: null,
       since: r.r.createdAt,
-      href: `/patients/${r.r.userId}/summary`,
+      /* направление — вкладка «Направлення» рабочего места пациента */
+      href: `/patients/${r.r.userId}?tab=referrals`,
     });
   }
 
@@ -426,7 +427,7 @@ async function collectWork(user: User, lang: Lang): Promise<Item[]> {
       overdue: true,
       assignedTo: null,
       since: r.a.dueAt!,
-      href: `/patients/${r.a.userId}/summary`,
+      href: `/patients/${r.a.userId}`,
     });
   }
 
@@ -441,8 +442,11 @@ async function collectWork(user: User, lang: Lang): Promise<Item[]> {
    * Повтор — назначение методики, и видимость у него методики: та же, что у
    * политики строк на survey_access (зона групп), а не зона людей. Пациент
    * моего отделения с повтором по методике чужой группы — работа той группы.
+   * Повтор по методике библиотеки (общий каталог) — работа того, в чьей зоне
+   * человек (lib/scope.ts): зона здесь уже посчитана выше, второй раз она не
+   * считается.
    */
-  const followupScope = await surveyScopeFilter(user);
+  const seen = await resultScope(user, inZone);
   const overdueFollowups = await db
     .select({
       userId: surveyAccess.userId,
@@ -465,7 +469,7 @@ async function collectWork(user: User, lang: Lang): Promise<Item[]> {
         isNotNull(surveyAccess.expiresAt),
         lt(surveyAccess.expiresAt, new Date().toISOString()),
         or(...FOLLOWUP_NOTE_PREFIXES.map((p) => sql`${surveyAccess.note} like ${`${p}%`}`)),
-        followupScope,
+        seen(surveyAccess.surveyId, surveyAccess.userId),
         // повтора так и не было: последнее прохождение раньше выдачи доступа
         sql`not exists (
           select 1 from responses r
@@ -491,7 +495,7 @@ async function collectWork(user: User, lang: Lang): Promise<Item[]> {
       overdue: true,
       assignedTo: null,
       since: r.expiresAt!,
-      href: `/patients/${r.userId}/summary`,
+      href: `/patients/${r.userId}`,
     });
   }
 
@@ -527,7 +531,7 @@ async function collectWork(user: User, lang: Lang): Promise<Item[]> {
       and(
         isNotNull(surveyFollowups.missedAt),
         isNull(users.disabledAt),
-        followupScope,
+        seen(surveyFollowups.surveyId, surveyFollowups.userId),
         sql`not exists (
           select 1 from responses r
           where r.user_id = ${surveyFollowups.userId}
@@ -556,7 +560,7 @@ async function collectWork(user: User, lang: Lang): Promise<Item[]> {
       overdue: true,
       assignedTo: null,
       since: r.closesAt,
-      href: `/patients/${r.userId}/summary`,
+      href: `/patients/${r.userId}`,
     });
   }
 

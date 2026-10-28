@@ -1,30 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import {
-  LOCALE_OF,
-  pointShare,
-  pointValueText,
-  pointValueTop,
-  type PatientListCounts,
-  type PatientListItem,
-  type UiKey,
-} from "@quizzy/shared";
-import { api, openInTab } from "../api";
+import { useSearchParams } from "react-router-dom";
+import { LOCALE_OF, type PatientListCounts, type PatientListItem, type UiKey } from "@quizzy/shared";
+import { api } from "../api";
 import { useAuth } from "../auth";
-import { CourseChart } from "../charts/course";
-import { courseEventsFromTimeline, courseFromDynamics } from "../charts/courseModel";
-import { TimeLines } from "../charts/clinical";
-import { instrumentMark, seriesColor } from "../charts/kit";
-import { Hint } from "../components/Hint";
-import { locale as consoleLocale, severityKey } from "../format";
+import { severityKey } from "../format";
 import { useLang } from "../lang";
 import {
   Avatar,
-  BigValue,
-  BigValues,
   BulkBar,
-  ChangeCell,
-  CourseDigits,
   DataTable,
   Drawer,
   DrawerPane,
@@ -34,13 +17,13 @@ import {
   KbdHints,
   Loading,
   PersonCell,
-  TextAction,
   Tooltip,
   ViewPill,
   ViewPills,
   tableToCsv,
   useAction,
   useHotkeys,
+  useToast,
   type Column,
 } from "../ui";
 import { cx } from "../ui/cx";
@@ -48,7 +31,7 @@ import { Page, Panel } from "../ui/layout";
 import { ActionMenu, MenuButton, menuItemClass } from "../ui/menu";
 import { Pager } from "../ui/pager";
 import { offsetPageCount, pageFrom, refilter, toPage } from "../ui/paging";
-import { Button, ErrorText, Segmented, SeverityTag, Switch, Tabs, Tag } from "../ui/primitives";
+import { Button, ErrorText, SeverityTag, Tabs, Tag } from "../ui/primitives";
 import { patchParams } from "../ui/viewParams";
 import { useDebounced, useResource } from "../useResource";
 import { ShellIcon } from "../shell/icons";
@@ -56,21 +39,10 @@ import { useMedia } from "../shell/Rail";
 import { usePatientViews } from "./patientGroups/views";
 import { InviteDialog } from "./patients/InviteDialog";
 import {
-  changeOf,
-  instrumentsOf,
-  shortCode,
-  shownDelta,
-  shownThreshold,
-  type Instrument,
-  type InstrumentScale,
-} from "./patients/instruments";
-import {
   ageOf,
+  CLINICAL_DOMAIN_KEY,
   ddmm,
   daysAgo,
-  DYN_KEY,
-  fmtNum,
-  TL_KEY,
   groupTab,
   hhmm,
   kitSeverity,
@@ -79,10 +51,7 @@ import {
   REGISTER_PER,
   registerPer,
   registerQuery,
-  shownSeriesText,
-  shownSeries,
   shownValue,
-  signedShown,
   sortOf,
   viewOf,
   whenShort,
@@ -103,7 +72,7 @@ import { withCount } from "../ui/plural";
  *   вкладки групп с числами, «Ще N»                         → ?group, Tabs + меню
  *   поиск «/», «Закріплені за мною», «20 з 248», порядок     → ?q, ?mine, ?sort (сервер)
  *   «Потребує уваги»: Усі / ризик / без заміру / без запису  → ?view (сервер, со счётчиками)
- *   таблица: ризик першим, замір с ходом, прийом            → DataTable, страницы сервера
+ *   таблица: ризик першим, клінічний стан, прийом          → DataTable, страницы сервера
  *   отметка строк и «Вибрано: N»                            → BulkBar, действия в ящике
  *   «Хто це» по строке                                      → ящик рядом с таблицей, ↑↓ по строкам
  *
@@ -138,7 +107,6 @@ export function PatientList() {
   const { ut, lang } = useLang();
   const { user } = useAuth();
   const locale = LOCALE_OF[lang];
-  const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const groupId = params.get("group");
   const q = params.get("q") ?? "";
@@ -224,6 +192,26 @@ export function PatientList() {
 
   const views = usePatientViews();
   const { run, busy } = useAction();
+  const toast = useToast();
+
+  /*
+   * «Закріпити за собою» — строкой, из меню строки и для отмеченных: прежде
+   * взять человека можно было только из его карточки, и у ста двадцати
+   * незакреплённых в реестре стояло «не закріплено» без способа это
+   * исправить. Тот же маршрут, что в карточке и на приёме (POST
+   * /api/clinic/patients/:id/lead, в журнал — clinic.lead_take). Человека,
+   * которого ведёт коллега, отметка не забирает: смена ведущего — перевод,
+   * его делают в карточке человека.
+   */
+  const takeLead = (people: PatientListItem[]) =>
+    void run(async () => {
+      const free = people.filter((p) => !p.leadSpecialistId);
+      for (const p of free) await api.takeLead(p.id, true);
+      const skipped = people.length - free.length;
+      list.reload();
+      const took = ut("ws.tookN").replace("{n}", String(free.length));
+      toast(skipped ? `${took}; ${ut("ws.skippedLed").replace("{n}", String(skipped))}` : took, "ok");
+    });
 
   /* виды ящика — хуками: Drawer узнаёт вид по элементу DrawerPane, и обёртка его спрятала бы */
   const close = () => setDrawer((s) => ({ ...s, open: false }));
@@ -275,7 +263,7 @@ export function PatientList() {
    * дата замера уходит строкой под ход «19 → 16 → 14» той же ячейки.
    */
   const narrow = useMedia("(max-width: 1380px)");
-  const columns = useColumns({ locale, now, words, narrow });
+  const columns = useColumns({ locale, now, words, narrow, onTake: (r) => takeLead([r]), busy });
 
   /* вкладки групп: первые пять на виду, остальные — «Ще N»; открытая из «Ще» встаёт на последнее место */
   const allGroups = groups.data ?? [];
@@ -446,6 +434,9 @@ export function PatientList() {
               }
               onClear={() => setPicked(new Map())}
             >
+              <Button variant="panel" size="xs" icon={<Ic.user />} disabled={busy} onClick={() => takeLead([...picked.values()])}>
+                {ut("pcard.subscribe")}
+              </Button>
               <Button
                 variant="panel"
                 size="xs"
@@ -546,21 +537,12 @@ export function PatientList() {
                         <Ic.message />
                       </Button>
                     </Tooltip>
-                    <Tooltip label={ut("pcard.clinical")}>
-                      <Button
-                        variant="quiet"
-                        size="icon-sm"
-                        aria-label={`${ut("pcard.clinical")}: ${r.name}`}
-                        onClick={() => navigate(`/patients/${r.id}/case`)}
-                      >
-                        <Ic.chart />
-                      </Button>
-                    </Tooltip>
                     <ActionMenu
                       label={`${ut("kit.moreActions")}: ${r.name}`}
                       triggerSize="icon-sm"
                       entries={[
                         { key: "card", label: ut("pt.openCard"), to: `/patients/${r.id}` },
+                        ...(r.leadSpecialistId ? [] : [{ key: "lead", label: ut("pcard.subscribe"), onSelect: () => takeLead([r]) }]),
                         {
                           key: "assign",
                           label: ut("pg.assignTest"),
@@ -663,11 +645,16 @@ function useColumns({
   now,
   words,
   narrow,
+  onTake,
+  busy,
 }: {
   locale: string;
   now: number;
   words: { today: string; tomorrow: string };
   narrow: boolean;
+  /** «Закріпити за собою» строки незакреплённого человека */
+  onTake: (r: PatientListItem) => void;
+  busy: boolean;
 }): Column<PatientListItem>[] {
   const { ut } = useLang();
   const all: Column<PatientListItem>[] = [
@@ -675,7 +662,7 @@ function useColumns({
       key: "name",
       header: ut("ref.patient"),
       required: true,
-      width: 250,
+      width: 230,
       render: (r) => {
         const age = ageOf(r.birthYear, now);
         const sub = [
@@ -699,63 +686,28 @@ function useColumns({
       key: "state",
       required: true,
       header: ut("plist.state"),
-      width: 170,
+      width: 150,
       render: (r) => <StateCell r={r} locale={locale} now={now} />,
     },
     {
       key: "measure",
       required: true,
-      header: ut("pt.lastMeasure"),
-      width: 210,
-      render: (r) => {
-        const m = r.measure;
-        if (!m) return <span className="text-small text-muted">{ut("plist.noMeasure")}</span>;
-        const last = m.values.at(-1) ?? 0;
-        const v = shownValue(last, m.normalization);
-        return (
-          <span className="flex min-w-0 flex-col gap-0.5" title={m.title}>
-            <span className="inline-flex items-center gap-2">
-              <b className="text-[15px] font-extrabold tabular-nums text-text">
-                {v.text}
-                {v.unit ? <small className="ml-0.5 text-caption font-bold text-muted">{v.unit}</small> : null}
-              </b>
-              {m.severity || m.bandLabel ? (
-                <SeverityTag level={kitSeverity(m.severity)} small>
-                  {m.bandLabel ?? ut(severityKey[m.severity ?? "none"])}
-                </SeverityTag>
-              ) : null}
-            </span>
-            <span className="flex items-center gap-2.5">
-              {m.better ? (
-                <CourseDigits code={shortCode(m.code)} values={shownSeries(m.values, m.normalization)} better={m.better} />
-              ) : (
-                <span className="text-caption text-text-2">
-                  <b className="mr-1 text-[11px] font-bold text-muted">{shortCode(m.code)}</b>
-                  {shownSeriesText(m.values, m.normalization).join(" → ")}
-                </span>
-              )}
-              {narrow ? (
-                <span className="text-caption">
-                  <MeasuredAt r={r} now={now} locale={locale} today={words.today} />
-                </span>
-              ) : null}
-            </span>
-          </span>
-        );
-      },
+      header: ut("ws.clinicalState"),
+      width: 236,
+      render: (r) => <ClinicalStateCell r={r} locale={locale} now={now} today={words.today} narrow={narrow} />,
     },
     {
       key: "last",
       required: true,
       header: ut("plist.measuredAt"),
-      width: 130,
+      width: 120,
       render: (r) => <MeasuredAt r={r} now={now} locale={locale} today={words.today} />,
     },
     {
       key: "lead",
       required: true,
       header: ut("plist.lead"),
-      width: 140,
+      width: 136,
       render: (r) =>
         r.leadName ? (
           <span className="inline-flex min-w-0 items-center gap-2" title={r.leadName}>
@@ -763,14 +715,24 @@ function useColumns({
             <span className="truncate text-small text-text">{shortName(r.leadName)}</span>
           </span>
         ) : (
-          <span className="text-small text-muted">{ut("plist.noLead")}</span>
+          <span className="flex flex-col items-start gap-0.5">
+            <span className="text-small text-muted">{ut("plist.noLead")}</span>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => onTake(r)}
+              className="min-h-0 cursor-pointer rounded-[6px] border-0 bg-transparent p-0 text-caption font-bold text-violet-ink outline-none hover:underline focus-visible:shadow-[0_0_0_2px_var(--vring)] disabled:opacity-50"
+            >
+              {ut("pcard.subscribe")}
+            </button>
+          </span>
         ),
     },
     {
       key: "next",
       required: true,
       header: ut("plist.nextVisit"),
-      width: 160,
+      width: 124,
       render: (r) => {
         /*
          * «Не записано» — обычное состояние почти каждого в стационаре, а не
@@ -780,7 +742,7 @@ function useColumns({
         if (!r.nextVisit) return <span className="whitespace-nowrap text-small text-muted">{ut("plist.notBooked")}</span>;
         const w = whenShort(r.nextVisit.at, now, locale, words);
         return (
-          <span className={cx("whitespace-nowrap text-small", w.soon ? "font-extrabold text-violet-ink" : "text-text")}>
+          <span className={cx("text-small", w.soon ? "font-extrabold text-violet-ink" : "text-text")}>
             {w.text}
             {r.nextVisit.mode === "remote" ? <span className="font-semibold">, {ut("pt.remote")}</span> : null}
           </span>
@@ -789,6 +751,84 @@ function useColumns({
     },
   ];
   return narrow ? all.filter((c) => c.key !== "last") : all;
+}
+
+/**
+ * Клинический стан строки: самая тяжёлая полоса среди последних замеров по
+ * ключевым доменам (сервер, routes/patients.ts, measuresOf) — полоса словом,
+ * куда сдвинулась ступень от прошлого замера, методика с баллом, домен и
+ * другие домены в клиническом диапазоне. Прежде здесь стоял последний
+ * сданный замер, какой бы он ни был: «WHO-5 1» у человека с тяжёлой
+ * депрессией по PHQ-9.
+ */
+function ClinicalStateCell({
+  r,
+  locale,
+  now,
+  today,
+  narrow,
+}: {
+  r: PatientListItem;
+  locale: string;
+  now: number;
+  today: string;
+  narrow: boolean;
+}) {
+  const { ut } = useLang();
+  const m = r.measure;
+  if (!m) return <span className="text-small text-muted">{ut("plist.noMeasure")}</span>;
+  const v = shownValue(m.values.at(-1) ?? 0, m.normalization);
+  const band = m.bandLabel ?? (m.severity ? ut(severityKey[m.severity]) : null);
+  const domain = m.domain ? ut(CLINICAL_DOMAIN_KEY[m.domain]) : null;
+  const also = (m.also ?? []).map((d) => ut(CLINICAL_DOMAIN_KEY[d]).toLowerCase());
+  /* целиком — в подсказке: домен, методика, полоса и другие домены в клиническом диапазоне */
+  const title = [domain, `${m.title}: ${v.text}${v.unit}${band ? ` — ${band}` : ""}`, also.length ? `${ut("ws.alsoClinical")} ${also.join(", ")}` : null]
+    .filter(Boolean)
+    .join(" · ");
+  const stale = !!r.lastResponseAt && daysAgo(r.lastResponseAt, now) >= 30;
+  return (
+    <span className="flex min-w-0 max-w-[230px] flex-col gap-0.5" title={title}>
+      <span className="flex min-w-0 items-center gap-1.5">
+        {band ? (
+          <SeverityTag level={kitSeverity(m.severity)} small className="min-w-0 max-w-full">
+            <span className="min-w-0 truncate">{band}</span>
+          </SeverityTag>
+        ) : (
+          <span className="text-small text-muted">{ut("ws.noBands")}</span>
+        )}
+        {m.trend === "worse" || m.trend === "better" ? (
+          <Tooltip label={ut(m.trend === "worse" ? "ws.trendWorse" : "ws.trendBetter")}>
+            {/* стрелка — картинка со своим именем: у простого span имя не читается (axe, aria-prohibited-attr) */}
+            <span
+              tabIndex={0}
+              role="img"
+              aria-label={ut(m.trend === "worse" ? "ws.trendWorse" : "ws.trendBetter")}
+              className={cx(
+                "inline-flex shrink-0 rounded-[4px] outline-none focus-visible:shadow-[0_0_0_2px_var(--vring)]",
+                m.trend === "worse" ? "text-warn" : "text-good",
+              )}
+            >
+              {m.trend === "worse" ? <Ic.arrowUp size={14} /> : <Ic.arrowDown size={14} />}
+            </span>
+          </Tooltip>
+        ) : null}
+        {also.length ? <span className="shrink-0 text-caption font-bold text-muted">+{also.length}</span> : null}
+      </span>
+      <span className="flex min-w-0 items-center gap-1.5 text-caption text-text-2">
+        <b className="shrink-0 font-bold text-text">
+          {m.code} {v.text}
+          {v.unit}
+        </b>
+        {domain ? <span className="min-w-0 truncate">· {domain}</span> : null}
+        {/* дата замера — здесь, когда колонки даты нет; давность 30+ дней — янтарём */}
+        {narrow && stale ? (
+          <span className="shrink-0">
+            <MeasuredAt r={r} now={now} locale={locale} today={today} />
+          </span>
+        ) : null}
+      </span>
+    </span>
+  );
 }
 
 /** Когда мерили: дата, сегодня — словом; 30+ дней — янтарём с числом дней */
@@ -862,10 +902,11 @@ function csvColumns(ut: (k: UiKey) => string): Column<PatientListItem>[] {
     { key: "unit", header: ut("ui.unit"), render: none, csv: (r) => r.unit },
     { key: "year", header: ut("plist.birthYear"), render: none, csv: (r) => r.birthYear },
     { key: "risk", header: ut("plist.state"), render: none, csv: (r) => (r.risk ? r.risk.cases : null) },
+    { key: "domain", header: ut("ws.clinicalState"), render: none, csv: (r) => (r.measure?.domain ? ut(CLINICAL_DOMAIN_KEY[r.measure.domain]) : null) },
     { key: "code", header: ut("plist.instrument"), render: none, csv: (r) => r.measure?.code ?? null },
     {
       key: "value",
-      header: ut("pt.lastMeasure"),
+      header: ut("ws.colScore"),
       render: none,
       csv: (r) => (r.measure ? shownValue(r.measure.values.at(-1) ?? 0, r.measure.normalization).text : null),
     },
@@ -875,506 +916,3 @@ function csvColumns(ut: (k: UiKey) => string): Column<PatientListItem>[] {
     { key: "next", header: ut("plist.nextVisit"), render: none, csv: (r) => r.nextVisit?.at.slice(0, 16).replace("T", " ") ?? null },
   ];
 }
-
-/* ═══════════════════ Динамика ═══════════════════ */
-
-/**
- * Вкладка «Динаміка» справы пациента — кадр patients-case-dynamics.
- *
- *   «Методики»: большие числа со сравнением и смыслом      → BigValue по главной шкале каждой методики
- *   «Курс» с переключателем методик                         → CourseChart: полосы, межі похибки, сесії, сигнали
- *   «Достовірність зсуву»: RCI, поріг, α, перцентиль         → из основы RCI сервера; перцентиль — точки
- *   «Методики разом» с таблицей                             → TimeLines в % від максимуму шкали (pointShare)
- *   «За шкалами»: перший і останній замір                   → субшкалы многошкальной методики
- *   «Звести версії»                                         → коэффициенты приведения сервера, включает человек
- *
- * Прогноза («тренд ≈ 11») и цели курса нет: приложение их не считает, а
- * догадка, нарисованная как оценка, хуже пустого места.
- */
-export function PatientDynamics() {
-  const { ut } = useLang();
-  const { userId } = useParams<{ userId: string }>();
-  const { run, busy } = useAction();
-  const [equating, setEquating] = useState(false);
-  /* тот же кэш, что у шапки справы (CaseCard): динамика и хронология уже приехали */
-  const dyn = useResource(() => api.dynamics(userId!), [userId], { enabled: !!userId, keep: false, key: DYN_KEY });
-  const timeline = useResource(() => api.timeline(userId!), [userId], { enabled: !!userId, keep: false, key: TL_KEY });
-  const instruments = useMemo(() => instrumentsOf(dyn.data), [dyn.data]);
-  const [pickRaw, setPick] = useState<string | null>(null);
-  const pick = instruments.find((i) => i.surveyId === pickRaw) ?? instruments[0] ?? null;
-  const multi = instruments.filter((i) => i.scales.length > 1);
-  const [profileRaw, setProfile] = useState<string | null>(null);
-  const profile = multi.find((i) => i.surveyId === profileRaw) ?? multi[0] ?? null;
-  const canEquate = instruments.some((i) => i.scales.some((s) => s.scale.equated?.length));
-  const labels = { of: ut("an.of"), norm: normLabels(ut) };
-
-  if (dyn.error && !dyn.data) return <Loading error={dyn.error} onRetry={dyn.reload} />;
-  if (!dyn.data) return <Loading rows={6} />;
-  if (!instruments.length) {
-    return <Empty icon={<Ic.chart />} title={ut("pt.noCompleted")} hint={ut("dyn.emptyHint")} />;
-  }
-
-  const lastAt = instruments.map((i) => i.lastAt ?? "").sort().at(-1) ?? null;
-  const firstAt = instruments.map((i) => i.firstAt ?? "").filter(Boolean).sort()[0] ?? null;
-  const showStens = instruments.some((i) => i.scales.some((s) => s.last.normalization === "sten" || s.last.normalization === "tscore"));
-
-  /*
-   * Ряд курса — в единицах последнего замера: со «Звести версії» старые
-   * версии приведены коэффициентами сервера, без — как сданы. Перцентиль,
-   * полосы и порог — те же.
-   */
-  const series = (s: InstrumentScale) =>
-    equating ? { ...s.scale, points: s.scale.points.map((p) => ({ ...p, rawScore: equatedValue(p, s.scale.equated) })) } : s.scale;
-  const course = pick ? courseFromDynamics(series(pick.main), pick.main.rungs) : null;
-  const events = timeline.data ? courseEventsFromTimeline(timeline.data) : [];
-  const last = pick?.main.last ?? null;
-
-  return (
-    <div className="flex flex-col gap-4">
-      <Panel
-        title={ut("dyn.instruments")}
-        icon={<Ic.clipboard />}
-        sub={
-          lastAt
-            ? ut("dyn.instrumentsSub")
-                .replace("{last}", ddmmOf(lastAt))
-                .replace("{first}", firstAt ? ddmmOf(firstAt) : "—")
-            : undefined
-        }
-        actions={<TextAction to={`/patients/${userId}`}>{ut("dyn.allMeasures")}</TextAction>}
-        flush
-      >
-        <BigValues className="border-t border-divider [grid-template-columns:repeat(auto-fill,minmax(290px,1fr))]! [&>*]:border-b [&>*]:border-divider">
-          {instruments.map((i) => (
-            <InstrumentValue key={i.surveyId} i={i} />
-          ))}
-        </BigValues>
-        {showStens ? (
-          <div className="px-4 pb-3">
-            <Hint id="stens" text="hint.stens" />
-          </div>
-        ) : null}
-      </Panel>
-
-      <div className="grid items-start gap-4 [grid-template-columns:minmax(0,1fr)_minmax(320px,440px)] max-[1180px]:grid-cols-1">
-        <Panel
-          title={ut("dyn.course")}
-          icon={<Ic.chart />}
-          sub={
-            pick
-              ? ut("dyn.courseSub")
-                  .replace("{n}", String(pick.responseCount))
-                  .replace("{title}", pick.title)
-              : undefined
-          }
-          actions={
-            instruments.length > 1 ? (
-              <>
-                <Segmented
-                  label={ut("rch.pickScale")}
-                  value={pick && instruments.indexOf(pick) < 5 ? pick.surveyId : ""}
-                  onChange={setPick}
-                  items={instruments.slice(0, 5).map((i) => ({ key: i.surveyId, label: shortCode(i.code, 10) }))}
-                />
-                {instruments.length > 5 ? (
-                  <ActionMenu
-                    label={ut("rch.pickScale")}
-                    glyph={
-                      <span className="inline-flex items-center gap-1 text-caption font-bold text-text-2">
-                        {pick && instruments.indexOf(pick) >= 5 ? shortCode(pick.code, 12) : ut("plist.moreN").replace("{n}", String(instruments.length - 5))}
-                        <Ic.chevronDown size={13} />
-                      </span>
-                    }
-                    triggerSize="xs"
-                    triggerClassName="px-2.5"
-                    entries={instruments.slice(5).map((i) => ({ key: i.surveyId, label: i.title, onSelect: () => setPick(i.surveyId) }))}
-                  />
-                ) : null}
-              </>
-            ) : undefined
-          }
-          footer={
-            last ? (
-              <>
-                <span className="text-small text-text-2">
-                  {ut("pt.lastMeasure")}: <b className="font-bold text-text">{pointValueText(last, labels)}</b>
-                </span>
-                <Button
-                  variant="quiet"
-                  size="xs"
-                  className="ml-auto"
-                  icon={<Ic.file />}
-                  disabled={busy}
-                  onClick={() => run(() => openInTab(api.reportUrl(last.responseId)))}
-                >
-                  {ut("an.conclusion")}
-                </Button>
-              </>
-            ) : undefined
-          }
-        >
-          {pick && course ? (
-            <CourseChart title={pick.code} {...course} max={last ? pointValueTop(last) : null} events={events} />
-          ) : null}
-          {canEquate ? (
-            <div className="mt-3 rounded-panel bg-sunk px-3.5 py-3">
-              <Switch checked={equating} onChange={setEquating} label={ut("eq.title")} sub={ut("dyn.equateSub")} />
-              <p className="m-0 mt-1.5 text-caption text-text-2">{ut("eq.hint")}</p>
-            </div>
-          ) : null}
-        </Panel>
-
-        <Panel
-          title={ut("pt.rciTitle")}
-          icon={<Ic.gauge />}
-          sub={firstAt && lastAt ? `${ddmmOf(firstAt)} → ${ddmmOf(lastAt)}` : undefined}
-          flush
-          footer={<span className="text-caption text-text-2">{ut("dyn.rciFoot")}</span>}
-        >
-          <ul className="m-0 list-none p-0">
-            {instruments.map((i) => (
-              <ReliabilityRow key={i.surveyId} i={i} />
-            ))}
-          </ul>
-        </Panel>
-      </div>
-
-      <div className={cx("grid items-start gap-4", profile ? "grid-cols-2 max-[1180px]:grid-cols-1" : "grid-cols-1")}>
-        <Together instruments={instruments} />
-        {profile ? (
-          <Panel
-            title={ut("dyn.byScales")}
-            icon={<Ic.list />}
-            sub={ut("dyn.byScalesSub").replace("{n}", String(profile.responseCount))}
-            actions={
-              multi.length > 1 ? (
-                <Segmented
-                  label={ut("dyn.byScales")}
-                  value={profile.surveyId}
-                  onChange={setProfile}
-                  items={multi.slice(0, 4).map((i) => ({ key: i.surveyId, label: shortCode(i.code, 14) }))}
-                />
-              ) : undefined
-            }
-            flush
-          >
-            <ScaleProfileTable i={profile} />
-          </Panel>
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
-/** «08.10» по часам консоли — для подписей панелей */
-function ddmmOf(iso: string): string {
-  return new Date(iso).toLocaleDateString(consoleLocale(), { day: "2-digit", month: "2-digit" });
-}
-
-/** Большое число методики: значение, слово полосы, «було …», сдвиг с порогом */
-function InstrumentValue({ i }: { i: Instrument }) {
-  const { ut } = useLang();
-  const s = i.main;
-  const norm = s.last.normalization;
-  const v = shownValue(s.last.rawScore, norm);
-  const delta = changeOf(s);
-  const thr = shownThreshold(s);
-  const ratio = norm === "ratio";
-  return (
-    <BigValue
-      code={shortCode(i.code, 18)}
-      measure={s.scale.title}
-      better={s.better ?? undefined}
-      value={v.text}
-      unit={v.unit || undefined}
-      severity={
-        s.last.severity || s.last.bandLabel
-          ? { word: s.last.bandLabel ?? ut(severityKey[s.last.severity ?? "none"]), level: kitSeverity(s.last.severity) }
-          : undefined
-      }
-      history={shownSeries(s.history.slice(-2), norm)}
-      change={delta !== null && thr !== null ? { delta: shownDelta(s, delta), threshold: thr, unit: ratio ? ut("dyn.pp") : undefined } : undefined}
-    />
-  );
-}
-
-/** Строка «Достовірність зсуву»: метка методики, RCI, поріг, α, сдвиг словом и перцентиль */
-function ReliabilityRow({ i }: { i: Instrument }) {
-  const { ut, lang } = useLang();
-  const locale = LOCALE_OF[lang];
-  const s = i.main;
-  const rc = s.scale.reliableChange;
-  const delta = changeOf(s);
-  const ratio = s.last.normalization === "ratio";
-  const mark = instrumentMark(i.code);
-  const word =
-    s.scale.incomparable === "version"
-      ? ut("rch.versions")
-      : s.scale.incomparable === "units"
-        ? ut("rch.units")
-        : s.scale.incomparable === "unreliable"
-          ? ut("rch.unreliable")
-          : delta === null
-            ? ut("pt.needSecond")
-            : !rc
-              ? ut("qv.noThreshold")
-              : rc.significant
-                ? s.better
-                  ? (s.better === "down" ? delta < 0 : delta > 0)
-                    ? ut("kit.reliablyBetter")
-                    : ut("kit.reliablyWorse")
-                  : ut("pt.reliable")
-                : ut("kit.withinError");
-  const good = !!rc?.significant && !!s.better && (s.better === "down" ? (delta ?? 0) < 0 : (delta ?? 0) > 0);
-  const worse = !!rc?.significant && !!s.better && !good;
-  const pct = s.last.percentile;
-  const thr = shownThreshold(s);
-  return (
-    <li className="grid grid-cols-[minmax(0,1fr)_minmax(0,auto)] gap-x-3 gap-y-0.5 border-t border-divider px-4 py-3 first:border-t-0">
-      <span className="flex min-w-0 items-center gap-2">
-        <svg aria-hidden width="12" height="12" viewBox="0 0 12 12" className="shrink-0">
-          <MarkerGlyph shape={mark?.shape ?? "circle"} color={mark?.color ?? "var(--series)"} />
-        </svg>
-        <b className="shrink-0 text-[13.5px] font-extrabold text-text" title={i.title}>
-          {shortCode(i.code, 12)}
-        </b>
-        <span className="truncate text-small text-muted">{s.scale.title}</span>
-      </span>
-      <span className={cx("whitespace-nowrap text-right text-small font-bold", good ? "text-good" : worse ? "text-warn" : "text-text")}>
-        {delta !== null ? (
-          <b className="mr-1.5 text-[14px] font-extrabold">
-            {signedShown(shownDelta(s, delta))}
-            {ratio ? ut("dyn.pp") : ""}
-          </b>
-        ) : null}
-        <span className={good || worse ? "" : "font-medium text-text-2"}>{word}</span>
-      </span>
-      <span className="text-caption text-muted">
-        {rc ? (
-          /* в строке — то, что нужно для решения (RCI и порог); основа оценки — альфа и выборка — в подсказке */
-          <Tooltip
-            label={ut("dyn.rciBasis")
-              .replace("{alpha}", fmtNum(Math.round(rc.basis.alpha * 100) / 100, locale))
-              .replace("{n}", String(rc.basis.sampleN))}
-          >
-            <span tabIndex={0} className="cursor-default border-b border-dotted border-ctl outline-none focus-visible:shadow-[0_0_0_2px_var(--vring)]">
-              {ut("dyn.rciLine")
-                .replace("{rci}", fmtNum(rc.rci, locale))
-                .replace("{thr}", thr !== null ? `${fmtNum(thr, locale)}${ratio ? ut("dyn.pp") : ""}` : "—")}
-            </span>
-          </Tooltip>
-        ) : delta === null ? null : (
-          /* один замер — «потрібен другий замір» уже сказано справа: про основу RCI молчим, а не повторяем в каждой строке */
-          ut("dyn.noBasis")
-        )}
-      </span>
-      <span className="text-right text-caption text-text-2">
-        {pct === null ? ut("mark.smallSample") : `${ut("pt.higherThanPct")} ${fmtNum(pct, locale)} %`}
-      </span>
-    </li>
-  );
-}
-
-function MarkerGlyph({ shape, color }: { shape: string; color: string }) {
-  if (shape === "square") return <rect x="2" y="2" width="8" height="8" rx="1.5" fill={color} />;
-  if (shape === "diamond") return <path d="M6 1 11 6 6 11 1 6Z" fill={color} />;
-  if (shape === "triangle") return <path d="M6 1.5 11 10.5H1Z" fill={color} />;
-  return <circle cx="6" cy="6" r="4.5" fill={color} />;
-}
-
-/**
- * «Методики разом» — главные шкалы на одной оси в процентах от максимума
- * шкалы (pointShare: доля сырого балла после поправок — единица одна для
- * всех), с таблицей баллов по датам. Даты — по дню замера: батарея сдаётся
- * за один присест, и замеры одного дня — одна колонка.
- */
-function Together({ instruments }: { instruments: Instrument[] }) {
-  const { ut } = useLang();
-  const shown = instruments.slice(0, 4);
-  const days = [...new Set(shown.flatMap((i) => i.main.scale.points.map((p) => dayOf(p.submittedAt))))].sort();
-  const x = days.map((d) => ({ key: d, label: ddmmOf(`${d}T12:00:00`) }));
-  const lines = shown.map((i, n) => {
-    const mark = instrumentMark(i.code);
-    const color = mark?.color ?? seriesColor(n, shown.length);
-    return {
-      key: i.surveyId,
-      label: i.code,
-      color,
-      values: days.map((d) => {
-        const p = i.main.scale.points.filter((pt) => dayOf(pt.submittedAt) === d).at(-1);
-        return p ? Math.round(pointShare(p) * 100) : null;
-      }),
-    };
-  });
-  return (
-    <Panel title={ut("dyn.together")} icon={<Ic.chart />} sub={ut("dyn.togetherSub")} flush>
-      <div className="px-4 pb-2">
-        {/* ряд — замеры одной методики: дни, когда мерили другие, его не рвут (connect) */}
-        <TimeLines x={x} series={lines} label={ut("dyn.together")} format={(v) => `${v} %`} height={220} connect />
-
-      </div>
-      <div className="overflow-x-auto border-t border-divider">
-        <table className="w-full border-separate border-spacing-0 text-small">
-          <thead>
-            <tr>
-              <th className="h-9 border-b border-divider bg-panel-2 px-4 text-left text-caption font-bold text-muted">{ut("plist.instrument")}</th>
-              {days.slice(-4).map((d) => (
-                <th key={d} className="h-9 border-b border-divider bg-panel-2 px-3 text-right text-caption font-bold text-muted">
-                  {ddmmOf(`${d}T12:00:00`)}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {shown.map((i) => (
-              <tr key={i.surveyId}>
-                <td className="border-b border-divider px-4 py-2 align-top">
-                  <b className="block font-extrabold text-text">{i.code}</b>
-                  <span className="text-caption text-muted">{i.main.scale.title}</span>
-                </td>
-                {days.slice(-4).map((d) => {
-                  const p = i.main.scale.points.filter((pt) => dayOf(pt.submittedAt) === d).at(-1);
-                  const v = p ? shownValue(p.rawScore, p.normalization) : null;
-                  return (
-                    <td key={d} className="border-b border-divider px-3 py-2 text-right align-top tabular-nums">
-                      {p && v ? (
-                        <>
-                          <b className="block font-bold text-text">
-                            {v.text}
-                            {v.unit}
-                          </b>
-                          <span className="text-caption text-muted">{Math.round(pointShare(p) * 100)} %</span>
-                        </>
-                      ) : (
-                        <span className="text-muted">—</span>
-                      )}
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </Panel>
-  );
-}
-
-/** День замера по часам консоли, «YYYY-MM-DD» */
-function dayOf(iso: string): string {
-  const d = new Date(iso);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
-
-/**
- * «За шкалами»: первый и последний замер каждой шкалы многошкальной
- * методики — гантелью в доле от максимума и таблицей со сдвигом и порогом.
- */
-function ScaleProfileTable({ i }: { i: Instrument }) {
-  const { ut } = useLang();
-  return (
-    <>
-      <ul className="m-0 grid list-none gap-2.5 px-4 pb-3 pt-1">
-        {i.scales.map((s) => {
-          const a = Math.round(pointShare(s.first) * 100);
-          const b = Math.round(pointShare(s.last) * 100);
-          const lo = Math.min(a, b);
-          const hi = Math.max(a, b);
-          return (
-            <li key={s.scale.code} className="grid grid-cols-[minmax(0,180px)_minmax(0,1fr)_auto] items-center gap-3">
-              <span className="truncate text-small font-semibold text-text-2" title={s.scale.title}>
-                {s.scale.title}
-              </span>
-              <span className="relative block h-3" aria-hidden>
-                <span className="absolute inset-x-0 top-1/2 h-px bg-divider" />
-                <span className="absolute top-1/2 h-[3px] -translate-y-1/2 rounded bg-series" style={{ left: `${lo}%`, width: `${hi - lo}%` }} />
-                <span className="absolute top-1/2 size-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-muted bg-panel" style={{ left: `${a}%` }} />
-                <span className="absolute top-1/2 size-2.5 -translate-x-1/2 -translate-y-1/2 rotate-45 bg-series" style={{ left: `${b}%` }} />
-              </span>
-              <span className="whitespace-nowrap text-small tabular-nums text-text-2">
-                {shownValue(s.first.rawScore, s.first.normalization).text} →{" "}
-                <b className="font-extrabold text-text">{shownValue(s.last.rawScore, s.last.normalization).text}</b>
-              </span>
-            </li>
-          );
-        })}
-      </ul>
-      <p className="m-0 flex items-center gap-3 px-4 pb-3 text-caption text-muted">
-        <span className="inline-flex items-center gap-1.5">
-          <span aria-hidden className="inline-block size-2.5 rounded-full border-2 border-muted" />
-          {ut("dyn.first")}
-        </span>
-        <span className="inline-flex items-center gap-1.5">
-          <span aria-hidden className="inline-block size-2 rotate-45 bg-series" />
-          {ut("dyn.last")}
-        </span>
-        <span>{ut("dyn.shareNote")}</span>
-      </p>
-      <div className="overflow-x-auto border-t border-divider">
-        <table className="w-full border-separate border-spacing-0 text-small">
-          <thead>
-            <tr>
-              {[ut("sum.scale"), ut("dyn.first"), ut("dyn.last"), ut("dyn.fromStart")].map((h, n) => (
-                <th
-                  key={h}
-                  className={cx("h-9 border-b border-divider bg-panel-2 px-3 text-caption font-bold text-muted first:pl-4", n ? "text-right" : "text-left")}
-                >
-                  {h}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {i.scales.map((s) => {
-              const delta = changeOf(s);
-              return (
-                <tr key={s.scale.code}>
-                  {/* служебный код шкалы («anxiety», «PR») — не для человека: только название */}
-                  <td className="border-b border-divider py-2 pl-4 pr-3">
-                    <b className="block font-bold text-text">{s.scale.title}</b>
-                  </td>
-                  <td className="border-b border-divider px-3 py-2 text-right tabular-nums">{shownValue(s.first.rawScore, s.first.normalization).text}</td>
-                  <td className="border-b border-divider px-3 py-2 text-right font-bold tabular-nums">{shownValue(s.last.rawScore, s.last.normalization).text}</td>
-                  <td className="border-b border-divider px-3 py-2 text-right">
-                    {delta !== null && shownThreshold(s) !== null && s.better ? (
-                      <span className="inline-flex justify-end">
-                        <ChangeCell delta={shownDelta(s, delta)} threshold={shownThreshold(s)!} better={s.better} />
-                      </span>
-                    ) : delta !== null ? (
-                      <span className="tabular-nums">{signedShown(shownDelta(s, delta))}</span>
-                    ) : (
-                      <span className="text-muted">—</span>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-    </>
-  );
-}
-
-/**
- * Балл, приведённый к версии последнего замера.
- *
- * Если для версии этой точки коэффициентов нет — балл остаётся своим. Это
- * лучше, чем прятать точку: пропуск в ряду читается как «замера не было», а
- * замер был, просто свести его не из чего.
- */
-function equatedValue(
-  point: { rawScore: number; versionNo?: number | null },
-  rules: { fromVersion: number; slope: number; intercept: number }[] | null | undefined,
-): number {
-  const rule = rules?.find((r) => r.fromVersion === point.versionNo);
-  if (!rule) return point.rawScore;
-  return Math.round((rule.slope * point.rawScore + rule.intercept) * 100) / 100;
-}
-
-/** Подписи единиц значения для «Останній замір»: «T-бал 70», «стен 7» (#199) */
-function normLabels(ut: (k: UiKey) => string) {
-  return { raw: ut("norm.raw"), ratio: ut("norm.ratio"), tscore: ut("norm.tscore"), sten: ut("norm.sten") };
-}
-

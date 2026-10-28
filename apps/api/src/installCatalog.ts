@@ -76,11 +76,14 @@ console.log(
     : `  · отделение уже было: ${report.departmentId}`,
 );
 /*
- * Группа каталога (CATALOG_GROUP_ID в lib/catalogInstall.ts): методики каталога
- * видит тот, кого суперадмин назначит её администратором.
+ * Группа каталога (CATALOG_GROUP_ID в lib/scope.ts) — библиотека: её методиками
+ * пользуется каждый сотрудник, и результаты он видит о своих пациентах; правят
+ * методики суперадмин и администраторы группы. Назначать врачей её
+ * администраторами, чтобы они увидели каталог, не нужно — это дало бы им
+ * правку выверенных методик.
  */
 if (report.groupCreated) {
-  console.log("  ✓ группа «Каталог методик» заведена: назначьте врачей её администраторами, и они увидят каталог");
+  console.log("  ✓ группа «Каталог методик» заведена: методики каталога доступны всем сотрудникам, правят их администраторы группы");
 }
 if (report.grouped.length) console.log(`  ✓ перенесены в группу каталога: ${report.grouped.join(", ")}`);
 if (report.installed.length) console.log(`  ✓ поставлено методик: ${report.installed.join(", ")}`);
@@ -109,5 +112,17 @@ for (const [key, missing] of Object.entries(b.missingItems)) {
 if (b.kept.length) console.log(`  · наборы уже заведены, ими распоряжается отделение: ${b.kept.join(", ")}`);
 if (b.removed.length) console.log(`  · наборы удалены отделением, заново не заводятся: ${b.removed.join(", ")}`);
 if (b.pending.length) console.log(`  ! наборы не заведены — ни одной их методики нет в базе: ${b.pending.join(", ")}`);
+
+/*
+ * Правила ступенчатого скрининга (instruments/catalogPassport.ts): заводятся один
+ * раз, дальше их порог и включение — решение отделения.
+ */
+const r = report.rules;
+if (r.installed.length) console.log(`  ✓ заведено правил ступенчатого скрининга: ${r.installed.join(", ")}`);
+if (r.kept.length) console.log(`  · правила шагов уже заведены, ими распоряжается отделение: ${r.kept.join(", ")}`);
+if (r.removed.length) console.log(`  · правила шагов удалены, заново не заводятся: ${r.removed.join(", ")}`);
+if (r.pending.length) {
+  console.log(`  ! правила шагов не заведены — короткой формы или полной методики нет в базе или она снята: ${r.pending.join(", ")}`);
+}
 
 await client.end();

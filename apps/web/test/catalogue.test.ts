@@ -13,11 +13,13 @@ import {
   listQuery,
   localToday,
   movePlan,
+  nestedRows,
   numericDate,
   pageCount,
   pageFrom,
   perFrom,
   retiredPage,
+  rowGroup,
   sameValue,
   tabFromPath,
 } from "../src/pages/constructor/catalogue";
@@ -107,7 +109,7 @@ describe("запрос к серверу", () => {
       status: "published",
       limit: 20,
       offset: 20,
-      sort: "title",
+      sort: "catalog",
     });
   });
 
@@ -125,14 +127,19 @@ describe("запрос к серверу", () => {
       folder: "root",
       q: "",
       archived: true,
-      sort: "title",
+      sort: "catalog",
     });
   });
 
-  test("порядок — по названию на языке экрана, на каждой вкладке", () => {
-    // сервер по умолчанию отдаёт новые сверху: поставленные установщиком одной секундой стояли бы как попало
+  test("порядок — порядок каталога, на каждой вкладке", () => {
+    /*
+     * Сервер по умолчанию отдаёт новые сверху: поставленные установщиком одной
+     * секундой стояли бы как попало; по названию (прежний title) — одной лентой,
+     * где двухпунктовый PHQ-2 стоит вровень с PHQ-9. Порядок каталога — по
+     * направлению, полные первыми, короткие формы под своей полной.
+     */
     for (const tab of ["published", "drafts", "retired"] as const) {
-      expect(listQuery({ tab, folder: null, q: "", page: 1, per: 50 }).sort).toBe("title");
+      expect(listQuery({ tab, folder: null, q: "", page: 1, per: 50 }).sort).toBe("catalog");
     }
   });
 
@@ -154,7 +161,7 @@ describe("чипы «Напрям»", () => {
       status: "published",
       limit: 10,
       offset: 0,
-      sort: "title",
+      sort: "catalog",
       domain: "trauma",
     });
     expect(listQuery({ tab: "published", folder: "f1", q: "", page: 1, per: 10, domain: "none" })).toMatchObject({
@@ -165,7 +172,7 @@ describe("чипы «Напрям»", () => {
       folder: undefined,
       q: "",
       archived: true,
-      sort: "title",
+      sort: "catalog",
       domain: "sleep",
     });
     // без чипа запрос прежний — в адрес сервера не уходит пустой параметр
@@ -349,5 +356,38 @@ describe("назначение отмеченных методик", () => {
     expect(asked).toEqual(["gad7", "who5"]);
     // операция закончена — от неё не осталось и пары PHQ-9
     expect([...done]).toEqual([]);
+  });
+});
+
+/**
+ * Строки каталога для клинициста: заголовок направления над группой и
+ * короткая форма под своей полной. Порядок строк даёт сервер (sort=catalog);
+ * здесь — только то, что экран из него рисует.
+ */
+describe("строки каталога: направление и вложение", () => {
+  const row = (id: string, catalogKey: string | null, parent: string | null, domain: string | null = "distress") =>
+    ({
+      id,
+      catalogKey,
+      domain,
+      catalog: { role: parent ? "short" : "full", minutes: 1, purpose: null, cutoffs: [], parent, steps: [] },
+    }) as unknown as SurveyListItem;
+
+  test("короткая форма — под полной, только если полная на этой же странице", () => {
+    const page = [row("9", "phq9", null), row("2", "phq2", "phq9"), row("4", "phq4", "phq9"), row("k6", "k6", "k10")];
+    // K10 на другой странице: K6 — обычной строкой, вложение под невидимую читалось бы ошибкой
+    expect([...nestedRows(page)].sort()).toEqual(["2", "4"]);
+    // поиск нашёл одну короткую — не вложена
+    expect(nestedRows([row("2", "phq2", "phq9")]).size).toBe(0);
+    // методика учреждения без паспорта — не вложена
+    expect(nestedRows([{ id: "own", catalogKey: null } as unknown as SurveyListItem]).size).toBe(0);
+  });
+
+  test("заголовок группы — направление строки; выбран чип — заголовков нет", () => {
+    expect(rowGroup({ domain: "trauma" }, null)).toBe("trauma");
+    // без направления — своя группа «Без напряму», как и чип
+    expect(rowGroup({ domain: null }, null)).toBe("none");
+    expect(rowGroup({ domain: "trauma" }, "trauma")).toBeNull();
+    expect(rowGroup({ domain: null }, "none")).toBeNull();
   });
 });

@@ -1428,6 +1428,8 @@ export const referralListQuery = cursorPageQuery(100, 200).extend({
     .optional()
     .transform((v) => v === "1"),
   closedSince: z.preprocess((v) => (v === "" ? undefined : v), queryDate.optional()),
+  /** Направления одного человека — вкладка «Направлення» его рабочего места */
+  patient: z.preprocess((v) => (v === "" ? undefined : v), z.string().min(1).max(64).optional()),
 });
 
 /**
@@ -1639,13 +1641,16 @@ export const surveyListQuery = z.object({
    * Порядок: без параметра — новые сверху, как и было (так список зовут
    * выборы методики и мобилка); `title` — по названию на языке запроса.
    * Второе нужно каталогу: врач ищет методику глазами по алфавиту, а не по
-   * дате, когда её поставил установщик.
+   * дате, когда её поставил установщик. `catalog` — порядок экрана каталога:
+   * по направлению, внутри — полные методики первыми и короткие формы под
+   * своей полной, затем по названию (apps/api/src/lib/catalogPassport.ts,
+   * catalogOrder). `title` остаётся для прежних клиентов.
    */
   sort: z
     .string()
     .optional()
     .transform((v) => v || undefined)
-    .pipe(z.enum(["title"]).optional()),
+    .pipe(z.enum(["title", "catalog"]).optional()),
 });
 
 /**

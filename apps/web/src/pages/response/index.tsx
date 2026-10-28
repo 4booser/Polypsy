@@ -64,6 +64,7 @@ export default function ResponseView() {
   const main = mainScore(detail.scores);
   const nav = ctx && detail.userId ? attemptNav(ctx.attempts, detail.id, main?.scaleCode ?? null) : null;
   const chartsHref = `/surveys/${detail.survey.id}/responses/${detail.id}/charts`;
+  const openHits = !!ctx?.hits?.some((h) => h.status === "suggested");
 
   return (
     <ResponseFrame banner={<ResponseBanner detail={detail} ctx={ctx} conclusion={x.conclusion.data} place="protocol" pending={!x.ctx.data && !x.ctx.error} />}>
@@ -75,10 +76,16 @@ export default function ResponseView() {
           <AnswersPanel detail={detail} survey={x.survey} ctx={ctx} prev={x.prev} />
         </div>
         <div className="flex min-w-0 flex-col gap-4">
+          {/*
+            Предложение правила, ждущее решения («Рекомендовано: PHQ-9» после
+            положительной короткой формы), — первым: это следующий шаг по этому
+            прохождению, и на 1280 он не должен уходить под сгиб. Решённые — в конце.
+          */}
+          {openHits ? <RulesPanel hits={ctx!.hits!} reload={x.ctx.reload} /> : null}
           <AttemptPanel detail={detail} ctx={ctx} />
           <AnsweringPanel detail={detail} survey={x.survey} surveyLoading={x.surveyLoading} variant="protocol" chartsHref={chartsHref} />
           <ConclusionSide detail={detail} state={x.conclusion.data} error={x.conclusion.error} ctx={ctx} />
-          {ctx?.hits?.length ? <RulesPanel hits={ctx.hits} reload={x.ctx.reload} /> : null}
+          {!openHits && ctx?.hits?.length ? <RulesPanel hits={ctx.hits} reload={x.ctx.reload} /> : null}
         </div>
       </div>
     </ResponseFrame>

@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { goCaseCard, login, openSeededPatient, SEED_SURVEY } from "./helpers";
+import { goPatientTab, login, openDrawer, openSeededPatient, patientTabs, SEED_SURVEY } from "./helpers";
 
 /**
  * Каждый экран консоли открывается и не падает.
@@ -138,39 +138,66 @@ test.describe("экраны с параметром", () => {
     }
   });
 
-  test("карта пациента и сводка консилиума", async ({ page }) => {
+  test("рабочее место пациента: вкладки и прежние адреса", async ({ page }) => {
     await login(page, "psy");
     const first = await openSeededPatient(page);
     const id = (await first.getAttribute("href"))!.split("/").pop()!;
 
     /*
-     * Два разных экрана, а не один с вкладками: «/patients/:id» с волны 6 —
-     * карточка по кадру f19, а сводка консилиума с динамикой переехала в
-     * клиническую карту «/patients/:id/case». Прежний адрес «/summary»
-     * оставлен в проверке намеренно: он теперь перенаправление (App.tsx), и
-     * ссылки на него ходят по переписке и в чужих закладках.
+     * Одна страница с вкладками: карточка пациента и клиническая карта
+     * слились в рабочее место «/patients/:id». Каждая вкладка открывается
+     * своим адресом — ими ходят ссылки очереди работы, поиска и переписки.
      */
-    await open(page, { name: "карточка пациента", path: `/patients/${id}` });
-    await open(page, { name: "клиническая карта", path: `/patients/${id}/case` });
-    await open(page, { name: "сводка", path: `/patients/${id}/summary` });
+    for (const tab of ["", "dynamics", "measures", "records", "referrals", "messages", "timeline"]) {
+      await open(page, { name: tab || "обзор", path: `/patients/${id}${tab ? `?tab=${tab}` : ""}` });
+    }
+
+    /*
+     * Прежние адреса клинической карты и сводки консилиума — теперь
+     * перенаправления (App.tsx, RedirectToPatient): они живут в переписке и
+     * в чужих закладках. Каждый ведёт туда, где его сведения сейчас, —
+     * проверяется и адрес, и выбранная вкладка.
+     */
+    const legacy: [string, string, RegExp][] = [
+      ["case", "", /^(Обзор|Огляд)/],
+      ["case/dynamics", "?tab=dynamics", /^(Динамика|Динаміка)/],
+      ["case/timeline", "?tab=timeline", /^(Хронология|Хронологія)/],
+      ["summary", "", /^(Обзор|Огляд)/],
+      ["dynamics", "?tab=dynamics", /^(Динамика|Динаміка)/],
+      ["timeline", "?tab=timeline", /^(Хронология|Хронологія)/],
+    ];
+    for (const [from, to, tab] of legacy) {
+      await open(page, { name: from, path: `/patients/${id}/${from}` });
+      await expect(page).toHaveURL(new RegExp(`/patients/${id}${to.replace("?", "\\?")}$`));
+      await expect(patientTabs(page).getByRole("tab", { name: tab })).toHaveAttribute("aria-selected", "true");
+    }
+
+    /* прежние вкладки карточки: «Заключення» и «Нотатки» — виды «Записів», «Прийоми» — вид хронологии */
+    await open(page, { name: "?tab=notes", path: `/patients/${id}?tab=notes` });
+    await expect(page).toHaveURL(/[?&]tab=records/);
+    await expect(page).toHaveURL(/[?&]kind=notes/);
   });
 
-  test("записи приёма в узкой колонке карты на 1280: все четыре вида записи видны целиком", async ({ page }) => {
+  test("запись приёма в ящике на 1280: все четыре вида записи видны целиком", async ({ page }) => {
     /*
-     * Колонка справа на 1280 — 360 px, а ряд «Первинний / Прийом /
-     * Спостереження / Консультація» требует около 390: «Консультація»
-     * уходила за край и обрезалась. Редактор встаёт там сеткой два на два.
+     * Ящик — 440 px, а ряд «Первинний / Прийом / Спостереження /
+     * Консультація» требует около 390: в узкой колонке прежней карты
+     * «Консультація» уходила за край и обрезалась. Проверка — что все четыре
+     * вида встают в ящик целиком.
      */
     await page.setViewportSize({ width: 1280, height: 900 });
     await login(page, "psy");
-    const first = await openSeededPatient(page);
-    const id = (await first.getAttribute("href"))!.split("/").pop()!;
-    await page.goto(`/patients/${id}/case`);
-    const kinds = page.getByRole("group", { name: /^(Записи прийому|Записи приёма)$/ }).first();
+    await (await openSeededPatient(page)).click();
+    await page
+      .getByRole("main")
+      .getByRole("group", { name: /^(Действия с пациентом|Дії з пацієнтом)$/ })
+      .getByRole("button", { name: /^(Запись приёма|Запис прийому)/ })
+      .click();
+    const kinds = openDrawer(page).getByRole("group", { name: /^(Вид записи|Вид запису)$/ });
     await kinds.waitFor();
     const fit = await kinds.evaluate((g) => {
-      // мерка — сам редактор, а не группа: ряд, шире редактора, вылезал за него целиком вместе с группой
-      const box = g.parentElement!.getBoundingClientRect();
+      // мерка — сам ящик, а не группа: ряд, шире ящика, вылезал бы за него целиком вместе с группой
+      const box = g.closest("[data-drawer]")!.getBoundingClientRect();
       return [...g.querySelectorAll("button")].map((b) => {
         const r = b.getBoundingClientRect();
         return { text: b.textContent, inside: r.left >= box.left - 0.5 && r.right <= box.right + 0.5, whole: b.scrollWidth <= b.clientWidth + 1 };
@@ -183,14 +210,12 @@ test.describe("экраны с параметром", () => {
   test("хронология пациента открывается и упорядочена", async ({ page }) => {
     await login(page, "psy");
     await (await openSeededPatient(page)).click();
-    // хронология осталась в клинической карте, за шестерёнкой — см. goCaseCard
-    await goCaseCard(page);
     /*
-     * Дожидаемся карты, ПОТОМ читаем имя. Без ожидания заголовок читается
-     * ещё со списка — «Пациенты», — и проверка сравнивает вкладку со
-     * списком, а не с картой.
+     * Дожидаемся рабочего места, ПОТОМ читаем имя. Без ожидания заголовок
+     * читается ещё со списка — «Пациенты», — и проверка сравнивает вкладку
+     * со списком, а не с пациентом.
      */
-    const tab = page.getByRole("main").getByRole("link", { name: "Хронология" });
+    const tab = patientTabs(page).getByRole("tab", { name: /^Хронология/ });
     await tab.waitFor();
     /*
      * И дожидаемся ИМЕНИ: пока данные карты в пути, заголовок — заглушка
@@ -199,9 +224,9 @@ test.describe("экраны с параметром", () => {
      */
     await expect(page.locator("h1")).not.toHaveText(/^(Пациент|Пацієнт|Patient)$/);
     const name = (await page.locator("h1").textContent())!.trim();
-    await tab.click();
+    await goPatientTab(page, "Хронология");
     await expect(page.locator("h1")).toHaveText(name);
-    // строка события ленты (Timeline.tsx, data-evt) — не класс, который сменят на первой правке
+    // строка события ленты (patientCard/Timeline.tsx, data-evt) — не класс, который сменят на первой правке
     await expect(page.locator("[data-evt]").first()).toBeVisible();
 
     // дни идут от свежего к старому: историю читают с конца (ключ дня — в data-day)

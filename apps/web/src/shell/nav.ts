@@ -156,7 +156,6 @@ export function isPatientRecord(path: string): boolean {
 export function sectionOf(path: string): SectionKey | null {
   if (under(path, "/ops")) return "ops";
   if (path.startsWith("/constructor/")) return null;
-  if (/^\/patients\/[^/]+\/case(\/|$)/.test(path)) return null; // справа: шапка пациента во всю ширину (кадр patients-case)
   if (/^\/patients\/[^/]+\/?$/.test(path)) return null; // карточка пациента: своя колонка «Мої пацієнти» (макет patient-card)
   /*
    * Прохождение и заключение — как клиническая карта: шапка пациента во всю
@@ -350,25 +349,6 @@ export function isCurrent(item: SubNavItem, path: string): boolean {
 }
 
 /**
- * Двери к одному человеку — клиническая карта открытого пациента.
- *
- * Жили в бургере верхней полосы (кадр f13 не даёт им места в шапке
- * карточки). Теперь — группой подразделов пациентов, пока открыт человек:
- * это двери к нему, а не к экрану консоли, и вне карточки их нет.
- */
-export function clinicalLinks(path: string): SubNavItem[] | null {
-  const m = /^\/patients\/([^/]+)/.exec(path);
-  const id = m?.[1];
-  if (!id) return null;
-  const base = `/patients/${id}/case`;
-  return [
-    { to: base, label: "pc.overview", icon: "layout-dashboard", end: true },
-    { to: `${base}/dynamics`, label: "pc.dynamics", icon: "chart-line" },
-    { to: `${base}/timeline`, label: "tl.title", icon: "list-tree" },
-  ];
-}
-
-/**
  * Двери текущего экрана, которых кадр на самом экране не рисует: правка
  * названия группы (f14). На самом адресе двери её в списке нет — ссылка
  * «туда, где мы уже стоим» только мешает.
@@ -451,8 +431,6 @@ export function subNavFor(
       );
       if (allows(a, "mailings.manage")) items.push({ to: "/mailings", label: "sn.mailings", icon: "megaphone" });
       const groups: SubNavGroup[] = [{ items }];
-      const card = clinicalLinks(path);
-      if (card) groups.push({ label: "pcard.clinical", items: card });
       const tools = screenTools(path);
       if (tools) groups.push({ label: "tools.screen", items: tools });
       return { section, title: "nav.patients", groups: withoutEmpty(groups) };

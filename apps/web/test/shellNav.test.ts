@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import {
-  clinicalLinks,
   isCurrent,
   navAccess,
   railEntries,
@@ -44,7 +43,7 @@ describe("раздел по адресу", () => {
       ["/visit/a1", "today"],
       ["/worklist", "worklist"],
       ["/alerts", "cases"],
-      ["/patients/u1/case/dynamics", "patients"],
+      ["/patients/u1", "patients"],
       ["/patient-groups/g1", "patients"],
       ["/mailings/new", "patients"],
       ["/my-schedule", "schedule"],
@@ -118,15 +117,15 @@ describe("текущий пункт подразделов — ровно оди
 });
 
 describe("двери открытого человека и экрана", () => {
-  test("клиническая карта — группой подразделов, пока открыт человек", () => {
-    expect(clinicalLinks("/patients")).toBeNull();
-    expect(clinicalLinks("/patients/u1")?.map((i) => i.to)).toEqual([
-      "/patients/u1/case",
-      "/patients/u1/case/dynamics",
-      "/patients/u1/case/timeline",
-    ]);
+  test("у открытого человека своей группы подразделов нет: его вкладки — на самой странице", () => {
+    /*
+     * Прежде колонка пациентов несла группу «Клінічна карта» с дверями в
+     * /case, /case/dynamics и /case/timeline. Карта стала вкладками рабочего
+     * места пациента, и вторая навигация к тем же сведениям — лишняя.
+     */
     const groups = subNavFor("patients", "/patients/u1", ALL)!.groups;
-    expect(groups.some((g) => g.label === "pcard.clinical")).toBe(true);
+    expect(groups.map((g) => g.label ?? null)).not.toContain("tools.screen");
+    expect(groups.flatMap((g) => g.items).some((i) => i.to.includes("/case"))).toBe(false);
   });
 
   test("правка группы — на своём экране и нигде больше; у заключения двери на самого себя нет", () => {
