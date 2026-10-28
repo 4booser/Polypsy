@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { emailField, eventsBell, login, passwordField } from "./helpers";
+import { emailField, eventsBell, grantSeedSurvey, login, passwordField } from "./helpers";
 
 /**
  * Кабинет пациента: вход, прохождение и запись.
@@ -53,6 +53,12 @@ test("человек заводит учётную запись и проход�
     },
   });
   expect(created.ok(), `регистрация не прошла: ${created.status()}`).toBeTruthy();
+  /*
+   * Методики учреждения (СР-45, БОО, Мини-мульт) с 2026-10 — только по
+   * назначению: новому человеку СР-45 выдаёт сотрудник, как психолог перед
+   * обследованием, иначе в «Тестах» нечего проходить.
+   */
+  await grantSeedSurvey(page, ((await created.json()) as { user: { id: string } }).user.id);
 
   await page.goto("/login");
   await emailField(page).fill(email);

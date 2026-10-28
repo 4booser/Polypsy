@@ -331,14 +331,14 @@ describe("золотой протокол: SAD PERSONS", () => {
     expect(ev(all).risk.severity).toBe("severe");
   });
 
-  test("границы 2/3, 4/5, 6/7: «Низький» → «Середній» (умеренная) → «Високий» (тяжёлая) → «Дуже високий»", () => {
+  test("границы 2/3, 4/5, 6/7: «Низький» → «Помірний» (умеренная) → «Високий» (тяжёлая) → «Дуже високий»", () => {
     // S, A, D, E, R, So, N — без P (4) и O (8): границы смотрятся без тревоги по фактору
     const plain = [1, 2, 3, 5, 6, 7, 9];
     const at = (n: number) => sp(plain.slice(0, n));
     expect([2, 3, 4, 5, 6, 7].map((n) => at(n).band?.label)).toEqual([
       "Низький ризик",
-      "Середній ризик",
-      "Середній ризик",
+      "Помірний ризик",
+      "Помірний ризик",
       "Високий ризик",
       "Високий ризик",
       "Дуже високий ризик",
@@ -405,7 +405,7 @@ describe("золотой протокол: БОО «Адаптивність-200
      */
     const worst = ev(allItems(survey));
     expect(score(worst, "SR").band?.label).toBe("Високий ризик");
-    expect(score(worst, "DAP").band?.label).toBe("Виражена схильність");
+    expect(score(worst, "DAP").band?.label).toBe("Висока схильність");
     expect(score(worst, "PR").band?.label).toBe("Вкрай низький рівень");
     const best = ev([]);
     expect(score(best, "SR").band?.label).toBe("Низький ризик");
