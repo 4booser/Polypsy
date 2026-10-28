@@ -11,6 +11,7 @@ import {
   referrals,
   responses,
   riskAlerts,
+  scales,
   slots,
   surveys,
   users,
@@ -66,6 +67,15 @@ export interface TimelineItem {
   href?: string | null;
   /** Срок назначения — у строк назначений; у прочих поля нет */
   dueAt?: string | null;
+  /**
+   * Прохождение, к которому относится строка: у сигнала — то, что его
+   * подняло, у заключения — то, по которому оно написано. График курса
+   * ставит сигнал на сам замер, а не на день: в один день человек проходит
+   * три методики, и сигнал по PHQ-9 на оси GAD-7 читался бы как сигнал GAD-7.
+   */
+  responseId?: string | null;
+  /** Код шкалы, полоса которой подняла сигнал; null — сигнал по ответу на пункт */
+  scaleCode?: string | null;
 }
 
 timelineRoutes.get("/:userId", async (c) => {
@@ -171,6 +181,19 @@ timelineRoutes.get("/:userId", async (c) => {
 
   // подпись — на языке читателя: снимок записан на языке прохождения (lib/alertLabels.ts)
   const alertLabelOf = await alertLabelsIn(lang, alerts);
+  /*
+   * Код шкалы сигнала по полосе — одним запросом по уже известным шкалам.
+   * Код, а не идентификатор: у каждой версии методики свои шкалы, а график
+   * курса сводит замеры всех версий по коду (routes/dynamics.ts). Сигнал по
+   * полосе «Суїцидальний ризик» встаёт на график этой шкалы, а не на шесть
+   * соседних шкал того же прохождения; у сигнала по ответу шкалы нет.
+   */
+  const alertScaleIds = [...new Set(alerts.map((a) => a.scaleId).filter((x): x is string => !!x))];
+  const codeOfScale = new Map(
+    alertScaleIds.length
+      ? (await db.select({ id: scales.id, code: scales.code }).from(scales).where(inArray(scales.id, alertScaleIds))).map((r) => [r.id, r.code] as const)
+      : [],
+  );
   for (const a of alerts) {
     items.push({
       id: `alert:${a.id}`,
@@ -180,6 +203,8 @@ timelineRoutes.get("/:userId", async (c) => {
       severity: (a.severity as Severity) ?? null,
       detail: titleOf.get(a.surveyId) ?? null,
       href: "/alerts",
+      responseId: a.responseId,
+      scaleCode: a.scaleId ? (codeOfScale.get(a.scaleId) ?? null) : null,
     });
   }
 
@@ -222,6 +247,7 @@ timelineRoutes.get("/:userId", async (c) => {
       title: text.slice(0, 90) + (text.length > 90 ? "…" : ""),
       detail: n.status,
       href: `/patients/${userId}/summary`,
+      responseId: n.responseId,
     });
   }
 

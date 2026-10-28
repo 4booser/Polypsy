@@ -585,10 +585,19 @@ await db
   .where(inArray(surveys.id, [emotionalRow.id, sleepRow.id, followUpRow.id]));
 
 // методики из пособий НДЦ ГП ЗСУ — на них проверяется движок подсчёта
-const sr45Row = await upsertSurvey({ ...sr45, groupId: intake.id }, "published");
+/*
+ * Видимость посеву — прежняя, общедоступная. В каталоге СР-45, БОО и
+ * Міні-мульт стоят «по назначению» (обследование у психолога, а не тест из
+ * списка кабинета), но посев — демонстрационный стенд: по ним проходит
+ * сквозной сценарий «человек заводит учётную запись и проходит методику»
+ * (e2e/patient.e2e.ts), а других самоотчётов, доступных новому человеку без
+ * назначения, в посеве нет. Установщик каталога копию посева считает правкой
+ * учреждения и видимость её не трогает.
+ */
+const sr45Row = await upsertSurvey({ ...sr45, groupId: intake.id, visibility: "public" }, "published");
 const sadPersonsRow = await upsertSurvey({ ...sadPersons, groupId: intake.id }, "published");
-const minimultRow = await upsertSurvey({ ...minimult, groupId: intake.id }, "published");
-const mloRow = await upsertSurvey({ ...mlo, groupId: intake.id }, "published");
+const minimultRow = await upsertSurvey({ ...minimult, groupId: intake.id, visibility: "public" }, "published");
+const mloRow = await upsertSurvey({ ...mlo, groupId: intake.id, visibility: "public" }, "published");
 /*
  * С 2026-10-28 эти четыре — ещё и записи общего каталога (блок dp-inst
  * instruments/catalog.ts). Посев держит свои копии — на них стоят

@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { and, asc, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import { ageAt, instrumentCode, respondentDynamicsQuery, respondentQuery, t } from "@quizzy/shared";
-import type { RespondentDynamics, ScaleDynamics, ScaleKind, ScaleNormalization, Sex } from "@quizzy/shared";
+import type { RespondentDynamics, ResponseSource, ScaleDynamics, ScaleKind, ScaleNormalization, Sex } from "@quizzy/shared";
 import { db } from "../db";
 import { decodeCursor, encodeCursor } from "../lib/cursor";
 import { langOf } from "../lib/http";
@@ -477,6 +477,12 @@ dynamicsRoutes.get("/respondents/:userId", async (c) => {
             normalized: score.normalized,
             normalization: score.normalization as ScaleNormalization,
             reliable: response.reliable,
+            /*
+             * Кто заполнял: сам человек или специалист с его слов. Подсказка
+             * замера на графике курса говорит это словом — балл, внесённый
+             * со слов, читается иначе, чем самоотчёт.
+             */
+            source: (response.source as ResponseSource | null) ?? null,
           });
           byCode.set(scale.code, entry);
         }

@@ -154,14 +154,12 @@
   --q2i: #4E2678;
   --q3i: #FFFFFF;
 
-  /* поле графика: полосы тяжести, текущая полоса, будущее, дорожка */
+  /* поле графика: полосы тяжести, текущая полоса, дорожка */
   --plot: #FAF8FD;
   --plot2: #F2EDF9;
   --plotc: #E9E0F6;
   --plotline: #FFFFFF;
-  --future: rgba(255, 255, 255, 0.55);
   --track: #E3DCEE;
-  --rcz: rgba(102, 51, 153, 0.07);
   --fan: rgba(102, 51, 153, 0.15);
   --series: #663399;
 
@@ -315,9 +313,7 @@
   --plot2: #292133;
   --plotc: #33274A;
   --plotline: #1E1826;
-  --future: rgba(20, 16, 25, 0.38);
   --track: #3A3047;
-  --rcz: rgba(195, 166, 240, 0.09);
   --fan: rgba(195, 166, 240, 0.2);
   --series: #C3A6F0;
 
@@ -750,8 +746,6 @@
   --color-plot-2: var(--plot2);
   --color-plot-current: var(--plotc);
   --color-plot-line: var(--plotline);
-  --color-plot-future: var(--future);
-  --color-plot-rc: var(--rcz);
   --color-plot-fan: var(--fan);
   --color-track: var(--track);
   --color-grid: var(--grid);

@@ -874,6 +874,10 @@ export interface TimelineItem {
   href?: string | null;
   /** Срок назначения — только у назначений */
   dueAt?: string | null;
+  /** Прохождение строки: у сигнала — поднявшее его, у заключения — то, по которому оно написано */
+  responseId?: string | null;
+  /** Код шкалы, полоса которой подняла сигнал; null — сигнал по ответу на пункт */
+  scaleCode?: string | null;
 }
 
 /**

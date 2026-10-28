@@ -337,7 +337,7 @@ describe("стан: рисование", () => {
     expect(either(html, "dash.dom.burnout")).toBe(true);
   });
 
-  test("у благополучия среднее подписано «вище — краще»", () => {
+  test("у благополучия среднее подписано «більше — краще»", () => {
     const well = draw(<DomainRow d={summary({ domain: "wellbeing", higherIsWorse: false })} />);
     expect(either(well, "dash.higherBetter")).toBe(true);
     expect(either(well, "dash.higherWorse")).toBe(false);
@@ -345,7 +345,8 @@ describe("стан: рисование", () => {
 
   test("«замало даних» не печатает ни среднего, ни людей", () => {
     const few = draw(<DomainRow d={conditions.domains[3]!} />);
-    expect(either(few, "dashA.ofMaxShort")).toBe(false);
+    expect(either(few, "dash.higherWorse")).toBe(false);
+    expect(either(few, "dash.higherBetter")).toBe(false);
     expect(either(few, "dash.tooFew")).toBe(true);
   });
 
