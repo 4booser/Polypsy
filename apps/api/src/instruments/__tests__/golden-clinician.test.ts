@@ -9,7 +9,7 @@ import {
   type SurveyFull,
 } from "@quizzy/shared";
 import { CATALOG } from "../catalog";
-import { cgiS } from "../cgi";
+import { cgiI, cgiS } from "../cgi";
 import { WORKING_TRANSLATION } from "../common";
 import { hama } from "../hama";
 import { hamd17 } from "../hamd17";
@@ -198,6 +198,8 @@ const GROUP: Member[] = [
   { key: "hama", name: "HAM-A", draft: hama, flags: [] },
   // CGI-S — одна общая оценка, пунктов риска нет
   { key: "cgi_s", name: "CGI-S", draft: cgiS, flags: [] },
+  // CGI-I — одна оценка изменения, пунктов риска нет
+  { key: "cgi_i", name: "CGI-I", draft: cgiI, flags: [] },
 ];
 
 /** Поля, которые человек читает, — обязаны быть объектом с обоими языками */
@@ -476,5 +478,32 @@ describe("золотой протокол: CGI-S", () => {
   test("полярность: «норма» — none, выше — mild: «краще ↓» выводится из полос", () => {
     const sev = survey.scales[0]!.bands.map((b) => b.severity);
     expect(sev).toEqual(["none", "mild", "mild", "mild", "mild", "mild", "mild"]);
+  });
+});
+
+describe("золотой протокол: CGI-I", () => {
+  const survey = toSurveyFull(cgiI);
+
+  test("раскладка: один пункт, ступени 1–7 без «не оценивалось»; середина — «без изменений»", () => {
+    expect(cgiI.questions!.length).toBe(1);
+    expect(survey.questions[0]!.options.map((o) => o.score)).toEqual([1, 2, 3, 4, 5, 6, 7]);
+    expect((cgiI.questions![0]!.options![3]!.text as { uk: string }).uk).toBe("Без змін");
+  });
+
+  test("каждая ступень — своя полоса; улучшение — none, без изменений и ухудшение — mild", () => {
+    for (let n = 1; n <= 7; n++) {
+      const s = scoreOf(survey, { 1: n - 1 }, "CGII");
+      expect(s.rawScore).toBe(n);
+      expect(s.band?.grade).toBe(n);
+      expect(s.band?.severity).toBe(n <= 3 ? "none" : "mild");
+    }
+  });
+
+  test("примеры досье: 2 — значительное улучшение, 6 — значительное ухудшение; тревоги нет", () => {
+    expect(scoreOf(survey, { 1: 1 }, "CGII").band?.grade).toBe(2);
+    expect(scoreOf(survey, { 1: 5 }, "CGII").band?.grade).toBe(6);
+    for (let pos = 0; pos < 7; pos++) {
+      expect(evaluateSubmission(survey, answersOf(survey, { 1: pos })).risk.severity, `ступень ${pos + 1}`).toBeNull();
+    }
   });
 });
