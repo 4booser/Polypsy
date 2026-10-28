@@ -114,11 +114,12 @@ export function codeOf(title: string): { name: string; code: string | null } {
   const whole = title.trim();
   const m = /^(.*\S)\s*\(([^()]{1,48})\)$/.exec(whole);
   if (!m) return { name: whole, code: null };
-  // в скобках бывает и пояснение: «SRQ-20, ВООЗ», «Копенгагенський опитувальник, CBI» — код любой из частей
+  // в скобках бывает и пояснение: «SRQ-20, ВООЗ», «Копенгагенський опитувальник, CBI» — код любой из частей;
+  // код бывает и кириллицей прописными — «Опитувальник (СР-45)»
   const code = m[2]!
     .split(",")
     .map((part) => part.trim())
-    .find((part) => /^[A-Z][A-Za-z0-9.\-]{1,11}$/.test(part));
+    .find((part) => /^[A-ZА-ЯІЇЄҐ][A-Za-zА-ЯІЇЄҐ0-9.\-]{1,11}$/u.test(part));
   return code ? { name: m[1]!, code } : { name: whole, code: null };
 }
 
