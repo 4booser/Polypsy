@@ -173,8 +173,13 @@ function PictureLine({ r, v }: { r: PictureRow; v: CardView }) {
       <span className="flex min-w-0 items-center gap-1.5 [grid-area:code]">
         {r.signal ? (
           <Tooltip label={ut("ws.signalHere")}>
-            <span tabIndex={0} className="inline-flex shrink-0 rounded-[4px] text-risk-ink outline-none focus-visible:shadow-[0_0_0_2px_var(--vring)]">
-              <Ic.alert size={14} aria-label={ut("ws.signalHere")} />
+            <span
+              tabIndex={0}
+              role="img"
+              aria-label={ut("ws.signalHere")}
+              className="inline-flex shrink-0 rounded-[4px] text-risk-ink outline-none focus-visible:shadow-[0_0_0_2px_var(--vring)]"
+            >
+              <Ic.alert size={14} />
             </span>
           </Tooltip>
         ) : null}

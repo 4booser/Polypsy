@@ -126,12 +126,16 @@ export const Banner = forwardRef<
               <Button size="xs" icon={<Pi.messageSquare />} aria-expanded={v.pane === "thread"} onClick={() => v.open("thread")}>
                 {ut("card.write")}
                 {unread > 0 ? (
-                  <span
-                    aria-label={ut("card.unread").replace("{n}", String(unread))}
-                    className="ml-1.5 inline-grid h-[18px] min-w-[18px] place-items-center rounded-[9px] bg-info px-1 text-[11px] font-bold text-onfill"
-                  >
-                    {unread}
-                  </span>
+                  <>
+                    {/* число — глазу, «непрочитаних: 3» — диктору: aria-label у простого span не читается */}
+                    <span
+                      aria-hidden
+                      className="ml-1.5 inline-grid h-[18px] min-w-[18px] place-items-center rounded-[9px] bg-info px-1 text-[11px] font-bold text-onfill"
+                    >
+                      {unread}
+                    </span>
+                    <span className="sr-only">{`, ${ut("card.unread").replace("{n}", String(unread))}`}</span>
+                  </>
                 ) : null}
                 <DraftDot on={drafts.thread && v.pane !== "thread"} />
               </Button>

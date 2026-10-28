@@ -798,8 +798,10 @@ function ClinicalStateCell({
         )}
         {m.trend === "worse" || m.trend === "better" ? (
           <Tooltip label={ut(m.trend === "worse" ? "ws.trendWorse" : "ws.trendBetter")}>
+            {/* стрелка — картинка со своим именем: у простого span имя не читается (axe, aria-prohibited-attr) */}
             <span
               tabIndex={0}
+              role="img"
               aria-label={ut(m.trend === "worse" ? "ws.trendWorse" : "ws.trendBetter")}
               className={cx(
                 "inline-flex shrink-0 rounded-[4px] outline-none focus-visible:shadow-[0_0_0_2px_var(--vring)]",
