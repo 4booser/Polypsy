@@ -1,5 +1,7 @@
 import {
   comparability,
+  instrumentCode,
+  instrumentMeasure,
   measurementError,
   pointValueTop,
   polarityOfBands,
@@ -807,15 +809,17 @@ export function gridSpans(count: number, cols: number): number[] {
  * суїцидальних реакцій» → «Схильність до суїцидальних реакцій» и «СР-45»;
  * без кода — название целиком и кода нет. Шапка графика курса — «Депресія ·
  * PHQ-9»: и что меряли, и чем.
+ *
+ * Правило одно с консолью и сервером (instrumentCode / instrumentMeasure в
+ * @quizzy/shared): своё, «скобка до 16 знаков и прописными», не выделяло код
+ * у «ASRS-v1.1», «CIWA-Ar», «Brief COPE», и шапка графика расходилась с
+ * клинической картиной той же карточки.
  */
 export function methodNames(surveyTitle: string): { measure: string; code: string | null } {
-  const title = surveyTitle.trim();
-  /* в скобках — код, а не пометка: с цифрой («PHQ-9») или прописными («ISI»); «(демо)» — не код */
-  const paren = /^(.*?)\s*\(([^()]{2,16})\)\s*$/.exec(title);
-  if (paren && (/\d/.test(paren[2]!) || paren[2] === paren[2]!.toUpperCase())) return { measure: paren[1]!.trim() || title, code: paren[2]!.trim() };
-  const dot = /^([^\s.:]{2,12})[.:]\s+(.+)$/.exec(title);
-  if (dot && /\d/.test(dot[1]!)) return { measure: dot[2]!.trim(), code: dot[1]! };
-  return { measure: title, code: null };
+  const title = surveyTitle.trim().replace(/\s+/g, " ");
+  const measure = instrumentMeasure(title);
+  /* кода нет — instrumentCode отдаёт само название (или его начало): тогда и кода нет */
+  return measure === title ? { measure: title, code: null } : { measure, code: instrumentCode(title) };
 }
 
 /**
