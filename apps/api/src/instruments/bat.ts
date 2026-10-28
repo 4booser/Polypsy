@@ -320,7 +320,8 @@ const CITE = L(
 
 export const bat: CreateSurveyDraft = {
   ...PUBLIC_DEFAULTS,
-  title: L("Вигорання (BAT-23, Burnout Assessment Tool)", "Выгорание (BAT-23, Burnout Assessment Tool)"),
+  // код в скобках один, как у BAT-12: английское имя методики — в source каталога и в примечании
+  title: L("Вигорання (BAT-23)", "Выгорание (BAT-23)"),
   description: L(
     "Тридцять три твердження про вашу роботу і самопочуття.",
     "Тридцать три утверждения о вашей работе и самочувствии.",
