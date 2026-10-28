@@ -250,7 +250,7 @@ Most documents are in Russian; the validation package is in Ukrainian and Russia
 
 **Stage: pilot, late beta.** Production has run v2.0.0 since 19 October 2026. Version 2.0 brought the console, the patient cabinet and the mobile app to the new «Виразна» design. The main branch also carries catalog 2.1 (64 shared methods by area, battery templates, the «Каталог методик» group), which ships with the next release tag.
 
-- **Done:** clinical console, patient cabinet, mobile app, tech panel, 68 methods (64 in the shared catalog, 4 seed-only), CI with app-role and browser tests, automated deploys with pre-checks, encrypted and verified backups, audit chain, second factor, three interface languages.
+- **Done:** clinical console, patient cabinet, mobile app, tech panel, 68 methods in the shared catalog (4 of them the institution's own, since 28 October 2026), CI with app-role and browser tests, automated deploys with pre-checks, encrypted and verified backups, audit chain, second factor, three interface languages.
 - **Hardening:** four external code reviews (about 90 findings, including privilege escalation, races and data leaks) are fixed and covered by tests. Every pull request also gets an automated code review.
 - **Not done:** clinical validation of the methods by a psychologist (the package is ready and waiting), off-site backups configured on the server, SSH hardening on the host, mobile store publication, real users and a second institution.
 - **Scale:** one VPS (4 cores, 8 GB) serves one institution at near-zero load; capacity is not the constraint, process is.
