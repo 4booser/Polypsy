@@ -86,7 +86,6 @@ const EXCEPTIONS: Exception[] = [
 const NAMES: LatinName[] = [
   { word: "PSI", why: "Population Stability Index — сокращение международное, в украинских и русских работах пишется латиницей" },
   { word: "ICC", why: "Intraclass Correlation — то же" },
-  { word: "RCI", why: "Reliable Change Index (Jacobson–Truax) — то же" },
   {
     word: "Ctrl",
     file: "apps/web/src/shell/HelpDrawer.tsx",

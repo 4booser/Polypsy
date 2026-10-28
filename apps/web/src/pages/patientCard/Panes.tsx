@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { ResponseContext, ResponseContextSignal } from "@quizzy/shared";
+import type { PatientCard, ResponseContext, ResponseContextSignal, UiKey } from "@quizzy/shared";
 import { Link } from "react-router-dom";
 import { api, type ConclusionState, type NoteVersion } from "../../api";
 import { useAuth } from "../../auth";
@@ -10,11 +10,13 @@ import { Callout, DrawerSection, Ic, Loading, useAction, type DrawerPaneProps } 
 import { cx } from "../../ui/cx";
 import { Button, ErrorText, Field, Segmented, Select, SeverityTag, Textarea } from "../../ui/primitives";
 import { draftOf, draftSavable, saveThenSign, signPlan, staleMessage } from "../../components/versioned";
-import { NOTE_KINDS, NOTE_TEMPLATE } from "../../components/NotesEditor";
+import { Episodes, type EpisodeItem } from "../../components/Episodes";
+import { SafetyPlanBody } from "../../components/SafetyPlanEditor";
+import { useSafetyPlans } from "../../components/RiskReview";
+import { ShellIcon } from "../../shell/icons";
 import { relDay, shortTitle } from "./Banner";
 import { dm, wdm } from "./format";
 import { Pi } from "./icons";
-import { nearSlots } from "./Overview";
 import type { CardView } from "./types";
 import { signGate, signalStrip, signalTimer, type SignGate } from "../response/context";
 import { initialsName, shownNumber, shownValue } from "../patients/model";
@@ -30,6 +32,27 @@ import { initialsName, shownNumber, shownValue } from "../patients/model";
  */
 
 type Slot = { id: string; startsAt: string; endsAt: string; room: string | null };
+
+/** Свободные окна ближе всего ко времени приёма (сначала тот же день), по времени */
+export function nearSlots<T extends { startsAt: string }>(slots: readonly T[], at: string | null, count = 3): T[] {
+  if (!at) return [];
+  const t = Date.parse(at);
+  const sameDay = (s: T) => new Date(s.startsAt).toDateString() === new Date(t).toDateString();
+  return [...slots]
+    .filter((s) => Date.parse(s.startsAt) > Date.now())
+    .sort((a, b) => Number(sameDay(b)) - Number(sameDay(a)) || Math.abs(Date.parse(a.startsAt) - t) - Math.abs(Date.parse(b.startsAt) - t))
+    .slice(0, count)
+    .sort((a, b) => Date.parse(a.startsAt) - Date.parse(b.startsAt));
+}
+
+/** Вид ящика, открытый хоть раз: его тело грузит своё только тогда, а дальше живёт с черновиком */
+function useOpenedOnce(active: boolean): boolean {
+  const [seen, setSeen] = useState(active);
+  useEffect(() => {
+    if (active) setSeen(true);
+  }, [active]);
+  return seen || active;
+}
 
 function useMySlots(enabled: boolean) {
   const { user } = useAuth();
@@ -506,9 +529,26 @@ export function useConclusionPane(v: CardView, active: boolean, wantResponse: st
   };
 }
 
-/* ─────────── нотатка ─────────── */
+/* ─────────── запис прийому ─────────── */
 
 const KIND_KEY = { intake: "note.intake", session: "note.session", observation: "note.observation", consult: "note.consult" } as const;
+
+/**
+ * Виды записи — в одном порядке везде, где их выбирают (здесь и протокол
+ * приёма): первичный, прием, наблюдение, консультация.
+ */
+export const NOTE_KINDS: readonly NoteVersion["kind"][] = ["intake", "session", "observation", "consult"];
+
+/**
+ * Заготовка текста по виду записи — та же, что «Підставити шаблон» протокола
+ * приёма (Visit.tsx): первичный — жалобы, анамнез, состояние, вывод, план;
+ * прием — состояние, что изменилось, работа, договорённости. У наблюдения и
+ * консультации заготовки нет.
+ */
+const NOTE_TEMPLATE: Partial<Record<NoteVersion["kind"], UiKey>> = {
+  intake: "visit.tplIntake",
+  session: "visit.tplSession",
+};
 
 export function useNotePane(v: CardView, active: boolean): DrawerPaneProps {
   const { ut } = useLang();
@@ -549,7 +589,7 @@ export function useNotePane(v: CardView, active: boolean): DrawerPaneProps {
   ) : (
     <>
       <DrawerSection>
-        {/* виды — в том же порядке, что «Записи прийому» клинической карты и протокол приёма (NOTE_KINDS) */}
+        {/* виды — в том же порядке, что протокол приёма (NOTE_KINDS) */}
         <Segmented
           wide
           label={ut("card.noteKind")}
@@ -605,7 +645,7 @@ export function useNotePane(v: CardView, active: boolean): DrawerPaneProps {
         ) : null}
       </DrawerSection>
       {state.versions.length ? (
-        <DrawerSection title={ut("card.prevNotes")} right={<button type="button" className="cursor-pointer border-0 bg-transparent p-0 text-small font-bold text-violet-ink" onClick={() => v.goTab("notes")}>{ut("card.allN").replace("{n}", String(state.versions.length))}</button>}>
+        <DrawerSection title={ut("card.prevNotes")} right={<button type="button" className="cursor-pointer border-0 bg-transparent p-0 text-small font-bold text-violet-ink" onClick={() => v.goTab("records", { kind: "notes" })}>{ut("card.allN").replace("{n}", String(state.versions.length))}</button>}>
           {state.versions.slice(0, 3).map((n) => (
             <div key={n.id} className="border-t border-divider py-2.5 text-small text-text-2 first:border-t-0 first:pt-0">
               <div className="mb-0.5 flex items-baseline gap-2">
@@ -777,5 +817,67 @@ export function useBookPane(v: CardView, active: boolean): DrawerPaneProps {
       </Button>
     ),
     children: body,
+  };
+}
+
+/* ─────────── план безпеки ─────────── */
+
+/**
+ * План безпеки — в ящике, как остальные действия рабочего места: прежде он
+ * жил панелью «Огляду справи» клинической карты, и из карточки к нему вела
+ * ссылка на другую страницу. Тот же запрос, что у шапки и ящика разбора
+ * (useSafetyPlans, общее имя): сохранили — перечитался один раз, и шапка
+ * видит новую версию сразу.
+ */
+export function usePlanPane(v: CardView, active: boolean): DrawerPaneProps {
+  const { ut } = useLang();
+  const plans = useSafetyPlans(v.id);
+  const opened = useOpenedOnce(active);
+  const current = plans.data?.versions.find((p) => p.active) ?? null;
+  return {
+    mode: "plan",
+    title: ut("rr.safetyPlan"),
+    sub: current
+      ? `${ut("sp.version")} ${current.version}, ${day(current.reviewedAt ?? current.createdAt)}`
+      : plans.data
+        ? ut("sp.none")
+        : undefined,
+    icon: <Ic.shieldCheck />,
+    tone: current ? "good" : "warn",
+    children: opened ? <SafetyPlanBody userId={v.id} res={plans} /> : null,
+  };
+}
+
+/* ─────────── звернення ─────────── */
+
+/**
+ * Обращения человека: повод, кто ведёт, приёмы и заключения по нему,
+ * открыть новое, закрыть с исходом, выписка, диспансерный учёт — та же
+ * панель, что на экране приёма (components/Episodes), без своей рамки.
+ * Открыли или закрыли — шапка правится тем же перечитанным списком, без
+ * нового чтения карточки.
+ */
+export function useEpisodePane(v: CardView, active: boolean): DrawerPaneProps {
+  const { ut } = useLang();
+  const opened = useOpenedOnce(active);
+  const ep = v.card.episode ?? null;
+  const { episode: onEpisode } = v.refresh;
+  const onChange = useMemo(
+    () => (items: EpisodeItem[]) => {
+      const open = items.find((e) => !e.closedAt) ?? null;
+      const next: PatientCard["episode"] = open
+        ? { id: open.id, openedAt: open.openedAt, reason: open.reason, leadName: open.leadName }
+        : null;
+      if (next?.id !== ep?.id || next?.reason !== ep?.reason) onEpisode(next);
+    },
+    [ep?.id, ep?.reason, onEpisode],
+  );
+  const days = ep ? Math.max(0, Math.round((v.now - Date.parse(ep.openedAt)) / 86_400_000)) : 0;
+  return {
+    mode: "episode",
+    title: ut("ep.title"),
+    sub: ep ? ut("ws.episodeSince").replace("{d}", dm(ep.openedAt)).replace("{n}", String(days)) : ut("ws.episodeNone"),
+    icon: <ShellIcon name="folder-tree" />,
+    children: opened ? <Episodes patientId={v.id} bare onChange={onChange} /> : null,
   };
 }

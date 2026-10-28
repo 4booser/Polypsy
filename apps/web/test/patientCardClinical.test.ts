@@ -1,10 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import type { RespondentDynamics, ResponseDetail } from "@quizzy/shared";
+import type { AlertCase, PatientCardDomain, RespondentDynamics, ResponseDetail } from "@quizzy/shared";
 import {
   ageOf,
-  heldCount,
+  clinicalPicture,
   instrumentCode,
-  instrumentRows,
   itemHistory,
   itemMax,
   itemsGrid,
@@ -12,16 +11,17 @@ import {
   nextVisit,
   openAssignments,
   openNoShow,
-  sinceEvents,
+  signalGroups,
   visitsOf,
   type TimelineRow,
 } from "../src/pages/patientCard/clinical";
 
 /**
- * Клиника карточки пациента без отрисовки: что встаёт в таблицу методик,
- * какие пункты попадают в таблицу пунктов, какой приём «следующий», какая
- * неявка «открыта» и что случилось «после сессии». Всё — из ответов
- * приложения; ничего не выдумывается, когда данных нет.
+ * Клиника рабочего места пациента без отрисовки: что встаёт в «Клінічну
+ * картину» и в каком порядке, как сдвиг называется словом, что подняло
+ * открытый случай, какие пункты попадают в таблицу пунктов, какой приём
+ * «следующий» и какая неявка «открыта». Всё — из ответов приложения; ничего
+ * не выдумывается, когда данных нет.
  */
 
 const DAY = 86_400_000;
@@ -116,40 +116,81 @@ function dynamics(points: [string, number][]): RespondentDynamics {
         responseCount: points.length,
         firstAt: points[0]![0],
         lastAt: points[points.length - 1]![0],
-        scales: [mk("sc1", "PHQ", "Вираженість депресії"), mk("lie", "L", "Достовірність")],
+        /* вид шкалы — как отдаёт сервер (ScaleDynamics.kind): «L» — шкала достоверности */
+        scales: [{ ...mk("sc1", "PHQ", "Вираженість депресії"), kind: "clinical" as const }, { ...mk("lie", "L", "Достовірність"), kind: "validity" as const }],
       },
     ],
   } as RespondentDynamics;
 }
 
-describe("методики: строки таблицы", () => {
-  const dyn = dynamics([
-    [at(-45), 19],
-    [at(-27), 16],
-    [at(0), 14],
-  ]);
-  const rows = instrumentRows(dyn, { r2: detail("r2", at(0)) });
+const PHQ_BANDS = [
+  { min: 0, max: 4, label: "мінімальна", severity: "none" as const },
+  { min: 5, max: 9, label: "легка", severity: "mild" as const },
+  { min: 10, max: 14, label: "помірна", severity: "moderate" as const },
+  { min: 15, max: 27, label: "тяжка", severity: "severe" as const },
+];
+const DEPRESSION: PatientCardDomain[] = [{ surveyId: "s1", code: "PHQ", domain: "depression" }];
 
-  test("шкала достоверности в таблицу не идёт — она о бланке, а не о человеке", () => {
-    expect(rows.map((r) => r.scaleId)).toEqual(["sc1"]);
+/** Динамика с полосами у содержательной шкалы — как отдаёт сервер */
+function banded(points: [string, number][]): RespondentDynamics {
+  const d = dynamics(points);
+  d.surveys[0]!.scales[0]!.bands = PHQ_BANDS;
+  return d;
+}
+
+describe("клиническая картина: строки по доменам", () => {
+  test("шкала достоверности в картину не идёт — она о бланке, а не о человеке", () => {
+    const rows = clinicalPicture(banded([[at(0), 14]]), DEPRESSION).flatMap((g) => g.rows);
+    expect(rows.map((r) => r.scale.code)).toEqual(["PHQ"]);
   });
 
-  test("одношкальная методика подписана кодом методики, а не служебным кодом шкалы", () => {
-    expect(rows[0]!.code).toBe("PHQ-9");
-    expect(rows[0]!.title).toBe("Вираженість депресії");
+  test("строка подписана кодом методики, что меряет — названием шкалы; домен — с сервера", () => {
+    const [group] = clinicalPicture(banded([[at(0), 14]]), DEPRESSION);
+    expect(group!.domain).toBe("depression");
+    expect(group!.rows[0]!.code).toBe("PHQ-9");
+    expect(group!.rows[0]!.scaleTitle).toBe("Вираженість депресії");
   });
 
-  test("сдвиг от старта, порог MDC95 из основы RCI и «краще ↓» по полосам", () => {
-    const r = rows[0]!;
-    expect(r.delta).toBe(-5);
+  test("домена нет в ответе (старый сервер, самодельная шкала) — «інше», а не догадка по названию", () => {
+    expect(clinicalPicture(banded([[at(0), 14]]), []).map((g) => g.domain)).toEqual(["other"]);
+  });
+
+  test("сдвиг от первого замера: число, порог MDC95 из основы RCI и слово — по полярности полос", () => {
     /*
      * MDC95 = 1,96·√2·SEM, SEM = SD·√(1−α) = 5·√0,14 ≈ 5,19. У сырого
-     * балла (целые суммы) — вверх до целого, как в «Огляді справи» и «Хто
-     * це»: сдвиг на 6 надёжен, на 5 — нет, и «поріг 6» говорит ровно это.
+     * балла (целые суммы) — вверх до целого: сдвиг на 6 значущий, на 5 — нет,
+     * и «поріг 6» говорит ровно это.
      */
-    expect(r.threshold).toBe(Math.ceil(1.96 * Math.SQRT2 * 5 * Math.sqrt(1 - 0.86)));
-    expect(r.better).toBe("down");
-    expect(r.rungs.map((x) => x.label)).toEqual(["мінімальна", "легка", "помірна", "тяжка"]);
+    const threshold = Math.ceil(1.96 * Math.SQRT2 * 5 * Math.sqrt(1 - 0.86));
+    const within = clinicalPicture(banded([[at(-45), 19], [at(-27), 16], [at(0), 14]]), DEPRESSION)[0]!.rows[0]!;
+    expect(within.delta).toBe(-5);
+    expect(within.threshold).toBe(threshold);
+    expect(within.better).toBe("down");
+    expect(within.verdict).toBe("within");
+
+    const better = clinicalPicture(banded([[at(-45), 22], [at(0), 14]]), DEPRESSION)[0]!.rows[0]!;
+    expect(better.delta).toBe(-8);
+    expect(better.verdict).toBe("better");
+
+    const worse = clinicalPicture(banded([[at(-45), 6], [at(0), 14]]), DEPRESSION)[0]!.rows[0]!;
+    expect(worse.verdict).toBe("worse");
+  });
+
+  test("без полос — направления нет: значущий сдвиг — «значуща зміна», а не «покращення»", () => {
+    const r = clinicalPicture(dynamics([[at(-45), 22], [at(0), 14]]), DEPRESSION)[0]!.rows[0]!;
+    expect(r.better).toBeNull();
+    expect(r.verdict).toBe("changed");
+  });
+
+  test("без основы похибки — «значущість не оцінено», а не «без змін»", () => {
+    const d = banded([[at(-45), 22], [at(0), 14]]);
+    for (const sc of d.surveys[0]!.scales) {
+      sc.reliableChange = null;
+      sc.sem = null;
+    }
+    const r = clinicalPicture(d, DEPRESSION)[0]!.rows[0]!;
+    expect(r.threshold).toBeNull();
+    expect(r.verdict).toBe("unknown");
   });
 
   test("доля — сдвиг и порог в процентных пунктах, а не долей рядом с «49%»", () => {
@@ -165,34 +206,32 @@ describe("методики: строки таблицы", () => {
       for (const p of sc.points) p.normalization = "ratio";
       sc.reliableChange = { rci: 1.7, significant: false, direction: "up", basis: { sd: 0.15, alpha: 0.86, sampleN: 120 } };
     }
-    const r = instrumentRows(ratio, {})[0]!;
+    const r = clinicalPicture(ratio, DEPRESSION)[0]!.rows[0]!;
     expect(r.delta).toBe(20);
     // MDC95 = 1,96·√2·0,15·√0,14 ≈ 0,16 (общее правило, до сотых) → 16 в. п.
     expect(r.threshold).toBe(16);
   });
 
-  test("один замер — сдвига нет; несравнимые концы — сдвига нет, причина названа", () => {
-    const one = instrumentRows(dynamics([[at(0), 14]]), {});
-    expect(one[0]!.delta).toBeNull();
-    const versions = dynamics([
+  test("один замер — «перший замір»; несравнимые концы — сдвига нет, причина названа", () => {
+    const one = clinicalPicture(banded([[at(0), 14]]), DEPRESSION)[0]!.rows[0]!;
+    expect(one.delta).toBeNull();
+    expect(one.verdict).toBe("single");
+    const versions = banded([
       [at(-10), 19],
       [at(0), 14],
     ]);
     versions.surveys[0]!.scales[0]!.incomparable = "version";
-    const r = instrumentRows(versions, {})[0]!;
+    const r = clinicalPicture(versions, DEPRESSION)[0]!.rows[0]!;
     expect(r.delta).toBeNull();
+    expect(r.verdict).toBe("incomparable");
     expect(r.incomparable).toBe("version");
   });
 
-  test("без полос (прохождение ещё не пришло) — направления «краще» нет, а не догадка", () => {
-    expect(instrumentRows(dyn, {})[0]!.better).toBeNull();
-  });
-
-  test("методика из многих шкал — одной строкой самой тяжёлой; остальные методики не вытесняются", () => {
+  test("профиль из многих шкал одного домена — одной строкой самой тяжёлой; другие методики не вытесняются", () => {
     /*
-     * «Адаптивність-200» — восемь шкал. Прежде они занимали все шесть строк,
-     * и СР-45 того же дня в таблицу не попадал. Теперь — одна строка (самая
-     * тяжёлая шкала, прочие — в раскрытии), и СР-45 рядом.
+     * «Адаптивність-200» — восемь шкал. Прежде они занимали все строки
+     * таблицы, и СР-45 того же дня в неё не попадал. Теперь — одна строка
+     * (самая тяжёлая шкала, прочие — в «Динаміці»), и СР-45 рядом.
      */
     const many = dynamics([[at(0), 5]]);
     const sv = many.surveys[0]!;
@@ -207,33 +246,105 @@ describe("методики: строки таблицы", () => {
     }));
     const sr = dynamics([[at(-1), 9]]).surveys[0]!;
     many.surveys.push({ ...sr, surveyId: "s2", title: "СР-45. Схильність до суїцидальних реакцій", lastAt: at(-1) });
-    const rows = instrumentRows(many, {});
-    expect(rows.map((r) => r.surveyId)).toEqual(["s1", "s2", "s2"]);
-    const folded = rows[0]!;
-    expect(folded.scaleId).toBe("a5");
+    const domains: PatientCardDomain[] = [
+      ...sv.scales.map((sc) => ({ surveyId: "s1", code: sc.code, domain: "personality" as const })),
+      { surveyId: "s2", code: "PHQ", domain: "suicide" },
+    ];
+    const groups = clinicalPicture(many, domains);
+    // тяжёлое первым: «виражена» полоса личностной шкалы — выше СР-45 без полосы
+    expect(groups.map((g) => g.domain)).toEqual(["personality", "suicide"]);
+    const folded = groups[0]!.rows[0]!;
+    expect(folded.scale.scaleId).toBe("a5");
     expect(folded.code).toBe("БОО «Адаптивність-200»");
-    expect(folded.title).toBe("Шкала 6");
-    expect(folded.folded.map((s) => s.scaleId)).toEqual(["a0", "a1", "a2", "a3", "a4", "a6", "a7"]);
-    expect(rows[1]!.folded).toEqual([]);
-
-    // «Графіки» — без свёртки и без потолка: у каждой шкалы свой график, СР-45 не вытесняется
-    const charts = instrumentRows(many, {}, { fold: false, limit: Number.POSITIVE_INFINITY });
-    expect(charts.filter((r) => r.surveyId === "s1").map((r) => r.scaleId)).toEqual(["a0", "a1", "a2", "a3", "a4", "a5", "a6", "a7"]);
-    expect(charts.filter((r) => r.surveyId === "s2")).toHaveLength(2);
-    expect(charts.every((r) => r.folded.length === 0)).toBe(true);
+    expect(folded.scaleTitle).toBe("Шкала 6");
+    expect(folded.folded).toBe(7);
+    expect(groups[1]!.rows).toHaveLength(1);
   });
 
-  test("до трёх шкал — по строке на шкалу, подпись строки — шкала, методика — над группой", () => {
+  test("методика о разном (DASS-21, PHQ-4) — строками в своих доменах", () => {
     const two = dynamics([[at(0), 5]]);
     const sv = two.surveys[0]!;
-    sv.title = "Скринінг емоційного стану";
+    sv.title = "Депресія, тривога, стрес (DASS-21)";
     sv.scales = [
-      { ...sv.scales[0]!, scaleId: "anx", code: "anxiety", title: "Тривога" },
-      { ...sv.scales[0]!, scaleId: "mood", code: "mood", title: "Знижений настрій" },
+      { ...sv.scales[0]!, scaleId: "d", code: "D", title: "Депресія" },
+      { ...sv.scales[0]!, scaleId: "a", code: "A", title: "Тривога" },
     ];
-    const rows = instrumentRows(two, {});
-    expect(rows.map((r) => r.code)).toEqual(["Тривога", "Знижений настрій"]);
-    expect(rows.every((r) => r.folded.length === 0)).toBe(true);
+    const groups = clinicalPicture(two, [
+      { surveyId: "s1", code: "D", domain: "depression" },
+      { surveyId: "s1", code: "A", domain: "anxiety" },
+    ]);
+    expect(groups.map((g) => [g.domain, g.rows.map((r) => r.scaleTitle)])).toEqual([
+      ["depression", ["Депресія"]],
+      ["anxiety", ["Тривога"]],
+    ]);
+    expect(groups.every((g) => g.rows.every((r) => r.folded === 0))).toBe(true);
+  });
+
+  test("порядок: открытый сигнал первым, потом тяжесть, при равенстве — клинический порядок доменов", () => {
+    const d = banded([[at(0), 6]]);
+    const sleep = { ...d.surveys[0]!, surveyId: "s2", title: "Безсоння (SCI)" };
+    const anxiety = { ...d.surveys[0]!, surveyId: "s3", title: "Тривога (GAD-7)" };
+    d.surveys.push(sleep, anxiety);
+    const domains: PatientCardDomain[] = [
+      { surveyId: "s1", code: "PHQ", domain: "depression" },
+      { surveyId: "s2", code: "PHQ", domain: "sleep" },
+      { surveyId: "s3", code: "PHQ", domain: "anxiety" },
+    ];
+    // тяжесть одна (ни у кого нет полосы в точке) — домены в клиническом порядке
+    expect(clinicalPicture(d, domains).map((g) => g.domain)).toEqual(["depression", "anxiety", "sleep"]);
+    // сигнал по сну — сон первым, и строка помечена
+    const withSignal = clinicalPicture(d, domains, new Set(["r0"]));
+    expect(withSignal.every((g) => g.signal)).toBe(true);
+    const onlySleep = clinicalPicture(
+      { ...d, surveys: d.surveys.map((s) => (s.surveyId === "s2" ? { ...s, scales: s.scales.map((sc) => ({ ...sc, points: sc.points.map((p) => ({ ...p, responseId: "sig" })) })) } : s)) },
+      domains,
+      new Set(["sig"]),
+    );
+    expect(onlySleep[0]!.domain).toBe("sleep");
+    expect(onlySleep[0]!.rows[0]!.signal).toBe(true);
+  });
+});
+
+describe("сигналы случая — по пункту или шкале, а не строкой на сигнал", () => {
+  const sig = (id: string, kind: "option" | "band", key: string, label: string, severity: "moderate" | "severe", at: string) => ({
+    id,
+    responseId: `r-${id}`,
+    kind,
+    questionId: kind === "option" ? key : null,
+    questionTitle: key,
+    label,
+    severity,
+    at,
+  });
+  const cases = [
+    {
+      signals: [
+        sig("1", "option", "q9", "PHQ-9: думки про смерть (кілька днів)", "moderate", at(-30)),
+        sig("2", "option", "q9", "PHQ-9: думки про смерть (більше половини днів)", "severe", at(-1)),
+        sig("3", "band", "Вираженість депресії", "Вираженість депресії: помірна", "moderate", at(-1)),
+        sig("4", "band", "Індекс благополуччя", "Індекс благополуччя: дуже низьке", "severe", at(-2)),
+        sig("5", "band", "Вираженість депресії", "Вираженість депресії: помірна", "moderate", at(-30)),
+      ],
+    },
+  ] as unknown as AlertCase[];
+
+  test("один пункт — одна строка со счётом и подписью самого тяжёлого сигнала", () => {
+    const groups = signalGroups(cases);
+    expect(groups.map((g) => [g.label, g.count])).toEqual([
+      ["PHQ-9: думки про смерть (більше половини днів)", 2],
+      ["Індекс благополуччя: дуже низьке", 1],
+      ["Вираженість депресії: помірна", 2],
+    ]);
+  });
+
+  test("тяжёлые первыми, при равенстве — ответ на пункт раньше полосы шкалы", () => {
+    const groups = signalGroups(cases);
+    expect(groups.map((g) => [g.severity, g.item])).toEqual([
+      ["severe", true],
+      ["severe", false],
+      ["moderate", false],
+    ]);
+    expect(groups[0]!.lastAt).toBe(at(-1));
   });
 });
 
@@ -348,7 +459,6 @@ describe("приёмы, неявки и назначения из хроноло
     const last = lastSession(visits, NOW)!;
     expect(last.visit.id).toBe("v2");
     expect(last.n).toBe(2);
-    expect(heldCount(visits)).toBe(2);
   });
 
   test("неявка после последней сессии — открыта; после неё пришёл — уже история", () => {
@@ -359,11 +469,6 @@ describe("приёмы, неявки и назначения из хроноло
 
   test("открытые назначения — только не пройденные, со сроком", () => {
     expect(openAssignments(items).map((a) => [a.title, a.dueAt])).toEqual([["Безсоння", at(7)]]);
-  });
-
-  test("«після сесії» — всё после последнего проведённого, без будущих записей", () => {
-    const since = sinceEvents(items, Date.parse(at(-13)), NOW).map((i) => i.id);
-    expect(since).toEqual(["visit:v3", "alert:a1", "assignment:x"]);
   });
 });
 

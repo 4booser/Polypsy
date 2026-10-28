@@ -9,7 +9,7 @@
  * по ссылке на свою. Глазом такое замечают, только когда уже поверили.
  */
 
-import type { ScaleNormalization, Severity } from "@quizzy/shared";
+import type { ClinicalDomain, ScaleNormalization, Severity, UiKey } from "@quizzy/shared";
 import { locale as consoleLocale } from "../../format";
 import type { Severity as KitSeverity } from "../../ui/primitives";
 
@@ -285,3 +285,23 @@ export function registerBody(s: {
   if (s.filtered) return "noMatch";
   return s.group ? "emptyGroup" : "empty";
 }
+
+/**
+ * Клинический домен словом — строка «Клінічної картини» рабочего места и
+ * стан в строке реестра говорят одними словами (shared/domains.ts).
+ */
+export const CLINICAL_DOMAIN_KEY: Record<ClinicalDomain, UiKey> = {
+  suicide: "ws.dom.suicide",
+  depression: "ws.dom.depression",
+  trauma: "ws.dom.trauma",
+  anxiety: "ws.dom.anxiety",
+  addiction: "ws.dom.addiction",
+  stress: "ws.dom.stress",
+  distress: "ws.dom.distress",
+  sleep: "ws.dom.sleep",
+  cognitive: "ws.dom.cognitive",
+  burnout: "ws.dom.burnout",
+  wellbeing: "ws.dom.wellbeing",
+  personality: "ws.dom.personality",
+  other: "ws.dom.other",
+};

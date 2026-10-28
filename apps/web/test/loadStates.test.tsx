@@ -344,10 +344,10 @@ describe("план безопасности", () => {
     expect(draw(<SafetyPlanBody userId="p1" res={waiting<Plans>()} />)).toBe("");
   });
 
-  test("плана нет — блок с меткой «плану немає»", () => {
+  test("плана нет — сразу правка: ящик открыли, чтобы составить", () => {
     const html = draw(<SafetyPlanBody userId="p1" res={answered<Plans>({ versions: [] })} />);
-    expect(has(html, "sp.title")).toBe(true);
-    expect(has(html, "sp.none")).toBe(true);
+    expect(has(html, "sp.saveVersion")).toBe(true);
+    expect(has(html, "sp.warningSigns")).toBe(true);
   });
 });
 

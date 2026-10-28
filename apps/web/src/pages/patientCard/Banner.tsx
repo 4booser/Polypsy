@@ -1,43 +1,44 @@
 import { forwardRef, type ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { dateTime, day, timeOfDay } from "../../format";
+import { day, timeOfDay } from "../../format";
 import { useLang } from "../../lang";
-import { AlertChip, AlertStrip, Avatar, Ic, Kbd, Popover, RiskChip, RiskTimer, Tooltip } from "../../ui";
-import { ActionMenu } from "../../ui/menu";
-import { Button, ButtonLink, Tabs } from "../../ui/primitives";
+import { Avatar, Ic, Popover, RiskTimer, Tooltip } from "../../ui";
+import { cx } from "../../ui/cx";
+import { ActionMenu, type MenuEntry } from "../../ui/menu";
+import { Button, Tabs } from "../../ui/primitives";
 import { clockText, normText, riskClock } from "../alerts/model";
+import { initialsName } from "../patients/model";
 import { ageOf, instrumentCode } from "./clinical";
-import { dm } from "./format";
+import { daysBetween, dm, wdm } from "./format";
 import { Pi } from "./icons";
-import { leadAction } from "./model";
-import type { CardView } from "./types";
+import { CARD_TABS } from "./tabs";
+import type { CardTab, CardView } from "./types";
 
 /*
- * Карточка пациента на фиолетово-тонированной полосе (.banner макета):
- * кто это, что открыто по человеку строкой пилюль — у каждой своё
- * действие и свой поповер, — действия дня и вкладки. Липнет к верху
- * колонки: ящик действий встаёт под ней, и человек, о котором действие,
- * всегда виден.
+ * Шапка рабочего места пациента — на фиолетово-тонированной полосе, липнет
+ * к верху колонки: ящик действий встаёт под ней, и человек, о котором
+ * действие, всегда виден.
  *
- * Действия — своей строкой под именем, справа, и с подписями: на
- * 13-дюймовом ноутбуке (1280 со списком) пять значков без слов приходилось
- * угадывать по подсказкам, а в строке имени подписям места нет — длинное ФИО
- * обрезалось бы. Строка действий стоит на одном месте у любого человека:
- * пилюли открытого — под ней, сколько бы их ни было.
+ * Шапка отвечает на четыре вопроса — по строке на каждый, без повторов:
+ * кто ведёт человека, зачем он здесь (обращение и его повод), когда
+ * следующий приём и что с риском (открытый случай, кто его разбирает, план
+ * безпеки). Открытый случай — красной строкой во всю ширину над прочими:
+ * это то, что требует действия сейчас. Под ними — действия дня с прежними
+ * подписями и вкладки.
+ *
+ * Прежде под именем стояла строка пилюль «открытого» — случай, план,
+ * назначенное, черновики, письмо — и та же картина повторялась панелями
+ * «Огляду». Теперь у каждого сведения один дом: письмо — счётчиком на
+ * «Написати», черновики — во «Записах», назначенное — в «Плані» огляда.
  */
-
-export type CardTab = "overview" | "measures" | "dynamics" | "conclusions" | "visits" | "messages" | "notes" | "timeline";
-
-export const CARD_TABS: CardTab[] = ["overview", "measures", "dynamics", "conclusions", "visits", "messages", "notes", "timeline"];
 
 const TAB_KEY = {
   overview: "card.tOverview",
-  measures: "card.tMeasures",
   dynamics: "card.tDynamics",
-  conclusions: "card.tConclusions",
-  visits: "card.tVisits",
+  measures: "card.tMeasures",
+  records: "ws.tRecords",
+  referrals: "ws.tReferrals",
   messages: "card.tMessages",
-  notes: "card.tNotes",
   timeline: "card.tTimeline",
 } as const;
 
@@ -47,30 +48,36 @@ export const Banner = forwardRef<
     v: CardView;
     tab: CardTab;
     onTab: (t: CardTab) => void;
+    /** Вкладки, которые видит читатель: «Направлення» и «Листування» — по праву */
+    tabs: readonly CardTab[];
     counts: Partial<Record<CardTab, number>>;
     collapsed: boolean;
     onExpand: () => void;
     onAssign: () => void;
     onToggleLead: () => void;
     leadBusy: boolean;
+    /** Пункты меню «⋯»: закрепление, обращение, план, направление, печать */
+    menu: MenuEntry[];
     /** «Тут же зараз»: кто ещё открыл этого человека */
     here?: ReactNode;
     drafts: { thread: boolean; concl: boolean; note: boolean; signal: boolean };
   }
->(function Banner({ v, tab, onTab, counts, collapsed, onExpand, onAssign, onToggleLead, leadBusy, here, drafts }, ref) {
+>(function Banner({ v, tab, onTab, tabs, counts, collapsed, onExpand, onAssign, onToggleLead, leadBusy, menu, here, drafts }, ref) {
   const { ut } = useLang();
   const { card } = v;
   const age = ageOf(card.birthDate, v.now);
   const sex = card.sex === "male" ? ut("card.male") : card.sex === "female" ? ut("card.female") : null;
-  const lead = leadAction(card);
+  const facts = [age !== null ? ut("card.years").replace("{n}", String(age)) : null, sex, card.unit].filter(Boolean).join(", ");
+  const unread = v.thread?.unread ?? 0;
+  const risky = !!v.cases?.length;
 
   return (
     <section
       ref={ref}
       aria-label={ut("card.bannerLabel")}
-      className="sticky top-0 z-20 flex shrink-0 flex-col border-b border-band-card-line bg-band px-4 pt-3.5"
+      className="sticky top-0 z-20 flex shrink-0 flex-col border-b border-band-card-line bg-band px-4 pt-2.5"
     >
-      <div className="@container rounded-drawer border border-band-card-line bg-band-card py-3 pl-3.5 pr-3 shadow-banner">
+      <div className="@container rounded-drawer border border-band-card-line bg-band-card px-3.5 pb-2.5 pt-2 shadow-banner">
         <div className="flex min-w-0 items-center gap-3">
           {collapsed ? (
             <Tooltip label={ut("card.expandList")} kbd="[">
@@ -80,108 +87,90 @@ export const Banner = forwardRef<
             </Tooltip>
           ) : null}
           <Popover title={card.fullName} note={card.unit ?? undefined} content={<WhoPeek v={v} />} width={360}>
-            <div tabIndex={0} className="group flex min-w-0 items-center gap-3.5 rounded-[16px] pr-1.5 outline-none focus-visible:shadow-[0_0_0_2px_var(--vring)]">
-              <Avatar name={card.fullName} size={56} />
-              <div className="flex min-w-0 flex-col gap-[5px]">
-                {/* ФИО не обрезается: длинное встаёт в две строки, а не теряет отчество */}
-                <h1 className="m-0 text-title font-extrabold leading-[30px] tracking-[-0.03em] text-text group-hover:underline group-hover:decoration-violet-line group-hover:decoration-2 group-hover:underline-offset-[5px]">
+            <div
+              tabIndex={0}
+              className="group flex min-w-0 items-center gap-3 rounded-[14px] pr-1.5 outline-none focus-visible:shadow-[0_0_0_2px_var(--vring)]"
+            >
+              <Avatar name={card.fullName} size={40} />
+              {/* ФИО не обрезается: длинное встаёт в две строки, а не теряет отчество; возраст и подразделение — следом, если влезают */}
+              <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-0.5">
+                <h1 className="m-0 text-[21px] font-extrabold leading-[26px] tracking-[-0.03em] text-text group-hover:underline group-hover:decoration-violet-line group-hover:decoration-2 group-hover:underline-offset-[5px]">
                   {card.fullName}
                 </h1>
-                <span className="flex min-w-0 flex-wrap gap-x-4 gap-y-1 text-[13px] font-semibold text-text-2">
-                  {age !== null || sex ? (
-                    <Fact icon={<Pi.userRound size={15} />}>
-                      {age !== null ? <b className="font-extrabold text-text">{ut("card.years").replace("{n}", String(age))}</b> : null}
-                      {age !== null && sex ? ", " : null}
-                      {sex}
-                    </Fact>
-                  ) : null}
-                  {card.unit ? (
-                    <Fact icon={<Ic.idCard size={15} />}>
-                      <b className="font-extrabold text-text">{card.unit}</b>
-                    </Fact>
-                  ) : null}
-                  {v.last ? (
-                    <Fact icon={<Pi.repeat size={15} />}>
-                      <span className="font-medium text-muted">{ut("card.sessions")}</span> <b className="font-extrabold text-text">{v.last.n}</b>
-                    </Fact>
-                  ) : null}
-                  {card.lead && !card.lead.mine ? (
-                    <Fact icon={<Ic.user size={15} />}>
-                      <span className="font-medium text-muted">{ut("card.leads")}</span>{" "}
-                      <b className="font-extrabold text-text">{card.lead.name}</b>
-                    </Fact>
-                  ) : null}
-                </span>
+                {facts ? <span className="text-small font-semibold text-text-2">{facts}</span> : null}
               </div>
             </div>
           </Popover>
-          <div className="ml-auto flex shrink-0 items-center gap-2 self-start">
+          <div className="ml-auto flex shrink-0 items-center gap-1.5 self-start">
             {here}
-            {/* вторая запись того же человека — словом на виду, как «Картка пацієнта» в шапке клинической карты */}
-            <ButtonLink to={`/patients/${card.id}/case`} variant="ghost" size="xs">
-              <Ic.layers size={14} className="mr-1.5" />
-              {ut("pcard.clinical")}
-            </ButtonLink>
+            <ActionMenu triggerSize="icon-sm" label={ut("ws.moreLabel")} entries={menu} />
           </div>
         </div>
-        <div className="mt-2.5 flex min-w-0 justify-end">
-          <div role="group" aria-label={ut("card.actionsLabel")} className="flex shrink-0 items-center gap-1.5">
-            {v.can("messages.write") ? (
-              <Tooltip label={ut("card.writeTip")} kbd="M">
-                <Button size="xs" icon={<Pi.messageSquare />} aria-expanded={v.pane === "thread"} onClick={() => v.open("thread")}>
-                  <span className={NARROW_SR}>{ut("card.write")}</span>
-                  <DraftDot on={drafts.thread && v.pane !== "thread"} />
-                </Button>
-              </Tooltip>
-            ) : null}
-            {v.can("notes.write") ? (
-              <Tooltip label={ut("card.noteTip")} kbd="N">
-                <Button size="xs" icon={<Pi.notebookPen />} aria-expanded={v.pane === "note"} onClick={() => v.open("note")}>
-                  <span className={NARROW_SR}>{ut("card.note")}</span>
-                  <DraftDot on={drafts.note && v.pane !== "note"} />
-                </Button>
-              </Tooltip>
-            ) : null}
-            {v.can("conclusions.write") && card.responses.length ? (
-              <Tooltip label={ut("card.conclTip")}>
-                <Button size="xs" icon={<Pi.filePlus />} aria-expanded={v.pane === "concl"} onClick={() => v.open("concl")}>
-                  <span className={NARROW_SR}>{ut("card.concl")}</span>
-                  <DraftDot on={drafts.concl && v.pane !== "concl"} />
-                </Button>
-              </Tooltip>
-            ) : null}
-            {v.can("appointments.manage") ? (
-              <Button size="xs" icon={<Pi.calendarPlus />} aria-expanded={v.pane === "book"} onClick={() => v.open("book")}>
-                {ut("card.bookTip")}
+
+        {risky ? <RiskLine v={v} draft={drafts.signal} /> : null}
+        {/*
+          Подписи — колонкой по самой длинной в своей половине («План безпеки»
+          по-русски шире «Фахівця»): строки обеих половин стоят ровно, а
+          значению остаётся всё, что не занято подписью.
+        */}
+        <dl className="m-0 mt-1.5 grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-x-2.5 gap-y-0 @min-[620px]:grid-cols-[auto_minmax(0,1fr)_auto_minmax(0,1fr)]">
+          <LeadFact v={v} busy={leadBusy} onTake={onToggleLead} />
+          <EpisodeFact v={v} />
+          <VisitFact v={v} />
+          {risky ? <PlanFact v={v} /> : <QuietRiskFact v={v} />}
+        </dl>
+
+        <div role="group" aria-label={ut("card.actionsLabel")} className="mt-2 flex min-w-0 flex-wrap items-center gap-1.5 print:hidden">
+          {v.can("messages.write") ? (
+            <Tooltip label={ut("card.writeTip")} kbd="M">
+              <Button size="xs" icon={<Pi.messageSquare />} aria-expanded={v.pane === "thread"} onClick={() => v.open("thread")}>
+                {ut("card.write")}
+                {unread > 0 ? (
+                  <span
+                    aria-label={ut("card.unread").replace("{n}", String(unread))}
+                    className="ml-1.5 inline-grid h-[18px] min-w-[18px] place-items-center rounded-[9px] bg-info px-1 text-[11px] font-bold text-onfill"
+                  >
+                    {unread}
+                  </span>
+                ) : null}
+                <DraftDot on={drafts.thread && v.pane !== "thread"} />
               </Button>
-            ) : null}
-            {v.can("assignments.manage") ? (
-              <Button size="xs" icon={<Pi.clipboardPlus />} onClick={onAssign}>
-                {ut("pg.assignTest")}
+            </Tooltip>
+          ) : null}
+          {v.can("notes.write") ? (
+            <Tooltip label={ut("ws.newNote")} kbd="N">
+              <Button size="xs" icon={<Pi.notebookPen />} aria-expanded={v.pane === "note"} onClick={() => v.open("note")}>
+                {ut("ws.note")}
+                <DraftDot on={drafts.note && v.pane !== "note"} />
               </Button>
-            ) : null}
-            <ActionMenu
-              triggerSize="icon-sm"
-              entries={[
-                {
-                  key: "lead",
-                  label: ut(lead === "subscribe" ? "pcard.subscribe" : "pcard.unsubscribe"),
-                  icon: <Pi.userPlus size={15} />,
-                  disabled: leadBusy,
-                  onSelect: onToggleLead,
-                },
-              ]}
-            />
-          </div>
+            </Tooltip>
+          ) : null}
+          {v.can("conclusions.write") && card.responses.length ? (
+            <Tooltip label={ut("card.conclTip")}>
+              <Button size="xs" icon={<Pi.filePlus />} aria-expanded={v.pane === "concl"} onClick={() => v.open("concl")}>
+                {ut("card.concl")}
+                <DraftDot on={drafts.concl && v.pane !== "concl"} />
+              </Button>
+            </Tooltip>
+          ) : null}
+          {v.can("appointments.manage") ? (
+            <Button size="xs" icon={<Pi.calendarPlus />} aria-expanded={v.pane === "book"} onClick={() => v.open("book")}>
+              {ut("card.bookTip")}
+            </Button>
+          ) : null}
+          {v.can("assignments.manage") ? (
+            <Button size="xs" icon={<Pi.clipboardPlus />} onClick={onAssign}>
+              {ut("pg.assignTest")}
+            </Button>
+          ) : null}
         </div>
-        <Strip v={v} drafts={drafts} />
       </div>
       {/* полоса вкладок узкая (1280 со списком) — счётчики уходят, подписи остаются */}
-      <div className="@container flex min-w-0 items-center gap-2 py-2">
-        <div className="min-w-0 overflow-x-auto [scrollbar-width:none] [&>[role=tablist]]:flex-nowrap @max-[880px]:[&_[role=tab]>span]:hidden">
+      <div className="@container flex min-w-0 items-center gap-2 py-1.5">
+        <div className="min-w-0 overflow-x-auto [scrollbar-width:none] [&>[role=tablist]]:flex-nowrap @max-[700px]:[&_[role=tab]>span]:hidden">
           <Tabs
             label={ut("card.tabsLabel")}
-            items={CARD_TABS.map((t) => ({
+            items={CARD_TABS.filter((t) => tabs.includes(t)).map((t) => ({
               id: `card-tab-${t}`,
               label: ut(TAB_KEY[t]),
               active: tab === t,
@@ -196,24 +185,249 @@ export const Banner = forwardRef<
   );
 });
 
-/*
- * Подписи «Написати», «Нотатка», «Заключення» видны, пока полоса не уже 750:
- * на 1280 со списком (800) они на месте, уже — значок с подсказкой и
- * клавишей. «Записати на прийом» и «Призначити методику» подписаны всегда.
- */
-const NARROW_SR = "@max-[750px]:sr-only";
-
-/** Точка «есть черновик» на кнопке действия — как у «Розібрати» и пилюль строки */
+/** Точка «есть черновик» на кнопке действия */
 function DraftDot({ on }: { on: boolean }) {
   return on ? <i aria-hidden className="absolute -right-[3px] -top-[3px] size-[11px] rounded-full border-2 border-panel bg-primary" /> : null;
 }
 
-function Fact({ icon, children }: { icon: ReactNode; children: ReactNode }) {
+/** Строка шапки: подпись слева, значение в одну строку; лишнее — многоточием, целиком — в подсказке */
+function Fact({ label, children, tone }: { label: string; children: ReactNode; tone?: "warn" }) {
   return (
-    <span className="inline-flex min-w-0 items-center gap-1.5 whitespace-nowrap [&>svg]:shrink-0 [&>svg]:text-violet-ink">
-      {icon}
-      <span className="truncate">{children}</span>
+    <div className="contents">
+      <dt className="whitespace-nowrap text-caption font-bold text-muted">{label}</dt>
+      <dd
+        className={cx(
+          "m-0 flex h-7 min-w-0 items-center gap-2 pr-4 text-small",
+          tone === "warn" ? "text-warn" : "text-text",
+        )}
+      >
+        {children}
+      </dd>
+    </div>
+  );
+}
+
+/** Действие строки шапки — словом, без рамки: строка остаётся строкой */
+export function InlineAction({ children, onClick, disabled }: { children: ReactNode; onClick: () => void; disabled?: boolean }) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className="min-h-0 shrink-0 cursor-pointer rounded-[6px] border-0 bg-transparent px-1 py-0.5 text-small font-bold text-violet-ink outline-none hover:underline focus-visible:shadow-[0_0_0_2px_var(--vring)] disabled:cursor-default disabled:opacity-50"
+    >
+      {children}
+    </button>
+  );
+}
+
+/** Значение с многоточием: полный текст — в подсказке браузера */
+function Clip({ children, title, strong }: { children: ReactNode; title?: string; strong?: boolean }) {
+  return (
+    <span className={cx("min-w-0 truncate", strong && "font-bold")} title={title}>
+      {children}
     </span>
+  );
+}
+
+function LeadFact({ v, busy, onTake }: { v: CardView; busy: boolean; onTake: () => void }) {
+  const { ut } = useLang();
+  const lead = v.card.lead;
+  return (
+    <Fact label={ut("plist.lead")}>
+      {lead ? (
+        <>
+          <Clip strong title={lead.name}>
+            {lead.name}
+          </Clip>
+          {lead.mine ? <span className="shrink-0 text-muted">{ut("ws.you")}</span> : null}
+        </>
+      ) : (
+        <>
+          <span className="shrink-0 text-muted">{ut("card.noLead")}</span>
+          <InlineAction disabled={busy} onClick={onTake}>
+            {ut("pcard.subscribe")}
+          </InlineAction>
+        </>
+      )}
+    </Fact>
+  );
+}
+
+function EpisodeFact({ v }: { v: CardView }) {
+  const { ut } = useLang();
+  const ep = v.card.episode ?? null;
+  const manage = v.can("episodes.manage");
+  if (!ep) {
+    return (
+      <Fact label={ut("ws.episode")}>
+        <span className="shrink-0 text-muted">{ut("ws.episodeNone")}</span>
+        {manage ? <InlineAction onClick={() => v.open("episode")}>{ut("ws.episodeOpen")}</InlineAction> : null}
+      </Fact>
+    );
+  }
+  const days = daysBetween(ep.openedAt, v.now);
+  const since = ut("ws.episodeSince").replace("{d}", dm(ep.openedAt)).replace("{n}", String(Math.max(days, 0)));
+  const reason = ep.reason?.trim() || ut("ws.episodeNoReason");
+  return (
+    <Fact label={ut("ws.episode")}>
+      <button
+        type="button"
+        onClick={() => v.open("episode")}
+        title={`${since} · ${reason}`}
+        className="flex min-h-0 min-w-0 cursor-pointer items-center gap-1.5 rounded-[6px] border-0 bg-transparent p-0 text-left text-small text-text outline-none hover:underline focus-visible:shadow-[0_0_0_2px_var(--vring)]"
+      >
+        <b className="shrink-0 font-bold">{since}</b>
+        <span className="shrink-0 text-muted">·</span>
+        <span className={cx("min-w-0 truncate", !ep.reason?.trim() && "text-muted")}>{reason}</span>
+      </button>
+    </Fact>
+  );
+}
+
+function VisitFact({ v }: { v: CardView }) {
+  const { ut } = useLang();
+  const next = v.next;
+  const book = v.can("appointments.manage");
+  if (!next) {
+    /* неявка без новой записи — то, о чём надо вспомнить сейчас: янтарём */
+    return v.noShow ? (
+      <Fact label={ut("ws.visit")} tone="warn">
+        <b className="shrink-0 font-bold">{ut("ws.noShowUnbooked").replace("{d}", dm(v.noShow.at))}</b>
+        {book ? <InlineAction onClick={() => v.open("book")}>{ut("card.bookAgain")}</InlineAction> : null}
+      </Fact>
+    ) : (
+      <Fact label={ut("ws.visit")}>
+        <span className="shrink-0 text-muted">{ut("ws.visitNone")}</span>
+        {book ? <InlineAction onClick={() => v.open("book")}>{ut("card.book")}</InlineAction> : null}
+      </Fact>
+    );
+  }
+  const known = v.card.upcoming?.find((u) => u.id === next.id) ?? null;
+  const how = known
+    ? [ut(known.mode === "remote" ? "card.online" : "card.onsite"), ut(known.kind === "primary" ? "card.nxPrimary" : "card.nxRepeat")].join(", ")
+    : null;
+  const whose = v.nextIsMine ? null : ut("ws.visitWith").replace("{n}", initialsName(next.specialist));
+  const text = [`${wdm(next.at)}, ${timeOfDay(next.at)}`, how, whose].filter(Boolean).join(" · ");
+  return (
+    <Fact label={ut("ws.visit")}>
+      <b className="shrink-0 font-bold">
+        {wdm(next.at)}, {timeOfDay(next.at)}
+      </b>
+      <Clip title={text}>{[how, whose].filter(Boolean).join(" · ")}</Clip>
+    </Fact>
+  );
+}
+
+/** Строка риска без открытого случая — нейтральная: тишина не требует внимания */
+export function QuietRiskFact({ v }: { v: CardView }) {
+  const { ut } = useLang();
+  if (!v.can("alerts.review")) return <PlanFact v={v} />;
+  if (v.casesError) {
+    return (
+      <Fact label={ut("ws.risk")}>
+        <b className="shrink-0 font-bold text-risk-ink">{ut("rr.casesFailed")}</b>
+        <InlineAction onClick={v.reloadCases}>{ut("common.retry")}</InlineAction>
+      </Fact>
+    );
+  }
+  if (!v.cases) {
+    return (
+      <Fact label={ut("ws.risk")}>
+        <span className="h-3 w-40 animate-pulse rounded bg-sunk" aria-hidden />
+      </Fact>
+    );
+  }
+  const plan = v.plan
+    ? ut("ws.planOf").replace("{v}", String(v.plan.version))
+    : v.planKnown
+      ? ut("ws.planNone")
+      : null;
+  return (
+    <Fact label={ut("ws.risk")}>
+      <Clip title={[ut("ws.noOpenCases"), plan].filter(Boolean).join(" · ")}>
+        <span className="text-text-2">{ut("ws.noOpenCases")}</span>
+        {plan ? <span className="text-muted"> · {plan}</span> : null}
+      </Clip>
+    </Fact>
+  );
+}
+
+/** План безпеки при открытом случае: его нет — янтарём и «Скласти» */
+export function PlanFact({ v }: { v: CardView }) {
+  const { ut } = useLang();
+  const risky = !!v.cases?.length;
+  if (!v.planKnown) {
+    return (
+      <Fact label={ut("rr.safetyPlan")}>
+        {v.planError ? (
+          <>
+            <span className="min-w-0 truncate text-muted">{v.planError}</span>
+            <InlineAction onClick={v.reloadPlan}>{ut("common.retry")}</InlineAction>
+          </>
+        ) : (
+          <span className="h-3 w-32 animate-pulse rounded bg-sunk" aria-hidden />
+        )}
+      </Fact>
+    );
+  }
+  if (!v.plan) {
+    return (
+      <Fact label={ut("rr.safetyPlan")} tone={risky ? "warn" : undefined}>
+        <span className={cx("shrink-0", risky ? "font-bold" : "text-muted")}>{ut("ws.planNoneShort")}</span>
+        <InlineAction onClick={() => v.open("plan")}>{ut("sp.create")}</InlineAction>
+      </Fact>
+    );
+  }
+  return (
+    <Fact label={ut("rr.safetyPlan")}>
+      <b className="shrink-0 font-bold">{ut("ws.planVersion").replace("{v}", String(v.plan.version))}</b>
+      <span className="shrink-0 text-muted">{day(v.plan.reviewedAt ?? v.plan.createdAt)}</span>
+      <InlineAction onClick={() => v.open("plan")}>{ut("card.open")}</InlineAction>
+    </Fact>
+  );
+}
+
+/**
+ * Открытый случай риска — красной строкой во всю ширину: с какого времени,
+ * сколько до нормы разбора, кто разбирает, и «Розібрати» (R). Права — из
+ * CardView, а не из контекста входа: строка проверяется разметкой без входа
+ * (test/riskReview.test.tsx).
+ */
+export function RiskLine({ v, draft }: { v: CardView; draft: boolean }) {
+  const { ut } = useLang();
+  const cases = v.cases ?? [];
+  const first = cases[0];
+  if (!first) return null;
+  const clock = riskClock(first, v.now);
+  const elapsed = clockText(clock.elapsed, ut("rr.days"));
+  const who = first.assignedToName ? ut("ws.riskTaken").replace("{n}", initialsName(first.assignedToName)) : ut("ws.riskNotTaken");
+  const title = cases.length > 1 ? ut("card.cases").replace("{n}", String(cases.length)) : ut("card.case");
+  return (
+    <div
+      role="status"
+      className="mt-2 flex min-h-9 min-w-0 flex-wrap items-center gap-x-3 gap-y-1 rounded-[12px] bg-risk-tint py-1 pl-3 pr-1 text-small text-text"
+    >
+      <span className="inline-flex shrink-0 items-center gap-1.5 font-extrabold text-risk-ink">
+        <Ic.alert size={15} />
+        {title}
+      </span>
+      <span className="shrink-0 text-text-2">
+        {ut("ws.riskSince").replace("{d}", `${dm(first.openedAt)}, ${timeOfDay(first.openedAt)}`)}
+      </span>
+      {clock.norm !== null ? (
+        <RiskTimer elapsed={elapsed} of={normText(clock.norm, { h: ut("rr.hours"), min: ut("dur.min") })} pct={clock.pct} />
+      ) : null}
+      <span className={cx("min-w-0 truncate", first.assignedToName ? "text-text-2" : "font-bold text-risk-ink")}>{who}</span>
+      {v.can("alerts.review") ? (
+        <Tooltip label={ut("card.reviewTip")} kbd="R">
+          <Button variant="risk" size="xs" className="relative ml-auto rounded-2xl" aria-expanded={v.pane === "signal"} onClick={() => v.open("signal")}>
+            {ut("card.review")}
+            <DraftDot on={draft} />
+          </Button>
+        </Tooltip>
+      ) : null}
+    </div>
   );
 }
 
@@ -240,7 +454,7 @@ function WhoPeek({ v }: { v: CardView }) {
       </span>,
     ]);
   }
-  rows.push([ut("card.leadRow"), card.lead ? (card.lead.mine ? ut("card.leadYou") : card.lead.name) : ut("card.noLead")]);
+  if (v.last) rows.push([ut("card.sessions"), String(v.last.n)]);
   rows.push([ut("card.since"), day(card.createdAt)]);
   return (
     <table className="w-full border-collapse text-small">
@@ -254,229 +468,6 @@ function WhoPeek({ v }: { v: CardView }) {
       </tbody>
     </table>
   );
-}
-
-/* ─────────── строка открытого ─────────── */
-
-/**
- * Строка открытого. Права — из CardView, а не из контекста входа: строка
- * проверяется разметкой без входа (test/riskReview.test.tsx) — что она
- * говорит, когда случаи и план не пришли.
- */
-export function Strip({ v, drafts }: { v: CardView; drafts: { thread: boolean; concl: boolean; note: boolean; signal: boolean } }) {
-  const { ut } = useLang();
-  const items: ReactNode[] = [];
-  const cases = v.cases ?? [];
-  const first = cases[0];
-
-  if (first) {
-    const clock = riskClock(first, v.now);
-    const elapsed = clockText(clock.elapsed, ut("rr.days"));
-    items.push(
-      <RiskChip
-        key="risk"
-        title={cases.length > 1 ? ut("card.cases").replace("{n}", String(cases.length)) : ut("card.case")}
-        timer={
-          clock.norm !== null ? (
-            <RiskTimer elapsed={elapsed} of={normText(clock.norm, { h: ut("rr.hours"), min: ut("dur.min") })} pct={clock.pct} />
-          ) : (
-            <span className="text-caption font-semibold text-text-2">
-              <b className="text-body font-extrabold text-risk-ink">{elapsed}</b>
-            </span>
-          )
-        }
-        popTitle={ut("card.signalOf").replace("{s}", first.surveyTitle)}
-        popNote={`${dm(first.lastAlertAt)}, ${timeOfDay(first.lastAlertAt)}`}
-        pop={
-          <div className="flex flex-col gap-1.5">
-            {first.signals.slice(0, 2).map((s) => (
-              <p key={s.id} className="m-0">
-                {s.label}
-              </p>
-            ))}
-            {clock.norm !== null && clock.dueAt !== null ? (
-              <p className="m-0">
-                {ut("card.normLine")
-                  .replace("{e}", elapsed)
-                  .replace("{t}", timeOfDay(new Date(clock.dueAt).toISOString()))}
-              </p>
-            ) : null}
-            <p className="m-0 text-muted">
-              {first.assignedToName ? ut("card.takenBy").replace("{n}", first.assignedToName) : ut("card.notTaken")}
-            </p>
-          </div>
-        }
-        action={
-          v.can("alerts.review") ? (
-            <Tooltip label={ut("card.reviewTip")} kbd="R">
-              <Button
-                variant="risk"
-                size="xs"
-                className="rounded-2xl"
-                aria-expanded={v.pane === "signal"}
-                onClick={() => v.open("signal")}
-              >
-                {ut("card.review")}
-                {drafts.signal ? <i aria-hidden className="absolute -right-[3px] -top-[3px] size-[11px] rounded-full border-2 border-panel bg-primary" /> : null}
-              </Button>
-            </Tooltip>
-          ) : undefined
-        }
-      />,
-    );
-  } else if (v.casesError) {
-    /*
-     * Случаи не пришли — открытый риск неизвестен. Пилюлей с повтором, а не
-     * «Нічого відкритого»: прежде отказ сервера читался как «сигналов нет».
-     */
-    items.push(
-      <AlertChip
-        key="risk-failed"
-        kind="warn"
-        icon={<Ic.alert />}
-        label={ut("rr.casesFailed")}
-        detail={ut("common.retry")}
-        onClick={v.reloadCases}
-      />,
-    );
-  }
-
-  if (v.thread && v.thread.unread > 0) {
-    const lastIn = [...(v.messages ?? [])].reverse().find((m) => !m.mine);
-    items.push(
-      <AlertChip
-        key="msg"
-        kind="message"
-        icon={<Ic.message />}
-        label={ut("card.message")}
-        detail={relDay(v.thread.lastMessageAt, v.now, ut)}
-        pressed={v.pane === "thread"}
-        draft={drafts.thread && v.pane !== "thread"}
-        onClick={() => v.open("thread")}
-        popTitle={v.card.fullName}
-        popNote={`${dm(v.thread.lastMessageAt)}, ${timeOfDay(v.thread.lastMessageAt)}`}
-        pop={
-          <div className="flex flex-col gap-1.5">
-            {lastIn ? <p className="m-0">«{lastIn.text}»</p> : null}
-            <p className="m-0 text-muted">{ut("card.unread").replace("{n}", String(v.thread.unread))}</p>
-          </div>
-        }
-        popActions={
-          <>
-            <Button variant="primary" size="xs" onClick={() => v.open("thread")}>
-              {ut("card.reply")}
-            </Button>
-            <Kbd>M</Kbd>
-          </>
-        }
-      />,
-    );
-  }
-
-  if (v.noShow) {
-    const ns = v.noShow;
-    items.push(
-      <AlertChip
-        key="noshow"
-        kind="warn"
-        icon={<Pi.calendarX />}
-        label={ut("card.noShow").replace("{d}", dm(ns.at))}
-        popTitle={ut("card.noShowTitle")}
-        popNote={`${dm(ns.at)}, ${timeOfDay(ns.at)}`}
-        pop={<p className="m-0">{ut("card.noShowWith").replace("{n}", ns.specialist)}</p>}
-        popActions={
-          v.can("appointments.manage") ? (
-            <Button size="xs" onClick={() => v.open("book")}>
-              {ut("card.bookAgain")}
-            </Button>
-          ) : undefined
-        }
-      />,
-    );
-  }
-
-  for (const c of v.card.conclusions.filter((x) => x.status === "draft").slice(0, 2)) {
-    items.push(
-      <AlertChip
-        key={`draft-${c.id}`}
-        icon={<Pi.filePen />}
-        label={ut("card.draftOf").replace("{s}", clip(shortTitle(c.surveyTitle), 18))}
-        pressed={v.pane === "concl"}
-        draft={drafts.concl && v.pane !== "concl"}
-        onClick={() => v.open("concl", { responseId: c.responseId })}
-        popTitle={ut("card.conclusionOf").replace("{s}", c.surveyTitle)}
-        popNote={day(c.createdAt)}
-        pop={<p className="m-0 line-clamp-3">{c.text || ut("card.emptyDraft")}</p>}
-        popActions={
-          <Button size="xs" onClick={() => v.open("concl", { responseId: c.responseId })}>
-            {ut("card.continue")}
-          </Button>
-        }
-      />,
-    );
-  }
-
-  const a = v.assignments[0];
-  if (a) {
-    const overdue = a.dueAt ? Date.parse(a.dueAt) < v.now : false;
-    items.push(
-      <AlertChip
-        key="assigned"
-        kind={overdue ? "warn" : "neutral"}
-        icon={<Pi.clipboardClock />}
-        label={a.dueAt ? ut("card.assignedDue").replace("{s}", clip(a.title, 34)).replace("{d}", dm(a.dueAt)) : clip(a.title, 40)}
-        detail={v.assignments.length > 1 ? `+${v.assignments.length - 1}` : undefined}
-        popTitle={a.title}
-        popNote={a.dueAt ? ut("card.dueOn").replace("{d}", dm(a.dueAt)) : undefined}
-        pop={
-          <p className="m-0">
-            {ut("card.assignedOn").replace("{d}", dateTime(a.at))}
-            {overdue ? <b className="font-extrabold text-warn"> {ut("cases.overdue")}</b> : null}
-          </p>
-        }
-      />,
-    );
-  }
-
-  if (v.plan) {
-    const p = v.plan;
-    items.push(
-      <AlertChip
-        key="plan"
-        kind="good"
-        icon={<Ic.shieldCheck />}
-        label={ut("card.planChip").replace("{v}", String(p.version))}
-        popTitle={ut("card.planChip").replace("{v}", String(p.version))}
-        popNote={day(p.reviewedAt ?? p.createdAt)}
-        pop={<p className="m-0">{ut("card.planBy").replace("{n}", p.authorName)}</p>}
-      />,
-    );
-  } else if (first && v.planKnown) {
-    /* «плану немає» — только по ответу сервера: пока план не пришёл или не пришёл вовсе, это не правда */
-    items.push(
-      <AlertChip
-        key="noplan"
-        kind="warn"
-        icon={<Pi.shieldAlert />}
-        label={ut("rr.noPlan")}
-        to={`/patients/${v.card.id}/case`}
-        pop={<p className="m-0">{ut("rr.noPlanHint")}</p>}
-      />,
-    );
-  }
-
-  /*
-   * Открытого нет — строки нет: «Нічого відкритого» на каждом спокойном
-   * человеке было строкой ни о чём. Пилюль много — они переносятся, а не
-   * уезжают за край: обрезанный сигнал хуже лишней строки.
-   */
-  if (!items.length) return null;
-  return <AlertStrip className="mt-2 flex-wrap">{items}</AlertStrip>;
-}
-
-/** Очень длинное название в пилюле — с многоточием (целиком — в поповере): пилюли переносятся, но одна не должна занимать строку */
-function clip(s: string, n: number): string {
-  return s.length > n ? `${s.slice(0, n - 1).trimEnd()}…` : s;
 }
 
 /** «PHQ-9» из «Депресія (PHQ-9)» или из «PHQ-9. Опитувальник здоров’я пацієнта» */
@@ -494,3 +485,4 @@ export function relDay(iso: string, now: number, ut: (k: "card.today" | "card.ye
   if (diff === 1) return ut("card.yesterday");
   return dm(iso);
 }
+

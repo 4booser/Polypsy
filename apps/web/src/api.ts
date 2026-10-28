@@ -1348,10 +1348,12 @@ export const api = {
    * прежний (`/api/referrals`, `?all=1`): его же спрашивает счётчик.
    * `closedSince` — только закрытые с этого момента («Закриті за 30 днів»).
    */
-  referrals: (all = false, cursor?: string | null, opts: { closedSince?: string } = {}) => {
+  referrals: (all = false, cursor?: string | null, opts: { closedSince?: string; patient?: string } = {}) => {
     const qs = new URLSearchParams();
     if (all) qs.set("all", "1");
     if (opts.closedSince) qs.set("closedSince", opts.closedSince);
+    /* направления одного человека — вкладка «Направлення» его рабочего места */
+    if (opts.patient) qs.set("patient", opts.patient);
     if (cursor) qs.set("cursor", cursor);
     const tail = qs.toString();
     return request<ReferralPage>(`/api/referrals${tail ? `?${tail}` : ""}`);

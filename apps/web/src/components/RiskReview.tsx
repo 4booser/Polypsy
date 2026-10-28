@@ -1001,7 +1001,7 @@ export function SafetyPlanSection({
       }
       sub={active ? ut("rr.planUpdated").replace("{d}", day(active.reviewedAt ?? active.createdAt)) : undefined}
       right={
-        <Link to={`/patients/${userId}/case`} className="text-small font-bold text-violet-ink">
+        <Link to={`/patients/${userId}?pane=plan`} className="text-small font-bold text-violet-ink">
           {active ? ut("rr.wholePlan") : ut("rr.makePlan")}
         </Link>
       }

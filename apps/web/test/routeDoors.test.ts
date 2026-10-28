@@ -32,8 +32,18 @@ const NO_DOOR = new Set([
   "/",
   /* возврат от Google: сюда браузер приводит сервер */
   "/auth/google",
-  /* старая закладка на сводку — перенаправление, ссылаться на него незачем */
+  /*
+   * Прежние адреса клинической карты и сводки — перенаправления на вкладки
+   * рабочего места пациента (App.tsx, RedirectToPatient): закладки и ссылки
+   * очереди работы должны работать, а ссылаться на адрес, который сразу
+   * уводит дальше, незачем.
+   */
   "/patients/:userId/summary",
+  "/patients/:userId/case",
+  "/patients/:userId/case/dynamics",
+  "/patients/:userId/case/timeline",
+  "/patients/:userId/dynamics",
+  "/patients/:userId/timeline",
   /* прежний адрес черновика заключения — перенаправление на сам лист, где инструменты черновика и стоят */
   "/responses/:id/conclusion/draft",
   /* витрина компонентов — инструмент того, кто пишет систему: в меню её нет намеренно (Rail.tsx) */
@@ -83,7 +93,7 @@ const TARGETS = new Set(
 /**
  * Ссылка на маршрут — либо адрес целиком, либо собранный от базы:
  * `${base}/dynamics` после гашения выглядит как «*\/dynamics», и это
- * настоящая дверь в /patients/:id/case/dynamics.
+ * настоящая дверь в маршрут, кончающийся на /dynamics.
  */
 function hasDoor(route: string): boolean {
   const want = shape(route);
