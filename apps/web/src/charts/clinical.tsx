@@ -3,8 +3,8 @@ import type { Severity } from "@quizzy/shared";
 import { useLang } from "../lang";
 import { cx } from "../ui/cx";
 import { NoData } from "../ui/primitives";
-import { BandKey, BandLabels, bandBlocks, fitHeight, placeBlocks, planBandColumn } from "./bands";
-import { bandSpans, betterOf, courseDomain, cutoffOf, ladderTicks, placeLabels } from "./courseModel";
+import { BandKey, BandLabels, bandBlocks, bandMinPx, fitHeight, placeBlocks, planBandColumn } from "./bands";
+import { bandSpans, bandY, betterOf, courseDomain, cutoffOf, ladderTicks, placeLabels, spacedTicks } from "./courseModel";
 import { AxisBreak, useChartWidth } from "./index";
 import {
   ATTENTION_COLOR,
@@ -385,7 +385,9 @@ export function BandTrend({
   const t0 = Math.min(...points.map((p) => p.t));
   const t1 = Math.max(...points.map((p) => p.t));
   const xAt = (t: number) => L + 10 + (t1 > t0 ? ((t - t0) / (t1 - t0)) * pw : pw / 2);
-  const yAt = (v: number) => top + ph - ((v - lo) / span) * ph;
+  /* полоса из одного значения — не тоньше своей подписи (bandY); подписи делений не налезают */
+  const yAt = sorted.length ? bandY(spans, lo, hi, top, ph, bandMinPx(col)) : (v: number) => top + ph - ((v - lo) / span) * ph;
+  const tickShown = spacedTicks(ticks, yAt);
   const f1 = (v: number) => v.toFixed(1);
   const fillOf = (rung: Rung, i: number) => (rung === current ? "var(--plotc)" : i % 2 ? "var(--plot2)" : "var(--plot)");
 
@@ -476,7 +478,7 @@ export function BandTrend({
         {/* подписи полос — целиком, переносом (bands.tsx) */}
         <BandLabels shown={shown} tops={tops} colX={col.colX} colW={col.colW} />
 
-        {ticks.map((t) => (
+        {tickShown.map((t) => (
           <text key={`t-${t}`} x={L - 7} y={yAt(t) + 4} fontSize={11} fontWeight={600} fill="var(--axis)" textAnchor="end">
             {dec(t)}
           </text>

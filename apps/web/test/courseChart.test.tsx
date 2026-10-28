@@ -7,6 +7,7 @@ import { CourseGrid, CourseSpark } from "../src/charts/courseGrid";
 import {
   DAY_MS,
   bandSpans,
+  bandY,
   betterOf,
   changeVerdict,
   courseColumns,
@@ -27,6 +28,7 @@ import {
   pointTip,
   reliableThreshold,
   signalsOn,
+  spacedTicks,
   stackBlocks,
   valueOrder,
   wrapWords,
@@ -297,6 +299,46 @@ describe("раскладка", () => {
     expect(out).not.toContain("NaN");
     // верх шкалы ниже данных (сырой балл за краем) — ось по данным, как прежде
     expect(courseLayout(bprs, [], [], 60).hi).toBeGreaterThanOrEqual(72);
+  });
+
+  test("полоса из одного значения среди обычных (SWLS «20») видна: не тоньше своей подписи, ось внутри полос линейна, порядок сохранён", () => {
+    const swls = [
+      { min: 5, max: 9, label: "Виражена незадоволеність", severity: "mild" as const },
+      { min: 10, max: 14, label: "Незадоволеність", severity: "mild" as const },
+      { min: 15, max: 19, label: "Незначна незадоволеність", severity: "none" as const },
+      { min: 20, max: 20, label: "Нейтральна оцінка", severity: "none" as const },
+      { min: 21, max: 25, label: "Незначна задоволеність", severity: "none" as const },
+      { min: 26, max: 30, label: "Задоволеність", severity: "none" as const },
+      { min: 31, max: 35, label: "Виражена задоволеність", severity: "none" as const },
+    ];
+    const spans = bandSpans(swls, 5, 35);
+    const Y = bandY(spans, 5, 35, 0, 188, () => 18);
+    // по линейной оси у «20» было бы 188 / 30 ≈ 6 px
+    expect(Y(19.5) - Y(20.5)).toBeGreaterThanOrEqual(18 - 1e-6);
+    // края поля на месте, ось монотонна
+    expect(Y(5)).toBeCloseTo(188, 6);
+    expect(Y(35)).toBeCloseTo(0, 6);
+    const ys = [5, 9, 14.5, 19.5, 20, 20.5, 25, 30.5, 35].map(Y);
+    expect([...ys].sort((a, b) => b - a)).toEqual(ys);
+    // без полос-точек — обычная линейная ось
+    const lin = bandY(bandSpans(PHQ, 0, 27), 0, 27, 10, 270, () => 18);
+    expect(lin(13.5)).toBeCloseTo(10 + 270 / 2, 6);
+    // подписи делений не налезают: «20» и «21» рядом — одно уходит
+    const shown = spacedTicks([5, 10, 15, 20, 21, 26, 31, 35], Y);
+    expect(shown).toContain(5);
+    expect(shown).toContain(35);
+    for (let i = 1; i < shown.length; i++) expect(Math.abs(Y(shown[i]!) - Y(shown[i - 1]!))).toBeGreaterThanOrEqual(12);
+
+    const pts: CoursePoint[] = [
+      { key: "a", t: at(0), label: "24.08", value: 17 },
+      { key: "b", t: at(30), label: "23.09", value: 20 },
+    ];
+    const html = draw(<CourseChart title="SWLS" points={pts} rungs={swls} max={35} rc={null} better="up" now={null} />);
+    const plain = text(html);
+    expect(plain).toContain("20 Нейтральна оцінка");
+    expect(plain).not.toContain("20–20");
+    const band = /data-band="Нейтральна оцінка"[^>]*height="([\d.]+)"/.exec(html);
+    expect(Number(band?.[1])).toBeGreaterThanOrEqual(14);
   });
 
   test("лестница из полос-точек (CGI-S 1–7): ось шире на полшага, крайние полосы не вдвое уже, деления — сами ступени", () => {

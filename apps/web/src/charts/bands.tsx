@@ -102,13 +102,25 @@ export function fitHeight({
   cap: number;
 }): number {
   if (!col.withCol) return base;
+  /*
+   * Полоса из одного значения среди обычных высоту получает сама (bandY,
+   * не ниже своей подписи) — ради неё поле не растёт: иначе шесть пикселей
+   * «20» на шкале 5–35 требовали бы поля в полэкрана.
+   */
+  const mixed = spans.some((s) => s.rung.min !== s.rung.max);
   const needs = spans.map((s) => {
+    if (mixed && s.rung.min === s.rung.max) return base;
     const share = (s.to - s.from) / (hi - lo);
     /* порог у границы полосы занимает пол-строки её места */
     const tag = cutoff && (Math.abs(s.from - cutoff.at) < 1e-9 || Math.abs(s.to - cutoff.at) < 1e-9) ? LH / 2 + 2 : 0;
     return share > 0 ? ((col.wrapped.get(s.rung)?.length ?? 1) * LH + 6 + tag) / share : base;
   });
   return Math.round(Math.min(cap, Math.max(base, ...needs)));
+}
+
+/** Наименьшая высота полосы из одного значения — по её подписи (bandY); без колонки — строка */
+export function bandMinPx(col: BandColumn): (rung: Rung) => number {
+  return (rung) => (col.withCol ? Math.max(LH, (col.wrapped.get(rung)?.length ?? 1) * LH) + 4 : 12);
 }
 
 export interface LabelBlock {

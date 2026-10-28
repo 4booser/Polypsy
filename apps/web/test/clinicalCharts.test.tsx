@@ -103,6 +103,30 @@ test("ступень из одного значения подписана од�
   expect(plain).toContain("3 Ступінь 3");
 });
 
+test("динамика по лестнице: полоса из одного значения среди обычных (SWLS «20») видна и подписана «20»", () => {
+  const swls = [
+    { min: 5, max: 14, label: "Незадоволеність", severity: "mild" as const },
+    { min: 15, max: 19, label: "Незначна незадоволеність", severity: "none" as const },
+    { min: 20, max: 20, label: "Нейтральна оцінка", severity: "none" as const },
+    { min: 21, max: 35, label: "Задоволеність", severity: "none" as const },
+  ];
+  const html = draw(
+    <BandTrend
+      label="SWLS"
+      rungs={swls}
+      points={[
+        { key: "1", t: Date.parse("2026-08-01"), label: "1 серп", value: 18 },
+        { key: "2", t: Date.parse("2026-09-01"), label: "1 вер", value: 22 },
+      ]}
+    />,
+  );
+  const band = /data-band="Нейтральна оцінка"[^>]*height="([\d.]+)"/.exec(html);
+  expect(Number(band?.[1])).toBeGreaterThanOrEqual(14);
+  const plain = html.replace(/<!-- -->/g, "").replace(/<[^>]+>/g, " ").replace(/[ \t\n]+/g, " ");
+  expect(plain).toContain("20 Нейтральна оцінка");
+  expect(plain).not.toContain("20–20");
+});
+
 test("динамика по лестнице: подписи полос целиком, клинический порог, «менше — краще» у оси", () => {
   const long = [
     { min: 0, max: 4, label: "Депресія відсутня", severity: "none" as const },

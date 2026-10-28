@@ -547,6 +547,68 @@ export function bandSpans(rungs: readonly Rung[], lo: number, hi: number): { run
     .filter((s) => s.to > s.from);
 }
 
+/**
+ * Положение значения на оси лестницы, в пикселях.
+ *
+ * Линейно — пока у каждой полосы есть высота. Полоса из одного значения
+ * среди обычных (SWLS «Нейтральна оцінка» — ровно 20 между 15–19 и 21–25)
+ * получает по линейной оси одну единицу шкалы — на шкале 5–35 это шесть
+ * пикселей, и ни полосы, ни её подписи не видно. Такой полосе даётся не
+ * меньше `minPx` (высота её подписи), остальные полосы сжимаются в одной
+ * пропорции; внутри каждой полосы ось линейна, порядок значений сохранён.
+ * Лестница целиком из полос-точек (CGI-S) этого не требует — у неё все
+ * полосы одной высоты (courseDomain); места на сжатие не хватает — ось
+ * остаётся линейной.
+ */
+export function bandY(
+  spans: readonly { rung: Rung; from: number; to: number }[],
+  lo: number,
+  hi: number,
+  top: number,
+  height: number,
+  minPx: (rung: Rung) => number,
+): (v: number) => number {
+  const span = Math.max(hi - lo, Number.EPSILON);
+  const linear = (v: number) => top + height * (1 - (v - lo) / span);
+  if (!spans.length || spans.every((s) => s.rung.min === s.rung.max)) return linear;
+  const prop = spans.map((s) => (height * (s.to - s.from)) / span);
+  const raised = spans.map((s, i) => s.rung.min === s.rung.max && minPx(s.rung) > prop[i]!);
+  if (!raised.some(Boolean)) return linear;
+  const extra = spans.reduce((acc, s, i) => acc + (raised[i] ? minPx(s.rung) - prop[i]! : 0), 0);
+  const rest = prop.reduce((acc, p, i) => acc + (raised[i] ? 0 : p), 0);
+  if (rest - extra < rest * 0.5) return linear;
+  const k = (rest - extra) / rest;
+  const h = spans.map((s, i) => (raised[i] ? minPx(s.rung) : prop[i]! * k));
+  const bottoms: number[] = [];
+  let y = top + height;
+  for (const hh of h) {
+    bottoms.push(y);
+    y -= hh;
+  }
+  return (v: number) => {
+    const i = Math.max(
+      0,
+      spans.findIndex((s, n) => v <= s.to || n === spans.length - 1),
+    );
+    const s = spans[i]!;
+    const f = s.to > s.from ? (Math.min(Math.max(v, s.from), s.to) - s.from) / (s.to - s.from) : 0.5;
+    return bottoms[i]! - h[i]! * f;
+  };
+}
+
+/**
+ * Какие деления оси подписать: подписи не ближе `gap` пикселей друг к другу.
+ * Края — первыми: ось без своих краёв не читается; деление, налезающее на
+ * уже подписанное, уходит.
+ */
+export function spacedTicks(ticks: readonly number[], Y: (v: number) => number, gap = 12): number[] {
+  if (ticks.length < 3) return [...ticks];
+  const order = [ticks[0]!, ticks.at(-1)!, ...ticks.slice(1, -1)];
+  const placed: number[] = [];
+  for (const t of order) if (placed.every((p) => Math.abs(Y(p) - Y(t)) >= gap)) placed.push(t);
+  return ticks.filter((t) => placed.includes(t));
+}
+
 /* ─────────── подписи ─────────── */
 
 /** Прямоугольник на поле графика: x0, y0 — левый верхний угол */

@@ -6,12 +6,14 @@ import { cx } from "../ui/cx";
 import { NoData } from "../ui/primitives";
 import {
   bandSpans,
+  bandY,
   courseLayout,
   cutoffOf,
   dodge,
   freeSpot,
   placeLabels,
   pointTip,
+  spacedTicks,
   valueOrder,
   type Better,
   type Box,
@@ -21,7 +23,7 @@ import {
   type Cutoff,
   type PointTip,
 } from "./courseModel";
-import { BandKey, BandLabels, bandBlocks, fitHeight, placeBlocks, planBandColumn } from "./bands";
+import { BandKey, BandLabels, bandBlocks, bandMinPx, fitHeight, placeBlocks, planBandColumn } from "./bands";
 import { AxisBreak, useChartWidth } from "./index";
 import { bandRange, boundaries, sortRungs, type Rung } from "./ladder";
 import {
@@ -251,7 +253,10 @@ export function CourseChart({
   const base = compact || raw.length === 1 ? 116 : 188;
   const PH = compact ? base : fitHeight({ spans, col, lo: lay.lo, hi: lay.hi, cutoff, base, cap: base === 116 ? 168 : 264 });
   const PB = T + PH;
-  const Y = (v: number) => T + PH * (1 - (v - lay.lo) / (lay.hi - lay.lo));
+  /* полоса из одного значения (SWLS «20») — не тоньше своей подписи (bandY) */
+  const Y = bandY(spans, lay.lo, lay.hi, T, PH, bandMinPx(col));
+  /* подписи делений не налезают друг на друга: «20» и «21» у полосы-точки */
+  const ticks = spacedTicks(lay.ticks, Y);
 
   const fillOf = (rung: Rung | null, i: number) => (rung && rung === current ? "var(--plotc)" : i % 2 ? "var(--plot2)" : "var(--plot)");
 
@@ -491,7 +496,7 @@ export function CourseChart({
           ) : (
             <>
               <rect x={L} y={T} width={W - R - L} height={PH} fill="var(--plot)" />
-              {lay.ticks.map((v) => (
+              {ticks.map((v) => (
                 <line key={v} x1={L} x2={W - R} y1={f1(Y(v))} y2={f1(Y(v))} stroke="var(--grid)" />
               ))}
             </>
@@ -521,9 +526,9 @@ export function CourseChart({
         <BandLabels shown={shown} tops={tops} colX={colX} colW={colW} />
 
         {/* ось значений и её подпись: единицы и куда — лучше, словами */}
-        {lay.ticks.map((v, i) => (
+        {ticks.map((v) => (
           <text key={v} x={L - 6} y={f1(Y(v) + 4)} textAnchor="end" fontSize={11} fontWeight={600} fill="var(--axis)">
-            {tickText[i]}
+            {fmt.num(v)}
           </text>
         ))}
         {lay.cut.hi ? <AxisBreak x={L} y={T + 6} /> : null}
