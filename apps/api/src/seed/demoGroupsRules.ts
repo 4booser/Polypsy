@@ -91,7 +91,7 @@
  * по-украински, как в макете («Група ризику», «Вечірня група»): вкладка
  * обязана быть короткой, и два языка в ней не помещаются.
  */
-import { and, eq, inArray, isNotNull, like, not, or } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, like, not, or, sql } from "drizzle-orm";
 import { t, type LocalizedText, type RuleAction, type RuleCondition } from "@quizzy/shared";
 import { db } from "../db";
 import {
@@ -563,13 +563,21 @@ function ruleScales(methods: Method[]): { method: Method; scale: BandedScale; ba
 /** Как называется подразделение у тех, у кого его не записали */
 const NO_UNIT = "Без підрозділу";
 
-/** Кто из подобранного состава уже засветился тревогой — из них и собрана группа риска */
+/**
+ * Кто из подобранного состава засветился тревогой за последний месяц — из
+ * них и собрана группа риска.
+ *
+ * За месяц, а не за всё время: наполнение (lib/demoFill.ts) пишет историю
+ * лечения с полугодом замеров, и разобранный случай на старте курса есть
+ * почти у каждого, кого лечат. Группа риска из всех, у кого когда-либо
+ * срабатывала полоса шкалы, — это не группа, а картотека.
+ */
 async function alertedAmong(pool: Patient[]): Promise<Set<string>> {
   if (!pool.length) return new Set();
   const rows = await db
     .select({ userId: riskAlerts.userId })
     .from(riskAlerts)
-    .where(inArray(riskAlerts.userId, pool.map((p) => p.id)));
+    .where(and(inArray(riskAlerts.userId, pool.map((p) => p.id)), sql`${riskAlerts.at} > now() - interval '30 days'`));
   return new Set(rows.map((r) => r.userId).filter((id): id is string => id !== null));
 }
 

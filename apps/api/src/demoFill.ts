@@ -1,5 +1,5 @@
 /**
- * Наполнить экземпляр вымышленными людьми и их обследованиями.
+ * Наполнить экземпляр вымышленными людьми и их историей лечения.
  *
  *   bun apps/api/src/demoFill.ts 120     — завести 120 человек
  *   bun apps/api/src/demoFill.ts purge   — убрать всех вымышленных
@@ -10,23 +10,25 @@
  */
 import { baseDb, client } from "./db";
 import { systemContext } from "./db/context";
-import { DemoPurgeRefused, fillDemoData, purgeDemoData } from "./lib/demoFill";
+import { DemoFillRefused, DemoPurgeRefused, fillDemoData, purgeDemoData } from "./lib/demoFill";
+import { ARCHETYPE_TITLES } from "./lib/demoStories";
 import { purgeDemoGroupsRules, seedDemoGroupsRules } from "./seed/demoGroupsRules";
 
 const arg = process.argv[2] ?? "60";
 
+/*
+ * Отказ — сообщением, а не трассой стека: он говорит, что сделать, и
+ * транзакция системного контекста уже откатила всё сделанное.
+ */
+async function refused(e: unknown): Promise<never> {
+  if (!(e instanceof DemoPurgeRefused) && !(e instanceof DemoFillRefused)) throw e;
+  console.error(`  ✗ ${e.message}`);
+  await client.end();
+  process.exit(1);
+}
+
 if (arg === "purge") {
-  /*
-   * Отказ уборки — сообщением, а не трассой стека: он говорит, что передать
-   * настоящему сотруднику, и транзакция системного контекста уже откатила
-   * всё сделанное (см. purgeDemoData).
-   */
-  const removed = await systemContext(baseDb, () => purgeDemoData()).catch(async (e: unknown) => {
-    if (!(e instanceof DemoPurgeRefused)) throw e;
-    console.error(`  ✗ ${e.message}`);
-    await client.end();
-    process.exit(1);
-  });
+  const removed = await systemContext(baseDb, () => purgeDemoData()).catch(refused);
   /*
    * Группы и правила посева — такие же вымышленные данные, как люди, и
    * убираются той же командой. Собранные из вымышленных, после их удаления
@@ -48,17 +50,24 @@ if (arg === "purge") {
     await client.end();
     process.exit(1);
   }
-  const report = await systemContext(baseDb, () => fillDemoData(count));
+  const report = await systemContext(baseDb, () => fillDemoData(count)).catch(refused);
   console.log(`  ✓ заведено людей:    ${report.created} (уже были: ${report.existing})`);
   console.log(`  ✓ прохождений:       ${report.responses}`);
   console.log(`  ✓ обращений:         ${report.episodes}`);
   console.log(`  ✓ приёмов:           ${report.appointments}`);
-  console.log(`  ✓ назначений:        ${report.assignments}`);
+  console.log(`  ✓ записей приёма:    ${report.notes}`);
+  console.log(`  ✓ заключений:        ${report.conclusions}`);
+  console.log(`  ✓ планов безопасности: ${report.safetyPlans}`);
+  console.log(`  ✓ случаев риска:     ${report.openCases} открыто, ${report.closedCases} разобрано`);
+  console.log(`  ✓ наборов назначено: ${report.assignments}`);
   console.log(`  ✓ направлений:       ${report.referrals}`);
   console.log(`  ✓ переписок:         ${report.threads}`);
   console.log(`  ✓ на учёте:          ${report.dispensary}`);
   console.log(`  ✓ должностей:        ${report.ladder}`);
   console.log(`  ✓ приглашений:       ${report.invites}`);
+  for (const [key, n] of Object.entries(report.archetypes)) {
+    console.log(`      ${String(n).padStart(3)} — ${ARCHETYPE_TITLES[key as keyof typeof ARCHETYPE_TITLES]}`);
+  }
   /*
    * Группы пациентов и правила поддержки решений — из посева, а не из
    * наполнения: они собраны на людях посева и demo-purge не задевают. Здесь
