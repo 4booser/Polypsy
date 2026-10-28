@@ -139,7 +139,7 @@ export const sadPersons: CreateSurveyDraft = {
         {
           minScore: 3,
           maxScore: 4,
-          label: { uk: "Середній ризик", ru: "Средний риск" },
+          label: { uk: "Помірний ризик", ru: "Умеренный риск" },
           severity: "moderate",
           grade: 2,
           recommendation: {
