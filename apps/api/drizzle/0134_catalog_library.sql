@@ -14,9 +14,10 @@
 -- ═══ Что стало — то же правило, что в lib/scope.ts ═══
 --
 -- 1. Пользоваться методикой библиотеки может каждый сотрудник: surveys_read
---    пускает администратора к строке методики группы 'catalog'. Править —
---    по-прежнему только суперадмин и администраторы группы: surveys_write
---    не меняется.
+--    пускает администратора к строке методики группы 'catalog', а
+--    survey_folders_library_read — к её полкам. Править — по-прежнему только
+--    суперадмин и администраторы группы: surveys_write и
+--    survey_folders_access не меняются.
 --
 -- 2. Результаты библиотеки — только о людях зоны сотрудника и о нём самом:
 --    прохождение (а с ним ответы, баллы, события ответов и заключения — они
@@ -181,6 +182,20 @@ CREATE POLICY surveys_read ON surveys FOR SELECT USING (
     )
   )
   OR (app_role() = 'user' AND status = 'published')
+);
+--> statement-breakpoint
+
+/*
+ * Полки библиотеки — читать каждому сотруднику: методика каталога, которую
+ * его администраторы положили в папку, иначе пропала бы из корня каталога у
+ * всех остальных. Политика только на чтение и складывается с прежней
+ * (survey_folders_access, 0080): заводить, править и удалять папки группы —
+ * по-прежнему тем, кто группой управляет.
+ */
+DROP POLICY IF EXISTS survey_folders_library_read ON survey_folders;
+--> statement-breakpoint
+CREATE POLICY survey_folders_library_read ON survey_folders FOR SELECT USING (
+  app_role() = 'admin' AND rls_library_group(group_id)
 );
 --> statement-breakpoint
 

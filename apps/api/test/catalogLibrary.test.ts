@@ -539,6 +539,43 @@ describe("методики каталога — библиотека всех с
   );
 
   test(
+    "полки каталога видны каждому сотруднику, а заводят, правят и перекладывают их администраторы каталога",
+    async () => {
+      /*
+       * Методика каталога в папке: у врача без группы каталога её папка
+       * обязана быть видна — иначе из корня каталога методика пропала бы
+       * (корень — методики вне папок). Мутация: убрать группу библиотеки из
+       * GET /api/survey-folders (или политику survey_folders_library_read) —
+       * папки у врача нет.
+       */
+      const made = await appApi("/api/survey-folders", editor.token, post({ groupId: CATALOG_GROUP_ID, title: `Полиця каталогу ${tag}` }));
+      expect(made.status, JSON.stringify(made.body)).toBe(201);
+      const folderId = made.body.id as string;
+      const move = (who: Person, to: string | null) =>
+        appApi(`/api/surveys/${library}/folder`, who.token, { method: "PUT", body: JSON.stringify({ folderId: to }) });
+      expect((await move(editor, folderId)).status).toBe(200);
+      try {
+        for (const [who, call] of calls) {
+          const folders = await call("/api/survey-folders", doctorD.token);
+          expect(folders.status, who).toBe(200);
+          expect(ids(folders.body.items), `${who}: полки каталога нет у врача`).toContain(folderId);
+          const inFolder = await call(`/api/surveys?folder=${folderId}`, doctorD.token);
+          expect(ids(inFolder.body.items), `${who}: методика в полке каталога`).toContain(library);
+
+          const renamed = await call(`/api/survey-folders/${folderId}`, doctorD.token, patch({ title: "Моя полиця" }));
+          expect(renamed.status, `${who}: врач переименовал полку каталога`).toBe(403);
+          expect((await call("/api/survey-folders", doctorD.token, post({ groupId: CATALOG_GROUP_ID, title: "Ще одна" }))).status).toBe(403);
+        }
+        expect((await move(doctorD, null)).status, "врач переложил методику каталога").toBe(403);
+      } finally {
+        expect((await move(editor, null)).status).toBe(200);
+        expect((await appApi(`/api/survey-folders/${folderId}`, editor.token, { method: "DELETE" })).status).toBeLessThan(300);
+      }
+    },
+    SLOW,
+  );
+
+  test(
     "приглашение к методике каталога — отделения выписавшего, как приглашение ни к чему",
     async () => {
       const made = await appApi("/api/invites", doctorD.token, post({ surveyId: library }));
