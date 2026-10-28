@@ -4,7 +4,7 @@ import { useLang } from "../lang";
 import { cx } from "../ui/cx";
 import { NoData } from "../ui/primitives";
 import { BandKey, BandLabels, bandBlocks, fitHeight, placeBlocks, planBandColumn } from "./bands";
-import { bandSpans, betterOf, courseDomain, cutoffOf, placeLabels } from "./courseModel";
+import { bandSpans, betterOf, courseDomain, cutoffOf, ladderTicks, placeLabels } from "./courseModel";
 import { AxisBreak, useChartWidth } from "./index";
 import {
   ATTENTION_COLOR,
@@ -32,7 +32,7 @@ import {
   type LegendItem,
   type TableView,
 } from "./kit";
-import { boundaries, ladderDomain, profileRuns, rungOf, segments, share, sortRungs, type Rung } from "./ladder";
+import { bandRange, boundaries, ladderDomain, profileRuns, rungOf, segments, share, sortRungs, type Rung } from "./ladder";
 import { axisFor } from "./scale";
 
 /**
@@ -139,7 +139,7 @@ export function SeverityMeter({ rungs, value, max, size = "lg", valueLabel, labe
                   {lg ? (
                     <RowTip>
                       <TipHead>{s.rung.label}</TipHead>
-                      <TipRow value={`${dec(s.rung.min)}–${dec(s.rung.max)}`} />
+                      <TipRow value={bandRange(s.rung, dec)} />
                     </RowTip>
                   ) : null}
                 </span>
@@ -357,7 +357,7 @@ export function BandTrend({
   if (sorted.length) {
     const d = courseDomain(sorted, withErr, max);
     ({ lo, hi, cut } = d);
-    ticks = [lo, ...sorted.slice(1).map((r) => r.min), hi].filter((v, i, a) => a.indexOf(v) === i && v >= lo && v <= hi);
+    ticks = ladderTicks(sorted, lo, hi);
   } else {
     const axis = axisFor({ lo: Math.min(...withErr), hi: Math.max(...withErr), atom: err });
     lo = axis.min;
@@ -370,7 +370,7 @@ export function BandTrend({
   const better = betterOf(sorted);
   const last = points.at(-1)!;
   const current = sorted.length ? (spans.find((s) => last.value >= s.from && last.value <= s.to)?.rung ?? null) : null;
-  const range = (r: { min: number; max: number }) => (r.min === r.max ? dec(r.min) : `${dec(r.min)}–${dec(r.max)}`);
+  const range = (r: { min: number; max: number }) => bandRange(r, dec);
   const cutText = cutoff ? fillIn(ut(cutoff.side === "above" ? "course.cutoffAbove" : "course.cutoffBelow"), { v: dec(cutoff.value) }) : null;
 
   /* подпись оси — куда лучше, словами; нет полярности — нет и строки */

@@ -6,6 +6,7 @@ import { CourseChart, CourseLegend, CoursePointTip } from "../src/charts/course"
 import { CourseGrid, CourseSpark } from "../src/charts/courseGrid";
 import {
   DAY_MS,
+  bandSpans,
   betterOf,
   changeVerdict,
   courseColumns,
@@ -19,8 +20,10 @@ import {
   freeSpot,
   gridSpans,
   labelColumn,
+  ladderTicks,
   laneEvents,
   methodNames,
+  pointLadder,
   pointTip,
   reliableThreshold,
   signalsOn,
@@ -277,6 +280,18 @@ describe("раскладка", () => {
       { min: 20, max: 40, label: "d", severity: "severe" as const },
     ];
     expect(courseDomain(audit, [12]).hi).toBe(40);
+  });
+
+  test("лестница из полос-точек (CGI-S 1–7): ось шире на полшага, крайние полосы не вдвое уже, деления — сами ступени", () => {
+    const cgi = [1, 2, 3, 4, 5, 6, 7].map((v) => ({ min: v, max: v, label: `${v}`, severity: "none" as const }));
+    expect(pointLadder(cgi)).toBe(true);
+    expect(pointLadder(PHQ)).toBe(false);
+    const d = courseDomain(cgi, [3, 5]);
+    expect(d).toEqual({ lo: 0.5, hi: 7.5, cut: { lo: false, hi: false } });
+    expect(ladderTicks(cgi, d.lo, d.hi)).toEqual([1, 2, 3, 4, 5, 6, 7]);
+    // все полосы — одной высоты
+    const heights = bandSpans(cgi, d.lo, d.hi).map((s) => s.to - s.from);
+    expect(new Set(heights).size).toBe(1);
   });
 });
 
@@ -610,6 +625,26 @@ describe("отрисовка", () => {
     expect(says(one, "course.first")).toBe(true);
     expect(one).not.toContain("NaN");
     expect(draw(<CourseChart title="x" points={[]} rungs={PHQ} rc={null} better={null} />)).not.toContain("<svg");
+  });
+
+  test("полосы из одного значения (CGI-S 1–7) подписаны одним числом — в колонке и в подсказке", () => {
+    const CGI = [1, 2, 3, 4, 5, 6, 7].map((v) => ({
+      min: v,
+      max: v,
+      label: ["Норма", "Межовий стан", "Легкий", "Помірний", "Виражений", "Тяжкий", "Вкрай тяжкий"][v - 1]!,
+      severity: (v <= 2 ? "none" : v === 3 ? "mild" : v === 4 ? "moderate" : "severe") as "none" | "mild" | "moderate" | "severe",
+    }));
+    const pts: CoursePoint[] = [
+      { key: "a", t: at(0), label: "24.08", value: 5 },
+      { key: "b", t: at(30), label: "23.09", value: 3 },
+    ];
+    const out = text(draw(<CourseChart title="CGI-S" points={pts} rungs={CGI} max={7} rc={null} better="down" now={null} />));
+    expect(out).not.toMatch(/(\d)–\1(?!\d)/);
+    expect(out).toContain("2 Межовий стан");
+    expect(out).toContain("7 Вкрай тяжкий");
+    const tip = text(draw(<CoursePointTip tip={pointTip(pts, 1, CGI, null, "down")!} rc={null} />));
+    expect(tip).not.toContain("3–3");
+    expect(tip).toMatch(/Легкий 3/);
   });
 
   test("курс в строке таблицы: полосы, порог, линия, без чисел", () => {

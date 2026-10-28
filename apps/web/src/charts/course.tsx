@@ -23,7 +23,7 @@ import {
 } from "./courseModel";
 import { BandKey, BandLabels, bandBlocks, fitHeight, placeBlocks, planBandColumn } from "./bands";
 import { AxisBreak, useChartWidth } from "./index";
-import { boundaries, sortRungs, type Rung } from "./ladder";
+import { bandRange, boundaries, sortRungs, type Rung } from "./ladder";
 import {
   ChartLegend,
   ChartTip,
@@ -155,11 +155,8 @@ export function useCourseFormat(normalization: ScaleNormalization | null | undef
     },
     /** Порог значущої зміни: «6,1», «8 в. п.» */
     amount: (d: number) => (ratio ? `${dec(Math.round(d * 100))} ${ut("course.pp")}` : dec(d, 1)),
-    /** Границы полосы: «15–19», «24–38 %» — неразрывно, подпись полосы переносится по словам */
-    range: (r: { min: number; max: number }) => {
-      const span = r.min === r.max ? num(r.min) : `${num(r.min)}–${num(r.max)}`;
-      return ratio ? `${span} %` : span;
-    },
+    /** Границы полосы: «15–19», «24–38 %», у полосы из одного значения — «2» (bandRange); неразрывно */
+    range: (r: { min: number; max: number }) => (ratio ? `${bandRange(r, num)} %` : bandRange(r, num)),
   };
 }
 

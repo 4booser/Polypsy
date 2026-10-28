@@ -3,6 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import type { StatModel, StatModelColumn, SurveyFull, UiKey } from "@quizzy/shared";
 import { api } from "../../api";
 import { ATTENTION_COLOR } from "../../charts/kit";
+import { bandRange } from "../../charts/ladder";
 import { useLang } from "../../lang";
 import { Empty, Ic, Loading, Modal, Tooltip, useAction, useToast } from "../../ui";
 import { cx } from "../../ui/cx";
@@ -522,7 +523,7 @@ function BandsPanel({
                           {b.label}
                         </SeverityTag>
                         <span className="text-caption text-muted">
-                          {ut("st.points").replace("{r}", `${b.minScore}–${b.maxScore}`)}
+                          {ut("st.points").replace("{r}", bandRange({ min: b.minScore, max: b.maxScore }))}
                         </span>
                         <span className={cx("ml-auto text-small", at ? "font-bold text-violet-ink" : "text-muted")}>
                           {at ? ut("st.reportRowN").replace("{n}", String(at)) : ut("st.inRest")}

@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import type { Battery, Severity as BandSeverity, SurveyAnalytics, SurveyFull } from "@quizzy/shared";
 import { api } from "../api";
 import { BandTrend, HBars, SeverityMeter, ShareBar, TimeColumns } from "../charts/clinical";
+import { bandRange } from "../charts/ladder";
 import { duration } from "../format";
 import { useLang } from "../lang";
 import { ShellIcon } from "../shell/icons";
@@ -439,7 +440,7 @@ function BandsPanel({
                 on && "-mx-2.5 rounded-[12px] border-transparent bg-violet-tint px-2.5 first:pt-2.5",
               )}
             >
-              <span className="whitespace-nowrap text-small font-extrabold leading-6 tabular-nums text-text-2">{`${bound(b.minScore)}–${bound(b.maxScore)}`}</span>
+              <span className="whitespace-nowrap text-small font-extrabold leading-6 tabular-nums text-text-2">{bandRange({ min: b.minScore, max: b.maxScore }, bound)}</span>
               <span className="min-w-0">
                 <SeverityTag small level={BAND_LEVEL[b.severity]}>
                   {b.label}

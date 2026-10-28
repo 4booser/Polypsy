@@ -84,6 +84,25 @@ test("динамика из одной точки не делит на ноль 
   expect(html).not.toContain("NaN");
 });
 
+test("ступень из одного значения подписана одним числом — в подсказке линейки и в колонке динамики", () => {
+  const cgi = [1, 2, 3, 4, 5, 6, 7].map((v) => ({ min: v, max: v, label: `Ступінь ${v}`, severity: (v < 4 ? "none" : "severe") as "none" | "severe" }));
+  const meter = draw(<SeverityMeter rungs={cgi} value={3} label="CGI-S: 3" />);
+  expect(meter).not.toMatch(/>(\d)–\1</);
+  const trend = draw(
+    <BandTrend
+      label="CGI-S"
+      rungs={cgi}
+      points={[
+        { key: "1", t: Date.parse("2026-08-01"), label: "1 серп", value: 5 },
+        { key: "2", t: Date.parse("2026-09-01"), label: "1 вер", value: 3 },
+      ]}
+    />,
+  );
+  const plain = trend.replace(/<!-- -->/g, "").replace(/<[^>]+>/g, " ").replace(/[ \t\n]+/g, " ");
+  expect(plain).not.toMatch(/(\d)–\1(?!\d)/);
+  expect(plain).toContain("3 Ступінь 3");
+});
+
 test("динамика по лестнице: подписи полос целиком, клинический порог, «менше — краще» у оси", () => {
   const long = [
     { min: 0, max: 4, label: "Депресія відсутня", severity: "none" as const },

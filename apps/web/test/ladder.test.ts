@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { boundaries, ladderDomain, num, profileRuns, rungOf, sameLadder, segments, share } from "../src/charts/ladder";
+import { bandRange, boundaries, ladderDomain, num, profileRuns, rungOf, sameLadder, segments, share } from "../src/charts/ladder";
 
 /**
  * Арифметика лестницы полос — общая для линейки, профиля и динамики.
@@ -138,5 +138,19 @@ describe("число подписи", () => {
   test("целое без хвоста, два знака без 0.30000000000000004", () => {
     expect(num(14, "uk")).toBe("14");
     expect(num(0.1 + 0.2, "en")).toBe("0.3");
+  });
+});
+
+describe("границы полосы словами", () => {
+  test("полоса из одного значения — одним числом: ступени CGI-S «2», а не «2–2»", () => {
+    expect(bandRange({ min: 2, max: 2 })).toBe("2");
+    expect(bandRange({ min: 0, max: 0 }, (v) => num(v, "uk"))).toBe("0");
+    expect(bandRange({ min: 10, max: 14 })).toBe("10–14");
+  });
+
+  test("число — тем форматом, что дали: дробь языка, проценты", () => {
+    expect(bandRange({ min: 45, max: 55.9 }, (v) => num(v, "uk"))).toBe("45–55,9");
+    expect(bandRange({ min: 45, max: 55.9 }, (v) => num(v, "en"))).toBe("45–55.9");
+    expect(bandRange({ min: 0.24, max: 0.24 }, (v) => `${Math.round(v * 100)} %`)).toBe("24 %");
   });
 });

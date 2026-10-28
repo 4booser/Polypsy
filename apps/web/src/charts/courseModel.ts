@@ -321,12 +321,35 @@ const median = (xs: readonly number[]) => {
  * ближе данных), и срез отмечается. Обычные лестницы (PHQ-9, AUDIT, WHO-5)
  * этим правилом не задеты: их крайние полосы не больше четырёх средних.
  */
+/**
+ * Лестница из полос-точек: каждая полоса — одно значение (ступени CGI-S и
+ * CGI-I, 1–7). Граница между ними — посередине, и крайние полосы от края
+ * оси до границы вышли бы вдвое уже средних; поэтому у такой лестницы ось
+ * шире на полшага с каждой стороны, а деления — сами значения.
+ */
+export function pointLadder(rungs: readonly Rung[]): boolean {
+  return rungs.length > 1 && rungs.every((r) => r.min === r.max);
+}
+
+/** Деления оси для лестницы: края области и начала полос; у полос-точек — сами значения */
+export function ladderTicks(rungs: readonly Rung[], lo: number, hi: number): number[] {
+  const sorted = sortRungs(rungs);
+  const raw = pointLadder(sorted) ? sorted.map((r) => r.min) : [lo, ...sorted.slice(1).map((r) => r.min), hi];
+  return raw.filter((v, i, a) => v >= lo && v <= hi && a.indexOf(v) === i);
+}
+
 export function courseDomain(
   rungs: readonly Rung[],
   values: readonly number[],
   max?: number | null,
 ): { lo: number; hi: number; cut: { lo: boolean; hi: boolean } } {
   const sorted = sortRungs(rungs);
+  if (pointLadder(sorted)) {
+    const step = Math.min(...boundaries(sorted).map((c, i) => c - sorted[i]!.min));
+    const lo = Math.min(sorted[0]!.min - step, ...values);
+    const hi = Math.max(sorted.at(-1)!.max + step, ...values);
+    return { lo, hi, cut: { lo: false, hi: false } };
+  }
   const d = ladderDomain(sorted, values, max);
   let lo = d.lo;
   /*
@@ -432,7 +455,7 @@ export function courseLayout(
   if (sorted.length) {
     const d = courseDomain(sorted, values, max);
     ({ lo, hi, cut } = d);
-    ticks = [lo, ...sorted.slice(1).map((r) => r.min), hi].filter((v, i, a) => v >= lo && v <= hi && a.indexOf(v) === i);
+    ticks = ladderTicks(sorted, lo, hi);
   } else {
     const top = Math.max(max ?? 0, ...values);
     /* баллы без лестницы — чаще целые: деления тогда тоже целые */
