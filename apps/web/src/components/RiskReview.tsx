@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
-import type { AlertCase, AlertOutcome, AlertSignalBasis, ResponseDetail, SafetyPlan } from "@quizzy/shared";
+import { instrumentCode, type AlertCase, type AlertOutcome, type AlertSignalBasis, type ResponseDetail, type SafetyPlan } from "@quizzy/shared";
 import { api, ApiError } from "../api";
 import { useAuth } from "../auth";
 import { dateTime, day, severityKey, timeOfDay } from "../format";
@@ -23,7 +23,7 @@ import {
 import { cx } from "../ui/cx";
 import { Button, ChoiceCard, Field, ErrorText, SeverityTag, Tag, Textarea } from "../ui/primitives";
 import { clockText, normText, riskClock } from "../pages/alerts/model";
-import { instrumentCode, itemHistory, itemMax } from "../pages/patientCard/clinical";
+import { itemHistory, itemMax } from "../pages/patientCard/clinical";
 import { shownNumber, shownValue } from "../pages/patients/model";
 import { Panel } from "../ui/layout";
 
@@ -1001,7 +1001,7 @@ export function SafetyPlanSection({
       }
       sub={active ? ut("rr.planUpdated").replace("{d}", day(active.reviewedAt ?? active.createdAt)) : undefined}
       right={
-        <Link to={`/patients/${userId}/case`} className="text-small font-bold text-violet-ink">
+        <Link to={`/patients/${userId}?pane=plan`} className="text-small font-bold text-violet-ink">
           {active ? ut("rr.wholePlan") : ut("rr.makePlan")}
         </Link>
       }

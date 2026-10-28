@@ -1428,6 +1428,8 @@ export const referralListQuery = cursorPageQuery(100, 200).extend({
     .optional()
     .transform((v) => v === "1"),
   closedSince: z.preprocess((v) => (v === "" ? undefined : v), queryDate.optional()),
+  /** Направления одного человека — вкладка «Направлення» его рабочего места */
+  patient: z.preprocess((v) => (v === "" ? undefined : v), z.string().min(1).max(64).optional()),
 });
 
 /**

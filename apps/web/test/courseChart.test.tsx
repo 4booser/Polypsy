@@ -541,6 +541,9 @@ describe("имена", () => {
     expect(methodNames("Депресія (PHQ-9)")).toEqual({ measure: "Депресія", code: "PHQ-9" });
     expect(methodNames("СР-45. Схильність до суїцидальних реакцій")).toEqual({ measure: "Схильність до суїцидальних реакцій", code: "СР-45" });
     expect(methodNames("Якість сну (демо)")).toEqual({ measure: "Якість сну (демо)", code: null });
+    // правило одно с консолью: код со строчными и длинный — тоже код
+    expect(methodNames("Синдром відміни алкоголю (CIWA-Ar)")).toEqual({ measure: "Синдром відміни алкоголю", code: "CIWA-Ar" });
+    expect(methodNames("Способи подолання стресу (Brief COPE)")).toEqual({ measure: "Способи подолання стресу", code: "Brief COPE" });
     expect(courseNames("Депресія (PHQ-9)", "Вираженість депресії", true)).toEqual({ measure: "Депресія", method: "PHQ-9" });
     expect(courseNames("Скринінг емоційного стану (демо)", "Тривога", false)).toEqual({
       measure: "Тривога",

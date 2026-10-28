@@ -292,7 +292,7 @@ function FormDialog({
                         className="inline-flex h-6 items-center rounded-pill bg-panel px-2 text-[11.5px] font-bold text-text"
                         title={it.title}
                       >
-                        {instrumentCode(it.title, it.title.slice(0, 12))}
+                        {instrumentCode(it.title)}
                       </span>
                     ))}
                   </span>

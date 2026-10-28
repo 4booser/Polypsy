@@ -7,6 +7,7 @@ import {
   createVisiblePatient,
   dayRow,
   login,
+  openSeededPatient,
 } from "./helpers";
 
 /**
@@ -393,6 +394,26 @@ for (const theme of ["dark", "light"] as const) {
     await page.getByRole("heading", { name: "Протокол приёма" }).waitFor();
     await page.waitForTimeout(600);
     expect(await violationsOf(page, "/visit/:id")).toEqual([]);
+  });
+}
+
+/*
+ * Рабочее место пациента — с параметром, поэтому отдельно. Карточка и
+ * клиническая карта слились в одну страницу, и самое плотное на ней —
+ * шапка с фактами и «Огляд»: картина по доменам, риск, план, последние
+ * записи. Человек из посева: у него серия замеров, и картина не пуста.
+ *
+ * Скелеты считаются видимые: закрытые виды ящика (запись на приём,
+ * переписка) держат свой скелет, пока их не открыли.
+ */
+for (const theme of ["dark", "light"] as const) {
+  test(`рабочее место пациента доступно, тема ${theme}`, async ({ page }) => {
+    await page.addInitScript((t) => localStorage.setItem("quizzy.theme.v2", t), theme);
+    await login(page, "psy");
+    await (await openSeededPatient(page)).click();
+    await page.getByRole("main").getByRole("heading", { level: 2, name: "Клиническая картина" }).waitFor();
+    await expect.poll(async () => page.locator(".skeleton:visible").count(), { timeout: 10_000 }).toBe(0);
+    expect(await violationsOf(page, "/patients/:id")).toEqual([]);
   });
 }
 

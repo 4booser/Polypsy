@@ -246,7 +246,8 @@ timelineRoutes.get("/:userId", async (c) => {
       at: n.signedAt ?? n.createdAt,
       title: text.slice(0, 90) + (text.length > 90 ? "…" : ""),
       detail: n.status,
-      href: `/patients/${userId}/summary`,
+      /* заключение живёт во вкладке «Записи» рабочего места, видом «Заключення» */
+      href: `/patients/${userId}?tab=records&kind=concl`,
       responseId: n.responseId,
     });
   }

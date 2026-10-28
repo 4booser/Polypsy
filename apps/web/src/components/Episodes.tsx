@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { UiKey } from "@quizzy/shared";
 import { ApiError, api, openInTab } from "../api";
 import { day } from "../format";
@@ -34,10 +34,25 @@ const OUTCOME_KEY: Record<string, UiKey> = {
  * счётчики числами, действия — обычными кнопками (закрытие подтверждается
  * исходом, а не красным цветом).
  */
-export function Episodes(props: { patientId: string; appointmentId?: string; className?: string }) {
+export function Episodes(props: {
+  patientId: string;
+  appointmentId?: string;
+  className?: string;
+  /** Без своей панели — в ящике рабочего места пациента, где заголовок у ящика */
+  bare?: boolean;
+  /** Обращения перечитаны после действия: открытое — первым, если есть */
+  onChange?: (items: EpisodeItem[]) => void;
+}) {
   const res = useResource(() => api.episodes(props.patientId), [props.patientId]);
+  /* открыли или закрыли — экран узнаёт новое состояние из того же перечитанного списка */
+  const { onChange } = props;
+  useEffect(() => {
+    if (res.data) onChange?.(res.data.items);
+  }, [res.data, onChange]);
   return <EpisodesBody {...props} res={res} />;
 }
+
+export type EpisodeItem = Awaited<ReturnType<typeof api.episodes>>["items"][number];
 
 type Loaded<T> = Pick<Resource<T>, "data" | "error" | "loading" | "reload" | "updatedAt">;
 
@@ -56,11 +71,13 @@ export function EpisodesBody({
   appointmentId,
   className,
   res,
+  bare,
 }: {
   patientId: string;
   appointmentId?: string;
   className?: string;
   res: Loaded<Awaited<ReturnType<typeof api.episodes>>>;
+  bare?: boolean;
 }) {
   const { ut, lang } = useLang();
   const { run, busy } = useAction();
@@ -84,19 +101,8 @@ export function EpisodesBody({
   const items = res.data?.items ?? [];
   const open = items.find((e) => !e.closedAt) ?? null;
 
-  return (
-    /*
-      «Друк картки повністю» стоял в шапке этой панели — теперь он в меню «…»
-      экрана приёма (печать карты — действие над человеком, а не над
-      обращением); выписка обращения — у самого обращения.
-    */
-    <Panel
-      title={ut("ep.title")}
-      icon={<ShellIcon name="folder-tree" />}
-      count={known && items.length ? items.length : null}
-      className={className}
-    >
-      <div className="flex flex-col gap-3">
+  const body = (
+      <div className={bare ? "flex flex-col gap-3 py-4" : "flex flex-col gap-3"}>
         {/*
           Открыть можно только когда открытого нет. Правило написано рядом с
           кнопкой, а не спрятано в отказе сервера: человек должен понимать,
@@ -126,7 +132,8 @@ export function EpisodesBody({
           <p className="m-0 text-caption text-text-2">{ut("ep.oneOpen")}</p>
         )}
 
-        <Dispensary patientId={patientId} />
+        {/* в ящике рабочего места — сначала обращения: их там и открывают; учёт — ниже */}
+        {bare ? null : <Dispensary patientId={patientId} />}
 
         {!known ? <NotLoaded res={res} /> : items.length === 0 ? <Empty compact title={ut("ep.none")} /> : null}
 
@@ -268,7 +275,23 @@ export function EpisodesBody({
             ) : null}
           </article>
         ))}
+        {bare ? <Dispensary patientId={patientId} /> : null}
       </div>
+  );
+  if (bare) return body;
+  return (
+    /*
+      «Друк картки повністю» стоял в шапке этой панели — теперь он в меню «…»
+      экрана приёма (печать карты — действие над человеком, а не над
+      обращением); выписка обращения — у самого обращения.
+    */
+    <Panel
+      title={ut("ep.title")}
+      icon={<ShellIcon name="folder-tree" />}
+      count={known && items.length ? items.length : null}
+      className={className}
+    >
+      {body}
     </Panel>
   );
 }

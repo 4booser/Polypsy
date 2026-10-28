@@ -370,7 +370,8 @@ async function collectWork(user: User, lang: Lang): Promise<Item[]> {
       overdue: days >= 7 || r.r.urgency === "immediate",
       assignedTo: null,
       since: r.r.createdAt,
-      href: `/patients/${r.r.userId}/summary`,
+      /* направление — вкладка «Направлення» рабочего места пациента */
+      href: `/patients/${r.r.userId}?tab=referrals`,
     });
   }
 
@@ -426,7 +427,7 @@ async function collectWork(user: User, lang: Lang): Promise<Item[]> {
       overdue: true,
       assignedTo: null,
       since: r.a.dueAt!,
-      href: `/patients/${r.a.userId}/summary`,
+      href: `/patients/${r.a.userId}`,
     });
   }
 
@@ -494,7 +495,7 @@ async function collectWork(user: User, lang: Lang): Promise<Item[]> {
       overdue: true,
       assignedTo: null,
       since: r.expiresAt!,
-      href: `/patients/${r.userId}/summary`,
+      href: `/patients/${r.userId}`,
     });
   }
 
@@ -559,7 +560,7 @@ async function collectWork(user: User, lang: Lang): Promise<Item[]> {
       overdue: true,
       assignedTo: null,
       since: r.closesAt,
-      href: `/patients/${r.userId}/summary`,
+      href: `/patients/${r.userId}`,
     });
   }
 
