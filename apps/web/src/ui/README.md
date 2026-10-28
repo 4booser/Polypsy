@@ -165,7 +165,8 @@ import { Pager } from "../ui/pager";
 `bulkActions`, `rowActions` (всплывают на наведении и фокусе), `onRowClick` (нажатие, Enter), J/K и стрелки по
 строкам (одна остановка Tab на таблицу), `hotkeys` — J/K с любого места экрана, `pageSize` — страницы снизу,
 `rowTone` (`risk`), `isRowActive`, `stateKey` — сортировка, колонки, фасеты и страница в адресе, `facets`,
-`csvName`, `dense`, `label`.
+`csvName`, `dense`, `label`, `groupOf` — заголовок группы во всю ширину над её первой строкой (каталог: направление;
+строки приходят уже в порядке групп, такая таблица не сортируется колонкой и не виртуализуется).
 
 ```tsx
 <Panel flush>
