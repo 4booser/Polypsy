@@ -292,6 +292,7 @@ export function registerBody(s: {
  */
 export const CLINICAL_DOMAIN_KEY: Record<ClinicalDomain, UiKey> = {
   suicide: "ws.dom.suicide",
+  global: "ws.dom.global",
   depression: "ws.dom.depression",
   trauma: "ws.dom.trauma",
   anxiety: "ws.dom.anxiety",

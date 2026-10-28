@@ -130,6 +130,13 @@ describe("клинический домен шкалы", () => {
     expect(clinicalDomainOf({ catalogKey: "phq2", surveyDomain: "distress", code: "PHQ2" })).toBe("depression");
     expect(clinicalDomainOf({ catalogKey: "gad7", surveyDomain: "distress", code: "GAD" })).toBe("anxiety");
     expect(clinicalDomainOf({ catalogKey: "k10", surveyDomain: "distress", code: "K10" })).toBe("distress");
+    // шкалы специалиста: HAM-D и HAM-A — к своим доменам, CGI и BPRS — общий стан, а не «інше»
+    expect(clinicalDomainOf({ catalogKey: "hamd17", surveyDomain: "distress", code: "HAMD" })).toBe("depression");
+    expect(clinicalDomainOf({ catalogKey: "hama", surveyDomain: "distress", code: "HAMA" })).toBe("anxiety");
+    expect(clinicalDomainOf({ catalogKey: "cgi_s", surveyDomain: "other", code: "CGIS" })).toBe("global");
+    expect(clinicalDomainOf({ catalogKey: "cgi_i", surveyDomain: "other", code: "CGII" })).toBe("global");
+    expect(clinicalDomainOf({ catalogKey: "bprs", surveyDomain: "other", code: "BPRS" })).toBe("global");
+    expect(isKeyDomain("global")).toBe(true);
     // полка — запасной путь: встроенные без ключа, методики учреждения
     expect(clinicalDomainOf({ catalogKey: null, surveyDomain: "suicide", code: "Sr" })).toBe("suicide");
     expect(clinicalDomainOf({ catalogKey: "cbi", surveyDomain: "staff", code: "WB" })).toBe("burnout");
@@ -142,7 +149,10 @@ describe("клинический домен шкалы", () => {
 
   test("ключи карты есть в каталоге: переименованная методика не выпадает из домена молча", () => {
     const keys = new Set(CATALOG.map((e) => e.key));
-    for (const key of ["phq9", "phq8", "phq2", "cesdr", "gds15", "gad7", "gad2", "pss10", "pss4", "k10", "k6", "core10", "srq20", "aaq2", "phq15", "dass21", "phq4"]) {
+    for (const key of [
+      "phq9", "phq8", "phq2", "cesdr", "gds15", "gad7", "gad2", "pss10", "pss4", "k10", "k6", "core10", "srq20", "aaq2", "phq15",
+      "dass21", "phq4", "hamd17", "hama", "cgi_s", "cgi_i", "bprs",
+    ]) {
       expect(keys.has(key), `ключ ${key} пропал из каталога`).toBe(true);
     }
   });

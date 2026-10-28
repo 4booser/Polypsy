@@ -16385,6 +16385,8 @@ export const UI = {
   "ws.printTab": { uk: "Друкувати відкриту вкладку", ru: "Печатать открытую вкладку", en: "Print this tab" },
   /* клінічна картина: домены, балл, сдвиг словами */
   "ws.dom.suicide": { uk: "Суїцидальний ризик", ru: "Суицидальный риск", en: "Suicide risk" },
+  /* CGI-S, CGI-I, BPRS — общая оценка специалиста, а не один домен */
+  "ws.dom.global": { uk: "Загальний стан", ru: "Общее состояние", en: "Overall condition" },
   "ws.dom.depression": { uk: "Депресія", ru: "Депрессия", en: "Depression" },
   "ws.dom.trauma": { uk: "Травма і ПТСР", ru: "Травма и ПТСР", en: "Trauma and PTSD" },
   "ws.dom.anxiety": { uk: "Тривога", ru: "Тревога", en: "Anxiety" },
