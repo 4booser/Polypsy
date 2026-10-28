@@ -282,6 +282,23 @@ describe("раскладка", () => {
     expect(courseDomain(audit, [12]).hi).toBe(40);
   });
 
+  test("шкала без полос (BPRS): ось до верха шкалы, а не до круглого деления; без полос — ни порога, ни «менше — краще»", () => {
+    const bprs: CoursePoint[] = [
+      { key: "a", t: at(0), label: "01.07", value: 72 },
+      { key: "b", t: at(90), label: "21.10", value: 47 },
+    ];
+    const lay = courseLayout(bprs, [], [], 126);
+    expect(lay.hi).toBe(126);
+    expect(lay.ticks.at(-1)).toBe(126);
+    expect(lay.ticks).not.toContain(150);
+    const out = draw(<CourseChart title="BPRS" points={bprs} rungs={[]} max={126} rc={null} better={null} now={null} />);
+    expect(out).not.toContain("data-cutoff");
+    expect(says(out, "course.betterDown") || says(out, "course.betterUp")).toBe(false);
+    expect(out).not.toContain("NaN");
+    // верх шкалы ниже данных (сырой балл за краем) — ось по данным, как прежде
+    expect(courseLayout(bprs, [], [], 60).hi).toBeGreaterThanOrEqual(72);
+  });
+
   test("лестница из полос-точек (CGI-S 1–7): ось шире на полшага, крайние полосы не вдвое уже, деления — сами ступени", () => {
     const cgi = [1, 2, 3, 4, 5, 6, 7].map((v) => ({ min: v, max: v, label: `${v}`, severity: "none" as const }));
     expect(pointLadder(cgi)).toBe(true);

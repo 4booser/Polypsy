@@ -463,6 +463,16 @@ export function courseLayout(
     lo = axis.min;
     hi = Math.max(axis.max, top);
     ticks = axis.ticks;
+    /*
+     * Верх шкалы известен (BPRS — 126, полос у неё нет) — ось кончается им,
+     * а не круглым делением выше: «47 з 126» в шапке и «150» у оси читались
+     * как две разные шкалы. Деление у самого верха, налезающее на него, уходит.
+     */
+    if (max != null && max >= top && max < axis.max) {
+      const step = axis.ticks.length > 1 ? axis.ticks[1]! - axis.ticks[0]! : max;
+      ticks = [...axis.ticks.filter((t) => t <= max - step * 0.4), max];
+      hi = max;
+    }
   }
 
   return { t0: t0 - pad, t1: t1raw + pad, lo, hi: hi > lo ? hi : lo + 1, ticks, cut, lane, signals };
