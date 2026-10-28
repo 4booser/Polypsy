@@ -111,11 +111,12 @@ export const pss10: CreateSurveyDraft = {
   ),
   /*
    * Шапка разработчика («The questions in this scale ask you about your
-   * feelings and thoughts during the last month») и совет его же полного
-   * бланка: «don't try to count up the number of times you felt a particular
-   * way, but rather indicate the alternative that seems like a reasonable
-   * estimate». Прежнее «важливо не те, скільки насправді було подій, а те,
-   * якими вони вам здавалися» пересказывало совет неверно.
+   * feelings and thoughts during the last month») и совет из инструкции
+   * оригинальной PSS-14 (Cohen, Kamarck, Mermelstein, 1983), который повторяют
+   * бланки PSS-10: «don't try to count up the number of times you felt a
+   * particular way, but rather indicate the alternative that seems like a
+   * reasonable estimate». Прежнее «важливо не те, скільки насправді було подій,
+   * а те, якими вони вам здавалися» пересказывало совет неверно.
    */
   instructions: L(
     "Запитання стосуються ваших почуттів і думок за ОСТАННІЙ МІСЯЦЬ. Не намагайтеся точно порахувати, скільки разів так було, — оберіть варіант, який здається найближчим.",
