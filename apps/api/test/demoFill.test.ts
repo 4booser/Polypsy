@@ -353,8 +353,10 @@ describe("история в базе", () => {
       .where(sql`${appointments.patientId} in ${demo}`);
     const now = Date.now();
     for (const v of visits) {
+      const startsAt = Date.parse(v.startsAt);
       if (Date.parse(v.endsAt) < now - 3 * 3_600_000) expect(["done", "no_show", "cancelled"], v.id).toContain(v.status);
-      if (Date.parse(v.startsAt) > now) expect(["booked", "confirmed"], v.id).toContain(v.status);
+      // за четверть часа до начала человек уже может ждать у кабинета — смотря в котором часу прогон
+      if (startsAt > now) expect(startsAt - 15 * 60_000 <= now ? ["booked", "confirmed", "arrived"] : ["booked", "confirmed"], v.id).toContain(v.status);
     }
     const noShows = visits.filter((v) => v.status === "no_show").length;
     expect(noShows).toBeGreaterThan(5);
