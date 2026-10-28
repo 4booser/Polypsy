@@ -10,12 +10,9 @@ import {
   cutoffOf,
   dodge,
   freeSpot,
-  labelColumn,
   placeLabels,
   pointTip,
-  stackBlocks,
   valueOrder,
-  wrapWords,
   type Better,
   type Box,
   type ChangeVerdict,
@@ -24,6 +21,7 @@ import {
   type Cutoff,
   type PointTip,
 } from "./courseModel";
+import { BandKey, BandLabels, bandBlocks, fitHeight, placeBlocks, planBandColumn } from "./bands";
 import { AxisBreak, useChartWidth } from "./index";
 import { boundaries, sortRungs, type Rung } from "./ladder";
 import {
@@ -99,9 +97,6 @@ export interface CourseChartProps {
 const R = 4;
 /** Высота строки подписи оси над полем */
 const T = 24;
-/** Строка подписи полосы: 11,5 px */
-const LH = 14;
-const LABEL_SIZE = 11.5;
 /** Отступ данных от краёв поля: первый и последний замер не лежат на рамке */
 const INSET = 16;
 
@@ -192,23 +187,6 @@ function changeText(tip: PointTip, count: number, fmt: CourseFormat, ut: (k: UiK
 const verdictClass = (v: ChangeVerdict | null) =>
   v === "worse" ? "font-bold text-warn" : v === "better" ? "font-bold text-good" : "font-semibold text-text-2";
 
-/** Ширина подписи полосы: жирнее у текущей — мерка по жирной, чтобы перенос не зависел от выделения */
-const labelWidth = (s: string) => textWidth(s, LABEL_SIZE, 800);
-
-interface LabelBlock {
-  key: string;
-  kind: "band" | "cutoff";
-  lines: string[];
-  /** Первая строка начинается с границ полосы — их рисуем приглушённо */
-  range: string | null;
-  want: number;
-  h: number;
-  current: boolean;
-  /** Полоса блока на оси: верх и низ в пикселях — смещённый блок соединяется с ней выноской */
-  top: number;
-  bottom: number;
-}
-
 export function CourseChart({
   title,
   measure,
@@ -258,78 +236,32 @@ export function CourseChart({
   const tickText = lay.ticks.map((v) => fmt.num(v));
   const L = Math.max(26, ...tickText.map((s) => textWidth(s, 11, 600) + 10));
 
-  /* ── колонка подписей полос справа ── */
-  const bandText = (r: Rung) => `${fmt.range(r)} ${r.label}`;
+  /* ── колонка подписей полос справа (bands.tsx) ── */
   const cutText = cutoff ? cutoffText(cutoff, fmt, ut) : null;
-  const colMax = Math.min(Math.round(W * (compact ? 0.42 : 0.34)), 210);
-  const colWanted = ladder.length ? labelColumn([...ladder.map(bandText), ...(cutText ? [cutText] : [])], labelWidth, 84, colMax, 2) : 0;
-  /* поле уже 150 px не читается: подписи полос тогда уходят под график строками */
-  const withCol = ladder.length > 0 && W - R - colWanted - 12 - L >= 150;
-  const colW = withCol ? colWanted : 0;
-  const colX = W - R - colW;
-  const plotR = withCol ? colX - 12 : W - R;
+  const col = planBandColumn({ ladder, W, L, R, compact, bandText: (r) => `${fmt.range(r)} ${r.label}`, extra: cutText ? [cutText] : [] });
+  const { withCol, colW, colX, plotR } = col;
   const x0 = L + INSET;
   const x1 = plotR - INSET;
   const X = (t: number) => x0 + ((t - lay.t0) / Math.max(1, lay.t1 - lay.t0)) * (x1 - x0);
 
   /*
    * Высота поля. Один замер — поле ниже: ему нечего показывать, кроме
-   * полосы, в которую он лёг. Подписи полос встают каждая в свою полосу, а
-   * полоса — доля шкалы: у узкого графика с длинными подписями («5–9 Лёгкая
-   * („субклиническая“) депрессия» в три строки) поле растёт, пока самая
-   * тесная полоса не вместит свою подпись, — но не выше 264 px. Малый формат
-   * не растёт: там лишние подписи уходят (см. shown ниже).
+   * полосы, в которую он лёг. Подписи полос встают каждая в свою полосу, и
+   * у узкого графика с длинными подписями («5–9 Лёгкая („субклиническая“)
+   * депрессия» в три строки) поле растёт — но не выше 264 px. Малый формат
+   * не растёт: там лишние подписи уходят (placeBlocks).
    */
   const base = compact || raw.length === 1 ? 116 : 188;
-  const wrapped = new Map(spans.map((s) => [s.rung, withCol ? wrapWords(bandText(s.rung), colW, labelWidth) : []] as const));
-  const needs =
-    withCol && !compact
-      ? spans.map((s) => {
-          const share = (s.to - s.from) / (lay.hi - lay.lo);
-          /* порог у границы полосы занимает пол-строки её места */
-          const tag = cutoff && (Math.abs(s.from - cutoff.at) < 1e-9 || Math.abs(s.to - cutoff.at) < 1e-9) ? LH / 2 + 2 : 0;
-          return share > 0 ? (wrapped.get(s.rung)!.length * LH + 6 + tag) / share : base;
-        })
-      : [];
-  const PH = Math.round(Math.min(base === 116 ? 168 : 264, Math.max(base, ...needs)));
+  const PH = compact ? base : fitHeight({ spans, col, lo: lay.lo, hi: lay.hi, cutoff, base, cap: base === 116 ? 168 : 264 });
   const PB = T + PH;
   const Y = (v: number) => T + PH * (1 - (v - lay.lo) / (lay.hi - lay.lo));
 
   const fillOf = (rung: Rung | null, i: number) => (rung && rung === current ? "var(--plotc)" : i % 2 ? "var(--plot2)" : "var(--plot)");
 
-  const blocks: LabelBlock[] = [];
-  if (withCol) {
-    const desc = spans.map((s, i) => ({ s, i })).reverse();
-    for (const { s } of desc) {
-      const lines = wrapped.get(s.rung)!;
-      blocks.push({
-        key: `b-${s.rung.min}-${s.rung.max}`,
-        kind: "band",
-        lines,
-        range: fmt.range(s.rung),
-        want: (Y(s.to) + Y(s.from)) / 2,
-        h: lines.length * LH,
-        current: s.rung === current,
-        top: Y(s.to),
-        bottom: Y(s.from),
-      });
-    }
-    if (cutoff && cutText && cutoff.at > lay.lo && cutoff.at < lay.hi) {
-      const lines = wrapWords(cutText, colW, labelWidth);
-      const y = Y(cutoff.at);
-      blocks.push({ key: "cutoff", kind: "cutoff", lines, range: null, want: y, h: lines.length * LH, current: false, top: y, bottom: y });
-      blocks.sort((a, b) => a.want - b.want);
-    }
-  }
-  const colTop = T + 1;
-  const colBottom = PB + 14;
-  const total = (list: LabelBlock[]) => list.reduce((s, b) => s + b.h, 0) + Math.max(0, list.length - 1) * 2;
-  /* не помещаются все — остаются текущая полоса и порог; остальные полосы — в подсказке и в полной «Графіки» */
-  const shown = total(blocks) > colBottom - colTop ? blocks.filter((b) => b.current || b.kind === "cutoff") : blocks;
-  const tops = stackBlocks(
-    shown.map((b) => ({ want: b.want, h: b.h })),
-    colTop,
-    colBottom,
+  const { shown, tops } = placeBlocks(
+    bandBlocks({ spans, col, Y, current, rangeOf: fmt.range, cutoff, cutText, lo: lay.lo, hi: lay.hi }),
+    T + 1,
+    PB + 14,
   );
 
   /* ── замеры ── */
@@ -588,65 +520,8 @@ export function CourseChart({
           />
         ) : null}
 
-        {/* подписи полос и порога — целиком, переносом; сдвинутая с места — на подложке с выноской */}
-        {shown.map((b, i) => {
-          const top = tops[i]!;
-          const mid = top + b.h / 2;
-          /* порог — всегда плашкой у конца своего пунктира; полоса — плашкой, только если ушла со своей полосы */
-          const cut = b.kind === "cutoff";
-          const off = cut || mid < b.top || mid > b.bottom;
-          const lead = cut ? b.want : Math.min(Math.max(mid, b.top + 4), b.bottom - 4);
-          return (
-            <g key={b.key} data-label={cut ? "cutoff" : "band"}>
-              {off ? (
-                <>
-                  <rect
-                    x={f1(colX - 5)}
-                    y={f1(top - 2.5)}
-                    width={f1(Math.min(colW, Math.max(...b.lines.map(labelWidth))) + 10)}
-                    height={f1(b.h + 5)}
-                    rx={6}
-                    fill="var(--panel)"
-                    stroke={cut ? "var(--text-2)" : "var(--border)"}
-                  />
-                  <polyline
-                    points={`${f1(colX - 16)},${f1(lead)} ${f1(colX - 10)},${f1(lead)} ${f1(colX - 5)},${f1(Math.min(Math.max(lead, top + 2), top + b.h - 2))}`}
-                    fill="none"
-                    stroke="var(--text-2)"
-                    strokeWidth={cut ? 1.6 : 1}
-                    strokeDasharray={cut ? "3 2" : undefined}
-                  />
-                </>
-              ) : null}
-              {b.kind === "cutoff" ? <title>{ut("course.cutoffWhy")}</title> : null}
-              <text
-                x={f1(colX)}
-                y={f1(top + LH - 3.5)}
-                fontSize={LABEL_SIZE}
-                fontWeight={b.current || b.kind === "cutoff" ? 800 : 600}
-                fill={b.current || b.kind === "cutoff" ? "var(--text)" : "var(--text-2)"}
-              >
-                {b.lines.map((ln, j) => {
-                  const lead0 = j === 0 && b.range && ln.startsWith(b.range);
-                  return (
-                    <tspan key={j} x={f1(colX)} dy={j ? LH : 0}>
-                      {lead0 ? (
-                        <>
-                          <tspan fill="var(--muted)" fontWeight={600}>
-                            {b.range}
-                          </tspan>
-                          {ln.slice(b.range!.length)}
-                        </>
-                      ) : (
-                        ln
-                      )}
-                    </tspan>
-                  );
-                })}
-              </text>
-            </g>
-          );
-        })}
+        {/* подписи полос и порога — целиком, переносом (bands.tsx) */}
+        <BandLabels shown={shown} tops={tops} colX={colX} colW={colW} />
 
         {/* ось значений и её подпись: единицы и куда — лучше, словами */}
         {lay.ticks.map((v, i) => (
@@ -775,7 +650,7 @@ export function CourseChart({
       ) : null}
       </div>
 
-      {withCol ? null : <BandKey spans={spans} current={current} fmt={fmt} />}
+      {withCol ? null : <BandKey spans={spans} current={current} rangeOf={fmt.range} />}
       {legend ? <CourseLegend cutoff={withCol ? null : cutText} signal={lay.signals.size > 0} lane={lane} now={now} /> : null}
 
       {/*
@@ -823,23 +698,6 @@ function ProtocolLink({ href, linkRef }: { href: string; linkRef: Ref<HTMLAnchor
     <a ref={linkRef} href={href} tabIndex={-1} className="sr-only" data-protocol>
       {ut("course.protocol")}
     </a>
-  );
-}
-
-/**
- * Подписи полос строками под графиком — когда поле слишком узкое для
- * колонки справа. Целиком, с границами; текущая — жирнее.
- */
-function BandKey({ spans, current, fmt }: { spans: readonly { rung: Rung }[]; current: Rung | null; fmt: CourseFormat }) {
-  if (!spans.length) return null;
-  return (
-    <ul data-band-key className="m-0 mt-[8px] flex list-none flex-col gap-y-[2px] p-0 text-caption leading-[16px]">
-      {[...spans].reverse().map(({ rung }) => (
-        <li key={`${rung.min}-${rung.max}`} className={rung === current ? "font-extrabold text-text" : "font-semibold text-text-2"}>
-          <span className="font-semibold text-muted tabular-nums">{fmt.range(rung)}</span> {rung.label}
-        </li>
-      ))}
-    </ul>
   );
 }
 

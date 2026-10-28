@@ -126,9 +126,14 @@ function xLabels(xs: readonly number[], labels: readonly string[]): Set<number> 
   return placeLabels(xs, labels.map(textW), 12);
 }
 
-/** Сетка и подписи оси Y — общие у линии и сложенной области */
-function YGrid({ ticks, y, left, right }: { ticks: readonly number[]; y: (v: number) => number; left: number; right: number }) {
+/**
+ * Сетка и подписи оси Y — общие у линии и сложенной области. Единица
+ * («с», «%») стоит у верхнего деления: ось без единицы — «8» чего? — не
+ * читается, а единица у каждого деления — шум.
+ */
+function YGrid({ ticks, y, left, right, unit = "" }: { ticks: readonly number[]; y: (v: number) => number; left: number; right: number; unit?: string }) {
   const fmt = useFmt();
+  const top = ticks.length ? Math.max(...ticks) : null;
   return (
     <>
       {ticks.map((t) => (
@@ -136,6 +141,7 @@ function YGrid({ ticks, y, left, right }: { ticks: readonly number[]; y: (v: num
           <line x1={left} x2={right} y1={y(t)} y2={y(t)} stroke="var(--grid)" />
           <text x={left - 8} y={y(t) + 4} fontSize={11} fontWeight={600} fill="var(--axis)" textAnchor="end">
             {fmt(t)}
+            {t === top && unit ? unit : ""}
           </text>
         </g>
       ))}
@@ -239,7 +245,7 @@ export function LineChart({
   const multi = series.length > 1;
   /* подписи у концов линий: значение одного ряда, значение и имя — у двух–четырёх */
   const ends = series.length <= 4;
-  const right = ends ? (multi ? 76 : 34) : PAD.right;
+  const right = ends ? (multi ? 76 : unit ? 48 : 34) : PAD.right;
   const pw = W - PAD.left - right;
   const ph = height - PAD.top - PAD.bottom;
   const xAt = (i: number) => PAD.left + (n > 1 ? (i / (n - 1)) * pw : pw / 2);
@@ -318,7 +324,7 @@ export function LineChart({
          */
         aria-label={`${series.map((s) => s.label).join(", ")}: ${all[0]?.x ?? ""} — ${series[0]?.points.at(-1)?.x ?? ""}`}
       >
-        <YGrid ticks={axis.ticks} y={yAt} left={PAD.left} right={W - right} />
+        <YGrid ticks={axis.ticks} y={yAt} left={PAD.left} right={W - right} unit={unit} />
         {axis.zoomed ? <AxisBreak x={PAD.left} y={PAD.top + ph} /> : null}
 
         {/* перекрестье под линиями: оно ориентир, а не содержание */}
@@ -406,6 +412,7 @@ export function LineChart({
           <text key={`e-${r.si}`} x={r.x + 9} y={r.y + 4} fontSize={11} fontWeight={600} fill="var(--text-2)">
             <tspan fontWeight={800} fill="var(--text)">
               {fmt(r.v)}
+              {unit ?? ""}
             </tspan>
             {multi ? ` ${r.label}` : ""}
           </text>
@@ -434,8 +441,8 @@ export function LineChart({
                 key={s.label}
                 color={colorOf(s, si)}
                 label={multi ? s.label : undefined}
-                value={fmt(point.y)}
-                extra={b > a ? `${fmt(a)}–${fmt(b)}` : undefined}
+                value={`${fmt(point.y)}${unit ?? ""}`}
+                extra={b > a ? `${fmt(a)}–${fmt(b)}${unit ?? ""}` : undefined}
               />
             );
           })}

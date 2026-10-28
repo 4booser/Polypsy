@@ -84,6 +84,33 @@ test("динамика из одной точки не делит на ноль 
   expect(html).not.toContain("NaN");
 });
 
+test("динамика по лестнице: подписи полос целиком, клинический порог, «менше — краще» у оси", () => {
+  const long = [
+    { min: 0, max: 4, label: "Депресія відсутня", severity: "none" as const },
+    { min: 5, max: 9, label: "Легка («субклінічна») депресія", severity: "mild" as const },
+    { min: 10, max: 14, label: "Помірної тяжкості депресія", severity: "moderate" as const },
+    { min: 15, max: 27, label: "Тяжка депресія", severity: "severe" as const },
+  ];
+  const html = draw(
+    <BandTrend
+      label="PHQ-9"
+      rungs={long}
+      points={[
+        { key: "1", t: Date.parse("2026-08-01"), label: "1 серп", value: 6.4 },
+        { key: "2", t: Date.parse("2026-09-01"), label: "1 вер", value: 4.99 },
+      ]}
+    />,
+  );
+  const plain = html.replace(/<!-- -->/g, "").replace(/<[^>]+>/g, " ").replace(/[ \t\n]+/g, " ");
+  // многоточия больше нет: подпись переносится по словам, но целиком
+  expect(html).not.toContain("…");
+  for (const word of ["Депресія відсутня", "(«субклінічна»)", "Помірної тяжкості", "Тяжка депресія"]) expect(plain).toContain(word);
+  expect(html).toContain('data-cutoff="10"');
+  expect(plain).toMatch(/(клінічний поріг|клинический порог|clinical cut-off) ≥ 10/);
+  expect(plain).toMatch(/менше — краще|меньше — лучше|lower is better/);
+  expect(html).not.toContain("NaN");
+});
+
 test("динамика без лестницы подгоняет ось и рисует полосу ошибки", () => {
   const html = draw(
     <BandTrend
