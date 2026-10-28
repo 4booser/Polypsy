@@ -64,8 +64,9 @@ function firstDiff(want: string, have: string): string {
 }
 
 describe("пакет сверки методик", () => {
-  test("лист есть у каждой методики: встроенные и весь каталог", () => {
+  test("лист есть у каждой методики каталога, и методик учреждения тоже", () => {
     const keys = sheetEntries().map((e) => e.key);
+    // четыре методики учреждения с 2026-10-28 — записи каталога; поимённо — чтобы их лист не пропал при правке каталога
     expect(keys).toEqual(expect.arrayContaining(["sr45", "sad-persons", "minimult", "mlo", ...CATALOG.map((e) => e.key)]));
     expect(new Set(keys).size).toBe(keys.length);
     expect(installed.length).toBe(keys.length);

@@ -184,7 +184,7 @@ describe("подпись сигнала на языке читателя", () =>
     expect(alerts.some((l) => l.includes(RU_ITEM)), "приём, ru").toBe(true);
     expect(alerts.filter((l) => l.includes(UK_ITEM))).toEqual([]);
     const surveysDone: string[] = res.body.changes.filter((c: { kind: string }) => c.kind === "response").map((c: { title: string }) => c.title);
-    expect(surveysDone).toContain("СР-45. Склонность к суицидальным реакциям");
+    expect(surveysDone).toContain("Опросник (СР-45)");
   });
 
   test("список тревог: по-русски", async () => {

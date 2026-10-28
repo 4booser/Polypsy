@@ -375,7 +375,7 @@ function passport(lang: SheetLang, input: SheetInput): string {
 
 function sourceSection(lang: SheetLang, input: SheetInput): string {
   const s = pick(lang);
-  const { inst, notes, dossier } = input;
+  const { inst, dossier } = input;
   const out: string[] = [];
   if (inst.entry.source) {
     out.push(
@@ -389,9 +389,6 @@ function sourceSection(lang: SheetLang, input: SheetInput): string {
       `- ${s("**Примітка для персоналу** («Джерело» в паспорті методики, мовою запису)", "**Примечание для персонала** («Джерело» в паспорте методики, на языке записи)")}: ${cell(inst.entry.note)}`,
     );
   }
-  if (notes.passportSource) {
-    out.push(`- ${s("**Коментар визначення й паспорт методик**", "**Комментарий определения и паспорт методик**")}: ${notes.passportSource[lang]}`);
-  }
   if (dossier) {
     const lang2 = s("мовою досьє", "на языке досье");
     if (dossier.citation) out.push(`- ${s("**Публікація за досьє**", "**Публикация по досье**")}: ${dossier.citation}`);
@@ -401,6 +398,16 @@ function sourceSection(lang: SheetLang, input: SheetInput): string {
       out.push(
         `- ${s("**Ліцензія за досьє**", "**Лицензия по досье**")}: ${dossier.license.verdict}${dossier.license.conditions ? ` — ${cell(dossier.license.conditions)}` : ""}`,
       );
+    }
+    /*
+     * Решение, которым методика без свободной лицензии попала в каталог (методики
+     * учреждения, 2026-10-28): кто, когда и на каком основании — рядом с лицензией,
+     * чтобы психолог видел основание, а не только «не выяснено».
+     */
+    const d = dossier.decision;
+    if (d) {
+      const said = d.quote ? ` «${d.quote}»` : "";
+      out.push(`- ${s("**Рішення про каталог**", "**Решение о каталоге**")} (${lang2}): ${d.date} — ${d.by}${said}. ${cell(d.basis)}`);
     }
     if (dossier.verdict) out.push(`- ${s("**Рішення досьє**", "**Решение досье**")} (${lang2}): ${dossier.verdict}`);
   }
