@@ -226,7 +226,7 @@ describe("методики учреждения: запись каталога",
       const card = DOSSIER.find((c) => c.key === key)!;
       expect(card.decision).toEqual({
         date: "2026-10-28",
-        by: "владелец продукта Polypsy (заказчик)",
+        by: "владелец продукта Polypsy",
         quote: "ставь тесты",
         basis: expect.stringContaining("Учреждение подтверждает право её использования"),
       });
