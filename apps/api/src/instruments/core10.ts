@@ -98,7 +98,8 @@ const question = ([uk, ru]: [string, string], n: number): QuestionDraft =>
           risk: {
             fromScore: 1,
             severity: "severe" as const,
-            label: L("CORE-10: планував(-ла) покінчити з життям", "CORE-10: планировал(а) покончить с собой"),
+            // текст тревоги — о человеке, без рода: существительным
+            label: L("CORE-10: плани покінчити з життям", "CORE-10: планы покончить с собой"),
           },
         }
       : {}),
