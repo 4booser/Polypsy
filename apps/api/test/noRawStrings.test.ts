@@ -86,6 +86,7 @@ const SHARED_SKIPPED = new Map<string, string>([
   ["packages/shared/src/serverStrings.ts", "словарь сервера — packages/shared/test/serverStrings.test.ts"],
   ["packages/shared/src/permissions.ts", "справочник прав на трёх языках — apps/web/test/noRawStrings.test.ts"],
   ["packages/shared/src/featureFlags.ts", "справочник флагов на трёх языках — apps/web/test/noRawStrings.test.ts"],
+  ["packages/shared/src/instrumentShortNames.ts", "имена собственные методик учреждения на двух языках содержимого — справочник, не подписи"],
 ]);
 
 /* ─── исключения по местам ─── */
