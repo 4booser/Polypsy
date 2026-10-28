@@ -145,6 +145,14 @@ export interface Story {
   pending: { key: string; grantedDay: number; dueDay: number }[];
   /** Набор «Первинний скринінг»: когда назначен и к какому дню */
   battery?: { assignedDay: number; dueDay: number };
+  /**
+   * Огляди лікаря-психіатра відділення: шкали лікаря (HAM-D-17, HAM-A, CGI-S,
+   * потім CGI-I, BPRS) і запис консультації. Психіатр не веде пацієнта і
+   * розкладу прийому в наповненні не має: огляд — консультація без запису на
+   * прийом, одразу після прийому в психолога (afterVisit) або в день, коли
+   * направлення закрито.
+   */
+  psychiatry?: { day: number; afterVisit?: number; measures: Measure[]; note: NoteFn }[];
 }
 
 /* ═════════════ слова ═════════════ */
@@ -288,6 +296,14 @@ const M = {
     total > 0
       ? { key: "sidas", targets: { SIDAS: total }, fixed: { 1: Math.max(1, Math.round(total / 5)) }, allowRisk: true }
       : { key: "sidas", targets: {}, fixed: { 1: 0 } },
+  /** HAM-D-17: п. 3 (суїцидальні думки й дії) — по сюжету, інакше 0 */
+  hamd: (total: number, item3 = 0): Measure => ({ key: "hamd17", targets: { HAMD: total }, fixed: { 3: item3 }, clinician: true }),
+  hama: (total: number): Measure => ({ key: "hama", targets: { HAMA: total }, clinician: true }),
+  /** CGI-S: 1 — норма … 7 — надзвичайно тяжкий розлад */
+  cgiS: (v: number): Measure => ({ key: "cgi_s", targets: {}, fixed: { 1: v }, clinician: true }),
+  /** CGI-I: 1 — дуже значне покращення … 4 — без змін … 7 — дуже значне погіршення */
+  cgiI: (v: number): Measure => ({ key: "cgi_i", targets: {}, fixed: { 1: v }, clinician: true }),
+  bprs: (total: number): Measure => ({ key: "bprs", targets: { BPRS: total }, clinician: true }),
   /** LEC-5: на каждую подію — номера вариантов с нуля; не названа — «не стосується мене» */
   lec5: (events: Record<number, number[]>): Measure => ({
     key: "lec5",
@@ -359,6 +375,47 @@ function contactPhone(r: () => number): string {
   const s = String(500_000_000 + Math.floor(r() * 90_000_000));
   return `+380 ${s.slice(0, 2)} ${s.slice(2, 5)} ${s.slice(5, 7)} ${s.slice(7, 9)}`;
 }
+
+/* ═════════════ огляд психіатра ═════════════ */
+
+/** Перший огляд лікаря-психіатра: скарги, стан, шкали лікаря, діагноз за МКХ-10, призначення */
+function psychIntake(p: Person, what: { complaints: string; diagnosis: string; plan: string; ideation?: string; status?: string }): NoteFn {
+  return (c) =>
+    [
+      "Огляд лікаря-психіатра.",
+      `Скарги: ${what.complaints}`,
+      `Психічний стан: ${what.status ?? STATUS_CALM(p)} ${what.ideation ?? "Суїцидальні думки заперечує (C-SSRS — негативний)."}`,
+      `${[
+        c.score("hamd17") !== null ? `HAM-D-17 — ${banded(c.score("hamd17"), c.band("hamd17"))}` : null,
+        c.score("hama") !== null ? `HAM-A — ${banded(c.score("hama"), c.band("hama"))}` : null,
+        c.score("bprs") !== null ? `BPRS — ${fmt(c.score("bprs"))} з 126` : null,
+        c.score("cgi_s") !== null ? `CGI-S — ${banded(c.score("cgi_s"), c.band("cgi_s"))}` : null,
+      ]
+        .filter(Boolean)
+        .join("; ")}.`,
+      `Діагноз: ${what.diagnosis}.`,
+      `Призначено: ${what.plan}`,
+    ].join("\n");
+}
+
+/** Повторний огляд: зміна за CGI-I і шкалою першого огляду */
+function psychFollow(plan: string): NoteFn {
+  return (c) =>
+    [
+      "Повторний огляд лікаря-психіатра.",
+      `${[
+        c.score("cgi_i") !== null ? `CGI-I — ${banded(c.score("cgi_i"), c.band("cgi_i"))}` : null,
+        c.score("hamd17") !== null ? `HAM-D-17 — ${fmt(c.score("hamd17"))} (на першому огляді — ${fmt(c.first("hamd17"))})` : null,
+        c.score("hama") !== null ? `HAM-A — ${fmt(c.score("hama"))} (на першому огляді — ${fmt(c.first("hama"))})` : null,
+      ]
+        .filter(Boolean)
+        .join("; ")}.`,
+      plan,
+    ].join("\n");
+}
+
+/** C-SSRS психіатра на першому огляді, коли думок про смерть немає: перший пункт набору «Первинний огляд лікаря-психіатра» */
+const CSSRS_CLEAR = () => M.cssrs({ wish: false, thoughts: false });
 
 /* ═════════════ общие кирпичи ═════════════ */
 
@@ -579,6 +636,26 @@ const ptsd: Builder = (p, r, v) => {
           },
         }
       : {}),
+    ...(k === 1
+      ? {
+          psychiatry: [
+            {
+              day: start + 6,
+              measures: [CSSRS_CLEAR(), M.hamd(between(r, 13, 17)), M.hama(between(r, 17, 21)), M.cgiS(4)],
+              note: psychIntake(p, {
+                complaints: "нав’язливі спогади, кошмари, настороженість, уникання; сон 4–5 год.",
+                diagnosis: "посттравматичний стресовий розлад (F43.1)",
+                plan: `сертралін 50 мг вранці; ${method.name} — за планом психолога; контрольний огляд через 6 тижнів.`,
+              }),
+            },
+            {
+              day: start + 6 + between(r, 42, 49),
+              measures: [M.hama(between(r, 8, 11)), M.cgiI(2)],
+              note: psychFollow("Стан значно покращився; сертралін продовжити щонайменше 6 місяців."),
+            },
+          ],
+        }
+      : {}),
     referrals: [
       ...(k === 1
         ? [
@@ -776,6 +853,26 @@ const ptsdSlow: Builder = (p, r, v) => {
     ...(k === 4 && lastPast < -3
       ? { thread: [{ day: -2, minute: 21 * 60 + 5, fromPatient: true, text: "Знову погано сплю, кошмари щоночі. Можна раніше на прийом?", read: false }] }
       : {}),
+    ...(k === 2
+      ? {
+          psychiatry: [
+            {
+              day: start + 27,
+              measures: [CSSRS_CLEAR(), M.hamd(between(r, 18, 21)), M.hama(between(r, 20, 24)), M.cgiS(5)],
+              note: psychIntake(p, {
+                complaints: "щоденні кошмари, відчуженість, спалахи гніву, хронічний біль після поранення.",
+                diagnosis: "посттравматичний стресовий розлад, хронічний перебіг (F43.1)",
+                plan: "сертралін збільшено до 100 мг, празозин 1 мг на ніч від кошмарів; психотерапія — продовжити.",
+              }),
+            },
+            {
+              day: start + 27 + between(r, 56, 63),
+              measures: [M.hama(between(r, 19, 22)), M.cgiI(4)],
+              note: psychFollow("Відповіді на терапію немає: обговорено заміну антидепресанту на венлафаксин; контроль через 4 тижні."),
+            },
+          ],
+        }
+      : {}),
     /* у выбывшего повтор так и остался несданным — просрочка видна в очереди работы */
     pending: dropout
       ? [{ key: "pcl5", grantedDay: lastDayWith(visits, "pcl5") ?? lastPast, dueDay: Math.min(-1, (lastDayWith(visits, "pcl5") ?? lastPast) + 28) }]
@@ -785,11 +882,14 @@ const ptsdSlow: Builder = (p, r, v) => {
 
 /* ─── депресивний епізод, часткова відповідь ─── */
 
-const DEPR_STEPS = (p: Person) => [
+/** Сеанси при депресії; про ліки — лише в тих, кого оглянув психіатр (Story.psychiatry) */
+const DEPR_STEPS = (p: Person, meds: boolean) => [
   "Поведінкова активація: щоденник активностей, план — 3 приємні й 2 обов’язкові справи на тиждень.",
   "Виконано 3 з 5 запланованих справ; настрій «трохи кращий вранці». Розібрано, що заважало.",
   "Когнітивна реструктуризація думки «Я тягар для родини»; альтернативи формулює з підтримкою.",
-  `Приймає сертралін третій тиждень, переносить добре; сон до 6 год, ${g(p, "почав", "почала")} виходити на прогулянки.`,
+  meds
+    ? `Приймає сертралін третій тиждень, переносить добре; сон до 6 год, ${g(p, "почав", "почала")} виходити на прогулянки.`
+    : `Режим сну: підйом в один час, без денного сну; сон до 6 год, ${g(p, "почав", "почала")} виходити на прогулянки.`,
   "Робота з руминаціями: «час для роздумів» 15 хв, переключення на дію.",
   "Розширення активностей: зустріч із другом, спортзал двічі на тиждень.",
   "Ангедонія зберігається вечорами; додано заплановані приємні справи після служби.",
@@ -821,7 +921,7 @@ const depression: Builder = (p, r, v) => {
     : worse !== null
       ? [...days.filter((d) => d < worse - 4 || d > 1), worse].sort((a, b) => a - b)
       : days;
-  const steps = DEPR_STEPS(p);
+  const steps = DEPR_STEPS(p, k % 3 === 0 && k !== 9);
 
   const visits: Visit[] = usedDays.map((d, i) => {
     if (i === 0) {
@@ -835,7 +935,9 @@ const depression: Builder = (p, r, v) => {
             `Скарги: пригнічений настрій більшу частину дня, втрата інтересу, раннє пробудження о 4–5 год, зниження апетиту, втома. Триває ${between(r, 6, 14)} тижнів.`,
             `Психічний стан: ${STATUS_CALM(p)} Настрій знижений, мовлення тихе, уповільнене. ${passive ? "Пасивні думки «краще б не прокидатися» без наміру (C-SSRS)." : "Суїцидальні думки заперечує."}`,
             `Обстеження: PHQ-9 — ${banded(c.score("phq9"), c.band("phq9"))}; GAD-7 — ${banded(c.score("gad7"), c.band("gad7"))}; WHO-5 — ${fmt(c.score("who5"))} з 25.`,
-            "План: поведінкова активація й когнітивна терапія раз на 2 тижні; консультація психіатра щодо антидепресанту; контроль PHQ-9 і WHO-5 щомісяця.",
+            k % 3 === 0 && k !== 9
+              ? "План: поведінкова активація й когнітивна терапія раз на 2 тижні; консультація психіатра щодо антидепресанту; контроль PHQ-9 і WHO-5 щомісяця."
+              : "План: поведінкова активація й когнітивна терапія раз на 2 тижні; контроль PHQ-9 і WHO-5 щомісяця; без динаміки за 6 тижнів — консультація психіатра.",
           ].join("\n"),
         { reason: pick(r, ["Нічого не хочеться, прокидаюся о четвертій і лежу", "Все байдуже, навіть діти не радують", "Немає сил ні на що"]) },
       );
@@ -929,6 +1031,26 @@ const depression: Builder = (p, r, v) => {
       // відповідь ще не надійшла — свіже направлення, а не забуте
       ...(k === 9 ? [{ day: Math.max(start + 10, -6), destination: "psychiatrist" as const, urgency: "routine" as const, status: "accepted" as const, reason: "Часткова відповідь на терапію: питання корекції антидепресанту." }] : []),
     ],
+    ...(k % 3 === 0 && k !== 9
+      ? {
+          psychiatry: [
+            {
+              day: start + 16,
+              measures: [CSSRS_CLEAR(), M.hamd(between(r, 18, 22)), M.hama(between(r, 12, 16)), M.cgiS(between(r, 4, 5))],
+              note: psychIntake(p, {
+                complaints: "стійко знижений настрій, ангедонія, раннє пробудження, зниження апетиту й ваги.",
+                diagnosis: "депресивний епізод середнього ступеня (F32.1)",
+                plan: "сертралін 50 мг вранці; психотерапія — продовжити; контрольний огляд через 6 тижнів.",
+              }),
+            },
+            {
+              day: start + 16 + between(r, 42, 49),
+              measures: [M.hamd(between(r, 12, 15)), M.cgiI(3), M.cgiS(3)],
+              note: psychFollow("Відповідь часткова: доза сертраліну збільшена до 100 мг, контроль через 4 тижні."),
+            },
+          ],
+        }
+      : {}),
     ...(k === 2 && lastPast < -6
       ? {
           thread: [
@@ -1125,6 +1247,20 @@ const alcohol: Builder = (p, r, v) => {
       episode: { openDay: day0, reason: `${g(p, "Госпіталізований", "Госпіталізована")} з ознаками синдрому відміни алкоголю.` },
       visits: [...visits, visit(k === 0 ? 1 : between(r, 3, 12), "repeat", [], undefined)],
       ...(k === 0 ? { openFrom: day0 } : {}),
+      psychiatry: [
+        {
+          day: day0 + 1,
+          afterVisit: 1,
+          measures: [M.cgiS(k === 0 ? 5 : 4)],
+          note: (c) =>
+            [
+              "Огляд лікаря-психіатра (нарколога).",
+              `Синдром залежності від алкоголю, стан відміни без делірію; CIWA-Ar — ${fmt(c.last("ciwaar"))}. CGI-S — ${banded(c.score("cgi_s"), c.band("cgi_s"))}.`,
+              "Діагноз: синдром залежності від алкоголю, стан відміни (F10.3).",
+              "Призначено: детоксикаційна терапія; після стабілізації — налтрексон 50 мг; мотиваційне консультування в психолога.",
+            ].join("\n"),
+        },
+      ],
       decide: (c) =>
         c.first
           ? { outcome: "confirmed", note: "Підтверджено: синдром відміни алкоголю. Спостереження чергового лікаря, медикаментозна підтримка." }
@@ -1704,6 +1840,30 @@ const crisis: Builder = (p, r, v) => {
     visits,
     home: [],
     openFrom: resolved ? undefined : k === 0 ? day0 : -1,
+    psychiatry: [
+      {
+        day: day0,
+        afterVisit: 0,
+        measures: [M.hamd(heavy ? between(r, 25, 28) : between(r, 21, 25), 3), M.cgiS(heavy ? 6 : 5)],
+        note: psychIntake(p, {
+          complaints: "суїцидальні думки зі способом, безсоння, відчуття безвиході.",
+          ideation: heavy ? "Суїцидальні думки зі способом і наміром; критичність часткова." : "Суїцидальні думки зі способом, наміру й плану немає; критичність збережена.",
+          diagnosis: heavy ? "тяжкий депресивний епізод без психотичних симптомів (F32.2), гостра суїцидальна криза" : "депресивний епізод середнього ступеня з суїцидальними думками (F32.1)",
+          plan: heavy
+            ? "переведення до психіатричного відділення на спостереження; лікування — за рішенням відділення."
+            : "міртазапін 15 мг на ніч; госпіталізація до психіатричного відділення не потрібна; огляд через 3 дні; план безпеки погоджено.",
+        }),
+      },
+      ...(resolved
+        ? [
+            {
+              day: day0 + (k === 2 ? 21 : 28),
+              measures: [M.hamd(between(r, 10, 13), 1), M.cgiI(2)],
+              note: psychFollow("Стан значно покращився, думки про смерть поодинокі, без наміру. Міртазапін продовжити, огляд через місяць."),
+            },
+          ]
+        : []),
+    ],
     decide: (c) =>
       c.first
         ? { outcome: "confirmed", note: "Підтверджено: суїцидальні думки зі способом. План безпеки, огляд психіатра в день звернення, щоденний контакт." }
@@ -2001,6 +2161,20 @@ const psychosis: Builder = (p, r, v) => {
     },
     visits,
     decide: () => ({ outcome: "confirmed", note: "Підтверджено: психотична симптоматика. Невідкладний огляд психіатра, переведено до психіатричного відділення." }),
+    psychiatry: [
+      {
+        day: day0,
+        afterVisit: 0,
+        measures: [M.bprs(between(r, 52, 62)), M.cgiS(6)],
+        note: psychIntake(p, {
+          complaints: "слухові псевдогалюцинації коментуючого змісту, ідеї стосунку щодо побратимів, недосипання понад 2 тижні.",
+          status: `Свідомість ясна, ${g(p, "орієнтований", "орієнтована")} у повному обсязі; ${g(p, "напружений", "напружена")}, ${g(p, "насторожений", "насторожена")}, відповідає з паузами; мислення з ідеями стосунку, прислуховується.`,
+          ideation: "Критичність знижена; суїцидальні думки заперечує.",
+          diagnosis: "гострий поліморфний психотичний розлад (F23.1)",
+          plan: "переведення до психіатричного відділення; супровід чергового.",
+        }),
+      },
+    ],
     ...(k === 0
       ? {
           conclusion: {

@@ -306,6 +306,39 @@ async function ensureDemoSpecialist(departmentId: string): Promise<void> {
   await syncSlots(id);
 }
 
+/**
+ * Лікар-психіатр відділення — для оглядів історій (Story.psychiatry).
+ *
+ * Вымышленный, как и пациенты, и убирается той же командой: осмотр со
+ * шкалами врача и подписанная консультация от имени настоящего сотрудника
+ * были бы записью, которой этот сотрудник не делал. Расписания у него нет
+ * намеренно: со слотами он стал бы лечащим (loadClinicians) и забрал бы
+ * часть людей у психологов, а психиатр отделения смотрит по направлению,
+ * не ведёт.
+ */
+async function ensureDemoPsychiatrist(departmentId: string): Promise<{ id: string; name: string }> {
+  const email = `demo-psychiatrist@${DEMO_DOMAIN}`;
+  const [existing] = await db.select().from(users).where(eq(users.email, email));
+  const id = existing?.id ?? crypto.randomUUID();
+  if (!existing) {
+    await db.insert(users).values({
+      id,
+      email,
+      ...encryptPersonFields({ firstName: "Валентин", lastName: "Чорноус", middleName: "Петрович" }),
+      passwordHash: await hashPassword(DEMO_PASSWORD),
+      role: "admin",
+      sex: "male",
+    } as never);
+    const { ensureBuiltinRole } = await import("./permissions");
+    await ensureBuiltinRole(id);
+  }
+  await db
+    .insert(specialistProfiles)
+    .values({ userId: id, departmentId, position: "Лікар-психіатр", room: "217", acceptsBookings: false })
+    .onConflictDoNothing();
+  return { id, name: "Чорноус Валентин Петрович" };
+}
+
 interface Clinician {
   id: string;
   name: string;
@@ -508,6 +541,8 @@ interface FillContext {
   report: FillReport;
   /** Неразобранные случаи прогона — множеством: случай, продлённый вторым замером, — всё ещё один случай */
   openCases: Set<string>;
+  /** Психиатр отделения для осмотров историй (Story.psychiatry); нет отделения — осмотров нет */
+  psychiatrist: { id: string; name: string } | null;
 }
 
 interface Booked {
@@ -527,6 +562,8 @@ interface Session {
   at: number;
   measures: Measure[];
   booked?: Booked;
+  /** Огляд психіатра: запис консультації пише він, а не лікуючий психолог */
+  psychiatry?: NonNullable<Story["psychiatry"]>[number];
 }
 
 /** Баллы одного замера: методика → шкала → значение и полоса */
@@ -714,6 +751,20 @@ async function writeStory(ctx: FillContext, p: Person, userId: string, story: St
     const day = h.recent ? (dayKeyOf(clock, at) === dateAt(clock, 0).key ? 0 : -1) : h.day;
     if (at < pastLimit) sessions.push({ day, at, measures: h.measures });
   }
+  /*
+   * Осмотр психиатра — сразу после приёма у психолога, к которому он
+   * привязан (кризис, отмена алкоголя), или в рабочие часы дня, когда
+   * закрыто направление. Приёма нет — нет и осмотра: врач смотрит того, кто
+   * пришёл.
+   */
+  if (ctx.psychiatrist) {
+    for (const entry of story.psychiatry ?? []) {
+      const after = entry.afterVisit !== undefined ? booked.find((b) => b.index === entry.afterVisit) : undefined;
+      if (entry.afterVisit !== undefined && (!after || after.state !== "past" || after.visit.outcome !== "done")) continue;
+      const at = after ? after.endsAt + (20 + Math.floor(r() * 50)) * MIN : momentAt(clock, entry.day, 11 * 60 + Math.floor(r() * 240));
+      if (at < pastLimit - HOUR) sessions.push({ day: after ? after.offset : entry.day, at, measures: entry.measures, psychiatry: entry });
+    }
+  }
   sessions.sort((a, b) => a.at - b.at);
 
   const history: { at: number; scores: Scores }[] = [];
@@ -779,7 +830,8 @@ async function writeStory(ctx: FillContext, p: Person, userId: string, story: St
         update battery_assignments set completed_at = (select max(submitted_at) from responses where id in ${ids})
         where id = ${batteryAssignmentId} and completed_at is not null`);
     }
-    await settleCases(ctx, userId, story, attending, s, ids, r);
+    const psychiatristNext = sessions.find((x) => x.psychiatry && x.at > s.at && x.at - s.at < 6 * HOUR)?.at;
+    await settleCases(ctx, userId, story, attending, s, ids, r, psychiatristNext);
   }
 
   /* ─── записи приёма ─── */
@@ -821,7 +873,11 @@ async function writeStory(ctx: FillContext, p: Person, userId: string, story: St
     };
   };
 
-  let version = 0;
+  /*
+   * Записи — по времени, одной нумерацией версий: протоколы приёмов
+   * психолога и консультации психиатра лежат в одной истории человека.
+   */
+  const written: { at: number; text: string; kind: "intake" | "session" | "observation" | "consult"; appointmentId: string | null; author: string; draft: boolean }[] = [];
   let visitNo = 0;
   for (const b of booked) {
     if (b.state === "future" || b.state === "soon") continue;
@@ -830,26 +886,47 @@ async function writeStory(ctx: FillContext, p: Person, userId: string, story: St
     const session = sessions.find((s) => s.booked === b);
     const current = session ? sessionScores.get(session) : undefined;
     const c = contextAt(b.endsAt, current ?? new Map(), visitNo);
-    const text = b.visit.note ? b.visit.note(c) : "Повторна консультація за планом лікування. Стан без суттєвих змін, план продовжено.";
     const inProgress = b.state === "now";
-    const created = inProgress ? now - 2 * MIN : b.endsAt - (3 + Math.floor(r() * 9)) * MIN;
-    const draft = inProgress || b.visit.draft || (b.visit.day === -1 && p.ordinal % 9 === 0);
-    const signed = Math.min(pastLimit, created + (3 + Math.floor(r() * 20)) * MIN);
+    written.push({
+      at: inProgress ? now - 2 * MIN : b.endsAt - (3 + Math.floor(r() * 9)) * MIN,
+      text: b.visit.note ? b.visit.note(c) : "Повторна консультація за планом лікування. Стан без суттєвих змін, план продовжено.",
+      kind: visitNo === 1 ? "intake" : (b.visit.noteKind ?? "session"),
+      appointmentId: b.appointmentId,
+      author: attending.id,
+      draft: inProgress || (b.visit.draft ?? false) || (b.visit.day === -1 && p.ordinal % 9 === 0),
+    });
+  }
+  for (const s of sessions) {
+    if (!s.psychiatry || !ctx.psychiatrist) continue;
+    const scores = sessionScores.get(s);
+    if (!scores) continue;
+    written.push({
+      at: Math.min(pastLimit - 5 * MIN, s.at + (25 + Math.floor(r() * 20)) * MIN),
+      text: s.psychiatry.note(contextAt(s.at + HOUR, scores, visitNo)),
+      kind: "consult",
+      appointmentId: null,
+      author: ctx.psychiatrist.id,
+      draft: false,
+    });
+  }
+  written.sort((a, b) => a.at - b.at);
+  for (const [i, w] of written.entries()) {
     const noteId = crypto.randomUUID();
-    version += 1;
+    const signed = Math.min(pastLimit, w.at + (3 + Math.floor(r() * 20)) * MIN);
     await db.insert(patientNotes).values({
       id: noteId,
       userId,
-      version,
-      kind: version === 1 ? "intake" : (b.visit.noteKind ?? "session"),
-      text: encryptField(text)!,
-      appointmentId: b.appointmentId,
-      createdBy: attending.id,
-      createdAt: iso(created),
-      ...(draft ? {} : { status: "signed" as const, signedAt: iso(signed), signedBy: attending.id }),
+      version: i + 1,
+      kind: w.kind,
+      text: encryptField(w.text)!,
+      appointmentId: w.appointmentId,
+      createdBy: w.author,
+      createdAt: iso(w.at),
+      // черновик — только последняя запись: поверх неподписанной версии новая не заводится (routes/notes.ts)
+      ...(w.draft && i === written.length - 1 ? {} : { status: "signed" as const, signedAt: iso(signed), signedBy: w.author }),
     });
     // слепой индекс — как у записи через маршрут (routes/notes.ts): иначе поиск по записям наполнения не находил бы ничего
-    const fps = indexOf(text).map((fp) => ({ noteId, kind: "note", userId, fp }));
+    const fps = indexOf(w.text).map((fp) => ({ noteId, kind: "note", userId, fp }));
     if (fps.length) await db.insert(noteSearch).values(fps).onConflictDoNothing();
     report.notes += 1;
   }
@@ -1008,6 +1085,8 @@ async function settleCases(
   s: Session,
   ids: string[],
   r: () => number,
+  /** Огляд психіатра того ж дня: рішення по випадку — після нього, з його даними */
+  holdUntil?: number,
 ): Promise<number> {
   const alerts = await db
     .select({ id: riskAlerts.id, caseId: riskAlerts.caseId, questionId: riskAlerts.questionId, label: riskAlerts.label, at: riskAlerts.at })
@@ -1029,16 +1108,36 @@ async function settleCases(
   };
   for (const id of caseIds) await recompute(id);
 
+  /*
+   * Предыдущий случай в окне — неразобранный или разобранный уже ПОСЛЕ этих
+   * сигналов (решение отложено до осмотра психиатра того же дня, holdUntil):
+   * тогда сигналы осмотра ложатся в него и делят его решение.
+   */
   const [previous] = await db
-    .select({ id: alertCases.id, last: alertCases.lastAlertAt })
+    .select({ id: alertCases.id, last: alertCases.lastAlertAt, ackAt: alertCases.acknowledgedAt, ackBy: alertCases.acknowledgedBy, outcome: alertCases.outcome })
     .from(alertCases)
-    .where(and(eq(alertCases.userId, userId), isNull(alertCases.acknowledgedAt), sql`${alertCases.id} not in ${caseIds}`))
+    .where(
+      and(
+        eq(alertCases.userId, userId),
+        sql`(${alertCases.acknowledgedAt} is null or ${alertCases.acknowledgedAt} > ${iso(s.at)})`,
+        sql`${alertCases.id} not in ${caseIds}`,
+      ),
+    )
     .orderBy(sql`${alertCases.lastAlertAt} desc`)
     .limit(1);
   if (previous && Date.parse(previous.last) >= s.at - 72 * HOUR) {
     await db.update(riskAlerts).set({ caseId: previous.id }).where(inArray(riskAlerts.caseId, caseIds));
     await db.delete(alertCases).where(inArray(alertCases.id, caseIds));
     await recompute(previous.id);
+    if (previous.ackAt) {
+      await db.execute(sql`
+        update alert_cases set acknowledged_at = greatest(acknowledged_at, last_alert_at + interval '5 minutes')
+        where id = ${previous.id}`);
+      await db.execute(sql`
+        update risk_alerts a set acknowledged_by = c.acknowledged_by, acknowledged_at = c.acknowledged_at, outcome = c.outcome
+          from alert_cases c where c.id = a.case_id and a.case_id = ${previous.id}`);
+      return 0;
+    }
     caseIds = [previous.id];
   }
 
@@ -1070,7 +1169,7 @@ async function settleCases(
     });
     // критический пункт разбирают в течение часа-двух, полосу шкалы — в тот же или на следующий рабочий день
     const delay = critical ? (20 + Math.floor(r() * 70)) * MIN : (2 + Math.floor(r() * 18)) * HOUR;
-    const ackAt = Math.max(last + 5 * MIN, Math.min(now - 2 * MIN, last + delay));
+    const ackAt = Math.max(last + 5 * MIN, Math.min(now - 2 * MIN, Math.max(last + delay, (holdUntil ?? 0) + 30 * MIN)));
     await db
       .update(alertCases)
       .set({
@@ -1425,6 +1524,7 @@ export async function fillDemoData(count: number): Promise<FillReport> {
     screeningBattery: await screeningBattery(),
     report,
     openCases: new Set(),
+    psychiatrist: await ensureDemoPsychiatrist(clinicians[0]!.departmentId),
   };
 
   report.ladder = await ensureLadder(department?.id ?? null);

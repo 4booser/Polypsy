@@ -224,7 +224,11 @@ describe("ответы под историю", () => {
       let checked = 0;
       for (const p of makePeople(N)) {
         const story = storyOf(p);
-        const all = [...story.visits.flatMap((v) => v.measures), ...story.home.flatMap((h) => h.measures)];
+        const all = [
+          ...story.visits.flatMap((v) => v.measures),
+          ...story.home.flatMap((h) => h.measures),
+          ...(story.psychiatry ?? []).flatMap((e) => e.measures),
+        ];
         for (const [i, m] of all.entries()) {
           const id = keys.get(m.key);
           expect(id, m.key).toBeDefined();
@@ -344,6 +348,11 @@ describe("история в базе", () => {
       .where(sql`${patientNotes.userId} in ${demo}`);
     expect(notes.length).toBeGreaterThan(N * 3);
     for (const { note, visit } of notes) {
+      // без приёма — только консультация психиатра (проверена отдельно)
+      if (note.appointmentId === null) {
+        expect(note.kind, note.id).toBe("consult");
+        continue;
+      }
       expect(visit, note.id).not.toBeNull();
       expect(visit!.patientId).toBe(note.userId);
       expect(["done", "in_progress"], note.id).toContain(visit!.status);
@@ -351,6 +360,32 @@ describe("история в базе", () => {
     }
     // записи подписаны, кроме единичных черновиков вчерашних приёмов
     expect(notes.filter((n) => n.note.status === "signed").length).toBeGreaterThan(notes.length * 0.95);
+  });
+
+  test("осмотр психиатра: шкалы врача заполнены специалистом, консультацию подписал психиатр, а не лечащий психолог", async () => {
+    const clinicianKeys = ["hamd17", "hama", "cgi_s", "cgi_i", "bprs"];
+    const rows = await db
+      .select({ key: surveys.catalogKey, source: responses.source })
+      .from(responses)
+      .innerJoin(surveys, eq(surveys.id, responses.surveyId))
+      .where(and(sql`${responses.userId} in ${demo}`, inArray(surveys.catalogKey, clinicianKeys)));
+    expect(rows.length).toBeGreaterThan(20);
+    expect(rows.every((r) => r.source === "clinician")).toBe(true);
+    const [psychiatrist] = await db.select().from(users).where(eq(users.email, `demo-psychiatrist@${DEMO_DOMAIN}`));
+    expect(psychiatrist).toBeDefined();
+    // у психиатра нет расписания: он смотрит по направлению и не становится лечащим
+    expect(eligible).not.toContain(psychiatrist!.id);
+    const consults = await db
+      .select()
+      .from(patientNotes)
+      .where(and(eq(patientNotes.createdBy, psychiatrist!.id), sql`${patientNotes.userId} in ${demo}`));
+    expect(consults.length).toBeGreaterThan(10);
+    for (const n of consults) {
+      expect(n.kind).toBe("consult");
+      expect(n.appointmentId).toBeNull();
+      expect(n.status).toBe("signed");
+      expect(decryptField(n.text)).toContain("лікаря-психіатра");
+    }
   });
 
   test("ни один слот не занят дважды", async () => {
