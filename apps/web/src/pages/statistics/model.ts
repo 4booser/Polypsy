@@ -10,6 +10,7 @@ import type {
   SurveyFull,
   UiKey,
 } from "@quizzy/shared";
+import { bandRange } from "../../charts/ladder";
 import { pageOffset } from "../../ui/paging";
 
 /**
@@ -610,7 +611,7 @@ export function reportRows(
           bandId: b.bandId,
           label: got?.label ?? band?.label ?? "",
           severity: got?.severity ?? band?.severity ?? null,
-          range: band ? `${band.minScore}–${band.maxScore}` : null,
+          range: band ? bandRange({ min: band.minScore, max: band.maxScore }) : null,
           highRisk: b.highRisk,
         });
       }

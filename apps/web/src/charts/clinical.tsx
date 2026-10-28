@@ -3,8 +3,9 @@ import type { Severity } from "@quizzy/shared";
 import { useLang } from "../lang";
 import { cx } from "../ui/cx";
 import { NoData } from "../ui/primitives";
-import { bandSpans, placeLabels } from "./courseModel";
-import { useChartWidth } from "./index";
+import { BandKey, BandLabels, bandBlocks, bandMinPx, fitHeight, placeBlocks, planBandColumn } from "./bands";
+import { bandSpans, bandY, betterOf, courseDomain, cutoffOf, ladderTicks, placeLabels, spacedTicks } from "./courseModel";
+import { AxisBreak, useChartWidth } from "./index";
 import {
   ATTENTION_COLOR,
   ChartLegend,
@@ -25,11 +26,13 @@ import {
   useDecimal,
   sevColor,
   shapeOf,
+  textWidth,
+  useFontsReady,
   useIndexHover,
   type LegendItem,
   type TableView,
 } from "./kit";
-import { boundaries, ladderDomain, profileRuns, rungOf, segments, share, sortRungs, type Rung } from "./ladder";
+import { bandRange, boundaries, ladderDomain, profileRuns, rungOf, segments, share, sortRungs, type Rung } from "./ladder";
 import { axisFor } from "./scale";
 
 /**
@@ -136,7 +139,7 @@ export function SeverityMeter({ rungs, value, max, size = "lg", valueLabel, labe
                   {lg ? (
                     <RowTip>
                       <TipHead>{s.rung.label}</TipHead>
-                      <TipRow value={`${dec(s.rung.min)}–${dec(s.rung.max)}`} />
+                      <TipRow value={bandRange(s.rung, dec)} />
                     </RowTip>
                   ) : null}
                 </span>
@@ -299,15 +302,21 @@ export interface TrendPoint {
   focus?: boolean;
 }
 
-const TP = { top: 14, right: 8, bottom: 26, left: 34 };
+const TP = { right: 8, bottom: 26 };
 
 /**
- * Динамика шкалы на фоне лестницы полос — тем же полем, что у графика курса:
- * подписанные полосы тяжести с границами, текущая — темнее.
+ * Динамика шкалы на фоне лестницы полос — тем же полем, что у графика курса
+ * (bands.tsx): подписанные полосы тяжести с границами — целиком, переносом,
+ * а не многоточием, — текущая темнее, клинический порог пунктиром с
+ * плашкой, «менше — краще / більше — краще» словами у оси. Узкому графику
+ * колонки подписей не хватает — полосы подписаны строками под ним (прежде
+ * на узком графике подписей не было вовсе, и полосы читались как фон).
  *
- * Ось Y здесь — ВСЯ лестница: вопрос графика не «насколько изменилось», а
+ * Ось Y здесь — вся лестница: вопрос графика не «насколько изменилось», а
  * «в какую ступень пришло», и срезать низ значило бы убрать с глаз ступень,
- * куда человек, возможно, вернулся. Без лестницы ось подгоняется axisFor.
+ * куда человек, возможно, вернулся. Открытые крайние полосы Т-баллов
+ * срезаются так же, как у курса (courseDomain), — с изломом у оси. Без
+ * лестницы ось подгоняется axisFor.
  *
  * Полоса вокруг линии — ошибка измерения (SEM), только когда она известна.
  */
@@ -329,6 +338,7 @@ export function BandTrend({
   const { ut } = useLang();
   const dec = useDecimal();
   const [W, boxRef] = useChartWidth();
+  useFontsReady();
   const svgRef = useRef<SVGSVGElement>(null);
   const hover = useIndexHover(points.length);
   const clip = useId().replace(/:/g, "");
@@ -343,11 +353,11 @@ export function BandTrend({
   let lo: number;
   let hi: number;
   let ticks: number[];
+  let cut = { lo: false, hi: false };
   if (sorted.length) {
-    const d = ladderDomain(sorted, withErr, max);
-    lo = d.lo;
-    hi = d.hi;
-    ticks = [lo, ...boundaries(sorted).map((_, i) => sorted[i + 1]!.min), hi].filter((v, i, a) => a.indexOf(v) === i && v >= lo && v <= hi);
+    const d = courseDomain(sorted, withErr, max);
+    ({ lo, hi, cut } = d);
+    ticks = ladderTicks(sorted, lo, hi);
   } else {
     const axis = axisFor({ lo: Math.min(...withErr), hi: Math.max(...withErr), atom: err });
     lo = axis.min;
@@ -356,25 +366,37 @@ export function BandTrend({
   }
   const span = Math.max(hi - lo, Number.EPSILON);
   const spans = bandSpans(sorted, lo, hi);
-  /* полоса подписей не шире трети графика: длинное название полосы сокращается многоточием */
-  const labelW = sorted.length ? Math.min(Math.round(W * 0.3), 176, Math.max(48, ...sorted.map((r) => r.label.length * 6.2 + 14))) : 0;
-  const showBandLabels = sorted.length > 0 && W - labelW > 300;
-  const fitLabel = (s: string) => {
-    const room = Math.floor((labelW - 14) / 6.2);
-    return s.length <= room ? s : `${s.slice(0, Math.max(1, room - 1)).trimEnd()}…`;
-  };
-
-  const right = TP.right + (showBandLabels ? labelW : 0);
-  const pw = Math.max(40, W - TP.left - right - 10);
-  const ph = height - TP.top - TP.bottom;
-  const t0 = Math.min(...points.map((p) => p.t));
-  const t1 = Math.max(...points.map((p) => p.t));
-  const xAt = (t: number) => TP.left + 10 + (t1 > t0 ? ((t - t0) / (t1 - t0)) * pw : pw / 2);
-  const yAt = (v: number) => TP.top + ph - ((v - lo) / span) * ph;
-  const f1 = (v: number) => v.toFixed(1);
-
+  const cutoff = cutoffOf(sorted);
+  const better = betterOf(sorted);
   const last = points.at(-1)!;
   const current = sorted.length ? (spans.find((s) => last.value >= s.from && last.value <= s.to)?.rung ?? null) : null;
+  const range = (r: { min: number; max: number }) => bandRange(r, dec);
+  const cutText = cutoff ? fillIn(ut(cutoff.side === "above" ? "course.cutoffAbove" : "course.cutoffBelow"), { v: dec(cutoff.value) }) : null;
+
+  /* подпись оси — куда лучше, словами; нет полярности — нет и строки */
+  const betterWord = better ? ut(better === "down" ? "course.betterDown" : "course.betterUp") : "";
+  const top = betterWord ? 24 : 12;
+  const L = Math.max(28, ...ticks.map((t) => textWidth(dec(t), 11, 600) + 10));
+  const col = planBandColumn({ ladder: sorted, W, L, R: TP.right, compact: false, bandText: (r) => `${range(r)} ${r.label}`, extra: cutText ? [cutText] : [] });
+  const base = Math.max(80, height - top - TP.bottom);
+  const ph = fitHeight({ spans, col, lo, hi, cutoff, base, cap: base + 80 });
+  const H = top + ph + TP.bottom;
+  const pw = Math.max(40, col.plotR - L - 20);
+  const t0 = Math.min(...points.map((p) => p.t));
+  const t1 = Math.max(...points.map((p) => p.t));
+  const xAt = (t: number) => L + 10 + (t1 > t0 ? ((t - t0) / (t1 - t0)) * pw : pw / 2);
+  /* полоса из одного значения — не тоньше своей подписи (bandY); подписи делений не налезают */
+  const yAt = sorted.length ? bandY(spans, lo, hi, top, ph, bandMinPx(col)) : (v: number) => top + ph - ((v - lo) / span) * ph;
+  const tickShown = spacedTicks(ticks, yAt);
+  const f1 = (v: number) => v.toFixed(1);
+  const fillOf = (rung: Rung, i: number) => (rung === current ? "var(--plotc)" : i % 2 ? "var(--plot2)" : "var(--plot)");
+
+  const { shown, tops } = placeBlocks(
+    bandBlocks({ spans, col, Y: yAt, current, rangeOf: range, cutoff, cutText, lo, hi }),
+    top + 1,
+    top + ph + 14,
+  );
+
   const line = points.map((p, i) => `${i ? "L" : "M"}${f1(xAt(p.t))},${f1(yAt(p.value))}`).join(" ");
   const band =
     err > 0 && points.length > 1
@@ -386,7 +408,7 @@ export function BandTrend({
       : null;
 
   const xs = points.map((p) => xAt(p.t));
-  const shownX = placeLabels(xs, points.map((p) => p.label.length * 6.2 + 4), 12);
+  const shownX = placeLabels(xs, points.map((p) => textWidth(p.label, 11, 600) + 4), 12);
 
   const onMove = (e: React.MouseEvent<SVGSVGElement>) => {
     const box = svgRef.current?.getBoundingClientRect();
@@ -397,15 +419,15 @@ export function BandTrend({
     hover.setAt(best);
   };
   const at = hover.at === null ? null : points[hover.at]!;
-  const fieldW = W - TP.left - TP.right;
+  const fieldW = W - L - TP.right;
 
   return (
     <div className="relative min-w-0" ref={boxRef}>
       <svg
         ref={svgRef}
-        viewBox={`0 0 ${W} ${height}`}
+        viewBox={`0 0 ${W} ${H}`}
         width="100%"
-        height={height}
+        height={H}
         role="img"
         aria-label={`${label}: ${points[0]!.label} — ${points.at(-1)!.label}, ${points.length}`}
         className={cx("block overflow-visible", FOCUSABLE)}
@@ -414,7 +436,7 @@ export function BandTrend({
       >
         <defs>
           <clipPath id={`bt-${clip}`}>
-            <rect x={TP.left} y={TP.top} width={fieldW} height={ph} rx={12} />
+            <rect x={L} y={top} width={fieldW} height={ph} rx={12} />
           </clipPath>
         </defs>
         {sorted.length ? (
@@ -422,62 +444,54 @@ export function BandTrend({
             {spans.map((s, i) => (
               <rect
                 key={`${s.rung.min}-${s.rung.max}`}
-                x={TP.left}
+                data-band={s.rung.label}
+                x={L}
                 y={f1(yAt(s.to))}
                 width={fieldW}
                 height={f1(yAt(s.from) - yAt(s.to))}
-                fill={s.rung === current ? "var(--plotc)" : i % 2 ? "var(--plot2)" : "var(--plot)"}
+                fill={fillOf(s.rung, i)}
               />
             ))}
-            {boundaries(sorted).map((c) => (
-              <line key={c} x1={TP.left} x2={TP.left + fieldW} y1={f1(yAt(c))} y2={f1(yAt(c))} stroke="var(--plotline)" strokeWidth={2} />
-            ))}
+            {boundaries(sorted)
+              .filter((c) => c > lo && c < hi)
+              .map((c) => (
+                <line key={c} x1={L} x2={L + fieldW} y1={f1(yAt(c))} y2={f1(yAt(c))} stroke="var(--plotline)" strokeWidth={2} />
+              ))}
           </g>
         ) : (
-          ticks.map((t) => <line key={t} x1={TP.left} x2={W - TP.right} y1={yAt(t)} y2={yAt(t)} stroke="var(--grid)" />)
+          ticks.map((t) => <line key={t} x1={L} x2={W - TP.right} y1={yAt(t)} y2={yAt(t)} stroke="var(--grid)" />)
         )}
 
-        {/* подписи полос у правого края — в своей полосе, данные туда не заходят */}
-        {showBandLabels
-          ? spans.map((s, i) => {
-              const top = yAt(s.to);
-              const h = yAt(s.from) - top;
-              if (h < 13) return null;
-              const two = h >= 28;
-              const yc = top + h / 2;
-              return (
-                <g key={`l-${s.rung.min}`}>
-                  <text
-                    x={W - TP.right - 8}
-                    y={f1(two ? yc - 1 : yc + 4)}
-                    textAnchor="end"
-                    fontSize={11}
-                    fontWeight={s.rung === current ? 800 : 700}
-                    fill={s.rung === current ? "var(--vink)" : "var(--muted)"}
-                    stroke={s.rung === current ? "var(--plotc)" : i % 2 ? "var(--plot2)" : "var(--plot)"}
-                    strokeWidth={4}
-                    strokeLinejoin="round"
-                    style={{ paintOrder: "stroke" }}
-                  >
-                    {fitLabel(s.rung.label)}
-                  </text>
-                  {two ? (
-                    <text x={W - TP.right - 8} y={f1(yc + 12)} textAnchor="end" fontSize={10.5} fontWeight={500} fill="var(--muted)">
-                      {dec(s.rung.min)}–{dec(s.rung.max)}
-                    </text>
-                  ) : null}
-                </g>
-              );
-            })
-          : null}
+        {cutoff && cutoff.at > lo && cutoff.at < hi ? (
+          <line
+            data-cutoff={cutoff.value}
+            x1={L}
+            x2={col.withCol ? col.colX - 16 : W - TP.right}
+            y1={f1(yAt(cutoff.at))}
+            y2={f1(yAt(cutoff.at))}
+            stroke="var(--text-2)"
+            strokeWidth={1.6}
+            strokeDasharray="6 4"
+          />
+        ) : null}
 
-        {ticks.map((t) => (
-          <text key={`t-${t}`} x={TP.left - 7} y={yAt(t) + 4} fontSize={11} fontWeight={600} fill="var(--axis)" textAnchor="end">
+        {/* подписи полос — целиком, переносом (bands.tsx) */}
+        <BandLabels shown={shown} tops={tops} colX={col.colX} colW={col.colW} />
+
+        {tickShown.map((t) => (
+          <text key={`t-${t}`} x={L - 7} y={yAt(t) + 4} fontSize={11} fontWeight={600} fill="var(--axis)" textAnchor="end">
             {dec(t)}
           </text>
         ))}
+        {cut.hi ? <AxisBreak x={L} y={top + 6} /> : null}
+        {cut.lo ? <AxisBreak x={L} y={top + ph - 4} /> : null}
+        {betterWord ? (
+          <text data-label="axis" x={0} y={top - 9} fontSize={12} fontWeight={800} fill="var(--text)">
+            {betterWord}
+          </text>
+        ) : null}
 
-        {at ? <line x1={xAt(at.t)} x2={xAt(at.t)} y1={TP.top} y2={TP.top + ph} stroke="var(--vink)" strokeDasharray="2 2" /> : null}
+        {at ? <line x1={xAt(at.t)} x2={xAt(at.t)} y1={top} y2={top + ph} stroke="var(--vink)" strokeDasharray="2 2" /> : null}
 
         {band ? <path d={band} fill={SINGLE_COLOR} fillOpacity={0.12} /> : null}
         {points.length > 1 ? <path d={line} fill="none" stroke={SINGLE_COLOR} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" /> : null}
@@ -498,7 +512,7 @@ export function BandTrend({
           fontSize={12}
           fontWeight={800}
           fill="var(--text)"
-          stroke="var(--plot)"
+          stroke={current ? fillOf(current, spans.findIndex((s) => s.rung === current)) : "var(--plot)"}
           strokeWidth={4}
           strokeLinejoin="round"
           style={{ paintOrder: "stroke" }}
@@ -508,7 +522,7 @@ export function BandTrend({
 
         {points.map((p, i) =>
           shownX.has(i) ? (
-            <text key={`x-${p.key}`} x={f1(xs[i]!)} y={height - 8} fontSize={11} fontWeight={600} fill="var(--axis)" textAnchor="middle">
+            <text key={`x-${p.key}`} x={f1(xs[i]!)} y={H - 8} fontSize={11} fontWeight={600} fill="var(--axis)" textAnchor="middle">
               {p.label}
             </text>
           ) : null,
@@ -523,6 +537,12 @@ export function BandTrend({
             {at.band ? <SevChip severity={at.band.severity} label={at.band.label} small /> : null}
           </p>
         </ChartTip>
+      ) : null}
+      {sorted.length && !col.withCol ? (
+        <>
+          <BandKey spans={spans} current={current} rangeOf={range} />
+          {cutText ? <ChartLegend items={[{ key: "cut", label: cutText, color: "var(--text-2)", kind: "cutoff", title: ut("course.cutoffWhy") }]} always /> : null}
+        </>
       ) : null}
     </div>
   );
@@ -618,7 +638,7 @@ export function ShareBar({
               ) : (
                 <span aria-hidden className="inline-block h-[10px] w-[14px] shrink-0 rounded-[3px]" style={{ background: partColor(p) }} />
               )}
-              <span data-legend-label className="truncate font-semibold text-text-2">
+              <span data-legend-label className="min-w-0 font-semibold text-text-2">
                 {p.label}
               </span>
               {p.value === null ? (
@@ -654,6 +674,14 @@ export interface HBar {
    */
   attention?: boolean;
 }
+
+/**
+ * Подпись строки-полосы переносится, а не режется многоточием: «Легка
+ * («субклінічна») депресія» в колонке подписей стояла «Легка («субклініч…»
+ * — без того, ради чего строка есть. Не больше трёх строк: длинный адрес
+ * техпанели не растягивает строку на пол-экрана.
+ */
+const LABEL_WRAP = "min-w-0 line-clamp-3 [overflow-wrap:anywhere]";
 
 /** Решётка строки-полосы: подпись, полоса, число */
 const HBAR_ROW =
@@ -703,7 +731,7 @@ export function HBars({
           const w = i.value !== null && top > 0 ? Math.max(0.015, Math.min(1, i.value / top)) : 0;
           return (
             <li key={i.key} tabIndex={0} className={HBAR_ROW}>
-              <span className={cx("min-w-0 truncate text-[13px] leading-[17px]", i.strong ? "font-extrabold text-text" : "font-semibold text-text-2")}>
+              <span className={cx(LABEL_WRAP, "text-[13px] leading-[17px]", i.strong ? "font-extrabold text-text" : "font-semibold text-text-2")}>
                 {i.label}
               </span>
               <span className="relative h-[14px]">
@@ -781,7 +809,7 @@ export function GroupedHBars({
       <ul className="m-0 grid list-none gap-[12px] p-0">
         {rows.map((r) => (
           <li key={r.key} tabIndex={0} className="group/row relative grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)] items-center gap-[12px] rounded-[8px] outline-none hover:bg-panel-2 focus-visible:outline-2 focus-visible:outline-[var(--focus)]">
-            <span className="min-w-0 truncate text-[13px] font-semibold text-text-2">{r.label}</span>
+            <span className={cx(LABEL_WRAP, "text-[13px] leading-[17px] font-semibold text-text-2")}>{r.label}</span>
             <span className="grid gap-[2px]">
               {series.map((s, k) => {
                 const v = r.values[k] ?? null;
@@ -863,7 +891,7 @@ export function PairBars({
         {rows.map((r) => (
           <li key={r.key} tabIndex={0} className="group/row relative min-w-0 rounded-[8px] outline-none focus-visible:outline-2 focus-visible:outline-[var(--focus)]">
             <div className="mb-[5px] flex items-baseline justify-between gap-[12px]">
-              <span className="min-w-0 truncate text-[13px] leading-[17px] font-semibold text-text-2">{r.label}</span>
+              <span className={cx(LABEL_WRAP, "text-[13px] leading-[17px] font-semibold text-text-2")}>{r.label}</span>
               <span className="flex shrink-0 items-baseline gap-[10px]">
                 {r.note}
                 <span className="text-caption font-bold text-text">{r.text}</span>

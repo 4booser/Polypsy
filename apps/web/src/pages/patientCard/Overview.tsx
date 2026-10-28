@@ -3,8 +3,8 @@ import { Link } from "react-router-dom";
 import type { DynamicsPoint, UiKey } from "@quizzy/shared";
 import { api } from "../../api";
 import { useAuth } from "../../auth";
-import { CourseChart } from "../../charts/course";
-import { courseEventsFromTimeline, courseFromDynamics } from "../../charts/courseModel";
+import { CourseChart, CourseLegend } from "../../charts/course";
+import { courseEventsFromTimeline, courseFromDynamics, courseNames, cutoffOf, laneEvents, signalsOn } from "../../charts/courseModel";
 import { dateTime, day, locale, severityKey, timeOfDay } from "../../format";
 import { useLang } from "../../lang";
 import { useResource, useResourceMap } from "../../useResource";
@@ -12,7 +12,7 @@ import { ActivityList, Ic, Loading, Popover, TextAction, type ActivityEvent } fr
 import { cx } from "../../ui/cx";
 import { Panel } from "../../ui/layout";
 import { ChangeCell, signed } from "../../ui/numbers";
-import { Button, Segmented, SeverityTag, Tag } from "../../ui/primitives";
+import { Button, SeverityTag, Tag } from "../../ui/primitives";
 import { shortTitle } from "./Banner";
 import { itemsGrid, sinceEvents, type InstrumentRow, type ItemsGrid, type TimelineRow } from "./clinical";
 import { daysBetween, dm, wdm } from "./format";
@@ -554,34 +554,45 @@ function ValuePop({ r, p, small }: { r: InstrumentRow; p: DynamicsPoint; small?:
 
 /* ─────────── курс ─────────── */
 
+/**
+ * «Курс»: малые графики методик с повторными замерами — один под другим, а
+ * не переключателем: прежде врач видел одну методику и не знал, что по
+ * соседней человеку стало хуже, пока не нажимал по очереди. Не больше трёх,
+ * свежие первыми (порядок таблицы «Методики»); все шкалы — во вкладке
+ * «Графіки». Легенда значков — одна на панель.
+ */
+const COURSE_MAX = 3;
+
 function CoursePanel({ v }: { v: CardView }) {
   const { ut } = useLang();
-  const rows = v.rows.filter((r) => r.points.length > 0);
-  const [pick, setPick] = useState<string | null>(null);
-  const row = rows.find((r) => r.key === pick) ?? rows.find((r) => r.points.length > 1) ?? rows[0];
   const events = useMemo(() => courseEventsFromTimeline(v.timeline ?? []), [v.timeline]);
   if (!v.dynamics) return null;
-  if (!row) return null;
-  const data = courseFromDynamics(row.scale, row.rungs);
-  const seen = new Set<string>();
-  const choices = rows.filter((r) => (seen.has(r.code) ? false : (seen.add(r.code), true))).slice(0, 4);
+  const rows = v.rows.filter((r) => r.points.length > 1).slice(0, COURSE_MAX);
+  if (!rows.length) return null;
+  const charts = rows.map((r) => ({
+    r,
+    data: courseFromDynamics(r.scale, r.rungs, undefined, { surveyId: r.surveyId }),
+    /* у свёрнутой методики график — её самой тяжёлой шкалы, и шапка называет шкалу */
+    names: courseNames(r.surveyTitle, r.scale.title, !r.folded.length && v.rows.filter((x) => x.surveyId === r.surveyId).length === 1),
+  }));
   return (
     <Panel
       title={ut("card.course")}
       icon={<Pi.chartSpline />}
-      sub={ut("card.courseSub").replace("{n}", String(row.points.length))}
-      actions={
-        choices.length > 1 ? (
-          <Segmented
-            label={ut("card.courseOf")}
-            value={row.key}
-            onChange={setPick}
-            items={choices.map((r) => ({ key: r.key, label: r.code.length > 14 ? `${r.code.slice(0, 13)}…` : r.code }))}
-          />
-        ) : undefined
-      }
+      actions={<TextAction onClick={() => v.goTab("dynamics")}>{ut("card.tDynamics")}</TextAction>}
     >
-      <CourseChart title={row.code} {...data} events={events} />
+      <div className="flex flex-col gap-4">
+        {charts.map(({ r, data, names }, i) => (
+          <div key={r.key} className={cx(i > 0 && "border-t border-divider pt-4")}>
+            <CourseChart title={r.code} measure={names.measure} method={names.method} {...data} events={events} size="compact" legend={false} />
+          </div>
+        ))}
+      </div>
+      <CourseLegend
+        cutoff={charts.some((c) => cutoffOf(c.data.rungs)) || null}
+        signal={charts.some((c) => signalsOn(c.data.points, events, c.data.scaleCode).size > 0)}
+        lane={charts.flatMap((c) => laneEvents(c.data.points, events)).filter((e, i, all) => all.indexOf(e) === i)}
+      />
     </Panel>
   );
 }

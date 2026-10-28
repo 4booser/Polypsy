@@ -4,7 +4,7 @@ import type { RespondentDynamics, ResponseAttempt, ResponseDetail, SurveyFull } 
 import { api, type TimelineItem } from "../../api";
 import { HeatTable } from "../../charts/clinical";
 import { CourseChart } from "../../charts/course";
-import { courseEventsFromTimeline, courseFromDynamics, type CourseEvent } from "../../charts/courseModel";
+import { courseEventsFromTimeline, courseFromDynamics, courseNames, type CourseEvent } from "../../charts/courseModel";
 import { useDecimal } from "../../charts/kit";
 import { sortRungs, type Rung } from "../../charts/ladder";
 import { day } from "../../format";
@@ -29,8 +29,8 @@ import { ResponseTabs } from "./tabs";
  *   Результат        → число, ступень, сдвиг с порогом надёжной зміни, шкала
  *                      тяжести, сведения о шкале и смысл результата словами;
  *   Динаміка         → график курса (CourseChart набора) по всем сданным
- *                      попыткам этой методики этим человеком, с сессиями,
- *                      неявками и сигналами из хронологии;
+ *                      попыткам этой методики этим человеком, с приёмами,
+ *                      неявками, заключениями и сигналами из хронологии;
  *   Форма симптомів  → ответы по пунктам за последние попытки той же версии
  *                      тепловой таблицей;
  *   Внесок пунктів   → что дал каждый пункт и что он мог дать, отметка «було»;
@@ -140,7 +140,8 @@ export function DynamicsBody({ detail, dyn, events }: { detail: ResponseDetail; 
   }
   const code = picked ?? (scales.some((s) => s.code === main?.scaleCode) ? main!.scaleCode : scales[0]!.code);
   const scale = scales.find((s) => s.code === code) ?? scales[0]!;
-  const data = courseFromDynamics(scale, rungsFor(detail, scale.code));
+  const data = courseFromDynamics(scale, rungsFor(detail, scale.code), undefined, { surveyId: detail.survey.id });
+  const names = courseNames(detail.survey.title, scale.title, scales.length === 1);
   const notes = [
     !view.focusInSeries ? ut("rch.notInSeries") : null,
     view.scales.some((s) => s.mixedVersions) ? ut("rch.mixedVersions") : null,
@@ -164,7 +165,7 @@ export function DynamicsBody({ detail, dyn, events }: { detail: ResponseDetail; 
       }
     >
       <div className="px-4 pb-4 pt-1">
-        <CourseChart title={scale.title} {...data} events={events} />
+        <CourseChart title={scale.title} measure={names.measure} method={names.method} {...data} events={events} />
       </div>
       {notes.length ? (
         <div className="flex flex-col gap-1 px-4 pb-2">
