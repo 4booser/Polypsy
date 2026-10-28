@@ -1,15 +1,113 @@
 <!doctype html>
-<html lang="ru">
+<html lang="uk">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <!-- Заголовок задаётся из кода и следует за языком (см. lang.tsx). Здесь
          остаётся запасной: он виден те доли секунды, пока грузится приложение,
          и в выдаче поисковика, который скрипт не выполняет. -->
-    <title>Quizzy</title>
+    <title>Polypsy</title>
+    <meta
+      name="description"
+      content="Polypsy веде пацієнта від запрошення до виписки: методики в застосунку, динаміка курсу, сигнали ризику, прийоми й листування — в одній системі для психологічного відділення."
+    />
+    <!-- Адрес сайта подставляет при старте контейнера apps/web/entry.sh: один
+         образ ставится в разные учреждения, и зашитый домен был бы чужим. -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Polypsy" />
+    <meta property="og:title" content="Polypsy — система психологічного відділення" />
+    <meta
+      property="og:description"
+      content="Методики в застосунку, динаміка курсу, сигнали ризику, прийоми й листування — в одній системі для психологічного відділення."
+    />
+    <meta property="og:url" content="%SITE_URL%/" />
+    <meta property="og:image" content="%SITE_URL%/landing.webp" />
+    <meta property="og:locale" content="uk_UA" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="alternate" type="text/markdown" href="/llms.txt" title="Polypsy для мовних моделей" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "Polypsy",
+        "url": "%SITE_URL%/",
+        "applicationCategory": "HealthApplication",
+        "operatingSystem": "Web, iOS, Android",
+        "inLanguage": ["uk", "ru", "en"],
+        "description": "Платформа психодіагностики й клінічного супроводу для психологічного відділення: методики з автоматичним підрахунком і нормами, динаміка з індексом надійної зміни, сигнали ризику з відповідальним і таймером, прийоми, заключення, плани безпеки, направлення й листування з пацієнтом."
+      }
+    </script>
+    <!-- Текст главной лежит в самой разметке — для тех, кто скрипт не выполняет:
+         поисковиков, AI-ассистентов, текстовых браузеров. Без него им
+         доставался пустой <div id="root">. Браузеру со скриптом блок не нужен:
+         атрибут ставится до разбора <body>, поэтому текст не мелькает, а React
+         при монтировании заменяет содержимое корня целиком. Остальным адресам
+         сервер отдаёт app.html — ту же страницу без этого блока (seoHtml.ts). -->
+    <script>document.documentElement.setAttribute("data-js", "")</script>
+    <style>[data-js] #static-landing { display: none }</style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root"><!-- static-landing:start -->
+      <main id="static-landing">
+        <h1>Polypsy — система психологічного відділення</h1>
+        <p>
+          Polypsy веде пацієнта від запрошення до виписки: методики в застосунку, динаміка курсу, сигнали ризику,
+          прийоми й листування — в одній системі для психологічного відділення.
+        </p>
+        <p><a href="/login">Увійти</a> · <a href="/status">Стан системи</a> · <a href="/llms.txt">Опис для мовних моделей</a></p>
+
+        <h2>Фахівцям</h2>
+        <ul>
+          <li>Картка пацієнта: результати методик, динаміка курсу, прийоми, записи прийому, заключення, направлення й листування.</li>
+          <li>Методики призначаються окремо, наборами, групам пацієнтів або за розкладом; пацієнт проходить їх у застосунку, у браузері чи на паперовому бланку.</li>
+          <li>Бали, норми й тлумачення рахуються автоматично; зміна від старту показана з порогом надійної зміни, тяжкість — словом.</li>
+          <li>Розклад і прийоми, заключення з підписом, плани безпеки, направлення, диспансерний нагляд.</li>
+        </ul>
+
+        <h2>Сигнал ризику не чекає, доки відкриють картку</h2>
+        <p>
+          Тривожна відповідь одразу стає випадком із відповідальним, таймером і рішенням. Сигнал бачать у черзі ризику, на
+          картці пацієнта й у сповіщеннях; розбір фіксується з часом і автором.
+        </p>
+
+        <h2>Методики</h2>
+        <p>
+          Каталог міжнародних і вітчизняних методик за напрямами: настрій, тривога й дистрес (PHQ-9, GAD-7, DASS-21, K10,
+          CORE-10), травма (PCL-5, ITQ, PC-PTSD-5), суїцидальний ризик (C-SSRS, ASQ, SBQ-R, SIDAS), сон, залежності
+          (AUDIT, ASSIST, CUDIT-R), ресурси й якість життя (WHO-5, SWLS, MSPSS), когнітивні функції, особистість, вигорання
+          персоналу. Відділення може додати власні методики в конструкторі: питання, ключі, норми й тлумачення.
+        </p>
+
+        <h2>Застосунок для пацієнтів</h2>
+        <p>
+          Пацієнт відповідає вдома, у зручний час, а фахівець бачить результат ще до прийому. Опитування з нагадуваннями,
+          запис і перенесення прийому, листи фахівцю без особистих номерів і месенджерів, робота без мережі. Лайфлайн
+          Україна, екстрена допомога й план безпеки — на кожному екрані.
+        </p>
+
+        <h2>Безпека й доступ</h2>
+        <ul>
+          <li>Особисті дані, тексти відповідей і заключення зашифровані окремо.</li>
+          <li>Журнал кожного перегляду картки: хто, коли й навіщо її відкривав; записи зчеплені в ланцюжок.</li>
+          <li>Фахівець бачить своїх пацієнтів; тимчасовий доступ — із причиною й строком.</li>
+          <li>Другий фактор, одноразові посилання на аркуш результатів, згода з версією тексту, захист від перебору паролів.</li>
+        </ul>
+
+        <h2>Мови</h2>
+        <p>Інтерфейс — українською, російською й англійською; тексти методик — українською й російською.</p>
+
+        <section lang="en">
+          <h2>In English</h2>
+          <p>
+            Polypsy follows a patient from invitation to discharge: assessments in the app, the course of treatment, risk
+            signals, appointments and messages — one system for a psychology department. Questionnaires are scored
+            automatically with norms and the reliable change index; an alarming answer becomes a risk case with an owner,
+            a timer and a decision. Patient data is encrypted, every view of a record is audited, and access is limited
+            by role and department.
+          </p>
+        </section>
+      </main>
+    <!-- static-landing:end --></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

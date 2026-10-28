@@ -38,9 +38,16 @@
 		reverse_proxy api:3001
 	}
 
+	# Корень — index.html с текстом главной для тех, кто скрипт не выполняет;
+	# любой другой путь приложения — app.html, та же оболочка без этого текста
+	# и с noindex (apps/web/seoHtml.ts). Иначе каждый адрес консоли выглядел бы
+	# для поисковика и AI-ассистента копией главной.
+	#
+	# `{path}index.html` — ради корня: каталог файлом не считается, и «/» без
+	# этого варианта уходил в app.html, то есть главная теряла свой текст.
 	handle {
 		root * /srv
-		try_files {path} /index.html
+		try_files {path} {path}index.html /app.html
 		file_server
 	}
 }

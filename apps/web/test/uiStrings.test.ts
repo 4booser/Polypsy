@@ -317,8 +317,21 @@ describe("строки интерфейса", () => {
     const html = readFileSync(join(WEB, "index.html"), "utf8");
     expect(html).toContain("<title>");
 
+    /*
+     * Два места на кириллице законны, и оба человек не видит.
+     *
+     * Текст главной между метками static-landing — для тех, кто скрипт не
+     * выполняет (поисковики, AI-ассистенты): браузеру со скриптом он скрыт до
+     * разбора <body> и заменяется React при монтировании. Он на языке
+     * экземпляра по умолчанию, украинском, с английским абзацем. Разметка
+     * schema.org — данные для машин, а не подпись.
+     */
+    const forMachines = html
+      .replace(/<!-- static-landing:start -->[\s\S]*?<!-- static-landing:end -->/, " ")
+      .replace(/<script type="application\/ld\+json">[\s\S]*?<\/script>/, " ");
+    expect(forMachines).not.toBe(html);
     // комментарии разметки — такое же пояснение для разработчика, как // в коде
-    const visible = html.replace(/<!--[\s\S]*?-->/g, " ");
+    const visible = forMachines.replace(/<!--[\s\S]*?-->/g, " ");
     const offenders: string[] = [];
     for (const m of visible.matchAll(/>([^<>]*)</g)) {
       const text = m[1]!.replace(/\s+/g, " ").trim();

@@ -197,6 +197,11 @@ Deploys go through GitHub Actions. A pushed `v*` tag starts `.github/workflows/d
 7. The shared catalog is installed, and the deploy confirms that the running version, commit and site names match the release.
 8. Health checks run inside the server and from outside over HTTPS.
 
+What search engines and AI assistants see:
+- The root page carries the landing text in the HTML itself, for clients that don't run scripts; browsers hide it and render the app as usual. Every other path gets `app.html`, the same shell without that text and with `noindex` (`apps/web/seoHtml.ts`, `apps/web/Caddyfile`).
+- `/robots.txt` allows everything except `/api/`. `/llms.txt` describes the product for language models.
+- At container start `apps/web/entry.sh` fills in the site address (Open Graph, schema.org, the `Sitemap` line) and writes `/sitemap.xml`, but only when `SITE_ADDRESS` is a domain.
+
 `.github/workflows/maintenance.yml` runs one-off actions on the server:
 - catalog install, status and force;
 - demo data fill and purge;
