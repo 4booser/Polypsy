@@ -581,6 +581,48 @@ describe("методики каталога — библиотека всех с
   );
 
   test(
+    "врач проводит методику каталога за своего пациента под ролью приложения; за пациента другого отделения и ничьего — отказ",
+    async () => {
+      /*
+       * Проведение — запись прохождения сотрудником: под ролью приложения её
+       * пускает CHECK политики responses (библиотека и человек зоны), и вместе
+       * с прохождением пишутся ответы. Ответ «Ні» — без тревоги: очередь
+       * случаев других проверок файла не меняется.
+       */
+      const loaded = await appApi(`/api/surveys/${library}`, doctorD.token);
+      expect(loaded.status, JSON.stringify(loaded.body)).toBe(200);
+      const answers = loaded.body.questions.map((q: { id: string; options: { id: string }[] }) => ({
+        questionId: q.id,
+        optionIds: [q.options[1]!.id],
+        durationMs: 1500,
+        changeCount: 0,
+        visitCount: 1,
+      }));
+      const fill = (onBehalfOf: string) =>
+        appApi(
+          `/api/surveys/${library}/responses`,
+          doctorD.token,
+          post({ startedAt: new Date(Date.now() - 60_000).toISOString(), durationMs: 60_000, events: [], answers, onBehalfOf }),
+        );
+
+      const own = await fill(patientD.id);
+      expect(own.status, JSON.stringify(own.body)).toBe(201);
+      const [row] = await db.select({ userId: responses.userId }).from(responses).where(eq(responses.id, own.body.id));
+      expect(row?.userId, "прохождение записано не на пациента").toBe(patientD.id);
+      expect((await appApi(`/api/responses/${own.body.id}`, doctorD.token)).status).toBe(200);
+
+      for (const other of [patientE, nobody]) {
+        const before = await db.select({ id: responses.id }).from(responses).where(eq(responses.userId, other.id));
+        const refused = await fill(other.id);
+        expect(refused.status, `проведено за человека вне зоны: ${JSON.stringify(refused.body)}`).toBe(403);
+        const after = await db.select({ id: responses.id }).from(responses).where(eq(responses.userId, other.id));
+        expect(after.length).toBe(before.length);
+      }
+    },
+    SLOW,
+  );
+
+  test(
     "приглашение к методике каталога — отделения выписавшего, как приглашение ни к чему",
     async () => {
       const made = await appApi("/api/invites", doctorD.token, post({ surveyId: library }));
