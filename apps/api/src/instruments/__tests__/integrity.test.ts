@@ -6,7 +6,8 @@ import { sadPersons } from "../sadPersons";
 import { sr45 } from "../sr45";
 
 /**
- * Целостность встроенных методик.
+ * Целостность методик учреждения (СР-45, SAD PERSONS, Мини-мульт, МЛО) — прежде
+ * встроенных, с 2026-10-28 записей каталога (блок dp-inst instruments/catalog.ts).
  *
  * Проверяется не подсчёт (для него есть золотые протоколы), а структура:
  * ключ не ссылается на несуществующий пункт, полосы интерпретации не рвутся
@@ -29,7 +30,7 @@ function describeIssues(issues: Issue[]): string {
   return issues.map((i) => `${i.level} ${i.where}: ${i.message}`).join("\n");
 }
 
-describe("встроенные методики", () => {
+describe("методики учреждения", () => {
   for (const [name, draft] of INSTRUMENTS) {
     test(`${name}: описание принимается схемой`, () => {
       const parsed = createSurveySchema.safeParse(draft);

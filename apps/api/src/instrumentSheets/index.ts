@@ -6,10 +6,6 @@ import { surveys } from "../db/schema";
 import { surveyFields } from "../lib/catalogInstall";
 import { createVersion, getSurvey } from "../lib/surveys";
 import { CATALOG } from "../instruments/catalog";
-import { minimult } from "../instruments/minimult";
-import { mlo } from "../instruments/mlo";
-import { sadPersons } from "../instruments/sadPersons";
-import { sr45 } from "../instruments/sr45";
 import { buildExamples } from "./examples";
 import { checkInstrument } from "./checks";
 import { SHEET_LANGS } from "./format";
@@ -44,19 +40,24 @@ export const SHEETS_DIR = "docs/instruments";
 
 /** Методика, для которой строится лист */
 export interface SheetEntry {
-  /** Устойчивое имя: ключ каталога или имя встроенной методики — оно же имя файла листа */
+  /** Устойчивое имя: ключ каталога — оно же имя файла листа и ключ карточки досье */
   key: string;
   /** Файл определения в apps/api/src/instruments */
   module: string;
   draft: CreateSurveyDraft;
-  /** Ставится установщиком каталога (иначе — только демонстрационным посевом) */
+  /**
+   * Ставится установщиком каталога (иначе — только демонстрационным посевом).
+   * С 2026-10-28 таких «только посевом» нет: четыре методики учреждения — тоже
+   * записи каталога; поле оставлено, чтобы лист честно сказал, если такая
+   * методика появится снова.
+   */
   catalog: boolean;
-  /** Источник, как его записывает журнал установки; у встроенных его в системе нет */
+  /** Источник, как его записывает журнал установки */
   source: string | null;
   /**
    * Примечание для персонала (CatalogEntry.note → surveys.source_note,
    * «Джерело» в паспорте методики): чей текст, откуда пороги. Раньше стояло в
-   * описании, и лист печатал его в «Призначення»; у встроенных его нет.
+   * описании, и лист печатал его в «Призначення».
    */
   note: string | null;
   notScored: { items: number[]; reason: string } | null;
@@ -157,27 +158,28 @@ const MODULE_OF: Record<string, string> = {
   cgi_i: "cgi.ts",
   bprs: "bprs.ts",
   // ── /dp-scales ──
+  // ── dp-inst ──
+  mlo: "mlo.ts",
+  minimult: "minimult.ts",
+  sr45: "sr45.ts",
+  "sad-persons": "sadPersons.ts",
+  // ── /dp-inst ──
 };
 
 /**
- * Все методики: четыре встроенные (их ставит только демонстрационный посев
- * seed.ts) и весь каталог. Методика каталога без строки в MODULE_OF роняет
- * сборку — новая методика не должна остаться без листа молча.
+ * Все методики — весь каталог. Четыре методики учреждения (СР-45, SAD
+ * PERSONS, Міні-мульт, БОО) до 2026-10-28 шли отдельным списком «встроенных»:
+ * их ставил только демонстрационный посев; теперь они записи каталога
+ * (блок dp-inst в instruments/catalog.ts). Методика каталога без строки в
+ * MODULE_OF роняет сборку — новая методика не должна остаться без листа молча.
  */
 export function sheetEntries(): SheetEntry[] {
-  const builtin: SheetEntry[] = [
-    { key: "sr45", module: "sr45.ts", draft: sr45, catalog: false, source: null, note: null, notScored: null },
-    { key: "sad-persons", module: "sadPersons.ts", draft: sadPersons, catalog: false, source: null, note: null, notScored: null },
-    { key: "minimult", module: "minimult.ts", draft: minimult, catalog: false, source: null, note: null, notScored: null },
-    { key: "mlo", module: "mlo.ts", draft: mlo, catalog: false, source: null, note: null, notScored: null },
-  ];
-  const catalog = CATALOG.map((e): SheetEntry => {
+  return CATALOG.map((e): SheetEntry => {
     const module = MODULE_OF[e.key];
     if (!module) throw new Error(`instrumentSheets: для методики каталога «${e.key}» не указан файл определения (MODULE_OF)`);
     if (!NOTES[e.key]) throw new Error(`instrumentSheets: для методики каталога «${e.key}» нет записи в notes.ts`);
     return { key: e.key, module, draft: e.draft, catalog: true, source: e.source, note: e.note, notScored: e.notScored ?? null };
   });
-  return [...builtin, ...catalog];
 }
 
 export interface InstalledInstrument {
@@ -230,6 +232,8 @@ export interface DossierCard {
   risk_items?: unknown;
   items?: unknown;
   license?: { verdict?: string; conditions?: string | null };
+  /** Решение, которым методика без свободной лицензии заведена в каталог: кто, когда, на каком основании */
+  decision?: { date: string; by: string; quote?: string | null; basis: string };
 }
 
 export interface SheetContext {

@@ -590,9 +590,24 @@ const sadPersonsRow = await upsertSurvey({ ...sadPersons, groupId: intake.id }, 
 const minimultRow = await upsertSurvey({ ...minimult, groupId: intake.id }, "published");
 const mloRow = await upsertSurvey({ ...mlo, groupId: intake.id }, "published");
 /*
- * Направление встроенных — по той же карте, что у каталога
- * (instruments/catalogDomains.ts). Только пустое: выбранное руками в
- * конструкторе повторный посев не перетирает.
+ * С 2026-10-28 эти четыре — ещё и записи общего каталога (блок dp-inst
+ * instruments/catalog.ts). Посев держит свои копии — на них стоят
+ * синтетические прохождения, набор «Приёмного отделения» и сквозные тесты, —
+ * но под ключами каталога. Иначе стенд «посев, потом installCatalog.ts»
+ * получал по две «Опитувальник (СР-45)» в списке врача: копию посева в
+ * «Приёмном отделении» и копию каталога в «Каталоге методик» — с разной
+ * историей, и динамика человека расходилась бы по ним. Установщик узнаёт
+ * методику по ключу (lib/catalogInstall.ts) и копию посева не дублирует: её
+ * версию выпустил не каталог, поэтому он считает её правкой учреждения
+ * (keptLocal) и меняет лишь направление и «Джерело». В обратном порядке
+ * (каталог, потом посев) upsertSurvey находит методику каталога по названию.
+ *
+ * Ключ — только свободный: стоит у другой строки (каталог поставил свою, а
+ * эту копию посев завёл раньше, под прежним названием) — копия остаётся без
+ * ключа, а не роняет посев на уникальном индексе.
+ *
+ * Направление — по той же карте, что у каталога (instruments/catalogDomains.ts).
+ * Только пустое: выбранное руками в конструкторе повторный посев не перетирает.
  */
 for (const [row, key] of [
   [sr45Row, "sr45"],
@@ -600,6 +615,16 @@ for (const [row, key] of [
   [minimultRow, "minimult"],
   [mloRow, "mlo"],
 ] as const) {
+  await db
+    .update(surveys)
+    .set({ catalogKey: key })
+    .where(
+      and(
+        eq(surveys.id, row.id),
+        sql`${surveys.catalogKey} is null`,
+        sql`not exists (select 1 from surveys other where other.catalog_key = ${key})`,
+      ),
+    );
   await db
     .update(surveys)
     .set({ domain: catalogDomain(key) })
