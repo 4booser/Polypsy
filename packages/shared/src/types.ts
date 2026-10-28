@@ -2270,6 +2270,12 @@ export interface RespondentDynamics {
   surveys: {
     surveyId: string;
     title: string;
+    /**
+     * Короткое имя методики на языке читателя — «PHQ-9», «СР-45», «БОО»
+     * (instrumentCode в format.ts: по ключу каталога, иначе из названия).
+     * Нет у ответов старого сервера.
+     */
+    shortName?: string;
     responseCount: number;
     firstAt: string | null;
     lastAt: string | null;

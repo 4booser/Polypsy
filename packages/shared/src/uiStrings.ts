@@ -16405,7 +16405,7 @@ export const UI = {
   "ws.noMeasuresAssigned": { uk: "Призначено {s}{d} — результатів ще немає.", ru: "Назначено {s}{d} — результатов ещё нет.", en: "Assigned {s}{d}; no results yet." },
   "ws.noMeasuresHint": { uk: "Призначте методику — тут з’явиться стан за доменами.", ru: "Назначьте методику — здесь появится состояние по доменам.", en: "Assign an instrument to see the picture by domain." },
   "ws.signalHere": { uk: "Відкритий сигнал ризику за цією методикою", ru: "Открытый сигнал риска по этой методике", en: "Open risk signal from this instrument" },
-  "ws.moreScales": { uk: "+{n} шкала|+{n} шкали|+{n} шкал", ru: "+{n} шкала|+{n} шкалы|+{n} шкал", en: "+{n} scale|+{n} scales|+{n} scales" },
+  "ws.moreScales": { uk: "ще {n} шкала|ще {n} шкали|ще {n} шкал", ru: "ещё {n} шкала|ещё {n} шкалы|ещё {n} шкал", en: "{n} more scale|{n} more scales|{n} more scales" },
   "ws.openProtocol": { uk: "Відкрити протокол заміру", ru: "Открыть протокол замера", en: "Open the response record" },
   "ws.noBands": { uk: "без градацій", ru: "без градаций", en: "no bands" },
   "ws.unreliable": { uk: "протокол недостовірний", ru: "протокол недостоверен", en: "unreliable record" },

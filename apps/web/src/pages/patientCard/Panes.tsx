@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { PatientCard, ResponseContext, ResponseContextSignal, UiKey } from "@quizzy/shared";
+import { instrumentCode, type PatientCard, type ResponseContext, type ResponseContextSignal, type UiKey } from "@quizzy/shared";
 import { Link } from "react-router-dom";
 import { api, type ConclusionState, type NoteVersion } from "../../api";
 import { useAuth } from "../../auth";
@@ -14,7 +14,7 @@ import { Episodes, type EpisodeItem } from "../../components/Episodes";
 import { SafetyPlanBody } from "../../components/SafetyPlanEditor";
 import { useSafetyPlans } from "../../components/RiskReview";
 import { ShellIcon } from "../../shell/icons";
-import { relDay, shortTitle } from "./Banner";
+import { relDay } from "./Banner";
 import { dm, wdm } from "./format";
 import { Pi } from "./icons";
 import type { CardView } from "./types";
@@ -344,7 +344,7 @@ export function useConclusionPane(v: CardView, active: boolean, wantResponse: st
           <Select value={rid ?? ""} onChange={(e) => setResponseId(e.target.value)}>
             {responses.map((r) => (
               <option key={r.responseId} value={r.responseId}>
-                {`${shortTitle(r.surveyTitle)}, ${r.submittedAt ? dm(r.submittedAt) : "—"}`}
+                {`${instrumentCode(r.surveyTitle)}, ${r.submittedAt ? dm(r.submittedAt) : "—"}`}
               </option>
             ))}
           </Select>
@@ -466,7 +466,7 @@ export function useConclusionPane(v: CardView, active: boolean, wantResponse: st
 
   return {
     mode: "concl",
-    title: resp ? ut("card.conclusionOf").replace("{s}", shortTitle(resp.surveyTitle)) : ut("pcard.conclusions"),
+    title: resp ? ut("card.conclusionOf").replace("{s}", instrumentCode(resp.surveyTitle)) : ut("pcard.conclusions"),
     sub: resp?.submittedAt ? `${resp.surveyTitle}, ${dateTime(resp.submittedAt)}` : undefined,
     icon: <Pi.filePen />,
     dirty: touched.current && !!draftSavable(text) && text !== (draft?.text ?? ""),

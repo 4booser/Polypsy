@@ -3,7 +3,6 @@ import type { AlertCase, PatientCardDomain, RespondentDynamics, ResponseDetail }
 import {
   ageOf,
   clinicalPicture,
-  instrumentCode,
   itemHistory,
   itemMax,
   itemsGrid,
@@ -139,6 +138,16 @@ function banded(points: [string, number][]): RespondentDynamics {
 }
 
 describe("клиническая картина: строки по доменам", () => {
+  test("код методики — от сервера (по ключу каталога), без него — из названия", () => {
+    const d = banded([[at(0), 14]]);
+    const sv = d.surveys[0]!;
+    const own = { ...d, surveys: [{ ...sv, title: "Опитувальник Міні-мульт", shortName: "Міні-мульт" }] };
+    expect(clinicalPicture(own, DEPRESSION)[0]!.rows[0]!.code).toBe("Міні-мульт");
+    // старый ответ без короткого имени: последняя скобка, регистр не важен
+    const old = { ...d, surveys: [{ ...sv, title: "Синдром відміни алкоголю (CIWA-Ar)" }] };
+    expect(clinicalPicture(old, DEPRESSION)[0]!.rows[0]!.code).toBe("CIWA-Ar");
+  });
+
   test("шкала достоверности в картину не идёт — она о бланке, а не о человеке", () => {
     const rows = clinicalPicture(banded([[at(0), 14]]), DEPRESSION).flatMap((g) => g.rows);
     expect(rows.map((r) => r.scale.code)).toEqual(["PHQ"]);
@@ -255,7 +264,8 @@ describe("клиническая картина: строки по домена�
     expect(groups.map((g) => g.domain)).toEqual(["personality", "suicide"]);
     const folded = groups[0]!.rows[0]!;
     expect(folded.scale.scaleId).toBe("a5");
-    expect(folded.code).toBe("БОО «Адаптивність-200»");
+    // сокращение перед названием в кавычках — код (instrumentCode в shared/format.ts)
+    expect(folded.code).toBe("БОО");
     expect(folded.scaleTitle).toBe("Шкала 6");
     expect(folded.folded).toBe(7);
     expect(groups[1]!.rows).toHaveLength(1);
@@ -345,15 +355,6 @@ describe("сигналы случая — по пункту или шкале, �
       ["moderate", false],
     ]);
     expect(groups[0]!.lastAt).toBe(at(-1));
-  });
-});
-
-describe("код методики из названия", () => {
-  test("код в скобках — с цифрой или прописными; пометка «(демо)» — не код", () => {
-    expect(instrumentCode("Депресія (PHQ-9)")).toBe("PHQ-9");
-    expect(instrumentCode("Індекс тяжкості безсоння (ISI)")).toBe("ISI");
-    expect(instrumentCode("СР-45. Схильність до суїцидальних реакцій")).toBe("СР-45");
-    expect(instrumentCode("Якість сну (демо)")).toBe("Якість сну (демо)");
   });
 });
 

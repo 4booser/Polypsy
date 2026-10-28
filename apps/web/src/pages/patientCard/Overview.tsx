@@ -165,19 +165,24 @@ function PictureLine({ r, v }: { r: PictureRow; v: CardView }) {
       }}
       className={cx(
         "grid cursor-pointer items-center gap-x-2.5 gap-y-1 border-t border-divider px-4 py-2 first:border-t-0 hover:bg-panel-2",
-        "grid-cols-[72px_auto_minmax(0,1fr)_auto] [grid-template-areas:'code_score_band_band''change_change_change_aside']",
+        "grid-cols-[96px_auto_minmax(0,1fr)_auto] [grid-template-areas:'code_score_band_band''change_change_change_aside']",
         "@min-[420px]/pic:pl-0 @min-[420px]/pic:pr-3.5",
-        "@min-[900px]/pic:grid-cols-[88px_88px_minmax(0,1fr)_minmax(0,232px)_auto] @min-[900px]/pic:py-2.5 @min-[900px]/pic:[grid-template-areas:'code_score_band_change_aside']",
+        "@min-[900px]/pic:grid-cols-[104px_88px_minmax(0,1fr)_minmax(0,232px)_auto] @min-[900px]/pic:py-2.5 @min-[900px]/pic:[grid-template-areas:'code_score_band_change_aside']",
       )}
     >
-      <span className="flex min-w-0 items-center gap-1.5 [grid-area:code]">
+      {/*
+        Код — до двух строк по границе слова («Шкала / Розенберга», «Flourishing
+        / Scale»), а не обрезка: кнопка сама переполнение не режет, а
+        центрирует, и узкая колонка показывала середину кода («AD PERSON»).
+      */}
+      <span className="flex min-w-0 items-start gap-1.5 [grid-area:code]">
         {r.signal ? (
           <Tooltip label={ut("ws.signalHere")}>
             <span
               tabIndex={0}
               role="img"
               aria-label={ut("ws.signalHere")}
-              className="inline-flex shrink-0 rounded-[4px] text-risk-ink outline-none focus-visible:shadow-[0_0_0_2px_var(--vring)]"
+              className="mt-[2px] inline-flex shrink-0 rounded-[4px] text-risk-ink outline-none focus-visible:shadow-[0_0_0_2px_var(--vring)]"
             >
               <Ic.alert size={14} />
             </span>
@@ -187,11 +192,10 @@ function PictureLine({ r, v }: { r: PictureRow; v: CardView }) {
           type="button"
           onClick={open}
           title={r.scaleTitle && r.scaleTitle !== r.surveyTitle ? `${r.surveyTitle} — ${r.scaleTitle}` : r.surveyTitle}
-          className="min-h-0 min-w-0 cursor-pointer truncate rounded-[4px] border-0 bg-transparent p-0 text-left text-[14px] font-extrabold text-text outline-none hover:underline focus-visible:shadow-[0_0_0_2px_var(--vring)]"
+          className="block min-h-0 min-w-0 cursor-pointer rounded-[4px] border-0 bg-transparent p-0 text-left text-[14px] font-extrabold leading-[18px] text-text outline-none hover:underline focus-visible:shadow-[0_0_0_2px_var(--vring)]"
         >
-          {r.code}
+          <span className="line-clamp-2">{r.code}</span>
         </button>
-        {r.folded ? <span className="shrink-0 text-caption text-muted">{withCount(ut("ws.moreScales"), r.folded, lang)}</span> : null}
       </span>
       <Link
         to={`/surveys/${r.surveyId}/responses/${r.last.responseId}`}
@@ -209,6 +213,8 @@ function PictureLine({ r, v }: { r: PictureRow; v: CardView }) {
           <span className="text-small text-muted">{ut("ws.noBands")}</span>
         )}
         {r.unreliable ? <span className="text-caption font-bold text-warn">{ut("ws.unreliable")}</span> : null}
+        {/* другие шкалы методики в этом домене — в «Динаміці» по щелчку на строку */}
+        {r.folded ? <span className="text-caption text-muted">{withCount(ut("ws.moreScales"), r.folded, lang)}</span> : null}
       </span>
       <span className="min-w-0 [grid-area:change]">
         <ChangeWords r={r} />

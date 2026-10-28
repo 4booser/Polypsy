@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { and, asc, eq, inArray, isNotNull, sql } from "drizzle-orm";
-import { ageAt, respondentDynamicsQuery, respondentQuery, t } from "@quizzy/shared";
+import { ageAt, instrumentCode, respondentDynamicsQuery, respondentQuery, t } from "@quizzy/shared";
 import type { RespondentDynamics, ScaleDynamics, ScaleKind, ScaleNormalization, Sex } from "@quizzy/shared";
 import { db } from "../db";
 import { decodeCursor, encodeCursor } from "../lib/cursor";
@@ -532,6 +532,8 @@ dynamicsRoutes.get("/respondents/:userId", async (c) => {
       return {
         surveyId,
         title: t(survey.title as never, lang),
+        /* короткое имя — по ключу каталога: у методик учреждения кода в скобках нет */
+        shortName: instrumentCode(t(survey.title as never, lang), { catalogKey: survey.catalogKey, lang }),
         responseCount: list.length,
         firstAt: list[0]?.submittedAt ?? null,
         lastAt: list[list.length - 1]?.submittedAt ?? null,

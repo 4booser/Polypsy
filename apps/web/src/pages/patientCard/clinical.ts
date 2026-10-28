@@ -1,5 +1,6 @@
 import {
   CLINICAL_DOMAINS,
+  instrumentCode,
   type AlertCase,
   type ClinicalDomain,
   type DynamicsPoint,
@@ -27,16 +28,6 @@ import { shownLimit, shownStep } from "../patients/model";
  * (GET /api/responses/:id), случаи и хронология (GET /api/timeline/:id).
  * Проверяется без отрисовки: apps/web/test/patientCardClinical.test.ts.
  */
-
-/* ─────────── код методики ─────────── */
-
-/** Код методики из названия: «PHQ-9» из «Депресія (PHQ-9)», «СР-45» из «СР-45. Схильність…» */
-export function instrumentCode(surveyTitle: string): string {
-  /* в скобках — код, а не пометка: с цифрой («PHQ-9») или прописными («ISI»); «(демо)» — не код */
-  const paren = /\(([^()]{2,16})\)\s*$/.exec(surveyTitle)?.[1]?.trim();
-  if (paren && (/\d/.test(paren) || paren === paren.toUpperCase())) return paren;
-  return surveyTitle.split(/[.:]/)[0]!.trim();
-}
 
 /* ─────────── клиническая картина ─────────── */
 
@@ -95,7 +86,7 @@ export interface PictureGroup {
  * замера словом. Её же берёт «Динаміка» — для таблицы шкал методики.
  */
 export function scaleRow(
-  sv: Pick<RespondentDynamics["surveys"][number], "surveyId" | "title">,
+  sv: Pick<RespondentDynamics["surveys"][number], "surveyId" | "title" | "shortName">,
   scale: ScaleDynamics,
   domain: ClinicalDomain,
   signalResponses: ReadonlySet<string> = new Set(),
@@ -114,7 +105,8 @@ export function scaleRow(
     domain,
     surveyId: sv.surveyId,
     surveyTitle: sv.title,
-    code: instrumentCode(sv.title),
+    /* короткое имя — от сервера (по ключу каталога), у старого ответа — из названия */
+    code: sv.shortName ?? instrumentCode(sv.title),
     scaleTitle: scale.title,
     folded: 0,
     scale,

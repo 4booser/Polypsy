@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { CATALOG } from "../src/instruments/catalog";
+import { installCatalog } from "../src/lib/catalogInstall";
 import { clinicalDomainOf, isKeyDomain } from "../src/lib/clinicalDomains";
 import {
   adminA,
@@ -299,6 +300,34 @@ describe("GET /api/patients — клинический стан строки", (
     const two = await api(`/api/patients?q=${encodeURIComponent(only.email)}`, adminA.token);
     expect(two.body.items[0].measure).toMatchObject({ surveyId: personality, domain: "personality", severity: "mild", also: [] });
   });
+});
+
+describe("короткое имя методики — по ключу каталога, иначе из названия", () => {
+  test("динамика: «Міні-мульт», «МЛО» по-русски; своя методика — код из скобок", async () => {
+    await installCatalog();
+    const [mm] = await db.select({ id: surveys.id }).from(surveys).where(eq(surveys.catalogKey, "minimult"));
+    const [mlo] = await db.select({ id: surveys.id }).from(surveys).where(eq(surveys.catalogKey, "mlo"));
+    const person = await patientOfA("short");
+    // методики учреждения — только по назначению
+    await db.insert(surveyAccess).values([mm!.id, mlo!.id].map((surveyId) => ({ surveyId, userId: person.id, grantedBy: adminA.id })));
+    for (const id of [mm!.id, mlo!.id]) {
+      const res = await submitSurvey(id, person.token);
+      expect(res.status, JSON.stringify(res.body)).toBe(201);
+    }
+    const own = await surveyWithShelf("sleep");
+    await measured(own, person, "mild");
+
+    const uk = await api(`/api/dynamics/respondents/${person.id}`, adminA.token, { headers: { "Accept-Language": "uk" } });
+    expect(uk.status).toBe(200);
+    const short = (body: { surveys: { surveyId: string; shortName?: string }[] }, id: string) => body.surveys.find((s) => s.surveyId === id)?.shortName;
+    // название «Опитувальник Міні-мульт» кода в скобках не несёт — имя из таблицы по ключу
+    expect(short(uk.body, mm!.id)).toBe("Міні-мульт");
+    expect(short(uk.body, mlo!.id)).toBe("БОО");
+    expect(short(uk.body, own)).toMatch(/^ПЛ-/);
+    const ru = await api(`/api/dynamics/respondents/${person.id}`, adminA.token, { headers: { "Accept-Language": "ru" } });
+    expect(short(ru.body, mm!.id)).toBe("Мини-мульт");
+    expect(short(ru.body, mlo!.id)).toBe("МЛО");
+  }, 60_000);
 });
 
 describe("GET /api/referrals?patient= — направления одного человека", () => {

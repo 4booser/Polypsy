@@ -480,8 +480,8 @@ async function measuresOf(
     const before = prev ? rank(prev.severity) : -1;
     out.set(userId, {
       surveyId: last.survey_id,
-      /* нет кода в названии — само название: код шкалы («F», «sleep») о методике не говорит */
-      code: instrumentCode(title, title),
+      /* по ключу каталога, иначе из названия; код шкалы («F», «sleep») о методике не говорит */
+      code: instrumentCode(title, { catalogKey: last.catalog_key, lang }),
       title,
       values: series.slice(-3).map((r) => Math.round(Number(r.value) * 10) / 10),
       at: iso(String(last.submitted_at)),

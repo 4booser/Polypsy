@@ -8,7 +8,7 @@ import { ActionMenu, type MenuEntry } from "../../ui/menu";
 import { Button, Tabs } from "../../ui/primitives";
 import { clockText, normText, riskClock } from "../alerts/model";
 import { initialsName } from "../patients/model";
-import { ageOf, instrumentCode } from "./clinical";
+import { ageOf } from "./clinical";
 import { daysBetween, dm, wdm } from "./format";
 import { Pi } from "./icons";
 import { CARD_TABS } from "./tabs";
@@ -472,11 +472,6 @@ function WhoPeek({ v }: { v: CardView }) {
       </tbody>
     </table>
   );
-}
-
-/** «PHQ-9» из «Депресія (PHQ-9)» или из «PHQ-9. Опитувальник здоров’я пацієнта» */
-export function shortTitle(title: string): string {
-  return instrumentCode(title);
 }
 
 /** «сьогодні», «учора» или дата */

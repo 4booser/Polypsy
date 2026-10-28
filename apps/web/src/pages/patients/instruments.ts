@@ -1,4 +1,5 @@
 import {
+  clipAtWord,
   instrumentCode,
   type DynamicsPoint,
   type RespondentDynamics,
@@ -94,7 +95,7 @@ export function instrumentsOf(d: RespondentDynamics | null | undefined): Instrum
     const main = mainOf(scales);
     out.push({
       surveyId: sv.surveyId,
-      code: instrumentCode(sv.title, sv.title),
+      code: sv.shortName ?? instrumentCode(sv.title),
       title: sv.title,
       responseCount: sv.responseCount,
       firstAt: sv.firstAt,
@@ -146,7 +147,7 @@ export function shownThreshold(s: InstrumentScale): number | null {
   return s.threshold === null ? null : shownLimit(s.threshold, s.last.normalization);
 }
 
-/** Короткое имя методики для узкой подписи: длинное название обрезается многоточием */
+/** Короткое имя методики для узкой подписи: длинное — по границе слова, с многоточием */
 export function shortCode(code: string, max = 14): string {
-  return code.length <= max ? code : `${code.slice(0, max - 1).trimEnd()}…`;
+  return clipAtWord(code, max);
 }
