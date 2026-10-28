@@ -776,7 +776,7 @@ export default function App() {
   return (
     /* права и счётчики — экранам, которым навигация нужна в своём месте (shell/useShellNav.tsx) */
     <ShellNavProvider value={{ access, counts, hidden }}>
-    <div className="flex h-dvh flex-col overflow-hidden bg-ground">
+    <div className="relative flex h-dvh flex-col overflow-hidden bg-ground">
       {banner}
       <AppBar
         account={account}
