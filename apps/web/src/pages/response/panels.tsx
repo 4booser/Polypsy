@@ -8,6 +8,7 @@ import { splitCode } from "../methods/model";
 import { basisText, suggestionOpen, type Suggestion } from "../methods/passport";
 import { ScaleProfile, SeverityMeter } from "../../charts/clinical";
 import { ChartLegend, OTHER_COLOR, SINGLE_COLOR, useDecimal } from "../../charts/kit";
+import { bandRange } from "../../charts/ladder";
 import { dateTime, day, duration } from "../../format";
 import { useLang } from "../../lang";
 import { Callout, Ic, KV, Loading, Popover, useAction } from "../../ui";
@@ -326,9 +327,7 @@ function BandRow({ band: b }: { band: ResponseDetailScore["bands"][number] }) {
         b.hit && "rounded-[12px] border-t-transparent bg-violet-tint [&+li]:border-t-transparent",
       )}
     >
-      <span className="pt-0.5 text-small font-extrabold text-text tabular-nums">
-        {dec(b.minScore)}–{dec(b.maxScore)}
-      </span>
+      <span className="pt-0.5 text-small font-extrabold text-text tabular-nums">{bandRange({ min: b.minScore, max: b.maxScore }, dec)}</span>
       <div className="min-w-0">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <SeverityTag level={b.severity} small>

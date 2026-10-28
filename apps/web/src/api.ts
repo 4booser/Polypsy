@@ -874,6 +874,10 @@ export interface TimelineItem {
   href?: string | null;
   /** Срок назначения — только у назначений */
   dueAt?: string | null;
+  /** Прохождение строки: у сигнала — поднявшее его, у заключения — то, по которому оно написано */
+  responseId?: string | null;
+  /** Код шкалы, полоса которой подняла сигнал; null — сигнал по ответу на пункт */
+  scaleCode?: string | null;
 }
 
 /**
@@ -1089,7 +1093,14 @@ export const api = {
   surveyRights: (id: string, body: { rightsStatus?: "own" | "licensed" | "public_domain" | "unclear"; keysVerified?: boolean }) =>
     request<{ ok: true }>(`/api/surveys/${id}/rights`, { method: "PATCH", body: JSON.stringify(body) }),
   submitFor: (surveyId: string, payload: unknown) =>
-    request<{ id: string; scores: unknown[]; reliable: boolean; warnings: string[] }>(
+    request<{
+      id: string;
+      scores: unknown[];
+      reliable: boolean;
+      warnings: string[];
+      /** сдача подняла сигнал риска — только сотруднику, который вносил ответы */
+      riskRaised?: { severity: string; signals: number } | null;
+    }>(
       `/api/surveys/${surveyId}/responses`,
       { method: "POST", body: JSON.stringify(payload) },
     ),

@@ -82,6 +82,8 @@ describe("шкалы специалиста каталога: заполнени
     expect(alerts.map((a) => a.severity)).toEqual(["severe"]);
     expect(alerts[0]!.questionId, "тревога должна быть по пункту, а не по полосе").not.toBeNull();
     expect(alerts[0]!.scaleId).toBeNull();
+    // врач, вносивший ответы, узнаёт о сигнале сразу — экран «Обстеження збережено» говорит о нём
+    expect(res.body.riskRaised).toEqual({ severity: "severe", signals: 1 });
   });
 
   test("HAM-A, CGI-S, CGI-I и BPRS за пациента: балл есть, тревог нет даже в верхних полосах", async () => {
@@ -98,6 +100,7 @@ describe("шкалы специалиста каталога: заполнени
       expect(score.rawScore, key).toBe(total);
       const alerts = await db.select().from(riskAlerts).where(eq(riskAlerts.responseId, res.body.id));
       expect(alerts, key).toEqual([]);
+      expect(res.body.riskRaised, key).toBeNull();
     }
   });
 

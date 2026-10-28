@@ -488,9 +488,11 @@ export function auth(token: string): Record<string, string> {
  * Названа поимённо, а не «первая опубликованная»: у первой в каталоге
  * порядок задан временем создания, и туда встаёт методика, которую только
  * что завёл соседний сценарий конструктора. СР-45 лежит в группе «Приёмное
- * отделение» (её ведёт psy), общедоступна, заполняется самим человеком и
- * несёт критические пункты — то есть годится и на предпосылку случая, и на
- * то, чтобы новый человек стал виден психологу.
+ * отделение» (её ведёт psy), заполняется самим человеком и несёт критические
+ * пункты — то есть годится и на предпосылку случая, и на то, чтобы новый
+ * человек стал виден психологу. С 2026-10 она выдаётся только по назначению
+ * (методики учреждения в каталоге): сценарий выдаёт её человеку, как психолог
+ * перед обследованием (grantSeedSurvey), и лишь потом тот её сдаёт.
  */
 export const SEED_SURVEY = "СР-45";
 
@@ -539,14 +541,33 @@ export async function createOwnPatient(page: Page, tag: string): Promise<OwnPati
   return { id: body.user.id, token: body.token, lastName };
 }
 
-/** Опубликованная методика посева по названию — идентификаторы в базе случайные */
-async function seedSurveyId(page: Page, token: string): Promise<string> {
+/**
+ * Опубликованная методика посева по названию — идентификаторы в базе случайные.
+ * Глазами сотрудника: в списке пациента СР-45 нет, пока её ему не выдали.
+ */
+async function seedSurveyId(page: Page, staffToken: string): Promise<string> {
   const list = (await (
-    await page.request.get("/api/surveys?status=published", { headers: auth(token) })
+    await page.request.get("/api/surveys?status=published", { headers: auth(staffToken) })
   ).json()) as { items: { id: string; title: string }[] };
   const hit = list.items.find((s) => s.title.includes(SEED_SURVEY));
   expect(hit, `на стенде нет методики «${SEED_SURVEY}» — предпосылку заводить нечем`).toBeTruthy();
   return hit!.id;
+}
+
+/**
+ * Выдать человеку методику посева — как психолог перед обследованием: СР-45
+ * только по назначению, и без выдачи сервер не отдаст её и не примет сдачу.
+ * Попыток с запасом: человек посева мог проходить её и раньше.
+ */
+export async function grantSeedSurvey(page: Page, userId: string): Promise<string> {
+  const staff = await apiToken(page, "superadmin");
+  const surveyId = await seedSurveyId(page, staff);
+  const res = await page.request.post(`/api/access/surveys/${surveyId}/grants`, {
+    headers: auth(staff),
+    data: { userId, attemptsAllowed: 10 },
+  });
+  if (!res.ok()) throw new Error(`не удалось выдать «${SEED_SURVEY}»: ${res.status()} ${await res.text()}`);
+  return surveyId;
 }
 
 /**
@@ -565,7 +586,7 @@ export async function submitSeedSurvey(
   opts: { risky: boolean },
 ): Promise<void> {
   const headers = auth(patient.token);
-  const surveyId = await seedSurveyId(page, patient.token);
+  const surveyId = await grantSeedSurvey(page, patient.id);
   /*
    * Критический вариант — из методики глазами сотрудника: пациенту ключ не
    * отдаётся (#141), у его копии нет riskFlag. Варианты и их id те же.

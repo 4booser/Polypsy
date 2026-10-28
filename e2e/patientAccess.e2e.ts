@@ -93,12 +93,13 @@ test("прохождение методики: фокус едет за вопр
   test.setTimeout(90_000);
   await login(page, "patient");
   await page.goto("/me/tests");
-  await page
-    .locator('a[href^="/me/tests/"]')
-    .filter({ hasNotText: "Адаптивность" })
-    .filter({ hasNotText: "Мини-мульт" })
-    .first()
-    .click();
+  /*
+   * Длина методики здесь не важна — проверяется один переход. Методики
+   * учреждения с 2026-10 выдаются только по назначению, и у пациента посева
+   * назначена БОО «Адаптивність-200» (seed.ts): прежний отсев БОО оставлял
+   * список пустым.
+   */
+  await page.locator('a[href^="/me/tests/"]').filter({ hasNotText: "Мини-мульт" }).first().click();
   await page.getByRole("heading", { level: 1 }).waitFor();
   /*
    * У методики с инструкцией перед первым пунктом — её экран и «Почати»

@@ -3,18 +3,16 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
   LOCALE_OF,
   pointShare,
-  pointValueText,
-  pointValueTop,
   type PatientListCounts,
   type PatientListItem,
   type UiKey,
 } from "@quizzy/shared";
-import { api, openInTab } from "../api";
+import { api } from "../api";
 import { useAuth } from "../auth";
-import { CourseChart } from "../charts/course";
-import { courseEventsFromTimeline, courseFromDynamics } from "../charts/courseModel";
-import { TimeLines } from "../charts/clinical";
-import { instrumentMark, seriesColor } from "../charts/kit";
+import { CourseChart, CourseLegend } from "../charts/course";
+import { CourseGrid } from "../charts/courseGrid";
+import { courseEventsFromTimeline, courseFromDynamics, courseNames, cutoffOf, laneEvents, signalsOn } from "../charts/courseModel";
+import { instrumentMark } from "../charts/kit";
 import { Hint } from "../components/Hint";
 import { locale as consoleLocale, severityKey } from "../format";
 import { useLang } from "../lang";
@@ -882,11 +880,15 @@ function csvColumns(ut: (k: UiKey) => string): Column<PatientListItem>[] {
  * Вкладка «Динаміка» справы пациента — кадр patients-case-dynamics.
  *
  *   «Методики»: большие числа со сравнением и смыслом      → BigValue по главной шкале каждой методики
- *   «Курс» с переключателем методик                         → CourseChart: полосы, межі похибки, сесії, сигнали
+ *   «Курс» — все методики сразу, сеткой                     → CourseChart: шапка словами, полосы, порог, приёмы, сигналы
  *   «Достовірність зсуву»: RCI, поріг, α, перцентиль         → из основы RCI сервера; перцентиль — точки
- *   «Методики разом» с таблицей                             → TimeLines в % від максимуму шкали (pointShare)
  *   «За шкалами»: перший і останній замір                   → субшкалы многошкальной методики
  *   «Звести версії»                                         → коэффициенты приведения сервера, включает человек
+ *
+ * «Методик разом» — общей оси «% від максимуму» — больше нет: на ней WHO-5
+ * (більше — краще) шло рядом с PHQ-9 (менше — краще), и линия вниз значила
+ * то улучшение, то ухудшение. Каждая методика теперь — своим графиком в
+ * своих единицах и со своими полосами (малые графики курса).
  *
  * Прогноза («тренд ≈ 11») и цели курса нет: приложение их не считает, а
  * догадка, нарисованная как оценка, хуже пустого места.
@@ -894,19 +896,15 @@ function csvColumns(ut: (k: UiKey) => string): Column<PatientListItem>[] {
 export function PatientDynamics() {
   const { ut } = useLang();
   const { userId } = useParams<{ userId: string }>();
-  const { run, busy } = useAction();
   const [equating, setEquating] = useState(false);
   /* тот же кэш, что у шапки справы (CaseCard): динамика и хронология уже приехали */
   const dyn = useResource(() => api.dynamics(userId!), [userId], { enabled: !!userId, keep: false, key: DYN_KEY });
   const timeline = useResource(() => api.timeline(userId!), [userId], { enabled: !!userId, keep: false, key: TL_KEY });
   const instruments = useMemo(() => instrumentsOf(dyn.data), [dyn.data]);
-  const [pickRaw, setPick] = useState<string | null>(null);
-  const pick = instruments.find((i) => i.surveyId === pickRaw) ?? instruments[0] ?? null;
   const multi = instruments.filter((i) => i.scales.length > 1);
   const [profileRaw, setProfile] = useState<string | null>(null);
   const profile = multi.find((i) => i.surveyId === profileRaw) ?? multi[0] ?? null;
   const canEquate = instruments.some((i) => i.scales.some((s) => s.scale.equated?.length));
-  const labels = { of: ut("an.of"), norm: normLabels(ut) };
 
   if (dyn.error && !dyn.data) return <Loading error={dyn.error} onRetry={dyn.reload} />;
   if (!dyn.data) return <Loading rows={6} />;
@@ -925,9 +923,12 @@ export function PatientDynamics() {
    */
   const series = (s: InstrumentScale) =>
     equating ? { ...s.scale, points: s.scale.points.map((p) => ({ ...p, rawScore: equatedValue(p, s.scale.equated) })) } : s.scale;
-  const course = pick ? courseFromDynamics(series(pick.main), pick.main.rungs) : null;
   const events = timeline.data ? courseEventsFromTimeline(timeline.data) : [];
-  const last = pick?.main.last ?? null;
+  const courses = instruments.map((i) => ({
+    i,
+    data: courseFromDynamics(series(i.main), i.main.rungs, undefined, { surveyId: i.surveyId }),
+    names: courseNames(i.title, i.main.scale.title, i.scales.length === 1),
+  }));
 
   return (
     <div className="flex flex-col gap-4">
@@ -956,74 +957,42 @@ export function PatientDynamics() {
         ) : null}
       </Panel>
 
-      <div className="grid items-start gap-4 [grid-template-columns:minmax(0,1fr)_minmax(320px,440px)] max-[1180px]:grid-cols-1">
-        <Panel
-          title={ut("dyn.course")}
-          icon={<Ic.chart />}
-          sub={
-            pick
-              ? ut("dyn.courseSub")
-                  .replace("{n}", String(pick.responseCount))
-                  .replace("{title}", pick.title)
-              : undefined
-          }
-          actions={
-            instruments.length > 1 ? (
-              <>
-                <Segmented
-                  label={ut("rch.pickScale")}
-                  value={pick && instruments.indexOf(pick) < 5 ? pick.surveyId : ""}
-                  onChange={setPick}
-                  items={instruments.slice(0, 5).map((i) => ({ key: i.surveyId, label: shortCode(i.code, 10) }))}
-                />
-                {instruments.length > 5 ? (
-                  <ActionMenu
-                    label={ut("rch.pickScale")}
-                    glyph={
-                      <span className="inline-flex items-center gap-1 text-caption font-bold text-text-2">
-                        {pick && instruments.indexOf(pick) >= 5 ? shortCode(pick.code, 12) : ut("plist.moreN").replace("{n}", String(instruments.length - 5))}
-                        <Ic.chevronDown size={13} />
-                      </span>
-                    }
-                    triggerSize="xs"
-                    triggerClassName="px-2.5"
-                    entries={instruments.slice(5).map((i) => ({ key: i.surveyId, label: i.title, onSelect: () => setPick(i.surveyId) }))}
-                  />
-                ) : null}
-              </>
-            ) : undefined
-          }
-          footer={
-            last ? (
-              <>
-                <span className="text-small text-text-2">
-                  {ut("pt.lastMeasure")}: <b className="font-bold text-text">{pointValueText(last, labels)}</b>
-                </span>
-                <Button
-                  variant="quiet"
-                  size="xs"
-                  className="ml-auto"
-                  icon={<Ic.file />}
-                  disabled={busy}
-                  onClick={() => run(() => openInTab(api.reportUrl(last.responseId)))}
-                >
-                  {ut("an.conclusion")}
-                </Button>
-              </>
-            ) : undefined
-          }
-        >
-          {pick && course ? (
-            <CourseChart title={pick.code} {...course} max={last ? pointValueTop(last) : null} events={events} />
-          ) : null}
-          {canEquate ? (
-            <div className="mt-3 rounded-panel bg-sunk px-3.5 py-3">
+      <Panel
+        title={ut("dyn.course")}
+        icon={<Ic.chart />}
+        sub={ut("dyn.courseAll")}
+        footer={
+          canEquate ? (
+            <div className="w-full">
               <Switch checked={equating} onChange={setEquating} label={ut("eq.title")} sub={ut("dyn.equateSub")} />
               <p className="m-0 mt-1.5 text-caption text-text-2">{ut("eq.hint")}</p>
             </div>
-          ) : null}
-        </Panel>
+          ) : undefined
+        }
+      >
+        <CourseLegend
+          className="!mt-0 mb-3"
+          cutoff={courses.some((c) => cutoffOf(c.data.rungs)) || null}
+          signal={courses.some((c) => signalsOn(c.data.points, events, c.data.scaleCode).size > 0)}
+          lane={courses.flatMap((c) => laneEvents(c.data.points, events)).filter((e, n, all) => all.indexOf(e) === n)}
+        />
+        <CourseGrid>
+          {courses.map(({ i, data, names }) => (
+            <div key={i.surveyId} className="rounded-panel border border-divider p-3.5">
+              <CourseChart
+                title={i.code}
+                measure={names.measure}
+                method={names.method}
+                {...data}
+                events={events}
+                legend={false}
+              />
+            </div>
+          ))}
+        </CourseGrid>
+      </Panel>
 
+      <div className={cx("grid items-start gap-4", profile ? "grid-cols-2 max-[1180px]:grid-cols-1" : "grid-cols-1")}>
         <Panel
           title={ut("pt.rciTitle")}
           icon={<Ic.gauge />}
@@ -1037,10 +1006,6 @@ export function PatientDynamics() {
             ))}
           </ul>
         </Panel>
-      </div>
-
-      <div className={cx("grid items-start gap-4", profile ? "grid-cols-2 max-[1180px]:grid-cols-1" : "grid-cols-1")}>
-        <Together instruments={instruments} />
         {profile ? (
           <Panel
             title={ut("dyn.byScales")}
@@ -1183,91 +1148,6 @@ function MarkerGlyph({ shape, color }: { shape: string; color: string }) {
 }
 
 /**
- * «Методики разом» — главные шкалы на одной оси в процентах от максимума
- * шкалы (pointShare: доля сырого балла после поправок — единица одна для
- * всех), с таблицей баллов по датам. Даты — по дню замера: батарея сдаётся
- * за один присест, и замеры одного дня — одна колонка.
- */
-function Together({ instruments }: { instruments: Instrument[] }) {
-  const { ut } = useLang();
-  const shown = instruments.slice(0, 4);
-  const days = [...new Set(shown.flatMap((i) => i.main.scale.points.map((p) => dayOf(p.submittedAt))))].sort();
-  const x = days.map((d) => ({ key: d, label: ddmmOf(`${d}T12:00:00`) }));
-  const lines = shown.map((i, n) => {
-    const mark = instrumentMark(i.code);
-    const color = mark?.color ?? seriesColor(n, shown.length);
-    return {
-      key: i.surveyId,
-      label: i.code,
-      color,
-      values: days.map((d) => {
-        const p = i.main.scale.points.filter((pt) => dayOf(pt.submittedAt) === d).at(-1);
-        return p ? Math.round(pointShare(p) * 100) : null;
-      }),
-    };
-  });
-  return (
-    <Panel title={ut("dyn.together")} icon={<Ic.chart />} sub={ut("dyn.togetherSub")} flush>
-      <div className="px-4 pb-2">
-        {/* ряд — замеры одной методики: дни, когда мерили другие, его не рвут (connect) */}
-        <TimeLines x={x} series={lines} label={ut("dyn.together")} format={(v) => `${v} %`} height={220} connect />
-
-      </div>
-      <div className="overflow-x-auto border-t border-divider">
-        <table className="w-full border-separate border-spacing-0 text-small">
-          <thead>
-            <tr>
-              <th className="h-9 border-b border-divider bg-panel-2 px-4 text-left text-caption font-bold text-muted">{ut("plist.instrument")}</th>
-              {days.slice(-4).map((d) => (
-                <th key={d} className="h-9 border-b border-divider bg-panel-2 px-3 text-right text-caption font-bold text-muted">
-                  {ddmmOf(`${d}T12:00:00`)}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {shown.map((i) => (
-              <tr key={i.surveyId}>
-                <td className="border-b border-divider px-4 py-2 align-top">
-                  <b className="block font-extrabold text-text">{i.code}</b>
-                  <span className="text-caption text-muted">{i.main.scale.title}</span>
-                </td>
-                {days.slice(-4).map((d) => {
-                  const p = i.main.scale.points.filter((pt) => dayOf(pt.submittedAt) === d).at(-1);
-                  const v = p ? shownValue(p.rawScore, p.normalization) : null;
-                  return (
-                    <td key={d} className="border-b border-divider px-3 py-2 text-right align-top tabular-nums">
-                      {p && v ? (
-                        <>
-                          <b className="block font-bold text-text">
-                            {v.text}
-                            {v.unit}
-                          </b>
-                          <span className="text-caption text-muted">{Math.round(pointShare(p) * 100)} %</span>
-                        </>
-                      ) : (
-                        <span className="text-muted">—</span>
-                      )}
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </Panel>
-  );
-}
-
-/** День замера по часам консоли, «YYYY-MM-DD» */
-function dayOf(iso: string): string {
-  const d = new Date(iso);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
-
-/**
  * «За шкалами»: первый и последний замер каждой шкалы многошкальной
  * методики — гантелью в доле от максимума и таблицей со сдвигом и порогом.
  */
@@ -1371,10 +1251,5 @@ function equatedValue(
   const rule = rules?.find((r) => r.fromVersion === point.versionNo);
   if (!rule) return point.rawScore;
   return Math.round((rule.slope * point.rawScore + rule.intercept) * 100) / 100;
-}
-
-/** Подписи единиц значения для «Останній замір»: «T-бал 70», «стен 7» (#199) */
-function normLabels(ut: (k: UiKey) => string) {
-  return { raw: ut("norm.raw"), ratio: ut("norm.ratio"), tscore: ut("norm.tscore"), sten: ut("norm.sten") };
 }
 
