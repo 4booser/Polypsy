@@ -919,8 +919,12 @@ export interface SurveyPageQuery {
   groupId?: string;
   /** Направление (shared/domains.ts) или `none` — без направления; чипы «Напрям» каталога */
   domain?: SurveyDomain | "none";
-  /** По названию на языке запроса; без него — новые сверху */
-  sort?: "title";
+  /**
+   * title — по названию на языке запроса; catalog — порядок каталога
+   * (направление, полные первыми, короткие формы под своей полной); без
+   * него — новые сверху
+   */
+  sort?: "title" | "catalog";
 }
 
 /**
@@ -1197,8 +1201,11 @@ export const api = {
   /** Очередь работы числами — для бейджа навигации: без строк и без строки журнала */
   worklistCount: () => request<WorklistCount>("/api/worklist/count"),
 
-  ruleHits: (status: RuleHit["status"] = "suggested") =>
-    request<{ items: RuleHit[] }>(`/api/decisions/hits?status=${status}`).then((r) => r.items),
+  /** Предложения правил; с `userId` — только по этому человеку (ящик назначения в его карточке) */
+  ruleHits: (status: RuleHit["status"] = "suggested", userId?: string) =>
+    request<{ items: RuleHit[] }>(
+      `/api/decisions/hits?status=${status}${userId ? `&userId=${encodeURIComponent(userId)}` : ""}`,
+    ).then((r) => r.items),
   /**
    * Правила поддержки решений — «аналитические модели» экрана заключения.
    * Сервер отдаёт строки таблицы целиком; здесь объявлено то, что читает

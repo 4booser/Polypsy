@@ -1,9 +1,13 @@
 import { useMemo, useRef, useState, type ReactNode } from "react";
+import { useNavigate } from "react-router-dom";
 import { t, type SurveyListItem, type UiKey } from "@quizzy/shared";
 import { api, type Patient } from "../api";
+import { useAuth } from "../auth";
+import { basisText, openSuggestions } from "../pages/methods/passport";
+import { decideHit } from "./Suggestions";
 import { useLang } from "../lang";
 import { Mi } from "../pages/methods/icons";
-import { shortDate } from "../pages/methods/model";
+import { shortDate, splitCode } from "../pages/methods/model";
 import { useCount } from "../pages/methods/useCount";
 import { Pi } from "../pages/patientGroups/icons";
 import { surveyCode } from "../pages/patientGroups/model";
@@ -225,6 +229,14 @@ export interface TestToKnown extends Frame {
    * а не «діє до» доступа. Назначает экран (routes/batteries.ts).
    */
   sets?: { onAssign: (batteryId: string, dueAt: string | null, note: string | null) => Promise<string> };
+  /**
+   * Человек, которому назначают (карточка пациента): над списком — что ему
+   * предложили правила, «Рекомендовано: PHQ-9 — PHQ-2 = 4 від 12.10»
+   * (ступенчатый скрининг каталога), и назначение одним нажатием — с тем же
+   * сроком и комментарием, что выбраны ниже. Предложение при этом принимается:
+   * специалист сделал то, что правило предложило. Без поля — ящик как был.
+   */
+  recommendFor?: string;
 }
 
 export function AssignDrawer(props: ToRecipients | TestToKnown) {
@@ -575,10 +587,22 @@ function AssignRecipients(p: ToRecipients) {
  * сервер откажет, и предлагать его значило бы обещать отказ.
  */
 function AssignTest(p: TestToKnown) {
-  const { open, already, onAssign, onClose, sets, existingFor } = p;
+  const { open, already, onAssign, onClose, sets, existingFor, recommendFor } = p;
   const { ut, lang } = useLang();
+  const { can } = useAuth();
+  const navigate = useNavigate();
   const toast = useToast();
   const count = useCount();
+  /*
+   * Предложения правил этому человеку, ждущие решения (право на них — то же,
+   * что на очередь предложений: alerts.review). Одна строка на методику —
+   * по свежему срабатыванию; назначенное и пройденное не предлагается.
+   */
+  const hits = useResource(() => api.ruleHits("suggested", recommendFor), [recommendFor], {
+    enabled: open && !!recommendFor && can("alerts.review"),
+    keep: false,
+  });
+  const recommended = useMemo(() => openSuggestions(hits.data ?? []), [hits.data]);
   /* «Методика / Набір» — только когда экран умеет назначить набор */
   const [what, setWhat] = useState<"survey" | "set">("survey");
   const setMode = !!sets && what === "set";
@@ -624,13 +648,36 @@ function AssignTest(p: TestToKnown) {
     setExpires(dueValue((next === "set" ? DUE_RECIPIENTS : DUE_TEST).initial));
   };
 
-  async function assign() {
-    if (!picked || pastDeadline(expires, today()) || busy) return;
+  /*
+   * Назначенная методика, которую предлагало правило, — предложение принято:
+   * специалист сделал ровно то, что оно предложило, и в очереди оно больше не
+   * висит. Отказ решения (его успел принять другой) назначение не отменяет.
+   */
+  async function acceptRecommended(assigned: string) {
+    const matching = recommended.filter((x) => x.target.surveyId === assigned);
+    for (const r of matching) {
+      await decideHit(() => api.decideHit(r.hit.id, "accepted"), () => undefined).catch(() => undefined);
+    }
+    // закрытый ящик не размонтируется: открытый снова не должен предлагать уже назначенное
+    if (matching.length) hits.reload();
+  }
+
+  /* «Провести C-SSRS»: согласие с предложением — и экран заполнения специалистом */
+  async function administer(hitId: string, surveyId: string) {
+    await decideHit(() => api.decideHit(hitId, "accepted"), () => undefined).catch(() => undefined);
+    navigate(`/surveys/${surveyId}/administer`);
+  }
+
+  async function assign(target?: string) {
+    const survey = target ?? surveyId;
+    if ((!target && !picked) || pastDeadline(expires, today()) || busy) return;
     setBusy(true);
     setError(null);
     try {
       const note = p.comment ? comment.trim() || null : null;
-      const done = setMode ? await sets!.onAssign(batteryId, expires || null, note) : await onAssign(surveyId, expires || null, note);
+      const done =
+        setMode && !target ? await sets!.onAssign(batteryId, expires || null, note) : await onAssign(survey, expires || null, note);
+      if (!setMode || target) await acceptRecommended(survey);
       toast(done, "ok");
       setSurveyId("");
       setBatteryId("");
@@ -671,6 +718,40 @@ function AssignTest(p: TestToKnown) {
       canSubmit={!!picked && !pastDeadline(expires, today())}
       busy={busy}
     >
+      {recommended.length && !setMode ? (
+        <DrawerSection title={ut("dpc.recommendedTitle")}>
+          <ul className="m-0 flex list-none flex-col gap-1.5 p-0">
+            {recommended.map(({ hit, target }) => {
+              const names = splitCode(target.title);
+              const code = names.code ?? names.name;
+              return (
+                <li key={target.surveyId} className="flex items-center gap-2.5 rounded-[10px] bg-violet-tint px-3 py-2">
+                  <span className="min-w-0 flex-1">
+                    <b className="block truncate text-[13px] font-extrabold text-violet-ink">
+                      {code}
+                      {names.code ? <span className="font-semibold text-text-2">{` ${names.name}`}</span> : null}
+                    </b>
+                    {/* на чём сработало правило: «PHQ-2 = 4 від 12.10» */}
+                    <small className="block truncate text-caption text-text-2">
+                      {ut("dpc.basisOn").replace("{basis}", basisText(hit, lang)).replace("{date}", shortDate(hit.createdAt))}
+                    </small>
+                  </span>
+                  {target.clinician ? (
+                    /* заполняет специалист — не назначают, а проводят */
+                    <Button size="xs" disabled={busy} onClick={() => void administer(hit.id, target.surveyId)}>
+                      {ut("dpc.administerOne").replace("{code}", code)}
+                    </Button>
+                  ) : (
+                    <Button size="xs" variant="primary" disabled={busy || pastDeadline(expires, today())} onClick={() => void assign(target.surveyId)}>
+                      {ut("dpc.assignOne").replace("{code}", code)}
+                    </Button>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </DrawerSection>
+      ) : null}
       <DrawerSection title={sets ? undefined : label}>
         {sets ? (
           <Segmented

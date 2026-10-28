@@ -10,12 +10,25 @@ import {
   t,
   type LocalizedText,
 } from "@quizzy/shared";
+import type { RuleAction, RuleCondition } from "@quizzy/shared";
 import { db } from "../db";
-import { auditLog, batteries, batteryItems, departments, surveyGroups, surveyVersions, surveys, users } from "../db/schema";
+import {
+  auditLog,
+  batteries,
+  batteryItems,
+  decisionRules,
+  departments,
+  surveyGroups,
+  surveyVersions,
+  surveys,
+  users,
+} from "../db/schema";
 import { CATALOG_BATTERIES, CATALOG_BATTERY_LANG, type CatalogBattery } from "../instruments/catalogBatteries";
 import { CATALOG, type CatalogEntry } from "../instruments/catalog";
 import { catalogDomain } from "../instruments/catalogDomains";
+import { catalogRules, type CatalogRuleSpec } from "../instruments/catalogPassport";
 import { auditSystem } from "./audit";
+import { ruleScaleTitle } from "./catalogPassport";
 import { log } from "./log";
 import { CATALOG_GROUP_ID } from "./scope";
 import { createVersion } from "./surveys";
@@ -44,7 +57,9 @@ import { createVersion } from "./surveys";
  *   остаётся у тех, кто её ставил.
  *
  * Кроме методик, установщик заводит наборы-заготовки каталога
- * (instruments/catalogBatteries.ts) — каждую один раз, см. installBatteries.
+ * (instruments/catalogBatteries.ts) — каждую один раз, см. installBatteries, —
+ * и правила ступенчатого скрининга (instruments/catalogPassport.ts, шаги
+ * коротких форм) — тоже один раз, см. installRules.
  *
  * Методики каталога стоят в своей группе — см. CATALOG_GROUP_ID.
  */
@@ -83,6 +98,8 @@ export interface InstallReport {
   sourceNoteSet: string[];
   /** Наборы-заготовки каталога (installBatteries) */
   batteries: BatteryInstallReport;
+  /** Правила ступенчатого скрининга (installRules) */
+  rules: RuleInstallReport;
   /**
    * Почему установка не состоялась вовсе.
    *
@@ -719,6 +736,118 @@ export async function installBatteries(createdBy: string): Promise<BatteryInstal
   return report;
 }
 
+/* ─────────── правила ступенчатого скрининга ─────────── */
+
+/**
+ * Что установщик сделал с правилами шагов (instruments/catalogPassport.ts,
+ * catalogRules) — ключами правил «короткая — полная».
+ */
+export interface RuleInstallReport {
+  /** Заведены этим прогоном */
+  installed: string[];
+  /** Заведены раньше и стоят: ими распоряжается отделение, установщик их не трогает */
+  kept: string[];
+  /** Заведены раньше и удалены — заново не заводятся */
+  removed: string[];
+  /**
+   * Не заведены: короткой формы или полной методики нет в базе, она не
+   * опубликована или снята. Правило без одной из них ничего не предложит или
+   * предложит то, что нельзя назначить; следующий выкат попробует снова.
+   */
+  pending: string[];
+}
+
+function emptyRuleReport(): RuleInstallReport {
+  return { installed: [], kept: [], removed: [], pending: [] };
+}
+
+/**
+ * Постоянный id правила шага — по нему установщик узнаёт заведённое, как
+ * заготовку набора по catalog_key. Своей колонки у правил нет и не нужно:
+ * правило каталога заводится с известным id, а название отделение вправе
+ * изменить.
+ */
+export const catalogRuleId = (key: string) => `catalog-step-${key}`;
+
+/** Было ли правило уже заведено — по журналу, как installedBefore у заготовок набора */
+async function ruleInstalledBefore(key: string): Promise<boolean> {
+  const [seen] = await db
+    .select({ id: auditLog.id })
+    .from(auditLog)
+    .where(and(eq(auditLog.action, "rule.save"), sql`${auditLog.details}->>'catalogRule' = ${key}`))
+    .limit(1);
+  return !!seen;
+}
+
+type RuleOutcome = keyof RuleInstallReport;
+
+/**
+ * Правило шага: «результат короткой формы за порогом → предложить полную
+ * методику». Только предложение (suggest_survey): назначает специалист,
+ * одним нажатием на протоколе или в ящике назначения (система предлагает,
+ * человек решает — lib/decisions.ts).
+ *
+ * Общее (groupId null), как заготовка набора: его видит весь персонал, а
+ * срабатывает оно только на своей методике — условие несёт её id. Правило
+ * группы каталога перестало бы срабатывать, когда учреждение перенесёт
+ * методику в свою группу (applyRules берёт общие и правила группы методики).
+ */
+async function installRule(spec: CatalogRuleSpec, createdBy: string): Promise<RuleOutcome> {
+  const id = catalogRuleId(spec.key);
+  const [existing] = await db.select({ id: decisionRules.id }).from(decisionRules).where(eq(decisionRules.id, id));
+  // заведено — дальше правило отделения: ни порог, ни включение установщик не трогает
+  if (existing) return "kept";
+  if (await ruleInstalledBefore(spec.key)) return "removed";
+
+  const found = await db
+    .select({ id: surveys.id, key: surveys.catalogKey, status: surveys.status, archivedAt: surveys.archivedAt })
+    .from(surveys)
+    .where(inArray(surveys.catalogKey, [spec.short, spec.next]));
+  const usable = new Map(
+    found.flatMap((r) => (r.key && r.status === "published" && !r.archivedAt ? [[r.key, r.id] as const] : [])),
+  );
+  const shortId = usable.get(spec.short);
+  const nextId = usable.get(spec.next);
+  if (!shortId || !nextId) {
+    log.warn("catalog.rule_pending", { rule: spec.key, short: shortId ? "ok" : spec.short, next: nextId ? "ok" : spec.next });
+    return "pending";
+  }
+
+  const conditions: RuleCondition[] = [
+    { kind: "scale", surveyId: shortId, scaleCode: spec.scale, metric: "raw", op: spec.op, value: spec.value },
+  ];
+  const actions: RuleAction[] = [{ kind: "suggest_survey", surveyId: nextId }];
+  // второй установщик, запущенный разом, упрётся в первичный ключ — его строка не ляжет
+  const rows = await db
+    .insert(decisionRules)
+    .values({ id, title: spec.title, groupId: null, enabled: true, conditions, actions, note: spec.note, createdBy })
+    .onConflictDoNothing()
+    .returning({ id: decisionRules.id });
+  if (!rows.length) return "kept";
+
+  // журнал — с ключом правила: по нему установщик узнаёт его и после удаления (ruleInstalledBefore)
+  await auditSystem({
+    action: "rule.save",
+    resourceType: "rule",
+    resourceId: id,
+    details: { created: true, catalogRule: spec.key, title: spec.title, by: "catalog-install" },
+  });
+  return "installed";
+}
+
+/**
+ * Правила ступенчатого скрининга каталога: по одному на шаг короткой формы,
+ * каждое — один раз, дальше им распоряжается отделение. Идёт после методик:
+ * условие и предложение ссылаются на методики, поставленные тем же прогоном.
+ */
+export async function installRules(createdBy: string): Promise<RuleInstallReport> {
+  const report = emptyRuleReport();
+  for (const spec of catalogRules(ruleScaleTitle)) {
+    report[await installRule(spec, createdBy)].push(spec.key);
+  }
+  return report;
+}
+
 /** Состояние методики каталога в базе — для обзора перед решением (catalog-status) */
 export interface CatalogStatusRow {
   key: string;
@@ -774,6 +903,7 @@ export async function installCatalog(opts: { force?: readonly string[] } = {}): 
       domainSet: [],
       sourceNoteSet: [],
       batteries: emptyBatteryReport(),
+      rules: emptyRuleReport(),
       notReady: "в базе нет ни одного сотрудника — методику не на кого записать",
     };
   }
@@ -796,6 +926,8 @@ export async function installCatalog(opts: { force?: readonly string[] } = {}): 
   const { installed, updated, skipped, keptLocal } = out;
   // после методик: состав заготовки — методики, которые этот же прогон поставил
   const batteryReport = await installBatteries(createdBy);
+  // и правила шагов — по той же причине: условие и предложение — методики этого прогона
+  const ruleReport = await installRules(createdBy);
 
   log.info("catalog.installed", {
     department: department.id,
@@ -808,6 +940,8 @@ export async function installCatalog(opts: { force?: readonly string[] } = {}): 
     domainSet: domainSet.length,
     sourceNoteSet: sourceNoteSet.length,
     batteriesInstalled: batteryReport.installed.length,
+    rulesInstalled: ruleReport.installed.length,
+    rulesPending: ruleReport.pending.length,
   });
 
   return {
@@ -823,6 +957,7 @@ export async function installCatalog(opts: { force?: readonly string[] } = {}): 
     domainSet,
     sourceNoteSet,
     batteries: batteryReport,
+    rules: ruleReport,
     notReady: null,
   };
 }

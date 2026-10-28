@@ -12569,8 +12569,7 @@ export const UI = {
   "mc.searchPh": { uk: "Назва або код методики", ru: "Название или код методики", en: "Instrument name or code" },
   "mc.colMethod": { uk: "Методика", ru: "Методика", en: "Instrument" },
   "mc.colGroup": { uk: "Група і папка", ru: "Группа и папка", en: "Group and folder" },
-  "mc.colScales": { uk: "Шкали", ru: "Шкалы", en: "Scales" },
-  "mc.colUses": { uk: "Проходжень, 30 днів", ru: "Прохождений, 30 дней", en: "Responses, 30 days" },
+  "mc.colUses": { uk: "За 30 днів", ru: "За 30 дней", en: "Last 30 days" },
   "mc.colVersion": { uk: "Версія і ключі", ru: "Версия и ключи", en: "Version and keys" },
   "mc.usesAll": { uk: "{n} усього", ru: "{n} всего", en: "{n} in total" },
   "mc.since": { uk: "від {date}", ru: "от {date}", en: "of {date}" },
@@ -12594,11 +12593,11 @@ export const UI = {
     ru: "{recent} за 30 дней, {all} всего",
     en: "{recent} in 30 days, {all} in total",
   },
-  "mc.peekBands": { uk: "Смуги результату", ru: "Полосы результата", en: "Result bands" },
+  "mc.peekBands": { uk: "Інтерпретація балу", ru: "Интерпретация балла", en: "Score interpretation" },
   "mc.peekNoBands": {
-    uk: "Смуг інтерпретації не задано",
-    ru: "Полосы интерпретации не заданы",
-    en: "No interpretation bands set",
+    uk: "Інтерпретації балу не задано: методика дає сирі бали",
+    ru: "Интерпретация балла не задана: методика даёт сырые баллы",
+    en: "No score interpretation set: the instrument gives raw scores",
   },
   "mc.peekKeysText": {
     uk: "Методика рахує бали, але висновки без звірки ключів із посібником ризиковані.",
@@ -13365,11 +13364,11 @@ export const UI = {
     ru: "Альфа Кронбаха {alpha}: пунктов в шкале {items}, прохождений {n}.",
     en: "Cronbach’s alpha {alpha}: {items} items in the scale, {n} responses.",
   },
-  "mc.ovBands": { uk: "Смуги інтерпретації", ru: "Полосы интерпретации", en: "Interpretation bands" },
+  "mc.ovBands": { uk: "Інтерпретація балу", ru: "Интерпретация балла", en: "Score interpretation" },
   "mc.ovBandsNote": {
-    uk: "Виділено смугу, на якій зараз медіана.",
-    ru: "Выделена полоса, на которой сейчас медиана.",
-    en: "The band holding the current median is highlighted.",
+    uk: "Виділено діапазон, у якому зараз медіана.",
+    ru: "Выделен диапазон, в котором сейчас медиана.",
+    en: "The range holding the current median is highlighted.",
   },
   "mc.ovCompare": { uk: "Порівняти", ru: "Сравнить", en: "Compare" },
   "mc.ovCurrent": { uk: "діюча", ru: "действующая", en: "current" },
@@ -13401,9 +13400,9 @@ export const UI = {
   "mc.ovMeanWeekly": { uk: "Середній бал", ru: "Средний балл", en: "Mean score" },
   "mc.ovMedian": { uk: "Медіана", ru: "Медиана", en: "Median" },
   "mc.ovMedianOn": {
-    uk: "Медіана на смугах тяжкості",
-    ru: "Медиана на полосах тяжести",
-    en: "Median on the severity bands",
+    uk: "Медіана на шкалі тяжкості",
+    ru: "Медиана на шкале тяжести",
+    en: "Median on the severity scale",
   },
   "mc.ovNo": { uk: "ні", ru: "нет", en: "no" },
   "mc.ovNoAnalytics": {
@@ -16539,6 +16538,40 @@ export const UI = {
   // ── dp-demo ──
 
   // ── dp-catalog ──
+  /* роль методики в каталоге (shared/catalogPassport.ts): паспорт методики и «Коротко про методику» */
+  "dpc.role.full": { uk: "Повна методика", ru: "Полная методика", en: "Full instrument" },
+  "dpc.role.short": { uk: "Скринінгова (скорочена) форма", ru: "Скрининговая (сокращённая) форма", en: "Screening (short) form" },
+  "dpc.role.clinician": { uk: "Оцінка фахівцем", ru: "Оценка специалистом", en: "Clinician-rated" },
+  /* объём строки и паспорта: «9 пунктів · ≈3 хв», под ним — кто заполняет */
+  "dpc.minutes": { uk: "≈{n} хв", ru: "≈{n} мин", en: "≈{n} min" },
+  "dpc.fillsSelf": { uk: "заповнює пацієнт", ru: "заполняет пациент", en: "self-report" },
+  "dpc.fillsInformant": { uk: "заповнює людина збоку", ru: "заполняет человек со стороны", en: "outside informant" },
+  /* «Хто заповнює» в паспорте: значение без глагола — он в подписи */
+  "dpc.whoClinician": { uk: "фахівець", ru: "специалист", en: "the specialist" },
+  "dpc.whoInformant": { uk: "людина збоку", ru: "человек со стороны", en: "an outside informant" },
+  /* колонка «Поріг»: ключевой порог словами или шаг скрининга «≥ 3 → PHQ-9» */
+  "dpc.colCutoff": { uk: "Поріг", ru: "Порог", en: "Cut-off" },
+  "dpc.noCutoffs": { uk: "без порогів", ru: "без порогов", en: "no cut-offs" },
+  /* паспорт методики: клиническое применение */
+  "dpc.useTitle": { uk: "Клінічне застосування", ru: "Клиническое применение", en: "Clinical use" },
+  "dpc.purpose": { uk: "Що вимірює", ru: "Что измеряет", en: "What it measures" },
+  "dpc.type": { uk: "Тип", ru: "Тип", en: "Type" },
+  "dpc.fullForm": { uk: "Повна форма", ru: "Полная форма", en: "Full form" },
+  "dpc.shortForms": { uk: "Скорочені форми", ru: "Сокращённые формы", en: "Short forms" },
+  "dpc.cutoffs": { uk: "Пороги", ru: "Пороги", en: "Cut-offs" },
+  "dpc.positive": { uk: "Позитивний результат", ru: "Положительный результат", en: "Positive result" },
+  "dpc.stepNext": { uk: "{cond} → пройти {code}", ru: "{cond} → пройти {code}", en: "{cond} → take {code}" },
+  "dpc.source": { uk: "Звідки поріг", ru: "Откуда порог", en: "Where the cut-off comes from" },
+  /* предложение правила ступенчатого скрининга: протокол короткой формы, ящик назначения в карточке */
+  "dpc.recommendedTitle": { uk: "Рекомендовано за правилами", ru: "Рекомендовано по правилам", en: "Recommended by the rules" },
+  "dpc.recommended": { uk: "Рекомендовано: {code}", ru: "Рекомендовано: {code}", en: "Recommended: {code}" },
+  "dpc.basisOn": { uk: "{basis} від {date}", ru: "{basis} от {date}", en: "{basis} on {date}" },
+  "dpc.assignOne": { uk: "Призначити {code}", ru: "Назначить {code}", en: "Assign {code}" },
+  "dpc.administerOne": { uk: "Провести {code}", ru: "Провести {code}", en: "Administer {code}" },
+  "dpc.assignedUntil": { uk: "призначено до {date}", ru: "назначено до {date}", en: "assigned until {date}" },
+  "dpc.assignedOpen": { uk: "призначено без строку", ru: "назначено без срока", en: "assigned, no deadline" },
+  "dpc.doneOn": { uk: "пройдено {date}", ru: "пройдено {date}", en: "completed {date}" },
+  "dpc.assignedToast": { uk: "{code} призначено", ru: "{code} назначено", en: "{code} assigned" },
 
   // ── dp-scales ──
 

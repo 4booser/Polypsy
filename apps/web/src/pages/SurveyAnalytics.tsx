@@ -1,6 +1,6 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
-import type { Battery, Severity as BandSeverity, SurveyAnalytics, SurveyFull } from "@quizzy/shared";
+import type { Battery, CatalogLink, Severity as BandSeverity, SurveyAnalytics, SurveyFull } from "@quizzy/shared";
 import { api } from "../api";
 import { BandTrend, HBars, SeverityMeter, ShareBar, TimeColumns } from "../charts/clinical";
 import { bandRange } from "../charts/ladder";
@@ -22,6 +22,7 @@ import { rightsKey } from "./methods/labels";
 import { MethodPage } from "./methods/MethodPage";
 import { SourceNote } from "./methods/SourceNote";
 import { fixedIn, shortDate, shortDateTime, splitCode, topLosses, weeklyCounts } from "./methods/model";
+import { condText, cutoffText, fillsKey, linkCode, whoKey } from "./methods/passport";
 import { num, useCount } from "./methods/useCount";
 
 /*
@@ -110,6 +111,7 @@ function Overview({ survey, data, batteries }: { survey: SurveyFull; data: Surve
   if (!data) {
     return (
       <SideLayout side={side}>
+        <UsePanel survey={survey} />
         <Panel>
           <Empty title={ut("mc.ovNoAnalytics")} hint={ut("mc.ovNoAnalyticsHint")} />
         </Panel>
@@ -138,6 +140,7 @@ function Overview({ survey, data, batteries }: { survey: SurveyFull; data: Surve
 
   return (
     <SideLayout side={side}>
+      <UsePanel survey={survey} />
       <div className="flex flex-wrap items-center gap-2">
         {/*
           Шкала — названием, а не кодом: «DENIAL», «EMOSUP», «anxiety» — коды
@@ -350,6 +353,94 @@ function Overview({ survey, data, batteries }: { survey: SurveyFull; data: Surve
   );
 }
 
+/**
+ * «Клінічне застосування» — паспорт каталога на странице методики: тип
+ * (повна / скринінгова форма / оцінка фахівцем), пункты, минуты и кто
+ * заполняет; что методика измеряет — строкой для специалиста; полная форма у
+ * короткой и короткие у полной — ссылками; пороги словами; у короткой формы —
+ * куда ведёт положительный результат («≥ 3 → пройти PHQ-9») и откуда порог
+ * (по наведению: источник — не абзац в основном потоке).
+ *
+ * У методики учреждения паспорта каталога нет — панели нет: её объём уже в
+ * шапке, а «что измеряет» знает только автор.
+ */
+function UsePanel({ survey }: { survey: SurveyFull }) {
+  const { ut, lang } = useLang();
+  const count = useCount();
+  const p = survey.catalog;
+  if (!p?.purpose) return null;
+  const asked = survey.questions.filter((q) => q.type !== "info").length;
+  const meta = [count(asked, "items"), ut("dpc.minutes").replace("{n}", String(p.minutes)), ut(fillsKey(survey.administration))].join(" · ");
+  const link = (l: CatalogLink) => {
+    const { code, name } = splitCode(l.title);
+    const text = code ? (
+      <>
+        <b className="font-extrabold">{code}</b> <span className="text-text-2">{name}</span>
+      </>
+    ) : (
+      <b className="font-extrabold">{name}</b>
+    );
+    return l.surveyId ? (
+      <Link key={l.key} to={`/surveys/${l.surveyId}`} className="text-violet-ink no-underline hover:underline">
+        {text}
+      </Link>
+    ) : (
+      <span key={l.key}>{text}</span>
+    );
+  };
+  const joined = (links: CatalogLink[]) =>
+    links.map((l, i) => (
+      <span key={l.key}>
+        {i ? <span className="text-muted">{" · "}</span> : null}
+        {link(l)}
+      </span>
+    ));
+  const rows: [string, ReactNode][] = [];
+  if (p.fullForms.length) rows.push([ut("dpc.fullForm"), <span key="full">{joined(p.fullForms)}</span>]);
+  if (p.shortForms.length) rows.push([ut("dpc.shortForms"), <span key="short">{joined(p.shortForms)}</span>]);
+  if (p.steps.length) {
+    rows.push([
+      ut("dpc.positive"),
+      <span key="steps" className="flex flex-col gap-1">
+        {p.steps.map((st) => (
+          <span key={`${st.scale}-${st.next.key}`} className="inline-flex flex-wrap items-center gap-x-1.5">
+            {ut("dpc.stepNext").replace("{cond}", condText(st, lang)).replace("{code}", linkCode(st.next))}
+            <Popover title={ut("dpc.source")} content={<p className="m-0">{st.citation}</p>}>
+              <span tabIndex={0} aria-label={ut("dpc.source")} className="inline-flex cursor-default rounded-[6px] text-muted hover:text-text">
+                <Ic.info size={14} />
+              </span>
+            </Popover>
+          </span>
+        ))}
+      </span>,
+    ]);
+  }
+  if (p.cutoffs.length) {
+    rows.push([
+      ut("dpc.cutoffs"),
+      <span key="cut" className="flex flex-col gap-0.5">
+        {p.cutoffs.map((c) => (
+          <span key={`${c.scale}-${c.op}-${c.value}`}>{cutoffText(c, lang)}</span>
+        ))}
+      </span>,
+    ]);
+  }
+  return (
+    <Panel title={ut("dpc.useTitle")} icon={<ShellIcon name="stethoscope" />}>
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <Tag tone={p.role === "full" ? "primary" : "plain"}>{ut(`dpc.role.${p.role}`)}</Tag>
+        <span className="text-small text-text-2">{meta}</span>
+      </div>
+      <p className="m-0 mt-2 text-body font-semibold text-text">{p.purpose}</p>
+      {rows.length ? (
+        <div className="mt-3 border-t border-divider pt-3">
+          <KV w={150} rows={rows} />
+        </div>
+      ) : null}
+    </Panel>
+  );
+}
+
 /* дробные — на языке экрана (fixedIn): одна цифра без хвостовых нулей, альфа — две */
 function useFmt() {
   const { lang } = useLang();
@@ -366,8 +457,9 @@ function AboutPanel({ survey, data }: { survey: SurveyFull & { keysVerifiedAt?: 
   const { fmt1 } = useFmt();
   const count = useCount();
   const rights = rightsKey(survey.rightsStatus);
+  const blurb = survey.catalog?.purpose ? null : survey.description;
   const rows: [string, string][] = [
-    [ut("mc.peekWho"), survey.administration === "clinician" ? ut("bt.byClinician") : ut("mc.bySelf")],
+    [ut("mc.peekWho"), ut(whoKey(survey.administration))],
     [ut("mc.peekVisibility"), survey.visibility === "restricted" ? ut("mc.visRestricted") : ut("mc.visPublic")],
     [ut("mc.ovScoring"), survey.scoringEnabled ? count(survey.scales.length, "scales") : ut("cat.scoringOff")],
     /*
@@ -399,8 +491,14 @@ function AboutPanel({ survey, data }: { survey: SurveyFull & { keysVerifiedAt?: 
       icon={<Ic.info />}
       actions={survey.editable !== false ? <TextAction to={`/constructor/${survey.id}`}>{ut("mc.ovSettings")}</TextAction> : null}
     >
-      {survey.description ? <p className="m-0 mb-3 text-body text-text-2">{survey.description}</p> : null}
-      <div className={cx(survey.description && "border-t border-divider pt-3")}>
+      {/*
+        Описание читает обследуемый перед началом («Два запитання про настрій…»);
+        у методики каталога специалисту его заменяет «Клінічне застосування».
+        У методики учреждения паспорта нет — описание остаётся: другого о ней
+        система не знает.
+      */}
+      {blurb ? <p className="m-0 mb-3 text-body text-text-2">{blurb}</p> : null}
+      <div className={cx(blurb && "border-t border-divider pt-3")}>
         {/* подпись «Ключ звірено з оригіналом» — в одну строку на 1280 */}
         <KV w={172} rows={rows} />
       </div>

@@ -31,6 +31,7 @@ import { db } from "../db";
 import { asSystem } from "../db/context";
 import { batteries, responses, surveyVersions, surveys } from "../db/schema";
 import { closeCompletedForSurvey } from "../lib/batteries";
+import { catalogOrder, relatedKeys, rowPassport, surveyPassport, type VisibleCatalogRow } from "../lib/catalogPassport";
 import { badRequest, conflict, forbidden, issueKey, langOf, notFound, parseBody, parseQuery } from "../lib/http";
 import { attachContent, createVersion, getSurvey, respondentView, surveyToDraft, versionContent, type Content } from "../lib/surveys";
 import { audit } from "../lib/audit";
@@ -191,6 +192,12 @@ surveyRoutes.get("/", async (c) => {
   const query = parseQuery(c, surveyListQuery);
 
   const filters = [];
+  /*
+   * Сотрудник видит методики своих групп, свои без группы и библиотеку — общий
+   * каталог (lib/scope.ts). Та же зона — у ссылок паспорта на другие методики
+   * каталога (visibleCatalogRows).
+   */
+  const scope = isStaff(user) ? await surveyUseFilter(user) : undefined;
   if (!isStaff(user)) {
     // пациент видит опубликованные общедоступные плюс назначенные лично ему
     filters.push(patientVisibilityFilter(user.id));
@@ -200,10 +207,8 @@ surveyRoutes.get("/", async (c) => {
      * назначает.
      */
     filters.push(eq(surveys.isDemo, false));
-  } else {
-    // сотрудник видит методики своих групп, свои без группы и библиотеку — общий каталог (lib/scope.ts)
-    const scope = await surveyUseFilter(user);
-    if (scope) filters.push(scope);
+  } else if (scope) {
+    filters.push(scope);
   }
   if (query.groupId) filters.push(eq(surveys.groupId, query.groupId));
   // снятые с использования показываются только по явному запросу сотрудника;
@@ -270,40 +275,63 @@ surveyRoutes.get("/", async (c) => {
    * (catalogNumbers ниже). Только сотруднику: см. там.
    */
   const staffView = isStaff(user);
+  const lang = langOf(c);
 
-  const listing = db
-    .select()
-    .from(surveys)
-    .where(where)
+  let rows: (typeof surveys.$inferSelect)[];
+  let total: number;
+  if (query.sort === "catalog") {
     /*
-     * Идентификатор вторым ключом — ради страниц. Postgres не обещает
-     * порядка среди равных created_at, и посев кладёт десятки методик одной
-     * секундой: без второго ключа одна и та же методика могла бы попасть на
-     * две страницы, а другая — ни на одну, и по списку этого не видно.
-     * У порядка по названию — тот же второй ключ: одноимённые методики
-     * (копия и оригинал) бывают.
+     * Порядок каталога (направление, роль, семья «полная — её короткие
+     * формы», название) — знание каталога в коде, а не в базе: отобранное
+     * сортируется целиком здесь (lib/catalogPassport.ts, catalogOrder) и
+     * режется на страницу. Методик в учреждении сотни, не тысячи; total —
+     * длина отобранного, тем же условием, что и у страницы.
      */
-    .orderBy(...(query.sort === "title" ? [titleOrder(langOf(c)), surveys.id] : [desc(surveys.createdAt), desc(surveys.id)]))
-    .$dynamic();
-  const rows = await (query.limit === undefined
-    ? listing
-    : listing.limit(query.limit).offset(query.offset));
+    const all = catalogOrder(await db.select().from(surveys).where(where), lang);
+    rows = query.limit === undefined ? all : all.slice(query.offset, query.offset + query.limit);
+    total = all.length;
+  } else {
+    const listing = db
+      .select()
+      .from(surveys)
+      .where(where)
+      /*
+       * Идентификатор вторым ключом — ради страниц. Postgres не обещает
+       * порядка среди равных created_at, и посев кладёт десятки методик одной
+       * секундой: без второго ключа одна и та же методика могла бы попасть на
+       * две страницы, а другая — ни на одну, и по списку этого не видно.
+       * У порядка по названию — тот же второй ключ: одноимённые методики
+       * (копия и оригинал) бывают.
+       */
+      .orderBy(...(query.sort === "title" ? [titleOrder(lang), surveys.id] : [desc(surveys.createdAt), desc(surveys.id)]))
+      .$dynamic();
+    rows = await (query.limit === undefined ? listing : listing.limit(query.limit).offset(query.offset));
 
-  /*
-   * total считается вторым запросом и только когда просили страницу: без
-   * страницы он равен длине списка, и обходить таблицу ещё раз ради того
-   * же числа незачем.
-   */
-  const total =
-    query.limit === undefined
-      ? rows.length
-      : Number((await db.select({ n: sql<number>`count(*)::int` }).from(surveys).where(where))[0]?.n ?? 0);
+    /*
+     * total считается вторым запросом и только когда просили страницу: без
+     * страницы он равен длине списка, и обходить таблицу ещё раз ради того
+     * же числа незачем.
+     */
+    total =
+      query.limit === undefined
+        ? rows.length
+        : Number((await db.select({ n: sql<number>`count(*)::int` }).from(surveys).where(where))[0]?.n ?? 0);
+  }
 
   const numbers = await catalogNumbers(rows, user, staffView);
   /* какие строки сотрудник правит: группы под управлением читаются один раз на страницу */
   const managed = staffView ? await accessibleGroupIds(user) : [];
   const editableRow = (survey: { groupId: string | null; createdBy: string }) =>
     managed === null || (survey.groupId ? managed.includes(survey.groupId) : survey.createdBy === user.id);
+  /*
+   * Паспорт строки (роль, время, что измеряет, пороги, шаг скрининга) — только
+   * сотруднику, как и прочий паспорт строки: пороги — часть ключа (#141).
+   * Ссылки шага ведут к строкам, видимым в той же зоне.
+   */
+  const visible =
+    staffView && rows.length
+      ? await visibleCatalogRows(relatedKeys(rows.map((r) => r.catalogKey)), scope)
+      : new Map<string, VisibleCatalogRow>();
   const list: SurveyListItem[] = rows.map(({ sourceNote, catalogFields, ...survey }) => {
     const n = numbers.get(survey.id) ?? NO_NUMBERS;
     return {
@@ -332,12 +360,32 @@ surveyRoutes.get("/", async (c) => {
             bandCount: n.bandCount,
             recentResponseCount: n.recentResponseCount,
             hasCriticalItem: n.hasCriticalItem,
+            catalog: rowPassport(survey, n.questionCount, lang, visible),
           }
         : {}),
     };
   });
   return c.json({ items: list, total } satisfies SurveyListPage);
 });
+
+/**
+ * Строки методик каталога по ключам — те, что видит читающий (`scope` — его
+ * зона; под ролью приложения то же сделает и политика строк): к ним ведут
+ * ссылки паспорта на полную методику, короткие формы и шаг скрининга.
+ *
+ * Запрос идёт и без ключей (страница без методик каталога): число запросов
+ * списка не зависит от того, что на странице (test/catalogNumbers.test.ts).
+ */
+async function visibleCatalogRows(
+  keys: readonly string[],
+  scope: Awaited<ReturnType<typeof surveyUseFilter>>,
+): Promise<Map<string, VisibleCatalogRow>> {
+  const found = await db
+    .select({ id: surveys.id, key: surveys.catalogKey, title: surveys.title })
+    .from(surveys)
+    .where(and(keys.length ? inArray(surveys.catalogKey, [...keys]) : sql`false`, scope));
+  return new Map(found.flatMap((r) => (r.key ? [[r.key, { id: r.id, title: r.title }] as const] : [])));
+}
 
 /** Числа строки каталога — то, что catalogNumbers считает по строкам страницы */
 interface CatalogNumbers {
@@ -558,11 +606,20 @@ surveyRoutes.get("/:id", async (c) => {
    * Обследуемому — без ключа: веса, критические пункты, пороги, шкалы (#141).
    * Сотруднику — с признаком «правит ли он её» (editable): методикой
    * библиотеки пользуется каждый, а правят её суперадмин и администраторы
-   * каталога, и экран не должен предлагать правку, которая откажет.
+   * каталога, и экран не должен предлагать правку, которая откажет. И с
+   * клиническим паспортом (роль, время, пороги, формы, шаг скрининга); сырой
+   * выдаче конструктора паспорт ни к чему — он правит содержимое, а паспорт
+   * содержимым не является.
    */
   const editable = isStaff(user) ? await canManageSurvey(user, survey.id) : false;
-  const view = (full: SurveyFull) => (isStaff(user) ? { ...full, editable } : respondentView(full));
-  if (query.version === undefined || query.version === survey.versionNumber) return c.json(view(survey));
+  const view = async (full: SurveyFull): Promise<SurveyFull> => {
+    if (!isStaff(user)) return respondentView(full);
+    if (raw) return { ...full, editable };
+    const visible = await visibleCatalogRows(relatedKeys([full.catalogKey], true), await surveyUseFilter(user));
+    const items = full.questions.filter((q) => q.type !== "info").length;
+    return { ...full, editable, catalog: surveyPassport(full, items, langOf(c), visible) };
+  };
+  if (query.version === undefined || query.version === survey.versionNumber) return c.json(await view(survey));
 
   /*
    * Версия ищется только после проверки прав и только среди версий ЭТОЙ
@@ -577,7 +634,7 @@ surveyRoutes.get("/:id", async (c) => {
   if (!versionRow) notFound("err.surveyVersionNotFound");
   const versioned = await getSurvey(survey.id, versionRow.id, langOf(c), raw);
   if (!versioned) notFound("err.surveyVersionNotFound");
-  return c.json(view(versioned));
+  return c.json(await view(versioned));
 });
 
 /**

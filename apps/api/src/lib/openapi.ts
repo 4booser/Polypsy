@@ -219,13 +219,13 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   /* ── методики ── */
   "GET /api/surveys": {
     summary:
-      "Каталог методик. ?limit=&offset= — страница с total; ?folder= (id или root) — папка, вместе с ?q= — поиск по её поддереву; ?status= — вкладка, несколько через запятую; ?archived=1 — снятые вместе с остальными, ?archived=only — только снятые; ?domain= — направление (distress, trauma, suicide, sleep, addiction, wellbeing, cognitive, personality, staff, other) или none — без направления, из папки — по её поддереву; в строке — поле domain",
+      "Каталог методик. ?limit=&offset= — страница с total; ?folder= (id или root) — папка, вместе с ?q= — поиск по её поддереву; ?status= — вкладка, несколько через запятую; ?archived=1 — снятые вместе с остальными, ?archived=only — только снятые; ?domain= — направление (distress, trauma, suicide, sleep, addiction, wellbeing, cognitive, personality, staff, other) или none — без направления, из папки — по её поддереву; в строке — поле domain; ?sort=title — по названию, ?sort=catalog — порядок каталога (направление, полные методики первыми, короткие формы под своей полной); сотруднику в строке — клинический паспорт catalog (роль, время, что измеряет, пороги, шаг скрининга)",
     access: "user",
   },
   "POST /api/surveys": { summary: "Создание методики", access: "staff", permission: "surveys.edit", body: createSurveySchema },
   "POST /api/surveys/validate": { summary: "Структурная проверка черновика без сохранения", access: "staff", permission: "surveys.edit" },
   "POST /api/surveys/import": { summary: "Импорт методики из файла экспорта", access: "staff", permission: "surveys.edit" },
-  "GET /api/surveys/:id": { summary: "Методика с содержимым; ?raw=1 — для конструктора; ?version=N — содержимое конкретной версии; обследуемому — без ключа (веса, критические пункты, пороги, шкалы срезаны, keyWithheld)", access: "user" },
+  "GET /api/surveys/:id": { summary: "Методика с содержимым; ?raw=1 — для конструктора; ?version=N — содержимое конкретной версии; обследуемому — без ключа (веса, критические пункты, пороги, шкалы срезаны, keyWithheld); сотруднику — клинический паспорт catalog (роль, время, пороги, полная и короткие формы, шаг скрининга)", access: "user" },
   "PATCH /api/surveys/:id": { summary: "Правка методики — создаёт новую версию", access: "staff", permission: "surveys.edit", body: updateSurveySchema },
   "DELETE /api/surveys/:id": { summary: "Снятие методики с использования (данные сохраняются)", access: "staff", permission: "surveys.publish" },
   "POST /api/surveys/:id/restore": { summary: "Возврат методики в работу", access: "staff", permission: "surveys.publish" },
@@ -394,7 +394,7 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   "GET /api/decisions/rules": { summary: "Правила поддержки решений", access: "staff", permission: "alerts.review" },
   "POST /api/decisions/rules": { summary: "Завести правило", access: "superadmin", permission: "decisions.manage" },
   "PATCH /api/decisions/rules/:id": { summary: "Правка правила: поднимает версию", access: "superadmin", permission: "decisions.manage" },
-  "GET /api/decisions/hits": { summary: "Предложения правил, ждущие решения человека", access: "staff", permission: "alerts.review" },
+  "GET /api/decisions/hits": { summary: "Предложения правил, ждущие решения человека; ?status= — состояние, ?userId= — по одному человеку; в строке — методика названием, баллы условий (basis) и предложенные методики с тем, назначены ли и пройдены ли они (suggested)", access: "staff", permission: "alerts.review" },
   "PATCH /api/decisions/hits/:id": { summary: "Принять или отклонить предложение (отклонение — с объяснением)", access: "staff", permission: "alerts.review" },
   "POST /api/presence": { summary: "Пульс присутствия: я на этом экране", access: "staff", whyNoPermission: "пульс присутствия шлёт сам клиент за того, кто уже вошёл" },
   "GET /api/presence": { summary: "Кто ещё держит открытым этот экран", access: "staff", whyNoPermission: "кто ещё держит открытым этот экран — видно тем, кто на этом же экране; скрывать нечего" },
