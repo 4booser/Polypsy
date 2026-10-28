@@ -109,8 +109,8 @@ test("предложенная методика назначается с про
   const surveys = (await (await page.request.get("/api/surveys?status=published", { headers: auth })).json()) as {
     items: { id: string; title: string; administration: string }[];
   };
-  // что предложить: СР-45 посева — самоотчёт, его назначают человеку
-  const next = surveys.items.find((s) => s.title.startsWith("СР-45"));
+  // что предложить: «Опитувальник (СР-45)» посева — самоотчёт только по назначению, его и выдаёт кнопка
+  const next = surveys.items.find((s) => s.title.includes("СР-45"));
   expect(next, "на стенде нет СР-45 — предложить нечего").toBeTruthy();
   // по чему сработать: другая самоотчётная методика со шкалами
   let source: { id: string } | null = null;
