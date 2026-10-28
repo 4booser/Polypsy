@@ -1,4 +1,5 @@
 import type { Lang } from "./types";
+import { SHORT_BY_KEY } from "./instrumentShortNames";
 
 /**
  * Форматирование, общее для консоли и мобильного приложения.
@@ -101,16 +102,6 @@ export function formatDateTime(iso: string | null | undefined): string {
   return iso ? iso.slice(0, 16).replace("T", " ") : "—";
 }
 
-/**
- * Короткие имена методик, в названии которых кода в скобках нет, — по ключу
- * каталога (surveys.catalog_key) и языку экрана. Это методики учреждения:
- * «БОО «Адаптивність-200»» (по-русски МЛО) и «Опитувальник Міні-мульт».
- * Остальные названия каталога — «Назва (КОД)», и код берётся из скобок.
- */
-const SHORT_BY_KEY: Readonly<Record<string, Readonly<Record<"uk" | "ru", string>>>> = {
-  mlo: { uk: "БОО", ru: "МЛО" },
-  minimult: { uk: "Міні-мульт", ru: "Мини-мульт" },
-};
 
 /** Длина короткого имени, взятого из названия без кода: дальше — по границе слова */
 const SHORT_MAX = 24;
