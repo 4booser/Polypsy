@@ -1,7 +1,11 @@
-import { useState, type ReactNode } from "react";
+import { useState, type ReactElement, type ReactNode } from "react";
 import type { RespondentDynamics, ResponseContext, ResponseDetail, ResponseDetailScore, RuleHit, SurveyFull } from "@quizzy/shared";
 import { api } from "../../api";
-import { decideHit } from "../../components/Suggestions";
+import { useNavigate } from "react-router-dom";
+import { useAuth } from "../../auth";
+import { assignSuggested, decideHit } from "../../components/Suggestions";
+import { splitCode } from "../methods/model";
+import { basisText, suggestionOpen, type Suggestion } from "../methods/passport";
 import { ScaleProfile, SeverityMeter } from "../../charts/clinical";
 import { ChartLegend, OTHER_COLOR, SINGLE_COLOR, useDecimal } from "../../charts/kit";
 import { dateTime, day, duration } from "../../format";
@@ -567,15 +571,31 @@ const ACTION_KEY = {
  * поддержки решений, и решение — тут же. Отклонение требует причины (сервер:
  * err.declineNeedsNote), поэтому «Відхилити» сперва просит строку.
  *
+ * Предложение методики (ступенчатый скрининг каталога: PHQ-2 ≥ 3 → PHQ-9) —
+ * строкой «Рекомендовано: PHQ-9» с баллом, на котором сработало правило
+ * («PHQ-2 = 4 від 28.10»), и одним нажатием «Призначити PHQ-9»: выдача и
+ * согласие разом (components/Suggestions.tsx, assignSuggested). Методику,
+ * которую заполняет специалист, не назначают, а проводят — «Провести C-SSRS».
+ * Уже назначенная или пройденная после срабатывания — так и сказано, и
+ * второй раз её не выдают: остаётся согласиться или отклонить.
+ *
  * Без срабатываний панель не рисуют (протокол, лист заключения): строка
  * «правила нічого не запропонували» на каждом протоколе была шумом.
  */
 export function RulesPanel({ hits, reload, title, hint }: { hits: RuleHit[]; reload: () => void; title?: string; hint?: string }) {
-  const { ut } = useLang();
+  const { ut, lang } = useLang();
+  const { can } = useAuth();
+  const navigate = useNavigate();
   const { run, busy } = useAction();
   const [declining, setDeclining] = useState<string | null>(null);
   const [note, setNote] = useState("");
   const [meanwhile, setMeanwhile] = useState<string | null>(null);
+  /* фраза сервера о решении, принятом другим (409), — над списком, а не в исчезающем уведомлении */
+  const settled = (outcome: { meanwhile: string | null }) => {
+    if (!outcome.meanwhile) return true;
+    setMeanwhile(outcome.meanwhile);
+    return false;
+  };
   const decide = (hit: RuleHit, status: "accepted" | "declined", done: string, why?: string) =>
     void run(async () => {
       setMeanwhile(null);
@@ -584,12 +604,131 @@ export function RulesPanel({ hits, reload, title, hint }: { hits: RuleHit[]; rel
         setDeclining(null);
         setNote("");
       }
-      if (!outcome.meanwhile) return true;
-      setMeanwhile(outcome.meanwhile);
-      return false;
+      return settled(outcome);
     }, done);
+  /* «Призначити PHQ-9»: выдача без срока, как из ящика карточки, и согласие с предложением */
+  const assign = (hit: RuleHit, target: Suggestion) =>
+    void run(
+      async () => {
+        setMeanwhile(null);
+        return settled(
+          await assignSuggested(
+            hit,
+            target.surveyId,
+            (surveyId, userId) => api.grant(surveyId, userId, undefined, null),
+            () => api.decideHit(hit.id, "accepted"),
+            reload,
+          ),
+        );
+      },
+      ut("dpc.assignedToast").replace("{code}", splitCode(target.title).code ?? target.title),
+    );
+  /* «Провести C-SSRS»: согласие — и экран заполнения специалистом */
+  const administer = (hit: RuleHit, target: Suggestion) =>
+    void run(async () => {
+      setMeanwhile(null);
+      if (!settled(await decideHit(() => api.decideHit(hit.id, "accepted"), reload))) return false;
+      navigate(`/surveys/${target.surveyId}/administer`);
+      return true;
+    });
   const actionText = (h: RuleHit) =>
     h.explanation.actions.map((a) => (a.kind === "advise" ? a.text : ut(ACTION_KEY[a.kind]))).join("; ");
+  const declineForm = (h: RuleHit) => (
+    <div className="mt-2 flex flex-wrap items-center gap-2">
+      <Input
+        autoFocus
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+        placeholder={ut("ds.whyDecline")}
+        aria-label={ut("ds.whyDecline")}
+        className="min-w-[160px] flex-1"
+      />
+      <Button size="xs" disabled={busy || !note.trim()} onClick={() => decide(h, "declined", ut("ds.declined"), note.trim())}>
+        {ut("ds.decline")}
+      </Button>
+      <Button size="xs" variant="quiet" onClick={() => setDeclining(null)}>
+        {ut("common.cancel")}
+      </Button>
+    </div>
+  );
+  /* почему сработало — числами, по наведению на название правила */
+  const why = (h: RuleHit, children: ReactElement) => (
+    <Popover
+      title={h.ruleTitle}
+      note={dateTime(h.createdAt)}
+      content={
+        <ul className="m-0 list-disc pl-4">
+          {h.explanation.because.map((b, i) => (
+            <li key={i}>{b.text}</li>
+          ))}
+        </ul>
+      }
+    >
+      {children}
+    </Popover>
+  );
+  const decided = (h: RuleHit) => (h.status === "accepted" ? ut("rp.hitAccepted") : ut("rp.hitDeclined"));
+
+  /**
+   * Строка предложения методики: «Рекомендовано: PHQ-9», под ней — на чём
+   * сработало и что с методикой уже сделано, ниже — одно нажатие.
+   */
+  const suggestion = (h: RuleHit, targets: Suggestion[]) => {
+    const codes = targets.map((x) => splitCode(x.title).code ?? x.title);
+    const state = targets
+      .map((x) =>
+        x.doneAt
+          ? ut("dpc.doneOn").replace("{date}", day(x.doneAt))
+          : x.assigned
+            ? x.assigned.until
+              ? ut("dpc.assignedUntil").replace("{date}", day(x.assigned.until))
+              : ut("dpc.assignedOpen")
+            : null,
+      )
+      .filter(Boolean);
+    const open = targets.filter(suggestionOpen);
+    return (
+      <>
+        {why(h, <b className="block cursor-default text-[13px] font-extrabold text-text">{ut("dpc.recommended").replace("{code}", codes.join(", "))}</b>)}
+        <span className="block text-small text-text-2">
+          {ut("dpc.basisOn").replace("{basis}", basisText(h, lang)).replace("{date}", day(h.createdAt))}
+          {state.length ? <span className="text-muted">{` · ${state.join(", ")}`}</span> : null}
+          {h.status !== "suggested" ? <span className="text-muted">{` · ${decided(h)}`}</span> : null}
+        </span>
+        {h.status === "suggested" ? (
+          declining === h.id ? (
+            declineForm(h)
+          ) : (
+            <div className="mt-2 flex flex-wrap gap-2">
+              {open.length
+                ? open.map((x) =>
+                    x.clinician ? (
+                      <Button key={x.surveyId} size="xs" disabled={busy} icon={<Ic.keyboard />} onClick={() => administer(h, x)}>
+                        {ut("dpc.administerOne").replace("{code}", splitCode(x.title).code ?? x.title)}
+                      </Button>
+                    ) : can("assignments.manage") ? (
+                      <Button key={x.surveyId} size="xs" variant="primary" disabled={busy} icon={<Rx.clipboardPlus />} onClick={() => assign(h, x)}>
+                        {ut("dpc.assignOne").replace("{code}", splitCode(x.title).code ?? x.title)}
+                      </Button>
+                    ) : null,
+                  )
+                : null}
+              {/* назначить нечего (уже назначено, пройдено или нет права) — согласие, как у прочих правил */}
+              {!open.length || !can("assignments.manage") ? (
+                <Button size="xs" disabled={busy} icon={<Ic.check />} onClick={() => decide(h, "accepted", ut("ds.accepted"))}>
+                  {ut("ds.accept")}
+                </Button>
+              ) : null}
+              <Button size="xs" variant="ghost" disabled={busy} onClick={() => setDeclining(h.id)}>
+                {ut("ds.decline")}
+              </Button>
+            </div>
+          )
+        ) : null}
+      </>
+    );
+  };
+
   return (
     <Panel title={title ?? ut("rp.rules")} icon={<Rx.branch />}>
       {hint ? <p className="m-0 mb-2 text-small text-muted">{hint}</p> : null}
@@ -599,64 +738,41 @@ export function RulesPanel({ hits, reload, title, hint }: { hits: RuleHit[]; rel
         </p>
       ) : null}
       <ul className="m-0 list-none p-0">
-        {hits.map((h) => (
-          <li key={h.id} className="grid grid-cols-[28px_minmax(0,1fr)] gap-x-2.5 border-t border-divider py-2.5 first:border-t-0 first:pt-0.5">
-            <IconTile icon={hitIcon(h)} size={28} tone={h.explanation.actions.some((a) => a.kind === "notify_duty") ? "risk" : "neutral"} />
-            <div className="min-w-0">
-              <Popover
-                title={h.ruleTitle}
-                note={dateTime(h.createdAt)}
-                content={
-                  <ul className="m-0 list-disc pl-4">
-                    {h.explanation.because.map((b, i) => (
-                      <li key={i}>{b.text}</li>
-                    ))}
-                  </ul>
-                }
-              >
-                <b className="block cursor-default text-[13px] font-extrabold text-text">{h.ruleTitle}</b>
-              </Popover>
-              <span className="block text-small text-text-2">
-                {actionText(h)}
-                {h.status !== "suggested" ? (
-                  <span className="text-muted">
-                    {"; "}
-                    {h.status === "accepted" ? ut("rp.hitAccepted") : ut("rp.hitDeclined")}
-                  </span>
-                ) : null}
-              </span>
-              {h.status === "suggested" ? (
-                declining === h.id ? (
-                  <div className="mt-2 flex flex-wrap items-center gap-2">
-                    <Input
-                      autoFocus
-                      value={note}
-                      onChange={(e) => setNote(e.target.value)}
-                      placeholder={ut("ds.whyDecline")}
-                      aria-label={ut("ds.whyDecline")}
-                      className="min-w-[160px] flex-1"
-                    />
-                    <Button size="xs" disabled={busy || !note.trim()} onClick={() => decide(h, "declined", ut("ds.declined"), note.trim())}>
-                      {ut("ds.decline")}
-                    </Button>
-                    <Button size="xs" variant="quiet" onClick={() => setDeclining(null)}>
-                      {ut("common.cancel")}
-                    </Button>
-                  </div>
+        {hits.map((h) => {
+          const targets = h.suggested ?? [];
+          return (
+            <li key={h.id} className="grid grid-cols-[28px_minmax(0,1fr)] gap-x-2.5 border-t border-divider py-2.5 first:border-t-0 first:pt-0.5">
+              <IconTile icon={hitIcon(h)} size={28} tone={h.explanation.actions.some((a) => a.kind === "notify_duty") ? "risk" : "neutral"} />
+              <div className="min-w-0">
+                {targets.length ? (
+                  suggestion(h, targets)
                 ) : (
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    <Button size="xs" disabled={busy} icon={<Ic.check />} onClick={() => decide(h, "accepted", ut("ds.accepted"))}>
-                      {ut("ds.accept")}
-                    </Button>
-                    <Button size="xs" variant="ghost" disabled={busy} onClick={() => setDeclining(h.id)}>
-                      {ut("ds.decline")}
-                    </Button>
-                  </div>
-                )
-              ) : null}
-            </div>
-          </li>
-        ))}
+                  <>
+                    {why(h, <b className="block cursor-default text-[13px] font-extrabold text-text">{h.ruleTitle}</b>)}
+                    <span className="block text-small text-text-2">
+                      {actionText(h)}
+                      {h.status !== "suggested" ? <span className="text-muted">{`; ${decided(h)}`}</span> : null}
+                    </span>
+                    {h.status === "suggested" ? (
+                      declining === h.id ? (
+                        declineForm(h)
+                      ) : (
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          <Button size="xs" disabled={busy} icon={<Ic.check />} onClick={() => decide(h, "accepted", ut("ds.accepted"))}>
+                            {ut("ds.accept")}
+                          </Button>
+                          <Button size="xs" variant="ghost" disabled={busy} onClick={() => setDeclining(h.id)}>
+                            {ut("ds.decline")}
+                          </Button>
+                        </div>
+                      )
+                    ) : null}
+                  </>
+                )}
+              </div>
+            </li>
+          );
+        })}
       </ul>
     </Panel>
   );

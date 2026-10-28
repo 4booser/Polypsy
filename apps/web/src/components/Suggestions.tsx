@@ -6,6 +6,7 @@ import { dateTime } from "../format";
 import { useLang } from "../lang";
 import type { UiKey } from "@quizzy/shared";
 import { useResource, type Resource } from "../useResource";
+import { splitCode } from "../pages/methods/model";
 import { Ic, NotLoaded, useAction } from "../ui";
 import { Panel } from "../ui/layout";
 import { Button, Input, Tag } from "../ui/primitives";
@@ -55,6 +56,28 @@ export async function decideHit(
   }
   reload();
   return { meanwhile: null };
+}
+
+/**
+ * «Призначити PHQ-9» одним нажатием: выдать предложенную методику человеку и
+ * принять предложение (ступенчатый скрининг каталога — протокол короткой
+ * формы, ящик назначения в карточке).
+ *
+ * Сначала выдача, потом решение: не выданную методику нельзя записать как
+ * «прийнято» — специалист согласился именно назначить. Выдача отказала (нет
+ * права, человек вне зоны) — предложение остаётся предложенным, отказ уходит
+ * выше. Решение тем временем принял другой (409) — выдача уже сделана, и она
+ * верна: список перечитывается, фраза сервера возвращается (decideHit).
+ */
+export async function assignSuggested(
+  hit: Pick<RuleHit, "id" | "userId">,
+  surveyId: string,
+  grant: (surveyId: string, userId: string) => Promise<unknown>,
+  accept: () => Promise<unknown>,
+  reload: () => void,
+): Promise<{ meanwhile: string | null }> {
+  await grant(surveyId, hit.userId);
+  return decideHit(accept, reload);
 }
 
 /**
@@ -150,7 +173,7 @@ export function SuggestionsBody({
               <div className="flex flex-wrap gap-1.5">
                 {hit.explanation.actions.map((a, i) => (
                   <Tag key={i} tone="primary">
-                    {actionText(a, ut)}
+                    {actionText(a, ut, hit)}
                   </Tag>
                 ))}
               </div>
@@ -195,12 +218,16 @@ export function SuggestionsBody({
 function actionText(
   action: RuleHit["explanation"]["actions"][number],
   ut: (key: UiKey) => string,
+  hit: Pick<RuleHit, "suggested">,
 ): string {
   switch (action.kind) {
     case "notify_duty":
       return ut("ds.actNotifyDuty");
-    case "suggest_survey":
-      return ut("ds.actSurvey");
+    case "suggest_survey": {
+      // предложенная методика — кодом («Рекомендовано: PHQ-9»), а не «запропонувати методику»
+      const title = hit.suggested?.find((x) => x.surveyId === action.surveyId)?.title;
+      return title ? ut("dpc.recommended").replace("{code}", splitCode(title).code ?? title) : ut("ds.actSurvey");
+    }
     case "suggest_pathway":
       return ut("ds.actPathway");
     case "advise":

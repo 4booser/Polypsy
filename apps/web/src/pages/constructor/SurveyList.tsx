@@ -36,6 +36,7 @@ import { Mi } from "../methods/icons";
 import { DOMAIN_KEY, domainKey, rightsKey } from "../methods/labels";
 import { SourceNote } from "../methods/SourceNote";
 import { attentionOf, fixedIn, grantState, keysPending, rightsPending, shortDate, splitCode } from "../methods/model";
+import { cutoffText, fillsKey, stepText, whoKey } from "../methods/passport";
 import { num, useCount } from "../methods/useCount";
 import { ArchiveManyDialog, codesLine, FolderForm, MoveForm, MoveManyForm } from "./CatalogueDialogs";
 import {
@@ -48,10 +49,12 @@ import {
   folderChildren,
   folderPath,
   listQuery,
+  nestedRows,
   offsetPageCount,
   pageCount,
   pageFrom,
   retiredPage,
+  rowGroup,
   tabFromPath,
   type CatalogueTab,
 } from "./catalogue";
@@ -67,9 +70,15 @@ import {
  *
  * В листе: папки текущего уровня («Мої тести» и крошки), поиск, группа,
  * чипы «Напрям» с числами (что измеряет методика: shared/domains.ts), таблица
- * и страницы. Строка: код и имя, признаки (лише за призначенням,
- * критичний пункт, заповнює фахівець, демо; права — суперадмину), група і
- * папка, шкали й смуги, проходження за 30 днів, версія (и ключи — суперадмину).
+ * и страницы. Таблица — для клинициста (прохід клінічної суті): строки
+ * сгруппированы по направлению, внутри — полные методики первыми, короткая
+ * форма — строкой под своей полной (порядок считает сервер, sort=catalog).
+ * Строка: код и имя, признаки (лише за призначенням, критичний пункт, заповнює
+ * фахівець, демо; права — суперадмину), под именем — что методика измеряет
+ * для специалиста (паспорт каталога, а не описание для пациента); обсяг —
+ * пункты, минуты и кто заполняет; поріг — ключевой порог словами или шаг
+ * скрининга «≥ 3 → PHQ-9»; проходження за 30 днів; група і папка — когда их
+ * больше одной; версія и ключи — суперадмину и на вкладках черновиков и снятых.
  * Действия строки всплывают
  * на наведении и фокусе (DataTable): «Призначити» (A) и «Коротко» — в
  * ящике, остальное в меню; «Зняти з використання» — окно (необратимо для
@@ -85,24 +94,37 @@ import {
 
 /* место под пилюлю кода: самые длинные коды каталога («Brief COPE», «PC-PTSD-5», «SAD PERSONS») в 72 px резались */
 const CODE_W = 96;
+/* отступ вложенной строки — короткой формы под своей полной */
+const NEST_W = 22;
 
 /**
- * Ячейка «Методика»: пилюля кода, имя, признаки и строка состава.
- * `domain` — подпись направления в начале строки состава («что измеряет», как
- * на макете); пусто, когда каталог и так отобран по направлению.
+ * Ячейка «Методика»: пилюля кода, имя, признаки и строка «что измеряет».
+ *
+ * Строка под именем — для специалиста: клиническая строка паспорта каталога
+ * («Ультракороткий скринінг депресії…»), а не описание, которое читает
+ * пациент перед началом («Два запитання про настрій…»). У методики учреждения
+ * паспорта нет — тогда её описание: другого о ней система не знает.
+ *
+ * `nested` — короткая форма под своей полной методикой: строка с отступом и
+ * уголком к строке выше. Короткая форма без полной в каталоге (CAGE, GDS-15)
+ * стоит своей строкой после полных методик направления; что она скринінг или
+ * скорочена форма, говорит её строка («Скринінг…», «…; скорочена GDS-30»):
+ * пометка рядом с именем отнимала у него ширину на 1280.
  */
-function MethodCell({ s, flags, codes, domain }: { s: SurveyListItem; flags: ReactNode; codes: boolean; domain?: string | null }) {
+function MethodCell({ s, flags, codes, nested }: { s: SurveyListItem; flags: ReactNode; codes: boolean; nested: boolean }) {
   const { ut } = useLang();
-  const count = useCount();
   const { code, name } = splitCode(s.title);
-  const parts = [count(s.questionCount, "items"), s.description].filter(Boolean).join(", ");
-  // подпись направления сама с запятыми («Настрій, тривога, дистрес») — отделяется точкой
-  const line = [domain, parts].filter(Boolean).join(" · ");
+  const line = s.catalog?.purpose ?? s.description ?? "";
   return (
     <span className="flex min-w-0 items-center gap-3">
+      {nested ? (
+        <span aria-hidden className="flex shrink-0 justify-end self-stretch" style={{ width: NEST_W, marginRight: -6 }}>
+          <span className="mb-[18px] w-3 border-b-[1.5px] border-l-[1.5px] border-control" />
+        </span>
+      ) : null}
       {/* место под код — только если на странице коды есть: пустой столбец без кодов был бы дырой */}
       {codes ? (
-        <span className="shrink-0" style={{ width: CODE_W }}>
+        <span className="shrink-0" style={{ width: nested ? CODE_W - NEST_W : CODE_W }}>
           {code ? (
             <span
               aria-hidden
@@ -131,6 +153,44 @@ function MethodCell({ s, flags, codes, domain }: { s: SurveyListItem; flags: Rea
           {line || ut("cat.noDescription")}
         </small>
       </span>
+    </span>
+  );
+}
+
+/**
+ * «Обсяг»: пункты и минуты, под ними — кто заполняет. Минуты — из паспорта
+ * (руководство или оценка по числу пунктов), со знаком «≈»: это ориентир для
+ * выбора, а не норматив.
+ */
+function VolumeCell({ s }: { s: SurveyListItem }) {
+  const { ut } = useLang();
+  const count = useCount();
+  const top = [count(s.questionCount, "items"), s.catalog ? ut("dpc.minutes").replace("{n}", String(s.catalog.minutes)) : null]
+    .filter(Boolean)
+    .join(" · ");
+  return <Two top={top} sub={ut(fillsKey(s.administration))} />;
+}
+
+/**
+ * «Поріг»: у короткой формы — шаг скрининга («≥ 3 → PHQ-9»), у полной —
+ * ключевой порог словами («≥ 10 — клінічно значуща депресія»); второй, если
+ * есть, — строкой ниже. Порогов у разработчика нет — так и сказано: пустая
+ * ячейка читалась бы как незаполненные данные.
+ */
+function CutoffCell({ s, width }: { s: SurveyListItem; width: number }) {
+  const { ut, lang } = useLang();
+  const p = s.catalog;
+  const lines = p ? [...p.steps.map((x) => stepText(x, lang)), ...p.cutoffs.map((c) => cutoffText(c, lang))] : [];
+  if (!lines.length) return <span className="text-small text-muted">{p?.purpose ? ut("dpc.noCutoffs") : "—"}</span>;
+  /*
+   * Ширина — колонки, а не текста: таблица раскладывается по содержимому, и
+   * строка порога без предела съедала бы ширину у имени методики.
+   */
+  /* один порог — в две строки, если длинный; два — по строке на каждый */
+  return (
+    <span className="flex min-w-0 flex-col" style={{ maxWidth: width }} title={lines.join("\n")}>
+      <span className={cx("text-small font-semibold leading-[17px] text-text-2", lines[1] ? "truncate" : "line-clamp-2")}>{lines[0]}</span>
+      {lines[1] ? <small className="truncate text-caption text-muted">{lines[1]}</small> : null}
     </span>
   );
 }
@@ -321,18 +381,22 @@ function Shelf({
 const SEVERITY: Record<string, Severity> = { none: "none", mild: "mild", moderate: "moderate", severe: "severe" };
 
 /**
- * «Коротко про методику» (mpeek): паспорт, ключи и смуги без перехода.
- * Смуги — из самой методики (api.survey), паспорт — из строки каталога.
- * Несверенные ключи — плашкой только суперадмину (`qa`): остальным это
- * строка паспорта, как в «Про методику».
+ * «Коротко про методику» (mpeek): паспорт, ключи и интерпретация балу без
+ * перехода. Полосы — из самой методики (api.survey), паспорт — из строки
+ * каталога: что измеряет для специалиста, тип, обсяг, полная форма у короткой,
+ * пороги и шаг скрининга. Несверенные ключи — плашкой только суперадмину
+ * (`qa`): остальным это строка паспорта, как в «Про методику».
  */
 function PeekBody({
   s,
+  parent,
   groupTitle,
   folderTitle,
   qa,
 }: {
   s: SurveyListItem;
+  /** Полная методика короткой формы, если она видна в каталоге */
+  parent: SurveyListItem | null;
   groupTitle: string | null;
   folderTitle: string | null;
   qa: boolean;
@@ -343,6 +407,10 @@ function PeekBody({
   const rights = rightsKey(s.rightsStatus);
   /* границы полос — с запятой в uk/ru, как везде */
   const bound = (v: number) => fixedIn(lang, v, 2, false);
+  const p = s.catalog;
+  const what = p?.purpose ?? s.description;
+  const parentNames = parent ? splitCode(parent.title) : null;
+  const thresholds = p ? [...p.steps.map((x) => stepText(x, lang)), ...p.cutoffs.map((c) => cutoffText(c, lang))] : [];
   return (
     <>
       {qa && keysPending(s) && !s.archivedAt ? (
@@ -365,17 +433,47 @@ function PeekBody({
         <KV
           w={168}
           rows={[
-            ...(s.description ? ([[ut("f.description"), s.description]] as [string, string][]) : []),
+            /* для специалиста — что измеряет; у методики учреждения паспорта нет, и строка — её описание */
+            ...(what ? ([[p?.purpose ? ut("dpc.purpose") : ut("f.description"), what]] as [string, string][]) : []),
+            ...(p ? ([[ut("dpc.type"), ut(`dpc.role.${p.role}`)]] as [string, string][]) : []),
+            ...(parent && parentNames
+              ? ([
+                  [
+                    ut("dpc.fullForm"),
+                    <Link key="full" to={`/surveys/${parent.id}`} className="font-bold text-violet-ink">
+                      {parentNames.code ? `${parentNames.code} ${parentNames.name}` : parentNames.name}
+                    </Link>,
+                  ],
+                ] as [string, ReactNode][])
+              : []),
             [ut("dom.label"), ut(domainKey(s.domain) ?? "dom.none")],
             [
               ut("mc.peekVolume"),
-              [count(s.questionCount, "items"), s.scaleCount ? count(s.scaleCount, "scales") : null].filter(Boolean).join(", "),
+              [
+                count(s.questionCount, "items"),
+                p ? ut("dpc.minutes").replace("{n}", String(p.minutes)) : null,
+                s.scaleCount ? count(s.scaleCount, "scales") : null,
+              ]
+                .filter(Boolean)
+                .join(" · "),
             ],
+            ...(thresholds.length
+              ? ([
+                  [
+                    ut("dpc.cutoffs"),
+                    <span key="cut" className="flex flex-col gap-0.5">
+                      {thresholds.map((line) => (
+                        <span key={line}>{line}</span>
+                      ))}
+                    </span>,
+                  ],
+                ] as [string, ReactNode][])
+              : []),
             ...(groupTitle
               ? ([[ut("f.group"), folderTitle ? `${groupTitle}, «${folderTitle}»` : groupTitle]] as [string, string][])
               : []),
             [ut("mc.peekVisibility"), s.visibility === "restricted" ? ut("mc.visRestricted") : ut("mc.visPublic")],
-            [ut("mc.peekWho"), s.administration === "clinician" ? ut("bt.byClinician") : ut("mc.bySelf")],
+            [ut("mc.peekWho"), ut(whoKey(s.administration))],
             [ut("mc.peekRights"), rights ? ut(rights) : ut("mc.rightsUnclearValue")],
             ...(s.scoringEnabled
               ? ([
@@ -642,6 +740,11 @@ export function SurveyList() {
    * того, где методика лежит сейчас, а не где её отметили.
    */
   const freshById = useMemo(() => new Map((everything.data ?? []).map((s) => [s.id, s] as const)), [everything.data]);
+  /* методика по ключу каталога — полная форма короткой в «Коротко про методику» */
+  const byCatalogKey = useMemo(
+    () => new Map((everything.data ?? []).flatMap((s) => (s.catalogKey ? [[s.catalogKey, s] as const] : []))),
+    [everything.data],
+  );
   const pickedRows = useMemo(() => [...picked.values()].map((s) => freshById.get(s.id) ?? s), [picked, freshById]);
   const setPicked = (rows: ReadonlyMap<string, SurveyListItem>) => setPick({ tab, rows });
   const unpick = (gone: readonly SurveyListItem[]) => setPick((prev) => ({ tab: prev.tab, rows: without(prev.rows, gone) }));
@@ -846,9 +949,10 @@ export function SurveyList() {
   );
 
   /*
-   * Ширина колонок — под 1440 и 1280. На 1280 и уже «Шкали» уходят из
-   * таблицы (они есть в «Коротко про методику»): иначе имени методики
-   * оставалось бы полтораста пикселей.
+   * Ширина колонок — под 1440 и 1280. На 1280 и уже группа уходит из
+   * таблицы (она есть в «Коротко про методику»), если строки не различаются
+   * папкой: иначе имени и строке «що вимірює» оставалось бы полтораста
+   * пикселей рядом с объёмом и порогом.
    */
   const narrow = useMedia("(max-width: 1366px)");
   const pageHasCodes = !!shown?.items.some((s) => splitCode(s.title).code);
@@ -863,18 +967,36 @@ export function SurveyList() {
   const showGroups = groups.length > 1 && !group;
   const folderOf = (s: SurveyListItem) => (s.folderId && s.folderId !== folderId ? (folderById.get(s.folderId) ?? null) : null);
   const pageHasFolders = !!shown?.items.some((s) => folderOf(s));
-  /* подпись направления в строке; отобрано по направлению — у всех строк она одна, и строка её не повторяет */
-  const rowDomain = (s: SurveyListItem): string | null => {
-    if (domain && domain !== "none") return null;
-    const key = domainKey(s.domain);
-    return key ? ut(key) : null;
-  };
+  /* короткие формы под своей полной — на этой странице (catalogue.ts, nestedRows) */
+  const nested = useMemo(() => nestedRows(shown?.items ?? []), [shown]);
+  /*
+   * Версия — суперадмину (с ключами) и на вкладках черновиков и снятых: там
+   * она и есть состояние строки. Врачу в опубликованных номер версии ничего
+   * не говорит — она есть в паспорте методики.
+   */
+  const showVersion = qa || tab !== "published";
+  const cutoffW = narrow ? 240 : 280;
   const columns: Column<SurveyListItem>[] = [
     {
       key: "method",
       header: ut("mc.colMethod"),
       required: true,
-      render: (s) => <MethodCell s={s} flags={flagsOf(s)} codes={pageHasCodes} domain={rowDomain(s)} />,
+      render: (s) => <MethodCell s={s} flags={flagsOf(s)} codes={pageHasCodes} nested={nested.has(s.id)} />,
+    },
+    {
+      key: "volume",
+      header: ut("mc.peekVolume"),
+      required: true,
+      width: narrow ? 132 : 150,
+      render: (s) => <VolumeCell s={s} />,
+    },
+    {
+      key: "cutoff",
+      header: ut("dpc.colCutoff"),
+      required: true,
+      width: cutoffW,
+      // минус поля ячейки: текст режется по колонке, а не раздвигает её
+      render: (s) => <CutoffCell s={s} width={cutoffW - 20} />,
     },
     {
       key: "group",
@@ -889,22 +1011,10 @@ export function SurveyList() {
       },
     },
     {
-      key: "scales",
-      header: ut("mc.colScales"),
-      required: true,
-      width: 100,
-      render: (s) =>
-        s.scaleCount === undefined ? (
-          <span className="text-muted">—</span>
-        ) : (
-          <Two top={count(s.scaleCount, "scales")} sub={s.bandCount ? count(s.bandCount, "bands") : null} />
-        ),
-    },
-    {
       key: "uses",
       header: ut("mc.colUses"),
       required: true,
-      width: narrow ? 118 : 138,
+      width: narrow ? 96 : 120,
       num: true,
       render: (s) => (
         <span className="flex flex-col items-end">
@@ -940,8 +1050,30 @@ export function SurveyList() {
   ];
 
   const shownColumns = columns.filter(
-    (c) => !(narrow && c.key === "scales") && !(c.key === "group" && !showGroups && !pageHasFolders),
+    (c) =>
+      !(c.key === "group" && (narrow ? !pageHasFolders : !showGroups && !pageHasFolders)) &&
+      !(c.key === "version" && !showVersion),
   );
+
+  /*
+   * Заголовок направления над его строками (порядок каталога, catalogue.ts,
+   * rowGroup): «Настрій, тривога, дистрес · 18». Число — методик направления
+   * на вкладке, как у чипа, а не строк этой страницы.
+   */
+  const groupOf = (s: SurveyListItem) => {
+    const key = rowGroup(s, domain);
+    if (!key) return null;
+    const n = key === "none" ? domains.none : (domains.domains.find((d) => d.domain === key)?.count ?? 0);
+    return {
+      key,
+      label: (
+        <span className="flex items-baseline gap-2">
+          {ut(key === "none" ? "dom.none" : DOMAIN_KEY[key])}
+          <span className="font-bold tabular-nums text-muted">{num(n)}</span>
+        </span>
+      ),
+    };
+  };
 
   const rowActions = (s: SurveyListItem) => (
     <>
@@ -1318,6 +1450,7 @@ export function SurveyList() {
             onRowClick={(s) => navigate(s.status === "draft" ? `/constructor/${s.id}` : `/surveys/${s.id}`)}
             isRowActive={(s) => side?.survey.id === s.id}
             rowActions={rowActions}
+            groupOf={groupOf}
             hotkeys={!side && !dialog}
           />
           </div>
@@ -1414,6 +1547,7 @@ export function SurveyList() {
           >
             <PeekBody
               s={sideSurvey}
+              parent={sideSurvey.catalog?.parent ? (byCatalogKey.get(sideSurvey.catalog.parent) ?? null) : null}
               groupTitle={sideSurvey.groupId ? (groupById.get(sideSurvey.groupId)?.title ?? null) : null}
               folderTitle={sideSurvey.folderId ? (folderById.get(sideSurvey.folderId)?.title ?? null) : null}
               qa={qa}

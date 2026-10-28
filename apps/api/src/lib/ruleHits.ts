@@ -90,7 +90,7 @@ export async function hitViews(rows: readonly HitRow[], lang: Lang): Promise<Rul
       : Promise.resolve([]),
     // шкалы той версии, которую человек проходил: название по коду из условия
     db
-      .select({ responseId: responses.id, code: scales.code, title: scales.title })
+      .select({ responseId: responses.id, code: scales.code, title: scales.title, position: scales.position })
       .from(responses)
       .innerJoin(scales, eq(scales.versionId, responses.versionId))
       .where(inArray(responses.id, responseIds)),
@@ -106,6 +106,12 @@ export async function hitViews(rows: readonly HitRow[], lang: Lang): Promise<Rul
     doneOf.set(k, [...(doneOf.get(k) ?? []), d.submittedAt]);
   }
   const scaleTitle = new Map(scaleRows.map((s) => [`${s.responseId}|${s.code}`, s.title] as const));
+  // главная шкала прохождения — первая по порядку: её в строке не называют
+  const mainScale = new Map<string, { code: string; position: number }>();
+  for (const s of scaleRows) {
+    const was = mainScale.get(s.responseId);
+    if (!was || s.position < was.position) mainScale.set(s.responseId, { code: s.code, position: s.position });
+  }
 
   return rows.map((r, i) => {
     const explanation = explained[i]!;
@@ -139,6 +145,7 @@ export async function hitViews(rows: readonly HitRow[], lang: Lang): Promise<Rul
       createdAt: r.hit.createdAt,
       surveyTitle: source ? t(source.title as never, lang) : "",
       basis: basisOf(stored[i]!).map((b) => {
+        if (mainScale.get(r.hit.responseId)?.code === b.code) return { scale: null, value: b.value };
         const title = scaleTitle.get(`${r.hit.responseId}|${b.code}`);
         return { scale: title ? t(title as never, lang) : b.code, value: b.value };
       }),

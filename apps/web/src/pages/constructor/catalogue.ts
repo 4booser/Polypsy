@@ -112,25 +112,27 @@ export interface CatalogueView {
  *    делает сервер). Чип «Травма 3» обещает три методики, где бы они ни
  *    лежали, а методики общего каталога и вовсе стоят вне папок.
  *
- * 5. Порядок — по названию на языке экрана (sort=title), на всех вкладках.
- *    Сервер по умолчанию отдаёт новые сверху, и семьдесят методик, которые
- *    установщик поставил одной секундой, стояли в случайном для врача
- *    порядке. Порядок считает сервер: страницы режет он, и сортировка одной
- *    страницы на клиенте переставляла бы страницу, а не каталог.
+ * 5. Порядок — порядок каталога (sort=catalog), на всех вкладках: по
+ *    направлению, внутри — полные методики первыми, короткая форма — сразу
+ *    под своей полной, затем по названию на языке экрана. Прежде был порядок
+ *    по названию (sort=title): семьдесят методик одной лентой по алфавиту, и
+ *    двухпунктовый PHQ-2 стоял вровень с PHQ-9. Порядок считает сервер:
+ *    страницы режет он, и сортировка одной страницы на клиенте переставляла
+ *    бы страницу, а не каталог.
  */
 export function listQuery(view: CatalogueView): SurveyPageQuery {
   const q = view.q.trim();
   const domain = view.domain ?? undefined;
   const folder = view.folder ?? (q || domain ? undefined : "root");
   const byDomain = domain ? { domain } : {};
-  if (view.tab === "retired") return { folder, q, archived: true, sort: "title", ...byDomain };
+  if (view.tab === "retired") return { folder, q, archived: true, sort: "catalog", ...byDomain };
   return {
     folder,
     q,
     status: view.tab === "drafts" ? "draft" : "published",
     limit: view.per,
     offset: pageOffset(view.page, view.per),
-    sort: "title",
+    sort: "catalog",
     ...byDomain,
   };
 }
@@ -180,6 +182,30 @@ export function domainCounts(
     else none += 1;
   }
   return { all, none, domains: SURVEY_DOMAINS.map((domain) => ({ domain, count: counts.get(domain) ?? 0 })) };
+}
+
+/* ─────────── строки: направление и вложение ─────────── */
+
+/**
+ * Заголовок направления над строками: страница пришла в порядке каталога
+ * (sort=catalog), и смена направления — начало группы. Выбран чип
+ * направления — заголовков нет: у всех строк он один, и чип его уже назвал.
+ */
+export function rowGroup(s: Pick<SurveyListItem, "domain">, filter: DomainFilter | null): DomainFilter | null {
+  if (filter) return null;
+  return s.domain ?? NO_DOMAIN;
+}
+
+/**
+ * Какие строки страницы стоят под своей полной методикой: короткая форма,
+ * чья полная методика (catalog.parent) есть на этой же странице, — сервер
+ * кладёт её сразу под полной. Полной на странице нет (поиск нашёл одну
+ * короткую, полная на другой странице) — строка обычная: вложение под
+ * невидимую строку читалось бы как ошибка.
+ */
+export function nestedRows(items: readonly Pick<SurveyListItem, "id" | "catalogKey" | "catalog">[]): Set<string> {
+  const onPage = new Set(items.flatMap((s) => (s.catalogKey ? [s.catalogKey] : [])));
+  return new Set(items.filter((s) => !!s.catalog?.parent && onPage.has(s.catalog.parent)).map((s) => s.id));
 }
 
 /** Страница снятых из полного списка: сервер отдаёт снятые вместе с остальными */

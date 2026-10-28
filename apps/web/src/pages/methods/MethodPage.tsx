@@ -106,7 +106,14 @@ export function MethodPage({
     },
   });
 
-  const sub = [count(asked, "items"), survey.scales.length ? count(survey.scales.length, "scales") : null].filter(Boolean).join(", ");
+  /*
+   * Строка состава: пункты и минуты (паспорт каталога — из руководства или по
+   * числу пунктов). Шкалы — во вкладке «Шкали» с числом: в шапке «1 шкала»
+   * ничего не говорила о том, сколько займёт методика.
+   */
+  const sub = [count(asked, "items"), survey.catalog ? ut("dpc.minutes").replace("{n}", String(survey.catalog.minutes)) : null]
+    .filter(Boolean)
+    .join(" · ");
 
   const rights = rightsKey(survey.rightsStatus);
   const domain = domainKey(survey.domain);

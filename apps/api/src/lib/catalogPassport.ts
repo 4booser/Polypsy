@@ -99,7 +99,7 @@ function stepsOf(key: string, spec: PassportSpec, lang: Lang, visible: ReadonlyM
     op: s.op,
     value: s.value,
     next: linkOf(s.next, lang, visible),
-    source: s.source,
+    citation: s.source,
   }));
 }
 

@@ -244,6 +244,7 @@ export function DataTable<T>({
   bulkActions,
   rowActions,
   rowTone,
+  groupOf,
   pageSize,
   hotkeys,
   dense,
@@ -289,6 +290,14 @@ export function DataTable<T>({
   rowActions?: (row: T) => ReactNode;
   /** Тон строки: риск для человека — только красным */
   rowTone?: (row: T) => RowTone | undefined;
+  /**
+   * Группа строки — заголовок над первой строкой группы во всю ширину
+   * таблицы, когда ключ сменился (каталог: направление методики). Строки
+   * приходят уже в порядке групп; сортировка заголовком колонки группы бы
+   * разорвала, поэтому таблица с группами не сортируется и не виртуализуется.
+   * null — строка без группы.
+   */
+  groupOf?: (row: T) => { key: string; label: ReactNode } | null;
   /** Страницы по N строк снизу таблицы (на клиенте) */
   pageSize?: number;
   /** J/K работают с любого места экрана, а не только на строке в фокусе */
@@ -345,7 +354,8 @@ export function DataTable<T>({
     () => (facets?.length ? applyFacets(rows, facets, selection) : rows),
     [rows, facets, selection],
   );
-  const sorted = useMemo(() => sortRows(filtered, shown, sort), [filtered, sort, shown]);
+  // строки с группами приходят в порядке групп: сортировка колонкой разорвала бы группы
+  const sorted = useMemo(() => (groupOf ? filtered : sortRows(filtered, shown, sort)), [filtered, sort, shown, groupOf]);
 
   /* страницы: номер и размер — в адресе, если таблица его держит */
   const [pageRaw, setPageRaw] = useUrlState(stateKey && pageSize ? `${stateKey}.page` : "");
@@ -554,11 +564,43 @@ export function DataTable<T>({
   );
 
   /*
+   * Заголовок группы — строкой во всю ширину над первой строкой группы.
+   * Колонка отметки и колонка действий входят в ширину: иначе заголовок
+   * обрывался бы раньше края таблицы.
+   */
+  const columnCount = shown.length + (selectable ? 1 : 0) + (rowActions ? 1 : 0);
+  const bodyRows = () => {
+    if (!groupOf) return keyed.map(([key, row]) => renderRow(row, key));
+    const out: ReactNode[] = [];
+    let previous: string | null | undefined;
+    for (const [key, row] of keyed) {
+      const group = groupOf(row);
+      if (group && group.key !== previous) {
+        out.push(
+          <tr key={`group:${group.key}`} data-group={group.key}>
+            <th
+              colSpan={columnCount}
+              scope="colgroup"
+              className="h-9 border-b border-divider bg-panel-2 px-4 text-left align-middle text-caption font-extrabold normal-case tracking-normal text-text-2"
+            >
+              {group.label}
+            </th>
+          </tr>,
+        );
+      }
+      previous = group?.key ?? null;
+      out.push(renderRow(row, key));
+    }
+    return out;
+  };
+
+  /*
    * Короткие и постраничные таблицы рисуются целиком: виртуализация стоит
    * собственной сложности (свой контейнер прокрутки, замер строк) и на двух
-   * десятках строк только мешает.
+   * десятках строк только мешает. Таблица с группами — тоже целиком: заголовок
+   * группы не строка данных, и замер строк виртуализации о нём не знает.
    */
-  if (per || visible.length <= VIRTUAL_FROM) {
+  if (per || groupOf || visible.length <= VIRTUAL_FROM) {
     return (
       <div>
         {tools}
@@ -566,7 +608,7 @@ export function DataTable<T>({
         <div className="overflow-x-auto">
           <table aria-label={label} className={TABLE}>
             {head}
-            <tbody ref={bodyRef}>{keyed.map(([key, row]) => renderRow(row, key))}</tbody>
+            <tbody ref={bodyRef}>{bodyRows()}</tbody>
           </table>
         </div>
         {per && sorted.length > Math.min(...PAGE_SIZES) ? (
@@ -591,7 +633,7 @@ export function DataTable<T>({
           tableClassName={TABLE}
           bodyRef={bodyRef}
           rowHeight={dense ? 44 : 56}
-          columnCount={shown.length + (selectable ? 1 : 0) + (rowActions ? 1 : 0)}
+          columnCount={columnCount}
           renderRow={(row, i, ref) => renderRow(row, keyOf(row, i), { index: i, ref })}
         />
       </Suspense>

@@ -135,7 +135,7 @@ describe("каталог: паспорт строки", () => {
           next: { key: "phq9", surveyId: idOf.get("phq9")!, title: "Депресія (PHQ-9)" },
         }),
       ]);
-      expect(phq2.catalog!.steps[0]!.source).toContain("Kroenke");
+      expect(phq2.catalog!.steps[0]!.citation).toContain("Kroenke");
 
       // PHQ-4: шаги по подшкалам — названием подшкалы, а не кодом
       const phq4 = items.find((s) => s.catalogKey === "phq4")!;

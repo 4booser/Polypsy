@@ -214,8 +214,8 @@ describe("ступенчатый скрининг: положительная к
       const [hit] = hits;
       expect(hit!.ruleTitle).toBe("PHQ-2 ≥ 3 → PHQ-9");
       expect(hit!.surveyTitle).toBe("Депресія, коротко (PHQ-2)");
-      // балл — названием шкалы, а не кодом PHQ2
-      expect(hit!.basis).toEqual([{ scale: "Депресія (PHQ-2)", value: 4 }]);
+      // балл главной шкалы — без названия шкалы: строка и так о PHQ-2, а не о коде PHQ2
+      expect(hit!.basis).toEqual([{ scale: null, value: 4 }]);
       expect(hit!.suggested).toEqual([
         { surveyId: idOf.get("phq9")!, title: "Депресія (PHQ-9)", clinician: false, assigned: null, doneAt: null },
       ]);
@@ -260,7 +260,7 @@ describe("ступенчатый скрининг: положительная к
       const res = await appApi(`/api/decisions/hits?userId=${someone.id}`, root.token);
       expect(res.status).toBe(200);
       const [hit] = res.body.items as RuleHit[];
-      expect(hit?.basis).toEqual([{ scale: "Депресія (PHQ-2)", value: 6 }]);
+      expect(hit?.basis).toEqual([{ scale: null, value: 6 }]);
       expect(hit?.suggested?.[0]?.surveyId).toBe(idOf.get("phq9")!);
     },
     SLOW,

@@ -397,6 +397,8 @@ function CardRecord({
           who={card.fullName}
           whoNote={ut("card.assignNote")}
           comment
+          /* что предложили правила этому человеку — «Рекомендовано: PHQ-9» над списком (ступенчатый скрининг) */
+          recommendFor={card.id}
           existingFor={async (surveyId) => {
             /* прежняя выдача этой методики этому человеку — чтобы ящик сказал «вже призначено до …» */
             const mine = (await api.grants(surveyId)).find((g) => g.userId === card.id);

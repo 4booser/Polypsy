@@ -54,7 +54,7 @@ export interface CatalogCutoff {
 
 /**
  * Шаг ступенчатого скрининга: положительный результат короткой формы ведёт к
- * полной методике. Порог — из первоисточника (`source`), не выдуманный; по
+ * полной методике. Порог — из первоисточника (`citation`), не выдуманный; по
  * этому же шагу установщик каталога заводит правило поддержки решений
  * (lib/catalogInstall.ts, installRules).
  */
@@ -64,7 +64,7 @@ export interface CatalogStep {
   value: number;
   next: CatalogLink;
   /** Откуда порог — ссылка на первоисточник, по-украински, как «Джерело» паспорта */
-  source: string;
+  citation: string;
 }
 
 export interface CatalogPassport {
