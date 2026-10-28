@@ -16,7 +16,7 @@ import {
   withDraft,
   withoutDraft,
 } from "../src/components/RiskReview";
-import { Strip } from "../src/pages/patientCard/Banner";
+import { PlanFact, QuietRiskFact, RiskLine } from "../src/pages/patientCard/Banner";
 import { conclusionLock } from "../src/pages/patientCard/Panes";
 import type { CardView } from "../src/pages/patientCard/types";
 
@@ -75,7 +75,10 @@ function view(over: Partial<CardView> = {}): CardView {
     dynamics: null,
     dynamicsError: null,
     reloadDynamics: () => {},
+    picture: [],
     timeline: [],
+    timelineError: null,
+    reloadTimeline: () => {},
     visits: [],
     next: null,
     last: null,
@@ -87,26 +90,25 @@ function view(over: Partial<CardView> = {}): CardView {
     thread: null,
     messages: null,
     notes: null,
+    notesError: null,
+    reloadNotes: () => {},
     plan: null,
     planKnown: true,
     planError: null,
     reloadPlan: () => {},
-    details: {},
-    rows: [],
-    chartRows: [],
     nextIsMine: false,
     slotId: null,
     setSlotId: () => {},
     open: () => {},
+    onAssign: null,
     goTab: () => {},
     pane: null,
     can: () => true,
-    refresh: { messages: () => {}, timeline: () => {}, notes: () => {}, conclusion: () => {} },
+    refresh: { messages: () => {}, timeline: () => {}, notes: () => {}, conclusion: () => {}, episode: () => {}, referral: () => {} },
     ...over,
   };
 }
 
-const NO_DRAFTS = { thread: false, concl: false, note: false, signal: false };
 
 describe("случаи человека: сбой — ошибкой, а не «случаев нет»", () => {
   test("отказ сервера доходит до экрана, а не превращается в пустой список", async () => {
@@ -135,38 +137,39 @@ describe("случаи человека: сбой — ошибкой, а не «
   });
 });
 
-describe("строка открытого карточки", () => {
-  test("случаи не пришли — «не вдалося перевірити», а не «нічого відкритого»", () => {
-    const html = draw(<Strip v={view({ cases: null, casesError: "Не вдалося завантажити" })} drafts={NO_DRAFTS} />);
+describe("строка риска в шапке рабочего места", () => {
+  test("случаи не пришли — «не вдалося перевірити», а не «відкритих випадків немає»", () => {
+    const html = draw(<QuietRiskFact v={view({ cases: null, casesError: "Не вдалося завантажити" })} />);
     expect(has(html, "rr.casesFailed")).toBe(true);
-    expect(has(html, "card.nothingOpen")).toBe(false);
+    expect(has(html, "ws.noOpenCases")).toBe(false);
   });
 
   test("случаи ещё в пути — строка молчит, а не обещает, что открытого нет", () => {
-    const html = draw(<Strip v={view({ cases: null })} drafts={NO_DRAFTS} />);
-    expect(has(html, "card.nothingOpen")).toBe(false);
+    const html = draw(<QuietRiskFact v={view({ cases: null })} />);
+    expect(has(html, "ws.noOpenCases")).toBe(false);
     expect(has(html, "rr.casesFailed")).toBe(false);
   });
 
-  test("открытого нет — строки нет: ни пилюль, ни «нічого відкритого»", () => {
-    const html = draw(<Strip v={view({ cases: [] })} drafts={NO_DRAFTS} />);
-    expect(html).toBe("");
-    expect(has(html, "card.nothingOpen")).toBe(false);
+  test("открытого нет — спокойная строка, красной строки случая нет", () => {
+    expect(has(draw(<QuietRiskFact v={view({ cases: [] })} />), "ws.noOpenCases")).toBe(true);
+    expect(draw(<RiskLine v={view({ cases: [] })} draft={false} />)).toBe("");
   });
 
-  test("открытый случай — красная пилюля случая с «Розібрати»", () => {
-    const html = draw(<Strip v={view({ cases: [caseRow()] })} drafts={NO_DRAFTS} />);
+  test("открытый случай — красная строка случая с «Розібрати»", () => {
+    const html = draw(<RiskLine v={view({ cases: [caseRow()] })} draft={false} />);
     // считает случаи, а не сигналы: у случая их бывает несколько
     expect(has(html, "card.case")).toBe(true);
     expect(has(html, "card.review")).toBe(true);
-    expect(has(html, "card.nothingOpen")).toBe(false);
+    expect(has(html, "ws.riskNotTaken")).toBe(true);
   });
 
   test("«плану безпеки немає» — только когда план пришёл и его нет", () => {
-    const unknown = draw(<Strip v={view({ cases: [caseRow()], planKnown: false, planError: "Не вдалося завантажити" })} drafts={NO_DRAFTS} />);
-    expect(has(unknown, "rr.noPlan")).toBe(false);
-    const known = draw(<Strip v={view({ cases: [caseRow()], planKnown: true, plan: null })} drafts={NO_DRAFTS} />);
-    expect(has(known, "rr.noPlan")).toBe(true);
+    // отказ — отказом с «Повторити», а не «немає» и «Скласти план»
+    const unknown = draw(<PlanFact v={view({ cases: [caseRow()], planKnown: false, planError: "Не вдалося завантажити" })} />);
+    expect(has(unknown, "sp.create")).toBe(false);
+    expect(has(unknown, "common.retry")).toBe(true);
+    const known = draw(<PlanFact v={view({ cases: [caseRow()], planKnown: true, plan: null })} />);
+    expect(has(known, "sp.create")).toBe(true);
   });
 });
 

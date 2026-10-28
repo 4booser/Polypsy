@@ -1,10 +1,21 @@
-import type { AlertCase, PatientCard, Permission, RespondentDynamics, ResponseDetail, SafetyPlan } from "@quizzy/shared";
+import type { AlertCase, PatientCard, Permission, Referral, RespondentDynamics, SafetyPlan } from "@quizzy/shared";
 import type { ConclusionState, NoteState } from "../../api";
-import type { Assignment, InstrumentRow, TimelineRow, Visit } from "./clinical";
+import type { Assignment, PictureGroup, TimelineRow, Visit } from "./clinical";
 import type { ThreadLike } from "./listModel";
 
-/** Виды ящика карточки: разбор, переписка, заключение, нотатка, запись на приём */
-export type PaneMode = "signal" | "thread" | "concl" | "note" | "book";
+/**
+ * Виды ящика рабочего места: разбор сигнала, переписка, заключение, запись
+ * прийому, запись на приём, план безпеки, звернення, направлення.
+ */
+export type PaneMode = "signal" | "thread" | "concl" | "note" | "book" | "plan" | "episode" | "referral";
+
+/**
+ * Вкладки рабочего места пациента — одна на каждый вид сведений о человеке.
+ * Прежние «Графіки», «Заключення», «Нотатки», «Прийоми» и вкладки
+ * клинической карты («Огляд справи», «Динаміка», «Хронологія») сошлись сюда:
+ * у каждого сведения один дом (tabs.ts — какой прежний адрес куда ведёт).
+ */
+export type CardTab = "overview" | "dynamics" | "measures" | "records" | "referrals" | "messages" | "timeline";
 
 export interface OpenOpts {
   /** Заключение — по этому прохождению */
@@ -21,7 +32,7 @@ export interface ThreadMessage {
   readAt: string | null;
 }
 
-/** Всё, что знает карточка об одном человеке, — одним объектом для панелей и видов ящика */
+/** Всё, что рабочее место знает об одном человеке, — одним объектом для вкладок и видов ящика */
 export interface CardView {
   id: string;
   card: PatientCard;
@@ -30,8 +41,13 @@ export interface CardView {
   /** Динамика не пришла — панели говорят об этом и дают «Повторити», а не крутят скелет вечно */
   dynamicsError: string | null;
   reloadDynamics: () => void;
+  /** Клиническая картина по доменам — из динамики и доменов карточки (clinical.ts) */
+  picture: PictureGroup[];
   timeline: TimelineRow[] | null;
+  timelineError: string | null;
+  reloadTimeline: () => void;
   visits: Visit[];
+  /** Ближайший записанный приём — по хронологии: она перечитывается после записи и переноса */
   next: Visit | null;
   last: { visit: Visit; n: number } | null;
   noShow: Visit | null;
@@ -44,25 +60,25 @@ export interface CardView {
   thread: ThreadLike | null;
   messages: ThreadMessage[] | null;
   notes: NoteState | null;
+  notesError: string | null;
+  reloadNotes: () => void;
   /** Действующая версия плана безпеки; null — плана нет или он ещё не пришёл (см. planKnown) */
   plan: SafetyPlan | null;
   /** Версии плана пришли: только тогда «плану немає» — правда */
   planKnown: boolean;
   planError: string | null;
   reloadPlan: () => void;
-  details: Record<string, ResponseDetail | null>;
-  rows: InstrumentRow[];
-  /** Те же строки без свёртки и без потолка — по графику на каждую шкалу («Графіки») */
-  chartRows: InstrumentRow[];
   /** Я ли веду ближайший приём: перенос — только в свои окна */
   nextIsMine: boolean;
-  /** Выбранный слот переноса — общий у панели «Наступний прийом» и ящика */
+  /** Выбранный слот переноса — общий у ящика переписки и его вида переноса */
   slotId: string | null;
   setSlotId: (id: string | null) => void;
   open: (mode: PaneMode, opts?: OpenOpts) => void;
-  /** Перейти на вкладку карточки («Хронологія», «Заключення») */
-  goTab: (tab: "overview" | "measures" | "dynamics" | "conclusions" | "visits" | "messages" | "notes" | "timeline") => void;
-  /** Открыт ли ящик и на каком виде — пилюли строки рисуются «нажатыми» */
+  /** «Призначити методику» — общий ящик назначения; null — нет права назначать */
+  onAssign: (() => void) | null;
+  /** Перейти на вкладку; `extra` — её отбор в адресе (методика «Динаміки», вид «Записів») */
+  goTab: (tab: CardTab, extra?: Record<string, string | null>) => void;
+  /** Открыт ли ящик и на каком виде — кнопки шапки рисуются «нажатыми» */
   pane: PaneMode | null;
   can: (p: Permission) => boolean;
   refresh: CardRefresh;
@@ -88,4 +104,8 @@ export interface CardRefresh {
   notes: (state?: NoteState) => void;
   /** Строки «Заключення» карточки — из ответа сохранения или подписи, без нового чтения карточки */
   conclusion: (responseId: string, state: ConclusionState) => void;
+  /** Обращение открыли или закрыли — карточка правится на месте тем, что знает ящик */
+  episode: (episode: PatientCard["episode"]) => void;
+  /** Направление выписали или сдвинули — «План» огляда правится по ответу действия */
+  referral: (r: Referral) => void;
 }

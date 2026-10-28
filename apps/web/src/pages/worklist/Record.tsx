@@ -349,7 +349,7 @@ function PlanPanel({ plan, userId }: { plan: SafetyPlan; userId: string }) {
       title={ut("wlA.plan")}
       icon={<Ic.shieldCheck />}
       sub={fill(ut("wlA.planVersion"), { v: plan.version, d: day(plan.reviewedAt ?? plan.createdAt) })}
-      actions={<TextAction to={`/patients/${userId}/case`}>{ut("wlA.planAll")}</TextAction>}
+      actions={<TextAction to={`/patients/${userId}?pane=plan`}>{ut("wlA.planAll")}</TextAction>}
       flush
     >
       <ul className="m-0 list-none px-4 pb-2 pt-0">

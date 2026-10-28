@@ -16,6 +16,7 @@ import { useLiveReload } from "./events";
 import { useResource } from "./useResource";
 import type { Permission, WorkspacePrefs } from "@quizzy/shared";
 import { peopleLists } from "./pages/people/model";
+import { workspacePath } from "./pages/patientCard/tabs";
 import { Loading } from "./ui/states";
 import { useAction } from "./ui/action";
 import { canOpenOps, opsHome } from "./pages/ops/model";
@@ -55,7 +56,6 @@ const loadPatients = () => import("./pages/Patients");
 const Dashboard = lazy(loadDashboard);
 const Alerts = lazy(loadAlerts);
 const PatientList = lazy(() => loadPatients().then((m) => ({ default: m.PatientList })));
-const PatientDynamics = lazy(() => loadPatients().then((m) => ({ default: m.PatientDynamics })));
 /*
  * Палитра команд — вместе с cmdk — по первому ⌘K: закрытая палитра ничего
  * не рисует, а библиотека нужна только открытой.
@@ -143,8 +143,6 @@ const Invites = lazy(() => import("./pages/Invites"));
 const Join = lazy(() => import("./pages/Join"));
 const GoogleReturn = lazy(() => import("./pages/GoogleReturn"));
 const Norms = lazy(() => import("./pages/Norms"));
-const CaseSummaryPage = lazy(() => import("./pages/CaseSummary"));
-const CaseCard = lazy(() => import("./pages/CaseCard"));
 const PatientCard = lazy(() => import("./pages/patientCard/PatientCard"));
 const Start = lazy(() => import("./pages/Start"));
 const Account = lazy(() => import("./pages/Account"));
@@ -165,13 +163,17 @@ const Runner = lazy(() => import("./patient/Runner"));
 const Landing = lazy(() => import("./pages/public/Landing"));
 
 /**
- * Прежние адреса клинической карты — /summary, /dynamics, /timeline — ведут
- * на неё же по новому адресу /patients/:id/case…: на /summary ссылается
- * очередь работы с сервера (routes/worklist.ts), на два других — закладки.
+ * Прежние адреса клинической карты — /case, /case/dynamics, /case/timeline и
+ * ещё более старые /summary, /dynamics, /timeline — ведут на рабочее место
+ * пациента, на ту вкладку, где их сведения живут теперь (pages/patientCard/
+ * tabs.ts): на /summary ссылается очередь работы с сервера (routes/worklist.ts),
+ * на остальные — закладки и пересланные коллеге ссылки. Хвост адреса
+ * (?…) сохраняется.
  */
-function RedirectToCase({ tab = "" }: { tab?: string }) {
+function RedirectToPatient({ tab = "" }: { tab?: "" | "dynamics" | "timeline" }) {
   const { userId } = useParams<{ userId: string }>();
-  return <Navigate to={`/patients/${userId}/case${tab}`} replace />;
+  const { search } = useLocation();
+  return <Navigate to={workspacePath(userId!, tab, search)} replace />;
 }
 
 /**
@@ -202,7 +204,6 @@ const MailingEditor = lazy(() => import("./pages/messages/MailingEditor"));
 const Cohorts = lazy(() => import("./pages/Cohorts"));
 const SearchPage = lazy(() => import("./pages/Search"));
 const UiKit = lazy(() => import("./pages/UiKit"));
-const Timeline = lazy(() => import("./pages/Timeline"));
 const KeyPrint = lazy(() => import("./pages/KeyPrint"));
 const ResponseView = lazy(() => import("./pages/response"));
 const ResponseCharts = lazy(() => import("./pages/response/charts"));
@@ -917,32 +918,25 @@ export default function App() {
           <Route path="/statistics/:id/edit" element={<StatEditor />} />
           <Route path="/patients" element={<PatientList />} />
           {/*
-            Карточка пациента по кадру f19 заказчика: персональные данные,
-            «Тести», «Групи», «Заключення». На неё ведут все ссылки на
-            человека — из списка, групп, поиска, дня приёма.
+            Рабочее место пациента — одна страница о человеке: шапка, вкладки
+            (огляд, динаміка, заміри, записи, направлення, листування,
+            хронологія) и ящик действий. Вкладка стоит в адресе (?tab=):
+            страницу пересылают коллеге и кладут в закладку. На неё ведут все
+            ссылки на человека — из списка, групп, поиска, дня приёма.
           */}
           <Route path="/patients/:userId" element={<PatientCard />} />
           {/*
-            Клиническая карта — один экран с вкладками, под своим сегментом
-            /case: адрес человека занят карточкой кадра, а сводка, динамика и
-            хронология с него не убраны (дверь — шестерёнка в шапке карточки).
-            Вкладка стоит в адресе: карту пересылают коллеге и кладут в
-            закладку, и открываться она должна на том, что человек смотрел.
+            Прежние адреса остаются рабочими: клиническая карта (/case и её
+            вкладки) стала вкладками рабочего места, на /summary ссылается
+            очередь работы с сервера (routes/worklist.ts), на /dynamics и
+            /timeline — чьи-то закладки. Перенаправление стоит строку.
           */}
-          <Route path="/patients/:userId/case" element={<CaseCard />}>
-            <Route index element={<CaseSummaryPage />} />
-            <Route path="dynamics" element={<PatientDynamics />} />
-            <Route path="timeline" element={<Timeline />} />
-          </Route>
-          {/*
-            Прежние адреса остаются рабочими: на /summary ссылается очередь
-            работы с сервера (routes/worklist.ts), на /dynamics и /timeline —
-            чьи-то закладки. Ломать их ради чистоты адресов незачем —
-            перенаправление стоит строку.
-          */}
-          <Route path="/patients/:userId/summary" element={<RedirectToCase />} />
-          <Route path="/patients/:userId/dynamics" element={<RedirectToCase tab="/dynamics" />} />
-          <Route path="/patients/:userId/timeline" element={<RedirectToCase tab="/timeline" />} />
+          <Route path="/patients/:userId/case" element={<RedirectToPatient />} />
+          <Route path="/patients/:userId/case/dynamics" element={<RedirectToPatient tab="dynamics" />} />
+          <Route path="/patients/:userId/case/timeline" element={<RedirectToPatient tab="timeline" />} />
+          <Route path="/patients/:userId/summary" element={<RedirectToPatient />} />
+          <Route path="/patients/:userId/dynamics" element={<RedirectToPatient tab="dynamics" />} />
+          <Route path="/patients/:userId/timeline" element={<RedirectToPatient tab="timeline" />} />
           <Route path="/referrals" element={<ReferralsPage />} />
           <Route path="/api-docs" element={<ApiDocs />} />
           <Route path="/console" element={<Console />} />

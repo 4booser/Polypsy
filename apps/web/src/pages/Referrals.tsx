@@ -586,7 +586,7 @@ function ReferralRow({
             </Tooltip>
           ) : null}
           <Tooltip label={ut("pg2.openCase")}>
-            <ButtonLink to={`/patients/${r.userId}/case`} variant="quiet" size="icon-sm" aria-label={`${ut("pg2.openCase")}: ${r.userName}`}>
+            <ButtonLink to={`/patients/${r.userId}?tab=referrals`} variant="quiet" size="icon-sm" aria-label={`${ut("pg2.openCase")}: ${r.userName}`}>
               <Pi.folderOpen />
             </ButtonLink>
           </Tooltip>
@@ -700,7 +700,7 @@ function ReferralDrawer({
         <div className="flex items-center gap-3 rounded-[12px] bg-sunk px-3 py-2.5">
           <Avatar name={r.userName} size={34} />
           <b className="min-w-0 flex-1 truncate font-bold">{r.userName}</b>
-          <ButtonLink to={`/patients/${r.userId}/case`} size="xs">
+          <ButtonLink to={`/patients/${r.userId}?tab=referrals`} size="xs">
             <Pi.folderOpen size={14} />
             {ut("ref2.case")}
           </ButtonLink>

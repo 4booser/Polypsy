@@ -2,7 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { dayKey } from "../src/format";
-import { groupByDay } from "../src/pages/Timeline";
+import { groupByDay, rowsOf, signalLabels } from "../src/pages/patientCard/timelineModel";
+import type { TimelineItem } from "../src/api";
 
 /**
  * Хронология пациента: день — по часам учреждения, а не по Гринвичу
@@ -63,30 +64,46 @@ describe("лента по дням", () => {
   });
 
   test("экран не режет день и время из строки", () => {
-    const screen = readFileSync(resolve(import.meta.dir, "../src/pages/Timeline.tsx"), "utf8");
+    const screen = readFileSync(resolve(import.meta.dir, "../src/pages/patientCard/Timeline.tsx"), "utf8");
     expect(screen).not.toMatch(/\.at\.slice\(0, 10\)/);
     expect(screen).not.toMatch(/dateTime\([^)]*\)\.slice\(/);
   });
 });
 
-describe("события по неделям", () => {
-  test("недели до перевода часов не обнуляются: начало недели — календарём, а не минус 7×24 ч", () => {
-    /*
-     * 26 жовтня 2026 — понедельник после перевода часов (25-го). Начала
-     * прежних недель вычитались из полуночи этого понедельника по 7×24 ч и
-     * сдвигались на час: события с ними не совпадали, и столбцы до перевода
-     * стояли нулями, хотя замеры в эти недели были.
-     *
-     * Пояс — отдельному процессу (как в format.test.ts): у тестового
-     * процесса свой пояс, и менять его посреди прогона значит сдвинуть
-     * время всем следующим проверкам.
-     */
-    const probe = `const { weekly } = require(${JSON.stringify(new URL("../src/pages/Timeline.tsx", import.meta.url).pathname)});
-      const at = (iso) => ({ id: iso, kind: "response", at: iso, title: "x" });
-      const items = ["2026-10-26T07:00:00Z", "2026-10-21T07:00:00Z", "2026-10-15T07:00:00Z", "2026-10-14T07:00:00Z", "2026-09-29T07:00:00Z"].map(at);
-      const weeks = weekly(items, Date.parse("2026-10-26T10:00:00Z"), "uk-UA");
-      console.log(JSON.stringify({ values: weeks.map((w) => w.value), partial: weeks.at(-1).partial }));`;
-    const out = Bun.spawnSync(["bun", "-e", probe], { env: { ...process.env, TZ: KYIV } });
-    expect(JSON.parse(out.stdout.toString().trim())).toEqual({ values: [0, 0, 0, 1, 0, 2, 1, 1], partial: true });
+describe("строки ленты", () => {
+  const item = (id: string, kind: TimelineItem["kind"], at: string, title = id): TimelineItem => ({ id, kind, at, title });
+
+  test("замеры одного часа — одной строкой; через час — уже другая", () => {
+    const rows = rowsOf([
+      item("response:a", "response", "2026-10-20T09:00:00Z"),
+      item("response:b", "response", "2026-10-20T09:20:00Z"),
+      item("response:c", "response", "2026-10-20T11:00:00Z"),
+    ]);
+    expect(rows.map((r) => r.items.map((i) => i.id))).toEqual([["response:a", "response:b"], ["response:c"]]);
+  });
+
+  test("сигналы одной сдачи — одной строкой «Сигнали: N» с перечнем без повторов, а не красной стеной одной минуты", () => {
+    const rows = rowsOf([
+      item("alert:1", "alert", "2026-10-28T01:26:44Z", "PHQ-9: думки про смерть"),
+      item("alert:2", "alert", "2026-10-28T01:26:44Z", "AUDIT: можлива залежність"),
+      item("alert:3", "alert", "2026-10-28T01:26:44Z", "PHQ-9: думки про смерть"),
+      item("visit:v", "visit", "2026-10-28T01:00:00Z", "Савчук"),
+    ]);
+    expect(rows.map((r) => [r.kind, r.items.length])).toEqual([
+      ["alert", 3],
+      ["visit", 1],
+    ]);
+    expect(signalLabels(rows[0]!.items)).toEqual([
+      { label: "PHQ-9: думки про смерть", count: 2 },
+      { label: "AUDIT: можлива залежність", count: 1 },
+    ]);
+  });
+
+  test("разные виды подряд не склеиваются", () => {
+    const rows = rowsOf([
+      item("alert:1", "alert", "2026-10-28T01:26:44Z"),
+      item("response:1", "response", "2026-10-28T01:26:40Z"),
+    ]);
+    expect(rows).toHaveLength(2);
   });
 });

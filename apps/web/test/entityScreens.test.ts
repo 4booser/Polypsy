@@ -47,9 +47,10 @@ describe("keep: false — после смены id загрузка, а не д�
     /* «Хто це» реестра 2.0 — на месте прежней панели components/PatientContext */
     ["pages/patients/QuickView.tsx", "useResource(() => api.dynamics(id), [id], { enabled, keep: false })"],
     ["pages/Alerts.tsx", "useResource(() => api.caseSummary(userId), [userId], { keep: false, key: \"alerts:summary\" })"],
-    ["pages/CaseCard.tsx", "{ enabled: !!userId, keep: false }"],
-    /* хронология делит кэш с шапкой справы (общий ключ), keep: false — на месте */
-    ["pages/Timeline.tsx", "{ enabled: !!userId, keep: false, key: TL_KEY }"],
+    /* рабочее место пациента: динамика, хронология и записи одного человека */
+    ["pages/patientCard/PatientCard.tsx", "useResource(() => api.dynamics(id), [id], { keep: false })"],
+    ["pages/patientCard/PatientCard.tsx", "useResource(() => api.timeline(id), [id], { keep: false })"],
+    ["pages/patientCard/PatientCard.tsx", "useResource(() => api.notes(id), [id], { keep: false })"],
   ];
   for (const [file, call] of screens) {
     test(`${file}: загрузка одного человека — с keep: false`, () => {

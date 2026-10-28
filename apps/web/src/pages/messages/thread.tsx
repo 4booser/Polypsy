@@ -406,7 +406,7 @@ export function RecordSide({
 
       {safety && row.patientId ? (
         <Link
-          to={`/patients/${row.patientId}/case`}
+          to={`/patients/${row.patientId}?pane=plan`}
           className="flex items-center gap-3 rounded-panel bg-warn-tint px-4 py-3 text-text no-underline hover:no-underline hover:shadow-[inset_0_0_0_1px_var(--warnline)]"
         >
           <Ic.shieldCheck size={16} className="text-warn" />

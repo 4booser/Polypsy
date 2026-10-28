@@ -98,8 +98,16 @@ async function serialize(rows: (typeof referrals.$inferSelect)[]): Promise<Refer
  * «100», когда ждут ответа сто сорок.
  */
 referralRoutes.get("/", async (c) => {
-  const { all, closedSince, limit, cursor: rawCursor } = parseQuery(c, referralListQuery);
+  const { all, closedSince, limit, cursor: rawCursor, patient } = parseQuery(c, referralListQuery);
   const cursor = decodeExactCursor(rawCursor);
+  /*
+   * Направления одного человека (?patient=) — вкладка «Направлення» его
+   * рабочего места. Прежде её данные брались из сводки консилиума
+   * (/summary/:userId): ради списка направлений считались баллы и RCI по
+   * всем методикам, а журнал писал «прочитана вся карта». Человек вне зоны —
+   * «не найдено», как у карточки, а не пустой список.
+   */
+  if (patient) await assertPatientAccess(c.get("user"), patient);
   /*
    * Только люди своей зоны (волна 13, проверка под ролью приложения).
    * Реестр не спрашивал зону вовсе: в бою его резала политика строк, а
@@ -107,7 +115,14 @@ referralRoutes.get("/", async (c) => {
    * направления отделения — и считала это нормой. Правило видимости одно,
    * и живёт оно в lib/scope.ts; политика — страховка под ним, а не замена.
    */
-  const zone = await accessiblePatientIds(c.get("user"));
+  const zone = patient ? null : await accessiblePatientIds(c.get("user"));
+  const whose = patient
+    ? eq(referrals.userId, patient)
+    : zone === null
+      ? undefined
+      : zone.size
+        ? inArray(referrals.userId, [...zone])
+        : sql`false`;
   /*
    * Закрытые с момента (?closedSince=) — завершены или отклонены, по времени
    * последнего перехода; без него — как было: все или все, кроме
@@ -124,7 +139,7 @@ referralRoutes.get("/", async (c) => {
       : all
         ? undefined
         : ne(referrals.status, "completed"),
-    zone === null ? undefined : zone.size ? inArray(referrals.userId, [...zone]) : sql`false`,
+    whose,
   );
 
   const rows = await db
@@ -144,14 +159,15 @@ referralRoutes.get("/", async (c) => {
     const [row] = await db.select({ n: sql<number>`count(*)::int` }).from(referrals).where(filter);
     total = Number(row?.n ?? 0);
     /*
-     * Число по статусам — по всей зоне, а не по `all`: пилюли видов реестра
-     * («Виписані 2, Завершені 12») говорят о направлениях отделения, а не о
-     * том, какую часть из них экран сейчас загрузил.
+     * Число по статусам — по всей зоне (или по одному человеку), а не по
+     * `all`: пилюли видов реестра («Виписані 2, Завершені 12») говорят о
+     * направлениях отделения, а не о том, какую часть из них экран сейчас
+     * загрузил.
      */
     const byStatus = await db
       .select({ status: referrals.status, n: sql<number>`count(*)::int` })
       .from(referrals)
-      .where(zone === null ? undefined : zone.size ? inArray(referrals.userId, [...zone]) : sql`false`)
+      .where(whose)
       .groupBy(referrals.status);
     counts = { created: 0, accepted: 0, completed: 0, declined: 0 };
     for (const r of byStatus) counts[r.status] = Number(r.n);
@@ -159,6 +175,8 @@ referralRoutes.get("/", async (c) => {
 
   await audit(c, {
     action: "referral.list",
+    /* направления одного человека — чтение о нём: журнал называет, о ком */
+    ...(patient ? { resourceType: "user", resourceId: patient, subjectUserId: patient } : {}),
     details: {
       count: page.length,
       all,

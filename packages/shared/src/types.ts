@@ -1,4 +1,4 @@
-import type { SurveyDomain } from "./domains";
+import type { ClinicalDomain, SurveyDomain } from "./domains";
 
 /**
  * superadmin — видит все группы и назначает их администраторов.
@@ -1459,6 +1459,21 @@ export interface PatientListMeasure {
   normalization: ScaleNormalization;
   /** «Краще ↓ / ↑» по полосам шкалы; null — полосы немонотонны или их нет */
   better: "down" | "up" | null;
+  /*
+   * Клинический стан строки (участок dp-patient): шкала выбирается самая
+   * тяжёлая среди последних замеров по ключевым доменам, а не последняя
+   * сданная. Поля необязательны: старый сервер их не знает.
+   */
+  /** Клинический домен этой шкалы */
+  domain?: ClinicalDomain;
+  /**
+   * Куда сдвинулась полоса от предыдущего замера той же шкалы: worse —
+   * тяжелее, better — легче, same — та же ступень; null — замер один или
+   * полос нет. Ступень, а не балл: сдвиг балла внутри полосы — шум.
+   */
+  trend?: "worse" | "better" | "same" | null;
+  /** Другие домены, где последний замер — в клиническом диапазоне (помірна и тяжче), от тяжёлого */
+  also?: ClinicalDomain[];
 }
 
 /**
@@ -1562,6 +1577,65 @@ export interface PatientCard {
   responses: PatientCardResponse[];
   groups: PatientCardGroup[];
   conclusions: PatientCardConclusion[];
+  /*
+   * Рабочее место пациента (участок dp-patient): шапка и «Огляд» говорят,
+   * зачем человек здесь, что с ним по доменам и что дальше, — одним чтением
+   * карточки. Поля необязательны: старый сервер их не знает.
+   */
+  /** Клинический домен каждой шкалы, по которой у человека есть замеры */
+  domains?: PatientCardDomain[];
+  /** Открытое обращение; null — не открыто */
+  episode?: PatientCardEpisode | null;
+  /**
+   * Ближайшие записанные приёмы (до трёх) — с видом и форматом. Прежде
+   * карточка брала их из карточки приёма (GET /api/clinic/appointments/:id/context),
+   * и каждое открытие пациента писало в журнал «открыл приём» (clinic.visit_open),
+   * которого никто не открывал.
+   */
+  upcoming?: PatientCardVisit[];
+  /** Диспансерный учёт; null — не состоит */
+  dispensary?: { groupLabel: string; nextDueAt: string; overdue: boolean } | null;
+  /** Незакрытые направления — куда, срочность, состояние; повод — во вкладке «Направлення» */
+  openReferrals?: PatientCardReferral[];
+}
+
+/** Домен шкалы: по нему «Клінічна картина» группирует строки */
+export interface PatientCardDomain {
+  surveyId: string;
+  /** Код шкалы — тот же, что в динамике (ScaleDynamics.code) */
+  code: string;
+  domain: ClinicalDomain;
+}
+
+/** Открытое обращение: с какого дня, повод, кто ведёт */
+export interface PatientCardEpisode {
+  id: string;
+  openedAt: string;
+  /** Повод словами специалиста; null — не записан */
+  reason: string | null;
+  leadName: string | null;
+}
+
+/** Записанный приём: когда, какой, у кого */
+export interface PatientCardVisit {
+  id: string;
+  at: string;
+  endsAt: string;
+  kind: "primary" | "repeat";
+  mode: "onsite" | "remote";
+  status: "booked" | "confirmed";
+  specialistName: string;
+  /** У читателя ли приём: перенос — только в свои окна */
+  mine: boolean;
+}
+
+/** Незакрытое направление без повода */
+export interface PatientCardReferral {
+  id: string;
+  destination: ReferralDestination;
+  urgency: ReferralUrgency;
+  status: "created" | "accepted";
+  createdAt: string;
 }
 
 /* ─────────── Рассылки ───────────
@@ -2204,6 +2278,12 @@ export interface RespondentDynamics {
   surveys: {
     surveyId: string;
     title: string;
+    /**
+     * Короткое имя методики на языке читателя — «PHQ-9», «СР-45», «БОО»
+     * (instrumentCode в format.ts: по ключу каталога, иначе из названия).
+     * Нет у ответов старого сервера.
+     */
+    shortName?: string;
     responseCount: number;
     firstAt: string | null;
     lastAt: string | null;

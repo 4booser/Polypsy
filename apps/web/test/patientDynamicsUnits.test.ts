@@ -3,52 +3,58 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 /**
- * Вкладка «Динамика» карты пациента (#199): профиль, значение в шапке
- * графика курса и верх его оси — в одних единицах.
+ * «Динаміка» и «Курс» рабочего места пациента (#199): график и подпись
+ * значения — в одних единицах.
  *
  * rawScore точки динамики — вопреки имени T-балл или стен (routes/dynamics.ts),
  * maxScore — максимум сырого балла. Экран делил одно на другое: T 70 при
- * максимуме 16 давал ось профиля 437 % и строку «70 з 16». Доля и верх шкалы
- * теперь считаются в packages/shared (dynamicsPoint.ts, там же проверка на
- * T-баллах и стенах) — одной записью с мобилкой; здесь — что экран и график
- * курса на неё подписаны и прежнего деления в них не осталось.
+ * максимуме 16 давал ось 437 % и строку «70 з 16». Верх шкалы и «з N»
+ * считаются в packages/shared (dynamicsPoint.ts, там же проверка на T-баллах
+ * и стенах) — одной записью с мобилкой; здесь — что экраны и график курса на
+ * неё подписаны и прежнего деления в них не осталось.
  *
- * «Останній замір» под графиком ушёл вместе с переключателем методик: курс
- * теперь — сетка графиков, и значение каждой методики стоит в шапке её
+ * Курс — графиками участка графиков: значение каждой шкалы стоит в шапке её
  * графика (charts/course.tsx) — «19 з 27» у сырого балла, «64 T-бал» у
- * нормированного.
+ * нормированного; методики и шкалы — сеткой малых графиков, а не
+ * переключателем.
  */
 
-const src = readFileSync(resolve(import.meta.dir, "../src/pages/Patients.tsx"), "utf8");
-const dynamics = src.slice(src.indexOf("export function PatientDynamics"));
-const model = readFileSync(resolve(import.meta.dir, "../src/charts/courseModel.ts"), "utf8");
-const chart = readFileSync(resolve(import.meta.dir, "../src/charts/course.tsx"), "utf8");
+const read = (f: string) => readFileSync(resolve(import.meta.dir, "../src", f), "utf8");
+const dynamics = read("pages/patientCard/Dynamics.tsx");
+const overview = read("pages/patientCard/Overview.tsx");
+const words = read("pages/patientCard/words.tsx");
+const model = read("charts/courseModel.ts");
+const chart = read("charts/course.tsx");
 
-describe("динамика пациента: доля и подпись в одних единицах", () => {
-  test("профиль строится из pointShare, а не из rawScore / maxScore", () => {
-    expect(dynamics).toContain("pointShare(s.first)");
-    expect(dynamics).toContain("pointShare(s.last)");
-    expect(dynamics).not.toMatch(/rawScore\s*\/\s*\w+\.maxScore/);
+describe("динамика пациента: график и подпись в одних единицах", () => {
+  test("курс каждой шкалы — из её точек динамики, со ссылкой на протокол; сеткой графиков, легенда одна", () => {
+    expect(dynamics).toContain("courseFromDynamics(seriesOf(r.scale, equating), r.rungs, undefined, { surveyId: sv.surveyId })");
+    expect(dynamics).toContain("<CourseGrid>");
+    expect(dynamics).toContain("legend={false}");
+    expect(overview).toContain('size="compact" legend={false}');
+    expect(overview).toContain("<CourseLegend");
   });
 
-  test("курс каждой методики — из её точек динамики, сеткой графиков", () => {
-    expect(dynamics).toContain("courseFromDynamics(series(i.main)");
-    expect(dynamics).toContain("<CourseGrid>");
+  test("малый курс строки картины — CourseSpark с лестницей полос и верхом шкалы", () => {
+    expect(overview).toContain("<CourseSpark");
+    expect(overview).toContain("max={pointValueTop(r.last)}");
   });
 
   test("верх шкалы у графика курса — в единицах значений (pointValueTop), ненормированная точка — сырым баллом", () => {
     expect(model).toContain("max: last ? pointValueTop(last) : null");
     expect(model).toContain('last.normalized === false ? "raw"');
-    expect(model).not.toMatch(/rawScore\s*\/\s*\w+\.maxScore/);
+    expect(model + dynamics + overview).not.toMatch(/rawScore\s*\/\s*\w+\.maxScore/);
   });
 
-  test("«з 27» в шапке — только у сырого балла; у нормированного — единица шкалы", () => {
+  test("«з N» — только у сырого балла: в шапке графика и в словах картины", () => {
     expect(chart).toContain('`${ut("an.of")} ${fmt.num(max)}`');
     expect(chart).toContain("ut(`norm.${normalization}` as UiKey)");
+    expect(words).toContain('const top = units === "raw" ? pointValueTop(p) : null;');
+    expect(words).not.toMatch(/rawScore\s*\/\s*\w+\.maxScore/);
   });
 
   test("положительный контроль: график по-прежнему рисует значение точки", () => {
-    // сами значения на графике — T-балл или стен, как и полосы; меняются только доля и подписи
+    // сами значения на графике — T-балл или стен, как и полосы; меняются только подписи
     expect(model).toContain("value: p.rawScore,");
   });
 });
