@@ -438,10 +438,16 @@ alertCaseRoutes.get("/", async (c) => {
      * молча пропали.
      */
     const sig = await db
-      .select({ a: riskAlerts, questionTitle: questions.title, scaleTitle: scales.title })
+      .select({ a: riskAlerts, questionTitle: questions.title, scaleTitle: scales.title, surveyTitle: surveys.title })
       .from(riskAlerts)
       .leftJoin(questions, eq(questions.id, riskAlerts.questionId))
       .leftJoin(scales, eq(scales.id, riskAlerts.scaleId))
+      /*
+       * Методика самого сигнала, а не случая: в случай человека складываются
+       * сигналы разных методик одного приёма, и строка «PCL-5 від 28 жовт.:
+       * Вираженість депресії…» называла чужую методику — ту, что случай открыла.
+       */
+      .leftJoin(surveys, eq(surveys.id, riskAlerts.surveyId))
       .where(and(inArray(riskAlerts.caseId, pageIds), seen(riskAlerts.surveyId, riskAlerts.userId)))
       .orderBy(desc(riskAlerts.at));
     // подпись — на языке читателя: снимок записан на языке прохождения (lib/alertLabels.ts)
@@ -457,6 +463,7 @@ alertCaseRoutes.get("/", async (c) => {
           // у сигнала по шкале в этом поле стоит название шкалы: место одно,
           // и подписывать его «пункт» было бы неправдой ровно в половине строк
           questionTitle: t((s.questionTitle ?? s.scaleTitle) as never, lang),
+          surveyTitle: s.surveyTitle ? t(s.surveyTitle as never, lang) : null,
           label: labelOf(s.a),
           severity: s.a.severity,
           at: s.a.at,

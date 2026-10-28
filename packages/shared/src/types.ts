@@ -4770,6 +4770,8 @@ export interface AlertSignal {
   questionId: string | null;
   /** Заголовок пункта, а у сигнала по шкале — название шкалы */
   questionTitle: string;
+  /** Методика, прохождение которой подняло сигнал (в случае бывают сигналы разных методик); нет поля — старый сервер */
+  surveyTitle?: string | null;
   label: string;
   severity: RiskSeverity;
   at: string;
