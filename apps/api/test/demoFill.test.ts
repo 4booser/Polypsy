@@ -272,6 +272,9 @@ describe("история в базе", () => {
   test("риск: открыт у 5–8 % людей, у каждого случая есть ответственный, разобранный — с исходом и разобравшим", async () => {
     const cases = await db.select().from(alertCases).where(sql`${alertCases.userId} in ${demo}`);
     const open = new Set(cases.filter((c) => !c.acknowledgedAt).map((c) => c.userId));
+    // отчёт считает случаи, а не замеры: второй замер в том же окне продлевает случай, а не заводит ещё один
+    expect(first.openCases).toBe(cases.filter((c) => !c.acknowledgedAt).length);
+    expect(first.closedCases).toBe(cases.filter((c) => c.acknowledgedAt).length);
     expect(open.size).toBeGreaterThanOrEqual(Math.floor(N * 0.05));
     expect(open.size).toBeLessThanOrEqual(Math.ceil(N * 0.08));
     expect(cases.every((c) => c.assignedTo !== null)).toBe(true);

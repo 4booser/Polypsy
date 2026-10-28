@@ -506,6 +506,8 @@ interface FillContext {
   book: ClinicBook;
   screeningBattery: { id: string; title: string; steps: { surveyId: string; position: number; required: boolean }[] } | null;
   report: FillReport;
+  /** Неразобранные случаи прогона — множеством: случай, продлённый вторым замером, — всё ещё один случай */
+  openCases: Set<string>;
 }
 
 interface Booked {
@@ -1054,7 +1056,7 @@ async function settleCases(
     const stayOpen = story.openFrom !== undefined && s.day >= story.openFrom;
     if (stayOpen) {
       await db.update(alertCases).set({ assignedTo: attending.id, assignedAt: iso(assignedAt) }).where(eq(alertCases.id, caseId));
-      ctx.report.openCases += 1;
+      ctx.openCases.add(caseId);
       made += 1;
       continue;
     }
@@ -1422,6 +1424,7 @@ export async function fillDemoData(count: number): Promise<FillReport> {
     book: await ClinicBook.load(clock, clinicians),
     screeningBattery: await screeningBattery(),
     report,
+    openCases: new Set(),
   };
 
   report.ladder = await ensureLadder(department?.id ?? null);
@@ -1439,6 +1442,7 @@ export async function fillDemoData(count: number): Promise<FillReport> {
     await writeStory(ctx, p, id, story, attending);
   }
 
+  report.openCases = ctx.openCases.size;
   if (report.created) await fillToday(ctx);
   report.invites = await ensureInvites(clinicians[0]!.id, ctx);
   log.info("demo.filled", { ...report, archetypes: JSON.stringify(report.archetypes) });
