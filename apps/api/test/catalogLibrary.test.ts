@@ -309,6 +309,11 @@ describe("методики каталога — библиотека всех с
           const analytics = await call(`/api/analytics/surveys/${library}`, doctorD.token);
           expect(analytics.status, who).toBe(200);
           expect(analytics.body.completed, `${who}: аналитика методики`).toBe(1);
+          // сводка по всем методикам: своих групп у врача нет — весь его видимый мир одно прохождение каталога
+          const overview = await call("/api/analytics/overview", doctorD.token);
+          expect(overview.status, who).toBe(200);
+          expect(overview.body.responseCount, `${who}: сводка аналитики`).toBe(1);
+          expect(overview.body.respondentCount, who).toBe(1);
 
           /*
            * Подбор людей: размер ниже порога малых чисел на экран не идёт
