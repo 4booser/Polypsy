@@ -153,6 +153,7 @@ const MODULE_OF: Record<string, string> = {
   // ── dp-scales ──
   hamd17: "hamd17.ts",
   hama: "hama.ts",
+  cgi_s: "cgi.ts",
   // ── /dp-scales ──
 };
 

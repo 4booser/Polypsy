@@ -9,6 +9,7 @@ import {
   type SurveyFull,
 } from "@quizzy/shared";
 import { CATALOG } from "../catalog";
+import { cgiS } from "../cgi";
 import { WORKING_TRANSLATION } from "../common";
 import { hama } from "../hama";
 import { hamd17 } from "../hamd17";
@@ -195,6 +196,8 @@ const GROUP: Member[] = [
   },
   // HAM-A — пунктов о суициде и вреде нет, тревоги нет
   { key: "hama", name: "HAM-A", draft: hama, flags: [] },
+  // CGI-S — одна общая оценка, пунктов риска нет
+  { key: "cgi_s", name: "CGI-S", draft: cgiS, flags: [] },
 ];
 
 /** Поля, которые человек читает, — обязаны быть объектом с обоими языками */
@@ -442,5 +445,36 @@ describe("золотой протокол: HAM-A", () => {
     const top = scoreOf(survey, byScores(survey, Array(14).fill(4)), "HAMA");
     expect(top.rawScore).toBe(56);
     expect(top.band?.grade).toBe(4);
+  });
+});
+
+describe("золотой протокол: CGI-S", () => {
+  const survey = toSurveyFull(cgiS);
+
+  test("раскладка: один пункт, ступени 1–7 без «не оценивалось»", () => {
+    expect(cgiS.questions!.length).toBe(1);
+    expect(survey.questions[0]!.options.map((o) => o.score)).toEqual([1, 2, 3, 4, 5, 6, 7]);
+  });
+
+  test("каждая ступень — своя полоса с той же подписью, что у варианта", () => {
+    for (let n = 1; n <= 7; n++) {
+      const s = scoreOf(survey, { 1: n - 1 }, "CGIS");
+      expect(s.rawScore).toBe(n);
+      expect(s.band?.grade).toBe(n);
+      expect(s.band?.label).toBe(survey.questions[0]!.options[n - 1]!.text);
+    }
+  });
+
+  test("примеры досье: 4 — умеренное, 6 — тяжёлое; тревоги нет ни при какой ступени", () => {
+    expect(scoreOf(survey, { 1: 3 }, "CGIS").band?.grade).toBe(4);
+    expect(scoreOf(survey, { 1: 5 }, "CGIS").band?.grade).toBe(6);
+    for (let pos = 0; pos < 7; pos++) {
+      expect(evaluateSubmission(survey, answersOf(survey, { 1: pos })).risk.severity, `ступень ${pos + 1}`).toBeNull();
+    }
+  });
+
+  test("полярность: «норма» — none, выше — mild: «краще ↓» выводится из полос", () => {
+    const sev = survey.scales[0]!.bands.map((b) => b.severity);
+    expect(sev).toEqual(["none", "mild", "mild", "mild", "mild", "mild", "mild"]);
   });
 });

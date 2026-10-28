@@ -119,6 +119,9 @@ export const CATALOG_DOMAINS: Readonly<Record<string, SurveyDomain>> = {
   /* ── other ── */
   pq16: "other",
   aq10: "other",
+  // ── dp-scales ──
+  cgi_s: "other",
+  // ── /dp-scales ──
 };
 
 /**

@@ -84,6 +84,7 @@ import { LEC5_NOT_SCORED, lec5, lec5Note } from "./lec5";
 import { tgiSrPlus, tgiSrPlusNote } from "./tgiSrPlus";
 // ── /k-trauma ──
 // ── dp-scales ──
+import { cgiS, cgiSNote } from "./cgi";
 import { hama, hamaNote } from "./hama";
 import { hamd17, hamd17Note } from "./hamd17";
 // ── /dp-scales ──
@@ -859,6 +860,13 @@ export const CATALOG: CatalogEntry[] = [
     note: hamaNote,
     source:
       "HAM-A, Hamilton, Br J Med Psychol 1959 — суспільне надбання за NINDS CDE; текст — редакція ECDEU Assessment Manual for Psychopharmacology (Guy, 1976, DHEW (ADM) 76-338). Смуги — Matza та ін., Int J Methods Psychiatr Res 2010. Переклад робочий",
+  },
+  {
+    key: "cgi_s",
+    draft: cgiS,
+    note: cgiSNote,
+    source:
+      "CGI-S (Clinical Global Impression — Severity of Illness), Guy, ECDEU Assessment Manual for Psychopharmacology, 1976, DHEW (ADM) 76-338, с. 217–222 — видання уряду США, суспільне надбання за NINDS CDE; клінічне застосування — Busner, Targum, Psychiatry (Edgmont) 2007. Переклад робочий",
   },
   // ── /dp-scales ──
 ];

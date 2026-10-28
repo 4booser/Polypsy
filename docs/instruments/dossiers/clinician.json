@@ -177,5 +177,50 @@
    "note": "Сумма 30; пунктов риска нет — тревоги нет."
   },
   "verdict": "завести — общественное достояние по заявлению NINDS CDE; текст — собственный рабочий перевод редакции ECDEU (1976); полосы — Matza и соавт., 2010; заполняет специалист; пунктов риска нет."
+ },
+ {
+  "key": "cgi_s",
+  "title_en": "Clinical Global Impression — Severity of Illness (CGI-S)",
+  "title_uk": "Шкала загального клінічного враження CGI-S — назва з УКПМД «Депресія» (наказ МОЗ України №1003 від 25.12.2014, обов’язковий метод на вторинному і третинному рівнях); тексту шкали протокол не містить",
+  "title_ru": null,
+  "authors": "William Guy (ред.); шкала создана в совместных исследованиях шизофрении Psychopharmacology Research Branch NIMH",
+  "year": 1976,
+  "citation": "Guy W. ECDEU Assessment Manual for Psychopharmacology, Revised 1976. U.S. DHEW, NIMH, DHEW Publication No. (ADM) 76-338, с. 217–222 (форма 028-CGI, пункт 1 «Severity of Illness»), https://archive.org/details/ecdeuassessmentm1933guyw. Применение в клинике: Busner J, Targum SD. The Clinical Global Impressions Scale: applying a research tool in clinical practice. Psychiatry (Edgmont). 2007;4(7):28-37, PMID 20526405, PMC2880930.",
+  "license": {
+   "verdict": "общественное достояние (public domain) — по заявлению NINDS CDE (NIH, США); издание Минздрава США",
+   "quote": "Available in the public domain",
+   "url": "https://cde-fe.ninds.nih.gov/ninds/noc-report/F1325/Clinical%20Global%20Impression%20Scale",
+   "url_data": "https://ninds.cde-editor.com/cdeService/getSearchResult/NocReport/F1325",
+   "conditions": "Notice of Copyright NINDS CDE для CGI (F1325, редакция июня 2019 г.; файл NOC с пометкой «Public Domain»); отдельные карточки CGI-S (F3003) и CGI-I (F3002) отсылают к форме на с. 218 руководства ECDEU — издания Министерства здравоохранения, образования и социального обеспечения США. Условий нет. Проверено 28.10.2026."
+  },
+  "items": [
+   "1. Тяжесть психического состояния сейчас — по опыту работы с пациентами того же круга"
+  ],
+  "items_note": "Краткий смысл, не текст бланка. Один пункт, 7 ступеней от «норма» до «среди самых тяжёлых пациентов»; код 0 бланка «не оценивалось» в систему не заведён — методику заполняют, когда оценка проведена. Период — сейчас или последняя неделя. Третий пункт формы (индекс эффективности — терапевтический эффект против побочных действий) относится к испытаниям препаратов и не заведён.",
+  "anchors": [
+   { "item": 1, "scores": "1–7", "gist": "норма → пограничное → лёгкое → умеренное → выраженное → тяжёлое → среди самых тяжёлых" }
+  ],
+  "anchors_note": "Особая инструкция ECDEU: тяжесть оценивается относительно опыта специалиста с пациентами той же группы (того же расстройства), а не со всеми пациентами вообще.",
+  "reverse": [],
+  "scoring": "Одно число 1–7, без суммирования.",
+  "bands": [
+   { "min": 1, "max": 1, "label_en": "normal, not at all ill", "label_uk": "Норма — ознак психічного розладу немає" },
+   { "min": 2, "max": 2, "label_en": "borderline mentally ill", "label_uk": "Межовий стан" },
+   { "min": 3, "max": 3, "label_en": "mildly ill", "label_uk": "Легкий розлад" },
+   { "min": 4, "max": 4, "label_en": "moderately ill", "label_uk": "Помірний розлад" },
+   { "min": 5, "max": 5, "label_en": "markedly ill", "label_uk": "Виражений розлад" },
+   { "min": 6, "max": 6, "label_en": "severely ill", "label_uk": "Тяжкий розлад" },
+   { "min": 7, "max": 7, "label_en": "among the most extremely ill patients", "label_uk": "Надзвичайно тяжкий розлад" }
+  ],
+  "bands_source": "Полосы — сами ступени шкалы (Guy, 1976): порогов у CGI-S нет, каждое значение имеет свою подпись. «Виражений» — 5-я ступень (markedly) между «помірний» и «тяжкий»: слово точное и в шкале CGI-S однозначно упорядочено.",
+  "risk_items": [],
+  "risk_items_note": "Пунктов риска нет. Тяжесть полос — решение системы: 1 — none, 2–7 — mild; случая риска полосы не открывают — это общая оценка самого специалиста (как у HAM-D, hamd17.ts).",
+  "translation": {
+   "uk": { "exists": false, "by": null, "free": null, "url": null, "note": "Официального украинского текста нет. Собственный рабочий перевод с ECDEU (WORKING_TRANSLATION); подписи ступеней — без рода пациента («Легкий розлад», а не «легко хворий»)." },
+   "ru": { "exists": false, "by": null, "free": null, "url": null, "note": "Свободного официального русского текста нет. Собственный рабочий перевод с ECDEU." }
+  },
+  "example": { "answers": [4], "total": 4, "band": "Помірний розлад", "note": "Одно значение — оно же балл." },
+  "example2": { "answers": [6], "total": 6, "band": "Тяжкий розлад", "note": "Тревоги нет: случая по полосе шкала не открывает." },
+  "verdict": "завести — издание Минздрава США, общественное достояние по NINDS CDE; заполняет специалист; полосы — ступени шкалы; собственный рабочий перевод."
  }
 ]
