@@ -12,13 +12,18 @@ import { dm } from "./format";
  * Статистика (порог MDC95, |RCI| > 1,96) — в подсказке, а не в строке.
  */
 
-/** Сдвиг словом: «значуще погіршення» — янтарём, «значуще покращення» — зелёным, остальное — спокойно */
+/**
+ * Сдвиг словом: «значуще погіршення» — янтарём, «значуще покращення» —
+ * зелёным, остальное — спокойно. Слова — те же, что в шапке графика курса
+ * (charts/course.tsx): на одной странице строка картины и график говорят
+ * одно и то же одинаково — «у межах похибки», а не «без значущих змін».
+ */
 const VERDICT: Record<PictureRow["verdict"], { key: UiKey; tone: string }> = {
-  worse: { key: "ws.vWorse", tone: "font-bold text-warn" },
-  better: { key: "ws.vBetter", tone: "font-bold text-good" },
-  changed: { key: "ws.vChanged", tone: "font-bold text-text" },
-  within: { key: "ws.vWithin", tone: "text-text-2" },
-  unknown: { key: "ws.vUnknown", tone: "text-text-2" },
+  worse: { key: "course.v.worse", tone: "font-bold text-warn" },
+  better: { key: "course.v.better", tone: "font-bold text-good" },
+  changed: { key: "course.v.changed", tone: "font-bold text-text" },
+  within: { key: "kit.withinError", tone: "text-text-2" },
+  unknown: { key: "course.v.unknown", tone: "text-text-2" },
   single: { key: "ws.vSingle", tone: "text-muted" },
   incomparable: { key: "ws.vIncomparable", tone: "text-muted" },
 };

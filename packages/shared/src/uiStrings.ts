@@ -16398,11 +16398,6 @@ export const UI = {
   "ws.unreliable": { uk: "протокол недостовірний", ru: "протокол недостоверен", en: "unreliable record" },
   "ws.ofMax": { uk: "з {n}", ru: "из {n}", en: "of {n}" },
   "ws.since": { uk: "з {d}", ru: "с {d}", en: "since {d}" },
-  "ws.vWorse": { uk: "значуще погіршення", ru: "значимое ухудшение", en: "significant worsening" },
-  "ws.vBetter": { uk: "значуще покращення", ru: "значимое улучшение", en: "significant improvement" },
-  "ws.vChanged": { uk: "значуща зміна", ru: "значимое изменение", en: "significant change" },
-  "ws.vWithin": { uk: "без значущих змін", ru: "без значимых изменений", en: "no significant change" },
-  "ws.vUnknown": { uk: "значущість не оцінено", ru: "значимость не оценена", en: "significance not assessed" },
   "ws.vSingle": { uk: "перший замір", ru: "первый замер", en: "first measurement" },
   "ws.vIncomparable": { uk: "не порівнюється", ru: "не сравнивается", en: "not comparable" },
   "ws.tipWithin": {
@@ -16445,7 +16440,9 @@ export const UI = {
   "ws.showAll": { uk: "Показати повністю", ru: "Показать полностью", en: "Show in full" },
   "ws.methodSub": { uk: "замірів: {n}, {a} — {b}", ru: "замеров: {n}, {a} — {b}", en: "{n} measurements, {a} — {b}" },
   "ws.lastProtocol": { uk: "Протокол останнього заміру", ru: "Протокол последнего замера", en: "Latest response record" },
-  "ws.scalesOf": { uk: "Шкали методики", ru: "Шкалы методики", en: "Instrument scales" },
+  /* «Динаміка»: курс всех методик сеткой — первым пунктом слева; под графиком — к методике целиком */
+  "ws.allMethods": { uk: "Усі методики", ru: "Все методики", en: "All instruments" },
+  "ws.methodDetail": { uk: "Заміри й пункти", ru: "Замеры и пункты", en: "Measurements and items" },
   "ws.measuresOf": { uk: "Заміри: {s}", ru: "Замеры: {s}", en: "Measurements: {s}" },
   "ws.colScore": { uk: "Бал", ru: "Балл", en: "Score" },
   "ws.colFromPrev": { uk: "Від попереднього", ru: "От предыдущего", en: "From previous" },
@@ -16535,6 +16532,7 @@ export const UI = {
   "qh.colResponse": { uk: "Проходження", ru: "Прохождение", en: "Completion" },
   "qh.colItems": { uk: "Пункти", ru: "Пункты", en: "Items" },
   "qh.colMarks": { uk: "Позначок", ru: "Меток", en: "Marks" },
+  "dyn.courseAll": { uk: "усі методики, кожна у своїх балах", ru: "все методики, каждая в своих баллах", en: "every instrument, each in its own units" },
 
   // ── dp-content ──
 

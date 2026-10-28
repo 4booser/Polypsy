@@ -160,13 +160,37 @@ export function instrumentCode(title: string, opts: { catalogKey?: string | null
   const byKey = key && Object.hasOwn(SHORT_BY_KEY, key) ? SHORT_BY_KEY[key] : undefined;
   if (byKey) return byKey[opts.lang === "ru" ? "ru" : "uk"];
   const clean = title.trim().replace(/\s+/g, " ");
-  const paren = /\(([^()]+)\)$/.exec(clean)?.[1]?.split(",")[0]?.trim();
-  if (paren && paren.length <= SHORT_MAX && /[A-ZА-ЯІЇЄҐ0-9]/.test(paren)) {
-    return paren.charAt(0).toLocaleUpperCase() + paren.slice(1);
-  }
+  const paren = codeInParens(clean);
+  if (paren) return paren.charAt(0).toLocaleUpperCase() + paren.slice(1);
   const head = /^([A-ZА-ЯІЇЄҐ0-9][A-ZА-ЯІЇЄҐ0-9-]{1,11})[.:]\s/.exec(clean)?.[1];
   if (head) return head;
   const abbr = /^([A-ZА-ЯІЇЄҐ]{2,6})\s+[«"„]/.exec(clean)?.[1];
   if (abbr) return abbr;
   return clipAtWord(clean, SHORT_MAX);
+}
+
+/** Код из последней скобки названия: первая часть, если в ней заглавная буква или цифра; иначе null */
+function codeInParens(clean: string): string | null {
+  const paren = /\(([^()]+)\)$/.exec(clean)?.[1]?.split(",")[0]?.trim();
+  return paren && paren.length <= SHORT_MAX && /[A-ZА-ЯІЇЄҐ0-9]/.test(paren) ? paren : null;
+}
+
+/**
+ * Что меряет методика — название без кода: «Депресія» из «Депресія
+ * (PHQ-9)», «Схильність до суїцидальних реакцій» из «СР-45. Схильність…»,
+ * «Адаптивність-200» из «БОО «Адаптивність-200»». Пометка в скобках
+ * («(демо)») остаётся: это не код. Шапка графика курса — «Депресія · PHQ-9»:
+ * и что меряли, и чем (instrumentCode).
+ */
+export function instrumentMeasure(title: string): string {
+  const clean = title.trim().replace(/\s+/g, " ");
+  if (codeInParens(clean)) {
+    const rest = clean.slice(0, clean.lastIndexOf("(")).trim();
+    if (rest) return rest;
+  }
+  const head = /^[A-ZА-ЯІЇЄҐ0-9][A-ZА-ЯІЇЄҐ0-9-]{1,11}[.:]\s+(.+)$/.exec(clean)?.[1];
+  if (head) return head.trim();
+  const quoted = /^[A-ZА-ЯІЇЄҐ]{2,6}\s+[«"„](.+?)[»"“]?$/.exec(clean)?.[1];
+  if (quoted) return quoted.trim();
+  return clean;
 }

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { clipAtWord, instrumentCode } from "./format";
+import { clipAtWord, instrumentCode, instrumentMeasure } from "./format";
 
 /**
  * Короткое имя методики — над графиком «Динаміки», в строке «Клінічної
@@ -60,5 +60,17 @@ describe("clipAtWord", () => {
     // одно длинное слово — целым и без многоточия: ничего не отброшено
     expect(clipAtWord("Самоспівчуттєвість", 10)).toBe("Самоспівчуттєвість");
     expect(clipAtWord("Самоспівчуттєвість і усвідомленість", 10)).toBe("Самоспівчуттєвість…");
+  });
+});
+
+describe("instrumentMeasure", () => {
+  test("название без кода — что меряли; пометка в скобках остаётся", () => {
+    expect(instrumentMeasure("Депресія (PHQ-9)")).toBe("Депресія");
+    expect(instrumentMeasure("Синдром відміни алкоголю (CIWA-Ar)")).toBe("Синдром відміни алкоголю");
+    expect(instrumentMeasure("Поширені психічні розлади (SRQ-20, ВООЗ)")).toBe("Поширені психічні розлади");
+    expect(instrumentMeasure("СР-45. Схильність до суїцидальних реакцій")).toBe("Схильність до суїцидальних реакцій");
+    expect(instrumentMeasure("БОО «Адаптивність-200»")).toBe("Адаптивність-200");
+    expect(instrumentMeasure("Опитувальник Міні-мульт")).toBe("Опитувальник Міні-мульт");
+    expect(instrumentMeasure("Якість сну (демо)")).toBe("Якість сну (демо)");
   });
 });

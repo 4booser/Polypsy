@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { AlertCase, PatientCardDomain, RespondentDynamics, ResponseDetail } from "@quizzy/shared";
 import {
   ageOf,
+  chartNames,
   clinicalPicture,
   itemHistory,
   itemMax,
@@ -146,6 +147,28 @@ describe("клиническая картина: строки по домена�
     // старый ответ без короткого имени: последняя скобка, регистр не важен
     const old = { ...d, surveys: [{ ...sv, title: "Синдром відміни алкоголю (CIWA-Ar)" }] };
     expect(clinicalPicture(old, DEPRESSION)[0]!.rows[0]!.code).toBe("CIWA-Ar");
+  });
+
+  test("шапка графика курса: что меряли и чем; код из названия второй раз не повторяется", () => {
+    expect(chartNames({ surveyTitle: "Депресія (PHQ-9)", code: "PHQ-9", scaleTitle: "Вираженість депресії" }, true)).toEqual({
+      measure: "Депресія",
+      method: "PHQ-9",
+    });
+    // многошкальная — шкала и код методики
+    expect(chartNames({ surveyTitle: "Депресія, тривога, стрес (DASS-42)", code: "DASS-42", scaleTitle: "Тривога" }, false)).toEqual({
+      measure: "Тривога",
+      method: "DASS-42",
+    });
+    expect(chartNames({ surveyTitle: "Опитувальник Міні-мульт", code: "Міні-мульт", scaleTitle: "Іпохондрія" }, true)).toEqual({
+      measure: "Опитувальник Міні-мульт",
+      method: null,
+    });
+  });
+
+  test("строка картины несёт лестницу полос снизу вверх — для графика курса и малого курса", () => {
+    const row = clinicalPicture(banded([[at(-1), 9], [at(0), 14]]), DEPRESSION)[0]!.rows[0]!;
+    expect(row.rungs.length).toBeGreaterThan(1);
+    expect(row.rungs.map((r) => r.min)).toEqual([...row.rungs.map((r) => r.min)].sort((a, b) => a - b));
   });
 
   test("шкала достоверности в картину не идёт — она о бланке, а не о человеке", () => {

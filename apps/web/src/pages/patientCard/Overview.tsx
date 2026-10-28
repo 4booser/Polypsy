@@ -1,5 +1,9 @@
+import { useMemo } from "react";
 import { Link } from "react-router-dom";
-import { Sparkline } from "../../charts/clinical";
+import { pointValueTop } from "@quizzy/shared";
+import { CourseChart, CourseLegend } from "../../charts/course";
+import { CourseSpark } from "../../charts/courseGrid";
+import { courseEventsFromTimeline, courseFromDynamics, cutoffOf, laneEvents, signalsOn } from "../../charts/courseModel";
 import { day, severityKey, timeOfDay } from "../../format";
 import { useLang } from "../../lang";
 import { Ic, Loading, TextAction, Tooltip } from "../../ui";
@@ -8,9 +12,9 @@ import { Panel } from "../../ui/layout";
 import { withCount } from "../../ui/plural";
 import { Button, SeverityTag, Tag } from "../../ui/primitives";
 import { DESTINATION_KEY, URGENCY_KEY } from "../referrals/model";
-import { CLINICAL_DOMAIN_KEY, capital, initialsName } from "../patients/model";
+import { CLINICAL_DOMAIN_KEY, capital, initialsName, shownSeriesText } from "../patients/model";
 import { InlineAction } from "./Banner";
-import { signalGroups, type PictureGroup, type PictureRow } from "./clinical";
+import { chartNames, signalGroups, type PictureGroup, type PictureRow } from "./clinical";
 import { daysBetween, dm, wdm } from "./format";
 import { Pi } from "./icons";
 import type { CardView } from "./types";
@@ -28,10 +32,14 @@ import { ChangeWords, ScoreText } from "./words";
  *            план безпеки), «План» (приёмы, назначенное, направления, учёт) и
  *            «Останні записи» (последняя запись прийому и заключение).
  *
+ *   ниже картины — «Курс»: малые графики до трёх методик с повторными
+ *            замерами, подряд, а не переключателем (графики участка
+ *            charts/course.tsx); все методики и шкалы — в «Динаміці».
+ *
  * Чего здесь больше нет и почему: ленты «За останні 30 днів» (восемь строк
  * «Сигнал …» одной минуты — её дом «Хронологія», а сигналы сложены в
- * «Ризику»), «Вільних вікон поруч» (перенос — в ящике переписки), курса и
- * пунктов (они в «Динаміці» выбранной методики).
+ * «Ризику»), «Вільних вікон поруч» (перенос — в ящике переписки), пунктов
+ * (они в «Динаміці» выбранной методики).
  */
 
 export function Overview({ v }: { v: CardView }) {
@@ -52,6 +60,7 @@ export function Overview({ v }: { v: CardView }) {
         <div className="flex min-w-0 flex-col gap-4">
           <ClinicalPicture v={v} />
           {short ? <RecentRecords v={v} /> : null}
+          <CoursePanel v={v} />
         </div>
         <div className="flex min-w-0 flex-col gap-4">
           <RiskPanel v={v} />
@@ -152,6 +161,8 @@ function PictureLine({ r, v }: { r: PictureRow; v: CardView }) {
   const { ut, lang } = useLang();
   const values = r.points.map((p) => p.rawScore);
   const open = () => v.goTab("dynamics", { m: r.surveyId });
+  /* малый курс строки (charts/courseGrid.tsx): полосы лестницы, порог, линия замеров; числа — в соседних ячейках */
+  const spark = r.points.map((p) => ({ t: Date.parse(p.submittedAt), value: p.rawScore }));
   return (
     /*
      * Узкая панель (1280 со списком) — две строки: методика, балл и полоса;
@@ -221,11 +232,61 @@ function PictureLine({ r, v }: { r: PictureRow; v: CardView }) {
       </span>
       <span className="flex items-center justify-end gap-2.5 justify-self-end [grid-area:aside]">
         <span className="whitespace-nowrap text-caption tabular-nums text-muted">{dm(r.last.submittedAt)}</span>
-        <span aria-hidden className="inline-flex w-[56px] justify-end">
-          {values.length > 1 ? <Sparkline values={values} width={56} height={20} /> : null}
-        </span>
+        <CourseSpark
+          points={spark}
+          rungs={r.rungs}
+          max={pointValueTop(r.last)}
+          width={80}
+          height={24}
+          label={`${r.code}: ${shownSeriesText(values, r.last.normalization).join(" → ")}`}
+        />
       </span>
     </li>
+  );
+}
+
+/* ─────────── курс ─────────── */
+
+/**
+ * «Курс»: малые графики методик с повторными замерами — один под другим, а
+ * не переключателем: по соседней методике человеку могло стать хуже, и это
+ * видно без нажатий. Не больше трёх, в порядке картины (тяжёлое и рисковое
+ * первым); все методики и шкалы — в «Динаміці». Легенда значков — одна.
+ */
+const COURSE_MAX = 3;
+
+function CoursePanel({ v }: { v: CardView }) {
+  const { ut } = useLang();
+  const events = useMemo(() => courseEventsFromTimeline(v.timeline ?? []), [v.timeline]);
+  if (!v.dynamics) return null;
+  const all = v.picture.flatMap((g) => g.rows);
+  const rows = all.filter((r, i) => r.points.length > 1 && all.findIndex((x) => x.surveyId === r.surveyId) === i).slice(0, COURSE_MAX);
+  if (!rows.length) return null;
+  const charts = rows.map((r) => ({
+    r,
+    data: courseFromDynamics(r.scale, r.rungs, undefined, { surveyId: r.surveyId }),
+    /* у свёрнутой методики график — её самой тяжёлой шкалы, и шапка называет шкалу */
+    names: chartNames(r, !r.folded && all.filter((x) => x.surveyId === r.surveyId).length === 1),
+  }));
+  return (
+    <Panel
+      title={ut("dyn.course")}
+      icon={<Pi.chartSpline />}
+      actions={<TextAction onClick={() => v.goTab("dynamics")}>{ut("card.tDynamics")}</TextAction>}
+    >
+      <div className="flex flex-col gap-4">
+        {charts.map(({ r, data, names }, i) => (
+          <div key={r.key} className={cx(i > 0 && "border-t border-divider pt-4")}>
+            <CourseChart title={r.code} measure={names.measure} method={names.method} {...data} events={events} size="compact" legend={false} />
+          </div>
+        ))}
+      </div>
+      <CourseLegend
+        cutoff={charts.some((c) => cutoffOf(c.data.rungs)) || null}
+        signal={charts.some((c) => signalsOn(c.data.points, events, c.data.scaleCode).size > 0)}
+        lane={charts.flatMap((c) => laneEvents(c.data.points, events)).filter((e, i, list) => list.indexOf(e) === i)}
+      />
+    </Panel>
   );
 }
 

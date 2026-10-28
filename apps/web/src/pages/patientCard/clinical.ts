@@ -1,6 +1,7 @@
 import {
   CLINICAL_DOMAINS,
   instrumentCode,
+  instrumentMeasure,
   type AlertCase,
   type ClinicalDomain,
   type DynamicsPoint,
@@ -13,7 +14,7 @@ import {
   type Severity,
 } from "@quizzy/shared";
 import { betterOf, changeVerdict, reliableThreshold, type Better, type ChangeVerdict } from "../../charts/courseModel";
-import { sortRungs } from "../../charts/ladder";
+import { sortRungs, type Rung } from "../../charts/ladder";
 import { shownLimit, shownStep } from "../patients/model";
 
 /*
@@ -52,6 +53,8 @@ export interface PictureRow {
   /** Сколько ещё шкал этой методики в этом домене свёрнуто в строку (самая тяжёлая — на виду) */
   folded: number;
   scale: ScaleDynamics;
+  /** Лестница полос шкалы снизу вверх — для графика курса и малого курса строки */
+  rungs: Rung[];
   /** Замеры по времени, старые первыми */
   points: DynamicsPoint[];
   first: DynamicsPoint;
@@ -110,6 +113,7 @@ export function scaleRow(
     scaleTitle: scale.title,
     folded: 0,
     scale,
+    rungs,
     points,
     first,
     last,
@@ -121,6 +125,18 @@ export function scaleRow(
     signal: points.some((p) => signalResponses.has(p.responseId)),
     unreliable: last.reliable === false,
   };
+}
+
+/**
+ * Шапка графика курса словами: у методики с одной шкалой — что она меряет и
+ * её код («Депресія · PHQ-9»), у многошкальной — шкала и код методики
+ * («Тривога · DASS-42»). Код, который уже стоит в названии («Опитувальник
+ * Міні-мульт»), второй раз не повторяется. То же правило, что courseNames
+ * графиков, но код — общий (instrumentCode): «CIWA-Ar», «Brief COPE».
+ */
+export function chartNames(r: Pick<PictureRow, "surveyTitle" | "code" | "scaleTitle">, single: boolean): { measure: string; method: string | null } {
+  const measure = single ? instrumentMeasure(r.surveyTitle) : r.scaleTitle;
+  return { measure, method: measure.toLocaleLowerCase().includes(r.code.toLocaleLowerCase()) ? null : r.code };
 }
 
 const SEV_RANK: Record<Severity, number> = { none: 0, mild: 1, moderate: 2, severe: 3 };

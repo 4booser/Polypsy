@@ -1,39 +1,75 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { pointValueTop, type RespondentDynamics, type ScaleDynamics } from "@quizzy/shared";
-import { api } from "../../api";
-import { CourseChart } from "../../charts/course";
-import { courseEventsFromTimeline, courseFromDynamics } from "../../charts/courseModel";
-import { sortRungs } from "../../charts/ladder";
+import type { RespondentDynamics, ScaleDynamics } from "@quizzy/shared";
+import { api, openInTab } from "../../api";
+import { CourseChart, CourseLegend } from "../../charts/course";
+import { CourseGrid } from "../../charts/courseGrid";
+import { courseEventsFromTimeline, courseFromDynamics, cutoffOf, laneEvents, signalsOn, type CourseData, type CourseEvent } from "../../charts/courseModel";
 import { severityKey } from "../../format";
 import { useLang } from "../../lang";
 import { useResourceMap } from "../../useResource";
-import { Empty, Ic, Loading, Popover } from "../../ui";
+import { Empty, Ic, IconPrint, Loading, Popover, TextAction, useAction } from "../../ui";
 import { cx } from "../../ui/cx";
 import { Panel } from "../../ui/layout";
 import { signed } from "../../ui/numbers";
-import { Button, Segmented, Select, SeverityTag, Switch } from "../../ui/primitives";
+import { Button, Select, SeverityTag, Switch } from "../../ui/primitives";
 import { useUrlState } from "../../ui/urlState";
 import { CLINICAL_DOMAIN_KEY as DOMAIN_KEY, shownStep, signedShown } from "../patients/model";
-import { ChangeWords, ScoreText } from "./words";
-import { itemsGrid, scaleRow, sevRank, type ItemsGrid, type PictureRow } from "./clinical";
+import { ScoreText } from "./words";
+import { chartNames, itemsGrid, scaleRow, sevRank, type ItemsGrid, type PictureRow } from "./clinical";
 import { dm } from "./format";
 import { Pi } from "./icons";
 import type { CardView } from "./types";
 
 /*
- * «Динаміка» — одна методика целиком: как шёл балл по полосам, что с каждой
- * её шкалой, что человек отвечал по пунктам. Методика выбирается слева
- * (в узкой колонке — списком над графиком) в том же порядке, что строки
- * «Клінічної картини»: строка картины ведёт сюда с этой методикой (?m=).
+ * «Динаміка» — курс методик графиками участка графиков (charts/course.tsx):
+ * у каждого графика шапка словами («Депресія · PHQ-9», «19 з 27», полоса,
+ * «значуще погіршення: +8 з 13 трав.»), сетка без пустых полурядов
+ * (CourseGrid), легенда значков — одна на сетку.
  *
- * Прежде было два экрана с этим именем: «Графіки» карточки (по графику на
- * каждую шкалу в сетке, третий — один в полупустом ряду) и «Динаміка»
+ *   «Усі методики» (по умолчанию) — курс каждой методики малым графиком, а
+ *            не переключателем: по соседней методике человеку могло стать
+ *            хуже, и это видно без нажатий. Шкала методики — самая тяжёлая,
+ *            как в строке «Клінічної картини».
+ *   методика (?m=, слева или строкой картины) — все её шкалы графиками,
+ *            замеры по датам, ответы по пунктам; печать отчёта последнего
+ *            замера и заключение по нему.
+ *
+ * Прежде было два экрана с этим именем: «Графіки» карточки и «Динаміка»
  * клинической карты (большие числа, курс, таблица RCI, «методики разом» в
- * процентах от максимума). Большие числа и надёжность сдвига теперь — слова
- * «Клінічної картини»; «методики разом» ушли: доля от максимума у WHO-5
- * (больше — лучше) и у AUDIT (больше — хуже) на одной оси читалась наоборот.
+ * процентах от максимума). Большие числа и надёжность сдвига — слова шапок
+ * графиков и «Клінічної картини»; «методики разом» ушли: доля от максимума у
+ * WHO-5 (больше — лучше) и у AUDIT (больше — хуже) на одной оси читалась
+ * наоборот.
  */
+
+/** Балл каждой точки — к версии последнего замера, если человек включил сведение */
+function seriesOf(sc: ScaleDynamics, equating: boolean): ScaleDynamics {
+  return equating && sc.equated?.length ? { ...sc, points: sc.points.map((p) => ({ ...p, rawScore: equatedValue(p, sc.equated) })) } : sc;
+}
+
+/** Легенда одна на сетку: порог, сигнал на замере и значки дорожки — те, что есть хоть на одном графике */
+function SharedLegend({ charts, events, className }: { charts: { data: CourseData }[]; events: readonly CourseEvent[]; className?: string }) {
+  return (
+    <CourseLegend
+      className={className}
+      cutoff={charts.some((c) => cutoffOf(c.data.rungs)) || null}
+      signal={charts.some((c) => signalsOn(c.data.points, events, c.data.scaleCode).size > 0)}
+      lane={charts.flatMap((c) => laneEvents(c.data.points, events)).filter((e, i, all) => all.indexOf(e) === i)}
+    />
+  );
+}
+
+/** «Звести версії» — под графиками, когда у шкал есть коэффициенты приведения */
+function EquateSwitch({ on, onChange }: { on: boolean; onChange: (x: boolean) => void }) {
+  const { ut } = useLang();
+  return (
+    <div className="w-full">
+      <Switch checked={on} onChange={onChange} label={ut("eq.title")} sub={ut("dyn.equateSub")} />
+      <p className="m-0 mt-1.5 text-caption text-text-2">{ut("eq.hint")}</p>
+    </div>
+  );
+}
 
 export function DynamicsTab({ v }: { v: CardView }) {
   const { ut } = useLang();
@@ -45,12 +81,12 @@ export function DynamicsTab({ v }: { v: CardView }) {
     .map((id) => v.dynamics!.surveys.find((s) => s.surveyId === id))
     .filter((s): s is RespondentDynamics["surveys"][number] => !!s);
   if (!surveys.length) return <Empty icon={<Pi.chartSpline />} title={ut("pt.noCompleted")} hint={ut("dyn.emptyHint")} />;
-  const current = surveys.find((s) => s.surveyId === m) ?? surveys[0]!;
+  const current = surveys.find((s) => s.surveyId === m) ?? null;
   return (
     <div className="@container">
       <div className="grid items-start gap-4 @min-[1000px]:grid-cols-[232px_minmax(0,1fr)]">
-        <MethodRail v={v} surveys={surveys} current={current.surveyId} onPick={setM} />
-        <MethodView key={current.surveyId} v={v} sv={current} />
+        <MethodRail v={v} surveys={surveys} current={current?.surveyId ?? ""} onPick={setM} />
+        {current ? <MethodView key={current.surveyId} v={v} sv={current} /> : <AllCourses v={v} surveys={surveys} onPick={setM} />}
       </div>
     </div>
   );
@@ -75,6 +111,7 @@ function MethodRail({
       <div className="flex items-center gap-2.5 @min-[1000px]:hidden">
         <span className="text-small font-bold text-muted">{ut("card.colInstrument")}</span>
         <Select value={current} onChange={(e) => onPick(e.target.value)} aria-label={ut("card.colInstrument")} className="max-w-[420px] flex-1">
+          <option value="">{ut("ws.allMethods")}</option>
           {v.picture.map((g) => (
             <optgroup key={g.domain} label={ut(DOMAIN_KEY[g.domain])}>
               {g.rows
@@ -91,6 +128,20 @@ function MethodRail({
       <nav aria-label={ut("card.colInstrument")} className="hidden @min-[1000px]:block">
         <Panel flush as="div">
           <ul className="m-0 list-none p-1.5">
+            <li className="mb-1 border-b border-divider pb-1">
+              <button
+                type="button"
+                aria-current={current === "" || undefined}
+                onClick={() => onPick("")}
+                className={cx(
+                  "flex w-full cursor-pointer items-center gap-2 rounded-[10px] border-0 px-2.5 py-2 text-left text-small font-extrabold outline-none focus-visible:shadow-[0_0_0_2px_var(--vring)]",
+                  current === "" ? "bg-violet-tint text-violet-ink" : "bg-transparent text-text hover:bg-panel-2",
+                )}
+              >
+                <Pi.chartSpline size={15} className="shrink-0" />
+                {ut("ws.allMethods")}
+              </button>
+            </li>
             {surveys.map((s) => {
               const r = rowOf(s.surveyId);
               const on = s.surveyId === current;
@@ -131,21 +182,68 @@ function clinicalScales(sv: RespondentDynamics["surveys"][number]): ScaleDynamic
     .sort((a, b) => sevRank(lastOf(b)?.severity) - sevRank(lastOf(a)?.severity));
 }
 
+/**
+ * «Усі методики»: курс каждой методики малым графиком, сеткой без пустых
+ * полурядов; легенда одна, «Звести версії» — под сеткой. Под графиком —
+ * переход к методике целиком (все шкалы, замеры, пункты).
+ */
+function AllCourses({ v, surveys, onPick }: { v: CardView; surveys: RespondentDynamics["surveys"]; onPick: (id: string) => void }) {
+  const { ut } = useLang();
+  const [equating, setEquating] = useState(false);
+  const events = useMemo(() => courseEventsFromTimeline(v.timeline ?? []), [v.timeline]);
+  const rows = v.picture.flatMap((g) => g.rows);
+  const charts = surveys.flatMap((sv) => {
+    /* шкала методики — та, что стоит в картине первой: самая тяжёлая */
+    const r = rows.find((x) => x.surveyId === sv.surveyId);
+    if (!r) return [];
+    const single = rows.filter((x) => x.surveyId === sv.surveyId).length === 1 && !r.folded;
+    return [{ r, data: courseFromDynamics(seriesOf(r.scale, equating), r.rungs, undefined, { surveyId: sv.surveyId }), names: chartNames(r, single) }];
+  });
+  const canEquate = charts.some((c) => !!c.r.scale.equated?.length);
+  return (
+    <Panel
+      title={ut("dyn.course")}
+      icon={<Ic.chart />}
+      sub={ut("dyn.courseAll")}
+      footer={canEquate ? <EquateSwitch on={equating} onChange={setEquating} /> : undefined}
+    >
+      <SharedLegend className="!mt-0 mb-3" charts={charts} events={events} />
+      <CourseGrid>
+        {charts.map(({ r, data, names }) => (
+          <div key={r.surveyId} className="flex flex-col rounded-panel border border-divider p-3.5">
+            <CourseChart title={r.code} measure={names.measure} method={names.method} {...data} events={events} legend={false} />
+            <span className="mt-auto self-end pt-1.5">
+              <TextAction onClick={() => onPick(r.surveyId)}>{ut("ws.methodDetail")}</TextAction>
+            </span>
+          </div>
+        ))}
+      </CourseGrid>
+    </Panel>
+  );
+}
+
+/**
+ * Методика целиком: все её шкалы графиками (одна шкала — один график во всю
+ * ширину), замеры по датам и ответы по пунктам. В шапке — протокол
+ * последнего замера, его печатный отчёт и заключение по нему.
+ */
 function MethodView({ v, sv }: { v: CardView; sv: RespondentDynamics["surveys"][number] }) {
   const { ut } = useLang();
+  const { run, busy } = useAction();
   const scales = clinicalScales(sv);
   const domainOf = (code: string) => v.card.domains?.find((d) => d.surveyId === sv.surveyId && d.code === code)?.domain ?? "other";
   const rows = scales.map((sc) => scaleRow(sv, sc, domainOf(sc.code)));
-  const [pick, setPick] = useState<string>(scales[0]?.code ?? "");
-  const row = rows.find((r) => r.scale.code === pick) ?? rows[0];
   const [equating, setEquating] = useState(false);
   const events = useMemo(() => courseEventsFromTimeline(v.timeline ?? []), [v.timeline]);
-  if (!row) return <Empty title={ut("pt.noCompleted")} />;
-  const last = row.last;
-  const canEquate = !!row.scale.equated?.length;
-  const series = equating ? { ...row.scale, points: row.scale.points.map((p) => ({ ...p, rawScore: equatedValue(p, row.scale.equated) })) } : row.scale;
-  const rungs = sortRungs((row.scale.bands ?? []).map((b) => ({ min: b.min, max: b.max, label: b.label, severity: b.severity })));
-  const course = courseFromDynamics(series, rungs);
+  const main = rows[0];
+  if (!main) return <Empty title={ut("pt.noCompleted")} />;
+  const last = main.last;
+  const canEquate = rows.some((r) => !!r.scale.equated?.length);
+  /* методику называет панель — у графика в шапке только шкала: «Вираженість депресії», «Тривога» */
+  const charts = rows.map((r) => ({
+    r,
+    data: courseFromDynamics(seriesOf(r.scale, equating), r.rungs, undefined, { surveyId: sv.surveyId }),
+  }));
   const draftable = v.can("conclusions.write") && v.card.responses.some((r) => r.responseId === last.responseId);
   return (
     <div className="flex min-w-0 flex-col gap-4">
@@ -161,6 +259,10 @@ function MethodView({ v, sv }: { v: CardView; sv: RespondentDynamics["surveys"][
             <Link to={`/surveys/${sv.surveyId}/responses/${last.responseId}`} className="text-small font-bold text-violet-ink">
               {ut("ws.lastProtocol")}
             </Link>
+            {/* печатный отчёт последнего замера — тот же, что «Друк звіту» на протоколе */}
+            <Button size="xs" variant="quiet" icon={<IconPrint />} disabled={busy} onClick={() => void run(() => openInTab(api.reportUrl(last.responseId)))}>
+              {ut("rp.print")}
+            </Button>
             {draftable ? (
               <Button size="xs" icon={<Pi.filePlus />} onClick={() => v.open("concl", { responseId: last.responseId })}>
                 {ut("card.concl")}
@@ -168,97 +270,54 @@ function MethodView({ v, sv }: { v: CardView; sv: RespondentDynamics["surveys"][
             ) : null}
           </>
         }
+        footer={canEquate ? <EquateSwitch on={equating} onChange={setEquating} /> : undefined}
       >
-        {rows.length > 1 ? (
-          <div className="mb-3 flex flex-wrap items-center gap-2">
-            {rows.length <= 5 ? (
-              <Segmented
-                label={ut("sum.scale")}
-                value={row.scale.code}
-                onChange={setPick}
-                items={rows.map((r) => ({ key: r.scale.code, label: r.scaleTitle.length > 22 ? `${r.scaleTitle.slice(0, 21)}…` : r.scaleTitle }))}
-              />
-            ) : (
-              <Select value={row.scale.code} onChange={(e) => setPick(e.target.value)} aria-label={ut("sum.scale")} className="max-w-[360px]">
-                {rows.map((r) => (
-                  <option key={r.scale.code} value={r.scale.code}>
-                    {r.scaleTitle}
-                  </option>
-                ))}
-              </Select>
-            )}
-          </div>
-        ) : null}
-        <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1.5">
-          <ScoreText p={last} big />
-          {last.severity || last.bandLabel ? (
-            <SeverityTag level={last.severity ?? "none"} className="!h-auto min-h-[26px] !whitespace-normal py-1">
-              {last.bandLabel ?? ut(severityKey[last.severity ?? "none"])}
-            </SeverityTag>
-          ) : null}
-          <ChangeWords r={row} />
-        </div>
-        <CourseChart title={row.scaleTitle} {...course} max={pointValueTop(last)} events={events} />
-        {canEquate ? (
-          <div className="mt-3 rounded-panel bg-sunk px-3.5 py-3">
-            <Switch checked={equating} onChange={setEquating} label={ut("eq.title")} sub={ut("dyn.equateSub")} />
-            <p className="m-0 mt-1.5 text-caption text-text-2">{ut("eq.hint")}</p>
-          </div>
-        ) : null}
+        {charts.length > 1 ? (
+          <>
+            <SharedLegend className="!mt-0 mb-3" charts={charts} events={events} />
+            <CourseGrid>
+              {charts.map(({ r, data }) => (
+                <div key={r.scale.code} className="rounded-panel border border-divider p-3.5">
+                  <CourseChart title={r.scaleTitle} measure={r.scaleTitle} {...data} events={events} legend={false} />
+                </div>
+              ))}
+            </CourseGrid>
+          </>
+        ) : (
+          <CourseChart title={main.scaleTitle} measure={main.scaleTitle} {...charts[0]!.data} events={events} />
+        )}
       </Panel>
-      {rows.length > 1 ? <ScalesTable rows={rows} current={row.scale.code} onPick={setPick} /> : null}
-      <MeasuresOfScale row={row} />
+      <MeasuresOfScale rows={rows} />
       <ItemsPanel v={v} sv={sv} />
     </div>
   );
 }
 
-/** Все шкалы методики: последний балл, полоса и сдвиг словами — выбор шкалы для графика */
-function ScalesTable({ rows, current, onPick }: { rows: PictureRow[]; current: string; onPick: (code: string) => void }) {
+/** Замеры шкалы по датам: балл, полоса, сдвиг от предыдущего, протокол; у многошкальной — шкала списком */
+function MeasuresOfScale({ rows }: { rows: PictureRow[] }) {
   const { ut } = useLang();
-  return (
-    <Panel title={ut("ws.scalesOf")} icon={<Ic.list />} flush>
-      <ul className="m-0 list-none p-0">
-        {rows.map((r) => (
-          <li
-            key={r.scale.code}
-            className={cx(
-              "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 border-t border-divider px-4 py-2 @min-[760px]:grid-cols-[minmax(0,240px)_96px_minmax(0,1fr)_minmax(0,220px)]",
-              r.scale.code === current && "bg-panel-2",
-            )}
-          >
-            <button
-              type="button"
-              onClick={() => onPick(r.scale.code)}
-              className="min-h-0 min-w-0 cursor-pointer truncate rounded-[4px] border-0 bg-transparent p-0 text-left text-small font-bold text-text outline-none hover:underline focus-visible:shadow-[0_0_0_2px_var(--vring)]"
-            >
-              {r.scaleTitle}
-            </button>
-            <ScoreText p={r.last} />
-            <span className="min-w-0">
-              {r.last.severity || r.last.bandLabel ? (
-                <SeverityTag level={r.last.severity ?? "none"} small className="!h-auto min-h-[22px] !whitespace-normal py-[3px] leading-[14px]">
-                  {r.last.bandLabel ?? ut(severityKey[r.last.severity ?? "none"])}
-                </SeverityTag>
-              ) : (
-                <span className="text-small text-muted">{ut("ws.noBands")}</span>
-              )}
-            </span>
-            <ChangeWords r={r} />
-          </li>
-        ))}
-      </ul>
-    </Panel>
-  );
-}
-
-/** Замеры шкалы по датам: балл, полоса, сдвиг от предыдущего, протокол */
-function MeasuresOfScale({ row }: { row: PictureRow }) {
-  const { ut } = useLang();
+  const [code, setCode] = useState(rows[0]?.scale.code ?? "");
+  const row = rows.find((r) => r.scale.code === code) ?? rows[0]!;
   const pts = [...row.points].reverse();
   const pp = row.last.normalization === "ratio" ? ` ${ut("card.pp")}` : "";
   return (
-    <Panel title={ut("ws.measuresOf").replace("{s}", row.scaleTitle)} icon={<Ic.clipboard />} count={pts.length} flush>
+    <Panel
+      title={rows.length > 1 ? ut("card.tMeasures") : ut("ws.measuresOf").replace("{s}", row.scaleTitle)}
+      icon={<Ic.clipboard />}
+      count={pts.length}
+      actions={
+        rows.length > 1 ? (
+          <Select value={row.scale.code} onChange={(e) => setCode(e.target.value)} aria-label={ut("sum.scale")} className="max-w-[300px]">
+            {rows.map((r) => (
+              <option key={r.scale.code} value={r.scale.code}>
+                {r.scaleTitle}
+              </option>
+            ))}
+          </Select>
+        ) : undefined
+      }
+      flush
+    >
       <table className="w-full table-fixed border-collapse text-small">
         <colgroup>
           <col className="w-[88px]" />
