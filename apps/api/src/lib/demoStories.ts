@@ -123,7 +123,11 @@ export interface Story {
   } | null;
   visits: Visit[];
   home: HomeSession[];
-  /** С какого дня случаи риска остаются неразобранными — у тех, кто в остром состоянии сейчас */
+  /**
+   * С какого дня сигналы домашних замеров остаются неразобранными: свежая
+   * сдача, которой лечащий ещё не видел. Поднятое на приёме разбирается на
+   * приёме (demoFill: settleCases), здесь его не задать.
+   */
   openFrom?: number;
   /** Решение лечащего специалиста по случаю */
   decide: (c: CaseContext) => CaseDecision;
@@ -146,11 +150,11 @@ export interface Story {
   /** Набор «Первинний скринінг»: когда назначен и к какому дню */
   battery?: { assignedDay: number; dueDay: number };
   /**
-   * Огляди лікаря-психіатра відділення: шкали лікаря (HAM-D-17, HAM-A, CGI-S,
-   * потім CGI-I, BPRS) і запис консультації. Психіатр не веде пацієнта і
-   * розкладу прийому в наповненні не має: огляд — консультація без запису на
-   * прийом, одразу після прийому в психолога (afterVisit) або в день, коли
-   * направлення закрито.
+   * Осмотры психиатра отделения: шкалы врача (HAM-D-17, HAM-A, CGI-S, затем
+   * CGI-I, BPRS) и запись консультации. Психиатр пациента не ведёт и
+   * расписания приёма в наполнении не имеет: осмотр — консультация без записи
+   * на приём, сразу после приёма у психолога (afterVisit) или в день, когда
+   * закрыто направление.
    */
   psychiatry?: { day: number; afterVisit?: number; measures: Measure[]; note: NoteFn }[];
 }
@@ -262,7 +266,7 @@ const M = {
   bat12: (avg: number): Measure => ({ key: "bat12", targets: { BAT12: avg } }),
   proqol: (cs: number, bo: number, sts: number): Measure => ({ key: "proqol5", targets: { CS: cs, BO: bo, STS: sts } }),
   ces: (total: number): Measure => ({ key: "ces", targets: { CES: total } }),
-  /* ворота «чи була подія» — так: у військових вона була майже завжди, PC-PTSD-5 рахує, що з неї лишилося */
+  /* ворота «было ли событие» — да: у военных оно было почти всегда, PC-PTSD-5 считает, что от него осталось */
   pcptsd5: (n: number): Measure => ({ key: "pcptsd5", targets: { PCPTSD5: n }, fixed: { 1: 1 } }),
   pq16: (total: number): Measure => ({ key: "pq16", targets: { PQ: total } }),
   /** MIOS: ворота «есть ли такой опыт» — да; тип опыта — номера вариантов с нуля */
@@ -296,15 +300,15 @@ const M = {
     total > 0
       ? { key: "sidas", targets: { SIDAS: total }, fixed: { 1: Math.max(1, Math.round(total / 5)) }, allowRisk: true }
       : { key: "sidas", targets: {}, fixed: { 1: 0 } },
-  /** HAM-D-17: п. 3 (суїцидальні думки й дії) — по сюжету, інакше 0 */
+  /** HAM-D-17: п. 3 (суицидальные мысли и действия) — по сюжету, иначе 0 */
   hamd: (total: number, item3 = 0): Measure => ({ key: "hamd17", targets: { HAMD: total }, fixed: { 3: item3 }, clinician: true }),
   hama: (total: number): Measure => ({ key: "hama", targets: { HAMA: total }, clinician: true }),
-  /** CGI-S: 1 — норма … 7 — надзвичайно тяжкий розлад */
+  /** CGI-S: 1 — норма … 7 — крайне тяжёлое расстройство */
   cgiS: (v: number): Measure => ({ key: "cgi_s", targets: {}, fixed: { 1: v }, clinician: true }),
-  /** CGI-I: 1 — дуже значне покращення … 4 — без змін … 7 — дуже значне погіршення */
+  /** CGI-I: 1 — очень значительное улучшение … 4 — без изменений … 7 — очень значительное ухудшение */
   cgiI: (v: number): Measure => ({ key: "cgi_i", targets: {}, fixed: { 1: v }, clinician: true }),
   bprs: (total: number): Measure => ({ key: "bprs", targets: { BPRS: total }, clinician: true }),
-  /** LEC-5: на каждую подію — номера вариантов с нуля; не названа — «не стосується мене» */
+  /** LEC-5: на каждое событие — номера вариантов с нуля; не названо — «не стосується мене» */
   lec5: (events: Record<number, number[]>): Measure => ({
     key: "lec5",
     targets: {},
@@ -376,9 +380,9 @@ function contactPhone(r: () => number): string {
   return `+380 ${s.slice(0, 2)} ${s.slice(2, 5)} ${s.slice(5, 7)} ${s.slice(7, 9)}`;
 }
 
-/* ═════════════ огляд психіатра ═════════════ */
+/* ═════════════ осмотр психиатра ═════════════ */
 
-/** Перший огляд лікаря-психіатра: скарги, стан, шкали лікаря, діагноз за МКХ-10, призначення */
+/** Первый осмотр психиатра: жалобы, состояние, шкалы врача, диагноз по МКБ-10, назначения */
 function psychIntake(p: Person, what: { complaints: string; diagnosis: string; plan: string; ideation?: string; status?: string }): NoteFn {
   return (c) =>
     [
@@ -398,7 +402,7 @@ function psychIntake(p: Person, what: { complaints: string; diagnosis: string; p
     ].join("\n");
 }
 
-/** Повторний огляд: зміна за CGI-I і шкалою першого огляду */
+/** Повторный осмотр: изменение по CGI-I и шкале первого осмотра */
 function psychFollow(plan: string): NoteFn {
   return (c) =>
     [
@@ -414,7 +418,7 @@ function psychFollow(plan: string): NoteFn {
     ].join("\n");
 }
 
-/** C-SSRS психіатра на першому огляді, коли думок про смерть немає: перший пункт набору «Первинний огляд лікаря-психіатра» */
+/** C-SSRS психиатра на первом осмотре, когда мыслей о смерти нет: первый пункт набора «Первинний огляд лікаря-психіатра» */
 const CSSRS_CLEAR = () => M.cssrs({ wish: false, thoughts: false });
 
 /* ═════════════ общие кирпичи ═════════════ */
@@ -422,6 +426,15 @@ const CSSRS_CLEAR = () => M.cssrs({ wish: false, thoughts: false });
 type Builder = (p: Person, r: () => number, v: number) => Story;
 
 const NONE: Pick<Story, "home" | "safetyPlans" | "referrals" | "pending"> = { home: [], safetyPlans: [], referrals: [], pending: [] };
+
+/**
+ * Свежая домашняя сдача — то, что лежит в очереди риска неразобранным:
+ * назначенный повтор, сданный за час-три до наполнения (openFrom: −1).
+ * Приём того же дня разобрал бы её раньше наполнения — поэтому сегодняшний
+ * приём у такого человека переносится на завтра (noToday).
+ */
+const fresh = (measures: Measure[]): HomeSession => ({ day: 0, minute: 0, recent: true, measures });
+const noToday = (days: number[]) => [...new Set(days.map((d) => (d === 0 ? 1 : d)))].sort((a, b) => a - b);
 
 /**
  * Пункт приёма в курсе: прошедшее — по сюжету, будущее — запись.
@@ -442,7 +455,7 @@ const lastPastOf = (visits: Visit[], fallback: number) => visits.filter((x) => x
 
 /* ═════════════ портреты ═════════════ */
 
-/* ─── бойовий ПТСР, покращення на терапії ─── */
+/* ─── боевой ПТСР, улучшение на терапии ─── */
 
 const PTSD_EVENTS = [
   "мінометний обстріл позицій, під час якого загинув побратим",
@@ -542,7 +555,7 @@ const ptsd: Builder = (p, r, v) => {
           M.pcl5(pclFrom),
           M.phq9(phqFrom, item9),
           M.sci(sciFrom),
-          // перелік подій — після симптомів: щойно згадані епізоди не мають забарвлювати відповіді про теперішній стан
+          // перечень событий — после симптомов: только что вспомненные эпизоды не должны окрашивать ответы о нынешнем состоянии
           M.lec5(medic ? { 10: [0, 3], 12: [1], 13: [1, 3], 14: [1, 3], 2: [0] } : { 10: [0], 2: [0], 7: [0], 13: [1], 14: [1], 16: r() < 0.4 ? [0] : [5] }),
           M.ces(between(r, 22, 36)),
           ...(item9 ? [M.cssrs({ wish: true, thoughts: false })] : []),
@@ -711,7 +724,7 @@ const ptsd: Builder = (p, r, v) => {
   };
 };
 
-/* ─── ПТСР з повільною відповіддю ─── */
+/* ─── ПТСР с медленным ответом ─── */
 
 const SLOW_STEPS = (p: Person, alcohol: boolean) => [
   `Домашнє завдання не ${g(p, "виконав", "виконала")}: «не було сил». Уникає розмови про подію; обговорено мотивацію й темп роботи.`,
@@ -732,10 +745,13 @@ const ptsdSlow: Builder = (p, r, v) => {
   const all = courseDays(r, start, 14, 14, 2);
   const dropout = k === 1;
   const crisisDay = k === 0 ? -2 : null;
+  /* у пятого — ухудшение дома: вчера вечером просил приём раньше, сегодня сдал повтор, сигнал ещё не разобран */
+  const worsening = k === 4;
   let days = trimFuture(all, dropout ? 0 : 2);
   if (dropout) days = days.filter((d) => d <= -2);
-  /* загострення позавчора — позаплановий приём у той день; планові поруч з ним зсуваються */
+  /* обострение позавчера — внеплановый приём в тот день; плановые рядом с ним сдвигаются */
   if (crisisDay !== null) days = [...days.filter((d) => d < crisisDay - 3 || d > 0), crisisDay].sort((a, b) => a - b);
+  if (worsening) days = noToday(days);
   const pclFrom = between(r, 55, 66);
   const pclTo = pclFrom - between(r, 4, 9);
   const phqFrom = between(r, 13, 18);
@@ -802,7 +818,7 @@ const ptsdSlow: Builder = (p, r, v) => {
       ]),
     },
     visits,
-    ...(crisisDay !== null ? { openFrom: crisisDay } : {}),
+    ...(worsening ? { home: [fresh([M.pcl5(Math.min(80, pclFrom + 3)), M.phq9(17)])], openFrom: -1 } : {}),
     decide: (c) =>
       c.critical
         ? { outcome: "confirmed", note: "Підтверджено: загострення після втрати побратима, пасивні суїцидальні думки. План безпеки, щоденний контакт, психіатр — терміново." }
@@ -850,8 +866,8 @@ const ptsdSlow: Builder = (p, r, v) => {
           }]
         : []),
     ],
-    ...(k === 4 && lastPast < -3
-      ? { thread: [{ day: -2, minute: 21 * 60 + 5, fromPatient: true, text: "Знову погано сплю, кошмари щоночі. Можна раніше на прийом?", read: false }] }
+    ...(worsening && lastPast < -3
+      ? { thread: [{ day: -1, minute: 21 * 60 + 5, fromPatient: true, text: "Знову погано сплю, кошмари щоночі. Можна раніше на прийом?", read: false }] }
       : {}),
     ...(k === 2
       ? {
@@ -873,16 +889,18 @@ const ptsdSlow: Builder = (p, r, v) => {
           ],
         }
       : {}),
-    /* у выбывшего повтор так и остался несданным — просрочка видна в очереди работы */
+    /* у выбывшего повтор так и остался несданным — просрочка видна в очереди работы; при ухудшении — только что сдан */
     pending: dropout
       ? [{ key: "pcl5", grantedDay: lastDayWith(visits, "pcl5") ?? lastPast, dueDay: Math.min(-1, (lastDayWith(visits, "pcl5") ?? lastPast) + 28) }]
-      : [{ key: "pcl5", grantedDay: lastPast, dueDay: lastPast + 42 }],
+      : worsening
+        ? []
+        : [{ key: "pcl5", grantedDay: lastPast, dueDay: lastPast + 42 }],
   };
 };
 
-/* ─── депресивний епізод, часткова відповідь ─── */
+/* ─── депрессивный эпизод, частичный ответ ─── */
 
-/** Сеанси при депресії; про ліки — лише в тих, кого оглянув психіатр (Story.psychiatry) */
+/** Сеансы при депрессии; о лекарствах — только у тех, кого осмотрел психиатр (Story.psychiatry) */
 const DEPR_STEPS = (p: Person, meds: boolean) => [
   "Поведінкова активація: щоденник активностей, план — 3 приємні й 2 обов’язкові справи на тиждень.",
   "Виконано 3 з 5 запланованих справ; настрій «трохи кращий вранці». Розібрано, що заважало.",
@@ -901,7 +919,7 @@ const DEPR_STEPS = (p: Person, meds: boolean) => [
 const depression: Builder = (p, r, v) => {
   const k = v % ARCHETYPE_COUNTS.depression;
   const start = -between(r, 40, 160);
-  /* курс завершили двоє; решта лікуються досі — раз на два тижні аж до сьогодні */
+  /* курс завершили двое; остальные лечатся до сих пор — раз в две недели вплоть до сегодня */
   const closing = k === 7 || k === 8;
   const all = courseDays(r, start, 14, closing ? 10 : Math.ceil((20 - start) / 14) + 1, 2);
   const days = trimFuture(all);
@@ -913,14 +931,21 @@ const depression: Builder = (p, r, v) => {
   const whoTo = between(r, 10, 14);
   const gadFrom = between(r, 10, 14);
   const at = (d: number) => (d - start) / Math.max(1, Math.min(end, 0) - start || 1);
-  /* у одного — погіршення позавчора: позачерговий прийом, випадок ще на розгляді */
-  const worse = k === 0 ? -2 : null;
+  /*
+   * У одного — ухудшение дома: сегодня сдал повтор, сигнал ещё не разобран,
+   * внеочередной приём — завтра. У шестого (пассивные мысли в начале курса)
+   * в сегодняшнем повторе снова отмечен девятый пункт.
+   */
+  const worse = k === 0;
   const passive = k === 5;
+  const freshRepeat = !finished && (worse || passive);
   const usedDays = finished
     ? days.filter((d) => d <= end)
-    : worse !== null
-      ? [...days.filter((d) => d < worse - 4 || d > 1), worse].sort((a, b) => a - b)
-      : days;
+    : worse
+      ? [...days.filter((d) => d < -4 || d > 3), 1].sort((a, b) => a - b)
+      : passive
+        ? noToday(days)
+        : days;
   const steps = DEPR_STEPS(p, k % 3 === 0 && k !== 9);
 
   const visits: Visit[] = usedDays.map((d, i) => {
@@ -942,14 +967,13 @@ const depression: Builder = (p, r, v) => {
         { reason: pick(r, ["Нічого не хочеться, прокидаюся о четвертій і лежу", "Все байдуже, навіть діти не радують", "Немає сил ні на що"]) },
       );
     }
-    const measuring = d === worse || i % 2 === 0;
-    const phqNow = d === worse ? 16 : noisy(r, curve(phqFrom, phqTo, at(d), 1.6), 1.5, 0, 27);
-    const whoNow = d === worse ? 6 : noisy(r, curve(whoFrom, whoTo, at(d), 1.6), 1.5, 0, 25);
+    // внеочередной приём после домашнего повтора с ухудшением — без опросников: их только что сдали
+    if (worse && d === 1) return visit(d, "repeat", [], undefined, { urgent: true });
+    const measuring = i % 2 === 0;
+    const phqNow = noisy(r, curve(phqFrom, phqTo, at(d), 1.6), 1.5, 0, 27);
+    const whoNow = noisy(r, curve(whoFrom, whoTo, at(d), 1.6), 1.5, 0, 25);
     const measures = measuring ? [M.phq9(phqNow), M.who5(whoNow), ...(i === 4 ? [M.gad7(noisy(r, gadFrom - 4, 1.5, 0, 21))] : [])] : [];
     return visit(d, "repeat", measures, (c) => {
-      if (d === worse) {
-        return `Позачерговий прийом. Погіршення після конфлікту в родині: PHQ-9 — ${banded(c.score("phq9"), c.band("phq9"))}, WHO-5 — ${fmt(c.score("who5"))} з 25. П. 9 — 0, суїцидальні думки заперечує. Наступний прийом — за 2 дні, психіатра поінформовано.`;
-      }
       const line = `Сесія ${c.visitNo}. ${step(steps, c.visitNo)}`;
       return measuring
         ? `${line}\nКонтрольний замір: PHQ-9 — ${fmt(c.score("phq9"))} (на початку — ${fmt(c.first("phq9"))}), ${change(c.score("phq9"), c.first("phq9"), 6)}; WHO-5 — ${fmt(c.score("who5"))} з 25.`
@@ -981,7 +1005,18 @@ const depression: Builder = (p, r, v) => {
         : {}),
     },
     visits,
-    ...(worse !== null ? { openFrom: worse } : {}),
+    ...(freshRepeat
+      ? {
+          home: [
+            fresh(
+              worse
+                ? [M.phq9(17), M.who5(5)]
+                : [M.phq9(Math.max(10, noisy(r, curve(phqFrom, phqTo, at(0), 1.6), 1.5, 0, 27)), 1), M.who5(noisy(r, curve(whoFrom, whoTo, at(0), 1.6), 1.5, 0, 25))],
+            ),
+          ],
+          openFrom: -1,
+        }
+      : {}),
     decide: (c) =>
       c.critical
         ? PASSIVE_IDEATION
@@ -1028,7 +1063,7 @@ const depression: Builder = (p, r, v) => {
             updatedDay: start + 16,
           }]
         : []),
-      // відповідь ще не надійшла — свіже направлення, а не забуте
+      // ответ ещё не пришёл — свежее направление, а не забытое
       ...(k === 9 ? [{ day: Math.max(start + 10, -6), destination: "psychiatrist" as const, urgency: "routine" as const, status: "accepted" as const, reason: "Часткова відповідь на терапію: питання корекції антидепресанту." }] : []),
     ],
     ...(k % 3 === 0 && k !== 9
@@ -1059,11 +1094,12 @@ const depression: Builder = (p, r, v) => {
           ],
         }
       : {}),
-    pending: finished || next === undefined ? [] : [{ key: "phq9", grantedDay: lastPast, dueDay: next }, { key: "who5", grantedDay: lastPast, dueDay: next }],
+    // повтор к следующему приёму: при свежей домашней сдаче он уже сдан
+    pending: finished || next === undefined || freshRepeat ? [] : [{ key: "phq9", grantedDay: lastPast, dueDay: next }, { key: "who5", grantedDay: lastPast, dueDay: next }],
   };
 };
 
-/* ─── розлад адаптації, що минає ─── */
+/* ─── проходящее расстройство адаптации ─── */
 
 const ADJ_STEPS = (p: Person) => [
   "Навички саморегуляції: дихання 4–6, прогресивна м’язова релаксація. Сон покращився до 6–7 год.",
@@ -1185,7 +1221,7 @@ const adjustment: Builder = (p, r, v) => {
   };
 };
 
-/* ─── шкідливе вживання алкоголю ─── */
+/* ─── пагубное употребление алкоголя ─── */
 
 const ALC_STEPS = (p: Person) => [
   "Мотиваційне інтерв’ю: «за» і «проти» змін, ціль — тверезість на 3 місяці.",
@@ -1209,7 +1245,7 @@ const alcohol: Builder = (p, r, v) => {
     "Конфлікти в підрозділі через вживання; попередження від командира.",
   ];
   if (k === 0 || k === 1) {
-    // відміна в стаціонарі: зараз (0) і два місяці тому (1)
+    // отмена в стационаре: сейчас (0) и два месяца назад (1)
     const day0 = k === 0 ? -2 : -between(r, 55, 70);
     const ciwa = k === 0 ? [14, 11] : [13, 7, 3];
     const visits: Visit[] = ciwa.map((score, i) =>
@@ -1246,7 +1282,6 @@ const alcohol: Builder = (p, r, v) => {
       ...NONE,
       episode: { openDay: day0, reason: `${g(p, "Госпіталізований", "Госпіталізована")} з ознаками синдрому відміни алкоголю.` },
       visits: [...visits, visit(k === 0 ? 1 : between(r, 3, 12), "repeat", [], undefined)],
-      ...(k === 0 ? { openFrom: day0 } : {}),
       psychiatry: [
         {
           day: day0 + 1,
@@ -1371,7 +1406,7 @@ const alcohol: Builder = (p, r, v) => {
   };
 };
 
-/* ─── порушення сну ─── */
+/* ─── нарушения сна ─── */
 
 const insomnia: Builder = (p, r, v) => {
   const k = v % ARCHETYPE_COUNTS.insomnia;
@@ -1456,7 +1491,7 @@ const insomnia: Builder = (p, r, v) => {
   };
 };
 
-/* ─── моральна травма ─── */
+/* ─── моральная травма ─── */
 
 const MORAL_STEPS = (p: Person) => [
   "Психоосвіта: моральна травма — не слабкість, а реакція на порушення власних цінностей.",
@@ -1478,7 +1513,7 @@ const moralInjury: Builder = (p, r, v) => {
   const all = courseDays(r, start, 7, 12, 1);
   const days = trimFuture(all);
   const end = all[all.length - 1]!;
-  /* тип досвіду MIOS (п. 2): 0 — власні дії чи бездіяльність, 1 — дії інших, 2 — зрада */
+  /* тип опыта MIOS (п. 2): 0 — свои действия или бездействие, 1 — действия других, 2 — предательство */
   const story = [
     { reason: `Після бою, у якому за ${g(p, "його", "її")} наказом загинули двоє підлеглих, — провина, сором, відчуженість.`, event: "загибель підлеглих після наказу", kinds: [0] },
     { reason: `${g(p, "Не зміг", "Не змогла")} евакуювати пораненого побратима: самозвинувачення, безсоння, уникає родини загиблого.`, event: "смерть пораненого побратима, якого не вдалося евакуювати", kinds: [0] },
@@ -1550,7 +1585,7 @@ const moralInjury: Builder = (p, r, v) => {
   };
 };
 
-/* ─── пролонгована реакція горя ─── */
+/* ─── пролонгированная реакция горя ─── */
 
 const GRIEF_STEPS = (p: Person, whom: string) => [
   `Розповідь про смерть ${whom}, робота з униканням. Уперше ${g(p, "переглянув", "переглянула")} фотографії.`,
@@ -1566,9 +1601,11 @@ const GRIEF_STEPS = (p: Person, whom: string) => [
 
 const grief: Builder = (p, r, v) => {
   const k = v % ARCHETYPE_COUNTS.grief;
-  const start = -between(r, 60, 150);
+  /* у второй (погиб муж) курс идёт: сегодня дома сдан повтор TGI-SR+ с желанием «піти слідом» — сигнал ещё не разобран */
+  const freshWish = k === 1;
+  const start = freshWish ? -between(r, 45, 70) : -between(r, 60, 150);
   const all = courseDays(r, start, 9, 10, 2);
-  const days = trimFuture(all);
+  const days = freshWish ? noToday(trimFuture(all)) : trimFuture(all);
   const end = all[all.length - 1]!;
   const loss = [
     { who: "брат", whom: "брата", reason: "Загибель брата на фронті 9 місяців тому: щоденна туга, не може прийняти втрату." },
@@ -1617,6 +1654,7 @@ const grief: Builder = (p, r, v) => {
       ...(finished ? { closeDay: end + 2, outcome: "improved" as const, outcomeText: (c: NoteContext) => `Курс завершено: TGI-SR+ з ${fmt(c.first("tgi_sr_plus"))} до ${fmt(c.score("tgi_sr_plus"))}, нижче порогу пролонгованого горя.` } : {}),
     },
     visits,
+    ...(freshWish ? { home: [fresh([M.tgi(noisy(r, curve(tgiFrom, tgiTo, t(0)), 3, 22, 110), 2)])], openFrom: -1 } : {}),
     decide: (c) =>
       c.critical
         ? { outcome: "not_confirmed", note: "C-SSRS проведено: бажання «бути поруч із загиблим» без думок про самогубство й наміру; гострого ризику немає. Обговорено план безпеки." }
@@ -1631,11 +1669,11 @@ const grief: Builder = (p, r, v) => {
           },
         }
       : {}),
-    pending: finished ? [] : [{ key: "tgi_sr_plus", grantedDay: lastPast, dueDay: days.find((d) => d > 0) ?? lastPast + 14 }],
+    pending: finished || freshWish ? [] : [{ key: "tgi_sr_plus", grantedDay: lastPast, dueDay: days.find((d) => d > 0) ?? lastPast + 14 }],
   };
 };
 
-/* ─── вигорання персоналу госпіталю ─── */
+/* ─── выгорание персонала госпиталя ─── */
 
 const BURN_STEPS = (p: Person) => [
   "Межі між роботою й відпочинком, ритуал завершення зміни. З керівником відділення узгоджено два вихідні поспіль раз на тиждень.",
@@ -1727,7 +1765,7 @@ const burnout: Builder = (p, r, v) => {
   };
 };
 
-/* ─── гостра суїцидальна криза, план безпеки ─── */
+/* ─── острый суицидальный кризис, план безопасности ─── */
 
 const crisis: Builder = (p, r, v) => {
   const k = v % ARCHETYPE_COUNTS.crisis;
@@ -1755,10 +1793,10 @@ const crisis: Builder = (p, r, v) => {
     "Повторні суїцидальні думки після звільнення зі служби; спроба (передозування ліків) два роки тому.",
   ][k]!;
   /*
-   * Наступні контакти: у перші дні — розмова без опитувальників (SIDAS питає
-   * про місяць, PHQ-9 — про два тижні, наступного дня їх не повторюють);
-   * далі SIDAS раз на тиждень, PHQ-9 — не частіше ніж раз на два тижні. Після
-   * психіатричного відділення — повторна оцінка C-SSRS і SIDAS.
+   * Следующие контакты: в первые дни — разговор без опросников (SIDAS
+   * спрашивает о месяце, PHQ-9 — о двух неделях, на следующий день их не
+   * повторяют); дальше SIDAS раз в неделю, PHQ-9 — не чаще раза в две недели.
+   * После психиатрического отделения — повторная оценка C-SSRS и SIDAS.
    */
   const plans: { day: number; sidas: number | null; phq: number | null; reassess?: boolean }[] =
     k === 0
@@ -1805,7 +1843,7 @@ const crisis: Builder = (p, r, v) => {
         "repeat",
         [
           ...(f.sidas !== null ? [M.sidas(f.sidas)] : []),
-          // п. 9 PHQ-9 узгоджений із SIDAS: поки думки є, «не турбували взагалі» не відповідають
+          // п. 9 PHQ-9 согласован с SIDAS: пока мысли есть, «не турбували взагалі» не отвечают
           ...(f.phq !== null ? [M.phq9(f.phq, f.sidas ? 1 : 0)] : []),
           ...(f.reassess ? [M.cssrs({ wish: true, thoughts: true, method: false })] : []),
         ],
@@ -1839,7 +1877,6 @@ const crisis: Builder = (p, r, v) => {
     },
     visits,
     home: [],
-    openFrom: resolved ? undefined : k === 0 ? day0 : -1,
     psychiatry: [
       {
         day: day0,
@@ -1910,7 +1947,7 @@ const crisis: Builder = (p, r, v) => {
   };
 };
 
-/* ─── стабільний стан після лікування ─── */
+/* ─── стабильное состояние после лечения ─── */
 
 const STABLE_STEPS = (p: Person) => [
   "Навички саморегуляції закріплено, домашні завдання виконує регулярно.",
@@ -1921,9 +1958,9 @@ const STABLE_STEPS = (p: Person) => [
 const stable: Builder = (p, r, v) => {
   const k = v % ARCHETYPE_COUNTS.stable;
   /*
-   * Четверо з чотирнадцяти пропустили контрольний огляд: останній прийом —
-   * завершення курсу більше трьох місяців тому. Така прострочка обліку і є
-   * те, заради чого розділ заведено; групи обліку в них різні.
+   * Четверо из четырнадцати пропустили контрольный осмотр: последний приём —
+   * завершение курса больше трёх месяцев назад. Такая просрочка учёта и есть
+   * то, ради чего раздел заведён; группы учёта у них разные.
    */
   const overdue = [1, 6, 11, 12].includes(k);
   const start = overdue ? -between(r, 176, 185) : -between(r, 150, 185);
@@ -1943,7 +1980,7 @@ const stable: Builder = (p, r, v) => {
     condition.keys.map((key) => `${TITLE[key]} — ${fmt(c.score(key))}${withStart ? ` (на початку — ${fmt(c.first(key))})` : ""}`).join(", ");
   const steps = STABLE_STEPS(p);
 
-  // контрольні прийоми раз на 6–9 тижнів після закриття курсу
+  // контрольные приёмы раз в 6–9 недель после закрытия курса
   const checks: number[] = [];
   if (!overdue) for (let d = closed + between(r, 35, 50); d < -2; d += between(r, 42, 63)) checks.push(d);
   const visits: Visit[] = [
@@ -2008,7 +2045,7 @@ const stable: Builder = (p, r, v) => {
   };
 };
 
-/* ─── нове скерування: лише первинний скринінг ─── */
+/* ─── новое направление: только первичный скрининг ─── */
 
 /** Профили скрининга: PHQ-9, GAD-7, PC-PTSD-5, AUDIT-C, SCI-02, WHO-5 */
 const SCREENS: { phq: number; item9?: number; gad: number; pc: number; auditc: number; sci02: number; who: number; label: string }[] = [
@@ -2030,19 +2067,25 @@ const screening: Builder = (p, r, v) => {
     "Скерування медичної роти після повернення з позицій.",
   ];
   const reason = pick(r, reasons);
-  // 0 и 1 — сдали только что и вчера, сигнал ещё на разборе; 2–10 — сдали, 11–12 — ждут сдачи, 13–15 — просрочили
-  const referral = k <= 1 ? -between(r, 2, 3) : k <= 7 ? -between(r, 6, 13) : k <= 10 ? -between(r, 3, 5) : k <= 12 ? -between(r, 1, 3) : -between(r, 8, 12);
+  /*
+   * 0–2 — сдали только что (0, 2) и вчера вечером (1), сигнал ещё на разборе:
+   * первичный приём впереди; 3–10 — сдали, 11–12 — ждут сдачи, 13–15 — просрочили
+   */
+  const waiting = k <= 2;
+  const referral = waiting ? -between(r, 2, 3) : k <= 7 ? -between(r, 6, 13) : k <= 10 ? -between(r, 3, 5) : k <= 12 ? -between(r, 1, 3) : -between(r, 8, 12);
   const done = k <= 10;
-  const screenDay = k <= 1 ? -1 : referral + between(r, 0, 2);
+  const screenDay = waiting ? (k === 1 ? -1 : 0) : referral + between(r, 0, 2);
   const s =
     k === 0
       ? { phq: 13, item9: 1, gad: 11, pc: 3, auditc: 2, sci02: 2, who: 7, label: "ознаки депресії, думки про смерть" }
       : k === 1
         ? { phq: 14, gad: 9, pc: 5, auditc: 5, sci02: 1, who: 9, label: "позитивний скринінг ПТСР, ознаки депресії" }
-        : SCREENS[(k + p.ordinal) % SCREENS.length]!;
+        : k === 2
+          ? { phq: 12, gad: 13, pc: 2, auditc: 3, sci02: 3, who: 9, label: "виражена тривога, ознаки депресії" }
+          : SCREENS[(k + p.ordinal) % SCREENS.length]!;
   const measures: Measure[] = [M.phq9(s.phq, s.item9 ?? 0), M.gad7(s.gad), M.pcptsd5(s.pc), M.auditc(s.auditc), M.sci02(s.sci02), M.who5(s.who)];
   const firstVisit =
-    k <= 1 ? (k === 0 ? 1 : 0) : k <= 7 ? screenDay + between(r, 1, 4) : k <= 10 ? between(r, 0, 6) : k <= 12 ? between(r, 3, 8) : k === 13 ? -3 : between(r, 2, 6);
+    waiting ? (k === 0 ? 1 : between(r, 2, 3)) : k <= 7 ? screenDay + between(r, 1, 4) : k <= 10 ? between(r, 0, 6) : k <= 12 ? between(r, 3, 8) : k === 13 ? -3 : between(r, 2, 6);
   const deep = s.pc >= 4 ? "pcl5" : s.phq >= 10 ? "phq9" : s.auditc >= 4 ? "audit" : s.sci02 <= 2 ? "sci" : null;
   const visits: Visit[] = [
     visit(
@@ -2088,14 +2131,8 @@ const screening: Builder = (p, r, v) => {
     ...NONE,
     episode: { openDay: referral, reason },
     visits,
-    home: done
-      ? [
-          k === 0
-            ? { day: -1, minute: 0, recent: true, measures }
-            : { day: screenDay, minute: k === 1 ? 9 * 60 + 30 : between(r, 18 * 60, 21 * 60 + 30), measures },
-        ]
-      : [],
-    ...(k <= 1 ? { openFrom: -1 } : {}),
+    home: done ? [waiting && k !== 1 ? fresh(measures) : { day: screenDay, minute: between(r, 18 * 60, 21 * 60 + 30), measures }] : [],
+    ...(waiting ? { openFrom: -1 } : {}),
     decide: (c) =>
       c.critical
         ? { outcome: "not_confirmed", note: "Розмова по телефону: думки про смерть пасивні, без наміру й плану. Первинний прийом — завтра, план безпеки обговорено." }
@@ -2118,7 +2155,7 @@ const screening: Builder = (p, r, v) => {
   };
 };
 
-/* ─── психотична симптоматика → переведення ─── */
+/* ─── психотическая симптоматика → перевод ─── */
 
 const psychosis: Builder = (p, r, v) => {
   const k = v % ARCHETYPE_COUNTS.psychosis;
@@ -2197,7 +2234,7 @@ const psychosis: Builder = (p, r, v) => {
   };
 };
 
-/* ─── тривожний розлад ─── */
+/* ─── тревожное расстройство ─── */
 
 const GAD_STEPS = [
   "Психоосвіта про тривогу; щоденник тривожних думок.",

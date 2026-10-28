@@ -305,6 +305,36 @@ describe("история в базе", () => {
     }
   });
 
+  test("неразобранное — только свежая домашняя сдача; поднятое на приёме разобрано на приёме", async () => {
+    const rows = await db
+      .select({ caseId: alertCases.id, userId: alertCases.userId, last: alertCases.lastAlertAt, ack: alertCases.acknowledgedAt, source: responses.source })
+      .from(alertCases)
+      .innerJoin(riskAlerts, eq(riskAlerts.caseId, alertCases.id))
+      .innerJoin(responses, eq(responses.id, riskAlerts.responseId))
+      .where(sql`${alertCases.userId} in ${demo}`);
+    const open = rows.filter((x) => !x.ack);
+    expect(open.length).toBeGreaterThan(0);
+    for (const o of open) {
+      // шкалу врача заполняет специалист на приёме — такой случай открытым не остаётся
+      expect(o.source, o.caseId).not.toBe("clinician");
+      // сдано вчера вечером или сегодня, а не позавчера
+      expect(Date.now() - Date.parse(o.last), o.caseId).toBeLessThan(36 * 3_600_000);
+      // и с тех пор человек на приёме не был: иначе разобрали бы там
+      const seen = await db
+        .select({ id: appointments.id })
+        .from(appointments)
+        .innerJoin(slots, eq(slots.id, appointments.slotId))
+        .where(and(eq(appointments.patientId, o.userId), eq(appointments.status, "done"), sql`${slots.startsAt} > ${o.last}`))
+        .limit(1);
+      expect(seen.length, o.caseId).toBe(0);
+    }
+    // случай со шкалой врача (C-SSRS, CIWA-Ar, осмотр психиатра) разобран в тот же день, а не через сутки
+    for (const x of rows.filter((x) => x.source === "clinician")) {
+      expect(x.ack, x.caseId).not.toBeNull();
+      expect(Date.parse(x.ack!) - Date.parse(x.last), x.caseId).toBeLessThan(8 * 3_600_000);
+    }
+  });
+
   test("сигналы датированы сдачей, которая их подняла, и не повторяются в пределах прохождения", async () => {
     const rows = await db
       .select({ at: riskAlerts.at, submitted: responses.submittedAt, caseId: riskAlerts.caseId, ack: riskAlerts.acknowledgedAt, caseAck: alertCases.acknowledgedAt })

@@ -88,10 +88,11 @@ import { storyOf, type CaseDecision, type Measure, type NoteContext, type Story,
  * сигналов наполнения стояли на минуте прогона, по восемь одинаковых строк в
  * карточке.
  *
- * Случаи разбирает лечащий специалист — с исходом и заметкой, через часы
- * после сигнала, как в жизни. Неразобранными остаются только случаи тех, у
- * кого острое состояние сейчас (Story.openFrom): около шести процентов
- * картотеки, а не восемьдесят четыре человека из ста двадцати.
+ * Случаи разбирает лечащий специалист — с исходом и заметкой: поднятый на
+ * приёме — на этом приёме, домашний — через часы, как в жизни (settleCases).
+ * Неразобранными остаются только свежие домашние замеры, которых специалист
+ * ещё не видел (Story.openFrom): около шести процентов картотеки, а не
+ * восемьдесят четыре человека из ста двадцати.
  *
  * ═══ Повторный прогон ═══
  *
@@ -308,7 +309,7 @@ async function ensureDemoSpecialist(departmentId: string): Promise<void> {
 }
 
 /**
- * Лікар-психіатр відділення — для оглядів історій (Story.psychiatry).
+ * Психиатр отделения — для осмотров историй (Story.psychiatry).
  *
  * Вымышленный, как и пациенты, и убирается той же командой: осмотр со
  * шкалами врача и подписанная консультация от имени настоящего сотрудника
@@ -588,7 +589,7 @@ interface Session {
   at: number;
   measures: Measure[];
   booked?: Booked;
-  /** Огляд психіатра: запис консультації пише він, а не лікуючий психолог */
+  /** Осмотр психиатра: запись консультации пишет он, а не лечащий психолог */
   psychiatry?: NonNullable<Story["psychiatry"]>[number];
 }
 
@@ -857,7 +858,7 @@ async function writeStory(ctx: FillContext, p: Person, userId: string, story: St
         where id = ${batteryAssignmentId} and completed_at is not null`);
     }
     const psychiatristNext = sessions.find((x) => x.psychiatry && x.at > s.at && x.at - s.at < 6 * HOUR)?.at;
-    await settleCases(ctx, userId, story, attending, s, ids, r, psychiatristNext);
+    await settleCases(ctx, userId, story, attending, s, ids, r, seenAt(s, booked), psychiatristNext);
   }
 
   /* ─── записи приёма ─── */
@@ -1096,6 +1097,19 @@ async function writeStory(ctx: FillContext, p: Person, userId: string, story: St
   }
 }
 
+/**
+ * Когда лечащий видит замер: в конце приёма, к которому он сдан; после
+ * осмотра психиатра; домашний — на ближайшем прошедшем приёме после сдачи.
+ * null — ещё не видел: приём идёт сейчас или впереди.
+ */
+function seenAt(s: Session, booked: Booked[]): number | null {
+  if (s.psychiatry) return s.at + 40 * MIN;
+  const attended = (b: Booked) => b.state === "past" && b.visit.outcome === "done";
+  if (s.booked) return attended(s.booked) ? s.booked.endsAt - 5 * MIN : null;
+  const next = booked.filter((b) => attended(b) && b.startsAt > s.at).sort((a, b) => a.startsAt - b.startsAt)[0];
+  return next ? next.startsAt + 10 * MIN : null;
+}
+
 /** Первая шкала методики — та, о которой говорят, называя методику («PCL-5 — 41») */
 function defaultScale(ctx: FillContext, key: string): string | null {
   const id = ctx.catalog.get(key);
@@ -1112,6 +1126,17 @@ function defaultScale(ctx: FillContext, key: string): string | null {
  * давним. Поэтому после передатировки случай сверяется с окном
  * по-настоящему: если у человека есть неразобранный случай, чей последний
  * сигнал не старше трёх суток до этого замера, — сигналы переходят в него.
+ *
+ * Разбирает лечащий — тогда, когда видит замер. Сигнал, поднятый на приёме
+ * или перед ним (опросник в ожидании, C-SSRS, CIWA-Ar), разбирается на этом
+ * же приёме: специалист сам оценил риск, составил план безопасности,
+ * направил к психиатру. Домашний — за час-два (критический пункт) или в тот
+ * же и следующий рабочий день (полоса шкалы), но не позже ближайшего
+ * прошедшего приёма. Неразобранным остаётся только то, чего специалист ещё
+ * не видел: свежий домашний замер у тех, чья история это задаёт
+ * (Story.openFrom). Прежде открытыми оставались и случаи, поднятые на приёме:
+ * двое суток «прострочено» у человека с планом безопасности и осмотром
+ * психиатра в тот же день.
  */
 async function settleCases(
   ctx: FillContext,
@@ -1121,7 +1146,9 @@ async function settleCases(
   s: Session,
   ids: string[],
   r: () => number,
-  /** Огляд психіатра того ж дня: рішення по випадку — після нього, з його даними */
+  /** Когда лечащий видит этот замер (seenAt); null — ещё не видел */
+  seenAt: number | null,
+  /** Осмотр психиатра того же дня: решение по случаю — после него, с его данными */
   holdUntil?: number,
 ): Promise<number> {
   const alerts = await db
@@ -1188,7 +1215,7 @@ async function settleCases(
     const opened = Date.parse(row.openedAt);
     const last = Date.parse(row.lastAlertAt);
     const assignedAt = Math.min(now - MIN, opened + (10 + Math.floor(r() * 30)) * MIN);
-    const stayOpen = story.openFrom !== undefined && s.day >= story.openFrom;
+    const stayOpen = seenAt === null && story.openFrom !== undefined && s.day >= story.openFrom;
     if (stayOpen) {
       await db.update(alertCases).set({ assignedTo: attending.id, assignedAt: iso(assignedAt) }).where(eq(alertCases.id, caseId));
       ctx.openCases.add(caseId);
@@ -1203,9 +1230,10 @@ async function settleCases(
       critical,
       first: Number(earlier?.n ?? 0) === 0,
     });
-    // критический пункт разбирают в течение часа-двух, полосу шкалы — в тот же или на следующий рабочий день
+    // критический пункт разбирают в течение часа-двух, полосу шкалы — в тот же или на следующий рабочий день; увиденное на приёме — на приёме
     const delay = critical ? (20 + Math.floor(r() * 70)) * MIN : (2 + Math.floor(r() * 18)) * HOUR;
-    const ackAt = Math.max(last + 5 * MIN, Math.min(now - 2 * MIN, Math.max(last + delay, (holdUntil ?? 0) + 30 * MIN)));
+    const due = seenAt === null ? last + delay : Math.min(last + delay, seenAt);
+    const ackAt = Math.max(last + 5 * MIN, Math.min(now - 2 * MIN, Math.max(due, (holdUntil ?? 0) + 30 * MIN)));
     await db
       .update(alertCases)
       .set({
