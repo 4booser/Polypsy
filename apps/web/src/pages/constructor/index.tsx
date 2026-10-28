@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useLocation, useNavigate, useParams } from "react-router-dom";
+import { Navigate, useLocation, useNavigate, useParams } from "react-router-dom";
 import { contentLangFor, type ContentLang, type Issue, type SurveyGrant, type SurveyStatus } from "@quizzy/shared";
 import { api } from "../../api";
 import { useAuth } from "../../auth";
@@ -528,6 +528,13 @@ function Editor({ id }: { id?: string }) {
   /* в комплексном тесте разделов «Відповіді» и «Шкали» нет — их работу делают «Результати» */
   const shownSection: Section = mode === "complex" && (section === "answers" || section === "scales") ? "bands" : section;
 
+  /*
+   * Методику, которую читающий не правит (общий каталог: правят его
+   * администраторы — SurveyFull.editable), конструктор не открывает: правка
+   * отказала бы на сохранении, после всей работы. Ведём на её экран — там
+   * её назначают, проводят и копируют.
+   */
+  if (id && info.data?.editable === false) return <Navigate to={`/surveys/${id}`} replace />;
   if (loadError && !loaded) {
     return (
       <Page title={ut("cn.testTitle")} back={{ to: "/surveys", label: ut("cn.backToCatalogue") }}>

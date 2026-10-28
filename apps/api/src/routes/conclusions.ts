@@ -1,5 +1,5 @@
 import { Hono, type Context } from "hono";
-import { aliasedTable, and, asc, desc, eq, gte, inArray, lt, lte, sql } from "drizzle-orm";
+import { aliasedTable, and, asc, desc, eq, gte, lt, lte, sql } from "drizzle-orm";
 import { z } from "zod";
 import { ageAt, comparability, queryDate, t } from "@quizzy/shared";
 import { db } from "../db";
@@ -10,7 +10,7 @@ import { fullNameOf } from "../lib/auth";
 import { decryptField, encryptField } from "../lib/crypto";
 import { badRequest, conflict, isUniqueViolation, langOf, notFound, parseBody, parseQuery } from "../lib/http";
 import { assertClinicalRead, CLINICAL_READ } from "../lib/clinicalRead";
-import { surveyScopeFilter } from "../lib/scope";
+import { resultScope, surveyUseFilter } from "../lib/scope";
 import { getSurvey } from "../lib/surveys";
 
 /*
@@ -434,10 +434,14 @@ conclusionRoutes.get("/batch", requirePermission(CLINICAL_READ), async (c) => {
   const { unit, from, to } = parseQuery(c, batchQuery);
   const lang = langOf(c);
 
-  const scope = await surveyScopeFilter(user);
-  const scoped = await db.select({ id: surveys.id, title: surveys.title }).from(surveys).where(scope);
+  /*
+   * Заключения — к прохождениям, видимым сотруднику: по своим методикам все,
+   * по методикам библиотеки — людей его зоны (lib/scope.ts). Названия — у
+   * методик, которыми он пользуется: видимые прохождения только из них.
+   */
+  const seen = await resultScope(user);
+  const scoped = await db.select({ id: surveys.id, title: surveys.title }).from(surveys).where(await surveyUseFilter(user));
   const titleOf = new Map(scoped.map((s) => [s.id, t(s.title as never, lang)]));
-  if (!scoped.length) return c.json({ items: [], unit: unit ?? null });
 
   const rows = await db
     .select({ row: conclusions, response: responses, patient: users, author: authorTable })
@@ -448,7 +452,7 @@ conclusionRoutes.get("/batch", requirePermission(CLINICAL_READ), async (c) => {
     .where(
       and(
         eq(conclusions.status, "signed"),
-        inArray(responses.surveyId, [...titleOf.keys()]),
+        seen(responses.surveyId, responses.userId),
         from ? gte(conclusions.signedAt, from) : undefined,
         to ? lte(conclusions.signedAt, to) : undefined,
         unit ? eq(users.unit, unit) : undefined,

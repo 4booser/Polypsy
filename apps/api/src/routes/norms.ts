@@ -11,7 +11,7 @@ import { responses, users } from "../db/schema";
 import { audit } from "../lib/audit";
 import { decryptField } from "../lib/crypto";
 import { badRequest, langOf, notFound, parseBody } from "../lib/http";
-import { assertSurveyAccess } from "../lib/scope";
+import { assertSurveyManage, surveyResultScope, type PatientCondition } from "../lib/scope";
 import { copyVersion, getSurvey, type NormValues } from "../lib/surveys";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 import { env } from "../env";
@@ -40,21 +40,26 @@ normRoutes.use("*", requireAuth, requireStaff, requirePermission("norms.manage")
  * видит экран «Локальні норми» (источник локальной нормы хранится кодом и
  * становится фразой в getSurvey). Прежде здесь стоял русский при любом
  * языке интерфейса. На сами числа язык не влияет.
+ *
+ * Выборка — прохождения, видимые читающему (`whose`, lib/scope.ts): у
+ * методики библиотеки (общий каталог) — только люди его зоны. Смотреть нормы
+ * методики и выборку рядом с ними — пользование методикой; опубликовать
+ * локальные нормы — правка (новая версия), она за тем, кто методику правит.
  */
-async function candidateReport(surveyId: string, lang: Lang) {
+async function candidateReport(surveyId: string, lang: Lang, whose: PatientCondition | undefined) {
   const survey = await getSurvey(surveyId, null, lang);
   if (!survey) notFound("err.surveyNotFound");
-  return normCandidates(surveyId, survey, (versionId) => getSurvey(surveyId, versionId, lang));
+  return normCandidates(surveyId, survey, (versionId) => getSurvey(surveyId, versionId, lang), whose);
 }
 
-async function candidateStats(surveyId: string, lang: Lang) {
-  return (await candidateReport(surveyId, lang)).scales;
+async function candidateStats(surveyId: string, lang: Lang, whose: PatientCondition | undefined) {
+  return (await candidateReport(surveyId, lang, whose)).scales;
 }
 
 normRoutes.get("/surveys/:id/candidates", async (c) => {
   const surveyId = c.req.param("id");
-  await assertSurveyAccess(c.get("user"), surveyId);
-  const report = await candidateReport(surveyId, langOf(c));
+  const whose = await surveyResultScope(c.get("user"), surveyId);
+  const report = await candidateReport(surveyId, langOf(c), whose);
   return c.json({ minGroup: MIN_GROUP, unreliable: report.unreliable, scales: report.scales });
 });
 
@@ -70,10 +75,11 @@ const applySchema = z.object({
 normRoutes.post("/surveys/:id/apply", async (c) => {
   const user = c.get("user");
   const surveyId = c.req.param("id");
-  await assertSurveyAccess(c.get("user"), surveyId);
+  await assertSurveyManage(user, surveyId);
+  const whose = await surveyResultScope(user, surveyId);
   const input = await parseBody(c.req.raw, applySchema);
 
-  const stats = await candidateStats(surveyId, langOf(c));
+  const stats = await candidateStats(surveyId, langOf(c), whose);
   const byCode = new Map(stats.map((s) => [s.code, s]));
   for (const code of input.scaleCodes) {
     const stat = byCode.get(code);
@@ -156,7 +162,7 @@ const PERCENTILES = [0.1, 0.25, 0.5, 0.75, 0.9] as const;
 
 normRoutes.get("/surveys/:id/age-curves", async (c) => {
   const surveyId = c.req.param("id");
-  await assertSurveyAccess(c.get("user"), surveyId);
+  const whose = await surveyResultScope(c.get("user"), surveyId);
   const survey = await getSurvey(surveyId, null, langOf(c));
   if (!survey) notFound("err.surveyNotFound");
 
@@ -176,6 +182,7 @@ normRoutes.get("/surveys/:id/age-curves", async (c) => {
         // кривая — та же норма, только по возрасту: без недостоверных протоколов и проб сотрудников
         eq(responses.reliable, true),
         patientRespondent("responses"),
+        whose?.(responses.userId),
       ),
     );
 

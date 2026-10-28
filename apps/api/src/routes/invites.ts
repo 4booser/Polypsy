@@ -9,7 +9,7 @@ import { afterCursor, decodeExactCursor, encodeCursor, exactAt } from "../lib/cu
 import { fullNameOf } from "../lib/auth";
 import { badRequest, forbidden, langOf, notFound, parseBody, parseQuery } from "../lib/http";
 import { findUsableInvite, hashInviteToken, newInviteCode, newInviteToken } from "../lib/invites";
-import { assertGroupAccess, assertSurveyAccess, isStaff, isSuperadmin } from "../lib/scope";
+import { CATALOG_GROUP_ID, assertGroupAccess, assertSurveyUse, isLibrarySurvey, isStaff, isSuperadmin } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
 export const inviteRoutes = new Hono<AppEnv>();
@@ -68,15 +68,20 @@ async function invitePreview(token: string, lang: ReturnType<typeof langOf>): Pr
  */
 inviteRoutes.use("*", requireAuth, requireStaff, requirePermission("invites.manage"));
 
-/** Приглашение привязано к батарее — права на него идут от группы батареи */
-async function assertInviteBattery(user: Parameters<typeof assertGroupAccess>[0], batteryId: string | null) {
+/**
+ * Приглашение привязано к батарее — права на него идут от группы батареи.
+ * Истина — набор своей группы (не библиотеки): у приглашения есть своя
+ * область; у общего набора её нет — см. assertInviteScope.
+ */
+async function assertInviteBattery(user: Parameters<typeof assertGroupAccess>[0], batteryId: string | null): Promise<boolean> {
   if (!batteryId) {
     if (!isStaff(user)) forbidden("err.forStaffOnly");
-    return;
+    return false;
   }
   const battery = await db.query.batteries.findFirst({ where: eq(batteries.id, batteryId) });
   if (!battery) notFound("err.batteryNotFound");
   if (battery.groupId) await assertGroupAccess(user, battery.groupId);
+  return !!battery.groupId && battery.groupId !== CATALOG_GROUP_ID;
 }
 
 /**
@@ -90,19 +95,28 @@ async function assertInviteBattery(user: Parameters<typeof assertGroupAccess>[0]
  * погасить — мог. Нашлось сравнением ответов владельцем и ролью приложения
  * (волна 13): под ролью у чужой строки пропадало название методики — его
  * прятала политика surveys, — а сама строка оставалась.
+ *
+ * Общий набор и методика библиотеки (общий каталог) своей области не дают:
+ * ими пользуются все отделения, и по ним приглашение было бы видно всем
+ * сотрудникам — вместе с именами тех, кто по нему пришёл. Такое приглашение
+ * — отделения выписавшего, как и приглашение ни к чему (#51).
  */
 async function assertInviteScope(
   user: Parameters<typeof assertGroupAccess>[0],
   invite: { batteryId: string | null; surveyId: string | null; createdBy: string },
 ) {
-  await assertInviteBattery(user, invite.batteryId);
-  if (invite.surveyId) await assertSurveyAccess(user, invite.surveyId);
-  if (!invite.batteryId && !invite.surveyId) await assertInviteDepartment(user, invite.createdBy);
+  const ownBattery = await assertInviteBattery(user, invite.batteryId);
+  let ownSurvey = false;
+  if (invite.surveyId) {
+    await assertSurveyUse(user, invite.surveyId);
+    ownSurvey = !(await isLibrarySurvey(invite.surveyId));
+  }
+  if (!ownBattery && !ownSurvey) await assertInviteDepartment(user, invite.createdBy);
 }
 
 /*
  * Приглашение без набора и без методики (или чей набор удалён) ни к чему не
- * ведёт, и области по группе у него нет. Прежде его видел и гасил любой
+ * ведёт, и области по группе у него нет — как и у приглашения к общему. Прежде его видел и гасил любой
  * сотрудник с invites.manage — в том числе выписанное суперадмином (#51).
  * Решение владельца 2026-10-09: такое приглашение принадлежит отделению
  * выписавшего — видят и отзывают его выписавший, сотрудники того же
@@ -142,8 +156,8 @@ inviteRoutes.get("/", async (c) => {
 
   const verdicts = new Map<string, boolean>();
   const canSee = async (row: { batteryId: string | null; surveyId: string | null; createdBy: string }): Promise<boolean> => {
-    // приглашение без набора и методики решается по выписавшему — он в ключе
-    const key = `${row.batteryId ?? ""}|${row.surveyId ?? ""}|${row.batteryId || row.surveyId ? "" : row.createdBy}`;
+    // приглашение к общему и ни к чему решается по выписавшему — он в ключе
+    const key = `${row.batteryId ?? ""}|${row.surveyId ?? ""}|${row.createdBy}`;
     const known = verdicts.get(key);
     if (known !== undefined) return known;
     let ok = true;
@@ -260,8 +274,8 @@ inviteRoutes.post("/", async (c) => {
    */
   if (input.batteryId && input.surveyId) badRequest("err.inviteBatteryOrSurvey");
 
-  /* методика выдаётся из своей зоны — как и при обычном назначении */
-  if (input.surveyId) await assertSurveyAccess(user, input.surveyId);
+  /* методика — та, которой выписывающий пользуется (своя или библиотека), как и при обычном назначении */
+  if (input.surveyId) await assertSurveyUse(user, input.surveyId);
 
   /*
    * Врач по умолчанию — тот, кто выписывает: ссылку под случай выписывают

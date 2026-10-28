@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { and, asc, desc, eq, inArray, isNull, or } from "drizzle-orm";
 import { ageAt, explanationFor, t, type StoredExplanation } from "@quizzy/shared";
-import type { ResponseAttempt, ResponseContext, ResponseContextSignal, ResponseSource, RuleHit } from "@quizzy/shared";
+import type { ResponseAttempt, ResponseContext, ResponseContextSignal, ResponseSource, RuleHit, User } from "@quizzy/shared";
 import { db } from "../db";
 import {
   decisionRules,
@@ -24,7 +24,7 @@ import { assertClinicalRead, CLINICAL_READ } from "../lib/clinicalRead";
 import { decryptField } from "../lib/crypto";
 import { langOf, notFound } from "../lib/http";
 import { hasPermission } from "../lib/permissions";
-import { surveyScopeFilter } from "../lib/scope";
+import { resultScope } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
 /**
@@ -153,15 +153,16 @@ async function attemptsOf(userId: string, surveyId: string, lang: ReturnType<typ
 /**
  * Сигналы для строки открытого: все сигналы этого прохождения (и
  * разобранные — экран говорит «розібрано», а не молчит) и открытые сигналы
- * того же человека по другим замерам. Зона — та же, что у списка сигналов:
- * методики, которые читающему доступны.
+ * того же человека по другим замерам. Зона — та же, что у списка сигналов
+ * (lib/scope.ts, resultScopeCondition): свои методики целиком, методики
+ * библиотеки — о человеке зоны читающего.
  */
 async function signalsOf(
-  user: Parameters<typeof surveyScopeFilter>[0],
+  user: User,
   r: { id: string; userId: string | null },
   lang: ReturnType<typeof langOf>,
 ): Promise<ResponseContextSignal[]> {
-  const scope = await surveyScopeFilter(user);
+  const seen = await resultScope(user);
   const reviewer = users;
   const rows = await db
     .select({
@@ -175,7 +176,7 @@ async function signalsOf(
     .leftJoin(questions, eq(questions.id, riskAlerts.questionId))
     .where(
       and(
-        scope,
+        seen(riskAlerts.surveyId, riskAlerts.userId),
         r.userId
           ? or(eq(riskAlerts.responseId, r.id), and(eq(riskAlerts.userId, r.userId), isNull(riskAlerts.acknowledgedAt)))
           : eq(riskAlerts.responseId, r.id),

@@ -34,7 +34,7 @@ import { publish } from "../lib/events";
 import { fullNameOf } from "../lib/auth";
 import { periodFrom, periodTo } from "../lib/population";
 import { badRequest, conflict, langOf, notFound, parseQuery } from "../lib/http";
-import { assertPatientGroupAccess, canAccessSurvey, surveyScopeFilter } from "../lib/scope";
+import { assertPatientGroupAccess, canSeeResult, resultScope } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 import { z } from "zod";
 
@@ -179,11 +179,6 @@ function decodeCursor(raw: string, grouping: Grouping): Cursor {
   return { rank: Number(rank) as 0 | 1, at: at!, id: id! };
 }
 
-/** Список идентификаторов для сырого SQL: drizzle внутри sql`` их не разложит. */
-function sqlIds(ids: string[]): SQL {
-  return sql`(${sql.join(ids.map((id) => sql`${id}`), sql`, `)})`;
-}
-
 /** Метка времени из сырого SQL — в ISO с миллисекундами, как у timestampCol */
 function isoSql(expr: SQL): SQL<string> {
   return sql<string>`to_char((${expr}) at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')`;
@@ -284,11 +279,6 @@ alertCaseRoutes.get("/", async (c) => {
     grouping,
   });
 
-  const scope = await surveyScopeFilter(user);
-  const scoped = await db.select({ id: surveys.id }).from(surveys).where(scope);
-  const surveyIds = scoped.map((s) => s.id);
-  if (!surveyIds.length) return finish(nothing());
-
   /*
    * Область видимости — по методике, с которой случай начался.
    *
@@ -297,9 +287,11 @@ alertCaseRoutes.get("/", async (c) => {
    * строк (0029) держит случай за начальной методикой, и под боевой ролью
    * сотрудник чужой зоны случая не получал вовсе. Теперь случай живёт в
    * одной зоне (lib/alertCases.ts, миграция 0098), и начальная методика
-   * говорит о зоне всё.
+   * говорит о зоне всё. Случай методики библиотеки (общий каталог) — только
+   * о человеке зоны читателя (lib/scope.ts, resultScopeCondition).
    */
-  const base: SQL[] = [inArray(alertCases.surveyId, surveyIds)];
+  const seen = await resultScope(user);
+  const base: SQL[] = [seen(alertCases.surveyId, alertCases.userId)];
   if (status === "open") base.push(isNull(alertCases.acknowledgedAt));
   else if (status === "resolved") base.push(isNotNull(alertCases.acknowledgedAt));
   if (q.surveyId) {
@@ -357,7 +349,7 @@ alertCaseRoutes.get("/", async (c) => {
   // считаются только сигналы по доступным методикам — столько же, сколько
   // будет показано ниже: число, не сходящееся со списком, хуже отсутствия
   const signalCountSql = sql<number>`(select count(*)::int from risk_alerts ra
-    where ra.case_id = ${alertCases.id} and ra.survey_id in ${sqlIds(surveyIds)})`;
+    where ra.case_id = ${alertCases.id} and ${seen(sql`ra.survey_id`, sql`ra.user_id`)})`;
 
   const matched = sql`
     select ${alertCases.id} as id, ${alertCases.userId} as user_id, ${severityRank} as rank,
@@ -450,7 +442,7 @@ alertCaseRoutes.get("/", async (c) => {
       .from(riskAlerts)
       .leftJoin(questions, eq(questions.id, riskAlerts.questionId))
       .leftJoin(scales, eq(scales.id, riskAlerts.scaleId))
-      .where(and(inArray(riskAlerts.caseId, pageIds), inArray(riskAlerts.surveyId, surveyIds)))
+      .where(and(inArray(riskAlerts.caseId, pageIds), seen(riskAlerts.surveyId, riskAlerts.userId)))
       .orderBy(desc(riskAlerts.at));
     // подпись — на языке читателя: снимок записан на языке прохождения (lib/alertLabels.ts)
     const labelOf = await alertLabelsIn(lang, sig.map((s) => s.a));
@@ -615,42 +607,32 @@ alertCaseRoutes.get("/", async (c) => {
  * случаи. Только число — и потому без строки журнала.
  */
 alertCaseRoutes.get("/count", async (c) => {
-  const scope = await surveyScopeFilter(c.get("user"));
-  const scoped = await db.select({ id: surveys.id }).from(surveys).where(scope);
-  const surveyIds = scoped.map((s) => s.id);
-  let total = 0;
-  if (surveyIds.length) {
-    const [row] = await db
-      .select({ n: sql<number>`count(distinct ${alertCases.userId})::int` })
-      .from(alertCases)
-      .innerJoin(surveys, eq(surveys.id, alertCases.surveyId))
-      .innerJoin(users, eq(users.id, alertCases.userId))
-      .where(and(inArray(alertCases.surveyId, surveyIds), isNull(alertCases.acknowledgedAt)));
-    total = Number(row?.n ?? 0);
-  }
-  const body: AlertCaseCount = { total };
+  const seen = await resultScope(c.get("user"));
+  const [row] = await db
+    .select({ n: sql<number>`count(distinct ${alertCases.userId})::int` })
+    .from(alertCases)
+    .innerJoin(surveys, eq(surveys.id, alertCases.surveyId))
+    .innerJoin(users, eq(users.id, alertCases.userId))
+    .where(and(seen(alertCases.surveyId, alertCases.userId), isNull(alertCases.acknowledgedAt)));
+  const body: AlertCaseCount = { total: Number(row?.n ?? 0) };
   return c.json(body);
 });
 
 /** Подразделения, встречающиеся среди случаев — для фильтра */
 alertCaseRoutes.get("/units", async (c) => {
-  const scope = await surveyScopeFilter(c.get("user"));
-  const scoped = await db.select({ id: surveys.id }).from(surveys).where(scope);
-  const ids = scoped.map((s) => s.id);
-  if (!ids.length) return c.json({ items: [] });
-
+  const seen = await resultScope(c.get("user"));
   const rows = await db
     .selectDistinct({ unit: users.unit })
     .from(alertCases)
     .innerJoin(users, eq(users.id, alertCases.userId))
-    .where(and(inArray(alertCases.surveyId, ids), isNotNull(users.unit)));
+    .where(and(seen(alertCases.surveyId, alertCases.userId), isNotNull(users.unit)));
   return c.json({ items: rows.map((r) => r.unit).filter(Boolean).sort() });
 });
 
 async function loadCase(user: { id: string; role: string }, id: string) {
   const row = await db.query.alertCases.findFirst({ where: eq(alertCases.id, id) });
   if (!row) notFound("err.caseNotFound");
-  if (!(await canAccessSurvey(user as never, row.surveyId))) notFound("err.caseNotFound");
+  if (!(await canSeeResult(user as never, row))) notFound("err.caseNotFound");
   return row;
 }
 
@@ -690,10 +672,7 @@ alertCaseRoutes.get("/:id/signals", async (c) => {
    * должен читать ответы по чужой. Иначе основание стало бы обходным путём к
    * данным, которых человек не видит нигде больше.
    */
-  const scope = await surveyScopeFilter(user);
-  const scoped = await db.select({ id: surveys.id }).from(surveys).where(scope);
-  const surveyIds = scoped.map((s) => s.id);
-  if (!surveyIds.length) return c.json({ items: [] satisfies AlertSignalBasis[] });
+  const seen = await resultScope(user);
 
   const signals = await db
     .select({
@@ -715,7 +694,7 @@ alertCaseRoutes.get("/:id/signals", async (c) => {
      */
     .leftJoin(questions, eq(questions.id, riskAlerts.questionId))
     .leftJoin(scales, eq(scales.id, riskAlerts.scaleId))
-    .where(and(eq(riskAlerts.caseId, row.id), inArray(riskAlerts.surveyId, surveyIds)))
+    .where(and(eq(riskAlerts.caseId, row.id), seen(riskAlerts.surveyId, riskAlerts.userId)))
     .orderBy(desc(riskAlerts.at));
 
   if (!signals.length) return c.json({ items: [] satisfies AlertSignalBasis[] });

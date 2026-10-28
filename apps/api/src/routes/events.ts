@@ -10,7 +10,7 @@ import { subscribe, type AppEvent } from "../lib/events";
 import { resolveImpersonation } from "../lib/impersonation";
 import { log } from "../lib/log";
 import { hasPermission } from "../lib/permissions";
-import { isSuperadmin, patientsInScope, surveyScopeFilter } from "../lib/scope";
+import { isSuperadmin, librarySurvey, ownSurveyFilter, patientsInScope } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
 export const eventRoutes = new Hono<AppEnv>();
@@ -43,10 +43,16 @@ eventRoutes.get("/", async (c) => {
   /* контекст строк этого сотрудника — тот же, что ставит requireAuth */
   const identity = { userId: user.id, role: user.role };
 
-  async function readScope(): Promise<Set<string>> {
-    const scope = await surveyScopeFilter(user);
-    const scoped = await db.select({ id: surveys.id }).from(surveys).where(scope);
-    return new Set(scoped.map((s) => s.id));
+  /*
+   * Зона по методикам — двумя множествами (lib/scope.ts): свои методики,
+   * события которых видны все, и методики библиотеки (общий каталог), чьё
+   * событие видно, только если человек события в зоне сотрудника, — им
+   * пользуются все отделения.
+   */
+  async function readScope(): Promise<{ own: Set<string>; library: Set<string> }> {
+    const own = await db.select({ id: surveys.id }).from(surveys).where(await ownSurveyFilter(user));
+    const library = await db.select({ id: surveys.id }).from(surveys).where(librarySurvey);
+    return { own: new Set(own.map((s) => s.id)), library: new Set(library.map((s) => s.id)) };
   }
 
   /* первое чтение — ещё в транзакции запроса: она жива, пока обработчик не вернул ответ */
@@ -179,7 +185,7 @@ eventRoutes.get("/", async (c) => {
         while (alive && inbox.length) {
           const batch = inbox.splice(0);
           const memo = decided;
-          await decide(memo, batch.flatMap((e) => (!e.surveyIds && e.userId ? [e.userId] : [])));
+          await decide(memo, batch.flatMap((e) => (e.userId && asksPerson(e) ? [e.userId] : [])));
           for (const event of batch) {
             if (!alive) return;
             if (visible(event, memo)) await stream.writeSSE({ event: event.kind, data: JSON.stringify(event) });
@@ -192,14 +198,26 @@ eventRoutes.get("/", async (c) => {
       }
     }
 
+    /* решает ли о событии человек: событие без методики — или о методике библиотеки, а не своей */
+    function asksPerson(event: AppEvent): boolean {
+      if (!event.surveyIds) return true;
+      return !event.surveyIds.some((id) => allowed.own.has(id)) && event.surveyIds.some((id) => allowed.library.has(id));
+    }
+
     function visible(event: AppEvent, memo: Map<string, boolean>): boolean {
-      if (event.surveyIds) return event.surveyIds.some((id) => allowed.has(id));
+      if (event.surveyIds) {
+        if (event.surveyIds.some((id) => allowed.own.has(id))) return true;
+        // методика библиотеки — только о человеке зоны; без человека такое событие никому, кроме суперадмина
+        if (!event.surveyIds.some((id) => allowed.library.has(id))) return false;
+        return !!event.userId && memo.get(event.userId) === true;
+      }
       /*
        * Событие БЕЗ методики, но о человеке, — только тому, кто вправе
        * видеть человека.
        *
-       * У событий с методикой правило своё и достаточное: зона по методикам,
-       * условие выше. А общий поток «action» выпускается с surveyIds: null —
+       * У событий с методикой правило своё и достаточное: зона по методикам
+       * (у методики библиотеки — и человек), условие выше. А общий поток
+       * «action» выпускается с surveyIds: null —
        * то есть проходил фильтр насквозь и шёл всем сотрудникам без разбора.
        * Комментарий рядом с его выпуском обосновывал это тем, что «имён и
        * содержимого в нём нет». Имён нет, а идентификатор пациента есть — и

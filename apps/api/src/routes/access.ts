@@ -8,12 +8,14 @@ import { fullNameOf } from "../lib/auth";
 import { deadlineOf } from "../lib/day";
 import { badRequest, langOf, notFound, parseBody } from "../lib/http";
 import {
-  accessibleGroupIds,
+  isLibrarySurvey,
+  patientScopeCondition,
   patientsInScope,
   assertPatientGroupAccess,
-  assertSurveyAccess,
+  assertSurveyUse,
   assertSurveysInUse,
   surveyInUse,
+  surveyResultScope,
 } from "../lib/scope";
 import { grantAccess } from "../lib/grantAccess";
 import { assertNotInOtherCare } from "../lib/otherCare";
@@ -31,10 +33,16 @@ export const accessRoutes = new Hono<AppEnv>();
  */
 accessRoutes.use("*", requireAuth, requireStaff, requirePermission("assignments.manage"));
 
-/** Кому назначена методика */
+/**
+ * Кому назначена методика.
+ *
+ * Назначения методики библиотеки — только людям зоны читателя
+ * (surveyResultScope): методикой каталога пользуются все отделения, и
+ * список её назначений иначе называл бы пациентов чужих отделений.
+ */
 accessRoutes.get("/surveys/:id/grants", async (c) => {
   const surveyId = c.req.param("id");
-  await assertSurveyAccess(c.get("user"), surveyId);
+  const whose = await surveyResultScope(c.get("user"), surveyId);
 
   const rows = await db
     .select({
@@ -52,7 +60,7 @@ accessRoutes.get("/surveys/:id/grants", async (c) => {
     })
     .from(surveyAccess)
     .innerJoin(users, eq(users.id, surveyAccess.userId))
-    .where(eq(surveyAccess.surveyId, surveyId))
+    .where(and(eq(surveyAccess.surveyId, surveyId), whose?.(surveyAccess.userId)))
     /*
      * Порядок задан явно: без него строки шли в порядке плана запроса, а
      * план под ролью приложения другой (политики добавляют условия) — один
@@ -101,7 +109,7 @@ accessRoutes.get("/surveys/:id/grants", async (c) => {
 /** Назначить методику пациенту */
 accessRoutes.post("/surveys/:id/grants", async (c) => {
   const surveyId = c.req.param("id");
-  await assertSurveyAccess(c.get("user"), surveyId);
+  await assertSurveyUse(c.get("user"), surveyId);
   await assertSurveysInUse([surveyId]);
   const input = await parseBody(c.req.raw, grantAccessSchema);
 
@@ -127,8 +135,15 @@ accessRoutes.post("/surveys/:id/grants", async (c) => {
    * же транзакцией, которая уже видит новую выдачу, — и человек числился
    * «своим» именно благодаря ей: пометка не появлялась никогда, в том числе
    * ровно в том случае, ради которого её завели.
+   *
+   * Методика библиотеки в зону не вводит (lib/scope.ts): её назначают
+   * только человеку, который уже в зоне, — иначе «не найдено», как у
+   * карточки чужого. Выдать её «ничьему» значило бы назначить методику
+   * человеку, результатов которого назначивший потом не увидит.
    */
-  const wasOutside = await assertNotInOtherCare(await patientsInScope(c.get("user"), [input.userId]), input.userId);
+  const seen = await patientsInScope(c.get("user"), [input.userId]);
+  if (seen && !seen.has(input.userId) && (await isLibrarySurvey(surveyId))) notFound("err.userNotFound");
+  const wasOutside = await assertNotInOtherCare(seen, input.userId);
 
   /*
    * Срок из поля даты — до конца этого дня по поясу учреждения. Голая дата
@@ -174,11 +189,12 @@ accessRoutes.post("/surveys/:id/grants", async (c) => {
 accessRoutes.delete("/surveys/:id/grants/:userId", async (c) => {
   const surveyId = c.req.param("id");
   const userId = c.req.param("userId");
-  await assertSurveyAccess(c.get("user"), surveyId);
+  // назначение методики библиотеки снимают только человеку своей зоны — как и видят
+  const whose = await surveyResultScope(c.get("user"), surveyId);
 
   const deleted = await db
     .delete(surveyAccess)
-    .where(and(eq(surveyAccess.surveyId, surveyId), eq(surveyAccess.userId, userId)))
+    .where(and(eq(surveyAccess.surveyId, surveyId), eq(surveyAccess.userId, userId), whose?.(surveyAccess.userId)))
     .returning();
   if (deleted.length === 0) notFound("err.assignmentNotFound");
 
@@ -194,10 +210,16 @@ accessRoutes.delete("/surveys/:id/grants/:userId", async (c) => {
 /**
  * Пациенты, которым можно назначить методику.
  *
- * Список ограничен зоной ответственности: групповой админ видит только тех, кто
- * уже соприкасался с его группами — назначение, прохождение или доступ к методике
- * группы. Отдавать всех пациентов системы значило бы раскрывать каждому админу
+ * Список ограничен зоной ответственности (lib/scope.ts, patientScopeCondition):
+ * прикреплённые к отделению сотрудника, записанные к нему на приём,
+ * соприкасавшиеся с его группами — назначение, прохождение или набор группы.
+ * Отдавать всех пациентов системы значило бы раскрывать каждому сотруднику
  * состав чужих отделений. Суперадмин видит всех — ему назначать в любую группу.
+ *
+ * Прежде здесь стояли одни пути через группы, своей копией правила зоны: у
+ * врача без групп список был пуст, хотя его пациенты отделения открывались в
+ * карточке, — и методику общего каталога, которой пользуется каждый, ему было
+ * некому назначить.
  */
 /*
  * Курсорная пагинация здесь не годится, и это следствие шифрования, а не
@@ -213,7 +235,7 @@ const PATIENT_LIMIT = 100;
 
 accessRoutes.get("/patients", async (c) => {
   const user = c.get("user");
-  const groupIds = await accessibleGroupIds(user);
+  const inZone = await patientScopeCondition(user);
   const search = (c.req.query("search") ?? "").trim().toLowerCase();
   const unit = c.req.query("unit") ?? "";
 
@@ -242,32 +264,10 @@ accessRoutes.get("/patients", async (c) => {
     inGroup = new Set(rows.map((r) => r.id));
   }
 
-  let rows: (typeof users.$inferSelect)[];
-  if (groupIds === null) {
-    rows = await db.select().from(users).where(eq(users.role, "user"));
-  } else if (!groupIds.length) {
-    rows = [];
-  } else {
-    rows = await db
-      .select()
-      .from(users)
-      .where(
-        and(
-          eq(users.role, "user"),
-          sql`(
-            exists (select 1 from survey_access sa
-              join surveys s on s.id = sa.survey_id
-              where sa.user_id = "users"."id" and s.group_id in ${groupIds})
-            or exists (select 1 from responses r
-              join surveys s on s.id = r.survey_id
-              where r.user_id = "users"."id" and s.group_id in ${groupIds})
-            or exists (select 1 from battery_assignments ba
-              join batteries b on b.id = ba.battery_id
-              where ba.user_id = "users"."id" and b.group_id in ${groupIds})
-          )`,
-        ),
-      );
-  }
+  const rows = await db
+    .select()
+    .from(users)
+    .where(and(eq(users.role, "user"), inZone?.(users.id)));
 
   const all = rows
     .map((u) => ({ id: u.id, fullName: fullNameOf(u), email: u.email, unit: u.unit }))
@@ -284,7 +284,7 @@ accessRoutes.get("/patients", async (c) => {
     details: {
       matched: all.length,
       returned: Math.min(all.length, PATIENT_LIMIT),
-      scoped: groupIds !== null,
+      scoped: inZone !== null,
       ...(patientGroupId ? { patientGroupId } : {}),
     },
   });

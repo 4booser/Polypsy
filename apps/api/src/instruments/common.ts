@@ -72,6 +72,12 @@ export interface BandSpec {
   label: Loc;
   severity: "none" | "mild" | "moderate" | "severe";
   grade: number;
+  /**
+   * Что значит полоса, когда короткой подписи мало: какой порог, чей, на какой
+   * выборке. Подпись видна в карточке, на графике и в очереди — там нужна
+   * ступень, а не абзац; пояснение читают в результате («Значення»).
+   */
+  description?: Loc;
   recommendation?: Loc;
 }
 
@@ -82,6 +88,7 @@ export const bands = (specs: BandSpec[]) =>
     label: b.label,
     severity: b.severity,
     grade: b.grade,
+    ...(b.description ? { description: b.description } : {}),
     ...(b.recommendation ? { recommendation: b.recommendation } : {}),
   }));
 
