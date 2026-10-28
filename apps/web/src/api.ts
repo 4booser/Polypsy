@@ -1089,7 +1089,14 @@ export const api = {
   surveyRights: (id: string, body: { rightsStatus?: "own" | "licensed" | "public_domain" | "unclear"; keysVerified?: boolean }) =>
     request<{ ok: true }>(`/api/surveys/${id}/rights`, { method: "PATCH", body: JSON.stringify(body) }),
   submitFor: (surveyId: string, payload: unknown) =>
-    request<{ id: string; scores: unknown[]; reliable: boolean; warnings: string[] }>(
+    request<{
+      id: string;
+      scores: unknown[];
+      reliable: boolean;
+      warnings: string[];
+      /** сдача подняла сигнал риска — только сотруднику, который вносил ответы */
+      riskRaised?: { severity: string; signals: number } | null;
+    }>(
       `/api/surveys/${surveyId}/responses`,
       { method: "POST", body: JSON.stringify(payload) },
     ),
