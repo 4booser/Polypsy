@@ -11,16 +11,17 @@ import {
   type CohortPreview,
   type CohortSpec,
   type Severity,
+  type User,
 } from "@quizzy/shared";
 import { db } from "../db";
-import { cohorts, surveys, users } from "../db/schema";
+import { cohorts, users } from "../db/schema";
 import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
 import { decryptField } from "../lib/crypto";
 import { badRequest, notFound, parseBody } from "../lib/http";
 import { dayEnd, dayStart } from "../lib/population";
 import { SMALL_CELL_FLOOR, birthYearOf, canBreakDown, suppress, suppressedKeys } from "../lib/privacy";
-import { surveyScopeFilter } from "../lib/scope";
+import { canUseSurvey, resultScope } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 import { env } from "../env";
 
@@ -168,13 +169,8 @@ interface Selection {
  * Алиасы (`r`, `r3` …) — константы этого файла, а не ввод, поэтому
  * подставляются как есть.
  */
-async function cohortSelection(user: Parameters<typeof surveyScopeFilter>[0], spec: CohortSpec): Promise<Selection> {
-  const scope = await surveyScopeFilter(user);
-  const scoped = await db.select({ id: surveys.id }).from(surveys).where(scope);
-  const allowed = scoped.map((s) => s.id);
-  if (!allowed.length) return { where: sql`false`, taken: () => sql`false` };
-
-  if (spec.surveyId && !allowed.includes(spec.surveyId)) {
+async function cohortSelection(user: User, spec: CohortSpec): Promise<Selection> {
+  if (spec.surveyId && !(await canUseSurvey(user, spec.surveyId))) {
     /*
      * Методика вне зоны — не «пустая когорта», а отказ. Пустой ответ здесь
      * читался бы как «таких нет», хотя правильный ответ «вам не видно».
@@ -182,7 +178,12 @@ async function cohortSelection(user: Parameters<typeof surveyScopeFilter>[0], sp
     badRequest("err.surveyUnavailable");
   }
 
-  const surveyIds = spec.surveyId ? [spec.surveyId] : allowed;
+  /*
+   * Прохождение выборки — видимое сотруднику: по своим методикам все, по
+   * методикам библиотеки (общий каталог) — людей его зоны (lib/scope.ts).
+   * Иначе подбор по методике каталога собирал бы людей всех отделений.
+   */
+  const seen = await resultScope(user);
   /*
    * Границы периода — календарные дни включительно, в поясе УЧРЕЖДЕНИЯ
    * (lib/population.ts), так же, как в статистике (lib/statModels.ts,
@@ -200,7 +201,8 @@ async function cohortSelection(user: Parameters<typeof surveyScopeFilter>[0], sp
   const taken = (alias: string): SQL => {
     const r = sql.raw(alias);
     return sql`${r}.status = 'completed'
-      and ${r}.survey_id in ${surveyIds}
+      and ${seen(sql`${r}.survey_id`, sql`${r}.user_id`)}
+      ${spec.surveyId ? sql`and ${r}.survey_id = ${spec.surveyId}` : sql``}
       ${spec.from ? sql`and ${r}.submitted_at >= ${dayStart(spec.from)}` : sql``}
       ${spec.to ? sql`and ${r}.submitted_at < ${dayEnd(spec.to)}` : sql``}
       ${spec.sex ? sql`and ${r}.respondent_sex = ${spec.sex}` : sql``}`;

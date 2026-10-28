@@ -14,7 +14,7 @@ import { decryptField } from "../lib/crypto";
 import { notFound, parseQuery } from "../lib/http";
 import { referencePercentile, referenceSampleSets, type SampleTarget } from "../lib/referenceSample";
 import { birthYearOf } from "../lib/privacy";
-import { patientsInScope, surveyScopeFilter, surveyScopeFilterFor } from "../lib/scope";
+import { patientsInScope, resultScopeCondition, surveyScopeFilterFor } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 import { env } from "../env";
 
@@ -41,17 +41,15 @@ dynamicsRoutes.use("*", requireAuth, requireStaff, requirePermission("patients.r
  */
 
 dynamicsRoutes.get("/respondents", async (c) => {
-  const scope = await surveyScopeFilter(c.get("user"));
-  const scoped = await db.select({ id: surveys.id }).from(surveys).where(scope);
-  const surveyIds = scoped.map((s) => s.id);
-  if (!surveyIds.length) return c.json({ items: [], nextCursor: null, total: 0 });
+  // прохождения, видимые сотруднику: свои методики целиком, библиотека — люди его зоны (lib/scope.ts)
+  const visible = await resultScopeCondition(c.get("user"));
 
   // ?limit=abc давал NaN, который уезжал в .limit() и ронял запрос пятисоткой
   const { limit, cursor: rawCursor, search } = parseQuery(c, respondentQuery);
   const cursor = decodeCursor(rawCursor);
 
   const base = and(
-    inArray(responses.surveyId, surveyIds),
+    visible?.(responses.surveyId, responses.userId),
     eq(responses.status, "completed"),
     isNotNull(responses.userId),
   );

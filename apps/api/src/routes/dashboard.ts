@@ -14,7 +14,7 @@ import {
 } from "../lib/conditions";
 import { langOf, parseQuery } from "../lib/http";
 import { patientRespondent } from "../lib/population";
-import { accessiblePatientIds, surveyScopeFilter } from "../lib/scope";
+import { accessiblePatientIds, surveyUseFilter } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
 /**
@@ -49,10 +49,14 @@ const EMPTY_SPREAD = {
  * Состояние пациентов по направлениям: депрессия, тревога, стресс, ПТСР,
  * благополучие, выгорание, алкоголь (см. lib/conditions.ts — почему так).
  *
- * Видимость — двумя поясами сразу: методики из зоны читателя
- * (surveyScopeFilter) и люди из его зоны (accessiblePatientIds). Первого
- * мало: заведующий видит методику группы, но человек мог прийти к ней по
- * разбитому стеклу чужого сотрудника — такие замеры в его сводку не идут.
+ * Видимость — двумя поясами сразу: методики, которыми читатель пользуется
+ * (surveyUseFilter: свои и библиотека — направления сводки и есть методики
+ * общего каталога), и люди из его зоны (accessiblePatientIds). Первого мало:
+ * заведующий видит методику группы, но человек мог прийти к ней по
+ * разбитому стеклу чужого сотрудника — такие замеры в его сводку не идут. А
+ * методику библиотеки проходят люди всех отделений, и в сводку врача идут
+ * только его люди — то же правило результатов, что у карточки
+ * (lib/scope.ts).
  *
  * Анонимные прохождения (user_id пуст) не считаются: «последний замер
  * человека» у них определить нельзя, и каждый анонимный бланк считался бы
@@ -76,11 +80,10 @@ dashboardRoutes.get("/conditions", async (c) => {
   const lang = langOf(c);
   const tz = env.institutionTz;
 
-  const scope = await surveyScopeFilter(user);
   const scoped = await db
     .select({ id: surveys.id, title: surveys.title, catalogKey: surveys.catalogKey })
     .from(surveys)
-    .where(scope);
+    .where(await surveyUseFilter(user));
   const patients = await accessiblePatientIds(user);
 
   const since = new Date(Date.now() - days * 86_400_000).toISOString();

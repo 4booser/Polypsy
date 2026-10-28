@@ -8,7 +8,7 @@ import { alertLabelsIn } from "../lib/alertLabels";
 import { audit } from "../lib/audit";
 import { badRequest, langOf, parseQuery } from "../lib/http";
 import { fullNameOf } from "../lib/auth";
-import { surveyScopeFilter } from "../lib/scope";
+import { resultScopeCondition } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 import { z } from "zod";
 
@@ -48,7 +48,11 @@ function decodeAlertCursor(raw: string): { at: string; id: string } {
   return { at: at!, id: id! };
 }
 
-/** Тревоги по методикам, доступным этому сотруднику. По умолчанию — только неразобранные. */
+/**
+ * Тревоги, видимые этому сотруднику: по своим методикам — все, по методикам
+ * библиотеки (общий каталог) — о людях его зоны (lib/scope.ts,
+ * resultScopeCondition). По умолчанию — только неразобранные.
+ */
 alertRoutes.get("/", async (c) => {
   // язык читателя: t() без него отдаёт украинский всегда
   const lang = langOf(c);
@@ -57,10 +61,7 @@ alertRoutes.get("/", async (c) => {
   const includeAcknowledged = q.all === "1";
   const cursor = q.cursor ? decodeAlertCursor(q.cursor) : null;
 
-  const scope = await surveyScopeFilter(user);
-  const scoped = await db.select({ id: surveys.id }).from(surveys).where(scope);
-  const surveyIds = scoped.map((s) => s.id);
-  if (surveyIds.length === 0) return c.json({ items: [], nextCursor: null });
+  const visible = await resultScopeCondition(user);
 
   const rows = await db
     .select({
@@ -86,7 +87,7 @@ alertRoutes.get("/", async (c) => {
     // зависит от драйвера и легко ломается при смене СУБД
     .where(
       and(
-        inArray(riskAlerts.surveyId, surveyIds),
+        visible?.(riskAlerts.surveyId, riskAlerts.userId),
         includeAcknowledged ? undefined : isNull(riskAlerts.acknowledgedAt),
         cursor
           ? sql`(date_trunc('milliseconds', ${riskAlerts.at}), ${riskAlerts.id}) < (${cursor.at}::timestamptz, ${cursor.id})`
