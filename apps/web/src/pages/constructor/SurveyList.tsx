@@ -181,7 +181,12 @@ function CutoffCell({ s, width }: { s: SurveyListItem; width: number }) {
   const { ut, lang } = useLang();
   const p = s.catalog;
   const lines = p ? [...p.steps.map((x) => stepText(x, lang)), ...p.cutoffs.map((c) => cutoffText(c, lang))] : [];
-  if (!lines.length) return <span className="text-small text-muted">{p?.purpose ? ut("dpc.noCutoffs") : "—"}</span>;
+  /*
+   * «Без порогів» — только когда у методики нет ни одной полосы (сырые бали):
+   * это утверждение о методике, и брать его из пустого паспорта нельзя — у
+   * СР-45 или методики учреждения полосы есть, просто в паспорте их не назвали.
+   */
+  if (!lines.length) return <span className="text-small text-muted">{s.bandCount === 0 ? ut("dpc.noCutoffs") : "—"}</span>;
   /*
    * Ширина — колонки, а не текста: таблица раскладывается по содержимому, и
    * строка порога без предела съедала бы ширину у имени методики. Один порог
@@ -766,6 +771,14 @@ export function SurveyList() {
     [everything.data],
   );
   const pickedRows = useMemo(() => [...picked.values()].map((s) => freshById.get(s.id) ?? s), [picked, freshById]);
+  /*
+   * Править, переносить, снимать и возвращать — только то, что читающий
+   * правит (editable): методикой общего каталога пользуется каждый, а
+   * правят её администраторы каталога (apps/api/src/lib/scope.ts). Кнопка,
+   * которая откажет, хуже отсутствующей.
+   */
+  const editable = (s: SurveyListItem) => s.editable !== false;
+  const manageable = pickedRows.filter(editable);
   const setPicked = (rows: ReadonlyMap<string, SurveyListItem>) => setPick({ tab, rows });
   const unpick = (gone: readonly SurveyListItem[]) => setPick((prev) => ({ tab: prev.tab, rows: without(prev.rows, gone) }));
 
@@ -820,7 +833,7 @@ export function SurveyList() {
   const restoreMany = async () => {
     let outcome: Awaited<ReturnType<typeof eachOf<SurveyListItem>>> = { done: [], failed: [] };
     await run(async () => {
-      outcome = await eachOf(pickedRows, (s) => api.restoreSurvey(s.id));
+      outcome = await eachOf(manageable, (s) => api.restoreSurvey(s.id));
     });
     const { done, failed } = outcome;
     if (done.length) {
@@ -899,11 +912,11 @@ export function SurveyList() {
       },
       m: () => {
         const s = focused();
-        if (s) setDialog({ kind: "move", survey: s });
+        if (s && editable(s)) setDialog({ kind: "move", survey: s });
       },
       e: () => {
         const s = focused();
-        if (s) navigate(`/constructor/${s.id}`);
+        if (s && editable(s)) navigate(`/constructor/${s.id}`);
       },
     },
     !dialog,
@@ -911,8 +924,9 @@ export function SurveyList() {
 
   const menuOf = (s: SurveyListItem): MenuEntry[] => {
     const retired = !!s.archivedAt;
+    const own = editable(s);
     const entries: MenuEntry[] = [
-      { label: ut("cl.editAction"), icon: <ShellIcon name="pencil" size={16} />, to: `/constructor/${s.id}`, kbd: "E" },
+      ...(own ? [{ label: ut("cl.editAction"), icon: <ShellIcon name="pencil" size={16} />, to: `/constructor/${s.id}`, kbd: "E" }] : []),
       { label: ut("mc.menuKeys"), icon: <ShellIcon name="key-round" size={16} />, to: `/surveys/${s.id}/key` },
       { label: ut("mc.menuAccess"), icon: <ShellIcon name="user-cog" size={16} />, to: `/surveys/${s.id}/access` },
     ];
@@ -922,7 +936,9 @@ export function SurveyList() {
     entries.push(
       { label: ut("mc.menuBlank"), icon: <Mi.printer size={16} />, to: `/surveys/${s.id}/blank` },
       { label: ut("cl.duplicateAction"), icon: <Mi.copy size={16} />, ruled: true, onSelect: () => void duplicate(s) },
-      { label: ut("cat.move"), icon: <Mi.folderInput size={16} />, kbd: "M", onSelect: () => setDialog({ kind: "move", survey: s }) },
+      ...(own
+        ? [{ label: ut("cat.move"), icon: <Mi.folderInput size={16} />, kbd: "M", onSelect: () => setDialog({ kind: "move", survey: s }) }]
+        : []),
       { label: ut("mc.menuExports"), icon: <Mi.fileDown size={16} />, onSelect: () => setSide({ kind: "exports", survey: s }) },
       {
         label: ut("key.exportJson"),
@@ -930,11 +946,13 @@ export function SurveyList() {
         onSelect: () => void run(() => download(api.methodologyUrl(s.id), "methodology.json")),
       },
     );
-    entries.push(
-      retired
-        ? { label: ut("cl.restoreAction"), icon: <Mi.archiveRestore size={16} />, ruled: true, onSelect: () => void restore(s) }
-        : { label: ut("cl.archive"), icon: <Ic.archive size={16} />, ruled: true, onSelect: () => setDialog({ kind: "archive", survey: s }) },
-    );
+    if (own) {
+      entries.push(
+        retired
+          ? { label: ut("cl.restoreAction"), icon: <Mi.archiveRestore size={16} />, ruled: true, onSelect: () => void restore(s) }
+          : { label: ut("cl.archive"), icon: <Ic.archive size={16} />, ruled: true, onSelect: () => setDialog({ kind: "archive", survey: s }) },
+      );
+    }
     return entries;
   };
 
@@ -1098,10 +1116,12 @@ export function SurveyList() {
   const rowActions = (s: SurveyListItem) => (
     <>
       {s.archivedAt ? (
-        <Button size="xs" variant="ghost" icon={<Mi.archiveRestore />} disabled={busy} onClick={() => void restore(s)}>
-          {ut("cl.restoreAction")}
-        </Button>
-      ) : s.status === "draft" ? (
+        editable(s) ? (
+          <Button size="xs" variant="ghost" icon={<Mi.archiveRestore />} disabled={busy} onClick={() => void restore(s)}>
+            {ut("cl.restoreAction")}
+          </Button>
+        ) : null
+      ) : s.status === "draft" && editable(s) ? (
         <ButtonLink size="xs" variant="ghost" to={`/constructor/${s.id}`}>
           <ShellIcon name="pencil" size={14} />
           {ut("cl.editAction")}
@@ -1411,10 +1431,12 @@ export function SurveyList() {
                 {ut("acc.grant")}
               </Button>
             ) : null}
-            <Button variant="panel" size="xs" icon={<Mi.folderInput />} disabled={busy} onClick={() => setDialog({ kind: "moveMany" })}>
-              {ut("mc.bulkMove")}
-            </Button>
-            {tab === "retired" ? (
+            {manageable.length ? (
+              <Button variant="panel" size="xs" icon={<Mi.folderInput />} disabled={busy} onClick={() => setDialog({ kind: "moveMany" })}>
+                {ut("mc.bulkMove")}
+              </Button>
+            ) : null}
+            {!manageable.length ? null : tab === "retired" ? (
               <Button variant="panel" size="xs" icon={<Mi.archiveRestore />} disabled={busy} onClick={() => void restoreMany()}>
                 {ut("cl.restoreAction")}
               </Button>
@@ -1426,7 +1448,7 @@ export function SurveyList() {
                 disabled={busy}
                 onClick={() =>
                   /* одну снимают прежним окном — с подтверждением кодом */
-                  setDialog(pickedRows.length === 1 ? { kind: "archive", survey: pickedRows[0]! } : { kind: "archiveMany" })
+                  setDialog(manageable.length === 1 ? { kind: "archive", survey: manageable[0]! } : { kind: "archiveMany" })
                 }
               >
                 {ut("cl.archive")}
@@ -1467,7 +1489,7 @@ export function SurveyList() {
               }
               setPicked(next);
             }}
-            onRowClick={(s) => navigate(s.status === "draft" ? `/constructor/${s.id}` : `/surveys/${s.id}`)}
+            onRowClick={(s) => navigate(s.status === "draft" && editable(s) ? `/constructor/${s.id}` : `/surveys/${s.id}`)}
             isRowActive={(s) => side?.survey.id === s.id}
             rowActions={rowActions}
             groupOf={groupOf}
@@ -1553,9 +1575,12 @@ export function SurveyList() {
             icon={<ShellIcon name="clipboard-list" />}
             footer={
               <>
-                <ButtonLink to={sideSurvey.status === "draft" ? `/constructor/${sideSurvey.id}` : `/surveys/${sideSurvey.id}`} variant="primary">
+                <ButtonLink
+                  to={sideSurvey.status === "draft" && editable(sideSurvey) ? `/constructor/${sideSurvey.id}` : `/surveys/${sideSurvey.id}`}
+                  variant="primary"
+                >
                   <Ic.external size={15} />
-                  {sideSurvey.status === "draft" ? ut("cl.editAction") : ut("mc.openMethod")}
+                  {sideSurvey.status === "draft" && editable(sideSurvey) ? ut("cl.editAction") : ut("mc.openMethod")}
                 </ButtonLink>
                 {canAssign(sideSurvey) ? (
                   <Button variant="secondary" icon={<Mi.clipboardPlus />} onClick={() => setSide({ kind: "assign", survey: sideSurvey })}>
@@ -1662,9 +1687,9 @@ export function SurveyList() {
           }}
         />
       ) : null}
-      {dialog?.kind === "moveMany" && pickedRows.length ? (
+      {dialog?.kind === "moveMany" && manageable.length ? (
         <MoveManyForm
-          surveys={pickedRows}
+          surveys={manageable}
           folders={folders}
           groups={groups}
           onClose={() => setDialog(null)}
@@ -1674,9 +1699,9 @@ export function SurveyList() {
           }}
         />
       ) : null}
-      {dialog?.kind === "archiveMany" && pickedRows.length ? (
+      {dialog?.kind === "archiveMany" && manageable.length ? (
         <ArchiveManyDialog
-          surveys={pickedRows}
+          surveys={manageable}
           onClose={() => setDialog(null)}
           onDone={(archived) => {
             unpick(archived);

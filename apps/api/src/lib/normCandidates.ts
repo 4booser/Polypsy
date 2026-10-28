@@ -3,6 +3,7 @@ import type { Sex, SurveyFull } from "@quizzy/shared";
 import { db } from "../db";
 import { rawSignature } from "./comparable";
 import { patientRespondent } from "./population";
+import type { PatientCondition } from "./scope";
 import { suppress } from "./privacy";
 import { average, round, variance } from "./stats";
 
@@ -85,7 +86,10 @@ export async function normCandidates(
   surveyId: string,
   current: SurveyFull,
   versionOf: (versionId: string) => Promise<SurveyFull | null>,
+  /** Чьи прохождения видны читающему (lib/scope.ts, surveyResultScope); без условия — все */
+  whose?: PatientCondition,
 ): Promise<CandidateStats> {
+  const visible = whose ? sql`and ${whose(sql`r.user_id`)}` : sql``;
   const rows = [
     ...(await db.execute<{
       id: string;
@@ -101,6 +105,7 @@ export async function normCandidates(
         and r.user_id is not null
         and r.version_id is not null
         and ${patientRespondent("r")}
+        ${visible}
       order by r.user_id, r.submitted_at asc nulls last, r.id asc
     `)),
   ].map((r) => ({
@@ -124,6 +129,7 @@ export async function normCandidates(
             and r.reliable
             and r.user_id is not null
             and ${patientRespondent("r")}
+            ${visible}
         `)),
       ]
     : [];

@@ -8,7 +8,7 @@ import { rawSignature } from "../lib/comparable";
 import { langOf, notFound, parseQuery } from "../lib/http";
 import { patientRespondent } from "../lib/population";
 import { percent, round } from "../lib/stats";
-import { assertSurveyAccess } from "../lib/scope";
+import { surveyResultScope } from "../lib/scope";
 import { getSurvey } from "../lib/surveys";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
@@ -129,7 +129,8 @@ async function versionClasses(surveyId: string, lang: Lang) {
  */
 facetRoutes.get("/surveys/:id", async (c) => {
   const surveyId = c.req.param("id");
-  await assertSurveyAccess(c.get("user"), surveyId);
+  // методика библиотеки — только прохождения людей зоны читателя (lib/scope.ts)
+  const zone = await surveyResultScope(c.get("user"), surveyId);
   const lang = langOf(c);
   const survey = await getSurvey(surveyId, null, lang);
   if (!survey) notFound("err.surveyNotFound");
@@ -192,6 +193,7 @@ facetRoutes.get("/surveys/:id", async (c) => {
             and r.status = 'completed'
             and r.reliable
             and ${patientRespondent("r")}
+            ${zone ? sql`and ${zone(sql`r.user_id`)}` : sql``}
             and sc.kind = 'clinical'
           group by 1, 2, 3, 4, 5
           order by 1, 2, 3, 4, 5

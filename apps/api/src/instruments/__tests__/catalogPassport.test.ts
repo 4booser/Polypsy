@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { CATALOG_ROLES, type CutoffOp } from "@quizzy/shared";
+import { catalogOrder, relatedKeys, rowPassport, surveyPassport } from "../../lib/catalogPassport";
 import { CATALOG } from "../catalog";
-import { CATALOG_PASSPORT, catalogRules, familyHead, passportSpec, shortFormsOf } from "../catalogPassport";
+import { CATALOG_PASSPORT, PASSPORT_AHEAD, catalogRules, familyHead, passportSpec, shortFormsOf } from "../catalogPassport";
 
 /**
  * Клинический паспорт каталога (catalogPassport.ts): роли, связи полной
@@ -40,7 +41,9 @@ describe("паспорт каталога: полнота", () => {
   test("у каждой записи CATALOG есть паспорт, и лишних ключей нет", () => {
     const missing = CATALOG.map((e) => e.key).filter((key) => !passportSpec(key));
     expect(missing, "впишите ключи в apps/api/src/instruments/catalogPassport.ts").toEqual([]);
-    const extra = Object.keys(CATALOG_PASSPORT).filter((key) => !byKey.has(key));
+    // вне CATALOG — только методики, описанные заранее (PASSPORT_AHEAD): опечатка в ключе иначе молча оставила бы строку без паспорта
+    const ahead = new Set<string>(PASSPORT_AHEAD);
+    const extra = Object.keys(CATALOG_PASSPORT).filter((key) => !byKey.has(key) && !ahead.has(key));
     expect(extra).toEqual([]);
   });
 
@@ -49,7 +52,7 @@ describe("паспорт каталога: полнота", () => {
       expect(CATALOG_ROLES as readonly string[], key).toContain(spec.role);
       expect(spec.purpose.uk.trim().length, `${key}: purpose.uk`).toBeGreaterThan(10);
       expect(spec.purpose.ru.trim().length, `${key}: purpose.ru`).toBeGreaterThan(10);
-      const description = byKey.get(key)!.draft.description as { uk: string } | undefined;
+      const description = byKey.get(key)?.draft.description as { uk: string } | undefined;
       expect(spec.purpose.uk, `${key}: строка паспорта повторяет описание для обследуемого`).not.toBe(description?.uk ?? "");
       // украинская строка без русских букв, русская — без украинских
       expect(/[ыъэё]/u.test(spec.purpose.uk), `${key}: русские буквы в украинской строке`).toBe(false);
@@ -64,14 +67,14 @@ describe("паспорт каталога: полнота", () => {
      * перед C-SSRS).
      */
     for (const [key, spec] of Object.entries(CATALOG_PASSPORT)) {
-      if (spec.role !== "clinician") continue;
+      if (spec.role !== "clinician" || !byKey.has(key)) continue;
       expect(byKey.get(key)!.draft.administration, `${key}: роль «оцінка фахівцем» у самоотчёта`).toBe("clinician");
     }
   });
 
   test("код методики стоит в её названии", () => {
     for (const [key, spec] of Object.entries(CATALOG_PASSPORT)) {
-      if (!spec.code) continue;
+      if (!spec.code || !byKey.has(key)) continue;
       const title = byKey.get(key)!.draft.title as { uk: string };
       expect(title.uk, `${key}: код «${spec.code}» не найден в названии`).toContain(spec.code);
     }
@@ -138,6 +141,11 @@ describe("паспорт каталога: пороги не выдуманы", 
   test("каждый порог паспорта — граница полосы своей шкалы", () => {
     const wrong: string[] = [];
     for (const [key, spec] of Object.entries(CATALOG_PASSPORT)) {
+      if (!byKey.has(key)) {
+        // методика вне каталога (PASSPORT_AHEAD): полос для сверки нет — и порогов у неё быть не должно
+        if (spec.cutoffs?.length || spec.steps?.length) wrong.push(`${key}: пороги у методики вне каталога`);
+        continue;
+      }
       const scales = scalesOf(key);
       for (const c of spec.cutoffs ?? []) {
         const pool = c.scale ? scales.filter((s) => s.code === c.scale) : scales;
@@ -199,5 +207,30 @@ describe("правила шагов", () => {
     expect(rules.find((r) => r.key === "bat12-bat")!.title).toBe("BAT-12 ≥ 2,54 → BAT-23");
     // у PHQ-4 два шага по разным подшкалам — шкала в названии
     expect(rules.find((r) => r.key === "phq4-gad7")!.title).toBe("PHQ-4 · шкала ANX ≥ 3 → GAD-7");
+  });
+});
+
+/**
+ * Методика каталога без записи в паспорте: сервер не падает и не выдумывает —
+ * роль по тому, кто заполняет, время по числу пунктов, без связей и порогов.
+ * Так стоят и методики учреждения (ключа каталога нет вовсе).
+ */
+describe("методика без записи паспорта", () => {
+  test("роль по умолчанию, без связей, без порогов", () => {
+    const row = rowPassport({ catalogKey: "no-such-key", administration: "clinician" }, 7, "uk", new Map());
+    expect(row).toEqual({ role: "clinician", minutes: 3, purpose: null, cutoffs: [], parent: null, steps: [] });
+    expect(rowPassport({ catalogKey: null, administration: "self" }, 9, "ru", new Map())).toMatchObject({ role: "full", minutes: 3 });
+    const page = surveyPassport({ catalogKey: "no-such-key", administration: "self" }, 20, "uk", new Map());
+    expect(page).toEqual({ role: "full", minutes: 5, purpose: null, cutoffs: [], fullForms: [], shortForms: [], steps: [] });
+    expect(relatedKeys(["no-such-key", null, undefined])).toEqual([]);
+  });
+
+  test("в порядке каталога такая методика стоит среди полных своего направления, по названию", () => {
+    const rows = [
+      { id: "b", catalogKey: "no-such-key", domain: "distress" as const, administration: "self" as const, title: { uk: "Б-методика" } },
+      { id: "a", catalogKey: "phq9", domain: "distress" as const, administration: "self" as const, title: { uk: "Депресія (PHQ-9)" } },
+      { id: "c", catalogKey: "phq2", domain: "distress" as const, administration: "self" as const, title: { uk: "Депресія, коротко (PHQ-2)" } },
+    ];
+    expect(catalogOrder(rows, "uk").map((r) => r.id)).toEqual(["b", "a", "c"]);
   });
 });

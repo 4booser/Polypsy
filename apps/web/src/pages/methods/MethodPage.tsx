@@ -84,6 +84,13 @@ export function MethodPage({
   const retired = !!survey.archivedAt;
   const clinician = survey.administration === "clinician";
   const canAssign = !retired && !clinician && survey.status === "published";
+  /*
+   * Правит ли читающий методику (сервер, SurveyFull.editable): методикой
+   * общего каталога пользуется каждый сотрудник, а правят её администраторы
+   * каталога. «Правити», E и снятие — только тому, кто правит: отказ
+   * сервера после нажатия хуже отсутствующей кнопки.
+   */
+  const editable = survey.editable !== false;
 
   /* назначения — только когда открыт ящик и экран их не принёс: право assignments.manage есть не у всех */
   const ownGrants = useResource(() => api.grants(id).catch(() => [] as SurveyGrant[]), [id], {
@@ -100,7 +107,9 @@ export function MethodPage({
   }, [grants, ownGrants.data]);
 
   useHotkeys({
-    e: () => navigate(`/constructor/${id}`),
+    e: () => {
+      if (editable) navigate(`/constructor/${id}`);
+    },
     a: () => {
       if (canAssign) setDrawer("assign");
     },
@@ -146,6 +155,12 @@ export function MethodPage({
       <Fact key="grp" icon={<Mi.folder size={15} />}>
         {folder ? `${group.title}, «${folder.title}»` : group.title}
       </Fact>
+    ) : null,
+    /* методика общего каталога у того, кто её не правит: группы каталога в его списке групп нет */
+    !editable ? (
+      <span key="lib" title={ut("mc.libraryHint")}>
+        <Fact icon={<ShellIcon name="library" size={15} />}>{ut("mc.libraryFact")}</Fact>
+      </span>
     ) : null,
     /* направление — «что измеряет»: та же полка, что чипы «Напрям» каталога */
     domain ? (
@@ -221,18 +236,22 @@ export function MethodPage({
     ...(user?.role === "superadmin"
       ? [{ label: ut("mc.menuRights"), icon: <Mi.scale size={16} />, onSelect: () => setRightsOpen(true) }]
       : []),
-    retired
-      ? {
-          label: ut("cl.restoreAction"),
-          icon: <Mi.archiveRestore size={16} />,
-          ruled: true,
-          onSelect: () =>
-            void run(async () => {
-              await api.restoreSurvey(id);
-              navigate(0);
-            }, ut("cl.restored")),
-        }
-      : { label: ut("cl.archive"), icon: <Ic.archive size={16} />, ruled: true, onSelect: () => setArchiving(true) },
+    ...(!editable
+      ? []
+      : [
+          retired
+            ? {
+                label: ut("cl.restoreAction"),
+                icon: <Mi.archiveRestore size={16} />,
+                ruled: true,
+                onSelect: () =>
+                  void run(async () => {
+                    await api.restoreSurvey(id);
+                    navigate(0);
+                  }, ut("cl.restored")),
+              }
+            : { label: ut("cl.archive"), icon: <Ic.archive size={16} />, ruled: true, onSelect: () => setArchiving(true) },
+        ]),
   ];
 
   return (
@@ -243,10 +262,12 @@ export function MethodPage({
       actions={
         <>
           {leadAction}
-          <ButtonLink to={`/constructor/${id}`} variant="secondary" title={ut("mc.editHint")}>
-            <ShellIcon name="pencil" size={16} />
-            {ut("cl.editAction")}
-          </ButtonLink>
+          {editable ? (
+            <ButtonLink to={`/constructor/${id}`} variant="secondary" title={ut("mc.editHint")}>
+              <ShellIcon name="pencil" size={16} />
+              {ut("cl.editAction")}
+            </ButtonLink>
+          ) : null}
           {canAssign ? (
             <Button
               variant={assignPrimary ? "primary" : "secondary"}

@@ -83,6 +83,12 @@ import { ITQ_NOT_SCORED, itq, itqNote } from "./itq";
 import { LEC5_NOT_SCORED, lec5, lec5Note } from "./lec5";
 import { tgiSrPlus, tgiSrPlusNote } from "./tgiSrPlus";
 // ── /k-trauma ──
+// ── dp-scales ──
+import { bprs, bprsNote } from "./bprs";
+import { cgiI, cgiINote, cgiS, cgiSNote } from "./cgi";
+import { hama, hamaNote } from "./hama";
+import { hamd17, hamd17Note } from "./hamd17";
+// ── /dp-scales ──
 
 /**
  * Общий каталог общедоступных методик.
@@ -627,7 +633,7 @@ export const CATALOG: CatalogEntry[] = [
     draft: gad2,
     note: gad2Note,
     source:
-      "GAD-2, Kroenke, Spitzer, Williams, Monahan, Löwe, 2007 (public domain); текст — пункти 1–2 GAD-7 каталогу, переклад робочий",
+      "GAD-2, Kroenke, Spitzer, Williams, Monahan, Löwe, 2007 (public domain); текст — пункти 1–2 GAD-7 каталогу: офіційні переклади правовласника «Ukrainian for Ukraine» і «Russian for Ukraine» (phqscreeners.com), українські відповіді — з PHQ-9 наказу МОЗ України №1003",
   },
   {
     key: "core10",
@@ -828,4 +834,59 @@ export const CATALOG: CatalogEntry[] = [
     notScored: LEC5_NOT_SCORED,
   },
   // ── /k-trauma ──
+  // ── dp-scales ──
+  /*
+   * Группа «шкалы, которые заполняет специалист» — стандартные клинические
+   * шкалы психиатрического отделения; docs/instruments/dossiers/clinician.json,
+   * ключ каталога равен ключу карточки.
+   *
+   * Основание у каждой — заявление NINDS CDE (NIH, США) о том, что шкала —
+   * общественное достояние; текст — редакция руководства ECDEU (Guy, 1976,
+   * издание Минздрава США), перевод — собственный рабочий на оба языка. Все
+   * заполняет специалист (administration: "clinician"), результат пациенту не
+   * показывается. Полосы случая риска не открывают — это собственная оценка
+   * того, кто заполнил (обоснование — в hamd17.ts); тревогу поднимают только
+   * суицидальные ответы.
+   *
+   * Не заведены (карточки досье с причиной): MADRS и YMRS — права у Royal
+   * College of Psychiatrists, воспроизведение только с разрешения; полная
+   * C-SSRS — права позволяют, но официальные украинский и русский тексты
+   * полной версии выдаются только по запросу (скринер — выше, `cssrs`).
+   */
+  {
+    key: "hamd17",
+    draft: hamd17,
+    note: hamd17Note,
+    source:
+      "HAM-D-17, Hamilton, J Neurol Neurosurg Psychiatry 1960; Br J Soc Clin Psychol 1967 — суспільне надбання за NINDS CDE; текст — редакція ECDEU Assessment Manual for Psychopharmacology (Guy, 1976, DHEW (ADM) 76-338). Смуги — Zimmerman та ін., J Affect Disord 2013. Переклад робочий",
+  },
+  {
+    key: "hama",
+    draft: hama,
+    note: hamaNote,
+    source:
+      "HAM-A, Hamilton, Br J Med Psychol 1959 — суспільне надбання за NINDS CDE; текст — редакція ECDEU Assessment Manual for Psychopharmacology (Guy, 1976, DHEW (ADM) 76-338). Смуги — Matza та ін., Int J Methods Psychiatr Res 2010. Переклад робочий",
+  },
+  {
+    key: "cgi_s",
+    draft: cgiS,
+    note: cgiSNote,
+    source:
+      "CGI-S (Clinical Global Impression — Severity of Illness), Guy, ECDEU Assessment Manual for Psychopharmacology, 1976, DHEW (ADM) 76-338, с. 217–222 — видання уряду США, суспільне надбання за NINDS CDE; клінічне застосування — Busner, Targum, Psychiatry (Edgmont) 2007. Переклад робочий",
+  },
+  {
+    key: "cgi_i",
+    draft: cgiI,
+    note: cgiINote,
+    source:
+      "CGI-I (Clinical Global Impression — Global Improvement), Guy, ECDEU Assessment Manual for Psychopharmacology, 1976, DHEW (ADM) 76-338, с. 217–222 — видання уряду США, суспільне надбання за NINDS CDE; клінічне застосування — Busner, Targum, Psychiatry (Edgmont) 2007. Переклад робочий",
+  },
+  {
+    key: "bprs",
+    draft: bprs,
+    note: bprsNote,
+    source:
+      "BPRS (18 пунктів), Overall, Gorham, Psychol Rep 1962 — суспільне надбання за NINDS CDE; текст — редакція ECDEU Assessment Manual for Psychopharmacology (Guy, 1976, DHEW (ADM) 76-338). Без смуг: опублікованих порогів немає; орієнтир CGI — Leucht та ін., Br J Psychiatry 2005. Переклад робочий",
+  },
+  // ── /dp-scales ──
 ];

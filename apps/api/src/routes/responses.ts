@@ -44,10 +44,11 @@ import { hasPermission } from "../lib/permissions";
 import {
   assertPatientAccess,
   assertPatientGroupAccess,
-  assertSurveyAccess,
+  assertSurveyUse,
   hasGrant,
   isStaff,
   patientsInScope,
+  surveyResultScope,
 } from "../lib/scope";
 import { log } from "../lib/log";
 import { hasCurrentConsent } from "../lib/consent";
@@ -131,12 +132,12 @@ async function pinnedVersion(
  * призначення минув» он поймёт, а «не знайдено» — нет. Отказ — в журнал:
  * сдача после отзыва — ровно то, что стоит найти потом.
  *
- * Сотрудник сдаёт то, с чем вправе работать (assertSurveyAccess) — как и
- * открывает.
+ * Сотрудник сдаёт то, чем вправе пользоваться (assertSurveyUse: свои
+ * методики и библиотека) — как и открывает.
  */
 async function assertMayTake(c: Context<AppEnv>, user: User, survey: SurveyFull): Promise<void> {
   if (isStaff(user)) {
-    await assertSurveyAccess(user, survey.id);
+    await assertSurveyUse(user, survey.id);
     return;
   }
   if (survey.visibility === "restricted" && !(await hasGrant(user.id, survey.id))) {
@@ -511,7 +512,7 @@ responseRoutes.post("/surveys/:id/responses", async (c) => {
       });
       forbidden("err.permissionRequired", { permission: "administer" });
     }
-    await assertSurveyAccess(user, surveyId);
+    await assertSurveyUse(user, surveyId);
     await assertMayFillFor(c, user, input.onBehalfOf, surveyId);
     const subject = await db.query.users.findFirst({ where: eq(users.id, input.onBehalfOf) });
     if (!subject) notFound("err.patientNotFound");
@@ -1108,7 +1109,8 @@ responseRoutes.get("/me/responses", async (c) => {
  */
 responseRoutes.get("/surveys/:id/responses", requireStaff, requirePermission(CLINICAL_READ), async (c) => {
   const staff = c.get("user");
-  await assertSurveyAccess(staff, c.req.param("id"));
+  // методика библиотеки — только прохождения людей зоны читателя (lib/scope.ts)
+  const zone = await surveyResultScope(staff, c.req.param("id"));
 
   // курсорная пагинация по времени сдачи: limit+1, чтобы узнать «есть ещё».
   // offset-вариант на живой таблице съезжает при вставках между страницами
@@ -1143,6 +1145,7 @@ responseRoutes.get("/surveys/:id/responses", requireStaff, requirePermission(CLI
     .where(
       and(
         eq(responses.surveyId, c.req.param("id")),
+        zone?.(responses.userId),
         versionId ? eq(responses.versionId, versionId) : undefined,
         userId ? eq(responses.userId, userId) : undefined,
         patientGroup

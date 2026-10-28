@@ -25,6 +25,7 @@ import {
   type SurveyKeySheet,
   type SurveyListItem,
   type SurveyListPage,
+  type User,
 } from "@quizzy/shared";
 import { db } from "../db";
 import { asSystem } from "../db/context";
@@ -39,11 +40,15 @@ import { hasPermission } from "../lib/permissions";
 import {
   accessibleGroupIds,
   assertGroupAccess,
-  assertSurveyAccess,
   assertSurveyFolderAccess,
+  assertSurveyManage,
+  assertSurveyUse,
+  canManageSurvey,
   isStaff,
+  resultScope,
   surveyInUse,
-  surveyScopeFilter,
+  surveyResultScope,
+  surveyUseFilter,
 } from "../lib/scope";
 import { patientVisibilityFilter } from "./access";
 import { hasGrant } from "../lib/scope";
@@ -187,8 +192,12 @@ surveyRoutes.get("/", async (c) => {
   const query = parseQuery(c, surveyListQuery);
 
   const filters = [];
-  // зона сотрудника — она же у ссылок паспорта на другие методики каталога (visibleCatalogRows)
-  const scope = isStaff(user) ? await surveyScopeFilter(user) : undefined;
+  /*
+   * Сотрудник видит методики своих групп, свои без группы и библиотеку — общий
+   * каталог (lib/scope.ts). Та же зона — у ссылок паспорта на другие методики
+   * каталога (visibleCatalogRows).
+   */
+  const scope = isStaff(user) ? await surveyUseFilter(user) : undefined;
   if (!isStaff(user)) {
     // пациент видит опубликованные общедоступные плюс назначенные лично ему
     filters.push(patientVisibilityFilter(user.id));
@@ -199,7 +208,6 @@ surveyRoutes.get("/", async (c) => {
      */
     filters.push(eq(surveys.isDemo, false));
   } else if (scope) {
-    // сотрудник видит только методики своих групп
     filters.push(scope);
   }
   if (query.groupId) filters.push(eq(surveys.groupId, query.groupId));
@@ -310,7 +318,11 @@ surveyRoutes.get("/", async (c) => {
         : Number((await db.select({ n: sql<number>`count(*)::int` }).from(surveys).where(where))[0]?.n ?? 0);
   }
 
-  const numbers = await catalogNumbers(rows, user.id, staffView);
+  const numbers = await catalogNumbers(rows, user, staffView);
+  /* какие строки сотрудник правит: группы под управлением читаются один раз на страницу */
+  const managed = staffView ? await accessibleGroupIds(user) : [];
+  const editableRow = (survey: { groupId: string | null; createdBy: string }) =>
+    managed === null || (survey.groupId ? managed.includes(survey.groupId) : survey.createdBy === user.id);
   /*
    * Паспорт строки (роль, время, что измеряет, пороги, шаг скрининга) — только
    * сотруднику, как и прочий паспорт строки: пороги — часть ключа (#141).
@@ -325,7 +337,7 @@ surveyRoutes.get("/", async (c) => {
     return {
       ...survey,
       // источник для персонала («Джерело» паспорта) — только сотруднику, как и в respondentView
-      ...(staffView ? { sourceNote } : {}),
+      ...(staffView ? { sourceNote, editable: editableRow(survey) } : {}),
       title: t(survey.title as never, langOf(c)),
       description: survey.description ? t(survey.description as never, langOf(c)) : null,
       instructions: survey.instructions ? t(survey.instructions as never, langOf(c)) : null,
@@ -363,7 +375,7 @@ surveyRoutes.get("/", async (c) => {
  */
 async function visibleCatalogRows(
   keys: readonly string[],
-  scope: Awaited<ReturnType<typeof surveyScopeFilter>>,
+  scope: Awaited<ReturnType<typeof surveyUseFilter>>,
 ): Promise<Map<string, VisibleCatalogRow>> {
   const found = await db
     .select({ id: surveys.id, key: surveys.catalogKey, title: surveys.title })
@@ -375,7 +387,7 @@ async function visibleCatalogRows(
 /** Числа строки каталога — то, что catalogNumbers считает по строкам страницы */
 interface CatalogNumbers {
   questionCount: number;
-  /** Завершённые прохождения методики — по всей методике; отдаётся только сотруднику */
+  /** Завершённые прохождения методики, видимые сотруднику (lib/scope.ts); отдаётся только ему */
   responseCount: number;
   /** Свои завершённые: completedByMe, а обследуемому — и его responseCount */
   mine: number;
@@ -432,11 +444,13 @@ function textArray(items: readonly (string | null)[]): string {
  *    набора (routes/batteries.ts): это «сколько отвечать». Счёт по survey_id
  *    складывал пункты всех редакций — после каждой правки число в списке
  *    росло вдвое (внешний разбор, CR-044);
- *  - сколько прохождений — сотруднику по всей методике, обследуемому — только
- *    свои. Прежде обследуемому отдавался счёт по всему учреждению — сведение
- *    о других людях, которое ему ни к чему, а в маленьком подразделении и
- *    вовсе указывает на конкретных (волна 13). Правило в коде, а не только в
- *    политике responses;
+ *  - сколько прохождений — сотруднику видимых ему (по своей методике все, по
+ *    методике библиотеки — людей его зоны, lib/scope.ts), обследуемому —
+ *    только свои. Прежде обследуемому отдавался счёт по всему учреждению —
+ *    сведение о других людях, которое ему ни к чему, а в маленьком
+ *    подразделении и вовсе указывает на конкретных (волна 13); методика
+ *    общего каталога у врача иначе несла бы счёт всех отделений. Правило в
+ *    коде, а не только в политике responses;
  *  - назначена лично или доступна всем — разные вещи: назначенную от
  *    человека ждут, и у неё есть срок; показывать их без различия значит не
  *    показать ни того ни другого;
@@ -450,10 +464,12 @@ function textArray(items: readonly (string | null)[]): string {
  */
 async function catalogNumbers(
   rows: readonly { id: string; currentVersionId: string | null }[],
-  me: string,
+  user: User,
   staff: boolean,
 ): Promise<Map<string, CatalogNumbers>> {
   if (!rows.length) return new Map();
+  const me = user.id;
+  const seen = staff ? (await resultScope(user))(sql`r.survey_id`, sql`r.user_id`) : sql`true`;
   const ids = textArray(rows.map((r) => r.id));
   const versions = textArray(rows.map((r) => r.currentVersionId));
   /*
@@ -508,7 +524,7 @@ async function catalogNumbers(
            coalesce(qs.question_count, 0) as question_count,
            ${
              staff
-               ? sql`(select count(*) from responses r where r.survey_id = p.id and r.status = 'completed')::int`
+               ? sql`(select count(*) from responses r where r.survey_id = p.id and r.status = 'completed' and ${seen})::int`
                : sql`null::int`
            } as response_count,
            (select count(*) from responses r
@@ -521,7 +537,7 @@ async function catalogNumbers(
            coalesce(sb.scale_count, 0) as scale_count,
            coalesce(sb.band_count, 0) as band_count,
            (select count(*) from responses r where r.survey_id = p.id and r.status = 'completed'
-             and r.submitted_at > now() - interval '30 days')::int as recent_count,
+             and r.submitted_at > now() - interval '30 days' and ${seen})::int as recent_count,
            coalesce(qs.critical, false) as critical`
                : sql`null::int as version_number, null::int as scale_count, null::int as band_count,
            null::int as recent_count, null::boolean as critical`
@@ -573,7 +589,7 @@ surveyRoutes.get("/:id", async (c) => {
    * методику прячет политика, и загрузка первой отвечала «не найдено» там,
    * где сюита владельцем получала «вне зоны» (волна 13).
    */
-  if (isStaff(user)) await assertSurveyAccess(user, c.req.param("id"));
+  if (isStaff(user)) await assertSurveyUse(user, c.req.param("id"));
   const survey = await getSurvey(c.req.param("id"), null, langOf(c), raw);
   if (!survey) notFound("err.surveyNotFound");
   if (!isStaff(user)) {
@@ -585,16 +601,20 @@ surveyRoutes.get("/:id", async (c) => {
   }
   /*
    * Обследуемому — без ключа: веса, критические пункты, пороги, шкалы (#141).
-   * Сотруднику — с клиническим паспортом (роль, время, пороги, формы, шаг
-   * скрининга); сырой выдаче конструктора паспорт ни к чему — он правит
-   * содержимое, а паспорт содержимым не является.
+   * Сотруднику — с признаком «правит ли он её» (editable): методикой
+   * библиотеки пользуется каждый, а правят её суперадмин и администраторы
+   * каталога, и экран не должен предлагать правку, которая откажет. И с
+   * клиническим паспортом (роль, время, пороги, формы, шаг скрининга); сырой
+   * выдаче конструктора паспорт ни к чему — он правит содержимое, а паспорт
+   * содержимым не является.
    */
+  const editable = isStaff(user) ? await canManageSurvey(user, survey.id) : false;
   const view = async (full: SurveyFull): Promise<SurveyFull> => {
     if (!isStaff(user)) return respondentView(full);
-    if (raw) return full;
-    const visible = await visibleCatalogRows(relatedKeys([full.catalogKey], true), await surveyScopeFilter(user));
+    if (raw) return { ...full, editable };
+    const visible = await visibleCatalogRows(relatedKeys([full.catalogKey], true), await surveyUseFilter(user));
     const items = full.questions.filter((q) => q.type !== "info").length;
-    return { ...full, catalog: surveyPassport(full, items, langOf(c), visible) };
+    return { ...full, editable, catalog: surveyPassport(full, items, langOf(c), visible) };
   };
   if (query.version === undefined || query.version === survey.versionNumber) return c.json(await view(survey));
 
@@ -682,7 +702,7 @@ surveyRoutes.post("/", requireStaff, requirePermission("surveys.edit"), async (c
 
 surveyRoutes.patch("/:id", requireStaff, requirePermission("surveys.edit"), async (c) => {
   const id = c.req.param("id");
-  await assertSurveyAccess(c.get("user"), id);
+  await assertSurveyManage(c.get("user"), id);
   const input = await parseBody(c.req.raw, updateSurveySchema);
   if (input.groupId) await assertGroupAccess(c.get("user"), input.groupId);
 
@@ -880,7 +900,14 @@ surveyRoutes.patch("/:id", requireStaff, requirePermission("surveys.edit"), asyn
 
 /** Копия методики — штатный способ «отредактировать» методику, по которой уже есть данные */
 surveyRoutes.post("/:id/duplicate", requireStaff, requirePermission("surveys.edit"), async (c) => {
-  await assertSurveyAccess(c.get("user"), c.req.param("id"));
+  await assertSurveyUse(c.get("user"), c.req.param("id"));
+  /*
+   * Копию методики, которую сотрудник не правит (библиотека — общий
+   * каталог), он кладёт себе: личным черновиком без группы и папки. Копия в
+   * группе каталога завела бы туда методику руками того, кто каталог не
+   * правит, — и её не смог бы поправить ни он сам, ни отделение.
+   */
+  const ownsSource = await canManageSurvey(c.get("user"), c.req.param("id"));
   /*
    * Исходник — сырой, на всех языках. Копия собиралась из украинской
    * выдачи, и русский текст пунктов терялся, а украинский ложился с
@@ -903,9 +930,9 @@ surveyRoutes.post("/:id/duplicate", requireStaff, requirePermission("surveys.edi
     .insert(surveys)
     .values({
       id: crypto.randomUUID(),
-      groupId: source.groupId,
+      groupId: ownsSource ? source.groupId : null,
       // копия ложится рядом с оригиналом: искать её в корне каталога незачем
-      folderId: source.folderId,
+      folderId: ownsSource ? source.folderId : null,
       title: copyTitle,
       description: normalizeLocalized(source.description as never),
       instructions: normalizeLocalized(source.instructions as never),
@@ -983,7 +1010,7 @@ surveyRoutes.post("/:id/duplicate", requireStaff, requirePermission("surveys.edi
 surveyRoutes.put("/:id/folder", requireStaff, requirePermission("surveys.edit"), async (c) => {
   const user = c.get("user");
   const id = c.req.param("id");
-  await assertSurveyAccess(user, id);
+  await assertSurveyManage(user, id);
   const input = await parseBody(c.req.raw, moveSurveySchema);
 
   const survey = await db.query.surveys.findFirst({ where: eq(surveys.id, id) });
@@ -1007,7 +1034,8 @@ surveyRoutes.put("/:id/folder", requireStaff, requirePermission("surveys.edit"),
 /** История версий методики со счётчиком прохождений на каждой */
 surveyRoutes.get("/:id/versions", requireStaff, requirePermission("surveys.read"), async (c) => {
   const id = c.req.param("id");
-  await assertSurveyAccess(c.get("user"), id);
+  // прохождения версии — видимые читающему: у методики библиотеки только людей его зоны (lib/scope.ts)
+  const zone = await surveyResultScope(c.get("user"), id);
 
   const rows = await db
     .select({
@@ -1017,7 +1045,8 @@ surveyRoutes.get("/:id/versions", requireStaff, requirePermission("surveys.read"
       note: surveyVersions.note,
       createdBy: surveyVersions.createdBy,
       createdAt: surveyVersions.createdAt,
-      responseCount: sql<number>`(select count(*) from responses r where r.version_id = "survey_versions"."id")`,
+      responseCount: sql<number>`(select count(*) from responses r where r.version_id = "survey_versions"."id"
+        ${zone ? sql`and ${zone(sql`r.user_id`)}` : sql``})`,
     })
     .from(surveyVersions)
     .where(eq(surveyVersions.surveyId, id))
@@ -1043,7 +1072,7 @@ surveyRoutes.get("/:id/versions", requireStaff, requirePermission("surveys.read"
  */
 surveyRoutes.get("/:id/versions/:a/diff/:b", requireStaff, requirePermission("surveys.read"), async (c) => {
   const id = c.req.param("id");
-  await assertSurveyAccess(c.get("user"), id);
+  await assertSurveyUse(c.get("user"), id);
 
   const [before, after] = await Promise.all([
     getSurvey(id, c.req.param("a"), langOf(c)),
@@ -1069,7 +1098,7 @@ surveyRoutes.get("/:id/versions/:a/diff/:b", requireStaff, requirePermission("su
  */
 surveyRoutes.get("/:id/key", requireStaff, requirePermission("surveys.read"), async (c) => {
   const id = c.req.param("id");
-  await assertSurveyAccess(c.get("user"), id);
+  await assertSurveyUse(c.get("user"), id);
   const survey = await getSurvey(id, null, langOf(c));
   if (!survey) notFound("err.surveyNotFound");
 
@@ -1165,7 +1194,7 @@ surveyRoutes.get("/:id/key", requireStaff, requirePermission("surveys.read"), as
 /** Выгрузка методики в том виде, в каком её принимает конструктор */
 surveyRoutes.get("/:id/export", requireStaff, requirePermission("surveys.read"), async (c) => {
   const id = c.req.param("id");
-  await assertSurveyAccess(c.get("user"), id);
+  await assertSurveyUse(c.get("user"), id);
   const survey = await getSurvey(id, null, "uk", true);
   if (!survey) notFound("err.surveyNotFound");
 
@@ -1283,7 +1312,7 @@ surveyRoutes.post("/import", requireStaff, requirePermission("surveys.edit"), as
 surveyRoutes.delete("/:id", requireStaff, requirePermission("surveys.publish"), async (c) => {
   const user = c.get("user");
   const id = c.req.param("id");
-  await assertSurveyAccess(user, id);
+  await assertSurveyManage(user, id);
 
   const survey = await db.query.surveys.findFirst({ where: eq(surveys.id, id) });
   if (!survey) notFound("err.surveyNotFound");
@@ -1316,7 +1345,7 @@ surveyRoutes.delete("/:id", requireStaff, requirePermission("surveys.publish"), 
 /** Возврат методики в работу. Снятие — решение обратимое, в этом и смысл. */
 surveyRoutes.post("/:id/restore", requireStaff, requirePermission("surveys.publish"), async (c) => {
   const id = c.req.param("id");
-  await assertSurveyAccess(c.get("user"), id);
+  await assertSurveyManage(c.get("user"), id);
 
   const survey = await db.query.surveys.findFirst({ where: eq(surveys.id, id) });
   if (!survey) notFound("err.surveyNotFound");

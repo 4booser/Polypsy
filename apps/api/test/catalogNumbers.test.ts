@@ -1,8 +1,9 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { inArray } from "drizzle-orm";
-import type { SurveyListItem, SurveyListPage } from "@quizzy/shared";
+import type { SurveyListItem, SurveyListPage, User } from "@quizzy/shared";
 import { surveyAccess } from "../src/db/schema";
 import { requestSql } from "../src/lib/opsSql";
+import { resultScope, type ResultScope } from "../src/lib/scope";
 import { adminA, api, db, eq, groupA, makeUser, patient, responsesTable, root, sql, surveys, type Person } from "./fixtures";
 
 /**
@@ -19,6 +20,12 @@ import { adminA, api, db, eq, groupA, makeUser, patient, responsesTable, root, s
  * шкалы), завершённые, давние и брошенные прохождения, своё и чужое,
  * действующее и истёкшее назначения; остальные строки — что лежит в базе
  * от соседних файлов, они сверяются тем же оракулом.
+ *
+ * Одно отличие от прежнего запроса намеренное: прохождения сотруднику
+ * считаются видимые ему (lib/scope.ts, resultScope) — у методики общего
+ * каталога только люди его зоны. Условие видимости в оракул берётся то же,
+ * что у маршрута: проверяется здесь свёртка чисел, а правило видимости —
+ * в test/catalogLibrary.test.ts.
  */
 
 const tag = crypto.randomUUID().slice(0, 8);
@@ -27,9 +34,10 @@ let current: string;
 let second: string;
 let other: Person;
 
-/** Прежний подсчёт строки — дословно из routes/surveys.ts до волны 27 */
-async function oracle(ids: string[], me: string, staff: boolean) {
+/** Прежний подсчёт строки — дословно из routes/surveys.ts до волны 27; `seen` — видимость прохождений сотруднику */
+async function oracle(ids: string[], me: string, staff: boolean, seen?: ResultScope) {
   if (!ids.length) return new Map();
+  const visible = seen ? sql`and ${seen(sql`r.survey_id`, sql`r.user_id`)}` : sql``;
   const rows = await db.execute<Record<string, unknown> & { id: string }>(sql`
     select s.id,
       (select v.version from survey_versions v where v.id = s.current_version_id) as version_number,
@@ -37,13 +45,13 @@ async function oracle(ids: string[], me: string, staff: boolean) {
       (select count(*) from scale_bands b join scales sc on sc.id = b.scale_id
         where sc.version_id = s.current_version_id) as band_count,
       (select count(*) from responses r where r.survey_id = s.id
-        and r.status = 'completed' and r.submitted_at > now() - interval '30 days') as recent,
+        and r.status = 'completed' and r.submitted_at > now() - interval '30 days' ${visible}) as recent,
       exists (select 1 from options o join questions q on q.id = o.question_id
         where q.version_id = s.current_version_id and o.risk_flag) as critical,
       (select count(*) from questions q where q.version_id = s.current_version_id and q.type <> 'info') as question_count,
       ${
         staff
-          ? sql`(select count(*) from responses r where r.survey_id = s.id and r.status = 'completed')`
+          ? sql`(select count(*) from responses r where r.survey_id = s.id and r.status = 'completed' ${visible})`
           : sql`(select count(*) from responses r where r.survey_id = s.id and r.user_id = ${me} and r.status = 'completed')`
       } as response_count,
       (select count(*) from responses r where r.survey_id = s.id and r.user_id = ${me} and r.status = 'completed') as mine,
@@ -194,11 +202,12 @@ async function listed(path: string, who: Person) {
 
 describe("числа строк каталога — те же, что считал прежний запрос", () => {
   test("сотрудник группы: весь список и страница", async () => {
+    const seen = await resultScope({ id: adminA.id, role: "admin" } as User);
     const all = await listed("/api/surveys?archived=1", adminA);
     expect(all.items.some((s) => s.id === current)).toBe(true);
-    expectSame(all.items, await oracle(all.items.map((s) => s.id), adminA.id, true), true);
+    expectSame(all.items, await oracle(all.items.map((s) => s.id), adminA.id, true, seen), true);
     const page = await listed(`/api/surveys?limit=2&offset=1&status=draft,published`, adminA);
-    expectSame(page.items, await oracle(page.items.map((s) => s.id), adminA.id, true), true);
+    expectSame(page.items, await oracle(page.items.map((s) => s.id), adminA.id, true, seen), true);
   });
 
   test("суперадмин: всё учреждение", async () => {

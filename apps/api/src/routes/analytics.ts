@@ -34,8 +34,9 @@ import {
   assertGroupAccess,
   assertPatientAccess,
   assertPatientGroupAccess,
-  assertSurveyAccess,
-  surveyScopeFilter,
+  resultScope,
+  surveyResultScope,
+  surveyUseFilter,
 } from "../lib/scope";
 import { SMALL_CELL_FLOOR, cell, suppress } from "../lib/privacy";
 import { currentWeek, localToMoment, localWeek, patientRespondent, periodFrom, periodTo } from "../lib/population";
@@ -102,12 +103,16 @@ const EVENT_SAMPLE = 2000;
  * нельзя.
  */
 analyticsRoutes.get("/overview", async (c) => {
-  // сводка считается только по методикам, доступным этому сотруднику
-  const scope = await surveyScopeFilter(c.get("user"));
-  const surveyRows = await db.select().from(surveys).where(scope);
-  const scopedIds = surveyRows.map((s) => s.id);
+  /*
+   * Методики — те, которыми сотрудник пользуется (свои и библиотека);
+   * прохождения — те, что ему видны: по своим методикам все, по методикам
+   * библиотеки — людей его зоны (lib/scope.ts). Иначе сводка врача считала
+   * бы обследования каталога по всему учреждению.
+   */
+  const user = c.get("user");
+  const surveyRows = await db.select().from(surveys).where(await surveyUseFilter(user));
 
-  if (!scopedIds.length) {
+  if (!surveyRows.length) {
     return c.json({
       surveyCount: 0, publishedCount: 0, responseCount: 0, respondentCount: 0,
       avgDurationMs: 0, completionRate: 0, topSurveys: [], severityBreakdown: [],
@@ -115,7 +120,8 @@ analyticsRoutes.get("/overview", async (c) => {
     } satisfies OverviewAnalytics);
   }
 
-  const idList = sql`(${sql.join(scopedIds.map((id) => sql`${id}`), sql`, `)})`;
+  const seen = await resultScope(user);
+  const visible = seen(sql`r.survey_id`, sql`r.user_id`);
   const liveSince = new Date(Date.now() - LIVE_DRAFT_MS).toISOString();
   /*
    * Прохождения пациентов — не сотрудников (lib/population.ts). Бланк, который
@@ -133,13 +139,13 @@ analyticsRoutes.get("/overview", async (c) => {
         count(distinct r.user_id) filter (where r.status = 'completed')::int as respondents,
         coalesce(avg(r.duration_ms) filter (where r.status = 'completed' and r.duration_ms > 0), 0)::int as avg_ms,
         count(*) filter (where r.status = 'completed' and not r.reliable)::int as unreliable
-      from responses r where r.survey_id in ${idList} and ${patients}
+      from responses r where ${visible} and ${patients}
     `),
     db.execute<{ survey_id: string; n: number; avg_ms: number } & Record<string, unknown>>(sql`
       select r.survey_id, count(*)::int as n,
              coalesce(avg(r.duration_ms) filter (where r.duration_ms > 0), 0)::int as avg_ms
       from responses r
-      where r.survey_id in ${idList} and r.status = 'completed' and ${patients}
+      where ${visible} and r.status = 'completed' and ${patients}
       group by r.survey_id order by n desc limit 10
     `),
     /*
@@ -162,7 +168,7 @@ analyticsRoutes.get("/overview", async (c) => {
       from response_scores rs
       join responses r on r.id = rs.response_id
       join scales sc on sc.id = rs.scale_id
-      where r.survey_id in ${idList}
+      where ${visible}
         and r.status = 'completed'
         and r.reliable
         and ${patients}
@@ -173,7 +179,7 @@ analyticsRoutes.get("/overview", async (c) => {
     db.execute<{ date: string; n: number } & Record<string, unknown>>(sql`
       select to_char(r.submitted_at at time zone ${env.institutionTz}, 'YYYY-MM-DD') as date, count(*)::int as n
       from responses r
-      where r.survey_id in ${idList} and r.status = 'completed' and r.submitted_at is not null and ${patients}
+      where ${visible} and r.status = 'completed' and r.submitted_at is not null and ${patients}
       group by 1 order by 1
     `),
     /*
@@ -185,7 +191,7 @@ analyticsRoutes.get("/overview", async (c) => {
     db.execute<{ id: string; user_id: string | null; survey_id: string; started_at: string; last_saved_at: string | null } & Record<string, unknown>>(sql`
       select r.id, r.user_id, r.survey_id, r.started_at, r.last_saved_at
       from responses r
-      where r.survey_id in ${idList} and r.status = 'in_progress'
+      where ${visible} and r.status = 'in_progress'
         and coalesce(r.last_saved_at, r.started_at) > ${liveSince}
         and ${patients}
       order by coalesce(r.last_saved_at, r.started_at) desc
@@ -269,11 +275,8 @@ const TREND_WEEKS = 26;
  * 5. Сотрудник на себя — не пациент (lib/population.ts).
  */
 analyticsRoutes.get("/severity-trend", async (c) => {
-  const scope = await surveyScopeFilter(c.get("user"));
-  const scoped = await db.select({ id: surveys.id }).from(surveys).where(scope);
-  if (!scoped.length) return c.json({ weeks: [], unbanded: 0, unreliable: 0 } satisfies SeverityTrendResult);
-
-  const idList = sql`(${sql.join(scoped.map((s) => sql`${s.id}`), sql`, `)})`;
+  // прохождения, видимые сотруднику: свои методики целиком, библиотека — люди его зоны (lib/scope.ts)
+  const seen = await resultScope(c.get("user"));
 
   /*
    * Неделя считается в базе через date_trunc, а не в приложении делением
@@ -321,7 +324,7 @@ analyticsRoutes.get("/severity-trend", async (c) => {
       from responses r
       left join response_scores rs on rs.response_id = r.id
       left join scales sc on sc.id = rs.scale_id
-      where r.survey_id in ${idList}
+      where ${seen(sql`r.survey_id`, sql`r.user_id`)}
         and r.status = 'completed'
         and r.submitted_at is not null
         and r.submitted_at >= ${localToMoment(firstWeek)}
@@ -387,7 +390,7 @@ analyticsRoutes.get("/groups/:id", async (c) => {
 
   /*
    * Сначала «есть ли такая группа», потом «моя ли она» — тот же порядок, что
-   * у assertSurveyAccess, и он не косметический.
+   * у assertSurveyUse, и он не косметический.
    *
    * Обратный порядок отвечал «нельзя» на несуществующий идентификатор, то
    * есть подтверждал существование группы тому, кому её и не показывают:
@@ -423,7 +426,15 @@ analyticsRoutes.get("/groups/:id", async (c) => {
   if (!surveyRows.length) return c.json(empty);
 
   const ids = surveyRows.map((s) => s.id);
+  /*
+   * Методики группы — и прохождения, видимые читающему: у своей группы это
+   * все, у группы библиотеки (её видят суперадмин и администраторы каталога)
+   * — суперадмину все, администратору каталога — люди его зоны: правит он
+   * каталог, а не данные всех отделений (lib/scope.ts).
+   */
+  const seen = await resultScope(user);
   const idList = sql`(${sql.join(ids.map((id) => sql`${id}`), sql`, `)})`;
+  const inGroup = sql`r.survey_id in ${idList} and ${seen(sql`r.survey_id`, sql`r.user_id`)}`;
 
   /*
    * Считает база, а не приложение — по тем же соображениям, что и сводка:
@@ -448,14 +459,14 @@ analyticsRoutes.get("/groups/:id", async (c) => {
         count(distinct r.user_id) filter (where r.status = 'completed')::int  as respondents,
         coalesce(avg(r.duration_ms) filter (where r.status = 'completed' and r.duration_ms > 0), 0)::int as avg_ms,
         count(*) filter (where r.status = 'completed' and not r.reliable)::int as unreliable
-      from responses r where r.survey_id in ${idList} and ${patients}
+      from responses r where ${inGroup} and ${patients}
     `),
     db.execute<{ severity: Severity; n: number } & Record<string, unknown>>(sql`
       select rs.severity, count(*)::int as n
       from response_scores rs
       join responses r on r.id = rs.response_id
       join scales sc on sc.id = rs.scale_id
-      where r.survey_id in ${idList} and rs.severity is not null and sc.kind = 'clinical'
+      where ${inGroup} and rs.severity is not null and sc.kind = 'clinical'
         and r.status = 'completed' and r.reliable and ${patients}
       group by rs.severity
     `),
@@ -464,7 +475,7 @@ analyticsRoutes.get("/groups/:id", async (c) => {
              count(*)::int as n,
              count(distinct r.user_id)::int as people
       from responses r
-      where r.survey_id in ${idList} and r.status = 'completed' and ${patients}
+      where ${inGroup} and r.status = 'completed' and ${patients}
       group by r.survey_id
     `),
     db.execute<{ survey_id: string; severity: Severity; n: number } & Record<string, unknown>>(sql`
@@ -472,14 +483,14 @@ analyticsRoutes.get("/groups/:id", async (c) => {
       from response_scores rs
       join responses r on r.id = rs.response_id
       join scales sc on sc.id = rs.scale_id
-      where r.survey_id in ${idList} and rs.severity is not null and sc.kind = 'clinical'
+      where ${inGroup} and rs.severity is not null and sc.kind = 'clinical'
         and r.status = 'completed' and r.reliable and ${patients}
       group by r.survey_id, rs.severity
     `),
     db.execute<{ date: string; n: number } & Record<string, unknown>>(sql`
       select to_char(r.submitted_at at time zone ${env.institutionTz}, 'YYYY-MM-DD') as date, count(*)::int as n
       from responses r
-      where r.survey_id in ${idList} and r.status = 'completed' and r.submitted_at is not null and ${patients}
+      where ${inGroup} and r.status = 'completed' and r.submitted_at is not null and ${patients}
       group by 1 order by 1
     `),
     /*
@@ -493,7 +504,8 @@ analyticsRoutes.get("/groups/:id", async (c) => {
       select count(distinct ac.id)::int as n
       from alert_cases ac
       join risk_alerts ra on ra.case_id = ac.id
-      where ra.survey_id in ${idList} and ac.acknowledged_at is null
+      where ra.survey_id in ${idList} and ${seen(sql`ra.survey_id`, sql`ra.user_id`)}
+        and ac.acknowledged_at is null
     `),
   ]);
 
@@ -554,7 +566,12 @@ analyticsRoutes.get("/groups/:id", async (c) => {
 analyticsRoutes.get("/surveys/:id", async (c) => {
   const surveyId = c.req.param("id");
   const user = c.get("user");
-  await assertSurveyAccess(user, surveyId);
+  /*
+   * Чьи прохождения: у своей методики — все, у методики библиотеки (общий
+   * каталог) — людей зоны читателя (lib/scope.ts). Условие уходит в срез
+   * ниже вместе с человеком и группой — ко всем числам экрана сразу.
+   */
+  const zone = await surveyResultScope(user, surveyId);
 
   /*
    * Срез: период, версия и — по желанию — один человек или группа людей.
@@ -572,6 +589,7 @@ analyticsRoutes.get("/surveys/:id", async (c) => {
   if (query.userId) await assertPatientAccess(user, query.userId);
   if (query.patientGroup) await assertPatientGroupAccess(user, query.patientGroup);
   const whose = [
+    zone?.(responses.userId),
     query.userId ? eq(responses.userId, query.userId) : undefined,
     query.patientGroup
       ? sql`${responses.userId} in (select patient_id from patient_group_members where group_id = ${query.patientGroup})`
@@ -592,7 +610,8 @@ analyticsRoutes.get("/surveys/:id", async (c) => {
       id: surveyVersions.id,
       version: surveyVersions.version,
       note: surveyVersions.note,
-      responseCount: sql<number>`(select count(*) from responses r where r.version_id = "survey_versions"."id" and r.status = 'completed')`,
+      responseCount: sql<number>`(select count(*) from responses r where r.version_id = "survey_versions"."id" and r.status = 'completed'
+        ${zone ? sql`and ${zone(sql`r.user_id`)}` : sql``})`,
     })
     .from(surveyVersions)
     .where(eq(surveyVersions.surveyId, surveyId))
@@ -1325,14 +1344,15 @@ analyticsRoutes.get("/surveys/:id/export", requirePermission("export.full"), asy
   const surveyId = c.req.param("id");
   /* «?profile=deidentified» здесь — не обезличивание, а отказ: см. analyticsExportQuery */
   const { purpose } = parseQuery(c, analyticsExportQuery);
-  await assertSurveyAccess(c.get("user"), surveyId);
+  // методика библиотеки — только прохождения людей зоны выгружающего (lib/scope.ts)
+  const zone = await surveyResultScope(c.get("user"), surveyId);
   const survey = await getSurvey(surveyId);
   if (!survey) notFound("err.surveyNotFound");
 
   const responseRows = await db
     .select()
     .from(responses)
-    .where(eq(responses.surveyId, surveyId))
+    .where(and(eq(responses.surveyId, surveyId), zone?.(responses.userId)))
     .orderBy(desc(responses.submittedAt));
 
   // список прохождений — одним параметром: параметром на id выгрузка выше 65 533 прохождений отвечала 500 (#184)

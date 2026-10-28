@@ -35,11 +35,19 @@ async function catalogList(call: typeof api, query = ""): Promise<{ items: Row[]
   return res.body;
 }
 
+/*
+ * Строки записей CATALOG: база общая на процесс, и соседние файлы кладут в
+ * группу каталога свои методики (без ключа или с пробным ключом) — порядок и
+ * паспорт проверяются на методиках самого каталога.
+ */
+const CATALOG_KEYS = new Set(CATALOG.map((e) => e.key));
+const ofCatalog = (items: Row[]) => items.filter((s) => s.catalogKey && CATALOG_KEYS.has(s.catalogKey));
+
 describe("каталог: порядок для специалиста (?sort=catalog)", () => {
   test(
     "направления — по порядку чипов, внутри — полные первыми, короткие формы под своей полной",
     async () => {
-      const { items } = await catalogList(api);
+      const items = ofCatalog((await catalogList(api)).items);
       expect(items.length).toBe(CATALOG.length);
       const keys = items.map((s) => s.catalogKey!);
 
@@ -115,7 +123,7 @@ describe("каталог: паспорт строки", () => {
   test(
     "у каждой строки — роль, время и что измеряет; у короткой формы — полная и шаг с переходом",
     async () => {
-      const { items } = await catalogList(api);
+      const items = ofCatalog((await catalogList(api)).items);
       for (const s of items) {
         const spec = CATALOG_PASSPORT[s.catalogKey!]!;
         expect(s.catalog?.role, s.catalogKey!).toBe(spec.role);

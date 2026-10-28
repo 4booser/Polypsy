@@ -2,11 +2,11 @@ import { Hono } from "hono";
 import { and, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../db";
-import { decisionRules, ruleHits, surveys, users } from "../db/schema";
+import { decisionRules, ruleHits, users } from "../db/schema";
 import { audit } from "../lib/audit";
 import { badRequest, conflict, langOf, notFound, parseBody } from "../lib/http";
 import { hitViews } from "../lib/ruleHits";
-import { accessibleGroupIds, assertGroupAccess, canAccessGroup, canAccessSurvey, surveyScopeFilter } from "../lib/scope";
+import { accessibleGroupIds, assertGroupAccess, canAccessGroup, canSeeResult, resultScopeCondition } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
 export const decisionRoutes = new Hono<AppEnv>();
@@ -172,16 +172,14 @@ decisionRoutes.patch("/rules/:id", requirePermission("decisions.manage"), async 
 
 decisionRoutes.get("/hits", requirePermission("alerts.review"), async (c) => {
   const user = c.get("user");
-  const scope = await surveyScopeFilter(user);
-  const scoped = await db.select({ id: surveys.id }).from(surveys).where(scope);
-  const surveyIds = scoped.map((s) => s.id);
-  if (!surveyIds.length) return c.json({ items: [] });
+  // срабатывания — как прохождения, по которым они сработали: свои методики целиком, библиотека — люди зоны (lib/scope.ts)
+  const visible = await resultScopeCondition(user);
 
   const status = c.req.query("status") ?? "suggested";
   /*
    * ?userId= — предложения по одному человеку: ящик назначения в его карточке
    * показывает «Рекомендовано: PHQ-9 — PHQ-2 = 4 від 12.10» и назначает одним
-   * нажатием. Зона — та же (методики читающего): параметр только сужает.
+   * нажатием. Зона — та же (resultScopeCondition): параметр только сужает.
    */
   const userId = c.req.query("userId")?.trim() || null;
   const rows = await db
@@ -191,7 +189,7 @@ decisionRoutes.get("/hits", requirePermission("alerts.review"), async (c) => {
     .leftJoin(users, eq(users.id, ruleHits.userId))
     .where(
       and(
-        inArray(ruleHits.surveyId, surveyIds),
+        visible?.(ruleHits.surveyId, ruleHits.userId),
         eq(ruleHits.status, status),
         userId ? eq(ruleHits.userId, userId) : undefined,
       ),
@@ -221,12 +219,13 @@ decisionRoutes.patch("/hits/:id", requirePermission("alerts.review"), async (c) 
   const row = await db.query.ruleHits.findFirst({ where: eq(ruleHits.id, id) });
   if (!row) notFound("err.hitNotFound");
   /*
-   * Зона — как у списка срабатываний (surveyScopeFilter) и у политики строк
-   * rule_hits: решение по сигналу чужой группы методик для сотрудника не
-   * существует (волна 16, проход по маршрутам с чужими id). Владельцем базы
-   * сюда записывалось решение по любому срабатыванию по известному id.
+   * Зона — как у списка срабатываний (resultScopeCondition) и у политики
+   * строк rule_hits: решение по сигналу чужой группы методик — и по сигналу
+   * методики библиотеки о человеке вне зоны — для сотрудника не существует
+   * (волна 16, проход по маршрутам с чужими id). Владельцем базы сюда
+   * записывалось решение по любому срабатыванию по известному id.
    */
-  if (!(await canAccessSurvey(user, row!.surveyId))) notFound("err.hitNotFound");
+  if (!(await canSeeResult(user, row!))) notFound("err.hitNotFound");
   // решено раньше — тот же исход, что проигранная гонка: состояние сменилось,
   // пока человек смотрел на устаревший список; 409 — клиент его перечитает
   if (row!.status !== "suggested") conflict("err.hitAlreadyDecided");

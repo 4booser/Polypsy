@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, or, sql } from "drizzle-orm";
 import {
   serverText,
   surveyFolderInputSchema,
@@ -10,7 +10,7 @@ import { db } from "../db";
 import { surveyFolders } from "../db/schema";
 import { audit } from "../lib/audit";
 import { badRequest, langOf, parseBody } from "../lib/http";
-import { accessibleGroupIds, assertGroupAccess, assertSurveyFolderAccess } from "../lib/scope";
+import { CATALOG_GROUP_ID, accessibleGroupIds, assertGroupAccess, assertSurveyFolderAccess } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
 /**
@@ -42,6 +42,12 @@ surveyFolderRoutes.use("*", requireAuth, requireStaff);
 /**
  * Все видимые папки плоским списком с parentId; ?groupId= — одной группы.
  *
+ * Видимые — своих групп и группы библиотеки (общий каталог, lib/scope.ts):
+ * методиками каталога пользуется каждый, и полки каталога — часть того, чем
+ * он пользуется. Без них методика, которую администраторы каталога положили
+ * в папку, пропала бы из корня каталога у всех остальных. Править такие
+ * папки — по-прежнему тем, кто правит группу (assertSurveyFolderAccess).
+ *
  * Плоский список, а не дерево и не «дети одной папки». Крошкам нужны предки,
  * экрану — дети, и плоский список отвечает на оба вопроса одним запросом:
  * дерево из него клиент собирает за один проход. Дерево с сервера пришлось
@@ -61,9 +67,7 @@ surveyFolderRoutes.get("/", requirePermission("surveys.read"), async (c) => {
   const visible =
     allowed === null
       ? undefined
-      : allowed.length
-        ? inArray(surveyFolders.groupId, allowed)
-        : sql`1 = 0`;
+      : or(eq(surveyFolders.groupId, CATALOG_GROUP_ID), allowed.length ? inArray(surveyFolders.groupId, allowed) : undefined);
   const where = and(visible, groupId ? eq(surveyFolders.groupId, groupId) : undefined);
 
   const rows = await db

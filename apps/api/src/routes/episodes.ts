@@ -15,7 +15,7 @@ import { fullNameOf } from "../lib/auth";
 import { decryptField, encryptField } from "../lib/crypto";
 import { addMonths } from "../lib/day";
 import { badRequest, langOf, notFound, parseBody } from "../lib/http";
-import { assertPatientAccess, surveyScopeFilter } from "../lib/scope";
+import { assertPatientAccess, surveyScopeFilterFor } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
 /**
@@ -207,7 +207,8 @@ episodeRoutes.post("/:id/close", requirePermission("episodes.manage"), async (c)
 
   const input = await parseBody(c.req.raw, closeSchema);
 
-  const scope = await surveyScopeFilter(user);
+  // случаи — по методикам, результаты которых о человеке видны закрывающему: свои и библиотека (lib/scope.ts)
+  const scope = await surveyScopeFilterFor(user, row.patientId);
   const visible = await db.select({ id: surveys.id }).from(surveys).where(scope);
   const [open] = await db
     .select({
