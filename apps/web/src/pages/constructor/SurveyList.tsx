@@ -13,6 +13,7 @@ import { useAuth } from "../../auth";
 import { useResource } from "../../useResource";
 import { eachOf, Loading, useAction, useToast } from "../../ui";
 import { AlertChip, AlertStrip, KV } from "../../ui/records";
+import { bandRange } from "../../charts/ladder";
 import { DataTable, type Column } from "../../ui/DataTable";
 import { Drawer, DrawerSection } from "../../ui/Drawer";
 import { BulkBar, FilterBar, ViewPills, type ViewItem } from "../../ui/filters";
@@ -536,7 +537,7 @@ function PeekBody({
                         .sort((a, b) => a.minScore - b.minScore)
                         .map((b) => (
                           <div key={b.id} className="flex items-center gap-2.5 text-small">
-                            <span className="min-w-14 shrink-0 whitespace-nowrap font-bold tabular-nums text-text-2">{`${bound(b.minScore)}–${bound(b.maxScore)}`}</span>
+                            <span className="min-w-14 shrink-0 whitespace-nowrap font-bold tabular-nums text-text-2">{bandRange({ min: b.minScore, max: b.maxScore }, bound)}</span>
                             <SeverityTag small level={SEVERITY[b.severity] ?? "none"}>
                               {b.label}
                             </SeverityTag>
