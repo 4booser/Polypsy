@@ -39,13 +39,13 @@ import { namesOf } from "../lib/names";
 import { langOf, notFound, parseQuery } from "../lib/http";
 import { birthYearOf } from "../lib/privacy";
 import {
-  accessibleGroupIds,
   accessiblePatientIds,
   assertPatientAccess,
   assertPatientGroupAccess,
   isSuperadmin,
   patientsInScope,
   surveyScopeFilterFor,
+  surveyUseSql,
 } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
@@ -113,14 +113,12 @@ patientRoutes.get("/", async (c) => {
    * показывают больше нигде. В бою дату резала политика responses, и один
    * и тот же человек в списке был «сдавал вчера» владельцем базы и «не
    * сдавал» ролью приложения (волна 13, обход всех GET под ролью).
+   *
+   * Методики — те, которыми читатель пользуется: свои и библиотека (общий
+   * каталог). Люди списка — уже из его зоны, а у них прохождения библиотеки
+   * видны (lib/scope.ts); без неё врач видел у каждого «замеров нет».
    */
-  const groupIds = await accessibleGroupIds(user);
-  const ownSurvey =
-    groupIds === null
-      ? undefined
-      : groupIds.length
-        ? sql`(s.group_id in ${groupIds} or (s.group_id is null and s.created_by = ${user.id}))`
-        : sql`(s.group_id is null and s.created_by = ${user.id})`;
+  const ownSurvey = await surveyUseSql(user, "s");
   const lastResponse = ownSurvey
     ? sql<string | null>`(select max(r.submitted_at) from responses r join surveys s on s.id = r.survey_id
         where r.user_id = "users"."id" and r.status = 'completed' and ${ownSurvey})`

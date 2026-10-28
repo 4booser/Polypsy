@@ -6,7 +6,7 @@ import { responses, riskAlerts } from "../db/schema";
 import { audit } from "./audit";
 import { badRequest, forbidden, notFound } from "./http";
 import { hasPermission } from "./permissions";
-import { canAccessSurvey, isStaff } from "./scope";
+import { canSeeResult, isStaff } from "./scope";
 
 /**
  * Право, которым закрыто чтение клинических данных чужого человека.
@@ -47,10 +47,12 @@ export interface ResponseRef {
  *     requirePermission. Отказ — тем же текстом «нужно patients.read» и той
  *     же строкой журнала access.denied: для читающего журнал и экран это
  *     один и тот же запрет, каким бы входом в него ни упёрлись.
- *  3. Методика в зоне ответственности (canAccessSurvey). Отказ — «не
- *     найдено», а не «нельзя»: так отвечали заключения и печать, и так же
- *     в бою отвечает политика строк, которая чужое прохождение прячет, — 403
- *     подтверждал бы, что у человека такое прохождение есть.
+ *  3. Запись в зоне ответственности (canSeeResult): методика своя — или
+ *     методика библиотеки (общий каталог), а человек в зоне сотрудника.
+ *     Отказ — «не найдено», а не «нельзя»: так отвечали заключения и
+ *     печать, и так же в бою отвечает политика строк, которая чужое
+ *     прохождение прячет, — 403 подтверждал бы, что у человека такое
+ *     прохождение есть.
  *
  * Своё прохождение сюда не приходит — оно отдельным условием в
  * assertResponseRead ниже: это не чтение чужих клинических данных, и право
@@ -69,8 +71,8 @@ export interface AlertRef {
 
 /**
  * Тревога — тем же правилом, что прохождение, из которого она поднята
- * (волна 16). Зона тревоги — зона методики: так её режет список тревог
- * (routes/alerts.ts, surveyScopeFilter) и политика строк risk_alerts. Отказ
+ * (волна 16). Зона тревоги — зона её результата: так её режет список тревог
+ * (routes/alerts.ts, resultScopeCondition) и политика строк risk_alerts. Отказ
  * «не найдено» — своим словом: читающий журнал должен видеть, во что
  * упёрлись, а экран — что именно не нашлось.
  */
@@ -95,7 +97,7 @@ async function assertClinicalRecordRead(
     });
     forbidden("err.permissionRequired", { permission: CLINICAL_READ });
   }
-  if (!(await canAccessSurvey(user, record.surveyId))) {
+  if (!(await canSeeResult(user, record))) {
     notFound(record.kind === "alert" ? "err.alertNotFound" : "err.responseNotFound");
   }
 }

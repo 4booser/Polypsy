@@ -3,6 +3,7 @@ import type { ErrorKey } from "@quizzy/shared";
 import { db } from "../db";
 import { asSystem } from "../db/context";
 import { forbidden } from "./http";
+import { CATALOG_GROUP_ID } from "./scope";
 
 /**
  * Ввести человека в свою зону можно, только если его не ведёт никто другой (#139).
@@ -22,7 +23,9 @@ import { forbidden } from "./http";
  * со стороны человека: прикрепление к отделению, приём у специалиста,
  * соприкосновение с группой методик (выдача, прохождение, набор). Сотрудник,
  * который его ещё не видит, ни одним из этих оснований не обладает — значит,
- * обладает кто-то другой.
+ * обладает кто-то другой. Группа библиотеки (общий каталог) — не основание:
+ * она в зону не вводит никого (lib/scope.ts), и прошедший методику каталога
+ * не становится от этого чьим-то.
  *
  * Системной ролью: под ролью приложения чужие прикрепления, приёмы и выдачи
  * сотруднику не видны — ровно потому, что человек чужой, — и проверка
@@ -39,11 +42,11 @@ export async function otherCareOf(patientId: string): Promise<OtherCare | null> 
         exists (select 1 from appointments a where a.patient_id = ${patientId}) as specialist,
         (
           exists (select 1 from survey_access sa join surveys s on s.id = sa.survey_id
-            where sa.user_id = ${patientId} and s.group_id is not null)
+            where sa.user_id = ${patientId} and s.group_id is not null and s.group_id <> ${CATALOG_GROUP_ID})
           or exists (select 1 from responses r join surveys s on s.id = r.survey_id
-            where r.user_id = ${patientId} and s.group_id is not null)
+            where r.user_id = ${patientId} and s.group_id is not null and s.group_id <> ${CATALOG_GROUP_ID})
           or exists (select 1 from battery_assignments ba join batteries b on b.id = ba.battery_id
-            where ba.user_id = ${patientId} and b.group_id is not null)
+            where ba.user_id = ${patientId} and b.group_id is not null and b.group_id <> ${CATALOG_GROUP_ID})
         ) as grp
     `),
   );

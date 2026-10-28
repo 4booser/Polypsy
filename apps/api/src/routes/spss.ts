@@ -10,7 +10,7 @@ import { audit } from "../lib/audit";
 import { decryptField } from "../lib/crypto";
 import { csvCell } from "../lib/csv";
 import { forbidden, langOf, notFound, parseQuery } from "../lib/http";
-import { assertSurveyAccess } from "../lib/scope";
+import { assertSurveyUse, surveyResultScope, type PatientCondition } from "../lib/scope";
 import { getSurvey } from "../lib/surveys";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 import { hasPermission } from "../lib/permissions";
@@ -656,7 +656,11 @@ function byResponse<T extends { responseId: string }>(list: T[]): Map<string, T[
   return map;
 }
 
-async function loadRows(surveyId: string): Promise<ExportRows> {
+/**
+ * `whose` — чьи прохождения видны выгружающему (lib/scope.ts,
+ * surveyResultScope): у методики библиотеки — только люди его зоны.
+ */
+async function loadRows(surveyId: string, whose: PatientCondition | undefined): Promise<ExportRows> {
   /*
    * Колонки — только нужные выгрузке. Разбор строк результата драйвер и
    * drizzle делают одним куском, без передышек: прохождения вместе с
@@ -681,7 +685,7 @@ async function loadRows(surveyId: string): Promise<ExportRows> {
     })
     .from(responses)
     .leftJoin(users, eq(users.id, responses.userId))
-    .where(and(eq(responses.surveyId, surveyId), eq(responses.status, "completed")))
+    .where(and(eq(responses.surveyId, surveyId), eq(responses.status, "completed"), whose?.(responses.userId)))
     /*
      * Порядок — по сдаче, при равенстве по id, как у длинной выгрузки. Без
      * него строки шли в порядке плана запроса, и две выгрузки одной методики
@@ -797,10 +801,10 @@ async function exportOptions(c: Context<AppEnv>) {
 /** Числовая матрица: варианты закодированы порядковыми номерами */
 spssRoutes.get("/surveys/:id/data.csv", async (c) => {
   const surveyId = c.req.param("id");
-  await assertSurveyAccess(c.get("user"), surveyId);
+  const whose = await surveyResultScope(c.get("user"), surveyId);
   const { profile, lang, labels, purpose } = await exportOptions(c);
   // строки — один раз: план обобщения считается по тем же, что уходят в файл
-  const { rows, contexts } = await loadRows(surveyId);
+  const { rows, contexts } = await loadRows(surveyId, whose);
   const kanon = profile === "deidentified" ? await quasiPlan(rows) : null;
   const { vars } = await buildSchema(surveyId, lang, profile, kanon, labels);
 
@@ -850,7 +854,8 @@ spssRoutes.get("/surveys/:id/data.csv", async (c) => {
 /** Синтаксис SPSS: чтение матрицы, метки переменных, метки значений, пропуски */
 spssRoutes.get("/surveys/:id/syntax.sps", async (c) => {
   const surveyId = c.req.param("id");
-  await assertSurveyAccess(c.get("user"), surveyId);
+  // словарь методики, без строк данных: достаточно пользоваться методикой
+  await assertSurveyUse(c.get("user"), surveyId);
   const { profile, lang, labels, purpose } = await exportOptions(c);
   const { survey, vars } = await buildSchema(surveyId, lang, profile, null, labels);
   const dataFile = `quizzy-${surveyId}-data.csv`;
@@ -924,7 +929,8 @@ spssRoutes.get("/surveys/:id/syntax.sps", async (c) => {
  */
 spssRoutes.get("/surveys/:id/codebook.csv", async (c) => {
   const surveyId = c.req.param("id");
-  await assertSurveyAccess(c.get("user"), surveyId);
+  // словарь методики, без строк данных: достаточно пользоваться методикой
+  await assertSurveyUse(c.get("user"), surveyId);
   const { profile, lang, labels, purpose } = await exportOptions(c);
   const { survey, vars } = await buildSchema(surveyId, lang, profile, null, labels);
 
@@ -971,7 +977,7 @@ spssRoutes.get("/surveys/:id/codebook.csv", async (c) => {
  */
 spssRoutes.get("/surveys/:id/long.csv", async (c) => {
   const surveyId = c.req.param("id");
-  await assertSurveyAccess(c.get("user"), surveyId);
+  const whose = await surveyResultScope(c.get("user"), surveyId);
   const { profile, purpose } = await exportOptions(c);
 
   const { sql } = await import("drizzle-orm");
@@ -989,6 +995,7 @@ spssRoutes.get("/surveys/:id/long.csv", async (c) => {
     from response_facts f
     join response_scores s on s.response_id = f.response_id and s.scale_id = f.scale_id
     where f.survey_id = ${surveyId} and f.status = 'completed'
+      ${whose ? sql`and ${whose(sql`f.user_id`)}` : sql``}
     order by f.submitted_at, f.response_id, f.scale_code`);
 
   type Row = Record<string, unknown>;
@@ -1080,9 +1087,9 @@ spssRoutes.get("/surveys/:id/long.csv", async (c) => {
  */
 spssRoutes.get("/surveys/:id/manifest.json", async (c) => {
   const surveyId = c.req.param("id");
-  await assertSurveyAccess(c.get("user"), surveyId);
+  const whose = await surveyResultScope(c.get("user"), surveyId);
   const { profile, lang, labels, purpose } = await exportOptions(c);
-  const kanon = profile === "deidentified" ? await quasiPlan((await loadRows(surveyId)).rows) : null;
+  const kanon = profile === "deidentified" ? await quasiPlan((await loadRows(surveyId, whose)).rows) : null;
   const { survey, vars } = await buildSchema(surveyId, lang, profile, kanon, labels);
   const say = sayer(labels);
 
@@ -1095,7 +1102,7 @@ spssRoutes.get("/surveys/:id/manifest.json", async (c) => {
   const used = await db
     .select({ versionId: responses.versionId, n: sql<number>`count(*)::int` })
     .from(responses)
-    .where(and(eq(responses.surveyId, surveyId), eq(responses.status, "completed")))
+    .where(and(eq(responses.surveyId, surveyId), eq(responses.status, "completed"), whose?.(responses.userId)))
     .groupBy(responses.versionId);
   const countByVersion = new Map(used.map((u) => [u.versionId, Number(u.n)]));
 
@@ -1182,7 +1189,8 @@ spssRoutes.get("/surveys/:id/manifest.json", async (c) => {
  */
 spssRoutes.get("/surveys/:id/load/:ext", async (c) => {
   const surveyId = c.req.param("id");
-  await assertSurveyAccess(c.get("user"), surveyId);
+  // словарь методики, без строк данных: достаточно пользоваться методикой
+  await assertSurveyUse(c.get("user"), surveyId);
   const ext = c.req.param("ext");
   if (ext !== "r" && ext !== "py") notFound("err.scriptNotFound");
   const { profile, lang, labels, purpose } = await exportOptions(c);

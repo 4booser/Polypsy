@@ -939,6 +939,12 @@ export const ERRORS = {
     ru: "Методика относится к группе, которой вы не управляете",
     en: "The assessment belongs to a group you don’t manage",
   },
+  /* методика общего каталога: пользуется каждый сотрудник, правят суперадмин и администраторы каталога (lib/scope.ts) */
+  "err.surveyLibraryReadOnly": {
+    uk: "Методику загального каталогу змінюють лише адміністратори каталогу",
+    ru: "Методику общего каталога изменяют только администраторы каталога",
+    en: "Shared-catalogue assessments are edited only by catalogue administrators",
+  },
   "err.surveyUnavailable": { uk: "Методика недоступна", ru: "Методика недоступна", en: "Assessment not available" },
   "err.tooManyAttempts": {
     uk: "Забагато спроб. Зачекайте 15 хвилин",

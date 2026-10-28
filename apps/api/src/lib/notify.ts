@@ -22,6 +22,7 @@ import { pushToUser } from "./push";
 import { syncDueMeetings } from "./meetSync";
 import { remindAppointments } from "./remind";
 import { pushMailings } from "./mailingPush";
+import { CATALOG_GROUP_ID, staffInChargeOf } from "./scope";
 
 /**
  * Уведомления о тревогах риска.
@@ -100,9 +101,20 @@ interface Recipient {
  * после отсева админов группы не осталось — тревога уходит действующим
  * суперадминам. Письмо и пуш идут одному и тому же кругу по построению:
  * разъехаться им не из чего.
+ *
+ * Тревога по методике библиотеки (общий каталог, lib/scope.ts) — тем, в
+ * чьей зоне человек (staffInChargeOf), а не администраторам каталога:
+ * методикой каталога пользуются все отделения, и её администратор правит
+ * методику, а не ведёт людей. Прежде такая тревога уходила им по всему
+ * учреждению — о людях, которых они в консоли не видят, — и не доходила до
+ * врача, который человека ведёт. Ведущих нет — суперадминам, как и прежде.
  */
-async function recipientsFor(surveyId: string): Promise<Recipient[]> {
+async function recipientsFor(surveyId: string, patientId: string | null): Promise<Recipient[]> {
   const survey = await db.query.surveys.findFirst({ where: eq(surveys.id, surveyId) });
+  if (survey?.groupId === CATALOG_GROUP_ID) {
+    const inCharge = patientId ? await staffInChargeOf(patientId) : [];
+    return inCharge.length ? inCharge : activeSuperadmins();
+  }
   if (survey?.groupId) {
     const rows = await db
       .select({ id: users.id, email: users.email })
@@ -539,10 +551,11 @@ async function deliverAlert(
    * группы тревогу не разобрали, и адресована тем, кто над ними.
    *
    * Оба круга — из одного отбора действующих (recipientsFor): письмо и пуш
-   * одной тревоги не могут уйти разным людям.
+   * одной тревоги не могут уйти разным людям. У методики библиотеки круг —
+   * те, кто ведёт человека (lib/scope.ts, staffInChargeOf).
    */
   const recipients = await systemContext(baseDb, () =>
-    job.kind === "initial" ? recipientsFor(survey.id) : activeSuperadmins(),
+    job.kind === "initial" ? recipientsFor(survey.id, alert.userId) : activeSuperadmins(),
   );
   const to = recipients.map((r) => r.email);
   const pushTo = job.kind === "initial" ? recipients.map((r) => r.id) : [];

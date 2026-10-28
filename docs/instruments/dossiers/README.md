@@ -36,6 +36,7 @@ WHO-5, PCL-5 и PQ-16 добавила рецензия каталога 2.1, `r
 | `addiction.json` | зависимости: вещества и поведенческие (каталог 2.1) | cuditr, ciwaar, cows; не заведены с разбором причин — dast10, ftnd, hsi, sds, pgsi, igds9sf, bsmas, cageaid, dudit, sadqc, ldq, bbgs |
 | `suicide.json` | суицидальный риск (k-suicide, октябрь 2026) | asq, cssrs, sidas; не заведены — dsi_ss, p4, pss3, sibs. Карточка `cssrs` заменяет `cssrs_screener` из `trauma.json` (см. поле `supersedes`) |
 | `review-institution.json` | методики учреждения вне каталога (ревью K21) | sr45, sad-persons, minimult, mlo — только сверка; в каталог не заводятся |
+| `clinician.json` | шкалы, которые заполняет специалист (dp-scales, октябрь 2026) | hamd17, hama, cgi_s, cgi_i, bprs (без полос) — общественное достояние по NINDS CDE, редакция ECDEU (1976), собственный рабочий перевод; не заводятся: ymrs (лицензия RCPsych), cssrs_full (официальные переводы полной версии — только по запросу); MADRS перепроверена — карточка в `mood.json`, поле `recheck_2026_10` |
 
 `wellbeing.json` (октябрь 2026) не заводит GSE (правообладатель запрещает публикацию в
 интернете, а репозиторий публичный), LOT-R (автор: «not intended for clinical

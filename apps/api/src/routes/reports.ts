@@ -23,7 +23,7 @@ import { audit } from "../lib/audit";
 import { bandLabelsIn } from "../lib/bandLabels";
 import { badRequest, forbidden, langOf, notFound, type ErrorInfo } from "../lib/http";
 import { referencePercentile, reportReferenceSamples } from "../lib/referenceSample";
-import { chartHistory } from "../lib/chartHistory";
+import { CHART_PORTION, chartHistory } from "../lib/chartHistory";
 import { printCalendarDay, printDay, printMoment, printTime } from "../lib/printDates";
 import {
   esc,
@@ -43,7 +43,7 @@ import {
 } from "../lib/printSheet";
 import { gonePage, linkPage, noticePage, panel, point, printButtons } from "../lib/printLink";
 import { assertResponseRead } from "../lib/clinicalRead";
-import { assertPatientAccess, isStaff } from "../lib/scope";
+import { assertPatientAccess, isStaff, surveyScopeFilterFor } from "../lib/scope";
 import { fullNameOf, toPublicUser } from "../lib/auth";
 import { claimReportLink, issueReportLink, REPORT_LINK_PREFIX, REPORT_LINK_TTL_MS, type ReportLinkRow } from "../lib/reportLinks";
 import { namesOf } from "../lib/names";
@@ -1274,7 +1274,12 @@ reportRoutes.get("/patients/:userId/chart", requireStaff, requirePermission("pat
    * карта молча теряла начало истории, оставаясь на вид полной (волна 15,
    * внешний разбор, п. 20).
    */
-  const { episodes: eps, visits, notes: signedNotes, responses: done } = await chartHistory(userId);
+  const { episodes: eps, visits, notes: signedNotes, responses: done } = await chartHistory(
+    userId,
+    CHART_PORTION,
+    // обследования — те же, что в карточке: свои методики и библиотека (lib/scope.ts)
+    await surveyScopeFilterFor(c.get("user"), userId),
+  );
 
   await audit(c, {
     action: "report.patient_chart",
