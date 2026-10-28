@@ -83,6 +83,9 @@ import { ITQ_NOT_SCORED, itq, itqNote } from "./itq";
 import { LEC5_NOT_SCORED, lec5, lec5Note } from "./lec5";
 import { tgiSrPlus, tgiSrPlusNote } from "./tgiSrPlus";
 // ── /k-trauma ──
+// ── dp-scales ──
+import { hamd17, hamd17Note } from "./hamd17";
+// ── /dp-scales ──
 
 /**
  * Общий каталог общедоступных методик.
@@ -828,4 +831,26 @@ export const CATALOG: CatalogEntry[] = [
     notScored: LEC5_NOT_SCORED,
   },
   // ── /k-trauma ──
+  // ── dp-scales ──
+  /*
+   * Группа «шкалы, которые заполняет специалист» — стандартные клинические
+   * шкалы психиатрического отделения; docs/instruments/dossiers/clinician.json,
+   * ключ каталога равен ключу карточки.
+   *
+   * Основание у каждой — заявление NINDS CDE (NIH, США) о том, что шкала —
+   * общественное достояние; текст — редакция руководства ECDEU (Guy, 1976,
+   * издание Минздрава США), перевод — собственный рабочий на оба языка. Все
+   * заполняет специалист (administration: "clinician"), результат пациенту не
+   * показывается. Полосы случая риска не открывают — это собственная оценка
+   * того, кто заполнил (обоснование — в hamd17.ts); тревогу поднимают только
+   * суицидальные ответы.
+   */
+  {
+    key: "hamd17",
+    draft: hamd17,
+    note: hamd17Note,
+    source:
+      "HAM-D-17, Hamilton, J Neurol Neurosurg Psychiatry 1960; Br J Soc Clin Psychol 1967 — суспільне надбання за NINDS CDE; текст — редакція ECDEU Assessment Manual for Psychopharmacology (Guy, 1976, DHEW (ADM) 76-338). Смуги — Zimmerman та ін., J Affect Disord 2013. Переклад робочий",
+  },
+  // ── /dp-scales ──
 ];

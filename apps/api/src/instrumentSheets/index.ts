@@ -150,6 +150,9 @@ const MODULE_OF: Record<string, string> = {
   ctsr_ua: "ctsrUa.ts",
   lec5: "lec5.ts",
   // ── /k-trauma ──
+  // ── dp-scales ──
+  hamd17: "hamd17.ts",
+  // ── /dp-scales ──
 };
 
 /**
