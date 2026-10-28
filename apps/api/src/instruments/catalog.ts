@@ -84,6 +84,7 @@ import { LEC5_NOT_SCORED, lec5, lec5Note } from "./lec5";
 import { tgiSrPlus, tgiSrPlusNote } from "./tgiSrPlus";
 // ── /k-trauma ──
 // ── dp-scales ──
+import { hama, hamaNote } from "./hama";
 import { hamd17, hamd17Note } from "./hamd17";
 // ── /dp-scales ──
 
@@ -851,6 +852,13 @@ export const CATALOG: CatalogEntry[] = [
     note: hamd17Note,
     source:
       "HAM-D-17, Hamilton, J Neurol Neurosurg Psychiatry 1960; Br J Soc Clin Psychol 1967 — суспільне надбання за NINDS CDE; текст — редакція ECDEU Assessment Manual for Psychopharmacology (Guy, 1976, DHEW (ADM) 76-338). Смуги — Zimmerman та ін., J Affect Disord 2013. Переклад робочий",
+  },
+  {
+    key: "hama",
+    draft: hama,
+    note: hamaNote,
+    source:
+      "HAM-A, Hamilton, Br J Med Psychol 1959 — суспільне надбання за NINDS CDE; текст — редакція ECDEU Assessment Manual for Psychopharmacology (Guy, 1976, DHEW (ADM) 76-338). Смуги — Matza та ін., Int J Methods Psychiatr Res 2010. Переклад робочий",
   },
   // ── /dp-scales ──
 ];

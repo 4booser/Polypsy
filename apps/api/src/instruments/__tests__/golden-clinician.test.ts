@@ -10,6 +10,7 @@ import {
 } from "@quizzy/shared";
 import { CATALOG } from "../catalog";
 import { WORKING_TRANSLATION } from "../common";
+import { hama } from "../hama";
 import { hamd17 } from "../hamd17";
 
 /**
@@ -192,6 +193,8 @@ const GROUP: Member[] = [
     draft: hamd17,
     flags: ["3/1:moderate", "3/2:moderate", "3/3:severe", "3/4:severe"],
   },
+  // HAM-A — пунктов о суициде и вреде нет, тревоги нет
+  { key: "hama", name: "HAM-A", draft: hama, flags: [] },
 ];
 
 /** Поля, которые человек читает, — обязаны быть объектом с обоими языками */
@@ -393,5 +396,51 @@ describe("золотой протокол: HAM-D-17", () => {
     const weighed = { ...history, 16: 5 }; // «за зважуванням: понад 1 кг»
     expect(scoreOf(survey, weighed, "HAMD").rawScore).toBe(2);
     expect((hamd17.questions![15]!.options![5]!.text as { uk: string }).uk).toContain("За зважуванням");
+  });
+});
+
+describe("золотой протокол: HAM-A", () => {
+  const survey = toSurveyFull(hama);
+
+  test("раскладка: 14 пунктов, у всех одна шкала 0–4; максимум 56", () => {
+    expect(hama.questions!.length).toBe(14);
+    for (const q of survey.questions) expect(q.options.map((o) => o.score)).toEqual([0, 1, 2, 3, 4]);
+    expect(maxOf(survey, "HAMA")).toBe(56);
+  });
+
+  test("пример досье: 2+2+1+2+1+1+1+1+1+1+1+0+1+1 = 16 — умеренная тревога", () => {
+    const s = scoreOf(survey, byScores(survey, [2, 2, 1, 2, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1]), "HAMA");
+    expect(s.rawScore).toBe(16);
+    expect(s.band?.grade).toBe(3);
+  });
+
+  test("пример досье: 3+3+2+3+2+2+2+2+2+2+2+1+2+2 = 30 — тяжёлая тревога, но ни тревоги, ни случая", () => {
+    const picks = byScores(survey, [3, 3, 2, 3, 2, 2, 2, 2, 2, 2, 2, 1, 2, 2]);
+    const s = scoreOf(survey, picks, "HAMA");
+    expect(s.rawScore).toBe(30);
+    expect(s.band?.grade).toBe(4);
+    expect(evaluateSubmission(survey, answersOf(survey, picks)).risk.severity).toBeNull();
+  });
+
+  test("границы Matza и соавт., 2010: 7 | 8, 14 | 15, 23 | 24", () => {
+    const grade = (scores: number[]) => scoreOf(survey, byScores(survey, scores), "HAMA").band?.grade;
+    // 4+3 = 7 → нет; 4+4 = 8 → лёгкая
+    expect(grade([4, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])).toBe(1);
+    expect(grade([4, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])).toBe(2);
+    // 4+4+4+2 = 14 → лёгкая; 4+4+4+3 = 15 → умеренная
+    expect(grade([4, 4, 4, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])).toBe(2);
+    expect(grade([4, 4, 4, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])).toBe(3);
+    // 4×5 + 3 = 23 → умеренная; 4×6 = 24 → тяжёлая
+    expect(grade([4, 4, 4, 4, 4, 3, 0, 0, 0, 0, 0, 0, 0, 0])).toBe(3);
+    expect(grade([4, 4, 4, 4, 4, 4, 0, 0, 0, 0, 0, 0, 0, 0])).toBe(4);
+  });
+
+  test("ноль и максимум: 0 — тревога отсутствует, 56 — тяжёлая", () => {
+    const zero = scoreOf(survey, byScores(survey, Array(14).fill(0)), "HAMA");
+    expect(zero.rawScore).toBe(0);
+    expect(zero.band?.severity).toBe("none");
+    const top = scoreOf(survey, byScores(survey, Array(14).fill(4)), "HAMA");
+    expect(top.rawScore).toBe(56);
+    expect(top.band?.grade).toBe(4);
   });
 });

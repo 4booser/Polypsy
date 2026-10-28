@@ -49,6 +49,7 @@ export const CATALOG_DOMAINS: Readonly<Record<string, SurveyDomain>> = {
   aaq2: "distress",
   // ── dp-scales ──
   hamd17: "distress",
+  hama: "distress",
   // ── /dp-scales ──
 
   /* ── trauma ── */

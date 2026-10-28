@@ -152,6 +152,7 @@ const MODULE_OF: Record<string, string> = {
   // ── /k-trauma ──
   // ── dp-scales ──
   hamd17: "hamd17.ts",
+  hama: "hama.ts",
   // ── /dp-scales ──
 };
 
