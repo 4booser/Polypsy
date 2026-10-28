@@ -1398,6 +1398,7 @@
   },
   "example": null,
   "example_note": "Пример не приводится: без привязок к баллам расчёт не проверить. Механика тривиальна (сумма 10 пунктов по 0-6, максимум 60) и её можно протестировать после получения лицензионного бланка.",
+  "recheck_2026_10": "Перепроверено 28.10.2026 (dp-scales, docs/instruments/dossiers/clinician.json). Вывод прежний. Колледж держит MADRS в перечне своих шкал, разрешение — через «Request permissions» у статьи (https://www.rcpsych.ac.uk/docs/default-source/about-us/publications/royal-college-of-psychiatrists-rating-scales_with-hyperlinks.pdf), на странице разрешений — «All content published by the Royal College of Psychiatrists is protected by copyright» и возможная плата (https://www.rcpsych.ac.uk/about-us/contact-us/permissions). NINDS CDE (F1670) противоречит себе — «in the public domain, but copyrighted by the British Journal of Psychiatry»; слова правообладателя важнее. MADRS есть в проекте стандарта МОЗ 2026 «Депресивні розлади» (додаток 5) — права учреждению это не даёт.",
   "verdict": "завести без текста (лицензия) — карточка и требование письма в Royal College of Psychiatrists; онлайн-републикация без разрешения прямо запрещена правообладателем"
  },
  {

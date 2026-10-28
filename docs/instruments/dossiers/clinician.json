@@ -331,5 +331,49 @@
    "note": "Сумма 63; тревоги нет — пунктов риска у шкалы нет."
   },
   "verdict": "завести без полос — общественное достояние по NINDS CDE; редакция ECDEU (1976), 18 пунктов, 1–7; собственный рабочий перевод; соответствие суммы CGI-S по Leucht и соавт., 2005 — в описании шкалы как ориентир."
+ },
+ {
+  "key": "ymrs",
+  "title_en": "Young Mania Rating Scale (YMRS)",
+  "title_uk": "Шкала манії YMRS — названа в УКПМД «Депресія» (наказ МОЗ України №1003 від 25.12.2014) для диференційної діагностики; тексту шкали протокол не містить",
+  "title_ru": null,
+  "authors": "Robert C. Young, J. T. Biggs, V. E. Ziegler, D. A. Meyer",
+  "year": 1978,
+  "citation": "Young RC, Biggs JT, Ziegler VE, Meyer DA. A rating scale for mania: reliability, validity and sensitivity. Br J Psychiatry. 1978;133:429-435. doi:10.1192/bjp.133.5.429",
+  "license": {
+   "verdict": "лицензируется — права у Royal College of Psychiatrists",
+   "quote": "All content published by the Royal College of Psychiatrists is protected by copyright.",
+   "url": "https://www.rcpsych.ac.uk/about-us/contact-us/permissions",
+   "quote_2": "To request permission to reuse any material from the below rating scales",
+   "url_2": "https://www.rcpsych.ac.uk/docs/default-source/about-us/publications/royal-college-of-psychiatrists-rating-scales_with-hyperlinks.pdf",
+   "conditions": "YMRS стоит в перечне шкал RCPsych, для которых разрешение запрашивается через кнопку «Request permissions» у статьи; на странице разрешений колледж пишет, что обычно разрешает, но во многих случаях берёт плату. Свободного разрешения на воспроизведение в электронной системе нет. Проверено 28.10.2026."
+  },
+  "items": null,
+  "items_note": "Текст пунктов не приводится — нужна лицензия.",
+  "bands": null,
+  "risk_items": [],
+  "verdict": "не заводить — права у Royal College of Psychiatrists, воспроизведение только с разрешения (возможно платного). Если учреждение получит письменное разрешение — заводить по тому же порядку, что HAM-D (досье, рабочий перевод, золотой протокол)."
+ },
+ {
+  "key": "cssrs_full",
+  "title_en": "Columbia-Suicide Severity Rating Scale — full versions (Baseline/Screening, Lifetime/Recent, Since Last Visit)",
+  "title_uk": null,
+  "title_ru": null,
+  "authors": "Kelly Posner и соавт. (The Columbia Lighthouse Project; правообладатель — The Research Foundation for Mental Hygiene)",
+  "year": 2008,
+  "citation": "Posner K, Brown GK, Stanley B, et al. The Columbia-Suicide Severity Rating Scale: initial validity and internal consistency findings from three multisite studies with adolescents and adults. Am J Psychiatry. 2011;168(12):1266-1277. Скринер — карточка `cssrs` в suicide.json (в каталоге).",
+  "license": {
+   "verdict": "использование в учреждении свободно (как у скринера); официальные украинский и русский тексты полной версии — только по запросу",
+   "quote": "You do not need special permission from us",
+   "url": "https://cssrs.columbia.edu/the-columbia-scale-c-ssrs/cssrs-for-communities-and-healthcare/",
+   "quote_2": "To obtain the full scale translated into other languages",
+   "url_2": "https://cssrs.columbia.edu/the-columbia-scale-c-ssrs/translations/",
+   "conditions": "Разрешение правообладателя на работу и встраивание в систему учреждения покрывает все инструменты Columbia Protocol, включая полную шкалу (подробно — карточка `cssrs`). Но переводы полной шкалы выдаются по запросу через Lighthouse Project; папка свободных переводов на сайте — только для скринера. Правообладатель требует не менять вопросы протокола и не советует пользоваться переводом, валидированным для другой страны, — поэтому собственный перевод полной шкалы недопустим. Стандарт МОЗ «Суїцидальна поведінка» (наказ від 24.04.2026 № 546, додаток 2) приводит только скринер. Проверено 28.10.2026."
+  },
+  "items": null,
+  "items_note": "Текст не приводится: официального украинского и русского текста полной версии в открытом доступе нет. Устройство полной шкалы (для оценки трудоёмкости): тяжесть идеации (5 уровней), интенсивность идеации (частота, длительность, контролируемость, сдерживающие факторы, причины — по 1–5), поведение (попытки с числом, прерванные и прекращённые попытки, подготовка, несуицидальное самоповреждение), летальность. Это числовые поля и счётчики помимо вопросов «да/нет».",
+  "bands": null,
+  "risk_items": [],
+  "verdict": "не заводить сейчас — права позволяют, но официального украинского и русского текста полной версии без запроса нет, а свой перевод вопросов Columbia Protocol недопустим. Шаг сортировки риска закрывает скринер `cssrs` (в каталоге, официальные тексты). Чтобы завести: учреждение запрашивает украинскую и русскую полную версию у The Columbia Lighthouse Project; дальше — карточка с текстом и сверка разметки риска."
  }
 ]
