@@ -16589,6 +16589,8 @@ export const UI = {
     en: "The case is already in the risk queue and the duty clinician has been notified.",
   },
   "adn.riskOpenQueue": { uk: "Відкрити чергу ризику", ru: "Открыть очередь риска", en: "Open the risk queue" },
+  "ds.showAll": { uk: "Показати всі пропозиції ({n})", ru: "Показать все предложения ({n})", en: "Show all suggestions ({n})" },
+  "ds.showFewer": { uk: "Показати менше", ru: "Показать меньше", en: "Show fewer" },
 } as const satisfies Record<string, UiEntry>;
 
 export type UiKey = keyof typeof UI;

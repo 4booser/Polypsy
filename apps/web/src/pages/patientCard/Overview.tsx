@@ -11,6 +11,10 @@ import { cx } from "../../ui/cx";
 import { Panel } from "../../ui/layout";
 import { withCount } from "../../ui/plural";
 import { Button, SeverityTag, Tag } from "../../ui/primitives";
+import { api } from "../../api";
+import { useResource } from "../../useResource";
+import { basisText, openSuggestions } from "../methods/passport";
+import { shortDate, splitCode } from "../methods/model";
 import { DESTINATION_KEY, URGENCY_KEY } from "../referrals/model";
 import { CLINICAL_DOMAIN_KEY, capital, initialsName, shownSeriesText } from "../patients/model";
 import { InlineAction } from "./Banner";
@@ -414,8 +418,22 @@ function PlanItem({ icon, tone, title, sub, action }: { icon: React.ReactNode; t
 }
 
 function PlanPanel({ v }: { v: CardView }) {
-  const { ut } = useLang();
+  const { ut, lang } = useLang();
   const items: React.ReactNode[] = [];
+  /*
+   * Ступенчатый скрининг на виду: положительная короткая форма (PHQ-2 ≥ 3)
+   * предлагает полную (PHQ-9) — правилом каталога. Предложение жило только в
+   * ящике «Призначити методику» и в протоколе короткой формы, и врач,
+   * открывший карточку, о нём не узнавал. Здесь — строкой плана с
+   * основанием; «Призначити» открывает тот же ящик, где предложение стоит
+   * первым, со сроком и комментарием. Право — то же, что на очередь
+   * предложений (alerts.review).
+   */
+  const hits = useResource(() => api.ruleHits("suggested", v.card.id), [v.card.id], {
+    enabled: v.can("alerts.review"),
+    keep: false,
+  });
+  const recommended = useMemo(() => openSuggestions(hits.data ?? []), [hits.data]);
   const upcoming = v.card.upcoming ?? [];
   const book = v.can("appointments.manage");
 
@@ -454,6 +472,24 @@ function PlanPanel({ v }: { v: CardView }) {
         icon={<Pi.calendarPlus />}
         title={ut("ws.visitNoneFull")}
         action={book ? <InlineAction onClick={() => v.open("book")}>{ut("card.book")}</InlineAction> : undefined}
+      />,
+    );
+  }
+
+  for (const { hit, target } of recommended.slice(0, 2)) {
+    const names = splitCode(target.title);
+    const code = names.code ?? names.name;
+    items.push(
+      <PlanItem
+        key={`s-${target.surveyId}`}
+        icon={<Pi.clipboardPlus />}
+        title={ut("dpc.recommended").replace("{code}", code)}
+        sub={ut("dpc.basisOn").replace("{basis}", basisText(hit, lang)).replace("{date}", shortDate(hit.createdAt))}
+        action={
+          v.onAssign ? (
+            <InlineAction onClick={v.onAssign}>{ut(target.clinician ? "dpc.administerOne" : "dpc.assignOne").replace("{code}", code)}</InlineAction>
+          ) : undefined
+        }
       />,
     );
   }

@@ -2,11 +2,11 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import type { RuleHit } from "@quizzy/shared";
 import { api, ApiError } from "../api";
-import { dateTime } from "../format";
 import { useLang } from "../lang";
 import type { UiKey } from "@quizzy/shared";
 import { useResource, type Resource } from "../useResource";
-import { splitCode } from "../pages/methods/model";
+import { shortDate, splitCode } from "../pages/methods/model";
+import { basisText, suggestionOpen } from "../pages/methods/passport";
 import { Ic, NotLoaded, useAction } from "../ui";
 import { Panel } from "../ui/layout";
 import { Button, Input, Tag } from "../ui/primitives";
@@ -28,6 +28,9 @@ export function Suggestions() {
   const res = useResource(() => api.ruleHits(), []);
   return <SuggestionsBody res={res} />;
 }
+
+/** Сколько предложений видно сразу: остальные — по «Показати всі» */
+const SHOWN = 5;
 
 /**
  * Решение по предложению — и что делать, если его успел принять другой.
@@ -101,9 +104,11 @@ export function SuggestionsBody({
 }: {
   res: Pick<Resource<RuleHit[]>, "data" | "error" | "loading" | "reload">;
 }) {
-  const { ut } = useLang();
+  const { ut, lang } = useLang();
   const { run, busy } = useAction();
   const [declining, setDeclining] = useState<string | null>(null);
+  /* все предложения или первые SHOWN: десять правил каталога на отделение — это десятки строк, а не одна */
+  const [all, setAll] = useState(false);
   const [note, setNote] = useState("");
   /* фраза сервера о решении, принятом другим, пока человек смотрел (409, см. decideHit) */
   const [meanwhile, setMeanwhile] = useState<string | null>(null);
@@ -125,6 +130,22 @@ export function SuggestionsBody({
       setMeanwhile(outcome.meanwhile);
       return false;
     }, done);
+
+  /* «Призначити PHQ-9»: выдать предложенную методику и принять предложение разом (assignSuggested) */
+  const assign = (hit: RuleHit, surveyId: string, code: string) =>
+    void run(async () => {
+      setMeanwhile(null);
+      const outcome = await assignSuggested(
+        hit,
+        surveyId,
+        (sid, userId) => api.grant(sid, userId, undefined, null),
+        () => api.decideHit(hit.id, "accepted"),
+        res.reload,
+      );
+      if (!outcome.meanwhile) return true;
+      setMeanwhile(outcome.meanwhile);
+      return false;
+    }, ut("dpc.assignedToast").replace("{code}", code));
 
   if (res.data === null) {
     return res.error ? (
@@ -149,67 +170,93 @@ export function SuggestionsBody({
             {meanwhile}
           </p>
         ) : null}
-        {items.map((hit: RuleHit) => (
-          <article key={hit.id} data-suggestion="" className="flex flex-col gap-2 border-b border-divider px-4 py-3 last:border-b-0">
-            <div className="flex flex-wrap items-baseline gap-x-2">
-              <b className="font-extrabold text-text">{hit.ruleTitle}</b>
-              <span className="text-small text-muted">
-                {ut("ds.version")} {hit.ruleVersion}, {dateTime(hit.createdAt)}
-              </span>
-            </div>
-
-            <Link to={`/patients/${hit.userId}`} className="self-start font-bold text-violet-ink">
-              {hit.userName}
-            </Link>
-
-            {/* объяснение — то, на основании чего человек примет решение */}
-            <ul data-because="" className="m-0 flex list-disc flex-col gap-0.5 pl-5 text-body text-text-2">
-              {hit.explanation.because.map((b, i) => (
-                <li key={i}>{b.text}</li>
-              ))}
-            </ul>
-
-            {hit.explanation.actions.length ? (
-              <div className="flex flex-wrap gap-1.5">
-                {hit.explanation.actions.map((a, i) => (
-                  <Tag key={i} tone="primary">
-                    {actionText(a, ut, hit)}
-                  </Tag>
-                ))}
+        {(all ? items : items.slice(0, SHOWN)).map((hit: RuleHit) => {
+          /* предложенная методика, которую можно назначить одним нажатием: самоотчёт, не назначена и не пройдена */
+          const target = hit.suggested?.find((x) => !x.clinician && suggestionOpen(x)) ?? null;
+          const code = target ? (splitCode(target.title).code ?? target.title) : null;
+          return (
+            <article key={hit.id} data-suggestion="" className="flex flex-col gap-1.5 border-b border-divider px-4 py-2.5 last:border-b-0">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2">
+                  <Link to={`/patients/${hit.userId}`} className="font-extrabold text-violet-ink">
+                    {hit.userName}
+                  </Link>
+                  <b className="font-bold text-text">{hit.ruleTitle}</b>
+                  <span className="text-small text-muted">{shortDate(hit.createdAt)}</span>
+                </div>
+                {declining === hit.id ? null : (
+                  <div className="flex shrink-0 flex-wrap gap-1.5">
+                    {target && code ? (
+                      <Button size="xs" variant="primary" disabled={busy} onClick={() => assign(hit, target.surveyId, code)}>
+                        {ut("dpc.assignOne").replace("{code}", code)}
+                      </Button>
+                    ) : (
+                      <Button size="xs" variant="primary" disabled={busy} onClick={() => decide(hit, "accepted", ut("ds.accepted"))}>
+                        {ut("ds.accept")}
+                      </Button>
+                    )}
+                    <Button size="xs" disabled={busy} onClick={() => setDeclining(hit.id)}>
+                      {ut("ds.decline")}
+                    </Button>
+                  </div>
+                )}
               </div>
-            ) : null}
 
-            {declining === hit.id ? (
-              <div className="flex flex-wrap items-center gap-2">
-                <Input
-                  autoFocus
-                  className="min-w-[220px] flex-1"
-                  value={note}
-                  onChange={(e) => setNote(e.target.value)}
-                  placeholder={ut("ds.whyDecline")}
-                />
-                <Button
-                  disabled={busy || !note.trim()}
-                  onClick={() => decide(hit, "declined", ut("ds.declined"), note.trim())}
-                >
-                  {ut("ds.decline")}
-                </Button>
-                <Button variant="quiet" onClick={() => setDeclining(null)}>
-                  {ut("common.cancel")}
-                </Button>
-              </div>
-            ) : (
-              <div className="flex flex-wrap gap-2">
-                <Button variant="primary" disabled={busy} onClick={() => decide(hit, "accepted", ut("ds.accepted"))}>
-                  {ut("ds.accept")}
-                </Button>
-                <Button disabled={busy} onClick={() => setDeclining(hit.id)}>
-                  {ut("ds.decline")}
-                </Button>
-              </div>
-            )}
-          </article>
-        ))}
+              {/*
+                Объяснение — то, на основании чего человек примет решение. У шага
+                каталога — баллом методики («PHQ-2 = 4»), а не условием движка
+                («PHQ2: сирий бал 4 >= 3»); у своих правил отделения — их фразами.
+              */}
+              <ul data-because="" className="m-0 flex list-none flex-col gap-0.5 p-0 text-small text-text-2">
+                {hit.basis?.length ? (
+                  <li>{basisText(hit, lang)}</li>
+                ) : (
+                  hit.explanation.because.map((b, i) => <li key={i}>{b.text}</li>)
+                )}
+              </ul>
+
+              {!target && hit.explanation.actions.length ? (
+                <div className="flex flex-wrap gap-1.5">
+                  {hit.explanation.actions.map((a, i) => (
+                    <Tag key={i} tone="primary">
+                      {actionText(a, ut, hit)}
+                    </Tag>
+                  ))}
+                </div>
+              ) : null}
+
+              {declining === hit.id ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  <Input
+                    autoFocus
+                    className="min-w-[220px] flex-1"
+                    value={note}
+                    onChange={(e) => setNote(e.target.value)}
+                    placeholder={ut("ds.whyDecline")}
+                  />
+                  <Button
+                    disabled={busy || !note.trim()}
+                    onClick={() => decide(hit, "declined", ut("ds.declined"), note.trim())}
+                  >
+                    {ut("ds.decline")}
+                  </Button>
+                  <Button variant="quiet" onClick={() => setDeclining(null)}>
+                    {ut("common.cancel")}
+                  </Button>
+                </div>
+              ) : null}
+            </article>
+          );
+        })}
+        {items.length > SHOWN ? (
+          <button
+            type="button"
+            onClick={() => setAll((v) => !v)}
+            className="cursor-pointer border-0 bg-transparent px-4 py-2.5 text-left text-small font-bold text-violet-ink hover:underline"
+          >
+            {all ? ut("ds.showFewer") : ut("ds.showAll").replace("{n}", String(items.length))}
+          </button>
+        ) : null}
       </div>
     </Panel>
   );
