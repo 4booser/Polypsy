@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState, type ReactNode } from "react";
+import { useNavigate } from "react-router-dom";
 import { t, type SurveyListItem, type UiKey } from "@quizzy/shared";
 import { api, type Patient } from "../api";
 import { useAuth } from "../auth";
@@ -16,7 +17,7 @@ import { Drawer, DrawerSection } from "../ui/Drawer";
 import { SearchField } from "../ui/filters";
 import { Ic } from "../ui/icons";
 import { submitOnCtrlEnter } from "../ui/keys";
-import { Button, ButtonLink, Field, Input, Radio, Segmented, Select, Tag } from "../ui/primitives";
+import { Button, Field, Input, Radio, Segmented, Select, Tag } from "../ui/primitives";
 import { Callout } from "../ui/states";
 import { useResource } from "../useResource";
 import { dueIn, pastDeadline, today } from "./deadline";
@@ -589,6 +590,7 @@ function AssignTest(p: TestToKnown) {
   const { open, already, onAssign, onClose, sets, existingFor, recommendFor } = p;
   const { ut, lang } = useLang();
   const { can } = useAuth();
+  const navigate = useNavigate();
   const toast = useToast();
   const count = useCount();
   /*
@@ -652,9 +654,18 @@ function AssignTest(p: TestToKnown) {
    * висит. Отказ решения (его успел принять другой) назначение не отменяет.
    */
   async function acceptRecommended(assigned: string) {
-    for (const r of recommended.filter((x) => x.target.surveyId === assigned)) {
+    const matching = recommended.filter((x) => x.target.surveyId === assigned);
+    for (const r of matching) {
       await decideHit(() => api.decideHit(r.hit.id, "accepted"), () => undefined).catch(() => undefined);
     }
+    // закрытый ящик не размонтируется: открытый снова не должен предлагать уже назначенное
+    if (matching.length) hits.reload();
+  }
+
+  /* «Провести C-SSRS»: согласие с предложением — и экран заполнения специалистом */
+  async function administer(hitId: string, surveyId: string) {
+    await decideHit(() => api.decideHit(hitId, "accepted"), () => undefined).catch(() => undefined);
+    navigate(`/surveys/${surveyId}/administer`);
   }
 
   async function assign(target?: string) {
@@ -727,9 +738,9 @@ function AssignTest(p: TestToKnown) {
                   </span>
                   {target.clinician ? (
                     /* заполняет специалист — не назначают, а проводят */
-                    <ButtonLink size="xs" to={`/surveys/${target.surveyId}/administer`}>
+                    <Button size="xs" disabled={busy} onClick={() => void administer(hit.id, target.surveyId)}>
                       {ut("dpc.administerOne").replace("{code}", code)}
-                    </ButtonLink>
+                    </Button>
                   ) : (
                     <Button size="xs" variant="primary" disabled={busy || pastDeadline(expires, today())} onClick={() => void assign(target.surveyId)}>
                       {ut("dpc.assignOne").replace("{code}", code)}

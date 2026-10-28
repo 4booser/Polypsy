@@ -184,9 +184,9 @@ function CutoffCell({ s, width }: { s: SurveyListItem; width: number }) {
   if (!lines.length) return <span className="text-small text-muted">{p?.purpose ? ut("dpc.noCutoffs") : "—"}</span>;
   /*
    * Ширина — колонки, а не текста: таблица раскладывается по содержимому, и
-   * строка порога без предела съедала бы ширину у имени методики.
+   * строка порога без предела съедала бы ширину у имени методики. Один порог
+   * — в две строки, если длинный; два — по строке на каждый.
    */
-  /* один порог — в две строки, если длинный; два — по строке на каждый */
   return (
     <span className="flex min-w-0 flex-col" style={{ maxWidth: width }} title={lines.join("\n")}>
       <span className={cx("text-small font-semibold leading-[17px] text-text-2", lines[1] ? "truncate" : "line-clamp-2")}>{lines[0]}</span>
