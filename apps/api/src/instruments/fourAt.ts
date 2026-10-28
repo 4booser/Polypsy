@@ -73,9 +73,9 @@ const ITEMS: { title: [string, string]; help: [string, string]; anchors: Anchor[
       "Сюда относятся пациенты с выраженным оглушением (те, кого трудно разбудить, или те, у кого во время осмотра отмечается явная сонливость) или с возбуждением/гиперактивностью. Понаблюдайте за пациентом; если он спит, попытайтесь разбудить его голосом или лёгким прикосновением к плечу. Попросите пациента назвать своё имя и адрес — так легче оценить ясность сознания.",
     ],
     anchors: [
-      [L("Норма (повністю пильний, без збудження протягом усього огляду)", "Норма (в ясном сознании, не возбуждён во время осмотра)"), 0],
+      [L("Норма (повна пильність, без збудження протягом усього огляду)", "Норма (ясное сознание, без возбуждения во время всего осмотра)"), 0],
       [
-        L("Легка сонливість менш ніж 10 секунд після пробудження, далі норма", "Немного сонлив в течение <10 сек после пробуждения, затем в норме"),
+        L("Легка сонливість менш ніж 10 секунд після пробудження, далі норма", "Лёгкая сонливость менее 10 секунд после пробуждения, затем норма"),
         0,
       ],
       [L("Свідомість явно змінена", "Сознание явно изменено"), 4],
@@ -114,7 +114,7 @@ const ITEMS: { title: [string, string]; help: [string, string]; anchors: Anchor[
       [
         L(
           "Оцінити неможливо (не може почати через тяжкий стан, сонливість, неуважність)",
-          "Невозможно оценить (не может начать, потому что в тяжёлом состоянии, сонлив, невнимателен)",
+          "Невозможно оценить (не может начать из-за тяжёлого состояния, сонливости, невнимательности)",
         ),
         2,
       ],
@@ -138,9 +138,9 @@ const attribution = (changes: string) =>
   `Adapted from the 4AT © 2011–2014 Alasdair MacLullich, Tracy Ryan and Helen Cash. Licensed under CC BY 4.0: https://creativecommons.org/licenses/by/4.0/. Official and current version: https://www.the4at.com/. This version has been modified. Changes: ${changes}. The published validation evidence for the official 4AT should not be assumed to apply to this modified version. No warranty is given as to accuracy or fitness for purpose.`;
 
 const CHANGES_UK =
-  "working Ukrainian translation by the catalogue; electronic form; guidance from the 4AT user guide added as item help";
+  "working Ukrainian translation by the catalogue; electronic form; guidance from the 4AT user guide added as item help; short score labels with the full interpretation shown separately";
 const CHANGES_RU =
-  "Russian text based on the 4AT Russian translation (version 1.1, the4at.com), corrected against the English original: restored “2 or more mistakes/untestable” and “or building” in item 2 and the permitted prompt in item 3, “possible” instead of “probable” delirium in the score interpretation, spelling and grammar; electronic form; guidance from the 4AT user guide added as item help";
+  "Russian text based on the 4AT Russian translation (version 1.1, the4at.com), corrected against the English original: restored “2 or more mistakes/untestable” and “or building” in item 2 and the permitted prompt in item 3, “possible” instead of “probable” delirium in the score interpretation, spelling and grammar, gender-neutral wording of the response options in items 1 and 3; electronic form; guidance from the 4AT user guide added as item help; short score labels with the full interpretation shown separately";
 
 export const fourAt: CreateSurveyDraft = {
   ...PUBLIC_DEFAULTS,
@@ -171,12 +171,19 @@ export const fourAt: CreateSurveyDraft = {
       normalization: "raw",
       key: sumKey(allItems(ITEMS.length)),
       bands: bands([
+        /*
+         * Подписи — короткая форма толкования бланка; толкование целиком (с
+         * оговоркой о неполных сведениях для пункта 4 и «± когнітивне
+         * порушення») — в описании полосы. Прежняя подпись нулевой полосы была
+         * в сто знаков и на графике, в карточке и в очереди обрезалась.
+         */
         {
           min: 0,
           max: 0,
-          label: L(
-            "Делірій або виражене когнітивне порушення малоймовірні (але делірій усе ж можливий, якщо відомостей для пункту 4 недостатньо)",
-            "Делирий или выраженные когнитивные нарушения маловероятны (но делирий всё же возможен, если информация по пункту 4 неполная)",
+          label: L("Делірій малоймовірний", "Делирий маловероятен"),
+          description: L(
+            "Делірій або виражене когнітивне порушення малоймовірні, але делірій усе ж можливий, якщо відомостей для пункту 4 недостатньо.",
+            "Делирий или выраженные когнитивные нарушения маловероятны, но делирий всё же возможен, если информация по пункту 4 неполная.",
           ),
           severity: "none",
           grade: 1,
@@ -199,7 +206,11 @@ export const fourAt: CreateSurveyDraft = {
         {
           min: 4,
           max: 12,
-          label: L("Можливий делірій ± когнітивне порушення", "Возможный делирий ± когнитивные нарушения"),
+          label: L("Можливий делірій", "Возможный делирий"),
+          description: L(
+            "Можливий делірій — з когнітивним порушенням або без нього.",
+            "Возможный делирий — с когнитивными нарушениями или без них.",
+          ),
           severity: "moderate",
           grade: 3,
           recommendation: L(

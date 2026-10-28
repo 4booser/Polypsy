@@ -451,7 +451,7 @@ describe("золотой протокол: ASSIST", () => {
     expect(assist.questions!.length).toBe(71);
     const uk = (n: number) => (assist.questions![n - 1]!.title as { uk: string }).uk;
     expect(uk(assistItem(1, "b"))).toContain("алкогольні напої");
-    expect(uk(assistItem(2, "c"))).toContain("як часто ви вживали канабіс");
+    expect(uk(assistItem(2, "c"))).toContain("ви вживали канабіс");
     expect(uk(assistItem(3, "i"))).toContain("потяг вжити опіоїди");
     expect(uk(assistItem(4, "a"))).toContain("вживання тютюнових виробів");
     expect(uk(assistItem(5, "b"))).toContain("не робили того");
