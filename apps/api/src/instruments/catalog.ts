@@ -84,6 +84,7 @@ import { LEC5_NOT_SCORED, lec5, lec5Note } from "./lec5";
 import { tgiSrPlus, tgiSrPlusNote } from "./tgiSrPlus";
 // ── /k-trauma ──
 // ── dp-scales ──
+import { bprs, bprsNote } from "./bprs";
 import { cgiI, cgiINote, cgiS, cgiSNote } from "./cgi";
 import { hama, hamaNote } from "./hama";
 import { hamd17, hamd17Note } from "./hamd17";
@@ -874,6 +875,13 @@ export const CATALOG: CatalogEntry[] = [
     note: cgiINote,
     source:
       "CGI-I (Clinical Global Impression — Global Improvement), Guy, ECDEU Assessment Manual for Psychopharmacology, 1976, DHEW (ADM) 76-338, с. 217–222 — видання уряду США, суспільне надбання за NINDS CDE; клінічне застосування — Busner, Targum, Psychiatry (Edgmont) 2007. Переклад робочий",
+  },
+  {
+    key: "bprs",
+    draft: bprs,
+    note: bprsNote,
+    source:
+      "BPRS (18 пунктів), Overall, Gorham, Psychol Rep 1962 — суспільне надбання за NINDS CDE; текст — редакція ECDEU Assessment Manual for Psychopharmacology (Guy, 1976, DHEW (ADM) 76-338). Без смуг: опублікованих порогів немає; орієнтир CGI — Leucht та ін., Br J Psychiatry 2005. Переклад робочий",
   },
   // ── /dp-scales ──
 ];

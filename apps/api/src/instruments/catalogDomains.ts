@@ -122,6 +122,7 @@ export const CATALOG_DOMAINS: Readonly<Record<string, SurveyDomain>> = {
   // ── dp-scales ──
   cgi_s: "other",
   cgi_i: "other",
+  bprs: "other",
   // ── /dp-scales ──
 };
 

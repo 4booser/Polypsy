@@ -9,6 +9,7 @@ import {
   type SurveyFull,
 } from "@quizzy/shared";
 import { CATALOG } from "../catalog";
+import { bprs } from "../bprs";
 import { cgiI, cgiS } from "../cgi";
 import { WORKING_TRANSLATION } from "../common";
 import { hama } from "../hama";
@@ -200,6 +201,8 @@ const GROUP: Member[] = [
   { key: "cgi_s", name: "CGI-S", draft: cgiS, flags: [] },
   // CGI-I — одна оценка изменения, пунктов риска нет
   { key: "cgi_i", name: "CGI-I", draft: cgiI, flags: [] },
+  // BPRS-18 — пунктов о суициде и вреде нет, полос нет
+  { key: "bprs", name: "BPRS", draft: bprs, flags: [] },
 ];
 
 /** Поля, которые человек читает, — обязаны быть объектом с обоими языками */
@@ -505,5 +508,46 @@ describe("золотой протокол: CGI-I", () => {
     for (let pos = 0; pos < 7; pos++) {
       expect(evaluateSubmission(survey, answersOf(survey, { 1: pos })).risk.severity, `ступень ${pos + 1}`).toBeNull();
     }
+  });
+});
+
+describe("золотой протокол: BPRS", () => {
+  const survey = toSurveyFull(bprs);
+
+  test("раскладка: 18 пунктов, у всех одна шкала 1–7 без «не оценивалось»; сумма 18–126", () => {
+    expect(bprs.questions!.length).toBe(18);
+    for (const q of survey.questions) expect(q.options.map((o) => o.score)).toEqual([1, 2, 3, 4, 5, 6, 7]);
+    expect(minOf(survey, "BPRS")).toBe(18);
+    expect(maxOf(survey, "BPRS")).toBe(126);
+  });
+
+  test("полос нет, и шкала говорит почему: опубликованных порогов нет, ориентир — Leucht", () => {
+    /*
+     * Шкала без полосы — просто число; молчаливое отсутствие полос неотличимо от
+     * забытой таблицы (integrity.test.ts). Здесь причина — в описании шкалы.
+     */
+    const scale = bprs.scales![0]!;
+    expect(scale.bands ?? []).toEqual([]);
+    expect((scale.description as { uk: string }).uk).toContain("порогів у шкали немає");
+    expect((scale.description as { uk: string }).uk).toContain("Leucht");
+  });
+
+  test("пример досье: 2+3+2+1+1+3+1+1+3+1+2+1+2+1+1+2+1+1 = 29", () => {
+    const s = scoreOf(survey, byScores(survey, [2, 3, 2, 1, 1, 3, 1, 1, 3, 1, 2, 1, 2, 1, 1, 2, 1, 1]), "BPRS");
+    expect(s.rawScore).toBe(29);
+    expect(s.band).toBeNull();
+  });
+
+  test("пример досье: 3+4+4+5+2+4+3+2+3+4+5+5+2+4+5+3+3+2 = 63 — тревоги нет", () => {
+    const picks = byScores(survey, [3, 4, 4, 5, 2, 4, 3, 2, 3, 4, 5, 5, 2, 4, 5, 3, 3, 2]);
+    expect(scoreOf(survey, picks, "BPRS").rawScore).toBe(63);
+    expect(evaluateSubmission(survey, answersOf(survey, picks)).risk.severity).toBeNull();
+  });
+
+  test("все «немає» — 18, все верхние — 126, тревоги нет и на максимуме", () => {
+    expect(scoreOf(survey, byScores(survey, Array(18).fill(1)), "BPRS").rawScore).toBe(18);
+    const top = byScores(survey, Array(18).fill(7));
+    expect(scoreOf(survey, top, "BPRS").rawScore).toBe(126);
+    expect(evaluateSubmission(survey, answersOf(survey, top)).risk.severity).toBeNull();
   });
 });
