@@ -547,9 +547,10 @@ function answerSeed(p: Person, key: string, n: number): number {
   return ((p.ordinal * 977 + (h % 997)) % 2_000_000) * 1000 + n;
 }
 
-const fmtDate = (clock: Clock, offset: number) => {
-  const d = dateAt(clock, offset);
-  return `${String(d.day).padStart(2, "0")}.${String(d.month).padStart(2, "0")}.${d.year}`;
+/** ДД.ММ.ГГГГ по часам отделения — так дату пишут в записи и заключении */
+const fmtDate = (clock: Clock, ms: number) => {
+  const [y, m, d] = dayKeyOf(clock, ms).split("-");
+  return `${d}.${m}.${y}`;
 };
 
 async function writeStory(ctx: FillContext, p: Person, userId: string, story: Story, attending: Clinician): Promise<void> {
@@ -787,6 +788,7 @@ async function writeStory(ctx: FillContext, p: Person, userId: string, story: St
     return code ? (entry.get(code) ?? null) : null;
   };
   const contextAt = (at: number, current: Scores | undefined, visitNo: number): NoteContext => {
+    const at0 = at;
     const known = scoresUpTo(at);
     const firstOf = (key: string, scale?: string) => {
       for (const h of known) {
@@ -810,7 +812,10 @@ async function writeStory(ctx: FillContext, p: Person, userId: string, story: St
       last: (key, scale) => lastOf(key, scale)?.value ?? null,
       visitNo,
       clinician: attending.name,
-      date: (offset) => fmtDate(clock, offset),
+      measuredOn: (key) => {
+        const at = (responseOf.get(key) ?? []).filter((x) => x.at <= at0).at(-1)?.at;
+        return at === undefined ? "—" : fmtDate(clock, at);
+      },
     };
   };
 
@@ -1581,20 +1586,35 @@ export async function purgeDemoData(): Promise<number> {
       .where(inArray(responses.userId, ids))
       .returning({ id: responses.id });
 
+    /* слоты приёмов вымышленных — запомнить до того, как приёмы уйдут каскадом с людьми */
+    const heldSlots = (
+      await db
+        .selectDistinct({ id: appointments.slotId })
+        .from(appointments)
+        .where(sql`${appointments.patientId} in ${demo} or ${appointments.specialistId} in ${demo}`)
+    ).map((x) => x.id);
+
     await db.delete(users).where(inArray(users.id, ids));
 
     /*
-     * Слоты, которые наполнение достроило в прошлое (ClinicBook): заведены
-     * позже своего начала больше чем на сутки — живая синхронизация в
-     * прошлое не строит — и без единого приёма после удаления людей.
+     * Слоты, которые наполнение достроило в прошлое (ClinicBook): на них
+     * стояли приёмы вымышленных, заведены они позже своего начала больше чем
+     * на сутки — живая синхронизация в прошлое не строит, — и после
+     * удаления людей на них нет ни одного приёма. Прошлый слот настоящей
+     * сетки (заведён заранее) остаётся: это время отделения, а не посев.
      */
-    const removedSlots = await db
-      .delete(slots)
-      .where(
-        sql`${slots.createdAt} > ${slots.startsAt} + interval '1 day'
-            and not exists (select 1 from appointments a where a.slot_id = ${slots.id})`,
-      )
-      .returning({ id: slots.id });
+    const removedSlots = heldSlots.length
+      ? await db
+          .delete(slots)
+          .where(
+            and(
+              inArray(slots.id, heldSlots),
+              sql`${slots.createdAt} > ${slots.startsAt} + interval '1 day'
+                  and not exists (select 1 from appointments a where a.slot_id = ${slots.id})`,
+            ),
+          )
+          .returning({ id: slots.id })
+      : [];
 
     log.info("demo.purged", { removed: rows.length, responses: removedResponses.length, slots: removedSlots.length });
     return rows.length;
