@@ -138,6 +138,20 @@ function banded(points: [string, number][]): RespondentDynamics {
   return d;
 }
 
+describe("клиническая картина: сдвиг между версиями", () => {
+  test("сдвиг — серверный, с приведением версий, а не простая разность", () => {
+    // 10 → 20 «простой разностью» — +10 и значущее погіршення; сервер, приведя первую версию к последней, дал 0
+    const d = banded([
+      [at(-30), 10],
+      [at(0), 20],
+    ]);
+    d.surveys[0]!.scales[0]!.delta = 0;
+    const row = clinicalPicture(d, DEPRESSION)[0]!.rows[0]!;
+    expect(row.delta).toBe(0);
+    expect(row.verdict).not.toBe("worse");
+  });
+});
+
 describe("клиническая картина: строки по доменам", () => {
   test("код методики — от сервера (по ключу каталога), без него — из названия", () => {
     const d = banded([[at(0), 14]]);
@@ -439,6 +453,19 @@ describe("пункты: таблица по замерам", () => {
     expect(g.rows[0]!.words).toEqual(["Ні", "Так"]);
     expect(g.rows[0]!.flags).toEqual([false, true]);
     expect(g.sums).toEqual([null, null]);
+  });
+
+  test("замер другой версии методики: тот же пункт — по позиции и тексту, а не пустой столбец", () => {
+    // у каждой версии свои id вопросов, и у неизменённых тоже (createVersion, copyVersion)
+    const older = answers("o2", "o0").map((a) => ({ ...a, questionId: `old-${a.questionId}` })) as ResponseDetail["answers"];
+    const g = itemsGrid([detail("v1", at(-30), { answers: older }), detail("v2", at(0), { answers: answers("o3", "o1") })])!;
+    expect(g.rows[0]!.cells).toEqual([2, 3]);
+    expect(g.rows[1]!.cells).toEqual([0, 1]);
+    expect(g.sums).toEqual([2, 4]);
+    // изменённый текст — другой пункт: честно пусто
+    const reworded = older.map((a) => (a.position === 3 ? { ...a, title: "Сон (нова редакція)" } : a)) as ResponseDetail["answers"];
+    const h = itemsGrid([detail("v1", at(-30), { answers: reworded }), detail("v2", at(0), { answers: answers("o3", "o1") })])!;
+    expect(h.rows[0]!.cells).toEqual([null, 3]);
   });
 
   test("история пункта и наибольший вес — для «1 бал з 3» и плиток разбора", () => {

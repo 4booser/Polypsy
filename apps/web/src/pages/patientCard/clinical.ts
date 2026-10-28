@@ -101,7 +101,13 @@ export function scaleRow(
   const better = rungs.length ? betterOf(rungs) : null;
   const incomparable = scale.incomparable ?? null;
   const rc = reliableThreshold(scale);
-  const raw = last.rawScore - first.rawScore;
+  /*
+   * Сдвиг — серверный: при разных версиях с коэффициентами приведения сервер
+   * пересчитывает первый замер в единицы последнего (changeOverSeries), и
+   * простая разность объявила бы «значуще погіршення» там, где сменилась
+   * только версия методики. Разность сами — лишь у старого сервера без поля.
+   */
+  const raw = scale.delta ?? last.rawScore - first.rawScore;
   const single = points.length < 2;
   return {
     key: `${sv.surveyId}:${domain}`,
@@ -318,12 +324,22 @@ export function itemsGrid(details: readonly ResponseDetail[]): ItemsGrid | null 
     .filter((a) => a.options.length && (a.options.some((o) => o.score !== null) || a.options.some((o) => o.riskFlag)))
     .sort((a, b) => a.position - b.position);
   if (!scored.length) return null;
+  /*
+   * Ответ на этот пункт в замере. У каждой версии методики свои id вопросов —
+   * и у неизменённых тоже (createVersion, copyVersion), — так что по id
+   * находится только версия последнего замера, а старые замеры выходили
+   * пустыми столбцами. Тот же пункт другой версии — та же позиция и дословно
+   * тот же текст; изменённый пункт честно остаётся пустым.
+   */
+  const answerFor = (d: ResponseDetail, q: (typeof scored)[number]) =>
+    d.answers.find((a) => a.questionId === q.questionId) ??
+    d.answers.find((a) => a.position === q.position && a.title === q.title);
   const rows: ItemRow[] = scored.map((q, i) => {
     const cells: (number | null)[] = [];
     const words: (string | null)[] = [];
     const flags: boolean[] = [];
     for (const d of sorted) {
-      const got = picked(d.answers.find((a) => a.questionId === q.questionId));
+      const got = picked(answerFor(d, q));
       cells.push(got.score);
       words.push(got.text);
       flags.push(got.flag);

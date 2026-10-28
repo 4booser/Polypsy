@@ -428,12 +428,18 @@ function ItemsTable({ v, title, grid, loading, surveyId }: { v: CardView; title:
   const cat = grid.categorical;
   const at = (r: ItemRowT, j: number) => (cat ? r.words[j] : r.cells[j]) ?? null;
   const changed = (r: ItemRowT) => n > 1 && at(r, n - 1) !== at(r, n - 2);
-  const hot = (r: ItemRowT) => (cat ? !!r.flags[n - 1] : r.critical && (r.cells[n - 1] ?? 0) > 0);
+  /*
+   * Красное — по флагу выбранного варианта, и у балльных пунктов тоже. Прежде
+   * балльный пункт с любым критическим вариантом краснел на любом балле выше
+   * нуля: у SIDAS п. 2 рискован как раз 0 («не контролюю думки»), а 10 — нет,
+   * и таблица красила 10 и молчала про 0, споря с тревогами.
+   */
+  const hot = (r: ItemRowT) => !!r.flags[n - 1];
   const long = grid.rows.length > LONG;
   const shown = all || !long ? grid.rows : grid.rows.filter((r) => hot(r) || changed(r));
   const level = (val: number) => (val <= 0 ? 0 : Math.min(5, Math.max(1, Math.round((val / Math.max(grid.max, 1)) * 5 + 0.49))));
   const cell = (r: ItemRowT | null, j: number, val: number | null) => {
-    const flagged = r ? (cat ? !!r.flags[j] : r.critical && val !== null && val > 0) : false;
+    const flagged = r ? !!r.flags[j] : false;
     if ((cat ? r?.words[j] : val) === null || (cat ? r?.words[j] : val) === undefined)
       return { cls: "bg-transparent text-muted shadow-[inset_0_0_0_1px_var(--border)]", style: undefined };
     if (flagged) return { cls: "bg-risk text-onfill", style: undefined };
