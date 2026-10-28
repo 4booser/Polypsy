@@ -32,7 +32,7 @@ import {
 import { installCatalog } from "../src/lib/catalogInstall";
 import { decryptField, encryptField } from "../src/lib/crypto";
 import { demoAnswers } from "../src/lib/demoAnswers";
-import { DEMO_DOMAIN, DemoFillRefused, fillDemoData, purgeDemoData, type FillReport } from "../src/lib/demoFill";
+import { DEMO_DOMAIN, DEMO_MIN_WEEKLY_SLOTS, DemoFillRefused, fillDemoData, purgeDemoData, type FillReport } from "../src/lib/demoFill";
 import { ARCHETYPE_COUNTS, makePeople } from "../src/lib/demoPeople";
 import { storyOf } from "../src/lib/demoStories";
 import { syncSlots } from "../src/lib/schedule";
@@ -55,6 +55,8 @@ const N = 120;
 const SLOW = 600_000;
 
 let clinicians: Staff[] = [];
+/** Специалист с часом приёма в день — первый по почте, но не лечащий */
+let sparse: Staff;
 /**
  * Кого наполнение возьмёт лечащими — тем же правилом, что loadClinicians:
  * в общей тестовой базе соседние файлы оставляют своих специалистов с
@@ -118,16 +120,27 @@ beforeAll(async () => {
       .returning();
   }
   const tag = crypto.randomUUID().slice(0, 8);
-  for (const who of ["a", "b"]) {
-    // «0-» в начале почты: наполнение берёт специалистов по алфавиту почты, и эти двое — первые
+  /*
+   * «0-» в начале почты: наполнение берёт специалистов по алфавиту почты, и
+   * эти трое — первые. Самый первый принимает час в день: лечащим он стать не
+   * должен — на четверть картотеки слотов у него нет, и приёмы с замерами
+   * выпали бы из историй (так и было, пока соседние файлы оставляли такие
+   * учётки в общей базе).
+   */
+  for (const [who, hours] of [
+    ["0", [["09:00", "10:00"]]],
+    ["a", [["09:00", "12:00"], ["14:00", "17:00"]]],
+    ["b", [["09:00", "12:00"], ["14:00", "17:00"]]],
+  ] as const) {
     const staff = await makeUser("admin", `0-dpe-${tag}-${who}@test.dev`);
     await db.insert(specialistProfiles).values({ userId: staff.id, departmentId: department!.id, room: "214" });
-    for (const weekday of [1, 2, 3, 4, 5]) {
-      for (const [startsAt, endsAt] of [["09:00", "12:00"], ["14:00", "17:00"]] as const) {
+    for (const weekday of who === "0" ? [1, 2, 3, 4, 5, 6, 7] : [1, 2, 3, 4, 5]) {
+      for (const [startsAt, endsAt] of hours) {
         await db.insert(scheduleTemplates).values({ id: crypto.randomUUID(), specialistId: staff.id, weekday, startsAt, endsAt, slotMinutes: 50 });
       }
     }
     await syncSlots(staff.id);
+    if (who === "0") sparse = staff;
     clinicians.push(staff);
   }
   eligible = (
@@ -140,6 +153,7 @@ beforeAll(async () => {
           isNull(users.disabledAt),
           eq(specialistProfiles.acceptsBookings, true),
           sql`exists (select 1 from slots s where s.specialist_id = ${users.id} and s.status = 'open' and s.starts_at > now())`,
+          sql`(select coalesce(sum(floor(extract(epoch from (t.ends_at - t.starts_at)) / 60 / t.slot_minutes)), 0) from schedule_templates t where t.specialist_id = ${users.id}) >= ${DEMO_MIN_WEEKLY_SLOTS}`,
         ),
       )
       .orderBy(users.email)
@@ -205,11 +219,11 @@ describe("люди", () => {
     for (const unit of ["Лабораторія", "Адміністрація", "Приймальне відділення", "Терапевтичне відділення"]) {
       expect(patients.some((r) => r.unit === unit), unit).toBe(false);
     }
-    // лечащий — у каждого, и это специалист с расписанием; люди поделены между всеми такими
+    // лечащий — у каждого, и это специалист с расписанием на неделю; люди поделены между всеми такими
     const leads = new Set(patients.map((r) => r.lead));
     expect([...leads].every((id) => id && eligible.includes(id))).toBe(true);
     expect(leads.size).toBe(eligible.length);
-    for (const c of clinicians) expect(leads.has(c.id)).toBe(true);
+    for (const c of clinicians) expect(leads.has(c.id), c === sparse ? "час приёма в день" : c.id).toBe(c !== sparse);
   });
 });
 
@@ -311,9 +325,13 @@ describe("история в базе", () => {
     expect(dupes.length).toBe(0);
   });
 
-  test("обращение: повод расшифровывается, лечащий — специалист с расписанием; закрытое — с исходом", async () => {
+  test("обращение: повод расшифровывается, лечащий — специалист с расписанием на неделю; закрытое — с исходом", async () => {
     const rows = await db.select().from(episodes).where(sql`${episodes.patientId} in ${demo}`);
     expect(rows.length).toBe(N);
+    for (const c of clinicians) {
+      if (c === sparse) expect(eligible).not.toContain(c.id);
+      else expect(eligible).toContain(c.id);
+    }
     for (const e of rows) {
       expect((decryptField(e.reasonEnc) ?? "").length, e.id).toBeGreaterThan(10);
       expect(eligible, e.id).toContain(e.leadSpecialistId!);

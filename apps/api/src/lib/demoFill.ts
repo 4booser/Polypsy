@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, isNull, like, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, isNull, like, sql } from "drizzle-orm";
 import { intervalsForDay, layOutDay, noteCode, type SurveyFull } from "@quizzy/shared";
 import { baseDb, db } from "../db";
 import { dbContext } from "../db/context";
@@ -74,7 +74,8 @@ import { storyOf, type CaseDecision, type Measure, type NoteContext, type Story,
  * состоялись или неявка, ближайшие — записаны), замеры к приёмам, записи
  * приёма с клиническим текстом, заключения, планы безопасности, направления,
  * переписка, учёт, назначенные повторы. Специалисты — те, у кого есть
- * расписание; люди делятся между ними поровну (attendingIndex).
+ * расписание на полную неделю (loadClinicians); люди делятся между ними
+ * поровну (attendingIndex).
  *
  * ═══ Даты ═══
  *
@@ -347,6 +348,20 @@ interface Clinician {
 }
 
 /**
+ * Сколько приёмов в неделю должно давать расписание лечащего. Тридцать
+ * человек на специалиста с приёмом раз в одну-две недели — это пятнадцать-
+ * двадцать приёмов в неделю; у посева — тридцать.
+ */
+export const DEMO_MIN_WEEKLY_SLOTS = 20;
+
+/** Приёмов в неделю по шаблону — той же раскладкой дня, что строит сетку */
+function weeklySlots(templates: Clinician["templates"]): number {
+  let n = 0;
+  for (const weekday of new Set(templates.map((t) => t.weekday))) n += layOutDay(intervalsForDay(weekday, templates, [], [])).length;
+  return n;
+}
+
+/**
  * Кто ведёт вымышленных людей: специалисты с расписанием вперёд.
  *
  * Специалист берётся тот, у КОГО ЕСТЬ РАСПИСАНИЕ, а не первый попавшийся
@@ -355,6 +370,15 @@ interface Clinician {
  * вышло на первом прогоне, приёмов завелось ноль. Порядок — по почте: время
  * создания у учёток, заведённых одним посевом, совпадает до миллисекунды, а
  * деление людей между врачами обязано быть одним и тем же на каждом прогоне.
+ *
+ * И расписание — на полную неделю (DEMO_MIN_WEEKLY_SLOTS), а не любое.
+ * Специалисту с часом приёма в день (совместитель; в общей тестовой базе —
+ * учётки проверок сетки) доставалась та же четверть картотеки: приёмы, которым
+ * не нашлось слота, выпадали из истории, а с ними — и замер, по которому
+ * человек попал в риск, и план безопасности оставался без повода. Полной
+ * недели нет ни у кого — ведут те, у кого шаблон есть, от большего к меньшему:
+ * история выйдет короче, но связной. Без шаблона недели прошлых приёмов не
+ * построить вовсе — такой специалист не ведёт.
  */
 async function loadClinicians(): Promise<Clinician[]> {
   const rows = await db
@@ -368,23 +392,25 @@ async function loadClinicians(): Promise<Clinician[]> {
         sql`exists (select 1 from slots s where s.specialist_id = ${users.id} and s.status = 'open' and s.starts_at > now())`,
       ),
     )
-    .orderBy(asc(users.email))
-    .limit(4);
-  const out: Clinician[] = [];
+    .orderBy(asc(users.email));
+  const all: Clinician[] = [];
   for (const row of rows) {
     const templates = await db
       .select()
       .from(scheduleTemplates)
       .where(eq(scheduleTemplates.specialistId, row.user.id))
       .orderBy(asc(scheduleTemplates.startsAt), asc(scheduleTemplates.endsAt));
-    out.push({
+    if (!templates.length) continue;
+    all.push({
       id: row.user.id,
       name: fullNameOf(row.user),
       departmentId: row.departmentId,
       templates: templates.map((t) => ({ weekday: t.weekday, from: t.startsAt.slice(0, 5), to: t.endsAt.slice(0, 5), slotMinutes: t.slotMinutes })),
     });
   }
-  return out;
+  const full = all.filter((c) => weeklySlots(c.templates) >= DEMO_MIN_WEEKLY_SLOTS);
+  const chosen = full.length ? full : [...all].sort((a, b) => weeklySlots(b.templates) - weeklySlots(a.templates));
+  return chosen.slice(0, 4);
 }
 
 /** Порядок портретов — для деления людей между врачами: см. attendingIndex */
@@ -960,8 +986,18 @@ async function writeStory(ctx: FillContext, p: Person, userId: string, story: St
     }
   }
 
-  /* ─── план безопасности: версии, действует последняя ─── */
-  const plans = story.safetyPlans.filter((plan) => plan.day <= 0);
+  /*
+   * ─── план безопасности: версии, действует последняя ───
+   * Только у того, у кого критический ответ и правда записан: приём, на
+   * котором его дали, мог не встать в сетку лечащего, и план без сигнала был
+   * бы документом без повода.
+   */
+  const [critical] = await db
+    .select({ id: riskAlerts.id })
+    .from(riskAlerts)
+    .where(and(eq(riskAlerts.userId, userId), isNotNull(riskAlerts.questionId)))
+    .limit(1);
+  const plans = critical ? story.safetyPlans.filter((plan) => plan.day <= 0) : [];
   for (const [i, plan] of plans.entries()) {
     const visitEnd = booked.find((b) => b.visit.day === plan.day && b.state === "past")?.endsAt;
     const at = Math.min(pastLimit, visitEnd ?? momentAt(clock, plan.day, 13 * 60 + 30));
