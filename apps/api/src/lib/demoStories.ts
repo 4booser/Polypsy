@@ -18,12 +18,15 @@ import { ARCHETYPE_COUNTS, between, pick, rng, type ArchetypeKey, type Person } 
  *     BAT-12, ProQOL, PSS-10; кризис — C-SSRS, SIDAS, SBQ-R;
  *   · баллы — траектория курса (быстрый ответ в начале, пологий конец), с
  *     разбросом замера, а не случайное блуждание; повторный замер — раз в
- *     2–4 недели, как его назначают;
+ *     2–4 недели, как его назначают; методику с окном «за два тижні» не
+ *     повторяют на следующий день;
  *   · риск — у немногих и по делу: открытые случаи только у тех, у кого
  *     острое состояние сейчас (около шести процентов), остальные сигналы
  *     разобраны лечащим специалистом с исходом и заметкой;
  *   · записи приёма — коротким клиническим текстом по-украински: жалобы,
- *     психический статус, вмешательство, план; с настоящими баллами замера.
+ *     психический статус, вмешательство, план; сеансы идут по протоколу
+ *     метода (CPT, PE, EMDR, поведенческая активация, КПТ-І), а не одной
+ *     фразой по кругу, и с настоящими баллами замера.
  *
  * Модуль только описывает историю — днями от сегодняшнего и словами. Писать
  * её в базу (приёмы в слоты, прохождения через persistSubmission, даты
@@ -50,7 +53,7 @@ export interface NoteContext {
   first(key: string, scale?: string): number | null;
   /** Последний замер методики на этот момент — этого приёма или раньше (домашний скрининг) */
   last(key: string, scale?: string): number | null;
-  /** Номер состоявшегося приёма у человека, с единицы */
+  /** Номер состоявшегося приёма у человека, с единицы: первичный — первый */
   visitNo: number;
   /** ФИО лечащего специалиста */
   clinician: string;
@@ -82,6 +85,11 @@ export interface HomeSession {
   day: number;
   /** Минута суток по Киеву */
   minute: number;
+  /**
+   * Сдано только что — за час-три до наполнения, а не в заданную минуту:
+   * случай по такому замеру в очереди свежий, а не висит с позавчера.
+   */
+  recent?: boolean;
   measures: Measure[];
 }
 
@@ -131,7 +139,7 @@ export interface Story {
   thread?: { day: number; minute: number; fromPatient: boolean; text: string; read: boolean }[];
   /** Назначенный следующий замер: методика, когда выдан и к какому дню */
   pending: { key: string; grantedDay: number; dueDay: number }[];
-  /** Набор «Первинний скринінг»: когда назначен, к какому дню, и сдан ли домашним замером */
+  /** Набор «Первинний скринінг»: когда назначен и к какому дню */
   battery?: { assignedDay: number; dueDay: number };
 }
 
@@ -140,9 +148,27 @@ export interface Story {
 const g = (p: Person, male: string, female: string) => (p.sex === "female" ? female : male);
 const fmt = (v: number | null, digits = 0) =>
   v === null ? "—" : digits ? v.toFixed(digits).replace(".", ",") : String(Math.round(v));
+
+/** Форма слова при числе: 1 тиждень, 2 тижні, 5 тижнів */
+function pl(n: number, one: string, few: string, many: string): string {
+  const a = Math.abs(Math.round(n)) % 100;
+  const b = a % 10;
+  if (a > 10 && a < 20) return many;
+  if (b === 1) return one;
+  if (b >= 2 && b <= 4) return few;
+  return many;
+}
+
+/** Подпись полосы внутри фразы — со строчной, если это не аббревиатура */
+const lc = (s: string) => (s.length > 1 && s[1] === s[1]!.toLowerCase() ? s[0]!.toLowerCase() + s.slice(1) : s);
+
+/** «53, поріг ймовірного ПТСР досягнуто» — балл и полоса без скобок в скобках */
+const banded = (v: number | null, band: string | null, digits = 0) => (band ? `${fmt(v, digits)}, ${lc(band)}` : fmt(v, digits));
+
 /** Как методику называют в записи приёма */
 const TITLE: Record<string, string> = { pcl5: "PCL-5", phq9: "PHQ-9", who5: "WHO-5", k10: "K10", sci: "SCI" };
-/** «з 56 до 31» — динамика словами, без статистического жаргона */
+
+/** Динамика словами, без статистического жаргона */
 function change(now: number | null, then: number | null, meaningful: number, lowerIsBetter = true): string {
   if (now === null || then === null) return "";
   const d = lowerIsBetter ? then - now : now - then;
@@ -152,6 +178,21 @@ function change(now: number | null, then: number | null, meaningful: number, low
 
 const STATUS_CALM = (p: Person) =>
   `Свідомість ясна, ${g(p, "орієнтований", "орієнтована")} у повному обсязі; контакт продуктивний; мислення послідовне.`;
+
+/** «з дружиною» / «з чоловіком» */
+const spouse = (p: Person) => g(p, "дружиною", "чоловіком");
+
+/**
+ * Сеанс по протоколу: n-й состоявшийся приём берёт n-ю ступень метода.
+ * Сверх протокола (продлённый курс) ступени идут по кругу с отметкой
+ * «продовження» — одна и та же фраза два приёма подряд выглядела бы
+ * копированием, а не записью.
+ */
+function step(list: string[], visitNo: number): string {
+  const i = Math.max(0, visitNo - 2);
+  if (i < list.length) return list[i]!;
+  return `Продовження: ${lc(list[Math.max(0, list.length - 3) + ((i - list.length) % Math.min(3, list.length))]!)}`;
+}
 
 /* ═════════════ траектории ═════════════ */
 
@@ -193,11 +234,7 @@ function trimFuture(days: number[], keep = 2): number[] {
 
 const M = {
   pcl5: (total: number): Measure => ({ key: "pcl5", targets: { PCL: total } }),
-  phq9: (total: number, item9 = 0): Measure => ({
-    key: "phq9",
-    targets: { PHQ: total },
-    fixed: { 9: item9 },
-  }),
+  phq9: (total: number, item9 = 0): Measure => ({ key: "phq9", targets: { PHQ: total }, fixed: { 9: item9 } }),
   gad7: (total: number): Measure => ({ key: "gad7", targets: { GAD: total } }),
   who5: (raw: number): Measure => ({ key: "who5", targets: { WHO5: raw } }),
   sci: (total: number): Measure => ({ key: "sci", targets: { SCI: total } }),
@@ -243,9 +280,9 @@ const M = {
     fixed: { 1: i1, 2: i2, 3: i3, 4: i4 },
   }),
   /** SIDAS: частота думок (п. 1) — ворота остальных пунктов */
-  sidas: (total: number, frequency: number): Measure =>
-    frequency > 0
-      ? { key: "sidas", targets: { SIDAS: total }, fixed: { 1: frequency }, allowRisk: true }
+  sidas: (total: number): Measure =>
+    total > 0
+      ? { key: "sidas", targets: { SIDAS: total }, fixed: { 1: Math.max(1, Math.round(total / 5)) }, allowRisk: true }
       : { key: "sidas", targets: {}, fixed: { 1: 0 } },
   /** LEC-5: на каждую подію — номера вариантов с нуля; не названа — «не стосується мене» */
   lec5: (events: Record<number, number[]>): Measure => ({
@@ -259,10 +296,7 @@ const M = {
 
 /** Решение по случаю, когда сработали только полосы шкал: на старте — подтверждено, дальше — наблюдение */
 function bandDecision(start: string, follow = "Пацієнт на курсі, динаміка за планом; контрольний замір у визначений строк."): (c: CaseContext) => CaseDecision {
-  return (c) =>
-    c.first
-      ? { outcome: "confirmed", note: start }
-      : { outcome: "needs_followup", note: follow };
+  return (c) => (c.first ? { outcome: "confirmed", note: start } : { outcome: "needs_followup", note: follow });
 }
 
 /** Девятый пункт PHQ-9 без активных намерений: интервью проведено, острого риска нет */
@@ -277,26 +311,28 @@ function safetyPlan(
   r: () => number,
   opts: { signs: string[]; reasons: string[]; weapon: boolean; people: [string, string][] },
 ): (clinician: string) => SafetyPlanContent {
+  const coping = pickSome(r, [
+    "Вийти на прогулянку на 20–30 хвилин",
+    "Дихання 4–6: вдих на 4, видих на 6, п’ять хвилин",
+    "Холодна вода на обличчя й руки",
+    "Записати думки в нотатки телефону, не залишатися з ними в голові",
+    "Фізичне навантаження: віджимання, присідання, турнік",
+    "Увімкнути аудіокнигу або подкаст",
+  ], 3);
+  const distractions = pickSome(r, [
+    "Вийти до спільної кімнати відділення, де є люди",
+    "Спортзал госпіталю",
+    "Подзвонити побратимові без розмови про погане",
+    "Прибрати в кімнаті, розібрати речі",
+    "Футбол по телевізору з сусідами по палаті",
+  ], 2);
   return (clinician) => ({
     warningSigns: opts.signs,
-    copingStrategies: pickSome(r, [
-      "Вийти на прогулянку на 20–30 хвилин",
-      "Дихання 4–6: вдих на 4, видих на 6, п’ять хвилин",
-      "Холодна вода на обличчя й руки",
-      "Записати думки в нотатки телефону, не залишатися з ними в голові",
-      "Фізичне навантаження: віджимання, присідання, турнік",
-      "Увімкнути аудіокнигу або подкаст",
-    ], 3),
-    distractions: pickSome(r, [
-      "Вийти до спільної кімнати відділення, де є люди",
-      "Спортзал госпіталю",
-      "Подзвонити побратимові без розмови про погане",
-      "Прибрати в кімнаті, розібрати речі",
-      "Футбол по телевізору з сусідами по палаті",
-    ], 2),
+    copingStrategies: coping,
+    distractions,
     people: opts.people.map(([name, contact]) => ({ name, contact })),
     professionals: [
-      { name: `${clinician}, психолог відділення`, contact: "каб. у відділенні, пн–пт 9:00–17:00" },
+      { name: `${clinician}, психолог відділення`, contact: "кабінет у відділенні, пн–пт 9:00–17:00" },
       { name: "Черговий лікар госпіталю", contact: "через пост медичної сестри, цілодобово" },
       { name: "Лінія психологічної підтримки ветеранів", contact: "7333" },
     ],
@@ -316,12 +352,11 @@ function pickSome<T>(r: () => number, list: readonly T[], n: number): T[] {
 
 /** Телефон близкого — вымышленный, того же вида, что у вымышленных людей */
 function contactPhone(r: () => number): string {
-  const n = 500_000_000 + Math.floor(r() * 90_000_000);
-  const s = String(n);
+  const s = String(500_000_000 + Math.floor(r() * 90_000_000));
   return `+380 ${s.slice(0, 2)} ${s.slice(2, 5)} ${s.slice(5, 7)} ${s.slice(7, 9)}`;
 }
 
-/* ═════════════ портреты ═════════════ */
+/* ═════════════ общие кирпичи ═════════════ */
 
 type Builder = (p: Person, r: () => number, v: number) => Story;
 
@@ -341,6 +376,11 @@ function lastDayWith(visits: Visit[], key: string): number | null {
   return days.length ? Math.max(...days) : null;
 }
 
+/** День последнего состоявшегося приёма */
+const lastPastOf = (visits: Visit[], fallback: number) => visits.filter((x) => x.day <= 0 && x.outcome === "done").at(-1)?.day ?? fallback;
+
+/* ═════════════ портреты ═════════════ */
+
 /* ─── бойовий ПТСР, покращення на терапії ─── */
 
 const PTSD_EVENTS = [
@@ -359,35 +399,61 @@ const METHODS = [
   { name: "EMDR", short: "EMDR", sessions: 9 },
 ];
 
-function ptsdSessionNote(p: Person, method: (typeof METHODS)[number], n: number, total: number, event: string, shown: number): string {
-  const k = n / total;
-  n = shown;
-  if (method.short === "CPT") {
-    if (k < 0.25) return `Сесія ${n} (CPT). Психоосвіта про ПТСР, модель «застряглих точок». Написано заяву про вплив події; домашнє завдання — перечитувати щодня.`;
-    if (k < 0.45) return `Сесія ${n} (CPT). Застряглі точки: «Я ${g(p, "мав", "мала")} це передбачити», «Це моя провина». Аркуші ABC ${g(p, "виконав", "виконала")}; кошмари ще 2–3 рази на тиждень.`;
-    if (k < 0.65) return `Сесія ${n} (CPT). Сократівський діалог щодо провини; тема безпеки. Сон 5–6 год. Домашнє завдання — аркуш оскарження думок.`;
-    if (k < 0.85) return `Сесія ${n} (CPT). Теми довіри, контролю й близькості. Спалахів гніву вдома менше, ${g(p, "повернувся", "повернулася")} до спілкування з побратимами.`;
-    return `Сесія ${n} (CPT). Підсумки курсу, профілактика рецидиву, план на випадок загострення. Кошмари поодинокі.`;
-  }
-  if (method.short === "PE") {
-    if (k < 0.25) return `Сесія ${n} (PE). Психоосвіта, дихальна техніка, складено ієрархію ситуацій, яких уникає.`;
-    if (k < 0.6) return `Сесія ${n} (PE). Експозиція в уяві: розповідь про подію (${event}) 4 рази, дистрес з 80 до 45 за 100-бальною шкалою. In vivo: громадський транспорт.`;
-    if (k < 0.85) return `Сесія ${n} (PE). Робота з «гарячими точками» спогаду; дистрес на піку 40. Без супроводу ${g(p, "сходив", "сходила")} на ринок.`;
-    return `Сесія ${n} (PE). Підсумки курсу, план самостійних вправ. Уникання суттєво менше.`;
-  }
-  if (k < 0.3) return `Сесія ${n} (EMDR). Анамнез, ресурс «безпечне місце», навички стабілізації. Сон уривчастий.`;
-  if (k < 0.8) return `Сесія ${n} (EMDR). Опрацьовано спогад: ${event}. Дистрес з 8 до 3 з 10, позитивне переконання «${g(p, "Я зробив усе, що міг", "Я зробила все, що могла")}» — 5 з 7.`;
-  return `Сесія ${n} (EMDR). Перевірка опрацьованих спогадів, майбутній шаблон. Реакція на гучні звуки слабша.`;
+/** Сеанси CPT за протоколом — з другого (перший — первинний прийом) */
+const CPT_STEPS = (p: Person, event: string) => [
+  `Прочитано заяву про вплив події; визначено застряглі точки: «Я ${g(p, "мав", "мала")} це передбачити», «Нікому не можна довіряти». Пояснено аркуші ABC.`,
+  "Аркуші ABC заповнено 5 днів із 7: відокремлює подію, думку й почуття; провідна емоція — провина. Домашнє завдання — письмовий опис події.",
+  `Прочитано опис події (${event}); виражені сум і злість, уперше без уникання деталей. Домашнє завдання — перечитувати щодня.`,
+  `Сократівський діалог щодо провини: розмежування наміру, передбачуваності й відповідальності. Частково приймає, що не ${g(p, "міг", "могла")} знати, куди прилетить.`,
+  "Аркуші оскарження думок; патерни мислення — «все або нічого», перебільшення небезпеки.",
+  `Тема безпеки: рідше перевіряє замки й вікна вночі; ${g(p, "сходив", "сходила")} у супермаркет у годину пік.`,
+  "Тема довіри — до командування, до рідних і до себе; обговорено, кому й що можна розповісти.",
+  "Тема влади й контролю: спалахи гніву вдома рідші, користується паузою «зупинитися — вдих — вийти з кімнати».",
+  `Тема самоповаги: «Я не ${g(p, "слабкий", "слабка")}, бо ${g(p, "вижив", "вижила")}»; приймає подяку побратимів без знецінення.`,
+  `Тема близькості: ${g(p, "повернувся", "повернулася")} до спілкування з побратимами, уперше за пів року ${g(p, "пішов", "пішла")} на зустріч підрозділу.`,
+  "Нова заява про вплив події: провину змінили сум і вдячність загиблому. Профілактика рецидиву, план на випадок загострення.",
+];
+
+const PE_STEPS = (p: Person, event: string) => [
+  "Психоосвіта про уникання; складено ієрархію: натовп, громадський транспорт, звук мотоцикла, новини з фронту. Перше завдання in vivo — супермаркет удень.",
+  `Перша експозиція в уяві: розповідь про подію (${event}) 40 хв, дистрес з 85 до 60 зі 100. Запис сесії — слухати щодня.`,
+  "Експозиція в уяві: дистрес на піку 75, наприкінці 45. In vivo — поїздка маршруткою без виходу посеред дороги.",
+  "Гарячі точки спогаду: момент вибуху й тиша після нього. Дистрес на піку 65.",
+  `Гаряча точка «не ${g(p, "встиг", "встигла")} допомогти»; сльози, після — полегшення. In vivo — торговий центр у вихідний.`,
+  "Дистрес на піку 45, наприкінці 20. Слухає запис щодня без уникання, новини дивиться без панічних реакцій.",
+  "Гарячі точки опрацьовано, розповідь цілісна, дистрес 30. In vivo — концерт у місті, до кінця.",
+  "Підсумкова експозиція: дистрес 20 зі 100; ієрархію пройдено.",
+  "Завершення курсу: план самостійних вправ, профілактика рецидиву. Уникання суттєво менше.",
+];
+
+const EMDR_STEPS = (p: Person, event: string) => [
+  "Підготовка: ресурс «безпечне місце», техніка «контейнер», навички заземлення. Обрано мішені: подія, нічні звуки, запах гару.",
+  `Оцінка першої мішені (${event}): переконання «Я ${g(p, "безпорадний", "безпорадна")}», дистрес 9 з 10, віра в позитивне переконання 2 з 7. Перша десенсибілізація — дистрес 6.`,
+  `Десенсибілізація першої мішені: дистрес з 6 до 2; нове переконання «${g(p, "Я зробив усе, що міг", "Я зробила все, що могла")}» — 5 з 7.`,
+  "Друга мішень — нічні звуки: дистрес з 7 до 3. Удень на гучні звуки реагує слабше.",
+  "Третя мішень — запах гару: дистрес з 6 до 1. Сканування тіла: напруга в плечах минає.",
+  "Перевірка опрацьованих мішеней: дистрес 0–1, позитивне переконання 6 з 7. Майбутній шаблон — повернення до підрозділу.",
+  "Майбутній шаблон: перший день у підрозділі, звук артилерії — дистрес 2 з 10.",
+  "Завершення курсу: усі мішені опрацьовано, план підтримки, контрольний огляд через 6 тижнів.",
+];
+
+/** Кошмары и сон по ходу курса — строкой состояния в записи */
+function nightsLine(t: number, from = 5, to = 0.5): string {
+  const n = Math.round(curve(from, to, t));
+  const sleep = Math.round(curve(4, 7, t));
+  return n > 0 ? `Кошмари ${n} ${pl(n, "раз", "рази", "разів")} на тиждень, сон ${sleep} год.` : `Кошмарів за тиждень не було, сон ${sleep} год.`;
 }
 
 const ptsd: Builder = (p, r, v) => {
+  const k = v % ARCHETYPE_COUNTS.ptsd;
   const method = METHODS[v % METHODS.length]!;
   const medic = p.specialty === "Медична служба";
   const event = medic ? MEDIC_EVENT : pick(r, PTSD_EVENTS);
+  const steps = method.short === "CPT" ? CPT_STEPS(p, event) : method.short === "PE" ? PE_STEPS(p, event) : EMDR_STEPS(p, event);
   const start = -between(r, 45, 150);
   const all = courseDays(r, start, 7, method.sessions);
   /* один из шестнадцати перестал приходить посреди курса: последний приём — неявка, повтор не сдан */
-  const dropout = v % ARCHETYPE_COUNTS.ptsd === 9 && start < -60;
+  const dropout = k === 9 && start < -60;
   const days = dropout ? all.filter((d) => d <= -6) : trimFuture(all);
   const end = all[all.length - 1]!;
   const finished = end < -10 && !dropout;
@@ -403,7 +469,7 @@ const ptsd: Builder = (p, r, v) => {
   const phq = (d: number) => noisy(r, curve(phqFrom, phqTo, at(d)), 1.5, 0, 27);
   const sci = (d: number) => noisy(r, curve(sciFrom, sciTo, at(d)), 2, 0, 32);
   // у одного из шестнадцати на старте — девятый пункт PHQ-9 «кілька днів»
-  const item9 = v % ARCHETYPE_COUNTS.ptsd === 4 ? 1 : 0;
+  const item9 = k === 4 ? 1 : 0;
   const missed = r() < 0.3 ? between(r, 2, Math.max(2, days.length - 2)) : -1;
 
   const visits: Visit[] = days.map((d, i) => {
@@ -412,11 +478,12 @@ const ptsd: Builder = (p, r, v) => {
         d,
         "primary",
         [
-          M.lec5(medic ? { 10: [0, 3], 12: [1], 13: [1, 3], 14: [1, 3], 2: [0] } : { 10: [0], 2: [0], 7: [0], 13: [1], 14: [1], 16: r() < 0.4 ? [0] : [5] }),
-          M.ces(between(r, 22, 36)),
           M.pcl5(pclFrom),
           M.phq9(phqFrom, item9),
           M.sci(sciFrom),
+          // перелік подій — після симптомів: щойно згадані епізоди не мають забарвлювати відповіді про теперішній стан
+          M.lec5(medic ? { 10: [0, 3], 12: [1], 13: [1, 3], 14: [1, 3], 2: [0] } : { 10: [0], 2: [0], 7: [0], 13: [1], 14: [1], 16: r() < 0.4 ? [0] : [5] }),
+          M.ces(between(r, 22, 36)),
           ...(item9 ? [M.cssrs({ wish: true, thoughts: false })] : []),
         ],
         (c) =>
@@ -425,7 +492,7 @@ const ptsd: Builder = (p, r, v) => {
             `Скарги: нав’язливі спогади, нічні кошмари ${between(r, 3, 5)} рази на тиждень, сон ${between(r, 3, 5)} год, дратівливість, уникання розмов про службу.`,
             `Анамнез: на передовій ${between(r, 5, 22)} міс.; подія — ${event}. Раніше за психологічною допомогою не ${g(p, "звертався", "зверталася")}.`,
             `Психічний стан: ${STATUS_CALM(p)} Настрій знижений, тривожний; афект звужений. ${item9 ? "Пасивне бажання смерті без думок про самогубство (C-SSRS)." : "Суїцидальні думки заперечує."}`,
-            `Обстеження: PCL-5 — ${fmt(c.score("pcl5"))}, PHQ-9 — ${fmt(c.score("phq9"))}, SCI — ${fmt(c.score("sci"))}; бойова експозиція (CES) — ${fmt(c.score("ces"))}.`,
+            `Обстеження: PCL-5 — ${banded(c.score("pcl5"), c.band("pcl5"))}; PHQ-9 — ${banded(c.score("phq9"), c.band("phq9"))}; SCI — ${fmt(c.score("sci"))}; бойова експозиція (CES) — ${fmt(c.score("ces"))}.`,
             "Оцінка: виражені посттравматичні симптоми з депресивними проявами та безсонням; діагноз — за лікарем-психіатром.",
             `План: психоосвіта; ${method.name}, ${method.sessions} сесій щотижня; контрольний PCL-5 через 3–4 тижні.`,
           ].join("\n"),
@@ -434,31 +501,33 @@ const ptsd: Builder = (p, r, v) => {
     }
     if (i === missed || (dropout && i === days.length - 1)) return visit(d, "repeat", [], undefined, { outcome: "no_show" });
     const measuring = i % 4 === 0 || (i === days.length - 1 && finished && d === end);
-    const n = i + 1;
     const measures = measuring ? [M.pcl5(pcl(d)), M.phq9(phq(d)), ...(i % 8 === 0 || d === end ? [M.sci(sci(d))] : [])] : [];
     return visit(d, "repeat", measures, (c) => {
-      const base = ptsdSessionNote(p, method, n, method.sessions, event, c.visitNo);
-      if (!measuring) return base;
+      const base = `Сесія ${c.visitNo} (${method.short}). ${step(steps, c.visitNo)}`;
+      if (!measuring) return c.visitNo % 2 ? `${base} ${nightsLine(at(d))}` : base;
       const now = c.score("pcl5");
       return `${base}\nКонтрольний замір: PCL-5 — ${fmt(now)} (на початку — ${fmt(c.first("pcl5"))}), ${change(now, c.first("pcl5"), 10)}; PHQ-9 — ${fmt(c.score("phq9"))}.`;
     });
   });
 
-  // через полтора месяца после курса — контрольный приём
-  if (finished && end + 42 < 0) {
-    const d = end + between(r, 38, 50);
+  // через полтора месяца после курса — контрольный приём: прошедший или записанный
+  const control = finished ? end + between(r, 38, 50) : null;
+  if (control !== null && control <= 0) {
     visits.push(
-      visit(d, "repeat", [M.pcl5(noisy(r, pclTo, 3, 0, 80)), M.phq9(noisy(r, phqTo, 1.5, 0, 27))], (c) =>
+      visit(control, "repeat", [M.pcl5(noisy(r, pclTo, 3, 0, 80)), M.phq9(noisy(r, phqTo, 1.5, 0, 27))], (c) =>
         `Контрольний огляд через півтора місяця після курсу. Стан стабільний: кошмари поодинокі, сон 6–7 год, ${g(p, "повернувся", "повернулася")} до звичного навантаження.\nPCL-5 — ${fmt(c.score("pcl5"))}, PHQ-9 — ${fmt(c.score("phq9"))}. Наступний огляд — через 3 місяці.`,
         { noteKind: "observation" },
       ),
     );
+  } else if (control !== null && control <= 20) {
+    visits.push(visit(control, "repeat", [], undefined));
   }
 
   const closeDay = finished ? end + between(r, 1, 3) : undefined;
-  const pastVisits = visits.filter((x) => x.day <= 0 && x.outcome === "done");
-  const lastPast = pastVisits[pastVisits.length - 1]?.day ?? start;
-  const nextMeasure = finished ? null : days.find((d, i) => d > 0 && i % 4 === 0) ?? (days.find((d) => d > 0) ?? null);
+  const lastPast = lastPastOf(visits, start);
+  const nextMeasure = finished ? null : (days.find((d, i) => d > 0 && i % 4 === 0) ?? days.find((d) => d > 0) ?? null);
+  // ВЛК после курса: ответ комиссии приходит через две-три недели
+  const commission = finished && k === 7 ? end + 2 : null;
 
   return {
     ...NONE,
@@ -498,8 +567,8 @@ const ptsd: Builder = (p, r, v) => {
             text: (c: NoteContext) =>
               [
                 `Психодіагностичне обстеження ${c.date(days[0]!)}.`,
-                "Методики: LEC-5, CES, PCL-5, PHQ-9, SCI.",
-                `Результати: PCL-5 — ${fmt(c.score("pcl5"))} з 80 (${c.band("pcl5") ?? "—"}); PHQ-9 — ${fmt(c.score("phq9"))} з 27 (${c.band("phq9") ?? "—"}); SCI — ${fmt(c.score("sci"))} з 32 (${c.band("sci") ?? "—"}); бойова експозиція за CES — ${fmt(c.score("ces"))} з 41 (${c.band("ces") ?? "—"}).`,
+                "Методики: PCL-5, PHQ-9, SCI, LEC-5, CES.",
+                `Результати: PCL-5 — ${banded(c.score("pcl5"), c.band("pcl5"))} (з 80); PHQ-9 — ${banded(c.score("phq9"), c.band("phq9"))} (з 27); SCI — ${banded(c.score("sci"), c.band("sci"))} (з 32); бойова експозиція за CES — ${banded(c.score("ces"), c.band("ces"))} (з 41). LEC-5: ${medic ? "бойові дії, тяжкі людські страждання й раптова насильницька смерть — як свідок і на службі" : "бойові дії, вибух, напад зі зброєю — особисто; раптова насильницька смерть — як свідок"}.`,
                 "Висновок: виражені посттравматичні симптоми (повторне переживання, уникання, надмірна пильність) з депресивними проявами та порушенням сну. Результати узгоджуються з клінічною картиною ПТСР; діагноз встановлює лікар-психіатр.",
                 `Рекомендовано: ${method.name}, ${method.sessions} сесій; консультація лікаря-психіатра; повторне обстеження через 4 тижні.`,
               ].join("\n"),
@@ -507,7 +576,7 @@ const ptsd: Builder = (p, r, v) => {
         }
       : {}),
     referrals: [
-      ...(v % ARCHETYPE_COUNTS.ptsd === 1
+      ...(k === 1
         ? [
             {
               day: start + 3,
@@ -520,29 +589,23 @@ const ptsd: Builder = (p, r, v) => {
             },
           ]
         : []),
-      ...(finished && v % ARCHETYPE_COUNTS.ptsd === 7
+      ...(commission !== null
         ? [
             {
-              day: end + 2,
+              day: commission,
               destination: "other" as const,
               urgency: "routine" as const,
-              status: "accepted" as const,
+              status: commission < -21 ? ("completed" as const) : ("accepted" as const),
               reason: "Військово-лікарська комісія: визначення придатності до служби після завершення курсу лікування.",
+              ...(commission < -21 ? { outcomeNote: "Висновок комісії отримано; рекомендації враховано в плані спостереження.", updatedDay: commission + 18 } : {}),
             },
           ]
         : []),
     ],
     ...(finished && v % 3 === 0
-      ? {
-          dispensary: {
-            groupLabel: "Динамічне спостереження після лікування ПТСР",
-            intervalMonths: 3,
-            lastSeenDay: lastPast,
-            nextDueDay: lastPast + 91,
-          },
-        }
+      ? { dispensary: { groupLabel: "Динамічне спостереження після лікування ПТСР", intervalMonths: 3, lastSeenDay: lastPast, nextDueDay: lastPast + 91 } }
       : {}),
-    ...(v % ARCHETYPE_COUNTS.ptsd === 2 && lastPast < -3
+    ...(k === 2 && lastPast < -3
       ? {
           thread: [
             { day: lastPast + 2, minute: 19 * 60 + 40, fromPatient: true, text: "Добрий вечір. Цього тижня кошмарів не було жодного разу. Дякую.", read: true },
@@ -551,21 +614,36 @@ const ptsd: Builder = (p, r, v) => {
         }
       : {}),
     /*
-     * Следующий замер назначен на прошлом приёме; у одного из шестнадцати он
-     * просрочен — повтор так и не сдан, и это видно в очереди работы.
+     * Следующий замер назначен на прошлом приёме; у выбывшего он просрочен —
+     * повтор так и не сдан, и это видно в очереди работы.
      */
     pending: dropout
       ? [{ key: "pcl5", grantedDay: lastDayWith(visits, "pcl5") ?? lastPast, dueDay: Math.min(-1, (lastDayWith(visits, "pcl5") ?? lastPast) + 21) }]
       : nextMeasure !== null
-          ? [
-              { key: "pcl5", grantedDay: lastPast, dueDay: nextMeasure },
-              { key: "phq9", grantedDay: lastPast, dueDay: nextMeasure },
-            ]
+        ? [
+            { key: "pcl5", grantedDay: lastPast, dueDay: nextMeasure },
+            { key: "phq9", grantedDay: lastPast, dueDay: nextMeasure },
+          ]
+        : control !== null && control > 0 && control <= 20
+          ? [{ key: "pcl5", grantedDay: lastPast, dueDay: control }]
           : [],
   };
 };
 
 /* ─── ПТСР з повільною відповіддю ─── */
+
+const SLOW_STEPS = (p: Person, alcohol: boolean) => [
+  `Домашнє завдання не ${g(p, "виконав", "виконала")}: «не було сил». Уникає розмови про подію; обговорено мотивацію й темп роботи.`,
+  "Біль у нозі після поранення посилює безсоння; узгоджено консультацію лікаря-реабілітолога.",
+  alcohol
+    ? "Алкоголь «щоб відключитися» 3–4 вечори на тиждень; пояснено зв’язок між випивкою й кошмарами, ціль — лише вихідні."
+    : "Денна втома, дратівливість на службі; планування дня з паузами.",
+  "Навички заземлення й стабілізації; експозицію відкладено до зниження уникання.",
+  "Уперше говорить про загиблих побратимів без перерви; сльози, після — втома й полегшення.",
+  "Узгоджено з психіатром корекцію терапії; обговорено очікування від лікування.",
+  `Конфлікти в родині через спалахи гніву; план «тайм-ауту», розмова з ${spouse(p)} на наступному прийомі.`,
+  "Повторне пояснення моделі ПТСР; спільно переглянуто цілі на наступний місяць.",
+];
 
 const ptsdSlow: Builder = (p, r, v) => {
   const k = v % ARCHETYPE_COUNTS.ptsdSlow;
@@ -582,19 +660,20 @@ const ptsdSlow: Builder = (p, r, v) => {
   const phqFrom = between(r, 13, 18);
   const at = (d: number) => (d - start) / Math.max(1, -start);
   const alcohol = k % 2 === 0;
+  const steps = SLOW_STEPS(p, alcohol);
 
   const visits: Visit[] = days.map((d, i) => {
     if (i === 0) {
       return visit(
         d,
         "primary",
-        [M.lec5({ 10: [0], 2: [0], 7: [0], 13: [1], 14: [1], 15: [1] }), M.pcl5(pclFrom), M.phq9(phqFrom), ...(alcohol ? [M.auditc(between(r, 6, 9))] : [])],
+        [M.pcl5(pclFrom), M.phq9(phqFrom), ...(alcohol ? [M.auditc(between(r, 6, 9))] : []), M.lec5({ 10: [0], 2: [0], 7: [0], 13: [1], 14: [1], 15: [1] })],
         (c) =>
           [
             "Первинний прийом.",
             `Скарги: щоденні кошмари, відчуженість, спалахи гніву, сон 3–4 год${alcohol ? ", вживає алкоголь, «щоб заснути»" : ""}. Симптоми понад рік.`,
             `Психічний стан: ${STATUS_CALM(p)} Настрій знижений, дратівливий; афект напружений. Суїцидальні думки заперечує.`,
-            `Обстеження: PCL-5 — ${fmt(c.score("pcl5"))}, PHQ-9 — ${fmt(c.score("phq9"))}${alcohol ? `, AUDIT-C — ${fmt(c.score("auditc"))}` : ""}.`,
+            `Обстеження: PCL-5 — ${banded(c.score("pcl5"), c.band("pcl5"))}; PHQ-9 — ${banded(c.score("phq9"), c.band("phq9"))}${alcohol ? `; AUDIT-C — ${fmt(c.score("auditc"))}` : ""}.`,
             "План: травмофокусована терапія раз на 2 тижні, консультація психіатра щодо фармакотерапії, контроль PCL-5 кожні 6 тижнів.",
           ].join("\n"),
         { reason: "Знову погано сплю, щоночі ті самі сни" },
@@ -607,7 +686,7 @@ const ptsdSlow: Builder = (p, r, v) => {
     const pclNow = crisis ? pclFrom + 1 : noisy(r, curve(pclFrom, pclTo, at(d)), 3, 0, 80);
     const phqNow = crisis ? 17 : noisy(r, curve(phqFrom, phqFrom - 3, at(d)), 1.5, 0, 27);
     const measures = measuring
-      ? [M.pcl5(pclNow), M.phq9(phqNow, crisis ? 1 : 0), ...(crisis ? [M.cssrs({ wish: true, thoughts: false })] : []), ...(alcohol && i % 6 === 0 ? [M.auditc(between(r, 4, 8))] : [])]
+      ? [M.pcl5(pclNow), M.phq9(phqNow, crisis ? 1 : 0), ...(alcohol && i % 6 === 0 ? [M.auditc(between(r, 4, 8))] : []), ...(crisis ? [M.cssrs({ wish: true, thoughts: false })] : [])]
       : [];
     return visit(
       d,
@@ -621,11 +700,7 @@ const ptsdSlow: Builder = (p, r, v) => {
             "Складено план безпеки, домовлено про щоденний контакт; скеровано до психіатра терміново.",
           ].join("\n");
         }
-        const line = pick(r, [
-          `Сесія ${c.visitNo}. Домашнє завдання не ${g(p, "виконав", "виконала")}: «не було сил». Уникає розмови про подію; обговорено мотивацію й темп роботи.`,
-          `Сесія ${c.visitNo}. Біль у нозі після поранення посилює безсоння; узгоджено консультацію лікаря-реабілітолога.`,
-          `Сесія ${c.visitNo}. Кошмари щоночі, ${alcohol ? "алкоголь «щоб відключитися» 3–4 вечори на тиждень" : "денна втома"}. Навички заземлення, план вечора.`,
-        ]);
+        const line = `Сесія ${c.visitNo}. ${step(steps, c.visitNo)} ${nightsLine(at(d) * 0.4, 6, 3)}`;
         return measuring
           ? `${line}\nКонтрольний замір: PCL-5 — ${fmt(c.score("pcl5"))} (на початку — ${fmt(c.first("pcl5"))}), ${change(c.score("pcl5"), c.first("pcl5"), 10)}; PHQ-9 — ${fmt(c.score("phq9"))}.`
           : line;
@@ -634,7 +709,7 @@ const ptsdSlow: Builder = (p, r, v) => {
     );
   });
 
-  const lastPast = visits.filter((x) => x.day <= 0 && x.outcome === "done").at(-1)?.day ?? start;
+  const lastPast = lastPastOf(visits, start);
   return {
     ...NONE,
     episode: {
@@ -654,20 +729,30 @@ const ptsdSlow: Builder = (p, r, v) => {
             "Підтверджено: хронічні виражені симптоми ПТСР; гострого ризику немає. Продовжено терапію, скеровано до психіатра.",
             "Хронічний перебіг, відповідь на терапію повільна; гострого ризику немає. Узгоджено з психіатром.",
           )(c),
-    ...(k === 3 ? { conclusion: { visit: 0, key: "pcl5", text: (c: NoteContext) => `Психодіагностичне обстеження ${c.date(days[0]!)}.\nМетодики: LEC-5, PCL-5, PHQ-9${alcohol ? ", AUDIT-C" : ""}.\nРезультати: PCL-5 — ${fmt(c.score("pcl5"))} з 80 (${c.band("pcl5") ?? "—"}); PHQ-9 — ${fmt(c.score("phq9"))} з 27 (${c.band("phq9") ?? "—"}).\nВисновок: хронічні посттравматичні симптоми високої вираженості з депресивними проявами; потребує поєднання психотерапії та фармакотерапії.\nРекомендовано: консультація психіатра, травмофокусована терапія, повторне обстеження через 6 тижнів.` } } : {}),
-    safetyPlans: crisisDay !== null
-      ? [
-          {
-            day: crisisDay,
-            content: safetyPlan(r, {
-              signs: ["Третя ніч без сну", "Думки «краще б мене не було»", "Бажання випити, щоб «відключитися»", "Не відповідаю на дзвінки"],
-              reasons: ["Син", "Обіцянка побратимам жити далі", "Батьки"],
-              weapon: true,
-              people: [["Дружина", contactPhone(r)], ["Побратим Олексій", contactPhone(r)]],
-            }),
+    ...(k === 3
+      ? {
+          conclusion: {
+            visit: 0,
+            key: "pcl5",
+            text: (c: NoteContext) =>
+              `Психодіагностичне обстеження ${c.date(days[0]!)}.\nМетодики: PCL-5, PHQ-9, LEC-5${alcohol ? ", AUDIT-C" : ""}.\nРезультати: PCL-5 — ${banded(c.score("pcl5"), c.band("pcl5"))} (з 80); PHQ-9 — ${banded(c.score("phq9"), c.band("phq9"))} (з 27).\nВисновок: хронічні посттравматичні симптоми високої вираженості з депресивними проявами; потребує поєднання психотерапії та фармакотерапії.\nРекомендовано: консультація психіатра, травмофокусована терапія, повторне обстеження через 6 тижнів.`,
           },
-        ]
-      : [],
+        }
+      : {}),
+    safetyPlans:
+      crisisDay !== null
+        ? [
+            {
+              day: crisisDay,
+              content: safetyPlan(r, {
+                signs: ["Третя ніч без сну", "Думки «краще б мене не було»", "Бажання випити, щоб «відключитися»", "Не відповідаю на дзвінки"],
+                reasons: ["Син", "Обіцянка побратимам жити далі", "Батьки"],
+                weapon: p.unit !== "Ветеран",
+                people: [[g(p, "Дружина", "Чоловік"), contactPhone(r)], ["Побратим Олексій", contactPhone(r)]],
+              }),
+            },
+          ]
+        : [],
     referrals: [
       ...(crisisDay !== null
         ? [{ day: crisisDay, destination: "psychiatrist" as const, urgency: "urgent" as const, status: "accepted" as const, reason: "Погіршення після втрати побратима, пасивні суїцидальні думки: огляд психіатра, корекція терапії." }]
@@ -696,13 +781,28 @@ const ptsdSlow: Builder = (p, r, v) => {
 
 /* ─── депресивний епізод, часткова відповідь ─── */
 
+const DEPR_STEPS = (p: Person) => [
+  "Поведінкова активація: щоденник активностей, план — 3 приємні й 2 обов’язкові справи на тиждень.",
+  "Виконано 3 з 5 запланованих справ; настрій «трохи кращий вранці». Розібрано, що заважало.",
+  "Когнітивна реструктуризація думки «Я тягар для родини»; альтернативи формулює з підтримкою.",
+  `Приймає сертралін третій тиждень, переносить добре; сон до 6 год, ${g(p, "почав", "почала")} виходити на прогулянки.`,
+  "Робота з руминаціями: «час для роздумів» 15 хв, переключення на дію.",
+  "Розширення активностей: зустріч із другом, спортзал двічі на тиждень.",
+  "Ангедонія зберігається вечорами; додано заплановані приємні справи після служби.",
+  "Робота із самокритикою: лист собі від імені друга.",
+  "Профілактика рецидиву: ранні ознаки погіршення, план дій, контакти.",
+  "Підтримувальна сесія: настрій нестабільний, але без глибоких спадів; план продовжено.",
+];
+
 const depression: Builder = (p, r, v) => {
   const k = v % ARCHETYPE_COUNTS.depression;
   const start = -between(r, 40, 160);
-  const all = courseDays(r, start, 14, 10, 2);
+  /* курс завершили двоє; решта лікуються досі — раз на два тижні аж до сьогодні */
+  const closing = k === 7 || k === 8;
+  const all = courseDays(r, start, 14, closing ? 10 : Math.ceil((20 - start) / 14) + 1, 2);
   const days = trimFuture(all);
   const end = all[all.length - 1]!;
-  const finished = end < -14 && (k === 7 || k === 8);
+  const finished = closing && end < -14;
   const phqFrom = between(r, 16, 21);
   const phqTo = between(r, 9, 13);
   const whoFrom = between(r, 4, 8);
@@ -717,6 +817,7 @@ const depression: Builder = (p, r, v) => {
     : worse !== null
       ? [...days.filter((d) => d < worse - 4 || d > 1), worse].sort((a, b) => a - b)
       : days;
+  const steps = DEPR_STEPS(p);
 
   const visits: Visit[] = usedDays.map((d, i) => {
     if (i === 0) {
@@ -729,7 +830,7 @@ const depression: Builder = (p, r, v) => {
             "Первинний прийом.",
             `Скарги: пригнічений настрій більшу частину дня, втрата інтересу, раннє пробудження о 4–5 год, зниження апетиту, втома. Триває ${between(r, 6, 14)} тижнів.`,
             `Психічний стан: ${STATUS_CALM(p)} Настрій знижений, мовлення тихе, уповільнене. ${passive ? "Пасивні думки «краще б не прокидатися» без наміру (C-SSRS)." : "Суїцидальні думки заперечує."}`,
-            `Обстеження: PHQ-9 — ${fmt(c.score("phq9"))}, GAD-7 — ${fmt(c.score("gad7"))}, WHO-5 — ${fmt(c.score("who5"))} з 25.`,
+            `Обстеження: PHQ-9 — ${banded(c.score("phq9"), c.band("phq9"))}; GAD-7 — ${banded(c.score("gad7"), c.band("gad7"))}; WHO-5 — ${fmt(c.score("who5"))} з 25.`,
             "План: поведінкова активація й когнітивна терапія раз на 2 тижні; консультація психіатра щодо антидепресанту; контроль PHQ-9 і WHO-5 щомісяця.",
           ].join("\n"),
         { reason: pick(r, ["Нічого не хочеться, прокидаюся о четвертій і лежу", "Все байдуже, навіть діти не радують", "Немає сил ні на що"]) },
@@ -741,20 +842,16 @@ const depression: Builder = (p, r, v) => {
     const measures = measuring ? [M.phq9(phqNow), M.who5(whoNow), ...(i === 4 ? [M.gad7(noisy(r, gadFrom - 4, 1.5, 0, 21))] : [])] : [];
     return visit(d, "repeat", measures, (c) => {
       if (d === worse) {
-        return `Погіршення після конфлікту в родині: PHQ-9 — ${fmt(c.score("phq9"))} (найвищий за курс після старту), WHO-5 — ${fmt(c.score("who5"))} з 25. П. 9 — 0, суїцидальні думки заперечує. Позачерговий прийом за 2 дні, повідомлено психіатра.`;
+        return `Позачерговий прийом. Погіршення після конфлікту в родині: PHQ-9 — ${banded(c.score("phq9"), c.band("phq9"))}, WHO-5 — ${fmt(c.score("who5"))} з 25. П. 9 — 0, суїцидальні думки заперечує. Наступний прийом — за 2 дні, психіатра поінформовано.`;
       }
-      const line = pick(r, [
-        `Сесія ${c.visitNo}. Поведінкова активація: щоденник активностей веде, виконано 3 з 5 запланованих справ. Настрій «трохи кращий вранці».`,
-        `Сесія ${c.visitNo}. Когнітивна реструктуризація думки «Я тягар для родини»; альтернативи формулює з підтримкою.`,
-        `Сесія ${c.visitNo}. Приймає сертралін ${pick(r, ["третій", "п’ятий", "шостий"])} тиждень, переносить добре. Сон до 6 год, ${g(p, "почав", "почала")} виходити на прогулянки.`,
-      ]);
+      const line = `Сесія ${c.visitNo}. ${step(steps, c.visitNo)}`;
       return measuring
         ? `${line}\nКонтрольний замір: PHQ-9 — ${fmt(c.score("phq9"))} (на початку — ${fmt(c.first("phq9"))}), ${change(c.score("phq9"), c.first("phq9"), 6)}; WHO-5 — ${fmt(c.score("who5"))} з 25.`
         : line;
     });
   });
 
-  const lastPast = visits.filter((x) => x.day <= 0 && x.outcome === "done").at(-1)?.day ?? start;
+  const lastPast = lastPastOf(visits, start);
   const next = usedDays.find((d) => d > 0);
   return {
     ...NONE,
@@ -795,7 +892,7 @@ const depression: Builder = (p, r, v) => {
               [
                 `Психодіагностичне обстеження ${c.date(days[0]!)}.`,
                 "Методики: PHQ-9, GAD-7, WHO-5.",
-                `Результати: PHQ-9 — ${fmt(c.score("phq9"))} з 27 (${c.band("phq9") ?? "—"}); GAD-7 — ${fmt(c.score("gad7"))} з 21 (${c.band("gad7") ?? "—"}); WHO-5 — ${fmt(c.score("who5"))} з 25 (${c.band("who5") ?? "—"}).`,
+                `Результати: PHQ-9 — ${banded(c.score("phq9"), c.band("phq9"))} (з 27); GAD-7 — ${banded(c.score("gad7"), c.band("gad7"))} (з 21); WHO-5 — ${banded(c.score("who5"), c.band("who5"))} (з 25).`,
                 "Висновок: виражена депресивна симптоматика (знижений настрій, ангедонія, порушення сну й апетиту) з тривожним компонентом; суттєво знижене благополуччя.",
                 "Рекомендовано: психотерапія (поведінкова активація, КПТ), консультація психіатра щодо антидепресанту, контроль через 4 тижні.",
               ].join("\n"),
@@ -809,20 +906,25 @@ const depression: Builder = (p, r, v) => {
             signs: ["Думки «краще б не прокидатися»", "Перестаю відповідати на повідомлення", "Лежу весь день, не виходжу з кімнати"],
             reasons: ["Донька", "Мама", "Пес Бакс, якого нема на кого лишити"],
             weapon: false,
-            people: [["Сестра", contactPhone(r)], ["Подруга Оксана", contactPhone(r)]],
+            people: [["Сестра", contactPhone(r)], [g(p, "Друг Олег", "Подруга Оксана"), contactPhone(r)]],
           }),
         }]
       : [],
-    referrals: k % 3 === 0
-      ? [{
-          day: start + 10,
-          destination: "psychiatrist",
-          urgency: "routine",
-          status: k === 9 ? "accepted" : "completed",
-          reason: "Депресивний епізод, недостатня відповідь на психотерапію: питання антидепресанту.",
-          ...(k === 9 ? {} : { outcomeNote: "Депресивний епізод помірного ступеня. Сертралін 50 мг, контроль через 4 тижні.", updatedDay: start + 16 }),
-        }]
-      : [],
+    referrals: [
+      ...(k % 3 === 0 && k !== 9
+        ? [{
+            day: start + 10,
+            destination: "psychiatrist" as const,
+            urgency: "routine" as const,
+            status: "completed" as const,
+            reason: "Депресивний епізод, недостатня відповідь на психотерапію: питання антидепресанту.",
+            outcomeNote: "Депресивний епізод помірного ступеня. Сертралін 50 мг, контроль через 4 тижні.",
+            updatedDay: start + 16,
+          }]
+        : []),
+      // відповідь ще не надійшла — свіже направлення, а не забуте
+      ...(k === 9 ? [{ day: Math.max(start + 10, -6), destination: "psychiatrist" as const, urgency: "routine" as const, status: "accepted" as const, reason: "Часткова відповідь на терапію: питання корекції антидепресанту." }] : []),
+    ],
     ...(k === 2 && lastPast < -6
       ? {
           thread: [
@@ -831,15 +933,18 @@ const depression: Builder = (p, r, v) => {
           ],
         }
       : {}),
-    pending: finished
-      ? []
-      : next !== undefined
-        ? [{ key: "phq9", grantedDay: lastPast, dueDay: next }, { key: "who5", grantedDay: lastPast, dueDay: next }]
-        : [],
+    pending: finished || next === undefined ? [] : [{ key: "phq9", grantedDay: lastPast, dueDay: next }, { key: "who5", grantedDay: lastPast, dueDay: next }],
   };
 };
 
 /* ─── розлад адаптації, що минає ─── */
+
+const ADJ_STEPS = (p: Person) => [
+  "Навички саморегуляції: дихання 4–6, прогресивна м’язова релаксація. Сон покращився до 6–7 год.",
+  "Розв’язання проблем: розмова з командиром про графік, план зв’язку з родиною. Напруження менше.",
+  `Підтримка, нормалізація реакцій на зміни; ${g(p, "знайшов", "знайшла")} спільну мову з новим підрозділом.`,
+  "Закріплення навичок, план на випадок нових стресових подій.",
+];
 
 const adjustment: Builder = (p, r, v) => {
   const k = v % ARCHETYPE_COUNTS.adjustment;
@@ -853,14 +958,16 @@ const adjustment: Builder = (p, r, v) => {
   const k10To = between(r, 13, 18);
   const pssFrom = between(r, 20, 27);
   const pssTo = between(r, 10, 16);
+  const t = (d: number) => (d - start) / Math.max(1, end - start);
   const trigger = pick(r, [
     { reason: "Після мобілізації важко адаптуватися: тривога, порушення сну, конфлікти в підрозділі.", what: "мобілізації" },
     { reason: "Після поранення й тривалого лікування — страх повернення до служби, напруження.", what: "поранення й лікування" },
     { reason: "Переведення до іншого підрозділу, розлука з родиною: напруження, плаксивість.", what: "переведення до іншого підрозділу" },
     { reason: "Після розформування підрозділу й загибелі командира — розгубленість, безсоння.", what: "розформування підрозділу" },
-    { reason: "Дружина подала на розлучення під час служби: дратівливість, не може зосередитися.", what: "розриву в родині" },
+    { reason: `${g(p, "Дружина подала", "Чоловік подав")} на розлучення під час служби: дратівливість, не може зосередитися.`, what: "розриву в родині" },
   ]);
   const rescheduled = k === 3 ? 1 : -1;
+  const steps = ADJ_STEPS(p);
 
   const visits: Visit[] = [];
   days.forEach((d, i) => {
@@ -880,7 +987,7 @@ const adjustment: Builder = (p, r, v) => {
               "Первинна консультація.",
               `Скарги: напруження, тривога за родину, сон 5 год, дратівливість упродовж ${between(r, 2, 6)} тижнів після ${trigger.what}.`,
               `Психічний стан: ${STATUS_CALM(p)} Емоційно ${g(p, "лабільний", "лабільна")}, критичність збережена. Суїцидальні думки заперечує.`,
-              `Обстеження: K10 — ${fmt(c.score("k10"))} (${c.band("k10") ?? "—"}), PSS-10 — ${fmt(c.score("pss10"))}.`,
+              `Обстеження: K10 — ${banded(c.score("k10"), c.band("k10"))}; PSS-10 — ${fmt(c.score("pss10"))} з 40.`,
               "Оцінка: реакція на стрес, порушення адаптації. План: 3–4 консультації — саморегуляція, розв’язання проблем, підтримка.",
             ].join("\n"),
           { reason: pick(r, [`Не можу звикнути, весь час ${g(p, "напружений", "напружена")}`, "Погано сплю, думаю про родину", "Зриваюся на всіх"]), noteKind: "intake" },
@@ -888,7 +995,7 @@ const adjustment: Builder = (p, r, v) => {
       );
       return;
     }
-    const measures = last || i === 2 ? [M.k10(noisy(r, curve(k10From, k10To, (d - start) / Math.max(1, end - start)), 1.5, 10, 50)), M.pss10(noisy(r, curve(pssFrom, pssTo, (d - start) / Math.max(1, end - start)), 2, 0, 40))] : [];
+    const measures = last || i === 2 ? [M.k10(noisy(r, curve(k10From, k10To, t(d)), 1.5, 10, 50)), M.pss10(noisy(r, curve(pssFrom, pssTo, t(d)), 2, 0, 40))] : [];
     visits.push(
       visit(
         d,
@@ -896,18 +1003,14 @@ const adjustment: Builder = (p, r, v) => {
         measures,
         (c) =>
           last
-            ? `Завершальна консультація. K10 — ${fmt(c.score("k10"))} (на початку — ${fmt(c.first("k10"))}), PSS-10 — ${fmt(c.score("pss10"))}: стан стабілізувався, ${g(p, "повернувся", "повернулася")} до звичного ритму служби. Рекомендовано звертатися за потреби.`
-            : pick(r, [
-                `Консультація ${c.visitNo}. Навички саморегуляції: дихання 4–6, м’язова релаксація. Сон покращився до 6–7 год.`,
-                `Консультація ${c.visitNo}. Розв’язання проблем: розмова з командиром про графік, план зв’язку з родиною. Напруження менше.`,
-                `Консультація ${c.visitNo}. Підтримка, нормалізація реакцій на зміни; ${g(p, "знайшов", "знайшла")} спільну мову з новим підрозділом.`,
-              ]) + (measures.length ? `\nK10 — ${fmt(c.score("k10"))} (на початку — ${fmt(c.first("k10"))}).` : ""),
+            ? `Завершальна консультація. K10 — ${banded(c.score("k10"), c.band("k10"))} (на початку — ${fmt(c.first("k10"))}); PSS-10 — ${fmt(c.score("pss10"))}. Стан стабілізувався, ${g(p, "повернувся", "повернулася")} до звичного ритму служби. Рекомендовано звертатися за потреби.`
+            : `Консультація ${c.visitNo}. ${step(steps, c.visitNo)}${measures.length ? `\nK10 — ${fmt(c.score("k10"))} (на початку — ${fmt(c.first("k10"))}).` : ""}`,
         { noteKind: "consult" },
       ),
     );
   });
 
-  const lastPast = visits.filter((x) => x.day <= 0 && x.outcome === "done").at(-1)?.day ?? start;
+  const lastPast = lastPastOf(visits, start);
   return {
     ...NONE,
     episode: {
@@ -929,22 +1032,23 @@ const adjustment: Builder = (p, r, v) => {
             visit: 0,
             key: "k10",
             text: (c: NoteContext) =>
-              `Психологічне обстеження ${c.date(days[0]!)}.\nМетодики: K10, PSS-10.\nРезультати: K10 — ${fmt(c.score("k10"))} з 50 (${c.band("k10") ?? "—"}); PSS-10 — ${fmt(c.score("pss10"))} з 40.\nВисновок: реакція на стрес у зв’язку зі зміною обставин служби; ознак психотичних і тяжких афективних розладів немає.\nРекомендовано: 3–4 консультації психолога, контроль K10 після курсу.`,
+              `Психологічне обстеження ${c.date(days[0]!)}.\nМетодики: K10, PSS-10.\nРезультати: K10 — ${banded(c.score("k10"), c.band("k10"))} (з 50); PSS-10 — ${fmt(c.score("pss10"))} з 40.\nВисновок: реакція на стрес у зв’язку зі зміною обставин служби; ознак психотичних і тяжких афективних розладів немає.\nРекомендовано: 3–4 консультації психолога, контроль K10 після курсу.`,
           },
         }
       : {}),
-    referrals: k === 10
-      ? [{
-          day: start + 2,
-          destination: "commander",
-          urgency: "routine",
-          status: "completed",
-          reason: "Рекомендації командиру: адаптаційний період, без нарядів з озброєнням 2 тижні.",
-          outcomeNote: "Командира поінформовано, рекомендації враховано.",
-          updatedDay: start + 4,
-        }]
-      : [],
-    ...(k === 6 && !finished
+    referrals:
+      k === 10
+        ? [{
+            day: start + 2,
+            destination: "commander",
+            urgency: "routine",
+            status: "completed",
+            reason: "Рекомендації командиру: адаптаційний період, без нарядів з озброєнням 2 тижні.",
+            outcomeNote: "Командира поінформовано, рекомендації враховано.",
+            updatedDay: start + 4,
+          }]
+        : [],
+    ...(k === 6 && !finished && lastPast < -3
       ? {
           thread: [
             { day: lastPast + 1, minute: 18 * 60 + 30, fromPatient: true, text: "Чи можна перенести прийом? Ставлять у наряд саме того дня.", read: true },
@@ -957,11 +1061,25 @@ const adjustment: Builder = (p, r, v) => {
 
 /* ─── шкідливе вживання алкоголю ─── */
 
+const ALC_STEPS = (p: Person) => [
+  "Мотиваційне інтерв’ю: «за» і «проти» змін, ціль — тверезість на 3 місяці.",
+  "Тригери вживання: безсоння, самотність увечері, зустрічі з товаришами по службі; план альтернатив.",
+  "Навички відмови в компанії; рольова гра.",
+  "Сон без алкоголю 5–6 год; рекомендації з гігієни сну.",
+  "Відвідує групу підтримки; потяг увечері слабший.",
+  `Розмова з ${spouse(p)} про план тверезості відбулася; домовилися про спільні вечори без алкоголю.`,
+  "Профілактика зриву: ранні ознаки, кому дзвонити.",
+  "Підтримувальна сесія; план на найближчі свята.",
+];
+
+/** «Без алкоголю 5 тижнів» — тиждень, тижні, тижнів */
+const soberLine = (weeks: number) => `Без алкоголю ${weeks} ${pl(weeks, "тиждень", "тижні", "тижнів")}.`;
+
 const alcohol: Builder = (p, r, v) => {
   const k = v % ARCHETYPE_COUNTS.alcohol;
   const reasons = [
     `${g(p, "Скерований", "Скерована")} командиром після дисциплінарного порушення у стані сп’яніння.`,
-    "Після повернення з передової щодня вживає алкоголь, «щоб заснути»; дружина наполягла на зверненні.",
+    `Після повернення з передової щодня вживає алкоголь, «щоб заснути»; ${g(p, "дружина наполягла", "чоловік наполіг")} на зверненні.`,
     "Конфлікти в підрозділі через вживання; попередження від командира.",
   ];
   if (k === 0 || k === 1) {
@@ -977,37 +1095,46 @@ const alcohol: Builder = (p, r, v) => {
           i === 0
             ? [
                 `${g(p, "Госпіталізований", "Госпіталізована")} з ознаками синдрому відміни алкоголю. Вживання щоденне ${between(r, 4, 10)} міс., остання доза — напередодні.`,
-                `Тремор, пітливість, тривожність, порушення сну. CIWA-Ar — ${fmt(c.score("ciwaar"))} (${c.band("ciwaar") ?? "—"}).`,
+                `Тремор, пітливість, тривожність, порушення сну. CIWA-Ar — ${banded(c.score("ciwaar"), c.band("ciwaar"))}.`,
                 "Узгоджено з черговим лікарем: спостереження кожні 4 години, медикаментозна підтримка.",
               ].join("\n")
             : i === 1
-              ? `CIWA-Ar — ${fmt(c.score("ciwaar"))}: ознаки відміни зменшуються. AUDIT — ${fmt(c.score("audit"))} (${c.band("audit") ?? "—"}), PHQ-9 — ${fmt(c.score("phq9"))}. Мотиваційне інтерв’ю: визнає проблему, ${g(p, "згоден", "згодна")} на лікування.`
+              ? `CIWA-Ar — ${fmt(c.score("ciwaar"))}: ознаки відміни зменшуються. AUDIT — ${banded(c.score("audit"), c.band("audit"))}; PHQ-9 — ${fmt(c.score("phq9"))}. Мотиваційне інтерв’ю: визнає проблему, ${g(p, "згоден", "згодна")} на лікування.`
               : `CIWA-Ar — ${fmt(c.score("ciwaar"))}: синдром відміни минув. Обговорено план тверезості, тригери (безсоння, самотність увечері), група підтримки.`,
         i === 0 ? { reason: "Трусить, не сплю, хочу кинути пити", urgent: true } : {},
       ),
     );
     if (k === 1) {
-      const auditc = [between(r, 7, 9), between(r, 4, 6), between(r, 2, 4)];
+      const auditc = [between(r, 5, 7), between(r, 3, 5), between(r, 2, 3)];
       courseDays(r, day0 + 14, 14, 4, 2).forEach((d, i) => {
         if (d > 0) return;
         visits.push(
-          visit(d, "repeat", i % 2 === 0 ? [M.auditc(auditc[Math.min(2, i / 2 + 1)]!)] : [], (c) =>
-            `Сесія ${c.visitNo}. ${g(p, "Тверезий", "Твереза")} ${Math.round((d - day0) / 7)} тижнів. ${c.score("auditc") !== null ? `AUDIT-C — ${fmt(c.score("auditc"))} (на старті AUDIT — ${fmt(c.first("audit"))}).` : "Відвідує групу підтримки."} Тригери: вечори на самоті; альтернатива — спортзал і дзвінок братові.`,
+          visit(d, "repeat", i % 2 === 0 ? [M.auditc(auditc[Math.min(2, i / 2)]!)] : [], (c) =>
+            `Сесія ${c.visitNo}. ${soberLine(Math.round((d - day0) / 7))} ${step(ALC_STEPS(p), c.visitNo - 2)}${c.score("auditc") !== null ? `\nAUDIT-C — ${fmt(c.score("auditc"))} (на старті AUDIT — ${fmt(c.first("audit"))}).` : ""}`,
           ),
         );
       });
     }
-    const lastPast = visits.filter((x) => x.day <= 0).at(-1)?.day ?? day0;
+    const lastPast = lastPastOf(visits, day0);
     return {
       ...NONE,
       episode: { openDay: day0, reason: `${g(p, "Госпіталізований", "Госпіталізована")} з ознаками синдрому відміни алкоголю.` },
-      visits: k === 0 ? [...visits, visit(1, "repeat", [], undefined)] : [...visits, visit(between(r, 3, 12), "repeat", [], undefined)],
+      visits: [...visits, visit(k === 0 ? 1 : between(r, 3, 12), "repeat", [], undefined)],
       ...(k === 0 ? { openFrom: day0 } : {}),
       decide: (c) =>
         c.first
           ? { outcome: "confirmed", note: "Підтверджено: синдром відміни алкоголю. Спостереження чергового лікаря, медикаментозна підтримка." }
           : { outcome: "needs_followup", note: "Синдром відміни зменшується; спостереження продовжено." },
-      ...(k === 1 ? { conclusion: { visit: 1, key: "audit", text: (c: NoteContext) => `Психологічне обстеження ${c.date(day0 + 1)}.\nМетодики: AUDIT, PHQ-9, CIWA-Ar (у динаміці).\nРезультати: AUDIT — ${fmt(c.score("audit"))} з 40 (${c.band("audit") ?? "—"}); PHQ-9 — ${fmt(c.score("phq9"))}.\nВисновок: ознаки залежності від алкоголю з синдромом відміни; помірна депресивна симптоматика.\nРекомендовано: лікування в лікаря-психіатра (нарколога), мотиваційне консультування, група підтримки, AUDIT-C щомісяця.` } } : {}),
+      ...(k === 1
+        ? {
+            conclusion: {
+              visit: 1,
+              key: "audit",
+              text: (c: NoteContext) =>
+                `Психологічне обстеження ${c.date(day0 + 1)}.\nМетодики: AUDIT, PHQ-9, CIWA-Ar (у динаміці).\nРезультати: AUDIT — ${banded(c.score("audit"), c.band("audit"))} (з 40); PHQ-9 — ${banded(c.score("phq9"), c.band("phq9"))}.\nВисновок: ознаки залежності від алкоголю із синдромом відміни; депресивна симптоматика.\nРекомендовано: лікування в лікаря-психіатра (нарколога), мотиваційне консультування, група підтримки, AUDIT-C щомісяця.`,
+            },
+          }
+        : {}),
       referrals: [{
         day: day0 + 1,
         destination: "psychiatrist",
@@ -1024,10 +1151,13 @@ const alcohol: Builder = (p, r, v) => {
   const dropout = k === 2;
   const all = courseDays(r, start, 10, dropout ? 4 : 9, 2);
   const days = trimFuture(all);
+  const end = all[all.length - 1]!;
+  const finished = !dropout && end < -5;
   const auditFrom = between(r, 16, 22);
   const cFrom = between(r, 8, 10);
   const cTo = between(r, 2, 4);
   const relapse = k === 4 ? 4 : -1;
+  const steps = ALC_STEPS(p);
   const visits: Visit[] = days.map((d, i) => {
     if (i === 0) {
       return visit(
@@ -1039,52 +1169,65 @@ const alcohol: Builder = (p, r, v) => {
             "Первинний прийом.",
             `Вживає алкоголь ${pick(r, ["щодня", "4–5 вечорів на тиждень"])} ${between(r, 3, 12)} міс., до 6–8 стандартних порцій, «щоб заснути й не думати». Епізоди провалів у пам’яті.`,
             `Психічний стан: ${STATUS_CALM(p)} Критичність до вживання часткова. Суїцидальні думки заперечує.`,
-            `Обстеження: AUDIT — ${fmt(c.score("audit"))} (${c.band("audit") ?? "—"}), PHQ-9 — ${fmt(c.score("phq9"))}.`,
+            `Обстеження: AUDIT — ${banded(c.score("audit"), c.band("audit"))}; PHQ-9 — ${fmt(c.score("phq9"))}.`,
             "План: мотиваційне інтерв’ю, консультація психіатра-нарколога, AUDIT-C щомісяця.",
           ].join("\n"),
         { reason: "Командир сказав прийти, але й сам розумію, що забагато п’ю" },
       );
     }
     if (dropout && i >= 2) return visit(d, "repeat", [], undefined, { outcome: "no_show" });
-    const measuring = i % 3 === 0;
+    const measuring = i % 3 === 0 || (finished && d === end);
     const now = i === relapse ? cFrom - 1 : noisy(r, curve(cFrom, cTo, i / Math.max(1, all.length - 1)), 1, 0, 12);
+    const weeks = Math.round((d - start) / 7);
     return visit(d, "repeat", measuring || i === relapse ? [M.auditc(now)] : [], (c) => {
-      if (i === relapse) return `Сесія ${c.visitNo}. Зрив на вихідних після конфлікту з дружиною. Розбір ситуації без осуду, план на наступний раз. AUDIT-C — ${fmt(c.score("auditc"))}.`;
-      const line = pick(r, [
-        `Сесія ${c.visitNo}. Мотиваційне інтерв’ю: «за» і «проти», ціль — тверезість 3 місяці. Тригери: безсоння, самотність увечері.`,
-        `Сесія ${c.visitNo}. ${g(p, "Тверезий", "Твереза")} ${between(r, 2, 6)} тижнів; навички відмови в компанії, план вихідних.`,
-        `Сесія ${c.visitNo}. Відвідує групу підтримки; сон 6 год без алкоголю. Потяг увечері — слабший.`,
-      ]);
+      if (i === relapse) return `Сесія ${c.visitNo}. Зрив на вихідних після конфлікту в родині. Розбір ситуації без осуду, план на наступний раз. AUDIT-C — ${fmt(c.score("auditc"))}.`;
+      const line = `Сесія ${c.visitNo}. ${i > relapse && relapse > 0 ? "Після зриву — знову без алкоголю." : soberLine(weeks)} ${step(steps, c.visitNo)}`;
       return measuring ? `${line}\nAUDIT-C — ${fmt(c.score("auditc"))} (на старті AUDIT — ${fmt(c.first("audit"))}).` : line;
     });
   });
-  const lastPast = visits.filter((x) => x.day <= 0 && x.outcome === "done").at(-1)?.day ?? start;
+  const lastPast = lastPastOf(visits, start);
   const next = days.find((d) => d > 0);
+  const dropDay = (all[3] ?? start + 30) + 10;
   return {
     ...NONE,
     episode: {
       openDay: start - 1,
       reason: pick(r, reasons),
-      ...(dropout
+      ...(dropout && dropDay < 0
         ? {
-            closeDay: (all[3] ?? start + 30) + 10 < 0 ? (all[3] ?? start + 30) + 10 : undefined,
+            closeDay: dropDay,
             outcome: "dropped" as const,
             outcomeText: () => `${g(p, "Перестав", "Перестала")} відвідувати після двох зустрічей, на дзвінки не відповідає. Командира поінформовано про рекомендації.`,
           }
-        : {}),
+        : finished
+          ? {
+              closeDay: end + 2,
+              outcome: "improved" as const,
+              outcomeText: (c: NoteContext) => `Курс завершено: AUDIT-C — ${fmt(c.score("auditc"))} (на старті AUDIT — ${fmt(c.first("audit"))}), тверезість утримує. Підтримувальні зустрічі за потреби.`,
+            }
+          : {}),
     },
     visits,
     decide: bandDecision("Підтверджено: шкідливе вживання алкоголю, гострого ризику немає. Мотиваційне консультування, консультація нарколога."),
-    ...(k === 4 ? { conclusion: { visit: 0, key: "audit", text: (c: NoteContext) => `Психологічне обстеження ${c.date(days[0]!)}.\nМетодики: AUDIT, PHQ-9.\nРезультати: AUDIT — ${fmt(c.score("audit"))} з 40 (${c.band("audit") ?? "—"}); PHQ-9 — ${fmt(c.score("phq9"))} з 27.\nВисновок: шкідливе вживання алкоголю як спосіб впоратися з безсонням і напруженням; мотивація до змін — помірна.\nРекомендовано: мотиваційне консультування, консультація лікаря-психіатра (нарколога), контроль AUDIT-C щомісяця.` } } : {}),
+    ...(k === 4
+      ? {
+          conclusion: {
+            visit: 0,
+            key: "audit",
+            text: (c: NoteContext) =>
+              `Психологічне обстеження ${c.date(days[0]!)}.\nМетодики: AUDIT, PHQ-9.\nРезультати: AUDIT — ${banded(c.score("audit"), c.band("audit"))} (з 40); PHQ-9 — ${banded(c.score("phq9"), c.band("phq9"))} (з 27).\nВисновок: шкідливе вживання алкоголю як спосіб упоратися з безсонням і напруженням; мотивація до змін — помірна.\nРекомендовано: мотиваційне консультування, консультація лікаря-психіатра (нарколога), контроль AUDIT-C щомісяця.`,
+          },
+        }
+      : {}),
     referrals: dropout
       ? [{ day: start + 25, destination: "commander", urgency: "routine", status: "completed", reason: "Поінформувати командира: пропускає консультації, рекомендовано контроль і повторне скерування.", outcomeNote: "Командира поінформовано.", updatedDay: start + 27 }]
       : k === 3
         ? [{ day: start + 4, destination: "psychiatrist", urgency: "routine", status: "completed", reason: "Консультація лікаря-психіатра (нарколога): шкідливе вживання алкоголю.", outcomeNote: "Шкідливе вживання без ознак залежності. Рекомендовано психотерапію, медикаментозного лікування не потребує.", updatedDay: start + 9 }]
         : [],
-    ...(k === 5 && lastPast < -2
+    ...(k === 5 && !finished && lastPast < -2
       ? { thread: [{ day: -1, minute: 20 * 60 + 45, fromPatient: true, text: `Тримаюся вже п’ятий тиждень. На вихідних було важко, але не ${g(p, "зірвався", "зірвалася")}.`, read: false }] }
       : {}),
-    pending: dropout || next === undefined ? [] : [{ key: "auditc", grantedDay: lastPast, dueDay: next }],
+    pending: dropout || finished || next === undefined ? [] : [{ key: "auditc", grantedDay: lastPast, dueDay: next }],
   };
 };
 
@@ -1114,7 +1257,7 @@ const insomnia: Builder = (p, r, v) => {
             "Первинний прийом.",
             `Скарги: засинання 60–90 хв, ${between(r, 2, 4)} нічні пробудження, раннє пробудження, денна втома${tbi ? ", головний біль після контузії" : ""}. Кава 5–6 чашок на день, телефон у ліжку.`,
             `Психічний стан: ${STATUS_CALM(p)} ${g(p, "Втомлений", "Втомлена")}, фон настрою рівний. Суїцидальні думки заперечує.`,
-            `Обстеження: SCI — ${fmt(c.score("sci"))} (${c.band("sci") ?? "—"}), RIS — ${fmt(c.score("ris"))}, FAS — ${fmt(c.score("fas"))} (${c.band("fas") ?? "—"}).`,
+            `Обстеження: SCI — ${banded(c.score("sci"), c.band("sci"))}; RIS — ${fmt(c.score("ris"))}; FAS — ${banded(c.score("fas"), c.band("fas"))}.`,
             "План: КПТ-І, 5 сесій — щоденник сну, обмеження часу в ліжку, контроль стимулів, гігієна сну.",
           ].join("\n"),
         { reason: pick(r, ["Не можу заснути годинами", "Прокидаюся о третій і більше не сплю", "Збився сон після нічних чергувань"]) },
@@ -1122,15 +1265,20 @@ const insomnia: Builder = (p, r, v) => {
     }
     const last = finished && d === end;
     const measures = i === 2 ? [M.sci(noisy(r, curve(sciFrom, sciTo, t(d)), 2, 0, 32))] : last ? [M.sci(sciTo), M.ris(between(r, 7, 12)), M.fas(between(r, 18, 25))] : [];
-    return visit(d, "repeat", measures, (c) =>
-      last
-        ? `Завершення КПТ-І. SCI — ${fmt(c.score("sci"))} (на початку — ${fmt(c.first("sci"))}), ${c.band("sci")?.toLowerCase() ?? ""}; FAS — ${fmt(c.score("fas"))}. Ефективність сну ${efficiency} %. Рекомендації щодо підтримання режиму.`
-        : i === 1
-          ? `КПТ-І, сесія 2. Щоденник сну: ефективність сну ${efficiency} %. Вікно сну 00:30–06:30, контроль стимулів, кава — до 14:00.`
-          : `КПТ-І, сесія ${c.visitNo}. Ефективність сну ${efficiency} %, засинання 20–30 хв; вікно сну розширено на 15 хв.${measures.length ? ` SCI — ${fmt(c.score("sci"))}.` : ""}`,
-    );
+    return visit(d, "repeat", measures, (c) => {
+      if (last) {
+        return `Завершення КПТ-І. SCI — ${banded(c.score("sci"), c.band("sci"))} (на початку — ${fmt(c.first("sci"))}); FAS — ${fmt(c.score("fas"))}. Ефективність сну ${efficiency} %. Рекомендації щодо підтримання режиму.`;
+      }
+      const body = [
+        `щоденник сну — ефективність ${efficiency} %. Вікно сну 00:30–06:30; контроль стимулів: у ліжку лише сон.`,
+        `ефективність сну ${efficiency} %, засинання 30–40 хв; вікно сну розширено на 15 хв, кава — до 14:00.`,
+        `робота з думками про сон («якщо не посплю — завалю службу»); ефективність сну ${efficiency} %.`,
+        `ефективність сну ${efficiency} %, засинання 15–20 хв; вікно сну 23:45–06:30.`,
+      ][Math.min(3, c.visitNo - 2)]!;
+      return `КПТ-І, сесія ${c.visitNo}: ${body}${measures.length ? ` SCI — ${fmt(c.score("sci"))}.` : ""}`;
+    });
   });
-  const lastPast = visits.filter((x) => x.day <= 0).at(-1)?.day ?? start;
+  const lastPast = lastPastOf(visits, start);
   return {
     ...NONE,
     episode: {
@@ -1148,18 +1296,41 @@ const insomnia: Builder = (p, r, v) => {
     },
     visits,
     decide: bandDecision("Підтверджено: виснаження на тлі хронічного безсоння, гострого ризику немає. КПТ-І за планом."),
-    ...(k % 3 === 0 ? { conclusion: { visit: 0, key: "sci", text: (c: NoteContext) => `Психологічне обстеження ${c.date(days[0]!)}.\nМетодики: SCI, RIS, FAS.\nРезультати: SCI — ${fmt(c.score("sci"))} з 32 (${c.band("sci") ?? "—"}); RIS — ${fmt(c.score("ris"))} з 40 (${c.band("ris") ?? "—"}); FAS — ${fmt(c.score("fas"))} з 50 (${c.band("fas") ?? "—"}).\nВисновок: хронічне безсоння з вираженою денною втомою; ознаки психофізіологічної інсомнії.\nРекомендовано: когнітивно-поведінкова терапія безсоння (5 сесій), гігієна сну, контроль SCI після курсу.` } } : {}),
+    ...(k % 3 === 0
+      ? {
+          conclusion: {
+            visit: 0,
+            key: "sci",
+            text: (c: NoteContext) =>
+              `Психологічне обстеження ${c.date(days[0]!)}.\nМетодики: SCI, RIS, FAS.\nРезультати: SCI — ${banded(c.score("sci"), c.band("sci"))} (з 32); RIS — ${banded(c.score("ris"), c.band("ris"))} (з 40); FAS — ${banded(c.score("fas"), c.band("fas"))} (з 50).\nВисновок: хронічне безсоння з вираженою денною втомою; ознаки психофізіологічної інсомнії.\nРекомендовано: когнітивно-поведінкова терапія безсоння (5 сесій), гігієна сну, контроль SCI після курсу.`,
+          },
+        }
+      : {}),
     referrals: tbi
       ? [{ day: start + 2, destination: "other", urgency: "routine", status: "completed", reason: "Консультація невролога: головний біль і порушення сну після контузії.", outcomeNote: "Органічної патології не виявлено, МРТ без особливостей. Рекомендовано продовжити КПТ-І.", updatedDay: start + 9 }]
       : [],
     ...(k === 4 && !finished
       ? { thread: [{ day: -1, minute: 7 * 60 + 50, fromPatient: true, text: "Надсилаю щоденник сну за тиждень: засинаю швидше, але о п’ятій прокидаюся.", read: false }] }
       : {}),
-    pending: finished ? [] : [{ key: "sci", grantedDay: lastPast, dueDay: (days.find((d) => d > 0) ?? lastPast + 7) }],
+    pending: finished ? [] : [{ key: "sci", grantedDay: lastPast, dueDay: days.find((d) => d > 0) ?? lastPast + 7 }],
   };
 };
 
 /* ─── моральна травма ─── */
+
+const MORAL_STEPS = (p: Person) => [
+  "Психоосвіта: моральна травма — не слабкість, а реакція на порушення власних цінностей.",
+  `Розмежування відповідальності й провини, «тест справедливого суду». Уперше ${g(p, "розповів", "розповіла")} про подію повністю.`,
+  "Тема сорому й страху осуду з боку родини; план розмови з близькими.",
+  "Лист до загиблого побратима, прочитано на сесії; після — полегшення.",
+  "Цінності, які не зруйновано: турбота про своїх, чесність; як вони проявляються зараз.",
+  "Гнів на командування; розмежування гніву й зневіри, що з цим робити.",
+  `Розмова з ${spouse(p)} про подію відбулася; реакція підтримувальна.`,
+  "Зустріч із капеланом госпіталю за власним бажанням; тема прощення себе.",
+  "Відновлювальні дії: допомога родині загиблого, волонтерство.",
+  "Уявна розмова з побратимом, якому довіряє, — «моральним свідком».",
+  "Підсумки: провину змінила відповідальність за те, як жити далі; план підтримки.",
+];
 
 const moralInjury: Builder = (p, r, v) => {
   const k = v % ARCHETYPE_COUNTS.moralInjury;
@@ -1174,12 +1345,12 @@ const moralInjury: Builder = (p, r, v) => {
     { reason: `Під час обстрілу загинули цивільні, яких не встигли вивести: «я ${g(p, "мав", "мала")} зробити більше».`, event: "загибель цивільних під час виходу", kinds: [0, 1] },
     { reason: "Командування кинуло підрозділ без підтримки: гнів, зневіра, «нікому не можна довіряти».", event: "залишення підрозділу без підтримки", kinds: [2] },
   ][k]!;
-  const reason = story.reason;
   const t = (d: number) => (d - start) / Math.max(1, end - start);
   const srFrom = between(r, 17, 23);
   const tvrFrom = between(r, 16, 22);
   const pclFrom = between(r, 34, 44);
   const phqFrom = between(r, 11, 15);
+  const steps = MORAL_STEPS(p);
   const visits: Visit[] = days.map((d, i) => {
     const measuring = i === 0 || i === 6 || i === 11;
     const measures = measuring
@@ -1190,46 +1361,68 @@ const moralInjury: Builder = (p, r, v) => {
         ]
       : [];
     if (i === 0) {
-      return visit(d, "primary", measures, (c) =>
-        [
-          "Первинний прийом.",
-          `Скарги: постійні думки про подію (${story.event}), провина, сором, відчуття, що «не заслуговує на добре життя»; ${g(p, "віддалився", "віддалилася")} від родини.`,
-          `Психічний стан: ${STATUS_CALM(p)} Настрій знижений, ${g(p, "стриманий", "стримана")}, під час розповіді дивиться вниз. Суїцидальні думки заперечує.`,
-          `Обстеження: MIOS — ${fmt(c.score("mios", "MIOS"))} з 56 (сором — ${fmt(c.score("mios", "SR"))}, підірвана довіра — ${fmt(c.score("mios", "TVR"))}), PCL-5 — ${fmt(c.score("pcl5"))}, PHQ-9 — ${fmt(c.score("phq9"))}.`,
-          "Оцінка: ознаки моральної травми з посттравматичною симптоматикою. План: робота з провиною й соромом, адаптивне розкриття; за згодою — зустріч із капеланом.",
-        ].join("\n"),
+      return visit(
+        d,
+        "primary",
+        measures,
+        (c) =>
+          [
+            "Первинний прийом.",
+            `Скарги: постійні думки про подію (${story.event}), провина, сором, відчуття, що «не заслуговує на добре життя»; ${g(p, "віддалився", "віддалилася")} від родини.`,
+            `Психічний стан: ${STATUS_CALM(p)} Настрій знижений, ${g(p, "стриманий", "стримана")}, під час розповіді дивиться вниз. Суїцидальні думки заперечує.`,
+            `Обстеження: MIOS — ${fmt(c.score("mios", "MIOS"))} з 56 (сором — ${fmt(c.score("mios", "SR"))}, підірвана довіра — ${fmt(c.score("mios", "TVR"))}); PCL-5 — ${banded(c.score("pcl5"), c.band("pcl5"))}; PHQ-9 — ${banded(c.score("phq9"), c.band("phq9"))}.`,
+            "Оцінка: ознаки моральної травми з посттравматичною симптоматикою. План: робота з провиною й соромом, адаптивне розкриття; за згодою — зустріч із капеланом.",
+          ].join("\n"),
         { reason: "Не можу пробачити собі той день" },
       );
     }
     return visit(d, "repeat", measures, (c) => {
-      const line = pick(r, [
-        `Сесія ${c.visitNo}. Розмежування відповідальності й провини, «тест справедливого суду». Вперше ${g(p, "розповів", "розповіла")} про подію повністю.`,
-        `Сесія ${c.visitNo}. Лист до загиблого побратима, прочитано на сесії; після — полегшення.`,
-        `Сесія ${c.visitNo}. Тема сорому й страху осуду з боку родини; план розмови з дружиною.`,
-        `Сесія ${c.visitNo}. Зустріч із капеланом госпіталю за власним бажанням; тема прощення себе.`,
-      ]);
+      const line = `Сесія ${c.visitNo}. ${step(steps, c.visitNo)}`;
       return measuring
         ? `${line}\nКонтрольний замір: MIOS — ${fmt(c.score("mios", "MIOS"))} (на початку — ${fmt(c.first("mios", "MIOS"))}), PCL-5 — ${fmt(c.score("pcl5"))}, PHQ-9 — ${fmt(c.score("phq9"))}.`
         : line;
     });
   });
-  const lastPast = visits.filter((x) => x.day <= 0).at(-1)?.day ?? start;
+  const lastPast = lastPastOf(visits, start);
   const finished = end < -5;
   return {
     ...NONE,
     episode: {
       openDay: start - 2,
-      reason,
-      ...(finished ? { closeDay: end + 2, outcome: "improved" as const, outcomeText: (c: NoteContext) => `Курс завершено: MIOS з ${fmt(c.first("mios", "MIOS"))} до ${fmt(c.score("mios", "MIOS"))}, PCL-5 — ${fmt(c.score("pcl5"))}. Підтримувальні зустрічі за потреби.` } : {}),
+      reason: story.reason,
+      ...(finished
+        ? { closeDay: end + 2, outcome: "improved" as const, outcomeText: (c: NoteContext) => `Курс завершено: MIOS з ${fmt(c.first("mios", "MIOS"))} до ${fmt(c.score("mios", "MIOS"))}, PCL-5 — ${fmt(c.score("pcl5"))}. Підтримувальні зустрічі за потреби.` }
+        : {}),
     },
     visits,
     decide: bandDecision("Підтверджено: посттравматична й депресивна симптоматика на тлі моральної травми, гострого ризику немає. Взято на курс."),
-    ...(k % 2 === 0 ? { conclusion: { visit: 0, key: "mios", text: (c: NoteContext) => `Психодіагностичне обстеження ${c.date(days[0]!)}.\nМетодики: MIOS, PCL-5, PHQ-9.\nРезультати: MIOS — ${fmt(c.score("mios", "MIOS"))} з 56 (наслідки, пов’язані із соромом, — ${fmt(c.score("mios", "SR"))}; з підірваною довірою — ${fmt(c.score("mios", "TVR"))}); PCL-5 — ${fmt(c.score("pcl5"))} з 80 (${c.band("pcl5") ?? "—"}); PHQ-9 — ${fmt(c.score("phq9"))} з 27 (${c.band("phq9") ?? "—"}).\nВисновок: виражені наслідки моральної травми (провина, сором, зневіра) з посттравматичними та депресивними проявами.\nРекомендовано: психотерапія, спрямована на моральну травму (12 сесій), за згодою — участь капелана, контроль через 6 тижнів.` } } : {}),
-    pending: finished ? [] : [{ key: "mios", grantedDay: lastPast, dueDay: (all.find((d, i) => d > 0 && (i === 6 || i === 11)) ?? lastPast + 21) }],
+    ...(k % 2 === 0
+      ? {
+          conclusion: {
+            visit: 0,
+            key: "mios",
+            text: (c: NoteContext) =>
+              `Психодіагностичне обстеження ${c.date(days[0]!)}.\nМетодики: MIOS, PCL-5, PHQ-9.\nРезультати: MIOS — ${fmt(c.score("mios", "MIOS"))} з 56 (наслідки, пов’язані із соромом, — ${fmt(c.score("mios", "SR"))}; з підірваною довірою — ${fmt(c.score("mios", "TVR"))}); PCL-5 — ${banded(c.score("pcl5"), c.band("pcl5"))} (з 80); PHQ-9 — ${banded(c.score("phq9"), c.band("phq9"))} (з 27).\nВисновок: виражені наслідки моральної травми (провина, сором, зневіра) з посттравматичними та депресивними проявами.\nРекомендовано: психотерапія, спрямована на моральну травму (12 сесій), за згодою — участь капелана, контроль через 6 тижнів.`,
+          },
+        }
+      : {}),
+    pending: finished ? [] : [{ key: "mios", grantedDay: lastPast, dueDay: all.find((d, i) => d > 0 && (i === 6 || i === 11)) ?? lastPast + 21 }],
   };
 };
 
 /* ─── пролонгована реакція горя ─── */
+
+const GRIEF_STEPS = (p: Person, whom: string) => [
+  `Розповідь про смерть ${whom}, робота з униканням. Уперше ${g(p, "переглянув", "переглянула")} фотографії.`,
+  "Щоденник туги: найважче — вечори й вихідні; план підтримки на ці години.",
+  "Робота з провиною того, хто вижив: «що сказав би загиблий».",
+  "Відвідування могили — уперше після похорону. Туга не зникла, але «стало можна дихати».",
+  "Уявна розмова із загиблим; прощання, якого не було.",
+  `Повернення до того, чого ${g(p, "уникав", "уникала")}: місця, де бували разом, спільна музика.`,
+  "Відновлення сенсу: волонтерство у фонді підтримки родин загиблих.",
+  "Нові ролі й плани на рік; підтримка родини.",
+  "Підсумки курсу: пам’ять без болю, що паралізує; план на роковини.",
+];
 
 const grief: Builder = (p, r, v) => {
   const k = v % ARCHETYPE_COUNTS.grief;
@@ -1247,34 +1440,34 @@ const grief: Builder = (p, r, v) => {
   const tgiTo = between(r, 58, 69);
   const t = (d: number) => (d - start) / Math.max(1, end - start);
   const wish = k === 0;
+  const steps = GRIEF_STEPS(p, loss.whom);
   const visits: Visit[] = days.map((d, i) => {
     const measuring = i === 0 || i % 3 === 0;
     const measures = measuring
       ? [M.tgi(i ? noisy(r, curve(tgiFrom, tgiTo, t(d)), 3, 22, 110) : tgiFrom, i === 0 && wish ? 3 : 1), ...(i === 0 ? [M.phq9(between(r, 11, 16)), ...(wish ? [M.cssrs({ wish: true, thoughts: false })] : [])] : [])]
       : [];
     if (i === 0) {
-      return visit(d, "primary", measures, (c) =>
-        [
-          "Первинний прийом.",
-          `Втрата: ${loss.who}, ${between(r, 7, 14)} міс. тому. Скарги: щоденна туга, нав’язливі думки про загиблого, уникання нагадувань, відчуття порожнечі й безглуздості.`,
-          `Психічний стан: ${STATUS_CALM(p)} Настрій знижений, плаче під час розповіді. ${wish ? "Бажання «піти слідом» протягом місяця; C-SSRS — без думок про самогубство й наміру." : "Суїцидальні думки заперечує."}`,
-          `Обстеження: TGI-SR+ — ${fmt(c.score("tgi_sr_plus"))} (${c.band("tgi_sr_plus") ?? "—"}), PHQ-9 — ${fmt(c.score("phq9"))}.`,
-          "План: терапія пролонгованого горя, 10 сесій.",
-        ].join("\n"),
+      return visit(
+        d,
+        "primary",
+        measures,
+        (c) =>
+          [
+            "Первинний прийом.",
+            `Втрата: ${loss.who}, ${between(r, 7, 14)} міс. тому. Скарги: щоденна туга, нав’язливі думки про загиблого, уникання нагадувань, відчуття порожнечі й безглуздості.`,
+            `Психічний стан: ${STATUS_CALM(p)} Настрій знижений, плаче під час розповіді. ${wish ? "Бажання «піти слідом» протягом місяця; C-SSRS — без думок про самогубство й наміру." : "Суїцидальні думки заперечує."}`,
+            `Обстеження: TGI-SR+ — ${banded(c.score("tgi_sr_plus"), c.band("tgi_sr_plus"))}; PHQ-9 — ${banded(c.score("phq9"), c.band("phq9"))}.`,
+            "План: терапія пролонгованого горя, 10 сесій.",
+          ].join("\n"),
         { reason: `Не можу жити далі без ${loss.whom}` },
       );
     }
     return visit(d, "repeat", measures, (c) => {
-      const line = pick(r, [
-        `Сесія ${c.visitNo}. Розповідь про смерть ${loss.whom}, робота з униканням. Вперше ${g(p, "переглянув", "переглянула")} фотографії.`,
-        `Сесія ${c.visitNo}. Відвідування могили — вперше після похорону. Туга не зникла, але «стало можна дихати».`,
-        `Сесія ${c.visitNo}. Відновлення сенсу: волонтерство у фонді підтримки родин загиблих.`,
-        `Сесія ${c.visitNo}. Уявна розмова з загиблим; тема провини того, хто вижив.`,
-      ]);
+      const line = `Сесія ${c.visitNo}. ${step(steps, c.visitNo)}`;
       return measuring ? `${line}\nTGI-SR+ — ${fmt(c.score("tgi_sr_plus"))} (на початку — ${fmt(c.first("tgi_sr_plus"))}).` : line;
     });
   });
-  const lastPast = visits.filter((x) => x.day <= 0).at(-1)?.day ?? start;
+  const lastPast = lastPastOf(visits, start);
   const finished = end < -5;
   return {
     ...NONE,
@@ -1288,12 +1481,29 @@ const grief: Builder = (p, r, v) => {
       c.critical
         ? { outcome: "not_confirmed", note: "C-SSRS проведено: бажання «бути поруч із загиблим» без думок про самогубство й наміру; гострого ризику немає. Обговорено план безпеки." }
         : bandDecision("Підтверджено: пролонгована реакція горя, гострого ризику немає. Терапія горя за планом.")(c),
-    ...(k % 2 === 0 ? { conclusion: { visit: 0, key: "tgi_sr_plus", text: (c: NoteContext) => `Психодіагностичне обстеження ${c.date(days[0]!)}.\nМетодики: TGI-SR+, PHQ-9.\nРезультати: TGI-SR+ — ${fmt(c.score("tgi_sr_plus"))} з 110 (${c.band("tgi_sr_plus") ?? "—"}); PHQ-9 — ${fmt(c.score("phq9"))} з 27 (${c.band("phq9") ?? "—"}).\nВисновок: ознаки пролонгованого розладу горя з депресивними проявами.\nРекомендовано: терапія пролонгованого горя (10 сесій), контроль TGI-SR+ щомісяця.` } } : {}),
-    pending: finished ? [] : [{ key: "tgi_sr_plus", grantedDay: lastPast, dueDay: (days.find((d) => d > 0) ?? lastPast + 14) }],
+    ...(k % 2 === 0
+      ? {
+          conclusion: {
+            visit: 0,
+            key: "tgi_sr_plus",
+            text: (c: NoteContext) =>
+              `Психодіагностичне обстеження ${c.date(days[0]!)}.\nМетодики: TGI-SR+, PHQ-9.\nРезультати: TGI-SR+ — ${banded(c.score("tgi_sr_plus"), c.band("tgi_sr_plus"))} (з 110); PHQ-9 — ${banded(c.score("phq9"), c.band("phq9"))} (з 27).\nВисновок: ознаки пролонгованого розладу горя з депресивними проявами.\nРекомендовано: терапія пролонгованого горя (10 сесій), контроль TGI-SR+ щомісяця.`,
+          },
+        }
+      : {}),
+    pending: finished ? [] : [{ key: "tgi_sr_plus", grantedDay: lastPast, dueDay: days.find((d) => d > 0) ?? lastPast + 14 }],
   };
 };
 
 /* ─── вигорання персоналу госпіталю ─── */
+
+const BURN_STEPS = (p: Person) => [
+  "Межі між роботою й відпочинком, ритуал завершення зміни. З керівником відділення узгоджено два вихідні поспіль раз на тиждень.",
+  `Група підтримки персоналу — ${g(p, "відвідав", "відвідала")} дві зустрічі. Сон 6–7 год.`,
+  "Вторинна травматизація: техніки «переходу» після важких пацієнтів, розмова з колегою після зміни.",
+  "Цінності в роботі: що дає сили, що забирає; повернення до хобі.",
+  "Профілактика повторного вигорання: ранні ознаки, домовленості з керівником.",
+];
 
 const burnout: Builder = (p, r, v) => {
   const k = v % ARCHETYPE_COUNTS.burnout;
@@ -1306,6 +1516,7 @@ const burnout: Builder = (p, r, v) => {
   const batTo = between(r, 230, 270) / 100;
   const pssFrom = between(r, 22, 28);
   const t = (d: number) => (d - start) / Math.max(1, end - start);
+  const steps = BURN_STEPS(p);
   const visits: Visit[] = days.map((d, i) => {
     const last = finished && d === end;
     const measuring = i === 0 || i === 2 || last;
@@ -1317,14 +1528,18 @@ const burnout: Builder = (p, r, v) => {
         ]
       : [];
     if (i === 0) {
-      return visit(d, "primary", measures, (c) =>
-        [
-          "Первинна консультація.",
-          `Скарги: виснаження, відчуття «на автопілоті», дратівливість, сон 5 год, думки про роботу вдома. Графік — ${pick(r, ["добові чергування через дві доби", "денні зміни по 12 годин без вихідних", "чергування після масового надходження поранених"])}.`,
-          `Психічний стан: ${STATUS_CALM(p)} ${g(p, "Втомлений", "Втомлена")}, емоційно ${g(p, "виснажений", "виснажена")}. Суїцидальні думки заперечує.`,
-          `Обстеження: BAT-12 — ${fmt(c.score("bat12"), 2)} (${c.band("bat12") ?? "—"}), PSS-10 — ${fmt(c.score("pss10"))}; ProQOL: вигорання — ${fmt(c.score("proqol5", "BO"))}, вторинний травматичний стрес — ${fmt(c.score("proqol5", "STS"))}, задоволення від співчуття — ${fmt(c.score("proqol5", "CS"))}.`,
-          "План: консультації раз на 2 тижні; узгодження навантаження з керівником відділення; група підтримки персоналу.",
-        ].join("\n"),
+      return visit(
+        d,
+        "primary",
+        measures,
+        (c) =>
+          [
+            "Первинна консультація.",
+            `Скарги: виснаження, відчуття «на автопілоті», дратівливість, сон 5 год, думки про роботу вдома. Графік — ${pick(r, ["добові чергування через дві доби", "денні зміни по 12 годин без вихідних", "чергування після масового надходження поранених"])}.`,
+            `Психічний стан: ${STATUS_CALM(p)} ${g(p, "Втомлений", "Втомлена")}, емоційно ${g(p, "виснажений", "виснажена")}. Суїцидальні думки заперечує.`,
+            `Обстеження: BAT-12 — ${banded(c.score("bat12"), c.band("bat12"), 2)}; PSS-10 — ${fmt(c.score("pss10"))} з 40; ProQOL: вигорання — ${fmt(c.score("proqol5", "BO"))}, вторинний травматичний стрес — ${fmt(c.score("proqol5", "STS"))}, задоволення від співчуття — ${fmt(c.score("proqol5", "CS"))}.`,
+            "План: консультації раз на 2 тижні; узгодження навантаження з керівником відділення; група підтримки персоналу.",
+          ].join("\n"),
         { reason: "Сил немає, на роботі як робот", noteKind: "intake" },
       );
     }
@@ -1332,20 +1547,14 @@ const burnout: Builder = (p, r, v) => {
       d,
       "repeat",
       measures,
-      (c) => {
-        const line = last
+      (c) =>
+        last
           ? `Завершальна консультація. BAT-12 — ${fmt(c.score("bat12"), 2)} (на початку — ${fmt(c.first("bat12"), 2)}), PSS-10 — ${fmt(c.score("pss10"))}. Сон 7 год, на роботі «знову бачу людей, а не задачі».`
-          : pick(r, [
-              `Консультація ${c.visitNo}. Межі між роботою й відпочинком, ритуал завершення зміни. З керівником відділення узгоджено дві вихідні поспіль раз на тиждень.`,
-              `Консультація ${c.visitNo}. Група підтримки персоналу — ${g(p, "відвідав", "відвідала")} дві зустрічі. Сон 6–7 год.`,
-              `Консультація ${c.visitNo}. Вторинна травматизація: техніки «переходу» після важких пацієнтів, розмова з колегою після зміни.`,
-            ]);
-        return measuring && !last ? `${line}\nКонтрольний замір: BAT-12 — ${fmt(c.score("bat12"), 2)} (на початку — ${fmt(c.first("bat12"), 2)}), PSS-10 — ${fmt(c.score("pss10"))}.` : line;
-      },
+          : `Консультація ${c.visitNo}. ${step(steps, c.visitNo)}${measuring ? `\nКонтрольний замір: BAT-12 — ${fmt(c.score("bat12"), 2)} (на початку — ${fmt(c.first("bat12"), 2)}), PSS-10 — ${fmt(c.score("pss10"))}.` : ""}`,
       { noteKind: "consult" },
     );
   });
-  const lastPast = visits.filter((x) => x.day <= 0).at(-1)?.day ?? start;
+  const lastPast = lastPastOf(visits, start);
   return {
     ...NONE,
     episode: {
@@ -1355,15 +1564,26 @@ const burnout: Builder = (p, r, v) => {
         `${g(p, "Звернувся", "Звернулася")} за рекомендацією завідувача відділення через емоційне виснаження.`,
         "Після масового надходження поранених — не може «вимкнутися» вдома, сни про роботу.",
       ]),
-      ...(finished ? { closeDay: end + 1, outcome: "improved" as const, outcomeText: (c: NoteContext) => `Консультації завершено: BAT-12 з ${fmt(c.first("bat12"), 2)} до ${fmt(c.score("bat12"), 2)}, навантаження узгоджено з керівником.` } : {}),
+      ...(finished
+        ? { closeDay: end + 1, outcome: "improved" as const, outcomeText: (c: NoteContext) => `Консультації завершено: BAT-12 з ${fmt(c.first("bat12"), 2)} до ${fmt(c.score("bat12"), 2)}, навантаження узгоджено з керівником.` }
+        : {}),
     },
     visits,
     decide: bandDecision("Підтверджено: виражене вигорання, гострого ризику немає. Консультації за планом, узгодження навантаження."),
-    ...(k === 1 || k === 4 ? { conclusion: { visit: 0, key: "bat12", text: (c: NoteContext) => `Психологічне обстеження ${c.date(days[0]!)}.\nМетодики: BAT-12, ProQOL 5, PSS-10.\nРезультати: BAT-12 — ${fmt(c.score("bat12"), 2)} (${c.band("bat12") ?? "—"}); ProQOL: задоволення від співчуття — ${fmt(c.score("proqol5", "CS"))} (${c.band("proqol5", "CS") ?? "—"}), вигорання — ${fmt(c.score("proqol5", "BO"))}, вторинний травматичний стрес — ${fmt(c.score("proqol5", "STS"))}; PSS-10 — ${fmt(c.score("pss10"))} з 40.\nВисновок: виражене професійне вигорання з високим рівнем сприйнятого стресу.\nРекомендовано: консультації психолога раз на 2 тижні, корекція графіка роботи, група підтримки персоналу, контроль BAT-12 через місяць.` } } : {}),
+    ...(k === 1 || k === 4
+      ? {
+          conclusion: {
+            visit: 0,
+            key: "bat12",
+            text: (c: NoteContext) =>
+              `Психологічне обстеження ${c.date(days[0]!)}.\nМетодики: BAT-12, ProQOL 5, PSS-10.\nРезультати: BAT-12 — ${banded(c.score("bat12"), c.band("bat12"), 2)}; ProQOL: задоволення від співчуття — ${banded(c.score("proqol5", "CS"), c.band("proqol5", "CS"))}, вигорання — ${fmt(c.score("proqol5", "BO"))}, вторинний травматичний стрес — ${fmt(c.score("proqol5", "STS"))}; PSS-10 — ${fmt(c.score("pss10"))} з 40.\nВисновок: виражене професійне вигорання з високим рівнем сприйнятого стресу.\nРекомендовано: консультації психолога раз на 2 тижні, корекція графіка роботи, група підтримки персоналу, контроль BAT-12 через місяць.`,
+          },
+        }
+      : {}),
     ...(k === 3 && !finished
       ? { thread: [{ day: -1, minute: 22 * 60 + 10, fromPatient: true, text: "Після зміни графіка чергувань стало легше. Чи потрібно ще раз проходити опитувальник?", read: false }] }
       : {}),
-    pending: finished ? [] : [{ key: "bat12", grantedDay: lastPast, dueDay: (days.find((d) => d > 0) ?? lastPast + 14) }],
+    pending: finished ? [] : [{ key: "bat12", grantedDay: lastPast, dueDay: days.find((d) => d > 0) ?? lastPast + 14 }],
   };
 };
 
@@ -1380,51 +1600,97 @@ const crisis: Builder = (p, r, v) => {
     ]),
     reasons: pick(r, [["Донька Софійка", "Мама", "Обіцянка побратимам повернутися"], ["Син", "Батько, якому потрібна допомога", "Плани на дім, який будуємо"]]),
     weapon: p.unit !== "Ветеран",
-    people: [[pick(r, ["Мама", "Брат Сергій", "Дружина"]), contactPhone(r)], [pick(r, ["Побратим Андрій", "Друг Василь", "Сестра Ірина"]), contactPhone(r)]],
+    people: [[pick(r, ["Мама", "Брат Сергій", g(p, "Дружина", "Чоловік")]), contactPhone(r)], [pick(r, ["Побратим Андрій", "Друг Василь", "Сестра Ірина"]), contactPhone(r)]],
   });
   const crisisMeasures = [
     M.phq9(heavy ? 22 : between(r, 18, 21), heavy ? 3 : 2),
-    M.cssrs({ wish: true, thoughts: true, method: true, intent: heavy, plan: false, behavior: k === 3 || heavy, recent: false }),
-    M.sidas(heavy ? 33 : between(r, 22, 28), heavy ? 8 : 6),
+    M.sidas(heavy ? 33 : between(r, 22, 28)),
     M.sbqr(heavy ? 4 : 3, 3, heavy ? 3 : 2, heavy ? 4 : 3),
+    M.cssrs({ wish: true, thoughts: true, method: true, intent: heavy, plan: false, behavior: k === 3 || heavy, recent: false }),
   ];
   const what = [
     "Після звістки про загибель друга — думки про самогубство; має доступ до зброї.",
-    `${g(p, "Доставлений", "Доставлена")} черговим лікарем: ${g(p, "висловлював", "висловлювала")} намір накласти на себе руки після сварки з ${g(p, "дружиною", "чоловіком")}.`,
+    `${g(p, "Доставлений", "Доставлена")} черговим лікарем: ${g(p, "висловлював", "висловлювала")} намір накласти на себе руки після сварки з ${spouse(p)}.`,
     "Після звістки про загибель брата — думки про самогубство, не спить, відмовляється від їжі.",
     "Повторні суїцидальні думки після звільнення зі служби; спроба (передозування ліків) два роки тому.",
   ][k]!;
-  const follow = k === 0 ? [-1] : k === 1 ? [-1] : k === 2 ? [-39, -37, -33, -26, -19, -12] : [-93, -88, -81, -74, -60, -45, -20];
-  const sidasPath = k === 0 ? [14] : k === 1 ? [9] : k === 2 ? [14, 9, 5, 3, 0, 0] : [16, 10, 6, 3, 0, 0, 0];
+  /*
+   * Наступні контакти: у перші дні — розмова без опитувальників (SIDAS питає
+   * про місяць, PHQ-9 — про два тижні, наступного дня їх не повторюють);
+   * далі SIDAS раз на тиждень, PHQ-9 — не частіше ніж раз на два тижні. Після
+   * психіатричного відділення — повторна оцінка C-SSRS і SIDAS.
+   */
+  const plans: { day: number; sidas: number | null; phq: number | null; reassess?: boolean }[] =
+    k === 0
+      ? [{ day: -1, sidas: null, phq: null }]
+      : k === 1
+        ? [{ day: -1, sidas: 12, phq: null, reassess: true }]
+        : k === 2
+          ? [
+              { day: -39, sidas: null, phq: null },
+              { day: -37, sidas: null, phq: null },
+              { day: -33, sidas: 9, phq: null },
+              { day: -26, sidas: 5, phq: 13 },
+              { day: -19, sidas: 2, phq: null },
+              { day: -12, sidas: 0, phq: 9 },
+            ]
+          : [
+              { day: -93, sidas: null, phq: null },
+              { day: -88, sidas: 10, phq: null },
+              { day: -81, sidas: 6, phq: 14 },
+              { day: -74, sidas: 3, phq: null },
+              { day: -60, sidas: 0, phq: 10 },
+              { day: -45, sidas: 0, phq: null },
+              { day: -20, sidas: 0, phq: 7 },
+            ];
   const visits: Visit[] = [
-    visit(day0, "primary", crisisMeasures, (c) =>
-      [
-        "Позачерговий прийом.",
-        what,
-        `C-SSRS: бажання смерті — так, думки про самогубство — так, думки про спосіб — так, намір — ${heavy ? "так" : "ні"}, план — ні; суїцидальна поведінка в анамнезі — ${k === 3 || heavy ? "так" : "ні"}.`,
-        `SIDAS — ${fmt(c.score("sidas"))} (${c.band("sidas") ?? "—"}), SBQ-R — ${fmt(c.score("sbqr"))}, PHQ-9 — ${fmt(c.score("phq9"))}.`,
-        `Захисні чинники: ${pick(r, ["донька, мати", "син, побратими", "брат, віра"])}; критичність до стану збережена.`,
-        `Дії: складено план безпеки; ${p.unit !== "Ветеран" ? "зброю здано на зберігання черговому підрозділу; " : ""}огляд психіатра сьогодні${heavy ? " — переведено до психіатричного відділення на спостереження" : ""}; щоденний контакт.`,
-      ].join("\n"),
+    visit(
+      day0,
+      "primary",
+      crisisMeasures,
+      (c) =>
+        [
+          "Позачерговий прийом.",
+          what,
+          `C-SSRS: бажання смерті — так, думки про самогубство — так, думки про спосіб — так, намір — ${heavy ? "так" : "ні"}, план — ні; суїцидальна поведінка в анамнезі — ${k === 3 || heavy ? "так" : "ні"}.`,
+          `SIDAS — ${banded(c.score("sidas"), c.band("sidas"))}; SBQ-R — ${fmt(c.score("sbqr"))}; PHQ-9 — ${banded(c.score("phq9"), c.band("phq9"))}.`,
+          `Захисні чинники: ${pick(r, ["донька, мати", "син, побратими", "брат, віра"])}; критичність до стану збережена.`,
+          `Дії: складено план безпеки; ${p.unit !== "Ветеран" ? "зброю здано на зберігання черговому підрозділу; " : ""}огляд психіатра сьогодні${heavy ? " — переведено до психіатричного відділення на спостереження" : ""}; щоденний контакт.`,
+        ].join("\n"),
       { urgent: true, reason: `Привели, бо ${g(p, "сказав", "сказала")}, що не хочу жити` },
     ),
-    ...follow.map((d, i) =>
+    ...plans.map((f) =>
       visit(
-        d,
+        f.day,
         "repeat",
-        [M.sidas(sidasPath[i]!, sidasPath[i]! > 0 ? Math.max(1, Math.round(sidasPath[i]! / 5)) : 0), ...(i === 1 || i === 4 || (follow.length === 1 && i === 0) ? [M.phq9(Math.max(5, (heavy ? 20 : 17) - (i + 1) * 3))] : [])],
-        (c) =>
-          (sidasPath[i]! > 0
-            ? `Контакт ${d - day0}-ї доби${heavy && i === 0 ? " після повернення з психіатричного відділення" : ""}. Суїцидальні думки рідше, без наміру; план безпеки при собі, телефон чергового збережено. Сон 5–6 год.`
-            : `Огляд. Суїцидальних думок понад 2 тижні немає. План безпеки переглянуто разом, оновлено контакти; ${g(p, "повернувся", "повернулася")} до звичного розпорядку.`) +
-          `\nSIDAS — ${fmt(c.score("sidas"))} (на початку — ${fmt(c.first("sidas"))})${c.score("phq9") !== null ? `, PHQ-9 — ${fmt(c.score("phq9"))}` : ""}.`,
+        [
+          ...(f.sidas !== null ? [M.sidas(f.sidas)] : []),
+          // п. 9 PHQ-9 узгоджений із SIDAS: поки думки є, «не турбували взагалі» не відповідають
+          ...(f.phq !== null ? [M.phq9(f.phq, f.sidas ? 1 : 0)] : []),
+          ...(f.reassess ? [M.cssrs({ wish: true, thoughts: true, method: false })] : []),
+        ],
+        (c) => {
+          const days = f.day - day0;
+          const head = f.reassess
+            ? `Повторна оцінка після повернення з психіатричного відділення. Думки про смерть зберігаються, способу й наміру немає; приймає призначене. План безпеки переглянуто.`
+            : f.sidas === null
+              ? `Контакт ${days}-ї доби. ${g(p, "Спав", "Спала")} ${pick(r, ["4", "5", "5–6"])} год; думки про самогубство «приходять, але слабші», наміру немає. План безпеки при собі, телефон чергового збережено.`
+              : f.sidas > 0
+                ? `Огляд через ${days} ${pl(days, "день", "дні", "днів")} після кризи. Суїцидальні думки рідше, без наміру; план безпеки діє.`
+                : `Огляд. Суїцидальних думок понад 2 тижні немає; план безпеки переглянуто, оновлено контакти. ${g(p, "Повернувся", "Повернулася")} до звичного розпорядку.`;
+          const scores = [
+            c.score("sidas") !== null ? `SIDAS — ${fmt(c.score("sidas"))} (на початку — ${fmt(c.first("sidas"))})` : null,
+            c.score("phq9") !== null ? `PHQ-9 — ${fmt(c.score("phq9"))}` : null,
+          ].filter(Boolean);
+          return scores.length ? `${head}\n${scores.join(", ")}.` : head;
+        },
         { noteKind: "observation" },
       ),
     ),
     visit(k < 2 ? (k === 0 ? 1 : 2) : between(r, 3, 9), "repeat", [], undefined),
   ];
   const resolved = k >= 2;
-  const lastPast = follow[follow.length - 1]!;
+  const lastPast = plans[plans.length - 1]!.day;
   return {
     episode: {
       openDay: day0,
@@ -1444,7 +1710,7 @@ const crisis: Builder = (p, r, v) => {
       visit: 0,
       key: "sidas",
       text: (c) =>
-        `Оцінка суїцидального ризику ${c.date(day0)}.\nМетодики: C-SSRS (скринер), SIDAS, SBQ-R, PHQ-9.\nРезультати: SIDAS — ${fmt(c.score("sidas"))} з 50 (${c.band("sidas") ?? "—"}); SBQ-R — ${fmt(c.score("sbqr"))} (${c.band("sbqr") ?? "—"}); PHQ-9 — ${fmt(c.score("phq9"))} з 27 (${c.band("phq9") ?? "—"}).\nВисновок: ${heavy ? "високий" : "підвищений"} суїцидальний ризик: думки про самогубство зі способом${heavy ? " і наміром" : " без наміру"}. Рішення про безпеку ухвалено спільно з лікарем-психіатром.\nРекомендовано: план безпеки, обмеження доступу до засобів, щоденний контакт до стабілізації, повторна оцінка через 7 днів.`,
+        `Оцінка суїцидального ризику ${c.date(day0)}.\nМетодики: C-SSRS (скринер), SIDAS, SBQ-R, PHQ-9.\nРезультати: SIDAS — ${banded(c.score("sidas"), c.band("sidas"))} (з 50); SBQ-R — ${banded(c.score("sbqr"), c.band("sbqr"))}; PHQ-9 — ${banded(c.score("phq9"), c.band("phq9"))} (з 27).\nВисновок: ${heavy ? "високий" : "підвищений"} суїцидальний ризик: думки про самогубство зі способом${heavy ? " і наміром" : " без наміру"}. Рішення про безпеку ухвалено спільно з лікарем-психіатром.\nРекомендовано: план безпеки, обмеження доступу до засобів, щоденний контакт до стабілізації, повторна оцінка через 7 днів.`,
     },
     safetyPlans: [
       { day: day0, content: plan },
@@ -1482,14 +1748,20 @@ const crisis: Builder = (p, r, v) => {
 
 /* ─── стабільний стан після лікування ─── */
 
+const STABLE_STEPS = (p: Person) => [
+  "Навички саморегуляції закріплено, домашні завдання виконує регулярно.",
+  `Сон покращився, ${g(p, "повернувся", "повернулася")} інтерес до звичних справ.`,
+  "Профілактика рецидиву: ранні ознаки, план дій, кому дзвонити.",
+];
+
 const stable: Builder = (p, r, v) => {
   const k = v % ARCHETYPE_COUNTS.stable;
   /*
-   * Четверо из четырнадцати пропустили контрольный осмотр: последний приём —
-   * завершение курса больше трёх месяцев назад. Такая просрочка учёта и есть
-   * то, ради чего раздел заведён.
+   * Четверо з чотирнадцяти пропустили контрольний огляд: останній прийом —
+   * завершення курсу більше трьох місяців тому. Така прострочка обліку і є
+   * те, заради чого розділ заведено; групи обліку в них різні.
    */
-  const overdue = k % 4 === 1;
+  const overdue = [1, 6, 11, 12].includes(k);
   const start = overdue ? -between(r, 176, 185) : -between(r, 150, 185);
   const closed = start + between(r, 60, 80);
   const conditions = [
@@ -1504,27 +1776,29 @@ const stable: Builder = (p, r, v) => {
   const before = condition.keys.map((key, i) => measure(key, condition.on[i]!));
   const after = condition.keys.map((key, i) => measure(key, condition.off[i]!));
   const list = (c: NoteContext, withStart: boolean) =>
-    condition.keys
-      .map((key) => `${TITLE[key]} — ${fmt(c.score(key))}${withStart ? ` (на початку — ${fmt(c.first(key))})` : ""}`)
-      .join(", ");
+    condition.keys.map((key) => `${TITLE[key]} — ${fmt(c.score(key))}${withStart ? ` (на початку — ${fmt(c.first(key))})` : ""}`).join(", ");
+  const steps = STABLE_STEPS(p);
 
-  // контрольные приёмы раз в 6–9 недель после закрытия курса
+  // контрольні прийоми раз на 6–9 тижнів після закриття курсу
   const checks: number[] = [];
   if (!overdue) for (let d = closed + between(r, 35, 50); d < -2; d += between(r, 42, 63)) checks.push(d);
   const visits: Visit[] = [
-    visit(start, "primary", before, (c) =>
-      `Первинний прийом з приводу ${condition.what}. ${condition.reason}\nПсихічний стан: ${STATUS_CALM(p)} Суїцидальні думки заперечує.\nОбстеження: ${list(c, false)}.\nПлан: курс психотерапії, 6 сесій.`,
+    visit(
+      start,
+      "primary",
+      before,
+      (c) => `Первинний прийом з приводу ${condition.what}. ${condition.reason}\nПсихічний стан: ${STATUS_CALM(p)} Суїцидальні думки заперечує.\nОбстеження: ${list(c, false)}.\nПлан: курс психотерапії, 6 сесій.`,
       { reason: "Хочу повернутися до нормального життя" },
     ),
-    ...courseDays(r, start + 14, 14, 3, 2).map((d, i) =>
-      visit(d, "repeat", [], (c) =>
-        `Сесія ${c.visitNo}. ${pick(r, ["Навички саморегуляції закріплено.", `Сон покращився, ${g(p, "повернувся", "повернулася")} інтерес до звичних справ.`, "Домашні завдання виконує регулярно."])}`,
-      ),
-    ),
+    ...courseDays(r, start + 14, 14, 3, 2).map((d) => visit(d, "repeat", [], (c) => `Сесія ${c.visitNo}. ${step(steps, c.visitNo)}`)),
     visit(closed, "repeat", after, (c) => `Завершення курсу. ${list(c, true)}. Стан стабільний; динамічне спостереження раз на 3 місяці.`),
     ...checks.map((d) =>
-      visit(d, "repeat", [M.who5(between(r, 15, 21)), M.phq4(between(r, 0, 2), between(r, 0, 1))], (c) =>
-        `Контрольний огляд. Стан стабільний: сон 7 год, настрій рівний, ${p.unit === "Ветеран" ? pick(r, ["працює водієм у комунальному підприємстві", "займається у ветеранському спортклубі", "навчається за програмою перекваліфікації"]) : g(p, "повернувся до служби", "повернулася до служби")}.\nWHO-5 — ${fmt(c.score("who5"))} з 25, PHQ-4 — ${fmt(c.score("phq4", "PHQ4"))}. Наступний огляд через 3 місяці.`,
+      visit(
+        d,
+        "repeat",
+        [M.who5(between(r, 15, 21)), M.phq4(between(r, 0, 2), between(r, 0, 1))],
+        (c) =>
+          `Контрольний огляд. Стан стабільний: сон 7 год, настрій рівний, ${p.unit === "Ветеран" ? pick(r, ["працює водієм у комунальному підприємстві", "займається у ветеранському спортклубі", "навчається за програмою перекваліфікації"]) : g(p, "повернувся до служби", "повернулася до служби")}.\nWHO-5 — ${fmt(c.score("who5"))} з 25, PHQ-4 — ${fmt(c.score("phq4", "PHQ4"))}. Наступний огляд через 3 місяці.`,
         { noteKind: "observation" },
       ),
     ),
@@ -1549,14 +1823,15 @@ const stable: Builder = (p, r, v) => {
             visit: 4,
             key: condition.keys[0]!,
             text: (c: NoteContext) =>
-              `Заключення за підсумками курсу ${c.date(closed)}.\nРезультати: ${condition.keys.map((key) => `${TITLE[key]} — ${fmt(c.score(key))} (на початку курсу — ${fmt(c.first(key))}; ${c.band(key) ?? "—"})`).join("; ")}.\nВисновок: стан стабілізувався, симптоми нижче клінічних порогів.\nРекомендовано: динамічне спостереження раз на 3 місяці (WHO-5, PHQ-4), звертатися раніше за потреби.`,
+              `Заключення за підсумками курсу ${c.date(closed)}.\nРезультати: ${condition.keys.map((key) => `${TITLE[key]} — ${banded(c.score(key), c.band(key))} (на початку курсу — ${fmt(c.first(key))})`).join("; ")}.\nВисновок: стан стабілізувався, симптоми нижче клінічних порогів.\nРекомендовано: динамічне спостереження раз на 3 місяці (WHO-5, PHQ-4), звертатися раніше за потреби.`,
           },
         }
       : {}),
     dispensary: { groupLabel: condition.label, intervalMonths: 3, lastSeenDay: lastSeen, nextDueDay: nextDue },
-    referrals: k === 3
-      ? [{ day: closed + 2, destination: "outpatient", urgency: "routine", status: "completed", reason: "Подальше спостереження в психолога за місцем проживання.", outcomeNote: "Прийнято під спостереження ветеранського простору громади.", updatedDay: closed + 9 }]
-      : [],
+    referrals:
+      k === 3
+        ? [{ day: closed + 2, destination: "outpatient", urgency: "routine", status: "completed", reason: "Подальше спостереження в психолога за місцем проживання.", outcomeNote: "Прийнято під спостереження ветеранського простору громади.", updatedDay: closed + 9 }]
+        : [],
     ...(k === 7 && lastSeen + 21 < 0
       ? {
           thread: [
@@ -1591,17 +1866,20 @@ const screening: Builder = (p, r, v) => {
     "Скерування медичної роти після повернення з позицій.",
   ];
   const reason = pick(r, reasons);
-  // 0 и 1 — сдали вчера, сигнал ещё на разборе; 2–10 — сдали, 11–12 — ждут сдачи, 13–15 — просрочили
+  // 0 и 1 — сдали только что и вчера, сигнал ещё на разборе; 2–10 — сдали, 11–12 — ждут сдачи, 13–15 — просрочили
   const referral = k <= 1 ? -between(r, 2, 3) : k <= 7 ? -between(r, 6, 13) : k <= 10 ? -between(r, 3, 5) : k <= 12 ? -between(r, 1, 3) : -between(r, 8, 12);
   const done = k <= 10;
   const screenDay = k <= 1 ? -1 : referral + between(r, 0, 2);
-  const s = k === 0
-    ? { phq: 13, item9: 1, gad: 11, pc: 3, auditc: 2, sci02: 2, who: 7, label: "ознаки депресії, думки про смерть" }
-    : k === 1
-      ? { phq: 14, gad: 9, pc: 5, auditc: 5, sci02: 1, who: 9, label: "позитивний скринінг ПТСР, ознаки депресії" }
-      : SCREENS[(k + p.ordinal) % SCREENS.length]!;
+  const s =
+    k === 0
+      ? { phq: 13, item9: 1, gad: 11, pc: 3, auditc: 2, sci02: 2, who: 7, label: "ознаки депресії, думки про смерть" }
+      : k === 1
+        ? { phq: 14, gad: 9, pc: 5, auditc: 5, sci02: 1, who: 9, label: "позитивний скринінг ПТСР, ознаки депресії" }
+        : SCREENS[(k + p.ordinal) % SCREENS.length]!;
   const measures: Measure[] = [M.phq9(s.phq, s.item9 ?? 0), M.gad7(s.gad), M.pcptsd5(s.pc), M.auditc(s.auditc), M.sci02(s.sci02), M.who5(s.who)];
-  const firstVisit = k <= 1 ? (k === 0 ? 1 : 0) : k <= 7 ? screenDay + between(r, 1, 4) : k <= 10 ? between(r, 0, 6) : k <= 12 ? between(r, 3, 8) : k === 13 ? -3 : between(r, 2, 6);
+  const firstVisit =
+    k <= 1 ? (k === 0 ? 1 : 0) : k <= 7 ? screenDay + between(r, 1, 4) : k <= 10 ? between(r, 0, 6) : k <= 12 ? between(r, 3, 8) : k === 13 ? -3 : between(r, 2, 6);
+  const deep = s.pc >= 4 ? "pcl5" : s.phq >= 10 ? "phq9" : s.auditc >= 4 ? "audit" : s.sci02 <= 2 ? "sci" : null;
   const visits: Visit[] = [
     visit(
       firstVisit,
@@ -1612,20 +1890,19 @@ const screening: Builder = (p, r, v) => {
           "Первинний прийом за результатами скринінгу.",
           `Скринінг ${c.date(screenDay)}: ${s.label}. PHQ-9 — ${fmt(c.last("phq9"))}, GAD-7 — ${fmt(c.last("gad7"))}, PC-PTSD-5 — ${fmt(c.last("pcptsd5"))} з 5, AUDIT-C — ${fmt(c.last("auditc"))}, SCI-02 — ${fmt(c.last("sci02"))}, WHO-5 — ${fmt(c.last("who5"))} з 25.`,
           `Психічний стан: ${STATUS_CALM(p)} Суїцидальні думки заперечує.`,
-          s.pc >= 4
+          deep === "pcl5"
             ? "План: поглиблене обстеження (PCL-5, LEC-5), психотерапія за результатами."
-            : s.phq >= 10
-              ? "План: поглиблене обстеження (PHQ-9 через 2 тижні), консультації психолога."
-              : s.auditc >= 4
+            : deep === "phq9"
+              ? "План: повторний PHQ-9 через 2 тижні, консультації психолога."
+              : deep === "audit"
                 ? "План: AUDIT, мотиваційне консультування."
-                : s.sci02 <= 2
+                : deep === "sci"
                   ? "План: SCI, рекомендації з гігієни сну, за потреби — КПТ-І."
                   : "План: клінічно значущих порушень не виявлено; рекомендації, звертатися за потреби.",
         ].join("\n"),
       { reason: pick(r, ["Командир сказав пройти огляд", "Погано сплю останній місяць", "Важко зосередитися, все дратує"]), outcome: k === 13 ? "no_show" : "done" },
     ),
   ];
-  const deep = s.pc >= 4 ? "pcl5" : s.phq >= 10 ? "phq9" : s.auditc >= 4 ? "audit" : s.sci02 <= 2 ? "sci" : null;
   if (k >= 2 && k <= 7 && firstVisit < 0) {
     visits.push(
       visit(firstVisit + between(r, 5, 10), "repeat", [], () =>
@@ -1637,15 +1914,30 @@ const screening: Builder = (p, r, v) => {
     ...NONE,
     episode: { openDay: referral, reason },
     visits,
-    home: done ? [{ day: screenDay, minute: k === 1 ? 9 * 60 + 30 : between(r, 18 * 60, 21 * 60 + 30), measures }] : [],
+    home: done
+      ? [
+          k === 0
+            ? { day: -1, minute: 0, recent: true, measures }
+            : { day: screenDay, minute: k === 1 ? 9 * 60 + 30 : between(r, 18 * 60, 21 * 60 + 30), measures },
+        ]
+      : [],
     ...(k <= 1 ? { openFrom: -1 } : {}),
     decide: (c) =>
       c.critical
         ? { outcome: "not_confirmed", note: "Розмова по телефону: думки про смерть пасивні, без наміру й плану. Первинний прийом — завтра, план безпеки обговорено." }
         : { outcome: "needs_followup", note: "Скринінг переглянуто: гострого ризику немає. Первинний прийом призначено, поглиблене обстеження — за результатами прийому." },
-    ...(k === 3 && firstVisit < 0 ? { conclusion: { visit: 0, key: "phq9", text: (c: NoteContext) => `Первинне психологічне обстеження ${c.date(screenDay)} (набір «Первинний скринінг»).\nРезультати: PHQ-9 — ${fmt(c.score("phq9"))} з 27 (${c.band("phq9") ?? "—"}); GAD-7 — ${fmt(c.score("gad7"))} (${c.band("gad7") ?? "—"}); PC-PTSD-5 — ${fmt(c.score("pcptsd5"))} з 5 (${c.band("pcptsd5") ?? "—"}); AUDIT-C — ${fmt(c.score("auditc"))}; SCI-02 — ${fmt(c.score("sci02"))} (${c.band("sci02") ?? "—"}); WHO-5 — ${fmt(c.score("who5"))} з 25.\nВисновок: ${s.label}. Позитивний скринінг — привід для поглибленої оцінки, а не діагноз.\nРекомендовано: ${deep === "pcl5" ? "PCL-5 і LEC-5" : deep === "phq9" ? "повторний PHQ-9 через 2 тижні" : deep === "audit" ? "AUDIT" : deep === "sci" ? "SCI" : "спостереження за потреби"}; консультації психолога.` } } : {}),
+    ...(k === 3 && firstVisit < 0
+      ? {
+          conclusion: {
+            visit: 0,
+            key: "phq9",
+            text: (c: NoteContext) =>
+              `Первинне психологічне обстеження ${c.date(screenDay)} (набір «Первинний скринінг»).\nРезультати: PHQ-9 — ${banded(c.score("phq9"), c.band("phq9"))} (з 27); GAD-7 — ${banded(c.score("gad7"), c.band("gad7"))}; PC-PTSD-5 — ${banded(c.score("pcptsd5"), c.band("pcptsd5"))} (з 5); AUDIT-C — ${fmt(c.score("auditc"))}; SCI-02 — ${banded(c.score("sci02"), c.band("sci02"))}; WHO-5 — ${fmt(c.score("who5"))} з 25.\nВисновок: ${s.label}. Позитивний скринінг — привід для поглибленої оцінки, а не діагноз.\nРекомендовано: ${deep === "pcl5" ? "PCL-5 і LEC-5" : deep === "phq9" ? "повторний PHQ-9 через 2 тижні" : deep === "audit" ? "AUDIT" : deep === "sci" ? "SCI" : "спостереження за потреби"}; консультації психолога.`,
+          },
+        }
+      : {}),
     battery: { assignedDay: referral, dueDay: k >= 13 ? referral + between(r, 5, 7) : referral + 7 },
-    referrals: k === 4 && s.pc >= 0 && reason.startsWith("Після контузії")
+    referrals: k === 4 && reason.startsWith("Після контузії") && firstVisit < 0
       ? [{ day: firstVisit, destination: "other", urgency: "routine", status: "created", reason: "Консультація невролога: скарги на пам’ять і сон після контузії." }]
       : [],
     pending: deep && done && firstVisit < 0 ? [{ key: deep, grantedDay: firstVisit, dueDay: firstVisit + 14 }] : [],
@@ -1658,18 +1950,30 @@ const psychosis: Builder = (p, r, v) => {
   const k = v % ARCHETYPE_COUNTS.psychosis;
   const day0 = k === 0 ? -between(r, 25, 40) : -between(r, 70, 90);
   const visits: Visit[] = [
-    visit(day0, "primary", [M.pq16(between(r, 10, 13)), M.phq9(between(r, 10, 13))], (c) =>
-      [
-        "Первинний прийом.",
-        `Скарги на «голоси», що коментують дії, підозріливість до побратимів, недосипання понад 2 тижні на позиціях.`,
-        `Психічний стан: ${g(p, "напружений", "напружена")}, ${g(p, "насторожений", "насторожена")}, на запитання відповідає з паузами, критичність знижена. Суїцидальні думки заперечує.`,
-        `PQ-16 — ${fmt(c.score("pq16"))} з 16 (${c.band("pq16") ?? "—"}), PHQ-9 — ${fmt(c.score("phq9"))}.`,
-        "Оцінка: психотична симптоматика, потрібен невідкладний огляд психіатра. Скеровано, супроводжено черговим.",
-      ].join("\n"),
+    visit(
+      day0,
+      "primary",
+      [M.pq16(between(r, 10, 13)), M.phq9(between(r, 10, 13))],
+      (c) =>
+        [
+          "Первинний прийом.",
+          "Скарги на «голоси», що коментують дії, підозріливість до побратимів, недосипання понад 2 тижні на позиціях.",
+          `Психічний стан: ${g(p, "напружений", "напружена")}, ${g(p, "насторожений", "насторожена")}, на запитання відповідає з паузами, критичність знижена. Суїцидальні думки заперечує.`,
+          `PQ-16 — ${banded(c.score("pq16"), c.band("pq16"))} (з 16); PHQ-9 — ${fmt(c.score("phq9"))}.`,
+          "Оцінка: психотична симптоматика, потрібен невідкладний огляд психіатра. Скеровано, супроводжено черговим.",
+        ].join("\n"),
       { urgent: true, reason: "Скерували з медроти" },
     ),
     ...(k === 1
-      ? [visit(day0 + 35, "repeat", [M.phq9(between(r, 4, 7))], (c) => `${g(p, "Повернувся", "Повернулася")} після лікування в психіатричному відділенні. Стан стабільний, «голосів» немає, приймає призначене. PHQ-9 — ${fmt(c.score("phq9"))}. Подальше спостереження — у психіатра.`, { noteKind: "observation" })]
+      ? [
+          visit(
+            day0 + 35,
+            "repeat",
+            [M.phq9(between(r, 4, 7))],
+            (c) => `${g(p, "Повернувся", "Повернулася")} після лікування в психіатричному відділенні. Стан стабільний, «голосів» немає, приймає призначене. PHQ-9 — ${fmt(c.score("phq9"))}. Подальше спостереження — у психіатра.`,
+            { noteKind: "observation" },
+          ),
+        ]
       : []),
   ];
   return {
@@ -1683,7 +1987,16 @@ const psychosis: Builder = (p, r, v) => {
     },
     visits,
     decide: () => ({ outcome: "confirmed", note: "Підтверджено: психотична симптоматика. Невідкладний огляд психіатра, переведено до психіатричного відділення." }),
-    ...(k === 0 ? { conclusion: { visit: 0, key: "pq16", text: (c: NoteContext) => `Психологічне обстеження ${c.date(day0)}.\nМетодики: PQ-16, PHQ-9.\nРезультати: PQ-16 — ${fmt(c.score("pq16"))} з 16 (${c.band("pq16") ?? "—"}); PHQ-9 — ${fmt(c.score("phq9"))} з 27.\nВисновок: виражені незвичні переживання (слухові обмани, ідеї стосунку) на тлі тривалого недосипання; потребує невідкладного огляду психіатра.\nРекомендовано: переведення до психіатричного відділення.` } } : {}),
+    ...(k === 0
+      ? {
+          conclusion: {
+            visit: 0,
+            key: "pq16",
+            text: (c: NoteContext) =>
+              `Психологічне обстеження ${c.date(day0)}.\nМетодики: PQ-16, PHQ-9.\nРезультати: PQ-16 — ${banded(c.score("pq16"), c.band("pq16"))} (з 16); PHQ-9 — ${banded(c.score("phq9"), c.band("phq9"))} (з 27).\nВисновок: виражені незвичні переживання (слухові обмани, ідеї стосунку) на тлі тривалого недосипання; потребує невідкладного огляду психіатра.\nРекомендовано: переведення до психіатричного відділення.`,
+          },
+        }
+      : {}),
     referrals: [{
       day: day0,
       destination: "inpatient",
@@ -1698,6 +2011,25 @@ const psychosis: Builder = (p, r, v) => {
 
 /* ─── тривожний розлад ─── */
 
+const GAD_STEPS = [
+  "Психоосвіта про тривогу; щоденник тривожних думок.",
+  "«Час для тривоги» 20 хв увечері; відкладання хвилювань.",
+  "Реструктуризація катастрофізації щодо родини: імовірність і наслідки.",
+  "Прогресивна м’язова релаксація; дзвінки рідним за графіком замість постійного моніторингу новин.",
+  "Толерантність до невизначеності: поведінкові експерименти.",
+  "Проблемно-орієнтовані навички: що можна зробити для родини, а що ні.",
+  "Профілактика рецидиву, план самостійних вправ.",
+];
+const PANIC_STEPS = (p: Person) => [
+  "Психоосвіта: панічний напад — хибна тривога тіла; щоденник нападів.",
+  "Інтероцептивна експозиція: біг на місці, дихання через трубочку; страх з 70 до 30.",
+  "Ієрархія ситуацій, яких уникає; перше завдання — супермаркет удень.",
+  `${g(p, "Проїхав", "Проїхала")} маршруткою дві зупинки без нападу; у щоденнику — 1 напад за тиждень.`,
+  "Відмова від захисної поведінки: носити воду, сідати біля дверей.",
+  "Метро в годину пік — тривога 40, без нападу.",
+  "Підсумки курсу, план на випадок повернення симптомів.",
+];
+
 const anxiety: Builder = (p, r, v) => {
   const k = v % ARCHETYPE_COUNTS.anxiety;
   const panic = k === 4;
@@ -1709,6 +2041,7 @@ const anxiety: Builder = (p, r, v) => {
   const gadFrom = between(r, 13, 17);
   const whoFrom = between(r, 7, 11);
   const t = (d: number) => (d - start) / Math.max(1, end - start);
+  const steps = panic ? PANIC_STEPS(p) : GAD_STEPS;
   const visits: Visit[] = days.map((d, i) => {
     const measuring = i === 0 || i === 4 || (finished && d === end);
     const measures = measuring
@@ -1719,33 +2052,29 @@ const anxiety: Builder = (p, r, v) => {
         ]
       : [];
     if (i === 0) {
-      return visit(d, "primary", measures, (c) =>
-        [
-          "Первинний прийом.",
-          panic
-            ? "Скарги: напади паніки (серцебиття, нестача повітря, страх смерті) 2–3 рази на тиждень після обстрілу в тилу; уникає людних місць і транспорту."
-            : "Скарги: постійна тривога за родину в прифронтовому місті, напруження, серцебиття, не може розслабитися навіть удома.",
-          `Психічний стан: ${STATUS_CALM(p)} ${g(p, "Тривожний", "Тривожна")}, ${g(p, "напружений", "напружена")}. Суїцидальні думки заперечує.`,
-          `Обстеження: GAD-7 — ${fmt(c.score("gad7"))} (${c.band("gad7") ?? "—"}), WHO-5 — ${fmt(c.score("who5"))} з 25, PHQ-9 — ${fmt(c.score("phq9"))}.`,
-          `План: КПТ ${panic ? "панічного розладу (інтероцептивна експозиція)" : "тривоги («час для тривоги», реструктуризація катастрофізації)"}, 8 сесій щотижня.`,
-        ].join("\n"),
+      return visit(
+        d,
+        "primary",
+        measures,
+        (c) =>
+          [
+            "Первинний прийом.",
+            panic
+              ? "Скарги: напади паніки (серцебиття, нестача повітря, страх смерті) 2–3 рази на тиждень після обстрілу в тилу; уникає людних місць і транспорту."
+              : "Скарги: постійна тривога за родину в прифронтовому місті, напруження, серцебиття, не може розслабитися навіть удома.",
+            `Психічний стан: ${STATUS_CALM(p)} ${g(p, "Тривожний", "Тривожна")}, ${g(p, "напружений", "напружена")}. Суїцидальні думки заперечує.`,
+            `Обстеження: GAD-7 — ${banded(c.score("gad7"), c.band("gad7"))}; WHO-5 — ${fmt(c.score("who5"))} з 25; PHQ-9 — ${fmt(c.score("phq9"))}.`,
+            `План: КПТ ${panic ? "панічного розладу (інтероцептивна експозиція)" : "тривоги («час для тривоги», реструктуризація катастрофізації)"}, 8 сесій щотижня.`,
+          ].join("\n"),
         { reason: panic ? "Накриває паніка, думаю, що серце" : "Постійно тривожно, не можу розслабитися" },
       );
     }
     return visit(d, "repeat", measures, (c) => {
-      const line = panic
-        ? pick(r, [
-            `Сесія ${c.visitNo}. Інтероцептивна експозиція: біг на місці, дихання через трубочку; страх з 70 до 30.`,
-            `Сесія ${c.visitNo}. ${g(p, "Проїхав", "Проїхала")} маршруткою дві зупинки без нападу; щоденник панічних нападів — 1 за тиждень.`,
-          ])
-        : pick(r, [
-            `Сесія ${c.visitNo}. «Час для тривоги» 20 хв увечері; реструктуризація катастрофізації щодо родини.`,
-            `Сесія ${c.visitNo}. Прогресивна м’язова релаксація, план дзвінків рідним за графіком замість постійного моніторингу новин.`,
-          ]);
+      const line = `Сесія ${c.visitNo}. ${step(steps, c.visitNo)}`;
       return measuring ? `${line}\nКонтрольний замір: GAD-7 — ${fmt(c.score("gad7"))} (на початку — ${fmt(c.first("gad7"))}), WHO-5 — ${fmt(c.score("who5"))} з 25.` : line;
     });
   });
-  const lastPast = visits.filter((x) => x.day <= 0).at(-1)?.day ?? start;
+  const lastPast = lastPastOf(visits, start);
   return {
     ...NONE,
     episode: {
@@ -1757,8 +2086,17 @@ const anxiety: Builder = (p, r, v) => {
     },
     visits,
     decide: bandDecision("Підтверджено: виражена тривога, гострого ризику немає. КПТ за планом."),
-    ...(k === 1 ? { conclusion: { visit: 0, key: "gad7", text: (c: NoteContext) => `Психологічне обстеження ${c.date(days[0]!)}.\nМетодики: GAD-7, WHO-5, PHQ-9.\nРезультати: GAD-7 — ${fmt(c.score("gad7"))} з 21 (${c.band("gad7") ?? "—"}); WHO-5 — ${fmt(c.score("who5"))} з 25 (${c.band("who5") ?? "—"}); PHQ-9 — ${fmt(c.score("phq9"))} з 27 (${c.band("phq9") ?? "—"}).\nВисновок: виражена генералізована тривога зі зниженим благополуччям; депресивні прояви легкі.\nРекомендовано: КПТ тривоги, 8 сесій, контроль GAD-7 через 4 тижні.` } } : {}),
-    pending: finished ? [] : [{ key: "gad7", grantedDay: lastPast, dueDay: (days.find((d) => d > 0) ?? lastPast + 14) }],
+    ...(k === 1
+      ? {
+          conclusion: {
+            visit: 0,
+            key: "gad7",
+            text: (c: NoteContext) =>
+              `Психологічне обстеження ${c.date(days[0]!)}.\nМетодики: GAD-7, WHO-5, PHQ-9.\nРезультати: GAD-7 — ${banded(c.score("gad7"), c.band("gad7"))} (з 21); WHO-5 — ${banded(c.score("who5"), c.band("who5"))} (з 25); PHQ-9 — ${banded(c.score("phq9"), c.band("phq9"))} (з 27).\nВисновок: виражена генералізована тривога зі зниженим благополуччям; депресивні прояви легкі.\nРекомендовано: КПТ тривоги, 8 сесій, контроль GAD-7 через 4 тижні.`,
+          },
+        }
+      : {}),
+    pending: finished ? [] : [{ key: "gad7", grantedDay: lastPast, dueDay: days.find((d) => d > 0) ?? lastPast + 14 }],
   };
 };
 

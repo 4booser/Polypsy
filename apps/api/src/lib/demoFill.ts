@@ -706,8 +706,10 @@ async function writeStory(ctx: FillContext, p: Person, userId: string, story: St
     sessions.push({ day: b.visit.day, at: b.startsAt - (25 + Math.floor(r() * 45)) * MIN, measures: b.visit.measures, booked: b });
   }
   for (const h of story.home) {
-    const at = momentAt(clock, h.day, h.minute);
-    if (at < pastLimit) sessions.push({ day: h.day, at, measures: h.measures });
+    // «только что» — за час-три до наполнения, в какой бы час его ни запустили
+    const at = h.recent ? now - (40 + Math.floor(r() * 140)) * MIN : momentAt(clock, h.day, h.minute);
+    const day = h.recent ? (dayKeyOf(clock, at) === dateAt(clock, 0).key ? 0 : -1) : h.day;
+    if (at < pastLimit) sessions.push({ day, at, measures: h.measures });
   }
   sessions.sort((a, b) => a.at - b.at);
 
