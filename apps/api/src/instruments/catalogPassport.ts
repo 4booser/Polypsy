@@ -738,7 +738,7 @@ export const CATALOG_PASSPORT: Readonly<Record<string, PassportSpec>> = {
 
   /* ── cognitive ── */
   asrs6: {
-    code: "ASRS-v1.1",
+    code: "ASRS-6",
     role: "short",
     purpose: L(
       "Скринінг СДУГ у дорослих за 6 місяців: 6 пунктів ASRS-v1.1",
