@@ -295,12 +295,15 @@ surveyRoutes.get("/", async (c) => {
       : Number((await db.select({ n: sql<number>`count(*)::int` }).from(surveys).where(where))[0]?.n ?? 0);
 
   const numbers = await catalogNumbers(rows, user.id, staffView);
-  const list: SurveyListItem[] = rows.map(({ sourceNote, ...survey }) => {
+  const list: SurveyListItem[] = rows.map(({ sourceNote, catalogFields, ...survey }) => {
     const n = numbers.get(survey.id) ?? NO_NUMBERS;
     return {
       ...survey,
-      // источник для персонала («Джерело» паспорта) — только сотруднику, как и в respondentView
-      ...(staffView ? { sourceNote } : {}),
+      /*
+       * Источник для персонала («Джерело» паспорта) — только сотруднику, как и в
+       * respondentView; снимок настроек каталога несёт его копией — тоже.
+       */
+      ...(staffView ? { sourceNote, catalogFields } : {}),
       title: t(survey.title as never, langOf(c)),
       description: survey.description ? t(survey.description as never, langOf(c)) : null,
       instructions: survey.instructions ? t(survey.instructions as never, langOf(c)) : null,
