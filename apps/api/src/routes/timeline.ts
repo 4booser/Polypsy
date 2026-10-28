@@ -66,6 +66,13 @@ export interface TimelineItem {
   href?: string | null;
   /** Срок назначения — у строк назначений; у прочих поля нет */
   dueAt?: string | null;
+  /**
+   * Прохождение, к которому относится строка: у сигнала — то, что его
+   * подняло, у заключения — то, по которому оно написано. График курса
+   * ставит сигнал на сам замер, а не на день: в один день человек проходит
+   * три методики, и сигнал по PHQ-9 на оси GAD-7 читался бы как сигнал GAD-7.
+   */
+  responseId?: string | null;
 }
 
 timelineRoutes.get("/:userId", async (c) => {
@@ -180,6 +187,7 @@ timelineRoutes.get("/:userId", async (c) => {
       severity: (a.severity as Severity) ?? null,
       detail: titleOf.get(a.surveyId) ?? null,
       href: "/alerts",
+      responseId: a.responseId,
     });
   }
 
@@ -222,6 +230,7 @@ timelineRoutes.get("/:userId", async (c) => {
       title: text.slice(0, 90) + (text.length > 90 ? "…" : ""),
       detail: n.status,
       href: `/patients/${userId}/summary`,
+      responseId: n.responseId,
     });
   }
 

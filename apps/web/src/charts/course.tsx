@@ -1,80 +1,107 @@
-import { useId, useRef, useState, type ReactNode } from "react";
-import type { Incomparable, ScaleNormalization, UiKey } from "@quizzy/shared";
+import { useId, useRef, useState, type FocusEvent, type KeyboardEvent, type MouseEvent, type Ref } from "react";
+import { Link, useInRouterContext } from "react-router-dom";
+import type { Incomparable, ResponseSource, ScaleNormalization, UiKey } from "@quizzy/shared";
 import { useLang } from "../lang";
 import { cx } from "../ui/cx";
 import { NoData } from "../ui/primitives";
 import {
   bandSpans,
   courseLayout,
+  cutoffOf,
+  dodge,
   freeSpot,
-  labelledPoints,
+  labelColumn,
   placeLabels,
   pointTip,
-  todayLabelAt,
+  stackBlocks,
+  valueOrder,
+  wrapWords,
   type Better,
+  type Box,
   type ChangeVerdict,
   type CourseEvent,
   type CoursePoint,
-  type Box,
+  type Cutoff,
   type PointTip,
 } from "./courseModel";
-import { useChartWidth } from "./index";
+import { AxisBreak, useChartWidth } from "./index";
 import { boundaries, sortRungs, type Rung } from "./ladder";
 import {
   ChartLegend,
   ChartTip,
+  EventGlyph,
   FOCUSABLE,
   SINGLE_COLOR,
   SevChip,
   TipHead,
   TipText,
   fillIn,
+  textWidth,
   useDecimal,
-  useIndexHover,
+  useFontsReady,
   type LegendItem,
 } from "./kit";
 
 /**
- * График курса — эталонный график карточки пациента (style_drawer_vivid):
+ * График курса — график карточки пациента: врач между двумя приёмами
+ * должен понять его за десять секунд на 13-дюймовом экране.
  *
- *   — «краще ↓ / ↑» у оси и подписанные полосы тяжести с границами;
- *   — межі похибки от старта и линия надёжного улучшения;
- *   — число у каждого замера (у длинного курса — у краёв и крайних);
- *   — «сьогодні», сигналы риска и сессии с неявками на оси времени;
- *   — наведение с перекрестьем: точное значение, дата, полоса словом,
- *     сдвиг от старта с его надёжностью и сдвиг от предыдущего.
+ *   — шапка словами: что меряли и чем («Депресія · PHQ-9»), сколько сейчас
+ *     («19 з 27»), в какой полосе и что со сдвигом от старта («значуще
+ *     погіршення: +8 з 13 трав.»); похибка вимірювання говорится здесь
+ *     словом, а не рисуется полосой поперёк поля;
+ *   — полосы тяжести тихой заливкой, текущая темнее, подписи — целиком, с
+ *     границами, в колонке справа (переносятся, а не режутся многоточием);
+ *   — один клинический порог пунктиром с подписью (cutoffOf);
+ *   — «менше — краще / більше — краще» словами у оси;
+ *   — число у замеров, где оно ни на что не налезает (последний, первый,
+ *     крайние и переломы — первыми);
+ *   — сигнал риска — красным кольцом на том замере, который его поднял;
+ *   — дорожка событий под датами: приёмы, неявки, запланированные,
+ *     заключения — значками без номеров, с легендой и подсказкой;
+ *   — подсказка замера мышью и с клавиатуры: дата, балл, полоса, сдвиги,
+ *     кто заполнял, ссылка на протокол (Enter или нажатие на точку).
  *
  * Прогноза нет сознательно: приложение тренд не считает (см. courseModel.ts).
+ * «Сьогодні» на оси тоже нет: линия совпадала с последним замером.
  *
  * Данные — из приложения: courseFromDynamics + courseEventsFromTimeline.
  */
 
 export interface CourseChartProps {
-  /** Название шкалы: заголовок подсказки и подпись для диктора */
+  /** Название шкалы: подпись для диктора и шапка, если measure не задан */
   title: string;
+  /** Что меряет: «Депресія» — первая часть шапки */
+  measure?: string | null;
+  /** Чем: код методики «PHQ-9» — вторая часть шапки */
+  method?: string | null;
   points: readonly CoursePoint[];
   rungs: readonly Rung[];
-  /** Верх шкалы без лестницы (у шкалы с лестницей верх — край лестницы) */
+  /** Верх шкалы сырого балла: «19 з 27» в шапке и край оси, если он выше лестницы */
   max?: number | null;
-  /** Порог надёжной зміни в баллах (MDC95); null — не оценён, зоны нет */
+  /** Порог значущої зміни в баллах (MDC95); null — не оценён */
   rc: number | null;
   better: Better | null;
   events?: readonly CourseEvent[];
-  /** «Сейчас», мс; null — без линии «сьогодні». По умолчанию — текущий момент */
+  /** «Сейчас», мс: прошедший приём без отметки отличается от запланированного. По умолчанию — текущий момент */
   now?: number | null;
   normalization?: ScaleNormalization | null;
-  /** Легенда под графиком (и строка «межі похибки не показано», когда похибку не оценить) */
+  /** Легенда под графиком; false — одну на несколько графиков рисует экран (CourseLegend) */
   legend?: boolean;
+  /** Шапка над полем; false — экран называет график сам */
+  header?: boolean;
+  /** compact — малый формат для сетки на узкой колонке: поле ниже, шапка мельче */
+  size?: "full" | "compact";
 }
 
-const L = 30;
-const R = 6;
-const T = 30;
-const PH = 196;
-const PB = T + PH;
-
-/** Ширина подписи 11 px Manrope — с запасом, чтобы подписи не налезали */
-const textW = (s: string, size = 11) => s.length * size * 0.56 + 4;
+const R = 4;
+/** Высота строки подписи оси над полем */
+const T = 24;
+/** Строка подписи полосы: 11,5 px */
+const LH = 14;
+const LABEL_SIZE = 11.5;
+/** Отступ данных от краёв поля: первый и последний замер не лежат на рамке */
+const INSET = 16;
 
 /** Почему замер со стартом не сравнивается — те же слова, что у динамики и сводки */
 const INCOMPARABLE: Record<Incomparable, UiKey> = {
@@ -83,15 +110,103 @@ const INCOMPARABLE: Record<Incomparable, UiKey> = {
   unreliable: "rch.unreliable",
 };
 
-const VERDICT: Record<Exclude<ChangeVerdict, "within">, UiKey> = {
+const VERDICT: Record<Exclude<ChangeVerdict, "unknown">, UiKey> = {
   better: "course.v.better",
   worse: "course.v.worse",
   changed: "course.v.changed",
-  unknown: "course.v.unknown",
+  within: "kit.withinError",
 };
+
+/** Канал, которым пришло прохождение, заполненное самим человеком */
+const CHANNEL: Partial<Record<ResponseSource, UiKey>> = {
+  assigned: "rp.src.assigned",
+  self: "rp.src.self",
+  kiosk: "rp.src.kiosk",
+  intake: "rp.src.intake",
+};
+
+/** Кто заполнял — фразой без рода: «Заповнено пацієнтом (за призначенням)» */
+export function sourceText(source: ResponseSource | null | undefined, ut: (k: UiKey) => string): string | null {
+  if (!source) return null;
+  if (source === "clinician") return ut("course.byClinician");
+  if (source === "informant") return ut("course.byInformant");
+  const channel = CHANNEL[source];
+  return channel ? `${ut("course.byPatient")} (${ut(channel)})` : ut("course.byPatient");
+}
+
+/**
+ * Числа курса в единицах экрана: доля — процентами («49 %», сдвиг — «+8
+ * в. п.»), остальное — дробью языка. Геометрия остаётся в единицах шкалы.
+ */
+export function useCourseFormat(normalization: ScaleNormalization | null | undefined) {
+  const { ut } = useLang();
+  const dec = useDecimal();
+  const ratio = normalization === "ratio";
+  const num = (v: number) => (ratio ? dec(Math.round(v * 100)) : dec(v));
+  return {
+    ratio,
+    /** Число без единицы: у оси, у замера */
+    num,
+    /** Значение словами экрана: «19», «49 %» */
+    value: (v: number) => (ratio ? `${num(v)} %` : num(v)),
+    /** Сдвиг со знаком минус, а не дефисом: «+8», «−3», «+8 в. п.» */
+    delta: (d: number) => {
+      const v = ratio ? Math.round(d * 100) : Math.round(d * 100) / 100;
+      const sign = v > 0 ? "+" : v < 0 ? "−" : "";
+      return `${sign}${dec(Math.abs(v))}${ratio && v ? ` ${ut("course.pp")}` : ""}`;
+    },
+    /** Порог значущої зміни: «6,1», «8 в. п.» */
+    amount: (d: number) => (ratio ? `${dec(Math.round(d * 100))} ${ut("course.pp")}` : dec(d, 1)),
+    /** Границы полосы: «15–19», «24–38 %» — неразрывно, подпись полосы переносится по словам */
+    range: (r: { min: number; max: number }) => (ratio ? `${num(r.min)}–${num(r.max)} %` : `${dec(r.min)}–${dec(r.max)}`),
+  };
+}
+
+type CourseFormat = ReturnType<typeof useCourseFormat>;
+
+/** Подпись клинического порога: «клінічний поріг ≥ 10» */
+function cutoffText(c: Cutoff, fmt: CourseFormat, ut: (k: UiKey) => string): string {
+  return fillIn(ut(c.side === "above" ? "course.cutoffAbove" : "course.cutoffBelow"), { v: fmt.value(c.value) });
+}
+
+/** Подпись сдвига от старта для шапки: «значуще погіршення: +8 з 13 трав.» */
+function changeText(tip: PointTip, count: number, fmt: CourseFormat, ut: (k: UiKey) => string): { text: string; verdict: ChangeVerdict | null } {
+  if (count < 2) return { text: ut("course.first"), verdict: null };
+  if (tip.incomparable) return { text: ut(INCOMPARABLE[tip.incomparable]), verdict: null };
+  const fs = tip.fromStart;
+  if (!fs) return { text: "", verdict: null };
+  if (fs.verdict === "unknown") return { text: fillIn(ut("course.changeUnknown"), { delta: fmt.delta(fs.delta), date: fs.since }), verdict: "unknown" };
+  return {
+    text: fillIn(ut("course.change"), { verdict: ut(VERDICT[fs.verdict]), delta: fmt.delta(fs.delta), date: fs.since }),
+    verdict: fs.verdict,
+  };
+}
+
+/** Цвет слова сдвига: ухудшение требует внимания (янтарь), улучшение — зелёным, прочее — тихо */
+const verdictClass = (v: ChangeVerdict | null) =>
+  v === "worse" ? "font-bold text-warn" : v === "better" ? "font-bold text-good" : "font-semibold text-text-2";
+
+/** Ширина подписи полосы: жирнее у текущей — мерка по жирной, чтобы перенос не зависел от выделения */
+const labelWidth = (s: string) => textWidth(s, LABEL_SIZE, 800);
+
+interface LabelBlock {
+  key: string;
+  kind: "band" | "cutoff";
+  lines: string[];
+  /** Первая строка начинается с границ полосы — их рисуем приглушённо */
+  range: string | null;
+  want: number;
+  h: number;
+  current: boolean;
+  /** Полоса блока на оси: верх и низ в пикселях — смещённый блок соединяется с ней выноской */
+  top: number;
+  bottom: number;
+}
 
 export function CourseChart({
   title,
+  measure,
+  method,
   points: raw,
   rungs,
   max,
@@ -101,368 +216,487 @@ export function CourseChart({
   now = Date.now(),
   normalization,
   legend = true,
+  header = true,
+  size = "full",
 }: CourseChartProps) {
   const { ut } = useLang();
-  const dec = useDecimal();
+  const fmt = useCourseFormat(normalization);
   const [W0, boxRef] = useChartWidth(560);
+  useFontsReady();
   const svgRef = useRef<SVGSVGElement>(null);
-  const clip = useId().replace(/:/g, "");
-  const hintId = `ch-${clip}`;
+  const linkRef = useRef<HTMLAnchorElement>(null);
+  const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const uid = useId().replace(/:/g, "");
+  const hintId = `ch-${uid}`;
   const points = [...raw].sort((a, b) => a.t - b.t);
-  const pointHover = useIndexHover(points.length);
-  const [evAt, setEvAt] = useState<number | null>(null);
+  const [pt, setPt] = useState<number | null>(null);
+  const [ev, setEv] = useState<number | null>(null);
 
   if (!points.length) return <NoData />;
 
-  const W = Math.max(360, W0);
-  /* уже 360 px картинка ужимается целиком — подсказка идёт за ней */
+  const compact = size === "compact";
+  const W = Math.max(320, W0);
+  /* уже 320 px картинка ужимается целиком — подсказка идёт за ней */
   const k = W0 / W;
+  const PH = compact ? 116 : 188;
+  const PB = T + PH;
   const ladder = sortRungs(rungs);
-  const lay = courseLayout(points, ladder, events, now, max);
+  const lay = courseLayout(points, ladder, events, max);
   const spans = bandSpans(ladder, lay.lo, lay.hi);
-  const sessions = lay.events.filter((e) => e.kind !== "signal");
-  const signals = lay.events.filter((e) => e.kind === "signal");
-
-  /*
-   * Полоса справа под подписи полос — данные в неё не заходят, и подписи
-   * не на чем перекрыть. Не шире трети графика: длинное название полосы
-   * («Легка (субклінічна) депресія») сокращается многоточием, целиком оно
-   * в подсказке замера.
-   */
-  const strip = ladder.length ? Math.min(Math.round(W * 0.3), 176, Math.max(56, ...ladder.map((r) => textW(r.label) + 12))) : 14;
-  const fitLabel = (s: string) => {
-    const room = Math.floor((strip - 12) / (11 * 0.56));
-    return s.length <= room ? s : `${s.slice(0, Math.max(1, room - 1)).trimEnd()}…`;
-  };
-  const x0 = L + (sessions.length ? 26 : 16);
-  const x1 = W - R - strip;
-  const X = (t: number) => x0 + ((t - lay.t0) / Math.max(1, lay.t1 - lay.t0)) * (x1 - x0);
+  const cutoff = cutoffOf(ladder);
+  const lastI = points.length - 1;
+  const head = pointTip(points, lastI, ladder, rc, better, lay.signals.get(lastI));
+  const current = head?.band ? (spans.find((s) => points[lastI]!.value >= s.from && points[lastI]!.value <= s.to)?.rung ?? null) : null;
   const Y = (v: number) => T + PH * (1 - (v - lay.lo) / (lay.hi - lay.lo));
   const f1 = (v: number) => v.toFixed(1);
 
-  const base = points[0]!.value;
-  const last = points.at(-1)!;
-  const zone = rc !== null && rc > 0 ? { lo: Math.max(lay.lo, base - rc), hi: Math.min(lay.hi, base + rc) } : null;
-  const current = ladder.length ? (spans.find((s) => last.value >= s.from && last.value <= s.to)?.rung ?? null) : null;
+  /* ── ось значений: подписи делений определяют левое поле ── */
+  const tickText = lay.ticks.map((v) => fmt.num(v));
+  const L = Math.max(26, ...tickText.map((s) => textWidth(s, 11, 600) + 10));
+
+  /* ── колонка подписей полос справа ── */
+  const bandText = (r: Rung) => `${fmt.range(r)} ${r.label}`;
+  const cutText = cutoff ? cutoffText(cutoff, fmt, ut) : null;
+  const colMax = Math.min(Math.round(W * (compact ? 0.42 : 0.34)), 210);
+  const colWanted = ladder.length ? labelColumn([...ladder.map(bandText), ...(cutText ? [cutText] : [])], labelWidth, 84, colMax, 2) : 0;
+  /* поле уже 150 px не читается: подписи полос тогда уходят под график строками */
+  const withCol = ladder.length > 0 && W - R - colWanted - 12 - L >= 150;
+  const colW = withCol ? colWanted : 0;
+  const colX = W - R - colW;
+  const plotR = withCol ? colX - 12 : W - R;
+  const x0 = L + INSET;
+  const x1 = plotR - INSET;
+  const X = (t: number) => x0 + ((t - lay.t0) / Math.max(1, lay.t1 - lay.t0)) * (x1 - x0);
+
+  const fillOf = (rung: Rung | null, i: number) => (rung && rung === current ? "var(--plotc)" : i % 2 ? "var(--plot2)" : "var(--plot)");
+
+  const blocks: LabelBlock[] = [];
+  if (withCol) {
+    const desc = spans.map((s, i) => ({ s, i })).reverse();
+    for (const { s } of desc) {
+      const text = bandText(s.rung);
+      const lines = wrapWords(text, colW, labelWidth);
+      blocks.push({
+        key: `b-${s.rung.min}-${s.rung.max}`,
+        kind: "band",
+        lines,
+        range: fmt.range(s.rung),
+        want: (Y(s.to) + Y(s.from)) / 2,
+        h: lines.length * LH,
+        current: s.rung === current,
+        top: Y(s.to),
+        bottom: Y(s.from),
+      });
+    }
+    if (cutoff && cutText && cutoff.at > lay.lo && cutoff.at < lay.hi) {
+      const lines = wrapWords(cutText, colW, labelWidth);
+      const y = Y(cutoff.at);
+      blocks.push({ key: "cutoff", kind: "cutoff", lines, range: null, want: y, h: lines.length * LH, current: false, top: y, bottom: y });
+      blocks.sort((a, b) => a.want - b.want);
+    }
+  }
+  const colTop = T + 1;
+  const colBottom = PB + 14;
+  const total = (list: LabelBlock[]) => list.reduce((s, b) => s + b.h, 0) + Math.max(0, list.length - 1) * 2;
+  /* не помещаются все — остаются текущая полоса и порог; остальные полосы — в подсказке и в полной «Графіки» */
+  const shown = total(blocks) > colBottom - colTop ? blocks.filter((b) => b.current || b.kind === "cutoff") : blocks;
+  const tops = stackBlocks(
+    shown.map((b) => ({ want: b.want, h: b.h })),
+    colTop,
+    colBottom,
+  );
+
+  /* ── замеры ── */
   const xs = points.map((p) => X(p.t));
   const ys = points.map((p) => Y(p.value));
-  const labelled = labelledPoints(points.map((p) => p.value));
-  /* число у замера — над точкой (у «краще ↑» — под ней), у кромки поля — с другой стороны */
-  const valueY = points.map((_, i) => {
-    const above = better !== "up";
-    let y = above ? ys[i]! - 11 : ys[i]! + 19;
-    if (above && y < T + 12) y = ys[i]! + 19;
-    if (!above && y > PB - 4) y = ys[i]! - 11;
-    return y;
-  });
-  const sy = PB + 44;
-  const H = sessions.length ? sy + 30 : PB + 26;
-
-  /* подписи дат: последняя, первая, потом остальные — без наложения */
-  const dateShown = placeLabels(xs, points.map((p) => textW(p.label)));
-  const todayX = lay.today !== null ? X(lay.today) : null;
-  const sameDay = (t: number) => lay.today !== null && Math.abs(t - lay.today) < 12 * 3_600_000;
-
-  /*
-   * Слово «сигнал» у последнего сигнала на оси: справа от квадрата, а если
-   * справа не помещается до полосы подписей полос — слева от него.
-   */
-  const signalWord = ut("course.signal");
-  const lastSignal = signals.at(-1) ?? null;
-  const signalX = lastSignal ? X(lastSignal.t) : null;
-  const signalRight = signalX !== null && signalX + 9 + textW(signalWord) < x1;
-  const signalBox: Box | null =
-    signalX === null
-      ? null
-      : signalRight
-        ? { x0: signalX + 7, y0: PB - 18, x1: signalX + 11 + textW(signalWord), y1: PB - 2 }
-        : { x0: signalX - 11 - textW(signalWord), y0: PB - 18, x1: signalX - 7, y1: PB - 2 };
-
-  /*
-   * Подписи межі похибки и надёжного улучшения ставятся туда, где они ничего
-   * не закрывают: ни замер, ни линию, ни число, ни «сьогодні», ни слово
-   * «сигнал» у оси; места нет — подписи нет, смысл остаётся в легенде и
-   * подсказке.
-   */
+  const valueSize = compact ? 12 : 13;
   const obstacles: Box[] = [
-    ...xs.map((x, i) => ({ x0: x - 8, y0: ys[i]! - 8, x1: x + 8, y1: ys[i]! + 8 })),
-    ...points.flatMap((p, i) => {
-      if (!labelled.has(i)) return [];
-      const w = textW(dec(p.value), 13);
-      return [{ x0: xs[i]! - w / 2 - 2, y0: valueY[i]! - 12, x1: xs[i]! + w / 2 + 2, y1: valueY[i]! + 3 }];
+    ...xs.map((x, i) => {
+      const r = lay.signals.has(i) ? 11 : 7;
+      return { x0: x - r, y0: ys[i]! - r, x1: x + r, y1: ys[i]! + r };
     }),
     ...xs.slice(1).flatMap((x, i) => {
       const xa = xs[i]!;
       const ya = ys[i]!;
       const n = Math.max(1, Math.ceil(Math.hypot(x - xa, ys[i + 1]! - ya) / 4));
-      return Array.from({ length: n }, (_, k) => {
-        const px = xa + ((x - xa) * k) / n;
-        const py = ya + ((ys[i + 1]! - ya) * k) / n;
-        return { x0: px - 3, y0: py - 3, x1: px + 3, y1: py + 3 };
+      return Array.from({ length: n }, (_, j) => {
+        const px = xa + ((x - xa) * j) / n;
+        const py = ya + ((ys[i + 1]! - ya) * j) / n;
+        return { x0: px - 2.5, y0: py - 2.5, x1: px + 2.5, y1: py + 2.5 };
       });
     }),
-    ...(todayX !== null ? [{ x0: todayX - 3, y0: T, x1: todayX + 3, y1: PB }] : []),
-    ...(signalBox ? [signalBox] : []),
   ];
-  const field: Box = { x0: L + 2, y0: T + 2, x1: x1 - 2, y1: PB - 2 };
-  const spotFor = (text: string, ys0: readonly number[]) => {
-    const w = textW(text);
-    /* слева направо: у старта, на четверти, посередине, на трёх четвертях, у правого края */
-    const xsC = [x0 + 6, ...[0.25, 0.5, 0.75].map((q) => x0 + (x1 - x0) * q - w / 2), x1 - 8 - w];
-    const cands = ys0.flatMap((y) => xsC.map((x) => ({ x0: x, y0: y - 10, x1: x + w, y1: y + 3, y })));
-    const got = freeSpot(cands, obstacles, field);
-    if (got) obstacles.push(got);
-    return got;
-  };
-  const zoneText = zone ? fillIn(ut("course.rcZone"), { base: dec(base), rc: dec(rc!, 1) }) : "";
-  const edge = zone && better ? Y(better === "down" ? zone.lo : zone.hi) : null;
-  const edgeText =
-    zone && better ? fillIn(ut(better === "down" ? "course.rcBelow" : "course.rcAbove"), { v: dec(better === "down" ? base - rc! : base + rc!, 1) }) : "";
-  const edgeSpot = edge !== null ? spotFor(edgeText, better === "down" ? [edge + 14, edge - 5] : [edge - 5, edge + 14]) : null;
-  const zoneSpot = zone
-    ? spotFor(
-        zoneText,
-        better === "up" ? [Y(zone.lo) - 6, Y(zone.lo) + 14, Y(zone.hi) - 5] : [Y(zone.hi) + 14, Y(zone.hi) - 5, Y(zone.lo) - 6],
-      )
-    : null;
+  const field: Box = { x0: L + 2, y0: T + 2, x1: plotR - 2, y1: PB - 2 };
+  /*
+   * Числа у замеров: на коротком курсе — у всех, где помещаются; на длинном
+   * (больше восьми) — не больше шести: последний, первый, крайние и самые
+   * заметные переломы. Число на каждой из двадцати точек — шум, а не
+   * подпись; остальное — в подсказке. Место — над точкой, под ней, сбоку.
+   */
+  const values = new Map<number, { x: number; y: number }>();
+  const cap = points.length > 8 ? 6 : points.length;
+  for (const i of valueOrder(points.map((p) => p.value))) {
+    if (values.size >= cap) break;
+    const text = fmt.num(points[i]!.value);
+    const w = textWidth(text, valueSize, 800) + 4;
+    const off = lay.signals.has(i) ? 13 : 9;
+    const side = lay.signals.has(i) ? 14 : 10;
+    const x = xs[i]!;
+    const y = ys[i]!;
+    const spot = freeSpot(
+      [
+        { x0: x - w / 2, y0: y - off - valueSize, x1: x + w / 2, y1: y - off, cx: x, ty: y - off - 1 },
+        { x0: x - w / 2, y0: y + off, x1: x + w / 2, y1: y + off + valueSize, cx: x, ty: y + off + valueSize - 1 },
+        { x0: x + side, y0: y - valueSize / 2 - 1, x1: x + side + w, y1: y + valueSize / 2 + 1, cx: x + side + w / 2, ty: y + valueSize / 2 - 2 },
+        { x0: x - side - w, y0: y - valueSize / 2 - 1, x1: x - side, y1: y + valueSize / 2 + 1, cx: x - side - w / 2, ty: y + valueSize / 2 - 2 },
+      ],
+      obstacles,
+      field,
+    );
+    if (!spot) continue;
+    obstacles.push(spot);
+    values.set(i, { x: spot.cx, y: spot.ty });
+  }
 
+  /* подписи дат: последняя, первая, потом остальные — без наложения */
+  const dateShown = placeLabels(xs, points.map((p) => textWidth(p.label, 11, 700) + 4));
+
+  /* ── дорожка событий ── */
+  const lane = lay.lane;
+  const laneY = PB + 38;
+  const laneXs = dodge(
+    lane.map((e) => X(e.t)),
+    11,
+    L + 6,
+    plotR - 6,
+  );
+  const H = PB + 26 + (lane.length ? 24 : 0);
+
+  /* ── подписи у оси ── */
   const unitWord = !normalization || normalization === "raw" ? ut("course.points") : ut(`norm.${normalization}` as UiKey);
   const betterWord = better ? ut(better === "down" ? "course.betterDown" : "course.betterUp") : "";
-  /* подпись оси и «сьогодні» стоят в одной строке над полем — вторая не наезжает на первую */
-  const axisTitle = `${unitWord} ${dec(lay.lo)}–${dec(lay.hi)}${betterWord ? `, ${betterWord}` : ""}`;
-  const todayWord = ut("course.today");
-  const todayAt = todayX === null ? null : todayLabelAt(todayX, textW(todayWord), L - 7 + textW(axisTitle), W - R);
-  const pAt = pointHover.at;
-  const tip = pAt === null ? null : pointTip(points, pAt, ladder, rc, better);
-  const ev = evAt === null ? null : (lay.events[evAt] ?? null);
 
-  /* сессии по оси: номер, неявка крестом, будущая — пустым кругом */
-  const sxs = sessions.map((e) => X(e.t));
-  const minGap = sxs.reduce((m, x, i) => (i ? Math.min(m, x - sxs[i - 1]!) : m), Infinity);
-  const sr = minGap < 18 ? 5 : 8;
-  const firstNext = now === null ? null : sessions.find((e) => e.kind === "planned" && e.t > now);
-  const lastNoshow = [...sessions].reverse().find((e) => e.kind === "noshow");
-
-  const onMove = (e: React.MouseEvent<SVGSVGElement>) => {
+  /* ── наведение: точка — мышью и стрелками, событие дорожки — мышью ── */
+  const cancelHide = () => {
+    if (hideTimer.current) clearTimeout(hideTimer.current);
+    hideTimer.current = null;
+  };
+  const hideSoon = () => {
+    cancelHide();
+    /* указатель идёт от точки к ссылке в подсказке — подсказка ждёт его, а не гаснет на полпути */
+    hideTimer.current = setTimeout(() => {
+      setPt(null);
+      setEv(null);
+    }, 240);
+  };
+  const svgPoint = (e: MouseEvent<SVGSVGElement>) => {
     const box = svgRef.current?.getBoundingClientRect();
-    if (!box) return;
-    const px = ((e.clientX - box.left) / box.width) * W;
-    const py = ((e.clientY - box.top) / box.height) * H;
-    if (py > PB + 6) return;
+    if (!box) return null;
+    return { x: ((e.clientX - box.left) / box.width) * W, y: ((e.clientY - box.top) / box.height) * H };
+  };
+  const nearestPoint = (x: number) => {
     let best = 0;
-    for (let i = 1; i < xs.length; i++) if (Math.abs(xs[i]! - px) < Math.abs(xs[best]! - px)) best = i;
-    setEvAt(null);
-    pointHover.setAt(best);
+    for (let i = 1; i < xs.length; i++) if (Math.abs(xs[i]! - x) < Math.abs(xs[best]! - x)) best = i;
+    return best;
+  };
+  const onMove = (e: MouseEvent<SVGSVGElement>) => {
+    cancelHide();
+    const p = svgPoint(e);
+    if (!p) return;
+    if (lane.length && p.y > PB + 26) {
+      let best = -1;
+      for (let j = 0; j < laneXs.length; j++) if (Math.abs(laneXs[j]! - p.x) <= 12 && (best < 0 || Math.abs(laneXs[j]! - p.x) < Math.abs(laneXs[best]! - p.x))) best = j;
+      setEv(best < 0 ? null : best);
+      setPt(null);
+      return;
+    }
+    if (p.x > plotR + 4) {
+      setPt(null);
+      return;
+    }
+    setEv(null);
+    setPt(nearestPoint(p.x));
+  };
+  const onClick = (e: MouseEvent<SVGSVGElement>) => {
+    const p = svgPoint(e);
+    if (!p || p.y > PB + 26) return;
+    const i = nearestPoint(p.x);
+    /* протокол открывает нажатие на сам замер, а не на пустое поле рядом; подсказка — сначала его */
+    if (Math.hypot(xs[i]! - p.x, ys[i]! - p.y) > 18 || !points[i]!.href) return;
+    if (pt === i) linkRef.current?.click();
+    else setPt(i);
+  };
+  const onKeyDown = (e: KeyboardEvent<SVGSVGElement>) => {
+    const step = (d: number) => {
+      e.preventDefault();
+      setEv(null);
+      setPt((p) => (p === null ? (d > 0 ? 0 : lastI) : Math.min(lastI, Math.max(0, p + d))));
+    };
+    if (e.key === "ArrowRight" || e.key === "ArrowDown") step(1);
+    else if (e.key === "ArrowLeft" || e.key === "ArrowUp") step(-1);
+    else if (e.key === "Home") {
+      e.preventDefault();
+      setPt(0);
+    } else if (e.key === "End") {
+      e.preventDefault();
+      setPt(lastI);
+    } else if (e.key === "Escape") {
+      setPt(null);
+      setEv(null);
+    } else if (e.key === "Enter" && pt !== null && points[pt]!.href) {
+      e.preventDefault();
+      linkRef.current?.click();
+    }
+  };
+  /* фокус ушёл и не в подсказку (ссылка протокола) — подсказка гаснет */
+  const onBlur = (e: FocusEvent<HTMLDivElement>) => {
+    const next = e.relatedTarget as Node | null;
+    if (next && e.currentTarget.contains(next)) return;
+    setPt(null);
+    setEv(null);
   };
 
-  const legendItems: LegendItem[] = [
-    { key: "pts", label: ut("course.lg.measures"), color: SINGLE_COLOR, kind: "line" },
-    ...(zone ? [{ key: "rc", label: ut("course.lg.rc"), color: "var(--rcz)", kind: "zone" as const }] : []),
-    ...(signals.length ? [{ key: "sig", label: ut("course.signal"), color: "var(--risk)", kind: "risk" as const }] : []),
-    ...(sessions.some((e) => e.kind === "noshow") ? [{ key: "ns", label: ut("course.lg.noshow"), color: "var(--warn)", kind: "warn" as const }] : []),
-  ];
+  const tip = pt === null ? null : pointTip(points, pt, ladder, rc, better, lay.signals.get(pt));
+  const event = ev === null ? null : (lane[ev] ?? null);
+  const href = pt === null ? null : (points[pt]!.href ?? null);
+  const change = head ? changeText(head, points.length, fmt, ut) : { text: "", verdict: null };
+  const lastPoint = points[lastI]!;
+  /* «19 з 27» у сырого балла, «64 T-бал» у нормированного; доля — уже с «%» */
+  const suffix = fmt.ratio
+    ? null
+    : !normalization || normalization === "raw"
+      ? max != null
+        ? `${ut("an.of")} ${fmt.num(max)}`
+        : null
+      : ut(`norm.${normalization}` as UiKey);
 
   return (
-    <div className="relative min-w-0" ref={boxRef}>
+    <div className="relative min-w-0" ref={boxRef} onBlur={onBlur}>
+      {header ? (
+        <div className={cx("min-w-0", compact ? "mb-[6px]" : "mb-[10px]")} data-course-head>
+          <p className="m-0 flex min-w-0 flex-wrap items-baseline gap-x-[6px] text-body leading-[18px] font-extrabold text-text">
+            <span>{measure || title}</span>
+            {method ? <span className="font-bold text-muted">· {method}</span> : null}
+          </p>
+          <p className="m-0 mt-[6px] flex flex-wrap items-center gap-x-[10px] gap-y-[4px]">
+            <span className="whitespace-nowrap">
+              <b data-course-value className={cx("leading-none font-extrabold text-text", compact ? "text-[20px]" : "text-[24px]")}>
+                {fmt.value(lastPoint.value)}
+              </b>
+              {suffix ? <span className="ml-[5px] text-small font-bold text-muted">{suffix}</span> : null}
+            </span>
+            {head?.band ? <SevChip severity={head.band.severity} label={head.band.label} small={compact} /> : null}
+            {change.text ? (
+              <span data-change={change.verdict ?? "none"} className={cx("text-small leading-[18px]", verdictClass(change.verdict))}>
+                {change.text}
+              </span>
+            ) : null}
+          </p>
+        </div>
+      ) : null}
+
+      <div className="relative">
       <svg
         ref={svgRef}
         viewBox={`0 0 ${W} ${H}`}
         width="100%"
-        height={H}
+        height={H * k}
         role="img"
-        aria-label={`${title}: ${points.map((p) => `${dec(p.value)} (${p.label})`).join(", ")}`}
+        aria-label={`${title}: ${points.map((p) => `${fmt.value(p.value)} (${p.label})`).join(", ")}`}
         aria-describedby={hintId}
-        className={cx("block overflow-visible", FOCUSABLE)}
+        tabIndex={0}
+        className={cx("block overflow-visible", FOCUSABLE, href && pt !== null ? "cursor-pointer" : "")}
         onMouseMove={onMove}
-        {...pointHover.focusProps}
-        onMouseLeave={() => {
-          pointHover.setAt(null);
-          setEvAt(null);
-        }}
+        onMouseLeave={hideSoon}
+        onClick={onClick}
+        onKeyDown={onKeyDown}
+        onFocus={() => setPt((p) => p ?? lastI)}
       >
         <defs>
-          <clipPath id={`cp-${clip}`}>
-            <rect x={L} y={T} width={W - R - L} height={PH} rx={14} />
+          <clipPath id={`cp-${uid}`}>
+            <rect x={L} y={T} width={W - R - L} height={PH} rx={12} />
           </clipPath>
         </defs>
 
-        {/* поле: полосы тяжести, будущее, межі похибки — под всем остальным */}
-        <g clipPath={`url(#cp-${clip})`}>
+        {/* поле: полосы тяжести — тихой заливкой, текущая темнее; без лестницы — сетка делений */}
+        <g clipPath={`url(#cp-${uid})`}>
           {spans.length ? (
             spans.map((s, i) => (
               <rect
                 key={`${s.rung.min}-${s.rung.max}`}
                 data-band={s.rung.label}
+                data-current={s.rung === current ? "" : undefined}
                 x={L}
                 y={f1(Y(s.to))}
                 width={W - R - L}
                 height={f1(Y(s.from) - Y(s.to))}
-                fill={s.rung === current ? "var(--plotc)" : i % 2 ? "var(--plot2)" : "var(--plot)"}
+                fill={fillOf(s.rung, i)}
               />
             ))
           ) : (
-            <rect x={L} y={T} width={W - R - L} height={PH} fill="var(--plot)" />
+            <>
+              <rect x={L} y={T} width={W - R - L} height={PH} fill="var(--plot)" />
+              {lay.ticks.map((v) => (
+                <line key={v} x1={L} x2={W - R} y1={f1(Y(v))} y2={f1(Y(v))} stroke="var(--grid)" />
+              ))}
+            </>
           )}
-          {boundaries(ladder).map((c) => (
-            <line key={c} x1={L} x2={W - R} y1={f1(Y(c))} y2={f1(Y(c))} stroke="var(--plotline)" strokeWidth={2} />
-          ))}
-          {todayX !== null ? <rect x={f1(todayX)} y={T} width={f1(W - R - todayX)} height={PH} fill="var(--future)" /> : null}
-          {zone ? <rect data-zone="rc" x={L} y={f1(Y(zone.hi))} width={W - R - L} height={f1(Y(zone.lo) - Y(zone.hi))} fill="var(--rcz)" /> : null}
+          {boundaries(ladder)
+            .filter((c) => c > lay.lo && c < lay.hi)
+            .map((c) => (
+              <line key={c} x1={L} x2={W - R} y1={f1(Y(c))} y2={f1(Y(c))} stroke="var(--plotline)" strokeWidth={2} />
+            ))}
         </g>
 
-        {/* подписи полос: слово и границы, у правого края */}
-        {spans.map((s, i) => {
-          const top = Y(s.to);
-          const h = Y(s.from) - top;
-          if (h < 13) return null;
-          const halo = s.rung === current ? "var(--plotc)" : i % 2 ? "var(--plot2)" : "var(--plot)";
-          const yc = top + h / 2;
-          const two = h >= 28;
+        {/* клинический порог: пунктир через поле до своей подписи в колонке */}
+        {cutoff && cutoff.at > lay.lo && cutoff.at < lay.hi ? (
+          <line
+            data-cutoff={cutoff.value}
+            x1={L}
+            x2={withCol ? colX - 16 : W - R}
+            y1={f1(Y(cutoff.at))}
+            y2={f1(Y(cutoff.at))}
+            stroke="var(--text-2)"
+            strokeWidth={1.6}
+            strokeDasharray="6 4"
+          />
+        ) : null}
+
+        {/* подписи полос и порога — целиком, переносом; сдвинутая с места — на подложке с выноской */}
+        {shown.map((b, i) => {
+          const top = tops[i]!;
+          const mid = top + b.h / 2;
+          /* порог — всегда плашкой у конца своего пунктира; полоса — плашкой, только если ушла со своей полосы */
+          const cut = b.kind === "cutoff";
+          const off = cut || mid < b.top || mid > b.bottom;
+          const lead = cut ? b.want : Math.min(Math.max(mid, b.top + 4), b.bottom - 4);
           return (
-            <g key={`l-${s.rung.min}`} style={{ paintOrder: "stroke" }} stroke={halo} strokeWidth={4} strokeLinejoin="round">
-              <text
-                x={W - R - 8}
-                y={f1(two ? yc - 1 : yc + 4)}
-                textAnchor="end"
-                fontSize={11}
-                fontWeight={s.rung === current ? 800 : 700}
-                fill={s.rung === current ? "var(--vink)" : "var(--muted)"}
-              >
-                {fitLabel(s.rung.label)}
-              </text>
-              {two ? (
-                <text x={W - R - 8} y={f1(yc + 12)} textAnchor="end" fontSize={10.5} fontWeight={500} fill="var(--muted)">
-                  {dec(s.rung.min)}–{dec(s.rung.max)}
-                </text>
+            <g key={b.key} data-label={cut ? "cutoff" : "band"}>
+              {off ? (
+                <>
+                  <rect
+                    x={f1(colX - 5)}
+                    y={f1(top - 2.5)}
+                    width={f1(Math.min(colW, Math.max(...b.lines.map(labelWidth))) + 10)}
+                    height={f1(b.h + 5)}
+                    rx={6}
+                    fill="var(--panel)"
+                    stroke={cut ? "var(--text-2)" : "var(--border)"}
+                  />
+                  <polyline
+                    points={`${f1(colX - 16)},${f1(lead)} ${f1(colX - 10)},${f1(lead)} ${f1(colX - 5)},${f1(Math.min(Math.max(lead, top + 2), top + b.h - 2))}`}
+                    fill="none"
+                    stroke="var(--text-2)"
+                    strokeWidth={cut ? 1.6 : 1}
+                    strokeDasharray={cut ? "3 2" : undefined}
+                  />
+                </>
               ) : null}
+              {b.kind === "cutoff" ? <title>{ut("course.cutoffWhy")}</title> : null}
+              <text
+                x={f1(colX)}
+                y={f1(top + LH - 3.5)}
+                fontSize={LABEL_SIZE}
+                fontWeight={b.current || b.kind === "cutoff" ? 800 : 600}
+                fill={b.current || b.kind === "cutoff" ? "var(--text)" : "var(--text-2)"}
+              >
+                {b.lines.map((ln, j) => {
+                  const lead0 = j === 0 && b.range && ln.startsWith(b.range);
+                  return (
+                    <tspan key={j} x={f1(colX)} dy={j ? LH : 0}>
+                      {lead0 ? (
+                        <>
+                          <tspan fill="var(--muted)" fontWeight={600}>
+                            {b.range}
+                          </tspan>
+                          {ln.slice(b.range!.length)}
+                        </>
+                      ) : (
+                        ln
+                      )}
+                    </tspan>
+                  );
+                })}
+              </text>
             </g>
           );
         })}
 
-        {/* ось значений и её подпись: единицы, диапазон и куда — лучше */}
-        {lay.ticks.map((v) => (
-          <text key={v} x={L - 7} y={f1(Y(v) + 4)} textAnchor="end" fontSize={11} fontWeight={600} fill="var(--muted)">
-            {dec(v)}
+        {/* ось значений и её подпись: единицы и куда — лучше, словами */}
+        {lay.ticks.map((v, i) => (
+          <text key={v} x={L - 6} y={f1(Y(v) + 4)} textAnchor="end" fontSize={11} fontWeight={600} fill="var(--axis)">
+            {tickText[i]}
           </text>
         ))}
-        <text x={L - 7} y={T - 12} fontSize={11} fontWeight={600} fill="var(--muted)">
-          {unitWord} {dec(lay.lo)}–{dec(lay.hi)}
+        {lay.cut.hi ? <AxisBreak x={L} y={T + 6} /> : null}
+        {lay.cut.lo ? <AxisBreak x={L} y={PB - 4} /> : null}
+        <text data-label="axis" x={0} y={T - 9} fontSize={12} fontWeight={600} fill="var(--text-2)">
+          {unitWord}
           {betterWord ? (
             <>
               {", "}
-              <tspan fill="var(--text)">{betterWord}</tspan>
+              <tspan fontWeight={800} fill="var(--text)">
+                {betterWord}
+              </tspan>
             </>
           ) : null}
         </text>
 
-        {/* межі похибки от старта и граница надёжного улучшения */}
-        {zone ? (
-          <g style={{ paintOrder: "stroke" }} stroke="var(--plot)" strokeWidth={4} strokeLinejoin="round">
-            {edge !== null ? (
-              <line x1={L} x2={f1(x1)} y1={f1(edge)} y2={f1(edge)} stroke="var(--vink)" strokeWidth={1.2} strokeDasharray="4 3" opacity={0.85} />
-            ) : null}
-            {edgeSpot ? (
-              <text data-label="rc-edge" x={f1(edgeSpot.x0)} y={f1(edgeSpot.y)} fontSize={11} fontWeight={700} fill="var(--vink)">
-                {edgeText}
-              </text>
-            ) : null}
-            {zoneSpot ? (
-              <text data-label="rc-zone" x={f1(zoneSpot.x0)} y={f1(zoneSpot.y)} fontSize={11} fontWeight={600} fill="var(--vink)">
-                {zoneText}
-              </text>
-            ) : null}
-          </g>
-        ) : null}
+        {pt !== null ? <line x1={f1(xs[pt]!)} x2={f1(xs[pt]!)} y1={T} y2={PB} stroke="var(--vink)" strokeDasharray="2 2" /> : null}
 
-        {todayX !== null && todayAt ? (
-          <>
-            <line x1={f1(todayX)} x2={f1(todayX)} y1={T - 6} y2={PB} stroke="var(--text)" strokeWidth={1.2} />
-            <text data-label="today" x={f1(todayAt.x)} y={T - 10} textAnchor={todayAt.anchor} fontSize={11} fontWeight={800} fill="var(--text)">
-              {todayWord}
-            </text>
-          </>
-        ) : null}
-
-        {pAt !== null ? (
-          <line x1={f1(xs[pAt]!)} x2={f1(xs[pAt]!)} y1={T} y2={PB} stroke="var(--vink)" strokeDasharray="2 2" />
-        ) : null}
-
-        {/* курс: линия 3 px, замеры с кольцом поверхности, число у замера */}
+        {/* курс: линия, замеры с кольцом поверхности, сигнал — красным кольцом на своём замере */}
         {points.length > 1 ? (
           <polyline
             points={xs.map((x, i) => `${f1(x)},${f1(ys[i]!)}`).join(" ")}
             fill="none"
             stroke={SINGLE_COLOR}
-            strokeWidth={3}
+            strokeWidth={compact ? 2.5 : 3}
             strokeLinejoin="round"
             strokeLinecap="round"
           />
         ) : null}
+        {points.map((p, i) =>
+          lay.signals.has(i) ? (
+            <circle key={`s-${p.key}`} data-signal={i} cx={f1(xs[i]!)} cy={f1(ys[i]!)} r={9.5} fill="none" stroke="var(--risk)" strokeWidth={2.2} />
+          ) : null,
+        )}
         {points.map((p, i) => (
           <circle
             key={p.key}
             data-point={i}
             cx={f1(xs[i]!)}
             cy={f1(ys[i]!)}
-            r={pAt === i ? 6.5 : 5}
+            r={pt === i ? 6.5 : compact ? 4.5 : 5}
             fill={SINGLE_COLOR}
             stroke="var(--panel)"
             strokeWidth={2.5}
           />
         ))}
         {points.map((p, i) => {
-          if (!labelled.has(i)) return null;
+          const at = values.get(i);
+          if (!at) return null;
+          const span = spans.findIndex((s) => p.value >= s.from && p.value <= s.to);
           return (
             <text
               key={`v-${p.key}`}
               data-value={i}
-              x={f1(xs[i]!)}
-              y={f1(valueY[i]!)}
+              x={f1(at.x)}
+              y={f1(at.y)}
               textAnchor="middle"
-              fontSize={13}
+              fontSize={valueSize}
               fontWeight={800}
               fill="var(--text)"
-              stroke="var(--plot)"
+              stroke={span >= 0 ? fillOf(spans[span]!.rung, span) : "var(--plot)"}
               strokeWidth={4}
               strokeLinejoin="round"
               style={{ paintOrder: "stroke" }}
             >
-              {dec(p.value)}
+              {fmt.num(p.value)}
             </text>
           );
         })}
 
-        {/* сигналы — красным квадратом на оси, подписан последний */}
-        {signals.map((e) => {
-          const x = X(e.t);
-          const lastOne = e === lastSignal;
-          /* подпись не заходит в полосу подписей полос справа (signalRight выше) */
-          const right = signalRight;
-          return (
-            <g key={e.key} data-event="signal">
-              <rect x={f1(x - 4.5)} y={PB - 4.5} width={9} height={9} rx={2.5} fill="var(--risk)" />
-              {lastOne ? (
-                <text
-                  data-label="signal"
-                  x={f1(right ? x + 9 : x - 9)}
-                  y={PB - 6}
-                  textAnchor={right ? "start" : "end"}
-                  fontSize={11}
-                  fontWeight={700}
-                  fill="var(--riskink)"
-                  stroke="var(--panel)"
-                  strokeWidth={4}
-                  strokeLinejoin="round"
-                  style={{ paintOrder: "stroke" }}
-                >
-                  {signalWord}
-                </text>
-              ) : null}
-            </g>
-          );
-        })}
-
-        {/* даты замеров под осью */}
+        {/* даты замеров под осью; последняя — темнее: «где человек сейчас» */}
         {points.map((p, i) =>
           dateShown.has(i) ? (
             <text
@@ -471,235 +705,200 @@ export function CourseChart({
               y={PB + 16}
               textAnchor="middle"
               fontSize={11}
-              fontWeight={sameDay(p.t) ? 800 : 600}
-              fill={sameDay(p.t) ? "var(--text)" : "var(--muted)"}
+              fontWeight={i === lastI ? 800 : 600}
+              fill={i === lastI ? "var(--text)" : "var(--axis)"}
             >
               {p.label}
             </text>
           ) : null,
         )}
 
-        {sessions.length ? (
-          <SessionsRow
-            sessions={sessions}
-            xs={sxs}
-            y={sy}
-            r={sr}
-            numbers={lay.sessionNo}
-            firstNext={firstNext ?? null}
-            lastNoshow={lastNoshow ?? null}
-            label={ut("course.sessions")}
-            noshowLabel={(d) => fillIn(ut("course.noshowOn"), { d })}
-          />
+        {/* дорожка событий: приёмы, неявки, запланированные, заключения */}
+        {lane.length ? (
+          <g data-lane>
+            <line x1={L} x2={plotR} y1={laneY} y2={laneY} stroke="var(--divider)" />
+            {lane.map((e, j) =>
+              e.kind === "signal" ? null : (
+                <g key={e.key} data-event={e.kind === "planned" && now !== null && e.t <= now ? "unmarked" : e.kind}>
+                  <EventGlyph kind={e.kind} x={laneXs[j]!} y={laneY} active={ev === j} draft={e.kind === "conclusion" && !e.signed} />
+                </g>
+              ),
+            )}
+          </g>
         ) : null}
-
-        {/* зоны наведения: по полосе на замер, по кругу на событие */}
-        {lay.events.map((e, i) => {
-          const isSession = e.kind !== "signal";
-          return (
-            <rect
-              key={`h-${e.key}`}
-              x={f1(X(e.t) - 12)}
-              y={isSession ? sy - 12 : PB - 12}
-              width={24}
-              height={24}
-              fill="transparent"
-              onMouseEnter={() => {
-                pointHover.setAt(null);
-                setEvAt(i);
-              }}
-              onMouseMove={(ev) => ev.stopPropagation()}
-            />
-          );
-        })}
       </svg>
 
-      {tip && pAt !== null ? (
-        <ChartTip x={xs[pAt]! * k} y={ys[pAt]! * k} width={W0}>
-          <CoursePointTip title={title} tip={tip} rc={zone ? rc : null} base={base} />
+      {tip && pt !== null ? (
+        <ChartTip x={xs[pt]! * k} y={ys[pt]! * k} width={W0}>
+          <CoursePointTip tip={tip} rc={rc} normalization={normalization} />
+          {href ? <p className="m-0 mt-[7px] text-caption font-semibold text-violet-ink">{ut("course.openHint")}</p> : null}
         </ChartTip>
-      ) : null}
-
-      {ev ? (
-        <ChartTip x={X(ev.t) * k} y={(ev.kind === "signal" ? PB - 8 : sy - 8) * k} width={W0}>
-          <TipHead note={ev.label}>
-            {ev.kind === "session"
-              ? fillIn(ut("course.ev.session"), { n: lay.sessionNo.get(ev.key) ?? "" })
-              : ev.kind === "planned"
-                ? ut("course.ev.planned")
-                : ev.kind === "noshow"
-                  ? ut("course.lg.noshow")
-                  : ut("course.ev.signal")}
-          </TipHead>
-          {ev.detail ? <TipText>{ev.detail}</TipText> : null}
-        </ChartTip>
-      ) : null}
-
-      {legend ? (
-        <>
-          <ChartLegend items={legendItems} always />
-          {zone ? null : <p className="m-0 mt-[6px] text-caption leading-[16px] text-muted">{ut("course.noRc")}</p>}
-        </>
       ) : null}
       {/*
-        Как пользоваться графиком — для диктора (aria-describedby), а не
-        абзацем под каждым графиком: на экране динамики их пять, и одна и та
-        же строка повторялась под каждым.
+        Переход к протоколу — ссылкой маршрутизатора, которую нажимает график
+        (Enter, нажатие на замер): подсказка указатель не ловит, иначе она
+        закрывала бы соседние замеры, пока по ним ведут мышью.
+      */}
+      {href ? <ProtocolLink href={href} linkRef={linkRef} /> : null}
+
+      {event ? (
+        <ChartTip x={laneXs[ev!]! * k} y={(laneY - 10) * k} width={W0}>
+          <TipHead note={event.label}>{eventTitle(event, now, ut)}</TipHead>
+          {event.detail ? <TipText>{event.detail}</TipText> : null}
+        </ChartTip>
+      ) : null}
+      </div>
+
+      {withCol ? null : <BandKey spans={spans} current={current} fmt={fmt} />}
+      {legend ? <CourseLegend cutoff={withCol ? null : cutText} signal={lay.signals.size > 0} lane={lane} now={now} /> : null}
+
+      {/*
+        Как пользоваться графиком и что на дорожке — для диктора
+        (aria-describedby и список), а не абзацем под каждым графиком.
       */}
       <p id={hintId} className="sr-only">
         {ut("course.hint")}
       </p>
+      {lane.length ? (
+        <ul className="sr-only">
+          {lane.map((e) => (
+            <li key={e.key}>
+              {eventTitle(e, now, ut)}, {e.label}
+              {e.detail ? `: ${e.detail}` : ""}
+            </li>
+          ))}
+        </ul>
+      ) : null}
     </div>
   );
 }
 
+/** Что за событие дорожки — словами */
+function eventTitle(e: CourseEvent, now: number | null, ut: (k: UiKey) => string): string {
+  if (e.kind === "session") return ut("course.ev.session");
+  if (e.kind === "noshow") return ut("course.ev.noshow");
+  if (e.kind === "conclusion") return ut(e.signed ? "course.ev.conclSigned" : "course.ev.conclDraft");
+  if (e.kind === "signal") return ut("course.ev.signal");
+  return now !== null && e.t <= now ? ut("course.ev.unmarked") : ut("course.ev.planned");
+}
+
 /**
- * Подсказка замера: дата и пометка «старт / останній замір», значение с
- * полосой словом и её границами, сдвиг от старта с порогом и словом
- * надёжности, сдвиг от предыдущего. Отдельным компонентом — его проверяет
- * тест без наведения мышью.
+ * Ссылка на протокол активного замера — невидимая, вне порядка Tab: её
+ * нажимает сам график. Внутри маршрутизатора — переход без перезагрузки.
  */
-export function CoursePointTip({ title, tip, rc, base }: { title: string; tip: PointTip; rc: number | null; base: number }) {
+function ProtocolLink({ href, linkRef }: { href: string; linkRef: Ref<HTMLAnchorElement> }) {
   const { ut } = useLang();
-  const dec = useDecimal();
-  const sign = (d: number) => (d > 0 ? `+${dec(d)}` : d < 0 ? `−${dec(-d)}` : "0");
-  return (
-    <>
-      <TipHead note={tip.baseline ? ut("course.start") : tip.last ? ut("course.last") : undefined}>
-        {title}, {tip.point.label}
-      </TipHead>
-      <p className="m-0 mt-[6px] flex flex-wrap items-center gap-x-[8px] gap-y-[4px]">
-        <b className="text-big leading-none font-extrabold text-text">{dec(tip.point.value)}</b>
-        {tip.band ? <SevChip severity={tip.band.severity} label={tip.band.label} small /> : null}
-        {tip.range ? (
-          <span className="text-muted">
-            {dec(tip.range.min)}–{dec(tip.range.max)}
-          </span>
-        ) : null}
-      </p>
-      {tip.baseline ? (
-        <TipText muted>{rc !== null ? fillIn(ut("course.baselineRc"), { base: dec(base), rc: dec(rc, 1) }) : ut("course.baseline")}</TipText>
-      ) : null}
-      {tip.incomparable ? <TipText>{ut(INCOMPARABLE[tip.incomparable])}</TipText> : null}
-      {tip.fromStart ? (
-        <TipText>
-          {ut("course.fromStart")} <b className="font-extrabold text-text">{sign(tip.fromStart.delta)}</b>:{" "}
-          <span
-            data-verdict={tip.fromStart.verdict}
-            className={cx(tip.fromStart.verdict === "better" && "font-bold text-good", tip.fromStart.verdict === "worse" && "font-bold text-warn")}
-          >
-            {tip.fromStart.verdict === "within" ? ut("sum.withinError") : ut(VERDICT[tip.fromStart.verdict])}
-          </span>
-          {rc !== null ? ` (${fillIn(ut("course.threshold"), { n: dec(rc, 1) })})` : ""}.
-        </TipText>
-      ) : null}
-      {tip.fromPrev ? (
-        <TipText muted>
-          {fillIn(ut("course.fromPrev"), { d: tip.fromPrev.label })}: {sign(tip.fromPrev.delta)}.
-        </TipText>
-      ) : null}
-    </>
+  const inRouter = useInRouterContext();
+  return inRouter ? (
+    <Link ref={linkRef} to={href} tabIndex={-1} className="sr-only" data-protocol>
+      {ut("course.protocol")}
+    </Link>
+  ) : (
+    <a ref={linkRef} href={href} tabIndex={-1} className="sr-only" data-protocol>
+      {ut("course.protocol")}
+    </a>
   );
 }
 
 /**
- * Ряд сессий под осью времени: дорожка от первой до последней, проведённые —
- * тёмным кругом с номером, неявка — янтарным кругом с крестом, следующая —
- * фиолетовым кольцом, дальнейшие — пустыми кругами.
+ * Подписи полос строками под графиком — когда поле слишком узкое для
+ * колонки справа. Целиком, с границами; текущая — жирнее.
  */
-function SessionsRow({
-  sessions,
-  xs,
-  y,
-  r,
-  numbers,
-  firstNext,
-  lastNoshow,
-  label,
-  noshowLabel,
-}: {
-  sessions: readonly CourseEvent[];
-  xs: readonly number[];
-  y: number;
-  r: number;
-  numbers: Map<string, number>;
-  firstNext: CourseEvent | null;
-  lastNoshow: CourseEvent | null;
-  label: string;
-  noshowLabel: (d: string) => string;
-}) {
-  const f1 = (v: number) => v.toFixed(1);
-  const a0 = xs[0]!;
-  const a1 = xs.at(-1)!;
-  const big = r >= 8;
-  const nextI = firstNext ? sessions.indexOf(firstNext) : -1;
-  const nsI = lastNoshow ? sessions.indexOf(lastNoshow) : -1;
-  const nsText = lastNoshow ? noshowLabel(lastNoshow.label) : "";
-  /* подпись неявки и подпись следующей не должны налезать друг на друга */
-  const nsFrom = nsI >= 0 ? xs[nsI]! + 6 - textW(nsText) : 0;
-  const nsTo = nsI >= 0 ? xs[nsI]! + 6 : 0;
-  const nxFrom = nextI >= 0 ? xs[nextI]! - 7 : 0;
-  const nxTo = nextI >= 0 && firstNext ? nxFrom + textW(firstNext.label) : 0;
-  const clash = nsI >= 0 && nextI >= 0 && nsFrom < nxTo && nsTo > nxFrom;
-  const marks: ReactNode[] = sessions.map((e, i) => {
-    const x = xs[i]!;
-    const n = numbers.get(e.key);
-    if (e.kind === "noshow") {
-      const k = r * 0.38;
-      return (
-        <g key={e.key} data-event="noshow">
-          <circle cx={f1(x)} cy={y} r={r} fill="var(--warntint)" stroke="var(--warn)" strokeWidth={1.5} />
-          <path
-            d={`M${f1(x - k)} ${f1(y - k)}L${f1(x + k)} ${f1(y + k)}M${f1(x + k)} ${f1(y - k)}L${f1(x - k)} ${f1(y + k)}`}
-            stroke="var(--warn)"
-            strokeWidth={1.6}
-            strokeLinecap="round"
-          />
-        </g>
-      );
-    }
-    if (e.kind === "session") {
-      return (
-        <g key={e.key} data-event="session">
-          <circle cx={f1(x)} cy={y} r={r} fill="var(--text-2)" />
-          {big && n ? (
-            <text x={f1(x)} y={y + 3.5} textAnchor="middle" fontSize={9.5} fontWeight={800} fill="var(--panel)">
-              {n}
-            </text>
-          ) : null}
-        </g>
-      );
-    }
-    const next = e === firstNext;
-    return (
-      <g key={e.key} data-event="planned">
-        <circle cx={f1(x)} cy={y} r={r} fill="var(--panel)" stroke={next ? SINGLE_COLOR : "var(--ctl)"} strokeWidth={next ? 1.8 : 1.5} />
-        {big && n ? (
-          <text x={f1(x)} y={y + 3.5} textAnchor="middle" fontSize={9.5} fontWeight={800} fill={next ? "var(--vink)" : "var(--muted)"}>
-            {n}
-          </text>
-        ) : null}
-      </g>
-    );
-  });
+function BandKey({ spans, current, fmt }: { spans: readonly { rung: Rung }[]; current: Rung | null; fmt: CourseFormat }) {
+  if (!spans.length) return null;
   return (
-    <g>
-      <text x={0} y={y + 4} fontSize={11} fontWeight={600} fill="var(--muted)">
-        {label}
-      </text>
-      <rect x={f1(a0 - 14)} y={y - 14} width={f1(a1 - a0 + 28)} height={28} rx={14} fill="var(--sunk)" />
-      {a1 > a0 ? <line x1={f1(a0)} x2={f1(a1)} y1={y} y2={y} stroke="var(--track)" strokeWidth={2} /> : null}
-      {marks}
-      {nsI >= 0 && !clash ? (
-        <text x={f1(nsTo)} y={y + 24} textAnchor="end" fontSize={11} fontWeight={700} fill="var(--warn)">
-          {nsText}
-        </text>
+    <ul data-band-key className="m-0 mt-[8px] flex list-none flex-col gap-y-[2px] p-0 text-caption leading-[16px]">
+      {[...spans].reverse().map(({ rung }) => (
+        <li key={`${rung.min}-${rung.max}`} className={rung === current ? "font-extrabold text-text" : "font-semibold text-text-2"}>
+          <span className="font-semibold text-muted tabular-nums">{fmt.range(rung)}</span> {rung.label}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/**
+ * Легенда курса: только то, что на графике есть, — порог, сигнал на замере,
+ * значки дорожки. Сам ряд замеров её не получает: он один, его называет
+ * шапка. Сетка графиков рисует одну легенду на всех (legend={false} у
+ * графиков и CourseLegend под сеткой).
+ */
+export function CourseLegend({
+  cutoff,
+  signal,
+  lane,
+  now = Date.now(),
+  className,
+}: {
+  /**
+   * Подпись порога — когда её нет на самом графике (поле без колонки
+   * подписей) или легенда одна на сетку графиков (тогда — «клінічний поріг»
+   * без числа: у каждого графика оно своё и стоит у его пунктира).
+   */
+  cutoff?: string | null | true;
+  signal?: boolean;
+  lane?: readonly CourseEvent[];
+  now?: number | null;
+  className?: string;
+}) {
+  const { ut } = useLang();
+  const has = (kind: CourseEvent["kind"], past?: boolean) =>
+    !!lane?.some((e) => e.kind === kind && (past === undefined || (now !== null && e.t <= now) === past));
+  const items: LegendItem[] = [
+    ...(cutoff
+      ? [{ key: "cut", label: cutoff === true ? ut("course.lg.cutoff") : cutoff, color: "var(--text-2)", kind: "cutoff" as const, title: ut("course.cutoffWhy") }]
+      : []),
+    ...(signal ? [{ key: "sig", label: ut("course.lg.signal"), color: SINGLE_COLOR, kind: "ring" as const }] : []),
+    ...(has("session") ? [{ key: "ses", label: ut("course.lg.session"), color: "var(--text-2)", kind: "session" as const }] : []),
+    ...(has("noshow") ? [{ key: "ns", label: ut("course.lg.noshow"), color: "var(--text-2)", kind: "noshow" as const }] : []),
+    ...(has("planned", false) ? [{ key: "pl", label: ut("course.lg.planned"), color: "var(--text-2)", kind: "planned" as const }] : []),
+    ...(has("planned", true) ? [{ key: "um", label: ut("course.lg.unmarked"), color: "var(--text-2)", kind: "planned" as const }] : []),
+    ...(has("conclusion") ? [{ key: "cn", label: ut("course.lg.conclusion"), color: "var(--text-2)", kind: "conclusion" as const }] : []),
+  ];
+  return <ChartLegend items={items} className={className} always />;
+}
+
+/**
+ * Подсказка замера: дата и пометка «старт / останній замір», значение с
+ * полосой словом и её границами, сдвиг от старта со словом значущості и
+ * способом оценки, сдвиг от предыдущего, кто заполнял, сигналы этого
+ * замера. Отдельным компонентом — его проверяет тест без наведения мышью.
+ */
+export function CoursePointTip({ tip, rc, normalization }: { tip: PointTip; rc: number | null; normalization?: ScaleNormalization | null }) {
+  const { ut } = useLang();
+  const fmt = useCourseFormat(normalization);
+  const who = sourceText(tip.point.source, ut);
+  return (
+    <>
+      <TipHead note={tip.baseline ? ut("course.start") : tip.last ? ut("course.last") : undefined}>{tip.point.label}</TipHead>
+      <p className="m-0 mt-[6px] flex flex-wrap items-center gap-x-[8px] gap-y-[4px]">
+        <b className="text-big leading-none font-extrabold text-text">{fmt.value(tip.point.value)}</b>
+        {tip.band ? <SevChip severity={tip.band.severity} label={tip.band.label} small /> : null}
+        {tip.range ? <span className="text-muted">{fmt.range(tip.range)}</span> : null}
+      </p>
+      {tip.baseline ? <TipText muted>{ut("course.baselineNote")}</TipText> : null}
+      {tip.incomparable ? <TipText>{ut(INCOMPARABLE[tip.incomparable])}</TipText> : null}
+      {tip.fromStart ? (
+        <TipText>
+          {ut("course.fromStart")}, {tip.fromStart.since}: <b className="font-extrabold text-text">{fmt.delta(tip.fromStart.delta)}</b>
+          {" — "}
+          <span data-verdict={tip.fromStart.verdict} className={verdictClass(tip.fromStart.verdict === "unknown" ? null : tip.fromStart.verdict)}>
+            {tip.fromStart.verdict === "unknown" ? ut("course.v.unknown") : ut(VERDICT[tip.fromStart.verdict])}
+          </span>
+        </TipText>
       ) : null}
-      {nextI >= 0 && firstNext ? (
-        <text x={f1(nxFrom)} y={y + 24} fontSize={11} fontWeight={600} fill="var(--text-2)">
-          {firstNext.label}
-        </text>
+      {tip.fromStart && rc !== null && rc > 0 ? <TipText muted>{fillIn(ut("course.rcMethod"), { n: fmt.amount(rc) })}</TipText> : null}
+      {tip.fromPrev ? (
+        <TipText muted>
+          {fillIn(ut("course.fromPrev"), { d: tip.fromPrev.label })}: {fmt.delta(tip.fromPrev.delta)}
+        </TipText>
       ) : null}
-    </g>
+      {who ? <TipText muted>{who}</TipText> : null}
+      {tip.signals.map((s) => (
+        <p key={s.key} data-tip-signal className="m-0 mt-[5px] max-w-[272px] font-bold whitespace-normal text-risk-ink">
+          {fillIn(ut("course.signalOn"), { s: s.detail ?? ut("course.ev.signal") })}
+        </p>
+      ))}
+    </>
   );
 }

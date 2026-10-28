@@ -342,12 +342,12 @@ export function SampleCourse() {
     { key: "s4", t: at(28), kind: "session", label: "21.09" },
     { key: "n1", t: at(39), kind: "noshow", label: "02.10" },
     { key: "s5", t: at(42), kind: "session", label: "05.10" },
-    { key: "sig", t: at(45), kind: "signal", label: "08.10", detail: ut("lp.s.no214") },
+    { key: "sig", t: at(45), kind: "signal", label: "08.10", detail: ut("lp.s.no214"), responseId: "c" },
     { key: "p6", t: at(47), kind: "planned", label: "10.10" },
   ];
   return (
     <Panel title={ut("lp.courseT")} sub={ut("lp.courseSub")} icon={<ShellIcon name="chart-spline" />}>
-      <CourseChart title={ut("lp.code.phq9")} points={points} rungs={rungs} rc={6} better="down" events={events} now={null} />
+      <CourseChart title={ut("lp.code.phq9")} points={points} rungs={rungs} max={27} rc={6} better="down" events={events} now={null} />
     </Panel>
   );
 }

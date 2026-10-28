@@ -1,13 +1,13 @@
 import { Link } from "react-router-dom";
 import type { UiKey } from "@quizzy/shared";
-import { CourseChart } from "../../charts/course";
-import { courseEventsFromTimeline, courseFromDynamics } from "../../charts/courseModel";
+import { CourseChart, CourseLegend } from "../../charts/course";
+import { CourseGrid } from "../../charts/courseGrid";
+import { courseEventsFromTimeline, courseFromDynamics, courseNames, cutoffOf, laneEvents } from "../../charts/courseModel";
 import { dateTime, day, timeOfDay } from "../../format";
 import { useLang } from "../../lang";
 import { ActivityList, Empty, Ic, Loading, TextAction } from "../../ui";
 import { Panel } from "../../ui/layout";
 import { Button, Tag } from "../../ui/primitives";
-import { shortTitle } from "./Banner";
 import { dm } from "./format";
 import { Pi } from "./icons";
 import { conclusionName, resultRows } from "./model";
@@ -90,28 +90,41 @@ export function MeasuresTab({ v }: { v: CardView }) {
   );
 }
 
+/**
+ * «Графіки»: курс каждой шкалы — сеткой без пустых полурядов (CourseGrid),
+ * у каждого графика своя шапка словами («Депресія · PHQ-9», «19 з 27»,
+ * полоса, сдвиг от старта), легенда значков — одна над сеткой.
+ */
 export function DynamicsTab({ v }: { v: CardView }) {
   const { ut } = useLang();
   if (!v.dynamics) return <Loading rows={4} error={v.dynamicsError} onRetry={v.reloadDynamics} />;
   const rows = v.chartRows.filter((r) => r.points.length > 0);
   const events = courseEventsFromTimeline(v.timeline ?? []);
   if (!rows.length) return <Empty title={ut("pcard.noTests")} />;
+  const charts = rows.map((r) => ({
+    r,
+    data: courseFromDynamics(r.scale, r.rungs, undefined, { surveyId: r.surveyId }),
+    names: courseNames(r.surveyTitle, r.scale.title, rows.filter((x) => x.surveyId === r.surveyId).length === 1),
+  }));
+  const signals = new Set(events.filter((e) => e.kind === "signal").map((e) => e.responseId));
   return (
-    <div className="@container">
-      <div className="grid gap-4 @min-[1000px]:grid-cols-2">
-        {rows.map((r) => (
-          <Panel
-            key={r.key}
-            title={r.code}
-            icon={<Pi.chartSpline />}
-            /* подпись — то, чего нет в заголовке: у шкалы — методика, у методики — что она меряет */
-            sub={r.code === shortTitle(r.surveyTitle) ? r.title : shortTitle(r.surveyTitle)}
-            actions={<TextAction to={`/patients/${v.id}/case/dynamics`}>{ut("card.fullDynamics")}</TextAction>}
-          >
-            <CourseChart title={r.code} {...courseFromDynamics(r.scale, r.rungs)} events={events} legend={false} />
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+        <CourseLegend
+          className="!mt-0"
+          cutoff={charts.some((c) => cutoffOf(c.data.rungs)) || null}
+          signal={charts.some((c) => c.data.points.some((p) => signals.has(p.key)))}
+          lane={charts.flatMap((c) => laneEvents(c.data.points, events)).filter((e, i, all) => all.indexOf(e) === i)}
+        />
+        <TextAction to={`/patients/${v.id}/case/dynamics`}>{ut("card.fullDynamics")}</TextAction>
+      </div>
+      <CourseGrid>
+        {charts.map(({ r, data, names }) => (
+          <Panel key={r.key}>
+            <CourseChart title={r.code} measure={names.measure} method={names.method} {...data} events={events} legend={false} />
           </Panel>
         ))}
-      </div>
+      </CourseGrid>
     </div>
   );
 }

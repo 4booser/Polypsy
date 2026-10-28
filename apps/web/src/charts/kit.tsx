@@ -1,8 +1,9 @@
-import { useState, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import type { Severity } from "@quizzy/shared";
 import { useLang } from "../lang";
 import { cx } from "../ui/cx";
 import { decimal } from "../ui/decimal";
+import { placePopover } from "../ui/Popover";
 
 /**
  * Общие детали графиков «Виразної»: цвета рядов, метки, подсказка, легенда,
@@ -92,6 +93,58 @@ export function useDecimal(): (v: number, digits?: number) => string {
   return (v, digits = 2) => decimal(v, lang, digits);
 }
 
+/* ─────────── ширина текста ─────────── */
+
+let measurer: CanvasRenderingContext2D | null | undefined;
+const widths = new Map<string, number>();
+
+/**
+ * Ширина подписи в пикселях — шрифтом консоли (Manrope), а не оценкой «знак
+ * на 0,56 кегля».
+ *
+ * Оценка годилась, чтобы подписи не налезали друг на друга, но не чтобы
+ * переносить: кириллица Manrope шире латиницы, и подпись полосы, «влезшая»
+ * по оценке, вылезала за колонку. Холстом меряет сам браузер; без него
+ * (проверки на сервере, bun test) — прежняя оценка, с запасом. Пока шрифт
+ * не загрузился, мера не запоминается: ширина запасного шрифта другая.
+ */
+export function textWidth(text: string, size = 11, weight = 600): number {
+  const key = `${weight}|${size}|${text}`;
+  const known = widths.get(key);
+  if (known !== undefined) return known;
+  if (measurer === undefined) {
+    try {
+      measurer = typeof document === "undefined" ? null : document.createElement("canvas").getContext("2d");
+    } catch {
+      measurer = null;
+    }
+  }
+  if (!measurer) return Math.ceil(text.length * size * 0.58) + 2;
+  measurer.font = `${weight} ${size}px Manrope, system-ui, sans-serif`;
+  const w = Math.ceil(measurer.measureText(text).width * 1.03) + 1;
+  if (typeof document !== "undefined" && document.fonts?.status === "loaded") widths.set(key, w);
+  return w;
+}
+
+/**
+ * Перерисовать, когда шрифты загрузились: подписи, разложенные по ширине
+ * запасного шрифта, встают по своей. Один раз на график, без опроса.
+ */
+export function useFontsReady(): boolean {
+  const [ready, setReady] = useState(() => typeof document === "undefined" || document.fonts?.status === "loaded");
+  useEffect(() => {
+    if (ready || typeof document === "undefined" || !document.fonts) return;
+    let live = true;
+    void document.fonts.ready.then(() => {
+      if (live) setReady(true);
+    });
+    return () => {
+      live = false;
+    };
+  }, [ready]);
+  return ready;
+}
+
 /** Подстановка {name} в строку словаря */
 export function fillIn(template: string, vars: Record<string, string | number>): string {
   return template.replace(/\{(\w+)\}/g, (all, k: string) => (k in vars ? String(vars[k]) : all));
@@ -154,17 +207,54 @@ export function Marker({
  * Подсказка графика — всплывающий слой набора (.pop): лист, рамка, тень
  * всплывающего, 12,5 px. Стоит рядом с точкой, справа от неё, а у правого
  * края — слева: подсказка, которая уезжает за край панели, не читается.
+ *
+ * Слой — position: fixed по точке-якорю в рисунке (placePopover): панель
+ * набора режет всё, что выходит за её край (overflow: clip), и подсказка
+ * у нижних точек графика обрезалась панелью на полуслове. Якорь — пустая
+ * точка в координатах графика; слой встаёт от неё по окну, переворачивается,
+ * если места нет, и едет вместе с прокруткой.
  */
 export function ChartTip({ x, y, width, children }: { x: number; y: number; width: number; children: ReactNode }) {
-  const left = x <= width * 0.58;
+  const anchor = useRef<HTMLSpanElement>(null);
+  const tip = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const side = x <= width * 0.58 ? "right" : "left";
+  useLayoutEffect(() => {
+    const place = () => {
+      const a = anchor.current;
+      const t = tip.current;
+      if (!a || !t) return;
+      const r = a.getBoundingClientRect();
+      const at = placePopover({
+        trigger: { top: r.top - 18, left: r.left - 8, width: 16, height: 18 },
+        pop: { width: t.offsetWidth, height: t.offsetHeight },
+        viewport: { width: window.innerWidth, height: window.innerHeight },
+        side,
+        align: "start",
+        gap: 6,
+      });
+      setPos((p) => (p && p.top === at.top && p.left === at.left ? p : { top: at.top, left: at.left }));
+    };
+    place();
+    window.addEventListener("scroll", place, true);
+    window.addEventListener("resize", place);
+    return () => {
+      window.removeEventListener("scroll", place, true);
+      window.removeEventListener("resize", place);
+    };
+  });
   return (
-    <div
-      role="status"
-      className="pointer-events-none absolute z-[3] w-max max-w-[300px] rounded-panel border border-border bg-panel px-[14px] pt-[11px] pb-[12px] text-small text-text-2 shadow-pop"
-      style={{ top: Math.max(0, Math.round(y) - 18), ...(left ? { left: Math.round(x) + 14 } : { right: Math.round(width - x) + 14 }) }}
-    >
-      {children}
-    </div>
+    <>
+      <span ref={anchor} aria-hidden className="pointer-events-none absolute size-0" style={{ left: Math.round(x), top: Math.round(y) }} />
+      <div
+        ref={tip}
+        role="status"
+        className="pointer-events-none fixed z-[80] w-max max-w-[300px] rounded-panel border border-border bg-panel px-[14px] pt-[11px] pb-[12px] text-small text-text-2 shadow-pop"
+        style={pos ? { top: pos.top, left: pos.left } : { top: 0, left: 0, visibility: "hidden" }}
+      >
+        {children}
+      </div>
+    </>
   );
 }
 
@@ -274,7 +364,7 @@ export const FOCUSABLE =
 
 /* ─────────── легенда ─────────── */
 
-export type LegendKind = "line" | "mark" | "band" | "dash" | "zone" | "risk" | "warn";
+export type LegendKind = "line" | "mark" | "band" | "dash" | "cutoff" | "ring" | "session" | "noshow" | "planned" | "conclusion";
 
 export interface LegendItem {
   key: string;
@@ -282,15 +372,33 @@ export interface LegendItem {
   color: string;
   kind?: LegendKind;
   shape?: MarkShape;
+  /** Пояснение по наведению: что значит отметка (клинический порог — откуда он) */
+  title?: string;
 }
 
-/** Образец ряда в легенде: такой же, как на графике, — линия с меткой, полоса, пунктир */
+/**
+ * Образец ряда в легенде: такой же, как на графике, — линия с меткой,
+ * полоса, пунктир, кольцо сигнала, значки дорожки курса (EventGlyph).
+ */
 export function LegendGlyph({ kind = "band", color, shape }: { kind?: LegendKind; color: string; shape?: MarkShape }) {
   if (kind === "band") return <span aria-hidden className="inline-block h-[10px] w-[18px] shrink-0 rounded-[3px]" style={{ background: color }} />;
-  if (kind === "risk") return <span aria-hidden className="inline-block size-[9px] shrink-0 rounded-[2px] bg-risk" />;
-  const box = kind === "mark" || kind === "warn" ? 14 : 24;
+  if (kind === "session" || kind === "noshow" || kind === "planned" || kind === "conclusion" || kind === "ring") {
+    return (
+      <svg aria-hidden width={16} height={16} viewBox="0 0 16 16" className="block shrink-0">
+        {kind === "ring" ? (
+          <>
+            <circle cx={8} cy={8} r={6.2} fill="none" stroke="var(--risk)" strokeWidth={2} />
+            <circle cx={8} cy={8} r={3} fill={color} />
+          </>
+        ) : (
+          <EventGlyph kind={kind} x={8} y={8} />
+        )}
+      </svg>
+    );
+  }
+  const box = kind === "mark" ? 14 : 24;
   return (
-    <svg aria-hidden width={box} height={kind === "mark" || kind === "warn" ? 14 : 12} viewBox={`0 0 ${box} ${kind === "mark" || kind === "warn" ? 14 : 12}`} className="block shrink-0">
+    <svg aria-hidden width={box} height={kind === "mark" ? 14 : 12} viewBox={`0 0 ${box} ${kind === "mark" ? 14 : 12}`} className="block shrink-0">
       {kind === "line" ? (
         <>
           <line x1={1} y1={6} x2={23} y2={6} stroke={color} strokeWidth={2} strokeLinecap="round" />
@@ -298,17 +406,50 @@ export function LegendGlyph({ kind = "band", color, shape }: { kind?: LegendKind
         </>
       ) : null}
       {kind === "dash" ? <line x1={1} y1={6} x2={23} y2={6} stroke={color} strokeWidth={1.6} strokeDasharray="5 3" /> : null}
-      {kind === "zone" ? (
-        <rect x={1} y={1} width={22} height={10} rx={2} fill={color} stroke="var(--vink)" strokeWidth={1} strokeDasharray="3 2" />
-      ) : null}
+      {kind === "cutoff" ? <line x1={1} y1={6} x2={23} y2={6} stroke={color} strokeWidth={2} strokeDasharray="6 3" /> : null}
       {kind === "mark" ? <Marker shape={shape ?? "circle"} x={7} y={7} r={4.2} color={color} ringWidth={0} /> : null}
-      {kind === "warn" ? (
-        <>
-          <circle cx={7} cy={7} r={5.5} fill="var(--warntint)" stroke="var(--warn)" strokeWidth={1.3} />
-          <path d="M5 5L9 9M9 5L5 9" stroke="var(--warn)" strokeWidth={1.4} strokeLinecap="round" />
-        </>
-      ) : null}
     </svg>
+  );
+}
+
+/**
+ * Значок дорожки событий курса — один и тот же на графике и в легенде.
+ * Цвета нет: события — сведения, а не тревога (красный у курса — только
+ * сигнал риска на замере). Различает форма: проведённый приём — круг,
+ * неявка — круг с крестом, запланированный — пустой круг, заключение —
+ * квадрат (черновик — пустой).
+ */
+export function EventGlyph({ kind, x, y, active, draft }: { kind: "session" | "noshow" | "planned" | "conclusion"; x: number; y: number; active?: boolean; draft?: boolean }) {
+  const r = active ? 5.6 : 4.6;
+  const f = (v: number) => v.toFixed(1);
+  if (kind === "conclusion") {
+    const s = r * 1.6;
+    return (
+      <rect
+        x={f(x - s / 2)}
+        y={f(y - s / 2)}
+        width={f(s)}
+        height={f(s)}
+        rx={1.5}
+        fill={draft ? "var(--panel)" : "var(--text-2)"}
+        stroke="var(--text-2)"
+        strokeWidth={1.5}
+      />
+    );
+  }
+  if (kind === "session") return <circle cx={f(x)} cy={f(y)} r={r} fill="var(--text-2)" />;
+  if (kind === "planned") return <circle cx={f(x)} cy={f(y)} r={r - 0.6} fill="var(--panel)" stroke="var(--text-2)" strokeWidth={1.5} />;
+  const k = r * 0.42;
+  return (
+    <g>
+      <circle cx={f(x)} cy={f(y)} r={r - 0.6} fill="var(--panel)" stroke="var(--text-2)" strokeWidth={1.5} />
+      <path
+        d={`M${f(x - k)} ${f(y - k)}L${f(x + k)} ${f(y + k)}M${f(x + k)} ${f(y - k)}L${f(x - k)} ${f(y + k)}`}
+        stroke="var(--text-2)"
+        strokeWidth={1.5}
+        strokeLinecap="round"
+      />
+    </g>
   );
 }
 
@@ -322,9 +463,9 @@ export function ChartLegend({ items, className, always }: { items: readonly Lege
   return (
     <ul className={cx("m-0 mt-[10px] flex list-none flex-wrap gap-x-[16px] gap-y-[6px] p-0 text-caption leading-[16px] font-semibold text-text-2", className)}>
       {items.map((i) => (
-        <li key={i.key} className="flex min-w-0 items-center gap-[6px]">
+        <li key={i.key} className="flex min-w-0 items-center gap-[6px]" title={i.title}>
           <LegendGlyph kind={i.kind} color={i.color} shape={i.shape} />
-          <span className="truncate">{i.label}</span>
+          <span className="min-w-0">{i.label}</span>
         </li>
       ))}
     </ul>
