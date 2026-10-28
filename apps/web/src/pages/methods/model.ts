@@ -167,7 +167,9 @@ export interface Attention {
  *
  * Только методики в работе: снятая с использования уже никому не выдаётся,
  * и её непроверенный ключ не долг. Ключи и права — у опубликованных (их
- * выдают пациентам сейчас); черновики — свежие сверху.
+ * выдают пациентам сейчас); черновики — свежие сверху и только те, что
+ * читающий правит (editable): черновик общего каталога дописывают его
+ * администраторы, а не каждый, кто каталогом пользуется.
  */
 export function attentionOf(items: readonly SurveyListItem[]): Attention {
   const live = items.filter((s) => !s.archivedAt);
@@ -176,7 +178,7 @@ export function attentionOf(items: readonly SurveyListItem[]): Attention {
     keys: published.filter(keysPending),
     rights: published.filter(rightsPending),
     drafts: live
-      .filter((s) => s.status === "draft")
+      .filter((s) => s.status === "draft" && s.editable !== false)
       .sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : a.updatedAt > b.updatedAt ? -1 : 0)),
   };
 }

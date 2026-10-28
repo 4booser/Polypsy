@@ -26,7 +26,8 @@ import { nf } from "./views";
  * «⋯» рядом.
  */
 
-export function SurveyActions({ data }: { data: SurveyAnalytics }) {
+/** editable — правит ли читающий методику (SurveyListItem.editable): методику общего каталога правят его администраторы */
+export function SurveyActions({ data, editable = true }: { data: SurveyAnalytics; editable?: boolean }) {
   const { ut } = useLang();
   const [dialog, setDialog] = useState<"exports" | "versions" | null>(null);
   const id = data.surveyId;
@@ -41,7 +42,7 @@ export function SurveyActions({ data }: { data: SurveyAnalytics }) {
     { label: ut("an.localNorms"), to: `/surveys/${id}/norms`, icon: <AIc.ruler size={15} />, ruled: true },
     { label: ut("an.assignments"), to: `/surveys/${id}/access`, icon: <AIc.usersRound size={15} /> },
     { label: ut("an.administer"), to: `/surveys/${id}/administer`, icon: <AIc.filePen size={15} /> },
-    { label: ut("an.edit"), to: `/constructor/${id}`, icon: <Ic.pen size={15} /> },
+    ...(editable ? [{ label: ut("an.edit"), to: `/constructor/${id}`, icon: <Ic.pen size={15} /> }] : []),
     { label: ut("an.blank"), to: `/surveys/${id}/blank`, icon: <AIc.printer size={15} /> },
     { label: ut("an.keys"), to: `/surveys/${id}/key`, icon: <AIc.keyRound size={15} /> },
   ];
