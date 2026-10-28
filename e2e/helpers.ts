@@ -280,40 +280,40 @@ export async function login(page: Page, who: keyof typeof ACCOUNTS) {
 }
 
 /**
- * Открыть клиническую карту пациента — сводку, динамику и хронологию.
+ * Открыть вкладку рабочего места пациента: «Обзор», «Динамика», «Замеры»,
+ * «Записи», «Направления», «Переписка», «Хронология».
  *
- * С волны 6 «/patients/:id» занят карточкой, а прежняя карта переехала на
- * «/patients/:id/case» (pages/CaseCard.tsx). В Polypsy 2.0 у карточки своя
- * колонка «Мои пациенты» вместо колонки подразделов, и дверь к карте —
- * ссылка «Клиническая карта» в шапке карточки. Сама карта идёт во всю ширину,
- * без колонки подразделов (shell/nav.ts → sectionOf): её вкладки «Обзор /
- * Динамика / Хронология» — строкой под шапкой пациента (CaseCard, Tabs).
+ * Карточка пациента и клиническая карта — одна страница «/patients/:id»
+ * (pages/patientCard): вкладки — строкой под шапкой пациента (role=tablist
+ * «Разделы карточки»), а прежние адреса «/case», «/summary», «/dynamics»,
+ * «/timeline» только перенаправляют сюда (App.tsx, RedirectToPatient).
  *
- * Сценарии ходят этими дверями, а не прямым goto по адресу: адрес открылся
- * бы и после того, как дверь случайно убрали бы, — и пропажу единственного
- * входа не заметил бы никто. Ожидание по адресу, а не по заголовку.
+ * Сценарии ходят этой дверью, а не прямым goto по «?tab=»: адрес открылся
+ * бы и после того, как вкладку случайно убрали бы, — и пропажу единственного
+ * входа не заметил бы никто. Вкладки несут число («Записи 3»): имя
+ * сравнивается по началу, как читает человек. Ожидание — выбранная вкладка,
+ * а не заголовок: заголовок пациента стоит над любой из них.
  */
-export async function goCaseCard(page: Page, entry: RegExp | string = /^(Обзор дела|Огляд справи)$/): Promise<void> {
-  if (!/\/patients\/[^/]+\/case(\/|$)/.test(new URL(page.url()).pathname)) {
-    await page
-      .getByRole("main")
-      .getByRole("link", { name: /^(Клиническая карта|Клінічна карта)$/ })
-      .first()
-      .click();
-    await page.waitForURL(/\/patients\/[^/]+\/case/);
-  }
-  /*
-   * Вкладка «Хронология» несёт число событий («Хронология 23»): точное имя
-   * без числа её не нашло бы — сравнение по началу имени, как читает человек.
-   */
-  const name = typeof entry === "string" ? new RegExp(`^${entry}`) : entry;
-  await page
-    .getByRole("main")
-    .getByRole("navigation", { name: /^(Клиническая карта|Клінічна карта)$/ })
-    .getByRole("link", { name })
-    .first()
-    .click();
-  await page.waitForURL(/\/patients\/[^/]+\/case/);
+export async function goPatientTab(page: Page, tab: RegExp | string): Promise<void> {
+  await page.waitForURL(/\/patients\/[^/?]+/);
+  const name = typeof tab === "string" ? new RegExp(`^${tab}`) : tab;
+  const target = patientTabs(page).getByRole("tab", { name });
+  await target.click();
+  await expect(target).toHaveAttribute("aria-selected", "true");
+}
+
+/** Полоса вкладок рабочего места пациента под его шапкой */
+export function patientTabs(page: Page): Locator {
+  return page.getByRole("main").getByRole("tablist", { name: /^(Разделы карточки|Розділи картки)$/ });
+}
+
+/**
+ * Открытый ящик рабочего места — запись приёма, план безопасности,
+ * направление, переписка. Ящик не модальный (role=complementary) и не
+ * размонтируется, пока страница открыта: открытый отличает data-open.
+ */
+export function openDrawer(page: Page): Locator {
+  return page.locator('[data-drawer][data-open="true"]');
 }
 
 

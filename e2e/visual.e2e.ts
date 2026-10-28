@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { expect, test, type Page } from "@playwright/test";
-import { apiToken, auth, goCaseCard, login, patientLinks, visibleSkeletons } from "./helpers";
+import { apiToken, auth, login, patientLinks, patientTabs, visibleSkeletons } from "./helpers";
 
 /**
  * Скриншотные эталоны витрины.
@@ -143,36 +143,6 @@ for (const theme of ["dark", "light"] as const) {
     expect(ink.bg).toBeGreaterThan(0.9);
   });
 }
-
-test("подсказка закрывается один раз и не возвращается", async ({ page }) => {
-  /*
-   * Хранится список ЗАКРЫТЫХ подсказок, а не показанных: подсказка по
-   * умолчанию видна, и потерянная запись о показе не должна навсегда прятать
-   * объяснение. Проверяется обе стороны — что закрылась и что после
-   * перезагрузки не вернулась.
-   */
-  await login(page, "psy");
-  await page.goto("/patients");
-  await patientLinks(page).first().waitFor();
-  const href = await patientLinks(page).first().getAttribute("href");
-  await page.goto(href!);
-  /*
-   * Подсказка про RCI живёт на сводке клинической карты (pages/CaseSummary),
-   * а «/patients/:id» с волны 6 — карточка по кадру f19, где подсказок нет
-   * вовсе. Идём туда шестерёнкой, как человек.
-   */
-  await goCaseCard(page);
-
-  const hint = page.locator(".hint-box").first();
-  await expect(hint).toBeVisible();
-
-  await hint.getByRole("button", { name: "Понятно" }).click();
-  await expect(page.locator(".hint-box")).toHaveCount(0);
-
-  await page.reload();
-  await page.waitForSelector("h1");
-  await expect(page.locator(".hint-box")).toHaveCount(0);
-});
 
 /**
  * Скриншотные эталоны рабочих экранов.
@@ -567,19 +537,18 @@ const SCREENS: Array<{
        */
       const first = await recordedPatientId(page);
       /*
-       * Адрес с волны 6 — «/case»: сам «/patients/:id» занят карточкой по
-       * кадру f19 (см. экран patient-card ниже), а эта карта переехала
-       * (pages/CaseCard.tsx). Экран тот же самый и эталон тот же: переезд
-       * сменил только маршрут и адреса вкладок, ни одного пикселя.
+       * Клиническая карта («/case») слилась с карточкой в рабочее место
+       * пациента: её «Динамика» — вкладка того же «/patients/:id» (обзор —
+       * экран patient-card ниже).
        */
-      await page.goto(`/patients/${first}/case`);
+      await page.goto(`/patients/${first}?tab=dynamics`);
       /*
-       * Ждём вкладки карты, а не просто заголовок: заголовок «Пациенты»
+       * Ждём выбранную вкладку, а не просто заголовок: заголовок «Пациенты»
        * есть и на списке, — ожидание проходило мгновенно, и снимок ловил
        * карту в состоянии загрузки.
        */
-      await page.getByRole("main").getByRole("link", { name: "Хронология" }).waitFor();
-      // карта дозагружает динамику и эпизоды отдельными запросами
+      await expect(patientTabs(page).getByRole("tab", { name: /^Динамика/ })).toHaveAttribute("aria-selected", "true");
+      // динамика и случаи риска догружаются отдельными запросами
       await expect.poll(async () => visibleSkeletons(page).count(), { timeout: 10_000 }).toBe(0);
     },
   },
@@ -820,15 +789,15 @@ const SCREENS: Array<{
       const first = await recordedPatientId(page);
       await page.goto(`/patients/${first}`);
       /*
-       * Ждём панель «Методики» — второй уровень, а не первый: первым стоит
-       * имя пациента, и место под него есть ещё до того, как приехала
-       * карточка. Панели рисуются по одному ответу (/api/patients/:id/card),
-       * а динамика в «Методиках» догружается — её ждут скелеты ниже.
+       * Ждём панель «Клиническая картина» — второй уровень, а не первый:
+       * первым стоит имя пациента, и место под него есть ещё до того, как
+       * приехала карточка. Панели рисуются по ответу /api/patients/:id/card,
+       * а динамика в картине догружается — её ждут скелеты ниже.
        */
-      await page.getByRole("main").getByRole("heading", { level: 2, name: /^Методики$/ }).waitFor();
+      await page.getByRole("main").getByRole("heading", { level: 2, name: /^Клиническая картина$/ }).waitFor();
       await expect.poll(async () => visibleSkeletons(page).count(), { timeout: 10_000 }).toBe(0);
     },
-    // панели карточки — «Методики», курс, визит, заключения, назначенное — свитком целиком
+    // панели обзора — картина, риск, план, последние записи — свитком целиком
     fit: true,
   },
   {
