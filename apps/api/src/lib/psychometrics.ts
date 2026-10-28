@@ -302,7 +302,14 @@ export function qualityFlags(
    * непонятая инструкция. Формулировка нейтральна намеренно.
    */
   if (personFit !== null && personFit >= 0.4) {
-    reasons.push(serverText("quality.personFit", lang, { value: personFit }));
+    /*
+     * Число — дробью языка читателя: «0,486» по-украински и по-русски. Шло
+     * как есть, с точкой, — посреди украинской фразы на экране аналитики.
+     */
+    const value = new Intl.NumberFormat(lang === "en" ? "en-US" : lang === "ru" ? "ru-RU" : "uk-UA", {
+      maximumFractionDigits: 3,
+    }).format(personFit);
+    reasons.push(serverText("quality.personFit", lang, { value }));
   }
 
   return {
