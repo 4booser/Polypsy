@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { and, inArray, sql } from "drizzle-orm";
 import { t } from "@quizzy/shared";
-import { adminA, api, appApi, batteries, batteryAssignments, batteryItems, db, eq, makeUser, root, surveys } from "./fixtures";
-import { auditLog, users } from "../src/db/schema";
+import { adminA, api, appApi, batteries, batteryAssignments, batteryItems, db, eq, makeUser, root, surveyInA, surveys } from "./fixtures";
+import { auditLog, surveyAccess, users } from "../src/db/schema";
 import { CATALOG_BATTERIES, CATALOG_BATTERY_LANG, type CatalogBattery } from "../src/instruments/catalogBatteries";
 import { CATALOG_GROUP_ID, installCatalog } from "../src/lib/catalogInstall";
 
@@ -185,9 +185,8 @@ describe("наборы-заготовки каталога", () => {
   /**
    * Общий набор (groupId null) виден всему персоналу (routes/batteries.ts).
    * Под ролью приложения суперадминистратор видит заготовку с составом, как
-   * и владелец базы. Шаги — методики каталога, а они стоят в группе каталога
-   * (CATALOG_GROUP_ID): администратор группы видит шаги, если он назначен и
-   * на неё.
+   * и владелец базы. Шаги — методики каталога, а каталог — библиотека
+   * (lib/scope.ts, CATALOG_GROUP_ID): их видит каждый сотрудник.
    */
   test(
     "заготовка — в списке наборов сотрудника, и под ролью приложения тоже",
@@ -215,40 +214,58 @@ describe("наборы-заготовки каталога", () => {
     SLOW,
   );
 
+  /** Человек в зоне adminA — выдачей методики его группы А, тем путём, что вводит в зону */
+  async function personOfA(label: string) {
+    const person = await makeUser("user", `catalog-battery-${label}-${crypto.randomUUID().slice(0, 8)}@test`);
+    await db.insert(surveyAccess).values({ surveyId: surveyInA, userId: person.id, grantedBy: adminA.id });
+    return person;
+  }
+
   /**
-   * Методики каталога стоят в группе каталога, и администратору другой группы
-   * их не видно (surveyScopeFilter, политика surveys_read). Шаги заготовки он
-   * поэтому не видит — одинаково владельцем базы и ролью приложения, — а
-   * выдать её не может: выдача открыла бы пациенту методики вне его зоны. Под
-   * ролью приложения это прежде было пятисоткой на записи доступа.
-   * Мутация: убрать проверку шагов в POST /:id/assign — администратор
-   * получает 201 владельцем базы и 500 ролью приложения.
+   * Методики каталога — библиотека: шаги заготовки видны любому сотруднику,
+   * одинаково владельцем базы и ролью приложения. Общий набор в зону никого
+   * не вводит (lib/scope.ts, batteryWidensZone): выдают его человеку своей
+   * зоны, а чужому — «не найдено», иначе назначивший не увидел бы потом ни
+   * назначения, ни результатов. Суперадминистратору зона не нужна.
+   * Мутация: убрать отказ общего набора в POST /:id/assign — выдача чужому
+   * проходит владельцем базы и падает пятисоткой ролью приложения.
    */
   test(
-    "администратор группы: шаги заготовки вне его зоны не видны, выдать её нельзя; суперадминистратор выдаёт",
+    "сотрудник видит шаги заготовки и выдаёт её человеку своей зоны; чужому — нет; суперадминистратор выдаёт любому",
     async () => {
       const [row] = await templateRow("trauma-deep");
+      const tpl = CATALOG_BATTERIES.find((b) => b.key === "trauma-deep")!;
       for (const call of [api, appApi]) {
         const list = await call("/api/batteries", adminA.token);
         const seen = list.body.items.find((b: { id: string }) => b.id === row!.id);
         expect(seen, "общий набор пропал из списка сотрудника").toBeDefined();
-        expect(seen.items, "администратору видны методики вне его зоны").toEqual([]);
+        expect(seen.items.length, "сотруднику не видны шаги заготовки каталога").toBe(tpl.items.length);
       }
 
-      const person = await makeUser("user", `catalog-battery-${crypto.randomUUID().slice(0, 8)}@test`);
-      const refused = await api(`/api/batteries/${row!.id}/assign`, adminA.token, {
+      const stranger = await makeUser("user", `catalog-battery-${crypto.randomUUID().slice(0, 8)}@test`);
+      for (const call of [api, appApi]) {
+        const refused = await call(`/api/batteries/${row!.id}/assign`, adminA.token, {
+          method: "POST",
+          body: JSON.stringify({ userId: stranger.id }),
+        });
+        expect(refused.status, JSON.stringify(refused.body)).toBe(404);
+      }
+      expect(await db.select().from(batteryAssignments).where(eq(batteryAssignments.userId, stranger.id))).toEqual([]);
+
+      const own = await personOfA("own");
+      const mine = await appApi(`/api/batteries/${row!.id}/assign`, adminA.token, {
         method: "POST",
-        body: JSON.stringify({ userId: person.id }),
+        body: JSON.stringify({ userId: own.id }),
       });
-      expect(refused.status, JSON.stringify(refused.body)).toBe(403);
-      expect(await db.select().from(batteryAssignments).where(eq(batteryAssignments.userId, person.id))).toEqual([]);
+      expect(mine.status, JSON.stringify(mine.body)).toBe(201);
+      // назначение не оставляется открытым: очередь общая на процесс
+      expect((await api(`/api/batteries/assignments/${mine.body.id}/cancel`, root.token, { method: "POST" })).status).toBe(200);
 
       const given = await api(`/api/batteries/${row!.id}/assign`, root.token, {
         method: "POST",
-        body: JSON.stringify({ userId: person.id }),
+        body: JSON.stringify({ userId: stranger.id }),
       });
       expect(given.status, JSON.stringify(given.body)).toBe(201);
-      // назначение не оставляется открытым: очередь общая на процесс
       const cancel = await api(`/api/batteries/assignments/${given.body.id}/cancel`, root.token, { method: "POST" });
       expect(cancel.status).toBe(200);
     },
@@ -256,30 +273,32 @@ describe("наборы-заготовки каталога", () => {
   );
 
   /**
-   * Тот же набор у врача, назначенного на группу каталога: шаги видны, выдать
-   * можно — и ролью приложения, как в бою.
-   * Мутация: ставить методики каталога без группы (installOne) — шагов не видно, выдача 403.
+   * Администратор группы каталога правит методики каталога, но людей ему
+   * группа не даёт: выдаёт он заготовку по тому же правилу, что любой
+   * сотрудник, — прежде назначение в группу каталога открывало выдачу кому
+   * угодно, а с ней и карту человека.
    */
   test(
-    "администратор группы каталога видит шаги заготовки и выдаёт её",
+    "администратор группы каталога выдаёт заготовку по тому же правилу: человеку вне своей зоны — нет",
     async () => {
       const [row] = await templateRow("trauma-deep");
-      const tpl = CATALOG_BATTERIES.find((b) => b.key === "trauma-deep")!;
       const assign = await api(`/api/groups/${CATALOG_GROUP_ID}/admins`, root.token, {
         method: "POST",
         body: JSON.stringify({ userId: adminA.id }),
       });
       expect(assign.status, JSON.stringify(assign.body)).toBe(201);
       try {
-        for (const call of [api, appApi]) {
-          const list = await call("/api/batteries", adminA.token);
-          const seen = list.body.items.find((b: { id: string }) => b.id === row!.id);
-          expect(seen?.items.length, "врачу группы каталога не видны шаги заготовки").toBe(tpl.items.length);
-        }
-        const person = await makeUser("user", `catalog-group-battery-${crypto.randomUUID().slice(0, 8)}@test`);
+        const stranger = await makeUser("user", `catalog-group-battery-${crypto.randomUUID().slice(0, 8)}@test`);
+        const refused = await appApi(`/api/batteries/${row!.id}/assign`, adminA.token, {
+          method: "POST",
+          body: JSON.stringify({ userId: stranger.id }),
+        });
+        expect(refused.status, JSON.stringify(refused.body)).toBe(404);
+
+        const own = await personOfA("catalog-admin");
         const given = await appApi(`/api/batteries/${row!.id}/assign`, adminA.token, {
           method: "POST",
-          body: JSON.stringify({ userId: person.id }),
+          body: JSON.stringify({ userId: own.id }),
         });
         expect(given.status, JSON.stringify(given.body)).toBe(201);
         const cancel = await api(`/api/batteries/assignments/${given.body.id}/cancel`, root.token, { method: "POST" });

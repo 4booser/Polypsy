@@ -396,7 +396,7 @@ function AboutPanel({ survey, data }: { survey: SurveyFull & { keysVerifiedAt?: 
     <Panel
       title={ut("mc.ovAbout")}
       icon={<Ic.info />}
-      actions={<TextAction to={`/constructor/${survey.id}`}>{ut("mc.ovSettings")}</TextAction>}
+      actions={survey.editable !== false ? <TextAction to={`/constructor/${survey.id}`}>{ut("mc.ovSettings")}</TextAction> : null}
     >
       {survey.description ? <p className="m-0 mb-3 text-body text-text-2">{survey.description}</p> : null}
       <div className={cx(survey.description && "border-t border-divider pt-3")}>
@@ -426,7 +426,7 @@ function BandsPanel({
       title={ut("mc.ovBands")}
       icon={<ShellIcon name="ruler" />}
       sub={survey.scales.length > 1 ? scale.title : undefined}
-      actions={<TextAction to={`/constructor/${survey.id}`}>{ut("cl.editAction")}</TextAction>}
+      actions={survey.editable !== false ? <TextAction to={`/constructor/${survey.id}`}>{ut("cl.editAction")}</TextAction> : null}
     >
       <ul className="m-0 list-none p-0">
         {bands.map((b) => {

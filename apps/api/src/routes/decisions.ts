@@ -3,11 +3,11 @@ import { and, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { explanationFor, type StoredExplanation } from "@quizzy/shared";
 import { db } from "../db";
-import { decisionRules, ruleHits, surveys, users } from "../db/schema";
+import { decisionRules, ruleHits, users } from "../db/schema";
 import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
 import { badRequest, conflict, langOf, notFound, parseBody } from "../lib/http";
-import { accessibleGroupIds, assertGroupAccess, canAccessGroup, canAccessSurvey, surveyScopeFilter } from "../lib/scope";
+import { accessibleGroupIds, assertGroupAccess, canAccessGroup, canSeeResult, resultScopeCondition } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
 export const decisionRoutes = new Hono<AppEnv>();
@@ -173,10 +173,8 @@ decisionRoutes.patch("/rules/:id", requirePermission("decisions.manage"), async 
 
 decisionRoutes.get("/hits", requirePermission("alerts.review"), async (c) => {
   const user = c.get("user");
-  const scope = await surveyScopeFilter(user);
-  const scoped = await db.select({ id: surveys.id }).from(surveys).where(scope);
-  const surveyIds = scoped.map((s) => s.id);
-  if (!surveyIds.length) return c.json({ items: [] });
+  // срабатывания — как прохождения, по которым они сработали: свои методики целиком, библиотека — люди зоны (lib/scope.ts)
+  const visible = await resultScopeCondition(user);
 
   const status = c.req.query("status") ?? "suggested";
   const rows = await db
@@ -184,7 +182,7 @@ decisionRoutes.get("/hits", requirePermission("alerts.review"), async (c) => {
     .from(ruleHits)
     .innerJoin(decisionRules, eq(decisionRules.id, ruleHits.ruleId))
     .leftJoin(users, eq(users.id, ruleHits.userId))
-    .where(and(inArray(ruleHits.surveyId, surveyIds), eq(ruleHits.status, status)))
+    .where(and(visible?.(ruleHits.surveyId, ruleHits.userId), eq(ruleHits.status, status)))
     .orderBy(desc(ruleHits.createdAt))
     .limit(100);
 
@@ -223,12 +221,13 @@ decisionRoutes.patch("/hits/:id", requirePermission("alerts.review"), async (c) 
   const row = await db.query.ruleHits.findFirst({ where: eq(ruleHits.id, id) });
   if (!row) notFound("err.hitNotFound");
   /*
-   * Зона — как у списка срабатываний (surveyScopeFilter) и у политики строк
-   * rule_hits: решение по сигналу чужой группы методик для сотрудника не
-   * существует (волна 16, проход по маршрутам с чужими id). Владельцем базы
-   * сюда записывалось решение по любому срабатыванию по известному id.
+   * Зона — как у списка срабатываний (resultScopeCondition) и у политики
+   * строк rule_hits: решение по сигналу чужой группы методик — и по сигналу
+   * методики библиотеки о человеке вне зоны — для сотрудника не существует
+   * (волна 16, проход по маршрутам с чужими id). Владельцем базы сюда
+   * записывалось решение по любому срабатыванию по известному id.
    */
-  if (!(await canAccessSurvey(user, row!.surveyId))) notFound("err.hitNotFound");
+  if (!(await canSeeResult(user, row!))) notFound("err.hitNotFound");
   // решено раньше — тот же исход, что проигранная гонка: состояние сменилось,
   // пока человек смотрел на устаревший список; 409 — клиент его перечитает
   if (row!.status !== "suggested") conflict("err.hitAlreadyDecided");

@@ -9,14 +9,14 @@ import { CATALOG } from "../src/instruments/catalog";
 import { CATALOG_GROUP_ID, installCatalog } from "../src/lib/catalogInstall";
 
 /**
- * Группа каталога (CATALOG_GROUP_ID в lib/catalogInstall.ts).
+ * Группа каталога (CATALOG_GROUP_ID в lib/scope.ts).
  *
  * Методики каталога стояли без группы, а без группы методику видят только
- * суперадмин и автор, то есть установщик. Врач группы их не видел и не
- * назначал, а тревоги по ним доставались одному суперадмину. Теперь они в
- * своей группе, и врач видит их, когда суперадмин назначит его
- * администратором этой группы, — владельцем базы и ролью приложения
- * одинаково.
+ * суперадмин и автор, то есть установщик. Врач их не видел и не назначал, а
+ * тревоги по ним доставались одному суперадмину. Теперь они в своей группе,
+ * и эта группа — библиотека: врач видит её методики без назначения в группу,
+ * а правят их суперадмин и администраторы группы, — владельцем базы и ролью
+ * приложения одинаково. Результаты и правка — test/catalogLibrary.test.ts.
  */
 
 const SLOW = 30_000;
@@ -127,12 +127,14 @@ describe("группа каталога", () => {
   );
 
   test(
-    "врач видит методики каталога, когда он администратор группы каталога",
+    "врач видит методики каталога без назначения в группу каталога; править их — администратору группы",
     async () => {
       /*
-       * adminB — администратор только группы Б. Пока его не назначили на
-       * группу каталога, методик каталога ему не видно; после назначения —
-       * видно все, и ролью приложения тоже (политика surveys_read).
+       * adminB — администратор только группы Б, в группу каталога его не
+       * назначали. Методики каталога ему видны все — и ролью приложения
+       * (политика surveys_read), — а править их нельзя. Назначение в группу
+       * каталога добавляет ровно правку.
+       * Мутация: вернуть surveyUseFilter без библиотеки — список пуст.
        */
       await installCatalog();
       const keys = CATALOG.map((e) => e.key);
@@ -145,8 +147,19 @@ describe("группа каталога", () => {
       expect(catalogIds.length).toBe(keys.length);
 
       const path = `/api/surveys?groupId=${CATALOG_GROUP_ID}`;
-      expect(idsOf((await api(path, adminB.token)).body)).toEqual([]);
-      expect(idsOf((await appApi(path, adminB.token)).body)).toEqual([]);
+      for (const call of [api, appApi]) {
+        const listed = await call(path, adminB.token);
+        expect(listed.status, JSON.stringify(listed.body)).toBe(200);
+        expect(idsOf(listed.body)).toEqual(expect.arrayContaining(catalogIds));
+        expect(listed.body.items.every((s: { editable?: boolean }) => s.editable === false)).toBe(true);
+      }
+      // значение — как у каталога (WHO-5 показывает результаты пациенту): правка без следа в настройках учреждения
+      const who5 = await catalogId("who5");
+      const refused = await appApi(`/api/surveys/${who5}`, adminB.token, {
+        method: "PATCH",
+        body: JSON.stringify({ showResultsToPatient: true }),
+      });
+      expect(refused.status, JSON.stringify(refused.body)).toBe(403);
 
       const assign = await api(`/api/groups/${CATALOG_GROUP_ID}/admins`, root.token, {
         method: "POST",
@@ -154,11 +167,15 @@ describe("группа каталога", () => {
       });
       expect(assign.status, JSON.stringify(assign.body)).toBe(201);
       try {
-        const owner = await api(path, adminB.token);
-        expect(idsOf(owner.body)).toEqual(expect.arrayContaining(catalogIds));
         const asApp = await appApi(path, adminB.token);
         expect(asApp.status, JSON.stringify(asApp.body)).toBe(200);
         expect(idsOf(asApp.body)).toEqual(expect.arrayContaining(catalogIds));
+        expect(asApp.body.items.find((s: { id: string }) => s.id === who5)?.editable).toBe(true);
+        const edited = await appApi(`/api/surveys/${who5}`, adminB.token, {
+          method: "PATCH",
+          body: JSON.stringify({ showResultsToPatient: true }),
+        });
+        expect(edited.status, JSON.stringify(edited.body)).toBe(200);
       } finally {
         const revoke = await api(`/api/groups/${CATALOG_GROUP_ID}/admins/${adminB.id}`, root.token, { method: "DELETE" });
         expect(revoke.status).toBeLessThan(300);
