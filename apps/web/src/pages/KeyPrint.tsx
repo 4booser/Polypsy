@@ -13,6 +13,7 @@ import { ShellIcon } from "../shell/icons";
 import { Mi } from "./methods/icons";
 import { shortDate, splitCode } from "./methods/model";
 import { useCount } from "./methods/useCount";
+import { bandRange } from "../charts/ladder";
 import {
   Facts,
   fill,
@@ -227,9 +228,7 @@ function KeyPaper({ sheet, survey }: { sheet: KeySheet; survey: SurveyFull | nul
                     {bands.map((b, i) => (
                       <tr key={b.id}>
                         <td className="nw">
-                          <b>
-                            {b.minScore}–{b.maxScore}
-                          </b>
+                          <b>{bandRange({ min: b.minScore, max: b.maxScore })}</b>
                         </td>
                         <td>
                           <SevPill step={steps[i] ?? null}>{b.label}</SevPill>
