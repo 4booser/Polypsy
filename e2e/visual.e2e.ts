@@ -429,8 +429,14 @@ async function fitToContent(page: import("@playwright/test").Page) {
       return most;
     });
   const size = page.viewportSize()!;
-  await page.setViewportSize({ width: size.width, height: size.height + (await hidden()) });
-  await expect.poll(hidden).toBe(0);
+  /*
+   * Пиксель запаса и допуск в пиксель: высоты блоков бывают дробными, а
+   * scrollHeight и clientHeight округляются порознь, и «прокручивать ещё 1»
+   * оставалось там, где прокручивать нечего (область содержимого — relative,
+   * подписи sr-only внизу списка теперь считаются в её прокрутке).
+   */
+  await page.setViewportSize({ width: size.width, height: size.height + (await hidden()) + 1 });
+  await expect.poll(hidden).toBeLessThanOrEqual(1);
 }
 
 type Account = Parameters<typeof login>[1];
