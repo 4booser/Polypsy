@@ -496,7 +496,7 @@ function marks(draft: CreateSurveyDraft): string[] {
   );
 }
 
-describe("аудит пометок риска: встроенные методики учреждения", () => {
+describe("аудит пометок риска: методики учреждения", () => {
   test("СР-45: прежние девять пунктов, «Ні» на 30 (писал предсмертную записку) и «Так» на 44", () => {
     expect(marks(sr45)).toEqual([
       "3:yes:severe",
@@ -555,13 +555,8 @@ const NOT_RISK_ITEMS: Record<string, string> = {
 };
 
 describe("сторож: пункт о суициде, самоповреждении или вреде другим без пометки риска", () => {
-  const ALL: [string, CreateSurveyDraft][] = [
-    ["sr45", sr45],
-    ["sad-persons", sadPersons],
-    ["minimult", minimult],
-    ["mlo", mlo],
-    ...CATALOG.map((e): [string, CreateSurveyDraft] => [e.key, e.draft]),
-  ];
+  // четыре методики учреждения с 2026-10-28 — записи каталога (блок dp-inst), отдельный перечень им не нужен
+  const ALL: [string, CreateSurveyDraft][] = CATALOG.map((e): [string, CreateSurveyDraft] => [e.key, e.draft]);
 
   test("каждый такой пункт размечен; исключения — только из списка, с причиной", () => {
     const missing: string[] = [];

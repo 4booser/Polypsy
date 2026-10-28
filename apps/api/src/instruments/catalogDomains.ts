@@ -1,8 +1,9 @@
 import type { SurveyDomain } from "@quizzy/shared";
 
 /**
- * Направление каждой методики — по устойчивому ключу (ключ записи CATALOG в
- * ./catalog.ts; у четырёх встроенных — их имя в листах сверки).
+ * Направление каждой методики — по устойчивому ключу записи CATALOG в
+ * ./catalog.ts (с 2026-10-28 там и четыре методики учреждения, прежде
+ * встроенные: sr45, sad-persons, minimult, mlo — блок dp-inst).
  *
  * Картой, а не полем черновика методики. Черновик — содержимое: от него
  * считается отпечаток редакции (lib/catalogInstall.ts, fingerprint), и
@@ -116,14 +117,6 @@ export const CATALOG_DOMAINS: Readonly<Record<string, SurveyDomain>> = {
   pq16: "other",
   aq10: "other",
 };
-
-/**
- * Встроенные методики: их ставит только демонстрационный посев (seed.ts), а
- * не установщик каталога, — направление им проставляет посев по той же
- * карте. Перечнем здесь, чтобы проверка карты знала, какие ключи вне CATALOG
- * законны.
- */
-export const BUILTIN_KEYS = ["sr45", "sad-persons", "minimult", "mlo"] as const;
 
 /** Направление методики по ключу; null — ключа в карте нет (своё свойство, а не унаследованное от Object) */
 export function catalogDomain(key: string): SurveyDomain | null {

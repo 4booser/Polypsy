@@ -127,27 +127,27 @@ When several norms or sten rows fit a person, the most specific one wins: sex fi
 
 ### Methods
 
-**Shared catalog, 64 methods in ten areas.** The catalog is code (`apps/api/src/instruments/catalog.ts`; areas in `catalogDomains.ts`), and the catalog screen filters by area.
+**Shared catalog, 68 methods in ten areas.** The catalog is code (`apps/api/src/instruments/catalog.ts`; areas in `catalogDomains.ts`), and the catalog screen filters by area.
 
 | Area | Methods |
 |---|---|
 | Mood, anxiety, distress (18) | PHQ-9, PHQ-8, PHQ-4, PHQ-2, PHQ-15, GAD-7, GAD-2, PSS-10, PSS-4, CESD-R, SRQ-20, GDS-15, DASS-42, DASS-21, K10, K6, CORE-10, AAQ-II |
 | Trauma (8) | PCL-5, PC-PTSD-5, ITQ, CES, MIOS, TGI-SR+, CTSR, LEC-5 |
-| Suicide risk (4) | C-SSRS screener, ASQ, SBQ-R, SIDAS |
+| Suicide risk (6) | C-SSRS screener, ASQ, SBQ-R, SIDAS, SR-45, SAD PERSONS |
 | Sleep (4) | SCI, SCI-02, RIS, FAS |
 | Addictions (7) | AUDIT, AUDIT-C, CAGE, ASSIST, CUDIT-R, CIWA-Ar, COWS |
 | Resources and quality of life (12) | WHO-5, SWLS, Flourishing Scale, SPANE, MLQ, MSPSS, OSSS-3, RSES, UCLA-3, Brief COPE, SCS-SF, MAAS |
 | Cognitive functions (3) | ASRS-v1.1 (6 items), 4AT, ADEXI |
-| Personality (2) | IPIP-50 (Big Five), TIPI |
+| Personality (4) | IPIP-50 (Big Five), TIPI, MLO "Adaptivnist-200", Mini-mult |
 | Staff (4) | CBI, BAT-23, BAT-12, ProQOL 5 |
 | Other (2) | PQ-16, AQ-10 |
 
 - **Install and update.** Every deploy installs the catalog and updates it by content fingerprint.
 - **Local edits survive.** If an institution edited a method locally, its edit is kept: a locally published version blocks the content update, and local settings (visibility, instructions, time limit, area and the like) survive a regular update while the rest of the method is refreshed. The `catalog-status` and `catalog-force` maintenance actions show the situation and let you override it.
 - **Who sees the catalog.** Catalog methods live in the survey group «Каталог методик». Staff see and assign them once a superadmin makes them administrators of that group. The group also decides which patients a doctor sees, so the catalog is not opened to all staff at once.
-- **Battery templates.** There are seven: initial screening, trauma in depth, suicide risk in depth, addictions, sleep and fatigue, resources and recovery, and staff burnout and stress. Each is created once and then belongs to the institution: later deploys do not overwrite edits or bring back a deleted template.
+- **Battery templates.** There are eight: initial screening, trauma in depth, suicide risk in depth, addictions, sleep and fatigue, resources and recovery, staff burnout and stress, and an in-depth psychological examination (SR-45, MLO, Mini-mult). Each is created once and then belongs to the institution: later deploys do not overwrite edits or bring back a deleted template.
 
-**Seed-only methods, 4**: SR-45, SAD PERSONS, Mini-mult and MLO "Adaptivnist-200". Only the seed installs them; production does not have them.
+**The institution's methods, 4**: SR-45, SAD PERSONS, Mini-mult and MLO "Adaptivnist-200" from the manuals of the Research Center for Humanitarian Problems of the Armed Forces of Ukraine. Since 28 October 2026 they are part of the shared catalog by the product owner's decision: the institution uses them and confirms its right to; there is no licence statement from the rights holders, and the dossiers, the staff notes and the install log say so. SAD PERSONS is filled in by a specialist and is never offered to patients. The seed keeps its own copies under the same catalog keys, so a stand with both the seed and the catalog shows each method once.
 
 **The methods have not been clinically validated yet.** `docs/instruments/` holds the validation package for a clinical psychologist:
 - one sheet per method in Ukrainian and Russian;
