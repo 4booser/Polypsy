@@ -182,9 +182,9 @@ function CutoffCell({ s, width }: { s: SurveyListItem; width: number }) {
   const p = s.catalog;
   const lines = p ? [...p.steps.map((x) => stepText(x, lang)), ...p.cutoffs.map((c) => cutoffText(c, lang))] : [];
   /*
-   * «Без порогів» — только когда у методики нет ни одной полосы (сырые бали):
+   * «Без порогів» — только когда у методики нет ни одной полосы (сырые баллы):
    * это утверждение о методике, и брать его из пустого паспорта нельзя — у
-   * СР-45 или методики учреждения полосы есть, просто в паспорте их не назвали.
+   * методики учреждения полосы бывают, просто паспорта каталога у неё нет.
    */
   if (!lines.length) return <span className="text-small text-muted">{s.bandCount === 0 ? ut("dpc.noCutoffs") : "—"}</span>;
   /*

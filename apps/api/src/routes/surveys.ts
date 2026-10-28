@@ -332,12 +332,15 @@ surveyRoutes.get("/", async (c) => {
     staffView && rows.length
       ? await visibleCatalogRows(relatedKeys(rows.map((r) => r.catalogKey)), scope)
       : new Map<string, VisibleCatalogRow>();
-  const list: SurveyListItem[] = rows.map(({ sourceNote, ...survey }) => {
+  const list: SurveyListItem[] = rows.map(({ sourceNote, catalogFields, ...survey }) => {
     const n = numbers.get(survey.id) ?? NO_NUMBERS;
     return {
       ...survey,
-      // источник для персонала («Джерело» паспорта) — только сотруднику, как и в respondentView
-      ...(staffView ? { sourceNote, editable: editableRow(survey) } : {}),
+      /*
+       * Источник для персонала («Джерело» паспорта) — только сотруднику, как и в
+       * respondentView; снимок настроек каталога несёт его копией — тоже.
+       */
+      ...(staffView ? { sourceNote, catalogFields, editable: editableRow(survey) } : {}),
       title: t(survey.title as never, langOf(c)),
       description: survey.description ? t(survey.description as never, langOf(c)) : null,
       instructions: survey.instructions ? t(survey.instructions as never, langOf(c)) : null,

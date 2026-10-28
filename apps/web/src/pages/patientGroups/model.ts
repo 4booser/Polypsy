@@ -140,8 +140,8 @@ export function parseFavorites(raw: string | null): Set<string> {
  * обрежет его многоточием, а полное — в подсказке).
  */
 export function surveyCode(title: string): string {
-  /* «(SRQ-20, ВООЗ)» — код до запятой */
-  const tail = /\(([A-Z][A-Za-z0-9\- ]{1,14})(?:,[^)]*)?\)\s*$/.exec(title);
+  /* «(SRQ-20, ВООЗ)» — код до запятой; код бывает и кириллицей прописными — «Опитувальник (СР-45)» */
+  const tail = /\(([A-ZА-ЯІЇЄҐ][A-Za-zА-ЯІЇЄҐ0-9\- ]{1,14})(?:,[^)]*)?\)\s*$/u.exec(title);
   if (tail) return tail[1]!.trim();
   const head = /^([A-ZА-ЯІЇЄҐ][A-ZА-ЯІЇЄҐa-z]{0,6}-\d+[A-Za-z]?)[.:\s]/.exec(title);
   if (head) return head[1]!;
