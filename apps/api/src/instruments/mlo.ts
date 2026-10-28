@@ -119,70 +119,70 @@ const LEVEL_LABELS: Record<"level" | "risk" | "inclination", [string, string][]>
   ],
 };
 
-const labelsOf = (code: string) => LEVEL_LABELS[code === "SR" ? "risk" : code === "DAP" ? "inclination" : "level"];
+/** Подпись уровня `level` (0 — стены 1–2 … 4 — стены 8–10) у шкалы `code` */
+function labelOf(code: string, level: number) {
+  const [uk, ru] = LEVEL_LABELS[code === "SR" ? "risk" : code === "DAP" ? "inclination" : "level"][level]!;
+  return { uk, ru };
+}
 
 /**
  * Интерпретация стенов. Шкала обратная, поэтому низкий стен — плохой результат.
  * Для суицидального риска пороги строже: там цена ошибки несопоставима.
  */
-const stenBands = (code: string) => {
-  const strict = code === "SR";
-  const label = (i: number) => ({ uk: labelsOf(code)[i]![0], ru: labelsOf(code)[i]![1] });
-  return [
-    {
-      minScore: 1,
-      maxScore: 2,
-      label: label(0),
-      severity: "severe" as const,
-      grade: 1,
-      recommendation: strict
-        ? {
-            uk: "Група суїцидального ризику: невідкладна індивідуальна бесіда та огляд фахівцем",
-            ru: "Группа суицидального риска: безотлагательная индивидуальная беседа и осмотр специалистом",
-          }
-        : {
-            uk: "Потрібне поглиблене обстеження та психологічний супровід",
-            ru: "Требуется углублённое обследование и психологическое сопровождение",
+const stenBands = (code: string, strict = code === "SR") => [
+  {
+    minScore: 1,
+    maxScore: 2,
+    label: labelOf(code, 0),
+    severity: "severe" as const,
+    grade: 1,
+    recommendation: strict
+      ? {
+          uk: "Група суїцидального ризику: невідкладна індивідуальна бесіда та огляд фахівцем",
+          ru: "Группа суицидального риска: безотлагательная индивидуальная беседа и осмотр специалистом",
+        }
+      : {
+          uk: "Потрібне поглиблене обстеження та психологічний супровід",
+          ru: "Требуется углублённое обследование и психологическое сопровождение",
+        },
+  },
+  {
+    minScore: 3,
+    maxScore: 3,
+    label: labelOf(code, 1),
+    severity: strict ? ("severe" as const) : ("moderate" as const),
+    grade: 2,
+    ...(strict
+      ? {
+          recommendation: {
+            uk: "Включити до групи посиленої психологічної уваги",
+            ru: "Включить в группу усиленного психологического внимания",
           },
-    },
-    {
-      minScore: 3,
-      maxScore: 3,
-      label: label(1),
-      severity: strict ? ("severe" as const) : ("moderate" as const),
-      grade: 2,
-      ...(strict
-        ? {
-            recommendation: {
-              uk: "Включити до групи посиленої психологічної уваги",
-              ru: "Включить в группу усиленного психологического внимания",
-            },
-          }
-        : {}),
-    },
-    {
-      minScore: 4,
-      maxScore: 5,
-      label: label(2),
-      severity: "mild" as const,
-      grade: 3,
-    },
-    {
-      minScore: 6,
-      maxScore: 7,
-      label: label(3),
-      severity: "none" as const,
-      grade: 4,
-    },
-    {
-      minScore: 8,
-      maxScore: 10,
-      label: label(4),
-      severity: "none" as const,
-      grade: 5,
-    },
-  ];
-};
+        }
+      : {}),
+  },
+  {
+    minScore: 4,
+    maxScore: 5,
+    label: labelOf(code, 2),
+    severity: "mild" as const,
+    grade: 3,
+  },
+  {
+    minScore: 6,
+    maxScore: 7,
+    label: labelOf(code, 3),
+    severity: "none" as const,
+    grade: 4,
+  },
+  {
+    minScore: 8,
+    maxScore: 10,
+    label: labelOf(code, 4),
+    severity: "none" as const,
+    grade: 5,
+  },
+];
 
 /**
  * Критические пункты: «Так» поднимает тревогу сразу, не дожидаясь стена шкалы.
