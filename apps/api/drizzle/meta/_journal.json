@@ -862,6 +862,13 @@
       "when": 1788475929043,
       "tag": "0133_catalog_domains",
       "breakpoints": true
+    },
+    {
+      "idx": 134,
+      "version": "7",
+      "when": 1788475989043,
+      "tag": "0134_catalog_library",
+      "breakpoints": true
     }
   ]
 }

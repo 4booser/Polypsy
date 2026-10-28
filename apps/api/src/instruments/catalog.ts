@@ -83,6 +83,18 @@ import { ITQ_NOT_SCORED, itq, itqNote } from "./itq";
 import { LEC5_NOT_SCORED, lec5, lec5Note } from "./lec5";
 import { tgiSrPlus, tgiSrPlusNote } from "./tgiSrPlus";
 // ── /k-trauma ──
+// ── dp-scales ──
+import { bprs, bprsNote } from "./bprs";
+import { cgiI, cgiINote, cgiS, cgiSNote } from "./cgi";
+import { hama, hamaNote } from "./hama";
+import { hamd17, hamd17Note } from "./hamd17";
+// ── /dp-scales ──
+// ── dp-inst ──
+import { MINIMULT_NOT_SCORED, minimult, minimultNote } from "./minimult";
+import { mlo, mloNote } from "./mlo";
+import { sadPersons, sadPersonsNote } from "./sadPersons";
+import { sr45, sr45Note } from "./sr45";
+// ── /dp-inst ──
 
 /**
  * Общий каталог общедоступных методик.
@@ -627,7 +639,7 @@ export const CATALOG: CatalogEntry[] = [
     draft: gad2,
     note: gad2Note,
     source:
-      "GAD-2, Kroenke, Spitzer, Williams, Monahan, Löwe, 2007 (public domain); текст — пункти 1–2 GAD-7 каталогу, переклад робочий",
+      "GAD-2, Kroenke, Spitzer, Williams, Monahan, Löwe, 2007 (public domain); текст — пункти 1–2 GAD-7 каталогу: офіційні переклади правовласника «Ukrainian for Ukraine» і «Russian for Ukraine» (phqscreeners.com), українські відповіді — з PHQ-9 наказу МОЗ України №1003",
   },
   {
     key: "core10",
@@ -828,4 +840,110 @@ export const CATALOG: CatalogEntry[] = [
     notScored: LEC5_NOT_SCORED,
   },
   // ── /k-trauma ──
+  // ── dp-scales ──
+  /*
+   * Группа «шкалы, которые заполняет специалист» — стандартные клинические
+   * шкалы психиатрического отделения; docs/instruments/dossiers/clinician.json,
+   * ключ каталога равен ключу карточки.
+   *
+   * Основание у каждой — заявление NINDS CDE (NIH, США) о том, что шкала —
+   * общественное достояние; текст — редакция руководства ECDEU (Guy, 1976,
+   * издание Минздрава США), перевод — собственный рабочий на оба языка. Все
+   * заполняет специалист (administration: "clinician"), результат пациенту не
+   * показывается. Полосы случая риска не открывают — это собственная оценка
+   * того, кто заполнил (обоснование — в hamd17.ts); тревогу поднимают только
+   * суицидальные ответы.
+   *
+   * Не заведены (карточки досье с причиной): MADRS и YMRS — права у Royal
+   * College of Psychiatrists, воспроизведение только с разрешения; полная
+   * C-SSRS — права позволяют, но официальные украинский и русский тексты
+   * полной версии выдаются только по запросу (скринер — выше, `cssrs`).
+   */
+  {
+    key: "hamd17",
+    draft: hamd17,
+    note: hamd17Note,
+    source:
+      "HAM-D-17, Hamilton, J Neurol Neurosurg Psychiatry 1960; Br J Soc Clin Psychol 1967 — суспільне надбання за NINDS CDE; текст — редакція ECDEU Assessment Manual for Psychopharmacology (Guy, 1976, DHEW (ADM) 76-338). Смуги — Zimmerman та ін., J Affect Disord 2013. Переклад робочий",
+  },
+  {
+    key: "hama",
+    draft: hama,
+    note: hamaNote,
+    source:
+      "HAM-A, Hamilton, Br J Med Psychol 1959 — суспільне надбання за NINDS CDE; текст — редакція ECDEU Assessment Manual for Psychopharmacology (Guy, 1976, DHEW (ADM) 76-338). Смуги — Matza та ін., Int J Methods Psychiatr Res 2010. Переклад робочий",
+  },
+  {
+    key: "cgi_s",
+    draft: cgiS,
+    note: cgiSNote,
+    source:
+      "CGI-S (Clinical Global Impression — Severity of Illness), Guy, ECDEU Assessment Manual for Psychopharmacology, 1976, DHEW (ADM) 76-338, с. 217–222 — видання уряду США, суспільне надбання за NINDS CDE; клінічне застосування — Busner, Targum, Psychiatry (Edgmont) 2007. Переклад робочий",
+  },
+  {
+    key: "cgi_i",
+    draft: cgiI,
+    note: cgiINote,
+    source:
+      "CGI-I (Clinical Global Impression — Global Improvement), Guy, ECDEU Assessment Manual for Psychopharmacology, 1976, DHEW (ADM) 76-338, с. 217–222 — видання уряду США, суспільне надбання за NINDS CDE; клінічне застосування — Busner, Targum, Psychiatry (Edgmont) 2007. Переклад робочий",
+  },
+  {
+    key: "bprs",
+    draft: bprs,
+    note: bprsNote,
+    source:
+      "BPRS (18 пунктів), Overall, Gorham, Psychol Rep 1962 — суспільне надбання за NINDS CDE; текст — редакція ECDEU Assessment Manual for Psychopharmacology (Guy, 1976, DHEW (ADM) 76-338). Без смуг: опублікованих порогів немає; орієнтир CGI — Leucht та ін., Br J Psychiatry 2005. Переклад робочий",
+  },
+  // ── /dp-scales ──
+  // ── dp-inst ──
+  /*
+   * Методики учреждения — из пособий НДЦ ГП ЗСУ, по которым работает отделение:
+   * БОО «Адаптивність-200» (МЛО), Міні-мульт, СР-45 и SAD PERSONS.
+   * docs/instruments/dossiers/review-institution.json; ключ каталога равен ключу
+   * карточки досье и имени листа сверки.
+   *
+   * До 2026-10-28 их ставил только демонстрационный посев (seed.ts), и на проде,
+   * где посев не идёт, у врачей были одни короткие международные скрининги.
+   * Правило каталога — свободная лицензия с цитатой правообладателя в досье — у
+   * этих четырёх не выполнено: цитаты нет, у Міні-мульта и части пунктов МЛО это
+   * пункты MMPI. Основание другое — решение владельца продукта от 2026-10-28
+   * («ставь тесты»): учреждение применяет эти методики в работе и подтверждает
+   * право ими пользоваться. Оно записано как есть — в поле decision карточек
+   * досье, в примечании для персонала (`<черновик>Note`, «Джерело» паспорта) и в
+   * источнике журнала установки, — без выдуманных лицензий.
+   *
+   * SAD PERSONS заполняет специалист (administration: "clinician"), и пациенту
+   * она не предлагается. Посев держит свои копии под теми же ключами, чтобы стенд
+   * с посевом и установщиком не получил по две строки одной методики (seed.ts).
+   */
+  {
+    key: "mlo",
+    draft: mlo,
+    note: mloNote,
+    source:
+      "БОО «Адаптивність-200»: МЛО-АМ «Адаптивність», А. Г. Маклаков, С. В. Чермянін, ВМедА ім. С. М. Кірова, 1993, і 35 пунктів редакції «Адаптивність-200»; у закладі — Збірник методик для діагностики негативних психічних станів військовослужбовців, НДЦ ГП ЗСУ, 2016, с. 14–52. До каталогу — за рішенням власника продукту від 28.10.2026: право застосування підтверджує заклад, дозволу правовласника немає",
+  },
+  {
+    key: "minimult",
+    draft: minimult,
+    note: minimultNote,
+    source:
+      "Mini-Mult, J. C. Kincannon, J Consult Clin Psychol 1968;32(3); адаптація В. П. Зайцева (СМОЛ), Психологічний журнал, 1981, № 3; у закладі — Збірник методик для діагностики негативних психічних станів військовослужбовців, НДЦ ГП ЗСУ, 2016; пункти — пункти MMPI (© University of Minnesota). До каталогу — за рішенням власника продукту від 28.10.2026: право застосування підтверджує заклад, дозволу правовласника немає",
+    notScored: MINIMULT_NOT_SCORED,
+  },
+  {
+    key: "sr45",
+    draft: sr45,
+    note: sr45Note,
+    source:
+      "СР-45, П. І. Юнацкевич, ВІКА ім. Можайського, 1998; у закладі — Збірник методик для діагностики негативних психічних станів військовослужбовців, НДЦ ГП ЗСУ, 2016, с. 89–96; пункти 1–10 українською — офіційний текст ГУ МПЗ ЗСУ (2020), 11–45 — переклад системи. До каталогу — за рішенням власника продукту від 28.10.2026: право застосування підтверджує заклад, заяви правовласника немає",
+  },
+  {
+    key: "sad-persons",
+    draft: sadPersons,
+    note: sadPersonsNote,
+    source:
+      "SAD PERSONS, Patterson, Dohn, Bird, Patterson, Psychosomatics 1983;24(4):343–345, 348–349; у закладі — «Психологічна оцінка суїцидального ризику у військовослужбовців», НДЦ ГП ЗСУ, 2019, с. 45–46; російський текст — робочий переклад. До каталогу — за рішенням власника продукту від 28.10.2026: право застосування підтверджує заклад, заяви правовласника немає",
+  },
+  // ── /dp-inst ──
 ];

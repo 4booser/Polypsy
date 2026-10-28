@@ -1,5 +1,5 @@
 import type { Context } from "hono";
-import { and, count, eq, gte, inArray, isNull, sql } from "drizzle-orm";
+import { and, count, eq, gte, isNull, sql } from "drizzle-orm";
 import {
   renderCoded,
   renderNote,
@@ -30,7 +30,7 @@ import { installCatalog } from "./catalogInstall";
 import { CATALOG } from "../instruments/catalog";
 import { t } from "@quizzy/shared";
 import { changeAccountClass, isAccountClass, setAccountReadOnly } from "./accountClass";
-import { surveyScopeFilter } from "./scope";
+import { resultScopeCondition } from "./scope";
 
 /**
  * Командная консоль управления системой.
@@ -259,17 +259,16 @@ export const COMMANDS: Command[] = [
     run: async ({ user, lang }) => {
       /*
        * Зона — та же, что у очереди на экране (routes/alertCases.ts): случай
-       * виден по методике, с которой он начался. Прежде консоль считала все
+       * виден по методике, с которой он начался, а случай методики
+       * библиотеки — только о человеке зоны. Прежде консоль считала все
        * неразобранные случаи учреждения, и заведующий группы узнавал из неё
        * число тяжёлых случаев чужих отделений (волна 15).
        */
-      const scoped = await db.select({ id: surveys.id }).from(surveys).where(await surveyScopeFilter(user));
-      const surveyIds = scoped.map((s) => s.id);
-      if (!surveyIds.length) return ok([serverText("cmd.queue.empty", lang)]);
+      const visible = await resultScopeCondition(user);
       const rows = await db
         .select({ severity: alertCases.severity, openedAt: alertCases.openedAt })
         .from(alertCases)
-        .where(and(isNull(alertCases.acknowledgedAt), inArray(alertCases.surveyId, surveyIds)));
+        .where(and(isNull(alertCases.acknowledgedAt), visible?.(alertCases.surveyId, alertCases.userId)));
       if (!rows.length) return ok([serverText("cmd.queue.empty", lang)]);
 
       const severe = rows.filter((r) => r.severity === "severe").length;

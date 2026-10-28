@@ -33,12 +33,17 @@ import { grantAccess } from "../lib/grantAccess";
 import { badRequest, conflict, forbidden, langOf, notFound, parseBody } from "../lib/http";
 import {
   accessibleGroupIds,
+  batteryAssignmentScope,
+  batteryWidensZone,
+  patientScopeCondition,
   patientsInScope,
   assertBatteryInUse,
   assertGroupAccess,
-  assertSurveyAccess,
+  assertSurveyUse,
   isStaff,
-  surveyScopeFilter,
+  resultScope,
+  surveyUseFilter,
+  type ResultScope,
 } from "../lib/scope";
 import { assertNotInOtherCare } from "../lib/otherCare";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
@@ -113,8 +118,14 @@ async function loadItemsFrom(
     | { table: typeof batteryAssignmentItems; key: typeof batteryAssignmentItems.assignmentId },
   ids: string[],
   lang: Lang,
-  /** Зона видимости методик читающего (surveyScopeFilter); без неё — все шаги */
+  /** Методики, которыми читающий пользуется (surveyUseFilter); без условия — все шаги */
   visible?: SQL,
+  /**
+   * Прохождения, видимые читающему (lib/scope.ts, resultScope), — из них
+   * ориентир длительности: у методики общего каталога он считается по людям
+   * его зоны, как и всё о её прохождениях, а не по всему учреждению.
+   */
+  seen?: ResultScope,
 ): Promise<Map<string, LoadedItem[]>> {
   const result = new Map<string, LoadedItem[]>();
   if (!ids.length) return result;
@@ -134,7 +145,8 @@ async function loadItemsFrom(
       // ориентир длительности берём из фактических прохождений, а не из
       // предположений: реальная медиана расходится с ожиданиями в разы
       medianMs: sql<number | null>`(select percentile_cont(0.5) within group (order by r.duration_ms)
-        from responses r where r.survey_id = "surveys"."id" and r.status = 'completed' and r.duration_ms > 0)`,
+        from responses r where r.survey_id = "surveys"."id" and r.status = 'completed' and r.duration_ms > 0
+          ${seen ? sql`and ${seen(sql`r.survey_id`, sql`r.user_id`)}` : sql``})`,
     })
     .from(source.table)
     .innerJoin(surveys, eq(surveys.id, source.table.surveyId))
@@ -158,14 +170,20 @@ async function loadItemsFrom(
   return result;
 }
 
-/** Состав наборов (шаблон) по id набора; `visible` — зона видимости методик читающего */
-function loadItems(batteryIds: string[], lang: Lang, visible?: SQL) {
-  return loadItemsFrom({ table: batteryItems, key: batteryItems.batteryId }, batteryIds, lang, visible);
+/** Состав наборов (шаблон) по id набора; `visible` — методики читающего, `seen` — его прохождения */
+function loadItems(batteryIds: string[], lang: Lang, visible: SQL | undefined, seen: ResultScope) {
+  return loadItemsFrom({ table: batteryItems, key: batteryItems.batteryId }, batteryIds, lang, visible, seen);
 }
 
-/** Состав назначений (снимок на момент выдачи) по id назначения */
-function loadAssignmentItems(assignmentIds: string[], lang: Lang) {
-  return loadItemsFrom({ table: batteryAssignmentItems, key: batteryAssignmentItems.assignmentId }, assignmentIds, lang);
+/** Состав назначений (снимок на момент выдачи) по id назначения; `seen` — прохождения читающего */
+function loadAssignmentItems(assignmentIds: string[], lang: Lang, seen: ResultScope) {
+  return loadItemsFrom(
+    { table: batteryAssignmentItems, key: batteryAssignmentItems.assignmentId },
+    assignmentIds,
+    lang,
+    undefined,
+    seen,
+  );
 }
 
 /*
@@ -189,17 +207,25 @@ batteryRoutes.get("/", requireStaff, requirePermission("batteries.manage"), asyn
   if (!isStaff(user)) forbidden("err.staffAccessOnly");
   const lang = langOf(c);
   const groupIds = await accessibleGroupIds(user);
+  /*
+   * Назначения в счётчиках — те же, что откроет список назначений набора:
+   * у общего набора — только людей зоны читателя (batteryAssignmentScope).
+   * Зона — один раз на запрос: она же нужна ориентиру длительности шагов.
+   */
+  const inZone = await patientScopeCondition(user);
+  const shown = await batteryAssignmentScope(user, inZone);
+  const shownSql = shown ? sql`and ${shown(sql`a.battery_id`, sql`a.user_id`)}` : sql``;
 
   const rows = await db
     .select({
       battery: batteries,
       groupTitle: surveyGroups.title,
       activeAssignments: sql<number>`(select count(*) from battery_assignments a
-        where a.battery_id = "batteries"."id" and a.completed_at is null and a.cancelled_at is null)`,
+        where a.battery_id = "batteries"."id" and a.completed_at is null and a.cancelled_at is null ${shownSql})`,
       /* то же условие, что «overdue» у назначения (loadAssignments ниже): срок прошёл, не закрыто, не отменено */
       overdueAssignments: sql<number>`(select count(*) from battery_assignments a
         where a.battery_id = "batteries"."id" and a.completed_at is null and a.cancelled_at is null
-          and a.due_at is not null and a.due_at < now())`,
+          and a.due_at is not null and a.due_at < now() ${shownSql})`,
     })
     .from(batteries)
     .leftJoin(surveyGroups, eq(surveyGroups.id, batteries.groupId))
@@ -213,15 +239,15 @@ batteryRoutes.get("/", requireStaff, requirePermission("batteries.manage"), asyn
     .orderBy(desc(batteries.createdAt));
 
   /*
-   * Шаги — в зоне видимости методик сотрудника, тем же условием, что у
-   * политики surveys_read. Общий набор (groupId null) видят все сотрудники, а
-   * его методики — нет: заготовки каталога состоят из методик без группы,
-   * которые видят суперадминистратор и автор. Под ролью приложения чужие шаги
-   * и так прятала политика, а владелец базы (сюита) видел их — и список
-   * расходился с боем (appRoleFlows, обход GET). Теперь прикладной рубеж
-   * говорит то же, что политика.
+   * Шаги — методики, которыми сотрудник пользуется (свои и библиотека), тем
+   * же условием, что у политики surveys_read. Общий набор (groupId null)
+   * видят все сотрудники, а методики чужой группы в нём — нет. Под ролью
+   * приложения чужие шаги и так прятала политика, а владелец базы (сюита)
+   * видел их — и список расходился с боем (appRoleFlows, обход GET). Теперь
+   * прикладной рубеж говорит то же, что политика. Заготовки каталога
+   * собраны из методик библиотеки и видны с шагами каждому сотруднику.
    */
-  const items = await loadItems(rows.map((r) => r.battery.id), lang, await surveyScopeFilter(user));
+  const items = await loadItems(rows.map((r) => r.battery.id), lang, await surveyUseFilter(user), await resultScope(user, inZone));
   const result: Battery[] = rows.map((r) => ({
     id: r.battery.id,
     title: r.battery.title,
@@ -246,7 +272,7 @@ batteryRoutes.post("/", requireStaff, requirePermission("batteries.manage"), asy
   if (input.groupId) await assertGroupAccess(user, input.groupId);
   // право на методику проверяем поштучно: иначе через батарею можно было бы
   // раздать доступ к чужой группе
-  for (const item of input.items) await assertSurveyAccess(user, item.surveyId);
+  for (const item of input.items) await assertSurveyUse(user, item.surveyId);
 
   const id = crypto.randomUUID();
   await db.transaction(async (tx) => {
@@ -297,18 +323,21 @@ batteryRoutes.put("/:id", requireStaff, requirePermission("batteries.manage"), a
   await assertBatteryAccess(user, batteryId, "no key update");
   const input = await parseBody(c.req.raw, batteryInputSchema);
   if (input.groupId) await assertGroupAccess(user, input.groupId);
-  for (const item of input.items) await assertSurveyAccess(user, item.surveyId);
+  for (const item of input.items) await assertSurveyUse(user, item.surveyId);
 
-  const [{ open } = { open: 0 }] = await db
-    .select({ open: sql<number>`count(*)::int` })
-    .from(batteryAssignments)
-    .where(
-      and(
-        eq(batteryAssignments.batteryId, batteryId),
-        isNull(batteryAssignments.completedAt),
-        isNull(batteryAssignments.cancelledAt),
+  // в журнал — все открытые назначения набора, и других отделений тоже: системной ролью, как счёт у удаления ниже
+  const [{ open } = { open: 0 }] = await asSystem(() =>
+    db
+      .select({ open: sql<number>`count(*)::int` })
+      .from(batteryAssignments)
+      .where(
+        and(
+          eq(batteryAssignments.batteryId, batteryId),
+          isNull(batteryAssignments.completedAt),
+          isNull(batteryAssignments.cancelledAt),
+        ),
       ),
-    );
+  );
 
   await db.transaction(async (tx) => {
     await tx
@@ -358,11 +387,19 @@ batteryRoutes.delete("/:id", requireStaff, requirePermission("batteries.manage")
    * Счёт — под замком строки набора (см. assertBatteryAccess), а внешний
    * ключ назначений с миграции 0119 RESTRICT: удаление с историей падает и в
    * базе, мимо маршрута.
+   *
+   * Системной ролью: назначения общего набора сотруднику видны только о людях
+   * его зоны (lib/scope.ts, политика battery_assignments), а держат набор и
+   * назначения других отделений. Под его политиками счёт мог бы выйти нулём,
+   * и вместо внятного отказа удаление упёрлось бы в ключ пятисоткой. Наружу —
+   * одно число.
    */
-  const [{ count } = { count: 0 }] = await db
-    .select({ count: sql<number>`count(*)` })
-    .from(batteryAssignments)
-    .where(eq(batteryAssignments.batteryId, batteryId));
+  const [{ count } = { count: 0 }] = await asSystem(() =>
+    db
+      .select({ count: sql<number>`count(*)` })
+      .from(batteryAssignments)
+      .where(eq(batteryAssignments.batteryId, batteryId)),
+  );
   if (Number(count) > 0)
     badRequest("err.batteryHasAssignments", { count: Number(count) });
 
@@ -376,7 +413,7 @@ batteryRoutes.delete("/:id", requireStaff, requirePermission("batteries.manage")
   return c.body(null, 204);
 });
 
-async function loadAssignments(where: SQL | undefined, lang: Lang) {
+async function loadAssignments(where: SQL | undefined, lang: Lang, seen: ResultScope) {
   const rows = await db
     .select({
       assignment: batteryAssignments,
@@ -390,7 +427,7 @@ async function loadAssignments(where: SQL | undefined, lang: Lang) {
     .orderBy(desc(batteryAssignments.assignedAt));
 
   // состав — снимок самого назначения, не текущий шаблон набора (lib/batteries.ts)
-  const items = await loadAssignmentItems(rows.map((r) => r.assignment.id), lang);
+  const items = await loadAssignmentItems(rows.map((r) => r.assignment.id), lang, seen);
   const userIds = [...new Set(rows.map((r) => r.user.id))];
   const completions = userIds.length
     ? await db
@@ -448,14 +485,20 @@ async function loadAssignments(where: SQL | undefined, lang: Lang) {
   return result;
 }
 
-/** Назначения по батарее */
+/**
+ * Назначения по батарее. У общего набора — только людям зоны читателя
+ * (lib/scope.ts, batteryAssignmentScope): им пользуются все отделения.
+ */
 batteryRoutes.get("/:id/assignments", requireStaff, requirePermission("assignments.manage"), async (c) => {
   const user = c.get("user");
   const batteryId = c.req.param("id");
   await assertBatteryAccess(user, batteryId);
+  const inZone = await patientScopeCondition(user);
+  const shown = await batteryAssignmentScope(user, inZone);
   const result = await loadAssignments(
-    eq(batteryAssignments.batteryId, batteryId),
+    and(eq(batteryAssignments.batteryId, batteryId), shown?.(batteryAssignments.batteryId, batteryAssignments.userId)),
     langOf(c),
+    await resultScope(user, inZone),
   );
   await audit(c, {
     action: "battery.assignment_list",
@@ -488,24 +531,32 @@ batteryRoutes.post("/:id/assign", requireStaff, requirePermission("assignments.m
   // назначение сотруднику открывало бы ему методики мимо зоны
   if (target.role !== "user") badRequest("err.assignOnlyToPatient");
   /*
-   * Назначение вводит человека в зону сотрудника — так же, как выдача
-   * методики, — и тем же путём открывало чужого пациента вместе с заметками
-   * чужого автора (#139). Человек, которого уже ведёт кто-то другой, — отказ;
-   * «ничей» — назначение с пометкой в журнале (lib/otherCare.ts).
+   * Назначение набора своей группы вводит человека в зону сотрудника — так
+   * же, как выдача методики, — и тем же путём открывало чужого пациента
+   * вместе с заметками чужого автора (#139). Человек, которого уже ведёт
+   * кто-то другой, — отказ; «ничей» — назначение с пометкой в журнале
+   * (lib/otherCare.ts).
+   *
+   * Общий набор и набор библиотеки в зону не вводят (lib/scope.ts,
+   * batteryWidensZone): ими пользуются все отделения. Их назначают только
+   * человеку, который уже в зоне, — иначе «не найдено», как у карточки
+   * чужого: назначивший не увидел бы потом ни назначения, ни результатов.
    */
-  const widened = await assertNotInOtherCare(await patientsInScope(user, [input.userId]), input.userId);
+  const seen = await patientsInScope(user, [input.userId]);
+  if (seen && !seen.has(input.userId) && !(await batteryWidensZone(user, battery))) notFound("err.examineeNotFound");
+  const widened = await assertNotInOtherCare(seen, input.userId);
 
   const items = await db.select().from(batteryItems).where(eq(batteryItems.batteryId, batteryId));
   if (!items.length) badRequest("err.batteryEmpty");
   /*
-   * Каждый шаг — в зоне сотрудника, как при сборке набора (POST и PUT выше).
-   * Общий набор видят все сотрудники, но выдача открывает пациенту его
-   * методики: без проверки администратор группы выдавал бы методики вне своей
-   * зоны (заготовки каталога — из методик без группы). Под ролью приложения
-   * такую выдачу останавливала политика survey_access — пятисоткой; теперь
-   * это внятный отказ до всякой записи.
+   * Каждым шагом сотрудник вправе пользоваться, как при сборке набора (POST
+   * и PUT выше): свои методики и библиотека. Общий набор видят все
+   * сотрудники, но выдача открывает пациенту его методики: без проверки
+   * администратор группы выдавал бы методики чужой группы. Под ролью
+   * приложения такую выдачу останавливала политика survey_access —
+   * пятисоткой; теперь это внятный отказ до всякой записи.
    */
-  for (const item of items) await assertSurveyAccess(user, item.surveyId);
+  for (const item of items) await assertSurveyUse(user, item.surveyId);
 
   // срок из поля даты — «до конца этого дня» по поясу учреждения, а не полночь по Гринвичу (lib/day.ts)
   const dueAt = deadlineOf(input.dueAt);
@@ -642,6 +693,8 @@ batteryRoutes.get("/mine", async (c) => {
   const result = await loadAssignments(
     and(eq(batteryAssignments.userId, user.id), isNull(batteryAssignments.cancelledAt)),
     langOf(c),
+    // ориентир длительности — по своим прохождениям: чужих обследуемый не видит и под политикой строк
+    (_survey, patientId) => sql`${patientId} = ${user.id}`,
   );
   return c.json({ items: result });
 });

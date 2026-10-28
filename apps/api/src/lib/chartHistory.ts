@@ -58,7 +58,12 @@ function before(at: SQL, id: SQL, after: Cursor | null): SQL | undefined {
   return after ? sql`(${at}, ${id}) < (${after.at}::timestamptz, ${after.id})` : undefined;
 }
 
-export async function chartHistory(userId: string, portion: number = CHART_PORTION) {
+/**
+ * `surveyScope` — методики, результаты которых о человеке видны читающему
+ * (lib/scope.ts, surveyScopeFilterFor): карта показывает то же, что карточка
+ * и динамика. Без условия — все (суперадмин).
+ */
+export async function chartHistory(userId: string, portion: number = CHART_PORTION, surveyScope?: SQL) {
   /*
    * Обращения — без порций: их у человека единицы, и лимита у них не было.
    * Порядок полный, чтобы два обращения, открытые в одну секунду, не
@@ -129,7 +134,14 @@ export async function chartHistory(userId: string, portion: number = CHART_PORTI
         })
         .from(responses)
         .innerJoin(surveys, eq(surveys.id, responses.surveyId))
-        .where(and(eq(responses.userId, userId), eq(responses.status, "completed"), before(doneAt, sql`${responses.id}`, after)))
+        .where(
+          and(
+            eq(responses.userId, userId),
+            eq(responses.status, "completed"),
+            surveyScope,
+            before(doneAt, sql`${responses.id}`, after),
+          ),
+        )
         .orderBy(sql`${doneAt} desc`, desc(responses.id))
         .limit(size),
     portion,

@@ -9,7 +9,7 @@ import { audit } from "../lib/audit";
 import { langOf, notFound, parseQuery } from "../lib/http";
 import { localMonth, patientRespondent } from "../lib/population";
 import { percent, round } from "../lib/stats";
-import { assertSurveyAccess } from "../lib/scope";
+import { surveyResultScope } from "../lib/scope";
 import { getSurvey } from "../lib/surveys";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
@@ -43,7 +43,8 @@ const PSI_BINS = 5;
  */
 dataQualityRoutes.get("/surveys/:id", async (c) => {
   const surveyId = c.req.param("id");
-  await assertSurveyAccess(c.get("user"), surveyId);
+  // методика библиотеки — только прохождения людей зоны читателя (lib/scope.ts)
+  const zone = await surveyResultScope(c.get("user"), surveyId);
   /*
    * Язык — запроса: на нём названия шкал в дрейфе и тест-ретесте и слово
    * вердикта. Прежде методика бралась русской при любом языке интерфейса.
@@ -66,7 +67,7 @@ dataQualityRoutes.get("/surveys/:id", async (c) => {
   const allResponses = await db
     .select({ row: responses, month: localMonth(sql`${responses.submittedAt}`) })
     .from(responses)
-    .where(and(eq(responses.surveyId, surveyId), patientRespondent("responses")))
+    .where(and(eq(responses.surveyId, surveyId), patientRespondent("responses"), zone?.(responses.userId)))
     .then((rows) => rows.map((r) => ({ ...r.row, month: r.month as string | null })));
   const completed = allResponses.filter((r) => r.status === "completed");
   /*
@@ -266,7 +267,7 @@ dataQualityRoutes.get("/surveys/:id", async (c) => {
  */
 dataQualityRoutes.get("/surveys/:id/items", async (c) => {
   const surveyId = c.req.param("id");
-  await assertSurveyAccess(c.get("user"), surveyId);
+  const zone = await surveyResultScope(c.get("user"), surveyId);
   const survey = await getSurvey(surveyId, null, langOf(c));
   if (!survey) notFound("err.surveyNotFound");
 
@@ -284,7 +285,14 @@ dataQualityRoutes.get("/surveys/:id/items", async (c) => {
   const done = await db
     .select({ id: responses.id, submittedAt: responses.submittedAt, durationMs: responses.durationMs })
     .from(responses)
-    .where(and(eq(responses.surveyId, surveyId), eq(responses.status, "completed"), patientRespondent("responses")))
+    .where(
+      and(
+        eq(responses.surveyId, surveyId),
+        eq(responses.status, "completed"),
+        patientRespondent("responses"),
+        zone?.(responses.userId),
+      ),
+    )
     .orderBy(desc(responses.submittedAt))
     .limit(limit);
   if (!done.length) return c.json({ questions: [], rows: [], medians: [] });

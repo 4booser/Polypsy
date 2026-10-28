@@ -16467,6 +16467,23 @@ export const UI = {
   // ── ux-copy ──
 
   // ── dp-access ──
+  /*
+   * Методика общего каталога у сотрудника, который её не правит
+   * (SurveyFull.editable = false): вместо «Правити» — отметка в паспорте,
+   * пояснение — подсказкой (apps/api/src/lib/scope.ts).
+   */
+  "mc.libraryFact": { uk: "Загальний каталог", ru: "Общий каталог", en: "Shared catalogue" },
+  "mc.libraryHint": {
+    uk: "Методику загального каталогу змінюють адміністратори каталогу. Призначати й проводити її може кожен фахівець",
+    ru: "Методику общего каталога изменяют администраторы каталога. Назначать и проводить её может каждый специалист",
+    en: "Catalogue administrators edit shared-catalogue assessments. Any clinician can assign and administer them",
+  },
+  /* «Норми»: локальные нормы методики общего каталога — новая версия каталога */
+  "mc.libraryNormsHint": {
+    uk: "Локальні норми методики загального каталогу публікують адміністратори каталогу",
+    ru: "Локальные нормы методики общего каталога публикуют администраторы каталога",
+    en: "Catalogue administrators publish local norms for shared-catalogue assessments",
+  },
 
   // ── dp-patient ──
 
@@ -16535,9 +16552,9 @@ export const UI = {
   "qh.onlyMarked": { uk: "Лише з позначками", ru: "Только с метками", en: "Marked only" },
   "qh.summary": { uk: "З позначками — {marked} з {of}.", ru: "С метками — {marked} из {of}.", en: "Marked: {marked} of {of}." },
   "qh.ofResponses": {
-    uk: "{n} проходження|{n} проходжень|{n} проходжень",
-    ru: "{n} прохождения|{n} прохождений|{n} прохождений",
-    en: "{n} completion|{n} completions",
+    uk: "{n} проходження|{n} проходжень|{n} проходжень|{n} проходження",
+    ru: "{n} прохождения|{n} прохождений|{n} прохождений|{n} прохождения",
+    en: "{n} completion|{n} completions|{n} completions|{n} completions",
   },
   "qh.showClean": { uk: "Показати й без позначок: {n}", ru: "Показать и без меток: {n}", en: "Show unmarked too: {n}" },
   "qh.colResponse": { uk: "Проходження", ru: "Прохождение", en: "Completion" },
@@ -16552,6 +16569,8 @@ export const UI = {
   // ── dp-catalog ──
 
   // ── dp-scales ──
+
+  // ── dp-inst ──
 } as const satisfies Record<string, UiEntry>;
 
 export type UiKey = keyof typeof UI;

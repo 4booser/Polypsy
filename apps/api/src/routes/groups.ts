@@ -7,7 +7,7 @@ import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
 import { badRequest, langOf, notFound, parseBody } from "../lib/http";
 import { hasPermission } from "../lib/permissions";
-import { accessibleGroupIds, assertGroupAccess } from "../lib/scope";
+import { accessibleGroupIds, assertGroupAccess, resultScope } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
 export const groupRoutes = new Hono<AppEnv>();
@@ -43,6 +43,13 @@ groupRoutes.get("/", async (c) => {
   const allowed = await accessibleGroupIds(user);
   // право спрашивается один раз на запрос: оно одно на все группы читателя
   const manageable = await hasPermission(user, "groups.manage");
+  /*
+   * Прохождения и случаи в счётчиках — видимые читающему (lib/scope.ts): у
+   * своей группы это все, у группы библиотеки (общий каталог) — люди его
+   * зоны. Её администратор правит методики, но не видит данных всех отделений.
+   */
+  const seen = await resultScope(user);
+  const seenR = seen(sql`r.survey_id`, sql`r.user_id`);
 
   const rows = await db
     .select({
@@ -56,7 +63,8 @@ groupRoutes.get("/", async (c) => {
       archivedAt: surveyGroups.archivedAt,
       surveyCount: sql<number>`(select count(*) from surveys s where s.group_id = "survey_groups"."id")`,
       publishedCount: sql<number>`(select count(*) from surveys s where s.group_id = "survey_groups"."id" and s.status = 'published')`,
-      responseCount: sql<number>`(select count(*) from responses r join surveys s on s.id = r.survey_id where s.group_id = "survey_groups"."id" and r.status = 'completed')`,
+      responseCount: sql<number>`(select count(*) from responses r join surveys s on s.id = r.survey_id
+        where s.group_id = "survey_groups"."id" and r.status = 'completed' and ${seenR})`,
       /*
        * Людей считаем по завершённым прохождениям и различая по человеку:
        * «сколько людей прошло» и «сколько прохождений» расходятся тем
@@ -66,7 +74,7 @@ groupRoutes.get("/", async (c) => {
        */
       patientCount: sql<number>`(select count(distinct r.user_id) from responses r
         join surveys s on s.id = r.survey_id
-        where s.group_id = "survey_groups"."id" and r.status = 'completed' and r.user_id is not null)`,
+        where s.group_id = "survey_groups"."id" and r.status = 'completed' and r.user_id is not null and ${seenR})`,
       /*
        * Открытые случаи считаются по сигналам, а не по колонке survey_id
        * случая: случай заводится на человека и собирает сигналы разных
@@ -76,7 +84,8 @@ groupRoutes.get("/", async (c) => {
       openCaseCount: sql<number>`(select count(distinct ac.id) from alert_cases ac
         join risk_alerts ra on ra.case_id = ac.id
         join surveys s on s.id = ra.survey_id
-        where s.group_id = "survey_groups"."id" and ac.acknowledged_at is null)`,
+        where s.group_id = "survey_groups"."id" and ac.acknowledged_at is null
+          and ${seen(sql`ra.survey_id`, sql`ra.user_id`)})`,
     })
     .from(surveyGroups)
     .where(allowed === null ? undefined : allowed.length ? inArray(surveyGroups.id, allowed) : sql`1 = 0`)

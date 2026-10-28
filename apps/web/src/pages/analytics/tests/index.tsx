@@ -262,7 +262,11 @@ export default function TestsAnalytics() {
   );
 
   return (
-    <Page title={ut("ant.title")} meta={meta} actions={known ? <SurveyActions data={known} /> : null}>
+    <Page title={ut("ant.title")} meta={meta} actions={
+        known ? (
+          <SurveyActions data={known} editable={surveys.data?.find((s) => s.id === known.surveyId)?.editable !== false} />
+        ) : null
+      }>
       {surveys.data && !surveys.data.length && !state.survey ? (
         <Empty title={ut("ant.noSurveyTitle")} hint={ut("ant.noSurvey")} icon={<Ic.gauge />} />
       ) : (

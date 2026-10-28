@@ -1,8 +1,9 @@
 import type { SurveyDomain } from "@quizzy/shared";
 
 /**
- * Направление каждой методики — по устойчивому ключу (ключ записи CATALOG в
- * ./catalog.ts; у четырёх встроенных — их имя в листах сверки).
+ * Направление каждой методики — по устойчивому ключу записи CATALOG в
+ * ./catalog.ts (с 2026-10-28 там и четыре методики учреждения, прежде
+ * встроенные: sr45, sad-persons, minimult, mlo — блок dp-inst).
  *
  * Картой, а не полем черновика методики. Черновик — содержимое: от него
  * считается отпечаток редакции (lib/catalogInstall.ts, fingerprint), и
@@ -26,6 +27,9 @@ import type { SurveyDomain } from "@quizzy/shared";
  * Brief COPE — в ресурсы, а не в настроение. Из каталога 2.1: AAQ-II и PSS-4 —
  * в дистресс, MIOS (моральная травма) — в травму, FAS (утомление) — в сон,
  * самосострадание (SCS-SF) и осознанность (MAAS) — в ресурсы, AQ-10 — в «Інше».
+ * Шкалы специалиста: HAM-D и HAM-A — в дистресс, рядом с PHQ-9 и GAD-7; CGI-S,
+ * CGI-I (общая тяжесть любого расстройства) и BPRS (психотические и общие
+ * симптомы; направления «психоз» нет) — в «Інше», как PQ-16.
  */
 export const CATALOG_DOMAINS: Readonly<Record<string, SurveyDomain>> = {
   /* ── distress: настроение, тревога, дистресс ── */
@@ -47,6 +51,10 @@ export const CATALOG_DOMAINS: Readonly<Record<string, SurveyDomain>> = {
   core10: "distress",
   pss4: "distress",
   aaq2: "distress",
+  // ── dp-scales ──
+  hamd17: "distress",
+  hama: "distress",
+  // ── /dp-scales ──
 
   /* ── trauma ── */
   pcl5: "trauma",
@@ -115,15 +123,12 @@ export const CATALOG_DOMAINS: Readonly<Record<string, SurveyDomain>> = {
   /* ── other ── */
   pq16: "other",
   aq10: "other",
+  // ── dp-scales ──
+  cgi_s: "other",
+  cgi_i: "other",
+  bprs: "other",
+  // ── /dp-scales ──
 };
-
-/**
- * Встроенные методики: их ставит только демонстрационный посев (seed.ts), а
- * не установщик каталога, — направление им проставляет посев по той же
- * карте. Перечнем здесь, чтобы проверка карты знала, какие ключи вне CATALOG
- * законны.
- */
-export const BUILTIN_KEYS = ["sr45", "sad-persons", "minimult", "mlo"] as const;
 
 /** Направление методики по ключу; null — ключа в карте нет (своё свойство, а не унаследованное от Object) */
 export function catalogDomain(key: string): SurveyDomain | null {

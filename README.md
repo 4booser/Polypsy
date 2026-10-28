@@ -111,7 +111,7 @@ server and the clients score the same way.
 | T-scores by sex and age, sten tables | Mini-mult, MLO |
 | Validity scales that gate interpretation | lie and validity scales |
 | Reversed grading, clinical recommendation per band | SR-45 |
-| Clinician-administered methods | SAD PERSONS |
+| Clinician-administered methods | SAD PERSONS, HAM-D-17, HAM-A, CGI-S, CGI-I, BPRS-18 |
 | Minimum answered share per scale; items hidden by display logic excluded | ASSIST, PC-PTSD-5 |
 
 Scoring runs in a fixed order:
@@ -127,27 +127,27 @@ When several norms or sten rows fit a person, the most specific one wins: sex fi
 
 ### Methods
 
-**Shared catalog, 64 methods in ten areas.** The catalog is code (`apps/api/src/instruments/catalog.ts`; areas in `catalogDomains.ts`), and the catalog screen filters by area.
+**Shared catalog, 73 methods in ten areas.** The catalog is code (`apps/api/src/instruments/catalog.ts`; areas in `catalogDomains.ts`), and the catalog screen filters by area.
 
 | Area | Methods |
 |---|---|
-| Mood, anxiety, distress (18) | PHQ-9, PHQ-8, PHQ-4, PHQ-2, PHQ-15, GAD-7, GAD-2, PSS-10, PSS-4, CESD-R, SRQ-20, GDS-15, DASS-42, DASS-21, K10, K6, CORE-10, AAQ-II |
+| Mood, anxiety, distress (20) | PHQ-9, PHQ-8, PHQ-4, PHQ-2, PHQ-15, GAD-7, GAD-2, PSS-10, PSS-4, CESD-R, SRQ-20, GDS-15, DASS-42, DASS-21, K10, K6, CORE-10, AAQ-II, HAM-D-17, HAM-A |
 | Trauma (8) | PCL-5, PC-PTSD-5, ITQ, CES, MIOS, TGI-SR+, CTSR, LEC-5 |
-| Suicide risk (4) | C-SSRS screener, ASQ, SBQ-R, SIDAS |
+| Suicide risk (6) | C-SSRS screener, ASQ, SBQ-R, SIDAS, SR-45, SAD PERSONS |
 | Sleep (4) | SCI, SCI-02, RIS, FAS |
 | Addictions (7) | AUDIT, AUDIT-C, CAGE, ASSIST, CUDIT-R, CIWA-Ar, COWS |
 | Resources and quality of life (12) | WHO-5, SWLS, Flourishing Scale, SPANE, MLQ, MSPSS, OSSS-3, RSES, UCLA-3, Brief COPE, SCS-SF, MAAS |
 | Cognitive functions (3) | ASRS-v1.1 (6 items), 4AT, ADEXI |
-| Personality (2) | IPIP-50 (Big Five), TIPI |
+| Personality (4) | IPIP-50 (Big Five), TIPI, MLO "Adaptivnist-200", Mini-mult |
 | Staff (4) | CBI, BAT-23, BAT-12, ProQOL 5 |
-| Other (2) | PQ-16, AQ-10 |
+| Other (5) | PQ-16, AQ-10, CGI-S, CGI-I, BPRS-18 |
 
 - **Install and update.** Every deploy installs the catalog and updates it by content fingerprint.
 - **Local edits survive.** If an institution edited a method locally, its edit is kept: a locally published version blocks the content update, and local settings (visibility, instructions, time limit, area and the like) survive a regular update while the rest of the method is refreshed. The `catalog-status` and `catalog-force` maintenance actions show the situation and let you override it.
-- **Who sees the catalog.** Catalog methods live in the survey group «Каталог методик». Staff see and assign them once a superadmin makes them administrators of that group. The group also decides which patients a doctor sees, so the catalog is not opened to all staff at once.
-- **Battery templates.** There are seven: initial screening, trauma in depth, suicide risk in depth, addictions, sleep and fatigue, resources and recovery, and staff burnout and stress. Each is created once and then belongs to the institution: later deploys do not overwrite edits or bring back a deleted template.
+- **Who sees the catalog.** Catalog methods live in the survey group «Каталог методик», a library shared by all staff: every clinician finds, reads, assigns and administers them and puts them into batteries without being an administrator of the group. Their results are shown only for patients who are already in the clinician's scope (department, own appointments, the department's own groups); the catalog never widens that scope, so taking a catalog method does not make a person visible to everyone. Editing catalog methods (builder, versions, settings, retiring) stays with superadmins and explicit administrators of the group. The same rule is enforced by row-level security.
+- **Battery templates.** There are nine: initial screening, trauma in depth, suicide risk in depth, addictions, sleep and fatigue, resources and recovery, staff burnout and stress, the psychiatrist's initial examination (C-SSRS, HAM-D-17, HAM-A, CGI-S, all filled in by the doctor), and an in-depth psychological examination (SR-45, MLO, Mini-mult). Each is created once and then belongs to the institution: later deploys do not overwrite edits or bring back a deleted template.
 
-**Seed-only methods, 4**: SR-45, SAD PERSONS, Mini-mult and MLO "Adaptivnist-200". Only the seed installs them; production does not have them.
+**The institution's methods, 4**: SR-45, SAD PERSONS, Mini-mult and MLO "Adaptivnist-200" from the manuals of the Research Center for Humanitarian Problems of the Armed Forces of Ukraine. Since 28 October 2026 they are part of the shared catalog by the product owner's decision: the institution uses them and confirms its right to; there is no licence statement from the rights holders, and the dossiers, the staff notes and the install log say so. SAD PERSONS is filled in by a specialist and is never offered to patients. The seed keeps its own copies under the same catalog keys, so a stand with both the seed and the catalog shows each method once.
 
 **The methods have not been clinically validated yet.** `docs/instruments/` holds the validation package for a clinical psychologist:
 - one sheet per method in Ukrainian and Russian;
@@ -248,9 +248,9 @@ Most documents are in Russian; the validation package is in Ukrainian and Russia
 
 ## Project status
 
-**Stage: pilot, late beta.** Production has run v2.0.0 since 19 October 2026. Version 2.0 brought the console, the patient cabinet and the mobile app to the new «Виразна» design. The main branch also carries catalog 2.1 (64 shared methods by area, battery templates, the «Каталог методик» group), which ships with the next release tag.
+**Stage: pilot, late beta.** Production runs v2.2.0 since 27 October 2026. Version 2.0 brought the console, the patient cabinet and the mobile app to the new «Виразна» design; 2.1 added the shared catalog by area with battery templates; 2.2 reworked the console wording for clinicians.
 
-- **Done:** clinical console, patient cabinet, mobile app, tech panel, 68 methods (64 in the shared catalog, 4 seed-only), CI with app-role and browser tests, automated deploys with pre-checks, encrypted and verified backups, audit chain, second factor, three interface languages.
+- **Done:** clinical console, patient cabinet, mobile app, tech panel, 73 methods in the shared catalog (since 28 October 2026 including 4 of the institution's own and 5 clinician-rated scales), CI with app-role and browser tests, automated deploys with pre-checks, encrypted and verified backups, audit chain, second factor, three interface languages.
 - **Hardening:** four external code reviews (about 90 findings, including privilege escalation, races and data leaks) are fixed and covered by tests. Every pull request also gets an automated code review.
 - **Not done:** clinical validation of the methods by a psychologist (the package is ready and waiting), off-site backups configured on the server, SSH hardening on the host, mobile store publication, real users and a second institution.
 - **Scale:** one VPS (4 cores, 8 GB) serves one institution at near-zero load; capacity is not the constraint, process is.

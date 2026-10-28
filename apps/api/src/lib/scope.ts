@@ -29,8 +29,19 @@ import { t } from "@quizzy/shared";
 /**
  * Единая точка правды по видимости данных.
  *
- * superadmin — всё; admin — только свои группы плюс собственные методики без группы;
- * user — только опубликованные методики.
+ * superadmin — всё; admin — свои группы, собственные методики без группы и
+ * библиотека (общий каталог методик, см. ниже); user — только опубликованные
+ * методики.
+ *
+ * У методики три вопроса, и ответы на них разные:
+ *  - пользоваться (найти, прочитать паспорт, пункты, ключ и нормы, назначить,
+ *    провести, поставить в набор) — surveyUseFilter, assertSurveyUse;
+ *  - править (конструктор, версии, настройки, снятие) — assertSurveyManage;
+ *  - видеть результаты (прохождения и всё, что на них висит: ответы, баллы,
+ *    тревоги, случаи, срабатывания правил, динамика, аналитика, выгрузки) —
+ *    resultScopeCondition, surveyResultScope, canSeeResult, surveyScopeFilterFor.
+ * Для методик своих групп и своих без группы все три совпадают, как и
+ * прежде. Расходятся они у библиотеки.
  *
  * Все роуты обязаны спрашивать разрешение здесь, а не проверять роль на месте:
  * иначе права неизбежно разъезжаются между эндпоинтами.
@@ -58,7 +69,12 @@ export async function hasGrant(userId: string, surveyId: string): Promise<boolea
 export const isSuperadmin = (user: User) => user.role === "superadmin";
 export const isStaff = (user: User) => user.role === "admin" || user.role === "superadmin";
 
-/** Группы, доступные администратору. null — доступны все (суперадмин). */
+/**
+ * Группы под управлением сотрудника (group_admins). null — все (суперадмин).
+ *
+ * Это право править методики группы и распоряжаться ею. Видимость данных
+ * считается от них же, но без библиотеки — см. ownGroupsOf.
+ */
 export async function accessibleGroupIds(user: User): Promise<string[] | null> {
   if (isSuperadmin(user)) return null;
   const rows = await db
@@ -90,27 +106,350 @@ export async function brokenGlassPatients(user: User): Promise<string[]> {
   return [...new Set(rows.map((r) => r.patientId))];
 }
 
-/**
- * Условие видимости методик для сотрудника.
- * Возвращает undefined, если ограничивать нечем (суперадмин).
+/* ─────────── Библиотека: общий каталог методик ───────────
+ *
+ * Методики общего каталога (установщик, lib/catalogInstall.ts) стоят в своей
+ * группе — CATALOG_GROUP_ID. Прежде это была обычная группа: кого суперадмин
+ * назначит её администратором, тот видит её методики и все их прохождения, а
+ * остальные — ничего. На стенде, похожем на бой, врач без этой группы видел
+ * у каждого из ста двадцати пациентов «замеров нет»; на проде врачей
+ * назначали администраторами каталога руками — и это делало их редакторами
+ * выверенных методик, а через путь «прошёл методику группы» (зона ниже) — ещё
+ * и открывало им каждого, кто когда-либо проходил любую методику каталога, из
+ * любого отделения.
+ *
+ * Теперь каталог — библиотека всех сотрудников, и три вопроса разведены:
+ *  - пользуется ею каждый сотрудник, без назначения в группу;
+ *  - результаты её методик видны только о людях, которые и так в зоне
+ *    сотрудника (отделение, приём, разбитое стекло, пути через СВОИ группы),
+ *    и о нём самом. Библиотека зону не расширяет никогда: прошедший методику
+ *    каталога не становится виден всем сотрудникам — ни через выдачу, ни
+ *    через прохождение, ни через набор;
+ *  - правят её суперадмин и явные администраторы группы каталога, как и
+ *    прежде. Их строки group_admins остаются, но больше ничего не открывают:
+ *    ни прохождений сверх зоны, ни людей.
+ *
+ * То же правило держит политика строк (миграция 0134, rls_library_survey_ids
+ * и rls_admin_sees_patient) — расходиться им не из чего: группа библиотеки
+ * названа в ней тем же идентификатором, и сверяет их test/catalogLibrary.test.ts.
  */
-export async function surveyScopeFilter(user: User): Promise<SQL | undefined> {
-  const groupIds = await accessibleGroupIds(user);
-  if (groupIds === null) return undefined;
 
-  // Методика в группе управляется ТОЛЬКО через группу: авторство не даёт доступа,
-  // иначе создатель сохранял бы доступ к данным отделения после перевода методики
-  // в чужую группу. Создатель имеет доступ только к методикам без группы.
-  const ownUngrouped = and(isNull(surveys.groupId), eq(surveys.createdBy, user.id));
-  if (groupIds.length === 0) return ownUngrouped;
-  return or(inArray(surveys.groupId, groupIds), ownUngrouped);
+/** Группа общего каталога — библиотека методик всех сотрудников */
+export const CATALOG_GROUP_ID = "catalog";
+
+/** Методика библиотеки — условием над surveys */
+export const librarySurvey = eq(surveys.groupId, CATALOG_GROUP_ID);
+
+/**
+ * Группы, по которым сотрудник видит данные целиком и через которые к нему
+ * попадают люди: свои, кроме библиотеки. Администратор группы каталога её
+ * правит, но её результаты видит по тому же правилу, что любой сотрудник.
+ */
+function ownGroupsOf(groupIds: readonly string[]): string[] {
+  return groupIds.filter((id) => id !== CATALOG_GROUP_ID);
 }
 
 /**
- * Условие видимости методик при работе с ОДНИМ человеком.
+ * Методика в группе управляется ТОЛЬКО через группу: авторство не даёт доступа,
+ * иначе создатель сохранял бы доступ к данным отделения после перевода методики
+ * в чужую группу. Создатель имеет доступ только к методикам без группы.
+ */
+function ownUngrouped(user: User): SQL {
+  return and(isNull(surveys.groupId), eq(surveys.createdBy, user.id))!;
+}
+
+/** «Свои» методики — те, у которых видны все прохождения: свои группы без библиотеки и свои без группы */
+function ownSurveyCondition(user: User, groupIds: readonly string[]): SQL {
+  const own = ownGroupsOf(groupIds);
+  return own.length ? or(inArray(surveys.groupId, own), ownUngrouped(user))! : ownUngrouped(user);
+}
+
+/** То же условием над псевдонимом методики в сыром SQL */
+function ownSurveySql(user: User, groupIds: readonly string[], alias: string): SQL {
+  const s = sql.raw(alias);
+  const own = ownGroupsOf(groupIds);
+  return own.length
+    ? sql`(${s}.group_id in ${own} or (${s}.group_id is null and ${s}.created_by = ${user.id}))`
+    : sql`(${s}.group_id is null and ${s}.created_by = ${user.id})`;
+}
+
+/**
+ * Методики, которыми сотрудник вправе пользоваться: свои группы, свои без
+ * группы и библиотека. undefined — ограничивать нечем (суперадмин).
  *
- * Отличается от общего только разбитым стеклом — и в этом весь смысл.
- * Сначала я добавил доступ прямо в `surveyScopeFilter`, и мой же тест поймал
+ * Только о самих методиках: список каталога, шаги наборов, выбор методики.
+ * Чьи прохождения при этом видны — отдельный вопрос (resultScopeCondition):
+ * библиотека, которой пользуется каждый, не делает видимыми чужих людей.
+ */
+export async function surveyUseFilter(user: User): Promise<SQL | undefined> {
+  const groupIds = await accessibleGroupIds(user);
+  if (groupIds === null) return undefined;
+  return or(librarySurvey, groupIds.length ? inArray(surveys.groupId, groupIds) : undefined, ownUngrouped(user));
+}
+
+/**
+ * То же, что surveyUseFilter, — над псевдонимом методики в сыром SQL.
+ *
+ * Для подзапросов о людях, которые уже отобраны зоной (реестр пациентов):
+ * у них «методика, которой пользуюсь» и есть правило результатов — своя
+ * методика или библиотека о человеке зоны.
+ */
+export async function surveyUseSql(user: User, alias: string): Promise<SQL | undefined> {
+  const groupIds = await accessibleGroupIds(user);
+  if (groupIds === null) return undefined;
+  const s = sql.raw(alias);
+  const managed = groupIds.length ? sql` or ${s}.group_id in ${groupIds}` : sql``;
+  return sql`(${s}.group_id = ${CATALOG_GROUP_ID}${managed} or (${s}.group_id is null and ${s}.created_by = ${user.id}))`;
+}
+
+/**
+ * Методики, по которым сотрудник видит все прохождения: свои группы, кроме
+ * библиотеки, и свои без группы. undefined — суперадмин.
+ *
+ * Для разборов, которым нужна методика без человека — поток событий
+ * сверяет по ней событие, у которого человека нет. Где человек есть,
+ * спрашивать надо resultScopeCondition.
+ */
+export async function ownSurveyFilter(user: User): Promise<SQL | undefined> {
+  const groupIds = await accessibleGroupIds(user);
+  if (groupIds === null) return undefined;
+  return ownSurveyCondition(user, groupIds);
+}
+
+interface SurveyOwnership {
+  groupId: string | null;
+  createdBy: string;
+}
+
+/** Своя ли методика: группа под управлением (библиотека тоже — её администратору) или своя без группы */
+function manages(user: User, survey: SurveyOwnership, groupIds: readonly string[]): boolean {
+  if (!survey.groupId) return survey.createdBy === user.id;
+  return groupIds.includes(survey.groupId);
+}
+
+/** Строка методики под контекстом запроса: под ролью приложения чужую прячет политика surveys_read */
+function ownershipOf(surveyId: string): Promise<SurveyOwnership | undefined> {
+  return db.query.surveys.findFirst({
+    where: eq(surveys.id, surveyId),
+    columns: { groupId: true, createdBy: true },
+  });
+}
+
+/**
+ * Методика библиотеки? Выдача её в зону не вводит: назначают её только
+ * человеку, который уже в зоне сотрудника (routes/access.ts, батареи).
+ * Системной ролью, как существование методики: вопрос о методике, а не о
+ * данных, и ответ нужен до того, как читающему откажут или разрешат.
+ */
+export async function isLibrarySurvey(surveyId: string): Promise<boolean> {
+  const row = await asSystem(() =>
+    db.query.surveys.findFirst({ where: eq(surveys.id, surveyId), columns: { groupId: true } }),
+  );
+  return row?.groupId === CATALOG_GROUP_ID;
+}
+
+/** Может ли сотрудник пользоваться методикой: читать, назначать, проводить, ставить в набор */
+export async function canUseSurvey(user: User, surveyId: string): Promise<boolean> {
+  if (isSuperadmin(user)) return true;
+  const survey = await ownershipOf(surveyId);
+  if (!survey) return false;
+  if (survey.groupId === CATALOG_GROUP_ID) return true;
+  return manages(user, survey, (await accessibleGroupIds(user)) ?? []);
+}
+
+/** Может ли сотрудник править методику: конструктор, версии, настройки, перенос, снятие */
+export async function canManageSurvey(user: User, surveyId: string): Promise<boolean> {
+  if (isSuperadmin(user)) return true;
+  const survey = await ownershipOf(surveyId);
+  if (!survey) return false;
+  return manages(user, survey, (await accessibleGroupIds(user)) ?? []);
+}
+
+/**
+ * Существование методики — системной ролью.
+ *
+ * Под ролью приложения чужую методику политика surveys_read прячет, и в бою
+ * «вне зоны» не наступало никогда: администратор чужой группы получал
+ * «методику не найдено», а сюита владельцем — 403, и тесты проверяли ответ,
+ * которого в бою не бывает (волна 13, обход всех GET под ролью приложения).
+ * Методика — не персональные данные: различать «нет такой» и «не ваша» здесь
+ * решено намеренно (см. папки методик ниже), и решение должно держаться в
+ * бою, а не только в сюите. Из строки берётся одно «есть ли» — сама методика
+ * по-прежнему читается под политикой.
+ */
+async function assertSurveyExists(surveyId: string): Promise<void> {
+  const survey = await asSystem(() =>
+    db.query.surveys.findFirst({ where: eq(surveys.id, surveyId), columns: { id: true } }),
+  );
+  if (!survey) notFound("err.surveyNotFound");
+}
+
+/** 404, если методики нет; 403, если пользоваться ею сотруднику нельзя */
+export async function assertSurveyUse(user: User, surveyId: string): Promise<void> {
+  await assertSurveyExists(surveyId);
+  if (!(await canUseSurvey(user, surveyId))) forbidden("err.surveyOutOfScope");
+}
+
+/**
+ * 404, если методики нет; 403, если править её сотруднику нельзя.
+ *
+ * Методика библиотеки, которой сотрудник пользуется, но не правит, — свой
+ * отказ: «вне зоны» было бы неправдой о методике, которую он только что
+ * назначал, а ответ должен сказать, кто её правит.
+ */
+export async function assertSurveyManage(user: User, surveyId: string): Promise<void> {
+  await assertSurveyExists(surveyId);
+  if (await canManageSurvey(user, surveyId)) return;
+  if (await canUseSurvey(user, surveyId)) forbidden("err.surveyLibraryReadOnly");
+  forbidden("err.surveyOutOfScope");
+}
+
+/* ─────────── Результаты: прохождения и всё, что на них висит ─────────── */
+
+/** Условие над колонкой «человек» выборки */
+export type PatientCondition = (patientId: SQL | AnyPgColumn) => SQL;
+
+/** Условие над колонками «методика» и «человек» выборки */
+export type ResultScope = (surveyId: SQL | AnyPgColumn, patientId: SQL | AnyPgColumn) => SQL;
+
+/** Человек — сам сотрудник или человек его зоны: кому видны результаты библиотеки */
+function libraryPatient(user: User, inZone: PatientCondition): PatientCondition {
+  return (patientId) => sql`(${patientId} = ${user.id} or ${inZone(patientId)})`;
+}
+
+/**
+ * Видимость результатов условием SQL — над колонками «методика» и «человек».
+ *
+ * Прохождение (тревога, случай, срабатывание, выдача…) видно, если его
+ * методика своя (свои группы без библиотеки, свои без группы) — все, как и
+ * прежде, — или методика библиотеки, а человек — сам сотрудник или в его
+ * зоне. Анонимное прохождение библиотеки (человека нет) не видно никому,
+ * кроме суперадмина: зоны у него нет.
+ *
+ * Методика — множеством (`… in (select …)`): оно считается один раз на
+ * запрос (hashed SubPlan), как в политике строк (0120). Зона — условием о
+ * человеке строки (patientScopeCondition, #181) и только у строк
+ * библиотеки: своя методика отвечает раньше.
+ *
+ * `inZone` — зона, уже посчитанная запросом (очередь работы спрашивает её
+ * для своих строк): тогда второй раз она не считается. Без неё зона
+ * считается здесь и идёт в счётчик зоны, как любая её форма.
+ *
+ * `null` — ограничений нет (суперадмин).
+ */
+export async function resultScopeCondition(user: User, inZone?: PatientCondition | null): Promise<ResultScope | null> {
+  const groupIds = await accessibleGroupIds(user);
+  if (groupIds === null) return null;
+  const zone = libraryPatient(user, inZone ?? countedZone(user, groupIds));
+  // псевдоним — свой, как у зоны (zoneCondition): условие ставят внутрь чужих запросов
+  const own = ownSurveySql(user, groupIds, "zos");
+  return (surveyId, patientId) => sql`(${surveyId} in (select zos.id from surveys zos where ${own})
+    or (${surveyId} in (select zls.id from surveys zls where zls.group_id = ${CATALOG_GROUP_ID}) and ${zone(patientId)}))`;
+}
+
+/**
+ * resultScopeCondition для сырого SQL и списков условий: у суперадмина —
+ * `true`, а не null, чтобы условие стояло в тексте запроса без ветвлений.
+ */
+export async function resultScope(user: User, inZone?: PatientCondition | null): Promise<ResultScope> {
+  return (await resultScopeCondition(user, inZone)) ?? (() => sql`true`);
+}
+
+/**
+ * Чьи прохождения ОДНОЙ методики видит сотрудник — для экранов одной
+ * методики: аналитика, список прохождений, выгрузки, качество данных,
+ * статистика, нормы, назначения.
+ *
+ * `undefined` — все (суперадмин, своя методика); условие над колонкой
+ * «человек» — методика библиотеки: только сам сотрудник и люди его зоны.
+ * Методикой сотрудник обязан мочь пользоваться — отказ тот же, что у
+ * assertSurveyUse.
+ */
+export async function surveyResultScope(user: User, surveyId: string): Promise<PatientCondition | undefined> {
+  await assertSurveyExists(surveyId);
+  if (isSuperadmin(user)) return undefined;
+  // то же, что assertSurveyUse, но строка методики и группы читаются один раз
+  const survey = await ownershipOf(surveyId);
+  if (!survey) forbidden("err.surveyOutOfScope");
+  const groupIds = (await accessibleGroupIds(user)) ?? [];
+  if (survey.groupId === CATALOG_GROUP_ID) return libraryPatient(user, countedZone(user, groupIds));
+  if (!manages(user, survey, groupIds)) forbidden("err.surveyOutOfScope");
+  return undefined;
+}
+
+/**
+ * Видит ли сотрудник одну запись результата — прохождение, тревогу, случай,
+ * срабатывание правила. Правило то же, что у resultScopeCondition; человек —
+ * вопросом о нём одном (patientsInScope), а не построением зоны.
+ */
+export async function canSeeResult(
+  user: User,
+  record: { surveyId: string; userId: string | null },
+): Promise<boolean> {
+  if (isSuperadmin(user)) return true;
+  const survey = await ownershipOf(record.surveyId);
+  if (!survey) return false;
+  if (survey.groupId !== CATALOG_GROUP_ID) return manages(user, survey, (await accessibleGroupIds(user)) ?? []);
+  if (!record.userId) return false;
+  if (record.userId === user.id) return true;
+  const allowed = await patientsInScope(user, [record.userId]);
+  return allowed === null || allowed.has(record.userId);
+}
+
+/* ─────────── Назначения наборов ─────────── */
+
+/**
+ * Вводит ли назначение набора человека в зону сотрудника.
+ *
+ * Набор своей группы — да: это путь «назначили набор группы» (зона ниже).
+ * Общий набор (без группы — им пользуются все отделения, так стоят и
+ * заготовки каталога) и набор группы библиотеки — нет: их назначают только
+ * человеку, который уже в зоне, иначе назначивший не увидел бы потом ни
+ * назначения, ни результатов (routes/batteries.ts).
+ */
+export async function batteryWidensZone(user: User, battery: { groupId: string | null }): Promise<boolean> {
+  if (!battery.groupId || battery.groupId === CATALOG_GROUP_ID) return false;
+  const groupIds = await accessibleGroupIds(user);
+  return groupIds === null || groupIds.includes(battery.groupId);
+}
+
+/**
+ * Видимость назначений наборов условием — над колонками «набор» и «человек».
+ *
+ * Назначение набора своей группы (не библиотеки) видно всегда: оно и вводит
+ * человека в зону. Назначение общего набора и набора библиотеки — только о
+ * человеке зоны: общий набор назначают все отделения, и список его
+ * назначений с шагами, датами и прохождениями иначе называл бы пациентов
+ * чужих отделений. Политика строк battery_assignments — та же (0134).
+ *
+ * `inZone` — зона, уже посчитанная запросом; без неё считается здесь.
+ * `null` — суперадмин.
+ */
+export async function batteryAssignmentScope(
+  user: User,
+  inZone?: PatientCondition | null,
+): Promise<((batteryId: SQL | AnyPgColumn, patientId: SQL | AnyPgColumn) => SQL) | null> {
+  const groupIds = await accessibleGroupIds(user);
+  if (groupIds === null) return null;
+  const own = ownGroupsOf(groupIds);
+  const zone = inZone ?? countedZone(user, groupIds);
+  return (batteryId, patientId) =>
+    own.length
+      ? sql`(${batteryId} in (select zob.id from batteries zob where zob.group_id in ${own}) or ${zone(patientId)})`
+      : zone(patientId);
+}
+
+/**
+ * Методики, результаты которых сотрудник видит об ОДНОМ человеке: карточка,
+ * динамика, хронология, сводка направления, печатная карта.
+ *
+ * Свои методики — как всегда; библиотека — если человек в зоне сотрудника;
+ * и разбитое стекло. Зона о человеке спрашивается тем же запросом, что
+ * читает методики: отдельного похода в базу нет, а вызывающий, забывший
+ * проверить человека, библиотеку не откроет.
+ *
+ * Стекло отличается от общего правила — и в этом весь смысл. Сначала я
+ * добавил доступ прямо в общее условие методик, и мой же тест поймал
  * утечку: стекло, разбитое ради одного пациента, открывало методику целиком,
  * а всё, что фильтрует по методике, а не по человеку — когорты, аналитика,
  * списки — начинало показывать чужих людей. Обоснование писалось про одного,
@@ -120,53 +459,19 @@ export async function surveyScopeFilter(user: User): Promise<SQL | undefined> {
  * ради кого стекло разбито.
  */
 export async function surveyScopeFilterFor(user: User, patientId: string): Promise<SQL | undefined> {
-  const base = await surveyScopeFilter(user);
-  if (base === undefined) return undefined;
-
-  const emergency = await brokenGlassPatients(user);
-  if (!emergency.includes(patientId)) return base;
-
-  return or(
-    base,
-    sql`${surveys.id} in (
-      select r.survey_id from responses r
-      where r.user_id = ${patientId} and r.status = 'completed'
-    )`,
-  );
-}
-
-/** Может ли сотрудник работать с этой методикой */
-export async function canAccessSurvey(user: User, surveyId: string): Promise<boolean> {
-  if (isSuperadmin(user)) return true;
-  const survey = await db.query.surveys.findFirst({ where: eq(surveys.id, surveyId) });
-  if (!survey) return false;
-  // методика без группы — личный черновик создателя
-  if (!survey.groupId) return survey.createdBy === user.id;
   const groupIds = await accessibleGroupIds(user);
-  return groupIds?.includes(survey.groupId) ?? false;
-}
+  if (groupIds === null) return undefined;
 
-/**
- * Бросает 404, если методики нет, и 403, если она вне зоны ответственности.
- *
- * Существование спрашивается системной ролью. Под ролью приложения чужую
- * методику политика surveys_read прячет, и в бою «вне зоны» не наступало
- * никогда: администратор чужой группы получал «методику не найдено», а сюита
- * владельцем — 403, и тесты проверяли ответ, которого в бою не бывает
- * (волна 13, обход всех GET под ролью приложения). Методика — не
- * персональные данные: различать «нет такой» и «не ваша» здесь решено
- * намеренно (см. папки методик ниже), и решение должно держаться в бою, а не
- * только в сюите. Из строки берётся одно «есть ли» — сама методика
- * по-прежнему читается под политикой.
- */
-export async function assertSurveyAccess(user: User, surveyId: string): Promise<void> {
-  const survey = await asSystem(() =>
-    db.query.surveys.findFirst({ where: eq(surveys.id, surveyId), columns: { id: true } }),
-  );
-  if (!survey) notFound("err.surveyNotFound");
-  if (!(await canAccessSurvey(user, surveyId))) {
-    forbidden("err.surveyOutOfScope");
-  }
+  const library = and(librarySurvey, zoneCondition(user, groupIds)(sql`${patientId}`));
+  const emergency = await brokenGlassPatients(user);
+  const glass = emergency.includes(patientId)
+    ? sql`${surveys.id} in (
+        select r.survey_id from responses r
+        where r.user_id = ${patientId} and r.status = 'completed'
+      )`
+    : undefined;
+
+  return or(ownSurveyCondition(user, groupIds), library, glass);
 }
 
 export async function canAccessGroup(user: User, groupId: string): Promise<boolean> {
@@ -197,12 +502,12 @@ export async function assertGroupAccess(user: User, groupId: string): Promise<vo
  * Ответы разные намеренно, в отличие от групп пациентов: там 403 выдал бы
  * существование чужого личного списка, а папка методик не личная и о людях
  * ничего не говорит. Порядок тот же, что у самой методики
- * (assertSurveyAccess): сначала 404, затем 403 по группе.
+ * (assertSurveyUse): сначала 404, затем 403 по группе.
  */
 export async function assertSurveyFolderAccess(user: User, folderId: string): Promise<SurveyFolderRow> {
   /*
    * Системной ролью — по той же причине, что существование методики в
-   * assertSurveyAccess: чужую папку прячет политика, и в бою вместо «не
+   * assertSurveyUse: чужую папку прячет политика, и в бою вместо «не
    * управляете группой» отвечало «не найдено» (волна 13). Строка отдаётся
    * вызывающему только после проверки группы ниже.
    */
@@ -376,7 +681,9 @@ export async function batterySurveysInUse(batteryId: string): Promise<string[]> 
  * Человек попадает в зону тремя путями: ему назначили методику группы, он
  * прошёл методику группы или ему назначили батарею группы. Такой же набор
  * условий уже применялся на экране пациентов; здесь он вынесен, чтобы
- * маршруты и списки не разошлись в понимании слова «свой».
+ * маршруты и списки не разошлись в понимании слова «свой». Группа — своя и
+ * не библиотека (ownGroupsOf): методика каталога, которую проходят люди всех
+ * отделений, в зону не вводит никого.
  *
  * Только там, где нужен весь список. Вопрос об одном или нескольких
  * названных людях — patientsInScope ниже: строить ради них всю зону стоит
@@ -392,8 +699,10 @@ export async function batterySurveysInUse(batteryId: string): Promise<string[]> 
  * рабочей, ничего не проверяя. Считать вызовы — единственный способ
  * спросить ровно то, что нужно.
  *
- * Стоит одно целочисленное увеличение на вызов. Считаются обе формы зоны:
- * список (accessiblePatientIds) и условие (patientScopeCondition).
+ * Стоит одно целочисленное увеличение на вызов. Считаются все формы зоны:
+ * список (accessiblePatientIds), условие (patientScopeCondition) и зона
+ * внутри видимости результатов (resultScopeCondition без готовой зоны,
+ * surveyResultScope у методики библиотеки).
  */
 let scopeCalls = 0;
 
@@ -444,7 +753,8 @@ export async function accessiblePatientIds(user: User): Promise<Set<string> | nu
     );
   const clinic = [...byClinic.map((r) => r.id), ...byDepartment.map((r) => r.id)];
 
-  if (!groupIds.length) return new Set([...emergency, ...clinic]);
+  const own = ownGroupsOf(groupIds);
+  if (!own.length) return new Set([...emergency, ...clinic]);
 
   const rows = await db
     .select({ id: users.id })
@@ -455,13 +765,13 @@ export async function accessiblePatientIds(user: User): Promise<Set<string> | nu
         sql`(
           exists (select 1 from survey_access sa
             join surveys s on s.id = sa.survey_id
-            where sa.user_id = "users"."id" and s.group_id in ${groupIds})
+            where sa.user_id = "users"."id" and s.group_id in ${own})
           or exists (select 1 from responses r
             join surveys s on s.id = r.survey_id
-            where r.user_id = "users"."id" and s.group_id in ${groupIds})
+            where r.user_id = "users"."id" and s.group_id in ${own})
           or exists (select 1 from battery_assignments ba
             join batteries b on b.id = ba.battery_id
-            where ba.user_id = "users"."id" and b.group_id in ${groupIds})
+            where ba.user_id = "users"."id" and b.group_id in ${own})
         )`,
       ),
     );
@@ -493,32 +803,92 @@ export async function accessiblePatientIds(user: User): Promise<Set<string> | nu
  *
  * `null` — ограничений нет (суперадмин).
  */
-export async function patientScopeCondition(
-  user: User,
-): Promise<((patientId: SQL | AnyPgColumn) => SQL) | null> {
+export async function patientScopeCondition(user: User): Promise<PatientCondition | null> {
   scopeCalls += 1;
   const groupIds = await accessibleGroupIds(user);
   if (groupIds === null) return null;
+  return zoneCondition(user, groupIds);
+}
+
+/** Условие зоны, посчитанное как отдельная её форма — со счётчиком (см. scopeCalls) */
+function countedZone(user: User, groupIds: readonly string[]): PatientCondition {
+  scopeCalls += 1;
+  return zoneCondition(user, groupIds);
+}
+
+/**
+ * Само правило зоны — построитель условия по уже прочитанным группам.
+ *
+ * Без счётчика: его зовут формы зоны выше (patientScopeCondition,
+ * resultScopeCondition, surveyResultScope — каждая считается сама) и
+ * surveyScopeFilterFor, которая спрашивает о человеке тем же запросом, что
+ * читает методики, — отдельного вычисления зоны там нет.
+ */
+function zoneCondition(user: User, groupIds: readonly string[]): PatientCondition {
   const now = new Date().toISOString();
+  const own = ownGroupsOf(groupIds);
+  /*
+   * Псевдонимы подзапросов — свои, с приставкой z: условие ставят над
+   * колонкой чужого запроса (`a.user_id` у назначений наборов, `r.user_id` у
+   * прохождений), и короткий псевдоним здесь перекрыл бы её — `a.patient_id
+   * = a.user_id` внутри `from appointments a` спрашивал бы не того человека.
+   */
   return (patientId) => {
-    const outsideGroups = sql`exists (select 1 from break_glass bg
-          where bg.actor_id = ${user.id} and bg.patient_id = ${patientId}
-            and bg.revoked_at is null and bg.expires_at > ${now}::timestamptz)
-      or exists (select 1 from appointments a
-          where a.specialist_id = ${user.id} and a.patient_id = ${patientId})
-      or exists (select 1 from department_patients dp
-          join specialist_profiles sp on sp.department_id = dp.department_id
-          where sp.user_id = ${user.id} and dp.patient_id = ${patientId} and dp.detached_at is null)`;
-    if (!groupIds.length) return sql`(${outsideGroups})`;
+    const outsideGroups = sql`exists (select 1 from break_glass zbg
+          where zbg.actor_id = ${user.id} and zbg.patient_id = ${patientId}
+            and zbg.revoked_at is null and zbg.expires_at > ${now}::timestamptz)
+      or exists (select 1 from appointments zap
+          where zap.specialist_id = ${user.id} and zap.patient_id = ${patientId})
+      or exists (select 1 from department_patients zdp
+          join specialist_profiles zsp on zsp.department_id = zdp.department_id
+          where zsp.user_id = ${user.id} and zdp.patient_id = ${patientId} and zdp.detached_at is null)`;
+    if (!own.length) return sql`(${outsideGroups})`;
     return sql`(${outsideGroups}
-      or exists (select 1 from users u where u.id = ${patientId} and u.role = 'user' and (
-        exists (select 1 from survey_access sa join surveys s on s.id = sa.survey_id
-          where sa.user_id = u.id and s.group_id in ${groupIds})
-        or exists (select 1 from responses r join surveys s on s.id = r.survey_id
-          where r.user_id = u.id and s.group_id in ${groupIds})
-        or exists (select 1 from battery_assignments ba join batteries b on b.id = ba.battery_id
-          where ba.user_id = u.id and b.group_id in ${groupIds}))))`;
+      or exists (select 1 from users zu where zu.id = ${patientId} and zu.role = 'user' and (
+        exists (select 1 from survey_access zsa join surveys zs on zs.id = zsa.survey_id
+          where zsa.user_id = zu.id and zs.group_id in ${own})
+        or exists (select 1 from responses zr join surveys zs on zs.id = zr.survey_id
+          where zr.user_id = zu.id and zs.group_id in ${own})
+        or exists (select 1 from battery_assignments zba join batteries zb on zb.id = zba.battery_id
+          where zba.user_id = zu.id and zb.group_id in ${own}))))`;
   };
+}
+
+/**
+ * Сотрудники, в чьей зоне человек, — та же зона, увиденная со стороны
+ * человека: разбитое стекло, приём, прикрепление к отделению, пути через
+ * свои группы (не библиотеку). Действующие учётные записи персонала, без
+ * суперадминов: у тех зоны нет, они видят всех.
+ *
+ * Нужна адресатам тревоги по методике библиотеки (lib/notify.ts): её
+ * получают те, кто ведёт человека, а не администраторы каталога — тем она
+ * была бы и чужой (человек вне их зоны), и не дошла бы до его врача. Третья
+ * запись одного правила рядом с двумя выше; держит их вместе сверка с
+ * patientsInScope (test/catalogLibrary.test.ts).
+ */
+export async function staffInChargeOf(patientId: string): Promise<{ id: string; email: string }[]> {
+  const now = new Date().toISOString();
+  const rows = await db.execute<{ id: string; email: string }>(sql`
+    select st.id, st.email from users st
+    where st.role = 'admin' and st.disabled_at is null and (
+      exists (select 1 from break_glass zbg
+          where zbg.actor_id = st.id and zbg.patient_id = ${patientId}
+            and zbg.revoked_at is null and zbg.expires_at > ${now}::timestamptz)
+      or exists (select 1 from appointments zap
+          where zap.specialist_id = st.id and zap.patient_id = ${patientId})
+      or exists (select 1 from department_patients zdp
+          join specialist_profiles zsp on zsp.department_id = zdp.department_id
+          where zsp.user_id = st.id and zdp.patient_id = ${patientId} and zdp.detached_at is null)
+      or exists (select 1 from users zu where zu.id = ${patientId} and zu.role = 'user' and exists (
+          select 1 from group_admins zga where zga.user_id = st.id and zga.group_id <> ${CATALOG_GROUP_ID} and (
+            exists (select 1 from survey_access zsa join surveys zs on zs.id = zsa.survey_id
+              where zsa.user_id = zu.id and zs.group_id = zga.group_id)
+            or exists (select 1 from responses zr join surveys zs on zs.id = zr.survey_id
+              where zr.user_id = zu.id and zs.group_id = zga.group_id)
+            or exists (select 1 from battery_assignments zba join batteries zb on zb.id = zba.battery_id
+              where zba.user_id = zu.id and zb.group_id = zga.group_id)))))
+    order by st.email`);
+  return [...rows].map((r) => ({ id: String(r.id), email: String(r.email) }));
 }
 
 /**
