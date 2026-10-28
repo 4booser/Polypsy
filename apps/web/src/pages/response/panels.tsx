@@ -707,7 +707,7 @@ export function RulesPanel({ hits, reload, title, hint }: { hits: RuleHit[]; rel
                         {ut("dpc.administerOne").replace("{code}", splitCode(x.title).code ?? x.title)}
                       </Button>
                     ) : can("assignments.manage") ? (
-                      <Button key={x.surveyId} size="xs" variant="primary" disabled={busy} icon={<Rx.clipboardPlus />} onClick={() => assign(h, x)}>
+                      <Button key={x.surveyId} size="xs" variant="primary" disabled={busy} onClick={() => assign(h, x)}>
                         {ut("dpc.assignOne").replace("{code}", splitCode(x.title).code ?? x.title)}
                       </Button>
                     ) : null,

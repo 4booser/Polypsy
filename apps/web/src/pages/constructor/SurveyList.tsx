@@ -124,7 +124,7 @@ function MethodCell({ s, flags, codes, nested }: { s: SurveyListItem; flags: Rea
       ) : null}
       {/* место под код — только если на странице коды есть: пустой столбец без кодов был бы дырой */}
       {codes ? (
-        <span className="shrink-0" style={{ width: nested ? CODE_W - NEST_W : CODE_W }}>
+        <span className="shrink-0" style={{ width: CODE_W }}>
           {code ? (
             <span
               aria-hidden
@@ -390,6 +390,7 @@ const SEVERITY: Record<string, Severity> = { none: "none", mild: "mild", moderat
 function PeekBody({
   s,
   parent,
+  shortForms,
   groupTitle,
   folderTitle,
   qa,
@@ -397,6 +398,8 @@ function PeekBody({
   s: SurveyListItem;
   /** Полная методика короткой формы, если она видна в каталоге */
   parent: SurveyListItem | null;
+  /** Короткие формы полной методики, видимые в каталоге: строки, вложенные под неё */
+  shortForms: SurveyListItem[];
   groupTitle: string | null;
   folderTitle: string | null;
   qa: boolean;
@@ -443,6 +446,23 @@ function PeekBody({
                     <Link key="full" to={`/surveys/${parent.id}`} className="font-bold text-violet-ink">
                       {parentNames.code ? `${parentNames.code} ${parentNames.name}` : parentNames.name}
                     </Link>,
+                  ],
+                ] as [string, ReactNode][])
+              : []),
+            ...(shortForms.length
+              ? ([
+                  [
+                    ut("dpc.shortForms"),
+                    <span key="short">
+                      {shortForms.map((f, i) => (
+                        <span key={f.id}>
+                          {i ? <span className="text-muted">{" · "}</span> : null}
+                          <Link to={`/surveys/${f.id}`} className="font-bold text-violet-ink">
+                            {splitCode(f.title).code ?? f.title}
+                          </Link>
+                        </span>
+                      ))}
+                    </span>,
                   ],
                 ] as [string, ReactNode][])
               : []),
@@ -1548,6 +1568,13 @@ export function SurveyList() {
             <PeekBody
               s={sideSurvey}
               parent={sideSurvey.catalog?.parent ? (byCatalogKey.get(sideSurvey.catalog.parent) ?? null) : null}
+              shortForms={
+                sideSurvey.catalogKey
+                  ? (everything.data ?? [])
+                      .filter((x) => x.catalog?.parent === sideSurvey.catalogKey && !x.archivedAt)
+                      .sort((a, b) => a.questionCount - b.questionCount)
+                  : []
+              }
               groupTitle={sideSurvey.groupId ? (groupById.get(sideSurvey.groupId)?.title ?? null) : null}
               folderTitle={sideSurvey.folderId ? (folderById.get(sideSurvey.folderId)?.title ?? null) : null}
               qa={qa}
