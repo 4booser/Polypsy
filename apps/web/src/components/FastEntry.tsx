@@ -27,6 +27,34 @@ export const choicesOf = (q: Question) => q.options.filter((o) => o.kind === "op
 /** Пункты, которые вводятся: без информационных */
 export const askedOf = (survey: SurveyFull) => survey.questions.filter((q) => q.type !== "info");
 
+/**
+ * С какого числа нумеруются варианты: клавиши быстрого ввода, цифры на плитках
+ * и строка ответов целиком.
+ *
+ * Специалист переносит бумажный бланк, а на бланке HAM-D, HAM-A, PHQ-9, PCL-5
+ * у вариантов напечатаны баллы с нуля. Нумерация с единицы заставляла
+ * прибавлять единицу в уме к каждому пункту, и ошибка на единицу молча
+ * ложилась в балл: у HAM-D клавиша «1» ставила 0 баллов. Поэтому методика, у
+ * которой каждый пункт с выбором считает варианты подряд с нуля — в прямом
+ * порядке или в обратном (у обратного пункта на бланке те же колонки), —
+ * нумеруется с нуля. Остальные, как прежде, с единицы: шкалы 1–7 (CGI, BPRS),
+ * неравные баллы вариантов (ASSIST) и пункты «так / ні». У последних баллы
+ * тоже 1 и 0, но на бланке МЛО и Міні-мульта цифр нет, а «0 — так» перевернуло
+ * бы двести привычных нажатий; поэтому с нуля — только шкалы от трёх
+ * вариантов. Решение одно на всю методику, а не на пункт: в одном бланке
+ * клавиши не должны менять смысл.
+ */
+export function keyBase(asked: readonly Question[]): 0 | 1 {
+  const withChoices = asked.map(choicesOf).filter((opts) => opts.length > 0);
+  if (!withChoices.length) return 1;
+  const fromZero = withChoices.every((opts) => {
+    const n = opts.length;
+    if (n < 3) return false;
+    return opts.every((o, i) => o.score === i) || opts.every((o, i) => o.score === n - 1 - i);
+  });
+  return fromZero ? 0 : 1;
+}
+
 /** Сколько ячеек пунктов видно в строке над вопросом: у длинной методики — окно вокруг текущего */
 const CELLS = 14;
 
@@ -45,8 +73,9 @@ export type PastePlan =
  * считались ответами, и выходило «вставлено 7 из 4». Без делителей вовсе —
  * по одному знаку на пункт («2130»).
  *
- * Номер варианта — с единицы и среди вариантов-ответов (строки матрицы не в
- * счёт), как цифра быстрого ввода: строка и клавиши читают бланк одинаково.
+ * Номер варианта — среди вариантов-ответов (строки матрицы не в счёт) и с
+ * того же числа, что цифра быстрого ввода (keyBase): строка и клавиши читают
+ * бланк одинаково.
  */
 export function planPaste(asked: readonly Question[], raw: string): PastePlan | null {
   const text = raw.trim();
@@ -56,12 +85,13 @@ export function planPaste(asked: readonly Question[], raw: string): PastePlan | 
 
   /* сначала проверяем всю строку, потом применяем: частичная запись хуже отказа */
   const planned: [string, Partial<Answer>][] = [];
+  const base = keyBase(asked);
   for (let i = 0; i < asked.length; i += 1) {
     const question = asked[i]!;
     const value = parts[i]!;
     const opts = choicesOf(question);
     if (opts.length) {
-      const option = /^\d+$/.test(value) ? opts[Number(value) - 1] : undefined;
+      const option = /^\d+$/.test(value) ? opts[Number(value) - base] : undefined;
       if (!option) return { ok: false, error: { kind: "bad", at: i + 1, value } };
       planned.push([question.id, { optionIds: [option.id] }]);
     } else if (["scale", "slider", "number"].includes(question.type)) {
@@ -108,6 +138,7 @@ export function FastEntry({
 
   const q = asked[at];
   const choices = q ? choicesOf(q) : [];
+  const base = keyBase(asked);
   const isChoice = choices.length > 0;
 
   /*
@@ -172,9 +203,9 @@ export function FastEntry({
       return;
     }
 
-    if (isChoice && /^[1-9]$/.test(e.key)) {
+    if (isChoice && /^[0-9]$/.test(e.key)) {
       e.preventDefault();
-      const option = choices[Number(e.key) - 1];
+      const option = choices[Number(e.key) - base];
       /*
        * Несуществующий вариант не выбирается молча. Нажать «5» там, где
        * вариантов четыре, — обычная опечатка при переносе бланка, и
@@ -223,7 +254,8 @@ export function FastEntry({
           const a = answers.get(item.id);
           const done = isAnswered(item, a);
           const opts = choicesOf(item);
-          const key = done && a?.optionIds?.length === 1 ? opts.findIndex((o) => o.id === a.optionIds![0]) + 1 : null;
+          const pickedAt = done && a?.optionIds?.length === 1 ? opts.findIndex((o) => o.id === a.optionIds![0]) : -1;
+          const key = pickedAt >= 0 ? pickedAt + base : null;
           const critical = opts.some((o) => o.riskFlag);
           /* критический вариант выбран — ячейка красным: это риск для человека, а не оформление */
           const risky = done && opts.some((o) => o.riskFlag && (a?.optionIds ?? []).includes(o.id));
@@ -247,7 +279,7 @@ export function FastEntry({
                         : "bg-sunk text-muted hover:bg-sunk-2",
               )}
             >
-              {done && !current ? (key && key > 0 ? key : <Rx.listChecks size={13} />) : critical && !current ? <Rx.siren size={14} /> : i + 1}
+              {done && !current ? (key !== null ? key : <Rx.listChecks size={13} />) : critical && !current ? <Rx.siren size={14} /> : i + 1}
             </button>
           );
           return (
@@ -287,7 +319,7 @@ export function FastEntry({
                     on ? "bg-violet text-onfill" : "bg-panel text-text-2 shadow-[inset_0_0_0_1px_var(--ctl)]",
                   )}
                 >
-                  {i + 1}
+                  {i + base}
                 </span>
                 <span className="min-w-0 flex-1">
                   {o.text}
@@ -321,7 +353,7 @@ export function FastEntry({
       <KbdHints
         className="mt-2.5"
         keys={[
-          [isChoice ? `1 ${choices.length}` : "Enter", isChoice ? ut("adx.keyAnswer") : ut("adx.keyNext")],
+          [isChoice ? `${base} ${choices.length - 1 + base}` : "Enter", isChoice ? ut("adx.keyAnswer") : ut("adx.keyNext")],
           ["Backspace", ut("adx.keyBack")],
           ["↑ ↓", ut("adx.keyMove")],
         ]}
