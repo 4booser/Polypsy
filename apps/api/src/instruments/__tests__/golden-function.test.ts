@@ -7,7 +7,7 @@ import {
   type ScoreResult,
   type SurveyFull,
 } from "@quizzy/shared";
-import { briefCope } from "../briefCope";
+import { briefCope, briefCopeNote } from "../briefCope";
 import { CATALOG } from "../catalog";
 import { mspss } from "../mspss";
 import { osss3 } from "../osss3";
@@ -218,7 +218,7 @@ describe("группа function: структура", () => {
   test("тревога только там, где её требует досье: Brief COPE, пункты 4 и 11", () => {
     /*
      * risk_items досье: у brief_cope — [4, 11], у остальных четырёх — null.
-     * Пункты 9 и 10 RSES («почуваюся марним», «нікуди не годжуся») и
+     * Пункты 9 и 10 RSES («від мене немає жодної користі», «нікуди не годжуся») и
      * 6/16 Brief COPE по смыслу близки к безнадёжности, но правила тревоги
      * по ним досье не даёт — флаг там был бы выдуманным порогом.
      */
@@ -241,15 +241,22 @@ describe("группа function: структура", () => {
         "brief_cope#4@4:moderate",
       ].sort(),
     );
-    // подпись тревоги обязана называть это правилом отделения, а не порогом методики
+    /*
+     * Подпись тревоги — факт (пункт и о чём он), без оговорки; что это правило
+     * отделения, а не порог методики, обязано быть сказано специалисту — в
+     * примечании для персонала, где методику выбирают.
+     */
     for (const n of [4, 11]) {
       for (const o of briefCope.questions?.[n - 1]?.options ?? []) {
         if (!o.riskFlag) continue;
         const label = o.riskLabel as { uk: string; ru: string };
-        expect(label.uk).toContain("правило відділення");
-        expect(label.ru).toContain("правило отделения");
+        expect(label.uk).toStartWith(`Brief COPE, п. ${n}: вживання алкоголю`);
+        expect(label.ru).toStartWith(`Brief COPE, п. ${n}: употребление алкоголя`);
+        expect(label.uk).not.toContain("правило");
+        expect(label.ru).not.toContain("правило");
       }
     }
+    expect(briefCopeNote).toContain("за правилом відділення, а не за порогом методики");
   });
 });
 
@@ -283,14 +290,14 @@ describe("золотой протокол: MSPSS", () => {
   ];
 
   for (const [code, items] of SUBSCALES) {
-    test(`подшкала ${code}: «Полностью согласен» на пунктах ${items.join(", ")}, прочее — минимум`, () => {
+    test(`подшкала ${code}: «Полностью соглашаюсь» на пунктах ${items.join(", ")}, прочее — минимум`, () => {
       /*
        * Свои четыре пункта по 7: 28 / 4 = 7.00 → высокая.
        * Две другие подшкалы по 1: 4 / 4 = 1.00 → низкая.
        * Общая: (4 × 7 + 8 × 1) / 12 = 36 / 12 = 3.00 → умеренная (нижний край 3–5).
        */
-      const picks = Object.fromEntries(items.map((n) => [n, "Полностью согласен"]));
-      const { scores } = computeProfile(survey, answer(survey, picks, "Полностью не согласен"));
+      const picks = Object.fromEntries(items.map((n) => [n, "Полностью соглашаюсь"]));
+      const { scores } = computeProfile(survey, answer(survey, picks, "Совсем не соглашаюсь"));
       expect(score(scores, code).value).toBe(7);
       expect(score(scores, code).band?.label).toBe(HIGH);
       for (const [other] of SUBSCALES.filter(([c]) => c !== code)) {
@@ -303,23 +310,23 @@ describe("золотой протокол: MSPSS", () => {
   }
 
   test("дыра автора между 2.9 и 3.0 закрыта вниз: 35/12 — низкая", () => {
-    // все «Скорее не согласен» (3): 36 / 12 = 3.00 → умеренная
-    const at3 = computeProfile(survey, answer(survey, {}, "Скорее не согласен"));
+    // все «Скорее не соглашаюсь» (3): 36 / 12 = 3.00 → умеренная
+    const at3 = computeProfile(survey, answer(survey, {}, "Скорее не соглашаюсь"));
     expect(score(at3.scores, "MSPSS").value).toBe(3);
     expect(score(at3.scores, "MSPSS").band?.label).toBe(MID);
-    // пункт 1 → «Не согласен» (2): 35 / 12 = 2.9166… → 2.917, в авторскую полосу не попадает
-    const below = computeProfile(survey, answer(survey, { 1: "Не согласен" }, "Скорее не согласен"));
+    // пункт 1 → «Не соглашаюсь» (2): 35 / 12 = 2.9166… → 2.917, в авторскую полосу не попадает
+    const below = computeProfile(survey, answer(survey, { 1: "Не соглашаюсь" }, "Скорее не соглашаюсь"));
     expect(score(below.scores, "MSPSS").value).toBe(2.917);
     expect(score(below.scores, "MSPSS").band?.label).toBe(LOW);
   });
 
   test("дыра автора между 5.0 и 5.1 закрыта вверх: 61/12 — высокая", () => {
-    // все «Скорее согласен» (5): 60 / 12 = 5.00 → умеренная
-    const at5 = computeProfile(survey, answer(survey, {}, "Скорее согласен"));
+    // все «Скорее соглашаюсь» (5): 60 / 12 = 5.00 → умеренная
+    const at5 = computeProfile(survey, answer(survey, {}, "Скорее соглашаюсь"));
     expect(score(at5.scores, "MSPSS").value).toBe(5);
     expect(score(at5.scores, "MSPSS").band?.label).toBe(MID);
-    // пункт 1 → «Согласен» (6): 61 / 12 = 5.0833… → 5.083
-    const above = computeProfile(survey, answer(survey, { 1: "Согласен" }, "Скорее согласен"));
+    // пункт 1 → «Соглашаюсь» (6): 61 / 12 = 5.0833… → 5.083
+    const above = computeProfile(survey, answer(survey, { 1: "Соглашаюсь" }, "Скорее соглашаюсь"));
     expect(score(above.scores, "MSPSS").value).toBe(5.083);
     expect(score(above.scores, "MSPSS").band?.label).toBe(HIGH);
   });
@@ -332,27 +339,27 @@ describe("золотой протокол: OSSS-3", () => {
   const run = (a: string, b: string, c: string) =>
     score(computeProfile(survey, answer(survey, { 1: a, 2: b, 3: c })).scores, "OSSS3");
 
-  test("пример досье: «5+», «some», «easy» → 4 + 4 + 4 = 12, сильная поддержка", () => {
+  test("пример досье: «5+», «some», «easy» → 4 + 4 + 4 = 12, высокая поддержка", () => {
     const s = run("5 и более", "Отчасти интересуются", "Легко");
     expect(s.value).toBe(12);
-    expect(s.band?.label).toBe("Сильная поддержка");
+    expect(s.band?.label).toBe("Высокая поддержка");
   });
 
   test("края: минимум 3, максимум 14 — у первого пункта четыре варианта, а не пять", () => {
-    // 1 + 1 + 1 = 3 → слабая
+    // 1 + 1 + 1 = 3 → низкая
     const min = run("Ни одного", "Совсем не интересуются", "Очень трудно");
     expect(min.value).toBe(3);
-    expect(min.band?.label).toBe("Слабая поддержка");
-    // 4 + 5 + 5 = 14 → сильная; максимум шкалы тоже 14, не 15
+    expect(min.band?.label).toBe("Низкая поддержка");
+    // 4 + 5 + 5 = 14 → высокая; максимум шкалы тоже 14, не 15
     const max = run("5 и более", "Очень интересуются", "Очень легко");
     expect(max.value).toBe(14);
     expect(max.maxScore).toBe(14);
-    expect(max.band?.label).toBe("Сильная поддержка");
+    expect(max.band?.label).toBe("Высокая поддержка");
   });
 
   test("границы полос Bøen: 8 | 9 и 11 | 12", () => {
-    // «1–2» (2) + «uncertain» (3) + «possible» (3) = 8 → слабая
-    expect(run("1–2", "Трудно сказать", "Возможно").band?.label).toBe("Слабая поддержка");
+    // «1–2» (2) + «uncertain» (3) + «possible» (3) = 8 → низкая
+    expect(run("1–2", "Трудно сказать", "Возможно").band?.label).toBe("Низкая поддержка");
     // «3–5» (3) + 3 + 3 = 9 → умеренная
     expect(run("3–5", "Трудно сказать", "Возможно").band?.label).toBe("Умеренная поддержка");
     // 3 + «some» (4) + «easy» (4) = 11 → умеренная
@@ -376,7 +383,7 @@ describe("золотой протокол: RSES", () => {
      * Обратные 3, 5, 8, 9, 10 — «Disagree»: сырой 1, обратный 3 − 1 = 2 каждый: 10.
      * Итого 20 из 30.
      */
-    const answers = answer(survey, { ...each(DIRECT, "Согласен"), ...each(REVERSED, "Не согласен") });
+    const answers = answer(survey, { ...each(DIRECT, "Соглашаюсь"), ...each(REVERSED, "Не соглашаюсь") });
     const s = score(computeProfile(survey, answers).scores, "RSES");
     expect(s.value).toBe(20);
     expect(s.maxScore).toBe(30);
@@ -386,14 +393,14 @@ describe("золотой протокол: RSES", () => {
   test("края: 0 и 30 — обратный ключ стоит ровно на 3, 5, 8, 9, 10", () => {
     // прямые «Strongly Disagree» = 0, обратные «Strongly Agree» = 3 − 3 = 0 → 0
     const low = answer(survey, {
-      ...each(DIRECT, "Полностью не согласен"),
-      ...each(REVERSED, "Полностью согласен"),
+      ...each(DIRECT, "Совсем не соглашаюсь"),
+      ...each(REVERSED, "Полностью соглашаюсь"),
     });
     expect(score(computeProfile(survey, low).scores, "RSES").value).toBe(0);
     // зеркально: прямые 3, обратные 3 − 0 = 3 → 30
     const high = answer(survey, {
-      ...each(DIRECT, "Полностью согласен"),
-      ...each(REVERSED, "Полностью не согласен"),
+      ...each(DIRECT, "Полностью соглашаюсь"),
+      ...each(REVERSED, "Совсем не соглашаюсь"),
     });
     expect(score(computeProfile(survey, high).scores, "RSES").value).toBe(30);
   });
