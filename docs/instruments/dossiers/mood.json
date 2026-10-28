@@ -79,7 +79,7 @@
     "label_uk": "Тяжка депресія"
    }
   ],
-  "bands_source": "Kroenke K, Spitzer RL. The PHQ-9: a new depression diagnostic and severity measure. Psychiatric Annals. 2002;32:509-521 — воспроизведено в Table 4 официального INSTRUCTION MANUAL (стр. 7). Украинские подписи полос — дословно из додатка 1 до УКПМД «Депресія», наказ МОЗ України №1003 від 25.12.2014.",
+  "bands_source": "Kroenke K, Spitzer RL. The PHQ-9: a new depression diagnostic and severity measure. Psychiatric Annals. 2002;32:509-521 — воспроизведено в Table 4 официального INSTRUCTION MANUAL (стр. 7). Украинские подписи полос в этой карточке (label_uk) — дословно из додатка 1 до УКПМД «Депресія», наказ МОЗ України №1003 від 25.12.2014. В каталоге с рецензии формулировок (октябрь 2026) полосы подписаны по оригиналу словами общей лестницы тяжести — «Мінімальна / Легка / Помірна / Помірно тяжка / Тяжка депресія»: у МОЗ полосы 10–14 и 15–19 — «Помірної тяжкості» и «Середньої тяжкості», синонимы, по которым не видно, какая тяжелее. Подписи МОЗ названы в примечании для персонала; границы те же.",
   "risk_items": [
    {
     "n": 9,
@@ -802,7 +802,7 @@
    "In the last month, how often have you been angered because of things that were outside of your control?",
    "In the last month, how often have you felt difficulties were piling up so high that you could not overcome them?"
   ],
-  "items_note": "Текст снят дословно со страницы самого разработчика (лаборатория С. Cohen, Carnegie Mellon University): https://www.cmu.edu/dietrich/psychology/stress-immunity-disease-lab/scales/html/pss.html. Инструкция дословно: «The questions in this scale ask you about your feelings and thoughts during the last month. In each case, please indicate with a check how often you felt or thought a certain way.»",
+  "items_note": "Текст снят дословно со страницы самого разработчика (лаборатория С. Cohen, Carnegie Mellon University): https://www.cmu.edu/dietrich/psychology/stress-immunity-disease-lab/scales/html/pss.html. Инструкция дословно: «The questions in this scale ask you about your feelings and thoughts during the last month. In each case, please indicate with a check how often you felt or thought a certain way.» В каталоге (рецензия формулировок, октябрь 2026) к ней добавлен совет из инструкции оригинальной PSS-14 (Cohen, Kamarck, Mermelstein, J Health Soc Behav 1983;24:385–396), который воспроизводят бланки PSS-10 и PSS-14: «The best approach is to answer each question fairly quickly. That is, don't try to count up the number of times you felt a particular way, but rather indicate the alternative that seems like a reasonable estimate» — «Не намагайтеся точно порахувати, скільки разів так було, — оберіть варіант, який здається найближчим». Прежняя фраза каталога «важливо не те, скільки насправді було подій, а те, якими вони вам здавалися» пересказывала этот совет неверно.",
   "anchors": [
    {
     "label": "never",
@@ -1398,6 +1398,7 @@
   },
   "example": null,
   "example_note": "Пример не приводится: без привязок к баллам расчёт не проверить. Механика тривиальна (сумма 10 пунктов по 0-6, максимум 60) и её можно протестировать после получения лицензионного бланка.",
+  "recheck_2026_10": "Перепроверено 28.10.2026 (dp-scales, docs/instruments/dossiers/clinician.json). Вывод прежний. Колледж держит MADRS в перечне своих шкал, разрешение — через «Request permissions» у статьи (https://www.rcpsych.ac.uk/docs/default-source/about-us/publications/royal-college-of-psychiatrists-rating-scales_with-hyperlinks.pdf), на странице разрешений — «All content published by the Royal College of Psychiatrists is protected by copyright» и возможная плата (https://www.rcpsych.ac.uk/about-us/contact-us/permissions). NINDS CDE (F1670) противоречит себе — «in the public domain, but copyrighted by the British Journal of Psychiatry»; слова правообладателя важнее. MADRS есть в проекте стандарта МОЗ 2026 «Депресивні розлади» (додаток 5) — права учреждению это не даёт.",
   "verdict": "завести без текста (лицензия) — карточка и требование письма в Royal College of Psychiatrists; онлайн-републикация без разрешения прямо запрещена правообладателем"
  },
  {

@@ -16327,6 +16327,23 @@ export const UI = {
   // ── ux-copy ──
 
   // ── dp-access ──
+  /*
+   * Методика общего каталога у сотрудника, который её не правит
+   * (SurveyFull.editable = false): вместо «Правити» — отметка в паспорте,
+   * пояснение — подсказкой (apps/api/src/lib/scope.ts).
+   */
+  "mc.libraryFact": { uk: "Загальний каталог", ru: "Общий каталог", en: "Shared catalogue" },
+  "mc.libraryHint": {
+    uk: "Методику загального каталогу змінюють адміністратори каталогу. Призначати й проводити її може кожен фахівець",
+    ru: "Методику общего каталога изменяют администраторы каталога. Назначать и проводить её может каждый специалист",
+    en: "Catalogue administrators edit shared-catalogue assessments. Any clinician can assign and administer them",
+  },
+  /* «Норми»: локальные нормы методики общего каталога — новая версия каталога */
+  "mc.libraryNormsHint": {
+    uk: "Локальні норми методики загального каталогу публікують адміністратори каталогу",
+    ru: "Локальные нормы методики общего каталога публикуют администраторы каталога",
+    en: "Catalogue administrators publish local norms for shared-catalogue assessments",
+  },
 
   // ── dp-patient ──
   /* рабочее место пациента: вкладки и панели огляда */
@@ -16465,6 +16482,8 @@ export const UI = {
   // ── dp-catalog ──
 
   // ── dp-scales ──
+
+  // ── dp-inst ──
 } as const satisfies Record<string, UiEntry>;
 
 export type UiKey = keyof typeof UI;

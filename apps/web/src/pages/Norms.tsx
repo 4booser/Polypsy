@@ -90,7 +90,14 @@ function NormsBody({ survey, data, onPublished }: { survey: SurveyFull; data: Da
   const whole = nOf(null) || men + women;
   const enoughMen = data.scales.some((s) => s.candidate.some((g) => g.sex === "male" && g.publishable));
   const enoughWomen = data.scales.some((s) => s.candidate.some((g) => g.sex === "female" && g.publishable));
-  const publishableSexes = (s: Scale) => sexes.filter((x) => s.candidate.some((g) => g.sex === x && g.publishable));
+  /*
+   * Публикуют нормы те, кто методику правит (SurveyFull.editable): локальные
+   * нормы методики общего каталога — новая версия каталога, и выпускают её
+   * его администраторы. Остальным выборка видна, отмечать в ней нечего.
+   */
+  const editable = survey.editable !== false;
+  const publishableSexes = (s: Scale) =>
+    editable ? sexes.filter((x) => s.candidate.some((g) => g.sex === x && g.publishable)) : [];
   const sources = [...new Set(data.scales.flatMap((s) => s.current.map((c) => c.source).filter((x): x is string => !!x)))];
 
   const pickedScales = data.scales.filter((s) => picked.has(s.code));
@@ -148,6 +155,11 @@ function NormsBody({ survey, data, onPublished }: { survey: SurveyFull; data: Da
           </dl>
           <p className="m-0 mt-3 text-small text-muted">{ut("stats.normsBasis")}</p>
         </Panel>
+        {!editable ? (
+          <Panel title={ut("mc.nmPublish")} icon={<Mi.upload />}>
+            <p className="m-0 text-small text-text-2">{ut("mc.libraryNormsHint")}</p>
+          </Panel>
+        ) : (
         <Panel title={ut("mc.nmPublish")} icon={<Mi.upload />}>
           <p className="m-0 text-small text-text-2">{ut("mc.nmPublishText").replace("{v}", String(survey.versionNumber + 1))}</p>
           <div className="mt-3 flex flex-col gap-2">
@@ -177,6 +189,7 @@ function NormsBody({ survey, data, onPublished }: { survey: SurveyFull; data: Da
             {picked.size ? ut("mc.nmPublishN").replace("{n}", String(picked.size)) : ut("mc.nmPublishNone")}
           </Button>
         </Panel>
+        )}
       </div>
 
       {tab === "table" ? (

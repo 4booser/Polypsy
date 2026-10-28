@@ -6,7 +6,7 @@ import { db } from "../db";
 import { alertCases, batteries, referrals, scheduleRuns, schedules, surveys, users } from "../db/schema";
 import { fullNameOf } from "../lib/auth";
 import { langOf, parseQuery } from "../lib/http";
-import { accessibleGroupIds, accessiblePatientIds, surveyScopeFilter } from "../lib/scope";
+import { accessibleGroupIds, patientScopeCondition, resultScope, surveyUseFilter } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
 export const missedRoutes = new Hono<AppEnv>();
@@ -42,10 +42,14 @@ missedRoutes.get("/", async (c) => {
   const { since, limit } = parseQuery(c, query);
   const lang = langOf(c);
 
-  const scope = await surveyScopeFilter(user);
-  const scoped = await db.select({ id: surveys.id, title: surveys.title }).from(surveys).where(scope);
-  const surveyIds = scoped.map((s) => s.id);
-  if (!surveyIds.length) return c.json({ since, groups: [] });
+  /*
+   * Зона — один раз на запрос и условием (lib/scope.ts): она нужна и
+   * случаям методик библиотеки (их видно только о людях зоны), и
+   * направлениям ниже. Прежде направления брали полный список зоны.
+   */
+  const inZone = await patientScopeCondition(user);
+  const seen = await resultScope(user, inZone);
+  const scoped = await db.select({ id: surveys.id, title: surveys.title }).from(surveys).where(await surveyUseFilter(user));
   const titleOf = new Map(scoped.map((s) => [s.id, t(s.title as never, lang)]));
 
   const opened = await db
@@ -54,7 +58,7 @@ missedRoutes.get("/", async (c) => {
     .leftJoin(users, eq(users.id, alertCases.userId))
     .where(
       and(
-        inArray(alertCases.surveyId, surveyIds),
+        seen(alertCases.surveyId, alertCases.userId),
         gt(alertCases.openedAt, since),
         // ещё не разобранные: разобранные попадут в свою группу ниже
         sql`${alertCases.acknowledgedAt} is null`,
@@ -74,7 +78,7 @@ missedRoutes.get("/", async (c) => {
     .leftJoin(users, eq(users.id, alertCases.userId))
     .where(
       and(
-        inArray(alertCases.surveyId, surveyIds),
+        seen(alertCases.surveyId, alertCases.userId),
         isNotNull(alertCases.acknowledgedAt),
         gt(alertCases.acknowledgedAt, since),
         ne(alertCases.acknowledgedBy, user.id),
@@ -88,22 +92,13 @@ missedRoutes.get("/", async (c) => {
    * подсовывать вместо него методику прохождения значило бы терять
    * направления, выписанные без прохождения.
    */
-  const allowedPatients = await accessiblePatientIds(user);
-  const newReferrals =
-    allowedPatients && allowedPatients.size === 0
-      ? []
-      : await db
-          .select({ row: referrals, patient: users })
-          .from(referrals)
-          .leftJoin(users, eq(users.id, referrals.userId))
-          .where(
-            and(
-              gt(referrals.createdAt, since),
-              allowedPatients ? inArray(referrals.userId, [...allowedPatients]) : undefined,
-            ),
-          )
-          .orderBy(desc(referrals.createdAt))
-          .limit(limit);
+  const newReferrals = await db
+    .select({ row: referrals, patient: users })
+    .from(referrals)
+    .leftJoin(users, eq(users.id, referrals.userId))
+    .where(and(gt(referrals.createdAt, since), inZone?.(referrals.userId)))
+    .orderBy(desc(referrals.createdAt))
+    .limit(limit);
 
   /*
    * Расписание назначает батарею, а не методику: область видимости берётся у
