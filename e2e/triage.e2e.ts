@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { acceptConsentIfAsked, apiToken, createVisiblePatient, eventsBell, goMenu, login } from "./helpers";
+import { acceptConsentIfAsked, apiToken, createVisiblePatient, eventsBell, goMenu, grantSeedSurvey, login } from "./helpers";
 
 /**
  * Разбор случаев — экран, ради которого система и существует.
@@ -180,10 +180,12 @@ test("новая тревога догоняет открытый экран б�
     data: { email: "user@quizzy.dev", password: "user12345" },
   });
   if (!login.ok()) test.skip(true, "нет учётной записи пациента в посеве");
-  const { token } = (await login.json()) as { token: string };
+  const { token, user } = (await login.json()) as { token: string; user: { id: string } };
   // без принятого согласия сдачу сервер не примет (волна 12)
   await acceptConsentIfAsked(page, token);
   const auth = { Authorization: `Bearer ${token}` };
+  // СР-45 — только по назначению: выдаёт сотрудник, как психолог перед обследованием
+  await grantSeedSurvey(page, user.id);
 
   const surveys = await page.request.get("/api/surveys", { headers: auth });
   const list = (await surveys.json()) as { items: { id: string; title: string }[] };
