@@ -1,4 +1,4 @@
-import type { Administration, CatalogCutoff, CatalogLink, CatalogStep, CutoffOp, Lang, RuleHit, UiKey } from "@quizzy/shared";
+import { instrumentCode, type Administration, type CatalogCutoff, type CatalogLink, type CatalogStep, type CutoffOp, type Lang, type RuleHit, type UiKey } from "@quizzy/shared";
 import { fixedIn, splitCode } from "./model";
 
 /*
@@ -55,7 +55,8 @@ export function suggestionOpen(s: Suggestion): boolean {
  * (правило по флагу риска) — код методики.
  */
 export function basisText(hit: Pick<RuleHit, "surveyTitle" | "basis">, lang: Lang): string {
-  const code = splitCode(hit.surveyTitle ?? "").code ?? hit.surveyTitle ?? "";
+  /* код — общим правилом консоли: «МЛО» из «МЛО «Адаптивность-200»», а не название целиком */
+  const code = hit.surveyTitle ? instrumentCode(hit.surveyTitle) : "";
   const basis = hit.basis ?? [];
   if (!basis.length) return code;
   return basis.map((b) => `${code}${b.scale ? `, ${b.scale}` : ""} = ${fixedIn(lang, b.value, 2, false)}`).join("; ");
