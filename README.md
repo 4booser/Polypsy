@@ -111,7 +111,7 @@ server and the clients score the same way.
 | T-scores by sex and age, sten tables | Mini-mult, MLO |
 | Validity scales that gate interpretation | lie and validity scales |
 | Reversed grading, clinical recommendation per band | SR-45 |
-| Clinician-administered methods | SAD PERSONS |
+| Clinician-administered methods | SAD PERSONS, HAM-D-17, HAM-A, CGI-S, CGI-I, BPRS-18 |
 | Minimum answered share per scale; items hidden by display logic excluded | ASSIST, PC-PTSD-5 |
 
 Scoring runs in a fixed order:
@@ -145,9 +145,9 @@ When several norms or sten rows fit a person, the most specific one wins: sex fi
 - **Install and update.** Every deploy installs the catalog and updates it by content fingerprint.
 - **Local edits survive.** If an institution edited a method locally, its edit is kept: a locally published version blocks the content update, and local settings (visibility, instructions, time limit, area and the like) survive a regular update while the rest of the method is refreshed. The `catalog-status` and `catalog-force` maintenance actions show the situation and let you override it.
 - **Who sees the catalog.** Catalog methods live in the survey group «Каталог методик», a library shared by all staff: every clinician finds, reads, assigns and administers them and puts them into batteries without being an administrator of the group. Their results are shown only for patients who are already in the clinician's scope (department, own appointments, the department's own groups); the catalog never widens that scope, so taking a catalog method does not make a person visible to everyone. Editing catalog methods (builder, versions, settings, retiring) stays with superadmins and explicit administrators of the group. The same rule is enforced by row-level security.
-- **Battery templates.** There are nine: initial screening, trauma in depth, suicide risk in depth, addictions, sleep and fatigue, resources and recovery, staff burnout and stress, a psychiatrist's first examination (C-SSRS screener, HAM-D-17, HAM-A, CGI-S, all filled in by the doctor), and an in-depth psychological examination (SR-45, MLO, Mini-mult). Each is created once and then belongs to the institution: later deploys do not overwrite edits or bring back a deleted template.
+- **Battery templates.** There are nine: initial screening, trauma in depth, suicide risk in depth, addictions, sleep and fatigue, resources and recovery, staff burnout and stress, the psychiatrist's initial examination (C-SSRS, HAM-D-17, HAM-A, CGI-S, all filled in by the doctor), and an in-depth psychological examination (SR-45, MLO, Mini-mult). Each is created once and then belongs to the institution: later deploys do not overwrite edits or bring back a deleted template.
 
-**The institution's methods, 4**: SR-45, SAD PERSONS, Mini-mult and MLO "Adaptivnist-200" from the manuals of the Research Center for Humanitarian Problems of the Armed Forces of Ukraine. Since 28 October 2026 they are part of the shared catalog by the product owner's decision: the institution uses them and confirms its right to; there is no licence statement from the rights holders, and the dossiers, the staff notes and the install log say so. SAD PERSONS is filled in by a specialist and is never offered to patients. The seed keeps its own copies under the same catalog keys, so a stand with both the seed and the catalog shows each method once.
+**The institution's methods, 4**: SR-45, SAD PERSONS, Mini-mult and MLO "Adaptivnist-200" from the manuals of the Research Center for Humanitarian Problems of the Armed Forces of Ukraine. Since 28 October 2026 they are part of the shared catalog by the product owner's decision: the institution uses them and confirms its right to; there is no licence statement from the rights holders, and the dossiers, the staff notes and the install log say so. SR-45, MLO and Mini-mult are given to a patient only by assignment, as part of an examination; SAD PERSONS is filled in by a specialist and is never offered to patients. The seed keeps its own copies under the same catalog keys, so a stand with both the seed and the catalog shows each method once.
 
 **The methods have not been clinically validated yet.** `docs/instruments/` holds the validation package for a clinical psychologist:
 - one sheet per method in Ukrainian and Russian;
@@ -248,9 +248,9 @@ Most documents are in Russian; the validation package is in Ukrainian and Russia
 
 ## Project status
 
-**Stage: pilot, late beta.** Production has run v2.0.0 since 19 October 2026. Version 2.0 brought the console, the patient cabinet and the mobile app to the new «Виразна» design. The main branch also carries catalog 2.1 (64 shared methods by area, battery templates, the «Каталог методик» group), which ships with the next release tag.
+**Stage: pilot, late beta.** Production runs v2.2.0 since 27 October 2026. Version 2.0 brought the console, the patient cabinet and the mobile app to the new «Виразна» design; 2.1 added the shared catalog by area with battery templates; 2.2 reworked the console wording for clinicians.
 
-- **Done:** clinical console, patient cabinet, mobile app, tech panel, 73 methods in the shared catalog (4 of them the institution's own, since 28 October 2026), CI with app-role and browser tests, automated deploys with pre-checks, encrypted and verified backups, audit chain, second factor, three interface languages.
+- **Done:** clinical console, patient cabinet, mobile app, tech panel, 73 methods in the shared catalog (since 28 October 2026 including 4 of the institution's own and 5 clinician-rated scales), CI with app-role and browser tests, automated deploys with pre-checks, encrypted and verified backups, audit chain, second factor, three interface languages.
 - **Hardening:** four external code reviews (about 90 findings, including privilege escalation, races and data leaks) are fixed and covered by tests. Every pull request also gets an automated code review.
 - **Not done:** clinical validation of the methods by a psychologist (the package is ready and waiting), off-site backups configured on the server, SSH hardening on the host, mobile store publication, real users and a second institution.
 - **Scale:** one VPS (4 cores, 8 GB) serves one institution at near-zero load; capacity is not the constraint, process is.

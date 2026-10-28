@@ -2,7 +2,7 @@ import { beforeAll, describe, expect, test } from "bun:test";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { readNotes, type SurveyFull } from "@quizzy/shared";
 import { appApi, db, makeUser, type Person } from "./fixtures";
-import { auditLog, batteries, batteryItems, surveyVersions, surveys } from "../src/db/schema";
+import { auditLog, batteries, batteryItems, surveyAccess, surveyVersions, surveys } from "../src/db/schema";
 import { CATALOG } from "../src/instruments/catalog";
 import { catalogDomain } from "../src/instruments/catalogDomains";
 import { CATALOG_GROUP_ID, installCatalog } from "../src/lib/catalogInstall";
@@ -27,6 +27,8 @@ const SLOW = 60_000;
 type Row = typeof surveys.$inferSelect;
 let rows: Row[] = [];
 let person: Person;
+/* тот же пациент без назначений: методики учреждения ему не видны */
+let stranger: Person;
 
 const idOf = (key: (typeof KEYS)[number]) => rows.find((r) => r.catalogKey === key)!.id;
 
@@ -37,6 +39,9 @@ beforeAll(async () => {
   await installCatalog();
   rows = await db.select().from(surveys).where(inArray(surveys.catalogKey, [...KEYS]));
   person = await makeUser("user", `inst-${crypto.randomUUID().slice(0, 8)}@test`, { sex: "male", birthDate: "1990-01-01" });
+  stranger = await makeUser("user", `inst-x-${crypto.randomUUID().slice(0, 8)}@test`, { sex: "male", birthDate: "1990-01-01" });
+  // методики учреждения — только по назначению: обследуемому их выдают
+  await db.insert(surveyAccess).values((["mlo", "minimult", "sr45"] as const).map((key) => ({ surveyId: idOf(key), userId: person.id })));
 }, SLOW);
 
 describe("установщик каталога: методики учреждения", () => {
@@ -55,6 +60,8 @@ describe("установщик каталога: методики учрежде
       expect(row.sourceNote, where).toBe(entry.note);
       expect(row.domain, where).toBe(catalogDomain(entry.key));
       expect(row.administration, where).toBe(entry.key === "sad-persons" ? "clinician" : "self");
+      // только по назначению — все четыре: обследование у психолога, а не тест из списка кабинета
+      expect(row.visibility, where).toBe("restricted");
       expect(row.showResultsToPatient, where).toBe(false);
 
       // действующую версию выпустил каталог: заметка — код note.catalog с отпечатком редакции
@@ -158,6 +165,10 @@ describe("методики учреждения глазами обследуе�
     expect(list.status).toBe(200);
     const ids = list.body.items.map((s) => s.id);
     for (const key of ["mlo", "minimult", "sr45"] as const) expect(ids, key).toContain(idOf(key));
+    // без назначения — ни одной: методики учреждения выдаёт психолог
+    const bare = await appApi<{ items: { id: string }[] }>(`/api/surveys?groupId=${CATALOG_GROUP_ID}&limit=500`, stranger.token);
+    for (const key of KEYS) expect(bare.body.items.map((s) => s.id), key).not.toContain(idOf(key));
+    expect((await appApi(`/api/surveys/${idOf("sr45")}`, stranger.token)).status).toBe(404);
     expect(ids).not.toContain(idOf("sad-persons"));
     // строка списка пациента — без «Джерела» и без снимка настроек каталога с его копией
     const listed = JSON.stringify(list.body.items);
