@@ -5,7 +5,7 @@ questionnaires, patients complete them on a phone or in a browser, and the syste
 scores them, raises risk alerts, and keeps the clinical record around the results:
 appointments, conclusions, safety plans, referrals and follow-up.
 
-Production runs at **https://polypsy.ink**. The repository keeps its original name, Quizzy.
+Production runs at **https://polypsy.ink**. The code and server paths keep the original name, Quizzy.
 
 | Part | Stack | Path |
 |---|---|---|

@@ -102,7 +102,7 @@ jobs:
           echo "version=${ref#refs/tags/}" >> "$GITHUB_OUTPUT"
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
           # имя владельца и репозитория приводится к строчным: реестр не
-          # принимает заглавные, а «4booser/Quizzy» их содержит — сборка
+          # принимает заглавные, а «4booser/Polypsy» их содержит — сборка
           # падала на самом последнем шаге, уже после всех проверок
           echo "prefix=$(echo "${{ env.REGISTRY }}/${{ github.repository }}" | tr "[:upper:]" "[:lower:]")" >> "$GITHUB_OUTPUT"
 
@@ -429,7 +429,11 @@ jobs:
           docker compose --env-file .env.docker pull
           # provision отрабатывает до api: миграции и права роли приложения
           docker compose --env-file .env.docker up -d
-          docker image prune -f --filter "until=168h"
+          # -a: у каждого выпуска свой тег, и прежние образы не «висячие» —
+          # без него они оставались на диске навсегда. Образ любого контейнера,
+          # в том числе остановленного, не трогается; откат скачает своё из
+          # реестра.
+          docker image prune -af --filter "until=168h"
           docker logout ghcr.io
           REMOTE
 
