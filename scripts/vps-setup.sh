@@ -122,8 +122,13 @@ JAIL
   fi
   echo "  ✓ fail2ban: джейл sshd работает"
   # пароли по ssh — только если есть чем войти без них
+  #
+  # Ключ раннера выкатки не считается: войти им человек не может. Его заводит
+  # server-install.sh, и при его повторном запуске сервер, куда заходят
+  # паролем, запирался бы от своего администратора.
   keyfile="${SUDO_USER:+/home/$SUDO_USER/.ssh/authorized_keys}"
-  if [ -s /root/.ssh/authorized_keys ] || { [ -n "$keyfile" ] && [ -s "$keyfile" ]; }; then
+  has_login_key() { [ -s "$1" ] && grep -Evq '^[[:space:]]*(#|$)|quizzy-actions$' "$1"; }
+  if has_login_key /root/.ssh/authorized_keys || { [ -n "$keyfile" ] && has_login_key "$keyfile"; }; then
     install -d -m 755 /etc/ssh/sshd_config.d
     cat > /etc/ssh/sshd_config.d/10-quizzy.conf <<'SSHD'
 PasswordAuthentication no
@@ -190,8 +195,19 @@ fi
 ./scripts/transcriber-cpus.sh "$ENV_FILE"
 
 # ── 3. Запуск ────────────────────────────────────────────────────────────────
-say "Собираю образы. Первый раз это долго: собирается whisper.cpp."
-docker compose --env-file "$ENV_FILE" up -d --build
+# Адрес образов в окружении — значит, сервер встаёт на готовой версии из
+# реестра, а не на том, что сейчас лежит в рабочей копии. При переезде это
+# решает дело: main обычно впереди выпуска, и сборка на месте под тегом
+# работающей версии дала бы другой код и миграции новее, чем у неё.
+image_prefix="$(sed -n 's/^QUIZZY_IMAGE_PREFIX=//p' "$ENV_FILE" | tail -n 1)"
+if [ -n "$image_prefix" ]; then
+  say "Беру образы из реестра: $image_prefix"
+  docker compose --env-file "$ENV_FILE" pull
+  docker compose --env-file "$ENV_FILE" up -d
+else
+  say "Собираю образы. Первый раз это долго: собирается whisper.cpp."
+  docker compose --env-file "$ENV_FILE" up -d --build
+fi
 
 # Ждём не «контейнер поднялся», а «приложение отвечает»: поднявшийся
 # контейнер с упавшим внутри процессом выглядит удачной установкой.
@@ -247,7 +263,7 @@ if [ -n "$DOMAIN" ]; then
   echo "Сертификат Caddy выдаст сам при первом обращении — A-запись домена"
   echo "должна уже указывать на этот сервер."
 else
-  echo "Консоль: http://$(curl -s ifconfig.me || echo '<ip сервера>')"
+  echo "Консоль: http://$(curl -4 -s ifconfig.me || echo '<ip сервера>')"
   echo "Домен вписывается в SITE_ADDRESS в $ENV_FILE, затем:"
   echo "  docker compose --env-file $ENV_FILE up -d web"
 fi

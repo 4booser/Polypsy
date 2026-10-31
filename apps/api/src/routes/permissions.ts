@@ -299,7 +299,7 @@ permissionRoutes.get("/users/:id", requireStaff, async (c) => {
     .select()
     .from(permissionExceptions)
     .where(eq(permissionExceptions.userId, id))
-    .orderBy(permissionExceptions.grantedAt);
+    .orderBy(permissionExceptions.grantedAt, permissionExceptions.id);
 
   return c.json({
     userId: id,
@@ -358,7 +358,7 @@ permissionRoutes.get("/cards", requireStaff, async (c) => {
     .select()
     .from(permissionExceptions)
     .where(inArray(permissionExceptions.userId, readableIds))
-    .orderBy(permissionExceptions.grantedAt);
+    .orderBy(permissionExceptions.grantedAt, permissionExceptions.id);
   const effective = await permissionsOfMany(readable);
 
   const byId = new Map(readable.map((row) => [row.id, row]));
@@ -600,7 +600,7 @@ permissionRoutes.get("/exceptions", requireStaff, async (c) => {
         or(isNull(permissionExceptions.expiresAt), sql`${permissionExceptions.expiresAt} > now()`),
       ),
     )
-    .orderBy(permissionExceptions.grantedAt);
+    .orderBy(permissionExceptions.grantedAt, permissionExceptions.id);
 
   /*
    * Чужие исключения не показываются тому, кто не вправе их снять: список

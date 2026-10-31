@@ -55,10 +55,6 @@ function directReads(): Map<string, string[]> {
 const NOT_API: Record<string, { why: string; services?: string[] }> = {
   APP_DB_PASSWORD: { why: "пароль роли приложения заводит подготовка (provision.ts); api входит уже этой ролью", services: ["provision"] },
   ADMIN_EMAIL: { why: "разовый ввод установщика: docker compose run -e ADMIN_EMAIL=… provision bun apps/api/src/install.ts" },
-  SCHEDULER_ENABLED: {
-    why: "у api планировщик включён всегда (одна реплика); выключен он явно у transcriber — два тика выдали бы задания дважды",
-    services: ["transcriber"],
-  },
 };
 
 describe("compose передаёт серверу всё, что тот читает", () => {
@@ -83,6 +79,12 @@ describe("compose передаёт серверу всё, что тот чита
         expect(envOf(service).has(name), `${name} должна быть объявлена у ${service}`).toBe(true);
       }
     }
+  });
+
+  test("планировщик: у api включён по умолчанию, у расшифровщика выключен всегда", () => {
+    // два тика на одну базу выдали бы задания дважды; 0 у api — только на копии при переезде
+    expect(compose.services.api?.environment?.SCHEDULER_ENABLED).toBe("${SCHEDULER_ENABLED:-1}");
+    expect(compose.services.transcriber?.environment?.SCHEDULER_ENABLED).toBe("0");
   });
 
   test("настройки из .env.docker берутся подстановкой, пояс и уровень журнала — с умолчанием", () => {

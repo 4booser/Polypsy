@@ -5,7 +5,7 @@
 #   ssh root@<сервер> 'bash /root/server-install.sh polypsy.ink'
 #
 # Делает всё, что иначе разложено по docs/DEPLOY.md на пятнадцать шагов:
-#   1. пакеты; 2. ключ чтения хранилища (deploy key) и клон в /opt/quizzy;
+#   1. пакеты; 2. клон в /opt/quizzy (приватному хранилищу — ключ чтения);
 #   3. vps-setup.sh — Docker, защита хоста, окружение, стек, первый админ;
 #   4. копии базы: окружение службы, таймеры снимка и проверки;
 #   5. ключ для выкатки из GitHub Actions и значения секретов на печать;
@@ -13,12 +13,12 @@
 #
 # Идемпотентен: повторный запуск доделывает то, чего нет, и не трогает
 # ключи, пароли и фразы, которые уже есть. Переезд со старого сервера —
-# тот же скрипт, затем перенос секретов и восстановление копии по
-# docs/DEPLOY.md, «Переезд на другой сервер».
+# через scripts/server-move.sh: он зовёт этот скрипт сам, заранее положив
+# окружение старого сервера (docs/DEPLOY.md, «Переезд на другой сервер»).
 set -euo pipefail
 
 DOMAIN="${1:-}"
-REPO="${REPO:-git@github.com:4booser/Quizzy.git}"
+REPO="${REPO:-https://github.com/4booser/Polypsy.git}"
 TARGET="${TARGET:-/opt/quizzy}"
 BACKUP_DIR="${BACKUP_DIR:-/var/backups/quizzy}"
 BACKUP_ENV=/root/quizzy-backup.env
@@ -40,22 +40,8 @@ apt-get install -y -q git curl ca-certificates gnupg zstd openssh-client >/dev/n
 echo "  ✓ git, curl, gnupg, zstd"
 
 # ── 2. Хранилище ─────────────────────────────────────────────────────────────
-# Репозиторий приватный: серверу нужен свой ключ только на чтение. Закрытая
-# часть рождается здесь и никуда не уезжает.
-say "2/6 Ключ чтения хранилища"
+say "2/6 Хранилище"
 install -d -m 700 /root/.ssh
-if [ ! -f /root/.ssh/quizzy_deploy ]; then
-  ssh-keygen -q -t ed25519 -f /root/.ssh/quizzy_deploy -N "" -C "quizzy-deploy@$(hostname)"
-fi
-grep -q 'IdentityFile ~/.ssh/quizzy_deploy' /root/.ssh/config 2>/dev/null || cat >> /root/.ssh/config <<'CFG'
-Host github.com
-  IdentityFile ~/.ssh/quizzy_deploy
-  IdentitiesOnly yes
-CFG
-chmod 600 /root/.ssh/config
-ssh-keyscan -t ed25519 github.com 2>/dev/null >> /root/.ssh/known_hosts
-sort -u -o /root/.ssh/known_hosts /root/.ssh/known_hosts
-
 # Доступ — по тексту приветствия, а не по коду выхода и не конвейером.
 # ssh -T git@github.com выходит с 1 и при принятом ключе («…successfully
 # authenticated, but GitHub does not provide shell access»), так что под
@@ -66,16 +52,32 @@ github_ok() {
   out="$(ssh -o BatchMode=yes -o ConnectTimeout=15 -T git@github.com 2>&1)" || true
   [[ "$out" == *"successfully authenticated"* ]]
 }
-until github_ok; do
-  echo
-  echo "  Добавьте этот ключ в GitHub: репозиторий → Settings → Deploy keys → Add,"
-  echo "  БЕЗ права записи:"
-  echo
-  cat /root/.ssh/quizzy_deploy.pub
-  echo
-  read -r -p "  Добавили? Enter — проверю ещё раз, Ctrl+C — выйти. "
-done
-echo "  ✓ GitHub принимает ключ"
+# Публичное хранилище клонируется по https без ключей. Адрес вида git@… — это
+# приватное: серверу нужен свой ключ только на чтение, закрытая часть
+# рождается здесь и никуда не уезжает.
+if [[ "$REPO" == git@* ]]; then
+  if [ ! -f /root/.ssh/quizzy_deploy ]; then
+    ssh-keygen -q -t ed25519 -f /root/.ssh/quizzy_deploy -N "" -C "quizzy-deploy@$(hostname)"
+  fi
+  grep -q 'IdentityFile ~/.ssh/quizzy_deploy' /root/.ssh/config 2>/dev/null || cat >> /root/.ssh/config <<'CFG'
+Host github.com
+  IdentityFile ~/.ssh/quizzy_deploy
+  IdentitiesOnly yes
+CFG
+  chmod 600 /root/.ssh/config
+  ssh-keyscan -t ed25519 github.com 2>/dev/null >> /root/.ssh/known_hosts
+  sort -u -o /root/.ssh/known_hosts /root/.ssh/known_hosts
+  until github_ok; do
+    echo
+    echo "  Добавьте этот ключ в GitHub: репозиторий → Settings → Deploy keys → Add,"
+    echo "  БЕЗ права записи:"
+    echo
+    cat /root/.ssh/quizzy_deploy.pub
+    echo
+    read -r -p "  Добавили? Enter — проверю ещё раз, Ctrl+C — выйти. "
+  done
+  echo "  ✓ GitHub принимает ключ"
+fi
 
 if [ -d "$TARGET/.git" ]; then
   # рабочая копия уже есть: подтягиваем, но не падаем — правки на сервере
@@ -196,7 +198,9 @@ fi
 grep -qF "$(cut -d' ' -f2 /root/.ssh/quizzy_actions.pub)" /root/.ssh/authorized_keys 2>/dev/null \
   || cat /root/.ssh/quizzy_actions.pub >> /root/.ssh/authorized_keys
 chmod 600 /root/.ssh/authorized_keys
-host_ip="$(curl -s --max-time 5 ifconfig.me || hostname -I | awk '{print $1}')"
+# -4: на сервере с IPv6 иначе придёт адрес v6, а раннеры GitHub ходят только
+# по v4, и в A-запись он не годится
+host_ip="$(curl -4 -s --max-time 5 ifconfig.me || hostname -I | awk '{print $1}')"
 echo "  ✓ ключ раннера добавлен в authorized_keys"
 
 # ── 6. Итог ──────────────────────────────────────────────────────────────────
@@ -223,8 +227,8 @@ C. Сохраните ВНЕ сервера (менеджер паролей) �
 D. Внешняя копия у другого поставщика: впишите OFFSITE_* в $BACKUP_ENV
    (docs/DEPLOY.md, «Внешняя копия») и проверьте действием offsite-status.
 
-E. Переезд с прежнего сервера: docs/DEPLOY.md, «Переезд на другой сервер»
-   (перенос ENCRYPTION_KEY и прочих секретов, записей приёмов, восстановление копии).
+E. Переезд с прежнего сервера: scripts/server-move.sh, порядок — в docs/DEPLOY.md,
+   «Переезд на другой сервер». Секреты A и DNS тогда — только после cutover.
 
 Проверка: https://$DOMAIN/health/ready после DNS; обслуживание backup-status, rls-check.
 EOF

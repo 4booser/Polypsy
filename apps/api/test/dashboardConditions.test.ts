@@ -100,6 +100,7 @@ const byDomain = (body: ConditionsResult, key: string): ConditionSummary | undef
 const scopeGroup = crypto.randomUUID();
 let scopeAdmin: Person;
 let gadSurveyId = "";
+let gadGroupId: string | null = null;
 
 beforeAll(async () => {
   await installCatalog();
@@ -155,12 +156,13 @@ beforeAll(async () => {
   await db.insert(surveyGroups).values({ id: scopeGroup, title: "Група зведення", createdBy: root.id } as never);
   await db.insert(groupAdmins).values({ groupId: scopeGroup, userId: scopeAdmin.id, addedBy: root.id } as never);
   gadSurveyId = (await seedOf("gad7", "GAD")).surveyId;
+  gadGroupId = (await db.select({ groupId: surveys.groupId }).from(surveys).where(eq(surveys.id, gadSurveyId)))[0]?.groupId ?? null;
   await db.update(surveys).set({ groupId: scopeGroup } as never).where(eq(surveys.id, gadSurveyId));
 }, 120_000); // установка каталога и полсотни учётных записей с argon2 не укладываются в дефолтные 5 секунд
 
 afterAll(async () => {
-  /* методика каталога возвращается в корень: другие проверки ждут её там */
-  if (gadSurveyId) await db.update(surveys).set({ groupId: null } as never).where(eq(surveys.id, gadSurveyId));
+  /* методика каталога возвращается в свою группу: другие проверки ждут её там */
+  if (gadSurveyId) await db.update(surveys).set({ groupId: gadGroupId } as never).where(eq(surveys.id, gadSurveyId));
 });
 
 describe("состав направлений", () => {
