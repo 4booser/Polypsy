@@ -130,10 +130,13 @@ need_target() {
   remote "$OLD" <<<'systemctl cat quizzy-backup.service >/dev/null' || die "На $OLD нет службы quizzy-backup."
 }
 
-# Окружение целиком; новое становится на место только непустым
+# Окружение целиком; новое становится на место только непустым. Предел ядер
+# расшифровщика приводится сразу: значение старого сервера больше ядер нового
+# не даст создать контейнер, и cutover встал бы уже после заморозки старого.
 push_env() {
   remote "$OLD" <<<'cat .env.docker' \
     | on_new "umask 077; cat > $TARGET/.env.docker.part && [ -s $TARGET/.env.docker.part ] && mv $TARGET/.env.docker.part $TARGET/.env.docker"
+  on_new "cd $TARGET && bash scripts/transcriber-cpus.sh .env.docker </dev/null"
 }
 
 # Снимок старого: свой каталог, в ротацию копий не входит. В stdout — путь
@@ -305,9 +308,12 @@ cmd_install() {
   remote "$OLD" <<'REMOTE' | on_new "umask 077; cat > $BACKUP_ENV.part && mv $BACKUP_ENV.part $BACKUP_ENV"
 load_backup_env
 [ -n "${BACKUP_PASSPHRASE:-}" ] || die "у службы копий нет BACKUP_PASSPHRASE"
-# в кавычках: файл читают и оболочка выкатки, и systemd, а фраза на старом
-# заводилась руками и может быть с пробелами
-env | grep -E '^(BACKUP_PASSPHRASE|BACKUP_DIR|DATABASE_URL|OFFSITE_[A-Z_]+)=' | sed -E "s/^([A-Z_]+)=(.*)\$/\1='\2'/"
+# В двойных кавычках с обратной косой перед \ " $ `: файл читают и оболочка
+# выкатки, и systemd, и это единственная запись, которую оба понимают
+# одинаково. Шелловское '\'' systemd разбирает иначе и молча меняет значение,
+# а фраза на старом заводилась руками и может содержать что угодно.
+env | grep -E '^(BACKUP_PASSPHRASE|BACKUP_DIR|DATABASE_URL|OFFSITE_[A-Z_]+)=' \
+  | sed -E -e 's/([\\"$`])/\\\1/g' -e 's/^([A-Z_]+)=(.*)$/\1="\2"/'
 REMOTE
 
   say "Установка на $NEW (образы версии старого сервера, планировщик выключен)"

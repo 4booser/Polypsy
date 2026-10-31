@@ -148,10 +148,11 @@ SMTP_URL=smtp://u:p%2Fss@127.0.0.1:22
 SITE_ADDRESS=polypsy.test
 QUIZZY_IMAGE_PREFIX=ghcr.io/4booser/polypsy
 QUIZZY_VERSION=v2.2.0
+TRANSCRIBER_CPUS=64
 ENV
 chmod 600 /srv/quizzy-old/.env.docker
 cat > /root/quizzy-backup.env <<'ENV'
-BACKUP_PASSPHRASE='старая фраза с пробелами'
+BACKUP_PASSPHRASE='старая '\''фраза'\'' "с" $ знаком \ и `кавычкой`'
 BACKUP_DIR=/var/backups/quizzy
 DATABASE_URL=postgres://quizzy:pw@127.0.0.1:5432/quizzy
 ENV
@@ -194,15 +195,17 @@ check "сказано об отсутствии внешней копии" 'grep
 
 echo "3. install"
 if move install > "$tmp/out" 2>&1; then ok "прошёл"; else bad "install: $(tail -n 12 "$tmp/out")"; fi
-check "окружение совпало байт в байт" '[ "$(in_old "sha256sum < /srv/quizzy-old/.env.docker")" = "$(in_new "sha256sum < /opt/quizzy/.env.docker")" ]'
+check "окружение совпало, кроме предела ядер" '[ "$(in_old "grep -v ^TRANSCRIBER_CPUS= /srv/quizzy-old/.env.docker | sha256sum")" = "$(in_new "grep -v ^TRANSCRIBER_CPUS= /opt/quizzy/.env.docker | sha256sum")" ]'
+check "предел ядер приведён к новому серверу" '[ "$(in_new "sed -n s/^TRANSCRIBER_CPUS=//p /opt/quizzy/.env.docker")" = "$(in_new nproc)" ]'
 check "окружение только владельцу" '[ "$(in_new "stat -c %a /opt/quizzy/.env.docker")" = 600 ]'
-check "фраза копий старая, файл только владельцу" '[ "$(in_new ". /root/quizzy-backup.env; echo \"\$BACKUP_PASSPHRASE\"")" = "старая фраза с пробелами" ] && [ "$(in_new "stat -c %a /root/quizzy-backup.env")" = 600 ]'
+check "фраза копий старая, файл только владельцу" '[ "$(in_new ". /root/quizzy-backup.env; echo \"\$BACKUP_PASSPHRASE\"")" = "старая '"'"'фраза'"'"' \"с\" \$ знаком \\ и \`кавычкой\`" ] && [ "$(in_new "stat -c %a /root/quizzy-backup.env")" = 600 ]'
 check "установщик запущен тихо" 'in_new "grep -q \"server-install polypsy.test SCHED=0 SMTP= *\$\" /var/log/stub.log"'
 check "отметка цели стоит" 'in_new "[ -f /root/.quizzy-move-target ]"'
 
 echo "4. rehearse"
 if move rehearse > "$tmp/out" 2>&1; then ok "прошёл"; else bad "rehearse: $(tail -n 12 "$tmp/out")"; fi
 check "данные доехали" '[ "$(users_on "$new")" = 2 ]'
+check "предел ядер приведён и после повторного копирования" '[ "$(in_new "sed -n s/^TRANSCRIBER_CPUS=//p /opt/quizzy/.env.docker")" = "$(in_new nproc)" ]'
 check "база новая: остатков прежней нет" '[ "$(docker exec "$new" psql -U quizzy -d quizzy -tAc "select count(*) from pg_tables where tablename = '"'"'residue'"'"'")" = 0 ]'
 check "права роли приложения на месте" '[ "$(docker exec "$new" psql -U quizzy -d quizzy -tAc "select has_table_privilege('"'"'quizzy_app'"'"', '"'"'users'"'"', '"'"'select'"'"')")" = t ]'
 check "запись приёма: тот же файл и владелец" '[ "$(in_old "cd /var/lib/docker/volumes/quizzy_recordings/_data && stat -c %u:%a . 2026/a.enc && sha256sum 2026/a.enc")" = "$(in_new "cd /var/lib/docker/volumes/quizzy_recordings/_data && stat -c %u:%a . 2026/a.enc && sha256sum 2026/a.enc")" ]'
@@ -219,6 +222,7 @@ MOVE_CONFIRM=другой.домен move cutover > "$tmp/out" 2>&1 && bad "пр
 check "после отказа старый работает" '! in_old "grep -q \" stop \" /var/log/stub.log"'
 if MOVE_CONFIRM=polypsy.test move cutover > "$tmp/out" 2>&1; then ok "прошёл"; else bad "cutover: $(tail -n 12 "$tmp/out")"; fi
 check "последняя запись доехала" '[ "$(users_on "$new")" = 3 ]'
+check "предел ядер приведён перед запуском" '[ "$(in_new "sed -n s/^TRANSCRIBER_CPUS=//p /opt/quizzy/.env.docker")" = "$(in_new nproc)" ]'
 check "последний файл доехал" 'in_new "[ -s /var/lib/docker/volumes/quizzy_recordings/_data/2026/b.enc ]"'
 check "старый остановлен до снимка" 'in_old "n=\$(grep -n \"stop api transcriber\" /var/log/stub.log | tail -n 1 | cut -d: -f1); d=\$(grep -n \"exec -T postgres pg_dump\" /var/log/stub.log | tail -n 1 | cut -d: -f1); [ \"\$n\" -lt \"\$d\" ]"'
 check "новый в полной работе" 'in_new "grep \"up -d\" /var/log/stub.log | tail -n 1 | grep -q \"^SCHED=unset SMTP=unset \"" && [ "$(in_new "cat /var/run/stub-sched")" = 1 ]'
